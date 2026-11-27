@@ -1,16 +1,18 @@
-//! `rexon-priv-helper` — root-помощник сеанса прав («один пароль на запуск»).
-//! Запускается только окном Rexon через `pkexec`, канал — сокет окна на fd 0/1.
-//! Вся логика — в [`rexon_core::privilege::helper`].
+//! `rexon-priv-helper` is the root helper of the privilege session ("one
+//! password per launch"). It is started only by the Rexon window via `pkexec`;
+//! the channel is the window's socket on fd 0/1. All logic lives in
+//! [`rexon_core::privilege::helper`].
 //!
 //! ```text
-//! pkexec rexon-priv-helper --session=<номер сеанса logind> [--lang=<код>]
+//! pkexec rexon-priv-helper --session=<logind session number> [--lang=<code>]
 //! ```
-//! Коды возврата — `EXIT_*` в `helper.rs` (126/127 не используются: это коды
-//! самого pkexec).
+//! Exit codes are the `EXIT_*` constants in `helper.rs` (126/127 are not used:
+//! those are pkexec's own codes).
 //!
-//! `rexon-priv-helper --build-id` — без root и без канала: печатает отпечаток
-//! своей сборки и выходит. Окно спрашивает его ДО `pkexec`, чтобы с
-//! помощником чужой сборки не спрашивать пароль впустую.
+//! `rexon-priv-helper --build-id` needs neither root nor the channel: it prints
+//! the fingerprint of its build and exits. The window asks for it BEFORE
+//! `pkexec`, so that it does not ask for the password in vain for a helper
+//! from a different build.
 
 fn main() {
     if std::env::args().nth(1).as_deref() == Some(rexon_core::privilege::client::BUILD_ID_FLAG) {

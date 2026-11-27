@@ -1,18 +1,19 @@
-// Диалоги за пунктами меню главного окна: справка о программе, вопрос перед
-// сбросом темы KDE и окно удаления Rexon.
+// Dialogs behind the main window's menu items: the about box, the
+// question before resetting the KDE theme and the Rexon uninstall window.
 //
-// В продукте на их месте стоят `QMessageBox` (`window.py`: `_on_about`,
-// `_on_recover_kde`, `_on_uninstall`). Виджетов в этом процессе нет, поэтому
-// здесь `Dialog` из QtQuick Controls в скине продукта (`MenuDialog` ниже) —
-// но текст в них ТОТ ЖЕ и приходит целиком от `WindowMenuModel`, то есть из
-// ядра. Ни одной
-// человеческой строки в этом файле не набрано: вторая копия разошлась бы с
-// продуктом молча (правило #12).
+// In the product their place is taken by `QMessageBox` (`window.py`:
+// `_on_about`, `_on_recover_kde`, `_on_uninstall`). There are no widgets
+// in this process, so here we use a QtQuick Controls `Dialog` in the
+// product skin (`MenuDialog` below) — but the text in them is THE SAME
+// and comes entirely from `WindowMenuModel`, i.e. from the core. Not a
+// single human-readable string is typed in this file: a second copy would
+// silently drift away from the product (rule #12).
 //
-// ⚠️ ПОРЯДОК КНОПОК УДАЛЕНИЯ И КНОПКА ПО УМОЛЧАНИЮ — НЕ КОСМЕТИКА. По
-// умолчанию нажата «Отмена»: случайный Enter не должен снести программу с
-// машины покупателя. Так в продукте, так и здесь, и решение это принимает
-// ядро (`defaultId`), а не разметка.
+// Warning: THE ORDER OF THE UNINSTALL BUTTONS AND THE DEFAULT BUTTON ARE
+// NOT COSMETICS. "Cancel" is the default: an accidental Enter must not
+// wipe the program off the customer's machine. That is how it is in the
+// product and here, and the decision is made by the core (`defaultId`),
+// not by the markup.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -22,40 +23,41 @@ import QtQuick.Layouts
 Item {
     id: root
 
-    /// Объект меню на Rust — источник всех текстов и исполнитель действий.
+    /// The Rust menu object — source of all texts and executor of actions.
     required property var menuModel
 
-    /// Палитра скина.
+    /// Skin palette.
     required property var pal
 
-    /// Человек выбрал «Выход» либо удаление закончилось успехом (в продукте
-    /// после удаления окно закрывается само).
+    /// The user chose "Quit" or the uninstall finished successfully (in the
+    /// product the window closes by itself after uninstalling).
     signal quitRequested()
 
-    /// Какой диалог открыт сейчас — этим полем прогон окна проверяет, что
-    /// пункт меню куда-то ведёт. Пусто — открытого диалога нет.
+    /// Which dialog is open right now — the window run uses this field to
+    /// check that a menu item leads somewhere. Empty means no dialog is open.
     ///
-    /// ⚠️ СТАВИТСЯ В `onAboutToShow`, А НЕ В `onOpened`, И ФОКУС — ТАМ ЖЕ.
-    /// `opened` приходит ПОСЛЕ анимации появления, а она есть не у всякого
-    /// стиля: у Basic и Fusion её нет, у `org.kde.desktop` (стиль, который
-    /// Qt берёт в сеансе Plasma) — есть. Замер 15.09.2026, прогон
-    /// `--selftest` под xvfb: со стилем `org.kde.desktop` все три пункта
-    /// меню «никуда не вели», а фокус в окне удаления стоял НЕ на «Отмене»;
-    /// с Basic и в offscreen — зелёно. Для покупателя на KDE это значило,
-    /// что всё время анимации Enter нажимал не «Отмену».
+    /// Warning: IT IS SET IN `onAboutToShow`, NOT IN `onOpened`, AND SO IS THE
+    /// FOCUS. `opened` arrives AFTER the appearance animation, and not every
+    /// style has one: Basic and Fusion do not, `org.kde.desktop` (the style Qt
+    /// picks in a Plasma session) does. Measurement on 15.09.2026, a
+    /// `--selftest` run under xvfb: with the `org.kde.desktop` style all three
+    /// menu items "led nowhere", and the focus in the uninstall window was NOT
+    /// on "Cancel"; with Basic and offscreen everything was green. For a
+    /// customer on KDE this meant that for the whole animation Enter pressed
+    /// something other than "Cancel".
     property string openDialog: ""
 
-    // ── Дверь из меню ─────────────────────────────────────────────────────
+    // ── Door from the menu ────────────────────────────────────────────────
     //
-    // Разбор идёт по идентификатору пункта, а не по подписи: подпись
-    // переводится и меняется, идентификатор — нет.
+    // Dispatch goes by the item identifier, not by the label: the label is
+    // translated and changes, the identifier does not.
     function activate(id) {
         if (id === "about") {
             aboutDialog.open();
         } else if (id === "recover_kde") {
-            // Сначала — пакеты, подменяющие части Plasma: сброс темы их не
-            // уберёт, и человек должен узнать это ДО сброса, а не из потока
-            // вывода, которого он не видит.
+            // First — packages replacing parts of Plasma: a theme reset will not
+            // remove them, and the user must learn this BEFORE the reset, not from an
+            // output stream they cannot see.
             const found = root.menuModel.recoverForks();
             if (found.forks.length > 0) {
                 console.info("найдены пакеты-замены Plasma: " + found.forks.join(", "));
@@ -80,15 +82,15 @@ Item {
         } else if (id === "quit") {
             root.quitRequested();
         } else {
-            // Пункт, за которым ничего не стоит, — это обещание, которого
-            // никто не выполнит. Пусть будет видно в журнале.
+            // An item with nothing behind it is a promise nobody will keep. Let it be
+            // visible in the log.
             console.warn("пункт меню «" + id + "» никуда не ведёт");
         }
     }
 
-    /// Закрыть тот диалог, что открыт сейчас. Нужно прогону `--selftest`:
-    /// он проверяет ПО ОЧЕРЕДИ, что каждый пункт меню куда-то ведёт, а
-    /// незакрытый модальный диалог накрыл бы собой следующий.
+    /// Close whichever dialog is open now. Needed by the `--selftest` run: it
+    /// checks ONE BY ONE that every menu item leads somewhere, and an unclosed
+    /// modal dialog would cover the next one.
     function closeOpenDialog() {
         aboutDialog.close();
         forksDialog.close();
@@ -98,12 +100,12 @@ Item {
         noticeDialog.close();
     }
 
-    /// Диалог закрылся. Сбрасывать «открыто» можно, только если не виден
-    /// НИ ОДИН другой: `onAccepted` срабатывает ДО закрытия, и сообщение,
-    /// открытое из него, иначе числилось бы закрытым (поймано стендом
-    /// 11.09.2026 — «Да» → «Удаление идёт» давало `openDialog === ""`). То же
-    /// в стилях с анимацией закрытия, где `closed` приходит позже `opened`
-    /// следующего окна.
+    /// A dialog closed. "Open" may be reset only if NO other dialog is
+    /// visible: `onAccepted` fires BEFORE closing, and a message opened from it
+    /// would otherwise count as closed (caught by the test bench on 11.09.2026
+    /// — "Yes" → "Uninstalling" gave `openDialog === ""`). The same happens in
+    /// styles with a closing animation, where `closed` arrives after the next
+    /// window's `opened`.
     function dialogClosed() {
         for (const d of [aboutDialog, forksDialog, forksConfirmDialog,
                          recoverDialog, uninstallDialog, noticeDialog])
@@ -112,8 +114,9 @@ Item {
         root.openDialog = "";
     }
 
-    /// Вопрос перед сбросом темы. На чужом рабочем столе вместо вопроса —
-    /// объяснение: маршрут там откажет, и обещать «запущено» нельзя.
+    /// Question before the theme reset. On a foreign desktop there is an
+    /// explanation instead of a question: the route would refuse there, and
+    /// promising "started" is not allowed.
     function askRecover() {
         const prompt = root.menuModel.recoverPrompt();
         if (!prompt.allowed) {
@@ -125,8 +128,9 @@ Item {
         recoverDialog.open();
     }
 
-    /// Кнопка окна про пакеты-замены нажата. Что делать дальше, решает ядро
-    /// (`forksNext`) — то же решение, что у Python-окна.
+    /// A button of the window about replacement packages was pressed. What to
+    /// do next is decided by the core (`forksNext`) — the same decision as in
+    /// the Python window.
     function forksChoice(buttonId) {
         forksDialog.close();
         const next = root.menuModel.forksNext(buttonId);
@@ -136,9 +140,10 @@ Item {
             root.askRecover();
     }
 
-    /// Последний вопрос перед снятием замен: ровно та команда, что
-    /// выполнится. Вернуть стандартные пакеты нечем — вместо вопроса
-    /// объяснение, и ничего не запускается.
+    /// Last question before removing the replacements: exactly the command
+    /// that will be run. If there is nothing to restore the standard packages
+    /// with, an explanation is shown instead of a question, and nothing is
+    /// started.
     function askForksRemoval() {
         const preview = root.menuModel.forksPreview();
         if (!preview.ok) {
@@ -152,25 +157,25 @@ Item {
         forksConfirmDialog.open();
     }
 
-    /// Держит ли клавиатурный фокус кнопка по умолчанию открытого окна
-    /// удаления. Мерило защиты от дурака: случайный Enter не должен снести
-    /// программу с машины покупателя, а проверить это нажатием нельзя —
-    /// ошибись, и программа снесётся по-настоящему.
+    /// Whether the default button of the open uninstall window holds the
+    /// keyboard focus. The yardstick of foolproofing: an accidental Enter must
+    /// not wipe the program off the customer's machine, and this cannot be
+    /// checked by pressing — get it wrong and the program is removed for real.
     function uninstallDefaultHasFocus() {
         return cancelButton.activeFocus;
     }
 
-    /// Подписи трёх кнопок окна удаления — так, как они стоят СЕЙЧАС.
-    /// Подписываются они в момент открытия окна, и пустая подпись здесь
-    /// означала бы безымянную кнопку, за которой стоит снос программы.
+    /// Labels of the three buttons of the uninstall window — as they stand
+    /// RIGHT NOW. They are labelled when the window opens, and an empty label
+    /// here would mean a nameless button with the program's removal behind it.
     function uninstallButtonTexts() {
         return [keepButton.text, deleteButton.text, cancelButton.text];
     }
 
-    /// Подписи кнопок окна удаления, которые НЕ влезли в свою кнопку и
-    /// показаны обрезанными. Подпись «сохранить» длинная намеренно (на ней
-    /// сказано, что сохранится), и «Удалить, но сохр…» прятало бы ровно
-    /// то, ради чего она такая.
+    /// Labels of the uninstall window buttons that did NOT fit into their
+    /// button and are shown elided. The "keep" label is long on purpose (it
+    /// says what will be kept), and "Uninstall, but ke…" would hide exactly
+    /// what it is that long for.
     function uninstallClippedLabels() {
         const out = [];
         for (const b of [keepButton, deleteButton, cancelButton])
@@ -180,49 +185,51 @@ Item {
         return out;
     }
 
-    /// Показать простое сообщение (итог сброса темы либо итог удаления).
+    /// Show a simple message (the result of a theme reset or of an uninstall).
     function say(title, text) {
         noticeDialog.title = title;
         noticeBody.text = text;
         noticeDialog.open();
     }
 
-    // ── Общий вид ─────────────────────────────────────────────────────────
+    // ── Common look ───────────────────────────────────────────────────────
     //
-    // ⚠️ ВСЕ ОКНА ЭТОГО ФАЙЛА СОБРАНЫ ИЗ ТРЁХ ДЕТАЛЕЙ НИЖЕ, И ЧИНИТЬ ИХ ВИД —
-    // ЗДЕСЬ, А НЕ В КАЖДОМ ОКНЕ (правило #12). Поймано 30.09.2026 на окне
-    // удаления: штатный `Dialog` стиля Basic рисовал белую шапку и светлые
-    // кнопки поверх тёмного приложения (скин steam_dark, правило #17), а
-    // пояснение, положенное в `ScrollView` без ширины, не переносилось
-    // вовсе — строки обрезались справа («…and the des»), и человек не мог
-    // дочитать, что удалится.
+    // Warning: ALL WINDOWS OF THIS FILE ARE BUILT FROM THE THREE PARTS BELOW,
+    // AND THEIR LOOK IS FIXED HERE, NOT IN EVERY WINDOW (rule #12). Caught on
+    // 30.09.2026 in the uninstall window: the stock `Dialog` of the Basic
+    // style drew a white header and light buttons over the dark application
+    // (steam_dark skin, rule #17), and the explanation, put into a
+    // `ScrollView` without a width, did not wrap at all — lines were cut on
+    // the right ("…and the des"), and the user could not read to the end what
+    // would be removed.
 
-    /// Текст окна. `Text.Wrap` — по словам, а слово длиннее строки (путь
-    /// без пробелов) — где придётся: иначе путь уходил бы за край.
+    /// Window text. `Text.Wrap` breaks at words, and a word longer than the
+    /// line (a path without spaces) wherever necessary: otherwise the path
+    /// would run past the edge.
     component Body: RexonLinkText {
         Layout.fillWidth: true
         wrapMode: Text.Wrap
-        // Тексты продукта — rich text (`<b>`, `<br>`, `<pre>`, `<h2>`), и
-        // показывать их простым текстом значило бы показать разметку.
-        // Ссылки — общим путём (↗ и вопрос перед внешним сайтом).
+        // Product texts are rich text (`<b>`, `<br>`, `<pre>`, `<h2>`), and
+        // showing them as plain text would show the markup. Links go through the
+        // shared path (↗ and a question before an external site).
         pal: root.pal
         color: root.pal.text_primary
     }
 
-    /// Тело окна, которое ПЕРЕНОСИТСЯ по ширине окна и прокручивается,
-    /// когда не влезает по высоте: окно вместе с кнопками обязано
-    /// помещаться на экран 1280×800 (Steam Deck), иначе «Отмену» не видно.
+    /// Window body that WRAPS to the window width and scrolls when it does not
+    /// fit in height: the window together with its buttons must fit on a
+    /// 1280×800 screen (Steam Deck), otherwise "Cancel" is not visible.
     ///
-    /// ⚠️ ШИРИНА ТЕКСТУ ЗАДАЁТСЯ ЯВНО. Содержимое `ScrollView` — это
-    /// содержимое `Flickable`, раскладка на него не действует, и
-    /// `Layout.fillWidth` там не значит ничего: без `width` текст брал
-    /// ширину самой длинной строки и не переносился.
+    /// Warning: THE TEXT WIDTH IS SET EXPLICITLY. The content of a `ScrollView`
+    /// is the content of a `Flickable`; layouts do not apply to it, and
+    /// `Layout.fillWidth` means nothing there: without `width` the text took
+    /// the width of its longest line and did not wrap.
     component ScrollBody: ScrollView {
         id: scrollBody
 
         property alias text: scrollText.text
         property alias textFormat: scrollText.textFormat
-        /// Разметка со ссылками: ↗ у внешних ставит `RexonLinkText`.
+        /// Markup with links: `RexonLinkText` puts ↗ on external ones.
         property alias html: scrollText.html
 
         Layout.fillWidth: true
@@ -230,30 +237,31 @@ Item {
                                          Math.max(120, root.Window.height - 320))
         contentWidth: availableWidth
         clip: true
-        // Полоса видна всё время, пока есть что прокручивать: иначе стиль
-        // Basic показывает её только во время прокрутки, и человек не знает,
-        // что под последней видимой строкой есть ещё текст.
+        // The bar is visible all the time while there is something to scroll:
+        // otherwise the Basic style shows it only during scrolling, and the user
+        // does not know there is more text below the last visible line.
         ScrollBar.vertical.policy: contentHeight > height ? ScrollBar.AlwaysOn
                                                           : ScrollBar.AsNeeded
 
         Body {
             id: scrollText
-            // Место под полосой прокрутки держится всегда: полоса стиля
-            // Basic рисуется поверх содержимого и закрывала бы концы строк,
-            // а ширина, зависящая от её видимости, замкнула бы круг
-            // «ширина → высота → полоса → ширина». Ширина — якорями, место
-            // под полосу — отступом с её стороны: справа налево полоса
-            // уходит влево, и зеркалирование переносит туда же и отступ.
+            // Room under the scroll bar is always kept: the Basic style bar is drawn
+            // over the content and would cover the line ends, and a width depending
+            // on its visibility would close the loop "width → height → bar → width".
+            // The width comes from anchors, the room for the bar from a margin on its
+            // side: for right to left the bar moves to the left, and mirroring moves
+            // the margin there too.
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.rightMargin: 14
         }
     }
 
-    /// Ряд кнопок окна. Каждой кнопке — своя ширина: без выравнивания стили
-    /// Basic и Fusion делят ряд на равные доли, и длинная подпись обрезалась
-    /// бы, хотя место рядом есть. Стандартные кнопки (`standardButtons`)
-    /// строятся делегатом — той же `RexonButton`, что во всём продукте.
+    /// Row of window buttons. Each button gets its own width: without
+    /// alignment the Basic and Fusion styles divide the row into equal shares,
+    /// and a long label would be cut even though there is room next to it.
+    /// Standard buttons (`standardButtons`) are built by a delegate — the same
+    /// `RexonButton` as in the rest of the product.
     component Buttons: DialogButtonBox {
         alignment: Qt.AlignRight
         spacing: 8
@@ -263,9 +271,9 @@ Item {
         delegate: RexonButton { pal: root.pal }
     }
 
-    /// Окно в скине продукта — того же вида, что окно операции над столом
-    /// (`DeOperationDialog`): подложка карточки, затемнение под окном,
-    /// заголовок крупным шрифтом, кнопки скина.
+    /// A window in the product skin — the same look as the desktop operation
+    /// window (`DeOperationDialog`): a card background, dimming under the
+    /// window, a large-font title, skin buttons.
     component MenuDialog: Dialog {
         id: menuDialog
         parent: Overlay.overlay
@@ -281,9 +289,9 @@ Item {
             radius: 8
         }
 
-        // Затемнение под модальным окном — общее решение продукта
-        // (`ui_base::MODAL_DIM_RGBA`, ключ `modal_dim`). Стиль Basic фон не
-        // гасит, и окно выходило модальным на деле, но не на вид.
+        // Dimming under a modal window is a product-wide decision
+        // (`ui_base::MODAL_DIM_RGBA`, key `modal_dim`). The Basic style does not
+        // dim the background, and the window was modal in fact but not in looks.
         Overlay.modal: Rectangle {
             color: root.pal.modal_dim
         }
@@ -301,11 +309,11 @@ Item {
         footer: Buttons {}
     }
 
-    // ── «О программе» ─────────────────────────────────────────────────────
+    // ── "About" ───────────────────────────────────────────────────────────
 
     MenuDialog {
         id: aboutDialog
-        // Заголовок и тело — из ядра; тело считается один раз при открытии.
+        // Title and body come from the core; the body is computed once on opening.
         title: root.menuModel.aboutTitle()
         width: Math.min(root.Window.width - 80, 620)
         standardButtons: Dialog.Ok
@@ -320,9 +328,9 @@ Item {
                 html: root.menuModel.aboutHtml()
             }
 
-            // Журнал Rexon: где лежит, открыть, скопировать конец — чтобы
-            // отправить разработчику без поиска файла по диску. Тексты и
-            // путь — из ядра (`window_menu::log_*`, `applog`).
+            // The Rexon log: where it is, open it, copy its tail — so it can be sent
+            // to the developer without hunting for the file on disk. Texts and path
+            // come from the core (`window_menu::log_*`, `applog`).
             Body {
                 id: logLocation
                 Layout.fillWidth: true
@@ -352,8 +360,9 @@ Item {
                 }
             }
 
-            // Буфер обмена из QML — через невидимое поле: у QML нет своего
-            // API буфера, а `TextEdit.copy()` кладёт выделенное туда.
+            // Clipboard from QML goes through an invisible field: QML has no
+            // clipboard API of its own, and `TextEdit.copy()` puts the selection
+            // there.
             TextEdit {
                 id: logClipboard
                 visible: false
@@ -362,7 +371,7 @@ Item {
             }
         }
 
-        /// Сведения о журнале — один раз при открытии справки.
+        /// Log details — once when the about box opens.
         property var logInfo: ({})
         onAboutToShow: {
             root.openDialog = "about";
@@ -371,11 +380,11 @@ Item {
         }
     }
 
-    // ── «Восстановить тему KDE»: пакеты-замены частей Plasma ──────────────
+    // ── "Restore KDE theme": packages replacing parts of Plasma ───────────
     //
-    // Порт `_maybe_handle_plasma_forks`: три выбора — снять замены, только
-    // сбросить тему, отмена. Для прогона окна это та же дверь пункта
-    // «recover_kde», что и вопрос о сбросе темы.
+    // A port of `_maybe_handle_plasma_forks`: three choices — remove the
+    // replacements, only reset the theme, cancel. For the window run this is
+    // the same "recover_kde" door as the question about the theme reset.
 
     MenuDialog {
         id: forksDialog
@@ -384,12 +393,12 @@ Item {
 
         onAboutToShow: {
             root.openDialog = "recover_kde";
-            // Кнопка по умолчанию — снятие замен, как в продукте: за ней
-            // стоит ещё один вопрос, и там по умолчанию «Нет».
+            // The default button is removing the replacements, as in the product:
+            // there is one more question behind it, and there the default is "No".
             forksRemoveButton.forceActiveFocus();
         }
-        // Второй раз — после анимации: `DialogButtonBox` раздаёт фокус сам,
-        // когда окно показано (см. окно удаления).
+        // A second time — after the animation: `DialogButtonBox` hands out focus
+        // by itself when the window is shown (see the uninstall window).
         onOpened: forksRemoveButton.forceActiveFocus()
 
         ColumnLayout {
@@ -426,7 +435,8 @@ Item {
     MenuDialog {
         id: forksConfirmDialog
 
-        /// Что сказать, пока идёт снятие; приходит вместе с вопросом.
+        /// What to say while the removal is running; arrives together with the
+        /// question.
         property string runningTitle: ""
         property string runningText: ""
 
@@ -434,7 +444,7 @@ Item {
         standardButtons: Dialog.Yes | Dialog.No
         onClosed: root.dialogClosed()
 
-        // «Нет» по умолчанию: за «Да» стоит снятие системных пакетов.
+        // "No" is the default: behind "Yes" is the removal of system packages.
         onAboutToShow: {
             root.openDialog = "recover_kde";
             const no = forksConfirmDialog.standardButton(Dialog.No);
@@ -457,7 +467,7 @@ Item {
         }
     }
 
-    // ── «Восстановить тему KDE» ───────────────────────────────────────────
+    // ── "Restore KDE theme" ───────────────────────────────────────────────
 
     MenuDialog {
         id: recoverDialog
@@ -465,8 +475,8 @@ Item {
         standardButtons: Dialog.Yes | Dialog.No
         onClosed: root.dialogClosed()
 
-        // «Нет» по умолчанию: сброс темы останавливает живые обои, и
-        // случайный Enter не должен этого делать.
+        // "No" is the default: a theme reset stops live wallpapers, and an
+        // accidental Enter must not do that.
         onAboutToShow: {
             root.openDialog = "recover_kde";
             const no = recoverDialog.standardButton(Dialog.No);
@@ -487,31 +497,31 @@ Item {
         }
     }
 
-    // ── «Удалить Rexon» ───────────────────────────────────────────────────
+    // ── "Uninstall Rexon" ─────────────────────────────────────────────────
 
     MenuDialog {
         id: uninstallDialog
-        // Шире обычного, если того требуют кнопки: подпись «сохранить»
-        // называет, что сохранится, и обрезать её нельзя.
+        // Wider than usual if the buttons require it: the "keep" label names what
+        // will be kept, and it must not be cut.
         width: Math.min(root.Window.width - 80,
                         Math.max(680, uninstallButtons.implicitWidth + leftPadding + rightPadding))
         onClosed: root.dialogClosed()
 
         onAboutToShow: {
             root.openDialog = "uninstall";
-            // До анимации появления (см. `openDialog`): Enter, нажатый пока
-            // окно выезжает, обязан попасть в «Отмену».
+            // Before the appearance animation (see `openDialog`): an Enter pressed
+            // while the window slides in must land on "Cancel".
             cancelButton.forceActiveFocus();
         }
 
         onOpened: {
-            // ⚠️ ФОКУС СТАВИТСЯ ЯВНО, И КАЖДОЕ ОТКРЫТИЕ ЗАНОВО. Одного
-            // `focus: true` на кнопке не хватает: `DialogButtonBox` —
-            // контейнер, и раздаёт фокус сам, когда окно показывается.
-            // Поймано прогоном `--selftest` 09.09.2026 (строка
-            // `REXON-MAINWINDOW-MENU-UNINSTALL-FOCUS`): фокус доставался НЕ
-            // «Отмене», то есть защита от дурака, которую в продукте держит
-            // `setDefaultButton(Cancel)`, здесь не работала вовсе.
+            // Warning: FOCUS IS SET EXPLICITLY, AND ANEW ON EVERY OPENING. A single
+            // `focus: true` on the button is not enough: `DialogButtonBox` is a
+            // container and hands out focus by itself when the window is shown.
+            // Caught by a `--selftest` run on 09.09.2026 (the line
+            // `REXON-MAINWINDOW-MENU-UNINSTALL-FOCUS`): focus went NOT to "Cancel",
+            // i.e. the foolproofing that the product holds with
+            // `setDefaultButton(Cancel)` did not work here at all.
             cancelButton.forceActiveFocus();
         }
 
@@ -524,8 +534,9 @@ Item {
                 font.bold: true
             }
 
-            // Перечень удаляемого может быть длинным, а окно вопроса обязано
-            // помещаться на экран вместе с кнопками: иначе «Отмену» не видно.
+            // The list of what will be removed may be long, and the question window
+            // must fit on the screen together with its buttons: otherwise "Cancel" is
+            // not visible.
             ScrollBody { id: uninstallBody }
         }
 
@@ -539,7 +550,7 @@ Item {
                 onClicked: root.startUninstall(true)
             }
 
-            // Необратимое — красным, как «Удалить» окна операции над столом.
+            // Irreversible — in red, like "Delete" of the desktop operation window.
             RexonButton {
                 id: deleteButton
                 pal: root.pal
@@ -552,16 +563,17 @@ Item {
                 id: cancelButton
                 pal: root.pal
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-                // Кнопка по умолчанию: защита от дурака.
+                // Default button: foolproofing.
                 focus: true
                 onClicked: uninstallDialog.close()
             }
         }
     }
 
-    /// Взяться за удаление и закрыть вопрос. Итог придёт сигналом — за
-    /// `pkexec` стоит запрос пароля, ждать его в потоке интерфейса нельзя.
-    /// `keepProfile` — «сохранить настройки и резервные копии».
+    /// Start the uninstall and close the question. The result will arrive as a
+    /// signal — `pkexec` involves a password prompt, and waiting for it in the
+    /// interface thread is not allowed. `keepProfile` means "keep settings and
+    /// backups".
     function startUninstall(keepProfile) {
         uninstallDialog.close();
         if (!root.menuModel.uninstallRun(keepProfile))
@@ -577,14 +589,14 @@ Item {
                 root.quitRequested();
         }
 
-        // Итог снятия замен. Окно не закрывается: дальше нужен повторный
-        // вход в сеанс, и об этом говорит сам итог.
+        // Result of removing the replacements. The window does not close: a new
+        // login is needed next, and the result itself says so.
         function onForksRemoveFinished(ok, title, message) {
             root.say(title, message);
         }
     }
 
-    // ── Простое сообщение ─────────────────────────────────────────────────
+    // ── Simple message ────────────────────────────────────────────────────
 
     MenuDialog {
         id: noticeDialog
@@ -599,8 +611,8 @@ Item {
 
             ScrollBody {
                 id: noticeBody
-                // Итоги приходят обычным текстом с переводами строк, а не
-                // разметкой: `\n` в rich text склеился бы в одну строку.
+                // Results arrive as plain text with line breaks, not as markup: `\n` in
+                // rich text would be glued into a single line.
                 textFormat: Text.PlainText
             }
         }

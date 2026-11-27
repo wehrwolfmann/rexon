@@ -1,32 +1,38 @@
-// Голден страницы «Обои»: разбор эталона, сборка кадров и реплей ЧИСТОГО слоя.
+// Golden file of the "Wallpapers" page: parsing the reference, building
+// frames and replaying the PURE layer.
 //
-// Эталон — tests/golden/wallpaper_page_cases.json, снятый генератором рядом с
-// ЖИВОГО питоновского моста (37 случаев, 564 записи сигналов). Здесь он
-// превращается в записи журнала порта и проигрывается двумя способами:
+// The reference is tests/golden/wallpaper_page_cases.json, captured by the
+// generator next to it from the LIVE Python bridge (37 cases, 564 signal
+// records). Here it is turned into the port's log records and played back
+// in two ways:
 //
-//   * ЧИСТЫЙ слой — `cargo test` (низ этого файла). Он проигрывает решения
-//     ЯДРА (we_wallpaper/we_query) и чистую модель `WallpaperRows`, а
-//     рассылку повторяет по тем же правилам, что и запрос
-//     (`LIST_RELOAD_ON` берётся у него же, второй копии списка нет). Только
-//     здесь видны СТРУКТУРНЫЕ сигналы модели (`modelReset`): в Qt они
-//     приватные (QPrivateSignal), из Rust на них не подписаться.
-//     ⚠️ Раз рассылку он ПОВТОРЯЕТ, а не вызывает, порядок «модель
-//     пересобрана ДО itemsChanged» доказывает не он, а стенд: там на том же
-//     месте стоит `countChanged` ЖИВОЙ модели, и перестановка в порте
-//     немедленно валит сверку (проверено укусом).
-//   * Qt-слой — стенд `wallpaper_page_selftest` на ЖИВЫХ QObject'ах со всеми
-//     восемью запросами страницы и НАСТОЯЩИМ таймером дебаунса.
+//   * the PURE layer — `cargo test` (the bottom of this file). It replays
+//     the CORE's decisions (we_wallpaper/we_query) and the pure model
+//     `WallpaperRows`, and repeats the dispatch by the same rules as the
+//     query (`LIST_RELOAD_ON` is taken from it, there is no second copy of
+//     the list). Only here are the model's STRUCTURAL signals (`modelReset`)
+//     visible: in Qt they are private (QPrivateSignal), and Rust cannot
+//     subscribe to them.
+//     Warning: since it REPEATS the dispatch rather than calling it, the order
+//     "the model is rebuilt BEFORE itemsChanged" is proven not by it but by
+//     the bench: there the LIVE model's `countChanged` stands in the same
+//     place, and a swap in the port immediately fails the comparison
+//     (verified with a bite).
+//   * the Qt layer — the `wallpaper_page_selftest` bench on LIVE QObjects
+//     with all eight queries of the page and a REAL debounce timer.
 //
-// Почему два прогона, а не один: `#[cfg(test)]` в файлах-мостах cxx-qt не
-// работает (build script гоняется один раз на lib и на test), поэтому Qt-слой
-// проверяется бинарём-стендом. Так же выкрутилась партия 3 (discover_queries).
+// Why two runs and not one: `#[cfg(test)]` does not work in cxx-qt bridge
+// files (the build script runs once for lib and for test), so the Qt layer
+// is checked by a bench binary. Batch 3 (discover_queries) got around it
+// the same way.
 //
-// ⚠️ Расхождения с эталоном НЕ подгоняются. Порт местами ведёт себя иначе,
-// чем Python, — но потому, что Python расходился с ОРИГИНАЛОМ
-// (waywallen `ui/src/query/wallpaper_query.cpp`), а порт сделан
-// по оригиналу. Каждая такая правка эталона перечислена в [`FIXUPS`], несёт
-// причину и ОБЯЗАНА сработать: если правка перестала быть нужной, прогон
-// ругается — так протухшая поблажка не переживёт починку.
+// Warning: divergences from the reference are NOT fudged. In places the port
+// behaves differently from Python — but because Python diverged from the
+// ORIGINAL (waywallen `ui/src/query/wallpaper_query.cpp`), and the port is
+// made after the original. Every such adjustment of the reference is listed
+// in [`FIXUPS`], carries a reason and MUST fire: if an adjustment stops
+// being needed, the run complains — so a stale allowance will not survive
+// a fix.
 
 use prost::Message;
 use serde_json::{Map, Value};
@@ -39,8 +45,8 @@ use rexon_core::we_wallpaper;
 use crate::discover_queries::golden::{bool_at, i64_at, str_at, strings_at};
 use crate::wallpaper_list_model::{ModelEvent, WallpaperRows};
 
-/// Голден в исходниках крейта — тот самый файл, который печатает
-/// tests/golden/wallpaper_page_cases.py с живого Python-моста.
+/// The golden file in the crate sources — the very file printed by
+/// tests/golden/wallpaper_page_cases.py from the live Python bridge.
 pub const GOLDEN_JSON: &str = include_str!("../tests/golden/wallpaper_page_cases.json");
 
 pub fn load() -> Value {
@@ -55,13 +61,13 @@ fn array_at<'a>(value: &'a Value, key: &str) -> &'a [Value] {
         .unwrap_or(&[])
 }
 
-// ── Журнал ──────────────────────────────────────────────────────────────────
+// ── Log ─────────────────────────────────────────────────────────────────────
 
-/// Одна наблюдаемая запись: кто испустил и что именно.
+/// One observed record: who emitted it and what exactly.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Record {
-    /// Имя объекта: list / get / apply / remove / scan / propertySet /
-    /// layout / portal / list.model.
+    /// Object name: list / get / apply / remove / scan / propertySet / layout /
+    /// portal / list.model.
     pub q: String,
     pub sig: Sig,
 }
@@ -77,47 +83,48 @@ impl Record {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sig {
-    // ── база Query ──
+    // ── Query base ──
     Status(i32),
     Querying,
     ErrorChanged,
     ForwardErrorChanged,
     Finished,
     ErrorOccurred(String),
-    /// Пересылка в глобальный обработчик. В голдене она помечена `q = "app"`
-    /// (её шлёт синглтон App); в порте App ещё нет, и её шлёт сам запрос
-    /// сигналом `appErrorOccurred`, поэтому запись приписывается тому
-    /// запросу, чей `errorOccurred` только что прошёл. Порядок не меняется:
-    /// у оригинала пересылка идёт сразу за собственным сигналом.
+    /// Forwarding to the global handler. In the golden file it is marked
+    /// `q = "app"` (it is sent by the App singleton); the port has no App yet,
+    /// and the query itself sends it with the `appErrorOccurred` signal, so the
+    /// record is attributed to the query whose `errorOccurred` has just passed.
+    /// The order does not change: in the original the forwarding goes right
+    /// after its own signal.
     AppError(String),
-    /// `<имя>Changed()` — имя закрытым списком, чтобы опечатка в голдене
-    /// роняла разбор, а не молча теряла сигнал.
+    /// `<name>Changed()` — the name from a closed list, so that a typo in the
+    /// golden file fails the parsing rather than silently losing a signal.
     Prop(&'static str),
-    /// Кадр наружу: токен, поле полезной нагрузки и ВСЕ поля запроса.
+    /// Frame out: the token, the payload field and ALL the request fields.
     Sent {
         token: i64,
         field: String,
         request: Value,
     },
-    /// Удалён один предмет (`removed` оригинала).
+    /// One item was removed (the original's `removed`).
     Removed(String),
-    /// Удалён набор: что просили и сколько демон снял.
+    /// A set was removed: what was asked for and how many the daemon removed.
     RemovedMany { ids: Vec<String>, count: i32 },
-    /// Возврат инвокабла (`replaceFilterState`).
+    /// Return value of an invokable (`replaceFilterState`).
     Result { method: String, value: bool },
-    /// Сброс модели библиотеки — begin/endResetModel.
+    /// Reset of the library model — begin/endResetModel.
     ModelReset,
-    /// countChanged модели библиотеки.
+    /// countChanged of the library model.
     ModelCount,
-    /// selectionChanged модели: у Python его не было вовсе, поэтому в
-    /// эталоне он не встречается и любое его появление — расхождение.
+    /// selectionChanged of the model: Python did not have it at all, so it does
+    /// not occur in the reference, and any appearance of it is a divergence.
     ModelSelection,
     ModelSelectedCount,
-    /// dataChanged по роли выбора.
+    /// dataChanged for the selection role.
     ModelSelectedRange { first: i32, last: i32 },
 }
 
-/// Имена сигналов-свойств, встречающиеся в эталоне и в порте.
+/// Names of property signals occurring in the reference and in the port.
 fn prop_of(sig: &str) -> &'static str {
     match sig {
         "wpTypeChanged" => "wpTypeChanged",
@@ -147,7 +154,7 @@ fn prop_of(sig: &str) -> &'static str {
     }
 }
 
-/// Ожидаемый журнал случая ровно таким, каким его снял Python.
+/// The expected log of a case exactly as Python captured it.
 pub fn python_records(case: &Value) -> Vec<Record> {
     let mut out = Vec::new();
     let mut last_error_owner = String::new();
@@ -206,24 +213,26 @@ pub fn python_records(case: &Value) -> Vec<Record> {
     out
 }
 
-// ── Правки эталона: сознательные расхождения порта ──────────────────────────
+// ── Reference adjustments: deliberate divergences of the port ───────────────
 
-/// Одна правка: чем эталон отличается от того, что ОБЯЗАН делать порт.
+/// One adjustment: how the reference differs from what the port MUST do.
 pub struct Fixup {
-    /// Случай голдена, к которому она относится.
+    /// The golden case it applies to.
     pub case: &'static str,
-    /// Короткое имя для отчёта.
+    /// A short name for the report.
     pub name: &'static str,
-    /// Почему эталон здесь не эталон.
+    /// Why the reference is not the reference here.
     pub why: &'static str,
 }
 
-/// Список сознательных расхождений. Всё, чего в нём нет, — баг порта.
+/// The list of deliberate divergences. Everything not in it is a bug of the
+/// port.
 ///
-/// Общее у всех: голден снят с ЖИВОГО Python, а Python по этим
-/// пунктам расходился с оригиналом (`wallpaper_query.cpp`), и порт сделан по
-/// ОРИГИНАЛУ (правило #16 — баги при переводе чиним, а не консервируем).
-/// Подробный разбор — в шапке `wallpaper_actions.rs`.
+/// What they all have in common: the golden file was captured from LIVE
+/// Python, and on these points Python diverged from the original
+/// (`wallpaper_query.cpp`), while the port is made after the ORIGINAL (rule
+/// #16 — bugs are fixed during porting, not preserved). The detailed
+/// analysis is in the header of `wallpaper_actions.rs`.
 pub const FIXUPS: &[Fixup] = &[
     Fixup {
         case: "удаление: один id и пустышка в наборе",
@@ -277,10 +286,10 @@ pub const FIXUPS: &[Fixup] = &[
     },
 ];
 
-/// Голден → журнал, который ОБЯЗАН выдать порт.
+/// Golden → the log the port MUST produce.
 ///
-/// Возвращает исправленные записи и имена применённых правок. Правка, которая
-/// ничего не изменила, — ошибка: значит, она протухла.
+/// Returns the adjusted records and the names of the applied adjustments. An
+/// adjustment that changed nothing is an error: it means it has gone stale.
 pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
     let name = str_at(case, "name");
     let mut records = python_records(case);
@@ -288,7 +297,8 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
 
     match name.as_str() {
         "удаление: один id и пустышка в наборе" => {
-            // Кадр: пустой id отсеян, единственный уезжает полем wallpaper_id.
+            // Frame: the empty id is filtered out, the single one goes in the
+            // wallpaper_id field.
             for record in records.iter_mut() {
                 if let Sig::Sent { request, .. } = &mut record.sig {
                     request["wallpaper_id"] = Value::String("w1".into());
@@ -296,7 +306,8 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
                     applied.push(FIXUPS[0].name);
                 }
             }
-            // Отчёт: набор без пустышки, число — из ответа демона.
+            // Report: the set without the empty one, the number from the daemon's
+            // answer.
             for record in records.iter_mut() {
                 if let Sig::RemovedMany { ids, count } = &mut record.sig {
                     *ids = vec!["w1".to_string()];
@@ -304,7 +315,7 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
                     applied.push(FIXUPS[2].name);
                 }
             }
-            // И сверх набора — сигнал на единственный предмет.
+            // And on top of the set — a signal for the single item.
             let at = records
                 .iter()
                 .position(|r| matches!(r.sig, Sig::RemovedMany { .. }))
@@ -330,8 +341,8 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
             }
         }
         "применение: id обои, экраны и рендерер уходят одним кадром" => {
-            // Свойство обновляется в разборе ответа, то есть ДО перевода
-            // статуса в Finished — как у оригинала.
+            // The property is updated while parsing the answer, that is, BEFORE the
+            // status switches to Finished — as in the original.
             let at = records
                 .iter()
                 .position(|r| r.q == "apply" && matches!(r.sig, Sig::Status(2)))
@@ -340,10 +351,10 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
             applied.push(FIXUPS[5].name);
         }
         "удаление: reload() снимает обою из свойства wallpaperId" => {
-            // Единственный случай, где записи ДОПИСЫВАЮТСЯ целиком: у
-            // Python после reload() не происходило ничего, а порт обязан
-            // отправить тот же кадр, что и `remove(["w1"])` — с id в поле
-            // `wallpaper_id`, потому что предмет один.
+            // The only case where records are APPENDED in full: in Python nothing
+            // happened after reload(), while the port must send the same frame as
+            // `remove(["w1"])` — with the id in the `wallpaper_id` field, because there
+            // is one item.
             assert_eq!(records.len(), 1, "голден: у случая появились свои сигналы");
             records.push(Record::new("remove", Sig::Status(we_query::STATUS_QUERYING)));
             records.push(Record::new("remove", Sig::Querying));
@@ -361,10 +372,9 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
             applied.push(FIXUPS[9].name);
         }
         "деталь: устаревший ответ не подменяет карточку" => {
-            // У порта устаревший ответ отбрасывается целиком, поэтому весь
-            // набор сигналов даёт СВЕЖИЙ ответ — ровно один раз. Python
-            // разобрал оба, и второй разбор дописал лишний wallpaperChanged
-            // в хвост.
+            // The port drops a stale answer entirely, so the whole set of signals comes
+            // from the FRESH answer — exactly once. Python parsed both, and the second
+            // parse appended an extra wallpaperChanged to the tail.
             let last = records.pop().expect("голден: случай пуст");
             assert_eq!(
                 last,
@@ -374,9 +384,9 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
             applied.push(FIXUPS[8].name);
         }
         "применение: тот же рендерер вторым ответом — сигнал всё равно" => {
-            // Сигнал летит на КАЖДЫЙ ответ демона, даже когда рендерер тот
-            // же: он означает «демон ответил». Место то же, что и у случая
-            // выше, — перед переводом в Finished.
+            // The signal fires on EVERY daemon answer, even when the renderer is the
+            // same: it means "the daemon answered". The place is the same as in the
+            // case above — before switching to Finished.
             let at: Vec<usize> = records
                 .iter()
                 .enumerate()
@@ -387,13 +397,13 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
             for (shift, i) in at.into_iter().enumerate() {
                 records.insert(i + shift, Record::new("apply", Sig::Prop("rendererIdChanged")));
             }
-            // Правка одна на случай, а не на вставку: она про ПРАВИЛО
-            // «сигнал безусловный», а не про каждое его срабатывание.
+            // One adjustment per case, not per insertion: it is about the RULE "the
+            // signal is unconditional", not about each of its firings.
             applied.push(FIXUPS[7].name);
         }
         "свойство обои: value и reset — разные ветки oneof" => {
-            // Порядок правок случая: wallpaperId, propertyKey, propertyValue,
-            // propertyValue (на пустое), reset.
+            // Order of the case's edits: wallpaperId, propertyKey, propertyValue,
+            // propertyValue (to empty), reset.
             const NAMES: &[&str] = &[
                 "wallpaperIdChanged",
                 "propertyKeyChanged",
@@ -416,8 +426,8 @@ pub fn port_records(case: &Value) -> (Vec<Record>, Vec<&'static str>) {
     (records, applied)
 }
 
-/// Правки ИТОГОВЫХ свойств: то же расхождение, но видимое не в журнале, а в
-/// значении свойства в конце случая.
+/// Adjustments of FINAL properties: the same divergence, but visible not in
+/// the log but in the property value at the end of the case.
 pub const FINAL_FIXUPS: &[Fixup] = &[
     Fixup {
         case: "применение: id обои, экраны и рендерер уходят одним кадром",
@@ -436,7 +446,7 @@ pub const FINAL_FIXUPS: &[Fixup] = &[
     },
 ];
 
-/// Итоговое состояние запроса таким, каким его ОБЯЗАН показать порт.
+/// The final state of a query as the port MUST show it.
 pub fn port_final(case: &Value, q: &str, applied: &mut Vec<&'static str>) -> Value {
     let mut want = final_of(case, q).clone();
     match (str_at(case, "name").as_str(), q) {
@@ -457,13 +467,14 @@ pub fn port_final(case: &Value, q: &str, applied: &mut Vec<&'static str>) -> Val
     want
 }
 
-/// Сколько правок обязано примениться на всём голдене — страховка от
-/// протухшей поблажки: починили расхождение в порте, а правку забыли снять.
+/// How many adjustments must apply over the whole golden file — a safeguard
+/// against a stale allowance: the divergence was fixed in the port, but the
+/// adjustment was not removed.
 pub fn expected_fixups() -> usize {
     FIXUPS.len()
 }
 
-// ── Кадры демона: описание из сценария → настоящий protobuf ────────────────
+// ── Daemon frames: a description from the scenario → real protobuf ────────
 
 fn status_of(name: &str) -> i32 {
     match name {
@@ -484,14 +495,14 @@ fn layout_of(value: &Value) -> pb::LayoutPrefs {
         location_x: i64_at(value, "locationX") as u32,
         location_y: i64_at(value, "locationY") as u32,
         location_set: bool_at(value, "locationSet"),
-        // waywallen 0.4.4: отражения в сценариях нет.
+        // waywallen 0.4.4: the scenarios have no flip.
         flip: 0,
     }
 }
 
-/// Запись библиотеки из сценария. Зеркало `_fill_entry` генератора: обе
-/// стороны собирают ОДИН и тот же protobuf из одного описания, поэтому
-/// эталон не зависит от того, кто его читает.
+/// A library record from the scenario. A mirror of the generator's
+/// `_fill_entry`: both sides build THE SAME protobuf from one description,
+/// so the reference does not depend on who reads it.
 fn entry_of(value: &Value) -> pb::WallpaperEntry {
     let metadata = value
         .get("metadata")
@@ -526,9 +537,9 @@ fn entry_of(value: &Value) -> pb::WallpaperEntry {
         wallpaper_layout_override_set: bool_at(value, "wallpaperLayoutOverrideSet"),
         supports_item_remove: bool_at(value, "supportsItemRemove"),
         supports_item_unsubscribe: bool_at(value, "supportsItemUnsubscribe"),
-        // waywallen 0.4.4: скрытых записей в сценариях нет.
+        // waywallen 0.4.4: the scenarios have no hidden records.
         hidden: false,
-        // waywallen 0.6.0: сценарии сняты раньше — обычные записи.
+        // waywallen 0.6.0: the scenarios were captured earlier — ordinary records.
         update_available: false,
         sub_type: 0,
     }
@@ -580,8 +591,8 @@ fn payload_of(payload: &Value) -> pb::response::Payload {
     }
 }
 
-/// Шаг «respond»/«respondError» → сырой кадр `ServerFrame`, ровно тот, что
-/// клиент отдаёт ядру при `want_frame`.
+/// A "respond"/"respondError" step → a raw `ServerFrame`, exactly the one
+/// the client hands to the core with `want_frame`.
 pub fn build_frame(step: &Value) -> Vec<u8> {
     let mut rsp = pb::Response {
         status: pb::Status::Ok as i32,
@@ -600,7 +611,7 @@ pub fn build_frame(step: &Value) -> Vec<u8> {
     .encode_to_vec()
 }
 
-// ── Кадр запроса → JSON в том же виде, в каком его печатает голден ─────────
+// ── Request frame → JSON in the same form the golden file prints ─────────
 
 fn map(pairs: Vec<(&str, Value)>) -> Value {
     let mut out = Map::new();
@@ -614,21 +625,24 @@ fn strings(list: &[String]) -> Value {
     Value::Array(list.iter().map(|s| Value::String(s.clone())).collect())
 }
 
-/// Цели применения v0.3.5 в голдене: карта на цель, ОБЕ ветки `oneof`.
+/// Apply targets of v0.3.5 in the golden file: a map per target, BOTH
+/// branches of the `oneof`.
 ///
-/// Голден печатает `_msg_fields` (tests/golden/wallpaper_page_cases.py:663) —
-/// он проходит по ДЕСКРИПТОРУ и выкладывает каждое поле, в том числе
-/// незаполненную ветку `oneof` с её значением по умолчанию. Так записаны и
-/// соседи по этому же файлу: `wallpaper_property_set` несёт и `value`, и
-/// `reset`, правило фильтра — все три ветки `payload`. Значит, цель-дисплей
-/// в эталоне выглядит как `{display_id: 1, canvas_id: ""}`, а цель-холст —
-/// как `{display_id: 0, canvas_id: "cnv"}`.
+/// The golden file prints `_msg_fields`
+/// (tests/golden/wallpaper_page_cases.py:663) — it walks the DESCRIPTOR and
+/// lays out every field, including the unset `oneof` branch with its
+/// default value. The neighbours in this same file are recorded the same
+/// way: `wallpaper_property_set` carries both `value` and `reset`, a filter
+/// rule all three `payload` branches. So a display target looks like
+/// `{display_id: 1, canvas_id: ""}` in the reference, and a canvas target
+/// like `{display_id: 0, canvas_id: "cnv"}`.
 ///
-/// ⚠️ Это только форма ЗАПИСИ. На проводе ветка ровно одна: `oneof` не
-/// умеет держать обе, и присвоение `canvas_id` стёрло бы `display_id`.
-/// Кадр собирает `we_manage::presentation_targets` (порт вендорного
-/// `presentationTargetsFromVariant`, ui/src/proto.cpp:8 на f7baecd), и
-/// байты сверяет стенд — здесь же печатается человекочитаемый снимок.
+/// Warning: this is only the form of the RECORD. On the wire there is exactly
+/// one branch: a `oneof` cannot hold both, and assigning `canvas_id` would
+/// erase `display_id`. The frame is built by `we_manage::presentation_targets`
+/// (a port of the vendor's `presentationTargetsFromVariant`,
+/// ui/src/proto.cpp:8 at f7baecd), and the bench compares the bytes — while
+/// a human-readable snapshot is printed here.
 fn targets(list: &[pb::PresentationTarget]) -> Value {
     Value::Array(
         list.iter()
@@ -696,16 +710,16 @@ fn filter_rule_json(r: &pb::WallpaperFilterRule) -> Value {
     ])
 }
 
-/// Кадр запроса → карта ВСЕХ полей, включая значения по умолчанию.
+/// Request frame → a map of ALL fields, including default values.
 ///
-/// Зеркало `_msg_fields` генератора: пустые списки, нули и `false` обязаны
-/// быть видны — именно на них ловятся потерянные поля. Единственное
-/// исключение — одиночное вложенное сообщение: у него важен сам факт наличия
-/// (тело раскладки при сбросе отправляться НЕ должно), поэтому неустановленное
-/// даёт `null`, а не карту нулей.
+/// A mirror of the generator's `_msg_fields`: empty lists, zeros and `false`
+/// must be visible — that is exactly where lost fields are caught. The only
+/// exception is a single nested message: what matters there is the very
+/// fact of its presence (the layout body must NOT be sent on a reset), so
+/// an unset one gives `null`, not a map of zeros.
 ///
-/// Разбирается ИМЕННО то, что уехало байтами: намерение отправить кадр
-/// проверкой не считается.
+/// It is EXACTLY what went out as bytes that is parsed: the intention to send
+/// a frame does not count as a check.
 pub fn request_json(frame: &[u8]) -> (String, Value) {
     let request = pb::Request::decode(frame).expect("кадр запроса разбирается");
     let payload = request.payload.expect("кадр запроса без полезной нагрузки");
@@ -811,12 +825,12 @@ pub fn request_json(frame: &[u8]) -> (String, Value) {
     }
 }
 
-// ── Воспроизведение ЧИСТЫМ слоем: запрос списка и его модель ───────────────
+// ── Replay with the PURE layer: the list query and its model ───────────────
 
-/// Стенд чистого слоя. Здесь живут только те решения, которые считает ядро,
-/// плюс правила рассылки, записанные в `wallpaper_queries.rs`:
-/// перезагрузка по списку [`crate::wallpaper_queries::LIST_RELOAD_ON`] и
-/// пересборка модели ПЕРЕД `itemsChanged`.
+/// The pure layer bench. Only the decisions computed by the core live here,
+/// plus the dispatch rules written in `wallpaper_queries.rs`: a reload by the
+/// list [`crate::wallpaper_queries::LIST_RELOAD_ON`] and rebuilding the model
+/// BEFORE `itemsChanged`.
 #[derive(Default)]
 pub struct PureHarness {
     pub base: QueryState,
@@ -848,33 +862,31 @@ impl PureHarness {
                 QuerySignal::Property(name) => {
                     if crate::wallpaper_queries::LIST_RELOAD_ON.contains(&name) {
                         self.reload_pending = true;
-                        // `invalidateList`, как у моста: новое поколение —
-                        // ответ на запрос в полёте больше не наш.
+                        // `invalidateList`, as in the bridge: a new generation — the answer to the
+                        // request in flight is no longer ours.
                         self.pending.clear();
                         let _ = we_wallpaper::invalidate_list(&mut self.data);
                     }
-                    // waywallen 0.5.0: выборка и страницы (`selection`,
-                    // `offset`, `noMore`, `limit`) — свойств не было в эпоху
-                    // эталона, живой стенд их не слушает. Сторожат их юниты
-                    // ядра и проба QML (`qml_int64_probe.rs`).
+                    // waywallen 0.5.0: selection and pages (`selection`, `offset`, `noMore`,
+                    // `limit`) — these properties did not exist in the reference's era, and
+                    // the live bench does not listen to them. They are guarded by core unit
+                    // tests and the QML probe (`qml_int64_probe.rs`).
                     if matches!(name, "selection" | "offset" | "noMore" | "limit") {
                         continue;
                     }
-                    // waywallen 0.5.0: `hasOtherFiltersChanged` эталон эпохи
-                    // Python не знает (свойства не было), и живой стенд его
-                    // не слушает. Порядок и условие сигнала сторожат юниты
-                    // ядра (`tests/we_wallpaper_parity.rs`); в эталоне без
-                    // скрытых библиотек он идёт ровно в паре с
-                    // `hasActiveFiltersChanged`, так что пропуск ничего не
-                    // прячет.
+                    // waywallen 0.5.0: `hasOtherFiltersChanged` is unknown to the reference of
+                    // the Python era (the property did not exist), and the live bench does not
+                    // listen to it. The signal's order and condition are guarded by core unit
+                    // tests (`tests/we_wallpaper_parity.rs`); in a reference without hidden
+                    // libraries it goes exactly in a pair with `hasActiveFiltersChanged`, so
+                    // skipping it hides nothing.
                     if name == "hasOtherFilters" {
                         continue;
                     }
                     if name == "items" {
-                        // Модель перестраивается ПЕРВОЙ: у моста пересборку
-                        // вешал конструктор запроса, то есть она стояла
-                        // первой в цепочке подписчиков, и QML на
-                        // onItemsChanged обязан читать УЖЕ новые строки.
+                        // The model is rebuilt FIRST: in the bridge the rebuild was attached by the
+                        // query constructor, that is, it stood first in the chain of subscribers,
+                        // and QML on onItemsChanged must read the ALREADY new rows.
                         let events = self.rows.reset_rows(self.data.items.clone());
                         self.record_model(events);
                         Sig::Prop("itemsChanged")
@@ -903,7 +915,7 @@ impl PureHarness {
     }
 
     fn reload(&mut self) {
-        // Новое поколение и сброс страниц — как `reload` моста.
+        // A new generation and resetting the pages — as in the bridge's `reload`.
         self.pending.clear();
         let signals = we_wallpaper::begin_reload(&mut self.data);
         self.dispatch(signals);
@@ -914,8 +926,9 @@ impl PureHarness {
             return;
         }
         let payload = we_wallpaper::encode_list_request(&self.data);
-        // Номер выдаётся ДО сборки кадра — реплика обязана повторять путь
-        // продукта, а там `request_id` теперь один и лежит внутри кадра.
+        // The number is issued BEFORE the frame is built — the replica must repeat
+        // the product's path, and there `request_id` is now one and lies inside the
+        // frame.
         let token = crate::discover_queries::next_token();
         let bytes =
             rexon_core::we_client::request_bytes(token as u64, "wallpaper_list", &payload)
@@ -932,7 +945,7 @@ impl PureHarness {
         ));
     }
 
-    /// Сработал дебаунс: правки свойств склеиваются в ОДНУ перезагрузку.
+    /// The debounce fired: property edits are glued into ONE reload.
     fn settle(&mut self) {
         if !std::mem::take(&mut self.reload_pending) {
             return;
@@ -977,7 +990,7 @@ impl PureHarness {
             "respond" | "respondError" => {
                 let token = i64_at(step, "token");
                 if !self.pending.remove(&token) {
-                    // Кадр не наш: в случае участвует запрос-действие.
+                    // The frame is not ours: an action query takes part in the case.
                     return;
                 }
                 let frame = build_frame(step);
@@ -987,14 +1000,14 @@ impl PureHarness {
                 self.dispatch(signals);
             }
             "connected" => crate::discover_queries::set_connected(bool_at(step, "value")),
-            // Шаги прочих запросов страницы чистому слою неинтересны: их
-            // логика живёт в Qt-объектах и проверяется стендом.
+            // Steps of the page's other queries are of no interest to the pure layer:
+            // their logic lives in Qt objects and is checked by the bench.
             _ => {}
         }
     }
 }
 
-/// Прогнать случай через ЧИСТЫЙ слой запроса списка.
+/// Run a case through the PURE layer of the list query.
 pub fn replay_pure(case: &Value) -> PureHarness {
     crate::discover_queries::reset_tokens();
     crate::discover_queries::set_connected(true);
@@ -1006,30 +1019,32 @@ pub fn replay_pure(case: &Value) -> PureHarness {
     {
         harness.step(step);
     }
-    // Генератор в конце случая ещё раз крутит цикл событий: незакрытый
-    // дебаунс обязан сработать и там.
+    // At the end of a case the generator spins the event loop once more: an
+    // unclosed debounce must fire there too.
     harness.settle();
     harness
 }
 
-/// Строки модели по РОЛЯМ в том же JSON-виде, что печатает голден.
+/// Rows of the model by ROLES in the same JSON form the golden file prints.
 ///
-/// Роль `selected` из сверки исключена намеренно: у питоновской модели её не
-/// было вовсе (шапка `wallpaper_list_model.rs`, пункт 1), поэтому в эталоне
-/// её нет и быть не может. Её наличие проверяется отдельно.
+/// The `selected` role is deliberately excluded from the comparison: the
+/// Python model did not have it at all (the header of
+/// `wallpaper_list_model.rs`, item 1), so it is not and cannot be in the
+/// reference. Its presence is checked separately.
 pub fn rows_json(rows: &[VMap]) -> Value {
     Value::Array(rows.iter().map(|m| Value::Object(m.clone())).collect())
 }
 
-/// Ожидаемые строки голдена, дополненные полями waywallen 0.4.4.
+/// The expected golden rows, completed with the waywallen 0.4.4 fields.
 ///
-/// Голден снят с живого Python до v0.4.4, и двух новых ключей записи в нём
-/// нет: `hidden` (обоина скрыта) и `flip` внутри
-/// `wallpaperLayoutOverride` (отражение). В сценариях голдена ни скрытых
-/// обоев, ни отражения нет (`entry_of` ставит `hidden: false`, `flip: 0`),
-/// поэтому дописываются ровно эти умолчания — остальное сверяется как было.
-/// Одна ожидаемая запись (панель деталей) — то же дополнение, что у
-/// [`expected_rows_v044`]. Пустая карта («записи нет») остаётся пустой.
+/// The golden file was captured from live Python before v0.4.4, and two new
+/// record keys are not in it: `hidden` (the wallpaper is hidden) and `flip`
+/// inside `wallpaperLayoutOverride` (the flip). The golden scenarios have
+/// neither hidden wallpapers nor flips (`entry_of` sets `hidden: false`,
+/// `flip: 0`), so exactly these defaults are added — the rest is compared as
+/// before.
+/// One expected record (the details panel) — the same completion as for
+/// [`expected_rows_v044`]. An empty map ("no record") stays empty.
 pub fn expected_entry_v044(entry: &Value) -> Value {
     match entry {
         Value::Object(map) if map.contains_key("id_proto") => {
@@ -1050,7 +1065,7 @@ pub fn expected_rows_v044(rows: &Value) -> Value {
                 let mut row = row.clone();
                 if let Value::Object(map) = &mut row {
                     map.entry("hidden").or_insert(Value::Bool(false));
-                    // waywallen 0.6.0: дописаны в конец так же, как `hidden`.
+                    // waywallen 0.6.0: added at the end in the same way as `hidden`.
                     map.entry("updateAvailable").or_insert(Value::Bool(false));
                     map.entry("subType").or_insert(Value::from(0));
                     if let Some(Value::Object(layout)) = map.get_mut("wallpaperLayoutOverride") {
@@ -1063,19 +1078,20 @@ pub fn expected_rows_v044(rows: &Value) -> Value {
     )
 }
 
-/// Ключи записи библиотеки и их ПОРЯДОК — так, как их печатает голден
-/// (`_WALLPAPER_KEYS` моста).
+/// Keys of a library record and their ORDER — as the golden file prints them
+/// (the bridge's `_WALLPAPER_KEYS`).
 ///
-/// Порядок здесь не косметика: роли модели считаются от него
-/// (`FIRST_ENTRY_ROLE + индекс`), и перестановка двух ключей молча съезжает
-/// нумерацию ролей — сверка строк по ИМЕНАМ такого не видит.
+/// The order here is not cosmetic: the model's roles are counted from it
+/// (`FIRST_ENTRY_ROLE + index`), and swapping two keys silently shifts the
+/// role numbering — comparing rows by NAMES does not see that.
 ///
-/// Голден снят до waywallen 0.4.4, и ключа `hidden` в нём нет: он добавлен
-/// в КОНЕЦ списка (роли прежних ключей не сдвинулись) — так его и
-/// дописываем к эталону (см. [`expected_rows_v044`]).
+/// The golden file was captured before waywallen 0.4.4, and the `hidden` key
+/// is not in it: it was added at the END of the list (the roles of the
+/// previous keys did not shift) — and that is how we add it to the
+/// reference (see [`expected_rows_v044`]).
 pub fn entry_keys(doc: &Value) -> Vec<String> {
     let mut keys = strings_at(doc, "ключи_записи");
-    // waywallen 0.6.0: `updateAvailable` и `subType` — тоже в конец.
+    // waywallen 0.6.0: `updateAvailable` and `subType` — also at the end.
     for key in ["hidden", "updateAvailable", "subType"] {
         if !keys.iter().any(|k| k == key) {
             keys.push(key.to_string());
@@ -1084,7 +1100,7 @@ pub fn entry_keys(doc: &Value) -> Vec<String> {
     keys
 }
 
-/// Ожидаемое итоговое состояние одного запроса из голдена.
+/// The expected final state of one query from the golden file.
 pub fn final_of<'a>(case: &'a Value, q: &str) -> &'a Value {
     case.get("final")
         .and_then(|f| f.get(q))
@@ -1095,30 +1111,32 @@ pub fn final_of<'a>(case: &'a Value, q: &str) -> &'a Value {
 mod tests {
     use super::*;
 
-    /// Голден снят с ЖИВЫХ Python-запросов страницы «Обои». Здесь через
-    /// чистый слой проигрывается его половина — запрос библиотеки и его
-    /// модель: какой кадр уходит демону (со всеми полями), в каком порядке
-    /// летят сигналы запроса и модели и какими оказываются свойства и строки.
+    /// The golden file was captured from the LIVE Python queries of the
+    /// "Wallpapers" page. Here half of it is replayed through the pure layer —
+    /// the library query and its model: which frame goes to the daemon (with all
+    /// fields), in what order the signals of the query and the model fire, and
+    /// what the properties and rows turn out to be.
     ///
-    /// Вторая половина (семь запросов-действий) живёт в Qt-объектах, у неё
-    /// чистого слоя нет — её проверяет стенд `wallpaper_page_selftest`.
+    /// The other half (seven action queries) lives in Qt objects and has no pure
+    /// layer — it is checked by the `wallpaper_page_selftest` bench.
     ///
-    /// Один тест на всё, а не тридцать три: чистый слой пользуется общим на
-    /// мост счётчиком токенов (в Python это была модульная переменная), и два
-    /// теста, идущие параллельно, толкались бы за него.
+    /// One test for everything rather than thirty-three: the pure layer uses the
+    /// token counter shared by the bridge (in Python it was a module variable),
+    /// and two tests running in parallel would jostle for it.
     #[test]
     fn golden_parity_with_python_list_query() {
         let _tokens = crate::discover_queries::token_test_lock();
-        // Язык — исходный: тексты ошибок и подписи источников с 30.09 —
-        // msgid каталога (русский — переводом), а язык процесса общий и
-        // соседи крейта ставят именно исходный. Эталон хранит английские
-        // msgid там, где Python-эпоха писала русский.
+        // The language is the source one: since 30.09 error texts and source labels
+        // are catalogue msgids (Russian comes as a translation), while the process
+        // language is shared and the crate's neighbours set exactly the source
+        // one. The reference stores English msgids where the Python era wrote
+        // Russian.
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
         let doc = load();
         let cases = doc["cases"].as_array().expect("голден: cases");
         assert!(!cases.is_empty(), "голден пуст");
 
-        // Ключи записи и их порядок — от них считаются номера ролей.
+        // Record keys and their order — the role numbers are counted from them.
         assert_eq!(
             crate::wallpaper_list_model::ENTRY_KEYS.to_vec(),
             entry_keys(&doc),
@@ -1129,7 +1147,7 @@ mod tests {
         for case in cases {
             let name = str_at(case, "name");
             let harness = replay_pure(case);
-            // Ожидание — только записи запроса списка и его модели.
+            // The expectation is only the records of the list query and its model.
             let (expected, _) = port_records(case);
             let expected: Vec<Record> = expected
                 .into_iter()
@@ -1192,16 +1210,16 @@ mod tests {
                 "{name}: строки модели"
             );
         }
-        // Страховка от «сравнили пустоту с пустотой».
+        // A safeguard against "compared emptiness with emptiness".
         assert!(
             records > 200,
             "проиграно всего {records} сигналов — эталон подозрительно пуст"
         );
     }
 
-    /// Правки эталона обязаны быть ЖИВЫМИ: каждая — сработать ровно там, где
-    /// заявлена. Правка, которая ничего не меняет, означает, что расхождение
-    /// починили, а поблажку снять забыли.
+    /// Reference adjustments must be LIVE: each must fire exactly where it is
+    /// declared. An adjustment that changes nothing means the divergence was
+    /// fixed but the allowance was not removed.
     #[test]
     fn deliberate_fixups_are_all_used() {
         let doc = load();

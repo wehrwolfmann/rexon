@@ -1,37 +1,42 @@
-// Хост видео-обоев на Rust: замена `python -m rexon.video_wallpaper`.
+// The video wallpaper host in Rust: a replacement for
+// `python -m rexon.video_wallpaper`.
 //
-// Что это за кусок и почему он второй по очереди. LayerShellQt держит два
-// флагманских сценария продукта — живые обои и видеозаставку входа, — и пока
-// подступа к нему из Rust не было, ни один Rust-путь обоев не мог поднять
-// окно. Сам подступ (шим `cpp/rexon_layer_shell.*` и QObject `WallpaperLayer`
-// в `src/layer_shell.rs`) уже есть; здесь на нём собран настоящий хост,
-// которому Python больше не нужен.
+// What this piece is and why it is second in line. LayerShellQt holds two
+// flagship scenarios of the product — live wallpapers and the login video
+// splash — and while there was no way to it from Rust, no Rust wallpaper
+// path could bring up a window. The way itself (the
+// `cpp/rexon_layer_shell.*` shim and the `WallpaperLayer` QObject in
+// `src/layer_shell.rs`) already exists; here a real host is built on it,
+// which no longer needs Python.
 //
-// Разделение обязанностей ровно то же, что во всём остальном ядре:
+// The split of duties is exactly the same as in the rest of the core:
 //
-//   * ЧТО показывать и с какими значениями — `rexon-core::wallpaper`
-//     (`video_qml_file`, `video_context_properties`, `video_host_reject_reason`,
-//     `mmap_size`) и `rexon-core::wallpaper_mmap` (частота кадров, план X11,
-//     раскладка кадра, признак сеанса Wayland). Своих чисел здесь нет;
-//   * КАК положить окно на задний план — три способа, и все три сходятся в
-//     одном QML-файле (`qml/WallpaperVideo.qml`) вместо трёх почти одинаковых:
-//     слой ставит Rust, а не присоединённое свойство QML, и разница из
-//     разметки уходит (правило #12).
+//   * WHAT to show and with which values — `rexon-core::wallpaper`
+//     (`video_qml_file`, `video_context_properties`,
+//     `video_host_reject_reason`, `mmap_size`) and
+//     `rexon-core::wallpaper_mmap` (frame rate, the X11 plan, the frame
+//     layout, the Wayland session flag). There are no numbers of our own
+//     here;
+//   * HOW to put the window into the background — three ways, and all three
+//     converge in one QML file (`qml/WallpaperVideo.qml`) instead of three
+//     almost identical ones: the layer is set by Rust, not by an attached
+//     QML property, and the difference leaves the markup (rule #12).
 //
-// ⚠️ Починка при переносе (правило #16). Ядро запускало хост командой
-// `… -m rexon.video_wallpaper <файл> --audio --volume 0.7`
-// (`wallpaper_engine::video_native_plan`), а разбор аргументов на Python
-// таких ключей не знал вовсе и выходил с ошибкой. То есть видео-обои СО
-// ЗВУКОМ не запускались ни разу — ни на Wayland, ни на X11. Здесь ключи
-// приняты и заводятся туда же, куда попадают свойства из `project.json`, а
-// не отдельной веткой: громкость и признак звука решает один и тот же
-// код ядра.
+// Warning: a fix during the port (rule #16). The core launched the host
+// with the command `… -m rexon.video_wallpaper <file> --audio --volume 0.7`
+// (`wallpaper_engine::video_native_plan`), while the Python argument parser
+// did not know such keys at all and exited with an error. That is, video
+// wallpapers WITH SOUND never started once — neither on Wayland nor on
+// X11. Here the keys are accepted and go to the same place the properties
+// from `project.json` go, not as a separate branch: the volume and the
+// sound flag are decided by the same core code.
 
 use rexon_core::wallpaper_engine::HostMode;
 use serde_json::{Map, Value};
 
-/// Мост cxx-qt: то, до чего из Rust не дотянуться, — идентификатор окна X11
-/// и поток кадров окна в mmap-файл (см. `cpp/rexon_wallpaper_host.*`).
+/// cxx-qt bridge: what cannot be reached from Rust — the X11 window
+/// identifier and the window's frame stream into an mmap file (see
+/// `cpp/rexon_wallpaper_host.*`).
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -42,16 +47,16 @@ pub mod qobject {
     unsafe extern "C++" {
         include!("rexon_wallpaper_host.h");
 
-        /// `winId()` окна: создаёт окно платформы, если его ещё нет, но не
-        /// показывает его.
+        /// The window's `winId()`: creates the platform window if there is none
+        /// yet, but does not show it.
         ///
         /// # Safety
-        /// `window` — живой QObject (обычно QWindow).
+        /// `window` is a live QObject (usually a QWindow).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_wp_window_id(window: *mut QObject) -> i64;
 
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_wp_mmap_stream_start(
             window: *mut QObject,
@@ -66,32 +71,33 @@ pub mod qobject {
         ) -> bool;
 
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_wp_mmap_capture(window: *mut QObject) -> QString;
 
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_wp_mmap_nonblack_permille(window: *mut QObject) -> i64;
 
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_wp_mmap_frames(window: *mut QObject) -> i64;
 
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_wp_mmap_center_rgb(window: *mut QObject) -> i64;
 
-        /// Сколько экранов сейчас у сеанса (0 — мониторов нет вовсе).
+        /// How many screens the session has right now (0 — no monitors at all).
         fn rexon_wp_screen_count() -> i32;
 
-        /// Закрывать ли приложение вместе с последним окном.
+        /// Whether to quit the application together with the last window.
         fn rexon_wp_set_quit_on_last_window_closed(enabled: bool);
 
-        // Flash-режим: голое окно под wgpu (обёртки — модуль `swf_window`).
+        // Flash mode: a bare window for wgpu (the wrappers are in the `swf_window`
+        // module).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_wp_swf_window_new(
             width: i32,
@@ -116,62 +122,65 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Способы пристроить окно на задний план, кроме слоя: сам слой
-        /// ставит `WallpaperLayer` из `src/layer_shell.rs`. Объект не владеет
-        /// окном — только настраивает переданное.
+        /// Ways to put the window into the background other than the layer: the
+        /// layer itself is set by `WallpaperLayer` from `src/layer_shell.rs`. The
+        /// object does not own the window — it only configures the one passed to
+        /// it.
         #[qobject]
         #[qml_element]
         type WallpaperPlacement = super::WallpaperPlacementRust;
     }
 
     extern "RustQt" {
-        /// X11: подготовить окно к роли рабочего стола — тип
-        /// `_NET_WM_WINDOW_TYPE_DESKTOP`, состояние и «на всех столах».
-        /// Звать ДО показа окна (`visible = true`): тип оконный менеджер
-        /// читает при показе. Окно платформы создаётся здесь же.
+        /// X11: prepare the window for the desktop role — the
+        /// `_NET_WM_WINDOW_TYPE_DESKTOP` type, the state and "on all desktops".
+        /// Call BEFORE showing the window (`visible = true`): the window manager
+        /// reads the type on show. The platform window is created right here.
         ///
         /// # Safety
-        /// `window` — живой, ещё не показанный QWindow.
+        /// `window` is a live QWindow not yet shown.
         #[qinvokable]
         #[cxx_name = "prepareX11Desktop"]
         unsafe fn prepare_x11_desktop(self: &WallpaperPlacement, window: *mut QObject) -> bool;
 
-        /// X11: довести показанное окно до роли рабочего стола просьбами
-        /// EWMH корневому окну. Звать ПОСЛЕ показа; повтор безвреден.
+        /// X11: bring the shown window to the desktop role with EWMH requests to
+        /// the root window. Call AFTER showing; a repeat is harmless.
         ///
         /// # Safety
-        /// `window` — живой показанный QWindow.
+        /// `window` is a live shown QWindow.
         #[qinvokable]
         #[cxx_name = "applyX11Desktop"]
         unsafe fn apply_x11_desktop(self: &WallpaperPlacement, window: *mut QObject) -> bool;
 
-        /// X11: поставить показанное окно обоев выше или ниже окна значков
-        /// рабочего стола — по тому, сквозной ли у значков фон (решение —
-        /// `rexon_core::wallpaper_mmap::x11_restack_goal`). Звать после
-        /// показа и потом периодически: окно значков пересоздаётся
-        /// (перезапуск Caja, смена её настроек) и встаёт сверху. Стоит где
-        /// надо — ничего не делает. Менеджер окон просьбу не исполнил
-        /// несколько кругов подряд — одна запись в журнал и больше не
-        /// просит, пока нижний слой не изменится. Истина — порядок
-        /// проверен (или просьба отправлена).
+        /// X11: put the shown wallpaper window above or below the desktop icons
+        /// window — depending on whether the icons have a see-through background
+        /// (the decision is `rexon_core::wallpaper_mmap::x11_restack_goal`). Call
+        /// after showing and then periodically: the icons window is recreated
+        /// (restarting Caja, changing its settings) and lands on top. If it stands
+        /// where it should, nothing is done. If the window manager has not fulfilled
+        /// the request for several rounds in a row — one log entry and no more
+        /// requests until the lower layer changes. True means the order was checked
+        /// (or the request was sent).
         ///
         /// # Safety
-        /// `window` — живой показанный QWindow.
+        /// `window` is a live shown QWindow.
         #[qinvokable]
         #[cxx_name = "keepX11Order"]
         unsafe fn keep_x11_order(self: &WallpaperPlacement, window: *mut QObject) -> bool;
 
-        /// Запустить поток кадров окна в общий mmap-файл (GNOME/Cinnamon).
+        /// Start the window's frame stream into the shared mmap file
+        /// (GNOME/Cinnamon).
         ///
-        /// `video_output` — VideoOutput, из приёмника которого брать кадр
-        /// (видео-обои), либо `null` — сцену окна рисует QQuickRenderControl
-        /// без окна на экране, на видеокарте (веб-обои). Видео иначе нельзя:
-        /// на платформе `offscreen` VideoOutput не рисует, и снимок окна
-        /// выходит чёрным. Окно QML в режиме потока не показывать.
+        /// `video_output` is the VideoOutput whose sink to take the frame from
+        /// (video wallpapers), or `null` — the window's scene is drawn by
+        /// QQuickRenderControl without a window on screen, on the GPU (web
+        /// wallpapers). Video cannot be done otherwise: on the `offscreen` platform
+        /// VideoOutput does not draw, and the window snapshot comes out black. Do
+        /// not show the QML window in stream mode.
         ///
         /// # Safety
-        /// `window` — живой QObject корня QML; `video_output` — живой
-        /// VideoOutput либо null.
+        /// `window` is a live QObject of the QML root; `video_output` is a live
+        /// VideoOutput or null.
         #[qinvokable]
         #[cxx_name = "startMmapStream"]
         unsafe fn start_mmap_stream(
@@ -184,79 +193,81 @@ pub mod qobject {
             fps: i32,
         ) -> bool;
 
-        /// Центральный пиксель последнего кадра в файле, 0xRRGGBB; -1 —
-        /// кадров не было. Для самопроверки: чёрные кадры прежде считались
-        /// успехом.
+        /// The central pixel of the last frame in the file, 0xRRGGBB; -1 means
+        /// there were no frames. For the self-test: black frames used to count as
+        /// success.
         ///
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[qinvokable]
         #[cxx_name = "mmapCenterRgb"]
         unsafe fn mmap_center_rgb(self: &WallpaperPlacement, window: *mut QObject) -> f64;
 
-        /// Сколько кадров ушло в файл; -1 — потока нет.
+        /// How many frames went into the file; -1 means there is no stream.
         ///
-        /// ⚠️ Возврат `f64`, а не `i64`: 64-битное целое наружу в QML не
-        /// выпускаем (разбор и границы точности — `src/qvalue.rs`). Счётчик
-        /// кадров до потолка `double` (2^53) не дойдёт и за век работы.
+        /// Warning: the return is `f64`, not `i64`: we do not expose a 64-bit
+        /// integer to QML (the analysis and the precision limits are in
+        /// `src/qvalue.rs`). The frame counter will not reach the `double` ceiling
+        /// (2^53) even in a century of work.
         ///
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[qinvokable]
         #[cxx_name = "mmapFrames"]
         unsafe fn mmap_frames(self: &WallpaperPlacement, window: *mut QObject) -> f64;
 
-        /// Чем снимается кадр потока (для отчёта самопроверки): видеокарта
-        /// через QQuickRenderControl, программный рендер, приёмник видео или
-        /// снимок окна. Пусто — потока нет.
+        /// What the stream frame is captured with (for the self-test report): the
+        /// GPU through QQuickRenderControl, software rendering, the video sink or a
+        /// window snapshot. Empty means there is no stream.
         ///
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[qinvokable]
         #[cxx_name = "mmapCapture"]
         unsafe fn mmap_capture(self: &WallpaperPlacement, window: *mut QObject) -> QString;
 
-        /// Доля не-чёрных пикселей последнего кадра, ‰; -1 — кадров не было.
-        /// Самопроверка по ней не принимает чёрные кадры: центр бывает
-        /// чёрным и у живой страницы.
+        /// The share of non-black pixels of the last frame, ‰; -1 means there were
+        /// no frames. The self-test does not accept black frames by it: the centre
+        /// can be black on a live page too.
         ///
         /// # Safety
-        /// `window` — живой QObject корня QML.
+        /// `window` is a live QObject of the QML root.
         #[qinvokable]
         #[cxx_name = "mmapNonBlackPermille"]
         unsafe fn mmap_nonblack_permille(self: &WallpaperPlacement, window: *mut QObject) -> f64;
 
-        /// Метка сердцебиения для сторожа живых обоев
-        /// (`rexon_core::renderer_watch`). Звать из таймера QML ПОСЛЕ
-        /// просьбы о кадре у окон: зависни отрисовка — встанет и поток
-        /// интерфейса, и метка перестанет обновляться.
+        /// A heartbeat mark for the live wallpaper watchdog
+        /// (`rexon_core::renderer_watch`). Call from a QML timer AFTER requesting a
+        /// frame from the windows: if rendering hangs, the interface thread stops
+        /// too, and the mark stops being updated.
         #[qinvokable]
         fn heartbeat(self: &WallpaperPlacement);
 
-        /// Как часто звать [`heartbeat`], миллисекунды — число ядра.
+        /// How often to call [`heartbeat`], milliseconds — the core's number.
         #[qinvokable]
         #[cxx_name = "heartbeatIntervalMs"]
         fn heartbeat_interval_ms(self: &WallpaperPlacement) -> i32;
 
-        /// Первый кадр обоев на экране (`what` — код вида: `video`, `web`):
-        /// строка замера в журнал и перестановка фона Cinnamon
-        /// ([`super::first_frame_shown`]). Звать из обработчика
-        /// `frameSwapped` окна, когда в кадре уже настоящее содержимое.
+        /// The first wallpaper frame on screen (`what` is the kind code: `video`,
+        /// `web`): a measurement line into the log and restacking the Cinnamon
+        /// background ([`super::first_frame_shown`]). Call from the window's
+        /// `frameSwapped` handler when the frame already has real content.
         #[qinvokable]
         #[cxx_name = "firstFrameShown"]
         fn first_frame_shown(self: &WallpaperPlacement, what: &QString);
     }
 }
 
-/// Состояния у объекта нет: он только исполняет над переданным окном.
+/// The object has no state: it only acts on the window passed to it.
 #[derive(Default)]
 pub struct WallpaperPlacementRust;
 
-/// Номер окна X11; `winId()` создаёт окно платформы, если его ещё нет (без
-/// показа). `None` — окна нет или номер не выдан (причина в журнале).
+/// The X11 window number; `winId()` creates the platform window if there is
+/// none yet (without showing). `None` means there is no window or the
+/// number was not issued (the reason is in the log).
 ///
 /// # Safety
-/// `window` — живой QObject либо null.
+/// `window` is a live QObject or null.
 unsafe fn x11_window_id_of(window: *mut qobject::QObject) -> Option<i64> {
     if window.is_null() {
         return None;
@@ -271,7 +282,7 @@ unsafe fn x11_window_id_of(window: *mut qobject::QObject) -> Option<i64> {
 
 impl qobject::WallpaperPlacement {
     unsafe fn prepare_x11_desktop(&self, window: *mut qobject::QObject) -> bool {
-        // SAFETY: контракт invokable — живой QWindow.
+        // SAFETY: the invokable's contract — a live QWindow.
         match unsafe { x11_window_id_of(window) } {
             Some(id) => prepare_x11_desktop_layer(id),
             None => false,
@@ -279,7 +290,7 @@ impl qobject::WallpaperPlacement {
     }
 
     unsafe fn apply_x11_desktop(&self, window: *mut qobject::QObject) -> bool {
-        // SAFETY: контракт invokable — живой QWindow.
+        // SAFETY: the invokable's contract — a live QWindow.
         match unsafe { x11_window_id_of(window) } {
             Some(id) => apply_x11_desktop_layer(id),
             None => false,
@@ -287,7 +298,7 @@ impl qobject::WallpaperPlacement {
     }
 
     unsafe fn keep_x11_order(&self, window: *mut qobject::QObject) -> bool {
-        // SAFETY: контракт invokable — живой QWindow.
+        // SAFETY: the invokable's contract — a live QWindow.
         match unsafe { x11_window_id_of(window) } {
             Some(id) => x11_desktop::keep_order(id),
             None => false,
@@ -306,17 +317,18 @@ impl qobject::WallpaperPlacement {
         if window.is_null() {
             return false;
         }
-        // Раскладку кадра, интервал тика и путь счётчика поколения считает
-        // ядро — своих чисел здесь нет намеренно: кривой размер кадра уже
-        // однажды оставлял человека без обоев, и искать, какая из двух копий
-        // победила, было негде.
+        // The frame layout, the tick interval and the generation counter path are
+        // computed by the core — there are deliberately no numbers of our own here:
+        // a wrong frame size once already left a person without a wallpaper, and
+        // there was nowhere to look for which of the two copies won.
         let plan = rexon_core::wallpaper_mmap::prime_plan(i64::from(width), i64::from(height));
         let interval = rexon_core::wallpaper_mmap::headless_tick_ms(i64::from(fps));
         let generation = cxx_qt_lib::QString::from(
             &rexon_core::wallpaper_mmap::frame_generation_path(&path.to_string()),
         );
-        // Показать окно ради снимка можно только на `offscreen`; платформу к
-        // этому месту выставил `prepare_qpa_platform` до создания приложения.
+        // Showing the window for the sake of a snapshot is possible only on
+        // `offscreen`; the platform was set for this place by
+        // `prepare_qpa_platform` before the application was created.
         let may_show_window = rexon_core::wallpaper_mmap::stream_window_may_show(
             &std::env::var("QT_QPA_PLATFORM").unwrap_or_default(),
         );
@@ -365,7 +377,8 @@ impl qobject::WallpaperPlacement {
     }
 
     fn first_frame_shown(&self, what: &cxx_qt_lib::QString) {
-        // Из QML приходит код вида латиницей, в журнал — по-русски.
+        // The kind code comes from QML in Latin letters, and goes to the log in
+        // Russian.
         let what = what.to_string();
         let label = match what.as_str() {
             "video" => "видео",
@@ -383,40 +396,47 @@ impl qobject::WallpaperPlacement {
     }
 }
 
-/// Подготовить окно X11 к роли рабочего стола — ДО его показа: тип
-/// `_NET_WM_WINDOW_TYPE_DESKTOP`, состояние (без панели задач и
-/// переключателя, на всех столах) и `_NET_WM_DESKTOP` = все столы.
+/// Prepare an X11 window for the desktop role — BEFORE showing it: the
+/// `_NET_WM_WINDOW_TYPE_DESKTOP` type, the state (without the task bar and
+/// the switcher, on all desktops) and `_NET_WM_DESKTOP` = all desktops.
 ///
-/// Окно к этому времени уже создано платформой (`winId()`), но не показано:
-/// EWMH разрешает клиенту ставить такие свойства только неотображённому окну,
-/// а тип оконный менеджер читает при показе. Qt при показе своё
-/// `_NET_WM_STATE` с уже записанным сливает, а не затирает.
+/// By this time the window is already created by the platform (`winId()`)
+/// but not shown: EWMH allows a client to set such properties only on an
+/// unmapped window, and the window manager reads the type on show. On show
+/// Qt merges its `_NET_WM_STATE` with the already written one rather than
+/// overwriting it.
 pub fn prepare_x11_desktop_layer(window_id: i64) -> bool {
     x11_desktop::before_map(window_id)
 }
 
-/// Довести уже показанное окно X11 до роли рабочего стола: просьбы EWMH
-/// корневому окну (`_NET_WM_STATE` с `_NET_WM_STATE_ADD`, `_NET_WM_DESKTOP`)
-/// и повтор типа окна. Повторный вызов безвреден.
+/// Bring an already shown X11 window to the desktop role: EWMH requests to
+/// the root window (`_NET_WM_STATE` with `_NET_WM_STATE_ADD`,
+/// `_NET_WM_DESKTOP`) and repeating the window type. A repeated call is
+/// harmless.
 ///
-/// План (что и в каком порядке) строит ядро —
-/// [`rexon_core::wallpaper_mmap::x11_desktop_plan`]; здесь только запросы
-/// к серверу. Один исполнитель на видео-, веб- и Flash-обои (правило #12).
+/// The plan (what and in which order) is built by the core —
+/// [`rexon_core::wallpaper_mmap::x11_desktop_plan`]; here there are only the
+/// requests to the server. One executor for video, web and Flash wallpapers
+/// (rule #12).
 pub fn apply_x11_desktop_layer(window_id: i64) -> bool {
     x11_desktop::after_map(window_id)
 }
 
-/// Фон X11 у ещё не показанного окна — сплошной цвет `rgb` (0xRRGGBB).
+/// X11 background of a not yet shown window — the solid colour `rgb`
+/// (0xRRGGBB).
 ///
-/// Зачем. Qt создаёт окна X11 без фона (`BackPixmap None`): до первого кадра
-/// сцены сервер ничего в окне не рисует, и показанное окно выглядит
-/// прозрачным — сквозь него виден стол, под композитором чёрное или
-/// мусор. С цветом фона сервер сам заливает окно в момент показа, ещё до
-/// первого кадра Qt, и до кадра окно стоит в краске скина. Тот же цвет
-/// сервер кладёт и на открывшуюся при растяжении полосу — она не мигает.
+/// Why. Qt creates X11 windows without a background (`BackPixmap None`):
+/// until the scene's first frame the server draws nothing in the window,
+/// and the shown window looks transparent — the desktop is visible through
+/// it, under a compositor there is black or garbage. With a background
+/// colour the server itself fills the window at the moment of showing, even
+/// before Qt's first frame, and until the frame the window stands in the
+/// skin colour. The server puts the same colour on the strip that opens up
+/// on stretching — it does not flicker.
 ///
-/// Звать после `winId()` и до показа. `false` — не X11 (Wayland, offscreen):
-/// там у окна свой путь показа и делать нечего, в журнал не пишем.
+/// Call after `winId()` and before showing. `false` means not X11 (Wayland,
+/// offscreen): there the window has its own way of showing and there is
+/// nothing to do; we do not write to the log.
 pub fn paint_x11_background(window_id: i64, rgb: u32) -> bool {
     if qobject::rexon_wp_xcb_connection() == 0 {
         return false;
@@ -424,17 +444,18 @@ pub fn paint_x11_background(window_id: i64, rgb: u32) -> bool {
     x11_desktop::background(window_id, rgb)
 }
 
-/// Исполнитель плана X11 на соединении xcb самого Qt.
+/// Executor of the X11 plan on Qt's own xcb connection.
 ///
-/// ⚠️ Почему соединение Qt, а не своё. Запросы одного соединения сервер
-/// исполняет по порядку: свойства, записанные здесь до показа, гарантированно
-/// лягут раньше `MapWindow`, который Qt пошлёт по тому же соединению. Своё
-/// соединение (или `xprop`) так не умеет — окно, созданное Qt, могло ещё не
-/// дойти до сервера, а показ — уже случиться.
+/// Warning: why Qt's connection and not our own. The server executes the
+/// requests of one connection in order: the properties written here before
+/// showing are guaranteed to land before the `MapWindow` that Qt will send
+/// over the same connection. Our own connection (or `xprop`) cannot do that
+/// — the window created by Qt might not have reached the server yet, while
+/// the show has already happened.
 ///
-/// libxcb не линкуется: функции берутся у той копии, что уже загрузил
-/// платформенный модуль Qt (`dlopen` с `RTLD_NOLOAD`). Не X11 — ничего не
-/// делаем и честно говорим об этом.
+/// libxcb is not linked: the functions are taken from the copy already
+/// loaded by Qt's platform module (`dlopen` with `RTLD_NOLOAD`). Not X11 —
+/// we do nothing and honestly say so.
 mod x11_desktop {
     use std::ffi::{c_char, c_int, c_uint, c_void, CString};
     use std::sync::OnceLock;
@@ -511,7 +532,7 @@ mod x11_desktop {
         owner: u32,
     }
 
-    /// Предопределённые атомы X11 (`xproto.h`).
+    /// Predefined X11 atoms (`xproto.h`).
     const XA_STRING: u32 = 31;
     const XA_WINDOW: u32 = 33;
     const XA_WM_CLASS: u32 = 67;
@@ -520,7 +541,7 @@ mod x11_desktop {
     const PROPERTY_CHANGE_MASK: u32 = 1 << 22;
     /// `XCB_PROP_MODE_APPEND`.
     const PROP_MODE_APPEND: u8 = 2;
-    /// Код события PropertyNotify.
+    /// The PropertyNotify event code.
     const PROPERTY_NOTIFY: u8 = 28;
     /// `XCB_CONFIG_WINDOW_STACK_MODE`.
     const CONFIG_WINDOW_STACK_MODE: u16 = 1 << 6;
@@ -555,15 +576,15 @@ mod x11_desktop {
         wait_for_event: unsafe extern "C" fn(Conn) -> *mut c_void,
     }
 
-    // SAFETY: только указатели на функции библиотеки, которая не выгружается.
+    // SAFETY: only pointers to functions of a library that is not unloaded.
     unsafe impl Send for Xcb {}
     unsafe impl Sync for Xcb {}
 
     fn xcb() -> Option<&'static Xcb> {
         static XCB: OnceLock<Option<Xcb>> = OnceLock::new();
         XCB.get_or_init(|| {
-            // SAFETY: dlopen/dlsym с корректными C-строками; NOLOAD не грузит
-            // ничего нового, ссылка на библиотеку держится до конца процесса.
+            // SAFETY: dlopen/dlsym with correct C strings; NOLOAD loads nothing new,
+            // and the library reference is held until the end of the process.
             unsafe {
                 let lib = libc::dlopen(c"libxcb.so.1".as_ptr(), libc::RTLD_NOW | libc::RTLD_NOLOAD);
                 if lib.is_null() {
@@ -608,7 +629,8 @@ mod x11_desktop {
         .as_ref()
     }
 
-    /// Соединение Qt и номер окна; `None` — не X11 (причина уже в журнале).
+    /// Qt's connection and the window number; `None` means not X11 (the reason
+    /// is already in the log).
     fn session(window_id: i64) -> Option<(&'static Xcb, Conn, u32)> {
         let Ok(window) = u32::try_from(window_id) else {
             rexon_core::log_warn!("wallpaper-host", "REXON-WPH-X11 номер окна вне X11: {window_id}");
@@ -632,7 +654,7 @@ mod x11_desktop {
             );
             return None;
         };
-        // SAFETY: живое соединение Qt.
+        // SAFETY: a live Qt connection.
         if unsafe { (x.connection_has_error)(conn) } != 0 {
             rexon_core::log_warn!("wallpaper-host", "REXON-WPH-X11 соединение X11 сломано");
             return None;
@@ -640,10 +662,11 @@ mod x11_desktop {
         Some((x, conn, window))
     }
 
-    /// Номера атомов плана: все запросы разом, потом ответы.
+    /// Atom numbers of the plan: all requests at once, then the replies.
     fn intern_all(x: &Xcb, conn: Conn, names: &[&'static str]) -> Option<Vec<(&'static str, u32)>> {
         let cnames: Vec<CString> = names.iter().map(|n| CString::new(*n).unwrap()).collect();
-        // SAFETY: строки живут до конца функции; длина имени < u16::MAX.
+        // SAFETY: the strings live until the end of the function; the name length
+        // < u16::MAX.
         let cookies: Vec<Cookie> = cnames
             .iter()
             .map(|c| unsafe { (x.intern_atom)(conn, 0, c.as_bytes().len() as u16, c.as_ptr()) })
@@ -652,7 +675,8 @@ mod x11_desktop {
         let mut ok = true;
         for (name, cookie) in names.iter().zip(cookies) {
             let mut err: *mut GenericError = std::ptr::null_mut();
-            // SAFETY: ответ и ошибку выделяет libxcb, освобождаем free().
+            // SAFETY: the reply and the error are allocated by libxcb, we release them
+            // with free().
             let reply = unsafe { (x.intern_atom_reply)(conn, cookie, &mut err) };
             if reply.is_null() {
                 ok = false;
@@ -672,9 +696,10 @@ mod x11_desktop {
         atoms.iter().find(|(n, _)| *n == name).map(|(_, a)| *a)
     }
 
-    /// Дождаться ответа сервера на проверяемый запрос; `false` — отказ.
+    /// Wait for the server's answer to a checked request; `false` means a
+    /// refusal.
     fn checked(x: &Xcb, conn: Conn, cookie: Cookie, what: &str) -> bool {
-        // SAFETY: cookie от *_checked этого же соединения.
+        // SAFETY: the cookie is from *_checked of this same connection.
         let err = unsafe { (x.request_check)(conn, cookie) };
         if err.is_null() {
             return true;
@@ -701,7 +726,7 @@ mod x11_desktop {
                 ok = false;
                 continue;
             };
-            // SAFETY: values живёт до ответа; формат 32 — слова u32.
+            // SAFETY: values lives until the reply; format 32 means u32 words.
             let cookie = unsafe {
                 (x.change_property_checked)(
                     conn,
@@ -728,7 +753,7 @@ mod x11_desktop {
             return false;
         };
         let ok = set_properties(x, conn, window, &atoms, &plan.before_map);
-        // SAFETY: живое соединение.
+        // SAFETY: a live connection.
         unsafe { (x.flush)(conn) };
         ok
     }
@@ -740,10 +765,11 @@ mod x11_desktop {
         let Some((x, conn, window)) = session(window_id) else {
             return false;
         };
-        // Пиксель TrueColor: у окна глубины 32 (с альфой) старший байт —
-        // непрозрачность, без него фон под композитором был бы прозрачным.
+        // A TrueColor pixel: for a window of depth 32 (with alpha) the high byte is
+        // the opacity; without it the background under a compositor would be
+        // transparent.
         let pixel = if depth(x, conn, window) == 32 { 0xff00_0000 | rgb } else { rgb & 0x00ff_ffff };
-        // SAFETY: живое соединение; значение — один u32 под маску.
+        // SAFETY: a live connection; the value is one u32 for the mask.
         unsafe {
             (x.change_window_attributes)(conn, window, CW_BACK_PIXEL, (&pixel as *const u32).cast());
             (x.flush)(conn);
@@ -761,9 +787,10 @@ mod x11_desktop {
         };
         let mut ok = set_properties(x, conn, window, &atoms, &plan.after_map_properties);
 
-        // Корневое окно — того экрана X, на котором живёт окно.
+        // The root window of the X screen on which the window lives.
         let mut err: *mut GenericError = std::ptr::null_mut();
-        // SAFETY: ответ и ошибку выделяет libxcb, освобождаем free().
+        // SAFETY: the reply and the error are allocated by libxcb, we release them
+        // with free().
         let tree = unsafe { (x.query_tree_reply)(conn, (x.query_tree)(conn, window), &mut err) };
         if !err.is_null() {
             unsafe { libc::free(err.cast()) };
@@ -785,23 +812,24 @@ mod x11_desktop {
             };
             let data: [u32; 5] = [words[0], words[1], words[2], words[3], words[4]];
             let event = wm::x11_client_message_bytes(window, kind, data);
-            // SAFETY: событие — 32 байта, как требует xcb_send_event.
+            // SAFETY: the event is 32 bytes, as xcb_send_event requires.
             let cookie = unsafe {
                 (x.send_event_checked)(conn, 0, root, wm::ROOT_MESSAGE_EVENT_MASK, event.as_ptr().cast())
             };
             ok &= checked(x, conn, cookie, m.message_type);
         }
-        // SAFETY: живое соединение.
+        // SAFETY: a live connection.
         unsafe { (x.flush)(conn) };
-        // Показанное окно встаёт над всеми окнами стола — в том числе над
-        // сквозным окном значков, под которым ему место.
+        // A shown window rises above all desktop windows — including the
+        // see-through icons window under which it belongs.
         keep_order(window_id);
         ok
     }
 
-    // ── порядок окна обоев и окна значков ─────────────────────────────────
+    // ── order of the wallpaper window and the icons window ────────────────
 
-    /// Атомы сверки порядка. Номер экрана нужен для выбора композитора.
+    /// Atoms of the order check. The screen number is needed to choose the
+    /// compositor.
     fn order_atom_names(screen: u32) -> Vec<&'static str> {
         static CM: OnceLock<&'static str> = OnceLock::new();
         let cm = *CM.get_or_init(|| Box::leak(wm::x11_compositor_selection(screen).into_boxed_str()));
@@ -819,8 +847,8 @@ mod x11_desktop {
         names
     }
 
-    /// Атомы на соединении Qt: номера живут, пока жив сервер, — узнаются
-    /// один раз.
+    /// Atoms on Qt's connection: the numbers live as long as the server does —
+    /// they are looked up once.
     fn order_atoms(x: &Xcb, conn: Conn) -> Option<&'static [(&'static str, u32)]> {
         static ATOMS: OnceLock<Option<Vec<(&'static str, u32)>>> = OnceLock::new();
         ATOMS
@@ -831,11 +859,12 @@ mod x11_desktop {
             .as_deref()
     }
 
-    /// Свойство окна как 32-битные слова (`kind` — тип свойства). Нет
-    /// свойства или ошибка — пусто.
+    /// A window property as 32-bit words (`kind` is the property type). No
+    /// property or an error — empty.
     fn property32(x: &Xcb, conn: Conn, window: u32, property: u32, kind: u32) -> Vec<u32> {
         let mut err: *mut GenericError = std::ptr::null_mut();
-        // SAFETY: ответ и ошибку выделяет libxcb, освобождаем free().
+        // SAFETY: the reply and the error are allocated by libxcb, we release them
+        // with free().
         let reply = unsafe {
             (x.get_property_reply)(conn, (x.get_property)(conn, 0, window, property, kind, 0, 8192), &mut err)
         };
@@ -845,7 +874,7 @@ mod x11_desktop {
         if reply.is_null() {
             return Vec::new();
         }
-        // SAFETY: значение живёт вместе с ответом; длина — в байтах.
+        // SAFETY: the value lives together with the reply; the length is in bytes.
         let out = unsafe {
             let len = (x.get_property_value_length)(reply).max(0) as usize / 4;
             let data = (x.get_property_value)(reply) as *const u32;
@@ -859,10 +888,10 @@ mod x11_desktop {
         out
     }
 
-    /// `WM_CLASS` окна: экземпляр и класс.
+    /// The window's `WM_CLASS`: the instance and the class.
     fn wm_class(x: &Xcb, conn: Conn, window: u32) -> (String, String) {
         let mut err: *mut GenericError = std::ptr::null_mut();
-        // SAFETY: как в `property32`; формат 8 — байты.
+        // SAFETY: as in `property32`; format 8 means bytes.
         let reply = unsafe {
             (x.get_property_reply)(
                 conn,
@@ -888,10 +917,11 @@ mod x11_desktop {
         (instance, class)
     }
 
-    /// Глубина окна; 0 — не узнали.
+    /// The window depth; 0 means not found out.
     fn depth(x: &Xcb, conn: Conn, window: u32) -> u8 {
         let mut err: *mut GenericError = std::ptr::null_mut();
-        // SAFETY: ответ и ошибку выделяет libxcb, освобождаем free().
+        // SAFETY: the reply and the error are allocated by libxcb, we release them
+        // with free().
         let reply = unsafe { (x.get_geometry_reply)(conn, (x.get_geometry)(conn, window), &mut err) };
         if !err.is_null() {
             unsafe { libc::free(err.cast()) };
@@ -904,10 +934,11 @@ mod x11_desktop {
         depth
     }
 
-    /// Есть ли у выбора владелец (композитор держит `_NET_WM_CM_Sn`).
+    /// Whether the selection has an owner (the compositor holds `_NET_WM_CM_Sn`).
     fn selection_owned(x: &Xcb, conn: Conn, selection: u32) -> bool {
         let mut err: *mut GenericError = std::ptr::null_mut();
-        // SAFETY: ответ и ошибку выделяет libxcb, освобождаем free().
+        // SAFETY: the reply and the error are allocated by libxcb, we release them
+        // with free().
         let reply =
             unsafe { (x.get_selection_owner_reply)(conn, (x.get_selection_owner)(conn, selection), &mut err) };
         if !err.is_null() {
@@ -921,10 +952,11 @@ mod x11_desktop {
         owner != 0
     }
 
-    /// Корневое окно экрана, на котором живёт окно.
+    /// The root window of the screen on which the window lives.
     fn root_of(x: &Xcb, conn: Conn, window: u32) -> Option<u32> {
         let mut err: *mut GenericError = std::ptr::null_mut();
-        // SAFETY: ответ и ошибку выделяет libxcb, освобождаем free().
+        // SAFETY: the reply and the error are allocated by libxcb, we release them
+        // with free().
         let tree = unsafe { (x.query_tree_reply)(conn, (x.query_tree)(conn, window), &mut err) };
         if !err.is_null() {
             unsafe { libc::free(err.cast()) };
@@ -937,14 +969,15 @@ mod x11_desktop {
         Some(root)
     }
 
-    /// Свежее время сервера X. Marco (как и Metacity) не исполняет просьбу о
-    /// порядке от окна, чьё `_NET_WM_USER_TIME` старше, чем у активного
-    /// окна чужого приложения (`meta_window_configure_request`); время
-    /// сервера узнаётся только из события, а события соединения Qt разбирает
-    /// Qt. Поэтому — своё короткое соединение: пустая дописка к свойству
-    /// корневого окна и время из пришедшего PropertyNotify.
+    /// A fresh X server time. Marco (like Metacity) does not fulfil an order
+    /// request from a window whose `_NET_WM_USER_TIME` is older than that of
+    /// another application's active window (`meta_window_configure_request`);
+    /// the server time can be learned only from an event, and the events of
+    /// Qt's connection are handled by Qt. Hence our own short connection: an
+    /// empty append to a property of the root window and the time from the
+    /// PropertyNotify that arrives.
     fn server_time(x: &Xcb, root: u32) -> Option<u32> {
-        // SAFETY: своё соединение, закрывается здесь же; события — free().
+        // SAFETY: our own connection, closed right here; events — free().
         unsafe {
             let own = (x.connect)(std::ptr::null(), std::ptr::null_mut());
             if own.is_null() {
@@ -981,20 +1014,23 @@ mod x11_desktop {
     }
 
     thread_local! {
-        /// Наблюдения о чужих окнах по номеру — у окна они не меняются.
+        /// Observations about other windows by number — they do not change for a
+        /// window.
         static FACTS: std::cell::RefCell<std::collections::HashMap<u32, wm::X11ClientFacts>> =
             std::cell::RefCell::new(std::collections::HashMap::new());
-        /// Последний записанный в журнал порядок (чтобы не писать одно и то же).
+        /// The last order written to the log (so as not to write the same thing).
         static LAST_LOGGED: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
-        /// Учёт просьб о порядке по окну обоев (окно на монитор).
+        /// Accounting of order requests per wallpaper window (one window per
+        /// monitor).
         static TRACKERS: std::cell::RefCell<std::collections::HashMap<u32, wm::X11RestackTracker>> =
             std::cell::RefCell::new(std::collections::HashMap::new());
     }
 
-    /// Менеджер окон не опустил обои под сквозные значки (xfwm4): один раз
-    /// пересоздать окно значков переключением «значки выкл → вкл» — новое
-    /// окно xfwm4 кладёт поверх обоев. В отдельном потоке: между «выкл» и
-    /// «вкл» пауза, а сверка идёт в главном потоке Qt.
+    /// The window manager did not lower the wallpaper under see-through icons
+    /// (xfwm4): once recreate the icons window by toggling "icons off → on" —
+    /// xfwm4 puts the new window above the wallpaper. In a separate thread:
+    /// there is a pause between "off" and "on", and the check runs in Qt's main
+    /// thread.
     fn recreate_icons_window(own: u32, goal: wm::X11Restack) {
         let (sibling, _) = goal.sibling_and_mode();
         let Some((schema, key)) = FACTS.with(|f| {
@@ -1119,24 +1155,25 @@ mod x11_desktop {
         let ok = if restack != 0 && supported.contains(&restack) {
             rexon_core::log_info!("wallpaper-host", "REXON-WPH-X11 окно 0x{own:x} {where_} 0x{sibling:x} (_NET_RESTACK_WINDOW)");
             let event = wm::x11_client_message_bytes(own, restack, [wm::EWMH_SOURCE_PAGER, sibling, mode, 0, 0]);
-            // SAFETY: событие — 32 байта, как требует xcb_send_event.
+            // SAFETY: the event is 32 bytes, as xcb_send_event requires.
             let cookie = unsafe {
                 (x.send_event_checked)(conn, 0, root, wm::ROOT_MESSAGE_EVENT_MASK, event.as_ptr().cast())
             };
             checked(x, conn, cookie, "_NET_RESTACK_WINDOW")
         } else {
-            // Без `_NET_RESTACK_WINDOW` (Marco) — ConfigureWindow без соседа:
-            // Marco соседа не смотрит вовсе и поднимает окно на верх его
-            // слоя либо опускает на низ (`meta_window_raise`/`_lower`), а
-            // окно значков — в том же слое. Сосед в запросе только навлёк бы
-            // BadMatch, будь окно значков в рамке.
+            // Without `_NET_RESTACK_WINDOW` (Marco) — ConfigureWindow without a
+            // sibling: Marco does not look at the sibling at all and raises the window
+            // to the top of its layer or lowers it to the bottom
+            // (`meta_window_raise`/`_lower`), and the icons window is in the same
+            // layer. A sibling in the request would only bring a BadMatch if the icons
+            // window were in a frame.
             rexon_core::log_info!("wallpaper-host", "REXON-WPH-X11 окно 0x{own:x} {where_} 0x{sibling:x} (ConfigureWindow)");
             let user_time_window = property32(x, conn, own, atom("_NET_WM_USER_TIME_WINDOW"), XA_WINDOW)
                 .first()
                 .copied()
                 .unwrap_or(own);
             if let Some(time) = server_time(x, root) {
-                // SAFETY: одно слово формата 32.
+                // SAFETY: one word of format 32.
                 let cookie = unsafe {
                     (x.change_property_checked)(
                         conn,
@@ -1153,28 +1190,30 @@ mod x11_desktop {
             } else {
                 rexon_core::log_warn!("wallpaper-host", "REXON-WPH-X11 время сервера не узнали — Marco может отказать в порядке");
             }
-            // SAFETY: одно значение — stack_mode.
+            // SAFETY: one value — stack_mode.
             let cookie = unsafe { (x.configure_window_checked)(conn, own, CONFIG_WINDOW_STACK_MODE, (&mode as *const u32).cast()) };
             checked(x, conn, cookie, "ConfigureWindow")
         };
-        // SAFETY: живое соединение.
+        // SAFETY: a live connection.
         unsafe { (x.flush)(conn) };
         ok
     }
 }
 
-/// Момент запуска процесса хоста — точка отсчёта замера первого кадра.
+/// The moment the host process started — the reference point for measuring
+/// the first frame.
 static HOST_STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
-/// Отметить запуск хоста. Звать первым делом в `main` хоста.
+/// Mark the host start. Call as the very first thing in the host's `main`.
 pub fn mark_host_started() {
     HOST_STARTED.get_or_init(std::time::Instant::now);
 }
 
-/// Первый кадр обоев на экране (у видео — кадр ролика, не чёрное окно):
-/// одна строка замера в журнал и, на Cinnamon с layer-shell, перестановка
-/// службы фона сейчас, а не по запасному сроку. Один раз на процесс: окна
-/// на других мониторах и пересборка окон повторно не меряются.
+/// The first wallpaper frame on screen (for video — a clip frame, not a
+/// black window): one measurement line into the log and, on Cinnamon with
+/// layer-shell, restacking the background service now rather than by the
+/// fallback timeout. Once per process: windows on other monitors and
+/// rebuilding the windows are not measured again.
 pub fn first_frame_shown(what: &str) {
     static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
@@ -1194,19 +1233,20 @@ pub fn first_frame_shown(what: &str) {
     cinnamon_layer::surface_shown(&format!("{what} слоем стола"));
 }
 
-/// Cinnamon с layer-shell (Muffin 6.8+): обои — поверхностью слоя фона, а
-/// служба фона оболочки должна лежать под ней. Решения —
-/// `rexon_core::wallpaper_backend` (раздел «Cinnamon с layer-shell»); здесь
-/// то, для чего нужен свой клиент Wayland: вопрос композитору и слежка за
-/// мониторами.
+/// Cinnamon with layer-shell (Muffin 6.8+): the wallpaper is a surface of
+/// the background layer, and the shell's background service must lie under
+/// it. The decisions are `rexon_core::wallpaper_backend` (the "Cinnamon with
+/// layer-shell" section); here is what needs our own Wayland client: asking
+/// the compositor and watching the monitors.
 pub mod cinnamon_layer {
     use rexon_core::wallpaper_backend as wb;
     use wayland_client::protocol::wl_registry;
     use wayland_client::{Connection, Dispatch, QueueHandle};
 
-    /// Выяснить факт сеанса «Cinnamon с layer-shell» (глобалы композитора,
-    /// без ответа — служба фона) и запомнить его на процесс. Вне Cinnamon на
-    /// Wayland композитор не спрашиваем.
+    /// Find out the fact of a "Cinnamon with layer-shell" session (the
+    /// compositor's globals; without an answer — the background service) and
+    /// remember it for the process. Outside Cinnamon on Wayland we do not ask
+    /// the compositor.
     pub fn init_fact() -> bool {
         if !wb::cinnamon_wayland_session_live() {
             wb::set_cinnamon_layer_shell(false);
@@ -1216,13 +1256,14 @@ pub mod cinnamon_layer {
         wb::init_cinnamon_layer_shell_live(facts.as_ref().map(|f| f.globals.as_slice()))
     }
 
-    /// Нашему окну поставлен слой фона (до показа): заказать перестановку
-    /// службы фона ЗАПАСНЫМ сроком ([`wb::BG_RESTACK_FALLBACK_MS`]) и
-    /// следить, чтобы так и оставалось (служба поднялась заново, подключили
-    /// монитор). Настоящий повод переставить — весть [`surface_shown`]: её
-    /// шлёт хост, когда первый кадр (у видео — кадр ролика) на экране; до
-    /// неё под службой фона нечего показывать, кроме чёрного окна. Вне
-    /// Cinnamon на Wayland — ничего.
+    /// Our window got the background layer (before showing): order restacking
+    /// of the background service with the FALLBACK timeout
+    /// ([`wb::BG_RESTACK_FALLBACK_MS`]) and watch that it stays that way (the
+    /// service came up again, a monitor was connected). The real reason to
+    /// restack is the [`surface_shown`] notice: the host sends it when the
+    /// first frame (for video — a clip frame) is on screen; before it there is
+    /// nothing to show under the background service except a black window.
+    /// Outside Cinnamon on Wayland — nothing.
     pub fn surface_up(reason: &str) {
         if !wb::cinnamon_wayland_session_live() {
             return;
@@ -1232,8 +1273,9 @@ pub mod cinnamon_layer {
         spawn_output_watch();
     }
 
-    /// Первый кадр нашей поверхности на экране: уложить службу фона под неё
-    /// сейчас, а не по запасному сроку. Вне Cinnamon на Wayland — ничего.
+    /// The first frame of our surface on screen: lay the background service
+    /// under it now rather than by the fallback timeout. Outside Cinnamon on
+    /// Wayland — nothing.
     pub fn surface_shown(reason: &str) {
         if !wb::cinnamon_layer_shell_fact() {
             return;
@@ -1242,7 +1284,8 @@ pub mod cinnamon_layer {
     }
 
     struct Outputs {
-        /// Первый обход реестра закончен: дальше каждый `wl_output` — новый.
+        /// The first pass over the registry is over: from now on every `wl_output`
+        /// is new.
         ready: bool,
     }
 
@@ -1257,16 +1300,16 @@ pub mod cinnamon_layer {
         ) {
             if let wl_registry::Event::Global { interface, .. } = event {
                 if state.ready && interface == "wl_output" {
-                    // И у службы фона, и у нас на новом мониторе появится по
-                    // поверхности, кто позже — неизвестно: переставить.
+                    // Both the background service and we will get a surface on the new monitor,
+                    // and who comes later is unknown: restack.
                     wb::restack_cinnamon_background_soon("подключён монитор");
                 }
             }
         }
     }
 
-    /// Свой поток со своим подключением к композитору: новый `wl_output` —
-    /// перестановка фона. Один на процесс.
+    /// Our own thread with our own connection to the compositor: a new
+    /// `wl_output` means restacking the background. One per process.
     fn spawn_output_watch() {
         static STARTED: std::sync::Once = std::sync::Once::new();
         STARTED.call_once(|| {
@@ -1293,23 +1336,23 @@ pub mod cinnamon_layer {
     }
 }
 
-/// Один хост показа обоев на сеанс: замок `flock` в `$XDG_RUNTIME_DIR`.
-/// Решения (какой файл, кто берёт замок, кому слать сигнал) — ядра
-/// (`rexon_core::wallpaper_engine`, раздел «Один хост обоев на сеанс»);
-/// здесь системные вызовы.
+/// One wallpaper display host per session: a `flock` lock in
+/// `$XDG_RUNTIME_DIR`. The decisions (which file, who takes the lock, whom
+/// to send a signal) are the core's (`rexon_core::wallpaper_engine`, the
+/// "One wallpaper host per session" section); here are the system calls.
 pub mod session_lock {
     use rexon_core::wallpaper_engine as wpe;
     use std::io::{Read, Seek, Write};
     use std::os::fd::AsRawFd;
 
-    /// Сколько ждать, пока прежний хост выйдет по SIGTERM, прежде чем SIGKILL.
+    /// How long to wait for the previous host to exit on SIGTERM before SIGKILL.
     const TERM_WAIT_MS: u64 = 3000;
-    /// Сколько ждать после SIGKILL.
+    /// How long to wait after SIGKILL.
     const KILL_WAIT_MS: u64 = 1000;
     const POLL_MS: u64 = 50;
 
     fn try_lock(file: &std::fs::File) -> bool {
-        // SAFETY: живой дескриптор файла.
+        // SAFETY: a live file descriptor.
         unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 }
     }
 
@@ -1326,7 +1369,7 @@ pub mod session_lock {
         }
     }
 
-    /// PID держателя, если это наш хост и не мы сами.
+    /// The holder's PID, if it is our host and not ourselves.
     fn holder(file: &mut std::fs::File) -> Option<i32> {
         let mut text = String::new();
         file.seek(std::io::SeekFrom::Start(0)).ok()?;
@@ -1339,9 +1382,9 @@ pub mod session_lock {
         wpe::is_wallpaper_host_cmdline(&cmdline).then_some(pid)
     }
 
-    /// Взять замок сеанса, сменив прежний хост, и держать до выхода
-    /// процесса. Не вышло — показ всё равно идёт (лучше два хоста, чем ни
-    /// одного), строка в журнал.
+    /// Take the session lock, replacing the previous host, and hold it until
+    /// the process exits. If it fails, the display goes on anyway (better two
+    /// hosts than none), with a line in the log.
     pub fn take(mode: wpe::HostMode, args: &[String]) {
         if !wpe::host_takes_session_lock(mode, args) {
             return;
@@ -1351,8 +1394,8 @@ pub mod session_lock {
         else {
             return;
         };
-        // `File::options` открывает с O_CLOEXEC: помощники Chromium веб-режима
-        // замок не унаследуют и не продлят ему жизнь.
+        // `File::options` opens with O_CLOEXEC: the Chromium helpers of web mode
+        // will not inherit the lock and will not prolong its life.
         let mut file = match std::fs::File::options().read(true).write(true).create(true).truncate(false).open(&path) {
             Ok(f) => f,
             Err(e) => {
@@ -1367,16 +1410,16 @@ pub mod session_lock {
                         "wallpaper-host",
                         "в сеансе уже идёт хост обоев PID {pid} — сменяю его, двух показов разом не бывает"
                     );
-                    // SAFETY: обычный сигнал процессу, строка запуска которого — наш хост.
+                    // SAFETY: an ordinary signal to a process whose command line is our host.
                     unsafe { libc::kill(pid, libc::SIGTERM) };
                     if !wait_lock(&file, TERM_WAIT_MS) {
-                        // SAFETY: то же.
+                        // SAFETY: the same.
                         unsafe { libc::kill(pid, libc::SIGKILL) };
                         wait_lock(&file, KILL_WAIT_MS);
                     }
                 }
-                // Держатель не наш хост (PID из файла устарел, а замок держит
-                // кто-то ещё) — недолго подождать.
+                // The holder is not our host (the PID from the file is stale, and someone
+                // else holds the lock) — wait a little.
                 None => {
                     wait_lock(&file, KILL_WAIT_MS);
                 }
@@ -1390,53 +1433,59 @@ pub mod session_lock {
         let _ = file.seek(std::io::SeekFrom::Start(0));
         let _ = write!(file, "{}", std::process::id());
         let _ = file.flush();
-        // Замок живёт, пока открыт дескриптор: держим его до выхода процесса.
+        // The lock lives while the descriptor is open: we keep it until the
+        // process exits.
         std::mem::forget(file);
     }
 }
 
-/// Не закрывать приложение вместе с последним окном.
+/// Do not quit the application together with the last window.
 ///
-/// ⚠️ Обоям это обязательно, и вот почему. Окон у хоста столько, сколько
-/// мониторов: отключили монитор — окно уничтожается. При умолчании Qt
-/// («последнее окно закрыли — выходим») уход последнего монитора убил бы
-/// весь процесс обоев, и вернувшийся через секунду монитор остался бы
-/// пустым навсегда — перезапускать хост некому. Выход у обоев ровно один:
-/// сигнал от исполнителя (`rexon-core::wallpaper_exec`), а у прогонов —
-/// `Qt.exit` из QML.
+/// Warning: this is mandatory for wallpapers, and here is why. The host has
+/// as many windows as there are monitors: a monitor is disconnected — its
+/// window is destroyed. With Qt's default ("the last window closed — we
+/// quit") the departure of the last monitor would kill the whole wallpaper
+/// process, and a monitor coming back a second later would stay empty
+/// forever — there is nobody to restart the host. The wallpaper has exactly
+/// one exit: a signal from the executor (`rexon-core::wallpaper_exec`), and
+/// for runs — `Qt.exit` from QML.
 ///
-/// Звать ПОСЛЕ создания `QGuiApplication`.
+/// Call AFTER `QGuiApplication` is created.
 pub fn keep_alive_without_windows() {
     qobject::rexon_wp_set_quit_on_last_window_closed(false);
 }
 
-// ── Выход хоста ────────────────────────────────────────────────────────────
+// ── Host exit ──────────────────────────────────────────────────────────────
 
-/// Сколько даём Qt на разбор, прежде чем выйти силой.
+/// How long we give Qt for the teardown before exiting by force.
 ///
-/// Три секунды: честный разбор укладывается в десятки миллисекунд (замер на
-/// стенде), и даже разбор Chromium у веб-обоев — в доли секунды. Больше брать
-/// нельзя: исполнитель обоев считает хост живым, если тот не умер за секунду
-/// (`wallpaper_engine::SPAWN_ALIVE_GRACE_SEC`), и долгий отказ выглядел бы у
-/// человека как «обои применились».
+/// Three seconds: an honest teardown fits into tens of milliseconds
+/// (measured on the bench), and even the Chromium teardown of web
+/// wallpapers into fractions of a second. Taking more is not allowed: the
+/// wallpaper executor considers the host alive if it did not die within a
+/// second (`wallpaper_engine::SPAWN_ALIVE_GRACE_SEC`), and a long refusal
+/// would look to the user like "the wallpaper was applied".
 pub const QT_SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
 
-/// Код возврата, когда хост сломался изнутри (паника). 101 — то же число,
-/// которым закрывается всякая паникующая программа на Rust, и оно намеренно
-/// не пересекается с таблицей `wallpaper_engine::host_exit`.
+/// The exit code when the host broke from the inside (a panic). 101 is the
+/// same number every panicking Rust program exits with, and it deliberately
+/// does not overlap with the `wallpaper_engine::host_exit` table.
 pub const PANIC_EXIT: i32 = 101;
 
-/// Приговор вынесен: назвать код и не дать Qt задержать выход навсегда.
+/// The verdict is given: name the code and do not let Qt delay the exit
+/// forever.
 ///
-/// ⚠️ Зачем это есть. Замер 16.09.2026, стенд X11 с двумя экранами,
-/// сведёнными через `+xinerama`: хост обоев не заканчивался ВООБЩЕ — ни за
-/// 120 секунд. Стек живого процесса показал, что главный поток стоит в
-/// `QThread::wait()` внутри разрушения `QXcbEventQueue`, а сам поток очереди
-/// событий висит в `xcb_wait_for_event()` и разбудить его уже нечем. То есть
-/// зависал не показ, а РАЗБОР Qt на выходе. Навсегда висящий хост обоев —
-/// худший исход из возможных: обоев нет, процесс жив, снять его некому.
-/// Поэтому у разбора есть срок, а по его истечении — честная жалоба и выход
-/// с тем же приговором.
+/// Warning: why this exists. Measurement of 16.09.2026, an X11 bench with
+/// two screens joined through `+xinerama`: the wallpaper host did not finish
+/// AT ALL — not even in 120 seconds. The stack of the live process showed
+/// that the main thread stood in `QThread::wait()` inside the destruction of
+/// `QXcbEventQueue`, while the event queue thread itself hung in
+/// `xcb_wait_for_event()`, and there was nothing left to wake it up. That
+/// is, it was not the display that hung but Qt's TEARDOWN on exit. A
+/// wallpaper host hanging forever is the worst possible outcome: no
+/// wallpaper, the process is alive, and nobody can take it down. So the
+/// teardown has a deadline, and when it expires — an honest complaint and
+/// an exit with the same verdict.
 pub fn verdict(code: i32) -> i32 {
     std::thread::spawn(move || {
         std::thread::sleep(QT_SHUTDOWN_GRACE);
@@ -1446,26 +1495,29 @@ pub fn verdict(code: i32) -> i32 {
              приговор прежний, код {code}",
             QT_SHUTDOWN_GRACE.as_secs()
         );
-        // Буферы `_exit` не сбрасывает — делаем это сами, иначе жалоба
-        // потеряется ровно там, где она нужнее всего.
+        // `_exit` does not flush the buffers — we do it ourselves, otherwise the
+        // complaint would be lost exactly where it is needed most.
         use std::io::Write;
         let _ = std::io::stderr().flush();
-        // ⚠️ Именно `_exit`, а не `abort`: SIGABRT — это дамп и окно «программа
-        // упала» перед человеком, а мы закрываемся по своему решению.
+        // Warning: precisely `_exit`, not `abort`: SIGABRT means a dump and a "the
+        // program crashed" window in front of the user, while we close by our own
+        // decision.
         unsafe { libc::_exit(code) };
     });
     code
 }
 
-/// Паника хоста обоев закрывает процесс сразу, не раскручивая стек.
+/// A panic of the wallpaper host closes the process at once, without
+/// unwinding the stack.
 ///
-/// ⚠️ Раскрутка стека прошла бы через разрушение `QGuiApplication`, а оно на
-/// X11 ждёт поток очереди событий — и именно на этом ожидании хост зависал
-/// навсегда (разбор — у [`verdict`]). Ни один вид обоев не выигрывает от
-/// раскрутки: показывать после паники нечего, а исполнитель обоев
-/// (`rexon-core::wallpaper_exec`) поднимет хост заново сам.
+/// Warning: unwinding would go through the destruction of
+/// `QGuiApplication`, and on X11 it waits for the event queue thread — and
+/// it was exactly on this wait that the host hung forever (the analysis is
+/// at [`verdict`]). No kind of wallpaper benefits from unwinding: there is
+/// nothing to show after a panic, and the wallpaper executor
+/// (`rexon-core::wallpaper_exec`) will bring the host up again by itself.
 ///
-/// Звать первой строкой `main`, до всякого Qt.
+/// Call as the first line of `main`, before any Qt.
 pub fn install_panic_guard() {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -1481,26 +1533,30 @@ pub fn install_panic_guard() {
     }));
 }
 
-/// Завести журнал хоста обоев — ОБЩИЙ файл Rexon (`rexon_core::applog`,
-/// `~/.local/state/rexon/rexon.log`), а не свой.
+/// Set up the wallpaper host log — the SHARED Rexon file
+/// (`rexon_core::applog`, `~/.local/state/rexon/rexon.log`), not a separate
+/// one.
 ///
-/// Почему общий: хост — продолжение действия человека в окне Rexon
-/// («включить обои»), и разбирающему нужна одна хронология: что окно
-/// попросило и что хост на это сделал, в одном файле, по времени. Строки
-/// процессов различает номер процесса в каждой строке и область
-/// `wallpaper-host`; кнопка «Скопировать журнал» берёт один файл. Ротация та
-/// же — у файла она общая, соседний процесс её учитывает
+/// Why shared: the host is a continuation of the user's action in the Rexon
+/// window ("turn on the wallpaper"), and whoever analyses it needs one
+/// chronology: what the window asked and what the host did about it, in one
+/// file, by time. The lines of the processes are distinguished by the
+/// process number in every line and the `wallpaper-host` area; the "Copy
+/// log" button takes one file. The rotation is the same — it is shared for
+/// the file, and the neighbouring process takes it into account
 /// (`applog::rotate_sink`).
 ///
-/// Зачем вообще: исполнитель запускает хост с потоком ошибок в `/dev/null`
-/// (`wallpaper_exec::LiveSys::spawn` — трубу на живых обоях никто не
-/// читает), и до этой правки всё, что хост говорил о себе (`REXON-WPH-…`
-/// из Rust и из QML, сообщения Qt и FFmpeg), пропадало без следа. Теперь
-/// строки Rust — в файл, а дескриптор 2 при `/dev/null` уводится туда же
-/// тем же путём, что у окна (`cli::install_qt_message_logger`), поэтому
-/// доходят и строки QML. Из терминала поток ошибок не перехватывается.
+/// Why at all: the executor launches the host with the error stream into
+/// `/dev/null` (`wallpaper_exec::LiveSys::spawn` — nobody reads a pipe on
+/// live wallpapers), and before this change everything the host said about
+/// itself (`REXON-WPH-…` from Rust and from QML, Qt and FFmpeg messages)
+/// vanished without a trace. Now the Rust lines go to the file, and
+/// descriptor 2 at `/dev/null` is redirected there too by the same path as
+/// for the window (`cli::install_qt_message_logger`), so the QML lines get
+/// there as well. From a terminal the error stream is not intercepted.
 ///
-/// ⚠️ Самопроверка (`--selftest`) в профиль не пишет — как и у окна.
+/// Warning: the self-test (`--selftest`) does not write into the profile —
+/// just like the window's.
 pub fn install_host_log(selftest: bool) {
     if selftest {
         return;
@@ -1510,60 +1566,60 @@ pub fn install_host_log(selftest: bool) {
     rexon_core::cli::install_qt_message_logger();
 }
 
-/// Голое окно Flash-режима (`--mode swf`): создание, показ, размер и
-/// native-хэндлы для wgpu. Шим — `cpp/rexon_wallpaper_host.*`; решения —
-/// у вызывающего (`src/bin/wallpaper_host/swf.rs`).
+/// The bare window of Flash mode (`--mode swf`): creation, showing, size and
+/// native handles for wgpu. The shim is `cpp/rexon_wallpaper_host.*`; the
+/// decisions are the caller's (`src/bin/wallpaper_host/swf.rs`).
 pub mod swf_window {
     use super::qobject::{self, QObject};
 
-    /// Окно без QML и без буфера Qt на экране `screen_index` (< 0 —
-    /// основной); `width`/`height` ≤ 0 — размер и угол этого экрана. Нужен
-    /// живой `QGuiApplication`.
+    /// A window without QML and without a Qt buffer on screen `screen_index`
+    /// (< 0 — the primary one); `width`/`height` ≤ 0 mean the size and corner of
+    /// that screen. A live `QGuiApplication` is needed.
     ///
     /// # Safety
-    /// Зовётся в главном потоке после создания приложения Qt.
+    /// Called in the main thread after the Qt application is created.
     pub unsafe fn create(width: i32, height: i32, screen_index: i32) -> *mut QObject {
         unsafe { qobject::rexon_wp_swf_window_new(width, height, screen_index) }
     }
 
-    /// Сколько экранов сейчас у сеанса; 0 — мониторов нет вовсе.
+    /// How many screens the session has right now; 0 means no monitors at all.
     pub fn screen_count() -> i32 {
         qobject::rexon_wp_screen_count()
     }
 
     /// # Safety
-    /// `window` — окно из [`create`].
+    /// `window` is a window from [`create`].
     pub unsafe fn show(window: *mut QObject) {
         unsafe { qobject::rexon_wp_swf_window_show(window) }
     }
 
-    /// Убрать окно совсем — видеокарта отказалась в него рисовать.
+    /// Remove the window entirely — the GPU refused to draw into it.
     ///
     /// # Safety
-    /// `window` — окно из [`create`], и больше к нему не обращаются.
+    /// `window` is a window from [`create`], and it is not accessed any more.
     pub unsafe fn close(window: *mut QObject) {
         unsafe { qobject::rexon_wp_swf_window_close(window) }
     }
 
     /// # Safety
-    /// `window` — окно из [`create`].
+    /// `window` is a window from [`create`].
     pub unsafe fn exposed(window: *mut QObject) -> bool {
         unsafe { qobject::rexon_wp_swf_window_exposed(window) }
     }
 
-    /// Размер в физических пикселях.
+    /// Size in physical pixels.
     ///
     /// # Safety
-    /// `window` — окно из [`create`].
+    /// `window` is a window from [`create`].
     pub unsafe fn size(window: *mut QObject) -> (i32, i32) {
         unsafe { (qobject::rexon_wp_swf_window_width(window), qobject::rexon_wp_swf_window_height(window)) }
     }
 
-    /// Идентификатор окна X11 (0 — не X11). Окно платформы создаётся при
-    /// первом вызове, показа для этого не нужно.
+    /// X11 window identifier (0 — not X11). The platform window is created on
+    /// the first call; showing is not needed for this.
     ///
     /// # Safety
-    /// `window` — окно из [`create`].
+    /// `window` is a window from [`create`].
     pub unsafe fn x11_window_id(window: *mut QObject) -> i64 {
         unsafe { qobject::rexon_wp_window_id(window) }
     }
@@ -1572,43 +1628,44 @@ pub mod swf_window {
         qobject::rexon_wp_process_events();
     }
 
-    /// `wl_display*` приложения; 0 — не Wayland.
+    /// The application's `wl_display*`; 0 means not Wayland.
     pub fn wayland_display() -> usize {
         qobject::rexon_wp_wl_display()
     }
 
-    /// `wl_surface*` окна; 0 — не Wayland или окна нет.
+    /// The window's `wl_surface*`; 0 means not Wayland or there is no window.
     ///
     /// # Safety
-    /// `window` — окно из [`create`], уже созданное платформой (показанное).
+    /// `window` is a window from [`create`], already created by the platform
+    /// (shown).
     pub unsafe fn wayland_surface(window: *mut QObject) -> usize {
         unsafe { qobject::rexon_wp_wl_surface(window) }
     }
 
-    /// `xcb_connection_t*` приложения; 0 — не X11.
+    /// The application's `xcb_connection_t*`; 0 means not X11.
     pub fn xcb_connection() -> usize {
         qobject::rexon_wp_xcb_connection()
     }
 }
 
-// ── Разбор аргументов ──────────────────────────────────────────────────────
+// ── Argument parsing ───────────────────────────────────────────────────────
 
-/// Ключи командной строки хоста.
+/// Command line keys of the host.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Cli {
     pub path: String,
     pub windowed: bool,
     pub verbose: bool,
-    /// `--audio` / `--no-audio`; `None` — как записано в `project.json`.
+    /// `--audio` / `--no-audio`; `None` — as written in `project.json`.
     pub audio: Option<bool>,
-    /// `--volume` в долях единицы; `None` — как записано в `project.json`.
+    /// `--volume` as a fraction of one; `None` — as written in `project.json`.
     pub volume: Option<f64>,
-    /// Самопроверка: через сколько миллисекунд окно отчитается и закроется.
+    /// Self-test: after how many milliseconds the window reports and closes.
     pub selftest_ms: i64,
 }
 
-/// Текст `--help` — ОДИН на хост обоев и все его режимы. По-человечески и
-/// по-русски (правило #13).
+/// The `--help` text — ONE for the wallpaper host and all its modes. In
+/// human terms and in Russian (rule #13).
 pub const USAGE: &str = "\
 Живые обои Rexon: видео, веб-страницы, Flash и сцены движка обоев.
 
@@ -1644,12 +1701,13 @@ pub const USAGE: &str = "\
 в файле нет; веб: 5 — страница не загрузилась; Flash: 7 — нет видеокарты
 с Vulkan, способной рисовать обои, 8 — ролик не загрузился.";
 
-/// Снять с командной строки ключ режима (`--mode video|web` или
-/// `--mode=…`) и вернуть режим с остальными аргументами.
+/// Take the mode key off the command line (`--mode video|web` or
+/// `--mode=…`) and return the mode with the remaining arguments.
 ///
-/// Без ключа — [`HostMode::DEFAULT`] (видео): прежний контракт бинаря, и
-/// такую строку уже хранит расширение оболочки в gsettings покупателя.
-/// Значения режима разбирает ядро — второго списка режимов здесь нет.
+/// Without the key — [`HostMode::DEFAULT`] (video): the binary's former
+/// contract, and the shell extension already stores such a line in the
+/// customer's gsettings. The mode values are parsed by the core — there is
+/// no second list of modes here.
 pub fn take_mode(argv: &[String]) -> Result<(HostMode, Vec<String>), String> {
     let flag = rexon_core::wallpaper_engine::HOST_MODE_FLAG;
     let mut mode = None;
@@ -1675,7 +1733,7 @@ pub fn take_mode(argv: &[String]) -> Result<(HostMode, Vec<String>), String> {
     Ok((mode.unwrap_or(HostMode::DEFAULT), rest))
 }
 
-/// Имена режимов для сообщений — из ядра, через «|».
+/// Mode names for messages — from the core, joined with "|".
 fn mode_names() -> String {
     HostMode::ALL
         .iter()
@@ -1684,13 +1742,14 @@ fn mode_names() -> String {
         .join("|")
 }
 
-/// Разбор аргументов режима видео (ключ `--mode` уже снят [`take_mode`]).
-/// Ошибка — готовая строка для человека.
+/// Parsing the arguments of video mode (the `--mode` key has already been
+/// taken off by [`take_mode`]). An error is a ready string for the user.
 ///
-/// ⚠️ `--audio` и `--volume` принимаются именно здесь: ими зовёт хост
-/// движок обоев (`rexon-core::wallpaper_engine::video_native_plan`), а
-/// прежний разбор на Python их не знал и падал — видео-обои со звуком не
-/// стартовали вовсе.
+/// Warning: `--audio` and `--volume` are accepted exactly here: the
+/// wallpaper engine calls the host with them
+/// (`rexon-core::wallpaper_engine::video_native_plan`), while the former
+/// Python parser did not know them and crashed — video wallpapers with
+/// sound did not start at all.
 pub fn parse_args(argv: &[String]) -> Result<Cli, String> {
     let mut cli = Cli::default();
     let mut it = argv.iter();
@@ -1731,8 +1790,8 @@ pub fn parse_args(argv: &[String]) -> Result<Cli, String> {
     Ok(cli)
 }
 
-/// Умолчание паузы самопроверки: столько нужно, чтобы дошёл `configure`
-/// композитора и проигрыватель успел отдать первый кадр.
+/// Default self-test pause: that much is needed for the compositor's
+/// `configure` to arrive and for the player to deliver the first frame.
 pub const DEFAULT_SELFTEST_MS: i64 = 3000;
 
 fn parse_volume(raw: &str) -> Result<f64, String> {
@@ -1740,19 +1799,19 @@ fn parse_volume(raw: &str) -> Result<f64, String> {
         .trim()
         .parse()
         .map_err(|_| format!("громкость «{raw}» — не число"))?;
-    // Приведение 0..100 → 0..1 и зажим в границы делает ядро: то же
-    // правило, что для громкости из project.json.
+    // Converting 0..100 → 0..1 and clamping to the bounds is done by the core:
+    // the same rule as for the volume from project.json.
     Ok(rexon_core::wallpaper::as_volume01(
         Some(&Value::from(v)),
         rexon_core::wallpaper::DEFAULT_VOLUME,
     ))
 }
 
-/// Наложить ключи командной строки на свойства обоев.
+/// Overlay the command line keys onto the wallpaper properties.
 ///
-/// Именно наложить, а не завести отдельную ветку: дальше и то, и другое
-/// разбирает один и тот же `video_context_properties` ядра, поэтому
-/// «звук из ключа» и «звук из project.json» не могут разойтись.
+/// Precisely overlay rather than create a separate branch: further on both
+/// are parsed by the same core `video_context_properties`, so "sound from
+/// the key" and "sound from project.json" cannot diverge.
 pub fn apply_cli_overrides(props: &mut Map<String, Value>, cli: &Cli) {
     if let Some(audio) = cli.audio {
         props.insert("audioenabled".to_string(), Value::Bool(audio));
@@ -1762,13 +1821,15 @@ pub fn apply_cli_overrides(props: &mut Map<String, Value>, cli: &Cli) {
     }
 }
 
-/// Значение свойства QML в вариант Qt — ОДНА функция на все хосты обоев.
+/// A QML property value into a Qt variant — ONE function for all wallpaper
+/// hosts.
 ///
-/// Развилка здесь ровно одна, и она неочевидная: локальный путь надо
-/// заворачивать `QUrl::from_local_file`, а готовую ссылку — нет. Второй
-/// копией это правило однажды уже разъехалось бы: веб-обои принимают и то, и
-/// другое, и `from_local_file("https://…")` даёт «file:///https:/…», то есть
-/// молча пустую страницу вместо честного отказа (правило #12).
+/// There is exactly one branching here, and it is not obvious: a local path
+/// has to be wrapped with `QUrl::from_local_file`, and a ready link must
+/// not. A second copy of this rule would have drifted apart already once:
+/// web wallpapers accept both, and `from_local_file("https://…")` gives
+/// "file:///https:/…", that is, a silently empty page instead of an honest
+/// refusal (rule #12).
 pub fn qml_value_to_variant(value: &rexon_core::wallpaper::QmlValue) -> cxx_qt_lib::QVariant {
     use cxx_qt_lib::{QString, QUrl, QVariant};
     use rexon_core::wallpaper::QmlValue;
@@ -1783,14 +1844,14 @@ pub fn qml_value_to_variant(value: &rexon_core::wallpaper::QmlValue) -> cxx_qt_l
     }
 }
 
-/// Как окно попадает на задний план.
+/// How the window gets into the background.
 pub const PLACEMENT_LAYER: &str = "layer";
 pub const PLACEMENT_X11: &str = "x11";
 pub const PLACEMENT_OFFSCREEN: &str = "offscreen";
 
-/// Способ показа по решению ядра. Ядро отвечает именем QML-файла прежней
-/// раскладки (три файла), здесь оно переводится в один из трёх режимов
-/// единственного файла.
+/// The display method by the core's decision. The core answers with the QML
+/// file name of the former layout (three files); here it is translated into
+/// one of the three modes of the single file.
 pub fn placement(has_mmap_output: bool, wayland: bool) -> &'static str {
     match rexon_core::wallpaper::video_qml_file(has_mmap_output, wayland) {
         rexon_core::wallpaper::QML_OFFSCREEN => PLACEMENT_OFFSCREEN,
@@ -1799,20 +1860,22 @@ pub fn placement(has_mmap_output: bool, wayland: bool) -> &'static str {
     }
 }
 
-/// Способ показа для хоста обоев с учётом `--windowed` — ОДИН на видео и
-/// веб. Отладочное окно — это окно на экране, поэтому поток кадров оно
-/// отменяет: иначе на платформе `offscreen` его просто не было бы видно.
-/// (Прежде так решал только веб-хост, видео-хост уводил `--windowed` при
-/// заданном `REXON_WP_OUTPUT` в офскрин.)
+/// The display method for the wallpaper host taking `--windowed` into
+/// account — ONE for video and web. A debug window is a window on screen,
+/// so it cancels the frame stream: otherwise on the `offscreen` platform it
+/// would simply not be visible. (Previously only the web host decided this
+/// way; the video host moved `--windowed` to offscreen when
+/// `REXON_WP_OUTPUT` was set.)
 pub fn host_placement(has_mmap_output: bool, windowed: bool, wayland: bool) -> &'static str {
     placement(has_mmap_output && !windowed, wayland)
 }
 
-/// Выставить платформу Qt под способ показа и режим хоста. Звать ДО создания
-/// QGuiApplication — платформу выбирает его конструктор. Решение — ядра
-/// (`wallpaper_mmap::host_qpa_platform`: видео и Flash в потоке — `offscreen`,
-/// веб — платформа сеанса под `QQuickRenderControl`), здесь только наблюдение
-/// окружения и запись переменной.
+/// Set the Qt platform for the display method and the host mode. Call
+/// BEFORE creating QGuiApplication — its constructor chooses the platform.
+/// The decision is the core's (`wallpaper_mmap::host_qpa_platform`: video
+/// and Flash in stream mode — `offscreen`, web — the session platform under
+/// `QQuickRenderControl`), here there is only observing the environment and
+/// writing the variable.
 pub fn prepare_qpa_platform(placement: &str, mode: rexon_core::wallpaper_engine::HostMode) {
     let env = |name: &str| std::env::var(name).unwrap_or_default();
     let current = std::env::var("QT_QPA_PLATFORM").ok();
@@ -1830,8 +1893,8 @@ pub fn prepare_qpa_platform(placement: &str, mode: rexon_core::wallpaper_engine:
                  в режиме потока кадров окна на экране быть не должно"
             );
         }
-        // SAFETY: зовётся из main до создания приложения Qt и до любых
-        // потоков — читателей окружения ещё нет.
+        // SAFETY: called from main before the Qt application is created and before
+        // any threads — there are no readers of the environment yet.
         unsafe { std::env::set_var("QT_QPA_PLATFORM", platform) };
     }
 }
@@ -1842,8 +1905,8 @@ mod tests {
 
     #[test]
     fn ключи_звука_принимаются() {
-        // Именно та строка, которой зовёт движок обоев. Прежний хост на ней
-        // выходил с ошибкой — видео-обои со звуком не запускались.
+        // Exactly the line the wallpaper engine calls with. The former host exited
+        // with an error on it — video wallpapers with sound did not start.
         let argv = [
             "/v.mp4".to_string(),
             "--audio".to_string(),
@@ -1860,9 +1923,10 @@ mod tests {
     fn громкость_в_сотнях_приводится_как_в_ядре() {
         let cli = parse_args(&["/v.mp4".into(), "--volume=70".into()]).unwrap();
         assert_eq!(cli.volume, Some(0.7));
-        // Мусор — не повод остаться без обоев, но и не повод молча играть:
-        // ключ разбирается строго, а вот значение из project.json ядро
-        // откатывает к умолчанию. Это разные источники.
+        // Garbage is no reason to be left without a wallpaper, but no reason to
+        // play silently either: the key is parsed strictly, whereas a value from
+        // project.json is rolled back to the default by the core. These are
+        // different sources.
         assert!(parse_args(&["/v.mp4".into(), "--volume=трах".into()]).is_err());
     }
 
@@ -1914,8 +1978,8 @@ mod tests {
         list.iter().map(|s| s.to_string()).collect()
     }
 
-    /// Строки, которыми ядро зовёт хост, разбираются в свой режим, а ключ
-    /// режима не доезжает до разбора режима.
+    /// The lines the core calls the host with are parsed into their mode, and
+    /// the mode key does not reach the mode's parser.
     #[test]
     fn режим_снимается_с_командной_строки() {
         let (mode, rest) = take_mode(&args(&["--mode", "web", "https://a"])).unwrap();
@@ -1925,7 +1989,7 @@ mod tests {
             take_mode(&args(&["--mode=video", "/v.mp4", "--no-audio"])).unwrap();
         assert_eq!(mode, HostMode::Video);
         assert_eq!(rest, args(&["/v.mp4", "--no-audio"]));
-        // Строка ядра целиком (без имени бинаря) проходит оба разбора.
+        // The core's whole line (without the binary name) passes both parsers.
         let argv = rexon_core::wallpaper_engine::video_host_argv("/h", "/v.mp4", false);
         let (mode, rest) = take_mode(&argv[1..]).unwrap();
         assert_eq!(mode, HostMode::Video);
@@ -1934,7 +1998,7 @@ mod tests {
         let (mode, rest) = take_mode(&argv[1..]).unwrap();
         assert_eq!(mode, HostMode::Web);
         assert_eq!(crate::web_host::parse_args(&rest).unwrap().target, "/i.html");
-        // Flash: строка ядра `--mode swf <файл>` и ключи звука — тот же разбор, что у видео.
+        // Flash: the core's line `--mode swf <file>` and the sound keys — the same parsing as for video.
         let argv = rexon_core::wallpaper_engine::wallpaper_host_argv("/h", HostMode::Swf, "/r.swf");
         let (mode, rest) = take_mode(&argv[1..]).unwrap();
         assert_eq!(mode, HostMode::Swf);
@@ -1943,8 +2007,9 @@ mod tests {
         assert_eq!((cli.audio, cli.volume), (Some(true), Some(0.3)));
     }
 
-    /// Без ключа — видео: прежний контракт бинаря, такую строку хранит
-    /// расширение оболочки. Мусор и повтор — ошибка, а не молчаливое видео.
+    /// Without the key — video: the binary's former contract, the shell
+    /// extension stores such a line. Garbage and a repeat are an error, not a
+    /// silent video.
     #[test]
     fn без_режима_видео_а_мусор_отказ() {
         let (mode, rest) = take_mode(&args(&["/v.mp4"])).unwrap();
@@ -1958,7 +2023,8 @@ mod tests {
         assert!(take_mode(&args(&["--mode=web", "--mode", "video", "/v"])).is_err());
     }
 
-    /// Справка одна и называет все режимы и все коды возврата таблицы ядра.
+    /// The help is one, and it names all modes and all exit codes of the core's
+    /// table.
     #[test]
     fn справка_одна_на_все_режимы() {
         use rexon_core::wallpaper_engine::host_exit;
@@ -1992,10 +2058,11 @@ mod tests {
 
     #[test]
     fn отладочное_окно_отменяет_поток_кадров_у_обоих_хостов() {
-        // Поток кадров без --windowed — офскрин (окна на экране нет).
+        // A frame stream without --windowed — offscreen (there is no window on
+        // screen).
         assert_eq!(host_placement(true, false, true), PLACEMENT_OFFSCREEN);
-        // --windowed при заданном REXON_WP_OUTPUT — окно на экране, иначе на
-        // платформе offscreen его просто не было бы видно.
+        // --windowed with REXON_WP_OUTPUT set — a window on screen, otherwise on
+        // the offscreen platform it would simply not be visible.
         assert_eq!(host_placement(true, true, true), PLACEMENT_LAYER);
         assert_eq!(host_placement(true, true, false), PLACEMENT_X11);
         assert_eq!(host_placement(false, false, true), PLACEMENT_LAYER);

@@ -1,70 +1,74 @@
-// rexon-gui — GUI-слой Rexon на Rust: QObject'ы и модели списков для QML
-// через cxx-qt. Целевая картина миграции (решение 2026-07-29): Rust-ядро +
-// cxx-qt + существующий QML, уходит только PySide6.
+// rexon-gui — the Rexon GUI layer in Rust: QObjects and list models for
+// QML through cxx-qt. The target picture of the migration (decision of
+// 2026-07-29): a Rust core + cxx-qt + the existing QML; only PySide6 goes
+// away.
 //
-// Этот крейт — фундамент замены Python-моста
+// This crate is the foundation for replacing the Python bridge
 // rexon/qt_wallpaper_engine/qml_ui/bridge.py.
 //
-// Логики здесь нет и не будет: модели только раскладывают по ролям то, что
-// посчитало rexon-core. Это условие проверяемости — ядро тестируется без Qt.
+// There is and will be no logic here: the models only lay out by roles what
+// rexon-core computed. This is a condition of testability — the core is
+// tested without Qt.
 
-// ⚠️ ССЫЛКА НИЖЕ ОБЯЗАТЕЛЬНА, И ЭТО НЕ ФОРМАЛЬНОСТЬ. QApplication на Rust
-// живёт в cxx-qt-lib-extras, и пользуется ей ОДИН бинарь — главное окно.
-// Но инициализатор крейта, который cxx-qt-build вписывает в rexon-gui, зовёт
-// инициализатор extras ВСЕГДА, а его статический архив линкуется только к
-// тем артефактам, чей Rust-код на крейт ссылается. Без этой строки падала
-// линковка ВСЕГО пакета — и чужих бинарей тоже (`we-socket-probe`,
-// `rexon-wallpaper-host`), с «undefined symbol:
-// cxx_qt_init_crate_cxx_qt_lib_extras», причём на `cargo build --lib` этой
-// поломки не видно вовсе. Убирать нельзя, даже если «никто не использует».
+// Warning: THE REFERENCE BELOW IS MANDATORY, AND IT IS NOT A FORMALITY.
+// QApplication in Rust lives in cxx-qt-lib-extras, and ONE binary uses it —
+// the main window. But the crate initializer that cxx-qt-build writes into
+// rexon-gui ALWAYS calls the extras initializer, while its static archive
+// is linked only into the artefacts whose Rust code references the crate.
+// Without this line linking of the WHOLE package failed — of other
+// binaries too (`we-socket-probe`, `rexon-wallpaper-host`), with "undefined
+// symbol: cxx_qt_init_crate_cxx_qt_lib_extras", and with `cargo build --lib`
+// this breakage is not visible at all. It must not be removed, even if
+// "nobody uses it".
 use cxx_qt_lib_extras as _;
 
 unsafe extern "C" {
-    /// Регистрация типов в `waywallen.ui` (cpp/rexon_register_we.cpp).
+    /// Registration of the types in `waywallen.ui` (cpp/rexon_register_we.cpp).
     fn rexon_do_register_we_types();
 }
 
-/// Зарегистрировать типы вкладки обоев в `waywallen.ui`.
+/// Register the wallpaper tab's types in `waywallen.ui`.
 ///
-/// Обычный `extern "C"`, а не мост cxx: регистрация не передаёт и не
-/// возвращает ничего, генератору тут работы нет.
+/// An ordinary `extern "C"`, not a cxx bridge: registration passes and
+/// returns nothing, there is no work for the generator here.
 ///
-/// Звать ОДИН раз, до загрузки QML, из главного потока с живым
-/// `QGuiApplication` (`we_env::prepare_process`). Порядок важен: сначала
-/// регистрация всех типов, потом создание движка QML, иначе движок встаёт
-/// в `QQmlThread` на дедлоке глобальной регистрации Qt-Protobuf.
+/// Call ONCE, before loading QML, from the main thread with a live
+/// `QGuiApplication` (`we_env::prepare_process`). Order matters: first
+/// register all types, then create the QML engine, otherwise the engine
+/// deadlocks in `QQmlThread` on the global Qt Protobuf registration.
 pub fn register_we_types() {
     unsafe { rexon_do_register_we_types() }
 }
 
-/// Смена скина на лету: один реестр на все страницы QML.
+/// Changing the skin on the fly: one registry for all QML pages.
 ///
-/// ⚠️ Зачем вообще. Вкладки на виджетах перекрашиваются в тот же миг, когда
-/// покупатель выбрал скин в «Настройках» (`ui_base.apply_skin` →
-/// `QApplication.setPalette`). Перенесённые вкладки на QML брали палитру
-/// свойством `palette`, объявленным `CONSTANT`, — сигнала об изменении не
-/// было вовсе, привязки не пересчитывались, и открытая вкладка оставалась
-/// в цветах прошлого скина до переоткрытия. Половина окна в новом скине,
-/// половина в старом — это покупатель считает поломкой (правило #13).
+/// Warning: why at all. Widget tabs are repainted the moment the customer
+/// chooses a skin in "Settings" (`ui_base.apply_skin` →
+/// `QApplication.setPalette`). The ported QML tabs took the palette from a
+/// `palette` property declared `CONSTANT` — there was no change signal at
+/// all, the bindings did not recompute, and an open tab stayed in the
+/// previous skin's colours until reopened. Half the window in the new skin
+/// and half in the old — the customer counts that as a breakage (rule #13).
 ///
-/// ⭐ Почему реестр, а не по правке в каждой странице (правило #12).
-/// Страницы одинаково берут цвета (`ui_base::active_skin_colors`), и
-/// одинаково же в них жил прошлый дефект с запечённым скином по умолчанию
-/// (коммит 3ee6011). Здесь механизм ОДИН: страница подписывается одной
-/// строкой в `Initialize` и снимается одной в `Drop`, а следующая
-/// перенесённая вкладка получает перекраску теми же двумя строками — не
-/// пятой копией рассылки.
+/// ⭐ Why a registry and not an edit in every page (rule #12). Pages take
+/// their colours the same way (`ui_base::active_skin_colors`), and the
+/// previous defect with a baked-in default skin lived in them the same way
+/// too (commit 3ee6011). Here the mechanism is ONE: a page subscribes with
+/// one line in `Initialize` and unsubscribes with one in `Drop`, and the
+/// next ported tab gets repainting with the same two lines — not a fifth
+/// copy of the broadcast.
 ///
-/// Замыкание, а не `CxxQtThread<T>` конкретного типа: подписаны РАЗНЫЕ
-/// типы страниц, а обобщить хранение по типу нельзя — cxx-qt печатает свой
-/// алиас на каждый QObject. Тот же приём, что у реестра прогресса
-/// (`query_base::progress`) и склада приобретений (`remote_list_model`).
+/// A closure rather than a `CxxQtThread<T>` of a concrete type: DIFFERENT
+/// page types are subscribed, and storage cannot be made generic over the
+/// type — cxx-qt emits its own alias for every QObject. The same technique
+/// as the progress registry (`query_base::progress`) and the acquisition
+/// store (`remote_list_model`).
 pub mod skin {
     use core::pin::Pin;
     use std::sync::{Mutex, OnceLock};
 
-    /// Толчок одной подписанной странице. `Err(())` — объект умер, запись
-    /// пора снять.
+    /// A push to one subscribed page. `Err(())` means the object died and the
+    /// entry should be removed.
     type Notify = Box<dyn Fn() -> Result<(), ()> + Send>;
 
     #[derive(Default)]
@@ -78,14 +82,14 @@ pub mod skin {
         REGISTRY.get_or_init(|| Mutex::new(Registry::default()))
     }
 
-    /// Подписать живую страницу на смену скина. Возвращает номер записи —
-    /// его страница обязана снять в `Drop`.
+    /// Subscribe a live page to skin changes. Returns the entry number — the
+    /// page must remove it in `Drop`.
     ///
-    /// `emit` — сигнал `paletteChanged` этой страницы. Доставка идёт через
-    /// `CxxQtThread::queue`: на уже умершем объекте она возвращает
-    /// типизированную ошибку `ObjectDestroyed`, а не падает, поэтому ни
-    /// `unwrap()`, ни предварительного `is_destroyed()` здесь нет (между
-    /// проверкой и постановкой объект успевает умереть).
+    /// `emit` is this page's `paletteChanged` signal. Delivery goes through
+    /// `CxxQtThread::queue`: on an already dead object it returns the typed
+    /// error `ObjectDestroyed` rather than crashing, so there is neither
+    /// `unwrap()` nor a preceding `is_destroyed()` here (between the check and
+    /// the queueing the object may die).
     pub fn watch<T>(handle: cxx_qt::CxxQtThread<T>, emit: fn(Pin<&mut T>)) -> u64
     where
         T: cxx_qt::Threading + 'static,
@@ -104,7 +108,7 @@ pub mod skin {
         id
     }
 
-    /// Снять подписку. Идемпотентно: `0` — страница не подписывалась.
+    /// Remove a subscription. Idempotent: `0` means the page never subscribed.
     pub fn unwatch(id: u64) {
         if id == 0 {
             return;
@@ -113,7 +117,7 @@ pub mod skin {
         reg.entries.retain(|(entry, _)| *entry != id);
     }
 
-    /// Сколько страниц сейчас подписано (для проверок).
+    /// How many pages are subscribed right now (for checks).
     pub fn watching() -> usize {
         registry()
             .lock()
@@ -127,24 +131,24 @@ pub mod skin {
         fn rexon_set_app_link_color(set: bool, r: u8, g: u8, b: u8);
     }
 
-    /// Цвет ссылок форматированного текста — в палитру приложения по
-    /// действующему скину (`ui_base::active_skin_link_rgb`). Одна точка на
-    /// все `Text.RichText` всех вкладок и окон: «О программе», описания и
-    /// комментарии тем, окна расширений, вендорные страницы.
+    /// Link colour of formatted text — into the application palette by the
+    /// active skin (`ui_base::active_skin_link_rgb`). One point for all
+    /// `Text.RichText` of all tabs and windows: "About", theme descriptions and
+    /// comments, extension windows, vendored pages.
     ///
-    /// Звать из главного потока: при старте ДО загрузки QML
-    /// (`we_env::prepare_process`) и на смене скина ([`dispatch`]). Уже
-    /// показанный текст Qt не перекрашивает — цвет попадает в документ при
-    /// разборе HTML, и открытая вкладка возьмёт новый цвет со следующей
-    /// сменой текста.
+    /// Call from the main thread: at start-up BEFORE loading QML
+    /// (`we_env::prepare_process`) and on a skin change ([`dispatch`]). Qt does
+    /// not repaint text already shown — the colour gets into the document when
+    /// the HTML is parsed, and an open tab will take the new colour with the
+    /// next text change.
     pub fn apply_app_palette() {
         let link = rexon_core::ui_base::active_skin_link_rgb();
         let (r, g, b) = link.unwrap_or((0, 0, 0));
         unsafe { rexon_set_app_link_color(link.is_some(), r, g, b) }
     }
 
-    /// Толкнуть все живые страницы: скин сменился, палитру пересчитать.
-    /// Возвращает число оповещённых; мёртвые записи снимаются заодно.
+    /// Push all live pages: the skin changed, recompute the palette. Returns
+    /// the number notified; dead entries are removed along the way.
     pub fn dispatch() -> usize {
         apply_app_palette();
         let mut told = 0usize;
@@ -160,11 +164,12 @@ pub mod skin {
     }
 }
 
-/// Одна дверь к всплывающей плашке состояния для всех вкладок.
+/// One door to the pop-up status banner for all tabs.
 ///
-/// Запасные шрифты письменностей справа налево на всё приложение. Какие
-/// семейства — решает ядро (`qt_app::RTL_FALLBACK_FONTS`); здесь только вызов
-/// Qt через `cpp/rexon_gui_factory.cpp` (почему не мостом cxx — там же).
+/// Fallback fonts of right-to-left scripts for the whole application. Which
+/// families is decided by the core (`qt_app::RTL_FALLBACK_FONTS`); here
+/// there is only the Qt call through `cpp/rexon_gui_factory.cpp` (why not a
+/// cxx bridge is explained there).
 pub mod fonts {
     use rexon_core::qt_app::RTL_FALLBACK_FONTS;
 
@@ -173,9 +178,10 @@ pub mod fonts {
         fn rexon_add_script_fallback_font(script: u8, family: *const u8, len: usize);
     }
 
-    /// Поставить запасные шрифты. Звать из главного потока ПОСЛЕ создания
-    /// приложения Qt и ДО загрузки QML: базе шрифтов нужна платформа, а уже
-    /// разложенный текст Qt по новому запасному шрифту не перекладывает.
+    /// Install the fallback fonts. Call from the main thread AFTER the Qt
+    /// application is created and BEFORE loading QML: the font database needs
+    /// the platform, and Qt does not re-lay out already laid out text with a new
+    /// fallback font.
     pub fn install_rtl_fallbacks() {
         for (script, family) in RTL_FALLBACK_FONTS {
             unsafe { rexon_add_script_fallback_font(script as u8, family.as_ptr(), family.len()) }
@@ -183,23 +189,23 @@ pub mod fonts {
     }
 }
 
-/// ⭐ Почему здесь, а не по копии в каждой странице (правило #12). Дефект
-/// «сообщение не гаснет никогда» заводился ТРИЖДЫ — в виджетных «Настройках»
-/// (28.06), в виджетном «Steam» (08.07) и в третий раз в QML-вкладке «Steam»,
-/// где живая проверка 18.09 застала плашку висящей 29 минут. Разметка у всех
-/// вкладок теперь одна (`qml/RexonToast.qml`), и питает её этот модуль:
-/// пока краски, поля, срок жизни и ширина приходят отсюда, у вкладки не
-/// может завестись ни своя плашка, ни свои числа.
+/// ⭐ Why here and not as a copy in every page (rule #12). The defect "the
+/// message never goes away" was introduced THREE times — in the widget
+/// "Settings" (28.06), in the widget "Steam" (08.07) and a third time in the
+/// QML "Steam" tab, where the live check on 18.09 caught the banner hanging
+/// for 29 minutes. The markup is now one for all tabs (`qml/RexonToast.qml`),
+/// and this module feeds it: as long as the colours, paddings, lifetime and
+/// width come from here, a tab cannot get a banner or numbers of its own.
 ///
-/// Считает всё равно ядро (`ui_base`) — здесь только перевод его ответов в
-/// типы Qt.
+/// The core computes everything anyway (`ui_base`) — here there is only
+/// converting its answers into Qt types.
 pub mod toast {
     use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
     use rexon_core::ui_base;
 
-    /// Краски и метрики плашки одной картой: QML читает её точкой
-    /// (`styles.toast.paddingH`). Та же дверь, что у виджетной плашки —
-    /// `ui_base::toast_colors` и константы `TOAST_*` рядом с ней.
+    /// Banner colours and metrics as one map: QML reads it with a dot
+    /// (`styles.toast.paddingH`). The same door as for the widget banner —
+    /// `ui_base::toast_colors` and the `TOAST_*` constants next to it.
     pub fn style_map(dark: bool) -> QMap<QMapPair_QString_QVariant> {
         let skin = ui_base::toast_colors(dark);
         let col = |css: &str| {
@@ -221,17 +227,18 @@ pub mod toast {
         out
     }
 
-    /// Через сколько сообщение гаснет само, мс.
+    /// After how many ms the message goes away by itself.
     pub fn timeout_ms() -> i32 {
         ui_base::TOAST_TIMEOUT_MS as i32
     }
 
-    /// Ширина плашки под текст такой ширины.
+    /// Banner width for text of this width.
     ///
-    /// Виджетная плашка меряет текст в одну строку и прибавляет к нему СВОИ
-    /// поля: у QLabel и рамка, и внутренние поля приходят таблицей стилей и
-    /// входят в поля содержимого. У прямоугольника QML их нет, поэтому те же
-    /// числа прибавляются руками — из ядра, не свои.
+    /// The widget banner measures the text on one line and adds ITS OWN
+    /// paddings to it: for a QLabel both the border and the inner paddings come
+    /// from the style sheet and are part of the content margins. A QML rectangle
+    /// has none of them, so the same numbers are added by hand — from the core,
+    /// not our own.
     pub fn width(page_width: i32, text_width: i32) -> i32 {
         let frame = 2 * (ui_base::TOAST_PADDING_H + ui_base::TOAST_BORDER_WIDTH);
         ui_base::toast_width(
@@ -243,12 +250,13 @@ pub mod toast {
     }
 }
 
-// ── Перевод строк QML: тот же каталог `.mo`, что у ядра ─────────────────
+// ── Translating QML strings: the same `.mo` catalogue as the core's ─────
 
-/// Приёмник строки — сигнатура `RexonTextSink` из `cpp/rexon_gui_factory.h`.
+/// String receiver — the `RexonTextSink` signature from
+/// `cpp/rexon_gui_factory.h`.
 type TextSink = unsafe extern "C" fn(target: *mut std::ffi::c_void, utf8: *const u8, len: i32);
 
-/// Поиск строки — сигнатура `RexonAppTranslate`.
+/// String lookup — the `RexonAppTranslate` signature.
 type AppTranslate = unsafe extern "C" fn(
     disambiguation: *const std::ffi::c_char,
     source: *const std::ffi::c_char,
@@ -261,10 +269,10 @@ unsafe extern "C" {
     fn rexon_install_app_translator(context: *const std::ffi::c_char, lookup: Option<AppTranslate>) -> bool;
 }
 
-/// Колбэк переводчика окна: строка QML → `i18n::qt_translate`.
+/// The window translator's callback: a QML string → `i18n::qt_translate`.
 ///
-/// Qt зовёт его из любого потока, в том числе из потока загрузки QML;
-/// ядро читает каталог под `RwLock` и ничего не ждёт.
+/// Qt calls it from any thread, including the QML loading thread; the core
+/// reads the catalogue under a `RwLock` and waits for nothing.
 unsafe extern "C" fn app_translate(
     disambiguation: *const std::ffi::c_char,
     source: *const std::ffi::c_char,
@@ -275,8 +283,9 @@ unsafe extern "C" fn app_translate(
     if source.is_null() {
         return false;
     }
-    // Исходники QML — UTF-8 (так их отдаёт движок `qsTranslate`); строка не
-    // в UTF-8 в каталоге не найдётся всё равно.
+    // QML sources are UTF-8 (that is how the `qsTranslate` engine hands them
+    // over); a string that is not UTF-8 would not be found in the catalogue
+    // anyway.
     let Ok(source) = unsafe { std::ffi::CStr::from_ptr(source) }.to_str() else {
         return false;
     };
@@ -295,20 +304,21 @@ unsafe extern "C" fn app_translate(
     true
 }
 
-/// Поставить переводчик строк QML (`qsTranslate("rexon", …)`) на язык,
-/// который ядро уже выбрало (`i18n::init`). Отдельного каталога для QML
-/// нет: переводчик спрашивает ядро, ядро — тот же `.mo`, что и для строк
-/// на Rust. У английского (исходного) каталога нет — прежний переводчик
-/// только снимается.
+/// Install the QML string translator (`qsTranslate("rexon", …)`) for the
+/// language the core has already chosen (`i18n::init`). There is no
+/// separate catalogue for QML: the translator asks the core, and the core
+/// uses the same `.mo` as for the Rust strings. English (the source) has no
+/// catalogue — the previous translator is only removed.
 ///
-/// → false, если приложения Qt ещё нет. Звать из главного потока после
-/// создания приложения и до загрузки QML; после смены языка ядра — заново
-/// (у переводчика кэш строк).
+/// → false if there is no Qt application yet. Call from the main thread
+/// after the application is created and before loading QML; again after the
+/// core's language changes (the translator has a string cache).
 pub fn install_app_translator() -> bool {
     let context = std::ffi::CString::new(rexon_core::i18n::QT_CONTEXT).expect("контекст без нуля");
     let lookup: Option<AppTranslate> =
         rexon_core::i18n::mo_path().is_some().then_some(app_translate as AppTranslate);
-    // Переводчик копирует контекст себе (QByteArray), строка может умереть.
+    // The translator copies the context for itself (a QByteArray); the string
+    // may die.
     unsafe { rexon_install_app_translator(context.as_ptr(), lookup) }
 }
 
@@ -320,20 +330,22 @@ unsafe extern "C" {
     ) -> std::ffi::c_int;
 }
 
-/// Включить каталоги переводов самой Qt для языка Rexon `language`: кнопки
-/// диалогов и меню правки полей ввода (правый щелчок по `TextArea`) рисует
-/// сама Qt, и никакой наш перевод до них не достаёт.
+/// Enable the translation catalogues of Qt itself for the Rexon language
+/// `language`: dialog buttons and the edit menu of text fields (a right
+/// click on a `TextArea`) are drawn by Qt itself, and no translation of ours
+/// reaches them.
 ///
-/// Решение — за ядром (`cli::qt_translation_files`): какие файлы, в каком
-/// порядке, и что у английского (и у языка, которого у Qt нет) их нет
-/// вовсе. Здесь только два вызова шима — узнать каталог переводов Qt и
-/// включить названные файлы: обёрток `QTranslator` и `QLibraryInfo` в
-/// cxx-qt-lib 0.9 нет ни одной.
+/// The decision belongs to the core (`cli::qt_translation_files`): which
+/// files, in what order, and that English (and a language Qt does not have)
+/// has none at all. Here there are only two shim calls — find Qt's
+/// translations directory and enable the named files: cxx-qt-lib 0.9 has
+/// not a single `QTranslator` or `QLibraryInfo` wrapper.
 ///
-/// Звать в КАЖДОМ процессе с окном Qt (главное окно, окно о крахе) после
-/// создания приложения и до загрузки QML. Каталога `qtbase` для языка нет
-/// — одна строка в журнал, надписи Qt английские; молчим про сводный `qt`,
-/// его нет в большинстве сборок Qt6.
+/// Call in EVERY process with a Qt window (the main window, the crash
+/// window) after the application is created and before loading QML. If
+/// there is no `qtbase` catalogue for the language — one line to the log,
+/// and the Qt labels are English; we say nothing about the aggregate `qt`,
+/// most Qt6 builds do not have it.
 pub fn install_qt_translations(language: &str) {
     use rexon_core::cli;
     let dir = qt_translations_dir();
@@ -349,8 +361,9 @@ pub fn install_qt_translations(language: &str) {
     unsafe { rexon_install_qt_translations(ptrs.as_ptr(), ptrs.len() as std::ffi::c_int) };
 }
 
-/// Каталог переводов самой Qt (`QLibraryInfo::TranslationsPath`); пусто —
-/// шим не ответил, и тогда ни один файл не найдётся (английские кнопки).
+/// The translations directory of Qt itself (`QLibraryInfo::TranslationsPath`);
+/// empty means the shim did not answer, and then no file will be found
+/// (English buttons).
 fn qt_translations_dir() -> String {
     let mut buf = vec![0u8; 512];
     loop {
@@ -366,14 +379,14 @@ fn qt_translations_dir() -> String {
     }
 }
 
-/// Журнал действий человека (синглтон `ActionJournal`) и пульс окна для
-/// сторожа главного потока (`rexon_core::ui_watch`).
+/// Journal of the user's actions (the `ActionJournal` singleton) and the
+/// window heartbeat for the main thread watchdog (`rexon_core::ui_watch`).
 pub mod action_journal;
-/// Ссылки из чужого текста: карточка, вопрос, доверенные сайты (синглтон `LinkGuard`).
+/// Links from third-party text: a card, a question, trusted sites (the `LinkGuard` singleton).
 pub mod link_guard;
-/// Объект побочных действий вкладки «Оформление»: магазин, обзор диска,
-/// картинки, установка, применение и удаление тем. До него страница
-/// получала `actions` только от Python.
+/// Side-actions object of the "Appearance" tab: the store, the disk
+/// overview, pictures, installing, applying and removing themes. Before it
+/// the page got `actions` only from Python.
 pub mod animations_actions;
 pub mod screen_effects_actions;
 pub mod app_widgets_actions;
@@ -384,9 +397,10 @@ pub mod crash_report;
 pub mod desktops_actions;
 pub mod desktops_page;
 pub mod extensions_actions;
-/// Мастер первого запуска для окна на Rust: решение ядра «предлагать ли
-/// установку», подписи мастера, фоновая установка и «больше не спрашивать».
-/// `request_show` — дверь кнопки «Установить Rexon в систему…» из «Настроек».
+/// The first-run wizard for the Rust window: the core's decision "whether to
+/// offer installation", the wizard's labels, background installation and
+/// "do not ask again". `request_show` is the door of the "Install Rexon into
+/// the system…" button from "Settings".
 pub mod first_run_wizard;
 pub mod extensions_page;
 pub mod discover_queries;
@@ -394,38 +408,43 @@ pub mod display_queries;
 pub mod layer_shell;
 pub mod local_preview_render;
 pub mod layer_shell_selftest;
-/// Хозяин главного окна на Rust: `ApplicationWindow` вместо `QMainWindow`.
+/// The main window host in Rust: an `ApplicationWindow` instead of a
+/// `QMainWindow`.
 pub mod main_window;
-/// Обучение при первом запуске для окна на Rust; `request_replay` — дверь
-/// кнопки «Пройти обучение заново».
+/// The first-run tutorial for the Rust window; `request_replay` is the door
+/// of the "Take the tutorial again" button.
 pub mod onboarding_overlay;
 pub mod query_base;
-/// Общий движок хранилищ выбора: база `SelectStorage` и надстройка
-/// `WallpaperSelectStorage` одним макросом на оба моста. Не мост cxx-qt.
+/// Shared engine of the selection storages: the `SelectStorage` base and the
+/// `WallpaperSelectStorage` layer with one macro for both bridges. Not a
+/// cxx-qt bridge.
 pub mod select_storage_base;
-/// Объект побочных действий вкладки «Настройки»: снимки машины, скин,
-/// автозапуск, файловый менеджер, родные приложения окружения, звуки
-/// событий, защита приложений по умолчанию. До него страница получала
-/// `actions` только от Python.
+/// Side-actions object of the "Settings" tab: machine snapshots, the skin,
+/// autostart, the file manager, the environment's native applications, event
+/// sounds, default application protection. Before it the page got `actions`
+/// only from Python.
 pub mod settings_actions;
 pub mod settings_page;
-/// Фоновые задачи вкладки «Steam»: порт пяти `QThread` оригинала на async
-/// (tokio) — инвентарь, метки заставок, кадры-превью, миниатюры и
-/// применение фона обоями. Не мост cxx-qt: Qt здесь нет вовсе.
+/// Background tasks of the "Steam" tab: a port of the original's five
+/// `QThread`s to async (tokio) — the inventory, splash markers, preview
+/// frames, thumbnails and applying a background as a wallpaper. Not a
+/// cxx-qt bridge: there is no Qt here at all.
 pub mod steam_workers;
-/// Объект побочных действий вкладки «Steam»: снимок витрины заставок, выбор
-/// своего ролика, звёздочки, три переключателя, полноэкранный показ и токен
-/// WebAPI. До него страница получала `actions` только от Python.
+/// Side-actions object of the "Steam" tab: the splash showcase snapshot,
+/// choosing your own clip, stars, three toggles, the full-screen show and
+/// the WebAPI token. Before it the page got `actions` only from Python.
 pub mod steam_actions;
-/// Подвкладка «Витрины профиля»: нарезка картинки под витрину профиля Steam.
+/// The "Profile showcases" sub-tab: cutting a picture for a Steam profile
+/// showcase.
 pub mod steam_showcase_actions;
-/// Подвкладка «Заставка»: заставка Rexon для экрана простоя Steam Big Picture.
+/// The "Screensaver" sub-tab: a Rexon screensaver for the Steam Big Picture
+/// idle screen.
 pub mod steam_screensaver_actions;
-/// Вкладка «Steam» — вкладка класса B на QML.
+/// The "Steam" tab — a class B tab in QML.
 pub mod steam_page;
-/// Проба «64-битное целое в QML»: живой движок против мостов. Не мост
-/// cxx-qt — стенд, как `layer_shell_selftest`. Статический напарник —
-/// сторож `qml_int64` в конце этого файла.
+/// The "64-bit integer in QML" probe: a live engine against the bridges. Not
+/// a cxx-qt bridge — a bench, like `layer_shell_selftest`. Its static
+/// counterpart is the `qml_int64` guard at the end of this file.
 pub mod qml_int64_probe;
 pub mod qvalue;
 pub mod remote_list_model;
@@ -435,20 +454,24 @@ pub mod wallpaper_actions;
 pub mod wallpaper_audio;
 pub mod wallpaper_host;
 pub mod web_host;
-/// Кнопки «послушать» тем звуков: пять звуков, Магазин до установки.
+/// "Listen" buttons of sound themes: five sounds, the Store before
+/// installation.
 pub mod sound_preview_actions;
 pub mod window_buttons_actions;
-/// «Отклик при запуске»: курсор и панель задач, пока программа запускается.
+/// "Launch feedback": the cursor and the task bar while a program is
+/// starting.
 pub mod launch_feedback_actions;
-/// Источник «Razer Axon» раздела обоев «Оформления» и блок его настроек.
+/// The "Razer Axon" source of the "Appearance" wallpaper section and its
+/// settings block.
 pub mod axon_actions;
-/// Плейлист обоев Rexon: блок в «⚙️ Настройках» раздела «Обои HD».
+/// The Rexon wallpaper playlist: the block in "⚙️ Settings" of the "HD
+/// Wallpapers" section.
 pub mod wallpaper_playlist_actions;
-/// «Цвет акцента» над сеткой «Цветовых схем».
+/// "Accent colour" above the "Colour schemes" grid.
 pub mod accent_actions;
-/// «Светлое и тёмное» по расписанию над «Глобальными темами» и «Цветовыми схемами».
+/// Scheduled "Light and dark" above "Global themes" and "Colour schemes".
 pub mod day_night_actions;
-/// «Сохранить текущее оформление…» над «Глобальными темами».
+/// "Save current look…" above "Global themes".
 pub mod global_save_actions;
 pub mod dde_look_actions;
 pub mod mate_panel_actions;
@@ -469,12 +492,13 @@ pub mod settings_queries;
 pub mod status_queries;
 pub mod global_pause_queries;
 pub mod thumbnail_request;
-/// Значок Rexon в системном лотке. НЕ мост cxx-qt: QML здесь ни при чём,
-/// в `.files()` в build.rs этому файлу места нет — только шим
-/// `cpp/rexon_tray.cpp` в `.cpp_files()`.
+/// The Rexon system tray icon. NOT a cxx-qt bridge: QML has nothing to do
+/// with it, and this file has no place in `.files()` in build.rs — only the
+/// `cpp/rexon_tray.cpp` shim in `.cpp_files()`.
 pub mod tray;
-/// Мост «не гасить экран» (org.freedesktop.ScreenSaver). НЕ мост cxx-qt:
-/// только шим `cpp/rexon_screensaver_bridge.cpp` в `.cpp_files()`.
+/// The "do not blank the screen" bridge (org.freedesktop.ScreenSaver). NOT a
+/// cxx-qt bridge: only the `cpp/rexon_screensaver_bridge.cpp` shim in
+/// `.cpp_files()`.
 pub mod screensaver_bridge;
 pub mod we_env;
 pub mod we_stop_selftest;
@@ -485,57 +509,61 @@ pub mod we_app;
 pub mod we_daemon_dbus;
 pub mod we_notify;
 pub mod we_objmodel;
-/// Шелл вкладки «Wallpaper Engine» на QML: рейл и место вендорной страницы.
-// Скрытая страница «Разработчик» вкладки обоев: обновления upstream и
-// сверка паритета UI.
+/// The "Wallpaper Engine" tab shell in QML: the rail and the place of the
+/// vendored page.
+// The hidden "Developer" page of the wallpaper tab: upstream updates and UI
+// parity reconciliation.
 pub mod we_dev_page;
 pub mod we_page;
-/// Фоновые задачи страницы «Разработчик» вкладки WE: порт трёх `QThread`
-/// оригинала на async (tokio) — проверка upstream, установка AppImage движка
-/// и плагин-архива OWE. Не мост cxx-qt: Qt здесь нет вовсе.
+/// Background tasks of the WE tab's "Developer" page: a port of the
+/// original's three `QThread`s to async (tokio) — checking upstream,
+/// installing the engine AppImage and the OWE plugin archive. Not a cxx-qt
+/// bridge: there is no Qt here at all.
 pub mod we_update_workers;
 pub mod we_util;
 pub mod we_singletons;
 pub mod we_socket;
 
-/// Сторож состава сборки: списки в `build.rs` против содержимого каталогов.
+/// Build composition guard: the lists in `build.rs` against the contents of
+/// the directories.
 ///
-/// ЗАЧЕМ ТЕСТ, А НЕ ПРОВЕРКА В `build.rs`. Забытая строка проявляется хуже
-/// всего именно тогда, когда файл ТОЛЬКО ЧТО добавлен: в этом случае
-/// `build.rs` может не перезапуститься вовсе, и любая проверка внутри него
-/// промолчит. Тест выполняется при каждом `cargo test -p rexon-gui --lib`
-/// независимо от того, сочла ли cargo сборочный скрипт устаревшим, и
-/// перечитывает каталоги заново.
+/// WHY A TEST AND NOT A CHECK IN `build.rs`. A forgotten line shows up worst
+/// exactly when a file has JUST been added: in that case `build.rs` may not
+/// rerun at all, and any check inside it would stay silent. The test runs on
+/// every `cargo test -p rexon-gui --lib` regardless of whether cargo
+/// considered the build script stale, and re-reads the directories anew.
 ///
-/// Сверка идёт со СЛЕПКОМ того, что `build.rs` реально отдал в
-/// `.files()` / `qml_files()` (файлы в OUT_DIR), а не с текстом `build.rs`:
-/// разбирать исходник заново — значит проверять похожесть, а не факт.
+/// The comparison is with a SNAPSHOT of what `build.rs` actually handed to
+/// `.files()` / `qml_files()` (files in OUT_DIR), not with the text of
+/// `build.rs`: parsing the source again would check similarity, not the
+/// fact.
 #[cfg(test)]
 mod toast_tests {
     use super::toast;
     use rexon_core::ui_base;
 
-    /// Срок жизни сообщения приходит из ядра и положителен.
+    /// The message lifetime comes from the core and is positive.
     ///
-    /// ⭐ Сторож против третьего рецидива: плашка, которой достался ноль,
-    /// не гаснет вовсе — а именно так вкладка «Steam» и держала сообщение
-    /// 29 минут. Разметка ноль трактует честно («не гаснуть»), поэтому
-    /// стеречь надо здесь, у источника числа.
+    /// ⭐ A guard against a third relapse: a banner that got zero never goes
+    /// away — and that is exactly how the "Steam" tab kept a message for 29
+    /// minutes. The markup treats zero honestly ("do not hide"), so the guard
+    /// belongs here, at the source of the number.
     #[test]
     fn toast_timeout_comes_from_the_core_and_is_positive() {
         assert_eq!(toast::timeout_ms(), ui_base::TOAST_TIMEOUT_MS as i32);
         assert!(toast::timeout_ms() > 0, "плашка с нулевым сроком не гаснет");
     }
 
-    /// Ширина плашки — расчёт ядра, и в окно она помещается всегда.
+    /// Banner width is the core's calculation, and it always fits into the
+    /// window.
     #[test]
     fn toast_width_stays_inside_the_page() {
-        // Узкая страница: плашка не вылезает за её край.
+        // A narrow page: the banner does not stick out past its edge.
         assert!(toast::width(300, 4000) <= 300);
-        // Широкая страница: выше потолка ядра плашка не растёт.
+        // A wide page: the banner does not grow beyond the core's cap.
         assert!(toast::width(4000, 4000) <= ui_base::TOAST_MAX_WIDTH);
-        // Отрицательные числа приходят от QML на первом кадре (размера ещё
-        // нет) и не должны давать отрицательной ширины.
+        // Negative numbers come from QML on the first frame (there is no size yet)
+        // and must not give a negative width.
         assert!(toast::width(-1, -1) >= 0);
     }
 }
@@ -545,12 +573,12 @@ mod build_manifest {
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
-    /// Мосты, ушедшие в `.files()`.
+    /// Bridges that went into `.files()`.
     const BRIDGE_MANIFEST: &str = include_str!(concat!(env!("OUT_DIR"), "/bridge_files.list"));
-    /// Файлы, ушедшие в `qml_files()`.
+    /// Files that went into `qml_files()`.
     const QML_MANIFEST: &str = include_str!(concat!(env!("OUT_DIR"), "/qml_files.list"));
 
-    /// Разобрать слепок в набор путей относительно корня крейта.
+    /// Parse the snapshot into a set of paths relative to the crate root.
     fn listed(manifest: &str) -> BTreeSet<String> {
         manifest
             .lines()
@@ -564,9 +592,10 @@ mod build_manifest {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     }
 
-    /// Имена файлов с заданным расширением в каталоге крейта, без обхода
-    /// вложенных каталогов: и мосты, и .qml лежат ровно одним уровнем
-    /// (для мостов это требование qmltyperegistrar, см. `build.rs`).
+    /// Names of files with the given extension in the crate directory, without
+    /// walking subdirectories: both the bridges and the .qml files lie exactly
+    /// one level deep (for the bridges this is a qmltyperegistrar requirement,
+    /// see `build.rs`).
     fn files_in(dir: &str, ext: &str) -> Vec<PathBuf> {
         let path = crate_dir().join(dir);
         let mut found: Vec<PathBuf> = std::fs::read_dir(&path)
@@ -579,11 +608,12 @@ mod build_manifest {
         found
     }
 
-    /// Есть ли в файле настоящий мост cxx-qt.
+    /// Whether the file contains a real cxx-qt bridge.
     ///
-    /// Мерило — атрибут в начале строки. Упоминание `cxx_qt::bridge` в
-    /// комментарии мостом не делает: так, `src/query_base.rs` объясняет в
-    /// шапке, почему он мостом НЕ является, и в `.files()` ему не место.
+    /// The yardstick is the attribute at the start of a line. A mention of
+    /// `cxx_qt::bridge` in a comment does not make it a bridge: for example,
+    /// `src/query_base.rs` explains in its header why it is NOT a bridge, and it
+    /// has no place in `.files()`.
     fn is_bridge(path: &PathBuf) -> bool {
         let text = std::fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("не читается {}: {e}", path.display()));
@@ -591,7 +621,7 @@ mod build_manifest {
             .any(|line| line.trim_start().starts_with("#[cxx_qt::bridge"))
     }
 
-    /// Пути, которые перечислены в `build.rs`, но которых нет на диске.
+    /// Paths listed in `build.rs` but missing on disk.
     fn missing_on_disk(listed: &BTreeSet<String>) -> Vec<String> {
         listed
             .iter()
@@ -654,60 +684,66 @@ mod build_manifest {
     }
 }
 
-/// Сторож «64-битное целое наружу в QML»: мосты против списка исключений.
+/// The "64-bit integer exposed to QML" guard: the bridges against the list
+/// of exceptions.
 ///
-/// ЗАЧЕМ. cxx-qt печатает `i64`/`u64` как `::std::int64_t` /
-/// `::std::uint64_t`, а на 64-битном Linux это `long` / `unsigned long` —
-/// ОТДЕЛЬНЫЕ метатипы Qt. Движок QML их не знает, и литеральная
-/// декларативная привязка в такое свойство («displayId: 7») отказывает
-/// вместе со ВСЕМ документом: страница не создаётся вовсе.
+/// WHY. cxx-qt emits `i64`/`u64` as `::std::int64_t` / `::std::uint64_t`,
+/// and on 64-bit Linux these are `long` / `unsigned long` — SEPARATE Qt
+/// metatypes. The QML engine does not know them, and a literal declarative
+/// binding to such a property ("displayId: 7") fails together with the
+/// WHOLE document: the page is not created at all.
 ///
-/// ⚠️ ПОЧЕМУ ТЕСТ, А НЕ КОМПИЛЯТОР. Дефект невидим целиком: и сборка, и
-/// `cargo test`, и гейт типов `scripts/test_we_rust_types.py` сходятся —
-/// сигнатуры-то верные. Ломается только на экране, и только у
-/// декларативной привязки. Живой замер, разбор и повторяемая проба —
-/// `src/qml_int64_probe.rs`; здесь — статическая половина, которая не даёт
-/// такому объявлению завестись СНОВА.
+/// Warning: WHY A TEST AND NOT THE COMPILER. The defect is entirely
+/// invisible: the build, `cargo test` and the type gate
+/// `scripts/test_we_rust_types.py` all agree — the signatures are correct
+/// after all. It breaks only on screen, and only for a declarative binding.
+/// The live measurement, the analysis and a reproducible probe are in
+/// `src/qml_int64_probe.rs`; here is the static half that does not let such
+/// a declaration appear AGAIN.
 ///
-/// Разбираются ТОЛЬКО блоки `extern "RustQt"` — это и есть поверхность,
-/// которую cxx-qt печатает в метаобъект. Блоки `extern "C++"` — обычные
-/// вызовы C++ мимо Qt (`rexon_we_network_cache_size() -> i64`), их 64-битные
-/// типы к QML отношения не имеют.
+/// ONLY `extern "RustQt"` blocks are parsed — that is exactly the surface
+/// cxx-qt emits into the metaobject. `extern "C++"` blocks are ordinary C++
+/// calls bypassing Qt (`rexon_we_network_cache_size() -> i64`), and their
+/// 64-bit types have nothing to do with QML.
 ///
-/// Список мостов берётся из того же слепка `OUT_DIR`, что и у сторожа
-/// состава сборки: новый мост попадает под проверку автоматически.
+/// The list of bridges is taken from the same `OUT_DIR` snapshot as for the
+/// build composition guard: a new bridge falls under the check
+/// automatically.
 #[cfg(test)]
 mod qml_int64 {
-    /// Мосты, ушедшие в `.files()` (тот же слепок, что у `build_manifest`).
+    /// Bridges that went into `.files()` (the same snapshot as for
+    /// `build_manifest`).
     const BRIDGE_MANIFEST: &str = include_str!(concat!(env!("OUT_DIR"), "/bridge_files.list"));
 
-    /// Типы, которые cxx-qt печатает 64-битным целым C++.
+    /// Types that cxx-qt emits as a 64-bit C++ integer.
     const WIDE: &[&str] = &["i64", "u64", "i128", "u128", "isize", "usize"];
 
-    /// ЕДИНСТВЕННОЕ исключение: транспортная обвязка запросов.
+    /// The ONLY exception: the transport binding of the queries.
     ///
-    /// `sendRequest` и `deliverResponse` — не интерфейс для QML, а шов между
-    /// Rust и C++-транспортом (`cpp/rexon_we_transport.cpp`). Сигнал
-    /// слушает C++, инвокабл зовёт `QMetaObject::invokeMethod` тем же
-    /// метатипом — `Q_ARG(::std::int64_t, token)`. Из QML их не зовут
-    /// нигде: `grep -rn "deliverResponse\|sendRequest"` по вендорному QML
-    /// пуст. Номер кадра обязан оставаться точным целым, поэтому здесь
-    /// `i64` уместен, а `f64` был бы ухудшением.
+    /// `sendRequest` and `deliverResponse` are not an interface for QML but the
+    /// seam between Rust and the C++ transport (`cpp/rexon_we_transport.cpp`).
+    /// The signal is listened to by C++, the invokable is called by
+    /// `QMetaObject::invokeMethod` with the same metatype —
+    /// `Q_ARG(::std::int64_t, token)`. They are called from QML nowhere:
+    /// `grep -rn "deliverResponse\|sendRequest"` over the vendored QML is empty.
+    /// The frame number must stay an exact integer, so `i64` is appropriate
+    /// here, and `f64` would be a regression.
     ///
-    /// ⚠️ Исключение действует по ИМЕНИ функции и только на эти два имени.
-    /// Новое 64-битное объявление, как бы оно ни называлось, сторож
-    /// назовёт поимённо и уронит `cargo test`.
+    /// Warning: the exception works by function NAME and only for these two
+    /// names. A new 64-bit declaration, whatever it is called, will be named by
+    /// the guard and will fail `cargo test`.
     const ALLOWED_FNS: &[&str] = &["send_request", "deliver_response"];
 
-    /// Одна найденная зацепка.
+    /// One found hit.
     struct Hit {
         file: String,
         line: usize,
         what: String,
     }
 
-    /// Убрать комментарии: иначе сторож ловил бы собственные пояснения
-    /// («`f64`, а не `i64`»). Строковых литералов с `//` в мостах нет.
+    /// Strip comments: otherwise the guard would catch its own explanations
+    /// ("`f64`, not `i64`"). There are no string literals with `//` in the
+    /// bridges.
     fn strip_comment(line: &str) -> &str {
         match line.find("//") {
             Some(at) => &line[..at],
@@ -715,7 +751,8 @@ mod qml_int64 {
         }
     }
 
-    /// Есть ли в куске текста 64-битный целый тип отдельным словом.
+    /// Whether a piece of text contains a 64-bit integer type as a separate
+    /// word.
     fn has_wide(text: &str) -> bool {
         WIDE.iter().any(|ty| {
             text.match_indices(ty).any(|(at, _)| {
@@ -729,7 +766,7 @@ mod qml_int64 {
         })
     }
 
-    /// Имя функции из объявления `fn name(...)`.
+    /// Function name from a `fn name(...)` declaration.
     fn fn_name(sig: &str) -> String {
         sig.split_once("fn ")
             .map(|(_, rest)| rest)
@@ -740,12 +777,12 @@ mod qml_int64 {
             .to_owned()
     }
 
-    /// Разобрать один мост: вернуть все 64-битные объявления в блоках
-    /// `extern "RustQt"`.
+    /// Parse one bridge: return all 64-bit declarations in `extern "RustQt"`
+    /// blocks.
     fn scan(rel: &str, src: &str) -> Vec<Hit> {
         let lines: Vec<&str> = src.lines().collect();
         let mut hits = Vec::new();
-        // Глубина фигурных скобок, на которой открылся блок RustQt.
+        // Brace depth at which the RustQt block opened.
         let mut depth: i32 = 0;
         let mut rust_qt_depth: Option<i32> = None;
         let mut index = 0;
@@ -757,7 +794,7 @@ mod qml_int64 {
                 || trimmed.starts_with("unsafe extern \"RustQt\"");
 
             if rust_qt_depth.is_some() {
-                // ── свойство ──────────────────────────────────────────────
+                // ── property ──────────────────────────────────────────────
                 if trimmed.starts_with("#[qproperty(") {
                     let mut chunk = code.to_owned();
                     let mut last = index;
@@ -796,7 +833,7 @@ mod qml_int64 {
                     index = last + 1;
                     continue;
                 }
-                // ── функция (инвокабл, сигнал, аксессор свойства) ─────────
+                // ── function (invokable, signal, property accessor) ───────
                 if trimmed.starts_with("fn ") || trimmed.starts_with("unsafe fn ") {
                     let mut chunk = code.to_owned();
                     let mut last = index;
@@ -824,7 +861,7 @@ mod qml_int64 {
             depth += code.matches('{').count() as i32;
             depth -= code.matches('}').count() as i32;
             if opens_rust_qt && rust_qt_depth.is_none() {
-                // Блок открылся: запомнить глубину ВНЕ него.
+                // The block opened: remember the depth OUTSIDE it.
                 rust_qt_depth = Some(depth - 1);
             } else if rust_qt_depth == Some(depth) {
                 rust_qt_depth = None;

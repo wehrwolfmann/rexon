@@ -1,14 +1,16 @@
-// Подвкладка «Заставка» вкладки «Steam»: заставка Rexon для экрана простоя
-// Steam Big Picture (Steam Deck, Steam Machine, телевизор, обычный
-// компьютер). Арт недавних игр и скриншоты слайд-шоу или прыгающий логотип.
+// The "Screensaver" sub-tab of the "Steam" tab: a Rexon screensaver for
+// the Steam Big Picture idle screen (Steam Deck, Steam Machine, a TV, an
+// ordinary computer). Art of recent games and screenshots as a slide show,
+// or a bouncing logo.
 //
-// Только разметка. Варианты, пределы, все фразы состояния и сама установка —
-// ядро `rexon_core::steam_screensaver`; исполнитель —
+// Markup only. Options, limits, all status phrases and the installation
+// itself — the core `rexon_core::steam_screensaver`; the executor is
 // `SteamScreensaverActions` (rust/rexon-gui/src/steam_screensaver_actions.rs).
 //
-// ⛔ Выбор заставки в Steam Rexon не трогает: человек выбирает её сам в
-// настройках Big Picture, подсказка внизу говорит где. Логотипа Steam среди
-// вариантов нет — это товарный знак Valve.
+// Never: Rexon does not touch the screensaver choice in Steam: the user
+// picks it themselves in the Big Picture settings, and the hint at the
+// bottom says where. There is no Steam logo among the options — it is a
+// Valve trademark.
 
 pragma ComponentBehavior: Bound
 
@@ -22,18 +24,18 @@ Rectangle {
     RexonBidi { id: bidi }
 
     property var pal: ({})
-    /// Оформление вкладки (`SteamModel.styles`): группа, врезка, кнопки.
+    /// Tab styling (`SteamModel.styles`): group, inset, buttons.
     property var sty: ({})
-    /// Краска ошибок — готовая от ядра вкладки (`SteamModel.goldColor`).
+    /// Error colour — ready from the tab core (`SteamModel.goldColor`).
     property color warnColor: section.pal.text_primary
 
     signal message(string text)
 
-    // ── Состояние ──────────────────────────────────────────────────────
+    // ── State ──────────────────────────────────────────────────────────
 
-    /// Ответ `actions.choices()`: варианты, пределы, подсказки.
+    /// Answer of `actions.choices()`: options, limits, hints.
     property var ch: ({ modes: [], logos: [], intervalMin: 4, intervalMax: 60, howTo: "", restartHint: "" })
-    /// Ответ `actions.status()`.
+    /// Answer of `actions.status()`.
     property var st: ({ steamFound: false, installed: false, foreign: false, text: "", options: {}, updated: 0, roots: [] })
 
     property string mode: "slideshow"
@@ -47,8 +49,9 @@ Rectangle {
     property string jobError: ""
     property bool scanBusy: false
     property string foundText: ""
-    /// Первое нажатие «Удалить» только взводит его: второе в течение
-    /// нескольких секунд удаляет. Окна-вопроса нет — в Big Picture неудобно.
+    /// The first press of "Delete" only arms it: a second press within a few
+    /// seconds deletes. There is no question window — it is awkward in Big
+    /// Picture.
     property bool confirmRemove: false
 
     function options() {
@@ -67,7 +70,7 @@ Rectangle {
         section.interval = o.interval || 9;
     }
 
-    /// Настройки разошлись с установленной заставкой — нужна «Обновить».
+    /// The settings differ from the installed screensaver — "Update" is needed.
     readonly property bool dirty: section.st.installed
                                   && JSON.stringify(section.options()) !== JSON.stringify(section.st.options)
 
@@ -105,7 +108,7 @@ Rectangle {
         poll.start();
     }
 
-    // Что попадёт в слайд-шоу, зависит от двух галочек — пересчитываем.
+    // What goes into the slide show depends on two check boxes — recompute.
     onGameArtChanged: rescanSoon.restart()
     onScreenshotsChanged: rescanSoon.restart()
 
@@ -188,7 +191,7 @@ Rectangle {
             text: qsTranslate("rexon", "Rexon makes a screensaver for Steam Big Picture: Steam shows it when you leave your Steam Deck, Steam Machine, TV or computer idle for a while. It shows the artwork of your recently played games and your screenshots, or a bouncing logo.")
         }
 
-        // ── Состояние ─────────────────────────────────────────────────
+        // ── State ─────────────────────────────────────────────────────
         RexonText {
             objectName: "screensaverStatus"
             Layout.fillWidth: true
@@ -204,7 +207,7 @@ Rectangle {
             text: bidi.arg(qsTranslate("rexon", "Updated: %1"), new Date(section.st.updated * 1000).toLocaleDateString(Qt.locale(), Locale.ShortFormat))
         }
 
-        // ── Что показывать ────────────────────────────────────────────
+        // ── What to show ──────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -234,7 +237,7 @@ Rectangle {
             text: section.modeInfo.hint || ""
         }
 
-        // Слайд-шоу: из чего собирать и как часто менять кадр.
+        // Slide show: what to build it from and how often to change the frame.
         ColumnLayout {
             Layout.fillWidth: true
             visible: section.mode === "slideshow"
@@ -295,7 +298,7 @@ Rectangle {
             }
         }
 
-        // Прыгающий логотип: чей.
+        // Bouncing logo: whose.
         RowLayout {
             Layout.fillWidth: true
             visible: section.mode === "bounce"
@@ -341,7 +344,7 @@ Rectangle {
             Item { Layout.fillWidth: true }
         }
 
-        // ── Действия ──────────────────────────────────────────────────
+        // ── Actions ───────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
@@ -391,7 +394,7 @@ Rectangle {
             }
         }
 
-        // ── Как включить в Steam ──────────────────────────────────────
+        // ── How to enable it in Steam ─────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
             Layout.topMargin: 8

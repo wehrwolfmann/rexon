@@ -1,46 +1,46 @@
-//! Образы «Как в дистрибутиве»: применить набор `.rxn` v5 целиком и вернуть
-//! как было.
+//! «As in the distribution» looks: apply a whole `.rxn` v5 set and restore
+//! it as it was.
 //!
-//! ЗАЧЕМ. «Как SteamOS» и «Как Garuda Dr460nized» — данные
+//! WHY. «Like SteamOS» and «Like Garuda Dr460nized» are data
 //! (`data/distro-looks/<id>/manifest.json` + `native/plasma-settings.json`,
-//! схема `kde-settings/1`), а не код. Здесь — то, что их исполняет:
+//! schema `kde-settings/1`), not code. Here is what executes them:
 //!
-//! 1. [`plan`] — чистая сборка плана: предусловия
-//!    ([`rxn::unmet_preconditions`]) → выбор нагрузки под стол
-//!    ([`rxn::choose_all_with`]) → зависимости ТОЛЬКО выбранных элементов
-//!    ([`Package::deps_for_choice_with`]). Правило владельца 24.10: пакеты
-//!    из официальных репозиториев ставятся сразу (защита — окно пароля),
-//!    AUR — никогда автоматом: такие пакеты уходят человеку списком
-//!    ([`LookPlan::aur`]). Не встаёт обязательное — образ не применяется
-//!    вовсе («всё или ничего»).
-//! 2. [`apply`] — исполнение на подменяемой машине ([`Machine`]): источники
-//!    в кэш со сверкой (`rev` git — содержимое сверяет сам git по хешам
-//!    объектов, архив — по `sha256`), установка зависимостей и сверка «встало
-//!    ровно то» ([`rxn::verify_dependency`], [`rxn::verify_package_change`];
-//!    отказ — поставленное снимается), подготовка файлов (`copy_only`,
-//!    `exclude`, объявленные правки `edits` — только из закрытого набора),
-//!    проверка содержимого ([`rxn::check_contents`]), затем ОДИН прогон
-//!    общего исполнителя [`crate::install_plan`]: файлы элементов (с меткой
-//!    владельца, чужое не трогается) и включение шагами [`ApplyStep`] —
-//!    в Plasma по `plasma-settings.json` (`plasma-apply-lookandfeel`,
-//!    `plasma-apply-*`, ключи `kwriteconfig6`, `kwin reconfigure`), на прочих
-//!    столах — планами нажатия «Оформления»
-//!    ([`crate::appearance_installer::press_plan_with`]: GTK, значки,
-//!    курсоры) и родными ключами рамок, оболочки и шрифта.
-//! 3. Запись: снимок «что было» (откат прогона переносится в
-//!    [`journal::applied_snapshot_dir`], запись [`journal::Applied`] раздела
-//!    [`section_of`]) и запись образа в общем журнале
-//!    ([`journal::Source::Look`]: положенные пути с меткой владельца,
-//!    элементы v5 с выбором, команды возврата значений, которые хранит не
-//!    файл, а сам стол — xfconf, gsettings).
-//! 4. [`revert`] — «Вернуть как было» образа целиком: снять положенное по
-//!    журналу (только своё), вернуть файлы по снимку
-//!    ([`journal::revert_applied_at`]), вернуть прежние значения стола
-//!    командами. Пакеты, поставленные образом, НЕ снимаются — их список
-//!    отдаётся человеку ([`Reverted::packages`]).
+//! 1. [`plan`] — a pure plan build: preconditions
+//!    ([`rxn::unmet_preconditions`]) → choosing the payload for the desktop
+//!    ([`rxn::choose_all_with`]) → dependencies of ONLY the chosen elements
+//!    ([`Package::deps_for_choice_with`]). The owner's rule of 24.10: packages
+//!    from the official repositories are installed right away (the protection is the password window),
+//!    AUR ones — never automatically: such packages go to the person as a list
+//!    ([`LookPlan::aur`]). If something mandatory does not install, the look is not applied
+//!    at all ("all or nothing").
+//! 2. [`apply`] — execution on a substitutable machine ([`Machine`]): sources
+//!    into the cache with verification (`rev` for git — git itself verifies the contents by object
+//!    hashes, an archive — by `sha256`), installing dependencies and checking "exactly that
+//!    got installed" ([`rxn::verify_dependency`], [`rxn::verify_package_change`];
+//!    on refusal what was installed is removed), preparing files (`copy_only`,
+//!    `exclude`, declared `edits` — only from a closed set),
+//!    checking the contents ([`rxn::check_contents`]), then ONE run of
+//!    the shared executor [`crate::install_plan`]: the elements' files (with an owner
+//!    mark, foreign things are not touched) and enabling with [`ApplyStep`] steps —
+//!    in Plasma by `plasma-settings.json` (`plasma-apply-lookandfeel`,
+//!    `plasma-apply-*`, `kwriteconfig6` keys, `kwin reconfigure`), on other
+//!    desktops — with the «Appearance» press plans
+//!    ([`crate::appearance_installer::press_plan_with`]: GTK, icons,
+//!    cursors) and the native keys of frames, the shell and the font.
+//! 3. Recording: a "what it was" snapshot (the run's rollback is moved to
+//!    [`journal::applied_snapshot_dir`], a [`journal::Applied`] record of the section
+//!    [`section_of`]) and the look's record in the shared log
+//!    ([`journal::Source::Look`]: placed paths with an owner mark,
+//!    v5 elements with the choice, commands restoring values that are kept not by
+//!    a file but by the desktop itself — xfconf, gsettings).
+//! 4. [`revert`] — «Restore as it was» for the whole look: remove what was placed per
+//!    the log (only our own), restore files from the snapshot
+//!    ([`journal::revert_applied_at`]), restore the desktop's previous values
+//!    with commands. Packages installed by the look are NOT removed — their list
+//!    is given to the person ([`Reverted::packages`]).
 //!
-//! Процессов модуль сам не запускает: команды — через [`Ctx::run`], сеть,
-//! пакеты и пробы — через [`Machine`]; живые реализации — `*_live`.
+//! The module starts no processes itself: commands go through [`Ctx::run`], network,
+//! packages and probes — through [`Machine`]; the live implementations are `*_live`.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -59,26 +59,26 @@ use crate::system::PkgFamily;
 use crate::themes::{ApplyStep, Cmd};
 
 // ============================================================================
-// Образы
+// Looks
 // ============================================================================
 
-/// Схема описания Plasma-части образа (`native/plasma-settings.json`).
+/// The schema of the look's Plasma part description (`native/plasma-settings.json`).
 pub const SETTINGS_SCHEMA: &str = "kde-settings/1";
 
-/// Потребитель, которому служит описание Plasma (`behaviour` →
+/// The consumer the Plasma description serves (`behaviour` →
 /// `{"kconfig": "native/plasma-settings.json"}`).
 pub const SETTINGS_CONSUMER: &str = "kconfig";
 
-/// Виды, которые ставятся только по желанию человека ([`Request::enable`]):
-/// игровой режим SteamOS.
+/// Kinds installed only at the person's wish ([`Request::enable`]):
+/// the SteamOS game mode.
 pub const OPT_IN_KINDS: &[&str] = &["game-session"];
 
-/// Схема описания панелей и поведения для прочих столов
+/// The schema of the panels and behavior description for other desktops
 /// (`native/desktop-model.json`).
 pub const MODEL_SCHEMA: &str = "rexon-desktop-model/1";
 
-/// Встроенные образы: id, манифест, описание Plasma, описание для прочих
-/// столов.
+/// Built-in looks: id, manifest, Plasma description, description for other
+/// desktops.
 const BUILTIN: &[(&str, &str, &str, Option<&str>)] = &[
     (
         "steamos",
@@ -94,31 +94,31 @@ const BUILTIN: &[(&str, &str, &str, Option<&str>)] = &[
     ),
 ];
 
-/// Образ: манифест v5, описание Plasma и описание для прочих столов.
+/// A look: the v5 manifest, the Plasma description and the description for other desktops.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Look {
     pub pkg: Package,
-    /// `native/plasma-settings.json` (`None` — у образа его нет).
+    /// `native/plasma-settings.json` (`None` — the look does not have it).
     pub settings: Option<Value>,
-    /// `native/desktop-model.json` — панели и поведение ролями, из которых
-    /// Rexon собирает родное прочих столов (`None` — у образа его нет).
+    /// `native/desktop-model.json` — panels and behavior as roles, from which
+    /// Rexon builds the native setup of other desktops (`None` — the look does not have it).
     pub model: Option<Value>,
 }
 
-/// id встроенных образов по порядку.
+/// Ids of the built-in looks in order.
 pub fn builtin_ids() -> Vec<&'static str> {
     BUILTIN.iter().map(|(id, ..)| *id).collect()
 }
 
-/// Встроенный образ `id`; `None` — такого нет.
+/// The built-in look `id`; `None` — there is no such look.
 pub fn builtin(id: &str) -> Option<Result<Look, String>> {
     BUILTIN.iter().find(|(i, ..)| *i == id).map(|(_, m, s, d)| parse_look(m, Some(s), *d))
 }
 
-/// Все пакеты, которые встроенные образы могут поставить в семействе
-/// `family`: имена репозитория семейства и, на Arch, имена AUR (на CachyOS
-/// часть их лежит в репозитории и идёт через помощник пакетов). Белый
-/// список установки помощника (`system_plan::pkg_helper_install_allowlist`).
+/// All packages the built-in looks may install in the family
+/// `family`: the family's repository names and, on Arch, AUR names (on CachyOS
+/// some of them are in the repository and go through the package helper). The helper's
+/// install allowlist (`system_plan::pkg_helper_install_allowlist`).
 pub fn builtin_package_names(family: PkgFamily) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for id in builtin_ids() {
@@ -136,8 +136,8 @@ pub fn builtin_package_names(family: PkgFamily) -> Vec<String> {
     out
 }
 
-/// Разобрать образ: манифест (проверка модели v5), описание Plasma и
-/// описание для прочих столов.
+/// Parse a look: the manifest (checking the v5 model), the Plasma description and
+/// the description for other desktops.
 pub fn parse_look(manifest: &str, settings: Option<&str>, model: Option<&str>) -> Result<Look, String> {
     let meta: Value = serde_json::from_str(manifest).map_err(|e| e.to_string())?;
     let pkg = rxn::parse(&meta).map_err(|e| rxn::errors_text(&e))?;
@@ -168,34 +168,34 @@ pub fn parse_look(manifest: &str, settings: Option<&str>, model: Option<&str>) -
     Ok(Look { pkg, settings, model })
 }
 
-/// Раздел записи «Применить» образа в общем журнале.
+/// The section of the look's «Apply» record in the shared log.
 pub fn section_of(id: &str) -> String {
     format!("look:{id}")
 }
 
-/// Ключ записи образа в общем журнале.
+/// The key of the look's record in the shared log.
 pub fn journal_key(id: &str) -> String {
     journal::key_of(journal::Source::Look, id)
 }
 
-/// Метка владельца каталогов, положенных образом.
+/// The owner mark of directories placed by the look.
 fn owner_of_look(id: &str) -> String {
     format!("look:{id}")
 }
 
 // ============================================================================
-// Машина: стол, просьба человека, пробы
+// The machine: the desktop, the person's request, probes
 // ============================================================================
 
-/// Потребители сеанса по столу Rexon (столбца `consumer` в матрице
-/// `de_customization` пока нет — таблица здесь).
+/// Session consumers per Rexon desktop (there is no `consumer` column in the
+/// `de_customization` matrix yet — the table is here).
 ///
-/// Вне Plasma: `qt6ct` — Qt-программы, которым стиль и палитру выбирает
-/// qt6ct (`themes::qt_style_way` = `PlatformTheme`); в LXQt их ведёт сам
-/// стол (`kvantum` родной, палитра — `lxqt`). `marco`, `muffin`, `mutter` —
-/// оконные менеджеры, которым Rexon переносит поведение из описания образа.
-/// Deepin здесь нарочно без `qt6ct`: переменная на весь сеанс отняла бы
-/// стиль Chameleon у программ Deepin.
+/// Outside Plasma: `qt6ct` — Qt programs whose style and palette are chosen by
+/// qt6ct (`themes::qt_style_way` = `PlatformTheme`); in LXQt the desktop
+/// itself drives them (`kvantum` is native, the palette is `lxqt`). `marco`, `muffin`, `mutter` —
+/// window managers to which Rexon carries the behavior from the look description.
+/// Deepin is deliberately without `qt6ct` here: a session-wide variable would take
+/// the Chameleon style away from Deepin programs.
 pub fn session_consumers(de: &str) -> Vec<String> {
     let list: &[&str] = match de {
         "kde" | "plasma" => &["kde-lnf", "kde-colors", "plasma", "aurorae", "kvantum", "kde-layout", "kconfig", "kwin", "gtk"],
@@ -205,52 +205,52 @@ pub fn session_consumers(de: &str) -> Vec<String> {
         "mate" => &["metacity-1", "gtk", "mate-panel", "marco", "qt6ct"],
         "budgie" => &["gtk-ssd", "gtk", "qt6ct"],
         "lxqt" => &["gtk", "kvantum", "lxqt"],
-        // Тайловые: переменные `environment.d` Rexon зеркалит в их сеанс сам
-        // (`compositor_autostart::sync_session_env`; у sway и river — честная
-        // оговорка матрицы).
+        // Tiling: Rexon mirrors the `environment.d` variables into their session itself
+        // (`compositor_autostart::sync_session_env`; for sway and river — an honest
+        // caveat in the matrix).
         "sway" | "hyprland" | "niri" | "river" => &["gtk", "qt6ct"],
         _ => &["gtk"],
     };
     list.iter().map(|s| s.to_string()).collect()
 }
 
-/// Сеанс стола `de` с известными версиями потребителей.
+/// The session of the desktop `de` with known consumer versions.
 pub fn session_for(de: &str, versions: BTreeMap<String, String>) -> Session {
     Session { consumers: session_consumers(de), versions }
 }
 
-/// Куда и для какого стола применяется — всё снято заранее.
+/// Where and for which desktop it is applied — all captured in advance.
 #[derive(Debug, Clone)]
 pub struct Target {
-    /// Стол Rexon: `kde`, `xfce`, `gnome`, `cinnamon`, `mate`…
+    /// The Rexon desktop: `kde`, `xfce`, `gnome`, `cinnamon`, `mate`…
     pub de: String,
     pub session: Session,
     pub family: PkgFamily,
     pub home: String,
-    /// `$XDG_CONFIG_HOME` (или `~/.config`).
+    /// `$XDG_CONFIG_HOME` (or `~/.config`).
     pub config: String,
-    /// `$XDG_DATA_HOME` (или `~/.local/share`).
+    /// `$XDG_DATA_HOME` (or `~/.local/share`).
     pub data: String,
-    /// `$XDG_CACHE_HOME` (или `~/.cache`).
+    /// `$XDG_CACHE_HOME` (or `~/.cache`).
     pub cache: String,
     pub lang: String,
-    /// Сеанс Treeland (Deepin на Wayland): флаг уходит в
-    /// [`crate::install_plan::Ctx::wayland`] и значит именно это.
+    /// A Treeland session (Deepin on Wayland): the flag goes into
+    /// [`crate::install_plan::Ctx::wayland`] and means exactly that.
     pub wayland: bool,
-    /// Размер курсора сейчас (план курсора вне Plasma пишет его целиком).
+    /// The cursor size now (the cursor plan outside Plasma writes it entirely).
     pub cursor_size: Option<u32>,
-    /// Помощник AUR, который умеет просить пароль окном (`yay`/`paru`,
-    /// [`crate::aur_install::FLAG_AWARE_HELPERS`]); `None` — его нет.
+    /// An AUR helper that can ask for the password with a window (`yay`/`paru`,
+    /// [`crate::aur_install::FLAG_AWARE_HELPERS`]); `None` — there is none.
     pub aur_helper: Option<String>,
 }
 
 impl Target {
-    /// Каталог конфигов Rexon (общий журнал).
+    /// The Rexon config directory (the shared log).
     pub fn rexon_dir(&self) -> PathBuf {
         Path::new(&self.config).join("rexon")
     }
 
-    /// Сеанс Plasma: описание `plasma-settings.json` исполняется.
+    /// A Plasma session: the `plasma-settings.json` description is executed.
     pub fn plasma(&self) -> bool {
         self.session.consumers.iter().any(|c| c == SETTINGS_CONSUMER)
     }
@@ -259,17 +259,17 @@ impl Target {
         Path::new(&self.cache).join("rexon/distro-looks")
     }
 
-    /// Каталог подготовленных файлов образа (наш, вне профиля).
+    /// The directory of the look's prepared files (ours, outside the profile).
     fn prepared_dir(&self, id: &str) -> PathBuf {
         self.looks_cache().join("prepared").join(id)
     }
 
-    /// Подставить `${HOME}`, `${CONFIG}`, `${DATA}`.
+    /// Substitute `${HOME}`, `${CONFIG}`, `${DATA}`.
     fn subst(&self, s: &str) -> String {
         s.replace("${HOME}", &self.home).replace("${CONFIG}", &self.config).replace("${DATA}", &self.data)
     }
 
-    /// Живая машина: стол `de`, каталоги XDG процесса, семейство пакетов.
+    /// The live machine: the desktop `de`, the process's XDG directories, the package family.
     pub fn live(de: &str) -> Target {
         let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let home = env("HOME").unwrap_or_default();
@@ -292,87 +292,87 @@ impl Target {
     }
 }
 
-/// Что выбрал человек.
+/// What the person chose.
 #[derive(Debug, Clone, Default)]
 pub struct Request {
-    /// Значения свойств (`variant` у SteamOS); пусто — по умолчанию.
+    /// Property values (`variant` for SteamOS); empty — defaults.
     pub values: PropValues,
-    /// Включить виды «по желанию» ([`OPT_IN_KINDS`]).
+    /// Enable "at your wish" kinds ([`OPT_IN_KINDS`]).
     pub enable: Vec<String>,
-    /// Не ставить необязательные виды (обязательные так не выключить).
+    /// Do not install optional kinds (mandatory ones cannot be turned off this way).
     pub disable: Vec<String>,
 }
 
-/// Пробы системы для сборки плана.
+/// System probes for building the plan.
 pub struct Probes<'a> {
-    /// Каким НАСТОЯЩИМ пакетом закрыто имя (с учётом Provides).
+    /// Which REAL package provides the name (taking Provides into account).
     pub owner_of: OwnerOf<'a>,
-    /// Есть ли пакет в подключённых репозиториях.
+    /// Whether the package is in the enabled repositories.
     pub in_repos: &'a dyn Fn(&str) -> bool,
-    /// Стоит ли расширение GNOME Shell (uuid).
+    /// Whether a GNOME Shell extension is installed (uuid).
     pub extension_installed: &'a dyn Fn(&str) -> bool,
 }
 
 // ============================================================================
-// План
+// Plan
 // ============================================================================
 
-/// Элемент, который встанет.
+/// An element that will be installed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlannedItem {
     pub index: usize,
     pub kind: String,
     pub consumer: String,
-    /// Путь нагрузки в пакете (`sources/<id>/…` или свой файл).
+    /// The payload path in the package (`sources/<id>/…` or its own file).
     pub path: String,
     pub choice: Choice,
 }
 
-/// Элемент, который не встанет, и почему.
+/// An element that will not be installed, and why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Skipped {
     pub kind: String,
     pub reason: String,
 }
 
-/// Зависимость, которую Rexon поставит сам (официальный репозиторий).
+/// A dependency Rexon will install itself (an official repository).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DepInstall {
     pub role: String,
     pub resolved: ResolvedDep,
 }
 
-/// Расширение GNOME Shell, которое Rexon поставит сам (зависимость
-/// `"source": "gnome-extensions"`): через оболочку (её окно подтверждения),
-/// без неё — zip выпуска под версию GNOME
+/// A GNOME Shell extension Rexon will install itself (a dependency
+/// `"source": "gnome-extensions"`): through the shell (its confirmation window),
+/// without it — the release zip for the GNOME version
 /// ([`crate::gnome_ext_section::install_dependency`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExtNeed {
     pub role: String,
     pub uuid: String,
-    /// Для каких видов.
+    /// For which kinds.
     pub kinds: Vec<String>,
 }
 
-/// Пакеты из AUR, которые человек может поставить сам.
+/// Packages from the AUR the person can install themselves.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AurNeed {
     pub role: String,
-    /// Имена для команды установки — с префиксом `aur/`.
+    /// Names for the install command — with the `aur/` prefix.
     pub packages: Vec<String>,
-    /// Для каких видов.
+    /// For which kinds.
     pub kinds: Vec<String>,
-    /// Без них вид не встаёт (а не просто теряет часть).
+    /// Without them the kind does not install (rather than just losing a part).
     pub needed: bool,
 }
 
-/// Закрепление источника.
+/// Source pinning.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "pin", content = "value", rename_all = "kebab-case")]
 pub enum Pin {
-    /// Коммит git.
+    /// A git commit.
     Git(String),
-    /// SHA-256 архива.
+    /// The archive's SHA-256.
     Sha256(String),
 }
 
@@ -384,77 +384,77 @@ impl Pin {
     }
 }
 
-/// Скачать источник в кэш.
+/// Download a source into the cache.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FetchJob {
     pub id: String,
     pub url: String,
     pub pin: Pin,
-    /// Каталог содержимого в кэше (`…/sources/<id>-<закрепление>`).
+    /// The contents directory in the cache (`…/sources/<id>-<pin>`).
     pub dir: PathBuf,
 }
 
-/// Файл в кэше, который говорит «здесь ровно закреплённое».
+/// A file in the cache that says "exactly the pinned thing is here".
 pub const PIN_MARK: &str = ".rexon-pin";
 
 impl FetchJob {
-    /// Содержимое уже в кэше и закрепление то же.
+    /// The contents are already in the cache and the pin is the same.
     pub fn cached(&self) -> bool {
         std::fs::read_to_string(self.dir.join(PIN_MARK)).is_ok_and(|t| t.trim() == self.pin.text())
     }
 }
 
-/// План применения образа.
+/// The look's apply plan.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LookPlan {
     pub id: String,
     pub name: String,
     pub items: Vec<PlannedItem>,
     pub skipped: Vec<Skipped>,
-    /// Ставится сразу (окно пароля).
+    /// Installed right away (the password window).
     pub install: Vec<DepInstall>,
-    /// Человеку: можно поставить из AUR самому.
+    /// For the person: can be installed from the AUR themselves.
     pub aur: Vec<AurNeed>,
-    /// Роли, которые будут в системе (стоят или ставятся).
+    /// Roles that will be on the system (installed or being installed).
     pub roles: BTreeSet<String>,
     pub fetch: Vec<FetchJob>,
-    /// Исполняется описание Plasma.
+    /// The Plasma description is executed.
     pub uses_settings: bool,
     pub values: PropValues,
-    /// Части, которые здесь отдельно не ставятся, потому что их несут
-    /// другие встающие части (глобальная тема вне Plasma — набор этих же
-    /// частей; панель MATE и XFCE рисуется темой GTK), и как именно.
+    /// Parts that are not installed separately here because they are carried by
+    /// other parts being installed (a global theme outside Plasma is a set of these same
+    /// parts; the MATE and XFCE panel is drawn by the GTK theme), and how exactly.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub covered: Vec<Skipped>,
-    /// Чего из встающих частей на этом столе не будет, с причиной.
+    /// What of the parts being installed will not be on this desktop, with a reason.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limits: Vec<Skipped>,
-    /// Пакеты AUR, которые Rexon соберёт сам помощником AUR (окно пароля) —
-    /// только роли [`AUTO_AUR_ROLES`].
+    /// AUR packages Rexon will build itself with an AUR helper (the password window) —
+    /// only the [`AUTO_AUR_ROLES`] roles.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aur_build: Vec<AurNeed>,
-    /// Расширения GNOME Shell, которые ставятся сразу (окно оболочки).
+    /// GNOME Shell extensions installed right away (the shell window).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extensions: Vec<ExtNeed>,
 }
 
-/// Итог сборки плана.
+/// The result of building the plan.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "kebab-case")]
 pub enum Prepared {
-    /// Образ не применяется: причина для человека (и что можно поставить
-    /// из AUR, если дело в этом).
+    /// The look is not applied: the reason for the person (and what can be installed
+    /// from the AUR, if that is the issue).
     Refused { reason: String, aur: Vec<AurNeed> },
     Ready(LookPlan),
 }
 
-/// Причина пропуска вида, который человек не выбрал ([`Request::enable`],
+/// The reason for skipping a kind the person did not choose ([`Request::enable`],
 /// [`Request::disable`]).
 pub fn not_chosen_reason() -> String {
     tr("not chosen")
 }
 
-/// Подпись вида для человека.
+/// The kind label for the person.
 pub fn kind_label(kind: &str) -> String {
     match kind {
         "global-look" => tr("global theme"),
@@ -474,16 +474,16 @@ pub fn kind_label(kind: &str) -> String {
     }
 }
 
-/// Может ли Rexon сам собрать вид `kind` для потребителя `consumer` из
-/// описания образа (`model` элемента) — генератор для
-/// [`rxn::choose_all_with`]. Собранное — «приблизительно»: это родные
-/// части стола, близкие к задуманному, а не файлы автора.
+/// Whether Rexon can itself build the kind `kind` for the consumer `consumer` from
+/// the look description (the element's `model`) — the generator for
+/// [`rxn::choose_all_with`]. What is built is "approximate": native
+/// parts of the desktop close to the intent, not the author's files.
 ///
-/// * раскладка панелей — из ролей описания (меню, окна, часы, лоток,
-///   значки запуска): mate-panel ([`crate::mate_panel::own_layout_text`]) и
-///   панели Cinnamon (ключи `org.cinnamon`);
-/// * поведение — то, что умеет сам оконный менеджер: кнопки окна, сглаживание
-///   (композитинг), эффекты Cinnamon; остальное названо в [`LookPlan::limits`].
+/// * the panel layout — from the description's roles (menu, windows, clock, tray,
+///   launchers): mate-panel ([`crate::mate_panel::own_layout_text`]) and
+///   Cinnamon panels (the `org.cinnamon` keys);
+/// * behavior — what the window manager itself can do: window buttons, smoothing
+///   (compositing), Cinnamon effects; the rest is named in [`LookPlan::limits`].
 pub fn look_generator(kind: &str, consumer: &str) -> Option<Accuracy> {
     match (kind, consumer) {
         ("panel-layout", "mate-panel" | "cinnamon-panel")
@@ -492,7 +492,7 @@ pub fn look_generator(kind: &str, consumer: &str) -> Option<Accuracy> {
     }
 }
 
-/// Имя стола для человека (в причинах).
+/// The desktop name for the person (in reasons).
 fn desktop_name(de: &str) -> &'static str {
     match de {
         "mate" => "MATE",
@@ -509,8 +509,8 @@ fn desktop_name(de: &str) -> &'static str {
     }
 }
 
-/// Оконный менеджер, которому переносится поведение (потребитель
-/// поведения), — имя для человека.
+/// The window manager the behavior is carried to (the behavior
+/// consumer) — the name for the person.
 fn wm_name(consumer: &str) -> &'static str {
     match consumer {
         "marco" => "Marco",
@@ -521,8 +521,8 @@ fn wm_name(consumer: &str) -> &'static str {
     }
 }
 
-/// Причина отказа для человека: где можно — конкретная (что именно у этого
-/// стола не так), иначе — общая формулировка формата.
+/// The refusal reason for the person: specific where possible (what exactly is wrong with this
+/// desktop), otherwise — the format's generic wording.
 fn refusal_text(kind: &str, t: &Target, reason: &rxn::RefuseReason, look_settings: Option<&Value>) -> String {
     if t.plasma() {
         return reason.text();
@@ -550,8 +550,8 @@ fn refusal_text(kind: &str, t: &Target, reason: &rxn::RefuseReason, look_setting
     }
 }
 
-/// Почему поведение образа здесь не переносится: по тому, ЧТО образ в
-/// Plasma меняет (файлы `kconfig` описания), а не общей фразой.
+/// Why the look's behavior is not carried over here: by WHAT the look changes in
+/// Plasma (the description's `kconfig` files), not with a generic phrase.
 fn behaviour_refusal(settings: Option<&Value>, t: &Target) -> String {
     let mut what: Vec<String> = Vec::new();
     for k in settings.and_then(|s| s.get("kconfig")).and_then(Value::as_array).into_iter().flatten() {
@@ -560,8 +560,8 @@ fn behaviour_refusal(settings: Option<&Value>, t: &Target) -> String {
             "ksplashrc" => tr("the Plasma splash screen after login"),
             "kscreenlockerrc" => tr("the Plasma lock screen picture"),
             "krunnerrc" => tr("KRunner in the middle of the screen"),
-            // Шрифты (`kdeglobals`) и курсор (`kcminputrc`) несут свои части
-            // образа — здесь их не называем.
+            // Fonts (`kdeglobals`) and the cursor (`kcminputrc`) are carried by their own parts
+            // of the look — we do not name them here.
             _ => continue,
         };
         if !what.contains(&label) {
@@ -579,8 +579,8 @@ fn behaviour_refusal(settings: Option<&Value>, t: &Target) -> String {
     }
 }
 
-/// Отказанные части, которые на этом столе несут другие встающие части, —
-/// из `skipped` в «покрыто».
+/// Refused parts that on this desktop are carried by other parts being installed —
+/// moved from `skipped` to "covered".
 fn split_covered(skipped: Vec<Skipped>, items: &[PlannedItem], t: &Target) -> (Vec<Skipped>, Vec<Skipped>) {
     if t.plasma() {
         return (Vec::new(), skipped);
@@ -607,7 +607,7 @@ fn split_covered(skipped: Vec<Skipped>, items: &[PlannedItem], t: &Target) -> (V
     (covered, rest)
 }
 
-/// Эффект KWin из описания образа — для человека.
+/// A KWin effect from the look description — for the person.
 fn effect_label(effect: &str) -> String {
     match effect {
         "wobbly-windows" => tr("wobbly windows"),
@@ -620,8 +620,8 @@ fn effect_label(effect: &str) -> String {
     }
 }
 
-/// Что из поведения образа переносит оконный менеджер `consumer` (`compiz`
-/// — вместо него встаёт Compiz, [`compiz_replaces`]).
+/// What of the look's behavior the window manager `consumer` carries over (`compiz`
+/// — Compiz takes its place, [`compiz_replaces`]).
 fn behaviour_carried(consumer: &str, what: &str, compiz: bool) -> bool {
     if compiz {
         return matches!(what, "wobbly-windows" | "magic-lamp" | "fade" | "cover-switch" | "desktop-change-osd");
@@ -632,17 +632,17 @@ fn behaviour_carried(consumer: &str, what: &str, compiz: bool) -> bool {
     )
 }
 
-/// Описание поведения образа (`behaviour` описания для прочих столов).
+/// The look's behavior description (`behaviour` of the description for other desktops).
 fn model_behaviour(look: &Look) -> Option<&Value> {
     look.model.as_ref()?.get("behaviour")
 }
 
-/// Описание панелей образа.
+/// The look's panels description.
 fn model_panels(look: &Look) -> Vec<&Value> {
     look.model.as_ref().and_then(|m| m.get("panels")).and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default()
 }
 
-/// Чего из встающей части `it` на этом столе не будет.
+/// What of the part being installed `it` will not be on this desktop.
 fn item_limits(look: &Look, it: &PlannedItem, t: &Target, roles: &BTreeSet<String>) -> Vec<Skipped> {
     if t.plasma() {
         return Vec::new();
@@ -703,29 +703,29 @@ fn item_limits(look: &Look, it: &PlannedItem, t: &Target, roles: &BTreeSet<Strin
     out
 }
 
-/// id источника пути `sources/<id>/…`.
+/// The source id of the path `sources/<id>/…`.
 fn source_id_of(path: &str) -> Option<&str> {
     path.strip_prefix(rxn::SOURCES_DIR)?.strip_prefix('/')?.split('/').next().filter(|s| !s.is_empty())
 }
 
-/// Путь внутри источника: `sources/<id>/<rel>` → `<rel>`.
+/// The path inside the source: `sources/<id>/<rel>` → `<rel>`.
 fn rel_in_source(path: &str) -> &str {
     let rest = path.strip_prefix(rxn::SOURCES_DIR).and_then(|r| r.strip_prefix('/')).unwrap_or(path);
     rest.split_once('/').map(|(_, r)| r).unwrap_or("")
 }
 
-/// Состояние роли зависимости.
+/// The state of a dependency's role.
 #[derive(Debug, Clone)]
 enum RoleState {
     Present,
     Install(ResolvedDep),
     Aur(ResolvedDep),
-    /// Расширение GNOME Shell не стоит — Rexon поставит его сам (uuid).
+    /// The GNOME Shell extension is not installed — Rexon will install it itself (uuid).
     Extension(String),
     Missing(String),
 }
 
-/// Имена зависимости для источника.
+/// The dependency's names for the source.
 fn names_of(dep: &PackageDep, source: DepSource, family: PkgFamily) -> Option<Vec<String>> {
     let key = match source {
         DepSource::Repo => family.as_str(),
@@ -759,18 +759,18 @@ fn role_state(dep: &PackageDep, family: PkgFamily, probes: &Probes) -> RoleState
     }
 }
 
-/// Роль Compiz — оконного менеджера, который на MATE и XFCE (X11) даёт
-/// эффекты окон «как в KWin» (см. [`compiz_subplan`]).
+/// The Compiz role — the window manager that on MATE and XFCE (X11) gives
+/// window effects "like in KWin" (see [`compiz_subplan`]).
 pub const COMPIZ_ROLE: &str = "compiz";
 
-/// Оконные менеджеры, место которых может занять Compiz: Marco (MATE) и
-/// xfwm4 (XFCE). Muffin и Mutter — нет: они же и оболочка стола.
+/// Window managers whose place Compiz can take: Marco (MATE) and
+/// xfwm4 (XFCE). Not Muffin and Mutter: they are also the desktop shell.
 pub fn compiz_replaces(consumer: &str) -> bool {
     matches!(consumer, "marco" | "xfwm4")
 }
 
-/// Какой оконный менеджер план меняет на Compiz — имя для человека;
-/// `None` — не меняет.
+/// Which window manager the plan replaces with Compiz — the name for the person;
+/// `None` — it does not replace any.
 pub fn compiz_replaced_wm(plan: &LookPlan) -> Option<&'static str> {
     if !plan.roles.contains(COMPIZ_ROLE) {
         return None;
@@ -778,18 +778,18 @@ pub fn compiz_replaced_wm(plan: &LookPlan) -> Option<&'static str> {
     plan.items.iter().find(|i| i.kind == "behaviour" && compiz_replaces(&i.consumer)).map(|i| wm_name(&i.consumer))
 }
 
-/// Роли из AUR, которые Rexon собирает сам, а не только называет человеку.
-/// Решение владельца 31.10.2026 — исключение из правила 24.10 «AUR — никогда
-/// автоматом»: ради эффектов окон Garuda Compiz ставится помощником AUR тем
-/// же путём, что остальные пакеты AUR в Rexon (`aur_install::install_argv`,
-/// пароль — окном). Нет помощника — пакет, как и прежде, называется списком.
+/// AUR roles Rexon builds itself rather than only naming them to the person.
+/// The owner's decision of 31.10.2026 — an exception to the rule of 24.10 "AUR — never
+/// automatically": for Garuda's window effects Compiz is installed by an AUR helper the
+/// same way as other AUR packages in Rexon (`aur_install::install_argv`,
+/// the password — with a window). No helper — the package is named in a list, as before.
 pub const AUTO_AUR_ROLES: &[&str] = &[COMPIZ_ROLE];
 
-/// Роль (и потребитель) qt6ct.
+/// The qt6ct role (and consumer).
 pub const QT6CT_ROLE: &str = "qt6ct";
 
-/// Состояние неявной зависимости qt6ct: стоит, ставится из репозитория или
-/// взять негде.
+/// The state of the implicit qt6ct dependency: installed, being installed from the repository, or
+/// nowhere to get it from.
 fn qt6ct_state(family: PkgFamily, probes: &Probes) -> RoleState {
     let name = crate::utils::tool_package_name(crate::themes::QT_STYLE_TOOL, family.as_str());
     if name.is_empty() {
@@ -804,7 +804,7 @@ fn qt6ct_state(family: PkgFamily, probes: &Probes) -> RoleState {
     RoleState::Missing(String::new())
 }
 
-/// Собрать план применения — без единого запуска и записи.
+/// Build the apply plan — without a single launch or write.
 pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared {
     let pkg = &look.pkg;
     let name = pkg.name.get(&t.lang).to_string();
@@ -844,8 +844,8 @@ pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared
                 skipped.push(Skipped { kind: item.kind.clone(), reason: refusal_text(&item.kind, t, reason, look.settings.as_ref()) });
                 continue;
             }
-            // Собирает Rexon ([`look_generator`]); путь — описание, из
-            // которого собирается.
+            // Rexon builds it ([`look_generator`]); the path is the description it is
+            // built from.
             Choice::Generate { consumer, model, .. } => (consumer.clone(), model.clone()),
             Choice::Native { consumer, path }
             | Choice::Compatible { consumer, path, .. }
@@ -924,10 +924,10 @@ pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared
             skipped.push(Skipped { kind: item.kind.clone(), reason: why });
             continue;
         }
-        // Потребитель `qt6ct` без самого qt6ct не работает — это знание
-        // Rexon, а не образа, поэтому зависимость неявная и общая для всех
-        // образов. Поставить нечем — стиль Qt пойдёт запасным путём
-        // (`QT_STYLE_OVERRIDE`), палитра Qt не встанет.
+        // The `qt6ct` consumer does not work without qt6ct itself — this is
+        // Rexon's knowledge, not the look's, so the dependency is implicit and shared by all
+        // looks. If there is nothing to install it with, the Qt style takes the fallback path
+        // (`QT_STYLE_OVERRIDE`), the Qt palette will not be set.
         if consumer == QT6CT_ROLE {
             match states.entry(QT6CT_ROLE.into()).or_insert_with(|| qt6ct_state(t.family, probes)).clone() {
                 RoleState::Present => my_roles.push(QT6CT_ROLE.into()),
@@ -999,8 +999,8 @@ pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared
     })
 }
 
-/// Пути `sources/…`, которые нужны применению: нагрузка элементов и файлы
-/// описания Plasma, чья роль будет в системе.
+/// The `sources/…` paths applying needs: the elements' payload and the Plasma
+/// description files whose role will be on the system.
 fn needed_paths(look: &Look, items: &[PlannedItem], roles: &BTreeSet<String>, uses_settings: bool) -> Vec<String> {
     let mut out: Vec<String> = items.iter().filter(|i| source_id_of(&i.path).is_some()).map(|i| i.path.clone()).collect();
     if uses_settings {
@@ -1011,7 +1011,7 @@ fn needed_paths(look: &Look, items: &[PlannedItem], roles: &BTreeSet<String>, us
     out
 }
 
-/// Файлы описания Plasma (`files`): `(from, to)` с ролью в системе.
+/// Plasma description files (`files`): `(from, to)` with a role on the system.
 fn settings_files(look: &Look, roles: &BTreeSet<String>) -> Vec<(String, String)> {
     let Some(s) = &look.settings else { return Vec::new() };
     s.get("files")
@@ -1023,63 +1023,63 @@ fn settings_files(look: &Look, roles: &BTreeSet<String>) -> Vec<(String, String)
         .collect()
 }
 
-/// `needs_role` записи описания — роль будет в системе (или не нужна).
+/// A description record's `needs_role` — the role will be on the system (or is not needed).
 fn role_ok(v: &Value, roles: &BTreeSet<String>) -> bool {
     v.get("needs_role").and_then(Value::as_str).is_none_or(|r| roles.contains(r))
 }
 
 // ============================================================================
-// Исполнение
+// Execution
 // ============================================================================
 
-/// Внешнее для [`apply`]: команды — через `ctx`, остальное — здесь.
+/// The externals for [`apply`]: commands — through `ctx`, the rest — here.
 pub struct Machine<'a> {
     pub ctx: &'a Ctx<'a>,
-    /// Скачать источник в `job.dir` со сверкой закрепления ([`fetch_live`]).
+    /// Download a source into `job.dir` verifying the pin ([`fetch_live`]).
     pub fetch: &'a dyn Fn(&FetchJob) -> Result<(), String>,
-    /// Поставить пакеты из официальных репозиториев (окно пароля).
+    /// Install packages from the official repositories (the password window).
     pub install_packages: &'a dyn Fn(&[String]) -> Result<(), String>,
-    /// Снять пакеты, поставленные этим применением (отказ сверки).
+    /// Remove packages installed by this application (a verification refusal).
     pub remove_packages: &'a dyn Fn(&[String]) -> Result<(), String>,
-    /// Снимок системы: каким пакетом закрыто имя — зовётся до и после.
+    /// A system snapshot: which package provides the name — called before and after.
     pub owner_of: OwnerOf<'a>,
-    /// Стоит ли пакет Plasma: (`plasmoids`/`wallpapers`, id).
+    /// Whether a Plasma package is installed: (`plasmoids`/`wallpapers`, id).
     pub kpackage_installed: &'a dyn Fn(&str, &str) -> bool,
-    /// Есть ли ярлык `<имя>.desktop` в каталогах программ.
+    /// Whether there is a `<name>.desktop` launcher in the application directories.
     pub desktop_installed: &'a dyn Fn(&str) -> bool,
-    /// Полный путь ярлыка `<имя>.desktop` (значки запуска панелей вне
-    /// Plasma); `None` — программы нет.
+    /// The full path of the `<name>.desktop` launcher (panel launchers outside
+    /// Plasma); `None` — the program is missing.
     pub desktop_path: &'a dyn Fn(&str) -> Option<String>,
-    /// Собрать и поставить пакеты AUR помощником (окно пароля) —
+    /// Build and install AUR packages with a helper (the password window) —
     /// [`LookPlan::aur_build`].
     pub install_aur: &'a dyn Fn(&[String]) -> Result<(), String>,
-    /// Поставить расширение GNOME Shell по uuid ([`LookPlan::extensions`];
-    /// живое — [`crate::gnome_ext_section::live_install_dependency`]).
+    /// Install a GNOME Shell extension by uuid ([`LookPlan::extensions`];
+    /// live — [`crate::gnome_ext_section::live_install_dependency`]).
     pub install_extension: &'a dyn Fn(&str) -> Result<crate::gnome_ext_section::DepOutcome, crate::gnome_shell_ext::ShellExtError>,
 }
 
-/// Итог применения.
+/// The result of applying.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AppliedLook {
     pub id: String,
-    /// Итог для человека.
+    /// The result for the person.
     pub message: String,
     pub notes: Vec<String>,
     pub skipped: Vec<Skipped>,
     pub aur: Vec<AurNeed>,
-    /// Пакеты, поставленные применением.
+    /// Packages installed by the application.
     pub installed: Vec<String>,
     pub after_apply: Option<String>,
 }
 
-/// Применить образ по плану `plan` (собран [`plan`] на той же машине).
-/// `Err` — образ не применён, причина для человека; всё, что прогон успел
-/// записать в профиль, возвращено.
+/// Apply the look by the plan `plan` (built by [`plan`] on the same machine).
+/// `Err` — the look was not applied, the reason for the person; everything the run managed
+/// to write to the profile has been restored.
 pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<AppliedLook, String> {
     let name = &plan.name;
     let fail = |why: String| trf("“%1” was not applied: %2", &[name, &why]);
 
-    // Повторное применение — с того, что было до первого.
+    // A repeated application — starting from what was there before the first one.
     if is_applied(&plan.id, &t.rexon_dir()) {
         revert(&plan.id, t, m.ctx).map_err(&fail)?;
     }
@@ -1090,7 +1090,7 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
         }
     }
 
-    // Зависимости: всё или ничего.
+    // Dependencies: all or nothing.
     let mut watch: BTreeSet<String> = look.pkg.requires.forbid.iter().cloned().collect();
     for d in &plan.install {
         watch.extend(d.resolved.names.iter().cloned());
@@ -1138,8 +1138,8 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
         }
     }
 
-    // Сборка из AUR (только [`AUTO_AUR_ROLES`]): не вышла — образ всё равно
-    // применяется, без того, что эти пакеты дают (причина — человеку).
+    // Building from the AUR (only [`AUTO_AUR_ROLES`]): if it failed, the look is still
+    // applied, without what these packages give (the reason goes to the person).
     let mut early_notes: Vec<String> = Vec::new();
     if !plan.aur_build.is_empty() {
         let names: Vec<String> = plan.aur_build.iter().flat_map(|a| a.packages.iter().cloned()).collect();
@@ -1159,10 +1159,10 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
         }
     }
 
-    // Расширения GNOME Shell — сразу, без вопроса Rexon: защита — окно
-    // подтверждения оболочки. Отказ в нём, нет выпуска под эту версию GNOME,
-    // сбой сети — образ всё равно применяется, а человеку честно сказано,
-    // чего без расширения не будет.
+    // GNOME Shell extensions — right away, without a Rexon question: the protection is the shell's
+    // confirmation window. A refusal in it, no release for this GNOME version,
+    // a network failure — the look is still applied, and the person is honestly told
+    // what will be missing without the extension.
     let mut ext_lines: Vec<String> = Vec::new();
     for e in &plan.extensions {
         let without = e.kinds.iter().map(|k| kind_label(k)).collect::<Vec<_>>().join(", ");
@@ -1172,7 +1172,7 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
         }
     }
 
-    // Файлы: подготовить, проверить, собрать шаги.
+    // Files: prepare, check, build the steps.
     let prepared = prepare(look, plan, t, m).map_err(&fail)?;
     let owner = owner_of_look(&plan.id);
     let known: BTreeSet<String> = BTreeSet::new();
@@ -1202,7 +1202,7 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
     let existed = |p: &str| std::fs::symlink_metadata(p).is_ok();
     let placed = journal::placed_from_steps(&file_steps, &existed);
 
-    // Включение и команды возврата.
+    // Enabling and restore commands.
     let mut restore: Vec<Vec<String>> = Vec::new();
     let subplans = if plan.uses_settings {
         plasma_subplans(look, plan, t, m, &mut restore)
@@ -1210,8 +1210,8 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
         desktop_subplans(look, plan, t, m, &prepared, &mut restore, &mut notes)
     };
 
-    // Один откат на весь прогон; прежние значения стола (gsettings, dconf,
-    // xfconf) и файлы `kwriteconfig6` он снимает до команд сам.
+    // One rollback for the whole run; it captures the desktop's previous values (gsettings, dconf,
+    // xfconf) and the `kwriteconfig6` files itself before the commands.
     let mut undo = Undo::new().keeping_values();
     let mut pre = Vec::new();
     let files: Vec<Step> = file_steps.iter().cloned().map(Step::from).collect();
@@ -1253,8 +1253,8 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
 
     record(look, plan, t, undo, placed, &item_paths, &restore, &installed);
 
-    // Образ сменил тему и цвета: терминалы, берущие цвета темы, — на
-    // читаемую пару, под ту же запись образа в общем журнале.
+    // The look changed the theme and colors: terminals that take the theme colors get a
+    // readable pair, under the same look record in the shared log.
     let term_env = crate::terminal_guard::Env {
         de: t.de.clone(),
         home: t.home.clone(),
@@ -1295,7 +1295,7 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
     })
 }
 
-/// Строка «можно поставить из AUR самостоятельно».
+/// The line "can be installed from the AUR yourself".
 pub fn aur_text(aur: &[AurNeed]) -> String {
     let names: Vec<String> = aur.iter().flat_map(|a| a.packages.iter().cloned()).collect();
     trf(
@@ -1304,12 +1304,12 @@ pub fn aur_text(aur: &[AurNeed]) -> String {
     )
 }
 
-/// Текст `{en, ru, de}` на языке `lang` (нет — английский).
+/// The text `{en, ru, de}` in the language `lang` (missing — English).
 fn localized(v: &Value, lang: &str) -> String {
     v.get(lang).or_else(|| v.get("en")).and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
-/// Записать снимок «что было» и образ в общий журнал.
+/// Write the "what it was" snapshot and the look into the shared log.
 #[allow(clippy::too_many_arguments)]
 fn record(
     look: &Look,
@@ -1328,8 +1328,8 @@ fn record(
     let touched = undo.keep_into(&dir, 1);
     let now = now_iso();
     let text = |p: &Path| p.to_string_lossy().into_owned();
-    // Ключ, который вернёт снимок, своими командами возврата второй раз не
-    // возвращаем.
+    // A key the snapshot will restore is not restored a second time with our own
+    // restore commands.
     let covered: Vec<&str> = values.iter().map(|v| v.key.as_str()).collect();
     let restore: Vec<&Vec<String>> = restore
         .iter()
@@ -1404,17 +1404,17 @@ fn now_iso() -> String {
     }
 }
 
-// ── Подготовка файлов ───────────────────────────────────────────────────────
+// ── Preparing files ─────────────────────────────────────────────────────────
 
-/// Путь безопасен: относительный, без `..`.
+/// The path is safe: relative, without `..`.
 fn safe_rel(p: &str) -> bool {
     !p.starts_with('/') && !p.split('/').any(|c| c == "..")
 }
 
-/// Подготовить нагрузку в своём каталоге кэша (`prepared/<id>/sources/…`):
-/// скопировать нужное из скачанных источников (`copy_only`), убрать
-/// исключённое (`exclude`), исполнить правки (`edits`), проверить
-/// содержимое. Каталог — копия того же вида, что пути пакета.
+/// Prepare the payload in our own cache directory (`prepared/<id>/sources/…`):
+/// copy what is needed from the downloaded sources (`copy_only`), remove
+/// what is excluded (`exclude`), perform the edits (`edits`), check
+/// the contents. The directory is a copy of the same shape as the package paths.
 fn prepare(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<PathBuf, String> {
     let root = t.prepared_dir(&plan.id);
     let _ = std::fs::remove_dir_all(&root);
@@ -1434,7 +1434,7 @@ fn prepare(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Path
 
     for path in needed_paths(look, &plan.items, &plan.roles, plan.uses_settings) {
         let Some(job) = source_id_of(&path).and_then(|sid| plan.fetch.iter().find(|f| f.id == sid)) else {
-            continue; // источник — пакет системы: копировать нечего
+            continue; // the source is a system package: nothing to copy
         };
         if !safe_rel(&path) {
             return Err(trf("unsafe path in the look: %1", &[&path]));
@@ -1492,7 +1492,7 @@ fn remove_any(p: &Path) {
     }
 }
 
-/// Все файлы под `dir` (без ссылок), по порядку.
+/// All files under `dir` (without links), in order.
 fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
     let mut entries: Vec<_> = rd.flatten().collect();
@@ -1507,8 +1507,8 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// [`rxn::check_contents`] над подготовленным: исполняемое — только у
-/// элементов с разрешением `exec`, SVG без сценариев.
+/// [`rxn::check_contents`] over the prepared files: executables only for
+/// elements with the `exec` permission, SVG without scripts.
 fn check_prepared(pkg: &Package, root: &Path) -> String {
     use std::io::Read;
     use std::os::unix::fs::PermissionsExt;
@@ -1533,7 +1533,7 @@ fn check_prepared(pkg: &Package, root: &Path) -> String {
     }
 }
 
-/// Объявленная правка `edits` описания (закрытый набор, без кода).
+/// A declared `edits` edit of the description (a closed set, no code).
 fn run_edit(e: &Value, root: &Path, t: &Target, m: &Machine) -> Result<(), String> {
     let Some(file) = e.get("file").and_then(Value::as_str) else { return Ok(()) };
     if !safe_rel(file) {
@@ -1562,7 +1562,7 @@ fn run_edit(e: &Value, root: &Path, t: &Target, m: &Machine) -> Result<(), Strin
         return Ok(());
     }
     if !path.is_file() {
-        return Ok(()); // элемент не ставится — править нечего
+        return Ok(()); // the element is not installed — nothing to edit
     }
     if let Some(needle) = e.get("drop_lines_containing").and_then(Value::as_str) {
         edit_file(&path, |text| keep_lines(text, |l| !l.contains(needle)))?;
@@ -1616,8 +1616,8 @@ fn keep_lines(text: &str, keep: impl Fn(&str) -> bool) -> String {
     text.split_inclusive('\n').filter(|l| keep(l)).collect()
 }
 
-/// Снять из сценария раскладки апплеты `ids`: строку `addWidget("<id>")` и
-/// строки, что идут следом и настраивают её переменную (`w.…`).
+/// Remove the applets `ids` from a layout script: the `addWidget("<id>")` line and
+/// the lines that follow it and configure its variable (`w.…`).
 pub fn drop_applets(text: &str, ids: &[String]) -> String {
     if ids.is_empty() {
         return text.to_string();
@@ -1636,7 +1636,7 @@ pub fn drop_applets(text: &str, ids: &[String]) -> String {
             line.contains(&format!("addWidget(\"{id}\"")) || line.contains(&format!("addWidget('{id}'"))
         });
         if hit {
-            // `var w = panel.addWidget(…)` / `w = …` — запомнить переменную.
+            // `var w = panel.addWidget(…)` / `w = …` — remember the variable.
             let lhs = trimmed.split('=').next().unwrap_or("").trim();
             let name = lhs.trim_start_matches("var ").trim_start_matches("let ").trim_start_matches("const ").trim();
             if trimmed.contains('=') && !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
@@ -1649,8 +1649,8 @@ pub fn drop_applets(text: &str, ids: &[String]) -> String {
     out
 }
 
-/// Отфильтровать ярлыки дока в строках с `launchers`: убрать `drop` и (при
-/// `only_installed`) ярлыки программ, которых нет. `preferred://…` остаются.
+/// Filter the dock launchers in lines with `launchers`: remove `drop` and (with
+/// `only_installed`) launchers of programs that are missing. `preferred://…` stay.
 pub fn filter_launchers(text: &str, drop: &[String], only_installed: bool, installed: &dyn Fn(&str) -> bool) -> String {
     let keep = |el: &str| -> bool {
         let el = el.trim();
@@ -1677,9 +1677,9 @@ pub fn filter_launchers(text: &str, drop: &[String], only_installed: bool, insta
     out
 }
 
-/// В строке `line` заменить каждый литерал в кавычках списком его
-/// элементов (через запятую), прошедших `keep`; ставший пустым литерал,
-/// который был одним элементом массива, снимается вместе с запятой.
+/// In the line `line` replace each quoted literal with the list of its
+/// elements (comma-separated) that passed `keep`; a literal that became empty and
+/// was a single array element is removed together with its comma.
 fn filter_quoted(line: &str, keep: &dyn Fn(&str) -> bool) -> String {
     let chars: Vec<char> = line.chars().collect();
     let mut out = String::new();
@@ -1697,7 +1697,7 @@ fn filter_quoted(line: &str, keep: &dyn Fn(&str) -> bool) -> String {
                 }
                 let kept: Vec<&str> = inner.split(',').filter(|e| keep(e)).collect();
                 if kept.is_empty() && !inner.contains(',') {
-                    // Элемент массива целиком: снять с запятой после (или до).
+                    // A whole array element: remove it with the comma after (or before).
                     let mut j = end + 1;
                     while j < chars.len() && chars[j] == ' ' {
                         j += 1;
@@ -1727,9 +1727,9 @@ fn filter_quoted(line: &str, keep: &dyn Fn(&str) -> bool) -> String {
     out
 }
 
-// ── Куда кладутся файлы ─────────────────────────────────────────────────────
+// ── Where files go ──────────────────────────────────────────────────────────
 
-/// Каталоги-«контейнеры» под `usr/share` и куда они ложатся в профиле.
+/// "Container" directories under `usr/share` and where they go in the profile.
 const CONTAINERS: &[(&str, &str, &str)] = &[
     ("plasma/look-and-feel", "data", "plasma/look-and-feel"),
     ("plasma/desktoptheme", "data", "plasma/desktoptheme"),
@@ -1750,8 +1750,8 @@ fn base_dir(t: &Target, which: &str, rel: &str) -> String {
     format!("{}/{rel}", root.trim_end_matches('/'))
 }
 
-/// Каталог профиля для элемента вида `kind`, чей путь не под `usr/share`
-/// (репозиторий git, архив выпуска).
+/// The profile directory for an element of the kind `kind` whose path is not under `usr/share`
+/// (a git repository, a release archive).
 fn kind_dir(t: &Target, kind: &str, consumer: &str) -> Option<String> {
     let rel = match (kind, consumer) {
         ("palette", _) => ("data", "color-schemes"),
@@ -1769,10 +1769,10 @@ fn kind_dir(t: &Target, kind: &str, consumer: &str) -> Option<String> {
     Some(base_dir(t, rel.0, rel.1))
 }
 
-/// Единицы копирования элемента: `(подготовленный путь, путь в профиле)`.
-/// Каталог-контейнер (`…/look-and-feel`) раскладывается по детям.
+/// An element's copy units: `(prepared path, path in the profile)`.
+/// A container directory (`…/look-and-feel`) is laid out by its children.
 fn units_of(look: &Look, it: &PlannedItem, prepared: &Path, t: &Target) -> Vec<(PathBuf, String)> {
-    // Собранное Rexon ставится своими шагами, описание в профиль не кладётся.
+    // What Rexon builds is installed by its own steps, the description is not put into the profile.
     if matches!(it.choice, Choice::Generate { .. }) {
         return Vec::new();
     }
@@ -1791,9 +1791,9 @@ fn units_of(look: &Look, it: &PlannedItem, prepared: &Path, t: &Target) -> Vec<(
         names.into_iter().map(|n| (dir.join(&n), format!("{base}/{n}"))).collect()
     };
     if let Some(rest) = rel.strip_prefix("usr/share/") {
-        // Общий набор значков (`hicolor`, `locolor`) из пакета в профиль не
-        // кладётся: его каталог делят все программы, а `index.theme` пакета
-        // перекрыл бы системный (дефект 09.11.2026, [`crate::icon_hygiene`]).
+        // The shared icon set (`hicolor`, `locolor`) from a package is not put into the profile:
+        // all programs share its directory, and the package's `index.theme`
+        // would shadow the system one (defect of 09.11.2026, [`crate::icon_hygiene`]).
         let shared = |prefix: &str, unit: &str| prefix == "icons" && crate::icon_hygiene::is_reserved_icon_set(unit);
         for (prefix, which, to) in CONTAINERS {
             let base = base_dir(t, which, to);
@@ -1821,8 +1821,8 @@ fn units_of(look: &Look, it: &PlannedItem, prepared: &Path, t: &Target) -> Vec<(
     vec![(src, format!("{base}/{name}"))]
 }
 
-/// Положить единицу `src` → `dest` от имени образа. Место занято чужим —
-/// не трогать (заметка); `false` — не положено.
+/// Put the unit `src` → `dest` on behalf of the look. If the place is taken by something foreign —
+/// do not touch it (a note); `false` — not placed.
 fn put_unit(
     src: &Path,
     dest: &str,
@@ -1840,8 +1840,8 @@ fn put_unit(
         let ours = known.contains(dest)
             || (md.is_dir()
                 && std::fs::read_to_string(Path::new(dest).join(OWNER_MARK)).is_ok_and(|t| t.trim() == owner));
-        // Файл внутри нашего же каталога (рамка Sweet-Darkrc поверх копии) —
-        // наш: каталог положен этим прогоном.
+        // A file inside our own directory (the Sweet-Darkrc frame on top of a copy) is
+        // ours: the directory was placed by this run.
         let inside_ours = steps.iter().any(|s| match s {
             ExtStep::CopyTree { dest: d, .. } => dest.starts_with(&format!("{d}/")),
             _ => false,
@@ -1869,14 +1869,14 @@ fn put_unit(
     true
 }
 
-// ── Включение: Plasma ───────────────────────────────────────────────────────
+// ── Enabling: Plasma ────────────────────────────────────────────────────────
 
-/// Часть прогона: шаги и нужен ли их успех.
+/// Part of the run: the steps and whether their success is required.
 struct SubPlan {
     what: String,
     steps: Vec<Step>,
     must_ok: bool,
-    /// Заметка человеку, если необязательная часть не удалась.
+    /// A note to the person if an optional part failed.
     fail_note: Option<String>,
 }
 
@@ -1888,13 +1888,13 @@ fn sv(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| s.to_string()).collect()
 }
 
-/// argv «KWin, перечитай конфиг».
+/// argv for "KWin, reread the config".
 pub fn kwin_reconfigure_argv() -> Vec<String> {
     let (dest, obj, method) = crate::utils::KWIN_RECONFIGURE;
     sv(&["qdbus", dest, obj, method])
 }
 
-/// Файлы, которые перепишут команды Plasma-части (их «что было» снимает
+/// Files the Plasma part's commands will rewrite (their "what it was" is captured by
 /// [`ApplyStep::Guard`]).
 fn plasma_guard(settings: &Value, t: &Target) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -1923,8 +1923,8 @@ fn plasma_guard(settings: &Value, t: &Target) -> Vec<String> {
     out
 }
 
-/// Значение шага `apply`: `${prop.<имя>}` — запись варианта по значению
-/// свойства, иначе — само значение.
+/// The value of an `apply` step: `${prop.<name>}` — the variant record by the property
+/// value, otherwise — the value itself.
 fn step_value<'v>(look: &'v Look, settings: &'v Value, key: &str, v: &'v Value, values: &PropValues) -> Option<&'v Value> {
     if let Some(s) = v.as_str() {
         if let Some(prop) = s.strip_prefix("${prop.").and_then(|r| r.strip_suffix('}')) {
@@ -1935,7 +1935,7 @@ fn step_value<'v>(look: &'v Look, settings: &'v Value, key: &str, v: &'v Value, 
     Some(v)
 }
 
-/// Вариант по значению свойства (для `needs_role`).
+/// The variant by property value (for `needs_role`).
 fn variant<'v>(look: &'v Look, settings: &'v Value, values: &PropValues) -> Option<&'v Value> {
     for (name, _) in &look.pkg.properties {
         if let Some(v) = look.pkg.prop_value(name, values).and_then(Value::as_str) {
@@ -1950,7 +1950,7 @@ fn variant<'v>(look: &'v Look, settings: &'v Value, values: &PropValues) -> Opti
 fn plasma_subplans(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, restore: &mut Vec<Vec<String>>) -> Vec<SubPlan> {
     let Some(settings) = &look.settings else { return Vec::new() };
     let has = |kind: &str| plan.items.iter().any(|i| i.kind == kind);
-    // Вариант просит роль, которой не будет, — без курсора варианта.
+    // The variant asks for a role that will not exist — without the variant's cursor.
     let cursor_ok = variant(look, settings, &plan.values).is_none_or(|v| role_ok(v, &plan.roles));
     let mut steps: Vec<ApplyStep> = vec![ApplyStep::Guard { paths: plasma_guard(settings, t) }];
     let mut started = false;
@@ -2065,9 +2065,9 @@ fn plasma_subplans(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, restor
     vec![SubPlan { what: plan.name.clone(), steps: steps.into_iter().map(Step::from).collect(), must_ok: true, fail_note: None }]
 }
 
-// ── Включение: прочие столы ─────────────────────────────────────────────────
+// ── Enabling: other desktops ────────────────────────────────────────────────
 
-/// Команды плана нажатия (без файловых шагов — их возвращает снимок).
+/// Commands of a press plan (without file steps — the snapshot restores them).
 fn plan_commands(steps: &[Step]) -> Vec<Vec<String>> {
     steps
         .iter()
@@ -2080,7 +2080,7 @@ fn plan_commands(steps: &[Step]) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Прочитать значение командой; пусто — не прочиталось.
+/// Read a value with a command; empty — it was not read.
 fn read_value(ctx: &Ctx, de: &str, argv: &[String]) -> String {
     let r = (ctx.run)(argv, Some(5));
     if r.returncode != Some(0) {
@@ -2089,7 +2089,7 @@ fn read_value(ctx: &Ctx, de: &str, argv: &[String]) -> String {
     crate::themes::parse_native_role_output(de, &crate::utils::decode_text(&r.stdout))
 }
 
-/// Родной ключ стола: чем прочитать и чем записать значение.
+/// The desktop's native key: what to read and what to write the value with.
 fn native_key(de: &str, kind: &str, consumer: &str) -> Option<(Vec<String>, Vec<String>)> {
     let gs = |schema: &str, key: &str| Some((sv(&["gsettings", "get", schema, key]), sv(&["gsettings", "set", schema, key])));
     match (de, kind, consumer) {
@@ -2109,15 +2109,15 @@ fn native_key(de: &str, kind: &str, consumer: &str) -> Option<(Vec<String>, Vec<
         ("cinnamon", "fonts", _) => gs("org.cinnamon.desktop.interface", "font-name"),
         ("mate", "window-decoration", _) => gs("org.mate.Marco.general", "theme"),
         ("mate", "fonts", _) => gs("org.mate.interface", "font-name"),
-        // Своего ключа шрифта нет: GTK-программы читают ключ GNOME (на
-        // Wayland — напрямую, так же делает и раздел «Шрифты»).
+        // There is no font key of its own: GTK programs read the GNOME key (on
+        // Wayland — directly; the «Fonts» section does the same).
         ("budgie" | "sway" | "hyprland" | "niri" | "river", "fonts", _) => gs("org.gnome.desktop.interface", "font-name"),
         _ => None,
     }
 }
 
-/// Шрифт GTK образа из описания Plasma (`apply` → `gtk.font`) — данные
-/// образа, годные и вне Plasma.
+/// The look's GTK font from the Plasma description (`apply` → `gtk.font`) — look
+/// data usable outside Plasma too.
 fn gtk_font(look: &Look) -> Option<String> {
     let s = look.settings.as_ref()?;
     s.get("apply")?.as_array()?.iter().find_map(|e| e.get("gtk")?.get("font")?.as_str().map(str::to_string))
@@ -2143,8 +2143,8 @@ fn desktop_subplans(
         cursor_size: t.cursor_size,
         ..PressFacts::default()
     };
-    // Значки образа, если они встают: их получит и конфиг qt6ct (иначе
-    // Qt-программы под ним остались бы с `hicolor`).
+    // The look's icons, if they are installed: the qt6ct config gets them too (otherwise
+    // Qt programs under it would be left with `hicolor`).
     let icon_theme = plan
         .items
         .iter()
@@ -2157,8 +2157,8 @@ fn desktop_subplans(
         let name = Path::new(&it.path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let generated = matches!(it.choice, Choice::Generate { .. });
         match (it.kind.as_str(), generated) {
-            // Схема KDE вне Plasma — палитрой Qt (qt6ct или LXQt); без qt6ct
-            // её некому прочитать.
+            // A KDE scheme outside Plasma — as a Qt palette (qt6ct or LXQt); without qt6ct
+            // there is nobody to read it.
             ("palette", false)
                 if it.consumer == "lxqt" || (it.consumer == QT6CT_ROLE && plan.roles.contains(QT6CT_ROLE)) =>
             {
@@ -2178,7 +2178,7 @@ fn desktop_subplans(
                 };
                 let p = crate::themes::apply_kvantum_plan(&name, &env);
                 if !p.steps.is_empty() {
-                    // Выбор темы пишет сам `kvantummanager` — его файл под откат.
+                    // `kvantummanager` itself writes the theme choice — its file is under the rollback.
                     let guard = ApplyStep::Guard { paths: vec![format!("{}/Kvantum/kvantum.kvconfig", t.config)] };
                     let steps = std::iter::once(guard).chain(p.steps).map(Step::from).collect();
                     out.push(SubPlan { what: kind_label(&it.kind), steps, must_ok: false, fail_note: None });
@@ -2272,15 +2272,15 @@ fn desktop_subplans(
     out
 }
 
-/// Палитра Qt из схемы KDE образа вне Plasma: тот же слой, что у раздела
-/// «Цветовые схемы» (`shell_palette::plan_scheme_layer`: `kdeglobals` для
-/// KDE-программ, палитра qt6ct или `lxqt.conf`, переменная сеанса), но
-/// записями этого прогона — их «что было» снимает общий откат образа.
+/// The Qt palette from the look's KDE scheme outside Plasma: the same layer as the
+/// «Color schemes» section's (`shell_palette::plan_scheme_layer`: `kdeglobals` for
+/// KDE programs, the qt6ct palette or `lxqt.conf`, the session variable), but
+/// as records of this run — their "what it was" is captured by the look's shared rollback.
 fn palette_steps(look: &Look, plan: &LookPlan, t: &Target, prepared: &Path, it: &PlannedItem, icon_theme: &str) -> Option<Vec<Step>> {
     use crate::shell_palette as sp;
-    // Нагрузка — файл схемы или каталог схем (SteamOS: Vapor и VGUI); из
-    // каталога — схема, которую образ включает в Plasma (`colorscheme`
-    // описания, с вариантом).
+    // The payload is a scheme file or a schemes directory (SteamOS: Vapor and VGUI); from
+    // a directory — the scheme the look enables in Plasma (the description's
+    // `colorscheme`, with the variant).
     let src = prepared.join(&it.path);
     let file = if src.is_dir() {
         let settings = look.settings.as_ref()?;
@@ -2319,9 +2319,9 @@ fn palette_steps(look: &Look, plan: &LookPlan, t: &Target, prepared: &Path, it: 
     for w in layer.writes {
         let path = w.path.to_string_lossy().into_owned();
         if w.kind == "env" {
-            // Файл переменных — шагом стола: после него Rexon зеркалит
-            // переменные в сеансы, которые `environment.d` не читают
-            // (`.xprofile` MATE/XFCE/Cinnamon на X11, Hyprland, labwc).
+            // The variables file — as a desktop step: after it Rexon mirrors
+            // the variables into sessions that do not read `environment.d`
+            // (`.xprofile` of MATE/XFCE/Cinnamon on X11, Hyprland, labwc).
             let dir = w.path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
             steps.push(Step::from(ApplyStep::ForceOk));
             steps.push(Step::from(ApplyStep::WriteIfOk { dir, path, content: w.text }));
@@ -2332,14 +2332,14 @@ fn palette_steps(look: &Look, plan: &LookPlan, t: &Target, prepared: &Path, it: 
     Some(steps)
 }
 
-/// Ярлыки программ по роли значка запуска — первый, что есть в системе.
-/// Родные программы стола — первыми.
+/// Program launchers by the launcher role — the first one present on the system.
+/// The desktop's native programs first.
 fn launcher_candidates(role: &str, de: &str) -> Vec<&'static str> {
     let native: &[&str] = match (role, de) {
         ("terminal", "mate") => &["mate-terminal"],
         ("terminal", "xfce") => &["xfce4-terminal"],
         ("terminal", "cinnamon" | "gnome") => &["org.gnome.Terminal", "org.gnome.Console"],
-        // Budgie — набор Ubuntu Budgie (`system::DE_DATABASE`).
+        // Budgie — the Ubuntu Budgie set (`system::DE_DATABASE`).
         ("terminal", "budgie") => &["xfce4-terminal"],
         ("file-manager", "mate") => &["caja-browser", "caja"],
         ("file-manager", "xfce") => &["thunar"],
@@ -2368,15 +2368,15 @@ fn launcher_candidates(role: &str, de: &str) -> Vec<&'static str> {
     out
 }
 
-/// Файл снимка панели MATE до применения образа (каталог Rexon: в профиль
-/// человека не попадает; возврат его удаляет).
+/// The MATE panel snapshot file before applying the look (the Rexon directory: it does not get
+/// into the person's profile; restoring deletes it).
 fn mate_panel_dump(t: &Target, id: &str) -> String {
     t.rexon_dir().join("looks").join(id).join("mate-panel.dconf").to_string_lossy().into_owned()
 }
 
-/// Раскладка панелей из описания образа: mate-panel — своим файлом
-/// раскладки, Cinnamon — ключами `org.cinnamon` (их «что было» снимает
-/// общий откат значений).
+/// The panel layout from the look description: mate-panel — with its own layout
+/// file, Cinnamon — with the `org.cinnamon` keys (their "what it was" is captured by
+/// the shared value rollback).
 fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &PlannedItem, restore: &mut Vec<Vec<String>>) -> Vec<Step> {
     let panels = model_panels(look);
     let roles_of = |p: &Value| -> Vec<(String, String, Vec<String>)> {
@@ -2426,11 +2426,11 @@ fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &Plann
                         "launchers" => launchers(&apps).into_iter().map(OwnObject::Launcher).collect(),
                         _ => Vec::new(),
                     };
-                    // Середины у mate-panel нет: часы — к правому краю.
+                    // mate-panel has no center: the clock goes to the right edge.
                     if align == "start" {
                         panel.start.extend(objects);
                     } else {
-                        // Список «с конца» идёт справа налево.
+                        // The "from the end" list goes right to left.
                         for o in objects {
                             panel.end.insert(0, o);
                         }
@@ -2471,8 +2471,8 @@ fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &Plann
                         "end" => "right",
                         _ => "left",
                     };
-                    // Док Garuda — значки запуска и окна вместе: у Cinnamon это
-                    // список окон с закреплёнными программами, посередине.
+                    // The Garuda dock is launchers and windows together: in Cinnamon it is
+                    // the window list with pinned programs, in the middle.
                     let (zone, applets): (&str, &[&str]) = match role.as_str() {
                         "menu" => (zone, &["menu@cinnamon.org"]),
                         "clock" => (zone, &["calendar@cinnamon.org"]),
@@ -2507,71 +2507,71 @@ fn panel_steps(look: &Look, plan: &LookPlan, t: &Target, m: &Machine, it: &Plann
     }
 }
 
-// ── Compiz вместо Marco и xfwm4 (поведение «как в KWin») ──────────────────
+// ── Compiz instead of Marco and xfwm4 (behavior "like in KWin") ─────────────
 //
-// Решение владельца 31.10.2026: ради эффектов окон Garuda (желейные окна,
-// «волшебная лампа», затухание, переключатель «карусель») на MATE и XFCE
-// (X11) оконный менеджер стола (Marco, xfwm4) меняется на Compiz 0.9. Откуда
-// что взято (исходники Compiz 0.9.14.2, git.launchpad.net/compiz;
-// xfce4-session и xfwm4 4.20, gitlab.xfce.org):
+// The owner's decision of 31.10.2026: for Garuda's window effects (wobbly windows,
+// «Magic Lamp», fading, the «Cover» switcher) on MATE and XFCE
+// (X11) the desktop's window manager (Marco, xfwm4) is replaced with Compiz 0.9. Where
+// things come from (the Compiz 0.9.14.2 sources, git.launchpad.net/compiz;
+// xfce4-session and xfwm4 4.20, gitlab.xfce.org):
 //
-// * настройки — профиль бэкенда `ini` libcompizconfig: файл
+// * settings — the profile of libcompizconfig's `ini` backend: the file
 //   `~/.config/compiz-1/compizconfig/config` (`[general] backend`, `profile`)
-//   и `<профиль>.ini` с группами-плагинами и ключами `s0_<параметр>`;
-//   списки — через `;` (`libcompizconfig/src/ini.c`);
-// * рамки рисует `gtk-window-decorator` (параметр `command` плагина `decor`);
-//   тему и порядок кнопок он берёт на MATE из `org.mate.Marco.general` — те
-//   же ключи, что образ уже ставит Marco, — а на любом другом столе, XFCE
-//   тоже, из `org.gnome.desktop.wm.preferences` `theme`/`button-layout`
-//   (`gtk/window-decorator/gwd-settings-storage.c`, выбор по
-//   `XDG_CURRENT_DESKTOP`): на XFCE Rexon пишет туда тему рамок образа (в
-//   каталоге темы рядом с `xfwm4/` лежит и `metacity-1/`) и кнопки слева;
-// * «волшебная лампа» — `animation` `minimize_effects = animation:Magic Lamp`,
-//   «карусель» — `shift` `mode = 0` (Cover), желе — `wobbly`, затухание —
-//   `fade`; подсказки смены стола у Compiz нет — ближе всего «стена» `wall`
-//   с её картой столов при переключении.
+//   and `<profile>.ini` with plugin groups and `s0_<parameter>` keys;
+//   lists — separated by `;` (`libcompizconfig/src/ini.c`);
+// * frames are drawn by `gtk-window-decorator` (the `command` parameter of the `decor` plugin);
+//   it takes the theme and button order on MATE from `org.mate.Marco.general` — the
+//   same keys the look already sets for Marco — and on any other desktop, XFCE
+//   included, from `org.gnome.desktop.wm.preferences` `theme`/`button-layout`
+//   (`gtk/window-decorator/gwd-settings-storage.c`, chosen by
+//   `XDG_CURRENT_DESKTOP`): on XFCE Rexon writes the look's frame theme there (in
+//   the theme directory next to `xfwm4/` there is also `metacity-1/`) and buttons on the left;
+// * «Magic Lamp» — `animation` `minimize_effects = animation:Magic Lamp`,
+//   «Cover» — `shift` `mode = 0` (Cover), wobbly — `wobbly`, fading —
+//   `fade`; Compiz has no desktop switch hint — the closest is the `wall`
+//   with its desktop map on switching.
 //
-// Как стол запускает менеджер окон при входе:
-// * MATE — ярлык из `org.mate.session.required-components windowmanager`;
-// * XFCE — xfce4-session поднимает менеджер окон как обычного клиента
-//   сеанса: из сохранённого сеанса (`~/.cache/sessions/xfce4-session-*`),
-//   а если его нет — из `/sessions/Failsafe/Client0_Command` канала
-//   `xfce4-session` (массив строк, по умолчанию `xfwm4`). Вытесненный
-//   `--replace` xfwm4 сам ставит себе «не перезапускать» и выпадает из сеанса;
-//   за наличием менеджера окон сеанс не следит. Поэтому `Client0_Command`
-//   не годится (сохранённый сеанс его перекрывает), а Compiz запускается
-//   автозапуском `~/.config/autostart` (его xfce4-session читает при любом
-//   входе): сеанс поднимает xfwm4, автозапуск сменяет его на Compiz, а упал
-//   Compiz — `exec xfwm4 --replace`. Compiz при этом НЕ клиент сеанса
-//   (`env -u SESSION_MANAGER`): иначе сеанс перезапускал бы упавший Compiz
-//   поверх вернувшегося xfwm4 и запомнил бы его в сохранённом сеансе после
-//   «Вернуть как было». xfwm4, который возвращает Rexon, — снова клиент
-//   сеанса.
+// How the desktop starts the window manager at login:
+// * MATE — the launcher from `org.mate.session.required-components windowmanager`;
+// * XFCE — xfce4-session brings up the window manager as a regular session
+//   client: from the saved session (`~/.cache/sessions/xfce4-session-*`),
+//   and if there is none — from `/sessions/Failsafe/Client0_Command` of the
+//   `xfce4-session` channel (a string array, `xfwm4` by default). An xfwm4 displaced by
+//   `--replace` sets "do not restart" for itself and drops out of the session;
+//   the session does not watch for a window manager being present. So `Client0_Command`
+//   is no good (the saved session overrides it), and Compiz is started by
+//   autostart `~/.config/autostart` (xfce4-session reads it at every
+//   login): the session brings up xfwm4, autostart replaces it with Compiz, and if
+//   Compiz crashed — `exec xfwm4 --replace`. Compiz is NOT a session client then
+//   (`env -u SESSION_MANAGER`): otherwise the session would restart a crashed Compiz
+//   on top of the returned xfwm4 and would remember it in the saved session after
+//   «Restore as it was». The xfwm4 that Rexon brings back is a session
+//   client again.
 //
-// Безопасность: (1) до замены — проба 3D: виртуальная машина или программная
-// отрисовка (llvmpipe) — Compiz не ставится, причина названа; (2) после
-// `compiz --replace` сторож ждёт ~12 с: Compiz упал или рамок нет (нет
-// `gtk-window-decorator`) — обратно прежний менеджер (`--replace`), причина
-// названа; (3) «Вернуть как было» возвращает ключ сеанса (автозапуск) и
-// файлы общим откатом образа и запускает прежний менеджер; (4) ключ сеанса
-// MATE и автозапуск XFCE пишутся ТОЛЬКО после того, как Compiz прошёл
-// сторожа, и сами откатываются на прежний менеджер, если Compiz не стартовал.
+// Safety: (1) before the replacement — a 3D probe: a virtual machine or software
+// rendering (llvmpipe) — Compiz is not installed, the reason is named; (2) after
+// `compiz --replace` a guard waits ~12 s: if Compiz crashed or there are no frames (no
+// `gtk-window-decorator`) — the previous manager comes back (`--replace`), the reason
+// is named; (3) «Restore as it was» restores the session key (autostart) and
+// files with the look's shared rollback and starts the previous manager; (4) the
+// MATE session key and the XFCE autostart are written ONLY after Compiz has passed
+// the guard, and they themselves roll back to the previous manager if Compiz did not start.
 
-/// Имя своего профиля Compiz (`<профиль>.ini`).
+/// The name of our Compiz profile (`<profile>.ini`).
 pub const COMPIZ_PROFILE: &str = "Rexon";
 
-/// Ярлык, которым сеанс MATE запускает Compiz (`org.mate.session
-/// .required-components windowmanager` = имя ярлыка без `.desktop`; ищется
-/// и в `~/.local/share/applications` — `gsm_util_get_app_dirs`).
+/// The launcher with which the MATE session starts Compiz (`org.mate.session
+/// .required-components windowmanager` = the launcher name without `.desktop`; it is also looked up
+/// in `~/.local/share/applications` — `gsm_util_get_app_dirs`).
 pub const COMPIZ_SESSION_DESKTOP: &str = "rexon-compiz";
 
-/// Файл `config` compizconfig: бэкенд `ini` и наш профиль.
+/// The compizconfig `config` file: the `ini` backend and our profile.
 pub fn compiz_config_text() -> String {
     format!("[general]\nbackend = ini\nprofile = {COMPIZ_PROFILE}\nplugin_list_autosort = true\n")
 }
 
-/// Профиль Compiz с эффектами Garuda. `core` — первым, остальное сортирует
-/// сам compizconfig (`plugin_list_autosort`).
+/// The Compiz profile with Garuda's effects. `core` first, the rest is sorted by
+/// compizconfig itself (`plugin_list_autosort`).
 pub fn compiz_profile_text() -> String {
     [
         "[core]",
@@ -2596,8 +2596,8 @@ pub fn compiz_profile_text() -> String {
     .join("\n")
 }
 
-/// Чем Compiz встаёт на место `wm`: на XFCE — не клиентом сеанса (см.
-/// раздел выше).
+/// How Compiz takes the place of `wm`: on XFCE — not as a session client (see
+/// the section above).
 fn compiz_run(wm: &str) -> &'static str {
     match wm {
         "xfwm4" => "env -u SESSION_MANAGER compiz --replace ccp",
@@ -2605,9 +2605,9 @@ fn compiz_run(wm: &str) -> &'static str {
     }
 }
 
-/// Ярлык, которым стол запускает Compiz при входе: на MATE — менеджер окон
-/// сеанса, на XFCE — автозапуск. Compiz не запустился или упал — прежний
-/// менеджер `wm` (вход не останется без оконного менеджера).
+/// The launcher with which the desktop starts Compiz at login: on MATE — the session's
+/// window manager, on XFCE — autostart. If Compiz did not start or crashed — the previous
+/// manager `wm` (login will not be left without a window manager).
 pub fn compiz_session_desktop_text(wm: &str) -> String {
     match wm {
         "xfwm4" => format!(
@@ -2618,12 +2618,12 @@ pub fn compiz_session_desktop_text(wm: &str) -> String {
     }
 }
 
-/// Запустить Compiz вместо `wm` и сторожить ~12 с: Compiz жив и рамки есть
-/// (`gtk-window-decorator`) — код 0; иначе — обратно `wm`, код 1.
-/// Отсоединённо (`setsid -f`): менеджер окон переживает Rexon, а вывод не
-/// держит трубу запуска. Рамки ищутся по имени процесса (`-x`; ядро хранит
-/// его усечённым до 15 знаков — `gtk-window-deco`): поиск по командной
-/// строке (`-f`) находил бы сам этот `sh -c`, в тексте которого то же имя.
+/// Start Compiz instead of `wm` and guard it for ~12 s: Compiz is alive and there are frames
+/// (`gtk-window-decorator`) — code 0; otherwise — back to `wm`, code 1.
+/// Detached (`setsid -f`): the window manager outlives Rexon, and its output does not
+/// hold the launch pipe. Frames are looked up by process name (`-x`; the kernel keeps
+/// it truncated to 15 characters — `gtk-window-deco`): a search by command
+/// line (`-f`) would find this very `sh -c`, whose text has the same name.
 pub fn compiz_start_argv(wm: &str) -> Vec<String> {
     let script = format!(
         "u=$(id -u); setsid -f {} >/dev/null 2>&1 </dev/null; i=0; \
@@ -2635,14 +2635,14 @@ pub fn compiz_start_argv(wm: &str) -> Vec<String> {
     sv(&["sh", "-c", &script])
 }
 
-/// Вернуть прежний менеджер окон `wm` (команда «Вернуть как было»).
+/// Bring back the previous window manager `wm` (the «Restore as it was» command).
 pub fn wm_back_argv(wm: &str) -> Vec<String> {
     sv(&["sh", "-c", &format!("setsid -f {wm} --replace >/dev/null 2>&1 </dev/null")])
 }
 
-/// Почему Compiz здесь включать нельзя; `None` — можно. Проба — `glxinfo -B`
-/// (нет прямой отрисовки или она программная — нельзя); нет `glxinfo` —
-/// виртуальная машина (`systemd-detect-virt --vm`) считается машиной без 3D.
+/// Why Compiz must not be enabled here; `None` — it may. The probe is `glxinfo -B`
+/// (no direct rendering or it is software — not allowed); without `glxinfo`
+/// a virtual machine (`systemd-detect-virt --vm`) counts as a machine without 3D.
 fn compiz_blocker(ctx: &Ctx) -> Option<String> {
     let glx = (ctx.run)(&sv(&["glxinfo", "-B"]), Some(10));
     if glx.returncode == Some(0) {
@@ -2663,7 +2663,7 @@ fn compiz_blocker(ctx: &Ctx) -> Option<String> {
     None
 }
 
-/// Подплан «Compiz вместо `wm`» и команда возврата `wm`.
+/// The "Compiz instead of `wm`" subplan and the command restoring `wm`.
 fn compiz_subplan(look: &Look, plan: &LookPlan, t: &Target, wm: &str) -> (SubPlan, Vec<String>) {
     let config = t.config.trim_end_matches('/');
     let dir = format!("{config}/compiz-1/compizconfig");
@@ -2672,10 +2672,10 @@ fn compiz_subplan(look: &Look, plan: &LookPlan, t: &Target, wm: &str) -> (SubPla
         Step::from(ExtStep::WriteFile { path: format!("{dir}/{COMPIZ_PROFILE}.ini"), content: compiz_profile_text() }),
     ];
     let start = Step::from(ApplyStep::Primary(Cmd { argv: compiz_start_argv(wm), timeout: Some(40) }));
-    // Сеанс — только после сторожа: иначе вход запускал бы то, что здесь уже
-    // не поднялось.
+    // The session — only after the guard: otherwise login would start something that already
+    // failed to come up here.
     if wm == "xfwm4" {
-        // Рамки: вне MATE gtk-window-decorator читает ключи GNOME.
+        // Frames: outside MATE gtk-window-decorator reads the GNOME keys.
         let gs = |key: &str, value: &str| {
             Step::from(ApplyStep::BestEffort(cmd(sv(&["gsettings", "set", "org.gnome.desktop.wm.preferences", key, value]))))
         };
@@ -2692,8 +2692,8 @@ fn compiz_subplan(look: &Look, plan: &LookPlan, t: &Target, wm: &str) -> (SubPla
         if !buttons.is_empty() {
             steps.push(gs("button-layout", buttons));
         }
-        // Автозапуск кладётся копией готового ярлыка после сторожа; что
-        // заведёт копия, снимает откат (`Guard`).
+        // Autostart is placed as a copy of the ready launcher after the guard; whatever
+        // the copy creates is captured by the rollback (`Guard`).
         let staged = format!("{config}/compiz-1/{COMPIZ_SESSION_DESKTOP}.desktop");
         let autostart_dir = format!("{config}/autostart");
         let autostart = format!("{autostart_dir}/{COMPIZ_SESSION_DESKTOP}.desktop");
@@ -2726,8 +2726,8 @@ fn compiz_subplan(look: &Look, plan: &LookPlan, t: &Target, wm: &str) -> (SubPla
     (sp, wm_back_argv(wm))
 }
 
-/// Кнопки заголовка в записи GTK/Metacity (`close,maximize,minimize:`) —
-/// буквами xfwm4 (`CMH|`: `|` — заголовок).
+/// Title buttons in GTK/Metacity notation (`close,maximize,minimize:`) —
+/// as xfwm4 letters (`CMH|`: `|` — the title).
 pub fn xfwm4_button_layout(gtk: &str) -> String {
     let side = |s: &str| -> String {
         s.split(',')
@@ -2746,8 +2746,8 @@ pub fn xfwm4_button_layout(gtk: &str) -> String {
     format!("{}|{}", side(left), side(right))
 }
 
-/// Команды поведения из описания образа для оконного менеджера `consumer`
-/// (что он умеет; остальное — [`LookPlan::limits`]).
+/// Behavior commands from the look description for the window manager `consumer`
+/// (what it can do; the rest — [`LookPlan::limits`]).
 fn behaviour_commands(look: &Look, consumer: &str) -> Vec<Vec<String>> {
     let Some(b) = model_behaviour(look) else { return Vec::new() };
     let buttons = b.get("window_buttons").and_then(Value::as_str).unwrap_or_default();
@@ -2800,34 +2800,34 @@ fn behaviour_commands(look: &Look, consumer: &str) -> Vec<Vec<String>> {
 }
 
 // ============================================================================
-// «Вернуть как было»
+// «Restore as it was»
 // ============================================================================
 
-/// Применён ли образ `id` (есть запись в журнале или снимок «что было»).
+/// Whether the look `id` is applied (there is a log record or a "what it was" snapshot).
 pub fn is_applied(id: &str, rexon_dir: &Path) -> bool {
     let view = journal::view_at(rexon_dir);
     view.items.contains_key(&journal_key(id)) || view.applied.contains_key(&section_of(id))
 }
 
-/// Итог «Вернуть как было».
+/// The result of «Restore as it was».
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Reverted {
-    /// Было что возвращать.
+    /// There was something to restore.
     pub reverted: bool,
-    /// Файлы, которые вернуть не вышло (копии остались в снимке).
+    /// Files that could not be restored (copies remained in the snapshot).
     pub not_restored: Vec<String>,
-    /// Положенное образом, которое оставлено (стало чужим).
+    /// Things placed by the look that were left (they became foreign).
     pub kept: Vec<String>,
-    /// Пакеты, поставленные образом: Rexon их не снимает, человек решает
-    /// сам (`pacman -Rs …`).
+    /// Packages installed by the look: Rexon does not remove them, the person decides
+    /// themselves (`pacman -Rs …`).
     pub packages: Vec<String>,
-    /// Plasma: оболочку стоит перезапустить, чтобы панели вернулись сразу.
+    /// Plasma: the shell should be restarted for the panels to come back right away.
     pub restart_shell: bool,
     pub message: String,
 }
 
-/// «Вернуть как было» для образа `id`: снять положенное по журналу (только
-/// своё), вернуть файлы по снимку, вернуть значения стола командами.
+/// «Restore as it was» for the look `id`: remove what was placed per the log (only
+/// our own), restore files from the snapshot, restore desktop values with commands.
 pub fn revert(id: &str, t: &Target, ctx: &Ctx) -> Result<Reverted, String> {
     let rexon = t.rexon_dir();
     let key = journal_key(id);
@@ -2852,8 +2852,8 @@ pub fn revert(id: &str, t: &Target, ctx: &Ctx) -> Result<Reverted, String> {
         journal::prune(&removal);
         out.kept = removal.kept.iter().map(|(p, _)| p.clone()).collect();
     }
-    // Значения стола — тем же запуском, что у прогона (в проверках —
-    // подменным), а не живой машиной.
+    // Desktop values — with the same runner as the run's (in checks —
+    // a fake one), not with the live machine.
     match journal::revert_applied_with(&rexon, &section_of(id), &|_| false, ctx.run) {
         Ok(Some(failed)) => {
             out.reverted = true;
@@ -2901,15 +2901,15 @@ pub fn revert(id: &str, t: &Target, ctx: &Ctx) -> Result<Reverted, String> {
 }
 
 // ============================================================================
-// Живая машина
+// The live machine
 // ============================================================================
 
 thread_local! {
     static PACMAN_DB: RefCell<Option<BTreeMap<String, String>>> = const { RefCell::new(None) };
 }
 
-/// Владельцы имён по локальной базе pacman (`/var/lib/pacman/local/*/desc`):
-/// имя пакета и его Provides → пакет. Только чтение файлов.
+/// Name owners from the local pacman database (`/var/lib/pacman/local/*/desc`):
+/// the package name and its Provides → the package. File reading only.
 pub fn pacman_owners(db: &Path) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let Ok(rd) = std::fs::read_dir(db) else { return map };
@@ -2943,9 +2943,9 @@ pub fn pacman_owners(db: &Path) -> BTreeMap<String, String> {
     map
 }
 
-/// Каким пакетом закрыто имя на живой машине. Arch — по локальной базе
-/// pacman (перечитывается после [`forget_owner_cache_live`]); прочие
-/// семейства — запросом менеджера пакетов.
+/// Which package provides a name on the live machine. Arch — by the local
+/// pacman database (reread after [`forget_owner_cache_live`]); other
+/// families — with a package manager query.
 pub fn owner_of_live(name: &str) -> Option<String> {
     let family = crate::system::DistroDetector::detect_live().family_live();
     if family == PkgFamily::Arch {
@@ -2968,13 +2968,13 @@ pub fn owner_of_live(name: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// Забыть прочитанную базу pacman (после установки — снимок «после»).
+/// Forget the read pacman database (after installation — the "after" snapshot).
 pub fn forget_owner_cache_live() {
     PACMAN_DB.with(|c| *c.borrow_mut() = None);
 }
 
-/// Есть ли пакет в подключённых репозиториях (Arch — `pacman -Si`; прочие —
-/// считается, что есть: установка скажет, если нет).
+/// Whether the package is in the enabled repositories (Arch — `pacman -Si`; others —
+/// assumed to be there: installation will say if it is not).
 pub fn in_repos_live(name: &str) -> bool {
     if crate::system::DistroDetector::detect_live().family_live() != PkgFamily::Arch {
         return true;
@@ -2982,7 +2982,7 @@ pub fn in_repos_live(name: &str) -> bool {
     crate::install_plan::run_live(&sv(&["pacman", "-Si", name]), Some(30)).returncode == Some(0)
 }
 
-/// Стоит ли расширение GNOME Shell (каталог в профиле или в системе).
+/// Whether a GNOME Shell extension is installed (a directory in the profile or in the system).
 pub fn extension_installed_live(uuid: &str) -> bool {
     let t = Target::live("");
     [format!("{}/gnome-shell/extensions/{uuid}", t.data), format!("/usr/share/gnome-shell/extensions/{uuid}")]
@@ -2990,7 +2990,7 @@ pub fn extension_installed_live(uuid: &str) -> bool {
         .any(|p| Path::new(p).is_dir())
 }
 
-/// Пакет Plasma `id` в `plasma/<sub>` профиля или системы.
+/// The Plasma package `id` in `plasma/<sub>` of the profile or the system.
 pub fn kpackage_installed_live(sub: &str, id: &str) -> bool {
     let t = Target::live("");
     [format!("{}/plasma/{sub}/{id}", t.data), format!("/usr/share/plasma/{sub}/{id}")]
@@ -2998,12 +2998,12 @@ pub fn kpackage_installed_live(sub: &str, id: &str) -> bool {
         .any(|p| Path::new(p).is_dir())
 }
 
-/// Ярлык программы в каталогах XDG.
+/// A program launcher in the XDG directories.
 pub fn desktop_installed_live(name: &str) -> bool {
     desktop_path_live(name).is_some()
 }
 
-/// Полный путь ярлыка программы в каталогах XDG (свои — первыми).
+/// The full path of a program launcher in the XDG directories (our own first).
 pub fn desktop_path_live(name: &str) -> Option<String> {
     let t = Target::live("");
     let dirs = std::env::var("XDG_DATA_DIRS").ok().filter(|v| !v.is_empty()).unwrap_or("/usr/local/share:/usr/share".into());
@@ -3014,16 +3014,16 @@ pub fn desktop_path_live(name: &str) -> Option<String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
-/// Поставить пакеты из официальных репозиториев (окно пароля; AUR не
-/// собирается) — общий путь Rexon.
+/// Install packages from the official repositories (the password window; the AUR is not
+/// built) — Rexon's shared path.
 pub fn install_packages_live(names: &[String]) -> Result<(), String> {
     let r = crate::appearance_installer::live_install_repo_packages(names, crate::privilege::op::PkgSource::DistroLook);
     forget_owner_cache_live();
     r
 }
 
-/// Собрать и поставить пакеты AUR помощником (`yay`/`paru`; пароль — окном
-/// polkit, `aur_install::install_argv`).
+/// Build and install AUR packages with a helper (`yay`/`paru`; the password — with a polkit
+/// window, `aur_install::install_argv`).
 pub fn install_aur_live(names: &[String]) -> Result<(), String> {
     let Some(helper) = Target::live("").aur_helper else {
         return Err(tr("there is no AUR helper (yay or paru)"));
@@ -3041,21 +3041,21 @@ pub fn install_aur_live(names: &[String]) -> Result<(), String> {
     }
 }
 
-/// Снять пакеты (окно пароля) — только поставленное этим применением.
+/// Remove packages (the password window) — only those installed by this application.
 pub fn remove_packages_live(names: &[String]) -> Result<(), String> {
     use crate::system_plan as sp;
     let family = crate::system::DistroDetector::detect_live().family_live();
     let full = remove_argv(family, names, sp::is_exec_file(sp::pkg_helper_path()) && Path::new(sp::PKG_POLICY_PATH).exists())?;
-    // Сеанс прав окна (один пароль; вечное и текущий стол проверяет root);
-    // его нет — прежняя команда. Отказ помощника прежней командой не
-    // повторяется (З5).
+    // The window's privilege session (one password; root checks the vital ones and the current desktop);
+    // without it — the old command. A helper refusal is not repeated with the old
+    // command (Z5).
     let op = crate::privilege::op::PrivOp::PkgRemove { family, packages: names.to_vec() };
     if let Some(out) = crate::privilege::run::run_live(&op, &[], None, &mut |_| {}) {
         forget_owner_cache_live();
         return if out.returncode == Some(0) {
             Ok(())
         } else {
-            // Пояснение помощник прислал строкой хода (последней), прочие отказы — в stderr.
+            // The helper sent the explanation as a progress line (the last one), other refusals — to stderr.
             let why = [out.stderr.as_str(), out.stdout.as_str()]
                 .iter()
                 .find_map(|t| t.lines().map(str::trim).rfind(|l| !l.is_empty()).map(str::to_string))
@@ -3072,15 +3072,15 @@ pub fn remove_packages_live(names: &[String]) -> Result<(), String> {
     }
 }
 
-/// Команда снятия пакетов образа. Путь — помощник пакетов Rexon: он сам, от
-/// root, не даёт снять жизненно важное (`is_vital_package`). Прежде здесь
-/// стоял сырой `pkexec pacman -Rns` мимо этой проверки — её держала только
-/// сторона пользователя. Без помощника (запуск из дерева) остаётся сырой
-/// путь, но жизненно важные имена отвергаются и на нём.
+/// The command removing the look's packages. The path is the Rexon package helper: it itself, as
+/// root, does not allow removing something vital (`is_vital_package`). Previously there
+/// was a raw `pkexec pacman -Rns` here bypassing this check — only
+/// the user side held it. Without the helper (a run from the tree) the raw
+/// path remains, but vital names are rejected on it too.
 fn remove_argv(family: crate::system::PkgFamily, names: &[String], helper_ok: bool) -> Result<Vec<String>, String> {
     use crate::system_plan as sp;
-    // Правило вечного — одно на все пути (`is_vital_package`: точные
-    // имена и семейства ядер, драйверов, прошивок).
+    // The vital rule is one for all paths (`is_vital_package`: exact
+    // names and families of kernels, drivers, firmware).
     if let Some(vital) = names.iter().find(|n| sp::is_vital_package(n)) {
         return Err(sp::vital_remove_error(vital));
     }
@@ -3092,10 +3092,10 @@ fn remove_argv(family: crate::system::PkgFamily, names: &[String], helper_ok: bo
     Ok(full)
 }
 
-/// Скачать источник в кэш со сверкой: архив — по SHA-256 (не совпало —
-/// отказ), git — ровно закреплённый коммит (`git fetch` по хешу, сверка
-/// `rev-parse HEAD`; содержимое проверяет сам git хешами объектов — у
-/// GitLab архив целиком не хешируется, поэтому клон, а не архив).
+/// Download a source into the cache with verification: an archive — by SHA-256 (no match —
+/// a refusal), git — exactly the pinned commit (`git fetch` by hash, checking
+/// `rev-parse HEAD`; git itself checks the contents with object hashes — on
+/// GitLab the whole archive is not hashed, hence a clone, not an archive).
 pub fn fetch_live(job: &FetchJob) -> Result<(), String> {
     use sha2::{Digest, Sha256};
     let tmp = job.dir.with_extension(format!("part-{}", std::process::id()));
@@ -3154,49 +3154,49 @@ pub fn fetch_live(job: &FetchJob) -> Result<(), String> {
     result
 }
 
-/// Пробы живой машины для [`plan`].
+/// Live machine probes for [`plan`].
 pub fn probes_live() -> Probes<'static> {
     Probes { owner_of: &owner_of_live, in_repos: &in_repos_live, extension_installed: &extension_installed_live }
 }
 
 // ============================================================================
-// Предложение человеку: два плана и что вернётся перед применением
+// The offer to the person: two plans and what will be restored before applying
 // ============================================================================
 
-/// Планы одного сочетания значений свойств-списков образа (стиль SteamOS:
-/// Vapor или VGUI2).
+/// The plans of one combination of the look's list-property values (the SteamOS style:
+/// Vapor or VGUI2).
 #[derive(Debug, Clone)]
 pub struct OfferVariant {
-    /// Значения свойств-списков; пусто — у образа их нет.
+    /// List-property values; empty — the look has none.
     pub values: PropValues,
-    /// План без видов «по желанию» ([`OPT_IN_KINDS`]).
+    /// The plan without "at your wish" kinds ([`OPT_IN_KINDS`]).
     pub base: Prepared,
-    /// План с видами «по желанию»; `None` — таких видов у образа нет.
+    /// The plan with "at your wish" kinds; `None` — the look has no such kinds.
     pub opt_in: Option<Prepared>,
 }
 
-/// Что показать человеку перед «Применить»: планы на каждое сочетание
-/// вариантов (без видов «по желанию» и с ними) и образы, которые сейчас
-/// применены и вернутся первыми. Все планы собраны заранее — переключатели
-/// окна вопроса меняют текст сразу, без новых проб системы.
+/// What to show the person before «Apply»: plans for each combination of
+/// variants (without and with "at your wish" kinds) and the looks that are currently
+/// applied and will be restored first. All plans are built in advance — the question
+/// window's switches change the text immediately, without new system probes.
 #[derive(Debug, Clone)]
 pub struct Offer {
     pub look: Look,
-    /// Первым — сочетание значений по умолчанию.
+    /// First — the combination of default values.
     pub variants: Vec<OfferVariant>,
-    /// Другие образы, применённые сейчас: (id, имя). Перед этим образом
-    /// они возвращаются как было — два образа поверх друг друга спутали бы
-    /// снимки «что было», и «Вернуть как было» вернуло бы не то.
+    /// Other looks applied now: (id, name). Before this look
+    /// they are restored as they were — two looks on top of each other would mix up
+    /// the "what it was" snapshots, and «Restore as it was» would restore the wrong thing.
     pub replaces: Vec<(String, String)>,
 }
 
-/// Есть ли у образа виды «по желанию».
+/// Whether the look has "at your wish" kinds.
 pub fn has_opt_in(look: &Look) -> bool {
     look.pkg.items.iter().any(|i| OPT_IN_KINDS.contains(&i.kind.as_str()))
 }
 
-/// Предупреждение образа к виду `kind` («на ноутбуке с двумя видеокартами
-/// экран может остаться чёрным») на языке `lang`; пусто — его нет.
+/// The look's warning for the kind `kind` ("on a laptop with two graphics cards
+/// the screen may stay black") in the language `lang`; empty — there is none.
 pub fn kind_note(look: &Look, kind: &str, lang: &str) -> String {
     look.pkg
         .items
@@ -3207,9 +3207,9 @@ pub fn kind_note(look: &Look, kind: &str, lang: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Свойства-списки образа, из которых человек выбирает в окне вопроса:
-/// (имя, свойство) в порядке манифеста; вариантов меньше двух — выбирать
-/// нечего.
+/// The look's list properties the person chooses from in the question window:
+/// (name, property) in manifest order; fewer than two variants — nothing
+/// to choose.
 pub fn choice_properties(look: &Look) -> Vec<(&str, &rxn::Property)> {
     look.pkg
         .properties
@@ -3219,13 +3219,13 @@ pub fn choice_properties(look: &Look) -> Vec<(&str, &rxn::Property)> {
         .collect()
 }
 
-/// Все сочетания значений свойств-списков; первым — значения по умолчанию.
+/// All combinations of list-property values; the default values first.
 fn value_combinations(look: &Look) -> Vec<PropValues> {
     let mut out: Vec<PropValues> = vec![PropValues::new()];
     for (name, prop) in choice_properties(look) {
         let default = prop.default.as_str().unwrap_or_default().to_string();
         let mut values: Vec<String> = prop.option_values().iter().map(|v| v.to_string()).collect();
-        // Значение по умолчанию — первым, чтобы первое сочетание было им.
+        // The default value first, so that the first combination is the default.
         values.sort_by_key(|v| *v != default);
         out = out
             .into_iter()
@@ -3242,16 +3242,16 @@ fn value_combinations(look: &Look) -> Vec<PropValues> {
 }
 
 impl Offer {
-    /// Планы сочетания `values` (чего нет — по умолчанию); не нашлось —
-    /// сочетание по умолчанию.
+    /// The plans of the combination `values` (missing ones — defaults); not found —
+    /// the default combination.
     pub fn variant(&self, values: &PropValues) -> &OfferVariant {
         let want = |v: &OfferVariant| v.values.iter().all(|(k, x)| values.get(k).is_none_or(|y| y == x));
         self.variants.iter().find(|v| want(v)).unwrap_or(&self.variants[0])
     }
 }
 
-/// Собрать предложение без единого запуска: все планы — [`plan`] с теми же
-/// пробами. `applied` — применён ли сейчас образ с таким id.
+/// Build the offer without a single launch: all plans are [`plan`] with the same
+/// probes. `applied` — whether a look with this id is applied now.
 pub fn offer(look: Look, t: &Target, probes: &Probes, applied: &dyn Fn(&str) -> bool) -> Offer {
     let variants = value_combinations(&look)
         .into_iter()
@@ -3279,14 +3279,14 @@ pub fn offer(look: Look, t: &Target, probes: &Probes, applied: &dyn Fn(&str) -> 
     Offer { look, variants, replaces }
 }
 
-/// Каталог конфигов Rexon живой машины (там общий журнал).
+/// The Rexon config directory of the live machine (the shared log is there).
 pub fn rexon_dir_live() -> PathBuf {
     Target::live("").rexon_dir()
 }
 
-/// Предложение для встроенного образа `id` на столе `de` живой машины.
-/// Пробы читают базу пакетов и спрашивают репозитории (`pacman -Si`) —
-/// звать в рабочем потоке. `Err` — образа нет или он не разобрался.
+/// The offer for the built-in look `id` on the desktop `de` of the live machine.
+/// The probes read the package database and query the repositories (`pacman -Si`) —
+/// call it in a worker thread. `Err` — the look does not exist or did not parse.
 pub fn offer_live(id: &str, de: &str) -> Result<Offer, String> {
     let look = builtin(id).ok_or_else(|| trf("Rexon doesn't know the look “%1”.", &[&id]))??;
     let t = Target::live(de);
@@ -3294,9 +3294,9 @@ pub fn offer_live(id: &str, de: &str) -> Result<Offer, String> {
     Ok(offer(look, &t, &probes_live(), &|other| is_applied(other, &rexon)))
 }
 
-/// [`apply`] на живой машине стола `de`: сначала вернуть как было образы
-/// из `replaces`, потом применить. `report(этап, сообщение)` — ход дела для
-/// окна (этапы `de_progress`: `download`, `install`, `post_install`).
+/// [`apply`] on the live machine of the desktop `de`: first restore the looks
+/// from `replaces` as they were, then apply. `report(stage, message)` — progress for
+/// the window (the `de_progress` stages: `download`, `install`, `post_install`).
 pub fn apply_live(
     look: &Look,
     plan: &LookPlan,
@@ -3349,9 +3349,9 @@ pub fn apply_live(
     apply(look, plan, &t, &m)
 }
 
-/// [`revert`] на живой машине стола `de`. Plasma: оболочка перезапускается
-/// сама (тем же путём, что у «Вернуть панель»), чтобы панели вернулись
-/// сразу, а не после повторного входа.
+/// [`revert`] on the live machine of the desktop `de`. Plasma: the shell restarts
+/// itself (the same way as «Restore panel»), so the panels come back
+/// right away, not after logging in again.
 pub fn revert_live(id: &str, de: &str) -> Result<Reverted, String> {
     let t = Target::live(de);
     let ctx = Ctx::live(false, crate::distro_compat::running_on_steamos(), None, t.wayland);
@@ -3363,7 +3363,7 @@ pub fn revert_live(id: &str, de: &str) -> Result<Reverted, String> {
 }
 
 // ============================================================================
-// Проверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
@@ -3379,8 +3379,8 @@ mod tests {
         }
     }
 
-    /// Снятие пакетов образа идёт через помощник пакетов (у него своя
-    /// проверка жизненно важного от root), а не сырым `pkexec pacman`.
+    /// Removing the look's packages goes through the package helper (it has its own
+    /// vital check as root), not raw `pkexec pacman`.
     #[test]
     fn remove_goes_through_pkg_helper() {
         use crate::system::PkgFamily;
@@ -3393,7 +3393,7 @@ mod tests {
         assert_eq!(argv.last().unwrap(), "kvantum");
     }
 
-    /// Без помощника — сырой путь, как раньше.
+    /// Without the helper — the raw path, as before.
     #[test]
     fn remove_without_helper_is_raw_pkexec() {
         use crate::system::PkgFamily;
@@ -3401,7 +3401,7 @@ mod tests {
         assert_eq!(&argv[..3], &["pkexec", "pacman", "-Rns"]);
     }
 
-    /// Жизненно важное не снимается ни одним путём.
+    /// Something vital is not removed by any path.
     #[test]
     fn remove_refuses_vital_on_both_paths() {
         use crate::system::PkgFamily;
@@ -3448,8 +3448,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Проба 3D для Compiz: программная отрисовка и ВМ без `glxinfo` —
-    /// нельзя, видеокарта с прямой отрисовкой — можно.
+    /// The 3D probe for Compiz: software rendering and a VM without `glxinfo` —
+    /// not allowed, a graphics card with direct rendering — allowed.
     #[test]
     fn compiz_needs_real_3d() {
         use crate::utils::RunReport;

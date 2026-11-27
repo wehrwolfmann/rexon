@@ -1,25 +1,25 @@
-//! Golden-сверка порта `importers.rs` с оригиналом
+//! Golden check of the `importers.rs` port against the original
 //! `rexon/extensions/importers.py`.
 //!
-//! Эталоны сняты с ЖИВОГО Python по схеме «виртуальная ФС + журнал»:
-//! одноразовый harness исполнял настоящие импортёры, перехватывая все
-//! обращения к os/shutil/subprocess/tempfile/zipfile/open/_write_manifest/
-//! _pack_rxn/_safe_zip_extract/ET.parse прокси над виртуальной ФС и
-//! записывая КАЖДЫЙ вызов с аргументами и результатом в журнал
-//! (`golden/importers_cases.json`). subprocess моделировался правилами
-//! кейса (rc/stdout + эффект на ФС), tempfile.mkdtemp — детерминированным
-//! счётчиком.
+//! The goldens were captured from LIVE Python using the "virtual FS + log" scheme:
+//! a one-off harness ran the real importers, intercepting all
+//! calls to os/shutil/subprocess/tempfile/zipfile/open/_write_manifest/
+//! _pack_rxn/_safe_zip_extract/ET.parse with proxies over a virtual FS and
+//! recording EVERY call with its arguments and result in a log
+//! (`golden/importers_cases.json`). subprocess was modelled by the case's rules
+//! (rc/stdout + effect on the FS), tempfile.mkdtemp by a deterministic
+//! counter.
 //!
-//! Здесь журнал реплеится: [`MockIo`] на каждый вызов Rust-порта сверяет
-//! op и аргументы с очередной записью эталона (порядок обязан совпасть
-//! 1-в-1, тексты write_file — байт-в-байт) и возвращает записанный
-//! результат. В конце — журнал обязан быть исчерпан, а результат/ошибка
-//! (тип Python-исключения + текст) совпасть.
+//! Here the log is replayed: [`MockIo`] checks every call of the Rust port, its
+//! op and arguments, against the next golden entry (the order must match
+//! 1-to-1, write_file texts byte-for-byte) and returns the recorded
+//! result. At the end the log must be exhausted, and the result/error
+//! (Python exception type + text) must match.
 //!
-//! Кейсы, задетые починкой шести граблей оригинала (санкционированные
-//! расхождения — см. заголовок importers.rs), переписаны вручную под
-//! ПОЧИНЕННОЕ поведение по тексту Python-хвостов; незадетые кейсы —
-//! байт-в-байт с живым Python.
+//! Cases affected by fixing six pitfalls of the original (sanctioned
+//! deviations — see the importers.rs header) were rewritten by hand for the
+//! FIXED behaviour following the text of the Python tails; unaffected cases are
+//! byte-for-byte with live Python.
 
 mod i18n_pin;
 
@@ -36,7 +36,7 @@ fn fx() -> Value {
     serde_json::from_str(include_str!("golden/importers_cases.json")).unwrap()
 }
 
-/// Декодер base64 (стандартный алфавит) для полей `*_b64` фикстуры.
+/// base64 decoder (standard alphabet) for the fixture's `*_b64` fields.
 fn b64d(s: &str) -> Vec<u8> {
     const AL: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -61,8 +61,8 @@ fn b64d(s: &str) -> Vec<u8> {
     out
 }
 
-/// Реплей журнала эталона: каждый вызов трейта сверяется с очередной
-/// записью; несовпадение порядка/аргументов — провал паритета.
+/// Replay of the golden log: every trait call is checked against the next
+/// entry; a mismatch of order/arguments is a parity failure.
 struct MockIo {
     case: String,
     journal: Vec<Value>,
@@ -107,8 +107,8 @@ impl MockIo {
         );
     }
 
-    /// Чтение файла: следующая запись — либо сам op, либо `open_fail`
-    /// (OSError на open → у порта None).
+    /// Reading a file: the next entry is either the op itself or `open_fail`
+    /// (OSError on open → None for the port).
     fn next_read(&mut self, op: &str, path: &str, n: Option<usize>) -> Option<Value> {
         assert!(
             self.pos < self.journal.len(),
@@ -296,9 +296,9 @@ impl ImpIo for MockIo {
         self.check(&e, "dest", &json!(dest));
     }
 
-    // Перевод курсоров с 03.10.2026 — свой код на Rust, у эталона Python
-    // таких шагов нет: в реплее они не встречаются (импорт курсоров сверяется
-    // в `importers::cursor_tests` на настоящей ФС).
+    // Cursor conversion is our own Rust code since 03.10.2026; the Python golden
+    // has no such steps: they do not occur in the replay (cursor import is checked
+    // in `importers::cursor_tests` on a real FS).
     fn write_bytes(&mut self, path: &str, _data: &[u8]) {
         panic!("{}: write_bytes({path}) — в эталоне Python такого шага нет", self.case);
     }
@@ -321,7 +321,7 @@ impl ImpIo for MockIo {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn importers_match_python() {
-    // Эталон Python — русские тексты манифестов и ошибок.
+    // The Python golden has Russian manifest and error texts.
     let _lang = i18n_pin::ru();
     let fx = fx();
     for (name, case) in fx.as_object().unwrap() {
@@ -379,7 +379,7 @@ fn importers_match_python() {
 }
 
 // ============================================================================
-// Язык интерфейса
+// Interface language
 // ============================================================================
 
 use rexon_core::importers::{
@@ -396,8 +396,8 @@ fn has_cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Отказы, предупреждения и фильтр окна выбора — по-русски дословно как до
-/// перевода на каталог (сборка фраз `ca42e74^`).
+/// Refusals, warnings and the file picker filter are in Russian word for word as before
+/// the move to the catalog (phrase assembly at `ca42e74^`).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_texts_as_before() {
@@ -438,7 +438,7 @@ fn russian_texts_as_before() {
         assert!(filter.contains(group), "{group}: {filter}");
     }
     assert!(filter.ends_with(";;Все файлы (*)"), "{filter}");
-    // Арчевая подсказка в тексте ошибки заменяется пакетом этой системы.
+    // The Arch hint in the error text is replaced by this system's package.
     let fixed = friendly_error_text(
         "Не удалось распаковать .themepack. Установите: sudo pacman -S cabextract",
         "debian",
@@ -488,7 +488,7 @@ fn english_importers_have_no_russian() {
     assert!(filter.starts_with("All Windows Themes (*.themepack "), "{filter}");
     assert!(filter.contains(";;Desktop Gadgets (*.gadget);;"), "{filter}");
     assert!(filter.ends_with(";;All files (*)"), "{filter}");
-    // Подсказка в английской ошибке узнаётся и заменяется так же.
+    // The hint in the English error is recognized and replaced the same way.
     let fixed = friendly_error_text(
         "Couldn't unpack the .themepack. Install it: sudo pacman -S cabextract",
         "debian",

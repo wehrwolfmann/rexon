@@ -1,23 +1,24 @@
-//! Golden-сверка порта `waywallen_client.rs` с оригиналом
+//! Golden check of the `waywallen_client.rs` port against the original
 //! `rexon/waywallen_client.py` (`WaywallenClient` + CLI `_cli`).
 //!
-//! Эталоны сняты с ЖИВОГО Python: PySide6.QtDBus подменялся фейком ДО
-//! импорта модуля (реальный Qt/D-Bus не загружался, живой демон не
-//! трогался), каждый вызов уровня трейта [`WaywallenIo`] (is_valid /
-//! property / call) записан в журнал `golden/waywallen_client_cases.json`
-//! вместе с CLI-выводом (stdout/stderr/код) и результатами API-шагов.
+//! References were captured from LIVE Python: PySide6.QtDBus was replaced with
+//! a fake BEFORE importing the module (real Qt/D-Bus was not loaded, the live
+//! daemon was not touched), every call at the [`WaywallenIo`] trait level
+//! (is_valid / property / call) is recorded in the log
+//! `golden/waywallen_client_cases.json` together with CLI output
+//! (stdout/stderr/code) and the results of API steps.
 //!
-//! Здесь журнал реплеится: [`MockIo`] на каждый вызов Rust-порта сверяет
-//! op/аргументы с очередной записью (порядок 1-в-1) и возвращает записанный
-//! результат; в конце журнал обязан быть исчерпан. Покрыты: статус (полный /
-//! пустые свойства / строковый порт), apply/next/previous/pause/resume/
-//! rescan/open-ui, ошибки D-Bus, usage/неизвестное действие, коэрции
-//! свойств (falsy → дефолт, bool/int-значения, знак и парсинг int).
+//! Here the log is replayed: for every Rust port call [`MockIo`] checks
+//! op/arguments against the next record (order 1:1) and returns the recorded
+//! result; at the end the log must be exhausted. Covered: status (full /
+//! empty properties / string port), apply/next/previous/pause/resume/
+//! rescan/open-ui, D-Bus errors, usage/unknown action, property coercions
+//! (falsy → default, bool/int values, sign and int parsing).
 //!
-//! Починенные баги оригинала сверяются ОТ ЗАФИКСИРОВАННОГО КРАША: кейсы с
-//! `python_crash`/`ok:false` в golden (ValueError на нечисловом int-значении,
-//! TypeError на multi-arg ответе Rescan) в Rust дают 0 — намеренное
-//! расхождение, задокументированное в `waywallen_client.rs`.
+//! Fixed bugs of the original are checked AGAINST THE RECORDED CRASH: cases
+//! with `python_crash`/`ok:false` in golden (ValueError on a non-numeric int
+//! value, TypeError on a multi-arg Rescan reply) give 0 in Rust — an
+//! intentional divergence, documented in `waywallen_client.rs`.
 
 use rexon_core::waywallen_client::{
     cli, DbusReply, DbusValue, WaywallenClient, WaywallenIo,
@@ -29,7 +30,7 @@ fn fx() -> Value {
         .unwrap()
 }
 
-/// JSON-значение журнала → [`DbusValue`] (как Python видел QVariant).
+/// Log JSON value → [`DbusValue`] (as Python saw the QVariant).
 fn to_dbus(v: &Value) -> DbusValue {
     match v {
         Value::Null => DbusValue::None,
@@ -40,7 +41,7 @@ fn to_dbus(v: &Value) -> DbusValue {
     }
 }
 
-/// [`DbusValue`] → JSON для сверки аргументов вызова с журналом.
+/// [`DbusValue`] → JSON for comparing call arguments with the log.
 fn from_dbus(v: &DbusValue) -> Value {
     match v {
         DbusValue::None => Value::Null,
@@ -141,7 +142,7 @@ impl WaywallenIo for MockIo {
     }
 }
 
-// ── CLI-кейсы ────────────────────────────────────────────────────────────
+// ── CLI cases ────────────────────────────────────────────────────────────
 
 #[test]
 fn cli_parity() {
@@ -163,8 +164,8 @@ fn cli_parity() {
         let r = cli(&mut client, "waywallen_client.py", &argv);
 
         if let Some(crash) = case["python_crash"].as_str() {
-            // Починенный баг: Python падал необработанным исключением
-            // (`int()` на мусорном ответе Rescan) — Rust отдаёт 0.
+            // Fixed bug: Python crashed with an unhandled exception
+            // (`int()` on a garbage Rescan reply) — Rust returns 0.
             assert!(
                 crash.starts_with("ValueError"),
                 "{name}: неожиданный краш Python в golden: {crash}"
@@ -189,10 +190,10 @@ fn cli_parity() {
     assert!(seen >= 10, "cli-кейсы не найдены в golden");
 }
 
-// ── API-кейсы ────────────────────────────────────────────────────────────
+// ── API cases ────────────────────────────────────────────────────────────
 
-/// Ожидаемая строка из golden-значения: str как есть, прочее — Python
-/// `str()` (порт возвращает String там, где Python отдавал «что пришло»).
+/// Expected string from the golden value: str as is, anything else — Python
+/// `str()` (the port returns String where Python returned «whatever came»).
 fn expect_str(v: &Value) -> String {
     to_dbus(v).py_str()
 }
@@ -248,7 +249,7 @@ fn api_parity() {
                             "{ctx}"
                         );
                     } else {
-                        // Починенный баг: ValueError на нечисловой строке.
+                        // Fixed bug: ValueError on a non-numeric string.
                         let err = res["error"].as_str().unwrap();
                         assert!(
                             err.starts_with("ValueError"),
@@ -258,8 +259,8 @@ fn api_parity() {
                     }
                 }
                 "apply_by_id" => {
-                    // Python коэрцил str(wallpaper_id) — в Rust коэрция на
-                    // вызывающем (типизированный &str), как для int-id 123.
+                    // Python coerced str(wallpaper_id) — in Rust the coercion is on the caller
+                    // (typed &str), as for the int id 123.
                     let id = match &step[1] {
                         Value::String(s) => s.clone(),
                         Value::Number(n) => n.to_string(),
@@ -299,7 +300,7 @@ fn api_parity() {
                             "{ctx}"
                         );
                     } else {
-                        // Починенный баг: TypeError на int(list).
+                        // Fixed bug: TypeError on int(list).
                         let err = res["error"].as_str().unwrap();
                         assert!(
                             err.starts_with("TypeError"),
@@ -328,10 +329,10 @@ fn api_parity() {
     assert!(seen >= 5, "api-кейсы не найдены в golden");
 }
 
-// ── исчерпание журнала ───────────────────────────────────────────────────
+// ── log exhaustion ───────────────────────────────────────────────────────
 
-/// Отдельная проверка: после CLI-прогона журнал каждого кейса исчерпан —
-/// Rust не делает ни лишних, ни недостающих D-Bus обращений.
+/// Separate check: after the CLI run the log of every case is exhausted —
+/// Rust makes neither extra nor missing D-Bus calls.
 #[test]
 fn journal_exhausted() {
     let fx = fx();

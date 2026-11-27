@@ -1,14 +1,14 @@
-//! Golden-сверка порта `themes.rs` с оригиналом `rexon/themes.py`
-//! (класс `ThemeManager`).
+//! Golden check of the `themes.rs` port against the original `rexon/themes.py`
+//! (the `ThemeManager` class).
 //!
-//! Эталоны сняты с ЖИВОГО Python read-only (одноразовым генератором, в дерево не входит):
-//! `safe_run`/`safe_check_command` замоканы (никаких реальных subprocess/
-//! привилегированных действий), HOME — временный каталог, встроенный каталог
-//! тем — реальный `rexon/themes.json`. Покрыто: слияние каталога, разрешение
-//! gsettings-схем + generic-wm, план apply GTK/иконок/курсоров для разных DE
-//! (+ kde-cursor fallback), запись `settings.ini`, разбор `index.theme` /
-//! `kcminputrc`, шрифтовые хелперы, разрешение пакета установки, «текущие
-//! темы», KDE-планы apply, история.
+//! Golden data taken from LIVE Python read-only (by a one-off generator, not part of the tree):
+//! `safe_run`/`safe_check_command` mocked (no real subprocess/
+//! privileged actions), HOME is a temporary directory, the built-in theme
+//! catalog is the real `rexon/themes.json`. Covered: catalog merge, resolving
+//! gsettings schemas + generic-wm, the apply plan for GTK/icons/cursors on various DEs
+//! (+ kde-cursor fallback), writing `settings.ini`, parsing `index.theme` /
+//! `kcminputrc`, font helpers, resolving the install package, "current
+//! themes", KDE apply plans, history.
 
 
 mod i18n_pin;
@@ -26,7 +26,7 @@ fn fx() -> Value {
 
 const HOME: &str = "/H";
 
-// ── 1. Слияние каталога (байт-в-байт) ─────────────────────────────────────
+// ── 1. Catalog merge (byte-for-byte) ─────────────────────────────────────
 
 #[test]
 fn catalog_merge_parity() {
@@ -52,7 +52,7 @@ fn resolve_schemas_parity() {
         match c["schemas"].as_object() {
             None => assert_eq!(schemas, TH::Schemas::NonGsettings, "schemas None {de}"),
             Some(want) => {
-                // Порядок ролей должен совпадать (Python dict order).
+                // The role order must match (Python dict order).
                 let got: Vec<(String, Vec<String>)> = match schemas {
                     TH::Schemas::Gsettings(list) => list
                         .iter()
@@ -87,7 +87,7 @@ fn update_gtk_settings_ini_parity() {
     }
 }
 
-// ── 4. apply-планы: интерпретируем план → (calls, files), сверяем с Python ─
+// ── 4. apply plans: interpret the plan → (calls, files), compare with Python ─
 
 fn cmd_success(argv: &[String], fail_mode: bool) -> bool {
     if fail_mode && argv.first().map(String::as_str) == Some("plasma-apply-cursortheme") {
@@ -96,13 +96,13 @@ fn cmd_success(argv: &[String], fail_mode: bool) -> bool {
     true
 }
 
-/// Прогнать план как исполнитель: собрать список argv-вызовов и итоговые файлы
-/// (относительно HOME). `fail_mode` — режим падения (kde-cursor).
+/// Run the plan like the executor: collect the list of argv calls and the resulting files
+/// (relative to HOME). `fail_mode` is the failure mode (kde-cursor).
 fn run_plan(plan: &Plan, fail_mode: bool) -> (Vec<Vec<String>>, BTreeMap<String, String>) {
     let mut calls: Vec<Vec<String>> = Vec::new();
     let mut vfs: BTreeMap<String, String> = BTreeMap::new();
     let mut ok = false;
-    // Для группы IfNotOk: решение «выполнять» фиксируется на входе в группу.
+    // For an IfNotOk group: the "run" decision is fixed on entering the group.
     let mut fallback_run: Option<bool> = None;
 
     for step in &plan.steps {
@@ -154,14 +154,14 @@ fn run_plan(plan: &Plan, fail_mode: bool) -> (Vec<Vec<String>>, BTreeMap<String,
                 vfs.insert(path.clone(), content.clone());
                 ok = true;
             }
-            // Конфиг композитора исполнитель трогает только на диске —
-            // отдельная сверка `wm_config_executor_*`.
+            // The executor touches the compositor config only on disk —
+            // a separate check `wm_config_executor_*`.
             ApplyStep::WmConfig(_) => fallback_run = None,
             ApplyStep::ForceOk => {
                 fallback_run = None;
                 ok = true;
             }
-            // Стоп Deepin — отдельные проверки (`dde.rs`, `appearance_installer.rs`).
+            // The Deepin stop has separate checks (`dde.rs`, `appearance_installer.rs`).
             ApplyStep::DdeTreelandGate => fallback_run = None,
             ApplyStep::WriteIfOk { path, content, .. } => {
                 fallback_run = None;
@@ -204,13 +204,13 @@ fn run_plan(plan: &Plan, fail_mode: bool) -> (Vec<Vec<String>>, BTreeMap<String,
                     vfs.remove(path);
                 }
             }
-            // Планы тем этих шагов не дают: они у «Применить» звука, обоев
-            // блокировки и разделов окружения (`appearance_apply_plans_parity`).
+            // Theme plans do not produce these steps: they belong to «Apply» for sound, lock
+            // screen wallpapers and desktop sections (`appearance_apply_plans_parity`).
             ApplyStep::Guard { .. } | ApplyStep::ReadBackSetsOk { .. } => fallback_run = None,
         }
     }
 
-    // Пути → относительные HOME (как эталон Python).
+    // Paths → relative to HOME (as in the Python golden data).
     let prefix = format!("{HOME}/");
     let files = vfs
         .into_iter()
@@ -229,7 +229,7 @@ fn apply_plans_parity() {
 
         let plan = match kind {
             "gtk" => TH::apply_gtk_plan(theme, de, HOME),
-            // valid/safe = true (в генераторе pre-flight замокан на допуск).
+            // valid/safe = true (in the generator pre-flight is mocked to allow).
             "icons" => TH::apply_icon_plan(theme, de, HOME, true).expect("icon plan"),
             "cursor" => TH::apply_cursor_plan(theme, de, HOME, true).expect("cursor plan"),
             other => panic!("неизвестный kind {other}"),
@@ -251,20 +251,20 @@ fn apply_plans_parity() {
             .iter()
             .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
             .collect();
-        // Намеренное расхождение с Python: на LXQt тема GTK теперь пишется и
-        // в settings.ini (как у lxqt-config-appearance) — без xsettingsd GTK
-        // читает именно файл, а gsettings оставался без читателя.
-        // Намеренное расхождение с Python (30.09): курсор вне KDE получают и
-        // программы, читающие XCURSOR_* из окружения (Qt без платформенной
-        // темы, Electron, XWayland) — файл environment.d.
+        // Intentional divergence from Python: on LXQt the GTK theme is now also written
+        // to settings.ini (as lxqt-config-appearance does) — without xsettingsd GTK
+        // reads exactly the file, and gsettings was left without a reader.
+        // Intentional divergence from Python (30.09): outside KDE the cursor also reaches
+        // programs that read XCURSOR_* from the environment (Qt without a platform
+        // theme, Electron, XWayland) — the environment.d file.
         if kind == "cursor" && de != "kde" {
             want_files.insert(
                 ".config/environment.d/rexon-cursor.conf".to_string(),
                 format!("XCURSOR_THEME={theme}\n"),
             );
         }
-        // Намеренное расхождение с Python (24.10): значки вне KDE получают и
-        // программы KDE (KIconThemes читает `kdeglobals [Icons] Theme`).
+        // Intentional divergence from Python (24.10): outside KDE icons also reach
+        // KDE programs (KIconThemes reads `kdeglobals [Icons] Theme`).
         if kind == "icons" && de != "kde" {
             want_files.insert(".config/kdeglobals".to_string(), format!("\n[Icons]\nTheme={theme}\n"));
         }
@@ -279,12 +279,12 @@ fn apply_plans_parity() {
         assert_eq!(files, want_files, "apply files {kind}/{de} fail={fail}");
     }
 
-    // Отказ pre-flight: невалидная icon-тема / unsafe cursor → плана нет.
+    // Pre-flight refusal: an invalid icon theme / unsafe cursor → no plan.
     assert!(TH::apply_icon_plan("Cursorish", "gnome", HOME, false).is_none());
     assert!(TH::apply_cursor_plan("Adwaita", "gnome", HOME, false).is_none());
 }
 
-// ── 5. is_valid_icon_theme (разбор index.theme) ───────────────────────────
+// ── 5. is_valid_icon_theme (parsing index.theme) ───────────────────────────
 
 fn fs_with_index(content: Option<&str>) -> FsSnapshot {
     let mut files = serde_json::Map::new();
@@ -302,7 +302,7 @@ fn is_valid_icon_theme_parity() {
         let got = TH::is_valid_icon_theme(&fs, "TestTheme", &dirs);
         assert_eq!(got, c["result"].as_bool().unwrap(), "is_valid_icon {}", c["label"]);
     }
-    // пустое имя
+    // empty name
     let fs = fs_with_index(None);
     assert_eq!(
         TH::is_valid_icon_theme(&fs, "", &dirs),
@@ -385,7 +385,7 @@ fn get_current_themes_parity() {
     }
 }
 
-// ── 9. KDE-планы apply + get_current_kde_cmds ─────────────────────────────
+// ── 9. KDE apply plans + get_current_kde_cmds ─────────────────────────────
 
 fn flat_cmd(c: &TH::Cmd) -> Value {
     json!({"argv": c.argv, "timeout": c.timeout})
@@ -408,9 +408,9 @@ fn kde_apply_parity() {
     assert_eq!(json!([single(&TH::apply_kde_plasma_plan("default"))]), ka["plasma"], "kde plasma");
     assert_eq!(json!([single(&TH::apply_kde_color_plan("BreezeDark"))]), ka["colors"], "kde colors");
 
-    // kvantum на KDE: set → widget_style → notify (эталон снят с KDE-пути,
-    // он и остался нетронутым; вне KDE второй шаг другой — см. модульные
-    // тесты kvantum_* в themes.rs).
+    // kvantum on KDE: set → widget_style → notify (the golden data was taken from the KDE path,
+    // which stayed untouched; outside KDE the second step is different — see the unit
+    // tests kvantum_* in themes.rs).
     let kv = TH::apply_kvantum_plan(
         "KvArc",
         &TH::KvantumEnv {
@@ -443,7 +443,7 @@ fn kde_apply_parity() {
     assert_eq!(got_current, want_current, "current kde cmds");
 }
 
-// ── 9-bis. Сканеры установленных тем (снимок ФС) ──────────────────────────
+// ── 9-bis. Installed theme scanners (FS snapshot) ──────────────────────────
 
 fn scanners_fx() -> Value {
     serde_json::from_str(include_str!("golden/themes_scanners.json")).unwrap()
@@ -467,7 +467,7 @@ fn list_scanners_parity() {
     assert_eq!(TH::list_kde_plasma_styles(&fs, home), want_list(&e["kde_plasma"]), "list_kde_plasma");
     assert_eq!(TH::list_kde_color_schemes(&fs, home), want_list(&e["kde_colors"]), "list_kde_colors");
 
-    // kvantum: dir_files — только файлы внутри каталога темы.
+    // kvantum: dir_files — only files inside the theme directory.
     let dir_files = |base: &str| -> Vec<String> {
         fs.scandir(base)
             .iter()
@@ -482,7 +482,7 @@ fn list_scanners_parity() {
     );
 }
 
-// ── 10. история (детерминированная логика) ────────────────────────────────
+// ── 10. history (deterministic logic) ────────────────────────────────
 
 #[test]
 fn history_parity() {
@@ -494,7 +494,7 @@ fn history_parity() {
         json!({"kind": "gtk", "theme": "Dracula", "de": "kde", "ts": ts})
     );
 
-    // push: вставка в начало.
+    // push: insert at the front.
     let h0: Vec<Value> = Vec::new();
     let h1 = TH::push_history(&h0, e.clone());
     assert_eq!(h1, vec![e.clone()]);
@@ -502,7 +502,7 @@ fn history_parity() {
     let h2 = TH::push_history(&h1, e2.clone());
     assert_eq!(h2, vec![e2.clone(), e.clone()]);
 
-    // truncate до 50.
+    // truncate to 50.
     let mut big: Vec<Value> = (0..60).map(|i| json!({"n": i})).collect();
     let pushed = TH::push_history(&big, e.clone());
     assert_eq!(pushed.len(), 50);
@@ -514,20 +514,20 @@ fn history_parity() {
     assert_eq!(TH::get_recent(&big, 3).len(), 3);
     assert_eq!(TH::get_recent(&big, 100).len(), 5);
 
-    // serialize — валидный JSON-массив (ensure_ascii=False, indent=2).
+    // serialize — a valid JSON array (ensure_ascii=False, indent=2).
     let s = TH::serialize_history(&h2);
     assert!(s.starts_with("[\n"));
     assert!(s.contains("\"theme\": \"Papirus\""));
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Вторая волна порта: архив темы, тексты каталога, чтение kdeglobals
+//  Second wave of the port: theme archive, catalog texts, reading kdeglobals
 // ══════════════════════════════════════════════════════════════════════════
 //
-// Эталон `pure_v2` снят с живого Python на данных ЭТОЙ машины: настоящий
-// `~/.config/kdeglobals` (значения — через `configparser(strict=False)`, как в
-// фолбэке `_kde_get`) и настоящие имена каталогов тем из `~/.themes` и
-// `/usr/share/themes` (с пробелами и кириллицей — проверяем сортировку).
+// The `pure_v2` golden data was taken from live Python on THIS machine's data: the real
+// `~/.config/kdeglobals` (values via `configparser(strict=False)`, as in the
+// `_kde_get` fallback) and the real theme directory names from `~/.themes` and
+// `/usr/share/themes` (with spaces and Cyrillic — we check the sorting).
 
 fn strs2(v: &Value) -> Vec<String> {
     v.as_array()
@@ -539,7 +539,7 @@ fn strs2(v: &Value) -> Vec<String> {
 
 #[test]
 fn texts_match_python() {
-    // Эталон снят с русского интерфейса — сверка на русском каталоге.
+    // The golden data was taken with the Russian interface — the check runs on the Russian catalog.
     let _lang = i18n_pin::ru();
     let t = &fx()["pure_v2"]["texts"];
     assert_eq!(json!(TH::msg_archive_no_dirs()), t["ARCHIVE_NO_DIRS"]);
@@ -617,12 +617,12 @@ fn kdeglobals_read_matches_python() {
     }
 }
 
-// ── 14. Kvantum вне KDE: тема ставится везде, стиль Qt — своим путём ───────
+// ── 14. Kvantum outside KDE: the theme installs everywhere, the Qt style goes its own way ──
 //
-// Эталона в Python у этих веток нет: до сих пор второй шаг умели делать
-// только для KDE, а в остальных окружениях раздел просто прятали. Проверяем
-// не байтовый паритет, а обещания: где какой механизм и что человек без
-// результата не остаётся.
+// Python has no golden data for these branches: until now the second step was done
+// only for KDE, and in other desktops the section was simply hidden. We check
+// not byte parity but promises: which mechanism goes where, and that the person is not left
+// without a result.
 
 fn kv_plan(de: &str, platform_theme: &str) -> Plan {
     TH::apply_kvantum_plan(
@@ -637,7 +637,7 @@ fn kv_plan(de: &str, platform_theme: &str) -> Plan {
     )
 }
 
-/// Первый шаг один и тот же везде: сам выбор темы Kvantum.
+/// The first step is the same everywhere: choosing the Kvantum theme itself.
 #[test]
 fn kvantum_sets_theme_in_every_desktop() {
     for de in ["kde", "lxqt", "gnome", "xfce", "sway", "", "какой-то-новый-wm"] {
@@ -653,8 +653,8 @@ fn kvantum_sets_theme_in_every_desktop() {
     }
 }
 
-/// KDE и LXQt правят СВОИ настройки; переменной окружения там быть не должно
-/// — она перебила бы штатный выбор стиля.
+/// KDE and LXQt edit THEIR OWN settings; there must be no environment variable there
+/// — it would override the regular style choice.
 #[test]
 fn kvantum_uses_native_switch_on_kde_and_lxqt() {
     let kde = kv_plan("kde", "qt6ct");
@@ -687,8 +687,8 @@ fn kvantum_uses_native_switch_on_kde_and_lxqt() {
     }
 }
 
-/// Полный путь: qt6ct есть — стиль пишется в его конфиг, а переменная
-/// назначает его платформенной темой (тогда будут и шрифты, и значки).
+/// The full path: qt6ct is present — the style is written to its config, and the variable
+/// makes it the platform theme (then fonts and icons follow too).
 #[test]
 fn kvantum_full_path_uses_qt6ct() {
     let p = kv_plan("gnome", "qt6ct");
@@ -707,12 +707,12 @@ fn kvantum_full_path_uses_qt6ct() {
         .expect("файл environment.d");
     assert_eq!(env.0, "/home/t/.config/environment.d/rexon-qt-style.conf");
     assert_eq!(env.1, "QT_QPA_PLATFORMTHEME=qt6ct\n");
-    // QT_STYLE_OVERRIDE тут НЕ пишем: он перебил бы выбор стиля в самом qt6ct.
+    // We do NOT write QT_STYLE_OVERRIDE here: it would override the style choice in qt6ct itself.
     assert!(!env.1.contains("QT_STYLE_OVERRIDE"));
 }
 
-/// Запасной путь полноправен: qt6ct нет (отказались, отменили пароль, пакета
-/// нет в репозиториях) — тема всё равно применяется.
+/// The fallback path is a full one: no qt6ct (declined, password cancelled, the package
+/// is not in the repositories) — the theme is applied anyway.
 #[test]
 fn kvantum_falls_back_to_env_variable() {
     for de in ["gnome", "xfce", "sway", "cosmic", "budgie", ""] {
@@ -728,12 +728,12 @@ fn kvantum_falls_back_to_env_variable() {
         assert_eq!(env.0, "/home/t/.config/environment.d");
         assert_eq!(env.1, "/home/t/.config/environment.d/rexon-qt-style.conf");
         assert_eq!(env.2, "QT_STYLE_OVERRIDE=kvantum\n");
-        // Чужие конфиги без qt6ct не трогаем вовсе.
+        // Without qt6ct other configs are not touched at all.
         assert!(!p.steps.iter().any(|s| matches!(s, ApplyStep::IniSetIfOk { .. })));
     }
 }
 
-/// `$XDG_CONFIG_HOME` уважается — иначе файл ляжет мимо сеанса.
+/// `$XDG_CONFIG_HOME` is respected — otherwise the file would land outside the session.
 #[test]
 fn kvantum_respects_xdg_config_home() {
     let p = TH::apply_kvantum_plan(
@@ -752,34 +752,34 @@ fn kvantum_respects_xdg_config_home() {
     )));
 }
 
-/// Имя пакета берётся по семейству дистрибутива, а не «везде qt6ct», и
-/// берётся из ОБЩЕЙ таблицы пакетов, а не из своей второй копии.
+/// The package name is taken by distribution family, not "qt6ct everywhere", and
+/// is taken from the SHARED package table, not from a second copy of our own.
 #[test]
 fn qt_style_helper_package_is_per_family() {
     let pkg = |f: &str| TH::qt_style_helper_pkg(f);
     for family in ["arch", "debian", "fedora", "suse", "alpine", "void", "solus", "alt"] {
         assert_eq!(pkg(family).as_deref(), Some("qt6ct"), "{family}");
     }
-    // Gentoo хранит имена с категорией.
+    // Gentoo keeps names with the category.
     assert_eq!(pkg("gentoo").as_deref(), Some("gui-apps/qt6ct"));
-    // Ставить нечем — доустановки не будет, сработает запасной путь.
+    // Nothing to install with — no extra install, the fallback path will work.
     assert_eq!(pkg("nix"), None);
     assert_eq!(pkg("clear"), None);
-    // Незнакомое семейство — пробуем самое ходовое имя: промах безвреден,
-    // тема применится запасным путём.
+    // An unknown family — try the most common name: a miss is harmless,
+    // the theme will be applied via the fallback path.
     assert_eq!(pkg("какое-то-новое").as_deref(), Some("qt6ct"));
-    // Та же таблица, что у остальных инструментов.
+    // The same table as for the other tools.
     assert_eq!(
         rexon_core::utils::tool_package_name(TH::QT_STYLE_TOOL, "gentoo"),
         "gui-apps/qt6ct"
     );
 }
 
-// ── 14-bis. «Стиль приложений» — та же развилка, что у Kvantum ─────────────
+// ── 14-bis. «Application Style» — the same fork as Kvantum ─────────────
 //
-// Таблица «окружение → что пишется»: KDE — kdeglobals + уведомление, LXQt —
-// lxqt.conf [Qt] style, остальные — qt6ct.conf + environment.d (или
-// QT_STYLE_OVERRIDE без qt6ct). Раньше раздел писал kdeglobals везде.
+// The table "desktop → what gets written": KDE — kdeglobals + notification, LXQt —
+// lxqt.conf [Qt] style, the rest — qt6ct.conf + environment.d (or
+// QT_STYLE_OVERRIDE without qt6ct). The section used to write kdeglobals everywhere.
 
 fn ws_plan(de: &str, platform_theme: &str) -> Plan {
     TH::apply_qt_style_plan(
@@ -788,10 +788,10 @@ fn ws_plan(de: &str, platform_theme: &str) -> Plan {
     )
 }
 
-/// Сводная таблица: какой файл и какой ключ получает стиль в каждом окружении.
+/// Summary table: which file and which key gets the style in each desktop.
 #[test]
 fn widget_style_table_by_desktop() {
-    // (окружение, qt6ct, ожидаемые записи «путь|секция|ключ=значение» или argv)
+    // (desktop, qt6ct, expected records "path|section|key=value" or argv)
     let describe = |p: &Plan| -> Vec<String> {
         p.steps
             .iter()
@@ -841,13 +841,13 @@ fn widget_style_table_by_desktop() {
             ],
             "{de} без qt6ct"
         );
-        // kdeglobals вне KDE больше не пишется.
+        // kdeglobals is no longer written outside KDE.
         assert!(!describe(&ws_plan(de, "")).iter().any(|s| s.contains("kdeglobals")), "{de}");
     }
 }
 
-/// Kvantum и «Стиль приложений» — одна развилка: хвост Kvantum-плана совпадает
-/// с планом стиля «kvantum», отличаясь лишь тем, что идёт после своего Primary.
+/// Kvantum and «Application Style» are one fork: the tail of the Kvantum plan matches
+/// the style plan "kvantum", differing only in coming after its own Primary.
 #[test]
 fn widget_style_and_kvantum_share_one_switch() {
     for de in ["kde", "lxqt", "gnome", "sway"] {
@@ -873,9 +873,9 @@ fn widget_style_and_kvantum_share_one_switch() {
     assert_eq!(ws_plan("gnome", "").history_kind, "widget-style");
 }
 
-// ── 14-ter. LXQt: родные ключи темы GTK, значков и курсора ─────────────────
+// ── 14-ter. LXQt: native keys for the GTK theme, icons and cursor ─────────────────
 //
-// Ключи сверены со строками установленных бинарей LXQt 2.x:
+// The keys were checked against the strings of the installed LXQt 2.x binaries:
 // lxqt-config-appearance — `icon_theme`, `$XDG_CONFIG_HOME/gtk-%1/settings.ini`,
 // `Mouse/cursor_theme`; lxqt-session — `Mouse`/`cursor_theme`.
 
@@ -885,8 +885,8 @@ fn lxqt_gets_native_theme_keys() {
     assert_eq!(gtk[".config/gtk-3.0/settings.ini"], "[Settings]\ngtk-theme-name=Dracula\n");
     assert_eq!(gtk[".config/gtk-4.0/settings.ini"], "[Settings]\ngtk-theme-name=Dracula\n");
 
-    // Значки: gsettings (для GTK) + свой lxqt.conf; перед ним ForceOk —
-    // упавший gsettings (нет dconf) не должен отнимать у LXQt родной ключ.
+    // Icons: gsettings (for GTK) + our own lxqt.conf; ForceOk before it —
+    // a failed gsettings (no dconf) must not take the native key away from LXQt.
     let icons = TH::apply_icon_plan("Papirus", "lxqt", HOME, true).unwrap();
     let force_at = icons.steps.iter().position(|s| matches!(s, ApplyStep::ForceOk)).unwrap();
     let ini_at = icons.steps.iter().position(|s| matches!(s, ApplyStep::IniSetIfOk { .. })).unwrap();
@@ -900,14 +900,14 @@ fn lxqt_gets_native_theme_keys() {
     assert_eq!(files[".config/lxqt/session.conf"], "\n[Mouse]\ncursor_theme=Bibata\n");
     assert_eq!(files[".icons/default/index.theme"], "[Icon Theme]\nInherits=Bibata\n");
 
-    // Чужие ключи в lxqt.conf сохраняются, значение правится в своей секции.
+    // Other keys in lxqt.conf are kept, the value is edited in its own section.
     let before = "[General]\ntheme=Clearlooks\nicon_theme=breeze\n\n[Qt]\nstyle=Fusion\n";
     assert_eq!(
         crate_defaults::set_ini_value(Some(before), "[General]", "icon_theme", "Papirus"),
         "[General]\ntheme=Clearlooks\nicon_theme=Papirus\n\n[Qt]\nstyle=Fusion\n"
     );
 
-    // Другим окружениям ключи LXQt не достаются.
+    // Other desktops do not get the LXQt keys.
     for de in ["gnome", "kde", "xfce", "sway", "cinnamon-mint"] {
         let p = TH::apply_icon_plan("Papirus", de, HOME, true).unwrap();
         let c = TH::apply_cursor_plan("Bibata", de, HOME, true).unwrap();
@@ -919,10 +919,10 @@ fn lxqt_gets_native_theme_keys() {
     }
 }
 
-/// COSMIC: значки уходят и в родной ключ libcosmic (панель, cosmic-files),
-/// строкой RON в кавычках — как пишет `cosmic-config`; удалась запись —
-/// применение удалось, даже если gsettings не ответил. Другим окружениям
-/// этого ключа не достаётся.
+/// COSMIC: icons also go into the native libcosmic key (panel, cosmic-files),
+/// as a quoted RON string — the way `cosmic-config` writes it; if the write succeeded,
+/// applying succeeded, even if gsettings did not answer. Other desktops
+/// do not get this key.
 #[test]
 fn cosmic_icons_write_cosmic_tk_key() {
     let icons = TH::apply_icon_plan("Papirus-Dark", "cosmic", HOME, true).unwrap();
@@ -948,7 +948,7 @@ fn cosmic_icons_write_cosmic_tk_key() {
     }
 }
 
-/// Спрашивать про пакет незачем там, где стиль Qt выбирается штатно.
+/// There is no point asking about the package where the Qt style is chosen the regular way.
 #[test]
 fn qt_style_way_matches_desktop() {
     use rexon_core::themes::QtStyleWay;
@@ -962,10 +962,10 @@ fn qt_style_way_matches_desktop() {
     }
 }
 
-/// Deepin: программы DTK рисуются стилем Chameleon, и переменная стиля Qt
-/// на весь сеанс отняла бы его. Ни `QT_QPA_PLATFORMTHEME`, ни
-/// `QT_STYLE_OVERRIDE` не пишутся, а пустой план честно не даёт «успеха»;
-/// раздел в Deepin скрыт со своей причиной.
+/// Deepin: DTK programs are drawn with the Chameleon style, and a session-wide Qt style
+/// variable would take it away. Neither `QT_QPA_PLATFORMTHEME` nor
+/// `QT_STYLE_OVERRIDE` is written, and an empty plan honestly does not give "success";
+/// the section is hidden in Deepin with its own reason.
 #[test]
 fn deepin_keeps_chameleon_no_session_qt_variable() {
     use rexon_core::themes::QtStyleWay;
@@ -991,11 +991,11 @@ fn deepin_keeps_chameleon_no_session_qt_variable() {
     )
     .unwrap();
     assert!(why.contains("Chameleon"), "{why}");
-    // Оговорка «после перезахода» в Deepin не звучит — раздела там нет.
+    // The "after logging in again" caveat is not shown in Deepin — there is no section there.
     assert!(rexon_core::de_customization::condition_note_id("theme-kvantum", "deepin").is_none());
 }
 
-/// Те же сообщения на исходном языке.
+/// The same messages in the source language.
 #[test]
 fn texts_in_english() {
     let _lang = i18n_pin::en();
@@ -1004,19 +1004,19 @@ fn texts_in_english() {
     assert_eq!(TH::msg_install_failed_prefix(), "Couldn't install. Try it manually: ");
 }
 
-// ── 15. Курсор во всех окружениях: тема + размер (30.09) ──────────────────
+// ── 15. Cursor in all desktops: theme + size (30.09) ──────────────────
 //
-// Родные ключи сверены с первоисточниками (см. шапку раздела в themes.rs):
+// The native keys were checked against primary sources (see the section header in themes.rs):
 // plasma-apply-cursortheme --help (`--size`), sway-input(5) (`seat … xcursor_theme
-// <theme> [<size>]`), вики niri (`cursor { xcursor-theme; xcursor-size }`,
-// `include` с 25.11), вики и исходники Hyprland 0.56.2 (`hl.env`, `env =`,
-// hyprland.lua прежде hyprland.conf), строки xfsettingsd (`/Gtk/CursorThemeSize`).
+// <theme> [<size>]`), the niri wiki (`cursor { xcursor-theme; xcursor-size }`,
+// `include` since 25.11), the Hyprland 0.56.2 wiki and sources (`hl.env`, `env =`,
+// hyprland.lua before hyprland.conf), xfsettingsd strings (`/Gtk/CursorThemeSize`).
 
 fn sized(de: &str) -> Plan {
     TH::apply_cursor_plan_sized("Bibata", Some(32), de, HOME, None, true).unwrap()
 }
 
-/// Что получает каждое окружение при выборе темы и размера.
+/// What each desktop gets when a theme and a size are chosen.
 #[test]
 fn cursor_size_reaches_every_desktop() {
     let cases: &[(&str, &[&str])] = &[
@@ -1061,7 +1061,7 @@ fn cursor_size_reaches_every_desktop() {
         assert_eq!(files[".icons/default/index.theme"], "[Icon Theme]\nInherits=Bibata\n", "{de}");
         let env = files.get(".config/environment.d/rexon-cursor.conf");
         if *de == "kde" {
-            // Plasma сама ставит XCURSOR_* из kcminputrc при входе.
+            // Plasma sets XCURSOR_* from kcminputrc itself at login.
             assert!(env.is_none(), "kde: лишний environment.d");
         } else {
             assert_eq!(env.map(String::as_str), Some("XCURSOR_THEME=Bibata\nXCURSOR_SIZE=32\n"), "{de}");
@@ -1069,14 +1069,14 @@ fn cursor_size_reaches_every_desktop() {
     }
     let (_, lxqt) = run_plan(&sized("lxqt"), false);
     assert_eq!(lxqt[".config/lxqt/session.conf"], "\n[Mouse]\ncursor_theme=Bibata\ncursor_size=32\n");
-    // Без размера размер не трогается нигде.
+    // Without a size the size is touched nowhere.
     let (calls, files) = run_plan(&TH::apply_cursor_plan("Bibata", "gnome", HOME, true).unwrap(), false);
     assert!(!calls.iter().any(|c| c.contains(&"cursor-size".to_string())));
     assert!(!files[".config/gtk-3.0/settings.ini"].contains("size"));
 }
 
-/// У тайловых «применено» больше не безусловное: `ok` даёт запись нашего
-/// файла окружения, а конфиг композитора правится отдельным шагом.
+/// For tiling desktops "applied" is no longer unconditional: `ok` comes from writing our
+/// environment file, and the compositor config is edited in a separate step.
 #[test]
 fn tiling_cursor_status_is_true() {
     for de in ["sway", "niri", "hyprland", "river", "labwc"] {
@@ -1093,13 +1093,13 @@ fn tiling_cursor_status_is_true() {
         });
         assert_eq!(wm.is_some(), TH::CursorWm::from_de(de).is_some(), "{de}");
     }
-    // Имя, которое нельзя нести в чужой конфиг, туда и не идёт.
+    // A name that must not be carried into someone else's config does not go there.
     let p = TH::apply_cursor_plan_sized("Bad\"Name", Some(24), "sway", HOME, None, true).unwrap();
     assert!(!p.steps.iter().any(|s| matches!(s, ApplyStep::WmConfig(_))));
 }
 
-/// river меняет указатель своей командой сразу, Wayfire — по родному ключу
-/// `[input]` в своём конфиге (перечитывает его сам); конфига нет — не заводим.
+/// river changes the pointer with its own command right away, Wayfire by its native key
+/// `[input]` in its config (it rereads it itself); no config — we do not create one.
 #[test]
 fn river_and_wayfire_cursor_native_way() {
     let (calls, _) = run_plan(&sized("river"), false);
@@ -1128,20 +1128,20 @@ fn river_and_wayfire_cursor_native_way() {
         })
         .collect();
     assert_eq!(guarded, want);
-    // Ключ в стиле wayfire.ini (`key = value`) правится по месту, а не
-    // дописывается вторым.
+    // A key in wayfire.ini style (`key = value`) is edited in place, not
+    // appended as a second one.
     let before = "[core]\nplugins = autostart\n\n[input]\ncursor_theme = default\nxkb_layout = us,ru\n";
     assert_eq!(
         TH::ini_guarded_text(Some(before), "[input]", "cursor_theme", "Bibata", true, false).as_deref(),
         Some("[core]\nplugins = autostart\n\n[input]\ncursor_theme=Bibata\nxkb_layout = us,ru\n")
     );
     assert_eq!(TH::ini_guarded_text(None, "[input]", "cursor_theme", "Bibata", true, false), None);
-    // Похожий ключ — не тот же.
+    // A similar key is not the same one.
     assert_eq!(
         crate_defaults::set_ini_value(Some("[input]\ncursor_theme_x = a\n"), "[input]", "cursor_theme", "B"),
         "[input]\ncursor_theme_x = a\ncursor_theme=B\n"
     );
-    // Другим окружениям этих шагов не достаётся.
+    // Other desktops do not get these steps.
     for de in ["sway", "niri", "hyprland", "gnome", "kde"] {
         let p = sized(de);
         assert!(!p.steps.iter().any(|s| matches!(s, ApplyStep::Live(c) if c.argv[0] == "riverctl")), "{de}");
@@ -1159,9 +1159,9 @@ fn wm_config_plans_per_compositor() {
     let f = &sway.candidates[1];
     assert!(f.own_content.ends_with("seat * xcursor_theme \"Bibata Modern\" 48\n"), "{}", f.own_content);
     assert_eq!(f.include_line, "include /H/.config/sway/rexon-cursor.conf");
-    // sway снимает с аргумента `include` ВСЕ неэкранированные кавычки, а
-    // потом режет путь по пробелам wordexp: кавычки wordexp доходят до него
-    // только экранированными (`\'`), а сам аргумент — в двойных кавычках.
+    // sway strips ALL unescaped quotes from the `include` argument, and
+    // then splits the path on spaces with wordexp: quotes reach wordexp
+    // only escaped (`\'`), and the argument itself is in double quotes.
     let odd = TH::wm_cursor_config_plan(TH::CursorWm::Sway, "Bibata", None, "/home/a b'c$x", None);
     assert_eq!(
         odd.candidates[1].include_line,
@@ -1199,16 +1199,16 @@ fn managed_block_keeps_foreign_config() {
     assert!(once.ends_with(
         "\n# >>> Rexon: cursor (managed by Rexon, do not edit inside) >>>\ninclude /a\n# <<< Rexon: cursor <<<\n"
     ));
-    // Повтор — тот же текст; новое тело — на месте старого.
+    // A repeat gives the same text; a new body takes the place of the old one.
     assert_eq!(TH::upsert_managed_block(&once, "#", "cursor", "include /a"), once);
     let twice = TH::upsert_managed_block(&once, "#", "cursor", "include /b");
     assert_eq!(twice.matches(">>> Rexon").count(), 1);
     assert!(twice.contains("include /b") && !twice.contains("include /a"));
-    // Строки человека ПОСЛЕ блока не теряются.
+    // The person's lines AFTER the block are not lost.
     let tail = format!("{once}bindsym $mod+q kill\n");
     let upd = TH::upsert_managed_block(&tail, "#", "cursor", "include /c");
     assert!(upd.ends_with("# <<< Rexon: cursor <<<\nbindsym $mod+q kill\n"));
-    // Откат возвращает исходник байт в байт; без перевода строки в конце — тоже.
+    // Rollback restores the original byte-for-byte; without a trailing newline too.
     assert_eq!(TH::remove_managed_block(&once, "#", "cursor"), user);
     let bare = "a = 1";
     let b = TH::upsert_managed_block(bare, "//", "cursor", "include \"x\"");
@@ -1238,7 +1238,7 @@ fn cursor_queries_and_values() {
     assert_eq!(TH::env_file_key_value("XCURSOR_THEME=A\nXCURSOR_SIZE=40\n", "XCURSOR_SIZE"), Some("40".into()));
 }
 
-/// Сообщение говорит правду о том, где и когда курсор сменится.
+/// The message tells the truth about where and when the cursor will change.
 #[test]
 fn cursor_messages_in_english() {
     use TH::{CursorReport as R, CursorWm as W, WmConfigOutcome as O};
@@ -1260,7 +1260,7 @@ fn cursor_messages_in_english() {
     assert_eq!(TH::cursor_apply_message("kde", &plain), "Cursor applied");
     assert!(TH::cursor_apply_message("gnome", &plain).contains("after you log in again"));
     assert!(TH::cursor_apply_message("lxqt", &plain).contains("LXQt"));
-    // cosmic-comp при входе берёт XCURSOR_THEME, иначе тему `default`.
+    // cosmic-comp takes XCURSOR_THEME at login, otherwise the `default` theme.
     assert!(TH::cursor_apply_message("cosmic", &plain).contains("compositor's own pointer"));
     let river_live = R { ok: true, live: Some(true), ..R::default() };
     assert_eq!(
@@ -1274,10 +1274,10 @@ fn cursor_messages_in_english() {
     );
 }
 
-// ── 15-bis. Исполнитель: конфиги композиторов на диске (приватный каталог) ──
+// ── 15-bis. Executor: compositor configs on disk (private directory) ──
 //
-// Только шаги WmConfig/WriteSetsOk: gsettings, swaymsg и hyprctl из плана здесь
-// НЕ запускаются — сверка не должна касаться живого стола.
+// Only the WmConfig/WriteSetsOk steps: gsettings, swaymsg and hyprctl from the plan are
+// NOT run here — the check must not touch the live desktop.
 
 fn tmp_home(tag: &str) -> String {
     let dir = std::env::temp_dir().join(format!("rexon-cursor-{tag}-{}", std::process::id()));
@@ -1307,7 +1307,7 @@ fn wm_config_executor_sway() {
     use TH::WmConfigOutcome as O;
     let home = tmp_home("sway");
     let cfg = format!("{home}/.config/sway/config");
-    // Личного конфига нет, есть конфиг i3 — sway читает его; не трогаем.
+    // No personal config, there is an i3 config — sway reads it; we do not touch it.
     std::fs::create_dir_all(format!("{home}/.config/i3")).unwrap();
     std::fs::write(format!("{home}/.config/i3/config"), "bindsym Mod4+q kill\n").unwrap();
     let r = run_wm_steps("Bibata", "sway", &home);
@@ -1317,7 +1317,7 @@ fn wm_config_executor_sway() {
     assert!(!std::path::Path::new(&cfg).exists());
     std::fs::remove_dir_all(format!("{home}/.config/i3")).unwrap();
 
-    // Свой конфиг есть: блок в конце, чужое на месте, копия до правки.
+    // There is a config of its own: the block at the end, the rest in place, a copy before editing.
     std::fs::create_dir_all(format!("{home}/.config/sway")).unwrap();
     let user = "set $mod Mod4\nbindsym $mod+Return exec foot\nseat * xcursor_theme Adwaita 24\n";
     std::fs::write(&cfg, user).unwrap();
@@ -1334,18 +1334,18 @@ fn wm_config_executor_sway() {
         std::fs::read_to_string(format!("{home}/.config/environment.d/rexon-cursor.conf")).unwrap(),
         "XCURSOR_THEME=Bibata\nXCURSOR_SIZE=48\n"
     );
-    // Второй раз — конфиг тот же, блок один.
+    // The second time the config is the same, one block.
     run_wm_steps("Bibata", "sway", &home);
     assert_eq!(std::fs::read_to_string(&cfg).unwrap(), now);
-    // `sway --validate` всё равно поднимает бэкенд wlroots: без сеанса
-    // (ни WAYLAND_DISPLAY, ни DISPLAY — сборка в чистом окружении, CI) он
-    // падает на захвате seat ещё до чтения конфига, и сверка краснела бы
-    // от машины, а не от конфига.
+    // `sway --validate` still brings up the wlroots backend: without a session
+    // (neither WAYLAND_DISPLAY nor DISPLAY — a build in a clean environment, CI) it
+    // fails on grabbing the seat before even reading the config, and the check would go red
+    // because of the machine, not the config.
     let has_display = ["WAYLAND_DISPLAY", "DISPLAY"]
         .iter()
         .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()));
     if have_bin("sway") && has_display {
-        // Итог принимает сам sway.
+        // The result is accepted by sway itself.
         let st = std::process::Command::new("sway").args(["--validate", "--config", &cfg]).output().unwrap();
         assert!(st.status.success(), "{}", String::from_utf8_lossy(&st.stderr));
     }
@@ -1356,8 +1356,8 @@ fn wm_config_executor_sway() {
 fn wm_config_executor_niri_and_hyprland() {
     use TH::WmConfigOutcome as O;
     let home = tmp_home("niri");
-    // Конфига нет — композитор заведёт его сам; мы его не создаём (иначе он
-    // не положит свой с клавишами).
+    // No config — the compositor will create it itself; we do not create it (otherwise it
+    // will not put its own one with the key bindings).
     let r = run_wm_steps("Bibata", "niri", &home);
     assert_eq!(r.wm.as_ref().unwrap().1, O::NoConfig);
     assert!(!std::path::Path::new(&format!("{home}/.config/niri/config.kdl")).exists());
@@ -1374,8 +1374,8 @@ fn wm_config_executor_niri_and_hyprland() {
         let st = std::process::Command::new("niri").args(["validate", "--config", &cfg]).output().unwrap();
         assert!(st.status.success());
 
-        // Проверка niri отвергла итог (сломанный наш файл) — конфиг человека
-        // возвращается как был.
+        // The niri check rejected the result (our file broken) — the person's config
+        // is restored as it was.
         std::fs::write(&cfg, &user).unwrap();
         std::fs::write(format!("{cfg}.rexon-bak"), &user).unwrap();
         let plan = TH::wm_cursor_config_plan(TH::CursorWm::Niri, "Bibata", Some(48), &home, None);
@@ -1401,7 +1401,7 @@ fn wm_config_executor_niri_and_hyprland() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// Чипы размера во «Оформлении» — те же числа, что знает ядро курсора.
+/// The size chips in «Appearance» are the same numbers the cursor core knows.
 #[test]
 fn cursor_size_chips_match_core() {
     let keys: Vec<u32> = rexon_core::appearance_page::CURSOR_SIZE_KEYS
@@ -1412,7 +1412,7 @@ fn cursor_size_chips_match_core() {
     assert!(TH::CURSOR_SIZES.contains(&TH::CURSOR_DEFAULT_SIZE));
 }
 
-/// По-русски — из настоящего `po/ru.po`.
+/// In Russian — from the real `po/ru.po`.
 #[test]
 fn cursor_messages_in_russian() {
     use TH::{CursorReport as R, CursorWm as W, WmConfigOutcome as O};
@@ -1427,10 +1427,10 @@ fn cursor_messages_in_russian() {
     assert_eq!(rexon_core::appearance_page::cursor_size_label(), "Размер:");
 }
 
-/// Стенд целиком: `LiveInstaller::apply_cursor_size` в приватном HOME.
-/// Запуск только руками и только в отдельном окружении (приватные HOME,
-/// XDG_CONFIG_HOME и шина сеанса — `dbus-run-session`), иначе gsettings
-/// и конфиги ушли бы на живой стол:
+/// The whole stand: `LiveInstaller::apply_cursor_size` in a private HOME.
+/// Run only by hand and only in a separate environment (private HOME,
+/// XDG_CONFIG_HOME and session bus — `dbus-run-session`), otherwise gsettings
+/// and the configs would reach the live desktop:
 /// `REXON_CURSOR_STAND=<de> HOME=… XDG_CONFIG_HOME=… dbus-run-session cargo test …
 ///  --test themes_parity cursor_stand -- --ignored --nocapture`.
 #[test]
@@ -1447,9 +1447,9 @@ fn cursor_stand() {
     eprintln!("{de}: размер теперь {:?}", inst.cursor_size());
 }
 
-/// Д3 (проверка окружений 02.10.2026): на KDE смена стиля и Kvantum
-/// сообщается запущенным программам сигналом StyleChanged (2), а не
-/// PaletteChanged (0) — по 0 программа оставалась на прежнем стиле.
+/// D3 (desktop check 02.10.2026): on KDE a change of style and Kvantum
+/// is announced to running programs with the StyleChanged signal (2), not
+/// PaletteChanged (0) — with 0 the program stayed on the old style.
 #[test]
 fn kde_style_change_sends_style_changed() {
     let notify = |p: &Plan| -> Vec<String> {
@@ -1476,9 +1476,9 @@ fn svec(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
-/// Д4 (проверка окружений 02.10.2026): под Plasma значки и тема GTK доходят
-/// до GTK-программ сразу — значки пишутся `kwriteconfig6 --notify` (его
-/// слушает модуль `gtkconfig`), тема GTK отдаётся самому `gtkconfig`.
+/// D4 (desktop check 02.10.2026): under Plasma icons and the GTK theme reach
+/// GTK programs right away — icons are written with `kwriteconfig6 --notify` (it is
+/// listened to by the `gtkconfig` module), the GTK theme is handed to `gtkconfig` itself.
 #[test]
 fn kde_icons_and_gtk_reach_gtkconfig() {
     let argvs = |p: &Plan| -> Vec<Vec<String>> {
@@ -1499,7 +1499,7 @@ fn kde_icons_and_gtk_reach_gtkconfig() {
         "dbus-send", "--session", "--print-reply", "--dest=org.kde.GtkConfig", "/GtkConfig",
         "org.kde.GtkConfig.setGtkTheme", "string:Materia-dark",
     ])));
-    // Вне KDE модуля Plasma нет — и вызова нет.
+    // Outside KDE there is no Plasma module — and no call.
     for de in ["gnome", "xfce", "lxqt", "sway"] {
         assert!(!argvs(&TH::apply_gtk_plan("Materia-dark", de, HOME))
             .iter()
@@ -1507,14 +1507,14 @@ fn kde_icons_and_gtk_reach_gtkconfig() {
     }
 }
 
-/// Д2 (проверка окружений 02.10.2026): под qt6ct Qt-программы берут значки
-/// из его конфига. Выбор значков пишется туда, если конфиг есть; заведённый
-/// Rexon конфиг получает нынешние значки окружения, а не пустоту (живьём было
+/// D2 (desktop check 02.10.2026): under qt6ct Qt programs take icons
+/// from its config. The icon choice is written there if the config exists; a config
+/// created by Rexon gets the desktop's current icons, not emptiness (live it was
 /// Papirus → hicolor).
 #[test]
 fn qt6ct_keeps_icon_theme() {
-    // План значков: в qt6ct.conf и qt5ct.conf — только если файл уже есть;
-    // kdeglobals (программы KDE вне Plasma) — всегда.
+    // The icons plan: into qt6ct.conf and qt5ct.conf only if the file already exists;
+    // kdeglobals (KDE programs outside Plasma) always.
     let icons = TH::apply_icon_plan("Papirus", "gnome", HOME, true).unwrap();
     let guarded: Vec<_> = icons
         .steps
@@ -1534,7 +1534,7 @@ fn qt6ct_keeps_icon_theme() {
             ("/H/.config/qt5ct/qt5ct.conf".to_string(), "icon_theme".to_string(), "Papirus".to_string(), true, false),
         ]
     );
-    // Нет файла — не заводим; есть — правим, чужое не трогаем.
+    // No file — we do not create one; there is one — we edit it, the rest is untouched.
     assert_eq!(TH::ini_guarded_text(None, "[Appearance]", "icon_theme", "Papirus", true, false), None);
     assert_eq!(
         TH::ini_guarded_text(Some("[Appearance]\nstyle=Fusion\nicon_theme=breeze\n"), "[Appearance]", "icon_theme", "Papirus", true, false)
@@ -1542,7 +1542,7 @@ fn qt6ct_keeps_icon_theme() {
         Some("[Appearance]\nstyle=Fusion\nicon_theme=Papirus\n")
     );
 
-    // Стиль через qt6ct: нынешние значки окружения ложатся, если своих нет.
+    // Style via qt6ct: the desktop's current icons land if there are none of its own.
     let env = TH::KvantumEnv {
         de_id: "gnome",
         home: "/home/t",
@@ -1563,17 +1563,17 @@ fn qt6ct_keeps_icon_theme() {
         TH::ini_guarded_text(None, "[Appearance]", "icon_theme", "Papirus", false, true).as_deref(),
         Some("\n[Appearance]\nicon_theme=Papirus\n")
     );
-    // Свой выбор в qt6ct человек уже сделал — не перебиваем.
+    // The person has already made their own choice in qt6ct — we do not override it.
     assert_eq!(
         TH::ini_guarded_text(Some("[Appearance]\nicon_theme=breeze\n"), "[Appearance]", "icon_theme", "Papirus", false, true),
         None
     );
-    // На KDE и LXQt qt6ct не при делах — шага нет.
+    // On KDE and LXQt qt6ct is irrelevant — no step.
     for de in ["kde", "lxqt"] {
         let env = TH::KvantumEnv { de_id: de, home: "/home/t", xdg_config_home: "", platform_theme: "qt6ct", icon_theme: "Papirus".into() };
         assert!(!TH::apply_qt_style_plan("Fusion", &env).steps.iter().any(|s| matches!(s, ApplyStep::IniSetGuarded { .. })), "{de}");
     }
-    // Источник нынешних значков — те же ключи, что пишет план значков.
+    // The source of the current icons is the same keys the icons plan writes.
     assert_eq!(TH::parse_icon_theme_output("'Papirus'\n"), "Papirus");
     match TH::current_icon_theme_source("xfce", "/h", None) {
         TH::IconThemeSource::Cmd(c) => assert_eq!(c.argv[..3], ["xfconf-query", "-c", "xsettings"]),
@@ -1581,9 +1581,9 @@ fn qt6ct_keeps_icon_theme() {
     }
 }
 
-/// Значки во всех окружениях: без dconf (`gsettings` падает) тайловые и LXQt
-/// всё равно отдают набор Qt-программам — qt6ct и kdeglobals; программы KDE
-/// получают его везде, кроме самой Plasma (там пишет свой шаг) и Deepin.
+/// Icons in all desktops: without dconf (`gsettings` fails) tiling desktops and LXQt
+/// still hand the set to Qt programs — qt6ct and kdeglobals; KDE programs
+/// get it everywhere except Plasma itself (its own step writes there) and Deepin.
 #[test]
 fn icons_reach_qt_apps_without_dconf() {
     let qt6ct = "/H/.config/qt6ct/qt6ct.conf";
@@ -1592,7 +1592,7 @@ fn icons_reach_qt_apps_without_dconf() {
         let force = plan.steps.iter().position(|s| matches!(s, ApplyStep::ForceOk)).expect(de);
         let guarded = plan.steps.iter().position(|s| matches!(s, ApplyStep::IniSetGuarded { .. })).expect(de);
         assert!(force < guarded, "{de}: ForceOk после записей «если ok»");
-        // Исполнение с упавшим gsettings и уже настроенным qt6ct.
+        // Execution with a failed gsettings and an already configured qt6ct.
         let mut ok = false;
         let mut files: BTreeMap<String, String> = BTreeMap::from([(qt6ct.to_string(), "[Appearance]\nstyle=Fusion\n".to_string())]);
         for step in &plan.steps {
@@ -1619,17 +1619,17 @@ fn icons_reach_qt_apps_without_dconf() {
         let plan = TH::apply_icon_plan("Papirus", de, HOME, true).unwrap();
         assert!(!plan.steps.iter().any(|s| matches!(s, ApplyStep::IniSetGuarded { path, .. } if path.ends_with("kdeglobals"))), "{de}");
     }
-    // Чужое в kdeglobals сохраняется, правится только свой ключ.
+    // The rest of kdeglobals is kept, only our own key is edited.
     assert_eq!(
         TH::ini_guarded_text(Some("[General]\nColorScheme=BreezeDark\n\n[Icons]\nTheme=breeze\n"), "[Icons]", "Theme", "Papirus", false, false).as_deref(),
         Some("[General]\nColorScheme=BreezeDark\n\n[Icons]\nTheme=Papirus\n")
     );
 }
 
-// ── Стандартный курсор окружения (Adwaita в GNOME и Cinnamon) ──────────────
+// ── The desktop's standard cursor (Adwaita in GNOME and Cinnamon) ──────────────
 
-/// Стандартная тема роли узнаётся у самой схемы (умолчание + поправки
-/// дистрибутива), а не таблицей; где схемы нет — спрашивать нечего.
+/// The role's standard theme is learned from the schema itself (default + distribution
+/// overrides), not from a table; where there is no schema there is nothing to ask.
 #[test]
 fn standard_theme_read_cmd_asks_schema_default() {
     let argv = |de: &str, role: &str| TH::standard_theme_read_cmd(de, role).map(|c| c.argv);
@@ -1650,10 +1650,10 @@ fn standard_theme_read_cmd_asks_schema_default() {
     }
 }
 
-/// Возврат к стандартному курсору: родной ключ сбрасывается, а не пишется
-/// именем темы; наши явные указания (settings.ini GTK, environment.d)
-/// убираются; имени небезопасной темы нет ни в одной записи. Cinnamon —
-/// своей схемой.
+/// Returning to the standard cursor: the native key is reset rather than written
+/// with a theme name; our explicit settings (GTK settings.ini, environment.d)
+/// are removed; the name of an unsafe theme is in no record. Cinnamon —
+/// with its own schema.
 #[test]
 fn standard_cursor_plan_resets_instead_of_writing_unsafe_name() {
     for (de, schema) in [("gnome", "org.gnome.desktop.interface"), ("cinnamon-mint", "org.cinnamon.desktop.interface")] {
@@ -1672,7 +1672,7 @@ fn standard_cursor_plan_resets_instead_of_writing_unsafe_name() {
     for de in ["kde", "xfce", "sway", "hyprland-unknown"] {
         assert!(TH::standard_cursor_plan(de, None, HOME, None).is_none(), "{de}");
     }
-    // Защита на месте: обычный план для небезопасной темы по-прежнему не строится.
+    // The protection is in place: a normal plan for an unsafe theme is still not built.
     assert!(TH::apply_cursor_plan_sized("Adwaita", None, "gnome", HOME, None, false).is_none());
 }
 
@@ -1686,10 +1686,10 @@ fn remove_gtk_settings_key_keeps_the_rest() {
     assert_eq!(TH::remove_gtk_settings_key("[Settings]\n", "gtk-cursor-theme-name"), None);
 }
 
-// ── Режим программ (color-scheme) вслед за темой GTK ───────────────────────
+// ── Program mode (color-scheme) following the GTK theme ───────────────────────
 
-/// Тёмная ли тема: цвет фона окна из gtk.css (по ссылкам `@имя`), без него —
-/// «dark» в имени; цвет важнее имени.
+/// Whether the theme is dark: the window background color from gtk.css (following `@name` references), without it —
+/// "dark" in the name; the color matters more than the name.
 #[test]
 fn gtk_theme_is_dark_by_css_then_name() {
     let dracula = "@define-color bg_color #1e1f29;\n@define-color theme_bg_color @bg_color;\n";
@@ -1697,20 +1697,20 @@ fn gtk_theme_is_dark_by_css_then_name() {
     let adw = "@define-color window_bg_color #222226;\n@define-color theme_bg_color @window_bg_color;\n";
     assert!(TH::gtk_theme_is_dark("adw-gtk3-dark", Some(adw)));
     assert!(!TH::gtk_theme_is_dark("Materia", Some("@define-color theme_bg_color #f9f9f9;\n")));
-    // Имя говорит «Dark», а фон окна светлый — решает цвет.
+    // The name says "Dark" but the window background is light — the color decides.
     let royale = "@define-color bg_color #ebe9ed;\n@define-color theme_bg_color @bg_color;\n";
     assert!(!TH::gtk_theme_is_dark("Windows XP Royale Dark", Some(royale)));
-    // Стили в ресурсе GTK — по имени.
+    // Styles in a GTK resource — by name.
     let import = "@import url(\"resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained-dark.css\");\n";
     assert!(TH::gtk_theme_is_dark("Adwaita-dark", Some(import)));
     assert!(!TH::gtk_theme_is_dark("Adwaita", None));
-    // Петля ссылок не вешает разбор — решает имя.
+    // A reference loop does not hang the parsing — the name decides.
     assert!(!TH::gtk_theme_is_dark("Loop", Some("@define-color theme_bg_color @a;\n@define-color a @theme_bg_color;\n")));
 }
 
-/// Тёмная тема GTK ставит программам `prefer-dark`, светлая — `default`;
-/// только там, где тема GTK пишется в схему GNOME, и только после записи
-/// темы. Cinnamon, MATE, XFCE, KDE режим ведут сами.
+/// A dark GTK theme sets `prefer-dark` for programs, a light one `default`;
+/// only where the GTK theme is written into the GNOME schema, and only after the theme
+/// is written. Cinnamon, MATE, XFCE, KDE manage the mode themselves.
 #[test]
 fn gtk_plan_sets_color_scheme_where_gnome_schema() {
     let scheme = |de: &str, dark: Option<bool>| -> Vec<Vec<String>> {
@@ -1730,7 +1730,7 @@ fn gtk_plan_sets_color_scheme_where_gnome_schema() {
         .into_iter()
         .map(String::from)
         .collect::<Vec<_>>()];
-    // Pantheon пишет ещё и ключ своей службы —
+    // Pantheon also writes its service's key —
     // `pantheon_dark_mode_goes_to_elementary_settings_daemon`.
     for de in ["gnome", "budgie", "cosmic", "sway"] {
         assert_eq!(scheme(de, Some(true)), set("prefer-dark"), "{de}");
@@ -1740,16 +1740,16 @@ fn gtk_plan_sets_color_scheme_where_gnome_schema() {
     for de in ["cinnamon-mint", "mate", "xfce", "kde", "deepin"] {
         assert!(scheme(de, Some(true)).is_empty(), "{de}");
     }
-    // Прежний план без режима не изменился.
+    // The old plan without a mode did not change.
     assert_eq!(TH::apply_gtk_plan_xdg("T", "gnome", HOME, None), TH::apply_gtk_plan_scheme("T", "gnome", HOME, None, None));
 }
 
-/// Pantheon: светлый/тёмный режим ведёт служба io.elementary.settings-daemon
-/// по СВОЕМУ ключу `io.elementary.settings-daemon.prefers-color-scheme
-/// color-scheme` (его пишет «Параметры → Рабочий стол → Оформление»); из него
-/// она раздаёт режим в AccountsService — оттуда его берут Gala, панель и
-/// программы elementary — и в ключ GNOME. Один ключ GNOME оставлял оболочку
-/// светлой, а по расписанию тёмного режима служба переписывала его назад.
+/// Pantheon: the light/dark mode is managed by the io.elementary.settings-daemon service
+/// through ITS OWN key `io.elementary.settings-daemon.prefers-color-scheme
+/// color-scheme` (written by «System Settings → Desktop → Appearance»); from it
+/// the service hands the mode out to AccountsService — Gala, the panel and
+/// elementary programs take it from there — and into the GNOME key. The GNOME key alone left the shell
+/// light, and on the dark mode schedule the service rewrote it back.
 #[test]
 fn pantheon_dark_mode_goes_to_elementary_settings_daemon() {
     let ifok = |dark: bool| -> Vec<Vec<String>> {
@@ -1769,9 +1769,9 @@ fn pantheon_dark_mode_goes_to_elementary_settings_daemon() {
     let dark = ifok(true);
     assert!(dark.contains(&elementary("prefer-dark")), "{dark:?}");
     assert!(dark.contains(&v(&["gsettings", "set", "org.gnome.desktop.interface", "color-scheme", "prefer-dark"])));
-    // «Светлый» у elementary — `no-preference` (кнопка «По умолчанию»).
+    // "Light" for elementary is `no-preference` (the «Default» button).
     assert!(ifok(false).contains(&elementary("no-preference")));
-    // Остальным окружениям ключа elementary не пишем.
+    // Other desktops do not get the elementary key.
     for de in ["gnome", "budgie", "cosmic"] {
         let plan = TH::apply_gtk_plan_scheme("T", de, HOME, None, Some(true));
         assert!(!format!("{:?}", plan.steps).contains("io.elementary"), "{de}");

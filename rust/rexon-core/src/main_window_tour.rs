@@ -1,23 +1,24 @@
-//! Режим обхода главного окна: `rexon-main-window --tour[=<раздел>] --tour-out <папка>`.
+//! Main window tour mode: `rexon-main-window --tour[=<section>] --tour-out <folder>`.
 //!
-//! ЗАЧЕМ. Магазинов в «Оформлении» десятки (раздел × KDE Store / AUR / Все /
-//! Wallhaven / Razer Axon / Spices / сайт расширений GNOME), и проверять их
-//! глазами — час щелчков, после которого всё равно что-то пропущено: плитки
-//! без картинок, забытое слово поиска при смене магазина, поле поиска,
-//! уехавшее в одном магазине раздела. Обход проходит всё сам, невидимо
-//! (`QT_QPA_PLATFORM=offscreen`), снимает каждый экран в PNG и пишет
-//! `report.txt` со всем подозрительным.
+//! WHY. "Appearance" has dozens of stores (section × KDE Store / AUR / All /
+//! Wallhaven / Razer Axon / Spices / the GNOME extensions site), and checking
+//! them by eye is an hour of clicking after which something is still missed:
+//! tiles without pictures, a search word forgotten when switching stores, a
+//! search field that moved in one store of a section. The tour goes through
+//! everything by itself, invisibly (`QT_QPA_PLATFORM=offscreen`), captures every
+//! screen as a PNG and writes `report.txt` with everything suspicious.
 //!
-//! КТО ЧТО РЕШАЕТ. Здесь — всё: разбор ключей, порядок обхода, какие вызовы
-//! страницы разрешены, когда экран «загрузился», что считать подозрительным
-//! и вид отчёта. Окно (`rexon-gui`, `qml/MainWindow.qml`) только исполняет
-//! команды [`Tour::next`] и возвращает, что увидело.
+//! WHO DECIDES WHAT. Everything is decided here: parsing the options, the tour
+//! order, which page calls are allowed, when a screen has "loaded", what counts
+//! as suspicious and what the report looks like. The window (`rexon-gui`,
+//! `qml/MainWindow.qml`) only executes the commands of [`Tour::next`] and
+//! returns what it saw.
 //!
-//! ⛔ ОБХОД НИЧЕГО НЕ МЕНЯЕТ. Только навигация, поиск и просмотр: команды
-//! называют лишь методы из [`ALLOWED_CALLS`], а [`call_allowed`] дополнительно
-//! отвергает всё, в чьём имени есть установка, применение, удаление и родня
-//! ([`FORBIDDEN_WORDS`]). Исполнитель обязан спрашивать [`call_allowed`]
-//! перед КАЖДЫМ вызовом.
+//! Never: THE TOUR CHANGES NOTHING. Only navigation, search and viewing: the
+//! commands name only methods from [`ALLOWED_CALLS`], and [`call_allowed`]
+//! additionally rejects anything whose name contains install, apply, remove and
+//! their relatives ([`FORBIDDEN_WORDS`]). The executor must ask [`call_allowed`]
+//! before EVERY call.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -25,61 +26,63 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
-// Ключи командной строки
+// Command-line options
 // ============================================================================
 
-/// `--tour` (все разделы) или `--tour=<раздел>[/<подраздел>]`.
+/// `--tour` (all sections) or `--tour=<section>[/<subsection>]`.
 pub const TOUR_FLAG: &str = "--tour";
-/// Папка снимков и отчёта: `--tour-out <папка>` или `--tour-out=<папка>`.
+/// Folder for screenshots and the report: `--tour-out <folder>` or `--tour-out=<folder>`.
 pub const OUT_FLAG: &str = "--tour-out";
-/// Тестовое слово поиска: `--tour-query <слово>`.
+/// Test search word: `--tour-query <word>`.
 pub const QUERY_FLAG: &str = "--tour-query";
-/// Общий предел обхода в секундах: `--tour-timeout <с>`.
+/// Overall tour limit in seconds: `--tour-timeout <s>`.
 pub const TIMEOUT_FLAG: &str = "--tour-timeout";
 
-/// Слово поиска по умолчанию: находит что-то почти в любом магазине.
+/// Default search word: finds something in almost any store.
 pub const DEFAULT_QUERY: &str = "girl";
-/// Общий предел обхода по умолчанию. Без сети каждый магазин упирается в
-/// [`LOAD_TIMEOUT_MS`], и обход всего окна обязан всё равно кончиться.
+/// Default overall tour limit. Without a network every store runs into
+/// [`LOAD_TIMEOUT_MS`], and a tour of the whole window must still finish.
 pub const DEFAULT_TIMEOUT_SECS: u64 = 1200;
 
-/// Сколько ждать загрузки выдачи одного экрана.
+/// How long to wait for one screen's results to load.
 pub const LOAD_TIMEOUT_MS: u64 = 20_000;
-/// Загрузка дольше — подозрительно (строка отчёта).
+/// Loading longer than this is suspicious (a report line).
 pub const SLOW_LOAD_MS: u64 = 5_000;
-/// Сколько ждать картинок плиток после загрузки выдачи.
+/// How long to wait for tile pictures after the results have loaded.
 pub const PREVIEW_TIMEOUT_MS: u64 = 10_000;
-/// Очередь картинок пуста и число плиток без картинки не менялось столько —
-/// дальше ждать нечего (картинки вида, которые рисуются на месте, очереди
-/// загрузок не видны).
+/// The picture queue is empty and the number of tiles without a picture has not
+/// changed for this long — there is nothing more to wait for (pictures of views
+/// that are drawn in place are not visible to the download queue).
 pub const PREVIEW_SETTLE_MS: u64 = 1_500;
-/// Меньше этого «готово» не бывает: запрос магазина уходит после паузы
-/// набора (`catalogDebounceMs`), и до неё экран ещё показывает прошлое.
+/// "Ready" never comes sooner than this: the store request is sent after the
+/// typing pause (`catalogDebounceMs`), and until then the screen still shows the
+/// previous state.
 pub const MIN_LOAD_MS: u64 = 400;
-/// Сколько ждать, пока раздел окна построит страницу.
+/// How long to wait for a window section to build its page.
 pub const PAGE_TIMEOUT_MS: u64 = 15_000;
 
-/// Размер невидимого окна обхода: снимки читаемы, шапка в одну строку.
+/// Size of the invisible tour window: screenshots are readable, the header fits
+/// on one line.
 pub const WINDOW_SIZE: (i32, i32) = (1366, 860);
 
-/// Отчёт в папке обхода.
+/// The report in the tour folder.
 pub const REPORT_FILE: &str = "report.txt";
-/// Журнал процесса обхода (поток ошибок: сообщения Qt/QML и журнал Rexon).
+/// Log of the tour process (stderr: Qt/QML messages and the Rexon log).
 pub const JOURNAL_FILE: &str = "journal.log";
 
-/// Коды возврата: всё чисто / есть подозрительное / не запустился / общий
-/// тайм-аут.
+/// Exit codes: all clean / something suspicious / failed to start / overall
+/// timeout.
 pub const EXIT_CLEAN: i32 = 0;
 pub const EXIT_SUSPICIOUS: i32 = 1;
 pub const EXIT_BAD_ARGS: i32 = 2;
 pub const EXIT_TIMEOUT: i32 = 3;
 
-/// Что попросили обойти.
+/// What was asked to be toured.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TourConfig {
-    /// Раздел окна (`qt_main::SECTIONS`); `None` — все.
+    /// Window section (`qt_main::SECTIONS`); `None` — all.
     pub section: Option<String>,
-    /// Подраздел «Оформления» (ключ боковой панели); `None` — все.
+    /// Subsection of "Appearance" (a sidebar key); `None` — all.
     pub sub: Option<String>,
     pub query: String,
     pub out_dir: PathBuf,
@@ -87,7 +90,7 @@ pub struct TourConfig {
 }
 
 impl TourConfig {
-    /// Как обход назван в отчёте.
+    /// How the tour is named in the report.
     pub fn target_label(&self) -> String {
         match (&self.section, &self.sub) {
             (None, _) => "всё окно".to_string(),
@@ -97,12 +100,12 @@ impl TourConfig {
     }
 }
 
-/// Просили ли обход вообще (до разбора остальных ключей).
+/// Whether a tour was requested at all (before parsing the other options).
 pub fn wants_tour(args: &[String]) -> bool {
     args.iter().any(|a| a == TOUR_FLAG || a.starts_with(&format!("{TOUR_FLAG}=")))
 }
 
-/// Значение ключа `--flag v` / `--flag=v`.
+/// Value of the option `--flag v` / `--flag=v`.
 fn flag_value(args: &[String], flag: &str) -> Result<Option<String>, String> {
     let eq = format!("{flag}=");
     let mut it = args.iter();
@@ -120,9 +123,9 @@ fn flag_value(args: &[String], flag: &str) -> Result<Option<String>, String> {
     Ok(None)
 }
 
-/// Разобрать ключи обхода. `Ok(None)` — обхода не просили.
+/// Parse the tour options. `Ok(None)` — no tour was requested.
 ///
-/// `default_out` зовётся, только если `--tour-out` не дан.
+/// `default_out` is called only if `--tour-out` is not given.
 pub fn parse_args(
     args: &[String],
     default_out: impl FnOnce() -> PathBuf,
@@ -177,7 +180,7 @@ pub fn parse_args(
     }))
 }
 
-/// Папка по умолчанию: `$XDG_CACHE_HOME/rexon/tour` (или `~/.cache/…`).
+/// Default folder: `$XDG_CACHE_HOME/rexon/tour` (or `~/.cache/…`).
 pub fn default_out_dir(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
     let cache = env("XDG_CACHE_HOME")
         .filter(|v| !v.is_empty())
@@ -187,9 +190,9 @@ pub fn default_out_dir(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
     cache.join("rexon").join("tour")
 }
 
-/// Переменные Qt процесса обхода: невидимое окно и сообщения Qt/QML в поток
-/// ошибок с типом в начале строки — по нему [`is_qml_warning`] отличает
-/// предупреждение от `console.log`.
+/// Qt variables of the tour process: an invisible window and Qt/QML messages to
+/// stderr with the type at the start of the line — by it [`is_qml_warning`]
+/// tells a warning from `console.log`.
 pub fn qt_env() -> Vec<(&'static str, &'static str)> {
     vec![
         ("QT_QPA_PLATFORM", "offscreen"),
@@ -198,8 +201,9 @@ pub fn qt_env() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// Файл, оставленный прошлым обходом (его можно убрать перед новым): снимки
-/// `NN-….png`, отчёт и журнал. Чужие файлы в папке не трогаются.
+/// A file left by a previous tour (it may be removed before a new one):
+/// screenshots `NN-….png`, the report and the log. Other files in the folder are
+/// not touched.
 pub fn is_tour_artifact(name: &str) -> bool {
     if name == REPORT_FILE || name == JOURNAL_FILE {
         return true;
@@ -209,10 +213,10 @@ pub fn is_tour_artifact(name: &str) -> bool {
 }
 
 // ============================================================================
-// Запрет на действия
+// Ban on actions
 // ============================================================================
 
-/// Единственные методы страниц, которые обход вообще зовёт.
+/// The only page methods the tour calls at all.
 pub const ALLOWED_CALLS: &[&str] = &[
     "openSection",
     "tourSelectCategory",
@@ -221,46 +225,46 @@ pub const ALLOWED_CALLS: &[&str] = &[
     "tourClearQuery",
 ];
 
-/// Слова, которых в имени вызова обхода быть не может ни при каких условиях:
-/// за ними стоят изменения в системе (установка, применение, удаление…).
+/// Words that can never under any circumstances be in the name of a tour call:
+/// behind them are changes to the system (install, apply, remove…).
 pub const FORBIDDEN_WORDS: &[&str] = &[
     "install", "apply", "uninstall", "remove", "delete", "enable", "disable",
     "toggle", "save", "write", "restore", "reset", "switch", "set_default",
     "setdefault", "play", "launch", "run", "update", "upgrade", "download",
 ];
 
-/// Можно ли обходу позвать метод `method`. Исполнитель спрашивает это перед
-/// каждым вызовом и на `false` вызов не делает, а пишет провал.
+/// Whether the tour may call method `method`. The executor asks this before
+/// every call and on `false` does not make the call but records a failure.
 pub fn call_allowed(method: &str) -> bool {
     if !ALLOWED_CALLS.contains(&method) {
         return false;
     }
-    // Имя без приставки `tour`: иначе «tourSetSource» прошло бы мимо
-    // проверки слов по совпадению «set».
+    // The name without the `tour` prefix: otherwise "tourSetSource" would slip past
+    // the word check on the match "set".
     let bare = method.strip_prefix("tour").unwrap_or(method).to_ascii_lowercase();
     !FORBIDDEN_WORDS.iter().any(|w| bare.contains(w))
 }
 
 // ============================================================================
-// Команды и ответы исполнителя
+// Commands and executor answers
 // ============================================================================
 
-/// Команда исполнителю. `method` — вызов страницы, который за ней стоит
-/// (сверяется [`call_allowed`]); у снимка и конца вызова нет.
+/// A command for the executor. `method` — the page call behind it (checked by
+/// [`call_allowed`]); a screenshot and the finish have no call.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "cmd", rename_all = "camelCase")]
 pub enum Command {
-    /// Открыть раздел окна и дождаться его страницы.
+    /// Open a window section and wait for its page.
     OpenSection { method: String, section: String, timeout_ms: u64 },
-    /// Открыть раздел боковой панели «Оформления».
+    /// Open a section of the "Appearance" sidebar.
     SelectCategory { method: String, key: String },
-    /// Выбрать магазин (чип «Магазин:»).
+    /// Choose a store (the "Store:" chip).
     SetSource { method: String, key: String },
-    /// Ввести слово в поле поиска (как человек: поле + Enter).
+    /// Type a word into the search field (like a person: the field + Enter).
     TypeQuery { method: String, text: String },
-    /// Очистить поиск (кнопкой ✕).
+    /// Clear the search (with the ✕ button).
     ClearQuery { method: String },
-    /// Дождаться загрузки и картинок, снять окно в `path`.
+    /// Wait for loading and pictures, capture the window into `path`.
     Capture {
         file: String,
         path: String,
@@ -269,7 +273,7 @@ pub enum Command {
         settle_ms: u64,
         grid: bool,
     },
-    /// Обход окончен: исполнитель выходит с `exit_code`.
+    /// The tour is over: the executor exits with `exit_code`.
     Finish { exit_code: i32, report: String },
 }
 
@@ -290,7 +294,7 @@ impl Command {
         Self::ClearQuery { method: "tourClearQuery".into() }
     }
 
-    /// Вызов страницы за командой.
+    /// The page call behind a command.
     pub fn method(&self) -> Option<&str> {
         match self {
             Self::OpenSection { method, .. }
@@ -307,8 +311,8 @@ impl Command {
     }
 }
 
-/// Что исполнитель увидел, выполнив прошлую команду. Поля, не относящиеся к
-/// команде, остаются по умолчанию.
+/// What the executor saw after executing the previous command. Fields not
+/// related to the command stay at their defaults.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Report {
@@ -316,18 +320,18 @@ pub struct Report {
     pub error: String,
     // ── openSection
     pub built: bool,
-    /// `appearance` — страница с боковой панелью и магазинами; иначе пусто.
+    /// `appearance` — a page with a sidebar and stores; otherwise empty.
     pub kind: String,
-    /// Доступные разделы боковой панели (ключи) в порядке панели.
+    /// Available sidebar sections (keys) in sidebar order.
     pub categories: Vec<String>,
     // ── selectCategory
-    /// Магазины раздела (ключи чипов) в порядке шапки.
+    /// The section's stores (chip keys) in header order.
     pub sources: Vec<String>,
-    /// Есть ли в разделе поле поиска.
+    /// Whether the section has a search field.
     pub search: bool,
     // ── capture
     pub saved: bool,
-    /// Вид страницы: `grid`, `axon`, `detail`…
+    /// Page view: `grid`, `axon`, `detail`…
     pub screen: String,
     pub load_ms: u64,
     pub load_timed_out: bool,
@@ -341,9 +345,9 @@ pub struct Report {
     pub model_query: String,
     pub status: String,
     pub status_warn: bool,
-    /// Действующий магазин по словам страницы.
+    /// The current store according to the page.
     pub source: String,
-    /// Длина журнала к моменту ответа — ставит хозяин окна, не QML.
+    /// Log length at the moment of the answer — set by the window owner, not QML.
     pub log_offset: u64,
 }
 
@@ -357,14 +361,14 @@ impl Report {
 }
 
 // ============================================================================
-// Ожидание загрузки
+// Waiting for loading
 // ============================================================================
 
-/// Замер исполнителя, пока он ждёт экран.
+/// The executor's measurement while it waits for a screen.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct WaitSample {
-    /// `load` — ждём выдачу; `preview` — ждём картинки плиток.
+    /// `load` — waiting for results; `preview` — waiting for tile pictures.
     pub phase: String,
     pub elapsed_ms: u64,
     pub timeout_ms: u64,
@@ -395,7 +399,7 @@ impl WaitVerdict {
     }
 }
 
-/// Строка состояния страницы говорит «грузится».
+/// The page's status line says "loading".
 pub fn status_says_busy(status: &str) -> bool {
     let s = status.trim();
     s.starts_with('⏳')
@@ -405,7 +409,7 @@ pub fn status_says_busy(status: &str) -> bool {
         || s == crate::appearance_page::status_scanning_system()
 }
 
-/// Готов ли экран к снимку.
+/// Whether the screen is ready to be captured.
 pub fn wait_verdict(s: &WaitSample) -> WaitVerdict {
     let timed_out = s.timeout_ms > 0 && s.elapsed_ms >= s.timeout_ms;
     match s.phase.as_str() {
@@ -429,38 +433,38 @@ pub fn wait_verdict(s: &WaitSample) -> WaitVerdict {
 }
 
 // ============================================================================
-// Порядок обхода
+// Tour order
 // ============================================================================
 
-/// Шаг экрана: просмотр магазина или выдача по поиску.
+/// A screen step: browsing a store or search results.
 pub const STEP_BROWSE: &str = "browse";
 pub const STEP_SEARCH: &str = "search";
 
-/// Чей это снимок.
+/// Whose screenshot this is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShotMeta {
     pub section: String,
-    /// Раздел боковой панели «Оформления»; пусто у остальных разделов окна.
+    /// Section of the "Appearance" sidebar; empty for the other window sections.
     pub category: String,
-    /// Магазин; `-`, если переключателя нет.
+    /// Store; `-` if there is no switch.
     pub store: String,
     pub step: String,
-    /// Какое слово обязано стоять в поле поиска.
+    /// Which word must be in the search field.
     pub expect_query: Option<String>,
-    /// Экран — сетка плиток (у прочих разделов окна плиток не считаем).
+    /// The screen is a tile grid (tiles are not counted for other window sections).
     pub grid: bool,
 }
 
-/// Строка плана: команда и, для снимка, чей он.
+/// A plan line: the command and, for a screenshot, whose it is.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Planned {
     Do(Command),
     Shot(ShotMeta),
 }
 
-/// План раздела «Оформления»: каждый магазин по очереди, затем — если
-/// поиск есть — слово в первом магазине и снова каждый магазин, с проверкой,
-/// что слово осталось в поле. В конце поиск очищается.
+/// Plan of an "Appearance" section: each store in turn, then — if there is a
+/// search — a word in the first store and again each store, checking that the
+/// word stayed in the field. At the end the search is cleared.
 pub fn plan_category(section: &str, category: &str, sources: &[String], search: bool, query: &str) -> Vec<Planned> {
     let shot = |store: &str, step: &str, expect: Option<&str>| {
         Planned::Shot(ShotMeta {
@@ -496,14 +500,14 @@ pub fn plan_category(section: &str, category: &str, sources: &[String], search: 
         }
         out.push(Planned::Do(Command::clear_query()));
     }
-    // Вернуть раздел на первый магазин: следующий раздел начнёт с чистого.
+    // Return the section to the first store: the next section will start clean.
     if sources.len() > 1 {
         out.push(Planned::Do(Command::set_source(&sources[0])));
     }
     out
 }
 
-/// Имя файла снимка: `NN-<раздел>-<магазин>-<шаг>.png`.
+/// Screenshot file name: `NN-<section>-<store>-<step>.png`.
 pub fn shot_file_name(n: u32, place: &str, store: &str, step: &str) -> String {
     format!("{n:02}-{}-{}-{}.png", slug(place), slug(store), slug(step))
 }
@@ -517,7 +521,7 @@ fn slug(s: &str) -> String {
     if out.is_empty() { "main".to_string() } else { out }
 }
 
-/// Снятый экран: чей он и что на нём увидели.
+/// A captured screen: whose it is and what was seen on it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Screen {
     pub file: String,
@@ -525,20 +529,21 @@ pub struct Screen {
     pub seen: Report,
 }
 
-/// Строка подозрительного: к какому снимку и что.
+/// A line of something suspicious: which screenshot and what.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
-    /// Имя снимка или место (`запуск`, `раздел appearance`…).
+    /// Screenshot name or place (`запуск` — start-up, `раздел appearance` —
+    /// section appearance…).
     pub place: String,
     pub text: String,
 }
 
-/// Состояние обхода.
+/// Tour state.
 #[derive(Debug)]
 pub struct Tour {
     pub cfg: TourConfig,
     queue: VecDeque<Planned>,
-    /// Последняя выданная команда и, для снимка, чей он.
+    /// The last command issued and, for a screenshot, whose it is.
     current: Option<(Command, Option<ShotMeta>)>,
     screens: Vec<Screen>,
     notes: Vec<Finding>,
@@ -580,10 +585,10 @@ impl Tour {
         self.notes.push(Finding { place: place.into(), text: text.into() });
     }
 
-    /// Принять ответ на прошлую команду и выдать следующую. Первый вызов —
-    /// с `None`. После [`Command::Finish`] отвечает им же.
+    /// Accept the answer to the previous command and issue the next one. The first
+    /// call is with `None`. After [`Command::Finish`] it answers with the same.
     ///
-    /// `journal` нужен только для отчёта в конце (см. [`Tour::report`]).
+    /// `journal` is needed only for the report at the end (see [`Tour::report`]).
     pub fn next(&mut self, report: Option<Report>, journal: &str) -> Command {
         if let (Some((cmd, meta)), Some(rep)) = (self.current.take(), report) {
             self.absorb(cmd, meta, rep);
@@ -612,8 +617,8 @@ impl Tour {
                     (cmd, Some(meta))
                 }
             };
-            // Последняя линия запрета: команда с недозволенным вызовом не
-            // уходит исполнителю вовсе.
+            // The last line of the ban: a command with a disallowed call does not reach
+            // the executor at all.
             if let Some(m) = cmd.method() {
                 if !call_allowed(m) {
                     self.note("обход", format!("вызов «{m}» запрещён — пропущен"));
@@ -713,10 +718,11 @@ impl Tour {
         }
     }
 
-    /// Всё подозрительное: заметки хода, разбор экранов и журнала.
+    /// Everything suspicious: notes from the run, analysis of screens and the log.
     pub fn findings(&self, journal: &str) -> Vec<Finding> {
         let mut out = self.notes.clone();
-        // Журнал до первого экрана — «запуск», дальше — отрезок до ответа экрана.
+        // The log before the first screen is "start-up", after that it is the stretch
+        // up to the screen's answer.
         let mut from = 0usize;
         for scr in &self.screens {
             let to = line_end(journal, scr.seen.log_offset as usize).max(from);
@@ -733,8 +739,8 @@ impl Tour {
         out
     }
 
-    /// Текст `report.txt` и код возврата. `interrupted` — причина обрыва
-    /// (общий тайм-аут).
+    /// Text of `report.txt` and the exit code. `interrupted` — the reason for the
+    /// interruption (overall timeout).
     pub fn report(&self, journal: &str, interrupted: Option<&str>) -> (String, i32) {
         let mut findings = self.findings(journal);
         if let Some(why) = interrupted {
@@ -768,7 +774,7 @@ fn cmd_label(cmd: &Command) -> String {
 }
 
 // ============================================================================
-// Что считать подозрительным
+// What counts as suspicious
 // ============================================================================
 
 fn secs(ms: u64) -> String {
@@ -809,7 +815,8 @@ fn screen_findings(scr: &Screen, out: &mut Vec<Finding>) {
     }
 }
 
-/// Отличия шапки между магазинами одного раздела: есть ли поле поиска и где.
+/// Header differences between stores of one section: whether there is a search
+/// field and where.
 fn layout_findings(screens: &[Screen], out: &mut Vec<Finding>) {
     let mut by_cat: BTreeMap<(String, String), Vec<&Screen>> = BTreeMap::new();
     for s in screens.iter().filter(|s| !s.meta.category.is_empty() && s.seen.screen == "grid") {
@@ -846,8 +853,8 @@ fn layout_findings(screens: &[Screen], out: &mut Vec<Finding>) {
     }
 }
 
-/// Отрезок журнала кончается на конце строки: строка, которую Qt дописывал
-/// в момент замера, целиком уходит в этот отрезок, а не рвётся на два.
+/// A log stretch ends at the end of a line: a line Qt was writing at the moment
+/// of measurement goes into this stretch whole instead of being split in two.
 fn line_end(journal: &str, offset: usize) -> usize {
     if offset == 0 {
         return 0;
@@ -859,7 +866,7 @@ fn line_end(journal: &str, offset: usize) -> usize {
     journal[offset..].find('\n').map_or(journal.len(), |i| offset + i + 1)
 }
 
-/// Строка журнала — ошибка сети.
+/// A log line is a network error.
 pub fn is_network_error(line: &str) -> bool {
     let l = line.to_lowercase();
     const MARKS: &[&str] = &[
@@ -871,14 +878,14 @@ pub fn is_network_error(line: &str) -> bool {
     MARKS.iter().any(|m| l.contains(m))
 }
 
-/// Строка журнала — предупреждение QML (тип строки ставит [`qt_env`]).
+/// A log line is a QML warning (the line type is set by [`qt_env`]).
 pub fn is_qml_warning(line: &str) -> bool {
     let l = line.trim_start();
     let typed = l.starts_with("warning: ") || l.starts_with("critical: ") || l.starts_with("fatal: ");
     typed && (l.contains(".qml:") || l.contains(": qml:") || l.contains(": js:") || l.contains("qt.qml"))
 }
 
-/// Сколько строк одного рода показывать на место; остальное — счётом.
+/// How many lines of one kind to show per place; the rest as a count.
 const LINES_PER_PLACE: usize = 5;
 
 fn journal_findings(place: &str, piece: &str, out: &mut Vec<Finding>) {
@@ -907,10 +914,11 @@ fn journal_findings(place: &str, piece: &str, out: &mut Vec<Finding>) {
 }
 
 // ============================================================================
-// Отчёт
+// Report
 // ============================================================================
 
-/// Текст `report.txt`: шапка, подозрительное, затем все экраны построчно.
+/// Text of `report.txt`: the header, the suspicious items, then all screens line
+/// by line.
 pub fn format_report(cfg: &TourConfig, screens: &[Screen], findings: &[Finding]) -> String {
     let mut out = String::new();
     out.push_str("Обход главного окна Rexon (rexon-main-window --tour)\n");
@@ -1055,7 +1063,7 @@ mod tests {
                 ("both".into(), "search".into(), q),
             ]
         );
-        // Слово вводится один раз — в первом магазине; дальше только смена.
+        // The word is typed once — in the first store; after that only switching.
         let typed = plan.iter().filter(|p| matches!(p, Planned::Do(Command::TypeQuery { .. }))).count();
         assert_eq!(typed, 1);
         assert!(plan.iter().any(|p| matches!(p, Planned::Do(Command::ClearQuery { .. }))));
@@ -1114,8 +1122,8 @@ mod tests {
         }
     }
 
-    /// Обход одного подраздела от начала до конца, с подставленным
-    /// исполнителем: порядок команд, имена снимков и строки отчёта.
+    /// A tour of one subsection from start to finish with a stand-in executor: the
+    /// command order, screenshot names and report lines.
     #[test]
     fn walk_one_category_and_report() {
         let mut t = Tour::new(cfg(Some("appearance"), Some("wallpapers")));
@@ -1143,7 +1151,7 @@ mod tests {
                         1 => capture_report(24, 3, 700, "", 40),
                         2 => capture_report(24, 0, 700, "", journal.len() as u64),
                         3 => capture_report(10, 0, 700, "girl", journal.len() as u64),
-                        // Во втором магазине слово пропало, а поле уехало.
+                        // In the second store the word vanished and the field moved.
                         _ => capture_report(10, 0, 650, "", journal.len() as u64),
                     }
                 }
@@ -1206,7 +1214,7 @@ mod tests {
         assert_eq!(opened, crate::qt_main::SECTIONS.to_vec());
         let Command::Finish { report, .. } = cmd else { unreachable!() };
         assert!(report.contains("загрузка 7,0 с (дольше 5,0 с)"), "{report}");
-        // У прочих разделов окна плиток нет — «пустой выдачи» там не бывает.
+        // Other window sections have no tiles — there are no "empty results" there.
         assert!(!report.contains("пустая выдача"), "{report}");
     }
 

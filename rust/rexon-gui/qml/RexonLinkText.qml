@@ -1,17 +1,19 @@
-// Текст со ссылками из чужого текста: описания и комментарии товаров,
-// сведения о пакете, описания расширений.
+// Text with links taken from third-party text: item descriptions and
+// comments, package details, extension descriptions.
 //
-// ЗАЧЕМ. 16.11.2026 ссылка автора обоев молча увела человека в браузер на
-// платную тему. Теперь любая такая ссылка идёт ОДНИМ путём — этим:
-//   * ссылка на товар магазина, который Rexon показывает карточкой, —
-//     сигнал `cardWanted` (страница открывает карточку у себя);
-//   * внешняя ссылка помечена ↗ и перед открытием спрашивает
-//     (`RexonLinkDialog`), если сайт не в доверенных;
-//   * `rexon:…` — сигнал `pageLink` (переключатель перевода);
-//   * опасная схема (`javascript:`…) — сигнал `status` с отказом.
-// Решение и пометка — ядро (`link_policy`) через синглтон `LinkGuard`.
-// Страница без своих карточек (`cardsSupported: false`) получает о ссылке
-// на товар тот же вопрос, что о любом внешнем сайте.
+// WHY. On 16.11.2026 a wallpaper author's link silently took the user to a
+// paid theme in the browser. Now every such link goes through ONE path —
+// this one:
+//   * a link to a store item that Rexon shows as a card emits the
+//     `cardWanted` signal (the page opens the card itself);
+//   * an external link is marked ↗ and asks before opening
+//     (`RexonLinkDialog`) unless the site is trusted;
+//   * `rexon:…` emits the `pageLink` signal (the translation switch);
+//   * a dangerous scheme (`javascript:`…) emits `status` with a refusal.
+// The decision and the marking come from the core (`link_policy`) through
+// the `LinkGuard` singleton. A page without its own cards
+// (`cardsSupported: false`) gets the same question for a store item link
+// as for any external site.
 
 pragma ComponentBehavior: Bound
 
@@ -22,21 +24,21 @@ import org.rexon.gui 1.0
 RexonText {
     id: lt
 
-    /// Разметка (или простой текст при `plain`).
+    /// Markup (or plain text when `plain` is set).
     property string html: ""
-    /// Простой текст без разметки: ссылок в нём нет.
+    /// Plain text without markup: it contains no links.
     property bool plain: false
     property var pal: null
-    /// Страница умеет открыть карточку товара по `cardWanted`.
+    /// The page can open an item card on `cardWanted`.
     property bool cardsSupported: false
 
     signal pageLink(string link)
     signal cardWanted(var card, string url)
     signal status(string text)
 
-    // Текст собирается из `html` присваиванием, а не привязкой: окна, что
-    // кладут готовый `text` сами (диалоги меню), остаются при своём, а
-    // ссылки у них всё равно идут общим путём ниже.
+    // The text is built from `html` by assignment, not by binding: windows
+    // that set a ready `text` themselves (menu dialogs) keep their own, and
+    // their links still go through the shared path below.
     textFormat: Text.RichText
     onHtmlChanged: lt.refresh()
     onPlainChanged: lt.refresh()

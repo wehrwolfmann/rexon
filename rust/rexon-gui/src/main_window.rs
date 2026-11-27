@@ -1,39 +1,42 @@
-// MainWindowModel — хозяин главного окна Rexon на Rust + cxx-qt + QML.
+// MainWindowModel — the host of the Rexon main window on Rust + cxx-qt +
+// QML.
 //
-// ЗАЧЕМ. До сих пор зависимость смотрела не туда: программу запускал Python
-// (`rexon.py` → `rexon/app.py` → `rexon/qt_main/app.py`), он создавал
-// `QApplication`, он строил `QMainWindow` с `QTabWidget`, а Rust
-// подключался к нему библиотекой (`librexon_gui.so` через `ctypes.CDLL`) и
-// раздавал QML-страницы внутрь виджетов через `QQuickWidget`. Окно
-// принадлежало виджетам, QML лежал ВНУТРИ них. Пока хозяин процесса —
-// Python, уйти с него нельзя в принципе: снять можно только то, чем ты
-// владеешь.
+// WHY. Until now the dependency pointed the wrong way: the program was
+// started by Python (`rexon.py` → `rexon/app.py` → `rexon/qt_main/app.py`),
+// it created the `QApplication`, it built the `QMainWindow` with a
+// `QTabWidget`, and Rust connected to it as a library (`librexon_gui.so`
+// through `ctypes.CDLL`) and handed QML pages into the widgets through a
+// `QQuickWidget`. The window belonged to the widgets, and QML lay INSIDE
+// them. As long as the owner of the process is Python, leaving it is
+// impossible in principle: you can only remove what you own.
 //
-// Здесь то же окно перевёрнуто: хозяин — Rust, окно целиком `ApplicationWindow`
-// на QML (`qml/MainWindow.qml`), а виджетов в процессе нет вовсе.
+// Here the same window is turned upside down: the host is Rust, the whole
+// window is an `ApplicationWindow` in QML (`qml/MainWindow.qml`), and there
+// are no widgets in the process at all.
 //
-// ⚠️ ЭТО СКЕЛЕТ, А НЕ ЗАМЕНА ПРОДУКТА. Живой Rexon запускается по-прежнему
-// и этим кодом не пользуется: бинарь `rexon-main-window` — отдельный вход
-// для разработчика, ровно как стенд `rexon-gui-selftest` рядом. Растим рядом, за
-// отдельным входом, как уже семь раз делали с вкладками.
+// Warning: THIS IS A SKELETON, NOT A REPLACEMENT FOR THE PRODUCT. The live
+// Rexon still starts as before and does not use this code: the
+// `rexon-main-window` binary is a separate developer entry point, exactly
+// like the `rexon-gui-selftest` bench next to it. We grow it alongside,
+// behind a separate entry point, as we already did seven times with tabs.
 //
-// ЧТО ЗДЕСЬ ЕСТЬ:
-//   * `MainWindowModel` — заголовок, минимальный размер, состав разделов и
-//     палитра скина. Ни одного собственного решения: порядок и подписи
-//     разделов приходят из `rexon_core::qt_main`, палитра — из
-//     `ui_base::active_qml_palette`, как у всех перенесённых вкладок.
+// WHAT IS HERE:
+//   * `MainWindowModel` — the title, the minimum size, the set of sections
+//     and the skin palette. Not a single decision of its own: the order and
+//     labels of the sections come from `rexon_core::qt_main`, the palette
+//     from `ui_base::active_qml_palette`, as for all ported tabs.
 //
-// Объекта побочных действий у «Сравнения DE» здесь больше нет: страница берёт
-// тот же `DesktopsActions`, что и «Рабочие столы» (src/desktops_actions.rs),
-// — один исполнитель (`rexon_core::system_de_exec`) и одно окно хода
-// (`qml/DeOperationDialog.qml`) на обе вкладки.
+// "DE comparison" no longer has its own side-actions object here: the page
+// takes the same `DesktopsActions` as "Desktops" (src/desktops_actions.rs)
+// — one executor (`rexon_core::system_de_exec`) and one progress window
+// (`qml/DeOperationDialog.qml`) for both tabs.
 
-/// Мост cxx-qt: хозяин главного окна.
+/// cxx-qt bridge: the main window host.
 ///
-/// ⚠️ Тип зовётся `MainWindowModel`, а не `MainWindow`: .qml-файлы модуля
-/// сами становятся QML-типами по имени файла, и `MainWindow` занят
-/// `qml/MainWindow.qml`. Правило на все вкладки и на окно: вид —
-/// `<Имя>.qml`, объект — `<Имя>Model`.
+/// Warning: the type is called `MainWindowModel`, not `MainWindow`: the
+/// module's .qml files become QML types by file name themselves, and
+/// `MainWindow` is taken by `qml/MainWindow.qml`. The rule for all tabs and
+/// the window: the view is `<Name>.qml`, the object `<Name>Model`.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -53,25 +56,25 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        // ── Окно. CONSTANT: за время жизни окна не меняется.
+        // ── Window. CONSTANT: does not change during the window's lifetime.
         #[qproperty(QString, window_title, cxx_name = "windowTitle",
                     READ = window_title, CONSTANT)]
         #[qproperty(i32, window_min_width, cxx_name = "windowMinWidth",
                     READ = window_min_width, CONSTANT)]
         #[qproperty(i32, window_min_height, cxx_name = "windowMinHeight",
                     READ = window_min_height, CONSTANT)]
-        // ── Разделы: [{id, label, page}, …] в порядке окна. Порядок и
-        // подписи — из ядра, здесь только раскладка по карте для QML.
+        // ── Sections: [{id, label, page}, …] in window order. Order and labels
+        // come from the core; here there is only laying them out as maps for QML.
         #[qproperty(QList_QVariant, sections, READ = sections, CONSTANT)]
-        // ── Палитра стандартного скина (steam_dark, правило #17). Не
-        // CONSTANT по той же причине, что у вкладок: скин меняется на лету,
-        // и без сигнала окно осталось бы в цветах прошлого скина.
+        // ── Standard skin palette (steam_dark, rule #17). Not CONSTANT for the
+        // same reason as in the tabs: the skin changes on the fly, and without a
+        // signal the window would keep the previous skin's colours.
         #[qproperty(QMap_QString_QVariant, palette, READ = palette,
                     NOTIFY = palette_changed)]
-        // ── Плашка вкладки: краски и раскладка «чипа» в полосе разделов.
-        // Своих чисел разметка не заводит — они в ядре (`qt_main::TAB_*`),
-        // общие с виджетным окном. CONSTANT: нейтральный серый плашки от
-        // скина не зависит.
+        // ── Tab plate: colours and layout of the "chip" in the section strip. The
+        // markup defines no numbers of its own — they are in the core
+        // (`qt_main::TAB_*`), shared with the widget window. CONSTANT: the plate's
+        // neutral grey does not depend on the skin.
         #[qproperty(QMap_QString_QVariant, tab_style, cxx_name = "tabStyle",
                     READ = tab_style, CONSTANT)]
         type MainWindowModel = super::MainWindowModelRust;
@@ -97,37 +100,37 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Текст на месте раздела, у которого Rust-хозяина ещё нет.
+        /// Text in place of a section that has no Rust host yet.
         #[qinvokable]
         #[cxx_name = "notPortedNotice"]
         fn not_ported_notice(self: &MainWindowModel, section_id: &QString) -> QString;
 
-        /// Режим обхода (`--tour`): ответ на прошлую команду (JSON, пусто —
-        /// первый вызов) → следующая команда (JSON). Решает ядро
+        /// Tour mode (`--tour`): the answer to the previous command (JSON, empty —
+        /// the first call) → the next command (JSON). The core decides
         /// (`rexon_core::main_window_tour`).
         #[qinvokable]
         #[cxx_name = "tourNext"]
         fn tour_next(self: &MainWindowModel, report: &QString) -> QString;
 
-        /// Режим обхода: можно ли позвать метод страницы. Исполнитель
-        /// спрашивает перед КАЖДЫМ вызовом.
+        /// Tour mode: whether a page method may be called. The executor asks before
+        /// EVERY call.
         #[qinvokable]
         #[cxx_name = "tourCallAllowed"]
         fn tour_call_allowed(self: &MainWindowModel, method: &QString) -> bool;
 
-        /// Режим обхода: замер ожидания (JSON) → `wait`/`ready`/`timeout`.
+        /// Tour mode: wait measurement (JSON) → `wait`/`ready`/`timeout`.
         #[qinvokable]
         #[cxx_name = "tourWaitVerdict"]
         fn tour_wait_verdict(self: &MainWindowModel, sample: &QString) -> QString;
 
-        /// Режим обхода: снять окно целиком в PNG `path`.
+        /// Tour mode: capture the whole window into the PNG `path`.
         #[qinvokable]
         #[cxx_name = "tourGrab"]
         fn tour_grab(self: &MainWindowModel, path: &QString) -> bool;
     }
 
-    // Объявления трейтов обязаны быть В МОСТЕ: cxx-qt печатает по ним и
-    // конструктор, и алиас типа потока.
+    // Trait declarations must be IN THE BRIDGE: cxx-qt emits both the
+    // constructor and the thread type alias from them.
     impl cxx_qt::Initialize for MainWindowModel {}
     impl cxx_qt::Threading for MainWindowModel {}
 }
@@ -140,31 +143,33 @@ use rexon_core::qt_main;
 use rexon_core::ui_base;
 
 // ============================================================================
-// Разделы: какой из них Rust-каркас уже показывает по-настоящему
+// Sections: which of them the Rust frame already shows for real
 // ============================================================================
 
-/// Раздел → страница QML, которую каркас в него кладёт.
+/// Section → the QML page the frame puts into it.
 ///
-/// Пусто — страницы у раздела нет, каркас покажет объяснение из ядра
-/// (`qt_main::not_ported_notice`), а не пустой прямоугольник.
+/// Empty means the section has no page; the frame will show an explanation
+/// from the core (`qt_main::not_ported_notice`) rather than an empty
+/// rectangle.
 ///
-/// ⚠️ Таблица живёт ЗДЕСЬ, а не в ядре, намеренно: ядро не знает и не
-/// должно знать о существовании .qml-файлов. Порядок и состав разделов оно
-/// при этом задаёт целиком — здесь только отметка готовности.
+/// Warning: the table lives HERE, not in the core, on purpose: the core does
+/// not and must not know that .qml files exist. It does, however, set the
+/// order and the set of sections entirely — here there is only the
+/// readiness mark.
 ///
-/// Идентификатор страницы разметку НЕ ищет: разметку за ним держит карта
-/// `pageComponents` в `qml/MainWindow.qml`, и сторож
-/// `every_page_is_in_the_qml_map` не даёт этим двум спискам разъехаться.
+/// The page identifier does NOT look up markup: the markup behind it is held
+/// by the `pageComponents` map in `qml/MainWindow.qml`, and the
+/// `every_page_is_in_the_qml_map` guard does not let these two lists drift
+/// apart.
 ///
-/// У «desktops» стоит своя страница, а не подраздел «compare», и это правка
-/// по факту, а не по плану: объект побочных действий у «Рабочих столов»
-/// появился (`src/desktops_actions.rs`), и страница перестала отдавать
-/// мёртвые кнопки. «Сравнение DE» при этом никуда не делось — с 08.07.2026
-/// оно и есть страница ВНУТРИ «Рабочих столов», и окно показывает его там
-/// же, второй страницей раздела (карта `pageComponents` в
-/// qml/MainWindow.qml). Поэтому подраздела у раздела больше нет: подпись
-/// «Сравнение DE» на самой вкладке означала бы, что сравнение — это и есть
-/// весь раздел.
+/// "desktops" has its own page, not the "compare" sub-page, and this is a
+/// correction to the facts, not to the plan: a side-actions object appeared
+/// for "Desktops" (`src/desktops_actions.rs`), and the page stopped handing
+/// out dead buttons. "DE comparison" did not go anywhere — since 08.07.2026
+/// it is the page INSIDE "Desktops", and the window shows it there, as the
+/// section's second page (the `pageComponents` map in qml/MainWindow.qml).
+/// So the section no longer has a sub-page: a "DE comparison" label on the
+/// tab itself would mean that the comparison is the whole section.
 const SECTION_PAGES: &[(&str, &str)] = &[
     ("desktops", "desktops"),
     ("appearance", "appearance"),
@@ -183,7 +188,7 @@ fn page_of(section_id: &str) -> &'static str {
 }
 
 // ============================================================================
-// Мелочи перевода в Qt
+// Translation odds and ends in Qt
 // ============================================================================
 
 fn qstr(value: &str) -> QVariant {
@@ -199,14 +204,14 @@ fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
 }
 
 // ============================================================================
-// Хозяин окна
+// Window host
 // ============================================================================
 
-/// Rust-состояние окна.
+/// Rust state of the window.
 #[derive(Default)]
 pub struct MainWindowModelRust {
-    /// Номер записи в общем реестре смены скина (`crate::skin`).
-    /// 0 — окно ещё не подписано.
+    /// Entry number in the shared skin change registry (`crate::skin`).
+    /// 0 means the window is not subscribed yet.
     skin_watch: u64,
 }
 
@@ -218,9 +223,9 @@ impl Drop for MainWindowModelRust {
 
 impl qobject::MainWindowModel {
     fn window_title(&self) -> QString {
-        // Тот же заголовок, что у питоновского окна: ярлык рабочего стола
-        // переходит на это окно, и приписка для разработчика в нём была бы
-        // жаргоном перед покупателем.
+        // The same title as the Python window's: the desktop launcher moves to this
+        // window, and a developer note in it would be jargon in front of the
+        // customer.
         QString::from(&qt_main::window_title())
     }
 
@@ -232,7 +237,7 @@ impl qobject::MainWindowModel {
         qt_main::WINDOW_MIN_SIZE.1
     }
 
-    /// Состав таб-бара: [{id, label, page, subsection}, …] в порядке окна.
+    /// Tab bar contents: [{id, label, page, subsection}, …] in window order.
     fn sections(&self) -> QList<QVariant> {
         let mut out = QList::<QVariant>::default();
         for id in qt_main::SECTIONS {
@@ -240,19 +245,17 @@ impl qobject::MainWindowModel {
             out.append(QVariant::from(&vmap(vec![
                 ("id", qstr(id)),
                 ("label", qstr(&qt_main::section_tab_label(id))),
-                // Какую страницу класть в раздел; пусто — заглушка.
+                // Which page to put into the section; empty means a placeholder.
                 ("page", qstr(page)),
-                // Подпись подраздела: «Сравнение DE» живёт ВНУТРИ «Рабочих
-                // столов», и окно обязано это показать, а не выдать
-                // подраздел за раздел.
+                // Sub-page label: "DE comparison" lives INSIDE "Desktops", and the window
+                // must show that rather than pass the sub-page off as a section.
                 (
                     "subsection",
                     qstr(&if page.is_empty() || page == *id {
-                        // Подраздела нет: раздел показывает СВОЮ страницу
-                        // (или пока заглушку), и второго имени ему не надо.
-                        // Без этой проверки «Оформление» подписалось бы
-                        // подразделом «appearance» — идентификатором вместо
-                        // человеческого имени.
+                        // There is no sub-page: the section shows ITS OWN page (or a placeholder
+                        // for now) and needs no second name. Without this check "Appearance" would
+                        // be labelled with the sub-page "appearance" — an identifier instead of a
+                        // human name.
                         String::new()
                     } else {
                         qt_main::subsection_label(page)
@@ -263,32 +266,32 @@ impl qobject::MainWindowModel {
         out
     }
 
-    /// Палитра ДЕЙСТВУЮЩЕГО скина — тот же источник, что у перенесённых
-    /// вкладок. Своих цветов окно не заводит: вторая палитра развела бы
-    /// каркас с продуктом молча.
+    /// Palette of the ACTIVE skin — the same source as for the ported tabs. The
+    /// window defines no colours of its own: a second palette would silently
+    /// set the frame apart from the product.
     fn palette(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut out = QMap::<QMapPair_QString_QVariant>::default();
         for (key, value) in &ui_base::active_qml_palette() {
             out.insert(QString::from(key), qstr(value));
         }
-        // Окно операции поверх главного окна (восстановление оформления при
-        // запуске): затемнение и краски «Да» — теми же помощниками, что у
-        // страниц «Рабочие столы», «Сравнение» и «Настройки».
+        // The operation window over the main window (restoring the look at
+        // start-up): the dimming and the "Yes" colours come from the same helpers
+        // as for the "Desktops", "Compare" and "Settings" pages.
         out.insert(QString::from("modal_dim"), qstr(&ui_base::modal_dim_argb_hex()));
         crate::desktops_page::insert_operation_tones(&mut out);
         out
     }
 
-    /// Плашка вкладки: краски и раскладка, общие с виджетным окном.
+    /// Tab plate: colours and layout shared with the widget window.
     ///
-    /// ЗАЧЕМ ОНА ЕСТЬ. Неактивные вкладки рисовались прозрачными, и полоса
-    /// разделов выходила сплошной: границы между соседями не было видно
-    /// вовсе (замечание Wehrwolfmann 18.09.2026). В виджетном окне у каждой
-    /// вкладки своя плашка с зазором — здесь те же числа, взятые из ядра, а
-    /// не подобранные на глаз второй раз.
+    /// WHY IT EXISTS. Inactive tabs were drawn transparent, and the section
+    /// strip came out as one solid block: the boundary between neighbours was
+    /// not visible at all (Wehrwolfmann's remark 18.09.2026). In the widget
+    /// window every tab has its own plate with a gap — here the same numbers
+    /// are taken from the core rather than picked by eye a second time.
     ///
-    /// Краски идут через `css_color_to_qml`: запись `rgba(...)` QML читает
-    /// как недопустимый цвет и рисует ЧЁРНЫМ.
+    /// The colours go through `css_color_to_qml`: QML reads the `rgba(...)`
+    /// notation as an invalid colour and draws it BLACK.
     fn tab_style(&self) -> QMap<QMapPair_QString_QVariant> {
         let col = |css: &str| qstr(&ui_base::css_color_to_qml(css));
         let num = |v: i32| QVariant::from(&v);
@@ -324,16 +327,16 @@ impl qobject::MainWindowModel {
 }
 
 // ============================================================================
-// Режим обхода: состояние живёт здесь, решения — в ядре
+// Tour mode: the state lives here, the decisions in the core
 // ============================================================================
 
 use rexon_core::main_window_tour as tour;
 
-/// Обход этого процесса. Под замком, а не в объекте окна: общий тайм-аут
-/// пишет отчёт из своего потока (`tour_abort`).
+/// The tour of this process. Under a lock rather than in the window object:
+/// the shared timeout writes the report from its own thread (`tour_abort`).
 static TOUR: std::sync::Mutex<Option<tour::Tour>> = std::sync::Mutex::new(None);
 
-/// Завести обход (зовёт бинарь до загрузки QML).
+/// Start a tour (called by the binary before the QML is loaded).
 pub fn tour_install(cfg: tour::TourConfig) {
     if let Ok(mut t) = TOUR.lock() {
         *t = Some(tour::Tour::new(cfg));
@@ -354,7 +357,8 @@ fn write_report(cfg: &tour::TourConfig, text: &str) {
     }
 }
 
-/// Один шаг обхода: принять ответ, выдать команду. Конец — отчёт на диск.
+/// One tour step: take the answer, give out a command. At the end — a
+/// report to disk.
 fn tour_step(report: &str) -> String {
     let Ok(mut guard) = TOUR.lock() else {
         return tour::Command::Finish { exit_code: tour::EXIT_BAD_ARGS, report: String::new() }.to_json();
@@ -379,8 +383,8 @@ fn tour_step(report: &str) -> String {
     cmd.to_json()
 }
 
-/// Общий тайм-аут: отчёт о том, что успели, и код возврата. Зовётся из
-/// потока сторожа; обход уже окончен — `None`.
+/// Shared timeout: a report of what was done and the exit code. Called from
+/// the watchdog thread; if the tour is already over — `None`.
 pub fn tour_abort(reason: &str) -> Option<i32> {
     let guard = TOUR.lock().ok()?;
     let t = guard.as_ref()?;
@@ -406,10 +410,10 @@ impl cxx_qt::Initialize for qobject::MainWindowModel {
 mod tests {
     use super::*;
 
-    /// Каждому разделу ядра — строка в таблице готовности, и наоборот.
+    /// Every core section has a row in the readiness table, and vice versa.
     ///
-    /// Без этого сторожа новый раздел в ядре молча получил бы пустую
-    /// страницу, а снятый — осиротевшую строку здесь (правило #12).
+    /// Without this guard a new section in the core would silently get an empty
+    /// page, and a removed one would leave an orphaned row here (rule #12).
     #[test]
     fn section_pages_cover_core_sections() {
         let core: Vec<&str> = qt_main::SECTIONS.to_vec();
@@ -421,13 +425,13 @@ mod tests {
         );
     }
 
-    /// Каждая непустая страница таблицы обязана значиться в карте
-    /// `pageComponents` окна.
+    /// Every non-empty page in the table must be listed in the window's
+    /// `pageComponents` map.
     ///
-    /// Разъезд этих двух списков означал бы раздел, который Rust объявил
-    /// готовым, а QML открыть не умеет: человек увидел бы вместо страницы
-    /// объяснение «ещё не перенесён» — то есть враньё о причине, и молча
-    /// (правило #12).
+    /// A divergence of these two lists would mean a section that Rust declared
+    /// ready but QML cannot open: the user would see the explanation "not
+    /// ported yet" instead of the page — that is, a lie about the cause, and a
+    /// silent one (rule #12).
     #[test]
     fn every_page_is_in_the_qml_map() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -451,9 +455,9 @@ mod tests {
         }
     }
 
-    /// Раздел, у которого страница называется как он сам, подраздела не
-    /// имеет: подпись подраздела — это «Сравнение DE» внутри «Рабочих
-    /// столов», а не идентификатор страницы, выданный за имя.
+    /// A section whose page is named like itself has no sub-page: a sub-page
+    /// label is "DE comparison" inside "Desktops", not a page identifier passed
+    /// off as a name.
     #[test]
     fn only_a_real_subsection_gets_a_subsection_label() {
         for (id, page) in SECTION_PAGES {

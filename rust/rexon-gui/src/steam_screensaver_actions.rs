@@ -1,18 +1,19 @@
-// SteamScreensaverActions — объект подвкладки «Заставка» вкладки «Steam»:
-// заставка Rexon для экрана простоя Steam Big Picture.
+// SteamScreensaverActions — the object of the "Screensaver" sub-tab of the
+// "Steam" tab: a Rexon screensaver for the Steam Big Picture idle screen.
 //
-// Решения (что собрать, куда положить, чью папку не трогать, все подписи и
-// варианты) — ядро `rexon_core::steam_screensaver`. Здесь только
-// исполнитель: подсчёт найденного, установка, обновление и удаление — в
-// рабочем потоке (картинки уменьшаются, это секунды), разметка опрашивает
-// `poll()` таймером и не стоит.
+// Decisions (what to collect, where to put it, whose folder not to touch,
+// all labels and options) belong to the core `rexon_core::steam_screensaver`.
+// Here there is only the executor: counting what was found, installing,
+// updating and removing run in a worker thread (the pictures are scaled
+// down, which takes seconds), and the markup polls `poll()` with a timer
+// without blocking.
 //
-// ⛔ Выбор заставки в Steam (`screensaver_current_id`) Rexon не трогает ни
-// здесь, ни в ядре: заставку выбирает сам человек в настройках Steam — и на
-// SteamOS тоже.
+// Never: Rexon does not touch the screensaver choice in Steam
+// (`screensaver_current_id`), neither here nor in the core: the user picks
+// the screensaver in the Steam settings — on SteamOS too.
 //
-// Числа в подписях инвокаблов не ходят (см. предупреждение в
-// `steam_page.rs`): настройки приходят одной строкой JSON.
+// Numbers do not travel in invokable signatures (see the warning in
+// `steam_page.rs`): the settings arrive as one JSON string.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -28,40 +29,40 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Варианты и пределы: JSON `{modes, logos, intervalMin,
-        /// intervalMax, howTo, restartHint}`.
+        /// Options and limits: JSON `{modes, logos, intervalMin, intervalMax, howTo,
+        /// restartHint}`.
         #[qinvokable]
         fn choices(self: &SteamScreensaverActions) -> QString;
 
-        /// Состояние по всем корням Steam: JSON `{steamFound, installed,
-        /// foreign, text, options, updated, roots: [{label, installed,
-        /// foreign, slides}]}`. Только чтение меток — мгновенно.
+        /// State across all Steam roots: JSON `{steamFound, installed, foreign,
+        /// text, options, updated, roots: [{label, installed, foreign, slides}]}`.
+        /// Only reading markers — instant.
         #[qinvokable]
         fn status(self: &SteamScreensaverActions) -> QString;
 
-        /// Посчитать, сколько картинок наберётся с настройками `request`
-        /// (JSON настроек). Итог — в `poll()` под ключом `scan`.
+        /// Count how many pictures will be collected with the settings `request`
+        /// (settings JSON). The result goes into `poll()` under the key `scan`.
         #[qinvokable]
         #[cxx_name = "startScan"]
         fn start_scan(self: &SteamScreensaverActions, request: &QString) -> QString;
 
-        /// Установить или обновить заставку с настройками `request`.
-        /// «» — пошло, иначе причина.
+        /// Install or update the screensaver with the settings `request`.
+        /// "" means it started, otherwise the reason.
         #[qinvokable]
         #[cxx_name = "startInstall"]
         fn start_install(self: &SteamScreensaverActions, request: &QString) -> QString;
 
-        /// Удалить заставку Rexon. «» — пошло, иначе причина.
+        /// Remove the Rexon screensaver. "" means it started, otherwise the reason.
         #[qinvokable]
         #[cxx_name = "startRemove"]
         fn start_remove(self: &SteamScreensaverActions) -> QString;
 
-        /// Состояние задач: JSON `{scan: {...}, job: {...}}`.
+        /// Task state: JSON `{scan: {...}, job: {...}}`.
         #[qinvokable]
         fn poll(self: &SteamScreensaverActions) -> QString;
 
-        /// Открыть установленную заставку в браузере — посмотреть, как она
-        /// выглядит. «» — открылось, иначе причина.
+        /// Open the installed screensaver in the browser — to see what it looks
+        /// like. "" means it opened, otherwise the reason.
         #[qinvokable]
         fn preview(self: &SteamScreensaverActions) -> QString;
     }
@@ -77,21 +78,21 @@ use rexon_core::qt_steam as qs;
 use rexon_core::steam_screensaver as ss;
 use serde_json::{json, Value};
 
-/// Подсчёт найденного.
+/// Counting what was found.
 #[derive(Default, Clone)]
 struct ScanJob {
     busy: bool,
     serial: u64,
-    /// (кадров с артом, скриншотов, текст).
+    /// (frames with art, screenshots, text).
     result: Option<(usize, usize, String)>,
 }
 
-/// Установка или удаление.
+/// Installation or removal.
 #[derive(Default, Clone)]
 struct InstallJob {
     busy: bool,
     serial: u64,
-    /// (получилось ли, сообщение человеку).
+    /// (did it work, a message for the user).
     result: Option<(bool, String)>,
 }
 
@@ -113,13 +114,15 @@ fn roots() -> Vec<PathBuf> {
     ss::steam_roots(&home())
 }
 
-/// Настройки из разметки поверх тех, с которыми заставка уже собрана.
+/// Settings from the markup on top of those the screensaver is already
+/// built with.
 fn options_of(request: &QString, base: &ss::Options) -> ss::Options {
     let v: Value = serde_json::from_str(&request.to_string()).unwrap_or(Value::Null);
     ss::Options::from_ui(&v, base)
 }
 
-/// Настройки установленной заставки (первой найденной), иначе по умолчанию.
+/// Settings of the installed screensaver (the first one found), otherwise
+/// the defaults.
 fn installed_options() -> ss::Options {
     roots()
         .iter()
@@ -148,7 +151,7 @@ fn status_json() -> Value {
     })
 }
 
-/// Тег языка страницы — язык интерфейса Rexon.
+/// Page language tag — the Rexon interface language.
 fn page_locale() -> String {
     ss::page_locale(&rexon_core::i18n::current_language())
 }
@@ -181,8 +184,8 @@ impl qobject::SteamScreensaverActions {
         };
         std::thread::spawn(move || {
             let lang = qs::steam_language();
-            // Картинки берутся из первого корня, где есть аккаунт (обычно он
-            // один); так же их соберёт и установка.
+            // Pictures are taken from the first root that has an account (usually
+            // there is one); the installation collects them the same way.
             let (mut art, mut shots) = (0, 0);
             for root in roots() {
                 let (g, s) = ss::collect(&root, lang);
@@ -193,7 +196,7 @@ impl qobject::SteamScreensaverActions {
             }
             let text = ss::found_text(art, shots);
             let mut job = slot.lock().unwrap();
-            // Человек успел поменять настройки — старый подсчёт не нужен.
+            // The user has already changed the settings — the old count is not needed.
             if job.serial == serial {
                 job.busy = false;
                 job.result = Some((art, shots, text));
@@ -239,8 +242,8 @@ impl qobject::SteamScreensaverActions {
         })
     }
 
-    /// Запустить установку или удаление в рабочем потоке; второй раз, пока
-    /// первая не кончилась, — отказ словами.
+    /// Start installation or removal in a worker thread; a second start while
+    /// the first has not finished is refused in words.
     fn run_job(&self, work: impl FnOnce() -> (bool, String) + Send + 'static) -> QString {
         let slot = self.rust().job.clone();
         {
@@ -275,7 +278,7 @@ impl qobject::SteamScreensaverActions {
             None => json!({"busy": j.busy, "serial": j.serial, "done": false}),
             Some((ok, message)) => json!({
                 "busy": false, "serial": j.serial, "done": true, "ok": ok, "message": message,
-                // Свежее состояние сразу — разметке не нужен второй вызов.
+                // The fresh state right away — the markup does not need a second call.
                 "status": status_json(),
             }),
         };

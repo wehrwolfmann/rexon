@@ -1,91 +1,91 @@
-//! Кеш каталога оформления — порт ЧИСТОЙ логики из `rexon/appearance/cache.py`.
+//! Appearance catalog cache — port of the PURE logic from `rexon/appearance/cache.py`.
 //!
-//! Оригинал — потокобезопасный SQLite-кеш `~/.cache/rexon/ocs_cache.db`
-//! (таблицы `items`/`previews`/`lists`/`translations`). Сам SQLite-доступ
-//! (открытие БД, `execute`, курсоры, `commit`), `os.makedirs`, `os.path.isfile`
-//! и `time.time()` — SIDE EFFECT, он ОСТАЁТСЯ на Python: ядро без Qt и без
-//! `rusqlite`. Сюда портирована детерминированная часть (вход→выход):
-//!   * тексты SQL-запросов — константы [`CREATE_SCHEMA`], [`INSERT_ITEM`] и др.
-//!     (байт-в-байт те же строки, что уходят в `sqlite3`);
-//!   * TTL-константы [`LIST_TTL`]/[`TRANSLATION_TTL`] и предикаты протухания
-//!     [`is_list_stale`]/[`is_translation_stale`] + порог чистки
+//! The original is a thread-safe SQLite cache `~/.cache/rexon/ocs_cache.db`
+//! (tables `items`/`previews`/`lists`/`translations`). SQLite access itself
+//! (opening the DB, `execute`, cursors, `commit`), `os.makedirs`, `os.path.isfile`
+//! and `time.time()` are SIDE EFFECTS, they STAY in Python: the core is without Qt and without
+//! `rusqlite`. What is ported here is the deterministic part (input→output):
+//!   * SQL query texts — the constants [`CREATE_SCHEMA`], [`INSERT_ITEM`] and others
+//!     (byte for byte the same strings that go to `sqlite3`);
+//!   * the TTL constants [`LIST_TTL`]/[`TRANSLATION_TTL`] and the staleness predicates
+//!     [`is_list_stale`]/[`is_translation_stale`] + the purge threshold
 //!     [`translation_purge_threshold`];
-//!   * сериализация поля `preview_urls` (JSON-массив, как `json.dumps`) —
-//!     [`serialize_preview_urls`] — и его разбор [`parse_preview_urls`];
-//!   * CSV-поле `lists.ids` — [`join_ids`]/[`split_ids`];
-//!   * порядок и типы значений `INSERT OR REPLACE INTO items`
-//!     ([`item_insert_values`]) и параметры остальных UPSERT'ов;
-//!   * нормализация строки таблицы `items` в [`ThemeItem`] ([`row_to_item`],
-//!     порт `_row_to_item`).
+//!   * serializing the `preview_urls` field (a JSON array, like `json.dumps`) —
+//!     [`serialize_preview_urls`] — and parsing it [`parse_preview_urls`];
+//!   * the CSV field `lists.ids` — [`join_ids`]/[`split_ids`];
+//!   * the order and types of the `INSERT OR REPLACE INTO items` values
+//!     ([`item_insert_values`]) and the parameters of the other UPSERTs;
+//!   * normalizing an `items` table row into a [`ThemeItem`] ([`row_to_item`],
+//!     port of `_row_to_item`).
 //!
-//! Наблюдения (текущее время `now`, значения колонок из БД) приходят
-//! параметрами. Сверка с Python — golden `tests/appearance_cache_parity.rs`
-//! (эталон снят с ЖИВОГО `cache.py` read-only).
+//! Observations (the current time `now`, column values from the DB) come in as
+//! parameters. The check against Python is the golden `tests/appearance_cache_parity.rs`
+//! (the reference was taken from the LIVE `cache.py` read-only).
 
 use crate::models::ThemeItem;
 
-// ── расположение кеша на диске ─────────────────────────────────────────────
+// ── cache location on disk ─────────────────────────────────────────────────
 
-/// Каталог кеша «Оформления»: база каталога магазина, скачанные картинки,
-/// нарисованные плитки местных тем.
+/// The "Appearance" cache directory: the store catalog database, downloaded pictures,
+/// rendered tiles of local themes.
 ///
-/// Для домашнего каталога живого пользователя (`$HOME`) это
-/// `$XDG_CACHE_HOME/rexon`, если переменная задана, иначе `~/.cache/rexon`.
-/// Для любого другого `home` (сверки, стенды с копией кеша) — всегда
-/// `<home>/.cache/rexon`: переменная окружения описывает кеш того, кто
-/// запустил программу, а не подставного каталога.
+/// For the live user's home directory (`$HOME`) this is
+/// `$XDG_CACHE_HOME/rexon` if the variable is set, otherwise `~/.cache/rexon`.
+/// For any other `home` (checks, test benches with a copy of the cache) it is always
+/// `<home>/.cache/rexon`: the environment variable describes the cache of whoever
+/// started the program, not of a substituted directory.
 ///
-/// До 13.10.2026 переменная не читалась вовсе: запуск окна со своим
-/// `XDG_CACHE_HOME` (стенд, песочница) читал и ПИСАЛ кеш в `~/.cache/rexon`
-/// хозяина машины — базу магазина, картинки и нарисованные плитки.
+/// Until 13.10.2026 the variable was not read at all: launching the window with its own
+/// `XDG_CACHE_HOME` (a test bench, a sandbox) read and WROTE the cache in the machine
+/// owner's `~/.cache/rexon` — the store database, pictures and rendered tiles.
 pub fn cache_dir(home: &str) -> String {
     let live_home = std::env::var("HOME").unwrap_or_default();
     let xdg = std::env::var("XDG_CACHE_HOME").unwrap_or_default();
     cache_dir_in(xdg_cache_for(home, &live_home, &xdg), home)
 }
 
-/// [`cache_dir`] без чтения окружения: корень кеша — `xdg_cache_home`, а без
-/// него `<home>/.cache`.
+/// [`cache_dir`] without reading the environment: the cache root is `xdg_cache_home`, and without
+/// it `<home>/.cache`.
 pub fn cache_dir_in(xdg_cache_home: Option<&str>, home: &str) -> String {
     format!("{}/{}", crate::utils::cache_home(xdg_cache_home, home), crate::utils::REXON_DIR_NAME)
 }
 
-/// Относится ли `$XDG_CACHE_HOME` (`xdg`) к каталогу `home`: только когда
-/// это домашний каталог живого пользователя (`live_home`) и переменная
-/// задана полным путём (относительный путь спецификация XDG велит не
-/// принимать).
+/// Whether `$XDG_CACHE_HOME` (`xdg`) applies to the directory `home`: only when
+/// it is the live user's home directory (`live_home`) and the variable
+/// is set as a full path (the XDG specification says not to accept
+/// a relative path).
 pub fn xdg_cache_for<'x>(home: &str, live_home: &str, xdg: &'x str) -> Option<&'x str> {
     let same = |a: &str, b: &str| a.trim_end_matches('/') == b.trim_end_matches('/');
     (!live_home.is_empty() && same(home, live_home) && xdg.starts_with('/')).then_some(xdg)
 }
 
-/// Файл SQLite-базы каталога.
+/// The catalog SQLite database file.
 pub fn db_path(home: &str) -> String {
     format!("{}/ocs_cache.db", cache_dir(home))
 }
 
-/// Каталог скачанных превью.
+/// The directory of downloaded previews.
 pub fn preview_dir(home: &str) -> String {
     format!("{}/ocs_previews", cache_dir(home))
 }
 
-// ── TTL-константы и предикаты инвалидации ──────────────────────────────────
+// ── TTL constants and invalidation predicates ───────────────────────────────
 
-/// Срок годности кеша списков поиска — 1 час (`LIST_TTL = 3600`).
+/// Shelf life of the search list cache — 1 hour (`LIST_TTL = 3600`).
 pub const LIST_TTL: f64 = 3600.0;
 
-/// Срок годности кешированного перевода — 30 дней (`TRANSLATION_TTL`).
+/// Shelf life of a cached translation — 30 days (`TRANSLATION_TTL`).
 pub const TRANSLATION_TTL: f64 = 30.0 * 24.0 * 3600.0;
 
-/// Протух ли кеш списка — порт `time.time() - row["cached_at"] > LIST_TTL`
-/// из `get_list`. Строгое `>`: ровно на границе запись ещё свежая.
+/// Whether a list cache is stale — port of `time.time() - row["cached_at"] > LIST_TTL`
+/// from `get_list`. A strict `>`: exactly at the boundary the record is still fresh.
 pub fn is_list_stale(cached_at: f64, now: f64) -> bool {
     (now - cached_at) > LIST_TTL
 }
 
-/// Протухли ли полные детали — порт `not at or (time.time() - at) > max_age`
-/// из `get_item_detail`. Нет отметки (`NULL` либо `0`) — записи пришли из
-/// ответа-списка, полными деталями они не считаются.
+/// Whether full details are stale — port of `not at or (time.time() - at) > max_age`
+/// from `get_item_detail`. No mark (`NULL` or `0`) — the records came from
+/// a list response, they do not count as full details.
 pub fn is_detail_stale(detail_at: Option<f64>, now: f64, max_age: f64) -> bool {
     match detail_at {
         Some(at) if at != 0.0 => (now - at) > max_age,
@@ -93,26 +93,26 @@ pub fn is_detail_stale(detail_at: Option<f64>, now: f64, max_age: f64) -> bool {
     }
 }
 
-/// Отметка детального ответа у записи.
+/// A record's detail response mark.
 pub const SELECT_DETAIL_AT: &str = "SELECT detail_at FROM items WHERE id=?";
 
-/// Протух ли кешированный перевод — порт
-/// `time.time() - (row["cached_at"] or 0) > TRANSLATION_TTL` из
-/// `get_translation`. `cached_at = None` (NULL в БД) → трактуется как `0`
-/// (Python-идиома `... or 0`).
+/// Whether a cached translation is stale — port of
+/// `time.time() - (row["cached_at"] or 0) > TRANSLATION_TTL` from
+/// `get_translation`. `cached_at = None` (NULL in the DB) → treated as `0`
+/// (the Python idiom `... or 0`).
 pub fn is_translation_stale(cached_at: Option<f64>, now: f64) -> bool {
     (now - cached_at.unwrap_or(0.0)) > TRANSLATION_TTL
 }
 
-/// Порог для `purge_stale_translations`: удаляются записи с
-/// `cached_at < threshold`, где `threshold = time.time() - TRANSLATION_TTL`.
+/// The threshold for `purge_stale_translations`: records with
+/// `cached_at < threshold` are deleted, where `threshold = time.time() - TRANSLATION_TTL`.
 pub fn translation_purge_threshold(now: f64) -> f64 {
     now - TRANSLATION_TTL
 }
 
-// ── тексты SQL (байт-в-байт как в cache.py) ────────────────────────────────
+// ── SQL texts (byte for byte as in cache.py) ───────────────────────────────
 
-/// DDL создания таблиц (`_init_schema` → `executescript`).
+/// DDL creating the tables (`_init_schema` → `executescript`).
 pub const CREATE_SCHEMA: &str = concat!(
     "\n",
     "                CREATE TABLE IF NOT EXISTS items (\n",
@@ -146,13 +146,13 @@ pub const CREATE_SCHEMA: &str = concat!(
     "                ",
 );
 
-/// Миграция: добавить колонку `preview_urls` (галерея), если её нет.
+/// Migration: add the `preview_urls` column (gallery) if it is missing.
 pub const ADD_PREVIEW_URLS_COLUMN: &str = "ALTER TABLE items ADD COLUMN preview_urls TEXT";
 
-/// Проверка наличия колонок таблицы `items` (для миграции).
+/// Checking which columns the `items` table has (for the migration).
 pub const PRAGMA_TABLE_INFO_ITEMS: &str = "PRAGMA table_info(items)";
 
-/// UPSERT одного элемента (`_insert_item`) — 18 плейсхолдеров.
+/// UPSERT of one item (`_insert_item`) — 18 placeholders.
 pub const INSERT_ITEM: &str = concat!(
     "INSERT OR REPLACE INTO items\n",
     "               (id, category_id, name, author, description, description_ru,\n",
@@ -162,51 +162,51 @@ pub const INSERT_ITEM: &str = concat!(
     "               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 );
 
-/// Выбрать один элемент по `id` (`get_item`/`get_list`).
+/// Select one item by `id` (`get_item`/`get_list`).
 pub const SELECT_ITEM_BY_ID: &str = "SELECT * FROM items WHERE id=?";
 
-/// Лёгкая выборка `(id, name, preview_url)` всех элементов (`all_items_min`).
+/// A light selection of `(id, name, preview_url)` of all items (`all_items_min`).
 pub const SELECT_ITEMS_MIN: &str = "SELECT id, name, preview_url FROM items";
 
-/// Выбрать кеш списка по ключу (`get_list`).
+/// Select a list cache by key (`get_list`).
 pub const SELECT_LIST: &str = "SELECT ids, total, cached_at FROM lists WHERE key=?";
 
-/// UPSERT кеша списка (`put_list`).
+/// UPSERT of a list cache (`put_list`).
 pub const INSERT_LIST: &str =
     "INSERT OR REPLACE INTO lists (key, ids, total, cached_at) VALUES (?,?,?,?)";
 
-/// Сбросить весь кеш списков (`invalidate_lists`).
+/// Drop the whole list cache (`invalidate_lists`).
 pub const DELETE_LISTS: &str = "DELETE FROM lists";
 
-/// Выбрать локальный путь превью по URL (`get_preview`).
+/// Select the local preview path by URL (`get_preview`).
 pub const SELECT_PREVIEW: &str = "SELECT local_path FROM previews WHERE url=?";
 
-/// Выбрать все `(url, local_path)` превью (`all_previews_min`).
+/// Select all `(url, local_path)` previews (`all_previews_min`).
 pub const SELECT_PREVIEWS_MIN: &str = "SELECT url, local_path FROM previews";
 
-/// UPSERT превью (`put_preview`).
+/// UPSERT of a preview (`put_preview`).
 pub const INSERT_PREVIEW: &str =
     "INSERT OR REPLACE INTO previews (url, local_path, cached_at) VALUES (?,?,?)";
 
-/// Выбрать перевод по `src_hash` (`get_translation`).
+/// Select a translation by `src_hash` (`get_translation`).
 pub const SELECT_TRANSLATION: &str =
     "SELECT translated, cached_at FROM translations WHERE src_hash=?";
 
-/// Удалить одну протухшую запись перевода (`get_translation`, ленивая чистка).
+/// Delete one stale translation record (`get_translation`, lazy purge).
 pub const DELETE_TRANSLATION: &str = "DELETE FROM translations WHERE src_hash=?";
 
-/// UPSERT перевода (`put_translation`).
+/// UPSERT of a translation (`put_translation`).
 pub const INSERT_TRANSLATION: &str =
     "INSERT OR REPLACE INTO translations (src_hash, translated, cached_at) VALUES (?,?,?)";
 
-/// Удалить все протухшие переводы (`purge_stale_translations`).
+/// Delete all stale translations (`purge_stale_translations`).
 pub const DELETE_STALE_TRANSLATIONS: &str = "DELETE FROM translations WHERE cached_at < ?";
 
-// ── сериализация/разбор поля preview_urls (JSON-массив) ────────────────────
+// ── serializing/parsing the preview_urls field (a JSON array) ──────────────
 
-/// Сериализовать `preview_urls` как `json.dumps(list or [])` в `_insert_item`:
-/// `ensure_ascii=True` (не-ASCII → `\uXXXX`, astral → суррогатная пара),
-/// разделитель элементов `", "`. Пустой список → `"[]"`.
+/// Serialize `preview_urls` as `json.dumps(list or [])` in `_insert_item`:
+/// `ensure_ascii=True` (non-ASCII → `\uXXXX`, astral → a surrogate pair),
+/// the element separator `", "`. An empty list → `"[]"`.
 pub fn serialize_preview_urls(urls: &[String]) -> String {
     if urls.is_empty() {
         return "[]".to_string();
@@ -222,8 +222,8 @@ pub fn serialize_preview_urls(urls: &[String]) -> String {
     out
 }
 
-/// Закодировать строку как строковый литерал Python `json.dumps`
-/// (`ensure_ascii=True`) в `out`, включая кавычки.
+/// Encode a string as a Python `json.dumps` string literal
+/// (`ensure_ascii=True`) into `out`, including the quotes.
 fn py_json_string(s: &str, out: &mut String) {
     out.push('"');
     for ch in s.chars() {
@@ -235,10 +235,10 @@ fn py_json_string(s: &str, out: &mut String) {
             '\t' => out.push_str("\\t"),
             '\u{08}' => out.push_str("\\b"),
             '\u{0c}' => out.push_str("\\f"),
-            // Печатаемый ASCII (0x20..=0x7e) — как есть.
+            // Printable ASCII (0x20..=0x7e) — as is.
             c if ('\u{20}'..='\u{7e}').contains(&c) => out.push(c),
-            // Всё прочее (управляющие <0x20, 0x7f и любой не-ASCII) → \uXXXX,
-            // за пределами BMP — суррогатная пара, как в CPython.
+            // Everything else (control <0x20, 0x7f and any non-ASCII) → \uXXXX,
+            // beyond the BMP — a surrogate pair, as in CPython.
             c => {
                 let cp = c as u32;
                 if cp <= 0xFFFF {
@@ -255,10 +255,10 @@ fn py_json_string(s: &str, out: &mut String) {
     out.push('"');
 }
 
-/// Разобрать сохранённое `preview_urls` — порт выражения из `_row_to_item`:
-/// `json.loads(raw or "[]")`; не-список или ошибка разбора → `[]`; затем
-/// `[str(u) for u in previews if u]` (falsy-элементы отфильтрованы, прочие
-/// приведены к строке как Python `str`). `raw = None`/`""` → `"[]"`.
+/// Parse the stored `preview_urls` — port of the expression from `_row_to_item`:
+/// `json.loads(raw or "[]")`; a non-list or a parse error → `[]`; then
+/// `[str(u) for u in previews if u]` (falsy elements are filtered out, the rest
+/// are converted to a string like Python `str`). `raw = None`/`""` → `"[]"`.
 pub fn parse_preview_urls(raw: Option<&str>) -> Vec<String> {
     let text = match raw {
         Some(t) if !t.is_empty() => t,
@@ -274,7 +274,7 @@ pub fn parse_preview_urls(raw: Option<&str>) -> Vec<String> {
     arr.iter().filter(|v| json_truthy(v)).map(python_str).collect()
 }
 
-/// Python-истинность JSON-значения (`if u`): null/false/0/""/[]/{} → false.
+/// Python truthiness of a JSON value (`if u`): null/false/0/""/[]/{} → false.
 fn json_truthy(v: &serde_json::Value) -> bool {
     use serde_json::Value;
     match v {
@@ -287,8 +287,8 @@ fn json_truthy(v: &serde_json::Value) -> bool {
     }
 }
 
-/// Аналог Python `str(u)` для JSON-значения (в `preview_urls` практически
-/// всегда строки; числа/булевы поддержаны для точного паритета фильтрации).
+/// The equivalent of Python `str(u)` for a JSON value (in `preview_urls` they are practically
+/// always strings; numbers/booleans are supported for exact filtering parity).
 fn python_str(v: &serde_json::Value) -> String {
     use serde_json::Value;
     match v {
@@ -297,20 +297,20 @@ fn python_str(v: &serde_json::Value) -> String {
         Value::Bool(false) => "False".to_string(),
         Value::Null => "None".to_string(),
         Value::Number(n) => n.to_string(),
-        // Вложенные контейнеры в preview_urls не встречаются; отдаём JSON-вид.
+        // Nested containers do not occur in preview_urls; we return the JSON form.
         other => other.to_string(),
     }
 }
 
-// ── CSV-поле lists.ids ─────────────────────────────────────────────────────
+// ── the CSV field lists.ids ────────────────────────────────────────────────
 
-/// Собрать `lists.ids` — порт `",".join(it.id for it in items)` (`put_list`).
+/// Build `lists.ids` — port of `",".join(it.id for it in items)` (`put_list`).
 pub fn join_ids(ids: &[String]) -> String {
     ids.join(",")
 }
 
-/// Разобрать `lists.ids` — порт `[i for i in (row["ids"] or "").split(",")
-/// if i]` (`get_list`): пустые сегменты отбрасываются, `None`/`""` → `[]`.
+/// Parse `lists.ids` — port of `[i for i in (row["ids"] or "").split(",")
+/// if i]` (`get_list`): empty segments are dropped, `None`/`""` → `[]`.
 pub fn split_ids(raw: Option<&str>) -> Vec<String> {
     raw.unwrap_or("")
         .split(',')
@@ -319,11 +319,11 @@ pub fn split_ids(raw: Option<&str>) -> Vec<String> {
         .collect()
 }
 
-// ── значения UPSERT (порядок + типы плейсхолдеров) ─────────────────────────
+// ── UPSERT values (order + placeholder types) ──────────────────────────────
 
-/// Значение параметра запроса — как sqlite3 связывает Python-объект: `TEXT`,
-/// `INTEGER`, `REAL` или `NULL`. Документирует порядок/типы плейсхолдеров;
-/// само связывание — side effect на Python.
+/// A query parameter value — as sqlite3 binds a Python object: `TEXT`,
+/// `INTEGER`, `REAL` or `NULL`. Documents the order/types of placeholders;
+/// the binding itself is a side effect in Python.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CacheValue {
     Null,
@@ -332,10 +332,10 @@ pub enum CacheValue {
     Text(String),
 }
 
-/// 18 значений `INSERT OR REPLACE INTO items` в порядке колонок (`_insert_item`).
-/// `now` = `time.time()` (наблюдение, приходит параметром) → колонка `cached_at`.
-/// `description_ru` берётся из `description_translated`, `preview_urls`
-/// сериализуется [`serialize_preview_urls`].
+/// The 18 values of `INSERT OR REPLACE INTO items` in column order (`_insert_item`).
+/// `now` = `time.time()` (an observation, comes as a parameter) → the `cached_at` column.
+/// `description_ru` is taken from `description_translated`, `preview_urls`
+/// is serialized by [`serialize_preview_urls`].
 pub fn item_insert_values(item: &ThemeItem, now: f64) -> Vec<CacheValue> {
     vec![
         CacheValue::Text(item.id.clone()),
@@ -359,7 +359,7 @@ pub fn item_insert_values(item: &ThemeItem, now: f64) -> Vec<CacheValue> {
     ]
 }
 
-/// Параметры `INSERT OR REPLACE INTO lists` (`put_list`): key, ids, total, now.
+/// Parameters of `INSERT OR REPLACE INTO lists` (`put_list`): key, ids, total, now.
 pub fn list_insert_values(key: &str, ids: &str, total: i64, now: f64) -> Vec<CacheValue> {
     vec![
         CacheValue::Text(key.to_string()),
@@ -369,7 +369,7 @@ pub fn list_insert_values(key: &str, ids: &str, total: i64, now: f64) -> Vec<Cac
     ]
 }
 
-/// Параметры `INSERT OR REPLACE INTO previews` (`put_preview`).
+/// Parameters of `INSERT OR REPLACE INTO previews` (`put_preview`).
 pub fn preview_insert_values(url: &str, local_path: &str, now: f64) -> Vec<CacheValue> {
     vec![
         CacheValue::Text(url.to_string()),
@@ -378,7 +378,7 @@ pub fn preview_insert_values(url: &str, local_path: &str, now: f64) -> Vec<Cache
     ]
 }
 
-/// Параметры `INSERT OR REPLACE INTO translations` (`put_translation`).
+/// Parameters of `INSERT OR REPLACE INTO translations` (`put_translation`).
 pub fn translation_insert_values(src_hash: &str, translated: &str, now: f64) -> Vec<CacheValue> {
     vec![
         CacheValue::Text(src_hash.to_string()),
@@ -387,14 +387,14 @@ pub fn translation_insert_values(src_hash: &str, translated: &str, now: f64) -> 
     ]
 }
 
-// ── нормализация строки таблицы items в ThemeItem ──────────────────────────
+// ── normalizing an items table row into ThemeItem ──────────────────────────
 
-/// Значения колонок строки таблицы `items` (наблюдения из БД). `Option::None`
-/// = SQL NULL; Python `sqlite3.Row` отдаёт их как `None`, а `_row_to_item`
-/// нормализует идиомой `... or <default>`.
+/// Column values of an `items` table row (observations from the DB). `Option::None`
+/// = SQL NULL; Python's `sqlite3.Row` returns them as `None`, and `_row_to_item`
+/// normalizes them with the `... or <default>` idiom.
 #[derive(Debug, Clone, Default)]
 pub struct ItemRow {
-    /// PRIMARY KEY — не бывает NULL, поэтому не `Option`.
+    /// PRIMARY KEY — never NULL, hence not an `Option`.
     pub id: String,
     pub category_id: Option<i64>,
     pub name: Option<String>,
@@ -414,10 +414,10 @@ pub struct ItemRow {
     pub updated: Option<String>,
 }
 
-/// Построить [`ThemeItem`] из строки таблицы `items` — порт `_row_to_item`.
-/// NULL-поля → дефолты (`or ""`/`or 0`), `preview_urls` → [`parse_preview_urls`],
-/// `description_ru` → `description_translated`. Прочие поля `ThemeItem`
-/// (`preview_local`, `installed`, `install_path`, `download_links`) — дефолты.
+/// Build a [`ThemeItem`] from an `items` table row — port of `_row_to_item`.
+/// NULL fields → defaults (`or ""`/`or 0`), `preview_urls` → [`parse_preview_urls`],
+/// `description_ru` → `description_translated`. Other `ThemeItem` fields
+/// (`preview_local`, `installed`, `install_path`, `download_links`) — defaults.
 pub fn row_to_item(row: &ItemRow) -> ThemeItem {
     ThemeItem {
         id: row.id.clone(),
@@ -442,35 +442,35 @@ pub fn row_to_item(row: &ItemRow) -> ThemeItem {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  ЖИВОЙ кеш каталога: та же база, что у Python
+//  The LIVE catalog cache: the same database as Python's
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// ЗАЧЕМ ОН ЗДЕСЬ. Всё выше — правила без побочных эффектов, и до 08.09.2026
-// исполнителя у них не было вовсе: SQLite открывал `rexon/appearance/cache.py`,
-// то есть каталог тем работал ТОЛЬКО в процессе с Python. Из-за этого вкладка
-// «Оформление» под Rust-хозяином окна открывалась пустой: у клиента магазина
-// (`crate::ocs::OcsClient`) не было ни одной живой реализации [`crate::ocs::OcsCacheIo`].
+// WHY IT IS HERE. Everything above is rules without side effects, and until 08.09.2026
+// they had no executor at all: SQLite was opened by `rexon/appearance/cache.py`,
+// i.e. the theme catalog worked ONLY in a process with Python. Because of that the
+// "Appearance" tab under the Rust window host opened empty: the store client
+// (`crate::ocs::OcsClient`) had not a single live implementation of [`crate::ocs::OcsCacheIo`].
 //
-// Живой кеш лежит рядом с правилами, а не в Qt-слое, ровно по правилу #12:
-// тексты SQL, TTL и разбор строк — здесь, и второй их копии быть не должно.
-// `rusqlite` в дереве ядра уже есть (её тянет `steam_token`), новых
-// зависимостей это не добавляет.
+// The live cache sits next to the rules, not in the Qt layer, exactly per rule #12:
+// SQL texts, TTLs and row parsing are here, and there must be no second copy of them.
+// `rusqlite` is already in the core tree (pulled in by `steam_token`), so this adds
+// no new dependencies.
 //
-// ⚠️ БАЗА ОБЩАЯ С PYTHON, и это условие, а не совпадение: обе вкладки
-// (виджетная на PySide6 и QML) ходят в `~/.cache/rexon/ocs_cache.db`. Поэтому
-// схема здесь заводится ТЕМИ ЖЕ строками и мигрируется теми же двумя
-// колонками; разойдись они — Python перестал бы читать написанное нами.
+// ⚠️ THE DATABASE IS SHARED WITH PYTHON, and that is a condition, not a coincidence: both tabs
+// (the PySide6 widget one and the QML one) go to `~/.cache/rexon/ocs_cache.db`. So
+// the schema here is created with THE SAME strings and migrated with the same two
+// columns; if they diverged, Python would stop reading what we wrote.
 
-/// Миграция: колонка `detail_at` (когда запись приходила из ДЕТАЛЬНОГО
-/// ответа). Пара к [`ADD_PREVIEW_URLS_COLUMN`] — в живой базе есть обе.
+/// Migration: the `detail_at` column (when the record came from a DETAIL
+/// response). The pair of [`ADD_PREVIEW_URLS_COLUMN`] — the live database has both.
 pub const ADD_DETAIL_AT_COLUMN: &str = "ALTER TABLE items ADD COLUMN detail_at REAL";
 
-/// UPSERT элемента, СОХРАНЯЮЩИЙ `detail_at` (порт `_insert_item`).
+/// UPSERT of an item that PRESERVES `detail_at` (port of `_insert_item`).
 ///
-/// Отдельно от [`INSERT_ITEM`], и это не украшение: `INSERT OR REPLACE`
-/// пишет строку целиком, поэтому ответ-СПИСОК стирал бы отметку «полные
-/// детали были», и установка получала бы товар без ссылок на файлы.
-/// 19-й параметр — тот же `id` (для подзапроса).
+/// Separate from [`INSERT_ITEM`], and that is not decoration: `INSERT OR REPLACE`
+/// writes the whole row, so a LIST response would erase the "full
+/// details were there" mark, and installation would get an item without file links.
+/// The 19th parameter is the same `id` (for the subquery).
 pub const INSERT_ITEM_KEEP_DETAIL: &str = concat!(
     "INSERT OR REPLACE INTO items\n",
     "               (id, category_id, name, author, description, description_ru,\n",
@@ -481,10 +481,10 @@ pub const INSERT_ITEM_KEEP_DETAIL: &str = concat!(
     "                       (SELECT detail_at FROM items WHERE id=?))",
 );
 
-/// Отметить запись пришедшей из детального ответа (порт `put_item`).
+/// Mark a record as coming from a detail response (port of `put_item`).
 pub const UPDATE_DETAIL_AT: &str = "UPDATE items SET detail_at=? WHERE id=?";
 
-/// Секунды эпохи дробным числом — `time.time()` оригинала.
+/// Epoch seconds as a fractional number — the original's `time.time()`.
 pub fn now_epoch() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -492,19 +492,19 @@ pub fn now_epoch() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Живой SQLite-кеш каталога оформления — исполнитель правил этого модуля.
+/// The live SQLite cache of the appearance catalog — the executor of this module's rules.
 ///
-/// Открывается на КАЖДУЮ работу заново (как `OCSCache()` у Python-воркера):
-/// соединение sqlite не пересекает потоки, а работы вкладки идут каждая в
-/// своём. База не открылась (нет прав, диск полон) — кеш просто пуст: это
-/// замедление, а не отказ, и вкладка обязана продолжать работать.
+/// It is opened anew for EVERY job (like `OCSCache()` in the Python worker):
+/// a sqlite connection does not cross threads, and the tab's jobs each run in
+/// their own. If the database did not open (no rights, the disk is full), the cache is simply empty: this is
+/// a slowdown, not a failure, and the tab must keep working.
 pub struct LiveCache {
     conn: Option<rusqlite::Connection>,
     preview_dir: String,
 }
 
 impl LiveCache {
-    /// Открыть базу и довести схему до сегодняшней (порт `__init__`).
+    /// Open the database and bring the schema up to date (port of `__init__`).
     pub fn open(home: &str) -> Self {
         let dir = cache_dir(home);
         let previews = preview_dir(home);
@@ -516,7 +516,7 @@ impl LiveCache {
         cache
     }
 
-    /// Каталог скачанных превью (его же ждёт [`crate::ocs::OcsClient::new`]).
+    /// The downloaded previews directory (the same one [`crate::ocs::OcsClient::new`] expects).
     pub fn preview_dir(&self) -> &str {
         &self.preview_dir
     }
@@ -526,8 +526,8 @@ impl LiveCache {
             return;
         };
         if conn.execute_batch(CREATE_SCHEMA).is_err() {
-            // Схему завести не вышло — дальше работать с этой базой нельзя:
-            // молчаливые ошибки на каждом запросе только жгут время.
+            // Could not create the schema — this database cannot be used further:
+            // silent errors on every query only burn time.
             self.conn = None;
             return;
         }
@@ -545,8 +545,8 @@ impl LiveCache {
         }
     }
 
-    /// Строка таблицы `items` → [`ItemRow`]. Имена колонок, а не номера:
-    /// `SELECT *` отдаёт их в порядке схемы, а он менялся миграциями.
+    /// An `items` table row → [`ItemRow`]. Column names, not numbers:
+    /// `SELECT *` returns them in schema order, and migrations changed it.
     fn read_item_row(row: &rusqlite::Row<'_>) -> ItemRow {
         ItemRow {
             id: row.get("id").unwrap_or_default(),
@@ -569,7 +569,7 @@ impl LiveCache {
         }
     }
 
-    /// Один элемент по номеру — порт `get_item`.
+    /// One item by number — port of `get_item`.
     pub fn get_item(&mut self, content_id: &str) -> Option<ThemeItem> {
         let conn = self.conn.as_ref()?;
         let mut stmt = conn.prepare(SELECT_ITEM_BY_ID).ok()?;
@@ -577,8 +577,8 @@ impl LiveCache {
             .ok()
     }
 
-    /// Свежие ПОЛНЫЕ детали либо `None` (тогда — в сеть) — порт
-    /// `get_item_detail`. Свежесть — по `detail_at` ([`is_detail_stale`]).
+    /// Fresh FULL details or `None` (then — to the network) — port of
+    /// `get_item_detail`. Freshness — by `detail_at` ([`is_detail_stale`]).
     pub fn get_item_detail(&mut self, content_id: &str, max_age: f64) -> Option<ThemeItem> {
         let at = {
             let conn = self.conn.as_ref()?;
@@ -591,8 +591,8 @@ impl LiveCache {
         self.get_item(content_id)
     }
 
-    /// Положить элемент, отметив его пришедшим из детального ответа —
-    /// порт `put_item`.
+    /// Store an item, marking it as coming from a detail response —
+    /// port of `put_item`.
     pub fn put_item(&mut self, item: &ThemeItem) {
         let now = now_epoch();
         let Some(conn) = self.conn.as_mut() else {
@@ -607,7 +607,7 @@ impl LiveCache {
         );
     }
 
-    /// Страница поиска из кеша — порт `get_list` (протухшая = промах).
+    /// A search page from the cache — port of `get_list` (stale = miss).
     pub fn get_list(&mut self, key: &str) -> Option<(Vec<ThemeItem>, i64)> {
         let conn = self.conn.as_ref()?;
         let mut stmt = conn.prepare(SELECT_LIST).ok()?;
@@ -634,7 +634,7 @@ impl LiveCache {
         Some((items, total))
     }
 
-    /// Запомнить страницу поиска — порт `put_list` (один коммит на страницу).
+    /// Remember a search page — port of `put_list` (one commit per page).
     pub fn put_list(&mut self, key: &str, items: &[ThemeItem], total: i64) {
         let now = now_epoch();
         let Some(conn) = self.conn.as_mut() else {
@@ -656,10 +656,10 @@ impl LiveCache {
         let _ = tx.commit();
     }
 
-    /// Путь скачанного превью — порт `get_preview`.
+    /// Path of a downloaded preview — port of `get_preview`.
     ///
-    /// Запись, чей файл с диска исчез, промахивается: иначе плитка показывала
-    /// бы пустое место вместо картинки, которую можно скачать заново.
+    /// A record whose file vanished from disk is a miss: otherwise the tile would show
+    /// an empty space instead of a picture that can be downloaded again.
     pub fn get_preview(&mut self, url: &str) -> Option<String> {
         let conn = self.conn.as_ref()?;
         let mut stmt = conn.prepare(SELECT_PREVIEW).ok()?;
@@ -674,7 +674,7 @@ impl LiveCache {
         }
     }
 
-    /// Отметить скачанное превью — порт `put_preview`.
+    /// Mark a preview as downloaded — port of `put_preview`.
     pub fn put_preview(&mut self, url: &str, local_path: &str) {
         let now = now_epoch();
         let Some(conn) = self.conn.as_mut() else {
@@ -684,8 +684,8 @@ impl LiveCache {
         let _ = conn.execute(INSERT_PREVIEW, rusqlite::params_from_iter(bind(&vals)));
     }
 
-    /// `(имя, ссылка на превью)` всех закешированных тем — порт
-    /// `all_items_min`; сырьё бэкофилла превью локальных тем
+    /// `(name, preview link)` of all cached themes — port of
+    /// `all_items_min`; raw material for backfilling previews of local themes
     /// ([`crate::installed_scan::backfill_preview`]).
     pub fn all_items_min(&mut self) -> Vec<(String, String)> {
         let Some(conn) = self.conn.as_ref() else {
@@ -706,8 +706,8 @@ impl LiveCache {
         }
     }
 
-    /// `(ссылка на превью, номер категории)` всех закешированных тем: по
-    /// ним скан установленного знает, к какому разделу относится картинка
+    /// `(preview link, category number)` of all cached themes: from
+    /// them the installed scan knows which section a picture belongs to
     /// (`installed_scan::LiveScan::with_store_records`).
     pub fn all_preview_categories(&mut self) -> Vec<(String, i64)> {
         let Some(conn) = self.conn.as_ref() else {
@@ -728,7 +728,7 @@ impl LiveCache {
         }
     }
 
-    /// `url → файл` всех превью, чей файл ещё лежит на диске — порт
+    /// `url → file` of all previews whose file is still on disk — port of
     /// `all_previews_min`.
     pub fn all_previews_min(&mut self) -> Vec<(String, String)> {
         let Some(conn) = self.conn.as_ref() else {
@@ -751,8 +751,8 @@ impl LiveCache {
             .collect()
     }
 
-    /// Свежий перевод из кеша либо `None` — порт `get_translation`
-    /// (протухшая запись удаляется лениво, как у оригинала).
+    /// A fresh translation from the cache or `None` — port of `get_translation`
+    /// (a stale record is deleted lazily, as in the original).
     pub fn get_translation(&mut self, src_hash: &str) -> Option<String> {
         let now = now_epoch();
         let conn = self.conn.as_ref()?;
@@ -775,9 +775,9 @@ impl LiveCache {
         Some(text)
     }
 
-    /// Записать перевод в кеш — порт `put_translation`. Ключ `src_hash`
-    /// считает [`crate::translator::translation_cache_key`]: версия движка
-    /// уже в нём, и записи прежнего движка не попадут под этот ключ.
+    /// Write a translation to the cache — port of `put_translation`. The `src_hash` key
+    /// is computed by [`crate::translator::translation_cache_key`]: the engine version
+    /// is already in it, and records of the previous engine will not fall under this key.
     pub fn put_translation(&mut self, src_hash: &str, translated: &str) {
         let now = now_epoch();
         let Some(conn) = self.conn.as_mut() else {
@@ -787,8 +787,8 @@ impl LiveCache {
         let _ = conn.execute(INSERT_TRANSLATION, rusqlite::params_from_iter(bind(&vals)));
     }
 
-    /// Разовая чистка протухших переводов — порт `purge_stale_translations`.
-    /// Отдаёт число удалённых записей.
+    /// A one-off purge of stale translations — port of `purge_stale_translations`.
+    /// Returns the number of deleted records.
     pub fn purge_stale_translations(&mut self) -> usize {
         let threshold = translation_purge_threshold(now_epoch());
         let Some(conn) = self.conn.as_mut() else {
@@ -799,21 +799,21 @@ impl LiveCache {
     }
 }
 
-/// UPSERT элемента с сохранением `detail_at` (общий для одиночной вставки и
-/// для пачки под одной транзакцией).
+/// UPSERT of an item preserving `detail_at` (shared by a single insert and
+/// a batch under one transaction).
 fn insert_item_keep_detail(
     conn: &rusqlite::Connection,
     item: &ThemeItem,
     now: f64,
 ) -> rusqlite::Result<usize> {
     let mut vals = bind(&item_insert_values(item, now));
-    // 19-й параметр подзапроса — тот же номер товара.
+    // The subquery's 19th parameter is the same item number.
     vals.push(rusqlite::types::Value::Text(item.id.clone()));
     conn.execute(INSERT_ITEM_KEEP_DETAIL, rusqlite::params_from_iter(vals))
 }
 
-/// [`CacheValue`] → значение параметра sqlite. Переводчик, а не второй набор
-/// правил: порядок и типы параметров решают функции выше.
+/// [`CacheValue`] → a sqlite parameter value. A translator, not a second set of
+/// rules: the order and types of parameters are decided by the functions above.
 fn bind(values: &[CacheValue]) -> Vec<rusqlite::types::Value> {
     values
         .iter()
@@ -830,8 +830,8 @@ fn bind(values: &[CacheValue]) -> Vec<rusqlite::types::Value> {
 mod live_tests {
     use super::*;
 
-    /// Кеш живого пользователя идёт за `XDG_CACHE_HOME`; подставной домашний
-    /// каталог (сверки, стенд с копией кеша) переменную не видит.
+    /// The live user's cache follows `XDG_CACHE_HOME`; a substituted home
+    /// directory (checks, a test bench with a copy of the cache) does not see the variable.
     #[test]
     fn cache_dir_follows_xdg_only_for_the_live_home() {
         assert_eq!(cache_dir_in(None, "/home/u"), "/home/u/.cache/rexon");
@@ -843,7 +843,7 @@ mod live_tests {
         assert_eq!(xdg_cache_for("/home/u", "/home/u", ""), None);
         assert_eq!(xdg_cache_for("/home/u", "/home/u", "relative/cache"), None);
         assert_eq!(xdg_cache_for("/home/u", "", "/stand/cache"), None);
-        // Все пути кеша «Оформления» растут из одного корня.
+        // All "Appearance" cache paths grow from one root.
         let home = "/tmp/rexon-cache-dir-probe";
         let root = cache_dir(home);
         assert_eq!(root, format!("{home}/.cache/rexon"));
@@ -859,8 +859,8 @@ mod live_tests {
         }
     }
 
-    /// Свой «дом» на одну сверку: живой кеш пишет настоящие файлы, и трогать
-    /// кеш машины он не должен.
+    /// Its own "home" per check: the live cache writes real files, and it
+    /// must not touch the machine's cache.
     struct TempHome(String);
 
     impl TempHome {
@@ -893,9 +893,9 @@ mod live_tests {
         }
     }
 
-    /// Записанная страница поиска читается обратно ТЕМ ЖЕ составом. Сверка
-    /// проходит весь путь: схему, миграции, UPSERT товаров, CSV-поле `ids` и
-    /// сборку `ThemeItem` из строки таблицы.
+    /// A written search page is read back with THE SAME contents. The check
+    /// goes the whole way: schema, migrations, item UPSERTs, the CSV field `ids` and
+    /// building a `ThemeItem` from a table row.
     #[test]
     fn a_written_page_reads_back_the_same_way() {
         let home = TempHome::new("list");
@@ -903,8 +903,8 @@ mod live_tests {
         let items = vec![item("101", "Первая"), item("202", "Вторая")];
         cache.put_list("ключ", &items, 42);
 
-        // ⚠️ Читает ДРУГОЙ экземпляр: кеш заводится на одну работу, и запись,
-        // видимая только своему соединению, была бы бесполезна.
+        // ⚠️ ANOTHER instance reads: the cache is set up per job, and a record
+        // visible only to its own connection would be useless.
         let mut second = LiveCache::open(&home.0);
         let (back, total) = second.get_list("ключ").expect("страница обязана найтись");
         assert_eq!(total, 42);
@@ -914,9 +914,9 @@ mod live_tests {
         assert_eq!(back[1].category_id, 104);
     }
 
-    /// Протухшая страница — ПРОМАХ, а не устаревший ответ. Мерило протухания
-    /// одно на обе версии вкладки (`is_list_stale`), и здесь проверяется, что
-    /// живой кеш его действительно спрашивает.
+    /// A stale page is a MISS, not an outdated answer. The staleness measure
+    /// is one for both tab versions (`is_list_stale`), and here we check that the
+    /// live cache really asks it.
     #[test]
     fn a_stale_page_is_a_miss() {
         let home = TempHome::new("stale");
@@ -924,7 +924,7 @@ mod live_tests {
         cache.put_list("ключ", &[item("1", "Тема")], 1);
         assert!(cache.get_list("ключ").is_some(), "свежая страница обязана найтись");
 
-        // Состарить запись прямо в базе: живой сверке ждать час нельзя.
+        // Age the record right in the database: a live check cannot wait an hour.
         let old = now_epoch() - LIST_TTL - 1.0;
         {
             let conn = rusqlite::Connection::open(db_path(&home.0)).expect("база");
@@ -938,12 +938,12 @@ mod live_tests {
         );
     }
 
-    /// Отметка «полные детали были» (`detail_at`) переживает ответ-СПИСОК.
+    /// The "full details were there" mark (`detail_at`) survives a LIST response.
     ///
-    /// ⚠️ Ради этого и заведён отдельный `INSERT_ITEM_KEEP_DETAIL`: обычный
-    /// `INSERT OR REPLACE` пишет строку целиком, отметка стиралась бы при
-    /// каждом обновлении витрины, и установка получала бы товар без ссылок на
-    /// файлы.
+    /// ⚠️ This is why a separate `INSERT_ITEM_KEEP_DETAIL` exists: a plain
+    /// `INSERT OR REPLACE` writes the whole row, the mark would be erased at
+    /// every storefront refresh, and installation would get an item without file
+    /// links.
     #[test]
     fn a_list_answer_does_not_erase_the_detail_mark() {
         let home = TempHome::new("detail");
@@ -957,7 +957,7 @@ mod live_tests {
             "детальный ответ обязан ставить отметку"
         );
 
-        // Тот же товар приезжает ещё раз, но уже страницей витрины.
+        // The same item arrives again, but now as a storefront page.
         cache.put_list("ключ", &[item("777", "Полная")], 1);
         assert_eq!(
             detail_at(&home.0, "777"),
@@ -966,9 +966,9 @@ mod live_tests {
         );
     }
 
-    /// Запись превью, чей файл с диска исчез, — промах. Иначе плитка
-    /// показывала бы пустое место вместо картинки, которую можно скачать
-    /// заново.
+    /// A preview record whose file vanished from disk is a miss. Otherwise the tile
+    /// would show an empty space instead of a picture that can be downloaded
+    /// again.
     #[test]
     fn a_preview_whose_file_is_gone_is_a_miss() {
         let home = TempHome::new("preview");
@@ -988,28 +988,28 @@ mod live_tests {
         );
     }
 
-    /// Отметка `detail_at` строки товара (только для сверок выше).
-    /// Полные детали живут в кеше срок показа, запись из ответа-списка
-    /// полными деталями не считается, протухшие — промах.
+    /// The `detail_at` mark of an item row (only for the checks above).
+    /// Full details live in the cache for the display period, a record from a list response
+    /// does not count as full details, stale ones are a miss.
     #[test]
     fn detail_is_served_from_cache_only_while_fresh() {
         let home = TempHome::new("detail-ttl");
         let mut cache = LiveCache::open(&home.0);
         let ttl = crate::ocs::DETAIL_TTL_SECS as f64;
 
-        // Только из списка — отметки нет, в сеть.
+        // Only from a list — no mark, to the network.
         cache.put_list("ключ", &[item("5", "Из списка")], 1);
         assert!(cache.get_item_detail("5", ttl).is_none());
-        // Нет записи вовсе.
+        // No record at all.
         assert!(cache.get_item_detail("нет", ttl).is_none());
 
-        // Детальный ответ — свежий, отдаётся из кеша.
+        // A detail response — fresh, served from the cache.
         cache.put_item(&item("6", "Полная"));
         let mut second = LiveCache::open(&home.0);
         let hit = second.get_item_detail("6", ttl).expect("свежие детали");
         assert_eq!(hit.name, "Полная");
 
-        // Состарить отметку на сутки и секунду — промах.
+        // Age the mark by a day and a second — a miss.
         {
             let conn = rusqlite::Connection::open(db_path(&home.0)).expect("база");
             conn.execute(
@@ -1022,10 +1022,10 @@ mod live_tests {
         assert!(third.get_item_detail("6", ttl).is_none(), "старше суток — в сеть");
     }
 
-    /// Полный круг перевода: записали → прочитали ДРУГИМ экземпляром →
-    /// состарили → чистка его унесла. Проверяется весь путь записи
-    /// (`put_translation` + `translation_insert_values` + схема), а не только
-    /// предикат протухания.
+    /// The full translation cycle: written → read by ANOTHER instance →
+    /// aged → the purge took it away. The whole write path is checked
+    /// (`put_translation` + `translation_insert_values` + the schema), not just
+    /// the staleness predicate.
     #[test]
     fn a_translation_survives_a_round_trip_and_dies_by_ttl() {
         let home = TempHome::new("translation");
@@ -1033,20 +1033,20 @@ mod live_tests {
         let key = crate::translator::translation_cache_key("en", "ru", "Dark theme");
         cache.put_translation(&key, "Тёмная тема");
 
-        // Читает другой экземпляр: запись, видимая только своему соединению,
-        // была бы бесполезна — перевод переживает работу приложения.
+        // Another instance reads: a record visible only to its own connection
+        // would be useless — a translation outlives the application run.
         let mut second = LiveCache::open(&home.0);
         assert_eq!(
             second.get_translation(&key).as_deref(),
             Some("Тёмная тема"),
             "свежий перевод обязан найтись"
         );
-        // Чужого ключа в кеше нет — иначе перевод подменял бы соседний текст.
+        // There is no foreign key in the cache — otherwise a translation would replace neighboring text.
         assert!(second.get_translation("нет такого").is_none());
         assert_eq!(second.purge_stale_translations(), 0, "свежему переводу чистка не грозит");
 
-        // Состарить на месяц и секунду прямо в базе: живой сверке не ждать 30
-        // дней.
+        // Age it by a month and a second right in the database: a live check cannot wait 30
+        // days.
         {
             let conn = rusqlite::Connection::open(db_path(&home.0)).expect("база");
             conn.execute(
@@ -1057,19 +1057,19 @@ mod live_tests {
         }
         let mut third = LiveCache::open(&home.0);
         assert!(third.get_translation(&key).is_none(), "перевод старше TTL — промах");
-        // Ленивая чистка при чтении уже убрала строку, разовая — ничего не
-        // находит: обе дороги ведут к пустой таблице.
+        // The lazy purge on read already removed the row, the one-off one finds
+        // nothing: both roads lead to an empty table.
         assert_eq!(third.purge_stale_translations(), 0, "ленивая чистка уже удалила запись");
         assert_eq!(rows_in_translations(&home.0), 0, "протухшая строка не смеет копиться");
 
-        // Запись под тем же ключом ложится заново (UPSERT, не дубль).
+        // A record under the same key is written again (UPSERT, not a duplicate).
         third.put_translation(&key, "Тёмное оформление");
         third.put_translation(&key, "Тёмная тема");
         assert_eq!(rows_in_translations(&home.0), 1, "UPSERT, а не второй ряд");
         assert_eq!(third.get_translation(&key).as_deref(), Some("Тёмная тема"));
     }
 
-    /// Сколько строк в таблице переводов (только для сверки выше).
+    /// How many rows the translations table has (only for the check above).
     fn rows_in_translations(home: &str) -> i64 {
         let conn = rusqlite::Connection::open(db_path(home)).expect("база");
         conn.query_row("SELECT COUNT(*) FROM translations", [], |r| r.get(0))

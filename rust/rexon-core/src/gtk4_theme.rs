@@ -1,110 +1,114 @@
-//! Тема GTK в программах GTK 4 и libadwaita.
+//! The GTK theme in GTK 4 and libadwaita programs.
 //!
-//! libadwaita не читает имя темы (`gtk-theme-name`, ключ GNOME `gtk-theme`):
-//! у неё свой вид, а чужую тему она берёт только из пользовательской таблицы
-//! стилей `~/.config/gtk-4.0/gtk.css`. Так делают все, кто это умеет:
+//! libadwaita does not read the theme name (`gtk-theme-name`, GNOME key
+//! `gtk-theme`): it has its own look and takes a foreign theme only from the
+//! user stylesheet `~/.config/gtk-4.0/gtk.css`. That is what everyone who can
+//! do this does:
 //!
-//! * установщики тем (Orchis, Colloid, Fluent — `install.sh -l`,
-//!   `link_libadwaita` в `core.sh`): снять `gtk-4.0/{assets,gtk.css,
-//!   gtk-dark.css}` и положить на их место ссылки в `gtk-4.0` темы;
-//! * nwg-look (`linkGtk4Stuff`, переключатель «export-gtk4-symlinks», по
-//!   умолчанию включён) — те же три ссылки и `gtk-4.0/settings.ini`; у темы
-//!   без `gtk-4.0` ничего не трогает;
-//! * KDE (kde-gtk-config, `SettingsIniEditor`) пишет `settings.ini` GTK 3 и
-//!   GTK 4 (`gtk-theme-name` и прочее), а свой `gtk.css` заводит только под
-//!   цвета Breeze (`@import 'colors.css'`); ссылок на темы не ставит;
-//! * Gradience пишет свой `gtk.css`, прежний кладёт рядом в `gtk.css.bak` и
-//!   возвращает его по «Восстановить»; gnome-tweaks тему GTK 4 не трогает
-//!   вовсе («Устаревшие приложения»).
+//! * theme installers (Orchis, Colloid, Fluent — `install.sh -l`,
+//!   `link_libadwaita` in `core.sh`): remove `gtk-4.0/{assets,gtk.css,
+//!   gtk-dark.css}` and put symlinks into the theme's `gtk-4.0` in their place;
+//! * nwg-look (`linkGtk4Stuff`, the "export-gtk4-symlinks" toggle, on by
+//!   default) — the same three links and `gtk-4.0/settings.ini`; for a theme
+//!   without `gtk-4.0` it touches nothing;
+//! * KDE (kde-gtk-config, `SettingsIniEditor`) writes the GTK 3 and GTK 4
+//!   `settings.ini` (`gtk-theme-name` and the rest), and creates its own
+//!   `gtk.css` only for the Breeze colors (`@import 'colors.css'`); it does not
+//!   set links to themes;
+//! * Gradience writes its own `gtk.css`, puts the previous one next to it as
+//!   `gtk.css.bak` and restores it on "Restore"; gnome-tweaks does not touch the
+//!   GTK 4 theme at all ("Legacy Applications").
 //!
-//! Rexon делает как установщики тем, но бережнее: ссылается на ВСЕ таблицы
-//! стилей и каталоги из `gtk-4.0` темы (у adw-gtk3 `gtk.css` подключает
-//! соседние `libadwaita.css`, у Materia — каталог `icons`: относительные
-//! пути GTK ищет рядом со ссылкой, а не с файлом темы), чужие файлы на этих
-//! местах не стирает, а убирает в `<имя>.rexon-backup` и возвращает, когда
-//! выбрана Adwaita, тема без `gtk-4.0` или место освободилось. Ссылки в
-//! `gtk-4.0` какой-либо темы (`…/themes/<тема>/gtk-4.0/…` — наши, Orchis,
-//! nwg-look) считаются заменимыми и снимаются без копии.
+//! Rexon does what the theme installers do, but more carefully: it links ALL
+//! stylesheets and directories from the theme's `gtk-4.0` (adw-gtk3's `gtk.css`
+//! imports the neighboring `libadwaita.css`, Materia has an `icons` directory:
+//! GTK resolves relative paths next to the link, not next to the theme file),
+//! does not erase foreign files in those places but moves them to
+//! `<name>.rexon-backup` and restores them when Adwaita, a theme without
+//! `gtk-4.0` is chosen or the place becomes free. Links into the `gtk-4.0` of
+//! any theme (`…/themes/<theme>/gtk-4.0/…` — ours, Orchis, nwg-look) are
+//! considered replaceable and are removed without a backup.
 //!
-//! Решение — чистая функция [`steps`] над снятыми заранее [`Facts`]
-//! ([`facts_live`]); шаги — файловые шаги общего исполнителя, под откатом
-//! нажатия и в журнале «вернуть как было».
+//! The decision is a pure function [`steps`] over [`Facts`] gathered in advance
+//! ([`facts_live`]); the steps are file steps of the shared executor, under the
+//! click's rollback and in the "revert to how it was" journal.
 
 use crate::ext_manager::ExtStep;
 use crate::i18n::{tr, trf};
 use crate::install_plan::Step;
 
-/// Ключ `settings.json`: применять ли тему GTK к программам GTK 4 и
-/// libadwaita. Нет ключа — да (как у nwg-look).
+/// `settings.json` key: whether to apply the GTK theme to GTK 4 and libadwaita
+/// programs. No key — yes (as in nwg-look).
 pub const SETTING_KEY: &str = "gtk4_apply";
 
-/// Хвост имени копии чужого файла: `gtk.css.rexon-backup`, следующая —
-/// `gtk.css.rexon-backup-2`.
+/// Suffix of the name of a backup of a foreign file: `gtk.css.rexon-backup`,
+/// the next one `gtk.css.rexon-backup-2`.
 pub const BACKUP_SUFFIX: &str = ".rexon-backup";
 
-/// Что лежит в `~/.config/gtk-4.0` под одним именем.
+/// What is in `~/.config/gtk-4.0` under one name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryKind {
-    /// Ссылка в `gtk-4.0` какой-либо темы — заменима, копия не нужна.
+    /// A link into some theme's `gtk-4.0` — replaceable, no backup needed.
     ThemeLink,
-    /// Ссылка в никуда (не в тему) — беречь нечего.
+    /// A link to nowhere (not into a theme) — nothing to preserve.
     Dangling,
-    /// Свой файл человека (или ссылка на файл вне тем).
+    /// The person's own file (or a link to a file outside themes).
     File,
-    /// Свой каталог человека (или ссылка на каталог вне тем).
+    /// The person's own directory (or a link to a directory outside themes).
     Dir,
 }
 
-/// Одна запись каталога `~/.config/gtk-4.0`.
+/// One entry of the `~/.config/gtk-4.0` directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     pub name: String,
     pub kind: EntryKind,
 }
 
-/// Версия темы для GTK 4.
+/// The GTK 4 version of a theme.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ThemeGtk4 {
-    /// Каталога `gtk-4.0` (или `gtk-4.0/gtk.css`) в теме нет.
+    /// The theme has no `gtk-4.0` directory (or `gtk-4.0/gtk.css`).
     #[default]
     Missing,
-    /// Adwaita — встроенный вид GTK 4 и libadwaita: ничего не подкладывать.
+    /// Adwaita — the built-in look of GTK 4 and libadwaita: put nothing in place.
     Builtin,
-    /// Стили упакованы в `gtk.gresource` и подключаются как
-    /// `resource:///…` — GTK регистрирует ресурс, только загружая тему по
-    /// имени; из `~/.config/gtk-4.0` такая таблица пуста (WhiteSur).
+    /// The styles are packed into `gtk.gresource` and imported as
+    /// `resource:///…` — GTK registers the resource only when loading the theme by
+    /// name; from `~/.config/gtk-4.0` such a stylesheet is empty (WhiteSur).
     Packed,
-    /// Есть что подложить: каталог `gtk-4.0` темы и имена в нём —
-    /// таблицы `*.css` и каталоги (`assets`, `icons`); `true` — каталог.
+    /// There is something to put in place: the theme's `gtk-4.0` directory and the
+    /// names in it — `*.css` stylesheets and directories (`assets`, `icons`);
+    /// `true` — a directory.
     Files { dir: String, names: Vec<(String, bool)> },
 }
 
 impl ThemeGtk4 {
-    /// Есть ли что подложить программам GTK 4.
+    /// Whether there is anything to give GTK 4 programs.
     pub fn linkable(&self) -> bool {
         matches!(self, ThemeGtk4::Files { .. })
     }
 }
 
-/// Снятое с машины для [`steps`].
+/// What was gathered from the machine for [`steps`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Facts {
-    /// `~/.config/gtk-4.0` (с учётом `$XDG_CONFIG_HOME`).
+    /// `~/.config/gtk-4.0` (honoring `$XDG_CONFIG_HOME`).
     pub config_dir: String,
-    /// Что в нём сейчас (без `settings.ini`).
+    /// What is in it now (without `settings.ini`).
     pub entries: Vec<Entry>,
-    /// Версия выбранной темы для GTK 4.
+    /// The GTK 4 version of the chosen theme.
     pub theme: ThemeGtk4,
-    /// Переключатель «Применять к программам GTK 4/libadwaita».
+    /// The "Apply to GTK 4/libadwaita programs" toggle.
     pub enabled: bool,
 }
 
-/// Имя копии `name` с номером `n` (1 — без номера).
+/// Name of the backup of `name` with number `n` (1 — without a number).
 fn backup_name(name: &str, n: usize) -> String {
     if n <= 1 { format!("{name}{BACKUP_SUFFIX}") } else { format!("{name}{BACKUP_SUFFIX}-{n}") }
 }
 
-/// Номер копии, если `entry` — копия `name`.
+/// Backup number, if `entry` is a backup of `name`.
 fn backup_number(entry: &str, name: &str) -> Option<usize> {
     let rest = entry.strip_prefix(name)?.strip_prefix(BACKUP_SUFFIX)?;
     if rest.is_empty() {
@@ -113,13 +117,13 @@ fn backup_number(entry: &str, name: &str) -> Option<usize> {
     rest.strip_prefix('-')?.parse().ok().filter(|n| *n >= 2)
 }
 
-/// Копия ли это вообще (такие имена план не трогает как места).
+/// Whether this is a backup at all (the plan does not treat such names as places).
 fn is_backup(entry: &str) -> bool {
     entry.contains(BACKUP_SUFFIX)
 }
 
-/// Ведёт ли ссылка в `gtk-4.0` какой-либо темы: `…/themes/<тема>/gtk-4.0/…`
-/// или `…/.themes/<тема>/gtk-4.0/…`.
+/// Whether a link leads into some theme's `gtk-4.0`: `…/themes/<theme>/gtk-4.0/…`
+/// or `…/.themes/<theme>/gtk-4.0/…`.
 pub fn is_theme_link_target(target: &str) -> bool {
     let Some(at) = target.find("/gtk-4.0/") else { return false };
     let theme_dir = std::path::Path::new(&target[..at]);
@@ -130,12 +134,12 @@ pub fn is_theme_link_target(target: &str) -> bool {
         .is_some_and(|n| n == "themes" || n == ".themes")
 }
 
-/// Шаги для выбранной темы. Пусто — трогать нечего (переключатель
-/// выключен, место и так в порядке).
+/// Steps for the chosen theme. Empty — nothing to touch (the toggle is off, the
+/// place is already in order).
 ///
-/// Порядок: снять все ссылки в темы; на каждое имя, которое несёт тема, —
-/// чужое убрать в копию и поставить ссылку; место, которое освободилось и
-/// темой не занято, — вернуть из последней копии.
+/// Order: remove all links into themes; for every name the theme carries, move
+/// the foreign item into a backup and put a link; a place that became free and
+/// is not taken by the theme is restored from the latest backup.
 pub fn steps(facts: &Facts) -> Vec<Step> {
     if !facts.enabled {
         return Vec::new();
@@ -147,7 +151,7 @@ pub fn steps(facts: &Facts) -> Vec<Step> {
         _ => &[],
     };
     let mut out: Vec<Step> = Vec::new();
-    // Ссылки прежней темы — снять (новая тема подложит свои).
+    // Links of the previous theme are removed (the new theme puts its own).
     for e in facts.entries.iter().filter(|e| !is_backup(&e.name)) {
         if matches!(e.kind, EntryKind::ThemeLink) {
             out.push(Step::File(ExtStep::RemoveFile { path: at(&e.name) }));
@@ -184,8 +188,8 @@ pub fn steps(facts: &Facts) -> Vec<Step> {
             }));
         }
     }
-    // Освободившееся (или пустовавшее) место, которое тема не заняла, —
-    // вернуть из последней копии.
+    // A freed (or previously empty) place that the theme did not take is restored
+    // from the latest backup.
     let mut restored: Vec<&str> = Vec::new();
     for e in &facts.entries {
         let Some(base) = e.name.find(BACKUP_SUFFIX).map(|i| &e.name[..i]) else { continue };
@@ -216,17 +220,19 @@ pub fn steps(facts: &Facts) -> Vec<Step> {
     out
 }
 
-/// Светлый/тёмный режим программ libadwaita Rexon ставит по теме GTK
-/// там, где тема пишется в схему GNOME ([`crate::themes::COLOR_SCHEME_KEY`]).
+/// Rexon sets the light/dark mode of libadwaita programs from the GTK theme
+/// where the theme is written to the GNOME scheme
+/// ([`crate::themes::COLOR_SCHEME_KEY`]).
 pub fn mode_follows(de: &str) -> bool {
     crate::themes::resolve_schemas(de)
         .role("gtk")
         .is_some_and(|(s, _)| s == crate::themes::COLOR_SCHEME_KEY.0)
 }
 
-/// Дописать к шагам темы GTK `base` то, что нужно GTK 4: `gtk-theme-name`
-/// в `gtk-4.0/settings.ini` (как KDE; если план окружения его ещё не
-/// пишет) и ссылки [`steps`]. У Deepin план — один стоп, к нему ничего.
+/// Append to the steps of GTK theme `base` what GTK 4 needs: `gtk-theme-name`
+/// in `gtk-4.0/settings.ini` (as KDE does; if the environment's plan does not
+/// write it yet) and the [`steps`] links. For Deepin the plan is a single stop,
+/// nothing is added to it.
 pub fn extend_press(base: &mut Vec<Step>, theme: &str, de: &str, facts: &Facts) {
     use crate::themes::ApplyStep;
     if de == "deepin" {
@@ -246,14 +252,14 @@ pub fn extend_press(base: &mut Vec<Step>, theme: &str, de: &str, facts: &Facts) 
     base.extend(steps(facts));
 }
 
-/// Встроенная ли это тема GTK 4 (Adwaita и её тёмный вариант).
+/// Whether this is a built-in GTK 4 theme (Adwaita and its dark variant).
 pub fn is_builtin(theme: &str) -> bool {
     theme.trim().to_lowercase().starts_with("adwaita")
 }
 
-/// Версия темы для GTK 4 по каталогу темы `theme_dir` (`None` — каталога
-/// темы не нашли). `list` — имена в `gtk-4.0` с признаком каталога,
-/// `read` — текст файла.
+/// The GTK 4 version of a theme from the theme directory `theme_dir` (`None` —
+/// the theme directory was not found). `list` — the names in `gtk-4.0` with a
+/// directory flag, `read` — a file's text.
 pub fn theme_gtk4(
     theme: &str,
     theme_dir: Option<&str>,
@@ -283,13 +289,13 @@ pub fn theme_gtk4(
 }
 
 // ============================================================================
-// Подписи
+// Labels
 // ============================================================================
 
-/// Переключатель под плиткой темы GTK: `checked` — что будет при нажатии
-/// «Применить», `enabled` — есть ли что переносить, `note` — пояснение
-/// (у недоступного переключателя — видимой строкой, у доступного —
-/// подсказкой).
+/// The toggle under the GTK theme tile: `checked` — what will happen on
+/// "Apply", `enabled` — whether there is anything to carry over, `note` — an
+/// explanation (for a disabled toggle as a visible line, for an enabled one as a
+/// tooltip).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Toggle {
     pub visible: bool,
@@ -299,9 +305,9 @@ pub struct Toggle {
     pub note: String,
 }
 
-/// Переключатель для темы `theme` с версией `gtk4`; `on` — значение
-/// настройки [`SETTING_KEY`]; `mode_follows` — светлый/тёмный режим
-/// программ libadwaita Rexon ставит по теме (окружения со схемой GNOME).
+/// The toggle for theme `theme` with version `gtk4`; `on` — the value of the
+/// [`SETTING_KEY`] setting; `mode_follows` — Rexon sets the light/dark mode of
+/// libadwaita programs from the theme (environments with the GNOME scheme).
 pub fn toggle(theme: &str, gtk4: &ThemeGtk4, on: bool, mode_follows: bool) -> Toggle {
     let mode = if mode_follows {
         tr(" Only light or dark mode follows the theme.")
@@ -346,10 +352,10 @@ pub fn toggle(theme: &str, gtk4: &ThemeGtk4, on: bool, mode_follows: bool) -> To
 }
 
 // ============================================================================
-// Живая машина
+// The live machine
 // ============================================================================
 
-/// Каталог темы GTK `theme` — первый найденный в путях поиска тем.
+/// Directory of GTK theme `theme` — the first one found in the theme search paths.
 pub fn theme_dir_live(theme: &str, home: &str) -> Option<String> {
     let data = crate::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), home);
     let dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_default();
@@ -371,13 +377,13 @@ fn list_live(dir: &str) -> Option<Vec<(String, bool)>> {
     )
 }
 
-/// Версия темы для GTK 4 на этой машине.
+/// The GTK 4 version of a theme on this machine.
 pub fn theme_gtk4_live(theme: &str, home: &str) -> ThemeGtk4 {
     let dir = theme_dir_live(theme, home);
     theme_gtk4(theme, dir.as_deref(), &list_live, &|p| std::fs::read_to_string(p).ok())
 }
 
-/// Что лежит в каталоге `dir` (`~/.config/gtk-4.0`), кроме `settings.ini`.
+/// What is in directory `dir` (`~/.config/gtk-4.0`), apart from `settings.ini`.
 pub fn entries_live(dir: &str) -> Vec<Entry> {
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut out: Vec<Entry> = rd
@@ -412,7 +418,7 @@ pub fn entries_live(dir: &str) -> Vec<Entry> {
     out
 }
 
-/// Значение переключателя из `settings.json` (нет ключа — да).
+/// Toggle value from `settings.json` (no key — yes).
 pub fn enabled_live() -> bool {
     crate::settings::load_settings(&crate::settings::settings_file())
         .get(SETTING_KEY)
@@ -420,12 +426,12 @@ pub fn enabled_live() -> bool {
         .unwrap_or(true)
 }
 
-/// Записать переключатель в `settings.json`.
+/// Write the toggle to `settings.json`.
 pub fn set_enabled_live(on: bool) -> std::io::Result<()> {
     crate::settings::SettingsManager::new()?.set(SETTING_KEY, serde_json::Value::from(on))
 }
 
-/// Снять [`Facts`] для темы `theme`.
+/// Gather [`Facts`] for theme `theme`.
 pub fn facts_live(theme: &str, home: &str, xdg_config_home: Option<&str>) -> Facts {
     let config_dir = format!("{}/gtk-4.0", crate::utils::config_home(xdg_config_home, home));
     Facts {
@@ -556,8 +562,8 @@ mod tests {
 
     #[test]
     fn freed_place_the_new_theme_does_not_take_gets_its_backup_back() {
-        // Прежняя тема занимала gtk-dark.css, новая (Materia-dark) его не
-        // несёт — свой файл человека возвращается.
+        // The previous theme occupied gtk-dark.css, the new one (Materia-dark) does not
+        // carry it — the person's own file comes back.
         let got = steps(&facts(
             vec![
                 e("gtk-dark.css", EntryKind::ThemeLink),
@@ -585,7 +591,8 @@ mod tests {
     #[test]
     fn own_files_without_backup_stay_and_switch_off_touches_nothing() {
         let own = vec![e("gtk.css", EntryKind::File), e("assets", EntryKind::ThemeLink)];
-        // Тема без gtk-4.0: ссылку прежней темы снять, свой gtk.css — оставить.
+        // A theme without gtk-4.0: remove the previous theme's link, keep the person's
+        // own gtk.css.
         assert_eq!(steps(&facts(own.clone(), ThemeGtk4::Missing)), vec![rm("assets")]);
         let mut off = facts(own, files(&[("gtk.css", false)]));
         off.enabled = false;
@@ -669,8 +676,8 @@ mod tests {
         assert!(base.is_empty());
     }
 
-    /// Прогон общим исполнителем на настоящем каталоге: свой gtk.css
-    /// уходит в копию и возвращается, когда выбрана Adwaita.
+    /// A run through the shared executor on a real directory: the person's own
+    /// gtk.css goes into a backup and comes back when Adwaita is chosen.
     #[test]
     fn real_run_keeps_own_file_and_brings_it_back() {
         use crate::install_plan::{exec, no_sync_env, Ctx};
@@ -708,7 +715,7 @@ mod tests {
         assert!(cfg.join("assets").is_dir());
         assert_eq!(fs::read_to_string(cfg.join("gtk.css.rexon-backup")).unwrap(), "mine");
         assert!(entries_live(&cfg_s).iter().any(|e| e.name == "gtk.css" && e.kind == EntryKind::ThemeLink));
-        // Повторное применение той же темы копий не плодит.
+        // Re-applying the same theme does not multiply backups.
         run_with(theme_gtk4("Orchis", Some(&theme.to_string_lossy()), &list_live, &read));
         assert!(!cfg.join("gtk.css.rexon-backup-2").exists());
         run_with(ThemeGtk4::Builtin);

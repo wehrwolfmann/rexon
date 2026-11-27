@@ -1,20 +1,20 @@
-//! Сверка порта `rexon/extensions/utils.py`.
+//! Check of the `rexon/extensions/utils.py` port.
 //!
-//! ⚠️ Упаковка ZIP сверяется СТРУКТУРНО, не побайтово: `.zip` содержит
-//! таймстемпы и зависит от реализации deflate — байт-в-байт с Python не
-//! совпадёт. Эталон `golden/pack_structure.json` — карта {имя-в-архиве:
-//! содержимое}, снятая с архива, собранного самим Python `_pack_rxn` из того
-//! же дерева файлов, что воссоздаёт этот тест. `golden/sample.rxn` — реальный
-//! Python-архив (его читает Rust-ридер `parse_v4_manifest`).
-//! `golden/zipslip.rxn` — вредоносный архив с записью `../evil.txt`.
+//! ⚠️ ZIP packing is checked STRUCTURALLY, not byte-wise: a `.zip` contains
+//! timestamps and depends on the deflate implementation — it will not match Python
+//! byte-for-byte. The golden `golden/pack_structure.json` is a map {name-in-archive:
+//! content}, taken from an archive built by Python's own `_pack_rxn` from the
+//! same file tree this test recreates. `golden/sample.rxn` is a real
+//! Python archive (read by the Rust reader `parse_v4_manifest`).
+//! `golden/zipslip.rxn` is a malicious archive with an `../evil.txt` entry.
 //!
-//! Кривые входы (`golden/ext_archive_cases.json`): для КАЖДОГО настоящего
-//! архива из `golden/` записано, что живой Python сделал с ним в
-//! `_py_safe_zip_extract` (набор путей либо тип+текст исключения) и в
-//! `_py_read_manifest_text`. Архивы собраны настоящим `zipfile`:
-//! `manifest_cp1251.rxn` (манифест не в UTF-8), `dotdot_middle.rxn` (`..` в
-//! середине имени), `absolute_member.rxn` (запись `/abs.txt`),
-//! `truncated.rxn` (обрезанный `sample.rxn`), `no_manifest.rxn`.
+//! Malformed inputs (`golden/ext_archive_cases.json`): for EVERY real
+//! archive in `golden/` it records what live Python did with it in
+//! `_py_safe_zip_extract` (a set of paths or exception type+text) and in
+//! `_py_read_manifest_text`. The archives were built by the real `zipfile`:
+//! `manifest_cp1251.rxn` (manifest not in UTF-8), `dotdot_middle.rxn` (`..` in
+//! the middle of a name), `absolute_member.rxn` (entry `/abs.txt`),
+//! `truncated.rxn` (a truncated `sample.rxn`), `no_manifest.rxn`.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -28,7 +28,7 @@ use serde_json::Value;
 
 mod i18n_pin;
 
-/// То же детерминированное дерево, что в скрипте снятия эталона (snap.py).
+/// The same deterministic tree as in the golden capture script (snap.py).
 const TREE: &[(&str, &str)] = &[
     ("manifest.json", "{\"format_version\": 4, \"type\": \"wallpaper-video-adaptive\", \"title\": \"Demo\"}"),
     ("data/video/1080p.mp4", "VIDEO-1080-BYTES"),
@@ -52,7 +52,7 @@ fn write_tree(root: &Path) {
     }
 }
 
-/// Прочитать архив как карту {имя: содержимое}.
+/// Read an archive as a map {name: content}.
 fn archive_structure(path: &Path) -> BTreeMap<String, String> {
     let file = std::fs::File::open(path).unwrap();
     let mut zip = zip::ZipArchive::new(file).unwrap();
@@ -67,7 +67,7 @@ fn archive_structure(path: &Path) -> BTreeMap<String, String> {
     out
 }
 
-/// `pack_rxn` даёт ту же СТРУКТУРУ (имена + содержимое), что Python `_pack_rxn`.
+/// `pack_rxn` gives the same STRUCTURE (names + content) as Python's `_pack_rxn`.
 #[test]
 fn pack_structure_matches_python() {
     let golden: Value = serde_json::from_str(include_str!("golden/pack_structure.json")).unwrap();
@@ -90,7 +90,7 @@ fn pack_structure_matches_python() {
     assert_eq!(got, want);
 }
 
-/// `parse_v4_manifest` читает `manifest.json` из реального Python-архива.
+/// `parse_v4_manifest` reads `manifest.json` from a real Python archive.
 #[test]
 fn parse_reads_python_sample_rxn() {
     let sample = golden_dir().join("sample.rxn");
@@ -100,7 +100,7 @@ fn parse_reads_python_sample_rxn() {
     assert_eq!(meta["title"], serde_json::json!("Demo"));
 }
 
-/// Несуществующий архив → NotFound (как FileNotFoundError).
+/// A missing archive → NotFound (like FileNotFoundError).
 #[test]
 fn parse_missing_is_not_found() {
     use rexon_core::manifest_v4::ParseError;
@@ -108,7 +108,7 @@ fn parse_missing_is_not_found() {
     assert!(matches!(parse_v4_manifest(&missing), Err(ParseError::NotFound(_))));
 }
 
-/// `safe_zip_extract` отвергает ZipSlip (`../evil.txt`) ДО записи файлов.
+/// `safe_zip_extract` rejects ZipSlip (`../evil.txt`) BEFORE writing files.
 #[test]
 fn extract_rejects_zipslip() {
     let dest = unique_tmp("zsdest");
@@ -117,22 +117,22 @@ fn extract_rejects_zipslip() {
     let evil = golden_dir().join("zipslip.rxn");
     let res = safe_zip_extract(&evil, &dest);
     assert!(matches!(res, Err(ArchiveError::ZipSlip(_))), "ожидался ZipSlip, получено {res:?}");
-    // Ни один файл не записан за пределами dest.
+    // Not a single file was written outside dest.
     assert!(!dest.parent().unwrap().join("evil.txt").exists());
     let _ = std::fs::remove_dir_all(&dest);
 }
 
-/// Кривые входы на НАСТОЯЩИХ архивах: распаковка обязана дать ровно тот же
-/// набор путей, что `zipfile.extractall` у оригинала, либо отказать там, где
-/// отказывает он.
+/// Malformed inputs on REAL archives: extraction must give exactly the same
+/// set of paths as the original's `zipfile.extractall`, or refuse where
+/// it refuses.
 ///
-/// Именно этот тест закрывает расхождение, найденное при аудите: `..` в
-/// СЕРЕДИНЕ имени (`a/../b.txt`) Python отбрасывает как компонент и кладёт
-/// файл в `a/b.txt`, а порт раньше схлопывал путь и писал в `b.txt` — у `.rxn`
-/// это другой корень с `manifest.json`.
+/// This very test closes the mismatch found during the audit: a `..` in
+/// the MIDDLE of a name (`a/../b.txt`) Python drops as a component and puts
+/// the file at `a/b.txt`, while the port used to collapse the path and write to `b.txt` — for an `.rxn`
+/// that is a different root with `manifest.json`.
 #[test]
 fn extract_matches_python_on_real_archives() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let golden: Value =
         serde_json::from_str(include_str!("golden/ext_archive_cases.json")).unwrap();
     let mut checked = 0;
@@ -144,8 +144,8 @@ fn extract_matches_python_on_real_archives() {
         let res = safe_zip_extract(&golden_dir().join(name), &dest);
 
         if let Some(kind) = want["error"].as_str() {
-            // Python отказал — обязан отказать и порт, тем же классом причины
-            // И тем же текстом: он доезжает до окна покупателя дословно.
+            // Python refused — the port must refuse too, with the same class of reason
+            // AND the same text: it reaches the buyer's window verbatim.
             let want_msg = want["msg"].as_str().unwrap();
             match (kind, &res) {
                 ("ValueError", Err(ArchiveError::ZipSlip(m)))
@@ -172,7 +172,7 @@ fn extract_matches_python_on_real_archives() {
     assert_eq!(checked, 7, "все архивы golden/ должны быть в эталоне");
 }
 
-/// Относительные пути всех ФАЙЛОВ под `dir` (для сверки с Python-эталоном).
+/// Relative paths of all FILES under `dir` (for comparison with the Python golden).
 fn walk_files(root: &Path, dir: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -189,7 +189,7 @@ fn walk_files(root: &Path, dir: &Path) -> Vec<String> {
     out
 }
 
-/// Роундтрип: pack → extract возвращает то же дерево (имена + содержимое).
+/// Round trip: pack → extract returns the same tree (names + content).
 #[test]
 fn pack_then_extract_roundtrip() {
     let src = unique_tmp("rtsrc");
@@ -213,7 +213,7 @@ fn pack_then_extract_roundtrip() {
     let _ = std::fs::remove_file(&rxn);
 }
 
-/// `write_manifest` пишет `manifest.json` с `indent=2` (как Python).
+/// `write_manifest` writes `manifest.json` with `indent=2` (like Python).
 #[test]
 fn write_manifest_indent2() {
     let dir = unique_tmp("wm");
@@ -222,12 +222,12 @@ fn write_manifest_indent2() {
     let manifest = serde_json::json!({"a": 1, "b": "текст"});
     write_manifest(&manifest, &dir).unwrap();
     let got = std::fs::read_to_string(dir.join("manifest.json")).unwrap();
-    // json.dump(indent=2, ensure_ascii=False): 2 пробела, кириллица без \u.
+    // json.dump(indent=2, ensure_ascii=False): 2 spaces, Cyrillic without \u.
     assert_eq!(got, "{\n  \"a\": 1,\n  \"b\": \"текст\"\n}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `safe_rmtree`: несуществующий → false; каталог в $TMPDIR → удаляется, true.
+/// `safe_rmtree`: missing → false; a directory in $TMPDIR → removed, true.
 #[test]
 fn rmtree_missing_and_tmp() {
     let missing = unique_tmp("rmnope");
@@ -241,7 +241,7 @@ fn rmtree_missing_and_tmp() {
     assert!(!dir.exists());
 }
 
-/// `safe_rmtree` симлинка удаляет САМУ ссылку, а не цель.
+/// `safe_rmtree` on a symlink removes the LINK ITSELF, not the target.
 #[test]
 fn rmtree_symlink_removes_link_only() {
     let target = unique_tmp("rmtarget");
@@ -253,37 +253,37 @@ fn rmtree_symlink_removes_link_only() {
     std::os::unix::fs::symlink(&target, &link).unwrap();
 
     assert!(safe_rmtree(&link));
-    assert!(!link.exists()); // ссылка удалена
-    assert!(target.join("keep.txt").exists()); // цель цела
+    assert!(!link.exists()); // link removed
+    assert!(target.join("keep.txt").exists()); // target intact
     let _ = std::fs::remove_dir_all(&target);
 }
 
-/// `safe_rmtree` отказывается удалять путь вне $HOME и вне $TMPDIR → false.
+/// `safe_rmtree` refuses to remove a path outside $HOME and outside $TMPDIR → false.
 #[test]
 fn rmtree_refuses_outside_home_and_tmp() {
-    // /usr существует, лежит вне $HOME/$TMPDIR → отказ (и без прав на удаление).
+    // /usr exists and lies outside $HOME/$TMPDIR → refusal (and without delete permissions).
     assert!(!safe_rmtree(Path::new("/usr")));
 }
 
-/// Сам `$HOME` (и сам `$TMPDIR`) удалять НЕЛЬЗЯ — эталон сравнивает с
-/// `home + os.sep`, то есть требует строгого потомка.
+/// `$HOME` itself (and `$TMPDIR` itself) must NOT be removed — the reference compares with
+/// `home + os.sep`, i.e. it requires a strict descendant.
 ///
-/// Проверяется чистая [`rmtree_allowed`], а не `safe_rmtree`: тест на живом
-/// `$HOME` при регрессии сам бы и снёс домашний каталог.
+/// The pure [`rmtree_allowed`] is checked, not `safe_rmtree`: a test on the live
+/// `$HOME` would itself wipe the home directory on a regression.
 #[test]
 fn rmtree_refuses_home_and_tmp_roots() {
     let home = Path::new("/home/wehrwolfmann");
     let tmp = Path::new("/tmp");
 
-    // Корни — отказ.
+    // Roots — refusal.
     assert!(!rmtree_allowed(home, home, tmp), "$HOME удалять нельзя");
     assert!(!rmtree_allowed(tmp, home, tmp), "$TMPDIR удалять нельзя");
 
-    // Потомки — разрешены.
+    // Descendants — allowed.
     assert!(rmtree_allowed(&home.join(".themes/X"), home, tmp));
     assert!(rmtree_allowed(&tmp.join("rexon_ext_1"), home, tmp));
 
-    // Сосед с общим префиксом строки, но другой каталог — отказ.
+    // A neighbour with a common string prefix but a different directory — refusal.
     assert!(!rmtree_allowed(Path::new("/home/wehrwolfmann2"), home, tmp));
     assert!(!rmtree_allowed(Path::new("/usr"), home, tmp));
 }

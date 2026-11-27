@@ -1,33 +1,34 @@
-//! Golden-сверка порта `remote_l10n.rs` с оригиналом
+//! Golden comparison of the `remote_l10n.rs` port against the original
 //! `rexon/qt_wallpaper_engine/qml_ui/remote_l10n.py`.
 //!
-//! Эталон снят одноразовым генератором с ЖИВОГО Python read-only: `QM_PATH`
-//! подменялся на временный каталог, вместо `lrelease` запускался `/bin/true` —
-//! ни `.ts`, ни `.qm` в дереве проекта не трогались, Qt не поднимался.
-//! Записаны все таблицы словарей, значения функций на живых и вырожденных
-//! входах, полный вывод `translate_source` (сериализованный JSON, порядок
-//! ключей как у Python-словаря), карты обратного перевода по источникам и
-//! содержимое `.ts`, собранного по НАСТОЯЩЕМУ вендорному дереву QML.
+//! The golden data was captured by a one-off generator from the LIVE Python,
+//! read-only: `QM_PATH` was redirected to a temporary directory and `/bin/true`
+//! ran instead of `lrelease` — neither `.ts` nor `.qm` in the project tree was
+//! touched, Qt was never started.
+//! Recorded: all dictionary tables, function values on live and degenerate
+//! inputs, the full output of `translate_source` (serialized JSON, key order
+//! as in the Python dict), reverse-translation maps per source, and the
+//! contents of the `.ts` built over the REAL vendored QML tree.
 //!
-//! `golden/remote_l10n_cases.json` — снятые значения. Расхождения с Python —
-//! ТОЛЬКО осознанные починки (правило #16, перечислены в шапке модуля), каждая
-//! закреплена здесь отдельным тестом с пометкой «правило #16».
+//! `golden/remote_l10n_cases.json` holds the captured values. Differences from
+//! Python are ONLY deliberate fixes (rule #16, listed in the module header),
+//! each pinned here by a separate test marked "rule #16".
 //!
-//! # Подписи вендорного QML — своего словаря здесь нет
+//! # Vendored QML labels — there is no dictionary of our own here
 //!
-//! Подписи страниц waywallen переводит ВЕНДОРНЫЙ каталог
-//! `waywallen/ui/i18n/waywallen_ru.ts`, вендоренный тем же `git diff`-ом, что
-//! и `ui/qml`. Своего словаря (`QML_TEXTS`) больше нет: он держал 135 строк из
-//! вендорных 486. Поэтому проверки тут три:
+//! waywallen page labels are translated by the VENDORED catalog
+//! `waywallen/ui/i18n/waywallen_ru.ts`, vendored by the same `git diff` as
+//! `ui/qml`. Our own dictionary (`QML_TEXTS`) is gone: it held 135 strings out
+//! of the vendor's 486. So there are three checks here:
 //!
-//! 1. **Полнота** — каждая строка `qsTr` живого `ui/qml` переведена вендорным
-//!    каталогом (`every_vendor_string_has_a_vendor_translation`), и наоборот в
-//!    каталоге нет записей, которых `ui/qml` уже не отдаёт.
-//! 2. **Свежесть** — закоммиченный `.qm` собран из ЭТОГО `.ts`
+//! 1. **Completeness** — every `qsTr` string of the live `ui/qml` is translated
+//!    by the vendored catalog (`every_vendor_string_has_a_vendor_translation`),
+//!    and conversely the catalog has no entries `ui/qml` no longer emits.
+//! 2. **Freshness** — the committed `.qm` is built from THIS `.ts`
 //!    (`committed_qm_is_compiled_from_the_vendored_catalog`).
-//! 3. **Ничего не потеряно** — каждая строка, которую переводил старый
-//!    Python-словарь и которая дожила до сегодняшнего вендора, переведена и
-//!    сейчас (`nothing_the_python_dictionary_translated_was_lost`).
+//! 3. **Nothing lost** — every string the old Python dictionary translated
+//!    that still exists in today's vendor tree is still translated
+//!    (`nothing_the_python_dictionary_translated_was_lost`).
 
 use rexon_core::i18n;
 use rexon_core::remote_l10n as l10n;
@@ -44,10 +45,11 @@ fn s(v: &Value) -> &str {
     v.as_str().unwrap()
 }
 
-/// Сверка таблицы-среза со словарём Python: те же пары в том же порядке.
+/// Compares a table slice with the Python dictionary: same pairs, same order.
 ///
-/// Значения таблиц — английские msgid; словарь Python — русский. Сверяется
-/// ПЕРЕВОД значения из `po/ru.po` (вызывающий держит `i18n_pin::ru()`).
+/// Table values are English msgids; the Python dictionary is Russian. What is
+/// compared is the TRANSLATION of the value from `po/ru.po` (the caller holds
+/// `i18n_pin::ru()`).
 fn assert_table(table: &[(&str, &str)], golden: &Value, name: &str) {
     let obj: Vec<(&String, &Value)> = golden.as_object().unwrap().iter().collect();
     assert_eq!(table.len(), obj.len(), "{name}: разное число записей");
@@ -58,7 +60,7 @@ fn assert_table(table: &[(&str, &str)], golden: &Value, name: &str) {
 }
 
 // ============================================================================
-// Таблицы словарей
+// Dictionary tables
 // ============================================================================
 
 #[test]
@@ -82,22 +84,22 @@ fn tables_match_python_dicts() {
     assert_table(l10n::TAGS, &g["TAGS"], "TAGS");
     assert_table(l10n::ACTION_LABELS, &g["ACTION_LABELS"], "ACTION_LABELS");
     assert_table(l10n::TEXTS, &g["TEXTS"], "TEXTS");
-    // `QML_TEXTS` здесь БОЛЬШЕ НЕТ: подписи самого вендорного QML переводит
-    // вендорный каталог, а не наш словарь. Что при этом ничего не потерялось,
-    // стережёт `nothing_the_python_dictionary_translated_was_lost`.
+    // `QML_TEXTS` is GONE from here: the vendored QML's own labels are translated
+    // by the vendored catalog, not by our dictionary. That nothing got lost is
+    // guarded by `nothing_the_python_dictionary_translated_was_lost`.
 }
 
 #[test]
 fn tags_back_matches_python_comprehension() {
     let _lang = i18n_pin::ru();
-    // `{ru: en for en, ru in TAGS.items()}` — при повторе подписи побеждает
-    // ПОСЛЕДНЯЯ пара: «Комп. графика» → CGI, а не CG.
+    // `{ru: en for en, ru in TAGS.items()}` — on a repeated label the LAST pair
+    // wins: «Комп. графика» → CGI, not CG.
     let g = fx();
     let back = g["TAGS_BACK"].as_object().unwrap();
     for (label, en) in back {
         assert_eq!(l10n::tag_back(label), Some(s(en)), "обратный тег {label}");
     }
-    // столько же различных подписей, сколько у Python
+    // as many distinct labels as in Python
     let uniq: std::collections::BTreeSet<String> = l10n::TAGS.iter().map(|(_, m)| i18n::tr(m)).collect();
     assert_eq!(uniq.len(), back.len());
     assert_eq!(l10n::tag_back("Комп. графика"), Some("CGI"));
@@ -105,7 +107,7 @@ fn tags_back_matches_python_comprehension() {
 }
 
 // ============================================================================
-// Подписи-одиночки
+// Single labels
 // ============================================================================
 
 #[test]
@@ -116,7 +118,7 @@ fn wp_type_label_matches() {
         let p = pair.as_array().unwrap();
         assert_eq!(l10n::wp_type_label(s(&p[0])), s(&p[1]), "вход {}", s(&p[0]));
     }
-    // `str(value or "")`: пустая строка остаётся пустой
+    // `str(value or "")`: an empty string stays empty
     assert_eq!(l10n::wp_type_label(""), s(&g["wp_type_label_none"]));
 }
 
@@ -156,9 +158,9 @@ fn text_matches() {
         let p = pair.as_array().unwrap();
         assert_eq!(l10n::text(s(&p[0])), s(&p[1]), "вход {}", s(&p[0]));
     }
-    // TEXTS главнее ACTION_LABELS: «Signed in» есть только в TEXTS
+    // TEXTS takes precedence over ACTION_LABELS: «Signed in» exists only in TEXTS
     assert_eq!(l10n::text("Signed in"), "Вход выполнен");
-    // а «API key» — только в ACTION_LABELS
+    // and «API key» only in ACTION_LABELS
     assert_eq!(l10n::text("API key"), "Ключ доступа");
     assert_eq!(l10n::text("Whatever else"), "Whatever else");
 }
@@ -167,24 +169,25 @@ fn text_matches() {
 fn sort_and_source_lookups() {
     let _lang = i18n_pin::ru();
     assert_eq!(l10n::sort_label("top_rated", "Top rated"), "Лидеры рейтинга");
-    // незнакомая сортировка нового плагина остаётся вендорной подписью
+    // an unknown sort of a new plugin keeps the vendor's label
     assert_eq!(l10n::sort_label("brand_new", "Brand new"), "Brand new");
     assert_eq!(l10n::source_name("wallpaper_engine").as_deref(), Some("Мастерская Steam"));
     assert_eq!(l10n::source_name("нет такого"), None);
 }
 
 // ============================================================================
-// translate_source — полный вывод байт-в-байт
+// translate_source — full output, byte for byte
 // ============================================================================
 
-/// Прогон всех источников эталона одним переводчиком — как в мосте, где
-/// `translate_source` зовётся по очереди для каждого источника выдачи демона.
+/// Runs all golden sources through one translator — as in the bridge, where
+/// `translate_source` is called in turn for each source the daemon returns.
 ///
-/// ⚠ Эталон снят с ЖИВОГО Python-моста, а тот знал ещё плоское поле
-/// `RemoteFilterDef.values` (waywallen ≤0.3.7). С 0.3.8 вариант фильтра —
-/// тройка `{value, label, labelText}`, поэтому вход раскладывается
-/// [`to_options`], а выдача складывается обратно [`fold_options`]. Иначе
-/// пришлось бы переписать эталон руками, и он перестал бы быть снимком.
+/// ⚠ The golden data was captured from the LIVE Python bridge, which still knew
+/// the flat `RemoteFilterDef.values` field (waywallen ≤0.3.7). Since 0.3.8 a
+/// filter option is a triple `{value, label, labelText}`, so the input is
+/// unfolded by [`to_options`] and the output folded back by [`fold_options`].
+/// Otherwise the golden data would have to be rewritten by hand and would stop
+/// being a snapshot.
 fn run_all_cases(g: &Value) -> (l10n::Localizer, Vec<(String, Value, Value)>) {
     let mut loc = l10n::Localizer::new();
     let mut out = Vec::new();
@@ -196,12 +199,11 @@ fn run_all_cases(g: &Value) -> (l10n::Localizer, Vec<(String, Value, Value)>) {
     (loc, out)
 }
 
-/// Описание источника Python-эпохи → форма waywallen 0.3.8.
+/// Python-era source description → waywallen 0.3.8 shape.
 ///
-/// В каждом фильтре `values: ["Anime"]` становится
-/// `options: [{"value": "Anime"}]` НА ТОМ ЖЕ месте — порядок ключей в
-/// сверке значим. Подписи (`label`) плагин здесь не даёт: в эталоне её и
-/// не было.
+/// In each filter `values: ["Anime"]` becomes `options: [{"value": "Anime"}]`
+/// IN THE SAME place — key order matters for the comparison. The plugin gives
+/// no labels (`label`) here: the golden data had none either.
 fn to_options(info: &Value) -> Value {
     map_filters(info, |key, value| {
         if key != "values" {
@@ -220,7 +222,7 @@ fn to_options(info: &Value) -> Value {
     })
 }
 
-/// Обратное к [`to_options`]: `options` снова становится `values` из подписей.
+/// Inverse of [`to_options`]: `options` becomes `values` of labels again.
 fn fold_options(info: &Value) -> Value {
     map_filters(info, |key, value| {
         if key != "options" {
@@ -239,8 +241,8 @@ fn fold_options(info: &Value) -> Value {
     })
 }
 
-/// Пройти по `filters[]` описания источника и заменить один ключ на другой,
-/// сохранив его МЕСТО в карте (сверка идёт строкой JSON).
+/// Walks the `filters[]` of a source description and replaces one key with
+/// another, keeping its PLACE in the map (the comparison is on the JSON string).
 fn map_filters<F>(info: &Value, rename: F) -> Value
 where
     F: Fn(&str, &Value) -> Option<(String, Value)>,
@@ -286,7 +288,7 @@ fn translate_source_matches_python_byte_for_byte() {
     let g = fx();
     let (_, cases) = run_all_cases(&g);
     for (name, want, got) in cases {
-        // «extra_in_sort» — осознанная починка, проверяется отдельным тестом
+        // "extra_in_sort" is a deliberate fix, checked by a separate test
         if name == "extra_in_sort" {
             continue;
         }
@@ -371,7 +373,7 @@ fn untranslate_tags_without_source_uses_common_map() {
             .collect();
         assert_eq!(loc.untranslate_tags(&input, ""), want);
     }
-    // незнакомый источник → общая карта (у неё «Комп. графика» = CGI)
+    // unknown source → the common map (there «Комп. графика» = CGI)
     assert_eq!(
         loc.untranslate_tags(&["Комп. графика".to_string()], "нет_такого"),
         vec![s(&g["untranslate_unknown_source"][0])]
@@ -381,8 +383,8 @@ fn untranslate_tags_without_source_uses_common_map() {
 #[test]
 fn cg_cgi_collision_is_resolved_per_source() {
     let _lang = i18n_pin::ru();
-    // Ради чего вообще заведены карты по источникам: одна подпись —
-    // РАЗНЫЕ исходные теги у Мастерской (CGI) и Wallhaven (CG).
+    // The whole reason for per-source maps: one label maps to DIFFERENT
+    // source tags for the Workshop (CGI) and Wallhaven (CG).
     let g = fx();
     let (loc, _) = run_all_cases(&g);
     let label = ["Комп. графика".to_string()];
@@ -393,7 +395,7 @@ fn cg_cgi_collision_is_resolved_per_source() {
 #[test]
 fn numeric_resolution_passes_through_untouched() {
     let _lang = i18n_pin::ru();
-    // Числовые разрешения в словаре не нужны: уходят обратно как есть.
+    // Numeric resolutions need no dictionary: they go back as they are.
     let g = fx();
     let (loc, _) = run_all_cases(&g);
     assert_eq!(
@@ -405,8 +407,8 @@ fn numeric_resolution_passes_through_untouched() {
 #[test]
 fn translate_source_rejects_non_object() {
     let _lang = i18n_pin::ru();
-    // Python на этом падал TypeError («'NoneType' object is not iterable» /
-    // «object is not iterable»); здесь тот же случай выражен типом ошибки.
+    // Python crashed here with TypeError ("'NoneType' object is not iterable" /
+    // "object is not iterable"); here the same case is expressed by the error type.
     let g = fx();
     assert_eq!(s(&g["errors"]["translate_source_none"][0]), "TypeError");
     assert_eq!(s(&g["errors"]["translate_source_list"][0]), "TypeError");
@@ -424,10 +426,10 @@ fn translate_source_rejects_non_object() {
 #[test]
 fn field_and_status_keys_are_always_filled() {
     let _lang = i18n_pin::ru();
-    // КВИРК ОРИГИНАЛА СОХРАНЁН НАМЕРЕННО: у полей и строк состояния
-    // label/description/placeholder/group/value проставляются даже когда их не
-    // было во входе. Вендорный QML отличает undefined от "" — «починка» тут
-    // сломала бы страницу.
+    // ORIGINAL'S QUIRK KEPT ON PURPOSE: fields and status rows get
+    // label/description/placeholder/group/value even when the input had none.
+    // The vendored QML tells undefined from "" — a "fix" here would break the
+    // page.
     let mut loc = l10n::Localizer::new();
     let out = loc
         .translate_source(&serde_json::json!({
@@ -449,8 +451,8 @@ fn field_and_status_keys_are_always_filled() {
 #[test]
 fn identifiers_are_never_translated() {
     let _lang = i18n_pin::ru();
-    // По id источника, фильтров и действий и по ключам сортировок ходят и
-    // вендорный QML, и демон — их трогать нельзя.
+    // Both the vendored QML and the daemon go by source, filter and action ids
+    // and by sort keys — they must not be touched.
     let g = fx();
     let (_, cases) = run_all_cases(&g);
     for (name, _, got) in cases {
@@ -465,8 +467,8 @@ fn identifiers_are_never_translated() {
             let want = input.get(kind).and_then(Value::as_array);
             let Some(want) = want else { continue };
             for (i, item) in want.iter().enumerate() {
-                // отсутствующий ключ сортировки Python подставляет пустым —
-                // сверяем только то, что источник реально прислал
+                // Python fills a missing sort key with an empty value —
+                // compare only what the source actually sent
                 let Some(id) = item.get(key) else { continue };
                 assert_eq!(got[kind][i].get(key), Some(id), "{name}: {kind}[{i}].{key}");
             }
@@ -474,14 +476,14 @@ fn identifiers_are_never_translated() {
     }
 }
 
-// ── починки правила #16 ────────────────────────────────────────────────
+// ── rule #16 fixes ────────────────────────────────────────────────────
 
 #[test]
 fn rule16_sort_entry_keeps_extra_keys() {
     let _lang = i18n_pin::ru();
-    // ⚠ Правило #16: Python пересобирал элемент sorts из двух полей и терял
-    // всё остальное (`icon`, `order`), хотя filters/actions копируются
-    // целиком. Здесь лишние ключи сохраняются, key/label остаются первыми.
+    // ⚠ Rule #16: Python rebuilt a sorts element from two fields and lost
+    // everything else (`icon`, `order`), although filters/actions are copied
+    // whole. Here extra keys are kept, key/label stay first.
     let g = fx();
     let case = g["translate_source"]
         .as_array()
@@ -502,25 +504,25 @@ fn rule16_sort_entry_keeps_extra_keys() {
 #[test]
 fn empty_source_mapping_stays_empty() {
     let _lang = i18n_pin::ru();
-    // Закрепление поведения: `or` оригинала здесь заменён на проверку ключа
-    // (правило #16, защитно). Наблюдаемого расхождения сегодня НЕТ — пустое
-    // значение попадает в карту только под пустой подписью, и общая карта на
-    // неё тоже ничего не отвечает; тест фиксирует результат обеих версий.
+    // Pins behaviour: the original's `or` is replaced here by a key check
+    // (rule #16, defensive). There is NO observable difference today — an empty
+    // value gets into the map only under an empty label, and the common map has
+    // no answer for it either; the test pins the result of both versions.
     let mut loc = l10n::Localizer::new();
     loc.translate_source(&serde_json::json!({
         "id": "странный",
         "filters": [{"id": "type", "values": [""]}],
     }))
     .unwrap();
-    // источник назвал пустой тег подписью «» — она и уходит обратно пустой
+    // the source named the empty tag with the label «» — it goes back empty
     assert_eq!(loc.untranslate_tags(&["".to_string()], "странный"), vec![""]);
 }
 
 #[test]
 fn rule16_source_map_is_rebuilt_not_accumulated() {
     let _lang = i18n_pin::ru();
-    // ⚠ Правило #16: в Python карта источника копилась вечно (`setdefault`),
-    // и после обновления плагина в ней оставались подписи исчезнувших тегов.
+    // ⚠ Rule #16: in Python the source map grew forever (`setdefault`), and
+    // after a plugin update it kept labels of tags that had disappeared.
     let mut loc = l10n::Localizer::new();
     let old = serde_json::json!({
         "id": "src",
@@ -542,7 +544,7 @@ fn rule16_source_map_is_rebuilt_not_accumulated() {
 }
 
 // ============================================================================
-// Каталог переводов вендорного QML
+// Vendored QML translation catalog
 // ============================================================================
 
 #[test]
@@ -554,24 +556,24 @@ fn paths_match_python() {
         l10n::default_qml_dir("/mod"),
         format!("/mod/{}", s(&g["default_qml_dir_rel"]))
     );
-    // ⚠ Исходник каталога больше не «.ts рядом с .qm»: он вендорный и лежит
-    // внутри вендорного дерева, рядом с тем самым `ui/qml`, который переводит.
+    // ⚠ The catalog source is no longer "a .ts next to the .qm": it is vendored
+    // and lives inside the vendored tree, next to the very `ui/qml` it translates.
     assert_eq!(
         l10n::vendor_ts_path("/mod"),
         "/mod/waywallen/ui/i18n/waywallen_ru.ts"
     );
     assert_eq!(l10n::DEFAULT_LRELEASE, s(&g["default_lrelease"]));
-    // ⚠ Правило #16: жёсткий арчевый путь остался последним запасным
+    // ⚠ Rule #16: the hard-coded Arch path is kept as the last fallback
     assert_eq!(l10n::LRELEASE_CANDIDATES.last(), Some(&l10n::DEFAULT_LRELEASE));
 }
 
-/// Корень вендорного дерева в рабочей копии.
+/// Root of the vendored tree in the working copy.
 fn vendor_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/qt_wallpaper_engine/qml_ui")
 }
 
-/// Все `.qml` вендорного дерева: (путь, содержимое) — то, что в Python даёт
-/// `glob("**/*.qml", recursive=True)` + чтение файла.
+/// All `.qml` of the vendored tree: (path, contents) — what Python gets from
+/// `glob("**/*.qml", recursive=True)` + reading the file.
 fn vendor_qml_files() -> Vec<(String, String)> {
     let root = vendor_root().join("waywallen/ui/qml");
     let mut out = Vec::new();
@@ -595,7 +597,7 @@ fn walk(dir: &Path, out: &mut Vec<(String, String)>) {
     }
 }
 
-/// Вендорный каталог переводов: путь и содержимое.
+/// Vendored translation catalog: path and contents.
 fn vendor_ts() -> (String, String) {
     let path = l10n::vendor_ts_path(&vendor_root().to_string_lossy());
     let body = std::fs::read_to_string(&path)
@@ -603,7 +605,7 @@ fn vendor_ts() -> (String, String) {
     (path, body)
 }
 
-/// План сборки на живом вендорном дереве.
+/// Build plan over the live vendored tree.
 fn live_plan() -> (Vec<(String, String)>, l10n::QmBuildPlan) {
     let files = vendor_qml_files();
     let (ts_path, ts) = vendor_ts();
@@ -611,7 +613,7 @@ fn live_plan() -> (Vec<(String, String)>, l10n::QmBuildPlan) {
     (files, plan)
 }
 
-/// Куда едет собранный каталог (рядом с модулем UI).
+/// Where the built catalog goes (next to the UI module).
 fn qm_path_in_tree() -> String {
     l10n::qm_path(&vendor_root().to_string_lossy())
 }
@@ -619,45 +621,45 @@ fn qm_path_in_tree() -> String {
 #[test]
 fn every_vendor_string_has_a_vendor_translation() {
     let _lang = i18n_pin::ru();
-    // Главная проверка: ВСЁ, что вендорный QML отдаёт на перевод, переведено
-    // в его же каталоге. Не ноль — значит `ui/qml` и `ui/i18n` вендорены с
-    // разных коммитов, и покупатель увидит эти строки по-английски.
+    // The main check: EVERYTHING the vendored QML sends for translation is
+    // translated in its own catalog. Non-zero means `ui/qml` and `ui/i18n` were
+    // vendored from different commits, and the buyer will see these strings in English.
     let (files, plan) = live_plan();
     assert!(
         awaiting_upstream_unexpected(&plan, &RU_AWAITING_UPSTREAM).is_empty(),
         "{}",
         vendor_drift_report(&plan)
     );
-    // и это не «почти всё»: своего словаря на вендорные подписи было 135
-    // строк, вендорный каталог закрывает всё дерево — на порядок больше.
+    // and this is not "almost everything": our own dictionary had 135 vendor
+    // labels, the vendored catalog covers the whole tree — an order of magnitude more.
     let all = l10n::vendor_sources(&files).len();
     assert!(all > 350, "вендорных строк всего {all} — дерево не то?");
 }
 
-/// Строки каталога, которых в `ui/qml` нет и не будет: вендор объявляет их в
-/// своём C++ (`ui/src`), а мы вендорим только `ui/qml` — весь C++ у нас
-/// переписан на Rust.
+/// Catalog strings that are not and will not be in `ui/qml`: the vendor
+/// declares them in its C++ (`ui/src`), and we vendor only `ui/qml` — all of
+/// the C++ is rewritten in Rust on our side.
 ///
-/// Список ЗАКРЫТЫЙ и поимённый: он не «разрешает расхождение вообще», а
-/// называет каждую строку и того, кто её показывает у нас. Строку сюда
-/// можно добавлять, только назвав наш модуль-потребитель.
+/// The list is CLOSED and itemized: it does not "allow divergence in general",
+/// it names each string and who shows it on our side. A string may be added
+/// here only together with the name of our consuming module.
 ///
-/// * «Scheme color», «Playback speed» — подписи предопределённых свойств
-///   обои. У вендора их выдаёт `ui/src/model/user_property_model.cpp`
-///   (с 0.3.8 через `tr()`), у нас — `rexon-gui/src/user_property_model.rs`.
-/// * «Mouse parallax» — третья такая подпись (параллакс от мыши, 0.4.2);
-///   в русский каталог вендора запись приехала с v0.4.4. Потребитель тот
-///   же — `rexon-gui/src/user_property_model.rs`.
+/// * «Scheme color», «Playback speed» — labels of predefined wallpaper
+///   properties. The vendor emits them from `ui/src/model/user_property_model.cpp`
+///   (via `tr()` since 0.3.8), we from `rexon-gui/src/user_property_model.rs`.
+/// * «Mouse parallax» — the third such label (mouse parallax, 0.4.2); the
+///   entry reached the vendor's Russian catalog in v0.4.4. Same consumer —
+///   `rexon-gui/src/user_property_model.rs`.
 ///
 const CATALOG_ONLY_IN_VENDOR_CPP: [&str; 3] =
     ["Scheme color", "Playback speed", "Mouse parallax"];
 
-/// Меню значка в лотке демона (контекст `TrayMenu`, у вендора
-/// `ui/src/tray_i18n.cpp`, с 0.5.0). У Rexon лотка демона НЕТ: Rexon
-/// запускает его с `--no-tray` (`rexon_core::tray`), язык меню лотка не
-/// передаётся (`DaemonDBusClient.setTrayLanguage` не нужен), показать эти
-/// строки некому. Закрытый поимённый список, как выше. «Mute», «Pause» и
-/// «Shuffle» из того же меню сюда не входят: эти слова зовёт и разметка.
+/// The daemon's tray icon menu (context `TrayMenu`, vendor's
+/// `ui/src/tray_i18n.cpp`, since 0.5.0). Rexon has NO daemon tray: Rexon
+/// starts it with `--no-tray` (`rexon_core::tray`), the tray menu language is
+/// not passed (`DaemonDBusClient.setTrayLanguage` is not needed), nobody can
+/// show these strings. A closed itemized list, as above. «Mute», «Pause» and
+/// «Shuffle» from the same menu are not here: the markup uses those words too.
 const CATALOG_TRAY_NOT_SHOWN: [&str; 15] = [
     "1 hour",
     "1 minute",
@@ -676,39 +678,73 @@ const CATALOG_TRAY_NOT_SHOWN: [&str; 15] = [
     "Unmute",
 ];
 
-/// Вендорные строки, которых в РУССКОМ каталоге апстрима нет. Строки 0.5.0
-/// (умные плейлисты, фильтр «Библиотека») апстрим перевёл к 0.6.0 — список
-/// ими больше не занят. В 0.6.0 разметка позвала семь новых строк, а каталоги
-/// тега (все четыре: ru, de, fr, zh_CN) собраны без них — `lupdate` перед
-/// выпуском не перезапускали, записей нет вовсе, даже `unfinished`:
+/// Vendor strings missing from upstream's RUSSIAN catalog. The 0.5.0 strings
+/// (smart playlists, the «Library» filter) were translated upstream by 0.6.0 —
+/// the list no longer holds them. In 0.6.0 the markup called seven new strings,
+/// and the tag's catalogs (all four: ru, de, fr, zh_CN) were built without them —
+/// `lupdate` was not rerun before the release, there are no entries at all,
+/// not even `unfinished`:
 ///
-/// * «B», «KiB», «MiB», «GiB», «TiB» — единицы размера `I18n.formatBytes`
-///   (размер обоев, ход скачивания);
-/// * «h», «m» — часы и минуты интервала смены обоев на `PlaylistEditPage`
-///   (с пояснением для переводчика «hours»/«minutes»).
+/// * «B», «KiB», «MiB», «GiB», «TiB» — size units of `I18n.formatBytes`
+///   (wallpaper size, download progress);
+/// * «h», «m» — hours and minutes of the wallpaper change interval on
+///   `PlaylistEditPage` (with the translator note "hours"/"minutes").
 ///
-/// Перевод чужой программы правится у неё — эти строки идут ПОДАЧЕЙ в
-/// waywallen (с русского оригинала: «Б», «КиБ», «МиБ», «ГиБ», «ТиБ», «ч»,
-/// «мин»), а не нашим патчем. Список закрытый и сам себя снимает: как только
-/// апстрим переведёт строку, сверка потребует убрать её отсюда.
-const RU_AWAITING_UPSTREAM: [&str; 7] = ["B", "GiB", "KiB", "MiB", "TiB", "h", "m"];
+/// Another program's translation is fixed in that program — these strings go
+/// as a SUBMISSION to waywallen (from the Russian original: «Б», «КиБ», «МиБ»,
+/// «ГиБ», «ТиБ», «ч», «мин»), not as our patch. The list is closed and removes
+/// itself: as soon as upstream translates a string, the check demands it be
+/// removed from here.
+///
+/// waywallen 0.6.1 repeated it: the markup asks for sixteen more strings
+/// (card badges and their rules page, the artist page, "Back"/"Menu" of the
+/// new navigation, "Change library folder", the unavailable-source notice,
+/// "Wallpaper type") and only zh_CN got them; ru, de, uk, es and fr have no
+/// entries at all, upstream main neither (checked 2026-11-24). Same answer:
+/// a translation submitted to waywallen, not a local dictionary.
+const RU_AWAITING_UPSTREAM: [&str; 23] = [
+    "%1: %2 → %3",
+    "Artist",
+    "B",
+    "Back",
+    "Badge text",
+    "Card badge rules",
+    "Card badges",
+    "Change library folder",
+    "Edit",
+    "Edit rules",
+    "GiB",
+    "KiB",
+    "Match field",
+    "Matching value",
+    "Menu",
+    "MiB",
+    "Rules ignore case and match the whole value. Use * for any number of characters and ? for one character. A tag rule matches any tag on the wallpaper.",
+    "Show card badges",
+    "This source is no longer available.",
+    "TiB",
+    "Wallpaper type",
+    "h",
+    "m",
+];
 
-/// То же для НЕМЕЦКОГО каталога апстрима: те же семь строк 0.6.0. Немецкий
-/// перевод Rexon делается С РУССКОГО оригинала — и подача в waywallen тоже.
-const DE_AWAITING_UPSTREAM: [&str; 7] = RU_AWAITING_UPSTREAM;
+/// The same for upstream's GERMAN catalog: the same strings (seven from 0.6.0,
+/// sixteen from 0.6.1). Rexon's German translation is made FROM the Russian
+/// original — and so is the submission to waywallen.
+const DE_AWAITING_UPSTREAM: [&str; 23] = RU_AWAITING_UPSTREAM;
 
-/// Записи каталога 0.6.0, строк которых нет уже нигде у апстрима — ни в
-/// `ui/qml`, ни в `ui/src` (на теге v0.6.0 они остались только в `.ts`):
-/// «256 MiB» и «512 MiB» — прежние варианты «Image GPU cache» в настройках,
-/// «Reverse order» — прежний пункт сортировки. Тот же недозапуск `lupdate`,
-/// что выше, только в другую сторону; вреда нет — перевод никто не спросит.
-/// Закрытый поимённый список, снимается сам, когда апстрим вычистит каталог.
+/// 0.6.0 catalog entries whose strings no longer exist anywhere upstream —
+/// neither in `ui/qml` nor in `ui/src` (on tag v0.6.0 they remain only in `.ts`):
+/// «256 MiB» and «512 MiB» — former «Image GPU cache» options in settings,
+/// «Reverse order» — a former sort item. The same missed `lupdate` run as
+/// above, only the other way round; harmless — nobody will ask for the translation.
+/// A closed itemized list, removes itself when upstream cleans the catalog.
 const CATALOG_STALE_IN_UPSTREAM: [&str; 3] = ["256 MiB", "512 MiB", "Reverse order"];
 
 #[test]
 fn every_vendor_string_has_a_german_translation() {
-    // Немецкий каталог апстрима собирается в свой `.qm` и показывается
-    // немецкому Rexon — пробелы в нём видны покупателю так же, как в русском.
+    // Upstream's German catalog is built into its own `.qm` and shown to German
+    // Rexon — its gaps are visible to the buyer just as in the Russian one.
     let files = vendor_qml_files();
     let root = vendor_root().to_string_lossy().into_owned();
     let ts_path = l10n::vendor_ts_path_for(&root, "de");
@@ -722,9 +758,9 @@ fn every_vendor_string_has_a_german_translation() {
     );
 }
 
-/// Непереведённые строки плана, которых НЕТ в списке ждущих апстрима.
-/// Обратная сторона проверяется тут же: строка из списка, которую апстрим
-/// уже перевёл, — повод вычеркнуть её (иначе список протухнет).
+/// Untranslated plan strings that are NOT in the awaiting-upstream list.
+/// The reverse is checked right here too: a listed string that upstream has
+/// already translated is a reason to strike it out (otherwise the list goes stale).
 fn awaiting_upstream_unexpected<'a>(
     plan: &'a l10n::QmBuildPlan,
     awaiting: &[&str],
@@ -744,9 +780,9 @@ fn awaiting_upstream_unexpected<'a>(
 #[test]
 fn catalog_has_nothing_the_vendor_qml_lost() {
     let _lang = i18n_pin::ru();
-    // Обратный перекос: запись каталога, которой в `ui/qml` уже нет. Сам по
-    // себе безвреден, но это ровно тот же симптом — `qml` и `i18n` вендорены
-    // с разных коммитов, и в другую сторону перекос уже вредит.
+    // Reverse skew: a catalog entry that `ui/qml` no longer has. Harmless by
+    // itself, but it is exactly the same symptom — `qml` and `i18n` vendored
+    // from different commits, and in the other direction the skew already hurts.
     let (_, plan) = live_plan();
     let stale: Vec<&String> = plan
         .stale
@@ -756,8 +792,8 @@ fn catalog_has_nothing_the_vendor_qml_lost() {
         .filter(|s| !CATALOG_STALE_IN_UPSTREAM.contains(&s.as_str()))
         .collect();
     assert!(stale.is_empty(), "{}", vendor_drift_report(&plan));
-    // Список исключений не должен протухнуть: каждая строка обязана в
-    // каталоге БЫТЬ, иначе она давно не нужна и её пора выкинуть отсюда.
+    // The exception list must not go stale: every string must BE in the catalog,
+    // otherwise it has long been unneeded and should be thrown out of here.
     for extra in CATALOG_ONLY_IN_VENDOR_CPP
         .iter()
         .chain(CATALOG_TRAY_NOT_SHOWN.iter())
@@ -770,9 +806,9 @@ fn catalog_has_nothing_the_vendor_qml_lost() {
     }
 }
 
-/// Что сказать человеку, когда каталог разошёлся с вендорным QML.
+/// What to tell a person when the catalog has diverged from the vendored QML.
 ///
-/// Просто «не совпало» бесполезно: непонятно, ЧТО разошлось и что делать.
+/// A bare "mismatch" is useless: it is unclear WHAT diverged and what to do.
 fn vendor_drift_report(plan: &l10n::QmBuildPlan) -> String {
     let mut out = String::new();
     if plan.untranslated.is_empty() && plan.stale.is_empty() {
@@ -783,7 +819,8 @@ fn vendor_drift_report(plan: &l10n::QmBuildPlan) -> String {
             "вендорных строк без перевода: {} (покупатель видит их по-английски)\n",
             plan.untranslated.len()
         ));
-        for lost in plan.untranslated.iter().take(20) {
+        // The whole list: it is what goes into the awaiting-upstream list.
+        for lost in plan.untranslated.iter() {
             out.push_str(&format!("  ❌ «{lost}»\n"));
         }
     }
@@ -805,7 +842,7 @@ fn vendor_drift_report(plan: &l10n::QmBuildPlan) -> String {
     out
 }
 
-/// Первый доступный `lrelease` — как в `remote_l10n._find_lrelease()`.
+/// The first available `lrelease` — as in `remote_l10n._find_lrelease()`.
 fn lrelease() -> String {
     for cand in l10n::LRELEASE_CANDIDATES {
         if cand.contains('/') {
@@ -823,19 +860,19 @@ fn lrelease() -> String {
     l10n::DEFAULT_LRELEASE.to_string()
 }
 
-/// ⚠️ Живая машина нужна ПО СУЩЕСТВУ: сверка запускает настоящий
-/// `lrelease` и сравнивает его вывод с закоммиченным `.qm` байт в байт.
-/// Подделать сборщик каталога нечем — в этом и вопрос. Под
-/// `cargo test-core-isolated` пропускается с причиной.
+/// ⚠️ A live machine is needed ESSENTIALLY: the check runs the real `lrelease`
+/// and compares its output with the committed `.qm` byte for byte. There is
+/// nothing to fake the catalog builder with — that is the whole question.
+/// Skipped with a reason under `cargo test-core-isolated`.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: запускает настоящий lrelease")]
 fn committed_qm_is_compiled_from_the_vendored_catalog() {
-    // Каталог, который едет в сборку, обязан быть собран из ТОГО ЖЕ вендорного
-    // `.ts`, что лежит в дереве: иначе обновление вендора тихо оставляет
-    // покупателю старые подписи. Собираем во временный файл и сверяем байты.
-    // Каталогов столько, сколько вендорено `.ts` (с 0.5.0 — ru и de), и
-    // каждый обязан лежать собранным рядом с модулем: без `.qm` язык не
-    // попадёт в список языков вкладки, и страницы останутся английскими.
+    // The catalog shipped in the build must be compiled from THE SAME vendored
+    // `.ts` that lies in the tree: otherwise a vendor update silently leaves the
+    // buyer with old labels. Build into a temporary file and compare the bytes.
+    // There are as many catalogs as vendored `.ts` (since 0.5.0 — ru and de), and
+    // each must lie built next to the module: without a `.qm` the language does not
+    // get into the tab's language list, and the pages stay in English.
     let lrelease = lrelease();
     if !Path::new(&lrelease).exists() {
         eprintln!("lrelease не найден ({lrelease}) — сверка собранного каталога пропущена");
@@ -873,7 +910,7 @@ fn committed_qm_is_compiled_from_the_vendored_catalog() {
     }
 }
 
-/// Языки вендорных каталогов `.ts` в дереве.
+/// Languages of the vendored `.ts` catalogs in the tree.
 fn vendor_catalogs() -> Vec<String> {
     let dir = vendor_root().join(l10n::VENDOR_I18N_REL);
     let names: Vec<String> = std::fs::read_dir(&dir)
@@ -884,15 +921,15 @@ fn vendor_catalogs() -> Vec<String> {
     l10n::vendor_catalog_languages(&names)
 }
 
-/// Каждый каталог перевода апстрима (`ui/i18n/waywallen_*.ts` тега из
-/// `ui/UPSTREAM_TAG`) лежит в вендоре, слово в слово. 08.11.2026 вендорились
-/// только ru и de, а китайский, переведённый у апстрима с 0.5.0, потерялся
-/// — Rexon по-китайски показывал вкладку обоев по-английски.
+/// Every upstream translation catalog (`ui/i18n/waywallen_*.ts` of the tag from
+/// `ui/UPSTREAM_TAG`) lies in the vendor tree, word for word. On 08.11.2026 only
+/// ru and de were vendored, and Chinese, translated upstream since 0.5.0, got
+/// lost — Rexon in Chinese showed the wallpaper tab in English.
 ///
-/// Клон апстрима — `$REXON_WAYWALLEN_SOURCE`, иначе тот же, что у
-/// `scripts/rexon-vendor-update` (`~/Загрузки/owe-ref/waywallen`); нет
-/// клона или тега в нём — «НЕ ПРОВЕРЕНО», а не молчаливый пропуск. Без клона
-/// сторожит хотя бы то, что синхронизация берёт `ui/i18n` целиком.
+/// The upstream clone is `$REXON_WAYWALLEN_SOURCE`, otherwise the same as for
+/// `scripts/rexon-vendor-update` (`~/Загрузки/owe-ref/waywallen`); no clone or
+/// no tag in it — «НЕ ПРОВЕРЕНО», not a silent skip. Without a clone it at
+/// least guards that the sync takes `ui/i18n` whole.
 #[test]
 fn vendor_has_every_upstream_catalog() {
     let script = include_str!("../../../scripts/sync-waywallen-qml.py");
@@ -936,9 +973,9 @@ fn vendor_has_every_upstream_catalog() {
     }
 }
 
-/// Каждый язык Rexon, у которого вендор несёт каталог страниц, получает
-/// именно свой `.qm` (код языка Rexon ↔ имя файла): `zh_CN` →
-/// `waywallen_zh_CN.qm`, а не английские исходники.
+/// Every Rexon language for which the vendor ships a page catalog gets exactly
+/// its own `.qm` (Rexon language code ↔ file name): `zh_CN` →
+/// `waywallen_zh_CN.qm`, not the English sources.
 #[test]
 fn every_rexon_language_with_vendor_catalog_picks_its_qm() {
     let codes = vendor_catalogs();
@@ -963,7 +1000,7 @@ fn vendor_catalog_languages_from_file_names() {
         "/mod/waywallen/ui/i18n/waywallen_de.ts"
     );
     assert_eq!(l10n::qm_path_for("/mod", "de"), "/mod/waywallen_de.qm");
-    // прежний путь русского каталога — частный случай общего
+    // the former Russian catalog path is a special case of the general one
     assert_eq!(l10n::vendor_ts_path_for("/mod", "ru"), l10n::vendor_ts_path("/mod"));
     assert_eq!(l10n::qm_path_for("/mod", "ru"), l10n::qm_path("/mod"));
 }
@@ -971,11 +1008,11 @@ fn vendor_catalog_languages_from_file_names() {
 #[test]
 fn nothing_the_python_dictionary_translated_was_lost() {
     let _lang = i18n_pin::ru();
-    // Своего словаря больше нет — но ни одна строка, которую он переводил, не
-    // должна остаться без перевода. Эталон `build_qm_ts_real` снят с живого
-    // Python на вендорном дереве v0.2.6+9: берём из него все `<source>` и
-    // требуем, чтобы каждая, что дожила до сегодняшнего `ui/qml`, была
-    // переведена вендорным каталогом.
+    // Our own dictionary is gone — but no string it translated may be left
+    // untranslated. The `build_qm_ts_real` golden data was captured from the live
+    // Python on vendored tree v0.2.6+9: take all `<source>` from it and require
+    // that each one still present in today's `ui/qml` is translated by the
+    // vendored catalog.
     let g = fx();
     let (files, plan) = live_plan();
     let alive: std::collections::BTreeSet<String> =
@@ -990,7 +1027,7 @@ fn nothing_the_python_dictionary_translated_was_lost() {
             _ => continue,
         };
         if !alive.contains(source) {
-            continue; // вендор убрал строку — переводить нечего
+            continue; // the vendor dropped the string — nothing to translate
         }
         checked += 1;
         assert!(
@@ -1005,9 +1042,9 @@ fn nothing_the_python_dictionary_translated_was_lost() {
 
 #[test]
 fn plural_forms_match_russian_rules() {
-    // Формы множественного числа считает Qt по языку каталога: для русского их
-    // три (1 / 2–4 / 5 и больше). Меньше форм — lrelease ругается, часть чисел
-    // останется без перевода.
+    // Qt counts plural forms by the catalog language: Russian has three
+    // (1 / 2–4 / 5 and more). Fewer forms — lrelease complains and some numbers
+    // stay untranslated.
     let (_, ts) = vendor_ts();
     assert!(
         ts.contains("language=\"ru_RU\"") || ts.contains("language=\"ru\""),
@@ -1033,9 +1070,9 @@ fn plural_forms_match_russian_rules() {
 
 #[test]
 fn playlist_counter_is_translated_on_both_pages() {
-    // Счётчик обоев в плейлисте — единственная строка, где перевод зависит от
-    // числа. Она стоит на двух вендорных страницах, и обе обязаны быть в
-    // каталоге, иначе одна из них покажет английское «3 wallpapers».
+    // The wallpaper counter in a playlist is the only string whose translation
+    // depends on a number. It appears on two vendor pages, and both must be in
+    // the catalog, otherwise one of them shows the English «3 wallpapers».
     let (_, ts) = vendor_ts();
     assert_eq!(
         ts.matches("<source>%n wallpaper(s)</source>").count(),
@@ -1050,9 +1087,9 @@ fn playlist_counter_is_translated_on_both_pages() {
 
 #[test]
 fn vendor_sources_reads_both_quote_styles_and_plurals() {
-    // ⚠ Правило #16: Python видел только `qsTr("…")` — ни одинарных кавычек
-    // (вендор пишет `qsTr('Status')` в `Window.qml`), ни вызова со счётчиком
-    // `qsTr("…", "", n)`. Такая строка молча оставалась без перевода.
+    // ⚠ Rule #16: Python saw only `qsTr("…")` — neither single quotes
+    // (the vendor writes `qsTr('Status')` in `Window.qml`) nor the counted call
+    // `qsTr("…", "", n)`. Such a string silently stayed untranslated.
     let files = [(
         "/a/Mix.qml".to_string(),
         "qsTr(\"Search\") qsTr('Status') qsTr(\"%n wallpaper(s)\", \"\", n) \
@@ -1063,7 +1100,7 @@ fn vendor_sources_reads_both_quote_styles_and_plurals() {
         l10n::vendor_sources(&files),
         vec!["%n wallpaper(s)", "Names", "Search", "Status"]
     );
-    // и обе формы вендор действительно использует
+    // and the vendor really uses both forms
     let live = vendor_qml_files();
     assert!(live.iter().any(|(_, body)| body.contains("qsTr('")));
     assert!(live.iter().any(|(_, body)| body.contains(", \"\", ")));
@@ -1071,8 +1108,8 @@ fn vendor_sources_reads_both_quote_styles_and_plurals() {
 
 #[test]
 fn vendor_sources_reads_qs_translate() {
-    // waywallen 0.5.0: `qsTranslate("Контекст", "…")` — строка ВТОРЫМ
-    // аргументом. Выражение вместо литерала и чужие функции — мимо.
+    // waywallen 0.5.0: `qsTranslate("Context", "…")` — the string is the SECOND
+    // argument. An expression instead of a literal and foreign functions are skipped.
     let files = [(
         "/a/Rules.qml".to_string(),
         "qsTranslate(\"WallpaperFilterDialog\", \"Group %1\").arg(n) \
@@ -1087,9 +1124,9 @@ fn vendor_sources_reads_qs_translate() {
 
 #[test]
 fn catalog_reader_skips_unfinished_and_unescapes_xml() {
-    // Незавершённый перевод переводом НЕ считается: Qt отдаст исходную строку,
-    // и покупатель увидит английский. Спецсимволы XML разбираются обратно —
-    // иначе строка `A & B` из QML никогда не совпадёт с записью каталога.
+    // An unfinished translation does NOT count as a translation: Qt returns the
+    // source string and the buyer sees English. XML special characters are decoded
+    // back — otherwise the string `A & B` from QML never matches the catalog entry.
     let ts = r#"<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ru_RU">
@@ -1141,13 +1178,13 @@ fn plan_names_the_compiler_command() {
         plan.lrelease_argv,
         vec!["/bin/lrelease", "/v/ru.ts", "-qm", "/out/ru.qm"]
     );
-    // перекос виден в обе стороны
+    // the skew is visible in both directions
     assert_eq!(plan.untranslated, vec!["Gone"]);
     assert_eq!(plan.stale, vec!["Old"]);
 }
 
 // ============================================================================
-// Вырожденные входы (в Python — «or» и str())
+// Degenerate inputs (in Python — "or" and str())
 // ============================================================================
 
 #[test]
@@ -1159,7 +1196,7 @@ fn degenerate_inputs() {
     assert!(loc.untranslate_tags(&empty, "").is_empty());
     assert!(g["untranslate_none"].as_array().unwrap().is_empty());
     assert!(g["tag_labels_none"].as_array().unwrap().is_empty());
-    // пустое описание источника: словари всё равно проставляются
+    // empty source description: the dictionaries are filled in anyway
     let mut loc = l10n::Localizer::new();
     let out = loc.translate_source(&Value::Object(Map::new())).unwrap();
     assert_eq!(
@@ -1169,19 +1206,19 @@ fn degenerate_inputs() {
 }
 
 // ============================================================================
-// Язык интерфейса вендорных страниц (ui_language.cpp оригинала)
+// Interface language of the vendored pages (original's ui_language.cpp)
 // ============================================================================
 
 #[test]
 fn ui_language_codes_from_catalogs() {
-    // Ровно то, что лежит рядом с модулем: одно имя наше, остальные мимо.
+    // Exactly what lies next to the module: one name is ours, the rest are skipped.
     let names = [
         "waywallen_ru.qm".to_string(),
         "waywallen_zh_CN.qm".to_string(),
-        // английский каталог отбрасывается — исходные строки и так его
+        // the English catalog is dropped — the source strings already are English
         "waywallen_en.qm".to_string(),
         "waywallen_en_GB.qm".to_string(),
-        // не наши файлы
+        // not our files
         "qtbase_ru.qm".to_string(),
         "waywallen_ru.ts".to_string(),
         "waywallen_.qm".to_string(),
@@ -1197,7 +1234,7 @@ fn ui_language_codes_from_catalogs() {
 #[test]
 fn ui_language_normalize() {
     let codes = vec!["ru".to_string(), "zh_CN".to_string()];
-    // «как в системе» и английский принимаются всегда
+    // "as in the system" and English are always accepted
     assert_eq!(
         l10n::normalize_ui_language("system", &codes).as_deref(),
         Some("system")
@@ -1206,12 +1243,12 @@ fn ui_language_normalize() {
         l10n::normalize_ui_language("en_US", &codes).as_deref(),
         Some("en")
     );
-    // точное совпадение
+    // exact match
     assert_eq!(
         l10n::normalize_ui_language("zh_CN", &codes).as_deref(),
         Some("zh_CN")
     );
-    // по базовому языку в обе стороны
+    // by base language in both directions
     assert_eq!(
         l10n::normalize_ui_language("ru_RU.UTF-8", &codes).as_deref(),
         Some("ru")
@@ -1220,7 +1257,7 @@ fn ui_language_normalize() {
         l10n::normalize_ui_language("zh", &codes).as_deref(),
         Some("zh_CN")
     );
-    // неподдерживаемый и пустой — отказ (у оригинала `setUiLanguage` → false)
+    // unsupported and empty — rejected (in the original `setUiLanguage` → false)
     assert!(l10n::normalize_ui_language("de", &codes).is_none());
     assert!(l10n::normalize_ui_language("", &codes).is_none());
 }
@@ -1229,49 +1266,49 @@ fn ui_language_normalize() {
 fn ui_language_plan() {
     let codes = vec!["ru".to_string()];
 
-    // «как в системе»: локаль системы решает каталог, но каталог не обязателен
+    // "as in the system": the system locale picks the catalog, but the catalog is optional
     let system = l10n::plan_ui_language("system", "ru_RU", &codes).unwrap();
     assert_eq!(system.preference, "system");
     assert_eq!(system.locale_name, "");
     assert_eq!(system.qm_file, "waywallen_ru.qm");
     assert!(!system.required);
 
-    // система английская — каталога нет, и это НЕ ошибка
+    // the system is English — no catalog, and that is NOT an error
     let system_en = l10n::plan_ui_language("system", "en_US", &codes).unwrap();
     assert_eq!(system_en.qm_file, "");
     assert!(!system_en.required);
 
-    // система немецкая, каталога нет — тоже исходные строки
+    // the system is German, no catalog — source strings as well
     let system_de = l10n::plan_ui_language("system", "de_DE", &codes).unwrap();
     assert_eq!(system_de.qm_file, "");
 
-    // английский: каталог не нужен, строки исходные
+    // English: no catalog needed, the strings are the sources
     let english = l10n::plan_ui_language("en", "ru_RU", &codes).unwrap();
     assert_eq!(english.preference, "en");
     assert_eq!(english.locale_name, "en");
     assert_eq!(english.qm_file, "");
     assert!(!english.required);
 
-    // русский: каталог обязателен
+    // Russian: the catalog is required
     let russian = l10n::plan_ui_language("ru_RU", "en_US", &codes).unwrap();
     assert_eq!(russian.preference, "ru");
     assert_eq!(russian.locale_name, "ru");
     assert_eq!(russian.qm_file, "waywallen_ru.qm");
     assert!(russian.required);
 
-    // языка нет — плана нет
+    // no language — no plan
     assert!(l10n::plan_ui_language("de", "ru_RU", &codes).is_none());
 }
 
 // ============================================================================
-// Язык интерфейса: английский исходник, русский — как было
+// Interface language: English source, Russian as before
 // ============================================================================
 
 fn has_cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// На английском интерфейсе ни одна подпись каталогов не выходит по-русски.
+/// With the English interface no catalog label comes out in Russian.
 #[test]
 fn english_remote_labels_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -1291,9 +1328,9 @@ fn english_remote_labels_have_no_russian() {
             assert!(!has_cyrillic(&shown), "{key}: {shown}");
         }
     }
-    // И полный перевод описания источника из эталона — тоже.
-    // Идентификаторы (`id`, `key`) не переводятся по построению — в эталоне
-    // есть и кириллический `id` фильтра, он обязан пройти как был.
+    // And the full translation of the golden source description too.
+    // Identifiers (`id`, `key`) are not translated by construction — the golden
+    // data has a Cyrillic filter `id` as well, it must pass through as is.
     fn shown_strings(v: &Value, out: &mut Vec<String>) {
         match v {
             Value::String(s) => out.push(s.clone()),
@@ -1305,8 +1342,8 @@ fn english_remote_labels_have_no_russian() {
             _ => {}
         }
     }
-    // Незнакомая строка источника проходит как была (так задумано), поэтому
-    // сверяется только то, чего во входе не было, — наша подпись.
+    // An unknown source string passes through as is (by design), so only what
+    // the input did not have is compared — our label.
     let g = fx();
     let (_, cases) = run_all_cases(&g);
     for ((name, _, got), case) in cases.into_iter().zip(g["translate_source"].as_array().unwrap()) {
@@ -1320,7 +1357,7 @@ fn english_remote_labels_have_no_russian() {
     }
 }
 
-/// Английские подписи — словами Steam и самого плагина, а не калькой.
+/// English labels use the words of Steam and of the plugin itself, not a calque.
 #[test]
 fn english_phrases_read_naturally() {
     let _lang = i18n_pin::en();
@@ -1331,16 +1368,16 @@ fn english_phrases_read_naturally() {
     assert_eq!(l10n::tag_label("Mature"), "18+ (Mature)");
     assert_eq!(l10n::tag_label("Anime"), "Anime");
     assert_eq!(l10n::text("Sign out"), "Sign out");
-    // Обратный перевод работает и по английской подписи: CG/CGI сходятся
-    // в одну, и побеждает последняя пара — как по-русски.
+    // Reverse translation works by the English label too: CG/CGI merge into
+    // one, and the last pair wins — as in Russian.
     assert_eq!(l10n::tag_back("CGI"), Some("CGI"));
     assert_eq!(l10n::tag_back("18+ (Mature)"), Some("Mature"));
     let loc = l10n::Localizer::new();
     assert_eq!(loc.untranslate_tags(&["0+ (Everyone)"], "wallhaven"), vec!["Everyone"]);
 }
 
-/// Наш слой в разрешении подписи плагина (`plugin_l10n::resolve`) говорит
-/// по-русски дословно как раньше: «Вход не выполнен», «Выйти».
+/// Our layer in plugin label resolution (`plugin_l10n::resolve`) speaks
+/// Russian word for word as before: «Вход не выполнен», «Выйти».
 #[test]
 fn plugin_resolve_falls_back_to_our_russian() {
     let _lang = i18n_pin::ru();

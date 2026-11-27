@@ -1,18 +1,22 @@
-// Мост «не гасить экран» — исполнитель решений ядра.
+// The "do not blank the screen" bridge — the executor of the core's
+// decisions.
 //
-// ЧТО ГДЕ. Нужен ли мост в этом окружении, куда пробрасывать удержание, учёт
-// куки и все ответы — `rexon_core::screensaver_bridge`, там же тесты. Здесь
-// только исполнение: спросить шину, есть ли у имён хозяева, скормить план
-// шиму (`cpp/rexon_screensaver_bridge.cpp`) и разносить по нему действия
-// ядра. Весь учёт — под одним замком, действия исполняются ПОСЛЕ его снятия:
-// шим может звать обратно в этом же потоке.
+// WHAT IS WHERE. Whether the bridge is needed in this environment, where to
+// forward the inhibition, cookie bookkeeping and all answers are in
+// `rexon_core::screensaver_bridge`, together with the tests. Here there is
+// only execution: ask the bus whether the names have owners, feed the plan
+// to the shim (`cpp/rexon_screensaver_bridge.cpp`) and carry out the
+// core's actions through it. All bookkeeping is under one lock, and the
+// actions are executed AFTER it is released: the shim may call back in the
+// same thread.
 //
-// Запрет простоя протоколом Wayland (там, где по шине держать нечем) — модуль
-// `wayland_idle` ниже: своё подключение к композитору, отдельное от Qt,
-// невидимая слой-поверхность 1×1 и `zwp_idle_inhibitor_v1` на ней. Отдельное
-// подключение — намеренно: Qt в этом процессе может сидеть и на X11, и на
-// offscreen, а запрет обязан жить ровно столько, сколько процесс Rexon:
-// умер процесс — закрылось подключение — композитор снял запрет сам.
+// Inhibiting idle through the Wayland protocol (where there is nothing to
+// hold over the bus) is the `wayland_idle` module below: its own connection
+// to the compositor, separate from Qt, an invisible 1×1 layer surface and
+// `zwp_idle_inhibitor_v1` on it. A separate connection on purpose: Qt in
+// this process may sit on X11 or on offscreen, while the inhibition must
+// live exactly as long as the Rexon process: the process dies — the
+// connection closes — the compositor lifts the inhibition by itself.
 
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Mutex;
@@ -85,7 +89,7 @@ fn text(ptr: *const c_char) -> String {
     unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
 }
 
-/// Массив C-строк на время вызова шима.
+/// Array of C strings for the duration of a shim call.
 struct CArgs {
     _owned: Vec<CString>,
     ptrs: Vec<*const c_char>,
@@ -114,7 +118,7 @@ fn has_owner(name: &str) -> Option<bool> {
     }
 }
 
-/// Исполнить действия ядра (замок учёта уже снят).
+/// Execute the core's actions (the bookkeeping lock is already released).
 fn run(actions: Vec<Action>) {
     for action in actions {
         match action {
@@ -152,8 +156,8 @@ fn run(actions: Vec<Action>) {
             Action::Watch(name) => {
                 let n = cstr(&name);
                 unsafe { rexon_ssb_watch(n.as_ptr()) };
-                // Клиент мог уйти раньше, чем встала слежка, — тогда сигнала
-                // об уходе уже не будет, и удержание повисло бы навсегда.
+                // The client may have left before the watch was set up — then there will
+                // be no departure signal any more, and the inhibition would hang forever.
                 if has_owner(&name) == Some(false) {
                     vanished_now(&name);
                 }
@@ -203,7 +207,8 @@ extern "C" fn on_message(
         b.on_message(token, &sender, &iface, &member, &signature, &args)
     });
     if !answered {
-        // Учёта нет — квитанцию всё равно закрыть, клиент не должен ждать.
+        // There is no bookkeeping — close the receipt anyway, the client must not
+        // wait.
         let n = cstr(core_ssb::ERROR_FAILED);
         let t = cstr("мост не готов");
         unsafe { rexon_ssb_reply_error(token, n.as_ptr(), t.as_ptr()) };
@@ -219,8 +224,8 @@ extern "C" fn on_vanished(name: *const c_char) {
     vanished_now(&text(name));
 }
 
-/// Имя забрал другой хозяин (попросил с заменой): снять у сеанса всё, что
-/// держали, и сойти с шины.
+/// Another owner took the name (asked for it with replacement): release
+/// everything held with the session and step down from the bus.
 extern "C" fn on_lost() {
     let actions = book()
         .lock()
@@ -229,17 +234,19 @@ extern "C" fn on_lost() {
         .map(Book::release_all)
         .unwrap_or_default();
     run(actions);
-    // Учёт остаётся: проброс, на который сеанс ещё не ответил, снимется по
-    // его ответу (`on_call_done` видит, что записи уже нет). Обнулённый
-    // учёт выбросил бы этот ответ, и куки сеанса висела бы за Rexon до
-    // конца сеанса. Новых вызовов не будет — объекты с шины сняты.
+    // The bookkeeping stays: a forwarding the session has not answered yet will
+    // be released on its answer (`on_call_done` sees that the entry is already
+    // gone). Zeroed bookkeeping would throw that answer away, and the session's
+    // cookie would hang on Rexon until the end of the session. There will be no
+    // new calls — the objects are removed from the bus.
     let service = cstr(core_ssb::SERVICE);
     unsafe { rexon_ssb_stop(service.as_ptr()) };
     log_info!(AREA, "{} забрал другой хозяин — мост сошёл", core_ssb::SERVICE);
 }
 
-/// Вывод `mate-screensaver-command --version`; `None` — команды нет или она
-/// не ответила за несколько секунд (тогда её гасим по PID).
+/// Output of `mate-screensaver-command --version`; `None` means there is no
+/// command or it did not answer within a few seconds (then it is killed by
+/// PID).
 fn mate_screensaver_version() -> Option<String> {
     let [prog, arg] = core_ssb::MATE_SCREENSAVER_VERSION_ARGV;
     let mut child = std::process::Command::new(prog)
@@ -268,8 +275,8 @@ fn mate_screensaver_version() -> Option<String> {
     Some(out)
 }
 
-/// Решить и, если надо, поставить мост. Ждёт [`core_ssb::START_DELAY`] —
-/// звать из фонового потока.
+/// Decide and, if needed, set up the bridge. Waits for
+/// [`core_ssb::START_DELAY`] — call from a background thread.
 fn start_after_delay() {
     std::thread::sleep(core_ssb::START_DELAY);
     let xdg = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
@@ -310,10 +317,11 @@ fn start_after_delay() {
     }
 }
 
-/// Поставить мост «не гасить экран» в фоне — один раз за процесс.
+/// Set up the "do not blank the screen" bridge in the background — once per
+/// process.
 ///
-/// Звать из процесса, который живёт весь сеанс (главное окно со значком в
-/// лотке): удержания числятся за его подключением к шине.
+/// Call from a process that lives for the whole session (the main window
+/// with the tray icon): inhibitions are counted against its bus connection.
 pub fn spawn_once() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -326,8 +334,9 @@ pub fn spawn_once() {
     });
 }
 
-/// Запрет простоя протоколом Wayland: решение «держать / отпустить» — ядро
-/// ([`Action::HoldIdle`]), здесь только подключение и поверхность.
+/// Inhibiting idle through the Wayland protocol: the "hold / release"
+/// decision is the core's ([`Action::HoldIdle`]); here there is only the
+/// connection and the surface.
 pub mod wayland_idle {
     use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
     use std::sync::{Arc, Mutex};
@@ -347,8 +356,8 @@ pub mod wayland_idle {
 
     use super::AREA;
 
-    /// Пространство имён слой-поверхности: по нему её видно в
-    /// `swaymsg -t get_outputs`/`hyprctl layers` и в журнале композитора.
+    /// Namespace of the layer surface: it is visible by it in
+    /// `swaymsg -t get_outputs`/`hyprctl layers` and in the compositor log.
     pub const LAYER_NAMESPACE: &str = "rexon-idle-inhibit";
 
     #[derive(Default)]
@@ -401,7 +410,8 @@ pub mod wayland_idle {
     delegate_noop!(State: zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1);
     delegate_noop!(State: zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1);
 
-    /// Имя процесса на том конце сокета Wayland (`/proc/PID/comm`).
+    /// Name of the process on the other end of the Wayland socket
+    /// (`/proc/PID/comm`).
     fn peer_comm(conn: &Connection) -> Option<String> {
         let backend = conn.backend();
         let fd = backend.poll_fd();
@@ -423,8 +433,8 @@ pub mod wayland_idle {
         Some(comm.trim().to_string())
     }
 
-    /// Что за композитор и какие глобалы он объявил; `None` — сеанс не
-    /// Wayland или подключиться не вышло.
+    /// Which compositor it is and which globals it announced; `None` means the
+    /// session is not Wayland or connecting failed.
     pub fn probe() -> Option<WaylandFacts> {
         std::env::var_os("WAYLAND_DISPLAY")?;
         let conn = Connection::connect_to_env().ok()?;
@@ -443,7 +453,7 @@ pub mod wayland_idle {
         &HOLD
     }
 
-    /// Поставить (`true`) или снять (`false`) запрет. Повтор — без действия.
+    /// Set (`true`) or lift (`false`) the inhibition. A repeat does nothing.
     pub fn set(on: bool) {
         let mut guard = hold().lock().unwrap_or_else(|e| e.into_inner());
         if on {
@@ -474,8 +484,8 @@ pub mod wayland_idle {
         }
     }
 
-    /// Подключиться, поставить поверхность и запрет, держать до сигнала
-    /// `stop`. Закрытие подключения при выходе снимает всё разом.
+    /// Connect, set up the surface and the inhibition, hold until the `stop`
+    /// signal. Closing the connection on exit removes everything at once.
     fn run(stop: &OwnedFd) -> Result<(), String> {
         let conn = Connection::connect_to_env().map_err(|e| format!("подключение: {e}"))?;
         let (globals, mut queue) =
@@ -490,8 +500,8 @@ pub mod wayland_idle {
         let manager: zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1 =
             globals.bind(&qh, 1..=1, ()).map_err(|e| bind_err("zwp_idle_inhibit_manager_v1", e))?;
 
-        // Один прозрачный пиксель: поверхность без буфера не «отображена», и
-        // sway такой запрет не считает.
+        // One transparent pixel: a surface without a buffer is not "mapped", and
+        // sway does not count such an inhibition.
         let memfd = unsafe { libc::memfd_create(c"rexon-idle-inhibit".as_ptr(), libc::MFD_CLOEXEC) };
         if memfd < 0 {
             return Err(format!("memfd: {}", std::io::Error::last_os_error()));
@@ -505,7 +515,7 @@ pub mod wayland_idle {
 
         loop {
             let surface = compositor.create_surface(&qh, ());
-            // Пустая область ввода: пиксель не перехватывает щелчков.
+            // An empty input region: the pixel does not intercept clicks.
             let region = compositor.create_region(&qh, ());
             surface.set_input_region(Some(&region));
             region.destroy();
@@ -529,9 +539,9 @@ pub mod wayland_idle {
                     surface.damage(0, 0, 1, 1);
                     surface.commit();
                 }
-                // Запрет — только на отображённую поверхность: sway проверяет
-                // «отображена ли» в миг появления запрета и при отображении
-                // слоя не перепроверяет (sway/desktop/idle_inhibit_v1.c).
+                // Inhibition only on a mapped surface: sway checks "is it mapped" at the
+                // moment the inhibitor appears and does not re-check when the layer is
+                // mapped (sway/desktop/idle_inhibit_v1.c).
                 if state.configured && inhibitor.is_none() {
                     inhibitor = Some(manager.create_inhibitor(&surface, &qh, ()));
                     log_info!(AREA, "запрет простоя Wayland поставлен");
@@ -546,12 +556,12 @@ pub mod wayland_idle {
                 let _ = conn.flush();
                 return Ok(());
             }
-            // Выход, на котором стояла поверхность, исчез — встать заново.
+            // The output the surface was on has disappeared — set it up again.
             log_info!(AREA, "слой-поверхность запрета закрыта композитором — ставлю заново");
         }
     }
 
-    /// Крутить очередь до `stop` (`Ok(true)`) или закрытия поверхности
+    /// Spin the queue until `stop` (`Ok(true)`) or until the surface is closed
     /// (`Ok(false)`).
     fn pump(
         conn: &Connection,

@@ -1,15 +1,15 @@
-//! Паритет порта `rexon/qt_wallpaper_engine/client.py` с живым Python.
+//! Parity of the `rexon/qt_wallpaper_engine/client.py` port with live Python.
 //!
-//! Эталон `golden/we_client_cases.json` снят с САМОГО Python: `QWebSocket`
-//! подменён заглушкой (перехват `sendBinaryMessage`), `os.path.isfile` /
-//! `os.access` / `shutil.which` / `subprocess.run` замоканы, живой демон НЕ
-//! дёргался. В фикстуре — hex кадров `Request`, порядок проверок ФС при
-//! поиске бинаря, содержимое юнита/`.desktop`, тексты сообщений и вердикты
-//! разбора `busctl`.
+//! The golden file `golden/we_client_cases.json` was taken from Python ITSELF: `QWebSocket`
+//! replaced by a stub (intercepting `sendBinaryMessage`), `os.path.isfile` /
+//! `os.access` / `shutil.which` / `subprocess.run` mocked, the live daemon was NOT
+//! touched. The fixture holds the hex of `Request` frames, the order of FS checks when
+//! searching for the binary, the unit/`.desktop` contents, message texts and the verdicts
+//! of parsing `busctl`.
 //!
-//! Байтовая сверка запросов — один-в-один. Исключение — `settings_set`:
-//! у него `map`-поле (`plugins`), порядок записей на проводе не определён ни
-//! у `google.protobuf`, ни у prost → сверка структурная (декодом).
+//! Requests are compared byte for byte. The exception is `settings_set`:
+//! it has a `map` field (`plugins`), the order of entries on the wire is defined neither
+//! by `google.protobuf` nor by prost → the comparison is structural (by decoding).
 
 use prost::Message;
 use serde_json::Value;
@@ -32,18 +32,18 @@ fn hex_bytes(s: &str) -> Vec<u8> {
         .collect()
 }
 
-/// Каталог пакета `rexon/` в эталоне заменён плейсхолдером (эталон переносим).
+/// The `rexon/` package directory in the golden data is replaced with a placeholder (the golden data is portable).
 const PKG: &str = "<PKG>";
 const HOME: &str = "/home/tester";
 
 // ============================================================================
-// 1. Поиск бинаря демона
+// 1. Searching for the daemon binary
 // ============================================================================
 
-/// ⚠️ ГЛАВНЫЙ тест блока: порядок проверок значим (фикс бага 2026-06-24 —
-/// хватался устаревший извлечённый бинарь owe-ref и демон падал на миграции
-/// БД движка). Последовательность сверяется с ЖИВЫМ Python: там записаны
-/// реальные обращения `os.path.isfile` / `shutil.which`.
+/// ⚠️ The MAIN test of the block: the order of checks matters (fix for the bug of 2026-06-24 —
+/// a stale extracted owe-ref binary was picked up and the daemon crashed on migrating
+/// the engine DB). The sequence is compared with LIVE Python: the real
+/// `os.path.isfile` / `shutil.which` calls were recorded there.
 #[test]
 fn порядок_кандидатов_бинаря() {
     let g = golden();
@@ -70,8 +70,8 @@ fn порядок_кандидатов_бинаря() {
     assert_eq!(got, expect, "порядок проверок разошёлся с Python");
 }
 
-/// Устаревший извлечённый бинарь исключён сознательно — он не должен
-/// появиться в кандидатах ни при каких условиях.
+/// The stale extracted binary is excluded deliberately — it must never
+/// appear among the candidates under any conditions.
 #[test]
 fn owe_ref_не_в_кандидатах() {
     for c in wc::daemon_binary_candidates(PKG, HOME) {
@@ -114,7 +114,7 @@ fn выбор_бинаря_по_приоритету() {
     let local_bin = format!("{HOME}/.local/bin/waywallen");
     let dev = format!("{HOME}/Projects/waywallen/waywallen.AppImage");
 
-    // Всё есть → побеждает вшитый AppImage.
+    // Everything present → the bundled AppImage wins.
     let mut fs = FakeFs {
         exec_files: vec![
             bundled.clone(),
@@ -127,21 +127,21 @@ fn выбор_бинаря_по_приоритету() {
     };
     assert_eq!(wc::find_daemon_binary(&mut fs, PKG, HOME), Some(bundled));
 
-    // Вшитого нет — второе имя внутри vendor/.
+    // No bundled one — the second name inside vendor/.
     let mut fs = FakeFs {
         exec_files: vec![bundled_plain.clone(), managed.clone()],
         which: Some("/usr/bin/waywallen".into()),
     };
     assert_eq!(wc::find_daemon_binary(&mut fs, PKG, HOME), Some(bundled_plain));
 
-    // vendor/ пуст → управляемый AppImage важнее PATH.
+    // vendor/ empty → the managed AppImage beats PATH.
     let mut fs = FakeFs {
         exec_files: vec![managed.clone(), local_bin.clone()],
         which: Some("/usr/bin/waywallen".into()),
     };
     assert_eq!(wc::find_daemon_binary(&mut fs, PKG, HOME), Some(managed));
 
-    // Управляемого нет → PATH.
+    // No managed one → PATH.
     let mut fs = FakeFs {
         exec_files: vec![local_bin.clone(), dev.clone()],
         which: Some("/usr/bin/waywallen".into()),
@@ -151,24 +151,24 @@ fn выбор_бинаря_по_приоритету() {
         Some("/usr/bin/waywallen".to_string())
     );
 
-    // PATH пуст → единственный запасной путь.
+    // PATH empty → the only fallback path.
     let mut fs =
         FakeFs { exec_files: vec![local_bin.clone(), dev.clone()], which: None };
     assert_eq!(wc::find_daemon_binary(&mut fs, PKG, HOME), Some(local_bin));
 
-    // ⚠ dev-сборка из списка кандидатов убрана (файла больше нет): сама по
-    // себе она демоном больше не считается.
+    // ⚠ the dev build was removed from the candidate list (the file is gone): by
+    // itself it is no longer considered a daemon.
     let mut fs = FakeFs { exec_files: vec![dev.clone()], which: None };
     assert_eq!(wc::find_daemon_binary(&mut fs, PKG, HOME), None);
 
-    // Ничего нет.
+    // Nothing at all.
     let mut fs = FakeFs { exec_files: vec![], which: None };
     assert_eq!(wc::find_daemon_binary(&mut fs, PKG, HOME), None);
 }
 
-// ── Движок из пакета (28.09.2026) ──────────────────────────────────────────
+// ── Engine from the package (28.09.2026) ──────────────────────────────────────────
 
-/// ФС с версиями движков — для выбора «пакет или управляемый».
+/// An FS with engine versions — for choosing "package or managed".
 struct VersionedFs {
     exec_files: Vec<String>,
     versions: HashMap<String, String>,
@@ -188,8 +188,8 @@ impl wc::DaemonFs for VersionedFs {
     }
 }
 
-/// Движок пакета стоит сразу за переопределением разработчика
-/// (`rexon/vendor/`) и перед управляемым AppImage.
+/// The package engine comes right after the developer override
+/// (`rexon/vendor/`) and before the managed AppImage.
 #[test]
 fn packaged_engine_after_vendor_before_managed() {
     const ENGINE: &str = "/opt/test-engine";
@@ -212,14 +212,14 @@ fn packaged_engine_after_vendor_before_managed() {
     let at = |p: &str| cands.iter().position(|c| c == p).unwrap();
     assert!(at(&vendor) < at(&packaged) && at(&packaged) < at(&managed), "{cands:?}");
 
-    // vendor есть → он (переопределение разработчика).
+    // vendor present → it (the developer override).
     let mut fs = FakeFs {
         exec_files: vec![vendor.clone(), packaged.clone(), managed.clone()],
         which: None,
     };
     assert_eq!(wc::find_daemon_binary_in(&mut fs, PKG, HOME, ENGINE), Some(vendor));
 
-    // vendor нет, пакет есть, управляемого нет → пакет, версии не спрашиваем.
+    // no vendor, package present, no managed one → the package, versions are not queried.
     let mut fs = VersionedFs {
         exec_files: vec![packaged.clone()],
         versions: HashMap::new(),
@@ -232,8 +232,8 @@ fn packaged_engine_after_vendor_before_managed() {
     assert!(fs.asked.is_empty(), "без второго движка AppImage не запускаем: {:?}", fs.asked);
 }
 
-/// Оба движка на диске: новее — управляемый (он уже переписал базу под
-/// себя, старый пакетный на ней не стартует); иначе — пакет.
+/// Both engines on disk: if the managed one is newer, it wins (it has already migrated the database for
+/// itself, the old packaged one will not start on it); otherwise the package.
 #[test]
 fn packaged_or_managed_by_version() {
     const ENGINE: &str = "/opt/test-engine";
@@ -265,8 +265,8 @@ fn packaged_or_managed_by_version() {
     assert!(!wc::prefer_managed_over_bundled(Some(""), Some("0.5.0")));
 }
 
-/// Флаг `--plugin` уходит демону ТОЛЬКО при каталоге плагинов пакета: у
-/// waywallen 0.2.x такого флага нет, и лишний аргумент сорвал бы старт.
+/// The `--plugin` flag goes to the daemon ONLY with the package's plugin directory:
+/// waywallen 0.2.x has no such flag, and an extra argument would break the start.
 #[test]
 fn launch_args_with_packaged_plugins() {
     assert_eq!(wc::engine_launch_args(None), vec!["--no-ui", "--no-tray"]);
@@ -279,7 +279,7 @@ fn launch_args_with_packaged_plugins() {
         "/usr/lib/rexon/engine/plugins",
         "демон ищет плагины в <каталог>/plugins (waywallen v0.4.2)"
     );
-    // Прежняя дверь без комплекта не изменилась.
+    // The old door without the bundle did not change.
     assert_eq!(wc::daemon_launch_argv("/x/w").1, wc::engine_launch_args(None));
 
     let st = wc::DaemonStatus::default();
@@ -292,8 +292,8 @@ fn launch_args_with_packaged_plugins() {
     }
 }
 
-/// Юнит службы видит плагины пакета; освежение добавляет и снимает флаг
-/// вслед за пакетом, не трогая выбранный человеком бинарь.
+/// The service unit sees the package's plugins; refreshing adds and removes the flag
+/// following the package, without touching the binary the person chose.
 #[test]
 fn autostart_unit_with_packaged_plugins() {
     let bin = "/home/tester/.local/share/waywallen/waywallen.AppImage";
@@ -306,7 +306,7 @@ fn autostart_unit_with_packaged_plugins() {
     );
     assert!(with.contains("KillMode=mixed"));
     assert_eq!(wc::unit_binary(&with).as_deref(), Some(bin));
-    // Без пакета юнит байт в байт прежний (эталон Python).
+    // Without the package the unit is byte-for-byte the same as before (Python golden data).
     assert_eq!(wc::autostart_unit_content_with(bin, None), wc::autostart_unit_content(bin));
     assert!(wc::autostart_desktop_content_with(bin, Some(wc::ENGINE_DIR))
         .contains("--no-tray --plugin \"/usr/lib/rexon/engine\"\n"));
@@ -331,11 +331,11 @@ fn autostart_unit_with_packaged_plugins() {
 }
 
 /// 19.10.2026: `systemctl --user restart rexon-wallpaper-engine.service`
-/// сразу выходил с кодом 0 — «waywallen: already running, no UI to
-/// launch»: демон уже жил вне службы (поднят окном waywallen). Служба
-/// стояла inactive как после успеха. Теперь условие запуска
-/// (`ExecCondition`) спрашивает шину ДО старта: имя демона занято —
-/// служба честно пропущена с причиной в журнале, а не «успешно» вышла.
+/// exited right away with code 0 — "waywallen: already running, no UI to
+/// launch": the daemon was already living outside the service (brought up by the waywallen window). The service
+/// stood inactive as after a success. Now the start condition
+/// (`ExecCondition`) asks the bus BEFORE starting: if the daemon's name is taken, the
+/// service is honestly skipped with a reason in the journal, instead of exiting "successfully".
 #[test]
 fn service_refuses_to_start_beside_a_foreign_daemon() {
     let unit = wc::autostart_unit_content_with("/x/waywallen.AppImage", Some(wc::ENGINE_DIR));
@@ -344,11 +344,11 @@ fn service_refuses_to_start_beside_a_foreign_daemon() {
         .find_map(|l| l.strip_prefix("ExecCondition="))
         .expect("у службы обязано быть условие запуска");
     assert!(cond.contains(wc::DBUS_SERVICE), "{cond}");
-    // systemd подставляет `$ПЕРЕМЕННЫЕ` и `%спецификаторы` в командах юнита.
+    // systemd substitutes `$VARIABLES` and `%specifiers` in the unit's commands.
     assert!(!cond.contains('$') && !cond.contains('%'), "{cond}");
 
-    // Исполняем условие по-настоящему, с подставным busctl: свой каталог,
-    // никакой шины и служб владельца.
+    // Run the condition for real, with a stub busctl: our own directory,
+    // no bus and none of the owner's services.
     let dir = std::env::temp_dir().join(format!("rexon-execcond-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let busctl = dir.join("busctl");
@@ -375,8 +375,8 @@ fn service_refuses_to_start_beside_a_foreign_daemon() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Демон один и под службой: включён автозапуск (юнит записан) — вкладка
-/// поднимает демона через службу, а не вторым отдельным процессом мимо неё.
+/// One daemon, and under the service: with autostart enabled (unit written) the tab
+/// brings the daemon up through the service, not as a second separate process bypassing it.
 #[test]
 fn daemon_is_started_through_the_service_when_it_exists() {
     let dead = wc::DaemonStatus::default();
@@ -389,12 +389,12 @@ fn daemon_is_started_through_the_service_when_it_exists() {
         }
         other => panic!("ожидался запуск службы: {other:?}"),
     }
-    // Службы нет — прежний отдельный запуск.
+    // No service — the old separate launch.
     match wc::ensure_running_decision_service(&dead, Some("/x/w"), None, false) {
         wc::EnsureAction::Launch { program, .. } => assert_eq!(program, "/x/w"),
         other => panic!("{other:?}"),
     }
-    // Демон уже жив (чей угодно) — не трогаем.
+    // The daemon is already alive (whoever's) — do not touch.
     let live = wc::DaemonStatus { running: true, ws_port: 4242, ..Default::default() };
     assert!(matches!(
         wc::ensure_running_decision_service(&live, Some("/x/w"), None, true),
@@ -402,9 +402,9 @@ fn daemon_is_started_through_the_service_when_it_exists() {
     ));
 }
 
-/// Какая копия плагина работает, если он и в пакете, и у человека.
-/// Решает демон (новее по версии, при равенстве — копия человека); здесь
-/// сверяется наше зеркало этого правила.
+/// Which copy of a plugin runs if it is both in the package and in the person's directory.
+/// The daemon decides (newer by version, on a tie the person's copy); here
+/// our mirror of that rule is checked.
 #[test]
 fn plugin_copy_choice_by_version() {
     use wc::PluginSource::{Bundled, User};
@@ -421,7 +421,7 @@ fn copy(id: &str, version: &str) -> wc::PluginCopy {
 
 const OWE: &str = "org.waywallen.open-wallpaper-engine";
 
-/// `plugin.toml` пакета: id, имя и версия; без id или версии — не плагин.
+/// The package's `plugin.toml`: id, name and version; without an id or version it is not a plugin.
 #[test]
 fn plugin_manifest_copy_reads_identity() {
     let text = "[plugin]\nid = \"org.waywallen.open-wallpaper-engine\"\n\
@@ -439,8 +439,8 @@ fn plugin_manifest_copy_reads_identity() {
     assert_eq!(wc::plugin_manifest_copy("не toml ["), None);
 }
 
-/// Активные копии из ответа `plugin_list`; ошибка демона или чужой ответ —
-/// `None`, а не «плагинов нет» (иначе Rexon перезапускал бы демона зря).
+/// Active copies from the `plugin_list` answer; a daemon error or a foreign answer gives
+/// `None`, not "no plugins" (otherwise Rexon would restart the daemon for nothing).
 #[test]
 fn active_plugins_from_plugin_list_frame() {
     let frame = |status: pb::Status, payload| {
@@ -473,9 +473,9 @@ fn active_plugins_from_plugin_list_frame() {
     assert_eq!(wc::active_plugins_from_frame(b"\xff\xff"), None);
 }
 
-/// Дефект 24.10.2026: пакет положил 0.3.1, а живой демон (запущен до
-/// обновления пакета) держал копию человека 0.3.0 → перезапуск. Активная
-/// новее или равна — так и задумано, демона не трогаем.
+/// Defect 24.10.2026: the package put 0.3.1, and the live daemon (started before
+/// the package update) held the person's copy 0.3.0 → a restart. If the active one is
+/// newer or equal, that is intended, the daemon is left alone.
 #[test]
 fn stale_bundled_plugin_needs_restart() {
     let bundled = [copy(OWE, "0.3.1")];
@@ -506,8 +506,8 @@ fn stale_bundled_plugin_needs_restart() {
     assert_eq!(wc::plugin_refresh_decision(&[], &[copy(OWE, "0.1.0")], None), wc::PluginRefresh::Fine);
 }
 
-/// Демон без `--plugin` и без копии человека плагина не видит вовсе —
-/// тоже перезапуск (наш запуск передаст флаг).
+/// A daemon without `--plugin` and without the person's copy does not see the plugin at all —
+/// also a restart (our launch will pass the flag).
 #[test]
 fn missing_bundled_plugin_needs_restart() {
     match wc::plugin_refresh_decision(&[copy(OWE, "0.3.1")], &[copy("org.waywallen.image", "0.5.0")], None) {
@@ -516,8 +516,8 @@ fn missing_bundled_plugin_needs_restart() {
     }
 }
 
-/// То же расхождение второй раз — перезапуск не помог, по кругу не гоняем.
-/// Другое расхождение (пакет снова обновился) — новая попытка.
+/// The same mismatch a second time — the restart did not help, we do not loop.
+/// A different mismatch (the package updated again) — a new attempt.
 #[test]
 fn plugin_restart_is_not_repeated() {
     let bundled = [copy(OWE, "0.3.1")];
@@ -536,7 +536,7 @@ fn plugin_restart_is_not_repeated() {
     ));
 }
 
-/// Занятый демон (идёт задача) не перезапускаем.
+/// A busy daemon (a task is running) is not restarted.
 #[test]
 fn busy_daemon_is_not_restarted() {
     let task = |state: &str| wc::DaemonTask {
@@ -551,8 +551,8 @@ fn busy_daemon_is_not_restarted() {
     assert!(!wc::daemon_busy(&[]));
 }
 
-/// Ключ попытки в журнале читается «у демона → в пакете», а не
-/// «0.3.2<0.3.1» (так выходило «0.3.2 меньше 0.3.1», 30.10.2026).
+/// The attempt key in the journal reads "at the daemon → in the package", not
+/// "0.3.2<0.3.1" (which came out as "0.3.2 is less than 0.3.1", 30.10.2026).
 #[test]
 fn refresh_keys_read_from_daemon_to_package() {
     let stale = |active: &str| wc::StalePlugin {
@@ -566,9 +566,9 @@ fn refresh_keys_read_from_daemon_to_package() {
     assert_eq!(wc::engine_refresh_key("0.5.0", "0.5.1"), "engine=0.5.0→0.5.1");
 }
 
-/// Службы и ждущий сторож дисплея демона 0.5.0 «занятым» его не делают:
-/// иначе на столе без вывода перезапуск откладывался вечно (MATE, 30.10.2026).
-/// Строка — живой ответ `busctl … ListTasks` того демона, сокращённый.
+/// Services and a waiting display watchdog of the 0.5.0 daemon do not make it "busy":
+/// otherwise on a desktop without an output the restart was postponed forever (MATE, 30.10.2026).
+/// The string is a live answer of `busctl … ListTasks` from that daemon, shortened.
 #[test]
 fn idle_daemon_with_services_is_not_busy() {
     let live = r#"{"type":"a(tssxs)","data":[[[1,"service","service/audio",1793316441834,"running"],[9,"service","display/endpoint",1793316441834,"running"],[11,"startup","boot/display-watcher",1793316441834,"running"],[12,"startup","startup/restore",1793316441834,"completed"],[21,"generic","scan/refresh",1793398079083,"completed"]]]}"#;
@@ -597,7 +597,7 @@ fn idle_daemon_with_services_is_not_busy() {
     assert!(wc::daemon_busy(&applying), "идёт применение — занят");
 }
 
-/// Текст уведомления называет плагин и обе версии.
+/// The notification text names the plugin and both versions.
 #[test]
 fn plugin_refresh_notice_names_versions() {
     let _lang = i18n_pin::en();
@@ -621,8 +621,8 @@ fn plugin_refresh_notice_names_versions() {
     assert!(!wc::plugin_refresh_title().is_empty());
 }
 
-/// Сторож пакета следит за родителем каталога движка, за ним самим (только
-/// `plugins`), за `plugins/` целиком и за `plugin.toml` каждого плагина.
+/// The package watcher watches the parent of the engine directory, the directory itself (only
+/// `plugins`), the whole `plugins/` and each plugin's `plugin.toml`.
 #[test]
 fn engine_watch_targets_cover_the_package_layout() {
     let t = wc::engine_watch_targets(
@@ -644,10 +644,10 @@ fn engine_watch_targets_cover_the_package_layout() {
     assert!(wc::ENGINE_WATCH_QUIET_MS >= 5000 && wc::ENGINE_WATCH_QUIET_MS <= 10_000);
 }
 
-/// Живой inotify на раскладке пакета во временном каталоге: новый
-/// `plugin.toml` (и его замена через `rename`, как у пакетного менеджера) и
-/// новая папка плагина будят сторожа, и замена AppImage движка — тоже;
-/// запись библиотеки плагина — нет.
+/// Live inotify on the package layout in a temporary directory: a new
+/// `plugin.toml` (and its replacement via `rename`, as a package manager does) and
+/// a new plugin folder wake the watcher, and so does replacing the engine AppImage;
+/// writing the plugin library does not.
 #[test]
 fn engine_watch_wakes_on_plugin_manifest_only() {
     use rexon_core::fs_watch::Watch;
@@ -681,8 +681,8 @@ fn engine_watch_wakes_on_plugin_manifest_only() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Движок пакетов дистрибутива: демон в `/usr/bin` вне каталога данных —
-/// за ним отдельная цель (только его имя), каталог данных — только `plugins`.
+/// The distribution packages engine: the daemon in `/usr/bin` outside the data directory —
+/// a separate target for it (only its name), the data directory only for `plugins`.
 #[test]
 fn engine_watch_targets_cover_the_system_layout() {
     let layout = wc::EngineLayout::system_in(wc::SYSTEM_DAEMON, wc::SYSTEM_ENGINE_DIR);
@@ -699,8 +699,8 @@ fn engine_watch_targets_cover_the_system_layout() {
     assert_eq!(t.len(), 5, "{t:?}");
 }
 
-/// Раскладки движка пакетов: пакеты дистрибутива первыми, вшитый комплект —
-/// запасным; пути — те, куда их ставят пакеты Arch (`waywallen`,
+/// Package engine layouts: distribution packages first, the bundled set as
+/// the fallback; the paths are where Arch packages install them (`waywallen`,
 /// `open-wallpaper-engine`).
 #[test]
 fn engine_layouts_order_and_paths() {
@@ -716,10 +716,10 @@ fn engine_layouts_order_and_paths() {
     assert_eq!(wc::layout_of(&l, "/home/u/.local/share/waywallen/waywallen.AppImage"), None);
 }
 
-/// `--plugin` уходит демону, только если он не видит каталог пакета сам:
-/// `waywallen` из пакета живёт в `/usr/bin` и смотрит в
-/// `/usr/share/waywallen/plugins` без флага (повтор флагом дал бы двойные
-/// записи), а `waywallen-bin` (`/opt/…/AppRun`) и AppImage человека — нет.
+/// `--plugin` goes to the daemon only if it does not see the package directory by itself:
+/// `waywallen` from the package lives in `/usr/bin` and looks into
+/// `/usr/share/waywallen/plugins` without the flag (repeating it with the flag would give duplicate
+/// entries), while `waywallen-bin` (`/opt/…/AppRun`) and the person's AppImage do not.
 #[test]
 fn plugin_root_only_when_daemon_does_not_see_it() {
     let system = wc::EngineLayout::system_in(wc::SYSTEM_DAEMON, wc::SYSTEM_ENGINE_DIR);
@@ -735,19 +735,19 @@ fn plugin_root_only_when_daemon_does_not_see_it() {
         wc::plugin_root_for(&[system.clone()], Some(&managed)).as_deref(),
         Some("/usr/share/waywallen")
     );
-    // Вшитый комплект флагом получает любой демон.
+    // Any daemon gets the bundled set with the flag.
     assert_eq!(
         wc::plugin_root_for(&[system.clone(), bundled.clone()], Some("/usr/bin/waywallen")).as_deref(),
         Some(wc::ENGINE_DIR)
     );
     assert_eq!(wc::plugin_root_for(&[], Some("/usr/bin/waywallen")), None);
-    // Демон неизвестен — флаг нужен (лишним он станет только у демона из /usr/bin).
+    // Unknown daemon — the flag is needed (it is only superfluous for a daemon from /usr/bin).
     assert_eq!(wc::plugin_root_for(&[system], None).as_deref(), Some("/usr/share/waywallen"));
 }
 
-/// Демон пакета дистрибутива стоит перед вшитым комплектом (стоят оба —
-/// запускается системный) и перед управляемым AppImage; правило
-/// «управляемый — только если строго новее» одно для обеих раскладок.
+/// The distribution package daemon comes before the bundled set (both installed —
+/// the system one starts) and before the managed AppImage; the rule
+/// "managed only if strictly newer" is the same for both layouts.
 #[test]
 fn system_engine_before_bundled_and_managed() {
     const ENGINE: &str = "/opt/test-engine";
@@ -763,11 +763,11 @@ fn system_engine_before_bundled_and_managed() {
     let at = |p: &str| cands.iter().position(|c| c == p).unwrap();
     assert!(at(&system) < at(&packaged) && at(&packaged) < at(&managed), "{cands:?}");
 
-    // Стоят и системный, и вшитый — системный.
+    // Both the system and the bundled one installed — the system one.
     let mut fs = VersionedFs { exec_files: vec![packaged.clone(), system.clone()], versions: HashMap::new(), asked: vec![] };
     assert_eq!(wc::find_daemon_binary_in(&mut fs, PKG, HOME, ENGINE), Some(system.clone()));
 
-    // Только системный — он, версии не спрашиваем.
+    // Only the system one — it wins, versions are not queried.
     let mut fs = VersionedFs { exec_files: vec![system.clone()], versions: HashMap::new(), asked: vec![] };
     assert_eq!(wc::find_daemon_binary_in(&mut fs, PKG, HOME, ENGINE), Some(system.clone()));
     assert!(fs.asked.is_empty());
@@ -782,10 +782,10 @@ fn system_engine_before_bundled_and_managed() {
     assert_eq!(pick("0.5.1", "0.5.0"), system, "система новее");
 }
 
-/// Юнит пересобирается на движке, который Rexon запустил бы сейчас: и когда
-/// записанный пропал (пакет перестал вшивать AppImage), и когда он ещё лежит
-/// на диске, но это уже не текущий движок (старый управляемый AppImage при
-/// Rexon из пакета, 08.11.2026). «Ничего не нашлось» — прежний.
+/// The unit is rebuilt on the engine Rexon would start now: both when
+/// the recorded one disappeared (the package stopped bundling the AppImage) and when it still lies
+/// on disk but is no longer the current engine (an old managed AppImage with
+/// Rexon from the package, 08.11.2026). "Nothing found" keeps the old one.
 #[test]
 fn unit_refresh_follows_vanished_engine() {
     let old = wc::engine_appimage_path(wc::ENGINE_DIR);
@@ -807,12 +807,12 @@ fn unit_refresh_follows_vanished_engine() {
     assert_eq!(wc::refresh_unit_plan_on(None, wc::SYSTEM_DAEMON, None, HOME, None), wc::UnitRefresh::Skip);
 }
 
-/// Уведомления о перезапуске называют, кто принёс новое: обновление Rexon
-/// (вшитый комплект) или обновление системы (пакеты дистрибутива).
+/// Restart notifications name who brought the new version: a Rexon update
+/// (the bundled set) or a system update (distribution packages).
 #[test]
 fn refresh_texts_name_who_brought_the_update() {
-    // Язык — общий на процесс: без закрепления соседний тест переключает
-    // его посреди сравнения.
+    // The language is process-wide: without pinning, a neighboring test switches
+    // it in the middle of the comparison.
     let _lang = i18n_pin::en();
     let b = wc::engine_refresh_body_for(wc::EngineKind::Bundled, "0.5.0", "waywallen 0.5.1");
     let s = wc::engine_refresh_body_for(wc::EngineKind::System, "0.5.0", "waywallen 0.5.1");
@@ -833,7 +833,7 @@ fn refresh_texts_name_who_brought_the_update() {
 }
 
 // ============================================================================
-// 2. Автозапуск
+// 2. Autostart
 // ============================================================================
 
 #[test]
@@ -845,12 +845,12 @@ fn содержимое_автозапуска() {
     assert_eq!(a["unit_name"].as_str().unwrap(), wc::AUTOSTART_UNIT);
     assert_eq!(a["desktop_name"].as_str().unwrap(), wc::AUTOSTART_DESKTOP);
 
-    // ⚠️ Намеренное расхождение (починка бага #3 шапки модуля): к эталону
-    // Python добавлены `KillMode=mixed` и объясняющий его комментарий, а
-    // 19.10.2026 — `ExecCondition` (служба не стартует рядом с чужим демоном).
-    // Без них systemd на каждой остановке валил демона сигналом BUS —
-    // AppImage размонтировался под ещё работающим процессом. Всё
-    // ОСТАЛЬНОЕ содержимое обязано совпадать с Python байт в байт.
+    // ⚠️ Intentional divergence (fix for bug #3 of the module header): `KillMode=mixed`
+    // and the comment explaining it were added to the Python golden data, and on
+    // 19.10.2026 `ExecCondition` (the service does not start next to someone else's daemon).
+    // Without them systemd killed the daemon with a BUS signal on every stop —
+    // the AppImage was unmounted under a still running process. Everything
+    // ELSE in the contents must match Python byte for byte.
     let unit = wc::autostart_unit_content(&binary);
     let без_починки: String = unit
         .lines()
@@ -866,20 +866,20 @@ fn содержимое_автозапуска() {
         .map(|l| format!("{l}\n"))
         .collect();
     assert_eq!(без_починки, a["unit_content"].as_str().unwrap());
-    // Переснято 01.10.2026: `Comment=` английский + `Comment[<код>]` из
-    // каталога (прежде был только `Comment[ru]`), `Name[ru]` — из каталога.
+    // Retaken 01.10.2026: `Comment=` in English + `Comment[<code>]` from
+    // the catalog (previously there was only `Comment[ru]`), `Name[ru]` from the catalog.
     assert_eq!(
         i18n_pin::ru_only(&wc::autostart_desktop_content(&binary)),
         a["desktop_content"].as_str().unwrap()
     );
 }
 
-/// Правило движка (#12), а не заплатка в одном юните: если systemd-служба
-/// запускает AppImage, её бинарь исполняется из FUSE-монтирования, которое
-/// держит соседний процесс в той же cgroup. Умолчательный
-/// `KillMode=control-group` шлёт SIGTERM обоим разом — образ отваливается под
-/// ещё живым процессом, и штатное завершение оканчивается SIGBUS. Проверяем
-/// ВСЕ шаблоны юнитов, которые Rexon пишет пользователю.
+/// An engine rule (#12), not a patch in one unit: if a systemd service
+/// starts an AppImage, its binary runs from a FUSE mount that is
+/// held by a neighboring process in the same cgroup. The default
+/// `KillMode=control-group` sends SIGTERM to both at once — the image drops away under
+/// a still living process, and a normal shutdown ends with SIGBUS. We check
+/// ALL unit templates Rexon writes for the user.
 #[test]
 fn юниты_с_appimage_обязаны_нести_killmode_mixed() {
     let проверить = |имя: &str, unit: &str| {
@@ -909,28 +909,28 @@ fn юниты_с_appimage_обязаны_нести_killmode_mixed() {
     );
 }
 
-/// Освежение устаревшего юнита: путь движка берётся из СТАРОГО `ExecStart`,
-/// правится только обвязка. Иначе починки шаблона доставались бы лишь тем, кто
-/// заново щёлкнул «Start at login».
+/// Refreshing a stale unit: the engine path is taken from the OLD `ExecStart`,
+/// only the wrapping is edited. Otherwise template fixes would reach only those who
+/// clicked «Start at login» again.
 #[test]
 fn освежение_устаревшего_юнита() {
     let binary = format!("{HOME}/.local/share/waywallen/waywallen.AppImage");
     let свежий = wc::autostart_unit_content(&binary);
 
-    // Файла нет — трогать нечего.
+    // No file — nothing to touch.
     assert_eq!(wc::refresh_unit_plan(None, None, HOME), wc::UnitRefresh::Skip);
-    // Мусор без ExecStart — не переписываем вслепую.
+    // Garbage without ExecStart — we do not rewrite blindly.
     assert_eq!(
         wc::refresh_unit_plan(Some("[Unit]\n"), None, HOME),
         wc::UnitRefresh::Skip
     );
-    // Актуальный юнит не трогаем.
+    // An up-to-date unit is not touched.
     assert_eq!(
         wc::refresh_unit_plan(Some(&свежий), None, HOME),
         wc::UnitRefresh::UpToDate
     );
 
-    // Юнит прежнего образца (без KillMode) — переписать, сохранив бинарь.
+    // A unit of the old kind (no KillMode) — rewrite it, keeping the binary.
     let старый: String = свежий
         .lines()
         .filter(|l| !l.starts_with("KillMode=") && !l.starts_with('#'))
@@ -949,7 +949,7 @@ fn освежение_устаревшего_юнита() {
         other => panic!("ожидался Rewrite, получено {other:?}"),
     }
 
-    // Путь движка выбрал пользователь — подменять его нельзя.
+    // The engine path was chosen by the user — it must not be replaced.
     let свой = "/opt/waywallen/waywallen.AppImage";
     let чужой: String = wc::autostart_unit_content(свой)
         .lines()
@@ -971,7 +971,7 @@ fn бинарь_из_записанного_юнита() {
         wc::unit_binary(&wc::autostart_unit_content(&binary)).as_deref(),
         Some(binary.as_str())
     );
-    // Без кавычек (юнит, поправленный руками) и с пробелами по краям.
+    // Without quotes (a unit edited by hand) and with spaces around.
     assert_eq!(
         wc::unit_binary("[Service]\n  ExecStart=/usr/bin/waywallen --no-ui\n").as_deref(),
         Some("/usr/bin/waywallen")
@@ -998,9 +998,9 @@ fn пути_автозапуска() {
         a["desktop_path_xdg"].as_str().unwrap()
     );
 
-    // ⚠️ Намеренное расхождение (починка бага #2 шапки модуля): Python при
-    // заданном XDG_CONFIG_HOME всё равно писал юнит в ~/.config/systemd/user,
-    // где systemd его не ищет → `systemctl --user enable` падал.
+    // ⚠️ Intentional divergence (fix for bug #2 of the module header): Python, with
+    // XDG_CONFIG_HOME set, still wrote the unit to ~/.config/systemd/user,
+    // where systemd does not look for it → `systemctl --user enable` failed.
     let py_quirk = a["unit_path_xdg_python_quirk"].as_str().unwrap();
     assert_eq!(py_quirk, format!("{HOME}/.config/systemd/user/{}", wc::AUTOSTART_UNIT));
     assert_eq!(
@@ -1035,13 +1035,13 @@ fn argv_systemctl() {
 
 #[test]
 fn вердикт_autostart_enabled() {
-    // systemd сказал enabled — этого достаточно.
+    // systemd said enabled — that is enough.
     assert!(wc::autostart_enabled(Some((0, "enabled\n")), false));
-    // ненулевой код / другой статус → смотрим XDG.
+    // nonzero code / another status → look at XDG.
     assert!(!wc::autostart_enabled(Some((1, "disabled\n")), false));
     assert!(wc::autostart_enabled(Some((1, "disabled\n")), true));
     assert!(!wc::autostart_enabled(Some((0, "static")), false));
-    // systemd недоступен / вызов упал → только XDG.
+    // systemd unavailable / the call failed → only XDG.
     assert!(wc::autostart_enabled(None, true));
     assert!(!wc::autostart_enabled(None, false));
 }
@@ -1053,7 +1053,7 @@ fn планы_автозапуска() {
     let msgs = &g["autostart"]["messages"];
     let binary = format!("{HOME}/.local/share/waywallen/waywallen.AppImage");
 
-    // Выключение при живом systemd и существующем юните.
+    // Disabling with a live systemd and an existing unit.
     let p = wc::disable_plan(None, HOME, true, true);
     assert_eq!(p.disable_argv, Some(wc::autostart_disable_argv()));
     assert_eq!(p.daemon_reload_argv, Some(wc::autostart_daemon_reload_argv()));
@@ -1061,16 +1061,16 @@ fn планы_автозапуска() {
     assert_eq!(p.remove_desktop, wc::autostart_desktop_path(None, HOME));
     assert_eq!(p.message, msgs["disabled"].as_str().unwrap());
 
-    // Юнита нет — disable не зовём.
+    // No unit — disable is not called.
     let p = wc::disable_plan(None, HOME, true, false);
     assert_eq!(p.disable_argv, None);
 
-    // Без systemd — ни disable, ни daemon-reload.
+    // Without systemd — neither disable nor daemon-reload.
     let p = wc::disable_plan(None, HOME, false, true);
     assert_eq!(p.disable_argv, None);
     assert_eq!(p.daemon_reload_argv, None);
 
-    // Включение без бинаря.
+    // Enabling without a binary.
     match wc::enable_plan(None, None, HOME, true) {
         wc::EnablePlan::NoBinary { message } => {
             assert_eq!(message, msgs["no_binary"].as_str().unwrap());
@@ -1078,7 +1078,7 @@ fn планы_автозапуска() {
         other => panic!("ожидался NoBinary, получено {other:?}"),
     }
 
-    // Включение через systemd.
+    // Enabling via systemd.
     match wc::enable_plan(Some(&binary), None, HOME, true) {
         wc::EnablePlan::Systemd {
             unit_path,
@@ -1089,9 +1089,9 @@ fn планы_автозапуска() {
             message,
         } => {
             assert_eq!(unit_path, wc::autostart_unit_path(None, HOME));
-            // Само содержимое сверено с эталоном Python в
-            // `содержимое_автозапуска` (там же — намеренное расхождение по
-            // `KillMode`); здесь важно, что план несёт именно его.
+            // The contents themselves are compared with the Python golden data in
+            // `содержимое_автозапуска` (the intentional divergence on
+            // `KillMode` is there too); here what matters is that the plan carries exactly them.
             assert_eq!(unit_content, wc::autostart_unit_content(&binary));
             assert_eq!(daemon_reload_argv, wc::autostart_daemon_reload_argv());
             assert_eq!(enable_argv, wc::autostart_enable_argv());
@@ -1101,7 +1101,7 @@ fn планы_автозапуска() {
         other => panic!("ожидался Systemd, получено {other:?}"),
     }
 
-    // Фолбэк XDG.
+    // XDG fallback.
     match wc::enable_plan(Some(&binary), None, HOME, false) {
         wc::EnablePlan::Xdg { desktop_path, desktop_content, message } => {
             assert_eq!(desktop_path, wc::autostart_desktop_path(None, HOME));
@@ -1115,11 +1115,11 @@ fn планы_автозапуска() {
     }
 }
 
-/// `supported`/`unavailableReason` для `W.AutostartGetQuery` (waywallen
-/// с #380 держит переключатель серым, пока `supported` ложно). Локальному
-/// автозапуску Rexon мешает только отсутствие движка — ровно там, где
-/// `enable_plan` отвечает `NoBinary`; при этом причина обязана быть
-/// человеческой и переведённой, а при поддержке — пустой.
+/// `supported`/`unavailableReason` for `W.AutostartGetQuery` (waywallen
+/// since #380 keeps the switch grayed out while `supported` is false). Rexon's local
+/// autostart is blocked only by a missing engine — exactly where
+/// `enable_plan` answers `NoBinary`; the reason must then be
+/// human and translated, and empty when supported.
 #[test]
 fn доступность_автозапуска_совпадает_с_планом_включения() {
     let _lang = i18n_pin::ru();
@@ -1160,11 +1160,11 @@ fn тексты_ошибок_автозапуска() {
 }
 
 // ============================================================================
-// 3. Решения DaemonControl
+// 3. DaemonControl decisions
 // ============================================================================
 
-/// Транспорт-заглушка: отдаёт заранее заданные значения свойств и журналирует
-/// порядок обращений (демон НЕ дёргается).
+/// A stub transport: returns preset property values and logs
+/// the order of calls (the daemon is NOT touched).
 struct FakeIo {
     props: HashMap<String, DbusValue>,
     asked: Vec<String>,
@@ -1214,12 +1214,12 @@ fn probe_читает_свойства_через_общий_трейт() {
     );
     assert_eq!(io.asked, vec!["WsPort", "Version", "CurrentWallpaperId"]);
 
-    // Демон молчит: WsPort=None → остальные свойства не запрашиваются вообще.
+    // The daemon is silent: WsPort=None → the other properties are not queried at all.
     let mut io = FakeIo::new(&[]);
     assert_eq!(wc::probe(&mut io), wc::DaemonStatus::default());
     assert_eq!(io.asked, vec!["WsPort"]);
 
-    // Пустые Version/CurrentWallpaperId → пустые строки (`str(x or "")`).
+    // Empty Version/CurrentWallpaperId → empty strings (`str(x or "")`).
     let mut io = FakeIo::new(&[
         ("WsPort", DbusValue::Int(1)),
         ("Version", DbusValue::Str(String::new())),
@@ -1229,15 +1229,15 @@ fn probe_читает_свойства_через_общий_трейт() {
     assert_eq!(st.current_wallpaper_id, "");
 }
 
-/// ⚠️ Починка бага оригинала: `int(ws_port)` на нечисловой строке падал
-/// необработанным `ValueError` — вкладка WE не открывалась. Здесь 0.
+/// ⚠️ Fix for a bug of the original: `int(ws_port)` on a non-numeric string crashed with
+/// an unhandled `ValueError` — the WE tab did not open. Here it is 0.
 #[test]
 fn probe_не_падает_на_нечисловом_ws_port() {
     let mut io = FakeIo::new(&[("WsPort", DbusValue::Str("нет".into()))]);
     let st = wc::probe(&mut io);
     assert!(st.running);
     assert_eq!(st.ws_port, 0);
-    // ws_port == 0 уводит ensure_running в ветку автозапуска.
+    // ws_port == 0 sends ensure_running into the autostart branch.
     match wc::ensure_running_decision(&st, Some("/bin/w")) {
         wc::EnsureAction::Launch { .. } => {}
         other => panic!("ожидался Launch, получено {other:?}"),
@@ -1265,8 +1265,8 @@ fn решение_ensure_running() {
             message: g["messages"]["not_found"].as_str().unwrap().to_string()
         }
     );
-    // Плагин ставим ТОЛЬКО при живом/запускаемом движке: иначе containment
-    // подменит обои пользователя чёрным экраном.
+    // The plugin is installed ONLY with a live/startable engine: otherwise the containment
+    // would replace the user's wallpaper with a black screen.
     assert!(!action.ensure_kde_plugin());
 
     let binary = format!("{HOME}/.local/share/waywallen/waywallen.AppImage");
@@ -1316,7 +1316,7 @@ fn адреса_dbus_единые_с_основным_клиентом() {
     assert_eq!(wc::DBUS_SERVICE, g["dbus"]["service"].as_str().unwrap());
     assert_eq!(wc::DBUS_PATH, g["dbus"]["path"].as_str().unwrap());
     assert_eq!(wc::DBUS_IFACE, g["dbus"]["iface"].as_str().unwrap());
-    // ⚠️ Второго источника адресов нет — реэкспорт waywallen_client.
+    // ⚠️ There is no second source of addresses — a re-export of waywallen_client.
     assert_eq!(wc::DBUS_SERVICE, rexon_core::waywallen_client::BUS_NAME);
 }
 
@@ -1370,8 +1370,8 @@ fn разбор_строк_qtdbus() {
     );
     assert_eq!(wc::tasks_from_dbus_rows(&[]), Some(vec![]));
 
-    // Не 5 элементов / нечисловой id → фолбэк на busctl (в Python это
-    // TypeError/ValueError в цикле).
+    // Not 5 elements / non-numeric id → fallback to busctl (in Python this is
+    // TypeError/ValueError in the loop).
     assert_eq!(wc::tasks_from_dbus_rows(&[vec![DbusValue::Int(1)]]), None);
     let bad = vec![vec![
         DbusValue::Str("х".into()),
@@ -1400,7 +1400,7 @@ fn быстрые_методы_и_остановка_обоев() {
 }
 
 // ============================================================================
-// 4. Кодек запросов
+// 4. Request codec
 // ============================================================================
 
 #[test]
@@ -1438,15 +1438,15 @@ fn таблица_полей_совпадает_с_дескриптором_pyth
     assert_eq!(wc::request_payload_field_number("нет_такого"), None);
 }
 
-/// Таблица генерится build.rs из `control.proto`, поэтому «отстать от вендора»
-/// она больше не может — но проверить, что генерация ЖИВАЯ, надо: пустой или
-/// обрезанный include прошёл бы мимо теста выше только вместе со протухшим
-/// эталоном (именно так дыра и появилась: рукописный список и golden отстали
-/// синхронно). Здесь — независимые от эталона инварианты.
+/// The table is generated by build.rs from `control.proto`, so it can no longer "fall behind the vendor"
+/// — but checking that the generation is ALIVE is still needed: an empty or
+/// truncated include would slip past the test above only together with stale
+/// golden data (that is exactly how the hole appeared: the handwritten list and the golden data fell behind
+/// in sync). Here are invariants independent of the golden data.
 #[test]
 fn таблица_полей_генерится_из_proto() {
-    // Поля, добавленные апстримом позже рукописной таблицы (69–74): их
-    // отсутствие роняло `call(field, msg)` из bridge.py на Python-фолбэк.
+    // Fields added upstream after the handwritten table (69–74): their
+    // absence dropped `call(field, msg)` from bridge.py to the Python fallback.
     for (name, num) in [
         ("plugin_action", 69),
         ("subscription_status", 70),
@@ -1461,8 +1461,8 @@ fn таблица_полей_генерится_из_proto() {
             "поле {name} потерялось — генерация таблицы сломана"
         );
     }
-    // Имена уникальны, номера уникальны и идут по возрастанию (как в .proto —
-    // на этом порядке держится побайтовая сверка кадров).
+    // Names are unique, numbers are unique and ascending (as in .proto —
+    // the byte-for-byte frame comparison relies on this order).
     let mut prev = 0u32;
     let mut seen = std::collections::HashSet::new();
     for (name, num) in wc::REQUEST_PAYLOAD_FIELDS {
@@ -1470,21 +1470,21 @@ fn таблица_полей_генерится_из_proto() {
         assert!(seen.insert(*name), "дубль поля {name}");
         prev = *num;
     }
-    // Ни одно поле не попало в зарезервированный вендором диапазон.
+    // No field fell into the range reserved by the vendor.
     for reserved in [55, 56, 67, 68] {
         assert!(
             !wc::REQUEST_PAYLOAD_FIELDS.iter().any(|(_, n)| *n == reserved),
             "поле с зарезервированным номером {reserved}"
         );
     }
-    // Каждое имя из таблицы обязано собираться `request_bytes` (то есть быть
-    // валидным путём `call(field, msg)`), и кадр обязан читаться prost'ом.
+    // Every name from the table must be buildable by `request_bytes` (that is, be
+    // a valid `call(field, msg)` path), and the frame must be readable by prost.
     for (name, num) in wc::REQUEST_PAYLOAD_FIELDS {
         let bytes = wc::request_bytes(7, name, &[]).unwrap();
         let req = pb::Request::decode(&bytes[..]).unwrap();
         assert_eq!(req.request_id, 7);
-        // Пустой payload — валидное сообщение-без-полей: prost обязан выбрать
-        // именно ЭТОТ вариант oneof, иначе номер поля в таблице неверный.
+        // An empty payload is a valid message without fields: prost must choose
+        // exactly THIS oneof variant, otherwise the field number in the table is wrong.
         assert!(
             req.payload.is_some(),
             "поле {name} (={num}) не распознано как вариант oneof payload"
@@ -1492,8 +1492,8 @@ fn таблица_полей_генерится_из_proto() {
     }
 }
 
-/// Сборщик кадра по имени кейса из фикстуры. `request_id` берётся из эталона —
-/// сверяется ВЕСЬ кадр, включая varint номера запроса.
+/// Frame builder by the case name from the fixture. `request_id` is taken from the golden data —
+/// the WHOLE frame is compared, including the varint of the request number.
 fn build(name: &str, id: u64) -> Vec<u8> {
     let s: Vec<String> = Vec::new();
     match name {
@@ -1552,10 +1552,10 @@ fn build(name: &str, id: u64) -> Vec<u8> {
         "playlist_deactivate_plain" => wc::playlist_deactivate(id, &[], 0),
         "playlist_deactivate_full" => wc::playlist_deactivate(id, &wc::display_targets(&[3]), 9),
         "playlist_jump_to" => wc::playlist_jump_to(id, 7, "entry-1"),
-        // Эталон снят с Python ДО починки (номер дисплея не слался вовсе),
-        // поэтому здесь он нулевой — proto3 нули не пишет, и байты сходятся
-        // один в один. Что номер теперь ДОХОДИТ, проверяет отдельный тест
-        // `display_rename_несёт_номер_дисплея` ниже.
+        // The golden data was taken from Python BEFORE the fix (the display number was not sent at all),
+        // so it is zero here — proto3 does not write zeros, and the bytes match
+        // one to one. That the number now ARRIVES is checked by the separate test
+        // `display_rename_несёт_номер_дисплея` below.
         "display_rename" => wc::display_rename(id, "DP-1", 0, "Основной", false),
         "display_rename_clear" => wc::display_rename(id, "DP-1", 0, "", true),
         "display_layout_set_empty" => wc::display_layout_set(
@@ -1620,6 +1620,7 @@ fn build(name: &str, id: u64) -> Vec<u8> {
                 excluded_tags: &[],
                 filter_match_modes: &Default::default(),
                 cursor: "",
+                artist_id: "",
             },
         ),
         "remote_search_full" => wc::remote_search(
@@ -1633,6 +1634,7 @@ fn build(name: &str, id: u64) -> Vec<u8> {
                 excluded_tags: &[],
                 filter_match_modes: &Default::default(),
                 cursor: "",
+                artist_id: "",
             },
         ),
         "remote_details" => wc::remote_details(id, "42", "steam"),
@@ -1670,12 +1672,12 @@ fn универсальный_путь_call() {
         );
     }
     assert!(wc::request_bytes(1, "нет_такого", &[]).is_err());
-    // request_id == 0 — proto3-дефолт, поле опускается.
+    // request_id == 0 — the proto3 default, the field is omitted.
     assert_eq!(wc::request_bytes(0, "health", &[]).unwrap(), vec![0x52, 0x00]);
 }
 
-/// `settings_set` — единственный запрос с `map`-полем: порядок записей на
-/// проводе не определён, поэтому сверка структурная (декодом обоих кадров).
+/// `settings_set` is the only request with a `map` field: the order of entries on
+/// the wire is undefined, so the comparison is structural (by decoding both frames).
 #[test]
 fn settings_set_структурно() {
     let g = golden();
@@ -1697,18 +1699,18 @@ fn settings_set_структурно() {
     assert_eq!(a, b, "settings_set разошёлся с Python по содержимому");
     assert_eq!(a.request_id, id);
 
-    // Битые подсообщения не роняют мост, а дают ошибку.
+    // Broken submessages do not crash the bridge, they give an error.
     assert!(wc::settings_set(1, &[0xff, 0xff], &[]).is_err());
 }
 
 // ============================================================================
-// Разбор ответа renderer_list (синхронная остановка WE-обоев)
+// Parsing the renderer_list answer (synchronous stop of WE wallpapers)
 // ============================================================================
 
-/// Кадр, снятый с ЖИВОГО демона (`golden/we_live_frames.json`, тот же эталон,
-/// что в `proto_parity.rs`). Смысл именно живого кадра: `stop_active_wallpapers`
-/// решает по нему, что снимать перед установкой статичных обоев, — на
-/// выдуманном ответе такую ветку проверять нечестно.
+/// A frame taken from a LIVE daemon (`golden/we_live_frames.json`, the same golden data
+/// as in `proto_parity.rs`). The point of a live frame: `stop_active_wallpapers`
+/// decides by it what to remove before installing static wallpapers — testing such a branch
+/// on a made-up answer would be dishonest.
 #[test]
 fn идентификаторы_рендереров_из_живого_кадра() {
     let live: Value =
@@ -1718,7 +1720,7 @@ fn идентификаторы_рендереров_из_живого_кадр�
         live["responses"]["renderer_list"]["frame_hex"].as_str().unwrap(),
     );
 
-    // Эталон — то, что из этого кадра читает Python
+    // The golden value is what Python reads from this frame
     // (`inst.renderer_id for inst in resp.renderer_list.instances`).
     let frame = pb::ServerFrame::decode(&raw[..]).unwrap();
     let Some(pb::server_frame::Kind::Response(rsp)) = frame.kind else {
@@ -1734,17 +1736,17 @@ fn идентификаторы_рендереров_из_живого_кадр�
     assert_eq!(wc::renderer_ids_from_frame(&raw), Some(expect));
 }
 
-/// Ветки «читать нечего»: у оригинала все они дают пустой список / «нечего
-/// снимать», а не исключение — установка статичных обоев не должна падать
-/// из-за формы ответа демона.
+/// "Nothing to read" branches: in the original all of them give an empty list / "nothing
+/// to remove", not an exception — installing static wallpapers must not fail
+/// because of the shape of the daemon's answer.
 #[test]
 fn идентификаторы_рендереров_вырожденные_случаи() {
-    // Мусор вместо кадра.
+    // Garbage instead of a frame.
     assert_eq!(wc::renderer_ids_from_frame(&[0xff, 0xff, 0xff]), None);
-    // Пустой кадр — oneof kind не заполнен.
+    // An empty frame — the oneof kind is not filled in.
     assert_eq!(wc::renderer_ids_from_frame(&[]), None);
 
-    // Ответ другого запроса — не наш кадр.
+    // An answer to another request is not our frame.
     let other = pb::ServerFrame {
         kind: Some(pb::server_frame::Kind::Response(pb::Response {
             request_id: 3,
@@ -1759,7 +1761,7 @@ fn идентификаторы_рендереров_вырожденные_сл
     };
     assert_eq!(wc::renderer_ids_from_frame(&other.encode_to_vec()), None);
 
-    // Ответ БЕЗ payload (реальный кадр ошибки демона такой же).
+    // An answer WITHOUT a payload (a real daemon error frame looks the same).
     let empty = pb::ServerFrame {
         kind: Some(pb::server_frame::Kind::Response(pb::Response {
             request_id: 4,
@@ -1769,8 +1771,8 @@ fn идентификаторы_рендереров_вырожденные_сл
     };
     assert_eq!(wc::renderer_ids_from_frame(&empty.encode_to_vec()), None);
 
-    // Рендереров нет — ПУСТОЙ список, а не None: это «снимать нечего»,
-    // и вызывающий обязан отличать его от «не разобрали».
+    // No renderers — an EMPTY list, not None: this is "nothing to remove",
+    // and the caller must tell it apart from "could not parse".
     let none = pb::ServerFrame {
         kind: Some(pb::server_frame::Kind::Response(pb::Response {
             request_id: 5,
@@ -1785,8 +1787,8 @@ fn идентификаторы_рендереров_вырожденные_сл
         Some(Vec::new())
     );
 
-    // Инстанс с пустым renderer_id отбрасывается: убить его нечем, а в
-    // счётчик снятых он бы попал и соврал бы про результат.
+    // An instance with an empty renderer_id is dropped: there is nothing to kill it with, and it
+    // would get into the count of removed ones and lie about the result.
     let blank = pb::ServerFrame {
         kind: Some(pb::server_frame::Kind::Response(pb::Response {
             request_id: 6,
@@ -1815,13 +1817,13 @@ fn идентификаторы_рендереров_вырожденные_сл
 }
 
 // ============================================================================
-// Починка: `display_rename` обязан нести номер дисплея
+// Fix: `display_rename` must carry the display number
 // ============================================================================
 
-/// С v0.2.4 демон резолвит цель переименования по `display_id`, а `name`
-/// держит только для старых клиентов («name is retained for older clients
-/// but is not used for target resolution», фикс #79). Прежняя обёртка
-/// номер не слала вовсе — псевдоним уходил в никуда.
+/// Since v0.2.4 the daemon resolves the rename target by `display_id`, and keeps `name`
+/// only for old clients ("name is retained for older clients
+/// but is not used for target resolution", fix #79). The old wrapper
+/// did not send the number at all — the alias went nowhere.
 #[test]
 fn display_rename_несёт_номер_дисплея() {
     let frame = wc::display_rename(7, "DP-1", 42, "Основной", false);
@@ -1835,10 +1837,10 @@ fn display_rename_несёт_номер_дисплея() {
     assert!(!inner.clear);
 }
 
-/// waywallen 0.5.0: имя библиотеки при добавлении. Как у вендорного
-/// интерфейса (`library_query.cpp`, `LibraryAddQuery::reload`): без пути или
-/// плагина запрос не уходит, имя обрезается по краям, пустое не шлётся —
-/// поле остаётся незаданным, и имя по умолчанию выбирает демон.
+/// waywallen 0.5.0: the library name on adding. As in the vendor
+/// interface (`library_query.cpp`, `LibraryAddQuery::reload`): without a path or
+/// plugin the request is not sent, the name is trimmed, an empty one is not sent —
+/// the field stays unset, and the daemon chooses the default name.
 #[test]
 fn library_add_несёт_обрезанное_имя() {
     let req = wc::library_add_request("/обои", "we", "  Мастерская  ", Default::default()).expect("запрос уходит");
@@ -1860,7 +1862,7 @@ fn library_add_несёт_обрезанное_имя() {
         panic!("не тот вид запроса");
     };
     assert_eq!(inner.name.as_deref(), Some("Мастерская"));
-    // Без имени кадр байт в байт прежний — поле не появляется на проводе.
+    // Without a name the frame is byte-for-byte as before — the field does not appear on the wire.
     assert_eq!(
         wc::library_add(9, "/обои", "we", ""),
         pb::Request {
@@ -1874,8 +1876,8 @@ fn library_add_несёт_обрезанное_имя() {
         }
         .encode_to_vec()
     );
-    // waywallen 0.6.0: настройки библиотеки (`librarySettings` плагина)
-    // уходят картой строк — значения как `QVariant::toString()`.
+    // waywallen 0.6.0: library settings (the plugin's `librarySettings`)
+    // go as a map of strings — values as `QVariant::toString()`.
     let settings = wc::library_settings(&serde_json::json!({
         "recursive": true, "depth": 3.0, "ratio": 1.5, "label": "Мои", "none": null
     }));
@@ -1889,10 +1891,10 @@ fn library_add_несёт_обрезанное_имя() {
     assert!(wc::library_settings(&serde_json::json!([1, 2])).is_empty(), "не карта — пусто");
 }
 
-/// waywallen 0.6.0: правка библиотеки (поле 93) — имя и настройки одним
-/// запросом; вендорный интерфейс больше не шлёт `library_rename` (92).
-/// Кадр разбирается в `LibraryEditRequest{id, name, settings}` с обрезанным
-/// именем; номер `<= 0` или пустое после среза имя — запрос не уходит
+/// waywallen 0.6.0: library edit (field 93) — name and settings in one
+/// request; the vendor interface no longer sends `library_rename` (92).
+/// The frame parses into `LibraryEditRequest{id, name, settings}` with a trimmed
+/// name; with a number `<= 0` or a name empty after trimming the request is not sent
 /// (`LibraryEditQuery::reload`).
 #[test]
 fn library_edit_кадр_и_отказы() {
@@ -1917,7 +1919,7 @@ fn library_edit_кадр_и_отказы() {
         body,
         pb::LibraryEditRequest { id: 3, name: "Имя".into(), settings: settings.clone() }
     );
-    // Универсальный путь вкладки (тело + номер поля) даёт тот же кадр.
+    // The tab's generic path (body + field number) gives the same frame.
     assert_eq!(
         wc::request_bytes(11, "library_edit", &body.encode_to_vec()).unwrap(),
         wc::library_edit(11, 3, "Имя", settings)
@@ -1930,11 +1932,11 @@ fn library_edit_кадр_и_отказы() {
 }
 
 // ============================================================================
-// Кадр сервера для колбэков на Python
+// Server frame for the Python callbacks
 // ============================================================================
 //
-// Своего протобуфа у продукта больше нет: ответ демона колбэкам на Python
-// разбирает ядро. Проверяется ровно то, что они читают.
+// The product no longer has a protobuf of its own: the daemon's answer for the Python callbacks
+// is parsed by the core. Exactly what they read is checked.
 
 #[test]
 fn reply_fields_reads_health_state() {
@@ -1986,7 +1988,7 @@ fn reply_fields_reads_plugin_install() {
     );
 }
 
-/// Отказ демона колбэк читает по `error_code`/`message`, а не по нагрузке.
+/// The callback reads a daemon refusal by `error_code`/`message`, not by the payload.
 #[test]
 fn reply_fields_carries_refusal() {
     let frame = pb::ServerFrame {
@@ -2004,8 +2006,8 @@ fn reply_fields_carries_refusal() {
     assert_eq!(r.payload, "", "нагрузки нет — имени быть не должно");
 }
 
-/// Нагрузка, разбора которой здесь нет, обязана назваться так, чтобы её не
-/// приняли за пустой ответ.
+/// A payload that is not parsed here must name itself so that it is not
+/// mistaken for an empty answer.
 #[test]
 fn reply_fields_names_unparsed_payload() {
     let frame = pb::ServerFrame {
@@ -2022,8 +2024,8 @@ fn reply_fields_names_unparsed_payload() {
     assert!(r.text.is_empty() && r.flags.is_empty());
 }
 
-/// Событие демона отличимо от ответа: колбэков у него нет, разносит его
-/// транспорт.
+/// A daemon event is distinguishable from an answer: it has no callbacks, the
+/// transport dispatches it.
 #[test]
 fn reply_fields_tells_event_from_response() {
     let frame = pb::ServerFrame {
@@ -2034,13 +2036,13 @@ fn reply_fields_tells_event_from_response() {
     assert_eq!(r.request_id, 0);
 }
 
-/// Битый кадр обязан дать ошибку, а не «пустой ответ».
+/// A broken frame must give an error, not "an empty answer".
 #[test]
 fn reply_fields_refuses_broken_frame() {
     assert!(wc::reply_fields(&[0xff, 0xff, 0xff, 0xff]).is_err());
 }
 
-/// Английские сообщения автозапуска и транспорта — без русских букв.
+/// English autostart and transport messages contain no Russian letters.
 #[test]
 fn english_autostart_and_transport_texts_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -2067,8 +2069,8 @@ fn english_autostart_and_transport_texts_have_no_russian() {
     assert_eq!(texts[3], "Autostart disabled");
 }
 
-/// Движок комплекта заменён пакетом, а демон держит старый: перезапуск один
-/// раз на пару версий; AppImage человека и неизвестные версии не трогаем.
+/// The bundled engine was replaced by the package, and the daemon holds the old one: one restart
+/// per pair of versions; the person's AppImage and unknown versions are not touched.
 #[test]
 fn engine_refresh_restarts_once_per_version_pair() {
     use wc::EngineRefresh as R;
@@ -2084,9 +2086,9 @@ fn engine_refresh_restarts_once_per_version_pair() {
     assert!(body.contains("0.5.0") && body.contains("0.5.1"), "{body}");
 }
 
-/// Демона нет, транспорт переподключается по кругу: одна и та же ошибка
-/// сокета даёт ОДИН тост на обрыв. Следующий — после восстановления и
-/// нового обрыва либо когда причина сменилась.
+/// No daemon, the transport reconnects in a loop: the same socket
+/// error gives ONE toast per disconnect. The next one — after recovery and
+/// a new disconnect, or when the cause changed.
 #[test]
 fn transport_error_toast_once_per_outage() {
     let refused = "Connection refused";

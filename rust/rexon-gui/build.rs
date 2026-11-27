@@ -1,256 +1,274 @@
-// Сборка QML-модуля `org.rexon.gui`: cxx-qt прогоняет moc +
-// qmltyperegistrar по мосту и запекает .qml в статический ресурс
-// (qrc:/qt/qml/org/rexon/gui/). Статический плагин — потому что сборка
-// чисто карговая, без CMake: динамический плагин требует раскладки qmldir
-// рядом с бинарём (ограничение задокументировано в cxx-qt-build).
+// Build of the QML module `org.rexon.gui`: cxx-qt runs moc +
+// qmltyperegistrar over the bridge and bakes the .qml into a static
+// resource (qrc:/qt/qml/org/rexon/gui/). A static plugin because the build
+// is pure cargo, without CMake: a dynamic plugin requires a qmldir layout
+// next to the binary (a limitation documented in cxx-qt-build).
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
-// Списки ниже — единственный источник правды о составе модуля. Они вынесены
-// в константы не для красоты: их слепок уезжает в OUT_DIR, и сторож в тестах
-// крейта (`src/lib.rs`, модуль `build_manifest`) сверяет с ним содержимое
-// каталогов. Забытая строка ловится тестом, а не живым падением.
+// The lists below are the single source of truth about the module's
+// composition. They are moved into constants not for looks: their snapshot
+// goes into OUT_DIR, and a guard in the crate's tests (`src/lib.rs`, the
+// `build_manifest` module) compares the contents of the directories with
+// it. A forgotten line is caught by a test, not by a live crash.
 //
-// ⚠️ Правку делать ЗДЕСЬ, а не в вызове ниже: вызов берёт эти константы.
+// Warning: make the edit HERE, not in the call below: the call takes these
+// constants.
 
-/// Страницы и контролы, запекаемые в статический ресурс модуля.
+/// Pages and controls baked into the module's static resource.
 const QML_FILES: &[&str] = &[
     "qml/LayerShellProbe.qml",
-    // Живые модели в настоящем QML (сетка Discover, редактор свойств
-    // обоев, гашение плашки) — сценарии `rexon-gui-selftest`.
+    // Live models in real QML (the Discover grid, the wallpaper property
+    // editor, hiding the banner) — scenarios of `rexon-gui-selftest`.
     "qml/LiveModelsProbe.qml",
     "qml/WallpaperVideo.qml",
-    // Веб-обои: тот же приём, тот же набор размещений, но
-    // содержимое рисует QtWebEngine.
+    // Web wallpapers: the same technique, the same set of placements, but the
+    // content is drawn by QtWebEngine.
     "qml/WallpaperWeb.qml",
-    // Клиент вывода демона waywallen на X11 (`--mode waywallen`): окна-
-    // рабочие столы с элементом вывода waywallen.
+    // The waywallen daemon output client on X11 (`--mode waywallen`): desktop
+    // windows with the waywallen output item.
     "qml/WallpaperWaywallen.qml",
-    // Этап 3 ухода с PySide6: вкладки переписываются на QML по
-    // одной. Первая — «Сравнение DE».
+    // Stage 3 of leaving PySide6: the tabs are rewritten in QML one at a time.
+    // The first is "DE comparison".
     "qml/ComparePage.qml",
-    // Главное окно, у которого хозяин на Rust: `ApplicationWindow` вместо
-    // `QMainWindow` продукта. Отдельный вход для разработчика (бинарь
-    // `rexon-main-window`), живой Rexon его не грузит.
+    // The main window whose host is in Rust: an `ApplicationWindow` instead of
+    // the product's `QMainWindow`. A separate entry point for the developer
+    // (the `rexon-main-window` binary); the live Rexon does not load it.
     "qml/MainWindow.qml",
-    // Вкладка «Рабочие столы» — вкладка класса B на QML.
+    // The "Desktops" tab — a class B tab in QML.
     "qml/DesktopsPage.qml",
-    // Окно операции над столом — общее для «Рабочих столов» и
-    // «Сравнения DE».
+    // The desktop operation window — shared by "Desktops" and "DE comparison".
     "qml/DeOperationDialog.qml",
-    // Вкладка «Настройки» — вторая вкладка класса B на QML.
+    // The "Settings" tab — the second class B tab in QML.
     "qml/SettingsPage.qml",
-    // Разделы «Анимация» и «Кнопки заголовка окна» той же вкладки —
-    // отдельными компонентами со своими объектами действий.
+    // The "Animation" and "Window title buttons" sections of the same tab — as
+    // separate components with their own action objects.
     "qml/AnimationsSection.qml",
-    // «Эффекты рабочего стола» (все эффекты KWin) — только в KDE.
+    // "Desktop effects" (all KWin effects) — KDE only.
     "qml/DesktopEffectsSection.qml",
-    // «Эффекты экрана» (кинескоп, видеокассета…) — раздел «Оформления»;
-    // плитки рисуются шейдером предпросмотра (`bake_preview_shader`).
+    // "Screen effects" (CRT, videotape…) — a section of "Appearance"; the
+    // tiles are drawn by the preview shader (`bake_preview_shader`).
     "qml/ScreenEffectsSection.qml",
     "qml/WindowButtonsSection.qml",
-    // «Отклик при запуске» (как в модуле «Курсоры» KDE) — там же.
+    // "Launch feedback" (as in the KDE "Cursors" module) — in the same place.
     "qml/LaunchFeedbackSection.qml",
-    // Источник «Razer Axon» раздела «Обои HD» (библиотека Axon) и блок его
-    // настроек в «⚙️ Настройках» того же раздела.
+    // The "Razer Axon" source of the "HD Wallpapers" section (the Axon
+    // library) and its settings block in "⚙️ Settings" of the same section.
     "qml/AxonLibraryView.qml",
     "qml/AxonSettingsSection.qml",
-    // Плейлист обоев Rexon в «⚙️ Настройках» раздела «Обои HD».
+    // The Rexon wallpaper playlist in "⚙️ Settings" of the "HD Wallpapers"
+    // section.
     "qml/WallpaperPlaylistSection.qml",
-    // «Цвет акцента» над сеткой «Цветовых схем» «Оформления».
+    // "Accent colour" above the "Colour schemes" grid of "Appearance".
     "qml/AccentSection.qml",
-    // «Светлое и тёмное» (по расписанию) над «Глобальными темами» и «Цветовыми схемами».
+    // "Light and dark" (scheduled) above "Global themes" and "Colour schemes".
     "qml/DayNightSection.qml",
-    // «Сохранить текущее оформление…» над «Глобальными темами».
+    // "Save current look…" above "Global themes".
     "qml/GlobalSaveSection.qml",
-    // Свой редактор цветовой схемы — когда редактора KDE нет.
+    // Our own colour scheme editor — when there is no KDE editor.
     "qml/ColorSchemeEditor.qml",
-    // «Значки и панели инструментов» (как «Параметры» стиля приложений KDE).
+    // "Icons and toolbars" (like the "Settings" of the KDE application style).
     "qml/AppWidgetsSection.qml",
-    // «Управление шрифтами» внутри раздела шрифтов (действия — у самой
-    // страницы, `SettingsActions`).
+    // "Font management" inside the fonts section (the actions belong to the
+    // page itself, `SettingsActions`).
     "qml/FontManagerSection.qml",
-    // Раздел «Окна Deepin»: где в Deepin меняются углы, прозрачность и
-    // акцент окон — показывается только в сеансе Deepin.
+    // The "Deepin windows" section: where Deepin changes window corners,
+    // transparency and accent — shown only in a Deepin session.
     "qml/DdeLookSection.qml",
-    // Раздел «Панель MATE»: готовые раскладки панели — только в сеансе MATE.
-    // Самостоятельный компонент: потом переедет в «Оформление».
+    // The "MATE panel" section: ready-made panel layouts — only in a MATE
+    // session. A standalone component: it will later move to "Appearance".
     "qml/MatePanelSection.qml",
-    // Вкладка «Расширения» — вкладка класса B на QML.
+    // The "Extensions" tab — a class B tab in QML.
     "qml/ExtensionsPage.qml",
-    // Вкладка «Steam» — вкладка класса B на QML.
+    // The "Steam" tab — a class B tab in QML.
     "qml/SteamPage.qml",
-    // Подвкладка «Витрины профиля» той же вкладки — отдельным компонентом
-    // со своим объектом действий.
+    // The "Profile showcases" sub-tab of the same tab — as a separate
+    // component with its own action object.
     "qml/SteamShowcaseSection.qml",
-    // Подвкладка «Заставка»: заставка Rexon для экрана простоя Big Picture.
+    // The "Screensaver" sub-tab: a Rexon screensaver for the Big Picture idle
+    // screen.
     "qml/SteamScreensaverSection.qml",
-    // Вкладка «Оформление» — последняя вкладка класса B на QML.
+    // The "Appearance" tab — the last class B tab in QML.
     "qml/AppearancePage.qml",
-    // Блок «Менеджер входа» в разделе экрана входа той же вкладки (данные —
-    // проба `loginScreenReady`, действие — `makeDefaultLoginManager`).
+    // The "Login manager" block in the login screen section of the same tab
+    // (the data is the `loginScreenReady` probe, the action is
+    // `makeDefaultLoginManager`).
     "qml/LoginManagerSection.qml",
-    // Выбор файла у товара магазина с несколькими файлами — отдельным
-    // компонентом ради стенда `LiveModelsProbe.qml` (сценарий «storefiles»).
+    // File choice for a store item with several files — as a separate
+    // component for the sake of the `LiveModelsProbe.qml` bench (the
+    // "storefiles" scenario).
     "qml/StoreFileChoice.qml",
-    // Настройки виджета Conky в карточке раздела — отдельным компонентом:
-    // положение, фон, окно, экран, часы и сеть (`conky_overlay`).
+    // Conky widget settings in the section card — as a separate component:
+    // position, background, window, screen, clock and network
+    // (`conky_overlay`).
     "qml/ConkySettings.qml",
-    // Палитра найденных цветов виджета Conky в той же карточке
+    // Palette of the Conky widget's found colours in the same card
     // (`conky_colors`).
     "qml/ConkyColours.qml",
-    // Наборы виджетов Conky над сеткой раздела (`conky_sets`).
+    // Conky widget sets above the section grid (`conky_sets`).
     "qml/ConkySets.qml",
-    // Мини-карта экрана с перетаскиванием виджетов Conky (`conky_layout`).
+    // Mini-map of the screen with dragging of Conky widgets (`conky_layout`).
     "qml/ConkyScreenMap.qml",
-    // Вкладка «Wallpaper Engine» — шелл вокруг вендорного QML
-    // waywallen: рейл и место страницы. Страницы вендорные и
-    // приезжают отдельным модулем `waywallen.ui`, поэтому в
-    // этот статический ресурс они не запекаются.
+    // The "Wallpaper Engine" tab — a shell around waywallen's vendored QML:
+    // the rail and the page's place. The pages are vendored and come as a
+    // separate module `waywallen.ui`, so they are not baked into this static
+    // resource.
     "qml/WallpaperEnginePage.qml",
-    // Скрытая страница «Разработчик» той же вкладки — НАША, а не
-    // вендорная: обновления upstream и сверка паритета UI. Поэтому она
-    // запекается сюда, в отличие от шести вендорных страниц.
+    // The hidden "Developer" page of the same tab is OURS, not vendored:
+    // upstream updates and UI parity reconciliation. That is why it is baked
+    // here, unlike the six vendored pages.
     "qml/WeDeveloperPage.qml",
-    // Контролы в скине приложения — общие для всех QML-вкладок:
-    // стиль QtQuick Controls по умолчанию (Basic) палитре
-    // приложения не следует, а менять стиль всему процессу
-    // нельзя — рядом живёт вендорный QML вкладки Wallpaper Engine.
+    // Controls in the application skin — shared by all QML tabs: the default
+    // QtQuick Controls style (Basic) does not follow the application palette,
+    // and changing the style for the whole process is not allowed — the
+    // vendored QML of the Wallpaper Engine tab lives next door.
     "qml/RexonButton.qml",
     "qml/RexonDangerButton.qml",
     "qml/RexonCheckBox.qml",
     "qml/RexonComboBox.qml",
     "qml/RexonSlider.qml",
     "qml/RexonTextField.qml",
-    // Текст с выравниванием по началу строки и для языка справа налево
-    // (почему отдельный тип — в шапке файла).
+    // Text aligned to the start of the line, also for a right-to-left
+    // language (why a separate type — in the file header).
     "qml/RexonText.qml",
-    // Текст со ссылками из чужого текста и окно вопроса перед внешним
-    // сайтом — одни на все вкладки (решение — ядро `link_policy`).
+    // Text with links from third-party text and the question window before an
+    // external site — one for all tabs (the decision is the core's
+    // `link_policy`).
     "qml/RexonLinkText.qml",
     "qml/RexonLinkDialog.qml",
-    // Направленные значки и клавиши ← → по зеркалированию места — одни на
-    // все листалки и шевроны (почему отдельный тип — в шапке файла).
+    // Directional icons and the ← → keys by mirroring of the place — one for
+    // all pagers and chevrons (why a separate type — in the file header).
     "qml/RexonArrows.qml",
-    // Подстановки `%1` в строки QML — с изолятами при языке справа налево,
-    // как `i18n::fill` в ядре (почему отдельный тип — в шапке файла).
+    // `%1` substitutions in QML strings — with isolates for a right-to-left
+    // language, like `i18n::fill` in the core (why a separate type — in the
+    // file header).
     "qml/RexonBidi.qml",
-    // Всплывающая плашка состояния — одна на все вкладки: таймер гашения
-    // живёт в ней, а не переписывается заново в каждой странице.
+    // The pop-up status banner — one for all tabs: the hide timer lives in it
+    // rather than being rewritten in every page.
     "qml/RexonToast.qml",
-    // Крупный просмотр картинки и вход в него с миниатюры — тоже одни на
-    // все вкладки: лупа под курсором, щелчок, листание, масштаб.
+    // The large picture viewer and the way into it from a thumbnail — also one
+    // for all tabs: a magnifier under the cursor, a click, paging, zoom.
     "qml/RexonImageViewer.qml",
     "qml/RexonZoomArea.qml",
-    // Меню главного окна («☰») и диалоги за его пунктами: справка о
-    // программе, вопрос перед сбросом темы KDE, окно удаления Rexon.
+    // The main window menu ("☰") and the dialogs behind its items: the About
+    // box, the question before resetting the KDE theme, the Rexon removal
+    // window.
     "qml/WindowMenu.qml",
     "qml/WindowMenuDialogs.qml",
-    // Обучение при первом запуске поверх окна на Rust.
+    // The first-run tutorial over the Rust window.
     "qml/OnboardingOverlay.qml",
-    // Мастер первого запуска: приветствие с выбором «для кого установить».
-    // ⚠️ Накладка зовётся FirstRunWizardOverlay, а НЕ FirstRunWizard: имя
-    // `FirstRunWizard` в модуле уже занял мост (`#[qml_element]` в
-    // src/first_run_wizard.rs), и одноимённый файл сделал бы тип
-    // двойственным («Ambiguous type detected … defined multiple times»), а
-    // мост — недостижимым из разметки. Пара названа так же, как у обучения:
-    // `OnboardingModel` + `OnboardingOverlay.qml`.
+    // The first-run wizard: a welcome with the choice "who to install for".
+    // Warning: the overlay is called FirstRunWizardOverlay, NOT
+    // FirstRunWizard: the name `FirstRunWizard` in the module is already taken
+    // by the bridge (`#[qml_element]` in src/first_run_wizard.rs), and a file
+    // of the same name would make the type ambiguous ("Ambiguous type detected
+    // … defined multiple times"), and the bridge unreachable from the markup.
+    // The pair is named the same way as the tutorial's: `OnboardingModel` +
+    // `OnboardingOverlay.qml`.
     "qml/FirstRunWizardOverlay.qml",
 ];
 
-/// Мосты cxx-qt, которые прогоняются через moc и qmltyperegistrar.
+/// cxx-qt bridges that go through moc and qmltyperegistrar.
 ///
-/// Мост обязан лежать в одном каталоге с остальными #[qml_element]-мостами:
-/// qmltyperegistrar берёт из moc только имя файла, без префикса пути
-/// (QTBUG-93443), поэтому подкаталоги для мостов недопустимы.
+/// A bridge must lie in the same directory as the other #[qml_element]
+/// bridges: qmltyperegistrar takes only the file name from moc, without the
+/// path prefix (QTBUG-93443), so subdirectories for bridges are not
+/// allowed.
 const BRIDGE_FILES: &[&str] = &[
-    // Хозяин главного окна на Rust: состав разделов и палитра.
+    // The main window host in Rust: the set of sections and the palette.
     "src/main_window.rs",
-    // Журнал действий человека: синглтон `ActionJournal` для общих
-    // контролов, меню окна и полосы разделов.
+    // Journal of the user's actions: the `ActionJournal` singleton for the
+    // shared controls, the window menu and the section strip.
     "src/action_journal.rs",
-    // Ссылки из чужого текста: синглтон `LinkGuard` общего компонента
-    // `RexonLinkText.qml` (карточка своего магазина, вопрос, ↗).
+    // Links from third-party text: the `LinkGuard` singleton of the shared
+    // `RexonLinkText.qml` component (our own store card, the question, ↗).
     "src/link_guard.rs",
-    // Обучение при первом запуске: сценарий и прогресс из ядра для накладки.
+    // The first-run tutorial: the scenario and progress from the core for the
+    // overlay.
     "src/onboarding_overlay.rs",
-    // Мастер первого запуска: решение ядра, подписи, фоновая установка.
-    // Разметка мастера — `qml/FirstRunWizardOverlay.qml` в списке выше.
+    // The first-run wizard: the core's decision, labels, background
+    // installation. The wizard's markup is `qml/FirstRunWizardOverlay.qml` in
+    // the list above.
     "src/first_run_wizard.rs",
-    // Вкладка «Сравнение DE» — первая вкладка класса B на QML.
+    // The "DE comparison" tab — the first class B tab in QML.
     "src/compare_page.rs",
-    // Вкладка «Рабочие столы» — вкладка класса B на QML.
+    // The "Desktops" tab — a class B tab in QML.
     "src/desktops_page.rs",
-    // Объект побочных действий той же вкладки: версия пакета из
-    // репозиториев и переход во встроенное «Сравнение DE». До него страница
-    // получала `actions` только от Python.
+    // Side-actions object of the same tab: the package version from the
+    // repositories and switching to the built-in "DE comparison". Before it
+    // the page got `actions` only from Python.
     "src/desktops_actions.rs",
-    // Вкладка «Настройки» — вторая вкладка класса B на QML.
+    // The "Settings" tab — the second class B tab in QML.
     "src/settings_page.rs",
-    // Объект побочных действий той же вкладки: снимки машины, скин,
-    // автозапуск, файловый менеджер, родные приложения окружения, звуки
-    // событий, защита приложений по умолчанию, импорт тем Windows. До него
-    // страница получала `actions` от Python.
+    // Side-actions object of the same tab: machine snapshots, the skin,
+    // autostart, the file manager, the environment's native applications,
+    // event sounds, default application protection, importing Windows themes.
+    // Before it the page got `actions` from Python.
     "src/settings_actions.rs",
-    // Разделы «Анимация» и «Кнопки заголовка окна»: снимок и запись — ядро
-    // (`animations`, `window_buttons`).
+    // The "Animation" and "Window title buttons" sections: the snapshot and
+    // the write are the core's (`animations`, `window_buttons`).
     "src/animations_actions.rs",
     "src/screen_effects_actions.rs",
     "src/app_widgets_actions.rs",
     "src/window_buttons_actions.rs",
-    // «Отклик при запуске»: снимок и запись — ядро (`launch_feedback`).
+    // "Launch feedback": the snapshot and the write are the core's
+    // (`launch_feedback`).
     "src/launch_feedback_actions.rs",
-    // Источник «Razer Axon»: библиотека, запрос, «Применить», наши настройки.
+    // The "Razer Axon" source: the library, the query, "Apply", our settings.
     "src/axon_actions.rs",
-    // Плейлист обоев Rexon: модель, правки, смена — ядро (`wallpaper_playlist`).
+    // The Rexon wallpaper playlist: the model, edits, switching — the core's
+    // (`wallpaper_playlist`).
     "src/wallpaper_playlist_actions.rs",
-    // «Цвет акцента»: снимок и запись — ядро (`accent`).
+    // "Accent colour": the snapshot and the write are the core's (`accent`).
     "src/accent_actions.rs",
-    // «Светлое и тёмное»: снимок, запись, таймер — ядро (`day_night`).
+    // "Light and dark": the snapshot, the write, the timer — the core's
+    // (`day_night`).
     "src/day_night_actions.rs",
-    // «Сохранить текущее оформление…»: снимок, пакет, превью — ядро (`global_save`).
+    // "Save current look…": the snapshot, the package, the preview — the
+    // core's (`global_save`).
     "src/global_save_actions.rs",
-    // Раздел «Окна Deepin»: снимок — ядро (`dde`).
+    // The "Deepin windows" section: the snapshot is the core's (`dde`).
     "src/dde_look_actions.rs",
-    // Раздел «Панель MATE»: снимок, применение, возврат — ядро (`mate_panel`).
+    // The "MATE panel" section: snapshot, apply, revert — the core's
+    // (`mate_panel`).
     "src/mate_panel_actions.rs",
-    // Кнопки «послушать» тем звуков (ядро — `sound_preview`).
+    // "Listen" buttons of sound themes (the core — `sound_preview`).
     "src/sound_preview_actions.rs",
-    // Вкладка «Расширения» — вкладка класса B на QML.
+    // The "Extensions" tab — a class B tab in QML.
     "src/extensions_page.rs",
-    // Объект побочных действий той же вкладки: установка .rxn, удаление,
-    // включение-выключение. До него страница получала `actions` от Python.
+    // Side-actions object of the same tab: installing .rxn, removing, enabling
+    // and disabling. Before it the page got `actions` from Python.
     "src/extensions_actions.rs",
-    // Вкладка «Steam» — вкладка класса B на QML.
+    // The "Steam" tab — a class B tab in QML.
     "src/steam_page.rs",
-    // Объект побочных действий той же вкладки: снимок витрины заставок,
-    // выбор своего ролика, звёздочки, три переключателя, полноэкранный показ
-    // и токен WebAPI. До него страница получала `actions` от Python.
+    // Side-actions object of the same tab: the splash showcase snapshot,
+    // choosing your own clip, stars, three toggles, the full-screen show and
+    // the WebAPI token. Before it the page got `actions` from Python.
     "src/steam_actions.rs",
-    // Подвкладка «Витрины профиля»: нарезка картинки под витрину и фон для
-    // предпросмотра (ядро — `steam_showcase`).
+    // The "Profile showcases" sub-tab: cutting a picture for the showcase and
+    // the background for the preview (the core — `steam_showcase`).
     "src/steam_showcase_actions.rs",
-    // Подвкладка «Заставка»: установка, обновление и удаление заставки в
-    // папке Steam (ядро — `steam_screensaver`).
+    // The "Screensaver" sub-tab: installing, updating and removing the
+    // screensaver in the Steam folder (the core — `steam_screensaver`).
     "src/steam_screensaver_actions.rs",
-    // Вкладка «Оформление» — последняя вкладка класса B на QML.
+    // The "Appearance" tab — the last class B tab in QML.
     "src/appearance_page.rs",
-    // Объект побочных действий той же вкладки: магазин, AUR, обзор диска,
-    // картинки плиток и карусели, установка, применение и удаление тем.
-    // До него страница получала `actions` от Python.
+    // Side-actions object of the same tab: the store, AUR, the disk overview,
+    // tile and carousel pictures, installing, applying and removing themes.
+    // Before it the page got `actions` from Python.
     "src/appearance_actions.rs",
-    // Вкладка «Wallpaper Engine» — шелл вокруг вендорного QML.
+    // The "Wallpaper Engine" tab — a shell around the vendored QML.
     //
-    // ⚠️ Забыть эту строку — значит получить мёртвую вкладку. Пока крейт
-    // собирался ещё и как `cdylib`, сборка при этом оставалась ЗЕЛЁНОЙ
-    // (неопределённые символы на линковке пропускались), и мост валился
-    // только при `dlopen` живым Rexon («undefined symbol:
-    // …WallpaperEngineModel…»). Наступили на это 30.08.2026; с тех пор
-    // пропуск ловит сторож в тестах крейта.
+    // Warning: forgetting this line means getting a dead tab. While the crate
+    // was also built as a `cdylib`, the build stayed GREEN (undefined symbols
+    // were let through at link time), and the bridge failed only on `dlopen`
+    // by the live Rexon ("undefined symbol: …WallpaperEngineModel…"). We
+    // stepped on this on 30.08.2026; since then the omission is caught by the
+    // guard in the crate's tests.
     "src/we_page.rs",
-    // Скрытая страница «Разработчик» вкладки обоев.
+    // The hidden "Developer" page of the wallpaper tab.
     "src/we_dev_page.rs",
-    // Объект побочных действий той же вкладки: повторный запуск демона
-    // обоев. До него страница получала `actions` от Python.
+    // Side-actions object of the same tab: restarting the wallpaper daemon.
+    // Before it the page got `actions` from Python.
     "src/we_actions.rs",
     "src/discover_queries.rs",
     "src/display_queries.rs",
@@ -264,8 +282,9 @@ const BRIDGE_FILES: &[&str] = &[
     "src/we_socket.rs",
     "src/layer_shell.rs",
     "src/wallpaper_host.rs",
-    // `src/web_host.rs` мостом больше не является: QtWebEngineQuick
-    // открывается `dlopen` только в веб-режиме хоста обоев (разбор там же).
+    // `src/web_host.rs` is no longer a bridge: QtWebEngineQuick is opened with
+    // `dlopen` only in the web mode of the wallpaper host (the analysis is
+    // there).
     "src/wallpaper_audio.rs",
     "src/remote_list_model.rs",
     "src/tag_queries.rs",
@@ -275,38 +294,41 @@ const BRIDGE_FILES: &[&str] = &[
     "src/status_queries.rs",
     "src/remote_store_queries.rs",
     "src/plugin_queries.rs",
-    // Подписи плагинов: каталог автора плагина поверх нашего русского слоя.
+    // Plugin labels: the plugin author's catalogue over our Russian layer.
     "src/plugin_translations.rs",
     "src/playlist_queries.rs",
-    // Выбор состава плейлиста: тип объявлен прямо в WallpaperPage.qml 0.3.7.
+    // Choosing the playlist composition: the type is declared right in
+    // WallpaperPage.qml 0.3.7.
     "src/playlist_item_select_storage.rs",
     "src/autostart_queries.rs",
     "src/user_property_model.rs",
     "src/wallpaper_actions.rs",
-    // Меню главного окна: состав пунктов, тексты диалогов и удаление Rexon.
-    // Без этой строки мост не пройдёт через moc, и меню не появится в QML.
+    // The main window menu: the set of items, dialog texts and removing Rexon.
+    // Without this line the bridge will not go through moc, and the menu will
+    // not appear in QML.
     "src/window_menu.rs",
     "src/wallpaper_list_model.rs",
     "src/wallpaper_queries.rs",
     "src/wallpaper_select_storage.rs",
 ];
 
-/// Имена слепков в OUT_DIR. Те же строки читает сторож в `src/lib.rs`.
+/// Names of the snapshots in OUT_DIR. The guard in `src/lib.rs` reads the
+/// same strings.
 const QML_MANIFEST: &str = "qml_files.list";
 const BRIDGE_MANIFEST: &str = "bridge_files.list";
 
-/// Положить в OUT_DIR ровно то, что уходит в сборщик.
+/// Put into OUT_DIR exactly what goes to the builder.
 ///
-/// ⚠️ Сверять состав каталогов прямо здесь бессмысленно: при добавлении
-/// НОВОГО файла build.rs может вообще не перезапуститься — а это ровно тот
-/// случай, который надо поймать. Поэтому сверку делает тест, который
-/// выполняется всегда, а build.rs только честно отчитывается о своём списке.
+/// Warning: checking the directory contents right here is pointless: when a
+/// NEW file is added, build.rs may not rerun at all — and that is exactly
+/// the case to catch. So the check is done by a test that always runs,
+/// while build.rs only honestly reports its list.
 fn write_manifest(name: &str, files: &[&str]) {
     let out_dir = std::env::var("OUT_DIR").expect("cargo обязан задать OUT_DIR");
     let path = std::path::Path::new(&out_dir).join(name);
     let body = files.join("\n");
-    // Писать только при изменении: лишняя перезапись файла в OUT_DIR
-    // заставила бы cargo считать сборку грязной.
+    // Write only on change: a needless rewrite of a file in OUT_DIR would make
+    // cargo consider the build dirty.
     if std::fs::read_to_string(&path).ok().as_deref() != Some(body.as_str()) {
         std::fs::write(&path, body).expect("не удалось записать слепок состава сборки");
     }
@@ -318,10 +340,10 @@ fn main() {
     build_translations();
     let preview_shader = bake_preview_shader();
 
-    // Собирать против того же Qt6, что использует PySide6, — на время
-    // strangler-миграции Rust-модели живут в одном процессе с Python, ABI
-    // обязан совпадать. Без подсказки cxx-qt может взять qmake от Qt5,
-    // который в системе тоже есть (та же причина, что в rexon-qt-filter).
+    // Build against the same Qt6 that PySide6 uses — during the strangler
+    // migration the Rust models live in one process with Python, and the ABI
+    // must match. Without a hint cxx-qt may pick qmake from Qt5, which is also
+    // present in the system (the same reason as in rexon-qt-filter).
     if std::env::var_os("QMAKE").is_none() {
         for cand in ["/usr/bin/qmake6", "/usr/lib/qt6/bin/qmake"] {
             if std::path::Path::new(cand).exists() {
@@ -331,14 +353,14 @@ fn main() {
         }
     }
 
-    // LayerShellQt — библиотека KDE (пакет layer-shell-qt), привязок к Rust у
-    // неё нет, поэтому она подключается как обычная C++-зависимость шима
-    // cpp/rexon_layer_shell.cpp. Заголовки лежат в системном include-дереве
-    // (/usr/include/LayerShellQt/), отдельный .pc-файл она не ставит — только
-    // конфиг CMake, который карго-сборке не поможет.
+    // LayerShellQt is a KDE library (the layer-shell-qt package) with no Rust
+    // bindings, so it is linked as an ordinary C++ dependency of the
+    // cpp/rexon_layer_shell.cpp shim. The headers lie in the system include
+    // tree (/usr/include/LayerShellQt/); it installs no separate .pc file —
+    // only a CMake config, which does not help a cargo build.
     //
-    // Проверка наличия здесь, а не «когда-нибудь на линковке»: без неё
-    // отсутствие пакета вылезло бы простынёй ошибок компилятора.
+    // The presence check is here rather than "some day at link time": without
+    // it a missing package would surface as a wall of compiler errors.
     let layer_shell_header = ["/usr/include/LayerShellQt/window.h"]
         .iter()
         .find(|p| std::path::Path::new(p).exists());
@@ -349,8 +371,8 @@ fn main() {
     );
     println!("cargo:rustc-link-lib=LayerShellQtInterface");
 
-    // SAFETY (`cc_builder`): колбэк только ДОБАВЛЯЕТ каталоги заголовков Qt и не
-    // трогает флаги и пути, которые выставляет сам cxx-qt-build.
+    // SAFETY (`cc_builder`): the callback only ADDS Qt header directories and
+    // does not touch the flags and paths that cxx-qt-build itself sets.
     unsafe {
     CxxQtBuilder::new_qml_module(
         QmlModule::new("org.rexon.gui")
@@ -358,91 +380,97 @@ fn main() {
             .qml_files(QML_FILES.iter().copied()),
     )
     .qt_module("Quick")
-    // Значок в лотке: QSystemTrayIcon, QMenu, QAction и поиск главного окна
-    // живут в QtWidgets. Новой зависимости у ПРОДУКТА от этого не появляется
-    // — процесс Rexon и так QApplication из PySide6, то есть libQt6Widgets в
-    // нём уже загружена; здесь мы только перестаём делать вид, что её нет.
+    // The tray icon: QSystemTrayIcon, QMenu, QAction and finding the main
+    // window live in QtWidgets. The PRODUCT gets no new dependency from this —
+    // the Rexon process is a PySide6 QApplication anyway, that is, libQt6Widgets
+    // is already loaded in it; here we only stop pretending it is not there.
     .qt_module("Widgets")
     .qt_module("DBus")
     .qt_module("Network")
-    // Партия 7: транспорт вкладки WE (QWebSocket) переехал сюда из
-    // client.py — без этого модуля сокет не линкуется.
+    // Batch 7: the WE tab transport (QWebSocket) moved here from client.py —
+    // without this module the socket does not link.
     .qt_module("WebSockets")
-    // QtWebEngineQuick здесь НЕ линкуется: хост обоев открывает её `dlopen`
-    // только в веб-режиме (src/web_host.rs). Прямая ссылка тянула бы
-    // Chromium в каждый старт видео-обоев того же бинаря.
-    // Поток кадров видео-обоев берёт кадр из QVideoSink (cpp/rexon_wallpaper_host.cpp):
-    // на платформе offscreen VideoOutput не рисует, снимок окна чёрный.
-    // Новой зависимости у продукта нет — QML видео-обоев и так грузит QtMultimedia.
+    // QtWebEngineQuick is NOT linked here: the wallpaper host opens it with
+    // `dlopen` only in web mode (src/web_host.rs). A direct reference would
+    // pull Chromium into every video wallpaper start of the same binary.
+    // The video wallpaper frame stream takes the frame from QVideoSink
+    // (cpp/rexon_wallpaper_host.cpp): on the offscreen platform VideoOutput
+    // does not draw, and a window snapshot is black.
+    // The product gets no new dependency — the video wallpaper QML loads
+    // QtMultimedia anyway.
     .qt_module("Multimedia")
-    // Образцы тем на плитках «Оформления» рисуются из рисунков самих тем
-    // (рамки стилей Plasma и Aurorae — части SVG по именам):
-    // cpp/rexon_local_preview.cpp зовёт QSvgRenderer. Пакет qt6-svg и так в
-    // зависимостях: им Qt читает значки SVG.
+    // Theme samples on the "Appearance" tiles are drawn from the themes' own
+    // artwork (Plasma style frames and Aurorae — SVG parts by name):
+    // cpp/rexon_local_preview.cpp calls QSvgRenderer. The qt6-svg package is
+    // in the dependencies anyway: Qt reads SVG icons with it.
     .qt_module("Svg")
     .include_dir("cpp")
-    // Логотип и журнал выпусков waywallen по адресу их разметки
-    // (`qrc:/waywallen/ui/assets/…`): без этого их страницы ищут файлы в
-    // ресурсах чужого бинаря и не находят. Разбор — в самом .qrc.
+    // waywallen's logo and release notes at the address of their markup
+    // (`qrc:/waywallen/ui/assets/…`): without this their pages look for files
+    // in the resources of someone else's binary and do not find them. The
+    // analysis is in the .qrc itself.
     .qrc("waywallen_assets.qrc")
-    // Шейдер плиток «Эффектов экрана»: рядом с разметкой модуля, QML берёт
-    // его относительным адресом `shaders/screen-effects.frag.qsb`.
+    // The "Screen effects" tile shader: next to the module's markup, QML takes
+    // it by the relative address `shaders/screen-effects.frag.qsb`.
     .qrc(&preview_shader)
-    // Flash-режим хоста обоев берёт wl_surface окна через
-    // `qpa/qplatformnativeinterface.h` (cpp/rexon_wallpaper_host.cpp): этот
-    // заголовок лежит в каталогах с номером версии Qt, которых нет в
-    // публичных путях cxx-qt-build.
+    // The Flash mode of the wallpaper host takes the window's wl_surface
+    // through `qpa/qplatformnativeinterface.h` (cpp/rexon_wallpaper_host.cpp):
+    // this header lies in directories with the Qt version number, which are
+    // not among cxx-qt-build's public paths.
     .cc_builder(|cc| {
         for dir in qt_private_include_dirs() {
             cc.include(dir);
         }
     })
-    // Гаджетный шим — ОДИН на проект: исходник живёт в
-    // rexon-qt-filter, куда его положила модель редактора фильтров, а сюда
-    // подключается тем же файлом. Второй копии шима в проекте нет.
+    // The gadget shim is ONE per project: the source lives in rexon-qt-filter,
+    // where the filter editor model put it, and here it is included as the
+    // same file. There is no second copy of the shim in the project.
     .include_dir("../rexon-qt-filter/cpp")
     .cpp_files([
         "cpp/rexon_gui_factory.cpp",
         "cpp/rexon_layer_shell.cpp",
-        // Хост видео-обоев: идентификатор окна X11 и поток кадров в mmap —
-        // до обоих из Rust не дотянуться (нет QImage в cxx-qt-lib 0.9).
+        // The video wallpaper host: the X11 window identifier and the frame stream
+        // in mmap — neither can be reached from Rust (no QImage in cxx-qt-lib
+        // 0.9).
         "cpp/rexon_wallpaper_host.cpp",
-        // Плейсхолдер превью локальной темы: QPainter поверх QPixmap,
-        // drawText с прямоугольником и QFontMetrics — ничего из этого в
-        // cxx-qt-lib 0.9 нет. План операций строит ядро, исполняет
+        // The local theme preview placeholder: QPainter over a QPixmap, drawText
+        // with a rectangle and QFontMetrics — none of this is in cxx-qt-lib 0.9.
+        // The plan of operations is built by the core and executed by
         // src/local_preview_render.rs.
         "cpp/rexon_local_preview.cpp",
-        // Снимок формы из настоящих виджетов в стиле Qt (помощник
-        // rexon-theme-shot): QApplication, QStyleFactory, QWidget, grab() —
-        // виджетов в cxx-qt-lib нет.
+        // A snapshot of a form from real widgets in a Qt style (the
+        // rexon-theme-shot helper): QApplication, QStyleFactory, QWidget, grab() —
+        // cxx-qt-lib has no widgets.
         "cpp/rexon_theme_shot.cpp",
-        // Регистрация типов в `waywallen.ui` для живого Rexon: подключается
-        // здесь, потому что имя сгенерированного cxx-qt заголовка известно
-        // только после обработки мостов ниже.
+        // Registration of the types in `waywallen.ui` for the live Rexon: included
+        // here because the name of the generated cxx-qt header is known only after
+        // the bridges below are processed.
         "cpp/rexon_register_we.cpp",
-        // Значок в системном лотке: QSystemTrayIcon + QMenu + перехват
-        // закрытия главного окна. Ни того, ни другого в cxx-qt-lib 0.9 нет.
+        // The system tray icon: QSystemTrayIcon + QMenu + intercepting the main
+        // window's close. Neither is in cxx-qt-lib 0.9.
         "cpp/rexon_tray.cpp",
-        // Мост «не гасить экран»: служба на шине — наследник
-        // QDBusVirtualObject, а QtDBus в cxx-qt-lib нет. Решения — в ядре
-        // (rexon_core::screensaver_bridge).
+        // The "do not blank the screen" bridge: the service on the bus is a
+        // QDBusVirtualObject subclass, and cxx-qt-lib has no QtDBus. The decisions
+        // are in the core (rexon_core::screensaver_bridge).
         "cpp/rexon_screensaver_bridge.cpp",
-        // Диалоги вкладки «Расширения»: выбор .rxn и вопрос «да/нет».
-        // Виджетных QFileDialog/QMessageBox в QML-процессе нет, а QML-типы
-        // асинхронны — разбор решения в шапке заголовка.
+        // Dialogs of the "Extensions" tab: choosing a .rxn and a yes/no question.
+        // There are no widget QFileDialog/QMessageBox in the QML process, and the
+        // QML types are asynchronous — the analysis of the decision is in the
+        // header's preamble.
         "cpp/rexon_ext_dialogs.cpp",
-        // Обратный адрес запросов: номер → QPointer на запрос и вызов его
-        // `deliverResponse` через метаобъект (причина C++ — в шапке .h).
+        // The return address of queries: number → a QPointer to the query and a
+        // call of its `deliverResponse` through the metaobject (the reason for
+        // C++ is in the .h header).
         "cpp/rexon_we_transport.cpp",
-        // Партия 7: сам транспорт — то, чего нет в cxx-qt-lib вовсе
-        // (создание QObject, QtDBus, QTimer, QProcess, вложенный QEventLoop).
+        // Batch 7: the transport itself — what cxx-qt-lib lacks entirely
+        // (creating a QObject, QtDBus, QTimer, QProcess, a nested QEventLoop).
         "cpp/rexon_we_socket.cpp",
-        // Партия 5: Qt-услуги синглтонов (D-Bus, сетевой кэш, буфер обмена)
-        // и живые модели App.
+        // Batch 5: Qt services of the singletons (D-Bus, network cache,
+        // clipboard) and the live models of App.
         "cpp/rexon_we_singletons.cpp",
         "cpp/rexon_we_objmodel.cpp",
-        // База синглтона Action: сигнал с дефолтными аргументами. Заголовок,
-        // а не .cpp, — cxx-qt-build прогоняет через moc именно заголовки.
+        // Base of the Action singleton: a signal with default arguments. A header
+        // rather than a .cpp — cxx-qt-build runs moc precisely over headers.
         "cpp/rexon_we_action_base.h",
         "../rexon-qt-filter/cpp/rexon_gadget_shim.cpp",
     ])
@@ -451,9 +479,10 @@ fn main() {
     }
 }
 
-/// Каталоги приватных заголовков Qt с номером версии
-/// (`/usr/include/qt6/QtGui/6.x.y` и `…/QtGui`, то же для QtCore). Версию
-/// берём по самому каталогу, а не из qmake: в дереве заголовков он один.
+/// Directories of Qt's private headers with the version number
+/// (`/usr/include/qt6/QtGui/6.x.y` and `…/QtGui`, the same for QtCore). The
+/// version is taken from the directory itself, not from qmake: there is
+/// only one in the header tree.
 fn qt_private_include_dirs() -> Vec<std::path::PathBuf> {
     let root = std::path::Path::new("/usr/include/qt6");
     let mut dirs = Vec::new();
@@ -472,33 +501,36 @@ fn qt_private_include_dirs() -> Vec<std::path::PathBuf> {
     dirs
 }
 
-/// Каталоги перевода интерфейса (`po/*.po` → `.mo`; его читают и Rust, и QML)
-/// рядом с собранными бинарями: `target/<профиль>/locale/<язык>/LC_MESSAGES/`.
+/// Interface translation catalogues (`po/*.po` → `.mo`; both Rust and QML
+/// read it) next to the built binaries:
+/// `target/<profile>/locale/<language>/LC_MESSAGES/`.
 ///
-/// Именно там их ищет `rexon_core::i18n` у бинаря из дерева разработки, а
-/// пакет переносит тот же каталог в `/usr/share/locale`. Сборка здесь, а не
-/// отдельной командой, — чтобы `cargo build-app` не мог дать свежий бинарь
-/// со старыми переводами: забытый шаг значил бы английский интерфейс у
-/// русского покупателя без единой ошибки.
+/// That is exactly where `rexon_core::i18n` looks for them for a binary from
+/// the development tree, and the package moves the same directory to
+/// `/usr/share/locale`. The build is here rather than a separate command so
+/// that `cargo build-app` cannot produce a fresh binary with old
+/// translations: a forgotten step would mean an English interface for a
+/// Russian customer without a single error.
 ///
-/// Сама сборка — в `scripts/i18n-update.sh --build` (одна дверь для
-/// сборки, пакета и человека). Нет программ перевода — сборка встаёт с
-/// объяснением, а не молча выпускает продукт без языков.
-/// Собрать шейдер предпросмотра «Эффектов экрана» в `.qsb` (формат
-/// `ShaderEffect` Qt 6) из `qml/shaders/screen-effects.frag`. Сам `.frag`
-/// порождает ядро (`rexon_core::screen_effects::preview_glsl`), его
-/// свежесть сверяет тест ядра `preview_shader_is_current`. `qsb` — из
-/// qt6-shadertools (он уже в makedepends пакета). Кладёт в OUT_DIR `.qsb` и
-/// `.qrc` для него (адрес в ресурсах —
-/// `qrc:/qt/qml/org/rexon/gui/qml/shaders/screen-effects.frag.qsb`) и
-/// возвращает путь к этому `.qrc`.
+/// The build itself is in `scripts/i18n-update.sh --build` (one door for the
+/// build, the package and a human). Without the translation programs the
+/// build stops with an explanation rather than silently releasing the
+/// product without languages.
+/// Build the "Screen effects" preview shader into a `.qsb` (the Qt 6
+/// `ShaderEffect` format) from `qml/shaders/screen-effects.frag`. The
+/// `.frag` itself is generated by the core
+/// (`rexon_core::screen_effects::preview_glsl`), and its freshness is
+/// checked by the core test `preview_shader_is_current`. `qsb` comes from
+/// qt6-shadertools (already in the package's makedepends). Puts the `.qsb`
+/// and a `.qrc` for it into OUT_DIR (the resource address is
+/// `qrc:/qt/qml/org/rexon/gui/qml/shaders/screen-effects.frag.qsb`) and
+/// returns the path to this `.qrc`.
 fn bake_preview_shader() -> std::path::PathBuf {
     let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let src = manifest.join("qml/shaders/screen-effects.frag");
     println!("cargo:rerun-if-changed={}", src.display());
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("screen-effects.frag.qsb");
-    // qsb лежит рядом с прочими инструментами Qt: спрашиваем qmake, затем
-    // обычные места.
+    // qsb lies next to the other Qt tools: we ask qmake, then the usual places.
     let mut cands: Vec<std::path::PathBuf> = Vec::new();
     for qmake in ["/usr/bin/qmake6", "/usr/lib/qt6/bin/qmake"] {
         if let Ok(o) = std::process::Command::new(qmake).args(["-query", "QT_HOST_BINS"]).output() {
@@ -531,16 +563,17 @@ fn bake_preview_shader() -> std::path::PathBuf {
     qrc
 }
 
-/// Каталог профиля (`target/<профиль>`, где лежат бинари) по OUT_DIR.
+/// The profile directory (`target/<profile>`, where the binaries lie) by
+/// OUT_DIR.
 ///
-/// Глубина OUT_DIR зависит от версии cargo: до 1.100 —
-/// `<профиль>/build/<крейт>-<хэш>/out`, с 1.100 —
-/// `<профиль>/build/<крейт>/<хэш>/out`. Прежний счёт «три уровня вверх»
-/// на новой раскладке давал `<профиль>/build`: свежие .mo уходили в
-/// `build/locale`, а пакет 15.11.2026 взял из `<профиль>/locale` каталог
-/// прошлой сборки со старыми строками. Поэтому ищем ближайший снизу
-/// каталог `build` и берём его родителя — так верно при обеих раскладках
-/// (и с `--target`).
+/// The depth of OUT_DIR depends on the cargo version: before 1.100 it is
+/// `<profile>/build/<crate>-<hash>/out`, since 1.100
+/// `<profile>/build/<crate>/<hash>/out`. The former "three levels up" count
+/// gave `<profile>/build` on the new layout: fresh .mo files went to
+/// `build/locale`, and the package on 15.11.2026 took the catalogue of a
+/// previous build with old strings from `<profile>/locale`. So we look for
+/// the nearest `build` directory from below and take its parent — that is
+/// correct for both layouts (and with `--target`).
 fn profile_dir(out_dir: &std::path::Path) -> std::path::PathBuf {
     out_dir
         .ancestors()

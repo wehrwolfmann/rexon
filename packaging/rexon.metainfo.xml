@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Карточка Rexon для центров приложений (Discover, GNOME Software).
-     Ставится пакетом в /usr/share/metainfo (packaging/aur/PKGBUILD).
-     id совпадает с именем ярлыка rexon.desktop, который печатает
-     генератор ядра (rust/rexon-core/src/installer.rs).
-     Адресов сайта и трекера нет намеренно: их у продукта пока нет. -->
+<!-- Rexon's card for software centers (Discover, GNOME Software).
+     Installed by the package into /usr/share/metainfo (packaging/aur/PKGBUILD).
+     The id matches the name of the rexon.desktop entry printed by the
+     core's generator (rust/rexon-core/src/installer.rs).
+     There are deliberately no website or bug tracker URLs: the product
+     does not have them yet. -->
 <component type="desktop-application">
   <id>rexon</id>
   <metadata_license>CC0-1.0</metadata_license>

@@ -1,34 +1,34 @@
-//! Виджеты Conky, которые лежат на диске не там, куда их кладёт Rexon.
+//! Conky widgets that lie on disk somewhere other than where Rexon puts them.
 //!
-//! ЗАЧЕМ. Rexon ставит виджеты в `~/.config/conky/<имя>/`, и раздел «Виджеты
-//! Conky» видел только их. А виджеты, поставленные руками, архивом с форума
-//! или чужой программой, лежат в `~/.conky/`, `~/.Conky/`,
-//! `~/.config/Conky/`, одним файлом `~/.conkyrc` или прямо в
-//! `~/.config/conky/conky.conf` (его conky читает сам, без `-c`). Человек,
-//! пришедший из другой программы, не находил своих виджетов и ставил её
-//! обратно. Теперь эти места просматриваются, и раздел показывает плитки
-//! «Найдено на диске» — запустить, остановить, включить при входе.
+//! WHY. Rexon installs widgets into `~/.config/conky/<name>/`, and the "Conky
+//! widgets" section saw only those. But widgets installed by hand, from a forum archive
+//! or by another program live in `~/.conky/`, `~/.Conky/`,
+//! `~/.config/Conky/`, as a single file `~/.conkyrc` or right in
+//! `~/.config/conky/conky.conf` (conky reads it itself, without `-c`). A person
+//! coming from another program did not find their widgets and installed that program
+//! back. Now these places are scanned, and the section shows "Found on disk"
+//! tiles — start, stop, enable at login.
 //!
-//! Что считается виджетом — решает СОДЕРЖИМОЕ, а не имя: файл без двоичных
-//! байтов, где есть `conky.config`, `conky.text` (синтаксис 1.10) либо
-//! строка `TEXT` (1.9) ([`looks_like_config`]). Имя у настоящего виджета
-//! бывает любым (`Gotham`, `Jhalak.conf`, `conkyrc_seamod`), а рядом лежат
-//! файлы с похожими именами, которые виджетами не являются (`cava.conf`
-//! визуализатора у Jhalak). `conky.config` не обязан стоять первой строкой:
-//! перед ним бывает шапка комментариев. Сценарии Lua, картинки, шрифты и
-//! архивы не читаются вовсе — по окончанию имени ([`skipped_name`]).
+//! What counts as a widget is decided by the CONTENTS, not the name: a file without binary
+//! bytes that has `conky.config`, `conky.text` (the 1.10 syntax) or
+//! a `TEXT` line (1.9) ([`looks_like_config`]). A real widget's name
+//! can be anything (`Gotham`, `Jhalak.conf`, `conkyrc_seamod`), and next to it lie
+//! files with similar names that are not widgets (Jhalak's visualizer
+//! `cava.conf`). `conky.config` does not have to be the first line:
+//! a comment header may come before it. Lua scripts, pictures, fonts and
+//! archives are not read at all — by the name ending ([`skipped_name`]).
 //!
-//! Обход ограничен глубиной [`MAX_DEPTH`] и размером файла
-//! [`MAX_CONFIG_BYTES`]: в темах лежат каталоги шрифтов и картинок, и
-//! рекурсивный поиск без границ делал открытие раздела медленным.
+//! The traversal is limited by the depth [`MAX_DEPTH`] and the file size
+//! [`MAX_CONFIG_BYTES`]: themes contain font and picture directories, and
+//! an unbounded recursive search made opening the section slow.
 //!
-//! Номер найденной плитки — путь к каталогу темы (или к файлу, если виджет —
-//! один файл): `local:conky:/home/…/.conky/Gotham`. По нему кнопки
-//! [`crate::de_apply`] находят файл настроек и процессы виджета, а
-//! «Запускать при входе» — свой файл автозапуска.
+//! The id of a found tile is the path to the theme directory (or to the file, if the widget is
+//! a single file): `local:conky:/home/…/.conky/Gotham`. By it the
+//! [`crate::de_apply`] buttons find the widget's settings file and processes, and
+//! "Start at login" finds its own autostart file.
 //!
-//! Слежка за этими местами — [`Watch`] (inotify, без опроса): новый виджет,
-//! распакованный в `~/.conky`, появляется в разделе сам.
+//! Watching these places is [`Watch`] (inotify, no polling): a new widget
+//! unpacked into `~/.conky` appears in the section by itself.
 
 use std::path::Path;
 
@@ -37,19 +37,19 @@ use crate::de_apply::Ctx;
 use crate::i18n::{tr, trf};
 use crate::models::ThemeItem;
 
-/// Насколько глубоко искать файлы настроек в каталоге темы (сам каталог —
-/// первый уровень): `тема/файл`, `тема/вариант/файл`, `тема/a/b/файл`.
+/// How deep to look for settings files in a theme directory (the directory itself is
+/// the first level): `theme/file`, `theme/variant/file`, `theme/a/b/file`.
 pub const MAX_DEPTH: usize = 3;
 
-/// Файл больше этого — не файл настроек (журнал, снимок, данные).
+/// A file bigger than this is not a settings file (a log, a snapshot, data).
 pub const MAX_CONFIG_BYTES: usize = 256 * 1024;
 
-/// Ключ настроек Rexon: свои папки с виджетами (список путей).
+/// The Rexon settings key: the person's own widget folders (a list of paths).
 pub const EXTRA_DIRS_KEY: &str = "conky_extra_dirs";
 
-/// Окончания имён, которые файлом настроек не бывают: сценарии (Lua
-/// подключается из настроек, а не запускается сам — conky-manager #18),
-/// картинки, шрифты, архивы, документы.
+/// Name endings that are never a settings file: scripts (Lua
+/// is included from the settings, not run by itself — conky-manager #18),
+/// pictures, fonts, archives, documents.
 const SKIPPED_EXTS: &[&str] = &[
     "lua", "sh", "py", "pl", "rb", "js", "png", "jpg", "jpeg", "gif", "svg", "svgz", "xpm",
     "bmp", "webp", "ico", "tif", "tiff", "ttf", "otf", "pcf", "woff", "woff2", "bdf", "zip",
@@ -58,9 +58,9 @@ const SKIPPED_EXTS: &[&str] = &[
     "wav", "mp4", "webm", "mkv",
 ];
 
-/// Не читать ли файл по имени: окончание из [`SKIPPED_EXTS`], копия
-/// редактора (`conky.conf~`, `.bak`, `.swp`), служебный `.DS_Store` из
-/// архивов, собранных на macOS.
+/// Whether to skip reading a file by name: an ending from [`SKIPPED_EXTS`], an editor
+/// copy (`conky.conf~`, `.bak`, `.swp`), the service `.DS_Store` from
+/// archives made on macOS.
 pub fn skipped_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     if lower == ".ds_store" || lower.ends_with('~') || lower.ends_with(".bak") || lower.ends_with(".swp") || lower.ends_with(".orig") {
@@ -72,12 +72,12 @@ pub fn skipped_name(name: &str) -> bool {
     }
 }
 
-/// Файл ли настроек Conky этот текст. Признаки — по строкам, без учёта
-/// отступов и комментариев (`--` у 1.10, `#` у 1.9):
-/// * `conky.config` или `conky.text` перед `=` — синтаксис 1.10;
-/// * строка `TEXT` — граница настроек и текста у 1.9.
+/// Whether this text is a Conky settings file. The signs — by lines, ignoring
+/// indentation and comments (`--` in 1.10, `#` in 1.9):
+/// * `conky.config` or `conky.text` before `=` — the 1.10 syntax;
+/// * a `TEXT` line — the boundary between settings and text in 1.9.
 ///
-/// Двоичный байт (NUL) — не текст вовсе.
+/// A binary byte (NUL) — not text at all.
 pub fn looks_like_config(text: &str) -> bool {
     if text.contains('\0') {
         return false;
@@ -96,8 +96,8 @@ pub fn looks_like_config(text: &str) -> bool {
     })
 }
 
-/// Читается ли файл как файл настроек: имя не из пропускаемых, размер в
-/// пределах, содержимое — [`looks_like_config`].
+/// Whether a file reads as a settings file: the name is not a skipped one, the size is
+/// within limits, the contents pass [`looks_like_config`].
 fn is_config_file(io: &dyn LookIo, path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     if skipped_name(name) {
@@ -107,14 +107,14 @@ fn is_config_file(io: &dyn LookIo, path: &str) -> bool {
         .is_some_and(|text| text.len() <= MAX_CONFIG_BYTES && looks_like_config(&text))
 }
 
-/// Каталог ли это. У [`LookIo`] нет отдельного вопроса: каталог — то, в чём
-/// есть имена; пустой каталог виджета всё равно не содержит.
+/// Whether this is a directory. [`LookIo`] has no separate question: a directory is something that
+/// has names in it; an empty directory contains no widget anyway.
 fn is_dir(io: &dyn LookIo, path: &str) -> bool {
     !io.list_dir(path).is_empty()
 }
 
-/// Порядок предпочтения файлов настроек внутри темы: сначала имена, которые
-/// conky и установщики называют «главными», затем по глубине и имени.
+/// The preference order of settings files inside a theme: first the names that
+/// conky and installers call "main", then by depth and name.
 fn preference(path: &str, depth: usize) -> (usize, usize, String) {
     let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
     let rank = if name == "conky.conf" || name == ".conkyrc" {
@@ -129,10 +129,10 @@ fn preference(path: &str, depth: usize) -> (usize, usize, String) {
     (depth, rank, path.to_string())
 }
 
-/// Все файлы настроек Conky в каталоге темы — части виджета: у Gotham он
-/// один, у Seamod и наборов «вариантов» — несколько. Главный — первым
-/// ([`preference`]); дальше по глубине и имени. Глубина — [`MAX_DEPTH`],
-/// скрытые каталоги (`.git`) не смотрятся.
+/// All Conky settings files in a theme directory — the widget's parts: Gotham has
+/// one, Seamod and "variant" sets have several. The main one comes first
+/// ([`preference`]); then by depth and name. The depth is [`MAX_DEPTH`],
+/// hidden directories (`.git`) are not looked into.
 pub fn config_files(io: &dyn LookIo, dir: &str) -> Vec<String> {
     let mut found: Vec<(usize, String)> = Vec::new();
     walk(io, dir.trim_end_matches('/'), 1, &mut found);
@@ -155,25 +155,25 @@ fn walk(io: &dyn LookIo, dir: &str, depth: usize, out: &mut Vec<(usize, String)>
     }
 }
 
-/// Одно место, где лежат виджеты.
+/// One place where widgets lie.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Root {
     pub dir: String,
-    /// Смотреть только файлы верхнего уровня: каталоги внутри
-    /// `~/.config/conky` — виджеты, которые раздел и так показывает (туда
-    /// ставит Rexon), а `conky.conf` прямо в нём — виджет, который conky
-    /// запускает без `-c`.
+    /// Look only at top-level files: directories inside
+    /// `~/.config/conky` are widgets the section shows anyway (Rexon
+    /// installs there), while `conky.conf` right in it is a widget that conky
+    /// starts without `-c`.
     pub files_only: bool,
 }
 
-/// Каталог настроек пользователя (`$XDG_CONFIG_HOME` или `~/.config`).
+/// The user's config directory (`$XDG_CONFIG_HOME` or `~/.config`).
 pub fn config_home(ctx: &Ctx) -> String {
     crate::utils::config_home(ctx.xdg_config_home.as_deref(), &ctx.home)
 }
 
-/// Где искать виджеты: прежние каталоги conky и Conky Manager, каталог
-/// Rexon (только файлы верхнего уровня) и свои папки человека (`extra`).
-/// Повторы и пустые строки отбрасываются.
+/// Where to look for widgets: the old conky and Conky Manager directories, the Rexon
+/// directory (top-level files only) and the person's own folders (`extra`).
+/// Repeats and empty strings are dropped.
 pub fn roots(ctx: &Ctx, extra: &[String]) -> Vec<Root> {
     let home = ctx.home.trim_end_matches('/');
     let config = config_home(ctx);
@@ -200,27 +200,27 @@ pub fn roots(ctx: &Ctx, extra: &[String]) -> Vec<Root> {
     out
 }
 
-/// Одиночные файлы настроек вне каталогов: `~/.conkyrc` — его conky читает
-/// без `-c`, если нет `~/.config/conky/conky.conf`.
+/// Single settings files outside directories: `~/.conkyrc` — conky reads it
+/// without `-c` if there is no `~/.config/conky/conky.conf`.
 pub fn loose_files(ctx: &Ctx) -> Vec<String> {
     vec![format!("{}/.conkyrc", ctx.home.trim_end_matches('/'))]
 }
 
-/// Виджет, найденный на диске.
+/// A widget found on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
-    /// Каталог темы либо сам файл, если виджет — один файл. Он же — имя в
-    /// номере плитки (`local:conky:<путь>`).
+    /// The theme directory or the file itself, if the widget is a single file. It is also the name in
+    /// the tile id (`local:conky:<path>`).
     pub path: String,
-    /// Подпись: имя каталога или файла.
+    /// The label: the directory or file name.
     pub title: String,
-    /// Файлы настроек (части), главный — первым.
+    /// Settings files (parts), the main one first.
     pub confs: Vec<String>,
 }
 
-/// Все виджеты вне каталогов Rexon ([`roots`] + [`loose_files`]). Один и тот
-/// же файл, видный по двум путям (`~/.Conky` — ссылка на `~/.conky`), — одна
-/// плитка: по настоящему пути.
+/// All widgets outside the Rexon directories ([`roots`] + [`loose_files`]). One and the
+/// same file visible via two paths (`~/.Conky` is a link to `~/.conky`) is one
+/// tile: by the real path.
 pub fn found(io: &dyn LookIo, ctx: &Ctx, extra: &[String]) -> Vec<Found> {
     let mut out: Vec<Found> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
@@ -262,16 +262,16 @@ fn single(path: &str) -> Found {
     Found { path: path.to_string(), title, confs: vec![path.to_string()] }
 }
 
-/// Номер ли это найденной плитки (имя — абсолютный путь), а не виджета в
-/// каталоге Rexon.
+/// Whether this is the id of a found tile (the name is an absolute path) rather than of a widget in
+/// the Rexon directory.
 pub fn is_found_name(name: &str) -> bool {
     name.starts_with('/')
 }
 
-/// Какому найденному виджету принадлежит файл настроек процесса. Без
-/// обхода диска: виджет — первый уровень под одним из [`roots`] (файл
-/// верхнего уровня — сам по себе виджет) либо [`loose_files`]. `None` —
-/// файл не из этих мест.
+/// Which found widget a process's settings file belongs to. Without
+/// traversing the disk: a widget is the first level under one of [`roots`] (a
+/// top-level file is a widget by itself) or [`loose_files`]. `None` —
+/// the file is not from these places.
 pub fn owner_of_conf(ctx: &Ctx, extra: &[String], conf: &str) -> Option<String> {
     if loose_files(ctx).iter().any(|f| f == conf) {
         return Some(conf.to_string());
@@ -289,13 +289,13 @@ pub fn owner_of_conf(ctx: &Ctx, extra: &[String], conf: &str) -> Option<String> 
     None
 }
 
-/// Подпись источника на плитке найденного виджета.
+/// The source label on the tile of a found widget.
 pub fn found_badge() -> String {
     tr("🔎 Found on disk")
 }
 
-/// Плитки «Найдено на диске» для раздела «Виджеты Conky». `running` —
-/// номера запущенных сейчас (их плитки — «Остановить»).
+/// "Found on disk" tiles for the "Conky widgets" section. `running` —
+/// the ids of those running now (their tiles show "Stop").
 pub fn found_items(found: &[Found], running: &[String]) -> Vec<ThemeItem> {
     let section = crate::categories::CONKY_SECTION_ID;
     let label = crate::constants::type_labels_ordered()
@@ -318,12 +318,12 @@ pub fn found_items(found: &[Found], running: &[String]) -> Vec<ThemeItem> {
         .collect()
 }
 
-/// Плитки своих виджетов с учётом пакетов из нескольких виджетов
-/// ([`crate::de_apply::conky_nested_widgets`]): плитка такого пакета
-/// `<id>` заменяется плитками его вложенных виджетов `<id>/<подпапка>`
-/// (те, чьи папки на месте); плитка вложенного виджета, пришедшая из
-/// списка запущенных, получает подпись и путь своей папки. `running` —
-/// имена запущенных. Остальные плитки — как были.
+/// Tiles of our own widgets taking packs of several widgets into account
+/// ([`crate::de_apply::conky_nested_widgets`]): the tile of such a pack
+/// `<id>` is replaced by the tiles of its nested widgets `<id>/<subfolder>`
+/// (those whose folders are in place); a nested widget's tile that came from
+/// the running list gets the label and path of its folder. `running` —
+/// names of the running ones. Other tiles stay as they were.
 pub fn split_package_items(io: &dyn LookIo, ctx: &Ctx, items: Vec<ThemeItem>, running: &[String]) -> Vec<ThemeItem> {
     let mut out: Vec<ThemeItem> = Vec::with_capacity(items.len());
     let fix = |it: &mut ThemeItem, name: &str| {
@@ -370,7 +370,7 @@ pub fn split_package_items(io: &dyn LookIo, ctx: &Ctx, items: Vec<ThemeItem>, ru
     out
 }
 
-/// Свои папки с виджетами из настроек Rexon ([`EXTRA_DIRS_KEY`]).
+/// The person's own widget folders from Rexon's settings ([`EXTRA_DIRS_KEY`]).
 pub fn live_extra_dirs() -> Vec<String> {
     let settings = crate::settings::load_settings(&crate::settings::settings_file());
     settings
@@ -380,13 +380,13 @@ pub fn live_extra_dirs() -> Vec<String> {
         .unwrap_or_default()
 }
 
-// ── Виджет по имени плитки ────────────────────────────────────────────────
+// ── A widget by tile name ─────────────────────────────────────────────────
 //
-// Имя плитки раздела — либо имя каталога в `~/.config/conky` (виджет Rexon),
-// либо абсолютный путь найденного ([`is_found_name`]). Кнопки `de_apply`
-// спрашивают здесь, где он лежит, из каких частей состоит и чьи процессы.
+// A section tile name is either a directory name in `~/.config/conky` (a Rexon widget)
+// or the absolute path of a found one ([`is_found_name`]). The `de_apply` buttons
+// ask here where it lies, what parts it consists of and whose processes are its.
 
-/// Каталог виджета (у найденного одним файлом — сам файл).
+/// The widget directory (for one found as a single file — the file itself).
 pub fn widget_path(ctx: &Ctx, name: &str) -> String {
     if is_found_name(name) {
         name.trim_end_matches('/').to_string()
@@ -395,14 +395,14 @@ pub fn widget_path(ctx: &Ctx, name: &str) -> String {
     }
 }
 
-/// Подпись виджета для сообщений: имя каталога или файла.
+/// The widget label for messages: the directory or file name.
 pub fn widget_title(name: &str) -> String {
     name.trim_end_matches('/').rsplit('/').next().unwrap_or(name).to_string()
 }
 
-/// Части виджета — его файлы настроек; `primary` (главный, его выбрала
-/// кнопка по имени файла) — первым, остальные — по содержимому
-/// ([`config_files`]). Виджет-файл — одна часть, он сам.
+/// The widget's parts — its settings files; `primary` (the main one, chosen by
+/// the button by file name) — first, the rest — by contents
+/// ([`config_files`]). A widget-file is one part, itself.
 pub fn widget_confs(io: &dyn LookIo, ctx: &Ctx, name: &str, primary: Option<String>) -> Vec<String> {
     let path = widget_path(ctx, name);
     if !is_dir(io, &path) {
@@ -417,28 +417,28 @@ pub fn widget_confs(io: &dyn LookIo, ctx: &Ctx, name: &str, primary: Option<Stri
     out
 }
 
-/// Принадлежит ли файл настроек процесса виджету `name`.
+/// Whether a process's settings file belongs to the widget `name`.
 pub fn widget_owns(ctx: &Ctx, name: &str, conf: &str) -> bool {
     let path = widget_path(ctx, name);
     conf == path || conf.starts_with(&format!("{path}/"))
 }
 
-/// Свои папки с виджетами — только для домашнего каталога этого процесса.
+/// The person's own widget folders — only for this process's home directory.
 pub fn extra_dirs_for(ctx: &Ctx) -> Vec<String> {
     let own = std::env::var("HOME").ok().is_some_and(|h| h.trim_end_matches('/') == ctx.home.trim_end_matches('/'));
     if own { live_extra_dirs() } else { Vec::new() }
 }
 
-/// Часть имени файла автозапуска (`rexon-conky-<часть>.desktop`): у виджета
-/// Rexon — его имя (как писала установка), у вложенного виджета пакета
-/// (`<id>/<подпапка>`, [`crate::de_apply::conky_nested_widgets`]) —
-/// `<id>@<подпапка>`, у найденного — `found-` и отпечаток пути (в имени
-/// файла косой черты быть не может).
+/// Part of the autostart file name (`rexon-conky-<part>.desktop`): for a Rexon widget
+/// — its name (as the installation wrote it), for a nested widget of a pack
+/// (`<id>/<subfolder>`, [`crate::de_apply::conky_nested_widgets`]) —
+/// `<id>@<subfolder>`, for a found one — `found-` and a fingerprint of the path (a file
+/// name cannot contain a slash).
 pub fn autostart_key(name: &str) -> String {
     if !is_found_name(name) {
         return name.replace('/', "@");
     }
-    // FNV-1a, 64 бита: стабилен между запусками и выпусками.
+    // FNV-1a, 64 bits: stable across runs and releases.
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in name.trim_end_matches('/').bytes() {
         h ^= u64::from(b);
@@ -447,8 +447,8 @@ pub fn autostart_key(name: &str) -> String {
     format!("found-{h:016x}")
 }
 
-/// Файл настроек, который conky читает без `-c`:
-/// `$XDG_CONFIG_HOME/conky/conky.conf`, если он есть, иначе `~/.conkyrc`.
+/// The settings file conky reads without `-c`:
+/// `$XDG_CONFIG_HOME/conky/conky.conf` if it exists, otherwise `~/.conkyrc`.
 pub fn default_conf(io: &dyn LookIo, ctx: &Ctx) -> String {
     let xdg = format!("{}/conky/conky.conf", config_home(ctx));
     if io.read(&xdg).is_some() {
@@ -458,8 +458,8 @@ pub fn default_conf(io: &dyn LookIo, ctx: &Ctx) -> String {
     }
 }
 
-/// Найденные виджеты, у которых сейчас есть процесс conky (номера плиток —
-/// пути, как в [`found_items`]).
+/// Found widgets that currently have a conky process (the tile ids are
+/// paths, as in [`found_items`]).
 pub fn running_found(io: &dyn LookIo, ctx: &Ctx, extra: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for p in crate::conky_procs::all(io) {
@@ -473,9 +473,9 @@ pub fn running_found(io: &dyn LookIo, ctx: &Ctx, extra: &[String]) -> Vec<String
     out
 }
 
-/// Плитки «Найдено на диске» живой машины для домашнего каталога `home`.
-/// `$XDG_CONFIG_HOME` и свои папки из настроек берутся, только если `home`
-/// — домашний каталог этого процесса (скан чужого дерева их не касается).
+/// "Found on disk" tiles of the live machine for the home directory `home`.
+/// `$XDG_CONFIG_HOME` and the own folders from the settings are taken only if `home`
+/// is this process's home directory (a scan of someone else's tree does not touch them).
 pub fn live_found_items(home: &str) -> Vec<ThemeItem> {
     let io = crate::animations::SystemIo;
     let own = std::env::var("HOME").ok().is_some_and(|h| h.trim_end_matches('/') == home.trim_end_matches('/'));
@@ -494,33 +494,33 @@ pub fn live_found_items(home: &str) -> Vec<ThemeItem> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  «Удалить» найденного виджета
+//  "Remove" of a found widget
 // ════════════════════════════════════════════════════════════════════════════
 //
-// Виджет, поставленный не через Rexon, снимается осторожнее своего: после
-// вопроса, в КОРЗИНУ (`utils::move_to_trash`) — его можно вернуть, — и только
-// он сам. Корень места (`~/.conky`, `~/.config/conky`, `~/.Conky`,
-// `~/.config/Conky`, своя папка человека) целиком не уходит никогда: там
-// лежат и другие виджеты. Одиночный `~/.conkyrc` или
-// `~/.config/conky/conky.conf` — один файл. Ссылка уходит сама, её цель
-// остаётся на месте. Перед переносом гаснут процессы виджета (по номерам,
-// как «Остановить»), после — снимается его запись автозапуска Rexon.
+// A widget installed not through Rexon is removed more carefully than our own: after
+// a question, into the TRASH (`utils::move_to_trash`) — it can be restored — and only
+// it itself. The root of a place (`~/.conky`, `~/.config/conky`, `~/.Conky`,
+// `~/.config/Conky`, the person's own folder) never goes away entirely: other
+// widgets lie there too. A single `~/.conkyrc` or
+// `~/.config/conky/conky.conf` is one file. A link goes away by itself, its target
+// stays in place. Before moving, the widget's processes are stopped (by pid,
+// like "Stop"), after it — its Rexon autostart record is removed.
 
-/// Что «Удалить» снимет у найденного виджета.
+/// What "Remove" will take away from a found widget.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoundRemoval {
-    /// Папка виджета или его файл (как в номере плитки).
+    /// The widget folder or its file (as in the tile id).
     pub path: String,
-    /// Подпись: имя папки или файла.
+    /// The label: the folder or file name.
     pub title: String,
-    /// Что уходит в корзину: папка, файл или ссылка.
+    /// What goes into the trash: a folder, a file or a link.
     pub shape: RemovalShape,
-    /// Своя папка человека (`conky_extra_dirs`), где лежит виджет, — тогда
-    /// переспросить.
+    /// The person's own folder (`conky_extra_dirs`) where the widget lies — then
+    /// ask again.
     pub own_folder: Option<String>,
 }
 
-/// Что именно уходит в корзину.
+/// What exactly goes into the trash.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemovalShape {
     Folder,
@@ -528,17 +528,17 @@ pub enum RemovalShape {
     Link,
 }
 
-/// Подсказка на недоступной «Удалить» и отказ при снятии.
+/// The tooltip of an unavailable "Remove" and the refusal on removal.
 pub fn found_removal_refused() -> String {
     tr("Rexon only removes the widget's own folder or file — not a folder with other widgets in it, \
         and not your home folder.")
 }
 
-/// Можно ли снять найденный виджет `path` и что именно. `Ok(None)` — его уже
-/// нет на диске. Решение по пути, без доверия номеру плитки: путь — прямой
-/// потомок одного из [`roots`] (у каталога Rexon — только файл верхнего
-/// уровня) или [`loose_files`], не сам корень и не каталог над корнем или над
-/// домашним, и на диске там по-прежнему виджет ([`config_files`] /
+/// Whether the found widget `path` can be removed and what exactly. `Ok(None)` — it is already
+/// gone from disk. The decision is by the path, without trusting the tile id: the path is a direct
+/// child of one of [`roots`] (for the Rexon directory — only a top-level
+/// file) or [`loose_files`], not the root itself and not a directory above the root or above
+/// the home, and on disk there is still a widget there ([`config_files`] /
 /// [`looks_like_config`]).
 pub fn found_removal(io: &dyn LookIo, ctx: &Ctx, extra: &[String], path: &str) -> Result<Option<FoundRemoval>, String> {
     let refused = || Err(found_removal_refused());
@@ -575,7 +575,7 @@ pub fn found_removal(io: &dyn LookIo, ctx: &Ctx, extra: &[String], path: &str) -
     }
     let Some((parent, _)) = p.rsplit_once('/') else { return refused() };
     let Some(root) = all.iter().find(|r| r.dir == parent) else { return refused() };
-    // Папка в каталоге Rexon — свой виджет, у него своё «Удалить».
+    // A folder in the Rexon directory is our own widget, it has its own "Remove".
     if root.files_only && points_to_dir {
         return refused();
     }
@@ -583,8 +583,8 @@ pub fn found_removal(io: &dyn LookIo, ctx: &Ctx, extra: &[String], path: &str) -
     let own_folder = if builtin.iter().any(|b| b.dir == root.dir) {
         None
     } else {
-        // Своя папка, которая сама домашний каталог или выше: «виджетом» там
-        // оказалась бы любая папка с файлом настроек внутри.
+        // An own folder that is itself the home directory or above it: any folder
+        // with a settings file inside would turn out to be a "widget" there.
         if root.dir == home || home.starts_with(&format!("{}/", root.dir)) {
             return refused();
         }
@@ -593,8 +593,8 @@ pub fn found_removal(io: &dyn LookIo, ctx: &Ctx, extra: &[String], path: &str) -
     Ok(Some(FoundRemoval { path: p.to_string(), title, shape, own_folder }))
 }
 
-/// Вопросы перед «Удалить» найденного виджета, по порядку: `(заголовок,
-/// текст)`. Второй — если виджет лежит в своей папке человека.
+/// The questions before "Remove" of a found widget, in order: `(title,
+/// text)`. The second one — if the widget lies in the person's own folder.
 pub fn found_removal_questions(r: &FoundRemoval) -> Vec<(String, String)> {
     let text = match r.shape {
         RemovalShape::Folder => trf(
@@ -627,10 +627,10 @@ pub fn found_removal_questions(r: &FoundRemoval) -> Vec<(String, String)> {
     out
 }
 
-/// Снять найденный виджет: погасить его процессы (по номерам), перенести в
-/// корзину `home_trash` (`date` — метка записи корзины), снять запись
-/// автозапуска Rexon. `(получилось, сообщение)`. Не погасился или не
-/// перенёсся — на диске он остаётся как был.
+/// Remove a found widget: stop its processes (by pid), move it to
+/// the trash `home_trash` (`date` — the trash record stamp), remove the Rexon
+/// autostart record. `(succeeded, message)`. If it did not stop or did not
+/// move, it stays on disk as it was.
 pub fn remove_found(
     io: &dyn LookIo,
     ctx: &Ctx,
@@ -647,11 +647,11 @@ pub fn remove_found(
     stop_and_trash(io, ctx, &r.path, &r.title, home_trash, date)
 }
 
-/// Общий хвост «Удалить» виджета Conky — найденного и своего запущенного:
-/// погасить процессы ЭТОГО виджета (`name` — его имя, как у
-/// [`widget_owns`]) по номерам и дождаться выхода, перенести `path` в
-/// корзину, снять запись автозапуска Rexon. Не погасился или не перенёсся —
-/// на диске он остаётся как был, автозапуск тоже.
+/// The shared tail of "Remove" of a Conky widget — found or our own running one:
+/// stop the processes of THIS widget (`name` — its name, as in
+/// [`widget_owns`]) by pid and wait for them to exit, move `path` to
+/// the trash, remove the Rexon autostart record. If it did not stop or did not move,
+/// it stays on disk as it was, and so does the autostart.
 fn stop_and_trash(io: &dyn LookIo, ctx: &Ctx, name: &str, title: &str, home_trash: &Path, date: &str) -> (bool, String) {
     let path = widget_path(ctx, name);
     let pids = crate::conky_procs::pids_where(io, ctx, &|conf| widget_owns(ctx, name, conf));
@@ -660,7 +660,7 @@ fn stop_and_trash(io: &dyn LookIo, ctx: &Ctx, name: &str, title: &str, home_tras
         if !ok {
             return (false, msg);
         }
-        // conky выходит по сигналу не мгновенно: перенос — после выхода.
+        // conky does not exit on a signal instantly: the move comes after the exit.
         for _ in 0..20 {
             let alive = pids.iter().any(|pid| io.read(&format!("/proc/{pid}/cmdline")).is_some_and(|c| !c.is_empty()));
             if !alive {
@@ -678,22 +678,22 @@ fn stop_and_trash(io: &dyn LookIo, ctx: &Ctx, name: &str, title: &str, home_tras
     (true, trf("🗑️ “%1” moved to the trash", &[&title]))
 }
 
-// ── «Удалить» своего запущенного виджета ──────────────────────────────
+// ── "Remove" of our own running widget ────────────────────────────────
 //
-// Свой виджет (папка в каталоге Rexon), который сейчас работает, снимается
-// так же, как найденный: после вопроса гаснут его процессы (по номерам),
-// уходит запись автозапуска, папка — в корзину.
+// Our own widget (a folder in the Rexon directory) that is running now is removed
+// the same way as a found one: after a question its processes are stopped (by pid),
+// the autostart record goes away, the folder goes to the trash.
 
-/// Имя своего виджета по пути его папки: прямой потомок каталога Rexon
-/// либо вложенный виджет пакета (`<id>/<подпапка>`), папка (не ссылка и не
-/// файл). Иначе `None`.
+/// The name of our own widget by its folder path: a direct child of the Rexon directory
+/// or a nested widget of a pack (`<id>/<subfolder>`), a folder (not a link and not
+/// a file). Otherwise `None`.
 pub fn own_widget_name(ctx: &Ctx, path: &str) -> Option<String> {
     let id = crate::de_apply::conky_widget_of_dir(&crate::animations::SystemIo, ctx, path)?;
     let meta = std::fs::symlink_metadata(widget_path(ctx, &id)).ok()?;
     meta.is_dir().then_some(id)
 }
 
-/// Вопрос перед «Удалить» своего запущенного виджета: `(заголовок, текст)`.
+/// The question before "Remove" of our own running widget: `(title, text)`.
 pub fn running_removal_question(name: &str) -> (String, String) {
     (
         tr("Remove Widget?"),
@@ -705,8 +705,8 @@ pub fn running_removal_question(name: &str) -> (String, String) {
     )
 }
 
-/// Снять свой запущенный виджет по пути папки `path`: погасить его
-/// процессы, снять автозапуск, папку — в корзину. `(получилось, сообщение)`.
+/// Remove our own running widget by the folder path `path`: stop its
+/// processes, remove the autostart, the folder — to the trash. `(succeeded, message)`.
 pub fn remove_running_own(io: &dyn LookIo, ctx: &Ctx, path: &str, home_trash: &Path, date: &str) -> (bool, String) {
     if std::fs::symlink_metadata(path.trim_end_matches('/')).is_err() {
         return (true, String::new());
@@ -717,7 +717,7 @@ pub fn remove_running_own(io: &dyn LookIo, ctx: &Ctx, path: &str, home_trash: &P
     stop_and_trash(io, ctx, &name, &widget_title(&name), home_trash, date)
 }
 
-/// [`remove_running_own`] на этой машине: корзина — `$XDG_DATA_HOME/Trash`.
+/// [`remove_running_own`] on this machine: the trash is `$XDG_DATA_HOME/Trash`.
 pub fn live_remove_running_own(path: &str) -> (bool, String) {
     let ctx = Ctx::live();
     let xdg_data = std::env::var("XDG_DATA_HOME").ok();
@@ -726,13 +726,13 @@ pub fn live_remove_running_own(path: &str) -> (bool, String) {
     remove_running_own(&crate::animations::SystemIo, &ctx, path, Path::new(&trash), &date)
 }
 
-/// [`found_removal`] на этой машине.
+/// [`found_removal`] on this machine.
 pub fn live_found_removal(path: &str) -> Result<Option<FoundRemoval>, String> {
     let ctx = Ctx::live();
     found_removal(&crate::animations::SystemIo, &ctx, &extra_dirs_for(&ctx), path)
 }
 
-/// [`remove_found`] на этой машине: корзина — `$XDG_DATA_HOME/Trash`.
+/// [`remove_found`] on this machine: the trash is `$XDG_DATA_HOME/Trash`.
 pub fn live_remove_found(path: &str) -> (bool, String) {
     let ctx = Ctx::live();
     let xdg_data = std::env::var("XDG_DATA_HOME").ok();
@@ -742,16 +742,16 @@ pub fn live_remove_found(path: &str) -> (bool, String) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Слежка
+//  Watching
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Слежка — общая на крейт (`fs_watch`); здесь только цели раздела.
+/// Watching is shared by the crate (`fs_watch`); here are only the section's targets.
 pub use crate::fs_watch::{Watch, WatchTarget};
 
-/// Что слушать: каждое место виджетов целиком (новая папка темы, новый
-/// файл) и родителей мест — чтобы заметить, как появился сам `~/.conky`
-/// или `~/.conkyrc`. Правка уже найденного файла список не меняет и слежки
-/// не требует.
+/// What to listen to: each widget place entirely (a new theme folder, a new
+/// file) and the parents of the places — to notice when `~/.conky` itself
+/// or `~/.conkyrc` appears. Editing an already found file does not change the list and does not
+/// require watching.
 pub fn watch_targets(ctx: &Ctx, extra: &[String]) -> Vec<WatchTarget> {
     let mut by_dir: Vec<WatchTarget> = Vec::new();
     let mut add = |dir: &str, name: Option<&str>| {
@@ -763,7 +763,7 @@ pub fn watch_targets(ctx: &Ctx, extra: &[String]) -> Vec<WatchTarget> {
             }
         };
         match name {
-            // Слежка за любым именем поглощает слежку за отдельными.
+            // Watching any name subsumes watching individual ones.
             None => by_dir[i].names = vec![String::new()],
             Some(n) if by_dir[i].names != [String::new()] && !by_dir[i].names.iter().any(|x| x == n) => {
                 by_dir[i].names.push(n.to_string());
@@ -793,20 +793,20 @@ pub fn watch_targets(ctx: &Ctx, extra: &[String]) -> Vec<WatchTarget> {
 
 
 // ============================================================================
-// Картинка и источник виджета (плитка и карточка)
+// The widget's picture and source (tile and card)
 // ============================================================================
 
-/// Окончания картинок, которые кладут рядом с виджетом.
+/// Endings of pictures put next to a widget.
 const PICTURE_EXTS: [&str; 3] = ["png", "jpg", "jpeg"];
 
-/// Картинка виджета в его папке, если общий поиск превью ничего не нашёл.
+/// The widget's picture in its folder, if the shared preview search found nothing.
 ///
-/// Авторы виджетов кладут снимок рядом с файлом настроек и называют его так
-/// же: `Gotham` → `Gotham.jpg`, `conky_seamod` → `conky_seamod.jpg`,
-/// `clock.conf` → `clock.png` или `clock.conf.png`. Порядок: для каждого
-/// файла настроек (главный — первым) — снимок с его именем, затем с именем
-/// без окончания; затем `preview.*`, затем `screenshot*.*`. `path` — папка
-/// виджета либо сам файл (виджет одним файлом — снимок рядом с ним).
+/// Widget authors put a snapshot next to the settings file and name it the same:
+/// `Gotham` → `Gotham.jpg`, `conky_seamod` → `conky_seamod.jpg`,
+/// `clock.conf` → `clock.png` or `clock.conf.png`. The order: for each
+/// settings file (the main one first) — a snapshot with its name, then with the name
+/// without the ending; then `preview.*`, then `screenshot*.*`. `path` — the widget
+/// folder or the file itself (a widget as a single file — a snapshot next to it).
 pub fn widget_picture(io: &dyn LookIo, path: &str, confs: &[String]) -> Option<String> {
     let path = path.trim_end_matches('/');
     let folder = is_dir(io, path);
@@ -822,7 +822,7 @@ pub fn widget_picture(io: &dyn LookIo, path: &str, confs: &[String]) -> Option<S
     };
     for conf in confs {
         let Some(rel) = conf.strip_prefix(&format!("{dir}/")) else { continue };
-        // Снимок лежит рядом с файлом: и в подпапке темы тоже.
+        // The snapshot lies next to the file: in a theme subfolder too.
         let (sub, file) = rel.rsplit_once('/').map(|(s, f)| (format!("{dir}/{s}"), f)).unwrap_or((dir.clone(), rel));
         let sub_names = if sub == dir { names.clone() } else { io.list_dir(&sub) };
         let near = |stem: &str| {
@@ -843,8 +843,8 @@ pub fn widget_picture(io: &dyn LookIo, path: &str, confs: &[String]) -> Option<S
             }
         }
     }
-    // Виджет одним файлом лежит среди чужих файлов (`~/.conkyrc` — в
-    // домашней папке): общие имена там не про него.
+    // A widget as a single file lies among other files (`~/.conkyrc` — in
+    // the home folder): generic names there are not about it.
     if !folder {
         return None;
     }
@@ -862,13 +862,13 @@ pub fn widget_picture(io: &dyn LookIo, path: &str, confs: &[String]) -> Option<S
     shots.first().map(|n| format!("{dir}/{n}"))
 }
 
-/// Откуда виджет и кто его автор — по `source.txt` и `credits.txt` в его
-/// папке (так их кладут пакеты тем). Готовый кусок разметки для описания
-/// карточки: адрес — ссылкой (только `http`/`https`), остальное — текстом.
-/// `None` — ни того, ни другого.
+/// Where the widget is from and who its author is — from `source.txt` and `credits.txt` in its
+/// folder (that is how theme packs put them). A ready markup piece for the card
+/// description: the address as a link (only `http`/`https`), the rest as text.
+/// `None` — neither one nor the other.
 pub fn widget_credits_html(io: &dyn LookIo, path: &str) -> Option<String> {
     let path = path.trim_end_matches('/');
-    // У виджета одним файлом своей папки нет — и своего source.txt тоже.
+    // A widget as a single file has no folder of its own — and no source.txt of its own either.
     if !is_dir(io, path) {
         return None;
     }
@@ -891,22 +891,22 @@ pub fn widget_credits_html(io: &dyn LookIo, path: &str) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join("<br>"))
 }
 
-/// Картинка плитки виджета `name` сейчас: своя картинка автора, иначе
-/// готовый снимок Rexon (`conky_preview`). Открытая карточка берёт её
-/// заново, когда снимок пересняли (сменили цвета, настройки).
+/// The tile picture of the widget `name` now: the author's own picture, otherwise
+/// Rexon's ready snapshot (`conky_preview`). An open card takes it
+/// again when the snapshot was retaken (colors, settings changed).
 pub fn tile_picture(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
     let confs = widget_confs(io, ctx, name, None);
     widget_picture(io, &widget_path(ctx, name), &confs).or_else(|| crate::conky_preview::cached(ctx, &confs))
 }
 
-/// Плитка виджета Conky: картинка из папки виджета, если её ещё нет, и
-/// «Источник»/«Авторы» в описании, если описания нет.
+/// A Conky widget tile: a picture from the widget folder if there is none yet, and
+/// "Source"/"Authors" in the description if there is no description.
 pub fn decorate_item(io: &dyn LookIo, ctx: &Ctx, item: &mut ThemeItem) {
     let Some(name) = item.id.strip_prefix("local:conky:").map(str::to_string) else { return };
     let name = name.as_str();
     let path = widget_path(ctx, name);
-    // Описание темы (`theme.json`): имя, автор, версия, описание; её
-    // `preview.png` — главнее прочих картинок рядом.
+    // The theme description (`theme.json`): name, author, version, description; its
+    // `preview.png` takes priority over other pictures next to it.
     let meta = crate::conky_theme::meta(io, &path);
     if let Some(m) = &meta {
         crate::conky_theme::decorate(m, &widget_title(name), item);
@@ -918,8 +918,8 @@ pub fn decorate_item(io: &dyn LookIo, ctx: &Ctx, item: &mut ThemeItem) {
     }
     if item.preview_local.is_empty() {
         let confs = widget_confs(io, ctx, name, None);
-        // Своя картинка автора, иначе снимок Rexon (`conky_preview`): пока
-        // он снимается или переснимается, плитка показывает прежний.
+        // The author's own picture, otherwise Rexon's snapshot (`conky_preview`): while
+        // it is being taken or retaken, the tile shows the previous one.
         match widget_picture(io, &path, &confs) {
             Some(p) => item.preview_local = p,
             None => {
@@ -959,9 +959,9 @@ mod tests {
         Ctx { home: home.to_string_lossy().into_owned(), xdg_config_home: None, wayland: false, de: String::new() }
     }
 
-    /// Картинка виджета: рядом с файлом настроек под его именем (с
-    /// окончанием и без), затем `preview.*`, затем `screenshot*`; у виджета
-    /// одним файлом — только под его именем.
+    /// The widget picture: next to the settings file under its name (with
+    /// the ending and without), then `preview.*`, then `screenshot*`; for a widget
+    /// as a single file — only under its name.
     #[test]
     fn widget_picture_follows_the_config_name() {
         let d = tmp("picture");
@@ -996,12 +996,12 @@ mod tests {
     #[test]
     fn config_is_told_by_content_not_by_name() {
         assert!(looks_like_config("conky.config = {\n}\nconky.text = [[x]]"));
-        // Шапка комментариев до `conky.config` (conky-manager #52).
+        // A comment header before `conky.config` (conky-manager #52).
         assert!(looks_like_config("-- Gotham\n-- by someone\n\nconky.config={ }\n"));
         assert!(looks_like_config("  conky.text   = [[ ${time} ]]"));
-        // Синтаксис 1.9.
+        // The 1.9 syntax.
         assert!(looks_like_config("alignment top_right\ngap_x 10\nTEXT\n${time}\n"));
-        // Не настройки: визуализатор, закомментированные строки, двоичный файл.
+        // Not settings: a visualizer, commented-out lines, a binary file.
         assert!(!looks_like_config("[general]\nbars = 128\n"));
         assert!(!looks_like_config("-- conky.text = [[x]]\n# TEXT\n"));
         assert!(!looks_like_config("conky.text = [[x]]\0\u{1}"));
@@ -1018,9 +1018,9 @@ mod tests {
         }
     }
 
-    /// Дерево-фикстура: темы в `~/.conky`, `~/.Conky`, `~/.config/Conky`,
-    /// одиночный `~/.conkyrc`, `conky.conf` прямо в `~/.config/conky`, свои
-    /// папки; рядом Lua, картинки, копии редактора, чужие `.conf`.
+    /// A fixture tree: themes in `~/.conky`, `~/.Conky`, `~/.config/Conky`,
+    /// a single `~/.conkyrc`, `conky.conf` right in `~/.config/conky`, own
+    /// folders; next to them Lua, pictures, editor copies, foreign `.conf` files.
     #[test]
     fn widgets_are_found_in_all_places() {
         let h = tmp("all");
@@ -1032,14 +1032,14 @@ mod tests {
         put(&h, ".conky/Seamod/conkyrc_seamod", cfg.as_bytes());
         put(&h, ".conky/Seamod/lua/seamod_rings.lua", b"x");
         put(&h, ".conky/Seamod/variants/small/conky.conf", cfg.as_bytes());
-        // Слишком глубоко — не часть темы (четвёртый уровень).
+        // Too deep — not part of the theme (the fourth level).
         put(&h, ".conky/Seamod/a/b/c/deep.conf", cfg.as_bytes());
         put(&h, ".conky/Pics/bg.png", b"\x89PNG\0\0");
         put(&h, ".conky/.git/config", cfg.as_bytes());
         put(&h, ".Conky/Old/conkyrc", cfg.as_bytes());
         put(&h, ".config/Conky/Mimosa/mimosa.conf", cfg.as_bytes());
         put(&h, ".config/conky/conky.conf", cfg.as_bytes());
-        // Каталог Rexon: его темы раздел показывает и так.
+        // The Rexon directory: the section shows its themes anyway.
         put(&h, ".config/conky/Jhalak/Jhalak.conf", format!("-- JHALAK\n{cfg}").as_bytes());
         put(&h, ".config/conky/Jhalak/cava.conf", b"[general]\nbars = 128\n");
         put(&h, "mine/Clock/clock.conf", cfg.as_bytes());
@@ -1064,7 +1064,7 @@ mod tests {
         assert_eq!(parts, ["/.conky/Seamod/conkyrc_seamod", "/.conky/Seamod/variants/small/conky.conf"]);
         let gotham = got.iter().find(|f| f.title == "Gotham").unwrap();
         assert_eq!(gotham.confs.len(), 1, "копия редактора и Lua — не части: {:?}", gotham.confs);
-        // В теме Rexon часть — только настоящий виджет, не `cava.conf`.
+        // In a Rexon theme a part is only a real widget, not `cava.conf`.
         let jh = config_files(&SystemIo, &format!("{home}/.config/conky/Jhalak"));
         assert_eq!(jh, [format!("{home}/.config/conky/Jhalak/Jhalak.conf")]);
         let _ = std::fs::remove_dir_all(&h);
@@ -1091,7 +1091,7 @@ mod tests {
             owner_of_conf(&c, &extra, "/home/u/.config/conky/conky.conf").as_deref(),
             Some("/home/u/.config/conky/conky.conf")
         );
-        // Тема Rexon — не «найденная»; чужие места — ничьи.
+        // A Rexon theme is not "found"; foreign places belong to nobody.
         assert_eq!(owner_of_conf(&c, &extra, "/home/u/.config/conky/Jhalak/Jhalak.conf"), None);
         assert_eq!(owner_of_conf(&c, &extra, "/etc/conky/conky.conf"), None);
         assert_eq!(owner_of_conf(&c, &extra, "/home/u/w/C/c.conf").as_deref(), Some("/home/u/w/C"));
@@ -1159,20 +1159,20 @@ mod tests {
         let c = ctx(&h);
         let mut w = Watch::new(watch_targets(&c, &[])).expect("inotify");
         assert!(!w.wait(50));
-        // Появился сам `~/.conky` — заметить, и дальше следить внутри.
+        // `~/.conky` itself appeared — notice it, and keep watching inside.
         std::fs::create_dir_all(h.join(".conky")).unwrap();
         assert!(w.wait(500));
         std::fs::create_dir_all(h.join(".conky/New")).unwrap();
         assert!(w.wait(500));
-        // Посторонний файл в домашнем каталоге — не повод.
+        // An unrelated file in the home directory — no reason.
         std::fs::write(h.join("notes.txt"), "x").unwrap();
         assert!(!w.wait(200));
         let _ = std::fs::remove_dir_all(&h);
     }
 
-    /// Машина стенда: файлы — настоящие (во временном HOME), процессы —
-    /// подставные (`procs`: номер → командная строка conky), `kill` гасит
-    /// подставной процесс и запоминает, был ли виджет `watch` ещё на месте.
+    /// A test bench machine: the files are real (in a temporary HOME), the processes are
+    /// fake (`procs`: pid → conky command line), `kill` stops
+    /// a fake process and remembers whether the widget `watch` was still in place.
     struct Bench {
         procs: std::cell::RefCell<Vec<(String, String)>>,
         kills: std::cell::RefCell<Vec<Vec<String>>>,
@@ -1229,8 +1229,8 @@ mod tests {
         v
     }
 
-    /// Корень места, каталог над ним, домашний каталог, папка виджета Rexon
-    /// и вложенная глубже папка — не снимаются; кнопка недоступна с причиной.
+    /// The root of a place, the directory above it, the home directory, a Rexon widget folder
+    /// and a folder nested deeper are not removed; the button is unavailable with a reason.
     #[test]
     fn removal_never_takes_a_whole_place() {
         let h = tmp("rm-roots");
@@ -1250,17 +1250,17 @@ mod tests {
             assert_eq!(std::fs::symlink_metadata(&p).is_ok(), before, "{p}");
             assert!(trash_names(&trash, "files").is_empty(), "{p}");
         }
-        // Папка без файла настроек (не виджет) и путь вне мест — тоже нет.
+        // A folder without a settings file (not a widget) and a path outside the places — no either.
         put(&h, ".conky/Pics/bg.png", b"png");
         assert!(found_removal(&SystemIo, &c, &extra, &format!("{home}/.conky/Pics")).is_err());
         put(&h, "elsewhere/W/w.conf", cfg);
         assert!(found_removal(&SystemIo, &c, &extra, &format!("{home}/elsewhere/W")).is_err());
-        // Своя папка = домашний каталог: «виджетом» была бы любая папка.
+        // An own folder = the home directory: any folder would be a "widget".
         put(&h, "Documents/notes/c.conf", cfg);
         assert!(found_removal(&SystemIo, &c, std::slice::from_ref(&home), &format!("{home}/Documents")).is_err());
-        // Виджета уже нет — снимать нечего.
+        // The widget is already gone — nothing to remove.
         assert_eq!(found_removal(&SystemIo, &c, &extra, &format!("{home}/.conky/Gone")), Ok(None));
-        // А сам виджет в месте — можно, без второго вопроса.
+        // But the widget itself in a place — allowed, without a second question.
         let ok = found_removal(&SystemIo, &c, &extra, &format!("{home}/.conky/Gotham")).unwrap().unwrap();
         assert_eq!((ok.shape, ok.own_folder.as_deref(), ok.title.as_str()), (RemovalShape::Folder, None, "Gotham"));
         let q = found_removal_questions(&ok);
@@ -1269,8 +1269,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&h);
     }
 
-    /// `~/.conkyrc` и `~/.config/conky/conky.conf` уходят в корзину одним
-    /// файлом; соседи (виджеты Rexon в `~/.config/conky`) остаются.
+    /// `~/.conkyrc` and `~/.config/conky/conky.conf` go to the trash as a single
+    /// file; the neighbors (Rexon widgets in `~/.config/conky`) stay.
     #[test]
     fn single_file_widgets_go_to_trash_as_one_file() {
         let h = tmp("rm-file");
@@ -1295,7 +1295,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&h);
     }
 
-    /// Виджет-ссылка: в корзину уходит ссылка, папка, куда она смотрит, цела.
+    /// A widget-link: the link goes to the trash, the folder it points to is intact.
     #[test]
     fn linked_widget_goes_to_trash_as_the_link() {
         let h = tmp("rm-link");
@@ -1314,9 +1314,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&h);
     }
 
-    /// Процессы виджета гаснут ДО переноса и только его; запись автозапуска
-    /// Rexon снимается, чужая остаётся; запись корзины — с путём в
-    /// URL-кодировке (пробел, кириллица) и датой; своя папка — второй вопрос.
+    /// The widget's processes are stopped BEFORE the move and only its own; the Rexon
+    /// autostart record is removed, a foreign one stays; the trash record — with the path
+    /// URL-encoded (a space, Cyrillic) and a date; an own folder — a second question.
     #[test]
     fn removal_stops_widget_first_and_writes_trash_info() {
         let h = tmp("rm-full");
@@ -1368,10 +1368,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&h);
     }
 
-    /// Свой запущенный виджет: гаснут только его процессы (по номерам, не по
-    /// имени — второй conky с тем же именем папки в другом месте и соседний
-    /// свой виджет живы), его автозапуск снят, соседний цел, папка — в
-    /// корзине. Путь не своего виджета — отказ, ничего не гаснет.
+    /// Our own running widget: only its processes are stopped (by pid, not by
+    /// name — a second conky with the same folder name in another place and a neighboring
+    /// own widget stay alive), its autostart is removed, the neighbor's is intact, the folder is in
+    /// the trash. A path that is not our own widget — a refusal, nothing is stopped.
     #[test]
     fn running_own_widget_stops_only_itself_and_goes_to_trash() {
         let h = tmp("rm-own-running");
@@ -1404,7 +1404,7 @@ mod tests {
         );
         let trash = h.join("data/Trash");
 
-        // Не свой виджет — отказ, процессы не тронуты.
+        // Not our own widget — a refusal, the processes are not touched.
         let (ok, msg) = remove_running_own(&bench, &c, &format!("{home}/.conky/Jhalak"), &trash, "2026-10-20T10:00:00");
         assert!(!ok);
         assert_eq!(msg, found_removal_refused());

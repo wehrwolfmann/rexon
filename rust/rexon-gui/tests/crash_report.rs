@@ -1,11 +1,12 @@
-//! Перехватчик паники Rust-окна в настоящем процессе.
+//! The Rust window panic handler in a real process.
 //!
-//! Тест запускает сам себя дочерним процессом (фильтр `--exact
-//! panic_child`) под приватными HOME и XDG_RUNTIME_DIR в $HOME (не в /tmp) и
-//! без окна (`REXON_CRASH_NO_DIALOG=1`); ребёнок ставит перехватчик и
-//! паникует дважды в рабочих потоках. Родитель проверяет файл: он один (второй
-//! паники в отчётах нет), лежит там же, где отчёты Python-хозяина, в той же
-//! раскладке шапки и без недописанных временных файлов.
+//! The test runs itself as a child process (filter `--exact panic_child`)
+//! with private HOME and XDG_RUNTIME_DIR in $HOME (not in /tmp) and without
+//! a window (`REXON_CRASH_NO_DIALOG=1`); the child installs the handler and
+//! panics twice in worker threads. The parent checks the file: there is
+//! exactly one (the second panic is not in the reports), it lies where the
+//! Python host's reports lie, with the same header layout and without
+//! unfinished temporary files.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -64,9 +65,9 @@ fn hook_writes_one_report_like_python() {
     assert_eq!(names.len(), 1, "ровно один отчёт, без временных: {names:?}");
     let name = &names[0];
     assert!(name.starts_with("crash_") && name.ends_with(".log"), "{name}");
-    // С 504c97e о крахе говорит строка журнала (rexon-core::applog), её
-    // копия уходит в исходный поток ошибок: «… ERROR crash: паника … ;
-    // отчёт: <путь>».
+    // Since 504c97e a crash is reported by a log line (rexon-core::applog),
+    // and its copy goes to the original error stream: "… ERROR crash: panic …;
+    // report: <path>".
     assert!(stderr.contains(&format!("; отчёт: {}/{name}", dir.display())), "{stderr}");
 
     let text = std::fs::read_to_string(dir.join(name)).unwrap();
@@ -85,7 +86,8 @@ fn hook_writes_one_report_like_python() {
     assert!(lines[11].starts_with("Location: ") && lines[11].contains("crash_report.rs:"), "{}", lines[11]);
     assert!(text.contains("\nBacktrace:\n"), "{text}");
     assert!(!text.contains("вторая паника"), "вторая паника в отчёт не идёт");
-    // Имя файла — от того же момента, что строка Time (починка №1 ядра).
+    // The file name comes from the same moment as the Time line (core fix
+    // no. 1).
     let stamp = &name["crash_".len()..name.len() - 4];
     let time = lines[1].trim_start_matches("Time:     ");
     let expect = format!(

@@ -1,19 +1,19 @@
-//! Golden-сверка порта `compliance.rs` с оригиналом `rexon/compliance.py`
+//! Golden check of the `compliance.rs` port against the original `rexon/compliance.py`
 //! (`ComplianceCheck`).
 //!
-//! Эталоны сняты с ЖИВОГО Python read-only: одноразовый harness исполнял
-//! настоящий `run_for_de` с полностью замоканным I/O (safe_run/os/shutil/
-//! tempfile/open — привилегированное НЕ исполнялось, HOME фиксирован
-//! `/home/tester`) и записывал КАЖДЫЙ вызов уровня трейта [`ComplianceIo`]
-//! с аргументами и результатом в журнал (`golden/compliance_cases.json`),
-//! плюс полный лог и результаты проверок.
+//! The golden files were captured from LIVE Python read-only: a one-off harness ran
+//! the real `run_for_de` with fully mocked I/O (safe_run/os/shutil/
+//! tempfile/open — nothing privileged was executed, HOME fixed to
+//! `/home/tester`) and recorded EVERY call at the level of the [`ComplianceIo`] trait
+//! with arguments and result into a journal (`golden/compliance_cases.json`),
+//! plus the full log and the check results.
 //!
-//! Здесь журнал реплеится: [`MockIo`] на каждый вызов Rust-порта сверяет op
-//! и аргументы с очередной записью (порядок обязан совпасть 1-в-1, тексты
-//! write_text — байт-в-байт) и возвращает записанный результат. В конце —
-//! журнал исчерпан, лог и результаты совпали байт-в-байт. Покрыты все 8 DE
-//! и ветки проверок (валидная/невалидная/расходящаяся icon-тема, скачивание
-//! layout'ов named/raw, установки/фолбэки, первый запуск, «нет проверок»).
+//! Here the journal is replayed: [`MockIo`] checks the op and arguments of each call of the Rust port
+//! against the next entry (the order must match 1-to-1, the
+//! write_text texts byte for byte) and returns the recorded result. At the end
+//! the journal is exhausted, the log and results matched byte for byte. All 8 DEs
+//! and check branches are covered (a valid/invalid/diverging icon theme, downloading
+//! named/raw layouts, installs/fallbacks, first run, "no checks").
 
 mod i18n_pin;
 
@@ -25,9 +25,9 @@ use rexon_core::system_plan::query_cmd;
 use serde_json::{json, Value};
 
 fn fx() -> Value {
-    // Каталог помощника — тот, который выбирает эта машина: у голдена он
-    // от ручной установки, а с установленным пакетом движок зовёт
-    // помощника из `/usr/lib`. Почему это не выхолащивает пин —
+    // The helper directory is the one this machine chooses: the golden has it
+    // from a manual install, while with the package installed the engine calls
+    // the helper from `/usr/lib`. Why this does not hollow out the pin —
     // `system_plan::retarget_helper_paths`.
     let raw = rexon_core::system_plan::retarget_helper_paths(include_str!(
         "golden/compliance_cases.json"
@@ -254,7 +254,7 @@ fn expected_log(v: &Value) -> Vec<String> {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn all_cases_byte_identical() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();
     let f = fx();
     let cases = f["cases"].as_array().unwrap();
@@ -269,8 +269,8 @@ fn all_cases_byte_identical() {
         let mut io = MockIo::new(name, &case["journal"]);
         let mut log: Vec<String> = Vec::new();
         let results = {
-            // Эталоны сняты на Arch/CachyOS с разрешённой починкой —
-            // семейство `arch`, `allow_privileged = true`.
+            // The golden files were captured on Arch/CachyOS with repair allowed —
+            // family `arch`, `allow_privileged = true`.
             let mut comp = Compliance::new(
                 &mut io, home, PkgFamily::Arch, true, pkg_helper, stage_helper,
             );
@@ -293,8 +293,8 @@ fn all_cases_byte_identical() {
     }
 }
 
-/// Исполнитель для не-Arch ветки: ничего не находит, всё пишет в протокол.
-/// Пакетных команд тут быть НЕ должно — это и проверяется.
+/// Executor for the non-Arch branch: finds nothing, writes everything to the protocol.
+/// There must be NO package commands here — that is what is checked.
 #[derive(Default)]
 struct RecordingIo {
     argv_log: Vec<Vec<String>>,
@@ -347,8 +347,8 @@ impl ComplianceIo for RecordingIo {
     fn copy_file(&mut self, _src: &str, _dst: &str) {}
 }
 
-/// Имя пакета, если `argv` — команда проверки установленности общего
-/// движка для этого семейства (`system_plan::query_cmd`).
+/// The package name if `argv` is the common engine's "is it installed" check command
+/// for this family (`system_plan::query_cmd`).
 fn queried_pkg<'a>(family: PkgFamily, argv: &'a [String]) -> Option<&'a str> {
     let pkg = argv.last()?;
     match query_cmd(family, pkg) {
@@ -357,9 +357,9 @@ fn queried_pkg<'a>(family: PkgFamily, argv: &'a [String]) -> Option<&'a str> {
     }
 }
 
-/// Исполнитель для одной пробы пакета: отвечает заранее заданным исходом и
-/// пишет ВСЁ, что запускали (нужно доказать, что за гейтом не запускают
-/// ничего).
+/// Executor for a single package probe: answers with a preset outcome and
+/// records EVERYTHING that was launched (it must be proven that nothing is launched
+/// behind the gate).
 struct ProbeIo {
     result: Option<RunResult>,
     argv_log: Vec<Vec<String>>,
@@ -420,12 +420,12 @@ fn state_name(s: PkgState) -> &'static str {
     }
 }
 
-/// Проверка «установлен ли пакет»: команда — у ОБЩЕГО движка, решение — по
-/// исходу команды, вывод не читается вовсе. Раньше здесь стоял зашитый
-/// `pacman -Qi` со своим разбором — третья копия одного вопроса.
+/// The "is the package installed" check: the command comes from the COMMON engine, the decision is by
+/// the command's outcome, the output is not read at all. Previously there was a hard-coded
+/// `pacman -Qi` with its own parsing — a third copy of the same question.
 #[test]
 fn pkg_query_matches_golden() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // The language — before parsing the golden file: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     for c in fx()["pkg_query"].as_array().unwrap() {
@@ -433,14 +433,14 @@ fn pkg_query_matches_golden() {
         let family = PkgFamily::from_value(c["family"].as_str().unwrap()).unwrap();
         let pkg = c["pkg"].as_str().unwrap();
 
-        // 1. Команда берётся у общего движка и зависит от семейства.
+        // 1. The command is taken from the common engine and depends on the family.
         assert_eq!(
             json!(query_cmd(family, pkg).ok()),
             c["engine_argv"],
             "{note}: команда общего движка"
         );
 
-        // 2. Состояние пакета и ФАКТ запуска (за гейтом не запускают ничего).
+        // 2. The package state and the FACT of a launch (nothing is launched behind the gate).
         let mut io = ProbeIo {
             result: to_run_result(&c["run"]),
             argv_log: Vec::new(),
@@ -460,8 +460,8 @@ fn pkg_query_matches_golden() {
     }
 }
 
-/// Одна и та же команда проверки у всех троих, кто этот вопрос задаёт:
-/// движок пакетов, проверка пакета темы Plymouth и compliance.
+/// One and the same check command for all three that ask this question:
+/// the package engine, the Plymouth theme package check and compliance.
 #[test]
 fn pkg_query_is_the_same_everywhere() {
     let mut io = ProbeIo {
@@ -480,15 +480,15 @@ fn pkg_query_is_the_same_everywhere() {
     );
 }
 
-/// Гейт по семейству (находка K2 кросс-дистро аудита): на не-Arch пакетные
-/// шаги не выполняются вовсе — ни проверки пакетов, ни `pkexec`, ни AUR-хелпер;
-/// статус `skipped`, ОДНА строка лога на прогон; непакетные проверки живут.
+/// The family gate (finding K2 of the cross-distro audit): on non-Arch the package
+/// steps are not run at all — no package checks, no `pkexec`, no AUR helper;
+/// status `skipped`, ONE log line per run; non-package checks live on.
 #[test]
 fn non_arch_family_skips_package_steps() {
     use rexon_core::compliance::{pkg_unsupported_note, SKIPPED};
     let _lang = i18n_pin::en();
 
-    // Ключи пакетных шагов каждого DE — должны получить `skipped`.
+    // Keys of each DE's package steps — they must get `skipped`.
     let expect_skipped: &[(&str, &[&str])] = &[
         ("mate", &["mate_layouts", "mate_yaru_theme", "mate_ubuntu_fonts", "mate_aur_pkgs"]),
         ("kde", &["kde_sddm"]),
@@ -529,7 +529,7 @@ fn non_arch_family_skips_package_steps() {
                 );
             }
 
-            // Ни одной пакетной/привилегированной команды.
+            // Not a single package/privileged command.
             for argv in &io.argv_log {
                 let head = argv.first().map(String::as_str).unwrap_or("");
                 assert!(
@@ -538,7 +538,7 @@ fn non_arch_family_skips_package_steps() {
                 );
             }
 
-            // Ровно одна строка-объяснение на весь прогон.
+            // Exactly one explanation line for the whole run.
             let notes = log.iter().filter(|l| **l == pkg_unsupported_note()).count();
             assert_eq!(notes, 1, "{de_id}/{family:?}: строк-объяснений {notes}, ожидалась 1");
             assert!(
@@ -549,8 +549,8 @@ fn non_arch_family_skips_package_steps() {
         }
     }
 
-    // Непакетные проверки продолжают работать: у KDE остаются icon-тема и
-    // терминал, у XFCE — helpers.rc, у Hyprland — конфиг.
+    // Non-package checks keep working: KDE keeps the icon theme and
+    // the terminal, XFCE — helpers.rc, Hyprland — the config.
     let mut io = RecordingIo::default();
     let mut log: Vec<String> = Vec::new();
     let results = {
@@ -568,8 +568,8 @@ fn non_arch_family_skips_package_steps() {
     );
 }
 
-/// Исполнитель «живой Arch»: пакеты и раскладки настраиваются кейсом,
-/// команды пишутся в протокол.
+/// A "live Arch" executor: packages and layouts are set up by the case,
+/// commands are written to the protocol.
 struct ArchIo {
     installed: Vec<String>,
     layouts_present: bool,
@@ -591,8 +591,8 @@ impl ArchIo {
 impl ComplianceIo for ArchIo {
     fn run(&mut self, argv: &[String], _timeout: Option<u64>) -> Option<RunResult> {
         self.argv_log.push(argv.to_vec());
-        // Команду проверки опознаём ПО ОБЩЕМУ ДВИЖКУ, а не по зашитой
-        // строке: сменится команда семейства — стенд поедет за ней сам.
+        // We recognize the check command BY THE COMMON ENGINE, not by a hard-coded
+        // string: if the family's command changes, the stand will follow it by itself.
         if let Some(pkg) = queried_pkg(PkgFamily::Arch, argv) {
             return Some(RunResult {
                 ok: self.installed.iter().any(|p| p == pkg),
@@ -646,8 +646,8 @@ impl ComplianceIo for ArchIo {
     fn copy_file(&mut self, _src: &str, _dst: &str) {}
 }
 
-/// Автозапуск при входе в систему: диагностика идёт, но пароль и сеть не
-/// трогаются НИ ПРИ КАКОМ наборе недостающих пакетов и раскладок.
+/// Autostart at login: diagnostics run, but the password and the network are
+/// NOT touched for ANY set of missing packages and layouts.
 #[test]
 fn unattended_never_asks_password_or_network() {
     use rexon_core::compliance::{privileged_deferred_note, NEEDS_ACTION};
@@ -657,7 +657,7 @@ fn unattended_never_asks_password_or_network() {
     let all_des = [
         "mate", "kde", "gnome", "cosmic", "xfce", "cinnamon-mint", "budgie", "hyprland",
     ];
-    // Наборы «что уже стоит» — от пустого до полного, плюс частичный.
+    // Sets of "what is already installed" — from empty to full, plus a partial one.
     let installed_sets: [&[&str]; 3] = [
         &[],
         &["ubuntu-mate-themes", "ttf-ubuntu-font-family", "mate-tweak", "cosmic-wallpapers"],
@@ -686,8 +686,8 @@ fn unattended_never_asks_password_or_network() {
                             &mut io,
                             "/home/tester",
                             PkgFamily::Arch,
-                            false, // автозапуск: лечить нельзя
-                            true,  // helper'ы «есть» — путь без сырого pkexec
+                            false, // autostart: repair is not allowed
+                            true,  // helpers "exist" — a path without raw pkexec
                             true,
                         );
                         comp.run_for_de(de_id, &mut log)
@@ -699,8 +699,8 @@ fn unattended_never_asks_password_or_network() {
 
                     for argv in &io.argv_log {
                         let head = argv.first().map(String::as_str).unwrap_or("");
-                        // Проверка установленности — только чтение базы,
-                        // пароля не просит. Опознаётся по общему движку.
+                        // The installed check only reads the database,
+                        // does not ask for a password. Recognized by the common engine.
                         let read_only_query =
                             queried_pkg(PkgFamily::Arch, argv).is_some();
                         assert!(
@@ -719,7 +719,7 @@ fn unattended_never_asks_password_or_network() {
                         );
                     }
 
-                    // Ни одного «fixed»: при входе мы ничего не чиним.
+                    // Not a single "fixed": at login we repair nothing.
                     assert!(
                         !results.iter().any(|(_, v)| v == "fixed"),
                         "{ctx}: что-то починено в режиме автозапуска: {results:?}"
@@ -739,8 +739,8 @@ fn unattended_never_asks_password_or_network() {
         }
     }
 
-    // Контроль: тот же MATE с разрешённой починкой — раскладки и пакеты
-    // действительно лечатся (git clone + AUR-хелпер идут в дело).
+    // Control: the same MATE with repair allowed — layouts and packages
+    // really are repaired (git clone + the AUR helper are used).
     let mut io = ArchIo::new(&[], false, true);
     let mut log: Vec<String> = Vec::new();
     {
@@ -768,8 +768,8 @@ fn detect_current_de_maps() {
     assert_eq!(detect_current_de("Budgie:GNOME").as_deref(), Some("budgie"));
     assert_eq!(detect_current_de("GNOME:Unity").as_deref(), Some("gnome"));
     assert_eq!(detect_current_de("").as_deref(), None);
-    // Тайловые больше не пролетают мимо проверок: раньше здесь был None, и
-    // в сеансе sway/niri рабочий стол «не определялся» вовсе.
+    // Tiling ones no longer slip past the checks: previously there was None here, and
+    // in a sway/niri session the desktop was "not detected" at all.
     assert_eq!(detect_current_de("sway").as_deref(), Some("sway"));
     assert_eq!(detect_current_de("niri").as_deref(), Some("niri"));
     assert_eq!(detect_current_de("Hyprland").as_deref(), Some("hyprland"));
@@ -777,13 +777,13 @@ fn detect_current_de_maps() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Шапка прогона по всем DE + «DE не опознан» (секция `run_texts_v2`)
+//  Run header for all DEs + "DE not recognized" (section `run_texts_v2`)
 // ══════════════════════════════════════════════════════════════════════════
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn run_texts_match_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();
     let f = fx();
     let g = &f["run_texts_v2"];
@@ -807,21 +807,21 @@ fn run_texts_match_python() {
     }
 }
 
-// ── установка пакета починкой ──────────────────────────────────────────────
+// ── installing a package by repair ─────────────────────────────────────────
 //
-// ⛔ Ни одна команда ниже не выполнялась: проверка только СТРОИТ argv.
+// ⛔ Not a single command below was executed: the check only BUILDS argv.
 
-/// Рукописного отката у починки больше нет. Он повторял `pkexec` + таблицу
-/// движка слово в слово — копия, живущая ровно до первой правки таблицы: в
-/// соседнем месте того же класса (`wallpaper_engine`) такая же копия уже
-/// разошлась, потеряв `--needed`.
+/// The repair no longer has a hand-written fallback. It repeated `pkexec` + the engine
+/// table word for word — a copy that lives exactly until the first edit of the table: in
+/// a neighbouring place of the same class (`wallpaper_engine`) such a copy had already
+/// diverged, losing `--needed`.
 #[test]
 fn pkg_install_arch_asks_the_package_engine() {
     use rexon_core::compliance::pkg_install_arch;
     use rexon_core::system_plan::install_argv;
-    // Язык — общий на процесс, а обе стороны сравнения спрашивают его
-    // заново (`--lang=<код>` помощнику): без закрепления соседняя сверка,
-    // переключив язык между вызовами, давала лишний `--lang=ru` одной из них.
+    // The language is common to the process, and both sides of the comparison ask for it
+    // anew (`--lang=<code>` to the helper): without pinning, a neighbouring check,
+    // switching the language between calls, gave an extra `--lang=ru` to one of them.
     let _lang = i18n_pin::en();
 
     for pkg in ["kvantum", "papirus-icon-theme", "qt6ct"] {
@@ -835,14 +835,14 @@ fn pkg_install_arch_asks_the_package_engine() {
     }
 }
 
-/// Что при этом выходит на самом деле — записано строками, чтобы правка
-/// таблицы движка не проехала молча. Именованный путь идёт через
-/// rexon-pkg-helper (лишнего пароля нет), сырой — `pkexec` + `install_cmd`.
+/// What actually comes out — written as strings, so that an edit of the engine
+/// table does not slip through silently. The named path goes through
+/// rexon-pkg-helper (no extra password), the raw one — `pkexec` + `install_cmd`.
 #[test]
 fn pkg_install_arch_commands_are_pinned() {
     use rexon_core::compliance::pkg_install_arch;
-    // Английский: при другом языке помощник получает ещё `--lang=<код>`
-    // (если установленный помощник его понимает) — строки ниже про остальное.
+    // English: with another language the helper also gets `--lang=<code>`
+    // (if the installed helper understands it) — the lines below are about the rest.
     let _lang = i18n_pin::en();
 
     assert_eq!(
@@ -862,9 +862,9 @@ fn pkg_install_arch_commands_are_pinned() {
     );
 }
 
-/// Пустое имя пакета — дефект вызывающего, а не «нечего делать»: команды
-/// нет, запускать нечего. Прежняя копия молча собирала `pacman -S --needed
-/// --noconfirm ""` и отдавала его pkexec.
+/// An empty package name is a defect of the caller, not "nothing to do": there is no
+/// command, nothing to launch. The former copy silently built `pacman -S --needed
+/// --noconfirm ""` and handed it to pkexec.
 #[test]
 fn pkg_install_arch_refuses_empty_package_name() {
     use rexon_core::compliance::pkg_install_arch;
@@ -874,21 +874,21 @@ fn pkg_install_arch_refuses_empty_package_name() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Язык журнала проверки: английский, «по-русски как было», без кириллицы
+//  Language of the check log: English, "in Russian as it was", no Cyrillic
 // ══════════════════════════════════════════════════════════════════════════
 //
-// Журнал «Проверить и доустановить» видит покупатель, поэтому он переводится.
-// Ниже — четыре прогона на подставной машине (ничего не запускается), их
-// английские строки целиком, те же прогоны по-русски — дословно как печатал
-// прежний код, и сторож: в английском журнале ни одной русской буквы.
+// The «Проверить и доустановить» log is seen by the buyer, so it is translated.
+// Below are four runs on a fake machine (nothing is launched), their
+// English lines in full, the same runs in Russian — verbatim as the
+// former code printed, and a guard: not a single Russian letter in the English log.
 
-/// Всё, что стоит на «полной» машине Arch (для прогона Hyprland).
+/// Everything installed on a "full" Arch machine (for the Hyprland run).
 const HYPRLAND_FULL: &[&str] = &[
     "hyprland", "waybar", "wofi", "kitty", "grim", "slurp", "wl-clipboard",
     "xdg-desktop-portal-hyprland", "polkit-gnome",
 ];
 
-/// Прогон одного стола: журнал и результаты.
+/// A run of one desktop: the log and the results.
 fn run_log<IO: ComplianceIo>(
     io: &mut IO,
     de_id: &str,
@@ -901,9 +901,9 @@ fn run_log<IO: ComplianceIo>(
     log
 }
 
-/// Четыре прогона сверки языка: KDE не на Arch (пропуск пакетных шагов),
-/// COSMIC при входе в систему (лечение отложено), Hyprland на полной машине
-/// и MATE на пустой машине с разрешённой, но неудачной починкой.
+/// Four runs of the language check: KDE not on Arch (package steps skipped),
+/// COSMIC at login (repair deferred), Hyprland on a full machine
+/// and MATE on an empty machine with repair allowed but failing.
 fn language_runs() -> Vec<(&'static str, Vec<String>)> {
     vec![
         ("kde/fedora", run_log(&mut RecordingIo::default(), "kde", PkgFamily::Fedora, true)),
@@ -1009,10 +1009,10 @@ vala-panel-appmenu-mate, vala-panel-appmenu-registrar...",
     assert_eq!(hyprland_component_label("foot"), "foot");
 }
 
-/// Снимок русского журнала — дословно как печатал код до перевода.
-/// Строки, которых нет в эталоне Python (`all_cases_byte_identical`):
-/// пропуск пакетных шагов, отложенное лечение, итог с «требуют
-/// доустановки» и «пропущено», подписи недостающего и компонентов Hyprland.
+/// A snapshot of the Russian log — verbatim as the code printed before the translation.
+/// Lines that are not in the Python golden file (`all_cases_byte_identical`):
+/// skipping package steps, deferred repair, a summary with «требуют
+/// доустановки» and «пропущено», captions of the missing items and Hyprland components.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_log_as_before() {
@@ -1103,7 +1103,7 @@ vala-panel-appmenu-mate, vala-panel-appmenu-registrar...",
     assert_eq!(msg_unknown_de(), "⚠️ Не удалось определить текущий рабочий стол");
     assert_eq!(de_banner_lines("kde")[1], "  Рабочий стол: kde");
 
-    // Подписи недостающего (окно вопроса «Проверить и доустановить»).
+    // Captions of the missing items (the «Проверить и доустановить» question window).
     const LABELS_BEFORE: &[(&str, &str)] = &[
         ("mate_layouts", "раскладки панели MATE (скачиваются из интернета)"),
         ("mate_yaru_theme", "тема оформления Yaru для MATE (из AUR)"),
@@ -1137,13 +1137,13 @@ fn cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Английский журнал проверки — ни одной русской буквы: забытая строка
-/// видна здесь, а не покупателю. Прогоняются все столы на всех семействах,
-/// на пустой и полной машине, при входе и из настроек, плюс все случаи
-/// эталона Python (их журнал исполнителя от языка не зависит).
+/// The English check log — not a single Russian letter: a forgotten string
+/// is seen here, not by the buyer. All desktops are run on all families,
+/// on an empty and a full machine, at login and from the settings, plus all cases
+/// of the Python golden file (their executor log does not depend on the language).
 ///
-/// Подсказка «какой пакет поставить» принадлежит `utils` (его перевод —
-/// отдельный заход) и из проверяемой строки вычитается.
+/// The "which package to install" hint belongs to `utils` (its translation is
+/// a separate pass) and is subtracted from the checked line.
 #[test]
 fn english_compliance_has_no_russian() {
     use rexon_core::compliance::{
@@ -1219,16 +1219,16 @@ fn english_compliance_has_no_russian() {
 }
 
 // ============================================================================
-// Терминал: выбор человека главнее родного (решение Wehrwolfmann 08.11.2026)
+// Terminal: the person's choice beats the native one (Wehrwolfmann's decision 08.11.2026)
 // ============================================================================
 //
-// Выбор во вкладке «Настройки» лежит в `<стол>-xdg-terminals.list` с
-// пометкой «выбрано человеком». Проверка при входе ставит в родное место
-// стола ЕГО, а не родной терминал; без выбора — родной, как раньше; выбранный,
-// но не установленный — родной, и это сказано в журнале.
+// The choice in the «Настройки» tab lies in `<desktop>-xdg-terminals.list` with
+// the mark "chosen by the person". The login check puts IT into the desktop's native
+// place, not the native terminal; without a choice — the native one, as before; one that is chosen
+// but not installed — the native one, and the log says so.
 
-/// Машина для сверки терминала: файлы, установленные программы, ответы
-/// `gsettings get`; запущенные команды копятся в `argv_log`.
+/// A machine for the terminal check: files, installed programs, answers of
+/// `gsettings get`; launched commands accumulate in `argv_log`.
 #[derive(Default)]
 struct TermIo {
     files: std::collections::BTreeMap<String, String>,
@@ -1333,7 +1333,7 @@ const GNOME_SCHEMA: &str = "org.gnome.desktop.default-applications.terminal";
 #[test]
 fn chosen_terminal_wins_over_native_in_mate() {
     let _lang = i18n_pin::en();
-    // Выбор человека — konsole: в схему MATE идёт он, с его exec-arg.
+    // The person's choice is konsole: it goes into the MATE schema, with its exec-arg.
     let mut io = TermIo::new(&["konsole", "mate-terminal"])
         .chosen("mate-xdg-terminals.list", "org.kde.konsole.desktop")
         .gset(MATE_SCHEMA, "mate-terminal");
@@ -1341,7 +1341,7 @@ fn chosen_terminal_wins_over_native_in_mate() {
     assert_eq!(io.sets(MATE_SCHEMA), vec!["exec=konsole", "exec-arg=-e"]);
     assert_eq!(result_of(&results, "mate_terminal"), Some("fixed"));
 
-    // Уже стоит выбранный — не трогаем.
+    // The chosen one is already set — we do not touch it.
     let mut io = TermIo::new(&["konsole", "mate-terminal"])
         .chosen("mate-xdg-terminals.list", "org.kde.konsole.desktop")
         .gset(MATE_SCHEMA, "konsole");
@@ -1349,12 +1349,12 @@ fn chosen_terminal_wins_over_native_in_mate() {
     assert!(io.sets(MATE_SCHEMA).is_empty(), "{:?}", io.argv_log);
     assert_eq!(result_of(&results, "mate_terminal"), Some("ok"));
 
-    // Без выбора — родной, как раньше.
+    // Without a choice — the native one, as before.
     let mut io = TermIo::new(&["konsole", "mate-terminal"]).gset(MATE_SCHEMA, "konsole");
     term_run(&mut io, "MATE");
     assert_eq!(io.sets(MATE_SCHEMA), vec!["exec=mate-terminal", "exec-arg=-x"]);
 
-    // Выбранный не установлен — родной, и сказано в журнале.
+    // The chosen one is not installed — the native one, and the log says so.
     let mut io = TermIo::new(&["mate-terminal"])
         .chosen("mate-xdg-terminals.list", "kitty.desktop")
         .gset(MATE_SCHEMA, "xterm");
@@ -1382,7 +1382,7 @@ fn chosen_terminal_wins_over_native_in_kde() {
     assert_eq!(kw(&io), vec!["TerminalApplication=kitty", "TerminalService=kitty.desktop"]);
     assert_eq!(result_of(&results, "kde_terminal"), Some("fixed"));
 
-    // Без выбора konsole остаётся konsole.
+    // Without a choice konsole stays konsole.
     let mut io = TermIo::new(&["kitty", "konsole", "kwriteconfig6"]);
     io.files.insert(kdeglobals.clone(), "[General]\nTerminalApplication=konsole\n".into());
     let (results, _) = term_run(&mut io, "KDE");
@@ -1399,7 +1399,7 @@ fn chosen_terminal_wins_over_native_in_gnome() {
     assert_eq!(io.sets(GNOME_SCHEMA), vec!["exec=alacritty", "exec-arg=-e"]);
     assert_eq!(result_of(&results, "gnome_terminal"), Some("fixed"));
 
-    // Без выбора родной терминал GNOME не трогается.
+    // Without a choice the native GNOME terminal is not touched.
     let mut io = TermIo::new(&["alacritty", "gnome-terminal"]).gset(GNOME_SCHEMA, "kgx");
     term_run(&mut io, "GNOME");
     assert!(io.sets(GNOME_SCHEMA).is_empty(), "{:?}", io.argv_log);

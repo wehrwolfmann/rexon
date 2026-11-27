@@ -108,6 +108,8 @@ message Request {
     WallpaperHideRequest        wallpaper_hide = 91;
     LibraryRenameRequest        library_rename = 92;
     LibraryEditRequest          library_edit = 93;
+    LibraryRelocateRequest      library_relocate = 94;
+    BrowserLoginCancelRequest   browser_login_cancel = 98;
   }
 }
 
@@ -203,6 +205,8 @@ message Response {
     WallpaperHideResponse        wallpaper_hide = 91;
     Empty                        library_rename = 92;
     Empty                        library_edit = 93;
+    Empty                        library_relocate = 94;
+    BrowserLoginCancelResponse   browser_login_cancel = 98;
   }
 }
 
@@ -1070,6 +1074,19 @@ message RemoteSortOption {
   string key = 1;
   string label = 2;
   PluginMessage label_text = 3;
+  // A group submits one of these keys, not its own key.
+  repeated RemoteSortChoice options = 4;
+}
+
+message RemoteSortChoice {
+  string key = 1;
+  string label = 2;
+  PluginMessage label_text = 3;
+}
+
+message RemoteArtistOptions {
+  bool search_text = 1;
+  repeated RemoteSortOption sorts = 2;
 }
 
 message RemoteFilterOption {
@@ -1130,6 +1147,19 @@ message RemoteSourceInfo {
   PluginMessage remote_hint_text = 17;
   RemotePagination pagination = 18;
   DownloadAction download_action = 19;
+  RemoteArtistOptions artist_options = 20;
+  repeated RemoteBadgeDef badges = 21;
+}
+
+message RemoteBadgeDef {
+  string id = 1;
+  string label = 2;
+  PluginMessage label_text = 3;
+}
+
+message RemoteBadge {
+  string id = 1;
+  string text = 2;
 }
 
 message DownloadAction {
@@ -1157,6 +1187,7 @@ enum PluginActionKind {
   PLUGIN_ACTION_KIND_INVOKE = 1;
   PLUGIN_ACTION_KIND_QR_LOGIN = 2;
   PLUGIN_ACTION_KIND_FORM = 3;
+  PLUGIN_ACTION_KIND_BROWSER_LOGIN = 4;
 }
 
 message PluginActionField {
@@ -1239,6 +1270,9 @@ message RemoteItem {
   // Absent when the search result has no reliable dimensions.
   optional uint32 width = 9;
   optional uint32 height = 10;
+  map<string, string> preview_headers = 11;
+  map<string, string> author_avatar_headers = 12;
+  repeated RemoteBadge badges = 13;
 }
 
 message RemoteSearchRequest {
@@ -1250,6 +1284,8 @@ message RemoteSearchRequest {
   string cursor = 6;
   map<string, string> filter_match_modes = 7;
   repeated string excluded_tags = 8;
+  // Source-owned identity; empty for an unscoped search.
+  string artist_id = 9;
 }
 message RemoteSearchResponse {
   repeated RemoteItem items = 1;
@@ -1296,6 +1332,9 @@ message RemoteDetailsResponse {
   string author_avatar_url = 9;
   repeated RemoteDetailField fields = 10;
   string author_url = 11;
+  // Nonempty only when the source supports artist-scoped searches.
+  string author_id = 12;
+  map<string, string> author_avatar_headers = 13;
 }
 
 message RemoteDetailField {
@@ -1364,6 +1403,39 @@ message QrLoginCancelRequest {
 }
 message QrLoginCancelResponse {
   bool cancelled = 1;
+}
+
+message BrowserLoginCancelRequest {
+  string session_id = 1;
+}
+message BrowserLoginCancelResponse {
+  bool cancelled = 1;
+}
+
+enum BrowserLoginState {
+  BROWSER_LOGIN_STATE_UNSPECIFIED = 0;
+  BROWSER_LOGIN_STATE_STARTING = 1;
+  BROWSER_LOGIN_STATE_WAITING = 2;
+  BROWSER_LOGIN_STATE_VERIFYING = 3;
+  BROWSER_LOGIN_STATE_SUCCEEDED = 4;
+  BROWSER_LOGIN_STATE_FAILED = 5;
+  BROWSER_LOGIN_STATE_CANCELLED = 6;
+  BROWSER_LOGIN_STATE_EXPIRED = 7;
+}
+
+message BrowserLoginProgress {
+  string session_id = 1;
+  string plugin_id = 2;
+  string action_id = 3;
+  BrowserLoginState state = 4;
+  string display_value = 5;
+  string error = 6;
+  string title = 7;
+  string instruction = 8;
+  PluginMessage display_value_text = 9;
+  PluginMessage error_text = 10;
+  PluginMessage title_text = 11;
+  PluginMessage instruction_text = 12;
 }
 
 // Merge declared settings into one remote source's config table. Unlike
@@ -1478,6 +1550,11 @@ message LibraryRenameRequest {
   string name = 2;
 }
 
+message LibraryRelocateRequest {
+  int64 id = 1;
+  string path = 2;
+}
+
 message LibraryRemoveRequest {
   int64 id = 1;
 }
@@ -1523,6 +1600,7 @@ message Event {
     CanvasSnapshot         canvas_snapshot           = 25;
     WallpaperPresentationSnapshot wallpaper_presentation_snapshot = 26;
     WallpaperHiddenChanged wallpaper_hidden_changed = 27;
+    BrowserLoginProgress   browser_login_progress    = 30;
   }
 }
 
@@ -1909,11 +1987,12 @@ message SettingsChanged {
   map<string, PluginSettings> plugins = 2;
 }
 
-// Flatpak-only login startup integration through
-// org.freedesktop.portal.Background.
+// Login startup through the Flatpak portal or a user desktop entry.
 message AutostartGetRequest {}
 message AutostartGetResponse {
   bool enabled = 1;
+  optional bool supported = 2;
+  string unavailable_reason = 3;
 }
 
 message AutostartSetRequest {

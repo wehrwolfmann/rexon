@@ -1,13 +1,13 @@
-//! Образы «Как в дистрибутиве» (`data/distro-looks/<id>/`) — наборы `.rxn`
-//! v5 как данные: каждый проходит модель `rxn_manifest`, на Plasma даёт
-//! родные варианты, на XFCE и GNOME — то, что эти столы понимают, а
-//! уроки 25.10 (запрет `jupiter-hw-support`, имена AUR только с `aur/`)
-//! записаны в самих манифестах.
+//! «Как в дистрибутиве» images (`data/distro-looks/<id>/`) — `.rxn`
+//! v5 sets as data: each passes the `rxn_manifest` model, gives the native
+//! variants on Plasma, on XFCE and GNOME — what those desktops understand, and
+//! the lessons of 25.10 (the `jupiter-hw-support` ban, AUR names only with `aur/`)
+//! are written into the manifests themselves.
 //!
-//! Вторая половина — применение и «Вернуть как было» (`distro_looks`) на
-//! временном профиле: команды стола — поддельные программы из своего
-//! каталога (запуск только оттуда, PATH процесса не участвует), сеть и
-//! пакеты — подставные. Возврат сверяется с профилем до применения побайтно.
+//! The second half is applying and «Вернуть как было» (`distro_looks`) on a
+//! temporary profile: desktop commands are fake programs from their own
+//! directory (launched only from there, the process PATH takes no part), the network and
+//! packages are fakes. The restore is compared byte for byte with the profile before applying.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -47,8 +47,8 @@ fn session(consumers: &[&str], versions: &[(&str, &str)]) -> Session {
     }
 }
 
-/// Потребители сеансов, как их даст матрица (столбца `consumer` в
-/// `de_customization` пока нет — здесь список задан явно).
+/// Session consumers as the matrix will give them (`de_customization` has no
+/// `consumer` column yet — here the list is given explicitly).
 fn plasma6() -> Session {
     session(
         &["kde-lnf", "kde-colors", "plasma", "aurorae", "kvantum", "kde-layout", "kconfig", "kwin", "gtk"],
@@ -75,7 +75,7 @@ fn no_gen(_: &str, _: &str) -> Option<Accuracy> {
     None
 }
 
-/// Выбор по видам: вид → потребитель родного варианта или `None` (отказ).
+/// Choice by kind: kind → the consumer of the native variant or `None` (refusal).
 fn by_kind(pkg: &Package, plan: &PackagePlan) -> BTreeMap<String, Option<String>> {
     pkg.items
         .iter()
@@ -97,7 +97,7 @@ fn expect(plan: &BTreeMap<String, Option<String>>, want: &[(&str, Option<&str>)]
     }
 }
 
-/// Все пути вида `sources/<id>/…` в значении JSON.
+/// All paths of the form `sources/<id>/…` in a JSON value.
 fn source_paths(v: &Value, out: &mut Vec<String>) {
     match v {
         Value::String(s) if s.starts_with("sources/") => out.push(s.clone()),
@@ -111,7 +111,7 @@ fn source_id(path: &str) -> &str {
     path.strip_prefix(SOURCES_DIR).and_then(|r| r.strip_prefix('/')).and_then(|r| r.split('/').next()).unwrap()
 }
 
-// ── общие для всех образов ──────────────────────────────────────────────
+// ── common to all images ────────────────────────────────────────────────
 
 #[test]
 fn every_look_parses_and_is_v5() {
@@ -123,11 +123,11 @@ fn every_look_parses_and_is_v5() {
     }
 }
 
-/// Словари подписей образа (`{"en": …, "ru": …}`) знают каждый язык Rexon
-/// из `po/LINGUAS`: добавили язык окну — образ обязан заговорить на нём же,
-/// иначе карточка «Как в дистрибутиве» молча покажет его по-английски.
-/// Языки берутся из LINGUAS, а не списком в сверке, чтобы новый язык не
-/// забывался здесь (французский в своё время дописывался руками).
+/// The image's caption dictionaries (`{"en": …, "ru": …}`) know every Rexon language
+/// from `po/LINGUAS`: a language added to the window — the image must speak it too,
+/// otherwise the «Как в дистрибутиве» card will silently show it in English.
+/// The languages are taken from LINGUAS, not from a list in the check, so that a new language is not
+/// forgotten here (French was once added by hand).
 #[test]
 fn text_dictionaries_cover_every_rexon_language() {
     fn walk(v: &Value, at: &str, langs: &[String], missing: &mut Vec<String>) {
@@ -226,8 +226,8 @@ fn licenses_are_free_and_downloads_are_not_published() {
         for src in &pkg.sources {
             assert_eq!(license_class(src.license.as_deref()), LicenseClass::Free, "{id}: {}", src.what);
         }
-        // В Мастерскую образ не выкладывается: он скачивает чужие файлы с
-        // первоисточника. Других причин (лицензий) быть не должно.
+        // The image is not published to the Workshop: it downloads others' files from
+        // the original source. There must be no other reasons (licenses).
         let errs = check_publishable(&pkg);
         let fetched: Vec<String> = pkg
             .sources
@@ -260,7 +260,7 @@ fn aur_names_are_bare_and_installed_with_prefix() {
                 assert_eq!(dep.install_names(PkgFamily::Fedora), None);
             }
             if dep.fallback.contains(&DepSource::Aur) {
-                // Запасной AUR: элемент тоже необязательный, и сам он не ставится.
+                // The AUR fallback: the element is optional too, and it is not installed by itself.
                 assert!(!dep.required, "{id}/{}: запасной AUR не может быть обязательным", dep.role);
                 let r = dep.resolve(PkgFamily::Arch, &|_| false).expect("на чистом Arch — AUR");
                 assert_eq!(r.source, DepSource::Aur);
@@ -275,15 +275,15 @@ fn aur_names_are_bare_and_installed_with_prefix() {
 fn garuda_beautyline_repo_first_then_aur() {
     let pkg = load("garuda-dr460nized");
     let dep = pkg.requires.packages.iter().find(|d| d.role == "icons-beautyline").unwrap();
-    // CachyOS: есть в репозитории — оттуда и сам.
+    // CachyOS: it is in the repository — installed from there, by itself.
     let cachy = dep.resolve(PkgFamily::Arch, &|n| n == "beautyline").unwrap();
     assert_eq!((cachy.source, cachy.install_names()), (DepSource::Repo, vec!["beautyline".to_string()]));
     assert!(cachy.installs_automatically());
-    // Чистый Arch: только AUR — с префиксом, без автоустановки.
+    // Plain Arch: AUR only — with the prefix, without auto-install.
     let arch = dep.resolve(PkgFamily::Arch, &|_| false).unwrap();
     assert_eq!(arch.install_names(), ["aur/beautyline"]);
     assert!(!arch.installs_automatically());
-    // Вне Arch пакета нет.
+    // Outside Arch there is no package.
     assert_eq!(dep.resolve(PkgFamily::Fedora, &|_| true), None);
 }
 
@@ -347,7 +347,7 @@ fn garuda_plasma_is_all_native() {
             ("behaviour", Some("kconfig")),
         ],
     );
-    // Тема GNOME Shell — не для Plasma: user-theme здесь не нужен.
+    // The GNOME Shell theme is not for Plasma: user-theme is not needed here.
     assert!(!pkg.deps_for_choice("shell-theme", "plasma").iter().any(|d| d.role == "user-theme"));
 }
 
@@ -409,9 +409,9 @@ fn garuda_forbids_appearing_system_parts_but_keeps_what_was_there() {
     }
     let none = |_: &str| None;
     let plm = |n: &str| (n == "plasma-login-manager").then(|| n.to_string());
-    // Экран входа человека уже на Plasma Login Manager — образ ставится.
+    // The person's login screen is already on Plasma Login Manager — the image is installed.
     assert!(verify_package_change(&pkg, &plm, &plm).is_ok());
-    // Установка его притянула — отказ и откат.
+    // The installation pulled it in — refusal and rollback.
     assert!(verify_package_change(&pkg, &none, &plm).is_err());
 }
 
@@ -442,7 +442,7 @@ fn garuda_plasma_settings_edits_layout_scripts() {
     for app in ["garuda-toolbox.desktop", "snapper-tools.desktop", "octopi.desktop"] {
         assert!(edits.contains(app), "ярлык {app} убирается из дока");
     }
-    // Пресеты Panel Colorizer — в каталог пользователя, не в чужой пакет.
+    // Panel Colorizer presets go into the user's directory, not into a foreign package.
     for f in s["files"].as_array().unwrap() {
         let to = f["to"].as_str().unwrap();
         assert!(to.starts_with("${CONFIG}/") || to.starts_with("${DATA}/"), "{to}: только домашняя папка");
@@ -511,15 +511,15 @@ fn steamos_game_mode_forbids_jupiter_hw_support() {
 
     let r = aur.resolve(PkgFamily::Arch, &|_| true).expect("источник AUR");
     assert_eq!(r.source, DepSource::Aur);
-    // Встало ровно то, что просили, — годится.
+    // Exactly what was asked for got installed — fine.
     let asked = ["gamescope-session-git", "gamescope-session-steam-git"];
     let before = |_: &str| None;
     let clean = |n: &str| asked.contains(&n).then(|| n.to_string());
     assert!(verify_dependency(aur, &r, &before, &clean).is_ok());
-    // Притянулся jupiter-hw-support — отказ.
+    // jupiter-hw-support was pulled in — refusal.
     let pulled = |n: &str| (asked.contains(&n) || n == "jupiter-hw-support").then(|| n.to_string());
     assert!(verify_dependency(aur, &r, &before, &pulled).is_err());
-    // Подмена провайдером из репозитория CachyOS — отказ.
+    // Replacement by a provider from the CachyOS repository — refusal.
     let swapped = |n: &str| match n {
         "gamescope-session-steam-git" => Some("gamescope-session-cachyos".to_string()),
         n if asked.contains(&n) => Some(n.to_string()),
@@ -540,14 +540,14 @@ fn steamos_variants_match_property_and_skip_logos() {
     let variants = s["variants"].as_object().unwrap();
     assert_eq!(variants.keys().map(String::as_str).collect::<Vec<_>>(), prop.option_values());
     assert!(variants.contains_key(prop.default.as_str().unwrap()));
-    // Подписи вариантов — на трёх языках.
+    // Variant captions — in three languages.
     for o in &prop.options {
         for lang in ["en", "ru", "de"] {
             assert_ne!(o.label(lang), o.value(), "вариант {} без подписи {lang}", o.value());
         }
     }
     assert_ne!(prop.options[1].label("ru"), prop.options[1].label("en"));
-    // VGUI: курсор KDE_Classic требует свою зависимость — и только он.
+    // VGUI: the KDE_Classic cursor needs its own dependency — and only it.
     let role = variants["vgui"]["needs_role"].as_str().unwrap();
     let dep = pkg.requires.packages.iter().find(|d| d.role == role).expect("зависимость курсора");
     assert_eq!(dep.when.get("variant"), Some(&serde_json::json!("vgui")));
@@ -560,7 +560,7 @@ fn steamos_variants_match_property_and_skip_logos() {
     assert!(!roles(&vapor).contains(&role.to_string()));
     assert!(!roles(&PropValues::new()).contains(&role.to_string()), "по умолчанию — Vapor");
     assert!(!pkg.deps_for_choice("behaviour", "kconfig").iter().any(|d| d.role == role));
-    // Логотипы и обои Steam Deck не берутся (марка Valve).
+    // Steam Deck logos and wallpapers are not taken (a Valve trademark).
     let exclude = s["exclude"].to_string();
     for p in ["wallpapers", "com.valve.vapor.deck.desktop", "contents/splash", "usr/share/icons"] {
         assert!(exclude.contains(p), "{p} должен быть исключён");
@@ -568,7 +568,7 @@ fn steamos_variants_match_property_and_skip_logos() {
     assert!(!pkg.items.iter().any(|i| i.kind == "wallpaper" || i.kind == "session-splash"));
 }
 
-// ── применение и «Вернуть как было» ─────────────────────────────────────
+// ── applying and «Вернуть как было» ─────────────────────────────────────
 
 mod apply {
     use super::*;
@@ -580,8 +580,8 @@ mod apply {
     use std::cell::RefCell;
     use std::collections::BTreeSet;
 
-    /// Поддельные программы стола: пишут вызов в журнал и изображают
-    /// запись настроек в файлы профиля (по ним идёт сверка возврата).
+    /// Fake desktop programs: they write the call to a log and imitate
+    /// writing settings into profile files (the restore is checked against them).
     const FAKES: &[(&str, &str)] = &[
         ("kwriteconfig6", r#"f=""; g=""; k=""; while [ $# -gt 1 ]; do case "$1" in --file) f="$2"; shift 2;; --group) g="$g[$2]"; shift 2;; --key) k="$2"; shift 2;; *) shift;; esac; done
 mkdir -p "$(dirname "$f")"; printf '%s\n%s=%s\n' "$g" "$k" "$1" >> "$f""#),
@@ -593,28 +593,28 @@ mkdir -p "$(dirname "$f")"; printf '%s\n%s=%s\n' "$g" "$k" "$1" >> "$f""#),
         ("fc-cache", "exit 0"),
         ("xfconf-query", r#"c=""; p=""; v=""; set_=0; reset=0; while [ $# -gt 0 ]; do case "$1" in -c) c="$2"; shift 2;; -p) p="$2"; shift 2;; -s) v="$2"; set_=1; shift 2;; -t) shift 2;; -r) reset=1; shift;; *) shift;; esac; done
 d="$HOME/.xfstore/$c$p"; if [ $reset = 1 ]; then rm -f "$d"; x="$(dirname "$d")"; while [ "$x" != "$HOME" ] && rmdir "$x" 2>/dev/null; do x="$(dirname "$x")"; done; elif [ $set_ = 1 ]; then mkdir -p "$(dirname "$d")"; printf '%s' "$v" > "$d"; else [ -f "$d" ] && cat "$d" && echo; fi"#),
-        // Как настоящий: значения схемы по умолчанию (`GSETTINGS_BACKEND=memory`)
-        // и сброс; строку в кавычках GVariant хранит без кавычек.
+        // Like the real one: schema default values (`GSETTINGS_BACKEND=memory`)
+        // and reset; a quoted string is stored by GVariant without the quotes.
         ("gsettings", r#"d="$HOME/.gsstore/$2/$3"; case "$1" in set) v="$4"; case "$v" in \'*\') v="${v#\'}"; v="${v%\'}";; esac; mkdir -p "$(dirname "$d")"; printf '%s' "$v" > "$d";; get) if [ "$GSETTINGS_BACKEND" != memory ] && [ -f "$d" ]; then printf "'%s'\n" "$(cat "$d")"; else echo "'(default)'"; fi;; reset) rm -f "$d"; rmdir "$(dirname "$d")" "$HOME/.gsstore" 2>/dev/null; true;; esac"#),
         ("env", r#"while [ $# -gt 0 ]; do case "$1" in *=*) export "$1"; shift;; *) break;; esac; done; exec "$@""#),
         ("sh", r#"exec /bin/sh "$@""#),
-        // Панель MATE: ветка dconf — один файл; раскладка пишет в неё своё имя.
+        // MATE panel: the dconf branch is one file; the layout writes its name into it.
         ("dconf", r#"f="$HOME/.dconfstore/mate-panel.txt"; case "$1" in dump) [ -f "$f" ] && cat "$f"; true;; load) mkdir -p "$(dirname "$f")"; cat > "$f";; *) true;; esac"#),
         ("mate-panel", r#"[ "$1" = "--layout" ] && { mkdir -p "$HOME/.dconfstore"; printf 'layout=%s\n' "$2" > "$HOME/.dconfstore/mate-panel.txt"; }; true"#),
-        // Compiz: 3D есть, процессы «живы», отсоединённый запуск только
-        // записывается — живой стол стенд не трогает ни при каком исходе.
+        // Compiz: 3D is there, the processes are "alive", a detached launch is only
+        // recorded — the stand does not touch the live desktop under any outcome.
         ("glxinfo", r#"printf 'direct rendering: Yes
 OpenGL renderer string: AMD Radeon 780M
 '"#),
         ("setsid", "true"),
         ("pgrep", "true"),
         ("sleep", "true"),
-        // Автозапуск Compiz на XFCE кладётся копией ярлыка.
+        // The Compiz autostart on XFCE is placed as a copy of the shortcut.
         ("cp", r#"exec /bin/cp "$@""#),
         ("kvantummanager", r#"[ "$1" = "--set" ] && { mkdir -p "$HOME/.config/Kvantum"; printf '[General]\ntheme=%s\n' "$2" > "$HOME/.config/Kvantum/kvantum.kvconfig"; }; true"#),
     ];
 
-    /// Ярлыки «в системе» стенда: по пути, как в `/usr/share/applications`.
+    /// The stand's "system" shortcuts: by path, as in `/usr/share/applications`.
     const DESKTOPS: &[&str] = &["mate-terminal.desktop", "firefox.desktop", "caja-browser.desktop", "matecc.desktop", "thunar.desktop", "xfce4-terminal.desktop", "nemo.desktop"];
 
     struct Bench {
@@ -659,7 +659,7 @@ OpenGL renderer string: AMD Radeon 780M
             }
         }
 
-        /// Запуск ТОЛЬКО из своего каталога поддельных программ.
+        /// Launch ONLY from our own fake programs directory.
         fn run(&self, argv: &[String], missing: &RefCell<Vec<String>>) -> RunReport {
             let exe = self.bin.join(&argv[0]);
             if argv[0].contains('/') || !exe.is_file() {
@@ -681,7 +681,7 @@ OpenGL renderer string: AMD Radeon 780M
             std::fs::read_to_string(&self.log).unwrap_or_default()
         }
 
-        /// Профиль побайтно, без каталогов Rexon (журнал, кэш).
+        /// The profile byte for byte, without the Rexon directories (log, cache).
         fn snapshot(&self) -> BTreeMap<String, Vec<u8>> {
             fn walk(dir: &Path, root: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
                 let Ok(rd) = std::fs::read_dir(dir) else { return };
@@ -707,7 +707,7 @@ OpenGL renderer string: AMD Radeon 780M
             out
         }
 
-        /// Подменить поддельную программу стенда.
+        /// Replace one of the stand's fake programs.
         fn fake(&self, name: &str, body: &str) {
             let p = self.bin.join(name);
             std::fs::write(&p, format!("#!/bin/sh\necho \"{name} $*\" >> \"$LOG\"\n{body}\n")).unwrap();
@@ -733,7 +733,7 @@ OpenGL renderer string: AMD Radeon 780M
         std::fs::write(path, text).unwrap();
     }
 
-    /// Подставная загрузка: файлы, которые нужны образам, и метка закрепления.
+    /// Fake download: the files the images need, and the pin marker.
     fn fake_fetch(job: &FetchJob) -> Result<(), String> {
         let d = &job.dir;
         match job.id.as_str() {
@@ -795,14 +795,14 @@ OpenGL renderer string: AMD Radeon 780M
         Ok(())
     }
 
-    /// Система пакетов: что стоит; установка дописывает в неё.
+    /// Package system: what is installed; installation appends to it.
     struct Pkgs {
         have: RefCell<BTreeMap<String, String>>,
         installed: RefCell<Vec<String>>,
         removed: RefCell<Vec<String>>,
-        /// Ответ установки расширения GNOME (по умолчанию — поставлено).
+        /// The answer of a GNOME extension install (by default — installed).
         ext_reply: RefCell<Option<Result<gext::DepOutcome, gse::ShellExtError>>>,
-        /// Какие расширения просили поставить.
+        /// Which extensions were asked to be installed.
         ext_calls: RefCell<Vec<String>>,
     }
 
@@ -832,8 +832,8 @@ OpenGL renderer string: AMD Radeon 780M
         }
     }
 
-    /// Применить и вернуть с машиной стенда; `extra` — что ещё «приносит»
-    /// установка (подмена провайдером, запрещённое).
+    /// Apply and restore with the stand machine; `extra` — what else the installation
+    /// "brings" (a provider replacement, a forbidden one).
     fn run_apply(
         b: &Bench,
         de: &str,
@@ -846,7 +846,7 @@ OpenGL renderer string: AMD Radeon 780M
         run_apply_with(b, de, id, &Request::default(), pkgs, in_repos, install_fails, extra)
     }
 
-    /// [`run_apply`] с выбором человека (стиль образа, виды «по желанию»).
+    /// [`run_apply`] with the person's choice (the image style, "optional" kinds).
     #[allow(clippy::too_many_arguments)]
     fn run_apply_with(
         b: &Bench,
@@ -861,7 +861,7 @@ OpenGL renderer string: AMD Radeon 780M
         run_apply_lk(b, de, &look(id), req, pkgs, in_repos, install_fails, extra)
     }
 
-    /// Применить готовый (в том числе синтетический) образ по умолчанию.
+    /// Apply a ready (including synthetic) image with defaults.
     fn run_apply_look(b: &Bench, de: &str, lk: &dl::Look, pkgs: &Pkgs) -> Result<dl::AppliedLook, String> {
         run_apply_lk(b, de, lk, &Request::default(), pkgs, &|_| true, false, &[]).0
     }
@@ -957,9 +957,9 @@ OpenGL renderer string: AMD Radeon 780M
 
     const USER_THEME: &str = "user-theme@gnome-shell-extensions.gcampax.github.com";
 
-    /// Расширение-зависимость образа на GNOME ставится само: в плане — uuid
-    /// и для чего, а не «пропущено, расширение не стоит»; уже стоящее —
-    /// не в плане; на столе без GNOME Shell зависимости нет вовсе.
+    /// An extension the image depends on is installed by itself on GNOME: the plan has the uuid
+    /// and what it is for, not "skipped, the extension is not installed"; an already installed one is
+    /// not in the plan; on a desktop without GNOME Shell there is no dependency at all.
     #[test]
     fn gnome_extension_dependency_goes_to_the_plan_not_to_skipped() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -983,9 +983,9 @@ OpenGL renderer string: AMD Radeon 780M
         assert!(plan.extensions.is_empty(), "на Plasma расширения GNOME не ставятся");
     }
 
-    /// Синтетический пакет: образ требует Dash to Panel (обязательно) и
-    /// ArcMenu — раньше обязательное нестоящее расширение отказывало всему
-    /// образу, теперь оба идут в план одним списком, без дублей ролей.
+    /// A synthetic package: the image requires Dash to Panel (mandatory) and
+    /// ArcMenu — previously a mandatory missing extension refused the whole
+    /// image, now both go into the plan as one list, without duplicate roles.
     #[test]
     fn synthetic_look_with_dash_to_panel_and_arcmenu() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -1016,9 +1016,9 @@ OpenGL renderer string: AMD Radeon 780M
         assert_eq!(applied.message.matches("you cancelled it").count(), 3, "{}", applied.message);
     }
 
-    /// Применение ставит расширение сразу; отказ человека в окне оболочки
-    /// и «нет выпуска под эту версию GNOME» — честная строка итога, образ
-    /// всё равно применён.
+    /// Applying installs the extension right away; the person's refusal in the shell window
+    /// and "no release for this GNOME version" are an honest result line, the image
+    /// is applied anyway.
     #[test]
     fn gnome_extension_dependency_installs_and_failures_are_honest() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -1046,7 +1046,7 @@ OpenGL renderer string: AMD Radeon 780M
             }
             assert!(pkgs.removed.borrow().is_empty(), "{tag}");
         }
-        // Уже стояло к моменту применения — молчим.
+        // It was already installed at the moment of applying — we stay silent.
         let b = Bench::new("ext-apply-present");
         gnome_profile(&b);
         let pkgs = Pkgs::new(&[]);
@@ -1111,7 +1111,7 @@ OpenGL renderer string: AMD Radeon 780M
         b.put(".config/gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Adwaita\n");
         let before = b.snapshot();
         let pkgs = Pkgs::new(&[]);
-        // BeautyLine в репозиториях нет — только AUR: значки пропускаются.
+        // BeautyLine is not in the repositories — AUR only: the icons are skipped.
         let in_repos = |n: &str| n != "beautyline";
         let (r, missing) = run_apply(&b, "xfce", "garuda-dr460nized", &pkgs, &in_repos, false, &[]);
         let applied = r.unwrap();
@@ -1125,7 +1125,7 @@ OpenGL renderer string: AMD Radeon 780M
         assert_eq!(store("xsettings/Net/IconThemeName"), "Papirus", "значки из AUR сами не ставятся");
         assert!(applied.aur.iter().any(|a| a.packages == vec!["aur/beautyline".to_string()]));
         assert!(applied.skipped.iter().any(|s| s.kind == "icons"));
-        // Глобальная тема вне Plasma — набор этих же частей: не «пропущена».
+        // A global theme outside Plasma is a set of these same parts: not "skipped".
         assert!(!applied.skipped.iter().any(|s| s.kind == "global-look"));
         let data = b.home.join(".local/share");
         assert!(data.join("themes/Sweet-Dark/.rexon-owner").is_file());
@@ -1180,17 +1180,17 @@ OpenGL renderer string: AMD Radeon 780M
         assert_eq!(b.snapshot(), before);
     }
 
-    // ── эталоны: план, вызовы, профиль после и окно вопроса ────────────
+    // ── golden files: plan, calls, profile after, and the question window ─
 
-    /// Каталог эталонов образов.
+    /// The image golden files directory.
     fn golden_dir() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/distro_looks")
     }
 
-    /// Снять применение образа `id` на столе `de` в один текст: окно
-    /// вопроса, план, вызовы программ стола и профиль после применения
-    /// (пути дома заменены на `$HOME`). `REXON_UPDATE_GOLDEN=1` —
-    /// переписать эталон, иначе — сверить побайтно.
+    /// Capture applying image `id` on desktop `de` into one text: the question
+    /// window, the plan, the desktop program calls and the profile after applying
+    /// (home paths replaced with `$HOME`). `REXON_UPDATE_GOLDEN=1` —
+    /// rewrite the golden file, otherwise compare byte for byte.
     fn check_golden(de: &str, id: &str, prepare: &dyn Fn(&Bench), have: &[(&str, &str)]) {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
         let b = Bench::new(&format!("golden-{id}-{de}"));
@@ -1233,13 +1233,13 @@ OpenGL renderer string: AMD Radeon 780M
         }
     }
 
-    /// Plasma: образ Garuda не меняется от того, что умеют прочие столы.
+    /// Plasma: the Garuda image does not change because of what other desktops can do.
     #[test]
     fn golden_garuda_on_kde() {
         check_golden("kde", "garuda-dr460nized", &plasma_profile, &[("libplasma", "libplasma")]);
     }
 
-    /// Профиль MATE до применения: тема, рамки, панель.
+    /// The MATE profile before applying: theme, frames, panel.
     fn mate_profile(b: &Bench) {
         b.put(".gsstore/org.mate.interface/gtk-theme", "Menta");
         b.put(".gsstore/org.mate.Marco.general/theme", "Menta");
@@ -1280,9 +1280,9 @@ OpenGL renderer string: AMD Radeon 780M
         check_golden("cinnamon", "garuda-dr460nized", &cinnamon_profile, NON_KDE_HAVE);
     }
 
-    /// Вне Plasma: всё, что образ собрал сам (палитра и стиль Qt, панели,
-    /// поведение окна), «Вернуть как было» снимает побайтно — и раскладку
-    /// панели MATE из снимка dconf тоже.
+    /// Outside Plasma: everything the image assembled itself (Qt palette and style, panels,
+    /// window behaviour) is removed byte for byte by «Вернуть как было» — and the MATE panel
+    /// layout from the dconf snapshot too.
     #[test]
     fn garuda_on_mate_and_cinnamon_reverts_byte_for_byte() {
         for (de, prep) in [("mate", &mate_profile as &dyn Fn(&Bench)), ("cinnamon", &cinnamon_profile), ("xfce", &xfce_profile)] {
@@ -1321,15 +1321,15 @@ OpenGL renderer string: AMD Radeon 780M
         check_golden("sway", "steamos", &sway_profile, NON_KDE_HAVE);
     }
 
-    /// Столы, где Compiz встаёт вместо оконного менеджера: стол, профиль
-    /// до применения, прежний менеджер и где лежит «ключ сеанса».
+    /// Desktops where Compiz replaces the window manager: the desktop, the profile
+    /// before applying, the former manager and where the "session key" lies.
     const COMPIZ_DESKS: &[(&str, fn(&Bench), &str, &str)] = &[
         ("mate", mate_profile, "Marco", ".gsstore/org.mate.session.required-components/windowmanager"),
         ("xfce", xfce_profile, "xfwm4", ".config/autostart/rexon-compiz.desktop"),
     ];
 
-    /// Compiz упал после запуска: обратно прежний менеджер, сеанс не тронут,
-    /// остальное образа применено, причина названа; возврат — побайтно.
+    /// Compiz crashed after launch: the former manager is back, the session is untouched,
+    /// the rest of the image is applied, the reason is named; the restore is byte for byte.
     #[test]
     fn compiz_that_dies_gives_the_window_manager_back() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -1355,8 +1355,8 @@ OpenGL renderer string: AMD Radeon 780M
         }
     }
 
-    /// Виртуальная машина без пробы 3D и программная отрисовка (llvmpipe):
-    /// Compiz не включается вовсе, прежний менеджер остаётся.
+    /// A virtual machine without a 3D probe and software rendering (llvmpipe):
+    /// Compiz is not enabled at all, the former manager stays.
     #[test]
     fn compiz_is_not_switched_on_without_real_3d() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -1385,9 +1385,9 @@ OpenGL renderer string: AMD Radeon 780M
         }
     }
 
-    /// XFCE: Compiz прошёл сторожа — автозапуск с запасным xfwm4, рамки
-    /// gtk-window-decorator из ключей GNOME (тема образа, кнопки слева);
-    /// «Вернуть как было» — xfwm4 обратно и профиль побайтно.
+    /// XFCE: Compiz passed the guards — autostart with xfwm4 as a fallback, frames from
+    /// gtk-window-decorator via GNOME keys (the image theme, buttons on the left);
+    /// «Вернуть как было» — xfwm4 back and the profile byte for byte.
     #[test]
     fn compiz_on_xfce_starts_from_autostart_and_reverts() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -1428,11 +1428,11 @@ OpenGL renderer string: AMD Radeon 780M
 
     #[test]
     fn required_part_from_aur_only_refuses_whole_look() {
-        // Причину отказа сверяем по исходному (английскому) тексту.
+        // We check the refusal reason by the source (English) text.
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
-        // Курсоры Garuda обязательны и берутся из git, а значки — нет; здесь
-        // проверяем отказ целиком на обязательных значках SteamOS из AUR-only
-        // системы: имени в репозиториях нет.
+        // Garuda cursors are mandatory and taken from git, while icons are not; here
+        // we check a total refusal on the mandatory SteamOS icons on an AUR-only
+        // system: the name is not in the repositories.
         let b = Bench::new("required");
         let t = b.target("kde");
         let owner = |n: &str| (n == "libplasma").then(|| n.to_string());
@@ -1445,7 +1445,7 @@ OpenGL renderer string: AMD Radeon 780M
         }
     }
 
-    /// Профили прочих поддержанных столов: тема GTK и то, что стол пишет сам.
+    /// Profiles of the other supported desktops: the GTK theme and what the desktop writes itself.
     fn gnome_profile(b: &Bench) {
         b.put(".gsstore/org.gnome.desktop.interface/gtk-theme", "Adwaita");
         b.put(".gsstore/org.gnome.desktop.wm.preferences/theme", "Adwaita");
@@ -1467,8 +1467,8 @@ OpenGL renderer string: AMD Radeon 780M
         b.put(".config/gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Adwaita\n");
     }
 
-    /// Все столы, на которых блок «Как в дистрибутиве» даёт «Применить»
-    /// (`distro_looks::session_consumers`), с профилем до применения.
+    /// All desktops on which the «Как в дистрибутиве» block gives «Применить»
+    /// (`distro_looks::session_consumers`), with the profile before applying.
     const LOOK_DESKS: &[(&str, fn(&Bench))] = &[
         ("kde", plasma_profile),
         ("mate", mate_profile),
@@ -1481,8 +1481,8 @@ OpenGL renderer string: AMD Radeon 780M
         ("hyprland", hyprland_profile),
     ];
 
-    /// Выборы человека, которые стоит пройти: стиль по умолчанию и каждый
-    /// вариант свойства-списка образа (у SteamOS — Vapor и VGUI2).
+    /// The person's choices worth going through: the default style and each
+    /// variant of the image's list property (for SteamOS — Vapor and VGUI2).
     fn look_requests(id: &str) -> Vec<(String, Request)> {
         let lk = look(id);
         let mut out = vec![("по умолчанию".to_string(), Request::default())];
@@ -1498,10 +1498,10 @@ OpenGL renderer string: AMD Radeon 780M
         out
     }
 
-    /// Матрица «образ × стол × стиль»: план собирается (а не отказ), каждая
-    /// невстающая часть названа с причиной, применение что-то меняет в
-    /// профиле, «Вернуть как было» возвращает профиль побайтно и снимает
-    /// пометку «применён»; повторный возврат честно говорит «нечего».
+    /// The "image × desktop × style" matrix: the plan is built (not a refusal), every
+    /// part that does not install is named with a reason, applying changes something in
+    /// the profile, «Вернуть как было» restores the profile byte for byte and removes
+    /// the "applied" mark; a repeated restore honestly says "nothing".
     #[test]
     fn every_look_on_every_desktop_applies_and_reverts_byte_for_byte() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -1562,9 +1562,9 @@ OpenGL renderer string: AMD Radeon 780M
         }
     }
 
-    /// Игровой режим SteamOS по согласию: в плане AUR-пакеты только с
-    /// префиксом `aur/`, запрет `jupiter-hw-support` и сессии CachyOS — на
-    /// каждом столе, где образ применяется.
+    /// SteamOS game mode with consent: in the plan, AUR packages only with the
+    /// `aur/` prefix, the ban on `jupiter-hw-support` and CachyOS sessions — on
+    /// every desktop where the image is applied.
     #[test]
     fn steamos_game_mode_plan_on_every_desktop() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));

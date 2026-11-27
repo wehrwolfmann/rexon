@@ -1,8 +1,8 @@
-// DayNightActions — объект блока «Светлое и тёмное» над сетками «Глобальных
-// тем» (Plasma) и «Цветовых схем».
+// DayNightActions — the object of the "Light and dark" block above the
+// "Global themes" (Plasma) and "Colour schemes" grids.
 //
-// Логики здесь нет: снимок, проверка, запись, таймер и применение — ядро
-// (`rexon_core::day_night`).
+// There is no logic here: snapshot, validation, writing, the timer and
+// applying come from the core (`rexon_core::day_night`).
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -18,17 +18,17 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок блока (JSON `day_night::State`).
+        /// Block snapshot (JSON `day_night::State`).
         #[qinvokable]
         fn state(self: &DayNightActions) -> QString;
 
-        /// Сохранить настройку (JSON `day_night::Config`) и применить. Ответ —
+        /// Save the setting (JSON `day_night::Config`) and apply it. The answer is
         /// JSON `{"ok": bool, "message": "..."}`.
         #[qinvokable]
         fn save(self: &DayNightActions, config: &QString) -> QString;
 
-        /// Запомнить, раскрыт ли блок (`settings.json`). `false` — не
-        /// записалось.
+        /// Remember whether the block is expanded (`settings.json`). `false` means
+        /// it was not written.
         #[qinvokable]
         #[cxx_name = "setExpanded"]
         fn set_expanded(self: &DayNightActions, on: bool) -> bool;

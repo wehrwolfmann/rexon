@@ -1,32 +1,36 @@
-// Транспорт вкладки Wallpaper Engine: сокет к демону waywallen и его
-// обвязка —
-// перенос `rexon/qt_wallpaper_engine/client.py` на Rust/cxx-qt.
+// The Wallpaper Engine tab transport: the socket to the waywallen daemon
+// and its surroundings —
+// a port of `rexon/qt_wallpaper_engine/client.py` to Rust/cxx-qt.
 //
-// Что здесь есть и чего здесь нет:
+// What is here and what is not:
 //
-//   * ЕСТЬ жизненный цикл сокета (open/close/is_open), карта ожидающих,
-//     разбор входящего кадра, раздвоение событий, поиск и автозапуск
-//     демона, реконнект и синхронная остановка обоев;
-//   * НЕТ ни одного РЕШЕНИЯ — все они уже портированы в ядро
-//     (`rexon_core::we_client`): адреса шины, таймауты, поиск бинаря,
-//     `ensure_running_decision`, `poll_decision`, выдача `request_id`,
-//     сборка кадров, `stop_active_gate`/`stop_active_result`. Здесь только
-//     Qt-исполнение. Второй копии правил в крейте быть не должно.
+//   * there IS the socket lifecycle (open/close/is_open), the map of
+//     pending requests, parsing an incoming frame, splitting events,
+//     finding and auto-starting the daemon, reconnection and the
+//     synchronous wallpaper stop;
+//   * there is NOT a single DECISION — all of them are already ported to
+//     the core (`rexon_core::we_client`): the bus addresses, timeouts,
+//     finding the binary, `ensure_running_decision`, `poll_decision`,
+//     issuing `request_id`, assembling frames,
+//     `stop_active_gate`/`stop_active_result`. Here there is only Qt
+//     execution. There must not be a second copy of the rules in the crate.
 //
-// ⚠️ Всё в этом модуле живёт в ОДНОМ потоке — том, где его позвали. Чужих
-// потоков в транспорте нет вовсе (это осознанное решение оригинала:
-// «Никаких QThread», client.py:16), поэтому состояние держится в
-// `thread_local` и синхронизации не требует. Исключение — счётчик
-// `request_id`: его спрашивают и запросы вкладки, и синхронная остановка
-// обоев из потока установщика, поэтому он под мьютексом.
+// Warning: everything in this module lives in ONE thread — the one it was
+// called in. There are no other threads in the transport at all (this is a
+// deliberate decision of the original: «No QThread», client.py:16), so the
+// state is kept in `thread_local` and needs no synchronization. The
+// exception is the `request_id` counter: both the tab's queries and the
+// synchronous wallpaper stop from the installer's thread ask for it, so it
+// is under a mutex.
 //
-// ⚠️ Ответ демона приходит В ГЛАВНОМ ПОТОКЕ и доставляется СИНХРОННО.
-// Очередь `CxxQtThread` сюда ставить нельзя: она всегда откладывает вызов
-// на такт цикла событий (замер макета: `beforeLoop=0`), то есть меняет
-// наблюдаемый порядок сигналов запроса, а он записан голденами. Живучесть
-// адресата держит `QPointer` в `cpp/rexon_we_transport.cpp`.
+// Warning: the daemon's answer arrives IN THE MAIN THREAD and is delivered
+// SYNCHRONOUSLY. A `CxxQtThread` queue must not be put here: it always
+// defers the call to a tick of the event loop (mock-up measurement:
+// `beforeLoop=0`), that is, it changes the observable order of the query's
+// signals, and that order is recorded by the golden files. The addressee's
+// liveness is held by a `QPointer` in `cpp/rexon_we_transport.cpp`.
 
-/// Мост cxx-qt: чужой C++-QObject (QWebSocket) и шимы транспорта.
+/// cxx-qt bridge: a foreign C++ QObject (QWebSocket) and the transport shims.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -36,16 +40,17 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
         include!("cxx-qt-lib/qurl.h");
         type QUrl = cxx_qt_lib::QUrl;
-        // ⚠️ qint64, а не i64. cxx печатает i64 как `::std::int64_t`, на
-        // LP64 это `long`, а Qt объявляет `qint64` как `long long` —
-        // указатель на метод не приводится, C++ не собирается.
+        // Warning: qint64, not i64. cxx emits i64 as `::std::int64_t`, which on
+        // LP64 is `long`, while Qt declares `qint64` as `long long` — the method
+        // pointer does not convert, and the C++ does not compile.
         include!("cxx-qt-lib/qtypes.h");
         type qint64 = cxx_qt_lib::qint64;
     }
 
-    // QWebSocket объявляется КАК ЕСТЬ: обёртки в cxx-qt-lib 0.9.1 нет — в
-    // крейте вообще нет модуля network (только core/gui/qml/quickcontrols).
-    // `#[qobject]` обязателен, иначе `#[qsignal]` в блоке не разрешён.
+    // QWebSocket is declared AS IS: cxx-qt-lib 0.9.1 has no wrapper — the
+    // crate has no network module at all (only core/gui/qml/quickcontrols).
+    // `#[qobject]` is mandatory, otherwise `#[qsignal]` is not allowed in the
+    // block.
     unsafe extern "C++Qt" {
         include!(<QtWebSockets/QWebSocket>);
         #[qobject]
@@ -57,9 +62,9 @@ pub mod qobject {
         #[cxx_name = "sendBinaryMessage"]
         fn send_binary_message(self: Pin<&mut QWebSocket>, data: &QByteArray) -> qint64;
 
-        // ⚠️ close() объявить здесь НЕЛЬЗЯ: у него два аргумента по
-        // умолчанию, а cxx берёт АДРЕС метода по написанной сигнатуре.
-        // Ушло в шим — rexon_we_sock_close().
+        // Warning: close() must NOT be declared here: it has two default
+        // arguments, and cxx takes the method ADDRESS by the written signature.
+        // It went into the shim — rexon_we_sock_close().
 
         #[qsignal]
         fn connected(self: Pin<&mut QWebSocket>);
@@ -68,12 +73,12 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "binaryMessageReceived"]
         fn binary_message_received(self: Pin<&mut QWebSocket>, message: &QByteArray);
-        // errorOccurred(QAbstractSocket::SocketError) объявить нельзя по той
-        // же причине, что и close(): аргумент — чужой enum, которого в
-        // cxx-qt-lib нет. Подписку делает шим и отдаёт готовый текст.
+        // errorOccurred(QAbstractSocket::SocketError) cannot be declared for the
+        // same reason as close(): the argument is a foreign enum that cxx-qt-lib
+        // does not have. The shim makes the subscription and gives ready text.
     }
 
-    // Шимы: всё, чего cxx-qt не умеет (см. cpp/rexon_we_socket.h).
+    // Shims: everything cxx-qt cannot do (see cpp/rexon_we_socket.h).
     unsafe extern "C++" {
         include!("rexon_we_socket.h");
 
@@ -91,43 +96,43 @@ pub mod qobject {
         fn rexon_we_sock_new() -> *mut QWebSocket;
 
         /// # Safety
-        /// `object` создан фабрикой выше и ещё не удалён.
+        /// `object` was created by the factory above and not deleted yet.
         #[allow(clippy::missing_safety_doc)]
         #[rust_name = "sock_destroy"]
         unsafe fn rexon_we_sock_destroy(object: *mut QObject);
 
         /// # Safety
-        /// `socket` — живой QWebSocket либо nullptr.
+        /// `socket` is a live QWebSocket or nullptr.
         #[allow(clippy::missing_safety_doc)]
         #[rust_name = "sock_close"]
         unsafe fn rexon_we_sock_close(socket: *mut QWebSocket);
 
         /// # Safety
-        /// `socket` — живой QWebSocket либо nullptr.
+        /// `socket` is a live QWebSocket or nullptr.
         #[allow(clippy::missing_safety_doc)]
         #[rust_name = "sock_shutdown"]
         unsafe fn rexon_we_sock_shutdown(socket: *mut QWebSocket);
 
         /// # Safety
-        /// `socket` — живой QWebSocket либо nullptr.
+        /// `socket` is a live QWebSocket or nullptr.
         #[allow(clippy::missing_safety_doc)]
         #[rust_name = "sock_quit_loop_on_error"]
         unsafe fn rexon_we_sock_quit_loop_on_error(socket: *mut QWebSocket);
 
         /// # Safety
-        /// `socket` — живой QWebSocket либо nullptr.
+        /// `socket` is a live QWebSocket or nullptr.
         #[allow(clippy::missing_safety_doc)]
         #[rust_name = "sock_is_open"]
         unsafe fn rexon_we_sock_is_open(socket: *mut QWebSocket) -> bool;
 
         /// # Safety
-        /// `socket` — живой QWebSocket либо nullptr.
+        /// `socket` is a live QWebSocket or nullptr.
         #[allow(clippy::missing_safety_doc)]
         #[rust_name = "sock_error_string"]
         unsafe fn rexon_we_sock_error_string(socket: *mut QWebSocket) -> QString;
 
         /// # Safety
-        /// `socket` — живой QWebSocket.
+        /// `socket` is a live QWebSocket.
         #[allow(clippy::missing_safety_doc)]
         #[rust_name = "sock_watch_error"]
         unsafe fn rexon_we_sock_watch_error(socket: *mut QWebSocket);
@@ -136,7 +141,7 @@ pub mod qobject {
         fn rexon_we_sock_timer_start(id: i32, interval_ms: i32, single_shot: bool);
         #[rust_name = "sock_timer_stop"]
         fn rexon_we_sock_timer_stop(id: i32);
-        /// Звать можно из любого потока (см. `rexon_we_socket.h`).
+        /// It can be called from any thread (see `rexon_we_socket.h`).
         #[rust_name = "sock_post_tick"]
         fn rexon_we_sock_post_tick(id: i32);
 
@@ -165,97 +170,109 @@ use rexon_core::proto::control as pb;
 use rexon_core::waywallen_client::DbusValue;
 use rexon_core::we_client;
 
-// Указатели на функции через cxx не выражаются — эти два шима объявляются
-// обычным `extern "C"`, как это уже сделано в `we_transport.rs`.
+// Function pointers cannot be expressed through cxx — these two shims are
+// declared with an ordinary `extern "C"`, as already done in
+// `we_transport.rs`.
 unsafe extern "C" {
     fn rexon_we_sock_set_timer_tick(tick: Option<extern "C" fn(i32)>);
     fn rexon_we_sock_set_error_hook(hook: Option<extern "C" fn(*const c_char, i32)>);
 }
 
-// ── номера таймеров шима ────────────────────────────────────────────────────
+// ── shim timer numbers ──────────────────────────────────────────────────────
 
-/// Поллинг D-Bus после автозапуска демона (`DaemonControl._poll_once`).
+/// Polling D-Bus after the daemon auto-start (`DaemonControl._poll_once`).
 const TIMER_POLL: i32 = 1;
-/// Реконнект после обрыва (переехал из `window.py:1136-1147`).
+/// Reconnection after a disconnection (moved from `window.py:1136-1147`).
 const TIMER_RECONNECT: i32 = 2;
 
-/// Сторож ответа `health` (переехал из `qml_window.py`: был `QTimer` окна).
+/// The `health` answer watchdog (moved from `qml_window.py`: it was the
+/// window's `QTimer`).
 const TIMER_HEALTH: i32 = 3;
-/// Отложенный старт демона при открытии вкладки (`QTimer.singleShot` окна).
+/// Deferred daemon start when the tab opens (the window's `QTimer.singleShot`).
 const TIMER_START: i32 = 4;
-/// Поднять демона, ушедшего по `Quit` ради плагина из пакета. Не таймер, а
-/// разовый тик из фонового потока перезапуска (`sock_post_tick`).
+/// Bring up the daemon that left by `Quit` for the sake of the plugin from
+/// the package. Not a timer but a one-off tick from the background restart
+/// thread (`sock_post_tick`).
 const TIMER_PLUGIN_RELAUNCH: i32 = 5;
-/// Придержанные кадры применения обоев на KDE: проверка «пора отпускать»
-/// (повторяющийся таймер плюс разовый тик из потока назначения плагина).
+/// Held-back wallpaper apply frames on KDE: the "time to release" check (a
+/// repeating timer plus a one-off tick from the plugin assignment thread).
 const TIMER_KDE_HOLD: i32 = 6;
-/// Откат обоев стола закончился (разовый тик из потока отката) — сказать
-/// человеку, чем кончилось.
+/// The desktop wallpaper rollback finished (a one-off tick from the rollback
+/// thread) — tell the user how it ended.
 const TIMER_KDE_REVERT: i32 = 7;
-/// Подготовка значков стола X11 закончилась (разовый тик из её потока) —
-/// сказать человеку, что со значками.
+/// Preparing the X11 desktop icons finished (a one-off tick from its thread)
+/// — tell the user what happened with the icons.
 const TIMER_DESKTOP_ICONS: i32 = 8;
-/// Шаг проверки придержанных кадров.
+/// The step of checking the held-back frames.
 const KDE_HOLD_TICK_MS: i32 = 250;
 
-/// Пауза реконнекта — та же, что стояла в окне: 3000 мс, без бэкоффа и без
-/// лимита попыток. Улучшать здесь нечего и не время.
+/// The reconnection pause — the same as stood in the window: 3000 ms,
+/// without back-off and without an attempt limit. There is nothing to
+/// improve here, and it is not the time.
 const RECONNECT_MS: i32 = 3000;
 
-// ── выдача request_id ───────────────────────────────────────────────────────
+// ── issuing request_id ──────────────────────────────────────────────────────
 
-/// Счётчик `request_id` — ОДИН на процесс.
+/// The `request_id` counter — ONE per process.
 ///
-/// Раньше номеров было два: свой токен у Rust-запроса и свой `request_id` у
-/// питоновского клиента, который ради этого разбирал готовый кадр `prost`-ом
-/// и собирал его обратно. Теперь номер один, разбор один.
+/// Previously there were two numbers: the Rust query's own token and the
+/// Python client's own `request_id`, which for this parsed the ready frame
+/// with `prost` and assembled it back. Now the number is one, and the
+/// parsing is one.
 fn ids() -> &'static Mutex<we_client::RequestIds> {
     static IDS: OnceLock<Mutex<we_client::RequestIds>> = OnceLock::new();
     IDS.get_or_init(|| Mutex::new(we_client::RequestIds::default()))
 }
 
-/// Следующий `request_id`.
+/// The next `request_id`.
 pub fn alloc_request_id() -> i64 {
     let mut guard = ids().lock().expect("счётчик request_id не отравлен");
     guard.alloc() as i64
 }
 
-/// Начать нумерацию заново (нужно стендам: голден нумерует кадры с единицы).
+/// Start numbering anew (needed by the benches: the golden file numbers
+/// frames from one).
 pub fn reset_request_ids() {
     *ids().lock().expect("счётчик request_id не отравлен") = we_client::RequestIds::default();
 }
 
-// ── состояние транспорта ────────────────────────────────────────────────────
+// ── transport state ─────────────────────────────────────────────────────────
 
-/// Колбэки пробы транспорта (`set_hooks`). `extern "C"`, потому что
-/// `on_socket_error` с той же сигнатурой ставится и в C++-шим сокета.
+/// Callbacks of the transport probe (`set_hooks`). `extern "C"` because
+/// `on_socket_error` with the same signature is also set into the C++
+/// socket shim.
 pub type VoidHook = Option<extern "C" fn()>;
 pub type TextHook = Option<extern "C" fn(*const c_char, i32)>;
 pub type FrameHook = Option<extern "C" fn(i64, *const c_char, i32)>;
 
 thread_local! {
-    /// Живой сокет вкладки. Голый указатель, а не RefCell со структурой:
-    /// обработчик ответа синхронно зовёт запрос, а тот может тут же послать
-    /// новый кадр — при долгом заимствовании это была бы паника RefCell.
+    /// The tab's live socket. A bare pointer rather than a RefCell with a
+    /// struct: the answer handler synchronously calls the query, and it may
+    /// immediately send a new frame — with a long borrow that would be a RefCell
+    /// panic.
     static SOCKET: Cell<*mut QWebSocket> = const { Cell::new(std::ptr::null_mut()) };
-    /// Стражи подключений к сигналам сокета. Живут ровно столько же, сколько
-    /// сам сокет: снимаются ПЕРЕД удалением, иначе страж дёрнет мёртвый объект.
+    /// Guards of the connections to the socket's signals. They live exactly as
+    /// long as the socket itself: they are removed BEFORE deletion, otherwise a
+    /// guard would poke a dead object.
     static GUARDS: RefCell<Vec<QMetaObjectConnectionGuard>> = const { RefCell::new(Vec::new()) };
-    /// Порт последнего успешного `open` — реконнекту он не нужен (порт
-    /// перечитывается по шине), а журналу и стенду нужен.
+    /// The port of the last successful `open` — reconnection does not need it
+    /// (the port is re-read over the bus), but the log and the bench do.
     static PORT: Cell<i32> = const { Cell::new(0) };
-    /// Было ли соединение установлено хоть раз. Реконнект без этого не
-    /// стартует — ровно как `_was_connected` в окне вкладки.
+    /// Whether the connection has been established at least once. Without it
+    /// reconnection does not start — exactly like `_was_connected` in the tab
+    /// window.
     static WAS_CONNECTED: Cell<bool> = const { Cell::new(false) };
-    /// Сторож идущего запуска демона (решения — ядра,
-    /// `we_client::StartWatch`) и чем запущен движок. `None` — запуска нет.
+    /// The watcher of a running daemon launch (the decisions are the core's,
+    /// `we_client::StartWatch`) and what the engine was launched with. `None`
+    /// means there is no launch.
     static START: RefCell<Option<StartRun>> = const { RefCell::new(None) };
-    /// Сокет закрывают НАМЕРЕННО. Без этого флага обработчик обрыва тут же
-    /// заводил бы реконнект и открывал сокет обратно — «закрыть» перестало
-    /// бы означать «закрыть».
+    /// The socket is being closed DELIBERATELY. Without this flag the
+    /// disconnection handler would immediately start reconnecting and open the
+    /// socket back — "close" would stop meaning "close".
     static CLOSING: Cell<bool> = const { Cell::new(false) };
-    /// Показывать ли тостом очередную ошибку транспорта — решение ядра
-    /// (`we_client::TransportErrorToast`): один тост на обрыв.
+    /// Whether to show the next transport error as a toast — the core's
+    /// decision (`we_client::TransportErrorToast`): one toast per
+    /// disconnection.
     static ERROR_TOAST: RefCell<we_client::TransportErrorToast> =
         RefCell::new(we_client::TransportErrorToast::default());
 
@@ -265,29 +282,32 @@ thread_local! {
     static ON_RESPONSE: Cell<FrameHook> = const { Cell::new(None) };
     static ON_EVENT: Cell<TextHook> = const { Cell::new(None) };
 
-    /// Подписчики на Rust (объект действий страницы, `we_actions.rs`).
+    /// Subscribers in Rust (the page's action object, `we_actions.rs`).
     ///
-    /// Ячейки `ON_*` выше — слот ОДНОГО потребителя (пробы транспорта), и
-    /// забирает его последний поставивший. Подписчиков на Rust может быть
-    /// сколько угодно, поэтому событие уходит КАЖДОМУ: слоту и всем из
-    /// этого списка.
+    /// The `ON_*` cells above are the slot of ONE consumer (the transport
+    /// probe), and whoever set it last takes it. There may be any number of
+    /// subscribers in Rust, so the event goes to EACH: the slot and everyone in
+    /// this list.
     static SUBSCRIBERS: RefCell<Vec<(u64, Rc<dyn Fn(&DaemonEvent)>)>> =
         const { RefCell::new(Vec::new()) };
     static NEXT_SUBSCRIBER: Cell<u64> = const { Cell::new(0) };
-    /// `request_id` ожидаемого ответа `health`; 0 — не ждём.
+    /// `request_id` of the expected `health` answer; 0 — not waiting.
     static HEALTH_ID: Cell<u64> = const { Cell::new(0) };
-    /// `request_id` своего `plugin_list` (сверка плагинов с пакетом); 0 — не ждём.
+    /// `request_id` of our own `plugin_list` (checking the plugins against the
+    /// package); 0 — not waiting.
     static PLUGINS_ID: Cell<u64> = const { Cell::new(0) };
-    /// Дисплеи демона по его событиям (`display_snapshot/changed/removed`).
-    /// Нужны одному решению: есть ли куда показывать применённые обои.
+    /// The daemon's displays by its events (`display_snapshot/changed/removed`).
+    /// Needed by one decision: whether there is anywhere to show an applied
+    /// wallpaper.
     static DISPLAY_IDS: RefCell<std::collections::BTreeSet<u64>> =
         const { RefCell::new(std::collections::BTreeSet::new()) };
-    /// Кадры применения, придержанные до назначения плагина KDE.
+    /// Apply frames held back until the KDE plugin is assigned.
     static HELD: RefCell<Vec<Vec<u8>>> = const { RefCell::new(Vec::new()) };
-    /// Когда начали придерживать.
+    /// When the holding started.
     static HELD_SINCE: Cell<Option<std::time::Instant>> = const { Cell::new(None) };
-    /// Сторож отпущенного применения (решение — ядро, `ApplyWatch`) и
-    /// момент отправки кадра: не удалось — столам возвращаются прежние обои.
+    /// The watcher of a released apply (the decision is the core's,
+    /// `ApplyWatch`) and the moment the frame was sent: if it failed, the
+    /// desktops get their previous wallpapers back.
     static APPLY_WATCH: RefCell<Option<(rexon_core::waywallen_kde_plugin::ApplyWatch, std::time::Instant)>> =
         const { RefCell::new(None) };
 }
@@ -298,10 +318,10 @@ fn call_text(hook: &'static std::thread::LocalKey<Cell<TextHook>>, text: &[u8]) 
     f(text.as_ptr().cast::<c_char>(), len);
 }
 
-// ── разбор входящего кадра ──────────────────────────────────────────────────
+// ── parsing an incoming frame ───────────────────────────────────────────────
 
-/// Что приехало по сокету. `request_id` лежит ВНУТРИ `Response`, а не в
-/// оболочке `ServerFrame` — это и есть ключ маршрутизации.
+/// What arrived over the socket. `request_id` lies INSIDE `Response`, not in
+/// the `ServerFrame` envelope — that is exactly the routing key.
 enum Frame {
     Response(u64),
     Event(pb::Event),
@@ -316,12 +336,12 @@ fn read_frame(bytes: &[u8]) -> Result<Frame, prost::DecodeError> {
     }
 }
 
-/// Кадр `ServerFrame{Response{request_id, status, message}}` без полезной
-/// нагрузки — им закрываются ожидающие запросы при обрыве соединения.
+/// A `ServerFrame{Response{request_id, status, message}}` frame without a
+/// payload — pending requests are closed with it on a disconnection.
 ///
-/// Не новый механизм, а тот же путь ответа: `we_query::take_response` видит
-/// не-OK статус и переводит запрос в Error с этим текстом. Отдельных
-/// инвокаблов «транспорт умер» заводить не пришлось.
+/// Not a new mechanism but the same answer path: `we_query::take_response`
+/// sees a non-OK status and moves the query into Error with this text. No
+/// separate "the transport died" invokables had to be created.
 fn error_frame(request_id: u64, message: &str) -> Vec<u8> {
     let resp = pb::Response {
         request_id,
@@ -332,21 +352,22 @@ fn error_frame(request_id: u64, message: &str) -> Vec<u8> {
     pb::ServerFrame { kind: Some(pb::server_frame::Kind::Response(resp)) }.encode_to_vec()
 }
 
-/// Текст, который увидит пользователь вместо вечного спиннера.
+/// The text the user will see instead of an eternal spinner.
 const DISCONNECTED_TEXT: &str = rexon_core::i18n::n_("The connection to the wallpaper engine was lost");
 
-/// Раздать кадр демона его адресатам.
+/// Hand a daemon frame to its addressees.
 ///
-/// Адресаты:
-///   * ответ → своим служебным запросам (`health`, `plugin_list`), иначе
-///     Rust-запросу по карте `QPointer` (шим), иначе слоту пробы;
-///   * событие → прогрессу длинных задач, синглтонам `Notify`/`App` и слоту
-///     пробы. Раздвоение обязательно: потребители разные.
+/// The addressees:
+///   * an answer → to our own service requests (`health`, `plugin_list`),
+///     otherwise to the Rust query by the `QPointer` map (the shim),
+///     otherwise to the probe slot;
+///   * an event → to the long task progress, the `Notify`/`App` singletons
+///     and the probe slot. The split is mandatory: the consumers differ.
 pub fn dispatch_frame(bytes: &[u8]) -> bool {
     match read_frame(bytes) {
         Ok(Frame::Response(request_id)) => {
-            // Ответ на СВОЙ `health` (его шлёт `request_health`) — ни Rust-
-            // запросу вкладки, ни пробе он не адресован.
+            // An answer to OUR OWN `health` (sent by `request_health`) — it is
+            // addressed neither to a Rust query of the tab nor to the probe.
             if request_id != 0 && request_id == HEALTH_ID.with(Cell::get) {
                 HEALTH_ID.with(|c| c.set(0));
                 qobject::sock_timer_stop(TIMER_HEALTH);
@@ -354,7 +375,8 @@ pub fn dispatch_frame(bytes: &[u8]) -> bool {
                 request_plugin_check();
                 return true;
             }
-            // Ответ на СВОЙ `plugin_list` (сверка с пакетом) — тоже ничей.
+            // An answer to OUR OWN `plugin_list` (checking against the package) —
+            // nobody else's either.
             if request_id != 0 && request_id == PLUGINS_ID.with(Cell::get) {
                 PLUGINS_ID.with(|c| c.set(0));
                 on_plugin_list(bytes);
@@ -376,9 +398,9 @@ pub fn dispatch_frame(bytes: &[u8]) -> bool {
             if changed {
                 check_kde_hold();
             }
-            // Сторож отпущенного применения: связи дисплеев, появление и
-            // снятие рендереров (плейлист рендерер в ответе не называет —
-            // ядро узнаёт его по дисплеям, `ApplyWatch::on_event`).
+            // The watcher of a released apply: display links, renderers appearing
+            // and being removed (a playlist does not name the renderer in the
+            // answer — the core learns it by the displays, `ApplyWatch::on_event`).
             watch_verdict(|w| w.on_event(&event));
             crate::we_transport::deliver_event_bytes(bytes);
             crate::we_singletons::deliver_singleton_event_bytes(bytes);
@@ -386,8 +408,8 @@ pub fn dispatch_frame(bytes: &[u8]) -> bool {
             true
         }
         Err(e) => {
-            // Битый кадр обязан давать ошибку и теряться, а не ронять
-            // процесс: демон может быть новее нас.
+            // A broken frame must give an error and be lost, not bring the process
+            // down: the daemon may be newer than us.
             let text = rexon_core::we_client::frame_parse_error_message(&e.to_string());
             report_error(text.as_bytes());
             false
@@ -395,13 +417,13 @@ pub fn dispatch_frame(bytes: &[u8]) -> bool {
     }
 }
 
-// ── жизненный цикл сокета ───────────────────────────────────────────────────
+// ── socket lifecycle ────────────────────────────────────────────────────────
 
 fn socket_ptr() -> *mut QWebSocket {
     SOCKET.with(Cell::get)
 }
 
-/// Создать сокет и подписаться на его сигналы. Идемпотентно.
+/// Create the socket and subscribe to its signals. Idempotent.
 fn ensure_socket() -> *mut QWebSocket {
     let existing = socket_ptr();
     if !existing.is_null() {
@@ -417,9 +439,9 @@ fn ensure_socket() -> *mut QWebSocket {
         WAS_CONNECTED.with(|c| c.set(true));
         ERROR_TOAST.with(|t| t.borrow_mut().on_connected());
         qobject::sock_timer_stop(TIMER_RECONNECT);
-        // Запросы вкладки спрашивают соединение перед отправкой кадра. В
-        // Python это делал каждый сам (`_client.is_open()`), здесь состояние
-        // им приносит транспорт — одно место на всех (правило #12).
+        // The tab's queries ask about the connection before sending a frame.
+        // In Python each did it itself (`_client.is_open()`), here the transport
+        // brings them the state — one place for all (rule #12).
         crate::discover_queries::set_connected(true);
         if let Some(f) = ON_CONNECTED.with(Cell::get) {
             f();
@@ -444,51 +466,55 @@ fn ensure_socket() -> *mut QWebSocket {
     socket
 }
 
-/// Обрыв соединения: ожидающие получают ошибку, подписчики — уведомление,
-/// реконнект — старт.
+/// Disconnection: the pending ones get an error, the subscribers a
+/// notification, reconnection a start.
 fn on_socket_closed() {
     crate::discover_queries::set_connected(false);
-    // Дисплеи придут заново снимком после переподключения. Придержанные
-    // кадры выбрасываются: их запросы сейчас же получат ошибку обрыва
-    // (`fail_pending` ниже), и слать их в новое соединение было бы поздно.
+    // The displays will come again as a snapshot after reconnecting. Held-back
+    // frames are thrown away: their queries will get a disconnection error
+    // right now (`fail_pending` below), and sending them into the new
+    // connection would be too late.
     DISPLAY_IDS.with(|ids| ids.borrow_mut().clear());
     drop_kde_hold();
-    // ⚠️ Починка бага оригинала (правило #16): `_on_disconnected`
-    // чистил карту молча — колбэки не звались НИКОГДА, запрос оставался в
-    // статусе Querying навсегда, и пользователь видел вечный спиннер вместо
-    // ошибки. Теперь каждому ожидающему уходит кадр с не-OK статусом.
+    // Warning: a fix of the original's bug (rule #16): `_on_disconnected`
+    // cleared the map silently — the callbacks were NEVER called, the query
+    // stayed in the Querying status forever, and the user saw an eternal
+    // spinner instead of an error. Now every pending one gets a frame with a
+    // non-OK status.
     let frame = error_frame(0, &rexon_core::i18n::tr(DISCONNECTED_TEXT));
     crate::we_transport::fail_pending(&frame);
 
     if let Some(f) = ON_DISCONNECTED.with(Cell::get) {
         f();
     }
-    // `Notify` обязан узнать об обрыве сам: раньше ему сообщал питоновский
-    // хозяин окна, а с его уходом не сообщал никто — фаза демона оставалась
-    // «готов» и без демона, и всё, что по ней живёт (карточка текущих обоев
-    // в рейке, подсказки вендорных страниц), показывало вчерашний день.
+    // `Notify` must learn about the disconnection itself: previously the
+    // Python window host told it, and with its departure nobody did — the
+    // daemon phase stayed "ready" even without a daemon, and everything living
+    // by it (the current wallpaper card in the rail, the vendored pages' hints)
+    // showed yesterday's state.
     crate::we_singletons::transport_disconnected();
-    // Ответа `health` с оборванного сокета уже не будет. Сторож при этом
-    // снимается, а не дожидается срока: у питоновского окна он оставался
-    // заведённым, и обрыв посреди проверки через 10 с объявлял движок
-    // мёртвым — хотя реконнект к тому времени уже вернул страницы.
+    // There will be no more `health` answer from a dropped socket. The watchdog
+    // is removed rather than waiting for its term: in the Python window it
+    // stayed armed, and a disconnection in the middle of a check declared the
+    // engine dead 10 s later — although reconnection had already brought the
+    // pages back by then.
     HEALTH_ID.with(|c| c.set(0));
     PLUGINS_ID.with(|c| c.set(0));
     qobject::sock_timer_stop(TIMER_HEALTH);
     broadcast(&DaemonEvent::Disconnected {
         was_connected: WAS_CONNECTED.with(Cell::get),
     });
-    // Реконнект только после состоявшегося соединения — та же оговорка,
-    // что стояла в окне вкладки (`_was_connected`), — и только если рвалось
-    // не по нашей воле.
+    // Reconnection only after an established connection — the same caveat as
+    // stood in the tab window (`_was_connected`) — and only if it broke not of
+    // our own will.
     if WAS_CONNECTED.with(Cell::get) && !CLOSING.with(Cell::get) {
         qobject::sock_timer_start(TIMER_RECONNECT, RECONNECT_MS, false);
     }
     CLOSING.with(|c| c.set(false));
 }
 
-/// Открыть сокет на этот порт. URL захардкожен так же, как в оригинале
-/// (`client.py:513`): демон слушает только петлю.
+/// Open the socket on this port. The URL is hard-coded the same way as in
+/// the original (`client.py:513`): the daemon listens only on the loopback.
 pub fn open(port: i32) -> bool {
     let socket = ensure_socket();
     if socket.is_null() || port <= 0 {
@@ -517,14 +543,16 @@ pub fn is_open() -> bool {
     !socket.is_null() && unsafe { qobject::sock_is_open(socket) }
 }
 
-/// Отправить кадр запроса `field` с учётом того, кто поднимает дисплей.
+/// Send a request frame `field` taking into account who brings up the
+/// display.
 ///
-/// Единственный вход для кадров запросов вкладки (`we_transport::send`).
-/// Там, где дисплей демона поднимает Rexon (`wallpaper_backend::DisplaySetup`:
-/// KDE — плагин, X11 — хост-клиент вывода), применение обоев при нуле
-/// дисплеев придерживается: демон без дисплея его отклонит
-/// (`NoDisplayRegistered`). Дисплей поднимается здесь — по действию
-/// человека, а не при открытии вкладки.
+/// The only entry for the tab's request frames (`we_transport::send`). Where
+/// the daemon's display is brought up by Rexon
+/// (`wallpaper_backend::DisplaySetup`: KDE — the plugin, X11 — the output
+/// client host), applying a wallpaper with zero displays is held back: the
+/// daemon without a display would reject it (`NoDisplayRegistered`). The
+/// display is brought up here — on the user's action, not when the tab
+/// opens.
 pub fn send_request_frame(field: &str, frame: &[u8]) {
     use rexon_core::waywallen_kde_plugin::{apply_gate, ApplyGate};
     if !is_open() {
@@ -534,23 +562,24 @@ pub fn send_request_frame(field: &str, frame: &[u8]) {
     let holding = HELD.with(|h| !h.borrow().is_empty());
     let displays = DISPLAY_IDS.with(|ids| ids.borrow().len());
     let gate = if holding && rexon_core::waywallen_kde_plugin::request_shows_wallpaper(field) {
-        // Уже ждём дисплея — новый кадр применения встаёт в ту же очередь,
-        // чтобы порядок применений не перепутался.
+        // We are already waiting for a display — a new apply frame joins the same
+        // queue so that the order of applies does not get mixed up.
         ApplyGate::HoldAndSelect
     } else {
         apply_gate(display_setup().rexon_brings_display(), field, displays)
     };
     if rexon_core::waywallen_kde_plugin::request_shows_wallpaper(field) {
-        // Человек применил что-то ещё — следить за прежним применением
-        // незачем: его новое действие главнее.
+        // The user applied something else — there is no reason to watch the
+        // previous apply: their new action matters more.
         watch_verdict(|w| w.on_new_apply());
         if display_setup() == rexon_core::wallpaper_backend::DisplaySetup::RexonHost {
             start_desktop_icons_prepare();
         }
         if rexon_core::wallpaper_backend::cinnamon_layer_shell_fact() {
-            // Cinnamon с layer-shell: вывод сцен снова нужен (свои обои его
-            // отпускали), а поверхность сцены получает первый кадр, когда
-            // демон поднял рендерер, — уложить службу фона под неё позже.
+            // Cinnamon with layer-shell: scene output is needed again (our own
+            // wallpaper released it), and the scene surface gets the first frame
+            // when the daemon brings up the renderer — lay the background service
+            // under it later.
             rexon_core::wallpaper_backend::set_layer_shell_display_off_live(false);
             rexon_core::wallpaper_backend::restack_cinnamon_background_after("сцена Wallpaper Engine", CINNAMON_SCENE_RESTACK_MS);
         }
@@ -587,30 +616,34 @@ pub fn send_request_frame(field: &str, frame: &[u8]) {
     }
 }
 
-/// Через сколько после применения сцены переставлять фон Cinnamon.
+/// How long after applying a scene to restack the Cinnamon background.
 const CINNAMON_SCENE_RESTACK_MS: u64 = 5000;
 
-/// Состояние назначения плагина ради придержанных кадров.
+/// The plugin assignment state for the sake of held-back frames.
 static KDE_SELECT_STATE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(KDE_SELECT_IDLE);
 const KDE_SELECT_IDLE: u8 = 0;
 const KDE_SELECT_RUNNING: u8 = 1;
 const KDE_SELECT_OK: u8 = 2;
 const KDE_SELECT_FAILED: u8 = 3;
 
-/// Плагины столов до назначения — снимок для отката.
+/// The desktops' plugins before the assignment — a snapshot for the
+/// rollback.
 static KDE_PREVIOUS: Mutex<Option<Vec<rexon_core::waywallen_kde_plugin::DesktopPlugin>>> = Mutex::new(None);
-/// Плагин назначен ради этого применения (до него его на столах не было).
+/// The plugin was assigned for this apply (it was not on the desktops
+/// before).
 static KDE_SELECTED_NOW: AtomicBool = AtomicBool::new(false);
-/// Откат нужен, но назначение ещё не отчиталось — сделать по его концу.
+/// A rollback is needed, but the assignment has not reported yet — do it
+/// at its end.
 static KDE_REVERT_WANTED: AtomicBool = AtomicBool::new(false);
-/// Итог потока отката для главного потока.
+/// The rollback thread's outcome for the main thread.
 static KDE_REVERT_RESULT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(KDE_REVERT_NONE);
 const KDE_REVERT_NONE: u8 = 0;
 const KDE_REVERT_OK: u8 = 1;
 const KDE_REVERT_FAILED: u8 = 2;
 
-/// Вывод поднят не назначением плагина (X11): откатывать нечего, дальше
-/// придержку ведёт то же ядро (`release_held`).
+/// The output was brought up not by a plugin assignment (X11): there is
+/// nothing to roll back, and further holding is run by the same core
+/// (`release_held`).
 fn kde_select_finished_without_plugin(ok: bool) {
     if let Ok(mut slot) = KDE_PREVIOUS.lock() {
         *slot = None;
@@ -620,10 +653,11 @@ fn kde_select_finished_without_plugin(ok: bool) {
     qobject::sock_post_tick(TIMER_KDE_HOLD);
 }
 
-/// Поток назначения закончил (любой поток) — разбудить проверку в главном.
+/// The assignment thread finished (any thread) — wake up the check in the
+/// main one.
 ///
-/// `previous` — плагины столов до назначения (есть, только когда плагин
-/// назначен только что).
+/// `previous` are the desktops' plugins before the assignment (present only
+/// when the plugin was just assigned).
 fn kde_select_finished(
     selected: bool,
     previous: Option<Vec<rexon_core::waywallen_kde_plugin::DesktopPlugin>>,
@@ -636,8 +670,8 @@ fn kde_select_finished(
     qobject::sock_post_tick(TIMER_KDE_HOLD);
 }
 
-/// Отпустить придержанные кадры, если пора (решение — ядро), и вести
-/// сторож уже отпущенного применения.
+/// Release the held-back frames if it is time (the decision is the core's),
+/// and run the watcher of an already released apply.
 fn check_kde_hold() {
     if KDE_REVERT_WANTED.load(Ordering::SeqCst)
         && KDE_SELECT_STATE.load(Ordering::SeqCst) != KDE_SELECT_RUNNING
@@ -674,7 +708,7 @@ fn check_kde_hold() {
         frames.len(),
         rexon_core::waywallen_kde_plugin::select_state_for_log(done, ok)
     );
-    // Что окажется на столе, решает ПОСЛЕДНИЙ кадр — за ним и следим.
+    // What ends up on the desktop is decided by the LAST frame — we watch it.
     let last_id = frames.last().and_then(|f| pb::Request::decode(f.as_slice()).ok()).map(|r| r.request_id);
     for frame in &frames {
         send_frame(frame);
@@ -683,10 +717,10 @@ fn check_kde_hold() {
         *w.borrow_mut() = last_id
             .map(|id| (rexon_core::waywallen_kde_plugin::ApplyWatch::new(id), std::time::Instant::now()));
     });
-    // Таймер продолжает тикать — теперь для сторожа.
+    // The timer keeps ticking — now for the watcher.
 }
 
-/// Ответ демона на наблюдаемый кадр применения — отдать сторожу.
+/// The daemon's answer to the watched apply frame — give it to the watcher.
 fn watch_response(request_id: u64, bytes: &[u8]) {
     let watched = APPLY_WATCH.with(|w| w.borrow().as_ref().is_some_and(|(w, _)| w.watches(request_id)));
     if !watched {
@@ -708,7 +742,7 @@ fn watch_response(request_id: u64, bytes: &[u8]) {
     watch_verdict(|w| w.on_response(request_id, ok, &renderer_id));
 }
 
-/// Шаг сторожа применения; исход — по решению ядра.
+/// A step of the apply watcher; the outcome is by the core's decision.
 fn watch_verdict(step: impl FnOnce(&mut rexon_core::waywallen_kde_plugin::ApplyWatch) -> rexon_core::waywallen_kde_plugin::WatchVerdict) {
     use rexon_core::waywallen_kde_plugin::WatchVerdict;
     let verdict = APPLY_WATCH.with(|w| w.borrow_mut().as_mut().map(|(watch, _)| step(watch)));
@@ -720,7 +754,8 @@ fn watch_verdict(step: impl FnOnce(&mut rexon_core::waywallen_kde_plugin::ApplyW
         Some(WatchVerdict::Revert) => {
             APPLY_WATCH.with(|w| *w.borrow_mut() = None);
             if KDE_SELECT_STATE.load(Ordering::SeqCst) == KDE_SELECT_RUNNING {
-                // Снимка прежних плагинов ещё нет — откат по концу назначения.
+                // There is no snapshot of the previous plugins yet — roll back at the end
+                // of the assignment.
                 KDE_REVERT_WANTED.store(true, Ordering::SeqCst);
                 qobject::sock_timer_start(TIMER_KDE_HOLD, KDE_HOLD_TICK_MS, false);
             } else {
@@ -730,8 +765,9 @@ fn watch_verdict(step: impl FnOnce(&mut rexon_core::waywallen_kde_plugin::ApplyW
     }
 }
 
-/// Вернуть столам плагин, стоявший до назначения (решение — ядро). Шина
-/// Plasma медленная — в отдельном потоке; итог — тиком `TIMER_KDE_REVERT`.
+/// Return to the desktops the plugin they had before the assignment (the
+/// decision is the core's). The Plasma bus is slow — in a separate thread;
+/// the outcome comes with a `TIMER_KDE_REVERT` tick.
 fn start_kde_revert() {
     if display_setup() == rexon_core::wallpaper_backend::DisplaySetup::RexonHost {
         start_desktop_icons_restore();
@@ -761,7 +797,7 @@ fn start_kde_revert() {
     }
 }
 
-/// Поток отката закончил — сказать человеку, чем кончилось.
+/// The rollback thread finished — tell the user how it ended.
 fn kde_revert_finished() {
     use rexon_core::waywallen_kde_plugin as wkp;
     let text = match KDE_REVERT_RESULT.swap(KDE_REVERT_NONE, Ordering::SeqCst) {
@@ -771,20 +807,22 @@ fn kde_revert_finished() {
         }
         KDE_REVERT_FAILED => {
             rexon_core::log_warn!("kde-plugin", "прежние обои столов вернуть не вышло: Plasma не ответила");
-            // Здесь человеку есть что СДЕЛАТЬ самому (вернуть обои руками) —
-            // это тост ошибки, он держится до закрытия, как у вендора.
+            // Here the user has something to DO themselves (restore the wallpaper
+            // by hand) — this is an error toast, it stays until closed, as at the
+            // vendor.
             crate::we_singletons::client_error(&wkp::revert_failed_text());
             return;
         }
         _ => return,
     };
-    // Обои уже возвращены, делать ничего не надо — сообщение
-    // информационное и гаснет само (дефект 30.10.2026: тост ошибки висел
-    // больше минуты и закрывал кнопки панели, в том числе фильтр).
+    // The wallpaper is already restored, nothing needs to be done — the message
+    // is informational and goes away by itself (defect of 30.10.2026: the
+    // error toast hung for more than a minute and covered the panel buttons,
+    // including the filter).
     broadcast(&DaemonEvent::Notice(text));
 }
 
-/// Снять придержку целиком (кадры выбрасываются).
+/// Remove the holding entirely (the frames are thrown away).
 fn drop_kde_hold() {
     APPLY_WATCH.with(|w| *w.borrow_mut() = None);
     KDE_REVERT_WANTED.store(false, Ordering::SeqCst);
@@ -794,7 +832,7 @@ fn drop_kde_hold() {
     qobject::sock_timer_stop(TIMER_KDE_HOLD);
 }
 
-/// Отправить готовый кадр `Request`. `false` — сокет закрыт.
+/// Send a ready `Request` frame. `false` means the socket is closed.
 pub fn send_frame(frame: &[u8]) -> bool {
     let socket = socket_ptr();
     if socket.is_null() || !unsafe { qobject::sock_is_open(socket) } {
@@ -806,9 +844,9 @@ pub fn send_frame(frame: &[u8]) -> bool {
     sent > 0
 }
 
-// ── DaemonControl: поиск и автозапуск демона ────────────────────────────────
+// ── DaemonControl: finding and auto-starting the daemon ─────────────────────
 
-/// Живой транспорт трейта `WaywallenIo` ядра поверх `Properties.Get`.
+/// The live transport of the core's `WaywallenIo` trait over `Properties.Get`.
 struct DbusProps;
 
 impl rexon_core::waywallen_client::WaywallenIo for DbusProps {
@@ -837,8 +875,8 @@ impl rexon_core::waywallen_client::WaywallenIo for DbusProps {
         _method: &str,
         _args: &[DbusValue],
     ) -> rexon_core::waywallen_client::DbusReply {
-        // Методов шины транспорт не зовёт: всё, что ему нужно, — три
-        // свойства. Мёртвый `ListTasks` удалён из продукта 18.08.
+        // The transport calls no bus methods: all it needs is three properties.
+        // The dead `ListTasks` was removed from the product on 18.08.
         rexon_core::waywallen_client::DbusReply {
             error_name: "org.freedesktop.DBus.Error.NotSupported".to_owned(),
             error_message: "транспорт не вызывает методов шины".to_owned(),
@@ -851,28 +889,31 @@ pub fn probe() -> we_client::DaemonStatus {
     we_client::probe(&mut DbusProps)
 }
 
-/// Поиск бинаря демона: порядок кандидатов решает ядро, живые проверки ФС —
-/// общая на крейт `we_env::FsProbe` (второй копии нет, правило #12).
+/// Finding the daemon binary: the order of candidates is decided by the
+/// core, the live FS checks are the crate-wide `we_env::FsProbe` (there is no
+/// second copy, rule #12).
 pub fn find_daemon_binary() -> Option<String> {
     crate::we_env::daemon_binary()
 }
 
-/// Порт `DaemonControl.ensure_running`: демон жив → `ready` сразу; нет →
-/// автозапуск и поллинг шины. Решения целиком у ядра.
+/// A port of `DaemonControl.ensure_running`: the daemon is alive → `ready`
+/// at once; if not → auto-start and polling the bus. The decisions are
+/// entirely the core's.
 pub fn ensure_running() {
-    // Единственная точка, через которую проходит КАЖДОЕ открытие вкладки WE, —
-    // здесь же догоняем починки шаблона автозапуска у тех, кто включил его
-    // давно и переключатель больше не трогал.
+    // The only point every opening of the WE tab passes through — here we
+    // also catch up on fixes of the autostart template for those who enabled it
+    // long ago and have not touched the toggle since.
     crate::autostart_queries::refresh_autostart_unit();
     install_shim_hooks();
 
     let st = probe();
     let binary = find_daemon_binary();
-    // Плагины из пакета (Open Wallpaper Engine) демон, чей файл живёт не
-    // под тем же префиксом, видит только по флагу `--plugin`.
+    // The plugins from the package (Open Wallpaper Engine) are seen by a daemon
+    // whose file lives under a different prefix only by the `--plugin` flag.
     let plugin_root = crate::we_env::engine_plugin_root_for(binary.as_deref());
-    // Включён автозапуск — демон поднимается через службу, а не вторым
-    // процессом мимо неё: демон один и под присмотром службы.
+    // Autostart is enabled — the daemon is brought up through the service, not
+    // as a second process bypassing it: the daemon is one and under the
+    // service's supervision.
     let service = !st.running && crate::autostart_queries::autostart_service_present();
     let decision = we_client::ensure_running_decision_service(
         &st,
@@ -882,15 +923,16 @@ pub fn ensure_running() {
     );
 
     if decision.ensure_kde_plugin() {
-        // Best-effort подготовка показа (на KDE — Plasma-плагин обоев).
-        // Версия живого демона нужна сторожу совместимости плагина; демона
-        // ещё нет — подготовка спросит `--version` у того бинаря, что будет
-        // запущен.
+        // Best-effort preparation of the display (on KDE — the Plasma wallpaper
+        // plugin). The live daemon's version is needed by the plugin
+        // compatibility watcher; if there is no daemon yet, the preparation will
+        // ask `--version` of the binary that will be launched.
         let daemon_version = (st.running && !st.version.trim().is_empty())
             .then(|| st.version.trim().to_owned());
-        // ⛔ Только установка: открытие вкладки обоев рабочего стола НЕ
-        // меняет (дефект 30.10.2026 — чёрный стол при пустой библиотеке).
-        // Плагин назначается обоями при применении — `send_request_frame`.
+        // Never: only installation: opening the tab does NOT change the desktop
+        // wallpaper (defect of 30.10.2026 — a black desktop with an empty
+        // library). The plugin is assigned as the wallpaper on applying —
+        // `send_request_frame`.
         prepare_display_backend(daemon_version, binary.clone(), false, KdePurpose::Prepare);
     }
 
@@ -903,20 +945,21 @@ pub fn ensure_running() {
             polls_left: _,
             poll_interval_ms,
         } => {
-            // Запуск уже идёт (повторное нажатие, вторая вкладка) — второй
-            // процесс не нужен: сторож первого доведёт дело до конца.
+            // A launch is already in progress (a repeated press, a second tab) — a
+            // second process is not needed: the first one's watcher will see it
+            // through.
             if START.with(|s| s.borrow().is_some()) {
                 broadcast(&DaemonEvent::Starting { slow: false });
                 return;
             }
-            // Отдельной сессией: демон должен пережить закрытие Rexon — обои
-            // не гаснут вместе с окном.
+            // In a separate session: the daemon must outlive Rexon being closed —
+            // the wallpaper does not go out together with the window.
             let Some(child) = spawn_engine(&program, &args) else {
                 daemon_failed(&we_client::daemon_launch_failed_message(&program));
                 return;
             };
-            // Под службой запущен `systemctl`, а не движок: о движке спрашиваем
-            // службу. Иначе судим по PID самого процесса.
+            // Under the service `systemctl` was launched, not the engine: we ask the
+            // service about the engine. Otherwise we judge by the process's own PID.
             let kind = if service { StartKind::Service } else { StartKind::Process(child.id()) };
             let watch = we_client::StartWatch::new(matches!(kind, StartKind::Process(p) if p != 0));
             START.with(|s| {
@@ -938,35 +981,39 @@ pub fn ensure_running() {
     }
 }
 
-/// Чем запущен движок — от этого зависит, у кого спрашивать признаки жизни.
+/// What the engine was launched with — whom to ask for signs of life depends
+/// on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StartKind {
-    /// Отдельный процесс с этим PID (0 — PID неизвестен).
+    /// A separate process with this PID (0 — the PID is unknown).
     Process(u32),
-    /// Служба автозапуска (`systemctl --user start`).
+    /// The autostart service (`systemctl --user start`).
     Service,
 }
 
-/// Идущий запуск демона.
+/// A running daemon launch.
 struct StartRun {
     watch: we_client::StartWatch,
     kind: StartKind,
-    /// Уже сказали человеку, что запуск долгий.
+    /// We have already told the user that the launch is taking long.
     slow: bool,
     step_ms: u64,
-    /// Запущенный процесс (движок или `systemctl`): по нему узнаётся код
-    /// выхода. После запуска его подбирает поток-сборщик (`reap_engine`).
+    /// The launched process (the engine or `systemctl`): its exit code is
+    /// learned through it. After the launch it is picked up by the reaper
+    /// thread (`reap_engine`).
     child: Option<std::process::Child>,
 }
 
-/// Запустить движок своим потомком в отдельной сессии.
+/// Launch the engine as our own child in a separate session.
 ///
-/// Прежде шёл `QProcess::startDetached`: код выхода у чужого потомка не
-/// узнать, а stderr демона наследовал дескриптор 2 окна — rexon.log — и
-/// смешивался с нашими строками. Теперь вывод — в свой файл рядом с
-/// журналом (`we_client::DAEMON_OUTPUT_LOG`, заново на каждый запуск), а код
-/// выхода видит сторож запуска. Закрытие окна демон по-прежнему переживает:
-/// своя сессия (`setsid`), сигналов при выходе родителя он не получает.
+/// Previously this was `QProcess::startDetached`: the exit code of someone
+/// else's child cannot be learned, and the daemon's stderr inherited the
+/// window's descriptor 2 — rexon.log — and mixed with our lines. Now the
+/// output goes to its own file next to the log
+/// (`we_client::DAEMON_OUTPUT_LOG`, anew on every launch), and the exit code
+/// is seen by the launch watcher. The daemon still survives the window
+/// closing: its own session (`setsid`), it gets no signals when the parent
+/// exits.
 fn spawn_engine(program: &str, args: &[String]) -> Option<std::process::Child> {
     use std::os::unix::process::CommandExt;
     use std::process::Stdio;
@@ -983,7 +1030,7 @@ fn spawn_engine(program: &str, args: &[String]) -> Option<std::process::Child> {
     };
     let mut cmd = std::process::Command::new(program);
     cmd.args(args).stdin(Stdio::null()).stdout(stdout).stderr(stderr);
-    // SAFETY: в дочернем процессе до exec — только setsid (async-signal-safe).
+    // SAFETY: in the child process before exec — only setsid (async-signal-safe).
     unsafe {
         cmd.pre_exec(|| {
             libc::setsid();
@@ -1002,7 +1049,7 @@ fn spawn_engine(program: &str, args: &[String]) -> Option<std::process::Child> {
     }
 }
 
-/// Файл вывода движка — рядом с журналом Rexon.
+/// The engine's output file — next to the Rexon log.
 fn engine_output_path() -> String {
     let log = rexon_core::applog::log_path();
     let dir = log.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_else(|| ".".into());
@@ -1010,8 +1057,9 @@ fn engine_output_path() -> String {
     we_client::daemon_output_log_path(&dir)
 }
 
-/// Подобрать процесс после запуска в отдельном потоке: без этого умерший
-/// демон висел бы зомби, пока открыто окно. Код выхода — строкой в журнал.
+/// Pick up the process after the launch in a separate thread: without this a
+/// dead daemon would hang as a zombie while the window is open. The exit
+/// code goes as a line into the log.
 fn reap_engine(mut child: std::process::Child) {
     let spawned = std::thread::Builder::new().name("we-reap".into()).spawn(move || {
         let pid = child.id();
@@ -1024,13 +1072,13 @@ fn reap_engine(mut child: std::process::Child) {
     }
 }
 
-/// Строки журнала об отказе запуска (`we_client::daemon_exit_report`):
-/// код выхода, кто держит имя шины, хвост вывода демона.
+/// Log lines about a launch refusal (`we_client::daemon_exit_report`): the
+/// exit code, who holds the bus name, the tail of the daemon's output.
 fn log_engine_exit(child: Option<&mut std::process::Child>, kind: StartKind) {
     use std::os::unix::process::ExitStatusExt;
     let StartKind::Process(pid) = kind else {
-        // Под службой — `journalctl --user -u <юнит>`; путь к нему в
-        // журнале уже назван строкой отказа.
+        // Under the service — `journalctl --user -u <unit>`; the path to it is
+        // already named in the log by the refusal line.
         return;
     };
     let exit = match child.map(|c| c.try_wait()) {
@@ -1060,8 +1108,8 @@ fn log_engine_exit(child: Option<&mut std::process::Child>, kind: StartKind) {
     }
 }
 
-/// Признаки жизни запускаемого движка. Решения тут нет — только сбор
-/// снимка для ядра.
+/// Signs of life of the engine being launched. There is no decision here —
+/// only collecting a snapshot for the core.
 fn engine_life(kind: StartKind) -> Option<we_client::EngineLife> {
     match kind {
         StartKind::Process(0) => None,
@@ -1074,13 +1122,14 @@ fn engine_life(kind: StartKind) -> Option<we_client::EngineLife> {
     }
 }
 
-/// Пускатель демона для вендорных страниц (их кнопка запуска зовёт
-/// `rexon_we_launch_daemon` шима синглтонов).
+/// The daemon launcher for the vendored pages (their launch button calls
+/// `rexon_we_launch_daemon` of the singletons shim).
 ///
-/// Один на оба процесса. У питоновского хозяина пускатель создавал НОВЫЙ
-/// `DaemonControl`, и тот забирал себе колбэки потока — после нажатия окно
-/// вкладки переставало узнавать «демон готов / не поднялся». Здесь
-/// колбэки не переставляются: события уходят тем, кто уже подписан.
+/// One for both processes. Under the Python host the launcher created a NEW
+/// `DaemonControl`, and it took the flow's callbacks for itself — after a
+/// press the tab window stopped learning "the daemon is ready / did not come
+/// up". Here the callbacks are not reassigned: the events go to those
+/// already subscribed.
 pub extern "C" fn launch_daemon_hook() -> bool {
     if find_daemon_binary().is_none() {
         return false;
@@ -1089,14 +1138,16 @@ pub extern "C" fn launch_daemon_hook() -> bool {
     true
 }
 
-/// Тик сторожа запуска: шина, признаки жизни процесса — решение ядра.
+/// A tick of the launch watcher: the bus, the process's signs of life — the
+/// core's decision.
 fn poll_once() {
     let Some((kind, step_ms)) = START.with(|s| s.borrow().as_ref().map(|r| (r.kind, r.step_ms))) else {
         qobject::sock_timer_stop(TIMER_POLL);
         return;
     };
     let st = probe();
-    // Пока шины нет, спрашиваем процесс; поднялась — спрашивать незачем.
+    // While there is no bus, we ask the process; once it is up, there is no
+    // reason to ask.
     let life = if st.running && st.ws_port != 0 { None } else { engine_life(kind) };
     let step = START.with(|s| {
         s.borrow_mut().as_mut().map(|r| r.watch.tick(&st, life, step_ms))
@@ -1137,8 +1188,8 @@ fn poll_once() {
     }
 }
 
-/// Запуск кончился (успехом или отказом): сторож снят, таймер стоит,
-/// процесс передан сборщику.
+/// The launch ended (with success or a refusal): the watcher is removed, the
+/// timer is stopped, the process is handed to the reaper.
 fn finish_start() {
     qobject::sock_timer_stop(TIMER_POLL);
     if let Some(child) = START.with(|s| s.borrow_mut().take()).and_then(|r| r.child) {
@@ -1146,16 +1197,16 @@ fn finish_start() {
     }
 }
 
-/// Одна попытка реконнекта: порт перечитывается по шине каждый раз — демон
-/// после перезапуска слушает ДРУГОЙ порт.
+/// One reconnection attempt: the port is re-read over the bus every time —
+/// after a restart the daemon listens on a DIFFERENT port.
 fn reconnect_once() {
     if is_open() {
         qobject::sock_timer_stop(TIMER_RECONNECT);
         return;
     }
-    // Демон ушёл по нашей просьбе ради плагина из пакета — поднять его
-    // обычным путём (служба или запуск с `--plugin`), а не ждать, пока
-    // поднимет кто-то другой.
+    // The daemon left at our request for the sake of the plugin from the
+    // package — bring it up the ordinary way (the service or a launch with
+    // `--plugin`) rather than waiting for someone else to bring it up.
     if PLUGIN_RELAUNCH.load(Ordering::SeqCst) {
         plugin_relaunch();
         return;
@@ -1166,8 +1217,8 @@ fn reconnect_once() {
     }
 }
 
-/// Тик таймеров шима. Один вход на все таймеры: своего смысла у номера в
-/// C++ нет, разбирает его Rust.
+/// A tick of the shim's timers. One entry for all timers: the number has no
+/// meaning of its own in C++, Rust parses it.
 extern "C" fn on_timer_tick(id: i32) {
     match id {
         TIMER_POLL => poll_once(),
@@ -1182,7 +1233,7 @@ extern "C" fn on_timer_tick(id: i32) {
     }
 }
 
-/// Ошибка сокета из шима (подписка на `errorOccurred`).
+/// A socket error from the shim (the `errorOccurred` subscription).
 extern "C" fn on_socket_error(text: *const c_char, len: i32) {
     if text.is_null() || len < 0 {
         return;
@@ -1191,12 +1242,13 @@ extern "C" fn on_socket_error(text: *const c_char, len: i32) {
     report_error(bytes);
 }
 
-/// Ошибка транспорта — слоту `ON_ERROR` (проба) и тостом окна вкладки через
-/// `App.errorOccurred`, как у оригинала.
+/// A transport error — to the `ON_ERROR` slot (the probe) and as a toast of
+/// the tab window through `App.errorOccurred`, as in the original.
 ///
-/// Тост — не на каждую ошибку: пока демона нет, каждая попытка
-/// переподключения даёт ту же ошибку сокета, и решение «показывать ли»
-/// принимает ядро (`we_client::TransportErrorToast`). Проба получает всё.
+/// The toast is not for every error: while there is no daemon, every
+/// reconnection attempt gives the same socket error, and the decision
+/// "whether to show" is made by the core (`we_client::TransportErrorToast`).
+/// The probe gets everything.
 fn report_error(text: &[u8]) {
     call_text(&ON_ERROR, text);
     let text = String::from_utf8_lossy(text);
@@ -1205,44 +1257,50 @@ fn report_error(text: &[u8]) {
     }
 }
 
-// ── подписчики на Rust ──────────────────────────────────────────────────────
+// ── subscribers in Rust ─────────────────────────────────────────────────────
 //
-// Шесть швов, которые раньше держало питоновское окно вкладки
-// (`qml_window.py`: демон готов / не поднялся, сокет открыт / оборван, ответ
-// `health` / его нет). Решений в них нет: вердикт по `health` выносит ядро
-// (`we_window::health_verdict`), слова экранов — тоже ядро. Здесь только
-// рассылка, а принимает её объект действий страницы (`we_actions.rs`).
+// Six seams that the Python tab window used to hold (`qml_window.py`: the
+// daemon is ready / did not come up, the socket is open / dropped, the
+// `health` answer / its absence). There are no decisions in them: the
+// verdict on `health` is given by the core (`we_window::health_verdict`),
+// the screen words are the core's too. Here there is only broadcasting, and
+// the page's action object receives it (`we_actions.rs`).
 
-/// Событие демона и сокета.
+/// A daemon and socket event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DaemonEvent {
-    /// Демон жив, порт сокета известен.
+    /// The daemon is alive, the socket port is known.
     Ready(we_client::DaemonStatus),
-    /// Демон не поднялся; текст — сырая причина от ядра.
+    /// The daemon did not come up; the text is the raw reason from the core.
     Failed(String),
-    /// Сокет открыт (это ещё не «движок рабочий» — см. `Health`).
+    /// The socket is open (this is not yet "the engine works" — see `Health`).
     Connected,
-    /// Сокет оборван. `was_connected` — соединение хоть раз было, то есть
-    /// это перезапуск движка, а не неудачный первый заход.
+    /// The socket is dropped. `was_connected` — the connection existed at least
+    /// once, that is, this is an engine restart, not a failed first visit.
     Disconnected { was_connected: bool },
-    /// Ответ `health`: поле `state` (пусто — старый демон его не шлёт).
+    /// The `health` answer: the `state` field (empty — an old daemon does not
+    /// send it).
     Health(String),
-    /// Демон подключился и молчит на `health` дольше срока ядра.
+    /// The daemon connected and is silent on `health` longer than the core's
+    /// term.
     HealthTimeout,
-    /// Сообщение человеку от транспорта (уже переведённое), показывается
-    /// ИНФОРМАЦИОННЫМ тостом вкладки, который гаснет сам: например, «живые
-    /// обои не запустились — прежние обои стола возвращены».
+    /// A message for the user from the transport (already translated), shown as
+    /// an INFORMATIONAL toast of the tab that goes away by itself: for example,
+    /// «the live wallpaper did not start — the previous desktop wallpaper is
+    /// restored».
     Notice(String),
-    /// Движок запущен и стартует (сторож запуска ещё ждёт шину). `slow` —
-    /// обычный срок старта позади, а процесс жив и работает: экран ожидания
-    /// говорит, что первый запуск бывает долгим.
+    /// The engine is launched and starting (the launch watcher is still waiting
+    /// for the bus). `slow` — the ordinary start term is over, but the process is
+    /// alive and working: the waiting screen says that the first launch may take
+    /// long.
     Starting { slow: bool },
 }
 
-/// Подписаться на события демона. Возвращает номер для `unsubscribe`.
+/// Subscribe to daemon events. Returns a number for `unsubscribe`.
 ///
-/// Колбэк зовётся СИНХРОННО в потоке транспорта (главном); что с событием
-/// делать дальше — ставить ли его в очередь объекта — решает подписчик.
+/// The callback is called SYNCHRONOUSLY in the transport thread (the main
+/// one); what to do with the event next — whether to queue it into the
+/// object — is decided by the subscriber.
 pub fn subscribe(callback: impl Fn(&DaemonEvent) + 'static) -> u64 {
     let id = NEXT_SUBSCRIBER.with(|c| {
         let next = c.get() + 1;
@@ -1253,7 +1311,7 @@ pub fn subscribe(callback: impl Fn(&DaemonEvent) + 'static) -> u64 {
     id
 }
 
-/// Снять подписку. Идемпотентно: `0` — подписки не было.
+/// Remove a subscription. Idempotent: `0` means there was no subscription.
 pub fn unsubscribe(id: u64) {
     if id == 0 {
         return;
@@ -1261,10 +1319,11 @@ pub fn unsubscribe(id: u64) {
     SUBSCRIBERS.with(|s| s.borrow_mut().retain(|(entry, _)| *entry != id));
 }
 
-/// Разослать событие всем подписчикам на Rust.
+/// Broadcast an event to all subscribers in Rust.
 ///
-/// Список снимается копией ДО вызовов: подписчик вправе тут же отписаться
-/// или завести нового, а при живом заимствовании это была бы паника RefCell.
+/// The list is copied BEFORE the calls: a subscriber may immediately
+/// unsubscribe or add a new one, and with a live borrow that would be a
+/// RefCell panic.
 fn broadcast(event: &DaemonEvent) {
     let list: Vec<Rc<dyn Fn(&DaemonEvent)>> =
         SUBSCRIBERS.with(|s| s.borrow().iter().map(|(_, f)| Rc::clone(f)).collect());
@@ -1281,10 +1340,10 @@ fn daemon_failed(message: &str) {
     broadcast(&DaemonEvent::Failed(message.to_owned()));
 }
 
-/// Тики таймеров и ошибки сокета шим отдаёт в Rust: разбирает их состояние
-/// транспорта, а не хозяин вкладки. Ставятся при любом входе в транспорт,
-/// а не только из `set_hooks` пробы: без этого у окна поллинг демона и
-/// реконнект молча не тикали бы никогда.
+/// The shim hands timer ticks and socket errors to Rust: they are handled by
+/// the transport state, not by the tab host. They are set on any entry into
+/// the transport, not only from the probe's `set_hooks`: without this the
+/// window's daemon polling and reconnection would silently never tick.
 fn install_shim_hooks() {
     unsafe {
         rexon_we_sock_set_timer_tick(Some(on_timer_tick));
@@ -1292,19 +1351,20 @@ fn install_shim_hooks() {
     }
 }
 
-/// Поднять демона через `delay_ms` (0 — на следующем такте цикла событий).
+/// Bring up the daemon after `delay_ms` (0 — on the next tick of the event
+/// loop).
 ///
-/// Отложено, как у питоновского окна: детект и автозапуск ходят в D-Bus и
-/// в файловую систему, а вкладка обязана успеть показаться раньше.
+/// Deferred, as in the Python window: detection and auto-start go to D-Bus
+/// and the file system, and the tab must manage to show itself first.
 pub fn ensure_running_later(delay_ms: i32) {
     install_shim_hooks();
     qobject::sock_timer_start(TIMER_START, delay_ms.max(0), true);
 }
 
-/// Спросить у подключившегося демона `health`; сторож — `timeout_ms`.
+/// Ask the connected daemon for `health`; the watchdog is `timeout_ms`.
 ///
-/// `false` — сокет закрыт, спрашивать некого. Ответ приходит событием
-/// `Health`, молчание — `HealthTimeout`.
+/// `false` — the socket is closed, there is nobody to ask. The answer comes
+/// as the `Health` event, silence as `HealthTimeout`.
 pub fn request_health(timeout_ms: i32) -> bool {
     install_shim_hooks();
     if !is_open() {
@@ -1316,33 +1376,35 @@ pub fn request_health(timeout_ms: i32) -> bool {
         HEALTH_ID.with(|c| c.set(0));
         return false;
     }
-    // Нулевой срок сторожа не заводит: иначе он сработал бы на первом же
-    // тике и объявил здоровый движок мёртвым.
+    // A zero term does not arm the watchdog: otherwise it would fire on the
+    // very first tick and declare a healthy engine dead.
     if timeout_ms > 0 {
         qobject::sock_timer_start(TIMER_HEALTH, timeout_ms, true);
     }
     true
 }
 
-// ── сверка плагинов живого демона с пакетом ─────────────────────────────────
+// ── checking the live daemon's plugins against the package ──────────────────
 //
-// Демон выбирает копию плагина (пакет или человек) ОДИН раз — при старте.
-// Запущенный до обновления пакета, он держит старую копию, пока его не
-// перезапустят (разбор — `we_client::plugin_refresh_decision`). Сверка идёт
-// двумя путями, решение и перезапуск у них общие:
-//   * после каждого ответа `health` вкладки — `plugin_list` по её сокету;
-//   * сразу после обновления пакета — сторож лотка (`spawn_package_watch`)
-//     слышит запись в каталог движка и спрашивает `plugin_list` разовым
-//     сокетом из своего потока.
-// Отстал — перезапуск, один раз на расхождение.
+// The daemon chooses the plugin copy (the package or the user's) ONCE — at
+// start-up. Launched before a package update, it keeps the old copy until
+// it is restarted (the analysis is in `we_client::plugin_refresh_decision`).
+// The check goes by two paths, and the decision and the restart are shared:
+//   * after every `health` answer of the tab — `plugin_list` over its socket;
+//   * right after a package update — the tray watcher
+//     (`spawn_package_watch`) hears a write into the engine directory and
+//     asks for `plugin_list` with a one-off socket from its own thread.
+// If it is behind — a restart, once per divergence.
 
-/// Ключ расхождения, ради которого уже перезапускали в этом процессе.
+/// The divergence key for which a restart was already done in this process.
 static PLUGIN_REFRESH_TRIED: Mutex<Option<String>> = Mutex::new(None);
-/// Демон ушёл по `Quit` ради плагина — его поднимет тик
-/// [`TIMER_PLUGIN_RELAUNCH`] (или тик реконнекта вкладки, кто раньше).
+/// The daemon left by `Quit` for the sake of the plugin — it will be brought
+/// up by the [`TIMER_PLUGIN_RELAUNCH`] tick (or by the tab's reconnection
+/// tick, whichever comes first).
 static PLUGIN_RELAUNCH: AtomicBool = AtomicBool::new(false);
 
-/// Спросить `plugin_list`, если есть с чем сверять (Rexon из пакета).
+/// Ask for `plugin_list` if there is something to compare with (Rexon from
+/// the package).
 fn request_plugin_check() {
     if crate::we_env::package_engine().is_none() || !is_open() {
         return;
@@ -1365,9 +1427,9 @@ fn on_plugin_list(frame: &[u8]) {
     }
 }
 
-/// Общая часть обоих путей: сверить активные копии с пакетом и решить.
-/// `Some` — перезапускать (ключ уже запомнен); `None` — не надо или уже
-/// пробовали.
+/// The shared part of both paths: compare the active copies with the
+/// package and decide. `Some` — restart (the key is already remembered);
+/// `None` — not needed or already tried.
 fn plugin_refresh_step(active: &[we_client::PluginCopy]) -> Option<(String, Vec<we_client::StalePlugin>)> {
     let bundled = crate::we_env::bundled_plugins();
     let tried = PLUGIN_REFRESH_TRIED.lock().map(|g| g.clone()).unwrap_or(None);
@@ -1391,16 +1453,17 @@ fn plugin_refresh_step(active: &[we_client::PluginCopy]) -> Option<(String, Vec<
     }
 }
 
-/// Чем кончилась попытка перезапуска.
+/// How the restart attempt ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RestartOutcome {
     Restarted,
-    /// Демон занят задачами — не трогали, ключ попытки снят.
+    /// The daemon is busy with tasks — not touched, the attempt key is removed.
     Busy,
     Failed,
 }
 
-/// Перезапустить демона ради плагинов пакета; удалось — уведомление.
+/// Restart the daemon for the sake of the package's plugins; if it worked —
+/// a notification.
 fn restart_for_plugins(key: String, stale: Vec<we_client::StalePlugin>) -> RestartOutcome {
     let outcome = restart_daemon(&key, &PLUGIN_REFRESH_TRIED, "ради плагинов из пакета");
     if outcome == RestartOutcome::Restarted {
@@ -1413,12 +1476,13 @@ fn restart_for_plugins(key: String, stale: Vec<we_client::StalePlugin>) -> Resta
     outcome
 }
 
-/// Ключ расхождения версий движка, ради которого уже перезапускали.
+/// The engine version divergence key for which a restart was already done.
 static ENGINE_REFRESH_TRIED: Mutex<Option<String>> = Mutex::new(None);
 
-/// Сверить живого демона (`live` — его `Version`) с движком из пакета
-/// (вшитым или пакета дистрибутива). `Some((ключ, версия на диске, чей
-/// движок))` — перезапускать (ключ уже запомнен).
+/// Compare the live daemon (`live` is its `Version`) with the engine from the
+/// package (built in or from the distribution package).
+/// `Some((key, version on disk, whose engine))` — restart (the key is
+/// already remembered).
 fn engine_refresh_step(live: &str) -> Option<(String, String, we_client::EngineKind)> {
     use rexon_core::we_client::DaemonFs;
     let layout = crate::we_env::daemon_binary()
@@ -1449,7 +1513,8 @@ fn engine_refresh_step(live: &str) -> Option<(String, String, we_client::EngineK
     }
 }
 
-/// Перезапустить демона ради нового движка из пакета; удалось — уведомление.
+/// Restart the daemon for the sake of a new engine from the package; if it
+/// worked — a notification.
 fn restart_for_engine(key: String, live: &str, on_disk: &str, kind: we_client::EngineKind) -> RestartOutcome {
     let outcome = restart_daemon(&key, &ENGINE_REFRESH_TRIED, "ради нового движка из пакета");
     if outcome == RestartOutcome::Restarted {
@@ -1461,14 +1526,15 @@ fn restart_for_engine(key: String, live: &str, on_disk: &str, kind: we_client::E
     outcome
 }
 
-/// Перезапустить демона (`why` — для журнала). Фоновый поток: `systemctl` и
-/// ожидание ухода демона главный поток не держат. ⛔ Никаких `kill` —
-/// служба (`systemctl --user restart`) или его же `Quit` по шине. Демон
-/// занят — ключ попытки в `tried` снимается, чтобы сверка повторилась.
+/// Restart the daemon (`why` is for the log). A background thread:
+/// `systemctl` and waiting for the daemon to leave do not hold the main
+/// thread. Never: no `kill` — the service (`systemctl --user restart`) or
+/// its own `Quit` over the bus. If the daemon is busy, the attempt key in
+/// `tried` is removed so that the check is repeated.
 fn restart_daemon(key: &str, tried: &Mutex<Option<String>>, why: &str) -> RestartOutcome {
     let secs = we_client::SYSTEMCTL_TIMEOUT_SECS as f64;
-    // Идёт скачивание или сканирование — не рвать; попробуем при следующем
-    // подключении (или повтором сторожа пакета).
+    // A download or a scan is in progress — do not break it; we will try on
+    // the next connection (or with a repeat of the package watcher).
     let tasks = run(&we_client::busctl_tasks_argv(), we_client::BUSCTL_TIMEOUT_SECS as f64)
         .map(|out| we_client::parse_busctl_tasks(&out.stdout))
         .unwrap_or_default();
@@ -1491,8 +1557,8 @@ fn restart_daemon(key: &str, tried: &Mutex<Option<String>>, why: &str) -> Restar
         let mut gone = false;
         if asked {
             for _ in 0..rexon_core::engine_update::QUIT_WAIT_STEPS {
-                // Шина спрашивается `busctl`, а не QtDBus транспорта: тот
-                // живёт в главном потоке.
+                // The bus is asked with `busctl`, not with the transport's QtDBus:
+                // that one lives in the main thread.
                 let on_bus = run(
                     &rexon_core::engine_update::busctl_version_argv(),
                     rexon_core::engine_update::BUSCTL_TIMEOUT_SECS as f64,
@@ -1510,9 +1576,9 @@ fn restart_daemon(key: &str, tried: &Mutex<Option<String>>, why: &str) -> Restar
             }
         }
         if gone {
-            // Поднимает главный поток (там живут запуск и поллинг шины).
-            // Тик ставится сразу, а не ждёт реконнекта вкладки: у лотка без
-            // открытой вкладки реконнекта нет вовсе.
+            // The main thread brings it up (the launch and the bus polling live
+            // there). The tick is posted at once rather than waiting for the tab's
+            // reconnection: the tray without an open tab has no reconnection at all.
             PLUGIN_RELAUNCH.store(true, Ordering::SeqCst);
             qobject::sock_post_tick(TIMER_PLUGIN_RELAUNCH);
         }
@@ -1526,8 +1592,9 @@ fn restart_daemon(key: &str, tried: &Mutex<Option<String>>, why: &str) -> Restar
     RestartOutcome::Restarted
 }
 
-/// Поднять демона, ушедшего по `Quit` ради плагина, обычным путём (служба
-/// или запуск с `--plugin`). Один раз на уход: флаг снимается.
+/// Bring up the daemon that left by `Quit` for the sake of the plugin, the
+/// ordinary way (the service or a launch with `--plugin`). Once per
+/// departure: the flag is cleared.
 fn plugin_relaunch() {
     if PLUGIN_RELAUNCH.swap(false, Ordering::SeqCst) {
         qobject::sock_timer_stop(TIMER_RECONNECT);
@@ -1535,11 +1602,11 @@ fn plugin_relaunch() {
     }
 }
 
-// ── сторож пакета движка (лоток) ────────────────────────────────────────────
+// ── engine package watcher (tray) ───────────────────────────────────────────
 
 thread_local! {
-    /// Разовый `plugin_list` сторожа: свой сокет и свой цикл событий в его
-    /// потоке, как у синхронной остановки обоев.
+    /// The watcher's one-off `plugin_list`: its own socket and its own event
+    /// loop in its thread, like the synchronous wallpaper stop.
     static PLUGIN_QUERY: RefCell<PluginQuery> = RefCell::new(PluginQuery::default());
 }
 
@@ -1550,9 +1617,10 @@ struct PluginQuery {
     answer: Option<Vec<we_client::PluginCopy>>,
 }
 
-/// Активные плагины демона на порту `port` — разовым сокетом, синхронно, в
-/// потоке вызывающего (сокет вкладки живёт в главном потоке, трогать его
-/// отсюда нельзя). `None` — не подключились, не ответил или ответ не тот.
+/// The daemon's active plugins on port `port` — with a one-off socket,
+/// synchronously, in the caller's thread (the tab's socket lives in the main
+/// thread and must not be touched from here). `None` — did not connect, did
+/// not answer or the answer is not the right one.
 fn query_active_plugins(port: i64, timeout_ms: i32) -> Option<Vec<we_client::PluginCopy>> {
     if port <= 0 || !qobject::sock_qt_available() {
         return None;
@@ -1587,7 +1655,8 @@ fn query_active_plugins(port: i64, timeout_ms: i32) -> Option<Vec<we_client::Plu
     unsafe { qobject::sock_quit_loop_on_error(socket) };
     sock.as_mut().open_url(&QUrl::from(format!("ws://127.0.0.1:{port}/").as_str()));
     qobject::sock_run_loop(timeout_ms);
-    // Стражи снимаются РАНЬШЕ сокета, иначе они дёрнут мёртвый объект.
+    // The guards are removed BEFORE the socket, otherwise they would poke a
+    // dead object.
     drop(on_connected);
     drop(on_message);
     drop(on_disconnected);
@@ -1598,7 +1667,7 @@ fn query_active_plugins(port: i64, timeout_ms: i32) -> Option<Vec<we_client::Plu
     PLUGIN_QUERY.with(|q| std::mem::take(&mut *q.borrow_mut()).answer)
 }
 
-/// Имена папок в `plugins/` пакета — под слежку за их `plugin.toml`.
+/// Folder names in the package's `plugins/` — to watch their `plugin.toml`.
 fn bundled_plugin_dirs(layout: &we_client::EngineLayout) -> Vec<String> {
     std::fs::read_dir(layout.plugins_dir())
         .map(|it| {
@@ -1610,18 +1679,20 @@ fn bundled_plugin_dirs(layout: &we_client::EngineLayout) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Одна сверка сторожа после изменения пакета. `true` — демон занят, сверку
-/// стоит повторить позже.
+/// One watcher check after the package changed. `true` — the daemon is busy,
+/// the check should be repeated later.
 fn package_check() -> bool {
     let st = probe();
     if !st.running || st.ws_port == 0 {
-        // Демона нет — сверять нечего: при запуске Rexon сам передаст ему
-        // `--plugin`, а чужой запуск поймает сверка вкладки при подключении.
+        // There is no daemon — nothing to check: when launching, Rexon will pass it
+        // `--plugin` itself, and someone else's launch will be caught by the tab's
+        // check on connection.
         rexon_core::log_info!("we", "сверка с пакетом движка: демон не запущен — сверять не с чем");
         return false;
     }
-    // Сначала сам движок: перезапуск ради него поднимет демона и с
-    // плагинами комплекта, отдельная сверка плагинов тогда не нужна.
+    // The engine itself first: a restart for its sake will bring up the daemon
+    // with the bundle's plugins too, and a separate plugin check is then not
+    // needed.
     if let Some((key, on_disk, kind)) = engine_refresh_step(&st.version) {
         return restart_for_engine(key, &st.version, &on_disk, kind) == RestartOutcome::Busy;
     }
@@ -1635,16 +1706,18 @@ fn package_check() -> bool {
     }
 }
 
-/// Сторож пакета: живёт, пока жив лоток. Ждёт записи в каталог движка,
-/// конца пачки и сверяет; слежка переставляется после каждой пачки (могли
-/// появиться новые папки плагинов или замениться каталоги целиком).
+/// The package watcher: lives as long as the tray does. Waits for writes into
+/// the engine directory, the end of the batch, and checks; the watch is reset
+/// after every batch (new plugin folders may have appeared or directories
+/// may have been replaced entirely).
 fn package_watch_loop() {
-    // Цикл событий в этом потоке заводится ДО первого сокета: QWebSocket,
-    // открытый в потоке без диспетчера событий, не создаст своих
-    // уведомителей. Нулевой прогон цикла создаёт диспетчер на весь поток.
+    // The event loop in this thread is set up BEFORE the first socket: a
+    // QWebSocket opened in a thread without an event dispatcher will not create
+    // its notifiers. A zero run of the loop creates a dispatcher for the whole
+    // thread.
     qobject::sock_run_loop(0);
-    // Следим за ВСЕМИ раскладками пакетов, а не только стоящей сейчас:
-    // движок мог прийти пакетом дистрибутива уже после запуска лотка.
+    // We watch ALL package layouts, not only the one installed now: the engine
+    // may have come as a distribution package after the tray was started.
     let targets = || {
         we_client::engine_layouts()
             .iter()
@@ -1655,27 +1728,28 @@ fn package_watch_loop() {
         rexon_core::log_warn!("we", "сторож пакета движка не запущен: inotify недоступен");
         return;
     };
-    // Первая сверка — сразу при старте, без записи в пакет: Rexon могли
-    // перезапустить уже ПОСЛЕ обновления (кнопкой «Перезапустить Rexon»), а
-    // демон-служба так и держит прежний движок.
+    // The first check is right at start-up, without a write into the package:
+    // Rexon may have been restarted AFTER the update (with the «Restart Rexon»
+    // button), while the daemon service still holds the previous engine.
     let mut first = true;
     loop {
         if !std::mem::take(&mut first) {
             watch.wait_burst(we_client::ENGINE_WATCH_QUIET_MS, we_client::ENGINE_WATCH_MAX_MS);
-            // Слежка — заново ДО сверки: запись посреди сверки не потеряется.
+            // The watch is reset BEFORE the check: a write in the middle of the
+            // check will not be lost.
             if let Some(fresh) = rexon_core::fs_watch::Watch::new(targets()) {
                 watch = fresh;
             }
         }
         rexon_core::log_info!("we", "сверяю движок и плагины живого демона с пакетом");
-        // Служба автозапуска — тот же движок, что сверяется: юнит, смотрящий
-        // в прежнюю копию, после обновления пакета поднял бы при входе старый
-        // демон (и перезапуск службы ниже — тоже).
+        // The autostart service is the same engine being checked: a unit
+        // pointing to the previous copy would bring up the old daemon at login
+        // after the package update (and so would the service restart below).
         crate::autostart_queries::refresh_autostart_unit();
         let mut retries = 0;
         while package_check() && retries < we_client::ENGINE_WATCH_BUSY_RETRIES {
             retries += 1;
-            // Новая пачка записей во время ожидания — сверить после неё.
+            // A new batch of writes while waiting — check after it.
             if watch.wait(we_client::ENGINE_WATCH_BUSY_RETRY_MS) {
                 watch.settle(we_client::ENGINE_WATCH_QUIET_MS, we_client::ENGINE_WATCH_MAX_MS);
             }
@@ -1683,9 +1757,10 @@ fn package_watch_loop() {
     }
 }
 
-/// Завести сторожа пакета движка один раз на процесс. Только у Rexon из
-/// пакета (есть `plugins/` движка): в дереве разработчика сверять не с чем.
-/// Звать из главного потока — здесь ставятся хуки тиков транспорта.
+/// Set up the engine package watcher once per process. Only for Rexon from a
+/// package (the engine has `plugins/`): in the developer tree there is
+/// nothing to compare with. Call from the main thread — the transport's tick
+/// hooks are set here.
 pub fn spawn_package_watch() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     if crate::we_env::package_engine().is_none() {
@@ -1709,10 +1784,12 @@ fn health_timed_out() {
     broadcast(&DaemonEvent::HealthTimeout);
 }
 
-/// Поле `state` из ответа `health`. Разбор кадра — ядро (`reply_fields`).
+/// The `state` field from the `health` answer. Parsing the frame is the
+/// core's (`reply_fields`).
 ///
-/// Пустая строка значит и «старый демон поля не шлёт», и «ответ пришёл не о
-/// здоровье» — вердикт ядра в обоих случаях один.
+/// An empty string means both "an old daemon does not send the field" and
+/// "the answer was not about health" — the core's verdict is the same in
+/// both cases.
 fn health_state(frame: &[u8]) -> String {
     match we_client::reply_fields(frame) {
         Ok(f) if f.payload == "health" => f
@@ -1725,48 +1802,53 @@ fn health_state(frame: &[u8]) -> String {
     }
 }
 
-// ── подготовка показа обоев (KDE) ───────────────────────────────────────────
+// ── preparing the wallpaper display (KDE) ───────────────────────────────────
 //
-// Перенос `DaemonControl._ensure_display_backend` и
-// `rexon/waywallen_kde_plugin.ensure_waywallen_plugin`. Решения — все в ядре
-// (`wallpaper_backend::pick`, `waywallen_kde_plugin::*`: конвейер
-// kpackagetool6, JS выбора плагина, команды рестарта plasmashell, итоговое
-// сообщение); здесь только процессы и файлы.
+// A port of `DaemonControl._ensure_display_backend` and
+// `rexon/waywallen_kde_plugin.ensure_waywallen_plugin`. All decisions are in
+// the core (`wallpaper_backend::pick`, `waywallen_kde_plugin::*`: the
+// kpackagetool6 pipeline, the plugin selection JS, the plasmashell restart
+// commands, the final message); here there are only processes and files.
 //
-// ⭐ Отличие от Python: подготовка идёт в ФОНОВОМ потоке. У Python она шла
-// прямо в главном, и первый показ вкладки на KDE мог стоять до 30 с на
-// kpackagetool6 и ещё 15 с на plasmashell. Порядок с демоном от этого не
-// зависит: демон с `spawn=External` сам ждёт, пока плагин выберут.
+// ⭐ The difference from Python: the preparation runs in a BACKGROUND
+// thread. In Python it ran right in the main one, and the first showing of
+// the tab on KDE could stand for up to 30 s on kpackagetool6 and another
+// 15 s on plasmashell. The order with the daemon does not depend on this: a
+// daemon with `spawn=External` itself waits until the plugin is selected.
 
-/// Подготовка уже идёт — второй заход (кнопка «Повторить» в это время)
-/// ничего не добавил бы, кроме двух kpackagetool6 над одним каталогом.
+/// The preparation is already running — a second round (the «Retry» button
+/// at that time) would add nothing except two kpackagetool6 runs over one
+/// directory.
 static KDE_PREPARE_BUSY: AtomicBool = AtomicBool::new(false);
 
-/// Что вкладка показывает о плагине обоев KDE. Решение — ядро
-/// (`waywallen_kde_plugin::plan_plugin`), здесь только доставка.
+/// What the tab shows about the KDE wallpaper plugin. The decision is the
+/// core's (`waywallen_kde_plugin::plan_plugin`), here there is only delivery.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct KdePluginState {
-    /// Сообщение человеку; `None` — говорить нечего.
+    /// A message for the user; `None` — there is nothing to say.
     pub notice: Option<rexon_core::waywallen_kde_plugin::PluginNotice>,
-    /// Идёт установка по согласию (кнопка «Поставить версию Rexon»).
+    /// An installation by consent is in progress (the «Install Rexon's version»
+    /// button).
     pub installing: bool,
-    /// Установка по согласию не удалась — сырая причина kpackagetool6.
+    /// An installation by consent failed — the raw kpackagetool6 reason.
     pub failure: Option<String>,
 }
 
 type KdeSink = std::sync::Arc<dyn Fn(&KdePluginState) + Send + Sync>;
 
-/// Последнее состояние — для страницы, открытой после проверки.
+/// The last state — for a page opened after the check.
 static KDE_STATE: Mutex<Option<KdePluginState>> = Mutex::new(None);
-/// Подписчики состояния. В отличие от событий демона, зовутся из ФОНОВОГО
-/// потока подготовки — подписчик сам ставит вызов в очередь своего объекта.
+/// State subscribers. Unlike daemon events, they are called from the
+/// BACKGROUND preparation thread — the subscriber queues the call into its
+/// object itself.
 static KDE_SINKS: Mutex<Vec<(u64, KdeSink)>> = Mutex::new(Vec::new());
 static KDE_NEXT_SINK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-/// Версия демона из последней проверки — нужна установке по согласию.
+/// The daemon version from the last check — needed by the installation by
+/// consent.
 static KDE_DAEMON_VERSION: Mutex<Option<String>> = Mutex::new(None);
 
-/// Подписаться на состояние плагина KDE. Уже известное состояние приходит
-/// сразу, в потоке вызова.
+/// Subscribe to the KDE plugin state. An already known state arrives at
+/// once, in the caller's thread.
 pub fn subscribe_kde_plugin(sink: impl Fn(&KdePluginState) + Send + Sync + 'static) -> u64 {
     let id = KDE_NEXT_SINK.fetch_add(1, Ordering::SeqCst) + 1;
     let sink: KdeSink = std::sync::Arc::new(sink);
@@ -1780,7 +1862,7 @@ pub fn subscribe_kde_plugin(sink: impl Fn(&KdePluginState) + Send + Sync + 'stat
     id
 }
 
-/// Снять подписку; `0` — подписки не было.
+/// Remove a subscription; `0` means there was no subscription.
 pub fn unsubscribe_kde_plugin(id: u64) {
     if id == 0 {
         return;
@@ -1803,11 +1885,12 @@ fn publish_kde_plugin(state: KdePluginState) {
 
 use rexon_core::waywallen_kde_plugin::EnsurePurpose as KdePurpose;
 
-/// Подготовку плагина ведёт один поток за раз: применение обоев, пришедшее
-/// посреди установки при открытии вкладки, ждёт её конца, а не пропускается.
+/// Preparing the plugin is done by one thread at a time: a wallpaper apply
+/// that arrived in the middle of the installation on tab opening waits for
+/// its end rather than being skipped.
 static KDE_ENSURE_LOCK: Mutex<()> = Mutex::new(());
 
-/// Кто показывает живые обои в этом сеансе (решение ядра).
+/// Who shows live wallpapers in this session (the core's decision).
 pub fn session_backend() -> rexon_core::wallpaper_backend::WallpaperBackend {
     let env = |name: &str| std::env::var(name).unwrap_or_default();
     rexon_core::wallpaper_backend::pick(
@@ -1818,12 +1901,12 @@ pub fn session_backend() -> rexon_core::wallpaper_backend::WallpaperBackend {
     )
 }
 
-/// На этом сеансе обои waywallen показывает Plasma-плагин.
+/// In this session waywallen's wallpapers are shown by the Plasma plugin.
 pub fn kde_plugin_backend() -> bool {
     session_backend().needs_rexon_setup()
 }
 
-/// Как в этом сеансе у демона появляется дисплей (решение ядра).
+/// How the daemon gets a display in this session (the core's decision).
 pub fn display_setup() -> rexon_core::wallpaper_backend::DisplaySetup {
     rexon_core::wallpaper_backend::display_setup_in(
         session_backend(),
@@ -1833,9 +1916,10 @@ pub fn display_setup() -> rexon_core::wallpaper_backend::DisplaySetup {
     )
 }
 
-/// GNOME: включить расширение вывода waywallen (Rexon выключает его, ставя
-/// свои обои, — иначе его чёрная заглушка закрывает стол). Шина оболочки —
-/// в отдельном потоке; дальше придержку ведёт то же ядро (`release_held`).
+/// GNOME: enable waywallen's output extension (Rexon disables it when setting
+/// its own wallpaper — otherwise its black placeholder covers the desktop).
+/// The shell bus — in a separate thread; further holding is run by the same
+/// core (`release_held`).
 fn start_gnome_display_extension() {
     let spawned = std::thread::Builder::new().name("rexon-gnome-display".into()).spawn(|| {
         use rexon_core::wallpaper_backend::{set_waywallen_gnome_display_live, GnomeDisplaySwitch as R};
@@ -1848,15 +1932,17 @@ fn start_gnome_display_extension() {
     }
 }
 
-// ── X11: хост обоев Rexon — клиент вывода демона ───────────────────────────
+// ── X11: the Rexon wallpaper host as the daemon's output client ────────────
 //
-// Решения и разбор — `rexon_core::wallpaper_backend` (раздел «дисплей для
-// демона»). Здесь — исполнение: определение вывода для будущих стартов
-// демона и запуск хоста для живого демона сейчас. Перезапускать демон ради
-// определения нельзя: обрыв сокета выбросил бы придержанный кадр, и
-// «Применить» пропало бы.
+// Decisions and parsing are `rexon_core::wallpaper_backend` (the "display
+// for the daemon" section). Here is execution: an output definition for
+// future daemon starts and launching the host for the live daemon now.
+// Restarting the daemon for the sake of the definition is not allowed: a
+// socket disconnection would throw away the held-back frame, and «Apply»
+// would be lost.
 
-/// Хост обоев: рядом с окном Rexon (дерево разработчика), иначе по `PATH`.
+/// The wallpaper host: next to the Rexon window (the developer tree),
+/// otherwise by `PATH`.
 fn display_host_binary() -> Option<String> {
     use rexon_core::we_client::DaemonFs;
     let mut fs = crate::we_env::FsProbe;
@@ -1867,7 +1953,8 @@ fn display_host_binary() -> Option<String> {
         .or_else(|| fs.which(rexon_core::wallpaper_engine::WALLPAPER_HOST_BINARY))
 }
 
-/// `$XDG_DATA_HOME` или `~/.local/share` — там демон ищет определения вывода.
+/// `$XDG_DATA_HOME` or `~/.local/share` — where the daemon looks for output
+/// definitions.
 fn xdg_data_home() -> String {
     match std::env::var("XDG_DATA_HOME") {
         Ok(v) if !v.is_empty() => v,
@@ -1875,8 +1962,8 @@ fn xdg_data_home() -> String {
     }
 }
 
-/// Положить демону определение вывода, если его нет или оно устарело.
-/// `Err` — текст для журнала.
+/// Put an output definition for the daemon if there is none or it is stale.
+/// `Err` is a text for the log.
 fn ensure_display_manifest(host: &str) -> Result<bool, String> {
     use rexon_core::wallpaper_backend as wb;
     let path = wb::rexon_display_manifest_path(&xdg_data_home());
@@ -1892,7 +1979,8 @@ fn ensure_display_manifest(host: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Держит ли вывод уже другой экземпляр хоста (его блокировка занята).
+/// Whether another host instance already holds the output (its lock is
+/// taken).
 fn display_host_running() -> bool {
     let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
     if runtime.is_empty() {
@@ -1911,10 +1999,10 @@ fn display_host_running() -> bool {
     }
 }
 
-/// Поднять вывод на X11: определение для демона и хост сейчас. Итог — в
-/// состоянии придержки (`kde_select_finished`): дисплей появится сам, когда
-/// хост пройдёт рукопожатие; не вышло — кадр уйдёт сразу, и демон честно
-/// ответит «нет дисплея».
+/// Bring up the output on X11: a definition for the daemon and the host now.
+/// The outcome is in the holding state (`kde_select_finished`): the display
+/// will appear by itself when the host passes the handshake; if it failed,
+/// the frame goes out at once, and the daemon honestly answers "no display".
 fn start_rexon_display_host() {
     let spawned = std::thread::Builder::new().name("rexon-x11-display".into()).spawn(|| {
         let ok = match display_host_binary() {
@@ -1948,8 +2036,9 @@ fn start_rexon_display_host() {
     }
 }
 
-/// Запустить хост отдельной сессией (переживает закрытие окна Rexon; дальше
-/// за ним следит блокировка, а со следующего старта — сам демон).
+/// Launch the host in a separate session (it survives the Rexon window
+/// closing; further it is watched by the lock, and from the next start by
+/// the daemon itself).
 fn spawn_display_host(host: &str) -> bool {
     use std::os::unix::process::CommandExt;
     let argv = rexon_core::wallpaper_backend::rexon_display_host_argv(host, "");
@@ -1958,7 +2047,7 @@ fn spawn_display_host(host: &str) -> bool {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    // SAFETY: в дочернем процессе до exec — только setsid (async-signal-safe).
+    // SAFETY: in the child process before exec — only setsid (async-signal-safe).
     unsafe {
         cmd.pre_exec(|| {
             libc::setsid();
@@ -1968,7 +2057,7 @@ fn spawn_display_host(host: &str) -> bool {
     match cmd.spawn() {
         Ok(mut child) => {
             rexon_core::log_info!("x11-display", "хост вывода запущен: pid {} ({})", child.id(), argv.join(" "));
-            // Подобрать код выхода, чтобы не оставлять зомби.
+            // Pick up the exit code so as not to leave a zombie.
             std::thread::spawn(move || {
                 if let Ok(status) = child.wait() {
                     rexon_core::log_info!("x11-display", "хост вывода завершился: {status}");
@@ -1983,23 +2072,27 @@ fn spawn_display_host(host: &str) -> bool {
     }
 }
 
-// ── X11: значки рабочего стола под окном вывода ─────────────────────────
+// ── X11: desktop icons under the output window ─────────────────────────
 //
-// Решения — `rexon_core::wallpaper_backend` (раздел «значки рабочего стола
-// под живыми обоями»): включить сквозной фон Caja, где он есть, иначе честно
-// сказать, что значки на время живых обоев скрыты. Порядок окон держит сам
-// хост вывода (`keepX11Order`). gsettings и пересоздание окна стола Caja
-// идут секунды — в отдельном потоке; сообщение — тиком в главном.
+// Decisions are `rexon_core::wallpaper_backend` (the "desktop icons under
+// live wallpapers" section): enable Caja's see-through background where it
+// exists, otherwise honestly say that the icons are hidden while live
+// wallpapers are on. The window order is kept by the output host itself
+// (`keepX11Order`). gsettings and recreating Caja's desktop window take
+// seconds — in a separate thread; the message comes with a tick in the main
+// one.
 
-/// Сообщение о значках, ждущее показа главным потоком.
+/// A message about the icons waiting to be shown by the main thread.
 static DESKTOP_ICONS_NOTICE: Mutex<Option<String>> = Mutex::new(None);
-/// Предупреждение «значки скрыты» уже показано в этом запуске — на каждом
-/// применении его не повторять.
+/// The «icons are hidden» warning was already shown in this launch — do not
+/// repeat it on every apply.
 static DESKTOP_ICONS_WARNED: AtomicBool = AtomicBool::new(false);
-/// Подготовка идёт — второе применение подряд второй поток не заводит.
+/// The preparation is running — a second apply in a row does not start a
+/// second thread.
 static DESKTOP_ICONS_BUSY: AtomicBool = AtomicBool::new(false);
 
-/// Кто рисует значки в этом сеансе (решение ядра по окружению).
+/// Who draws the icons in this session (the core's decision by the
+/// environment).
 fn session_desktop_icons_owner() -> Option<rexon_core::wallpaper_backend::DesktopIconsOwner> {
     let env = |name: &str| std::env::var(name).unwrap_or_default();
     let session = rexon_core::wallpaper_engine::detect_session_type(
@@ -2036,7 +2129,7 @@ fn start_desktop_icons_prepare() {
     }
 }
 
-/// Главный поток: показать сообщение о значках информационным тостом.
+/// Main thread: show the message about the icons as an informational toast.
 fn desktop_icons_prepared() {
     let Some(text) = DESKTOP_ICONS_NOTICE.lock().ok().and_then(|mut slot| slot.take()) else {
         return;
@@ -2049,7 +2142,7 @@ fn desktop_icons_prepared() {
     broadcast(&DaemonEvent::Notice(text));
 }
 
-/// Неудачное применение откатывается — вернуть и стол, как был.
+/// A failed apply is rolled back — restore the desktop as it was too.
 fn start_desktop_icons_restore() {
     let spawned = std::thread::Builder::new().name("rexon-desktop-icons".into()).spawn(|| {
         let mut sys = rexon_core::wallpaper_exec::LiveSys::new();
@@ -2072,8 +2165,8 @@ fn prepare_display_backend(
         }
         return;
     }
-    // Применение не отбрасывается из-за идущей подготовки: оно встанет в
-    // очередь на замке. Отбрасывается только второй заход подготовки.
+    // The apply is not discarded because of a running preparation: it will
+    // queue up on the lock. Only a second round of preparation is discarded.
     let gated = !purpose.selects();
     if gated && KDE_PREPARE_BUSY.swap(true, Ordering::SeqCst) {
         return;
@@ -2081,7 +2174,8 @@ fn prepare_display_backend(
     let spawned = std::thread::Builder::new()
         .name("rexon-kde-plugin".into())
         .spawn(move || {
-            // Демона ещё нет — версию говорит бинарь, который будет запущен.
+            // There is no daemon yet — the version is told by the binary that will
+            // be launched.
             let daemon_version = daemon_version.or_else(|| {
                 use rexon_core::we_client::DaemonFs;
                 binary.as_deref().and_then(|bin| crate::we_env::FsProbe.binary_version(bin))
@@ -2124,8 +2218,8 @@ fn prepare_display_backend(
     }
 }
 
-/// Установка по согласию кончилась любым путём — снять «ставим», чтобы
-/// кнопка не осталась выключенной навсегда.
+/// The installation by consent ended in any way — remove "installing" so
+/// that the button does not stay disabled forever.
 fn finish_consent_install() {
     let current = KDE_STATE.lock().ok().and_then(|s| s.clone());
     if let Some(state) = current.filter(|s| s.installing) {
@@ -2133,9 +2227,11 @@ fn finish_consent_install() {
     }
 }
 
-/// Кнопка «Поставить версию Rexon»: человек согласился заменить плагин.
+/// The «Install Rexon's version» button: the user agreed to replace the
+/// plugin.
 ///
-/// `false` — подготовка уже идёт (второй заход ничего бы не добавил).
+/// `false` — the preparation is already running (a second round would add
+/// nothing).
 pub fn install_kde_plugin_with_consent() -> bool {
     if KDE_PREPARE_BUSY.load(Ordering::SeqCst) {
         return false;
@@ -2144,23 +2240,25 @@ pub fn install_kde_plugin_with_consent() -> bool {
     let previous = KDE_STATE.lock().ok().and_then(|s| s.clone()).unwrap_or_default();
     publish_kde_plugin(KdePluginState { installing: true, failure: None, ..previous });
     prepare_display_backend(daemon_version, find_daemon_binary(), true, KdePurpose::Prepare);
-    // Подготовка могла не начаться (не KDE, уже идёт) — тогда «ставим» снять.
+    // The preparation may not have started (not KDE, already running) — then
+    // remove "installing".
     if !KDE_PREPARE_BUSY.load(Ordering::SeqCst) {
         finish_consent_install();
     }
     true
 }
 
-/// Окружение подготовки плагина. Живое — из процесса; сверки подают своё
-/// (поддельные `kpackagetool6`/`dbus-send`/`systemctl` в PATH).
+/// The plugin preparation environment. The live one comes from the process;
+/// the reconciliation tests supply their own (fake
+/// `kpackagetool6`/`dbus-send`/`systemctl` in PATH).
 #[derive(Debug, Clone)]
 struct KdeEnv {
     /// `XDG_CURRENT_DESKTOP`.
     desktop: String,
     home: String,
-    /// Каталог пакета `rexon/` (в нём `kpackage/`).
+    /// The `rexon/` package directory (with `kpackage/` in it).
     pkg_dir: String,
-    /// `PATH` для поиска инструментов.
+    /// `PATH` for finding the tools.
     path: Option<String>,
 }
 
@@ -2175,7 +2273,7 @@ impl KdeEnv {
     }
 }
 
-/// Состояние плагина на диске — всё, что нужно сторожу версии.
+/// The plugin state on disk — everything the version watcher needs.
 fn read_plugin_check(
     bundle: &str,
     install: &str,
@@ -2213,16 +2311,16 @@ fn read_plugin_check(
     }
 }
 
-/// Порт `ensure_waywallen_plugin` со сторожем версии
+/// A port of `ensure_waywallen_plugin` with the version watcher
 /// (`waywallen_kde_plugin::plan_plugin`).
 ///
-/// ⛔ Обоями рабочих столов плагин назначается ТОЛЬКО при `purpose ==
-/// Apply` (человек применил обои). Прежде это делалось при каждом открытии
-/// вкладки — с перезапуском plasmashell, — и у человека с пустой
-/// библиотекой стол становился чёрным (дефект 30.10.2026).
+/// Never: the plugin is assigned as the desktops' wallpaper ONLY with
+/// `purpose == Apply` (the user applied a wallpaper). Previously this was
+/// done on every tab opening — with a plasmashell restart — and for a person
+/// with an empty library the desktop went black (defect of 30.10.2026).
 ///
-/// Возвращает (успех, плагин назначен обоями только что, сообщение для
-/// журнала).
+/// Returns (success, the plugin was just assigned as the wallpaper, a
+/// message for the log).
 fn ensure_kde_plugin(
     env: &KdeEnv,
     daemon_version: Option<String>,
@@ -2282,15 +2380,16 @@ fn ensure_kde_plugin(
     };
     let base = if plan.action.installs() { format!("{}; {summary}", outcome.message) } else { summary };
 
-    // Что сейчас стоит обоями столов. `None` — Plasma не ответила.
+    // What is set as the desktops' wallpaper now. `None` — Plasma did not
+    // answer.
     let current = || {
         plasma_evaluate(env, &wkp::current_plugins_js(), 10.0).map(|out| wkp::parse_current_plugins(&out))
     };
 
-    // Перезапуск — только если ОБНОВИЛИ плагин, который уже стоит обоями:
-    // старый `.so` в памяти оболочки. Свежую установку оболочка подхватит
-    // сама, когда плагин назначат.
-    // Спрашиваем Plasma, только когда ответ что-то решает.
+    // A restart — only if we UPDATED a plugin that is already set as the
+    // wallpaper: the old `.so` is in the shell's memory. The shell picks up a
+    // fresh installation by itself when the plugin is assigned.
+    // We ask Plasma only when the answer decides something.
     let in_use = outcome.installed_now
         && check.installed.present
         && current().is_some_and(|p| wkp::any_selected(&p));
@@ -2309,20 +2408,22 @@ fn ensure_kde_plugin(
         return (true, false, None, format!("{}; на десктопах не выбираем", outcome.message));
     }
 
-    // Третье значение — «назначили только что»: лишь тогда стоит ждать,
-    // пока plasmashell загрузит плагин и тот зарегистрирует дисплей. Стоял
-    // плагин уже везде, а дисплея нет — ожидание ничего не даст.
+    // The third value is "just assigned": only then is it worth waiting for
+    // plasmashell to load the plugin and for it to register a display. If the
+    // plugin was already everywhere and there is no display, waiting gives
+    // nothing.
     let mut previous = None;
     let (selected, selected_now) = match current().map(|p| wkp::all_selected(&p)) {
-        // Спросить не удалось — и назначать нечем: ответ и назначение идут
-        // одним каналом. Молча «успех» не рапортуем.
+        // Asking failed — and there is nothing to assign with: the answer and
+        // the assignment go through one channel. We do not silently report
+        // "success".
         None => {
             rexon_core::log_warn!("kde-plugin", "плагин обоев не назначен: Plasma недоступна");
             (false, false)
         }
         Some(all) if wkp::should_reselect(outcome.installed_now, all) => {
-            // Снимок «что стояло до нас» — чтобы вернуть, если живые обои
-            // не запустятся (`waywallen_kde_plugin::revert_plugins_js`).
+            // A snapshot of "what was there before us" — to restore it if the live
+            // wallpaper does not start (`waywallen_kde_plugin::revert_plugins_js`).
             let before = plasma_evaluate(env, &wkp::plugins_by_desktop_js(), 10.0)
                 .map(|out| wkp::parse_plugins_by_desktop(&out));
             let ok = plasma_evaluate(env, &wkp::select_plugin_js(), 15.0).is_some();
@@ -2336,16 +2437,17 @@ fn ensure_kde_plugin(
     (true, selected_now, previous, wkp::ensure_message(&base, selected, restarted))
 }
 
-/// Бандл пригоден для kpackagetool6: каталог с metadata.json.
+/// The bundle is fit for kpackagetool6: a directory with metadata.json.
 fn bundle_is_valid(bundle: &str) -> bool {
     use std::path::Path;
     Path::new(bundle).is_dir()
         && Path::new(&rexon_core::waywallen_kde_plugin::metadata_json_path(bundle)).is_file()
 }
 
-/// Поставить/обновить плагин из бандла конвейером ядра (`install_or_upgrade`)
-/// и записать маркер «ставили мы». Общий для применения обоев и тихого
-/// освежения. `Err` — причина для журнала (сырая, kpackagetool6).
+/// Install/update the plugin from the bundle with the core's pipeline
+/// (`install_or_upgrade`) and write the "we installed it" marker. Shared by
+/// applying a wallpaper and the quiet refresh. `Err` is the reason for the
+/// log (raw, from kpackagetool6).
 fn run_kpackagetool(
     tool: Option<&str>,
     bundle: &str,
@@ -2354,7 +2456,8 @@ fn run_kpackagetool(
     marker: &str,
 ) -> Result<rexon_core::waywallen_kde_plugin::InstallOutcome, String> {
     use rexon_core::waywallen_kde_plugin as wkp;
-    // Маркер «ставили мы»: версия бандла, без неё — хэш рантайма.
+    // The "we installed it" marker: the bundle version, without it — the
+    // runtime hash.
     let marker_value = check.bundle_version.clone().or_else(|| check.bundle_sha.clone());
     let mut launch_error: Option<String> = None;
     let outcome = wkp::install_or_upgrade(
@@ -2362,7 +2465,8 @@ fn run_kpackagetool(
         bundle,
         bundle_valid,
         check.installed.present,
-        // Решение «ставить» уже принято сторожем — no-op конвейера не нужен.
+        // The "install" decision is already made by the watcher — the pipeline's
+        // no-op is not needed.
         None,
         marker_value.as_deref(),
         &mut |argv| match run(argv, wkp::KPACKAGETOOL_TIMEOUT as f64) {
@@ -2374,7 +2478,7 @@ fn run_kpackagetool(
         },
     );
     if let Some(reason) = launch_error
-        .map(|cmd| format!("kpackagetool6 ошибка запуска: {cmd}"))
+        .map(|cmd| rexon_core::i18n::trf("kpackagetool6 failed to start: %1", &[&cmd]))
         .or_else(|| (!outcome.ok).then(|| outcome.message.clone()))
     {
         return Err(reason);
@@ -2387,13 +2491,13 @@ fn run_kpackagetool(
     Ok(outcome)
 }
 
-/// Тихо освежить УЖЕ установленный плагин обоев KDE, если он разошёлся с
-/// бандлом (решение — `waywallen_kde_plugin::refresh_decision`). Зовут старт
-/// Rexon и успешное обновление движка; работает на ЛЮБОМ рабочем столе.
-/// Не установленный плагин не ставится. Идёт в фоновом потоке под тем же
-/// замком, что и подготовка при применении обоев.
-/// Версию движка спрашивает у бинаря, который будет запущен, и только когда
-/// без неё не решить.
+/// Quietly refresh an ALREADY installed KDE wallpaper plugin if it diverged
+/// from the bundle (the decision is `waywallen_kde_plugin::refresh_decision`).
+/// Called by the Rexon start and by a successful engine update; works on ANY
+/// desktop. A plugin that is not installed is not installed. It runs in a
+/// background thread under the same lock as the preparation on applying a
+/// wallpaper. The engine version is asked from the binary that will be
+/// launched, and only when it cannot be decided without it.
 pub fn refresh_installed_kde_plugin(trigger: &'static str) {
     let spawned = std::thread::Builder::new().name("rexon-kde-refresh".into()).spawn(move || {
         let message = {
@@ -2411,8 +2515,9 @@ pub fn refresh_installed_kde_plugin(trigger: &'static str) {
     }
 }
 
-/// Исполнитель [`refresh_installed_kde_plugin`]. `Ok(None)` — говорить
-/// нечего (плагина нет или он совпадает с бандлом: обычный старт).
+/// The executor of [`refresh_installed_kde_plugin`]. `Ok(None)` — there is
+/// nothing to say (there is no plugin or it matches the bundle: an ordinary
+/// start).
 fn refresh_kde_plugin(env: &KdeEnv) -> Result<Option<String>, String> {
     use rexon_core::waywallen_kde_plugin::{self as wkp, RefreshDecision};
 
@@ -2424,8 +2529,9 @@ fn refresh_kde_plugin(env: &KdeEnv) -> Result<Option<String>, String> {
 
     let mut check = read_plugin_check(&bundle, &install, &marker, None, false);
     let mut decision = wkp::refresh_decision(&check, tool.is_some(), bundle_valid);
-    // Версию демона спрашиваем лишь тогда, когда без неё не решить: бандл
-    // может не подходить к демону, и тогда рабочий плагин не портим.
+    // We ask for the daemon version only when it cannot be decided without
+    // it: the bundle may not suit the daemon, and then we do not spoil a
+    // working plugin.
     if decision.upgrades() {
         use rexon_core::we_client::DaemonFs;
         check.daemon_version =
@@ -2454,8 +2560,8 @@ fn refresh_kde_plugin(env: &KdeEnv) -> Result<Option<String>, String> {
         .map_err(|reason| format!("{reason} ({versions})"))?;
     publish_kde_plugin(KdePluginState::default());
 
-    // Plasma спрашиваем только на KDE: вне его оболочки нет, перезапускать
-    // нечего — новый плагин она загрузит при следующем входе.
+    // We ask Plasma only on KDE: outside it there is no shell, nothing to
+    // restart — it will load the new plugin at the next login.
     let on_kde = wkp::is_kde(&env.desktop);
     let in_use = on_kde
         && outcome.installed_now
@@ -2469,7 +2575,8 @@ fn refresh_kde_plugin(env: &KdeEnv) -> Result<Option<String>, String> {
     )))
 }
 
-/// Запуск команды с таймаутом; `None` — не запустилась или не уложилась.
+/// Running a command with a timeout; `None` — it did not start or did not
+/// fit.
 fn run(argv: &[String], timeout_secs: f64) -> Option<rexon_core::waywallen_kde_plugin::RunOutput> {
     rexon_core::splash_exec::run_capture(argv, timeout_secs).map(|out| {
         rexon_core::waywallen_kde_plugin::RunOutput {
@@ -2480,9 +2587,10 @@ fn run(argv: &[String], timeout_secs: f64) -> Option<rexon_core::waywallen_kde_p
     })
 }
 
-/// Порт `rexon.utils.plasma_evaluate_script`: JS в plasmashell по шине.
-/// `None` — неудача (нет бинаря, нет службы, ошибка, таймаут), а не пустой
-/// успех. Ответ приводится к «виду qdbus» — как у `dbus_call` на Python.
+/// A port of `rexon.utils.plasma_evaluate_script`: JS into plasmashell over
+/// the bus. `None` is a failure (no binary, no service, an error, a timeout),
+/// not an empty success. The answer is brought to the "qdbus form" — as with
+/// `dbus_call` in Python.
 fn plasma_evaluate(env: &KdeEnv, js: &str, timeout_secs: f64) -> Option<String> {
     use rexon_core::utils;
     let path_env = env.path.clone();
@@ -2502,13 +2610,14 @@ fn plasma_evaluate(env: &KdeEnv, js: &str, timeout_secs: f64) -> Option<String> 
     })
 }
 
-/// Порт `_restart_plasmashell`: команды из ядра по порядку, успех — код
-/// последней.
+/// A port of `_restart_plasmashell`: the commands from the core in order,
+/// success is the exit code of the last one.
 fn restart_plasmashell(env: &KdeEnv) -> bool {
     let mut last = None;
     for mut call in rexon_core::waywallen_kde_plugin::restart_plasmashell_cmds() {
-        // Инструмент ищется по тому же PATH, что и остальные: иначе подмена
-        // окружения в сверках не дотянулась бы до перезапуска оболочки.
+        // The tool is looked up by the same PATH as the others: otherwise
+        // substituting the environment in the tests would not reach the shell
+        // restart.
         if let Some(exe) = rexon_core::utils::resolve_tool(&call.argv[0], &[], env.path.as_deref()) {
             call.argv[0] = exe;
         }
@@ -2517,33 +2626,36 @@ fn restart_plasmashell(env: &KdeEnv) -> bool {
     last.is_some_and(|out| out.rc == 0)
 }
 
-// ── синхронная остановка активных обоев ─────────────────────────────────────
+// ── synchronous stop of active wallpapers ───────────────────────────────────
 
 thread_local! {
-    /// Состояние одного прогона `stop_active_wallpapers`. Отдельно от
-    /// основного транспорта: у остановки свой сокет и свой цикл событий, и
-    /// зовут её из потока установщика статичных обоев.
+    /// The state of one `stop_active_wallpapers` run. Separate from the main
+    /// transport: the stop has its own socket and its own event loop, and it
+    /// is called from the static wallpaper installer's thread.
     static STOP: RefCell<StopState> = RefCell::new(StopState::default());
 }
 
 #[derive(Default)]
 struct StopState {
-    /// Кого ещё не сняли: `request_id` каждого `renderer_kill` в полёте.
+    /// Who has not been removed yet: the `request_id` of each `renderer_kill` in
+    /// flight.
     awaited: usize,
     killed: i64,
     ok: bool,
     list_id: u64,
-    /// Сокет прогона — нужен обработчикам, чтобы дослать `renderer_kill`.
+    /// The run's socket — the handlers need it to send `renderer_kill`.
     socket: *mut QWebSocket,
-    /// Рукопожатие завершено (`connected`) — для причины в журнале.
+    /// The handshake is finished (`connected`) — for the reason in the log.
     connected: bool,
 }
 
-/// Порт `client.stop_active_wallpapers` — синхронно снять все активные обои.
+/// A port of `client.stop_active_wallpapers` — synchronously remove all
+/// active wallpapers.
 ///
-/// Возвращает пару ядра (`stop_active_result`): статус и число снятых.
-/// Исключений не бросает ни при каком состоянии: демона нет / нет Qt /
-/// обрыв — это статус, а не ошибка (контракт установщика статичных обоев).
+/// Returns the core's pair (`stop_active_result`): the status and the number
+/// removed. It throws no exceptions in any state: no daemon / no Qt / a
+/// disconnection is a status, not an error (the static wallpaper installer's
+/// contract).
 pub fn stop_active_wallpapers(timeout_ms: i32) -> (String, i64) {
     let st = probe();
     let gate = we_client::stop_active_gate(&st, qobject::sock_qt_available());
@@ -2553,13 +2665,13 @@ pub fn stop_active_wallpapers(timeout_ms: i32) -> (String, i64) {
     stop_active_on_port(st.ws_port, timeout_ms)
 }
 
-/// WS-часть [`stop_active_wallpapers`] на известном порту демона.
+/// The WS part of [`stop_active_wallpapers`] on the daemon's known port.
 ///
-/// Зовётся из любого потока: сокет, цикл событий и состояние прогона — свои
-/// у потока. Кадры уходят только после `connected` (рукопожатие WebSocket
-/// завершено); ошибка сокета или обрыв выводят из цикла сразу, `timeout_ms`
-/// — потолок всего прогона. Открыт для стенда (`we_stop_selftest`), который
-/// поднимает подставной сервер на своём порту.
+/// Called from any thread: the socket, the event loop and the run state are
+/// the thread's own. The frames go out only after `connected` (the WebSocket
+/// handshake is finished); a socket error or a disconnection exits the loop
+/// at once, `timeout_ms` is the ceiling of the whole run. Open for the bench
+/// (`we_stop_selftest`), which brings up a fake server on its own port.
 pub fn stop_active_on_port(port: i64, timeout_ms: i32) -> (String, i64) {
     let fail = || {
         let (status, killed) = we_client::stop_active_result(false, 0);
@@ -2568,7 +2680,8 @@ pub fn stop_active_on_port(port: i64, timeout_ms: i32) -> (String, i64) {
     if port <= 0 || !qobject::sock_qt_available() {
         return fail();
     }
-    // Диспетчер событий потока заводит сама фабрика (`rexon_we_sock_new`).
+    // The thread's event dispatcher is set up by the factory itself
+    // (`rexon_we_sock_new`).
     let socket = qobject::sock_new();
     if socket.is_null() {
         return fail();
@@ -2581,7 +2694,8 @@ pub fn stop_active_on_port(port: i64, timeout_ms: i32) -> (String, i64) {
         let bytes: Vec<u8> = message.into();
         stop_on_frame(&bytes);
     });
-    // Обрыв до завершения — выходим: это ветка `("error", 0)` оригинала.
+    // A disconnection before completion — we exit: this is the original's
+    // `("error", 0)` branch.
     let on_disconnected = sock.as_mut().on_disconnected(|_sock| qobject::sock_quit_loop());
     unsafe { qobject::sock_quit_loop_on_error(socket) };
 
@@ -2599,7 +2713,8 @@ pub fn stop_active_on_port(port: i64, timeout_ms: i32) -> (String, i64) {
         rexon_core::log_warn!("we", "снятие живых обоев: {stage} ({cause})");
     }
 
-    // Стражи снимаются РАНЬШЕ сокета, иначе они дёрнут мёртвый объект.
+    // The guards are removed BEFORE the socket, otherwise they would poke a
+    // dead object.
     drop(on_connected);
     drop(on_message);
     drop(on_disconnected);
@@ -2612,9 +2727,10 @@ pub fn stop_active_on_port(port: i64, timeout_ms: i32) -> (String, i64) {
     (status.to_owned(), killed)
 }
 
-/// Крюк ядра `wallpaper_exec::set_we_stopper`: исполнитель обоев зовёт его
-/// перед своими обоями (из рабочего потока применения — у снятия свой сокет
-/// и свой цикл событий, общий транспорт вкладки оно не трогает).
+/// The core's hook `wallpaper_exec::set_we_stopper`: the wallpaper executor
+/// calls it before its own wallpapers (from the apply worker thread — the
+/// removal has its own socket and its own event loop, it does not touch the
+/// tab's shared transport).
 pub fn stop_we_wallpapers_hook(timeout_ms: u64) -> (String, i64) {
     stop_active_wallpapers(i32::try_from(timeout_ms).unwrap_or(i32::MAX))
 }
@@ -2652,8 +2768,9 @@ fn stop_on_frame(bytes: &[u8]) {
     });
 
     if resp.request_id == list_id {
-        // Разбор кадра — в ядре (`renderer_ids_from_frame`). `None` = «не наш
-        // кадр»: снимать нечего, ведём себя как при пустом списке.
+        // Parsing the frame is in the core (`renderer_ids_from_frame`). `None` =
+        // "not our frame": there is nothing to remove, we behave as with an
+        // empty list.
         let ids = we_client::renderer_ids_from_frame(bytes).unwrap_or_default();
         if ids.is_empty() {
             STOP.with(|s| s.borrow_mut().ok = true);
@@ -2668,7 +2785,8 @@ fn stop_on_frame(bytes: &[u8]) {
         return;
     }
 
-    // Ответ на renderer_kill: считаем снятых, как это делал `_on_kill_reply`.
+    // An answer to renderer_kill: we count the removed ones, as
+    // `_on_kill_reply` did.
     let done = STOP.with(|s| {
         let mut st = s.borrow_mut();
         if st.awaited == 0 {
@@ -2686,14 +2804,15 @@ fn stop_on_frame(bytes: &[u8]) {
     }
 }
 
-// ══ колбэки пробы ═══════════════════════════════════════════════════════════
+// ══ probe callbacks ═════════════════════════════════════════════════════════
 
-/// Поставить колбэки сокета. Любой из них может быть `None`.
+/// Set the socket callbacks. Any of them may be `None`.
 ///
-/// Нужны одной пробе транспорта (`bin/we_socket_probe.rs`): она считает
-/// подключения, кадры и ошибки на живом демоне без окна вкладки. Сама
-/// вкладка слушает транспорт подпиской на Rust (`subscribe`), а ответы
-/// получает по карте шима (`we_transport.rs`).
+/// Needed by one transport probe (`bin/we_socket_probe.rs`): it counts
+/// connections, frames and errors on a live daemon without the tab window.
+/// The tab itself listens to the transport with a subscription in Rust
+/// (`subscribe`) and gets the answers through the shim's map
+/// (`we_transport.rs`).
 pub fn set_hooks(
     connected: VoidHook,
     disconnected: VoidHook,
@@ -2709,9 +2828,9 @@ pub fn set_hooks(
     install_shim_hooks();
 }
 
-/// Подготовка плагина KDE на поддельном вводе: `kpackagetool6`, `dbus-send`
-/// и `systemctl` — скрипты-ловушки, пишущие свои аргументы в журнал.
-/// Настоящая Plasma не трогается.
+/// Preparing the KDE plugin on fake input: `kpackagetool6`, `dbus-send` and
+/// `systemctl` are trap scripts writing their arguments into a log. The real
+/// Plasma is not touched.
 #[cfg(test)]
 mod kde_plugin_tests {
     use super::{ensure_kde_plugin, KdeEnv, KdePurpose};
@@ -2724,8 +2843,9 @@ mod kde_plugin_tests {
     }
 
     impl Stand {
-        /// `plugins` — что «стоит обоями» столов по ответу Plasma;
-        /// `installed` — версия уже установленного плагина (`None` — нет).
+        /// `plugins` — what is "set as the wallpaper" on the desktops by
+        /// Plasma's answer; `installed` — the version of the already installed
+        /// plugin (`None` — none).
         fn new(name: &str, plugins: &str, installed: Option<&str>) -> Stand {
             use std::os::unix::fs::PermissionsExt;
             let root = std::env::temp_dir()
@@ -2745,8 +2865,8 @@ mod kde_plugin_tests {
             };
             package(Path::new(&wkp::bundle_dir(pkg.to_str().unwrap())), "0.4.3", b"bundle");
             if let Some(version) = installed {
-                // Та же версия — тот же рантайм: иначе сторож версии решит
-                // «освежить» и честно переставит плагин.
+                // The same version — the same runtime: otherwise the version watcher
+                // will decide to "refresh" and honestly reinstall the plugin.
                 let so: &[u8] = if version == "0.4.3" { b"bundle" } else { b"old" };
                 package(Path::new(&wkp::install_dir(home.to_str().unwrap())), version, so);
             }
@@ -2762,9 +2882,9 @@ mod kde_plugin_tests {
             };
             script("kpackagetool6", "");
             script("systemctl", "");
-            // Чтение плагинов столов отвечает списком, назначение — пустым
-            // ответом, как настоящая Plasma.
-            // Снимок по столам (`id=плагин`) — номера столов с единицы.
+            // Reading the desktops' plugins answers with a list, assigning — with
+            // an empty answer, like the real Plasma.
+            // A snapshot per desktop (`id=plugin`) — desktop numbers from one.
             let by_desktop: Vec<String> = plugins
                 .split(',')
                 .filter(|p| !p.is_empty())
@@ -2794,7 +2914,8 @@ mod kde_plugin_tests {
             std::fs::read_to_string(self.root.join("calls.log")).unwrap_or_default()
         }
 
-        /// Назначали ли плагин обоями (JS `select_plugin`).
+        /// Whether the plugin was assigned as the wallpaper (the `select_plugin`
+        /// JS).
         fn selected(&self) -> bool {
             self.calls().lines().any(|l| l.starts_with("dbus-send") && l.contains("wallpaperPlugin ="))
         }
@@ -2810,9 +2931,9 @@ mod kde_plugin_tests {
         }
     }
 
-    /// ⛔ Дефект 30.10.2026: первое открытие вкладки при пустой библиотеке
-    /// назначало плагин обоями всех столов и перезапускало plasmashell —
-    /// стол становился чёрным. Теперь только установка.
+    /// Never: defect of 30.10.2026: the first tab opening with an empty
+    /// library assigned the plugin as the wallpaper of all desktops and
+    /// restarted plasmashell — the desktop went black. Now only installation.
     #[test]
     fn tab_open_with_empty_library_keeps_desktop_wallpaper() {
         let stand = Stand::new("open", "org.kde.image", None);
@@ -2831,8 +2952,8 @@ mod kde_plugin_tests {
         assert!(!message.contains("выбран на десктопах"), "{message}");
     }
 
-    /// Применение обоев из библиотеки назначает плагин — без перезапуска
-    /// оболочки при свежей установке.
+    /// Applying a wallpaper from the library assigns the plugin — without a
+    /// shell restart on a fresh installation.
     #[test]
     fn applying_wallpaper_selects_plugin() {
         let stand = Stand::new("apply", "org.kde.image", None);
@@ -2841,7 +2962,8 @@ mod kde_plugin_tests {
         assert!(ok, "{message}");
         assert!(selected_now, "{message}");
         assert!(stand.selected(), "плагин назначен обоями: {}", stand.calls());
-        // Снимок прежних обоев — для отката, если живые обои не запустятся.
+        // A snapshot of the previous wallpapers — for a rollback if the live
+        // wallpaper does not start.
         assert_eq!(
             previous,
             Some(vec![rexon_core::waywallen_kde_plugin::DesktopPlugin {
@@ -2852,7 +2974,8 @@ mod kde_plugin_tests {
         assert!(!stand.restarted(), "свежая установка оболочку не трогает: {}", stand.calls());
     }
 
-    /// Плагин уже везде — повторно не назначается, ждать дисплея незачем.
+    /// The plugin is already everywhere — it is not assigned again, and there
+    /// is no reason to wait for a display.
     #[test]
     fn applying_with_plugin_everywhere_does_not_reselect() {
         let stand = Stand::new("everywhere", "org.waywallen.kde,org.waywallen.kde", Some("0.4.3"));
@@ -2864,8 +2987,8 @@ mod kde_plugin_tests {
         assert!(!stand.selected(), "{}", stand.calls());
     }
 
-    /// Обновление плагина, который уже стоит обоями, перезапускает оболочку
-    /// (старый `.so` в памяти), но обоев не назначает.
+    /// Updating a plugin that is already set as the wallpaper restarts the
+    /// shell (the old `.so` is in memory) but assigns no wallpaper.
     #[test]
     fn upgrading_plugin_in_use_restarts_shell_without_selecting() {
         let stand = Stand::new("upgrade", "org.waywallen.kde,org.kde.image", Some("0.4.0"));
@@ -2875,7 +2998,7 @@ mod kde_plugin_tests {
         assert!(!stand.selected(), "{}", stand.calls());
     }
 
-    /// Обновление невыбранного плагина оболочку не трогает.
+    /// Updating a plugin that is not selected does not touch the shell.
     #[test]
     fn upgrading_unused_plugin_does_not_restart_shell() {
         let stand = Stand::new("unused", "org.kde.image", Some("0.4.0"));
@@ -2890,13 +3013,13 @@ mod kde_plugin_tests {
 mod tests {
     use rexon_core::we_query::{self, QueryState, STATUS_ERROR};
 
-    /// Обрыв соединения обязан ЗАКРЫТЬ ожидающий запрос ошибкой,
-    /// а не молча забыть о нём.
+    /// A disconnection must CLOSE a pending request with an error rather than
+    /// silently forget about it.
     ///
-    /// Проверяется тот самый кадр, который уходит всем ожидающим при
-    /// `disconnected`: он проходит обычный путь разбора ответа и оставляет
-    /// запрос в Error с человеческим текстом. Раньше колбэки не звались
-    /// никогда, и страница показывала вечный спиннер.
+    /// The very frame that goes to all pending requests on `disconnected` is
+    /// checked: it passes the ordinary answer parsing path and leaves the query
+    /// in Error with a human-readable text. Previously the callbacks were never
+    /// called, and the page showed an eternal spinner.
     #[test]
     fn obryv_zakryvaet_ozhidayushchij_zapros_oshibkoj() {
         let frame = super::error_frame(7, super::DISCONNECTED_TEXT);
@@ -2913,8 +3036,9 @@ mod tests {
         );
     }
 
-    /// Номер запроса в кадре обрыва не важен для маршрутизации (адресата
-    /// выбирает карта QPointer), но он обязан быть валидным `Response`.
+    /// The request number in the disconnection frame does not matter for
+    /// routing (the addressee is chosen by the QPointer map), but it must be a
+    /// valid `Response`.
     #[test]
     fn kadr_obryva_eto_nastoyashchij_otvet_servera() {
         use prost::Message;
@@ -2930,7 +3054,7 @@ mod tests {
         }
     }
 
-    /// Кадр ответа `health` с этим состоянием движка.
+    /// A `health` answer frame with this engine state.
     fn health_frame(request_id: u64, state: &str) -> Vec<u8> {
         use prost::Message;
         use rexon_core::proto::control as pb;
@@ -2946,8 +3070,8 @@ mod tests {
         pb::ServerFrame { kind: Some(pb::server_frame::Kind::Response(resp)) }.encode_to_vec()
     }
 
-    /// Поле `state` доезжает из ответа `health`, а чужой ответ даёт пустоту,
-    /// а не чужое значение.
+    /// The `state` field arrives from the `health` answer, while someone else's
+    /// answer gives emptiness, not someone else's value.
     #[test]
     fn health_state_reads_only_health_payload() {
         assert_eq!(super::health_state(&health_frame(3, "ready")), "ready");
@@ -2955,8 +3079,9 @@ mod tests {
         assert_eq!(super::health_state(&super::error_frame(3, "x")), "");
     }
 
-    /// Свой ответ `health` уходит подписчикам событием и НЕ идёт дальше —
-    /// ни в карту Rust-запросов, ни к Python. Чужой номер не перехватывается.
+    /// Our own `health` answer goes to the subscribers as an event and does NOT
+    /// go further — neither into the map of Rust queries nor to Python. Someone
+    /// else's number is not intercepted.
     #[test]
     fn own_health_reply_reaches_subscribers_once() {
         use std::cell::RefCell;
@@ -2968,7 +3093,8 @@ mod tests {
         super::HEALTH_ID.with(|c| c.set(41));
         assert!(super::dispatch_frame(&health_frame(41, "ready")));
         assert_eq!(super::HEALTH_ID.with(std::cell::Cell::get), 0, "ожидание снято");
-        // Повтор того же номера — уже не наш: ждать больше нечего.
+        // A repeat of the same number is no longer ours: there is nothing more
+        // to wait for.
         super::dispatch_frame(&health_frame(41, "ready"));
 
         super::unsubscribe(id);
@@ -2976,7 +3102,8 @@ mod tests {
         assert_eq!(*seen.borrow(), vec![super::DaemonEvent::Health("ready".into())]);
     }
 
-    /// Рассылка доходит до КАЖДОГО подписчика, а отписка снимает ровно одного.
+    /// The broadcast reaches EACH subscriber, while unsubscribing removes
+    /// exactly one.
     #[test]
     fn broadcast_reaches_every_subscriber() {
         use std::cell::Cell;

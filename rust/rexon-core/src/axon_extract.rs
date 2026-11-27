@@ -1,14 +1,16 @@
-//! Подготовка скачанных обоев Razer Axon к показу.
+//! Preparing downloaded Razer Axon wallpapers for display.
 //!
-//! Каталог обоев (`WallpaperSource/{Id}{H}{W}`): `ResourceConfig.txt` (JSON)
-//! и `Resource/<файл>`. Файл — ZIP со стандартным шифрованием ZipCrypto и
-//! одним файлом внутри; пароль — `hex(HMAC-SHA256(ключ, сырые байты
-//! ResourceConfig.txt))`, ключ — в [`crate::axon_key`]. У старых обоев
-//! (без `SourceEncryptedTypes`) файл лежит как есть.
+//! A wallpaper directory (`WallpaperSource/{Id}{H}{W}`) contains
+//! `ResourceConfig.txt` (JSON) and `Resource/<file>`. The file is a ZIP with
+//! standard ZipCrypto encryption and a single file inside; the password is
+//! `hex(HMAC-SHA256(key, raw bytes of ResourceConfig.txt))`, and the key is in
+//! [`crate::axon_key`]. Older wallpapers (without `SourceEncryptedTypes`) keep
+//! the file as is.
 //!
-//! Каталог Axon только читается; готовый файл пишется атомарно в выданный
-//! каталог кэша, рядом — метка (сумма конфига и размер), по которой повторный
-//! вызов отдаёт готовое без работы. Снаружи модуль вызывается через
+//! The Axon directory is only read; the finished file is written atomically
+//! into the given cache directory, next to a stamp (the config checksum and
+//! the size) that lets a repeated call return the finished file without doing
+//! any work. From outside, the module is called through
 //! [`crate::axon_library::BuiltinExtractor`].
 
 use std::fmt;
@@ -324,7 +326,7 @@ mod tests {
 
     const TEST_KEY: &[u8] = b"test-key-not-razer";
 
-    /// Временный каталог теста (убирается после).
+    /// A temporary test directory (removed afterwards).
     struct TempDir(PathBuf);
     impl TempDir {
         fn path(&self) -> &Path {

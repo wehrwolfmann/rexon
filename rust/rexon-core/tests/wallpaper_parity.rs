@@ -1,11 +1,12 @@
-//! Golden-сверка порта `wallpaper.rs` с оригиналом `rexon/wallpaper.py`.
+//! Golden check of the `wallpaper.rs` port against the original `rexon/wallpaper.py`.
 //!
-//! Эталон снят прогоном той же формулы нормализации переопределения свойств
-//! и того же разбора размеров кадра, что в оригинале, по набору пограничных
-//! значений (пусто, `{}`, голое значение, уже завёрнутое, кириллические
-//! ключи, не-объект, битый JSON, мусор в размерах). ⛔ Обои не запускались.
+//! The reference was captured by running the same property-override
+//! normalisation formula and the same frame-size parsing as in the original on
+//! a set of edge values (empty, `{}`, a bare value, an already wrapped one,
+//! Cyrillic keys, a non-object, broken JSON, garbage in sizes). ⛔ No
+//! wallpapers were launched.
 //!
-//! `golden/wallpaper_cases.json` — снятые значения.
+//! `golden/wallpaper_cases.json` — the captured values.
 
 use rexon_core::wallpaper as wp;
 use serde_json::Value;
@@ -28,14 +29,14 @@ fn legacy_suffixes_match_original() {
 
 #[test]
 fn parent_dir_only_for_legacy_files() {
-    // Файл со «старым» расширением — подниматься к каталогу.
+    // A file with the «old» extension — go up to the directory.
     assert!(wp::use_parent_dir("/обои/index.html", true));
     assert!(wp::use_parent_dir("/обои/scene.json", true));
     assert!(wp::use_parent_dir("/обои/видео.mp4", true));
     assert!(wp::use_parent_dir("/обои/app.EXE", true), "регистр не важен");
-    // Файл с другим расширением — нет.
+    // A file with another extension — no.
     assert!(!wp::use_parent_dir("/обои/preview.png", true));
-    // Каталог — никогда, даже если имя оканчивается похоже.
+    // A directory — never, even if the name ends similarly.
     assert!(!wp::use_parent_dir("/обои/scene.json", false));
     assert!(!wp::use_parent_dir("/обои", false));
 }
@@ -46,14 +47,14 @@ fn user_props_override_matches_original() {
     for (raw, want) in g["user_props"].as_object().unwrap() {
         let got = wp::parse_user_props_override(raw);
         match want {
-            // Оригинал возвращал None и на пустом значении, и на валидном
-            // JSON, который не объект.
+            // The original returned None both on an empty value and on valid JSON
+            // that is not an object.
             Value::Null => assert_eq!(
                 got,
                 wp::UserPropsOverride::None,
                 "вход {raw:?} должен давать отсутствие переопределения"
             ),
-            // Метка генератора для нераспарсенного значения.
+            // The generator's marker for an unparsed value.
             Value::String(s) if s == "<битый>" => assert_eq!(
                 got,
                 wp::UserPropsOverride::Broken,
@@ -70,8 +71,8 @@ fn user_props_override_matches_original() {
     }
 }
 
-/// Голое значение заворачивается, уже завёрнутое не трогается — иначе
-/// сохранённые настройки конфигуратора не доедут до рендера.
+/// A bare value is wrapped, an already wrapped one is not touched — otherwise
+/// the configurator's saved settings would not reach the renderer.
 #[test]
 fn user_props_wrapping_is_idempotent() {
     let once = wp::parse_user_props_override(r#"{"скорость": 0.5}"#);
@@ -83,14 +84,14 @@ fn user_props_wrapping_is_idempotent() {
     assert_eq!(twice, wp::UserPropsOverride::Props(props), "повторный проход");
 }
 
-/// Починка при порте: нечисловое значение переменной окружения роняло
-/// запуск обоев `ValueError`; здесь оно откатывается к умолчанию.
+/// A fix in the port: a non-numeric environment variable value crashed the
+/// wallpaper launch with `ValueError`; here it falls back to the default.
 #[test]
 fn mmap_size_survives_garbage() {
     let g = fx();
     let want = g["mmap_size"].as_object().unwrap();
 
-    // Кейсы, где оригинал отработал нормально, — совпадают.
+    // Cases where the original worked normally — they match.
     assert_eq!(wp::mmap_size(Some(""), Some("")), (1920, 1080));
     assert_eq!(want["''/''"], serde_json::json!([1920, 1080]));
     assert_eq!(wp::mmap_size(Some("2560"), Some("1440")), (2560, 1440));
@@ -99,7 +100,7 @@ fn mmap_size_survives_garbage() {
     assert_eq!(wp::mmap_size(Some(" 800 "), Some("600")), (800, 600));
     assert_eq!(wp::mmap_size(None, None), (1920, 1080));
 
-    // А вот здесь оригинал падал — эталон это и зафиксировал.
+    // But here the original crashed — the reference recorded exactly that.
     assert_eq!(
         want["'abc'/'1080'"].as_str(),
         Some("<ValueError>"),
@@ -113,26 +114,27 @@ fn mmap_size_survives_garbage() {
     assert_eq!(wp::mmap_size(Some("-5"), Some("1e3")), (-5, 1080));
 }
 
-// ── видео-хост: решения, снятые с `rexon/video_wallpaper.py` ───────────────
+// ── video host: decisions taken from `rexon/video_wallpaper.py` ───────────────
 //
-// Эталон — код оригинала (`get_qml_file`, `setup_renderer`, `_as_bool`,
-// `_as_float01`, отказ по типу в `_build_ctx_from_dir`). ⛔ Обои не
-// запускались, Qt не стартовал: всё здесь — чистые вход → выход.
+// The reference is the original's code (`get_qml_file`, `setup_renderer`,
+// `_as_bool`, `_as_float01`, the type refusal in `_build_ctx_from_dir`). ⛔ No
+// wallpapers were launched, Qt was not started: everything here is pure input → output.
 
 use serde_json::{json, Map};
 
 #[test]
 fn video_qml_file_prefers_offscreen() {
-    // Офскрин перекрывает всё: при mmap-выводе окна на экране нет вовсе.
+    // Offscreen overrides everything: with mmap output there is no window on screen at all.
     assert_eq!(wp::video_qml_file(true, true), wp::QML_OFFSCREEN);
     assert_eq!(wp::video_qml_file(true, false), wp::QML_OFFSCREEN);
     assert_eq!(wp::video_qml_file(false, true), wp::QML_WAYLAND);
     assert_eq!(wp::video_qml_file(false, false), wp::QML_X11);
-    // ⚠️ Файлов с такими именами в дереве больше нет: Python-хост обоев
-    // снят, а Rust-хост рисует одним `WallpaperVideo.qml` с тремя режимами.
-    // Константы остались ТОКЕНАМИ решения — их переводит в режим показа
-    // `rexon-gui::wallpaper_host::placement`. Значения закреплены здесь,
-    // чтобы тихая правка одной из сторон не разъехалась с другой.
+    // ⚠️ Files with these names no longer exist in the tree: the Python
+    // wallpaper host was removed, and the Rust host draws with a single
+    // `WallpaperVideo.qml` with three modes. The constants remained as decision
+    // TOKENS — `rexon-gui::wallpaper_host::placement` turns them into a display
+    // mode. The values are pinned here so that a quiet edit of one side does
+    // not drift away from the other.
     assert_eq!(wp::QML_OFFSCREEN, "VideoWallpaperOffscreen.qml");
     assert_eq!(wp::QML_WAYLAND, "VideoWallpaper.qml");
     assert_eq!(wp::QML_X11, "VideoWallpaperX11.qml");
@@ -140,7 +142,7 @@ fn video_qml_file_prefers_offscreen() {
 
 #[test]
 fn user_prop_bool_matches_original() {
-    // Порт `_as_bool`: bool как есть, число по нулю, строка по списку.
+    // Port of `_as_bool`: bool as is, a number by zero, a string by the list.
     assert!(wp::as_bool(Some(&json!(true)), false));
     assert!(!wp::as_bool(Some(&json!(false)), true));
     assert!(wp::as_bool(Some(&json!(1)), false));
@@ -149,11 +151,11 @@ fn user_prop_bool_matches_original() {
     for yes in ["1", "true", "TRUE", " yes ", "on"] {
         assert!(wp::as_bool(Some(&json!(yes)), false), "{yes:?}");
     }
-    // Строка вне списка даёт False, а НЕ умолчание — так было в оригинале.
+    // A string outside the list gives False, NOT the default — as in the original.
     for no in ["false", "0", "off", "нет", ""] {
         assert!(!wp::as_bool(Some(&json!(no)), true), "{no:?}");
     }
-    // Нет свойства / null → умолчание.
+    // No property / null → default.
     assert!(wp::as_bool(None, true));
     assert!(!wp::as_bool(None, false));
     assert!(wp::as_bool(Some(&Value::Null), true));
@@ -161,15 +163,15 @@ fn user_prop_bool_matches_original() {
 
 #[test]
 fn user_prop_volume_matches_original() {
-    // WE хранит громкость в 0..100, QML ждёт 0..1.
+    // WE stores the volume in 0..100, QML expects 0..1.
     assert_eq!(wp::as_volume01(Some(&json!(50)), 0.5), 0.5);
     assert_eq!(wp::as_volume01(Some(&json!(100)), 0.5), 1.0);
     assert_eq!(wp::as_volume01(Some(&json!(0.25)), 0.5), 0.25);
     assert_eq!(wp::as_volume01(Some(&json!("75")), 0.5), 0.75);
-    // Больше сотни зажимается, отрицательное — тоже.
+    // Above a hundred is clamped, a negative one too.
     assert_eq!(wp::as_volume01(Some(&json!(500)), 0.5), 1.0);
     assert_eq!(wp::as_volume01(Some(&json!(-3)), 0.5), 0.0);
-    // Неразобранное → умолчание.
+    // Unparsed → default.
     assert_eq!(wp::as_volume01(None, 0.42), 0.42);
     assert_eq!(wp::as_volume01(Some(&Value::Null), 0.42), 0.42);
     assert_eq!(wp::as_volume01(Some(&json!("громко")), 0.42), 0.42);
@@ -178,7 +180,7 @@ fn user_prop_volume_matches_original() {
 
 #[test]
 fn video_context_properties_match_setup_renderer() {
-    // Пустые свойства → все умолчания оригинала.
+    // Empty properties → all of the original's defaults.
     let empty = Map::new();
     let props = wp::video_context_properties("/видео/клип.mp4", false, &empty, 1920, 1080);
     let names: Vec<&str> = props.iter().map(|p| p.name.as_str()).collect();
@@ -206,7 +208,7 @@ fn video_context_properties_match_setup_renderer() {
     assert_eq!(props[5].value, wp::QmlValue::Int(1920));
     assert_eq!(props[6].value, wp::QmlValue::Int(1080));
 
-    // Формат `defaults_for_js` — `{ключ: {"value": …}}`.
+    // The `defaults_for_js` format is `{key: {"value": …}}`.
     let wrapped: Map<String, Value> = serde_json::from_value(json!({
         "audioenabled": {"value": "false"},
         "volume": {"value": 20},
@@ -219,7 +221,7 @@ fn video_context_properties_match_setup_renderer() {
     assert_eq!(props[3].value, wp::QmlValue::Real(0.2), "audioVolume");
     assert_eq!(props[4].value, wp::QmlValue::Bool(false), "loopVideo");
 
-    // Плоские значения (из конфигуратора) читаются так же.
+    // Flat values (from the configurator) are read the same way.
     let flat: Map<String, Value> = serde_json::from_value(json!({
         "audioenabled": false,
         "volume": 100,
@@ -238,13 +240,13 @@ fn video_host_takes_only_video() {
         scene,
         "Обои типа 'scene' рисует движок waywallen, а не этот хост: /w/project.json"
     );
-    // Тип не определился вовсе — вопросительный знак, как печатал оригинал.
+    // The type was not determined at all — a question mark, as the original printed.
     let unknown = wp::video_host_reject_reason("", "/w/project.json").unwrap();
     assert!(unknown.starts_with("Обои типа '?' рисует"), "{unknown}");
 }
 
-/// Список видео-расширений ОДИН на весь продукт: у видео-хоста своего быть
-/// не должно (именно так `.ogv` знал только он).
+/// The list of video extensions is ONE for the whole product: the video host
+/// must not have its own (that is exactly how only it knew `.ogv`).
 #[test]
 fn video_entry_exts_include_ogv() {
     let exts = rexon_core::user_props::VIDEO_ENTRY_EXTS;
@@ -256,20 +258,20 @@ fn video_entry_exts_include_ogv() {
     assert_eq!(exts.len(), 11);
 }
 
-// ── веб-обои ───────────────────────────────────────────────────────────────
+// ── web wallpapers ───────────────────────────────────────────────────────────────
 //
-// Эталон поведения — удалённый `rexon/web_wallpaper.py` (виден в истории git,
-// коммит 2091eac^). Сверялось по нему: правило пустого значения свойства,
-// состав заглушек WE, обёртка applyUserProperties и флаг Chromium.
+// The behaviour reference is the removed `rexon/web_wallpaper.py` (visible in
+// git history, commit 2091eac^). Checked against it: the empty property value
+// rule, the set of WE stubs, the applyUserProperties wrapper and the Chromium flag.
 
-/// ⚠️ Правило, которое легко потерять: свойство БЕЗ значения уезжает в
-/// страницу пустым объектом `{}`, а не пропускается. От этого зависит целая
-/// ветка кода самих обоев — увидев `{}`, обоина грузит свой запасной файл.
-/// Пропусти его — и обои с невыбранной картинкой останутся пустыми.
+/// ⚠️ A rule that is easy to lose: a property WITHOUT a value goes into the
+/// page as an empty object `{}`, it is not skipped. A whole code branch of the
+/// wallpapers themselves depends on it — seeing `{}`, the wallpaper loads its
+/// fallback file. Skip it — and wallpapers with an unselected picture stay empty.
 #[test]
 fn web_defaults_keep_empty_property_as_empty_object() {
-    // Ограничители r##…##: внутри есть цвет с решёткой, и обычное r#"
-    // закрылось бы само на нём.
+    // r##…## delimiters: inside there is a colour with a hash, and a plain r#"
+    // would close itself on it.
     let props: serde_json::Map<String, Value> = serde_json::from_str(
         r##"{
             "schemecolor": {"type": "color", "value": "#ff00ff"},
@@ -283,8 +285,8 @@ fn web_defaults_keep_empty_property_as_empty_object() {
     let out = wp::web_defaults_for_js(&props);
 
     assert_eq!(out["schemecolor"]["value"], Value::from("#ff00ff"));
-    // Голое значение из конфигуратора заворачивается так же, как из
-    // project.json: дальше их не различить.
+    // A bare value from the configurator is wrapped the same way as one from
+    // project.json: after that they cannot be told apart.
     assert_eq!(out["голое"]["value"], Value::from(7));
     for empty in ["картинка", "без_значения", "нуль"] {
         assert!(out.contains_key(empty), "свойство {empty} пропало целиком");
@@ -302,13 +304,13 @@ fn web_defaults_json_is_valid_and_empty_stays_empty() {
     let props: serde_json::Map<String, Value> =
         serde_json::from_str(r#"{"a": {"value": "б"}}"#).unwrap();
     let json = wp::web_defaults_json(&props);
-    // Строка уходит в страницу как литерал JS — она обязана разбираться.
+    // The string goes into the page as a JS literal — it must parse.
     let back: Value = serde_json::from_str(&json).unwrap();
     assert_eq!(back["a"]["value"], Value::from("б"));
 }
 
-/// Заглушки WE — не украшение: обоина Мастерской проверяет наличие функции
-/// СИНХРОННО при разборе HTML, и без неё её скрипт обрывается целиком.
+/// WE stubs are not decoration: a Workshop wallpaper checks for the function
+/// SYNCHRONOUSLY while parsing HTML, and without it its script aborts entirely.
 #[test]
 fn we_polyfill_declares_every_global_the_wallpapers_probe() {
     for name in [
@@ -324,10 +326,10 @@ fn we_polyfill_declares_every_global_the_wallpapers_probe() {
     ] {
         assert!(wp::WE_POLYFILL_JS.contains(name), "нет заглушки {name}");
     }
-    // Слушателя звука заглушка обязана СОХРАНЯТЬ, а не глотать: обоина
-    // перерисовывает холст именно из него.
+    // The stub must KEEP the audio listener, not swallow it: the wallpaper
+    // redraws the canvas exactly from it.
     assert!(wp::WE_POLYFILL_JS.contains("_rexonAudioListeners.push"));
-    // Повторное внедрение безвредно — сценарий ставится и на подкадры.
+    // Repeated injection is harmless — the script is also installed into subframes.
     assert!(wp::WE_POLYFILL_JS.contains("__rexonWePolyfillInstalled"));
 }
 
@@ -335,15 +337,15 @@ fn we_polyfill_declares_every_global_the_wallpapers_probe() {
 fn we_ticker_fires_once_with_full_spectrum() {
     assert!(wp::WE_TICKER_JS.contains("__rexonInitialTickFired"));
     assert!(wp::WE_TICKER_JS.contains("Float32Array(128)"));
-    // Тик отложен: applyUserProperties обязано успеть примениться раньше.
+    // The tick is deferred: applyUserProperties must get applied first.
     assert!(wp::WE_TICKER_JS.contains("50"));
 }
 
 #[test]
 fn web_pause_js_uses_page_visibility_and_keeps_the_frame() {
     let js = wp::WEB_PAUSE_JS;
-    // Пауза — так, как её понимает сама страница (Page Visibility), плюс
-    // главный двигатель холстов и медиа.
+    // Pause — the way the page itself understands it (Page Visibility), plus
+    // the main engine of canvases and media.
     for needle in [
         "'hidden'",
         "visibilityState",
@@ -358,10 +360,10 @@ fn web_pause_js_uses_page_visibility_and_keeps_the_frame() {
     ] {
         assert!(js.contains(needle), "нет {needle}");
     }
-    // Повторное внедрение безвредно.
+    // Repeated injection is harmless.
     assert!(js.contains("if (window.__rexonWallpaperState) return;"));
-    // Окно не прячется: иначе на паузе по батарее вместо обоев был бы
-    // чёрный экран.
+    // The window is not hidden: otherwise a battery pause would show a black
+    // screen instead of the wallpaper.
     assert!(!js.contains("display:none") && !js.contains("lifecycleState"));
 }
 
@@ -379,22 +381,22 @@ fn web_state_js_carries_the_decision() {
 #[test]
 fn web_apply_defaults_js_survives_wallpaper_without_listener() {
     let js = wp::web_apply_defaults_js("{\"a\":{\"value\":1}}");
-    // Без try исключение в подмешанном сценарии оборвало бы и тик звука.
+    // Without try an exception in the injected script would also kill the audio tick.
     assert!(js.contains("try"));
     assert!(js.contains("applyUserProperties"));
     assert!(js.contains("{\"a\":{\"value\":1}}"));
 }
 
-/// ⛔ `--disable-gpu` тут смертелен: с ним Chromium не сводит холст в граф
-/// сцены Qt, и офскрин-кадр содержал бы только DOM.
+/// ⛔ `--disable-gpu` is fatal here: with it Chromium does not composite the
+/// canvas into the Qt scene graph, and the offscreen frame would contain only the DOM.
 #[test]
 fn web_offscreen_flags_keep_gpu() {
     assert_eq!(wp::WEB_OFFSCREEN_CHROMIUM_FLAGS, "--in-process-gpu");
     assert!(!wp::WEB_OFFSCREEN_CHROMIUM_FLAGS.contains("--disable-gpu"));
 }
 
-/// Ссылку нельзя заворачивать в `QUrl::fromLocalFile` — получится
-/// «file:///https:/example.com», то есть молча пустая страница.
+/// A link must not be wrapped in `QUrl::fromLocalFile` — that gives
+/// «file:///https:/example.com», i.e. a silently empty page.
 #[test]
 fn web_target_url_distinguishes_link_from_path() {
     use rexon_core::wallpaper::QmlValue;
@@ -432,9 +434,10 @@ fn web_host_takes_only_web_type() {
     assert!(unknown.contains("'?'"), "{unknown}");
 }
 
-/// Решение «это ссылка» одно на продукт: у веб-хоста своей копии быть не
-/// должно. Отличие от `wallpaper_engine::is_url` ровно одно и намеренное —
-/// `file://` тоже ссылка, заворачивать его повторно нельзя.
+/// The «this is a link» decision is one for the product: the web host must not
+/// have its own copy. There is exactly one difference from
+/// `wallpaper_engine::is_url`, and it is intentional — `file://` is a link
+/// too, it must not be wrapped again.
 #[test]
 fn web_url_check_extends_engine_rule_by_file_scheme() {
     for link in ["http://a", "https://a", "file:///a"] {
@@ -443,21 +446,21 @@ fn web_url_check_extends_engine_rule_by_file_scheme() {
     for path in ["/a/index.html", "a.html", ""] {
         assert!(!wp::is_web_url(path), "{path}");
     }
-    // Ровно то же, что решает движок, плюс file://.
+    // Exactly what the engine decides, plus file://.
     assert_eq!(
         wp::is_web_url("http://a"),
         rexon_core::wallpaper_engine::is_url("http://a")
     );
 }
 
-// ── доустановка видеозависимостей ──────────────────────────────────────────
+// ── installing missing video dependencies ──────────────────────────────────────────
 //
-// ⛔ Ни одна команда ниже не выполнялась: проверка только СТРОИТ argv.
+// ⛔ None of the commands below was executed: the check only BUILDS argv.
 
-/// Своей таблицы установки у движка обоев больше нет — отвечает общий движок
-/// пакетов. Прежняя копия знала три семейства из одиннадцати и успела с ним
-/// разойтись, поэтому сверка идёт по ВСЕМ значениям перечисления, а не по
-/// списку из трёх.
+/// The wallpaper engine no longer has its own install table — the shared
+/// package engine answers. The former copy knew three families out of eleven
+/// and had already drifted from it, so the check goes over ALL values of the
+/// enum, not a list of three.
 #[test]
 fn install_deps_argv_asks_the_package_engine() {
     use rexon_core::system::PkgFamily;
@@ -481,14 +484,15 @@ fn install_deps_argv_asks_the_package_engine() {
     }
 }
 
-/// Ровно те две команды, которые прежняя таблица собирала НЕВЕРНО. Записаны
-/// строками, а не выведены из движка: иначе эталон поехал бы вслед за
-/// правкой таблицы.
+/// Exactly the two commands the former table built WRONG. Written as strings,
+/// not derived from the engine: otherwise the reference would drift along with
+/// an edit of the table.
 ///
-/// * pacman без `--needed` переустанавливал уже стоящий mpv — лишняя закачка,
-///   повторный прогон хуков и подмена локально собранного пакета репозиторным.
-/// * `apt` сам объявляет свой интерфейс нестабильным для скриптов, а без
-///   `--no-install-recommends` за mpv приезжает хвост рекомендованных.
+/// * pacman without `--needed` reinstalled an already installed mpv — an extra
+///   download, a repeated hook run and replacing a locally built package with
+///   the repository one.
+/// * `apt` itself declares its interface unstable for scripts, and without
+///   `--no-install-recommends` mpv drags a tail of recommended packages.
 #[test]
 fn install_deps_argv_fixes_the_two_wrong_commands() {
     use rexon_core::wallpaper_engine as we;
@@ -512,10 +516,9 @@ fn install_deps_argv_fixes_the_two_wrong_commands() {
     );
 }
 
-/// Восемь семейств, которым прежняя таблица отвечала «не знаю» при
-/// полностью известном менеджере: кнопка «Установить зависимости» на них
-/// просто не работала. Тот же класс, что и почин openSUSE в
-/// `youtube_wallpaper` (правило #12).
+/// Eight families for which the former table answered «don't know» with a
+/// fully known manager: the «Install dependencies» button simply did not work
+/// on them. The same class as the openSUSE fix in `youtube_wallpaper` (rule #12).
 #[test]
 fn install_deps_argv_answers_the_eight_forgotten_families() {
     use rexon_core::wallpaper_engine as we;
@@ -530,9 +533,9 @@ fn install_deps_argv_answers_the_eight_forgotten_families() {
     }
 }
 
-/// Честное «не знаю» осталось на месте: неопознанное семейство и пустой
-/// список пакетов командой не выражаются, вызывающий говорит человеку
-/// доустановить руками.
+/// The honest «don't know» stayed in place: an unrecognised family and an
+/// empty package list cannot be expressed as a command, the caller tells the
+/// person to install by hand.
 #[test]
 fn install_deps_argv_stays_silent_when_there_is_nothing_to_say() {
     use rexon_core::wallpaper_engine as we;

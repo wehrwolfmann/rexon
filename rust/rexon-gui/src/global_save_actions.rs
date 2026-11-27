@@ -1,10 +1,10 @@
-// GlobalSaveActions — окно «Сохранить текущее оформление…» над сеткой
-// «Глобальных тем»: своя глобальная тема из того, что стоит сейчас.
+// GlobalSaveActions — the "Save current look…" window above the "Global
+// themes" grid: a global theme of your own from what is set right now.
 //
-// Логики здесь нет: снимок, подписи, проверка имени, пакет и превью — ядро
-// (`rexon_core::global_save`). Снимок экрана ждёт человека (портал с
-// выбором области), поэтому идёт в рабочем потоке, итог — сигналом
-// `screenshotReady`.
+// There is no logic here: snapshot, labels, name validation, package and
+// preview come from the core (`rexon_core::global_save`). The screenshot
+// waits for the user (a portal with area selection), so it runs in a
+// worker thread, and the result comes with the `screenshotReady` signal.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -20,31 +20,31 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Окно (JSON `global_save::SaveDialog`).
+        /// Window (JSON `global_save::SaveDialog`).
         #[qinvokable]
         fn state(self: &GlobalSaveActions) -> QString;
 
-        /// Что не так с именем; пусто — годится.
+        /// What is wrong with the name; empty means it is fine.
         #[qinvokable]
         #[cxx_name = "nameProblem"]
         fn name_problem(self: &GlobalSaveActions, name: &QString) -> QString;
 
-        /// Плитка цветами темы — путь к PNG; пусто — не вышло.
+        /// A tile in the theme colours — the path to a PNG; empty means it failed.
         #[qinvokable]
         fn tile(self: &GlobalSaveActions) -> QString;
 
-        /// Сохранить (JSON `global_save::SaveRequest`). Ответ — JSON
+        /// Save (JSON `global_save::SaveRequest`). The answer is JSON
         /// `global_save::SaveResult`.
         #[qinvokable]
         fn save(self: &GlobalSaveActions, request: &QString) -> QString;
 
-        /// Снять экран. Итог — сигналом `screenshotReady`.
+        /// Take a screenshot. The result comes with the `screenshotReady` signal.
         #[qinvokable]
         #[cxx_name = "takeScreenshot"]
         fn take_screenshot(self: Pin<&mut GlobalSaveActions>);
 
-        /// Итог снимка: путь к файлу либо причина (пусто и то и другое —
-        /// человек отменил).
+        /// Screenshot result: a file path or a reason (both empty means the user
+        /// cancelled).
         #[qsignal]
         #[cxx_name = "screenshotReady"]
         fn screenshot_ready(self: Pin<&mut GlobalSaveActions>, path: QString, error: QString);

@@ -1,14 +1,16 @@
-// Шим хоста видео-обоев: две вещи, до которых из Rust не дотянуться.
+// Shim of the video wallpaper host: two things that Rust cannot reach.
 //
-// Первая — идентификатор окна X11 (`QWindow::winId`), без него нечему
-// ставить свойства EWMH. Вторая — поток кадров окна в общий mmap-файл: он держится
-// на `QQuickWindow::grabWindow`, а тот отдаёт `QImage`, которого в
-// cxx-qt-lib 0.9 нет вовсе.
+// The first is the X11 window identifier (`QWindow::winId`); without it
+// there is nothing to set EWMH properties on. The second is the window's
+// frame stream into a shared mmap file: it relies on
+// `QQuickWindow::grabWindow`, which returns a `QImage`, and cxx-qt-lib 0.9
+// has no QImage at all.
 //
-// Границы те же, что у шима слоя (cpp/rexon_layer_shell.*): решений здесь
-// нет. Раскладка кадра, права файла, интервал тика и план EWMH для X11
-// приходят из ядра (`rexon-core::wallpaper_mmap`) уже посчитанными — шим
-// только исполняет.
+// The boundaries are the same as for the layer shim
+// (cpp/rexon_layer_shell.*): there are no decisions here. The frame layout,
+// the file permissions, the tick interval and the EWMH plan for X11 arrive
+// from the core (`rexon-core::wallpaper_mmap`) already computed — the shim
+// only executes.
 #pragma once
 
 #include <cstddef>
@@ -18,39 +20,46 @@
 
 class QObject;
 
-/// Идентификатор окна для X11 (`QWindow::winId`). 0 — объект не QWindow.
+/// Window identifier for X11 (`QWindow::winId`). 0 means the object is not
+/// a QWindow.
 ///
-/// Окно платформы, если его ещё нет, winId создаёт (без показа) — на X11
-/// этим и пользуются, чтобы поставить тип окна ДО показа. На Wayland до
-/// показа не звать: там это лишний повод для сюрпризов.
+/// If the platform window does not exist yet, winId creates it (without
+/// showing) — on X11 this is used to set the window type BEFORE showing. On
+/// Wayland do not call it before showing: there it is just another source
+/// of surprises.
 std::int64_t rexon_wp_window_id(QObject *window);
 
-/// Запустить поток кадров окна в mmap-файл.
+/// Start the window's frame stream into an mmap file.
 ///
-/// Кадры снимаются с `QQuickWindow` (само окно либо первый такой потомок),
-/// приводятся к RGBA8888 и к заданному размеру и пишутся в файл целиком под
-/// `flock(LOCK_EX)` — тот же контракт, что читают расширения оболочки GNOME
-/// и Cinnamon: сырые RGBA8888, ровно width×height×4 байта, без заголовка.
+/// Frames are captured from a `QQuickWindow` (the window itself or its
+/// first such descendant), converted to RGBA8888 and to the given size and
+/// written to the file in full under `flock(LOCK_EX)` — the same contract
+/// the GNOME and Cinnamon shell extensions read: raw RGBA8888, exactly
+/// width×height×4 bytes, no header.
 ///
-/// Файл кадра при старте потока создаётся ЗАНОВО (прежний отцепляется) и до
-/// первого настоящего кадра короче width×height×4 — по этому признаку
-/// расширения оболочки и отличают «кадра ещё нет» от готового кадра. Без
-/// этого при смене обоев они успевали показать последний кадр ПРЕЖНИХ обоев.
+/// The frame file is created ANEW when the stream starts (the previous one
+/// is unlinked) and until the first real frame it is shorter than
+/// width×height×4 — that is how the shell extensions tell "no frame yet"
+/// from a finished frame. Without this, on a wallpaper change they managed
+/// to show the last frame of the PREVIOUS wallpaper.
 ///
-/// Источник кадра: `video_output` (VideoOutput из QML) — текущий кадр его
-/// приёмника; `nullptr` — сцена окна рисуется `QQuickRenderControl` без
-/// окна на экране (содержимое окна переносится в неё) и читается обратно.
-/// Видео берётся из приёмника потому, что на платформе `offscreen`
-/// VideoOutput не рисует. Если сцена без окна не поднялась, окно
-/// показывается и снимается `grabWindow` — ТОЛЬКО при `may_show_window`
-/// (решение ядра: платформа `offscreen`), иначе отказ.
+/// Frame source: `video_output` (a VideoOutput from QML) — the current
+/// frame of its sink; `nullptr` — the window's scene is rendered by
+/// `QQuickRenderControl` without a window on screen (the window's content
+/// is moved into it) and read back. Video is taken from the sink because
+/// VideoOutput does not render on the `offscreen` platform. If the
+/// windowless scene did not come up, the window is shown and captured with
+/// `grabWindow` — ONLY with `may_show_window` (the core's decision: the
+/// `offscreen` platform), otherwise a refusal.
 ///
-/// Рядом с кадром ведётся счётчик поколения (`generation_path`, u64 LE):
-/// нечётный на время записи кадра, чётный после. Им пользуются расширения
-/// оболочки — замок `flock` им из GJS не взять. Пустой путь — без счётчика.
+/// Next to the frame a generation counter is kept (`generation_path`, u64
+/// LE): odd while a frame is being written, even afterwards. The shell
+/// extensions use it — they cannot take an `flock` lock from GJS. An empty
+/// path means no counter.
 ///
-/// Таймер и дескриптор живут на объекте окна и умирают вместе с ним.
-/// `false` — окно не найдено либо файл не открылся.
+/// The timer and the descriptor live on the window object and die together
+/// with it. `false` means the window was not found or the file did not
+/// open.
 bool rexon_wp_mmap_stream_start(QObject *window,
                                 QObject *video_output,
                                 const QString &path,
@@ -61,57 +70,65 @@ bool rexon_wp_mmap_stream_start(QObject *window,
                                 std::uint32_t file_mode,
                                 bool may_show_window);
 
-/// Чем снимается кадр потока: `rendercontrol-gpu <API> <устройство>`,
-/// `rendercontrol-software`, `videosink`, `grabwindow`; пусто — потока нет.
+/// What captures the stream's frames: `rendercontrol-gpu <API> <device>`,
+/// `rendercontrol-software`, `videosink`, `grabwindow`; empty means there
+/// is no stream.
 QString rexon_wp_mmap_capture(QObject *window);
 
-/// Доля не-чёрных пикселей последнего кадра, ‰ (выборка); -1 — кадров не было.
+/// Share of non-black pixels of the last frame, ‰ (sampled); -1 means there
+/// were no frames.
 std::int64_t rexon_wp_mmap_nonblack_permille(QObject *window);
 
-/// Сколько кадров ушло в файл с начала потока. Для самопроверки: «поток
-/// запустился» и «кадры доехали» — разные утверждения.
+/// How many frames went into the file since the stream started. For the
+/// self-test: "the stream started" and "the frames arrived" are different
+/// statements.
 std::int64_t rexon_wp_mmap_frames(QObject *window);
 
-/// Центральный пиксель последнего записанного кадра (0xRRGGBB), -1 — кадров
-/// не было. Для самопроверки: «кадры доехали» и «в кадрах есть картинка» —
-/// тоже разные утверждения (чёрные кадры считались успехом).
+/// Centre pixel of the last written frame (0xRRGGBB), -1 means there were no
+/// frames. For the self-test: "the frames arrived" and "the frames contain a
+/// picture" are also different statements (black frames used to count as
+/// success).
 std::int64_t rexon_wp_mmap_center_rgb(QObject *window);
 
-// ── Flash-режим (SWF): голое окно, в которое рисует wgpu ─────────────────
-// Типов QWindow, QScreen и native-интерфейса платформы в cxx-qt-lib 0.9 нет —
-// отсюда шим. Решений здесь нет: размещение, размер и темп решает Rust.
+// ── Flash mode (SWF): a bare window that wgpu draws into ─────────────────
+// cxx-qt-lib 0.9 has no QWindow, QScreen or platform native interface
+// types — hence the shim. There are no decisions here: placement, size and
+// pace are decided by Rust.
 
-/// Сколько экранов сейчас у сеанса. 0 — мониторов нет вовсе (такое бывает
-/// на ходу: выдернули последний кабель), и обои тогда никуда не кладут.
+/// How many screens the session has right now. 0 means there are no
+/// monitors at all (this can happen on the fly: the last cable was pulled),
+/// and then the wallpaper is put nowhere.
 std::int32_t rexon_wp_screen_count();
 
-/// Закрывать ли приложение вместе с последним окном.
+/// Whether to quit the application together with the last window.
 ///
-/// ⚠️ Обоям нужно `false`, и это не украшение. Окон у хоста столько,
-/// сколько мониторов; когда монитор отключают, окно уничтожается, и при
-/// умолчании Qt (`true`) уход последнего монитора убил бы весь процесс
-/// обоев — вернувшийся через секунду монитор остался бы пустым навсегда.
+/// Warning: wallpapers need `false`, and this is not decoration. The host
+/// has as many windows as monitors; when a monitor is disconnected its
+/// window is destroyed, and with the Qt default (`true`) the departure of
+/// the last monitor would kill the whole wallpaper process — a monitor
+/// coming back a second later would stay empty forever.
 void rexon_wp_set_quit_on_last_window_closed(bool enabled);
 
-/// Новое окно без QML и без буфера Qt, на экране `screen_index` (< 0 —
-/// основной). `width`/`height` ≤ 0 — размер этого экрана, и окно ставится
-/// в его угол: на X11 иначе все окна обоев легли бы на один монитор.
-/// Слой (LayerShellQt) ставится ДО показа.
+/// A new window without QML and without a Qt buffer, on screen
+/// `screen_index` (< 0 — the primary). `width`/`height` ≤ 0 means the size
+/// of that screen, and the window is placed in its corner: on X11 otherwise
+/// all wallpaper windows would land on one monitor. The layer (LayerShellQt)
+/// is set BEFORE showing.
 QObject *rexon_wp_swf_window_new(std::int32_t width,
                                  std::int32_t height,
                                  std::int32_t screen_index);
 void rexon_wp_swf_window_show(QObject *window);
-/// Убрать окно совсем: видеокарта отказалась в него рисовать, и
-/// оставленная пустая заслонка была бы чёрным прямоугольником на весь
-/// монитор вместо обоев.
+/// Remove the window entirely: the GPU refused to draw into it, and an
+/// empty shutter left behind would be a black rectangle over the whole
+/// monitor instead of a wallpaper.
 void rexon_wp_swf_window_close(QObject *window);
 bool rexon_wp_swf_window_exposed(QObject *window);
-/// Размер в физических пикселях (с учётом devicePixelRatio).
+/// Size in physical pixels (taking devicePixelRatio into account).
 std::int32_t rexon_wp_swf_window_width(QObject *window);
 std::int32_t rexon_wp_swf_window_height(QObject *window);
-/// Прокрутить очередь событий Qt (у Flash-режима свой цикл отрисовки).
+/// Spin the Qt event queue (Flash mode has its own render loop).
 void rexon_wp_process_events();
-/// Native-хэндлы для wgpu; 0 — платформа не та или окна нет.
+/// Native handles for wgpu; 0 means the wrong platform or no window.
 std::size_t rexon_wp_wl_display();
 std::size_t rexon_wp_wl_surface(QObject *window);
 std::size_t rexon_wp_xcb_connection();

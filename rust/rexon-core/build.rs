@@ -1,26 +1,26 @@
-//! Генерация Rust-структур протокола демона waywallen из `.proto`.
+//! Generation of the waywallen daemon protocol Rust structs from `.proto`.
 //!
-//! Единственный источник — оригинальные `control.proto`/`filter.proto` в
-//! `data/qt_wallpaper_engine/proto/` (вендор waywallen, MIT). НЕ копируем их в
-//! крейт, а читаем напрямую по относительному пути от `CARGO_MANIFEST_DIR`,
-//! чтобы не расходиться с апстримом при обновлении (git diff их proto).
+//! The only source is the original `control.proto`/`filter.proto` in
+//! `data/qt_wallpaper_engine/proto/` (waywallen vendor, MIT). We do NOT copy them into
+//! the crate, but read them directly by a path relative to `CARGO_MANIFEST_DIR`,
+//! so as not to diverge from upstream on update (git diff of their proto).
 //!
-//! Требует `protoc` в PATH (prost-build вызывает его). Генерируются два файла:
+//! Requires `protoc` in PATH (prost-build calls it). Two files are generated:
 //!
-//! * `OUT_DIR/waywallen.control.v1.rs` — сами структуры, подключается
-//!   `include!` из `src/proto.rs`;
-//! * `OUT_DIR/request_payload_fields.rs` — таблица «имя поля `oneof payload`
-//!   сообщения `Request` → номер поля», подключается `include!` из
+//! * `OUT_DIR/waywallen.control.v1.rs` — the structs themselves, included with
+//!   `include!` from `src/proto.rs`;
+//! * `OUT_DIR/request_payload_fields.rs` — the table "field name of the `oneof payload`
+//!   of the `Request` message → field number", included with `include!` from
 //!   `src/we_client.rs`.
 //!
-//! Почему таблица тоже ГЕНЕРИТСЯ, а не пишется руками: универсальный путь
-//! `WaywallenClient.call(field, msg)` собирает кадр по имени поля, и рукописный
-//! список молча отстаёт от вендорского протокола. Так и случилось: апстрим
-//! добавил поля 69–74 (`plugin_action`, `subscription_status`,
+//! Why the table is GENERATED too rather than written by hand: the universal path
+//! `WaywallenClient.call(field, msg)` builds the frame by field name, and a handwritten
+//! list silently falls behind the vendor protocol. That is exactly what happened: upstream
+//! added fields 69–74 (`plugin_action`, `subscription_status`,
 //! `subscription_set`, `qr_login_cancel`, `remote_settings_patch`,
-//! `wallpaper_unsubscribe`), рукописная таблица о них не знала, и все эти
-//! запросы тихо уходили на Python-фолбэк. Читаем `FileDescriptorSet`, который
-//! protoc отдаёт при компиляции — источник тот же, что у самих структур.
+//! `wallpaper_unsubscribe`), the handwritten table did not know about them, and all these
+//! requests quietly went to the Python fallback. We read the `FileDescriptorSet` that
+//! protoc produces during compilation — the same source as the structs themselves.
 
 use std::path::PathBuf;
 
@@ -38,7 +38,7 @@ fn main() {
     let control = proto_dir.join("control.proto");
     let filter = proto_dir.join("filter.proto");
 
-    // Пересобирать при изменении .proto.
+    // Rebuild when the .proto changes.
     println!("cargo:rerun-if-changed={}", control.display());
     println!("cargo:rerun-if-changed={}", filter.display());
 
@@ -62,9 +62,9 @@ fn main() {
     git_revision(&manifest);
 }
 
-/// `REXON_GIT_REV` — короткий хеш коммита для строки запуска в журнале
-/// (`applog`). Нет git или дерева (сборка из архива) — переменная не
-/// ставится, и журнал пишет только версию крейта.
+/// `REXON_GIT_REV` — the short commit hash for the startup line in the log
+/// (`applog`). No git or no tree (build from an archive) — the variable is not
+/// set, and the log writes only the crate version.
 fn git_revision(manifest: &std::path::Path) {
     let root = manifest.join("../..");
     let git = root.join(".git");
@@ -87,14 +87,14 @@ fn git_revision(manifest: &std::path::Path) {
     }
 }
 
-/// `OUT_DIR/helper_catalogs.rs` — каталоги перевода для сообщений
-/// root-помощников (`src/system_l10n.rs`): по коду из `po/LINGUAS` — текст
-/// его `.po`, вшитый `include_str!`. Добавили язык в LINGUAS — помощники
-/// заговорят на нём со следующей сборкой, код не трогается.
+/// `OUT_DIR/helper_catalogs.rs` — translation catalogs for messages of the
+/// root helpers (`src/system_l10n.rs`): for each code from `po/LINGUAS` — the text
+/// of its `.po`, embedded with `include_str!`. Add a language to LINGUAS — the helpers
+/// will speak it from the next build on, the code is not touched.
 ///
-/// `REXON_HELPER_PO_DIR` подменяет каталог `po/` черновиком (свой LINGUAS и
-/// `.po`) — проверить тексты помощников до того, как перевод влит в общий
-/// каталог.
+/// `REXON_HELPER_PO_DIR` substitutes a draft for the `po/` directory (its own LINGUAS and
+/// `.po`) — to check the helper texts before the translation is merged into the shared
+/// catalog.
 fn helper_catalogs(manifest: &std::path::Path, out_dir: &std::path::Path) {
     println!("cargo:rerun-if-env-changed=REXON_HELPER_PO_DIR");
     let po_dir = match std::env::var_os("REXON_HELPER_PO_DIR") {
@@ -113,7 +113,7 @@ fn helper_catalogs(manifest: &std::path::Path, out_dir: &std::path::Path) {
         .map(|l| l.split('#').next().unwrap_or(""))
         .flat_map(str::split_whitespace)
     {
-        // Код идёт в текст скрипта от root: только безопасные символы.
+        // The code goes into the text of a root script: safe characters only.
         if !code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '@')) {
             println!("cargo:warning=po/LINGUAS: код языка {code:?} пропущен");
             continue;
@@ -130,8 +130,8 @@ fn helper_catalogs(manifest: &std::path::Path, out_dir: &std::path::Path) {
     std::fs::write(out_dir.join("helper_catalogs.rs"), out).expect("запись helper_catalogs.rs");
 }
 
-/// Код таблицы `REQUEST_PAYLOAD_FIELDS` из дескриптора: поля `oneof payload`
-/// сообщения `Request` в порядке объявления (он же — по возрастанию номера).
+/// Code of the `REQUEST_PAYLOAD_FIELDS` table from the descriptor: the `oneof payload` fields
+/// of the `Request` message in declaration order (which is also ascending by number).
 fn request_payload_table(set: &prost_types::FileDescriptorSet) -> String {
     let message = set
         .file
@@ -153,7 +153,7 @@ fn request_payload_table(set: &prost_types::FileDescriptorSet) -> String {
          pub static REQUEST_PAYLOAD_FIELDS: &[(&str, u32)] = &[\n",
     );
     for field in &message.field {
-        // proto3 optional тоже заводит синтетический oneof — берём только наш.
+        // proto3 optional also creates a synthetic oneof — take only ours.
         if field.oneof_index != Some(payload_index) {
             continue;
         }

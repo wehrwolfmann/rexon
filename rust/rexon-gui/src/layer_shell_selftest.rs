@@ -1,60 +1,67 @@
-// Стенд слоя обоев: доказательство, что окно Rust-пути реально становится
-// фоновой поверхностью wlr-layer-shell на живом KWin Wayland.
+// Wallpaper layer test bench: proof that a window of the Rust path really
+// becomes a wlr-layer-shell background surface on a live KWin Wayland.
 //
-// Почему стенд устроен двумя процессами. Единственное честное доказательство
-// «окно в слое обоев» — байты, которые клиент отправил композитору: обратное
-// чтение из LayerShellQt показывает только НАШЕ же состояние и прошло бы даже
-// в случае, когда библиотека молча ничего не сделала. Поэтому родитель
-// запускает сам себя с WAYLAND_DEBUG=1, складывает протокольный след в файл и
-// выносит приговор по следу, а не по самоотчёту ребёнка.
+// Why the bench is built from two processes. The only honest proof of
+// "the window is in the wallpaper layer" is the bytes the client sent to
+// the compositor: reading back from LayerShellQt shows only OUR OWN state
+// and would pass even if the library silently did nothing. So the parent
+// runs itself with WAYLAND_DEBUG=1, collects the protocol trace into a file
+// and gives the verdict from the trace, not from the child's self-report.
 //
-// Что доказывается следом:
-//   * zwlr_layer_shell_v1.get_layer_surface с аргументом layer = 0
-//     (background) — окно создано КАК поверхность слоя, а не как обычное;
-//   * set_anchor(15) — якоря на все четыре стороны;
-//   * set_exclusive_zone(-1) — зона обоев;
-//   * входящий zwlr_layer_surface_v1.configure — композитор поверхность
-//     ПРИНЯЛ и выдал ей геометрию (при отказе был бы протокольный сбой);
-//   * во всём следе нет ни одного xdg_surface.get_toplevel — окно ни на
-//     мгновение не было обычным окном, а значит и в списке задач его быть
-//     не может: списки задач (plasma-window-management) показывают
-//     xdg_toplevel, поверхности слоёв туда не попадают по устройству
-//     протокола.
+// What the trace proves:
+//   * zwlr_layer_shell_v1.get_layer_surface with the argument layer = 0
+//     (background) — the window was created AS a layer surface, not as an
+//     ordinary one;
+//   * set_anchor(15) — anchors on all four sides;
+//   * set_exclusive_zone(-1) — the wallpaper zone;
+//   * an incoming zwlr_layer_surface_v1.configure — the compositor ACCEPTED
+//     the surface and gave it geometry (on a refusal there would be a
+//     protocol error);
+//   * the whole trace has not a single xdg_surface.get_toplevel — the window
+//     was never an ordinary window even for an instant, and so it cannot
+//     be in the task list either: task lists (plasma-window-management)
+//     show xdg_toplevel, and layer surfaces do not get there by the design
+//     of the protocol.
 //
-// ⚠️ Прежний вотчдог стенда выходил кодом 0 по таймауту — «не отчитался»
-// выглядело как «прошло». Здесь молчание ребёнка, отсутствие следа, пустой
-// след и любое расхождение дают НЕНУЛЕВОЙ код.
+// Warning: the previous watchdog of the bench exited with code 0 on a
+// timeout — "did not report" looked like "passed". Here the child's
+// silence, a missing trace, an empty trace and any divergence give a
+// NON-ZERO code.
 
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Аргумент, которым родитель запускает себя же в роли подопытного окна.
+/// The argument with which the parent runs itself as the test subject
+/// window.
 pub const PROBE_ARG: &str = "--layer-shell-probe";
-/// Аргумент запуска стенда целиком.
+/// The argument for running the whole bench.
 pub const SELFTEST_ARG: &str = "--layer-shell-selftest";
-/// Аргумент проверки стенда на укус: `--layer-shell-bite=<вид>`. Прогон с
-/// заведомо испорченным слоем ОБЯЗАН покраснеть; зелёный тут — провал.
+/// The bench bite-test argument: `--layer-shell-bite=<kind>`. A run with a
+/// deliberately spoiled layer MUST go red; green here is a failure.
 pub const BITE_ARG: &str = "--layer-shell-bite";
-/// Переменная, которой родитель передаёт вид укуса подопытному окну.
+/// The variable through which the parent passes the bite kind to the test
+/// subject window.
 pub const BITE_ENV: &str = "REXON_LS_BITE";
 
-/// Виды укуса — каждый ломает слой обоев по-своему. Разбор самих поломок —
-/// в qml/LayerShellProbe.qml, здесь только список для прогона «все подряд».
+/// Bite kinds — each breaks the wallpaper layer in its own way. The
+/// breakages themselves are analysed in qml/LayerShellProbe.qml; here there
+/// is only the list for the "all in a row" run.
 pub const BITE_KINDS: &[&str] = &["layer", "anchors", "zone", "keyboard", "size", "late"];
 
-/// Идентификатор поверхности для композитора. Он же ищется в следе — по нему
-/// стенд отличает своё окно от чужих, если в следе вдруг окажутся другие.
+/// Surface identifier for the compositor. It is also searched for in the
+/// trace — by it the bench tells its own window from others, should others
+/// turn up in the trace.
 pub const SCOPE: &str = "rexon-layer-shell-selftest";
 
-/// Сколько ждать ребёнка, прежде чем считать стенд проваленным.
+/// How long to wait for the child before considering the bench failed.
 const CHILD_TIMEOUT: Duration = Duration::from_secs(40);
 
-/// Убийца процесса-ребёнка. Существует ради одного: окно на ЖИВОМ рабочем
-/// столе Wehrwolfmann обязано исчезнуть при любом исходе — при провале
-/// проверки, при панике, при раннем `return`. Закрытие «в конце функции» это
-/// не гарантирует, Drop — гарантирует.
+/// Killer of the child process. It exists for one reason: the window on
+/// Wehrwolfmann's LIVE desktop must disappear under any outcome — a failed
+/// check, a panic, an early `return`. Closing "at the end of the function"
+/// does not guarantee that, Drop does.
 struct ChildGuard(Option<Child>);
 
 impl ChildGuard {
@@ -69,9 +76,9 @@ impl Drop for ChildGuard {
             match child.try_wait() {
                 Ok(Some(_)) => {}
                 _ => {
-                    // Убиваем и ОБЯЗАТЕЛЬНО дожидаемся: без wait процесс
-                    // остаётся зомби, а его окно — на экране до тех пор, пока
-                    // композитор не заметит разрыв сокета.
+                    // Kill and MANDATORILY wait: without wait the process stays a zombie, and
+                    // its window stays on screen until the compositor notices the broken
+                    // socket.
                     let _ = child.kill();
                     let _ = child.wait();
                 }
@@ -80,20 +87,21 @@ impl Drop for ChildGuard {
     }
 }
 
-/// Родительская половина стенда: обычный прогон, слой обязан встать.
+/// The parent half of the bench: an ordinary run, the layer must come up.
 pub fn run() -> i32 {
     run_with_bite("")
 }
 
-/// Проверка самого стенда на живом композиторе. Каждый вид укуса поднимает
-/// окно с ЗАВЕДОМО испорченным слоем и требует, чтобы приговор был красным.
+/// Checking the bench itself on a live compositor. Each bite kind brings up
+/// a window with a DELIBERATELY spoiled layer and requires the verdict to
+/// be red.
 ///
-/// Зачем это отдельно от мутационных тестов `judge` ниже: те проверяют
-/// разборщик следа на выдуманных строках. Здесь ломается НАСТОЯЩЕЕ окно на
-/// НАСТОЯЩЕМ композиторе — так ловится случай, когда стенд зеленеет не
-/// потому, что слой встал, а потому, что до проверок дело не дошло.
+/// Why this is separate from the `judge` mutation tests below: those test
+/// the trace parser on made-up lines. Here a REAL window breaks on a REAL
+/// compositor — that catches the case when the bench goes green not because
+/// the layer came up but because the checks were never reached.
 ///
-/// `kind` пуст — прогоняются все виды подряд.
+/// An empty `kind` means all kinds are run in a row.
 pub fn run_bite(kind: &str) -> i32 {
     let kinds: Vec<&str> = if kind.is_empty() {
         BITE_KINDS.to_vec()
@@ -104,9 +112,9 @@ pub fn run_bite(kind: &str) -> i32 {
     for k in &kinds {
         println!("REXON-LS-BITE укус «{k}»: прогон обязан покраснеть");
         let code = run_with_bite(k);
-        // 1 — стенд нашёл расхождение, то есть укус пойман. 0 — стенд
-        // остался зелёным на заведомо сломанном слое, это его провал.
-        // 2 — прогон не состоялся, доказать нечего.
+        // 1 — the bench found a divergence, i.e. the bite was caught. 0 — the
+        // bench stayed green on a deliberately broken layer, which is its failure.
+        // 2 — the run did not happen, there is nothing to prove.
         match code {
             1 => println!("REXON-LS-BITE OK укус «{k}» пойман"),
             0 => {
@@ -128,11 +136,11 @@ pub fn run_bite(kind: &str) -> i32 {
     i32::from(failed != 0)
 }
 
-/// Один прогон. `bite` пуст — честный слой обоев; иначе подопытному окну
-/// подсовывается заведомая поломка (см. `BITE_KINDS`).
+/// One run. An empty `bite` means an honest wallpaper layer; otherwise the
+/// test subject window is handed a deliberate breakage (see `BITE_KINDS`).
 ///
-/// Возвращает код возврата процесса: 0 — доказано, 1 — расхождение,
-/// 2 — прогон не состоялся.
+/// Returns the process exit code: 0 — proven, 1 — a divergence, 2 — the run
+/// did not happen.
 pub fn run_with_bite(bite: &str) -> i32 {
     if std::env::var_os("WAYLAND_DISPLAY").is_none() {
         eprintln!(
@@ -164,19 +172,19 @@ pub fn run_with_bite(bite: &str) -> i32 {
 
     let mut command = Command::new(&exe);
     command.arg(PROBE_ARG);
-    // Вид укуса едет ребёнку переменной окружения, а не аргументом: окно
-    // читает её через setInitialProperties, и продуктовый разбор аргументов
-    // тут ни при чём.
+    // The bite kind goes to the child as an environment variable, not an
+    // argument: the window reads it through setInitialProperties, and the
+    // product's argument parsing has nothing to do with it.
     if !bite.is_empty() {
         command.env(BITE_ENV, bite);
     }
     let spawned = command
-        // Ключ ко всему стенду: libwayland печатает в stderr каждое
-        // сообщение протокола. Ставится ребёнку, а не себе, — родителю
-        // Wayland вообще не нужен.
+        // The key to the whole bench: libwayland prints every protocol message to
+        // stderr. It is set for the child, not for ourselves — the parent does not
+        // need Wayland at all.
         .env("WAYLAND_DEBUG", "1")
-        // Без этого на CachyOS сообщения QML уходят в journald, когда stderr
-        // не терминал, и отчёт ребёнка в след не попадает.
+        // Without this, on CachyOS QML messages go to journald when stderr is not
+        // a terminal, and the child's report does not get into the trace.
         .env("QT_FORCE_STDERR_LOGGING", "1")
         .stdout(Stdio::inherit())
         .stderr(Stdio::from(trace_file))
@@ -205,12 +213,12 @@ pub fn run_with_bite(bite: &str) -> i32 {
             }
         }
     }
-    // Здесь guard ещё жив; если ребёнок не завершился, его убьёт Drop ниже —
-    // окно уйдёт с экрана в любом случае.
+    // The guard is still alive here; if the child has not finished, the Drop
+    // below will kill it — the window leaves the screen in any case.
 
     let trace = read_trace(&trace_path);
-    // След ребёнка полезен и при успехе, и при провале: строки отчёта QML
-    // лежат в том же файле, что и протокол.
+    // The child's trace is useful both on success and on failure: the QML
+    // report lines lie in the same file as the protocol.
     for line in trace.lines().filter(|l| l.contains("REXON-LS-")) {
         println!("{}", line.trim());
     }
@@ -226,7 +234,8 @@ pub fn run_with_bite(bite: &str) -> i32 {
         trace_path.display()
     );
     if verdict.problems.is_empty() {
-        // След не нужен: он большой (десятки тысяч строк протокола).
+        // The trace is not needed: it is large (tens of thousands of protocol
+        // lines).
         let _ = std::fs::remove_file(&trace_path);
         0
     } else {
@@ -245,12 +254,12 @@ fn read_trace(path: &PathBuf) -> String {
     if let Ok(mut f) = std::fs::File::open(path) {
         let _ = f.read_to_end(&mut buf);
     }
-    // Протокольный след — не обязательно валидный UTF-8 (в нём мелькают
-    // сырые байты заголовков окон), поэтому lossy.
+    // The protocol trace is not necessarily valid UTF-8 (raw bytes of window
+    // titles flash through it), hence lossy.
     String::from_utf8_lossy(&buf).into_owned()
 }
 
-/// Результат разбора: пустой список проблем = стенд зелёный.
+/// Parse result: an empty list of problems = the bench is green.
 #[derive(Debug, Default)]
 pub struct Verdict {
     pub problems: Vec<String>,
@@ -264,8 +273,8 @@ impl Verdict {
     }
 }
 
-/// Приговор по коду возврата ребёнка и протокольному следу. Чистая функция —
-/// у неё есть свои тесты ниже, в том числе на ЛОЖНО-ЗЕЛЁНЫЙ случай.
+/// Verdict by the child's exit code and the protocol trace. A pure function
+/// — it has its own tests below, including for a FALSELY green case.
 pub fn judge(child_code: Option<i32>, trace: &str) -> Verdict {
     let mut v = Verdict::default();
 
@@ -285,7 +294,7 @@ pub fn judge(child_code: Option<i32>, trace: &str) -> Verdict {
         return v;
     }
 
-    // ── Самоотчёт окна ────────────────────────────────────────────────────
+    // ── The window's self-report ──────────────────────────────────────────
     let apply = find_line(trace, "REXON-LS-APPLY");
     match apply {
         Some(line) => {
@@ -353,14 +362,14 @@ pub fn judge(child_code: Option<i32>, trace: &str) -> Verdict {
             .push("окно не отчиталось строкой REXON-LS-GEOMETRY".to_string()),
     }
 
-    // ── Протокол ──────────────────────────────────────────────────────────
+    // ── Protocol ──────────────────────────────────────────────────────────
     v.require(
         !trace.contains(".get_toplevel("),
         "в следе есть xdg_surface.get_toplevel — окно было обычным, \
          а такое попадает в список задач",
     );
-    // Протокольная ошибка обрывает соединение: всё, что «получилось» после
-    // неё, ничего не значит.
+    // A protocol error breaks the connection: anything that "worked" after it
+    // means nothing.
     v.require(
         !trace.contains("wl_display#1.error(") && !trace.contains("wl_display@1.error("),
         "композитор вернул протокольную ошибку",
@@ -399,8 +408,8 @@ pub fn judge(child_code: Option<i32>, trace: &str) -> Verdict {
         request_arg(trace, &prefix, "set_exclusive_zone").as_deref() == Some("-1"),
         "set_exclusive_zone не -1 — окно резервирует или отдаёт место",
     );
-    // Реакция на клавиатуру по умолчанию нулевая, и LayerShellQt имеет право
-    // не слать запрос вовсе; проверяем только если он есть.
+    // Keyboard interactivity is zero by default, and LayerShellQt is entitled
+    // not to send the request at all; we check only if it is there.
     if let Some(kbd) = request_arg(trace, &prefix, "set_keyboard_interactivity") {
         v.require(
             kbd == "0",
@@ -408,16 +417,16 @@ pub fn judge(child_code: Option<i32>, trace: &str) -> Verdict {
         );
     }
 
-    // Композитор вправе прогнать поверхность (closed) — например, если счёл
-    // запрос недопустимым. Тогда окна на экране нет, что бы ни говорили
-    // остальные проверки.
+    // The compositor is entitled to dismiss the surface (closed) — for
+    // example, if it considered the request invalid. Then there is no window
+    // on screen, whatever the other checks say.
     v.require(
         !trace.contains(&format!("{prefix}closed(")),
         "композитор прогнал поверхность слоя (closed)",
     );
 
-    // Входящий configure — единственное место, где высказывается САМ
-    // композитор. Без него всё вышеперечисленное осталось бы намерением.
+    // The incoming configure is the only place where the compositor ITSELF
+    // speaks. Without it everything listed above would remain an intention.
     let configure = trace.lines().find_map(|line| {
         let line = line.trim();
         if line.starts_with("->") || !line.contains(&prefix) {
@@ -456,13 +465,13 @@ fn num(v: Option<&str>) -> Option<i64> {
     v.and_then(|s| s.parse::<i64>().ok())
 }
 
-/// Последняя строка следа с указанной меткой (последняя — чтобы повторный
-/// отчёт не был перекрыт первым).
+/// The last trace line with the given tag (the last — so that a repeated
+/// report is not overridden by the first).
 fn find_line<'a>(trace: &'a str, tag: &str) -> Option<&'a str> {
     trace.lines().rfind(|l| l.contains(tag))
 }
 
-/// Значение поля `ключ=значение` в строке отчёта.
+/// Value of a `key=value` field in a report line.
 fn field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     line.split_whitespace().find_map(|token| {
         let (k, val) = token.split_once('=')?;
@@ -470,20 +479,21 @@ fn field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     })
 }
 
-/// Разобранный вызов get_layer_surface.
+/// A parsed get_layer_surface call.
 #[derive(Debug)]
 pub struct LayerSurface {
-    /// Как поверхность зовут в следе, например `zwlr_layer_surface_v1@23`.
+    /// What the surface is called in the trace, for example
+    /// `zwlr_layer_surface_v1@23`.
     pub object: String,
     pub layer: i64,
     pub namespace: String,
 }
 
-/// Найти создание поверхности слоя в следе.
+/// Find the creation of the layer surface in the trace.
 ///
-/// Формат строки libwayland:
+/// The libwayland line format:
 /// `[123.456]  -> zwlr_layer_shell_v1@12.get_layer_surface(new id
-/// zwlr_layer_surface_v1@23, wl_surface@22, nil, 0, "имя")`
+/// zwlr_layer_surface_v1@23, wl_surface@22, nil, 0, "name")`
 fn find_layer_surface(trace: &str) -> Option<LayerSurface> {
     for line in trace.lines() {
         if !line.contains("get_layer_surface(") {
@@ -493,7 +503,7 @@ fn find_layer_surface(trace: &str) -> Option<LayerSurface> {
         if args.len() < 5 {
             continue;
         }
-        // Первый аргумент — «new id zwlr_layer_surface_v1@23».
+        // The first argument is "new id zwlr_layer_surface_v1@23".
         let object = args[0].rsplit(' ').next()?.to_string();
         let layer = args[3].parse::<i64>().ok()?;
         let namespace = args[4].trim_matches('"').to_string();
@@ -506,9 +516,9 @@ fn find_layer_surface(trace: &str) -> Option<LayerSurface> {
     None
 }
 
-/// Единственный аргумент исходящего запроса `<объект>.<имя>(значение)`.
-/// Берётся ПОСЛЕДНИЙ вызов: клиент вправе переслать запрос, и решает
-/// итоговое значение.
+/// The only argument of an outgoing request `<object>.<name>(value)`. The
+/// LAST call is taken: the client is entitled to resend the request, and
+/// the final value decides.
 fn request_arg(trace: &str, object_prefix: &str, request: &str) -> Option<String> {
     let needle = format!("{object_prefix}{request}(");
     trace
@@ -518,7 +528,8 @@ fn request_arg(trace: &str, object_prefix: &str, request: &str) -> Option<String
         .next_back()
 }
 
-/// Аргументы вызова `<объект>.<имя>(...)`, если строка — именно он.
+/// Arguments of the call `<object>.<name>(...)`, if the line is exactly
+/// that.
 fn args_of(line: &str, full_name: &str) -> Option<Vec<String>> {
     let needle = format!("{full_name}(");
     line.contains(&needle)
@@ -526,15 +537,15 @@ fn args_of(line: &str, full_name: &str) -> Option<Vec<String>> {
         .flatten()
 }
 
-/// Содержимое самых внешних скобок строки.
+/// Content of the outermost parentheses of the line.
 fn paren_body(line: &str) -> Option<&str> {
     let start = line.find('(')?;
     let end = line.rfind(')')?;
     (end > start).then(|| &line[start + 1..end])
 }
 
-/// Разбор списка аргументов. Строковые значения в кавычках могут содержать
-/// запятую, поэтому просто split(',') недостаточно.
+/// Parsing the argument list. Quoted string values may contain a comma, so
+/// a plain split(',') is not enough.
 fn split_args(body: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
@@ -562,8 +573,8 @@ fn split_args(body: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// След «как надо»: заведомо зелёный образец, от которого пляшут
-    /// остальные случаи.
+    /// A trace "as it should be": a known-green sample from which the other
+    /// cases start.
     fn good_trace() -> String {
         format!(
             "qml: REXON-LS-APPLY applied=true available=true\n\
@@ -585,13 +596,13 @@ mod tests {
         assert!(v.problems.is_empty(), "{:?}", v.problems);
     }
 
-    /// Главная проверка самого стенда: он обязан КРАСНЕТЬ. Каждая мутация —
-    /// это реальный способ сломать слой обоев.
+    /// The main check of the bench itself: it must GO RED. Each mutation is a
+    /// real way to break the wallpaper layer.
     #[test]
     fn каждая_мутация_валит_стенд() {
         let cases: [(&str, String); 9] = [
-            // Окно осталось обычным — попадёт в список задач и встанет
-            // поверх других окон.
+            // The window stayed ordinary — it will get into the task list and go on
+            // top of other windows.
             (
                 "обычное окно",
                 good_trace().replace(
@@ -599,39 +610,39 @@ mod tests {
                     "xdg_surface@23.get_toplevel",
                 ),
             ),
-            // Слой Top вместо Background — обои поверх всего.
+            // Layer Top instead of Background — the wallpaper on top of everything.
             ("слой top", good_trace().replace("nil, 0, ", "nil, 2, ")),
-            // Якорь только сверху — обои не на весь экран.
+            // Anchor only at the top — the wallpaper does not cover the screen.
             (
                 "один якорь",
                 good_trace().replace("set_anchor(15)", "set_anchor(1)"),
             ),
-            // Зона 0 вместо -1 — панели начнут отодвигать обои.
+            // Zone 0 instead of -1 — panels will start pushing the wallpaper aside.
             (
                 "зона 0",
                 good_trace().replace("set_exclusive_zone(-1)", "set_exclusive_zone(0)"),
             ),
-            // Композитор поверхность не принял.
+            // The compositor did not accept the surface.
             (
                 "нет configure",
                 good_trace().replace("zwlr_layer_surface_v1@23.configure(7, 1920, 1080)", ""),
             ),
-            // Окно меньше экрана.
+            // The window is smaller than the screen.
             (
                 "окно не во весь экран",
                 good_trace().replace("windowW=1920 windowH=1080", "windowW=1280 windowH=720"),
             ),
-            // Обои перехватывают клавиатуру.
+            // The wallpaper grabs the keyboard.
             (
                 "клавиатура",
                 good_trace().replace("keyboard=0", "keyboard=2"),
             ),
-            // Композитор прогнал поверхность — окна на экране нет.
+            // The compositor dismissed the surface — there is no window on screen.
             (
                 "closed",
                 good_trace() + "[1.020] zwlr_layer_surface_v1@23.closed()\n",
             ),
-            // Протокольная ошибка обрывает соединение.
+            // A protocol error breaks the connection.
             (
                 "ошибка протокола",
                 good_trace() + "[1.020] wl_display@1.error(zwlr_layer_surface_v1@23, 0, \"плохо\")\n",
@@ -645,7 +656,7 @@ mod tests {
 
     #[test]
     fn молчание_ребёнка_не_успех() {
-        // Ровно та грабля, которую закрыли: таймаут обязан быть провалом.
+        // Exactly the trap that was closed: a timeout must be a failure.
         assert!(!judge(None, &good_trace()).problems.is_empty());
         assert!(!judge(Some(0), "").problems.is_empty());
         assert!(!judge(Some(2), &good_trace()).problems.is_empty());

@@ -1,19 +1,21 @@
-// Кнопка QML-вкладок Rexon в стандартном скине приложения.
+// Button for Rexon QML tabs in the application's standard skin.
 //
-// Зачем отдельный тип: стиль QtQuick Controls по умолчанию (Basic) НЕ
-// следует палитре приложения — его цвета прибиты в самом стиле. Виджетная
-// часть Rexon красится QPalette из `ui_base` и потому выглядит как продукт,
-// а голая `Button` на той же странице осталась бы светлой на тёмном фоне.
-// Менять стиль на Fusion процессу целиком нельзя: в том же процессе живёт
-// вкладка Wallpaper Engine с вендорным QML, и смена стиля на ходу задела бы
-// её вид.
+// Why a separate type: the default QtQuick Controls style (Basic) does NOT
+// follow the application palette — its colours are hard-coded in the style
+// itself. The widget part of Rexon is painted with a QPalette from
+// `ui_base` and therefore looks like the product, while a bare `Button` on
+// the same page would stay light on a dark background. Switching the whole
+// process to the Fusion style is not possible: the Wallpaper Engine tab
+// with vendored QML lives in the same process, and changing the style on
+// the fly would affect its look.
 //
-// Цвета приходят снаружи, свойством `pal` — это карта из
-// `ui_base::skin_colors("steam_dark")`, отданная Rust-объектом страницы.
-// Своей палитры кнопка не заводит: скин один на весь продукт (правило #17).
+// Colours come from outside through the `pal` property — a map from
+// `ui_base::skin_colors("steam_dark")` handed over by the page's Rust
+// object. The button defines no palette of its own: one skin for the whole
+// product (rule #17).
 //
-// Высота 40 — минимум контрола из канона (Big Picture / Steam Deck): вкладки
-// обязаны быть управляемы не только мышью.
+// Height 40 is the control minimum from the canon (Big Picture / Steam
+// Deck): tabs must be operable not only with the mouse.
 
 import QtQuick
 import QtQuick.Controls
@@ -21,73 +23,75 @@ import QtQuick.Controls
 Button {
     id: control
 
-    /// Палитра скина; без неё кнопка встаёт на безопасные цвета steam_dark.
+    /// Skin palette; without it the button falls back to safe steam_dark colours.
     property var pal: null
 
-    /// Краски «особой» кнопки от ядра — главной («Применить», «Смотреть на
-    /// весь экран»), зелёной («✓ Применено») либо чипа-переключателя.
-    /// Карта с ключами `background`, `hover`, `pressed`, `disabled`,
+    /// Colours of a "special" button from the core — primary ("Apply", "Watch
+    /// full screen"), green ("✓ Applied") or a toggle chip.
+    /// A map with the keys `background`, `hover`, `pressed`, `disabled`,
     /// `disabledBorder`, `disabledColor`, `color`, `border`, `hoverBorder`,
     /// `radius`,
-    /// `paddingH`, `paddingV`, `bold`; любого может не быть. Пусто — обычная
-    /// кнопка скина. Выключенная кнопка с явными красками (`disabled`)
-    /// красится ими, а не гасится прозрачностью: у виджетов «Настроек»
-    /// выключенная синяя кнопка серая, а не бледно-синяя.
+    /// `paddingH`, `paddingV`, `bold`; any of them may be missing. Empty means
+    /// an ordinary skin button. A disabled button with explicit colours
+    /// (`disabled`) is painted with them rather than dimmed with opacity: in the
+    /// "Settings" widgets a disabled blue button is grey, not pale blue.
     ///
-    /// ЗАЧЕМ. У виджетной части такие кнопки красит своя таблица стилей, и
-    /// без этого свойства перенесённая вкладка теряла акцент: «Применить»
-    /// выходила серой наравне с «Отмена», хотя в оригинале она синяя, а
-    /// «✓ Применено» — зелёная. Своих красок кнопка по-прежнему не заводит:
-    /// всё приходит готовым из ядра.
+    /// WHY. In the widget part such buttons are painted by their own style
+    /// sheet, and without this property the ported tab lost its accent: "Apply"
+    /// came out grey just like "Cancel", although in the original it is blue,
+    /// and "✓ Applied" is green. The button still defines no colours of its
+    /// own: everything comes ready from the core.
     property var tone: null
 
-    /// Краски ВЫБРАННОГО состояния (для `checkable`-чипов): те же ключи.
-    /// Пусто — выбор рисуется обычным `highlighted`.
+    /// Colours of the CHECKED state (for `checkable` chips): the same keys.
+    /// Empty means the checked state is drawn with the ordinary `highlighted`.
     property var checkedTone: null
 
-    /// Что красит кнопку прямо сейчас: выбранный чип важнее обычного тона.
+    /// What paints the button right now: a checked chip wins over the ordinary tone.
     readonly property var activeTone: (control.checked && control.checkedTone)
                                       ? control.checkedTone : control.tone
 
-    // Кнопку Qt красит ролью `Button` — краска приходит готовой из ядра
-    // (`surface_button`). Токен `border` совпадал с ней только на
-    // стандартном скине: у «Светлого» роль `Button` #e3e6e8, а токен
-    // `border` #cdd3da, и кнопка выходила рамочного цвета.
+    // Qt paints a button with the `Button` role — the colour comes ready from
+    // the core (`surface_button`). The `border` token matched it only on the
+    // standard skin: on "Light" the `Button` role is #e3e6e8 while the `border`
+    // token is #cdd3da, and the button came out in the border colour.
     readonly property color colButton: control.pal ? control.pal.surface_button
                                                    : "#2a4055"
     readonly property color colButtonHover: control.pal ? control.pal.bg_card_hover
                                                         : "#263d52"
     readonly property color colAccent: control.pal ? control.pal.accent : "#66c0f4"
-    /// Обводка кнопки БЕЗ красок от ядра. Её рисует сам стиль Qt, а не роль
-    /// палитры: замер 05.09 на живой Qt (скин steam_dark) дал у кнопки
-    /// «Быстрых пар» «Сравнения» заливку (42,64,85) и рамку (85,102,119) —
-    /// накладку белого 0.20 поверх заливки. Краска приходит готовой из ядра
-    /// (`ui_base::CONTROL_OUTLINE_*`, поверхность `surface_button_outline`),
-    /// как и краска рукоятки сплиттера «Рабочих столов».
+    /// Outline of a button WITHOUT colours from the core. It is drawn by the Qt
+    /// style itself, not by a palette role: a measurement on 05.09 on live Qt
+    /// (steam_dark skin) gave the "Quick pairs" button of "Compare" a fill of
+    /// (42,64,85) and a border of (85,102,119) — a white 0.20 overlay on top of
+    /// the fill. The colour comes ready from the core
+    /// (`ui_base::CONTROL_OUTLINE_*`, surface `surface_button_outline`), just
+    /// like the colour of the splitter handle in "Desktops".
     readonly property color colOutline: control.pal
                                         && control.pal.surface_button_outline !== undefined
                                         ? control.pal.surface_button_outline
                                         : "#556677"
     readonly property color colTextBtn: control.pal ? control.pal.text_primary : "#ffffff"
-    /// Краска НЕАКТИВНОЙ надписи — из палитры ядра (группа `Disabled`
-    /// палитры Qt). Своей доли кнопка не заводит.
+    /// Colour of the DISABLED label — from the core palette (the `Disabled`
+    /// group of the Qt palette). The button defines no share of its own.
     readonly property color colTextOff: control.pal ? control.pal.text_disabled
                                                     : "#8cffffff"
 
-    // Надпись «особой» кнопки набрана плотнее: у виджетной части это
-    // `font-weight: 600` в её таблице стилей.
+    // The label of a "special" button is set bolder: in the widget part this
+    // is `font-weight: 600` in its style sheet.
     font.bold: control.activeTone !== null && control.activeTone.bold === true
 
     implicitHeight: 40
-    // ⚠️ Выключенная кнопка гасится НАДПИСЬЮ, а не прозрачностью всей
-    // кнопки. Прозрачность 0.45 стояла здесь, чтобы «не заводить своих
-    // цветов», но она подмешивала фон страницы и МЕНЯЛА КРАСКУ ЗАЛИВКИ, а
-    // виджетный оригинал заливку и рамку оставляет как есть и приглушает
-    // одну подпись (`QPushButton:disabled { color: … }` у блока
-    // «Установить» «Расширений», `#PageBtn:disabled` у «Оформления», и то
-    // же самое даёт Qt группой `Disabled` палитры без всяких таблиц
-    // стилей). Замер 05.09: 10 108 точек на «Расширениях». Краска
-    // приглушённой надписи приходит из ядра (`text_disabled`).
+    // Warning: a disabled button is dimmed through its LABEL, not through the
+    // opacity of the whole button. Opacity 0.45 used to be here in order "not
+    // to define colours of our own", but it mixed in the page background and
+    // CHANGED THE FILL COLOUR, whereas the widget original keeps the fill and
+    // border as they are and mutes only the label
+    // (`QPushButton:disabled { color: … }` in the "Install" block of
+    // "Extensions", `#PageBtn:disabled` in "Appearance", and Qt gives the same
+    // through the `Disabled` palette group without any style sheets).
+    // Measurement on 05.09: 10 108 pixels on "Extensions". The colour of the
+    // muted label comes from the core (`text_disabled`).
     padding: (control.activeTone && control.activeTone.paddingV !== undefined)
              ? control.activeTone.paddingV : 10
     leftPadding: (control.activeTone && control.activeTone.paddingH !== undefined)
@@ -97,8 +101,8 @@ Button {
     background: Rectangle {
         radius: (control.activeTone && control.activeTone.radius !== undefined)
                 ? control.activeTone.radius : 4
-        // Порядок разбора: краски от ядра важнее всего, дальше — выделенная
-        // кнопка (highlighted), дальше — обычная кнопка скина.
+        // Resolution order: colours from the core win over everything, then the
+        // highlighted button, then the ordinary skin button.
         color: control.activeTone
                ? (!control.enabled && control.activeTone.disabled !== undefined
                   ? control.activeTone.disabled
@@ -115,12 +119,12 @@ Button {
                             control.colAccent.b, control.down ? 0.55 : 0.35)
                   : (control.hovered || control.down ? control.colButtonHover
                                                      : control.colButton))
-        // Рамка фокуса видна всегда, когда кнопка сфокусирована: это и есть
-        // цепочка фокуса, а не украшение. Своя рамка чипа видна, только
-        // когда фокус не здесь, — иначе её не отличить от рамки фокуса.
-        // Под курсором у части кнопок оригинала меняется ОДНА рамка, а
-        // заливка стоит на месте (`#RefreshBtn:hover`, `#DetailsBtn:hover`
-        // в таблице стилей «Оформления»).
+        // The focus frame is always visible while the button has focus: it is the
+        // focus chain, not a decoration. A chip's own border is visible only when
+        // focus is elsewhere — otherwise it could not be told apart from the focus
+        // frame. Under the cursor, some of the original's buttons change ONLY the
+        // border while the fill stays put (`#RefreshBtn:hover`, `#DetailsBtn:hover`
+        // in the "Appearance" style sheet).
         border.color: control.activeFocus
                       ? control.colAccent
                       : (!control.enabled && control.activeTone
@@ -134,26 +138,29 @@ Button {
                                 && control.activeTone.border !== undefined)
                                ? control.activeTone.border
                                : control.colOutline)))
-        // Кнопка БЕЗ красок от ядра обведена всегда: так её рисует стиль Qt
-        // у оригинала. Кнопке с красками рамку даёт (или не даёт) ядро —
-        // там таблица стилей вкладки перекрывает стиль целиком.
+        // A button WITHOUT colours from the core always has an outline: that is
+        // how the Qt style draws it in the original. For a button with colours the
+        // core gives (or does not give) the border — there the tab's style sheet
+        // overrides the style entirely.
         border.width: control.activeFocus
                       ? 2
                       : (!control.activeTone
                          || control.activeTone.border !== undefined ? 1 : 0)
     }
 
-    // ⚠️ Надпись стоит на ОБЩЕЙ базовой линии, посчитанной по шрифту кнопки,
-    // а не по высоте строки. Значок в начале подписи («🗑», «🔄») рисуется
-    // запасным шрифтом, и у каждого такого шрифта свой подъём: строка
-    // «🗑 Удалить» выходила выше соседних «🔄 Переключиться» и «🔧 Проверить»
-    // на 3 точки (снимок владельца 08.10). Теперь базовая линия у всех кнопок
-    // ряда одна, какой бы значок ни стоял впереди.
+    // Warning: the label sits on a SHARED baseline computed from the button
+    // font, not from the line height. An icon at the start of the label ("🗑",
+    // "🔄") is drawn with a fallback font, and each such font has its own
+    // ascent: the "🗑 Delete" label came out 3 pixels higher than its
+    // neighbours "🔄 Switch" and "🔧 Check" (owner's screenshot,
+    // 08.10). Now all buttons in a row share one baseline, whatever icon is in
+    // front.
     //
-    // ⚠️ Подпись-значок (один символ: «🔍», «❮», «×») НЕ сокращается
-    // многоточием: на круглой кнопке поверх картинки места меньше ширины
-    // значка, и Qt вместо лупы рисовал пустоту — тёмный круг без значка в
-    // углу карусели. Такой значок рисуется по центру целиком.
+    // Warning: an icon label (a single character: "🔍", "❮", "×") is NOT
+    // elided: on a round button over a picture there is less room than the
+    // icon's width, and instead of the magnifier Qt drew nothing — a dark
+    // circle without an icon in the corner of the carousel. Such an icon is
+    // drawn centred and whole.
     contentItem: Item {
         implicitWidth: label.implicitWidth
         implicitHeight: labelMetrics.height

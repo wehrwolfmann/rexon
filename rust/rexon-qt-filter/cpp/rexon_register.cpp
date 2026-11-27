@@ -1,11 +1,11 @@
-// Императивная регистрация типа в QML — как в C++-оригинале
-// (filter_rule_model.cpp): окно вкладки обоев грузит librexon_qt_filter.so
-// через dlopen и зовёт rexon_register_filter_model() по dlsym до загрузки
-// QML (rexon-gui, we_env::register_filter_model). Регистрируем
-// сгенерированный cxx-qt QObject в "waywallen.ui".
+// Imperative registration of the type in QML — as in the C++ original
+// (filter_rule_model.cpp): the wallpaper tab window loads librexon_qt_filter.so
+// via dlopen and calls rexon_register_filter_model() through dlsym before loading
+// QML (rexon-gui, we_env::register_filter_model). We register the
+// generated cxx-qt QObject in "waywallen.ui".
 //
-// Вызывается через мост из Rust-обёртки (см. filter_rule_model.rs), поэтому
-// это обычная C++-функция, а не extern "C": экспортируемый символ отдаёт
+// Called through the bridge from the Rust wrapper (see filter_rule_model.rs), so
+// this is a plain C++ function, not extern "C": the exported symbol is provided by
 // Rust (#[no_mangle] pub extern "C" rexon_register_filter_model).
 #include "rexon_register.h"
 

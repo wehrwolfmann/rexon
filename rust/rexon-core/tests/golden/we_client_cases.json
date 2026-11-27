@@ -441,6 +441,14 @@
   [
    "library_edit",
    93
+  ],
+  [
+   "library_relocate",
+   94
+  ],
+  [
+   "browser_login_cancel",
+   98
   ]
  ],
  "requests": [

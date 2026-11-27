@@ -1,48 +1,48 @@
-//! Стенд «настройка × окружение»: применить настройку Rexon тем же путём, что
-//! кнопка, — и больше ничего. Читать результат нужно РОДНЫМ читателем
-//! окружения (gsettings, kreadconfig6, xfconf-query, файлы lxqt/cosmic/hypr…)
-//! снаружи, из скрипта стенда.
+//! The "setting × environment" bench: apply a Rexon setting by the same path as
+//! the button — and nothing else. The result must be read with the environment's NATIVE
+//! reader (gsettings, kreadconfig6, xfconf-query, lxqt/cosmic/hypr files…)
+//! from outside, from the bench script.
 //!
-//! ⛔ Запускать ТОЛЬКО с приватными HOME / XDG_CONFIG_HOME / XDG_RUNTIME_DIR и
-//! своей шиной (`dbus-run-session`), без WAYLAND_DISPLAY, SWAYSOCK,
-//! HYPRLAND_INSTANCE_SIGNATURE и NIRI_SOCKET: стенд пишет в настоящие места
-//! настроек того HOME, под которым запущен.
+//! ⛔ Run ONLY with private HOME / XDG_CONFIG_HOME / XDG_RUNTIME_DIR and
+//! its own bus (`dbus-run-session`), without WAYLAND_DISPLAY, SWAYSOCK,
+//! HYPRLAND_INSTANCE_SIGNATURE and NIRI_SOCKET: the bench writes to the real settings
+//! locations of the HOME it runs under.
 //!
-//! Окружение определяется так же, как в окне: из `XDG_CURRENT_DESKTOP` /
+//! The environment is detected the same way as in the window: from `XDG_CURRENT_DESKTOP` /
 //! `DESKTOP_SESSION` / `WAYLAND_DISPLAY` (`system::detect_current_de`).
 //!
-//! Что зовётся:
-//! * «Оформление» — `appearance_installer::LiveInstaller::apply` (тот же
-//!   исполнитель, что у кнопки «Применить») и `apply_cursor_size`;
-//! * «Настройки» (шрифты, звуки, терминал) — планы ядра (`qt_settings::
-//!   font_plan`, `sound_plan`, `defaults::set_terminal_plan`), исполненные
-//!   так же, как это делает `rexon-gui/src/settings_actions.rs`
-//!   (`apply_font`, `apply_sound_setting`, `run_terminal_plan`) — те функции
-//!   живут в крейте окна и отсюда не видны, поэтому повторены здесь дословно
-//!   по смыслу: сначала спутники, потом родное хранилище, проверка чтением.
+//! What is called:
+//! * «Appearance» — `appearance_installer::LiveInstaller::apply` (the same
+//!   executor as the «Apply» button) and `apply_cursor_size`;
+//! * «Settings» (fonts, sounds, terminal) — core plans (`qt_settings::
+//!   font_plan`, `sound_plan`, `defaults::set_terminal_plan`), executed
+//!   the same way `rexon-gui/src/settings_actions.rs` does it
+//!   (`apply_font`, `apply_sound_setting`, `run_terminal_plan`) — those functions
+//!   live in the window crate and are not visible from here, so they are repeated here
+//!   faithfully in meaning: first the companions, then the native store, a check by reading back.
 //!
-//! Запуск: `cargo run -p rexon-core --example de_matrix_stand -- <действие> <значение>`
-//!   de                         — какое окружение опознано
-//!   categories                 — какие разделы «Оформления» видны здесь
-//!   gtk|icons|cursor|kvantum|widgetstyle|colors|sounds|wallpaper <имя>
+//! Run: `cargo run -p rexon-core --example de_matrix_stand -- <action> <value>`
+//!   de                         — which environment was recognized
+//!   categories                 — which «Appearance» sections are visible here
+//!   gtk|icons|cursor|kvantum|widgetstyle|colors|sounds|wallpaper <name>
 //!   cursor-size <N>
-//!   font-system|font-mono|font-small|font-toolbar|font-menu|font-title "Семейство,кегль"
-//!   font-render on|off <от-до|none> <субпиксели> <хинтинг>   (сглаживание)
-//!   font-render-state          — что вкладка покажет: родное + fonts.conf
-//!   font-dpi <N|off>           — принудительное DPI шрифтов
-//!   font-list | font-install <файл> | font-remove <семейство> — «Управление шрифтами»
-//!   sound-theme <имя> | event-sounds true|false     (вкладка «Настройки»)
+//!   font-system|font-mono|font-small|font-toolbar|font-menu|font-title "Family,size"
+//!   font-render on|off <from-to|none> <subpixels> <hinting>   (antialiasing)
+//!   font-render-state          — what the tab will show: native + fonts.conf
+//!   font-dpi <N|off>           — forced font DPI
+//!   font-list | font-install <file> | font-remove <family> — «Font management»
+//!   sound-theme <name> | event-sounds true|false     (the «Settings» tab)
 //!   terminal <id.desktop>
-//!   dde-look-state             — раздел «Окна Deepin» (только объяснение)
+//!   dde-look-state             — the «Deepin windows» section (explanation only)
 //!   file-manager <id.desktop>
-//!   section <раздел> <имя>     — кнопка раздела окружения (xfwm4, marco,
+//!   section <section> <name>   — a button of an environment section (xfwm4, marco,
 //!                                gnomeshell, cinnamontheme, lxqttheme, tabbox,
 //!                                kwinscripts, gnomeext, cinnamonapplets, nemoactions,
-//!                                conky…): «Применить»/«Включить»/«Выключить»/«Запустить»
-//!   section-state <раздел>     — что включено сейчас (`de_apply::active_names`)
-//!   conky-autostart <виджет> on|off — переключатель «Запускать при входе»
-//!   system-apply sddm|plymouth <тема> <помощник> — «Применить» системной темы
-//!                                с ПОДСТАВНЫМ pkexec первым в PATH (пароля нет)
+//!                                conky…): «Apply»/«Enable»/«Disable»/«Start»
+//!   section-state <section>    — what is enabled now (`de_apply::active_names`)
+//!   conky-autostart <widget> on|off — the «Start at login» switch
+//!   system-apply sddm|plymouth <theme> <helper> — «Apply» of a system theme
+//!                                with a FAKE pkexec first in PATH (no password)
 
 use rexon_core::{appearance_installer, categories, defaults, gtk_sanitizer, qt_settings as qs, utils};
 
@@ -73,7 +73,7 @@ fn data_home() -> String {
     if xdg.is_empty() { format!("{}/.local/share", home()) } else { xdg }
 }
 
-// ── «Настройки» → управление шрифтами: как settings_actions ───────────────
+// ── «Settings» → font management: as settings_actions ───────────────
 
 fn font_library() -> Vec<qs::InstalledFont> {
     qs::parse_fc_list_fonts(&run(&qs::fc_list_fonts_argv(), true).1, &qs::font_user_dirs(&home(), &data_home()))
@@ -136,7 +136,7 @@ fn write_file(path: &str, text: &str) -> bool {
     utils::atomic_write(path, text).is_ok()
 }
 
-// ── «Настройки» → шрифты: как settings_actions::apply_font ────────────────
+// ── «Settings» → fonts: as settings_actions::apply_font ────────────────
 
 fn font_file_path(file: &qs::FontFile) -> String {
     format!("{}/{}", config_home().trim_end_matches('/'), file.rel_path())
@@ -166,7 +166,7 @@ fn write_font_store(store: &qs::FontStore, family: &str, size: i32, face: qs::Fo
     }
 }
 
-/// Как `settings_actions::ConfigFiles`.
+/// As `settings_actions::ConfigFiles`.
 struct ConfigFiles;
 
 impl qs::FontFileIo for ConfigFiles {
@@ -222,7 +222,7 @@ fn apply_font(de: &str, target: &str, family: &str, size: i32, face: qs::FontFac
     ok
 }
 
-// ── «Настройки» → сглаживание: как settings_actions::apply_rendering ───────
+// ── «Settings» → antialiasing: as settings_actions::apply_rendering ───────
 
 fn fontconfig_path() -> String {
     format!("{}/{}", config_home().trim_end_matches('/'), qs::FONTCONFIG_REL_PATH)
@@ -267,13 +267,13 @@ fn apply_rendering(de: &str, r: &qs::FontRendering) -> qs::RenderingOutcome {
     }
 }
 
-/// Как `settings_actions::legacy_render_available`.
+/// As `settings_actions::legacy_render_available`.
 fn legacy_render_available() -> bool {
     !tool("gsettings").is_empty() && qs::legacy_render_available(&run(&qs::legacy_render_probe_argv(), true).1)
 }
 
-/// Как `settings_actions::apply_xresources_dpi` (живая база X не трогается:
-/// стенд запускается без DISPLAY).
+/// As `settings_actions::apply_xresources_dpi` (the live X database is not touched:
+/// the bench runs without DISPLAY).
 fn apply_xresources_dpi(dpi: Option<i32>) -> bool {
     let path = format!("{}/{}", home().trim_end_matches('/'), qs::XRESOURCES_REL_PATH);
     let existing = std::fs::read_to_string(&path).ok();
@@ -312,7 +312,7 @@ fn read_rendering(de: &str) -> qs::FontRendering {
     qs::merge_rendering(&native, &fc)
 }
 
-// ── «Настройки» → звуки: как settings_actions::apply_sound_setting ─────────
+// ── «Settings» → sounds: as settings_actions::apply_sound_setting ─────────
 
 fn apply_sound(de: &str, setting: qs::SoundSetting, value: &str) -> bool {
     let plan = qs::sound_plan(
@@ -340,7 +340,7 @@ fn apply_sound(de: &str, setting: qs::SoundSetting, value: &str) -> bool {
     }
 }
 
-// ── «Настройки» → терминал: как settings_actions::run_terminal_plan ────────
+// ── «Settings» → terminal: as settings_actions::run_terminal_plan ────────
 
 fn apply_terminal(desktop_id: &str) -> bool {
     run_steps(&defaults::set_terminal_plan(desktop_id, &env("XDG_CURRENT_DESKTOP"), &home()));
@@ -377,7 +377,7 @@ fn run_steps(plan: &[defaults::TermStep]) {
     }
 }
 
-// ── «Настройки» → файловый менеджер: как settings_actions::set_file_manager_default
+// ── «Settings» → file manager: as settings_actions::set_file_manager_default
 
 fn apply_file_manager(desktop_id: &str) -> bool {
     let ok = run(&rexon_core::appdefaults::xdg_mime_default_cmd(desktop_id), false).0;
@@ -391,7 +391,7 @@ fn apply_file_manager(desktop_id: &str) -> bool {
     ok
 }
 
-// ── «Оформление»: LiveInstaller, как у кнопки ─────────────────────────────
+// ── «Appearance»: LiveInstaller, as for the button ─────────────────────────────
 
 fn category_id(action: &str) -> Option<i64> {
     Some(match action {
@@ -468,7 +468,7 @@ fn main() {
             (matches!(outcome, qs::FontInstallOutcome::Installed(_)), qs::font_install_status(&outcome))
         }
         "font-remove" => {
-            // Как settings_actions::remove_font, без окна вопроса.
+            // As settings_actions::remove_font, without the question window.
             let fonts = font_library();
             let dirs = qs::font_user_dirs(&home(), &data_home());
             let mut files: Vec<String> = fonts

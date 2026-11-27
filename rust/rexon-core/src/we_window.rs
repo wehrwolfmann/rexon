@@ -1,65 +1,65 @@
-//! Обвязка вкладки «Wallpaper Engine» — порт `rexon/qt_wallpaper_engine/window.py`.
+//! Scaffolding of the «Wallpaper Engine» tab — port of `rexon/qt_wallpaper_engine/window.py`.
 //!
-//! Само содержимое вкладки — вендоренный QML waywallen (MIT, (c) hypengw,
-//! атрибуция в NOTICE), а его данные уже ведут [`crate::we_client`],
-//! [`crate::we_query`] и соседи. Модуль-окно оставался ОБВЯЗКОЙ вокруг
-//! переехавшего моста: Navigation Rail и его пункты, состояния
-//! «подключение…»/«нет демона»/«QML-модули не собраны», скрытая страница
-//! «Разработчик» и три сетевых воркера (проверка релизов, установка
-//! AppImage, установка OWE-плагина).
+//! The tab content itself is waywallen's vendored QML (MIT, (c) hypengw,
+//! attribution in NOTICE), and its data is already handled by [`crate::we_client`],
+//! [`crate::we_query`] and neighbours. The window module remained the SCAFFOLDING around
+//! the moved bridge: the Navigation Rail and its items, the states
+//! «connecting…»/«no daemon»/«QML modules not built», the hidden
+//! «Developer» page and three network workers (release check, AppImage
+//! install, OWE plugin install).
 //!
-//! Здесь живёт всё, что в этой обвязке РЕШАЕТСЯ и НАЗЫВАЕТСЯ: состав рейла и
-//! соответствие «пункт рейла → страница стека», разбор `REXON_DEV`, тексты и
-//! цвета статусов dev-страницы, пошаговые вердикты воркеров, вердикт
-//! health-ответа демона и таблицы стилей. Qt-стороне остаётся строить
-//! виджеты по готовому плану — ровно та же граница, что у
-//! [`crate::qt_settings`] и [`crate::onboarding`].
+//! Everything that is DECIDED and NAMED in this scaffolding lives here: the rail
+//! composition and the «rail item → stack page» mapping, parsing `REXON_DEV`, texts and
+//! colours of the dev page statuses, step-by-step worker verdicts, the verdict on the
+//! daemon's health response and the style sheets. The Qt side is left to build
+//! widgets from a ready plan — exactly the same boundary as in
+//! [`crate::qt_settings`] and [`crate::onboarding`].
 //!
-//! Сеть, файловая система и WebSocket сюда не заходят: пути и разборы уже
-//! есть в [`crate::engine_update`], сверка схемы — в [`crate::we_parity`].
+//! Network, file system and WebSocket do not come in here: paths and parsing already
+//! exist in [`crate::engine_update`], the schema check — in [`crate::we_parity`].
 //!
-//! ⚠️ Починки оригинала (правило #16 — баги при порте чиним, не консервируем),
-//! каждая помечена `Починка:` по месту:
-//!   1. воркер установки AppImage удалял скачанный ~200 МиБ временный файл
-//!      только при отмене и провале валидации. Провалилась САМА установка —
-//!      файл оставался: `install_appimage` зовёт `os.remove(new_path)` лишь
-//!      на успешной ветке, а воркер за собой не убирал. На машине с `/tmp`
-//!      в ОЗУ это утечка оперативной памяти до перезагрузки. Теперь вердикт
-//!      каждого шага несёт флаг `remove_tmp`, и провал установки его ставит;
-//!   2. таймаут IPC-установки OWE-плагина (60 с) взводился одноразовым
-//!      таймером без опознания попытки. Вторая установка, начатая в течение
-//!      минуты после ответа демона на первую, получала СТАРЫЙ таймер: он
-//!      удалял её временный zip и рапортовал ложный «демон не ответил».
-//!      Теперь у попытки есть номер, и вердикт таймаута его сверяет;
-//!   3. подпись версии движка называлась двумя разными именами: до первой
-//!      проверки «Версия движка: —», после — «Версия waywallen: …». Одно
-//!      поле, две подписи; теперь имя одно.
+//! ⚠️ Fixes of the original (rule #16 — bugs are fixed during the port, not preserved),
+//! each one is marked `Fix N:` in place:
+//!   1. the AppImage install worker removed the downloaded ~200 MiB temporary file
+//!      only on cancel and on failed validation. If the install ITSELF failed —
+//!      the file stayed: `install_appimage` calls `os.remove(new_path)` only
+//!      on the success branch, and the worker did not clean up after itself. On a machine with `/tmp`
+//!      in RAM this is a RAM leak until reboot. Now the verdict
+//!      of each step carries the `remove_tmp` flag, and an install failure sets it;
+//!   2. the OWE plugin IPC install timeout (60 s) was armed by a one-shot
+//!      timer without identifying the attempt. A second install started within
+//!      a minute after the daemon answered the first one got the OLD timer: it
+//!      deleted its temporary zip and reported a false «the daemon did not answer».
+//!      Now an attempt has a number, and the timeout verdict checks it;
+//!   3. the engine version label had two different names: before the first
+//!      check «Engine version: —», after it — «waywallen version: …». One
+//!      field, two labels; now there is one name.
 //!
-//! Сверка — `rust/rexon-core/tests/we_window_parity.rs`.
+//! Parity test — `rust/rexon-core/tests/we_window_parity.rs`.
 
 // ============================================================================
-// Скрытый режим разработчика
+// Hidden developer mode
 // ============================================================================
 
-/// Переменная окружения разового включения/выключения dev-режима.
+/// Environment variable that turns dev mode on/off for one run.
 pub const DEV_ENV_VAR: &str = "REXON_DEV";
 
-/// Маркер-файл постоянного dev-режима (раскрывается `expand_user`, который
-/// уже уважает `XDG_CONFIG_HOME` — второй развилки для XDG здесь не нужно).
+/// Marker file of the permanent dev mode (expanded by `expand_user`, which
+/// already respects `XDG_CONFIG_HOME` — no second XDG branch is needed here).
 pub const DEV_MARKER_PATH: &str = "~/.config/rexon/dev_mode";
 
-/// Во что разбирается значение `REXON_DEV`.
+/// What a `REXON_DEV` value parses into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DevEnv {
-    /// `1`/`true`/`yes` — включить, маркер не спрашивать.
+    /// `1`/`true`/`yes` — turn on, do not ask the marker.
     ForceOn,
-    /// `0`/`false`/`no` — выключить даже при маркере («как увидит покупатель»).
+    /// `0`/`false`/`no` — turn off even with the marker («as the buyer will see it»).
     ForceOff,
-    /// Пусто или что-то другое — решает маркер-файл.
+    /// Empty or anything else — the marker file decides.
     Unset,
 }
 
-/// Разбор `REXON_DEV` (регистр и окружающие пробелы не важны).
+/// Parse `REXON_DEV` (case and surrounding spaces do not matter).
 pub fn parse_dev_env(raw: &str) -> DevEnv {
     match raw.trim().to_lowercase().as_str() {
         "0" | "false" | "no" => DevEnv::ForceOff,
@@ -68,7 +68,7 @@ pub fn parse_dev_env(raw: &str) -> DevEnv {
     }
 }
 
-/// Итог `is_dev_mode()`: env старше маркера в обе стороны.
+/// Result of `is_dev_mode()`: env outranks the marker in both directions.
 pub fn dev_mode(raw_env: &str, marker_exists: bool) -> bool {
     match parse_dev_env(raw_env) {
         DevEnv::ForceOff => false,
@@ -81,117 +81,117 @@ use crate::i18n::n_;
 use std::collections::BTreeMap;
 
 // ============================================================================
-// Navigation Rail и страницы
+// Navigation Rail and pages
 // ============================================================================
 
-/// Ширина свёрнутого Navigation Rail, пикс.
+/// Width of the collapsed Navigation Rail, px.
 pub const RAIL_WIDTH: i32 = 96;
 
-/// Буква-логотип над пунктами рейла.
+/// Logo letter above the rail items.
 pub const RAIL_LOGO: &str = "W";
 
-/// Минимальная высота кнопки пункта рейла, пикс.
+/// Minimum height of a rail item button, px.
 pub const RAIL_BUTTON_MIN_HEIGHT: i32 = 56;
 
-/// Пометка на кнопке «Разраб.» при расхождении паритета.
+/// Mark on the «Dev» button when parity diverges.
 pub const RAIL_DRIFT_MARK: &str = " ⚠️";
 
-/// Скругление кнопки пункта рейла, пикс. — ПОЛОВИНА её высоты.
+/// Corner radius of a rail item button, px — HALF of its height.
 ///
-/// ⭐ Своего числа здесь больше нет. У waywallen скругления-константы не
-/// существует вовсе: подсветку выбранного пункта его рейл рисует
-/// «пилюлей» — `radius: height / 2` (`qml/navigation/RailItem.qml`,
-/// строки 148 и 156 модуля `Qcm.Material`, редакция закреплена в
+/// ⭐ There is no number of our own here anymore. waywallen has no radius
+/// constant at all: its rail draws the highlight of the selected item as a
+/// «pill» — `radius: height / 2` (`qml/navigation/RailItem.qml`,
+/// lines 148 and 156 of the `Qcm.Material` module, the revision is pinned in
 /// `rexon/qt_wallpaper_engine/qml_ui/waywallen/ui/QML_MATERIAL_PIN`).
-/// Прежние 12 пикс. были НАШИ и ни на что у вендора не опирались: они
-/// приехали из таблицы стилей нашей же виджетной реплики. Здесь записано
-/// то же ПРАВИЛО, а не подогнанное под него число, — поменяется высота
-/// пункта, поедет и скругление.
+/// The former 12 px were OURS and did not rest on anything at the vendor: they
+/// came from the style sheet of our own widget replica. What is written here is
+/// the same RULE, not a number fitted to it — if the item height changes,
+/// the radius follows.
 ///
-/// ⚠️ Именованной константа остаётся не ради красоты: у вкладки две
-/// версии, и QML-версия рисует кнопки сама, а не таблицей стилей Qt. Пока
-/// число жило литералом внутри `rail_qss`, спросить его QML было неоткуда
-/// — и рейл на QML вышел с чужим скруглением. Вычислять `height / 2` на
-/// месте тоже нельзя: таблица стилей Qt считать не умеет, ей нужны пиксели.
+/// ⚠️ The constant stays named not for looks: the tab has two
+/// versions, and the QML version draws the buttons itself, not via a Qt style sheet. While
+/// the number lived as a literal inside `rail_qss`, QML had nowhere to ask for it
+/// — and the QML rail came out with a foreign radius. Computing `height / 2` in
+/// place is not possible either: a Qt style sheet cannot do arithmetic, it needs pixels.
 pub const RAIL_BUTTON_RADIUS: i32 = RAIL_BUTTON_MIN_HEIGHT / 2;
 
-/// Размер надписи на кнопке пункта рейла, пикс.
+/// Font size of the label on a rail item button, px.
 ///
-/// ⭐ Число ВЕНДОРНОЕ, а не наше: свёрнутый пункт рейла waywallen подписан
-/// начертанием `MD.Token.typescale.label_medium` (`RailItem.qml`, строка
-/// 111), а `label_medium` в `Qcm.Material` — ровно 12 пикс.
-/// (`include/qml_material/token/type_scale.hpp`, строка 106; та же
-/// закреплённая редакция). Совпало с кеглем нашей виджетной реплики —
-/// значит менять нечего, но источником считается вендор.
+/// ⭐ The number is the VENDOR's, not ours: waywallen's collapsed rail item is labelled
+/// with the `MD.Token.typescale.label_medium` face (`RailItem.qml`, line
+/// 111), and `label_medium` in `Qcm.Material` is exactly 12 px
+/// (`include/qml_material/token/type_scale.hpp`, line 106; the same
+/// pinned revision). It matched the font size of our widget replica —
+/// so nothing to change, but the vendor counts as the source.
 ///
-/// ⚠️ Снять константу нельзя по тому же доводу, что у скругления: обе
-/// версии вкладки рисуют подпись сами, спросить кегль у `Qcm.Material` им
-/// неоткуда. Модуль `Qcm.Material` в `WallpaperEnginePage.qml` не
-/// импортируется НАМЕРЕННО — иначе вкладка не откроется там, где
-/// QML-плагины не собраны (довод записан в шапке того файла).
+/// ⚠️ The constant cannot be removed for the same reason as the radius: both
+/// versions of the tab draw the label themselves, and they have nowhere to ask
+/// `Qcm.Material` for the font size. The `Qcm.Material` module is NOT imported in
+/// `WallpaperEnginePage.qml` ON PURPOSE — otherwise the tab would not open where
+/// the QML plugins are not built (the reasoning is in that file's header).
 pub const RAIL_BUTTON_FONT_SIZE: i32 = 12;
 
-/// Один пункт рейла и, для QML-страниц, файл её QML.
+/// One rail item and, for QML pages, its QML file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RailItem {
-    /// Идентификатор пункта (`wallpapers_qml`, `dev`, …).
+    /// Item id (`wallpapers_qml`, `dev`, …).
     pub id: String,
-    /// Эмодзи-иконка.
+    /// Emoji icon.
     pub icon: String,
-    /// Подпись под иконкой — уже на языке интерфейса (конструкторы
-    /// получают английский msgid и переводят его сами).
+    /// Label under the icon — already in the interface language (the constructors
+    /// receive the English msgid and translate it themselves).
     pub label: String,
-    /// Имя QML-файла страницы; пусто для не-QML пунктов.
+    /// Page QML file name; empty for non-QML items.
     pub qml: String,
-    /// Страница ВЕНДОРНАЯ (файл внутри `qml_ui/` waywallen)?
+    /// Is the page a VENDOR one (a file inside waywallen's `qml_ui/`)?
     ///
-    /// ⚠️ Признак завёлся не для порядка. Пока «есть имя QML» значило
-    /// «страница вендорная», у нашей собственной QML-страницы
-    /// («Разработчик») не было способа получить имя файла: любое непустое
-    /// имя тут же уезжало в склейку вендорного пути
-    /// (`qml_modules::vendor_page_path`) — и страница искалась бы в чужом
-    /// каталоге. Теперь вопросов два: «есть ли у пункта QML» и «чей он».
+    /// ⚠️ The flag was not added for tidiness. While «has a QML name» meant
+    /// «the page is a vendor one», our own QML page
+    /// («Developer») had no way to get a file name: any non-empty
+    /// name immediately went into building the vendor path
+    /// (`qml_modules::vendor_page_path`) — and the page would have been looked up in a foreign
+    /// directory. Now there are two questions: «does the item have QML» and «whose is it».
     pub vendor: bool,
-    /// Показывать ли вендорную ШАПКУ страницы (`MD.AppBar` с её заголовком
-    /// и кнопками действий).
+    /// Whether to show the page's vendor HEADER (`MD.AppBar` with its title
+    /// and action buttons).
     ///
-    /// ⭐ Признак не про красоту, а про то, доступна ли страница вообще.
-    /// Шапку `MD.Page` рисует по `MD.MProp.page.showHeader` — свойству
-    /// ХОЗЯИНА страницы, а не самой страницы
-    /// (`Qcm.Material/qml/control/Page.qml`, строка 25). У `PageContext`
-    /// это `false` по умолчанию (`src/control/page_context.cpp`, строка
-    /// 71), и глобальный контекст, который достаётся странице без хозяина,
-    /// умолчания не меняет.
+    /// ⭐ The flag is not about looks but about whether the page is usable at all.
+    /// `MD.Page` draws the header by `MD.MProp.page.showHeader` — a property of the
+    /// page's OWNER, not of the page itself
+    /// (`Qcm.Material/qml/control/Page.qml`, line 25). For `PageContext`
+    /// it is `false` by default (`src/control/page_context.cpp`, line
+    /// 71), and the global context a page without an owner gets does not
+    /// change the default.
     ///
-    /// У waywallen хозяев ДВА, и решают они по-разному:
-    ///   * окно с рейлом (`ui/qml/Window.qml`, `MD.PageContext` контейнера
-    ///     страниц) — `showHeader: false`;
-    ///   * всплывающее окно страницы (`component/PagePopup.qml`,
+    /// waywallen has TWO owners, and they decide differently:
+    ///   * the window with the rail (`ui/qml/Window.qml`, the `MD.PageContext` of the page
+    ///     container) — `showHeader: false`;
+    ///   * the page popup window (`component/PagePopup.qml`,
     ///     `MD.PageContext`) — `showHeader: true`.
-    /// Страницы рейла либо шапки не имеют вовсе, либо включают её СЕБЕ
-    /// САМИ (`SettingsPage.qml` — `showHeader: true`, `StatusPage.qml` и
-    /// `DisplaysPage.qml` — только на узком окне). Страницы всплывающего
-    /// окна на своё `showHeader` не полагаются: за них его ставит
-    /// `PagePopup`.
+    /// Rail pages either have no header at all or turn it on FOR THEMSELVES
+    /// (`SettingsPage.qml` — `showHeader: true`, `StatusPage.qml` and
+    /// `DisplaysPage.qml` — only in a narrow window). Popup window pages
+    /// do not rely on their own `showHeader`: `PagePopup` sets it
+    /// for them.
     ///
-    /// ⚠️ Наш рейл держит и те и другие, поэтому решение о шапке принимает
-    /// хозяин — `qml_ui/PageHost.qml`, — а знание о том, какая страница
-    /// чья, лежит ЗДЕСЬ, одно на обе версии вкладки. Без него вендорная
-    /// страница из всплывающего окна открывается в рейле БЕЗ шапки, то
-    /// есть без своего заголовка и без ВСЕХ кнопок действий: у
-    /// `PluginManagePage.qml` это «Неактивные плагины», «Проверить
-    /// обновления» и «Установить из .zip» — вся установка и всё обновление
-    /// плагинов разом. Список плагинов при этом рисуется, и снимок
-    /// выглядит рабочим (поймано живым снимком 08.09.2026).
+    /// ⚠️ Our rail holds both kinds, so the header decision is made by the
+    /// owner — `qml_ui/PageHost.qml` — while the knowledge of which page is
+    /// whose lives HERE, one for both versions of the tab. Without it a vendor
+    /// page from a popup window opens in the rail WITHOUT a header, i.e.
+    /// without its title and without ALL action buttons: for
+    /// `PluginManagePage.qml` those are «Inactive plugins», «Check for
+    /// updates» and «Install from .zip» — all plugin installing and updating
+    /// at once. The plugin list is still drawn, and the screenshot
+    /// looks working (caught by a live screenshot on 08.09.2026).
     ///
-    /// Правило, по которому признак ставится, сторожит
-    /// `tests/we_rail_vendor_parity.rs`: он читает саму вендорную страницу.
+    /// The rule by which the flag is set is guarded by
+    /// `tests/we_rail_vendor_parity.rs`: it reads the vendor page itself.
     pub header: bool,
 }
 
 impl RailItem {
-    /// Пункт с ВЕНДОРНОЙ страницей waywallen, которая шапку себе рисует
-    /// сама либо не имеет её вовсе — как в окне самого waywallen.
+    /// An item with a waywallen VENDOR page that draws its header
+    /// itself or has none at all — as in waywallen's own window.
     fn vendor(id: &str, icon: &str, label: &str, qml: &str) -> Self {
         Self {
             id: id.to_string(),
@@ -203,8 +203,8 @@ impl RailItem {
         }
     }
 
-    /// Пункт с ВЕНДОРНОЙ страницей, которая у waywallen живёт во
-    /// всплывающем окне и потому ждёт шапку ОТ ХОЗЯИНА (см. `header`).
+    /// An item with a VENDOR page that lives in a popup window at waywallen
+    /// and therefore expects the header FROM THE OWNER (see `header`).
     fn vendor_headed(id: &str, icon: &str, label: &str, qml: &str) -> Self {
         Self {
             header: true,
@@ -212,8 +212,8 @@ impl RailItem {
         }
     }
 
-    /// Пункт с НАШЕЙ страницей (QML-модуль `org.rexon.gui`) либо вовсе без
-    /// страницы — тогда имя файла пустое.
+    /// An item with OUR page (the `org.rexon.gui` QML module) or with no
+    /// page at all — then the file name is empty.
     fn own(id: &str, icon: &str, label: &str, qml: &str) -> Self {
         Self {
             id: id.to_string(),
@@ -226,9 +226,9 @@ impl RailItem {
     }
 }
 
-/// Спеки QML-страниц вкладки (свитч миграции 2026-07-12). Все страницы
-/// показывает ОДИН общий `SharedQmlHost`: несколько `QQmlEngine` с модулем
-/// `waywallen.control` дедлочат `QQmlThread`.
+/// Specs of the tab's QML pages (migration switch 2026-07-12). All pages
+/// are shown by ONE shared `SharedQmlHost`: several `QQmlEngine`s with the
+/// `waywallen.control` module deadlock `QQmlThread`.
 pub fn qml_page_specs() -> Vec<RailItem> {
     vec![
         RailItem {
@@ -238,41 +238,41 @@ pub fn qml_page_specs() -> Vec<RailItem> {
         RailItem::vendor("discover_qml", "🔍", n_("Discover"), "DiscoverPage.qml"),
         RailItem::vendor("displays_qml", "🖥️", n_("Displays"), "DisplaysPage.qml"),
         RailItem::vendor("status_qml", "📈", n_("Status"), "StatusPage.qml"),
-        // ⚠️ «Плагины» вписаны СЮДА, между «Состоянием» и «Настройками», не
-        // по вкусу: у waywallen это нижняя тройка рейла в порядке «Плагины,
-        // Настройки, О программе» (`ui/qml/Window.qml`, подвал рейла).
+        // ⚠️ «Plugins» is placed HERE, between «Status» and «Settings», not
+        // by taste: at waywallen this is the bottom trio of the rail in the order «Plugins,
+        // Settings, About» (`ui/qml/Window.qml`, rail footer).
         //
-        // У вендора все три — не страницы рейла, а кнопки, открывающие
-        // всплывающее окно (`presentPopup('waywallen.ui/PagePopup', {source:
-        // …})`). Две из трёх у нас давно живут пунктами-страницами: свой
-        // рейл — это список страниц, и «Настройки» с «О программе» уже
-        // приняты в таком виде. Третья просто пропала при переносе, и
-        // покупатель не мог добраться до управления плагинами вовсе —
-        // установить, обновить, удалить рендерер.
+        // At the vendor all three are not rail pages but buttons that open a
+        // popup window (`presentPopup('waywallen.ui/PagePopup', {source:
+        // …})`). Two of the three have long lived as page items here: our
+        // rail is a list of pages, and «Settings» and «About» were already
+        // accepted in that form. The third simply got lost in the port, and
+        // the buyer could not reach plugin management at all —
+        // to install, update or delete a renderer.
         //
-        // Страница — та же самая вендорная (`page/PluginManagePage.qml`,
-        // `MD.Page`, как «Настройки» и «О программе»), и всё, на чём она
-        // держится, у нас уже есть: шесть типов запросов
+        // The page is the very same vendor one (`page/PluginManagePage.qml`,
+        // `MD.Page`, like «Settings» and «About»), and everything it
+        // rests on we already have: the six request types
         // (`PluginListQuery`, `PluginInstallQuery`, `PluginInspectQuery`,
         // `PluginDeleteQuery`, `PluginUpdateCheckQuery`,
-        // `PluginUpdateInstallQuery`) печатает крейт `rexon-gui`
-        // (`src/plugin_queries.rs`), а её собственное всплывающее окно
-        // «неактивные плагины» зовёт `Window.window.presentPopup` — метод,
-        // который ставит на окно наш шелл `qml_ui/PageHost.qml`.
+        // `PluginUpdateInstallQuery`) are printed by the `rexon-gui` crate
+        // (`src/plugin_queries.rs`), and its own popup window
+        // «inactive plugins» calls `Window.window.presentPopup` — a method
+        // our shell `qml_ui/PageHost.qml` puts on the window.
         //
-        // ⚠️ Пункт заведён `vendor_headed`, а не `vendor`: у waywallen эта
-        // страница живёт во всплывающем окне, и её заголовок с тремя
-        // кнопками («Неактивные плагины», «Проверить обновления»,
-        // «Установить из .zip») лежит в ШАПКЕ, которую включает хозяин.
-        // Заведённая обычной вендорной, она открывалась БЕЗ шапки: список
-        // плагинов виден, а поставить и обновить нечем (см. `header`).
+        // ⚠️ The item is created as `vendor_headed`, not `vendor`: at waywallen this
+        // page lives in a popup window, and its title with three
+        // buttons («Inactive plugins», «Check for updates»,
+        // «Install from .zip») lies in the HEADER the owner turns on.
+        // Created as a regular vendor page, it opened WITHOUT a header: the plugin list
+        // is visible, but there is nothing to install or update with (see `header`).
         RailItem::vendor_headed("plugins_qml", "🧩", n_("Plugins"), "PluginManagePage.qml"),
         RailItem::vendor("settings_qml", "⚙️", n_("Settings"), "SettingsPage.qml"),
         RailItem::vendor("about_qml", "ℹ️", n_("About"), "AboutPage.qml"),
     ]
 }
 
-/// Пункт-заглушка, когда QML-плагины не собраны.
+/// Placeholder item when the QML plugins are not built.
 pub fn no_qml_rail_item() -> RailItem {
     RailItem {
         label: wallpapers_rail_label(),
@@ -280,42 +280,42 @@ pub fn no_qml_rail_item() -> RailItem {
     }
 }
 
-/// Подпись пункта «Обои» в рейле — со своим контекстом перевода.
+/// Label of the «Wallpapers» item in the rail — with its own translation context.
 ///
-/// Рейл шириной 96 px, и подпись типа оформления «Wallpapers»
-/// (`constants.rs`, wallpaper-pack) туда не влезает: немецкое
-/// «Hintergrundbilder» Qt ужимал до 8 px (снимок 01.10.2026). Контекст
-/// разводит две строки, чтобы в рейле стояло короткое «Hintergründe».
+/// The rail is 96 px wide, and the appearance type label «Wallpapers»
+/// (`constants.rs`, wallpaper-pack) does not fit there: Qt squeezed the German
+/// «Hintergrundbilder» down to 8 px (screenshot 01.10.2026). The context
+/// separates the two strings so that the rail shows the short «Hintergründe».
 fn wallpapers_rail_label() -> String {
     // TRANSLATORS: label of the wallpapers page in a narrow 96 px side rail — keep it short
     crate::i18n::trc("side rail", "Wallpapers")
 }
 
-/// Имя файла НАШЕЙ страницы «Разработчик» в QML-модуле `org.rexon.gui`.
+/// File name of OUR «Developer» page in the `org.rexon.gui` QML module.
 ///
-/// Вендорной страницы у пункта нет и быть не может: страницу пишем мы, а
-/// не waywallen. Поэтому имя лежит здесь, а не в `qml_page_specs`.
+/// The item has no vendor page and cannot have one: we write the page, not
+/// waywallen. So the name lives here, not in `qml_page_specs`.
 pub const DEV_PAGE_QML: &str = "WeDeveloperPage.qml";
 
-/// Скрытый пункт «Разработчик».
+/// The hidden «Developer» item.
 pub fn dev_rail_item() -> RailItem {
     // TRANSLATORS: short label of the hidden developer page in a 96 px rail
     RailItem::own("dev", "🛠️", n_("Dev"), DEV_PAGE_QML)
 }
 
-/// План постройки рейла и стека страниц.
+/// Plan for building the rail and the page stack.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RailPlan {
-    /// Пункты рейла по порядку; индекс пункта == индекс страницы в стеке.
+    /// Rail items in order; item index == page index in the stack.
     pub items: Vec<RailItem>,
-    /// Индекс страницы-заглушки «QML-модули не собраны», если она есть.
+    /// Index of the «QML modules not built» placeholder page, if there is one.
     pub stub_index: Option<usize>,
-    /// Индекс dev-страницы, если она есть.
+    /// Index of the dev page, if there is one.
     pub dev_index: Option<usize>,
 }
 
 impl RailPlan {
-    /// Имя QML-файла для страницы стека `idx`; `None` — не QML-страница.
+    /// QML file name for stack page `idx`; `None` — not a QML page.
     pub fn qml_for_index(&self, idx: usize) -> Option<&str> {
         self.items
             .get(idx)
@@ -323,11 +323,11 @@ impl RailPlan {
             .map(|it| it.qml.as_str())
     }
 
-    /// Имя файла ВЕНДОРНОЙ страницы для `idx`; `None` — страница либо наша
-    /// собственная, либо её нет вовсе.
+    /// File name of the VENDOR page for `idx`; `None` — the page is either our
+    /// own or does not exist at all.
     ///
-    /// Спрашивать надо именно это везде, где имя уезжает в склейку пути
-    /// внутрь `qml_ui/`: наша страница там не лежит.
+    /// This is exactly what must be asked everywhere the name goes into building a path
+    /// inside `qml_ui/`: our page does not lie there.
     pub fn vendor_qml_for_index(&self, idx: usize) -> Option<&str> {
         self.items
             .get(idx)
@@ -335,19 +335,19 @@ impl RailPlan {
             .map(|it| it.qml.as_str())
     }
 
-    /// Нужна ли странице `idx` вендорная ШАПКА от хозяина (см.
-    /// `RailItem::header`). Нет такого пункта — `false`: шапка по
-    /// умолчанию выключена и у самого `PageContext`.
+    /// Whether page `idx` needs the vendor HEADER from the owner (see
+    /// `RailItem::header`). No such item — `false`: the header is
+    /// off by default in `PageContext` itself too.
     pub fn header_for_index(&self, idx: usize) -> bool {
         self.items.get(idx).is_some_and(|it| it.header)
     }
 }
 
-/// Собрать план рейла: `qml_available` — собраны ли QML-плагины,
-/// `dev_mode` — показывать ли скрытую страницу «Разработчик».
+/// Build the rail plan: `qml_available` — whether the QML plugins are built,
+/// `dev_mode` — whether to show the hidden «Developer» page.
 ///
-/// Индекс пункта рейла и индекс страницы в `QStackedWidget` совпадают в
-/// обоих случаях — на этом держится `_nav()`.
+/// The rail item index and the page index in `QStackedWidget` match in
+/// both cases — `_nav()` relies on that.
 pub fn build_rail(qml_available: bool, dev_mode: bool) -> RailPlan {
     let mut items = if qml_available {
         qml_page_specs()
@@ -367,8 +367,8 @@ pub fn build_rail(qml_available: bool, dev_mode: bool) -> RailPlan {
     }
 }
 
-/// Подпись кнопки рейла: иконка и подпись через перевод строки, плюс
-/// пометка расхождения паритета для «Разраб.».
+/// Rail button label: icon and label separated by a newline, plus
+/// the parity divergence mark for «Dev».
 pub fn rail_button_label(icon: &str, label: &str, drift: bool) -> String {
     format!(
         "{icon}\n{label}{}",
@@ -377,113 +377,113 @@ pub fn rail_button_label(icon: &str, label: &str, drift: bool) -> String {
 }
 
 // ============================================================================
-// Цвета и таблицы стилей
+// Colours and style sheets
 // ============================================================================
 
-/// Прозрачность приглушённого текста (`on_surface_variant` оригинала).
+/// Opacity of muted text (the original's `on_surface_variant`).
 pub const VARIANT_ALPHA: f32 = 0.6;
 
-/// Прозрачность подсветки выбранного пункта рейла.
+/// Opacity of the selected rail item highlight.
 pub const RAIL_SELECTED_ALPHA: f32 = 0.25;
 
-/// Прозрачность подложки полосы рейла на ТЁМНОМ скине.
+/// Opacity of the rail strip backdrop on a DARK skin.
 ///
-/// ⚠️ Число выехало из таблицы стилей в именованную константу по той же
-/// причине, что скругление и кегль кнопки: полосу рейла QML-версия рисует
-/// сама, и пока число жило литералом внутри `rail_qss`, у неё была своя
-/// копия — `Qt.rgba(1, 1, 1, 0.03)` в разметке.
+/// ⚠️ The number moved out of the style sheet into a named constant for the same
+/// reason as the button radius and font size: the QML version draws the rail strip
+/// itself, and while the number lived as a literal inside `rail_qss`, it had its own
+/// copy — `Qt.rgba(1, 1, 1, 0.03)` in the markup.
 pub const RAIL_BG_ALPHA_DARK: f32 = 0.03;
 
-/// Прозрачность подложки полосы рейла на СВЕТЛОМ скине.
+/// Opacity of the rail strip backdrop on a LIGHT skin.
 pub const RAIL_BG_ALPHA_LIGHT: f32 = 0.02;
 
-/// Подложка полосы рейла строкой `#AARRGGBB` — в этом виде цвет берёт
-/// QML-версия.
+/// Rail strip backdrop as a `#AARRGGBB` string — the QML version takes the colour
+/// in this form.
 ///
-/// ⚠️ Прозрачность отдаётся ВОСЬМИБИТНЫМ числом, а не долей, и это не
-/// придирка. Долю `0.03` парсер таблиц стилей Qt усекает до 7/255, а
-/// смеситель сцены QML считает по самой доле (7,65/255) — на одном и том
-/// же скине полоса выходила у версий разной на уровень: (33,46,61) у
-/// виджетов против (34,47,62) у QML (замер 04.09.2026 на steam_dark,
-/// фон 27,40,56). Восьмибитная альфа одна на обе стороны, и уровень
-/// совпадает.
+/// ⚠️ Opacity is given as an EIGHT-BIT number, not a fraction, and this is not
+/// nitpicking. The Qt style sheet parser truncates the fraction `0.03` to 7/255, while
+/// the QML scene blender computes with the fraction itself (7.65/255) — on the very same
+/// skin the strip came out one level different between versions: (33,46,61) for
+/// widgets versus (34,47,62) for QML (measured 04.09.2026 on steam_dark,
+/// background 27,40,56). An eight-bit alpha is the same on both sides, and the level
+/// matches.
 pub fn rail_background_argb_hex(dark: bool) -> String {
     let (alpha, rgb) = if dark {
         (RAIL_BG_ALPHA_DARK, 0x00ff_ffff_u32)
     } else {
         (RAIL_BG_ALPHA_LIGHT, 0x0000_0000_u32)
     };
-    // Усечение, а НЕ округление: ровно так долю читает парсер QSS.
+    // Truncation, NOT rounding: exactly how the QSS parser reads the fraction.
     let a = (alpha * 255.0) as u8;
     format!("#{a:02x}{rgb:06x}")
 }
 
-/// Подсветка ВЫБРАННОГО пункта рейла строкой `#AARRGGBB` — в этом виде
-/// краску берёт QML-версия. `hl_*` — цвет роли `Highlight` скина.
+/// Highlight of the SELECTED rail item as a `#AARRGGBB` string — the QML version
+/// takes the paint in this form. `hl_*` is the colour of the skin's `Highlight` role.
 ///
-/// ⚠️ Та же ловушка, что у подложки полосы, и ловится она только точным
-/// сличением: долю `0.25` парсер таблиц стилей Qt усекает до 63/255, а
-/// сцена QML считала по самой доле (63,75/255) и округляла премножённую
-/// краску вверх — подсветка выходила у версий разной на уровень:
-/// (50,82,106) у виджетов против (51,82,107) у QML (замер 04.09.2026 на
-/// steam_dark, полоса рейла 33,46,61, `Highlight` #66c0f4; расхождение
-/// на 4224 точках выбранного пункта). Отдельный опыт на тех же красках:
-/// доля `0.25` в сцене даёт (51,82,107), восьмибитная альфа `0x40` —
-/// тоже (51,82,107), а `0x3f` — ровно (50,82,106) виджетной версии.
+/// ⚠️ The same trap as with the strip backdrop, and it is caught only by exact
+/// comparison: the Qt style sheet parser truncates the fraction `0.25` to 63/255, while
+/// the QML scene computed with the fraction itself (63.75/255) and rounded the premultiplied
+/// paint up — the highlight came out one level different between versions:
+/// (50,82,106) for widgets versus (51,82,107) for QML (measured 04.09.2026 on
+/// steam_dark, rail strip 33,46,61, `Highlight` #66c0f4; divergence
+/// on 4224 pixels of the selected item). A separate experiment with the same paints:
+/// the fraction `0.25` in the scene gives (51,82,107), the eight-bit alpha `0x40` —
+/// also (51,82,107), and `0x3f` — exactly (50,82,106) of the widget version.
 pub fn rail_selected_argb_hex(hl_r: u8, hl_g: u8, hl_b: u8) -> String {
-    // Усечение, а НЕ округление: ровно так долю читает парсер QSS.
+    // Truncation, NOT rounding: exactly how the QSS parser reads the fraction.
     let a = (RAIL_SELECTED_ALPHA * 255.0) as u8;
     format!("#{a:02x}{hl_r:02x}{hl_g:02x}{hl_b:02x}")
 }
 
 // ============================================================================
-// Цвета вендорного интерфейса: скин Rexon или схема самого waywallen
+// Colours of the vendor interface: Rexon skin or waywallen's own scheme
 // ============================================================================
 
-/// Чем красить вендорный интерфейс waywallen внутри вкладки.
+/// What to paint waywallen's vendor interface inside the tab with.
 ///
-/// Его элементы рисует QmlMaterial, и краски у него не таблица, а схема
-/// Material, которую плагин СЧИТАЕТ из одного цвета-затравки (акцента),
-/// тёмности и типа палитры. Поэтому «как в остальных вкладках» складывается
-/// из трёх частей: затравка — акцент скина Rexon, тёмность — тёмность
-/// скина, а фон и основной текст шелла — ровно краски страницы скина (их
-/// плагин берёт из наследуемых `MProp.backgroundColor` и `MProp.textColor`).
-/// Поверх посчитанной схемы фоны, поверхности и текст задаются красками
-/// скина поштучно ([`VendorTheme::roles`]) — у QmlMaterial со свойством
-/// `MdColorMgr::overrides`. У более старого QmlMaterial роли поштучно не
-/// задаются, и карточки, диалоги и поля остаются тонами схемы от акцента.
+/// Its elements are drawn by QmlMaterial, and its paints are not a table but a
+/// Material scheme the plugin COMPUTES from one seed colour (accent),
+/// darkness and palette type. So «as in the other tabs» is made up
+/// of three parts: the seed is the Rexon skin accent, darkness is the darkness of
+/// the skin, and the shell background and main text are exactly the skin's page paints (the
+/// plugin takes them from the inherited `MProp.backgroundColor` and `MProp.textColor`).
+/// On top of the computed scheme, backgrounds, surfaces and text are set with skin
+/// paints one by one ([`VendorTheme::roles`]) — in QmlMaterial with the
+/// `MdColorMgr::overrides` property. An older QmlMaterial cannot set roles one by one,
+/// and cards, dialogs and fields keep the scheme tones derived from the accent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VendorTheme {
-    /// Красить схемой самого waywallen: его тип палитры, его настройки
-    /// «Тема» и «Акцент» в окне «Настройки» вкладки. Остальные поля тогда
-    /// шеллу не нужны (ими красятся только стартовые экраны страницы).
+    /// Paint with waywallen's own scheme: its palette type, its «Theme» and
+    /// «Accent» settings in the tab's «Settings» window. The other fields are then
+    /// not needed by the shell (they only paint the page's start screens).
     pub follow_vendor: bool,
-    /// Затравка схемы Material — акцент скина, `#rrggbb`.
+    /// Seed of the Material scheme — the skin accent, `#rrggbb`.
     pub accent: String,
-    /// Фон шелла и рейки — фон страницы скина (`surface_page`), `#rrggbb`.
+    /// Background of the shell and the rail — the skin's page background (`surface_page`), `#rrggbb`.
     pub background: String,
-    /// Основной текст поверх фона — `text_primary` скина, `#rrggbb`.
+    /// Main text over the background — the skin's `text_primary`, `#rrggbb`.
     pub text: String,
-    /// Тёмный ли скин — им выбирается тёмная или светлая схема Material.
+    /// Whether the skin is dark — selects the dark or light Material scheme.
     pub dark: bool,
-    /// Роли схемы Material, заданные красками скина поштучно: имя роли
-    /// QmlMaterial → `#rrggbb` (см. [`VENDOR_SCHEME_ROLES`]). Кладутся в
-    /// `MD.Token.color.overrides`; у QmlMaterial без этого свойства шелл их
-    /// молча пропускает, и действует одна затравка. У схемы самого
-    /// waywallen — пусто.
+    /// Material scheme roles set with skin paints one by one: QmlMaterial role
+    /// name → `#rrggbb` (see [`VENDOR_SCHEME_ROLES`]). They go into
+    /// `MD.Token.color.overrides`; with a QmlMaterial lacking this property the shell
+    /// silently skips them, and only the seed applies. For waywallen's own scheme —
+    /// empty.
     pub roles: BTreeMap<String, String>,
 }
 
-/// Какие роли схемы Material красятся скином и какой его краской.
+/// Which Material scheme roles are painted by the skin and with which of its paints.
 ///
-/// Раскладка — как в самом waywallen: окно у него `surface_container`, и
-/// карточки настроек и списков — тоже `surface_container`, то есть ровно
-/// фон окна; рабочая область под ними (`surface`) — на тон глубже, а
-/// плашки и чипы (`surface_container_high`/`_highest`) — на тон светлее.
-/// У скина Rexon окно — фон страницы, поэтому карточки вкладки красятся им
-/// же, рабочая область — краской поля (у «Тёмного (Steam)» `#16202d`),
-/// приподнятое — карточкой и кнопкой соседних вкладок. Текст —
-/// `text_primary`, вторичный (у waywallen это почти все подписи) —
+/// The layout is as in waywallen itself: its window is `surface_container`, and
+/// the settings and list cards are `surface_container` too, i.e. exactly the
+/// window background; the work area under them (`surface`) is one tone deeper, and
+/// tiles and chips (`surface_container_high`/`_highest`) are one tone lighter.
+/// In the Rexon skin the window is the page background, so the tab's cards are painted with it
+/// too, the work area with the field paint (`#16202d` for «Dark (Steam)»),
+/// raised elements with the card and button of the neighbouring tabs. Text is
+/// `text_primary`, secondary (at waywallen that is almost all labels) is
 /// `text_secondary`.
 pub const VENDOR_SCHEME_ROLES: &[(&str, &str)] = &[
     ("background", "surface_field"),
@@ -503,15 +503,15 @@ pub const VENDOR_SCHEME_ROLES: &[(&str, &str)] = &[
     ("outline_variant", "surface_button"),
 ];
 
-/// Цвета вендорного интерфейса для скина `skin_id`.
+/// Vendor interface colours for skin `skin_id`.
 ///
-/// По умолчанию вкладка следует скину Rexon, как все остальные вкладки.
-/// Схему самого waywallen возвращает ОТДЕЛЬНЫЙ скин
-/// [`crate::ui_base::VENDOR_SCHEME_SKIN`] — тогда шелл не трогает ни тип
-/// палитры, ни тему, ни акцент, и работают собственные настройки waywallen.
-/// Краски берутся из той же палитры, что уходит QML-страницам
-/// ([`crate::ui_base::qml_palette`]): незнакомый скин откатывается к
-/// стандартному там же.
+/// By default the tab follows the Rexon skin, like all other tabs.
+/// waywallen's own scheme is returned by a SEPARATE skin
+/// [`crate::ui_base::VENDOR_SCHEME_SKIN`] — then the shell touches neither the palette
+/// type, nor the theme, nor the accent, and waywallen's own settings work.
+/// Paints are taken from the same palette that goes to QML pages
+/// ([`crate::ui_base::qml_palette`]): an unknown skin falls back to the
+/// standard one right there.
 pub fn vendor_theme(skin_id: &str) -> VendorTheme {
     use crate::ui_base;
     let skin = ui_base::skin(skin_id).id;
@@ -550,32 +550,32 @@ pub fn vendor_theme(skin_id: &str) -> VendorTheme {
     }
 }
 
-/// Роли схемы [`VendorTheme::roles`] объектом JSON — в таком виде их берёт
-/// QML (`JSON.parse` → `MD.Token.color.overrides`).
+/// The scheme roles [`VendorTheme::roles`] as a JSON object — the form QML
+/// takes them in (`JSON.parse` → `MD.Token.color.overrides`).
 pub fn vendor_roles_json(theme: &VendorTheme) -> String {
     serde_json::to_string(&theme.roles).unwrap_or_else(|_| "{}".to_string())
 }
 
-/// То же для ДЕЙСТВУЮЩЕГО скина (сохранённый `ui_skin`).
+/// The same for the ACTIVE skin (the saved `ui_skin`).
 pub fn active_vendor_theme() -> VendorTheme {
     vendor_theme(crate::ui_base::active_skin_id())
 }
 
-/// Кегль буквы-логотипа над пунктами рейла, пикс.
+/// Font size of the logo letter above the rail items, px.
 ///
-/// Тот же довод, что у остальных чисел рейла: букву QML-версия рисует
-/// сама, и своей копии кегля у неё быть не должно.
+/// The same reasoning as for the other rail numbers: the QML version draws the letter
+/// itself, and it must not have its own copy of the font size.
 pub const LOGO_FONT_SIZE: i32 = 22;
 
-/// Насыщенность буквы-логотипа (`font-weight`).
+/// Weight of the logo letter (`font-weight`).
 pub const LOGO_FONT_WEIGHT: i32 = 700;
 
-/// `on_surface_variant` — цвет роли `Text` с альфой 60%.
+/// `on_surface_variant` — colour of the `Text` role with 60% alpha.
 pub fn variant_color(r: u8, g: u8, b: u8) -> String {
     format!("rgba({r},{g},{b},{VARIANT_ALPHA})")
 }
 
-/// Стиль буквы-логотипа над рейлом (`hl` — `#rrggbb` роли `Highlight`).
+/// Style of the logo letter above the rail (`hl` — `#rrggbb` of the `Highlight` role).
 pub fn logo_qss(hl_hex: &str) -> String {
     format!(
         "font-size: {LOGO_FONT_SIZE}px; font-weight: {LOGO_FONT_WEIGHT}; \
@@ -583,7 +583,7 @@ color: {hl_hex};"
     )
 }
 
-/// Таблица стилей рейла: фон полосы, форма кнопок, подсветка выбранного.
+/// Rail style sheet: strip background, button shape, selected highlight.
 pub fn rail_qss(dark: bool, hl_r: u8, hl_g: u8, hl_b: u8) -> String {
     let rail_bg = if dark {
         format!("rgba(255,255,255,{RAIL_BG_ALPHA_DARK})")
@@ -599,12 +599,12 @@ QFrame#weRail QToolButton:checked {{ background: {sel_bg}; }}"
     )
 }
 
-/// Текст с готовой таблицей стилей — то, что виджету остаётся поставить.
+/// Text with a ready style sheet — what is left for the widget to set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Styled {
-    /// Текст метки.
+    /// Label text.
     pub text: String,
-    /// Таблица стилей метки.
+    /// Label style sheet.
     pub qss: String,
 }
 
@@ -617,21 +617,21 @@ impl Styled {
     }
 }
 
-/// Строка статуса до того, как она превратилась в таблицу стилей: текст,
-/// краска и насыщенность по отдельности.
+/// A status line before it turned into a style sheet: text,
+/// paint and weight separately.
 ///
-/// ⚠️ Заведено потому, что у вкладки ДВЕ версии. Виджетной нужна готовая
-/// таблица стилей ([`Styled`]), сцене QML — краска сама по себе: `color:`
-/// у `Text` таблиц стилей не понимает. Решение «какого цвета эта строка»
-/// обязано быть ОДНО (правило #12), поэтому первичен `StatusLine`, а
-/// `Styled` из него выводится.
+/// ⚠️ Introduced because the tab has TWO versions. The widget one needs a ready
+/// style sheet ([`Styled`]), the QML scene needs the paint by itself: `color:`
+/// of `Text` does not understand style sheets. The decision «what colour this line is»
+/// must be ONE (rule #12), so `StatusLine` is primary, and
+/// `Styled` is derived from it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusLine {
-    /// Текст строки.
+    /// Line text.
     pub text: String,
-    /// Краска `#rrggbb`; пусто — краски нет, цвет обычный.
+    /// Paint `#rrggbb`; empty — no paint, the usual colour.
     pub color: String,
-    /// Полужирная ли строка.
+    /// Whether the line is bold.
     pub bold: bool,
 }
 
@@ -644,7 +644,7 @@ impl StatusLine {
         }
     }
 
-    /// Та же строка с готовой таблицей стилей — вид для виджетной версии.
+    /// The same line with a ready style sheet — the view for the widget version.
     pub fn to_styled(&self) -> Styled {
         if self.color.is_empty() {
             return Styled::new(self.text.clone(), STATUS_NEUTRAL_QSS);
@@ -653,11 +653,11 @@ impl StatusLine {
     }
 }
 
-/// Зелёный «всё хорошо».
+/// Green «all good».
 pub const COLOR_OK: &str = "#2e7d32";
-/// Оранжевый «есть обновление / рассинхрон».
+/// Orange «update available / out of sync».
 pub const COLOR_WARN: &str = "#e65100";
-/// Красный «ошибка / расхождение».
+/// Red «error / divergence».
 pub const COLOR_ERR: &str = "#c62828";
 
 fn status_qss(color: &str, bold: bool) -> String {
@@ -669,75 +669,75 @@ fn status_qss(color: &str, bold: bool) -> String {
 }
 
 // ============================================================================
-// Стартовые состояния вкладки
+// Start states of the tab
 // ============================================================================
 
-/// Индекс экрана «Подключение…» в стеке состояний.
+/// Index of the «Connecting…» screen in the state stack.
 pub const STATE_CONNECTING: usize = 0;
-/// Индекс экрана «Демон недоступен» в стеке состояний.
+/// Index of the «Daemon unavailable» screen in the state stack.
 pub const STATE_NO_DAEMON: usize = 1;
-/// Индекс экрана со страницами в стеке состояний.
+/// Index of the screen with the pages in the state stack.
 pub const STATE_PAGES: usize = 2;
 
-/// Задержка отложенного старта (детект демона, авто-проверка upstream), мс.
+/// Delay of the deferred start (daemon detection, upstream auto-check), ms.
 pub const STARTUP_DELAY_MS: i32 = 100;
 
-/// Сколько ждать ответа `health` от подключившегося демона, мс.
+/// How long to wait for the `health` response from a connected daemon, ms.
 pub const HEALTH_TIMEOUT_MS: i32 = 5000;
 
-/// Сколько ждать ответа демона на `plugin_install`, мс.
+/// How long to wait for the daemon's response to `plugin_install`, ms.
 pub const OWE_IPC_TIMEOUT_MS: i32 = 60_000;
 
-/// Сколько ждать завершения сетевых воркеров на выходе из приложения, мс.
+/// How long to wait for the network workers to finish on application exit, ms.
 pub const WORKER_WAIT_MS: i32 = 60_000;
 
-/// СКОЛЬКО ВСЕГО вкладка стоит на экране «Подключение…», мс.
+/// How long IN TOTAL the tab stays on the «Connecting…» screen, ms.
 ///
-/// ⚠️ Без этого срока ожидание было БЕСКОНЕЧНЫМ, и это не теория: у двух
-/// путей к экрану ожидания своего сторожа нет вовсе.
-///   * движок числится на шине, а сокет не открывается — `open()` заводит
-///     соединение и больше не возвращается ни успехом, ни отказом;
-///   * соединение было и оборвалось — транспорт переподключается каждые
-///     3 с БЕЗ предела попыток (`we_socket::RECONNECT_MS`), и пока движок
-///     мёртв, покупатель смотрит на «Подключение…» столько, сколько готов
-///     смотреть. Кнопка «Повторить запуск» при этом не появляется НИКОГДА.
+/// ⚠️ Without this limit the wait was ENDLESS, and that is not theory: two
+/// paths to the waiting screen have no watchdog of their own at all.
+///   * the engine is listed on the bus, but the socket does not open — `open()` starts
+///     the connection and never returns, neither with success nor with failure;
+///   * there was a connection and it dropped — the transport reconnects every
+///     3 s WITHOUT a limit on attempts (`we_socket::RECONNECT_MS`), and while the engine
+///     is dead, the buyer looks at «Connecting…» for as long as they are willing
+///     to look. The «Retry Start» button NEVER appears meanwhile.
 ///
-/// Откуда 25 секунд. Замер холодного старта демона на этой машине
-/// (изолированный стенд: своя шина, свой `XDG_RUNTIME_DIR`, свои
-/// data/config/cache; ждали ровно того же, чего ждёт вкладка, — `WsPort`
-/// на D-Bus): имя на шине — 0,07–0,19 с, рабочий порт — 3,2 / 3,4 / 3,2 с
-/// на прогретой базе и 3,2 с на первом запуске с миграциями; под нагрузкой
-/// (машина занята сборкой) — 5,0 с. То есть нормальный старт укладывается
-/// в 3–5 с, и 25 с — пятикратный запас к худшему замеру.
+/// Where 25 seconds come from. A cold start measurement of the daemon on this machine
+/// (isolated bench: own bus, own `XDG_RUNTIME_DIR`, own
+/// data/config/cache; waited for exactly what the tab waits for — `WsPort`
+/// on D-Bus): name on the bus — 0.07–0.19 s, working port — 3.2 / 3.4 / 3.2 s
+/// on a warmed-up database and 3.2 s on the first run with migrations; under load
+/// (the machine busy with a build) — 5.0 s. So a normal start fits
+/// into 3–5 s, and 25 s is a fivefold margin over the worst measurement.
 ///
-/// ⚠️ Верхняя граница тут важнее нижней: срок ОБЯЗАН быть больше суммы
-/// внутренних сторожей (12 с поллинга шины [`crate::we_client::POLL_LIMIT`]
-/// × [`crate::we_client::POLL_MS`] + [`HEALTH_TIMEOUT_MS`]), иначе он
-/// сработает первым и подменит точную причину отказа общей. Меняя одно из
-/// трёх чисел, сверяйтесь с `we_window_parity.rs` — там это записано
-/// проверкой, а не пожеланием.
+/// ⚠️ The upper bound matters more than the lower one here: the limit MUST be larger than the sum
+/// of the inner watchdogs (12 s of bus polling [`crate::we_client::POLL_LIMIT`]
+/// × [`crate::we_client::POLL_MS`] + [`HEALTH_TIMEOUT_MS`]), otherwise it
+/// fires first and replaces the precise failure reason with a generic one. When changing one of
+/// the three numbers, check against `we_window_parity.rs` — there it is written down as
+/// a test, not as a wish.
 ///
-/// ⚠️ С 30.10.2026 срок НЕ идёт, пока работает сторож запуска движка
-/// ([`crate::we_client::StartWatch`]): тот ждёт живой процесс дольше 12 с
-/// (первый запуск AppImage на медленной машине) и сам кончается отказом
-/// по своим срокам. Разметка держит этот таймер выключенным, пока объект
-/// действий говорит `engineStarting`, — иначе 25 с подменили бы честное
-/// «запускается…» общим отказом.
+/// ⚠️ Since 30.10.2026 the limit does NOT run while the engine start watchdog
+/// ([`crate::we_client::StartWatch`]) is working: it waits for a live process longer than 12 s
+/// (first AppImage run on a slow machine) and ends with a failure itself
+/// by its own deadlines. The markup keeps this timer off while the actions
+/// object says `engineStarting` — otherwise 25 s would replace the honest
+/// «starting…» with a generic failure.
 pub const CONNECT_TIMEOUT_MS: i32 = 25_000;
 
-/// Текст экрана ожидания.
+/// Text of the waiting screen.
 ///
-/// «Демон» — слово системного администратора, а покупателю оно не говорит
-/// ничего (правило #13). Само имя `waywallen` остаётся латиницей: это имя
-/// технологии, а не перевод.
+/// «Daemon» is a system administrator's word, and it tells the buyer
+/// nothing (rule #13). The name `waywallen` itself stays in Latin: it is the name
+/// of a technology, not a translation.
 pub fn text_connecting() -> String {
     crate::i18n::tr("Starting the waywallen wallpaper engine…")
 }
 
-/// Пояснение под «Запускается…», когда запуск идёт дольше обычного
-/// (тихое окно сторожа запуска `we_client::START_QUIET_MS` позади), а процесс
-/// движка жив и работает. Без него человек смотрел бы на тот же экран
-/// минуту и решил бы, что всё зависло (дефект 30.10.2026, r1895).
+/// Explanation under «Starting…» when the start takes longer than usual
+/// (the quiet window of the start watchdog `we_client::START_QUIET_MS` is past), while the engine
+/// process is alive and working. Without it a person would look at the same screen
+/// for a minute and decide that everything hung (defect 30.10.2026, r1895).
 pub fn text_connecting_slow() -> String {
     crate::i18n::tr(
         "The first start after installation can take a minute or two while the engine \
@@ -745,55 +745,55 @@ unpacks itself. Please wait.",
     )
 }
 
-/// Текст экрана отказа, когда причина неизвестна.
+/// Text of the failure screen when the reason is unknown.
 pub fn text_no_daemon() -> String {
     crate::i18n::tr("The waywallen wallpaper engine did not start")
 }
 
-/// Иконка экрана «Демон недоступен».
+/// Icon of the «Daemon unavailable» screen.
 pub const ICON_NO_DAEMON: &str = "🔌";
 
-/// Подпись кнопки повторного запуска демона.
+/// Label of the daemon restart button.
 pub fn text_retry_daemon() -> String {
     crate::i18n::tr("Retry Start")
 }
 
-/// Кегль текста стартовых экранов («подключение…», «демон недоступен»),
-/// пикс.
+/// Font size of the start screen text («connecting…», «daemon unavailable»),
+/// px.
 ///
-/// ⚠️ Числа стартовых экранов выехали из таблиц стилей виджетной вкладки
-/// в именованные константы по той же причине, что и у рейла: у вкладки
-/// две версии, и QML-версия рисует эти экраны сама. Пока числа жили
-/// литералами в `window.py`, QML-версия держала свою копию — и экран
-/// «демон недоступен» разъехался с оригиналом по зазорам (замер 03.09).
+/// ⚠️ The start screen numbers moved out of the widget tab's style sheets
+/// into named constants for the same reason as the rail ones: the tab has
+/// two versions, and the QML version draws these screens itself. While the numbers lived
+/// as literals in `window.py`, the QML version kept its own copy — and the
+/// «daemon unavailable» screen drifted from the original in spacing (measured 03.09).
 pub const STATE_TEXT_FONT_SIZE: i32 = 15;
 
-/// Кегль значка-эмодзи на экране «Демон недоступен», пикс.
+/// Font size of the emoji icon on the «Daemon unavailable» screen, px.
 pub const NO_DAEMON_ICON_FONT_SIZE: i32 = 48;
 
-/// Зазор между значком, текстом и кнопкой стартового экрана, пикс. У
-/// оригинала это умолчание `QVBoxLayout` под стилем продукта (замерено
-/// 03.09 на живом объекте: 6); здесь оно записано явно, чтобы обе версии
-/// брали одно число, а не каждая своё умолчание.
+/// Spacing between the icon, the text and the button of a start screen, px. In
+/// the original this is the `QVBoxLayout` default under the product style (measured
+/// 03.09 on a live object: 6); here it is written explicitly so that both versions
+/// take one number rather than each its own default.
 pub const STATE_COLUMN_SPACING: i32 = 6;
 
-/// Поля колонки стартового экрана, пикс. Тот же довод, что у зазора.
+/// Margins of the start screen column, px. Same reasoning as for the spacing.
 pub const STATE_COLUMN_MARGIN: i32 = 6;
 
-/// Стиль значка на экране «Демон недоступен» — виджетной версии.
+/// Style of the icon on the «Daemon unavailable» screen — for the widget version.
 pub fn no_daemon_icon_qss() -> String {
     format!("font-size: {NO_DAEMON_ICON_FONT_SIZE}px;")
 }
 
-/// Стиль текста на экране «Демон недоступен» — виджетной версии.
+/// Style of the text on the «Daemon unavailable» screen — for the widget version.
 pub fn no_daemon_text_qss() -> String {
     format!("font-size: {STATE_TEXT_FONT_SIZE}px;")
 }
 
-/// Текст заглушки, когда `Qcm.Material` собран под другую младшую версию
-/// Qt, чем запущенная (`qml_modules::incompatible_qcm`). Такую сборку
-/// вкладка не грузит: частный API Qt между выпусками несовместим, и
-/// страницы падали (см. `qml_modules`, 09.10.2026).
+/// Placeholder text when `Qcm.Material` is built for a different minor version
+/// of Qt than the running one (`qml_modules::incompatible_qcm`). The tab does not load
+/// such a build: Qt's private API is incompatible between releases, and
+/// the pages crashed (see `qml_modules`, 09.10.2026).
 pub fn text_qml_modules_wrong_qt(built: (u32, u32), running: (u32, u32)) -> String {
     crate::i18n::tr(
         "The Wallpaper Engine interface components were built for Qt {built}, \
@@ -804,7 +804,7 @@ Update or reinstall Rexon so they are rebuilt for the new Qt version, then resta
     .replace("{running}", &crate::i18n::isolate(&format!("{}.{}", running.0, running.1)))
 }
 
-/// Текст заглушки, когда QML-плагины не собраны.
+/// Placeholder text when the QML plugins are not built.
 pub fn text_no_qml_modules() -> String {
     crate::i18n::tr("The interface QML modules are not built.\n\n\
 Build them and restart Rexon:\n\
@@ -812,57 +812,57 @@ Build them and restart Rexon:\n\
   bash tools/build_qml_control.sh")
 }
 
-// ── Экран отказа: слова покупателю, подробности — в журнал ──────────────────
+// ── Failure screen: words for the buyer, details — to the log ───────────────
 //
-// ⚠️ Так было до 18.09.2026: причину отказа показывали покупателю ДОСЛОВНО,
-// как её составил клиент демона. Человек, купивший программу ради обоев,
-// читал на весь экран «Ожидается вшитый AppImage (rexon/vendor/),
-// ~/.local/share/waywallen/waywallen.AppImage, в PATH или ~/.local/bin/
-// waywallen» — четыре пути, слово PATH и ни одного указания, что ему,
-// собственно, делать (правило #13). Теперь сырая строка идёт в журнал, а на
-// экране стоит то, что покупатель может ПОНЯТЬ и ВЫПОЛНИТЬ.
+// ⚠️ This was the case until 18.09.2026: the failure reason was shown to the buyer VERBATIM,
+// as the daemon client composed it. A person who bought the program for wallpapers
+// read across the whole screen «Expected a bundled AppImage (rexon/vendor/),
+// ~/.local/share/waywallen/waywallen.AppImage, in PATH or ~/.local/bin/
+// waywallen» — four paths, the word PATH and not a single hint at what they
+// should actually do (rule #13). Now the raw string goes to the log, and the
+// screen shows what the buyer can UNDERSTAND and DO.
 //
-// Разбирать чужую строку приходится потому, что канал у причины один — она
-// проходит через сигнал объекта действий и разметку, где никаких типов нет.
-// Чтобы разбор не разъехался с самими сообщениями, опознание идёт по
-// ИСХОДНЫМ функциям [`crate::we_client`], а не по переписанным сюда копиям
-// их текста, и каждое опознание закреплено проверкой в `we_window_parity.rs`.
+// The foreign string has to be parsed because the reason has only one channel — it
+// goes through the actions object's signal and the markup, where there are no types.
+// So that parsing does not drift from the messages themselves, recognition goes by the
+// ORIGINAL functions of [`crate::we_client`], not by copies of their text rewritten here,
+// and every recognition is pinned by a test in `we_window_parity.rs`.
 
-/// Почему вкладка показывает экран отказа — в понятиях покупателя.
+/// Why the tab shows the failure screen — in the buyer's terms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DaemonFailure {
-    /// Движка нет на диске вовсе.
+    /// The engine is not on disk at all.
     NotInstalled,
-    /// Файл движка есть, но запустить его не вышло.
+    /// The engine file exists, but starting it failed.
     LaunchFailed,
-    /// Запустили и не дождались готовности.
+    /// Started it and did not get readiness in time.
     StartTimeout,
-    /// Запустился, но на запросы молчит.
+    /// Started, but stays silent on requests.
     NotResponding,
-    /// Ответил, но работать не готов (старая версия, чужая база).
+    /// Answered, but not ready to work (old version, foreign database).
     NotReady,
-    /// Причина не опознана — слова общие, подробности в журнале.
+    /// The reason is not recognized — generic words, details in the log.
     Unknown,
 }
 
-/// Начало причины, которую складывает [`health_verdict`]: по нему отказ
-/// опознаётся как «ответил, но не готов». Своей копии текста ниже нет —
-/// сообщение собирается из этой же константы.
+/// Start of the reason composed by [`health_verdict`]: by it a failure is
+/// recognized as «answered, but not ready». There is no copy of the text below —
+/// the message is built from this very constant.
 const REASON_NOT_READY_HEAD: &str = "движок ответил, но не готов";
 
-/// Причина для журнала, когда `health` не ответил вовсе.
+/// Reason for the log when `health` did not answer at all.
 ///
-/// ⚠️ Это СЫРАЯ причина (её пишет журнал и читает [`daemon_failure`]), а не
-/// подпись для человека: подпись складывает [`no_daemon_text`].
+/// ⚠️ This is a RAW reason (the log writes it and [`daemon_failure`] reads it), not
+/// a human-facing label: the label is composed by [`no_daemon_text`].
 pub const TEXT_HEALTH_TIMEOUT: &str = "движок подключился, но не отвечает на \
 проверку готовности (health)";
 
-/// Причина для журнала, когда истёк общий срок ожидания
+/// Reason for the log when the overall wait limit expired
 /// ([`CONNECT_TIMEOUT_MS`]).
 pub const REASON_CONNECT_TIMEOUT: &str = "движок не вышел на связь за \
 отведённое время: сокет не открылся либо соединение рвётся раз за разом";
 
-/// Опознать причину отказа по сырой строке клиента демона.
+/// Recognize the failure reason from the daemon client's raw string.
 pub fn daemon_failure(reason: &str) -> DaemonFailure {
     let reason = reason.trim();
     if reason.is_empty() {
@@ -876,13 +876,13 @@ pub fn daemon_failure(reason: &str) -> DaemonFailure {
     {
         return DaemonFailure::StartTimeout;
     }
-    // Процесс движка умер, не выйдя на связь: для человека это то же
-    // «движок не запускается», что и неудачный запуск файла.
+    // The engine process died without coming online: for a person this is the same
+    // «the engine does not start» as a failed launch of the file.
     if reason == crate::we_client::daemon_exited_message() {
         return DaemonFailure::LaunchFailed;
     }
-    // Сообщение неудачного запуска несёт путь к бинарю — сверяем начало,
-    // собранное той же функцией, а не переписанное сюда руками.
+    // The failed-launch message carries the binary path — compare the beginning
+    // built by the same function, not one rewritten here by hand.
     let launch_head = crate::we_client::daemon_launch_failed_message("");
     let launch_head = launch_head.trim_end();
     if reason.starts_with(launch_head) {
@@ -897,30 +897,30 @@ pub fn daemon_failure(reason: &str) -> DaemonFailure {
     DaemonFailure::Unknown
 }
 
-/// Текст экрана отказа — то, что читает покупатель (Rexon не из пакета).
+/// Failure screen text — what the buyer reads (Rexon not from a package).
 ///
-/// Форма для копии Rexon, поставленной не пакетом дистрибутива; на экране
-/// продукта — [`no_daemon_text_in`] с настоящим признаком установки.
+/// The form for a Rexon copy installed not by a distribution package; the product
+/// screen uses [`no_daemon_text_in`] with the real installation flag.
 pub fn no_daemon_text(reason: &str) -> String {
     no_daemon_text_in(reason, false)
 }
 
-/// Текст экрана отказа — то, что читает покупатель.
+/// Failure screen text — what the buyer reads.
 ///
-/// Каждый случай отвечает на два его вопроса: что случилось и что ему
-/// делать. Машинных подробностей здесь нет ни в одном варианте — они уходят
-/// строкой [`daemon_failure_log_line`] в журнал Rexon.
+/// Each case answers their two questions: what happened and what to
+/// do. There are no machine details here in any variant — they go
+/// as the [`daemon_failure_log_line`] string to the Rexon log.
 ///
-/// `packaged` — Rexon поставлен пакетом дистрибутива, то есть движок обоев
-/// приехал вместе с ним — с 30.10.2026 отдельным пакетом-зависимостью
-/// `waywallen` (`we_client::SYSTEM_DAEMON`). Только тогда совет
-/// «переустановите пакет waywallen» правдив: переустановка вернёт файл движка.
+/// `packaged` — Rexon is installed by a distribution package, i.e. the wallpaper engine
+/// came along with it — since 30.10.2026 as a separate dependency package
+/// `waywallen` (`we_client::SYSTEM_DAEMON`). Only then is the advice
+/// «reinstall the waywallen package» true: reinstalling brings back the engine file.
 ///
-/// ⚠️ До 28.09.2026 экран «движок не установлен» говорил «он ставится
-/// вместе с Rexon — переустановите Rexon» ВСЕМ, хотя в пакете движка не было
-/// вовсе, и переустановка ничего не меняла. А «работать не готов» уверял,
-/// что движок «устарел», хотя причину (состояние `health`) экран не знает.
-/// Теперь каждый совет выполним и не обещает того, чего не будет.
+/// ⚠️ Until 28.09.2026 the «engine not installed» screen told EVERYONE «it is installed
+/// together with Rexon — reinstall Rexon», although the package did not contain the engine
+/// at all, and reinstalling changed nothing. And «not ready to work» claimed
+/// that the engine was «outdated», although the screen does not know the reason (the `health` state).
+/// Now every piece of advice is doable and does not promise what will not happen.
 pub fn no_daemon_text_in(reason: &str, packaged: bool) -> String {
     use crate::i18n::tr;
     match (daemon_failure(reason), packaged) {
@@ -965,11 +965,11 @@ Rexon log.",
     }
 }
 
-/// Строка журнала с СЫРОЙ причиной отказа — та самая машинная кухня, что
-/// раньше стояла на экране.
+/// Log line with the RAW failure reason — the very machine internals that
+/// used to be on the screen.
 ///
-/// Пустая причина строки не даёт: писать в журнал «отказ без причины»
-/// значит засорять его на каждое открытие вкладки без движка.
+/// An empty reason gives no line: writing «failure without a reason» to the log
+/// means cluttering it on every opening of the tab without an engine.
 pub fn daemon_failure_log_line(reason: &str) -> Option<String> {
     let reason = reason.trim();
     if reason.is_empty() {
@@ -980,19 +980,19 @@ pub fn daemon_failure_log_line(reason: &str) -> Option<String> {
     ))
 }
 
-/// Вердикт по ответу `health` подключившегося демона.
+/// Verdict on the `health` response of a connected daemon.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HealthVerdict {
-    /// Показывать страницы (демон здоров либо старый, без поля `health`).
+    /// Show the pages (the daemon is healthy or old, without the `health` field).
     Ready,
-    /// Показывать экран отказа с этой СЫРОЙ причиной.
+    /// Show the failure screen with this RAW reason.
     NotReady(String),
 }
 
-/// Разбор ответа `health`: пустое состояние — старый демон, ему верим.
+/// Parsing the `health` response: an empty state is an old daemon, we trust it.
 ///
-/// WS-соединение само по себе ещё не значит, что демон рабочий (мог упасть
-/// на миграции БД) — без этой проверки у покупателя чёрный экран вместо обоев.
+/// A WS connection by itself does not mean yet that the daemon works (it might have crashed
+/// on a DB migration) — without this check the buyer gets a black screen instead of wallpapers.
 pub fn health_verdict(state: &str) -> HealthVerdict {
     let state = state.trim().to_lowercase();
     if state.is_empty() || state == "healthy" {
@@ -1002,168 +1002,168 @@ pub fn health_verdict(state: &str) -> HealthVerdict {
 }
 
 // ============================================================================
-// Страница «Разработчик»
+// The «Developer» page
 // ============================================================================
 
-/// Ключ настройки «авто-УСТАНОВКА обновлений» (по умолчанию выключена).
+/// Setting key «auto-INSTALL updates» (off by default).
 pub const KEY_AUTO_DOWNLOAD: &str = "dev_engine_auto_download";
-/// Ключ настройки «авто-ПРОВЕРКА upstream при запуске» (включена).
+/// Setting key «auto-CHECK upstream on start» (on).
 pub const KEY_AUTO_UPSTREAM: &str = "dev_auto_upstream_check";
-/// Ключ настройки «авто-сверка паритета при открытии страницы» (включена).
+/// Setting key «auto parity check on opening the page» (on).
 pub const KEY_AUTO_PARITY: &str = "dev_auto_parity_check";
 
-/// Значение по умолчанию для [`KEY_AUTO_DOWNLOAD`].
+/// Default value for [`KEY_AUTO_DOWNLOAD`].
 pub const DEFAULT_AUTO_DOWNLOAD: bool = false;
-/// Значение по умолчанию для [`KEY_AUTO_UPSTREAM`].
+/// Default value for [`KEY_AUTO_UPSTREAM`].
 pub const DEFAULT_AUTO_UPSTREAM: bool = true;
-/// Значение по умолчанию для [`KEY_AUTO_PARITY`].
+/// Default value for [`KEY_AUTO_PARITY`].
 pub const DEFAULT_AUTO_PARITY: bool = true;
 
-/// Заголовок dev-страницы.
+/// Dev page title.
 pub fn dev_title() -> String {
     crate::i18n::tr("Developer")
 }
-/// Стиль заголовка dev-страницы.
+/// Dev page title style.
 pub const DEV_TITLE_QSS: &str = "font-size: 18px; font-weight: 600;";
-/// Подзаголовок dev-страницы.
+/// Dev page subtitle.
 pub fn dev_subtitle() -> String {
     crate::i18n::tr("Hidden page (REXON_DEV=1). Not available to buyers in the Steam build.")
 }
-/// Стиль заголовка секции dev-страницы.
+/// Dev page section title style.
 pub const DEV_SECTION_QSS: &str = "font-size: 15px; font-weight: 500;";
-/// Стиль моноширинных панелей (changelog, отчёт о паритете).
+/// Style of the monospace panels (changelog, parity report).
 pub const DEV_MONO_QSS: &str = "font-family: monospace; font-size: 12px;";
 
-// ── Числа dev-страницы ──────────────────────────────────────────────────
+// ── Dev page numbers ────────────────────────────────────────────────────
 //
-// ⚠️ Те же числа, что стоят в таблицах стилей и раскладках выше, но
-// поимённо. Тот же довод, что у чисел рейла и стартовых экранов: страницу
-// рисуют ДВЕ версии вкладки, и сцена QML таблиц стилей Qt не понимает —
-// пока число живёт только внутри строки `"font-size: 18px; …"`, спросить
-// его разметке QML неоткуда, и у неё заводится своя копия, которая молча
-// разъезжается. Сверку «строка стиля собрана из этих чисел» держит тест
+// ⚠️ The same numbers that appear in the style sheets and layouts above, but
+// by name. Same reasoning as for the rail and start screen numbers: the page
+// is drawn by TWO versions of the tab, and the QML scene does not understand Qt style sheets —
+// while a number lives only inside the string `"font-size: 18px; …"`, the QML
+// markup has nowhere to ask for it, and it gets its own copy that silently
+// drifts. The check «the style string is built from these numbers» is held by the test
 // `rust/rexon-core/tests/we_window_parity.rs`.
 
-/// Кегль заголовка dev-страницы, пикс.
+/// Dev page title font size, px.
 pub const DEV_TITLE_FONT_SIZE: i32 = 18;
-/// Насыщенность заголовка dev-страницы.
+/// Dev page title weight.
 pub const DEV_TITLE_FONT_WEIGHT: i32 = 600;
-/// Кегль заголовка секции, пикс.
+/// Section title font size, px.
 pub const DEV_SECTION_FONT_SIZE: i32 = 15;
-/// Насыщенность заголовка секции.
+/// Section title weight.
 pub const DEV_SECTION_FONT_WEIGHT: i32 = 500;
-/// Кегль моноширинных панелей (changelog, отчёт о паритете), пикс.
+/// Font size of the monospace panels (changelog, parity report), px.
 pub const DEV_MONO_FONT_SIZE: i32 = 12;
-/// Кегль приглушённых подписей (подзаголовок, строка хода операции), пикс.
+/// Font size of muted labels (subtitle, operation progress line), px.
 pub const DEV_MUTED_FONT_SIZE: i32 = 12;
-/// Кегль строк статуса целей и бейджа паритета, пикс.
+/// Font size of the target status lines and the parity badge, px.
 pub const DEV_STATUS_FONT_SIZE: i32 = 13;
-/// Насыщенность подписи над панелью changelog.
+/// Weight of the label above the changelog panel.
 pub const DEV_CHANGELOG_LABEL_WEIGHT: i32 = 500;
-/// Поля страницы, пикс (`root.setContentsMargins(12, 12, 12, 12)`).
+/// Page margins, px (`root.setContentsMargins(12, 12, 12, 12)`).
 pub const DEV_PAGE_MARGIN: i32 = 12;
-/// Зазор между секциями страницы, пикс.
+/// Spacing between page sections, px.
 pub const DEV_COLUMN_SPACING: i32 = 12;
-/// Поля панели секции, пикс (`sv.setContentsMargins(16, 16, 16, 16)`).
+/// Section panel margins, px (`sv.setContentsMargins(16, 16, 16, 16)`).
 pub const DEV_PANE_PADDING: i32 = 16;
-/// Зазор внутри панели секции, пикс.
+/// Spacing inside a section panel, px.
 pub const DEV_PANE_SPACING: i32 = 8;
-/// Зазор в ряду кнопок, пикс. У виджетной версии это умолчание
-/// `QHBoxLayout` под стилем продукта — то же число, что у зазора
-/// стартовых экранов; здесь оно записано явно, чтобы обе версии брали
-/// одно, а не каждая своё умолчание.
+/// Spacing in a button row, px. In the widget version this is the
+/// `QHBoxLayout` default under the product style — the same number as the spacing
+/// of the start screens; here it is written explicitly so that both versions take
+/// one number rather than each its own default.
 pub const DEV_ROW_SPACING: i32 = 6;
-/// Наименьшая высота панели changelog, пикс.
+/// Minimum height of the changelog panel, px.
 pub const DEV_CHANGELOG_MIN_HEIGHT: i32 = 120;
-/// Наибольшая высота панели changelog, пикс.
+/// Maximum height of the changelog panel, px.
 pub const DEV_CHANGELOG_MAX_HEIGHT: i32 = 260;
 
-/// Подпись кнопки согласия в вопросах страницы.
+/// Label of the confirm button in the page's questions.
 ///
-/// У виджетной версии её ставит сам Qt (`QMessageBox.StandardButton.Yes`);
-/// сцена QML рисует кнопки вопроса сама, и подпись ей нужна словом.
+/// In the widget version Qt sets it itself (`QMessageBox.StandardButton.Yes`);
+/// the QML scene draws the question buttons itself, and it needs the label as a word.
 pub fn dialog_yes() -> String {
     crate::i18n::tr("Yes")
 }
-/// Подпись кнопки отказа в вопросах страницы.
+/// Label of the decline button in the page's questions.
 pub fn dialog_no() -> String {
     crate::i18n::tr("No")
 }
 
-/// Стиль приглушённой подписи (подзаголовок, строка статуса операции).
+/// Style of a muted label (subtitle, operation status line).
 pub fn muted_qss(variant_color: &str, size_px: i32) -> String {
     format!("font-size: {size_px}px; color: {variant_color};")
 }
 
-/// Заголовок секции обновлений upstream.
+/// Title of the upstream updates section.
 pub fn section_upstream() -> String {
     crate::i18n::tr("Upstream Updates")
 }
-/// Заголовок секции отчёта о паритете.
+/// Title of the parity report section.
 pub fn section_parity() -> String {
     crate::i18n::tr("UI Parity Report")
 }
 
-/// Подпись галки авто-проверки upstream.
+/// Label of the upstream auto-check checkbox.
 pub fn cb_auto_upstream() -> String {
     crate::i18n::tr("Check for upstream updates on startup (network)")
 }
-/// Подпись галки авто-установки.
+/// Label of the auto-install checkbox.
 pub fn cb_auto_download() -> String {
     crate::i18n::tr("Install waywallen and OWE plugin updates automatically (after validation, with .bak)")
 }
-/// Подпись галки авто-сверки паритета.
+/// Label of the parity auto-check checkbox.
 pub fn cb_auto_parity() -> String {
     crate::i18n::tr("Check UI parity when the page opens")
 }
 
-/// Подпись кнопки «Проверить сейчас».
+/// Label of the «Check now» button.
 pub fn btn_check() -> String {
     crate::i18n::tr("Check Now")
 }
-/// Подпись кнопки установки движка.
+/// Label of the engine install button.
 pub fn btn_update() -> String {
     crate::i18n::tr("Download and Install waywallen")
 }
-/// Подпись кнопки установки OWE-плагина.
+/// Label of the OWE plugin install button.
 pub fn btn_owe() -> String {
     crate::i18n::tr("Download and Install OWE Plugin")
 }
-/// Подпись кнопки «отметить изученным».
+/// Label of the «mark as reviewed» button.
 pub fn btn_seen() -> String {
     crate::i18n::tr("OWE: Mark as Reviewed")
 }
-/// Подпись кнопки копирования changelog.
+/// Label of the changelog copy button.
 pub fn btn_copy() -> String {
     crate::i18n::tr("Copy All")
 }
-/// Подпись кнопки сверки паритета.
+/// Label of the parity check button.
 pub fn btn_parity() -> String {
     crate::i18n::tr("Compare with Engine")
 }
-/// Подпись над панелью changelog.
+/// Label above the changelog panel.
 pub fn label_changelog() -> String {
     crate::i18n::tr("What's changed:")
 }
-/// Заглушка пустой панели changelog.
+/// Placeholder of the empty changelog panel.
 pub fn placeholder_changelog() -> String {
     crate::i18n::tr("The list of releases with release notes will appear after the check.")
 }
-/// Начальный текст панели отчёта о паритете.
+/// Initial text of the parity report panel.
 pub fn placeholder_parity() -> String {
     crate::i18n::tr("Press “Compare with Engine” or open the page.")
 }
 
-/// Цели, по которым dev-страница показывает отдельную строку статуса:
-/// `(ключ цели, показываемое имя)`.
+/// Targets for which the dev page shows a separate status line:
+/// `(target key, displayed name)`.
 pub const STATUS_TARGETS: [(&str, &str); 2] =
     [("waywallen", "waywallen"), ("owe", "open-wallpaper-engine")];
 
-/// Подпись версии движка.
+/// Engine version label.
 ///
-/// ⚠️ Починка 3: до первой проверки оригинал писал «Версия движка: —», а
-/// после — «Версия waywallen: …». Одно поле не должно называться двумя
-/// именами; здесь имя одно, а пустая версия остаётся честным прочерком.
+/// ⚠️ Fix 3: before the first check the original wrote «Engine version: —», and
+/// after it — «waywallen version: …». One field must not have two
+/// names; here there is one name, and an empty version stays an honest dash.
 pub fn version_label(version: &str) -> String {
     if version.trim().is_empty() {
         crate::i18n::tr("waywallen version: (unknown)")
@@ -1172,28 +1172,28 @@ pub fn version_label(version: &str) -> String {
     }
 }
 
-/// Та же подпись до первой проверки (версию ещё не спрашивали).
+/// The same label before the first check (the version has not been asked yet).
 pub fn version_label_initial() -> String {
     crate::i18n::trf("waywallen version: %1", &[&"—"])
 }
 
-/// Стиль строки статуса до первой проверки — цвета ещё нет.
+/// Status line style before the first check — no colour yet.
 pub const STATUS_NEUTRAL_QSS: &str = "font-size: 13px;";
 
-/// Начальная строка статуса цели.
+/// Initial target status line.
 pub fn target_status_initial_parts(display_name: &str) -> StatusLine {
     StatusLine::new(crate::i18n::trf("%1: not checked yet", &[&display_name]), "", false)
 }
 
-/// Она же с готовой таблицей стилей — для виджетной версии.
+/// The same with a ready style sheet — for the widget version.
 pub fn target_status_initial(display_name: &str) -> Styled {
     target_status_initial_parts(display_name).to_styled()
 }
 
-/// Строка статуса цели по результату проверки.
+/// Target status line by the check result.
 ///
-/// `ok=false` — цель не проверилась (сеть/рейт-лимит), красный без пометки.
-/// Иначе «⬆️» при доступном обновлении (оранжевый) либо «✅» (зелёный).
+/// `ok=false` — the target was not checked (network/rate limit), red without a mark.
+/// Otherwise «⬆️» when an update is available (orange) or «✅» (green).
 pub fn target_status_parts(
     ok: bool,
     title: &str,
@@ -1208,12 +1208,12 @@ pub fn target_status_parts(
     StatusLine::new(format!("{mark} {title}: {note}"), color, false)
 }
 
-/// Она же с готовой таблицей стилей — для виджетной версии.
+/// The same with a ready style sheet — for the widget version.
 pub fn target_status_line(ok: bool, title: &str, note: &str, update_available: bool) -> Styled {
     target_status_parts(ok, title, note, update_available).to_styled()
 }
 
-/// Строка статуса waywallen после успешной установки.
+/// waywallen status line after a successful install.
 pub fn waywallen_installed_parts() -> StatusLine {
     StatusLine::new(
         crate::i18n::tr("✅ waywallen (interface app): updated, daemon restart required"),
@@ -1222,12 +1222,12 @@ pub fn waywallen_installed_parts() -> StatusLine {
     )
 }
 
-/// Она же с готовой таблицей стилей — для виджетной версии.
+/// The same with a ready style sheet — for the widget version.
 pub fn waywallen_installed_line() -> Styled {
     waywallen_installed_parts().to_styled()
 }
 
-/// Строка статуса OWE после успешной установки плагина.
+/// OWE status line after a successful plugin install.
 pub fn owe_installed_parts(version: &str) -> StatusLine {
     let v = if version.trim().is_empty() { "?" } else { version };
     StatusLine::new(
@@ -1237,12 +1237,12 @@ pub fn owe_installed_parts(version: &str) -> StatusLine {
     )
 }
 
-/// Она же с готовой таблицей стилей — для виджетной версии.
+/// The same with a ready style sheet — for the widget version.
 pub fn owe_installed_line(version: &str) -> Styled {
     owe_installed_parts(version).to_styled()
 }
 
-/// Строка статуса OWE после «отметить изученным».
+/// OWE status line after «mark as reviewed».
 pub fn owe_seen_parts(title: &str, version: &str) -> StatusLine {
     StatusLine::new(
         crate::i18n::trf("✅ %1: %2 marked as reviewed", &[&title, &version]),
@@ -1251,33 +1251,33 @@ pub fn owe_seen_parts(title: &str, version: &str) -> StatusLine {
     )
 }
 
-/// Она же с готовой таблицей стилей — для виджетной версии.
+/// The same with a ready style sheet — for the widget version.
 pub fn owe_seen_line(title: &str, version: &str) -> Styled {
     owe_seen_parts(title, version).to_styled()
 }
 
-/// Статус «идёт проверка upstream».
+/// Status «upstream check in progress».
 pub fn text_check_running() -> String {
     crate::i18n::tr("Checking upstream…")
 }
-/// Статус «проверка закончилась».
+/// Status «check finished».
 pub fn text_check_done() -> String {
     crate::i18n::tr("Check complete.")
 }
-/// Статус «проверка не удалась» (сеть/рейт-лимит — без крешей).
+/// Status «check failed» (network/rate limit — no crashes).
 pub fn text_check_failed() -> String {
     crate::i18n::tr("Could not check for updates (network / GitHub rate limit).")
 }
-/// Статус после копирования changelog.
+/// Status after copying the changelog.
 pub fn text_changelog_copied() -> String {
     crate::i18n::tr("Changelog copied to the clipboard.")
 }
-/// Панель changelog, когда изменений нет.
+/// Changelog panel when there are no changes.
 pub fn text_changelog_empty() -> String {
     crate::i18n::tr("No changes relative to our version.")
 }
 
-/// Что показать в панели changelog: собранный текст либо честное «изменений нет».
+/// What to show in the changelog panel: the assembled text or an honest «no changes».
 pub fn changelog_panel_text(rendered: &str) -> String {
     if rendered.is_empty() {
         text_changelog_empty()
@@ -1286,7 +1286,7 @@ pub fn changelog_panel_text(rendered: &str) -> String {
     }
 }
 
-/// Подтверждение установки нового движка.
+/// Confirmation of installing a new engine.
 pub fn confirm_update_text(latest: &str, asset_url: &str) -> String {
     let v = if latest.trim().is_empty() { "?" } else { latest };
     crate::i18n::trf(
@@ -1295,12 +1295,12 @@ pub fn confirm_update_text(latest: &str, asset_url: &str) -> String {
     )
 }
 
-/// Заголовок окна подтверждения установки движка.
+/// Title of the engine install confirmation window.
 pub fn confirm_update_title() -> String {
     crate::i18n::tr("Engine Update")
 }
 
-/// Подтверждение установки OWE-плагина.
+/// Confirmation of installing the OWE plugin.
 pub fn confirm_owe_text(latest: &str, asset_url: &str) -> String {
     let v = if latest.trim().is_empty() { "?" } else { latest };
     crate::i18n::trf(
@@ -1309,12 +1309,12 @@ pub fn confirm_owe_text(latest: &str, asset_url: &str) -> String {
     )
 }
 
-/// Заголовок окна подтверждения установки OWE-плагина.
+/// Title of the OWE plugin install confirmation window.
 pub fn confirm_owe_title() -> String {
     crate::i18n::tr("OWE Plugin Installation")
 }
 
-/// Итоговая строка установки движка.
+/// Result line of the engine install.
 pub fn install_done_text(ok: bool, message: &str) -> String {
     if ok {
         crate::i18n::trf("Installed: %1 Restart the daemon to apply.", &[&message])
@@ -1323,7 +1323,7 @@ pub fn install_done_text(ok: bool, message: &str) -> String {
     }
 }
 
-/// Итоговая строка установки OWE-плагина.
+/// Result line of the OWE plugin install.
 pub fn owe_done_text(ok: bool, message: &str) -> String {
     if ok {
         crate::i18n::trf("OWE plugin installed: %1", &[&message])
@@ -1332,20 +1332,20 @@ pub fn owe_done_text(ok: bool, message: &str) -> String {
     }
 }
 
-/// Строка отказа гейта совместимости waywallen ≥ 0.2.3.
+/// Refusal line of the waywallen ≥ 0.2.3 compatibility gate.
 pub fn owe_gate_refused_text(why: &str) -> String {
     crate::i18n::trf("OWE plugin not installed: %1", &[&why])
 }
 
-/// Статус «отдали zip демону».
+/// Status «handed the zip to the daemon».
 pub fn text_owe_ipc_running() -> String {
     crate::i18n::tr("OWE plugin: installing through the daemon…")
 }
 
-/// Сообщение об успешной установке через демон.
+/// Message about a successful install through the daemon.
 pub fn owe_ipc_success_text(plugin_id: &str, needs_restart: bool) -> String {
-    // Две целые фразы, а не склейка «…через демон.» + хвост: порядок слов
-    // у переводчика свой.
+    // Two whole sentences, not «…through the daemon.» glued to a tail: the translator
+    // has their own word order.
     if needs_restart {
         crate::i18n::trf(
             "plugin %1 installed through the daemon. Daemon restart required.",
@@ -1359,43 +1359,43 @@ pub fn owe_ipc_success_text(plugin_id: &str, needs_restart: bool) -> String {
     }
 }
 
-/// Сообщение отказа демона, когда он не прислал своего текста.
+/// Daemon refusal message when it sent no text of its own.
 pub fn text_owe_ipc_refused() -> String {
     crate::i18n::tr("the daemon rejected the plugin installation")
 }
 
-/// Сообщение истёкшего таймаута IPC-установки.
+/// Message of an expired IPC install timeout.
 pub fn text_owe_ipc_timeout() -> String {
     crate::i18n::tr("the daemon did not answer the plugin installation within 60 seconds — check its log and try again")
 }
 
-/// Сработал ли таймаут IPC-установки на самом деле.
+/// Whether the IPC install timeout really fired.
 ///
-/// ⚠️ Починка 2: одноразовый таймер оригинала не знал, какую попытку он
-/// сторожит. Ответ демона на первую установку приходил быстро, а таймер жил
-/// ещё до минуты — и следующая установка, начатая в этом окне, получала
-/// чужой будильник: он удалял её временный zip и рапортовал ложный «демон
-/// не ответил за 60 секунд». Теперь у попытки есть номер, и таймаут молчит,
-/// если он не от текущей.
+/// ⚠️ Fix 2: the original's one-shot timer did not know which attempt it
+/// was guarding. The daemon's answer to the first install came quickly, while the timer lived
+/// up to a minute more — and the next install started in that window got
+/// someone else's alarm: it deleted its temporary zip and reported a false «the daemon
+/// did not answer within 60 seconds». Now an attempt has a number, and the timeout stays silent
+/// if it is not from the current one.
 pub fn owe_ipc_timeout_fires(armed_attempt: u64, current_attempt: u64, waiting: bool) -> bool {
     waiting && armed_attempt == current_attempt
 }
 
 // ============================================================================
-// Сверка паритета
+// Parity check
 // ============================================================================
 
-/// Текст панели, когда демон не подключён.
+/// Panel text when the daemon is not connected.
 pub fn text_parity_no_daemon() -> String {
     crate::i18n::tr("Daemon not connected.")
 }
 
-/// Текст панели, когда движок ответил ошибкой без своего сообщения.
+/// Panel text when the engine answered with an error without its own message.
 pub fn text_parity_request_failed() -> String {
     crate::i18n::tr("Schema request to the engine failed")
 }
 
-/// Шапка отчёта: версия живого демона против тега нашего proto-снапшота.
+/// Report header: the live daemon version versus the tag of our proto snapshot.
 pub fn parity_report_header(daemon_version: &str, proto_tag: &str) -> String {
     let dv = if daemon_version.trim().is_empty() {
         crate::i18n::tr("(version unknown)")
@@ -1413,14 +1413,14 @@ pub fn parity_report_header(daemon_version: &str, proto_tag: &str) -> String {
     )
 }
 
-/// Бейдж сверки паритета.
+/// Parity check badge.
 ///
-/// `proto_match`: `Some(false)` — версия демона разошлась с нашим снапшотом
-/// протокола (тогда «✓» вводил бы в заблуждение и не показывается вовсе),
-/// `None` — версию демона узнать не удалось, `Some(true)` — сошлись.
-/// Бейдж покрывает ТОЛЬКО схему renderer-настроек, не весь UI-паритет.
-/// `unchecked_count` — сколько настроек сверить было не с чем (у движка нет
-/// renderer'а нужного типа): «✓» остаётся, но с оговоркой и цветом предупреждения.
+/// `proto_match`: `Some(false)` — the daemon version diverged from our protocol
+/// snapshot (then «✓» would be misleading and is not shown at all),
+/// `None` — the daemon version could not be found out, `Some(true)` — they match.
+/// The badge covers ONLY the renderer settings schema, not the whole UI parity.
+/// `unchecked_count` — how many settings had nothing to be checked against (the engine has no
+/// renderer of the needed type): «✓» stays, but with a caveat and the warning colour.
 pub fn parity_badge_parts(
     proto_match: Option<bool>,
     daemon_version: &str,
@@ -1452,8 +1452,8 @@ pub fn parity_badge_parts(
         } else {
             crate::i18n::tr("renderer settings schema (could not compare the daemon version)")
         };
-        // Значок — по состоянию: цветной знак цвета текста не слушается, так
-        // что оговорку «не проверено» несёт он сам, а не только оранжевый текст.
+        // The icon is chosen by state: a coloured glyph does not obey the text colour, so
+        // the «not checked» caveat is carried by the icon itself, not only by the orange text.
         if unchecked_count > 0 {
             let note = crate::i18n::trf("not checked: %1", &[&unchecked_count]);
             return StatusLine::new(format!("⚠️ {text} · {note}"), COLOR_WARN, false);
@@ -1476,7 +1476,7 @@ pub fn parity_badge_parts(
     )
 }
 
-/// Тот же бейдж с готовой таблицей стилей — для виджетной версии.
+/// The same badge with a ready style sheet — for the widget version.
 pub fn parity_badge(
     proto_match: Option<bool>,
     daemon_version: &str,
@@ -1498,26 +1498,26 @@ pub fn parity_badge(
     .to_styled()
 }
 
-/// Показывать ли пометку на кнопке «Разраб.»: расхождение схемы ИЛИ
-/// разошедшийся снапшот протокола.
+/// Whether to show the mark on the «Dev» button: a schema divergence OR
+/// a diverged protocol snapshot.
 pub fn parity_drift_flag(has_drift: bool, proto_match: Option<bool>) -> bool {
     has_drift || proto_match == Some(false)
 }
 
 // ============================================================================
-// Сетевые воркеры: пошаговые вердикты
+// Network workers: step-by-step verdicts
 // ============================================================================
 
-/// Чем закончился шаг воркера.
+/// How a worker step ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerOutcome {
-    /// Успех или провал (уходит в сигнал `done`).
+    /// Success or failure (goes into the `done` signal).
     pub ok: bool,
-    /// Сообщение для строки статуса.
+    /// Message for the status line.
     pub message: String,
-    /// Удалить ли скачанный временный файл (см. починку 1).
+    /// Whether to delete the downloaded temporary file (see fix 1).
     pub remove_tmp: bool,
-    /// Отдать ли путь к временному файлу GUI-потоку (IPC-установка плагина).
+    /// Whether to hand the temporary file path to the GUI thread (IPC plugin install).
     pub hand_over_tmp: bool,
 }
 
@@ -1532,8 +1532,8 @@ impl WorkerOutcome {
     }
 }
 
-/// Сообщение прогресса скачивания: `prefix` пуст для движка, [`prefix_owe`]
-/// для плагина. Нулевой `total` — сервер не сказал размера, прогресс молчит.
+/// Download progress message: `prefix` is empty for the engine, [`prefix_owe`]
+/// for the plugin. A zero `total` — the server did not tell the size, progress stays silent.
 pub fn download_progress(prefix: &str, done_bytes: u64, total_bytes: u64) -> Option<String> {
     if total_bytes == 0 {
         return None;
@@ -1547,14 +1547,14 @@ pub fn download_progress(prefix: &str, done_bytes: u64, total_bytes: u64) -> Opt
     ))
 }
 
-/// Префикс сообщений воркера движка (его нет).
+/// Message prefix of the engine worker (there is none).
 pub const PREFIX_ENGINE: &str = "";
-/// Префикс сообщений воркера OWE-плагина.
+/// Message prefix of the OWE plugin worker.
 pub fn prefix_owe() -> String {
     crate::i18n::tr("OWE plugin: ")
 }
 
-/// Стартовое сообщение воркера («Скачивание…» / «OWE-плагин: скачивание…»).
+/// Worker start message («Downloading…» / «OWE plugin: downloading…»).
 pub fn download_start_text(prefix: &str) -> String {
     if prefix.is_empty() {
         crate::i18n::tr("Downloading…")
@@ -1563,33 +1563,33 @@ pub fn download_start_text(prefix: &str) -> String {
     }
 }
 
-/// Сообщение шага валидации движка.
+/// Message of the engine validation step.
 pub fn text_validate_appimage() -> String {
     crate::i18n::tr("Checking the new AppImage…")
 }
-/// Сообщение шага валидации плагин-zip.
+/// Message of the plugin zip validation step.
 pub fn text_validate_plugin() -> String {
     crate::i18n::tr("OWE plugin: checking the archive…")
 }
-/// Сообщение шага ФС-установки плагина (демон не запущен).
+/// Message of the plugin file-system install step (daemon not running).
 pub fn text_install_plugin_fs() -> String {
     crate::i18n::tr("OWE plugin: installing (daemon not running)…")
 }
 
-/// Сообщение отмены при выходе из приложения.
+/// Cancel message on application exit.
 pub fn text_cancelled_on_quit() -> String {
     crate::i18n::tr("cancelled (the application is closing)")
 }
 
-/// Вердикт после шага скачивания.
+/// Verdict after the download step.
 ///
-/// `tmp_ready` — файл получен; `interrupted` — попросили выйти из приложения.
-/// `reason` — текст исключения исполнителя, если он был: без него человек
-/// видел «не удалось/отменено» и не мог отличить обрыв сети от ошибки
-/// импорта ядра (живой случай 09.09.2026: колесо `rexon_py` пересобрали
-/// под работающим процессом, ленивый импорт упал, а причину съел
-/// `except Exception` — две неудачи подряд остались без диагноза).
-/// `None` — идём дальше.
+/// `tmp_ready` — the file is received; `interrupted` — asked to exit the application.
+/// `reason` — the executor's exception text, if there was one: without it a person
+/// saw «failed/cancelled» and could not tell a network drop from a core import
+/// error (live case 09.09.2026: the `rexon_py` wheel was rebuilt
+/// under a running process, a lazy import failed, and the reason was eaten by
+/// `except Exception` — two failures in a row were left without a diagnosis).
+/// `None` — go on.
 pub fn after_download(
     prefix: &str,
     tmp_ready: bool,
@@ -1606,7 +1606,7 @@ pub fn after_download(
             Some(r) => format!("{head}: {r}"),
             None => crate::i18n::trf("%1/cancelled", &[&head]),
         };
-        // файла нет — удалять нечего
+        // no file — nothing to delete
         return Some(WorkerOutcome::fail(what, false));
     }
     if interrupted {
@@ -1615,7 +1615,7 @@ pub fn after_download(
     None
 }
 
-/// Вердикт после шага валидации. `None` — идём дальше.
+/// Verdict after the validation step. `None` — go on.
 pub fn after_validate(is_plugin: bool, ok: bool, message: &str) -> Option<WorkerOutcome> {
     if ok {
         return None;
@@ -1628,14 +1628,14 @@ pub fn after_validate(is_plugin: bool, ok: bool, message: &str) -> Option<Worker
     Some(WorkerOutcome::fail(text, true))
 }
 
-/// Вердикт после установки AppImage.
+/// Verdict after the AppImage install.
 ///
-/// ⚠️ Починка 1: `remove_tmp` ставится ВСЕГДА. Оригинал убирал скачанный
-/// временный файл только при отмене и провале валидации; провалилась сама
-/// установка — ~200 МиБ оставались лежать, потому что `install_appimage`
-/// зовёт `os.remove(new_path)` лишь на успешной ветке. На машине, где
-/// `/tmp` смонтирован в ОЗУ, это утечка оперативной памяти до перезагрузки.
-/// На успешной ветке файла уже нет, повторное удаление безвредно.
+/// ⚠️ Fix 1: `remove_tmp` is set ALWAYS. The original removed the downloaded
+/// temporary file only on cancel and on failed validation; if the install itself failed —
+/// ~200 MiB stayed lying around, because `install_appimage`
+/// calls `os.remove(new_path)` only on the success branch. On a machine where
+/// `/tmp` is mounted in RAM, this is a RAM leak until reboot.
+/// On the success branch the file is already gone, removing it again is harmless.
 pub fn after_install_appimage(ok: bool, message: &str) -> WorkerOutcome {
     WorkerOutcome {
         ok,
@@ -1645,11 +1645,11 @@ pub fn after_install_appimage(ok: bool, message: &str) -> WorkerOutcome {
     }
 }
 
-/// Вердикт воркера плагина после валидации: отдать zip GUI-потоку под
-/// IPC-установку либо ставить самим в файловую систему.
+/// Plugin worker verdict after validation: hand the zip to the GUI thread for an
+/// IPC install or install it ourselves into the file system.
 ///
-/// QWebSocket из чужого потока трогать нельзя, поэтому IPC делает GUI-поток;
-/// воркер только доносит путь.
+/// A QWebSocket must not be touched from a foreign thread, so the GUI thread does IPC;
+/// the worker only delivers the path.
 pub fn after_validate_plugin_route(fs_install: bool, message: &str) -> WorkerOutcome {
     WorkerOutcome {
         ok: true,
@@ -1659,7 +1659,7 @@ pub fn after_validate_plugin_route(fs_install: bool, message: &str) -> WorkerOut
     }
 }
 
-/// Вердикт после ФС-установки плагина: временный zip убираем всегда.
+/// Verdict after the plugin file-system install: the temporary zip is always removed.
 pub fn after_install_plugin_fs(ok: bool, message: &str) -> WorkerOutcome {
     WorkerOutcome {
         ok,
@@ -1670,17 +1670,17 @@ pub fn after_install_plugin_fs(ok: bool, message: &str) -> WorkerOutcome {
 }
 
 // ============================================================================
-// Решения GUI-потока
+// GUI thread decisions
 // ============================================================================
 
-/// Ставить ли обновление автоматически: есть что ставить, галка включена и
-/// за сессию этого ещё не делали (дефолт галки — выключено).
+/// Whether to install an update automatically: there is something to install, the checkbox is on and
+/// it has not been done in this session yet (the checkbox default is off).
 pub fn should_auto_install(pending: bool, auto_enabled: bool, already_done: bool) -> bool {
     pending && auto_enabled && !already_done
 }
 
-/// Режим установки OWE-плагина: `true` — распаковка в файловую систему
-/// (демон не подключён), `false` — hot-install через IPC демона.
+/// OWE plugin install mode: `true` — unpacking into the file system
+/// (daemon not connected), `false` — hot install through the daemon's IPC.
 pub fn plugin_fs_install(daemon_open: bool) -> bool {
     !daemon_open
 }

@@ -1,13 +1,15 @@
-//! Порт чистой части `rexon/app.py` — точки входа и аварийного отката KDE.
+//! Port of the pure part of `rexon/app.py`: the entry point and the KDE
+//! emergency rollback.
 //!
-//! В Python модуль перемешивает решения с исполнением: запускает
-//! `kwriteconfig`, переписывает конфиги, дёргает plasmashell. Сюда переехало
-//! то, что от системы НЕ зависит: разбор аргументов командной строки в
-//! маршрут, распознавание следов форк-темы, хирургия раскладки панели
-//! (чистое преобразование текста appletsrc) и argv команд сброса.
+//! In Python the module mixes decisions with execution: it runs
+//! `kwriteconfig`, rewrites configs, pokes plasmashell. What moved here is
+//! the part that does NOT depend on the system: parsing command-line
+//! arguments into a route, detecting traces of a fork theme, panel layout
+//! surgery (a pure transformation of the appletsrc text) and the argv of
+//! the reset commands.
 //!
-//! Аварийный откат `--recover-kde` должен работать даже когда Qt сломан,
-//! поэтому ни ядро, ни исполнитель этой ветки к Qt не обращаются.
+//! The `--recover-kde` emergency rollback must work even when Qt is broken,
+//! so neither the core nor the executor of this branch touches Qt.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -16,50 +18,52 @@ use std::sync::Mutex;
 use crate::i18n::{fill, n_, ntr, tr, trf};
 
 // ============================================================================
-// Строка-константа, которая переводится в момент показа
+// A constant string translated at the moment it is shown
 // ============================================================================
 
-/// Строка для человека, которая живёт КОНСТАНТОЙ (`app::FONTS_RESET_LINE`),
-/// но выходит на экран уже переведённой — на язык, выбранный к моменту
-/// показа.
+/// A human-facing string that lives as a CONSTANT (`app::FONTS_RESET_LINE`)
+/// but reaches the screen already translated, into the language chosen by
+/// the time it is shown.
 ///
-/// ЗАЧЕМ ОТДЕЛЬНЫЙ ТИП. Эти константы берут исполнитель отката
-/// (`system_exec`), заставка (`session_splash`), лоток и сверки, и все они
-/// передают их туда, где ждут `&str` (`out(app::FONTS_RESET_LINE)`), или
-/// сравнивают со строкой. `&TrLine` сам приводится к `&str` (через
-/// [`std::ops::Deref`]) и сравнивается со `String`, поэтому переводу не
-/// пришлось переписывать ни одного места показа. Внутри лежит `msgid`
-/// (помечен [`n_`] — его видит `xgettext`), перевод берётся [`tr`] на каждом
-/// обращении.
+/// WHY A SEPARATE TYPE. These constants are used by the rollback executor
+/// (`system_exec`), the login splash (`session_splash`), the tray and the
+/// parity checks, and all of them pass them where a `&str` is expected
+/// (`out(app::FONTS_RESET_LINE)`) or compare them with a string. `&TrLine`
+/// coerces to `&str` by itself (through [`std::ops::Deref`]) and compares
+/// with `String`, so the translation did not have to rewrite a single place
+/// where they are shown. Inside lies the `msgid` (marked with [`n_`] so
+/// `xgettext` sees it); the translation is fetched with [`tr`] on every
+/// access.
 ///
-/// Цена приведения к `&str` — переведённый текст однажды оседает в памяти
-/// процесса навсегда (одна копия на пару «строка × язык», а строк — десяток).
+/// The price of coercing to `&str`: the translated text settles in process
+/// memory forever (one copy per "string x language" pair, and there are
+/// about a dozen strings).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TrLine(&'static str);
 
 impl TrLine {
-    /// Константа из `msgid`; сам `msgid` пометить `n_(…)`.
+    /// A constant from a `msgid`; mark the `msgid` itself with `n_(…)`.
     pub const fn new(msgid: &'static str) -> Self {
         Self(msgid)
     }
 
-    /// Исходная (английская) строка — ключ каталога.
+    /// The source (English) string, the catalog key.
     pub const fn msgid(&self) -> &'static str {
         self.0
     }
 
-    /// Переведённый текст.
+    /// The translated text.
     pub fn text(&self) -> String {
         tr(self.0)
     }
 }
 
-/// Переведённый текст с временем жизни программы. Одинаковые тексты не
-/// копятся: второй раз отдаётся уже осевшая копия.
+/// The translated text with the lifetime of the program. Identical texts do
+/// not pile up: the second time the already settled copy is returned.
 fn interned(text: String) -> &'static str {
     static SEEN: Mutex<BTreeSet<&'static str>> = Mutex::new(BTreeSet::new());
-    // Отравленный замок (паника в чужом потоке посреди вставки) аварийному
-    // маршруту не помеха: множество от этого не портится.
+    // A poisoned lock (a panic in another thread in the middle of an insert)
+    // is no obstacle for the emergency route: the set is not corrupted by it.
     let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(known) = seen.get(text.as_str()) {
         return known;
@@ -107,11 +111,11 @@ impl PartialEq<&TrLine> for String {
 }
 
 // ============================================================================
-// Маршрут командной строки
+// Command-line route
 // ============================================================================
 
-/// Одиночные Qt-вкладки: флаг → модуль-исполнитель. Порядок совпадает с
-/// оригиналом; на нём же держится приоритет при нескольких флагах сразу.
+/// Standalone Qt tabs: flag -> executor module. The order matches the
+/// original; priority with several flags at once relies on it too.
 pub const SINGLE_TAB_FLAGS: &[(&str, &str)] = &[
     ("--appearance-qt", "rexon.appearance_page"),
     ("--extensions-qt", "rexon.qt_extensions.app"),
@@ -120,67 +124,70 @@ pub const SINGLE_TAB_FLAGS: &[(&str, &str)] = &[
     ("--desktops-qt", "rexon.qt_desktops.app"),
 ];
 
-/// Что делать по разобранной командной строке.
+/// What to do according to the parsed command line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
-    /// `--apply-defaults`: autostart-хук, применить DE-defaults сессии.
+    /// `--apply-defaults`: autostart hook, apply the session's DE defaults.
     ApplyDefaults,
-    /// `--sanitize-gtk`: починить ссылки в gtk-{3,4}.0/settings.ini.
+    /// `--sanitize-gtk`: repair the links in gtk-{3,4}.0/settings.ini.
     SanitizeGtk,
-    /// Одиночная Qt-вкладка; поле — модуль, у которого зовётся `main`.
+    /// A standalone Qt tab; the field is the module whose `main` is called.
     SingleTab { module: &'static str },
-    /// `--session-splash`: заставка при входе (Qt не поднимается).
+    /// `--session-splash`: the login splash (Qt is not started).
     SessionSplash,
-    /// `--recover-kde`: аварийный откат Global Theme.
+    /// `--recover-kde`: emergency rollback of the Global Theme.
     RecoverKde,
-    /// `--aeroshell-check [--login]`: проверка AeroThemePlasma без окна —
-    /// её зовёт пользовательский юнит после обновления пакетов и при входе.
+    /// `--aeroshell-check [--login]`: AeroThemePlasma check without a window;
+    /// the user unit calls it after package updates and at login.
     AeroshellCheck { login: bool },
-    /// `--update-check [--login]`: фоновая проверка «до и после обновления»
-    /// ([`crate::update_guard`]) — её зовёт пользовательский юнит; при
-    /// стоящих форках Plasma она ведёт и к сверке AeroThemePlasma.
+    /// `--update-check [--login]`: the background "before and after an update"
+    /// check ([`crate::update_guard`]); the user unit calls it, and with Plasma
+    /// forks installed it also leads to the AeroThemePlasma check.
     UpdateCheck { login: bool },
-    /// `--conky-set <имя>`: применить набор виджетов Conky без окна
+    /// `--conky-set <name>`: apply a set of Conky widgets without a window
     /// ([`crate::conky_sets::cli_route`]).
     ConkySet,
-    /// `--apply-day-night [--login]`: светлое или тёмное по расписанию
-    /// ([`crate::day_night::cli_route`]) — его зовут таймер и автозапуск.
+    /// `--apply-day-night [--login]`: light or dark by schedule
+    /// ([`crate::day_night::cli_route`]); the timer and autostart call it.
     DayNight,
-    /// `rexon doctor`: почему не поднимается экран входа и что делать —
-    /// только смотрит ([`crate::login_rescue::doctor_live`]).
+    /// `rexon doctor`: why the login screen does not come up and what to do;
+    /// it only looks ([`crate::login_rescue::doctor_live`]).
     Doctor,
-    /// `--help` / `-h`: справка по командной строке — печатается и только.
+    /// `--help` / `-h`: command-line help, printed and nothing else.
     Help,
-    /// `--version` / `-V`: версия Rexon одной строкой.
+    /// `--version` / `-V`: the Rexon version on one line.
     Version,
-    /// Без флагов либо `--qt`: единое окно с вкладками.
+    /// No flags or `--qt`: the single window with tabs.
     MainWindow,
 }
 
-/// Флаги справки. Справка и версия — раньше всех маршрутов и без окна:
-/// `rexon --help` зовут из текстовой консоли и по SSH, где дисплея нет, и
-/// до 30.10.2026 он проваливался в главное окно — Qt не находил платформу и
-/// процесс падал с `abort` вместо справки.
+/// Help flags. Help and version come before every other route and without a
+/// window: `rexon --help` is called from a text console and over SSH, where
+/// there is no display, and until 30.10.2026 it fell through to the main
+/// window: Qt found no platform and the process died with `abort` instead
+/// of printing help.
 pub const HELP_FLAGS: &[&str] = &["--help", "-h"];
 
-/// Справка словом, как `rexon doctor`: `rexon help`.
+/// Help as a word, like `rexon doctor`: `rexon help`.
 pub const HELP_WORD: &str = "help";
 
-/// Флаги версии (см. [`HELP_FLAGS`]).
+/// Version flags (see [`HELP_FLAGS`]).
 pub const VERSION_FLAGS: &[&str] = &["--version", "-V"];
 
-/// Разобрать аргументы в маршрут. Порядок проверок — как в оригинале:
-/// служебные хуки раньше UI, `--recover-kde` последним из флагов, потому
-/// что он самый тяжёлый и не должен перехватывать более узкие режимы.
+/// Parse the arguments into a route. The order of checks is as in the
+/// original: service hooks before the UI, `--recover-kde` last among the
+/// flags, because it is the heaviest and must not intercept narrower modes.
 ///
-/// `args` — аргументы БЕЗ имени программы (`sys.argv[1:]`); оригинал ищет
-/// флаги по всему `sys.argv`, но имя программы флагом быть не может.
+/// `args` are the arguments WITHOUT the program name (`sys.argv[1:]`); the
+/// original looks for flags across the whole `sys.argv`, but the program
+/// name cannot be a flag.
 pub fn route(args: &[String]) -> Route {
     let has = |flag: &str| args.iter().any(|a| a == flag);
 
-    // Справка и версия побеждают всё: `rexon --recover-kde --help` обязан
-    // рассказать про откат, а не выполнить его. Слово `help` — только
-    // первым, как `doctor`: иначе имя набора Conky «help» стало бы справкой.
+    // Help and version beat everything: `rexon --recover-kde --help` must
+    // explain the rollback, not run it. The word `help` counts only in first
+    // position, like `doctor`: otherwise a Conky set named "help" would become
+    // the help.
     if args.first().is_some_and(|a| a == HELP_WORD) || HELP_FLAGS.iter().any(|f| has(f)) {
         return Route::Help;
     }
@@ -227,63 +234,66 @@ pub fn route(args: &[String]) -> Route {
     Route::MainWindow
 }
 
-/// Флаг аварийного отката оформления. Один на разбор маршрута и на окно,
-/// которое этот маршрут запускает ([`crate::window_menu::recover_argv`]):
-/// две копии флага разъехались бы молча, и пункт меню звал бы маршрут,
-/// которого нет.
+/// The flag of the appearance emergency rollback. One for the route parser
+/// and for the window that launches this route
+/// ([`crate::window_menu::recover_argv`]): two copies of the flag would
+/// drift apart silently, and the menu item would call a route that does not
+/// exist.
 pub const RECOVER_KDE_FLAG: &str = "--recover-kde";
 
-/// Аргументы, передаваемые главному окну: `--qt` — исторический алиас
-/// «поведения по умолчанию» и до окна не доходит.
+/// Arguments passed to the main window: `--qt` is a historical alias of
+/// "default behaviour" and does not reach the window.
 pub fn main_window_args(args: &[String]) -> Vec<String> {
     args.iter().filter(|a| *a != "--qt").cloned().collect()
 }
 
 // ============================================================================
-// Ярлыки рабочего стола: `--page=<имя>`
+// Desktop shortcuts: `--page=<name>`
 // ============================================================================
 //
-// ДЕФЕКТ, КОТОРЫЙ ЭТО ЗАКРЫВАЕТ. Ярлык Rexon держит три быстрых действия
-// (`installer::desktop_content`, они же в `packaging/aur/rexon.desktop`):
-// «Установить рабочий стол» — `rexon --page=install`, «Управление
-// резервными копиями» — `rexon --page=backups`, «Сравнить рабочие столы» —
-// `rexon --page=compare`. Флаг `--page=` НЕ разбирал никто: ни `route`
-// здесь, ни Python. `route` отдавал `MainWindow`, `main_window_args`
-// пропускал строку дальше нетронутой, Qt незнакомый аргумент молча
-// игнорировал — и все три пункта открывали одно и то же окно на разделе по
-// умолчанию. Нажатие правой кнопкой по ярлыку → «Управление резервными
-// копиями» приводило человека в «Рабочие столы», а не в резервные копии;
-// «Сравнить» — туда же. Обещание в меню есть, поведения за ним нет, и это
-// ровно тот молчаливый обман, который правило #13 запрещает.
+// THE DEFECT THIS CLOSES. The Rexon shortcut carries three quick actions
+// (`installer::desktop_content`, also in `packaging/aur/rexon.desktop`):
+// "Install a desktop" is `rexon --page=install`, "Manage backups" is
+// `rexon --page=backups`, "Compare desktops" is `rexon --page=compare`.
+// NOBODY parsed the `--page=` flag: neither `route` here nor Python.
+// `route` returned `MainWindow`, `main_window_args` passed the string on
+// untouched, Qt silently ignored the unknown argument, and all three
+// items opened the same window on the default section. Right-clicking the
+// shortcut -> "Manage backups" took the person to "Desktops" instead of
+// the backups; "Compare" went to the same place. The menu makes a promise
+// with no behaviour behind it, and that is exactly the silent deception
+// rule #13 forbids.
 //
-// Таблица живёт ЗДЕСЬ, потому что имена в ярлыке пишет соседний модуль
-// (`installer::desktop_content`) — и он, и разбор обязаны читать один
-// список. Сторож `ярлык_не_обещает_неизвестных_страниц` в
-// `tests/app_parity.rs` краснеет, если в ярлыке появится `--page=` без
-// записи здесь.
+// The table lives HERE because the names in the shortcut are written by a
+// neighbouring module (`installer::desktop_content`), and both it and the
+// parser must read one list. The guard `ярлык_не_обещает_неизвестных_страниц`
+// in `tests/app_parity.rs` turns red if a `--page=` appears in the
+// shortcut without an entry here.
 
-/// Префикс флага ярлыка: `--page=install`.
+/// Prefix of the shortcut flag: `--page=install`.
 pub const PAGE_FLAG: &str = "--page=";
 
-/// Имя из ярлыка → (раздел главного окна, подраздел внутри него).
+/// Name from the shortcut -> (main window section, subsection inside it).
 ///
-/// Раздел — идентификатор из [`crate::qt_main::SECTIONS`]; своей копии
-/// состава разделов здесь нет, а сверка обоих списков — в тестах.
-/// Подраздел пуст, когда открывать нужно сам раздел.
+/// The section is an identifier from [`crate::qt_main::SECTIONS`]; there is
+/// no copy of the section list here, and the two lists are compared in the
+/// tests. The subsection is empty when the section itself should open.
 ///
-/// «Сравнение DE» с 08.07.2026 живёт ВНУТРИ «Рабочих столов», поэтому у
-/// `compare` тот же раздел, что у `install`, и отличает их подраздел.
+/// "DE comparison" has lived INSIDE "Desktops" since 08.07.2026, so
+/// `compare` has the same section as `install`, and the subsection tells
+/// them apart.
 pub const PAGE_TARGETS: &[(&str, &str, &str)] = &[
     ("install", "desktops", ""),
     ("backups", "settings", ""),
     ("compare", "desktops", "compare"),
 ];
 
-/// Куда открывать окно по `--page=…`: (раздел, подраздел).
+/// Where to open the window for `--page=…`: (section, subsection).
 ///
-/// `None` — флага нет вовсе либо имя незнакомое. Незнакомое имя намеренно
-/// не считается ошибкой запуска: окно обязано открыться хоть на разделе по
-/// умолчанию, а не отказать человеку из-за опечатки в чужом ярлыке.
+/// `None`: there is no flag at all, or the name is unknown. An unknown name
+/// is deliberately not treated as a launch error: the window must open at
+/// least on the default section rather than refuse the person over a typo
+/// in someone else's shortcut.
 pub fn start_page(args: &[String]) -> Option<(&'static str, &'static str)> {
     let name = args
         .iter()
@@ -297,40 +307,44 @@ pub fn start_page(args: &[String]) -> Option<(&'static str, &'static str)> {
 }
 
 // ============================================================================
-// Чем заводить Rexon — одна правда на все строки запуска, уезжающие на диск
+// What starts Rexon: one truth for all launch lines written to disk
 // ============================================================================
 
-/// Программа для строки запуска, которую Rexon записывает на диск: `Exec=`
-/// автозапуска и ярлыка, `ExecStart=` systemd-юнита. `None` — заводить
-/// НЕЧЕМ, и тогда строку писать нельзя: мёртвая запись оживает при
-/// следующем входе в сеанс, когда объяснить поломку уже некому (правило
-/// #13 — отказывать вслух, а не рапортовать успех).
+/// The program for a launch line that Rexon writes to disk: the `Exec=` of
+/// autostart and of the shortcut, the `ExecStart=` of a systemd unit.
+/// `None` means there is NOTHING to start it with, and then the line must
+/// not be written: a dead entry comes to life at the next login, when
+/// nobody is left to explain the breakage (rule #13: refuse out loud rather
+/// than report success).
 ///
-/// ⚠️ ОДНО МЕСТО НА ПРОДУКТ (правило #12). Сюда сходятся все три писателя
-/// строк запуска: лоток ([`crate::tray::autostart_exec`]), заставка входа
-/// ([`crate::session_splash::desktop_launcher_exec`]) и автозапуск
-/// дефолтных приложений ([`crate::appdefaults::autostart_exec_for`]).
-/// Разъехаться им нельзя: замок «один Rexon на сессию» у всех записей
-/// общий, и запись, заводящая ДРУГОЙ вход, превращается в процесс, который
-/// стучится в занятый замок и молча выходит.
+/// ⚠️ ONE PLACE FOR THE WHOLE PRODUCT (rule #12). All three writers of
+/// launch lines meet here: the tray ([`crate::tray::autostart_exec`]), the
+/// login splash ([`crate::session_splash::desktop_launcher_exec`]) and the
+/// autostart of default applications
+/// ([`crate::appdefaults::autostart_exec_for`]). They must not drift apart:
+/// the "one Rexon per session" lock is shared by all the entries, and an
+/// entry that starts a DIFFERENT entry point turns into a process that
+/// knocks on a taken lock and silently exits.
 ///
-/// Сам вход выбирает [`crate::installer::launch_entry_live`] — тоже одна
-/// функция на всех, и она знает все раскладки, где бинарь окна бывает:
-/// каталоги `PATH`, пакет дистрибутива, установка в систему, установка в
-/// домашнюю папку, дерево разработчика за симлинком установленного
-/// каталога ([`crate::installer::main_window_candidates`]). Своего поиска
-/// бинаря здесь нет и заводить его нельзя.
+/// The entry point itself is chosen by
+/// [`crate::installer::launch_entry_live`], also one function for everyone,
+/// and it knows every layout where the window binary can live: `PATH`
+/// directories, the distribution package, a system install, a home folder
+/// install, a developer tree behind the symlink of the installed directory
+/// ([`crate::installer::main_window_candidates`]). There is no binary
+/// search of its own here, and one must not be added.
 ///
-/// ⛔ Запасного пути «поднять интерпретатор и позвать модуль» здесь НЕТ.
-/// Он жил у лотка и у заставки до 16.09.2026 (`python3 -m rexon.app …`) и
-/// был мёртв по построению: строка из `.desktop`-записи автозапуска
-/// выполняется без какого-либо рабочего каталога, а пакет `rexon` в
-/// `sys.path` системного интерпретатора не лежит — вход в сеанс молча не
-/// делал ничего. Тот же дефект уже чинили у дефолтных приложений
-/// (`appdefaults_exec`, пункт 1 шапки).
+/// ⛔ There is NO fallback "start an interpreter and call the module" here.
+/// It lived in the tray and the splash until 16.09.2026
+/// (`python3 -m rexon.app …`) and was dead by construction: the line from
+/// an autostart `.desktop` entry runs without any working directory, and
+/// the `rexon` package is not on the `sys.path` of the system interpreter,
+/// so logging in silently did nothing. The same defect had already been
+/// fixed for default applications (`appdefaults_exec`, item 1 of the
+/// header).
 ///
-/// ⭐ Починка при переносе: путь уходил в `Exec=` без кавычек, и каталог с
-/// пробелом разрывал команду на два аргумента.
+/// ⭐ Fixed during the port: the path went into `Exec=` without quotes, and
+/// a directory with a space split the command into two arguments.
 pub fn launch_program(
     entry: &crate::installer::LaunchEntry,
     rexon_path: Option<&str>,
@@ -342,8 +356,8 @@ pub fn launch_program(
     }
 }
 
-/// [`launch_program`] со своими флагами: `<программа> <флаг>…`. Флаги
-/// кавычек не требуют — это наши собственные слова без пробелов.
+/// [`launch_program`] with its own flags: `<program> <flag>…`. The flags
+/// need no quotes: they are our own words without spaces.
 pub fn launch_command(
     entry: &crate::installer::LaunchEntry,
     rexon_path: Option<&str>,
@@ -357,11 +371,11 @@ pub fn launch_command(
     Some(out)
 }
 
-/// То же для `ExecStart=` systemd-юнита. Отдельно от [`launch_command`]
-/// только из-за кавычек: у Desktop Entry значение ключа проходит
-/// разэкранирование ДО разбора аргументов (косая удваивается ещё раз), а
-/// systemd лишнюю косую прочёл бы буквально
-/// ([`crate::session_splash::systemd_exec_arg`]).
+/// The same for the `ExecStart=` of a systemd unit. Separate from
+/// [`launch_command`] only because of quoting: in a Desktop Entry the key
+/// value is unescaped BEFORE the arguments are parsed (the backslash is
+/// doubled once more), while systemd would read the extra backslash
+/// literally ([`crate::session_splash::systemd_exec_arg`]).
 pub fn unit_launch_command(
     entry: &crate::installer::LaunchEntry,
     rexon_path: Option<&str>,
@@ -380,15 +394,16 @@ pub fn unit_launch_command(
     Some(out)
 }
 
-/// Непустое значение без окружающих пробелов; пустая строка — это «не
-/// нашли», а не путь (`shutil.which` оригинала возвращал `None`, мост и
-/// исполнители — пустую строку).
+/// A non-empty value without surrounding whitespace; an empty string means
+/// "not found", not a path (the original's `shutil.which` returned `None`,
+/// the bridge and the executors an empty string).
 fn nonempty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|v| !v.is_empty())
 }
 
-/// Отказ, когда заводить Rexon нечем: бинаря окна не нашлось ни в одной
-/// раскладке, лаунчера `rexon` в `PATH` тоже нет.
+/// The refusal when there is nothing to start Rexon with: the window binary
+/// was not found in any layout, and there is no `rexon` launcher in `PATH`
+/// either.
 pub const MSG_NOTHING_TO_LAUNCH: &TrLine = &TrLine::new(n_(
     "Couldn't find anything to start Rexon with: no window binary (package, system \
      install, install in the home folder, developer tree) and no `rexon` launcher in \
@@ -396,11 +411,12 @@ pub const MSG_NOTHING_TO_LAUNCH: &TrLine = &TrLine::new(n_(
 ));
 
 // ============================================================================
-// Следы форк-темы (Aero и родня)
+// Traces of a fork theme (Aero and relatives)
 // ============================================================================
 
-/// Отличительные токены форк-темы. НЕ голые `aero`/`win7`: те ловят
-/// легитимные строки вроде имени обоев и зря триггерят сброс панели.
+/// Distinctive tokens of a fork theme. NOT bare `aero`/`win7`: those catch
+/// legitimate strings such as a wallpaper name and trigger a panel reset
+/// for nothing.
 pub const FORK_TOKENS: &[&str] = &[
     "wackyideas",
     "aeroshell",
@@ -410,24 +426,25 @@ pub const FORK_TOKENS: &[&str] = &[
     "win7os",
 ];
 
-/// Есть ли в строке токен форк-темы (регистр не важен).
+/// Whether the string contains a fork theme token (case-insensitive).
 pub fn has_fork_token(text: &str) -> bool {
     let lower = text.to_lowercase();
     FORK_TOKENS.iter().any(|t| lower.contains(t))
 }
 
-/// Файлы, где ищем следы форка: раскладка панели и конфиги SDDM.
-/// Раскрытие маски `/etc/sddm.conf.d/*.conf` — за исполнителем.
+/// Files where traces of a fork are looked for: the panel layout and the
+/// SDDM configs. Expanding the `/etc/sddm.conf.d/*.conf` glob is up to the
+/// executor.
 pub fn fork_residue_files(home: &str) -> (String, &'static str, &'static str) {
     (appletsrc_path(home), "/etc/sddm.conf.d", "/etc/sddm.conf")
 }
 
-/// Путь раскладки рабочего стола и панелей Plasma.
+/// Path of the Plasma desktop and panel layout.
 pub fn appletsrc_path(home: &str) -> String {
     appletsrc_path_xdg(None, home)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME` (единый корень конфигов ядра).
+/// The same, honouring `$XDG_CONFIG_HOME` (the core's single config root).
 pub fn appletsrc_path_xdg(xdg_config_home: Option<&str>, home: &str) -> String {
     format!(
         "{}/plasma-org.kde.plasma.desktop-appletsrc",
@@ -435,27 +452,27 @@ pub fn appletsrc_path_xdg(xdg_config_home: Option<&str>, home: &str) -> String {
     )
 }
 
-/// Путь бэкапа, который кладётся рядом перед хирургией панели.
+/// Path of the backup placed next to it before panel surgery.
 pub fn appletsrc_backup_path(appletsrc: &str) -> String {
     format!("{appletsrc}.rexon-bak")
 }
 
-/// Убрать из текста appletsrc группы апплетов форк-темы.
+/// Remove the fork theme's applet groups from the appletsrc text.
 ///
-/// Файл KConfig разбивается на секции «заголовок + строки до следующего
-/// заголовка»; секция считается чужой, если в ней есть `plugin=` с токеном
-/// форка. Такие секции выкидываются ВМЕСТЕ с вложенными подсекциями
-/// (`[…][Configuration]` и глубже) — иначе осиротевшая конфигурация
-/// остаётся мусором в файле.
+/// The KConfig file is split into sections "header + lines up to the next
+/// header"; a section counts as foreign if it has a `plugin=` with a fork
+/// token. Such sections are dropped TOGETHER with their nested subsections
+/// (`[…][Configuration]` and deeper); otherwise the orphaned configuration
+/// stays in the file as garbage.
 ///
-/// Остальные апплеты, systemtray и его `extraItems`/`knownItems` не
-/// трогаются: стоковые громкость, батарея и сеть вернутся сами.
+/// Other applets, systemtray and its `extraItems`/`knownItems` are left
+/// alone: the stock volume, battery and network come back by themselves.
 ///
-/// Возвращает `(новый текст, удалённые plugin)`; если форка нет — текст
-/// отдаётся байт-в-байт исходным.
+/// Returns `(new text, removed plugins)`; if there is no fork, the text is
+/// returned byte for byte unchanged.
 pub fn strip_fork_applets(text: &str) -> (String, Vec<String>) {
-    // Разбиение на секции: (заголовок, строки). Преамбула до первого
-    // заголовка идёт с `None` и никогда не выкидывается.
+    // Split into sections: (header, lines). The preamble before the first
+    // header goes with `None` and is never dropped.
     let mut sections: Vec<(Option<String>, Vec<&str>)> = Vec::new();
     let mut cur_header: Option<String> = None;
     let mut cur_lines: Vec<&str> = Vec::new();
@@ -472,7 +489,7 @@ pub fn strip_fork_applets(text: &str) -> (String, Vec<String>) {
     }
     sections.push((cur_header, cur_lines));
 
-    // Заголовки секций, чей plugin принадлежит форку.
+    // Headers of sections whose plugin belongs to the fork.
     let mut fork_headers: Vec<String> = Vec::new();
     let mut removed: Vec<String> = Vec::new();
     for (header, body) in &sections {
@@ -497,7 +514,7 @@ pub fn strip_fork_applets(text: &str) -> (String, Vec<String>) {
     for (header, body) in &sections {
         if let Some(h) = header {
             if fork_headers.iter().any(|fh| h.starts_with(fh.as_str())) {
-                continue; // выкинуть секцию вместе с подсекциями
+                continue; // drop the section together with its subsections
             }
         }
         for line in body {
@@ -507,7 +524,7 @@ pub fn strip_fork_applets(text: &str) -> (String, Vec<String>) {
     (out, removed)
 }
 
-/// Порт `str.splitlines(keepends=True)`: строки вместе с их окончаниями.
+/// Port of `str.splitlines(keepends=True)`: lines together with their endings.
 fn split_keepends(text: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let bytes = text.as_bytes();
@@ -538,12 +555,12 @@ fn split_keepends(text: &str) -> Vec<&str> {
 }
 
 // ============================================================================
-// argv команд сброса
+// argv of the reset commands
 // ============================================================================
 
-/// Ключи kdeglobals, снимаемые при сбросе шрифтов. `--delete` снимает ключ,
-/// после чего Plasma берёт собственный дефолт — надёжнее, чем хардкодить
-/// конкретный шрифт.
+/// kdeglobals keys removed when fonts are reset. `--delete` removes the
+/// key, after which Plasma takes its own default: more reliable than
+/// hardcoding a specific font.
 pub const KDE_FONT_KEYS: &[&str] = &[
     "font",
     "fixed",
@@ -553,8 +570,8 @@ pub const KDE_FONT_KEYS: &[&str] = &[
     "activeFont",
 ];
 
-/// Эффекты KWin от форк-тем, снимаемые поимённо. Чужие и пользовательские
-/// эффекты не трогаются — удаляются только эти ключи `<эффект>Enabled`.
+/// KWin effects from fork themes, removed by name. Other and user effects
+/// are left alone: only these `<effect>Enabled` keys are deleted.
 pub const KWIN_FORK_EFFECTS: &[&str] = &[
     "aeroglassblur",
     "aeroglide",
@@ -565,7 +582,7 @@ pub const KWIN_FORK_EFFECTS: &[&str] = &[
     "aerosnap",
 ];
 
-/// argv снятия всех переопределений шрифтов (по вызову на ключ).
+/// argv that removes all font overrides (one call per key).
 pub fn kde_font_reset_argv(kwriteconfig: &str) -> Vec<Vec<String>> {
     KDE_FONT_KEYS
         .iter()
@@ -584,16 +601,17 @@ pub fn kde_font_reset_argv(kwriteconfig: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// argv снятия шрифта документов, который страница «Шрифты» пишет в KDE в
-/// ключ GNOME (`qt_settings::DOCUMENT_FONT_GNOME`: своего у Plasma нет).
-/// `gsettings` — найденный путь программы. Шрифта подписей значков рабочего
-/// стола в KDE Rexon не пишет — снимать там нечего.
+/// argv that removes the document font which the "Fonts" page writes in
+/// KDE to the GNOME key (`qt_settings::DOCUMENT_FONT_GNOME`: Plasma has no
+/// key of its own). `gsettings` is the found program path. Rexon does not
+/// write the desktop icon label font in KDE, so there is nothing to remove
+/// there.
 pub fn document_font_reset_argv(gsettings: &str) -> Vec<String> {
     let (schema, key) = crate::qt_settings::DOCUMENT_FONT_GNOME;
     vec![gsettings.to_string(), "reset".into(), schema.to_string(), key.to_string()]
 }
 
-/// argv снятия эффектов KWin от форк-тем (по вызову на эффект).
+/// argv that removes the KWin effects of fork themes (one call per effect).
 pub fn kwin_effect_reset_argv(kwriteconfig: &str) -> Vec<Vec<String>> {
     KWIN_FORK_EFFECTS
         .iter()
@@ -612,7 +630,7 @@ pub fn kwin_effect_reset_argv(kwriteconfig: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// argv перечитывания конфигурации живым KWin.
+/// argv that makes the running KWin reread its configuration.
 pub fn kwin_reconfigure_argv(qdbus: &str) -> Vec<String> {
     vec![
         qdbus.to_string(),
@@ -622,7 +640,7 @@ pub fn kwin_reconfigure_argv(qdbus: &str) -> Vec<String> {
     ]
 }
 
-/// argv возврата стиля виджетов на Breeze.
+/// argv that returns the widget style to Breeze.
 pub fn widget_style_breeze_argv(kwriteconfig: &str) -> Vec<String> {
     vec![
         kwriteconfig.to_string(),
@@ -636,8 +654,8 @@ pub fn widget_style_breeze_argv(kwriteconfig: &str) -> Vec<String> {
     ]
 }
 
-/// Похожа ли тема Kvantum на Aero-семейство. Легитимные темы (Dracula и
-/// прочие) не трогаем — только эти признаки.
+/// Whether a Kvantum theme looks like the Aero family. Legitimate themes
+/// (Dracula and others) are left alone; only these signs count.
 pub fn is_aero_kvantum_theme(theme: &str) -> bool {
     let t = theme.to_lowercase();
     ["aero", "seven", "win7", "windows7"]
@@ -645,42 +663,43 @@ pub fn is_aero_kvantum_theme(theme: &str) -> bool {
         .any(|m| t.contains(m))
 }
 
-/// Кандидаты бинаря kwriteconfig в порядке предпочтения.
+/// Candidates for the kwriteconfig binary in order of preference.
 pub const KWRITECONFIG_BINS: &[&str] = &["kwriteconfig6", "kwriteconfig5"];
-/// Кандидаты бинаря qdbus в порядке предпочтения.
+/// Candidates for the qdbus binary in order of preference.
 pub const QDBUS_BINS: &[&str] = &["qdbus6", "qdbus"];
 
 // ============================================================================
-// --recover-kde: возврат обоев рабочих столов к стандартным
+// --recover-kde: returning desktop wallpapers to the stock ones
 // ============================================================================
 
-/// Каталоги обоев-кандидатов на роль «стандартных»: сначала штатный Plasma
-/// Next, потом наборы CachyOS (основная машина). Ни один не найден —
-/// исполнитель ищет любой пакет обоев сам.
+/// Wallpaper directories that are candidates for "stock": the regular
+/// Plasma Next first, then the CachyOS sets (the main machine). If none is
+/// found, the executor looks for any wallpaper package itself.
 pub const DEFAULT_WALLPAPER_DIRS: &[&str] = &[
     "/usr/share/wallpapers/Next",
     "/usr/share/wallpapers/cachyos-wallpapers",
     "/usr/share/wallpapers/Cachy",
 ];
 
-/// Контейнмент, на который ставим обои, если в appletsrc не нашлось ни
-/// одного десктопного (у Plasma это первый номер по умолчанию).
+/// The containment that gets the wallpaper if appletsrc has no desktop
+/// containment at all (in Plasma it is number one by default).
 pub const FALLBACK_CONTAINMENT: &str = "128";
 
-/// Номера ДЕСКТОПНЫХ контейнментов из текста appletsrc — порядок появления,
-/// без повторов.
+/// Numbers of the DESKTOP containments from the appletsrc text, in order of
+/// appearance, without repeats.
 ///
-/// Секция `[Containments][<N>]` запоминается, и если В НЕЙ САМОЙ встречается
-/// строка `plugin=…`, содержащая `folder` или `desktopcontainment`, номер
-/// попадает в список. Панели (`plugin=org.kde.panel`) так отсеиваются сами.
+/// A `[Containments][<N>]` section is remembered, and if a `plugin=…` line
+/// containing `folder` or `desktopcontainment` appears IN THAT SECTION
+/// ITSELF, the number goes into the list. Panels (`plugin=org.kde.panel`)
+/// are filtered out by this on their own.
 ///
-/// ⚠️ Починка бага оригинала (правило #16): Python не сбрасывал «текущий
-/// контейнмент» на чужом заголовке секции, поэтому `plugin=` ЛЮБОЙ
-/// вложенной секции засчитывался предыдущему контейнменту. Апплет «Папки»
-/// (`org.kde.plasma.folder`), положенный в панель, делал ПАНЕЛЬ «десктопом»
-/// — и аварийный сброс писал ей `wallpaperplugin`/`Image` и завышал число
-/// «рабочих столов» в отчёте. Здесь любой не-контейнментный заголовок
-/// закрывает секцию.
+/// ⚠️ Fix of a bug in the original (rule #16): Python did not reset the
+/// "current containment" on a foreign section header, so the `plugin=` of
+/// ANY nested section was credited to the previous containment. A "Folder"
+/// applet (`org.kde.plasma.folder`) placed in a panel made the PANEL a
+/// "desktop", and the emergency reset wrote `wallpaperplugin`/`Image` to it
+/// and inflated the number of "desktops" in the report. Here any
+/// non-containment header closes the section.
 pub fn desktop_containment_ids(appletsrc_text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut cur: Option<String> = None;
@@ -702,10 +721,11 @@ pub fn desktop_containment_ids(appletsrc_text: &str) -> Vec<String> {
     out
 }
 
-/// Номер из строки ровно вида `[Containments][<цифры>]` (порт регулярного
-/// выражения `^\[Containments\]\[(\d+)\]$`). Вложенные секции
-/// (`[Containments][2][Applets][5]`) намеренно НЕ подходят: у апплета свой
-/// `plugin=`, и он не должен выдавать себя за десктоп.
+/// The number from a line of exactly the form `[Containments][<digits>]`
+/// (port of the regular expression `^\[Containments\]\[(\d+)\]$`). Nested
+/// sections (`[Containments][2][Applets][5]`) deliberately do NOT match: an
+/// applet has its own `plugin=`, and it must not pass itself off as a
+/// desktop.
 fn containment_header_id(line: &str) -> Option<String> {
     const PREFIX: &str = "[Containments][";
     let rest = line.strip_prefix(PREFIX)?.strip_suffix(']')?;
@@ -715,7 +735,7 @@ fn containment_header_id(line: &str) -> Option<String> {
     Some(rest.to_string())
 }
 
-/// argv возврата плагина обоев контейнмента на штатную картинку.
+/// argv that returns a containment's wallpaper plugin to the stock image.
 pub fn wallpaper_plugin_reset_argv(kwriteconfig: &str, containment: &str) -> Vec<String> {
     vec![
         kwriteconfig.to_string(),
@@ -731,8 +751,9 @@ pub fn wallpaper_plugin_reset_argv(kwriteconfig: &str, containment: &str) -> Vec
     ]
 }
 
-/// argv записи самой картинки обоев контейнмента. `wallpaper_dir` —
-/// каталог пакета обоев СО слэшем на конце (так его пишет сам Plasma).
+/// argv that writes the containment's wallpaper image itself.
+/// `wallpaper_dir` is the wallpaper package directory WITH a trailing slash
+/// (that is how Plasma itself writes it).
 pub fn wallpaper_image_argv(
     kwriteconfig: &str,
     containment: &str,
@@ -758,8 +779,9 @@ pub fn wallpaper_image_argv(
     ]
 }
 
-/// argv перезапуска plasmashell, чтобы записанные обои подхватились.
-/// `reset-failed` первым — иначе повторный restart после краха отвергается.
+/// argv that restarts plasmashell so the written wallpapers are picked up.
+/// `reset-failed` comes first; otherwise a repeated restart after a crash
+/// is rejected.
 pub fn plasmashell_restart_argv() -> Vec<Vec<String>> {
     vec![
         vec![
@@ -777,7 +799,7 @@ pub fn plasmashell_restart_argv() -> Vec<Vec<String>> {
     ]
 }
 
-/// Подсказка по установке PySide6 — печатается, когда Qt-стек не найден.
+/// Hint for installing PySide6, printed when the Qt stack is not found.
 pub const PYSIDE6_INSTALL_HINT: &[&str] = &[
     "Arch:   sudo pacman -S pyside6",
     "Debian: sudo apt install python3-pyside6",
@@ -785,60 +807,64 @@ pub const PYSIDE6_INSTALL_HINT: &[&str] = &[
 ];
 
 // ============================================================================
-// Один Rexon на сессию: второй запуск не плодит второй трей-значок
+// One Rexon per session: a second launch does not spawn a second tray icon
 // ============================================================================
 //
-// Механизм целиком переехал в `rexon_core::single_instance`: там же, где
-// адреса замка и сокета, теперь живут и сам `flock` (он лежал в
-// Python-биндинге и Rust-точке входа был недоступен), и слушатель «подними
-// окно», и стук в него. Разбор дефектов, из которых всё это выросло, — в
-// шапке того модуля.
+// The whole mechanism moved to `rexon_core::single_instance`: next to the
+// lock and socket addresses now live the `flock` itself (it used to sit in
+// the Python binding and was unreachable from the Rust entry point), the
+// "raise the window" listener and the knock on it. The analysis of the
+// defects all this grew out of is in the header of that module.
 //
-// Здесь остаются только прежние имена: `rexon/app.py` зовёт биндинг по ним,
-// и переименование ради переезда сломало бы живой продукт на ровном месте.
+// Only the old names remain here: `rexon/app.py` calls the binding by
+// them, and renaming for the sake of the move would break the live product
+// for no reason.
 
 pub use crate::single_instance::lock_path as single_instance_lock_path;
 pub use crate::single_instance::socket_path as single_instance_socket_path;
 
 // ============================================================================
-// --recover-kde: решения и тексты аварийного отката
+// --recover-kde: decisions and texts of the emergency rollback
 // ============================================================================
 //
-// ЗАЧЕМ ЭТА ЧАСТЬ ЗДЕСЬ. Порядок шагов и походы наружу живут в исполнителе
-// (`system_exec::SystemExec::recover_kde`), а тут — всё, что решается БЕЗ
-// системы: какую тему применяем, считается ли текущий рабочий стол
-// Plasma, argv каждой команды и каждая строка, которую человек увидит.
-// Разделение то же, что у соседних маршрутов: тексты закреплены сверками
-// (`tests/app_parity.rs` читает `rexon/app.py` через `include_str!`), и
-// вторая копия слов в исполнителе разъехалась бы с оригиналом молча.
+// WHY THIS PART IS HERE. The order of steps and the trips outside live in
+// the executor (`system_exec::SystemExec::recover_kde`), and here is
+// everything decided WITHOUT the system: which theme is applied, whether
+// the current desktop counts as Plasma, the argv of every command and
+// every line the person will see. The split is the same as in the
+// neighbouring routes: the texts are pinned by parity checks
+// (`tests/app_parity.rs` reads `rexon/app.py` through `include_str!`), and
+// a second copy of the words in the executor would drift from the original
+// silently.
 //
-// ⚠️ Маршрут аварийный: его зовут, когда оформление уже сломано, и он
-// обязан работать без Qt вовсе. Поэтому ни одна строка отсюда не
-// обращается к Qt. Перевод — через `crate::i18n`, а он Qt не касается:
-// каталог `.mo` читается чистым Rust, и если каталога нет или он битый,
-// `tr` отдаёт исходную английскую строку, без паники. Аварийный маршрут
-// при этом говорит по-английски, а не молчит.
+// ⚠️ The route is an emergency one: it is called when the appearance is
+// already broken, and it must work without Qt at all. So no line here
+// touches Qt. Translation goes through `crate::i18n`, which does not touch
+// Qt: the `.mo` catalog is read by plain Rust, and if the catalog is
+// missing or broken, `tr` returns the original English string without a
+// panic. The emergency route then speaks English rather than staying
+// silent.
 
-/// Тема, которая применяется, если резервной копии нет.
+/// The theme applied when there is no backup.
 pub const RECOVER_DEFAULT_TARGET: &str = "org.kde.breezedark.desktop";
 
-/// Цветовая схема, возвращаемая вслед за темой.
+/// The colour scheme restored after the theme.
 pub const RECOVER_COLORSCHEME: &str = "BreezeDark";
 
-/// Признаки Plasma в `$XDG_CURRENT_DESKTOP` (регистр не важен).
+/// Signs of Plasma in `$XDG_CURRENT_DESKTOP` (case-insensitive).
 pub const PLASMA_DESKTOP_MARKERS: &[&str] = &["kde", "plasma"];
 
-/// Можно ли восстанавливать оформление в ЭТОМ сеансе.
+/// Whether the appearance can be restored in THIS session.
 ///
-/// Ярлык назван нейтрально («Восстановить оформление рабочего стола»), но
-/// само восстановление умеет только Plasma: оно откатывает Global Theme,
-/// раскладку панели, SDDM и Plymouth. На чужом рабочем столе честно
-/// отказываемся, а не делаем вид, что сработали (правило #13).
+/// The shortcut is named neutrally ("Restore desktop appearance"), but only
+/// Plasma can do the restoring itself: it rolls back the Global Theme, the
+/// panel layout, SDDM and Plymouth. On another desktop we honestly refuse
+/// instead of pretending it worked (rule #13).
 ///
-/// Пустая переменная — это НЕ «чужой рабочий стол», а «неизвестно»
-/// (запуск из tty, из systemd-юнита, из терминала без сеанса): там
-/// отказывать нельзя, иначе аварийный маршрут перестанет работать ровно в
-/// том случае, ради которого он и заведён — когда сеанс уже не поднимается.
+/// An empty variable does NOT mean "another desktop" but "unknown" (a run
+/// from a tty, from a systemd unit, from a terminal without a session):
+/// refusing there is not allowed, or the emergency route would stop working
+/// in exactly the case it exists for, when the session no longer comes up.
 pub fn is_plasma_desktop(xdg_current_desktop: &str) -> bool {
     if xdg_current_desktop.trim().is_empty() {
         return true;
@@ -847,7 +873,7 @@ pub fn is_plasma_desktop(xdg_current_desktop: &str) -> bool {
     PLASMA_DESKTOP_MARKERS.iter().any(|m| lower.contains(m))
 }
 
-/// Что сказать человеку на чужом рабочем столе (три строки подряд).
+/// What to tell the person on another desktop (three lines in a row).
 pub fn not_plasma_lines(xdg_current_desktop: &str) -> Vec<String> {
     vec![
         tr("⚠️  Emergency appearance recovery only supports KDE Plasma for now."),
@@ -863,13 +889,14 @@ pub fn not_plasma_lines(xdg_current_desktop: &str) -> Vec<String> {
     ]
 }
 
-/// Какую тему восстанавливаем: сохранённую перед применением либо
+/// Which theme is restored: the one saved before applying, or
 /// [`RECOVER_DEFAULT_TARGET`].
 ///
-/// ⚠️ Не путать с [`crate::window_menu::recover_target`]: та отвечает на
-/// вопрос ДИАЛОГА («что будет применено» — там пустая копия называется
-/// словами «Breeze Dark (fallback)»), а эта — на вопрос КОМАНДЫ, и её ответ
-/// уходит в argv, где человеческое имя не годится.
+/// ⚠️ Do not confuse with [`crate::window_menu::recover_target`]: that one
+/// answers the DIALOG's question ("what will be applied", where an empty
+/// backup is called "Breeze Dark (fallback)"), while this one answers the
+/// COMMAND's question, and its answer goes into argv, where a human name
+/// will not do.
 pub fn recover_theme_target(saved: Option<&str>) -> String {
     match saved.map(str::trim) {
         Some(s) if !s.is_empty() => s.to_string(),
@@ -877,21 +904,22 @@ pub fn recover_theme_target(saved: Option<&str>) -> String {
     }
 }
 
-/// Сколько ждём применения Global Theme (пересчёт кешей Plasma не быстрый).
+/// How long we wait for the Global Theme to apply (Plasma's cache rebuild is not quick).
 pub const LOOKANDFEEL_TIMEOUT_SECS: u64 = 30;
-/// Сколько ждём применения цветовой схемы.
+/// How long we wait for the colour scheme to apply.
 pub const COLORSCHEME_TIMEOUT_SECS: u64 = 15;
-/// Сколько ждём одиночную правку конфига `kwriteconfig`.
+/// How long we wait for a single `kwriteconfig` config edit.
 pub const KWRITECONFIG_TIMEOUT_SECS: u64 = 10;
-/// Сколько ждём полный сброс раскладки панели.
+/// How long we wait for a full panel layout reset.
 pub const PANEL_RESET_TIMEOUT_SECS: u64 = 30;
-/// Сколько ждём ответа сессионной шины на `reconfigure`.
+/// How long we wait for the session bus to answer `reconfigure`.
 pub const KWIN_RECONFIGURE_TIMEOUT_SECS: u64 = 10;
-/// Таймауты перезапуска plasmashell — по команде из
-/// [`plasmashell_restart_argv`] (сброс отметки быстрый, сам рестарт нет).
+/// Timeouts of the plasmashell restart, per command from
+/// [`plasmashell_restart_argv`] (resetting the mark is quick, the restart
+/// itself is not).
 pub const PLASMASHELL_RESTART_TIMEOUTS: &[u64] = &[5, 15];
 
-/// argv применения Global Theme.
+/// argv that applies the Global Theme.
 pub fn lookandfeel_apply_argv(target: &str) -> Vec<String> {
     vec![
         "plasma-apply-lookandfeel".to_string(),
@@ -900,7 +928,7 @@ pub fn lookandfeel_apply_argv(target: &str) -> Vec<String> {
     ]
 }
 
-/// argv применения цветовой схемы вслед за темой.
+/// argv that applies the colour scheme after the theme.
 pub fn colorscheme_apply_argv() -> Vec<String> {
     vec![
         "plasma-apply-colorscheme".to_string(),
@@ -908,8 +936,8 @@ pub fn colorscheme_apply_argv() -> Vec<String> {
     ]
 }
 
-/// argv полного сброса раскладки панели. ⚠️ Стирает ВСЕ пользовательские
-/// панели и виджеты — вызывается только по следам форк-темы.
+/// argv of a full panel layout reset. ⚠️ Erases ALL user panels and
+/// widgets; called only on traces of a fork theme.
 pub fn panel_reset_layout_argv(tool: &str, target: &str) -> Vec<String> {
     vec![
         tool.to_string(),
@@ -919,13 +947,13 @@ pub fn panel_reset_layout_argv(tool: &str, target: &str) -> Vec<String> {
     ]
 }
 
-/// Предупреждение про пакеты-форки Plasma: заголовок, список, и — смотря
-/// по тому, собралась ли команда полного отката, — либо она сама, либо
-/// объяснение, почему её нет.
+/// Warning about Plasma fork packages: a heading, the list, and, depending
+/// on whether the full rollback command could be built, either the command
+/// itself or an explanation of why there is none.
 ///
-/// `preview_ok`/`preview` — ответ `plasma_fork_reset_preview`. Когда цели
-/// нет в репозиториях, команду НЕ печатаем: человек выполнил бы её руками и
-/// получил «не найдена цель».
+/// `preview_ok`/`preview` is the answer of `plasma_fork_reset_preview`.
+/// When the target is not in the repositories, we do NOT print the command:
+/// the person would run it by hand and get "target not found".
 pub fn fork_warning_lines(forks: &[String], preview_ok: bool, preview: &str) -> Vec<String> {
     let mut out = vec![tr(
         "⚠️  REPLACEMENT PACKAGES for Plasma components are installed (they replace \
@@ -950,71 +978,71 @@ pub fn fork_warning_lines(forks: &[String], preview_ok: bool, preview: &str) -> 
     out
 }
 
-/// «Начинаю» — печатается ДО применения темы.
+/// "Starting", printed BEFORE the theme is applied.
 pub fn recovering_line(target: &str) -> String {
     trf("🛟 Restoring the KDE theme: %1", &[&target])
 }
 
-/// «Получилось» — печатается сразу после успешного применения темы.
+/// "Done", printed right after the theme was applied successfully.
 pub fn restored_line(target: &str) -> String {
     trf("✅ Restored: %1", &[&target])
 }
 
-/// Сколько символов чужого stderr показываем человеку.
+/// How many characters of someone else's stderr we show the person.
 pub const RECOVER_STDERR_LIMIT: usize = 200;
 
-/// «Не получилось»: голова чужого stderr, обрезанная по
+/// "Failed": the head of someone else's stderr, cut to
 /// [`RECOVER_STDERR_LIMIT`].
 ///
-/// Обрезка по СИМВОЛАМ, а не по байтам: срез посреди многобайтной буквы
-/// (сообщения `plasma-apply-lookandfeel` переведены) в Rust — паника, то
-/// есть аварийный маршрут падал бы ровно на неудаче, которую пришёл
-/// объяснить.
+/// The cut is by CHARACTERS, not bytes: slicing in the middle of a
+/// multibyte letter (the `plasma-apply-lookandfeel` messages are
+/// translated) is a panic in Rust, so the emergency route would crash on
+/// exactly the failure it came to explain.
 pub fn apply_failed_line(stderr: &str) -> String {
     let head: String = stderr.chars().take(RECOVER_STDERR_LIMIT).collect();
     trf("❌ Error: %1", &[&head])
 }
 
-/// Итог сброса шрифтов.
+/// Result of the font reset.
 pub const FONTS_RESET_LINE: &TrLine = &TrLine::new(n_("🔤 KDE fonts reset to the defaults."));
 
-/// Итог снятия эффектов KWin.
+/// Result of removing the KWin effects.
 pub const KWIN_EFFECTS_RESET_LINE: &TrLine =
     &TrLine::new(n_("🪟 KWin effects left by the Plasma replacements removed."));
 
-/// В журнал, когда живой KWin конфиг не перечитал: правка легла в файл, но
-/// на экране до следующего входа ничего не изменится — и человеку об этом
-/// сказано, а не «молча ничего не произошло».
+/// To the log when the running KWin did not reread its config: the edit
+/// landed in the file, but nothing changes on screen until the next login,
+/// and the person is told so instead of "silently nothing happened".
 ///
-/// Журнал — не переводится (правило захода перевода).
+/// The log is not translated (the translation rollout rule).
 pub const KWIN_RECONFIGURE_FAILED_LOG: &str =
     "KWin reconfigure не прошёл: шина не ответила, а бинаря qdbus в системе нет. \
      Эффекты снимутся при следующем входе в систему.";
 
-/// Путь конфига Kvantum относительно корня конфигов.
+/// Path of the Kvantum config relative to the config root.
 pub const KVANTUM_CONFIG_REL: &str = "Kvantum/kvantum.kvconfig";
-/// Секция и ключ темы в конфиге Kvantum.
+/// Section and theme key in the Kvantum config.
 pub const KVANTUM_THEME_SECTION: &str = "General";
-/// Ключ темы в конфиге Kvantum.
+/// Theme key in the Kvantum config.
 pub const KVANTUM_THEME_KEY: &str = "theme";
 
-/// Итог возврата стиля виджетов со Kvantum-Aero на Breeze.
+/// Result of returning the widget style from Kvantum-Aero to Breeze.
 pub fn kvantum_breeze_line(theme: &str) -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     trf("🎨 Kvantum theme “%1” (Aero) → Breeze style.", &[&theme])
 }
 
-/// Родной дефолт Plymouth определить не удалось.
+/// The native Plymouth default could not be determined.
 pub const PLYMOUTH_TARGET_UNKNOWN_LINE: &TrLine = &TrLine::new(n_(
     "⚠️ Couldn't determine the distribution's default Plymouth theme — skipping.",
 ));
 
-/// Загрузочная заставка уже стоковая — ничего не делаем.
+/// The boot splash is already stock: nothing to do.
 pub fn plymouth_already_stock_line(target: &str) -> String {
     trf("🐧 The boot splash is already the default one (%1).", &[&target])
 }
 
-/// Загрузочная заставка меняется (initramfs пересобирается).
+/// The boot splash is being changed (the initramfs is rebuilt).
 pub fn plymouth_switch_line(current: &str, target: &str) -> String {
     trf(
         // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
@@ -1024,23 +1052,24 @@ pub fn plymouth_switch_line(current: &str, target: &str) -> String {
     )
 }
 
-/// Ответ удавшегося шага (Plymouth и SDDM отвечают одинаково).
+/// Answer of a successful step (Plymouth and SDDM answer the same way).
 pub fn step_ok_line(message: &str) -> String {
     format!("   ✅ {message}")
 }
 
-/// Ответ неудавшегося сброса Plymouth.
+/// Answer of a failed Plymouth reset.
 pub fn plymouth_failed_line(message: &str) -> String {
     format!("   {}", trf("⚠️ Plymouth wasn't reset: %1", &[&message]))
 }
 
-/// Чем человек может сбросить заставку сам, если pkexec не прошёл.
+/// How the person can reset the splash themselves if pkexec did not go through.
 pub fn manual_command_line(command: &str) -> String {
     format!("   {}", trf("To do it by hand: %1", &[&command]))
 }
 
-/// Экран входа уже на стоке. `theme` — дистро-дефолтная тема, если её
-/// удалось назвать (человеку важно знать, к чему он вернётся).
+/// The login screen is already stock. `theme` is the distribution default
+/// theme, if it could be named (it matters to the person what they return
+/// to).
 pub fn sddm_already_stock_line(theme: Option<&str>) -> String {
     match theme {
         Some(t) if !t.is_empty() => trf(
@@ -1051,7 +1080,7 @@ pub fn sddm_already_stock_line(theme: Option<&str>) -> String {
     }
 }
 
-/// Что именно удаляем из `/etc/sddm.conf.d` и к чему вернётся экран входа.
+/// What exactly is removed from `/etc/sddm.conf.d` and what the login screen returns to.
 pub fn sddm_removing_line(to_remove: &[String], default_theme: Option<&str>) -> String {
     let files = to_remove.join(", ");
     match default_theme {
@@ -1069,17 +1098,17 @@ pub fn sddm_removing_line(to_remove: &[String], default_theme: Option<&str>) -> 
     }
 }
 
-/// Ответ неудавшегося сброса экрана входа.
+/// Answer of a failed login screen reset.
 pub fn sddm_failed_line(message: &str) -> String {
     format!("   {}", trf("⚠️ SDDM wasn't reset: %1", &[&message]))
 }
 
-/// Найдены форки или их следы — переходим к чистке раскладки панели.
+/// Forks or their traces were found: moving on to cleaning the panel layout.
 pub const PANEL_AGGRESSIVE_LINE: &TrLine = &TrLine::new(n_(
     "🔧 Plasma replacements or their leftovers found — cleaning them off the panel.",
 ));
 
-/// Итог хирургии панели: что удалено и где лежит резервная копия.
+/// Result of the panel surgery: what was removed and where the backup lies.
 pub fn applets_removed_line(removed: &[String], backup: &str) -> String {
     trf(
         "🧱 Broken widgets left by the Plasma replacements removed from the panel: %1 (%2). \
@@ -1088,47 +1117,48 @@ pub fn applets_removed_line(removed: &[String], backup: &str) -> String {
     )
 }
 
-/// Панель переписать не удалось (нет прав, кончилось место).
+/// The panel could not be rewritten (no permission, out of space).
 pub fn applets_rewrite_failed_line(error: &str) -> String {
     trf("⚠️ Couldn't rewrite the panel: %1", &[&error])
 }
 
-/// Инструмента полного сброса раскладки в системе нет.
+/// The system has no tool for a full layout reset.
 pub const LOOKANDFEELTOOL_MISSING_LINE: &TrLine = &TrLine::new(n_(
     "⚠️ lookandfeeltool not found — the panel layout wasn't reset.",
 ));
 
-/// Итог полного сброса раскладки панели.
+/// Result of the full panel layout reset.
 pub const PANEL_LAYOUT_RESET_LINE: &TrLine =
     &TrLine::new(n_("🧱 Panel layout reset to the default one (Kickoff)."));
 
-/// Имя инструмента полного сброса раскладки панели.
+/// Name of the full panel layout reset tool.
 pub const LOOKANDFEELTOOL_BIN: &str = "lookandfeeltool";
 
-/// Каноническое имя правщика конфигов KDE (синонимы 6 → 5 знает
-/// [`crate::utils::TOOL_SETS`]).
+/// Canonical name of the KDE config editor (the 6 -> 5 synonyms are known
+/// to [`crate::utils::TOOL_SETS`]).
 pub const KWRITECONFIG_TOOL: &str = "kwriteconfig6";
 
-/// Где лежат пакеты обоев, поставленные системой.
+/// Where the wallpaper packages installed by the system live.
 pub const WALLPAPERS_ROOT: &str = "/usr/share/wallpapers";
 
-/// Подкаталог пакета обоев, по которому пакет и опознаётся.
+/// Subdirectory of a wallpaper package by which the package is recognised.
 pub const WALLPAPER_PACKAGE_IMAGES: &str = "contents/images";
 
-/// Каталог обоев в том виде, в каком его пишет сам Plasma — СО слэшем на
-/// конце. Без слэша Plasma считает значение путём к одному файлу.
+/// The wallpaper directory in the form Plasma itself writes it: WITH a
+/// trailing slash. Without the slash Plasma treats the value as a path to a
+/// single file.
 pub fn wallpaper_dir_value(dir: &str) -> String {
     format!("{}/", dir.trim_end_matches('/'))
 }
 
-/// Выбрать каталог «стандартных» обоев: сперва известные кандидаты
-/// ([`DEFAULT_WALLPAPER_DIRS`]) в их порядке, потом ЛЮБОЙ установленный
-/// пакет обоев по алфавиту. Пусто — обои не переписываем вовсе, только
-/// возвращаем плагин на `org.kde.image`.
+/// Choose the "stock" wallpaper directory: first the known candidates
+/// ([`DEFAULT_WALLPAPER_DIRS`]) in their order, then ANY installed
+/// wallpaper package alphabetically. Empty means the wallpaper is not
+/// rewritten at all; only the plugin is returned to `org.kde.image`.
 ///
-/// `is_dir` — проба каталога-кандидата, `packages` — имена в
-/// [`WALLPAPERS_ROOT`] (порядок задаёт вызывающий; оригинал сортирует),
-/// `has_images` — есть ли у пакета [`WALLPAPER_PACKAGE_IMAGES`].
+/// `is_dir` probes a candidate directory, `packages` are the names in
+/// [`WALLPAPERS_ROOT`] (the caller sets the order; the original sorts),
+/// `has_images` tells whether a package has [`WALLPAPER_PACKAGE_IMAGES`].
 pub fn default_wallpaper_dir(
     is_dir: &dyn Fn(&str) -> bool,
     packages: &[String],
@@ -1148,10 +1178,12 @@ pub fn default_wallpaper_dir(
     String::new()
 }
 
-/// Итог сброса обоев: сколько рабочих столов переписано и на что.
+/// Result of the wallpaper reset: how many desktops were rewritten and to
+/// what.
 ///
-/// `wallpaper_dir` пуст — имени не называем: плагин вернули на картинку, а
-/// самой картинки не нашлось, и врать про «сброшены на такие-то» нельзя.
+/// Empty `wallpaper_dir`: no name is given. The plugin was returned to the
+/// image, but the image itself was not found, and lying about "reset to
+/// such and such" is not allowed.
 pub fn wallpaper_reset_line(desktops: usize, wallpaper_dir: &str) -> String {
     let name = wallpaper_dir.trim_end_matches('/').rsplit('/').next().unwrap_or("");
     let n = desktops as u64;
@@ -1173,12 +1205,13 @@ pub fn wallpaper_reset_line(desktops: usize, wallpaper_dir: &str) -> String {
     }
 }
 
-/// Применить тему нечем: `plasma-apply-lookandfeel` не запустился вовсе.
+/// Nothing to apply the theme with: `plasma-apply-lookandfeel` did not
+/// start at all.
 ///
-/// ⭐ Строки такого вида у оригинала не было: он звал `subprocess.run` без
-/// проверки, и отсутствующий бинарь поднимал `FileNotFoundError` прямо из
-/// `main()`. Аварийный маршрут падал трассировкой стека ровно там, где
-/// обязан объяснить человеку, что происходит (правило #13).
+/// ⭐ The original had no line of this kind: it called `subprocess.run`
+/// without a check, and a missing binary raised `FileNotFoundError` right
+/// out of `main()`. The emergency route crashed with a stack trace exactly
+/// where it must explain to the person what is going on (rule #13).
 pub const LOOKANDFEEL_MISSING_LINE: &TrLine = &TrLine::new(n_(
     "❌ Error: couldn't start plasma-apply-lookandfeel — KDE Plasma wasn't found on \
      this system. Nothing was changed.",

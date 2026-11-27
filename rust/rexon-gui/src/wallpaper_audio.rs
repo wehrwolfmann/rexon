@@ -1,31 +1,35 @@
-// Надзиратель звука обоев: живое применение настроек и приглушение по
-// обстановке.
+// Wallpaper audio supervisor: live application of the settings and muting
+// depending on the situation.
 //
-// Что здесь появилось и почему. До этого звук обоев задавался ОДИН раз,
-// ключами командной строки при запуске хоста, и менялся только вместе с
-// перезапуском всего процесса: человек двигал настройку — на экране не
-// происходило ничего, пока обои не переставишь заново. Приглушения по
-// обстановке не было вовсе, поэтому обои играли поверх игры и поверх кино.
+// What appeared here and why. Before this, wallpaper sound was set ONCE,
+// with command line options when the host started, and changed only
+// together with restarting the whole process: the user moved a setting —
+// nothing happened on screen until the wallpaper was set again. There was
+// no muting depending on the situation at all, so wallpapers played over
+// games and over films.
 //
-// Разделение обязанностей то же, что во всём хосте: ЧТО значат настройки и
-// ЧТО делать при такой обстановке — решает ядро
-// (`rexon-core::wallpaper_audio`), здесь только ввод-вывод: чтение файла
-// настроек, опрос оконного менеджера и звуковой системы, доставка решения
-// в QML. Своих правил и своих чисел в этом файле нет намеренно — иначе
-// «громкость обоев» опять начала бы значить в двух местах разное.
+// The division of duties is the same as in the whole host: WHAT the
+// settings mean and WHAT to do in a given situation is decided by the core
+// (`rexon-core::wallpaper_audio`); here there is only I/O: reading the
+// settings file, polling the window manager and the sound system,
+// delivering the decision to QML. There are deliberately no rules or
+// numbers of our own in this file — otherwise "wallpaper volume" would
+// again start meaning different things in two places.
 //
-// Живое применение сделано БЕЗ отдельного канала: хост следит за тем же
-// `~/.config/rexon/settings.json`, который пишет окно настроек. Ни сокета,
-// ни файла состояния, ни второго формата — «сохранил» и «услышал» не могут
-// разойтись, потому что источник один (правило #12).
+// Live application is done WITHOUT a separate channel: the host watches the
+// same `~/.config/rexon/settings.json` that the settings window writes.
+// No socket, no state file, no second format — "saved" and "heard" cannot
+// diverge, because there is one source (rule #12).
 //
-// ⚠️ Наблюдение поднимают ДВА режима хоста, и цикл у них ОДИН (16.09.2026).
-// Видео живёт в QML и получает решение свойствами cxx-qt-объекта ниже;
-// Flash (`--mode swf`) рисует Ruffle через wgpu, QML у него нет вовсе, и
-// решение он забирает обычным замыканием — [`watch`]. Общим сделан именно
-// цикл ([`watch_loop`]): своя копия «перечитать настройки, опросить окна,
-// спросить ядро» у второго режима означала бы, что «приглушить, когда
-// поверх играет полноэкранное окно» у видео и у Flash однажды разойдётся.
+// Warning: watching is started by TWO host modes, and they share ONE loop
+// (16.09.2026). Video lives in QML and gets the decision through the
+// properties of the cxx-qt object below; Flash (`--mode swf`) is drawn by
+// Ruffle through wgpu, has no QML at all, and takes the decision with an
+// ordinary closure — [`watch`]. It is the loop that is shared
+// ([`watch_loop`]): a copy of "re-read the settings, poll the windows, ask
+// the core" of its own for the second mode would mean that "mute when a
+// full-screen window plays on top" would one day diverge between video and
+// Flash.
 
 use cxx_qt::{CxxQtType, Threading};
 
@@ -39,14 +43,15 @@ use rexon_core::wallpaper_audio::{
     gamemode_client_count_argv, is_gamescope_comm, logind_session_argv, other_audio_playing,
     parse_dbus_bool, parse_dbus_int, parse_logind_session, parse_screensaver_active,
     sysfs_on_battery, upower_on_battery_argv, Action, AudioSettings, Conditions, Decision,
-    // Приметы, по которым в звуковой системе виден НАШ поток: он не должен
-    // сходить за «чужой звук» и глушить сам себя. Своего списка здесь нет
-    // намеренно — таблица одна на продукт и живёт в ядре (правило #12),
-    // иначе Flash и видео узнавали бы себя по разным признакам.
+    // Signs by which OUR stream is seen in the sound system: it must not pass
+    // for "foreign audio" and mute itself. There is deliberately no list of
+    // our own here — the table is one for the product and lives in the core
+    // (rule #12), otherwise Flash and video would recognize themselves by
+    // different signs.
     OWN_STREAM_MARKERS as OWN_STREAM_NAMES,
 };
 
-/// Мост cxx-qt: состояние звука обоев для QML.
+/// cxx-qt bridge: wallpaper audio state for QML.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -55,36 +60,36 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Живое состояние звука обоев.
+        /// Live state of the wallpaper audio.
         ///
-        /// QML держит на этих свойствах привязки, поэтому смена настройки
-        /// или обстановки доходит до проигрывателя сама, без перезапуска.
+        /// QML holds bindings on these properties, so a change of a setting or of
+        /// the situation reaches the player by itself, without a restart.
         #[qobject]
         #[qml_element]
-        // Держать ли звуковой поток открытым. ⚠️ Именно «поток есть /
-        // потока нет», а не «громкость 0»: молчащий поток весь сеанс висит
-        // в микшере отдельным ползунком и не даёт звуковой карте уснуть, а
-        // главное — по нему невозможно отличить «играет тихо» от «не
-        // играет вовсе».
+        // Whether to keep the audio stream open. Warning: exactly "there is a
+        // stream / there is no stream", not "volume 0": a silent stream hangs in
+        // the mixer as a separate slider for the whole session and does not let
+        // the sound card sleep, and above all — with it "plays quietly" cannot be
+        // told from "does not play at all".
         #[qproperty(bool, audio_on, cxx_name = "audioOn")]
         #[qproperty(bool, paused)]
         #[qproperty(f64, volume)]
-        // Почему сейчас так, словами. Нужно не для красоты: в самопроверке
-        // это единственный способ отличить «тишина, потому что просили» от
-        // «тишина, потому что не завелось».
+        // Why it is so right now, in words. Not for looks: in the self-test this
+        // is the only way to tell "silence because it was asked for" from
+        // "silence because it did not start".
         #[qproperty(QString, reason)]
         type WallpaperAudio = super::WallpaperAudioRust;
     }
 
     extern "RustQt" {
-        /// Запустить наблюдение. Размер экрана нужен, чтобы отличить окно
-        /// во весь экран от обычного, — окно обоев и есть весь экран.
+        /// Start watching. The screen size is needed to tell a full-screen window
+        /// from an ordinary one — the wallpaper window is the whole screen.
         #[qinvokable]
         fn start(self: Pin<&mut WallpaperAudio>, screen_w: i32, screen_h: i32);
 
-        /// Сценарий, который доводит текущее решение (пауза, громкость) до
-        /// веб-страницы обоев. Текст сценария — ядра
-        /// (`rexon-core::wallpaper::web_state_js`); у QML своего JS нет.
+        /// The script that delivers the current decision (pause, volume) to the
+        /// wallpaper's web page. The script text is the core's
+        /// (`rexon-core::wallpaper::web_state_js`); QML has no JS of its own.
         #[qinvokable]
         #[cxx_name = "webStateScript"]
         fn web_state_script(self: &WallpaperAudio) -> QString;
@@ -94,22 +99,23 @@ pub mod qobject {
     impl cxx_qt::Constructor<()> for WallpaperAudio {}
 }
 
-/// Как часто перечитывать обстановку.
+/// How often to re-read the situation.
 ///
-/// Полсекунды — компромисс, который видно на глаз: правка ползунка
-/// громкости отзывается «сразу», а опрос оконного менеджера и звуковой
-/// системы стоит два коротких процесса в секунду. Меньше делать незачем,
-/// больше — и приглушение при запуске игры начинает опаздывать.
+/// Half a second is a compromise that is visible to the eye: an edit of the
+/// volume slider responds "at once", while polling the window manager and
+/// the sound system costs two short processes per second. There is no
+/// reason to go lower, and higher makes muting on game start come late.
 const TICK: Duration = Duration::from_millis(500);
 
-/// Раз во сколько тиков спрашивать про батарею, игру и сеанс.
+/// Every how many ticks to ask about the battery, games and the session.
 ///
-/// Эти обстоятельства меняются не за полсекунды: от розетки отключаются,
-/// игру запускают и сеанс переключают — разница в полторы секунды на глаз
-/// не видна, а три лишних процесса на каждом тике видны в нагрузке.
+/// These circumstances do not change within half a second: people unplug,
+/// start a game and switch sessions — a difference of a second and a half
+/// is invisible to the eye, while three extra processes on every tick are
+/// visible in the load.
 const SLOW_EVERY: u32 = 4;
 
-/// Сколько ждать внешнюю команду опроса.
+/// How long to wait for an external polling command.
 const PROBE_TIMEOUT: Duration = Duration::from_millis(1500);
 
 #[derive(Default)]
@@ -124,9 +130,9 @@ pub struct WallpaperAudioRust {
 
 impl Drop for WallpaperAudioRust {
     fn drop(&mut self) {
-        // Поток наблюдения переживать окно не должен: он держит handle на
-        // объект и на мёртвом объекте `queue` уже не проходит, а вот
-        // процессы опроса продолжал бы плодить.
+        // The watching thread must not outlive the window: it holds a handle to
+        // the object and `queue` no longer goes through on a dead object, but it
+        // would keep spawning polling processes.
         if let Some(flag) = &self.stop {
             flag.store(true, Ordering::SeqCst);
         }
@@ -135,9 +141,9 @@ impl Drop for WallpaperAudioRust {
 
 impl cxx_qt::Initialize for qobject::WallpaperAudio {
     fn initialize(self: Pin<&mut Self>) {
-        // Начальное состояние — «звук как записано в настройках, ничем не
-        // приглушён». Иначе первые полсекунды обои молчали бы, а на коротком
-        // прогоне самопроверки — весь прогон.
+        // The initial state is "sound as written in the settings, not muted by
+        // anything". Otherwise the wallpaper would be silent for the first half
+        // second, and on a short self-test run — for the whole run.
         let settings = load_settings();
         let decision = settings.decide(&Conditions::default());
         let mut this = self;
@@ -146,8 +152,8 @@ impl cxx_qt::Initialize for qobject::WallpaperAudio {
 }
 
 impl qobject::WallpaperAudio {
-    /// Разложить решение по свойствам. Сеттеры сгенерированы cxx-qt и сами
-    /// молчат, когда значение не изменилось.
+    /// Spread the decision over the properties. The setters are generated by
+    /// cxx-qt and stay silent by themselves when the value did not change.
     fn apply(mut self: Pin<&mut Self>, d: Decision, why: &str) {
         self.as_mut().set_audio_on(d.audio_on);
         self.as_mut().set_paused(d.paused);
@@ -155,7 +161,7 @@ impl qobject::WallpaperAudio {
         self.as_mut().set_reason(cxx_qt_lib::QString::from(why));
     }
 
-    /// Решение для веб-страницы — см. мост.
+    /// The decision for the web page — see the bridge.
     pub fn web_state_script(&self) -> cxx_qt_lib::QString {
         cxx_qt_lib::QString::from(&rexon_core::wallpaper::web_state_js(
             self.rust().paused,
@@ -163,7 +169,7 @@ impl qobject::WallpaperAudio {
         ))
     }
 
-    /// Поднять наблюдение. Повторный вызов ничего не делает.
+    /// Start watching. A repeated call does nothing.
     pub fn start(mut self: Pin<&mut Self>, screen_w: i32, screen_h: i32) {
         if self.started {
             return;
@@ -173,15 +179,15 @@ impl qobject::WallpaperAudio {
         self.as_mut().rust_mut().stop = Some(stop.clone());
         let handle = self.as_ref().get_ref().qt_thread();
         let (w, h) = (i64::from(screen_w), i64::from(screen_h));
-        // Обычный поток, а не таймер Qt: опрос ходит во внешние программы,
-        // и делать это в потоке отрисовки — значит дёргать видео на каждом
-        // тике.
+        // An ordinary thread, not a Qt timer: polling goes to external programs,
+        // and doing that in the render thread means jerking the video on every
+        // tick.
         let spawned = std::thread::Builder::new()
             .name("rexon-wp-audio".into())
             .spawn(move || {
                 watch_loop(stop, w, h, |decision, why| {
-                    // `Err` — объект умер (окно закрывают): наблюдать больше
-                    // не за чем, цикл выходит сам.
+                    // `Err` means the object died (the window is being closed): there is
+                    // nothing to watch any more, the loop exits by itself.
                     handle
                         .queue(move |object| object.apply(decision, &why))
                         .is_ok()
@@ -197,12 +203,12 @@ impl qobject::WallpaperAudio {
     }
 }
 
-/// Цикл наблюдения. Живёт в своём потоке; наружу уходит только готовое
-/// решение, и только когда оно изменилось.
+/// The watching loop. It lives in its own thread; only a ready decision
+/// goes out, and only when it changed.
 ///
-/// `deliver` возвращает `false`, когда доставлять больше некому, — тогда
-/// цикл выходит. Ни Qt, ни QML здесь не упоминаются намеренно: тем же
-/// циклом живёт Flash-режим, у которого QML нет (см. [`watch`]).
+/// `deliver` returns `false` when there is nobody left to deliver to — then
+/// the loop exits. Neither Qt nor QML is mentioned here on purpose: the
+/// Flash mode, which has no QML, lives on the same loop (see [`watch`]).
 fn watch_loop(
     stop: Arc<AtomicBool>,
     screen_w: i64,
@@ -217,15 +223,15 @@ fn watch_loop(
     let mut slow = SlowFacts::default();
     let mut tick: u32 = 0;
     while !stop.load(Ordering::SeqCst) {
-        // Настройки перечитываются только когда файл действительно
-        // изменился: разбор JSON каждые полсекунды впустую никому не нужен.
+        // The settings are re-read only when the file really changed: parsing JSON
+        // every half second for nothing is of no use to anyone.
         let now = mtime(&path);
         if now != stamp {
             stamp = now;
             settings = load_settings();
         }
-        // Медленные обстоятельства — на первом тике (решение обязано быть
-        // верным сразу, а не через две секунды) и дальше раз в SLOW_EVERY.
+        // Slow circumstances — on the first tick (the decision must be right at
+        // once, not two seconds later) and then once every SLOW_EVERY.
         if tick % SLOW_EVERY == 0 {
             slow = probe_slow(&settings);
         }
@@ -243,18 +249,21 @@ fn watch_loop(
     }
 }
 
-/// Живая подписка на решения о звуке обоев для режима БЕЗ QML.
+/// A live subscription to wallpaper audio decisions for the mode WITHOUT
+/// QML.
 ///
-/// Тот же цикл, те же настройки и то же решение ядра, что у видео, — иначе
-/// «громкость обоев» опять начала бы значить у двух режимов разное
-/// (правило #12). `on_change` зовётся из отдельного потока и только при
-/// СМЕНЕ решения; первое решение приходит сразу, ждать полсекунды не надо.
+/// The same loop, the same settings and the same core decision as for
+/// video — otherwise "wallpaper volume" would again start meaning different
+/// things for the two modes (rule #12). `on_change` is called from a
+/// separate thread and only on a CHANGE of the decision; the first decision
+/// arrives at once, there is no need to wait half a second.
 ///
-/// Размер экрана — тот же, что у видео: САМЫЙ МАЛЕНЬКИЙ из подключённых.
-/// Почему именно маленький, разобрано в `WallpaperVideo.qml`
-/// (`audioProbeSize`): приглушиться зря — мелочь, играть поверх кино — беда.
+/// The screen size is the same as for video: the SMALLEST of the connected
+/// ones. Why exactly the smallest is analysed in `WallpaperVideo.qml`
+/// (`audioProbeSize`): muting needlessly is a trifle, playing over a film
+/// is a disaster.
 ///
-/// Наблюдение живёт, пока жив возвращённый [`AudioWatch`].
+/// Watching lives as long as the returned [`AudioWatch`] does.
 pub fn watch(
     screen_w: i64,
     screen_h: i64,
@@ -273,7 +282,7 @@ pub fn watch(
     Ok(AudioWatch { stop })
 }
 
-/// Живое наблюдение за звуком обоев. Уронили — наблюдение остановлено.
+/// Live watching of the wallpaper audio. Dropped — watching stopped.
 pub struct AudioWatch {
     stop: Arc<AtomicBool>,
 }
@@ -284,13 +293,14 @@ impl Drop for AudioWatch {
     }
 }
 
-/// Настройки звука обоев прямо сейчас — чтобы режим без QML начинал с того
-/// же, что записано у человека, а не с умолчаний.
+/// Wallpaper audio settings right now — so that the mode without QML starts
+/// from what the user has written down, not from the defaults.
 pub fn settings_now() -> AudioSettings {
     load_settings()
 }
 
-/// Настройки из общего файла. Файла нет — умолчания ядра, а не тишина.
+/// Settings from the shared file. No file — the core's defaults, not
+/// silence.
 fn load_settings() -> AudioSettings {
     AudioSettings::from_map(&rexon_core::settings::load_settings(
         &rexon_core::settings::settings_file(),
@@ -301,13 +311,13 @@ fn mtime(path: &PathBuf) -> Option<SystemTime> {
     std::fs::metadata(path).ok().and_then(|m| m.modified().ok())
 }
 
-/// Чем спрашивать про окна в этом сеансе (решает ядро — таблица одна на
-/// продукт).
+/// What to ask about windows with in this session (the core decides — the
+/// table is one for the product).
 fn window_backend() -> &'static str {
     let env = |name: &str| std::env::var(name).unwrap_or_default();
-    // Окружение — тем же ответом, что у движка обоев (правило #12): здесь
-    // была своя цепочка подстрок, и порядок в ней отдавал `Budgie:GNOME`
-    // как gnome.
+    // The environment — with the same answer as for the wallpaper engine (rule
+    // #12): there used to be a chain of substrings of our own here, and its
+    // order gave `Budgie:GNOME` as gnome.
     let de = rexon_core::wallpaper_engine::detect_de(
         &env("XDG_CURRENT_DESKTOP"),
         &env("DESKTOP_SESSION"),
@@ -316,19 +326,19 @@ fn window_backend() -> &'static str {
     rexon_core::wallpaper_engine::fullscreen_backend(&de, &session)
 }
 
-/// Обстоятельства, которые опрашиваются реже окон (см. [`SLOW_EVERY`]).
+/// Circumstances polled less often than windows (see [`SLOW_EVERY`]).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct SlowFacts {
     on_battery: bool,
     gamemode: bool,
     session_inactive: bool,
-    /// `LockedHint` logind — блокировка, которую видно и там, где
-    /// хранителя экрана `org.freedesktop.ScreenSaver` нет (wlroots-столы).
+    /// logind's `LockedHint` — a lock that is visible even where there is no
+    /// `org.freedesktop.ScreenSaver` screensaver (wlroots desktops).
     session_locked: bool,
 }
 
-/// Опрос батареи, игры и сеанса. Спрашивается только то, чему человек
-/// назначил действие.
+/// Polling the battery, games and the session. Only what the user assigned
+/// an action to is asked.
 fn probe_slow(settings: &AudioSettings) -> SlowFacts {
     let a = settings.actions;
     let mut f = SlowFacts::default();
@@ -347,8 +357,8 @@ fn probe_slow(settings: &AudioSettings) -> SlowFacts {
     f
 }
 
-/// От батареи ли работаем: UPower, а если его нет или он молчит —
-/// состояние батарей в `/sys` (то же правило ядра, что и в UPower).
+/// Whether we run on battery: UPower, and if it is missing or silent — the
+/// battery state in `/sys` (the same core rule as in UPower).
 fn on_battery() -> bool {
     if let Some(v) = run(&upower_on_battery_argv()).and_then(|o| parse_dbus_bool(&o)) {
         return v;
@@ -364,8 +374,8 @@ fn on_battery() -> bool {
     sysfs_on_battery(&statuses)
 }
 
-/// Идёт ли игра: игровой режим просили (`ClientCount` > 0) или запущен
-/// gamescope этого же пользователя.
+/// Whether a game is running: game mode was requested (`ClientCount` > 0)
+/// or gamescope of the same user is running.
 fn game_running() -> bool {
     let gamemode = run(&gamemode_client_count_argv())
         .and_then(|o| parse_dbus_int(&o))
@@ -373,8 +383,8 @@ fn game_running() -> bool {
     gamemode || gamescope_running()
 }
 
-/// Запущен ли gamescope от имени того же пользователя. Только чтение
-/// `/proc`: процесс не запускается.
+/// Whether gamescope is running as the same user. Only reading `/proc`: no
+/// process is started.
 fn gamescope_running() -> bool {
     use std::os::unix::fs::MetadataExt;
     let Ok(me) = std::fs::metadata("/proc/self") else {
@@ -397,9 +407,9 @@ fn gamescope_running() -> bool {
     })
 }
 
-/// Опрос обстановки. Спрашивается только то, что реально влияет на решение:
-/// если человек не просил глушить при чужом звуке, звуковую систему никто
-/// не дёргает, а без «оконных» действий — оконный менеджер.
+/// Polling the situation. Only what really affects the decision is asked:
+/// if the user did not ask to mute on foreign audio, nobody pokes the sound
+/// system, and without "window" actions — the window manager.
 fn probe(
     settings: &AudioSettings,
     backend: &str,
@@ -412,9 +422,9 @@ fn probe(
         c = probe_windows(backend, screen_w, screen_h);
     }
     if settings.actions.session_locked != Action::None {
-        // Хранитель экрана — как и раньше (KDE и все, кто его держит), плюс
-        // `LockedHint` logind: его выставляют и блокировщики wlroots-столов,
-        // у которых хранителя экрана на шине нет.
+        // The screensaver — as before (KDE and everyone who holds one), plus
+        // logind's `LockedHint`: it is also set by the lockers of wlroots desktops,
+        // which have no screensaver on the bus.
         c.session_locked = slow.session_locked
             || run(&rexon_core::wallpaper_audio::screensaver_argv())
                 .map(|out| parse_screensaver_active(&out))
@@ -431,7 +441,8 @@ fn probe(
     c
 }
 
-/// Состояние окон. Разбор во всех случаях ядерный, здесь только запуск.
+/// Window state. The parsing is the core's in all cases; here there is only
+/// starting the commands.
 fn probe_windows(backend: &str, screen_w: i64, screen_h: i64) -> Conditions {
     use rexon_core::wallpaper_engine as we;
     match backend {
@@ -458,8 +469,8 @@ fn probe_windows(backend: &str, screen_w: i64, screen_h: i64) -> Conditions {
             let Some(out) = run(&we::hyprctl_active_argv()) else {
                 return Conditions::default();
             };
-            // Своё же окно обоев «окном поверх обоев» не считается —
-            // тот же отсев, что на X11 и на KWin (правило #12).
+            // Our own wallpaper window does not count as a "window on top of the
+            // wallpaper" — the same filtering as on X11 and on KWin (rule #12).
             if we::hyprctl_window_is_wallpaper_layer(&out, &own_pids()) {
                 return Conditions::default();
             }
@@ -485,11 +496,11 @@ fn probe_windows(backend: &str, screen_w: i64, screen_h: i64) -> Conditions {
             }
         }
         "xdotool" => {
-            // ⚠️ Одной геометрии мало: активным окном оконный менеджер
-            // называет и САМ рабочий стол, а наши обои и есть рабочий стол
-            // во весь экран, — иначе «поверх играет полноэкранное окно»
-            // было бы выполнено всегда. Что значит эта геометрия, решает
-            // ядро; здесь только запуск команд опроса.
+            // Warning: geometry alone is not enough: the window manager also calls the
+            // desktop ITSELF the active window, and our wallpaper is the desktop over
+            // the whole screen — otherwise "a full-screen window plays on top" would
+            // always be true. What this geometry means is decided by the core; here
+            // there is only starting the polling commands.
             let Some(out) = run(&we::xdotool_geometry_argv()) else {
                 return Conditions::default();
             };
@@ -500,27 +511,28 @@ fn probe_windows(backend: &str, screen_w: i64, screen_h: i64) -> Conditions {
                 |id| run(&we::xprop_window_info_argv(id)),
             )
         }
-        // Узнать нечем — обои играют, как их просили. Молчащие «на всякий
-        // случай» обои человек чинить не пойдёт, он решит, что звука нет.
+        // There is no way to find out — the wallpaper plays as asked. A user will
+        // not go fixing a wallpaper muted "just in case", they will decide there
+        // is no sound.
         _ => Conditions::default(),
     }
 }
 
-/// Процессы, чьи окна и есть обои.
+/// Processes whose windows are the wallpaper.
 ///
-/// Наблюдение живёт ВНУТРИ хоста обоев, поэтому свой процесс — он и есть:
-/// окно с этим `_NET_WM_PID` рисует обои, а не закрывает их. Это
-/// подстраховка на случай, когда тип окна спросить нечем; основной отсев
-/// идёт по `_NET_WM_WINDOW_TYPE_DESKTOP`.
+/// Watching lives INSIDE the wallpaper host, so our own process is exactly
+/// that: a window with this `_NET_WM_PID` draws the wallpaper rather than
+/// covering it. This is a safeguard for when there is no way to ask the
+/// window type; the main filtering goes by `_NET_WM_WINDOW_TYPE_DESKTOP`.
 fn own_pids() -> Vec<i64> {
     vec![i64::from(std::process::id())]
 }
 
-/// Запустить команду опроса и забрать её вывод.
+/// Run a polling command and take its output.
 ///
-/// ⚠️ C-локаль (`utils::parsed_output_locale`): под русской локалью `pactl`
-/// переводит имена полей, и разбор «играет ли кто-то ещё» перестаёт их
-/// находить.
+/// Warning: the C locale (`utils::parsed_output_locale`): under a Russian
+/// locale `pactl` translates field names, and parsing "is anyone else
+/// playing" stops finding them.
 fn run(argv: &[String]) -> Option<String> {
     let (program, args) = argv.split_first()?;
     let mut child = rexon_core::utils::parsed_output_locale(&mut std::process::Command::new(program))
@@ -549,7 +561,7 @@ fn run(argv: &[String]) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// Почему сейчас так — одной строкой, по-человечески.
+/// Why it is so right now — in one line, in human terms.
 fn explain(settings: &AudioSettings, c: &Conditions, d: &Decision) -> String {
     if !settings.enabled {
         return "звук обоев выключен в настройках".into();
@@ -588,33 +600,33 @@ mod tests {
 
     #[test]
     fn свой_поток_не_считается_чужим_звуком() {
-        // Приметы должны покрывать то, чем наш поток подписан в звуковой
-        // системе: иначе обои глушат сами себя и это выглядит как «звук
-        // просто не работает».
+        // The signs must cover what our stream is labelled with in the sound
+        // system: otherwise the wallpaper mutes itself, and it looks like "the
+        // sound just does not work".
         let ours = "Sink Input #1\n\tCorked: no\n\t\tnode.name = \"RexonVideoWallpaper\"\n";
         assert!(!other_audio_playing(ours, &OWN_STREAM_NAMES));
     }
 
     #[test]
     fn поток_flash_обоев_тоже_свой() {
-        // ⭐ Живой замер 16.09.2026: Flash ходит в звук клиентом ALSA, и
-        // плагин ALSA у PipeWire подписывает поток своими словами. Ни одно
-        // прежнее имя точного совпадения не давало — Flash-обои глушили
-        // сами себя, а в журнале стояло «звук играет другая программа» при
-        // пустом столе. Строки ниже сняты с `pactl list sink-inputs`
-        // дословно.
+        // ⭐ A live measurement on 16.09.2026: Flash goes to audio as an ALSA
+        // client, and PipeWire's ALSA plugin labels the stream in its own words.
+        // None of the previous names gave an exact match — Flash wallpapers muted
+        // themselves, while the log said "another program is playing sound" on an
+        // empty desktop. The strings below are taken from `pactl list sink-inputs`
+        // verbatim.
         let flash = "Sink Input #1\n\tCorked: no\n\t\t                     application.name = \"PipeWire ALSA [rexon-wallpaper-host]\"\n\t\t                     node.name = \"alsa_playback.rexon-wallpaper-host\"\n\t\t                     media.name = \"ALSA Playback\"\n\t\t                     application.id = \"com.rexon.wallpaper\"\n";
         assert!(!other_audio_playing(flash, &OWN_STREAM_NAMES));
 
-        // И наоборот: чужой проигрыватель обязан остаться чужим.
+        // And the other way round: a foreign player must stay foreign.
         let alien = "Sink Input #1\n\tCorked: no\n\t\t                     application.name = \"PipeWire ALSA [mpv]\"\n\t\t                     node.name = \"alsa_playback.mpv\"\n";
         assert!(other_audio_playing(alien, &OWN_STREAM_NAMES));
     }
 
     #[test]
     fn бэкенд_опроса_берётся_из_ядра() {
-        // Своей таблицы «чем спрашивать» здесь нет — только перевод имени
-        // окружения в то, что ядро уже знает.
+        // There is no "what to ask with" table of our own here — only converting
+        // the environment name into what the core already knows.
         assert_eq!(
             rexon_core::wallpaper_engine::fullscreen_backend("kde", "wayland"),
             "kdotool"
@@ -627,7 +639,8 @@ mod tests {
 
     #[test]
     fn неизвестное_окружение_не_оставляет_без_звука() {
-        // Узнать про окна нечем — обои обязаны играть, а не молчать.
+        // There is no way to learn about windows — the wallpaper must play, not
+        // stay silent.
         assert_eq!(probe_windows("", 1920, 1080), Conditions::default());
     }
 

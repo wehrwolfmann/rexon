@@ -17,11 +17,12 @@ Item {
         const own = String(root.item?.author ?? "");
         return own.length > 0 ? own : String(root.details?.author ?? "");
     }
-    readonly property string authorAvatarUrl: {
-        const own = String(root.item?.authorAvatarUrl ?? "");
-        return own.length > 0 ? own : String(root.details?.authorAvatarUrl ?? "");
-    }
+    readonly property var authorAvatarData: String(root.item?.authorAvatarUrl ?? "").length > 0 ? root.item : root.details
+    readonly property string authorAvatarUrl: String(root.authorAvatarData?.authorAvatarUrl ?? "")
+    readonly property var authorAvatarHeaders: root.authorAvatarData?.authorAvatarHeaders ?? ({})
     readonly property string authorUrl: String(root.details?.authorUrl ?? "")
+    readonly property string authorId: String(root.details?.authorId ?? "")
+    readonly property bool authorInteractive: authorId.length > 0 || authorUrl.length > 0
     property int remoteCapability: 0
     property string remoteHint: ""
     property var downloadAction: null
@@ -34,11 +35,19 @@ Item {
     property int subscriptionState: 0
 
     signal back
+    signal artistRequested(string id, string name, string avatarUrl, var avatarHeaders, string webUrl)
     signal showInfo
     signal downloadRequested
     signal removeRequested
     signal subscriptionRefreshRequested
     signal subscriptionChangeRequested(bool subscribed)
+
+    function openAuthor() {
+        if (authorId.length > 0)
+            artistRequested(authorId, authorName, authorAvatarUrl, authorAvatarHeaders, authorUrl);
+        else if (authorUrl.length > 0)
+            MD.Util.openUrlExternally(authorUrl);
+    }
 
     MD.Action {
         id: linkAction
@@ -90,6 +99,7 @@ Item {
                     Layout.preferredHeight: 200
                     Layout.topMargin: 4
                     source: root.item?.previewUrl ?? ""
+                    sourceHeaders: root.item?.previewHeaders ?? ({})
                     fillMode: Image.PreserveAspectFit
                 }
 
@@ -125,20 +135,19 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
                     visible: root.authorName.length > 0
-                    Accessible.role: root.authorUrl.length > 0 ? Accessible.Link : Accessible.StaticText
+                    Accessible.role: root.authorInteractive ? Accessible.Link : Accessible.StaticText
                     Accessible.name: root.authorName
                     Accessible.onPressAction: {
-                        if (root.authorUrl.length > 0)
-                            MD.Util.openUrlExternally(root.authorUrl);
+                        root.openAuthor();
                     }
 
                     TapHandler {
-                        enabled: root.authorUrl.length > 0
-                        onTapped: MD.Util.openUrlExternally(root.authorUrl)
+                        enabled: root.authorInteractive
+                        onTapped: root.openAuthor()
                     }
 
                     HoverHandler {
-                        enabled: root.authorUrl.length > 0
+                        enabled: root.authorInteractive
                         cursorShape: Qt.PointingHandCursor
                     }
 
@@ -149,6 +158,7 @@ Item {
                         Layout.maximumHeight: 32
                         visible: root.authorAvatarUrl.length > 0
                         source: root.authorAvatarUrl
+                        sourceHeaders: root.authorAvatarHeaders
                         maxSize: Qt.size(64, 64)
                         fillMode: Image.PreserveAspectCrop
                         radius: 16

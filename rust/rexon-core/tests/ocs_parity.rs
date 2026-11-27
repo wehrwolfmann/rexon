@@ -1,13 +1,13 @@
-//! Golden-сверка OCS-парсера с оригиналом `rexon/appearance/ocs_client.py`.
+//! Golden check of the OCS parser against the original `rexon/appearance/ocs_client.py`.
 //!
-//! Эталоны сняты с самого Python (см. генератор): `ocs_list.xml` — РЕАЛЬНЫЙ
-//! ответ `/content/data` (curl к api.opendesktop.org, categories=104),
-//! `ocs_comments.xml` — реальный ответ `/comments/data/1/...`, `ocs_cases.json` —
-//! выходы оракула (`_parse_list`/`_flatten_comments`/`_safe_url`/`_link_score`/
-//! `_pick_best_link`). Rust обязан вернуть те же модели/строки/порядок.
+//! The goldens were captured from Python itself (see the generator): `ocs_list.xml` is a REAL
+//! `/content/data` answer (curl to api.opendesktop.org, categories=104),
+//! `ocs_comments.xml` is a real `/comments/data/1/...` answer, `ocs_cases.json` holds
+//! the oracle's outputs (`_parse_list`/`_flatten_comments`/`_safe_url`/`_link_score`/
+//! `_pick_best_link`). Rust must return the same models/strings/order.
 //!
-//! ⚠️ Живой сетевой вызов и SQLite-кеш НЕ тестируются (недетерминированы и в
-//! ядро не портированы) — проверяется только РАЗБОР зафиксированных ответов.
+//! ⚠️ The live network call and the SQLite cache are NOT tested (non-deterministic and
+//! not ported to the core) — only PARSING of the recorded answers is checked.
 
 use rexon_core::ocs::{
     comments_url, full_preview_url, item_url, link_score, link_score_for, list_key,
@@ -20,30 +20,30 @@ fn cases() -> Value {
     serde_json::from_str(include_str!("golden/ocs_cases.json")).unwrap()
 }
 
-/// Эталоны второй волны портов (`full_preview_url`, ключи кеша, URL запросов,
-/// имена файлов кеша превью) — сняты с ЖИВОГО `ocs_client.py` на РЕАЛЬНЫХ
-/// previewpic-ссылках из `ocs_list.xml`.
+/// Goldens of the second wave of ports (`full_preview_url`, cache keys, request URLs,
+/// preview cache file names) — captured from LIVE `ocs_client.py` on REAL
+/// previewpic links from `ocs_list.xml`.
 fn extra() -> Value {
     serde_json::from_str(include_str!("golden/appearance_extra_cases.json")).unwrap()
 }
 
-/// Сторож срока кеша деталей: `DETAIL_TTL_SECS` ядра — сутки, как в
-/// эталоне (`detail_ttl_secs` в `ocs_cases.json`; значение снято с прежнего
-/// `DETAIL_TTL = 24 * 3600`). Срок читает и кеш каталога
-/// (`appearance_cache`), поэтому его смена — изменение поведения, а не
-/// косметика: правка числа требует осознанной правки эталона.
+/// Guard of the details cache lifetime: the core's `DETAIL_TTL_SECS` is a day, as in
+/// the golden (`detail_ttl_secs` in `ocs_cases.json`; the value was taken from the former
+/// `DETAIL_TTL = 24 * 3600`). The catalog cache (`appearance_cache`) reads the lifetime too,
+/// so changing it is a change of behaviour, not
+/// cosmetics: editing the number requires a deliberate edit of the golden.
 ///
-/// До 02.10.2026 сверка читала замороженный исходник Python
-/// (`golden/frozen_ocs_client.py`); Python теперь только архив, и ожидание
-/// стало собственным эталоном Rust.
+/// Until 02.10.2026 the check read the frozen Python source
+/// (`golden/frozen_ocs_client.py`); Python is now only an archive, and the expectation
+/// became Rust's own golden.
 #[test]
 fn detail_ttl_matches_the_golden() {
     let want = cases()["detail_ttl_secs"].as_u64().expect("detail_ttl_secs в ocs_cases.json");
     assert_eq!(rexon_core::ocs::DETAIL_TTL_SECS, want);
 }
 
-/// Разбор РЕАЛЬНОГО ответа-списка: все поля ThemeItem, download_links,
-/// выбранный лучший линк, comment_count и totalitems совпадают с Python.
+/// Parsing a REAL list answer: all ThemeItem fields, download_links,
+/// the chosen best link, comment_count and totalitems match Python.
 #[test]
 fn parse_list_matches_python() {
     let raw = include_bytes!("golden/ocs_list.xml");
@@ -61,9 +61,9 @@ fn parse_list_matches_python() {
         assert_eq!(it.name, w["name"].as_str().unwrap(), "name {}", it.id);
         assert_eq!(it.description, w["description"].as_str().unwrap(), "description {}", it.id);
         assert_eq!(it.author, w["author"].as_str().unwrap(), "author {}", it.id);
-        // Поля `license` в ответе нет вовсе — лицензию дают метки (`gplv3`,
-        // `cc-by-sa`…); с 04.10.2026 эталон хранит её из меток
-        // (`ocs::license_from_tags`), а не пустую строку Python.
+        // There is no `license` field in the answer at all — the license comes from tags (`gplv3`,
+        // `cc-by-sa`…); since 04.10.2026 the golden keeps it from the tags
+        // (`ocs::license_from_tags`), not Python's empty string.
         assert_eq!(it.license, w["license"].as_str().unwrap(), "license {}", it.id);
         assert_eq!(it.version, w["version"].as_str().unwrap(), "version {}", it.id);
         assert_eq!(it.rating, w["rating"].as_i64().unwrap(), "rating {}", it.id);
@@ -78,18 +78,18 @@ fn parse_list_matches_python() {
         assert_eq!(it.category_id, w["category_id"].as_i64().unwrap(), "category_id {}", it.id);
         assert_eq!(it.created, w["created"].as_str().unwrap(), "created {}", it.id);
         assert_eq!(it.updated, w["updated"].as_str().unwrap(), "updated {}", it.id);
-        // download_links (полный список dict url/name/size) — побайтово.
+        // download_links (the full list of url/name/size dicts) — byte-wise.
         assert_eq!(&it.download_links, w["download_links"].as_array().unwrap(), "download_links {}", it.id);
-        // динамический атрибут comment_count.
+        // the dynamic attribute comment_count.
         assert_eq!(oc.comment_count, w["comment_count"].as_i64().unwrap(), "comment_count {}", it.id);
-        // производные методы модели на реальных данных.
+        // derived model methods on real data.
         assert_eq!(it.rating_stars(), w["rating_stars"].as_f64().unwrap(), "rating_stars {}", it.id);
         assert_eq!(it.display_description(), w["display_description"].as_str().unwrap(), "display_desc {}", it.id);
     }
 }
 
-/// Разбор РЕАЛЬНОГО ответа комментариев: плоский список с глубиной вложенности
-/// совпадает с `_flatten_comments`.
+/// Parsing a REAL comments answer: the flat list with nesting depth
+/// matches `_flatten_comments`.
 #[test]
 fn parse_comments_matches_python() {
     let raw = include_bytes!("golden/ocs_comments.xml");
@@ -107,8 +107,8 @@ fn parse_comments_matches_python() {
     }
 }
 
-/// _safe_url: percent-encode небезопасных символов (urlsplit+quote+urlunsplit),
-/// уже закодированные `%XX` и fragment сохраняются.
+/// _safe_url: percent-encoding of unsafe characters (urlsplit+quote+urlunsplit),
+/// already encoded `%XX` and the fragment are kept.
 #[test]
 fn safe_url_matches_python() {
     for (url, want) in cases()["safe_url"].as_object().unwrap() {
@@ -116,14 +116,14 @@ fn safe_url_matches_python() {
     }
 }
 
-/// _link_score / _pick_best_link: оценка пригодности линков и выбор лучшего
-/// (первый при равенстве баллов), -1 для пустого списка.
+/// _link_score / _pick_best_link: rating links for suitability and choosing the best one
+/// (the first on a tie), -1 for an empty list.
 ///
-/// С 05.10.2026 эталон расходится с Python намеренно: готовые KPackage
-/// (`.plasmoid`/`.kpackage`/`.kwinscript`) — архивы, пакеты дистрибутивов и
-/// установщики штрафуются, текст (README) — ниже всего. С 19.10.2026 файл
-/// дополнений (`extra.7z`, `Extra 1.4.tar.xz`) уступает основному архиву. Случаи с
-/// `kpackage_kind` — товар вида, который ставится KPackage-ом.
+/// Since 05.10.2026 the golden deliberately differs from Python: ready KPackages
+/// (`.plasmoid`/`.kpackage`/`.kwinscript`) are archives, distro packages and
+/// installers are penalized, text (README) is lowest of all. Since 19.10.2026 an add-on file
+/// (`extra.7z`, `Extra 1.4.tar.xz`) yields to the main archive. Cases with
+/// `kpackage_kind` are an item of a kind that is installed by KPackage.
 #[test]
 fn link_selection_matches_python() {
     for case in cases()["link_cases"].as_array().unwrap() {
@@ -145,9 +145,9 @@ fn link_selection_matches_python() {
     }
 }
 
-/// Какие товары магазина ставятся KPackage-ом: виджеты (зонт 705 и его
-/// подкатегории — «HTML Widget Host» приходит с 706), плагины обоев 715,
-/// скрипты KWin 720. Иконки и стили Plasma — нет.
+/// Which store items are installed by KPackage: widgets (umbrella 705 and its
+/// subcategories — «HTML Widget Host» comes with 706), wallpaper plugins 715,
+/// KWin scripts 720. Icons and Plasma styles are not.
 #[test]
 fn store_types_installed_as_kpackage() {
     for id in [705, 706, 708, 715, 720] {
@@ -158,9 +158,9 @@ fn store_types_installed_as_kpackage() {
     }
 }
 
-/// full_preview_url: снятие CDN-сегмента ресайзера pling на РЕАЛЬНЫХ ссылках
-/// previewpic из ответа api.opendesktop.org + краевые случаи (no-op, два
-/// сегмента → только первый, кириллица/пробелы в имени файла, пустой вход).
+/// full_preview_url: stripping the pling resizer CDN segment on REAL previewpic links
+/// from the api.opendesktop.org answer + edge cases (no-op, two
+/// segments → only the first, Cyrillic/spaces in the file name, empty input).
 #[test]
 fn full_preview_url_matches_python() {
     let cases = extra()["full_preview"].as_array().unwrap().clone();
@@ -177,7 +177,7 @@ fn full_preview_url_matches_python() {
     assert!(changed >= 20, "эталон почти не содержит /cache/-ссылок");
 }
 
-/// SORT_MAP.get(sort, "new"): известные режимы проходят как есть, мусор → new.
+/// SORT_MAP.get(sort, "new"): known modes pass as they are, garbage → new.
 #[test]
 fn sort_mode_matches_python() {
     let g = extra();
@@ -187,15 +187,15 @@ fn sort_mode_matches_python() {
         assert!(SORT_MODES.contains(&k.as_str()), "режим {k} отсутствует в SORT_MODES");
         assert_eq!(sort_mode(k), v.as_str().unwrap(), "sort_mode для {k}");
     }
-    // Ключей вне SORT_MAP в оригинале нет — дефолт проверяем по кейсам list_key.
+    // The original has no keys outside SORT_MAP — the default is checked via the list_key cases.
     for c in g["list_keys"].as_array().unwrap() {
         let sort = c["sort"].as_str().unwrap();
         assert_eq!(sort_mode(sort), c["sortmode"].as_str().unwrap(), "sort_mode для {sort:?}");
     }
 }
 
-/// Ключ кеша страницы (`cat…:p…:s…:q…`): strip+lower запроса по Unicode,
-/// неизвестная сортировка → new.
+/// The page cache key (`cat…:p…:s…:q…`): Unicode strip+lower of the query,
+/// an unknown sort → new.
 #[test]
 fn list_key_matches_python() {
     for c in extra()["list_keys"].as_array().unwrap() {
@@ -211,8 +211,8 @@ fn list_key_matches_python() {
     }
 }
 
-/// URL запросов каталога/деталки/комментариев: порядок параметров и
-/// quote_plus-экранирование как у `urllib.parse.urlencode`.
+/// URLs of catalog/details/comments requests: the parameter order and
+/// quote_plus escaping as in `urllib.parse.urlencode`.
 #[test]
 fn request_urls_match_python() {
     let g = extra();
@@ -241,8 +241,8 @@ fn request_urls_match_python() {
     }
 }
 
-/// Имя файла в кеше превью: sha1(url) + расширение из ПУТИ (без query),
-/// «расширение» длиннее 5 символов и отсутствующее → `.jpg`.
+/// The file name in the preview cache: sha1(url) + the extension from the PATH (without the query),
+/// an "extension" longer than 5 characters or a missing one → `.jpg`.
 #[test]
 fn preview_cache_name_matches_python() {
     for c in extra()["preview_cache_names"].as_array().unwrap() {

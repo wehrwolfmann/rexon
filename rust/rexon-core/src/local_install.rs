@@ -1,44 +1,48 @@
-//! «Установить из файла…» — тема, которая УЖЕ лежит на диске.
+//! "Install from file…" — a theme that is ALREADY on disk.
 //!
-//! Кнопка в шапке каждого раздела «Оформления», как у KDE: человек скачал
-//! тему сам (в том числе курсоры и шрифты из Windows) и показывает Rexon
-//! файл, несколько файлов или папку. Здесь решается, ЧТО это и КУДА его
-//! ставить, а ставит тот же исполнитель, что у магазина:
+//! A button in the header of every "Appearance" section, as in KDE: the person
+//! downloaded a theme themselves (including cursors and fonts from Windows) and
+//! shows Rexon a file, several files or a folder. Here it is decided WHAT it is
+//! and WHERE to install it, while the installing is done by the same executor
+//! as for the store:
 //!
-//! * архив или папка темы — [`crate::appearance_installer::LiveInstaller::install_extracted`]
-//!   (раскладка корней тем, переклассификация, проверка KPackage); системные
-//!   виды (SDDM, Plymouth) — тем же помощником с проверками `system_plan`;
-//! * один файл схемы цветов, темы Kvantum, картинки фона блокировки —
-//!   [`crate::appearance_installer::LiveInstaller::install`] (ветка «товар
-//!   одним файлом»);
-//! * `.rxn` и форматы Windows (`.cur`/`.ani`/`.inf`, наборы курсоров
-//!   архивом, `.themepack`, `.msstyles`, `.ico`…) — [`crate::ext_exec::install_from_file`]
-//!   (импортёры `crate::importers`, анимация `.ani` сохраняется ими же);
-//! * шрифты — [`install_font_file`] в `$XDG_DATA_HOME/fonts` (тот же путь,
-//!   что «Управление шрифтами» в «Настройках»: одна дверь на продукт);
-//! * картинки, видео и Flash для обоев — в библиотеку обоев Rexon пакетом
-//!   `wallpaper-pack` (её показывает и применяет «Настройки → Обои» в любом
-//!   окружении).
+//! * an archive or a theme folder —
+//!   [`crate::appearance_installer::LiveInstaller::install_extracted`] (laying
+//!   out theme roots, reclassification, KPackage check); system kinds (SDDM,
+//!   Plymouth) — by the same helper with the `system_plan` checks;
+//! * a single file of a color scheme, a Kvantum theme, a lock screen background
+//!   picture — [`crate::appearance_installer::LiveInstaller::install`] (the
+//!   "single-file product" branch);
+//! * `.rxn` and Windows formats (`.cur`/`.ani`/`.inf`, cursor sets as an
+//!   archive, `.themepack`, `.msstyles`, `.ico`…) —
+//!   [`crate::ext_exec::install_from_file`] (the `crate::importers` importers,
+//!   which also preserve the `.ani` animation);
+//! * fonts — [`install_font_file`] into `$XDG_DATA_HOME/fonts` (the same path as
+//!   "Font management" in "Settings": one door for the product);
+//! * pictures, video and Flash for wallpapers — into the Rexon wallpaper library
+//!   as a `wallpaper-pack` package ("Settings → Wallpapers" shows and applies it
+//!   in any environment).
 //!
-//! Всё ставится по-пользовательски в каталоги XDG — их читают все окружения
-//! (значки, курсоры, GTK, звуки, шрифты через fontconfig); «Применить» потом
-//! решает родной ключ каждого окружения.
+//! Everything is installed per user into XDG directories — all environments read
+//! them (icons, cursors, GTK, sounds, fonts via fontconfig); "Apply" is then
+//! decided by each environment's native key.
 //!
-//! РАСПОЗНАВАНИЕ — по содержимому, а не по имени: подписи файлов
-//! ([`sniff`]) и устройство дерева ([`detect_tree`]). Тема не того вида, что
-//! раздел, ставится туда, где ей место, и человеку это говорится словами;
-//! системная тема из чужого раздела НЕ ставится (окно пароля без явного
-//! «ставлю экран входа» — ловушка, правило #13) — ему предлагают открыть её
-//! раздел.
+//! RECOGNITION is by contents, not by name: file signatures ([`sniff`]) and the
+//! tree structure ([`detect_tree`]). A theme of a different kind than the section
+//! is installed where it belongs, and the person is told so in words; a system
+//! theme from someone else's section is NOT installed (a password dialog without
+//! an explicit "I am installing a login screen" is a trap, rule #13) — the
+//! person is offered to open its section instead.
 //!
-//! БЕЗОПАСНОСТЬ. Архив проверяется ДО распаковки (имена записей —
-//! `live_safe_extract`, общий размер и число записей — [`unpacked_budget_ok`]),
-//! после распаковки из дерева убираются ссылки наружу и особые файлы
-//! ([`sanitize_tree`]). Папка человека не ставится «как есть», а копируется
-//! во временный каталог тем же фильтром ([`stage_dir`]): ссылка из темы на
-//! `~/.ssh` до каталога вида не доедет. Системные виды идут только через
-//! помощника — его проверки (`installer::system_theme_problem`, allowlist
-//! `system_plan`) здесь не ослабляются и не дублируются.
+//! SECURITY. An archive is checked BEFORE unpacking (entry names —
+//! `live_safe_extract`, total size and number of entries —
+//! [`unpacked_budget_ok`]); after unpacking, links leading outside and special
+//! files are removed from the tree ([`sanitize_tree`]). A person's folder is not
+//! installed "as is" but copied into a temporary directory with the same filter
+//! ([`stage_dir`]): a link from a theme to `~/.ssh` will not reach the kind's
+//! directory. System kinds go only through the helper — its checks
+//! (`installer::system_theme_problem`, the `system_plan` allow-list) are neither
+//! weakened nor duplicated here.
 
 use std::path::{Path, PathBuf};
 
@@ -50,36 +54,38 @@ use crate::installed_scan::FsSnapshot;
 use crate::models::{ThemeCategory, ThemeItem};
 
 // ============================================================================
-// Пределы
+// Limits
 // ============================================================================
 
-/// Сколько байт может занять распакованное. Темы весят мегабайты, пачки обоев
-/// KDE — сотни мегабайт; больше двух гигабайт — это не тема, а распаковка
-/// всё равно идёт в `/tmp`, то есть в память.
+/// How many bytes the unpacked contents may take. Themes weigh megabytes, KDE
+/// wallpaper packs hundreds of megabytes; more than two gigabytes is not a
+/// theme, and unpacking goes into `/tmp` anyway, i.e. into memory.
 pub const MAX_UNPACKED_BYTES: u64 = 2 << 30;
 
-/// Сколько записей может быть в архиве или папке. У крупнейших тем значков
-/// десятки тысяч файлов и ссылок; сотня тысяч — потолок с запасом.
+/// How many entries an archive or folder may have. The largest icon themes have
+/// tens of thousands of files and links; a hundred thousand is a ceiling with a
+/// margin.
 pub const MAX_ENTRIES: u64 = 100_000;
 
-/// Расширения архивов, которые распаковывает установщик (`live_safe_extract`:
-/// ZIP — сам, TAR со сжатием — системный `tar`, 7z — `bsdtar` или 7-Zip;
-/// так же приходят пакеты тем Conky `.cmtp.7z`). RAR понимает только
-/// импортёр наборов курсоров Windows.
+/// Archive extensions the installer unpacks (`live_safe_extract`: ZIP — itself,
+/// compressed TAR — the system `tar`, 7z — `bsdtar` or 7-Zip; Conky theme
+/// packages `.cmtp.7z` come this way too). Only the Windows cursor set importer
+/// understands RAR.
 pub const ARCHIVE_EXTS: &[&str] = &[
     "zip", "tar", "tar.gz", "tgz", "tar.xz", "txz", "tar.bz2", "tbz2", "tbz", "tar.zst",
     "tzst", "7z",
 ];
 
 // ============================================================================
-// Подпись файла
+// File signature
 // ============================================================================
 
-/// Что за файл — по первым байтам, а где подписи нет — по имени.
+/// What kind of file it is — by its first bytes, and where there is no
+/// signature — by its name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum FileSort {
     Zip,
-    /// TAR, в том числе сжатый gzip/xz/bzip2/zstd (распаковывает `tar`).
+    /// TAR, including compressed with gzip/xz/bzip2/zstd (unpacked by `tar`).
     Tar,
     SevenZip,
     Rar,
@@ -87,19 +93,19 @@ pub enum FileSort {
     Image,
     Video,
     Flash,
-    /// Курсор Windows `.cur`.
+    /// A Windows cursor `.cur`.
     Cur,
-    /// Анимированный курсор Windows `.ani` (RIFF/ACON).
+    /// A Windows animated cursor `.ani` (RIFF/ACON).
     Ani,
-    /// Значок Windows `.ico`.
+    /// A Windows icon `.ico`.
     Ico,
     ColorScheme,
     Kvantum,
     Other,
 }
 
-/// Расширение имени в нижнем регистре без точки; у двойных архивных
-/// (`tar.gz`) — целиком.
+/// The name's extension in lower case without the dot; for double archive
+/// extensions (`tar.gz`) — the whole thing.
 pub fn ext_of(name: &str) -> String {
     let base = name.rsplit('/').next().unwrap_or(name).to_lowercase();
     for double in ["tar.gz", "tar.xz", "tar.bz2", "tar.zst", "pcf.gz"] {
@@ -113,11 +119,11 @@ pub fn ext_of(name: &str) -> String {
     }
 }
 
-/// Подпись файла по первым байтам (`head` — до 512 байт) и имени.
+/// File signature by the first bytes (`head` — up to 512 bytes) and the name.
 ///
-/// Подпись решает раньше имени: курсор, присланный как `arrow.bin`, — всё
-/// равно курсор, а «картинка.jpg», внутри которой ZIP, — архив. Имя спасает
-/// там, где подписи у формата нет (`.colors`, `.kvconfig`, шрифты BDF/PFA).
+/// The signature decides before the name: a cursor sent as `arrow.bin` is still
+/// a cursor, and a "picture.jpg" with a ZIP inside is an archive. The name helps
+/// where the format has no signature (`.colors`, `.kvconfig`, BDF/PFA fonts).
 pub fn sniff(name: &str, head: &[u8]) -> FileSort {
     let at = |off: usize, sig: &[u8]| head.len() >= off + sig.len() && &head[off..off + sig.len()] == sig;
     if at(0, b"PK\x03\x04") || at(0, b"PK\x05\x06") {
@@ -130,7 +136,7 @@ pub fn sniff(name: &str, head: &[u8]) -> FileSort {
         return FileSort::Rar;
     }
     let ext = ext_of(name);
-    // Сжатый одиночный шрифт (`.pcf.gz`) — тоже gzip; тут имя решает раньше.
+    // A compressed single font (`.pcf.gz`) is also gzip; here the name decides first.
     if ext == "pcf.gz" {
         return FileSort::Font;
     }
@@ -162,7 +168,7 @@ pub fn sniff(name: &str, head: &[u8]) -> FileSort {
         return FileSort::Video;
     }
     if at(4, b"ftyp") {
-        // У AVIF и HEIF тот же контейнер, что у MP4: решает марка.
+        // AVIF and HEIF have the same container as MP4: the brand decides.
         let image_brand = [b"avif", b"avis", b"heic", b"heix", b"mif1", b"msf1"]
             .iter()
             .any(|b| at(8, *b));
@@ -180,7 +186,7 @@ pub fn sniff(name: &str, head: &[u8]) -> FileSort {
     if crate::appearance_installer::looks_like_image(false, head, &[]) {
         return FileSort::Image;
     }
-    // Подписи нет — имя.
+    // No signature — the name.
     let text = String::from_utf8_lossy(head);
     if ext == "colors" || text.contains("[ColorEffects:") || text.contains("[Colors:Window]") {
         return FileSort::ColorScheme;
@@ -202,30 +208,30 @@ pub fn sniff(name: &str, head: &[u8]) -> FileSort {
     }
 }
 
-/// Файл годится в библиотеку обоев (картинка, видео, Flash).
+/// The file is fit for the wallpaper library (a picture, video, Flash).
 pub fn is_media(sort: FileSort) -> bool {
     matches!(sort, FileSort::Image | FileSort::Video | FileSort::Flash)
 }
 
 // ============================================================================
-// Устройство дерева: что за тема
+// Tree structure: what kind of theme it is
 // ============================================================================
 
-/// Что нашлось в распакованном архиве или папке.
+/// What was found in the unpacked archive or folder.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Found {
-    /// Тема вида этого раздела (ключ раздела боковой панели).
+    /// A theme of this section's kind (the sidebar section key).
     Section(String),
-    /// Набор курсоров Windows (`.cur`/`.ani`) — его переводит импортёр.
+    /// A Windows cursor set (`.cur`/`.ani`) — the importer converts it.
     WindowsCursors,
-    /// Только шрифты (и мелочь вроде readme).
+    /// Only fonts (and small stuff like a readme).
     Fonts,
-    /// Только картинки/видео — обои.
+    /// Only pictures/videos — wallpapers.
     Media,
 }
 
-/// Подпись пакета KDE (KPackage) по `metadata.json`/`metadata.desktop`:
-/// `KPackageStructure` либо, у старых пакетов, `ServiceTypes`.
+/// A KDE package (KPackage) signature from `metadata.json`/`metadata.desktop`:
+/// `KPackageStructure` or, for old packages, `ServiceTypes`.
 fn kpackage_structure(fs: &FsSnapshot, dir: &str) -> String {
     if let Some(text) = fs.read_text(&format!("{dir}/metadata.json")) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
@@ -256,7 +262,7 @@ fn kpackage_structure(fs: &FsSnapshot, dir: &str) -> String {
     String::new()
 }
 
-/// Все файлы под `root` (до глубины 12, скрытые каталоги пропускаются).
+/// All files under `root` (to a depth of 12, hidden directories are skipped).
 fn files_under(fs: &FsSnapshot, root: &str) -> Vec<String> {
     fn walk(fs: &FsSnapshot, dir: &str, depth: usize, out: &mut Vec<String>) {
         for name in fs.scandir(dir) {
@@ -275,7 +281,7 @@ fn files_under(fs: &FsSnapshot, root: &str) -> Vec<String> {
     out
 }
 
-/// Мелочь, которая лежит рядом с чем угодно и вида не меняет.
+/// Small stuff that lies next to anything and does not change the kind.
 fn is_incidental(name: &str) -> bool {
     let l = name.rsplit('/').next().unwrap_or(name).to_lowercase();
     let ext = ext_of(&l);
@@ -286,15 +292,15 @@ fn is_incidental(name: &str) -> bool {
         || matches!(ext.as_str(), "txt" | "md" | "html" | "htm" | "url" | "pdf" | "nfo" | "rtf" | "")
 }
 
-/// Что лежит в распакованном (`extract_dir`) — решение по устройству, а не
-/// по имени архива. `None` — понять не удалось: тогда раздел ставит дерево
-/// по своему правилу, как товар магазина.
+/// What lies in the unpacked contents (`extract_dir`) — a decision by
+/// structure, not by the archive name. `None` — it could not be determined: then
+/// the section installs the tree by its own rule, like a store product.
 pub fn detect_tree(fs: &FsSnapshot, extract_dir: &str) -> Option<Found> {
     let root = find_content_root(fs, extract_dir);
     let sec = |k: &str| Some(Found::Section(k.to_string()));
     let names = fs.scandir(&root);
 
-    // Системные виды — первыми: их признаки однозначны.
+    // System kinds first: their signs are unambiguous.
     if names.iter().any(|n| n.ends_with(".plymouth")) {
         return sec("plymouth");
     }
@@ -305,15 +311,15 @@ pub fn detect_tree(fs: &FsSnapshot, extract_dir: &str) -> Option<Found> {
         return sec("sddm");
     }
 
-    // Пакеты KDE: вид назван в описании пакета.
+    // KDE packages: the kind is named in the package description.
     let structure = kpackage_structure(fs, &root);
     match structure.as_str() {
         "Plasma/LookAndFeel" => return sec("global"),
         "Plasma/Theme" => return sec("plasma"),
         "Plasma/Applet" => return sec("plasmoids"),
         "Plasma/Wallpaper" => {
-            // Пачка картинок KDE (`contents/images`) и плагин обоев (QML)
-            // описаны одинаково — различает содержимое.
+            // A KDE picture pack (`contents/images`) and a wallpaper plugin (QML)
+            // are described the same way — the contents tell them apart.
             let images = fs.is_dir(&format!("{root}/contents/images"));
             let ui = fs.is_dir(&format!("{root}/contents/ui"));
             return sec(if images && !ui { "wallpapers" } else { "wallpaper_plugins" });
@@ -328,7 +334,7 @@ pub fn detect_tree(fs: &FsSnapshot, extract_dir: &str) -> Option<Found> {
         return sec("wallpapers");
     }
 
-    // Темы, которые узнаёт сам установщик магазина.
+    // Themes that the store installer itself recognizes.
     match crate::appearance_installer::detect_actual_kde_type(fs, &root).as_deref() {
         Some("look-and-feel") => return sec("global"),
         Some("plasma-theme") => return sec("plasma"),
@@ -339,8 +345,9 @@ pub fn detect_tree(fs: &FsSnapshot, extract_dir: &str) -> Option<Found> {
         _ => {}
     }
 
-    // Темы с корнями где угодно в глубине обёртки. Курсоры раньше значков:
-    // признак значков (`index.theme` с `[Icon Theme]`) есть и у курсоров.
+    // Themes with roots anywhere deep in the wrapper. Cursors before icons:
+    // the icon sign (`index.theme` with `[Icon Theme]`) is present in cursors
+    // too.
     let has_cursor_dir = |r: &String| fs.is_dir(&format!("{r}/cursors"));
     let cursor_roots = find_theme_roots(fs, &root, "cursor");
     if !cursor_roots.is_empty() && cursor_roots.iter().all(has_cursor_dir) {
@@ -359,9 +366,9 @@ pub fn detect_tree(fs: &FsSnapshot, extract_dir: &str) -> Option<Found> {
         return sec("icons");
     }
 
-    // Пакет тем Conky: виджеты в скрытых `.conky/` (`.Conky/`,
-    // `.config/conky/`) — обход по файлам ниже скрытые каталоги не смотрит;
-    // набор виджетов `.cmtheme` — тоже Conky.
+    // A Conky theme package: widgets in hidden `.conky/` (`.Conky/`,
+    // `.config/conky/`) — the file walk below does not look into hidden
+    // directories; a `.cmtheme` widget set is Conky too.
     let conky_pack = [extract_dir.trim_end_matches('/'), root.as_str()].iter().any(|base| {
         crate::appearance_installer::CONKY_PACK_DIRS.iter().any(|d| fs.is_dir(&format!("{base}/{d}")))
     });
@@ -369,7 +376,7 @@ pub fn detect_tree(fs: &FsSnapshot, extract_dir: &str) -> Option<Found> {
         return sec("conky");
     }
 
-    // По файлам.
+    // By files.
     let files = files_under(fs, &root);
     let meaningful: Vec<&String> = files.iter().filter(|f| !is_incidental(f)).collect();
     let ext_is = |f: &str, exts: &[&str]| exts.contains(&ext_of(f).as_str());
@@ -403,10 +410,10 @@ pub fn detect_tree(fs: &FsSnapshot, extract_dir: &str) -> Option<Found> {
 }
 
 // ============================================================================
-// Раздел против найденного
+// The section versus what was found
 // ============================================================================
 
-/// Ключ найденного для сравнения с разделом.
+/// Key of what was found, for comparison with the section.
 fn found_key(found: &Found) -> &str {
     match found {
         Found::Section(k) => k,
@@ -416,17 +423,17 @@ fn found_key(found: &Found) -> &str {
     }
 }
 
-/// Системные виды: ставятся помощником от root.
+/// System kinds: installed by the root helper.
 pub fn is_root_section(key: &str) -> bool {
     matches!(key, "sddm" | "plymouth")
 }
 
-/// Подходит ли найденный вид разделу, из которого его ставят.
+/// Whether the found kind fits the section it is installed from.
 ///
-/// Кроме точного совпадения: заставка и экран блокировки — это пакеты
-/// Look-and-Feel; «Стиль приложений» — темы Kvantum; фон блокировки — те же
-/// картинки, что обои. «Загруженные» принимают всё: там человек не выбирал
-/// вид.
+/// Besides an exact match: a splash screen and a lock screen are Look-and-Feel
+/// packages; "Application style" means Kvantum themes; a lock screen background
+/// is the same pictures as wallpapers. "Downloaded" accepts everything: there
+/// the person did not choose a kind.
 pub fn section_accepts(section: &str, found: &Found) -> bool {
     let key = found_key(found);
     if section == key || section == "downloaded" {
@@ -440,29 +447,29 @@ pub fn section_accepts(section: &str, found: &Found) -> bool {
     }
 }
 
-/// Раздел окружения (рамки XFWM4, оболочка GNOME…)?
+/// An environment section (XFWM4 borders, GNOME shell…)?
 fn is_de_section(key: &str) -> bool {
     crate::categories::DE_SECTIONS.iter().any(|(_, k)| *k == key)
 }
 
-/// Куда ставить то, что нашлось, из раздела `section`.
+/// Where to install what was found from section `section`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Placement {
-    /// В раздел с этим ключом. `moved` — не в тот, из которого ставили.
+    /// Into the section with this key. `moved` — not the one it was installed from.
     Section { key: String, moved: bool },
-    /// Шрифты.
+    /// Fonts.
     Fonts { moved: bool },
-    /// Библиотека обоев Rexon.
+    /// The Rexon wallpaper library.
     Library { moved: bool },
-    /// Набор курсоров Windows — импортёр.
+    /// A Windows cursor set — the importer.
     WindowsCursors { moved: bool },
-    /// Системная тема из чужого раздела: не ставим, предлагаем её раздел.
+    /// A system theme from someone else's section: not installed, its section is offered.
     OtherRootSection { key: String },
 }
 
-/// Решение о месте. `found = None` — вид не опознан: дерево ставится по
-/// правилу раздела (как товар магазина); в «Загруженных» правила нет —
-/// тогда `None`.
+/// The decision about the place. `found = None` — the kind was not recognized:
+/// the tree is installed by the section's rule (like a store product);
+/// "Downloaded" has no rule — then `None`.
 pub fn place(section: &str, found: Option<&Found>) -> Option<Placement> {
     let Some(found) = found else {
         if section == "downloaded" {
@@ -470,9 +477,9 @@ pub fn place(section: &str, found: Option<&Found>) -> Option<Placement> {
         }
         return Some(Placement::Section { key: install_key(section), moved: false });
     };
-    // Раздел окружения ставит своё сам: признаки GTK есть и у тем оболочки
-    // GNOME или рамок XFWM4, и «переезд» в «Темы GTK» был бы ошибкой.
-    // Уводятся только явно чужие виды.
+    // An environment section installs its own by itself: GNOME shell themes
+    // and XFWM4 borders also have GTK signs, and a "move" to "GTK themes"
+    // would be a mistake. Only clearly foreign kinds are diverted.
     if is_de_section(section) {
         let foreign = match found {
             Found::Section(k) => !(k == "gtk" || is_de_section(k)),
@@ -500,8 +507,8 @@ pub fn place(section: &str, found: Option<&Found>) -> Option<Placement> {
     })
 }
 
-/// Ключ категории установки для раздела (у «Стиля приложений» своего
-/// каталога нет — темы Kvantum ставятся в раздел Kvantum).
+/// The install category key for a section ("Application style" has no
+/// directory of its own — Kvantum themes are installed into the Kvantum section).
 fn install_key(section: &str) -> String {
     match section {
         "widgetstyle" => "kvantum".to_string(),
@@ -509,11 +516,12 @@ fn install_key(section: &str) -> String {
     }
 }
 
-/// Категория установки, когда найденное подходит разделу.
+/// The install category when what was found fits the section.
 fn install_key_for(section: &str, found: &str) -> String {
     match section {
-        // Заставка и экран блокировки ставят пакет Look-and-Feel в свой
-        // каталог по своей категории (её применение — своё).
+        // The splash screen and the lock screen install a Look-and-Feel package
+        // into their own directory by their own category (their applying is
+        // their own).
         "splash" | "lockscreen" | "lockwallpaper" => section.to_string(),
         "downloaded" | "widgetstyle" => found.to_string(),
         _ => install_key(section),
@@ -521,12 +529,12 @@ fn install_key_for(section: &str, found: &str) -> String {
 }
 
 // ============================================================================
-// Окно выбора файлов
+// The file chooser dialog
 // ============================================================================
 
-/// Показывать ли кнопку в разделе с этим ключом. Обзоры (активные,
-/// системные, избранное) и витрины (популярное, новое) — не разделы вида;
-/// «Загруженные» — да: там тема узнаётся сама.
+/// Whether to show the button in the section with this key. Overviews (active,
+/// system, favorites) and storefronts (popular, new) are not kind sections;
+/// "Downloaded" is: the theme is recognized by itself there.
 pub fn button_for(section: &str, is_virtual: bool) -> bool {
     if section == crate::categories::PLASMA_LOGIN_KEY {
         return false;
@@ -538,7 +546,7 @@ fn masks(exts: &[&str]) -> Vec<String> {
     exts.iter().map(|e| format!("*.{e}")).collect()
 }
 
-/// Расширения, которые раздел ждёт в окне выбора (помимо архивов и `.rxn`).
+/// Extensions the section expects in the chooser dialog (besides archives and `.rxn`).
 fn section_exts(section: &str) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
     let images: Vec<&'static str> = IMAGE_EXTS.iter().map(|e| e.trim_start_matches('.')).collect();
@@ -553,7 +561,7 @@ fn section_exts(section: &str) -> Vec<&'static str> {
             out.extend(images);
             out.extend(crate::qt_settings::VIDEO_EXTS);
             out.extend(crate::qt_settings::FLASH_EXTS);
-            // `wmv`/`mpg`/`mpeg` уже пришли общим списком видео.
+            // `wmv`/`mpg`/`mpeg` have already come with the general video list.
             out.push("dream");
         }
         "lockwallpaper" => out.extend(images),
@@ -571,9 +579,9 @@ fn section_exts(section: &str) -> Vec<&'static str> {
     out
 }
 
-/// Фильтры окна выбора файлов (`nameFilters` QML): своё раздела + архивы
-/// и `.rxn` одной группой, затем «Все файлы». Распознавание всё равно по
-/// содержимому — фильтр только помогает найти нужное в папке.
+/// Filters of the file chooser dialog (QML `nameFilters`): the section's own +
+/// archives and `.rxn` as one group, then "All files". Recognition is by
+/// contents anyway — the filter only helps to find the right thing in a folder.
 pub fn dialog_filters(section: &str) -> Vec<String> {
     let mut exts: Vec<&str> = section_exts(section);
     for e in ARCHIVE_EXTS.iter().copied().chain(["rxn"]) {
@@ -588,13 +596,13 @@ pub fn dialog_filters(section: &str) -> Vec<String> {
     ]
 }
 
-/// Адрес из окна выбора (`file:///…`, проценты) — путь на диске. Строка без
-/// схемы — уже путь.
+/// An address from the chooser dialog (`file:///…`, percent-encoding) — a path on
+/// disk. A string without a scheme is already a path.
 pub fn file_url_to_path(url: &str) -> String {
     let Some(rest) = url.strip_prefix("file://") else {
         return url.to_string();
     };
-    // `file://host/путь` у локального файла не бывает; хост пуст.
+    // `file://host/path` does not happen for a local file; the host is empty.
     let rest = rest.strip_prefix("localhost").unwrap_or(rest);
     let bytes = rest.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -615,30 +623,29 @@ pub fn file_url_to_path(url: &str) -> String {
 }
 
 // ============================================================================
-// Итог
+// Result
 // ============================================================================
 
-/// Итог установки для страницы.
+/// Installation result for the page.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct LocalOutcome {
-    /// Всё выбранное поставлено.
+    /// Everything chosen was installed.
     pub ok: bool,
-    /// Поставлено хоть что-то (часть файлов могла не встать).
+    /// At least something was installed (some files may not have installed).
     pub installed: bool,
-    /// Что сказать человеку (строки по файлам).
+    /// What to tell the person (lines per file).
     pub message: String,
-    /// Раздел, который стоит открыть («открыть раздел «Курсоры»?»); пусто —
-    /// никакой.
+    /// The section worth opening ("open the "Cursors" section?"); empty — none.
     #[serde(rename = "openKey")]
     pub open_key: String,
-    /// Подпись кнопки открытия раздела.
+    /// Label of the button opening the section.
     #[serde(rename = "openText")]
     pub open_text: String,
-    /// Поставлено что-то, что видно в открытом разделе с диска: перечитать.
+    /// Something was installed that is visible in the open section from disk: re-read it.
     pub reload: bool,
 }
 
-/// Имя раздела для человека по ключу (ключ, если такого нет).
+/// Section name for the person by key (the key itself, if there is no such section).
 fn section_name(home: &Path, key: &str) -> String {
     crate::categories::get_category(home, key)
         .or_else(|| crate::categories::categories(home).into_iter().find(|c| c.key == key))
@@ -646,12 +653,12 @@ fn section_name(home: &Path, key: &str) -> String {
         .unwrap_or_else(|| key.to_string())
 }
 
-/// «X — это тема другого раздела: поставлено туда».
+/// "X is a theme of another section: installed there".
 pub fn moved_note(file: &str, section: &str) -> String {
     trf("“%1” is a theme for the “%2” section, so it was installed there.", &[&file, &section])
 }
 
-/// Системная тема из чужого раздела.
+/// A system theme from someone else's section.
 pub fn other_root_section_message(file: &str, section: &str) -> String {
     trf(
         "“%1” is a theme for the “%2” section. It changes a system screen and needs the \
@@ -660,7 +667,7 @@ pub fn other_root_section_message(file: &str, section: &str) -> String {
     )
 }
 
-/// Не опознано.
+/// Not recognized.
 pub fn unknown_file_message(file: &str) -> String {
     trf(
         "Couldn't tell what “%1” is: it doesn't look like a theme, font, cursor set or \
@@ -669,7 +676,7 @@ pub fn unknown_file_message(file: &str) -> String {
     )
 }
 
-/// Архив RAR не с курсорами.
+/// A RAR archive that is not cursors.
 pub fn unsupported_archive_message(file: &str, format: &str) -> String {
     trf(
         "“%1” is a %2 archive. Rexon unpacks only ZIP, TAR and 7z archives here — unpack it \
@@ -678,7 +685,7 @@ pub fn unsupported_archive_message(file: &str, format: &str) -> String {
     )
 }
 
-/// Слишком большое.
+/// Too large.
 pub fn too_large_message(file: &str) -> String {
     trf(
         "“%1” is too large to unpack: over 2 GB or more than 100,000 files. A theme is \
@@ -687,24 +694,24 @@ pub fn too_large_message(file: &str) -> String {
     )
 }
 
-/// Ссылки наружу выброшены.
+/// Links leading outside were dropped.
 pub fn links_dropped_note(n: usize) -> String {
     trf("Links pointing outside the theme were left out: %1.", &[&n])
 }
 
-/// Обои легли в библиотеку.
+/// The wallpapers went into the library.
 pub fn library_added_message(names: &str) -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     trf("Added to the 📚 Wallpaper Library (Settings → Wallpapers): %1", &[&names])
 }
 
-/// Где применять поставленное, если сам раздел показывает магазин.
+/// Where to apply what was installed, if the section itself shows a store.
 pub fn apply_where_note(view: &str) -> String {
     trf("You can apply it in “%1”.", &[&view])
 }
 
-/// Имя выбранного для строки хода: один файл — его имя, несколько — первое
-/// и сколько ещё.
+/// Name of the chosen items for the progress line: one file — its name,
+/// several — the first one and how many more.
 pub fn busy_label(paths: &[String]) -> String {
     let name = |p: &str| short(Path::new(&file_url_to_path(p)));
     match paths {
@@ -714,16 +721,16 @@ pub fn busy_label(paths: &[String]) -> String {
     }
 }
 
-/// Подпись кнопки «Открыть раздел».
+/// Label of the "Open section" button.
 pub fn open_section_btn(name: &str) -> String {
     trf("Open “%1”", &[&name])
 }
 
 // ============================================================================
-// Живое исполнение
+// Live execution
 // ============================================================================
 
-/// Прочитать до `n` первых байт.
+/// Read up to the first `n` bytes.
 fn read_head(path: &Path, n: usize) -> Vec<u8> {
     use std::io::Read as _;
     let mut buf = vec![0u8; n];
@@ -740,7 +747,7 @@ fn read_head(path: &Path, n: usize) -> Vec<u8> {
     buf
 }
 
-/// Временный каталог под `base` (имя с меткой и случайным хвостом).
+/// A temporary directory under `base` (a name with a marker and a random tail).
 fn mkdtemp(base: &Path, prefix: &str) -> Result<PathBuf, String> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
@@ -759,8 +766,8 @@ fn mkdtemp(base: &Path, prefix: &str) -> Result<PathBuf, String> {
     Err(format!("{}: {prefix}…", base.display()))
 }
 
-/// Сумма размеров и число записей архива — ДО распаковки. `None` — архив
-/// не читается (тогда скажет распаковщик).
+/// Total size and number of entries of an archive — BEFORE unpacking. `None` —
+/// the archive cannot be read (then the unpacker will say so).
 pub fn archive_budget(path: &Path, sort: FileSort) -> Option<(u64, u64)> {
     match sort {
         FileSort::Zip => {
@@ -788,8 +795,8 @@ pub fn archive_budget(path: &Path, sort: FileSort) -> Option<(u64, u64)> {
             }
             Some(tar_listing_budget(&crate::utils::decode_text(&report.stdout)))
         }
-        // У bsdtar список 7z в том же виде, что у tar; у 7-Zip — другой, и
-        // без bsdtar пределы проверит только распаковка (`sanitize_tree`).
+        // bsdtar lists 7z in the same form as tar; 7-Zip in another, and
+        // without bsdtar only unpacking (`sanitize_tree`) will check the limits.
         FileSort::SevenZip if crate::utils::which("bsdtar", None).is_some() => {
             let report = crate::utils::run(
                 &crate::utils::RunSpec {
@@ -810,8 +817,8 @@ pub fn archive_budget(path: &Path, sort: FileSort) -> Option<(u64, u64)> {
     }
 }
 
-/// Сумма размеров и число записей по выводу `tar -tvf` (третье поле строки —
-/// размер, у GNU tar и bsdtar одинаково).
+/// Total size and number of entries from the output of `tar -tvf` (the third
+/// field of a line is the size, the same for GNU tar and bsdtar).
 pub fn tar_listing_budget(listing: &str) -> (u64, u64) {
     let mut total = 0u64;
     let mut count = 0u64;
@@ -823,13 +830,13 @@ pub fn tar_listing_budget(listing: &str) -> (u64, u64) {
     (total, count)
 }
 
-/// Укладывается ли распакованное в пределы.
+/// Whether the unpacked contents fit into the limits.
 pub fn unpacked_budget_ok(bytes: u64, entries: u64) -> bool {
     bytes <= MAX_UNPACKED_BYTES && entries <= MAX_ENTRIES
 }
 
-/// Ведёт ли ссылка `target`, лежащая в `link_dir`, за пределы `root`
-/// (лексически: абсолютная ссылка — всегда наружу).
+/// Whether link `target`, lying in `link_dir`, leads outside `root` (lexically:
+/// an absolute link always leads outside).
 pub fn link_escapes(root: &Path, link_dir: &Path, target: &Path) -> bool {
     if target.is_absolute() {
         return true;
@@ -850,7 +857,7 @@ pub fn link_escapes(root: &Path, link_dir: &Path, target: &Path) -> bool {
     false
 }
 
-/// Что убрано из дерева.
+/// What was removed from the tree.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Sanitized {
     pub links_dropped: usize,
@@ -858,8 +865,9 @@ pub struct Sanitized {
     pub entries: u64,
 }
 
-/// Вычистить распакованное: ссылки наружу и особые файлы (каналы,
-/// устройства) — вон; посчитать размер. `Err` — вышли за пределы.
+/// Clean up the unpacked contents: links leading outside and special files
+/// (pipes, devices) are thrown out; the size is counted. `Err` — the limits were
+/// exceeded.
 pub fn sanitize_tree(root: &Path) -> Result<Sanitized, String> {
     fn walk(root: &Path, dir: &Path, st: &mut Sanitized) -> Result<(), String> {
         let rd = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -895,8 +903,9 @@ pub fn sanitize_tree(root: &Path) -> Result<Sanitized, String> {
     Ok(st)
 }
 
-/// Скопировать папку человека во временный каталог тем же фильтром: ссылки
-/// внутри темы сохраняются ссылками, ссылки наружу и особые файлы — нет.
+/// Copy the person's folder into a temporary directory with the same filter:
+/// links inside the theme stay links, links leading outside and special files do
+/// not.
 pub fn stage_dir(src: &Path, dest: &Path) -> Result<Sanitized, String> {
     fn walk(root: &Path, dir: &Path, dest: &Path, st: &mut Sanitized) -> Result<(), String> {
         std::fs::create_dir_all(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
@@ -938,13 +947,13 @@ pub fn stage_dir(src: &Path, dest: &Path) -> Result<Sanitized, String> {
     Ok(st)
 }
 
-/// Снимок дерева для распознавания (тексты описаний пакетов — как у
-/// установщика).
+/// A tree snapshot for recognition (texts of package descriptions — as for the
+/// installer).
 fn snapshot(dir: &Path) -> FsSnapshot {
     crate::appearance_installer::install_tree_snapshot(&dir.to_string_lossy(), &[])
 }
 
-/// Каталог данных пользователя (`$XDG_DATA_HOME`, иначе `~/.local/share`).
+/// The user data directory (`$XDG_DATA_HOME`, otherwise `~/.local/share`).
 fn data_home(home: &Path) -> String {
     match std::env::var("XDG_DATA_HOME") {
         Ok(v) if !v.is_empty() => v,
@@ -952,7 +961,7 @@ fn data_home(home: &Path) -> String {
     }
 }
 
-/// Запустить и вернуть stdout (пусто — не вышло).
+/// Run and return stdout (empty — it did not work).
 fn read_cmd(argv: &[String], timeout: u64) -> String {
     let report = crate::utils::run(
         &crate::utils::RunSpec {
@@ -970,13 +979,12 @@ fn read_cmd(argv: &[String], timeout: u64) -> String {
     crate::utils::decode_text(&report.stdout)
 }
 
-/// Поставить файл шрифта в каталог шрифтов пользователя. Файл сперва
-/// проверяет сам fontconfig (`fc-query`): что он не считает шрифтом, не
-/// ставится. `refresh` — пересобрать кэш каталога сразу (пачку шрифтов
-/// вызывающий освежает один раз в конце).
+/// Install a font file into the user's font directory. The file is first checked
+/// by fontconfig itself (`fc-query`): what it does not consider a font is not
+/// installed. `refresh` — rebuild the directory cache right away (for a batch of
+/// fonts the caller refreshes once at the end).
 ///
-/// Одна дверь на продукт: ей же пользуется «Управление шрифтами» в
-/// «Настройках».
+/// One door for the product: "Font management" in "Settings" uses it too.
 pub fn install_font_file(source: &str, data_home: &str, refresh: bool) -> crate::qt_settings::FontInstallOutcome {
     use crate::qt_settings as qs;
     let name = Path::new(source)
@@ -1011,18 +1019,19 @@ pub fn install_font_file(source: &str, data_home: &str, refresh: bool) -> crate:
     qs::FontInstallOutcome::Installed(families)
 }
 
-/// Поставить файл шрифта для всех пользователей — в
-/// [`crate::qt_settings::SHARED_FONT_DIR`] через сеанс прав окна
-/// ([`crate::privilege::op::PrivOp::FontInstall`]). До пароля окно само
-/// спрашивает fontconfig и смотрит, не занято ли имя (каталог читается
-/// всеми): заведомый отказ не стоит пароля. Решает всё равно помощник от
-/// root — он повторяет проверки по своей копии файла.
+/// Install a font file for all users — into
+/// [`crate::qt_settings::SHARED_FONT_DIR`] through the window's privilege session
+/// ([`crate::privilege::op::PrivOp::FontInstall`]). Before the password the
+/// window itself asks fontconfig and checks whether the name is taken (the
+/// directory is readable by everyone): a certain refusal is not worth a
+/// password. The root helper decides anyway — it repeats the checks on its own
+/// copy of the file.
 ///
-/// `fc_query` — вывод [`crate::qt_settings::fc_query_families_argv`] для
-/// файла, `read` — содержимое файла по пути (`None` — нет файла), `run` —
-/// исполнитель операции с путями её файлов
-/// ([`crate::privilege::run::run_live`] на живой машине; `None` — помощника
-/// сеанса нет). Прежнего пути через `pkexec` нет намеренно (З5).
+/// `fc_query` — the output of [`crate::qt_settings::fc_query_families_argv`] for
+/// the file, `read` — the file's contents by path (`None` — no file), `run` — the
+/// operation executor with the paths of its files
+/// ([`crate::privilege::run::run_live`] on the live machine; `None` — there is no
+/// session helper). There is deliberately no old path via `pkexec` (Z5).
 pub fn install_font_file_shared_with(
     source: &str,
     fc_query: &dyn Fn(&str) -> String,
@@ -1058,14 +1067,14 @@ pub fn install_font_file_shared_with(
     if out.returncode == Some(0) {
         return qs::FontInstallOutcome::InstalledForAll(families);
     }
-    // Отказ проверки и прочие ошибки сеанса — готовый текст в stderr.
+    // A check refusal and other session errors — a ready text in stderr.
     match out.stderr.lines().map(str::trim).rfind(|l| !l.is_empty()) {
         Some(why) => qs::FontInstallOutcome::NotForAll(why.to_string()),
         None => qs::FontInstallOutcome::CopyFailed(name),
     }
 }
 
-/// [`install_font_file_shared_with`] на живой машине.
+/// [`install_font_file_shared_with`] on the live machine.
 pub fn install_font_file_shared(source: &str) -> crate::qt_settings::FontInstallOutcome {
     install_font_file_shared_with(
         source,
@@ -1075,11 +1084,11 @@ pub fn install_font_file_shared(source: &str) -> crate::qt_settings::FontInstall
     )
 }
 
-/// Удалить шрифты, поставленные для всех пользователей, через сеанс прав
-/// окна ([`crate::privilege::op::PrivOp::FontRemove`]). Окно отбирает
-/// только файлы из [`crate::qt_settings::SHARED_FONT_DIR`]; что это
-/// обычные файлы шрифтов там, а не ссылки и не шрифты пакетов, проверяет
-/// помощник от root сам. `Err` — готовый текст для человека.
+/// Remove fonts installed for all users through the window's privilege session
+/// ([`crate::privilege::op::PrivOp::FontRemove`]). The window selects only files
+/// from [`crate::qt_settings::SHARED_FONT_DIR`]; that these are regular font
+/// files there, not links and not package fonts, the root helper checks itself.
+/// `Err` — a ready text for the person.
 pub fn remove_shared_fonts_with(
     files: &[String],
     run: &mut dyn FnMut(&crate::privilege::op::PrivOp) -> Option<crate::system_exec::RunOut>,
@@ -1099,19 +1108,19 @@ pub fn remove_shared_fonts_with(
     Err(why.unwrap_or_else(|| tr("Some font files couldn't be removed.")))
 }
 
-/// [`remove_shared_fonts_with`] на живой машине.
+/// [`remove_shared_fonts_with`] on the live machine.
 pub fn remove_shared_fonts(files: &[String]) -> Result<(), String> {
     remove_shared_fonts_with(files, &mut |op| crate::privilege::run::run_live(op, &[], None, &mut |_| {}))
 }
 
-/// Короткое имя для сообщений.
+/// A short name for messages.
 fn short(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
-/// Латиница-цифры-дефисы для id пакета обоев.
+/// Latin letters, digits and hyphens for a wallpaper package id.
 fn slug(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {
@@ -1129,8 +1138,8 @@ fn slug(s: &str) -> String {
     }
 }
 
-/// Короткий отпечаток содержимого (FNV-1a по первым мегабайтам и размеру):
-/// одна и та же картинка дважды — тот же пакет, «уже установлено».
+/// A short fingerprint of the contents (FNV-1a over the first megabytes and the
+/// size): the same picture twice is the same package, "already installed".
 fn fingerprint(path: &Path) -> String {
     let head = read_head(path, 4 << 20);
     let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
@@ -1142,7 +1151,7 @@ fn fingerprint(path: &Path) -> String {
     format!("{:08x}", h as u32)
 }
 
-/// Манифест пакета обоев из одного файла (картинка, видео или Flash).
+/// Manifest of a wallpaper package from a single file (a picture, video or Flash).
 pub fn library_manifest(id: &str, name: &str, file: &str) -> serde_json::Value {
     let format = crate::qt_settings::detect_wallpaper_format(file);
     serde_json::json!({
@@ -1157,7 +1166,7 @@ pub fn library_manifest(id: &str, name: &str, file: &str) -> serde_json::Value {
     })
 }
 
-/// Живой установщик «из файла» — исполнитель решений этого модуля.
+/// The live "from file" installer — the executor of this module's decisions.
 pub struct LocalInstaller {
     home: PathBuf,
     section: String,
@@ -1168,12 +1177,12 @@ pub struct LocalInstaller {
     open_key: String,
     reload: bool,
     fonts_added: bool,
-    /// Раздел, в котором видно последний поставленный пакет (`installed_section`).
+    /// The section in which the last installed package is visible (`installed_section`).
     last_rxn_section: Option<&'static str>,
 }
 
 impl LocalInstaller {
-    /// `section` — ключ раздела, из которого ставят; `log` — строки хода.
+    /// `section` — the key of the section installing from; `log` — progress lines.
     pub fn new(section: &str, log: Box<dyn FnMut(&str) + Send>) -> Self {
         let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()));
         LocalInstaller {
@@ -1200,7 +1209,7 @@ impl LocalInstaller {
         self.lines.push(line);
     }
 
-    /// Поставить всё выбранное и подвести итог.
+    /// Install everything chosen and sum up.
     pub fn run(mut self, paths: &[String]) -> LocalOutcome {
         for p in paths {
             let path = PathBuf::from(file_url_to_path(p));
@@ -1228,11 +1237,12 @@ impl LocalInstaller {
         }
     }
 
-    /// Один выбранный путь.
+    /// One chosen path.
     fn one(&mut self, path: &Path) {
         let label = short(path);
-        // Выбранное человеком читается сквозь ссылку: её он выбрал сам. Ссылки
-        // ВНУТРИ папки или архива — другое дело (`stage_dir`, `sanitize_tree`).
+        // What the person chose is read through a symlink: they chose it themselves.
+        // Links INSIDE a folder or archive are another matter (`stage_dir`,
+        // `sanitize_tree`).
         let md = match std::fs::metadata(path) {
             Ok(m) => m,
             Err(_) => return self.fail(trf("File not found: %1", &[&path.display()])),
@@ -1247,13 +1257,13 @@ impl LocalInstaller {
         let sort = sniff(&label, &head);
         let ext = ext_of(&label);
 
-        // Готовый пакет Rexon.
+        // A ready Rexon package.
         if sort == FileSort::Zip && (ext == "rxn" || zip_has_root_manifest(path)) {
             self.rxn(path, &label);
             return;
         }
-        // Курсоры и значки Windows, у которых имя не совпало с подписью:
-        // импортёр выбирает путь по расширению — даём ему верное.
+        // Windows cursors and icons whose name did not match the signature: the
+        // importer chooses its path by extension — we give it the right one.
         let win_ext = match sort {
             FileSort::Cur => Some("cur"),
             FileSort::Ani => Some("ani"),
@@ -1265,14 +1275,14 @@ impl LocalInstaller {
                 return self.with_renamed(path, &label, want);
             }
         }
-        // Форматы Windows — импортёр (курсоры с анимацией, темы, значки).
-        // Архив, внутри которого готовая тема Xcursor, — не набор Windows.
+        // Windows formats — the importer (animated cursors, themes, icons).
+        // An archive with a ready Xcursor theme inside is not a Windows set.
         let mut probe = crate::imp_live::LiveImpIo::new(None);
         let windows = crate::importers::windows_theme_can_import(&mut probe, &path.to_string_lossy())
             && !(sort == FileSort::Zip && zip_has_xcursor_theme(path));
-        // Ролик DreamScene (`.wmv`/`.mpg`/`.mpeg`) — тоже видео из общего
-        // списка, но ставит его по-прежнему импортёр: он снимает кадр-превью,
-        // которого у простого добавления в библиотеку нет.
+        // A DreamScene clip (`.wmv`/`.mpg`/`.mpeg`) is also a video from the
+        // general list, but it is still installed by the importer: it takes a
+        // preview frame, which a plain addition to the library does not have.
         let dreamscene = crate::importers::import_kind(&label, "") == "dreamscene";
         if windows && (!is_media(sort) || dreamscene) {
             return self.windows_file(path, &label);
@@ -1301,7 +1311,7 @@ impl LocalInstaller {
         }
     }
 
-    /// Заметка «поставлено в другой раздел», если так вышло.
+    /// A note "installed into another section", if that is how it went.
     fn note_moved(&mut self, label: &str, key: &str, moved: bool) {
         if moved {
             let name = section_name(&self.home, key);
@@ -1312,23 +1322,23 @@ impl LocalInstaller {
         }
     }
 
-    /// Где искать поставленную тему, чтобы применить.
+    /// Where to look for the installed theme in order to apply it.
     fn note_where(&mut self, key: &str) {
-        // Раздел, который сам показывает темы с диска (обзор диска или
-        // раздел без магазина), просто перечитать.
+        // A section that itself shows themes from disk (a disk overview or a
+        // section without a store) is simply re-read.
         let shows_disk = crate::categories::LOCAL_VIEW_KEYS.contains(&self.section.as_str())
             || self.category(&self.section).is_some_and(|c| c.local_only());
         if shows_disk {
             self.reload = true;
             return;
         }
-        // Раздел с сеткой установленного (любой со сканом и магазином:
-        // разделы KDE, заставка, Conky, разделы KWin) показывает
-        // поставленное сам: свой — перечитать (страница откроет сетку, даже
-        // если был открыт магазин), чужой уже назван кнопкой «Открыть «…»»
-        // (`note_moved`). «Загруженные» здесь не нужны.
-        // Тема Kvantum, поставленная из «Стиля приложений», видна в его же
-        // сетке (установка идёт по категории Kvantum, `install_key`).
+        // A section with an installed grid (any with a scan and a store: the KDE
+        // sections, the splash screen, Conky, the KWin sections) shows what was
+        // installed by itself: our own is re-read (the page will open the grid
+        // even if the store was open), a foreign one is already named by the
+        // "Open "…"" button (`note_moved`). "Downloaded" is not needed here.
+        // A Kvantum theme installed from "Application style" is visible in its
+        // own grid (installation goes by the Kvantum category, `install_key`).
         if key != self.section
             && install_key(&self.section) == key
             && crate::appearance_page::has_installed_grid(&self.section)
@@ -1342,8 +1352,8 @@ impl LocalInstaller {
             }
             return;
         }
-        // Остальные разделы показывают магазин: поставленное видно в
-        // «Загруженных» — туда и ведёт кнопка.
+        // The other sections show a store: what was installed is visible in
+        // "Downloaded" — and the button leads there.
         let shown = crate::installed_scan::types_for("", "")
             .iter()
             .any(|t| t.apply_kind == key)
@@ -1355,14 +1365,14 @@ impl LocalInstaller {
         }
     }
 
-    /// Готовый `.rxn` и всё, что умеют импортёры Windows.
+    /// A ready `.rxn` and everything the Windows importers can do.
     fn rxn(&mut self, path: &Path, label: &str) -> bool {
         match crate::ext_exec::install_from_file(&path.to_string_lossy()) {
             Ok(done) => {
                 let text = crate::qt_extensions::installed_with_notes(&done.name, &done.notes);
                 self.last_rxn_section = installed_section(&done.name);
-                // Набор обоев применяется из «Библиотеки обоев»: голое
-                // «Установлено» оставляло человека гадать, где он теперь.
+                // A wallpaper set is applied from the "Wallpaper library": a bare
+                // "Installed" left the person guessing where it was now.
                 if self.last_rxn_section == Some("wallpapers") {
                     self.ok(library_added_message(&text));
                 } else {
@@ -1378,15 +1388,17 @@ impl LocalInstaller {
         }
     }
 
-    /// Файл Windows — импортёром. Курсоры и значки из Windows встают как
-    /// обычные темы: их видно в своих разделах и в «Загруженных».
+    /// A Windows file — via the importer. Cursors and icons from Windows
+    /// become ordinary themes: they are visible in their sections and in
+    /// "Downloaded".
     fn windows_file(&mut self, path: &Path, label: &str) {
         let key = windows_kind(&path.to_string_lossy());
         if self.rxn(path, label) {
-            // Куда встало на деле, знает поставленный пакет: `.themepack` по
-            // расширению обещал «Глобальные темы», а выходит набором обоев
-            // или темой значков (приёмка 10.10.2026: после установки звали
-            // в раздел, где пакета нет).
+            // Where it actually went is known by the installed package: by
+            // extension a `.themepack` promised "Global themes", but it comes out as
+            // a wallpaper set or an icon theme (acceptance check 10.10.2026: after
+            // installation the person was sent to a section where the package was
+            // not).
             let key = self.last_rxn_section.take().or(key);
             if let Some(key) = key {
                 let moved = !section_accepts(&self.section, &Found::Section(key.to_string()));
@@ -1396,7 +1408,7 @@ impl LocalInstaller {
         }
     }
 
-    /// Курсор или значок с неверным расширением — копия с верным.
+    /// A cursor or icon with the wrong extension — a copy with the right one.
     fn with_renamed(&mut self, path: &Path, label: &str, ext: &str) {
         let Ok(tmp) = mkdtemp(&std::env::temp_dir(), "rexon-local-") else {
             return self.fail(unknown_file_message(label));
@@ -1411,7 +1423,7 @@ impl LocalInstaller {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// Один файл через ветку «товар одним файлом» установщика магазина.
+    /// A single file through the store installer's "single-file product" branch.
     fn single(&mut self, path: &Path, label: &str, key: &str) {
         let Some(cat) = self.category(key) else {
             return self.fail(unknown_file_message(label));
@@ -1435,7 +1447,7 @@ impl LocalInstaller {
         crate::categories::categories(&self.home).into_iter().find(|c| c.key == key)
     }
 
-    /// Архив или папка: во временный каталог, вычистить, распознать, поставить.
+    /// An archive or folder: into a temporary directory, clean up, recognize, install.
     fn staged(&mut self, src: &Path, label: &str, archive: Option<FileSort>) {
         if let Some(sort) = archive {
             if let Some((bytes, entries)) = archive_budget(src, sort) {
@@ -1444,7 +1456,7 @@ impl LocalInstaller {
                 }
             }
         }
-        // Системным видам помощник принимает только каталог под /tmp.
+        // For system kinds the helper accepts only a directory under /tmp.
         let work = match mkdtemp(Path::new("/tmp"), "rexon-local-") {
             Ok(p) => p,
             Err(e) => return self.fail(trf("Installation error: %1", &[&e])),
@@ -1519,8 +1531,8 @@ impl LocalInstaller {
                     return self.fail(unknown_file_message(label));
                 };
                 let item = local_item(&cat, label);
-                // Системные виды (SDDM, Plymouth) установщик сам отдаёт
-                // помощнику: распаковано под `/tmp`, как тот требует.
+                // The installer itself hands system kinds (SDDM, Plymouth) to the
+                // helper: unpacked under `/tmp`, as it requires.
                 let (ok, msg, _) = self.installer.install_extracted(&item, &extract.to_string_lossy());
                 if ok {
                     self.ok(msg);
@@ -1533,12 +1545,13 @@ impl LocalInstaller {
         }
     }
 
-    /// Папка с `.cur`/`.ani` — импортёр (все кадры анимации) → `.rxn`.
+    /// A folder with `.cur`/`.ani` — the importer (all animation frames) → `.rxn`.
     fn windows_cursor_dir(&mut self, dir: &Path, src: &Path, label: &str) {
         let Ok(out) = mkdtemp(&std::env::temp_dir(), "rexon-wincur-") else {
             return self.fail(unknown_file_message(label));
         };
-        // Имя набора — имя того, что выбрал человек, а не временного каталога.
+        // The set's name is the name of what the person chose, not of the
+        // temporary directory.
         let stem = short(src);
         let stem = match ext_of(&stem) {
             e if e.is_empty() => stem.clone(),
@@ -1577,7 +1590,7 @@ impl LocalInstaller {
         }
     }
 
-    /// Картинка, видео или Flash — пакетом в библиотеку обоев.
+    /// A picture, video or Flash — as a package into the wallpaper library.
     fn library(&mut self, path: &Path, label: &str) {
         let stem = label.rsplit_once('.').map(|(s, _)| s.to_string()).unwrap_or_else(|| label.to_string());
         let id = format!("wallpaper-{}-{}", slug(&stem), fingerprint(path));
@@ -1612,9 +1625,9 @@ impl LocalInstaller {
     }
 }
 
-/// Карточка товара для установщика магазина: без номера (в журнал покупок
-/// Магазина местная тема не пишется), с именем файла — по нему ветка
-/// «одним файлом» узнаёт расширение.
+/// A product card for the store installer: without a number (a local theme is
+/// not written into the Store's purchase journal), with a file name — the
+/// "single file" branch learns the extension from it.
 fn local_item(cat: &ThemeCategory, label: &str) -> ThemeItem {
     ThemeItem {
         name: label.to_string(),
@@ -1624,8 +1637,9 @@ fn local_item(cat: &ThemeCategory, label: &str) -> ThemeItem {
     }
 }
 
-/// Какого вида тема выйдет из файла Windows (по расширению — им же
-/// выбирает путь импортёр). `None` — гаджеты и прочее без своего раздела.
+/// What kind of theme will come out of a Windows file (by extension — the
+/// importer chooses its path the same way). `None` — gadgets and others without
+/// a section of their own.
 fn windows_kind(path: &str) -> Option<&'static str> {
     match ext_of(path).as_str() {
         "cur" | "ani" | "inf" | "crs" | "curxptheme" | "zip" | "rar" | "7z" => Some("cursor"),
@@ -1636,13 +1650,14 @@ fn windows_kind(path: &str) -> Option<&'static str> {
     }
 }
 
-/// Раздел «Оформления», в котором видно только что поставленное расширение
-/// `name`: вид берётся из его манифеста в каталоге расширений, раздел — из
-/// таблицы `categories::category_kind`. `None` — расширения не нашли либо у
-/// его вида нет раздела.
+/// The "Appearance" section in which the just installed extension `name` is
+/// visible: the kind is taken from its manifest in the extension directory, the
+/// section from the `categories::category_kind` table. `None` — the extension
+/// was not found or its kind has no section.
 fn installed_section(name: &str) -> Option<&'static str> {
-    // Вид — из общего журнала установки: запись `.rxn` сверена с каталогом
-    // расширений и манифестом пакета (шаг 3 слияния установщиков).
+    // The kind comes from the shared install journal: the `.rxn` entry is
+    // checked against the extension directory and the package manifest (step
+    // 3 of merging the installers).
     use crate::install_journal as journal;
     let dir = crate::qt_extensions::extensions_dir();
     let rexon = dir.parent()?;
@@ -1656,13 +1671,14 @@ fn installed_section(name: &str) -> Option<&'static str> {
         .find(|key| crate::categories::category_kind(key) == Some(kind.as_str()))
 }
 
-/// ZIP с `manifest.json` в корне — пакет Rexon, даже с чужим расширением.
+/// A ZIP with `manifest.json` at the root is a Rexon package, even with a
+/// foreign extension.
 fn zip_has_root_manifest(path: &Path) -> bool {
     zip_names(path).is_some_and(|names| names.iter().any(|n| n == "manifest.json"))
 }
 
-/// В ZIP лежит готовая тема Xcursor (каталог `cursors/`) — это не набор
-/// Windows, даже если рядом приложены исходные `.cur`.
+/// The ZIP holds a ready Xcursor theme (a `cursors/` directory) — this is not a
+/// Windows set, even if the original `.cur` files are attached next to it.
 fn zip_has_xcursor_theme(path: &Path) -> bool {
     zip_names(path).is_some_and(|names| {
         names.iter().any(|n| n.starts_with("cursors/") || n.contains("/cursors/"))
@@ -1675,13 +1691,13 @@ fn zip_names(path: &Path) -> Option<Vec<String>> {
     Some(zip.file_names().map(str::to_string).collect())
 }
 
-/// Поставить выбранное из раздела `section` — вход для вкладки.
+/// Install what was chosen from section `section` — the entry point for the tab.
 pub fn live_install(paths: &[String], section: &str, log: Box<dyn FnMut(&str) + Send>) -> LocalOutcome {
     LocalInstaller::new(section, log).run(paths)
 }
 
 // ============================================================================
-// Проверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
@@ -1755,7 +1771,7 @@ mod tests {
         let junk = snap(json!({"/x": ["notes.odt"]}), json!({"/x/notes.odt": ""}));
         assert_eq!(detect_tree(&junk, "/x"), None);
 
-        // Пакет тем Conky: виджеты в скрытой `.conky/`, иначе дерево пустое.
+        // A Conky theme package: widgets in a hidden `.conky/`, otherwise the tree is empty.
         let cmtp = snap(
             json!({"/x": [".conky"], "/x/.conky": ["Gotham"], "/x/.conky/Gotham": ["Gotham"]}),
             json!({"/x/.conky/Gotham/Gotham": ""}),
@@ -1768,24 +1784,24 @@ mod tests {
     #[test]
     fn placement_follows_section_rules() {
         let sec = |k: &str| Found::Section(k.to_string());
-        // Своё — в свой раздел.
+        // Our own — into our own section.
         assert_eq!(place("icons", Some(&sec("icons"))), Some(Placement::Section { key: "icons".into(), moved: false }));
-        // Курсоры, поставленные из «Значков», уходят в «Курсоры».
+        // Cursors installed from "Icons" go to "Cursors".
         assert_eq!(place("icons", Some(&sec("cursor"))), Some(Placement::Section { key: "cursor".into(), moved: true }));
-        // Заставка ставит пакет Look-and-Feel своей категорией.
+        // The splash screen installs a Look-and-Feel package by its own category.
         assert_eq!(place("splash", Some(&sec("global"))), Some(Placement::Section { key: "splash".into(), moved: false }));
-        // Kvantum из «Стиля приложений».
+        // Kvantum from "Application style".
         assert_eq!(place("widgetstyle", Some(&sec("kvantum"))), Some(Placement::Section { key: "kvantum".into(), moved: false }));
-        // Системная тема из чужого раздела не ставится.
+        // A system theme from someone else's section is not installed.
         assert_eq!(place("global", Some(&sec("sddm"))), Some(Placement::OtherRootSection { key: "sddm".into() }));
         assert_eq!(place("downloaded", Some(&sec("plymouth"))), Some(Placement::OtherRootSection { key: "plymouth".into() }));
         assert_eq!(place("sddm", Some(&sec("sddm"))), Some(Placement::Section { key: "sddm".into(), moved: false }));
-        // Тема оболочки GNOME похожа на GTK — раздел окружения её не отдаёт.
+        // A GNOME shell theme looks like GTK — the environment section does not give it away.
         assert_eq!(place("gnomeshell", Some(&sec("gtk"))), Some(Placement::Section { key: "gnomeshell".into(), moved: false }));
-        // Не опознано: раздел ставит по своему правилу, «Загруженные» — нет.
+        // Not recognized: the section installs by its own rule, "Downloaded" does not.
         assert_eq!(place("gtk", None), Some(Placement::Section { key: "gtk".into(), moved: false }));
         assert_eq!(place("downloaded", None), None);
-        // Обои и шрифты.
+        // Wallpapers and fonts.
         assert_eq!(place("wallpapers", Some(&Found::Media)), Some(Placement::Library { moved: false }));
         assert_eq!(place("lockwallpaper", Some(&Found::Media)), Some(Placement::Section { key: "lockwallpaper".into(), moved: false }));
         assert_eq!(place("colors", Some(&Found::Fonts)), Some(Placement::Fonts { moved: true }));
@@ -1836,11 +1852,12 @@ mod tests {
         assert!(!button_for(crate::categories::PLASMA_LOGIN_KEY, false));
     }
 
-    // ── Сквозная проверка в подменённом доме ─────────────────────────────
+    // ── End-to-end check in a substituted home ───────────────────────────
     //
-    // Установщик читает HOME/XDG процесса, а тесты бегут параллельно, поэтому
-    // сама проверка — в ДОЧЕРНЕМ процессе того же бинаря с чистым окружением
-    // (env_clear: ни сессии D-Bus, ни живого дома — живая система не задета).
+    // The installer reads the process's HOME/XDG, and tests run in parallel, so the
+    // check itself runs in a CHILD process of the same binary with a clean
+    // environment (env_clear: no D-Bus session, no live home — the live system is
+    // not touched).
 
     const E2E_BASE_ENV: &str = "REXON_LOCAL_INSTALL_E2E_BASE";
 
@@ -1881,7 +1898,7 @@ mod tests {
             .find(|p| p.extension().is_some_and(|e| e == "ttf") && p.is_file())
     }
 
-    /// Курсор `.ani` из трёх кадров 2×2 (32 бит), как его пишет Windows.
+    /// A three-frame 2×2 (32-bit) `.ani` cursor, as Windows writes it.
     fn ani_bytes() -> Vec<u8> {
         fn cur(color: u8) -> Vec<u8> {
             let mut img = Vec::new();
@@ -1894,7 +1911,7 @@ mod tests {
             for _ in 0..4 {
                 img.extend([color, 0, 0, 255]);
             }
-            img.extend([0u8; 8]); // маска AND: 2 строки по 4 байта
+            img.extend([0u8; 8]); // AND mask: 2 rows of 4 bytes
             let mut f = vec![0, 0, 2, 0, 1, 0];
             f.extend([2, 2, 0, 0, 0, 0, 0, 0]);
             f.extend((img.len() as u32).to_le_bytes());
@@ -1938,7 +1955,7 @@ mod tests {
         let input = base.join("input");
         std::fs::create_dir_all(&input).unwrap();
 
-        // 1. Шрифт .ttf из раздела «Шрифты».
+        // 1. A .ttf font from the "Fonts" section.
         if let Some(font) = system_font() {
             let copy = input.join("Мой шрифт.ttf");
             std::fs::copy(&font, &copy).unwrap();
@@ -1951,8 +1968,8 @@ mod tests {
             eprintln!("НЕ ПРОВЕРЕНО: в системе нет ни одного .ttf");
         }
 
-        // 2. Курсор Windows .ani с неверным расширением, из «Значков» —
-        //    уходит в «Курсоры», анимация сохраняется.
+        // 2. A Windows .ani cursor with the wrong extension, from "Icons" — it goes to
+        //    "Cursors", the animation is preserved.
         let ani = input.join("Rammstein busy.bin");
         std::fs::write(&ani, ani_bytes()).unwrap();
         let r = live_install(&[ani.to_string_lossy().into_owned()], "icons", quiet());
@@ -1976,7 +1993,7 @@ mod tests {
         eprintln!("тема курсоров {theme:?}, кадров {animated}");
         assert!(animated >= 3, "анимация .ani потеряна: кадров {animated}");
 
-        // 3. Архив значков (.tar.gz) с обёрткой и ссылкой наружу.
+        // 3. An icon archive (.tar.gz) with a wrapper and a link leading outside.
         let pack = input.join("icons-src/Wrapper/MyIcons");
         std::fs::create_dir_all(pack.join("apps/48")).unwrap();
         std::fs::write(pack.join("index.theme"), "[Icon Theme]\nName=MyIcons\nDirectories=apps/48\n").unwrap();
@@ -1997,23 +2014,23 @@ mod tests {
         assert!(std::fs::symlink_metadata(dest.join("apps/48/bar.svg")).is_ok(), "ссылка внутри темы потеряна");
         assert!(std::fs::symlink_metadata(dest.join("apps/48/evil.svg")).is_err(), "ссылка наружу доехала");
         assert!(r.message.contains('1'), "нет заметки о выброшенной ссылке: {r:?}");
-        // Раздел KDE сам показывает установленное: перечитать его, без
-        // подсказки про «Загруженные».
+        // A KDE section shows what is installed by itself: re-read it, without
+        // a hint about "Downloaded".
         assert!(r.open_key.is_empty(), "{r:?}");
         assert!(r.reload, "{r:?}");
         assert!(!r.message.contains(&section_name(&home, "downloaded")), "{r:?}");
 
-        // 4. Схема цветов одним файлом из «Загруженных».
+        // 4. A color scheme as a single file from "Downloaded".
         let colors = input.join("Ocean.colors");
         std::fs::write(&colors, "[ColorEffects:Disabled]\nColor=56,56,56\n[Colors:Window]\nBackgroundNormal=1,2,3\n[General]\nName=Ocean\n").unwrap();
         let r = live_install(&[colors.to_string_lossy().into_owned()], "downloaded", quiet());
         eprintln!("цвета: {r:?}");
         assert!(r.ok, "цвета: {r:?}");
         assert!(share.join("color-schemes/Ocean.colors").is_file());
-        // «Загруженные» сами показывают диск — их перечитать.
+        // "Downloaded" itself shows the disk — re-read it.
         assert!(r.reload && r.open_key.is_empty(), "{r:?}");
 
-        // 5. Обои: картинка и видео — в библиотеку обоев.
+        // 5. Wallpapers: a picture and a video — into the wallpaper library.
         let png = input.join("Закат.png");
         std::fs::write(&png, b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR").unwrap();
         let mp4 = input.join("clip.mp4");
@@ -2030,11 +2047,11 @@ mod tests {
         );
         let formats: Vec<&str> = lib.iter().map(|w| w.format.as_str()).collect();
         assert!(formats.contains(&"static") && formats.contains(&"video"), "библиотека: {lib:?}");
-        // Повтор той же картинки — «уже установлено», а не второй пакет.
+        // The same picture again — "already installed", not a second package.
         let again = live_install(&[png.to_string_lossy().into_owned()], "wallpapers", quiet());
         assert!(!again.ok);
 
-        // 6. Системная тема из чужого раздела не ставится.
+        // 6. A system theme from someone else's section is not installed.
         let ply = input.join("ply/MyBoot");
         std::fs::create_dir_all(&ply).unwrap();
         std::fs::write(ply.join("MyBoot.plymouth"), "[Plymouth Theme]\nName=MyBoot\n").unwrap();
@@ -2042,13 +2059,13 @@ mod tests {
         assert!(!r.ok);
         assert_eq!(r.open_key, "plymouth");
 
-        // 7. Мусор — понятный отказ.
+        // 7. Garbage — an understandable refusal.
         let junk = input.join("notes.odt");
         std::fs::write(&junk, b"just text").unwrap();
         let r = live_install(&[junk.to_string_lossy().into_owned()], "downloaded", quiet());
         assert!(!r.ok && r.message.contains("notes.odt"), "{r:?}");
 
-        // 8. ZIP-архив с выходом за каталог отвергнут целиком.
+        // 8. A ZIP archive escaping its directory is rejected entirely.
         let slip = input.join("slip.zip");
         {
             use std::io::Write as _;
@@ -2062,8 +2079,8 @@ mod tests {
         assert!(!r.ok, "{r:?}");
         assert!(!base.join("escape.colors").exists() && !input.join("../escape.colors").exists());
 
-        // 9. Пакет тем Conky `.cmtp.7z` из «Загруженных»: виджеты из скрытой
-        //    `.conky/` — каждый своей папкой, шрифты пакета — шрифтами.
+        // 9. A Conky theme package `.cmtp.7z` from "Downloaded": widgets from the
+        //    hidden `.conky/` — each in its own folder, the package's fonts as fonts.
         if crate::utils::which("bsdtar", None).is_none() {
             eprintln!("НЕ ПРОВЕРЕНО: нет bsdtar, чтобы собрать .7z");
             return;
@@ -2098,9 +2115,9 @@ mod tests {
         assert!(r.reload, "{r:?}");
     }
 
-    /// Шрифт «для всех»: заведомый отказ (не шрифт, имя занято) — без
-    /// пароля; иначе ровно одна операция сеанса прав с файлом-дескриптором;
-    /// без помощника — честный текст, без `pkexec`.
+    /// A font "for all": a certain refusal (not a font, the name is taken) — without
+    /// a password; otherwise exactly one privilege session operation with a file
+    /// descriptor; without a helper — an honest text, without `pkexec`.
     #[test]
     fn шрифт_для_всех_через_сеанс_прав() {
         use crate::privilege::op::{FontFile, LocalFile, PrivOp};
@@ -2131,7 +2148,7 @@ mod tests {
                 vec![src.to_string()],
             )]
         );
-        // Не шрифт и негодное имя — до пароля.
+        // Not a font and an invalid name — before the password.
         let mut called = false;
         let mut no_call = |_: &PrivOp, _: &[String]| {
             called = true;
@@ -2139,13 +2156,13 @@ mod tests {
         };
         assert_eq!(install_font_file_shared_with("/h/x.txt", &|_| String::new(), &none, &mut no_call), O::NotAFont("x.txt".into()));
         assert_eq!(install_font_file_shared_with("/h/.x.ttf", &font, &none, &mut no_call), O::NotAFont(".x.ttf".into()));
-        // Имя занято: тот же файл — «уже стоит», другой — «имя занято».
+        // The name is taken: the same file — "already installed", another one — "name taken".
         let same = |_: &str| Some(b"same".to_vec());
         assert_eq!(install_font_file_shared_with("/h/a.ttf", &font, &same, &mut no_call), O::AlreadyInstalled("a.ttf".into()));
         let other = |p: &str| Some(if p.starts_with("/usr/local") { b"theirs".to_vec() } else { b"mine".to_vec() });
         assert_eq!(install_font_file_shared_with("/h/a.ttf", &font, &other, &mut no_call), O::NameTaken("a.ttf".into()));
         assert!(!called, "заведомый отказ не спрашивает пароль");
-        // Отказ помощника — его готовый текст; помощника нет — честно, без pkexec.
+        // The helper's refusal — its ready text; no helper — honestly, without pkexec.
         let refused = install_font_file_shared_with("/h/a.ttf", &font, &none, &mut |_, _| Some(out(1, "Rexon refused: x")));
         assert_eq!(refused, O::NotForAll("Rexon refused: x".into()));
         let O::NotForAll(missing) = install_font_file_shared_with("/h/a.ttf", &font, &none, &mut |_, _| None) else {
@@ -2175,7 +2192,7 @@ mod tests {
             seen.push(op.clone());
             Some(out(0, ""))
         }), Ok(()));
-        // Шрифт пакета и свой файл помощнику не уходят.
+        // A package font and the user's own file do not go to the helper.
         assert_eq!(seen, vec![PrivOp::FontRemove { files: vec!["/usr/local/share/fonts/a.ttf".into()] }]);
         assert_eq!(remove_shared_fonts_with(&files, &mut |_| Some(out(1, "Rexon refused: y"))), Err("Rexon refused: y".into()));
         assert!(remove_shared_fonts_with(&files, &mut |_| None).is_err());

@@ -1,12 +1,14 @@
-// Раздел «Панель MATE»: готовые раскладки панели одной кнопкой («Как
-// Windows», классическая, как в Mint…), отметка текущей, возврат прежней
-// панели. Показывается только в сеансе MATE и только если mate-panel есть.
+// The "MATE panel" section: ready panel layouts with one button ("Like
+// Windows", classic, like in Mint…), a mark on the current one, restoring
+// the previous panel. Shown only in a MATE session and only if mate-panel
+// is present.
 //
-// Раздел самостоятельный — свой объект действий, своё окно подтверждения,
-// снаружи нужны только `pal`, `sty` и обработчик `message`. Стоит во
-// вкладке «Оформление», разделом «Панель MATE» (экран `matepanel`).
+// The section is self-contained — its own actions object, its own
+// confirmation window; from outside it needs only `pal`, `sty` and a
+// `message` handler. It sits in the "Appearance" tab as the "MATE panel"
+// section (screen `matepanel`).
 //
-// Только разметка: снимок, подписи, применение и возврат — `MatePanelActions`
+// Markup only: snapshot, labels, applying and restoring — `MatePanelActions`
 // (rust/rexon-gui/src/mate_panel_actions.rs → rexon_core::mate_panel).
 
 pragma ComponentBehavior: Bound
@@ -26,7 +28,7 @@ Rectangle {
 
     property var st: ({})
 
-    /// Выбранная в списке раскладка (по умолчанию — текущая).
+    /// Layout selected in the list (the current one by default).
     property string selected: ""
 
     function reload() {
@@ -44,10 +46,12 @@ Rectangle {
         section.reload();
     }
 
-    /// Идёт применение в фоне (ставятся части раскладки) — кнопки заперты.
+    /// Applying in the background (parts of the layout are being installed) —
+    /// the buttons are locked.
     property bool busy: false
 
-    /// Спросить подтверждение: `id` — раскладка, пусто — возврат прежней панели.
+    /// Ask for confirmation: `id` is the layout, empty means restoring the
+    /// previous panel.
     function ask(id) {
         const texts = JSON.parse(actions.confirm(id));
         confirmDialog.parts = false;
@@ -57,8 +61,8 @@ Rectangle {
         confirmDialog.open();
     }
 
-    /// Применить раскладку: не хватает частей, которые можно поставить, —
-    /// сперва спросить об этом («Нет» — применить с заменой, как раньше).
+    /// Apply a layout: if parts that can be installed are missing, first ask
+    /// about that ("No" applies with substitution, as before).
     function applyLayout(id) {
         let q = {};
         try {
@@ -239,16 +243,16 @@ Rectangle {
         }
     }
 
-    // ── Подтверждение ─────────────────────────────────────────────────────
+    // ── Confirmation ──────────────────────────────────────────────────────
     //
-    // Внутри окна, а не окно системы (канон Big Picture); фокус при
-    // открытии — на «Нет»: случайный Enter панель не заменит.
+    // Inside the window, not a system window (the Big Picture canon); focus on
+    // opening is on "No": an accidental Enter will not replace the panel.
 
     Popup {
         id: confirmDialog
 
         property string layoutId: ""
-        /// Второй вопрос — о недостающих частях: «Нет» применяет с заменой.
+        /// Second question — about the missing parts: "No" applies with substitution.
         property bool parts: false
         property string heading: ""
         property string question: ""

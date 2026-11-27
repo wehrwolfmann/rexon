@@ -1,11 +1,11 @@
-//! Экран входа: какой менеджер входа основной, какие установлены, умеет ли
-//! Rexon их переключать на этой системе и готов ли каждый стать основным.
+//! Login screen: which login manager is the primary one, which are installed, whether
+//! Rexon can switch them on this system and whether each one is ready to become the primary one.
 //!
-//! Только чистые функции ядра (`rexon_core::system_plan`): ни одного
-//! подпроцесса, ни одного файла живой машины. Тексты юнитов и приветствий в
-//! `tests/data/display_managers/` скопированы с машины Wehrwolfmann 20.10.2026
+//! Only pure core functions (`rexon_core::system_plan`): not a single
+//! subprocess, not a single file of the live machine. The texts of units and greeters in
+//! `tests/data/display_managers/` were copied from Wehrwolfmann's machine on 20.10.2026
 //! (Arch/CachyOS): plasmalogin, sddm, lightdm, greetd, cosmic-greeter,
-//! cosmic-greeter-daemon, `/usr/share/xgreeters/*.desktop` и вывод
+//! cosmic-greeter-daemon, `/usr/share/xgreeters/*.desktop` and the output of
 //! `lightdm --show-config`.
 
 mod i18n_pin;
@@ -18,7 +18,7 @@ use rexon_core::system_plan::{
     KNOWN_DM_UNITS, LOGIN_MANAGER_PROBE_UNITS,
 };
 
-/// Юниты с машины Wehrwolfmann (`/usr/lib/systemd/system`, 20.10.2026).
+/// Units from Wehrwolfmann's machine (`/usr/lib/systemd/system`, 20.10.2026).
 pub const UNIT_PLASMALOGIN: &str = include_str!("data/display_managers/plasmalogin.service");
 pub const UNIT_SDDM: &str = include_str!("data/display_managers/sddm.service");
 pub const UNIT_LIGHTDM: &str = include_str!("data/display_managers/lightdm.service");
@@ -54,7 +54,7 @@ fn states<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String
 }
 
 // ============================================================================
-// Я1. Активный экран входа без подстановки «sddm»
+// Item 1. The active login screen without substituting "sddm"
 // ============================================================================
 
 #[test]
@@ -76,8 +76,8 @@ fn active_opt_live_symlink_wins_without_probes() {
 
 #[test]
 fn active_opt_dangling_symlink_is_none_not_sddm() {
-    // После `pacman -R sddm` ссылка висит, ни один юнит не включён:
-    // прежняя функция отвечает «sddm», новая — честно «не знаем».
+    // After `pacman -R sddm` the link dangles, no unit is enabled:
+    // the former function answers "sddm", the new one honestly says "we do not know".
     let nothing = |_: &str| Some("not-found".to_string());
     assert_eq!(
         active_login_manager_opt(Some(SDDM_UNIT_PATH), false, true, &nothing),
@@ -111,8 +111,8 @@ fn active_opt_without_symlink_takes_enabled_or_alias() {
 
 #[test]
 fn active_opt_static_and_indirect_are_not_main() {
-    // `static`/`indirect` у юнита DM не ставят его на место
-    // display-manager.service — основным такой не назовём.
+    // `static`/`indirect` on a DM unit do not put it in the place of
+    // display-manager.service — we will not call such a one primary.
     for state in ["static", "indirect", "disabled", "masked", "not-found", ""] {
         let is_enabled = |u: &str| (u == "lightdm").then(|| state.to_string());
         assert_eq!(
@@ -122,15 +122,15 @@ fn active_opt_static_and_indirect_are_not_main() {
         );
         assert!(!dm_state_is_active(state));
     }
-    // А прежний детект static по-прежнему принимает (эталон Python).
+    // And the former detection still accepts static (the Python golden).
     let st = states(&[("lightdm", "static")]);
     assert_eq!(active_login_manager_from(None, false, true, &st), "lightdm");
 }
 
 #[test]
 fn active_opt_finds_units_outside_narrow_list() {
-    // Debian без симлинка, gdm3 включён: узкий список его не знает, и
-    // прежняя функция отвечала «sddm». Широкий опрос находит.
+    // Debian without a symlink, gdm3 enabled: the narrow list does not know it, and
+    // the former function answered "sddm". The broad query finds it.
     let st = states(&[("gdm3", "enabled")]);
     assert_eq!(
         active_login_manager_opt(None, false, true, &st).as_deref(),
@@ -148,7 +148,7 @@ fn active_opt_without_systemctl_is_none() {
     };
     assert_eq!(active_login_manager_opt(None, false, false, &is_enabled), None);
     assert_eq!(*probes.borrow(), 0, "без systemctl опрашивать нечем");
-    // Живой симлинк при этом всё равно отвечает (chroot без systemd).
+    // A live symlink still answers in this case (a chroot without systemd).
     assert_eq!(
         active_login_manager_opt(Some(SDDM_UNIT_PATH), true, false, &is_enabled).as_deref(),
         Some("sddm")
@@ -180,13 +180,13 @@ fn active_opt_probes_lazily_until_first_hit() {
 }
 
 // ============================================================================
-// Я2. Список установленных по Alias=display-manager.service
+// Item 2. The list of installed ones by Alias=display-manager.service
 // ============================================================================
 
 #[test]
 fn installed_from_host_unit_files() {
-    // Машина Wehrwolfmann: пять экранов входа, служба cosmic-greeter-daemon
-    // (без Alias) в список не попадает. Порядок — по таблице известных.
+    // Wehrwolfmann's machine: five login screens, the cosmic-greeter-daemon service
+    // (without Alias) does not get into the list. The order follows the table of known ones.
     assert_eq!(
         dm_units_from_unit_files(&host_units()),
         vec!["plasmalogin", "sddm", "lightdm", "greetd", "cosmic-greeter"]
@@ -198,7 +198,7 @@ fn unit_without_install_or_alias_is_not_listed() {
     let files = vec![
         unit("foo", "[Unit]\nDescription=x\n[Service]\nExecStart=/usr/bin/foo\n"),
         unit("bar", "[Install]\nWantedBy=multi-user.target\n"),
-        // Alias не в [Install] — не считается.
+        // Alias outside [Install] does not count.
         unit("baz", "[Unit]\nAlias=display-manager.service\n"),
     ];
     assert!(dm_units_from_unit_files(&files).is_empty());
@@ -235,7 +235,7 @@ fn unknown_dm_with_alias_is_listed_after_known() {
 
 #[test]
 fn etc_override_wins_over_package_unit() {
-    // Свой файл в /etc без Alias перекрывает пакетный — systemd читает его.
+    // A user's own file in /etc without Alias overrides the package one — systemd reads it.
     let files = vec![
         ("/etc/systemd/system/sddm.service".to_string(), "[Service]\nExecStart=/usr/bin/sddm\n".to_string()),
         unit("sddm", UNIT_SDDM),
@@ -260,7 +260,7 @@ fn exec_start_of_host_units() {
         unit_exec_start(UNIT_COSMIC_GREETER).unwrap(),
         vec!["greetd", "--config", "/etc/greetd/cosmic-greeter.toml"]
     );
-    // ExecStartPre не путается с ExecStart, префиксы systemd снимаются.
+    // ExecStartPre is not confused with ExecStart, systemd prefixes are stripped.
     assert_eq!(
         unit_exec_start("[Service]\nExecStartPre=-/bin/true\nExecStart=-@/usr/sbin/gdm3 gdm3\n").unwrap(),
         vec!["/usr/sbin/gdm3", "gdm3"]
@@ -269,7 +269,7 @@ fn exec_start_of_host_units() {
 }
 
 // ============================================================================
-// Я3. Таблица экранов входа
+// Item 3. The login screen table
 // ============================================================================
 
 #[test]
@@ -319,12 +319,12 @@ fn debian_gnome_gets_gdm3_enabled_when_no_login_screen() {
         .expect("gdm3 из списка пакетов включается");
     assert_eq!(unit, "gdm3");
     assert_eq!(cmd.argv, vec!["pkexec", "systemctl", "enable", "gdm3.service"]);
-    // Экран входа уже есть — чужой не трогаем.
+    // A login screen already exists — we do not touch someone else's.
     assert!(dm_enable_step(PkgFamily::Debian, &pkgs, false, false, true).is_none());
 }
 
 // ============================================================================
-// Я5. Механизм переключения по семейству и пробам
+// Item 5. The switching mechanism by family and probes
 // ============================================================================
 
 mod backend {
@@ -353,9 +353,9 @@ mod backend {
         let b = dm_switch_backend(PkgFamily::Debian, &p);
         assert_eq!(b, DmSwitchBackend::SystemdDebian);
         assert!(b.switch_supported());
-        // Файла нет — выбор только ссылкой.
+        // No file — the choice is only by the link.
         assert_eq!(dm_switch_backend(PkgFamily::Debian, &systemd()), DmSwitchBackend::Systemd);
-        // На Arch этот файл ничего не решает.
+        // On Arch this file decides nothing.
         assert_eq!(dm_switch_backend(PkgFamily::Arch, &p), DmSwitchBackend::Systemd);
     }
 
@@ -386,10 +386,10 @@ mod backend {
         let b = dm_switch_backend(PkgFamily::Arch, &p);
         assert_eq!(b, DmSwitchBackend::Unsupported("OpenRC".into()));
         assert!(!b.switch_supported());
-        // systemctl есть, а PID 1 не systemd (Artix) — тоже не поддерживаем.
+        // systemctl exists, but PID 1 is not systemd (Artix) — not supported either.
         let artix = DmBackendProbe { has_systemctl: true, other_init: "runit".into(), ..Default::default() };
         assert_eq!(dm_switch_backend(PkgFamily::Arch, &artix), DmSwitchBackend::Unsupported("runit".into()));
-        // systemd запущен, но systemctl нет — не трогаем.
+        // systemd is running, but there is no systemctl — we do not touch it.
         let no_ctl = DmBackendProbe { systemd_running: true, ..Default::default() };
         assert_eq!(dm_switch_backend(PkgFamily::Fedora, &no_ctl), DmSwitchBackend::Unsupported(String::new()));
     }
@@ -427,13 +427,13 @@ mod backend {
         );
         assert_eq!(dm_manual_switch_command("s6", PkgFamily::Arch, "sddm"), None);
         assert_eq!(dm_manual_switch_command("", PkgFamily::Arch, "sddm"), None);
-        // Имя с опасными знаками в команду не попадает.
+        // A name with dangerous characters does not get into the command.
         assert_eq!(dm_manual_switch_command("dinit", PkgFamily::Arch, "sddm; rm -rf /"), None);
     }
 }
 
 // ============================================================================
-// Я4 (LightDM). Приветствие: задано ли, установлено ли, что предложить
+// Item 4 (LightDM). The greeter: is it set, is it installed, what to offer
 // ============================================================================
 
 mod lightdm {
@@ -461,7 +461,7 @@ mod lightdm {
         assert_eq!(lightdm_greeter_from_show_config(SHOW_CONFIG_HOST), None);
         let set = "   [Seat:*]\nB  greeter-session=lightdm-slick-greeter\nA  session-wrapper=/etc/lightdm/Xsession\n";
         assert_eq!(lightdm_greeter_from_show_config(set).as_deref(), Some("lightdm-slick-greeter"));
-        // Ключ в другой секции не считается.
+        // A key in another section does not count.
         let other = "[LightDM]\nA  greeter-session=x\n";
         assert_eq!(lightdm_greeter_from_show_config(other), None);
         let legacy = "[SeatDefaults]\ngreeter-session=unity-greeter\n";
@@ -485,7 +485,7 @@ mod lightdm {
                 DmGreeter { id: "lightdm-slick-greeter".into(), name: "Slick Greeter".into(), exec: "slick-greeter".into() },
             ]
         );
-        // Программы нет — приветствие не установлено.
+        // No program — the greeter is not installed.
         let files = vec![("/usr/share/xgreeters/lightdm-gtk-greeter.desktop".to_string(), GTK.to_string())];
         assert!(xgreeters_from(&files, &|_| false).is_empty());
     }
@@ -524,7 +524,7 @@ mod lightdm {
         let greeters = host_greeters();
         let r = lightdm_greeter_readiness(Some("unity-greeter"), None, &greeters);
         assert_eq!(r.suggested_greeter().unwrap().id, "lightdm-slick-greeter");
-        // Без Slick предлагается первое.
+        // Without Slick the first one is offered.
         let gtk_only = vec![greeters[0].clone()];
         let r = lightdm_greeter_readiness(Some("unity-greeter"), None, &gtk_only);
         assert_eq!(r.suggested_greeter().unwrap().id, "lightdm-gtk-greeter");
@@ -560,7 +560,7 @@ mod lightdm {
 }
 
 // ============================================================================
-// Я4. greetd, SDDM, общие проверки и итог готовности
+// Item 4. greetd, SDDM, common checks and the readiness verdict
 // ============================================================================
 
 mod readiness {
@@ -581,7 +581,7 @@ mod readiness {
     const SDDM_KDE: &str = include_str!("data/display_managers/sddm-kde_settings.conf");
     const BREEZE_META: &str = include_str!("data/display_managers/sddm-breeze-metadata.desktop");
 
-    /// Всё на месте — дальше каждая проверка ломает одно.
+    /// Everything in place — from here on every check breaks one thing.
     fn good() -> DmFacts {
         DmFacts {
             binary_exists: true,
@@ -641,7 +641,7 @@ mod readiness {
     #[test]
     fn owner_case_greetd_agreety_blocked_cosmic_not() {
         let _lang = i18n_pin::en();
-        // greetd по /etc/greetd/config.toml — agreety.
+        // greetd per /etc/greetd/config.toml — agreety.
         let greetd = DmFacts {
             greetd: Some(GreetdFacts { command: greetd_command_kind(GREETD_CONFIG_HOST), program_exists: false }),
             ..good()
@@ -650,14 +650,14 @@ mod readiness {
             reason(ready("greetd", &greetd)),
             "greetd is set up for text sign-in — the desktop won't start."
         );
-        // cosmic-greeter — тот же greetd, но со своим конфигом: agreety из
-        // config.toml его не касается.
+        // cosmic-greeter is the same greetd, but with its own config: agreety from
+        // config.toml does not concern it.
         let cosmic = DmFacts {
             greetd: Some(GreetdFacts { command: greetd_command_kind(COSMIC_CONFIG_HOST), program_exists: true }),
             ..good()
         };
         assert_eq!(ready("cosmic-greeter", &cosmic), DmReadiness::Ready);
-        // Его приветствие пропало — блок с именем программы.
+        // Its greeter is gone — a blocker with the program name.
         let gone = DmFacts {
             greetd: Some(GreetdFacts { command: greetd_command_kind(COSMIC_CONFIG_HOST), program_exists: false }),
             ..good()
@@ -675,7 +675,7 @@ mod readiness {
 
     #[test]
     fn sddm_config_merge_on_host() {
-        // Порядок чтения хоста: пакетные conf.d по имени, затем свой.
+        // The host's reading order: package conf.d by name, then the user's own.
         let confs = [SDDM_DEFAULT, SDDM_GENERAL, SDDM_WAYLAND, SDDM_KDE];
         assert!(!sddm_uses_x11(&confs), "zz-wayland.conf переводит SDDM на Wayland");
         assert_eq!(sddm_wayland_compositor(&confs), "kwin_wayland");
@@ -701,12 +701,12 @@ mod readiness {
             sddm_theme_ready(Some("gone"), None, &all),
             SddmThemeState::Missing { theme: "gone".into() }
         );
-        // Тема Qt 6 без приветствия Qt 6.
+        // A Qt 6 theme without a Qt 6 greeter.
         assert_eq!(
             sddm_theme_ready(Some("breeze"), Some(BREEZE_META), &|g| g == "sddm-greeter"),
             SddmThemeState::NeedsGreeter { theme: "breeze".into(), greeter: "sddm-greeter-qt6".into() }
         );
-        // Тема без QtVersion — для Qt 5.
+        // A theme without QtVersion is for Qt 5.
         let qt5 = "[SddmGreeterTheme]\nName=Old\nMainScript=Main.qml\n";
         assert_eq!(
             sddm_theme_ready(Some("old"), Some(qt5), &|g| g == "sddm-greeter-qt6"),
@@ -767,10 +767,10 @@ mod readiness {
         for (facts, want) in cases {
             assert_eq!(reason(ready("plasmalogin", &facts)), want);
         }
-        // Нет пользователя для проверки — не блок; Xorg без надобности — не блок.
+        // No user to check — not a blocker; Xorg not needed — not a blocker.
         assert_eq!(ready("plasmalogin", &DmFacts { user: None, user_ok: false, ..good() }), DmReadiness::Ready);
         assert_eq!(ready("plasmalogin", &DmFacts { xorg: false, ..good() }), DmReadiness::Ready);
-        // Только Wayland-сеансы — вход есть.
+        // Only Wayland sessions — there is a way to log in.
         assert_eq!(ready("plasmalogin", &DmFacts { x_sessions: 0, ..good() }), DmReadiness::Ready);
     }
 
@@ -791,7 +791,7 @@ mod readiness {
             dm_readiness(login_manager_spec("sddm"), &DmSwitchBackend::SystemdDebian, &good()),
             DmReadiness::Ready
         );
-        // ly (шаблонный юнит), lxdm и незнакомые — только в списке.
+        // ly (a template unit), lxdm and unknown ones — only in the list.
         assert_eq!(ready("ly", &good()), DmReadiness::Unsupported);
         assert_eq!(ready("lxdm", &good()), DmReadiness::Unsupported);
         assert_eq!(dm_readiness(None, &DmSwitchBackend::Systemd, &good()), DmReadiness::Unsupported);
@@ -818,7 +818,7 @@ mod readiness {
 }
 
 // ============================================================================
-// Я6. Операция помощника switch-dm и служба-откат
+// Item 6. The helper's switch-dm operation and the rollback service
 // ============================================================================
 
 mod switch_dm {
@@ -831,7 +831,7 @@ mod switch_dm {
         PREVIOUS_DM_FILE,
     };
 
-    /// Ветка switch-dm помощника БЕЗ вшитых текстов службы-отката.
+    /// The helper's switch-dm branch WITHOUT the embedded texts of the rollback service.
     fn switch_branch(script: &str) -> String {
         let start = script.find("if [ \"$op\" = \"switch-dm\" ]").expect("ветка switch-dm");
         let end = start + script[start..].find("# install / remove").unwrap();
@@ -853,14 +853,14 @@ mod switch_dm {
         let s = pkg_helper_script();
         assert!(PKG_HELPER_OPS.contains(&"switch-dm"));
         assert!(s.contains("install|remove|update|enable-dm|switch-dm|build-deps|install-built) : ;;"));
-        // `eval` упоминается только в комментариях шапки — командой нигде.
+        // `eval` is mentioned only in the header comments — nowhere as a command.
         for line in s.lines().map(str::trim).filter(|l| !l.starts_with('#')) {
             assert!(
                 !(line.starts_with("eval ") || line.contains("; eval ") || line.contains("$(eval")),
                 "eval в помощнике запрещён: {line}"
             );
         }
-        // Вшитые тексты на месте и целиком.
+        // The embedded texts are in place and complete.
         assert!(s.contains(DM_FALLBACK_SCRIPT.trim_end()));
         assert!(s.contains(dm_fallback_unit().trim_end()));
         for path in [DM_FALLBACK_SCRIPT_PATH, PREVIOUS_DM_FILE, LIGHTDM_GREETER_CONF, DM_FALLBACK_DIR] {
@@ -881,11 +881,11 @@ mod switch_dm {
             assert!(!body.contains(banned), "в switch-dm нашлось «{banned}»");
         }
         assert!(body.contains("systemctl enable --force \"$new.service\""));
-        // «reboot» — только в тексте подсказки для человека, не командой.
+        // "reboot" only in the hint text for a person, not as a command.
         for line in body.lines().map(str::trim) {
             assert!(!line.starts_with("reboot") && !line.starts_with("shutdown"), "{line}");
         }
-        // На Debian сценарий пакета не может запустить службу.
+        // On Debian the package script cannot start the service.
         assert!(body.contains("/usr/sbin/policy-rc.d"));
     }
 
@@ -902,13 +902,13 @@ mod switch_dm {
     fn fallback_script_runs_once_and_only_on_boot_failure() {
         let f = DM_FALLBACK_SCRIPT;
         assert!(f.starts_with("#!/bin/bash\n"));
-        // Единственный запуск — сам экран входа, без ожидания.
+        // The only start is the login screen itself, without waiting.
         assert_eq!(f.matches("systemctl start").count(), 1);
         assert!(f.contains("systemctl start --no-block display-manager.service"));
         for banned in ["--now", "isolate", "reboot", "eval", "source ", ". /"] {
             assert!(!f.contains(banned), "{banned}");
         }
-        // Отметка «уже откатывали» и снятие drop-in — защита от петли.
+        // The "already rolled back" mark and removal of the drop-in — protection against a loop.
         assert!(f.contains("[ ! -e \"$stamp\" ] || exit 0"));
         assert!(f.find("date > \"$stamp\"").unwrap() < f.find("systemctl enable --force").unwrap());
         assert!(f.contains(&format!("{}/dm-fallback.done", DM_FALLBACK_DIR)));
@@ -966,7 +966,7 @@ mod switch_dm {
 }
 
 // ============================================================================
-// Я7. Тексты: подтверждение, как вернуть, итоги
+// Item 7. Texts: confirmation, how to go back, results
 // ============================================================================
 
 mod texts {
@@ -991,7 +991,7 @@ mod texts {
              sudo systemctl enable --force plasmalogin.service && sudo reboot\n\
              The same is written in /etc/rexon/previous-display-manager."
         );
-        // Прежний не определён — ни отката, ни подсказки.
+        // The previous one is unknown — neither rollback nor hint.
         assert_eq!(
             login_manager_switch_confirm(None, "sddm", None, &DmSwitchBackend::Systemd),
             "SDDM will appear after a restart. Your current session won't be interrupted."
@@ -1038,7 +1038,7 @@ mod texts {
 }
 
 // ============================================================================
-// Я6. Какой экран входа нужен какому столу, DDM и предупреждения раздела
+// Item 6. Which login screen each desktop needs, DDM and the section's warnings
 // ============================================================================
 
 mod desktop_needs {
@@ -1052,7 +1052,7 @@ mod desktop_needs {
         DESKTOP_DM_RULES,
     };
 
-    /// Юнит и sysusers пакета ddm 0.4.0 с машины Wehrwolfmann (15.11.2026).
+    /// Unit and sysusers of the ddm 0.4.0 package from Wehrwolfmann's machine (15.11.2026).
     const UNIT_DDM: &str = include_str!("data/display_managers/ddm.service");
     const SYSUSERS_DDM: &str = include_str!("data/display_managers/ddm-sysusers.conf");
 
@@ -1070,7 +1070,7 @@ mod desktop_needs {
         for de in ["hyprland", "sway", "niri", "lxqt", "budgie", "cosmic", "nothing"] {
             assert_eq!(desktop_dm_need(de), DmNeed::Any, "{de}");
         }
-        // Обязательный — критично под любым другим, под своим — ничего.
+        // Required — critical under any other one, under its own — nothing.
         assert_eq!(desktop_dm_harm("gnome", "plasmalogin"), Some(DmHarm::Critical));
         assert_eq!(desktop_dm_harm("gnome", "gdm3"), None);
         assert_eq!(desktop_dm_harm("deepin", "sddm"), Some(DmHarm::Critical));
@@ -1078,14 +1078,14 @@ mod desktop_needs {
         assert_eq!(desktop_dm_harm("kde", "gdm"), Some(DmHarm::Minor));
         assert_eq!(desktop_dm_harm("kde", "ddm"), None);
         assert_eq!(desktop_dm_harm("sway", "gdm"), None);
-        // У каждого правила — программа-признак и текст причины с именем
-        // экрана входа; стол есть в базе ядра.
+        // Every rule has a marker program and a reason text with the name of
+        // the login screen; the desktop is in the core's database.
         let known = rexon_core::system::list_de_ids();
         for r in DESKTOP_DM_RULES {
             assert!(!r.binaries.is_empty() && r.harm_text.contains("%1"), "{}", r.de_id);
             assert!(known.contains(&r.de_id), "{} нет в базе столов", r.de_id);
         }
-        // Deepin узнаётся по самому Treeland: обычному Deepin на X11 DDM не нужен.
+        // Deepin is recognized by Treeland itself: ordinary Deepin on X11 does not need DDM.
         let deepin = DESKTOP_DM_RULES.iter().find(|r| r.de_id == "deepin").unwrap();
         assert_eq!(deepin.binaries, &["treeland"]);
     }
@@ -1107,14 +1107,14 @@ mod desktop_needs {
             "{}",
             plm[1].text
         );
-        // Под GDM: Deepin не стартует (критично — первым), Plasma теряет мелочи.
+        // Under GDM: Deepin does not start (critical — first), Plasma loses minor things.
         let gdm = dm_compat_issues("gdm", &all);
         assert_eq!(
             gdm.iter().map(|i| (i.de_id.as_str(), i.harm)).collect::<Vec<_>>(),
             [("deepin", DmHarm::Critical), ("kde", DmHarm::Minor)]
         );
         assert!(gdm[1].text.contains("KWallet"), "{}", gdm[1].text);
-        // Под DDM — только GNOME; не установленные столы не в счёт.
+        // Under DDM — only GNOME; desktops that are not installed do not count.
         let ddm = dm_compat_issues("ddm", &all);
         assert_eq!(ddm.iter().map(|i| i.de_id.as_str()).collect::<Vec<_>>(), ["gnome"]);
         assert!(ddm[0].text.starts_with("With DDM as the login screen"), "{}", ddm[0].text);
@@ -1131,12 +1131,12 @@ mod desktop_needs {
             ("DDM", "ddm", "ddm", Some("dde"), "ddm")
         );
         assert!(spec.switchable && !spec.needs_xorg);
-        // Сверка с файлами пакета: программа, служба мест, пользователь.
+        // Check against the package files: program, seat service, user.
         assert_eq!(unit_exec_start(UNIT_DDM).unwrap(), vec!["/usr/bin/ddm"]);
         assert_eq!(unit_values(UNIT_DDM, "Unit", "Requires"), vec!["dde-seatd.service"]);
         assert_eq!(unit_values(UNIT_DDM, "Install", "Alias"), vec!["display-manager.service"]);
         assert!(sysusers_declares(SYSUSERS_DDM, "dde"));
-        // Готов, но с честной пометкой «с другими столами не проверено».
+        // Ready, but with an honest note «not tested with other desktops».
         let good = DmFacts {
             unit: "ddm".into(),
             binary_exists: true,
@@ -1151,7 +1151,7 @@ mod desktop_needs {
         let warnings = dm_warnings(&good);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("hasn't checked yet whether it starts other desktops"), "{warnings:?}");
-        // Нет службы мест — отказ до пароля, с её именем.
+        // No seat service — a refusal before the password, with its name.
         let no_seatd = DmFacts { missing_units: vec!["dde-seatd.service".into()], ..good.clone() };
         assert_eq!(
             dm_readiness(Some(spec), &DmSwitchBackend::Systemd, &no_seatd),
@@ -1160,11 +1160,11 @@ mod desktop_needs {
                     .into()
             )
         );
-        // Окно подтверждения говорит то же до пароля.
+        // The confirmation window says the same before the password.
         let confirm = login_manager_switch_confirm(Some("plasmalogin"), "ddm", None, &DmSwitchBackend::Systemd);
         assert!(confirm.starts_with("DDM will appear after a restart."), "{confirm}");
         assert!(confirm.contains("hasn't checked yet"), "{confirm}");
-        // Прочим экранам входа пометка не достаётся.
+        // Other login screens do not get the note.
         assert!(dm_warnings(&DmFacts { unit: "sddm".into(), ..good }).is_empty());
     }
 
@@ -1201,21 +1201,21 @@ mod desktop_needs {
             info("ddm", "DDM", false),
         ];
         let view = login_screen_view(&list, &DmSwitchBackend::Systemd, &facts(&["kde", "gnome", "deepin"]));
-        // Основной — общей строкой раздела: GNOME без блокировки, Deepin не стартует.
+        // The primary one — as a common line of the section: GNOME without locking, Deepin does not start.
         assert_eq!(view.compat.len(), 2, "{:?}", view.compat);
         assert!(view.compat[0].contains("GNOME can't lock the screen"), "{:?}", view.compat);
         assert!(view.compat[1].contains("Deepin doesn't start"), "{:?}", view.compat);
         let row = |u: &str| view.managers.iter().find(|m| m.unit == u).unwrap();
         assert!(row("plasmalogin").warnings.is_empty(), "у основного — только общая строка");
-        // GDM: GNOME он чинит, Deepin и так сломан — добавляется только Plasma.
+        // GDM: it fixes GNOME, Deepin is broken anyway — only Plasma is added.
         let gdm = row("gdm");
         assert_eq!(gdm.warnings.len(), 1, "{:?}", gdm.warnings);
         assert!(gdm.warnings[0].contains("KWallet"));
         assert!(gdm.confirm.contains("KWallet"), "подтверждение говорит то же до пароля: {}", gdm.confirm);
-        // DDM: кнопка есть, нового вреда нет (GNOME уже без блокировки).
+        // DDM: the button is there, no new harm (GNOME is already without locking).
         assert!(row("ddm").can_switch);
         assert!(row("ddm").warnings.is_empty());
-        // Только Plasma — у основного и у DDM молчим, у GDM — KWallet.
+        // Only Plasma — silent for the primary one and for DDM, KWallet for GDM.
         let quiet = login_screen_view(&list, &DmSwitchBackend::Systemd, &facts(&["kde"]));
         assert!(quiet.compat.is_empty());
         let warns = |u: &str| quiet.managers.iter().find(|m| m.unit == u).unwrap().warnings.len();

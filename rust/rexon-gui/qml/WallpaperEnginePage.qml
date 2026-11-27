@@ -1,39 +1,41 @@
-// Вкладка «Wallpaper Engine» на QML — ПЕРВЫЙ шаг переноса шелла.
+// The "Wallpaper Engine" tab in QML — the FIRST step of porting the shell.
 //
-// Данные и решения — Rust-объект WallpaperEngineModel
-// (rust/rexon-gui/src/we_page.rs), который сам ничего не решает, а
-// спрашивает ядро (`rexon_core::we_window`). Здесь только РАЗМЕТКА.
+// Data and decisions come from the Rust object WallpaperEngineModel
+// (rust/rexon-gui/src/we_page.rs), which decides nothing itself but asks
+// the core (`rexon_core::we_window`). Only MARKUP lives here.
 //
-// ⚠️ Содержимое пунктов рейла — вендорный QML waywallen (MIT, (c) hypengw;
-// атрибуция в NOTICE): он живёт отдельным модулем `waywallen.ui`, требует
-// собранных плагинов плюс живого сокета демона и грузится ВНУТРЬ шелла
-// `PageHost.qml`, а не прямо сюда. Поэтому у страницы три стартовых
-// состояния — «подключение…», «нет демона» с кнопкой повтора и «плагины не
-// собраны»: покупатель обязан прочитать словами, чего вкладка ждёт, а не
-// смотреть в пустой прямоугольник (правило #13). Что показать и какими
-// словами, решает ядро.
+// Warning: the content of the rail items is the vendored waywallen QML
+// (MIT, (c) hypengw; attribution in NOTICE): it lives as a separate module
+// `waywallen.ui`, requires built plugins plus a live daemon socket, and is
+// loaded INSIDE the `PageHost.qml` shell, not directly here. So the page
+// has three start states — "connecting…", "no daemon" with a retry button
+// and "plugins not built": the customer must read in words what the tab
+// is waiting for rather than stare at an empty rectangle (rule #13). What
+// to show and with what words is decided by the core.
 //
-// ⚠️ Импортов `Qcm.Material` и `waywallen.ui` в этом файле нет и быть не
-// должно. Вкладка обязана открываться и там, где плагины НЕ собраны, — а
-// файл с таким импортом в такой машине не компилируется вовсе, и вместо
-// экрана «плагины не собраны» вкладка молча падала бы целиком. Всё, что
-// требует этих модулей (режим Material по скину и тосты), живёт в шелле,
-// который грузится отдельным файлом и только когда плагины есть.
+// Warning: there are no `Qcm.Material` and `waywallen.ui` imports in this
+// file, and there must not be. The tab must open even where the plugins
+// are NOT built — and a file with such an import does not compile at all
+// on such a machine, so instead of the "plugins not built" screen the
+// whole tab would silently fail. Everything that needs these modules (the
+// Material mode following the skin, and toasts) lives in the shell, which
+// is loaded as a separate file and only when the plugins are present.
 //
-// Оформление берётся из готового: палитра приходит свойством `palette` от
-// того же объекта и родом из действующего скина продукта (правило #17).
-// Своих цветов страница не заводит.
+// The styling is taken ready-made: the palette arrives through the
+// `palette` property of the same object and originates from the product's
+// active skin (rule #17). The page defines no colours of its own.
 //
-// Рейка навигации — как у waywallen (решение Wehrwolfmann 10.10.2026): её
-// рисует шелл `PageHost.qml` компонентами Material, потому что здесь их
-// импортировать нельзя (см. выше). Шелл поэтому занимает ВСЮ вкладку, а
-// полосы и экраны состояний этой страницы лежат поверх него справа от
-// рейки (на узкой вкладке — над нижней полосой навигации, которая сменяет
-// рейку). Из прежней собственной рейки оставлен один пункт — «Разраб.»; там,
-// где плагины не собраны и шелла нет, он показан отдельной кнопкой, иначе до
-// страницы сборки было бы не добраться ровно тогда, когда она нужнее всего.
+// The navigation rail is like waywallen's (Wehrwolfmann's decision,
+// 10.10.2026): it is drawn by the `PageHost.qml` shell with Material
+// components, because they cannot be imported here (see above). So the
+// shell takes up the WHOLE tab, and this page's banners and state screens
+// lie on top of it to the right of the rail (on a narrow tab — above the
+// bottom navigation bar that replaces the rail). Of the former rail of
+// our own only one item is kept — "Dev"; where the plugins are not built
+// and there is no shell, it is shown as a separate button, otherwise the
+// build page would be unreachable exactly when it is needed most.
 
-// Делегаты обращаются к id внешних элементов (root, page).
+// Delegates refer to ids of outer elements (root, page).
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -43,35 +45,35 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
-    // ── Мост наружу ───────────────────────────────────────────────────────
+    // ── Bridge to the outside ─────────────────────────────────────────────
 
-    // Объект побочных действий. По умолчанию — свой, на Rust; хозяин
-    // страницы может подставить другой. Нужен он ровно за одним: поднять
-    // демона обоев по кнопке «Повторить запуск». Сама страница в систему не
-    // ходит — что показать, считает Rust.
-    // Методы: retryDaemon(). Сигналы: retryStarted(); у своего объекта ещё
-    // connecting(), daemonFailed(reason), healthReceived(state),
-    // healthTimedOut() — события демона, и метод connectDaemon().
+    // Side-actions object. Our own Rust one by default; the page host may
+    // substitute another. It is needed for exactly one thing: bringing up the
+    // wallpaper daemon on the "Retry start" button. The page itself does not
+    // touch the system — what to show is computed by Rust.
+    // Methods: retryDaemon(). Signals: retryStarted(); our own object also
+    // has connecting(), daemonFailed(reason), healthReceived(state),
+    // healthTimedOut() — daemon events, and the connectDaemon() method.
     property var actions: ownActions
 
     WeActions {
         id: ownActions
-        // Имя нужно проверкам — тем же приёмом, что у модели ниже.
+        // The name is needed by checks — the same approach as for the model below.
         objectName: "weActions"
     }
 
-    // Экран «подключение…» после нажатия кнопки. Ставит его модель, а не
-    // объект действий: у того нет и не должно быть указателя на неё —
-    // связывает их разметка.
+    // The "connecting…" screen after the button is pressed. It is set by the
+    // model, not by the actions object: the latter has and must have no
+    // pointer to it — the markup connects them.
     //
-    // ⚠️ `ignoreUnknownSignals` обязателен: хозяин страницы вправе
-    // подставить свой объект действий без этого сигнала (так делает
-    // питоновский хозяин живой вкладки — он переводит модель сам), и такая
-    // подстановка не должна ронять в журнал предупреждение на каждый кадр.
+    // Warning: `ignoreUnknownSignals` is mandatory: the page host may
+    // substitute its own actions object without this signal (the Python host
+    // of the live tab does that — it switches the model itself), and such a
+    // substitution must not drop a warning into the log on every frame.
     //
-    // Остальные четыре сигнала — события демона, которые объект действий
-    // пересказывает странице (`we_actions.rs`): что они значат и каким
-    // экраном отвечать, решает модель, то есть ядро.
+    // The other four signals are daemon events that the actions object relays
+    // to the page (`we_actions.rs`): what they mean and which screen to answer
+    // with is decided by the model, i.e. the core.
     Connections {
         target: root.actions
         ignoreUnknownSignals: true
@@ -82,24 +84,26 @@ Item {
         function onHealthTimedOut() { page.showHealthTimeout(); }
     }
 
-    // Сторож ожидания: экран «Подключение…» обязан КОНЧАТЬСЯ.
+    // Wait guard: the "Connecting…" screen must END.
     //
-    // ⚠️ Без него ожидание было бесконечным, и кнопка «Повторить запуск» не
-    // появлялась никогда: у двух путей к этому экрану своего срока нет
-    // вовсе — сокет, который не открывается, и обрыв соединения, после
-    // которого транспорт переподключается раз в три секунды без предела
-    // попыток. Разбор обоих — в шапке `we_window::CONNECT_TIMEOUT_MS`.
+    // Warning: without it the wait was endless, and the "Retry start" button
+    // never appeared: the two paths to this screen have no timeout of their
+    // own at all — a socket that does not open, and a dropped connection,
+    // after which the transport reconnects every three seconds with no limit
+    // on attempts. Both are analysed in the header of
+    // `we_window::CONNECT_TIMEOUT_MS`.
     //
-    // Решений здесь нет: срок считает ядро, отказ складывает модель. Сторож
-    // привязан к самому ЭКРАНУ, а не к попытке, поэтому он покрывает любой
-    // новый путь к ожиданию сразу (правило #12), успешное подключение
-    // гасит его сменой состояния, а повторный заход на экран заводит
-    // заново — сколько угодно раз.
+    // There are no decisions here: the timeout is computed by the core, the
+    // refusal is composed by the model. The guard is tied to the SCREEN
+    // itself, not to an attempt, so it covers any new path to waiting at once
+    // (rule #12); a successful connection cancels it by changing the state,
+    // and entering the screen again starts it anew — any number of times.
     //
-    // ⚠️ Пока идёт запуск движка (`engineStarting`), сторож стоит: у запуска
-    // свой сторож в ядре (`we_client::StartWatch`) — он ждёт живой процесс
-    // дольше обычного и сам кончается отказом, если процесс умер или завис.
-    // Без этого долгий первый запуск AppImage обрывался бы здесь через 25 с.
+    // Warning: while the engine is starting (`engineStarting`), the guard is
+    // paused: the start has its own guard in the core (`we_client::StartWatch`)
+    // — it waits for a live process longer than usual and ends with a refusal
+    // by itself if the process died or hung. Without this, a long first
+    // AppImage start would be cut off here after 25 s.
     Timer {
         interval: page.connectTimeoutMs
         repeat: false
@@ -107,82 +111,87 @@ Item {
         onTriggered: page.showConnectTimeout()
     }
 
-    // Каталог вендоренного интерфейса waywallen (`qml_ui/` пакета) — его
-    // называет хозяин страницы начальным свойством. Пусто — вендорных
-    // страниц не будет, `Loader` останется пустым: так страница открывается
-    // и в процессе, где пакета `rexon/` нет вовсе.
+    // Directory of the vendored waywallen interface (`qml_ui/` of the
+    // package) — named by the page host as an initial property. Empty means
+    // there will be no vendored pages and the `Loader` stays empty: that way
+    // the page also opens in a process without the `rexon/` package at all.
     property string vendorQmlDir: ""
 
-    // ── Ядро вкладки ──────────────────────────────────────────────────────
+    // ── Tab core ──────────────────────────────────────────────────────────
 
-    // Имя типа — WallpaperEngineModel, а не WallpaperEnginePage: последнее
-    // занято самим этим файлом (в QML-модуле каждый .qml — тип по имени).
+    // The type name is WallpaperEngineModel, not WallpaperEnginePage: the
+    // latter is taken by this very file (in a QML module every .qml is a type
+    // named after the file).
     WallpaperEngineModel {
         id: page
 
-        // Адрес вендорной страницы складывает ядро, а не разметка: здесь
-        // только передача каталога, который знает хозяин.
+        // The vendored page address is composed by the core, not the markup: here
+        // we only pass on the directory the host knows.
         vendorQmlDir: root.vendorQmlDir
-        // Имя нужно проверкам: из хозяина страницы объект достают
-        // `root.findChild(QObject, "wallpaperEngineModel")` и спрашивают
-        // без единой правки в самой странице.
+        // The name is needed by checks: from the page host the object is fetched
+        // with `root.findChild(QObject, "wallpaperEngineModel")` and queried
+        // without a single change in the page itself.
         objectName: "wallpaperEngineModel"
 
-        // Дошло до страниц — значит шелл вендорного интерфейса пора
-        // строить. Обратно флаг не гасится: см. `vendorHostWanted`.
+        // It has come to the pages — so it is time to build the vendored interface
+        // shell. The flag is never cleared again: see `vendorHostWanted`.
         onStateChanged: {
             if (page.state === page.statePages)
                 root.vendorHostWanted = true;
         }
     }
 
-    // ── Палитра действующего скина ────────────────────────────────────────
+    // ── Palette of the active skin ────────────────────────────────────────
 
     readonly property var pal: page.palette
     readonly property color colBg: root.pal.bg_primary
     readonly property color colAccent: root.pal.accent
     readonly property color colText: root.pal.text_primary
-    // Приглушённый текст ожидания: та же роль текста с долей
-    // прозрачности из ядра — так его красит виджетная версия
-    // (`muted_qss` поверх роли `Text`). Отдельной краски скина
-    // (`text_secondary`) у оригинала здесь нет: на снимке 03.09 текст
-    // «подключение…» у QML выходил чисто белым против приглушённого.
+    // Muted waiting text: the same text role with a share of opacity from the
+    // core — that is how the widget version paints it (`muted_qss` over the
+    // `Text` role). The original has no separate skin colour
+    // (`text_secondary`) here: on the 03.09 screenshot the "connecting…" text
+    // came out pure white in QML versus muted.
     readonly property color colTextMuted: Qt.rgba(root.colText.r, root.colText.g,
                                                   root.colText.b, page.variantAlpha)
 
-    // ── Страница выбранного пункта ────────────────────────────────────────
+    // ── Page of the selected item ─────────────────────────────────────────
 
-    // Привязка, а не разовый вызов: адрес пересчитывается сам при
-    // переключении пункта и при позднем ответе хозяина.
+    // A binding, not a one-off call: the address recomputes itself when the
+    // item changes and when the host answers late.
     //
-    // ⚠️ Каталог читается ЯВНО, хотя внутри `vendorPageUrl` он и так
-    // спрашивается. Без этого чтения привязка о нём не знает: зависимости
-    // QML собирает по прочитанным СВОЙСТВАМ, а не по тому, что инвокабл
-    // взял из своего состояния. Первый кадр вкладки 30.08 показал ровно
-    // это — «Обои» открылись заглушкой вместо страницы: адрес посчитался
-    // один раз, пока каталог был пуст, и обновиться ему было нечем.
+    // Warning: the directory is read EXPLICITLY, even though `vendorPageUrl`
+    // asks for it internally anyway. Without this read the binding does not
+    // know about it: QML collects dependencies from the PROPERTIES read, not
+    // from what an invokable took from its own state. The tab's first frame on
+    // 30.08 showed exactly this — "Wallpapers" opened with a placeholder
+    // instead of the page: the address was computed once while the directory
+    // was empty, and nothing could update it.
     readonly property url vendorPageUrl: page.vendorQmlDir !== ""
                                          ? page.vendorPageUrl(page.currentIndex)
                                          : ""
 
-    // Есть ли что грузить. Признаком служит явное приведение к строке, а не
-    // сравнение `url` с пустой строкой: у них разные типы, и такое сравнение
-    // держится на приведении, которое проверка QML справедливо не любит.
+    // Whether there is anything to load. The indicator is an explicit
+    // conversion to a string rather than comparing a `url` with an empty
+    // string: they have different types, and such a comparison relies on a
+    // conversion that QML lint rightly dislikes.
     readonly property bool hasVendorPage: String(root.vendorPageUrl) !== ""
 
-    // Нужна ли этой странице ВЕНДОРНАЯ ШАПКА (`MD.AppBar` с её заголовком и
-    // кнопками действий). Ответ держит ядро — он один на обе версии
-    // вкладки; сам вопрос разбирается в шапке `PageHost.qml`.
+    // Whether this page needs the VENDORED HEADER (`MD.AppBar` with its title
+    // and action buttons). The answer is held by the core — it is one for both
+    // versions of the tab; the question itself is discussed in the header of
+    // `PageHost.qml`.
     readonly property bool vendorPageHeader: page.vendorPageHeader(page.currentIndex)
 
-    // ── Скрытая страница «Разработчик» ────────────────────────────────────
+    // ── Hidden "Developer" page ───────────────────────────────────────────
 
-    // Открыт ли сейчас пункт «Разраб.». Сравниваем с номером пункта из
-    // ядра, а не с именем `dev`: имя пункта — его дело, а не разметки.
+    // Whether the "Dev" item is open now. We compare with the item index from
+    // the core, not with the name `dev`: the item's name is its own business,
+    // not the markup's.
     readonly property bool onDevPage: page.devIndex >= 0
                                       && page.currentIndex === page.devIndex
 
-    // Страница строится, когда до неё дошли, и живёт дальше (см. `devHost`).
+    // The page is built when it is reached and lives on (see `devHost`).
     property bool devHostWanted: false
 
     onOnDevPageChanged: {
@@ -190,84 +199,86 @@ Item {
             root.devHostWanted = true;
     }
 
-    // ── Ленивый шелл вендорных страниц ────────────────────────────────────
+    // ── Lazy shell of the vendored pages ──────────────────────────────────
 
-    // Шелл строится ОДИН раз и только когда дело дошло до страниц — как в
-    // виджетной версии, где общий QML-хост создавался лениво на первом их
-    // показе. Раз построенный, он живёт дальше: обрыв сокета возвращает
-    // вкладку на «подключение…», и пересборка страницы на каждый обрыв
-    // стоила бы покупателю её состояния — прокрутки библиотеки, открытой
-    // карточки, набранного фильтра.
+    // The shell is built ONCE and only when it has come to the pages — as in
+    // the widget version, where the shared QML host was created lazily on
+    // their first show. Once built, it lives on: a dropped socket returns the
+    // tab to "connecting…", and rebuilding the page on every drop would cost
+    // the customer its state — the library scroll position, an open card, a
+    // typed filter.
     property bool vendorHostWanted: false
 
-    // Повторный запуск демона. В систему ходит объект действий, а не
-    // разметка; экран ожидания при этом ставит ядро — тем же переходом,
-    // что и при первом старте вкладки (см. `Connections` выше).
+    // Restarting the daemon. The actions object touches the system, not the
+    // markup; the waiting screen is set by the core meanwhile — with the same
+    // transition as on the tab's first start (see `Connections` above).
     function retryDaemon() {
         if (!root.actions)
             return;
         root.actions.retryDaemon();
     }
 
-    // ── Первый кадр ───────────────────────────────────────────────────────
+    // ── First frame ───────────────────────────────────────────────────────
 
     Component.onCompleted: {
-        // Демона зовём сами — но только если действия НАШИ. Хозяин, который
-        // подставил свой объект, ведёт демона сам, и второй ведущий открыл бы
-        // второй сокет. Без этого вызова вкладка в окне без хозяина
-        // оставалась на «подключение…» навсегда.
+        // We call the daemon ourselves — but only if the actions are OURS. A host
+        // that substituted its own object drives the daemon itself, and a second
+        // driver would open a second socket. Without this call, a tab in a window
+        // without a host stayed on "connecting…" forever.
         if (root.actions === ownActions)
             ownActions.connectDaemon();
     }
 
-    // Сколько места слева занято рейкой: её ширину сообщает шелл (она
-    // меняется при сворачивании), а без шелла место держит запасная кнопка
-    // «Разраб.».
+    // How much room on the left the rail takes: its width is reported by the
+    // shell (it changes when collapsing), and without the shell the room is
+    // held by the fallback "Dev" button.
     readonly property real railInset: vendorHost.item
                                       ? vendorHost.item.railWidth
                                       : (devFallback.visible ? devFallback.width : 0)
 
-    // ── Разметка ──────────────────────────────────────────────────────────
+    // ── Markup ────────────────────────────────────────────────────────────
 
     Rectangle {
         anchors.fill: parent
         color: root.colBg
     }
 
-    // ══ Шелл вендорного интерфейса: рейка и страница ═══════════════════
+    // ══ Vendored interface shell: rail and page ═════════════════════════
     //
-    // Грузится ШЕЛЛ вокруг страницы, а не страница: он держит режим Material
-    // по скину Rexon, размерный класс, тосты и рейку навигации — то есть
-    // роль их `Window.qml`. Строится ОДИН раз, как только известно, что
-    // плагины собраны: рейка видна и на экране «подключение…», и на отказе
-    // демона — как окно waywallen, которое без демона тоже открывается с
-    // рейкой. Сами страницы шелл строит позже (`pagesReady`).
+    // What is loaded is the SHELL around the page, not the page: it holds the
+    // Material mode following the Rexon skin, the size class, toasts and the
+    // navigation rail — that is, the role of their `Window.qml`. It is built
+    // ONCE, as soon as it is known that the plugins are built: the rail is
+    // visible both on the "connecting…" screen and on a daemon refusal — like
+    // the waywallen window, which also opens with the rail without a daemon.
+    // The pages themselves are built by the shell later (`pagesReady`).
     //
-    // ⚠️ Грузится АСИНХРОННО — как страницы в оригинале waywallen
-    // (`MD.Pool`, QQmlIncubator в режиме Asynchronous): синхронный `Loader`
-    // останавливал бы главный поток до конца компиляции.
+    // Warning: it is loaded ASYNCHRONOUSLY — like the pages in the original
+    // waywallen (`MD.Pool`, QQmlIncubator in Asynchronous mode): a synchronous
+    // `Loader` would stall the main thread until compilation finished.
     //
-    // Движок один на все страницы: пункт меняет `pageUrl`, а не создаёт
-    // второй `QQuickWidget`. Несколько движков с модулем
-    // `waywallen.control` дедлочат `QQmlThread`.
+    // There is one engine for all pages: an item changes `pageUrl` rather
+    // than creating a second `QQuickWidget`. Several engines with the
+    // `waywallen.control` module deadlock `QQmlThread`.
     //
-    // ⚠️ Страница «Настройки» держится не только на шелле: её переключатель
-    // «Язык» и раздел «Кэш» ходят в САМ ДВИЖОК сцены (`retranslate()` и
-    // дисковый кэш сетевых картинок, поставленный фабрикой Rust-шима).
+    // Warning: the "Settings" page does not rely on the shell alone: its
+    // "Language" switch and the "Cache" section reach into the scene ENGINE
+    // ITSELF (`retranslate()` and the disk cache of network images set up by
+    // the Rust shim's factory).
     Loader {
         id: vendorHost
 
-        // ⚠️ Вендорная вкладка — СЛЕВА НАПРАВО и при языке справа налево:
-        // разметка waywallen на зеркалирование не рассчитана (`x:`, стрелки,
-        // порядок колонок), а своих правок раскладки в серию патчей вендора мы
-        // не кладём. Текст на ней переводится как обычно, зеркальной встанет
-        // только раскладка вокруг (рейл и разделы Rexon). Полное зеркалирование
-        // вкладки — через апстрим waywallen; когда он его примет, эта заглушка
-        // снимается.
-        // ⚠️ Заглушка закрывает только то, что лежит ВНУТРИ хоста. Всплывающие
-        // окна Qt (`Popup`, `Menu`, список `ComboBox`) Qt кладёт в слой окна
-        // (`Overlay`), и зеркалирование они берут у окна, а не отсюда
-        // (проверено запуском с `-reverse` на offscreen, 06.11.2026).
+        // Warning: the vendored tab is LEFT TO RIGHT even for right-to-left
+        // languages: the waywallen markup is not designed for mirroring (`x:`,
+        // arrows, column order), and we do not put layout changes of our own into
+        // the vendor patch series. Text on it is translated as usual; only the
+        // layout around it (the rail and the Rexon sections) is mirrored. Full
+        // mirroring of the tab goes through upstream waywallen; once it accepts
+        // it, this stopgap is removed.
+        // Warning: the stopgap covers only what lies INSIDE the host. Qt puts
+        // pop-up windows (`Popup`, `Menu`, the `ComboBox` list) into the window
+        // layer (`Overlay`), and they take mirroring from the window, not from
+        // here (checked by running with `-reverse` on offscreen, 06.11.2026).
         LayoutMirroring.enabled: false
         LayoutMirroring.childrenInherit: true
 
@@ -278,12 +289,12 @@ Item {
         onLoaded: root.passOutsidePresses()
     }
 
-    // Окна поверх вендорного интерфейса («Плагины», «Настройки», «О
-    // программе», вопросы страниц) накрывают только эту вкладку, а разделы
-    // Rexon над ней остаются нажимаемыми: слой окон поверх шелл ужимает до
-    // себя сам, а нажатия вне вкладки пропускает окну фильтр объекта
-    // действий. Фильтр ставится, когда слой уже заведён (`popupLayer`
-    // шелла): он обязан стоять в очереди после фильтра слоя.
+    // Windows over the vendored interface ("Plugins", "Settings", "About",
+    // page questions) cover only this tab, while the Rexon sections above it
+    // stay clickable: the window layer over the shell shrinks itself to fit,
+    // and presses outside the tab are passed to the window by the actions
+    // object's filter. The filter is installed once the layer exists (the
+    // shell's `popupLayer`): it must be queued after the layer's filter.
     Connections {
         target: vendorHost.item
         ignoreUnknownSignals: true
@@ -297,9 +308,9 @@ Item {
             ownActions.passOutsidePresses(root);
     }
 
-    // Какую страницу показывает шелл. Привязкой, а не присвоением в
-    // `onLoaded`: шелл асинхронный, и пункт может смениться раньше, чем он
-    // построится.
+    // Which page the shell shows. By binding, not by assignment in
+    // `onLoaded`: the shell is asynchronous, and the item may change before it
+    // is built.
     Binding {
         target: vendorHost.item
         property: "pageUrl"
@@ -307,8 +318,8 @@ Item {
         when: vendorHost.status === Loader.Ready
     }
 
-    // Шапку вендорной страницы включает ХОЗЯИН, а не сама страница:
-    // `MD.Page` рисует её по `MD.MProp.page.showHeader`.
+    // The vendored page header is turned on by the HOST, not by the page
+    // itself: `MD.Page` draws it according to `MD.MProp.page.showHeader`.
     Binding {
         target: vendorHost.item
         property: "pageHeader"
@@ -316,8 +327,8 @@ Item {
         when: vendorHost.status === Loader.Ready
     }
 
-    // Светлый или тёмный тон интерфейса задаёт СКИН Rexon, а не системная
-    // тема рабочего стола.
+    // The light or dark tone of the interface is set by the Rexon SKIN, not by
+    // the desktop's system theme.
     Binding {
         target: vendorHost.item
         property: "skinDark"
@@ -325,9 +336,9 @@ Item {
         when: vendorHost.status === Loader.Ready
     }
 
-    // Краски вендорного интерфейса: по умолчанию — скин Rexon (акцент,
-    // фон и текст страницы), у скина «Как в waywallen» — схема самого
-    // waywallen с его настройками «Тема» и «Акцент». Решает ядро.
+    // Colours of the vendored interface: by default the Rexon skin (accent,
+    // page background and text); with the "Like waywallen" skin, waywallen's
+    // own scheme with its "Theme" and "Accent" settings. The core decides.
     Binding {
         target: vendorHost.item
         property: "followVendorTheme"
@@ -363,7 +374,8 @@ Item {
         when: vendorHost.status === Loader.Ready
     }
 
-    // Пункты рейки и выбранный из них называет ядро; шелл их рисует.
+    // The rail items and the selected one are named by the core; the shell
+    // draws them.
     Binding {
         target: vendorHost.item
         property: "railItems"
@@ -385,9 +397,9 @@ Item {
         }
     }
 
-    // Страницы строятся не раньше, чем демон ответил, что здоров, и живут
-    // после этого (см. `vendorHostWanted`); видны — только на экране страниц
-    // и только пока открыт вендорный пункт.
+    // The pages are built no earlier than the daemon has answered that it is
+    // healthy, and they live on after that (see `vendorHostWanted`); they are
+    // visible only on the pages screen and only while a vendored item is open.
     Binding {
         target: vendorHost.item
         property: "pagesReady"
@@ -402,8 +414,8 @@ Item {
         when: vendorHost.status === Loader.Ready
     }
 
-    // Полосы этой страницы («чей фон», плагин Plasma) стоят над страницей
-    // шелла — он обязан уступить им место сверху.
+    // This page's banners ("whose background", the Plasma plugin) sit above
+    // the shell's page — it must give them room at the top.
     Binding {
         target: vendorHost.item
         property: "pageTopInset"
@@ -411,11 +423,11 @@ Item {
         when: vendorHost.status === Loader.Ready
     }
 
-    // ══ Запасная кнопка «Разраб.» ══════════════════════════════════════
+    // ══ Fallback "Dev" button ═══════════════════════════════════════════
     //
-    // Только там, где шелла нет вовсе (плагины вендорного интерфейса не
-    // собраны), а режим разработчика включён. Нажатие открывает страницу
-    // сборки, повторное — возвращает к первому пункту.
+    // Only where there is no shell at all (the vendored interface plugins are
+    // not built) and developer mode is on. Pressing opens the build page,
+    // pressing again returns to the first item.
     RexonButton {
         id: devFallback
 
@@ -431,23 +443,24 @@ Item {
         onClicked: page.currentIndex = root.onDevPage ? 0 : page.devIndex
     }
 
-    // ══ Правая часть: полосы и место страницы (поверх шелла) ════════════
+    // ══ Right part: banners and the page area (over the shell) ══════════
     ColumnLayout {
         anchors.fill: parent
         anchors.leftMargin: root.railInset
-        // На узкой вкладке рейку сменяет нижняя полоса навигации шелла.
+        // On a narrow tab the rail is replaced by the shell's bottom navigation bar.
         anchors.bottomMargin: vendorHost.item ? vendorHost.item.barHeight : 0
         spacing: 0
 
-        // ── «Чей фон» ─────────────────────────────────────────────────────
+        // ── "Whose background" ────────────────────────────────────────────
         //
-        // Поверх композитора может жить чужой шелл (Noctalia,
-        // DankMaterialShell), который рисует фон САМ — своей поверхностью
-        // поверх наших обоев. Тогда здесь, по месту, полоса с выбором:
-        // «Отдать обои Rexon» (выключить обои шелла, запомнив прежнюю
-        // настройку) либо, если Rexon их уже выключил, «Вернуть оболочке».
-        // Решение, текст и подписи — ядро (`desktop_shell::shell_banner`);
-        // разметка только показывает. Без живого шелла полосы нет вовсе.
+        // A foreign shell may live on top of the compositor (Noctalia,
+        // DankMaterialShell) that draws the background ITSELF — with its own
+        // surface over our wallpaper. Then a banner with a choice appears here, in
+        // place: "Give the wallpaper to Rexon" (turn off the shell's wallpaper,
+        // remembering the previous setting) or, if Rexon has already turned it
+        // off, "Give it back to the shell". The decision, text and labels come
+        // from the core (`desktop_shell::shell_banner`); the markup only shows
+        // them. Without a live shell there is no banner at all.
         Rectangle {
             id: shellBanner
             objectName: "shellBanner"
@@ -496,8 +509,8 @@ Item {
                     }
                 }
 
-                // Итог нажатия: успех — приглушённо, отказ — жирным (своих
-                // красок у страницы нет, правило #17).
+                // Result of the press: success is muted, refusal is bold (the page has no
+                // colours of its own, rule #17).
                 RexonText {
                     objectName: "shellActionMessage"
                     Layout.fillWidth: true
@@ -510,15 +523,15 @@ Item {
             }
         }
 
-        // ── Плагин обоев Plasma ───────────────────────────────────────
+        // ── Plasma wallpaper plugin ───────────────────────────────────
         //
-        // На KDE обои waywallen показывает его Plasma-плагин. Нет плагина
-        // — фон молча остаётся прежним; здесь об этом говорится словами
-        // и предлагается поставить плагин. Текст, подпись и решение
-        // «можно ли ставить» — объект действий (`we_actions.rs`), страница
-        // только показывает. Своей копии этих свойств у страницы нет:
-        // они живут на СВОЁМ объекте действий, подставной хозяина их не
-        // несёт.
+        // On KDE the waywallen wallpaper is shown by its Plasma plugin. Without the
+        // plugin the background silently stays as it was; here this is said in
+        // words and installing the plugin is offered. The text, the label and the
+        // decision "can it be installed" come from the actions object
+        // (`we_actions.rs`); the page only shows them. The page has no copy of
+        // these properties of its own: they live on OUR OWN actions object, and a
+        // host's substitute does not carry them.
         Rectangle {
             objectName: "kdePluginBanner"
             Layout.fillWidth: true
@@ -555,10 +568,10 @@ Item {
             }
         }
 
-        // Шелл могут запустить и погасить, пока окно открыто: «чей фон»
-        // пересчитывается при открытии и раз в несколько секунд, пока
-        // вкладка видна. Сбор дешёвый — каталог сеанса и `/proc`, без
-        // внешних процессов.
+        // A shell may be started and stopped while the window is open: "whose
+        // background" is recomputed on opening and every few seconds while the tab
+        // is visible. The check is cheap — the session directory and `/proc`,
+        // without external processes.
         Timer {
             interval: 5000
             repeat: true
@@ -567,24 +580,24 @@ Item {
             onTriggered: page.refreshShellState()
         }
 
-        // ══ Место страницы ════════════════════════════════════════════════
+        // ══ Page area ═════════════════════════════════════════════════════
         //
-        // Три стартовых состояния вкладки — «подключение…», «нет демона» и
-        // «страницы» — те же, что в виджетной версии, и переключаются тем же
-        // порядком. Рейка при этом видна всегда (её держит шелл под этим
-        // слоем): она часть вкладки, а не часть состояния.
+        // The tab's three start states — "connecting…", "no daemon" and "pages" —
+        // are the same as in the widget version and switch in the same order. The
+        // rail is always visible meanwhile (the shell under this layer holds it):
+        // it is part of the tab, not part of the state.
         Item {
             id: stateArea
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // ── Ожидание движка ───────────────────────────────────────────
+            // ── Waiting for the engine ────────────────────────────────────
             RexonText {
                 anchors.centerIn: parent
                 width: parent.width - 2 * page.stateColumnMargin
                 visible: page.state === page.stateConnecting && !root.onDevPage
-                // Долгий запуск — с пояснением, что первый запуск бывает
-                // долгим (текст — ядра, `we_window::text_connecting_slow`).
+                // A long start comes with an explanation that the first start can take a
+                // while (the text comes from the core, `we_window::text_connecting_slow`).
                 text: ownActions.engineStartNote !== ""
                       ? page.connectingText + "\n\n" + ownActions.engineStartNote
                       : page.connectingText
@@ -594,10 +607,11 @@ Item {
                 horizontalAlignment: Text.AlignHCenter
             }
 
-            // ── Отказ движка и повтор запуска ─────────────────────────────
-            // Зазор и поля колонки — из ядра, те же, что у `QVBoxLayout`
-            // виджетной версии. Со своим зазором (12) экран уезжал от
-            // оригинала: значок выше на 12 точек, текст — на 3 (замер 03.09).
+            // ── Engine refusal and start retry ────────────────────────────
+            // The column spacing and padding come from the core, the same as the
+            // `QVBoxLayout` of the widget version. With our own spacing (12) the
+            // screen drifted from the original: the icon 12 pixels higher, the text 3
+            // (measurement 03.09).
             ColumnLayout {
                 anchors.centerIn: parent
                 width: parent.width - 2 * page.stateColumnMargin
@@ -612,8 +626,8 @@ Item {
 
                 RexonText {
                     Layout.fillWidth: true
-                    // Заголовок отказа и причина — одной строкой из ядра:
-                    // склейку держит оно, а не разметка.
+                    // The refusal title and the reason come as one line from the core: it
+                    // holds the joining, not the markup.
                     text: page.noDaemonText
                     color: root.colText
                     font.pixelSize: page.stateTextFontSize
@@ -623,33 +637,33 @@ Item {
 
                 RexonButton {
                     Layout.alignment: Qt.AlignHCenter
-                    // Имя нужно проверкам: кнопку достают
-                    // `root.findChild(QObject, "retryDaemonButton")` и
-                    // жмут НАСТОЯЩИМ нажатием, а не обходом разметки.
+                    // The name is needed by checks: the button is fetched with
+                    // `root.findChild(QObject, "retryDaemonButton")` and pressed with a REAL
+                    // press, not by bypassing the markup.
                     objectName: "retryDaemonButton"
                     pal: root.pal
                     text: page.retryDaemonLabel
-                    // Свой объект действий у страницы есть всегда, но
-                    // хозяин вправе занулить свойство. Тогда поднимать
-                    // демона нечем, и кнопка обязана ВЫГЛЯДЕТЬ нерабочей, а
-                    // не молча не срабатывать по нажатию (правило #13).
+                    // The page always has its own actions object, but the host may null the
+                    // property. Then there is nothing to bring the daemon up with, and the
+                    // button must LOOK disabled rather than silently do nothing when pressed
+                    // (rule #13).
                     enabled: root.actions !== null
                     onClicked: root.retryDaemon()
                 }
             }
 
-            // ── Страницы ──────────────────────────────────────────────────
+            // ── Pages ─────────────────────────────────────────────────────
             Item {
                 anchors.fill: parent
-                // Страница разработчика от демона не зависит: на отказе
-                // движка она нужнее всего (там кнопка его установки).
+                // The developer page does not depend on the daemon: on an engine refusal
+                // it is needed most (it has the button for installing it).
                 visible: page.state === page.statePages || root.onDevPage
 
-                // Плагины вендорного интерфейса не собраны: вместо страниц —
-                // инструкция по сборке. Текст из ядра, тот же, что в
-                // виджетной версии.
-                // Обычная роль текста, как у метки оригинала без стиля,
-                // а не «вторичная» краска скина.
+                // The vendored interface plugins are not built: instead of the pages,
+                // build instructions. The text comes from the core, the same as in the
+                // widget version.
+                // The ordinary text role, like the original's unstyled label, not the
+                // skin's "secondary" colour.
                 RexonText {
                     anchors.centerIn: parent
                     width: parent.width - 2 * page.stateColumnMargin
@@ -660,30 +674,28 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                 }
 
-                // Вендорную страницу рисует шелл под этим слоем
-                // (`vendorHost` выше) — здесь для неё ничего нет.
+                // The vendored page is drawn by the shell under this layer (`vendorHost`
+                // above) — there is nothing for it here.
                 //
-                // ⚠️ Модальный слой (`Overlay.overlay`) заводит окно сцены, а
-                // сцена одна на всю вкладку: вопрос вендорной страницы
-                // (`MD.Dialog` «Kill renderer?» на «Статусе») накрывает и
-                // рейку, и увести страницу из-под него нечем. Это починка
-                // дефекта виджетной версии, а не расхождение.
-                //
-                // ⚠️ Ловушка приёмки раздела «О движке»: «неверная краска»
-                // кнопки «Журнал изменений» на снимке — состояние НАВЕДЕНИЯ
-                // МЫШИ (опыт 05.09), сводить тут нечего.
+                // Warning: the modal layer (`Overlay.overlay`) is created by the scene's
+                // window, and there is one scene for the whole tab: a question of a
+                // vendored page (`MD.Dialog` "Kill renderer?" on "Status") covers the
+                // rail too, and there is no way to take the page out from under it. This
+                // fixes a defect of the widget version rather than being a divergence.
+                // Warning: a trap in accepting the "About engine" section: the "wrong
+                // colour" of the "Changelog" button on the screenshot is the MOUSE HOVER
+                // state (experiment 05.09); there is nothing to reconcile here.
 
-                // Скрытая страница «Разработчик» — НАША, из этого же
-                // QML-модуля, а не из каталога waywallen. Строится ЛЕНИВО и
-                // ровно один раз: у неё свой рантайм фоновых задач, и
-                // пересборка на каждый уход с пункта обрывала бы начатую
-                // установку движка (~200 МиБ) вместе с её состоянием.
+                // The hidden "Developer" page is OURS, from this same QML module, not from
+                // the waywallen directory. It is built LAZILY and exactly once: it has its
+                // own background task runtime, and rebuilding it every time the item is
+                // left would abort an engine installation in progress (~200 MiB) together
+                // with its state.
                 //
-                // ⚠️ До 06.09.2026 здесь стояла заглушка с именем пункта:
-                // страницу при переезде вкладки на QML не портировали
-                // вовсе, и владелец, открыв «Разраб.», видел пустое место
-                // со словом `dev` — то есть не мог добраться до кнопки
-                // установки обновления waywallen.
+                // Warning: until 06.09.2026 there was a placeholder with the item name
+                // here: the page was not ported at all when the tab moved to QML, and the
+                // owner, opening "Dev", saw an empty space with the word `dev` — that is,
+                // could not reach the button for installing a waywallen update.
                 Loader {
                     id: devHost
 
@@ -698,9 +710,8 @@ Item {
                     id: devPage
 
                     WeDeveloperPage {
-                        // Пометка расхождения паритета живёт в подписи
-                        // кнопки рейла — её ставит ядро, а страница только
-                        // сообщает вердикт сверки.
+                        // The parity divergence mark lives in the label of the rail button — the
+                        // core sets it, and the page only reports the reconciliation verdict.
                         onParityDrift: (drift) => page.parityDrift = drift
                     }
                 }

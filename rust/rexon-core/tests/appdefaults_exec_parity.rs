@@ -1,18 +1,18 @@
-//! Сверки живого исполнителя маршрута `--apply-defaults`
+//! Checks of the live executor of the `--apply-defaults` route
 //! ([`rexon_core::appdefaults_exec`]).
 //!
-//! ЧЕМ ЭТО ПРОВЕРЯЕТСЯ. Исполнитель гоняется на ПОДСТАВНОМ вводе-выводе
-//! ([`FakeIo`]) с подставными `$HOME`/`$XDG_CONFIG_HOME`/`$XDG_DATA_HOME`:
-//! ни один файл живой машины не читается и не пишется, ни один подпроцесс не
-//! запускается. Ровно ради этого исполнитель и разделён на «решение» (ядро)
-//! и «действие» (трейт): приложения по умолчанию живого сеанса KDE трогать
-//! нельзя, а проверить порядок шагов и содержимое записей — обязательно.
+//! HOW THIS IS CHECKED. The executor is run on FAKE I/O
+//! ([`FakeIo`]) with fake `$HOME`/`$XDG_CONFIG_HOME`/`$XDG_DATA_HOME`:
+//! not a single file of the live machine is read or written, not a single subprocess is
+//! launched. This is exactly why the executor is split into "decision" (the core)
+//! and "action" (a trait): the default applications of the live KDE session must not
+//! be touched, while checking the order of steps and the content of the writes is mandatory.
 //!
-//! ⚠️ СТОРОЖ. `guard_*`-сверки следят не за текстами, а за границами:
-//! маршрут не смеет писать НИКУДА, кроме подставных XDG-каталогов, и не
-//! смеет при входе в систему запускать привилегированные команды. Обе
-//! проверены на укус: подмена пути записи на системный и снятие гейта
-//! привилегий валят их.
+//! ⚠️ GUARD. The `guard_*` checks watch not texts but boundaries:
+//! the route must not write ANYWHERE except the fake XDG directories, and must
+//! not run privileged commands at login. Both
+//! were bite-tested: replacing the write path with a system one and removing the privilege
+//! gate make them fail.
 
 mod i18n_pin;
 
@@ -31,34 +31,34 @@ const CFG: &str = "/fake/cfg";
 const DATA: &str = "/fake/data";
 
 // ============================================================================
-// Подставной исполнитель
+// Fake executor
 // ============================================================================
 
-/// Записанный побочный вызов: имя операции + аргумент.
+/// A recorded side-effect call: operation name + argument.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Op(String, String);
 
 #[derive(Default)]
 struct FakeIo {
-    /// Подставная файловая система: путь → содержимое.
+    /// Fake file system: path → contents.
     files: RefCell<BTreeMap<String, String>>,
-    /// Каталоги (созданные и предзаданные).
+    /// Directories (created and preset).
     dirs: RefCell<BTreeSet<String>>,
-    /// Что «есть в системе» для `which`.
+    /// What is "on the system" for `which`.
     tools: BTreeSet<String>,
-    /// Ответы на запуск команд: первый аргумент argv → (ok, stdout).
+    /// Answers to command launches: the first argv argument → (ok, stdout).
     replies: BTreeMap<String, (bool, String)>,
-    /// Журнал побочных вызовов в порядке исполнения.
+    /// Log of side-effect calls in execution order.
     log: RefCell<Vec<Op>>,
     /// `shutil.which("rexon")`.
     rexon_path: Option<String>,
     /// `/proc/self/exe`.
     self_exe: Option<String>,
-    /// Содержимое `/proc/<pid>/comm`.
+    /// Contents of `/proc/<pid>/comm`.
     comms: BTreeMap<i64, String>,
-    /// Ответ пробы окон: `None` — «узнать не удалось» (сеанс Wayland).
+    /// The window probe's answer: `None` — "could not find out" (a Wayland session).
     window_pids: Option<Vec<i64>>,
-    /// Выбранный вход продукта; `None` — Python-вход (прежние сверки).
+    /// The chosen product entry; `None` — the Python entry (the old checks).
     entry: Option<rexon_core::installer::LaunchEntry>,
 }
 
@@ -78,7 +78,7 @@ impl FakeIo {
         self
     }
 
-    /// Установленный `.desktop` в системном каталоге.
+    /// An installed `.desktop` in the system directory.
     fn desktop(self, id: &str) -> Self {
         self.file(&format!("/usr/share/applications/{id}"), "[Desktop Entry]\n")
     }
@@ -97,7 +97,7 @@ impl FakeIo {
         self.log.borrow().clone()
     }
 
-    /// Пути, в которые исполнитель ПИСАЛ (запись файла или создание каталога).
+    /// Paths the executor WROTE to (a file write or a directory creation).
     fn written_paths(&self) -> Vec<String> {
         self.ops()
             .into_iter()
@@ -106,7 +106,7 @@ impl FakeIo {
             .collect()
     }
 
-    /// argv всех запущенных команд.
+    /// argv of all launched commands.
     fn commands(&self) -> Vec<String> {
         self.ops()
             .into_iter()
@@ -202,7 +202,7 @@ impl AppDefaultsIo for FakeIo {
     }
 }
 
-/// Окружение с подставными XDG-каталогами.
+/// Environment with fake XDG directories.
 fn env_for(de: &str) -> AppDefaultsEnv {
     AppDefaultsEnv {
         home: HOME.to_string(),
@@ -214,7 +214,7 @@ fn env_for(de: &str) -> AppDefaultsEnv {
     }
 }
 
-/// Подставная машина с установленным KDE.
+/// A fake machine with KDE installed.
 fn kde_io() -> FakeIo {
     FakeIo::new()
         .desktop("org.kde.dolphin.desktop")
@@ -245,7 +245,7 @@ fn profile_kde_written_into_fake_config_home() {
     let text = io.content(&path).expect("файл профиля");
     assert!(text.starts_with("[Default Applications]\n"), "{text}");
     assert!(text.contains("inode/directory=org.kde.dolphin.desktop"), "{text}");
-    // Терминал через MIME не назначается — у него нет типа.
+    // The terminal is not assigned through MIME — it has no type.
     assert!(!text.contains("konsole"), "{text}");
 }
 
@@ -253,12 +253,12 @@ fn profile_kde_written_into_fake_config_home() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn profile_skipped_when_de_not_installed() {
     let _lang = i18n_pin::ru();
-    // Ни одного .desktop: GNOME не установлен.
+    // Not a single .desktop: GNOME is not installed.
     let io = FakeIo::new();
     let sw = DeAppSwitcher::new(&io, env_for("GNOME"));
     let out = sw.generate_profile("gnome");
     assert_eq!(out, GenerateOutcome::Skipped("gnome: не установлен, пропуск".into()));
-    // Ни одной записи на диск.
+    // Not a single write to disk.
     assert!(io.written_paths().is_empty(), "{:?}", io.written_paths());
 }
 
@@ -276,8 +276,8 @@ fn apply_for_current_de_kde_full_pass() {
     assert_eq!(logs[2], "📝 Создан kde-xdg-terminals.list");
     assert_eq!(logs[3], "✅ KDE терминал: konsole");
 
-    // Порядок действий: сначала профиль, потом настройка терминала, и лишь
-    // затем слот «Показать в папке» — так журнал читается сверху вниз.
+    // Order of actions: first the profile, then the terminal setup, and only
+    // then the «Показать в папке» slot — so the log reads top to bottom.
     let cmds = io.commands();
     assert_eq!(cmds.len(), 4, "{cmds:?}");
     assert!(cmds[0].starts_with("kwriteconfig6 --file kdeglobals"), "{cmds:?}");
@@ -289,7 +289,7 @@ fn apply_for_current_de_kde_full_pass() {
         "busctl --user --no-pager status org.freedesktop.FileManager1",
         "{cmds:?}"
     );
-    // Имя никто не держит — гасить некого.
+    // Nobody holds the name — nobody to stop.
     assert!(logs.last().unwrap().contains("свободно"), "{logs:?}");
     assert!(io.ops().iter().all(|o| o.0 != "terminate"), "{:?}", io.ops());
 }
@@ -304,7 +304,7 @@ fn apply_for_current_de_keeps_existing_profile() {
     let (ok, logs) = sw.apply_for_current_de();
     assert!(ok);
     assert_eq!(logs[1], "✅ kde-mimeapps.list уже существует");
-    // Готовый профиль не перезаписывается.
+    // A ready profile is not overwritten.
     assert_eq!(io.content(&format!("{CFG}/kde-mimeapps.list")).unwrap(), "старое\n");
 }
 
@@ -323,13 +323,13 @@ fn apply_for_current_de_unknown_desktop() {
     assert!(io.ops().is_empty(), "неопознанное окружение ничего не делает");
 }
 
-/// ⭐ ПОЧИНЕНО ПРИ ПЕРЕНОСЕ: оригинал печатал «📝 Создан …» и тогда, когда
-/// окружение не установлено и файла не появилось.
+/// ⭐ FIXED DURING THE MOVE: the original printed «📝 Создан …» even when
+/// the desktop was not installed and no file appeared.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn skip_is_not_reported_as_created_file() {
     let _lang = i18n_pin::ru();
-    // XFCE опознан, но ни одного его .desktop в системе нет.
+    // XFCE is recognized, but not a single one of its .desktop files is on the system.
     let io = FakeIo::new();
     let sw = DeAppSwitcher::new(&io, env_for("XFCE"));
 
@@ -343,10 +343,10 @@ fn skip_is_not_reported_as_created_file() {
 }
 
 // ============================================================================
-// Список терминалов своего стола (`<стол>-xdg-terminals.list`)
+// The desktop's own terminal list (`<desktop>-xdg-terminals.list`)
 // ============================================================================
 
-/// Подставная машина с MATE, где стоят и чужие терминалы.
+/// A fake machine with MATE where foreign terminals are installed too.
 fn mate_io() -> FakeIo {
     FakeIo::new()
         .desktop("caja.desktop")
@@ -355,10 +355,10 @@ fn mate_io() -> FakeIo {
         .desktop("org.kde.konsole.desktop")
 }
 
-/// Случай 08.11.2026 с живой машины владельца: в MATE чужой
-/// `mate-xdg-terminals.list` называл GNOME Terminal, общий список — konsole,
-/// и программа с `Terminal=true` открывалась не в mate-terminal. Вход в сеанс
-/// выправляет список своего стола; общий не трогается.
+/// The 08.11.2026 case from the owner's live machine: in MATE a foreign
+/// `mate-xdg-terminals.list` named GNOME Terminal, the common list named konsole,
+/// and a program with `Terminal=true` opened not in mate-terminal. Logging into the session
+/// fixes the desktop's own list; the common one is not touched.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn login_fixes_foreign_desktop_terminals_list() {
@@ -378,15 +378,15 @@ fn login_fixes_foreign_desktop_terminals_list() {
     assert!(logs.contains(&"✅ Исправлено: терминал → mate-terminal".to_string()), "{logs:?}");
     assert_eq!(io.content(&general).unwrap(), "org.kde.konsole.desktop\n");
 
-    // Второй вход ничего не переписывает.
+    // A second login rewrites nothing.
     let before = io.written_paths().len();
     let (_, logs) = sw.apply_for_current_de();
     assert!(!io.written_paths()[before..].contains(&list), "{logs:?}");
     assert!(logs.contains(&"✅ mate-xdg-terminals.list уже существует".to_string()), "{logs:?}");
 }
 
-/// Осознанный выбор во вкладке «Настройки» (пометка «выбрано человеком»)
-/// вход в сеанс не заменяет родным терминалом.
+/// A deliberate choice in the «Настройки» tab (marked "chosen by the person")
+/// is not replaced by the native terminal at login.
 #[test]
 fn login_keeps_terminal_chosen_in_rexon() {
     let list = format!("{CFG}/mate-xdg-terminals.list");
@@ -398,7 +398,7 @@ fn login_keeps_terminal_chosen_in_rexon() {
     assert_eq!(io.content(&list).unwrap(), chosen);
     assert!(!io.written_paths().contains(&list), "{:?}", io.written_paths());
 
-    // И в родное место стола (схема MATE) идёт он, а не mate-terminal.
+    // And it is the one that goes into the desktop's native place (the MATE schema), not mate-terminal.
     let io = mate_io().tool("gsettings").file(&list, &chosen);
     DeAppSwitcher::new(&io, env_for("MATE")).apply_for_current_de();
     let cmds = io.commands();
@@ -406,8 +406,8 @@ fn login_keeps_terminal_chosen_in_rexon() {
     assert!(!cmds.iter().any(|c| c.contains("exec mate-terminal")), "{cmds:?}");
 }
 
-/// Смена стола через Rexon заводит список целевого стола по его
-/// идентификатору (Cinnamon — `x-cinnamon-…`, как `x-cinnamon-mimeapps.list`).
+/// Switching the desktop through Rexon creates the target desktop's list by its
+/// identifier (Cinnamon — `x-cinnamon-…`, like `x-cinnamon-mimeapps.list`).
 #[test]
 fn switch_de_writes_target_desktop_terminals_list() {
     let io = FakeIo::new()
@@ -421,7 +421,7 @@ fn switch_de_writes_target_desktop_terminals_list() {
 }
 
 // ============================================================================
-// XFCE: helpers.rc читается и пишется по одному и тому же пути
+// XFCE: helpers.rc is read and written at the same path
 // ============================================================================
 
 #[test]
@@ -438,11 +438,11 @@ fn xfce_helpers_rc_respects_xdg_config_home() {
     assert!(!logs.is_empty(), "{logs:?}");
 
     let text = io.content(&path).expect("helpers.rc");
-    // Прежние строки человека сохранены, наши дописаны.
+    // The person's former lines are kept, ours are appended.
     assert!(text.contains("MailReader=thunderbird"), "{text}");
     assert!(text.contains("TerminalEmulator="), "{text}");
 
-    // Читали и писали ОДИН и тот же путь под подставным XDG_CONFIG_HOME.
+    // Read and wrote ONE and the same path under the fake XDG_CONFIG_HOME.
     let reads: Vec<String> = io
         .ops()
         .into_iter()
@@ -454,7 +454,7 @@ fn xfce_helpers_rc_respects_xdg_config_home() {
 }
 
 // ============================================================================
-// Автозапуск
+// Autostart
 // ============================================================================
 
 #[test]
@@ -470,8 +470,8 @@ fn autostart_prefers_rexon_from_path() {
     assert!(text.contains("Exec=/usr/bin/rexon --apply-defaults"), "{text}");
 }
 
-/// ⛔ gnome-session 49+ не исполняет сторонние записи с
-/// `X-GNOME-Autostart-Phase`: в новой записи фазы нет ни у одного входа.
+/// ⛔ gnome-session 49+ does not execute third-party entries with
+/// `X-GNOME-Autostart-Phase`: in the new entry no entry point has a phase.
 #[test]
 fn autostart_has_no_gnome_session_phase() {
     let path = format!("{CFG}/autostart/rexon-appdefaults.desktop");
@@ -486,9 +486,9 @@ fn autostart_has_no_gnome_session_phase() {
     }
 }
 
-/// Запись прежних версий (с фазой) чинится при входе в сеанс другого
-/// стола: строка фазы снята, всё прочее, включая `NotShowIn=` зеркала
-/// композиторов, на месте. Отсутствующую запись починка НЕ создаёт.
+/// An entry of earlier versions (with a phase) is fixed when logging into a session of another
+/// desktop: the phase line is removed, everything else, including the `NotShowIn=` of the compositor
+/// mirrors, is in place. The fix does NOT create a missing entry.
 #[test]
 fn login_heals_legacy_autostart_phase() {
     let path = format!("{CFG}/autostart/rexon-appdefaults.desktop");
@@ -504,12 +504,12 @@ fn login_heals_legacy_autostart_phase() {
          Exec=/usr/bin/rexon --apply-defaults\nTerminal=false\nNoDisplay=true\n\
          NotShowIn=Hyprland;\n"
     );
-    // Повторно чинить нечего — записи нет.
+    // Nothing to fix a second time — there is no entry.
     let writes_before = io.written_paths().len();
     assert!(!sw.heal_autostart());
     assert_eq!(io.written_paths().len(), writes_before);
 
-    // Записи нет — и не появляется.
+    // No entry — and none appears.
     let io = kde_io();
     let sw = DeAppSwitcher::new(&io, env_for("KDE"));
     assert!(sw.apply_for_current_de().0);
@@ -525,19 +525,19 @@ fn heal_autostart_text_cases() {
         heal("[Desktop Entry]\nX-GNOME-Autostart-Phase = Initialization\nExec=x\n").as_deref(),
         Some("[Desktop Entry]\nExec=x\n")
     );
-    // Чужие ключи с похожим началом не трогаются.
+    // Foreign keys with a similar beginning are not touched.
     assert_eq!(heal("[Desktop Entry]\nX-GNOME-Autostart-Phases-Note=1\n"), None);
     assert_eq!(heal("[Desktop Entry]\nX-GNOME-Autostart-enabled=true\n"), None);
-    // Последняя строка без перевода строки.
+    // The last line without a line break.
     assert_eq!(
         heal("[Desktop Entry]\nExec=x\nX-GNOME-Autostart-Phase=Initialization").as_deref(),
         Some("[Desktop Entry]\nExec=x\n")
     );
 }
 
-/// ⭐ ПОЧИНЕНО ПРИ ПЕРЕНОСЕ: оригинал без `rexon` в PATH писал в автозапуск
-/// путь `/usr/local/lib/rexon/rexon_apply_defaults.sh`, создать который не
-/// мог (нет прав), — и автозапуск указывал в пустоту.
+/// ⭐ FIXED DURING THE MOVE: without `rexon` in PATH the original wrote to autostart
+/// the path `/usr/local/lib/rexon/rexon_apply_defaults.sh`, which it could not
+/// create (no permissions) — and the autostart pointed into nowhere.
 #[test]
 fn autostart_falls_back_to_own_binary_not_to_system_path() {
     let mut io = kde_io();
@@ -557,8 +557,8 @@ fn autostart_falls_back_to_own_binary_not_to_system_path() {
     );
 }
 
-/// Rust-вход: автозапуск дефолтов зовёт бинарь окна, даже когда лаунчер
-/// `rexon` в PATH есть, — интерпретатор при входе в сеанс не поднимается.
+/// The Rust entry: the defaults autostart calls the window binary even when the `rexon`
+/// launcher is in PATH — no interpreter is started at session login.
 #[test]
 fn autostart_follows_rust_entry() {
     let path = format!("{CFG}/autostart/rexon-appdefaults.desktop");
@@ -577,7 +577,7 @@ fn autostart_follows_rust_entry() {
     );
     assert!(!text.contains("/usr/bin/rexon") && !text.contains("python"), "{text}");
 
-    // ⭐ Откат с пробелом в пути лаунчера: путь в кавычках, а не два аргумента.
+    // ⭐ Fallback with a space in the launcher path: the path in quotes, not two arguments.
     let mut io = kde_io();
     io.rexon_path = Some("/home/u/my bin/rexon".to_string());
     let sw = DeAppSwitcher::new(&io, env_for("KDE"));
@@ -602,7 +602,7 @@ fn autostart_says_why_it_did_not_install() {
 }
 
 // ============================================================================
-// FileManager1 + файловый менеджер по умолчанию
+// FileManager1 + the default file manager
 // ============================================================================
 
 const NAUTILUS_SERVICE: &str = "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/usr/bin/nautilus --gapplication-service\n";
@@ -628,12 +628,12 @@ fn file_manager_default_writes_override_and_evicts_owner() {
     let (applied, notes) = sw.set_file_manager_default("dolphin", Some("kde"));
     assert!(applied, "{notes:?}");
 
-    // Override лёг в ПОДСТАВНОЙ XDG_DATA_HOME.
+    // The override landed in the FAKE XDG_DATA_HOME.
     let target = format!("{DATA}/dbus-1/services/org.freedesktop.FileManager1.service");
     let text = io.content(&target).expect("override");
     assert!(text.contains("Exec=/usr/bin/dolphin"), "{text}");
 
-    // Чужой демон погашен ШТАТНО — своим бинарём, не сигналом и не по имени.
+    // The foreign daemon was stopped THE PROPER WAY — by its own binary, not by a signal or by name.
     assert!(
         io.commands().iter().any(|c| c == "/usr/bin/nautilus --quit"),
         "{:?}",
@@ -643,12 +643,12 @@ fn file_manager_default_writes_override_and_evicts_owner() {
     assert!(notes.iter().any(|n| n.contains("завершён штатно")), "{notes:?}");
 }
 
-/// Живой вывод `busctl status` для чужого демона (nautilus в режиме службы).
+/// Live `busctl status` output for a foreign daemon (nautilus in service mode).
 const NAUTILUS_OWNER: &str = "PID=4242\nComm=nautilus\nExe=/usr/bin/nautilus\n\
 CommandLine=/usr/bin/nautilus --gapplication-service\n";
 
-/// Живой вывод `busctl status` для демона Thunar, поднятого KDE из
-/// сохранённой сессии, — тот самый случай, ради которого маршрут и учили.
+/// Live `busctl status` output for a Thunar daemon raised by KDE from a
+/// saved session — the very case the route was taught for.
 const THUNAR_OWNER: &str = "PID=2583\nComm=Thunar\nExe=/usr/bin/Thunar\n\
 CommandLine=/usr/bin/Thunar --sm-client-id 10188108 --daemon\n";
 
@@ -656,9 +656,9 @@ const KSM_WITH_THUNAR: &str = "[General]\nexcludeApps=\n\n\
 [Session: saved at previous logout]\ncount=1\nprogram1=Thunar\n\
 restartCommand1=Thunar,--sm-client-id,10188108,--daemon\n";
 
-/// Машина владельца 09.09.2026: mime-умолчания ВЕРНЫЕ (Dolphin), а
-/// «Открыть содержащую папку» открывает Thunar, потому что имя на шине
-/// держит его демон из сохранённой сессии KDE.
+/// The owner's machine on 09.09.2026: the mime defaults are CORRECT (Dolphin), but
+/// «Открыть содержащую папку» opens Thunar, because the name on the bus
+/// is held by its daemon from the saved KDE session.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn login_route_takes_filemanager1_back_from_foreign_daemon() {
@@ -680,7 +680,7 @@ fn login_route_takes_filemanager1_back_from_foreign_daemon() {
     let all = logs.join("\n");
     assert!(all.contains("перехватывал thunar (pid 2583"), "{all}");
 
-    // Погашен штатно и ИМЕННО тот бинарь, что назвала шина.
+    // Stopped the proper way, and EXACTLY the binary the bus named.
     assert!(
         io.commands().iter().any(|c| c == "/usr/bin/Thunar --quit"),
         "{:?}",
@@ -688,19 +688,19 @@ fn login_route_takes_filemanager1_back_from_foreign_daemon() {
     );
     assert!(io.ops().iter().all(|o| o.0 != "terminate"), "{:?}", io.ops());
 
-    // Из сохранённой сессии KDE запись убрана, имя внесено в исключения —
-    // иначе следующий вход поднял бы демон снова.
+    // The entry was removed from the saved KDE session, the name added to the exclusions —
+    // otherwise the next login would raise the daemon again.
     let ksm = io.content(&format!("{CFG}/ksmserverrc")).expect("ksmserverrc");
     assert!(!ksm.contains("Thunar"), "{ksm}");
     assert!(ksm.contains("excludeApps=thunar"), "{ksm}");
     assert!(all.contains("убран из сохранённой сессии KDE"), "{all}");
 
-    // Наш override активации лёг рядом и указывает на Dolphin.
+    // Our activation override landed next to it and points to Dolphin.
     let target = format!("{DATA}/dbus-1/services/org.freedesktop.FileManager1.service");
     assert!(io.content(&target).unwrap().contains("dolphin"), "нет override");
 }
 
-/// ⛔ У чужого менеджера открыты окна — маршрут его НЕ трогает.
+/// ⛔ The foreign manager has open windows — the route does NOT touch it.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn login_route_never_kills_file_manager_with_open_windows() {
@@ -709,7 +709,7 @@ fn login_route_never_kills_file_manager_with_open_windows() {
         .reply("xdg-mime", true, "org.kde.dolphin.desktop\n")
         .reply("busctl", true, THUNAR_OWNER)
         .reply("/usr/bin/Thunar", true, "");
-    // Проба окон сказала: у этого PID окно есть.
+    // The window probe said: this PID has a window.
     io.window_pids = Some(vec![2583]);
 
     let sw = DeAppSwitcher::new(&io, env_for("KDE"));
@@ -724,7 +724,7 @@ fn login_route_never_kills_file_manager_with_open_windows() {
     );
 }
 
-/// Имя держит тот, кто и назначен умолчанием, — ничего не делаем.
+/// The name is held by the one assigned as default — we do nothing.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn login_route_leaves_matching_owner_alone() {
@@ -745,8 +745,8 @@ fn login_route_leaves_matching_owner_alone() {
     assert!(io.ops().iter().all(|o| o.0 != "terminate"), "{:?}", io.ops());
 }
 
-/// Менеджер без своей команды выхода гасится сигналом РОВНО тому PID,
-/// который назвала шина.
+/// A manager without its own quit command is stopped by a signal to EXACTLY the PID
+/// the bus named.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn foreign_daemon_without_quit_option_gets_signal_by_pid() {
@@ -794,11 +794,11 @@ fn file_manager_default_missing_desktop_is_reported() {
 }
 
 // ============================================================================
-// Маршрут целиком
+// The whole route
 // ============================================================================
 
-/// Подставной исполнитель проверки комплектности: безопасные умолчания
-/// (`safe_run` → None, файлов нет) + журнал команд.
+/// Fake executor of the completeness check: safe defaults
+/// (`safe_run` → None, no files) + a command log.
 #[derive(Default)]
 struct FakeComplianceIo {
     commands: Vec<Vec<String>>,
@@ -867,10 +867,10 @@ fn arch_env() -> ComplianceEnv {
     }
 }
 
-/// ⭐ Помощники polkit лежат в ДВУХ раскладках, и диагностика обязана видеть
-/// обе: пакет дистрибутива кладёт их в `/usr/lib`, ручная установка — в
-/// `/usr/local/lib`. Прибитая константа `/usr/local/lib` давала на машине с
-/// пакетом «помощников нет» там, где они есть.
+/// ⭐ polkit helpers live in TWO layouts, and diagnostics must see
+/// both: a distro package puts them into `/usr/lib`, a manual install into
+/// `/usr/local/lib`. A hard-coded constant `/usr/local/lib` gave "no helpers"
+/// on a machine with the package where they do exist.
 #[test]
 fn diagnosis_finds_helpers_in_both_layouts() {
     const PKG: &str = "/usr/lib/rexon-pkg-helper";
@@ -880,7 +880,7 @@ fn diagnosis_finds_helpers_in_both_layouts() {
     const PKG_POLICY: &str = "/usr/share/polkit-1/actions/org.rexon.pkg.policy";
     const STAGE_POLICY: &str = "/usr/share/polkit-1/actions/org.rexon.stage.policy";
 
-    // Раскладка на подставных пробах: что «есть», то и видно.
+    // Layout on fake probes: what "exists" is what is seen.
     let layout = |files: &'static [&'static str]| {
         move |p: &str| files.contains(&p) || p == PKG_POLICY || p == STAGE_POLICY
     };
@@ -889,28 +889,28 @@ fn diagnosis_finds_helpers_in_both_layouts() {
         ComplianceEnv::probe(PkgFamily::Arch, true, &seen, &seen)
     };
 
-    // Машина с пакетом: помощники в /usr/lib.
+    // A machine with the package: helpers in /usr/lib.
     let pkg_machine = probe(&[PKG, STAGE]);
     assert!(pkg_machine.pkg_helper_available, "пакет: помощник в /usr/lib не найден");
     assert!(pkg_machine.stage_helper_available, "пакет: помощник в /usr/lib не найден");
 
-    // Машина с ручной установкой: помощники в /usr/local/lib.
+    // A machine with a manual install: helpers in /usr/local/lib.
     let manual = probe(&[PKG_LOCAL, STAGE_LOCAL]);
     assert!(manual.pkg_helper_available, "ручная установка: помощник не найден");
     assert!(manual.stage_helper_available, "ручная установка: помощник не найден");
 
-    // Обе раскладки сразу — по-прежнему «есть»; ни одной — честное «нет».
+    // Both layouts at once — still "present"; none — an honest "no".
     let both = probe(&[PKG, STAGE, PKG_LOCAL, STAGE_LOCAL]);
     assert_eq!(both, pkg_machine);
     let bare = probe(&[]);
     assert!(!bare.pkg_helper_available && !bare.stage_helper_available, "{bare:?}");
 
-    // Помощники на месте, а pkexec в системе нет — спросить пароль нечем.
+    // The helpers are in place, but there is no pkexec on the system — nothing to ask for the password with.
     let seen = layout(&[PKG, STAGE]);
     let no_pkexec = ComplianceEnv::probe(PkgFamily::Arch, false, &seen, &seen);
     assert!(!no_pkexec.pkg_helper_available && !no_pkexec.stage_helper_available);
 
-    // Помощник есть, а его политики нет — привилегированного пути нет.
+    // The helper is there, but its policy is not — there is no privileged path.
     let no_policy = |p: &str| p == PKG || p == STAGE;
     let unpolicied = ComplianceEnv::probe(PkgFamily::Arch, true, &no_policy, &no_policy);
     assert!(!unpolicied.pkg_helper_available && !unpolicied.stage_helper_available);
@@ -933,7 +933,7 @@ fn route_applies_then_checks() {
     let (code, printed, _) = run_route(&io, "KDE");
 
     assert_eq!(code, 0);
-    // Сначала — весь вывод переключателя, потом — проверка комплектности.
+    // First the whole switcher output, then the completeness check.
     assert_eq!(printed[0], "🖥️ Текущий рабочий стол: kde");
     let check_at = printed
         .iter()
@@ -954,19 +954,19 @@ fn route_returns_one_when_desktop_unknown() {
 }
 
 // ============================================================================
-// СТОРОЖ
+// GUARD
 // ============================================================================
 
-/// Сторож: маршрут пишет ТОЛЬКО в подставные XDG-каталоги.
+/// Guard: the route writes ONLY to the fake XDG directories.
 ///
-/// Живая машина при сверке не меняется — это условие задачи, а не пожелание:
-/// приложения по умолчанию живого сеанса и системные каталоги трогать
-/// нельзя. Укус проверен: стоит подставить исполнителю системный путь
-/// (например, вернуть автозапуску `/usr/local/lib/rexon/...`), сверка падает.
+/// The live machine does not change during the check — that is a condition of the task, not a wish:
+/// the live session's default applications and system directories must not
+/// be touched. The bite was tested: give the executor a system path
+/// (for example, return `/usr/local/lib/rexon/...` to the autostart) and the check fails.
 #[test]
 fn guard_route_writes_only_under_fake_xdg_dirs() {
     let mut io = kde_io();
-    io.rexon_path = None; // самая опасная ветка: запасной путь автозапуска
+    io.rexon_path = None; // the most dangerous branch: the autostart fallback path
     let (_, _, _) = run_route(&io, "KDE");
     let sw = DeAppSwitcher::new(&io, env_for("KDE"));
     sw.install_autostart();
@@ -987,17 +987,17 @@ fn guard_route_writes_only_under_fake_xdg_dirs() {
     }
 }
 
-/// Сторож: при входе в систему маршрут не запускает НИЧЕГО привилегированного
-/// и не ходит в сеть.
+/// Guard: at login the route launches NOTHING privileged
+/// and does not go to the network.
 ///
-/// Окружение взято MATE НАМЕРЕННО: именно у него лечение привилегированное —
-/// доустановка пакетов ayatana под `pkexec`, AUR-хелпер, `git clone`
-/// раскладок панели и копирование их в системный каталог. На подставной
-/// машине этих пакетов нет, то есть ветка лечения достижима, и весь вопрос в
-/// гейте `allow_privileged = false`. Подставной исполнитель проверки вдобавок
-/// роняет сверку на любой попытке записи или временного каталога. Укус
-/// проверен: замена гейта на `true` в [`apply_defaults_route`] валит сверку
-/// на `pkexec pacman` в списке команд.
+/// The environment is MATE ON PURPOSE: it is the one whose repair is privileged —
+/// installing the missing ayatana packages under `pkexec`, an AUR helper, `git clone`
+/// of panel layouts and copying them into a system directory. On the fake
+/// machine those packages are absent, i.e. the repair branch is reachable, and the whole question is in
+/// the `allow_privileged = false` gate. The fake executor of the check also
+/// fails the check on any attempt to write or use a temporary directory. The bite
+/// was tested: replacing the gate with `true` in [`apply_defaults_route`] fails the check
+/// on `pkexec pacman` in the command list.
 #[test]
 fn guard_login_route_stays_unprivileged() {
     let io = FakeIo::new().desktop("caja.desktop").desktop("mate-terminal.desktop");
@@ -1020,20 +1020,20 @@ fn guard_login_route_stays_unprivileged() {
             "переключатель дефолтов не привилегированный: {argv}"
         );
     }
-    // Строка об отложенном лечении — не больше одной на прогон.
+    // The line about deferred repair — no more than one per run.
     let deferred = printed.iter().filter(|l| **l == privileged_deferred_note()).count();
     assert!(deferred <= 1, "строка об отложенном лечении не должна повторяться");
 }
 
-/// ЖИВАЯ проверка НАБЛЮДЕНИЯ (ничего не меняет и никого не гасит): спросить
-/// у настоящей шины сеанса, кто держит `org.freedesktop.FileManager1`, и
-/// убедиться, что разбор его понимает.
+/// A LIVE check of OBSERVATION (changes nothing and stops nobody): ask
+/// the real session bus who holds `org.freedesktop.FileManager1`, and
+/// make sure the parser understands it.
 ///
-/// Зачем отдельно от подставных сверок: `busctl status` печатает `Comm`,
-/// `Exe` и `CommandLine` не на всех версиях systemd, и если поле пропадёт,
-/// решение молча съедет в осторожную ветку «не трогаем» — дефект вернётся, а
-/// сверки останутся зелёными. Здесь только чтение: ни одной команды, кроме
-/// `busctl status`, тест не запускает.
+/// Why separately from the fake checks: `busctl status` prints `Comm`,
+/// `Exe` and `CommandLine` not on all systemd versions, and if a field disappears,
+/// the decision silently slides into the cautious "leave alone" branch — the defect comes back, while
+/// the checks stay green. Here it is read-only: the test launches no command except
+/// `busctl status`.
 #[test]
 #[cfg_attr(
     feature = "isolated-checks",
@@ -1045,10 +1045,10 @@ fn live_bus_owner_of_filemanager1_is_understood() {
 
     let io = LiveAppDefaultsIo;
     let Some(res) = io.run(&ad::busctl_status_cmd(ad::FM1_NAME)) else {
-        return; // нет шины сеанса (CI) — проверять нечего
+        return; // no session bus (CI) — nothing to check
     };
     if !res.ok || !res.stdout.contains("PID=") {
-        return; // имя никто не держит — тоже законный исход
+        return; // nobody holds the name — also a legitimate outcome
     }
     let facts = ad::busctl_owner(&res.stdout).expect("вывод шины обязан разбираться");
     assert!(facts.pid > 0, "{}", res.stdout);
@@ -1057,21 +1057,21 @@ fn live_bus_owner_of_filemanager1_is_understood() {
         "шина перестала называть владельца — решение о слоте станет слепым: {}",
         res.stdout
     );
-    // Живая машина владельца: имя держит файловый менеджер, и он опознаётся.
+    // The owner's live machine: the name is held by a file manager, and it is recognized.
     if let Some(short) = ad::fm_short_from_process(&facts.comm, &facts.exe) {
         assert!(ad::fm_daemon_info(&short).is_some(), "нет записи в FM_DAEMONS: {short}");
     }
 }
 
 // ============================================================================
-// Английский интерфейс
+// English interface
 // ============================================================================
 
 fn has_cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Журнал переключателя по-английски — без русских букв, фразами.
+/// The switcher log in English — without Russian letters, in phrases.
 #[test]
 fn english_switcher_log_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -1108,9 +1108,9 @@ fn english_switcher_log_has_no_russian() {
     }
 }
 
-/// Случай 08.11.2026: Deepin притащил fcitx5 и его помощника, их автозапуск
-/// без `OnlyShowIn=` стартовал в MATE и перехватывал раскладки. Вход в сеанс
-/// заводит пользовательские копии с `OnlyShowIn=Deepin;DDE;`.
+/// The 08.11.2026 case: Deepin brought in fcitx5 and its helper, their autostart
+/// without `OnlyShowIn=` started in MATE and hijacked the keyboard layouts. Logging into the session
+/// creates user copies with `OnlyShowIn=Deepin;DDE;`.
 #[test]
 fn login_confines_deepin_input_method_autostart() {
     let helper = "/etc/xdg/autostart/fcitx5-helper.desktop";
@@ -1128,15 +1128,15 @@ fn login_confines_deepin_input_method_autostart() {
         assert!(text.contains("OnlyShowIn=Deepin;DDE;"), "{name}: {text}");
         assert!(text.contains("X-Rexon-Confined=true"), "{name}: {text}");
     }
-    // Второй вход ничего не переписывает: копия уже своя.
+    // A second login rewrites nothing: the copy is already ours.
     let before = io.written_paths().len();
     sw.apply_for_current_de();
     let again: Vec<String> = io.written_paths().into_iter().skip(before).filter(|p| p.contains("/autostart/")).collect();
     assert!(again.is_empty(), "второй вход переписал: {again:?}");
 }
 
-/// fcitx5, поставленный человеком САМ (не зависимостью), не ограничивается:
-/// это его метод ввода во всех столах. Помощник Deepin — ограничивается.
+/// fcitx5 installed by the person THEMSELVES (not as a dependency) is not restricted:
+/// it is their input method on all desktops. The Deepin helper is restricted.
 #[test]
 fn login_keeps_input_method_installed_on_purpose() {
     let io = mate_io()
@@ -1150,7 +1150,7 @@ fn login_keeps_input_method_installed_on_purpose() {
     assert!(io.content(&format!("{CFG}/autostart/org.fcitx.Fcitx5.desktop")).is_none());
 }
 
-/// Своя копия человека и уже ограниченная системная запись не трогаются.
+/// The person's own copy and an already restricted system entry are not touched.
 #[test]
 fn confined_autostart_respects_existing_choices() {
     use rexon_core::appdefaults as ad;

@@ -1,21 +1,24 @@
-//! Ссылки из чужого текста: описания, комментарии, сведения о пакете.
+//! Links from foreign text: descriptions, comments, package information.
 //!
-//! ЗАЧЕМ. 16.11.2026 ссылка автора обоев в описании молча увела человека в
-//! браузер на платную тему ko-fi. Решение Wehrwolfmann того же дня:
+//! WHY. On 16.11.2026 a link from a wallpaper author in a description silently
+//! took the person to the browser, to a paid ko-fi theme. Wehrwolfmann's
+//! decision of the same day:
 //!
-//! 1. ссылка на товар магазина, который Rexon умеет показывать карточкой
-//!    (KDE Store и сайты Pling, AUR, Wallhaven, Cinnamon Spices, GNOME
-//!    Extensions), открывает КАРТОЧКУ внутри Rexon, без браузера;
-//! 2. всякая прочая внешняя ссылка помечена знаком ↗ и перед открытием
-//!    спрашивает «Открыть внешний сайт <домен> в браузере?» с флажком
-//!    «Больше не спрашивать для этого сайта» (по домену, в настройках
-//!    Rexon, сбрасывается во вкладке «Настройки»).
+//! 1. a link to a product of a store that Rexon can show as a card (KDE Store
+//!    and the Pling sites, AUR, Wallhaven, Cinnamon Spices, GNOME Extensions)
+//!    opens the CARD inside Rexon, without a browser;
+//! 2. every other external link is marked with ↗ and, before opening, asks
+//!    "Open the external site <domain> in the browser?" with a "Don't ask again
+//!    for this site" checkbox (per domain, stored in the Rexon settings, reset
+//!    in the "Settings" tab).
 //!
-//! Встроенного браузера нет намеренно: платежи и вход в учётные записи в
-//! нашем окне — риск, которого в браузере человека нет.
+//! There is deliberately no built-in browser: payments and account logins in
+//! our window are a risk that the person's own browser does not have.
 //!
-//! Здесь — разбор адреса, решение и тексты. Окно вопроса — общий компонент
-//! `RexonLinkText.qml`/`RexonLinkDialog.qml`, мост — `rexon-gui::link_guard`.
+//! This module holds the address parsing, the decision and the texts. The
+//! question dialog is the shared component
+//! `RexonLinkText.qml`/`RexonLinkDialog.qml`, the bridge is
+//! `rexon-gui::link_guard`.
 
 use std::path::Path;
 
@@ -24,12 +27,11 @@ use serde_json::{Map, Value};
 
 use crate::i18n::{tr, trf};
 
-/// Ключ `settings.json`: сайты, для которых человек выбрал «Больше не
-/// спрашивать».
+/// `settings.json` key: the sites for which the person chose "Don't ask again".
 pub const TRUSTED_KEY: &str = "trusted_link_sites";
 
-/// Сайты сети Pling: у них общий каталог и общие номера товаров
-/// (`/p/<номер>`), а Rexon читает его через API KDE Store.
+/// Sites of the Pling network: they share one catalog and the same product
+/// numbers (`/p/<number>`), and Rexon reads it through the KDE Store API.
 const OCS_HOSTS: &[&str] = &[
     "store.kde.org",
     "pling.com",
@@ -41,41 +43,41 @@ const OCS_HOSTS: &[&str] = &[
     "box-look.org",
 ];
 
-/// Товар магазина, на который указывает ссылка.
+/// The store product a link points to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "source", rename_all = "lowercase")]
 pub enum StoreRef {
-    /// KDE Store / Pling: номер товара.
+    /// KDE Store / Pling: product number.
     Ocs { id: String },
-    /// Пакет AUR: имя.
+    /// AUR package: name.
     Aur { name: String },
-    /// Картинка Wallhaven: id.
+    /// Wallhaven picture: id.
     Wallhaven { id: String },
-    /// Спайс Cinnamon: тип (`applet`…) и номер на сайте (у тем — имя).
+    /// Cinnamon spice: type (`applet`…) and number on the site (for themes, the name).
     Spices { kind: String, spices_id: String },
-    /// Расширение GNOME: номер на сайте (`/extension/<pk>/…`), не uuid.
+    /// GNOME extension: number on the site (`/extension/<pk>/…`), not the uuid.
     Ego { pk: u64 },
 }
 
-/// Что делать с нажатой ссылкой.
+/// What to do with a clicked link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkAction {
-    /// `rexon:…` — действие самой страницы (переключатель перевода).
+    /// `rexon:…` — an action of the page itself (the translation toggle).
     Page,
-    /// Карточка товара внутри Rexon.
+    /// A product card inside Rexon.
     Card(StoreRef),
-    /// Открыть сразу: сайт уже в доверенных.
+    /// Open right away: the site is already trusted.
     Open,
-    /// Спросить. `site` — домен для «Больше не спрашивать»; пусто — ссылка
-    /// не на сайт (файл, почта), и запоминать её нельзя.
+    /// Ask. `site` — the domain for "Don't ask again"; empty — the link does not
+    /// point to a site (a file, mail), and it cannot be remembered.
     Ask { site: String },
-    /// Не открывать вовсе (неизвестная схема: `javascript:`, `data:`…).
+    /// Do not open at all (unknown scheme: `javascript:`, `data:`…).
     Refuse,
 }
 
-/// Части адреса: (схема, хост в нижнем регистре, путь, запрос). Хост — без
-/// логина и порта: `https://store.kde.org@evil.example/` ведёт на
-/// `evil.example`, и именно его надо назвать человеку.
+/// Address parts: (scheme, host in lower case, path, query). The host is without
+/// login and port: `https://store.kde.org@evil.example/` leads to
+/// `evil.example`, and that is the one that must be named to the person.
 fn parts(url: &str) -> (String, String, String, String, bool) {
     let (scheme, netloc, path, query, _) = crate::ocs::urlsplit(url.trim());
     let has_login = netloc.contains('@');
@@ -89,7 +91,7 @@ fn parts(url: &str) -> (String, String, String, String, bool) {
     (scheme, host, path, query, has_login)
 }
 
-/// Домен для вопроса и для списка доверенных: хост без `www.`.
+/// Domain for the question and for the trusted list: the host without `www.`.
 pub fn site_of(url: &str) -> Option<String> {
     let (scheme, host, ..) = parts(url);
     if !matches!(scheme.as_str(), "http" | "https") || host.is_empty() {
@@ -98,17 +100,17 @@ pub fn site_of(url: &str) -> Option<String> {
     Some(host.strip_prefix("www.").unwrap_or(&host).to_string())
 }
 
-/// Хост — сам `domain` или его поддомен.
+/// The host is `domain` itself or a subdomain of it.
 fn host_is(host: &str, domain: &str) -> bool {
     host == domain || host.strip_suffix(domain).is_some_and(|h| h.ends_with('.'))
 }
 
-/// Сегменты пути без пустых.
+/// Path segments without empty ones.
 fn segments(path: &str) -> Vec<&str> {
     path.split('/').filter(|s| !s.is_empty()).collect()
 }
 
-/// Значение параметра запроса.
+/// Value of a query parameter.
 fn query_param<'a>(query: &'a str, key: &str) -> Option<&'a str> {
     query.split('&').find_map(|kv| kv.strip_prefix(key)?.strip_prefix('='))
 }
@@ -117,7 +119,8 @@ fn digits(s: &str) -> bool {
     !s.is_empty() && s.len() <= 12 && s.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// Имя пакета Arch: строчные, цифры и `@._+-`, не с дефиса и не с точки.
+/// Arch package name: lower-case letters, digits and `@._+-`, not starting with
+/// a hyphen or a dot.
 fn valid_pkg_name(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 255
@@ -125,7 +128,7 @@ fn valid_pkg_name(s: &str) -> bool {
         && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"@._+-".contains(&b))
 }
 
-/// Ссылка на товар магазина, который Rexon показывает карточкой.
+/// A link to a store product that Rexon shows as a card.
 pub fn store_ref(url: &str) -> Option<StoreRef> {
     let (scheme, host, path, query, has_login) = parts(url);
     if !matches!(scheme.as_str(), "http" | "https") || has_login {
@@ -137,7 +140,7 @@ pub fn store_ref(url: &str) -> Option<StoreRef> {
         if let ["p", id, ..] = seg.as_slice() {
             return digits(id).then(|| StoreRef::Ocs { id: id.to_string() });
         }
-        // Старые адреса KDE-Look: `/content/show.php?content=12345`.
+        // Old KDE-Look addresses: `/content/show.php?content=12345`.
         if seg.first() == Some(&"content") && seg.get(1).is_some_and(|s| s.starts_with("show.php")) {
             return query_param(&query, "content")
                 .filter(|id| digits(id))
@@ -183,7 +186,7 @@ pub fn store_ref(url: &str) -> Option<StoreRef> {
     None
 }
 
-/// Решение по нажатой ссылке.
+/// Decision for a clicked link.
 pub fn decide(url: &str, trusted: &[String]) -> LinkAction {
     let url = url.trim();
     let (scheme, host, ..) = parts(url);
@@ -203,30 +206,30 @@ pub fn decide(url: &str, trusted: &[String]) -> LinkAction {
                 LinkAction::Ask { site }
             }
         }
-        // Файл и письмо — тоже наружу, но запоминать их «по сайту» нельзя.
+        // Files and mail also go outside, but they cannot be remembered "per site".
         "file" | "mailto" => LinkAction::Ask { site: String::new() },
         _ => LinkAction::Refuse,
     }
 }
 
-/// Ведёт ли ссылка наружу (её помечают ↗).
+/// Whether a link leads outside (such links are marked with ↗).
 pub fn is_external(url: &str) -> bool {
     matches!(decide(url, &[]), LinkAction::Ask { .. } | LinkAction::Open)
 }
 
-// ── Пометка ↗ ─────────────────────────────────────────────────────────────
+// ── The ↗ mark ─────────────────────────────────────────────────────────────
 
-/// Знак внешней ссылки.
+/// The external-link sign.
 pub const EXTERNAL_MARK: &str = "↗";
 
-/// Значение `href` из открывающего тега `<a …>`.
+/// Value of `href` from the opening `<a …>` tag.
 fn href_of(tag: &str) -> Option<String> {
     let lower = tag.to_ascii_lowercase();
     let mut from = 0;
     while let Some(rel) = lower[from..].find("href") {
         let at = from + rel;
         from = at + 4;
-        // `href` — отдельное имя атрибута, а не хвост `data-href`.
+        // `href` is a separate attribute name, not the tail of `data-href`.
         if at > 0 && !lower.as_bytes()[at - 1].is_ascii_whitespace() {
             continue;
         }
@@ -242,9 +245,9 @@ fn href_of(tag: &str) -> Option<String> {
     None
 }
 
-/// Поставить ↗ в конец каждой внешней ссылки (внутри `<a>`, чтобы знак был
-/// того же цвета и нажимался вместе со ссылкой). Ссылки на свои карточки и
-/// `rexon:` не помечаются; повторный проход ничего не добавляет.
+/// Put ↗ at the end of every external link (inside `<a>`, so that the sign has
+/// the same color and is clickable together with the link). Links to our own
+/// cards and `rexon:` are not marked; a repeated pass adds nothing.
 pub fn mark_external(html: &str) -> String {
     let lower = html.to_ascii_lowercase();
     let mut out = String::with_capacity(html.len() + 16);
@@ -272,9 +275,9 @@ pub fn mark_external(html: &str) -> String {
     out
 }
 
-// ── Доверенные сайты ──────────────────────────────────────────────────────
+// ── Trusted sites ──────────────────────────────────────────────────────────
 
-/// Сайты «без вопроса» из настроек.
+/// Sites "without a question" from the settings.
 pub fn trusted_from(settings: &Map<String, Value>) -> Vec<String> {
     let mut out: Vec<String> = settings
         .get(TRUSTED_KEY)
@@ -286,7 +289,7 @@ pub fn trusted_from(settings: &Map<String, Value>) -> Vec<String> {
     out
 }
 
-/// Список с добавленным сайтом (по алфавиту, без повторов).
+/// The list with the site added (alphabetical, without duplicates).
 pub fn with_site(list: &[String], site: &str) -> Vec<String> {
     let mut out = list.to_vec();
     let site = site.trim().to_ascii_lowercase();
@@ -298,24 +301,24 @@ pub fn with_site(list: &[String], site: &str) -> Vec<String> {
     out
 }
 
-/// Доверенные сайты из файла настроек.
+/// Trusted sites from the settings file.
 pub fn trusted_in(config_file: &Path) -> Vec<String> {
     trusted_from(&crate::settings::load_settings(config_file))
 }
 
-/// Доверенные сайты живой машины.
+/// Trusted sites of the live machine.
 pub fn live_trusted() -> Vec<String> {
     trusted_in(&crate::settings::settings_file())
 }
 
-/// Запомнить сайт «без вопроса».
+/// Remember a site as "without a question".
 pub fn live_remember(site: &str) -> std::io::Result<()> {
     let mut m = crate::settings::SettingsManager::new()?;
     let list = with_site(&trusted_from(&m.settings), site);
     m.set(TRUSTED_KEY, Value::from(list))
 }
 
-/// Снова спрашивать для всех сайтов. → сколько их было.
+/// Ask again for all sites. → how many there were.
 pub fn live_forget_all() -> std::io::Result<usize> {
     let mut m = crate::settings::SettingsManager::new()?;
     let n = trusted_from(&m.settings).len();
@@ -323,9 +326,10 @@ pub fn live_forget_all() -> std::io::Result<usize> {
     Ok(n)
 }
 
-// ── Тексты ────────────────────────────────────────────────────────────────
+// ── Texts ──────────────────────────────────────────────────────────────────
 
-/// Короткий вид адреса в вопросе: без схемы и не длиннее 90 знаков.
+/// Short form of the address in the question: without the scheme and no longer
+/// than 90 characters.
 pub fn short_url(url: &str) -> String {
     let u = url.trim();
     let u = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")).unwrap_or(u);
@@ -336,13 +340,13 @@ pub fn short_url(url: &str) -> String {
     }
 }
 
-/// Заголовок окна вопроса.
+/// Title of the question dialog.
 pub fn ask_title() -> String {
     // TRANSLATORS: title of the question shown before a link from a store description opens in the browser.
     tr("External website")
 }
 
-/// Вопрос перед открытием. `site` пусто — ссылка не на сайт.
+/// The question before opening. `site` empty — the link does not point to a site.
 pub fn ask_text(site: &str, url: &str) -> String {
     if site.is_empty() {
         // TRANSLATORS: %1 is a link that is not a website (a file or an e-mail address).
@@ -353,17 +357,17 @@ pub fn ask_text(site: &str, url: &str) -> String {
     }
 }
 
-/// Пояснение под вопросом.
+/// Explanation under the question.
 pub fn ask_hint() -> String {
     tr("The link leads outside Rexon. The page will open in your browser, not in Rexon.")
 }
 
-/// Флажок «Больше не спрашивать».
+/// The "Don't ask again" checkbox.
 pub fn remember_label() -> String {
     tr("Don't ask again for this website")
 }
 
-/// Кнопка «Открыть».
+/// The "Open" button.
 pub fn open_label(site: &str) -> String {
     if site.is_empty() {
         tr("Open")
@@ -372,25 +376,25 @@ pub fn open_label(site: &str) -> String {
     }
 }
 
-/// Кнопка «Отмена».
+/// The "Cancel" button.
 pub fn cancel_label() -> String {
     tr("Cancel")
 }
 
-/// Строка состояния: ссылку открывать не стали.
+/// Status line: the link was not opened.
 pub fn refused_status(url: &str) -> String {
     // TRANSLATORS: %1 is a link with an unsupported scheme (javascript:, data:…).
     trf("⚠️ Rexon does not open links like this: %1", &[&short_url(url)])
 }
 
-/// Строка состояния: карточку не нашли.
+/// Status line: the card was not found.
 pub fn card_failed_status() -> String {
     tr("⚠️ Could not open this item in Rexon")
 }
 
-// ── Раздел «Настроек» ─────────────────────────────────────────────────────
+// ── The "Settings" section ─────────────────────────────────────────────────
 
-/// Строка со списком доверенных сайтов для «Настроек».
+/// Line with the list of trusted sites for "Settings".
 pub fn trusted_summary(list: &[String]) -> String {
     if list.is_empty() {
         tr("No websites yet: Rexon asks before every external link.")
@@ -400,7 +404,7 @@ pub fn trusted_summary(list: &[String]) -> String {
     }
 }
 
-/// Итог сброса.
+/// Result of the reset.
 pub fn forget_status(result: &std::io::Result<usize>) -> String {
     match result {
         Ok(_) => tr("🔗 Rexon will ask again before opening any external website"),
@@ -453,7 +457,7 @@ mod tests {
     #[test]
     fn lookalikes_are_not_store_links() {
         for url in [
-            // Логин в адресе: на деле это evil.example.
+            // A login in the address: in reality this is evil.example.
             "https://store.kde.org@evil.example/p/1",
             "https://store.kde.org.evil.example/p/1",
             "https://evilstore.kde.org.example/p/1",
@@ -472,7 +476,7 @@ mod tests {
         ] {
             assert_eq!(store_ref(url), None, "{url}");
         }
-        // Поддомен Pling — свой.
+        // A Pling subdomain is one of ours.
         assert!(store_ref("https://www.pling.com/p/1").is_some());
     }
 
@@ -489,12 +493,12 @@ mod tests {
             LinkAction::Ask { site: "github.com".into() }
         );
         assert_eq!(decide("https://github.com/x", &s(&["github.com"])), LinkAction::Open);
-        // Доверие к сайту не переходит на поддомен и соседа.
+        // Trust in a site does not extend to a subdomain or a neighbor.
         assert_eq!(
             decide("https://gist.github.com/x", &s(&["github.com"])),
             LinkAction::Ask { site: "gist.github.com".into() }
         );
-        // Логин в адресе не обманывает вопрос: назван настоящий хост.
+        // A login in the address does not fool the question: the real host is named.
         assert_eq!(
             decide("https://github.com@evil.example/", &s(&["github.com"])),
             LinkAction::Ask { site: "evil.example".into() }
@@ -520,12 +524,12 @@ mod tests {
              <a href='rexon:toggle' style='x'>orig</a> <abbr>x</abbr>"
         );
         assert_eq!(mark_external(&marked), marked);
-        // Заглавные теги, атрибут не первым, `data-href` — не адрес.
+        // Upper-case tags, the attribute not first, `data-href` is not an address.
         assert_eq!(
             mark_external("<A data-href='rexon:x' class=l HREF=https://a.example/>a</A>"),
             "<A data-href='rexon:x' class=l HREF=https://a.example/>a&nbsp;↗</A>"
         );
-        // Битая разметка не теряет текст.
+        // Broken markup does not lose text.
         assert_eq!(mark_external("x <a href='https://a.example'>y"), "x <a href='https://a.example'>y");
         assert_eq!(mark_external("без ссылок"), "без ссылок");
     }

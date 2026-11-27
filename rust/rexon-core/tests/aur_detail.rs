@@ -1,10 +1,10 @@
-//! Карточка пакета AUR: разбор паспорта RPC `info`, страницы пакета
-//! (соисполнители, комментарии) и выбор картинки.
+//! AUR package card: parsing the RPC `info` record, the package page
+//! (co-maintainers, comments) and picking the picture.
 //!
-//! Эталоны — ЗАПИСАННЫЕ живые ответы aur.archlinux.org от 05.10.2026:
-//! `aur_info_detail.json` (RPC v5 `info` четырёх пакетов) и
-//! `aur_page_<имя>.html` (страницы пакетов целиком). Сеть в проверках не
-//! участвует.
+//! Golden files are RECORDED live responses from aur.archlinux.org of 05.10.2026:
+//! `aur_info_detail.json` (RPC v5 `info` for four packages) and
+//! `aur_page_<name>.html` (whole package pages). The network takes no part
+//! in the checks.
 
 use rexon_core::aur::{
     detail_image_sources, epoch_day, info_facts, opt_depend_line, package_page_url,
@@ -56,7 +56,7 @@ fn info_zuki_and_bibata() {
     assert_eq!(b.make_depends, vec!["python-clickgen>=2.0.0"]);
     assert!(b.depends.is_empty());
     assert_eq!(b.maintainer, "yochananmarqos");
-    // Плитка из паспорта — для общего пути показа/установки.
+    // A tile from the record — for the common show/install path.
     let p = b.as_package();
     assert_eq!(p.name, "bibata-cursor-theme");
     assert_eq!(p.upstream_url, "https://github.com/ful1e5/Bibata_Cursor");
@@ -67,7 +67,7 @@ fn info_zuki_and_bibata() {
 fn info_unknown_name_is_none_and_garbage_tolerated() {
     assert!(parse_info(&info_json(), "no-such-package").is_none());
     assert!(parse_info(&serde_json::json!({"results": null}), "x").is_none());
-    // Числа строкой и мусор в массивах не роняют разбор.
+    // Numbers as strings and junk in arrays do not break the parse.
     let v = serde_json::json!({"results": [{
         "Name": "x", "NumVotes": "7", "OutOfDate": "1700000000",
         "Depends": ["a", 5, null, "", "b"]
@@ -120,7 +120,7 @@ fn page_bibata_comments_with_edits_and_next() {
     assert_eq!(first.date, "2023-09-30 14:14 (UTC)");
     assert_eq!(first.text, "I get an error: cp: cannot stat 'themes/Bibata-*': No such file or directory");
     assert!(!first.pinned);
-    // Отметка о правке не путается с датой и ником.
+    // The edit mark is not confused with the date and the nickname.
     let edited = p.comments.iter().find(|c| c.author == "crabvk").unwrap();
     assert_eq!(edited.date, "2022-10-06 21:57 (UTC)");
     assert!(p.comments.iter().all(|c| !c.text.contains('<') && !c.author.is_empty()));
@@ -132,15 +132,15 @@ fn page_yay_pinned_first_and_code_blocks_kept() {
     let pinned: Vec<_> = p.comments.iter().filter(|c| c.pinned).collect();
     assert_eq!(pinned.len(), 2);
     assert!(p.comments[0].pinned && p.comments[1].pinned, "закреплённые — первыми");
-    // На сайте 2 закреплённых и 9 последних: удалённые комментарии гостю
-    // не показываются, поэтому страница бывает неполной — признак «есть
-    // ещё» берётся из ссылки «Next», а не из счёта.
+    // The site has 2 pinned and 9 latest: deleted comments are not shown
+    // to a guest, so a page can be incomplete — the "there is more" flag
+    // is taken from the «Next» link, not from the count.
     assert_eq!(p.comments.len(), 11);
     assert!(p.has_more);
     let c = &p.comments[0];
     assert_eq!(c.author, "jguer");
     assert_eq!(c.date, "2025-12-14 20:11 (UTC)");
-    // Абзацы — отдельными строками, код — со своими переводами строк.
+    // Paragraphs as separate lines, code with its own line breaks.
     assert!(c.text.starts_with("yay: error while loading shared libraries"));
     assert!(c.text.contains("\n\nall v12.5.7 binaries"));
     assert!(c.text.contains("git clone https://aur.archlinux.org/yay.git\ncd yay\nmakepkg -si"));
@@ -156,7 +156,7 @@ fn page_spotify_comaintainers() {
 
 #[test]
 fn page_zuki_short_page_with_next_and_aerothemeplasma_single() {
-    // 8 комментариев на первой странице из 13: неполная страница — не конец.
+    // 8 comments on the first page out of 13: an incomplete page is not the end.
     let z = parse_package_page(include_str!("golden/aur_page_zuki-themes.html")).unwrap();
     assert_eq!(z.comments.len(), 8);
     assert!(z.has_more);
@@ -170,8 +170,8 @@ fn page_zuki_short_page_with_next_and_aerothemeplasma_single() {
 
 #[test]
 fn bot_check_page_is_blocked_not_empty() {
-    // Синтетическая страница-задачка (настоящую Anubis в эталон не снять:
-    // 05.10 сайт отдавал страницы без неё). Главное — это НЕ «0 комментариев».
+    // A synthetic challenge page (a real Anubis one cannot be captured as a golden file:
+    // on 05.10 the site served pages without it). The point is that this is NOT "0 comments".
     let html = "<html><head><title>Making sure you're not a bot!</title></head>\
                 <body><div id=\"anubis_challenge\"></div></body></html>";
     assert_eq!(parse_package_page(html), Err(PageError::Blocked));
@@ -190,9 +190,9 @@ fn page_urls_and_pause() {
 #[test]
 fn image_sources_by_host() {
     let gh = detail_image_sources("https://github.com/aeroshell-desktop/aerothemeplasma");
-    // OpenGraph-карточки репозитория (имя и звёзды) нет: это не снимок.
+    // There is no OpenGraph repository card (name and stars): it is not a screenshot.
     assert_eq!(gh, vec!["github-readme:aeroshell-desktop/aerothemeplasma".to_string()]);
-    // Первая картинка карточки — та же, что у плитки.
+    // The card's first picture is the same as the tile's.
     let tile = info("aerothemeplasma-desktop-git").as_package().preview_url();
     assert_eq!(gh[0], tile);
     let cb = detail_image_sources("https://codeberg.org/forgejo/forgejo");
@@ -210,7 +210,7 @@ fn og_image_codeberg_and_gitlab() {
             .as_deref(),
         Some("https://codeberg.org/forgejo/forgejo/-/summary-card")
     );
-    // У GitLab атрибуты в другом порядке: content раньше property.
+    // GitLab has the attributes in a different order: content before property.
     assert_eq!(
         parse_og_image(include_str!("golden/og_gitlab_head.html"), "https://gitlab.com/inkscape/inkscape")
             .as_deref(),
@@ -223,8 +223,8 @@ fn og_image_codeberg_and_gitlab() {
     assert!(parse_og_image("<meta property=\"og:title\" content=\"x\">", "https://h.org").is_none());
 }
 
-/// Картинка из README (вторая картинка карточки пакета с GitHub): значки
-/// пропускаются, относительные ссылки и `blob/` ведут в «сырой» вид ветки.
+/// A picture from the README (the second picture of a GitHub package card): badges
+/// are skipped, relative links and `blob/` lead to the branch's "raw" view.
 #[test]
 fn readme_image_skips_badges_and_resolves_relative() {
     let md = "# T\n[![CI](https://img.shields.io/x.svg)](x)\n![preview](./assets/preview.png)\n";
@@ -238,7 +238,7 @@ fn readme_image_skips_badges_and_resolves_relative() {
         Some("https://raw.githubusercontent.com/a/b/main/p.gif")
     );
     assert_eq!(readme_first_image("no pictures", "a/b", "main"), None);
-    // SVG — только если нет ничего другого.
+    // SVG — only if there is nothing else.
     let both = "![](logo.svg)\n![](shot.png)";
     assert!(readme_first_image(both, "a/b", "m").unwrap().ends_with("shot.png"));
 }

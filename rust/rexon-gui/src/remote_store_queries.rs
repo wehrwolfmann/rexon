@@ -1,34 +1,37 @@
-// Типы waywallen v0.2.6: держатель одного элемента выдачи, отмена входа по
-// QR-коду, правка настроек источника, подписки источников (в том числе
-// Мастерской Steam) и отписка от обои.
+// waywallen v0.2.6 types: the holder of one result item, cancelling a QR
+// code login, editing source settings, source subscriptions (including the
+// Steam Workshop) and unsubscribing from a wallpaper.
 //
-// Эталон — waywallen `ui/src/query/{remote,qr_login,
-// wallpaper}_query.cpp` @e5626c1 (вендорный коммит v0.2.6+9).
+// Reference: waywallen `ui/src/query/{remote,qr_login,
+// wallpaper}_query.cpp` @e5626c1 (vendor commit v0.2.6+9).
 //
-// Что порт чинит (правило #16):
+// What the port fixes (rule #16):
 //
-//   1. `RemoteSettingsPatchQuery`: оригинал шлёт `completed(..., accepted =
-//      true, "")` СРАЗУ после `inspect_set`, не глядя на статус ответа —
-//      отклонённая демоном правка докладывалась странице как принятая.
-//      Здесь при отказе идёт `accepted = false` с текстом ошибки (так же
-//      делал наш Python-мост).
-//   2. `WallpaperUnsubscribeQuery`: у оригинала перед `unsubscribed` стоит
-//      проверка «тот ли предмет» (`m_wallpaper_id != wallpaper_id →
-//      выход`), а наш Python её растерял — при быстром переключении
-//      карточек панель деталей получала сигнал про ЧУЖУЮ обоину.
+//   1. `RemoteSettingsPatchQuery`: the original sends `completed(...,
+//      accepted = true, "")` RIGHT after `inspect_set` without looking at
+//      the answer status — an edit rejected by the daemon was reported to
+//      the page as accepted. Here on a refusal `accepted = false` goes with
+//      the error text (as our Python bridge did too).
+//   2. `WallpaperUnsubscribeQuery`: in the original there is an "is it the
+//      same item" check before `unsubscribed` (`m_wallpaper_id !=
+//      wallpaper_id → return`), and our Python lost it — when switching
+//      cards quickly the details panel got the signal about SOMEONE ELSE's
+//      wallpaper.
 //
-// ⚠️ Своего пути в Steam здесь НЕТ и не должно быть. `bridge.py` держал
-// ветки `_run_bg` (синхронная сеть Steam из фонового потока: подписка
-// личным токеном, чтение `appworkshop_431960.acf`, сторож загрузки), но
-// включались они только при `WORKSHOP_SERVED_LOCALLY = True`, а флаг стоит
-// в `False` — РЕШЕНИЕМ Wehrwolfmann: «вкладка идёт вплотную за апстримом,
-// каталог Мастерской снова отдаёт плагин демона». То есть весь этот код в
-// продукте недостижим, и переносить его сюда значило бы законсервировать
-// уже отменённое поведение. Подписки идут ровно тем же путём, что у
-// оригинала, — RPC демону. Если решение когда-нибудь пересмотрят, ветку
-// придётся писать заново: своего клиента Мастерской Steam в дереве нет.
+// Warning: there is NO path of our own to Steam here and there must not be.
+// `bridge.py` had `_run_bg` branches (synchronous Steam networking from a
+// background thread: subscribing with a personal token, reading
+// `appworkshop_431960.acf`, a download watchdog), but they were enabled
+// only with `WORKSHOP_SERVED_LOCALLY = True`, and the flag is `False` — BY
+// Wehrwolfmann's DECISION: "the tab follows upstream closely, the Workshop
+// catalogue is served by the daemon's plugin again". So all that code is
+// unreachable in the product, and porting it here would mean preserving
+// behaviour that was already cancelled. Subscriptions go exactly the same
+// way as in the original — an RPC to the daemon. If the decision is ever
+// revised, the branch will have to be written anew: there is no Steam
+// Workshop client of our own in the tree.
 
-/// Мост cxx-qt: держатель элемента и четыре запроса v0.2.6.
+/// cxx-qt bridge: the item holder and four v0.2.6 queries.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -43,13 +46,13 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Держатель ОДНОГО элемента выдачи (`model::RemoteStoreItem`).
+        /// Holder of ONE result item (`model::RemoteStoreItem`).
         ///
-        /// У апстрима это обёртка над общим хранилищем `kstore` с подпиской
-        /// на изменения; у нас модель отдаёт готовые карты, поэтому здесь
-        /// достаточно свойства-значения — но подписка на общий склад
-        /// состояний приобретения обязана быть, иначе кнопка «Отписаться»
-        /// в панели деталей меняется только после перезагрузки страницы.
+        /// Upstream it is a wrapper over the shared `kstore` storage with a change
+        /// subscription; our model returns ready maps, so a value property is
+        /// enough here — but a subscription to the shared acquisition state store
+        /// must exist, otherwise the "Unsubscribe" button in the details panel
+        /// changes only after the page is reloaded.
         #[qobject]
         #[qml_element]
         #[qproperty(QVariant, item, READ = item, WRITE = set_item, NOTIFY = item_changed)]
@@ -65,6 +68,18 @@ pub mod qobject {
         #[qproperty(QString, session_id, cxx_name = "sessionId", READ = session_id,
                     WRITE = set_session_id, NOTIFY = session_id_changed)]
         type QrLoginCancelQuery = super::QrLoginCancelQueryRust;
+
+        /// waywallen 0.6.1: cancel a browser sign-in (BrowserLoginDialog).
+        #[qobject]
+        #[qml_element]
+        #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
+        #[qproperty(QString, error, READ = error, NOTIFY = error_changed)]
+        #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
+        #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
+                    WRITE = set_forward_error, NOTIFY = forward_error_changed)]
+        #[qproperty(QString, session_id, cxx_name = "sessionId", READ = session_id,
+                    WRITE = set_session_id, NOTIFY = session_id_changed)]
+        type BrowserLoginCancelQuery = super::BrowserLoginCancelQueryRust;
 
         #[qobject]
         #[qml_element]
@@ -124,6 +139,31 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "sendRequest"]
         fn send_request(self: Pin<&mut QrLoginCancelQuery>, token: i64, field: QString,
+                        request: QByteArray);
+
+        #[qsignal]
+        #[cxx_name = "statusChanged"]
+        fn status_changed(self: Pin<&mut BrowserLoginCancelQuery>, status: i32);
+        #[qsignal]
+        #[cxx_name = "queryingChanged"]
+        fn querying_changed(self: Pin<&mut BrowserLoginCancelQuery>);
+        #[qsignal]
+        #[cxx_name = "errorChanged"]
+        fn error_changed(self: Pin<&mut BrowserLoginCancelQuery>);
+        #[qsignal]
+        #[cxx_name = "forwardErrorChanged"]
+        fn forward_error_changed(self: Pin<&mut BrowserLoginCancelQuery>);
+        #[qsignal]
+        fn finished(self: Pin<&mut BrowserLoginCancelQuery>);
+        #[qsignal]
+        #[cxx_name = "errorOccurred"]
+        fn error_occurred(self: Pin<&mut BrowserLoginCancelQuery>, error: QString);
+        #[qsignal]
+        #[cxx_name = "appErrorOccurred"]
+        fn app_error_occurred(self: Pin<&mut BrowserLoginCancelQuery>, error: QString);
+        #[qsignal]
+        #[cxx_name = "sendRequest"]
+        fn send_request(self: Pin<&mut BrowserLoginCancelQuery>, token: i64, field: QString,
                         request: QByteArray);
 
         #[qsignal]
@@ -206,6 +246,10 @@ pub mod qobject {
         fn session_id_changed(self: Pin<&mut QrLoginCancelQuery>);
 
         #[qsignal]
+        #[cxx_name = "sessionIdChanged"]
+        fn session_id_changed(self: Pin<&mut BrowserLoginCancelQuery>);
+
+        #[qsignal]
         fn completed(self: Pin<&mut RemoteSettingsPatchQuery>, source_id: QString,
                      values: QVariant, accepted: bool, error: QString);
 
@@ -238,6 +282,14 @@ pub mod qobject {
         #[cxx_name = "setForwardError"]
         fn set_forward_error(self: Pin<&mut QrLoginCancelQuery>, value: bool);
 
+        fn status(self: &BrowserLoginCancelQuery) -> i32;
+        fn error(self: &BrowserLoginCancelQuery) -> QString;
+        fn querying(self: &BrowserLoginCancelQuery) -> bool;
+        #[cxx_name = "forwardError"]
+        fn forward_error(self: &BrowserLoginCancelQuery) -> bool;
+        #[cxx_name = "setForwardError"]
+        fn set_forward_error(self: Pin<&mut BrowserLoginCancelQuery>, value: bool);
+
         fn status(self: &RemoteSettingsPatchQuery) -> i32;
         fn error(self: &RemoteSettingsPatchQuery) -> QString;
         fn querying(self: &RemoteSettingsPatchQuery) -> bool;
@@ -266,6 +318,11 @@ pub mod qobject {
         fn session_id(self: &QrLoginCancelQuery) -> QString;
         #[cxx_name = "setSessionId"]
         fn set_session_id(self: Pin<&mut QrLoginCancelQuery>, value: QString);
+
+        #[cxx_name = "sessionId"]
+        fn session_id(self: &BrowserLoginCancelQuery) -> QString;
+        #[cxx_name = "setSessionId"]
+        fn set_session_id(self: Pin<&mut BrowserLoginCancelQuery>, value: QString);
         #[cxx_name = "wallpaperId"]
         fn wallpaper_id(self: &WallpaperUnsubscribeQuery) -> QString;
         #[cxx_name = "setWallpaperId"]
@@ -280,7 +337,14 @@ pub mod qobject {
         fn deliver_response(self: Pin<&mut QrLoginCancelQuery>, token: i64,
                             frame: &QByteArray);
 
-        /// У оригинала пустой: запускается только явным `patch()`.
+        #[qinvokable]
+        fn reload(self: Pin<&mut BrowserLoginCancelQuery>);
+        #[qinvokable]
+        #[cxx_name = "deliverResponse"]
+        fn deliver_response(self: Pin<&mut BrowserLoginCancelQuery>, token: i64,
+                            frame: &QByteArray);
+
+        /// Empty in the original: started only by an explicit `patch()`.
         #[qinvokable]
         fn reload(self: Pin<&mut RemoteSettingsPatchQuery>);
         #[qinvokable]
@@ -291,7 +355,7 @@ pub mod qobject {
         fn deliver_response(self: Pin<&mut RemoteSettingsPatchQuery>, token: i64,
                             frame: &QByteArray);
 
-        /// У оригинала пустой: запускается `refresh()`/`setSubscribed()`.
+        /// Empty in the original: started by `refresh()`/`setSubscribed()`.
         #[qinvokable]
         fn reload(self: Pin<&mut RemoteSubscriptionQuery>);
         #[qinvokable]
@@ -332,7 +396,7 @@ use crate::query_base::decode_failed;
 use crate::qvalue::{json_to_variant, variant_to_json};
 use crate::remote_list_model::acquisition;
 
-/// Состояние «уточняем…»/«выполняем…» общего склада приобретения.
+/// The "checking…"/"working…" state of the shared acquisition store.
 const ACQ_PENDING: i32 = 3;
 
 macro_rules! on_decode_error {
@@ -343,13 +407,13 @@ macro_rules! on_decode_error {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// RemoteStoreItem — один элемент выдачи для панели деталей
+// RemoteStoreItem — one result item for the details panel
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
 pub struct RemoteStoreItemRust {
     item: Map<String, Value>,
-    /// Номер записи в общем складе приобретения; 0 — не зарегистрирован.
+    /// Entry number in the shared acquisition store; 0 means not registered.
     store_id: u64,
 }
 
@@ -364,8 +428,8 @@ impl Drop for RemoteStoreItemRust {
 impl cxx_qt::Initialize for qobject::RemoteStoreItem {
     fn initialize(mut self: Pin<&mut Self>) {
         let handle = self.as_ref().get_ref().qt_thread();
-        // Ни unwrap(), ни предварительного is_destroyed(): между проверкой
-        // и постановкой объект успевает умереть.
+        // Neither unwrap() nor a preceding is_destroyed(): between the check and
+        // the queueing the object may die.
         let id = acquisition::register(Box::new(move |source_id, item_id, state, transfer| {
             let source = source_id.to_string();
             let item = item_id.to_string();
@@ -398,11 +462,13 @@ impl qobject::RemoteStoreItem {
         self.item_changed();
     }
 
-    /// Склад сообщил состояние приобретения. Наш ли это предмет и правда ли
-    /// значение изменилось — решается здесь (порт `_on_acquisition`).
+    /// The store reported an acquisition state. Whether it is our item and
+    /// whether the value really changed is decided here (a port of
+    /// `_on_acquisition`).
     ///
-    /// waywallen 0.6.0: вместе с состоянием приходит ход передачи — панель
-    /// деталей показывает принятые байты (`downloadReceivedBytes` и др.).
+    /// waywallen 0.6.0: together with the state comes the transfer progress —
+    /// the details panel shows the received bytes (`downloadReceivedBytes` and
+    /// others).
     pub fn apply_acquisition(
         mut self: Pin<&mut Self>,
         source_id: &str,
@@ -422,10 +488,11 @@ impl qobject::RemoteStoreItem {
             ("downloadTotalBytes", Value::from(transfer.total)),
         ];
         let changed = next.iter().any(|(key, value)| match self.item.get(*key) {
-            // Номера из QML приходят дробными — сравниваем как числа.
+            // Numbers from QML arrive fractional — compare them as numbers.
             Some(Value::Number(have)) => have.as_f64() != value.as_f64(),
             Some(have) => have != value,
-            // Ключа хода передачи у прежней строки нет — пустой ход не новость.
+            // The previous row has no transfer progress key — an empty progress is no
+            // news.
             None => *key == "acquisitionState" || value != &Value::Bool(false) && value != &Value::from(0),
         });
         if !changed {
@@ -442,7 +509,7 @@ impl qobject::RemoteStoreItem {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// QrLoginCancelQuery — отмена входа по QR-коду
+// QrLoginCancelQuery — cancelling a QR code login
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -505,17 +572,80 @@ impl qobject::QrLoginCancelQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// RemoteSettingsPatchQuery — точечная правка настроек источника
+// BrowserLoginCancelQuery — cancel a browser sign-in (waywallen 0.6.1)
+// ════════════════════════════════════════════════════════════════════════
+
+#[derive(Default)]
+pub struct BrowserLoginCancelQueryRust {
+    base: QueryState,
+    session_id: String,
+    pending: std::collections::BTreeSet<i64>,
+}
+
+impl_query_base!(BrowserLoginCancelQuery);
+
+impl qobject::BrowserLoginCancelQuery {
+    pub fn session_id(&self) -> QString {
+        QString::from(&self.session_id)
+    }
+
+    pub fn set_session_id(mut self: Pin<&mut Self>, value: QString) {
+        let next = value.to_string();
+        if self.session_id == next {
+            return;
+        }
+        self.as_mut().rust_mut().session_id = next;
+        self.session_id_changed();
+    }
+
+    pub fn reload(mut self: Pin<&mut Self>) {
+        if self.session_id.is_empty() {
+            return;
+        }
+        let payload = pb::BrowserLoginCancelRequest {
+            session_id: self.session_id.clone(),
+        }
+        .encode_to_vec();
+        if let Some(token) = self.as_mut().send_frame("browser_login_cancel", payload) {
+            self.rust_mut().pending.insert(token);
+        }
+    }
+
+    pub fn deliver_response(mut self: Pin<&mut Self>, token: i64, frame: &QByteArray) {
+        if !self.as_mut().rust_mut().pending.remove(&token) {
+            return;
+        }
+        let parsed = {
+            let mut rust = self.as_mut().rust_mut();
+            we_query::apply_ack(&mut rust.base, frame.as_slice())
+        };
+        match parsed {
+            Ok(signals) => self.dispatch(signals),
+            Err(_) => on_decode_error!(self),
+        }
+    }
+
+    pub fn emit_property(self: Pin<&mut Self>, name: &str) {
+        debug_assert!(false, "нет сигнала для свойства {name}");
+    }
+
+    pub fn dispatch(self: Pin<&mut Self>, signals: Vec<QuerySignal>) {
+        self.dispatch_base(signals);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// RemoteSettingsPatchQuery — a targeted edit of source settings
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
 pub struct RemoteSettingsPatchQueryRust {
     base: QueryState,
     result: we_manage::PatchResult,
-    /// token → что именно отправляли: страница получает это обратно в
-    /// `completed`, чтобы понять, чью правку подтвердили.
+    /// token → what exactly was sent: the page gets it back in `completed` to
+    /// understand whose edit was confirmed.
     pending: std::collections::BTreeMap<i64, (String, Map<String, Value>)>,
-    /// Аргументы текущего `completed`.
+    /// Arguments of the current `completed`.
     completed_args: (String, Map<String, Value>),
 }
 
@@ -532,7 +662,8 @@ impl qobject::RemoteSettingsPatchQuery {
             Value::Object(map) => map,
             _ => we_manage::empty_map(),
         };
-        // Оригинал: пустой источник или пустая карта — выход без запроса.
+        // Original: an empty source or an empty map means return without a
+        // request.
         if source.is_empty() || sent.is_empty() {
             return;
         }
@@ -548,8 +679,8 @@ impl qobject::RemoteSettingsPatchQuery {
                 .insert(token, (source, sent));
             return;
         }
-        // Соединения нет: страница считает правки «в полёте» и без
-        // `completed` навсегда останется в состоянии сохранения.
+        // No connection: the page counts the edits as "in flight" and without
+        // `completed` would stay in the saving state forever.
         let error = self.base.error.clone();
         {
             let mut rust = self.as_mut().rust_mut();
@@ -597,25 +728,25 @@ impl qobject::RemoteSettingsPatchQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// RemoteSubscriptionQuery — состояние подписки и её переключение
+// RemoteSubscriptionQuery — subscription state and toggling it
 // ════════════════════════════════════════════════════════════════════════
 
-/// Чего ждём по этому токену.
+/// What we are waiting for on this token.
 enum Await {
-    /// `subscription_status`: источник, предмет, номер поколения.
+    /// `subscription_status`: source, item, generation number.
     Status(String, String, u64),
-    /// `subscription_set`: источник, предмет, куда переключали.
+    /// `subscription_set`: source, item, what it was toggled to.
     Set(String, String, bool),
 }
 
 #[derive(Default)]
 pub struct RemoteSubscriptionQueryRust {
     base: QueryState,
-    /// Порт `m_refresh_generation`: поздний ответ прошлого запроса не
-    /// должен перебивать состояние, запрошенное позже.
+    /// A port of `m_refresh_generation`: a late answer to an earlier request
+    /// must not override a state requested later.
     generation: u64,
     pending: std::collections::BTreeMap<i64, Await>,
-    /// Аргументы сигнала, который вот-вот уйдёт.
+    /// Arguments of the signal that is about to go out.
     state_loaded: (String, String, i32, String),
     set_finished: (String, String, bool, bool, String),
 }
@@ -633,7 +764,7 @@ impl qobject::RemoteSubscriptionQuery {
         if source.is_empty() || item.is_empty() {
             return;
         }
-        // Общий склад: «уточняем…» — до отправки, как у оригинала.
+        // Shared store: "checking…" — before sending, as in the original.
         acquisition::set(&source, &item, ACQ_PENDING);
         let generation = {
             let mut rust = self.as_mut().rust_mut();
@@ -652,8 +783,8 @@ impl qobject::RemoteSubscriptionQuery {
                 .insert(token, Await::Status(source, item, generation));
             return;
         }
-        // Кадр не ушёл: у оригинала это ветка `!result` — состояние 0 и
-        // `stateLoaded` с текстом ошибки.
+        // The frame did not go out: in the original this is the `!result` branch —
+        // state 0 and `stateLoaded` with the error text.
         let error = self.base.error.clone();
         acquisition::set(&source, &item, 0);
         self.as_mut().rust_mut().state_loaded = (source, item, 0, error);
@@ -671,7 +802,7 @@ impl qobject::RemoteSubscriptionQuery {
         if source.is_empty() || item.is_empty() {
             return;
         }
-        // «Выполняем…» — до отправки.
+        // "Working…" — before sending.
         acquisition::set(&source, &item, ACQ_PENDING);
         let payload = pb::SubscriptionSetRequest {
             source_id: source.clone(),
@@ -699,7 +830,7 @@ impl qobject::RemoteSubscriptionQuery {
         };
         match awaited {
             Await::Status(source, item, generation) => {
-                // Ответ устаревшего запроса не трогает ничего, даже склад.
+                // The answer to a stale request touches nothing, not even the store.
                 if generation != self.generation {
                     return;
                 }
@@ -773,17 +904,18 @@ impl qobject::RemoteSubscriptionQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperUnsubscribeQuery — отписка от обои из панели деталей
+// WallpaperUnsubscribeQuery — unsubscribing from a wallpaper in the details panel
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
 pub struct WallpaperUnsubscribeQueryRust {
     base: QueryState,
     wallpaper_id: String,
-    /// token → какую обоину им отписывали. Оригинал сверяет её с текущей и
-    /// молча выходит при расхождении; наш Python эту проверку растерял.
+    /// token → which wallpaper was unsubscribed with it. The original compares
+    /// it with the current one and silently returns on a mismatch; our Python
+    /// lost this check.
     pending: std::collections::BTreeMap<i64, String>,
-    /// Аргумент сигнала `unsubscribed`.
+    /// Argument of the `unsubscribed` signal.
     unsubscribed_id: String,
 }
 
@@ -821,8 +953,8 @@ impl qobject::WallpaperUnsubscribeQuery {
         let Some(wanted) = self.as_mut().rust_mut().pending.remove(&token) else {
             return;
         };
-        // ⚠️ Защита от устаревшего ответа: пока он шёл, панель могла
-        // переключиться на другую обоину.
+        // Warning: protection against a stale answer: while it was on its way, the
+        // panel may have switched to another wallpaper.
         if wanted != self.wallpaper_id {
             return;
         }
@@ -832,12 +964,12 @@ impl qobject::WallpaperUnsubscribeQuery {
         };
         match parsed {
             Ok(mut signals) => {
-                // `unsubscribed` только на успехе: apply_ack доводит до
-                // Finished лишь принятую команду.
+                // `unsubscribed` only on success: apply_ack brings only an accepted
+                // command to Finished.
                 if self.base.status == we_query::STATUS_FINISHED {
                     self.as_mut().rust_mut().unsubscribed_id = wanted;
-                    // Перед статусом, как у оригинала: сигнал шлёт лямбда
-                    // разбора, а Finished выставляется ею же следом.
+                    // Before the status, as in the original: the signal is sent by the parsing
+                    // lambda, and Finished is set by it right after.
                     signals.insert(0, QuerySignal::Property("unsubscribed"));
                 }
                 self.dispatch(signals);

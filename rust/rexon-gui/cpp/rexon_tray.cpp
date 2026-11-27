@@ -31,15 +31,17 @@
 
 namespace {
 
-// Имена демона обоев — те же, что у ядра (rexon_core::waywallen_client).
-// Повторены здесь строками, потому что через C-границу их пришлось бы
-// передавать на каждый вызов; расхождение ловит тест ядра-исполнителя.
+// Names of the wallpaper daemon — the same as the core's
+// (rexon_core::waywallen_client). Repeated here as strings because passing
+// them through the C boundary would be needed on every call; a divergence
+// is caught by the core executor's test.
 const char *const DAEMON_SERVICE = "org.waywallen.waywallen.Daemon";
 const char *const DAEMON_PATH = "/org/waywallen/waywallen/Daemon";
 const char *const DAEMON_IFACE = "org.waywallen.waywallen.Daemon1";
 
-// Демон отвечает мгновенно (локальная шина); секунды хватает с запасом, а
-// вечное ожидание заморозило бы меню вместе со всем интерфейсом.
+// The daemon answers instantly (a local bus); a second is more than
+// enough, while an endless wait would freeze the menu together with the
+// whole interface.
 const int DAEMON_TIMEOUT_MS = 1000;
 
 RexonTrayClick g_on_click = nullptr;
@@ -49,37 +51,41 @@ RexonTrayAsk g_on_close = nullptr;
 
 QSystemTrayIcon *g_icon = nullptr;
 QMenu *g_menu = nullptr;
-// Главное окно двумя видами, потому что у процесса Rexon два разных хозяина
-// и оба живые: продукт на PySide6 строит виджетное `QMainWindow`, а бинарь
-// главного окна на Rust — `ApplicationWindow` целиком на QML, и виджетов в
-// нём нет НИ ОДНОГО. Один указатель на QWidget обслуживал только первого:
-// у второго `topLevelWidgets()` пуст всегда, поэтому «крестик прячет окно»,
-// подъём окна вторым запуском и переход к разделу из меню значка не работали
-// не «плохо», а никак.
+// The main window in two forms, because the Rexon process has two
+// different hosts and both are alive: the PySide6 product builds a widget
+// `QMainWindow`, while the Rust main window binary builds an
+// `ApplicationWindow` entirely in QML, with NOT A SINGLE widget in it. A
+// single pointer to a QWidget served only the first: for the second
+// `topLevelWidgets()` is always empty, so "the close button hides the
+// window", raising the window on a second launch and switching to a
+// section from the icon menu did not work "badly" but not at all.
 QPointer<QWidget> g_window;
 QPointer<QWindow> g_qwindow;
-// Сторож закрытия — чтобы не поставить второй на то же окно. QPointer, а не
-// findChild: у сторожа нет Q_OBJECT (он ему не нужен), а findChild без
-// Q_OBJECT не компилируется вовсе.
+// Close guard — so as not to install a second one on the same window. A
+// QPointer, not findChild: the guard has no Q_OBJECT (it does not need
+// one), and findChild without Q_OBJECT does not compile at all.
 QPointer<QObject> g_guard;
-// Выход уже заказан: сторож закрытия обязан пропустить последнее закрытие,
-// иначе приложение не выйдет ВООБЩЕ — сам себе запрёт дверь.
+// Quitting has already been ordered: the close guard must let the last
+// close through, otherwise the application will NEVER quit — it would lock
+// its own door.
 bool g_quitting = false;
 
-// Стопка открытых вложенных меню при сборке: вершина — то, куда сейчас
-// добавляются пункты.
+// Stack of open submenus while building: the top is where items are being
+// added right now.
 std::vector<QMenu *> g_stack;
 
-/// Сторож закрытия главного окна: крестик прячет окно, а не гасит Rexon.
+/// Close guard of the main window: the close button hides the window rather
+/// than shutting Rexon down.
 ///
-/// Фильтр событий, а не подмена closeEvent: окно создаёт не этот файл —
-/// PySide6 либо QML, — и наследовать его класс отсюда нечем. Q_OBJECT классу
-/// не нужен: eventFilter виртуален, moc здесь не при чём.
+/// An event filter rather than overriding closeEvent: the window is not
+/// created by this file — but by PySide6 or QML — and there is nothing to
+/// inherit its class from here. The class needs no Q_OBJECT: eventFilter is
+/// virtual, moc has nothing to do with it.
 ///
-/// Один сторож на оба вида окна: `QEvent::Close` приходит и виджету, и
-/// `QWindow` (у окна на QML — самому `QQuickWindow`), поэтому фильтр
-/// одинаково годен там и там, а прятать надо тем методом, который у объекта
-/// есть.
+/// One guard for both window forms: `QEvent::Close` arrives both at a widget
+/// and at a `QWindow` (for the QML window — the `QQuickWindow` itself), so
+/// the filter works equally well for both, and hiding must use whichever
+/// method the object has.
 class CloseGuard : public QObject
 {
 public:
@@ -101,23 +107,25 @@ protected:
     }
 };
 
-/// Живёт ли в процессе настоящий QApplication (а не только QGuiApplication).
+/// Whether a real QApplication (not just a QGuiApplication) lives in the
+/// process.
 ///
-/// Спрашивать обязательно, и `QApplication::instance()` для этого НЕ годится:
-/// он унаследован от QCoreApplication и в процессе с QGuiApplication честно
-/// вернёт объект приложения. Значок в лотке этому верил, шёл создавать
-/// `QMenu` — а виджет без QApplication Qt не создаёт вовсе и гасит процесс
-/// («QWidget: Cannot create a QWidget without QApplication»). То есть ответ
-/// «значка нет» превращался в падение всей программы.
+/// The question is mandatory, and `QApplication::instance()` will NOT do
+/// for it: it is inherited from QCoreApplication and in a process with a
+/// QGuiApplication honestly returns the application object. The tray icon
+/// trusted it and went on to create a `QMenu` — while Qt does not create a
+/// widget without a QApplication at all and kills the process ("QWidget:
+/// Cannot create a QWidget without QApplication"). That is, the answer "no
+/// icon" turned into a crash of the whole program.
 bool have_widgets_app()
 {
     return qobject_cast<QApplication *>(QCoreApplication::instance()) != nullptr;
 }
 
-/// Главное окно приложения-виджета: единственное верхнеуровневое QMainWindow.
+/// The main window of a widget application: the only top-level QMainWindow.
 ///
-/// Вкладки — тоже QMainWindow, но они вставлены дочерними виджетами и в
-/// `topLevelWidgets()` не попадают.
+/// Tabs are QMainWindows too, but they are inserted as child widgets and do
+/// not get into `topLevelWidgets()`.
 QWidget *find_main_widget()
 {
     if (!have_widgets_app())
@@ -130,13 +138,15 @@ QWidget *find_main_widget()
     return nullptr;
 }
 
-/// Главное окно приложения на QML: верхнеуровневое окно без окна-хозяина.
+/// The main window of a QML application: a top-level window without an
+/// owner window.
 ///
-/// Отбор именно такой, а не «первое из списка»: рядом с главным окном в
-/// `topLevelWindows()` лежат окна всплывающих списков, подсказок и меню
-/// (`Qt::Popup`, `Qt::ToolTip`), и они появляются раньше главного, стоит
-/// человеку открыть меню. Взять первое подряд — значит однажды спрятать
-/// крестиком выпадающий список вместо окна.
+/// Exactly this selection, not "the first in the list": next to the main
+/// window `topLevelWindows()` contains the windows of pop-up lists,
+/// tooltips and menus (`Qt::Popup`, `Qt::ToolTip`), and they appear before
+/// the main one as soon as the user opens a menu. Taking the first one
+/// would mean one day hiding a drop-down list with the close button
+/// instead of the window.
 QWindow *find_main_qwindow()
 {
     QWindow *hidden = nullptr;
@@ -148,19 +158,20 @@ QWindow *find_main_qwindow()
             continue;
         if (w->isVisible())
             return w;
-        // Спрятанное окно — запасной ответ: запуск с `--tray` прячет окно
-        // сразу, и после этого поднимать было бы уже нечего.
+        // A hidden window is a fallback answer: a `--tray` start hides the window
+        // at once, and after that there would be nothing to raise.
         if (hidden == nullptr)
             hidden = w;
     }
     return hidden;
 }
 
-/// Найти главное окно, если ещё не искали. false — окна в процессе нет.
+/// Find the main window if not looked up yet. false means there is no
+/// window in the process.
 ///
-/// Виджет спрашивается первым: в процессе продукта на PySide6 есть и он, и
-/// его `QWindow`, но у виджета есть `close()` со стоком воркеров вкладок, а
-/// у `QWindow` — нет.
+/// The widget is asked first: in the PySide6 product process there is both
+/// it and its `QWindow`, but the widget has a `close()` with the drain of
+/// the tabs' workers, while the `QWindow` does not.
 bool resolve_window()
 {
     if (!g_window.isNull() || !g_qwindow.isNull())
@@ -183,13 +194,14 @@ QTabWidget *find_tabs()
     return g_window->findChild<QTabWidget *>();
 }
 
-/// Полоса разделов окна на QML.
+/// Section strip of the QML window.
 ///
-/// По имени КЛАССА, а не по `objectName`: имени у полосы в QML нет (там она
-/// заведена под `id: bar`, а `id` в C++ не виден вовсе), зато класс у неё
-/// настоящий — `QQuickTabBar`, ровно так же, как виджетная полоса выше
-/// ищется по типу `QTabWidget`. Заводить полосе `objectName` ради этого
-/// значило бы править разметку окна под нужды лотка.
+/// By CLASS name, not by `objectName`: the strip has no name in QML (it is
+/// declared there with `id: bar`, and an `id` is not visible from C++ at
+/// all), but its class is real — `QQuickTabBar`, just as the widget strip
+/// above is looked up by the `QTabWidget` type. Giving the strip an
+/// `objectName` for this would mean editing the window markup for the
+/// tray's needs.
 QObject *find_qml_tabbar()
 {
     if (g_qwindow.isNull())
@@ -202,31 +214,33 @@ QObject *find_qml_tabbar()
     return nullptr;
 }
 
-/// Значок: имя из темы, а файл — если темы не хватило.
+/// Icon: a name from the theme, and a file if the theme was not enough.
 ///
-/// ⚠️ Порядок именно такой, и это НЕ мелочь оформления. Значок разложен по
-/// теме восемью НАРИСОВАННЫМИ размерами (16…512), и мелкие рисовались
-/// отдельно как раз потому, что пересчёт из крупного даёт кашу. Когда Qt
-/// получает значок из темы, он отдаёт лотку ИМЯ (`IconName`), и нужный
-/// размер берёт сама оболочка. Когда Qt получает один файл, размер у значка
-/// ровно один, и до 22 px оболочки Qt сжимает его сам — тем самым пересчётом,
-/// которого набор размеров и избегал.
+/// Warning: the order is exactly this, and it is NOT a matter of decoration.
+/// The icon is laid out in the theme in eight DRAWN sizes (16…512), and the
+/// small ones were drawn separately precisely because downscaling from a
+/// large one gives mush. When Qt gets an icon from the theme, it hands the
+/// tray the NAME (`IconName`), and the shell takes the needed size itself.
+/// When Qt gets a single file, the icon has exactly one size, and below 22
+/// px of the shell Qt shrinks it itself — the very downscaling the set of
+/// sizes avoided.
 ///
-/// Замер на стенде 18.09.2026 (headless-сеанс + свой StatusNotifierWatcher):
-/// с файлом значок уезжал на шину как `IconName=""` и картинка 22×22,
-/// пересчитанная из 256×256, — зелёное пятно вместо рисунка. Отсюда и жалоба
-/// «в лотке череп»: рисунок наш, а читается он только в нарисованном размере.
+/// Measured on the test bench 18.09.2026 (a headless session + our own
+/// StatusNotifierWatcher): with the file the icon went onto the bus as
+/// `IconName=""` and a 22×22 picture downscaled from 256×256 — a green blob
+/// instead of a drawing. Hence the complaint "a skull in the tray": the
+/// drawing is ours, but it is readable only at its drawn size.
 ///
-/// Файл остаётся страховкой и снят быть не может: в дереве разработчика
-/// пакета нет, у переносимой сборки темы может не быть вовсе, а пустой QIcon
-/// в лоток становиться нельзя — оболочка покажет пустое место, и покупатель
-/// решит, что Rexon не запустился.
+/// The file remains a safeguard and cannot be removed: the developer tree
+/// has no package, a portable build may have no theme at all, and an empty
+/// QIcon must not go into the tray — the shell would show an empty spot,
+/// and the customer would decide Rexon did not start.
 QIcon build_icon(const char *icon_file, const char *icon_theme)
 {
     if (icon_theme != nullptr && *icon_theme != '\0') {
-        // Именно hasThemeIcon, а не «QIcon::fromTheme вернул не-null»:
-        // на пропавшее имя fromTheme отдаёт живой, но пустой значок, и
-        // проверка на null пропустила бы его в лоток.
+        // Exactly hasThemeIcon, not "QIcon::fromTheme returned non-null": for a
+        // missing name fromTheme returns a live but empty icon, and a null check
+        // would let it into the tray.
         const QString name = QString::fromUtf8(icon_theme);
         if (QIcon::hasThemeIcon(name)) {
             QIcon from_theme = QIcon::fromTheme(name);
@@ -257,7 +271,7 @@ bool daemon_call(const char *method, const QList<QVariant> &args)
 
 }  // namespace
 
-// ── обратные вызовы ───────────────────────────────────────────────────────
+// ── callbacks ─────────────────────────────────────────────────────────────
 
 void rexon_tray_set_hooks(RexonTrayClick on_click, RexonTrayVoid on_menu_show,
                           RexonTrayVoid on_activate, RexonTrayAsk on_close)
@@ -268,7 +282,7 @@ void rexon_tray_set_hooks(RexonTrayClick on_click, RexonTrayVoid on_menu_show,
     g_on_close = on_close;
 }
 
-// ── значок ────────────────────────────────────────────────────────────────
+// ── icon ──────────────────────────────────────────────────────────────────
 
 bool rexon_set_app_window_icon(const char *icon_file, const char *icon_theme)
 {
@@ -289,8 +303,8 @@ bool rexon_tray_create(const char *icon_file, const char *icon_theme,
 {
     if (g_icon != nullptr)
         return true;
-    // Именно QApplication, а не «есть объект приложения»: разбор у
-    // have_widgets_app().
+    // Exactly QApplication, not "there is an application object": the analysis
+    // is at have_widgets_app().
     if (!have_widgets_app())
         return false;
 
@@ -299,8 +313,8 @@ bool rexon_tray_create(const char *icon_file, const char *icon_theme,
         return false;
 
     g_icon = new QSystemTrayIcon(icon, QApplication::instance());
-    // Подсказка одной строкой «Заголовок — текст»: у QSystemTrayIcon нет
-    // раздельных полей заголовка и тела, они есть только у showMessage.
+    // A tooltip as a single line "Title — text": QSystemTrayIcon has no
+    // separate title and body fields; only showMessage has them.
     QString tip = QString::fromUtf8(tip_title);
     const QString body = QString::fromUtf8(tip_body);
     if (!body.isEmpty())
@@ -309,16 +323,17 @@ bool rexon_tray_create(const char *icon_file, const char *icon_theme,
 
     g_menu = new QMenu();
     g_icon->setContextMenu(g_menu);
-    // Меню пересобирается ПЕРЕД каждым показом: пауза, звук, интервал и
-    // доступность демона меняются и мимо нас (вкладка обоев, сам демон).
+    // The menu is rebuilt BEFORE every show: pause, sound, the interval and
+    // daemon availability change bypassing us too (the wallpaper tab, the
+    // daemon itself).
     QObject::connect(g_menu, &QMenu::aboutToShow, g_menu, [] {
         if (g_on_menu_show != nullptr)
             g_on_menu_show();
     });
     QObject::connect(g_icon, &QSystemTrayIcon::activated, g_icon,
                      [](QSystemTrayIcon::ActivationReason reason) {
-                         // Правое нажатие оболочка обслуживает сама (меню);
-                         // остальные способы «ткнуть в значок» — окно.
+                         // A right click is handled by the shell itself (the menu); the other ways
+                         // of "poking the icon" open the window.
                          if (reason == QSystemTrayIcon::Context)
                              return;
                          if (g_on_activate != nullptr)
@@ -333,7 +348,8 @@ void rexon_tray_menu_begin()
 {
     if (g_menu == nullptr)
         return;
-    // Вложенные меню — дети g_menu, clear() снимает их вместе с действиями.
+    // Submenus are children of g_menu; clear() removes them together with the
+    // actions.
     g_menu->clear();
     g_stack.clear();
     g_stack.push_back(g_menu);
@@ -348,16 +364,16 @@ void rexon_tray_menu_add(int32_t id, int32_t kind, const char *label, bool check
     const QString text = QString::fromUtf8(label);
 
     switch (kind) {
-    case 1:  // разделитель
+    case 1:  // separator
         into->addSeparator();
         return;
-    case 4: {  // начало вложенного меню
+    case 4: {  // start of a submenu
         QMenu *sub = into->addMenu(text);
         sub->setEnabled(enabled);
         g_stack.push_back(sub);
         return;
     }
-    case 5:  // конец вложенного меню
+    case 5:  // end of a submenu
         if (g_stack.size() > 1)
             g_stack.pop_back();
         return;
@@ -372,7 +388,7 @@ void rexon_tray_menu_add(int32_t id, int32_t kind, const char *label, bool check
         action->setChecked(checked);
     }
     if (is_default) {
-        // Жирный пункт: то же действие, что у щелчка по значку.
+        // A bold item: the same action as a click on the icon.
         QFont bold = action->font();
         bold.setBold(true);
         action->setFont(bold);
@@ -397,24 +413,26 @@ void rexon_tray_notify(const char *title, const char *body)
                         g_icon->icon(), 8000);
 }
 
-// ── главное окно ──────────────────────────────────────────────────────────
+// ── main window ───────────────────────────────────────────────────────────
 
 namespace {
 
-/// Выполнить работу с окном в потоке GUI, откуда бы её ни попросили.
+/// Do the work with the window in the GUI thread, wherever it was requested
+/// from.
 ///
-/// ⭐ Из-за этой прослойки двери окна ниже можно звать из любого потока, и
-/// именно она снимает стену, из-за которой второй запуск не поднимал окно
-/// первого. Слушатель второго запуска
-/// (`rexon_core::single_instance::ActivationListener`) живёт в своём потоке,
-/// а окно у Qt разрешено трогать только в потоке GUI — раньше это значило
-/// «поднять нельзя», и подъём остался заглушкой.
+/// ⭐ Thanks to this layer the window doors below can be called from any
+/// thread, and it is what removes the wall that kept a second launch from
+/// raising the first one's window. The second-launch listener
+/// (`rexon_core::single_instance::ActivationListener`) lives in its own
+/// thread, while Qt allows touching a window only in the GUI thread —
+/// previously that meant "cannot be raised", and raising remained a stub.
 ///
-/// Ждём ответа (BlockingQueuedConnection), а не «отправил и забыл»: по
-/// ответу второй запуск решает, что сказать человеку, и соврать ему
-/// «поднял» при пустом экране нельзя — это ровно тот дефект 06.09.2026,
-/// из-за которого слушатель и появился. Взаимной блокировки нет: поток GUI
-/// ответа слушателя не ждёт никогда.
+/// We wait for the answer (BlockingQueuedConnection) rather than "send and
+/// forget": the second launch decides from the answer what to tell the
+/// user, and lying "raised" over an empty screen is not allowed — that is
+/// exactly the defect of 06.09.2026 because of which the listener appeared.
+/// There is no deadlock: the GUI thread never waits for the listener's
+/// answer.
 bool on_gui_thread(const std::function<bool()> &work)
 {
     QCoreApplication *app = QCoreApplication::instance();
@@ -432,7 +450,8 @@ bool guard_window_here()
 {
     if (!resolve_window())
         return false;
-    // Сторож — ребёнок окна: умрёт вместе с ним, второй раз не ставится.
+    // The guard is a child of the window: it dies with it and is not installed
+    // twice.
     if (g_guard.isNull()) {
         QObject *target = g_window.isNull() ? static_cast<QObject *>(g_qwindow.data())
                                             : static_cast<QObject *>(g_window.data());
@@ -440,9 +459,10 @@ bool guard_window_here()
         target->installEventFilter(guard);
         g_guard = guard;
     }
-    // Пока значок жив, закрытое окно приложение не гасит. Через
-    // QGuiApplication, а не QApplication: настройка одна и та же (статика
-    // унаследована), но виджетного приложения у окна на QML может не быть.
+    // While the icon is alive, a closed window does not shut the application
+    // down. Through QGuiApplication, not QApplication: the setting is the same
+    // (the static is inherited), but the QML window may have no widget
+    // application.
     QGuiApplication::setQuitOnLastWindowClosed(false);
     return true;
 }
@@ -453,15 +473,16 @@ bool raise_window_here()
         return false;
 
     if (QWidget *w = g_window.data()) {
-        // Порядок важен: свёрнутое окно надо сперва развернуть, иначе show()
-        // возвращает его свёрнутым же.
+        // Order matters: a minimized window must first be restored, otherwise
+        // show() returns it still minimized.
         w->setWindowState(w->windowState() & ~Qt::WindowMinimized);
         w->show();
         w->raise();
         w->activateWindow();
-        // На Wayland фокус даёт не приложение, а оболочка: requestActivate()
-        // отправляет запрос активации, который KWin исполняет по токену,
-        // выданному лотку на щелчок. Без него окно всплывает без фокуса.
+        // On Wayland focus is given not by the application but by the shell:
+        // requestActivate() sends an activation request that KWin executes with
+        // the token issued to the tray for the click. Without it the window pops
+        // up without focus.
         if (QWindow *handle = w->windowHandle())
             handle->requestActivate();
         return true;
@@ -500,9 +521,9 @@ bool select_tab_here(int32_t index)
         return true;
     }
     if (QObject *bar = find_qml_tabbar()) {
-        // `count` у полосы разделов на QML тоже есть — проверяем по нему, а
-        // не «поставим и посмотрим»: TabBar молча зажимает номер в границы,
-        // и промах по разделу выглядел бы удачей.
+        // The QML section strip has `count` too — we check against it rather than
+        // "set it and see": TabBar silently clamps the number into range, and
+        // missing the section would look like success.
         const int count = bar->property("count").toInt();
         if (index >= count)
             return false;
@@ -516,25 +537,27 @@ bool quit_here()
     g_quitting = true;
     if (g_icon != nullptr)
         g_icon->hide();
-    // Закрыть окно ПО-НАСТОЯЩЕМУ, а не просто выйти из цикла событий: в его
-    // closeEvent главное окно осушает QThread-воркеры всех построенных
-    // вкладок, и без этого шага «Выход» из меню значка обходил бы сток,
-    // который закрытие крестиком проходило всегда. Сторож выше уже снят
-    // (g_quitting), поэтому закрытие пройдёт, а не спрячет окно.
+    // Close the window FOR REAL, not just leave the event loop: in its
+    // closeEvent the main window drains the QThread workers of all built tabs,
+    // and without this step "Quit" from the icon menu would bypass the drain
+    // that closing with the close button always went through. The guard above
+    // is already removed (g_quitting), so the close goes through rather than
+    // hiding the window.
     if (!g_window.isNull())
         g_window->close();
     else if (!g_qwindow.isNull())
         g_qwindow->close();
-    // Через QCoreApplication: выход один и тот же (статика унаследована), а
-    // виджетного приложения у окна на QML нет.
+    // Through QCoreApplication: quitting is the same (the static is inherited),
+    // and the QML window has no widget application.
     QCoreApplication::quit();
     return true;
 }
 
-/// Открыть раздел (и подраздел) главного окна на QML — его же функцией
-/// `openSection(id, subpage)`. Есть ли такой раздел, решает окно; отсюда
-/// только вызов. У виджетного окна на Python этой функции нет — там свой
-/// слушатель, и ответ здесь честное false.
+/// Open a section (and a sub-page) of the QML main window — with its own
+/// function `openSection(id, subpage)`. Whether such a section exists is
+/// decided by the window; from here there is only the call. The Python
+/// widget window has no such function — it has its own listener, and the
+/// answer here is an honest false.
 bool open_section_here(const QString &id, const QString &subpage)
 {
     if (!resolve_window() || g_qwindow.isNull())
@@ -576,8 +599,9 @@ uint64_t rexon_tray_window_native(uint32_t *rgb)
     if (!resolve_window() || g_qwindow.isNull())
         return 0;
     QWindow *win = g_qwindow.data();
-    // Окно на QML — `QQuickWindow`, его фон — свойство `color` (в разметке
-    // это краска скина). Через свойство, а не через тип: без QtQuick здесь.
+    // The QML window is a `QQuickWindow`, and its background is the `color`
+    // property (in the markup this is a skin colour). Through the property, not
+    // the type: there is no QtQuick here.
     const QColor color = win->property("color").value<QColor>();
     if (rgb != nullptr)
         *rgb = color.isValid() ? (color.rgb() & 0xffffffu) : 0u;
@@ -597,9 +621,10 @@ bool rexon_tray_select_tab(int32_t index)
 
 void rexon_tray_quit()
 {
-    // Через поток GUI, как и остальные двери окна: «Выход» приезжает из меню
-    // значка (поток GUI), но им же гасит себя прогон стенда из своего потока,
-    // а закрывать окно откуда попало нельзя.
+    // Through the GUI thread, like the other window doors: "Quit" comes from
+    // the icon menu (the GUI thread), but a bench run also shuts itself down
+    // with it from its own thread, and the window must not be closed from just
+    // anywhere.
     on_gui_thread(quit_here);
 }
 
@@ -612,10 +637,11 @@ bool rexon_tray_open_section(const char *id, const char *subpage)
 
 void rexon_tray_request_quit(int32_t delay_ms)
 {
-    // НЕ ждём, в отличие от остальных дверей: зовёт слушатель передачи
-    // хозяина, и его ответ «ухожу» обязан уйти раньше, чем процесс выйдет.
-    // Выход ставится в очередь потока GUI с отсрочкой — к её концу ответ
-    // отправлен, а новый процесс ждёт освобождения замка сам.
+    // We do NOT wait, unlike the other doors: the caller is the owner handover
+    // listener, and its answer "leaving" must go out before the process exits.
+    // Quitting is queued in the GUI thread with a delay — by its end the answer
+    // is sent, and the new process waits for the lock to be released by
+    // itself.
     QCoreApplication *app = QCoreApplication::instance();
     if (app == nullptr)
         return;
@@ -626,7 +652,7 @@ void rexon_tray_request_quit(int32_t delay_ms)
 }
 
 
-// ── демон обоев ───────────────────────────────────────────────────────────
+// ── wallpaper daemon ──────────────────────────────────────────────────────
 
 bool rexon_tray_daemon_alive()
 {
@@ -656,8 +682,9 @@ int32_t rexon_tray_daemon_prop(const char *name, char *buf, int32_t buf_len)
     if (buf == nullptr || buf_len <= 0)
         return -1;
     bool ok = false;
-    // Чтение свойства демона в проекте ОДНО — то же, которым живёт вкладка
-    // обоев; второй копии разбора QDBusVariant здесь не заводим.
+    // There is ONE daemon property read in the project — the same one the
+    // wallpaper tab lives on; we do not create a second copy of QDBusVariant
+    // parsing here.
     const QString value = rexon_we_sock_daemon_property(
         QString::fromUtf8(DAEMON_SERVICE), QString::fromUtf8(DAEMON_PATH),
         QString::fromUtf8(DAEMON_IFACE), QString::fromUtf8(name), DAEMON_TIMEOUT_MS, ok);
@@ -673,9 +700,9 @@ int32_t rexon_tray_daemon_prop(const char *name, char *buf, int32_t buf_len)
 
 bool rexon_tray_grab_window(const char *path)
 {
-    // `grabToImage` из QML здесь не годится: корневой элемент окна не
-    // принадлежит движку QML, и снять окно целиком (полоса разделов, меню)
-    // можно только у самого QQuickWindow.
+    // `grabToImage` from QML will not do here: the window's root element does
+    // not belong to the QML engine, and the whole window (the section strip,
+    // the menu) can only be captured from the QQuickWindow itself.
     auto *window = qobject_cast<QQuickWindow *>(find_main_qwindow());
     if (window == nullptr || path == nullptr)
         return false;

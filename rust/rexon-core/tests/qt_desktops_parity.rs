@@ -1,22 +1,22 @@
-//! Сверка `qt_desktops.rs` — вкладки «Рабочие столы».
+//! Check of `qt_desktops.rs` — the «Desktops» tab.
 //!
-//! Эталон здесь — строки и числа, выписанные в тесты дословно. Когда-то они
-//! были выписаны из виджетной вкладки `rexon/qt_desktops/window.py`; с
-//! 02.10.2026 Python в Rexon — только архив, и эти записи — собственный
-//! эталон Rust: любой их сдвиг в ядре красит сверку, пока эталон не поправлен
-//! осознанно.
+//! The golden here is strings and numbers written into the tests verbatim. Once they
+//! were copied from the widget tab `rexon/qt_desktops/window.py`; since
+//! 02.10.2026 Python in Rexon is only an archive, and these records are Rust's own
+//! golden: any shift of them in the core turns the check red until the golden is corrected
+//! deliberately.
 //!
-//! Отдельно проверяются ЗАЩИТЫ УДАЛЕНИЯ: удалить текущий стол и удалить
-//! последний установленный нельзя ни при каких входных данных. Это то, что
-//! стоит человеку графической сессии, поэтому проверяется матрицей, а не
-//! одним случаем (правило #13).
+//! The REMOVAL PROTECTIONS are checked separately: removing the current desktop and removing
+//! the last installed one is impossible under any input. This is what
+//! costs a person their graphical session, so it is checked with a matrix, not
+//! a single case (rule #13).
 //!
-//! Осознанные отличия от прежней виджетной вкладки:
-//!   1. подсказка «Недоступен на этом дистрибутиве» больше не глотается,
-//!      когда проба доступности бросает исключение — у ядра пробы нет,
-//!      ответ вычисляется таблицей;
-//!   2. цвета статусов — в шестнадцатеричной записи (`#f59e0b` вместо
-//!      `rgba(245,158,11,1)`): QML не понимает QSS-обёртку, а цвет тот же.
+//! Deliberate differences from the former widget tab:
+//!   1. the hint «Not available on this distribution» is no longer swallowed
+//!      when the availability probe throws an exception — the core has no probe,
+//!      the answer is computed from a table;
+//!   2. status colours are in hexadecimal notation (`#f59e0b` instead of
+//!      `rgba(245,158,11,1)`): QML does not understand the QSS wrapper, and the colour is the same.
 
 mod i18n_pin;
 
@@ -25,7 +25,7 @@ use rexon_core::qt_compare as qc;
 use rexon_core::qt_desktops as qd;
 use rexon_core::system::{self, PkgFamily, DE_META};
 
-// ── Список слева ────────────────────────────────────────────────────────
+// ── The list on the left ────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
@@ -44,13 +44,13 @@ fn window_and_list_texts_match_python() {
     assert_eq!(qd::compare_back_text(), "← Рабочие столы");
 }
 
-/// Состав секции «Тайловые» продублирован в двух местах: продуктовый выбор
-/// «кого вынести и в каком порядке» — здесь, а «тайловый ли это композитор»
-/// умеет решать `appdefaults`. Разъедутся — покупатель увидит новый тайловый
-/// WM в «Классических», и заметить это можно только глазом.
+/// The contents of the «Tiling» section are duplicated in two places: the product choice
+/// "whom to pull out and in which order" is here, while "is this a tiling compositor"
+/// is decided by `appdefaults`. If they diverge, the buyer will see a new tiling
+/// WM among the «Classic» ones, and this can only be noticed by eye.
 ///
-/// Сверка идёт строго по известным ядру столам: на неизвестные id
-/// `is_tiling_wm` отвечает `true`, но таких в базе не бывает.
+/// The check goes strictly over desktops known to the core: for unknown ids
+/// `is_tiling_wm` answers `true`, but there are no such ones in the database.
 #[test]
 fn tiling_section_matches_core() {
     for de_id in system::list_de_ids() {
@@ -64,14 +64,14 @@ fn tiling_section_matches_core() {
 
 #[test]
 fn tiling_order_is_fixed() {
-    // Hyprland первым как самый популярный — порядок продуктовый, ядро его
-    // не знает.
+    // Hyprland first as the most popular — the order is a product choice, the core does
+    // not know it.
     assert_eq!(qd::TILING_IDS, &["hyprland", "niri", "sway", "river"]);
 }
 
 #[test]
 fn item_text_is_icon_and_name() {
-    // Два пробела между значком и именем — как в оригинале
+    // Two spaces between the icon and the name — as in the original
     // (`f"{icon}  {de.display_name}"`).
     assert_eq!(qd::item_text("kde"), format!("{}  KDE Plasma", qc::de_icon("kde")));
     assert_eq!(qd::item_text("xfce"), format!("{}  XFCE", qc::de_icon("xfce")));
@@ -87,7 +87,7 @@ fn item_tooltip_matches_python() {
         qd::item_tooltip("xfce", false, false),
         "Недоступен на этом дистрибутиве"
     );
-    // COSMIC — единственный стол со своей подсказкой: гибрид.
+    // COSMIC is the only desktop with its own hint: a hybrid.
     assert_eq!(
         qd::item_tooltip("cosmic", false, true),
         "Гибрид: рабочий стол с опциональным тайлингом"
@@ -111,7 +111,7 @@ fn list_rows_split_into_three_sections() {
         .collect();
     assert_eq!(sections, vec!["Классические", "Тайловые", "Композиторы с эффектами"]);
 
-    // Тайловые идут в своём порядке и ТОЛЬКО после заголовка секции.
+    // Tiling ones go in their own order and ONLY after the section header.
     let tiling_start = rows
         .iter()
         .position(|r| r.kind == "section" && r.text == "Тайловые")
@@ -124,16 +124,16 @@ fn list_rows_split_into_three_sections() {
         range.iter().filter(|r| r.kind == "de").map(|r| r.de_id.clone()).collect()
     };
     assert_eq!(ids(&rows[tiling_start + 1..effects_start]), vec!["hyprland", "niri", "sway", "river"]);
-    // Wayfire — после «Тайловых», своей секцией: окна плавающие, но это не
-    // полный рабочий стол.
+    // Wayfire comes after «Tiling», in its own section: the windows are floating, but it is not
+    // a full desktop.
     assert_eq!(ids(&rows[effects_start + 1..]), vec!["wayfire"]);
 
-    // COSMIC остаётся в «Классических» — он полноценный гибрид.
+    // COSMIC stays among the «Classic» ones — it is a full-fledged hybrid.
     let classic = ids(&rows[..tiling_start]);
     assert!(classic.iter().any(|c| c == "cosmic"), "COSMIC уехал из «Классических»");
     assert!(!classic.iter().any(|c| c == "wayfire"), "Wayfire вернулся в «Классические»");
 
-    // В списке ровно столько столов, сколько в базе — ни один не потерян.
+    // The list has exactly as many desktops as the database — not one is lost.
     let total = rows.iter().filter(|r| r.kind == "de").count();
     assert_eq!(total, DE_META.len());
 }
@@ -150,13 +150,13 @@ fn list_rows_carry_installed_flag() {
     assert!(!xfce.installed);
 }
 
-// ── Панель «Инструменты» ────────────────────────────────────────────────
+// ── The «Tools» panel ───────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn tool_buttons_match_python() {
     let _lang = i18n_pin::ru();
-    // Где копию панели снимать нечем — кнопок панели нет.
+    // Where there is nothing to take a panel backup with — there are no panel buttons.
     let common = qd::tool_buttons("xfce", false);
     assert_eq!(common.len(), 2, "без снимка панели кнопок панели быть не должно");
     assert_eq!(common[0].kind, "compare");
@@ -173,7 +173,7 @@ fn tool_buttons_match_python() {
 и доустановить недостающие"
     );
 
-    // KDE, MATE, XFCE — одни и те же кнопки с общими подписями, без «KDE».
+    // KDE, MATE, XFCE — the same buttons with common labels, without «KDE».
     for de in ["kde", "mate", "xfce"] {
         let b = qd::tool_buttons(de, true);
         assert_eq!(b.len(), 4, "{de}: добавляются две кнопки панели");
@@ -187,21 +187,21 @@ fn tool_buttons_match_python() {
     assert!(!qd::panel_restore_confirm_text().contains("KDE"));
     assert!(!qd::panel_backup_result(true, "x").text.contains("KDE"));
     assert!(!qd::panel_restore_result(true, "x").text.contains("KDE"));
-    // Чем снимается копия в каком окружении.
+    // What takes the backup in which environment.
     let have = |t: &str| ["mate-panel", "dconf", "xfce4-panel-profiles"].contains(&t);
     for de in ["kde", "mate", "xfce"] {
         assert!(qd::panel_backup_supported(de, &have), "{de}");
     }
     assert!(!qd::panel_backup_supported("xfce", &|_| false), "без xfce4-panel-profiles нечем");
     assert!(!qd::panel_backup_supported("gnome", &have));
-    // «Заменить копию?» про «Вернуть прежнюю панель» — только у MATE.
+    // «Replace the backup?» about «Restore the previous panel» — only for MATE.
     assert!(qd::panel_backup_replace_confirm(true).1.contains("Вернуть прежнюю панель"));
     assert!(!qd::panel_backup_replace_confirm(false).1.contains("Вернуть прежнюю панель"));
     assert_eq!(qd::tools_header(), "🧰 Инструменты");
     assert_eq!(qd::TOOL_BUTTON_MIN_HEIGHT, 40);
 }
 
-// ── Карточка ────────────────────────────────────────────────────────────
+// ── Card ────────────────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
@@ -214,13 +214,13 @@ fn status_view_matches_python() {
 
     let missing = qd::status_view(false, true);
     assert_eq!(missing.text, "❌ Не установлен");
-    // Оригинал красил эту строку обычным вторичным текстом.
+    // The original painted this line with ordinary secondary text.
     assert_eq!(missing.color, "");
     assert!(!missing.bold);
 
     let unavailable = qd::status_view(false, false);
     assert_eq!(unavailable.text, "⚠️ Недоступен");
-    // Тот же цвет, что `rgba(245,158,11,1)` оригинала, в записи для QML.
+    // The same colour as the original's `rgba(245,158,11,1)`, in QML notation.
     assert_eq!(unavailable.color, "#f59e0b");
     assert!(unavailable.bold);
 
@@ -246,15 +246,15 @@ fn stats_match_de_database() {
         assert_eq!(cells[1].icon, "⚡");
         assert_eq!(cells[1].value, meta.cpu_usage);
         assert_eq!(cells[1].label, "Процессор");
-        // Оценка — как в «Сравнении»: значки по оценке и «☆» до пяти, так
-        // что пустые места видны и колонка никогда не пустая.
+        // The rating — as in «Comparison»: icons by rating and «☆» up to five, so
+        // that empty places are visible and the column is never empty.
         assert_eq!(cells[2].icon, rexon_core::qt_compare::stars(meta.customizable, "⭐"));
         assert_eq!(cells[2].icon.chars().count(), 5);
         assert_eq!(cells[2].label, "Настройка");
         assert_eq!(cells[3].icon, rexon_core::qt_compare::stars(meta.gaming_friendly, "🎮"));
         assert_eq!(cells[3].icon.chars().count(), 5);
         assert_eq!(cells[3].label, "Игры");
-        // Пустое значение оригинал показывал прозрачной точкой.
+        // The original showed an empty value as a transparent dot.
         assert_eq!(cells[2].value, "");
         assert_eq!(cells[3].value, "");
     }
@@ -266,7 +266,7 @@ fn stats_match_de_database() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn description_drops_leading_emoji() {
     let _lang = i18n_pin::ru();
-    // Заголовок карточки значок уже несёт: второй раз он не нужен.
+    // The card title already carries the icon: it is not needed a second time.
     for meta in DE_META {
         let text = qd::description(meta.id);
         let first = text.split(' ').next().unwrap_or("");
@@ -276,12 +276,12 @@ fn description_drops_leading_emoji() {
             meta.id
         );
     }
-    // Cinnamon в базе начинается с 🍃 — именно его и стрипаем.
+    // Cinnamon in the database starts with 🍃 — that is exactly what we strip.
     assert_eq!(
         qd::description("cinnamon-mint"),
         "Рабочий стол Cinnamon с полным набором компонентов Linux Mint"
     );
-    // Описание без значка не режется.
+    // A description without an icon is not cut.
     assert_eq!(
         qd::description("xfce"),
         "Лёгкий и быстрый рабочий стол с низким потреблением ресурсов"
@@ -302,9 +302,9 @@ fn packages_text_matches_python() {
     );
 }
 
-/// Блок «пакеты» — честно по состоянию стола (08.10.2026: у установленного
-/// COSMIC стояло «К установке 29 пакетов», у Pantheon считались имена, а не
-/// раскрытая группа). Ответ пробной транзакции подставной.
+/// The «packages» block — honestly by the desktop's state (08.10.2026: an installed
+/// COSMIC showed «29 packages to install», for Pantheon names were counted rather than
+/// the expanded group). The trial transaction's answer is fake.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn packages_view_is_honest() {
@@ -312,7 +312,7 @@ fn packages_view_is_honest() {
     let _lang = i18n_pin::ru();
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
 
-    // Не установлен: число — что РЕАЛЬНО поставится; группа раскрыта.
+    // Not installed: the number is what will REALLY be installed; the group is expanded.
     let fresh = InstallPreview {
         groups: vec![("pantheon".into(), 62)],
         members: s(&["gala", "wingpanel", "lightdm"]),
@@ -328,13 +328,13 @@ fn packages_view_is_honest() {
     );
     assert!(v.notice.starts_with("⚠️ switchboard-plug-online-accounts сейчас не ставится"), "{}", v.notice);
 
-    // Установлен, всё на месте: никакого «к установке».
+    // Installed, everything in place: no "to install" at all.
     let full = InstallPreview { members: s(&["a", "b", "c"]), ..InstallPreview::default() };
     let v = qd::packages_view(true, Some(&full), 1, 0);
     assert_eq!(v.text, "✅ Все 3 пакета этого рабочего стола на месте");
     assert!(v.notice.is_empty());
 
-    // Установлен, часть пропала.
+    // Installed, part of it is missing.
     let gap = InstallPreview {
         members: s(&["a", "b", "c"]),
         new_packages: s(&["b", "c"]),
@@ -346,8 +346,8 @@ fn packages_view_is_honest() {
         "⚠️ Не хватает 2 пакетов: b, c\n«Проверить / Восстановить» доставит недостающее."
     );
 
-    // Установлен, пропаж нет, но для части пакетов вышли новые сборки
-    // (19.10.2026, MATE: mate-applets и mate-netbook) — это не «не хватает».
+    // Installed, nothing missing, but new builds came out for some packages
+    // (19.10.2026, MATE: mate-applets and mate-netbook) — this is not "missing".
     let outdated = InstallPreview {
         members: s(&["a", "mate-applets", "mate-netbook"]),
         updates: s(&["mate-applets", "mate-netbook"]),
@@ -361,7 +361,7 @@ fn packages_view_is_honest() {
          оно придёт с обычным обновлением системы."
     );
 
-    // И пропажа, и обновления: «не хватает» — только не установленные.
+    // Both missing packages and updates: "missing" means only the uninstalled ones.
     let both = InstallPreview {
         members: s(&["a", "b", "c"]),
         new_packages: s(&["b"]),
@@ -375,7 +375,7 @@ fn packages_view_is_honest() {
          🔄 Для 1 пакета есть обновление: c — оно придёт с обычным обновлением системы."
     );
 
-    // Без ответа пробы: установленному — состав набора, а не «к установке».
+    // Without the probe's answer: for an installed one — the set's contents, not "to install".
     let v = qd::packages_view(true, None, 29, 0);
     assert_eq!(v.text, "📦 Набор рабочего стола: 29 пакетов");
     assert_eq!(
@@ -383,11 +383,11 @@ fn packages_view_is_honest() {
         "📦 К установке 3 пакета  (все из официальных репозиториев)"
     );
 
-    // Сломано то, без чего стола нет — отказ.
+    // Something the desktop cannot exist without is broken — a refusal.
     let blocked = InstallPreview { blocked: s(&["pantheon-session"]), ..InstallPreview::default() };
     assert!(qd::packages_notice(&blocked).starts_with("⛔ Установка сейчас не пройдёт"));
 
-    // Строка версии у установленного стола.
+    // The version line of an installed desktop.
     assert_eq!(qd::installed_version_line("1.0.3", "1.0.3", Some(false)), "Установлена версия 1.0.3");
     assert_eq!(
         qd::installed_version_line("1.0.3", "1.0.5", Some(true)),
@@ -396,9 +396,9 @@ fn packages_view_is_honest() {
     assert_eq!(qd::installed_version_line("", "1.0.5", None), "");
 }
 
-/// Конфликт набора с установленным (живой случай 19.10.2026: Deepin на
-/// машине с KDE Plasma — deepin-kwin против kwin). Карточка и отказ до
-/// пароля объясняют по-человечески; удалять чужой стол Rexon не берётся.
+/// A conflict of the set with an installed one (a live case of 19.10.2026: Deepin on
+/// a machine with KDE Plasma — deepin-kwin versus kwin). The card and the refusal before
+/// the password explain it in a human way; Rexon does not take it upon itself to remove another desktop.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn package_conflict_is_explained() {
@@ -414,13 +414,13 @@ fn package_conflict_is_explained() {
          конфликтует с KWin. Чтобы поставить Deepin, придётся удалить KDE Plasma — сам Rexon \
          чужой рабочий стол не удаляет."
     );
-    // Чей пакет — неизвестно: называем пакеты, без выдуманных столов.
+    // Whose package it is — unknown: we name the packages, without made-up desktops.
     assert_eq!(
         conflict_explanation(&[c("kate", "kwrite")]),
         "⛔ Установка не пройдёт: kate конфликтует с установленным пакетом kwrite. \
          pacman пришлось бы удалить kwrite, а сам Rexon этого не делает."
     );
-    // Неважно, у кого объявлен конфликт: стол назван по установленному.
+    // It does not matter who declares the conflict: the desktop is named after the installed one.
     assert_eq!(
         conflict_explanation(&[c("power-profiles-daemon", "tuned-ppd")]),
         "⛔ Установка не пройдёт: power-profiles-daemon конфликтует с установленным пакетом \
@@ -428,9 +428,9 @@ fn package_conflict_is_explained() {
     );
 }
 
-/// Живой случай 20.10.2026 (MATE, рядом Budgie): Pantheon нужен mutter49, а
-/// mutter 51 держит Budgie. Называем столы и версии, а не «pacman пришлось
-/// бы удалить mutter»; не стол — называем, кто требует пакет.
+/// A live case of 20.10.2026 (MATE, Budgie next to it): Pantheon needs mutter49, and
+/// mutter 51 is held by Budgie. We name the desktops and versions, not "pacman would have
+/// to remove mutter"; not a desktop — we name who requires the package.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn package_conflict_names_the_holding_desktop() {
@@ -466,9 +466,9 @@ fn package_conflict_names_the_holding_desktop() {
     );
 }
 
-/// Живой дефект 15.11.2026: экран входа Pantheon тянет mutter49, а mutter 51
-/// держат GNOME и Budgie. Стол ставится без экрана входа, «Установить»
-/// активна, а текст честно говорит, чего не будет и почему.
+/// A live defect of 15.11.2026: the Pantheon login screen pulls in mutter49, and mutter 51
+/// is held by GNOME and Budgie. The desktop is installed without the login screen, «Install»
+/// is active, and the text honestly says what will not be there and why.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn optional_conflict_is_explained_and_does_not_block() {
@@ -494,7 +494,7 @@ fn optional_conflict_is_explained_and_does_not_block() {
     let view = qd::packages_view(false, Some(&p), 0, 0);
     assert!(!view.install_blocked);
     assert_eq!(view.notice, want);
-    // Не экран входа — называем пакет.
+    // Not a login screen — we name the package.
     let app = ConflictSkip { package: "some-app".into(), ..skip };
     assert_eq!(
         conflict_skip_explanation(&[app]),
@@ -503,10 +503,10 @@ fn optional_conflict_is_explained_and_does_not_block() {
     );
 }
 
-/// Конфликт с установленным (живой случай 20.10.2026: Deepin и Pantheon
-/// рядом с Budgie/KDE): «Установить» под ⛔-текстом видна, но неактивна, а
-/// «Собрать заново из исходников Arch» не предлагается — пересборка пакета
-/// конфликта не снимает. Без конфликта всё как было.
+/// A conflict with an installed one (a live case of 20.10.2026: Deepin and Pantheon
+/// next to Budgie/KDE): «Install» under the ⛔ text is visible but inactive, and
+/// «Rebuild from Arch sources» is not offered — rebuilding the package does not
+/// remove the conflict. Without a conflict everything is as before.
 #[test]
 fn conflict_disables_install_and_rebuild_offer() {
     use rexon_core::system_plan::{InstallPreview, PkgConflict};
@@ -531,7 +531,7 @@ fn conflict_disables_install_and_rebuild_offer() {
     assert!(qd::rebuild_can_help(&skipped_only));
     assert!(!qd::packages_view(false, None, 3, 0).install_blocked);
 
-    // Неактивны ровно кнопки, которые ставят набор стола.
+    // Exactly the buttons that install the desktop's set are inactive.
     let mut kinds: Vec<&str> = Vec::new();
     for (installed, current) in [(false, false), (true, false), (true, true)] {
         kinds.extend(qd::card_buttons(installed, true, current).iter().map(|b| b.kind));
@@ -542,23 +542,23 @@ fn conflict_disables_install_and_rebuild_offer() {
     assert_eq!(off, ["install", "repair"]);
 }
 
-/// Кнопки карточки по состоянию стола — с ними же и первая защита.
+/// Card buttons by the desktop's state — and with them the first protection.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn card_buttons_match_python() {
     let _lang = i18n_pin::ru();
-    // Недоступен на дистрибутиве — кнопок нет вовсе, только объяснение.
+    // Not available on the distribution — no buttons at all, only an explanation.
     assert!(qd::card_buttons(false, false, false).is_empty());
     assert!(qd::card_buttons(true, false, false).is_empty());
 
-    // Не установлен — одна кнопка установки, выделенная.
+    // Not installed — one install button, highlighted.
     let fresh = qd::card_buttons(false, true, false);
     assert_eq!(fresh.len(), 1);
     assert_eq!(fresh[0].kind, "install");
     assert_eq!(fresh[0].text, "📦 Установить");
     assert_eq!(fresh[0].style, "primary");
 
-    // Установлен и это НЕ текущий стол — три кнопки в порядке оригинала.
+    // Installed and NOT the current desktop — three buttons in the original's order.
     let other = qd::card_buttons(true, true, false);
     let kinds: Vec<&str> = other.iter().map(|b| b.kind).collect();
     assert_eq!(kinds, vec!["switch", "repair", "remove"]);
@@ -577,8 +577,8 @@ fn card_buttons_match_python() {
     assert_eq!(other[2].style, "destructive");
 }
 
-/// Кнопки карточки уходят в разметку словарём: ключи и значения вида, по
-/// которым окно выбирает обработчик и таблицу стилей, — закрытый набор.
+/// Card buttons go into the layout as a dictionary: the keys and kind values by
+/// which the window chooses the handler and the style sheet are a closed set.
 #[test]
 fn card_buttons_serialize_with_stable_keys() {
     for (installed, available, current) in [(false, true, false), (true, true, false), (true, true, true)] {
@@ -592,8 +592,8 @@ fn card_buttons_serialize_with_stable_keys() {
     }
 }
 
-/// ⛔ Первая защита: у ТЕКУЩЕГО стола кнопок «Переключиться» и «Удалить»
-/// нет вовсе. Нажать нечего — значит и остаться без графики нельзя.
+/// ⛔ The first protection: the CURRENT desktop has no «Switch» and «Remove» buttons
+/// at all. There is nothing to press — so one cannot end up without graphics either.
 #[test]
 fn current_desktop_has_no_switch_and_no_remove() {
     let current = qd::card_buttons(true, true, true);
@@ -610,11 +610,11 @@ fn version_line_matches_python() {
         qd::version_line("6.1.2-1"),
         "Доступно в вашем дистрибутиве: 6.1.2-1"
     );
-    // Версии нет — строка скрывается, а не показывает пустоту.
+    // No version — the line is hidden rather than showing emptiness.
     assert_eq!(qd::version_line(""), "");
 }
 
-// ── Карусель ────────────────────────────────────────────────────────────
+// ── Carousel ────────────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
@@ -640,41 +640,41 @@ fn carousel_texts_and_dots_match_python() {
 
 #[test]
 fn carousel_height_matches_python_formula() {
-    // Маленькое окно: работает нижний порог.
+    // A small window: the lower bound applies.
     assert_eq!(qd::carousel_height(600, 400), 320);
-    // Развёрнутый Full HD: 55% окна, но не выше 720.
+    // A maximized Full HD: 55% of the window, but not above 720.
     assert_eq!(qd::carousel_height(1080, 1600), 594);
     assert_eq!(qd::carousel_height(2000, 3000), 720);
-    // Узкая колонка: идеал 16:9 ниже потолка.
+    // A narrow column: the ideal 16:9 is below the ceiling.
     assert_eq!(qd::carousel_height(1080, 700), 393);
 }
 
-/// ⭐ Рамка снимка отдаёт высоту карточке, когда окну её не хватает.
+/// ⭐ The screenshot frame gives height to the card when the window does not have enough of it.
 ///
-/// ЧТО ЛОВИТ. На штатном окне 1100×750 подвал состояния (34 точки) срезал
-/// нижний ряд кнопок карточки: вьюпорт становился 642 точки, а карточке
-/// нужно 666, у hyprland и niri — 687. Рамка при этом стояла на своём поле
-/// 320 и не уступала ни точки, потому что 16:9 от её ширины (553 точки)
-/// даёт 311 — меньше пола. Сторож держит и новое поведение, и обе его
-/// границы: без нужды рамка не ужимается, а ниже предела не опускается.
+/// WHAT IT CATCHES. On the standard 1100×750 window the status footer (34 points) cut off
+/// the bottom row of the card's buttons: the viewport became 642 points, while the card
+/// needs 666, and hyprland and niri need 687. The frame meanwhile stood at its floor of
+/// 320 and did not yield a single point, because 16:9 of its width (553 points)
+/// gives 311 — less than the floor. The guard holds both the new behaviour and both of its
+/// bounds: without need the frame does not shrink, and it does not go below the limit.
 #[test]
 fn carousel_frame_yields_height_to_card_buttons() {
-    // Замер 19.09.2026, штатное окно 1100×750, карточка шириной 569.
+    // Measurement of 19.09.2026, the standard 1100×750 window, a card 569 wide.
     let full = qd::carousel_height(676, 569 - 2 * qd::CAROUSEL_FRAME_PADDING_H);
     assert_eq!(full, qd::CAROUSEL_MIN_HEIGHT, "рамка стоит на своём поле");
 
-    // Высоты хватает — рамка не трогается.
+    // Enough height — the frame is not touched.
     assert_eq!(qd::carousel_height_fitted(full, 330), full);
     assert_eq!(qd::carousel_height_fitted(full, full), full);
 
-    // Подвал состояния забрал 34 точки: рамке остаётся 296, их она и
-    // отдаёт — ровно столько, сколько не хватает, не больше.
+    // The status footer took 34 points: the frame is left with 296, and that is what it
+    // gives — exactly as much as is missing, no more.
     assert_eq!(qd::carousel_height_fitted(full, 296), 296);
-    // Худшая из одиннадцати карточек (hyprland, niri): описание длиннее на
-    // строку, рамке остаётся 275.
+    // The worst of the eleven cards (hyprland, niri): the description is a line
+    // longer, the frame is left with 275.
     assert_eq!(qd::carousel_height_fitted(full, 275), 275);
 
-    // Предел: дальше рамка не уступает, даже если просят больше.
+    // The limit: beyond it the frame does not yield, even if asked for more.
     assert_eq!(qd::CAROUSEL_MAX_SQUEEZE, 72);
     let floor = full - qd::CAROUSEL_MAX_SQUEEZE;
     assert_eq!(qd::carousel_height_fitted(full, floor - 1), floor);
@@ -682,8 +682,8 @@ fn carousel_frame_yields_height_to_card_buttons() {
     assert_eq!(qd::carousel_height_fitted(full, -100), floor);
     assert!(floor > 0, "рамка не имеет права исчезнуть: {floor}");
 
-    // Разметка спрашивает ядро, а не считает сама, и ширину рамки берёт от
-    // НЕужатой высоты: посчитай её от ужатой — и выйдет «храповик».
+    // The layout asks the core rather than computing by itself, and takes the frame width from the
+    // UNshrunk height: compute it from the shrunk one — and you get a "ratchet".
     const QML: &str = include_str!("../../rexon-gui/qml/DesktopsPage.qml");
     assert!(
         QML.contains("page.carouselHeightFitted(frame.fullHeight, frame.room)"),
@@ -699,18 +699,18 @@ fn carousel_frame_yields_height_to_card_buttons() {
     );
 }
 
-/// ⭐ «Увеличить во весь экран» открывает ОКНО во весь экран.
+/// ⭐ «Enlarge to full screen» opens a full-screen WINDOW.
 ///
-/// ЧТО ЛОВИТ. Увеличение снимка рисовалось `Popup`'ом размером во вкладку:
-/// поверх картинки оставались полоса разделов и подвал состояния, а поля
-/// вокруг были полями страницы — то есть подпись кнопки обещала одно, а
-/// показывала другое. У виджетного оригинала это `QDialog` без рамки,
-/// модальный, с `showFullScreen()` (`rexon/qt_desktops/window.py`).
+/// WHAT IT CATCHES. The screenshot enlargement was drawn by a tab-sized `Popup`:
+/// the section bar and the status footer stayed over the picture, and the margins
+/// around it were the page margins — i.e. the button label promised one thing and
+/// showed another. In the widget original this is a frameless, modal `QDialog`
+/// with `showFullScreen()` (`rexon/qt_desktops/window.py`).
 ///
-/// Сторож читает разметку и держит все четыре условия: окно верхнего
-/// уровня, полный экран с запасным размером по экрану, модальность и выход
-/// по Esc. Esc назван отдельно: у `Popup` его закрывал `closePolicy`, у
-/// окна такого свойства нет, и при переносе клавиша молча пропала бы.
+/// The guard reads the layout and holds all four conditions: a top-level
+/// window, full screen with a fallback size by the screen, modality and exit
+/// by Esc. Esc is named separately: for a `Popup` it was handled by `closePolicy`, a
+/// window has no such property, and during the move the key would have silently disappeared.
 #[test]
 fn screenshot_zoom_opens_a_real_fullscreen_window() {
     const QML: &str = include_str!("../../rexon-gui/qml/DesktopsPage.qml");
@@ -724,14 +724,14 @@ fn screenshot_zoom_opens_a_real_fullscreen_window() {
     assert!(QML.contains("flags: Qt.Window | Qt.FramelessWindowHint"), "у просмотра рамка окна");
     assert!(QML.contains("modality: Qt.ApplicationModal"), "просмотр не модальный");
 
-    // Запасной размер: `showFullScreen()` — просьба к оконному менеджеру, и
-    // там, где её не исполняют, окно осталось бы размером со своё
-    // содержимое (замер на стенде без оконного менеджера: 160×150).
+    // The fallback size: `showFullScreen()` is a request to the window manager, and
+    // where it is not fulfilled the window would stay the size of its
+    // contents (measured on a bench without a window manager: 160×150).
     assert!(QML.contains("zoom.width = Screen.width;"), "нет запасного размера по экрану");
     assert!(QML.contains("zoom.height = Screen.height;"), "нет запасного размера по экрану");
 
-    // Выход по Esc и одна точка выхода на все четыре пути: щелчок по
-    // снимку, крестик, Esc и Q.
+    // Exit by Esc and one exit point for all four paths: a click on
+    // the screenshot, the cross, Esc and Q.
     assert!(QML.contains("case Qt.Key_Escape:"), "Esc больше не закрывает просмотр");
     assert_eq!(
         QML.matches("zoom.hideZoom()").count(),
@@ -745,7 +745,7 @@ fn screenshot_zoom_opens_a_real_fullscreen_window() {
     );
 }
 
-// ── Тексты операций ─────────────────────────────────────────────────────
+// ── Operation texts ─────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
@@ -760,15 +760,15 @@ Rexon попросит пароль администратора."
     );
     assert_eq!(t.operation_title, "Установка KDE Plasma");
     assert_eq!(t.done_title, "Установка завершена");
-    // Обычный итог — выход из сеанса: перезагрузка столу не нужна (живая
-    // установка River 24.10.2026 звала перезагружаться зря).
+    // The usual result is logging out of the session: the desktop does not need a reboot (the live
+    // River install on 24.10.2026 asked to reboot for nothing).
     assert_eq!(
         t.done_text,
         "<b>KDE Plasma</b> установлен.\n\
 Выйдите из сеанса и выберите KDE Plasma на экране входа."
     );
-    // Перезагрузка — только когда исполнитель так решил по плану установки
-    // (ядро, модуль ядра, впервые включённый экран входа).
+    // A reboot only when the executor decided so from the install plan
+    // (a kernel, a kernel module, a login screen enabled for the first time).
     assert_eq!(
         t.done_text_restart,
         "<b>KDE Plasma</b> установлен.\n\
@@ -802,9 +802,9 @@ fn repair_texts_match_python() {
     );
 }
 
-/// Тексты переключения у обеих вкладок дословно одни. Своей копии вкладка
-/// «Рабочие столы» не заводит — берёт `qt_compare::switch_texts`; этот тест
-/// сторожит, что там они и остались.
+/// The switch texts of both tabs are literally the same. The «Desktops» tab
+/// does not keep its own copy — it takes `qt_compare::switch_texts`; this test
+/// guards that they stayed there.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn switch_texts_are_shared_with_compare_tab() {
@@ -831,7 +831,7 @@ fn repair_current_unknown_texts_match_python() {
     );
 }
 
-// ── ⛔ Защиты удаления ──────────────────────────────────────────────────
+// ── ⛔ Removal protections ──────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
@@ -888,8 +888,8 @@ fn remove_other_desktop_asks_confirmation() {
     assert_eq!(qd::remove_operation_title("XFCE"), "Удаление XFCE");
 }
 
-/// Матрица обеих защит по ВСЕМ столам базы: удаление разрешается ровно
-/// тогда, когда стол не текущий и есть хотя бы один другой установленный.
+/// The matrix of both protections over ALL desktops of the database: removal is allowed exactly
+/// when the desktop is not the current one and there is at least one other installed one.
 #[test]
 fn remove_guards_hold_for_every_desktop() {
     for meta in DE_META {
@@ -903,8 +903,8 @@ fn remove_guards_hold_for_every_desktop() {
                     "стол «{}», текущий «{current}», других установлено {others}",
                     meta.id
                 );
-                // Отказ ВСЕГДА объясняет, что делать: молчаливая кнопка
-                // здесь хуже, чем отказ.
+                // A refusal ALWAYS explains what to do: a silent button
+                // here is worse than a refusal.
                 if !plan.allowed() {
                     assert!(!plan.text.is_empty());
                     assert!(!plan.title.is_empty());
@@ -914,7 +914,7 @@ fn remove_guards_hold_for_every_desktop() {
     }
 }
 
-// ── Копия панели (KDE, MATE, XFCE) ─────────────────────────────────────
+// ── Panel backup (KDE, MATE, XFCE) ─────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
@@ -950,28 +950,28 @@ fn panel_texts_match_python() {
     assert_eq!(restore_fail.text, "Восстановление не выполнено: копий нет");
 }
 
-// ── Общие сторожа ───────────────────────────────────────────────────────
+// ── Common guards ───────────────────────────────────────────────────────
 
-/// У каждого стола базы есть имя и описание: карточка без них выглядела бы
-/// поломкой продукта, а не «нет данных».
+/// Every desktop of the database has a name and a description: a card without them would look like
+/// a product breakage, not like "no data".
 #[test]
 fn every_desktop_has_name_and_description() {
     for meta in DE_META {
         assert!(!qd::display_name(meta.id).is_empty(), "{}", meta.id);
         assert!(!qd::description(meta.id).is_empty(), "{}", meta.id);
     }
-    // Неизвестный стол показывается своим идентификатором, а не пустотой.
+    // An unknown desktop is shown by its identifier, not by emptiness.
     assert_eq!(qd::display_name("нет-такого"), "нет-такого");
 }
 
-/// Строка «Доступно в твоём дистрибутиве» обязана заказываться тогда, когда
-/// у страницы появился объект побочных действий.
+/// The «Available in your distribution» line must be requested when
+/// the page gets the side-actions object.
 ///
-/// Хозяин кладёт его свойством уже ПОСЛЕ того, как разметка собралась: в
-/// `Component.onCompleted` он ещё null, и запрос версии оттуда уходит в
-/// пустоту. Без обработчика `onActionsChanged` строка не появлялась никогда
-/// — вкладка молча теряла ответ пакетного менеджера. Сторож читает саму
-/// разметку: проверить это на текстах ядра нельзя.
+/// The host sets it as a property only AFTER the layout has been built: in
+/// `Component.onCompleted` it is still null, and a version request from there goes into
+/// nowhere. Without the `onActionsChanged` handler the line never appeared
+/// — the tab silently lost the package manager's answer. The guard reads the
+/// layout itself: this cannot be checked on the core's texts.
 #[test]
 fn version_is_requested_when_actions_arrive() {
     let qml_path = concat!(
@@ -979,8 +979,8 @@ fn version_is_requested_when_actions_arrive() {
         "/../rexon-gui/qml/DesktopsPage.qml"
     );
     let qml = std::fs::read_to_string(qml_path).expect("нет разметки DesktopsPage.qml");
-    // Обработчик спрашивает и версию, и состав пакетов (пробная транзакция
-    // ходит через тот же объект действий и так же теряется без него).
+    // The handler asks for both the version and the package set (the trial transaction
+    // goes through the same actions object and gets lost without it the same way).
     let handler = qml
         .split_once("onActionsChanged: {")
         .and_then(|(_, rest)| rest.split_once('}'))
@@ -997,10 +997,10 @@ fn version_is_requested_when_actions_arrive() {
     );
 }
 
-// ── Краски и размеры разметки ───────────────────────────────────────────
+// ── Layout colours and sizes ────────────────────────────────────────────
 
-/// Числа таблицы стилей оригинала, выписанные сюда дословно: QML красится
-/// ими через ядро, и любой сдвиг в ядре красит сверку.
+/// The numbers of the original's style sheet, written here verbatim: QML is painted
+/// with them via the core, and any shift in the core turns the check red.
 #[test]
 fn layout_numbers_match_python() {
     assert_eq!(qd::LIST_MARGINS, (12, 16, 8, 12));
@@ -1045,7 +1045,7 @@ fn layout_numbers_match_python() {
     assert_eq!(qd::ZOOM_BUTTON_HOVER_QSS, "rgba(0,0,0,0.85)");
     assert_eq!((qd::OVERLAY_MARGIN, qd::ARROW_SIZE, qd::ARROW_POINT_SIZE), (10, 40, 16));
     assert_eq!((qd::ZOOM_BUTTON_SIZE, qd::ZOOM_BUTTON_POINT_SIZE), (44, 20));
-    // Скругления в QSS: 20 у стрелки, 22 у лупы, 24 у кнопок просмотра.
+    // Roundings in QSS: 20 for the arrow, 22 for the magnifier, 24 for the view buttons.
     assert_eq!(qd::round_radius(qd::ARROW_SIZE), 20);
     assert_eq!(qd::round_radius(qd::ZOOM_BUTTON_SIZE), 22);
     assert_eq!(qd::round_radius(qd::ZOOM_ARROW_SIZE), 24);
@@ -1056,9 +1056,9 @@ fn layout_numbers_match_python() {
     assert_eq!(qd::ZOOM_HINT_PADDING, 8);
 }
 
-/// Потолок правой панели — формула `_sync_detail_width` оригинала:
-/// `h = max(320, min(0.55·окно, 720))`, `ideal_w = h·16/9 + 16`,
-/// потолок = 12 + ideal_w + 24 + 20.
+/// The right panel's ceiling is the original's `_sync_detail_width` formula:
+/// `h = max(320, min(0.55·window, 720))`, `ideal_w = h·16/9 + 16`,
+/// ceiling = 12 + ideal_w + 24 + 20.
 #[test]
 fn detail_panel_max_width_matches_python_formula() {
     for (window_h, want) in [(600, 12 + (330 * 16 / 9 + 16) + 44), (400, 12 + (320 * 16 / 9 + 16) + 44), (2000, 12 + (720 * 16 / 9 + 16) + 44)] {
@@ -1067,14 +1067,14 @@ fn detail_panel_max_width_matches_python_formula() {
     assert_eq!(qd::detail_panel_max_width(6200), 1352);
 }
 
-/// QSS-краски переводятся в QML-запись без потерь: то, чем красится
-/// страница, и то, что выписано из оригинала, — один и тот же цвет.
+/// QSS colours are converted to QML notation without loss: what the page is painted
+/// with and what was copied from the original are one and the same colour.
 #[test]
 fn qss_colors_translate_for_qml() {
     use rexon_core::ui_base::{css_color_to_qml, neutral_rgba};
-    // ⚠️Доли усечены, как их усекает разбор таблиц стилей Qt: 0.4 → 0x66,
+    // ⚠️ Fractions are truncated, the way Qt's style sheet parser truncates them: 0.4 → 0x66,
     // 0.85 → 0xd8, 0.75 → 0xbf, 0.55 → 0x8c, 0.6 → 0x99, 0.25 → 0x3f,
-    // 0.05 → 0x0c. Округление давало краску на ступень гуще виджетной.
+    // 0.05 → 0x0c. Rounding gave a colour one step denser than the widget one.
     assert_eq!(css_color_to_qml(qd::LIST_SELECTED_QSS), "#663b82f6");
     assert_eq!(css_color_to_qml(qd::PRIMARY_BUTTON_QSS), "#d83b82f6");
     assert_eq!(css_color_to_qml(qd::PRIMARY_BUTTON_HOVER_QSS), "#ff3b82f6");
@@ -1085,8 +1085,8 @@ fn qss_colors_translate_for_qml() {
     assert_eq!(css_color_to_qml(&neutral_rgba(qd::TOOLS_PANEL_BG_ALPHA)), "#0c7f7f7f");
 }
 
-/// Цвет заголовка секции: роль PlaceholderText скина, а у системного скина
-/// — вторичный текст с прозрачностью плана палитры.
+/// The section header colour: the skin's PlaceholderText role, and for the system skin
+/// — secondary text with the palette plan's transparency.
 #[test]
 fn placeholder_text_color_follows_skin() {
     use rexon_core::ui_base::placeholder_text_color;
@@ -1095,22 +1095,22 @@ fn placeholder_text_color_follows_skin() {
     assert_eq!(placeholder_text_color("system"), "#beffffff");
 }
 
-/// Делёж ширины окна между панелями — ровно как у QSplitter оригинала.
+/// Splitting the window width between the panels — exactly as the original's QSplitter does.
 ///
-/// ⚠️ ЧИСЛА НЕ ВЫВЕДЕНЫ, А СНЯТЫ. Замер 05.09: виджетная вкладка строилась
-/// семнадцать раз на разной ширине окна (высота 6400, скин steam_dark), и
-/// после показа читался `QSplitter.sizes()`. Оттуда обе поправки к прежней
-/// формуле: рукоятки забирают своё ДО дележа, а лишнее место делится
-/// пропорционально стартовым ширинам 170:800, а не растяжке 1:4. Прежняя
-/// формула ошибалась на окне стенда на 8 точек, и вся панель вместе с
-/// разделителем уезжала вправо.
+/// ⚠️ THE NUMBERS ARE NOT DERIVED BUT MEASURED. Measurement of 05.09: the widget tab was built
+/// seventeen times at different window widths (height 6400, skin steam_dark), and
+/// after showing `QSplitter.sizes()` was read. Both corrections to the former
+/// formula come from there: the handles take their share BEFORE splitting, and the extra space is split
+/// proportionally to the starting widths 170:800, not by the 1:4 stretch. The former
+/// formula was off by 8 points on the bench window, and the whole panel together with
+/// the splitter moved to the right.
 #[test]
 fn split_widths_follow_splitter_stretch() {
     assert_eq!(qd::DETAIL_INITIAL_WIDTH, 800);
     assert_eq!((qd::SPLIT_STRETCH_TOOLS, qd::SPLIT_STRETCH_DETAIL), (1, 4));
     assert_eq!((qd::SPLIT_HANDLE_WIDTH, qd::SPLIT_HANDLE_COUNT), (1, 2));
 
-    // Снято с оригинала: (ширина окна, список, инструменты, карточка).
+    // Measured on the original: (window width, list, tools, card).
     let measured = [
         (960, 240, 160, 558),
         (1000, 240, 160, 598),
@@ -1136,7 +1136,7 @@ fn split_widths_follow_splitter_stretch() {
             (list, tools, detail),
             "окно {total}"
         );
-        // Панели плюс рукоятки — ровно ширина окна, без щелей и нахлёста.
+        // Panels plus handles are exactly the window width, without gaps or overlap.
         assert_eq!(
             list + tools + detail + qd::SPLIT_HANDLE_WIDTH * qd::SPLIT_HANDLE_COUNT,
             total,
@@ -1144,9 +1144,9 @@ fn split_widths_follow_splitter_stretch() {
         );
     }
 
-    // Наименьшая ширина панели не пробивается даже на самом узком окне.
+    // The minimum panel width is not broken even on the narrowest window.
     assert!(qd::split_widths(960, 6400).1 >= qd::TOOLS_MIN_WIDTH);
-    // Потолок карточки остаётся за `detail_panel_max_width` при любой высоте.
+    // The card's ceiling stays at `detail_panel_max_width` at any height.
     let (list, tools, detail) = qd::split_widths(2400, 1080);
     assert_eq!(list, 240);
     assert_eq!(detail, qd::detail_panel_max_width(1080));
@@ -1156,62 +1156,62 @@ fn split_widths_follow_splitter_stretch() {
     );
 }
 
-/// Пол СРЕДНЕЙ панели (с 25.10 — «Как в дистрибутиве», прежде
-/// «Инструменты») считается по её содержимому, а не по одному числу:
-/// подписи обязаны читаться целиком на штатном минимуме окна.
+/// The floor of the MIDDLE panel (since 25.10 — «Distro looks», formerly
+/// «Tools») is computed from its contents, not from one number:
+/// the labels must be readable in full at the window's standard minimum.
 ///
-/// ⚠️ ЧИСЛА СНЯТЫ, А НЕ ВЫВЕДЕНЫ. Замер 18.09 на стенде (скин steam_dark,
-/// окно 1100×750): у виджетного оригинала сплиттер отдавал панели ровно 160
-/// точек, а сам Qt считал её наименьший размер по содержимому —
-/// `tools.minimumSizeHint().width() == 165` при самой длинной кнопке 149.
+/// ⚠️ THE NUMBERS ARE MEASURED, NOT DERIVED. Measurement of 18.09 on the bench (skin steam_dark,
+/// window 1100×750): in the widget original the splitter gave the panel exactly 160
+/// points, while Qt itself computed its minimum size from the contents —
+/// `tools.minimumSizeHint().width() == 165` with the longest button at 149.
 #[test]
 fn looks_panel_min_width_follows_its_content() {
-    // Содержимое оригинала: 149 плюс поля 8+8 — ровно его 165.
+    // The original's contents: 149 plus margins 8+8 — exactly its 165.
     assert_eq!(qd::looks_panel_min_width(142, 149), 165);
-    // Длиннее: 216 плюс те же поля.
+    // Longer: 216 plus the same margins.
     assert_eq!(qd::looks_panel_min_width(142, 216), 232);
-    // Пол оригинала не пробивается, даже если мерить нечего.
+    // The original's floor is not broken even if there is nothing to measure.
     assert_eq!(qd::looks_panel_min_width(0, 0), qd::TOOLS_MIN_WIDTH);
     assert_eq!(qd::looks_panel_min_width(-5, -5), qd::TOOLS_MIN_WIDTH);
-    // Колонка шире своего потолка панель не раздвигает.
+    // A column wider than its ceiling does not push the panel apart.
     assert_eq!(
         qd::looks_panel_min_width(0, 900),
         qd::LOOKS_COLUMN_MAX_WIDTH + qd::TOOLS_MARGINS.0 + qd::TOOLS_MARGINS.2
     );
-    // Заголовок считается наравне с колонкой, но потолок колонки на него не
-    // распространяется.
+    // The title counts on a par with the column, but the column's ceiling does not
+    // apply to it.
     assert_eq!(qd::looks_panel_min_width(300, 100), 316);
 
-    // Штатный минимум окна: сплиттер оригинала даёт панели 160, и подписи
-    // в них не помещаются — пол по содержимому обязан быть больше.
+    // The window's standard minimum: the original's splitter gives the panel 160, and the labels
+    // do not fit in it — the content-based floor must be larger.
     assert!(qd::looks_panel_min_width(142, 216) > qd::split_widths(1100, 750).1);
 }
 
-/// ⭐ «Инструменты» живут в СРЕДНЕЙ панели, справа от «Как в
-/// дистрибутиве» (решение владельца 28.10.2026), а на узкой панели —
-/// под ним тем же столбиком. Полосы внизу карточки больше нет.
+/// ⭐ «Tools» live in the MIDDLE panel, to the right of «Distro
+/// looks» (the owner's decision of 28.10.2026), and on a narrow panel —
+/// below it in the same column. There is no longer a strip at the bottom of the card.
 #[test]
 fn tools_sit_right_of_looks_or_below_when_narrow() {
-    // Окно 1920: средняя панель ~629 точек — оба блока рядом.
+    // A 1920 window: the middle panel is ~629 points — both blocks side by side.
     let wide = qd::split_widths(1920, 1000).1 - qd::TOOLS_MARGINS.0 - qd::TOOLS_MARGINS.2;
     assert!(qd::looks_tools_side_by_side(wide, 200, 216), "панель {wide}");
     let half = qd::looks_tools_block_width(wide, true);
     assert_eq!(half * 2 + qd::LOOKS_TOOLS_GAP, wide - (wide - qd::LOOKS_TOOLS_GAP) % 2);
-    // Окно 1280: панели не хватает на два столбика — «Инструменты» под
-    // «Как в дистрибутиве», каждый блок во всю ширину.
+    // A 1280 window: the panel is not wide enough for two columns — «Tools» below
+    // «Distro looks», each block at full width.
     let narrow = qd::split_widths(1280, 700).1 - qd::TOOLS_MARGINS.0 - qd::TOOLS_MARGINS.2;
     assert!(!qd::looks_tools_side_by_side(narrow, 200, 216), "панель {narrow}");
     assert_eq!(qd::looks_tools_block_width(narrow, false), narrow);
-    // Ровно на границе — рядом; на точку уже — столбиком.
+    // Exactly on the boundary — side by side; one point narrower — in a column.
     let edge = 2 * 216 + qd::LOOKS_TOOLS_GAP;
     assert!(qd::looks_tools_side_by_side(edge, 150, 216));
     assert!(!qd::looks_tools_side_by_side(edge - 1, 150, 216));
-    // Колонка шире потолка панель не «требует» бесконечно.
+    // A column wider than the ceiling does not "demand" the panel endlessly.
     assert!(qd::looks_tools_side_by_side(1000, 5000, 5000));
     assert_eq!(qd::looks_tools_block_width(-5, true), 0);
 
-    // Разметка: блок «Инструменты» внутри средней панели, решает ядро,
-    // карточка во всю высоту, полосы под ней нет.
+    // Layout: the «Tools» block inside the middle panel, the core decides,
+    // the card at full height, no strip under it.
     const QML: &str = include_str!("../../rexon-gui/qml/DesktopsPage.qml");
     assert!(!QML.contains("toolsBar"), "полоса «Инструменты» снова под карточкой");
     assert!(QML.contains("objectName: \"toolsBlock\""), "нет блока «Инструменты»");
@@ -1223,19 +1223,19 @@ fn tools_sit_right_of_looks_or_below_when_narrow() {
     assert!(QML.contains("page.toolsNotice"), "пропала строка причины под кнопками");
 }
 
-/// Левая распорка карточки — ровно как у обёртки оригинала.
+/// The card's left spacer — exactly as in the original's wrapper.
 ///
-/// ⚠️ ЧИСЛА НЕ ВЫВЕДЕНЫ, А СНЯТЫ. Замер 05.09: виджетная вкладка строилась
-/// на одиннадцати ширинах окна (высота 6000, скин steam_dark), и после
-/// показа читалась геометрия обоих элементов обёртки правой панели —
-/// распорки и карточки. Пока распорки в QML не было, содержимое карточки
-/// начиналось на 10 точек левее оригинала.
+/// ⚠️ THE NUMBERS ARE NOT DERIVED BUT MEASURED. Measurement of 05.09: the widget tab was built
+/// at eleven window widths (height 6000, skin steam_dark), and after
+/// showing the geometry of both elements of the right panel wrapper was read —
+/// the spacer and the card. While QML had no spacer, the card's contents
+/// started 10 points to the left of the original.
 #[test]
 fn card_left_spacer_follows_wrapper_stretch() {
     assert_eq!(qd::CARD_WRAP_STRETCH, 100);
     assert_eq!(qd::CARD_MIN_WIDTH, 924);
 
-    // Снято с оригинала: (ширина вьюпорта, распорка).
+    // Measured on the original: (viewport width, spacer).
     let measured = [
         (537, 0),
         (577, 0),
@@ -1255,37 +1255,37 @@ fn card_left_spacer_follows_wrapper_stretch() {
             spacer,
             "вьюпорт {viewport}"
         );
-        // Карточка с распоркой закрывают вьюпорт целиком, без щели.
+        // The card with the spacer cover the viewport entirely, without a gap.
         assert!(viewport - qd::card_left_spacer(viewport) > 0);
     }
 
-    // Пустая и отрицательная ширина распорки не дают.
+    // Empty and negative widths give no spacer.
     assert_eq!(qd::card_left_spacer(0), 0);
     assert_eq!(qd::card_left_spacer(-100), 0);
 }
 
 
-/// Рукоятка сплиттера красится долей нейтрального серого из ядра, а не
-/// остаётся светло-серой от стиля QtQuick Basic.
+/// The splitter handle is painted with a share of neutral grey from the core, rather than
+/// staying light grey from the QtQuick Basic style.
 #[test]
 fn split_handle_is_painted_from_the_core() {
     use rexon_core::ui_base::{blend_css_over, css_color_to_qml};
-    // Замер 05.09 на живой Qt: (73,83,96) на фоне страницы (27,40,56).
+    // Measurement of 05.09 on live Qt: (73,83,96) on the page background (27,40,56).
     assert_eq!(
         blend_css_over("#1b2838", qd::split_handle_qss(true)),
         "#495360"
     );
     assert_eq!((0x49, 0x53, 0x60), (73, 83, 96));
-    // В QML краска уходит готовой записью `#aarrggbb`, а не строкой QSS:
-    // `rgba(...)` разметка читает как недопустимый цвет и рисует чёрным.
+    // In QML the colour goes as a ready `#aarrggbb` record, not as a QSS string:
+    // the layout reads `rgba(...)` as an invalid colour and paints it black.
     assert_eq!(css_color_to_qml(qd::split_handle_qss(true)), "#33ffffff");
     assert_eq!(css_color_to_qml(qd::split_handle_qss(false)), "#33000000");
 }
 
-/// ⭐ Сторож языка окна операции над столом: вопросы, отказы и итоги
-/// установки, проверки, смены и удаления — простым русским для покупателя.
-/// Прежние тексты говорили «DE», «logout/reboot», «через pkexec», «бэкап»;
-/// следующая такая строка покраснеет здесь, а не в отзыве покупателя.
+/// ⭐ Guard of the language of the desktop operation window: questions, refusals and results
+/// of installing, checking, switching and removing — in plain Russian for the buyer.
+/// The former texts said «DE», «logout/reboot», «через pkexec», «бэкап»;
+/// the next such line will go red here, not in a buyer's review.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn operation_texts_have_no_jargon() {
@@ -1319,7 +1319,7 @@ fn operation_texts_have_no_jargon() {
         for jargon in ["pkexec", "polkit", "install_de", "хелпер", "logout", "reboot", "бэкап"] {
             assert!(!text.contains(jargon), "в тексте для покупателя «{jargon}»: {text}");
         }
-        // «DE» — только как отдельное слово: «KDE Plasma» не в счёт.
+        // «DE» only as a separate word: «KDE Plasma» does not count.
         assert!(
             !text.split(|c: char| !c.is_alphanumeric()).any(|w| w == "DE"),
             "в тексте для покупателя «DE» вместо «рабочий стол»: {text}"
@@ -1327,14 +1327,14 @@ fn operation_texts_have_no_jargon() {
     }
 }
 
-/// ⭐ Тон кнопок окна операции над столом один на обе страницы.
+/// ⭐ The tone of the desktop operation window's buttons is the same on both pages.
 ///
-/// Окно (`DeOperationDialog.qml`) общее у «Рабочих столов» и «Сравнения
-/// DE», но краски «Да» оно берёт из палитры СТРАНИЦЫ. «Сравнение» этих
-/// ключей не отдавало, и «Да» там выходила обычной кнопкой скина, а не
-/// синей или красной, как на «Рабочих столах» для той же операции.
-/// Сторож читает исходники: обе страницы кладут тоны одним помощником по
-/// таблице ядра, своих копий ключей нет, окно просит ровно эти ключи.
+/// The window (`DeOperationDialog.qml`) is shared by «Desktops» and «Desktop
+/// comparison», but it takes the colours of «Yes» from the PAGE palette. «Comparison» did not
+/// provide these keys, and «Yes» there came out as an ordinary skin button rather than
+/// a blue or red one, as on «Desktops» for the same operation.
+/// The guard reads the sources: both pages put the tones with one helper from
+/// the core's table, they have no copies of the keys of their own, the window asks for exactly these keys.
 #[test]
 fn operation_dialog_tones_are_shared_by_both_pages() {
     const DIALOG_QML: &str = include_str!("../../rexon-gui/qml/DeOperationDialog.qml");
@@ -1342,15 +1342,15 @@ fn operation_dialog_tones_are_shared_by_both_pages() {
     const COMPARE_RS: &str = include_str!("../../rexon-gui/src/compare_page.rs");
     const DESKTOPS_QML: &str = include_str!("../../rexon-gui/qml/DesktopsPage.qml");
     const COMPARE_QML: &str = include_str!("../../rexon-gui/qml/ComparePage.qml");
-    // Третий владелец окна — «Настройки» (доустановка недостающего).
+    // The third owner of the window is «Settings» (installing what is missing).
     const SETTINGS_RS: &str = include_str!("../../rexon-gui/src/settings_page.rs");
     const SETTINGS_QML: &str = include_str!("../../rexon-gui/qml/SettingsPage.qml");
-    // Четвёртый — главное окно (восстановление оформления при запуске).
+    // The fourth is the main window (restoring the look at startup).
     const MAIN_RS: &str = include_str!("../../rexon-gui/src/main_window.rs");
     const MAIN_QML: &str = include_str!("../../rexon-gui/qml/MainWindow.qml");
 
-    // Краски: безопасная операция — синяя кнопка карточки, необратимая —
-    // красная, те же, что у кнопок «Установить» и «Удалить».
+    // Colours: a safe operation — the card's blue button, an irreversible one —
+    // red, the same as the «Install» and «Remove» buttons.
     let tones: std::collections::BTreeMap<_, _> = qd::OPERATION_DIALOG_TONES.into_iter().collect();
     assert_eq!(tones.len(), 2);
     let primary = tones["primary_tone"];
@@ -1366,7 +1366,7 @@ fn operation_dialog_tones_are_shared_by_both_pages() {
         assert!(t.bold);
     }
 
-    // Окно просит ровно ключи таблицы и выбирает «Да» по опасности операции.
+    // The window asks for exactly the table's keys and chooses «Yes» by the danger of the operation.
     for key in tones.keys() {
         assert!(
             DIALOG_QML.contains(&format!("root.pal.{key}")),
@@ -1377,8 +1377,8 @@ fn operation_dialog_tones_are_shared_by_both_pages() {
     assert!(DIALOG_QML.contains("root.pal.primary_tone"));
     assert!(DIALOG_QML.contains("(root.op && root.op.danger) ? root.dangerTone : root.primaryTone"));
 
-    // Обе страницы кладут тоны в палитру одним помощником и не заводят
-    // своих копий ключей.
+    // Both pages put the tones into the palette with one helper and do not create
+    // copies of the keys of their own.
     fn palette_body(src: &str) -> &str {
         let start = src.find("fn palette(&self)").expect("у страницы нет fn palette");
         let rest = &src[start..];
@@ -1420,12 +1420,12 @@ fn operation_dialog_tones_are_shared_by_both_pages() {
     }
 }
 
-/// ⭐ Сторож «DE» в подписях для покупателя за пределами окна операции:
-/// название сравнения (заголовок окна, шапка, подраздел), подсказка COSMIC,
-/// описания столов, заметки, предупреждения и отказы совместимости
-/// дистрибутивов, журнал проверок. Продукт говорит «рабочий стол» теми же
-/// словами, что окно операции (`operation_texts_have_no_jargon`); новая
-/// «DE» здесь покраснеет раньше, чем её увидит покупатель.
+/// ⭐ Guard of «DE» in labels for the buyer outside the operation window:
+/// the comparison name (window title, header, subsection), the COSMIC hint,
+/// desktop descriptions, notes, warnings and compatibility refusals of
+/// distributions, the check log. The product says «рабочий стол» with the same
+/// words as the operation window (`operation_texts_have_no_jargon`); a new
+/// «DE» here goes red before the buyer sees it.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn visible_texts_say_desktop_not_de() {
@@ -1468,10 +1468,10 @@ fn visible_texts_say_desktop_not_de() {
     }
 }
 
-/// SteamOS (Steam Deck и Steam Machine): неактивными становятся ровно те
-/// кнопки, что трогают пакеты системы, — установка, доустановка, удаление и
-/// «Проверить мой стол». Переключение, сравнение и копии панели остаются:
-/// они пакетов не трогают и в домашней папке работают.
+/// SteamOS (Steam Deck and Steam Machine): exactly those buttons become inactive
+/// that touch system packages — install, install missing, remove and
+/// «Check my desktop». Switching, comparison and panel backups stay:
+/// they do not touch packages and work in the home folder.
 #[test]
 fn steamos_disables_only_package_actions() {
     let mut kinds: Vec<&str> = Vec::new();
@@ -1490,10 +1490,10 @@ fn steamos_disables_only_package_actions() {
     }
 }
 
-/// SteamOS: проверенные столы (Xfce, LXQt, Hyprland) ставятся и удаляются
-/// образами systemd-sysext — их кнопки живые; Plasma (стол самой SteamOS) и
-/// непроверенные — неактивны с причиной. Пересборку стола, в котором
-/// работают сейчас, не предлагаем. Не на SteamOS — ничего не гасится.
+/// SteamOS: tested desktops (Xfce, LXQt, Hyprland) are installed and removed
+/// as systemd-sysext images — their buttons are live; Plasma (SteamOS's own desktop) and
+/// untested ones are inactive with a reason. Rebuilding the desktop that is in use
+/// right now is not offered. Not on SteamOS — nothing is disabled.
 #[test]
 fn steamos_buttons_follow_sysext_support() {
     use rexon_core::distro_compat::{steamos_desktop_card_block, SteamOsBlock};
@@ -1518,16 +1518,16 @@ fn steamos_buttons_follow_sysext_support() {
     }
 }
 
-/// SteamOS: вопрос установки стола-образа — текст `steamos_sysext` (а не
-/// пакетный «выберите на экране входа»), удаление — свой вопрос.
-/// Прочие столы и не-SteamOS — обычные тексты.
+/// SteamOS: the install question for an image desktop is the `steamos_sysext` text (not
+/// the package one «choose on the login screen»), removal has its own question.
+/// Other desktops and non-SteamOS — the ordinary texts.
 #[test]
 fn steamos_sysext_desktops_get_their_own_texts() {
     use rexon_core::steamos_sysext as sx;
     let base = qd::install_texts("Xfce");
     let t = qd::steamos_op_texts(qd::install_texts("Xfce"), "xfce", Some("3.9.5"));
     assert_eq!(t.confirm_html, sx::install_confirm_text("Xfce", "3.9.5"));
-    // Итог — строкой исполнителя в журнале, приписки под журналом нет.
+    // The result is the executor's line in the log, there is no note under the log.
     assert!(t.done_text.is_empty() && t.done_text_restart.is_empty());
     assert_eq!(t.operation_title, base.operation_title);
     let r = qd::steamos_op_texts(qd::repair_texts("Xfce"), "xfce", Some("3.9.5"));
@@ -1542,18 +1542,18 @@ fn steamos_sysext_desktops_get_their_own_texts() {
     assert_eq!(qd::steamos_remove_text("kde", true), None);
 }
 
-// ── Английский интерфейс ────────────────────────────────────────────────
+// ── English interface ───────────────────────────────────────────────────
 
 fn cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Все подписи вкладки, собранные ядром, при английском языке — без единой
-/// русской буквы: забытая строка видна здесь, а не покупателю.
+/// All the tab's labels assembled by the core, in English — without a single
+/// Russian letter: a forgotten string shows up here, not to the buyer.
 ///
-/// Описания столов (`DeMeta::description_text`) и тексты переключения
-/// (`qt_compare::switch_texts`) переводит заход «Сравнения» — их сторожит
-/// его сверка, здесь они не собираются.
+/// Desktop descriptions (`DeMeta::description_text`) and switch texts
+/// (`qt_compare::switch_texts`) are translated by the «Comparison» pass — they are guarded by
+/// its check, they are not collected here.
 #[test]
 fn english_desktops_tab_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -1635,7 +1635,7 @@ fn english_desktops_tab_has_no_russian() {
     assert!(all.len() > 80, "сверять было нечего: {}", all.len());
     for text in &all {
         assert!(!cyrillic(text), "русское в английском интерфейсе: {text}");
-        // Тот же сторож жаргона, что у русского окна операции.
+        // The same jargon guard as for the Russian operation window.
         for jargon in ["pkexec", "polkit", "install_de"] {
             assert!(!text.contains(jargon), "жаргон «{jargon}»: {text}");
         }
@@ -1646,7 +1646,7 @@ fn english_desktops_tab_has_no_russian() {
     }
 }
 
-/// Английские фразы, собранные из частей, читаются как фразы.
+/// English phrases assembled from parts read as phrases.
 #[test]
 fn english_desktops_texts_read_naturally() {
     let _lang = i18n_pin::en();
@@ -1682,15 +1682,15 @@ password."
     assert_eq!(qd::stats("kde")[0].value, format!("{} MB", DE_META.iter().find(|m| m.id == "kde").unwrap().ram_mb));
 }
 
-// ── Блок «Как в дистрибутиве» ───────────────────────────────────────────
+// ── The «Distro looks» block ────────────────────────────────────────────
 
 mod looks {
     use super::*;
     use rexon_core::distro_looks::{self as dl, Probes, Target};
     use std::collections::BTreeMap;
 
-    /// Стол без единой записи на диск: план собирается из проб, профиль не
-    /// нужен вовсе (каталоги указывают в несуществующее).
+    /// A desktop without a single write to disk: the plan is built from probes, the profile is not
+    /// needed at all (the directories point to nonexistent places).
     fn target(de: &str) -> Target {
         let h = "/nonexistent/rexon-looks-home".to_string();
         Target {
@@ -1708,8 +1708,8 @@ mod looks {
         }
     }
 
-    /// Предложение «Как в SteamOS» на Plasma. `aur_missing` — пакетов
-    /// игрового режима из AUR нет (их нет и в репозиториях); иначе стоит всё.
+    /// The «Like SteamOS» offer on Plasma. `aur_missing` — the game mode packages
+    /// from AUR are absent (they are not in the repositories either); otherwise everything is installed.
     fn steamos_offer(aur_missing: bool, applied: &dyn Fn(&str) -> bool) -> dl::Offer {
         let missing = move |n: &str| aur_missing && n.contains("gamescope-session");
         let owner = |n: &str| (!missing(n)).then(|| n.to_string());
@@ -1719,7 +1719,7 @@ mod looks {
         dl::offer(dl::builtin("steamos").unwrap().unwrap(), &target("kde"), &probes, applied)
     }
 
-    /// Варианты по умолчанию.
+    /// Default options.
     fn def() -> rexon_core::rxn_manifest::PropValues {
         Default::default()
     }
@@ -1728,10 +1728,10 @@ mod looks {
         [("variant".to_string(), serde_json::Value::String("vgui".into()))].into_iter().collect()
     }
 
-    /// Стиль SteamOS — переключатель окна вопроса: Vapor по умолчанию и
-    /// VGUI2, подписи из манифеста. VGUI2 тянет классические курсоры KDE
-    /// (oxygen-cursors) — их нет, и переключение сразу меняет и текст, и
-    /// план, без новых проб системы.
+    /// The SteamOS style is a switch in the question window: Vapor by default and
+    /// VGUI2, labels from the manifest. VGUI2 pulls in the classic KDE cursors
+    /// (oxygen-cursors) — they are absent, and switching immediately changes both the text and
+    /// the plan, without new system probes.
     #[test]
     fn steamos_style_is_a_switch() {
         let _lang = i18n_pin::en();
@@ -1765,9 +1765,9 @@ mod looks {
         assert_eq!(plan.values.get("variant").and_then(|v| v.as_str()), Some("vgui"));
         assert!(plan.install.iter().any(|d| d.resolved.install_names().contains(&"oxygen-cursors".to_string())));
         assert!(qd::look_chosen_plan(&offer, &def(), false).unwrap().install.is_empty());
-        // Выбор стиля и игровой режим — независимы.
+        // The style choice and the game mode are independent.
         assert!(qd::look_chosen_plan(&offer, &vgui(), true).unwrap().items.iter().any(|i| i.kind == "game-session"));
-        // У Garuda списков нет — и переключателей нет.
+        // Garuda has no lists — and no switches.
         let garuda = dl::offer(dl::builtin("garuda-dr460nized").unwrap().unwrap(), &target("kde"), &probes, &|_| false);
         assert_eq!(garuda.variants.len(), 1);
         if let qd::LookConfirm::Ask { choices, .. } = qd::look_confirm(&garuda, &def(), false) {
@@ -1782,8 +1782,8 @@ mod looks {
         }
     }
 
-    /// Плитка на каждый встроенный образ, имя — из манифеста; у
-    /// применённого — пометка и «Вернуть как было», у прочих — «Применить».
+    /// A tile for each built-in image, the name comes from the manifest; the
+    /// applied one has a mark and «Restore», the others have «Apply».
     #[test]
     fn tiles_follow_builtin_looks() {
         let _lang = i18n_pin::en();
@@ -1798,14 +1798,14 @@ mod looks {
         assert!(garuda.applied);
         assert_eq!(garuda.badge, "✓ Applied");
         assert_eq!(garuda.buttons.iter().map(|b| b.kind).collect::<Vec<_>>(), ["look_revert"]);
-        // Русские имена — тоже из манифеста, а не из каталога перевода.
+        // Russian names also come from the manifest, not from the translation catalog.
         assert_eq!(qd::look_tiles("ru", &|_| false)[0].name, "Как в SteamOS");
     }
 
-    /// Игровой режим SteamOS — только по желанию: без галочки его нет ни в
-    /// «что изменится», ни в «не будет применено», а в применение идёт план
-    /// без него; с галочкой — план с ним. Под галочкой — предупреждение из
-    /// манифеста.
+    /// The SteamOS game mode is opt-in only: without the checkbox it is neither in
+    /// "what will change" nor in "will not be applied", and the plan without it goes
+    /// to applying; with the checkbox — the plan with it. Under the checkbox there is a warning from
+    /// the manifest.
     #[test]
     fn steamos_game_mode_is_opt_in() {
         let _lang = i18n_pin::en();
@@ -1825,9 +1825,9 @@ mod looks {
         assert!(on.items.iter().any(|i| i.kind == "game-session"));
     }
 
-    /// Игровому режиму нужны пакеты из AUR, а их нет: с галочкой окно
-    /// честно говорит «не будет применено» и называет пакеты — Rexon их сам
-    /// не собирает; остальное оформление применяется.
+    /// The game mode needs packages from AUR, and they are absent: with the checkbox the window
+    /// honestly says "will not be applied" and names the packages — Rexon does not build them
+    /// itself; the rest of the look is applied.
     #[test]
     fn game_mode_from_aur_is_named_not_installed() {
         let _lang = i18n_pin::en();
@@ -1839,13 +1839,13 @@ mod looks {
         let plan = qd::look_chosen_plan(&offer, &def(), true).unwrap();
         assert!(!plan.items.iter().any(|i| i.kind == "game-session"));
         assert!(plan.install.iter().all(|d| !d.resolved.install_names().iter().any(|n| n.starts_with("aur/"))));
-        // Без галочки про AUR ни слова: человек его не просил.
+        // Without the checkbox not a word about AUR: the person did not ask for it.
         let (_, plain, _) = ask(qd::look_confirm(&offer, &def(), false));
         assert!(!plain.contains("AUR"), "{plain}");
     }
 
-    /// Не встаёт обязательное (libplasma подменена форком) — окно отказа,
-    /// применять нечего.
+    /// Something required does not install (libplasma replaced by a fork) — a refusal window,
+    /// nothing to apply.
     #[test]
     fn refused_look_is_a_blocked_window() {
         let _lang = i18n_pin::en();
@@ -1864,8 +1864,8 @@ mod looks {
         assert!(qd::look_chosen_plan(&offer, &def(), false).is_none());
     }
 
-    /// Другой образ уже применён — перед этим он вернётся как было, и окно
-    /// говорит об этом первым делом.
+    /// Another image is already applied — it will be restored before this, and the window
+    /// says so first of all.
     #[test]
     fn applied_other_look_is_put_back_first() {
         let _lang = i18n_pin::en();
@@ -1875,7 +1875,7 @@ mod looks {
         assert!(text.contains("First, “Like Garuda Linux (Dr460nized)” will be put back as it was."), "{text}");
     }
 
-    /// Русские подписи блока — из `po/ru.po`.
+    /// The block's Russian labels come from `po/ru.po`.
     #[test]
     fn looks_texts_in_russian() {
         let _lang = i18n_pin::ru();
@@ -1887,7 +1887,7 @@ mod looks {
         assert_eq!(qd::look_revert_confirm("Как в SteamOS").2, "Вернуть");
     }
 
-    /// Все подписи блока по-английски — без единой русской буквы.
+    /// All of the block's labels in English — without a single Russian letter.
     #[test]
     fn looks_texts_in_english_have_no_russian() {
         let _lang = i18n_pin::en();
@@ -1925,13 +1925,13 @@ mod looks {
     }
 }
 
-// ── Сеанс X11 или Wayland при установке ─────────────────────────────────
+// ── X11 or Wayland session at install time ──────────────────────────────
 
-/// Выбор есть ровно у столов с двумя сеансами в Arch; у Plasma 6.8,
-/// GNOME 51, Budgie 10.10, Pantheon 8, COSMIC и Deepin сеанс один — Wayland.
-/// MATE ставится только X11 (16.11.2026: прежний сеанс Wayland из AUR снят;
-/// механизм AUR-сеанса — под модульными тестами ядра на образце).
-/// Вариантов три: X11, Wayland и оба; у каждого — пояснение карточки.
+/// There is a choice exactly for desktops with two sessions in Arch; Plasma 6.8,
+/// GNOME 51, Budgie 10.10, Pantheon 8, COSMIC and Deepin have one session — Wayland.
+/// MATE is installed X11 only (16.11.2026: the former Wayland session from AUR was dropped;
+/// the AUR session mechanism is under the core's module tests on a sample).
+/// There are three options: X11, Wayland and both; each has a card explanation.
 #[test]
 fn session_choice_only_where_two_sessions_exist() {
     use system::SessionPick;
@@ -1940,7 +1940,7 @@ fn session_choice_only_where_two_sessions_exist() {
     for de in system::list_de_ids() {
         let choice = qd::session_choice(de, PkgFamily::Arch, SessionPick::X11, true);
         assert_eq!(choice.is_some(), two.contains(&de), "{de}");
-        // Вне Arch набор не проверен — выбора нет, ставится как раньше.
+        // Outside Arch the set is not verified — no choice, installed as before.
         assert!(qd::session_choice(de, PkgFamily::Debian, SessionPick::X11, true).is_none(), "{de}");
     }
     for de in two {
@@ -1955,13 +1955,13 @@ fn session_choice_only_where_two_sessions_exist() {
             assert!(!o.description.is_empty(), "{de}: {o:?}");
         }
     }
-    // Без помощника AUR выбор у столов с Wayland из репозиториев остаётся.
+    // Without an AUR helper the choice stays for desktops with Wayland from the repositories.
     let xfce = qd::session_choice("xfce", PkgFamily::Arch, SessionPick::Wayland, false).unwrap();
     assert!(xfce.options.iter().all(|o| o.enabled));
     assert_eq!(xfce.current, "wayland");
 }
 
-/// Набор по варианту: «Wayland» и «Оба» ставят добавку Wayland, «X11» — нет.
+/// The set per option: «Wayland» and «Both» install the Wayland add-on, «X11» does not.
 #[test]
 fn session_pick_sets_install_kind() {
     use system::{SessionKind, SessionPick};
@@ -1971,17 +1971,17 @@ fn session_pick_sets_install_kind() {
     assert_eq!(SessionPick::from_value("nope"), None);
     let arch = PkgFamily::Arch;
     for pick in SessionPick::ALL {
-        // У MATE выбора нет — окно его и не спросит; что пришло, то и
-        // осталось (набор без добавки, см. `session_packages_by_choice`).
+        // MATE has no choice — the window will not even ask; what came in is what
+        // stays (the set without the add-on, see `session_packages_by_choice`).
         assert_eq!(qd::session_pick_effective("mate", arch, pick, false), pick);
         assert_eq!(qd::session_pick_effective("xfce", arch, pick, false), pick);
     }
 }
 
-/// Рекомендованный вариант и подписи — из признака зрелости Wayland в
-/// таблице: зрелый — Wayland «(рекомендуется)», экспериментальный —
-/// проверенный X11. На 03.11.2026 зрелый только у LXQt (пометку проект снял
-/// в 2.3.0).
+/// The recommended option and the labels come from the Wayland maturity flag in
+/// the table: mature — Wayland «(recommended)», experimental — the
+/// proven X11. As of 03.11.2026 only LXQt's is mature (the project dropped the mark
+/// in 2.3.0).
 #[test]
 fn session_default_follows_wayland_maturity() {
     use system::{SessionPick, WaylandMaturity};
@@ -2015,7 +2015,7 @@ fn session_default_follows_wayland_maturity() {
             assert!(meta.session_text().starts_with("X11 + Wayland (экспериментально"), "{de}");
             assert!(way.contains("экспериментальный"), "{de}: {way}");
         }
-        // Чужой композитор окон — сказано на карточке Wayland.
+        // A third-party window compositor — stated on the Wayland card.
         if !v.wayland_compositor.is_empty() {
             assert!(way.contains(v.wayland_compositor), "{de}: {way}");
         }
@@ -2036,8 +2036,8 @@ fn session_default_follows_wayland_maturity() {
     assert!(!way.contains("experimental"), "{way}");
 }
 
-/// Набор по выбору: X11 — основной набор, Wayland — плюс добавка; добавка
-/// входит в пакеты стола (сеанс прав, защита текущего стола).
+/// The set by choice: X11 — the main set, Wayland — plus the add-on; the add-on
+/// is part of the desktop's packages (privilege session, protection of the current desktop).
 #[test]
 fn session_packages_by_choice() {
     use system::SessionKind;
@@ -2056,13 +2056,13 @@ fn session_packages_by_choice() {
         for p in repo.iter().chain(aur.iter()) {
             assert!(all.iter().any(|a| a == p), "{de}: {p}");
         }
-        // Связка сеанса снимается со столом, композиторы — нет.
+        // The session bundle is removed with the desktop, the compositors are not.
         for p in system::session_removal_packages(de, arch) {
             assert!(repo.contains(&p.as_str()) || aur.contains(&p.as_str()), "{de}: {p}");
             assert!(!["labwc", "wayfire", "xorg-xwayland"].contains(&p.as_str()), "{de}: {p}");
         }
     }
-    // MATE — только X11: ни Wayfire, ни `mate-wayland-session` в его наборе.
+    // MATE is X11 only: neither Wayfire nor `mate-wayland-session` is in its set.
     assert!(system::session_variants("mate", arch).is_none());
     for kind in [SessionKind::X11, SessionKind::Wayland] {
         assert!(system::session_packages("mate", arch, kind).is_empty());
@@ -2071,14 +2071,14 @@ fn session_packages_by_choice() {
     let mate = system::desktop_packages("mate", arch);
     assert!(!mate.iter().any(|p| p == "wayfire" || p == "mate-wayland-session"), "{mate:?}");
     assert!(system::session_removal_packages("mate", arch).is_empty());
-    // Белый список помощника пакетов знает добавку.
+    // The package helper's allow-list knows the add-on.
     let allow = rexon_core::system_plan::pkg_helper_install_allowlist(arch);
     for p in ["labwc", "xorg-xwayland", "lxqt-wayland-session", "wayfire"] {
         assert!(allow.iter().any(|a| a == p), "{p}");
     }
 }
 
-/// «Можно ли уже войти в Wayland»: файл сеанса и композитор.
+/// "Can one already log into Wayland": the session file and the compositor.
 #[test]
 fn wayland_session_ready_needs_file_and_compositor() {
     let arch = PkgFamily::Arch;
@@ -2086,15 +2086,15 @@ fn wayland_session_ready_needs_file_and_compositor() {
     assert_eq!(system::wayland_session_ready("xfce", arch, &file, &|_| false), Some(false));
     assert_eq!(system::wayland_session_ready("xfce", arch, &file, &|b| b == "labwc"), Some(true));
     assert_eq!(system::wayland_session_ready("xfce", arch, &|_| false, &|_| true), Some(false));
-    // LXQt берёт любой знакомый ему композитор.
+    // LXQt takes any compositor it knows.
     let lxqt = |f: &str| f.ends_with("lxqt-wayland.desktop");
     assert_eq!(system::wayland_session_ready("lxqt", arch, &lxqt, &|b| b == "kwin_wayland"), Some(true));
     assert_eq!(system::wayland_session_ready("kde", arch, &|_| true, &|_| true), None);
 }
 
-/// Тексты окна: итог называет сеанс так, как его пишет экран входа (у
-/// «Оба» — оба имени); у столов без AUR-сеанса пометки «AUR» нет.
-/// Предупреждение про AUR — модульный тест ядра на образце.
+/// Window texts: the result names the session the way the login screen writes it (for
+/// «Both» — both names); desktops without an AUR session have no «AUR» mark.
+/// The AUR warning is a core module test on a sample.
 #[test]
 fn session_texts_follow_choice() {
     use system::{SessionKind, SessionPick};
@@ -2111,7 +2111,7 @@ fn session_texts_follow_choice() {
         "{}",
         both.done_text
     );
-    // Пояснения — на карточках: у Xfce вопрос остаётся прежним.
+    // Explanations are on the cards: for Xfce the question stays as before.
     let plain = qd::install_texts("XFCE").confirm_html;
     assert_eq!(way.confirm_html, plain);
     assert_eq!(x11.confirm_html, plain);
@@ -2121,7 +2121,7 @@ fn session_texts_follow_choice() {
     assert!(!qd::install_texts_with_session("xfce", arch, SessionPick::Wayland, true, "RISK-LINE")
         .confirm_html
         .contains("RISK-LINE"));
-    // MATE — только X11: вопрос без выбора сеанса и без AUR.
+    // MATE is X11 only: a question without a session choice and without AUR.
     let mate = qd::install_texts_with_session("mate", arch, SessionPick::Wayland, false, "RISK-LINE");
     assert_eq!(mate.confirm_html, qd::install_texts(qd::display_name("mate")).confirm_html);
 
@@ -2136,8 +2136,8 @@ fn session_texts_follow_choice() {
     assert!(qd::session_offer_hint("lxqt", SessionKind::X11).contains("X11"));
 }
 
-/// Строка карточки установленного стола и кнопка недостающего сеанса — по
-/// файлам сеансов и программам в системе.
+/// The installed desktop's card line and the missing session button — by
+/// the session files and the programs in the system.
 #[test]
 fn installed_sessions_line_and_missing_offer() {
     use system::SessionKind;
@@ -2150,7 +2150,7 @@ fn installed_sessions_line_and_missing_offer() {
     assert_eq!(system::installed_sessions("xfce", arch, &both, &xorg), Some((true, true)));
     assert_eq!(system::installed_sessions("xfce", arch, &x11_only, &xorg), Some((true, false)));
     assert_eq!(system::installed_sessions("xfce", arch, &way_only, &xorg), Some((false, true)));
-    // Без X-сервера сеанс X11 не стартует, даже если файл лежит.
+    // Without an X server the X11 session does not start, even if the file is there.
     assert_eq!(system::installed_sessions("xfce", arch, &both, &|b| b == "labwc"), Some((false, true)));
     assert_eq!(system::installed_sessions("kde", arch, &both, &xorg), None);
 
@@ -2165,15 +2165,15 @@ fn installed_sessions_line_and_missing_offer() {
     assert_eq!(qd::session_status_line("lxqt", arch, (true, true)), "Сеансы: X11 + Wayland");
     assert_eq!(qd::session_status_line("lxqt", arch, (false, true)), "Сеанс: Wayland");
     assert_eq!(qd::session_status_line("kde", arch, (true, true)), "");
-    // У каждого стола с выбором файл X11-сеанса — в xsessions.
+    // Every desktop with a choice has its X11 session file in xsessions.
     for (de, v) in system::SESSION_VARIANTS {
         assert!(v.x11_session_file.starts_with("/usr/share/xsessions/"), "{de}");
     }
 }
 
-/// Живой случай 08.11.2026: GNOME удалён целиком, потом вручную доставлен один
-/// gnome-shell — 45 программ стола нет. Шапка — «Установлен частично»;
-/// один новый пакет группы (pluma-plugins у MATE) — шапку не меняет.
+/// A live case of 08.11.2026: GNOME was removed entirely, then a single gnome-shell was
+/// installed by hand — 45 programs of the desktop are missing. The header is «Partially installed»;
+/// one new package of the group (pluma-plugins in MATE) does not change the header.
 #[test]
 fn partial_install_changes_header_only_when_most_is_missing() {
     use rexon_core::system_plan::InstallPreview;
@@ -2185,7 +2185,7 @@ fn partial_install_changes_header_only_when_most_is_missing() {
     };
     assert!(qd::is_partial_install(&gnome));
     assert_eq!(qd::packages_view(true, Some(&gnome), 5, 0).status_override, qd::status_partial());
-    // Не установлен — шапка своя («Не установлен»), замены нет.
+    // Not installed — its own header («Not installed»), no replacement.
     assert!(qd::packages_view(false, Some(&gnome), 5, 0).status_override.is_empty());
 
     let mate = InstallPreview {

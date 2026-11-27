@@ -1,26 +1,30 @@
-// WallpaperListQuery — запрос библиотеки обоей страницы «Обои».
+// WallpaperListQuery — the wallpaper library query of the "Wallpapers"
+// page.
 //
-// Самая тяжёлая часть переноса страницы «Обои»:
-// именно здесь в свойства запроса приезжают Qt-Protobuf-ГАДЖЕТЫ
-// (`sorts`/`filters`/`filterLogics`), которых не умеет ни Python (PySide6
-// сегфолтится на маршалинге), ни cxx-qt (`Q_GADGET` в 0.9 нет).
+// The heaviest part of porting the "Wallpapers" page: it is here that Qt
+// Protobuf GADGETS (`sorts`/`filters`/`filterLogics`) arrive in the query
+// properties, which neither Python (PySide6 segfaults on marshalling) nor
+// cxx-qt (no `Q_GADGET` in 0.9) can handle.
 //
-// Как это решено. Значения разбирает обобщённый C++-шим мета-рефлексии
-// `rexon-qt-filter/cpp/rexon_gadget_shim.cpp` — тот же самый, на котором
-// стоит модель редактора фильтров; он один на проект (правило #12), просто
-// подключён теперь и сюда. Шим берёт метатип В РАНТАЙМЕ и отдаёт наружу
-// JSON, а решения по значениям принимает ядро (`rexon_core::we_wallpaper`,
-// `we_settings`). Ни одного protobuf-типа по имени здесь не линкуется.
+// How it is solved. The values are parsed by the generic C++
+// meta-reflection shim `rexon-qt-filter/cpp/rexon_gadget_shim.cpp` — the
+// very one the filter editor model stands on; it is one for the project
+// (rule #12) and is simply hooked up here too now. The shim takes the
+// metatype AT RUN TIME and hands out JSON, while the decisions about the
+// values are made by the core (`rexon_core::we_wallpaper`, `we_settings`).
+// Not a single protobuf type is linked by name here.
 //
-// Что делает этот файл и чего НЕ делает. Он не считает ни одного правила:
-// сравнение свойств, порядок сигналов, сборка кадра `wallpaper_list` и
-// разбор ответа — всё в ядре, ровно как было у питоновского шима. Здесь
-// только Qt-оболочка: свойства, сигналы, владение моделью и дебаунс.
+// What this file does and does NOT do. It computes not a single rule:
+// comparing properties, the order of signals, building the
+// `wallpaper_list` frame and parsing the answer are all in the core,
+// exactly as with the Python shim. Here there is only the Qt wrapper:
+// properties, signals, owning the model and the debounce.
 //
-// Транспорт — общий шов партий 2-3 (`we_transport`): кадр уходит наружу
-// сигналом, ответ приходит инвокаблом `deliverResponse`.
+// The transport is the shared seam of batches 2-3 (`we_transport`): the
+// frame goes out as a signal, the answer comes in through the
+// `deliverResponse` invokable.
 
-/// Мост cxx-qt: запросы страницы «Обои».
+/// cxx-qt bridge: queries of the "Wallpapers" page.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -37,11 +41,11 @@ pub mod qobject {
         type QVariant = cxx_qt_lib::QVariant;
     }
 
-    // Шим мета-рефлексии гаджетов (`rexon-qt-filter/cpp`). Живому Rexon
-    // эти входы отсюда не нужны — их зовёт модель редактора фильтров из
-    // своей сборки. Здесь они ради стенда (src/wallpaper_page_selftest.rs):
-    // он строит правила на настоящих гаджетах ТЕМИ ЖЕ вызовами, что модель,
-    // и проверяет, что до ядра они доезжают целыми.
+    // The gadget meta-reflection shim (`rexon-qt-filter/cpp`). The live Rexon
+    // does not need these entries from here — the filter editor model calls
+    // them from its own build. They are here for the bench
+    // (src/wallpaper_page_selftest.rs): it builds rules on real gadgets with
+    // THE SAME calls as the model and checks that they reach the core intact.
     unsafe extern "C++" {
         include!("cxx-qt-lib/qhash.h");
         type QHash_i32_QByteArray = cxx_qt_lib::QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
@@ -57,34 +61,34 @@ pub mod qobject {
 
     unsafe extern "C++" {
         include!("rexon_gui_factory.h");
-        /// Создать модель библиотеки как ребёнка запроса.
+        /// Create the library model as a child of the query.
         ///
         /// # Safety
-        /// `parent` — живой QObject (владение уходит Qt).
+        /// `parent` is a live QObject (ownership goes to Qt).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_wallpaper_list_model(parent: *mut QObject) -> *mut QObject;
 
-        /// Одноразовый таймер отложенной перезагрузки (100 мс оригинала).
+        /// Single-shot deferred reload timer (the original's 100 ms).
         ///
         /// # Safety
-        /// `owner` — живой QObject с инвокаблом `reload()`.
+        /// `owner` is a live QObject with a `reload()` invokable.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_wallpaper_debounce(owner: *mut QObject, interval_ms: i32)
             -> *mut QObject;
 
         /// # Safety
-        /// `timer` — таймер, созданный `rexon_new_reload_debounce`.
+        /// `timer` is a timer created by `rexon_new_reload_debounce`.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_restart_wallpaper_debounce(timer: *mut QObject);
 
-        // ── Фабрики стенда голдена (src/wallpaper_page_selftest.rs) ──────
+        // ── Golden bench factories (src/wallpaper_page_selftest.rs) ──────
         //
-        // В живом Rexon все восемь объектов страницы создаёт QML, и фабрика
-        // ему не нужна. Стенду нужны те же самые классы без окна и без QML —
-        // ровно как это сделано для запросов Discover.
+        // In the live Rexon all eight objects of the page are created by QML, and
+        // it does not need the factory. The bench needs the same classes without a
+        // window and without QML — exactly as done for the Discover queries.
         //
         // # Safety
-        // `parent` — либо nullptr, либо живой QObject (владение уходит Qt).
+        // `parent` is either nullptr or a live QObject (ownership goes to Qt).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_wallpaper_list_query(parent: *mut QObject) -> *mut QObject;
         #[allow(clippy::missing_safety_doc)]
@@ -102,7 +106,7 @@ pub mod qobject {
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_wallpaper_apply_via_portal_query(parent: *mut QObject)
             -> *mut QObject;
-        /// waywallen 0.4.4: «скрыть обои» (проверка v0.4.4 того же стенда).
+        /// waywallen 0.4.4: "hide wallpaper" (the v0.4.4 check of the same bench).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_wallpaper_hide_query(parent: *mut QObject) -> *mut QObject;
     }
@@ -110,14 +114,14 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        // ── база Query ────────────────────────────────────────────────────
+        // ── Query base ────────────────────────────────────────────────────
         #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
         #[qproperty(QString, error, READ = error, NOTIFY = error_changed)]
         #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
         #[qproperty(bool, forward_error, cxx_name = "forwardError",
                     READ = forward_error, WRITE = set_forward_error,
                     NOTIFY = forward_error_changed)]
-        // ── свойства-параметры ────────────────────────────────────────────
+        // ── parameter properties ──────────────────────────────────────────
         #[qproperty(QString, wp_type, cxx_name = "wpType", READ = wp_type,
                     WRITE = set_wp_type, NOTIFY = wp_type_changed)]
         #[qproperty(QString, search_text, cxx_name = "searchText",
@@ -139,50 +143,50 @@ pub mod qobject {
         #[qproperty(QStringList, skip_content_ratings, cxx_name = "skipContentRatings",
                     READ = skip_content_ratings, WRITE = set_skip_content_ratings,
                     NOTIFY = skip_content_ratings_changed)]
-        /// waywallen 0.4.4: какие обои показывать по признаку «скрыта»
-        /// (`WallpaperHiddenFilter`: 0 прятать, 1 только скрытые, 2 все).
+        /// waywallen 0.4.4: which wallpapers to show by the "hidden" flag
+        /// (`WallpaperHiddenFilter`: 0 hide, 1 only hidden, 2 all).
         #[qproperty(i32, hidden_filter, cxx_name = "hiddenFilter",
                     READ = hidden_filter, WRITE = set_hidden_filter,
                     NOTIFY = hidden_filter_changed)]
-        /// `limit` базы `QueryList` — размер страницы; 0 (умолчание) —
-        /// страниц нет, демон отдаёт весь список. Пишут «Скрытые обои»
-        /// (`limit: 100`) и предпросмотр умного плейлиста (`limit: 50`,
-        /// waywallen 0.5.0). Когда смена перезагружает список — см.
+        /// `limit` of the `QueryList` base — the page size; 0 (the default) means
+        /// no pages, the daemon returns the whole list. Written by "Hidden
+        /// wallpapers" (`limit: 100`) and the smart playlist preview (`limit: 50`,
+        /// waywallen 0.5.0). When a change reloads the list — see
         /// `rexon_core::we_wallpaper::set_limit`.
         #[qproperty(i32, limit, READ = limit, WRITE = set_limit, NOTIFY = limit_changed)]
-        /// `offset` базы: номер последней загруженной страницы.
+        /// `offset` of the base: the number of the last loaded page.
         #[qproperty(i32, offset, READ = offset, WRITE = set_offset, NOTIFY = offset_changed)]
-        /// `noMore` базы: дальше страниц нет.
+        /// `noMore` of the base: there are no further pages.
         #[qproperty(bool, no_more, cxx_name = "noMore", READ = no_more,
                     WRITE = set_no_more, NOTIFY = no_more_changed)]
-        /// waywallen 0.5.0: выборка — непрозрачное значение (в JS —
-        /// `ArrayBuffer`), которое QML только хранит и отдаёт обратно в
-        /// `restoreSelection`/`matchesSelection` (и `saveSmart`). Вид — см.
+        /// waywallen 0.5.0: the selection is an opaque value (an `ArrayBuffer` in
+        /// JS) that QML only stores and hands back to
+        /// `restoreSelection`/`matchesSelection` (and `saveSmart`). Its form — see
         /// `rexon_core::we_wallpaper::encode_selection`.
         #[qproperty(QVariant, selection, READ = selection, NOTIFY = selection_changed)]
-        /// waywallen 0.5.0: номера скрытых библиотек (`QList<qlonglong>`
-        /// оригинала). Наружу — список чисел-double: 64-битное целое в QML
-        /// не выставляется (см. `qvalue.rs`). Сеттер нормализует список —
-        /// по возрастанию, без повторов.
+        /// waywallen 0.5.0: numbers of hidden libraries (the original's
+        /// `QList<qlonglong>`). Exposed as a list of double numbers: a 64-bit
+        /// integer is not exposed to QML (see `qvalue.rs`). The setter normalizes
+        /// the list — ascending, without duplicates.
         #[qproperty(QVariant, hidden_library_ids, cxx_name = "hiddenLibraryIds",
                     READ = hidden_library_ids, WRITE = set_hidden_library_ids,
                     NOTIFY = hidden_library_ids_changed)]
-        // ── свойства-результаты ───────────────────────────────────────────
+        // ── result properties ─────────────────────────────────────────────
         #[qproperty(bool, has_active_filters, cxx_name = "hasActiveFilters",
                     READ = has_active_filters, NOTIFY = has_active_filters_changed)]
-        /// waywallen 0.5.0: фильтры, КРОМЕ скрытых библиотек (подсветка
-        /// кнопки «Фильтры» на странице «Обои»).
+        /// waywallen 0.5.0: filters OTHER THAN hidden libraries (highlighting the
+        /// "Filters" button on the "Wallpapers" page).
         #[qproperty(bool, has_other_filters, cxx_name = "hasOtherFilters",
                     READ = has_other_filters, NOTIFY = has_other_filters_changed)]
         #[qproperty(i32, total, READ = total, NOTIFY = total_changed)]
-        /// Модель библиотеки. Имя свойства — `data`, как у оригинала:
-        /// вендорный QML пишет `model: wallpaperQuery.data`. CONSTANT —
-        /// модель создаётся в пост-конструкции и живёт, пока жив запрос.
+        /// The library model. The property name is `data`, as in the original: the
+        /// vendored QML writes `model: wallpaperQuery.data`. CONSTANT — the model is
+        /// created in post-construction and lives as long as the query does.
         #[qproperty(*mut QObject, model, cxx_name = "data", READ = data, CONSTANT)]
         type WallpaperListQuery = super::WallpaperListQueryRust;
     }
 
-    // ── Сигналы ───────────────────────────────────────────────────────────
+    // ── Signals ───────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
         #[qsignal]
         #[cxx_name = "statusChanged"]
@@ -241,8 +245,8 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "noMoreChanged"]
         fn no_more_changed(self: Pin<&mut WallpaperListQuery>);
-        /// waywallen 0.5.0: выборка сменилась — `invalidateList` оригинала
-        /// шлёт его на каждую смену свойства выборки и `limit`.
+        /// waywallen 0.5.0: the selection changed — the original's `invalidateList`
+        /// sends it on every change of a selection property and of `limit`.
         #[qsignal]
         #[cxx_name = "selectionChanged"]
         fn selection_changed(self: Pin<&mut WallpaperListQuery>);
@@ -254,8 +258,8 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "hasOtherFiltersChanged"]
         fn has_other_filters_changed(self: Pin<&mut WallpaperListQuery>);
-        /// Один сигнал на оба состояния фильтра — он же и запускает
-        /// перезагрузку списка (`connect_requet_reload` оригинала).
+        /// One signal for both filter states — it also triggers reloading the list
+        /// (the original's `connect_requet_reload`).
         #[qsignal]
         #[cxx_name = "filterStateChanged"]
         fn filter_state_changed(self: Pin<&mut WallpaperListQuery>);
@@ -265,18 +269,18 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "totalChanged"]
         fn total_changed(self: Pin<&mut WallpaperListQuery>);
-        /// Служебный сигнал шима (свойства `items` у оригинала нет): набор
-        /// обоей сменился, модель пересобрана.
+        /// An internal signal of the shim (the original has no `items` property):
+        /// the set of wallpapers changed, the model is rebuilt.
         ///
-        /// ⚠️ Порядок: модель перестраивается ДО этого сигнала — у
-        /// питоновского моста пересборку вешал конструктор запроса, то есть
-        /// она стояла первой в цепочке подписчиков. QML на `onItemsChanged`
-        /// обязан читать уже НОВЫЕ строки.
+        /// Warning: order: the model is rebuilt BEFORE this signal — in the Python
+        /// bridge the rebuild was attached by the query constructor, that is, it was
+        /// first in the chain of subscribers. QML on `onItemsChanged` must already
+        /// read the NEW rows.
         #[qsignal]
         #[cxx_name = "itemsChanged"]
         fn items_changed(self: Pin<&mut WallpaperListQuery>);
 
-        /// Кадр наружу — общий шов партий 2-3.
+        /// Frame out — the shared seam of batches 2-3.
         #[qsignal]
         #[cxx_name = "sendRequest"]
         fn send_request(
@@ -355,8 +359,8 @@ pub mod qobject {
         fn total(self: &WallpaperListQuery) -> i32;
     }
 
-    // ── Инвокаблы ─────────────────────────────────────────────────────────
-    // unsafe-блок: геттер свойства `data` отдаёт голый указатель.
+    // ── Invokables ────────────────────────────────────────────────────────
+    // unsafe block: the getter of the `data` property returns a raw pointer.
     unsafe extern "RustQt" {
         fn data(self: &WallpaperListQuery) -> *mut QObject;
     }
@@ -365,21 +369,21 @@ pub mod qobject {
         #[qinvokable]
         fn reload(self: Pin<&mut WallpaperListQuery>);
 
-        /// waywallen 0.6.0: «Повторить» после ошибки — упавший шаг заново
-        /// (догрузка или перезагрузка).
+        /// waywallen 0.6.0: "Retry" after an error — the failed step again (loading
+        /// more or a reload).
         #[qinvokable]
         fn retry(self: Pin<&mut WallpaperListQuery>);
 
-        /// `delayReload` базы `Query` (qextra): перезагрузка через тот же
-        /// дебаунс 100 мс — подряд идущие просьбы склеиваются в один запрос.
-        /// Зовёт страница «Скрытые обои» (waywallen 0.4.4).
+        /// `delayReload` of the `Query` base (qextra): a reload through the same
+        /// 100 ms debounce — consecutive requests are glued into one request.
+        /// Called by the "Hidden wallpapers" page (waywallen 0.4.4).
         #[qinvokable]
         #[cxx_name = "delayReload"]
         fn delay_reload(self: Pin<&mut WallpaperListQuery>);
 
-        /// `replaceFilterState` оригинала: правила и логика групп меняются
-        /// разом — один `filterStateChanged` и одна перезагрузка вместо
-        /// двух. Возвращает, изменилось ли что-нибудь.
+        /// The original's `replaceFilterState`: the rules and the group logic
+        /// change at once — one `filterStateChanged` and one reload instead of two.
+        /// Returns whether anything changed.
         #[qinvokable]
         #[cxx_name = "replaceFilterState"]
         fn replace_filter_state(
@@ -388,25 +392,25 @@ pub mod qobject {
             logics: QVariant,
         ) -> bool;
 
-        /// waywallen 0.5.0: глазик библиотеки — скрыть/показать её обои.
-        /// Номер — double (64-битное целое в QML не выставляется).
+        /// waywallen 0.5.0: the library eye icon — hide/show its wallpapers. The
+        /// number is a double (a 64-bit integer is not exposed to QML).
         #[qinvokable]
         #[cxx_name = "toggleLibraryHidden"]
         fn toggle_library_hidden(self: Pin<&mut WallpaperListQuery>, id: f64);
 
-        /// waywallen 0.5.0: разложить выборку по свойствам. Не выборка —
-        /// ничего не делать.
+        /// waywallen 0.5.0: spread the selection over the properties. Not a
+        /// selection — do nothing.
         #[qinvokable]
         #[cxx_name = "restoreSelection"]
         fn restore_selection(self: Pin<&mut WallpaperListQuery>, value: &QVariant);
 
-        /// waywallen 0.5.0: совпадает ли текущая выборка с сохранённой.
+        /// waywallen 0.5.0: whether the current selection matches the saved one.
         #[qinvokable]
         #[cxx_name = "matchesSelection"]
         fn matches_selection(self: &WallpaperListQuery, value: &QVariant) -> bool;
 
-        /// `fetchMore(qint32)` базы `QueryList`: догрузить следующую
-        /// страницу. Аргумент оригинал не читает (размер — `limit`).
+        /// `fetchMore(qint32)` of the `QueryList` base: load the next page. The
+        /// original does not read the argument (the size is `limit`).
         #[qinvokable]
         #[cxx_name = "fetchMore"]
         fn fetch_more(self: Pin<&mut WallpaperListQuery>, count: i32);
@@ -431,13 +435,13 @@ use rexon_core::we_wallpaper;
 use crate::qvalue::{json_to_variant, variant_to_json};
 use crate::we_transport;
 
-/// Дебаунс перезагрузки — 100 мс, как у оригинала (qextra query.cpp:16).
+/// Reload debounce — 100 ms, as in the original (qextra query.cpp:16).
 const DEBOUNCE_MS: i32 = 100;
 
-/// Какие свойства запускают отложенную перезагрузку списка — список из
-/// конструктора оригинала (`connect_requet_reload`). Наружу он открыт не для
-/// красоты: тем же списком пользуется реплей голдена (wallpaper_page_golden),
-/// и второй его копии в проекте быть не должно.
+/// Which properties trigger a deferred reload of the list — the list from
+/// the original's constructor (`connect_requet_reload`). It is exposed not
+/// for looks: the golden replay (wallpaper_page_golden) uses the same list,
+/// and there must be no second copy of it in the project.
 pub const LIST_RELOAD_ON: &[&str] = &[
     "wpType",
     "filterState",
@@ -452,30 +456,31 @@ pub const LIST_RELOAD_ON: &[&str] = &[
     "hiddenLibraryIds",
 ];
 
-/// Чей ответ ждёт токен кадра.
+/// Whose answer the frame token is waiting for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
-    /// `reload()` — список целиком (первая страница).
+    /// `reload()` — the whole list (the first page).
     Reload,
-    /// `fetchMore()` — страница с этим номером, в хвост.
+    /// `fetchMore()` — the page with this number, to the tail.
     Page(i32),
 }
 
-/// Свойство `data` отдаёт модель; ставится в пост-конструкции.
+/// The `data` property hands out the model; set in post-construction.
 pub struct WallpaperListQueryRust {
     base: QueryState,
     data: we_wallpaper::WallpaperListData,
-    /// Токены кадров ТЕКУЩЕГО поколения (`m_generation` оригинала): каждый
-    /// `reload` и каждая смена выборки сносят их, и ответ на устаревший
-    /// запрос молча отбрасывается — старая выборка не перебьёт новую, а
-    /// страница старой выборки не ляжет в хвост новой.
+    /// Frame tokens of the CURRENT generation (the original's `m_generation`):
+    /// every `reload` and every selection change wipes them, and an answer to a
+    /// stale request is silently dropped — the old selection will not override
+    /// the new one, and a page of the old selection will not land in the tail
+    /// of the new one.
     pending: std::collections::BTreeMap<i64, Pending>,
     model: *mut qobject::QObject,
     debounce: *mut qobject::QObject,
-    /// Подписка на `reqFetchMore` модели (живёт, пока жив запрос).
+    /// Subscription to the model's `reqFetchMore` (lives as long as the query).
     fetch_guard: Option<cxx_qt::QMetaObjectConnectionGuard>,
-    /// waywallen 0.6.0: последний запрос был догрузкой — «Повторить»
-    /// после ошибки догружает, а не перезагружает список.
+    /// waywallen 0.6.0: the last request was loading more — "Retry" after an
+    /// error loads more rather than reloading the list.
     failed_append: bool,
 }
 
@@ -493,22 +498,23 @@ impl Default for WallpaperListQueryRust {
     }
 }
 
-/// Указатель на запрос для замыкания подписки (см. discover_queries.rs).
+/// Pointer to the query for the subscription closure (see
+/// discover_queries.rs).
 struct OwnerPtr(*mut qobject::WallpaperListQuery);
-// SAFETY: сигнал модели приходит в потоке GUI, в котором живёт и запрос;
-// Send нужен только сигнатуре `on_req_fetch_more`.
+// SAFETY: the model's signal arrives in the GUI thread, where the query
+// lives too; Send is needed only by the `on_req_fetch_more` signature.
 unsafe impl Send for OwnerPtr {}
 
-/// Указатель на сам объект как на QObject.
+/// Pointer to the object itself as a QObject.
 fn self_ptr<T>(object: Pin<&mut T>) -> *mut qobject::QObject {
     let raw: *mut T = unsafe { object.get_unchecked_mut() };
     raw.cast()
 }
 
-/// Модель как изменяемая ссылка (см. wallpaper_select_storage::model_pin).
+/// The model as a mutable reference (see wallpaper_select_storage::model_pin).
 ///
 /// # Safety
-/// `ptr` — либо nullptr, либо живая `WallpaperListModel`.
+/// `ptr` is either nullptr or a live `WallpaperListModel`.
 unsafe fn model_pin<'a>(
     ptr: *mut qobject::QObject,
 ) -> Option<Pin<&'a mut crate::wallpaper_list_model::qobject::WallpaperListModel>> {
@@ -522,16 +528,16 @@ unsafe fn model_pin<'a>(
     })
 }
 
-/// Список правил из QML → JSON-значение для ядра.
+/// A list of rules from QML → a JSON value for the core.
 ///
-/// Элементы приходят Qt-Protobuf-гаджетами (их пишет Rust-модель редактора
-/// фильтров) либо обычными JS-объектами (карты из настроек демона). Оба
-/// вида разбирает ОБЩИЙ конвертер `qvalue::variant_to_json` — своего
-/// списочного шортката у этой страницы больше нет (правило #12): гаджеты
-/// понимает каждый путь «QML → ядро», а не только этот.
+/// The elements arrive as Qt Protobuf gadgets (written by the Rust filter
+/// editor model) or as ordinary JS objects (maps from the daemon settings).
+/// Both kinds are parsed by the SHARED converter `qvalue::variant_to_json` —
+/// this page no longer has a list shortcut of its own (rule #12): every
+/// "QML → core" path understands gadgets, not just this one.
 ///
-/// Не список — пустой массив: ядро трактует его как «правил нет», и это
-/// ровно то, что делал питоновский `_rules_plain`.
+/// Not a list — an empty array: the core treats it as "no rules", which is
+/// exactly what the Python `_rules_plain` did.
 fn rules_value(value: &QVariant) -> Value {
     match variant_to_json(value) {
         list @ Value::Array(_) => list,
@@ -547,11 +553,12 @@ fn strings_value(list: &QStringList) -> Value {
     )
 }
 
-/// Байты выборки из значения QML. Из JS она возвращается `ArrayBuffer`'ом,
-/// то есть `QByteArray`; `undefined`/`null` в `QByteArray` не приводятся, и
-/// это «не выборка». Что байты — именно выборка, решает ядро по метке
-/// (`we_wallpaper::decode_selection`). Тем же путём выборку принимает
-/// `PlaylistMutationQuery.saveSmart`.
+/// Selection bytes from a QML value. From JS it comes back as an
+/// `ArrayBuffer`, that is, a `QByteArray`; `undefined`/`null` do not convert
+/// to `QByteArray`, and that is "not a selection". Whether the bytes are
+/// really a selection is decided by the core by a tag
+/// (`we_wallpaper::decode_selection`). `PlaylistMutationQuery.saveSmart`
+/// accepts a selection the same way.
 pub(crate) fn selection_bytes(value: &QVariant) -> Option<Vec<u8>> {
     value.value::<QByteArray>().map(|bytes| bytes.as_slice().to_vec())
 }
@@ -565,8 +572,8 @@ fn maps_to_variant(maps: &[VMap]) -> QVariant {
 impl cxx_qt::Initialize for qobject::WallpaperListQuery {
     fn initialize(mut self: Pin<&mut Self>) {
         let owner = self_ptr(self.as_mut());
-        // Модель создаётся в пост-конструкции, а не лениво в геттере: QML
-        // читает `data` при первой же привязке.
+        // The model is created in post-construction, not lazily in the getter: QML
+        // reads `data` on the very first binding.
         let model = unsafe { qobject::rexon_new_wallpaper_list_model(owner) };
         let timer = unsafe { qobject::rexon_new_wallpaper_debounce(owner, DEBOUNCE_MS) };
         {
@@ -574,13 +581,13 @@ impl cxx_qt::Initialize for qobject::WallpaperListQuery {
             rust.model = model;
             rust.debounce = timer;
         }
-        // `try_connect_fetch_more` QExtra: модель просит следующую страницу.
-        // Указатель на владельца безопасен ровно потому, что модель — его
-        // ребёнок и не переживёт запрос.
+        // QExtra's `try_connect_fetch_more`: the model asks for the next page. The
+        // pointer to the owner is safe precisely because the model is its child
+        // and will not outlive the query.
         let query = OwnerPtr(unsafe { self.as_mut().get_unchecked_mut() });
         if let Some(model) = unsafe { model_pin(model) } {
             let guard = model.on_req_fetch_more(move |_model, rows| {
-                // Захват ВСЕЙ обёртки, а не поля (редакция 2021).
+                // Capture the WHOLE wrapper, not a field (the 2021 edition).
                 let owner = &query;
                 let query = unsafe { Pin::new_unchecked(&mut *owner.0) };
                 query.fetch_more(rows);
@@ -591,7 +598,7 @@ impl cxx_qt::Initialize for qobject::WallpaperListQuery {
 }
 
 impl qobject::WallpaperListQuery {
-    // ── база Query ────────────────────────────────────────────────────────
+    // ── Query base ────────────────────────────────────────────────────────
 
     pub fn status(&self) -> i32 {
         self.base.status
@@ -614,7 +621,7 @@ impl qobject::WallpaperListQuery {
         self.dispatch(signals);
     }
 
-    // ── свойства-параметры ────────────────────────────────────────────────
+    // ── parameter properties ──────────────────────────────────────────────
 
     pub fn wp_type(&self) -> QString {
         QString::from(&self.data.wp_type)
@@ -785,8 +792,8 @@ impl qobject::WallpaperListQuery {
     }
 
     pub fn set_hidden_library_ids(self: Pin<&mut Self>, value: QVariant) {
-        // Не список (undefined из `global.wallpaperHiddenLibraryIds || []`
-        // сюда не доходит, но null может) — ядро трактует как «скрытых нет».
+        // Not a list (undefined from `global.wallpaperHiddenLibraryIds || []` does
+        // not get here, but null may) — the core treats it as "nothing hidden".
         let list = variant_to_json(&value);
         self.set_core_property("hiddenLibraryIds", list);
     }
@@ -822,12 +829,12 @@ impl qobject::WallpaperListQuery {
         self.model
     }
 
-    // ── действия ──────────────────────────────────────────────────────────
+    // ── actions ───────────────────────────────────────────────────────────
 
     pub fn reload(mut self: Pin<&mut Self>) {
-        // Новое поколение: ответы прежних запросов больше не наши, страницы
-        // сброшены (`reload` оригинала: `++m_generation`, `setOffset(0)`,
-        // `setNoMore(false)`).
+        // A new generation: answers to previous requests are no longer ours, the
+        // pages are reset (the original's `reload`: `++m_generation`,
+        // `setOffset(0)`, `setNoMore(false)`).
         let signals = {
             let mut rust = self.as_mut().rust_mut();
             rust.pending.clear();
@@ -835,8 +842,9 @@ impl qobject::WallpaperListQuery {
             we_wallpaper::begin_reload(&mut rust.data)
         };
         self.as_mut().dispatch(signals);
-        // Нет соединения — запрос сразу в Error, кадр не уходит. Решение и
-        // сигналы считает ядро, ветка та же, что была у Python `_begin`.
+        // No connection — the request goes straight to Error, the frame does not
+        // go out. The decision and the signals are computed by the core; the
+        // branch is the same as Python's `_begin` had.
         let connected = crate::discover_queries::connected();
         let (send, signals) = we_query::begin_call(&mut self.as_mut().rust_mut().base, connected);
         self.as_mut().dispatch(signals);
@@ -868,7 +876,7 @@ impl qobject::WallpaperListQuery {
             return;
         }
         if self.failed_append {
-            // Ошибка снимает «есть ещё» — догрузку разрешаем заново.
+            // An error clears "there is more" — loading more is allowed again.
             self.as_mut().rust_mut().data.no_more = false;
             let count = self.data.total;
             self.fetch_more(count);
@@ -877,10 +885,10 @@ impl qobject::WallpaperListQuery {
         }
     }
 
-    /// Отправить кадр `wallpaper_list` и запомнить, чей ответ ждём.
+    /// Send the `wallpaper_list` frame and remember whose answer we expect.
     fn send_list(mut self: Pin<&mut Self>, payload: Vec<u8>, kind: Pending) {
-        // Ядро собирает payload, транспорту нужен ПОЛНЫЙ кадр Request с уже
-        // проставленным `request_id`: счётчик один на процесс.
+        // The core builds the payload; the transport needs a FULL Request frame
+        // with `request_id` already set: the counter is one per process.
         let token = crate::discover_queries::next_token();
         let Ok(bytes) =
             rexon_core::we_client::request_bytes(token as u64, "wallpaper_list", &payload)
@@ -912,21 +920,21 @@ impl qobject::WallpaperListQuery {
 
     pub fn deliver_response(mut self: Pin<&mut Self>, token: i64, frame: &QByteArray) {
         let Some(kind) = self.as_mut().rust_mut().pending.remove(&token) else {
-            // Ответ не наш, устаревшего поколения или уже обработан —
-            // молча дропаем.
+            // The answer is not ours, of a stale generation or already handled — drop
+            // it silently.
             return;
         };
-        // `t->setHasMore(false)` оригинала ДО правки строк: сетка спрашивает
-        // `canFetchMore` прямо из сброса/вставки, и старый флаг послал бы
-        // догрузку посреди разбора ответа.
+        // The original's `t->setHasMore(false)` BEFORE editing the rows: the grid
+        // asks `canFetchMore` right from the reset/insert, and the old flag would
+        // send a load-more request in the middle of parsing the answer.
         if let Some(model) = unsafe { model_pin(self.model) } {
             model.set_page_has_more(false);
         }
         let signals = {
             let mut rust = self.as_mut().rust_mut();
-            // Разъять заимствование руками: `&mut rust.base` и
-            // `&mut rust.data` — два поля одной структуры, но через
-            // Pin-обёртку компилятор этого не видит.
+            // Split the borrow by hand: `&mut rust.base` and `&mut rust.data` are two
+            // fields of one struct, but through the Pin wrapper the compiler does not
+            // see that.
             let rust = &mut *rust;
             match kind {
                 Pending::Reload => we_wallpaper::apply_wallpaper_list(
@@ -954,7 +962,8 @@ impl qobject::WallpaperListQuery {
                 }
             }
             Err(_) => {
-                // Демон может быть новее нас — падать посреди приёма нельзя.
+                // The daemon may be newer than us — crashing in the middle of receiving is
+                // not allowed.
                 let signals = {
                     let mut rust = self.as_mut().rust_mut();
                     let mut out = we_query::set_error(&mut rust.base, &rexon_core::i18n::tr("could not parse the daemon response"));
@@ -966,9 +975,10 @@ impl qobject::WallpaperListQuery {
         }
     }
 
-    // ── внутреннее ────────────────────────────────────────────────────────
+    // ── internals ─────────────────────────────────────────────────────────
 
-    /// Записать свойство через ядро: сравнение и сигналы считает оно.
+    /// Write a property through the core: it computes the comparison and the
+    /// signals.
     pub fn set_core_property(mut self: Pin<&mut Self>, name: &str, value: Value) {
         let Some(signals) = ({
             let mut rust = self.as_mut().rust_mut();
@@ -980,12 +990,11 @@ impl qobject::WallpaperListQuery {
         self.dispatch(signals);
     }
 
-    /// Разослать сигналы, посчитанные ядром, и выполнить их побочные
-    /// действия: пересборку модели и отложенную перезагрузку.
+    /// Emit the signals computed by the core and carry out their side effects:
+    /// rebuilding the model and the deferred reload.
     ///
-    /// Значения читаются ЖИВЫЕ (из состояния), а не запомненные при
-    /// планировании: обработчик в QML читает свойство и обязан увидеть
-    /// новое значение.
+    /// The values are read LIVE (from the state), not as remembered at planning
+    /// time: a handler in QML reads the property and must see the new value.
     pub fn dispatch(mut self: Pin<&mut Self>, signals: Vec<QuerySignal>) {
         let mut reload = false;
         for signal in signals {
@@ -1005,10 +1014,9 @@ impl qobject::WallpaperListQuery {
                     self.as_mut().emit_property(name);
                     if LIST_RELOAD_ON.contains(&name) {
                         reload = true;
-                        // `invalidateList` оригинала подписан на сигнал
-                        // свойства и срабатывает СРАЗУ за ним:
-                        // `selectionChanged`, сброс страниц, отмена запроса
-                        // в полёте (новое поколение).
+                        // The original's `invalidateList` is subscribed to the property's signal
+                        // and fires RIGHT after it: `selectionChanged`, resetting the pages,
+                        // cancelling the request in flight (a new generation).
                         let follow = {
                             let mut rust = self.as_mut().rust_mut();
                             rust.pending.clear();
@@ -1024,8 +1032,8 @@ impl qobject::WallpaperListQuery {
             }
         }
         if reload {
-            // Дебаунс настоящий: подряд идущие правки склеиваются в ОДИН
-            // запрос, как у оригинала.
+            // The debounce is real: consecutive edits are glued into ONE request, as
+            // in the original.
             let timer = self.debounce;
             if !timer.is_null() {
                 unsafe { qobject::rexon_restart_wallpaper_debounce(timer) };
@@ -1054,10 +1062,10 @@ impl qobject::WallpaperListQuery {
             "noMore" => self.as_mut().no_more_changed(),
             "selection" => self.as_mut().selection_changed(),
             "itemsAppended" => {
-                // Догрузка: модели — только недостающий хвост, вставкой.
-                // `itemsChanged` НЕ шлётся: у оригинала догрузка идёт
-                // `t->insert`, а не пересборкой, и QML, который слушает
-                // смену набора, не должен считать её новым списком.
+                // Loading more: the model gets only the missing tail, as an insertion.
+                // `itemsChanged` is NOT sent: in the original loading more goes through
+                // `t->insert`, not a rebuild, and QML listening for a change of the set
+                // must not treat it as a new list.
                 if let Some(model) = unsafe { model_pin(self.model) } {
                     let have = model.row_total();
                     let tail = self.data.items.get(have..).unwrap_or_default().to_vec();
@@ -1065,7 +1073,7 @@ impl qobject::WallpaperListQuery {
                 }
             }
             "items" => {
-                // Модель перестраивается ПЕРВОЙ — см. пояснение у сигнала.
+                // The model is rebuilt FIRST — see the explanation at the signal.
                 let rows = self.data.items.clone();
                 if let Some(model) = unsafe { model_pin(self.model) } {
                     model.reset_rows(rows);

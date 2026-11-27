@@ -1,6 +1,8 @@
-// AccentActions — объект блока «Цвет акцента» над сеткой «Цветовых схем».
+// AccentActions — the object of the "Accent colour" block above the
+// "Colour schemes" grid.
 //
-// Логики здесь нет: снимок, запись и возврат — ядро (`rexon_core::accent`).
+// There is no logic here: snapshot, writing and restoring come from the
+// core (`rexon_core::accent`).
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -16,20 +18,20 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок блока (JSON `accent::AccentState`).
+        /// Block snapshot (JSON `accent::AccentState`).
         #[qinvokable]
         fn state(self: &AccentActions) -> QString;
 
-        /// Выбор: `scheme`, `wallpaper` или цвет `#rrggbb`. Ответ — JSON
+        /// Choice: `scheme`, `wallpaper` or a `#rrggbb` colour. The answer is JSON
         /// `{"ok": bool, "message": "..."}`.
         #[qinvokable]
         fn apply(self: &AccentActions, choice: &QString) -> QString;
 
-        /// «Вернуть как было». Ответ — как у `apply`.
+        /// "Restore as it was". The answer is as for `apply`.
         #[qinvokable]
         fn revert(self: &AccentActions) -> QString;
 
-        /// Открыть настройки окружения (COSMIC).
+        /// Open the environment settings (COSMIC).
         #[qinvokable]
         #[cxx_name = "openNative"]
         fn open_native(self: &AccentActions) -> bool;

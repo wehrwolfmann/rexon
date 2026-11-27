@@ -1,38 +1,39 @@
-//! Манифест `.rxn` версии 5 — модель, проверка, перевод v3/v4 → v5 в памяти
-//! и правила выбора нагрузки по столу.
+//! The `.rxn` version 5 manifest — model, validation, in-memory v3/v4 → v5
+//! translation and the rules for choosing the payload per desktop.
 //!
-//! Замысел (решение проекта 25.10.2026): пакет хранит не «файлы под стол», а описание вида и родные
-//! варианты автора под конкретных **потребителей** (тот, кто читает формат:
-//! `aurorae`, `xfwm4`, `openbox-3`, `gtk`…). Что ставить на текущем столе,
-//! решает Rexon: родной вариант → совместимый → сгенерированный из модели
-//! (с пометкой «точно / приблизительно») → замена по смыслу → честный отказ.
+//! The idea (project decision 25.10.2026): a package stores not "files for a
+//! desktop" but a description of the look and the author's native variants for
+//! specific **consumers** (whoever reads the format: `aurorae`, `xfwm4`,
+//! `openbox-3`, `gtk`…). What to install on the current desktop is decided by
+//! Rexon: native variant → compatible → generated from the model (marked
+//! "exact / approximate") → substitute by meaning → honest refusal.
 //!
-//! Модуль — только данные и чистые функции: ни файлов, ни процессов, ни
-//! сети. Установку и откат строит следующий слой поверх существующих путей
-//! (`ext_manager`, `appearance_installer`, `rxn_v4_installer`).
+//! The module is data and pure functions only: no files, no processes, no
+//! network. Install and rollback are built by the next layer on top of the
+//! existing paths (`ext_manager`, `appearance_installer`, `rxn_v4_installer`).
 //!
-//! Что здесь есть:
-//!   * [`Package`] и вложенные типы — serde-модель манифеста v5;
-//!   * [`parse`] — разбор любого поддерживаемого манифеста (3, 4, 5) в
-//!     [`Package`] с полной проверкой; v3/v4 переводятся в памяти, их схема
-//!     проверяется прежним кодом (`constants::is_valid_type`,
+//! What is here:
+//!   * [`Package`] and nested types — the serde model of the v5 manifest;
+//!   * [`parse`] — parsing any supported manifest (3, 4, 5) into [`Package`]
+//!     with full validation; v3/v4 are translated in memory, their schema is
+//!     checked by the existing code (`constants::is_valid_type`,
 //!     `ext_manager::check_rexon_compat`, `manifest_v4::validate_v4_manifest`);
-//!   * [`choose`]/[`choose_all`] — правила выбора нагрузки по сеансу;
-//!   * зависимости трёх источников ([`DepSource`]) с запасным источником
-//!     ([`PackageDep::resolve`]) и проверка по снимкам до/после «никакой
-//!     подмены провайдером, ничего запрещённого не появилось»
-//!     ([`verify_dependency`], [`verify_package_change`]); предусловия
-//!     пакета ([`unmet_preconditions`]);
-//!   * классы исполняемого содержимого ([`scan_executables`],
-//!     [`check_contents`]) и запрет родных конфигов композиторов;
-//!   * лицензии ([`license_class`], [`check_publishable`],
+//!   * [`choose`]/[`choose_all`] — payload choice rules per session;
+//!   * dependencies from three sources ([`DepSource`]) with a fallback source
+//!     ([`PackageDep::resolve`]) and a before/after snapshot check "no
+//!     substitution by a provider, nothing forbidden appeared"
+//!     ([`verify_dependency`], [`verify_package_change`]); package
+//!     preconditions ([`unmet_preconditions`]);
+//!   * classes of executable content ([`scan_executables`],
+//!     [`check_contents`]) and the ban on native compositor configs;
+//!   * licenses ([`license_class`], [`check_publishable`],
 //!     [`derived_attribution`]);
-//!   * вычистка личных данных при экспорте ([`scrub_text`],
+//!   * scrubbing personal data on export ([`scrub_text`],
 //!     [`find_secrets`], [`never_export`]);
-//!   * необязательный раздел Мастерской Steam ([`Workshop`]) — без app_id и
-//!     без загрузки.
+//!   * an optional Steam Workshop section ([`Workshop`]) — without app_id and
+//!     without uploading.
 //!
-//! Строки для человека — английский исходник через `i18n::tr/trf`.
+//! Strings for the person are English source text via `i18n::tr/trf`.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -46,19 +47,19 @@ use crate::i18n::{tr, trf};
 use crate::system::PkgFamily;
 use crate::system_plan;
 
-/// `format_version` манифеста v5. `4` занят адаптивными видеообоями
-/// (`manifest_v4::V4_FORMAT_VERSION`), `3` — прежний формат одного типа.
+/// `format_version` of the v5 manifest. `4` is taken by adaptive video
+/// wallpapers (`manifest_v4::V4_FORMAT_VERSION`), `3` — the old single-type format.
 pub const V5_FORMAT_VERSION: u32 = 5;
 
 // ============================================================================
-// Ошибка проверки
+// Validation error
 // ============================================================================
 
-/// Одна ошибка манифеста: где (`items[2].native`) и что не так — текстом для
-/// человека на языке интерфейса.
+/// One manifest error: where (`items[2].native`) and what is wrong — as text
+/// for the person in the interface language.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ManifestError {
-    /// Путь к полю в манифесте; пусто — манифест целиком.
+    /// Path to the field in the manifest; empty — the manifest as a whole.
     pub field: String,
     pub message: String,
 }
@@ -79,17 +80,17 @@ impl fmt::Display for ManifestError {
     }
 }
 
-/// Все ошибки одной строкой на каждую — для журнала и окна ошибки.
+/// All errors, one line each — for the log and the error window.
 pub fn errors_text(errors: &[ManifestError]) -> String {
     errors.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n")
 }
 
 // ============================================================================
-// Модель
+// Model
 // ============================================================================
 
-/// Текст на нескольких языках: `{"en": "…", "ru": "…"}` или просто строка
-/// (так пишут v3 и короткие пакеты).
+/// Text in several languages: `{"en": "…", "ru": "…"}` or just a string
+/// (that is how v3 and short packages write it).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Localized {
@@ -104,8 +105,8 @@ impl Default for Localized {
 }
 
 impl Localized {
-    /// Текст для языка `lang` (`ru`, `pt_BR`): точное совпадение → язык без
-    /// региона → английский → любой непустой.
+    /// Text for language `lang` (`ru`, `pt_BR`): exact match → language without
+    /// region → English → any non-empty.
     pub fn get(&self, lang: &str) -> &str {
         match self {
             Localized::Plain(s) => s,
@@ -126,7 +127,7 @@ impl Localized {
     }
 }
 
-/// Автор пакета.
+/// Package author.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Author {
     pub name: String,
@@ -134,55 +135,54 @@ pub struct Author {
     pub url: Option<String>,
 }
 
-/// Чужая часть пакета (`sources`) или источник производного (`derived_from`).
+/// A third-party part of the package (`sources`) or the source of a derivative (`derived_from`).
 ///
-/// Источник с `id` — не просто атрибуция, а **закреплённое содержимое**
-/// (образы «Как в дистрибутиве»): элементы ссылаются на его файлы
-/// путём `sources/<id>/…`, а Rexon при установке кладёт туда ровно то, что
-/// закреплено. Закрепление — одно из трёх:
-///   * `rev` — коммит git (40 или 64 шестнадцатеричных знака), `url` —
-///     адрес репозитория;
-///   * `sha256` — хеш архива или бинарного пакета по `url`; несовпадение —
-///     отказ, а не «скачаю что есть»;
-///   * `package` — роль зависимости из `requires.packages`: файлы приносит
-///     пакет системы (значки BeautyLine из репозитория), путь
-///     `sources/<id>/usr/share/…` означает файл этого пакета.
+/// A source with an `id` is not just attribution but **pinned content**
+/// («Distro Looks»): elements refer to its files by the path
+/// `sources/<id>/…`, and on install Rexon puts there exactly what is pinned.
+/// The pin is one of three:
+///   * `rev` — a git commit (40 or 64 hex digits), `url` — the repository URL;
+///   * `sha256` — hash of the archive or binary package at `url`; a mismatch
+///     is a refusal, not "I'll download whatever is there";
+///   * `package` — a dependency role from `requires.packages`: the files are
+///     brought by a system package (BeautyLine icons from the repository), the
+///     path `sources/<id>/usr/share/…` means a file of that package.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Source {
-    /// Что взято: «Nord palette», «рамки Arc».
+    /// What was taken: "Nord palette", "Arc frames".
     pub what: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
-    /// SPDX-выражение лицензии источника.
+    /// SPDX license expression of the source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
-    /// Имя источника для путей `sources/<id>/…`.
+    /// Source name for `sources/<id>/…` paths.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// Закреплённый коммит git.
+    /// Pinned git commit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rev: Option<String>,
-    /// Хеш SHA-256 скачиваемого архива или пакета.
+    /// SHA-256 hash of the downloaded archive or package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
-    /// Роль зависимости, которая приносит файлы источника.
+    /// Dependency role that brings the source's files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
 }
 
-/// Каталог в пакете, под которым лежат файлы закреплённых источников.
+/// Directory in the package under which the pinned sources' files lie.
 pub const SOURCES_DIR: &str = "sources";
 
 impl Source {
-    /// Источник скачивается при установке (git или архив по хешу).
+    /// The source is downloaded on install (git or an archive by hash).
     pub fn is_fetched(&self) -> bool {
         self.rev.is_some() || self.sha256.is_some()
     }
 }
 
-/// Вид настройки, которую Rexon рисует сам (как свойства Wallpaper Engine).
+/// Kind of a setting Rexon draws itself (like Wallpaper Engine properties).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PropertyType {
@@ -193,7 +193,7 @@ pub enum PropertyType {
     Text,
 }
 
-/// Свойство пакета. В модели на него ссылаются как `${prop.<имя>}`.
+/// A package property. In the model it is referenced as `${prop.<name>}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Property {
     #[serde(rename = "type")]
@@ -205,17 +205,17 @@ pub struct Property {
     pub min: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<f64>,
-    /// Варианты списка: строка (`"vapor"`) или `{"value": "vgui", "label":
-    /// {…}}` с подписью для человека.
+    /// List options: a string (`"vapor"`) or `{"value": "vgui", "label":
+    /// {…}}` with a label for the person.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<PropOption>,
-    /// Откуда ещё можно взять значение (`from-wallpaper`).
+    /// Where else the value can be taken from (`from-wallpaper`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allow: Vec<String>,
 }
 
-/// Вариант свойства-списка. Голая строка — прежняя форма (подписью служит
-/// само значение), объект — значение и подпись на языках.
+/// An option of a list property. A bare string is the old form (the value
+/// itself serves as the label), an object — the value and a label in languages.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PropOption {
@@ -230,7 +230,7 @@ impl PropOption {
         }
     }
 
-    /// Подпись для языка `lang`; без подписи — само значение.
+    /// Label for language `lang`; without a label — the value itself.
     pub fn label(&self, lang: &str) -> &str {
         match self {
             PropOption::Labeled { label, .. } if !label.is_blank() => label.get(lang),
@@ -240,74 +240,74 @@ impl PropOption {
 }
 
 impl Property {
-    /// Значения вариантов списка в порядке манифеста.
+    /// Values of the list options in manifest order.
     pub fn option_values(&self) -> Vec<&str> {
         self.options.iter().map(PropOption::value).collect()
     }
 }
 
-/// Значения свойств, выбранные человеком: имя → значение. Чего нет —
-/// берётся `default` свойства.
+/// Property values chosen by the person: name → value. What is missing is
+/// taken from the property's `default`.
 pub type PropValues = BTreeMap<String, Value>;
 
-/// Условие по значениям свойств (`when`): имя свойства → значение или
-/// список допустимых значений; все пары должны совпасть. Только для
-/// свойств-списков и переключателей.
+/// A condition on property values (`when`): property name → a value or a list
+/// of allowed values; all pairs must match. Only for list properties and
+/// toggles.
 pub type When = BTreeMap<String, Value>;
 
-/// Разрешение, которое элемент просит у человека.
+/// A permission the element asks the person for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Permission {
-    /// Выполнять код или команды (Conky, JS, QML, скрипты).
+    /// Run code or commands (Conky, JS, QML, scripts).
     Exec,
-    /// Ходить в сеть.
+    /// Access the network.
     Network,
 }
 
-/// Один элемент пакета: абстрактный вид + варианты под потребителей.
+/// One package element: an abstract kind + variants for consumers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Item {
-    /// Абстрактный вид из закрытого списка [`KINDS`].
+    /// Abstract kind from the closed list [`KINDS`].
     pub kind: String,
-    /// Файл описания (уровень 2: генерация), `model/decoration.json`.
+    /// Description file (level 2: generation), `model/decoration.json`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Родные варианты автора: потребитель → путь в архиве.
+    /// The author's native variants: consumer → path in the archive.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub native: BTreeMap<String, String>,
-    /// Разрешил ли автор генерацию для остальных потребителей.
+    /// Whether the author allowed generation for the other consumers.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub generate: bool,
-    /// Без этого элемента весь пакет не ставится.
+    /// Without this element the whole package doesn't install.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub required: bool,
-    /// Смысл элемента для замены по смыслу (`weather`, `clock`).
+    /// The element's meaning for substitution by meaning (`weather`, `clock`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
-    /// Чем заменить на другом столе: потребитель → путь в архиве.
+    /// What to substitute on another desktop: consumer → path in the archive.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub substitute: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<Permission>,
-    /// Вид `ref`: id предмета Мастерской, который ставится вместе с набором.
+    /// Kind `ref`: id of a Workshop item installed together with the set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workshop: Option<u64>,
-    /// Только `plasmoid`: показ отдельным окном вне Plasma (`plasmawindowed`).
-    /// Модель на будущее, Rexon этого пока не исполняет.
+    /// `plasmoid` only: showing it as a separate window outside Plasma
+    /// (`plasmawindowed`). A model for the future, Rexon doesn't execute it yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub windowed: Option<Windowed>,
-    /// Предупреждение для карточки до установки («на ноутбуке с двумя
-    /// видеокартами экран может остаться чёрным»).
+    /// A warning for the card before installing ("on a laptop with two GPUs the
+    /// screen may stay black").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<Localized>,
-    /// Элемент только при этих значениях свойств: `{"variant": "vgui"}`.
-    /// Не совпало — [`Choice::Off`], не «пропущено».
+    /// The element only for these property values: `{"variant": "vgui"}`.
+    /// No match — [`Choice::Off`], not "skipped".
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub when: When,
 }
 
-/// Тип сеанса для показа плазмоида окном.
+/// Session type for showing a plasmoid as a window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionKind {
@@ -315,14 +315,14 @@ pub enum SessionKind {
     Wayland,
 }
 
-/// Слой окна плазмоида вне Plasma.
+/// Window layer of a plasmoid outside Plasma.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HintLayer {
-    /// Под окнами программ, над обоями.
+    /// Below program windows, above the wallpaper.
     Below,
     Normal,
-    /// Окно-рабочий стол (`_NET_WM_WINDOW_TYPE_DESKTOP`).
+    /// A desktop window (`_NET_WM_WINDOW_TYPE_DESKTOP`).
     Desktop,
 }
 
@@ -330,32 +330,32 @@ fn x11_only() -> Vec<SessionKind> {
     vec![SessionKind::X11]
 }
 
-/// Блок `windowed` у плазмоида (разведка plasmawindowed 25.10): родной
-/// плазмоид — только Plasma, окно вне её — по флагу в настройках Rexon и
-/// только при уже стоящей plasma-workspace.
+/// The plasmoid's `windowed` block (plasmawindowed research 25.10): a native
+/// plasmoid is Plasma only, a window outside it — by a flag in Rexon settings
+/// and only when plasma-workspace is already installed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Windowed {
     #[serde(default)]
     pub allowed: bool,
-    /// Где автор проверял окно. По умолчанию — только X11.
+    /// Where the author tested the window. Default — X11 only.
     #[serde(default = "x11_only")]
     pub sessions: Vec<SessionKind>,
-    /// `[ширина, высота]`.
+    /// `[width, height]`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_size: Option<[u32; 2]>,
-    /// `[x, y, ширина, высота]`.
+    /// `[x, y, width, height]`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_geometry: Option<[i32; 4]>,
-    /// Что нужно сверх libplasma (`plasma5support`).
+    /// What is needed beyond libplasma (`plasma5support`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub needs: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hint_layer: Option<HintLayer>,
 }
 
-/// Роли плазмоидов, бессмысленные вне Plasma: они управляют самой оболочкой
-/// (задачи, рабочие столы, лоток, меню). Вне Plasma — честный отказ: ни
-/// окна, ни обязательной замены.
+/// Plasmoid roles meaningless outside Plasma: they control the shell itself
+/// (tasks, virtual desktops, tray, menu). Outside Plasma — an honest refusal:
+/// neither a window nor a mandatory substitute.
 pub const PLASMA_ONLY_ROLES: &[&str] = &[
     "taskmanager",
     "pager",
@@ -379,24 +379,25 @@ fn is_true(b: &bool) -> bool {
     *b
 }
 
-/// Откуда ставится зависимость.
+/// Where a dependency is installed from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DepSource {
-    /// Официальные репозитории дистрибутива (имена по семействам).
+    /// Official distribution repositories (names per family).
     #[default]
     Repo,
-    /// AUR — только Arch и только с явным префиксом `aur/`.
+    /// AUR — Arch only and only with an explicit `aur/` prefix.
     Aur,
-    /// extensions.gnome.org: `uuid` и проверка версии GNOME Shell. Ставится
-    /// сразу, окном оболочки (`gnome_ext_section::install_dependency`).
+    /// extensions.gnome.org: `uuid` and a GNOME Shell version check. Installed
+    /// right away, by the shell's dialog (`gnome_ext_section::install_dependency`).
     GnomeExtensions,
 }
 
 impl DepSource {
-    /// Ставит ли Rexon такую зависимость сам, без вопроса «Да/Нет» (правило
-    /// 24.10: репозитории — да, защита — окно пароля; AUR — никогда
-    /// автоматом; EGO — да, решение 25.10 для Dash to Panel/ArcMenu).
+    /// Whether Rexon installs such a dependency itself, without a "Yes/No"
+    /// question (rule of 24.10: repositories — yes, the protection is the password
+    /// dialog; AUR — never automatically; EGO — yes, decision of 25.10 for Dash to
+    /// Panel/ArcMenu).
     pub fn installs_automatically(self) -> bool {
         !matches!(self, DepSource::Aur)
     }
@@ -410,64 +411,64 @@ impl DepSource {
     }
 }
 
-/// Ключ имён пакетов AUR в [`PackageDep::names`].
+/// Key of AUR package names in [`PackageDep::names`].
 pub const AUR_NAMES_KEY: &str = "aur";
 
-/// Зависимость пакета. Описывается ролью, имена — по семействам
-/// дистрибутивов: `{"role": "gtk3-adwaita-base", "arch": ["adw-gtk-theme"],
-/// "fedora": ["adw-gtk3-theme"], "debian": null}`. `null` — «в этом
-/// семействе нет», тогда элемент там пропускается с причиной.
+/// A package dependency. Described by a role, names per distribution family:
+/// `{"role": "gtk3-adwaita-base", "arch": ["adw-gtk-theme"],
+/// "fedora": ["adw-gtk3-theme"], "debian": null}`. `null` — "not available in
+/// this family", then the element is skipped there with a reason.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PackageDep {
     pub role: String,
-    /// Для каких видов элементов нужна (пусто — для всего пакета).
+    /// Which element kinds need it (empty — the whole package).
     #[serde(rename = "for", default, skip_serializing_if = "Vec::is_empty")]
     pub for_kinds: Vec<String>,
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub required: bool,
     #[serde(default)]
     pub source: DepSource,
-    /// `gnome-extensions`: uuid расширения (`dash-to-panel@jderose9.github.com`).
+    /// `gnome-extensions`: extension uuid (`dash-to-panel@jderose9.github.com`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uuid: Option<String>,
-    /// Пакеты, которые НЕ должны ПОЯВИТЬСЯ из-за установки этой зависимости
-    /// (урок 25.10: `gamescope-session-steam-git` из AUR подменился пакетом
-    /// CachyOS и притянул `jupiter-hw-support`). Стоявшее до установки —
-    /// не нарушение: [`verify_dependency`] сравнивает два снимка.
+    /// Packages that must NOT APPEAR as a result of installing this dependency
+    /// (lesson of 25.10: `gamescope-session-steam-git` from AUR was substituted by
+    /// a CachyOS package and pulled in `jupiter-hw-support`). What was installed
+    /// before is not a violation: [`verify_dependency`] compares two snapshots.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forbid: Vec<String>,
-    /// Только для этих потребителей выбранного варианта (пусто — для
-    /// любого): `user-theme` нужен теме `gnome-shell`, но не теме Plasma
-    /// того же элемента `shell-theme`.
+    /// Only for these consumers of the chosen variant (empty — for any):
+    /// `user-theme` is needed by the `gnome-shell` theme, but not by the Plasma
+    /// theme of the same `shell-theme` element.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub consumers: Vec<String>,
-    /// Нужна только при этих значениях свойств: `oxygen-cursors` — только
-    /// при `{"variant": "vgui"}` (курсор KDE_Classic стиля VGUI2).
+    /// Needed only for these property values: `oxygen-cursors` — only with
+    /// `{"variant": "vgui"}` (the KDE_Classic cursor of the VGUI2 style).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub when: When,
-    /// Запасные источники по порядку после `source`: `{"source": "repo",
-    /// "fallback": ["aur"]}` — «сначала репозиторий, нет там — AUR»
-    /// (BeautyLine есть в репозитории CachyOS, на чистом Arch — только в
-    /// AUR). Допустимо только `repo` → `aur`; имена AUR — под ключом `aur`.
-    /// Какой источник взят, решает [`PackageDep::resolve`].
+    /// Fallback sources in order after `source`: `{"source": "repo",
+    /// "fallback": ["aur"]}` — "the repository first, if not there — AUR"
+    /// (BeautyLine is in the CachyOS repository, on plain Arch — only in AUR).
+    /// Only `repo` → `aur` is allowed; AUR names go under the `aur` key. Which
+    /// source is taken is decided by [`PackageDep::resolve`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallback: Vec<DepSource>,
-    /// Имена по семействам (`arch`, `debian`…) и `aur`; значение — список
-    /// имён или `null`.
+    /// Names per family (`arch`, `debian`…) and `aur`; the value is a list of
+    /// names or `null`.
     #[serde(flatten)]
     pub names: BTreeMap<String, Value>,
 }
 
-/// Зависимость, для которой выбран источник ([`PackageDep::resolve`]).
+/// A dependency with a chosen source ([`PackageDep::resolve`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedDep {
     pub source: DepSource,
-    /// Голые имена пакетов (у EGO — пусто, ставится по `uuid`).
+    /// Bare package names (empty for EGO, installed by `uuid`).
     pub names: Vec<String>,
 }
 
 impl ResolvedDep {
-    /// Имена для команды установки: у AUR — `aur/<имя>` (см.
+    /// Names for the install command: for AUR — `aur/<name>` (see
     /// [`PackageDep::install_names`]).
     pub fn install_names(&self) -> Vec<String> {
         match self.source {
@@ -476,17 +477,17 @@ impl ResolvedDep {
         }
     }
 
-    /// Ставит ли Rexon выбранное сам ([`DepSource::installs_automatically`]):
-    /// откат на AUR автоматом не ставится никогда.
+    /// Whether Rexon installs the choice itself ([`DepSource::installs_automatically`]):
+    /// a fallback to AUR is never installed automatically.
     pub fn installs_automatically(&self) -> bool {
         self.source.installs_automatically()
     }
 }
 
 impl PackageDep {
-    /// Имена пакетов для семейства. `None` — в этом семействе зависимости
-    /// нет (не указано или `null`), пусто не бывает (проверка не пропустит).
-    /// Только основной источник `source`; запасные — [`PackageDep::resolve`].
+    /// Package names for a family. `None` — the dependency is not available in
+    /// this family (not specified or `null`), empty never happens (validation
+    /// won't let it through). Only the main `source`; fallbacks — [`PackageDep::resolve`].
     pub fn names_for(&self, family: PkgFamily) -> Option<Vec<String>> {
         self.names_from(self.source, family)
     }
@@ -501,18 +502,18 @@ impl PackageDep {
         Some(list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
     }
 
-    /// Источники по порядку: `source`, затем `fallback`.
+    /// Sources in order: `source`, then `fallback`.
     pub fn sources_in_order(&self) -> Vec<DepSource> {
         std::iter::once(self.source).chain(self.fallback.iter().copied()).collect()
     }
 
-    /// Выбрать источник по данным о репозиториях. `in_repos(имя)` — есть ли
-    /// пакет в подключённых репозиториях системы (вызывающий собирает это
-    /// заранее, `pacman -Si` и т. п.; здесь процессов нет). Репозиторий
-    /// годится, если в нём есть ВСЕ имена семейства; AUR — только Arch и
-    /// без проверки (`in_repos` про него не знает); EGO — всегда.
-    /// `None` — ни один источник не даёт пакета: элемент пропускается с
-    /// причиной, а не ставится «что есть».
+    /// Pick a source from repository data. `in_repos(name)` — whether the package
+    /// is in the system's enabled repositories (the caller collects this up front,
+    /// `pacman -Si` and the like; there are no processes here). A repository fits
+    /// if it has ALL of the family's names; AUR — Arch only and unchecked
+    /// (`in_repos` doesn't know about it); EGO — always. `None` — no source
+    /// provides the package: the element is skipped with a reason rather than
+    /// installing "whatever there is".
     pub fn resolve(&self, family: PkgFamily, in_repos: &dyn Fn(&str) -> bool) -> Option<ResolvedDep> {
         for source in self.sources_in_order() {
             match source {
@@ -534,9 +535,9 @@ impl PackageDep {
         None
     }
 
-    /// Имена для команды установки. AUR — всегда `aur/<имя>`: так `paru`
-    /// не возьмёт одноимённый пакет или «Provides» из подключённого
-    /// репозитория (урок 25.10, `gamescope-session-cachyos`).
+    /// Names for the install command. AUR — always `aur/<name>`: that way `paru`
+    /// won't take a same-named package or a "Provides" from an enabled repository
+    /// (lesson of 25.10, `gamescope-session-cachyos`).
     pub fn install_names(&self, family: PkgFamily) -> Option<Vec<String>> {
         let names = self.names_for(family)?;
         Some(match self.source {
@@ -546,22 +547,22 @@ impl PackageDep {
     }
 }
 
-/// Раздел `requires`.
+/// The `requires` section.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Requires {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub packages: Vec<PackageDep>,
-    /// Версии потребителей, под которые написаны РОДНЫЕ варианты:
-    /// `{"cinnamon": ">=6.0"}`. Генерации не касается.
+    /// Consumer versions the NATIVE variants were written for:
+    /// `{"cinnamon": ">=6.0"}`. Doesn't concern generation.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub targets: BTreeMap<String, String>,
-    /// Пакеты, которые не должны ПОЯВИТЬСЯ из-за установки всего пакета
-    /// (не только одной зависимости). Стоявшее до установки не мешает:
-    /// `plasma-login-manager` может быть экраном входа человека, но образ
-    /// Garuda его не приносит. Проверка — [`verify_package_change`].
+    /// Packages that must not APPEAR as a result of installing the whole package
+    /// (not just one dependency). What was installed before doesn't matter:
+    /// `plasma-login-manager` may be the person's login screen, but the Garuda
+    /// look doesn't bring it. Checked by [`verify_package_change`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forbid: Vec<String>,
-    /// Что должно быть верно в системе ДО установки ([`unmet_preconditions`]).
+    /// What must hold on the system BEFORE installing ([`unmet_preconditions`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub preconditions: Vec<Precondition>,
 }
@@ -572,31 +573,31 @@ impl Requires {
     }
 }
 
-/// Предусловие пакета: кем в системе закрыто имя `name` (пакет или его
-/// Provides). `{"name": "libplasma", "owners": ["libplasma"]}` — если
-/// libplasma стоит, это должна быть сама libplasma, а не форк
-/// (`aeroshell-libplasma-git` подменяет её, и оформление Plasma на нём не
-/// применяется). Нужно хотя бы одно из `owners`, `not_owners`, `installed`.
+/// A package precondition: who on the system covers the name `name` (a package
+/// or its Provides). `{"name": "libplasma", "owners": ["libplasma"]}` — if
+/// libplasma is installed, it must be libplasma itself and not a fork
+/// (`aeroshell-libplasma-git` substitutes it, and Plasma appearance doesn't
+/// apply on it). At least one of `owners`, `not_owners`, `installed` is needed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Precondition {
     pub name: String,
-    /// Какие настоящие пакеты могут закрывать имя (пусто — любые).
+    /// Which real packages may cover the name (empty — any).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub owners: Vec<String>,
-    /// Какие пакеты закрывать имя не могут.
+    /// Which packages may not cover the name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub not_owners: Vec<String>,
-    /// `true` — имя обязано быть в системе, `false` — не должно быть;
-    /// нет поля — неважно (проверяются только владельцы, если имя есть).
+    /// `true` — the name must be on the system, `false` — it must not; no field —
+    /// doesn't matter (only owners are checked, if the name is present).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed: Option<bool>,
-    /// Объяснение для человека, почему пакет не ставится.
+    /// Explanation for the person of why the package won't install.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<Localized>,
 }
 
 impl Precondition {
-    /// Нарушено ли условие: `found` — кем закрыто имя сейчас (`None` — ничем).
+    /// Whether the condition is violated: `found` — who covers the name now (`None` — nothing).
     fn is_unmet(&self, found: Option<&str>) -> bool {
         match (self.installed, found) {
             (Some(true), None) | (Some(false), Some(_)) => true,
@@ -609,16 +610,16 @@ impl Precondition {
     }
 }
 
-/// Нарушенное предусловие и что нашлось в системе.
+/// A violated precondition and what was found on the system.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnmetPrecondition<'a> {
     pub precondition: &'a Precondition,
-    /// Кем закрыто имя (`None` — не установлено).
+    /// Who covers the name (`None` — not installed).
     pub found: Option<String>,
 }
 
 impl UnmetPrecondition<'_> {
-    /// Текст для человека: объяснение автора, иначе общее.
+    /// Text for the person: the author's explanation, otherwise a generic one.
     pub fn text(&self, lang: &str) -> String {
         if let Some(m) = self.precondition.message.as_ref().filter(|m| !m.is_blank()) {
             return m.get(lang).to_string();
@@ -635,19 +636,19 @@ impl UnmetPrecondition<'_> {
     }
 }
 
-/// Раздел `privacy`: что вычищено при «Сохранить мой стол».
+/// The `privacy` section: what was scrubbed on «Save my desktop».
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Privacy {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exported_by: Option<String>,
     #[serde(default)]
     pub scrubbed: bool,
-    /// Перечень вычищенного — человек видит его до сохранения.
+    /// List of what was scrubbed — the person sees it before saving.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub removed: Vec<String>,
 }
 
-/// Видимость предмета Мастерской (как в Steam UGC).
+/// Workshop item visibility (as in Steam UGC).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Visibility {
@@ -658,25 +659,26 @@ pub enum Visibility {
     Unlisted,
 }
 
-/// Необязательный раздел Мастерской Steam. Загрузки нет, app_id в пакет не
-/// пишется никогда (решение 25.10: AppID Rexon ещё нет, его знает только
-/// программа). Раздел заложен заранее, чтобы потом не менять формат.
+/// Optional Steam Workshop section. There is no uploading, and app_id is never
+/// written into the package (decision of 25.10: Rexon has no AppID yet, only
+/// the program knows it). The section is laid down in advance so the format
+/// doesn't have to change later.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Workshop {
-    /// Id опубликованного предмета (PublishedFileId), если уже выложен.
+    /// Id of the published item (PublishedFileId), if already uploaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub published_file_id: Option<u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
-    /// Превью для Мастерской (путь в архиве); нет — общее `preview`.
+    /// Preview for the Workshop (path in the archive); none — the common `preview`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,
     #[serde(default)]
     pub visibility: Visibility,
 }
 
-/// Пакет `.rxn` v5 — после [`parse`] всегда в этой форме, из какой бы версии
-/// он ни пришёл.
+/// A `.rxn` v5 package — after [`parse`] always in this form, whatever version
+/// it came from.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Package {
     pub format_version: u32,
@@ -688,27 +690,27 @@ pub struct Package {
     pub description: Option<Localized>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub authors: Vec<Author>,
-    /// SPDX-выражение. Обязательно для выкладки и экспорта, не для установки.
+    /// SPDX expression. Mandatory for publishing and export, not for installing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<Source>,
-    /// Источник производного (импорт чужой темы → модель → генерация).
-    /// Пишет Rexon сам ([`derived_attribution`]).
+    /// Source of a derivative (import of a foreign theme → model → generation).
+    /// Written by Rexon itself ([`derived_attribution`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub derived_from: Vec<Source>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rexon_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,
-    /// Превью по потребителям или столам: `{"xfce": "previews/xfce.png"}`.
+    /// Previews per consumer or desktop: `{"xfce": "previews/xfce.png"}`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub previews: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
-    /// Свойства в порядке манифеста (порядок — порядок показа).
+    /// Properties in manifest order (the order is the display order).
     #[serde(default, with = "ordered_properties", skip_serializing_if = "Vec::is_empty")]
     pub properties: Vec<(String, Property)>,
     pub items: Vec<Item>,
@@ -718,8 +720,8 @@ pub struct Package {
     pub privacy: Option<Privacy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workshop: Option<Workshop>,
-    /// Из какой версии формата пакет прочитан (3, 4 или 5). В файл не
-    /// пишется: после чтения пакет всегда v5.
+    /// Which format version the package was read from (3, 4 or 5). Not written to
+    /// the file: after reading the package is always v5.
     #[serde(skip)]
     pub source_format: u32,
 }
@@ -728,8 +730,8 @@ fn default_version() -> String {
     "0.0.0".to_string()
 }
 
-/// Свойства — объект JSON с порядком ключей (`serde_json` с
-/// `preserve_order`) ↔ список пар.
+/// Properties — a JSON object with key order (`serde_json` with
+/// `preserve_order`) ↔ a list of pairs.
 mod ordered_properties {
     use super::Property;
     use serde::de::Error as _;
@@ -756,13 +758,13 @@ mod ordered_properties {
 }
 
 impl Package {
-    /// Свойство по имени.
+    /// Property by name.
     pub fn property(&self, name: &str) -> Option<&Property> {
         self.properties.iter().find(|(k, _)| k == name).map(|(_, p)| p)
     }
 
-    /// Зависимости, нужные элементу вида `kind` (свои и общие на пакет) —
-    /// все возможные, без учёта `consumers` и `when`.
+    /// Dependencies needed by an element of kind `kind` (its own and
+    /// package-wide) — all possible ones, ignoring `consumers` and `when`.
     pub fn deps_for(&self, kind: &str) -> Vec<&PackageDep> {
         self.requires
             .packages
@@ -771,15 +773,15 @@ impl Package {
             .collect()
     }
 
-    /// Зависимости элемента `kind`, вариант которого выбран для
-    /// потребителя `consumer` (учитывает поле `consumers`), при значениях
-    /// свойств по умолчанию.
+    /// Dependencies of element `kind` whose variant was chosen for consumer
+    /// `consumer` (takes the `consumers` field into account), with default
+    /// property values.
     pub fn deps_for_choice(&self, kind: &str, consumer: &str) -> Vec<&PackageDep> {
         self.deps_for_choice_with(kind, consumer, &PropValues::new())
     }
 
-    /// То же при выбранных значениях свойств: зависимость с `when`
-    /// попадает, только если условие совпало.
+    /// The same with chosen property values: a dependency with `when` is
+    /// included only if the condition matched.
     pub fn deps_for_choice_with(&self, kind: &str, consumer: &str, values: &PropValues) -> Vec<&PackageDep> {
         self.deps_for(kind)
             .into_iter()
@@ -788,12 +790,12 @@ impl Package {
             .collect()
     }
 
-    /// Значение свойства: выбранное человеком, иначе `default`.
+    /// Property value: the one chosen by the person, otherwise `default`.
     pub fn prop_value<'a>(&'a self, name: &str, values: &'a PropValues) -> Option<&'a Value> {
         values.get(name).or_else(|| self.property(name).map(|p| &p.default))
     }
 
-    /// Совпало ли условие `when` (пустое — всегда).
+    /// Whether the `when` condition matched (empty — always).
     pub fn when_holds(&self, when: &When, values: &PropValues) -> bool {
         when.iter().all(|(name, want)| {
             let Some(have) = self.prop_value(name, values) else { return false };
@@ -804,13 +806,13 @@ impl Package {
         })
     }
 
-    /// Закреплённый источник по `id`.
+    /// Pinned source by `id`.
     pub fn source(&self, id: &str) -> Option<&Source> {
         self.sources.iter().find(|s| s.id.as_deref() == Some(id))
     }
 
-    /// Ставит ли пакет хоть что-то исполняемое (по объявлению вида и
-    /// разрешений; фактическое содержимое проверяет [`check_contents`]).
+    /// Whether the package installs anything executable at all (by declared kind
+    /// and permissions; the actual content is checked by [`check_contents`]).
     pub fn has_executable(&self) -> bool {
         self.items
             .iter()
@@ -819,13 +821,13 @@ impl Package {
 }
 
 // ============================================================================
-// Виды и потребители
+// Kinds and consumers
 // ============================================================================
 
-/// Закрытый список абстрактных видов v5. Новый вид — строка здесь (и, если
-/// у него есть прежний тип v3, строка в [`LEGACY_TYPES`]).
+/// The closed list of v5 abstract kinds. A new kind is a line here (and, if it
+/// has an old v3 type, a line in [`LEGACY_TYPES`]).
 pub const KINDS: &[&str] = &[
-    // описание вида (уровни 1–2)
+    // look description (levels 1–2)
     "palette",
     "window-decoration",
     "panel-layout",
@@ -843,11 +845,11 @@ pub const KINDS: &[&str] = &[
     "boot-splash",
     "session-splash",
     "behaviour",
-    // движок Rexon (уровень 3)
+    // Rexon engine (level 3)
     "live-wallpaper-adaptive",
     "widget-conky",
     "widget-web",
-    // код, привязанный к оболочке (уровень 4)
+    // code tied to a shell (level 4)
     "plasmoid",
     "wallpaper-plugin",
     "shell-extension",
@@ -860,15 +862,15 @@ pub const KINDS: &[&str] = &[
     "fm-action",
     "desktop-tool",
     "plugin",
-    // сеанс на экране входа (игровой режим Steam): запускает программу
+    // a session on the login screen (Steam game mode): runs a program
     "game-session",
-    // ссылка на другой предмет Мастерской
+    // a reference to another Workshop item
     "ref",
 ];
 
-/// Виды, которые по своей природе исполняют код: без `permissions: ["exec"]`
-/// пакет v5 отвергается (Rexon не верит полю, но и молчаливого кода не
-/// пускает).
+/// Kinds that by their nature execute code: without `permissions: ["exec"]` a
+/// v5 package is rejected (Rexon doesn't trust the field, but it doesn't let
+/// silent code through either).
 pub const EXECUTABLE_KINDS: &[&str] = &[
     "widget-conky",
     "widget-web",
@@ -895,34 +897,35 @@ pub fn kind_is_executable(kind: &str) -> bool {
     EXECUTABLE_KINDS.contains(&kind)
 }
 
-/// Потребители общего стандарта: есть в любом сеансе (уровень 1 —
-/// каталоги freedesktop и движок обоев Rexon).
+/// Consumers of the common standard: present in any session (level 1 —
+/// freedesktop directories and the Rexon wallpaper engine).
 pub const UNIVERSAL_CONSUMERS: &[&str] = &["any", "freedesktop", "rexon-wallpaper"];
 
-/// Совместимость потребителей: `(кому нужно, чей вариант подходит)`.
-/// GTK-SSD (рамки CSD у Mutter/Muffin/Gala) рисуются темой GTK. `qt6ct` —
-/// Qt-программы вне Plasma и LXQt, которым стиль и палитру выбирает qt6ct:
-/// тема Kvantum — обычный плагин стилей Qt и красит их так же, как в Plasma
-/// (`themes::apply_kvantum_plan`), а цветовая схема KDE переводится в
-/// палитру Qt (`shell_palette::plan_scheme_layer`). `lxqt` — то же для
-/// палитры LXQt (`lxqt.conf [Palette]`).
+/// Consumer compatibility: `(who needs it, whose variant fits)`.
+/// GTK-SSD (CSD frames in Mutter/Muffin/Gala) are drawn by the GTK theme.
+/// `qt6ct` — Qt programs outside Plasma and LXQt whose style and palette are
+/// chosen by qt6ct: a Kvantum theme is an ordinary Qt style plugin and paints
+/// them the same way as in Plasma (`themes::apply_kvantum_plan`), and a KDE
+/// color scheme is translated into a Qt palette
+/// (`shell_palette::plan_scheme_layer`). `lxqt` — the same for the LXQt
+/// palette (`lxqt.conf [Palette]`).
 ///
-/// ⚠️ Таблица со временем переедет в матрицу `de_customization`
-/// вместе со столбцом `consumer`; пока матрица этого столбца не знает,
-/// таблица живёт здесь.
+/// ⚠️ Over time the table will move into the `de_customization` matrix
+/// together with a `consumer` column; until the matrix knows that column,
+/// the table lives here.
 pub const COMPATIBLE_CONSUMERS: &[(&str, &str)] =
     &[("gtk-ssd", "gtk"), ("qt6ct", "kvantum"), ("qt6ct", "kde-colors"), ("lxqt", "kde-colors")];
 
-/// Потребители-композиторы: их родные конфиги из пакета не принимаются
-/// НИКОГДА (решение 25.10): только модель → свой подключаемый файл,
-/// без `exec`/`spawn`/`bind` по построению.
+/// Compositor consumers: their native configs from a package are NEVER
+/// accepted (decision of 25.10): only model → our own include file, without
+/// `exec`/`spawn`/`bind` by construction.
 pub const COMPOSITOR_CONSUMERS: &[&str] = &[
     "hyprland", "sway", "niri", "river", "wayfire", "labwc", "wlroots", "mango", "kwinrc",
 ];
 
-/// Прежние типы v3 → `(вид v5, потребитель)`. Порядок как в матрице.
-/// Сторож-тест сверяет, что сюда попал каждый тип `constants::valid_types`
-/// (кроме `theme-bundle`, который раскладывается на элементы).
+/// Old v3 types → `(v5 kind, consumer)`. Order as in the matrix. A guard
+/// test checks that every `constants::valid_types` type is here (except
+/// `theme-bundle`, which is split into elements).
 pub const LEGACY_TYPES: &[(&str, &str, &str)] = &[
     ("theme-gtk", "gtk-theme", "gtk"),
     ("theme-icons", "icons", "freedesktop"),
@@ -961,13 +964,13 @@ pub const LEGACY_TYPES: &[(&str, &str, &str)] = &[
     ("plugin", "plugin", "rexon-script"),
 ];
 
-/// Тип v3 → `(вид, потребитель)`.
+/// v3 type → `(kind, consumer)`.
 pub fn legacy_kind(v3_type: &str) -> Option<(&'static str, &'static str)> {
     LEGACY_TYPES.iter().find(|(t, _, _)| *t == v3_type).map(|(_, k, c)| (*k, *c))
 }
 
-/// Обратно: `(вид, потребитель)` → тип v3, которым элемент уходит в
-/// существующий путь установки (этап А плана).
+/// Backwards: `(kind, consumer)` → the v3 type by which the element goes into
+/// the existing install path (stage A of the plan).
 pub fn legacy_type(kind: &str, consumer: &str) -> Option<&'static str> {
     LEGACY_TYPES
         .iter()
@@ -976,17 +979,17 @@ pub fn legacy_type(kind: &str, consumer: &str) -> Option<&'static str> {
 }
 
 // ============================================================================
-// Разбор и проверка
+// Parsing and validation
 // ============================================================================
 
-/// Разобрать манифест любой поддерживаемой версии в [`Package`] v5.
+/// Parse a manifest of any supported version into a v5 [`Package`].
 ///
-/// * `format_version: 5` — модель v5 и [`validate`];
-/// * `type: wallpaper-video-adaptive` (v4) — схема `validate_v4_manifest`,
-///   вывод id/name как при установке, один элемент `live-wallpaper-adaptive`;
-/// * остальное — v3: тип из матрицы, `theme-bundle` — по элементу на запись.
+/// * `format_version: 5` — the v5 model and [`validate`];
+/// * `type: wallpaper-video-adaptive` (v4) — the `validate_v4_manifest`
+///   schema, id/name derived as on install, one `live-wallpaper-adaptive` element;
+/// * everything else — v3: type from the matrix, `theme-bundle` — one element per entry.
 ///
-/// Ошибки собираются все сразу, чтобы автор правил пакет один раз.
+/// All errors are collected at once so the author fixes the package in one go.
 pub fn parse(meta: &Value) -> Result<Package, Vec<ManifestError>> {
     let Value::Object(obj) = meta else {
         return Err(vec![ManifestError::new("", tr("manifest must be a JSON object (dict)"))]);
@@ -1008,7 +1011,7 @@ pub fn parse(meta: &Value) -> Result<Package, Vec<ManifestError>> {
         }
         _ => upgrade_v3(obj)?,
     };
-    // Совместимость с версией Rexon — общая для всех версий формата.
+    // Compatibility with the Rexon version — common to all format versions.
     if let Err(message) = ext_manager::check_rexon_compat(obj) {
         return Err(vec![ManifestError::new("rexon_version", message)]);
     }
@@ -1036,7 +1039,7 @@ fn parse_v5(obj: &Map<String, Value>) -> Result<Package, Vec<ManifestError>> {
     }
 }
 
-/// Проверки, которые видны только в сыром JSON (serde их молча отбросил бы).
+/// Checks visible only in the raw JSON (serde would silently drop them).
 fn raw_checks(obj: &Map<String, Value>) -> Vec<ManifestError> {
     let mut errors = Vec::new();
     if let Some(Value::Object(ws)) = obj.get("workshop") {
@@ -1052,7 +1055,7 @@ fn raw_checks(obj: &Map<String, Value>) -> Vec<ManifestError> {
     errors
 }
 
-/// Проверить модель v5. Пустой список — пакет годен.
+/// Validate the v5 model. An empty list — the package is fine.
 pub fn validate(pkg: &Package) -> Vec<ManifestError> {
     let mut e = Vec::new();
     if pkg.format_version != V5_FORMAT_VERSION {
@@ -1085,9 +1088,9 @@ pub fn validate(pkg: &Package) -> Vec<ManifestError> {
     if pkg.items.is_empty() {
         e.push(ManifestError::new("items", tr("the package has no items")));
     }
-    // Пакет, переведённый из v3/v4: правила, которых старый формат не
-    // знал (замена у плазмоида), к нему не применяются. 0 — модель собрана
-    // не через `parse`, проверяется строго как v5.
+    // A package translated from v3/v4: rules the old format didn't know
+    // (a substitute for a plasmoid) don't apply to it. 0 — the model was built
+    // not through `parse`, it is validated strictly as v5.
     let legacy = (1..V5_FORMAT_VERSION).contains(&pkg.source_format);
     for (i, item) in pkg.items.iter().enumerate() {
         validate_item(&mut e, &format!("items[{i}]"), item, legacy);
@@ -1135,7 +1138,7 @@ fn is_hex(s: &str, lens: &[usize]) -> bool {
     lens.contains(&s.len()) && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-/// Закреплённые источники (`sources[].id`) и ссылки на них из элементов.
+/// Pinned sources (`sources[].id`) and references to them from elements.
 fn validate_sources(e: &mut Vec<ManifestError>, pkg: &Package) {
     let mut seen: Vec<&str> = Vec::new();
     for (i, src) in pkg.sources.iter().enumerate() {
@@ -1231,7 +1234,7 @@ fn validate_sources(e: &mut Vec<ManifestError>, pkg: &Package) {
     }
 }
 
-/// Путь внутри архива: относительный, без `..`, без `\`.
+/// A path inside the archive: relative, no `..`, no `\`.
 fn check_path(e: &mut Vec<ManifestError>, field: &str, path: &str) {
     let ok = !path.trim().is_empty()
         && !path.contains('\\')
@@ -1300,8 +1303,8 @@ fn validate_properties(e: &mut Vec<ManifestError>, props: &[(String, Property)])
     }
 }
 
-/// Условие `when`: свойство объявлено, это список или переключатель, и
-/// каждое значение ему подходит.
+/// The `when` condition: the property is declared, it is a list or a toggle,
+/// and every value fits it.
 fn validate_when(e: &mut Vec<ManifestError>, field: &str, when: &When, props: &[(String, Property)]) {
     for (name, want) in when {
         let f = format!("{field}.{name}");
@@ -1404,8 +1407,8 @@ fn validate_item(e: &mut Vec<ManifestError>, field: &str, item: &Item, legacy: b
     }
 }
 
-/// Плазмоид родной только для Plasma (разведка plasmawindowed 25.10): вне
-/// неё он необязателен и обязан нести замену, кроме ролей самой оболочки.
+/// A plasmoid is native only to Plasma (plasmawindowed research 25.10):
+/// outside it, it is optional and must carry a substitute, except for the shell's own roles.
 fn validate_plasmoid(e: &mut Vec<ManifestError>, field: &str, item: &Item, legacy: bool) {
     if item.kind != "plasmoid" {
         if item.windowed.is_some() {
@@ -1466,22 +1469,22 @@ fn compositor_refusal() -> String {
     tr("compositor configuration files are never taken from a package: Rexon writes its own from the description")
 }
 
-/// Имя потребителя: латиница в нижнем регистре, цифры, `-`, `.`.
+/// Consumer name: lowercase Latin, digits, `-`, `.`.
 fn is_consumer_name(s: &str) -> bool {
     !s.is_empty()
         && !s.starts_with(['-', '.'])
         && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.'))
 }
 
-/// Потребитель — композитор (его конфиг из пакета не принимается).
+/// The consumer is a compositor (its config from a package is not accepted).
 pub fn is_compositor_consumer(consumer: &str) -> bool {
     COMPOSITOR_CONSUMERS.contains(&consumer)
 }
 
-/// Путь похож на родной конфиг композитора (`hypr/hyprland.conf`,
+/// The path looks like a native compositor config (`hypr/hyprland.conf`,
 /// `sway/config`, `niri/config.kdl`, `river/init`, `wayfire.ini`,
-/// `labwc/rc.xml`, `labwc/autostart`). Темы Openbox/labwc (`themerc`) — это
-/// оформление, они сюда не попадают.
+/// `labwc/rc.xml`, `labwc/autostart`). Openbox/labwc themes (`themerc`) are
+/// appearance, they don't fall in here.
 pub fn is_compositor_config_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
     let parts: Vec<&str> = lower.split('/').filter(|p| !p.is_empty()).collect();
@@ -1600,7 +1603,7 @@ fn validate_dep(e: &mut Vec<ManifestError>, field: &str, dep: &PackageDep) {
     }
 }
 
-/// Список голых имён пакетов (`forbid`, предусловия).
+/// List of bare package names (`forbid`, preconditions).
 fn check_pkg_names(e: &mut Vec<ManifestError>, field: &str, names: &[String]) {
     for name in names {
         if !system_plan::valid_pkg_name(name) {
@@ -1630,7 +1633,7 @@ fn check_names(e: &mut Vec<ManifestError>, field: &str, value: &Value, ok: impl 
     }
 }
 
-/// uuid расширения GNOME Shell: `имя@домен`, без путей и пробелов.
+/// GNOME Shell extension uuid: `name@domain`, no paths or spaces.
 pub fn is_extension_uuid(uuid: &str) -> bool {
     let Some((name, domain)) = uuid.split_once('@') else { return false };
     let part_ok = |s: &str| {
@@ -1667,7 +1670,7 @@ fn install_err(field: &str, err: ext_manager::InstallError) -> Vec<ManifestError
     vec![ManifestError::new(field, err.message)]
 }
 
-/// Поля, общие для v3 и v4: описание пакета без элементов.
+/// Fields common to v3 and v4: the package description without elements.
 fn legacy_header(obj: &Map<String, Value>, id: String, source_format: u32) -> Package {
     let text = |k: &str| obj.get(k).and_then(Value::as_str).filter(|s| !s.trim().is_empty()).map(str::to_string);
     let name = obj
@@ -1703,9 +1706,9 @@ fn legacy_header(obj: &Map<String, Value>, id: String, source_format: u32) -> Pa
     }
 }
 
-/// Элемент v5 из типа v3 и каталога в архиве. Прежние пакеты не знали поля
-/// `permissions`: исполняемые типы получают его здесь, а разрешение
-/// спрашивает прежний путь (диалог Conky, скриптовые типы).
+/// A v5 element from a v3 type and a directory in the archive. Old packages
+/// didn't know the `permissions` field: executable types get it here, and the
+/// permission is asked by the old path (the Conky dialog, script types).
 fn legacy_item(v3_type: &str, dir: &str) -> Option<Item> {
     let (kind, consumer) = legacy_kind(v3_type)?;
     Some(Item {
@@ -1713,8 +1716,8 @@ fn legacy_item(v3_type: &str, dir: &str) -> Option<Item> {
         model: None,
         native: BTreeMap::from([(consumer.to_string(), dir.to_string())]),
         generate: false,
-        // Плазмоид родной только для Plasma: в старом пакете он не должен
-        // блокировать набор на других столах — там пункт пропускается.
+        // A plasmoid is native only to Plasma: in an old package it must not block
+        // the set on other desktops — there the entry is skipped.
         required: kind != "plasmoid",
         role: None,
         substitute: BTreeMap::new(),
@@ -1748,8 +1751,8 @@ fn upgrade_v3(obj: &Map<String, Value>) -> Result<Package, Vec<ManifestError>> {
     }
     let mut pkg = legacy_header(obj, id, constants::FORMAT_VERSION);
     if ext_type == "theme-bundle" {
-        // Как `install_bundle_plan`: записи с негодным типом и вложенные
-        // наборы пропускаются (старые пакеты ставились именно так).
+        // Like `install_bundle_plan`: entries with an invalid type and nested sets
+        // are skipped (that is exactly how old packages were installed).
         let entries = obj.get("bundle").and_then(Value::as_object);
         for (sub_type, dir) in entries.into_iter().flatten() {
             if sub_type == "theme-bundle" || !constants::is_valid_type(sub_type) {
@@ -1778,7 +1781,7 @@ fn upgrade_v3(obj: &Map<String, Value>) -> Result<Package, Vec<ManifestError>> {
 }
 
 // ============================================================================
-// Версии потребителей
+// Consumer versions
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1812,8 +1815,8 @@ fn cmp_versions(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
         .unwrap_or(std::cmp::Ordering::Equal)
 }
 
-/// Подходит ли версия `have` под требование `req` (`>=6.0`, `<0.56`, `47`).
-/// Нечитаемое требование или версия — `None`.
+/// Whether version `have` satisfies requirement `req` (`>=6.0`, `<0.56`, `47`).
+/// An unreadable requirement or version — `None`.
 pub fn version_satisfies(have: &str, req: &str) -> Option<bool> {
     use std::cmp::Ordering::*;
     let (op, want) = parse_constraint(req)?;
@@ -1829,21 +1832,21 @@ pub fn version_satisfies(have: &str, req: &str) -> Option<bool> {
 }
 
 // ============================================================================
-// Правила выбора нагрузки
+// Payload choice rules
 // ============================================================================
 
-/// Насколько сгенерированный вариант похож на задуманный.
+/// How close a generated variant is to the intended one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Accuracy {
     Exact,
-    /// Ставится с пометкой «приблизительно» и превью СГЕНЕРИРОВАННОГО
-    /// (решение 25.10, вопрос 3).
+    /// Installed marked "approximate" with a preview of the GENERATED one
+    /// (decision of 25.10, question 3).
     Approximate,
 }
 
 impl Accuracy {
-    /// Подпись для карточки.
+    /// Label for the card.
     pub fn label(self) -> String {
         match self {
             // TRANSLATORS: card mark — Rexon built this part itself and it matches the design.
@@ -1854,21 +1857,21 @@ impl Accuracy {
     }
 }
 
-/// Почему элемент не встанет на этом столе.
+/// Why the element won't install on this desktop.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RefuseReason {
-    /// Своих файлов под этот стол нет, описания для генерации тоже.
+    /// No own files for this desktop, and no description for generation either.
     NoVariant,
-    /// Автор запретил генерацию (`generate: false`).
+    /// The author forbade generation (`generate: false`).
     GenerationForbidden,
-    /// Описание есть, но генератора под потребителей сеанса у Rexon пока нет.
+    /// There is a description, but Rexon has no generator for the session's consumers yet.
     NoGenerator,
 }
 
 impl RefuseReason {
-    /// Текст для человека. Подробности из матрицы (`Support`, `note`)
-    /// добавляет вызывающий — он знает стол.
+    /// Text for the person. Details from the matrix (`Support`, `note`) are
+    /// added by the caller — it knows the desktop.
     pub fn text(&self) -> String {
         match self {
             RefuseReason::NoVariant => {
@@ -1884,21 +1887,21 @@ impl RefuseReason {
     }
 }
 
-/// Что ставить для одного элемента.
+/// What to install for one element.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "choice", rename_all = "kebab-case")]
 pub enum Choice {
-    /// Родной вариант автора для потребителя сеанса.
+    /// The author's native variant for a session consumer.
     Native { consumer: String, path: String },
-    /// Родного нет, подошёл вариант совместимого потребителя `from`.
+    /// No native one; the variant of compatible consumer `from` fit.
     Compatible { consumer: String, from: String, path: String },
-    /// Rexon строит вариант из модели. Превью — из сгенерированного.
+    /// Rexon builds the variant from the model. Preview — from the generated one.
     Generate { consumer: String, model: String, accuracy: Accuracy },
-    /// Замена по смыслу, с пометкой «замена: <роль>».
+    /// Substitute by meaning, marked "substitute: <role>".
     Substitute { consumer: String, path: String, role: String },
     Refuse { reason: RefuseReason },
-    /// Элемент выключен значением свойства (`when` не совпало): не ставится
-    /// и не считается пропущенным.
+    /// The element is turned off by a property value (`when` didn't match): not
+    /// installed and not counted as skipped.
     Off,
 }
 
@@ -1908,14 +1911,14 @@ impl Choice {
     }
 }
 
-/// Текущий сеанс глазами формата.
+/// The current session as seen by the format.
 #[derive(Debug, Clone, Default)]
 pub struct Session {
-    /// Потребители сеанса в порядке предпочтения (из матрицы): Budgie 10.10
-    /// Wayland → `openbox-3`, `gtk`, `budgie-panel`. Универсальные
-    /// ([`UNIVERSAL_CONSUMERS`]) добавлять не нужно.
+    /// Session consumers in order of preference (from the matrix): Budgie 10.10
+    /// Wayland → `openbox-3`, `gtk`, `budgie-panel`. Universal ones
+    /// ([`UNIVERSAL_CONSUMERS`]) need not be added.
     pub consumers: Vec<String>,
-    /// Известные версии потребителей (`cinnamon` → `6.4.8`).
+    /// Known consumer versions (`cinnamon` → `6.4.8`).
     pub versions: BTreeMap<String, String>,
 }
 
@@ -1930,8 +1933,8 @@ impl Session {
         v
     }
 
-    /// Годен ли родной вариант для потребителя по `requires.targets`.
-    /// Версия неизвестна или требование нечитаемо — годен (как у Spices).
+    /// Whether a native variant fits a consumer per `requires.targets`.
+    /// Unknown version or unreadable requirement — it fits (as with Spices).
     fn native_fits(&self, targets: &BTreeMap<String, String>, consumer: &str) -> bool {
         match (targets.get(consumer), self.versions.get(consumer)) {
             (Some(req), Some(have)) => version_satisfies(have, req).unwrap_or(true),
@@ -1940,11 +1943,11 @@ impl Session {
     }
 }
 
-/// Выбрать нагрузку для элемента. `generator(kind, consumer)` — может ли
-/// Rexon построить вариант и насколько точно (генераторы — следующий слой).
+/// Choose the payload for an element. `generator(kind, consumer)` — whether
+/// Rexon can build the variant and how exactly (generators are the next layer).
 ///
-/// Порядок: родной для любого потребителя сеанса → совместимый →
-/// генерация (если автор не запретил) → замена → отказ.
+/// Order: native for any session consumer → compatible → generation (unless
+/// the author forbade it) → substitute → refusal.
 pub fn choose(
     item: &Item,
     targets: &BTreeMap<String, String>,
@@ -2003,13 +2006,13 @@ pub fn choose(
     Choice::Refuse { reason }
 }
 
-/// Выбор по всему пакету.
+/// Choice for the whole package.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PackagePlan {
-    /// Выбор на каждый элемент, в порядке `items`.
+    /// The choice for each element, in `items` order.
     pub choices: Vec<Choice>,
-    /// Номер первого обязательного элемента, который не встанет: тогда не
-    /// ставится весь пакет («всё или ничего»).
+    /// Index of the first mandatory element that won't install: then the whole
+    /// package is not installed ("all or nothing").
     pub blocked_by: Option<usize>,
 }
 
@@ -2018,8 +2021,8 @@ impl PackagePlan {
         self.blocked_by.is_none()
     }
 
-    /// Необязательные элементы, которые будут пропущены: `(номер, причина)`
-    /// — для строки итога «пропущено: … (почему)».
+    /// Optional elements that will be skipped: `(index, reason)` — for the
+    /// summary line "skipped: … (why)".
     pub fn skipped(&self) -> Vec<(usize, &RefuseReason)> {
         self.choices
             .iter()
@@ -2032,8 +2035,8 @@ impl PackagePlan {
     }
 }
 
-/// Выбрать нагрузку для каждого элемента пакета при значениях свойств по
-/// умолчанию ([`choose_all_with`]).
+/// Choose the payload for each package element with default property values
+/// ([`choose_all_with`]).
 pub fn choose_all(
     pkg: &Package,
     session: &Session,
@@ -2042,9 +2045,9 @@ pub fn choose_all(
     choose_all_with(pkg, session, &PropValues::new(), generator)
 }
 
-/// Выбрать нагрузку для каждого элемента пакета. Элементы `ref` ставит
-/// Steam (зависимость предмета), здесь они не разрешаются и не блокируют;
-/// элемент, чьё `when` не совпало с `values`, — [`Choice::Off`].
+/// Choose the payload for each package element. `ref` elements are installed
+/// by Steam (an item dependency), here they are neither resolved nor blocking;
+/// an element whose `when` didn't match `values` — [`Choice::Off`].
 pub fn choose_all_with(
     pkg: &Package,
     session: &Session,
@@ -2074,26 +2077,28 @@ pub fn choose_all_with(
 }
 
 // ============================================================================
-// Зависимости: проверка после установки
+// Dependencies: post-install check
 // ============================================================================
 
-/// Снимок системы: каким НАСТОЯЩИМ пакетом закрыто имя (`pacman -Qq <имя>`
-/// → имя пакета, или поиск по Provides; `None` — не установлено).
+/// A system snapshot: which REAL package covers a name (`pacman -Qq <name>`
+/// → package name, or a Provides lookup; `None` — not installed).
 pub type OwnerOf<'a> = &'a dyn Fn(&str) -> Option<String>;
 
-/// Появилось ли имя из-за установки: до — не было, после — есть.
+/// Whether the name appeared because of the install: before — absent, after — present.
 fn appeared(name: &str, before: OwnerOf, after: OwnerOf) -> bool {
     after(name).is_some() && before(name).is_none()
 }
 
-/// Проверка «встало ровно то, что просили» по двум снимкам — до и после
-/// установки зависимости, источник которой выбран [`PackageDep::resolve`].
+/// The "exactly what was asked for got installed" check from two snapshots —
+/// before and after installing a dependency whose source was chosen by
+/// [`PackageDep::resolve`].
 ///
-/// Каждое имя `resolved` должно стоять само собой: подмена провайдером
-/// (`gamescope-session-steam-git` закрыт `gamescope-session-cachyos`) —
-/// ошибка, даже если подменитель стоял заранее. Пакет из `forbid` — ошибка,
-/// только если он ПОЯВИЛСЯ: стоявший до установки Rexon не приносил.
-/// Вызывающий после ошибки откатывает установку («всё или ничего»).
+/// Each `resolved` name must be installed as itself: substitution by a
+/// provider (`gamescope-session-steam-git` covered by
+/// `gamescope-session-cachyos`) is an error, even if the substitute was
+/// installed beforehand. A package from `forbid` is an error only if it
+/// APPEARED: one installed before the install wasn't brought by Rexon. After
+/// an error the caller rolls back the install ("all or nothing").
 pub fn verify_dependency(
     dep: &PackageDep,
     resolved: &ResolvedDep,
@@ -2122,15 +2127,15 @@ fn forbid_appeared(forbid: &[String], before: OwnerOf, after: OwnerOf) -> Result
     }
 }
 
-/// Запреты уровня всего пакета (`requires.forbid`) по снимкам до и после
-/// установки ВСЕХ его зависимостей.
+/// Package-wide bans (`requires.forbid`) from snapshots before and after
+/// installing ALL of its dependencies.
 pub fn verify_package_change(pkg: &Package, before: OwnerOf, after: OwnerOf) -> Result<(), String> {
     forbid_appeared(&pkg.requires.forbid, before, after)
 }
 
-/// Предусловия пакета, нарушенные в системе ДО установки. Пусто — можно
-/// ставить; иначе пакет не ставится целиком, человек видит
-/// [`UnmetPrecondition::text`].
+/// Package preconditions violated on the system BEFORE installing. Empty —
+/// can install; otherwise the package is not installed at all, and the person
+/// sees [`UnmetPrecondition::text`].
 pub fn unmet_preconditions<'a>(pkg: &'a Package, owner_of: OwnerOf) -> Vec<UnmetPrecondition<'a>> {
     pkg.requires
         .preconditions
@@ -2142,11 +2147,11 @@ pub fn unmet_preconditions<'a>(pkg: &'a Package, owner_of: OwnerOf) -> Vec<Unmet
         .collect()
 }
 
-/// Поддерживает ли расширение GNOME Shell запущенную версию оболочки.
-/// `declared` — поле `shell-version` из метаданных extensions.gnome.org
-/// (`["45", "46"]`, у старых `["3.38"]`); `running` — `gnome-shell
-/// --version` без префикса (`47.2`). С GNOME 40 сравнивается главный номер,
-/// до него — пара `3.xx`.
+/// Whether a GNOME Shell extension supports the running shell version.
+/// `declared` — the `shell-version` field from extensions.gnome.org metadata
+/// (`["45", "46"]`, old ones `["3.38"]`); `running` — `gnome-shell
+/// --version` without the prefix (`47.2`). Since GNOME 40 the major number is
+/// compared, before it — the `3.xx` pair.
 pub fn gnome_shell_compatible(declared: &[String], running: &str) -> bool {
     let parts: Vec<&str> = running.trim().split('.').collect();
     let Some(major) = parts.first().filter(|m| !m.is_empty()) else { return false };
@@ -2165,41 +2170,41 @@ pub fn gnome_shell_compatible(declared: &[String], running: &str) -> bool {
 }
 
 // ============================================================================
-// Исполняемое содержимое
+// Executable content
 // ============================================================================
 
-/// Класс исполняемого содержимого. Всё остальное — данные.
+/// Class of executable content. Everything else is data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExecClass {
-    /// Файл настроек Conky (может `exec*`, `lua_load`).
+    /// A Conky config file (can `exec*`, `lua_load`).
     Conky,
     Lua,
-    /// JavaScript: веб-виджеты, апплеты Cinnamon, расширения GNOME, KWin.
+    /// JavaScript: web widgets, Cinnamon applets, GNOME extensions, KWin.
     JavaScript,
-    /// HTML со встроенными сценариями.
+    /// HTML with embedded scripts.
     WebPage,
     Qml,
-    /// Ярлык или действие ФМ с `Exec=`.
+    /// A launcher or file manager action with `Exec=`.
     DesktopExec,
-    /// Сценарий оболочки или интерпретатора (`#!`, `.sh`, `.py`…).
+    /// A shell or interpreter script (`#!`, `.sh`, `.py`…).
     Script,
-    /// Исполняемый файл (ELF).
+    /// An executable file (ELF).
     Binary,
 }
 
-/// Файл из архива для проверки содержимого.
+/// A file from the archive for the content check.
 #[derive(Debug, Clone, Copy)]
 pub struct ArchiveFile<'a> {
-    /// Путь в архиве.
+    /// Path in the archive.
     pub path: &'a str,
-    /// Начало содержимого (хватает первых нескольких КиБ).
+    /// Beginning of the content (the first few KiB are enough).
     pub head: &'a [u8],
-    /// Бит «исполняемый» в архиве.
+    /// The "executable" bit in the archive.
     pub executable: bool,
 }
 
-/// Класс файла или `None` — данные.
+/// The file's class, or `None` — data.
 pub fn classify_file(f: &ArchiveFile) -> Option<ExecClass> {
     let lower = f.path.to_ascii_lowercase();
     let base = lower.rsplit('/').next().unwrap_or(&lower);
@@ -2235,20 +2240,20 @@ pub fn classify_file(f: &ArchiveFile) -> Option<ExecClass> {
     None
 }
 
-/// Что опасного делает QML/JS плазмоида сверх рисования.
+/// What dangerous things a plasmoid's QML/JS does beyond drawing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PlasmoidRisk {
-    /// `DataSource { engine: "executable" }` — выполняет команды оболочки.
+    /// `DataSource { engine: "executable" }` — runs shell commands.
     RunsCommands,
-    /// `Qt.openUrlExternally` — открывает адреса и файлы.
+    /// `Qt.openUrlExternally` — opens URLs and files.
     OpensUrls,
-    /// `org.kde.plasma.private.*` — внутренности оболочки (вне Plasma не
-    /// работает, в Plasma — без гарантий).
+    /// `org.kde.plasma.private.*` — shell internals (doesn't work outside Plasma,
+    /// in Plasma — no guarantees).
     PrivateShellApi,
 }
 
-/// Разбор QML/JS плазмоида для окна разрешения (`permissions: ["exec"]`).
+/// Analysis of a plasmoid's QML/JS for the permission dialog (`permissions: ["exec"]`).
 pub fn plasmoid_risks(source: &str) -> Vec<PlasmoidRisk> {
     let compact: String = source.split_whitespace().collect();
     let mut out = Vec::new();
@@ -2264,15 +2269,15 @@ pub fn plasmoid_risks(source: &str) -> Vec<PlasmoidRisk> {
     out
 }
 
-/// Найденный исполняемый файл.
+/// A found executable file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExecFinding {
     pub path: String,
     pub class: ExecClass,
 }
 
-/// Найти всё исполняемое в архиве (сканер Rexon, поле `permissions` ему не
-/// указ).
+/// Find everything executable in the archive (Rexon's scanner; the
+/// `permissions` field has no say over it).
 pub fn scan_executables(files: &[ArchiveFile]) -> Vec<ExecFinding> {
     files
         .iter()
@@ -2280,17 +2285,17 @@ pub fn scan_executables(files: &[ArchiveFile]) -> Vec<ExecFinding> {
         .collect()
 }
 
-/// Что не так с SVG.
+/// What is wrong with an SVG.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SvgProblem {
     Script,
     ForeignObject,
-    /// Ссылка наружу (`href="http…"`, `//…`) или `javascript:`.
+    /// An outbound link (`href="http…"`, `//…`) or `javascript:`.
     ExternalLink,
 }
 
-/// Проверка SVG: в превью оно может попасть в веб-движок.
+/// SVG check: as a preview it may end up in a web engine.
 pub fn svg_problems(data: &[u8]) -> Vec<SvgProblem> {
     let text = String::from_utf8_lossy(data).to_ascii_lowercase();
     let compact: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -2310,8 +2315,8 @@ pub fn svg_problems(data: &[u8]) -> Vec<SvgProblem> {
     out
 }
 
-/// Каким элементом (номер) владеет путь архива: под его `native`,
-/// `substitute` или `model`.
+/// Which element (index) owns an archive path: under its `native`,
+/// `substitute` or `model`.
 fn owning_item(pkg: &Package, path: &str) -> Option<usize> {
     let under = |root: &str| {
         let root = root.trim_end_matches('/');
@@ -2322,9 +2327,9 @@ fn owning_item(pkg: &Package, path: &str) -> Option<usize> {
     })
 }
 
-/// Проверить содержимое архива против манифеста: исполняемое — только в
-/// элементах с разрешением `exec`; SVG — без сценариев и внешних ссылок;
-/// родные конфиги композиторов — никогда.
+/// Check the archive's content against the manifest: executable content —
+/// only in elements with the `exec` permission; SVG — without scripts and
+/// external links; native compositor configs — never.
 pub fn check_contents(pkg: &Package, files: &[ArchiveFile]) -> Vec<ManifestError> {
     let mut e = Vec::new();
     for f in files {
@@ -2359,7 +2364,7 @@ pub fn check_contents(pkg: &Package, files: &[ArchiveFile]) -> Vec<ManifestError
     e
 }
 
-/// Подпись класса для человека.
+/// Class label for the person.
 pub fn exec_class_label(class: ExecClass) -> String {
     match class {
         ExecClass::Conky => tr("Conky widget settings"),
@@ -2374,28 +2379,28 @@ pub fn exec_class_label(class: ExecClass) -> String {
 }
 
 // ============================================================================
-// Лицензии
+// Licenses
 // ============================================================================
 
-/// Что лицензия позволяет.
+/// What a license permits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum LicenseClass {
-    /// Свободная: распространять и менять можно.
+    /// Free: may be distributed and modified.
     Free,
-    /// «NC» — только некоммерческое; в Мастерскую нельзя.
+    /// "NC" — non-commercial only; not allowed in the Workshop.
     NonCommercial,
-    /// «ND» — без производных.
+    /// "ND" — no derivatives.
     NoDerivatives,
-    /// Явно несвободная (`LicenseRef-Proprietary`, «All rights reserved»).
+    /// Explicitly non-free (`LicenseRef-Proprietary`, "All rights reserved").
     NonFree,
-    /// Лицензии нет.
+    /// No license.
     Missing,
-    /// Rexon не знает этой лицензии и не может сказать, что она разрешает.
+    /// Rexon doesn't know this license and can't say what it permits.
     Unknown,
 }
 
-/// Свободные лицензии, которые Rexon узнаёт (SPDX, с `-only`/`-or-later`).
+/// Free licenses Rexon recognises (SPDX, with `-only`/`-or-later`).
 const FREE_LICENSES: &[&str] = &[
     "GPL-2.0", "GPL-3.0", "LGPL-2.0", "LGPL-2.1", "LGPL-3.0", "AGPL-3.0", "MIT", "MIT-0", "BSD-2-Clause",
     "BSD-3-Clause", "Apache-2.0", "MPL-2.0", "ISC", "Zlib", "Unlicense", "CC0-1.0", "CC-BY-3.0",
@@ -2427,9 +2432,9 @@ fn single_license_class(id: &str) -> LicenseClass {
     }
 }
 
-/// Класс SPDX-выражения. `A OR B` — лучший из вариантов (выбирает
-/// получатель), `A AND B` — худший (нужны обе). Скобки не вкладываются —
-/// в пакетах тем таких выражений не встречается.
+/// Class of an SPDX expression. `A OR B` — the best of the options (the
+/// recipient chooses), `A AND B` — the worst (both are needed). Parentheses
+/// don't nest — such expressions don't occur in theme packages.
 pub fn license_class(expr: Option<&str>) -> LicenseClass {
     let Some(expr) = expr.map(str::trim).filter(|s| !s.is_empty()) else {
         return LicenseClass::Missing;
@@ -2453,7 +2458,7 @@ pub fn license_class(expr: Option<&str>) -> LicenseClass {
         .unwrap_or(LicenseClass::Missing)
 }
 
-/// Отдельные лицензии выражения (`GPL-3.0-or-later AND CC-BY-SA-4.0` → два).
+/// Individual licenses of an expression (`GPL-3.0-or-later AND CC-BY-SA-4.0` → two).
 fn license_terms(expr: &str) -> Vec<String> {
     expr.split([' ', '(', ')'])
         .filter(|t| !t.is_empty() && !matches!(*t, "AND" | "OR" | "WITH"))
@@ -2461,8 +2466,8 @@ fn license_terms(expr: &str) -> Vec<String> {
         .collect()
 }
 
-/// Проверки лицензий, общие для любого пакета: производное — только от
-/// свободного, и лицензию источника оно наследует (решение 25.10, вопрос 6).
+/// License checks common to any package: a derivative only from a free one,
+/// and it inherits the source's license (decision of 25.10, question 6).
 fn validate_licenses(e: &mut Vec<ManifestError>, pkg: &Package) {
     for (i, src) in pkg.derived_from.iter().enumerate() {
         let field = format!("derived_from[{i}]");
@@ -2490,8 +2495,8 @@ fn validate_licenses(e: &mut Vec<ManifestError>, pkg: &Package) {
     }
 }
 
-/// Запись `derived_from` для производного (импорт чужой темы): атрибуция
-/// источника с его лицензией. Несвободное — ошибка с причиной.
+/// The `derived_from` record for a derivative (import of a foreign theme):
+/// attribution of the source with its license. Non-free — an error with a reason.
 pub fn derived_attribution(source: &Source) -> Result<Source, String> {
     match license_class(source.license.as_deref()) {
         LicenseClass::Free => Ok(source.clone()),
@@ -2506,9 +2511,10 @@ pub fn derived_attribution(source: &Source) -> Result<Source, String> {
     }
 }
 
-/// Можно ли выкладывать пакет (Мастерская, экспорт): лицензия обязательна,
-/// своя и чужих частей должна разрешать распространение; NC, ND, без
-/// лицензии и незнакомые — нельзя (Rexon предупреждает и не выкладывает).
+/// Whether the package may be published (Workshop, export): a license is
+/// mandatory, both its own and those of third-party parts must allow
+/// distribution; NC, ND, no license and unknown ones — not allowed (Rexon
+/// warns and doesn't publish).
 pub fn check_publishable(pkg: &Package) -> Vec<ManifestError> {
     let mut e = Vec::new();
     let mut check = |field: String, what: &str, lic: Option<&str>| {
@@ -2535,7 +2541,7 @@ pub fn check_publishable(pkg: &Package) -> Vec<ManifestError> {
     for (i, s) in pkg.sources.iter().chain(pkg.derived_from.iter()).enumerate() {
         check(format!("sources[{i}]"), &format!("'{}'", s.what), s.license.as_deref());
     }
-    // Мастерская — только вложенные файлы, без скачиваний.
+    // Workshop — embedded files only, no downloads.
     for (i, s) in pkg.sources.iter().enumerate() {
         if s.is_fetched() {
             e.push(ManifestError::new(
@@ -2548,10 +2554,10 @@ pub fn check_publishable(pkg: &Package) -> Vec<ManifestError> {
 }
 
 // ============================================================================
-// Личные данные при экспорте
+// Personal data on export
 // ============================================================================
 
-/// Что за личные данные.
+/// What kind of personal data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PrivateKind {
@@ -2566,7 +2572,7 @@ pub enum PrivateKind {
 }
 
 impl PrivateKind {
-    /// Подпись для перечня в `privacy.removed` и окна перед сохранением.
+    /// Label for the list in `privacy.removed` and the dialog before saving.
     pub fn label(self) -> String {
         match self {
             PrivateKind::HomePath => tr("path to your home folder"),
@@ -2581,34 +2587,34 @@ impl PrivateKind {
     }
 }
 
-/// Найденное личное: что и в какой строке (с 1). Само значение не
-/// повторяется — его видно в файле.
+/// Found personal data: what and on which line (from 1). The value itself is
+/// not repeated — it is visible in the file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PrivateFinding {
     pub kind: PrivateKind,
     pub line: usize,
 }
 
-/// Кого вычищать.
+/// What to scrub.
 #[derive(Debug, Clone, Default)]
 pub struct ScrubContext {
-    /// `/home/<имя>` без завершающего `/`.
+    /// `/home/<name>` without a trailing `/`.
     pub home: String,
     pub user: String,
     pub host: String,
 }
 
-/// Итог вычистки.
+/// Scrub result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scrubbed {
     pub text: String,
-    /// Что заменено (по разу на вид).
+    /// What was replaced (once per kind).
     pub replaced: Vec<PrivateKind>,
 }
 
-/// Заменить в тексте домашний путь на `${HOME}`, имя пользователя на
-/// `${USER}`, имя машины на `${HOSTNAME}`. Имена — только целыми словами и
-/// не короче трёх букв: короткое имя совпало бы с чем угодно.
+/// In the text, replace the home path with `${HOME}`, the user name with
+/// `${USER}`, the machine name with `${HOSTNAME}`. Names — only as whole
+/// words and at least three letters long: a short name would match anything.
 pub fn scrub_text(text: &str, ctx: &ScrubContext) -> Scrubbed {
     let mut out = text.to_string();
     let mut replaced = Vec::new();
@@ -2633,7 +2639,7 @@ pub fn scrub_text(text: &str, ctx: &ScrubContext) -> Scrubbed {
     Scrubbed { text: out, replaced }
 }
 
-/// `home` как начало пути: `/home/al` не задевает `/home/alex`.
+/// `home` as a path prefix: `/home/al` doesn't touch `/home/alex`.
 pub(crate) fn replace_path_prefix(text: &str, home: &str, var: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -2671,11 +2677,12 @@ fn replace_word(text: &str, word: &str, var: &str) -> (String, usize) {
     (out, n)
 }
 
-/// Найти в настройках виджета (Conky, апплеты Cinnamon, `appletsrc`)
-/// то, что нельзя выкладывать: адреса почты, пароли и учётки IMAP/POP,
-/// ключи погодных и прочих API, координаты, имена сетей Wi-Fi. Найденное
-/// — запрет экспорта виджета до правки, автоматически не чинится.
-/// Только для настроек виджетов: uuid расширений GNOME похожи на адреса почты.
+/// Find in widget settings (Conky, Cinnamon applets, `appletsrc`) what must
+/// not be published: email addresses, IMAP/POP passwords and accounts, keys
+/// for weather and other APIs, coordinates, Wi-Fi network names. Anything
+/// found blocks exporting the widget until it is edited; it is not fixed
+/// automatically. Only for widget settings: GNOME extension uuids look like
+/// email addresses.
 pub fn find_secrets(text: &str) -> Vec<PrivateFinding> {
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
@@ -2708,8 +2715,8 @@ pub fn find_secrets(text: &str) -> Vec<PrivateFinding> {
     out
 }
 
-/// В строке есть `<ключ>` (целым словом) за которым `=`/`:`/`&…=` и значение
-/// не короче `min_len` символов.
+/// The line has `<key>` (as a whole word) followed by `=`/`:`/`&…=` and a
+/// value at least `min_len` characters long.
 fn has_assignment(lower: &str, keys: &[&str], min_len: usize) -> bool {
     let bytes = lower.as_bytes();
     for key in keys {
@@ -2737,10 +2744,10 @@ fn has_assignment(lower: &str, keys: &[&str], min_len: usize) -> bool {
     false
 }
 
-/// Есть ли в строке адрес почты (`имя@домен.зона`). uuid расширений
-/// GNOME (`dash-to-panel@jderose9.github.com`) выглядят так же, поэтому
-/// [`find_secrets`] зовут только для настроек виджетов, а не для списков
-/// расширений.
+/// Whether the line has an email address (`name@domain.tld`). GNOME extension
+/// uuids (`dash-to-panel@jderose9.github.com`) look the same, so
+/// [`find_secrets`] is called only for widget settings, not for extension
+/// lists.
 fn has_email(line: &str) -> bool {
     let is_local = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-');
     for (pos, _) in line.match_indices('@') {
@@ -2760,9 +2767,8 @@ fn has_email(line: &str) -> bool {
     false
 }
 
-/// Файлы, которые при «Сохранить мой стол» не берутся никогда: история,
-/// недавние файлы, закладки, свои ярлыки со скриптами. `rel` — путь от
-/// домашнего каталога.
+/// Files never taken on «Save my desktop»: history, recent files, bookmarks,
+/// one's own launchers with scripts. `rel` — path from the home directory.
 pub fn never_export(rel: &str) -> bool {
     let rel = rel.trim_start_matches("./").trim_start_matches('/');
     let lower = rel.to_ascii_lowercase();
@@ -2787,8 +2793,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Пример «весь вид стола», с объявленным `exec` у
-    /// апплета Cinnamon — без него пакет обязан не пройти.
+    /// An example "the whole desktop look", with `exec` declared for a Cinnamon
+    /// applet — without it the package must fail.
     fn full_look() -> Value {
         json!({
             "format_version": 5,
@@ -2855,7 +2861,7 @@ mod tests {
         None
     }
 
-    // ── корректные манифесты ─────────────────────────────────────────────
+    // ── valid manifests ──────────────────────────────────────────────────
 
     #[test]
     fn full_look_parses() {
@@ -2866,7 +2872,7 @@ mod tests {
         assert_eq!(pkg.items.len(), 7);
         assert!(pkg.items[0].generate && pkg.items[0].required);
         assert!(!pkg.items[2].required);
-        // порядок свойств — как в файле, а не по алфавиту
+        // property order — as in the file, not alphabetical
         let names: Vec<&str> = pkg.properties.iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(names, ["radius", "accent", "panel_edge"]);
         assert_eq!(pkg.property("accent").unwrap().kind, PropertyType::Color);
@@ -2891,7 +2897,7 @@ mod tests {
         assert!(pkg.workshop.is_none() && pkg.license.is_none());
     }
 
-    // ── некорректные манифесты ───────────────────────────────────────────
+    // ── invalid manifests ────────────────────────────────────────────────
 
     #[test]
     fn rejects_not_object_and_future_format() {
@@ -2981,7 +2987,7 @@ mod tests {
         assert!(has_err(&v, "requires.targets.cinnamon"));
     }
 
-    // ── плазмоиды вне Plasma ─────────────────────────────────────────────
+    // ── plasmoids outside Plasma ─────────────────────────────────────────
 
     fn plasmoid() -> Value {
         json!({"kind": "plasmoid", "native": {"plasma": "native/plasmoids/org.example.clock"},
@@ -3001,7 +3007,7 @@ mod tests {
         let w = pkg.items[2].windowed.as_ref().unwrap();
         assert_eq!(w.sessions, [SessionKind::X11], "по умолчанию — только X11");
         assert_eq!(w.hint_layer, Some(HintLayer::Below));
-        // Вне Plasma — замена Conky, в Plasma — родной.
+        // Outside Plasma — the Conky substitute, in Plasma — the native one.
         let it = &pkg.items[2];
         assert!(matches!(choose(it, &BTreeMap::new(), &session(&["conky", "xfwm4"]), &no_gen), Choice::Substitute { .. }));
         assert!(matches!(choose(it, &BTreeMap::new(), &session(&["plasma"]), &no_gen), Choice::Native { .. }));
@@ -3015,7 +3021,7 @@ mod tests {
         });
         assert!(has_err(&with_item(no_sub), "items[2].substitute"));
         assert!(has_err(&with_item(with(plasmoid(), |v| v["permissions"] = json!([]))), "items[2].permissions"));
-        // Тот же плазмоид без замены, но объявленный как v5, — отвергается.
+        // The same plasmoid without a substitute but declared as v5 is rejected.
         let strict = with_item(json!({"kind": "plasmoid", "native": {"plasma": "p"},
                                       "permissions": ["exec"], "required": false}));
         assert!(has_err(&strict, "items[2].substitute"));
@@ -3037,7 +3043,7 @@ mod tests {
             let plan = choose_all(pkg, &session(&["plasma", "gtk"]), &no_gen);
             assert!(plan.skipped().is_empty());
         }
-        // Пересохранённый в v5 (как модель без `parse`) — строгие правила.
+        // Re-saved as v5 (as a model without `parse`) — strict rules.
         let mut resaved = single.clone();
         resaved.source_format = 0;
         assert!(!validate(&resaved).is_empty());
@@ -3085,7 +3091,7 @@ mod tests {
         assert!(plasmoid_risks("Text { text: Qt.formatTime(new Date()) }").is_empty());
     }
 
-    // ── Мастерская ───────────────────────────────────────────────────────
+    // ── Workshop ─────────────────────────────────────────────────────────
 
     #[test]
     fn workshop_never_carries_app_id() {
@@ -3108,7 +3114,7 @@ mod tests {
         assert!(has_err(&with(full_look(), |v| v["items"][0] = json!({"kind": "ref"})), "items[0].workshop"));
     }
 
-    // ── перевод v3 / v4 ──────────────────────────────────────────────────
+    // ── v3 / v4 translation ──────────────────────────────────────────────
 
     #[test]
     fn v3_single_type_becomes_one_item() {
@@ -3177,7 +3183,7 @@ mod tests {
         assert_eq!(pkg.name.get("en"), "Rainy Night");
         assert_eq!(pkg.items[0].kind, "live-wallpaper-adaptive");
         assert_eq!(pkg.items[0].native.get("rexon-wallpaper").map(String::as_str), Some("."));
-        // корень архива — допустимый путь
+        // the archive root is a valid path
         assert!(validate(&pkg).is_empty(), "{}", errors_text(&validate(&pkg)));
     }
 
@@ -3187,8 +3193,8 @@ mod tests {
         assert!(e[0].message.contains("default_locale"), "{}", e[0]);
     }
 
-    /// Сторож: каждый тип матрицы и скриптовые типы переводятся в v5, и
-    /// виды из таблицы — из закрытого списка.
+    /// Guard: every matrix type and the script types translate to v5, and the
+    /// kinds in the table come from the closed list.
     #[test]
     fn legacy_table_covers_every_valid_type() {
         for t in constants::valid_types() {
@@ -3208,7 +3214,7 @@ mod tests {
         }
     }
 
-    // ── правила выбора ───────────────────────────────────────────────────
+    // ── choice rules ─────────────────────────────────────────────────────
 
     fn item(v: Value) -> Item {
         serde_json::from_value(v).unwrap()
@@ -3278,17 +3284,17 @@ mod tests {
     #[test]
     fn package_all_or_nothing() {
         let pkg = parse(&full_look()).unwrap();
-        // KDE: палитра и рамки родные, панель без генератора — необязательна.
+        // KDE: palette and frames are native, the panel without a generator is optional.
         let kde = session(&["kde-colors", "aurorae", "plasma", "gtk"]);
         let plan = choose_all(&pkg, &kde, &no_gen);
         assert!(plan.installable(), "{plan:?}");
         let skipped: Vec<usize> = plan.skipped().iter().map(|(i, _)| *i).collect();
         assert_eq!(skipped, [2, 5, 6]);
-        // XFCE без генератора палитры: обязательная палитра не встаёт — весь пакет нет.
+        // XFCE without a palette generator: the mandatory palette doesn't install — so neither does the package.
         let xfce = session(&["xfwm4", "xfce4-panel", "gtk"]);
         let plan = choose_all(&pkg, &xfce, &no_gen);
         assert_eq!(plan.blocked_by, Some(0));
-        // С генератором палитры — ставится, палитра «приблизительно».
+        // With a palette generator — it installs, the palette is "approximate".
         let plan = choose_all(&pkg, &xfce, &|k, _| (k == "palette").then_some(Accuracy::Approximate));
         assert!(plan.installable());
         assert!(matches!(plan.choices[0], Choice::Generate { accuracy: Accuracy::Approximate, .. }));
@@ -3305,7 +3311,7 @@ mod tests {
         assert_eq!(version_satisfies("x", ">=1"), None);
     }
 
-    // ── зависимости ──────────────────────────────────────────────────────
+    // ── dependencies ─────────────────────────────────────────────────────
 
     #[test]
     fn dependency_names_and_sources() {
@@ -3349,11 +3355,11 @@ mod tests {
         assert!(verify_dependency(aur, &r, &empty, &exact).is_ok());
         let provider = |n: &str| (n == "gamescope-session-steam-git").then(|| "gamescope-session-cachyos".to_string());
         assert!(verify_dependency(aur, &r, &empty, &provider).unwrap_err().contains("gamescope-session-cachyos"));
-        // Подменитель стоял заранее — всё равно подмена.
+        // The substitute was installed beforehand — still a substitution.
         assert!(verify_dependency(aur, &r, &provider, &provider).is_err());
         let pulled = |n: &str| Some(n.to_string());
         assert!(verify_dependency(aur, &r, &empty, &pulled).unwrap_err().contains("jupiter-hw-support"));
-        // jupiter-hw-support стоял до установки — его принесли не мы.
+        // jupiter-hw-support was installed before the install — we didn't bring it.
         let had = |n: &str| (n == "jupiter-hw-support").then(|| n.to_string());
         assert!(verify_dependency(aur, &r, &had, &pulled).is_ok());
         assert!(verify_dependency(aur, &r, &empty, &empty).is_err());
@@ -3374,14 +3380,14 @@ mod tests {
         let again = parse(&serde_json::to_value(&pkg).unwrap()).unwrap();
         assert_eq!(pkg, again);
 
-        // Запрет «не появиться»: стоял до — годится, появился — отказ.
+        // The "must not appear" ban: present before — fine, appeared — refusal.
         let plm = |n: &str| (n == "plasma-login-manager").then(|| n.to_string());
         let none = |_: &str| None;
         assert!(verify_package_change(&pkg, &plm, &plm).is_ok());
         assert!(verify_package_change(&pkg, &none, &plm).unwrap_err().contains("plasma-login-manager"));
         assert!(verify_package_change(&pkg, &none, &none).is_ok());
 
-        // Предусловия.
+        // Preconditions.
         let stock = |n: &str| matches!(n, "libplasma" | "steam").then(|| n.to_string());
         assert!(unmet_preconditions(&pkg, &stock).is_empty());
         let fork = |n: &str| match n {
@@ -3393,7 +3399,7 @@ mod tests {
         assert_eq!(unmet.len(), 1);
         assert_eq!(unmet[0].found.as_deref(), Some("aeroshell-libplasma-git"));
         assert_eq!(unmet[0].text("ru"), "Форк libplasma");
-        // Нет steam, есть jupiter-hw-support; libplasma нет — не важно.
+        // No steam, jupiter-hw-support present; no libplasma — doesn't matter.
         let other = |n: &str| (n == "jupiter-hw-support").then(|| n.to_string());
         let unmet = unmet_preconditions(&pkg, &other);
         let names: Vec<&str> = unmet.iter().map(|u| u.precondition.name.as_str()).collect();
@@ -3405,7 +3411,7 @@ mod tests {
         assert!(has_err(&bad(&|v| v["requires"]["preconditions"][0] = json!({"name": "libplasma"})), "requires.preconditions[0]"));
         assert!(has_err(&bad(&|v| v["requires"]["preconditions"][0]["not_owners"] = json!(["a b"])), "requires.preconditions[0].not_owners"));
         assert!(has_err(&bad(&|v| v["requires"]["preconditions"][0]["message"] = json!({"en": " "})), "requires.preconditions[0].message"));
-        // Старый манифест без новых полей пишется как раньше.
+        // An old manifest without the new fields is written as before.
         let old = serde_json::to_value(parse(&full_look()).unwrap()).unwrap();
         assert!(!old["requires"].as_object().unwrap().contains_key("forbid"));
         assert!(!old["requires"].as_object().unwrap().contains_key("preconditions"));
@@ -3420,21 +3426,21 @@ mod tests {
         let d = &pkg.requires.packages[0];
         assert_eq!(d.sources_in_order(), [DepSource::Repo, DepSource::Aur]);
         assert_eq!(d.names_for(PkgFamily::Arch).unwrap(), ["beautyline"], "основной источник — репозиторий");
-        // CachyOS: пакет в репозитории — ставится оттуда, сам.
+        // CachyOS: the package is in the repository — installed from there, automatically.
         let repo = d.resolve(PkgFamily::Arch, &|n| n == "beautyline").unwrap();
         assert_eq!((repo.source, repo.install_names()), (DepSource::Repo, vec!["beautyline".to_string()]));
         assert!(repo.installs_automatically());
-        // Чистый Arch: в репозиториях нет — AUR, с префиксом и не автоматом.
+        // Plain Arch: not in the repositories — AUR, with the prefix and not automatically.
         let aur = d.resolve(PkgFamily::Arch, &|_| false).unwrap();
         assert_eq!((aur.source, aur.install_names()), (DepSource::Aur, vec!["aur/beautyline".to_string()]));
         assert!(!aur.installs_automatically());
-        // Fedora: null, а AUR вне Arch не бывает — источника нет.
+        // Fedora: null, and AUR doesn't exist outside Arch — no source.
         assert_eq!(d.resolve(PkgFamily::Fedora, &|_| true), None);
-        // Без запасного: нет в репозитории — нет источника.
+        // Without a fallback: not in the repository — no source.
         let plain = &parse(&full_look()).unwrap().requires.packages[0];
         assert_eq!(plain.resolve(PkgFamily::Arch, &|_| false), None);
         assert_eq!(plain.resolve(PkgFamily::Arch, &|_| true).unwrap().source, DepSource::Repo);
-        // Прежний вид манифестов не меняется при записи.
+        // The old form of manifests doesn't change on write.
         assert!(!serde_json::to_value(plain).unwrap().as_object().unwrap().contains_key("fallback"));
 
         assert!(has_err(&dep(json!({"role": "x", "arch": ["a"], "fallback": ["aur"]})), "requires.packages[0].aur"));
@@ -3454,7 +3460,7 @@ mod tests {
         assert!(!gnome_shell_compatible(&d(&["47"]), ""));
     }
 
-    // ── исполняемое содержимое ───────────────────────────────────────────
+    // ── executable content ───────────────────────────────────────────────
 
     fn file<'a>(path: &'a str, head: &'a [u8]) -> ArchiveFile<'a> {
         ArchiveFile { path, head, executable: false }
@@ -3497,7 +3503,7 @@ mod tests {
             file("native/aurorae/NordDesk/decoration.svg", b"<svg/>"),
         ];
         assert!(check_contents(&pkg, &ok).is_empty(), "{:?}", check_contents(&pkg, &ok));
-        // Скрипт в элементе без exec (тема GTK) и вне любого элемента.
+        // A script in an element without exec (a GTK theme) and outside any element.
         let bad = [file("native/gtk/Nordic/install.sh", b""), file("stray/run.py", b"")];
         assert_eq!(check_contents(&pkg, &bad).len(), 2);
         let svg = [file("native/aurorae/NordDesk/close.svg", b"<svg><script/></svg>")];
@@ -3506,14 +3512,14 @@ mod tests {
         assert_eq!(check_contents(&pkg, &comp)[0].message, compositor_refusal());
     }
 
-    // ── лицензии ─────────────────────────────────────────────────────────
+    // ── licenses ─────────────────────────────────────────────────────────
 
     #[test]
     fn license_classes() {
         use LicenseClass::*;
         assert_eq!(license_class(Some("GPL-3.0-or-later")), Free);
         assert_eq!(license_class(Some("GPL-2.0+")), Free);
-        // Breeze, Oxygen и большая часть KDE — LGPL-2.0-or-later.
+        // Breeze, Oxygen and most of KDE — LGPL-2.0-or-later.
         assert_eq!(license_class(Some("LGPL-2.0-or-later")), Free);
         assert_eq!(license_class(Some("MIT OR CC-BY-NC-4.0")), Free);
         assert_eq!(license_class(Some("MIT AND CC-BY-NC-SA-4.0")), NonCommercial);
@@ -3561,7 +3567,7 @@ mod tests {
         assert!(check_publishable(&p)[0].message.contains("LicenseRef-Custom"));
     }
 
-    // ── личные данные ────────────────────────────────────────────────────
+    // ── personal data ────────────────────────────────────────────────────
 
     #[test]
     fn scrub_home_user_host() {
@@ -3615,7 +3621,7 @@ ${wireless_essid wlan0}
         }
     }
 
-    // ── закреплённые источники (образы «Как в дистрибутиве») ─────────────
+    // ── pinned sources («Distro Looks») ──────────────────────────────────
 
     fn pinned(sources: Value, native: &str) -> Value {
         with(full_look(), |v| {
@@ -3639,7 +3645,7 @@ ${wireless_essid wlan0}
         let pkg = parse(&v).unwrap_or_else(|e| panic!("{}", errors_text(&e)));
         assert!(pkg.source("git-src").is_some_and(Source::is_fetched));
         assert!(!pkg.source("pkg-src").unwrap().is_fetched());
-        // Скачиваемое в Мастерскую не выкладывается, пакетный источник — можно.
+        // Downloadable content is not published to the Workshop, a package source can be.
         let pubs = check_publishable(&pkg);
         assert!(pubs.iter().any(|e| e.field == "sources[0]"));
         assert!(pubs.iter().any(|e| e.field == "sources[1]"));
@@ -3658,9 +3664,9 @@ ${wireless_essid wlan0}
         assert!(has_err(&one(&|s| s["id"] = json!("../x")), "sources[0].id"));
         assert!(has_err(&one(&|s| { s.as_object_mut().unwrap().remove("id"); }), "sources[0].id"));
         assert!(has_err(&one(&|s| { s.as_object_mut().unwrap().remove("rev"); s["package"] = json!("no-such-role"); }), "sources[0].package"));
-        // Путь на необъявленный источник.
+        // A path to an undeclared source.
         assert!(has_err(&pinned(json!([ok.clone()]), "sources/other/icons"), "items[3].native.freedesktop"));
-        // Дважды один id.
+        // The same id twice.
         assert!(has_err(&pinned(json!([ok.clone(), ok]), "sources/s/icons"), "sources[1].id"));
     }
 
@@ -3712,7 +3718,7 @@ ${wireless_essid wlan0}
         assert_eq!(roles(&vals(&[("dock", json!(true))])), ["dock", "always"]);
         assert_eq!(pkg.deps_for("panel-layout").len(), 2, "deps_for — все возможные");
 
-        // Элемент panel-layout — только при panel_edge = top.
+        // The panel-layout element — only with panel_edge = top.
         let gen = |_: &str, c: &str| (c == "kde-layout").then_some(Accuracy::Exact);
         let s = session(&["kde-layout", "kde-colors", "aurorae", "gtk"]);
         let plan = choose_all(&pkg, &s, &gen);
@@ -3729,7 +3735,7 @@ ${wireless_essid wlan0}
         assert!(has_err(&bad(&|v| v["requires"]["packages"][0]["when"] = json!({"dock": "yes"})), "requires.packages[0].when.dock"));
         assert!(has_err(&bad(&|v| v["properties"]["panel_edge"]["options"] = json!(["top", "top"])), "properties.panel_edge.options"));
         assert!(has_err(&bad(&|v| v["properties"]["panel_edge"]["options"][0]["label"] = json!({"en": ""})), "properties.panel_edge.options"));
-        // Прежняя форма — строки — пишется как раньше.
+        // The old form — strings — is written as before.
         let old = serde_json::to_value(parse(&full_look()).unwrap()).unwrap();
         assert_eq!(old["properties"]["panel_edge"]["options"], json!(["bottom", "top"]));
         assert!(old["items"][0].get("when").is_none());

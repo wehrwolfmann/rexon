@@ -1,21 +1,21 @@
-//! Golden-сверка порта `audio_capture.rs` с оригиналом
+//! Golden check of the `audio_capture.rs` port against the original
 //! `rexon/audio_capture.py`.
 //!
-//! Эталон снят read-only с ЖИВОГО `rexon.audio_capture` одноразовым
-//! генератором: subprocess.run/Popen замоканы (реальные pactl/pw-record/
-//! arecord НЕ запускались), `HAS_NUMPY=False` — снят pure-Python путь (та же
-//! последовательность fp-операций, что в порте). Capture-циклы прогнаны на
-//! синтетическом PCM (синус 440/880 Гц, тишина, клиппинг-меандр) через
-//! BytesIO-стримы — сами PCM-сэмплы лежат в фикстуре. Покрыто: константы,
-//! окна Hamming/Hann, FFT/амплитуды, линейные полосы, v9-границы и
-//! MAX-редукция, pink-факторы, срезы bass/mid/high, микс 'both', оба полных
-//! конвейера (по 2 кадра — сглаживание с ненулевым prev), argv команд,
-//! выбор monitor/microphone/loopback-устройств, JSON-stream строка.
+//! The golden file was captured read-only from the LIVE `rexon.audio_capture` by a one-off
+//! generator: subprocess.run/Popen were mocked (the real pactl/pw-record/
+//! arecord were NOT launched), `HAS_NUMPY=False` — the pure-Python path was captured (the same
+//! sequence of fp operations as in the port). The capture loops were run on
+//! synthetic PCM (440/880 Hz sine, silence, clipping square wave) through
+//! BytesIO streams — the PCM samples themselves are in the fixture. Covered: constants,
+//! Hamming/Hann windows, FFT/magnitudes, linear bands, v9 bounds and
+//! MAX reduction, pink factors, bass/mid/high slices, the 'both' mix, both full
+//! pipelines (2 frames each — smoothing with a non-zero prev), command argv,
+//! choice of monitor/microphone/loopback devices, the JSON stream line.
 //!
-//! Числовая сверка — с относительной точностью 1e-9 (одна libm, одна
-//! последовательность операций; допуск страхует последний ulp).
+//! Numeric comparison — with relative precision 1e-9 (one libm, one
+//! sequence of operations; the tolerance covers the last ulp).
 //!
-//! `golden/audio_capture_cases.json` — снятые значения.
+//! `golden/audio_capture_cases.json` — the captured values.
 
 use rexon_core::audio_capture as ac;
 use serde_json::Value;
@@ -117,14 +117,14 @@ fn windows() {
 #[test]
 fn fft_and_magnitudes() {
     let g = fx();
-    // rfft_magnitudes покрывает и внутренний fft (порядок бабочек/битреверса)
+    // rfft_magnitudes also covers the inner fft (butterfly/bit-reversal order)
     let rin = f_vec(&g["rfft16"]["input"]);
     assert_vec_close(
         &ac::rfft_magnitudes(&rin),
         &f_vec(&g["rfft16"]["magnitudes"]),
         "rfft16",
     );
-    // fft8: сверяем амплитуды по снятому спектру (re, im)
+    // fft8: compare magnitudes against the captured spectrum (re, im)
     let fin = f_vec(&g["fft8"]["input"]);
     let mags = ac::rfft_magnitudes(&fin);
     let expected: Vec<f64> = g["fft8"]["output"].as_array().unwrap()[..4]
@@ -225,10 +225,10 @@ fn both_mode_mix() {
     let b = pcm_bytes(&i16_vec(&g["mix"]["b"]));
     let mixed = ac::mix_frames_s16le(&[&a, &b]);
     assert_eq!(mixed, pcm_bytes(&i16_vec(&g["mix"]["mixed"])), "mix2");
-    // один стрим — passthrough
+    // a single stream — passthrough
     let single = ac::mix_frames_s16le(&[&a]);
     assert_eq!(single, pcm_bytes(&i16_vec(&g["mix_single"])), "mix1");
-    // кадр тишины (underrun)
+    // a silence frame (underrun)
     assert_eq!(ac::silence_frame(8), vec![0u8; 8], "silence");
 }
 
@@ -301,7 +301,7 @@ fn capture_argv() {
     assert_eq!(ac::pw_record_argv("TARGET"), str_vec(&g["pw_record_cmd"]));
     assert_eq!(ac::parec_argv("DEVICE"), str_vec(&g["parec_cmd"]));
     assert_eq!(ac::arecord_argv("hw:1,1"), str_vec(&g["arecord_cmd"]));
-    // пробы доступности — литералы из available()
+    // availability probes — literals from available()
     assert_eq!(ac::pipewire_probe_argv(), vec!["pw-cli", "info", "0"]);
     assert_eq!(ac::pulseaudio_probe_argv(), vec!["pactl", "info"]);
     assert_eq!(ac::pactl_default_sink_argv(), vec!["pactl", "get-default-sink"]);
@@ -317,9 +317,9 @@ fn capture_argv() {
     assert_eq!(ac::wpctl_status_argv(), vec!["wpctl", "status", "-n"]);
 }
 
-/// Ветка wireplumber (`wpctl status -n`) — там, где нет `pactl`.
-/// Эталон снят с живого `wpctl status -n` (CachyOS, PipeWire 1.6.8),
-/// имена узлов обезличены; команда read-only, ничего не переключает.
+/// The wireplumber branch (`wpctl status -n`) — where there is no `pactl`.
+/// The golden file was captured from a live `wpctl status -n` (CachyOS, PipeWire 1.6.8),
+/// node names anonymized; the command is read-only and switches nothing.
 #[test]
 fn device_selection_wpctl() {
     let g = fx();
@@ -344,7 +344,7 @@ fn device_selection_wpctl() {
         c["microphone_target"].as_str()
     );
 
-    // Ни один узел не помечен `*` — берём первый по списку.
+    // No node is marked `*` — take the first in the list.
     let nodef = s(&c["status_no_default"]);
     assert_eq!(
         ac::wpctl_monitor_target(Some(nodef)).as_deref(),
@@ -355,14 +355,14 @@ fn device_selection_wpctl() {
         c["microphone_target_no_default"].as_str()
     );
 
-    // Раздел Video НЕ должен просачиваться в аудио (там своя `*`-камера).
+    // The Video section must NOT leak into audio (it has its own `*` camera).
     let video = s(&c["status_video_only"]);
     let only_video = ac::parse_wpctl_status(video);
     assert!(only_video.sinks.is_empty() && only_video.sources.is_empty());
     assert_eq!(ac::wpctl_monitor_target(Some(video)), None);
     assert_eq!(ac::wpctl_microphone_target(Some(video)), None);
 
-    // Команды нет / упала → None, вызывающий уходит на pactl и алиасы.
+    // No command / it failed → None, the caller falls back to pactl and aliases.
     assert_eq!(ac::wpctl_monitor_target(None), None);
     assert_eq!(ac::wpctl_microphone_target(None), None);
     assert_eq!(ac::wpctl_monitor_target(Some("")), None);
@@ -465,7 +465,7 @@ fn device_selection_alsa() {
     );
     assert_eq!(ac::alsa_loopback_device(None).as_deref(), cases["fail"].as_str());
 
-    // выбор устройства arecord по source
+    // arecord device choice by source
     assert_eq!(ac::alsa_capture_device("microphone", Some("hw:2,1")), "default");
     assert_eq!(ac::alsa_capture_device("monitor", Some("hw:2,1")), "hw:2,1");
     assert_eq!(ac::alsa_capture_device("monitor", None), "default");
@@ -474,17 +474,17 @@ fn device_selection_alsa() {
 
 #[test]
 fn source_and_backend() {
-    // нормализация source: неизвестное → monitor (порт fallback)
+    // source normalization: unknown → monitor (port of the fallback)
     assert_eq!(ac::normalize_source("monitor"), "monitor");
     assert_eq!(ac::normalize_source("microphone"), "microphone");
     assert_eq!(ac::normalize_source("both"), "both");
     assert_eq!(ac::normalize_source("bogus"), "monitor");
-    // резолв CLI > env > default (порт main())
+    // resolve CLI > env > default (port of main())
     assert_eq!(ac::resolve_source(Some("microphone"), Some("both")), "microphone");
     assert_eq!(ac::resolve_source(None, Some("both")), "both");
     assert_eq!(ac::resolve_source(None, None), "monitor");
     assert_eq!(ac::resolve_source(None, Some("bogus")), "monitor");
-    // порядок детекта бэкендов
+    // backend detection order
     assert_eq!(ac::detect_backend(true, true, true), Some("pipewire"));
     assert_eq!(ac::detect_backend(false, true, true), Some("pulseaudio"));
     assert_eq!(ac::detect_backend(false, false, true), Some("alsa"));
@@ -498,9 +498,9 @@ fn stream_json() {
     assert_eq!(ac::stream_json_line(&bands), s(&g["stream_json"]["line"]));
 }
 
-/// `repr` float по правилам Python — эталон снят с самого CPython
-/// (`json.dumps` берёт `float.__repr__`). Значения покрывают оба порога
-/// (`exp < -4`, `exp >= 16`) и зону, где ryu расходился с Python.
+/// `repr` of a float by Python's rules — the golden file was captured from CPython itself
+/// (`json.dumps` uses `float.__repr__`). The values cover both thresholds
+/// (`exp < -4`, `exp >= 16`) and the zone where ryu diverged from Python.
 #[test]
 fn python_float_repr() {
     for (v, expect) in [
@@ -511,18 +511,18 @@ fn python_float_repr() {
         (12.345, "12.345"),
         (0.1, "0.1"),
         (0.001, "0.001"),
-        (0.0001, "0.0001"),          // порог: ещё десятичная
-        (1e-5, "1e-05"),             // порог: уже экспонента (ryu давал 0.00001)
-        (9.9e-5, "9.9e-05"),         // ryu давал 0.000099
-        (1.5e-7, "1.5e-07"),         // ryu давал 1.5e-7
-        (1e-9, "1e-09"),             // ryu давал 1e-9
+        (0.0001, "0.0001"),          // threshold: still decimal
+        (1e-5, "1e-05"),             // threshold: already exponent (ryu gave 0.00001)
+        (9.9e-5, "9.9e-05"),         // ryu gave 0.000099
+        (1.5e-7, "1.5e-07"),         // ryu gave 1.5e-7
+        (1e-9, "1e-09"),             // ryu gave 1e-9
         (0.000123456, "0.000123456"),
         (0.1 + 0.2, "0.30000000000000004"),
         (2.0 / 3.0, "0.6666666666666666"),
-        (1e15, "1000000000000000.0"),  // порог: ещё десятичная
-        (1e16, "1e+16"),               // порог: уже экспонента
+        (1e15, "1000000000000000.0"),  // threshold: still decimal
+        (1e16, "1e+16"),               // threshold: already exponent
         (1e17, "1e+17"),
-        (5e-324, "5e-324"),            // denormal: экспонента без добивки
+        (5e-324, "5e-324"),            // denormal: exponent without padding
         (-2.5, "-2.5"),
         (-1e-9, "-1e-09"),
     ] {

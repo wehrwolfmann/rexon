@@ -1,30 +1,32 @@
-//! Сетевой транспорт каталогов оформления — порт HTTP-слоя из
-//! `rexon/appearance/ocs_client.py` (`_http_get`/`_http_download`) и
-//! `rexon/appearance/aur_client.py` (`_http_json`), где Python пользуется
-//! stdlib `urllib`.
+//! Network transport of the appearance catalogs — port of the HTTP layer from
+//! `rexon/appearance/ocs_client.py` (`_http_get`/`_http_download`) and
+//! `rexon/appearance/aur_client.py` (`_http_json`), where Python uses the stdlib
+//! `urllib`.
 //!
-//! Раньше HTTP сознательно оставался на Python: ядро собиралось без сетевых
-//! зависимостей, а разбор ответов (`ocs.rs`, `aur.rs`) покрывался голденами на
-//! записанных ответах. Решение пересмотрено — цель «убрать Python отовсюду,
-//! кроме интерфейса» требует, чтобы запрос делало ядро.
+//! HTTP used to stay in Python on purpose: the core was built without network
+//! dependencies, and response parsing (`ocs.rs`, `aur.rs`) was covered by golden
+//! tests on recorded answers. The decision has been revised — the goal "remove
+//! Python from everywhere except the interface" requires the core to make the
+//! request.
 //!
-//! Устройство ровно как у остальных портов с побочными эффектами
-//! (`ImpIo` в `importers.rs`, `ComplianceIo` в `compliance.rs`): вся ЛОГИКА —
-//! какой URL дёрнуть, что считать успехом, когда уйти в кеш, когда удалить
-//! недокачанный файл — живёт в ядре и тестируется, а сам вызов спрятан за
-//! трейтом [`NetIo`]. В parity-тестах трейт отвечает ЗАПИСАННЫМИ ответами
-//! (`tests/golden/*`), в бою — [`UreqNet`] поверх `ureq` + native-tls.
+//! The structure is exactly as in the other ports with side effects (`ImpIo` in
+//! `importers.rs`, `ComplianceIo` in `compliance.rs`): all the LOGIC — which URL
+//! to hit, what counts as success, when to fall back to the cache, when to
+//! delete a partially downloaded file — lives in the core and is tested, while
+//! the call itself is hidden behind the [`NetIo`] trait. In parity tests the
+//! trait answers with RECORDED responses (`tests/golden/*`), in production it is
+//! [`UreqNet`] on top of `ureq` + native-tls.
 //!
-//! Один открытый ответ и один открытый файл за раз — это не упрощение, а
-//! точный слепок оригинала: `_http_download` целиком укладывается в один
-//! `with urlopen(...) as resp:` и один `with open(dest,"wb") as f:`.
+//! One open response and one open file at a time is not a simplification but an
+//! exact copy of the original: `_http_download` fits entirely into one
+//! `with urlopen(...) as resp:` and one `with open(dest,"wb") as f:`.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
-/// Уровень сообщения журнала — `log.info` / `log.warning` / `log.error`
-/// оригинала. Поведение от него не зависит, но тексты видны в `rexon.log`,
-/// поэтому они часть паритета.
+/// Log message level — the original's `log.info` / `log.warning` / `log.error`.
+/// Behavior does not depend on it, but the texts are visible in `rexon.log`, so
+/// they are part of the parity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
     Info,
@@ -33,7 +35,7 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
-    /// Имя метода `logging`, которым сообщение уходит в журнал Python.
+    /// Name of the `logging` method the message goes to the Python log with.
     pub fn logger_method(self) -> &'static str {
         match self {
             LogLevel::Info => "info",
@@ -43,26 +45,27 @@ impl LogLevel {
     }
 }
 
-/// Сетевой сбой — порт исключений, которые ловит (OCS) либо пробрасывает
-/// наверх (AUR) оригинал.
+/// A network failure — port of the exceptions the original catches (OCS) or
+/// re-raises (AUR).
 ///
-/// Python ловит `urllib.error.HTTPError` (ответ вне 2xx после отработки
-/// редиректов) и `urllib.error.URLError`/`OSError` (DNS, отказ соединения,
-/// таймаут, TLS). [`Display`](std::fmt::Display) даёт ТУ ЖЕ форму строки, что
-/// `str(e)` в Python, потому что у AUR-ветки этот текст доезжает до окна
-/// покупателя (`_AurWorker.failed.emit(str(e))`), а у OCS попадает в журнал.
+/// Python catches `urllib.error.HTTPError` (an answer outside 2xx after
+/// redirects are followed) and `urllib.error.URLError`/`OSError` (DNS, connection
+/// refused, timeout, TLS). [`Display`](std::fmt::Display) gives THE SAME string
+/// form as `str(e)` in Python, because in the AUR branch this text reaches the
+/// buyer's window (`_AurWorker.failed.emit(str(e))`), and in OCS it goes into
+/// the log.
 ///
-/// Форма зависит от того, ГДЕ порвалось, и оригинал здесь непоследователен:
-/// не состоявшееся соединение — это `URLError`, у которого `str(e)` берёт
-/// сообщение в скобки (`<urlopen error …>`), а обрыв уже идущего чтения — это
-/// голый `OSError` без скобок. Поэтому оформление лежит на реализации
-/// транспорта ([`UreqNet`] оборачивает в скобки именно сбой соединения), а
-/// `detail` хранится и печатается как есть.
+/// The form depends on WHERE it broke, and the original is inconsistent here: a
+/// connection that never happened is a `URLError`, whose `str(e)` puts the
+/// message in brackets (`<urlopen error …>`), while a break of an ongoing read
+/// is a bare `OSError` without brackets. So the formatting is the transport
+/// implementation's job ([`UreqNet`] wraps exactly a connection failure in
+/// brackets), and `detail` is stored and printed as is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NetError {
-    /// Ответ со статусом вне 200..=299 (порт `HTTPError`).
+    /// An answer with a status outside 200..=299 (port of `HTTPError`).
     Status { code: u16, reason: String },
-    /// Соединение не состоялось либо оборвалось (порт `URLError`/`OSError`).
+    /// The connection did not happen or broke (port of `URLError`/`OSError`).
     Transport { detail: String },
 }
 
@@ -79,14 +82,14 @@ impl std::fmt::Display for NetError {
 impl std::error::Error for NetError {}
 
 impl NetError {
-    /// Человеческая формулировка для окна покупателя (правило #13: без
-    /// жаргона и латиницы), на языке интерфейса. Оригинал показывал сырой `str(e)` от urllib —
-    /// строку вида `<urlopen error [Errno -2] Name or service not known>`,
-    /// по которой обычный человек ничего не понимает.
+    /// A human wording for the buyer's window (rule #13: no jargon and no Latin
+    /// terms), in the interface language. The original showed urllib's raw `str(e)`
+    /// — a string like `<urlopen error [Errno -2] Name or service not known>`, from
+    /// which an ordinary person understands nothing.
     ///
-    /// Это ДОПОЛНЕНИЕ, а не замена: [`Display`](std::fmt::Display) остаётся
-    /// побайтово совместимым с Python, чтобы паритет журналов и тестов не
-    /// поехал, а UI-слой волен показывать `human()`.
+    /// This is an ADDITION, not a replacement: [`Display`](std::fmt::Display) stays
+    /// byte-compatible with Python so that the parity of logs and tests does not
+    /// drift, and the UI layer is free to show `human()`.
     pub fn human(&self) -> String {
         match self {
             NetError::Status { code, reason } => {
@@ -105,33 +108,33 @@ impl NetError {
     }
 }
 
-/// Транспорт сетевого слоя: каждый метод — ровно один побочный эффект
-/// Python-оригинала, в порядке исполнения. В parity-тестах — реплей журнала,
-/// в бою — [`UreqNet`].
+/// Transport of the network layer: each method is exactly one side effect of the
+/// Python original, in execution order. In parity tests — a replay of a journal,
+/// in production — [`UreqNet`].
 ///
-/// Заголовок ровно один (`User-Agent`) — как в `urllib.request.Request(url,
-/// headers={"User-Agent": USER_AGENT})`; таймаут в секундах — как аргумент
-/// `urlopen(..., timeout=...)` (у urllib это таймаут сокета: и на соединение,
-/// и на каждое чтение).
+/// There is exactly one header (`User-Agent`) — as in
+/// `urllib.request.Request(url, headers={"User-Agent": USER_AGENT})`; the timeout
+/// in seconds — as the argument of `urlopen(..., timeout=...)` (in urllib this
+/// is a socket timeout: both for connecting and for every read).
 pub trait NetIo {
-    /// `with urlopen(Request(url, headers), timeout) as resp: resp.read()` —
-    /// тело ответа целиком.
+    /// `with urlopen(Request(url, headers), timeout) as resp: resp.read()` — the
+    /// whole response body.
     fn get(&mut self, url: &str, user_agent: &str, timeout_secs: u64) -> Result<Vec<u8>, NetError>;
 
-    /// Вход в `with urlopen(...) as resp` для потокового скачивания.
+    /// Entering `with urlopen(...) as resp` for a streaming download.
     /// `Ok(total)` — `int(resp.headers.get("Content-Length", 0))`.
     ///
-    /// ⚠️ Починка оригинала (правило #16): у Python нечисловой Content-Length
-    /// давал `ValueError`, который `_http_download` НЕ ловит (там только
-    /// `URLError`/`HTTPError`/`OSError`) — исключение улетало из воркера и
-    /// роняло установку темы. Здесь неразобранный заголовок = `0`, как и его
-    /// отсутствие: проверка размера просто не срабатывает.
+    /// Warning — a fix to the original (rule #16): in Python a non-numeric
+    /// Content-Length gave a `ValueError` that `_http_download` does NOT catch (it
+    /// catches only `URLError`/`HTTPError`/`OSError`) — the exception flew out of
+    /// the worker and broke the theme installation. Here an unparsed header = `0`,
+    /// the same as its absence: the size check simply does not trigger.
     fn open(&mut self, url: &str, user_agent: &str, timeout_secs: u64) -> Result<i64, NetError>;
 
-    /// `resp.read(n)` из открытого ответа; пустой вектор — тело кончилось.
+    /// `resp.read(n)` from the open response; an empty vector — the body is over.
     fn read(&mut self, n: usize) -> Result<Vec<u8>, NetError>;
 
-    /// Выход из `with urlopen(...)` — закрыть текущий ответ.
+    /// Leaving `with urlopen(...)` — close the current response.
     fn close(&mut self);
 
     /// `os.makedirs(path, exist_ok=True)`.
@@ -140,83 +143,86 @@ pub trait NetIo {
     /// `open(path, "wb")`.
     fn create(&mut self, path: &str) -> Result<(), NetError>;
 
-    /// `f.write(chunk)` в открытый файл.
+    /// `f.write(chunk)` into the open file.
     fn write(&mut self, chunk: &[u8]) -> Result<(), NetError>;
 
-    /// `f.close()` / выход из `with open(...)`.
+    /// `f.close()` / leaving `with open(...)`.
     fn close_file(&mut self);
 
     /// `os.path.exists(path)`.
     fn exists(&mut self, path: &str) -> bool;
 
-    /// `os.remove(path)`; ошибка подавляется вызывающим, как в оригинале.
+    /// `os.remove(path)`; the caller suppresses the error, as in the original.
     fn remove(&mut self, path: &str);
 
-    /// `on_progress(done, total)` — зовётся ТОЛЬКО когда колбэк передан.
+    /// `on_progress(done, total)` — called ONLY when a callback was passed.
     fn progress(&mut self, done: i64, total: i64);
 
-    /// `log.warning` / `log.error` с уже собранным текстом.
+    /// `log.warning` / `log.error` with an already assembled text.
     fn log(&mut self, level: LogLevel, message: &str);
 
-    /// `time.sleep(ms / 1000)` — пауза перед повтором (см. [`with_retry`]).
+    /// `time.sleep(ms / 1000)` — a pause before a retry (see [`with_retry`]).
     ///
-    /// Побочный эффект, а не `std::thread::sleep` внутри ядра, ровно по той же
-    /// причине, что и всё остальное в этом трейте: в сверке пауза должна быть
-    /// ВИДНА и не отнимать время, а в бою — быть настоящей.
+    /// A side effect rather than `std::thread::sleep` inside the core, for exactly
+    /// the same reason as everything else in this trait: in a check the pause must be
+    /// VISIBLE and take no time, while in production it must be real.
     fn sleep(&mut self, ms: u64);
 
-    /// `resp.headers.get("Content-Type", "")` для ответа, открытого последним
-    /// [`open`](NetIo::open); пусто — заголовка нет либо ответ не открыт.
+    /// `resp.headers.get("Content-Type", "")` for the response opened last by
+    /// [`open`](NetIo::open); empty — there is no header or no response is open.
     ///
-    /// Отдельным методом, а не полем возврата `open`, потому что читатель
-    /// ровно один — загрузчик снимков рабочих столов, которому тип нужен ДО
-    /// чтения тела: страница ошибки (HTML вместо картинки) бывает в мегабайты,
-    /// и качать её целиком, чтобы потом выбросить, незачем.
+    /// A separate method rather than a field of `open`'s return value, because there
+    /// is exactly one reader — the desktop screenshot loader, which needs the type
+    /// BEFORE reading the body: an error page (HTML instead of a picture) can be
+    /// megabytes, and there is no point in downloading it entirely only to throw it
+    /// away.
     fn content_type(&mut self) -> String;
 }
 
 // ============================================================================
-// Повторы при временном сбое
+// Retries on a temporary failure
 // ============================================================================
 //
-// Зачем (Wehrwolfmann 2026-08-02): один и тот же класс отказа — сервер закрыл
-// соединение на середине — был закрыт в ОДНОМ месте из трёх. У загрузчика
-// превью каталога повтор появился (иначе `images.pling.com` гасил пачку
-// карточек разом), у загрузчика снимков рабочих столов повтор был только на
-// «слишком часто просите» (HTTP 429), а сам сетевой слой ядра — через который
-// идут галерея деталки, скачивание тем и запросы AUR — не повторял ничего.
-// Значит одна оборванная сессия молча стоила покупателю темы либо картинки.
+// Why (Wehrwolfmann 2026-08-02): one and the same class of failure — the server
+// closed the connection midway — was handled in ONE place out of three. The
+// catalog preview loader got a retry (otherwise `images.pling.com` killed a
+// batch of cards at once), the desktop screenshot loader retried only on "you
+// are asking too often" (HTTP 429), and the core's network layer itself —
+// through which the detail gallery, theme downloads and AUR requests go —
+// retried nothing. So a single broken session silently cost the buyer a theme
+// or a picture.
 //
-// Правило #12: чиним общий механизм. Решение «стоит ли пробовать ещё раз» и
-// «сколько ждать» живёт ЗДЕСЬ, одним набором правил на все запросы ядра, а
-// пауза уходит в [`NetIo::sleep`] — то есть видна в сверке и не жжёт время
-// тестов.
+// Rule #12: we fix the shared mechanism. The decision "is it worth trying
+// again" and "how long to wait" lives HERE, as one set of rules for all of the
+// core's requests, and the pause goes to [`NetIo::sleep`] — i.e. it is visible
+// in checks and does not burn test time.
 
-/// Сколько раз всего пробовать запрос: первая попытка плюс два повтора.
+/// How many times in total to try a request: the first attempt plus two retries.
 ///
-/// Три — потому что лечим ОДИНОЧНЫЙ обрыв (сервер закрыл соединение, зеркало
-/// моргнуло). Если не помогло дважды подряд, дело не во «моргнуло», и дальше
-/// повторы только держат покупателя перед крутящимся кружком.
+/// Three — because we cure a SINGLE break (the server closed the connection, a
+/// mirror blinked). If it did not help twice in a row, the problem is not a
+/// "blink", and further retries only keep the buyer in front of a spinner.
 pub const RETRY_ATTEMPTS: u32 = 3;
 
-/// Пауза перед ПЕРВЫМ повтором обычного сбоя; дальше растёт кратно номеру
-/// повтора (700 мс, 1400 мс). Меньше — не успевает закрыться оборванное
-/// соединение, больше — заметно покупателю.
+/// Pause before the FIRST retry of an ordinary failure; after that it grows as a
+/// multiple of the retry number (700 ms, 1400 ms). Less — the broken connection
+/// does not have time to close; more — the buyer notices.
 pub const RETRY_DELAY_MS: u64 = 700;
 
-/// Пауза перед первым повтором при HTTP 429 «слишком часто просите» (3 с,
-/// 6 с). Здесь сервер прямо просит подождать, и 700 мс он не примет —
-/// значение унаследовано от загрузчика снимков, где эта ветка уже работала.
+/// Pause before the first retry on HTTP 429 "you are asking too often" (3 s,
+/// 6 s). Here the server explicitly asks to wait, and it will not accept 700 ms
+/// — the value is inherited from the screenshot loader, where this branch
+/// already worked.
 pub const RATE_LIMIT_DELAY_MS: u64 = 3_000;
 
-/// Стоит ли пробовать ещё раз после такого сбоя.
+/// Whether it is worth trying again after such a failure.
 ///
-/// Временное — обрыв соединения, таймаут, отказ DNS (всё это [`NetError::
-/// Transport`]), а также ответы «я сейчас занят»: 408, 429 и весь 5xx.
-/// Окончательное — 4xx (файла правда нет, доступ закрыт: повтор даст ровно
-/// тот же ответ) и ОТМЕНА, которую взвёл сам интерфейс: повторять запрос,
-/// который нам больше не нужен, — это ровно тот вред, ради устранения
-/// которого отмену и делали.
+/// Temporary — a connection break, a timeout, a DNS failure (all of these are
+/// [`NetError::Transport`]), as well as "I am busy right now" answers: 408, 429
+/// and the whole 5xx range. Final — 4xx (the file really does not exist, access
+/// is denied: a retry gives exactly the same answer) and a CANCELLATION triggered
+/// by the interface itself: repeating a request we no longer need is exactly the
+/// harm cancellation was made to eliminate.
 pub fn is_temporary(e: &NetError) -> bool {
     match e {
         NetError::Transport { detail } => !detail.contains(CANCELLED_DETAIL),
@@ -226,7 +232,7 @@ pub fn is_temporary(e: &NetError) -> bool {
     }
 }
 
-/// Пауза перед повтором номер `retry` (первый повтор — единица).
+/// Pause before retry number `retry` (the first retry is one).
 pub fn retry_delay_ms(retry: u32, e: &NetError) -> u64 {
     let base = match e {
         NetError::Status { code: 429, .. } => RATE_LIMIT_DELAY_MS,
@@ -235,38 +241,38 @@ pub fn retry_delay_ms(retry: u32, e: &NetError) -> u64 {
     base * u64::from(retry.max(1))
 }
 
-/// Повторять ли этот запрос вообще.
+/// Whether to retry this request at all.
 ///
-/// Отдельным типом, а не булевым флагом, чтобы в месте вызова было написано
-/// ПОЧЕМУ: повтор безопасен только для запроса, который ничего не меняет на
-/// сервере. Сегодня ядро шлёт одни GET-ы, но выбор должен оставаться явным —
-/// первый же POST, повторённый «заодно», означал бы вторую покупку, второй
-/// голос, второй заказ.
+/// A separate type rather than a boolean flag, so that the call site says WHY: a
+/// retry is safe only for a request that changes nothing on the server. Today
+/// the core sends only GETs, but the choice must stay explicit — the very first
+/// POST repeated "while we are at it" would mean a second purchase, a second
+/// vote, a second order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Retry {
-    /// Всего попыток, считая первую. Единица — без повторов.
+    /// Total attempts, counting the first. One — no retries.
     pub attempts: u32,
 }
 
 impl Retry {
-    /// Запрос ничего не меняет на сервере (GET/HEAD) — повторять безопасно.
+    /// The request changes nothing on the server (GET/HEAD) — retrying is safe.
     pub const IDEMPOTENT: Retry = Retry { attempts: RETRY_ATTEMPTS };
 
-    /// Повторов нет: запрос меняет состояние на той стороне либо цена
-    /// лишнего вызова выше цены отказа.
+    /// No retries: the request changes state on the other side, or the cost of an
+    /// extra call is higher than the cost of a refusal.
     pub const NEVER: Retry = Retry { attempts: 1 };
 }
 
-/// Выполнить `op`, повторяя её при временном сбое.
+/// Execute `op`, repeating it on a temporary failure.
 ///
-/// `what` — как назвать запрос в журнале (URL и вид запроса); текст неудачной
-/// попытки уходит предупреждением, окончательный отказ оформляет вызывающий
-/// своим сообщением, как и раньше.
+/// `what` — how to name the request in the log (URL and request kind); the text
+/// of a failed attempt goes out as a warning, and the final refusal is worded by
+/// the caller with its own message, as before.
 ///
-/// ⚠️ `op` обязана быть ПОЛНОЙ операцией, а не её хвостом: скачивание файла
-/// повторяется с самого начала (ответ открывается заново, файл создаётся
-/// заново и затирается), потому что дописать вторую попытку в конец огрызка
-/// первой — это битый архив, а не починка.
+/// Warning: `op` must be a COMPLETE operation, not its tail: a file download is
+/// repeated from the very beginning (the response is opened anew, the file is
+/// created anew and overwritten), because appending the second attempt to the
+/// end of the first one's stub is a broken archive, not a fix.
 pub fn with_retry<IO, T>(
     io: &mut IO,
     policy: Retry,
@@ -300,22 +306,24 @@ where
 }
 
 // ============================================================================
-// Отмена запроса, который уже ушёл
+// Cancelling a request that has already gone out
 // ============================================================================
 
-/// Признак «этот запрос больше не нужен», общий для UI-потока и потока-воркера.
+/// A "this request is no longer needed" flag shared by the UI thread and the
+/// worker thread.
 ///
-/// Зачем (Wehrwolfmann 2026-07-31): поколение ответов спасает интерфейс —
-/// каталог покинутой категории не перерисует открытую, — но САМ запрос при
-/// этом доживал до конца и всё это время занимал канал. Замер на живом
-/// приложении: дюжина переключений категорий подряд давала до 13 запросов
-/// одновременно, и тот же запрос, который в одиночку идёт 0,95 с, растягивался
-/// до 12,3 с. Значит уходящий запрос надо не «забывать», а рвать.
+/// Why (Wehrwolfmann 2026-07-31): a generation of answers saves the interface —
+/// the catalog of a left category will not redraw the open one — but the request
+/// ITSELF lived on until the end and occupied the channel all that time.
+/// Measured on the live application: a dozen category switches in a row gave up
+/// to 13 simultaneous requests, and the same request that takes 0.95 s alone
+/// stretched to 12.3 s. So a departing request must not be "forgotten" but cut.
 ///
-/// Токен взводится из ЛЮБОГО потока (`cancel`), а замечает его транспорт
-/// внутри соединения (см. [`CancelTransport`]): ожидание ответа дробится на
-/// короткие ломти, между ними проверяется флаг. Заметив отмену, транспорт
-/// возвращает ошибку, `ureq` бросает запрос, соединение закрывается.
+/// The token is triggered from ANY thread (`cancel`), and the transport notices
+/// it inside the connection (see [`CancelTransport`]): waiting for the answer is
+/// split into short slices, and the flag is checked between them. Having noticed
+/// the cancellation, the transport returns an error, `ureq` drops the request,
+/// the connection is closed.
 #[derive(Clone, Debug, Default)]
 pub struct CancelToken(std::sync::Arc<std::sync::atomic::AtomicBool>);
 
@@ -324,7 +332,7 @@ impl CancelToken {
         Self::default()
     }
 
-    /// Пометить запрос ненужным. Действует и на уже идущий запрос.
+    /// Mark the request as unneeded. Also affects a request already in progress.
     pub fn cancel(&self) {
         self.0.store(true, std::sync::atomic::Ordering::SeqCst);
     }
@@ -334,27 +342,29 @@ impl CancelToken {
     }
 }
 
-/// Как часто проверяется флаг отмены во время ожидания ответа. Задержка
-/// реакции на отмену не превышает этот срок; чаще дёргать сокет незачем.
+/// How often the cancellation flag is checked while waiting for an answer. The
+/// delay of reacting to a cancellation does not exceed this period; there is no
+/// point in poking the socket more often.
 const CANCEL_POLL: std::time::Duration = std::time::Duration::from_millis(200);
 
-/// Текст, по которому отменённый запрос отличается от сетевого сбоя.
+/// The text by which a cancelled request is told apart from a network failure.
 pub const CANCELLED_DETAIL: &str = "запрос отменён";
 
-/// ⛔ ВИД ОШИБКИ ЗДЕСЬ — НЕ ОФОРМЛЕНИЕ, А ПОВЕДЕНИЕ. Только не
-/// `ErrorKind::Interrupted`: стандартная библиотека по договору ИГНОРИРУЕТ
-/// этот вид и повторяет чтение (`Read::read_to_end`, `io::copy` и вся их
-/// родня). Отменённый транспорт с таким видом ошибки получал вечный горячий
-/// круг — поток жёг ядро на 100 % и не кончался никогда.
+/// Never: THE ERROR KIND HERE IS NOT FORMATTING BUT BEHAVIOR. Never
+/// `ErrorKind::Interrupted`: the standard library by contract IGNORES this kind
+/// and retries the read (`Read::read_to_end`, `io::copy` and all their
+/// relatives). A cancelled transport with this error kind got an eternal hot
+/// loop — the thread burned a CPU core at 100 % and never ended.
 ///
-/// Наружу это выходило так: человек закрывает окно, а Rexon не закрывается.
-/// Фоновая задача вкладки досиживала в этом круге, выход ждал её, и процесс
-/// добивал сторож. Поймано 19.09.2026 на самопроверке главного окна: 9
-/// прогонов из 12 не завершались сами.
+/// Outside this showed up like this: a person closes the window, and Rexon does
+/// not close. The tab's background task sat in this loop, the exit waited for
+/// it, and the watchdog finished the process off. Caught on 19.09.2026 during a
+/// self-check of the main window: 9 runs out of 12 did not finish by
+/// themselves.
 ///
-/// `ConnectionAborted` — это и по смыслу то, что произошло: соединение
-/// оборвали мы сами. Отмену от сетевого сбоя отличает не вид ошибки, а текст
-/// [`CANCELLED_DETAIL`], и он сохранён.
+/// `ConnectionAborted` is also what happened in meaning: we cut the connection
+/// ourselves. Cancellation is told apart from a network failure not by the error
+/// kind but by the [`CANCELLED_DETAIL`] text, and that is preserved.
 fn cancelled_io() -> ureq::Error {
     ureq::Error::Io(std::io::Error::new(
         std::io::ErrorKind::ConnectionAborted,
@@ -362,9 +372,10 @@ fn cancelled_io() -> ureq::Error {
     ))
 }
 
-/// Звено цепочки соединений: заворачивает уже собранный транспорт (вместе с
-/// TLS) в [`CancelTransport`]. Стоит МЕЖДУ TCP и TLS (см. `UreqNet::agent`):
-/// ломоть ожидания истекает у сокета, шифрование его не видит.
+/// A link of the connection chain: wraps the already assembled transport
+/// (together with TLS) into [`CancelTransport`]. It stands BETWEEN TCP and TLS
+/// (see `UreqNet::agent`): the waiting slice expires at the socket, and the
+/// encryption does not see it.
 #[derive(Debug)]
 struct CancelConnector {
     token: CancelToken,
@@ -393,7 +404,7 @@ impl<In: ureq::unversioned::transport::Transport> ureq::unversioned::transport::
     }
 }
 
-/// Соединение, которое умеет бросить ожидание по внешнему сигналу.
+/// A connection that can drop waiting on an external signal.
 #[derive(Debug)]
 struct CancelTransport {
     inner: Box<dyn ureq::unversioned::transport::Transport>,
@@ -420,9 +431,10 @@ impl ureq::unversioned::transport::Transport for CancelTransport {
         &mut self,
         timeout: ureq::unversioned::transport::NextTimeout,
     ) -> Result<bool, ureq::Error> {
-        // Ждём ответ ломтями по CANCEL_POLL: истёкший ломоть — это ещё не
-        // таймаут запроса, а лишь повод проверить флаг отмены. Настоящий
-        // таймаут отмеряем сами по общему сроку, который дал ureq.
+        // We wait for the answer in slices of CANCEL_POLL: an expired slice is
+        // not yet the request's timeout, merely a reason to check the cancellation
+        // flag. We measure the real timeout ourselves against the overall
+        // deadline given by ureq.
         let budget: std::time::Duration = *timeout.after;
         let deadline = std::time::Instant::now().checked_add(budget);
         loop {
@@ -458,32 +470,32 @@ impl ureq::unversioned::transport::Transport for CancelTransport {
 }
 
 // ============================================================================
-// Терпимость к кривой шапке ответа
+// Tolerance of a crooked response header
 // ============================================================================
 
-/// Имя-заглушка той же длины, что `Content-Length` (14 байт) — им заменяется
-/// имя заголовка, значение которого разобрать не удалось.
+/// A placeholder name of the same length as `Content-Length` (14 bytes) — it
+/// replaces the name of a header whose value could not be parsed.
 const BAD_LEN_NAME: &[u8] = b"X-Rexon-Badlen";
 
-/// Максимум байт шапки, которые придерживаются ради проверки. Дальше ответ
-/// пропускается как есть — про слишком длинную шапку `ureq` скажет сам
-/// (`LargeResponseHeader`), подменять его диагноз незачем.
+/// Maximum number of header bytes held back for the check. Beyond that the
+/// response is passed as is — `ureq` will report a header that is too long itself
+/// (`LargeResponseHeader`), there is no point in substituting its diagnosis.
 const HEAD_SCAN_LIMIT: usize = 64 * 1024;
 
-/// Конец шапки ответа — позиция сразу ЗА пустой строкой.
+/// End of the response header — the position right AFTER the empty line.
 fn head_end(buf: &[u8]) -> Option<usize> {
     buf.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4)
 }
 
-/// Обезвредить `Content-Length`, который не разобрать: `Some(шапка)` —
-/// исправленная копия, `None` — править нечего (обычный случай, копии не
-/// делаем).
+/// Defuse a `Content-Length` that cannot be parsed: `Some(header)` — a fixed
+/// copy, `None` — nothing to fix (the usual case, no copy is made).
 ///
-/// Правится ДВА случая, и оба — то, как ведёт себя `http.client` Python:
-/// значение не число (`length = None` → тело до конца потока) и повторный
-/// заголовок (берётся первый, остальные не смотрятся). Имя заменяется на
-/// [`BAD_LEN_NAME`] той же длины, поэтому смещения байт не едут, а `ureq`
-/// видит ответ без объявленной длины.
+/// TWO cases are fixed, and both mimic how Python's `http.client` behaves: a
+/// value that is not a number (`length = None` → the body until the end of the
+/// stream) and a repeated header (the first one is taken, the rest are not
+/// looked at). The name is replaced with [`BAD_LEN_NAME`] of the same length, so
+/// byte offsets do not shift, and `ureq` sees a response without a declared
+/// length.
 fn fix_bad_content_length(head: &[u8]) -> Option<Vec<u8>> {
     const NAME: &[u8] = b"content-length";
     let mut fixed: Option<Vec<u8>> = None;
@@ -497,7 +509,7 @@ fn fix_bad_content_length(head: &[u8]) -> Option<Vec<u8>> {
             .unwrap_or(head.len() - line_start);
         let line = &head[line_start..line_start + len];
         if line.is_empty() {
-            break; // пустая строка — шапка кончилась
+            break; // an empty line — the header is over
         }
         if !first_line {
             if let Some(colon) = line.iter().position(|&b| b == b':') {
@@ -523,7 +535,7 @@ fn fix_bad_content_length(head: &[u8]) -> Option<Vec<u8>> {
     fixed
 }
 
-/// Звено цепочки соединений: заворачивает транспорт в [`HeadFixTransport`].
+/// A link of the connection chain: wraps the transport into [`HeadFixTransport`].
 #[derive(Debug)]
 struct HeadFixConnector;
 
@@ -544,34 +556,36 @@ impl<In: ureq::unversioned::transport::Transport> ureq::unversioned::transport::
     }
 }
 
-/// Соединение, которое показывает `ureq` шапку ответа только целиком — и
-/// перед этим обезвреживает `Content-Length`, от которого разбор падает.
+/// A connection that shows `ureq` the response header only as a whole — and
+/// before that defuses a `Content-Length` that would make parsing fail.
 ///
-/// Зачем (Wehrwolfmann 2026-08-01): нечисловой `Content-Length` для `ureq`
-/// смертелен — шапка отвергается ошибкой `BadContentLengthHeader` ЕЩЁ ДО
-/// того, как ответ доходит до нашего кода, и установка темы падает целиком.
-/// Настройки, чтобы это стерпеть, у `ureq` 3.3 нет (проверены все
-/// `ConfigBuilder`, свежее версии нет). Python в этом месте терпим:
-/// `http.client` при неразбираемой длине кладёт `length = None` и читает тело
-/// до закрытия соединения — ровно то, что обещает контракт [`NetIo::open`]
-/// («неразобранный заголовок = 0»). Кривую длину шлют зеркала и прокси, а
-/// цена — не скачанная тема, поэтому терпимость восстановлена ОДНОЙ точкой на
-/// весь сетевой слой (каталог OCS, AUR, превью, архивы), а не в одном вызове.
+/// Why (Wehrwolfmann 2026-08-01): a non-numeric `Content-Length` is fatal for
+/// `ureq` — the header is rejected with a `BadContentLengthHeader` error EVEN
+/// BEFORE the response reaches our code, and the theme installation fails
+/// entirely. `ureq` 3.3 has no setting to tolerate this (all of `ConfigBuilder`
+/// was checked, there is no newer version). Python is tolerant here:
+/// `http.client` with an unparsable length sets `length = None` and reads the
+/// body until the connection closes — exactly what the [`NetIo::open`] contract
+/// promises ("an unparsed header = 0"). Mirrors and proxies send crooked
+/// lengths, and the price is a theme that does not download, so tolerance is
+/// restored at ONE point for the whole network layer (the OCS catalog, AUR,
+/// previews, archives), not in one call.
 ///
-/// Устройство: пока читается шапка, байты копятся в буфере соединения и наверх
-/// не отдаются; собранная целиком шапка проверяется
-/// [`fix_bad_content_length`] и — только если было что чинить — заменяется
-/// исправленной копией. Здоровый ответ идёт сырой перекачкой байт.
+/// Structure: while the header is being read, bytes accumulate in the
+/// connection buffer and are not passed up; the header collected as a whole is
+/// checked by [`fix_bad_content_length`] and — only if there was something to
+/// fix — replaced with a fixed copy. A healthy response goes as a raw byte
+/// transfer.
 #[derive(Debug)]
 struct HeadFixTransport<T: ureq::unversioned::transport::Transport> {
     inner: T,
-    /// Буферы, которые видит `ureq` (у соединения — свои).
+    /// Buffers `ureq` sees (the connection has its own).
     buffers: ureq::unversioned::transport::LazyBuffers,
-    /// Исправленная шапка, ещё не отданная наверх целиком.
+    /// The fixed header, not yet passed up entirely.
     pending: Vec<u8>,
-    /// Сколько байт `pending` уже отдано.
+    /// How many bytes of `pending` have already been passed.
     sent: usize,
-    /// Шапка ответа ещё не пройдена.
+    /// The response header has not been passed yet.
     scanning: bool,
 }
 
@@ -589,7 +603,7 @@ impl<T: ureq::unversioned::transport::Transport> HeadFixTransport<T> {
         }
     }
 
-    /// Отдать наверх сколько влезет из исправленной шапки.
+    /// Pass up as much of the fixed header as fits.
     fn drain_pending(&mut self) -> usize {
         use ureq::unversioned::transport::Buffers;
         if self.pending.is_empty() {
@@ -607,7 +621,7 @@ impl<T: ureq::unversioned::transport::Transport> HeadFixTransport<T> {
         n
     }
 
-    /// Сырая перекачка байт из буфера соединения наверх.
+    /// Raw transfer of bytes from the connection buffer upwards.
     fn copy_raw(&mut self) -> usize {
         use ureq::unversioned::transport::Buffers;
         let Self { inner, buffers, .. } = self;
@@ -625,9 +639,9 @@ impl<T: ureq::unversioned::transport::Transport> HeadFixTransport<T> {
         n
     }
 
-    /// Передать наверх то, что можно: хвост исправленной шапки, разобранную
-    /// шапку целиком либо сырые байты тела. `0` — «шапка ещё не собралась,
-    /// нужны данные».
+    /// Pass up what can be passed: the tail of the fixed header, the whole parsed
+    /// header or raw body bytes. `0` — "the header has not been collected yet, data
+    /// is needed".
     fn pump(&mut self) -> usize {
         let moved = self.drain_pending();
         if moved > 0 || !self.pending.is_empty() {
@@ -647,8 +661,8 @@ impl<T: ureq::unversioned::transport::Transport> HeadFixTransport<T> {
                 }
                 None => {
                     let grown = self.inner.buffers().input().len();
-                    // Копить дальше некуда (буфер соединения полон) или шапка
-                    // переросла разумный предел — отдаём как есть.
+                    // There is nowhere further to accumulate (the connection buffer is
+                    // full) or the header outgrew a reasonable limit — we pass it as is.
                     let stuck = self.inner.buffers().input_append_buf().is_empty();
                     if !stuck && grown <= HEAD_SCAN_LIMIT {
                         return 0;
@@ -674,7 +688,7 @@ impl<T: ureq::unversioned::transport::Transport> ureq::unversioned::transport::T
         timeout: ureq::unversioned::transport::NextTimeout,
     ) -> Result<(), ureq::Error> {
         use ureq::unversioned::transport::Buffers;
-        // Пошёл новый запрос — впереди новая шапка ответа.
+        // A new request has started — a new response header lies ahead.
         self.scanning = true;
         self.pending.clear();
         self.sent = 0;
@@ -707,10 +721,10 @@ impl<T: ureq::unversioned::transport::Transport> ureq::unversioned::transport::T
             if self.pump() > 0 {
                 return Ok(true);
             }
-            // Отдать нечего — ждём данных от соединения.
+            // Nothing to pass — waiting for data from the connection.
             if !self.inner.await_input(timeout)? {
-                // Поток кончился на середине шапки: отдаём накопленное как
-                // есть, дальше пусть решает `ureq`.
+                // The stream ended in the middle of the header: we pass what was
+                // accumulated as is, and let `ureq` decide from there.
                 self.scanning = false;
                 return Ok(self.pump() > 0);
             }
@@ -727,40 +741,40 @@ impl<T: ureq::unversioned::transport::Transport> ureq::unversioned::transport::T
 }
 
 // ============================================================================
-// Живая реализация: ureq + native-tls
+// Live implementation: ureq + native-tls
 // ============================================================================
 
-/// Боевой транспорт: синхронный `ureq` поверх rustls с корнями доверия из
-/// системного хранилища.
+/// The production transport: synchronous `ureq` on top of rustls with trust
+/// roots from the system store.
 ///
-/// Настройки подогнаны под urllib: таймаут применяется к соединению И к
-/// каждому чтению/записи (у urllib это таймаут сокета, а не всего запроса),
-/// редиректов не больше десяти (`HTTPRedirectHandler.max_redirections`),
-/// успехом считается только 2xx (`urlopen` на прочих кодах бросает
-/// `HTTPError`). Агенты кешируются по таймауту, чтобы соединения
-/// переиспользовались между запросами одной пачки.
+/// The settings are tuned to match urllib: the timeout applies to the connection
+/// AND to every read/write (in urllib this is a socket timeout, not one for the
+/// whole request), no more than ten redirects
+/// (`HTTPRedirectHandler.max_redirections`), only 2xx counts as success
+/// (`urlopen` raises `HTTPError` on other codes). Agents are cached by timeout so
+/// that connections are reused between the requests of one batch.
 pub struct UreqNet {
     agents: HashMap<u64, ureq::Agent>,
     reader: Option<Box<dyn Read + Send + Sync>>,
-    /// `Content-Type` открытого ответа — снимается в [`NetIo::open`], пока
-    /// шапка ещё под рукой.
+    /// `Content-Type` of the open response — captured in [`NetIo::open`] while the
+    /// header is still at hand.
     ctype: String,
     file: Option<std::fs::File>,
     progress: Option<ProgressCb>,
     sink: Option<LogCb>,
     cancel: CancelToken,
-    /// Заголовки сверх `User-Agent`, одинаковые для всех запросов этого
-    /// транспорта. В трейте [`NetIo`] их нет намеренно: у urllib-оригиналов
-    /// заголовок ровно один, и лишний параметр в каждом методе понадобился бы
-    /// одному вызывающему из шести. Единственный сегодняшний потребитель —
-    /// API GitHub, который просит `Accept: application/vnd.github+json`
-    /// (состав пар задаёт `engine_update::api_headers`).
+    /// Headers besides `User-Agent`, the same for all requests of this transport.
+    /// They are deliberately not in the [`NetIo`] trait: the urllib originals have
+    /// exactly one header, and an extra parameter in every method would be needed
+    /// by one caller out of six. The only consumer today is the GitHub API, which
+    /// asks for `Accept: application/vnd.github+json` (the set of pairs is given by
+    /// `engine_update::api_headers`).
     extra_headers: Vec<(String, String)>,
 }
 
-/// Колбэк прогресса скачивания — `on_progress(done, total)` оригинала.
+/// Download progress callback — the original's `on_progress(done, total)`.
 type ProgressCb = Box<dyn FnMut(i64, i64) + Send>;
-/// Приёмник журнала — `log.warning`/`log.error` оригинала.
+/// Log sink — the original's `log.warning`/`log.error`.
 type LogCb = Box<dyn FnMut(LogLevel, &str) + Send>;
 
 impl Default for UreqNet {
@@ -783,100 +797,101 @@ impl UreqNet {
         }
     }
 
-    /// Токен отмены этого транспорта: взводится снаружи (из UI-потока) и
-    /// рвёт запрос, который уже ушёл. Каждый [`UreqNet`] держит СВОЙ токен —
-    /// отмена одного запроса не задевает соседние.
+    /// Cancellation token of this transport: triggered from outside (from the UI
+    /// thread) and cuts a request that has already gone out. Each [`UreqNet`] holds
+    /// ITS OWN token — cancelling one request does not affect its neighbors.
     pub fn cancel_token(&self) -> CancelToken {
         self.cancel.clone()
     }
 
-    /// Взять готовый токен (например общий на пачку запросов одной категории).
-    /// Звать ДО первого запроса: агенты кешируются вместе с токеном.
+    /// Take a ready token (for example one shared by a batch of requests of one
+    /// category). Call BEFORE the first request: agents are cached together with
+    /// the token.
     pub fn with_cancel(mut self, token: CancelToken) -> Self {
         self.cancel = token;
         self.agents.clear();
         self
     }
 
-    /// Заголовки сверх `User-Agent` — по паре «имя, значение», как их назвало
-    /// ядро. `User-Agent` сюда класть незачем: он приходит аргументом каждого
-    /// запроса и будет выставлен поверх.
+    /// Headers besides `User-Agent` — as "name, value" pairs, as the core named
+    /// them. There is no point in putting `User-Agent` here: it comes as an argument
+    /// of every request and will be set on top.
     pub fn with_headers(mut self, headers: Vec<(String, String)>) -> Self {
         self.extra_headers = headers;
         self
     }
 
-    /// Колбэк прогресса скачивания (`on_progress` оригинала).
+    /// Download progress callback (the original's `on_progress`).
     pub fn with_progress(mut self, cb: impl FnMut(i64, i64) + Send + 'static) -> Self {
         self.progress = Some(Box::new(cb));
         self
     }
 
-    /// Приёмник журнала (по умолчанию сообщения отбрасываются).
+    /// Log sink (by default messages are discarded).
     pub fn with_log(mut self, cb: impl FnMut(LogLevel, &str) + Send + 'static) -> Self {
         self.sink = Some(Box::new(cb));
         self
     }
 
-    /// Проверка сертификатов ТОЛЬКО по системному хранилищу доверия.
+    /// Certificates are verified ONLY against the system trust store.
     ///
-    /// Почему не rustls: у `ureq` 2.x фича `tls` жёстко тянет `webpki-roots`
-    /// (`dep:webpki-roots` прямо в определении фичи) — вшитый в бинарь слепок
-    /// списка корневых центров Mozilla под MPL-2.0. Правило #10 разрешает
-    /// только permissive-лицензии, а вшитый список вдобавок стареет вместе с
-    /// нашим релизом: отзыв центра дойдёт до покупателя лишь со следующей
-    /// сборкой. `native-tls` на Linux берёт корни из системного хранилища,
-    /// которое обновляет сам дистрибутив.
+    /// Why not rustls: in `ureq` 2.x the `tls` feature hard-pulls `webpki-roots`
+    /// (`dep:webpki-roots` right in the feature definition) — a snapshot of
+    /// Mozilla's list of root authorities embedded in the binary, under MPL-2.0.
+    /// Rule #10 allows only permissive licenses, and an embedded list also ages
+    /// together with our release: revocation of an authority would reach the buyer
+    /// only with the next build. `native-tls` on Linux takes roots from the system
+    /// store, which the distribution itself updates.
     ///
-    /// ⚠️ `native-tls` НИКОГДА не подхватывается умолчанием (`ntls.rs` помечен
-    /// «is never picked up as a default»), поэтому коннектор задаётся здесь
-    /// явно — без него `ureq` без фичи `tls` отказывает на любом https.
+    /// Warning: `native-tls` is NEVER picked up as the default (`ntls.rs` is marked
+    /// "is never picked up as a default"), so the connector is set explicitly here —
+    /// without it `ureq` without the `tls` feature refuses any https.
     fn agent(&mut self, timeout_secs: u64) -> ureq::Agent {
         let token = self.cancel.clone();
         self.agents
             .entry(timeout_secs)
             .or_insert_with(|| {
                 let t = std::time::Duration::from_secs(timeout_secs);
-                // Таймауты подогнаны под urllib: у него это таймаут СОКЕТА —
-                // и на соединение, и на каждое ожидание данных, а не на весь
-                // запрос целиком. Поэтому глобальный timeout НЕ ставим.
+                // The timeouts are tuned to urllib: there it is a SOCKET timeout —
+                // both for connecting and for every wait for data, not for the whole
+                // request. So we do NOT set a global timeout.
                 let config = ureq::Agent::config_builder()
                     .timeout_connect(Some(t))
                     .timeout_send_request(Some(t))
                     .timeout_recv_response(Some(t))
                     .timeout_recv_body(Some(t))
                     .max_redirects(10)
-                    // Ответ вне 2xx разбираем сами (ниже), как и раньше:
-                    // так один путь и для «ureq отдал ошибку статуса», и для
-                    // «упёрлись в лимит редиректов и получили 3xx».
+                    // We parse an answer outside 2xx ourselves (below), as before: that
+                    // way there is one path both for "ureq returned a status error" and
+                    // for "hit the redirect limit and got a 3xx".
                     .http_status_as_error(false)
                     .tls_config(
                         ureq::tls::TlsConfig::builder()
                             .provider(ureq::tls::TlsProvider::NativeTls)
-                            // Корни доверия — ТОЛЬКО системное хранилище
-                            // (native-tls берёт их у OpenSSL дистрибутива).
-                            // Вариант по умолчанию (WebPki) в ureq 3 не просто
-                            // вшивает список Mozilla под MPL-2.0, но и вовсе
-                            // недоступен: фича `native-tls-webpki-roots` у нас
-                            // отключена, и такой конфиг падает в панику.
+                            // Trust roots — ONLY the system store (native-tls takes them from
+                            // the distribution's OpenSSL). The default variant (WebPki) in
+                            // ureq 3 not only embeds Mozilla's list under MPL-2.0 but is not
+                            // available at all: our `native-tls-webpki-roots` feature is
+                            // disabled, and such a config panics.
                             .root_certs(ureq::tls::RootCerts::PlatformVerifier)
                             .build(),
                     )
                     .build();
-                // Свои звенья в цепочке соединений: одно делает запрос
-                // отменяемым (CancelConnector), второе — терпимым к кривой
-                // шапке ответа (HeadFixConnector).
+                // Our own links in the connection chain: one makes the request
+                // cancellable (CancelConnector), the other tolerant of a crooked
+                // response header (HeadFixConnector).
                 //
-                // ⛔ Отмена — ПОД шифрованием, на голом сокете, а не поверх
-                // TLS. Нарезка ожидания ломтями CANCEL_POLL поверх native-tls
-                // рвала соединение: истёкший ломоть посреди чтения OpenSSL
-                // считает фатальной ошибкой, и следующее чтение даёт «OpenSSL
-                // error». Сайты, отвечающие быстрее 200 мс, этого не замечали,
-                // а Wallhaven за Cloudflare (~0,4–1 с) не открылся ни разу
-                // (16.11.2026; зонд: наш клиент 0 из 3, ureq без звена — 3 из 3).
-                // Под TLS ломоть истекает у сокета, шифрование его не видит.
-                // Порядок звеньев — как у ureq::DefaultConnector (без socks:
-                // фича выключена), с нашим звеном между TCP и TLS.
+                // Never: cancellation goes UNDER the encryption, on the bare socket,
+                // not on top of TLS. Slicing the wait into CANCEL_POLL slices on top
+                // of native-tls broke the connection: OpenSSL considers a slice that
+                // expires in the middle of a read a fatal error, and the next read
+                // gives "OpenSSL error". Sites answering faster than 200 ms did not
+                // notice this, while Wallhaven behind Cloudflare (~0.4–1 s) never
+                // opened once (16.11.2026; probe: our client 0 of 3, ureq without
+                // the link 3 of 3). Under TLS the slice expires at the socket, and
+                // the encryption does not see it. The order of links is as in
+                // ureq::DefaultConnector (without socks: the feature is off), with
+                // our link between TCP and TLS.
                 use ureq::unversioned::transport::Connector as _;
                 let connector = ()
                     .chain(ureq::unversioned::transport::ConnectProxyConnector::default())
@@ -906,8 +921,8 @@ impl UreqNet {
         }
         match req.call() {
             Ok(resp) => {
-                // ureq отдаёт Ok и на 3xx, когда упёрся в лимит редиректов;
-                // urlopen в этом месте бросает HTTPError — приводим к нему.
+                // ureq returns Ok on a 3xx too when it hits the redirect limit;
+                // urlopen raises HTTPError at this point — we bring it to that.
                 let status = resp.status();
                 let code = status.as_u16();
                 if (200..300).contains(&code) {
@@ -927,8 +942,8 @@ impl UreqNet {
                     .unwrap_or("")
                     .to_string(),
             }),
-            // Соединение не состоялось — у Python это URLError, чей str()
-            // берёт причину в скобки: `<urlopen error [Errno -2] …>`.
+            // The connection did not happen — in Python this is URLError, whose
+            // str() puts the reason in brackets: `<urlopen error [Errno -2] …>`.
             Err(e) => Err(NetError::Transport {
                 detail: format!("<urlopen error {e}>"),
             }),
@@ -936,10 +951,10 @@ impl UreqNet {
     }
 }
 
-/// Ошибка файловых операций приёмника и обрыва чтения в виде [`NetError`]:
-/// оригинал ловит `OSError` от `open`/`write`/`resp.read` тем же `except`, что
-/// и сетевые сбои, а печатает его БЕЗ скобок `<urlopen error …>` — поэтому
-/// текст берётся как есть.
+/// An error of the sink's file operations and of a read break, as a
+/// [`NetError`]: the original catches `OSError` from `open`/`write`/`resp.read`
+/// with the same `except` as network failures, but prints it WITHOUT the
+/// `<urlopen error …>` brackets — so the text is taken as is.
 fn io_err(e: &std::io::Error) -> NetError {
     NetError::Transport {
         detail: e.to_string(),
@@ -947,16 +962,16 @@ fn io_err(e: &std::io::Error) -> NetError {
 }
 
 impl UreqNet {
-    /// Ошибка чтения тела С УЧЁТОМ ОТМЕНЫ.
+    /// A body read error TAKING CANCELLATION INTO ACCOUNT.
     ///
-    /// ⚠️ Отменённое чтение `ureq` показывает СВОЕЙ ошибкой («Peer
-    /// disconnected»): закрытым соединение делает наш же транспорт, и до
-    /// читателя тела наш текст не доходит. Отдать её как есть значило бы
-    /// две беды сразу: человеку на закрытии вкладки показывают сетевой
-    /// сбой, которого не было, а [`is_temporary`] считает отменённый запрос
-    /// временной бедой и ПОВТОРЯЕТ его — ровно то, ради чего отмену и
-    /// делали. Отмена обязана оставаться отменой на всех участках, а не
-    /// только в ожидании шапки.
+    /// Warning: `ureq` shows a cancelled read with ITS OWN error ("Peer
+    /// disconnected"): it is our own transport that closes the connection, and our
+    /// text does not reach the body reader. Passing it on as is would mean two
+    /// problems at once: the person closing a tab is shown a network failure that
+    /// did not happen, and [`is_temporary`] considers the cancelled request a
+    /// temporary problem and RETRIES it — exactly what cancellation was made to
+    /// prevent. A cancellation must stay a cancellation on every stretch, not only
+    /// while waiting for the header.
     fn body_err(cancelled: bool, e: &std::io::Error) -> NetError {
         if cancelled {
             return NetError::Transport {
@@ -1001,8 +1016,9 @@ impl NetIo for UreqNet {
             return Ok(Vec::new());
         };
         let mut buf = vec![0u8; n];
-        // read() у сокета возвращает «сколько пришло», а `resp.read(n)` в
-        // Python — ровно до n байт, но не меньше одного, пока тело не кончилось.
+        // The socket's read() returns "how much arrived", while `resp.read(n)`
+        // in Python returns up to n bytes, but no fewer than one, until the body
+        // is over.
         let outcome = reader.read(&mut buf);
         let got = match outcome {
             Ok(got) => got,
@@ -1056,10 +1072,11 @@ impl NetIo for UreqNet {
         if let Some(cb) = self.sink.as_mut() {
             cb(level, message);
         }
-        // Общий журнал Rexon — ВСЕГДА, и с приёмником, и без: приёмник
-        // показывает человеку, журнал хранит для разбора. Без этой строки
-        // причина сбоя терялась: «Не удалось скачать архив» без единой
-        // строки о том, что сказала сеть (16.11.2026, обои KDE Store 135 МиБ).
+        // The shared Rexon log — ALWAYS, with and without a sink: the sink
+        // shows it to the person, the log keeps it for analysis. Without this
+        // line the reason of a failure was lost: "Could not download the
+        // archive" without a single line about what the network said
+        // (16.11.2026, KDE Store wallpapers of 135 MiB).
         match level {
             LogLevel::Info => crate::log_info!("net", "{message}"),
             LogLevel::Warning => crate::log_warn!("net", "{message}"),
@@ -1067,9 +1084,10 @@ impl NetIo for UreqNet {
         }
     }
 
-    /// Пауза перед повтором. Ждать здесь безопасно: боевой транспорт зовут из
-    /// рабочих потоков (QThread-воркеры вкладок), GIL на это время отпущен.
-    /// Отменённый запрос сюда не попадает — [`is_temporary`] его отсекает.
+    /// Pause before a retry. Waiting here is safe: the production transport is
+    /// called from worker threads (the tabs' QThread workers), the GIL is released
+    /// for that time. A cancelled request does not get here — [`is_temporary`] cuts
+    /// it off.
     fn sleep(&mut self, ms: u64) {
         std::thread::sleep(std::time::Duration::from_millis(ms));
     }
@@ -1080,7 +1098,7 @@ impl NetIo for UreqNet {
 }
 
 // ============================================================================
-// Тесты терпимости к кривой шапке
+// Tests of tolerance of a crooked header
 // ============================================================================
 
 #[cfg(test)]
@@ -1090,9 +1108,10 @@ mod tests {
 
     const UA: &str = "Rexon-test";
 
-    /// Сервер на один запрос: принимает соединение, дочитывает запрос и
-    /// отдаёт `parts` кусками (между кусками — пауза, чтобы шапка гарантированно
-    /// приехала не за одно чтение), после чего закрывает соединение.
+    /// A server for one request: accepts a connection, reads the request to the end
+    /// and sends `parts` in pieces (with a pause between pieces, so that the header
+    /// is guaranteed not to arrive in a single read), after which it closes the
+    /// connection.
     fn serve_once(parts: Vec<Vec<u8>>) -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").expect("слушатель");
         let port = listener.local_addr().unwrap().port();
@@ -1124,9 +1143,9 @@ mod tests {
         port
     }
 
-    /// Сервер с постоянным соединением: отвечает на КАЖДЫЙ пришедший запрос
-    /// очередным ответом из `answers`, не закрывая сокет. Так проверяется, что
-    /// шапка разбирается заново на каждом ответе, а не один раз на соединение.
+    /// A server with a persistent connection: answers EVERY incoming request with
+    /// the next answer from `answers`, without closing the socket. This checks that
+    /// the header is parsed anew on every response rather than once per connection.
     fn serve_keepalive(answers: Vec<Vec<u8>>) -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").expect("слушатель");
         let port = listener.local_addr().unwrap().port();
@@ -1146,7 +1165,7 @@ mod tests {
                         }
                     }
                     if !head.ends_with(b"\r\n\r\n") {
-                        break; // клиент ушёл
+                        break; // the client went away
                     }
                     let Some(answer) = left.next() else { return };
                     if sock.write_all(&answer).is_err() {
@@ -1154,7 +1173,7 @@ mod tests {
                     }
                     let _ = sock.flush();
                     if left.len() == 0 {
-                        return; // ответы кончились — закрываем соединение
+                        return; // the answers are over — close the connection
                     }
                 }
             }
@@ -1162,7 +1181,7 @@ mod tests {
         port
     }
 
-    /// Скачать тело целиком через открытый ответ (как это делает `ocs`).
+    /// Download the whole body through the open response (as `ocs` does).
     fn drain(net: &mut UreqNet) -> Vec<u8> {
         let mut body = Vec::new();
         loop {
@@ -1190,7 +1209,7 @@ mod tests {
     fn здоровая_шапка_не_переписывается() {
         assert!(fix_bad_content_length(b"HTTP/1.1 200 OK\r\nContent-Length: 42\r\n\r\n").is_none());
         assert!(fix_bad_content_length(b"HTTP/1.1 200 OK\r\nContent-Type: x\r\n\r\n").is_none());
-        // Строка запроса с похожим текстом заголовком не считается.
+        // A request line with similar text does not count as a header.
         assert!(fix_bad_content_length(b"HTTP/1.1 200 Content-Length: no\r\n\r\n").is_none());
     }
 
@@ -1227,7 +1246,7 @@ mod tests {
         let body = b"kusochki".repeat(100);
         let mut tail = b"a-number\r\n\r\n".to_vec();
         tail.extend_from_slice(&body);
-        // Разрыв ровно посреди значения Content-Length.
+        // A break exactly in the middle of the Content-Length value.
         let port = serve_once(vec![
             b"HTTP/1.1 200 OK\r\nContent-Type: x\r\nContent-Length: not-".to_vec(),
             tail,
@@ -1251,20 +1270,20 @@ mod tests {
         let mut net = UreqNet::new();
         let url = format!("http://127.0.0.1:{port}/x");
         assert_eq!(net.get(&url, UA, 25).expect("первый ответ"), "первый".as_bytes());
-        // Второй ответ по тому же соединению — с кривой длиной.
+        // The second response on the same connection — with a crooked length.
         assert_eq!(net.get(&url, UA, 25).expect("второй ответ"), "второй".as_bytes());
     }
 
 
     // ========================================================================
-    // Повторы при временном сбое
+    // Retries on a temporary failure
     // ========================================================================
 
-    /// Исполнитель-пустышка: считает попытки, отдаёт заготовленные исходы и
-    /// записывает паузы вместо того, чтобы их выжидать.
+    /// A dummy executor: counts attempts, returns prepared outcomes and records
+    /// pauses instead of waiting them out.
     #[derive(Default)]
     struct Counter {
-        /// Что вернуть на очередной попытке (сначала — первая).
+        /// What to return on the next attempt (the first one first).
         outcomes: Vec<Result<u8, NetError>>,
         tries: usize,
         slept: Vec<u64>,
@@ -1274,7 +1293,7 @@ mod tests {
     impl Counter {
         fn run(&mut self, policy: Retry) -> Result<u8, NetError> {
             with_retry(self, policy, "проба", |io: &mut Counter| {
-                // Исходов может быть меньше, чем попыток: последний повторяется.
+                // There may be fewer outcomes than attempts: the last one repeats.
                 let out = io.outcomes[io.tries.min(io.outcomes.len() - 1)].clone();
                 io.tries += 1;
                 out
@@ -1282,7 +1301,7 @@ mod tests {
         }
     }
 
-    /// Только те методы, которые трогает [`with_retry`]; остальные не зовутся.
+    /// Only the methods [`with_retry`] touches; the others are not called.
     impl NetIo for Counter {
         fn get(&mut self, _: &str, _: &str, _: u64) -> Result<Vec<u8>, NetError> {
             unreachable!()
@@ -1342,7 +1361,7 @@ mod tests {
         };
         assert_eq!(io.run(Retry::IDEMPOTENT), Err(broken()));
         assert_eq!(io.tries, RETRY_ATTEMPTS as usize);
-        // Паузы растут: 700 мс, 1400 мс — и их на одну меньше, чем попыток.
+        // Pauses grow: 700 ms, 1400 ms — and there is one fewer of them than attempts.
         assert_eq!(io.slept, vec![RETRY_DELAY_MS, RETRY_DELAY_MS * 2]);
     }
 
@@ -1363,10 +1382,10 @@ mod tests {
     #[test]
     fn отсутствующий_файл_не_повторяется_а_занятый_сервер_повторяется() {
         for (code, want_tries) in [
-            (404u16, 1),                      // файла нет — второй раз тоже не будет
-            (403, 1),                         // доступ закрыт
-            (429, RETRY_ATTEMPTS as usize),   // «слишком часто просите»
-            (503, RETRY_ATTEMPTS as usize),   // сервер занят
+            (404u16, 1),                      // no file — there will not be one the second time either
+            (403, 1),                         // access denied
+            (429, RETRY_ATTEMPTS as usize),   // "you are asking too often"
+            (503, RETRY_ATTEMPTS as usize),   // the server is busy
             (500, RETRY_ATTEMPTS as usize),
         ] {
             let mut io = Counter {
@@ -1386,7 +1405,7 @@ mod tests {
         };
         let _ = io.run(Retry::IDEMPOTENT);
         assert_eq!(io.slept, vec![RATE_LIMIT_DELAY_MS, RATE_LIMIT_DELAY_MS * 2]);
-        // Ровно те же 3 с и 6 с, что загрузчик снимков выдерживал и раньше.
+        // Exactly the same 3 s and 6 s that the screenshot loader waited before.
         assert_eq!(io.slept, vec![3_000, 6_000]);
     }
 
@@ -1432,7 +1451,7 @@ mod tests {
 
     #[test]
     fn здоровый_ответ_проходит_как_прежде() {
-        let body = b"0123456789".repeat(3000); // больше одного чтения сокета
+        let body = b"0123456789".repeat(3000); // more than one socket read
         let mut resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len())
             .into_bytes();
         resp.extend_from_slice(&body);

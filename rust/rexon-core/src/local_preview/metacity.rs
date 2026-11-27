@@ -1,68 +1,71 @@
-//! Образец рамки окна для темы оконного менеджера Marco/Metacity (раздел
-//! «Рамки окон (MATE)»).
+//! A sample window frame for a Marco/Metacity window manager theme (the
+//! "Window borders (MATE)" section).
 //!
-//! Рамка такой темы описана не рисунками, а списками команд рисования в файле
-//! `metacity-1/metacity-theme-{1,2,3}.xml`. Модуль читает файл, собирает
-//! рамку активного обычного окна и переводит её команды в операции
-//! [`DrawOp`] — исполняет их окно, как и у остальных образцов.
+//! The frame of such a theme is described not by pictures but by lists of
+//! drawing commands in the `metacity-1/metacity-theme-{1,2,3}.xml` file. The
+//! module reads the file, assembles the frame of an active normal window and
+//! translates its commands into [`DrawOp`] operations — the window executes
+//! them, as with the other samples.
 //!
-//! Сделано по описанию формата «Metacity theme format» (`doc/theme-format.txt`
-//! в поставке Marco и Metacity): версии файла и выбор старшей, атрибут
-//! `version` у элементов, `<frame_geometry>`, `<constant>`, `<draw_ops>` с
-//! `<include>` и `<tile>`, `<frame_style>` с `<piece>` и `<button>`,
-//! `<frame_style_set>`, `<window>`, выражения в координатах и запись цветов.
+//! Done following the description of the "Metacity theme format"
+//! (`doc/theme-format.txt` in the Marco and Metacity distribution): file versions
+//! and choosing the newest, the `version` attribute on elements,
+//! `<frame_geometry>`, `<constant>`, `<draw_ops>` with `<include>` and `<tile>`,
+//! `<frame_style>` with `<piece>` and `<button>`, `<frame_style_set>`,
+//! `<window>`, expressions in coordinates and color notation.
 //!
-//! Что поддержано: команды `line`, `rectangle`, `arc`, `clip`, `tint`,
-//! `gradient`, `image` (растяжение и плитка, `alpha`, `colorize`), `title`,
-//! `icon`, `include`, `tile`; `gtk_box`, `gtk_arrow`, `gtk_vline` — упрощённо
-//! (настоящий движок темы GTK не запускается). Рисуется одно состояние:
-//! обычное окно в фокусе, кнопки не нажаты. Значки `theme:` из темы значков,
-//! штриховые линии, отдельные стили диалогов, свёрнутых и развёрнутых окон не
-//! рисуются. Неизвестная команда пропускается; тема, из которой не вышло
-//! ничего, остаётся с заглушкой вида.
+//! What is supported: the commands `line`, `rectangle`, `arc`, `clip`, `tint`,
+//! `gradient`, `image` (stretching and tiling, `alpha`, `colorize`), `title`,
+//! `icon`, `include`, `tile`; `gtk_box`, `gtk_arrow`, `gtk_vline` — simplified
+//! (the real GTK theme engine is not run). One state is drawn: a normal focused
+//! window, buttons not pressed. `theme:` icons from the icon theme, dashed
+//! lines, and separate styles for dialogs, minimized and maximized windows are
+//! not drawn. An unknown command is skipped; a theme from which nothing came out
+//! keeps the kind's placeholder.
 //!
-//! Файл темы — чужой ввод: ограничены размер файла, число и вложенность
-//! элементов, глубина `include`, длина цепочек наследования, число выданных
-//! операций и размеры рисунков.
+//! The theme file is foreign input: the file size, the number and nesting of
+//! elements, the depth of `include`, the length of inheritance chains, the
+//! number of emitted operations and the sizes of images are limited.
 
 use std::collections::HashMap;
 use std::path::Path;
 
 use super::{DrawOp, Palette, Rect, Rgba, SampleInput, ShadeDirection};
 
-// ── пределы для чужого ввода ─────────────────────────────────────────────
+// ── limits for foreign input ─────────────────────────────────────────────
 
-/// Больше элементов в одном файле темы не читается.
+/// No more elements than this are read from one theme file.
 const MAX_NODES: usize = 100_000;
-/// Глубже элементы не вкладываются.
+/// Elements are not nested deeper than this.
 const MAX_XML_DEPTH: usize = 32;
-/// Глубже списки команд друг в друга не включаются (и зацикленный `include`
-/// обрывается здесь же).
+/// Command lists are not included into each other deeper than this (and a
+/// cyclic `include` is cut off right here).
 const MAX_INCLUDE_DEPTH: usize = 12;
-/// Длиннее цепочка `parent` не бывает (и зацикленная обрывается).
+/// A `parent` chain is never longer than this (and a cyclic one is cut off).
 const MAX_PARENT_DEPTH: usize = 12;
-/// Больше операций на один образец не выдаётся.
+/// No more operations than this are emitted for one sample.
 const MAX_OPS: usize = 3000;
-/// Больше команд на один образец не исполняется (списки, включающие друг
-/// друга по нескольку раз, растут как степень).
+/// No more commands than this are executed for one sample (lists that include
+/// each other several times grow exponentially).
 const MAX_STEPS: usize = 20_000;
-/// Больше повторов у одной команды `<tile>` не делается.
+/// No more repetitions than this are done for one `<tile>` command.
 const MAX_TILES: usize = 400;
-/// Длиннее выражение координаты не разбирается.
+/// A coordinate expression longer than this is not parsed.
 const MAX_EXPR_LEN: usize = 512;
-/// Глубже скобки в выражении и вложенные цвета не разбираются.
+/// Brackets in an expression and nested colors deeper than this are not parsed.
 const MAX_NESTING: usize = 16;
-/// Расстояния геометрии рамки приводятся к этому пределу.
+/// Frame geometry distances are clamped to this limit.
 const MAX_DISTANCE: i64 = 200;
 
-/// Старшая версия формата, которую понимает разбор: по ней проверяется
-/// атрибут `version` элементов файла третьей версии.
+/// The newest format version the parser understands: the `version` attribute of
+/// the elements of a version-3 file is checked against it.
 const FORMAT_VERSION: (u32, u32) = (3, 5);
 
-// ── разбор XML в дерево ──────────────────────────────────────────────────
+// ── parsing XML into a tree ──────────────────────────────────────────────
 
-/// Элемент файла темы: имя, атрибуты, вложенные элементы. Текст не хранится —
-/// формат несёт данные только в атрибутах (кроме раздела `<info>`).
+/// An element of the theme file: name, attributes, nested elements. Text is not
+/// stored — the format carries data only in attributes (except the `<info>`
+/// section).
 #[derive(Debug, Default)]
 struct Node {
     name: String,
@@ -80,19 +83,20 @@ impl Node {
     }
 }
 
-/// Чем кончился разбор файла.
+/// How the file parsing ended.
 #[derive(Debug)]
 enum Parsed {
-    /// Дерево с корнем `<metacity_theme>`.
+    /// A tree with the `<metacity_theme>` root.
     Tree(Node),
-    /// Корень требует другой версии формата — брать файл младшей версии.
+    /// The root requires a different format version — take the file of the lower
+    /// version.
     WrongVersion,
-    /// Не XML либо не файл темы.
+    /// Not XML or not a theme file.
     Broken,
 }
 
-/// Выполнено ли условие `version="[<|<=|>=|>] СТАРШАЯ.МЛАДШАЯ"`. Нечитаемое
-/// условие считается невыполненным.
+/// Whether the condition `version="[<|<=|>=|>] MAJOR.MINOR"` holds. An
+/// unreadable condition is considered not to hold.
 fn version_satisfied(condition: &str) -> bool {
     let c = condition.trim();
     let (op, rest) = ["<=", ">=", "=>", "=<", "<", ">", "="]
@@ -113,8 +117,8 @@ fn version_satisfied(condition: &str) -> bool {
     }
 }
 
-/// Дерево файла темы. При `versioned` (файл третьей версии) элемент с
-/// невыполненным условием `version` отбрасывается вместе с вложенными.
+/// The theme file tree. With `versioned` (a version-3 file) an element whose
+/// `version` condition does not hold is dropped together with its children.
 fn parse_xml(text: &str, versioned: bool) -> Parsed {
     use quick_xml::events::{BytesStart, Event};
     let node_of = |e: &BytesStart| -> Option<Node> {
@@ -133,7 +137,7 @@ fn parse_xml(text: &str, versioned: bool) -> Parsed {
     let mut reader = quick_xml::Reader::from_str(text);
     let mut stack: Vec<Node> = Vec::new();
     let mut root: Option<Node> = None;
-    // Сколько открытых элементов сейчас пропускается (внутри отброшенного).
+    // How many open elements are being skipped now (inside a dropped one).
     let mut skipping = 0usize;
     let mut count = 0usize;
     loop {
@@ -196,12 +200,13 @@ fn parse_xml(text: &str, versioned: bool) -> Parsed {
     }
 }
 
-/// Имена файлов темы от старшей версии формата к младшей.
+/// Theme file names from the newest format version to the oldest.
 const THEME_FILES: &[(&str, bool)] =
     &[("metacity-theme-3.xml", true), ("metacity-theme-2.xml", false), ("metacity-theme-1.xml", false)];
 
-/// Дерево темы из каталога `metacity-1`: файл старшей версии формата из тех,
-/// что есть и читаются. Вторым значением — имя взятого файла.
+/// The theme tree from the `metacity-1` directory: the file of the newest format
+/// version among those that exist and are readable. The second value is the name
+/// of the file taken.
 fn load_tree(dir: &Path) -> Option<(Node, &'static str)> {
     THEME_FILES.iter().find_map(|(name, versioned)| {
         let text = super::read_text(&dir.join(name))?;
@@ -212,14 +217,14 @@ fn load_tree(dir: &Path) -> Option<(Node, &'static str)> {
     })
 }
 
-// ── тема, которую Marco не загрузит ─────────────────────────────────────
+// ── a theme Marco will not load ─────────────────────────────────────────
 
-/// Значения `function` у `<button>` по описанию формата (`theme-format.txt`
-/// и `marco-theme.dtd` в поставке Marco) с версией формата, в которой
-/// кнопка появилась (`1000 × старшая + младшая`): четыре кнопки и шесть
-/// фонов версии 1, шесть кнопок версии 2, два фона версии 3.3, `appmenu`
-/// версии 3.5. `unmaximize` в этом списке НЕТ — он допустим только у
-/// `<menu_icon>`.
+/// Values of `function` on `<button>` per the format description
+/// (`theme-format.txt` and `marco-theme.dtd` in the Marco distribution) with the
+/// format version in which the button appeared (`1000 × major + minor`): four
+/// buttons and six backgrounds of version 1, six buttons of version 2, two
+/// backgrounds of version 3.3, `appmenu` of version 3.5. `unmaximize` is NOT in
+/// this list — it is allowed only on `<menu_icon>`.
 const MARCO_BUTTON_FUNCTIONS: &[(&str, u32)] = &[
     ("close", 1000), ("maximize", 1000), ("minimize", 1000), ("menu", 1000),
     ("left_left_background", 1000), ("left_middle_background", 1000), ("left_right_background", 1000),
@@ -229,40 +234,41 @@ const MARCO_BUTTON_FUNCTIONS: &[(&str, u32)] = &[
     ("appmenu", 3005),
 ];
 
-/// Кнопки, которые обязан описать КАЖДЫЙ `<frame_style>` (сам или через
-/// `parent`), если версия формата у этого стиля не младше появления кнопки.
-/// Фоны кнопок необязательны. Порядок — как Marco их перебирает.
+/// Buttons that EVERY `<frame_style>` must describe (itself or through
+/// `parent`) if the style's format version is not older than the button's
+/// appearance. Button backgrounds are optional. The order is the one in which
+/// Marco goes through them.
 const MARCO_REQUIRED_BUTTONS: &[&str] =
     &["close", "maximize", "minimize", "menu", "appmenu", "shade", "above", "stick", "unshade", "unabove", "unstick"];
 
-/// Обязательные состояния кнопки. `prelight` у Marco падает на `normal`,
-/// поэтому отдельно не требуется.
+/// Mandatory button states. In Marco `prelight` falls back to `normal`, so it is
+/// not required separately.
 const MARCO_REQUIRED_STATES: &[&str] = &["normal", "pressed"];
 
-/// Обязательные поля `<info>`.
+/// Mandatory `<info>` fields.
 const MARCO_REQUIRED_INFO: &[&str] = &["name", "author", "date", "description", "copyright"];
 
-/// Типы окон, для каждого из которых тема обязана назвать набор стилей
-/// (`<window type=…>`); `attached` необязателен.
+/// Window types for each of which the theme must name a style set
+/// (`<window type=…>`); `attached` is optional.
 const MARCO_REQUIRED_WINDOWS: &[&str] = &["normal", "dialog", "modal_dialog", "utility", "menu", "border"];
 
-/// Почему Marco откажется от темы рамок целиком.
+/// Why Marco will reject the frame theme entirely.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MarcoProblem {
-    /// Кнопка с функцией, которой нет в формате (или в его версии у этого
-    /// файла: `shade` в `metacity-theme-1.xml`).
+    /// A button with a function that does not exist in the format (or in the
+    /// format version of this file: `shade` in `metacity-theme-1.xml`).
     UnknownButton(String),
-    /// У стиля рамки нет обязательной кнопки (образец — темы Win8 без
-    /// `shade`): «<button function="shade" state="normal"…> must be
-    /// specified for this frame style».
+    /// A frame style lacks a mandatory button (an example — Win8 themes without
+    /// `shade`): "<button function="shade" state="normal"…> must be specified for
+    /// this frame style".
     MissingButton(String),
-    /// Нет обязательной части файла: поля `<info>` либо `<window type=…>`
-    /// (текст — как часть записана в файле).
+    /// A mandatory part of the file is missing: an `<info>` field or a
+    /// `<window type=…>` (the text is as the part is written in the file).
     MissingPart(String),
 }
 
-/// Наименьшая версия формата, которой требует выполненное условие
-/// `version` (`>= 3.2` → 3002, `> 3.2` → 3003, `<…` → 0).
+/// The lowest format version required by a satisfied `version` condition
+/// (`>= 3.2` → 3002, `> 3.2` → 3003, `<…` → 0).
 fn version_floor(condition: &str) -> u32 {
     let c = condition.trim();
     let (strict, rest) = if let Some(rest) = c.strip_prefix(">=").or_else(|| c.strip_prefix("=>")) {
@@ -279,28 +285,28 @@ fn version_floor(condition: &str) -> u32 {
     if strict { v.saturating_add(1) } else { v }
 }
 
-/// Версия формата, которую Marco требует у элемента: от родителя плюс его
-/// собственное условие `version`.
+/// The format version Marco requires of an element: from the parent plus its
+/// own `version` condition.
 fn required_version(node: &Node, parent: u32) -> u32 {
     parent.max(node.attr("version").map(version_floor).unwrap_or(0))
 }
 
-/// Что помешает Marco загрузить тему — в том файле темы, который он
-/// возьмёт. С любой из этих ошибок Marco отказывается от темы ЦЕЛИКОМ
-/// (замер на MATE с marco 1.29, 16.10.2026: «Неизвестная функция
-/// «unmaximize» для кнопки»; темы Win8 из магазина без кнопки `shade`) и
-/// остаётся при прежней, хотя ключ темы уже записан.
+/// What will prevent Marco from loading the theme — in the theme file it will
+/// take. With any of these errors Marco rejects the theme ENTIRELY (measured on
+/// MATE with marco 1.29, 16.10.2026: "Unknown function "unmaximize" for
+/// button"; Win8 themes from the store without a `shade` button) and stays with
+/// the previous one, although the theme key has already been written.
 ///
-/// `dirs` — каталоги `metacity-1` в порядке поиска Marco (`~/.themes`,
-/// `$XDG_DATA_HOME/themes`, каталоги `$XDG_DATA_DIRS`); `read` — текст файла
-/// по полному пути. Файл выбирается так же, как у Marco: старшая версия
-/// формата во всех каталогах, затем младшая; файл, чей корень требует более
-/// новой версии формата, пропускается. Элементы с невыполненным условием
-/// `version` Marco не разбирает — не смотрим и мы.
+/// `dirs` — `metacity-1` directories in Marco's search order (`~/.themes`,
+/// `$XDG_DATA_HOME/themes`, the `$XDG_DATA_DIRS` directories); `read` — a file's
+/// text by its full path. The file is chosen the same way as by Marco: the
+/// newest format version in all directories, then an older one; a file whose
+/// root requires a newer format version is skipped. Marco does not parse
+/// elements with an unsatisfied `version` condition — and neither do we.
 ///
-/// Проверяются кнопки (неизвестные и обязательные), поля `<info>` и типы
-/// окон. Битый файл, ссылки на неописанные `draw_ops`, неполные наборы
-/// `<frame_style_set>` и прочие ошибки разбора сюда не относятся (`None`).
+/// Buttons (unknown and mandatory), `<info>` fields and window types are
+/// checked. A broken file, references to undescribed `draw_ops`, incomplete
+/// `<frame_style_set>` sets and other parsing errors do not belong here (`None`).
 pub fn marco_theme_problem(dirs: &[String], read: &dyn Fn(&str) -> Option<String>) -> Option<MarcoProblem> {
     for (index, (name, versioned)) in THEME_FILES.iter().enumerate() {
         // metacity-theme-3.xml → 3000, -2 → 2000, -1 → 1000.
@@ -317,9 +323,9 @@ pub fn marco_theme_problem(dirs: &[String], read: &dyn Fn(&str) -> Option<String
     None
 }
 
-/// Первая ошибка дерева темы в порядке, в каком её встретит Marco: стили
-/// рамок по порядку файла (сначала их кнопки, потом полнота), затем поля
-/// `<info>` и типы окон — их Marco сверяет в конце файла.
+/// The first error of the theme tree in the order Marco will meet it: frame
+/// styles in file order (first their buttons, then completeness), then the
+/// `<info>` fields and window types — Marco checks them at the end of the file.
 fn problem_in(root: &Node, base: u32) -> Option<MarcoProblem> {
     let format = required_version(root, base);
     let mut styles: HashMap<&str, &Node> = HashMap::new();
@@ -338,7 +344,7 @@ fn problem_in(root: &Node, base: u32) -> Option<MarcoProblem> {
         if let Some(name) = style.attr("name") {
             styles.insert(name, style);
         }
-        // Цепочка `parent` (ранее описанные стили), сам стиль — первым.
+        // The `parent` chain (previously described styles), the style itself first.
         let mut chain = vec![style];
         while chain.len() <= MAX_PARENT_DEPTH {
             let Some(&parent) = chain.last().copied().and_then(|s| s.attr("parent")).and_then(|p| styles.get(p)) else {
@@ -375,16 +381,16 @@ fn problem_in(root: &Node, base: u32) -> Option<MarcoProblem> {
         .map(|t| MarcoProblem::MissingPart(format!("<window type=\"{t}\">")))
 }
 
-// ── тема: именованные части ──────────────────────────────────────────────
+// ── theme: named parts ───────────────────────────────────────────────────
 
-/// Именованные части файла темы.
+/// Named parts of the theme file.
 struct Theme<'t> {
     constants: HashMap<&'t str, &'t str>,
     draw_ops: HashMap<&'t str, &'t Node>,
     geometries: HashMap<&'t str, &'t Node>,
     styles: HashMap<&'t str, &'t Node>,
     style_sets: HashMap<&'t str, &'t Node>,
-    /// Набор стилей обычного окна (`<window type="normal">`).
+    /// Style set of a normal window (`<window type="normal">`).
     normal_set: Option<&'t str>,
 }
 
@@ -427,7 +433,7 @@ impl<'t> Theme<'t> {
         theme
     }
 
-    /// Элемент и его предки по `parent`, от самого элемента к корню.
+    /// An element and its ancestors via `parent`, from the element itself to the root.
     fn chain(&self, table: &HashMap<&'t str, &'t Node>, name: &str) -> Vec<&'t Node> {
         let mut out: Vec<&'t Node> = Vec::new();
         let mut next = table.get(name).copied();
@@ -441,9 +447,9 @@ impl<'t> Theme<'t> {
         out
     }
 
-    /// Стиль рамки обычного окна в фокусе: `<window type="normal">` → набор
-    /// стилей → `<frame focus="yes" state="normal">` (сначала с изменением
-    /// размера в обе стороны, потом любой) → цепочка стиля от него к предкам.
+    /// Frame style of a normal focused window: `<window type="normal">` → the style
+    /// set → `<frame focus="yes" state="normal">` (first with resizing in both
+    /// directions, then any) → the style chain from it to its ancestors.
     fn focused_style(&self) -> Option<Vec<&'t Node>> {
         let sets = self.chain(&self.style_sets, self.normal_set?);
         let frames = || sets.iter().flat_map(|set| set.children_named("frame"));
@@ -456,8 +462,8 @@ impl<'t> Theme<'t> {
         (!chain.is_empty()).then_some(chain)
     }
 
-    /// Список команд элемента стиля: названный атрибутом `draw_ops` либо
-    /// вложенный.
+    /// The command list of a style element: named by the `draw_ops` attribute or
+    /// nested.
     fn ops_of(&self, holder: &'t Node) -> Option<&'t Node> {
         match holder.attr("draw_ops") {
             Some(name) => self.draw_ops.get(name).copied(),
@@ -465,8 +471,8 @@ impl<'t> Theme<'t> {
         }
     }
 
-    /// Команды части рамки `position`: у самого стиля, а нет — у ближайшего
-    /// предка.
+    /// Commands of frame part `position`: on the style itself, otherwise on the
+    /// nearest ancestor.
     fn piece(&self, style: &[&'t Node], position: &str) -> Option<&'t Node> {
         let holder = style
             .iter()
@@ -474,7 +480,7 @@ impl<'t> Theme<'t> {
         self.ops_of(holder)
     }
 
-    /// Команды кнопки `function` в состоянии «не нажата».
+    /// Commands of button `function` in the "not pressed" state.
     fn button(&self, style: &[&'t Node], function: &str) -> Option<&'t Node> {
         let holder = style.iter().find_map(|s| {
             s.children_named("button")
@@ -484,16 +490,18 @@ impl<'t> Theme<'t> {
     }
 }
 
-// ── выражения в координатах ──────────────────────────────────────────────
+// ── expressions in coordinates ───────────────────────────────────────────
 
-/// Значение выражения: число и признак «целое» (деление целых — нацело).
+/// Value of an expression: a number and an "integer" flag (integer division
+/// truncates).
 #[derive(Debug, Clone, Copy)]
 struct Num {
     v: f64,
     int: bool,
 }
 
-/// Откуда выражение берёт имена: переменные места рисования и константы темы.
+/// Where an expression takes its names from: the variables of the drawing place
+/// and the theme constants.
 struct Scope<'a> {
     vars: &'a [(&'static str, f64)],
     constants: &'a HashMap<&'a str, &'a str>,
@@ -508,7 +516,7 @@ impl Scope<'_> {
     }
 }
 
-/// Число записью `12` или `0.5`.
+/// A number written as `12` or `0.5`.
 fn number(text: &str) -> Option<Num> {
     let t = text.trim();
     let int = !t.contains(['.', 'e', 'E']);
@@ -525,9 +533,9 @@ enum Token {
     Close,
 }
 
-/// Знаки выражения. Операторы: `+ - * / %` и взятые в обратные кавычки
-/// `` `max` ``, `` `min` `` (в записи `M` и `m`); `` `div` `` и `` `mod` ``
-/// принимаются как `/` и `%`.
+/// Expression tokens. Operators: `+ - * / %` and, in backquotes, `` `max` ``,
+/// `` `min` `` (written as `M` and `m`); `` `div` `` and `` `mod` `` are accepted
+/// as `/` and `%`.
 fn tokenize(expr: &str) -> Option<Vec<Token>> {
     if expr.len() > MAX_EXPR_LEN {
         return None;
@@ -580,7 +588,7 @@ fn tokenize(expr: &str) -> Option<Vec<Token>> {
     Some(out)
 }
 
-/// Разбор выражения по старшинству: `* / %`, затем `+ -`, затем `max`/`min`.
+/// Parsing an expression by precedence: `* / %`, then `+ -`, then `max`/`min`.
 struct Expr<'a> {
     tokens: &'a [Token],
     at: usize,
@@ -595,7 +603,7 @@ impl Expr<'_> {
         }
     }
 
-    /// Уровень старшинства `level`: 0 — `max`/`min`, 1 — `+ -`, 2 — `* / %`.
+    /// Precedence level `level`: 0 — `max`/`min`, 1 — `+ -`, 2 — `* / %`.
     fn level(&mut self, level: usize, depth: usize) -> Option<Num> {
         const LEVELS: [&[char]; 3] = [&['M', 'm'], &['+', '-'], &['*', '/', '%']];
         if level == LEVELS.len() {
@@ -660,8 +668,9 @@ fn apply(op: char, a: Num, b: Num) -> Option<Num> {
     v.is_finite().then_some(Num { v, int })
 }
 
-/// Значение выражения координаты, приведённое к целому числу точек. `None` —
-/// выражение не разобрано, имя неизвестно либо деление на ноль.
+/// Value of a coordinate expression reduced to an integer number of points.
+/// `None` — the expression was not parsed, a name is unknown, or division by
+/// zero.
 fn eval(expr: &str, scope: &Scope) -> Option<f64> {
     let tokens = tokenize(expr)?;
     let mut parser = Expr { tokens: &tokens, at: 0, scope };
@@ -669,22 +678,22 @@ fn eval(expr: &str, scope: &Scope) -> Option<f64> {
     (parser.at == tokens.len() && value.v.abs() < 1.0e6).then_some(value.v.trunc())
 }
 
-// ── цвета ────────────────────────────────────────────────────────────────
+// ── colors ───────────────────────────────────────────────────────────────
 
 type Rgb = (u8, u8, u8);
 
-/// Цвета темы GTK, на которые ссылается тема рамок.
+/// Colors of the GTK theme the frame theme refers to.
 #[derive(Debug, Clone)]
 pub struct GtkColors {
-    /// Основные цвета окна.
+    /// The window's main colors.
     pub palette: Palette,
-    /// Именованные цвета таблицы стилей (`@define-color`) — для
-    /// `gtk:custom(имя,запасной)`.
+    /// Named colors of the stylesheet (`@define-color`) — for
+    /// `gtk:custom(name,fallback)`.
     pub named: HashMap<String, String>,
 }
 
 impl GtkColors {
-    /// Нейтральный светлый набор — когда рядом с темой рамок нет темы GTK.
+    /// A neutral light set — when there is no GTK theme next to the frame theme.
     pub fn fallback() -> GtkColors {
         let window = (237, 236, 235);
         GtkColors {
@@ -701,8 +710,8 @@ impl GtkColors {
         }
     }
 
-    /// Цвета темы GTK из каталога темы: таблица стилей GTK 3/4, а без неё —
-    /// настройки GTK 2; нет ни того, ни другого — нейтральный набор.
+    /// GTK theme colors from the theme directory: the GTK 3/4 stylesheet, and
+    /// without it the GTK 2 settings; if there is neither — the neutral set.
     pub fn of_theme(theme_dir: &Path) -> GtkColors {
         for sub in ["gtk-3.0", "gtk-4.0", "gtk-3.20"] {
             let Some(css) = super::gtk_css_text(&theme_dir.join(sub)) else { continue };
@@ -717,9 +726,9 @@ impl GtkColors {
         }
     }
 
-    /// Цвета для темы рамок из каталога `theme_dir`: своя тема GTK, а у
-    /// набора «одни рамки» (`<имя>-border`) — тема GTK соседнего каталога
-    /// `<имя>`, с которой он и применяется.
+    /// Colors for the frame theme from directory `theme_dir`: its own GTK theme,
+    /// and for a "borders only" set (`<name>-border`) — the GTK theme of the
+    /// neighboring directory `<name>`, with which it is applied.
     pub fn for_frames(theme_dir: &Path) -> GtkColors {
         let has_gtk = |dir: &Path| ["gtk-3.0", "gtk-4.0", "gtk-3.20", "gtk-2.0"].iter().any(|sub| dir.join(sub).is_dir());
         let sibling = || {
@@ -732,8 +741,8 @@ impl GtkColors {
         }
     }
 
-    /// Цвет части `component` (`bg`, `fg`, `base`, `text`, `light`, `dark`,
-    /// `mid`, `text_aa`) в состоянии `state` (`NORMAL`, `ACTIVE`, `PRELIGHT`,
+    /// Color of part `component` (`bg`, `fg`, `base`, `text`, `light`, `dark`,
+    /// `mid`, `text_aa`) in state `state` (`NORMAL`, `ACTIVE`, `PRELIGHT`,
     /// `SELECTED`, `INSENSITIVE`).
     fn component(&self, component: &str, state: &str) -> Option<Rgb> {
         let p = &self.palette;
@@ -769,7 +778,7 @@ impl GtkColors {
     }
 }
 
-/// Цвет светлее или темнее: светлота и насыщенность умножаются на `factor`.
+/// A color lighter or darker: lightness and saturation are multiplied by `factor`.
 fn shade(color: Rgb, factor: f64) -> Rgb {
     let (r, g, b) = (color.0 as f64 / 255.0, color.1 as f64 / 255.0, color.2 as f64 / 255.0);
     let (max, min) = (r.max(g).max(b), r.min(g).min(b));
@@ -812,7 +821,7 @@ fn shade(color: Rgb, factor: f64) -> Rgb {
     (byte(channel(h + 120.0)), byte(channel(h)), byte(channel(h - 120.0)))
 }
 
-/// Цвет по имени: ходовые имена и оттенки серого `grayN` (0–100).
+/// A color by name: common names and the gray shades `grayN` (0–100).
 fn named_color(name: &str) -> Option<Rgb> {
     let key: String = name.chars().filter(|c| !c.is_whitespace() && *c != '_').collect::<String>().to_ascii_lowercase();
     let key = key.replace("grey", "gray");
@@ -847,9 +856,9 @@ fn named_color(name: &str) -> Option<Rgb> {
     })
 }
 
-/// Разбор записи цвета: `#rrggbb`, имя, `rgb(…)`/`rgba(…)`,
-/// `gtk:часть[СОСТОЯНИЕ]`, `gtk:custom(имя,запасной)`, `blend/низ/верх/доля`,
-/// `shade/цвет/множитель`, имя цветовой константы темы.
+/// Parsing a color notation: `#rrggbb`, a name, `rgb(…)`/`rgba(…)`,
+/// `gtk:part[STATE]`, `gtk:custom(name,fallback)`, `blend/bottom/top/fraction`,
+/// `shade/color/factor`, the name of a theme color constant.
 struct ColorReader<'a> {
     text: &'a str,
     at: usize,
@@ -870,7 +879,7 @@ impl<'a> ColorReader<'a> {
         hit
     }
 
-    /// Кусок до первого из `stops` (сам знак не забирается).
+    /// The piece up to the first of `stops` (the sign itself is not taken).
     fn until(&mut self, stops: &[char]) -> &'a str {
         let rest = self.rest();
         let len = rest.find(stops).unwrap_or(rest.len());
@@ -945,45 +954,45 @@ fn parse_color_at(text: &str, gtk: &GtkColors, constants: &HashMap<&str, &str>, 
     reader.rest().trim().is_empty().then_some(color)
 }
 
-/// Цвет по записи темы; `None` — запись не разобрана.
+/// A color from the theme's notation; `None` — the notation was not parsed.
 fn parse_color(text: &str, gtk: &GtkColors, constants: &HashMap<&str, &str>) -> Option<Rgba> {
     parse_color_at(text, gtk, constants, 0)
 }
 
-// ── геометрия рамки ──────────────────────────────────────────────────────
+// ── frame geometry ───────────────────────────────────────────────────────
 
-/// Размер кнопки заголовка: заданный либо по соотношению сторон.
+/// Size of a title bar button: given explicitly or by aspect ratio.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ButtonSize {
-    /// Ширина и высота.
+    /// Width and height.
     Fixed(i64, i64),
-    /// Высота по высоте заголовка, ширина — высота, делённая на число.
+    /// Height by the title bar height, width — the height divided by the number.
     Aspect(f64),
 }
 
-/// Геометрия рамки (`<frame_geometry>` со всеми предками).
+/// Frame geometry (`<frame_geometry>` with all its ancestors).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Geometry {
-    /// Левая, правая и нижняя стороны рамки.
+    /// Left, right and bottom sides of the frame.
     pub left_width: i64,
     pub right_width: i64,
     pub bottom_height: i64,
-    /// Края заголовка: слева, справа, сверху, снизу.
+    /// Title bar edges: left, right, top, bottom.
     pub left_titlebar_edge: i64,
     pub right_titlebar_edge: i64,
     pub top_titlebar_edge: i64,
     pub bottom_titlebar_edge: i64,
-    /// Поле над и под содержимым заголовка.
+    /// Padding above and below the title bar contents.
     pub title_vertical_pad: i64,
-    /// Поля названия окна и кнопки: слева, справа, сверху, снизу.
+    /// Padding of the window title and the button: left, right, top, bottom.
     pub title_border: [i64; 4],
     pub button_border: [i64; 4],
     pub button: ButtonSize,
-    /// Входит ли высота текста в высоту заголовка.
+    /// Whether the text height is included in the title bar height.
     pub has_title: bool,
-    /// Множитель кегля названия окна.
+    /// Font size multiplier of the window title.
     pub title_scale: f64,
-    /// Радиусы углов: левый верхний, правый верхний, левый нижний, правый нижний.
+    /// Corner radii: top left, top right, bottom left, bottom right.
     pub rounded: [f64; 4],
     pub hide_buttons: bool,
 }
@@ -1010,14 +1019,14 @@ impl Default for Geometry {
     }
 }
 
-/// Целое расстояние: число либо имя целой константы темы.
+/// An integer distance: a number or the name of an integer theme constant.
 fn distance(value: &str, constants: &HashMap<&str, &str>) -> Option<i64> {
     let text = constants.get(value.trim()).copied().unwrap_or(value);
     let n = number(text)?;
     Some((n.v.trunc() as i64).clamp(0, MAX_DISTANCE))
 }
 
-/// Множитель кегля по слову размера (`xx-small` … `xx-large`).
+/// Font size multiplier by size word (`xx-small` … `xx-large`).
 fn title_scale(word: &str) -> Option<f64> {
     Some(match word.trim() {
         "xx-small" => 0.5787,
@@ -1032,8 +1041,8 @@ fn title_scale(word: &str) -> Option<f64> {
 }
 
 impl Geometry {
-    /// Геометрия по цепочке элементов от самого к предкам: значения предка
-    /// перекрываются потомком.
+    /// Geometry along the chain of elements from the element itself to its
+    /// ancestors: an ancestor's values are overridden by the descendant.
     fn from_chain(chain: &[&Node], constants: &HashMap<&str, &str>) -> Geometry {
         let mut g = Geometry::default();
         let truth = |v: &str| matches!(v.trim(), "true" | "TRUE" | "yes" | "1");
@@ -1051,7 +1060,7 @@ impl Geometry {
                 .iter()
                 .enumerate()
             {
-                // Слово «true» — радиус 5, «false» — 0; иначе радиус числом.
+                // The word "true" — radius 5, "false" — 0; otherwise the radius as a number.
                 if let Some(v) = node.attr(key) {
                     g.rounded[i] = match v.trim() {
                         "true" => 5.0,
@@ -1105,26 +1114,26 @@ impl Geometry {
     }
 }
 
-/// Прямоугольник в целых точках: `(x, y, ширина, высота)`.
+/// A rectangle in integer points: `(x, y, width, height)`.
 type Area = (i64, i64, i64, i64);
 
-/// Раскладка рамки заданного размера.
+/// Layout of a frame of a given size.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
     pub width: i64,
     pub height: i64,
-    /// Высота заголовка (расстояние от верха рамки до содержимого окна).
+    /// Title bar height (the distance from the top of the frame to the window contents).
     pub top_height: i64,
-    /// Место названия окна.
+    /// Place of the window title.
     pub title: Area,
-    /// Места кнопок слева и справа, слева направо.
+    /// Places of the buttons on the left and on the right, left to right.
     pub left_buttons: Vec<Area>,
     pub right_buttons: Vec<Area>,
 }
 
-/// Высота строки названия окна при множителе кегля 1.
+/// Height of the window title line with font size multiplier 1.
 const TITLE_TEXT_HEIGHT: f64 = 17.0;
-/// Кегль названия окна в точках экрана при множителе 1.
+/// Font size of the window title in screen points with multiplier 1.
 const TITLE_PIXEL_SIZE: f64 = 13.0;
 
 impl Geometry {
@@ -1132,12 +1141,12 @@ impl Geometry {
         (TITLE_TEXT_HEIGHT * self.title_scale).round() as i64
     }
 
-    /// Раскладка рамки `width`×`height` с `left` кнопками слева и `right`
-    /// справа. Высота заголовка — большее из «строка названия с её полями и
-    /// добавкой `title_vertical_pad`» и «кнопка с её полями»; кнопка,
-    /// заданная соотношением сторон, занимает заголовок по высоте за вычетом
-    /// своих полей. Кнопки стоят от краёв заголовка к середине, название —
-    /// между ними.
+    /// Layout of a `width`×`height` frame with `left` buttons on the left and
+    /// `right` on the right. The title bar height is the larger of "the title line
+    /// with its padding and the `title_vertical_pad` addition" and "a button with its
+    /// padding"; a button given by aspect ratio takes the title bar's height minus
+    /// its padding. Buttons stand from the title bar edges towards the middle, the
+    /// title between them.
     pub fn layout(&self, width: i64, height: i64, left: usize, right: usize) -> Layout {
         let (tb, bb) = (self.title_border, self.button_border);
         let text = if self.has_title { self.text_height() } else { 0 };
@@ -1178,32 +1187,32 @@ impl Geometry {
     }
 }
 
-// ── исполнение списков команд ────────────────────────────────────────────
+// ── executing command lists ──────────────────────────────────────────────
 
-/// Что известно при исполнении команд одной рамки.
+/// What is known while executing the commands of one frame.
 struct Painter<'t> {
     theme: &'t Theme<'t>,
     gtk: &'t GtkColors,
-    /// Каталог рисунков темы (`metacity-1`).
+    /// Directory of the theme's images (`metacity-1`).
     dir: &'t Path,
-    /// Левый верхний угол рамки на картинке плитки.
+    /// Top left corner of the frame on the tile picture.
     origin: (f64, f64),
     layout: &'t Layout,
     geometry: &'t Geometry,
-    /// Название окна и его размер на картинке.
+    /// The window title and its size on the picture.
     title: &'t str,
     title_size: (i64, i64),
     out: Vec<DrawOp>,
-    /// Размеры рисунков темы: один рисунок встречается в командах много раз.
+    /// Sizes of theme images: one image occurs many times in the commands.
     image_sizes: HashMap<String, Option<(f64, f64)>>,
-    /// Списки, которые исполняются прямо сейчас: список, включающий сам себя
-    /// (в том числе через другие), второй раз не начинается.
+    /// Lists being executed right now: a list that includes itself (including via
+    /// others) is not started a second time.
     running: Vec<&'t Node>,
-    /// Сколько команд уже исполнено.
+    /// How many commands have been executed already.
     steps: usize,
 }
 
-/// Сторона значка окна в заголовке и крупного значка.
+/// Side of the window icon in the title bar and of the large icon.
 const MINI_ICON: f64 = 16.0;
 const ICON: f64 = 32.0;
 
@@ -1232,8 +1241,8 @@ impl<'t> Painter<'t> {
         parse_color(node.attr(key)?, self.gtk, &self.theme.constants)
     }
 
-    /// Размер рисунка темы по имени файла; `None` — файла нет, имя выводит
-    /// за каталог темы либо размер не прочитан.
+    /// Size of a theme image by file name; `None` — there is no file, the name leads
+    /// outside the theme directory, or the size was not read.
     fn image(&mut self, filename: &str) -> Option<(String, f64, f64)> {
         if filename.is_empty() || filename.starts_with('/') || filename.starts_with("theme:") || filename.split('/').any(|p| p == "..") {
             return None;
@@ -1244,8 +1253,8 @@ impl<'t> Painter<'t> {
         size.map(|(w, h)| (key, w, h))
     }
 
-    /// Команды списка `list` в месте `area`, отсечённые его границами.
-    /// `true` — список что-то нарисовал.
+    /// Commands of list `list` in place `area`, clipped by its bounds. `true` — the
+    /// list drew something.
     fn in_area(&mut self, list: &'t Node, area: Area) -> bool {
         if area.2 <= 0 || area.3 <= 0 || self.full() {
             return false;
@@ -1262,13 +1271,13 @@ impl<'t> Painter<'t> {
         true
     }
 
-    /// Команды списка `list` в месте `area` (в точках рамки).
+    /// Commands of list `list` in place `area` (in frame points).
     fn run(&mut self, list: &'t Node, area: Area, depth: usize) {
         if depth > MAX_INCLUDE_DEPTH || self.running.iter().any(|seen| std::ptr::eq(*seen, list)) {
             return;
         }
         self.running.push(list);
-        // Сколько отсечений открыто командами `<clip>` этого списка.
+        // How many clips are opened by the `<clip>` commands of this list.
         let mut clips = 0usize;
         for op in &list.children {
             if self.full() || self.steps >= MAX_STEPS {
@@ -1285,7 +1294,7 @@ impl<'t> Painter<'t> {
         self.running.pop();
     }
 
-    /// Одна команда. `true` — команда открыла отсечение до конца списка.
+    /// One command. `true` — the command opened a clip until the end of the list.
     fn one(&mut self, op: &'t Node, area: Area, depth: usize) -> bool {
         let (frame_w, frame_h) = (self.layout.width as f64, self.layout.height as f64);
         let object = match op.name.as_str() {
@@ -1324,7 +1333,8 @@ impl<'t> Painter<'t> {
         };
         let real = |key: &str| op.attr(key).and_then(|v| v.split(':').next()).and_then(number).map(|n| n.v);
         let flag = |key: &str| op.attr(key).is_some_and(|v| v.trim() == "true");
-        // Место команды: `x`, `y`, `width`, `height`; чего нет — место целиком.
+        // Place of a command: `x`, `y`, `width`, `height`; whatever is missing — the
+        // whole place.
         let place = || -> Option<(f64, f64, f64, f64)> {
             Some((or("x", 0.0)?, or("y", 0.0)?, or("width", area.2 as f64)?, or("height", area.3 as f64)?))
         };
@@ -1338,7 +1348,7 @@ impl<'t> Painter<'t> {
                 let thick = or("width", 1.0).unwrap_or(1.0).clamp(1.0, 64.0);
                 let shift = (thick / 2.0).floor();
                 if y1 == y2 {
-                    // Прямая вдоль точек: обе крайние точки входят.
+                    // A straight line along points: both end points are included.
                     self.fill(area, (x1.min(x2), y1 - shift, (x1 - x2).abs() + 1.0, thick), color);
                 } else if x1 == x2 {
                     self.fill(area, (x1 - shift, y1.min(y2), thick, (y1 - y2).abs() + 1.0), color);
@@ -1352,7 +1362,7 @@ impl<'t> Painter<'t> {
                 if flag("filled") {
                     self.fill(area, (x, y, w, h), color);
                 } else if w >= 0.0 && h >= 0.0 {
-                    // Контур в одну точку: крайние точки входят.
+                    // A one-point outline: the end points are included.
                     self.fill(area, (x, y, w + 1.0, 1.0), color);
                     self.fill(area, (x, y + h, w + 1.0, 1.0), color);
                     self.fill(area, (x, y + 1.0, 1.0, h - 1.0), color);
@@ -1483,14 +1493,14 @@ impl<'t> Painter<'t> {
                 }
                 self.out.push(DrawOp::Unclip);
             }
-            // Неизвестная команда — мимо: остальное рисуется.
+            // An unknown command — skipped: the rest is drawn.
             _ => {}
         }
         false
     }
 
-    /// Значок окна: у образца настоящего окна нет, поэтому рисуется
-    /// условное окошко в цветах темы GTK.
+    /// The window icon: the sample has no real window, so a stylized small
+    /// window in the GTK theme's colors is drawn.
     fn window_icon(&mut self, area: Area, at: (f64, f64, f64, f64), alpha: f64) {
         let (x, y, w, h) = at;
         if w < 4.0 || h < 4.0 {
@@ -1505,7 +1515,7 @@ impl<'t> Painter<'t> {
         self.fill(area, (x + 1.0, y + 1.0, w - 2.0, bar), with(p.selection));
     }
 
-    /// Упрощённая рамка-кнопка темы GTK: заливка и светлая с тёмной грани.
+    /// A simplified GTK theme button frame: a fill and light and dark edges.
     fn bevel(&mut self, area: Area, at: (f64, f64, f64, f64), state: Option<&str>, sunken: bool) {
         let (x, y, w, h) = at;
         let state = gtk_state(state);
@@ -1519,7 +1529,7 @@ impl<'t> Painter<'t> {
         self.fill(area, (x + w - 1.0, y, 1.0, h), second);
     }
 
-    /// Упрощённая стрелка: ступенчатый треугольник из полосок.
+    /// A simplified arrow: a stepped triangle made of strips.
     fn arrow(&mut self, area: Area, at: (f64, f64, f64, f64), direction: &str, ink: Rgba) {
         let (x, y, w, h) = at;
         let size = w.min(h).min(24.0);
@@ -1531,7 +1541,7 @@ impl<'t> Painter<'t> {
         let vertical = matches!(direction, "up" | "down");
         for i in 0..rows as i64 {
             let step = i as f64;
-            // Полоска номер i: у острия — в одну точку, у основания — широкая.
+            // Strip number i: one point wide at the tip, wide at the base.
             let grow = if matches!(direction, "up" | "left") { step } else { rows - 1.0 - step };
             if vertical {
                 self.fill(area, (cx - grow, cy + step, grow * 2.0 + 1.0, 1.0), ink);
@@ -1543,7 +1553,7 @@ impl<'t> Painter<'t> {
     }
 }
 
-/// Состояние темы GTK по слову команды (`normal`, `active`, `prelight`,
+/// GTK theme state by the command's word (`normal`, `active`, `prelight`,
 /// `selected`, `insensitive`).
 fn gtk_state(word: Option<&str>) -> &'static str {
     match word.map(|w| w.trim().to_ascii_lowercase()).as_deref() {
@@ -1555,17 +1565,17 @@ fn gtk_state(word: Option<&str>) -> &'static str {
     }
 }
 
-// ── рамка целиком ────────────────────────────────────────────────────────
+// ── the whole frame ──────────────────────────────────────────────────────
 
-/// Кнопки заголовка образца: слева меню окна, справа «свернуть»,
-/// «развернуть», «закрыть» — раскладка MATE по умолчанию.
+/// Title bar buttons of the sample: the window menu on the left, "minimize",
+/// "maximize", "close" on the right — MATE's default layout.
 const LEFT_BUTTONS: &[&str] = &["menu"];
 const RIGHT_BUTTONS: &[&str] = &["minimize", "maximize", "close"];
 
-/// Средняя ширина знака полужирного названия окна в долях кегля.
+/// Average glyph width of the bold window title as a fraction of the font size.
 const TITLE_CHAR_WIDTH: f64 = 0.62;
 
-/// Название окна, обрезанное под ширину `room` точек, и его ширина.
+/// The window title truncated to a width of `room` points, and its width.
 fn fitted_title(name: &str, pixel_size: f64, room: i64) -> (String, i64) {
     let step = pixel_size * TITLE_CHAR_WIDTH;
     let fits = (room as f64 / step).floor() as usize;
@@ -1581,9 +1591,10 @@ fn fitted_title(name: &str, pixel_size: f64, room: i64) -> (String, i64) {
     (text, width)
 }
 
-/// Операции рамки активного окна темы на прямоугольнике `rect` картинки:
-/// тень, содержимое окна, части рамки по порядку, кнопки. `None` — в теме нет
-/// стиля обычного окна в фокусе либо из него не вышло ни одной операции.
+/// Operations of the theme's active window frame on rectangle `rect` of the
+/// picture: the shadow, the window contents, the frame parts in order, the
+/// buttons. `None` — the theme has no style for a normal focused window, or not
+/// a single operation came out of it.
 fn frame_ops(root: &Node, gtk: &GtkColors, dir: &Path, name: &str, rect: Rect) -> Option<Vec<DrawOp>> {
     let theme = Theme::new(root);
     let style = theme.focused_style()?;
@@ -1592,7 +1603,7 @@ fn frame_ops(root: &Node, gtk: &GtkColors, dir: &Path, name: &str, rect: Rect) -
     let (x, y, w, h) = rect;
     let (width, height) = (w as i64, h as i64);
     let layout = geometry.layout(width, height, LEFT_BUTTONS.len(), RIGHT_BUTTONS.len());
-    // Заголовок выше половины образца — рамка в картинку не помещается.
+    // A title bar taller than half the sample — the frame does not fit into the picture.
     if layout.top_height < 1 || layout.top_height > height / 2 || geometry.left_width + geometry.right_width > width / 2 {
         return None;
     }
@@ -1614,10 +1625,11 @@ fn frame_ops(root: &Node, gtk: &GtkColors, dir: &Path, name: &str, rect: Rect) -
     };
     let p = gtk.palette;
     let solid = |c: Rgb| (c.0, c.1, c.2, 255);
-    // Тень, затем всё остальное — в очертаниях окна со скруглёнными углами.
+    // The shadow, then everything else — in the window's outline with rounded corners.
     painter.out.push(DrawOp::Fill { rect: (x + 3.0, y + 4.0, w, h), color: (0, 0, 0, 70) });
     painter.out.push(DrawOp::Clip { rect, radii: geometry.rounded });
-    // Подложка рамки: цвет стиля (`background`), иначе фон окна темы GTK.
+    // Frame background: the style's color (`background`), otherwise the GTK
+    // theme's window background.
     let background = style
         .iter()
         .find_map(|s| s.attr("background"))
@@ -1629,7 +1641,7 @@ fn frame_ops(root: &Node, gtk: &GtkColors, dir: &Path, name: &str, rect: Rect) -
     let (lte, rte) = (geometry.left_titlebar_edge.min(width / 2), geometry.right_titlebar_edge.min(width / 2));
     let (tte, bte) = (geometry.top_titlebar_edge.min(top / 2), geometry.bottom_titlebar_edge.min(top / 2));
     let side_h = height - top - bottom;
-    // Части рамки в порядке отрисовки: каждая следующая ложится поверх.
+    // Frame parts in drawing order: each next one goes on top.
     let pieces: [(&str, Area); 12] = [
         ("entire_background", (0, 0, width, height)),
         ("titlebar", (0, 0, width, top)),
@@ -1650,7 +1662,8 @@ fn frame_ops(root: &Node, gtk: &GtkColors, dir: &Path, name: &str, rect: Rect) -
             drawn += painter.in_area(list, area) as usize;
         }
     }
-    // Кнопки: под каждой — подложка её места в ряду, сверху — сама кнопка.
+    // Buttons: under each — the background of its place in the row, on top — the
+    // button itself.
     for (side, functions, places) in
         [("left", LEFT_BUTTONS, &layout.left_buttons), ("right", RIGHT_BUTTONS, &layout.right_buttons)]
     {
@@ -1675,8 +1688,8 @@ fn frame_ops(root: &Node, gtk: &GtkColors, dir: &Path, name: &str, rect: Rect) -
     if drawn == 0 || painter.out.len() == before {
         return None;
     }
-    // Содержимое окна — поверх рамки, как и настоящее окно: фон и строки
-    // текста в цветах темы GTK.
+    // The window contents — on top of the frame, as with a real window: the
+    // background and lines of text in the GTK theme's colors.
     let client = (geometry.left_width, top, width - geometry.left_width - geometry.right_width, height - top - bottom);
     painter.fill(client, (0.0, 0.0, client.2 as f64, client.3 as f64), solid(p.window));
     let ink = super::mix(p.window, p.text, 0.55);
@@ -1689,11 +1702,12 @@ fn frame_ops(root: &Node, gtk: &GtkColors, dir: &Path, name: &str, rect: Rect) -
     Some(painter.out)
 }
 
-/// Место окна на картинке плитки — то же, что у образца рамок XFCE.
+/// Place of the window on the tile picture — the same as for the XFCE frame sample.
 const WINDOW_RECT: Rect = (30.0, 16.0, 240.0, 138.0);
 
-/// Тема рамок MATE: окно в её рамке — заголовок с названием темы и кнопками,
-/// стороны и низ, как их рисуют команды темы для активного окна.
+/// A MATE frame theme: a window in its frame — a title bar with the theme name
+/// and buttons, the sides and the bottom, as the theme's commands draw them for
+/// an active window.
 pub(super) fn marco_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let theme_dir = Path::new(input.install_path);
     let dir = theme_dir.join("metacity-1");
@@ -1703,8 +1717,8 @@ pub(super) fn marco_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     frame_ops(&root, &gtk, &dir, &name, WINDOW_RECT)
 }
 
-/// Почему у темы рамок MATE нет образца — для стенда. Пустая строка —
-/// образец получился.
+/// Why a MATE frame theme has no sample — for the test stand. An empty string —
+/// the sample came out.
 pub fn marco_failure(install_path: &str) -> &'static str {
     let theme_dir = Path::new(install_path);
     let dir = theme_dir.join("metacity-1");
@@ -1729,7 +1743,7 @@ mod tests {
     use crate::local_preview::{card_picture, PreviewSource};
     use std::path::PathBuf;
 
-    /// Свой каталог сверки.
+    /// Our own check directory.
     fn tmp(tag: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("rexon-metacity-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -1749,8 +1763,8 @@ mod tests {
         }
     }
 
-    /// Небольшая тема для сверок: геометрия с предком, константы числом и
-    /// цветом, именованные списки команд, стиль с предком.
+    /// A small theme for checks: geometry with an ancestor, constants as a number
+    /// and as a color, named command lists, a style with an ancestor.
     const SAMPLE: &str = r##"<?xml version="1.0"?>
 <metacity_theme>
 <info><name>Sample</name><author>Rexon</author></info>
@@ -1814,20 +1828,21 @@ mod tests {
         assert_eq!(value("1 + 2 * 3"), Some(7.0));
         assert_eq!(value("(1 + 2) * 3"), Some(9.0));
         assert_eq!(value("(width - title_width) / 2"), Some(30.0));
-        // Деление целых — нацело; с дробным числом — дробное, итог отбрасывает дробь.
+        // Integer division truncates; with a fractional number it is fractional, and
+        // the result drops the fraction.
         assert_eq!(value("height / 2"), Some(10.0));
         assert_eq!(value("height / 2 * 2"), Some(20.0));
         assert_eq!(value("height / 2.0 * 2"), Some(21.0));
         assert_eq!(value("width * Half"), Some(50.0));
         assert_eq!(value("height % 4"), Some(1.0));
         assert_eq!(value("height `mod` 4 + height `div` 4"), Some(6.0));
-        // `max` и `min` — младше сложения.
+        // `max` and `min` bind more loosely than addition.
         assert_eq!(value("2 `max` 5"), Some(5.0));
         assert_eq!(value("10 `min` 3 + 1"), Some(4.0));
         assert_eq!(value("0 `max` width - 200"), Some(0.0));
         assert_eq!(value("-Pad + 5"), Some(3.0));
         assert_eq!(value("width-Pad-1"), Some(97.0));
-        // Чего разобрать нельзя — значения нет, без паники.
+        // What cannot be parsed has no value, without a panic.
         for bad in ["", "width +", "nope + 1", "1 / 0", "5 % 0", "((1)", "1)", "2 `pow` 3", "Tint + 1", "1 $ 2", "`max"] {
             assert_eq!(value(bad), None, "{bad:?}");
         }
@@ -1850,31 +1865,32 @@ mod tests {
         assert_eq!(color("dark gray"), Some((169, 169, 169, 255)));
         assert_eq!(color("grey50"), Some((127, 127, 127, 255)));
         assert_eq!(color("rgba(10, 20, 30, 0.5)"), Some((10, 20, 30, 128)));
-        // Цвета темы GTK по части и состоянию.
+        // GTK theme colors by part and state.
         assert_eq!(color("gtk:bg[NORMAL]"), Some((237, 236, 235, 255)));
         assert_eq!(color("gtk:bg[SELECTED]"), Some((74, 144, 217, 255)));
         assert_eq!(color("gtk:fg[SELECTED]"), Some((255, 255, 255, 255)));
         assert_eq!(color("gtk:base[normal]"), Some((255, 255, 255, 255)));
         assert_eq!(color("gtk:text[NORMAL]"), Some((46, 52, 54, 255)));
         assert!(color("gtk:light[NORMAL]").unwrap().0 > 237 && color("gtk:dark[NORMAL]").unwrap().0 < 200);
-        // Смесь: доля второго цвета; затемнение: множитель светлоты.
+        // Blend: the fraction of the second color; shade: the lightness multiplier.
         assert_eq!(color("blend/#000000/#ffffff/0.5"), Some((128, 128, 128, 255)));
         assert_eq!(color("blend/gtk:fg[NORMAL]/gtk:bg[NORMAL]/0.0"), Some((46, 52, 54, 255)));
         assert_eq!(color("shade/#808080/0.5"), Some((64, 64, 64, 255)));
         assert_eq!(color("shade/#808080/3"), Some((255, 255, 255, 255)));
         assert_eq!(color("shade/gtk:bg[SELECTED]/1.0"), Some((74, 144, 217, 255)));
         assert_eq!(color("blend/shade/#808080/0.5/blend/#000/#fff/1.0/0.5"), Some((160, 160, 160, 255)));
-        // Именованный цвет темы GTK: свой, по ссылке, а нет его — запасной.
+        // A named GTK theme color: its own, by reference, and if it is missing — the
+        // fallback.
         assert_eq!(color("gtk:custom(wm_title,gtk:fg[NORMAL])"), Some((1, 2, 3, 255)));
         assert_eq!(color("gtk:custom(wm_link, #ffffff)"), Some((1, 2, 3, 255)));
         assert_eq!(color("gtk:custom(wm_none,gtk:fg[NORMAL])"), Some((46, 52, 54, 255)));
         assert_eq!(color("gtk:custom(wm_none,blend/#000000/#ffffff/0.5)"), Some((128, 128, 128, 255)));
         assert_eq!(color("shade/gtk:custom(wm_none,#808080)/0.5"), Some((64, 64, 64, 255)));
-        // Цветовые константы темы, в том числе внутри смеси.
+        // Theme color constants, including inside a blend.
         assert_eq!(color("C_edge"), Some((16, 32, 48, 255)));
         assert_eq!(color("C_soft"), Some((136, 144, 152, 255)));
         assert_eq!(color("blend/C_edge/C_edge/0.3"), Some((16, 32, 48, 255)));
-        // Мусор, зацикленная константа, число вместо цвета — цвета нет.
+        // Garbage, a cyclic constant, a number instead of a color — no color.
         for bad in ["", "nope", "gtk:bg[WEIRD]", "gtk:nope[NORMAL]", "gtk:bg[NORMAL", "blend/#000/#fff", "shade/#000", "#12", "C_loop", "Pad", "gtk:custom(a"] {
             assert_eq!(color(bad), None, "{bad:?}");
         }
@@ -1893,15 +1909,15 @@ mod tests {
         assert_eq!(geometry.button_border, [1, 1, 2, 2]);
         assert_eq!(geometry.button, ButtonSize::Fixed(16, 16));
         assert_eq!(geometry.rounded, [4.0, 5.0, 0.0, 0.0], "радиус числом и словом true");
-        // Заголовок: большее из «название с полями и добавкой» (17 + 2 + 2)
-        // и «кнопка с полями» (16 + 4).
+        // Title bar: the larger of "the title with padding and the addition"
+        // (17 + 2 + 2) and "the button with padding" (16 + 4).
         let layout = geometry.layout(240, 138, 1, 3);
         assert_eq!(layout.top_height, 21);
         assert_eq!(layout.left_buttons, vec![(4, 2, 16, 16)]);
         assert_eq!(layout.right_buttons, vec![(184, 2, 16, 16), (202, 2, 16, 16), (220, 2, 16, 16)]);
         assert_eq!(layout.title, (25, 1, 154, 19));
 
-        // Кнопка по соотношению сторон, заголовок без текста, без кнопок.
+        // A button by aspect ratio, a title bar without text, without buttons.
         let aspect = tree(
             r#"<metacity_theme><frame_geometry name="g" title_scale="small" hide_buttons="true">
                <aspect_ratio name="button" value="0.5"/>
@@ -1934,13 +1950,15 @@ mod tests {
         assert_eq!(taken(&dir).0, "metacity-theme-2.xml");
         put(&dir.join("metacity-theme-3.xml"), &body("3"));
         assert_eq!(taken(&dir).0, "metacity-theme-3.xml");
-        // Корень третьей версии требует формата новее понятного — берётся младший файл.
+        // A version-3 root requires a format newer than understood — the older file
+        // is taken.
         put(&dir.join("metacity-theme-3.xml"), r#"<metacity_theme version="&gt; 9.0"><constant name="Mark" value="3"/></metacity_theme>"#);
         assert_eq!(taken(&dir).0, "metacity-theme-2.xml");
-        // Битый старший файл — тоже младший.
+        // A broken newest file — also the older one.
         put(&dir.join("metacity-theme-3.xml"), "<metacity_theme><constant");
         assert_eq!(taken(&dir).0, "metacity-theme-2.xml");
-        // Условие версии на элементе: невыполненное убирает элемент с вложенными.
+        // A version condition on an element: an unsatisfied one removes the element
+        // with its children.
         put(
             &dir.join("metacity-theme-3.xml"),
             r#"<metacity_theme version="&gt;= 3.0">
@@ -1952,7 +1970,7 @@ mod tests {
         assert_eq!(taken(&dir), ("metacity-theme-3.xml", Some("new".into())));
         let (node, _) = load_tree(&dir).unwrap();
         assert!(Theme::new(&node).styles.is_empty());
-        // В файле первой версии атрибут version условием не считается.
+        // In a version-1 file the version attribute is not treated as a condition.
         std::fs::remove_file(dir.join("metacity-theme-3.xml")).unwrap();
         std::fs::remove_file(dir.join("metacity-theme-2.xml")).unwrap();
         put(&dir.join("metacity-theme-1.xml"), r#"<metacity_theme><constant name="Mark" value="kept" version="&gt; 9.0"/></metacity_theme>"#);
@@ -1973,9 +1991,9 @@ mod tests {
         got
     }
 
-    /// Эталон плана отрисовки небольшой темы: порядок частей, раскрытые
-    /// include и константы, пропущенная неизвестная команда, кнопка только в
-    /// состоянии «не нажата».
+    /// Reference drawing plan of a small theme: the order of parts, expanded
+    /// includes and constants, a skipped unknown command, a button only in the "not
+    /// pressed" state.
     #[test]
     fn frame_plan_of_a_small_theme() {
         let got = sample_ops(SAMPLE, "plan").unwrap();
@@ -1983,19 +2001,19 @@ mod tests {
         let clip = |x: f64, y: f64, w: f64, h: f64| DrawOp::Clip { rect: (x, y, w, h), radii: [0.0; 4] };
         let (edge, white) = ((16, 32, 48, 255), (255, 255, 255, 255));
         let want = vec![
-            // Тень и очертание окна со скруглёнными верхними углами.
+            // The shadow and the window outline with rounded top corners.
             fill(33.0, 20.0, 240.0, 138.0, (0, 0, 0, 70)),
             DrawOp::Clip { rect: (30.0, 16.0, 240.0, 138.0), radii: [4.0, 5.0, 0.0, 0.0] },
-            // Подложка рамки.
+            // Frame background.
             fill(30.0, 16.0, 240.0, 138.0, (237, 236, 235, 255)),
-            // entire_background — от предка стиля: контур цветом-константой.
+            // entire_background — from the style's ancestor: an outline with a color constant.
             clip(30.0, 16.0, 240.0, 138.0),
             fill(30.0, 16.0, 240.0, 1.0, edge),
             fill(30.0, 153.0, 240.0, 1.0, edge),
             fill(30.0, 17.0, 1.0, 136.0, edge),
             fill(269.0, 17.0, 1.0, 136.0, edge),
             DrawOp::Unclip,
-            // titlebar — include именованного списка: переход в цветах темы GTK.
+            // titlebar — an include of a named list: a gradient in the GTK theme's colors.
             clip(30.0, 16.0, 240.0, 21.0),
             DrawOp::Shade {
                 rect: (30.0, 16.0, 240.0, 21.0),
@@ -2003,16 +2021,16 @@ mod tests {
                 colors: vec![(74, 144, 217, 255), (37, 72, 109, 255)],
             },
             DrawOp::Unclip,
-            // title — название темы по центру места между кнопками.
+            // title — the theme name in the center of the place between the buttons.
             clip(55.0, 17.0, 154.0, 19.0),
             DrawOp::Label { rect: (108.0, 18.0, 48.0, 17.0), text: "Sample".into(), pixel_size: 13, bold: true, color: white },
             DrawOp::Unclip,
-            // Кнопка «закрыть»: косая черта и черта вдоль точек; <wobble> пропущена.
+            // The "close" button: a diagonal line and a line along points; <wobble> is skipped.
             clip(250.0, 18.0, 16.0, 16.0),
             DrawOp::Line { from: (252.0, 20.0), to: (263.0, 31.0), width: 1.0, color: white },
             fill(252.0, 26.0, 12.0, 1.0, white),
             DrawOp::Unclip,
-            // Содержимое окна поверх рамки: фон и три строки текста.
+            // The window contents on top of the frame: the background and three lines of text.
             fill(33.0, 37.0, 234.0, 112.0, (237, 236, 235, 255)),
             fill(47.0, 55.0, 120.0, 6.0, (132, 135, 135, 200)),
             fill(47.0, 71.0, 86.0, 6.0, (132, 135, 135, 200)),
@@ -2023,7 +2041,7 @@ mod tests {
         for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
             assert_eq!(g, w, "операция {i}");
         }
-        // Отсечения парны: исполнитель закрывает ровно столько, сколько открыл.
+        // Clips are paired: the executor closes exactly as many as it opened.
         let opened = got.iter().filter(|op| matches!(op, DrawOp::Clip { .. })).count();
         let closed = got.iter().filter(|op| matches!(op, DrawOp::Unclip)).count();
         assert_eq!(opened, closed);
@@ -2031,7 +2049,7 @@ mod tests {
 
     #[test]
     fn hostile_files_leave_the_placeholder_and_never_hang() {
-        // Битый XML, чужой корень, пустой файл, тема без стиля окна.
+        // Broken XML, a foreign root, an empty file, a theme without a window style.
         for (tag, xml) in [
             ("cut", &SAMPLE[..SAMPLE.len() / 2]),
             ("root", "<theme><window type=\"normal\" style_set=\"set\"/></theme>"),
@@ -2042,7 +2060,7 @@ mod tests {
         ] {
             assert!(sample_ops(xml, tag).is_none(), "{tag}");
         }
-        // Заглушка вида — через общую цепочку картинки плитки.
+        // The kind's placeholder — through the shared tile picture chain.
         let root = tmp("stub");
         put(&root.join("Bad/metacity-1/metacity-theme-1.xml"), "<metacity_theme>");
         let path = root.join("Bad").to_string_lossy().into_owned();
@@ -2052,13 +2070,13 @@ mod tests {
         assert_eq!(marco_failure(&root.join("None").to_string_lossy()), "нет файла metacity-theme-{1,2,3}.xml");
         let _ = std::fs::remove_dir_all(&root);
 
-        // Слишком глубокая вложенность элементов.
+        // Element nesting that is too deep.
         let deep = format!("<metacity_theme>{}{}</metacity_theme>", "<a>".repeat(200), "</a>".repeat(200));
         assert!(matches!(parse_xml(&deep, false), Parsed::Broken));
 
-        // Зацикленные include, parent у стиля, геометрии и набора; плитка из
-        // миллиона повторов; рисунок за пределами каталога темы; деление на
-        // ноль. Рамка всё равно рисуется — тем, что разобрать удалось.
+        // Cyclic includes, parent of a style, geometry and set; a tile of a million
+        // repetitions; an image outside the theme directory; division by zero. The
+        // frame is drawn anyway — with whatever could be parsed.
         let looped = r##"<metacity_theme>
 <frame_geometry name="g" parent="h"><distance name="left_width" value="2"/></frame_geometry>
 <frame_geometry name="h" parent="g"><distance name="right_width" value="2"/></frame_geometry>
@@ -2100,7 +2118,8 @@ mod tests {
         let closed = ops.iter().filter(|op| matches!(op, DrawOp::Unclip)).count();
         assert_eq!(opened, closed, "отсечение команды <clip> закрыто в конце списка");
 
-        // Списки, включающие следующий по три раза: без счёта команд это 3^11 исполнений.
+        // Lists including the next one three times each: without counting commands that
+        // is 3^11 executions.
         let lists: String = (0..11).map(|i| format!(r#"<draw_ops name="l{i}"><include name="l{n}"/><include name="l{n}"/><include name="l{n}"/></draw_ops>"#, n = i + 1)).collect();
         let fan = format!(
             r##"<metacity_theme><frame_geometry name="g"/>{lists}<draw_ops name="l11"><clip x="0" y="0" width="1" height="1"/></draw_ops>
@@ -2112,7 +2131,7 @@ mod tests {
         let _ = sample_ops(&fan, "fan");
         assert!(started.elapsed().as_secs() < 5, "исполнение ограничено счётом команд");
 
-        // Предел числа операций: тысячи команд в одном списке.
+        // The operation count limit: thousands of commands in one list.
         let many = format!(
             r##"<metacity_theme><frame_geometry name="g"/><frame_style name="s" geometry="g">
             <piece position="entire_background"><draw_ops>{}</draw_ops></piece></frame_style>
@@ -2127,7 +2146,7 @@ mod tests {
     fn images_and_gtk_colors_come_from_the_theme_directory() {
         let root = tmp("images");
         let theme_dir = root.join("Pictured");
-        // PNG: подпись и блок IHDR 20×10 — для чтения размера этого хватает.
+        // PNG: the signature and a 20×10 IHDR block — enough to read the size.
         let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
         png.extend_from_slice(&[0, 0, 0, 20, 0, 0, 0, 10, 8, 6, 0, 0, 0]);
         std::fs::create_dir_all(theme_dir.join("metacity-1")).unwrap();
@@ -2152,13 +2171,15 @@ mod tests {
         let path = theme_dir.to_string_lossy().into_owned();
         let ops = marco_sample(&SampleInput { kind: "marco", install_path: &path, icon_themes: &[] }).unwrap();
         let file = theme_dir.join("metacity-1/close.png").to_string_lossy().into_owned();
-        // Подложка рамки — цвет стиля, он же выделение темы GTK из соседнего каталога.
+        // Frame background — the style's color, which is also the selection color of the
+        // GTK theme from the neighboring directory.
         assert_eq!(ops[2], DrawOp::Fill { rect: (30.0, 16.0, 240.0, 138.0), color: (170, 0, 0, 255) });
         assert!(ops.contains(&DrawOp::Fill { rect: (30.0, 16.0, 240.0, 20.0), color: (0, 255, 0, 128) }), "{ops:#?}");
-        // Содержимое окна — в цветах той же темы GTK.
+        // The window contents — in the colors of the same GTK theme.
         assert!(ops.contains(&DrawOp::Fill { rect: (30.0, 36.0, 240.0, 118.0), color: (32, 32, 32, 255) }));
 
-        // Набор «одни рамки» берёт цвета темы GTK соседнего каталога.
+        // A "borders only" set takes the colors of the GTK theme of the neighboring
+        // directory.
         std::fs::create_dir_all(root.join("Pictured-border/metacity-1")).unwrap();
         assert_eq!(GtkColors::for_frames(&root.join("Pictured-border")).palette.window, (32, 32, 32));
         assert_eq!(GtkColors::for_frames(&root.join("Other-border")).palette.window, GtkColors::fallback().palette.window);
@@ -2173,9 +2194,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Файл темы, который Marco принимает: все поля `<info>`, все типы окон
-    /// и в стиле рамки все обязательные кнопки версии `version`, кроме
-    /// `skip`; `extra` — что ещё положить в стиль.
+    /// A theme file that Marco accepts: all `<info>` fields, all window types and,
+    /// in the frame style, all mandatory buttons of version `version` except
+    /// `skip`; `extra` — what else to put into the style.
     fn marco_theme(version: u32, skip: &[&str], extra: &str) -> String {
         let buttons: String = MARCO_REQUIRED_BUTTONS
             .iter()
@@ -2204,9 +2225,9 @@ mod tests {
         )
     }
 
-    /// Кнопка с функцией, которой нет в формате (образец — WinShine-blue-48:
-    /// `unmaximize`, допустимый только у `<menu_icon>`), — Marco тему не
-    /// загрузит; файл берётся в его порядке поиска.
+    /// A button with a function that does not exist in the format (an example —
+    /// WinShine-blue-48: `unmaximize`, allowed only on `<menu_icon>`) — Marco will
+    /// not load the theme; the file is taken in its search order.
     #[test]
     fn marco_unknown_button_function_is_named() {
         let files: std::cell::RefCell<HashMap<String, String>> = Default::default();
@@ -2223,22 +2244,22 @@ mod tests {
 
         set("/u/metacity-1/metacity-theme-3.xml", &bad);
         assert_eq!(check(&["/u/metacity-1"]), unknown("unmaximize"));
-        // Ничего не прочиталось — и сказать нечего.
+        // Nothing was read — and there is nothing to say.
         assert_eq!(check(&["/нет/metacity-1"]), None);
 
-        // `unmaximize` у `<menu_icon>` — законен, мешать не должен.
+        // `unmaximize` on `<menu_icon>` is legitimate and must not get in the way.
         set("/u/metacity-1/metacity-theme-3.xml", &good);
         assert_eq!(check(&["/u/metacity-1"]), None);
 
-        // Кнопка под невыполненным условием версии Marco не разбирается.
+        // Marco does not parse a button under an unsatisfied version condition.
         set(
             "/u/metacity-1/metacity-theme-3.xml",
             &marco_theme(3000, &[], r#"<button function="unmaximize" state="normal" draw_ops="x" version="&gt;= 9.0"/>"#),
         );
         assert_eq!(check(&["/u/metacity-1"]), None);
 
-        // Порядок поиска: старшая версия во ВСЕХ каталогах раньше младшей
-        // в первом; в пределах версии — первый каталог.
+        // Search order: the newest version in ALL directories before an older one in
+        // the first; within a version — the first directory.
         set("/u/metacity-1/metacity-theme-3.xml", &good);
         set("/u/metacity-1/metacity-theme-2.xml", &bad);
         assert_eq!(check(&["/u/metacity-1"]), None, "взят файл третьей версии");
@@ -2247,22 +2268,22 @@ mod tests {
         assert_eq!(check(&["/u/metacity-1", "/s/metacity-1"]), None, "третья версия из системного каталога");
         set("/h/metacity-1/metacity-theme-3.xml", &bad);
         assert_eq!(check(&["/h/metacity-1", "/s/metacity-1"]), unknown("unmaximize"));
-        // Корень требует формата новее понятного — берётся младший файл.
+        // The root requires a format newer than understood — the older file is taken.
         set("/h/metacity-1/metacity-theme-3.xml", r#"<metacity_theme version="&gt; 9.0"><info/></metacity_theme>"#);
         set("/h/metacity-1/metacity-theme-2.xml", &bad);
         assert_eq!(check(&["/h/metacity-1"]), unknown("unmaximize"));
-        // Битый файл — не эта несовместимость.
+        // A broken file is not this incompatibility.
         set("/b/metacity-1/metacity-theme-3.xml", "<metacity_theme><button");
         assert_eq!(check(&["/b/metacity-1"]), None);
 
-        // Кнопки версии 2 в файле первой версии Marco не знает вовсе.
+        // Marco does not know version-2 buttons at all in a version-1 file.
         set("/one/metacity-1/metacity-theme-1.xml", &marco_theme(2000, &[], ""));
         assert_eq!(check(&["/one/metacity-1"]), unknown("shade"));
     }
 
-    /// Стиль рамки без обязательной кнопки (образец — темы Win8 из
-    /// магазина без `shade`): Marco отказывается от темы целиком. Что
-    /// обязательно, зависит от версии формата у стиля.
+    /// A frame style without a mandatory button (an example — Win8 themes from the
+    /// store without `shade`): Marco rejects the theme entirely. What is mandatory
+    /// depends on the style's format version.
     #[test]
     fn marco_required_button_missing_is_named() {
         let check = |file: &str, text: String| {
@@ -2272,20 +2293,20 @@ mod tests {
         };
         let missing = |f: &str| Some(MarcoProblem::MissingButton(f.to_string()));
 
-        // Версия 2 и 3: shade и пр. обязательны.
+        // Versions 2 and 3: shade and others are mandatory.
         assert_eq!(check("metacity-theme-2.xml", marco_theme(2000, &["shade"], "")), missing("shade"));
         assert_eq!(check("metacity-theme-3.xml", marco_theme(3000, &["shade"], "")), missing("shade"));
         assert_eq!(check("metacity-theme-3.xml", marco_theme(3000, &["close"], "")), missing("close"));
-        // Версия 1: shade не нужен.
+        // Version 1: shade is not needed.
         assert_eq!(check("metacity-theme-1.xml", marco_theme(1000, &[], "")), None);
-        // Состояние pressed тоже обязательно; prelight — нет (падает на normal).
+        // The pressed state is also mandatory; prelight is not (it falls back to normal).
         let no_pressed = marco_theme(3000, &[], "").replace(
             r#"<button function="stick" state="pressed" draw_ops="x"/>"#,
             "",
         );
         assert_eq!(check("metacity-theme-3.xml", no_pressed), missing("stick"));
 
-        // appmenu обязателен только у стиля версии 3.5 и новее.
+        // appmenu is mandatory only for a style of version 3.5 and newer.
         assert_eq!(check("metacity-theme-3.xml", marco_theme(3000, &["appmenu"], "")), None);
         let v35 = marco_theme(3005, &["appmenu"], "").replace("<metacity_theme>", r#"<metacity_theme version="&gt;= 3.5">"#);
         assert_eq!(check("metacity-theme-3.xml", v35), missing("appmenu"));
@@ -2293,13 +2314,14 @@ mod tests {
             .replace(r#"<frame_style name="normal_focused""#, r#"<frame_style version="&gt; 3.4" name="normal_focused""#);
         assert_eq!(check("metacity-theme-3.xml", style35), missing("appmenu"));
 
-        // Кнопки наследуются от `parent`: дочерний стиль без своих кнопок — законен.
+        // Buttons are inherited from `parent`: a child style without its own buttons is
+        // legitimate.
         let child = marco_theme(3000, &[], "").replace(
             "<menu_icon",
             r#"<frame_style name="child" parent="normal_focused" geometry="g"><piece position="entire_background" draw_ops="x"/></frame_style><menu_icon"#,
         );
         assert_eq!(check("metacity-theme-3.xml", child), None);
-        // …а без родителя — нет.
+        // …but without a parent it is not.
         let orphan = marco_theme(3000, &[], "").replace(
             "<menu_icon",
             r#"<frame_style name="orphan" geometry="g"><piece position="entire_background" draw_ops="x"/></frame_style><menu_icon"#,
@@ -2307,7 +2329,7 @@ mod tests {
         assert_eq!(check("metacity-theme-3.xml", orphan), missing("close"));
     }
 
-    /// Без обязательного поля `<info>` или типа окна Marco тему не берёт.
+    /// Without a mandatory `<info>` field or window type Marco does not take the theme.
     #[test]
     fn marco_required_parts_missing_are_named() {
         let check = |text: String| {
@@ -2318,7 +2340,7 @@ mod tests {
         let part = |p: &str| Some(MarcoProblem::MissingPart(p.to_string()));
         assert_eq!(check(marco_theme(3000, &[], "").replace("<author>a</author>", "")), part("<author>"));
         assert_eq!(check(marco_theme(3000, &[], "").replace(r#"<window type="border" style_set="set"/>"#, "")), part(r#"<window type="border">"#));
-        // attached необязателен — его и нет в образце.
+        // attached is optional — and the sample does not have it.
         assert_eq!(check(marco_theme(3000, &[], "")), None);
     }
 }

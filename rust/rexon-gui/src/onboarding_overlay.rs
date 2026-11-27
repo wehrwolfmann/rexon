@@ -1,19 +1,22 @@
-// OnboardingModel — обучение при первом запуске для окна на Rust.
+// OnboardingModel — the first-run tutorial for the Rust window.
 //
-// У Python-окна обучение рисует `rexon/onboarding.py` (виджетная накладка
-// поверх `QMainWindow`). У окна на QML виджетов нет, поэтому накладка —
-// `qml/OnboardingOverlay.qml`, а этот объект только переводит ей ядро:
-// сценарий, тексты, решение «что показывать», сохранение прогресса,
-// геометрию выреза и карточки, палитру скина (`rexon_core::onboarding`).
-// Ни одного собственного решения и ни одной подписи здесь нет.
+// In the Python window the tutorial is drawn by `rexon/onboarding.py` (a
+// widget overlay over the `QMainWindow`). The QML window has no widgets, so
+// the overlay is `qml/OnboardingOverlay.qml`, and this object only relays
+// the core to it: the scenario, texts, the decision "what to show", saving
+// progress, the geometry of the cut-out and the card, the skin palette
+// (`rexon_core::onboarding`). There is not a single decision or label of
+// our own here.
 //
-// Состояние пишется в ОБЩИЙ `settings.json` теми же ключами, что у
-// Python-окна: прошедший обучение в одном входе не увидит его во втором.
+// The state is written to the SHARED `settings.json` with the same keys as
+// in the Python window: someone who took the tutorial in one entry point
+// will not see it in the other.
 //
-// ⭐ ДВЕРЬ ДЛЯ «ПРОЙТИ ОБУЧЕНИЕ ЗАНОВО». Кнопка живёт на вкладке «Настройки»
-// (`SettingsActions`), а накладка — на окне; прямой ссылки у них нет.
-// [`request_replay`] толкает сигнал `replayRequested` всем живым объектам
-// обучения через очередь потока Qt, и накладка по нему начинает заново.
+// THE DOOR FOR "TAKE THE TUTORIAL AGAIN". The button lives on the
+// "Settings" tab (`SettingsActions`), and the overlay on the window; they
+// have no direct link. [`request_replay`] pushes the `replayRequested`
+// signal to all live tutorial objects through the Qt thread queue, and the
+// overlay starts over on it.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -31,8 +34,8 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        // Палитра действующего скина и числа накладки из ядра. Не CONSTANT:
-        // скин меняется на лету.
+        // Palette of the active skin and the overlay numbers from the core. Not
+        // CONSTANT: the skin changes on the fly.
         #[qproperty(QMap_QString_QVariant, style, READ = style, NOTIFY = style_changed)]
         type OnboardingModel = super::OnboardingModelRust;
     }
@@ -42,7 +45,7 @@ pub mod qobject {
         #[cxx_name = "styleChanged"]
         fn style_changed(self: Pin<&mut OnboardingModel>);
 
-        /// Кнопка «Пройти обучение заново» нажата где-то в окне.
+        /// The "Take the tutorial again" button was pressed somewhere in the window.
         #[qsignal]
         #[cxx_name = "replayRequested"]
         fn replay_requested(self: Pin<&mut OnboardingModel>);
@@ -51,47 +54,48 @@ pub mod qobject {
     extern "RustQt" {
         fn style(self: &OnboardingModel) -> QMap_QString_QVariant;
 
-        /// Решение при запуске: `{kind: "ask"|"show"|"nothing", step}`.
+        /// Decision at startup: `{kind: "ask"|"show"|"nothing", step}`.
         #[qinvokable]
         fn start(self: &OnboardingModel) -> QMap_QString_QVariant;
 
-        /// Ответ на вопрос первого запуска; отдаёт решение, что дальше.
+        /// Answer to the first-run question; returns the decision about what comes
+        /// next.
         #[qinvokable]
         #[cxx_name = "answerAsk"]
         fn answer_ask(self: &OnboardingModel, show: bool) -> QMap_QString_QVariant;
 
-        /// Сбросить прогресс и включить обучение; отдаёт решение.
+        /// Reset progress and turn the tutorial on; returns the decision.
         #[qinvokable]
         fn replay(self: &OnboardingModel) -> QMap_QString_QVariant;
 
-        /// «Далее» на шаге `step_id`: идентификатор следующего шага либо
-        /// пустая строка, если сценарий пройден.
+        /// "Next" on step `step_id`: the identifier of the next step, or an empty
+        /// string if the scenario is complete.
         #[qinvokable]
         fn advance(self: &OnboardingModel, step_id: &QString) -> QString;
 
-        /// «Пропустить»: весь сценарий помечается пройденным.
+        /// "Skip": the whole scenario is marked as completed.
         #[qinvokable]
         #[cxx_name = "skipAll"]
         fn skip_all(self: &OnboardingModel);
 
-        /// Тексты вопроса первого запуска.
+        /// Texts of the first-run question.
         #[qinvokable]
         fn texts(self: &OnboardingModel) -> QMap_QString_QVariant;
 
-        /// Содержимое карточки шага; пустая карта — шага нет.
+        /// Content of the step card; an empty map means there is no step.
         #[qinvokable]
         fn card(self: &OnboardingModel, step_id: &QString) -> QMap_QString_QVariant;
 
-        /// Куда наводить подсветку: `{kind: "window"|"tab"|"tab_content", tab}`.
+        /// Where to point the highlight: `{kind: "window"|"tab"|"tab_content", tab}`.
         #[qinvokable]
         fn aim(self: &OnboardingModel, step_id: &QString) -> QMap_QString_QVariant;
 
-        /// Вырез вокруг цели: `{valid, x, y, width, height}`.
+        /// Cut-out around the target: `{valid, x, y, width, height}`.
         #[qinvokable]
         fn hole(self: &OnboardingModel, x: i32, y: i32, width: i32, height: i32)
             -> QMap_QString_QVariant;
 
-        /// Место карточки в накладке: `{x, y}`.
+        /// Card position in the overlay: `{x, y}`.
         #[qinvokable]
         fn placement(
             self: &OnboardingModel,
@@ -106,7 +110,8 @@ pub mod qobject {
             hole_height: i32,
         ) -> QMap_QString_QVariant;
 
-        /// Кегли карточки от кегля приложения: `{progress, title}`.
+        /// Card font sizes derived from the application font size:
+        /// `{progress, title}`.
         #[qinvokable]
         #[cxx_name = "pointSizes"]
         fn point_sizes(self: &OnboardingModel, base: i32) -> QMap_QString_QVariant;
@@ -143,7 +148,7 @@ fn qi(value: i32) -> QVariant {
     QVariant::from(&value)
 }
 
-/// Решение ядра в виде, удобном накладке.
+/// The core's decision in a form convenient for the overlay.
 fn start_map(start: &ob::Start) -> VMap {
     let (kind, step) = match start {
         ob::Start::Ask => ("ask", ""),
@@ -153,15 +158,17 @@ fn start_map(start: &ob::Start) -> VMap {
     vmap(vec![("kind", qs(kind)), ("step", qs(step))])
 }
 
-/// Несохранившийся прогресс не обрывает обучение, но молчать о нём нельзя:
-/// иначе человек увидит его снова и никто не узнает почему.
+/// Unsaved progress does not abort the tutorial, but it must not be kept
+/// quiet: otherwise the user will see the tutorial again and nobody will
+/// know why.
 fn report(saved: std::io::Result<()>) {
     if let Err(e) = saved {
         rexon_core::log_warn!("onboarding", "прогресс не сохранён в настройки: {e}");
     }
 }
 
-/// Живой менеджер настроек; `None` — каталог настроек недоступен.
+/// The live settings manager; `None` means the settings directory is not
+/// available.
 fn settings() -> Option<SettingsManager> {
     match SettingsManager::new() {
         Ok(m) => Some(m),
@@ -173,7 +180,7 @@ fn settings() -> Option<SettingsManager> {
 }
 
 // ============================================================================
-// Реестр живых объектов для «пройти заново»
+// Registry of live objects for "take it again"
 // ============================================================================
 
 type Notify = Box<dyn Fn() -> Result<(), ()> + Send>;
@@ -183,12 +190,13 @@ fn registry() -> &'static Mutex<(u64, Vec<(u64, Notify)>)> {
     REGISTRY.get_or_init(|| Mutex::new((0, Vec::new())))
 }
 
-/// Попросить окно пройти обучение заново (кнопка в «Настройках»).
+/// Ask the window to run the tutorial again (the button in "Settings").
 ///
-/// `true` — просьбу принял хотя бы один живой объект обучения, то есть
-/// окно на Rust открыто и начнёт обучение само. `false` — окна с накладкой
-/// в процессе нет (вкладка открыта у Python-хозяина либо одиночным окном), и
-/// сказать человеку об этом обязан вызывающий.
+/// `true` means at least one live tutorial object accepted the request,
+/// i.e. the Rust window is open and will start the tutorial by itself.
+/// `false` means there is no window with an overlay in the process (the tab
+/// is open in the Python host or as a standalone window), and the caller is
+/// obliged to tell the user so.
 pub fn request_replay() -> bool {
     let mut reg = registry().lock().expect("реестр обучения не отравлен");
     let mut told = 0usize;
@@ -203,7 +211,7 @@ pub fn request_replay() -> bool {
 }
 
 // ============================================================================
-// Объект
+// Object
 // ============================================================================
 
 #[derive(Default)]
@@ -257,7 +265,7 @@ impl qobject::OnboardingModel {
         let (r, g, b, a) = ob::DIM_COLOR;
         let (ml, mt, mr, mb) = ob::CARD_MARGINS;
         vmap(vec![
-            // QML читает `#AARRGGBB`.
+            // QML reads `#AARRGGBB`.
             ("dim", qs(&format!("#{a:02x}{r:02x}{g:02x}{b:02x}"))),
             ("halo", qs(&pal.halo_hex)),
             ("haloHover", qs(&pal.halo_hover)),

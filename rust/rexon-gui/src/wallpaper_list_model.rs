@@ -1,41 +1,45 @@
-// WallpaperListModel — модель библиотеки обоев страницы «Обои», перенесённая
-// с Python на Rust/cxx-qt.
+// WallpaperListModel — the wallpaper library model of the "Wallpapers"
+// page, ported from Python to Rust/cxx-qt.
 //
-// ⚠️ Эталон здесь НЕ наш Python. Питоновская модель (bridge.py:3064) — это
-// список карт и больше ничего: ни выбора, ни ключей, ни роли `selected`.
-// Оригинал — `ui/src/model/list_models.cppm` waywallen поверх
-// `kstore::QMetaListModel` из QExtra (`include/kstore/qt/meta_list_model.hpp`,
-// `src/kstore/meta_list_model.cpp`), и выбор живёт именно В МОДЕЛИ: набор
-// ВЫБРАННЫХ КЛЮЧЕЙ, а не индексов. Ключ обои — `id_proto`
-// (`ui/src/msg/backend_msg.cppm`, `ItemTrait<Wallpaper>::key`).
+// Warning: the reference here is NOT our Python. The Python model
+// (bridge.py:3064) is a list of maps and nothing more: no selection, no
+// keys, no `selected` role. The original is waywallen's
+// `ui/src/model/list_models.cppm` on top of `kstore::QMetaListModel` from
+// QExtra (`include/kstore/qt/meta_list_model.hpp`,
+// `src/kstore/meta_list_model.cpp`), and the selection lives precisely IN
+// THE MODEL: a set of SELECTED KEYS, not indices. A wallpaper's key is
+// `id_proto` (`ui/src/msg/backend_msg.cppm`, `ItemTrait<Wallpaper>::key`).
 //
-// Разница не теоретическая, и порт её обязан снять (правило #16 — баги при
-// переводе чиним, а не консервируем):
+// The difference is not theoretical, and the port must remove it (rule #16
+// — bugs are fixed during porting, not preserved):
 //
-//   1. Роли `selected` у нас не было вовсе, а делегат вендора её читает
-//      (`page/WallpaperPage.qml:1038`, `selected: model.selected ?? false`).
-//      То есть подсветка выделенных карточек в Rexon не работала никогда.
-//   2. Выбор по индексам разъезжается при любой перестройке списка:
-//      пересканировали библиотеку, сменили сортировку — и выделенными
-//      оказываются ЧУЖИЕ обои. По ключам такого не бывает: пропала обоя —
-//      пропал и её выбор.
-//   3. `selectedKeys()` оригинала отдаёт ключи В ПОРЯДКЕ СТРОК модели, а
-//      хвостом — выбранные ключи, которых в списке уже нет (их не
-//      выбрасывают: они вернутся, когда фильтр перестанет их скрывать).
+//   1. We did not have the `selected` role at all, while the vendor's
+//      delegate reads it (`page/WallpaperPage.qml:1038`,
+//      `selected: model.selected ?? false`). That is, highlighting of
+//      selected cards never worked in Rexon.
+//   2. Selection by indices drifts on any rebuild of the list: the library
+//      was rescanned, the sorting changed — and SOMEONE ELSE's wallpapers
+//      end up selected. With keys this does not happen: a wallpaper
+//      disappeared — its selection disappeared too.
+//   3. The original's `selectedKeys()` returns keys IN THE ORDER OF THE
+//      MODEL'S ROWS, followed by the selected keys that are no longer in
+//      the list (they are not thrown away: they will come back when the
+//      filter stops hiding them).
 //
-// Разделение слоёв то же, что в партиях 2-3: состояние и решения «какие
-// сигналы и в каком порядке» живут в чистой структуре `WallpaperRows` без
-// Qt, а QObject только исполняет полученный список событий.
+// The layer split is the same as in batches 2-3: the state and the
+// decisions "which signals and in what order" live in the plain
+// `WallpaperRows` struct without Qt, while the QObject only executes the
+// resulting list of events.
 
-/// Мост cxx-qt: подкласс QAbstractListModel.
+/// cxx-qt bridge: a QAbstractListModel subclass.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        /// ⚠️ Без `#[qobject]` — см. remote_list_model.rs: на каждый
-        /// `#[qobject]`-тип в `extern "C++Qt"` cxx-qt печатает пару шимов
-        /// приведения, собранных по имени ТИПА, и второй такой мост в крейте
-        /// даёт `duplicate symbol` на линковке.
+        /// Warning: without `#[qobject]` — see remote_list_model.rs: for every
+        /// `#[qobject]` type in `extern "C++Qt"` cxx-qt emits a pair of cast shims
+        /// keyed by the TYPE name, and a second such bridge in the crate gives a
+        /// `duplicate symbol` at link time.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -71,24 +75,24 @@ pub mod qobject {
         #[qml_element]
         #[base = QAbstractListModel]
         #[qproperty(i32, count, READ = count, NOTIFY = count_changed)]
-        /// `selectedCount` оригинала — размер набора выбранных ключей.
+        /// The original's `selectedCount` — the size of the set of selected keys.
         #[qproperty(i32, selected_count, cxx_name = "selectedCount",
                     READ = selected_count, NOTIFY = selected_count_changed)]
-        /// `selectionEnabled` оригинала. Конструктор модели обоев ставит
-        /// его в true (`list_models.cpp:12`) и больше никто не трогает —
-        /// вендорный QML этого свойства не пишет вовсе. Оставлено читаемым
-        /// свойством, чтобы делегат мог спросить.
+        /// The original's `selectionEnabled`. The wallpaper model constructor sets
+        /// it to true (`list_models.cpp:12`) and nobody touches it afterwards — the
+        /// vendored QML does not write this property at all. Kept as a readable
+        /// property so that the delegate can ask.
         #[qproperty(bool, selection_enabled, cxx_name = "selectionEnabled",
                     READ = selection_enabled, NOTIFY = selection_enabled_changed)]
-        /// waywallen 0.6.0: `hasMore` модели (`QMetaListModel` QExtra) —
-        /// сетка `WallpaperView` подписана на `hasMoreChanged` и по нему
-        /// заново спрашивает догрузку (`notifyFetchStateChanged`).
+        /// waywallen 0.6.0: the model's `hasMore` (QExtra's `QMetaListModel`) — the
+        /// `WallpaperView` grid is subscribed to `hasMoreChanged` and on it asks for
+        /// more again (`notifyFetchStateChanged`).
         #[qproperty(bool, has_more, cxx_name = "hasMore", READ = has_more,
                     NOTIFY = has_more_changed)]
         type WallpaperListModel = super::WallpaperListModelRust;
     }
 
-    // ── Сигналы ───────────────────────────────────────────────────────────
+    // ── Signals ───────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
         #[qsignal]
         #[cxx_name = "countChanged"]
@@ -102,23 +106,24 @@ pub mod qobject {
         #[cxx_name = "selectionEnabledChanged"]
         fn selection_enabled_changed(self: Pin<&mut WallpaperListModel>);
 
-        /// Несёт значение, как `hasMoreChanged(bool)` QExtra и наша
-        /// модель выдачи Discover.
+        /// Carries the value, like QExtra's `hasMoreChanged(bool)` and our Discover
+        /// results model.
         #[qsignal]
         #[cxx_name = "hasMoreChanged"]
         fn has_more_changed(self: Pin<&mut WallpaperListModel>, value: bool);
 
-        /// `selectionChanged` оригинала: «набор выбранного стал другим».
-        /// Отдельно от `selectedCountChanged`, потому что состав может
-        /// смениться без изменения размера.
+        /// The original's `selectionChanged`: "the selected set became different".
+        /// Separate from `selectedCountChanged`, because the composition may change
+        /// without the size changing.
         #[qsignal]
         #[cxx_name = "selectionChanged"]
         fn selection_changed(self: Pin<&mut WallpaperListModel>);
 
-        /// waywallen 0.5.0: модель просит следующую страницу (`reqFetchMore`
-        /// `QMetaListModel` QExtra). Ловит его `WallpaperListQuery::fetchMore`
-        /// — так сетка «Скрытых обоев» догружает строки сама. Аргумент —
-        /// число строк, как у оригинала; запрос его не читает.
+        /// waywallen 0.5.0: the model asks for the next page (`reqFetchMore` of
+        /// QExtra's `QMetaListModel`). It is caught by `WallpaperListQuery::fetchMore`
+        /// — that is how the "Hidden wallpapers" grid loads more rows by itself. The
+        /// argument is the number of rows, as in the original; the query does not
+        /// read it.
         #[qsignal]
         #[cxx_name = "reqFetchMore"]
         fn req_fetch_more(self: Pin<&mut WallpaperListModel>, row: i32);
@@ -134,21 +139,21 @@ pub mod qobject {
         );
     }
 
-    // ── Наследуемые методы базового класса ────────────────────────────────
+    // ── Inherited methods of the base class ───────────────────────────────
     extern "RustQt" {
         /// # Safety
-        /// Требует парного end_reset_model.
+        /// Requires a paired end_reset_model.
         #[inherit]
         #[cxx_name = "beginResetModel"]
         unsafe fn begin_reset_model(self: Pin<&mut WallpaperListModel>);
         /// # Safety
-        /// Парный к begin_reset_model.
+        /// Paired with begin_reset_model.
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut WallpaperListModel>);
 
         /// # Safety
-        /// Диапазон обязан быть корректным, требуется парный end_insert_rows.
+        /// The range must be valid; a paired end_insert_rows is required.
         #[inherit]
         #[cxx_name = "beginInsertRows"]
         unsafe fn begin_insert_rows(
@@ -158,7 +163,7 @@ pub mod qobject {
             last: i32,
         );
         /// # Safety
-        /// Парный к begin_insert_rows.
+        /// Paired with begin_insert_rows.
         #[inherit]
         #[cxx_name = "endInsertRows"]
         unsafe fn end_insert_rows(self: Pin<&mut WallpaperListModel>);
@@ -174,9 +179,9 @@ pub mod qobject {
         ) -> QModelIndex;
     }
 
-    // ── Переопределения QAbstractListModel ────────────────────────────────
-    // Без #[qinvokable]: инвокабл в наследнике затеняет укороченные клоны
-    // сигнатур базы, которые moc делает ради default-аргументов.
+    // ── QAbstractListModel overrides ──────────────────────────────────────
+    // Without #[qinvokable]: an invokable in a subclass shadows the shortened
+    // clones of the base's signatures that moc makes for default arguments.
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -189,8 +194,8 @@ pub mod qobject {
         #[cxx_override]
         fn data(self: &WallpaperListModel, index: &QModelIndex, role: i32) -> QVariant;
 
-        /// waywallen 0.5.0: протокол бесконечной прокрутки — вид спрашивает
-        /// сам (`QMetaListModel::canFetchMore`/`fetchMore` QExtra).
+        /// waywallen 0.5.0: the infinite scrolling protocol — the view asks by
+        /// itself (QExtra's `QMetaListModel::canFetchMore`/`fetchMore`).
         #[cxx_override]
         #[cxx_name = "canFetchMore"]
         fn can_fetch_more(self: &WallpaperListModel, parent: &QModelIndex) -> bool;
@@ -210,18 +215,19 @@ pub mod qobject {
         fn has_more(self: &WallpaperListModel) -> bool;
     }
 
-    // ── Инвокаблы (имена — из оригинала, менять нельзя) ───────────────────
+    // ── Invokables (names from the original, must not be changed) ─────────
     extern "RustQt" {
-        /// Строка целиком картой — `WallpaperPage.qml` кладёт её в
-        /// `root.selectedWallpaper`, панель деталей читает поля точкой.
+        /// The whole row as a map — `WallpaperPage.qml` puts it into
+        /// `root.selectedWallpaper`, and the details panel reads the fields with a
+        /// dot.
         #[qinvokable]
         fn item(self: &WallpaperListModel, row: i32) -> QMap_QString_QVariant;
 
-        /// Размер обои числом. У оригинала инвокабл нужен потому, что
-        /// Qt-Protobuf помечает `int64`-свойства как SCRIPTABLE false и QML
-        /// не может прочитать `wallpaper.size` напрямую
-        /// (`list_models.cppm:35`). У нас строки — карты, но имя и поведение
-        /// обязаны совпадать: `WallpaperDetailPanel.qml` зовёт `sizeOf(wp)`.
+        /// Wallpaper size as a number. In the original the invokable is needed
+        /// because Qt Protobuf marks `int64` properties as SCRIPTABLE false and QML
+        /// cannot read `wallpaper.size` directly (`list_models.cppm:35`). Our rows
+        /// are maps, but the name and the behaviour must match:
+        /// `WallpaperDetailPanel.qml` calls `sizeOf(wp)`.
         #[qinvokable]
         #[cxx_name = "sizeOf"]
         fn size_of(self: &WallpaperListModel, wallpaper: &QMap_QString_QVariant) -> f64;
@@ -259,26 +265,26 @@ pub mod qobject {
         #[cxx_name = "selectedKeys"]
         fn selected_keys(self: &WallpaperListModel) -> QStringList;
 
-        /// Ключи выбранных обоей, которые ДОПУСКАЮТ удаление
-        /// (`supportsItemRemove`). Оригинал считает это в
-        /// `WallpaperSelectStorage::removableSelectedWallpaperIds`, перебирая
-        /// `selectedItems()`; у нас признак лежит в строке модели, поэтому
-        /// считает модель — а хранилище выбора только спрашивает.
+        /// Keys of the selected wallpapers that ALLOW removal (`supportsItemRemove`).
+        /// The original computes this in
+        /// `WallpaperSelectStorage::removableSelectedWallpaperIds` by iterating over
+        /// `selectedItems()`; for us the flag lies in the model's row, so the model
+        /// computes it — and the selection storage only asks.
         #[qinvokable]
         #[cxx_name = "removableSelectedKeys"]
         fn removable_selected_keys(self: &WallpaperListModel) -> QStringList;
 
-        /// Выбранные строки целиком — `selectedItems()` оригинала.
+        /// The selected rows in full — the original's `selectedItems()`.
         #[qinvokable]
         #[cxx_name = "selectedItems"]
         fn selected_items(self: &WallpaperListModel) -> QList_QVariant;
 
-        /// Роль по имени — ею проверки читают строки, не гадая о номерах.
+        /// A role by name — checks read rows with it without guessing numbers.
         #[qinvokable]
         #[cxx_name = "roleNumber"]
         fn role_number(self: &WallpaperListModel, name: &QString) -> i32;
 
-        /// Значение роли по имени (для проверок из QML).
+        /// A role's value by name (for checks from QML).
         #[qinvokable]
         #[cxx_name = "roleValue"]
         fn role_value(self: &WallpaperListModel, row: i32, name: &QString) -> QVariant;
@@ -299,21 +305,23 @@ use serde_json::Value;
 use crate::qvalue::{json_to_variant, variant_to_json};
 
 // ============================================================================
-// Чистый слой: строки, выбор и события — без единого Qt-типа
+// Plain layer: rows, selection and events — without a single Qt type
 // ============================================================================
 
-/// Ключ строки — `id_proto` (`ItemTrait<Wallpaper>::key` оригинала).
+/// Row key — `id_proto` (the original's `ItemTrait<Wallpaper>::key`).
 pub const KEY_FIELD: &str = "id_proto";
 
-/// Признак «обою можно удалить» — по нему считается removableSelected*.
+/// The "the wallpaper can be removed" flag — removableSelected* is computed
+/// from it.
 pub const REMOVABLE_FIELD: &str = "supportsItemRemove";
-/// waywallen 0.4.4: признак «обоина скрыта» в записи библиотеки.
+/// waywallen 0.4.4: the "wallpaper is hidden" flag in a library record.
 pub const HIDDEN_FIELD: &str = "hidden";
 
-/// Ключи записи библиотеки в том же порядке, в каком их кладёт ядро
-/// (`rexon_core::we_wallpaper::entry_to_map`). Роли считаются от этого
-/// порядка, поэтому список обязан совпадать по составу с конвертером ядра;
-/// имена — свойства ГАДЖЕТА оригинала (camelCase, `id` → `id_proto`).
+/// Keys of a library record in the same order the core puts them
+/// (`rexon_core::we_wallpaper::entry_to_map`). The roles are counted from
+/// this order, so the list must match the core converter in composition;
+/// the names are the original's GADGET properties (camelCase, `id` →
+/// `id_proto`).
 pub const ENTRY_KEYS: &[&str] = &[
     "id_proto",
     "name",
@@ -333,39 +341,40 @@ pub const ENTRY_KEYS: &[&str] = &[
     "wallpaperLayoutOverrideSet",
     "supportsItemRemove",
     "supportsItemUnsubscribe",
-    // v0.3.5: страница обоины на сайте источника.
+    // v0.3.5: the wallpaper's page on the source's site.
     "webUrl",
     "metadata",
-    // v0.4.4: обоина скрыта (`wallpaper_hide`). В КОНЦЕ списка — номера
-    // ролей прежних ключей не сдвигаются.
+    // v0.4.4: the wallpaper is hidden (`wallpaper_hide`). At the END of the
+    // list — the role numbers of the previous keys do not shift.
     "hidden",
-    // v0.6.0: обновление в источнике и подтип записи (1 — таймлайн). Тоже
-    // в конце — номера ролей прежних ключей не сдвигаются.
+    // v0.6.0: an update at the source and the record subtype (1 — timeline).
+    // Also at the end — the role numbers of the previous keys do not shift.
     "updateAvailable",
     "subType",
 ];
 
-/// `Qt::UserRole`. Роль выбора у оригинала — ровно она
-/// (`QMetaListModel::SelectedRole`), поля записи идут следом.
+/// `Qt::UserRole`. The original's selection role is exactly that
+/// (`QMetaListModel::SelectedRole`), and the record fields follow.
 pub const SELECTED_ROLE: i32 = 0x0100;
 
-/// Роль первого поля записи.
+/// Role of the first record field.
 pub const FIRST_ENTRY_ROLE: i32 = SELECTED_ROLE + 1;
 
-/// waywallen 0.6.0 (`GridListModel`): ключ строки (`itemKey`) и строка
-/// целиком (`item`) — их читает `MD.ItemModelSource` сетки. Номера — те же,
-/// что у оригинала (`Qt::UserRole + 0x10000` и следующий).
+/// waywallen 0.6.0 (`GridListModel`): the row key (`itemKey`) and the whole
+/// row (`item`) — they are read by the grid's `MD.ItemModelSource`. The
+/// numbers are the same as in the original (`Qt::UserRole + 0x10000` and the
+/// next one).
 pub const ITEM_KEY_ROLE: i32 = SELECTED_ROLE + 0x10000;
 pub const ITEM_ROLE: i32 = ITEM_KEY_ROLE + 1;
 
-/// Что модель обязана сообщить Qt после изменения состояния.
+/// What the model must tell Qt after a state change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelEvent {
-    /// Полная перестройка (begin/endResetModel вокруг).
+    /// A full rebuild (begin/endResetModel around it).
     Reset,
     /// countChanged.
     CountChanged,
-    /// dataChanged по роли выбора на диапазоне строк.
+    /// dataChanged for the selection role over a range of rows.
     SelectedRange { first: i32, last: i32 },
     /// selectedCountChanged.
     SelectedCountChanged,
@@ -373,21 +382,22 @@ pub enum ModelEvent {
     SelectionChanged,
 }
 
-/// Строки библиотеки и выбор по ключам.
+/// Library rows and selection by keys.
 #[derive(Debug, Default)]
 pub struct WallpaperRows {
     rows: Vec<VMap>,
-    /// Выбранные КЛЮЧИ. Множество, а не индексы: перестройка списка не
-    /// должна переносить выделение на чужие обои.
+    /// Selected KEYS. A set, not indices: a rebuild of the list must not move
+    /// the selection onto other wallpapers.
     selected: BTreeSet<String>,
     selection_enabled: bool,
-    /// `hasMore` `QMetaListModel`: у запроса есть следующая страница.
-    /// Ставит запрос-владелец по ответу демона (waywallen 0.5.0).
+    /// `hasMore` of `QMetaListModel`: the query has a next page. Set by the
+    /// owner query from the daemon's answer (waywallen 0.5.0).
     has_more: bool,
 }
 
 impl WallpaperRows {
-    /// Модель обоев создаётся с включённым выбором (`list_models.cpp:12`).
+    /// The wallpaper model is created with selection enabled
+    /// (`list_models.cpp:12`).
     pub fn new() -> Self {
         Self {
             rows: Vec::new(),
@@ -405,14 +415,14 @@ impl WallpaperRows {
         self.has_more = value;
     }
 
-    /// `canFetchMore`: у плоского списка дети есть только у корня.
+    /// `canFetchMore`: in a flat list only the root has children.
     pub fn can_fetch_more(&self, root: bool) -> bool {
         root && self.has_more
     }
 
-    /// `QMetaListModel::fetchMore`: флаг гасится ДО запроса — иначе вид
-    /// дёргал бы догрузку повторно, пока страница в полёте. `true` —
-    /// послать `reqFetchMore`.
+    /// `QMetaListModel::fetchMore`: the flag is cleared BEFORE the request —
+    /// otherwise the view would keep asking for more while the page is in
+    /// flight. `true` means send `reqFetchMore`.
     pub fn fetch_more(&mut self, root: bool) -> bool {
         if !self.can_fetch_more(root) {
             return false;
@@ -421,9 +431,9 @@ impl WallpaperRows {
         true
     }
 
-    /// Дописать страницу в хвост (догрузка). Выбор, как и при сбросе, не
-    /// трогается: выбранная ранее обоя, пришедшая со страницей, сразу
-    /// подсвечена.
+    /// Append a page at the tail (loading more). The selection, as with a
+    /// reset, is not touched: a wallpaper selected earlier that arrives with
+    /// the page is highlighted at once.
     pub fn append_rows(&mut self, rows: Vec<VMap>) -> Vec<ModelEvent> {
         if rows.is_empty() {
             return Vec::new();
@@ -460,8 +470,8 @@ impl WallpaperRows {
         self.selected.len()
     }
 
-    /// Ключ строки. Пустая строка означает «строки нет или ключа нет» — у
-    /// оригинала это `selectionKeyAt`, и по пустому ключу он не выбирает.
+    /// Row key. An empty string means "no row or no key" — in the original this
+    /// is `selectionKeyAt`, and it does not select by an empty key.
     pub fn key_at(&self, row: i32) -> String {
         self.row(row)
             .and_then(|m| m.get(KEY_FIELD))
@@ -478,9 +488,9 @@ impl WallpaperRows {
         !key.is_empty() && self.selected.contains(&key)
     }
 
-    /// Полная замена строк. Выбор НЕ чистится: у оригинала он живёт в
-    /// ключах и переживает перестройку списка (обоя вернулась — вернулось и
-    /// её выделение).
+    /// A full replacement of the rows. The selection is NOT cleared: in the
+    /// original it lives in keys and survives a rebuild of the list (the
+    /// wallpaper came back — its highlight came back too).
     pub fn reset_rows(&mut self, rows: Vec<VMap>) -> Vec<ModelEvent> {
         let count_changed = self.rows.len() != rows.len();
         let selected_before = self.selected_count();
@@ -489,8 +499,9 @@ impl WallpaperRows {
         if count_changed {
             out.push(ModelEvent::CountChanged);
         }
-        // Размер выбора не меняется (ключи те же), но состав ВИДИМОГО
-        // выбора мог поехать — страница пересчитывает по selectionChanged.
+        // The selection size does not change (the keys are the same), but the
+        // composition of the VISIBLE selection may have shifted — the page
+        // recomputes on selectionChanged.
         if selected_before > 0 {
             out.push(ModelEvent::SelectionChanged);
         }
@@ -531,9 +542,8 @@ impl WallpaperRows {
         self.set_selected(row, next)
     }
 
-    /// Диапазон строк. Границы прижимаются к списку и переставляются
-    /// местами, если пришли задом наперёд, — как `std::clamp` + `swap`
-    /// оригинала.
+    /// A range of rows. The bounds are clamped to the list and swapped if they
+    /// came in reverse — like the original's `std::clamp` + `swap`.
     pub fn select_range(&mut self, from: i32, to: i32, selected: bool) -> (bool, Vec<ModelEvent>) {
         if !self.selection_enabled || self.rows.is_empty() {
             return (false, Vec::new());
@@ -587,9 +597,10 @@ impl WallpaperRows {
         self.all_rows_events()
     }
 
-    /// Ключи выбранного: сперва в порядке строк модели, потом — выбранные
-    /// ключи, которых в списке сейчас нет. Порядок ровно как у оригинала;
-    /// хвост нужен, потому что фильтр может временно прятать выбранное.
+    /// Keys of the selection: first in the order of the model's rows, then the
+    /// selected keys that are not in the list right now. The order is exactly
+    /// as in the original; the tail is needed because a filter may temporarily
+    /// hide selected items.
     pub fn selected_keys(&self) -> Vec<String> {
         let mut out = Vec::with_capacity(self.selected.len());
         let mut seen = BTreeSet::new();
@@ -608,11 +619,11 @@ impl WallpaperRows {
         out
     }
 
-    /// Ключи выбранного, у которых стоит `supportsItemRemove`.
+    /// Keys of the selection that have `supportsItemRemove` set.
     ///
-    /// Считается ТОЛЬКО по видимым строкам: признак живёт в записи, а про
-    /// ключ, которого в списке нет, мы ничего не знаем — и просить демона
-    /// удалить его вслепую нельзя.
+    /// Computed ONLY over visible rows: the flag lives in the record, and about
+    /// a key that is not in the list we know nothing — asking the daemon to
+    /// remove it blindly is not allowed.
     pub fn removable_selected_keys(&self) -> Vec<String> {
         let mut out = Vec::new();
         for row in 0..self.rows.len() as i32 {
@@ -632,9 +643,9 @@ impl WallpaperRows {
         out
     }
 
-    /// Сколько выбранных строк скрыто — `hiddenSelectedCount` оригинала
-    /// (waywallen 0.4.4). Как и у оригинала, считается по выбранным
-    /// ЗАПИСЯМ: ключ, которого в списке нет, ничего о себе не говорит.
+    /// How many selected rows are hidden — the original's `hiddenSelectedCount`
+    /// (waywallen 0.4.4). As in the original, it is counted over selected
+    /// RECORDS: a key that is not in the list says nothing about itself.
     pub fn hidden_selected_count(&self) -> usize {
         self.selected_items()
             .into_iter()
@@ -642,7 +653,7 @@ impl WallpaperRows {
             .count()
     }
 
-    /// Выбранные строки целиком, в порядке модели.
+    /// The selected rows in full, in model order.
     pub fn selected_items(&self) -> Vec<&VMap> {
         (0..self.rows.len() as i32)
             .filter(|row| self.is_selected(*row))
@@ -664,7 +675,8 @@ impl WallpaperRows {
     }
 }
 
-/// Номер роли по имени. `selected` — роль выбора, остальные — поля записи.
+/// Role number by name. `selected` is the selection role, the others are
+/// record fields.
 pub fn role_of(name: &str) -> Option<i32> {
     match name {
         "selected" => return Some(SELECTED_ROLE),
@@ -678,7 +690,7 @@ pub fn role_of(name: &str) -> Option<i32> {
         .map(|i| FIRST_ENTRY_ROLE + i as i32)
 }
 
-/// Имя поля записи по номеру роли.
+/// Record field name by role number.
 pub fn key_of(role: i32) -> Option<&'static str> {
     usize::try_from(role - FIRST_ENTRY_ROLE)
         .ok()
@@ -686,10 +698,10 @@ pub fn key_of(role: i32) -> Option<&'static str> {
 }
 
 // ============================================================================
-// Qt-слой
+// Qt layer
 // ============================================================================
 
-/// Rust-состояние модели.
+/// Rust state of the model.
 pub struct WallpaperListModelRust {
     rows: WallpaperRows,
 }
@@ -704,9 +716,8 @@ impl Default for WallpaperListModelRust {
 
 impl cxx_qt::Initialize for qobject::WallpaperListModel {
     fn initialize(self: Pin<&mut Self>) {
-        // Состояние по умолчанию уже правильное (выбор включён); метод
-        // нужен, потому что #[base]-объекты cxx-qt конструирует через
-        // Initialize.
+        // The default state is already correct (selection enabled); the method is
+        // needed because cxx-qt constructs #[base] objects through Initialize.
         let _ = self;
     }
 }
@@ -744,8 +755,8 @@ impl qobject::WallpaperListModel {
 
     pub fn role_names(&self) -> qobject::QHash_i32_QByteArray {
         let mut names = qobject::QHash_i32_QByteArray::default();
-        // `selected` объявляется только при включённом выборе — так же, как
-        // у оригинала (`meta_list_model.cpp:278`).
+        // `selected` is declared only with selection enabled — just as in the
+        // original (`meta_list_model.cpp:278`).
         if self.rows.selection_enabled() {
             names.insert(SELECTED_ROLE, cxx_qt_lib::QByteArray::from("selected"));
         }
@@ -769,8 +780,8 @@ impl qobject::WallpaperListModel {
             return QVariant::from(&self.rows.is_selected(row));
         }
         if role == ITEM_KEY_ROLE {
-            // Ключ обязан быть СТРОКОЙ: иначе `ItemModelSource` отвергает
-            // модель целиком («Key and reuse type must be strings»).
+            // The key must be a STRING: otherwise `ItemModelSource` rejects the whole
+            // model ("Key and reuse type must be strings").
             let key = self.rows.row(row).and_then(|m| m.get(KEY_FIELD));
             let text = match key {
                 Some(Value::String(s)) => s.clone(),
@@ -802,9 +813,9 @@ impl qobject::WallpaperListModel {
     }
 
     pub fn size_of(&self, wallpaper: &qobject::QMap_QString_QVariant) -> f64 {
-        // Карта приходит из `item()`, то есть значение уже число; но QML
-        // может отдать и строку (панель деталей зовёт sizeOf на том, что
-        // положил в свойство), поэтому разбираем оба вида.
+        // The map comes from `item()`, so the value is already a number; but QML
+        // may hand over a string too (the details panel calls sizeOf on what it
+        // put into a property), so both forms are parsed.
         let Some(value) = wallpaper.get(&QString::from("size")) else {
             return 0.0;
         };
@@ -884,7 +895,7 @@ impl qobject::WallpaperListModel {
         self.rows.can_fetch_more(!parent.is_valid())
     }
 
-    // pub: догрузку дёргает стенд QML так же, как это делает сетка.
+    // pub: the QML bench triggers loading more the same way the grid does.
     pub fn fetch_more(mut self: Pin<&mut Self>, parent: &QModelIndex) {
         if self.as_mut().rust_mut().rows.fetch_more(!parent.is_valid()) {
             self.as_mut().has_more_changed(false);
@@ -893,9 +904,9 @@ impl qobject::WallpaperListModel {
         }
     }
 
-    // ── Rust-API для запроса-владельца ────────────────────────────────────
+    // ── Rust API for the owner query ──────────────────────────────────────
 
-    /// Флаг «есть следующая страница» (`setHasMore` оригинала).
+    /// The "there is a next page" flag (the original's `setHasMore`).
     pub fn set_page_has_more(mut self: Pin<&mut Self>, value: bool) {
         if self.rows.has_more() == value {
             return;
@@ -904,13 +915,13 @@ impl qobject::WallpaperListModel {
         self.has_more_changed(value);
     }
 
-    /// Строк в модели — запрос дописывает ей только недостающий хвост.
+    /// Rows in the model — the query appends to it only the missing tail.
     pub fn row_total(&self) -> usize {
         self.rows.len()
     }
 
-    /// Догрузка страницы: объявить вставку, дописать, закрыть, потом хвост
-    /// сигналов.
+    /// Loading a page: announce the insertion, append, close, then the tail of
+    /// the signals.
     pub fn append_rows(mut self: Pin<&mut Self>, rows: Vec<VMap>) {
         if rows.is_empty() {
             return;
@@ -927,7 +938,8 @@ impl qobject::WallpaperListModel {
         self.emit_events(&events);
     }
 
-    /// Полная замена строк библиотеки (ответ демона на `wallpaper_list`).
+    /// A full replacement of the library rows (the daemon's answer to
+    /// `wallpaper_list`).
     pub fn reset_rows(mut self: Pin<&mut Self>, rows: Vec<VMap>) {
         let events = unsafe {
             self.as_mut().begin_reset_model();
@@ -938,7 +950,7 @@ impl qobject::WallpaperListModel {
         self.emit_events(&events);
     }
 
-    /// Ключи выбранного — ими пользуется хранилище выбора.
+    /// Keys of the selection — the selection storage uses them.
     pub fn selected_keys_vec(&self) -> Vec<String> {
         self.rows.selected_keys()
     }
@@ -958,7 +970,8 @@ impl qobject::WallpaperListModel {
     pub fn emit_events(mut self: Pin<&mut Self>, events: &[ModelEvent]) {
         for event in events {
             match event {
-                // Сброс уже объявлен begin/endResetModel вокруг правки.
+                // The reset is already announced with begin/endResetModel around the
+                // edit.
                 ModelEvent::Reset => {}
                 ModelEvent::CountChanged => self.as_mut().count_changed(),
                 ModelEvent::SelectedRange { first, last } => {

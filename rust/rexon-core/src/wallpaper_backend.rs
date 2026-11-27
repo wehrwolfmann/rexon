@@ -1,105 +1,107 @@
-//! Кто рисует живые обои в текущей сессии — единое решение на весь Rexon.
+//! Who draws live wallpapers in the current session — one decision for all of Rexon.
 //!
-//! До этого модуля знание было размазано: `_is_kde()` в
-//! `waywallen_kde_plugin`, `is_wayland_session()` в `wallpaper_mmap`,
-//! ветки `if self.de == "kde"` в старом движке обоев. Из-за этого
-//! появлялись пути, дерущиеся за один и тот же экран. Здесь — одна
-//! функция [`pick`], которой пользуются все (правило #12).
+//! Before this module the knowledge was smeared around: `_is_kde()` in
+//! `waywallen_kde_plugin`, `is_wayland_session()` in `wallpaper_mmap`,
+//! `if self.de == "kde"` branches in the old wallpaper engine. Because of
+//! this, paths appeared that fought over the same screen. Here is one
+//! function, [`pick`], used by everyone (rule #12).
 //!
-//! Решение зеркалит выбор БЭКЕНДА ВЫВОДА в самом демоне waywallen
-//! (с 0.5.0: определения — `src/plugin/display_registry.rs`,
-//! `builtin_display_defs`; выбор — `src/wallframe/display/spawner.rs`,
-//! `detect_de` + `pick_backend`; сверка 24.10.2026) — знать его нужно
-//! потому, что от режима запуска зависит, обязан ли Rexon что-то делать:
+//! The decision mirrors the choice of the OUTPUT BACKEND in the waywallen
+//! daemon itself (since 0.5.0: definitions — `src/plugin/display_registry.rs`,
+//! `builtin_display_defs`; choice — `src/wallframe/display/spawner.rs`,
+//! `detect_de` + `pick_backend`; checked 24.10.2026) — it has to be known
+//! because the launch mode decides whether Rexon has to do anything:
 //!
-//! * `kde-plasma` → `SpawnMode::External`, приоритет 100, жёсткое
-//!   правило «KDE всегда идёт сюда и НИКОГДА не откатывается».
-//!   External = демон плагин не запускает, его ставит и выбирает
-//!   кто-то снаружи. Снаружи — это мы: Rexon ставит kpackage
-//!   `org.waywallen.kde` через `kpackagetool6` и выбирает его на
-//!   десктоп-контейнментах.
-//! * `layer-shell` → `SpawnMode::Daemon`, приоритет 50, список
-//!   рабочих столов `hyprland, sway, niri, river, cosmic, wayfire`,
-//!   требования `wlr-layer-shell` + `linux-dmabuf-v4`. Daemon = демон САМ находит
-//!   рядом с собой бинарь `waywallen-layer-shell` и запускает его.
-//!   **Rexon тут не делает ничего** — достаточно того, что демон
-//!   поднят. Своего пути для этих сессий нам не нужно.
+//! * `kde-plasma` → `SpawnMode::External`, priority 100, a hard rule "KDE
+//!   always goes here and NEVER falls back". External = the daemon does not
+//!   launch the plugin, someone outside installs and selects it. Outside is
+//!   us: Rexon installs the `org.waywallen.kde` kpackage via `kpackagetool6`
+//!   and selects it on the desktop containments.
+//! * `layer-shell` → `SpawnMode::Daemon`, priority 50, desktop list
+//!   `hyprland, sway, niri, river, cosmic, wayfire`, requirements
+//!   `wlr-layer-shell` + `linux-dmabuf-v4`. Daemon = the daemon ITSELF finds
+//!   the `waywallen-layer-shell` binary next to itself and launches it.
+//!   **Rexon does nothing here** — it is enough that the daemon is up. We do
+//!   not need a path of our own for these sessions.
 //!
-//! Отсюда главный вывод, ради которого модуль и написан: наш
-//! собственный subprocess (хост `rexon-wallpaper-host` на LayerShellQt)
-//! на wlr-композиторах — ЛИШНИЙ, он дублирует штатный
-//! `waywallen-layer-shell` и дерётся с ним за поверхность. Его
-//! настоящая ниша — X11. Сам демон от X11 не зависит (он рисует в
-//! dma-buf и раздаёт кадры клиентам вывода); на X11 нет только КЛИЕНТА
-//! вывода: `waywallen-layer-shell` — это Wayland. Исключение — Plasma на
-//! X11: плагин `org.waywallen.kde` работает и там (plasmashell нужен
-//! `QT_XCB_GL_INTEGRATION=xcb_egl`, README waywallen-display), и жёсткое
-//! правило KDE в демоне тип сеанса не смотрит. [`pick`] пока отправляет
-//! любой X11 к нашему процессу, KDE тоже: перевод Plasma-X11 на плагин —
-//! отдельное решение (настройка plasmashell), здесь не принято.
+//! Hence the main conclusion this module was written for: our own subprocess
+//! (the `rexon-wallpaper-host` host on LayerShellQt) on wlr compositors is
+//! SUPERFLUOUS, it duplicates the stock `waywallen-layer-shell` and fights it
+//! for the surface. Its real niche is X11. The daemon itself does not depend
+//! on X11 (it draws into dma-buf and hands frames out to output clients); on
+//! X11 only the output CLIENT is missing: `waywallen-layer-shell` is Wayland.
+//! The exception is Plasma on X11: the `org.waywallen.kde` plugin works there
+//! too (plasmashell needs `QT_XCB_GL_INTEGRATION=xcb_egl`, the
+//! waywallen-display README), and the daemon's hard KDE rule does not look at
+//! the session type. For now [`pick`] sends any X11 to our process, KDE too:
+//! moving Plasma-X11 to the plugin is a separate decision (a plasmashell
+//! setting), not taken here.
 //!
-//! ⚠️ `river` есть в списке демона, но отсутствует в таблице поддержки
-//! их README — берём как есть из кода, код честнее таблицы.
+//! ⚠️ `river` is in the daemon's list but missing from the support table of
+//! their README — we take it from the code as is, the code is more honest
+//! than the table.
 //!
-//! ⚠️ Wayfire сам `XDG_CURRENT_DESKTOP` не выставляет, поэтому демон узнаёт
-//! его ещё и по сокету: если среди токенов `XDG_CURRENT_DESKTOP` нет ничего,
-//! кроме `wayland` (или переменная пуста), а `WAYFIRE_SOCKET` непуст, к
-//! токенам дописывается `wayfire` (`desktop_tokens` в spawner.rs). То же
-//! правило — в [`session_desktops`].
+//! ⚠️ Wayfire does not set `XDG_CURRENT_DESKTOP` itself, so the daemon also
+//! recognizes it by the socket: if the `XDG_CURRENT_DESKTOP` tokens contain
+//! nothing but `wayland` (or the variable is empty) and `WAYFIRE_SOCKET` is
+//! non-empty, `wayfire` is appended to the tokens (`desktop_tokens` in
+//! spawner.rs). The same rule is in [`session_desktops`].
 //!
-//! Не зеркалим сознательно одно: у демона 0.5.0 есть ещё определение
-//! `gnome-shell` (`SpawnMode::External`) — его ставит расширение оболочки
-//! от самого waywallen. У Rexon на GNOME/Cinnamon своё расширение
-//! (`ShellExtension` ниже), и выбор демона на это решение не влияет.
+//! One thing we deliberately do not mirror: the 0.5.0 daemon also has a
+//! `gnome-shell` definition (`SpawnMode::External`) — it is installed by the
+//! shell extension from waywallen itself. Rexon has its own extension on
+//! GNOME/Cinnamon (`ShellExtension` below), and the daemon's choice does not
+//! affect this decision.
 
-/// Кто именно показывает живые обои.
+/// Who exactly shows the live wallpaper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WallpaperBackend {
-    /// KDE Plasma: Plasma-плагин `org.waywallen.kde` внутри containment.
-    /// Значки рабочего стола и клики остаются на месте.
-    /// **Rexon обязан** поставить плагин и выбрать его.
+    /// KDE Plasma: the `org.waywallen.kde` Plasma plugin inside the containment.
+    /// Desktop icons and clicks stay in place.
+    /// **Rexon must** install the plugin and select it.
     KdePlugin,
-    /// wlr-композиторы: демон сам поднимает `waywallen-layer-shell`.
-    /// **Rexon не делает ничего** сверх запуска демона.
+    /// wlr compositors: the daemon starts `waywallen-layer-shell` itself.
+    /// **Rexon does nothing** beyond starting the daemon.
     DaemonLayerShell,
-    /// GNOME/Cinnamon на Wayland: layer-shell нет (Mutter и его форк
-    /// Muffin его не реализуют), поэтому кадры уходят расширению
-    /// оболочки через mmap-файл.
+    /// GNOME/Cinnamon on Wayland: there is no layer-shell (Mutter and its fork
+    /// Muffin do not implement it), so frames go to the shell extension through
+    /// an mmap file.
     ShellExtension,
-    /// X11: своего клиента вывода у waywallen здесь нет. Видео, веб и
-    /// Flash рисует наш хост; сцены Wallpaper Engine рисует демон, а на
-    /// стол их выводит тот же хост в режиме клиента вывода
-    /// ([`DisplaySetup::RexonHost`]). Окна уводятся в фон через
+    /// X11: waywallen has no output client of its own here. Video, web and Flash
+    /// are drawn by our host; Wallpaper Engine scenes are drawn by the daemon,
+    /// and the same host in output client mode puts them on the desktop
+    /// ([`DisplaySetup::RexonHost`]). Windows are sent to the background via
     /// `_NET_WM_WINDOW_TYPE_DESKTOP`.
     X11Subprocess,
-    /// Сессия Wayland на композиторе, которого демон не знает.
-    /// Демон уйдёт в headless, обоев не будет.
+    /// A Wayland session on a compositor the daemon does not know.
+    /// The daemon goes headless, there will be no wallpaper.
     Unsupported,
 }
 
-/// Рабочие столы, на которых демон поднимает layer-shell сам
-/// (`builtin_display_defs`, поле `de` определения `layer-shell`).
+/// Desktops on which the daemon starts layer-shell itself
+/// (`builtin_display_defs`, the `de` field of the `layer-shell` definition).
 pub const DAEMON_LAYER_SHELL_DESKTOPS: &[&str] =
     &["hyprland", "sway", "niri", "river", "cosmic", "wayfire"];
 
-/// Оболочки, куда кадры отдаются расширением через mmap.
+/// Shells to which frames are handed by an extension through mmap.
 ///
-/// Это СОБСТВЕННЫЙ путь Rexon (наш `rexon-wallpaper-host` + расширение
-/// `rexon-wallpaper@rexon.app` для GNOME и Cinnamon; Unity — тот же
-/// Mutter-род), демон waywallen его не знает и в выборе не участвует.
-/// Сходство с определением `gnome-shell` демона — только в имени.
+/// This is Rexon's OWN path (our `rexon-wallpaper-host` + the
+/// `rexon-wallpaper@rexon.app` extension for GNOME and Cinnamon; Unity is the
+/// same Mutter family), the waywallen daemon does not know it and takes no
+/// part in the choice. The similarity to the daemon's `gnome-shell`
+/// definition is only in the name.
 pub const SHELL_EXTENSION_DESKTOPS: &[&str] = &["gnome", "cinnamon", "unity"];
 
 impl WallpaperBackend {
-    /// Требуется ли от Rexon действие, чтобы обои поехали.
+    /// Whether an action is required from Rexon for the wallpaper to go.
     ///
-    /// Только KDE: там демон объявляет `spawn=External` и ждёт, что
-    /// плагин поставит и выберет кто-то снаружи.
+    /// Only KDE: there the daemon declares `spawn=External` and expects someone
+    /// outside to install and select the plugin.
     pub fn needs_rexon_setup(self) -> bool {
         self == WallpaperBackend::KdePlugin
     }
 
-    /// Рисует ли обои сам движок waywallen (а не наш код).
+    /// Whether the waywallen engine draws the wallpaper itself (and not our code).
     pub fn is_waywallen(self) -> bool {
         matches!(
             self,
@@ -107,8 +109,8 @@ impl WallpaperBackend {
         )
     }
 
-    /// Объяснение для пользователя — по-человечески, без жаргона
-    /// (правило #13: покупателю не показываем имена бинарей и протоколов).
+    /// An explanation for the user — human, without jargon (rule #13: we do not
+    /// show binary and protocol names to the customer).
     pub fn human_note(self) -> &'static str {
         match self {
             WallpaperBackend::KdePlugin => {
@@ -136,15 +138,15 @@ impl WallpaperBackend {
     }
 }
 
-/// Признак сеанса Wayland: `XDG_SESSION_TYPE=wayland` ЛИБО непустой
-/// `WAYLAND_DISPLAY` (второе спасает там, где session_type не выставлен —
-/// вложенные сеансы, запуск из TTY).
+/// The Wayland session sign: `XDG_SESSION_TYPE=wayland` OR a non-empty
+/// `WAYLAND_DISPLAY` (the second helps where session_type is not set —
+/// nested sessions, launching from a TTY).
 pub fn is_wayland_session(session_type: &str, wayland_display: &str) -> bool {
     session_type.trim().eq_ignore_ascii_case("wayland") || !wayland_display.trim().is_empty()
 }
 
-/// Есть ли токен среди значений `XDG_CURRENT_DESKTOP` (он
-/// двоеточие-разделённый и регистр не гарантирует: «KDE», «Hyprland»,
+/// Whether the token is among the `XDG_CURRENT_DESKTOP` values (it is
+/// colon-separated and does not guarantee case: «KDE», «Hyprland»,
 /// «pop:GNOME»).
 fn has_desktop(xdg_current_desktop: &str, wanted: &[&str]) -> bool {
     xdg_current_desktop.split(':').any(|token| {
@@ -153,9 +155,9 @@ fn has_desktop(xdg_current_desktop: &str, wanted: &[&str]) -> bool {
     })
 }
 
-/// Рабочие столы сеанса так, как их видит демон: `XDG_CURRENT_DESKTOP` и,
-/// если он ничего не говорит (пуст или только `wayland`), а `WAYFIRE_SOCKET`
-/// непуст, — `wayfire`. Wayfire эту переменную сам не выставляет.
+/// The session's desktops as the daemon sees them: `XDG_CURRENT_DESKTOP`
+/// and, if it says nothing (empty or only `wayland`) while `WAYFIRE_SOCKET`
+/// is non-empty, `wayfire`. Wayfire does not set this variable itself.
 pub fn session_desktops(xdg_current_desktop: &str, wayfire_socket: &str) -> String {
     let silent = xdg_current_desktop
         .split(':')
@@ -173,13 +175,12 @@ pub fn session_desktops(xdg_current_desktop: &str, wayfire_socket: &str) -> Stri
     }
 }
 
-/// Выбрать бэкенд обоев для сессии.
+/// Pick the wallpaper backend for the session.
 ///
-/// Порядок проверок повторяет демон: сперва отсекается X11 (waywallen
-/// туда не умеет), затем жёсткое правило KDE, затем список
-/// wlr-композиторов, затем оболочки с расширением. `wayfire_socket` —
-/// значение `WAYFIRE_SOCKET` (пусто, если не выставлена), см.
-/// [`session_desktops`].
+/// The order of checks repeats the daemon: first X11 is cut off (waywallen
+/// cannot do it), then the hard KDE rule, then the list of wlr compositors,
+/// then the shells with an extension. `wayfire_socket` — the value of
+/// `WAYFIRE_SOCKET` (empty if not set), see [`session_desktops`].
 pub fn pick(
     xdg_current_desktop: &str,
     session_type: &str,
@@ -191,13 +192,13 @@ pub fn pick(
     }
     let desktops = session_desktops(xdg_current_desktop, wayfire_socket);
     let xdg_current_desktop = desktops.as_str();
-    // Жёсткое правило демона: KDE всегда идёт своим путём и никогда не
-    // откатывается на layer-shell (иначе окно перекрыло бы containment
-    // и пропали бы значки рабочего стола). Признак — ровно как у демона
-    // (`DeCaps::is_kde`): токен `kde` и только он. Прежний второй токен
-    // `plasma` демон не узнаёт: на таком сеансе он не выбрал бы плагин, и
-    // наша установка плагина ничего бы не дала. Plasma сама выставляет
-    // `XDG_CURRENT_DESKTOP=KDE`.
+    // The daemon's hard rule: KDE always goes its own way and never falls back
+    // to layer-shell (otherwise the window would cover the containment and the
+    // desktop icons would disappear). The sign is exactly the daemon's
+    // (`DeCaps::is_kde`): the `kde` token and only it. The daemon does not
+    // recognize the former second token `plasma`: in such a session it would
+    // not pick the plugin, and our plugin install would do nothing. Plasma
+    // itself sets `XDG_CURRENT_DESKTOP=KDE`.
     if has_desktop(xdg_current_desktop, &["kde"]) {
         return WallpaperBackend::KdePlugin;
     }
@@ -210,52 +211,54 @@ pub fn pick(
     WallpaperBackend::Unsupported
 }
 
-// ── дисплей для демона waywallen, когда его ещё нет ─────────────────────
+// ── a display for the waywallen daemon when it has none yet ─────────────
 //
-// ⛔ Дефект 30.10.2026 (MATE на X11, r1898): на KDE круг «кнопка
-// „Применить“ ждёт дисплей — дисплей появляется после применения» Rexon
-// разрывает сам (назначает Plasma-плагин, `waywallen_kde_plugin::apply_gate`),
-// а на X11 вне KDE у демона нет клиента вывода вовсе: демон пишет «no
-// display backend matched xdg_desktop=["mate"]», дисплеев ноль, кнопка
-// серая, страница «Мониторы» молчит. Сцены Wallpaper Engine рисует демон, а
-// не наш хост, так что «X11 — собственный проигрыватель Rexon» к ним не
-// относился.
+// ⛔ Defect of 30.10.2026 (MATE on X11, r1898): on KDE Rexon itself breaks
+// the circle "the „Apply“ button waits for a display — the display appears
+// after applying" (it assigns the Plasma plugin,
+// `waywallen_kde_plugin::apply_gate`), while on X11 outside KDE the daemon
+// has no output client at all: the daemon writes «no display backend
+// matched xdg_desktop=["mate"]», zero displays, the button is grayed out,
+// the «Monitors» page is silent. Wallpaper Engine scenes are drawn by the
+// daemon, not by our host, so "X11 — Rexon's own player" did not apply to them.
 //
-// Выход без правки демона: клиентом вывода становится хост обоев Rexon в
-// режиме `--mode waywallen`. Он грузит элемент вывода waywallen из того же
-// пакета `org.waywallen.kde`, что Rexon уже везёт для Plasma (библиотека
-// waywallen-display, MIT, только Qt6; на X11 — через EGL), и кладёт по
-// окну-рабочему столу на монитор. Проверено на Xvfb 30.10.2026: дисплей
-// регистрируется, сцена идёт ~30 к/с.
+// The way out without changing the daemon: Rexon's wallpaper host in
+// `--mode waywallen` becomes the output client. It loads the waywallen
+// output element from the same `org.waywallen.kde` package Rexon already
+// ships for Plasma (the waywallen-display library, MIT, Qt6 only; on X11 —
+// via EGL), and puts one desktop window per monitor. Verified on Xvfb
+// 30.10.2026: the display registers, the scene runs at ~30 fps.
 //
-// Кто его поднимает:
-// * демон — при каждом своём старте, по определению вывода в
-//   `$XDG_DATA_HOME/waywallen/displays/` ([`rexon_display_manifest`]);
-//   демон же перезапускает упавший хост;
-// * Rexon — сразу по «Применить», если дисплеев нет: демон выбирает вывод
-//   только на старте, а перезапуск демона оборвал бы само применение.
-// Второй экземпляр хоста ждёт блокировку ([`rexon_host_lock_path`]) и
-// подхватывает вывод, если первый умрёт, — двух окон на монитор не бывает.
+// Who starts it:
+// * the daemon — on every start of its own, from the output definition in
+//   `$XDG_DATA_HOME/waywallen/displays/` ([`rexon_display_manifest`]); the
+//   daemon also restarts a crashed host;
+// * Rexon — right on «Apply» if there are no displays: the daemon chooses
+//   the output only at start, and restarting the daemon would break the
+//   apply itself.
+// A second host instance waits for the lock ([`rexon_host_lock_path`]) and
+// picks up the output if the first one dies — there are never two windows
+// per monitor.
 
-/// Как у демона появляется дисплей, когда его ещё нет.
+/// How the daemon gets a display when it has none yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplaySetup {
-    /// Rexon тут ничего не поднимает: дисплей даёт сам демон (layer-shell)
-    /// или вывода на этом столе нет.
+    /// Rexon starts nothing here: the display is given by the daemon itself
+    /// (layer-shell) or there is no output on this desktop.
     None,
-    /// KDE: Rexon назначает Plasma-плагин обоями стола.
+    /// KDE: Rexon assigns the Plasma plugin as the desktop wallpaper.
     KdePlugin,
-    /// X11: клиент вывода — хост обоев Rexon (`--mode waywallen`).
+    /// X11: the output client is Rexon's wallpaper host (`--mode waywallen`).
     RexonHost,
-    /// GNOME: вывод — расширение оболочки от waywallen
-    /// ([`WAYWALLEN_GNOME_EXT_ID`]); Rexon выключает его ради своих обоев
-    /// и включает по «Применить» ([`set_waywallen_gnome_display`]).
-    /// Чистым ответом бэкенда не бывает — только [`display_setup_for`].
+    /// GNOME: the output is the shell extension from waywallen
+    /// ([`WAYWALLEN_GNOME_EXT_ID`]); Rexon disables it for the sake of its own
+    /// wallpaper and enables it on «Apply» ([`set_waywallen_gnome_display`]).
+    /// It is never a pure backend answer — only [`display_setup_for`].
     GnomeExtension,
 }
 
 impl WallpaperBackend {
-    /// Что Rexon делает, чтобы у демона появился дисплей.
+    /// What Rexon does so that the daemon gets a display.
     pub fn display_setup(self) -> DisplaySetup {
         match self {
             WallpaperBackend::KdePlugin => DisplaySetup::KdePlugin,
@@ -268,43 +271,43 @@ impl WallpaperBackend {
 }
 
 impl DisplaySetup {
-    /// Поднимает ли Rexon дисплей сам (тогда «Применить» доступна и без
-    /// дисплеев, а кадр применения ждёт дисплея).
+    /// Whether Rexon brings up the display itself (then «Apply» is available even
+    /// without displays, and the apply frame waits for a display).
     pub fn rexon_brings_display(self) -> bool {
         self != DisplaySetup::None
     }
 }
 
-// ── GNOME: расширение вывода waywallen и обои не от waywallen ───────────
+// ── GNOME: the waywallen output extension and non-waywallen wallpapers ──
 //
-// ⛔ Дефект 09.11.2026 (GNOME 51 Wayland, расширение waywallen 0.4.5): при
-// включённом расширении `org.waywallen.gnome@waywallen.io` и без живых
-// обоев стол ЧЁРНЫЙ — так задумано у них (`_showFallback`, «the desktop
-// keeps the disconnected fallback black»). Rexon, ставя картинку, снимал
-// рендереры waywallen и писал `picture-uri`, но картинку закрывала чёрная
-// заглушка расширения. То же — с видео, GIF и Flash через наше расширение
-// `rexon-wallpaper@rexon.app`: оба внедряются в один и тот же
-// `BackgroundManager`.
+// ⛔ Defect of 09.11.2026 (GNOME 51 Wayland, waywallen extension 0.4.5): with
+// the `org.waywallen.gnome@waywallen.io` extension enabled and no live
+// wallpaper the desktop is BLACK — that is by their design (`_showFallback`,
+// «the desktop keeps the disconnected fallback black»). When setting a
+// picture, Rexon stopped waywallen's renderers and wrote `picture-uri`, but
+// the picture was covered by the extension's black placeholder. The same
+// with video, GIF and Flash via our `rexon-wallpaper@rexon.app` extension:
+// both hook into the same `BackgroundManager`.
 //
-// Решение одно на все форматы: обои не от waywallen (их список —
-// `wallpaper_exec::yields_we_wallpapers`) выключают расширение waywallen,
-// обои waywallen (вкладка WE, «Применить» и плейлист) включают его
-// обратно — тем же путём придержки кадра, что у KDE и X11
-// ([`DisplaySetup::GnomeExtension`]): без расширения у демона ноль
-// дисплеев, и «Применить» иначе отказало бы (`NoDisplayRegistered`).
-// Вкл/выкл — вызовом самой оболочки по шине (`EnableExtension`), запасной
-// путь — список `enabled-extensions` общими сценариями `de_customization`
-// без потери чужих uuid.
+// One decision for all formats: non-waywallen wallpapers (their list is
+// `wallpaper_exec::yields_we_wallpapers`) disable the waywallen extension,
+// waywallen wallpapers (the WE tab, «Apply» and the playlist) enable it back
+// — through the same frame hold-back path as KDE and X11
+// ([`DisplaySetup::GnomeExtension`]): without the extension the daemon has
+// zero displays, and «Apply» would otherwise refuse (`NoDisplayRegistered`).
+// On/off is done by a call to the shell itself over the bus
+// (`EnableExtension`), the fallback path is the `enabled-extensions` list
+// via the shared `de_customization` scripts without losing foreign uuids.
 //
-// Другие столы: KDE — `plasma-apply-wallpaperimage` сам переключает
-// плагин стола на `org.kde.image`, конфликта нет; X11 — вывод waywallen
-// там наш хост (`RexonHost`), его заглушку здесь не решали.
+// Other desktops: KDE — `plasma-apply-wallpaperimage` itself switches the
+// desktop plugin to `org.kde.image`, no conflict; X11 — the waywallen output
+// there is our host (`RexonHost`), its placeholder was not dealt with here.
 
-/// Расширение оболочки GNOME, которым waywallen показывает обои.
+/// The GNOME shell extension with which waywallen shows wallpapers.
 pub const WAYWALLEN_GNOME_EXT_ID: &str = "org.waywallen.gnome@waywallen.io";
 
-/// Сеанс GNOME Shell (а не стол, который лишь приписывает `GNOME` к своему
-/// имени: `Budgie:GNOME`, `X-Cinnamon`, `Unity`, `Pantheon`).
+/// A GNOME Shell session (and not a desktop that merely appends `GNOME` to
+/// its name: `Budgie:GNOME`, `X-Cinnamon`, `Unity`, `Pantheon`).
 pub fn is_gnome_shell_session(xdg_current_desktop: &str) -> bool {
     has_desktop(xdg_current_desktop, &["gnome"])
         && !has_desktop(
@@ -313,10 +316,10 @@ pub fn is_gnome_shell_session(xdg_current_desktop: &str) -> bool {
         )
 }
 
-/// Каталоги, где может лежать расширение `uuid`: пользовательский
-/// (`$XDG_DATA_HOME`, иначе `~/.local/share`) и системные из
-/// `$XDG_DATA_DIRS` (пусто — `/usr/local/share:/usr/share`) — порядок
-/// поиска самой оболочки.
+/// Directories where the `uuid` extension may lie: the user one
+/// (`$XDG_DATA_HOME`, otherwise `~/.local/share`) and the system ones from
+/// `$XDG_DATA_DIRS` (empty — `/usr/local/share:/usr/share`) — the shell's own
+/// lookup order.
 pub fn gnome_extension_dirs(uuid: &str, xdg_data_home: &str, home: &str, xdg_data_dirs: &str) -> Vec<String> {
     let user = if xdg_data_home.trim().is_empty() {
         format!("{}/.local/share", home.trim_end_matches('/'))
@@ -330,8 +333,8 @@ pub fn gnome_extension_dirs(uuid: &str, xdg_data_home: &str, home: &str, xdg_dat
         .collect()
 }
 
-/// Как у демона появляется дисплей в ЭТОМ сеансе: ответ бэкенда, а на
-/// GNOME Shell с поставленным расширением waywallen — его включение.
+/// How the daemon gets a display in THIS session: the backend's answer, and
+/// on GNOME Shell with the waywallen extension installed — enabling it.
 pub fn display_setup_for(
     backend: WallpaperBackend,
     xdg_current_desktop: &str,
@@ -346,10 +349,10 @@ pub fn display_setup_for(
     backend.display_setup()
 }
 
-/// То же, что [`display_setup_for`], с поправкой на Cinnamon с
-/// layer-shell ([`cinnamon_layer_shell`]): там вывод сцен — штатный
-/// `waywallen-layer-shell`, а поднимает его наш хост-клиент вывода
-/// ([`DisplaySetup::RexonHost`], раздел «Cinnamon с layer-shell» ниже).
+/// The same as [`display_setup_for`], adjusted for Cinnamon with layer-shell
+/// ([`cinnamon_layer_shell`]): there the scene output is the stock
+/// `waywallen-layer-shell`, and it is brought up by our host output client
+/// ([`DisplaySetup::RexonHost`], the «Cinnamon with layer-shell» section below).
 pub fn display_setup_in(
     backend: WallpaperBackend,
     xdg_current_desktop: &str,
@@ -362,63 +365,65 @@ pub fn display_setup_in(
     display_setup_for(backend, xdg_current_desktop, waywallen_gnome_ext_installed)
 }
 
-// ── Cinnamon с layer-shell (Muffin 6.8+) ────────────────────────────────
+// ── Cinnamon with layer-shell (Muffin 6.8+) ─────────────────────────────
 //
-// Живая проверка 15.11.2026 (Cinnamon 6.8.0, Muffin 6.8.1, Wayland): Muffin
-// объявляет `zwlr_layer_shell_v1` v5, а фон стола рисует служба
-// `cinnamon-background-daemon` (D-Bus `org.Cinnamon.Background`, юнит
-// systemd `cinnamon-background-daemon.service`) поверхностью того же слоя
-// background. Отсюда:
+// Live check of 15.11.2026 (Cinnamon 6.8.0, Muffin 6.8.1, Wayland): Muffin
+// declares `zwlr_layer_shell_v1` v5, and the desktop background is drawn by
+// the `cinnamon-background-daemon` service (D-Bus `org.Cinnamon.Background`,
+// systemd unit `cinnamon-background-daemon.service`) with a surface of the
+// same background layer. Hence:
 //
-// * Обои идут тем же путём, что на wlr-композиторах: сцены — штатный
-//   `waywallen-layer-shell` (его поднимает наш хост-клиент вывода, демон уже
-//   запускает его для `x-cinnamon` по нашему определению вывода), видео, веб
-//   и Flash — наш хост окном слоя. Расширение оболочки для обоев не нужно.
-//   Признак — протокол (глобал композитора), а если спросить композитор
-//   нечем — наличие службы фона (на Wayland она без layer-shell не живёт).
-//   Номер версии не смотрим.
-// * В слое background Muffin кладёт поверхность, созданную ПОЗЖЕ, НИЖЕ
-//   прежних. Служба фона поднимается вместе с оболочкой, раньше нас, и
-//   закрывает наши обои. Выключить её рисование штатно нечем: в схеме
-//   `org.cinnamon.desktop.background` такого ключа нет, у службы на шине
-//   только `Start()` и свойства `State`/`RenderedLayout`, а
-//   `disableRestart()` менеджера фона (`js/ui/backgroundManager.js`) —
-//   внутренний вызов оболочки. Остаётся перезапустить службу ПОСЛЕ появления
-//   нашей поверхности: новая поверхность службы ляжет под нашу.
-//   [`restack_cinnamon_background`]: через systemd (`systemctl --user
-//   restart` — systemd поднимает её сам, лимит перезапусков менеджера фона
-//   «1 за 60 с» нам не мешает), без systemd — сигнал процессу владельца
-//   имени и `Start()` по шине (активация D-Bus). Повторяется на каждую новую
-//   нашу поверхность: смена мониторов, перезапуск вывода.
-// * Остановка живых обоев ничего возвращать не требует: наша поверхность
-//   уходит, под ней всё та же картинка службы фона.
+// * Wallpapers go the same way as on wlr compositors: scenes — the stock
+//   `waywallen-layer-shell` (it is started by our host output client, the
+//   daemon already launches it for `x-cinnamon` from our output definition),
+//   video, web and Flash — our host as a layer window. The shell extension
+//   is not needed for wallpapers. The sign is the protocol (a compositor
+//   global), and if there is nothing to ask the compositor with — the
+//   presence of the background service (on Wayland it does not live without
+//   layer-shell). The version number is not looked at.
+// * In the background layer Muffin puts a surface created LATER BELOW the
+//   earlier ones. The background service starts together with the shell,
+//   before us, and covers our wallpaper. There is no stock way to turn off
+//   its drawing: the `org.cinnamon.desktop.background` schema has no such
+//   key, the service has only `Start()` and the `State`/`RenderedLayout`
+//   properties on the bus, and the background manager's `disableRestart()`
+//   (`js/ui/backgroundManager.js`) is an internal shell call. What remains
+//   is restarting the service AFTER our surface appears: the service's new
+//   surface goes under ours. [`restack_cinnamon_background`]: via systemd
+//   (`systemctl --user restart` — systemd brings it up itself, the
+//   background manager's "1 per 60 s" restart limit does not bother us),
+//   without systemd — a signal to the name owner's process and `Start()`
+//   over the bus (D-Bus activation). It is repeated for each new surface of
+//   ours: monitor changes, output restarts.
+// * Stopping a live wallpaper requires restoring nothing: our surface goes
+//   away, under it is the same background service picture.
 
-/// Глобал Wayland протокола wlr-layer-shell.
+/// The Wayland global of the wlr-layer-shell protocol.
 pub const LAYER_SHELL_GLOBAL: &str = "zwlr_layer_shell_v1";
 
-/// Имя службы фона Cinnamon на сессионной шине.
+/// Name of the Cinnamon background service on the session bus.
 pub const CINNAMON_BG_BUS: &str = "org.Cinnamon.Background";
-/// Путь объекта службы фона.
+/// Object path of the background service.
 pub const CINNAMON_BG_PATH: &str = "/org/Cinnamon/Background";
-/// Юнит systemd службы фона.
+/// systemd unit of the background service.
 pub const CINNAMON_BG_UNIT: &str = "cinnamon-background-daemon.service";
 
-/// Стол Cinnamon по `XDG_CURRENT_DESKTOP` (`X-Cinnamon`, `Cinnamon`).
+/// A Cinnamon desktop by `XDG_CURRENT_DESKTOP` (`X-Cinnamon`, `Cinnamon`).
 pub fn is_cinnamon_desktop(xdg_current_desktop: &str) -> bool {
     has_desktop(xdg_current_desktop, &["x-cinnamon", "cinnamon"])
 }
 
-/// Объявил ли композитор layer-shell.
+/// Whether the compositor declared layer-shell.
 pub fn globals_have_layer_shell(globals: &[String]) -> bool {
     globals.iter().any(|g| g == LAYER_SHELL_GLOBAL)
 }
 
-/// Cinnamon на Wayland с layer-shell: обои кладутся слоем, а не расширением.
+/// Cinnamon on Wayland with layer-shell: wallpapers go as a layer, not via the extension.
 ///
-/// `globals` — глобалы композитора (`None` — спросить было нечем);
-/// `bg_service_present` — есть ли служба фона Cinnamon (файл активации
-/// D-Bus): на Wayland она рисует только через layer-shell, так что без
-/// ответа композитора это тот же признак.
+/// `globals` — the compositor globals (`None` — there was nothing to ask
+/// with); `bg_service_present` — whether the Cinnamon background service
+/// exists (a D-Bus activation file): on Wayland it draws only via
+/// layer-shell, so without a compositor answer it is the same sign.
 pub fn cinnamon_layer_shell(
     xdg_current_desktop: &str,
     session_type: &str,
@@ -435,9 +440,9 @@ pub fn cinnamon_layer_shell(
     }
 }
 
-/// Файлы активации службы фона Cinnamon в каталогах `dbus-1/services`
-/// (`$XDG_DATA_HOME`, затем `$XDG_DATA_DIRS`, пусто —
-/// `/usr/local/share:/usr/share`).
+/// Activation files of the Cinnamon background service in the
+/// `dbus-1/services` directories (`$XDG_DATA_HOME`, then `$XDG_DATA_DIRS`,
+/// empty — `/usr/local/share:/usr/share`).
 pub fn cinnamon_bg_service_files(xdg_data_home: &str, home: &str, xdg_data_dirs: &str) -> Vec<String> {
     let user = if xdg_data_home.trim().is_empty() {
         format!("{}/.local/share", home.trim_end_matches('/'))
@@ -451,25 +456,24 @@ pub fn cinnamon_bg_service_files(xdg_data_home: &str, home: &str, xdg_data_dirs:
         .collect()
 }
 
-/// Факт сеанса «Cinnamon с layer-shell», выставленный живым процессом
-/// ([`set_cinnamon_layer_shell`]). 0 — не выставлен (считаем «нет»: так
-/// ведут себя сверки и процессы, которые композитор не спрашивали),
-/// 1 — нет, 2 — да.
+/// The "Cinnamon with layer-shell" session fact set by a live process
+/// ([`set_cinnamon_layer_shell`]). 0 — not set (treated as "no": that is how
+/// checks and processes that did not ask the compositor behave), 1 — no, 2 — yes.
 static CINNAMON_LAYER_SHELL_FACT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
-/// Запомнить на процесс, есть ли в этом сеансе Cinnamon с layer-shell.
-/// Зовут живые процессы (окно Rexon, хост обоев) при старте.
+/// Remember for the process whether this session is Cinnamon with layer-shell.
+/// Called by live processes (the Rexon window, the wallpaper host) at startup.
 pub fn set_cinnamon_layer_shell(on: bool) {
     CINNAMON_LAYER_SHELL_FACT.store(if on { 2 } else { 1 }, std::sync::atomic::Ordering::SeqCst);
 }
 
-/// Факт сеанса «Cinnamon с layer-shell»; не выставлен — `false`.
+/// The "Cinnamon with layer-shell" session fact; not set — `false`.
 pub fn cinnamon_layer_shell_fact() -> bool {
     CINNAMON_LAYER_SHELL_FACT.load(std::sync::atomic::Ordering::SeqCst) == 2
 }
 
-/// Выяснить факт на живом сеансе и запомнить его. `globals` — ответ
-/// композитора (у ядра своего клиента Wayland нет — спрашивает вызывающий).
+/// Find out the fact on a live session and remember it. `globals` — the
+/// compositor's answer (the core has no Wayland client of its own — the caller asks).
 pub fn init_cinnamon_layer_shell_live(globals: Option<&[String]>) -> bool {
     let env = |n: &str| std::env::var(n).unwrap_or_default();
     let service = || {
@@ -491,22 +495,22 @@ pub fn init_cinnamon_layer_shell_live(globals: Option<&[String]>) -> bool {
     on
 }
 
-/// Наблюдения и действия для [`restack_cinnamon_background`].
+/// Observations and actions for [`restack_cinnamon_background`].
 pub trait CinnamonBgIo {
-    /// Запустить команду: stdout при коде 0, иначе `None`.
+    /// Run a command: stdout on code 0, otherwise `None`.
     fn run(&self, argv: &[String]) -> Option<String>;
-    /// Подождать.
+    /// Wait.
     fn sleep_ms(&self, ms: u64);
 }
 
-/// Что вышло у [`restack_cinnamon_background`].
+/// What came out of [`restack_cinnamon_background`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BgRestack {
-    /// Службы фона нет на шине — переставлять нечего.
+    /// The background service is not on the bus — nothing to restack.
     NotRunning,
-    /// Служба перезапущена, её поверхность теперь под нашей.
+    /// The service was restarted, its surface is now under ours.
     Restarted,
-    /// Перезапустить не вышло.
+    /// The restart failed.
     Failed,
 }
 
@@ -514,7 +518,7 @@ fn svec(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| s.to_string()).collect()
 }
 
-/// `NameHasOwner` у шины — `(true,)`/`(false,)`.
+/// The bus's `NameHasOwner` — `(true,)`/`(false,)`.
 pub fn bus_name_has_owner_argv(name: &str) -> Vec<String> {
     svec(&[
         "gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
@@ -522,7 +526,7 @@ pub fn bus_name_has_owner_argv(name: &str) -> Vec<String> {
     ])
 }
 
-/// Номер процесса владельца имени — `(uint32 1234,)`.
+/// PID of the name owner's process — `(uint32 1234,)`.
 pub fn bus_name_pid_argv(name: &str) -> Vec<String> {
     svec(&[
         "gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus",
@@ -530,8 +534,8 @@ pub fn bus_name_pid_argv(name: &str) -> Vec<String> {
     ])
 }
 
-/// `Start()` службы фона: на поднятой — без действия, на отсутствующей —
-/// активация D-Bus.
+/// The background service's `Start()`: on a running one — no action, on a
+/// missing one — D-Bus activation.
 pub fn cinnamon_bg_start_argv() -> Vec<String> {
     svec(&[
         "gdbus", "call", "--session", "--dest", CINNAMON_BG_BUS, "--object-path", CINNAMON_BG_PATH, "--method",
@@ -539,20 +543,20 @@ pub fn cinnamon_bg_start_argv() -> Vec<String> {
     ])
 }
 
-/// Ответ `gdbus` — `(true,)`.
+/// A `gdbus` answer — `(true,)`.
 pub fn parse_gdbus_bool(out: &str) -> bool {
     out.trim().trim_start_matches('(').starts_with("true")
 }
 
-/// Число из ответа `gdbus` вида `(uint32 1234,)`.
+/// A number from a `gdbus` answer of the form `(uint32 1234,)`.
 pub fn parse_gdbus_uint(out: &str) -> Option<u32> {
     out.split(|c: char| !c.is_ascii_digit()).filter(|s| !s.is_empty()).last()?.parse().ok()
 }
 
-/// Сколько ждать ухода и возвращения имени службы (шагами по 100 мс).
+/// How long to wait for the service name to go away and come back (in 100 ms steps).
 const BG_WAIT_STEPS: u32 = 50;
 
-/// Перезапустить службу фона Cinnamon, чтобы её поверхность легла под нашу.
+/// Restart the Cinnamon background service so that its surface goes under ours.
 pub fn restack_cinnamon_background(io: &dyn CinnamonBgIo) -> BgRestack {
     let owner = |io: &dyn CinnamonBgIo| io.run(&bus_name_has_owner_argv(CINNAMON_BG_BUS)).is_some_and(|o| parse_gdbus_bool(&o));
     if !owner(io) {
@@ -562,7 +566,7 @@ pub fn restack_cinnamon_background(io: &dyn CinnamonBgIo) -> BgRestack {
         .run(&svec(&["systemctl", "--user", "is-active", CINNAMON_BG_UNIT]))
         .is_some_and(|o| o.trim() == "active");
     if unit_active {
-        // Type=dbus: `restart` возвращается, когда служба снова взяла имя.
+        // Type=dbus: `restart` returns when the service has taken the name again.
         return if io.run(&svec(&["systemctl", "--user", "restart", CINNAMON_BG_UNIT])).is_some() {
             BgRestack::Restarted
         } else {
@@ -581,8 +585,8 @@ pub fn restack_cinnamon_background(io: &dyn CinnamonBgIo) -> BgRestack {
         }
         io.sleep_ms(100);
     }
-    // Свой `Start()`: менеджер фона после лимита перезапусков сдаётся, а
-    // активация D-Bus поднимет службу и без него.
+    // Our own `Start()`: the background manager gives up after the restart
+    // limit, and D-Bus activation brings the service up even without it.
     io.run(&cinnamon_bg_start_argv());
     for _ in 0..BG_WAIT_STEPS {
         if owner(io) {
@@ -593,7 +597,7 @@ pub fn restack_cinnamon_background(io: &dyn CinnamonBgIo) -> BgRestack {
     BgRestack::Failed
 }
 
-/// Живые наблюдения для [`restack_cinnamon_background`].
+/// Live observations for [`restack_cinnamon_background`].
 pub struct LiveCinnamonBgIo;
 
 impl CinnamonBgIo for LiveCinnamonBgIo {
@@ -605,74 +609,78 @@ impl CinnamonBgIo for LiveCinnamonBgIo {
     }
 }
 
-/// Сеанс Cinnamon на Wayland по окружению процесса.
+/// A Cinnamon session on Wayland, by the process environment.
 pub fn cinnamon_wayland_session_live() -> bool {
     let env = |n: &str| std::env::var(n).unwrap_or_default();
     is_cinnamon_desktop(&env("XDG_CURRENT_DESKTOP")) && is_wayland_session(&env("XDG_SESSION_TYPE"), &env("WAYLAND_DISPLAY"))
 }
 
-/// Через сколько после просьбы переставлять фон, когда о показе нашей
-/// поверхности ничего не известно (подключён монитор, служба фона поднялась
-/// заново): поверхности нужно дождаться настройки от композитора и кадра.
+/// How long after the request to restack the background when nothing is
+/// known about our surface being shown (a monitor was connected, the
+/// background service came up again): the surface needs to wait for the
+/// compositor's configure and a frame.
 pub const BG_RESTACK_DELAY_MS: u64 = 2500;
 
-/// Запасной срок для своей поверхности, о показе которой хост скажет сам
-/// ([`restack_cinnamon_background_shown`]): пришла весть «первый кадр на
-/// экране» — перестановка сразу, не пришла (ролик не декодируется,
-/// страница молчит) — по этому сроку, чтобы служба фона не закрыла окно
-/// навсегда.
+/// A fallback deadline for our own surface whose showing the host will
+/// report itself ([`restack_cinnamon_background_shown`]): the "first frame on
+/// screen" notice came — restack right away; it did not come (the movie does
+/// not decode, the page is silent) — by this deadline, so that the
+/// background service does not cover the window forever.
 pub const BG_RESTACK_FALLBACK_MS: u64 = 6000;
 
-/// Выдержка после вести «первый кадр на экране»: композитору — разобрать
-/// коммит кадра, прежде чем служба фона уйдёт и вернётся под нас.
+/// A delay after the "first frame on screen" notice: for the compositor to
+/// process the frame commit before the background service goes away and
+/// comes back under us.
 pub const BG_RESTACK_SHOWN_MS: u64 = 50;
 
-/// Сколько после перезапуска службы фона (любым процессом Rexon) её новое
-/// появление на шине считается нашим, а не её собственным перезапуском.
+/// For how long after a background service restart (by any Rexon process)
+/// its reappearance on the bus counts as ours rather than its own restart.
 pub const BG_OWN_RESTART_WINDOW_MS: u64 = 15_000;
 
-/// Не больше стольких перезапусков службы фона за [`BG_RESTACK_WINDOW_MS`]
-/// на процесс: служба, падающая по кругу, не должна втягивать нас в
-/// бесконечный перезапуск (менеджер фона Cinnamon в таком случае сдаётся
-/// после первого же — `RESTART_LIMIT`).
+/// No more than this many background service restarts per
+/// [`BG_RESTACK_WINDOW_MS`] per process: a service crashing in a loop must
+/// not drag us into endless restarting (the Cinnamon background manager
+/// gives up after the very first one in that case — `RESTART_LIMIT`).
 pub const BG_RESTACK_LIMIT: usize = 3;
-/// Окно счёта [`BG_RESTACK_LIMIT`].
+/// The counting window of [`BG_RESTACK_LIMIT`].
 pub const BG_RESTACK_WINDOW_MS: u64 = 120_000;
 
-/// Метка «Rexon перезапустил службу фона» — общая на все процессы Rexon
-/// сеанса (окно, хосты обоев, клиент вывода): её время видят наблюдатели
-/// шины, чтобы не принять чужой (наш же) перезапуск за падение службы.
+/// The "Rexon restarted the background service" mark — shared by all Rexon
+/// processes of the session (the window, wallpaper hosts, the output client):
+/// bus watchers see its time so as not to take someone else's (our own)
+/// restart for a service crash.
 pub fn bg_restack_stamp_path(xdg_runtime_dir: &str) -> String {
     format!("{}/rexon-cinnamon-bg-restack.stamp", xdg_runtime_dir.trim_end_matches('/'))
 }
 
-/// Замок перестановки рядом с меткой: перезапуск службы фона идёт в сеансе
-/// одним процессом Rexon за раз.
+/// The restack lock next to the mark: the background service is restarted in
+/// the session by one Rexon process at a time.
 ///
-/// Живой случай 15.11.2026: окно Rexon и хост видеообоев заказали
-/// перестановку почти одновременно; окно перезапустило службу, а хост в те
-/// же миллисекунды спросил шину, застал имя ушедшим и записал в журнал
-/// «службы фона Cinnamon нет — переставлять нечего». Под замком второй ждёт
-/// конца первого перезапуска и по метке видит, что повторять незачем.
+/// A live case of 15.11.2026: the Rexon window and the video wallpaper host
+/// ordered a restack almost simultaneously; the window restarted the service,
+/// and the host in the same milliseconds asked the bus, found the name gone
+/// and wrote to the journal «there is no Cinnamon background service —
+/// nothing to restack». Under the lock the second one waits for the end of
+/// the first restart and sees from the mark that there is no need to repeat.
 pub fn bg_restack_lock_path(xdg_runtime_dir: &str) -> String {
     format!("{}.lock", bg_restack_stamp_path(xdg_runtime_dir))
 }
 
-/// Метка перезапуска: когда он начался и когда кончился (мс от эпохи).
+/// The restart mark: when it started and when it ended (ms since the epoch).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BgRestackStamp {
     pub started: u64,
-    /// `None` — перезапуск ещё идёт (или метка прежнего вида — одно число).
+    /// `None` — the restart is still in progress (or the mark has the old form — one number).
     pub finished: Option<u64>,
 }
 
 impl BgRestackStamp {
-    /// Последний известный момент перезапуска.
+    /// The last known restart moment.
     pub fn latest(&self) -> u64 {
         self.finished.unwrap_or(self.started).max(self.started)
     }
 
-    /// Текст метки: «начало» или «начало конец».
+    /// The mark text: «start» or «start end».
     pub fn to_text(&self) -> String {
         match self.finished {
             Some(end) => format!("{} {end}", self.started),
@@ -681,8 +689,8 @@ impl BgRestackStamp {
     }
 }
 
-/// Разобрать текст метки ([`BgRestackStamp::to_text`]; одно число — метка
-/// прежнего вида, её момент считается началом).
+/// Parse the mark text ([`BgRestackStamp::to_text`]; a single number is a
+/// mark of the old form, its moment counts as the start).
 pub fn parse_bg_restack_stamp(text: &str) -> Option<BgRestackStamp> {
     let mut parts = text.split_whitespace();
     let started = parts.next()?.parse().ok()?;
@@ -690,46 +698,47 @@ pub fn parse_bg_restack_stamp(text: &str) -> Option<BgRestackStamp> {
     Some(BgRestackStamp { started, finished })
 }
 
-/// Можно ли ещё раз перезапустить службу: `history` — моменты прежних
-/// перезапусков этим процессом (мс), `now` — сейчас.
+/// Whether the service may be restarted once more: `history` — moments of
+/// previous restarts by this process (ms), `now` — now.
 pub fn bg_restack_allowed(history: &[u64], now: u64) -> bool {
     history.iter().filter(|&&t| now.saturating_sub(t) < BG_RESTACK_WINDOW_MS).count() < BG_RESTACK_LIMIT
 }
 
-/// Служба фона снова на шине: перезапуск ли это наш (метка свежее
-/// [`BG_OWN_RESTART_WINDOW_MS`]) — тогда переставлять нечего.
+/// The background service is on the bus again: whether this is our restart
+/// (the mark is fresher than [`BG_OWN_RESTART_WINDOW_MS`]) — then there is
+/// nothing to restack.
 pub fn bg_owner_change_is_ours(stamp_ms: Option<u64>, now: u64) -> bool {
     stamp_ms.is_some_and(|t| now.saturating_sub(t) < BG_OWN_RESTART_WINDOW_MS)
 }
 
-/// Перестановка, заказанная в `requested`, уже сделана другим процессом
-/// Rexon, если его перезапуск НАЧАЛСЯ (`started_ms`) не раньше
-/// `requested + slack_ms`: он уложил службу под всё, что было на экране к
-/// тому времени. Для заказа «первый кадр на экране» `slack_ms` — ноль:
-/// поверхность уже показана, годится любой перезапуск после.
+/// A restack ordered at `requested` has already been done by another Rexon
+/// process if its restart STARTED (`started_ms`) no earlier than
+/// `requested + slack_ms`: it put the service under everything that was on
+/// screen by then. For a "first frame on screen" order `slack_ms` is zero:
+/// the surface is already shown, any restart after it will do.
 pub fn bg_restack_done_by_other(started_ms: Option<u64>, requested: u64, slack_ms: u64) -> bool {
     started_ms.is_some_and(|t| t >= requested.saturating_add(slack_ms))
 }
 
-/// Заказ перестановки, ждущий своего срока.
+/// A restack order waiting for its deadline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BgRestackOrder {
-    /// Когда исполнять (мс от эпохи).
+    /// When to execute (ms since the epoch).
     pub due: u64,
-    /// Перезапуск, начатый не раньше `requested + slack` (мс от эпохи), нашу
-    /// поверхность уже покрыл ([`bg_restack_done_by_other`]).
+    /// A restart started no earlier than `requested + slack` (ms since the
+    /// epoch) has already covered our surface ([`bg_restack_done_by_other`]).
     pub requested: u64,
     pub slack: u64,
 }
 
-/// Слить новую просьбу с ждущим заказом.
+/// Merge a new request with the waiting order.
 ///
-/// * Просьба по сроку (`shown == false`, `delay_ms` от `now`) только
-///   отодвигает исполнение: несколько просьб подряд — окно на каждый
-///   монитор, подъём вывода — сливаются в один перезапуск после последней.
-/// * Весть «первый кадр на экране» (`shown == true`) подтягивает срок к
-///   `now + BG_RESTACK_SHOWN_MS` и заменяет запасной: ждать дальше незачем,
-///   поверхность уже показана.
+/// * A deadline request (`shown == false`, `delay_ms` from `now`) only
+///   postpones execution: several requests in a row — a window per monitor,
+///   bringing up the output — merge into one restart after the last one.
+/// * The "first frame on screen" notice (`shown == true`) pulls the deadline
+///   in to `now + BG_RESTACK_SHOWN_MS` and replaces the fallback one: there
+///   is no reason to wait longer, the surface is already shown.
 pub fn merge_bg_restack_order(pending: Option<BgRestackOrder>, now: u64, delay_ms: u64, shown: bool) -> BgRestackOrder {
     if shown {
         return BgRestackOrder { due: now + BG_RESTACK_SHOWN_MS, requested: now, slack: 0 };
@@ -753,13 +762,13 @@ fn bg_runtime_dir_live() -> Option<String> {
     (!runtime.is_empty()).then_some(runtime)
 }
 
-/// Метка перезапуска, `None` — метки нет.
+/// The restart mark, `None` — there is no mark.
 pub fn bg_restack_stamp_live() -> Option<BgRestackStamp> {
     let path = bg_restack_stamp_path(&bg_runtime_dir_live()?);
     parse_bg_restack_stamp(&std::fs::read_to_string(path).ok()?)
 }
 
-/// Последний момент перезапуска (мс от эпохи), `None` — метки нет.
+/// The last restart moment (ms since the epoch), `None` — there is no mark.
 pub fn bg_restack_stamp_ms_live() -> Option<u64> {
     bg_restack_stamp_live().map(|s| s.latest())
 }
@@ -770,32 +779,34 @@ fn bg_restack_stamp_write_live(stamp: BgRestackStamp) {
     }
 }
 
-/// Взять замок перестановки ([`bg_restack_lock_path`]), дождавшись его.
-/// `None` — замка нет (нет каталога сеанса) — идём без него.
+/// Take the restack lock ([`bg_restack_lock_path`]), waiting for it.
+/// `None` — there is no lock (no session directory) — we go without it.
 fn bg_restack_lock_live() -> Option<std::fs::File> {
     use std::os::fd::AsRawFd;
     let path = bg_restack_lock_path(&bg_runtime_dir_live()?);
     let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).ok()?;
-    // SAFETY: живой дескриптор файла; замок снимается закрытием файла.
+    // SAFETY: a live file descriptor; the lock is released by closing the file.
     (unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0).then_some(file)
 }
 
-/// Отложить перестановку фона Cinnamon: несколько просьб подряд (окно на
-/// каждый монитор, подъём вывода) сливаются в один перезапуск службы через
-/// [`BG_RESTACK_DELAY_MS`] после последней. Вне Cinnamon на Wayland — ничего.
+/// Defer the Cinnamon background restack: several requests in a row (a window
+/// per monitor, bringing up the output) merge into one service restart
+/// [`BG_RESTACK_DELAY_MS`] after the last one. Outside Cinnamon on Wayland —
+/// nothing.
 pub fn restack_cinnamon_background_soon(reason: &str) {
     restack_cinnamon_background_after(reason, BG_RESTACK_DELAY_MS);
 }
 
-/// То же с явной задержкой (сцене Wallpaper Engine нужно больше: её
-/// поверхность получает первый кадр, когда демон уже поднял рендерер; своей
-/// поверхности хоста — запасной срок [`BG_RESTACK_FALLBACK_MS`]).
+/// The same with an explicit delay (a Wallpaper Engine scene needs more: its
+/// surface gets the first frame when the daemon has already brought up the
+/// renderer; for our host's own surface — the fallback deadline
+/// [`BG_RESTACK_FALLBACK_MS`]).
 pub fn restack_cinnamon_background_after(reason: &str, delay_ms: u64) {
     schedule_bg_restack(reason, delay_ms, false);
 }
 
-/// Наша поверхность показала первый кадр (видео — первый кадр ролика):
-/// уложить службу фона под неё сейчас, не дожидаясь запасного срока.
+/// Our surface showed its first frame (video — the movie's first frame): put
+/// the background service under it now, without waiting for the fallback deadline.
 pub fn restack_cinnamon_background_shown(reason: &str) {
     schedule_bg_restack(reason, 0, true);
 }
@@ -803,10 +814,10 @@ pub fn restack_cinnamon_background_shown(reason: &str) {
 fn schedule_bg_restack(reason: &str, delay_ms: u64, shown: bool) {
     use std::sync::Mutex;
     use std::time::Duration;
-    /// Ждущий заказ.
+    /// The waiting order.
     static PENDING: Mutex<Option<BgRestackOrder>> = Mutex::new(None);
     static HISTORY: Mutex<Vec<u64>> = Mutex::new(Vec::new());
-    /// Поток исполнения жив (заказ мог уже уйти в работу, а поток — ещё нет).
+    /// The execution thread is alive (the order may already be in progress, but the thread not yet gone).
     static WORKER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     use std::sync::atomic::Ordering;
     if !cinnamon_wayland_session_live() {
@@ -840,7 +851,7 @@ fn schedule_bg_restack(reason: &str, delay_ms: u64, shown: bool) {
             }
         };
         let order = match order {
-            // Шаг сна короткий: весть «первый кадр» может подтянуть срок.
+            // The sleep step is short: the "first frame" notice may pull the deadline in.
             Ok(wait) => {
                 std::thread::sleep(Duration::from_millis(wait.min(50)));
                 continue;
@@ -858,10 +869,10 @@ fn schedule_bg_restack(reason: &str, delay_ms: u64, shown: bool) {
     }
 }
 
-/// Исполнить созревший заказ: под замком сеанса, с защитой от круга.
+/// Execute a matured order: under the session lock, with protection against looping.
 fn run_bg_restack(order: BgRestackOrder, history: &std::sync::Mutex<Vec<u64>>) {
-    // Под замком: другой процесс Rexon, перезапускающий службу прямо сейчас,
-    // сначала закончит, и его метка будет видна.
+    // Under the lock: another Rexon process restarting the service right now
+    // will finish first, and its mark will be visible.
     let _lock = bg_restack_lock_live();
     if bg_restack_done_by_other(bg_restack_stamp_live().map(|s| s.started), order.requested, order.slack) {
         crate::log_info!("cinnamon-bg", "службу фона уже перезапустил другой процесс Rexon — повторять незачем");
@@ -895,9 +906,9 @@ fn run_bg_restack(order: BgRestackOrder, history: &std::sync::Mutex<Vec<u64>>) {
     }
 }
 
-/// Наблюдатель шины увидел, что служба фона снова взяла имя. Не наш
-/// перезапуск (служба упала, её поднял менеджер фона или активация D-Bus)
-/// — её новая поверхность легла поверх наших обоев: переставить снова.
+/// The bus watcher saw the background service take the name again. Not our
+/// restart (the service crashed, the background manager or D-Bus activation
+/// brought it up) — its new surface lay on top of our wallpaper: restack again.
 pub fn on_cinnamon_bg_owner_appeared_live() {
     if bg_owner_change_is_ours(bg_restack_stamp_ms_live(), unix_ms_now()) {
         return;
@@ -905,12 +916,12 @@ pub fn on_cinnamon_bg_owner_appeared_live() {
     restack_cinnamon_background_soon("служба фона Cinnamon поднялась заново");
 }
 
-/// Следить за шиной: служба фона Cinnamon снова взяла имя не нашим
-/// перезапуском (упала и поднялась, её перезапустил менеджер фона) — её
-/// новая поверхность легла поверх наших обоев, переставить
-/// ([`on_cinnamon_bg_owner_appeared_live`]). Один поток на процесс; вне
-/// Cinnamon на Wayland — ничего. Зовут процессы, чья поверхность лежит в
-/// слое фона: хост обоев слоем и клиент вывода сцен.
+/// Watch the bus: the Cinnamon background service took the name again not by
+/// our restart (crashed and came up, the background manager restarted it) —
+/// its new surface lay on top of our wallpaper, restack
+/// ([`on_cinnamon_bg_owner_appeared_live`]). One thread per process; outside
+/// Cinnamon on Wayland — nothing. Called by processes whose surface lies in
+/// the background layer: the wallpaper host as a layer and the scene output client.
 pub fn spawn_cinnamon_bg_owner_watch_live() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     if !cinnamon_wayland_session_live() {
@@ -938,15 +949,15 @@ pub fn spawn_cinnamon_bg_owner_watch_live() {
     });
 }
 
-/// Хост-клиент вывода на Wayland с layer-shell не рисует сам, а поднимает
-/// штатный клиент вывода waywallen — этот бинарь.
+/// The host output client on Wayland with layer-shell does not draw itself
+/// but brings up waywallen's stock output client — this binary.
 pub const LAYER_SHELL_CLIENT_BIN: &str = "waywallen-layer-shell";
 
-/// Где искать `waywallen-layer-shell`, по порядку: рядом с родителем (демон
-/// запускает хост сам; у AppImage демон живёт в точке монтирования, и
-/// клиент вывода лежит там же), рядом с живыми процессами демона, рядом с
-/// демоном пакета дистрибутива. Последний шанс — поиск по `PATH`
-/// исполнителем ([`LAYER_SHELL_CLIENT_BIN`]).
+/// Where to look for `waywallen-layer-shell`, in order: next to the parent
+/// (the daemon launches the host itself; with an AppImage the daemon lives in
+/// the mount point, and the output client lies there too), next to live
+/// daemon processes, next to the distribution package's daemon. The last
+/// chance is a `PATH` lookup by the executor ([`LAYER_SHELL_CLIENT_BIN`]).
 pub fn layer_shell_client_candidates(parent_exe: Option<&str>, daemon_exes: &[String]) -> Vec<String> {
     let sibling = |exe: &str| {
         std::path::Path::new(exe)
@@ -977,7 +988,7 @@ pub fn layer_shell_client_candidates(parent_exe: Option<&str>, daemon_exes: &[St
     out
 }
 
-/// Строка запуска клиента вывода для сокета демона.
+/// The output client command line for the daemon socket.
 pub fn layer_shell_client_argv(bin: &str, socket: &str) -> Vec<String> {
     let mut argv = vec![bin.to_string()];
     if !socket.is_empty() {
@@ -989,11 +1000,11 @@ pub fn layer_shell_client_argv(bin: &str, socket: &str) -> Vec<String> {
     argv
 }
 
-/// Метка «Rexon отпустил вывод сцен»: свои обои (картинка, видео…) на
-/// Cinnamon с layer-shell снимают поверхность `waywallen-layer-shell`, иначе
-/// она закрыла бы их; применение сцены метку убирает. Лежит в
-/// `$XDG_STATE_HOME/rexon/` — переживает перезаход: последним выбором
-/// человека остаются его обои, а не сцена.
+/// The "Rexon released the scene output" mark: our own wallpapers (picture,
+/// video…) on Cinnamon with layer-shell take down the `waywallen-layer-shell`
+/// surface, otherwise it would cover them; applying a scene removes the mark.
+/// It lies in `$XDG_STATE_HOME/rexon/` — survives re-login: the person's last
+/// choice remains their own wallpaper, not the scene.
 pub fn display_off_marker_path(xdg_state_home: &str, home: &str) -> String {
     let base = if xdg_state_home.trim().is_empty() {
         format!("{}/.local/state", home.trim_end_matches('/'))
@@ -1003,14 +1014,14 @@ pub fn display_off_marker_path(xdg_state_home: &str, home: &str) -> String {
     format!("{base}/rexon/waywallen-display.off")
 }
 
-/// Путь метки на живом сеансе.
+/// The mark's path on a live session.
 pub fn display_off_marker_live() -> String {
     let env = |n: &str| std::env::var(n).unwrap_or_default();
     display_off_marker_path(&env("XDG_STATE_HOME"), &env("HOME"))
 }
 
-/// Отпустить (`off = true`) или вернуть вывод сцен на Cinnamon с
-/// layer-shell. Истина — метку поменяли.
+/// Release (`off = true`) or bring back the scene output on Cinnamon with
+/// layer-shell. True — the mark was changed.
 pub fn set_layer_shell_display_off_live(off: bool) -> bool {
     let path = display_off_marker_live();
     let p = std::path::Path::new(&path);
@@ -1032,18 +1043,19 @@ pub fn set_layer_shell_display_off_live(off: bool) -> bool {
     done
 }
 
-/// Что сделать хосту-клиенту вывода на Wayland.
+/// What the host output client should do on Wayland.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WaylandHostRole {
-    /// Ждать: выводить нечем или не нам.
+    /// Wait: nothing to output with, or it is not ours to do.
     Idle,
-    /// Поднимать и сторожить штатный клиент вывода по этой строке.
+    /// Bring up and watch the stock output client with this command line.
     Delegate(Vec<String>),
 }
 
-/// Решение хоста-клиента вывода на Wayland: композитор с layer-shell и
-/// найденный `waywallen-layer-shell` — поднимать его (на любом столе из
-/// [`REXON_DISPLAY_DESKTOPS`]: Cinnamon 6.8, XFCE/LXQt на labwc); иначе ждать.
+/// The host output client's decision on Wayland: a compositor with
+/// layer-shell and a found `waywallen-layer-shell` — bring it up (on any
+/// desktop from [`REXON_DISPLAY_DESKTOPS`]: Cinnamon 6.8, XFCE/LXQt on
+/// labwc); otherwise wait.
 pub fn wayland_host_role(globals: &[String], client_bin: Option<&str>, socket: &str) -> WaylandHostRole {
     match client_bin {
         Some(bin) if globals_have_layer_shell(globals) => WaylandHostRole::Delegate(layer_shell_client_argv(bin, socket)),
@@ -1051,39 +1063,39 @@ pub fn wayland_host_role(globals: &[String], client_bin: Option<&str>, socket: &
     }
 }
 
-/// Пауза перед новым подъёмом упавшего клиента вывода: 2 с, вдвое за
-/// каждое падение подряд, не больше 30 с (как у демона, только с потолком
-/// повыше — клиент падает обычно от отказа композитора).
+/// The pause before bringing a crashed output client up again: 2 s, doubled
+/// for each crash in a row, no more than 30 s (as with the daemon, only with
+/// a higher ceiling — the client usually crashes from a compositor refusal).
 pub fn layer_shell_restart_delay_ms(crashes_in_row: u32) -> u64 {
     (2000u64 << crashes_in_row.min(4)).min(30_000)
 }
 
-/// Что вышло у [`set_waywallen_gnome_display`].
+/// What came out of [`set_waywallen_gnome_display`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GnomeDisplaySwitch {
-    /// Трогать нечего: не GNOME Shell, расширения нет или оболочка не
-    /// ответила. Молча — это не ошибка человека.
+    /// Nothing to touch: not GNOME Shell, no extension or the shell did not
+    /// answer. Silently — this is not the person's mistake.
     Skipped,
-    /// Расширение уже в нужном состоянии.
+    /// The extension is already in the required state.
     Already,
-    /// Переключили.
+    /// Switched.
     Switched,
-    /// Переключить не вышло (или включение без толку: ошибка, не та
-    /// версия, оболочка его ещё не загрузила).
+    /// Switching failed (or enabling was useless: an error, the wrong version,
+    /// the shell has not loaded it yet).
     Failed,
 }
 
-/// Наблюдения и действия для [`set_waywallen_gnome_display`].
+/// Observations and actions for [`set_waywallen_gnome_display`].
 pub trait GnomeExtIo {
-    /// Переменная окружения (пусто — нет).
+    /// An environment variable (empty — none).
     fn env(&self, name: &str) -> String;
-    /// Есть ли каталог.
+    /// Whether the directory exists.
     fn is_dir(&self, path: &str) -> bool;
-    /// Запустить команду: stdout при коде 0, иначе `None`.
+    /// Run a command: stdout on code 0, otherwise `None`.
     fn run(&self, argv: &[String]) -> Option<String>;
 }
 
-/// Каталог поставленного расширения waywallen, если есть.
+/// Directory of the installed waywallen extension, if there is one.
 pub fn waywallen_gnome_ext_dir(io: &dyn GnomeExtIo) -> Option<String> {
     gnome_extension_dirs(
         WAYWALLEN_GNOME_EXT_ID,
@@ -1095,11 +1107,11 @@ pub fn waywallen_gnome_ext_dir(io: &dyn GnomeExtIo) -> Option<String> {
     .find(|d| io.is_dir(d))
 }
 
-/// Включить (`on`) или выключить расширение вывода waywallen в GNOME.
+/// Enable (`on`) or disable the waywallen output extension in GNOME.
 ///
-/// Состояние спрашивается у самой оболочки
-/// ([`crate::wallpaper_engine::gnome_ext_info_argv`]): не ответила — сеанса
-/// GNOME Shell нет, ничего не трогаем.
+/// The state is asked from the shell itself
+/// ([`crate::wallpaper_engine::gnome_ext_info_argv`]): no answer — there is
+/// no GNOME Shell session, we touch nothing.
 pub fn set_waywallen_gnome_display(io: &dyn GnomeExtIo, on: bool) -> GnomeDisplaySwitch {
     use crate::wallpaper_engine::{gnome_ext_info_argv, parse_shell_ext_state, ShellExtState as S};
     if !is_gnome_shell_session(&io.env("XDG_CURRENT_DESKTOP")) {
@@ -1112,18 +1124,19 @@ pub fn set_waywallen_gnome_display(io: &dyn GnomeExtIo, on: bool) -> GnomeDispla
     match (state, on) {
         (S::Unknown, _) => return GnomeDisplaySwitch::Skipped,
         (S::Enabled, true) => return GnomeDisplaySwitch::Already,
-        // Не работает — и стол не закрывает.
+        // Not working — and does not cover the desktop either.
         (S::Disabled | S::Error | S::OutOfDate | S::NotLoaded, false) => return GnomeDisplaySwitch::Already,
         _ => {}
     }
-    // Сама оболочка (`EnableExtension`/`DisableExtension`): она же правит
-    // оба списка настроек. Свою правку `enabled-extensions` после
-    // `gnome-extensions` здесь делать нельзя — оболочка пишет списки
-    // позже, и две записи наперегонки оставляли расширение выключенным
-    // при «включено» в настройках (живьём 09.11.2026). Сценарий установки
-    // (`gnome_extension_enable_script`) тоже не годится: он пересобирает
-    // схемы чужого расширения, а под нагрузкой на диск это 5+ с.
-    // Шина не ответила — запасной путь: список настроек без чужих uuid.
+    // The shell itself (`EnableExtension`/`DisableExtension`): it also edits
+    // both settings lists. Our own edit of `enabled-extensions` after
+    // `gnome-extensions` must not be done here — the shell writes the lists
+    // later, and two racing writes left the extension disabled while the
+    // settings said "enabled" (live 09.11.2026). The install script
+    // (`gnome_extension_enable_script`) will not do either: it recompiles the
+    // foreign extension's schemas, and under disk load that takes 5+ s.
+    // The bus did not answer — the fallback path: the settings list without
+    // losing foreign uuids.
     let ok = io.run(&gnome_ext_toggle_argv(WAYWALLEN_GNOME_EXT_ID, on)).is_some_and(|out| out.contains("true"))
         || {
             use crate::de_customization::{gsettings_list_add_script, gsettings_list_remove_script};
@@ -1136,15 +1149,15 @@ pub fn set_waywallen_gnome_display(io: &dyn GnomeExtIo, on: bool) -> GnomeDispla
             io.run(&["sh".to_string(), "-c".to_string(), script]).is_some()
         };
     match (ok, state) {
-        // Включено, но дисплея сейчас не будет: сказать придержке «не
-        // вышло», чтобы она не ждала понапрасну.
+        // Enabled, but there will be no display now: tell the hold-back "it did not
+        // work" so it does not wait in vain.
         (true, S::Error | S::OutOfDate | S::NotLoaded) if on => GnomeDisplaySwitch::Failed,
         (true, _) => GnomeDisplaySwitch::Switched,
         (false, _) => GnomeDisplaySwitch::Failed,
     }
 }
 
-/// `EnableExtension`/`DisableExtension` у GNOME Shell; ответ — `(true,)`.
+/// GNOME Shell's `EnableExtension`/`DisableExtension`; the answer is `(true,)`.
 pub fn gnome_ext_toggle_argv(uuid: &str, on: bool) -> Vec<String> {
     let method = if on {
         "org.gnome.Shell.Extensions.EnableExtension"
@@ -1160,7 +1173,7 @@ pub fn gnome_ext_toggle_argv(uuid: &str, on: bool) -> Vec<String> {
     .collect()
 }
 
-/// Живые наблюдения для [`set_waywallen_gnome_display`].
+/// Live observations for [`set_waywallen_gnome_display`].
 pub struct LiveGnomeExtIo;
 
 impl GnomeExtIo for LiveGnomeExtIo {
@@ -1175,7 +1188,7 @@ impl GnomeExtIo for LiveGnomeExtIo {
     }
 }
 
-/// То же на живом сеансе, с записью в журнал, когда что-то переключено.
+/// The same on a live session, with a journal entry when something was switched.
 pub fn set_waywallen_gnome_display_live(on: bool) -> GnomeDisplaySwitch {
     let res = set_waywallen_gnome_display(&LiveGnomeExtIo, on);
     let what = if on { "включено" } else { "выключено" };
@@ -1192,26 +1205,26 @@ pub fn set_waywallen_gnome_display_live(on: bool) -> GnomeDisplaySwitch {
     res
 }
 
-/// Поставлено ли расширение вывода waywallen (живая проба ФС, без шины —
-/// годится для частых вызовов).
+/// Whether the waywallen output extension is installed (a live file system
+/// probe, without the bus — fit for frequent calls).
 pub fn waywallen_gnome_ext_installed_live() -> bool {
     waywallen_gnome_ext_dir(&LiveGnomeExtIo).is_some()
 }
 
-/// Имя определения вывода у демона (поле `name`, видно в его журнале и в
-/// `display_backend_status`).
+/// The daemon's output definition name (the `name` field, visible in its
+/// journal and in `display_backend_status`).
 pub const REXON_DISPLAY_NAME: &str = "rexon-x11";
 
-/// Режим хоста обоев, в котором он — клиент вывода демона.
+/// The wallpaper host mode in which it is the daemon's output client.
 pub const REXON_DISPLAY_HOST_ARGS: &[&str] = &["--mode", "waywallen"];
 
-/// Рабочие столы (токены `XDG_CURRENT_DESKTOP`, без регистра), на которых
-/// демон поднимает наш хост. Только столы без собственного вывода waywallen:
-/// `kde` у демона под жёстким правилом, `gnome` — у его расширения, wlr —
-/// у `waywallen-layer-shell`. Часть этих столов бывает и на Wayland (XFCE и
-/// LXQt на labwc, Cinnamon Wayland) — там хост ничего не показывает и только
-/// ждёт ([`rexon_host_should_idle`]), чтобы демон не перезапускал его по
-/// кругу.
+/// Desktops (`XDG_CURRENT_DESKTOP` tokens, case-insensitive) on which the
+/// daemon brings up our host. Only desktops without waywallen's own output:
+/// `kde` is under the daemon's hard rule, `gnome` belongs to its extension,
+/// wlr to `waywallen-layer-shell`. Some of these desktops also happen on
+/// Wayland (XFCE and LXQt on labwc, Cinnamon Wayland) — there the host shows
+/// nothing and only waits ([`rexon_host_should_idle`]), so that the daemon
+/// does not restart it in a loop.
 pub const REXON_DISPLAY_DESKTOPS: &[&str] = &[
     "mate",
     "xfce",
@@ -1227,22 +1240,22 @@ pub const REXON_DISPLAY_DESKTOPS: &[&str] = &[
     "enlightenment",
 ];
 
-/// Приоритет определения: выше встроенного `x11` (50; демон с
-/// waywallen#354 сам поднимает `waywallen-x11` на MATE, Cinnamon и Xfce).
-/// Иначе на этих столах демон выберет свой вывод: без бинаря рядом обоев
-/// нет вовсе, с бинарем его окно встаёт под непрозрачную Caja. Списки
-/// столов с `layer-shell`, `kde` и `gnome` не пересекаются — у них 60
-/// ничего не отнимает.
+/// Definition priority: above the built-in `x11` (50; the daemon with
+/// waywallen#354 brings up `waywallen-x11` itself on MATE, Cinnamon and
+/// Xfce). Otherwise on these desktops the daemon would choose its own output:
+/// without the binary next to it there is no wallpaper at all, with the
+/// binary its window goes under the opaque Caja. The desktop lists of
+/// `layer-shell`, `kde` and `gnome` do not overlap — 60 takes nothing from them.
 pub const REXON_DISPLAY_PRIORITY: i32 = 60;
 
-/// Где лежит определение вывода для демона: пользовательский каталог
-/// `displays` демона (`$XDG_DATA_HOME/waywallen/displays`). Его читает
-/// любой демон — AppImage, вшитый в Rexon, и пакет дистрибутива.
+/// Where the output definition for the daemon lies: the daemon's user
+/// `displays` directory (`$XDG_DATA_HOME/waywallen/displays`). Any daemon
+/// reads it — the AppImage one bundled in Rexon and the distribution package.
 pub fn rexon_display_manifest_path(xdg_data_home: &str) -> String {
     format!("{}/waywallen/displays/{REXON_DISPLAY_NAME}.toml", xdg_data_home.trim_end_matches('/'))
 }
 
-/// Экранировать строку для TOML (базовая строка в кавычках).
+/// Escape a string for TOML (a basic quoted string).
 fn toml_str(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 2);
     out.push('"');
@@ -1258,8 +1271,8 @@ fn toml_str(value: &str) -> String {
     out
 }
 
-/// Текст определения вывода (`DisplayManifest` демона: секция `[display]`).
-/// Демон запускает `bin --socket <путь> <extra_args>` и следит за ним сам.
+/// The output definition text (the daemon's `DisplayManifest`: the `[display]` section).
+/// The daemon runs `bin --socket <path> <extra_args>` and watches it itself.
 pub fn rexon_display_manifest(host_bin: &str) -> String {
     let list = |items: &[&str]| items.iter().map(|s| toml_str(s)).collect::<Vec<_>>().join(", ");
     format!(
@@ -1279,23 +1292,24 @@ pub fn rexon_display_manifest(host_bin: &str) -> String {
     )
 }
 
-/// Переписывать ли определение: нет файла или он не тот (другой путь к
-/// хосту после переустановки, старый формат).
+/// Whether to rewrite the definition: no file or it is not the right one
+/// (another host path after reinstall, an old format).
 pub fn rexon_display_manifest_stale(current: Option<&str>, host_bin: &str) -> bool {
     current != Some(rexon_display_manifest(host_bin).as_str())
 }
 
-/// Хост обоев рядом с запущенным бинарём Rexon (дерево разработчика:
-/// `target*/release/`), иначе — поиск по `PATH` у исполнителя (пакет кладёт
-/// хост в `/usr/bin`).
+/// The wallpaper host next to the running Rexon binary (the developer tree:
+/// `target*/release/`), otherwise a `PATH` lookup by the executor (the
+/// package puts the host into `/usr/bin`).
 pub fn rexon_display_host_sibling(self_exe: &str) -> Option<String> {
     let dir = std::path::Path::new(self_exe).parent()?;
     Some(dir.join(crate::wallpaper_engine::WALLPAPER_HOST_BINARY).to_string_lossy().into_owned())
 }
 
-/// Строка, которой Rexon запускает хост-клиент вывода сам, — та же, что у
-/// демона по определению вывода (`bin --socket <путь> <extra_args>`): один
-/// разбор ключей у хоста на оба пути.
+/// The command line with which Rexon launches the host output client itself —
+/// the same as the daemon's from the output definition
+/// (`bin --socket <path> <extra_args>`): one switch parser in the host for
+/// both paths.
 pub fn rexon_display_host_argv(host_bin: &str, socket: &str) -> Vec<String> {
     let mut argv = vec![host_bin.to_string()];
     if !socket.is_empty() {
@@ -1306,21 +1320,21 @@ pub fn rexon_display_host_argv(host_bin: &str, socket: &str) -> Vec<String> {
     argv
 }
 
-/// Блокировка «вывод уже показывает другой экземпляр хоста».
+/// The "another host instance is already showing the output" lock.
 pub fn rexon_host_lock_path(xdg_runtime_dir: &str) -> String {
     format!("{}/rexon-waywallen-display.lock", xdg_runtime_dir.trim_end_matches('/'))
 }
 
-/// Должен ли хост-клиент вывода только ждать, ничего не показывая.
+/// Whether the host output client should only wait, showing nothing.
 ///
-/// Да на Wayland: окна X11 там легли бы поверх стола обычными окнами
-/// (через XWayland), а слой фона — забота других выводов. Нет `DISPLAY` —
-/// окну негде быть вовсе.
+/// Yes on Wayland: X11 windows there would lie over the desktop as ordinary
+/// windows (via XWayland), and the background layer is other outputs'
+/// business. No `DISPLAY` — the window has nowhere to be at all.
 pub fn rexon_host_should_idle(session_type: &str, wayland_display: &str, display: &str) -> bool {
     is_wayland_session(session_type, wayland_display) || display.trim().is_empty()
 }
 
-/// Имя бэкенда для журнала и для моста (стабильные строки, не для UI).
+/// Backend name for the journal and the bridge (stable strings, not for the UI).
 pub fn backend_id(backend: WallpaperBackend) -> &'static str {
     match backend {
         WallpaperBackend::KdePlugin => "kde-plugin",
@@ -1331,43 +1345,47 @@ pub fn backend_id(backend: WallpaperBackend) -> &'static str {
     }
 }
 
-// ── значки рабочего стола под живыми обоями (X11) ───────────────────────
+// ── desktop icons under a live wallpaper (X11) ──────────────────────────
 //
-// Дефект 31.10.2026 (MATE 1.28, X11): «Применить» живых обоев работает, но
-// окно хоста встаёт над окном значков Caja — значков не видно. Порядок окон
-// решает хост сам (`wallpaper_mmap::x11_restack_goal`): под значками — когда
-// фон окна значков сквозной, над ними — когда непрозрачный. Здесь — что
-// сделать со столом при применении и что вернуть потом:
+// Defect of 31.10.2026 (MATE 1.28, X11): live wallpaper «Apply» works, but
+// the host window goes above Caja's icons window — the icons are not
+// visible. The window order is decided by the host itself
+// (`wallpaper_mmap::x11_restack_goal`): under the icons when the icons
+// window background is transparent, above them when it is opaque. Here is
+// what to do with the desktop on apply and what to restore later:
 //
-// * Caja с ключом `org.mate.caja.desktop transparent-background` (наш
-//   mate-desktop/caja#1916; есть ли ключ — спрашиваем у схемы, а не по
-//   версии): ключ включается, композитор Marco — тоже, если выключен (без
-//   него альфа окна не смешивается), окно стола пересоздаётся (ключ Caja
-//   читает при создании окна). Прежние значения записываются и
-//   возвращаются кнопкой «Остановить живые обои» в настройках и откатом
-//   неудачного применения сцены. Остановка сцены во вкладке Wallpaper
-//   Engine ключ не трогает: без окна обоев под ним сквозной стол Caja
-//   показывает обычную картинку стола (корневое окно), проверено на стенде.
-// * Caja без ключа и xfdesktop фон рисуют непрозрачным — значки на время
-//   живых обоев скрыты под ними, и человеку это говорится словами. Сами
-//   значки НЕ выключаются: окно обоев ушло — значки снова видны.
-// * nemo-desktop прозрачен всегда (визуал RGBA), но при запуске сам
-//   отказывается рисовать стол («Desktop already managed»), если самое
-//   нижнее окно типа «рабочий стол» в `_NET_CLIENT_LIST_STACKING` чужое —
-//   а это окно обоев, если оно показано раньше nemo-desktop (вход в сеанс,
-//   перезапуск Nemo). Исключения — ключ `org.nemo.desktop
-//   ignored-desktop-handlers`: подстрока `WM_CLASS` (res_class) без учёта
-//   регистра (Nemo 6.6 `desktop_handler_is_ignored`); у всех хостов обоев
-//   класс начинается с `Rexon`. Где эта схема есть, Rexon дописывает туда
-//   `rexon`, не трогая чужие значения, а прежнее значение записывает и
-//   возвращает тем же «Остановить живые обои».
+// * Caja with the `org.mate.caja.desktop transparent-background` key (our
+//   mate-desktop/caja#1916; whether the key exists is asked from the schema,
+//   not by version): the key is turned on, the Marco compositor too if it is
+//   off (without it window alpha is not blended), the desktop window is
+//   recreated (Caja reads the key when creating the window). The previous
+//   values are recorded and restored by the «Stop live wallpaper» button in
+//   the settings and by rolling back a failed scene apply. Stopping a scene
+//   in the Wallpaper Engine tab does not touch the key: without a wallpaper
+//   window under it, Caja's transparent desktop shows the regular desktop
+//   picture (the root window), verified on the test bench.
+// * Caja without the key and xfdesktop draw the background opaque — the
+//   icons are hidden under the live wallpaper while it runs, and the person
+//   is told so in words. The icons themselves are NOT turned off: the
+//   wallpaper window is gone — the icons are visible again.
+// * nemo-desktop is always transparent (an RGBA visual), but on startup it
+//   refuses to draw the desktop itself («Desktop already managed») if the
+//   lowest "desktop" type window in `_NET_CLIENT_LIST_STACKING` is a foreign
+//   one — and that is the wallpaper window if it was shown before
+//   nemo-desktop (session login, Nemo restart). Exceptions are the
+//   `org.nemo.desktop ignored-desktop-handlers` key: a `WM_CLASS` (res_class)
+//   substring, case-insensitive (Nemo 6.6 `desktop_handler_is_ignored`); the
+//   class of all wallpaper hosts starts with `Rexon`. Where this schema
+//   exists, Rexon appends `rexon` there without touching foreign values, and
+//   records the previous value and restores it with the same «Stop live
+//   wallpaper».
 //
-// ⚠️ Пересоздание окна стола — переключение `org.mate.background
-// show-desktop-icons` «выкл → вкл», а не `caja -q`: выход Caja закрыл бы
-// открытые окна файлового менеджера, а под mate-session Caja ещё и
-// перезапускается сама (X-MATE-AutoRestart).
+// ⚠️ Recreating the desktop window means toggling `org.mate.background
+// show-desktop-icons` "off → on", not `caja -q`: quitting Caja would close
+// the file manager's open windows, and under mate-session Caja also
+// restarts itself (X-MATE-AutoRestart).
 
-/// Чья программа рисует значки рабочего стола X11.
+/// Whose program draws the X11 desktop icons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DesktopIconsOwner {
     /// MATE.
@@ -1379,7 +1397,7 @@ pub enum DesktopIconsOwner {
 }
 
 impl DesktopIconsOwner {
-    /// Имя программы для человека (имена программ не переводятся).
+    /// Program name for the person (program names are not translated).
     pub fn program_name(self) -> &'static str {
         match self {
             DesktopIconsOwner::Caja => "Caja",
@@ -1389,11 +1407,12 @@ impl DesktopIconsOwner {
     }
 }
 
-/// Кто рисует значки на этом столе; `None` — не X11 либо стол, где окно
-/// обоев значкам не мешает (или мы его не знаем).
+/// Who draws the icons on this desktop; `None` — not X11, or a desktop where
+/// the wallpaper window does not get in the way of the icons (or we do not
+/// know it).
 ///
-/// `de` — имя окружения от `wallpaper_engine::detect_de`, `session_type` —
-/// от `wallpaper_engine::detect_session_type`.
+/// `de` — the environment name from `wallpaper_engine::detect_de`,
+/// `session_type` — from `wallpaper_engine::detect_session_type`.
 pub fn desktop_icons_owner(de: &str, session_type: &str) -> Option<DesktopIconsOwner> {
     if session_type != "x11" {
         return None;
@@ -1415,26 +1434,26 @@ pub const MATE_WINDOW_MANAGER_KEY: &str = "windowmanager";
 pub const MARCO_GENERAL_SCHEMA: &str = "org.mate.Marco.general";
 pub const MARCO_COMPOSITING_KEY: &str = "compositing-manager";
 
-/// Пауза между «значки выкл» и «значки вкл» при пересоздании окна стола
-/// Caja: оба изменения, пришедшие разом, Caja сливает в одно и окно не
-/// пересоздаёт (замер на стенде 31.10.2026).
+/// The pause between "icons off" and "icons on" when recreating Caja's
+/// desktop window: Caja merges both changes arriving at once into one and
+/// does not recreate the window (measured on the test bench 31.10.2026).
 pub const CAJA_DESKTOP_RECREATE_PAUSE_MS: u64 = 1500;
 
-/// Чем подготовка и откат значков трогают машину. Живая реализация —
-/// `wallpaper_exec::DesktopIconsSys`, подставные — в сверках.
+/// What icon preparation and rollback touch the machine with. The live
+/// implementation is `wallpaper_exec::DesktopIconsSys`, fakes are in the checks.
 pub trait DesktopIconsIo {
-    /// Вывод команды, если она отработала с кодом 0; иначе `None`.
+    /// The command output if it finished with code 0; otherwise `None`.
     fn run(&mut self, argv: &[&str]) -> Option<String>;
-    /// Записанное прежнее состояние стола либо `None`.
+    /// The recorded previous desktop state or `None`.
     fn read_state(&mut self) -> Option<String>;
-    /// Записать состояние (`None` — стереть). Истина — получилось.
+    /// Write the state (`None` — erase). True — it worked.
     fn write_state(&mut self, content: Option<&str>) -> bool;
-    /// Подождать.
+    /// Wait.
     fn pause_ms(&mut self, ms: u64);
 }
 
-/// Файл прежнего состояния стола: `$XDG_STATE_HOME/rexon/desktop-icons.state`
-/// (по умолчанию `~/.local/state/…`).
+/// The previous desktop state file: `$XDG_STATE_HOME/rexon/desktop-icons.state`
+/// (by default `~/.local/state/…`).
 pub fn desktop_icons_state_path(xdg_state_home: &str, home: &str) -> String {
     let base = if xdg_state_home.trim().is_empty() {
         format!("{}/.local/state", home.trim_end_matches('/'))
@@ -1465,36 +1484,37 @@ fn gsettings_set(io: &mut impl DesktopIconsIo, schema: &str, key: &str, value: b
     ok
 }
 
-/// Есть ли у установленной Caja ключ прозрачного фона стола — по схеме.
+/// Whether the installed Caja has the transparent desktop background key — by the schema.
 fn caja_has_transparent_key(io: &mut impl DesktopIconsIo) -> bool {
     io.run(&["gsettings", "list-keys", CAJA_DESKTOP_SCHEMA])
         .is_some_and(|keys| keys.lines().any(|k| k.trim() == CAJA_TRANSPARENT_KEY))
 }
 
-/// Оконный менеджер MATE — Marco (его композитор и включаем). Не узнали —
-/// Marco: он стоит в MATE по умолчанию.
+/// The MATE window manager is Marco (its compositor is what we enable). If
+/// not found out — Marco: it is the MATE default.
 fn mate_wm_is_marco(io: &mut impl DesktopIconsIo) -> bool {
     gsettings_get(io, MATE_SESSION_COMPONENTS_SCHEMA, MATE_WINDOW_MANAGER_KEY)
         .is_none_or(|wm| wm.is_empty() || wm.eq_ignore_ascii_case("marco"))
 }
 
-/// Пересоздать окно стола Caja, не трогая окна файлового менеджера.
+/// Recreate Caja's desktop window without touching the file manager windows.
 fn recreate_caja_desktop(io: &mut impl DesktopIconsIo) {
     gsettings_set(io, MATE_BACKGROUND_SCHEMA, MATE_SHOW_ICONS_KEY, false);
     io.pause_ms(CAJA_DESKTOP_RECREATE_PAUSE_MS);
     gsettings_set(io, MATE_BACKGROUND_SCHEMA, MATE_SHOW_ICONS_KEY, true);
 }
 
-/// Окно значков, которое можно пересоздать переключением «значки выкл →
-/// вкл»: схема и ключ по `WM_CLASS` окна (экземпляр, класс); `None` —
-/// не умеем (xfdesktop фон рисует непрозрачным, пересоздание не поможет).
+/// An icons window that can be recreated by toggling "icons off → on": the
+/// schema and key by the window's `WM_CLASS` (instance, class); `None` — we
+/// cannot (xfdesktop draws the background opaque, recreating will not help).
 ///
-/// Нужно там, где оконный менеджер не ставит окно обоев под окно значков
-/// по просьбе: xfwm4 отбрасывает ConfigureWindow окна типа «рабочий стол»
-/// (`clientMoveResizeWindow`), а `_NET_RESTACK_WINDOW` не поддерживает.
-/// Новое окно значков он кладёт поверх окна обоев — на стенде (Xvfb,
-/// xfwm4 4.20 с композитором, 31.10.2026) так и у nemo-desktop, и у Caja
-/// со сквозным фоном.
+/// Needed where the window manager does not put the wallpaper window under
+/// the icons window on request: xfwm4 discards ConfigureWindow for "desktop"
+/// type windows (`clientMoveResizeWindow`), and does not support
+/// `_NET_RESTACK_WINDOW`. It puts a new icons window over the wallpaper
+/// window — on the test bench (Xvfb, xfwm4 4.20 with the compositor,
+/// 31.10.2026) that is how it goes for both nemo-desktop and Caja with a
+/// transparent background.
 pub fn icons_window_toggle(instance: &str, class: &str) -> Option<(&'static str, &'static str)> {
     let is = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
     if is(instance, "nemo-desktop") || is(class, "nemo-desktop") {
@@ -1506,13 +1526,13 @@ pub fn icons_window_toggle(instance: &str, class: &str) -> Option<(&'static str,
     None
 }
 
-/// Пересоздать окно значков переключением `schema key` «выкл → вкл» с
-/// паузой [`CAJA_DESKTOP_RECREATE_PAUSE_MS`] (Caja без неё слила бы оба
-/// изменения; nemo-desktop пересоздаёт и без паузы, ему она безвредна).
+/// Recreate the icons window by toggling `schema key` "off → on" with the
+/// [`CAJA_DESKTOP_RECREATE_PAUSE_MS`] pause (without it Caja would merge both
+/// changes; nemo-desktop recreates even without the pause, it does no harm there).
 ///
-/// Ключ выключен (значков нет) или не читается — ничего не трогается.
-/// Не включилось обратно — ещё одна попытка: значки нельзя оставить
-/// выключенными. Истина — окно пересоздано и ключ снова включён.
+/// The key is off (no icons) or cannot be read — nothing is touched. If it did
+/// not get turned back on — one more attempt: the icons must not be left
+/// turned off. True — the window was recreated and the key is on again.
 pub fn recreate_icons_window(io: &mut impl DesktopIconsIo, schema: &str, key: &str) -> bool {
     if gsettings_bool(io, schema, key) != Some(true) {
         crate::log_info!("desktop-icons", "{schema} {key} не включён — пересоздавать окно значков незачем");
@@ -1533,18 +1553,18 @@ pub fn recreate_icons_window(io: &mut impl DesktopIconsIo, schema: &str, key: &s
     back
 }
 
-/// Прежнее состояние стола: что Rexon поменял и к чему вернуть.
+/// The previous desktop state: what Rexon changed and what to restore it to.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DesktopIconsSaved {
-    /// Часть Caja записана (строка `owner=caja`); повторные применения её
-    /// не перезаписывают — они увидели бы уже наши значения.
+    /// The Caja part is recorded (the `owner=caja` line); repeated applies do not
+    /// overwrite it — they would see our own values.
     pub caja_recorded: bool,
-    /// Ключ прозрачного фона Caja был выключен — вернуть `false`.
+    /// Caja's transparent background key was off — restore `false`.
     pub caja_transparent_was_off: bool,
-    /// Композитор Marco был выключен — вернуть `false`.
+    /// The Marco compositor was off — restore `false`.
     pub marco_compositing_was_off: bool,
-    /// Rexon дописал себя в `org.nemo.desktop ignored-desktop-handlers`;
-    /// здесь прежнее значение — текст GVariant, как его печатает gsettings.
+    /// Rexon appended itself to `org.nemo.desktop ignored-desktop-handlers`;
+    /// here is the previous value — GVariant text, as gsettings prints it.
     pub nemo_ignored_before: Option<String>,
 }
 
@@ -1563,7 +1583,7 @@ impl DesktopIconsSaved {
         text
     }
 
-    /// Разбор записанного; чужой или битый файл — `None` (откатывать нечего).
+    /// Parse what was recorded; a foreign or broken file — `None` (nothing to roll back).
     pub fn parse(text: &str) -> Option<Self> {
         let mut saved = DesktopIconsSaved::default();
         for line in text.lines() {
@@ -1591,8 +1611,8 @@ fn one_line(text: &str) -> String {
     text.lines().map(str::trim).collect::<Vec<_>>().join(" ")
 }
 
-/// Записанное прежнее состояние, дополненное `change`, — обратно в файл.
-/// Части, записанные раньше, не теряются: Caja и Nemo пишут каждая своё.
+/// The recorded previous state, supplemented with `change` — back into the
+/// file. Parts recorded earlier are not lost: Caja and Nemo each write their own.
 fn update_saved(io: &mut impl DesktopIconsIo, change: impl FnOnce(&mut DesktopIconsSaved)) {
     let mut saved = io.read_state().and_then(|s| DesktopIconsSaved::parse(&s)).unwrap_or_default();
     change(&mut saved);
@@ -1603,19 +1623,19 @@ fn update_saved(io: &mut impl DesktopIconsIo, change: impl FnOnce(&mut DesktopIc
 
 pub const NEMO_DESKTOP_SCHEMA: &str = "org.nemo.desktop";
 pub const NEMO_IGNORED_HANDLERS_KEY: &str = "ignored-desktop-handlers";
-/// Значки стола nemo-desktop: «выкл → вкл» пересоздаёт его окно.
+/// nemo-desktop desktop icons: "off → on" recreates its window.
 pub const NEMO_SHOW_ICONS_KEY: &str = "show-desktop-icons";
-/// Наше значение в `ignored-desktop-handlers`: подстрока `WM_CLASS` всех
-/// хостов обоев (`RexonVideoWallpaper`, `RexonWebWallpaper`, …).
+/// Our value in `ignored-desktop-handlers`: a `WM_CLASS` substring of all
+/// wallpaper hosts (`RexonVideoWallpaper`, `RexonWebWallpaper`, …).
 pub const NEMO_REXON_HANDLER: &str = "rexon";
 
 fn is_rexon_handler(entry: &str) -> bool {
     entry.trim().eq_ignore_ascii_case(NEMO_REXON_HANDLER)
 }
 
-/// Разбор массива строк GVariant, как его печатает `gsettings get`:
-/// `['conky', 'csd-background']`, `@as []`, кавычки одинарные или двойные,
-/// `\` — экранирование. Не массив строк — `None`.
+/// Parsing a GVariant string array as `gsettings get` prints it:
+/// `['conky', 'csd-background']`, `@as []`, single or double quotes, `\` —
+/// escaping. Not a string array — `None`.
 pub fn parse_gvariant_strv(text: &str) -> Option<Vec<String>> {
     let t = text.trim();
     let t = t.strip_prefix("@as").map_or(t, str::trim_start);
@@ -1647,7 +1667,7 @@ pub fn parse_gvariant_strv(text: &str) -> Option<Vec<String>> {
     }
 }
 
-/// Массив строк в текст GVariant для `gsettings set`.
+/// A string array into GVariant text for `gsettings set`.
 pub fn format_gvariant_strv(items: &[String]) -> String {
     if items.is_empty() {
         return "@as []".to_string();
@@ -1679,9 +1699,9 @@ fn nemo_ignored_set(io: &mut impl DesktopIconsIo, value: &str) -> bool {
     ok
 }
 
-/// nemo-desktop не должен принимать окно обоев за чужой стол: дописать
-/// `rexon` в `ignored-desktop-handlers`, где эта схема есть. Чужие
-/// значения остаются; прежнее значение записывается первым дописыванием.
+/// nemo-desktop must not take the wallpaper window for a foreign desktop:
+/// append `rexon` to `ignored-desktop-handlers` where this schema exists.
+/// Foreign values stay; the previous value is recorded on the first append.
 fn prepare_nemo_handlers(io: &mut impl DesktopIconsIo) {
     if !nemo_has_ignored_key(io) {
         return;
@@ -1704,9 +1724,9 @@ fn prepare_nemo_handlers(io: &mut impl DesktopIconsIo) {
     }
 }
 
-/// Убрать `rexon` из `ignored-desktop-handlers`. Если с тех пор список
-/// никто не менял — вернуть записанное значение как было; иначе убрать
-/// только наше, чужие правки оставить.
+/// Remove `rexon` from `ignored-desktop-handlers`. If nobody has changed the
+/// list since then — restore the recorded value as it was; otherwise remove
+/// only ours and keep the foreign edits.
 fn restore_nemo_handlers(io: &mut impl DesktopIconsIo, before: &str) {
     let Some((_, current)) = nemo_ignored_get(io) else {
         return;
@@ -1719,15 +1739,15 @@ fn restore_nemo_handlers(io: &mut impl DesktopIconsIo, before: &str) {
         nemo_ignored_set(io, &format_gvariant_strv(&rest));
         return;
     }
-    // Прежнее значение могло быть умолчанием схемы — тогда сброс вернёт
-    // его, не оставив в dconf записи, которой там не было.
+    // The previous value may have been the schema default — then a reset
+    // restores it without leaving an entry in dconf that was not there.
     let _ = io.run(&["gsettings", "reset", NEMO_DESKTOP_SCHEMA, NEMO_IGNORED_HANDLERS_KEY]);
     if nemo_ignored_get(io).map(|(_, list)| list) != Some(rest) {
         nemo_ignored_set(io, before);
     }
 }
 
-/// Значки будут скрыты: файловый менеджер стола не умеет сквозной фон.
+/// The icons will be hidden: the desktop file manager cannot do a transparent background.
 pub fn desktop_icons_hidden_text(owner: DesktopIconsOwner) -> String {
     crate::i18n::trf(
         "Desktop icons will be hidden while the live wallpaper is on: %1 cannot draw a \
@@ -1736,8 +1756,8 @@ pub fn desktop_icons_hidden_text(owner: DesktopIconsOwner) -> String {
     )
 }
 
-/// Значки остаются: Rexon включил сквозной фон стола Caja (и, если надо,
-/// композитор Marco).
+/// The icons stay: Rexon turned on Caja's transparent desktop background
+/// (and, if needed, the Marco compositor).
 pub fn desktop_icons_kept_text(compositing_turned_on: bool) -> String {
     let mut text = crate::i18n::tr(
         "Desktop icons stay on top of the live wallpaper: Rexon turned on the see-through \
@@ -1750,21 +1770,21 @@ pub fn desktop_icons_kept_text(compositing_turned_on: bool) -> String {
     text
 }
 
-/// Подготовить стол к живым обоям: что сказать человеку (`None` — нечего).
+/// Prepare the desktop for a live wallpaper: what to tell the person (`None` — nothing).
 ///
-/// Зовётся при каждом применении живых обоев окном на X11; повтор
-/// безвреден: уже настроенное не трогается, прежнее состояние записывается
-/// только первым применением.
+/// Called on every live wallpaper apply as a window on X11; repeating is
+/// harmless: what is already configured is not touched, the previous state is
+/// recorded only by the first apply.
 ///
-/// Ключ nemo-desktop правится на любом из этих столов, где есть его схема:
-/// nemo-desktop запускают и вне Cinnamon (его запасной режим), а проверка
-/// окна стола у него та же.
+/// The nemo-desktop key is edited on any of these desktops where its schema
+/// exists: nemo-desktop is also run outside Cinnamon (its fallback mode), and
+/// its desktop window check is the same.
 pub fn prepare_desktop_icons(io: &mut impl DesktopIconsIo, owner: DesktopIconsOwner) -> Option<String> {
     prepare_nemo_handlers(io);
     match owner {
         DesktopIconsOwner::Nemo => None,
         DesktopIconsOwner::Xfdesktop => {
-            // 0 — значков нет; не задано — умолчание xfdesktop (файлы).
+            // 0 — no icons; unset — the xfdesktop default (files).
             let style = io.run(&["xfconf-query", "-c", "xfce4-desktop", "-p", "/desktop-icons/style"]);
             (style.as_deref().map(str::trim) != Some("0")).then(|| desktop_icons_hidden_text(owner))
         }
@@ -1773,7 +1793,7 @@ pub fn prepare_desktop_icons(io: &mut impl DesktopIconsIo, owner: DesktopIconsOw
 }
 
 fn prepare_caja(io: &mut impl DesktopIconsIo) -> Option<String> {
-    // Значков нет (или нет самой схемы MATE) — закрывать нечего.
+    // No icons (or no MATE schema at all) — nothing to cover.
     if gsettings_bool(io, MATE_BACKGROUND_SCHEMA, MATE_SHOW_ICONS_KEY) != Some(true) {
         return None;
     }
@@ -1787,8 +1807,8 @@ fn prepare_caja(io: &mut impl DesktopIconsIo) -> Option<String> {
     if transparent_on && !compositing_off {
         return None;
     }
-    // Записать, что было, — только первым применением: повторное увидело
-    // бы уже наши значения.
+    // Record what was there — only on the first apply: a repeated one would see
+    // our own values.
     if !io.read_state().and_then(|s| DesktopIconsSaved::parse(&s)).is_some_and(|s| s.caja_recorded) {
         update_saved(io, |saved| {
             saved.caja_recorded = true;
@@ -1813,8 +1833,8 @@ fn prepare_caja(io: &mut impl DesktopIconsIo) -> Option<String> {
     Some(desktop_icons_kept_text(compositing_off))
 }
 
-/// Вернуть стол, как был до первого применения живых обоев. Истина — было
-/// что возвращать.
+/// Restore the desktop as it was before the first live wallpaper apply. True —
+/// there was something to restore.
 pub fn restore_desktop_icons(io: &mut impl DesktopIconsIo) -> bool {
     let Some(text) = io.read_state() else {
         return false;

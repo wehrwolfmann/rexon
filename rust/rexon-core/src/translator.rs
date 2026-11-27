@@ -1,126 +1,133 @@
-//! Автоперевод описаний тем — порт ЧИСТОЙ логики из
+//! Auto-translation of theme descriptions — port of the PURE logic from
 //! `rexon/appearance/translator.py`.
 //!
-//! Портирована ДЕТЕРМИНИРОВАННАЯ часть: маппинг локали пользователя в целевой
-//! язык ([`user_lang_from_locale`]), ключ кеша переводов `src_hash`
-//! ([`translation_cache_key`] — SHA-1 от `версия:src:tgt:текст`), признак
-//! HTML-разметки ([`looks_like_html`]), сегментация HTML по текстовым узлам с
-//! сохранением тегов/сущностей дословно ([`segment_html`] — побайтовый порт
-//! `_HTMLTextTranslator`/`html.parser.HTMLParser` при `convert_charrefs=False`),
-//! дешёвая эвристика языка ([`detect_lang_heuristic`]), выделение видимого
-//! текста для детекта ([`probe_text`]) и РЕШЕНИЕ «переводить или вернуть
-//! оригинал» ([`plan_translate_text`]).
+//! The DETERMINISTIC part is ported: mapping the user's locale to the target
+//! language ([`user_lang_from_locale`]), the translation cache key `src_hash`
+//! ([`translation_cache_key`] — SHA-1 of `version:src:tgt:text`), the HTML
+//! markup check ([`looks_like_html`]), segmenting HTML into text nodes while
+//! keeping tags/entities verbatim ([`segment_html`] — a byte-for-byte port of
+//! `_HTMLTextTranslator`/`html.parser.HTMLParser` with
+//! `convert_charrefs=False`), a cheap language heuristic
+//! ([`detect_lang_heuristic`]), extracting visible text for detection
+//! ([`probe_text`]) and the DECISION «translate or return the original»
+//! ([`plan_translate_text`]).
 //!
-//! Side-effect'ы СЮДА НЕ переносятся и остаются на Python: сам вызов
-//! `argostranslate` (перевод текстового сегмента), SQLite-кеш переводов
-//! (`get_cache`/`get_translation`/`put_translation` в `appearance/cache.py`),
-//! опциональный `langdetect` (недетерминирован без seed=0, но seed фиксирует
-//! лишь его внутренний ГПСЧ — сам движок сюда не тащим) и загрузка моделей
-//! (`_ensure_pair`, сеть). Ядро отдаёт СЕГМЕНТЫ, КЛЮЧ и РЕШЕНИЕ; наблюдения
-//! (доступен ли argos, что детектнул язык, собирается ли пара src→tgt)
-//! передаются параметрами.
+//! Side effects are NOT moved HERE and stay in Python: the `argostranslate`
+//! call itself (translating a text segment), the SQLite translation cache
+//! (`get_cache`/`get_translation`/`put_translation` in `appearance/cache.py`),
+//! the optional `langdetect` (non-deterministic without seed=0, but the seed
+//! only fixes its internal PRNG — we do not drag the engine itself here) and
+//! model loading (`_ensure_pair`, network). The core hands out SEGMENTS, the
+//! KEY and the DECISION; observations (whether argos is available, what the
+//! language detector found, whether the src→tgt pair can be assembled) are
+//! passed as parameters.
 //!
-//! ⚠️ СВЕРХ ПОРТА (в Python этого нет): фильтр «проза или техника» —
-//! [`is_prose_segment`], [`CodeEnvStack`], [`translatable_flags`] и
-//! [`render_segments_filtered`]. Python звал движок на каждый текстовый узел, и
-//! замер на живых описаниях мастерской показал, что так любой движок ломает
-//! технику (`Gnome` → «Гном», `sudo apt-get install …` → «sudo apt-get
-//! установить …»). Фильтр решает ДО вызова, кого движку отдавать; сверка —
-//! `translator_prose.rs`, паритетное поведение он не задевает. Имя технологии
-//! ВНУТРИ переводимой фразы фильтром не спасти (`Sweet Kvantum theme` — проза),
-//! поэтому рядом лежит подмена: [`mask_tech_names`] уводит имя под заполнитель
-//! `@0@`, [`unmask_tech_names`] возвращает его дословно, а не сошлись
-//! заполнители — перевод сегмента не берётся вовсе. Тем же приёмом прячутся
-//! имена, которых в нашем списке быть не может, — [`mask_names`] принимает их
-//! от вызывающего (название открытого товара, имя автора).
+//! ⚠️ BEYOND THE PORT (Python does not have this): the «prose or technical»
+//! filter — [`is_prose_segment`], [`CodeEnvStack`], [`translatable_flags`] and
+//! [`render_segments_filtered`]. Python called the engine on every text node,
+//! and a measurement on live workshop descriptions showed that this way any
+//! engine breaks technical text (`Gnome` → «Гном», `sudo apt-get install …` →
+//! «sudo apt-get установить …»). The filter decides BEFORE the call what to
+//! give to the engine; the check is `translator_prose.rs`, it does not affect
+//! parity behaviour. A technology name INSIDE a translatable phrase cannot be
+//! saved by the filter (`Sweet Kvantum theme` is prose), so a substitution
+//! lives next to it: [`mask_tech_names`] moves the name under the placeholder
+//! `@0@`, [`unmask_tech_names`] returns it verbatim, and if the placeholders do
+//! not match, the segment's translation is not taken at all. The same trick
+//! hides names that cannot be in our list — [`mask_names`] takes them from the
+//! caller (the name of the open item, the author's name).
 //!
-//! ⚠️ СВЕРХ ТОГО (приёмка 24.09): решение «проза или техника» умеет считаться
-//! ПО ПРЕДЛОЖЕНИЯМ ([`translatable_flags_by_sentence`]) — узел, где проза стоит
-//! рядом со ссылкой, больше не отвергается целиком, — а рядом с ситами
-//! заполнителей появилось третье: [`invented_latin_word`] ловит латинское
-//! слово, которого в источнике не было («tooltips» → «toolbep»), то есть порчу
-//! без всяких имён.
+//! ⚠️ BEYOND THAT (acceptance 24.09): the «prose or technical» decision can be
+//! computed BY SENTENCE ([`translatable_flags_by_sentence`]) — a node where
+//! prose stands next to a link is no longer rejected entirely — and next to
+//! the placeholder sieves a third one appeared: [`invented_latin_word`] catches
+//! a Latin word that was not in the source («tooltips» → «toolbep»), i.e.
+//! corruption without any names.
 //!
-//! Сверка с Python — golden `translator_parity.rs`: эталон снят с живого
-//! `translator.py` (segmentation через `translate_html` с монипатченным
-//! детерминированным `translate`, `src_hash` из `hashlib.sha1`, `_user_lang`,
-//! `_looks_like_html`, `detect_lang` без langdetect, `translate_text` с
-//! монипатченными наблюдениями).
+//! Comparison with Python — golden `translator_parity.rs`: the reference was
+//! taken from live `translator.py` (segmentation via `translate_html` with a
+//! monkeypatched deterministic `translate`, `src_hash` from `hashlib.sha1`,
+//! `_user_lang`, `_looks_like_html`, `detect_lang` without langdetect,
+//! `translate_text` with monkeypatched observations).
 //!
-//! ФАКТЫ ПОВЕДЕНИЯ Python, воспроизведённые дословно (это НЕ баги — стандартная
-//! нормализация `html.parser`, воспроизводим для паритета, см. отчёт):
-//!   * закрывающие теги приводятся к нижнему регистру (`</DIV>` → `</div>`),
-//!     тогда как открывающий тег отдаётся ВЕРБАТИМ (`get_starttag_text`);
-//!   * charref/entityref без завершающей `;` дополняются `;`
-//!     (`&#169 ` → `&#169;` + пробел);
-//!   * узлы-объявления, которые подкласс `_HTMLTextTranslator` НЕ обрабатывает
-//!     (`<!DOCTYPE …>`, `<?pi?>`, `<![CDATA[…]]>`), ВЫПАДАЮТ из вывода — как в
-//!     оригинале (эти обработчики у него не переопределены). В описаниях OCS/тем
-//!     такие узлы не встречаются.
+//! FACTS of Python behaviour reproduced verbatim (these are NOT bugs — the
+//! standard normalization of `html.parser`, reproduced for parity, see the
+//! report):
+//!   * closing tags are lowercased (`</DIV>` → `</div>`), whereas the opening
+//!     tag is returned VERBATIM (`get_starttag_text`);
+//!   * charrefs/entityrefs without the terminating `;` get a `;` appended
+//!     (`&#169 ` → `&#169;` + space);
+//!   * declaration nodes the `_HTMLTextTranslator` subclass does NOT handle
+//!     (`<!DOCTYPE …>`, `<?pi?>`, `<![CDATA[…]]>`) DROP OUT of the output — as
+//!     in the original (it does not override those handlers). Such nodes do
+//!     not occur in OCS/theme descriptions.
 
 use serde::Serialize;
 
-/// Версия логики перевода — подмешивается в ключ кеша `src_hash`. Бамп на 1
-/// инвалидирует все старые записи (порт `TRANSLATOR_VERSION`).
+/// Version of the translation logic — mixed into the `src_hash` cache key. A
+/// bump by 1 invalidates all old records (port of `TRANSLATOR_VERSION`).
 ///
-/// `4` — СМЕНА ДВИЖКА (argos → fxtranslate). Бамп здесь не косметика: тексты,
-/// переведённые прежним движком, лежат в таблице `translations` под ключами
-/// версии `3`, и читать их как свои НЕЛЬЗЯ — качество другое. Новая версия
-/// разводит ключи, старые записи просто не находятся и уходят по TTL
-/// ([`crate::appearance_cache::TRANSLATION_TTL`]).
+/// `4` — ENGINE CHANGE (argos → fxtranslate). The bump here is not cosmetic:
+/// texts translated by the previous engine lie in the `translations` table
+/// under version `3` keys, and reading them as our own is NOT allowed — the
+/// quality differs. The new version separates the keys, old records are
+/// simply not found and leave by TTL ([`crate::appearance_cache::TRANSLATION_TTL`]).
 ///
-/// `5` — ТЕХНИКА ВНУТРИ ПРОЗЫ (03.10): фраза с путём, ссылкой или именем файла
-/// больше не отвергается целиком, а переводится с техникой под заполнителем.
-/// Без бампа сегмент, переведённый прежним правилом наполовину (английская
-/// фраза с путём посреди русского абзаца), жил бы в кеше до конца TTL.
+/// `5` — TECHNICAL TEXT INSIDE PROSE (03.10): a phrase with a path, a link or
+/// a file name is no longer rejected entirely but translated with the
+/// technical part under a placeholder. Without the bump, a segment half
+/// translated by the previous rule (an English phrase with a path in the
+/// middle of a Russian paragraph) would live in the cache until the TTL ended.
 ///
-/// `6` — СЛОВАРЬ ПОПРАВОК ТЕРМИНОВ (03.10, [`TERM_FIXES`]): «расстегните
-/// файл» → «распакуйте файл», «скачать скачать» → «скачать». Без бампа старые
-/// «расстегните» жили бы в кеше до конца TTL.
+/// `6` — TERM FIX DICTIONARY (03.10, [`TERM_FIXES`]): «расстегните файл» →
+/// «распакуйте файл», «скачать скачать» → «скачать». Without the bump the old
+/// «расстегните» would live in the cache until the TTL ended.
 ///
-/// `7` — ОПИСАНИЕ ТЕМЫ 2380824 (06.11, KDE Store «Windows XP Professional -
-/// Luna Blue and Classic Suite»): охрана имён из таблиц ядра (программы,
-/// столы, дистрибутивы), знаки-картинки и края фразы мимо движка, второй
-/// проход прячет только потерянные имена, выдуманные повторы («и и») и
-/// поправки «проводник»/«вход в систему»/«системный лоток». Без бампа
-/// «Базцитовый Linux» и «разногласия» жили бы в кеше до конца TTL.
+/// `7` — THE DESCRIPTION OF THEME 2380824 (06.11, KDE Store «Windows XP
+/// Professional - Luna Blue and Classic Suite»): guarding names from the
+/// core's tables (programs, desktops, distributions), picture characters and
+/// phrase edges bypass the engine, a second pass hides only lost names,
+/// invented repeats («и и») and the fixes «проводник»/«вход в
+/// систему»/«системный лоток». Without the bump «Базцитовый Linux» and
+/// «разногласия» would live in the cache until the TTL ended.
 ///
-/// `8` — ОПИСАНИЕ «Candy icons» (08.11, KDE Store): ссылка-имя склеивается с
-/// фразой и не переводится ([`fold_name_links`]), словарь устойчивых терминов
-/// — «тема значков», «тема курсоров», «Примечание», «заявка», «запрос на
-/// слияние», «виджет Plasma». Без бампа «моему Сладкий тема темы» жило бы в
-/// кеше до конца TTL.
+/// `8` — THE «Candy icons» DESCRIPTION (08.11, KDE Store): a name link is
+/// glued to the phrase and not translated ([`fold_name_links`]), the
+/// dictionary of stable terms — «тема значков», «тема курсоров»,
+/// «Примечание», «заявка», «запрос на слияние», «виджет Plasma». Without the
+/// bump «моему Сладкий тема темы» would live in the cache until the TTL ended.
 pub const TRANSLATOR_VERSION: u32 = 8;
 
-// ── src_hash (ключ кеша переводов) ─────────────────────────────────────────
+// ── src_hash (translation cache key) ───────────────────────────────────────
 
-/// Ключ кеша перевода — `sha1(f"{VERSION}:{src}:{tgt}:{text}").hexdigest()`.
-/// Побитовый порт вычисления `h` в `translate()`/`translate_html`-хвосте.
+/// Translation cache key — `sha1(f"{VERSION}:{src}:{tgt}:{text}").hexdigest()`.
+/// A bit-exact port of computing `h` in `translate()`/the `translate_html` tail.
 pub fn translation_cache_key(src: &str, tgt: &str, text: &str) -> String {
     translation_cache_key_versioned(TRANSLATOR_VERSION, src, tgt, text)
 }
 
-/// Тот же ключ, но с ЯВНОЙ версией движка.
+/// The same key, but with an EXPLICIT engine version.
 ///
-/// ⚠️ Нужен сверке: golden снят при версии `3`, и проверять она обязана
-/// МЕХАНИЗМ (порядок полей, кодировка, SHA-1), а не текущее значение
-/// константы, — иначе любой бамп версии требовал бы переснять эталон.
-/// Живой код зовёт [`translation_cache_key`], который сам подставляет
-/// [`TRANSLATOR_VERSION`].
+/// ⚠️ Needed by the check: the golden reference was taken at version `3`, and
+/// it must check the MECHANISM (field order, encoding, SHA-1), not the
+/// current value of the constant — otherwise any version bump would require
+/// retaking the reference. Live code calls [`translation_cache_key`], which
+/// fills in [`TRANSLATOR_VERSION`] itself.
 pub fn translation_cache_key_versioned(version: u32, src: &str, tgt: &str, text: &str) -> String {
     let payload = format!("{version}:{src}:{tgt}:{text}");
     sha1_hex(payload.as_bytes())
 }
 
-/// SHA-1 → hex-строка (нижний регистр), как `hashlib.sha1(...).hexdigest()`.
+/// SHA-1 → a hex string (lowercase), like `hashlib.sha1(...).hexdigest()`.
 ///
-/// Виден внутри крейта: тем же хешем `ocs::preview_cache_name` называет файлы
-/// кеша превью — второй реализации SHA-1 в ядре быть не должно.
+/// Visible inside the crate: `ocs::preview_cache_name` names preview cache
+/// files with the same hash — there must not be a second SHA-1
+/// implementation in the core.
 pub(crate) fn sha1_hex(msg: &[u8]) -> String {
     let mut h: [u32; 5] = [0x6745_2301, 0xEFCD_AB89, 0x98BA_DCFE, 0x1032_5476, 0xC3D2_E1F0];
     let ml = (msg.len() as u64).wrapping_mul(8);
 
-    // Паддинг: 0x80, затем 0x00 до длины ≡ 56 (mod 64), затем 8 байт длины BE.
+    // Padding: 0x80, then 0x00 up to a length ≡ 56 (mod 64), then 8 bytes of BE length.
     let mut data = msg.to_vec();
     data.push(0x80);
     while data.len() % 64 != 56 {
@@ -171,39 +178,42 @@ pub(crate) fn sha1_hex(msg: &[u8]) -> String {
     out
 }
 
-// ── язык интерфейса (целевой) ──────────────────────────────────────────────
+// ── interface language (target) ────────────────────────────────────────────
 
-/// Целевой язык из строки локали — порт `(_loc.split("_")[0] or "en").lower()`
-/// из `_user_lang`. Получение самой локали (`locale.getlocale`) — side effect,
-/// остаётся на Python; сюда приходит уже строка (может быть пустой).
+/// Target language from a locale string — port of
+/// `(_loc.split("_")[0] or "en").lower()` from `_user_lang`. Getting the
+/// locale itself (`locale.getlocale`) is a side effect and stays in Python; a
+/// ready string (possibly empty) comes here.
 pub fn user_lang_from_locale(locale_str: &str) -> String {
     let head = locale_str.split('_').next().unwrap_or("");
     let base = if head.is_empty() { "en" } else { head };
     base.to_lowercase()
 }
 
-/// Язык, НА КОТОРЫЙ переводятся описания и комментарии тем, — язык
-/// интерфейса Rexon (`i18n::current_language`: настройка человека, иначе
-/// локаль системы, иначе английский).
+/// The language theme descriptions and comments are translated INTO — the
+/// Rexon interface language (`i18n::current_language`: the person's setting,
+/// otherwise the system locale, otherwise English).
 ///
-/// Именно интерфейса, а не локали системы: выбрал человек английский Rexon на
-/// русской системе — описания рядом с английскими кнопками тоже должны быть
-/// английскими, а не русскими. Отдаёт код вида `ru` или `pt_BR`;
-/// [`user_lang_from_locale`] сводит его к языку модели.
+/// The interface one, not the system locale: if a person chose English Rexon
+/// on a Russian system, descriptions next to English buttons must be English
+/// too, not Russian. Returns a code like `ru` or `pt_BR`;
+/// [`user_lang_from_locale`] reduces it to the model language.
 pub fn interface_locale() -> String {
     crate::i18n::current_language()
 }
 
-/// Строка локали покупателя из окружения — в том порядке, в каком её читает
-/// сама система локалей: `LC_ALL`, `LC_MESSAGES`, `LANG`. Пусто — локали нет.
+/// The customer's locale string from the environment — in the order the
+/// locale system itself reads it: `LC_ALL`, `LC_MESSAGES`, `LANG`. Empty — no
+/// locale.
 ///
-/// ⚠️ Для перевода описаний НЕ годится — там язык интерфейса
-/// ([`interface_locale`]); это язык системы.
+/// ⚠️ NOT suitable for translating descriptions — that uses the interface
+/// language ([`interface_locale`]); this is the system language.
 ///
-/// Тот самый `locale.getlocale`, который у Python оставался side effect'ом
-/// вызывающего. Живёт здесь, рядом с разбором: цикл по этим трём переменным
-/// уже лежал копией в [`crate::distro_compat::Lang::from_env`], и третья копия
-/// (перевод описаний) сделала бы расхождение вопросом времени (правило #12).
+/// The very `locale.getlocale` that in Python stayed a side effect of the
+/// caller. Lives here, next to the parsing: a loop over these three variables
+/// already lay as a copy in [`crate::distro_compat::Lang::from_env`], and a
+/// third copy (description translation) would make divergence a matter of
+/// time (rule #12).
 pub fn locale_from_env() -> String {
     for key in ["LC_ALL", "LC_MESSAGES", "LANG"] {
         if let Ok(value) = std::env::var(key) {
@@ -215,10 +225,10 @@ pub fn locale_from_env() -> String {
     String::new()
 }
 
-// ── признак HTML и probe-текст ─────────────────────────────────────────────
+// ── HTML check and probe text ──────────────────────────────────────────────
 
 // `_HTML_TAG_RE = <[a-zA-Z/!][^>]*>|&[a-zA-Z#0-9]+;`.
-// Возвращает первое вхождение (start, end) в срезе char'ов, начиная с `from`.
+// Returns the first occurrence (start, end) in a slice of chars, starting at `from`.
 fn html_tag_find(data: &[char], from: usize) -> Option<(usize, usize)> {
     let n = data.len();
     let mut p = from;
@@ -233,7 +243,7 @@ fn html_tag_find(data: &[char], from: usize) -> Option<(usize, usize)> {
             if q < n {
                 return Some((p, q + 1));
             }
-            // нет закрывающего '>' — этот '<' не матч, ищем дальше.
+            // no closing '>' — this '<' is not a match, keep searching.
         } else if c == '&' {
             // &[a-zA-Z#0-9]+;
             let mut q = p + 1;
@@ -249,23 +259,23 @@ fn html_tag_find(data: &[char], from: usize) -> Option<(usize, usize)> {
     None
 }
 
-/// Есть ли в тексте HTML-разметка — порт `_looks_like_html`.
+/// Whether the text has HTML markup — port of `_looks_like_html`.
 pub fn looks_like_html(text: &str) -> bool {
     let data: Vec<char> = text.chars().collect();
     html_tag_find(&data, 0).is_some()
 }
 
-/// Видимый текст для детекта языка — порт вычисления `probe`:
+/// Visible text for language detection — port of computing `probe`:
 /// `re.sub(r"\s+", " ", html.unescape(_HTML_TAG_RE.sub(" ", text))).strip()`.
 ///
-/// ⚠️ `html.unescape` реализован для числовых ссылок полностью и для
-/// РАСПРОСТРАНЁННЫХ именованных сущностей; так как `_HTML_TAG_RE` уже вырезал
-/// все корректные `&…;` в пробел ДО unescape, до него доходят лишь остатки
-/// (обычно голые `&`). Результат используется ТОЛЬКО как вход детектора языка,
-/// на ключ кеша и на сохраняемую разметку не влияет.
+/// ⚠️ `html.unescape` is implemented fully for numeric references and for
+/// COMMON named entities; since `_HTML_TAG_RE` already cut all valid `&…;`
+/// into a space BEFORE unescape, only leftovers reach it (usually bare `&`).
+/// The result is used ONLY as input of the language detector, it does not
+/// affect the cache key or the kept markup.
 pub fn probe_text(text: &str) -> String {
     let data: Vec<char> = text.chars().collect();
-    // _HTML_TAG_RE.sub(" ", text): каждое вхождение → один пробел.
+    // _HTML_TAG_RE.sub(" ", text): every occurrence → one space.
     let mut stripped_tags = String::new();
     let mut i = 0;
     while i < data.len() {
@@ -275,7 +285,7 @@ pub fn probe_text(text: &str) -> String {
                 i = e;
                 continue;
             }
-            // до следующего матча — как есть.
+            // up to the next match — as is.
             for &c in &data[i..s] {
                 stripped_tags.push(c);
             }
@@ -292,9 +302,9 @@ pub fn probe_text(text: &str) -> String {
     collapse_ws(&unescaped)
 }
 
-// `re.sub(r"\s+", " ", s).strip()` — схлопнуть последовательности пробельных в
-// один пробел, обрезать края. `\s` в Python = [ \t\n\r\f\v] (+ Unicode при
-// re.UNICODE, дефолт для str). Используем char::is_whitespace (Unicode WS).
+// `re.sub(r"\s+", " ", s).strip()` — collapse whitespace runs into one
+// space, trim the edges. `\s` in Python = [ \t\n\r\f\v] (+ Unicode with
+// re.UNICODE, the default for str). We use char::is_whitespace (Unicode WS).
 fn collapse_ws(s: &str) -> String {
     let mut out = String::new();
     let mut in_ws = false;
@@ -312,13 +322,13 @@ fn collapse_ws(s: &str) -> String {
     out
 }
 
-// ── детект языка (эвристика) ───────────────────────────────────────────────
+// ── language detection (heuristic) ─────────────────────────────────────────
 
-/// Дешёвая эвристика языка по скрипту — порт ветки `detect_lang` БЕЗ langdetect
-/// (строки с проверкой пустоты и подсчётом кириллицы/латиницы). Когда langdetect
-/// установлен, Python берёт его результат — это недетерминированный side effect,
-/// который в ядро не портирован; вызывающий передаёт итог детекта параметром в
-/// [`plan_translate_text`].
+/// A cheap language heuristic by script — port of the `detect_lang` branch
+/// WITHOUT langdetect (the lines with the emptiness check and counting
+/// Cyrillic/Latin). When langdetect is installed, Python takes its result —
+/// that is a non-deterministic side effect not ported into the core; the
+/// caller passes the detection result as a parameter to [`plan_translate_text`].
 pub fn detect_lang_heuristic(text: &str) -> Option<String> {
     if text.trim().is_empty() {
         return None;
@@ -335,32 +345,35 @@ pub fn detect_lang_heuristic(text: &str) -> Option<String> {
     None
 }
 
-// ── решение «переводить или нет» ───────────────────────────────────────────
+// ── the «translate or not» decision ────────────────────────────────────────
 
-/// План перевода текста — результат [`plan_translate_text`].
+/// Text translation plan — the result of [`plan_translate_text`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum TranslatePlan {
-    /// Не переводить — вернуть оригинал, `was_translated=false` (пусто/пробелы,
-    /// уже на целевом языке, argos недоступен).
+    /// Do not translate — return the original, `was_translated=false` (empty/spaces,
+    /// already in the target language, argos unavailable).
     Skip,
-    /// Переводить: язык-источник и путь (HTML по сегментам или обычный текст).
+    /// Translate: the source language and the path (HTML by segments or plain text).
     Translate { src: String, tgt: String, is_html: bool },
 }
 
-/// Решение `translate_text` ДО фактического перевода — порт управляющей логики
-/// (строки «пусто→оригинал», «уже на целевом→оригинал», «argos нет→оригинал»,
-/// выбор src с откатом на `en`, выбор HTML/обычного пути). Сам перевод и
-/// финальное сравнение `result.strip() != text.strip()` (определяющее
-/// `was_translated`) выполняет вызывающий — это side effect.
+/// The `translate_text` decision BEFORE the actual translation — port of the
+/// control logic (the lines «empty→original», «already in target→original»,
+/// «no argos→original», choosing src with a fallback to `en`, choosing the
+/// HTML/plain path). The translation itself and the final comparison
+/// `result.strip() != text.strip()` (which determines `was_translated`) are
+/// performed by the caller — that is a side effect.
 ///
-/// Наблюдения (параметры):
-///   * `target` — уже вычисленный целевой язык (`target or _user_lang()`);
-///   * `detected_src` — результат `detect_lang(probe)` (None или код языка);
-///   * `engine_available` — доступен ли движок перевода (`_argos_available()`
-///     у прежнего движка; имя параметра нейтральное — движок меняется);
-///   * `src_pair_ensurable` — `_ensure_pair(src, tgt)` для КАНДИДАТА src
-///     (`detected_src` либо `"en"`), т.е. собирается ли путь перевода.
+/// Observations (parameters):
+///   * `target` — the already computed target language (`target or _user_lang()`);
+///   * `detected_src` — the result of `detect_lang(probe)` (None or a language code);
+///   * `engine_available` — whether the translation engine is available
+///     (`_argos_available()` in the previous engine; the parameter name is
+///     neutral — the engine changes);
+///   * `src_pair_ensurable` — `_ensure_pair(src, tgt)` for the src CANDIDATE
+///     (`detected_src` or `"en"`), i.e. whether the translation path can be
+///     assembled.
 pub fn plan_translate_text(
     text: &str,
     target: &str,
@@ -373,7 +386,7 @@ pub fn plan_translate_text(
         return TranslatePlan::Skip;
     }
     // src = detect_lang(probe); if src and src == tgt: return text, False
-    // (пустая строка в Python «falsy» → не срабатывает).
+    // (an empty string in Python is «falsy» → does not trigger).
     let src_detected = detected_src.filter(|s| !s.is_empty());
     if let Some(s) = src_detected {
         if s == target {
@@ -393,25 +406,26 @@ pub fn plan_translate_text(
     TranslatePlan::Translate { src, tgt: target.to_string(), is_html }
 }
 
-// ── сегментация HTML ───────────────────────────────────────────────────────
+// ── HTML segmentation ──────────────────────────────────────────────────────
 
-/// Сегмент разобранного HTML — порт вывода `_HTMLTextTranslator`.
+/// A segment of parsed HTML — port of the `_HTMLTextTranslator` output.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Segment {
-    /// Дословный фрагмент (тег/сущность/комментарий/пробельный узел) — НЕ
-    /// переводится, вставляется как есть.
+    /// A verbatim fragment (tag/entity/comment/whitespace node) — NOT
+    /// translated, inserted as is.
     Literal { text: String },
-    /// Переводимый текстовый узел: ведущие/замыкающие пробелы вынесены наружу
-    /// (argos их «съедает»), переводится только `stripped`. Реассемблинг:
+    /// A translatable text node: leading/trailing spaces are moved outside
+    /// (argos «eats» them), only `stripped` is translated. Reassembly:
     /// `lead + (translate(stripped) || stripped) + trail`.
     Text { lead: String, stripped: String, trail: String },
 }
 
-/// Разбить HTML на сегменты (порт `_HTMLTextTranslator.feed`+`close`).
-/// Переводимый текст — в [`Segment::Text`], всё остальное — [`Segment::Literal`]
-/// дословно. Ничего не переводит: перевод текстовых узлов — дело вызывающего
-/// (argos, side effect). Сборку строки см. [`render_segments`].
+/// Split HTML into segments (port of `_HTMLTextTranslator.feed`+`close`).
+/// Translatable text goes into [`Segment::Text`], everything else into
+/// [`Segment::Literal`] verbatim. Translates nothing: translating text nodes
+/// is the caller's business (argos, side effect). For assembling the string
+/// see [`render_segments`].
 pub fn segment_html(text: &str) -> Vec<Segment> {
     let mut seg = Segmenter::new(text);
     seg.goahead(false);
@@ -419,9 +433,10 @@ pub fn segment_html(text: &str) -> Vec<Segment> {
     seg.out
 }
 
-/// Собрать строку из сегментов, переводя текстовые узлы колбэком `translate`.
-/// Порт реассемблинга `"".join(p.out)` вместе с `_translate_segment`:
-/// `f"{lead}{res or stripped}{trail}"` (пустой перевод → берётся оригинал).
+/// Assemble a string from segments, translating text nodes with the
+/// `translate` callback. Port of the `"".join(p.out)` reassembly together
+/// with `_translate_segment`: `f"{lead}{res or stripped}{trail}"` (an empty
+/// translation → the original is taken).
 pub fn render_segments(segments: &[Segment], translate: impl Fn(&str) -> String) -> String {
     let mut out = String::new();
     for s in segments {
@@ -442,101 +457,105 @@ pub fn render_segments(segments: &[Segment], translate: impl Fn(&str) -> String)
     out
 }
 
-// ── фильтр «проза или техника» ─────────────────────────────────────────────
+// ── the «prose or technical» filter ────────────────────────────────────────
 //
-// ⚠️ ЭТОГО В PYTHON НЕТ — новое поведение, не паритет. Python звал движок на
-// КАЖДЫЙ текстовый узел, и замер на живых описаниях мастерской показал, чем
-// это кончается у ЛЮБОГО движка: `Gnome` → «Гном», `Unity` → «Единство»,
-// `Cinnamon` → «Корица», `sudo apt-get install gtk2-engines-murrine` →
-// «sudo apt-get установить gtk2-двигатели-муррин» (примеры дословно из
-// `mt-bench/samples.md`, образец 10 «Qogir theme»). Домашнее правило: имена
-// технологий и стандартов остаются латиницей, переводим только человеческую
-// прозу.
+// ⚠️ PYTHON DOES NOT HAVE THIS — new behaviour, not parity. Python called
+// the engine on EVERY text node, and a measurement on live workshop
+// descriptions showed how this ends for ANY engine: `Gnome` → «Гном»,
+// `Unity` → «Единство», `Cinnamon` → «Корица», `sudo apt-get install
+// gtk2-engines-murrine` → «sudo apt-get установить gtk2-двигатели-муррин»
+// (examples verbatim from `mt-bench/samples.md`, sample 10 «Qogir theme»).
+// House rule: names of technologies and standards stay in Latin script, we
+// translate only human prose.
 //
-// Фильтр — ЧИСТЫЕ функции и НЕ трогает [`segment_html`]/[`render_segments`]
-// (они побайтово сверены с Python, сверка `translator_parity.rs`). Решение
-// «звать движок или нет» принимается ДО вызова: сегмент, признанный техникой,
-// просто не попадает движку, а пустой ответ колбэка [`render_segments`]
-// означает «оставить оригинал» — то есть отказ переводить уже выражается в
-// существующем интерфейсе, дописывать его не пришлось.
+// The filter is PURE functions and does NOT touch
+// [`segment_html`]/[`render_segments`] (they are byte-compared with Python,
+// the `translator_parity.rs` check). The decision «call the engine or not» is
+// made BEFORE the call: a segment recognized as technical simply does not
+// reach the engine, and an empty answer of the [`render_segments`] callback
+// means «keep the original» — so refusing to translate is already expressed
+// in the existing interface, nothing had to be added.
 //
-// ⚠️ Здесь решается судьба ЦЕЛОГО сегмента, не слов внутри него: «Sweet
-// Kvantum theme» для фильтра — проза (три слова, не все имена продуктов).
-// Имя ВНУТРИ фразы защищает подмена — [`mask_tech_names`] и
-// [`unmask_tech_names`] ниже, по тому же списку имён.
+// ⚠️ This decides the fate of a WHOLE segment, not of words inside it:
+// «Sweet Kvantum theme» is prose for the filter (three words, not all of
+// them product names). A name INSIDE a phrase is protected by substitution —
+// [`mask_tech_names`] and [`unmask_tech_names`] below, from the same name list.
 
-/// Головы командных строк: сегмент, начинающийся с такого слова, — команда,
-/// а не проза. `yum` в списке не для красоты: именно `yum install
-/// gtk-murrine-engine gtk2-engines` стоит в живом описании Qogir.
+/// Command line heads: a segment starting with such a word is a command, not
+/// prose. `yum` is in the list not for show: exactly `yum install
+/// gtk-murrine-engine gtk2-engines` stands in the live Qogir description.
 const COMMAND_HEADS: &[&str] = &[
     "sudo", "apt", "apt-get", "pacman", "yay", "paru", "dnf", "yum", "zypper", "flatpak", "snap",
     "git", "cd", "chmod", "chown", "systemctl", "makepkg", "cmake", "make",
-    // Головы файловых и установочных команд описаний оформления (`cp -r Foo
-    // ~/.themes`, `tar -xf …`, `kpackagetool6 -i …`). Пока правило 4 отвергало
-    // любую строку с путём, они ловились им; теперь путь внутри прозы
-    // переводится (см. [`technical_spans`]), и командная строка обязана
-    // узнаваться по голове сама.
+    // Heads of file and install commands in look descriptions (`cp -r Foo
+    // ~/.themes`, `tar -xf …`, `kpackagetool6 -i …`). While rule 4
+    // rejected any line with a path, they were caught by it; now a path
+    // inside prose is translated (see [`technical_spans`]), and a command
+    // line must be recognized by its head by itself.
     "cp", "mv", "rm", "ln", "mkdir", "tar", "wget", "curl", "sh", "bash", "kpackagetool5",
     "kpackagetool6", "plasmapkg2", "lookandfeeltool", "gsettings", "dconf", "kwriteconfig5",
     "kwriteconfig6", "xdg-open", "sed", "meson", "ninja", "pip", "npm", "cargo", "dpkg", "rpm",
     "emerge", "xbps-install", "nix-env", "eopkg",
 ];
 
-/// Имена технологий и продуктов — ОДИН список на два дела, и это не удобство,
-/// а условие правильности: [`is_product_name_token`] решает судьбу ЦЕЛОГО
-/// сегмента (`Gnome`, `2 Unity`, `6 Cinnamon`, `9 Kde Plasma` — подписи строк
-/// из живых описаний, любой движок делает из них «Гном», «Единство»,
-/// «Корицу»), а [`mask_tech_names`] прячет то же имя ВНУТРИ фразы. Разъедься
-/// эти два списка — и «Sweet Kvantum theme» защищалось бы не так, как
-/// «9 Kde Plasma» (правило #12).
+/// Names of technologies and products — ONE list for two jobs, and that is not
+/// convenience but a condition of correctness: [`is_product_name_token`]
+/// decides the fate of a WHOLE segment (`Gnome`, `2 Unity`, `6 Cinnamon`,
+/// `9 Kde Plasma` — line labels from live descriptions, any engine turns them
+/// into «Гном», «Единство», «Корицу»), while [`mask_tech_names`] hides the
+/// same name INSIDE a phrase. If these two lists drifted apart, «Sweet
+/// Kvantum theme» would be protected differently from «9 Kde Plasma»
+/// (rule #12).
 ///
-/// ⚠️ Написание — КАНОНИЧЕСКОЕ (`GNOME`, а не `gnome`): по нему сверяется
-/// регистр найденного в тексте слова ([`name_casing_matches`]). Фильтру
-/// сегмента регистр по-прежнему безразличен.
+/// ⚠️ The spelling is CANONICAL (`GNOME`, not `gnome`): the case of a word
+/// found in the text is checked against it ([`name_casing_matches`]). For the
+/// segment filter the case still does not matter.
 const PRODUCT_NAMES: &[&str] = &[
     "GNOME", "KDE", "Plasma", "Qt", "GTK", "Kvantum", "Papirus", "Dolphin", "Konsole", "Latte",
     "SDDM", "Plymouth", "XFCE", "Cinnamon", "Mate", "Unity",
-    // Остаток живого списка «Supported desktops» из описания Qogir: `3 Budgie`
-    // любой движок превращает в «3 Баджи», а `8 Lxde`/`4 Pantheon` того же
-    // класса — подписи строк, а не проза.
+    // The rest of the live «Supported desktops» list from the Qogir
+    // description: any engine turns `3 Budgie` into «3 Баджи», and
+    // `8 Lxde`/`4 Pantheon` of the same class are line labels, not prose.
     "Budgie", "LXDE", "Pantheon",
-    // Имена, которые встречаются только ВНУТРИ фразы живых описаний, — для
-    // фильтра сегмента они ничего не меняют (рядом с ними всегда есть проза),
-    // а прятать их от движка надо: «Firefox theme», «Nautilus headerbar»,
-    // «Nordic Aurorae theme», «GTK2 engine Murrine 0.98.1.1 or later».
+    // Names that occur only INSIDE a phrase of live descriptions — they
+    // change nothing for the segment filter (there is always prose next to
+    // them), but they must be hidden from the engine: «Firefox theme»,
+    // «Nautilus headerbar», «Nordic Aurorae theme», «GTK2 engine Murrine
+    // 0.98.1.1 or later».
     "Aurorae", "Firefox", "Nautilus", "Murrine",
-    // Палитра Nord: в описании товара «Nordic KDE» стоит «the awesome Nord
-    // color palette», и движок делает из неё «Норд цветовая палитра».
+    // The Nord palette: the «Nordic KDE» item description has «the awesome
+    // Nord color palette», and the engine makes «Норд цветовая палитра» of it.
     "Nord",
-    // Платформы и программы, которые живая модель переводит как слова
-    // (замер 06.11, KDE Store, «Windows XP Professional - Luna Blue and
-    // Classic Suite»): «Discord, Steam» → «разногласия, Steam». Список
-    // программ ядро нигде больше не держит, поэтому он здесь, рядом с
-    // остальными именами. Регистр строгий ([`name_casing_matches`]):
-    // «open windows» и «a steam cloud» по-прежнему переводятся.
+    // Platforms and programs the live model translates as words (measured
+    // 06.11, KDE Store, «Windows XP Professional - Luna Blue and Classic
+    // Suite»): «Discord, Steam» → «разногласия, Steam». The core keeps no
+    // program list anywhere else, so it is here, next to the other names.
+    // The case is strict ([`name_casing_matches`]): «open windows» and «a
+    // steam cloud» are still translated.
     "Windows", "Linux", "Steam", "Discord", "GitHub", "GitLab", "Wayland", "Proton", "Telegram",
     "Spotify", "Chromium", "Thunderbird", "LibreOffice", "macOS", "Android",
 ];
 
-/// Имена рабочих столов из таблицы ядра [`crate::screenshots::DE_DISPLAY_NAMES`],
-/// которые одновременно — обычные английские слова: их как имя не берём
-/// («Mint green theme», «River of colors»). Остальные имена этой таблицы
-/// (`Deepin`, `Hyprland`, `LXQt`, `Wayfire`, `COSMIC`…) охраняются наравне с
-/// [`PRODUCT_NAMES`], и новый стол в таблице попадает в охрану сам.
+/// Desktop names from the core's table [`crate::screenshots::DE_DISPLAY_NAMES`]
+/// that are at the same time ordinary English words: we do not take them as
+/// a name («Mint green theme», «River of colors»). The other names of this
+/// table (`Deepin`, `Hyprland`, `LXQt`, `Wayfire`, `COSMIC`…) are guarded on
+/// a par with [`PRODUCT_NAMES`], and a new desktop in the table gets guarded
+/// by itself.
 const DE_NAME_WORDS_THAT_ARE_PLAIN_WORDS: &[&str] = &["Mint", "River"];
 
-/// Идентификаторы дистрибутивов из [`crate::system::ID_MAP`], которые —
-/// обычные английские слова (`arch`, `pop`, `crystal`, `void`…): «a crystal
-/// clear theme» должно переводиться. Остальные (`bazzite`, `cachyos`,
-/// `fedora`, `nobara`…) — имена в ЛЮБОМ регистре: ни словами, ни частью
-/// прозы они не бывают, а живая модель делает из «Bazzite Linux»
-/// «Базцитовый Linux» (замер 06.11).
+/// Distribution identifiers from [`crate::system::ID_MAP`] that are ordinary
+/// English words (`arch`, `pop`, `crystal`, `void`…): «a crystal clear theme»
+/// must be translated. The others (`bazzite`, `cachyos`, `fedora`,
+/// `nobara`…) are names in ANY case: they are never words or part of prose,
+/// and the live model turns «Bazzite Linux» into «Базцитовый Linux»
+/// (measured 06.11).
 const DISTRO_IDS_THAT_ARE_PLAIN_WORDS: &[&str] = &[
     "arch", "crystal", "pop", "elementary", "parrot", "rocky", "tuxedo", "peppermint", "void",
     "alpine", "clear", "simply", "boss", "calculate", "rosa", "astra",
 ];
 
-/// Слово — имя рабочего стола из таблицы ядра (регистр строгий).
+/// The word is a desktop name from the core's table (strict case).
 fn is_de_display_word(word: &str) -> bool {
     crate::screenshots::DE_DISPLAY_NAMES.iter().any(|(_, display)| {
         display.split_whitespace().any(|w| {
@@ -547,7 +566,7 @@ fn is_de_display_word(word: &str) -> bool {
     })
 }
 
-/// Слово — идентификатор дистрибутива из таблицы ядра (в любом регистре).
+/// The word is a distribution identifier from the core's table (any case).
 fn is_distro_id_word(word: &str) -> bool {
     word.chars().count() >= 4
         && crate::system::ID_MAP.iter().any(|(id, _)| {
@@ -557,54 +576,55 @@ fn is_distro_id_word(word: &str) -> bool {
         })
 }
 
-/// Описательные слова НАЗВАНИЯ ТОВАРА: по такому слову одному имя не узнаётся.
+/// Descriptive words of an ITEM NAME: such a word alone does not identify the name.
 ///
-/// ⭐ ЗАЧЕМ. Название товара узнаётся не только целой цепочкой слов, но и
-/// отдельными значащими словами (см. [`guarded_name_variants`]), — иначе товар
-/// «Nordic KDE» не защищал бы своё же `Nordic Plasma theme`. Но брать ЛЮБОЕ
-/// слово названия нельзя: из «Sweet Mars LAF Plasma 6» слово `laf` охраняло бы
-/// каждое `LAF` в прозе, а из «Dark Glass Theme» — слово `theme`, и тогда под
-/// заполнителем оказалась бы вся проза описания.
+/// ⭐ WHY. An item name is recognized not only by the whole word chain but
+/// also by separate meaningful words (see [`guarded_name_variants`]) —
+/// otherwise the «Nordic KDE» item would not protect its own `Nordic Plasma
+/// theme`. But taking ANY word of the name is not allowed: from «Sweet Mars
+/// LAF Plasma 6» the word `laf` would guard every `LAF` in prose, and from
+/// «Dark Glass Theme» — the word `theme`, and then the whole prose of the
+/// description would end up under a placeholder.
 ///
-/// Список лежит рядом с [`PRODUCT_NAMES`] и ровно по той же причине: одно
-/// место на все решения об именах (правило #12).
+/// The list lives next to [`PRODUCT_NAMES`] for exactly the same reason: one
+/// place for all decisions about names (rule #12).
 const NAME_FILLER_WORDS: &[&str] = &[
     "theme", "themes", "icons", "icon", "color", "colors", "colour", "colours", "scheme",
     "schemes", "global", "laf", "pack", "edition", "for", "and", "the", "with", "dark", "light",
 ];
 
-/// Теги «кодового окружения»: внутри них не переводится НИЧЕГО, даже если
-/// текст похож на прозу — автор явно сказал, что это код.
+/// «Code environment» tags: NOTHING inside them is translated, even if the
+/// text looks like prose — the author explicitly said it is code.
 const CODE_ENV_TAGS: &[&str] = &["code", "pre", "kbd", "samp", "tt"];
 
-/// Расширения файлов: токен, кончающийся на такое, — путь, не слово.
+/// File extensions: a token ending in one of these is a path, not a word.
 ///
-/// Архивы и файлы тем (`*.tar.gz`, `index.theme`, `Nordic.colors`,
-/// `Sweet.kvconfig`) добавлены 03.10 вместе с маскировкой техники внутри прозы:
-/// такое имя файла теперь не отвергает фразу, а уходит под заполнитель и
-/// возвращается дословно.
+/// Archives and theme files (`*.tar.gz`, `index.theme`, `Nordic.colors`,
+/// `Sweet.kvconfig`) were added 03.10 together with masking technical text
+/// inside prose: such a file name no longer rejects the phrase but goes under
+/// a placeholder and comes back verbatim.
 const FILE_EXTENSIONS: &[&str] = &[
     ".sh", ".conf", ".desktop", ".py", ".qml", ".json", ".gz", ".xz", ".zst", ".bz2", ".zip",
     ".7z", ".tar", ".theme", ".colors", ".kvconfig", ".svg", ".png", ".jpg", ".ini", ".txt",
     ".css", ".xml", ".md",
 ];
 
-/// Обрезать по краям всё, что не буква и не цифра (`«Features:»` → `Features`,
-/// `(Elementary` → `Elementary`). `+`/`#` тоже уходят, поэтому `GTK+`
-/// опознаётся как имя продукта `gtk`.
+/// Trim everything that is neither a letter nor a digit at the edges
+/// (`«Features:»` → `Features`, `(Elementary` → `Elementary`). `+`/`#` go
+/// too, so `GTK+` is recognized as the product name `gtk`.
 fn trim_token_punct(tok: &str) -> &str {
     tok.trim_matches(|c: char| !c.is_alphanumeric())
 }
 
-/// Версия или разрешение экрана: `1.2.3`, `5.8`, `0.98.1.1`, `v0.1`,
-/// `3840x2160`. Такой токен — не слово: он не мешает соседней прозе
-/// (`Murrine 0.98.1.1 or later` переводим), но сам по себе прозой не является.
+/// A version or a screen resolution: `1.2.3`, `5.8`, `0.98.1.1`, `v0.1`,
+/// `3840x2160`. Such a token is not a word: it does not hinder neighbouring
+/// prose (`Murrine 0.98.1.1 or later` is translated), but is not prose by itself.
 pub fn is_version_or_resolution_token(tok: &str) -> bool {
     let t = trim_token_punct(tok);
     if t.is_empty() {
         return false;
     }
-    // Разрешение: <цифры>x<цифры> (или `×`).
+    // Resolution: <digits>x<digits> (or `×`).
     let mut split = t.splitn(2, ['x', 'X', '×']);
     if let (Some(a), Some(b)) = (split.next(), split.next()) {
         if !a.is_empty()
@@ -615,21 +635,21 @@ pub fn is_version_or_resolution_token(tok: &str) -> bool {
             return true;
         }
     }
-    // Версия: необязательная `v`, затем не меньше двух числовых частей.
+    // Version: an optional `v`, then at least two numeric parts.
     let body = t.strip_prefix('v').or_else(|| t.strip_prefix('V')).unwrap_or(t);
     let parts: Vec<&str> = body.split('.').collect();
     parts.len() >= 2
         && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
-/// Токен «техника по форме»: в нём есть `/`, `\`, `::`, `--`, `~/`, `$`, `@`
-/// либо он кончается расширением файла.
+/// A «technical by form» token: it has `/`, `\`, `::`, `--`, `~/`, `$`, `@`
+/// or it ends with a file extension.
 ///
-/// ⚠️ Проверяется только на ЗНАЧИМЫХ токенах (в которых есть буква) —
-/// намеренно. `-->` в живой фразе «browsing the related collection -->
-/// Aritim-Light Wallpapers Collection» (образец 12) содержит `--`, но это
-/// стрелка в прозе, а не ключ командной строки; ключ всегда прилеплен к
-/// буквам (`--user`).
+/// ⚠️ Checked only on MEANINGFUL tokens (those with a letter) — on purpose.
+/// `-->` in the live phrase «browsing the related collection --> Aritim-Light
+/// Wallpapers Collection» (sample 12) contains `--`, but it is an arrow in
+/// prose, not a command line switch; a switch is always attached to letters
+/// (`--user`).
 pub fn is_technical_token(tok: &str) -> bool {
     if tok.contains('/')
         || tok.contains('\\')
@@ -645,11 +665,11 @@ pub fn is_technical_token(tok: &str) -> bool {
     FILE_EXTENSIONS.iter().any(|ext| lower.ends_with(ext) || base.ends_with(ext))
 }
 
-/// Имя продукта целиком (без учёта регистра, края от пунктуации обрезаются).
+/// A whole product name (case-insensitive, punctuation trimmed at the edges).
 ///
-/// Регистр здесь безразличен намеренно: решается судьба ЦЕЛОГО сегмента, и
-/// подпись строки `9 kde plasma` — такая же подпись, как `9 Kde Plasma`.
-/// Регистр важен только там, где имя вынимается ИЗ фразы
+/// Case does not matter here on purpose: the fate of a WHOLE segment is
+/// decided, and the line label `9 kde plasma` is the same label as
+/// `9 Kde Plasma`. Case matters only where a name is extracted FROM a phrase
 /// ([`name_casing_matches`]).
 pub fn is_product_name_token(tok: &str) -> bool {
     let t = trim_token_punct(tok);
@@ -659,20 +679,21 @@ pub fn is_product_name_token(tok: &str) -> bool {
             || is_distro_id_word(t))
 }
 
-/// «Человеческое слово»: одни буквы (после обрезки краевой пунктуации) и их не
-/// меньше трёх. Нужно ради ЗАГОЛОВКОВ описаний — `Features:`, `Installation:`,
-/// `Note:`, `Folders`, `WALLPAPERS` — это проза из одного слова, и отсекать её
-/// правилом «всего один токен» нельзя.
+/// A «human word»: letters only (after trimming edge punctuation) and at least
+/// three of them. Needed for description HEADINGS — `Features:`,
+/// `Installation:`, `Note:`, `Folders`, `WALLPAPERS` are one-word prose, and
+/// cutting them off with the «only one token» rule is not allowed.
 fn is_plain_word(tok: &str) -> bool {
     let t = trim_token_punct(tok);
     t.chars().count() >= 3 && t.chars().all(|c| c.is_alphabetic())
 }
 
-/// Ключ командной строки: `-r`, `-S`, `--user` (один-два дефиса, затем буква
-/// или цифра). Одинокое тире и стрелка `-->` ключом не считаются.
+/// A command line switch: `-r`, `-S`, `--user` (one or two hyphens, then a
+/// letter or digit). A lone dash and the arrow `-->` do not count as a switch.
 ///
-/// Дефисом считается и неразрывный `‑` (U+2011) с роднёй: живое описание
-/// «Sugar Candy for SDDM» пишет команду `sddm‑greeter ‑‑test‑mode` именно им.
+/// The non-breaking `‑` (U+2011) and its kin count as a hyphen too: the live
+/// description «Sugar Candy for SDDM» writes the command `sddm‑greeter
+/// ‑‑test‑mode` with exactly that.
 fn is_command_flag(tok: &str) -> bool {
     let is_dash = |c: char| matches!(c, '-' | '\u{2010}' | '\u{2011}' | '\u{2212}');
     let body = tok.trim_start_matches(is_dash);
@@ -680,11 +701,11 @@ fn is_command_flag(tok: &str) -> bool {
     (1..=2).contains(&dashes) && body.chars().next().is_some_and(char::is_alphanumeric)
 }
 
-/// Командная строка ВНУТРИ фразы: голова команды в нижнем регистре, за
-/// которой стоит ключ (`Copy: cp -r bigsur ~/.local/share/sounds/`, `Use the
-/// following command: kpackagetool6 -i Alba.P6.tar.xz` — обе строки живые, KDE
-/// Store). Такую фразу движку не отдаём целиком: показать ему `cp -r bigsur`
-/// без заполнителя — значит рискнуть «бигсуром».
+/// A command line INSIDE a phrase: a lowercase command head followed by a
+/// switch (`Copy: cp -r bigsur ~/.local/share/sounds/`, `Use the following
+/// command: kpackagetool6 -i Alba.P6.tar.xz` — both lines are live, KDE
+/// Store). Such a phrase is not given to the engine whole: showing it
+/// `cp -r bigsur` without a placeholder means risking a «бигсур».
 fn has_inline_command(tokens: &[&str]) -> bool {
     tokens.windows(2).any(|pair| {
         let head = pair[0].trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
@@ -692,46 +713,51 @@ fn has_inline_command(tokens: &[&str]) -> bool {
     })
 }
 
-/// Пара обычных слов через косую черту — `and/or`, `light/dark`, `on/off`.
-/// Это проза, а не путь: обе части — строчные буквы, без точек и цифр.
-/// ⚠️ Части с заглавной (`Fedora/RedHat`, `Plasma/KDE`) сюда НЕ попадают —
-/// это имена, и им место под заполнителем, а не в руках движка.
+/// A pair of ordinary words through a slash — `and/or`, `light/dark`,
+/// `on/off`. This is prose, not a path: both parts are lowercase letters,
+/// without dots or digits.
+/// ⚠️ Parts with a capital (`Fedora/RedHat`, `Plasma/KDE`) do NOT get here —
+/// these are names, and they belong under a placeholder, not in the engine's
+/// hands.
 fn is_plain_slash_pair(core: &str) -> bool {
     let parts: Vec<&str> = core.split('/').collect();
     parts.len() >= 2
         && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_alphabetic() && c.is_lowercase()))
 }
 
-/// Технические куски ВНУТРИ строки — то, что движку показывать нельзя, но и
-/// отвергать из-за него всю фразу незачем: (начало, конец) в байтах, по
-/// порядку, без пересечений.
+/// Technical pieces INSIDE a line — what must not be shown to the engine, but
+/// is no reason to reject the whole phrase either: (start, end) in bytes, in
+/// order, without overlaps.
 ///
-/// ⭐ ЗАЧЕМ (дефект владельца 03.10, KDE Store, «ZorinOS 6 Sound Theme»): «Just
+/// ⭐ WHY (owner's defect 03.10, KDE Store, «ZorinOS 6 Sound Theme»): «Just
 /// unzip the file and put in the /usr/share/sounds folder to add the to your
-/// desktop.» оставалась английской целиком, потому что прежнее правило 4
-/// [`is_prose_segment`] отвергало строку за ОДИН путь в ней. Теперь путь уходит
-/// под заполнитель тем же приёмом, что имена ([`mask_names`]), остальное
-/// переводится, и путь возвращается дословно.
+/// desktop.» stayed entirely English, because the former rule 4 of
+/// [`is_prose_segment`] rejected the line for ONE path in it. Now the path
+/// goes under a placeholder by the same trick as names ([`mask_names`]), the
+/// rest is translated, and the path comes back verbatim.
 ///
-/// Что считается куском техники:
-///   * всё между парой обратных кавычек вместе с ними (`` `make install` ``);
-///   * ссылка Markdown, чей текст — имя ([`markdown_name_links`]);
-///   * токен между пробелами, технический по форме ([`is_technical_token`]:
-///     путь, ссылка, `$HOME`, `--user`, `index.theme`, `*.tar.gz`). Краевая
-///     пунктуация фразы («(», «.», «,», «:», кавычки) в кусок НЕ входит:
-///     «… /usr/share/sounds.» прячет путь без точки;
-///   * в токене должна быть буква (стрелка `-->` — не техника) и не должно
-///     быть `@` (почта отвергает строку целиком, см. [`NAME_PLACEHOLDER_MARK`]);
-///   * пара обычных слов через косую черту (`and/or`) — проза, не кусок.
+/// What counts as a technical piece:
+///   * everything between a pair of backticks together with them
+///     (`` `make install` ``);
+///   * a Markdown link whose text is a name ([`markdown_name_links`]);
+///   * a token between spaces that is technical by form
+///     ([`is_technical_token`]: a path, a link, `$HOME`, `--user`,
+///     `index.theme`, `*.tar.gz`). The phrase's edge punctuation («(», «.»,
+///     «,», «:», quotes) is NOT part of the piece: «… /usr/share/sounds.»
+///     hides the path without the dot;
+///   * the token must have a letter (the arrow `-->` is not technical) and
+///     must not have `@` (an email rejects the line entirely, see
+///     [`NAME_PLACEHOLDER_MARK`]);
+///   * a pair of ordinary words through a slash (`and/or`) is prose, not a piece.
 pub fn technical_spans(text: &str) -> Vec<(usize, usize)> {
     let mut spans: Vec<(usize, usize)> = Vec::new();
-    // Обратные кавычки — парами.
+    // Backticks — in pairs.
     let ticks: Vec<usize> = text.match_indices('`').map(|(i, _)| i).collect();
     for pair in ticks.chunks_exact(2) {
         spans.push((pair[0], pair[1] + 1));
     }
-    // Ссылка Markdown с текстом-именем (`[Sweet](https://…/p/1253385/)`) —
-    // целиком, вместе с текстом: имя соседнего товара не переводится.
+    // A Markdown link with name text (`[Sweet](https://…/p/1253385/)`) —
+    // whole, together with the text: a neighbouring item's name is not translated.
     for (a, b) in markdown_name_links(text) {
         if !spans.iter().any(|(s, e)| a < *e && b > *s) {
             spans.push((a, b));
@@ -779,53 +805,53 @@ pub fn technical_spans(text: &str) -> Vec<(usize, usize)> {
     spans
 }
 
-/// Проза ли сегмент, то есть звать ли на него движок перевода.
+/// Whether a segment is prose, i.e. whether to call the translation engine on it.
 ///
-/// Порядок правил важен, поэтому он зафиксирован тестами
-/// (`translator_prose.rs`, строки — из живых описаний мастерской):
-///  1. нет ни одной буквы (`____`, `-----`, `1.2.3`) — не проза;
-///  2. сегмент начинается с головы команды в НИЖНЕМ регистре и короче девяти
-///     токенов (`sudo apt-get install …`, `pacman -S …`) — не проза. Регистр и
-///     длина здесь не придирка, а защита прозы: «Make sure to …» начинается с
-///     `Make` с большой буквы и командой не является;
-///  3. значимых слов не осталось (были одни числа/пунктуация) — не проза;
-///  4. техника ВНУТРИ строки ([`technical_spans`]: путь, ссылка, имя файла,
-///     переменная, ключ, кусок в обратных кавычках). До 03.10 любой такой токен
-///     отвергал строку целиком, и «Just unzip the file and put in the
-///     /usr/share/sounds folder…» оставалась английской (дефект владельца,
-///     KDE Store, «ZorinOS 6 Sound Theme»). Теперь техника уходит под
-///     заполнитель ([`mask_names`]) и возвращается дословно, а судьба строки
-///     решается по тому, что ОСТАЛОСЬ:
-///     * `@` в значимом слове (почта) — не проза, как и прежде: на `@` держится
-///       проверка потери заполнителя;
-///     * строка НАЧИНАЕТСЯ с техники (`~/.config/Kvantum`, `./install.sh`,
-///       `` `make install` ``) — не проза; кроме списка имён через косую черту
-///       (`Fedora/RedHat distros:`);
-///     * первое слово строчное, а рядом ключ (`kvantummanager --set Nordic`,
-///       `cp -r Foo ~/.themes`), либо внутри стоит голова команды с ключом
-///       (`Copy: cp -r bigsur ~/.local/share/sounds/`) — командная строка, не
-///       проза;
-///     * иначе техника вырезается, и остаток проверяется правилами 1-8 заново
-///       («Copy the folder to and pick it in Settings.» — проза);
-///  5. ВСЕ значимые слова — имена продуктов (`Gnome`, `2 Unity`, `9 Kde
-///     Plasma`) — не проза;
-///  6. значимое слово одно: проза, только если это человеческое слово (пункт
-///     про заголовки выше);
-///  7. не-букв среди непробельных символов больше трети — не проза;
-///  8. слов длиной от двух букв меньше двух — не проза.
+/// The order of rules matters, so it is pinned by tests
+/// (`translator_prose.rs`, lines from live workshop descriptions):
+///  1. not a single letter (`____`, `-----`, `1.2.3`) — not prose;
+///  2. the segment starts with a LOWERCASE command head and is shorter than
+///     nine tokens (`sudo apt-get install …`, `pacman -S …`) — not prose.
+///     Case and length are not nitpicking here but protection of prose: «Make
+///     sure to …» starts with a capital `Make` and is not a command;
+///  3. no meaningful words left (there were only numbers/punctuation) — not prose;
+///  4. technical text INSIDE the line ([`technical_spans`]: a path, a link, a
+///     file name, a variable, a switch, a backtick piece). Before 03.10 any such
+///     token rejected the line entirely, and «Just unzip the file and put in
+///     the /usr/share/sounds folder…» stayed English (owner's defect, KDE
+///     Store, «ZorinOS 6 Sound Theme»). Now the technical part goes under a
+///     placeholder ([`mask_names`]) and comes back verbatim, and the fate of
+///     the line is decided by what is LEFT:
+///     * `@` in a meaningful word (email) — not prose, as before: the check
+///       for a lost placeholder relies on `@`;
+///     * the line STARTS with technical text (`~/.config/Kvantum`,
+///       `./install.sh`, `` `make install` ``) — not prose; except a list of
+///       names through a slash (`Fedora/RedHat distros:`);
+///     * the first word is lowercase and a switch is next to it
+///       (`kvantummanager --set Nordic`, `cp -r Foo ~/.themes`), or a command
+///       head with a switch stands inside (`Copy: cp -r bigsur
+///       ~/.local/share/sounds/`) — a command line, not prose;
+///     * otherwise the technical part is cut out, and the rest is checked by
+///       rules 1-8 again («Copy the folder to and pick it in Settings.» — prose);
+///  5. ALL meaningful words are product names (`Gnome`, `2 Unity`, `9 Kde
+///     Plasma`) — not prose;
+///  6. one meaningful word: prose only if it is a human word (the point about
+///     headings above);
+///  7. non-letters are more than a third of non-whitespace characters — not prose;
+///  8. fewer than two words of two or more letters — not prose.
 pub fn is_prose_segment(text: &str) -> bool {
     let trimmed = text.trim();
     if trimmed.is_empty() || !trimmed.chars().any(|c| c.is_alphabetic()) {
         return false;
     }
     let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-    // Значимые токены — те, в которых есть буква и которые не версия/разрешение.
+    // Meaningful tokens — those that have a letter and are not a version/resolution.
     let words: Vec<&str> = tokens
         .iter()
         .copied()
         .filter(|t| t.chars().any(|c| c.is_alphabetic()) && !is_version_or_resolution_token(t))
         .collect();
-    // (2) голова команды.
+    // (2) command head.
     if tokens.len() <= 8 {
         if let Some(first) = words.first() {
             let head = first.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
@@ -834,19 +860,19 @@ pub fn is_prose_segment(text: &str) -> bool {
             }
         }
     }
-    // (3) одни числа и пунктуация.
+    // (3) only numbers and punctuation.
     if words.is_empty() {
         return false;
     }
-    // (4) техника внутри строки — под заполнитель, судьбу решает остаток.
+    // (4) technical text inside the line — under a placeholder, the rest decides.
     if words.iter().any(|w| w.contains(NAME_PLACEHOLDER_MARK)) {
         return false;
     }
     let spans = technical_spans(trimmed);
     if !spans.is_empty() {
-        // Начало-техника. Исключение — список имён через косую черту
-        // (`Fedora/RedHat distros:`, живой заголовок описания Qogir): это
-        // подпись, а не путь, и её остаток переводится («Дистрибутивы …:»).
+        // Technical start. The exception is a list of names through a slash
+        // (`Fedora/RedHat distros:`, a live heading of the Qogir description):
+        // it is a label, not a path, and its rest is translated («Дистрибутивы …:»).
         let first_letter = trimmed.find(|c: char| c.is_alphabetic()).unwrap_or(0);
         let (lead_start, lead_end) = spans[0];
         let lead_is_names = trimmed[lead_start..lead_end]
@@ -871,21 +897,21 @@ pub fn is_prose_segment(text: &str) -> bool {
         rest.push_str(&trimmed[copied..]);
         return is_prose_segment(&rest);
     }
-    // (5) весь сегмент — имена продуктов.
+    // (5) the whole segment is product names.
     if words.iter().all(|w| is_product_name_token(w)) {
         return false;
     }
-    // (6) одно значимое слово — прозой считаем только человеческое слово.
+    // (6) one meaningful word — only a human word counts as prose.
     if words.len() == 1 {
         return is_plain_word(words[0]);
     }
-    // (7) доля не-букв.
+    // (7) share of non-letters.
     let dense: Vec<char> = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
     let letters = dense.iter().filter(|c| c.is_alphabetic()).count();
     if (dense.len() - letters) * 3 > dense.len() {
         return false;
     }
-    // (8) меньше двух слов длиной от двух букв.
+    // (8) fewer than two words of two or more letters.
     let long_words = words
         .iter()
         .filter(|w| trim_token_punct(w).chars().filter(|c| c.is_alphabetic()).count() >= 2)
@@ -893,68 +919,72 @@ pub fn is_prose_segment(text: &str) -> bool {
     long_words >= 2
 }
 
-// ── Защита имён технологий ВНУТРИ фразы ────────────────────────────────────
+// ── Protecting technology names INSIDE a phrase ────────────────────────────
 //
-// Фильтр выше решает судьбу ЦЕЛОГО сегмента, и этого мало: «Sweet Kvantum
-// theme» для него проза (три слова, и не все они имена), а живой движок
-// отвечает «сладкий Kvantum тема» на неё и «квантская тема» на «A Kvantum
-// theme heavily based on Microsoft's Fluent Design elements» — имя внутри
-// фразы он склоняет и переводит. Дом требует обратного: имена технологий и
-// стандартов остаются латиницей.
+// The filter above decides the fate of a WHOLE segment, and that is not
+// enough: «Sweet Kvantum theme» is prose for it (three words, and not all of
+// them names), and the live engine answers «сладкий Kvantum тема» to it and
+// «квантская тема» to «A Kvantum theme heavily based on Microsoft's Fluent
+// Design elements» — it inflects and translates a name inside a phrase. The
+// house requires the opposite: names of technologies and standards stay in
+// Latin script.
 //
-// Лечение — подмена: перед движком имя уходит под заполнитель, после движка
-// возвращается на место дословно. Функции ЧИСТЫЕ ([`mask_tech_names`] /
-// [`unmask_tech_names`]), в текст движка они не заглядывают, а договор
-// [`crate::translator_engine::TranslateEngine`] не меняют вовсе — подмена
-// живёт СНАРУЖИ вызова.
+// The cure is substitution: before the engine the name goes under a
+// placeholder, after the engine it returns to its place verbatim. The
+// functions are PURE ([`mask_tech_names`] / [`unmask_tech_names`]), they do
+// not look into the engine's text, and they do not change the
+// [`crate::translator_engine::TranslateEngine`] contract at all — the
+// substitution lives OUTSIDE the call.
 
-/// Знак-метка заполнителя.
+/// Placeholder marker character.
 ///
-/// `@` выбран не на вкус: это единственный знак, который НЕ МОЖЕТ прийти в
-/// переводе от движка сам. Во-первых, сегмент со значимым токеном, содержащим
-/// `@`, фильтр уже признал техникой ([`is_technical_token`], правило 4) — до
-/// движка такой текст не доходит; во-вторых, `@` в исходнике всё равно
-/// выключает подмену целиком (см. [`mask_tech_names`]). Значит `@`, оставшийся
-/// в ответе после подстановки имён, — ВСЕГДА след порчи, и это делает проверку
-/// потери надёжной, а не приблизительной.
+/// `@` was not chosen by taste: it is the only character that CANNOT come in
+/// the engine's translation by itself. First, a segment with a meaningful
+/// token containing `@` has already been recognized as technical by the
+/// filter ([`is_technical_token`], rule 4) — such text does not reach the
+/// engine; second, `@` in the source turns substitution off entirely anyway
+/// (see [`mask_tech_names`]). So an `@` left in the answer after names are
+/// substituted is ALWAYS a trace of corruption, and that makes the loss check
+/// reliable rather than approximate.
 pub const NAME_PLACEHOLDER_MARK: char = '@';
 
-/// Заполнитель на месте имени с номером `index`: `@0@`, `@1@`, …
+/// The placeholder in place of the name with number `index`: `@0@`, `@1@`, …
 ///
-/// Форма выбрана ЗАМЕРОМ на живой модели Firefox `en→ru`, а не догадкой
-/// (стенд `zz_probe`, 21.09; в дереве остался его итог — сверка
-/// `live_names_survive_the_real_engine` в `translator_engine.rs`). Сравнивались
-/// двадцать форм на семи живых фразах; итог:
-///   * `@0@` — цела во всех; хвостовая метка ещё и спасает от склейки номеров
-///     (`@1@` не является началом `@10@`);
-///   * `@@0@@` — рвётся в 6 фразах из 7 («сладкая @@@@@ тема»): движок множит
-///     и глотает повторённый знак;
-///   * `【0】`, `⟦0⟧` — распадаются на байты `<0xE2><0x9F><0xA6>` (знака нет в
-///     словаре модели), `$0` — становится «1 доллар», `<0>`/`{{0}}`/`Vv0vv` —
-///     дублируются и дописываются лишними буквами.
-/// Форма без метки на конце (`@0`, `@x0`) тоже держится, но номера тогда
-/// склеиваются с соседними цифрами живого текста («@1 3» ↔ «@13»).
+/// The form was chosen by MEASURING on the live Firefox model `en→ru`, not by
+/// guessing (the `zz_probe` bench, 21.09; its result remains in the tree — the
+/// check `live_names_survive_the_real_engine` in `translator_engine.rs`).
+/// Twenty forms were compared on seven live phrases; the result:
+///   * `@0@` — intact in all of them; the trailing marker also prevents
+///     numbers from gluing (`@1@` is not the start of `@10@`);
+///   * `@@0@@` — breaks in 6 phrases of 7 («сладкая @@@@@ тема»): the engine
+///     multiplies and swallows the repeated character;
+///   * `【0】`, `⟦0⟧` — fall apart into bytes `<0xE2><0x9F><0xA6>` (the
+///     character is not in the model's vocabulary), `$0` becomes «1 доллар»,
+///     `<0>`/`{{0}}`/`Vv0vv` get duplicated and extra letters appended.
+/// A form without a trailing marker (`@0`, `@x0`) also holds, but then the
+/// numbers glue to neighbouring digits of the live text («@1 3» ↔ «@13»).
 pub fn name_placeholder(index: usize) -> String {
     format!("{NAME_PLACEHOLDER_MARK}{index}{NAME_PLACEHOLDER_MARK}")
 }
 
-/// Текст с заполнителями вместо имён и сами имена по порядку номеров:
-/// `names[0]` — то, что стояло в `@0@`.
+/// Text with placeholders instead of names, and the names themselves in
+/// number order: `names[0]` is what stood in `@0@`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MaskedNames {
     pub text: String,
     pub names: Vec<String>,
 }
 
-/// Совпадает ли найденное в тексте слово с каноническим именем из
-/// [`PRODUCT_NAMES`] ПО РЕГИСТРУ.
+/// Whether a word found in the text matches a canonical name from
+/// [`PRODUCT_NAMES`] BY CASE.
 ///
-/// Считаются своими три записи имени: как в списке (`Kvantum`, `GNOME`),
-/// ВСЕМИ ЗАГЛАВНЫМИ (`KVANTUM`) и С Заглавной (`Gnome`, `Kde`, `Xfce` — именно
-/// так имена написаны в живых описаниях мастерской). Полностью строчная запись
-/// именем НЕ считается, и это главное здесь: в списке лежат `Mate`, `Unity`,
-/// `Cinnamon`, `Plasma` — обычные английские слова, и во фразе «works with your
-/// mate» подменять `mate` нечем.
+/// Three spellings of a name count as its own: as in the list (`Kvantum`,
+/// `GNOME`), ALL CAPS (`KVANTUM`) and Capitalized (`Gnome`, `Kde`, `Xfce` —
+/// exactly how names are written in live workshop descriptions). An all
+/// lowercase spelling does NOT count as a name, and that is the main point
+/// here: the list holds `Mate`, `Unity`, `Cinnamon`, `Plasma` — ordinary
+/// English words, and in the phrase «works with your mate» there is nothing
+/// to substitute `mate` with.
 pub fn name_casing_matches(canonical: &str, found: &str) -> bool {
     if canonical == found || found == canonical.to_uppercase() {
         return true;
@@ -971,40 +1001,39 @@ pub fn name_casing_matches(canonical: &str, found: &str) -> bool {
     found == capitalized
 }
 
-/// Имя-АББРЕВИАТУРА в [`PRODUCT_NAMES`]: записано одними ЗАГЛАВНЫМИ (`KDE`,
+/// An ACRONYM name in [`PRODUCT_NAMES`]: written in all CAPITALS (`KDE`,
 /// `GTK`, `SDDM`, `XFCE`, `LXDE`, `GNOME`).
 ///
-/// ⭐ ЗАЧЕМ. Такое имя остаётся именем в ЛЮБОМ регистре, и это лечит ПОТЕРЮ
-/// СЛОВА, снятую живьём 23.09 на модели Firefox `en→ru`: «A colorful theme
-/// inspired by sweet kde theme.» (товар «Iridescent») она отдаёт как
-/// «красочная тема, вдохновленная сладкой темой.» — слова `kde` в переводе нет
-/// вовсе. Тот же замер показывает, что виновата запись строчными: `sweet KDE
-/// theme` и `sweet Kde theme` доходят целыми, заполнитель — тоже
-/// («вдохновленная сладкой @0@ темой»), а одинокое `kde is nice.` движок и
-/// вовсе переводит как «Кейд».
+/// ⭐ WHY. Such a name stays a name in ANY case, and that cures the WORD LOSS
+/// captured live on 23.09 on the Firefox `en→ru` model: «A colorful theme
+/// inspired by sweet kde theme.» (item «Iridescent») it returns as
+/// «красочная тема, вдохновленная сладкой темой.» — the word `kde` is not in
+/// the translation at all. The same measurement shows that the lowercase
+/// spelling is to blame: `sweet KDE theme` and `sweet Kde theme` arrive
+/// intact, and so does the placeholder («вдохновленная сладкой @0@ темой»),
+/// while a lone `kde is nice.` the engine even translates as «Кейд».
 ///
-/// ⚠️ Послабление только для НАШЕГО списка и только для аббревиатур: `kde`,
-/// `gtk`, `sddm`, `xfce`, `lxde` английскими словами не бывают ни в каком
-/// регистре. Имена, которые ЯВЛЯЮТСЯ словами (`Mate`, `Unity`, `Plasma`,
-/// `Cinnamon`), в списке записаны С Заглавной, под это правило не попадают и
-/// живут по строгому [`name_casing_matches`] — «works with your mate»
-/// по-прежнему переводится. Названия ТОВАРОВ от вызывающего послабления не
-/// получают вовсе: подпись «SWEET» заглавными не должна съедать `sweet` в
-/// прозе.
+/// ⚠️ The relaxation is only for OUR list and only for acronyms: `kde`, `gtk`,
+/// `sddm`, `xfce`, `lxde` are never English words in any case. Names that ARE
+/// words (`Mate`, `Unity`, `Plasma`, `Cinnamon`) are written Capitalized in
+/// the list, do not fall under this rule and live by the strict
+/// [`name_casing_matches`] — «works with your mate» is still translated. ITEM
+/// names from the caller get no relaxation at all: a «SWEET» label in caps
+/// must not eat `sweet` in prose.
 ///
-/// Цена правила ровно одна и она мелкая: `GNOME` в списке тоже заглавными, а
-/// строчное `gnome` — английское слово («садовый гном»). Теперь такая фраза
-/// останется с латинским `gnome` вместо «гнома». В магазине оформления
-/// строчное `gnome` — почти всегда рабочий стол, а латинское слово в прозе
-/// честнее пропавшего.
+/// The rule has exactly one price and it is small: `GNOME` in the list is
+/// also in caps, while lowercase `gnome` is an English word («garden gnome»).
+/// Now such a phrase keeps the Latin `gnome` instead of «гнома». In a look
+/// store a lowercase `gnome` is almost always the desktop, and a Latin word
+/// in prose is more honest than a missing one.
 fn is_acronym_name(canonical: &str) -> bool {
     canonical.chars().count() >= MIN_GUARDED_NAME_CHARS
         && canonical.chars().any(|c| c.is_alphabetic())
         && canonical.chars().all(|c| !c.is_alphabetic() || c.is_uppercase())
 }
 
-/// Слово целиком — имя технологии (с учётом регистра, а для аббревиатур
-/// списка — в любом, см. [`is_acronym_name`]).
+/// The whole word is a technology name (case-sensitive, and for the list's
+/// acronyms — any case, see [`is_acronym_name`]).
 fn is_masked_name(word: &str) -> bool {
     PRODUCT_NAMES.iter().any(|n| {
         name_casing_matches(n, word) || (is_acronym_name(n) && word.eq_ignore_ascii_case(n))
@@ -1012,9 +1041,9 @@ fn is_masked_name(word: &str) -> bool {
         || is_distro_id_word(word)
 }
 
-/// Границы слов: максимальные пробеги букв и цифр. Именно они дают «границу
-/// слова», из-за которой `kde` внутри `kdeglobals` не имя: пробег там —
-/// `kdeglobals` целиком, и он ни с чем не сравнится.
+/// Word boundaries: maximal runs of letters and digits. They are what give
+/// the «word boundary» that makes `kde` inside `kdeglobals` not a name: the
+/// run there is the whole `kdeglobals`, and it matches nothing.
 fn word_runs(text: &str) -> Vec<(usize, usize)> {
     let mut runs: Vec<(usize, usize)> = Vec::new();
     let mut start: Option<usize> = None;
@@ -1033,40 +1062,42 @@ fn word_runs(text: &str) -> Vec<(usize, usize)> {
     runs
 }
 
-/// Клей между двумя именами: они прячутся под ОДИН заполнитель, если между
-/// ними только пробелы, запятая или косая черта.
+/// Glue between two names: they hide under ONE placeholder if only spaces, a
+/// comma or a slash are between them.
 ///
-/// Это не украшение, а живучесть, и она замерена: «Nordic Kvantum theme»
-/// двумя заполнителями подряд движок ломает («Nordic @ Kvantum тема» — знак
-/// остался, номер съеден), а список «Gnome, Unity, Budgie, Pantheon, XFCE,
-/// Cinnamon and Mate» из семи заполнителей он размножает (Budgie и XFCE
-/// приходят дважды). Одним заполнителем на всю цепочку обе фразы проходят
-/// целыми — а содержимое цепочки возвращается в текст дословно, так что
-/// запятые внутри неё остаются авторскими.
+/// This is not decoration but survivability, and it was measured: «Nordic
+/// Kvantum theme» with two placeholders in a row the engine breaks («Nordic @
+/// Kvantum тема» — the character stayed, the number was eaten), and the list
+/// «Gnome, Unity, Budgie, Pantheon, XFCE, Cinnamon and Mate» of seven
+/// placeholders it multiplies (Budgie and XFCE come twice). With one
+/// placeholder for the whole chain both phrases pass intact — and the chain's
+/// contents return to the text verbatim, so the commas inside it stay the
+/// author's.
 fn is_name_glue(sep: &str) -> bool {
     matches!(sep.trim(), "" | "," | "/")
 }
 
-/// Клей ВНУТРИ имени, переданного вызывающим: `Aritim-Light` в описании
-/// пишется через дефис, `NT Legacy` — через пробел, а `Sweet_Mars` — через
-/// подчёркивание, и это одно и то же имя. Поэтому внутренний шов имени
-/// шире, чем клей между ДВУМЯ разными именами ([`is_name_glue`]): тот решает
-/// судьбу чужих друг другу слов, а этот — шов заранее известного имени.
+/// Glue INSIDE a name passed by the caller: `Aritim-Light` is written with a
+/// hyphen in the description, `NT Legacy` — with a space, and `Sweet_Mars` —
+/// with an underscore, and it is one and the same name. So the inner seam of
+/// a name is wider than the glue between TWO different names
+/// ([`is_name_glue`]): that one decides the fate of words foreign to each
+/// other, while this one is the seam of a name known in advance.
 fn is_guarded_gap(sep: &str) -> bool {
     matches!(sep.trim(), "" | "," | "/" | "-" | "–" | "—" | "_")
 }
 
-/// Сколько знаков должно быть в имени от вызывающего, чтобы его вообще
-/// прятать.
+/// How many characters a caller's name must have to be hidden at all.
 ///
-/// ⛔ Имя из одного-двух знаков не прячется никогда. Товар «A» или «UI» дал бы
-/// заполнитель на каждое такое слово описания, а цена ошибки здесь
-/// несимметрична: лишний заполнитель — это либо порча фразы, либо (по второму
-/// ситу) отказ от перевода ВСЕГО сегмента. Пустое имя — тот же случай.
+/// ⛔ A name of one or two characters is never hidden. An item «A» or «UI»
+/// would give a placeholder for every such word of the description, and the
+/// cost of error here is asymmetric: an extra placeholder means either a
+/// corrupted phrase or (by the second sieve) refusing to translate the WHOLE
+/// segment. An empty name is the same case.
 const MIN_GUARDED_NAME_CHARS: usize = 3;
 
-/// Слова охраняемого имени по порядку, либо `None` — имя прятать не надо
-/// (пустое, из одной пунктуации или короче [`MIN_GUARDED_NAME_CHARS`]).
+/// Words of a guarded name in order, or `None` — the name need not be hidden
+/// (empty, only punctuation, or shorter than [`MIN_GUARDED_NAME_CHARS`]).
 fn guarded_name_words(name: &str) -> Option<Vec<String>> {
     let runs = word_runs(name);
     let letters: usize = runs.iter().map(|(s, e)| name[*s..*e].chars().count()).sum();
@@ -1076,13 +1107,14 @@ fn guarded_name_words(name: &str) -> Option<Vec<String>> {
     Some(runs.iter().map(|(s, e)| name[*s..*e].to_string()).collect())
 }
 
-/// Значащее ли слово названия: годится ли оно на то, чтобы узнать товар ОДНИМ
-/// собой.
+/// Whether a word of the name is meaningful: whether it is fit to identify the
+/// item ON ITS OWN.
 ///
-/// Не годятся: описательные слова ([`NAME_FILLER_WORDS`]), числа («6» из
-/// «Sweet Mars LAF Plasma 6») и куски короче [`MIN_GUARDED_NAME_CHARS`] («NT»
-/// из «NT Legacy» — по нему одному товар не узнаётся, зато целая цепочка
-/// «NT Legacy» ловится как и прежде).
+/// Not fit: descriptive words ([`NAME_FILLER_WORDS`]), numbers («6» from
+/// «Sweet Mars LAF Plasma 6») and pieces shorter than
+/// [`MIN_GUARDED_NAME_CHARS`] («NT» from «NT Legacy» — the item is not
+/// recognized by it alone, but the whole chain «NT Legacy» is caught as
+/// before).
 fn is_meaningful_name_word(word: &str) -> bool {
     if word.chars().count() < MIN_GUARDED_NAME_CHARS {
         return false;
@@ -1094,28 +1126,29 @@ fn is_meaningful_name_word(word: &str) -> bool {
     !NAME_FILLER_WORDS.contains(&lower.as_str())
 }
 
-/// Во что превращается название товара для охраны: цепочки слов, которые
-/// считаются этим товаром, от длинной к короткой.
+/// What an item name turns into for guarding: word chains that count as this
+/// item, from long to short.
 ///
-/// ⭐ ЗАЧЕМ. Раньше охранялась ТОЛЬКО целая цепочка слов названия, и этого
-/// хватало ровно на однословные имена. Живая приёмка 23.09 показала цену:
-/// товар «Nordic KDE» (цепочка `["Nordic","KDE"]`) в своём же описании имел
-/// «Nordic Plasma theme» — цепочка не совпала, и движок отдавал «Скандинавская
-/// Plasma тема»; товар «Sweet Mars LAF Plasma 6» так же терял `Sweet-Mars
-/// Kvantum theme` («Сладкий марс Kvantum тема»).
+/// ⭐ WHY. Previously ONLY the whole word chain of the name was guarded, and
+/// that was enough exactly for one-word names. Live acceptance on 23.09 showed
+/// the price: the item «Nordic KDE» (chain `["Nordic","KDE"]`) had «Nordic
+/// Plasma theme» in its own description — the chain did not match, and the
+/// engine returned «Скандинавская Plasma тема»; the item «Sweet Mars LAF
+/// Plasma 6» similarly lost `Sweet-Mars Kvantum theme` («Сладкий марс Kvantum
+/// тема»).
 ///
-/// Поэтому из названия берётся:
-///   1. целая цепочка всех слов — как и раньше, она пробуется первой;
-///   2. группы ПОДРЯД идущих значащих слов («Sweet Mars» из «Sweet Mars LAF
-///      Plasma 6») — они ловят название, написанное через шов
-///      (`Sweet-Mars`), одним заполнителем, а не двумя подряд, которые живой
-///      движок ломает;
-///   3. каждое значащее слово по отдельности («Nordic», «Sweet», «Mars»).
+/// So the following is taken from the name:
+///   1. the whole chain of all words — as before, it is tried first;
+///   2. groups of CONSECUTIVE meaningful words («Sweet Mars» from «Sweet Mars
+///      LAF Plasma 6») — they catch a name written with a seam
+///      (`Sweet-Mars`) with one placeholder, not two in a row, which the live
+///      engine breaks;
+///   3. each meaningful word separately («Nordic», «Sweet», «Mars»).
 ///
-/// ⚠️ Регистр здесь не ослабляется: цепочка из ОДНОГО слова (а любое слово
-/// пункта 3 — такая цепочка) требует совпадения регистра по
-/// [`name_casing_matches`], иначе товар «Dark» съел бы слово `dark` в прозе.
-/// Правило живёт в [`guarded_name_at`] и общее на оба списка.
+/// ⚠️ Case is not relaxed here: a chain of ONE word (and any word of point 3
+/// is such a chain) requires a case match by [`name_casing_matches`],
+/// otherwise the item «Dark» would eat the word `dark` in prose. The rule
+/// lives in [`guarded_name_at`] and is shared by both lists.
 fn guarded_name_variants(name: &str) -> Vec<Vec<String>> {
     let Some(words) = guarded_name_words(name) else {
         return Vec::new();
@@ -1150,23 +1183,23 @@ fn guarded_name_variants(name: &str) -> Vec<Vec<String>> {
     out
 }
 
-/// Охраняемое имя, начинающееся ПРОБЕГОМ `k`: сколько пробегов оно занимает
-/// (`None` — с этого места ни одно имя не начинается).
+/// A guarded name starting at RUN `k`: how many runs it takes (`None` — no
+/// name starts at this place).
 ///
-/// Имена вызывающего пробуются раньше [`PRODUCT_NAMES`] и от самого длинного,
-/// иначе «NT Legacy» проиграло бы своему же первому слову.
+/// The caller's names are tried before [`PRODUCT_NAMES`] and from the longest,
+/// otherwise «NT Legacy» would lose to its own first word.
 ///
-/// ⚠️ Правило регистра разное, и это главное решение здесь:
-///   * имя из НЕСКОЛЬКИХ слов сверяется БЕЗ учёта регистра. Совпасть с целой
-///     цепочкой слов случайно нельзя, так что «sweet kvantum» в тексте — это
-///     тот же товар, что «Sweet Kvantum» в его названии;
-///   * имя из ОДНОГО слова требует, чтобы регистр совпал по
-///     [`name_casing_matches`] (как в названии, ВСЕМИ ЗАГЛАВНЫМИ или С
-///     Заглавной; полностью строчная запись — не имя). Названия сплошь бывают
-///     обычными словами — «Dark», «Sweet», «Nordic», «Layan», — и «a dark
-///     theme» переводить надо («тёмная тема»), а «Dark» как имя товара —
-///     нельзя. Это ровно то правило, по которому уже живут `Mate`, `Unity`,
-///     `Cinnamon` из общего списка (правило #12: одно правило на оба списка).
+/// ⚠️ The case rule differs, and that is the main decision here:
+///   * a name of SEVERAL words is compared case-insensitively. Matching a whole
+///     word chain by accident is impossible, so «sweet kvantum» in the text is
+///     the same item as «Sweet Kvantum» in its name;
+///   * a name of ONE word requires the case to match by
+///     [`name_casing_matches`] (as in the name, ALL CAPS or Capitalized; all
+///     lowercase is not a name). Names are very often ordinary words —
+///     «Dark», «Sweet», «Nordic», «Layan» — and «a dark theme» must be
+///     translated («тёмная тема»), while «Dark» as an item name must not.
+///     This is exactly the rule `Mate`, `Unity`, `Cinnamon` from the shared
+///     list already live by (rule #12: one rule for both lists).
 fn guarded_name_at(
     text: &str,
     runs: &[(usize, usize)],
@@ -1195,58 +1228,60 @@ fn guarded_name_at(
     is_masked_name(&text[start..end]).then_some(1)
 }
 
-/// Спрятать имена технологий под заполнители перед вызовом движка.
+/// Hide technology names under placeholders before calling the engine.
 ///
-/// С 03.10 под заполнитель уходит и ТЕХНИКА внутри фразы — путь, ссылка, имя
-/// файла, переменная, `код` ([`technical_spans`]); возвращается она тем же
-/// [`unmask_tech_names`] дословно, байт в байт.
+/// Since 03.10 TECHNICAL text inside a phrase goes under a placeholder too — a
+/// path, a link, a file name, a variable, `code` ([`technical_spans`]); it
+/// comes back through the same [`unmask_tech_names`] verbatim, byte for byte.
 ///
-/// ⚠️ Если в исходнике УЖЕ есть `@`, подмена не делается вовсе (имена
-/// остаются как есть): иначе заполнитель было бы не отличить от авторского
-/// знака, и проверка потери перестала бы что-либо доказывать. Такой текст
-/// переводится как до этой правки.
+/// ⚠️ If the source ALREADY has `@`, no substitution is done at all (names
+/// stay as they are): otherwise a placeholder could not be told apart from
+/// the author's character, and the loss check would stop proving anything.
+/// Such text is translated as before this change.
 pub fn mask_tech_names(text: &str) -> MaskedNames {
     mask_names(text, &[])
 }
 
-/// То же, что [`mask_tech_names`], плюс имена, которые попросил спрятать
-/// ВЫЗЫВАЮЩИЙ: название самого товара, имя автора — всё, чего в списке
-/// [`PRODUCT_NAMES`] быть не может.
+/// The same as [`mask_tech_names`], plus names the CALLER asked to hide: the
+/// name of the item itself, the author's name — everything that cannot be in
+/// the [`PRODUCT_NAMES`] list.
 ///
-/// ⭐ ЗАЧЕМ. Списка названий тем нет и быть не может (мастерская пополняется
-/// каждый день), но название открытого товара окно знает — оно приходит рядом
-/// с описанием. Без этого живой движок отвечал «Скандинавская Kvantum тема» на
-/// «Nordic Kvantum theme» и «Сладкая Kvantum тема» на «Sweet Kvantum theme»:
-/// имя технологии мы уже защитили, а НАЗВАНИЕ ТОВАРА он переводил как прозу.
+/// ⭐ WHY. There is no list of theme names and there cannot be one (the
+/// workshop grows every day), but the window knows the name of the open item —
+/// it arrives next to the description. Without this the live engine answered
+/// «Скандинавская Kvantum тема» to «Nordic Kvantum theme» and «Сладкая Kvantum
+/// тема» to «Sweet Kvantum theme»: we had already protected the technology
+/// name, but it translated the ITEM NAME as prose.
 ///
-/// Название узнаётся не только целой цепочкой своих слов, но и значащими
-/// словами по отдельности ([`guarded_name_variants`]): у товара «Nordic KDE»
-/// строка описания «Nordic Plasma theme» целой цепочки не содержит, а защищать
-/// её надо.
+/// The name is recognized not only by the whole chain of its words but also
+/// by meaningful words separately ([`guarded_name_variants`]): for the item
+/// «Nordic KDE» the description line «Nordic Plasma theme» does not contain
+/// the whole chain, but it must be protected.
 ///
-/// Приём тот же и сита те же: имя уходит под заполнитель, [`unmask_tech_names`]
-/// возвращает его ДОСЛОВНО (ровно тем написанием, что стояло в исходном
-/// тексте, а не тем, что пришло от вызывающего), а не сошлись заполнители —
-/// сегмент отдаётся оригиналом.
+/// The trick is the same and so are the sieves: the name goes under a
+/// placeholder, [`unmask_tech_names`] returns it VERBATIM (exactly the
+/// spelling that stood in the source text, not the one from the caller), and
+/// if the placeholders do not match, the segment is returned as the original.
 pub fn mask_names(text: &str, guarded: &[&str]) -> MaskedNames {
     if text.contains(NAME_PLACEHOLDER_MARK) {
         return MaskedNames { text: text.to_string(), names: Vec::new() };
     }
-    // Длинное имя пробуется раньше короткого ещё и внутри ОДНОГО названия:
-    // целая цепочка «Sweet Mars LAF Plasma 6» — раньше группы «Sweet Mars», а
-    // та — раньше одинокого «Sweet». Сортировка устойчивая, так что порядок
-    // [`guarded_name_variants`] внутри одной длины сохраняется.
+    // A long name is tried before a short one also inside ONE item name:
+    // the whole chain «Sweet Mars LAF Plasma 6» before the group «Sweet
+    // Mars», and that before a lone «Sweet». The sort is stable, so the
+    // [`guarded_name_variants`] order within one length is kept.
     let mut extra: Vec<Vec<String>> =
         guarded.iter().flat_map(|n| guarded_name_variants(n)).collect();
     extra.sort_by(|a, b| b.len().cmp(&a.len()));
 
-    // Техника внутри фразы (путь, ссылка, файл, переменная, `код`) — под
-    // заполнитель наравне с именами ([`technical_spans`]). Имя ВНУТРИ куска
-    // техники (`kde` в `~/.local/share/kde`) отдельно не прячется: кусок
-    // уходит целиком.
-    // Знаки-картинки (эмодзи, ✨, ™, стрелки) — туда же: модель их не знает и
-    // подменяет своими («### ✨ Features:» → «### 👍 Особенности:», замер
-    // 06.11), а знак автора обязан доехать байт в байт.
+    // Technical text inside a phrase (path, link, file, variable, `code`) —
+    // under a placeholder on a par with names ([`technical_spans`]). A name
+    // INSIDE a technical piece (`kde` in `~/.local/share/kde`) is not hidden
+    // separately: the piece goes whole.
+    // Picture characters (emoji, ✨, ™, arrows) — the same: the model does
+    // not know them and substitutes its own («### ✨ Features:» →
+    // «### 👍 Особенности:», measured 06.11), while the author's character
+    // must arrive byte for byte.
     let mut tech = technical_spans(text);
     let pictures: Vec<(usize, usize)> = pictograph_spans(text)
         .into_iter()
@@ -1278,8 +1313,9 @@ pub fn mask_names(text: &str, guarded: &[&str]) -> MaskedNames {
     }
     spans.sort();
 
-    // Цепочка подряд (имена и техника через пробел, запятую или косую черту)
-    // — под ОДИН заполнитель: два заполнителя подряд живой движок ломает.
+    // A consecutive chain (names and technical text through a space, comma
+    // or slash) — under ONE placeholder: the live engine breaks two
+    // placeholders in a row.
     let mut merged: Vec<(usize, usize)> = Vec::with_capacity(spans.len());
     for (start, end) in spans {
         if let Some(last) = merged.last_mut() {
@@ -1304,29 +1340,30 @@ pub fn mask_names(text: &str, guarded: &[&str]) -> MaskedNames {
     MaskedNames { text: out, names }
 }
 
-/// Вернуть имена на место в переводе. `None` — заполнители не сошлись, перевод
-/// брать НЕЛЬЗЯ.
+/// Put the names back into the translation. `None` — the placeholders did not
+/// match, the translation must NOT be taken.
 ///
-/// Потеря ловится двумя ситами, и вместе они закрывают все виды порчи,
-/// увиденные на живой модели:
-///   1. каждый заполнитель обязан встретиться РОВНО ОДИН раз — это и потеря
-///      (движок съел `@2@`), и размножение (`Budgie` дважды);
-///   2. после подстановки в строке не должно остаться ни одного `@` — это
-///      огрызки («Nordic @ Kvantum тема», `@@1@@@`) и выдуманные номера,
-///      которых мы не давали.
-/// Имён не было — сверять нечего, перевод берётся как есть (`@` в нём мог
-/// прийти только из исходника, см. [`mask_tech_names`]).
+/// Loss is caught by two sieves, and together they cover all kinds of
+/// corruption seen on the live model:
+///   1. each placeholder must occur EXACTLY ONCE — that covers both loss (the
+///      engine ate `@2@`) and multiplication (`Budgie` twice);
+///   2. after substitution not a single `@` may remain in the line — those are
+///      leftovers («Nordic @ Kvantum тема», `@@1@@@`) and invented numbers we
+///      never gave.
+/// There were no names — nothing to check, the translation is taken as is
+/// (an `@` in it could only come from the source, see [`mask_tech_names`]).
 ///
-/// ⭐ ПЕРЕД ситами лечится ОДИН вид размножения — СЛИПШИЙСЯ повтор
-/// ([`collapse_adjacent_repeat`]): `@1@ @1@` подряд. Приёмка 24.09, комментарий
-/// к товару «Nordic KDE»: «Can we expect soon the @0@ Bluish theme of @1@ for
-/// @2@ too?» живая модель отдала как «…@0@ Bluish тему @1@ @1@ для @2@ тоже?»,
-/// сито 1 отвергало перевод, и покупатель видел английский комментарий целиком
-/// (вместе с «Very nice.», которое перевелось прекрасно). Слипшийся повтор
-/// однозначен: имя стояло в источнике ОДИН раз, значит вторая копия подряд —
-/// заикание декодировщика, и убрать её можно, не угадывая. Повтор в РАЗНЫХ
-/// местах строки по-прежнему отказ: там вторая копия может быть настоящим
-/// вторым упоминанием, и выбирать между ними мы не вправе.
+/// ⭐ BEFORE the sieves ONE kind of multiplication is cured — a GLUED repeat
+/// ([`collapse_adjacent_repeat`]): `@1@ @1@` in a row. Acceptance 24.09, a
+/// comment on the item «Nordic KDE»: «Can we expect soon the @0@ Bluish theme
+/// of @1@ for @2@ too?» the live model returned as «…@0@ Bluish тему @1@ @1@
+/// для @2@ тоже?», sieve 1 rejected the translation, and the customer saw the
+/// whole comment in English (together with «Very nice.», which translated
+/// perfectly). A glued repeat is unambiguous: the name stood in the source
+/// ONCE, so the second copy right after it is decoder stutter, and it can be
+/// removed without guessing. A repeat in DIFFERENT places of the line is
+/// still a refusal: there the second copy may be a genuine second mention,
+/// and we have no right to choose between them.
 pub fn unmask_tech_names(translated: &str, names: &[String]) -> Option<String> {
     if names.is_empty() {
         return Some(translated.to_string());
@@ -1346,12 +1383,12 @@ pub fn unmask_tech_names(translated: &str, names: &[String]) -> Option<String> {
     Some(out)
 }
 
-/// Свернуть СЛИПШИЕСЯ повторы заполнителя: `@1@ @1@` → `@1@`.
+/// Collapse GLUED placeholder repeats: `@1@ @1@` → `@1@`.
 ///
-/// Разделять копии разрешено только пробелами — ничего другого между ними при
-/// заикании декодировщика не появлялось, а любая буква или знак между
-/// заполнителями означают, что это два РАЗНЫХ места перевода, и сворачивать их
-/// нельзя.
+/// Copies may be separated only by spaces — nothing else appeared between
+/// them during decoder stutter, and any letter or character between
+/// placeholders means these are two DIFFERENT places of the translation, and
+/// they must not be collapsed.
 fn collapse_adjacent_repeat(text: &str, placeholder: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -1371,19 +1408,21 @@ fn collapse_adjacent_repeat(text: &str, placeholder: &str) -> String {
     out
 }
 
-// ── Знаки-картинки, края предложения, мягкие имена, выдуманные повторы ────
+// ── Picture characters, sentence edges, soft names, invented repeats ──────
 
-/// Знак-картинка: эмодзи и родня (✨ 🚀 ★ ™ © ➜), а также невидимые части
-/// эмодзи (вариант-селектор, соединитель, модификаторы тона и флаги).
+/// A picture character: emoji and kin (✨ 🚀 ★ ™ © ➜), as well as invisible
+/// emoji parts (variation selector, joiner, skin tone modifiers and flags).
 ///
-/// ⭐ ЗАЧЕМ. Словарь модели Firefox этих знаков почти не знает, и декодировщик
-/// ставит на их место «похожее»: «### ✨ Features:» → «### 👍 Особенности:»
-/// (замер 06.11, KDE Store, тема 2380824). Знак автора — не текст, переводить
-/// его нечего, и до движка он доходить не должен вовсе.
+/// ⭐ WHY. The Firefox model vocabulary barely knows these characters, and the
+/// decoder puts something «similar» in their place: «### ✨ Features:» →
+/// «### 👍 Особенности:» (measured 06.11, KDE Store, theme 2380824). The
+/// author's character is not text, there is nothing to translate in it, and
+/// it must not reach the engine at all.
 ///
-/// Диапазоны — блоки Unicode, где живут пиктограммы (стрелки, технические
-/// знаки, геометрия, «разные символы», дингбаты, блок эмодзи U+1F000–1FAFF),
-/// плюс ©, ®, ™. Буквы, цифры и обычная пунктуация сюда не попадают.
+/// The ranges are Unicode blocks where pictograms live (arrows, technical
+/// symbols, geometric shapes, «miscellaneous symbols», dingbats, the emoji
+/// block U+1F000–1FAFF), plus ©, ®, ™. Letters, digits and ordinary
+/// punctuation do not get here.
 pub fn is_pictograph(c: char) -> bool {
     matches!(c,
         '\u{00A9}' | '\u{00AE}' | '\u{203C}' | '\u{2049}' | '\u{2122}' | '\u{2139}'
@@ -1399,8 +1438,9 @@ pub fn is_pictograph(c: char) -> bool {
         | '\u{E0020}'..='\u{E007F}')
 }
 
-/// Пробеги знаков-картинок в строке: (начало, конец) в байтах. Соседние знаки
-/// (флаг из двух букв-регионов, эмодзи с соединителем) — один пробег.
+/// Runs of picture characters in a line: (start, end) in bytes. Neighbouring
+/// characters (a flag of two regional letters, an emoji with a joiner) are
+/// one run.
 pub fn pictograph_spans(text: &str) -> Vec<(usize, usize)> {
     let mut spans: Vec<(usize, usize)> = Vec::new();
     let mut start: Option<usize> = None;
@@ -1417,28 +1457,31 @@ pub fn pictograph_spans(text: &str) -> Vec<(usize, usize)> {
     spans
 }
 
-/// Знаки, с которых может начинаться сама фраза, — их от края НЕ отрезаем:
-/// скобка и кавычка парные (вторая половина внутри фразы), а `~ . / $ \` ` и
-/// `@` начинают технику, которую узнаёт [`technical_spans`].
+/// Characters the phrase itself may start with — they are NOT cut off from
+/// the edge: a bracket and a quote are paired (the second half is inside the
+/// phrase), while `~ . / $ \` ` and `@` start technical text that
+/// [`technical_spans`] recognizes.
 const SENTENCE_OPENERS: &[char] =
     &['(', '[', '{', '"', '\'', '«', '“', '‘', '„', '<', '¿', '¡', '`', '~', '.', '/', '$', '\\', '@'];
 
-/// Разрезать предложение на (край слева, середина, край справа). Движку
-/// уходит только середина; края возвращаются в вывод байт в байт.
+/// Cut a sentence into (left edge, middle, right edge). Only the middle goes to
+/// the engine; the edges return to the output byte for byte.
 ///
-/// ⭐ ЗАЧЕМ (замер 06.11 на живой модели, тема 2380824):
-///   * узел после `</strong>` начинается с «: Full Windows XP …» — движок
-///     меняет двоеточие на тире («- Светло-голубая область…») или съедает его
-///     («</strong>Выбор между…»);
-///   * «### ✨ Features:» — движок меняет знак автора на свой (✨ → 👍).
-/// Края эти — разметка текста (маркеры списка, решётки заголовков, двоеточие
-/// после жирной подписи, эмодзи), а не язык: переводить в них нечего.
+/// ⭐ WHY (measured 06.11 on the live model, theme 2380824):
+///   * the node after `</strong>` starts with «: Full Windows XP …» — the
+///     engine changes the colon into a dash («- Светло-голубая область…») or
+///     eats it («</strong>Выбор между…»);
+///   * «### ✨ Features:» — the engine replaces the author's character with its
+///     own (✨ → 👍).
+/// These edges are text markup (list markers, heading hashes, the colon after
+/// a bold label, emoji), not language: there is nothing to translate in them.
 ///
-/// Левый край — пунктуация и знаки-картинки ДО первого пробела включительно
-/// (кроме [`SENTENCE_OPENERS`]); без пробела за ним край не режется
-/// (`-r`, `:Note` — часть слова). Правый край — только пробелы и
-/// знаки-картинки («Enjoy! 🎉»): точку, вопрос и двоеточие в конце фразы
-/// движок ставит сам, и правильно для своего языка.
+/// The left edge is punctuation and picture characters UP TO and including
+/// the first space (except [`SENTENCE_OPENERS`]); without a space after it the
+/// edge is not cut (`-r`, `:Note` are part of a word). The right edge is only
+/// spaces and picture characters («Enjoy! 🎉»): the engine puts the period,
+/// question mark and colon at the end of a phrase itself, and correctly for
+/// its language.
 pub fn split_sentence_edges(sentence: &str) -> (&str, &str, &str) {
     let mut lead_end = 0usize;
     for (i, c) in sentence.char_indices() {
@@ -1446,14 +1489,15 @@ pub fn split_sentence_edges(sentence: &str) -> (&str, &str, &str) {
             lead_end = i + c.len_utf8();
             continue;
         }
-        // Первая буква, цифра или «открывающий» знак — дальше уже фраза.
-        // Знаки до неё краем становятся только вместе с пробелом за ними.
+        // The first letter, digit or «opening» character — from there on it is
+        // the phrase. Characters before it become the edge only together
+        // with the space after them.
         if c.is_alphanumeric() || SENTENCE_OPENERS.contains(&c) {
             break;
         }
     }
-    // Край слева — только то, за чем шёл пробел: «### ✨ » режется целиком,
-    // «-r» не режется вовсе.
+    // The left edge is only what was followed by a space: «### ✨ » is cut
+    // whole, «-r» is not cut at all.
     let lead = &sentence[..lead_end];
     let rest = &sentence[lead_end..];
     let trail_start = rest
@@ -1464,29 +1508,30 @@ pub fn split_sentence_edges(sentence: &str) -> (&str, &str, &str) {
         .map(|(i, _)| i)
         .unwrap_or(rest.len());
     let (core, trail) = rest.split_at(trail_start);
-    // Справа режем, только если там правда была картинка (одни пробелы
-    // движку не мешают и в вывод всё равно не попадают).
+    // On the right we cut only if there really was a picture (spaces alone
+    // do not bother the engine and do not get into the output anyway).
     if !trail.chars().any(is_pictograph) {
         return (lead, rest, "");
     }
     (lead, core, trail)
 }
 
-/// Заново спрятать под заполнители ТОЛЬКО выбранные имена: `keep[i] == true` —
-/// `names[i]` остаётся под заполнителем, остальные возвращаются в текст.
-/// Номера заполнителей идут подряд с нуля по оставшимся.
+/// Hide again under placeholders ONLY the chosen names: `keep[i] == true` —
+/// `names[i]` stays under a placeholder, the others return to the text.
+/// Placeholder numbers go consecutively from zero over the remaining ones.
 ///
-/// ⭐ ЗАЧЕМ. Второй проход прятал ВСЕ имена фразы, хотя движок в первом
-/// потерял одно. Заполнители сами сбивают декодировщик, и на четырёх сразу
-/// он ломается: «: Full Windows XP Explorer replica with … Classic View …»
-/// (товар «… Luna Blue and Classic Suite», замер 06.11) вернулась с `@0@`
-/// дважды — сегмент выбрасывался, и абзац оставался английским целиком, хотя
-/// в первом проходе потерялось одно `Classic`.
+/// ⭐ WHY. The second pass hid ALL names of the phrase, although the engine
+/// lost one in the first. Placeholders themselves confuse the decoder, and
+/// with four at once it breaks: «: Full Windows XP Explorer replica with …
+/// Classic View …» (item «… Luna Blue and Classic Suite», measured 06.11)
+/// came back with `@0@` twice — the segment was thrown away, and the
+/// paragraph stayed entirely English, although only one `Classic` got lost in
+/// the first pass.
 pub fn mask_only(masked: &MaskedNames, keep: &[bool]) -> MaskedNames {
     let mut text = masked.text.clone();
     let mut names: Vec<String> = Vec::new();
-    // Сначала свои номера ВСЕМ через временную метку, чтобы `@1@` не
-    // спутался с уже переписанным `@1@`.
+    // First give ALL of them their own numbers via a temporary marker, so
+    // that `@1@` is not confused with an already rewritten `@1@`.
     for (i, name) in masked.names.iter().enumerate() {
         let from = name_placeholder(i);
         let to = if keep.get(i).copied().unwrap_or(false) {
@@ -1504,14 +1549,16 @@ pub fn mask_only(masked: &MaskedNames, keep: &[bool]) -> MaskedNames {
     MaskedNames { text, names }
 }
 
-/// «Мягкое» имя: одно слово из названия товара, а не само название, не имя из
-/// списков ядра и не техника. Потеря такого имени — не порча, а перевод слова:
-/// из «… Luna Blue and Classic Suite» охраняется и `Classic`, а в прозе
-/// «Classic View» движок честно пишет «классическим представлением».
+/// A «soft» name: one word from the item name, not the name itself, not a
+/// name from the core's lists and not technical text. Losing such a name is
+/// not corruption but translation of the word: from «… Luna Blue and Classic
+/// Suite» `Classic` is guarded too, and in the prose «Classic View» the
+/// engine honestly writes «классическим представлением».
 ///
-/// Если такое имя не удержалось и под заполнителем, предложение берётся
-/// переводом без него, а НЕ выбрасывается вместе со всем абзацем: английский
-/// абзац хуже, чем переведённое слово из названия.
+/// If such a name did not hold even under a placeholder, the sentence is
+/// taken as translated without it, and NOT thrown away together with the
+/// whole paragraph: an English paragraph is worse than a translated word from
+/// the name.
 pub fn is_soft_guarded_name(name: &str, guarded: &[&str]) -> bool {
     let runs = word_runs(name);
     if runs.len() != 1 || runs[0] != (0, name.len()) {
@@ -1523,13 +1570,14 @@ pub fn is_soft_guarded_name(name: &str, guarded: &[&str]) -> bool {
     !guarded.iter().any(|g| g.trim().eq_ignore_ascii_case(name))
 }
 
-/// Начала, на которых движок сам дописывает союз «и» в начало фразы:
-/// «Full documentation and source code available on GitHub:» → «и полная
-/// документация…» (замер 06.11). Союз законен, только если он был в
-/// источнике: `and`, `both … and` («И X, и Y»), `plus`, `also`, `&`.
+/// Beginnings at which the engine itself adds the conjunction «и» at the
+/// start of the phrase: «Full documentation and source code available on
+/// GitHub:» → «и полная документация…» (measured 06.11). The conjunction is
+/// legitimate only if it was in the source: `and`, `both … and` («И X, и
+/// Y»), `plus`, `also`, `&`.
 const SOURCE_LEADING_CONJUNCTIONS: &[&str] = &["and", "both", "plus", "also"];
 
-/// Союз, который движок выдумывает в начале фразы, — на целевом языке.
+/// The conjunction the engine invents at the start of a phrase — in the target language.
 fn invented_leading_word(tgt: &str) -> Option<&'static str> {
     match tgt {
         "ru" => Some("и"),
@@ -1538,21 +1586,23 @@ fn invented_leading_word(tgt: &str) -> Option<&'static str> {
     }
 }
 
-/// Убрать из перевода то, чего в источнике не было и что движок ДОПИСАЛ сам:
-///   * повтор соседних одинаковых слов («для KDE Plasma 6 и и Bazzite»: живая
-///     модель на одинокое «and» отвечает «и и»). Убирается, только если в
-///     источнике самом нет ни одного повтора подряд — иначе повтор авторский
-///     («very very nice» → «очень очень мило»);
-///   * союз «и» в начале фразы, которой в источнике союз не начинался («и
-///     полная документация…» на «Full documentation…»).
+/// Remove from the translation what was not in the source and what the engine
+/// ADDED by itself:
+///   * a repeat of adjacent identical words («для KDE Plasma 6 и и Bazzite»:
+///     the live model answers a lone «and» with «и и»). Removed only if the
+///     source itself has no consecutive repeat — otherwise the repeat is the
+///     author's («very very nice» → «очень очень мило»);
+///   * the conjunction «и» at the start of a phrase that did not start with a
+///     conjunction in the source («и полная документация…» for «Full
+///     documentation…»).
 pub fn drop_invented_repeats(src: &str, tgt: &str, source: &str, translated: &str) -> String {
     let mut out = translated.to_string();
     if !has_adjacent_repeat(source) {
         out = collapse_word_repeats(&out);
     }
-    // Тире или двоеточие в начале, которых в источнике не было: «Lock Screen»
-    // → «- экран замка» (замер 06.11). Источник начинается с буквы — значит
-    // знак выдуман.
+    // A dash or colon at the start that was not in the source: «Lock
+    // Screen» → «- экран замка» (measured 06.11). The source starts with a
+    // letter — so the character is invented.
     if source.trim_start().chars().next().is_some_and(char::is_alphanumeric) {
         let trimmed = out.trim_start();
         let mut chars = trimmed.chars();
@@ -1587,14 +1637,15 @@ pub fn drop_invented_repeats(src: &str, tgt: &str, source: &str, translated: &st
     out
 }
 
-/// Есть ли в строке два одинаковых слова подряд (без учёта регистра).
+/// Whether the line has two identical words in a row (case-insensitive).
 fn has_adjacent_repeat(text: &str) -> bool {
     let words: Vec<String> = text.split_whitespace().map(|w| w.to_lowercase()).collect();
     words.windows(2).any(|p| p[0] == p[1] && p[0].chars().any(char::is_alphabetic))
 }
 
-/// Свернуть повторы соседних одинаковых слов: «и и» → «и». Сравнивается слово
-/// целиком (с пунктуацией): «да, да» — это не «да да», а авторская интонация.
+/// Collapse repeats of adjacent identical words: «и и» → «и». The whole word
+/// (with punctuation) is compared: «да, да» is not «да да» but the author's
+/// intonation.
 fn collapse_word_repeats(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut last: Option<String> = None;
@@ -1620,25 +1671,27 @@ fn collapse_word_repeats(text: &str) -> String {
     out
 }
 
-/// Латинское слово из перевода, которого в источнике НЕ БЫЛО, — след порчи
-/// движка. `None` — латиница в переводе вся своя.
+/// A Latin word in the translation that was NOT in the source — a trace of
+/// engine corruption. `None` — all the Latin in the translation is its own.
 ///
-/// ⭐ ЗАЧЕМ. Приёмка 24.09, товар «Awesome Widgets» (arcanis): строку
-/// `graphical item support - tooltips, bars` живая модель отдала как «служба
-/// графических элементов - toolbep, bars». `toolbep` — НЕ смесь алфавитов
-/// (проверено по кодам: все семь букв ASCII, `U+0074 U+006F U+006F U+006C
-/// U+0062 U+0065 U+0070`), а слово, ВЫДУМАННОЕ подсловным декодировщиком из
-/// `tooltips`. Ни фильтр прозы, ни сита заполнителей такого не видят: имён в
-/// строке нет вовсе.
+/// ⭐ WHY. Acceptance 24.09, item «Awesome Widgets» (arcanis): the line
+/// `graphical item support - tooltips, bars` the live model returned as
+/// «служба графических элементов - toolbep, bars». `toolbep` is NOT a mix of
+/// alphabets (checked by code points: all seven letters are ASCII, `U+0074
+/// U+006F U+006F U+006C U+0062 U+0065 U+0070`), but a word INVENTED by the
+/// subword decoder from `tooltips`. Neither the prose filter nor the
+/// placeholder sieves see this: the line has no names at all.
 ///
-/// Поймать это можно ровно одним способом — сравнением с источником. Латиница
-/// в переводе `en→ru` приходит ТОЛЬКО из источника (имена, версии, ключи,
-/// пути), своей латиницы у русского перевода нет. Значит латинское слово,
-/// которого в источнике не найти, — порча, и предложение с ним брать нельзя.
+/// It can be caught in exactly one way — by comparing with the source. Latin
+/// in an `en→ru` translation comes ONLY from the source (names, versions,
+/// switches, paths); a Russian translation has no Latin of its own. So a
+/// Latin word not found in the source is corruption, and a sentence with it
+/// must not be taken.
 ///
-/// Сравнение без учёта регистра и ПО ВХОЖДЕНИЮ: `Kvantum` из `Kvantum's` своё,
-/// `GTK` из `GTK2` своё, `bars` из `bars` своё, а `toolbep` — чужое. Слова
-/// короче двух букв не судятся (одинокая `x` в «3 x 4» и тому подобное).
+/// Comparison is case-insensitive and BY SUBSTRING: `Kvantum` from
+/// `Kvantum's` is its own, `GTK` from `GTK2` is its own, `bars` from `bars`
+/// is its own, but `toolbep` is foreign. Words shorter than two letters are
+/// not judged (a lone `x` in «3 x 4» and the like).
 pub fn invented_latin_word(source: &str, translated: &str) -> Option<String> {
     let lower_source = source.to_lowercase();
     let mut word = String::new();
@@ -1655,70 +1708,72 @@ pub fn invented_latin_word(source: &str, translated: &str) -> Option<String> {
     None
 }
 
-// ── Словарь поправок терминов (после движка) ──────────────────────────────
+// ── Term fix dictionary (after the engine) ────────────────────────────────
 
-/// Одна поправка: НЕВЕРНАЯ словоформа движка → ВЕРНАЯ в той же самой
-/// грамматической форме. Сравнение без учёта регистра и `ё`/`е`; регистр
-/// первой буквы найденного слова переносится на замену.
+/// One fix: the engine's WRONG word form → the RIGHT one in the very same
+/// grammatical form. Comparison ignores case and `ё`/`е`; the case of the
+/// found word's first letter is carried over to the replacement.
 #[derive(Debug, Clone, Copy)]
 pub enum TermForm {
-    /// Слово целиком — в любом месте фразы.
+    /// The whole word — anywhere in the phrase.
     Word(&'static str, &'static str),
-    /// Повелительное, совпадающее по написанию с будущим временем
-    /// (`загрузите`: «загрузите архив» и «если вы загрузите архив»). Меняется,
-    /// только если среди трёх слов перед ним нет «вы» — иначе это будущее, и у
-    /// замены была бы другая форма («скачаете», а не «скачайте»).
+    /// An imperative that is spelled like the future tense (`загрузите`:
+    /// «загрузите архив» and «если вы загрузите архив»). Replaced only if
+    /// there is no «вы» among the three words before it — otherwise it is the
+    /// future, and the replacement would have another form («скачаете», not
+    /// «скачайте»).
     Imperative(&'static str, &'static str),
-    /// Существительное, род которого у замены другой (`извлечения` ср. р. →
-    /// `распаковки` ж. р.). Меняется ТОЛЬКО сразу после предлога: тогда при
-    /// нём нет ни прилагательного, ни сказуемого, которые пришлось бы
-    /// согласовывать заново («после извлечения» → «после распаковки»), а
-    /// «извлечение не сработало» остаётся как есть.
+    /// A noun whose replacement has a different gender (`извлечения` neuter →
+    /// `распаковки` feminine). Replaced ONLY right after a preposition: then
+    /// there is neither an adjective nor a predicate with it that would have to
+    /// be agreed anew («после извлечения» → «после распаковки»), while
+    /// «извлечение не сработало» stays as is.
     AfterPreposition(&'static str, &'static str),
-    /// Основа причастия: основа + полное окончание (`ый`, `ая`, `ого`, …,
-    /// [`PARTICIPLE_ENDINGS`]) → новая основа + то же окончание
-    /// («извлечённого» → «распакованного»). Окончание переносится как есть,
-    /// значит род, число и падеж сохраняются без всякого склонения.
+    /// A participle stem: stem + full ending (`ый`, `ая`, `ого`, …,
+    /// [`PARTICIPLE_ENDINGS`]) → new stem + the same ending («извлечённого» →
+    /// «распакованного»). The ending is carried over as is, so gender, number
+    /// and case are kept without any inflection.
     ParticipleStem(&'static str, &'static str),
-    /// Несколько слов подряд (через пробелы) → готовая замена.
+    /// Several words in a row (separated by spaces) → a ready replacement.
     Phrase(&'static str, &'static str),
 }
 
-/// Полные окончания причастий и прилагательных — все, какие бывают у
-/// `-нный`. Короткие формы (`извлечён`, `извлечена`) в словаре записаны
-/// отдельными словами.
+/// Full endings of participles and adjectives — all that `-нный` can have.
+/// Short forms (`извлечён`, `извлечена`) are written as separate words in the
+/// dictionary.
 const PARTICIPLE_ENDINGS: &[&str] = &[
     "ый", "ий", "ая", "ое", "ые", "ого", "ой", "ую", "ых", "ым", "ыми", "ом", "ому",
 ];
 
-/// Предлоги, после которых существительное [`TermForm::AfterPreposition`]
-/// стоит без согласуемого слова.
+/// Prepositions after which a [`TermForm::AfterPreposition`] noun stands
+/// without an agreeing word.
 const PREPOSITIONS: &[&str] = &[
     "после", "для", "до", "без", "при", "к", "ко", "перед", "от", "с", "со", "по", "из", "в",
     "во", "о", "об", "на", "через",
 ];
 
-/// Группа поправок одного термина.
+/// A group of fixes for one term.
 ///
-/// ⭐ ПРАВКА ТОЛЬКО ПО ПАРЕ: группа срабатывает, если в ИСХОДНОМ предложении
-/// есть один из её английских терминов ([`TermFix::source_words`], сравнение
-/// по началу слова: `unzip` ловит и `unzipping`) и проходит
-/// [`TermFix::gate`]. «Расстегните», пришедшее не от `unzip`, словарь не
-/// трогает — может, речь правда о застёжке.
+/// ⭐ FIXES ONLY BY PAIR: the group fires if the SOURCE sentence has one of
+/// its English terms ([`TermFix::source_words`], compared by word start:
+/// `unzip` also catches `unzipping`) and passes [`TermFix::gate`]. A
+/// «Расстегните» that did not come from `unzip` is not touched by the
+/// dictionary — maybe it really is about a fastener.
 #[derive(Debug, Clone, Copy)]
 pub struct TermFix {
-    /// Язык источника и перевода (`en` → `ru`). Словарь `en` → `de` встаёт
-    /// сюда же своими группами, механизм общий.
+    /// Source and translation language (`en` → `ru`). An `en` → `de`
+    /// dictionary fits here with its own groups, the mechanism is shared.
     pub src: &'static str,
     pub tgt: &'static str,
-    /// Начала английских слов, при которых группа включается.
+    /// Beginnings of English words that switch the group on.
     pub source_words: &'static [&'static str],
-    /// Дополнительное условие по исходному предложению (в нижнем регистре).
+    /// An additional condition on the source sentence (lowercase).
     pub gate: fn(&str) -> bool,
-    /// Пары «неверно → верно».
+    /// «Wrong → right» pairs.
     pub forms: &'static [TermForm],
-    /// Свернуть слипшийся повтор ВЕРНОЙ формы: «скачать скачать» → «скачать»
-    /// (живая модель на «Download bigsur-sound-theme.tar.gz from Files»).
+    /// Collapse a glued repeat of the RIGHT form: «скачать скачать» →
+    /// «скачать» (the live model on «Download bigsur-sound-theme.tar.gz from
+    /// Files»).
     pub collapse_repeats: bool,
 }
 
@@ -1726,24 +1781,24 @@ fn always(_: &str) -> bool {
     true
 }
 
-/// `extract` значит «распаковать», только когда речь об архиве.
+/// `extract` means «unpack» only when it is about an archive.
 ///
-/// Живые описания KDE Store знают и другое `extract`: «automatically extract
-/// and apply dominant icon color», «All sounds have been extracted from MacOS
-/// Monterey», «icons extracted from the beta of Uos» — там «извлечь» верно.
-/// Поэтому нужен признак архива (архив, zip/tar, файл, папка, пакет, путь,
-/// download) и НЕ нужен `from` после `extract` (извлекают ИЗ чего-то, а
-/// распаковывают архив).
+/// Live KDE Store descriptions know another `extract` too: «automatically
+/// extract and apply dominant icon color», «All sounds have been extracted
+/// from MacOS Monterey», «icons extracted from the beta of Uos» — there
+/// «извлечь» is right. So an archive sign is needed (archive, zip/tar, file,
+/// folder, package, path, download), and `from` after `extract` must NOT be
+/// there (one extracts FROM something, but unpacks an archive).
 fn extract_means_unpack(source: &str) -> bool {
     let Some(at) = source.find("extract") else { return false };
-    // «…directly from extracted source files» — извлечённые ИЗ чего-то.
+    // «…directly from extracted source files» — extracted FROM something.
     if source[..at].trim_end().ends_with("from") {
         return false;
     }
-    // `from` после `extract` — «извлечь ИЗ», если между ними не архив:
-    // «extracted from MacOS Monterey», «extract the chrome folder from one of
-    // the IE themes» — извлечь; «extract "maliceandspitekv.zip" from this
-    // page» — распаковать (предмет — сам архив).
+    // `from` after `extract` — «extract FROM», unless an archive is between
+    // them: «extracted from MacOS Monterey», «extract the chrome folder from
+    // one of the IE themes» — «извлечь»; «extract "maliceandspitekv.zip"
+    // from this page» — «распаковать» (the object is the archive itself).
     let after = &source[at..];
     let words: Vec<&str> = after.split_whitespace().collect();
     if let Some(from) = words.iter().position(|w| *w == "from") {
@@ -1766,11 +1821,11 @@ fn extract_means_unpack(source: &str) -> bool {
     MARKERS.iter().any(|m| source.contains(m))
 }
 
-/// `download` → «скачать», только если в предложении нет ДРУГОГО `load`
-/// (`upload`, `load`, `reload`): там «загрузить» может быть законным словом
-/// для них. И нет имени окна KDE «Download New …» («The Download New Global
-/// Themes program…»): у KDE ru это «Загрузить новые …», и переделывать чужое
-/// название окна в «скачать» нельзя.
+/// `download` → «скачать» only if the sentence has no OTHER `load` (`upload`,
+/// `load`, `reload`): there «загрузить» may be the legitimate word for them.
+/// And no KDE window name «Download New …» («The Download New Global Themes
+/// program…»): KDE ru has «Загрузить новые …» for it, and turning someone
+/// else's window name into «скачать» is not allowed.
 fn download_alone(source: &str) -> bool {
     let other_load = source
         .split(|c: char| !c.is_alphanumeric())
@@ -1778,30 +1833,30 @@ fn download_alone(source: &str) -> bool {
     !other_load && !source.contains("download new")
 }
 
-/// «Drag and drop» в любом написании, а не любое `drag…` (`dragon`).
+/// «Drag and drop» in any spelling, not just any `drag…` (`dragon`).
 fn drag_and_drop(source: &str) -> bool {
     ["drag and drop", "drag & drop", "drag-and-drop", "drag'n'drop", "drag n drop"]
         .iter()
         .any(|p| source.contains(p))
 }
 
-/// «Files» — вкладка страницы товара KDE Store («Download … from Files»,
-/// «from the Files tab»), а не слово «файлы».
+/// «Files» — the tab of a KDE Store item page («Download … from Files»,
+/// «from the Files tab»), not the word «файлы».
 fn files_tab(source: &str) -> bool {
     source.contains("from files") || source.contains("files tab") || source.contains("files(")
 }
 
-/// Формы «распаковать» вместо того, что живая модель Firefox en→ru делает из
-/// `unzip`/`unpack`/`extract` («расстегните», «извлеките», «вытащить»,
-/// «разбейте», «распечатайте» и выдуманные «извайте», «изящите»).
+/// Forms of «распаковать» instead of what the live Firefox en→ru model makes
+/// of `unzip`/`unpack`/`extract` («расстегните», «извлеките», «вытащить»,
+/// «разбейте», «распечатайте» and the invented «извайте», «изящите»).
 ///
-/// ИСТОЧНИК ТЕРМИНА: KDE ru — Ark («Extract» → «Распаковать», «Extract here»
-/// → «Распаковать в эту папку», «Extraction failed…» → «Не удалось
-/// распаковать…»), kcm и Discover; наш po/ru.po («Couldn't unpack the
-/// archive: %1» → «Не удалось распаковать архив: %1», «unpacking the theme» →
-/// «распаковки темы»).
+/// SOURCE OF THE TERM: KDE ru — Ark («Extract» → «Распаковать», «Extract
+/// here» → «Распаковать в эту папку», «Extraction failed…» → «Не удалось
+/// распаковать…»), kcm and Discover; our po/ru.po («Couldn't unpack the
+/// archive: %1» → «Не удалось распаковать архив: %1», «unpacking the theme»
+/// → «распаковки темы»).
 const UNPACK_FORMS: &[TermForm] = &[
-    // извлечь / извлекать (перфектив → перфектив, имперфектив → имперфектив)
+    // извлечь / извлекать (perfective → perfective, imperfective → imperfective)
     TermForm::Word("извлеките", "распакуйте"),
     TermForm::Word("извлеки", "распакуй"),
     TermForm::Word("извлечь", "распаковать"),
@@ -1842,21 +1897,21 @@ const UNPACK_FORMS: &[TermForm] = &[
     TermForm::Word("разбейте", "распакуйте"),
     TermForm::Word("распечатайте", "распакуйте"),
     TermForm::Word("распечатать", "распаковать"),
-    // Слова, которых в русском нет, — выдумки декодировщика, все повелительные.
+    // Words that do not exist in Russian — decoder inventions, all imperative.
     TermForm::Word("извайте", "распакуйте"),
     TermForm::Word("изящите", "распакуйте"),
     TermForm::Word("извахните", "распакуйте"),
     TermForm::Word("извлечайте", "распаковывайте"),
 ];
 
-/// Формы «скачать» вместо «загрузить» и выдуманного «скашляйте».
+/// Forms of «скачать» instead of «загрузить» and the invented «скашляйте».
 ///
-/// ИСТОЧНИК ТЕРМИНА: наш po/ru.po — кнопка «Download» → «Скачать», «Couldn't
-/// download the archive» → «Не удалось скачать архив», «📥 Download Only» →
-/// «📥 Только скачать». (KDE в kcm пишет «Загрузить новые …» — у Rexon своё
-/// слово, и описание темы говорит с человеком тем же словом, что кнопка.)
-/// Существительные («загрузка», «загрузки») не трогаются: «скачивание» —
-/// другого рода.
+/// SOURCE OF THE TERM: our po/ru.po — the «Download» button → «Скачать»,
+/// «Couldn't download the archive» → «Не удалось скачать архив», «📥 Download
+/// Only» → «📥 Только скачать». (KDE writes «Загрузить новые …» in kcm — Rexon
+/// has its own word, and the theme description talks to the person with the
+/// same word as the button.) Nouns («загрузка», «загрузки») are not touched:
+/// «скачивание» has a different gender.
 const DOWNLOAD_FORMS: &[TermForm] = &[
     TermForm::Imperative("загрузите", "скачайте"),
     TermForm::Word("загрузи", "скачай"),
@@ -1880,38 +1935,39 @@ const DOWNLOAD_FORMS: &[TermForm] = &[
     TermForm::Word("загружены", "скачаны"),
     TermForm::ParticipleStem("загруженн", "скачанн"),
     TermForm::ParticipleStem("загружаем", "скачиваем"),
-    // Выдумки декодировщика («Download the archive and unpack it.» →
+    // Decoder inventions («Download the archive and unpack it.» →
     // «скашляйте архив…»).
     TermForm::Word("скашляйте", "скачайте"),
     TermForm::Word("скашлять", "скачать"),
 ];
 
-/// Словарь поправок терминов перевода описаний — ОДНО место.
+/// The term fix dictionary for description translation — ONE place.
 ///
-/// ⭐ ЗАЧЕМ (дефект владельца 03.10, KDE Store): «Just unzip the file…» живая
-/// модель Firefox en→ru переводит «Просто расстегните файл…», «Download
+/// ⭐ WHY (owner's defect 03.10, KDE Store): «Just unzip the file…» the live
+/// Firefox en→ru model translates as «Просто расстегните файл…», «Download
 /// bigsur-sound-theme.tar.gz from Files» — «Скачать скачать … с Файлы»,
 /// «extract» — «извлеките», «вытащить», «изящите».
 ///
-/// ⚠️ ПОЧЕМУ ПОСЛЕ ДВИЖКА, А НЕ ДО. Подмена до движка проверена на той же
-/// модели и ненадёжна: замена `unzip` на `unpack` в источнике даёт то
-/// «распаковать его», то «Разбейте в /usr/share/icons/» (`Unpack into …`), а
-/// заполнитель на месте глагола сам сбивает декодировщик (см. два прохода в
-/// `translator_engine`). Правка после движка по паре «исходный термин →
-/// неверная форма → верная в ТОЙ ЖЕ форме» не угадывает ни вида, ни падежа:
-/// форму выбрал движок, словарь меняет только лексему.
+/// ⚠️ WHY AFTER THE ENGINE AND NOT BEFORE. Substitution before the engine was
+/// tested on the same model and is unreliable: replacing `unzip` with `unpack`
+/// in the source gives now «распаковать его», now «Разбейте в
+/// /usr/share/icons/» (`Unpack into …`), and a placeholder in place of the
+/// verb itself confuses the decoder (see the two passes in
+/// `translator_engine`). A fix after the engine by the pair «source term →
+/// wrong form → right one in THE SAME form» guesses neither aspect nor case:
+/// the engine chose the form, the dictionary changes only the lexeme.
 ///
-/// ⛔ НЕ ИЗОБРЕТАТЬ ФОРМ. Каждая пара — одна грамматическая форма в другую;
-/// где у замены другой род (существительные), правка идёт только сразу после
-/// предлога ([`TermForm::AfterPreposition`]); где повелительное совпадает с
-/// будущим — только без «вы» рядом ([`TermForm::Imperative`]). Форма, которой
-/// здесь нет, остаётся как есть.
+/// ⛔ DO NOT INVENT FORMS. Each pair is one grammatical form into another;
+/// where the replacement has a different gender (nouns), the fix applies only
+/// right after a preposition ([`TermForm::AfterPreposition`]); where the
+/// imperative matches the future — only without «вы» nearby
+/// ([`TermForm::Imperative`]). A form not listed here stays as is.
 ///
-/// Добавить язык (`de`): новые группы с `tgt: "de"` — «entzippen» →
-/// «entpacken» и т. п. — источник терминов тот же: KDE de (Ark: «Extract» →
-/// «Entpacken») и наш po/de.po.
+/// Adding a language (`de`): new groups with `tgt: "de"` — «entzippen» →
+/// «entpacken» and so on — the source of terms is the same: KDE de (Ark:
+/// «Extract» → «Entpacken») and our po/de.po.
 pub const TERM_FIXES: &[TermFix] = &[
-    // unzip/unpack/untar/decompress — всегда «распаковать».
+    // unzip/unpack/untar/decompress — always «распаковать».
     TermFix {
         src: "en",
         tgt: "ru",
@@ -1920,7 +1976,7 @@ pub const TERM_FIXES: &[TermFix] = &[
         forms: UNPACK_FORMS,
         collapse_repeats: false,
     },
-    // extract — «распаковать» только про архив ([`extract_means_unpack`]).
+    // extract — «распаковать» only about an archive ([`extract_means_unpack`]).
     TermFix {
         src: "en",
         tgt: "ru",
@@ -1929,7 +1985,7 @@ pub const TERM_FIXES: &[TermFix] = &[
         forms: UNPACK_FORMS,
         collapse_repeats: false,
     },
-    // download — «скачать» (кнопка Rexon «Скачать»).
+    // download — «скачать» (the Rexon «Скачать» button).
     TermFix {
         src: "en",
         tgt: "ru",
@@ -1938,8 +1994,8 @@ pub const TERM_FIXES: &[TermFix] = &[
         forms: DOWNLOAD_FORMS,
         collapse_repeats: true,
     },
-    // «from Files» — вкладка KDE Store; движок оставляет «с Файлы»
-    // (именительный после предлога).
+    // «from Files» — a KDE Store tab; the engine leaves «с Файлы»
+    // (nominative after a preposition).
     TermFix {
         src: "en",
         tgt: "ru",
@@ -1953,8 +2009,8 @@ pub const TERM_FIXES: &[TermFix] = &[
         collapse_repeats: false,
     },
     // drag and drop — «перетащите» (KDE ru, kcm_kwindecoration: «Drag buttons
-    // between here and the titlebar» → «Перетаскивайте кнопки…»). Движок
-    // дописывает к нему «и высадите».
+    // between here and the titlebar» → «Перетаскивайте кнопки…»). The engine
+    // appends «и высадите» to it.
     TermFix {
         src: "en",
         tgt: "ru",
@@ -1972,8 +2028,8 @@ pub const TERM_FIXES: &[TermFix] = &[
         collapse_repeats: false,
     },
     // icon pack — «набор значков» (KDE ru, kcm_icons: «Installing icon
-    // themes…» → «Установка наборов значков...»). «Пакет» и «набор» —
-    // одного рода и склонения, падеж переносится как есть.
+    // themes…» → «Установка наборов значков...»). «Пакет» and «набор» have
+    // the same gender and declension, the case is carried over as is.
     TermFix {
         src: "en",
         tgt: "ru",
@@ -1995,9 +2051,9 @@ pub const TERM_FIXES: &[TermFix] = &[
         collapse_repeats: false,
     },
     // Installation — «Установка» (KDE ru, Discover: «Install» → «Установка»,
-    // kcm_icons «Installing…» → «Установка…»). Движок берёт «Инсталляция».
-    // Обе — ж. р. первого склонения, но «инсталляции» неоднозначно по падежу,
-    // поэтому только однозначные формы.
+    // kcm_icons «Installing…» → «Установка…»). The engine picks
+    // «Инсталляция». Both are feminine first declension, but «инсталляции»
+    // is ambiguous by case, so only unambiguous forms.
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2010,14 +2066,15 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // Explorer — «Проводник»: так файловый менеджер назван в русской Windows,
-    // и так же живая модель переводит его ВНУТРИ фразы («Full Windows XP
-    // Explorer replica» → «Полная копия проводника Windows XP», замер 06.11).
-    // Одинокое «Explorer» (подпись в <strong>, без контекста) она отдаёт как
-    // «исследователь». Оба слова — м. р. второго склонения, падеж
-    // переносится как есть. Латиницей не оставляем: в соседней фразе того же
-    // описания модель уже написала «проводник», и два имени одной программы
-    // в одной карточке путали бы.
+    // Explorer — «Проводник»: that is the file manager's name in Russian
+    // Windows, and the live model translates it that way INSIDE a phrase
+    // («Full Windows XP Explorer replica» → «Полная копия проводника Windows
+    // XP», measured 06.11). A lone «Explorer» (a label in <strong>, without
+    // context) it returns as «исследователь». Both words are masculine
+    // second declension, the case is carried over as is. We do not leave it
+    // in Latin: in a neighbouring phrase of the same description the model
+    // already wrote «проводник», and two names of one program in one card
+    // would confuse.
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2032,9 +2089,9 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // Lock Screen — «экран блокировки» (KDE ru, kscreenlocker; так же в
-    // русской Windows). Одинокое «Lock Screen» модель отдаёт «экран замка»
-    // (замер 06.11).
+    // Lock Screen — «экран блокировки» (KDE ru, kscreenlocker; the same in
+    // Russian Windows). A lone «Lock Screen» the model returns as «экран
+    // замка» (measured 06.11).
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2048,8 +2105,9 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // Start Menu — «меню «Пуск»» (русская Windows; кнопку «Start» модель и
-    // так переводит «Пуск»). Модель пишет «Начало Меню» (замер 06.11).
+    // Start Menu — «меню «Пуск»» (Russian Windows; the model translates the
+    // «Start» button as «Пуск» anyway). The model writes «Начало Меню»
+    // (measured 06.11).
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2062,9 +2120,9 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // Logon — «вход в систему» (так в русской Windows: «Экран входа в
-    // систему»). Одинокое «Logon» модель не знает и выдумывает «Лофон»
-    // (замер 06.11) — выдумку и меняем.
+    // Logon — «вход в систему» (as in Russian Windows: «Экран входа в
+    // систему»). The model does not know a lone «Logon» and invents «Лофон»
+    // (measured 06.11) — it is the invention we replace.
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2076,10 +2134,10 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // System Tray — «системный лоток»: так панель зовут KDE и сам Rexon
-    // («🔔 Лоток: значок поставлен»). Живая модель переворачивает порядок
-    // слов — «Лоток системы Windows XP» (замер 06.11); слово верное, порядок
-    // нет.
+    // System Tray — «системный лоток»: that is what KDE and Rexon itself call
+    // the panel («🔔 Лоток: значок поставлен»). The live model reverses the
+    // word order — «Лоток системы Windows XP» (measured 06.11); the word is
+    // right, the order is not.
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2093,16 +2151,16 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // ── устойчивые термины оформления и GitHub (живая проверка 08.11,
-    // «Candy icons»: «икона темы», «Записка», «открыть вопрос», «вытащить
-    // запрос»). Источник терминов — наш po/ru.po и KDE ru: «тема значков»
-    // («Checking the icon theme...» → «Проверка темы значков...»), «набор
-    // значков», «тема курсоров» («cursor themes» → «тем курсоров»).
+    // ── stable look and GitHub terms (live check 08.11, «Candy icons»:
+    // «икона темы», «Записка», «открыть вопрос», «вытащить запрос»). The
+    // source of terms is our po/ru.po and KDE ru: «тема значков» («Checking
+    // the icon theme...» → «Проверка темы значков...»), «набор значков»,
+    // «тема курсоров» («cursor themes» → «тем курсоров»).
     //
-    // icon / icons — «значки». Только формы множественного числа: у них нет
-    // рода, и согласованные слова менять не нужно («иконки» ж. р. → «значки»
-    // м. р. во множественном одинаковы). «Иконописная тема», «икона темы» —
-    // целые словосочетания движка на `icon theme`.
+    // icon / icons — «значки». Plural forms only: they have no gender, and
+    // agreeing words need not change («иконки» feminine → «значки» masculine
+    // are the same in the plural). «Иконописная тема», «икона темы» — whole
+    // phrases the engine produces for `icon theme`.
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2131,10 +2189,9 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // «иконки» — и именительный множественного, и родительный единственного
-    // («цвет иконки»). Поэтому только там, где в источнике одно `icons`, без
-    // `icon` в единственном: «To request for icons please» → «запросить
-    // значки».
+    // «иконки» is both nominative plural and genitive singular («цвет
+    // иконки»). So only where the source has a single `icons` with no
+    // singular `icon`: «To request for icons please» → «запросить значки».
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2143,8 +2200,8 @@ pub const TERM_FIXES: &[TermFix] = &[
         forms: &[TermForm::Word("иконки", "значки")],
         collapse_repeats: false,
     },
-    // «theme» — повтор «тема темы» (одинокое `theme` живая модель отдаёт
-    // именно так, замер 08.11).
+    // «theme» — the repeat «тема темы» (this is exactly how the live model
+    // returns a lone `theme`, measured 08.11).
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2156,8 +2213,8 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // cursor theme — «тема курсоров» (po/ru.po: «GitHub: %1 cursor themes…» →
-    // «тем курсоров»). Модель пишет «курсорная тема».
+    // cursor theme — «тема курсоров» (po/ru.po: «GitHub: %1 cursor themes…»
+    // → «тем курсоров»). The model writes «курсорная тема».
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2174,8 +2231,9 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // Note / NOTE в начале фразы — подпись «Примечание» (KDE ru). Модель даёт
-    // «записка», «заметка», а на `NOTE` — «НОТЕ ПРИМЕЧАНИЕ» (замер 08.11).
+    // Note / NOTE at the start of a phrase — the label «Примечание» (KDE ru).
+    // The model gives «записка», «заметка», and for `NOTE` — «НОТЕ
+    // ПРИМЕЧАНИЕ» (measured 08.11).
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2191,8 +2249,8 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: true,
     },
-    // issue — «заявка» (трекер проекта): «open an issue» модель отдаёт
-    // «открыть вопрос»/«открывать проблему», «issue tracker» — «трекер
+    // issue — «заявка» (a project tracker): «open an issue» the model returns
+    // as «открыть вопрос»/«открывать проблему», «issue tracker» — «трекер
     // вопросов».
     TermFix {
         src: "en",
@@ -2215,8 +2273,8 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // pull request — «запрос на слияние» (так зовут его русский GitLab и KDE
-    // ru). Модель: «вытащить запрос», «вытащитные запросы».
+    // pull request — «запрос на слияние» (that is what Russian GitLab and KDE
+    // ru call it). The model: «вытащить запрос», «вытащитные запросы».
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2235,9 +2293,9 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
-    // star (глагол) — «отметьте звёздочкой»: «Please star the repository» →
-    // «отведайте репозиторий» (замер 08.11). Падеж дополнения у «отметьте»
-    // тот же (винительный).
+    // star (verb) — «отметьте звёздочкой»: «Please star the repository» →
+    // «отведайте репозиторий» (measured 08.11). The object's case with
+    // «отметьте» is the same (accusative).
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2251,7 +2309,7 @@ pub const TERM_FIXES: &[TermFix] = &[
         collapse_repeats: false,
     },
     // plasma widget — «виджет Plasma» (po/ru.po: «Виджеты рабочего стола»,
-    // имя Plasma латиницей). Модель: «плазменный виджет».
+    // the name Plasma in Latin). The model: «плазменный виджет».
     TermFix {
         src: "en",
         tgt: "ru",
@@ -2271,12 +2329,12 @@ pub const TERM_FIXES: &[TermFix] = &[
     },
 ];
 
-/// Слово в нижнем регистре и с `ё` → `е` — так словарь и сравнивает.
+/// A word lowercased and with `ё` → `е` — that is how the dictionary compares.
 fn term_key(word: &str) -> String {
     word.to_lowercase().replace('ё', "е")
 }
 
-/// Замена с регистром первой буквы найденного (`Извлеките` → `Распакуйте`).
+/// Replacement with the case of the found word's first letter (`Извлеките` → `Распакуйте`).
 fn with_case_of(found: &str, replacement: &str) -> String {
     let upper = found.chars().next().is_some_and(char::is_uppercase);
     if !upper {
@@ -2289,7 +2347,7 @@ fn with_case_of(found: &str, replacement: &str) -> String {
     }
 }
 
-/// Слова строки: (начало, конец) в байтах, буквы подряд.
+/// Words of a line: (start, end) in bytes, consecutive letters.
 fn letter_runs(text: &str) -> Vec<(usize, usize)> {
     let mut runs = Vec::new();
     let mut start: Option<usize> = None;
@@ -2308,12 +2366,12 @@ fn letter_runs(text: &str) -> Vec<(usize, usize)> {
     runs
 }
 
-/// Между словами только пробелы — значит это слова одной фразы подряд.
+/// Only spaces between words — so these are consecutive words of one phrase.
 fn only_spaces(gap: &str) -> bool {
     gap.chars().all(|c| c == ' ' || c == '\u{a0}')
 }
 
-/// Попробовать одну форму с `k`-го слова: сколько слов съедено и замена.
+/// Try one form starting at word `k`: how many words were consumed and the replacement.
 fn match_term_form(
     text: &str,
     runs: &[(usize, usize)],
@@ -2363,7 +2421,7 @@ fn match_term_form(
     }
 }
 
-/// Верные формы группы — то, что сворачивается при слипшемся повторе.
+/// The group's right forms — what is collapsed on a glued repeat.
 fn right_forms(fix: &TermFix) -> Vec<String> {
     fix.forms
         .iter()
@@ -2374,7 +2432,7 @@ fn right_forms(fix: &TermFix) -> Vec<String> {
         .collect()
 }
 
-/// Применить одну группу к переводу.
+/// Apply one group to the translation.
 fn apply_term_fix(fix: &TermFix, translated: &str) -> String {
     let runs = letter_runs(translated);
     let mut out = String::with_capacity(translated.len());
@@ -2396,7 +2454,7 @@ fn apply_term_fix(fix: &TermFix, translated: &str) -> String {
     if !fix.collapse_repeats {
         return out;
     }
-    // Слипшийся повтор верной формы: «скачать скачать» → «скачать».
+    // A glued repeat of the right form: «скачать скачать» → «скачать».
     let rights = right_forms(fix);
     let runs = letter_runs(&out);
     let mut collapsed = String::with_capacity(out.len());
@@ -2417,12 +2475,13 @@ fn apply_term_fix(fix: &TermFix, translated: &str) -> String {
     collapsed
 }
 
-/// Поправить термины перевода по словарю [`TERM_FIXES`].
+/// Fix the translation's terms by the [`TERM_FIXES`] dictionary.
 ///
-/// `source` — исходное предложение (английское), `translated` — ответ
-/// движка для него. Группа срабатывает, только если её английский термин есть
-/// в `source` и проходит её условие; иначе перевод не трогается. Пара языков
-/// без групп (пока это всё, кроме `en` → `ru`) возвращается как есть.
+/// `source` — the source sentence (English), `translated` — the engine's
+/// answer for it. A group fires only if its English term is in `source` and
+/// it passes its condition; otherwise the translation is not touched. A
+/// language pair without groups (for now everything except `en` → `ru`) is
+/// returned as is.
 pub fn apply_term_fixes(src: &str, tgt: &str, source: &str, translated: &str) -> String {
     let lower = source.to_lowercase();
     let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric()).collect();
@@ -2437,16 +2496,15 @@ pub fn apply_term_fixes(src: &str, tgt: &str, source: &str, translated: &str) ->
     out
 }
 
-/// Тег кодового окружения (`code`, `pre`, `kbd`, `samp`, `tt`), без учёта
-/// регистра.
+/// A code environment tag (`code`, `pre`, `kbd`, `samp`, `tt`), case-insensitive.
 pub fn is_code_env_tag(name: &str) -> bool {
     let lower = name.to_lowercase();
     CODE_ENV_TAGS.contains(&lower.as_str())
 }
 
-/// Разобрать литерал как тег: имя, закрывающий ли, самозакрывающийся ли.
-/// Литералом [`segment_html`] отдаёт не только теги (ещё сущности, комментарии
-/// и пробельные узлы) — для них возвращается `None`.
+/// Parse a literal as a tag: name, whether closing, whether self-closing.
+/// [`segment_html`] returns not only tags as literals (also entities,
+/// comments and whitespace nodes) — for those `None` is returned.
 fn parse_literal_tag(lit: &str) -> Option<(String, bool, bool)> {
     let body = lit.strip_prefix('<')?;
     let (closing, rest) = match body.strip_prefix('/') {
@@ -2462,9 +2520,9 @@ fn parse_literal_tag(lit: &str) -> Option<(String, bool, bool)> {
     Some((name, closing, self_closing))
 }
 
-/// Стек кодового окружения: скармливаем ему литералы по порядку и спрашиваем,
-/// внутри кода мы или нет. Внутри `code`/`pre`/`kbd`/`samp`/`tt` не переводится
-/// ничего.
+/// Code environment stack: we feed it literals in order and ask whether we
+/// are inside code or not. Nothing is translated inside
+/// `code`/`pre`/`kbd`/`samp`/`tt`.
 #[derive(Debug, Clone, Default)]
 pub struct CodeEnvStack {
     stack: Vec<String>,
@@ -2475,7 +2533,7 @@ impl CodeEnvStack {
         Self::default()
     }
 
-    /// Учесть литерал (тег). Не-теги игнорируются.
+    /// Account for a literal (a tag). Non-tags are ignored.
     pub fn feed_literal(&mut self, literal: &str) {
         let Some((name, closing, self_closing)) = parse_literal_tag(literal) else {
             return;
@@ -2492,38 +2550,39 @@ impl CodeEnvStack {
         }
     }
 
-    /// Мы внутри кодового окружения?
+    /// Are we inside a code environment?
     pub fn in_code(&self) -> bool {
         !self.stack.is_empty()
     }
 }
 
-/// Для каждого сегмента — звать ли движок. `Literal` всегда `false`; `Text` —
-/// только если он не внутри кодового окружения и признан прозой ЦЕЛИКОМ.
+/// For each segment — whether to call the engine. `Literal` is always
+/// `false`; `Text` — only if it is not inside a code environment and is
+/// recognized as prose AS A WHOLE.
 pub fn translatable_flags(segments: &[Segment]) -> Vec<bool> {
     flags_with(segments, &|text| is_prose_segment(text))
 }
 
-/// То же, но проза решается ещё и ПО ПРЕДЛОЖЕНИЯМ: сегмент годится, если проза
-/// он сам ЛИБО хоть одно его предложение.
+/// The same, but prose is also decided BY SENTENCE: a segment qualifies if it
+/// is prose itself OR at least one of its sentences is.
 ///
-/// ⭐ ЗАЧЕМ. Приёмка 24.09, комментарий maxkaspar к «Awesome Widgets»: «hddtemp
-/// shows only the first digit. here is a screenshot http://…». Первая фраза —
-/// чистая проза, вторая содержит ссылку, и правило 4 [`is_prose_segment`]
-/// («хоть одно значимое слово технично по форме») отвергало ВЕСЬ узел — человек
-/// видел английский комментарий без всякого объяснения. Правило само верное:
-/// ломать ссылку нельзя. Неверна была ЕДИНИЦА решения — целый текстовый узел,
-/// хотя движку текст всё равно уезжает предложениями
-/// ([`crate::translator_engine`]). Теперь узел пропускается, когда в нём есть
-/// проза, а судьбу каждого предложения решает то же самое правило: ссылки,
-/// пути и команды движку по-прежнему не достаются и остаются в выводе дословно.
-/// (С 03.10 правило 4 уже не отвергает фразу за ссылку внутри — ссылка уходит
-/// под заполнитель, см. [`technical_spans`]; единица решения — по-прежнему
-/// предложение.)
+/// ⭐ WHY. Acceptance 24.09, maxkaspar's comment on «Awesome Widgets»:
+/// «hddtemp shows only the first digit. here is a screenshot http://…». The
+/// first phrase is pure prose, the second contains a link, and rule 4 of
+/// [`is_prose_segment`] («at least one meaningful word is technical by form»)
+/// rejected the WHOLE node — the person saw an English comment without any
+/// explanation. The rule itself is right: a link must not be broken. What was
+/// wrong was the UNIT of decision — a whole text node, although the text goes
+/// to the engine by sentences anyway ([`crate::translator_engine`]). Now the
+/// node passes when it has prose, and the fate of each sentence is decided by
+/// the same rule: links, paths and commands still do not reach the engine and
+/// stay verbatim in the output. (Since 03.10 rule 4 no longer rejects a
+/// phrase for a link inside — the link goes under a placeholder, see
+/// [`technical_spans`]; the unit of decision is still the sentence.)
 ///
-/// Границы предложений даёт ВЫЗЫВАЮЩИЙ — тем же разбивателем, каким потом
-/// кормится движок. Своего второго разбивателя здесь не заводится: две правды о
-/// границах предложений разошлись бы молча.
+/// Sentence boundaries are given by the CALLER — with the same splitter that
+/// later feeds the engine. No second splitter of its own is set up here: two
+/// truths about sentence boundaries would silently diverge.
 pub fn translatable_flags_by_sentence(
     segments: &[Segment],
     sentences: &dyn Fn(&str) -> Vec<String>,
@@ -2533,8 +2592,8 @@ pub fn translatable_flags_by_sentence(
     })
 }
 
-// Общая часть обоих наборов признаков: кодовое окружение плюс заданное правило
-// «проза ли».
+// The shared part of both flag sets: the code environment plus the given
+// «is it prose» rule.
 fn flags_with(segments: &[Segment], is_prose: &dyn Fn(&str) -> bool) -> Vec<bool> {
     let mut env = CodeEnvStack::new();
     let mut flags = Vec::with_capacity(segments.len());
@@ -2552,10 +2611,10 @@ fn flags_with(segments: &[Segment], is_prose: &dyn Fn(&str) -> bool) -> Vec<bool
     flags
 }
 
-/// [`render_segments`] с фильтром: движок зовётся только на сегментах-прозе,
-/// остальные текстовые узлы остаются оригиналом (колбэку отдаётся пустая
-/// строка — ровно то, что [`render_segments`] понимает как «оставить как было»,
-/// поэтому сам реассемблинг переписывать не пришлось).
+/// [`render_segments`] with a filter: the engine is called only on prose
+/// segments, other text nodes stay the original (the callback is given an
+/// empty string — exactly what [`render_segments`] understands as «keep as
+/// it was», so the reassembly itself did not have to be rewritten).
 pub fn render_segments_filtered(
     segments: &[Segment],
     translate: impl Fn(&str) -> String,
@@ -2563,10 +2622,10 @@ pub fn render_segments_filtered(
     render_segments_with_flags(segments, &translatable_flags(segments), translate)
 }
 
-/// То же, но признаки СЧИТАНЫ ЗАРАНЕЕ: сборщик обязан пользоваться ровно теми
-/// признаками, по которым отбирал текст для движка
-/// ([`translatable_flags_by_sentence`]), иначе переведённый узел остался бы в
-/// выводе оригиналом.
+/// The same, but the flags are COMPUTED IN ADVANCE: the assembler must use
+/// exactly the flags by which it selected text for the engine
+/// ([`translatable_flags_by_sentence`]), otherwise a translated node would
+/// stay the original in the output.
 pub fn render_segments_with_flags(
     segments: &[Segment],
     flags: &[bool],
@@ -2574,8 +2633,8 @@ pub fn render_segments_with_flags(
 ) -> String {
     let next = std::cell::Cell::new(0usize);
     render_segments(segments, |s| {
-        // render_segments зовёт колбэк ровно по одному разу на Segment::Text
-        // и строго по порядку — индекс текстового узла восстанавливается счётчиком.
+        // render_segments calls the callback exactly once per Segment::Text and
+        // strictly in order — the text node index is recovered by a counter.
         let idx = next.get();
         next.set(idx + 1);
         let allow = segments
@@ -2593,46 +2652,46 @@ pub fn render_segments_with_flags(
     })
 }
 
-// ── ссылки-имена ───────────────────────────────────────────────────────────
+// ── name links ─────────────────────────────────────────────────────────────
 //
-// ⭐ ЗАЧЕМ (живая проверка 08.11, KDE Store, «Candy icons» от eliverlara):
-// «Sweet gradient icon theme originally created to fit my <a
-// href="https://www.gnome-look.org/p/1253385/">Sweet</a> theme» выходило
-// «…чтобы соответствовать моему Сладкий тема темы». Текст ссылки — имя
-// соседнего товара, а HTML режет фразу на три узла, и движок получал «Sweet»
-// и «theme» поодиночке. Поэтому ссылка, чей текст — имя
-// ([`is_name_link`]), склеивается с соседними узлами в ОДНУ фразу
-// ([`fold_name_links`]): движок видит предложение целиком, имя охраняется как
-// название товара, а теги ссылки встают обратно вокруг уцелевшего имени
-// ([`NameLinkRun::relink`]). Та же мерка — для ссылки Markdown `[Sweet](…)`
-// внутри прозы ([`technical_spans`]).
+// ⭐ WHY (live check 08.11, KDE Store, «Candy icons» by eliverlara): «Sweet
+// gradient icon theme originally created to fit my <a
+// href="https://www.gnome-look.org/p/1253385/">Sweet</a> theme» came out as
+// «…чтобы соответствовать моему Сладкий тема темы». The link text is the
+// name of a neighbouring item, and HTML cuts the phrase into three nodes, so
+// the engine got «Sweet» and «theme» separately. So a link whose text is a
+// name ([`is_name_link`]) is glued with neighbouring nodes into ONE phrase
+// ([`fold_name_links`]): the engine sees the whole sentence, the name is
+// guarded as an item name, and the link tags go back around the surviving
+// name ([`NameLinkRun::relink`]). The same yardstick applies to a Markdown
+// link `[Sweet](…)` inside prose ([`technical_spans`]).
 
-/// Хосты страниц товаров семейства Pling (KDE Store и родня): страница товара
-/// там всегда `/p/<номер>`.
+/// Hosts of item pages of the Pling family (KDE Store and kin): an item page
+/// there is always `/p/<number>`.
 const STORE_HOSTS: &[&str] = &[
     "store.kde.org", "kde-look.org", "gnome-look.org", "xfce-look.org", "cinnamon-look.org",
     "opendesktop.org", "pling.com", "linux-apps.com", "appimagehub.com",
 ];
 
-/// Хосты хранилищ кода: страница хранилища — `/<владелец>/<имя>`.
+/// Code hosting hosts: a repository page is `/<owner>/<name>`.
 const CODE_HOSTS: &[&str] =
     &["github.com", "gitlab.com", "codeberg.org", "invent.kde.org", "gitlab.gnome.org", "framagit.org"];
 
-/// Первые части пути у хранилищ кода, которые хранилищем не бывают
-/// (`github.com/sponsors/eliverlara` — страница спонсорства).
+/// First path parts on code hosts that are never a repository
+/// (`github.com/sponsors/eliverlara` is a sponsorship page).
 const CODE_HOST_NON_REPO: &[&str] =
     &["sponsors", "orgs", "settings", "marketplace", "topics", "explore", "users", "search"];
 
-/// Обычные слова, которые бывают текстом ссылки на страницу товара, но
-/// именем не являются: «Download», «Here», «Source code»…
+/// Ordinary words that occur as the text of a link to an item page but are
+/// not a name: «Download», «Here», «Source code»…
 const LINK_WORDS_NOT_NAMES: &[&str] = &[
     "here", "download", "downloads", "link", "source", "code", "website", "site", "page",
     "homepage", "repo", "repository", "click", "project", "this", "theme", "themes", "icons",
     "readme", "wiki", "releases", "release", "issues", "issue", "changelog", "version",
 ];
 
-/// Ссылка ведёт на страницу товара (`…/p/1253385/`) или на хранилище кода
-/// (`github.com/EliverLara/Sweet`), а не на раздел, заявку или оплату.
+/// The link leads to an item page (`…/p/1253385/`) or a code repository
+/// (`github.com/EliverLara/Sweet`), not to a section, an issue or a payment.
 pub fn is_product_page_url(href: &str) -> bool {
     let lower = href.trim().to_lowercase();
     let Some(rest) = lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://"))
@@ -2654,10 +2713,10 @@ pub fn is_product_page_url(href: &str) -> bool {
     false
 }
 
-/// Текст ссылки похож на имя: от одного до четырёх слов, каждое С Заглавной
-/// (или цифрой), либо слаг через дефис/подчёркивание (`sweet-folders`), и ни
-/// одного обычного слова из [`LINK_WORDS_NOT_NAMES`]. «open an issue»,
-/// «Become a sponsor on github», «pull request» — проза, не имена.
+/// The link text looks like a name: one to four words, each Capitalized (or a
+/// digit), or a slug with hyphens/underscores (`sweet-folders`), and not a
+/// single ordinary word from [`LINK_WORDS_NOT_NAMES`]. «open an issue»,
+/// «Become a sponsor on github», «pull request» are prose, not names.
 fn is_name_shaped_link_text(text: &str) -> bool {
     let words: Vec<&str> = text.split_whitespace().collect();
     if words.is_empty() || words.len() > 4 || !text.chars().any(char::is_alphabetic) {
@@ -2675,13 +2734,13 @@ fn is_name_shaped_link_text(text: &str) -> bool {
     })
 }
 
-/// Ссылка — имя собственное: текст похож на имя и ведёт на страницу товара
-/// или хранилища. Такой текст не переводится никогда.
+/// The link is a proper name: the text looks like a name and leads to an item
+/// or repository page. Such text is never translated.
 pub fn is_name_link(text: &str, href: &str) -> bool {
     is_name_shaped_link_text(text) && is_product_page_url(href)
 }
 
-/// Адрес из открывающего тега `<a …>` (без учёта регистра имени атрибута).
+/// The address from the opening `<a …>` tag (attribute name case-insensitive).
 pub fn link_href(open_tag: &str) -> Option<String> {
     let (name, closing, _) = parse_literal_tag(open_tag)?;
     if name != "a" || closing {
@@ -2697,8 +2756,8 @@ pub fn link_href(open_tag: &str) -> Option<String> {
     Some(html_unescape(value))
 }
 
-/// Ссылки Markdown `[текст](адрес)` с текстом-именем ([`is_name_link`]):
-/// (начало, конец) в байтах — весь кусок вместе со скобками.
+/// Markdown links `[text](address)` with name text ([`is_name_link`]):
+/// (start, end) in bytes — the whole piece together with the brackets.
 pub fn markdown_name_links(text: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     let mut from = 0usize;
@@ -2717,21 +2776,21 @@ pub fn markdown_name_links(text: &str) -> Vec<(usize, usize)> {
     out
 }
 
-/// Кусок склеенной фразы: обычный текст или ссылка-имя с её тегами.
+/// A piece of a glued phrase: ordinary text or a name link with its tags.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkPart {
     Text(String),
     Link { open: String, name: String, close: String },
 }
 
-/// Фраза, склеенная через ссылки-имена: её куски по порядку.
+/// A phrase glued through name links: its pieces in order.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NameLinkRun {
     pub parts: Vec<LinkPart>,
 }
 
 impl NameLinkRun {
-    /// Что видит движок: ссылки — голым именем.
+    /// What the engine sees: links as a bare name.
     pub fn plain(&self) -> String {
         self.parts
             .iter()
@@ -2742,7 +2801,7 @@ impl NameLinkRun {
             .collect()
     }
 
-    /// Исходная разметка дословно — на случай, если перевода нет.
+    /// The original markup verbatim — in case there is no translation.
     pub fn markup(&self) -> String {
         self.parts
             .iter()
@@ -2753,7 +2812,7 @@ impl NameLinkRun {
             .collect()
     }
 
-    /// Имена ссылок по порядку.
+    /// Link names in order.
     pub fn names(&self) -> Vec<&str> {
         self.parts
             .iter()
@@ -2764,14 +2823,14 @@ impl NameLinkRun {
             .collect()
     }
 
-    /// Вернуть теги ссылок в перевод: каждое имя (по порядку, отдельным
-    /// словом) обрамляется своими тегами. Имя не нашлось — `None`.
+    /// Put the link tags back into the translation: each name (in order, as a
+    /// separate word) is framed by its tags. A name not found — `None`.
     ///
-    /// ⚠️ Имя ссылки может стоять во фразе и без ссылки: «Sweet gradient icon
-    /// theme … to fit my <a>Sweet</a> theme» — ссылка на ВТОРОМ «Sweet».
-    /// Поэтому берётся вхождение с тем же номером, что у ссылки в исходной
-    /// фразе; если движок число вхождений изменил — ближайшее по месту во
-    /// фразе.
+    /// ⚠️ The link name may also stand in the phrase without a link: «Sweet
+    /// gradient icon theme … to fit my <a>Sweet</a> theme» — the link is on the
+    /// SECOND «Sweet». So the occurrence with the same number as the link's in
+    /// the source phrase is taken; if the engine changed the number of
+    /// occurrences — the nearest by position in the phrase.
     pub fn relink(&self, translated: &str) -> Option<String> {
         let plain = self.plain();
         let mut out = String::with_capacity(translated.len() + 64);
@@ -2795,7 +2854,7 @@ impl NameLinkRun {
             let at = if in_plain.len() == free_word_positions(translated, name).len() {
                 *free_word_positions(translated, name).get(rank).filter(|p| **p >= cursor)?
             } else {
-                // Место ссылки в исходной фразе — доля длины; берётся ближайшее.
+                // The link's place in the source phrase — a fraction of the length; the nearest is taken.
                 let want = here as f64 / plain.len().max(1) as f64;
                 *in_tgt.iter().min_by(|a, b| {
                     let da = (**a as f64 / translated.len().max(1) as f64 - want).abs();
@@ -2814,7 +2873,7 @@ impl NameLinkRun {
     }
 }
 
-/// Все вхождения `word` отдельным словом (границы — не буква и не цифра).
+/// All occurrences of `word` as a separate word (boundaries — not a letter and not a digit).
 fn free_word_positions(text: &str, word: &str) -> Vec<usize> {
     let mut found = Vec::new();
     if word.is_empty() {
@@ -2834,18 +2893,18 @@ fn free_word_positions(text: &str, word: &str) -> Vec<usize> {
     found
 }
 
-/// Склеить фразы через ссылки-имена.
+/// Glue phrases through name links.
 ///
-/// `текст <a href=…>Имя</a> текст` (узел, тег, узел-имя, тег, узел) становится
-/// ОДНИМ текстовым узлом `текст Имя текст`; рядом, на том же месте второго
-/// списка, лежит [`NameLinkRun`] — по нему сборщик вернёт теги
-/// ([`NameLinkRun::relink`]) или, без перевода, исходную разметку
-/// ([`NameLinkRun::markup`]). Слаг (`sweet-folders`) не склеивается. Ссылка-имя
-/// без соседних узлов остаётся как была:
-/// её текст и так не переводится ([`translatable_flags_with_links`]).
-/// Внутри кодового окружения ничего не склеивается.
+/// `text <a href=…>Name</a> text` (node, tag, name node, tag, node) becomes
+/// ONE text node `text Name text`; next to it, at the same place of the
+/// second list, lies a [`NameLinkRun`] — by it the assembler will put the
+/// tags back ([`NameLinkRun::relink`]) or, without a translation, the
+/// original markup ([`NameLinkRun::markup`]). A slug (`sweet-folders`) is not
+/// glued. A name link without neighbouring nodes stays as it was:
+/// its text is not translated anyway ([`translatable_flags_with_links`]).
+/// Nothing is glued inside a code environment.
 pub fn fold_name_links(segments: Vec<Segment>) -> (Vec<Segment>, Vec<Option<NameLinkRun>>) {
-    // Ссылка-имя, начинающаяся с `i`: (открывающий тег, узел-имя, закрывающий).
+    // A name link starting at `i`: (opening tag, name node, closing tag).
     let name_link_at = |segs: &[Segment], i: usize| -> Option<(String, String, String)> {
         let (Segment::Literal { text: open }, Some(Segment::Text { lead, stripped, trail }), Some(Segment::Literal { text: close })) =
             (&segs[i], segs.get(i + 1), segs.get(i + 2))
@@ -2854,10 +2913,10 @@ pub fn fold_name_links(segments: Vec<Segment>) -> (Vec<Segment>, Vec<Option<Name
         };
         let href = link_href(open)?;
         let closes_a = matches!(parse_literal_tag(close), Some((n, true, _)) if n == "a");
-        // Слаг (`sweet-folders`) не склеивается: под заполнителем живая
-        // модель обрубает фразу на нём («…представленных в sweet-folders
-        // виде.» вместо «…как показано на втором скриншоте», замер 08.11), а
-        // одинокий слаг и так не переводится.
+        // A slug (`sweet-folders`) is not glued: under a placeholder the live
+        // model chops the phrase at it («…представленных в sweet-folders
+        // виде.» instead of «…как показано на втором скриншоте», measured
+        // 08.11), and a lone slug is not translated anyway.
         let slug = stripped.contains('-') || stripped.contains('_');
         (closes_a && !slug && is_name_link(stripped, &href))
             .then(|| (open.clone(), format!("{lead}{stripped}{trail}"), close.clone()))
@@ -2886,7 +2945,7 @@ pub fn fold_name_links(segments: Vec<Segment>) -> (Vec<Segment>, Vec<Option<Name
             i += 3;
             continue;
         }
-        // Начало склейки: прежний узел (или уже склеенная фраза) либо пусто.
+        // Start of gluing: the previous node (or an already glued phrase) or nothing.
         let (lead, mut run) = match (before, out.last().cloned()) {
             (true, Some(Segment::Text { lead, stripped, trail })) => {
                 out.pop();
@@ -2910,13 +2969,13 @@ pub fn fold_name_links(segments: Vec<Segment>) -> (Vec<Segment>, Vec<Option<Name
             trail = t.clone();
             i += 1;
         }
-        // Склеенный узел: `stripped` — то, что увидит движок (без краевых
-        // пробелов), сами пробелы — в `lead`/`trail`, как у обычного узла.
+        // Glued node: `stripped` — what the engine will see (without edge
+        // spaces), the spaces themselves go to `lead`/`trail`, like an ordinary node.
         let plain = run.plain();
         let body = plain.trim();
         let inner_lead = &plain[..plain.len() - plain.trim_start().len()];
         let inner_trail = &plain[plain.trim_end().len()..];
-        // Краевые пробелы фразы уже внутри кусков: срезаем их и там.
+        // The phrase's edge spaces are already inside the pieces: trim them there too.
         trim_run_edges(&mut run);
         out.push(Segment::Text {
             lead: format!("{lead}{inner_lead}"),
@@ -2928,8 +2987,8 @@ pub fn fold_name_links(segments: Vec<Segment>) -> (Vec<Segment>, Vec<Option<Name
     (out, runs)
 }
 
-/// Срезать краевые пробелы склеенной фразы в её первом и последнем куске —
-/// они вынесены в `lead`/`trail` узла.
+/// Trim the edge spaces of a glued phrase in its first and last piece — they
+/// are moved to the node's `lead`/`trail`.
 fn trim_run_edges(run: &mut NameLinkRun) {
     if let Some(LinkPart::Text(t)) = run.parts.first_mut() {
         *t = t.trim_start().to_string();
@@ -2939,9 +2998,9 @@ fn trim_run_edges(run: &mut NameLinkRun) {
     }
 }
 
-/// Признаки «звать движок» для склеенных узлов: как
-/// [`translatable_flags_by_sentence`], плюс текст ссылки-имени, оставшейся
-/// без соседей, — не проза никогда.
+/// «Call the engine» flags for glued nodes: like
+/// [`translatable_flags_by_sentence`], plus the text of a name link left
+/// without neighbours is never prose.
 pub fn translatable_flags_with_links(
     segments: &[Segment],
     sentences: &dyn Fn(&str) -> Vec<String>,
@@ -2959,9 +3018,10 @@ pub fn translatable_flags_with_links(
     flags
 }
 
-/// Сборка строки из склеенных узлов: перевод склеенной фразы получает теги
-/// ссылок обратно, а без перевода (или если имя не уцелело) встаёт исходная
-/// разметка. Остальное — как [`render_segments_with_flags`].
+/// Assembling a string from glued nodes: the translation of a glued phrase
+/// gets the link tags back, and without a translation (or if the name did not
+/// survive) the original markup is put. The rest is like
+/// [`render_segments_with_flags`].
 pub fn render_folded(
     segments: &[Segment],
     flags: &[bool],
@@ -2990,19 +3050,19 @@ pub fn render_folded(
     out
 }
 
-// Пробельные символы `[\t\n\r\f ]` из регэкспов html.parser (ASCII-набор).
+// Whitespace characters `[\t\n\r\f ]` from html.parser regexes (the ASCII set).
 fn is_html_ws(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\r' | '\u{0c}' | ' ')
 }
 
-/// Порт `html.parser.HTMLParser` при `convert_charrefs=False`, суженный до
-/// обработчиков, которые переопределяет `_HTMLTextTranslator`.
+/// Port of `html.parser.HTMLParser` with `convert_charrefs=False`, narrowed to
+/// the handlers `_HTMLTextTranslator` overrides.
 struct Segmenter {
     data: Vec<char>,
     n: usize,
     i: usize,
     out: Vec<Segment>,
-    // RAWTEXT/RCDATA: если внутри script/style/… — имя элемента и «escapable».
+    // RAWTEXT/RCDATA: if inside script/style/… — the element name and «escapable».
     cdata_elem: Option<String>,
     escapable: bool,
     support_cdata: bool,
@@ -3030,7 +3090,7 @@ impl Segmenter {
         self.data[at..at + pc.len()] == pc[..]
     }
 
-    // rawdata[i:i+len].lower() == pat (pat нижним регистром).
+    // rawdata[i:i+len].lower() == pat (pat in lowercase).
     fn starts_with_ci(&self, pat: &str, at: usize) -> bool {
         let pc: Vec<char> = pat.chars().collect();
         if at + pc.len() > self.n {
@@ -3042,7 +3102,7 @@ impl Segmenter {
             .all(|(a, b)| a.to_ascii_lowercase() == *b)
     }
 
-    // ── обработчики (соответствуют переопределениям _HTMLTextTranslator) ────
+    // ── handlers (matching the _HTMLTextTranslator overrides) ───────────────
     fn handle_data(&mut self, s: &str) {
         let chars: Vec<char> = s.chars().collect();
         // stripped = data.strip(); if not stripped: return data (Literal).
@@ -3060,7 +3120,7 @@ impl Segmenter {
     }
 
     fn handle_starttag_text(&mut self, start: usize, end: usize) {
-        // get_starttag_text() — дословный текст тега (для starttag и startendtag).
+        // get_starttag_text() — the verbatim tag text (for starttag and startendtag).
         self.out.push(Segment::Literal { text: self.slice(start, end) });
     }
 
@@ -3079,8 +3139,8 @@ impl Segmenter {
     fn handle_comment(&mut self, data: &str) {
         self.out.push(Segment::Literal { text: format!("<!--{data}-->") });
     }
-    // handle_decl / handle_pi / unknown_decl — подкласс НЕ переопределяет →
-    // узлы <!DOCTYPE>/<?..?>/<![CDATA[..]]> выпадают (ничего не добавляем).
+    // handle_decl / handle_pi / unknown_decl — the subclass does NOT override them →
+    // <!DOCTYPE>/<?..?>/<![CDATA[..]]> nodes drop out (we add nothing).
 
     fn set_cdata_mode(&mut self, elem: &str, escapable: bool) {
         self.cdata_elem = Some(elem.to_ascii_lowercase());
@@ -3092,7 +3152,7 @@ impl Segmenter {
         self.escapable = true;
     }
 
-    // Найти следующий «интересный» символ от `from` (аналог interesting.search).
+    // Find the next «interesting» character from `from` (analogue of interesting.search).
     fn interesting_search(&self, from: usize) -> Option<usize> {
         match &self.cdata_elem {
             None => (from..self.n).find(|&p| matches!(self.data[p], '&' | '<')),
@@ -3107,7 +3167,7 @@ impl Segmenter {
         }
     }
 
-    // </elem(?=[\t\n\r\f />]) без учёта регистра.
+    // </elem(?=[\t\n\r\f />]) case-insensitive.
     fn matches_close_tag(&self, p: usize, elem: &str) -> bool {
         if self.data[p] != '<' || p + 1 >= self.n || self.data[p + 1] != '/' {
             return false;
@@ -3218,7 +3278,7 @@ impl Segmenter {
                     break;
                 }
             } else {
-                // interesting.search() «соврал» — недостижимо.
+                // interesting.search() «lied» — unreachable.
                 break;
             }
         }
@@ -3229,7 +3289,7 @@ impl Segmenter {
         }
     }
 
-    // Восстановление при неполном «<…» на истинном EOF (goahead end=true).
+    // Recovery on an incomplete «<…» at true EOF (goahead end=true).
     fn recover_incomplete(&mut self, i: usize) {
         let n = self.n;
         if i + 1 < n && self.data[i + 1].is_ascii_alphabetic() {
@@ -3266,8 +3326,8 @@ impl Segmenter {
         }
     }
 
-    // charref = &#(?:[0-9]+|[xX][0-9a-fA-F]+)[^0-9a-fA-F]. Возвращает индекс
-    // ПОСЛЕ завершающего символа (match.end()) либо None.
+    // charref = &#(?:[0-9]+|[xX][0-9a-fA-F]+)[^0-9a-fA-F]. Returns the index
+    // AFTER the terminating character (match.end()) or None.
     fn charref_match(&self, i: usize) -> Option<usize> {
         if !self.starts_with("&#", i) {
             return None;
@@ -3281,7 +3341,7 @@ impl Segmenter {
                 p += 1;
             }
             if p == start {
-                return None; // нужен хотя бы один hex
+                return None; // at least one hex digit is needed
             }
         } else {
             let start = p;
@@ -3289,10 +3349,10 @@ impl Segmenter {
                 p += 1;
             }
             if p == start {
-                return None; // нужна хотя бы одна цифра
+                return None; // at least one digit is needed
             }
         }
-        // завершающий [^0-9a-fA-F]
+        // terminating [^0-9a-fA-F]
         if p < self.n && !self.data[p].is_ascii_hexdigit() {
             Some(p + 1)
         } else {
@@ -3315,8 +3375,8 @@ impl Segmenter {
         false
     }
 
-    // entityref = &([a-zA-Z][-.a-zA-Z0-9]*)[^a-zA-Z0-9]. Возвращает
-    // (конец group1, match.end()) либо None.
+    // entityref = &([a-zA-Z][-.a-zA-Z0-9]*)[^a-zA-Z0-9]. Returns
+    // (end of group1, match.end()) or None.
     fn entityref_match(&self, i: usize) -> Option<(usize, usize)> {
         if self.data.get(i) != Some(&'&') {
             return None;
@@ -3330,7 +3390,7 @@ impl Segmenter {
             p += 1;
         }
         let g1_end = p;
-        // завершающий [^a-zA-Z0-9]
+        // terminating [^a-zA-Z0-9]
         if p < self.n && !self.data[p].is_ascii_alphanumeric() {
             Some((g1_end, p + 1))
         } else {
@@ -3345,13 +3405,13 @@ impl Segmenter {
             && (self.data[i + 1].is_ascii_alphabetic() || self.data[i + 1] == '#')
     }
 
-    // ── разбор тегов ────────────────────────────────────────────────────────
+    // ── tag parsing ─────────────────────────────────────────────────────────
     fn parse_starttag(&mut self, i: usize) -> isize {
         let endpos = self.locatetagend(i + 1);
         if self.data[endpos - 1] != '>' {
             return -1;
         }
-        // tagfind_tolerant: имя тега + завершающие ws/'/'(не перед '>').
+        // tagfind_tolerant: tag name + trailing ws/'/'(not before '>').
         let (tag, mut k) = self.tagfind(i + 1);
         while k < endpos {
             match self.attrfind(k) {
@@ -3368,7 +3428,7 @@ impl Segmenter {
             return endpos as isize;
         }
         if end_str == "/>" {
-            self.handle_starttag_text(i, endpos); // handle_startendtag → тот же verbatim
+            self.handle_starttag_text(i, endpos); // handle_startendtag → the same verbatim
         } else {
             self.handle_starttag_text(i, endpos);
             if CDATA_CONTENT_ELEMENTS.contains(&tag.as_str()) || tag == "plaintext" {
@@ -3381,14 +3441,14 @@ impl Segmenter {
     }
 
     fn parse_endtag(&mut self, i: usize) -> isize {
-        // fast check: есть ли '>' после i+2
+        // fast check: is there a '>' after i+2
         if (i + 2..self.n).all(|p| self.data[p] != '>') {
             return -1;
         }
         // endtagopen = </ + letter
         if !(i + 2 < self.n && self.data[i + 2].is_ascii_alphabetic()) {
             if i + 2 < self.n && self.data[i + 2] == '>' {
-                return (i + 3) as isize; // </> игнорируется
+                return (i + 3) as isize; // </> is ignored
             }
             return self.parse_bogus_comment(i);
         }
@@ -3414,7 +3474,7 @@ impl Segmenter {
     }
 
     fn parse_comment(&mut self, i: usize) -> isize {
-        // commentclose = --!?>  (search от i+4); иначе commentabruptclose = -?> (match).
+        // commentclose = --!?>  (search from i+4); otherwise commentabruptclose = -?> (match).
         let mut found: Option<(usize, usize)> = None;
         let mut p = i + 4;
         while p < self.n {
@@ -3452,7 +3512,7 @@ impl Segmenter {
     fn parse_pi(&mut self, i: usize) -> isize {
         match (i + 2..self.n).find(|&p| self.data[p] == '>') {
             None => -1,
-            // handle_pi — не переопределён, ничего не добавляем; return end.
+            // handle_pi — not overridden, we add nothing; return end.
             Some(pos) => (pos + 1) as isize,
         }
     }
@@ -3462,12 +3522,12 @@ impl Segmenter {
             return self.parse_comment(i);
         }
         if self.starts_with("<![CDATA[", i) && self.support_cdata {
-            // find ]]> от i+9
+            // find ]]> from i+9
             let target = [']', ']', '>'];
             let mut p = i + 9;
             while p + 3 <= self.n {
                 if self.data[p..p + 3] == target {
-                    // unknown_decl — не переопределён, ничего не добавляем.
+                    // unknown_decl — not overridden, we add nothing.
                     return (p + 3) as isize;
                 }
                 p += 1;
@@ -3477,7 +3537,7 @@ impl Segmenter {
         if self.starts_with_ci("<!doctype", i) {
             match (i + 9..self.n).find(|&p| self.data[p] == '>') {
                 None => -1,
-                // handle_decl — не переопределён, ничего не добавляем.
+                // handle_decl — not overridden, we add nothing.
                 Some(gtpos) => (gtpos + 1) as isize,
             }
         } else {
@@ -3485,12 +3545,12 @@ impl Segmenter {
         }
     }
 
-    // ── регэксп-примитивы разбора тега ─────────────────────────────────────
+    // ── regex primitives of tag parsing ────────────────────────────────────
     // tagfind_tolerant = ([a-zA-Z][^\t\n\r\f />]*)(?:[\t\n\r\f ]|/(?!>))*
-    // Возвращает (имя в НИЖНЕМ регистре, конец матча).
+    // Returns (the name in LOWERCASE, end of match).
     fn tagfind(&self, from: usize) -> (String, usize) {
         let mut p = from;
-        // [a-zA-Z] — гарантирован вызывающим; далее [^\t\n\r\f />]*.
+        // [a-zA-Z] — guaranteed by the caller; then [^\t\n\r\f />]*.
         let name_start = p;
         p += 1;
         while p < self.n && !is_html_ws(self.data[p]) && !matches!(self.data[p], '/' | '>') {
@@ -3501,11 +3561,11 @@ impl Segmenter {
         (name, p)
     }
 
-    // (?:[\t\n\r\f ]|/(?!>))* — пробел ИЛИ '/' не перед '>'.
+    // (?:[\t\n\r\f ]|/(?!>))* — a space OR a '/' not before '>'.
     fn skip_tag_trailing(&self, mut p: usize) -> usize {
         while p < self.n {
             let c = self.data[p];
-            // пробел ИЛИ '/' не непосредственно перед '>'.
+            // a space OR a '/' not immediately before '>'.
             if is_html_ws(c) || (c == '/' && !(p + 1 < self.n && self.data[p + 1] == '>')) {
                 p += 1;
             } else {
@@ -3515,9 +3575,9 @@ impl Segmenter {
         p
     }
 
-    // attrfind_tolerant.match(k) → конец матча (одно имя-атрибут[=значение]) или None.
+    // attrfind_tolerant.match(k) → end of match (one attribute name[=value]) or None.
     fn attrfind(&self, k: usize) -> Option<usize> {
-        // (?<=['"\t\n\r\f /]) — символ перед именем атрибута.
+        // (?<=['"\t\n\r\f /]) — the character before the attribute name.
         if k == 0 {
             return None;
         }
@@ -3525,7 +3585,7 @@ impl Segmenter {
         if !(prev == '\'' || prev == '"' || is_html_ws(prev) || prev == '/') {
             return None;
         }
-        // имя: [^\t\n\r\f />] затем [^\t\n\r\f /=>]*
+        // name: [^\t\n\r\f />] then [^\t\n\r\f /=>]*
         let mut p = k;
         if p >= self.n || is_html_ws(self.data[p]) || matches!(self.data[p], '/' | '>') {
             return None;
@@ -3534,7 +3594,7 @@ impl Segmenter {
         while p < self.n && !is_html_ws(self.data[p]) && !matches!(self.data[p], '/' | '=' | '>') {
             p += 1;
         }
-        // необязательный индикатор значения: [ws]*=[ws]*(value)
+        // optional value indicator: [ws]*=[ws]*(value)
         let save = p;
         let mut q = p;
         while q < self.n && is_html_ws(self.data[q]) {
@@ -3547,12 +3607,12 @@ impl Segmenter {
             }
             match self.match_attr_value(q) {
                 Some(vend) => p = vend,
-                None => p = save, // значение не собралось → индикатор не матчится
+                None => p = save, // the value did not assemble → the indicator does not match
             }
         } else {
             p = save;
         }
-        // завершающие (?:[\t\n\r\f ]|/(?!>))*
+        // trailing (?:[\t\n\r\f ]|/(?!>))*
         p = self.skip_tag_trailing(p);
         Some(p)
     }
@@ -3560,7 +3620,7 @@ impl Segmenter {
     // '[^']*' | "[^"]*" | (?!['"])[^>\t\n\r\f ]*
     fn match_attr_value(&self, q: usize) -> Option<usize> {
         if q >= self.n {
-            // (?!['"])[^…]* при пустом хвосте матчит пусто.
+            // (?!['"])[^…]* matches empty on an empty tail.
             return Some(q);
         }
         match self.data[q] {
@@ -3572,7 +3632,7 @@ impl Segmenter {
                 if p < self.n {
                     Some(p + 1)
                 } else {
-                    None // нет закрывающей кавычки — альтернатива не матчит
+                    None // no closing quote — the alternative does not match
                 }
             }
             '"' => {
@@ -3587,7 +3647,7 @@ impl Segmenter {
                 }
             }
             _ => {
-                // (?!['"]) уже проверено (не кавычка); [^>\t\n\r\f ]*
+                // (?!['"]) already checked (not a quote); [^>\t\n\r\f ]*
                 let mut p = q;
                 while p < self.n && !is_html_ws(self.data[p]) && self.data[p] != '>' {
                     p += 1;
@@ -3597,7 +3657,7 @@ impl Segmenter {
         }
     }
 
-    // locatetagend.match(from) → конец матча (жадный, всегда матчит).
+    // locatetagend.match(from) → end of match (greedy, always matches).
     fn locatetagend(&self, from: usize) -> usize {
         let mut p = from;
         // [a-zA-Z]
@@ -3660,15 +3720,15 @@ impl Segmenter {
     }
 }
 
-// ── html.unescape (для probe_text) ─────────────────────────────────────────
+// ── html.unescape (for probe_text) ─────────────────────────────────────────
 //
-// Числовые ссылки — полностью; именованные — распространённый набор. Так как
-// _HTML_TAG_RE вырезает корректные `&…;` ДО unescape, влияние ограничено.
+// Numeric references — fully; named ones — a common set. Since _HTML_TAG_RE
+// cuts valid `&…;` BEFORE unescape, the impact is limited.
 ///
-/// Публичная: вкладка «Оформление» разбирает этим же текст комментариев
-/// магазина. Второго разборщика сущностей в ядре заводить нельзя (правило
-/// #12) — разойдись они, и один и тот же комментарий читался бы по-разному
-/// в детали товара и в детекторе языка.
+/// Public: the «Appearance» tab parses the text of store comments with the
+/// same function. A second entity parser must not appear in the core (rule
+/// #12) — if they diverged, one and the same comment would read differently
+/// in the item details and in the language detector.
 pub fn html_unescape(s: &str) -> String {
     if !s.contains('&') {
         return s.to_string();
@@ -3728,7 +3788,7 @@ pub fn html_unescape(s: &str) -> String {
                 i = consumed;
                 continue;
             }
-            // без ';' попробуем и вариант с ';'
+            // without ';' try the variant with ';' too
             if !name.ends_with(';') {
                 if let Some(rep) = named_entity(&format!("{name};")) {
                     out.push_str(rep);
@@ -3743,10 +3803,11 @@ pub fn html_unescape(s: &str) -> String {
     out
 }
 
-/// Порт `html.escape(text)` (quote=True): `& < > " '` → сущности.
+/// Port of `html.escape(text)` (quote=True): `& < > " '` → entities.
 ///
-/// ⚠️ Апостроф Python отдаёт как `&#x27;`, а не `&#39;` — вид записи здесь
-/// значим, потому что вывод сверяется с оригиналом побайтно.
+/// ⚠️ Python returns the apostrophe as `&#x27;`, not `&#39;` — the notation
+/// matters here, because the output is compared with the original byte for
+/// byte.
 pub fn html_escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -3762,9 +3823,9 @@ pub fn html_escape(text: &str) -> String {
     out
 }
 
-// Спецправила HTML для C1 и запрещённых кодовых точек (подмножество html5).
+// Special HTML rules for C1 and forbidden code points (an html5 subset).
 fn char_from_html_codepoint(cp: u32) -> Option<char> {
-    // Windows-1252 карта для 0x80..0x9F, как в html._invalid_charrefs.
+    // Windows-1252 map for 0x80..0x9F, as in html._invalid_charrefs.
     const C1: [(u32, char); 27] = [
         (0x80, '\u{20ac}'), (0x82, '\u{201a}'), (0x83, '\u{0192}'), (0x84, '\u{201e}'),
         (0x85, '\u{2026}'), (0x86, '\u{2020}'), (0x87, '\u{2021}'), (0x88, '\u{02c6}'),
@@ -3783,8 +3844,8 @@ fn char_from_html_codepoint(cp: u32) -> Option<char> {
     char::from_u32(cp)
 }
 
-// Распространённые именованные сущности (ключ включает ';', плюс несколько
-// «legacy» без ';', как в html5-словаре CPython).
+// Common named entities (the key includes ';', plus a few «legacy» ones
+// without ';', as in CPython's html5 dictionary).
 fn named_entity(name: &str) -> Option<&'static str> {
     Some(match name {
         "amp;" | "amp" => "&",

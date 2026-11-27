@@ -1,46 +1,50 @@
-// RemoteListModel — модель выдачи страницы Discover вкладки Wallpaper
-// Engine, перенесённая с Python на Rust/cxx-qt.
+// RemoteListModel — the result model of the Discover page of the Wallpaper
+// Engine tab, ported from Python to Rust/cxx-qt.
 //
-// Эталон —
-// rexon/qt_wallpaper_engine/qml_ui/bridge.py:566 (сам он зеркало
-// model::RemoteListModel waywallen, роли 1:1 с remote_model.cpp). Вендорный
-// QML (page/DiscoverPage.qml, page/RemoteCard.qml) НЕ трогаем, поэтому имена
-// типа, ролей, свойств, сигналов и инвокаблов обязаны совпадать посимвольно.
+// The reference is rexon/qt_wallpaper_engine/qml_ui/bridge.py:566 (itself a
+// mirror of waywallen's model::RemoteListModel, roles 1:1 with
+// remote_model.cpp). We do NOT touch the vendored QML
+// (page/DiscoverPage.qml, page/RemoteCard.qml), so the names of the type,
+// roles, properties, signals and invokables must match character for
+// character.
 //
-// ⚠️ Ради чего вообще затевался уход с PySide6. Именно на этой модели
-// исторически падало: пользователь закрывал вкладку, пока ответ
-// `remote_search` шёл от демона, колбэк приходил на уже удалённый объект и
-// давал «RuntimeError: Internal C++ object (RemoteListModel) already
-// deleted», а обработчик исключения добивал вторым — зона SIGSEGV.
-// В Python это закрыто вручную: карта `_pending` хранит владельца-QObject и
-// при доставке проверяется `shiboken6.isValid(owner)`. Здесь такой ветки нет
-// вообще: единственный путь доставки — `CxxQtThread::queue`, а он на мёртвом
-// объекте возвращает типизированную ошибку `ObjectDestroyed` и на объекте,
-// умершем ПОСЛЕ постановки в очередь, просто ничего не делает. Правило —
-// `queue(...).ok()`, без `unwrap()` и без предварительного `is_destroyed()`
-// (между проверкой и постановкой объект успевает умереть — гонка описана
-// прямо в doc-комментарии cxx-qt). Доказательство — `selftest::run()`.
+// Warning: what leaving PySide6 was started for in the first place.
+// Historically it was exactly this model that crashed: the user closed the
+// tab while the `remote_search` answer was coming from the daemon, the
+// callback arrived at an already deleted object and gave "RuntimeError:
+// Internal C++ object (RemoteListModel) already deleted", and the exception
+// handler finished it off with a second one — SIGSEGV territory.
+// In Python this is closed by hand: the `_pending` map keeps the owner
+// QObject, and on delivery `shiboken6.isValid(owner)` is checked. Here
+// there is no such branch at all: the only delivery path is
+// `CxxQtThread::queue`, and on a dead object it returns the typed error
+// `ObjectDestroyed`, and on an object that died AFTER queueing it simply
+// does nothing. The rule is `queue(...).ok()`, without `unwrap()` and
+// without a preceding `is_destroyed()` (between the check and the queueing
+// the object may die — the race is described right in the cxx-qt doc
+// comment). The proof is `selftest::run()`.
 //
-// Разделение слоёв то же, что в остальном крейте: всё состояние и все
-// решения «какие сигналы и в каком порядке» живут в чистой структуре
-// `RemoteRows` без Qt (её и проверяет голден против ЖИВОЙ Python-модели), а
-// QObject только исполняет полученный список событий.
+// The layer split is the same as in the rest of the crate: all state and
+// all decisions about "which signals and in what order" live in the plain
+// `RemoteRows` struct without Qt (that is what the golden test checks
+// against the LIVE Python model), while the QObject only executes the
+// resulting list of events.
 
-/// Мост cxx-qt: подкласс QAbstractListModel.
+/// cxx-qt bridge: a QAbstractListModel subclass.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        /// Базовый Qt-тип: обёртки QAbstractListModel в cxx-qt-lib нет.
+        /// The base Qt type: cxx-qt-lib has no QAbstractListModel wrapper.
         ///
-        /// ⚠️ Объявлен БЕЗ `#[qobject]` — как и во втором мосте крейта
-        /// (user_property_model.rs) и по той же причине: на каждый
-        /// `#[qobject]`-тип в `extern "C++Qt"` cxx-qt печатает пару шимов
-        /// приведения `cxx_qt_ffi_<Тип>_upcastPtr/downcastPtr`, имя которых
-        /// собрано по имени ТИПА, а не моста. Второй такой мост в крейте
-        /// даёт `duplicate symbol` на линковке. Без `#[qobject]` шимы не
-        /// печатаются, а `#[base]`, `#[inherit]` и `#[cxx_override]`
-        /// работают: они висят на наследнике.
+        /// Warning: declared WITHOUT `#[qobject]` — as in the crate's second bridge
+        /// (user_property_model.rs) and for the same reason: for every
+        /// `#[qobject]` type in `extern "C++Qt"` cxx-qt emits a pair of cast shims
+        /// `cxx_qt_ffi_<Type>_upcastPtr/downcastPtr`, whose name is built from the
+        /// TYPE name, not the bridge's. A second such bridge in the crate gives a
+        /// `duplicate symbol` at link time. Without `#[qobject]` the shims are not
+        /// emitted, while `#[base]`, `#[inherit]` and `#[cxx_override]` work: they
+        /// hang on the subclass.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -56,7 +60,7 @@ pub mod qobject {
         type QVariant = cxx_qt_lib::QVariant;
 
         include!("cxx-qt-lib/qmap.h");
-        /// QVariantMap — им вендорный QML получает строку целиком
+        /// QVariantMap — the vendored QML gets a whole row with it
         /// (`detailStore.item = searchQuery.model.item(index)`).
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
@@ -64,36 +68,39 @@ pub mod qobject {
         type QModelIndex = cxx_qt_lib::QModelIndex;
 
         include!("cxx-qt-lib/qvector.h");
-        /// Набор ролей для dataChanged (в Qt6 QVector<int> == QList<int>).
+        /// Set of roles for dataChanged (in Qt6 QVector<int> == QList<int>).
         type QVector_i32 = cxx_qt_lib::QVector<i32>;
     }
 
-    // Фабрика и снос объектов: `new` и `delete` живут только в C++.
-    // Нужны стенду поздних колбэков — он создаёт модель без родителя и
-    // намеренно убивает её, пока ответ в полёте.
+    // Object factory and destruction: `new` and `delete` live only in C++.
+    // Needed by the late callback bench — it creates the model without a
+    // parent and deliberately kills it while the answer is in flight.
     unsafe extern "C++" {
-        // QObject приходится объявить руками. Сам cxx-qt печатает это
-        // объявление, только если в мосте есть QObject без базы либо блок
-        // `extern "C++Qt"` с `#[qobject]`-типом (cxx-qt-gen/generator/rust:
-        // add_qobject_import). У нас ни того, ни другого: база объявлена
-        // обычным `extern "C++"` ради ухода от duplicate symbol, — значит,
-        // объявление наше.
+        // QObject has to be declared by hand. cxx-qt itself emits this
+        // declaration only if the bridge has a QObject without a base or an
+        // `extern "C++Qt"` block with a `#[qobject]` type
+        // (cxx-qt-gen/generator/rust: add_qobject_import). We have neither: the
+        // base is declared with an ordinary `extern "C++"` to avoid the duplicate
+        // symbol — so the declaration is ours.
         #[namespace = ""]
         type QObject = cxx_qt::QObject;
 
         include!("rexon_gui_factory.h");
         /// # Safety
-        /// parent либо nullptr (владение у зовущего), либо живой QObject.
+        /// parent is either nullptr (ownership stays with the caller) or a live
+        /// QObject.
         //
-        // Явный allow: cxx переносит объявление в свой блок extern, теряя
-        // doc-комментарий, и clippy видит unsafe-функцию «без раздела Safety».
+        // An explicit allow: cxx moves the declaration into its own extern block,
+        // losing the doc comment, and clippy sees an unsafe function "without a
+        // Safety section".
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_remote_list_model(parent: *mut QObject) -> *mut QObject;
         /// # Safety
-        /// Объект обязан быть создан без родителя и не иметь детей-владельцев.
+        /// The object must have been created without a parent and have no owning
+        /// children.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_delete_object(object: *mut QObject);
-        /// Прокрутить цикл событий не дольше ms миллисекунд.
+        /// Spin the event loop for no longer than ms milliseconds.
         fn rexon_process_events(ms: i32);
     }
 
@@ -102,33 +109,34 @@ pub mod qobject {
         #[qml_element]
         #[base = QAbstractListModel]
         #[qproperty(i32, count, READ = count, NOTIFY = count_changed)]
-        // hasMore читается только: у Python-модели свойство тоже без WRITE,
-        // а внутрь его двигает set_has_more/страница выдачи.
+        // hasMore is read-only: in the Python model the property also has no
+        // WRITE, and it is moved internally by set_has_more/the result page.
         #[qproperty(bool, has_more, cxx_name = "hasMore",
                     READ = has_more, NOTIFY = has_more_changed)]
         type RemoteListModel = super::RemoteListModelRust;
     }
 
-    // ── Сигналы ───────────────────────────────────────────────────────────
+    // ── Signals ───────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
         #[qsignal]
         #[cxx_name = "countChanged"]
         fn count_changed(self: Pin<&mut RemoteListModel>);
 
-        /// hasMoreChanged несёт значение — так объявлен и оригинал
-        /// (`Q_SIGNAL void hasMoreChanged(bool)` в qextra), и Python-мост.
+        /// hasMoreChanged carries the value — that is how the original declares it
+        /// too (`Q_SIGNAL void hasMoreChanged(bool)` in qextra), and the Python
+        /// bridge.
         #[qsignal]
         #[cxx_name = "hasMoreChanged"]
         fn has_more_changed(self: Pin<&mut RemoteListModel>, value: bool);
 
-        /// Модель просит следующую страницу. Аргумент — номер строки, с
-        /// которой продолжать (у оригинала это `reqFetchMore(qint32)`,
-        /// который ловит RemoteSearchQuery::fetchMore).
+        /// The model asks for the next page. The argument is the row number to
+        /// continue from (in the original this is `reqFetchMore(qint32)`, caught by
+        /// RemoteSearchQuery::fetchMore).
         #[qsignal]
         #[cxx_name = "reqFetchMore"]
         fn req_fetch_more(self: Pin<&mut RemoteListModel>, row: i32);
 
-        /// dataChanged базового класса — точечное обновление одной роли.
+        /// dataChanged of the base class — a targeted update of one role.
         #[inherit]
         #[qsignal]
         #[cxx_name = "dataChanged"]
@@ -139,31 +147,31 @@ pub mod qobject {
             roles: &QVector_i32,
         );
 
-        // ⚠️ modelReset и rowsInserted сюда НЕ добавлять. Это приватные
-        // сигналы Qt: у них есть скрытый параметр
-        // QAbstractItemModel::QPrivateSignal, и `#[inherit] #[qsignal]`
-        // на них не собирается — cxx-qt берёт указатель на член вида
-        // `void (RemoteListModel::*)()`, а настоящий тип
-        // `void (QAbstractItemModel::*)(QPrivateSignal)`, компилятор
-        // отказывается приводить. Подписаться на них можно из QML
-        // (moc такие сигналы отдаёт нормально).
+        // Warning: do NOT add modelReset and rowsInserted here. These are private
+        // Qt signals: they have a hidden parameter
+        // QAbstractItemModel::QPrivateSignal, and `#[inherit] #[qsignal]` on them
+        // does not compile — cxx-qt takes a member pointer of the form
+        // `void (RemoteListModel::*)()`, while the real type is
+        // `void (QAbstractItemModel::*)(QPrivateSignal)`, and the compiler refuses
+        // to convert. They can be subscribed to from QML (moc exposes such signals
+        // normally).
     }
 
-    // ── Наследуемые методы базового класса ────────────────────────────────
+    // ── Inherited methods of the base class ───────────────────────────────
     extern "RustQt" {
         /// # Safety
-        /// Требует парного end_reset_model.
+        /// Requires a paired end_reset_model.
         #[inherit]
         #[cxx_name = "beginResetModel"]
         unsafe fn begin_reset_model(self: Pin<&mut RemoteListModel>);
         /// # Safety
-        /// Парный к begin_reset_model.
+        /// Paired with begin_reset_model.
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut RemoteListModel>);
 
         /// # Safety
-        /// Диапазон обязан быть корректным, требуется парный end_insert_rows.
+        /// The range must be correct; a paired end_insert_rows is required.
         #[inherit]
         #[cxx_name = "beginInsertRows"]
         unsafe fn begin_insert_rows(
@@ -173,15 +181,15 @@ pub mod qobject {
             last: i32,
         );
         /// # Safety
-        /// Парный к begin_insert_rows.
+        /// Paired with begin_insert_rows.
         #[inherit]
         #[cxx_name = "endInsertRows"]
         unsafe fn end_insert_rows(self: Pin<&mut RemoteListModel>);
     }
 
-    // index() безопасен для вызова, но cxx-qt требует, чтобы безопасные
-    // #[inherit]-функции жили в unsafe-блоке (unsafe тут про соответствие
-    // объявления C++-сигнатуре, а не про опасность вызова).
+    // index() is safe to call, but cxx-qt requires safe #[inherit] functions to
+    // live in an unsafe block (unsafe here is about matching the declaration to
+    // the C++ signature, not about the call being dangerous).
     unsafe extern "RustQt" {
         #[inherit]
         fn index(
@@ -192,10 +200,10 @@ pub mod qobject {
         ) -> QModelIndex;
     }
 
-    // ── Переопределения QAbstractListModel ────────────────────────────────
-    // Без #[qinvokable]: инвокабл в наследнике затеняет укороченные клоны
-    // сигнатур базы, которые moc делает ради default-аргументов, и rowCount()
-    // без аргументов из JS падает «Insufficient arguments».
+    // ── QAbstractListModel overrides ──────────────────────────────────────
+    // Without #[qinvokable]: an invokable in a subclass shadows the shortened
+    // clones of the base's signatures that moc makes for default arguments, and
+    // rowCount() without arguments from JS fails with "Insufficient arguments".
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -208,8 +216,8 @@ pub mod qobject {
         #[cxx_override]
         fn data(self: &RemoteListModel, index: &QModelIndex, role: i32) -> QVariant;
 
-        /// Протокол бесконечной прокрутки: вид спрашивает сам, вручную
-        /// loadMore в QML с v0.2.5 больше нет.
+        /// The infinite scrolling protocol: the view asks by itself; there has been
+        /// no manual loadMore in QML since v0.2.5.
         #[cxx_override]
         #[cxx_name = "canFetchMore"]
         fn can_fetch_more(self: &RemoteListModel, parent: &QModelIndex) -> bool;
@@ -219,23 +227,23 @@ pub mod qobject {
         fn fetch_more(self: Pin<&mut RemoteListModel>, parent: &QModelIndex);
     }
 
-    // ── Property-геттеры ──────────────────────────────────────────────────
+    // ── Property getters ──────────────────────────────────────────────────
     extern "RustQt" {
         fn count(self: &RemoteListModel) -> i32;
         #[cxx_name = "hasMore"]
         fn has_more(self: &RemoteListModel) -> bool;
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Строка целиком как QVariantMap. Вендорный QML зовёт `item(index)`
-        /// (DiscoverPage.qml:175), `get` — прежнее имя моста.
+        /// A whole row as a QVariantMap. The vendored QML calls `item(index)`
+        /// (DiscoverPage.qml:175), `get` is the bridge's former name.
         #[qinvokable]
         fn get(self: &RemoteListModel, row: i32) -> QMap_QString_QVariant;
         #[qinvokable]
         fn item(self: &RemoteListModel, row: i32) -> QMap_QString_QVariant;
 
-        /// Совместимость: булев вход → состояние приобретения 3/0.
+        /// Compatibility: a boolean input → acquisition state 3/0.
         #[qinvokable]
         #[cxx_name = "setInstalled"]
         fn set_installed(
@@ -245,8 +253,8 @@ pub mod qobject {
             installed: bool,
         );
 
-        /// Состояние приобретения строки (0 — нет, 1 — в очереди, 2 — идёт,
-        /// 3 — есть/подписан). Точечный dataChanged ровно по одной роли.
+        /// Acquisition state of a row (0 — none, 1 — queued, 2 — in progress,
+        /// 3 — present/subscribed). A targeted dataChanged for exactly one role.
         #[qinvokable]
         #[cxx_name = "setAcquisitionState"]
         fn set_acquisition_state(
@@ -256,19 +264,19 @@ pub mod qobject {
             state: i32,
         );
 
-        /// Дописать имена авторов в уже показанные карточки: ключ — itemId,
-        /// значение — имя. В Python это обычный метод (его зовёт запрос), а
-        /// не слот; здесь он инвокабл — так им может пользоваться и стенд,
-        /// и будущий Rust-запрос партии 3. Вендорный QML его не знает, так
-        /// что расширение поверхности безопасно.
+        /// Add author names to already shown cards: the key is the itemId, the
+        /// value is the name. In Python this is an ordinary method (the query calls
+        /// it), not a slot; here it is an invokable — so both the bench and the
+        /// future Rust query of batch 3 can use it. The vendored QML does not know
+        /// it, so extending the surface is safe.
         #[qinvokable]
         #[cxx_name = "setAuthors"]
         fn set_authors(self: Pin<&mut RemoteListModel>, names: &QMap_QString_QVariant);
 
-        /// То же для аватарок авторов: ключ — itemId, значение — адрес
-        /// картинки. Отдельным инвокаблом, а не полем в setAuthors, потому
-        /// что трогает СВОЮ роль: карточка, у которой аватарка не
-        /// скачалась, обязана остаться ровно такой, как была.
+        /// The same for author avatars: the key is the itemId, the value is the
+        /// picture address. A separate invokable rather than a field in setAuthors,
+        /// because it touches ITS OWN role: a card whose avatar did not download
+        /// must stay exactly as it was.
         #[qinvokable]
         #[cxx_name = "setAuthorAvatars"]
         fn set_author_avatars(
@@ -276,10 +284,11 @@ pub mod qobject {
             avatars: &QMap_QString_QVariant,
         );
 
-        /// Положить страницу выдачи. Шов для партии 3 (там страницу будет
-        /// подавать Rust-запрос) и вход для стенда: JSON — массив объектов с
-        /// семью полями ролей. append=false — полная замена (reset_rows),
-        /// true — догрузка (append_rows). Возвращает число разобранных строк.
+        /// Put a result page. A seam for batch 3 (there the page will be supplied
+        /// by a Rust query) and an entry for the bench: the JSON is an array of
+        /// objects with the seven role fields. append=false is a full replacement
+        /// (reset_rows), true is loading more (append_rows). Returns the number of
+        /// parsed rows.
         #[qinvokable]
         #[cxx_name = "applyPageJson"]
         fn apply_page_json(
@@ -289,20 +298,20 @@ pub mod qobject {
             append: bool,
         ) -> i32;
 
-        /// Номер роли по имени (-1, если роли нет) — чтобы стенд мог сверить,
-        /// какая именно роль приехала в dataChanged.
+        /// Role number by name (-1 if there is no such role) — so that the bench
+        /// can check which role exactly arrived in dataChanged.
         #[qinvokable]
         #[cxx_name = "roleNumber"]
         fn role_number(self: &RemoteListModel, name: &QString) -> i32;
 
-        /// Значение роли по номеру строки — проверки без делегата.
+        /// A role's value by row number — checks without a delegate.
         #[qinvokable]
         #[cxx_name = "roleValue"]
         fn role_value(self: &RemoteListModel, row: i32, name: &QString) -> QVariant;
 
-        /// Разослать состояние приобретения через ОБЩИЙ склад — то есть во
-        /// все живые модели сразу, а не только в эту. Зеркало
-        /// `_acq_store().set()`. Возвращает число живых получателей.
+        /// Broadcast the acquisition state through the SHARED store — that is, to
+        /// all live models at once, not only this one. A mirror of
+        /// `_acq_store().set()`. Returns the number of live receivers.
         #[qinvokable]
         #[cxx_name = "publishAcquisitionState"]
         fn publish_acquisition_state(
@@ -327,23 +336,23 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 // ============================================================================
-// Чистый слой: строки выдачи и решения о сигналах (Qt здесь нет)
+// Pure layer: result rows and signal decisions (no Qt here)
 // ============================================================================
 
-/// Роли начинаются с Qt::UserRole + 1 (Qt::UserRole == 256) — те же номера,
-/// что у Python-модели и у оригинала (remote_model.cpp).
+/// Roles start at Qt::UserRole + 1 (Qt::UserRole == 256) — the same numbers
+/// as in the Python model and in the original (remote_model.cpp).
 pub const ROLE_BASE: i32 = 256 + 1;
 
-/// Имена ролей в порядке номеров — единственный источник истины и для
-/// roleNames, и для data(), и для roleNumber(). Порядок менять нельзя:
-/// вендорный QML обращается к ролям по именам, а номера уходят в dataChanged.
-/// Две последние роли дописаны В КОНЕЦ намеренно: номера уже показанных
-/// ролей сдвигать нельзя, они уходят в dataChanged. `authorAvatarUrl` —
-/// имя свойства строки waywallen 0.5.0 (`remote_model.cppm`; до 0.5.0 —
-/// наша роль `authorAvatar` для Мастерской, номер тот же), `authorUrl` —
-/// НАША ПРАВКА (паритет с Wallpaper Engine: переход к остальным работам
-/// автора).
-pub const ROLE_NAMES: [&str; 16] = [
+/// Role names in number order — the single source of truth for roleNames,
+/// data() and roleNumber(). The order must not change: the vendored QML
+/// addresses the roles by name, and the numbers go into dataChanged.
+/// The last two roles are appended AT THE END on purpose: the numbers of
+/// already shown roles must not shift, they go into dataChanged.
+/// `authorAvatarUrl` is the row property name of waywallen 0.5.0
+/// (`remote_model.cppm`; before 0.5.0 it was our `authorAvatar` role for the
+/// Workshop, the same number), `authorUrl` is OUR CHANGE (parity with
+/// Wallpaper Engine: going to the author's other works).
+pub const ROLE_NAMES: [&str; 19] = [
     "itemId",
     "sourceId",
     "title",
@@ -353,27 +362,34 @@ pub const ROLE_NAMES: [&str; 16] = [
     "acquisitionState",
     "authorAvatarUrl",
     "authorUrl",
-    // waywallen 0.6.0 (`remote_model.cppm`): размер самого ресурса (не
-    // обрезанного превью; 0 — источник не знает) и ход скачивания.
+    // waywallen 0.6.0 (`remote_model.cppm`): the size of the resource itself
+    // (not of the cropped preview; 0 — the source does not know) and the
+    // download progress.
     "width",
     "height",
     "downloadTransferActive",
     "downloadReceivedBytes",
     "downloadTotalBytes",
-    // waywallen 0.6.0 (`GridListModel`): ключ строки и строка целиком —
-    // их читает `MD.ItemModelSource` сетки (`keyRole: "itemKey"`, роль
-    // `item`). Ключ — «источник␀предмет», как `remoteKey` оригинала.
+    // waywallen 0.6.0 (`GridListModel`): the row key and the whole row — read
+    // by the grid's `MD.ItemModelSource` (`keyRole: "itemKey"`, the `item`
+    // role). The key is "source␀item", like the original's `remoteKey`.
     "itemKey",
     "item",
+    // waywallen 0.6.1 (`remote_model.cppm`): HTTP headers the source needs
+    // for its images (e.g. a Referer) and the badges of the card.
+    "previewHeaders",
+    "authorAvatarHeaders",
+    "badges",
 ];
 
-/// Сколько ролей знает голден Discover (снят до 0.6.0). Строка в JSON-виде
-/// эталона ([`RemoteRow::to_json`]) — ровно эти роли; новые роли едут в
-/// QML, но в сверку с прежним эталоном не входят.
+/// How many roles the Discover golden file knows (captured before 0.6.0).
+/// A row in the reference's JSON form ([`RemoteRow::to_json`]) is exactly
+/// these roles; new roles go to QML but are not part of the comparison
+/// with the previous reference.
 pub const GOLDEN_ROLES: usize = 9;
 
-/// Ключ строки выдачи — `remoteKey` оригинала: один предмет может лежать в
-/// выдаче двух источников, поэтому в ключе оба идентификатора.
+/// Result row key — the original's `remoteKey`: one item may lie in the
+/// results of two sources, so both identifiers are in the key.
 pub fn remote_key(source_id: &str, item_id: &str) -> String {
     let mut key = String::with_capacity(source_id.len() + item_id.len() + 1);
     key.push_str(source_id);
@@ -382,8 +398,8 @@ pub fn remote_key(source_id: &str, item_id: &str) -> String {
     key
 }
 
-/// Строка выдачи Discover. Ровно девять полей — столько же кладёт
-/// `_row_from_item` (bridge.py:708) и ветка Мастерской.
+/// A Discover result row. Exactly nine fields — as many as `_row_from_item`
+/// (bridge.py:708) and the Workshop branch put.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteRow {
@@ -405,23 +421,33 @@ pub struct RemoteRow {
     pub author_avatar_url: String,
     #[serde(default)]
     pub author_url: String,
-    /// waywallen 0.6.0: размер ресурса; 0 — неизвестен.
+    /// waywallen 0.6.0: resource size; 0 means unknown.
     #[serde(default)]
     pub width: u32,
     #[serde(default)]
     pub height: u32,
-    /// waywallen 0.6.0: идёт передача файла (`RemoteDownloadProgress.transfer`).
+    /// waywallen 0.6.0: a file transfer is in progress
+    /// (`RemoteDownloadProgress.transfer`).
     #[serde(default)]
     pub download_transfer_active: bool,
     #[serde(default)]
     pub download_received_bytes: u64,
-    /// 0 — источник не сообщил полный размер.
+    /// 0 means the source did not report the full size.
     #[serde(default)]
     pub download_total_bytes: u64,
+    /// waywallen 0.6.1: headers for loading the preview (object; Null = none).
+    #[serde(default)]
+    pub preview_headers: Value,
+    /// waywallen 0.6.1: headers for loading the author avatar.
+    #[serde(default)]
+    pub author_avatar_headers: Value,
+    /// waywallen 0.6.1: card badges, `[{id, text}]` (Null = none).
+    #[serde(default)]
+    pub badges: Value,
 }
 
 impl RemoteRow {
-    /// Значение роли по её порядковому номеру в ROLE_NAMES.
+    /// A role's value by its ordinal number in ROLE_NAMES.
     fn role_slot(&self, slot: usize) -> Option<RoleValue<'_>> {
         Some(match *ROLE_NAMES.get(slot)? {
             "itemId" => RoleValue::Text(&self.item_id),
@@ -440,17 +466,21 @@ impl RemoteRow {
             "downloadTotalBytes" => RoleValue::Unsigned(self.download_total_bytes),
             "itemKey" => RoleValue::Key,
             "item" => RoleValue::Whole,
+            "previewHeaders" => RoleValue::Json(&self.preview_headers),
+            "authorAvatarHeaders" => RoleValue::Json(&self.author_avatar_headers),
+            "badges" => RoleValue::Json(&self.badges),
             _ => return None,
         })
     }
 
-    /// Ключ строки (роль `itemKey`).
+    /// Row key (the `itemKey` role).
     pub fn key(&self) -> String {
         remote_key(&self.source_id, &self.item_id)
     }
 
-    /// Строка как JSON-объект в форме голдена: только первые
-    /// [`GOLDEN_ROLES`] ролей (эталон снят до waywallen 0.6.0).
+    /// The row as a JSON object in the golden form: only the first
+    /// [`GOLDEN_ROLES`] roles (the reference was captured before waywallen
+    /// 0.6.0).
     pub fn to_json(&self) -> Value {
         let mut map = Map::new();
         for (slot, name) in ROLE_NAMES.iter().enumerate().take(GOLDEN_ROLES) {
@@ -464,18 +494,19 @@ impl RemoteRow {
         Value::Object(map)
     }
 
-    /// Значение роли для QML. `item` — вся строка картой (без `item` и
-    /// `itemKey` внутри), как гаджет `RemoteRow` у оригинала.
+    /// Role value for QML. `item` is the whole row as a map (without `item` and
+    /// `itemKey` inside), like the original's `RemoteRow` gadget.
     fn role_variant(&self, slot: usize) -> QVariant {
         match self.role_slot(slot) {
             Some(RoleValue::Text(text)) => QVariant::from(&QString::from(text)),
             Some(RoleValue::Number(number)) => QVariant::from(&number),
-            // 64-битное целое в QML не выпускаем (`qvalue::u64_to_qml`):
-            // байты и размеры далеки от 2^53.
+            // We do not expose a 64-bit integer to QML (`qvalue::u64_to_qml`): bytes
+            // and sizes are far from 2^53.
             Some(RoleValue::Unsigned(number)) => {
                 QVariant::from(&crate::qvalue::u64_to_qml(number))
             }
             Some(RoleValue::Flag(flag)) => QVariant::from(&flag),
+            Some(RoleValue::Json(value)) => crate::qvalue::json_to_variant(value),
             Some(RoleValue::Key) => QVariant::from(&QString::from(&self.key())),
             Some(RoleValue::Whole) => {
                 let mut map = QMap::<QMapPair_QString_QVariant>::default();
@@ -491,7 +522,7 @@ impl RemoteRow {
         }
     }
 
-    /// Ход скачивания из склада (см. [`acquisition::Transfer`]).
+    /// Download progress from the store (see [`acquisition::Transfer`]).
     fn set_transfer(&mut self, transfer: acquisition::Transfer) {
         self.download_transfer_active = transfer.active;
         self.download_received_bytes = transfer.received;
@@ -507,33 +538,35 @@ impl RemoteRow {
     }
 }
 
-/// Тип значения роли.
+/// Type of a role value.
 enum RoleValue<'a> {
     Text(&'a str),
     Number(i32),
     Unsigned(u64),
     Flag(bool),
+    /// waywallen 0.6.1: headers and badges, handed to QML as-is.
+    Json(&'a Value),
     /// `itemKey`.
     Key,
-    /// `item` — строка целиком.
+    /// `item` is the whole row.
     Whole,
 }
 
-/// Наблюдаемое событие модели. Порядок этих событий — такая же часть
-/// контракта, как значения ролей: голден снят с ЖИВОЙ Python-модели именно
-/// последовательностью.
+/// An observable model event. The order of these events is as much a part
+/// of the contract as the role values: the golden file was captured from the
+/// LIVE Python model precisely as a sequence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelEvent {
-    /// Испускает сам QAbstractItemModel в endResetModel.
+    /// Emitted by QAbstractItemModel itself in endResetModel.
     ModelReset,
-    /// Испускает сам QAbstractItemModel в endInsertRows.
+    /// Emitted by QAbstractItemModel itself in endInsertRows.
     RowsInserted { first: usize, last: usize },
     CountChanged,
     HasMoreChanged(bool),
     ReqFetchMore(usize),
-    /// Всегда РОВНО одна роль: «широкий» dataChanged (пустой набор ролей)
-    /// заставил бы вид пересчитать всю карточку — это и есть то, что
-    /// стенд считает отдельно и признаёт провалом.
+    /// Always EXACTLY one role: a "wide" dataChanged (an empty role set) would
+    /// make the view recompute the whole card — that is exactly what the bench
+    /// counts separately and treats as a failure.
     DataChanged {
         first: usize,
         last: usize,
@@ -542,14 +575,15 @@ pub enum ModelEvent {
 }
 
 impl ModelEvent {
-    /// Структурные события испускает базовый класс в end*-методах, Rust их
-    /// не шлёт. Здесь — единственное место, где это знание записано.
+    /// Structural events are emitted by the base class in the end* methods,
+    /// Rust does not send them. This is the only place where this knowledge is
+    /// written down.
     pub fn is_structural(&self) -> bool {
         matches!(self, Self::ModelReset | Self::RowsInserted { .. })
     }
 }
 
-/// Состояние модели: строки выдачи и флаг «есть ещё страницы».
+/// Model state: the result rows and the "there are more pages" flag.
 #[derive(Debug, Default, Clone)]
 pub struct RemoteRows {
     rows: Vec<RemoteRow>,
@@ -573,18 +607,19 @@ impl RemoteRows {
         &self.rows
     }
 
-    /// Строка по номеру; None — номера нет (в том числе отрицательного).
+    /// Row by number; None means there is no such number (negative ones
+    /// included).
     pub fn row(&self, row: i32) -> Option<&RemoteRow> {
         usize::try_from(row).ok().and_then(|r| self.rows.get(r))
     }
 
-    /// canFetchMore: у плоского списка дети есть только у корня, поэтому
-    /// по валидному родителю всегда ложь.
+    /// canFetchMore: in a flat list only the root has children, so for a valid
+    /// parent it is always false.
     pub fn can_fetch_more(&self, root: bool) -> bool {
         root && self.has_more
     }
 
-    /// Одиночная смена флага догрузки.
+    /// A single change of the load-more flag.
     pub fn set_has_more(&mut self, value: bool) -> Vec<ModelEvent> {
         if self.has_more == value {
             return Vec::new();
@@ -593,9 +628,11 @@ impl RemoteRows {
         vec![ModelEvent::HasMoreChanged(value)]
     }
 
-    /// Полная замена выдачи (новый поиск, новая сортировка, новый источник).
+    /// A full replacement of the results (a new search, a new sort, a new
+    /// source).
     pub fn reset_rows(&mut self, rows: Vec<RemoteRow>, has_more: bool) -> Vec<ModelEvent> {
-        // Флаг сравнивается ДО подмены строк — так же, как в оригинале.
+        // The flag is compared BEFORE the rows are replaced — just as in the
+        // original.
         let changed = self.has_more != has_more;
         self.rows = rows;
         self.has_more = has_more;
@@ -606,9 +643,9 @@ impl RemoteRows {
         events
     }
 
-    /// Диапазон строк, который добавит append_rows. None — добавлять нечего,
-    /// beginInsertRows звать нельзя. Отдельный метод, потому что Qt требует
-    /// объявить вставку ДО правки состояния.
+    /// The row range that append_rows will add. None means there is nothing to
+    /// add, and beginInsertRows must not be called. A separate method because
+    /// Qt requires announcing the insertion BEFORE editing the state.
     pub fn insert_range(&self, added: usize) -> Option<(usize, usize)> {
         if added == 0 {
             return None;
@@ -617,10 +654,10 @@ impl RemoteRows {
         Some((first, first + added - 1))
     }
 
-    /// Догрузка следующей страницы.
+    /// Loading the next page.
     pub fn append_rows(&mut self, rows: Vec<RemoteRow>, has_more: bool) -> Vec<ModelEvent> {
-        // Пустая страница строк не добавляет — вставку объявлять нечем,
-        // остаётся только флаг догрузки.
+        // An empty page adds no rows — there is nothing to announce an insertion
+        // with, only the load-more flag remains.
         if rows.is_empty() {
             return self.set_has_more(has_more);
         }
@@ -640,8 +677,9 @@ impl RemoteRows {
         events
     }
 
-    /// Протокол бесконечной прокрутки. Флаг гасится ДО запроса — иначе вид
-    /// дёргал бы fetchMore повторно, пока страница в полёте.
+    /// The infinite scrolling protocol. The flag is cleared BEFORE the request
+    /// — otherwise the view would poke fetchMore again while the page is in
+    /// flight.
     pub fn fetch_more(&mut self, root: bool) -> Vec<ModelEvent> {
         if !root || !self.has_more {
             return Vec::new();
@@ -651,8 +689,8 @@ impl RemoteRows {
         events
     }
 
-    /// Состояние приобретения. Совпадать обязаны ОБА идентификатора: один и
-    /// тот же предмет может лежать в выдаче двух источников.
+    /// Acquisition state. BOTH identifiers must match: the same item may lie in
+    /// the results of two sources.
     pub fn set_acquisition_state(
         &mut self,
         source_id: &str,
@@ -662,9 +700,9 @@ impl RemoteRows {
         self.set_acquisition(source_id, item_id, state, acquisition::Transfer::default())
     }
 
-    /// Состояние приобретения вместе с ходом передачи (waywallen 0.6.0,
-    /// `setRemoteAcquisitionState` с байтами). На каждую сменившуюся роль —
-    /// свой `dataChanged` с одной ролью.
+    /// Acquisition state together with the transfer progress (waywallen 0.6.0,
+    /// `setRemoteAcquisitionState` with bytes). For every changed role — its
+    /// own `dataChanged` with one role.
     pub fn set_acquisition(
         &mut self,
         source_id: &str,
@@ -677,8 +715,8 @@ impl RemoteRows {
             if entry.source_id != source_id || entry.item_id != item_id {
                 continue;
             }
-            // То же значение — сигнала нет: иначе каждая проверка
-            // подписки перерисовывала бы карточку впустую.
+            // The same value — no signal: otherwise every subscription check would
+            // repaint the card for nothing.
             let before = entry.transfer();
             if entry.acquisition_state != state {
                 entry.acquisition_state = state;
@@ -709,7 +747,7 @@ impl RemoteRows {
         events
     }
 
-    /// Булев вход старого моста: «скачано» → 3, иначе 0.
+    /// Boolean input of the old bridge: "downloaded" → 3, otherwise 0.
     pub fn set_installed(
         &mut self,
         source_id: &str,
@@ -719,8 +757,8 @@ impl RemoteRows {
         self.set_acquisition_state(source_id, item_id, if installed { 3 } else { 0 })
     }
 
-    /// Дописать имена авторов в уже показанные карточки. Пустое имя не
-    /// затирает показанное (в оригинале это `if name and ...`).
+    /// Add author names to already shown cards. An empty name does not
+    /// overwrite the shown one (in the original this is `if name and ...`).
     pub fn set_authors(&mut self, names: &[(String, String)]) -> Vec<ModelEvent> {
         let mut events = Vec::new();
         for (row, entry) in self.rows.iter_mut().enumerate() {
@@ -740,9 +778,9 @@ impl RemoteRows {
         events
     }
 
-    /// Дописать аватарки авторов — тем же точечным путём, что имена.
-    /// Пустой адрес не затирает показанный: аватарка, которая не
-    /// скачалась, не имеет права стереть уже показанную.
+    /// Add author avatars — by the same targeted path as the names. An empty
+    /// address does not overwrite the shown one: an avatar that did not
+    /// download has no right to erase one already shown.
     pub fn set_author_avatars(&mut self, avatars: &[(String, String)]) -> Vec<ModelEvent> {
         let mut events = Vec::new();
         for (row, entry) in self.rows.iter_mut().enumerate() {
@@ -763,7 +801,7 @@ impl RemoteRows {
     }
 }
 
-/// Индексы ролей, которые обновляются точечно.
+/// Indices of the roles that are updated in a targeted way.
 const ROLE_AUTHOR: usize = 4;
 const ROLE_ACQUISITION_STATE: usize = 6;
 const ROLE_AUTHOR_AVATAR: usize = 7;
@@ -771,38 +809,40 @@ const ROLE_TRANSFER_ACTIVE: usize = 11;
 const ROLE_TRANSFER_RECEIVED: usize = 12;
 const ROLE_TRANSFER_TOTAL: usize = 13;
 
-/// Разобрать страницу выдачи из JSON-массива. Битый JSON даёт пустую
-/// страницу — молча, как и разбор оверрайдов в редакторе свойств: ошибка
-/// разбора не должна валить вкладку.
+/// Parse a result page from a JSON array. A broken JSON gives an empty page
+/// — silently, like parsing the overrides in the property editor: a parse
+/// error must not bring the tab down.
 pub fn parse_rows(json: &str) -> Vec<RemoteRow> {
     serde_json::from_str::<Vec<RemoteRow>>(json).unwrap_or_default()
 }
 
 // ============================================================================
-// Общий склад состояний приобретения (порт _AcquisitionStore / AppStore)
+// Shared store of acquisition states (a port of _AcquisitionStore / AppStore)
 // ============================================================================
 
-/// Склад состояний приобретения: у апстрима строки выдачи и панель деталей
-/// смотрят в ОДНО хранилище, поэтому после подписки кнопка сразу становится
-/// «Отписаться» без перезагрузки страницы. Это уже починенный при порте на
-/// Python баг, консервировать регресс нельзя — склад переезжает вместе с
-/// моделью.
+/// Store of acquisition states: upstream the result rows and the details
+/// panel look into ONE storage, so after subscribing the button immediately
+/// becomes "Unsubscribe" without reloading the page. This is a bug already
+/// fixed during the port to Python, and the regression must not be
+/// preserved — the store moves together with the model.
 ///
-/// Устройство склада — главное отличие от Python и смысл всей партии.
-/// В Python склад хранит СВЯЗАННЫЙ МЕТОД модели (`changed.connect(
-/// self.setAcquisitionState)`), то есть держит модель живой навсегда и при
-/// этом ничего не знает про смерть её C++-половины — отсюда исторические
-/// «Internal C++ object already deleted». Здесь склад хранит
-/// `CxxQtThread<RemoteListModel>`: он `Send + Sync`, доставка идёт очередью
-/// цикла событий, а мёртвый объект даёт `ObjectDestroyed` вместо обращения
-/// к освобождённой памяти. Запись из реестра снимается либо в Drop
-/// Rust-половины, либо при первой же неудачной рассылке.
+/// The store's design is the main difference from Python and the point of
+/// the whole batch. In Python the store keeps a BOUND METHOD of the model
+/// (`changed.connect(self.setAcquisitionState)`), that is, it keeps the
+/// model alive forever while knowing nothing about the death of its C++
+/// half — hence the historical "Internal C++ object already deleted". Here
+/// the store keeps a `CxxQtThread<RemoteListModel>`: it is `Send + Sync`,
+/// delivery goes through the event loop queue, and a dead object gives
+/// `ObjectDestroyed` instead of accessing freed memory. The entry is removed
+/// from the registry either in Drop of the Rust half or on the very first
+/// failed broadcast.
 pub mod acquisition {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
 
-    /// Ход передачи файла (waywallen 0.6.0, `RemoteDownloadTransfer`):
-    /// идёт ли она, сколько байт пришло и сколько всего (0 — неизвестно).
+    /// File transfer progress (waywallen 0.6.0, `RemoteDownloadTransfer`):
+    /// whether it is in progress, how many bytes arrived and how many in total
+    /// (0 — unknown).
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
     pub struct Transfer {
         pub active: bool,
@@ -810,23 +850,23 @@ pub mod acquisition {
         pub total: u64,
     }
 
-    /// Доставка состояния ОДНОМУ получателю. `Err(())` — объект умер,
-    /// запись пора снять.
+    /// Delivering a state to ONE receiver. `Err(())` means the object died and
+    /// the entry should be removed.
     ///
-    /// Замыкание, а не `CxxQtThread<RemoteListModel>`: со склада читает не
-    /// только модель выдачи, но и держатель одного элемента
-    /// (`RemoteStoreItem`, панель деталей Discover) — у апстрима это ОДНО
-    /// хранилище на обоих. Обобщить `CxxQtThread` по типу нельзя: cxx-qt
-    /// печатает свой алиас на каждый QObject.
+    /// A closure rather than `CxxQtThread<RemoteListModel>`: the store is read
+    /// not only by the result model but also by the single item holder
+    /// (`RemoteStoreItem`, the Discover details panel) — upstream this is ONE
+    /// storage for both. `CxxQtThread` cannot be made generic over the type:
+    /// cxx-qt emits its own alias for every QObject.
     pub type Deliver = Box<dyn Fn(&str, &str, i32, Transfer) -> Result<(), ()> + Send>;
 
     #[derive(Default)]
     struct Registry {
         next_id: u64,
         entries: Vec<(u64, Deliver)>,
-        /// Последнее разосланное состояние предмета, пока он «в пути»
-        /// (1 — ждёт, 2 — качается). По нему новая выдача не затирает
-        /// идущее скачивание (`mergeRemoteRow` оригинала).
+        /// The last broadcast state of an item while it is "in transit" (1 —
+        /// waiting, 2 — downloading). By it new results do not overwrite a running
+        /// download (the original's `mergeRemoteRow`).
         in_flight: HashMap<(String, String), (i32, Transfer)>,
     }
 
@@ -835,8 +875,7 @@ pub mod acquisition {
         REGISTRY.get_or_init(|| Mutex::new(Registry::default()))
     }
 
-    /// Зарегистрировать получателя. Возвращает номер записи для снятия
-    /// в Drop.
+    /// Register a receiver. Returns the entry number for removal in Drop.
     pub fn register(deliver: Deliver) -> u64 {
         let mut reg = registry().lock().expect("реестр склада не отравлен");
         reg.next_id += 1;
@@ -845,14 +884,15 @@ pub mod acquisition {
         id
     }
 
-    /// Снять запись. Идемпотентно: записи может уже не быть, если рассылка
-    /// успела получить ObjectDestroyed раньше деструктора.
+    /// Remove an entry. Idempotent: the entry may already be gone if a
+    /// broadcast got ObjectDestroyed before the destructor.
     pub fn unregister(id: u64) {
         let mut reg = registry().lock().expect("реестр склада не отравлен");
         reg.entries.retain(|(entry, _)| *entry != id);
     }
 
-    /// Сколько моделей сейчас в реестре (для стенда и отладки).
+    /// How many models are in the registry right now (for the bench and
+    /// debugging).
     pub fn registered() -> usize {
         registry()
             .lock()
@@ -861,15 +901,15 @@ pub mod acquisition {
             .len()
     }
 
-    /// Разослать состояние во все живые модели. Возвращает число получателей,
-    /// которым удалось поставить задачу в очередь.
+    /// Broadcast a state to all live models. Returns the number of receivers
+    /// for which the task was queued successfully.
     ///
-    /// Пустые идентификаторы склад отбрасывает — так же, как оригинал.
+    /// The store discards empty identifiers — just like the original.
     pub fn set(source_id: &str, item_id: &str, state: i32) -> usize {
         set_progress(source_id, item_id, state, Transfer::default())
     }
 
-    /// То же, что [`set`], вместе с ходом передачи.
+    /// The same as [`set`], together with the transfer progress.
     pub fn set_progress(source_id: &str, item_id: &str, state: i32, transfer: Transfer) -> usize {
         if source_id.is_empty() || item_id.is_empty() {
             return 0;
@@ -882,7 +922,8 @@ pub mod acquisition {
         } else {
             reg.in_flight.remove(&key);
         }
-        // retain, а не итерация: запись мёртвого получателя снимается здесь.
+        // retain rather than iteration: the entry of a dead receiver is removed
+        // here.
         reg.entries.retain(|(_, deliver)| match deliver(source_id, item_id, state, transfer) {
             Ok(()) => {
                 delivered += 1;
@@ -893,15 +934,16 @@ pub mod acquisition {
         delivered
     }
 
-    /// Забыть, что качается (стенду: каждый сценарий начинается с чистого
-    /// склада — иначе незавершённое скачивание прошлого сценария
-    /// подмешивалось бы в выдачу следующего).
+    /// Forget what is downloading (for the bench: every scenario starts with a
+    /// clean store — otherwise an unfinished download of the previous scenario
+    /// would mix into the results of the next one).
     pub fn forget_in_flight() {
         registry().lock().expect("реестр склада не отравлен").in_flight.clear();
     }
 
-    /// `mergeRemoteRow` оригинала: пока предмет качается, свежая выдача
-    /// (где он ещё «не скачан») не сбрасывает показанный ход скачивания.
+    /// The original's `mergeRemoteRow`: while an item is downloading, fresh
+    /// results (where it is still "not downloaded") do not reset the shown
+    /// download progress.
     pub fn merge(row: &mut super::RemoteRow) {
         if row.acquisition_state == 3 {
             return;
@@ -917,14 +959,14 @@ pub mod acquisition {
 }
 
 // ============================================================================
-// Qt-слой
+// Qt layer
 // ============================================================================
 
-/// Rust-состояние модели.
+/// Rust state of the model.
 #[derive(Default)]
 pub struct RemoteListModelRust {
     rows: RemoteRows,
-    /// Номер записи в общем складе; 0 — не зарегистрирована.
+    /// Entry number in the shared store; 0 means not registered.
     store_id: u64,
 }
 
@@ -936,9 +978,9 @@ impl Drop for RemoteListModelRust {
     }
 }
 
-/// Набор ролей из одного номера — то, что уезжает третьим аргументом
-/// dataChanged. ПУСТОЙ вектор означал бы «изменились все роли», и вид
-/// пересчитал бы карточку целиком; здесь этого не бывает никогда.
+/// A role set of one number — what goes as the third argument of
+/// dataChanged. An EMPTY vector would mean "all roles changed", and the view
+/// would recompute the whole card; here that never happens.
 fn role_vector(name: &str) -> QVector<i32> {
     let mut roles = QVector::<i32>::default();
     if let Some(slot) = ROLE_NAMES.iter().position(|n| *n == name) {
@@ -949,11 +991,11 @@ fn role_vector(name: &str) -> QVector<i32> {
 
 impl cxx_qt::Initialize for qobject::RemoteListModel {
     fn initialize(mut self: Pin<&mut Self>) {
-        // Регистрация в общем складе — в пост-конструкции: qt_thread()
-        // требует уже построенного QObject.
+        // Registration in the shared store — in post-construction: qt_thread()
+        // requires an already constructed QObject.
         let handle = self.as_ref().get_ref().qt_thread();
-        // Ни unwrap(), ни предварительного is_destroyed(): между проверкой
-        // и постановкой объект успевает умереть.
+        // Neither unwrap() nor a preceding is_destroyed(): between the check and
+        // the queueing the object may die.
         let id = acquisition::register(Box::new(move |source_id, item_id, state, transfer| {
             let source = source_id.to_string();
             let item = item_id.to_string();
@@ -963,8 +1005,8 @@ impl cxx_qt::Initialize for qobject::RemoteListModel {
                 model.emit_events(&events);
             }) {
                 Ok(()) => Ok(()),
-                // Объект умер — запись больше не нужна. Прочие ошибки
-                // (не удался invokeMethod) объект не хоронят.
+                // The object died — the entry is no longer needed. Other errors
+                // (invokeMethod failed) do not bury the object.
                 Err(cxx_qt::ThreadingQueueError::ObjectDestroyed) => Err(()),
                 Err(_) => Ok(()),
             }
@@ -974,22 +1016,22 @@ impl cxx_qt::Initialize for qobject::RemoteListModel {
 }
 
 impl qobject::RemoteListModel {
-    // ── Свойства ──────────────────────────────────────────────────────────
-    // pub: счётчик строк читает стенд запросов партии 3.
+    // ── Properties ────────────────────────────────────────────────────────
+    // pub: the batch 3 query bench reads the row counter.
     pub fn count(&self) -> i32 {
         self.rows.len() as i32
     }
 
-    // pub: флаг догрузки читает и запрос-владелец (партия 3) — у него
-    // свойство `hasMore` не собственное, а пересказ модели, как в мосте
-    // (`return self._model.hasMore`).
+    // pub: the load-more flag is also read by the owning query (batch 3) — its
+    // `hasMore` property is not its own but a retelling of the model, as in the
+    // bridge (`return self._model.hasMore`).
     pub fn has_more(&self) -> bool {
         self.rows.has_more()
     }
 
     // ── QAbstractListModel ────────────────────────────────────────────────
     fn row_count(&self, parent: &QModelIndex) -> i32 {
-        // У плоского списка дети есть только у корня.
+        // In a flat list only the root has children.
         if parent.is_valid() {
             0
         } else {
@@ -1022,20 +1064,20 @@ impl qobject::RemoteListModel {
         self.rows.can_fetch_more(!parent.is_valid())
     }
 
-    // pub: догрузку дёргает стенд запросов партии 3 — ровно так, как это
-    // делает GridView, через протокол самой модели.
+    // pub: loading more is triggered by the batch 3 query bench — exactly as
+    // GridView does it, through the model's own protocol.
     pub fn fetch_more(mut self: Pin<&mut Self>, parent: &QModelIndex) {
         let root = !parent.is_valid();
         let events = self.as_mut().rust_mut().rows.fetch_more(root);
         self.emit_events(&events);
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
-    // pub: строку целиком читает стенд запросов партии 3.
+    // ── API for QML ───────────────────────────────────────────────────────
+    // pub: the batch 3 query bench reads a whole row.
     pub fn get(&self, row: i32) -> qobject::QMap_QString_QVariant {
         let mut map = QMap::<QMapPair_QString_QVariant>::default();
         let Some(entry) = self.rows.row(row) else {
-            // Строки нет — пустая карта, как у оригинала (`return {}`).
+            // No row — an empty map, as in the original (`return {}`).
             return map;
         };
         for (slot, name) in ROLE_NAMES.iter().enumerate() {
@@ -1152,8 +1194,9 @@ impl qobject::RemoteListModel {
         acquisition::set(&source_id.to_string(), &item_id.to_string(), state) as i32
     }
 
-    // ── Rust-API (им будет пользоваться запрос партии 3) ───────────────────
-    /// Полная замена выдачи: reset модели, потом сигналы-хвост.
+    // ── Rust API (the batch 3 query will use it) ───────────────────────────
+    /// A full replacement of the results: a model reset, then the trailing
+    /// signals.
     pub fn reset_page(mut self: Pin<&mut Self>, rows: Vec<RemoteRow>, has_more: bool) {
         let events = unsafe {
             self.as_mut().begin_reset_model();
@@ -1164,18 +1207,18 @@ impl qobject::RemoteListModel {
         self.emit_events(&events);
     }
 
-    /// Одиночная смена флага догрузки. Ей пользуется запрос-владелец партии
-    /// 3: оригинал гасит `hasMore` ДО отправки страницы, иначе GridView
-    /// дёргает `fetchMore` повторно, пока страница в полёте.
+    /// A single change of the load-more flag. The batch 3 owning query uses it:
+    /// the original clears `hasMore` BEFORE sending the page, otherwise GridView
+    /// pokes `fetchMore` again while the page is in flight.
     pub fn set_page_has_more(mut self: Pin<&mut Self>, value: bool) {
         let events = self.as_mut().rust_mut().rows.set_has_more(value);
         self.emit_events(&events);
     }
 
-    /// Догрузка страницы: объявить вставку, дописать, закрыть, потом хвост.
+    /// Loading a page: announce the insertion, append, close, then the tail.
     pub fn append_page(mut self: Pin<&mut Self>, rows: Vec<RemoteRow>, has_more: bool) {
-        // Диапазон считается ДО правки состояния: beginInsertRows обязан
-        // знать его заранее.
+        // The range is computed BEFORE editing the state: beginInsertRows must
+        // know it in advance.
         let range = self.rows.insert_range(rows.len());
         let events = unsafe {
             if let Some((first, last)) = range {
@@ -1194,20 +1237,20 @@ impl qobject::RemoteListModel {
         self.emit_events(&events);
     }
 
-    // ── Внутреннее ────────────────────────────────────────────────────────
-    /// Единственное место, где события чистого слоя превращаются в сигналы
-    /// Qt. Структурные (modelReset/rowsInserted) пропускаются: их испускает
-    /// сам QAbstractItemModel в end_reset_model / end_insert_rows.
+    // ── Internals ─────────────────────────────────────────────────────────
+    /// The only place where events of the pure layer turn into Qt signals.
+    /// Structural ones (modelReset/rowsInserted) are skipped: QAbstractItemModel
+    /// itself emits them in end_reset_model / end_insert_rows.
     ///
-    /// ⚠️ Значения берутся ЖИВЫЕ, а не запланированные, и это не придирка.
-    /// GridView спрашивает `canFetchMore`/`fetchMore` прямо из обработчика
-    /// `modelReset`, то есть РЕЕНТРАНТНО — ещё внутри `end_reset_model()`,
-    /// до того как reset успел досказать свой хвост сигналов. К моменту,
-    /// когда очередь доходит до хвостового `hasMoreChanged`, флаг уже сбит
-    /// догрузкой в false, и отправить запланированный `true` значило бы
-    /// соврать виду. Оригинал шлёт именно текущее состояние
-    /// (`self.hasMoreChanged.emit(self._has_more)`, bridge.py:691) — здесь
-    /// то же самое.
+    /// Warning: the values are taken LIVE, not as planned, and this is not
+    /// nitpicking. GridView asks `canFetchMore`/`fetchMore` right from the
+    /// `modelReset` handler, that is, REENTRANTLY — still inside
+    /// `end_reset_model()`, before the reset has finished its tail of signals.
+    /// By the time the queue reaches the trailing `hasMoreChanged`, the flag has
+    /// already been knocked to false by loading more, and sending the planned
+    /// `true` would lie to the view. The original sends exactly the current
+    /// state (`self.hasMoreChanged.emit(self._has_more)`, bridge.py:691) — the
+    /// same here.
     fn emit_events(mut self: Pin<&mut Self>, events: &[ModelEvent]) {
         for event in events {
             match event {
@@ -1234,18 +1277,19 @@ impl qobject::RemoteListModel {
 }
 
 // ============================================================================
-// Голден: разбор эталона, снятого с ЖИВОЙ Python-модели
+// Golden: parsing the reference captured from the LIVE Python model
 // ============================================================================
 
-/// Разбор `tests/golden/remote_list_cases.json`. Живёт не под `#[cfg(test)]`,
-/// потому что тем же эталоном пользуется стенд `selftest::run()`: чистый слой
-/// проверяется `cargo test`, а Qt-слой — настоящим QObject'ом.
+/// Parsing `tests/golden/remote_list_cases.json`. Lives outside
+/// `#[cfg(test)]` because the `selftest::run()` bench uses the same
+/// reference: the pure layer is checked by `cargo test`, and the Qt layer by
+/// a real QObject.
 pub mod golden {
     use super::{ModelEvent, RemoteRow, RemoteRows};
     use serde::Deserialize;
     use serde_json::Value;
 
-    /// Эталон целиком.
+    /// The whole reference.
     #[derive(Debug, Deserialize)]
     pub struct Golden {
         pub cases: Vec<Case>,
@@ -1260,8 +1304,9 @@ pub mod golden {
         pub final_: Vec<Final>,
     }
 
-    // «final» — ключевое слово Rust только как идентификатор поля не мешает,
-    // но serde-имя в голдене именно final, отсюда переименование.
+    // "final" is a Rust keyword, which does not get in the way only as a field
+    // identifier, but the serde name in the golden file is exactly final, hence
+    // the rename.
     #[derive(Debug, Deserialize)]
     pub struct Step {
         pub op: String,
@@ -1319,13 +1364,14 @@ pub mod golden {
         pub item_first: Value,
     }
 
-    /// Голден в исходниках крейта — тот самый файл, который печатает
-    /// tests/golden/remote_list_cases.py с живого Python-моста.
+    /// The golden file in the crate sources — the very file printed by
+    /// tests/golden/remote_list_cases.py from the live Python bridge.
     pub const GOLDEN_JSON: &str = include_str!("../tests/golden/remote_list_cases.json");
 
     pub fn load() -> Golden {
-        // serde не умеет ключ «final» без переименования, а голден пишет
-        // именно его: правим на лету, чтобы не заводить второй формат.
+        // serde cannot handle the key "final" without a rename, and the golden
+        // file writes exactly that: we fix it on the fly so as not to introduce a
+        // second format.
         let raw: Value = serde_json::from_str(GOLDEN_JSON).expect("голден читается");
         let mut fixed = raw;
         if let Some(cases) = fixed.get_mut("cases").and_then(Value::as_array_mut) {
@@ -1340,9 +1386,9 @@ pub mod golden {
         serde_json::from_value(fixed).expect("голден разбирается в структуры")
     }
 
-    /// Ожидаемое событие голдена → событие модели. Здесь же ловится
-    /// «широкий» dataChanged: у эталона он ВСЕГДА ровно с одной ролью, и
-    /// набор из нуля или двух ролей уронит разбор.
+    /// An expected golden event → a model event. A "wide" dataChanged is also
+    /// caught here: in the reference it ALWAYS has exactly one role, and a set
+    /// of zero or two roles will fail the parsing.
     pub fn expected_event(event: &Event) -> (usize, ModelEvent) {
         let model = event.model;
         let value = match event.sig.as_str() {
@@ -1376,7 +1422,7 @@ pub mod golden {
         (model, value)
     }
 
-    /// Имена авторов из голдена в порядке записи.
+    /// Author names from the golden file in record order.
     pub fn names_of(step: &Step) -> Vec<(String, String)> {
         step.names
             .iter()
@@ -1389,8 +1435,8 @@ pub mod golden {
             .collect()
     }
 
-    /// Прогнать случай через ЧИСТЫЙ слой и вернуть состояние моделей вместе
-    /// с журналом событий в порядке возникновения.
+    /// Run a case through the PURE layer and return the model state together
+    /// with the event journal in order of occurrence.
     pub fn replay_pure(case: &Case) -> (Vec<RemoteRows>, Vec<(usize, ModelEvent)>) {
         let mut models: Vec<RemoteRows> = (0..case.models).map(|_| RemoteRows::default()).collect();
         let mut journal: Vec<(usize, ModelEvent)> = Vec::new();
@@ -1410,8 +1456,7 @@ pub mod golden {
                 "setAuthors" => models[index].set_authors(&names_of(step)),
                 "setAuthorAvatars" => models[index].set_author_avatars(&names_of(step)),
                 "storeSet" => {
-                    // Склад — рассылка во ВСЕ живые модели; пустые
-                    // идентификаторы он отбрасывает.
+                    // The store broadcasts to ALL live models; it discards empty identifiers.
                     if step.source_id.is_empty() || step.item_id.is_empty() {
                         Vec::new()
                     } else {
@@ -1435,20 +1480,22 @@ pub mod golden {
 }
 
 // ============================================================================
-// Стенд: поздние колбэки и Qt-слой на живом QObject
+// Bench: late callbacks and the Qt layer on a live QObject
 // ============================================================================
 
-/// Самопроверка Qt-слоя без QML и без окна.
+/// Self-test of the Qt layer without QML and without a window.
 ///
-/// Здесь доказывается то, ради чего партия существует: модель удаляется,
-/// пока колбэк ещё в полёте, — и это не падение, а `ObjectDestroyed`.
-/// Заодно все случаи голдена прогоняются через НАСТОЯЩИЙ QObject, а не
-/// только через чистый слой: сверяются полный порядок сигналов (включая
-/// modelReset/rowsInserted самого QAbstractItemModel), номера ролей в
-/// dataChanged, значения ролей через data() и содержимое get()/item().
+/// Here we prove what the batch exists for: the model is deleted while a
+/// callback is still in flight — and that is not a crash but
+/// `ObjectDestroyed`. Along the way all golden cases are run through a REAL
+/// QObject, not only through the pure layer: the full signal order
+/// (including the modelReset/rowsInserted of QAbstractItemModel itself), the
+/// role numbers in dataChanged, the role values through data() and the
+/// contents of get()/item() are compared.
 ///
-/// Возврат: 0 — всё сошлось, 1 — есть расхождения. Молчаливого успеха по
-/// таймауту нет: стенд не ждёт ничего, чего не может дождаться.
+/// Return: 0 — everything matched, 1 — there are mismatches. There is no
+/// silent success by timeout: the bench does not wait for anything it
+/// cannot wait for.
 pub mod selftest {
     use super::golden;
     use super::qobject::{
@@ -1462,8 +1509,8 @@ pub mod selftest {
 
     pub const ARG: &str = "--remote-selftest";
 
-    /// Живой объект-модель, созданный фабрикой без родителя. Snимается
-    /// только явным `destroy()` — стенду нужна управляемая смерть.
+    /// A live model object created by the factory without a parent. Removed
+    /// only by an explicit `destroy()` — the bench needs a controlled death.
     struct OwnedModel {
         raw: *mut super::qobject::QObject,
     }
@@ -1475,14 +1522,14 @@ pub mod selftest {
             Self { raw }
         }
 
-        /// Указатель на наследника: одиночное наследование, адрес тот же.
+        /// A pointer to the subclass: single inheritance, the address is the same.
         fn model(&self) -> *mut RemoteListModel {
             self.raw.cast()
         }
 
-        // Изменяемая ссылка из неизменяемой — так и задумано: владеет
-        // объектом Qt, а не Rust, и «изменяемость» здесь про C++-объект,
-        // а не про поле raw.
+        // A mutable reference from an immutable one — this is intended: Qt owns the
+        // object, not Rust, and "mutability" here is about the C++ object, not
+        // about the raw field.
         #[allow(clippy::mut_from_ref)]
         fn pinned(&self) -> Pin<&mut RemoteListModel> {
             unsafe { Pin::new_unchecked(&mut *self.model()) }
@@ -1493,16 +1540,17 @@ pub mod selftest {
         }
     }
 
-    /// Собранный журнал сигналов живого QObject.
+    /// The collected signal journal of a live QObject.
     type Journal = Arc<Mutex<Vec<ModelEvent>>>;
 
-    /// Подписаться на наблюдаемые сигналы модели. Возвращаемые «сторожа»
-    /// связей обязаны жить, пока идёт случай: их Drop разрывает связь.
+    /// Subscribe to the observable signals of the model. The returned connection
+    /// "guards" must live while the case runs: their Drop breaks the
+    /// connection.
     ///
-    /// Структурных сигналов (modelReset, rowsInserted) здесь нет и быть не
-    /// может: они приватные (QPrivateSignal), из Rust на них не подписаться.
-    /// Их порядок сверяет чистый слой в `cargo test` и живой вид в
-    /// QML-стенде — см. шапку модуля.
+    /// There are no structural signals (modelReset, rowsInserted) here and
+    /// cannot be: they are private (QPrivateSignal), and Rust cannot subscribe
+    /// to them. Their order is checked by the pure layer in `cargo test` and by
+    /// the live view in the QML bench — see the module header.
     fn connect_journal(
         model: Pin<&mut RemoteListModel>,
         journal: &Journal,
@@ -1532,10 +1580,10 @@ pub mod selftest {
 
         let sink = Arc::clone(journal);
         guards.push(pin().on_data_changed(move |_, top_left, bottom_right, roles| {
-            // Роли приезжают номерами — переводим в имена ТЕМ ЖЕ способом,
-            // каким их печатает голден. Пустой или многоролевой набор здесь
-            // не превратится в одну роль: он попадёт в журнал как «широкий»
-            // и не совпадёт с эталоном.
+            // Roles arrive as numbers — we translate them into names IN THE SAME way
+            // the golden file prints them. An empty or multi-role set will not turn
+            // into one role here: it will get into the journal as "wide" and will not
+            // match the reference.
             let names: Vec<&'static str> = (0..roles.len())
                 .filter_map(|i| roles.get(i).copied())
                 .filter_map(|role| {
@@ -1555,7 +1603,7 @@ pub mod selftest {
         guards
     }
 
-    /// Значение роли живой модели по имени — через настоящий data().
+    /// A role value of the live model by name — through the real data().
     fn role_text(model: &RemoteListModel, row: i32, name: &str) -> String {
         let value = model.role_value(row, &QString::from(name));
         variant_text(&value)
@@ -1571,7 +1619,7 @@ pub mod selftest {
         }
     }
 
-    /// Строка живой модели в том же JSON-виде, что печатает голден.
+    /// A row of the live model in the same JSON form the golden file prints.
     fn map_to_json(map: &QMap<QMapPair_QString_QVariant>) -> serde_json::Value {
         let mut object = serde_json::Map::new();
         for (key, value) in map.iter() {
@@ -1604,7 +1652,7 @@ pub mod selftest {
         }
     }
 
-    /// Прогон одного случая голдена через живой QObject.
+    /// Running one golden case through a live QObject.
     fn run_case(case: &golden::Case, report: &mut Report) {
         let models: Vec<OwnedModel> = (0..case.models).map(|_| OwnedModel::new()).collect();
         let journals: Vec<Journal> = (0..case.models)
@@ -1639,8 +1687,8 @@ pub mod selftest {
                     }
                     model.set_authors(&names);
                 }
-                // Аватарки приезжают вторым проходом, ОТДЕЛЬНЫМ инвокаблом:
-                // имя уже отрисовано, картинка догоняет своей ролью.
+                // Avatars arrive in a second pass, with a SEPARATE invokable: the name is
+                // already drawn, the picture catches up with its own role.
                 "setAuthorAvatars" => {
                     let mut avatars = QMap::<QMapPair_QString_QVariant>::default();
                     for (key, value) in golden::names_of(step) {
@@ -1655,23 +1703,23 @@ pub mod selftest {
                         &QString::from(&step.item_id),
                         step.state,
                     );
-                    // Склад доставляет очередью цикла событий: в Python это
-                    // прямая связь, здесь — очередь, и её надо прокрутить.
+                    // The store delivers through the event loop queue: in Python this is a
+                    // direct connection, here it is a queue, and it has to be spun.
                     rexon_process_events(50);
                 }
                 other => panic!("стенд: неизвестное действие {other}"),
             }
         }
-        // Хвост очереди склада на случай, если последний шаг был storeSet.
+        // The tail of the store queue in case the last step was storeSet.
         rexon_process_events(50);
 
-        // ── сверка журналов ────────────────────────────────────────────────
+        // ── journal comparison ─────────────────────────────────────────────
         let mut expected: Vec<Vec<ModelEvent>> = vec![Vec::new(); case.models];
         for event in &case.events {
             let (index, value) = golden::expected_event(event);
-            // Структурные сигналы из ожидаемого ряда выбрасываются: на них
-            // из Rust не подписаться (см. connect_journal). Их порядок
-            // проверяется чистым слоем в cargo test и живым видом в QML.
+            // Structural signals are thrown out of the expected sequence: Rust cannot
+            // subscribe to them (see connect_journal). Their order is checked by the
+            // pure layer in cargo test and by the live view in QML.
             if value.is_structural() {
                 continue;
             }
@@ -1693,7 +1741,7 @@ pub mod selftest {
             });
         }
 
-        // ── сверка состояния ──────────────────────────────────────────────
+        // ── state comparison ──────────────────────────────────────────────
         for (index, want) in case.final_.iter().enumerate() {
             let model = models[index].pinned();
             let at = format!("{} · модель {index}", case.name);
@@ -1716,8 +1764,8 @@ pub mod selftest {
             }
             for (row, row_want) in want.rows.iter().enumerate() {
                 let at = format!("{at} · строка {row} ({})", row_want.item_id);
-                // Голден снят до waywallen 0.6.0: новые роли сверяет
-                // `new_roles_reach_qml` ниже.
+                // The golden file was captured before waywallen 0.6.0: the new roles are
+                // checked by `new_roles_reach_qml` below.
                 for name in &ROLE_NAMES[..GOLDEN_ROLES] {
                     let actual = role_text(&model, row as i32, name);
                     let expected = expected_role_text(row_want, name);
@@ -1739,7 +1787,7 @@ pub mod selftest {
             report.check(map_to_json(&model.get(-1)) == want.get_negative, || {
                 format!("{at}: get(-1) разошёлся")
             });
-            // Роли, которой нет, обязаны давать -1 и пустой QVariant.
+            // A role that does not exist must give -1 and an empty QVariant.
             report.check(model.role_number(&QString::from("такойРолиНет")) == -1, || {
                 format!("{at}: несуществующая роль дала не -1")
             });
@@ -1765,7 +1813,7 @@ pub mod selftest {
         }
     }
 
-    /// Страница-образец для сценариев поздних колбэков.
+    /// A sample page for the late callback scenarios.
     fn probe_page() -> Vec<RemoteRow> {
         vec![RemoteRow {
             item_id: "late".to_string(),
@@ -1775,9 +1823,9 @@ pub mod selftest {
         }]
     }
 
-    /// ⭐ Сердцевина партии: поздние колбэки на удалённую модель.
+    /// ⭐ The core of the batch: late callbacks on a deleted model.
     fn run_late_callbacks(report: &mut Report) {
-        // ── 1. Модель ЖИВА: ответ доезжает ────────────────────────────────
+        // ── 1. The model is ALIVE: the answer gets through ────────────────
         let alive = OwnedModel::new();
         alive.pinned().reset_page(probe_page(), false);
         let handle = unsafe { (*alive.model()).qt_thread() };
@@ -1803,10 +1851,10 @@ pub mod selftest {
         });
         alive.destroy();
 
-        // ── 2. Модель УМЕРЛА, ответ ещё в полёте ──────────────────────────
-        // Ровно тот сценарий, что давал «Internal C++ object
-        // (RemoteListModel) already deleted»: вкладку закрыли, пока ответ
-        // remote_search шёл от демона.
+        // ── 2. The model DIED, the answer is still in flight ──────────────
+        // Exactly the scenario that gave "Internal C++ object (RemoteListModel)
+        // already deleted": the tab was closed while the remote_search answer was
+        // coming from the daemon.
         let doomed = OwnedModel::new();
         doomed.pinned().reset_page(probe_page(), false);
         let handle = unsafe { (*doomed.model()).qt_thread() };
@@ -1814,8 +1862,8 @@ pub mod selftest {
         let worker = handle.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(120));
-            // queue(...).ok() — без unwrap() и без is_destroyed(): между
-            // проверкой и постановкой объект успевает умереть.
+            // queue(...).ok() — without unwrap() and without is_destroyed(): between
+            // the check and the queueing the object may die.
             let outcome = match worker.queue(|model| {
                 model.set_acquisition_state(
                     &QString::from("wallhaven"),
@@ -1829,21 +1877,21 @@ pub mod selftest {
             };
             tx.send(outcome).ok();
         });
-        // Модель умирает ДО того, как фоновый поток проснулся.
+        // The model dies BEFORE the background thread wakes up.
         doomed.destroy();
         rexon_process_events(500);
         let verdict = rx.recv().unwrap_or_else(|_| "поток не ответил".to_string());
         report.check(verdict == "объект уничтожен", || {
             format!("поздний колбэк на удалённую модель дал «{verdict}», а обязан был дать «объект уничтожен»")
         });
-        // Дошли сюда живыми — значит, обращения к освобождённой памяти не
-        // было: в Python это место падало RuntimeError и добивалось вторым
-        // исключением в обработчике.
+        // Getting here alive means there was no access to freed memory: in Python
+        // this place crashed with a RuntimeError and was finished off by a second
+        // exception in the handler.
         report.check(handle.is_destroyed(), || {
             "CxxQtThread не считает удалённую модель уничтоженной".to_string()
         });
 
-        // ── 3. Ответ поставлен в очередь, модель умерла ДО его исполнения ──
+        // ── 3. The answer is queued, the model died BEFORE it ran ─────────
         let racing = OwnedModel::new();
         racing.pinned().reset_page(probe_page(), false);
         let handle = unsafe { (*racing.model()).qt_thread() };
@@ -1854,12 +1902,12 @@ pub mod selftest {
             "живая модель: постановка в очередь до удаления не удалась".to_string()
         });
         racing.destroy();
-        // Задача осталась в очереди события уже мёртвого объекта: cxx-qt
-        // печатает qWarning и ничего не делает. Проверяем, что цикл событий
-        // это переживает.
+        // The task stayed in the event queue of an already dead object: cxx-qt
+        // prints a qWarning and does nothing. We check that the event loop survives
+        // this.
         rexon_process_events(300);
 
-        // ── 4. Общий склад: мёртвый получатель не мешает живому ───────────
+        // ── 4. Shared store: a dead receiver does not hinder a live one ───
         let live = OwnedModel::new();
         live.pinned().reset_page(probe_page(), false);
         let dead = OwnedModel::new();
@@ -1884,9 +1932,10 @@ pub mod selftest {
         });
     }
 
-    /// Точка входа стенда. Код возврата — приговор.
+    /// Entry point of the bench. The exit code is the verdict.
     pub fn run() -> i32 {
-        // Стенду хватает ядра приложения: ни окон, ни QML здесь нет.
+        // The application core is enough for the bench: there are no windows and
+        // no QML here.
         let mut app = cxx_qt_lib::QCoreApplication::new();
         if let Some(app) = app.as_mut() {
             app.set_application_name(&QString::from("Rexon (стенд Discover)"));
@@ -1900,10 +1949,10 @@ pub mod selftest {
             events: 0,
         };
 
-        // ⭐ Пустая выборка = провал, а не успех: голден без случаев прогнал бы
-        // перебор НИ РАЗУ и объявил стенд зелёным, не проверив ничего. Тот же
-        // класс, на котором попался QML-стенд: сценарий Мастерской шёл на пустой
-        // модели и сверял ноль с нулём.
+        // ⭐ An empty selection = a failure, not a success: a golden file without
+        // cases would run the loop NOT ONCE and declare the bench green without
+        // checking anything. The same class the QML bench fell for: the Workshop
+        // scenario ran on an empty model and compared zero with zero.
         report.check(!golden.cases.is_empty(), || {
             "в эталоне нет ни одного случая — стенду нечего проверять".to_string()
         });
@@ -1922,8 +1971,8 @@ pub mod selftest {
         for failure in &report.failures {
             println!("REXON-REMOTE-SELFTEST-FAIL {failure}");
         }
-        // «Широких» dataChanged быть не должно ни одного: точечное
-        // обновление роли не имеет права вырождаться в «изменились все».
+        // There must not be a single "wide" dataChanged: a targeted role update has
+        // no right to degenerate into "everything changed".
         let ok = report.failures.is_empty() && report.wide_updates == 0;
         println!(
             "REXON-REMOTE-SELFTEST-VERDICT {} failures={}",
@@ -1939,11 +1988,11 @@ mod tests {
     use super::golden;
     use super::*;
 
-    /// Голден снят с ЖИВОЙ Python-модели (tests/golden/remote_list_cases.py).
-    /// Здесь он прогоняется через ЧИСТЫЙ слой порта: строки, значения ролей,
-    /// has_more/canFetchMore и — главное — единая последовательность сигналов
-    /// (порядок, строки, роли). Qt-слой той же моделью проверяет стенд
-    /// `selftest::run()`.
+    /// The golden file was captured from the LIVE Python model
+    /// (tests/golden/remote_list_cases.py). Here it is run through the port's
+    /// PURE layer: rows, role values, has_more/canFetchMore and — above all — a
+    /// single sequence of signals (order, rows, roles). The Qt layer of the same
+    /// model is checked by the `selftest::run()` bench.
     #[test]
     fn golden_parity_with_python_model() {
         let golden = golden::load();
@@ -1990,12 +2039,13 @@ mod tests {
 
     #[test]
     fn role_numbers_match_the_original() {
-        // Номера ролей — часть контракта, а не деталь реализации:
-        // bridge.py:577-586 (и remote_model.cpp за ним) нумерует их
-        // Qt::UserRole + 1..9 ИМЕННО в этом порядке. Вендорный QML ходит по
-        // именам и перестановки бы не заметил, но заметил бы всякий, кто
-        // сверяет кадр протокола или пишет прокси-модель поверх нашей.
-        // Последние две — наши (аватарка и работы автора), дописаны в конец.
+        // Role numbers are part of the contract, not an implementation detail:
+        // bridge.py:577-586 (and remote_model.cpp behind it) numbers them
+        // Qt::UserRole + 1..9 in EXACTLY this order. The vendored QML goes by names
+        // and would not notice a permutation, but anyone who compares a protocol
+        // frame or writes a proxy model over ours would.
+        // The last two are ours (the avatar and the author's works), appended at
+        // the end.
         for (number, name) in [
             (257, "itemId"),
             (258, "sourceId"),
@@ -2015,8 +2065,8 @@ mod tests {
         }
     }
 
-    /// waywallen 0.6.0: размер ресурса и ход скачивания — точечно, по
-    /// одной роли на событие; ключ строки — «источник␀предмет».
+    /// waywallen 0.6.0: resource size and download progress — targeted, one
+    /// role per event; the row key is "source␀item".
     #[test]
     fn transfer_progress_updates_role_by_role() {
         let mut rows = RemoteRows::default();
@@ -2059,9 +2109,9 @@ mod tests {
 
     #[test]
     fn every_data_changed_carries_exactly_one_role() {
-        // Отдельная проверка того же, что стенд считает счётчиком
-        // «широких»: точечное обновление не имеет права вырождаться
-        // в «изменились все роли».
+        // A separate check of the same thing the bench counts with the "wide"
+        // counter: a targeted update has no right to degenerate into "all roles
+        // changed".
         let golden = golden::load();
         for case in &golden.cases {
             let (_, journal) = golden::replay_pure(case);
@@ -2079,8 +2129,8 @@ mod tests {
 
     #[test]
     fn broken_page_json_is_silent() {
-        // Битый JSON страницы не должен валить вкладку: пустая выдача и
-        // никаких паник (тот же принцип, что у оверрайдов в партии 1).
+        // A broken page JSON must not bring the tab down: empty results and no
+        // panics (the same principle as for the overrides in batch 1).
         assert!(parse_rows("{это не json").is_empty());
         assert!(parse_rows("[]").is_empty());
         assert_eq!(

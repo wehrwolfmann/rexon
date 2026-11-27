@@ -1,25 +1,25 @@
-// Ручные FFI-привязки к libmpv (client API + render API, OpenGL).
+// Hand-written FFI bindings to libmpv (client API + render API, OpenGL).
 //
-// Проверено по /usr/include/mpv/{client.h,render.h,render_gl.h}, libmpv.so.2,
-// API 2.5.0. Обёртки-крейты намеренно не используются — встраиваем libmpv
-// напрямую (-lmpv), без бинаря mpv и без --wid (на Wayland не работает).
+// Checked against /usr/include/mpv/{client.h,render.h,render_gl.h}, libmpv.so.2,
+// API 2.5.0. Wrapper crates are deliberately not used — we embed libmpv
+// directly (-lmpv), without the mpv binary and without --wid (does not work on Wayland).
 
 #![allow(non_camel_case_types)]
-// Часть биндингов — полная поверхность FFI, задействована не вся.
+// Some of the bindings are the full FFI surface, not all of it is used.
 #![allow(dead_code)]
 
 use std::os::raw::{c_char, c_int, c_void};
 
-// Непрозрачные типы-хэндлы.
+// Opaque handle types.
 pub enum mpv_handle {}
 pub enum mpv_render_context {}
 
-// Идентификаторы событий (нам нужен только event_id — первое поле структуры).
+// Event identifiers (we only need event_id — the first field of the struct).
 pub const MPV_EVENT_NONE: c_int = 0;
 pub const MPV_EVENT_SHUTDOWN: c_int = 1;
 pub const MPV_EVENT_END_FILE: c_int = 7;
 
-// Типы render-параметров (mpv_render_param_type).
+// Render parameter types (mpv_render_param_type).
 pub const MPV_RENDER_PARAM_INVALID: c_int = 0;
 pub const MPV_RENDER_PARAM_API_TYPE: c_int = 1;
 pub const MPV_RENDER_PARAM_OPENGL_INIT_PARAMS: c_int = 2;
@@ -27,19 +27,19 @@ pub const MPV_RENDER_PARAM_OPENGL_FBO: c_int = 3;
 pub const MPV_RENDER_PARAM_FLIP_Y: c_int = 4;
 pub const MPV_RENDER_PARAM_WL_DISPLAY: c_int = 9;
 pub const MPV_RENDER_PARAM_ADVANCED_CONTROL: c_int = 10;
-// «Кадр забрать, но не рисовать»: цель отрисовки не нужна вовсе, а очередь
-// кадров продвигается как обычно. Нужен, когда экранов не осталось.
+// "Take the frame but do not draw": no render target is needed at all, and the frame
+// queue advances as usual. Needed when no screens are left.
 pub const MPV_RENDER_PARAM_SKIP_RENDERING: c_int = 13;
 
-// Бит «есть новый кадр» в возврате mpv_render_context_update().
+// The "new frame available" bit in the return value of mpv_render_context_update().
 pub const MPV_RENDER_UPDATE_FRAME: u64 = 1;
 
-// C-строка типа OpenGL-рендерера ("opengl").
+// C string of the OpenGL renderer type ("opengl").
 pub const MPV_RENDER_API_TYPE_OPENGL: &[u8] = b"opengl\0";
 
 #[repr(C)]
 pub struct mpv_render_param {
-    // В C поле называется `type`.
+    // In C the field is called `type`.
     pub type_: c_int,
     pub data: *mut c_void,
 }
@@ -59,8 +59,8 @@ pub struct mpv_opengl_fbo {
     pub internal_format: c_int,
 }
 
-// Читаем только первое поле event_id; остальную часть настоящей структуры
-// (её владелец — mpv) не трогаем.
+// We read only the first field event_id; the rest of the real struct
+// (owned by mpv) is left untouched.
 #[repr(C)]
 pub struct mpv_event {
     pub event_id: c_int,

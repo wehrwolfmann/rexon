@@ -1,15 +1,15 @@
-//! Golden-сверка порта категорий с оригиналом `rexon/appearance/categories.py`.
+//! Golden check of the categories port against the original `rexon/appearance/categories.py`.
 //!
-//! Эталон `golden/categories_all.json` снят с самого Python при
+//! The golden file `golden/categories_all.json` was captured from Python itself with
 //! `HOME=/home/tester`: `json.dumps({"categories": [asdict(c) for c in
 //! CATEGORIES.values()], "sidebar": [asdict(c) for c in SIDEBAR]},
-//! ensure_ascii=False, indent=1)`. Любое расхождение (id/имя/иконка/путь/
-//! apply_kind/флаги/каталог/порядок) — ошибка транскрипции таблицы.
+//! ensure_ascii=False, indent=1)`. Any mismatch (id/name/icon/path/
+//! apply_kind/flags/catalog/order) is a transcription error in the table.
 //!
-//! Осознанные правки эталона: «Виджеты» 706 → 705 (04.10.2026, зонт
-//! «Plasma 6 Extensions» вместо одних апплетов — как у Discover); пара
-//! полей `local_only` + `store_cats` заменена одним полем каталога `store`
-//! (17.10.2026: каталог раздела задаётся явно, а не выводится из номера).
+//! Deliberate edits of the golden file: «Виджеты» 706 → 705 (04.10.2026, the
+//! «Plasma 6 Extensions» umbrella instead of applets alone — as in Discover); the pair of
+//! fields `local_only` + `store_cats` was replaced with one catalog field `store`
+//! (17.10.2026: a section's catalog is given explicitly, not derived from the number).
 
 use std::path::Path;
 
@@ -21,24 +21,24 @@ use rexon_core::models::to_json_indent1;
 
 mod i18n_pin;
 
-/// Тот же фиксированный дом, что в скрипте снятия эталона.
+/// The same fixed home as in the golden capture script.
 fn home() -> &'static Path {
     Path::new("/home/tester")
 }
 
-/// Полная таблица категорий + сайдбар сериализуются байт-в-байт как
-/// `asdict`-дамп Python (проверяет всю транскрипцию и порядок).
+/// The full category table + sidebar serialize byte for byte as
+/// Python's `asdict` dump (checks the whole transcription and the order).
 ///
-/// Эталон снят с русского интерфейса, поэтому сверка идёт на русском
-/// каталоге `po/ru.po`: заодно она держит слово, что имена разделов
-/// по-русски остались прежними.
+/// The golden file was captured from the Russian interface, so the check runs on the Russian
+/// catalog `po/ru.po`: at the same time it keeps the promise that the section names
+/// in Russian stayed the same.
 #[test]
 fn categories_and_sidebar_byte_identical() {
     let _lang = i18n_pin::ru();
     let golden = include_str!("golden/categories_all.json");
-    // Разделы окружений (04.10.2026), «Панель MATE» (17.10.2026) и разделы
-    // настроек (01.11.2026) эталон Python не знал — сверяется всё
-    // остальное; сами разделы держат сверки ниже.
+    // The desktop sections (04.10.2026), «Панель MATE» (17.10.2026) and the settings
+    // sections (01.11.2026) were unknown to the Python golden file — everything
+    // else is checked; the sections themselves are held by the checks below.
     let python_era = |v: Vec<rexon_core::models::ThemeCategory>| {
         v.into_iter()
             .filter(|c| {
@@ -55,7 +55,7 @@ fn categories_and_sidebar_byte_identical() {
     assert_eq!(to_json_indent1(&value), golden);
 }
 
-/// По-английски — исходные имена разделов.
+/// In English — the source section names.
 #[test]
 fn section_names_in_english() {
     let _lang = i18n_pin::en();
@@ -70,9 +70,9 @@ fn section_names_in_english() {
     assert_eq!(name("global"), "Global Themes");
 }
 
-/// Число категорий и сайдбара — как в Python (21 реальная, 23 в сайдбаре)
-/// плюс разделы окружений: каждый и в таблице, и в боковой панели; плюс
-/// «Панель MATE» — только в боковой панели (ставить в неё нечего).
+/// The number of categories and sidebar entries — as in Python (21 real, 23 in the sidebar)
+/// plus the desktop sections: each both in the table and in the sidebar; plus
+/// «Панель MATE» — only in the sidebar (nothing can be installed into it).
 #[test]
 fn counts_match_python() {
     assert_eq!(categories(home()).len(), 21 + DE_SECTIONS.len());
@@ -82,15 +82,15 @@ fn counts_match_python() {
     );
 }
 
-/// Разделы окружений: у каждого свой тип, кнопка из `de_apply`, каталог из
-/// матрицы, и виден он только там, где тип применим.
+/// Desktop sections: each has its own type, a button from `de_apply`, a catalog from
+/// the matrix, and it is visible only where the type applies.
 #[test]
 fn de_sections_follow_the_matrix() {
     let _lang = i18n_pin::en();
     for (id, key) in DE_SECTIONS {
         let c = category_by_id(home(), *id).unwrap();
         assert_eq!(c.key, *key);
-        // Каталог — из поля раздела, не из номера.
+        // The catalog comes from the section's field, not from the number.
         assert_eq!(c.store, rexon_core::categories::de_section_store(key), "{key}");
         let kind = rexon_core::categories::category_kind(key).unwrap();
         assert!(rexon_core::de_apply::mode(kind).is_some(), "{key}: нет кнопки");
@@ -105,16 +105,16 @@ fn de_sections_follow_the_matrix() {
     assert!(shown("lxqttheme", "lxqt") && !shown("lxqttheme", "kde"));
     assert!(shown("tabbox", "kde") && shown("kwinscripts", "kde") && !shown("kwinscripts", "gnome"));
     assert!(shown("gnomeext", "gnome") && !shown("gnomeext", "kde"));
-    // Conky — отдельная программа: работает везде.
+    // Conky is a separate program: it works everywhere.
     for de in ["kde", "gnome", "xfce", "mate", "cinnamon", "lxqt", "sway"] {
         assert!(shown("conky", de), "conky в {de}");
     }
     assert_eq!(get_category(home(), "xfwm4").unwrap().name, "Window Borders (XFCE)");
 }
 
-/// `category_by_id` — как `CATEGORIES.get`: находит реальную по cat_id.
-/// Для дублирующихся ключей (splash: 902/716/488) id уникальны и резолвятся
-/// в свою запись.
+/// `category_by_id` — like `CATEGORIES.get`: finds the real one by cat_id.
+/// For duplicated keys (splash: 902/716/488) the ids are unique and resolve
+/// to their own entry.
 #[test]
 fn category_by_id_resolves() {
     let c = category_by_id(home(), 722).unwrap();
@@ -122,22 +122,22 @@ fn category_by_id_resolves() {
     assert_eq!(c.apply_kind, "global");
     assert_eq!(c.install_dir, "/home/tester/.local/share/plasma/look-and-feel");
     assert!(category_by_id(home(), 999999).is_none());
-    // splash-«зонт» 902 и реальные 716/488 — разные записи с общим ключом.
+    // The splash "umbrella" 902 and the real 716/488 — different entries with a shared key.
     assert_eq!(category_by_id(home(), 902).unwrap().ocs_cats(), [716, 488]);
     assert_eq!(category_by_id(home(), 716).unwrap().ocs_cats(), [716]);
 }
 
-/// Разделы с магазином KDE — те же категории, что у Discover (knsrc):
-/// «Виджеты» — зонт 705, KWin — 719/720/721. Товар приходит с номером
-/// своей подкатегории, и этот номер обязан вести в раздел: от него зависят
-/// каталог установки, вид и кнопка.
+/// Sections with the KDE store are the same categories as in Discover (knsrc):
+/// «Виджеты» is the umbrella 705, KWin — 719/720/721. An item arrives with the number
+/// of its subcategory, and that number must lead to the section: the install
+/// directory, the view and the button depend on it.
 #[test]
 fn store_sections_and_item_type_ids() {
     let widgets = category_by_id(home(), 705).unwrap();
     assert_eq!(widgets.key, "plasmoids");
     assert!(!widgets.local_only() && widgets.ocs_cats() == [705]);
     assert_eq!(widgets.install_dir, "/home/tester/.local/share/plasma/plasmoids");
-    // Апплеты, календари, часы, меню, мониторинг, мультимедиа, погода.
+    // Applets, calendars, clocks, menus, monitoring, multimedia, weather.
     for typeid in 706..=712 {
         let c = category_by_id(home(), typeid).unwrap_or_else(|| panic!("{typeid}"));
         assert_eq!(c.id, 705, "{typeid}");
@@ -153,22 +153,22 @@ fn store_sections_and_item_type_ids() {
         assert_eq!(c.ocs_cats(), [id], "{key}: у раздела есть магазин");
         assert!(is_de_section(id), "{key}: раздел окружения");
     }
-    // Прежние местные номера (до 04.10.2026) ведут туда же.
+    // The former local numbers (before 04.10.2026) lead to the same place.
     assert_eq!(category_by_id(home(), 911).unwrap().key, "tabbox");
     assert_eq!(category_by_id(home(), 912).unwrap().key, "kwinscripts");
     assert_eq!(category_by_id(home(), 913).unwrap().key, "kwineffects");
-    // «Расширения GNOME» — витрина extensions.gnome.org (13.11.2026).
+    // «Расширения GNOME» — the extensions.gnome.org storefront (13.11.2026).
     let ego = category_by_id(home(), 914).unwrap();
     assert_eq!(ego.store, rexon_core::models::CatalogSource::GnomeExtensions);
     assert!(!ego.local_only() && ego.ocs_cats().is_empty());
-    // Видны только в KDE — это решает матрица.
+    // Visible only in KDE — the matrix decides that.
     let shown = rexon_core::categories::category_available;
     assert!(shown("kwineffects", "kde") && !shown("kwineffects", "xfce"));
     assert!(shown("plasmoids", "kde"));
 }
 
-/// `category_by_kind` — первая в порядке объявления `CATEGORIES` с этим
-/// apply_kind (для splash это «зонт» 902, объявленный раньше 716/488).
+/// `category_by_kind` — the first in `CATEGORIES` declaration order with this
+/// apply_kind (for splash it is the "umbrella" 902, declared before 716/488).
 #[test]
 fn category_by_kind_first_declared() {
     assert_eq!(category_by_kind(home(), "icons").unwrap().id, 132);
@@ -176,8 +176,8 @@ fn category_by_kind_first_declared() {
     assert!(category_by_kind(home(), "no_such_kind").is_none());
 }
 
-/// `get_category` перебирает САЙДБАР (включая виртуальные) и берёт первую с
-/// ключом.
+/// `get_category` walks the SIDEBAR (including virtual ones) and takes the first with
+/// the key.
 #[test]
 fn get_category_from_sidebar() {
     assert!(get_category(home(), "active").unwrap().virtual_);
@@ -188,7 +188,7 @@ fn get_category_from_sidebar() {
     assert!(get_category(home(), "missing").is_none());
 }
 
-/// Константы обзорных ключей и агрегата совпадают с Python.
+/// The constants of the overview keys and the aggregate match Python.
 #[test]
 fn constants_match() {
     assert_eq!(LOCAL_VIEW_KEYS, ["active", "downloaded", "system", "favorites"]);
@@ -196,12 +196,12 @@ fn constants_match() {
 }
 
 // ============================================================================
-// Фильтр каталога по окружению
+// Catalog filter by desktop
 // ============================================================================
 
-/// Каждый раздел боковой панели должен быть либо привязан к типу матрицы,
-/// либо осознанно «всегда виден» (обзоры установленного и витрины). Забыть
-/// новый раздел нельзя — тест перечисляет исключения поимённо.
+/// Every sidebar section must be either bound to a matrix type
+/// or deliberately "always visible" (overviews of what is installed and storefronts). Forgetting
+/// a new section is impossible — the test lists the exceptions by name.
 #[test]
 fn every_sidebar_section_is_classified() {
     use rexon_core::categories::category_kind;
@@ -213,14 +213,14 @@ fn every_sidebar_section_is_classified() {
             assert!(category_kind(&c.key).is_none(), "{} — обзор, тип не нужен", c.key);
             continue;
         }
-        // «Панель MATE» — не тип оформления, а раскладки mate-panel: где она
-        // видна, решает своё правило (`category_available`, только MATE).
+        // «Панель MATE» is not a decoration type but mate-panel layouts: where it is
+        // visible is decided by its own rule (`category_available`, MATE only).
         if c.key == rexon_core::categories::MATE_PANEL_KEY {
             assert!(category_kind(&c.key).is_none());
             continue;
         }
-        // Разделы настроек — не тип оформления: где они видны, решает их
-        // правило (`category_available`, по разделу «Настроек»).
+        // Settings sections are not a decoration type: where they are visible is decided by their
+        // rule (`category_available`, by the «Настройки» section).
         if rexon_core::categories::is_settings_panel(&c.key) {
             assert!(category_kind(&c.key).is_none());
             continue;
@@ -235,57 +235,57 @@ fn every_sidebar_section_is_classified() {
     }
 }
 
-/// Покупателю не показывают то, что в его окружении не работает; обзоры и
-/// витрины видны всегда.
+/// The buyer is not shown what does not work in their desktop; overviews and
+/// storefronts are always visible.
 #[test]
 fn sections_filtered_by_desktop() {
     use rexon_core::categories::category_available;
 
-    // KDE: своё всё на месте, и GTK-темы тоже (Firefox, GIMP, kde-gtk-config).
+    // KDE: all of its own is in place, and GTK themes too (Firefox, GIMP, kde-gtk-config).
     for key in ["plasmoids", "global", "aurorae", "gtk", "wallpapers", "widgetstyle"] {
         assert!(category_available(key, "kde"), "{key} пропал в KDE");
     }
-    // GNOME: KDE-шного нет, общее есть.
+    // GNOME: nothing KDE-specific, the common things are there.
     for key in ["plasmoids", "aurorae", "plasma"] {
         assert!(!category_available(key, "gnome"), "{key} не должен быть в GNOME");
     }
     for key in [
         "gtk", "icons", "cursor", "wallpapers", "fonts", "sounds", "plymouth",
-        // Kvantum — движок стилей Qt: под GNOME живут VLC, qBittorrent,
-        // Krita, OBS, и он красит их точно так же.
+        // Kvantum is a Qt style engine: VLC, qBittorrent,
+        // Krita, OBS live under GNOME, and it paints them just the same.
         "widgetstyle", "kvantum",
-        // Цветовые схемы KDE вне Plasma (f83e0bff): kdeglobals для программ
-        // KDE и палитра qt6ct для Qt — раздел нарочно открыт и в GNOME.
+        // KDE color schemes outside Plasma (f83e0bff): kdeglobals for KDE
+        // programs and the qt6ct palette for Qt — the section is deliberately open in GNOME too.
         "colors",
-        // Глобальные темы вне Plasma (01.11.2026) — по частям, тем же
-        // путём, что «Как в дистрибутиве»: цвета, стиль приложений, значки,
-        // курсоры, шрифты, кнопки заголовка (`themes::apply_global_choice_plan`).
+        // Global themes outside Plasma (01.11.2026) — in parts, the same
+        // way as «Как в дистрибутиве»: colors, application style, icons,
+        // cursors, fonts, titlebar buttons (`themes::apply_global_choice_plan`).
         "global",
     ] {
         assert!(category_available(key, "gnome"), "{key} пропал в GNOME");
     }
-    // Тайловые: обои, шрифты, значки, звуки (их играет демон уведомлений,
-    // а не оболочка) — да; плазмоиды — нет.
+    // Tiling ones: wallpapers, fonts, icons, sounds (played by the notification daemon,
+    // not the shell) — yes; plasmoids — no.
     for de in ["sway", "hyprland", "niri"] {
         assert!(category_available("wallpapers", de));
         assert!(category_available("fonts", de));
         assert!(category_available("sounds", de), "звуки пропали в {de}");
         assert!(!category_available("plasmoids", de));
     }
-    // Qt-приложения есть везде — значит и раздел стилей есть везде.
+    // Qt applications are everywhere — so the styles section is everywhere too.
     for de in ["lxqt", "xfce", "cosmic", "sway"] {
         assert!(category_available("widgetstyle", de), "стили Qt пропали в {de}");
     }
-    // Обзоры и витрины — всегда.
+    // Overviews and storefronts — always.
     for key in ["active", "downloaded", "system", "favorites", "popular", "new"] {
         assert!(category_available(key, "gnome"));
     }
-    // Незнакомое окружение — не прячем ничего.
+    // An unfamiliar desktop — we hide nothing.
     assert!(category_available("plasmoids", "какой-то-новый-wm"));
 }
 
-/// Пустой экран без объяснения — недопустим: у скрытого раздела обязан быть
-/// человеческий текст, у доступного — не должно быть никакого.
+/// An empty screen without an explanation is unacceptable: a hidden section must have
+/// human text, an available one must have none.
 #[test]
 fn hidden_section_explains_itself() {
     use rexon_core::categories::category_note;
@@ -307,13 +307,13 @@ fn hidden_section_explains_itself() {
     assert!(en.ends_with("everything your desktop can actually use is still there."), "{en}");
 }
 
-/// Раздел, который работает при условии, показывается — но условие названо.
+/// A section that works under a condition is shown — but the condition is named.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn conditional_section_names_its_condition() {
     use rexon_core::categories::{category_available, category_condition};
 
-    // Звуки в тайловых: раздел на месте, оговорка про демон уведомлений.
+    // Sounds in tiling ones: the section is in place, with a caveat about the notification daemon.
     assert!(category_available("sounds", "sway"));
     let en = {
         let _lang = i18n_pin::en();
@@ -325,32 +325,32 @@ fn conditional_section_names_its_condition() {
     assert_ne!(ru, en);
     assert!(category_condition("sounds", "kde").is_none());
 
-    // Kvantum вне KDE/LXQt: раздел на месте, оговорка про перезаход.
+    // Kvantum outside KDE/LXQt: the section is in place, with a caveat about logging in again.
     for key in ["kvantum", "widgetstyle"] {
         let note = category_condition(key, "gnome").expect("оговорка");
         assert!(note.contains("вход"), "нет условия про вход: {note}");
         assert!(category_condition(key, "kde").is_none());
         assert!(category_condition(key, "lxqt").is_none());
-        // Д1: где переменные сеанса до композитора дойти не могут (sway,
-        // river, Wayfire), оговорка говорит это прямо; Hyprland, niri и
-        // XFCE их получают — там лишнего не пишем.
+        // D1: where session variables cannot reach the compositor (sway,
+        // river, Wayfire), the caveat says so directly; Hyprland, niri and
+        // XFCE get them — we write nothing extra there.
         let sway = category_condition(key, "sway").expect("оговорка sway");
         assert!(sway.starts_with(&note) && sway.contains("sway") && sway.contains("uwsm"), "{sway}");
         for de in ["hyprland", "niri", "xfce", "mate"] {
             assert!(!category_condition(key, de).unwrap().contains("uwsm"), "{de}");
         }
     }
-    // Обзоры диска и незнакомые окружения — без условий.
+    // Disk overviews and unfamiliar desktops — without conditions.
     assert!(category_condition("active", "gnome").is_none());
     assert!(category_condition("sounds", "какой-то-новый-wm").is_none());
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Экран входа: SDDM, Plasma Login Manager, SteamOS (28.09.2026)
+//  Login screen: SDDM, Plasma Login Manager, SteamOS (28.09.2026)
 // ═══════════════════════════════════════════════════════════════════════
 
-/// При SDDM панель ровно прежняя; при Plasma Login Manager на месте
-/// «SDDM (экран входа)» стоит его раздел, остальное не сдвинулось.
+/// With SDDM the sidebar is exactly as before; with Plasma Login Manager its section stands
+/// in place of «SDDM (экран входа)», the rest has not moved.
 #[test]
 fn login_section_follows_the_login_manager() {
     use rexon_core::categories::{plasma_login_category, sidebar_for, PLASMA_LOGIN_KEY};
@@ -376,13 +376,13 @@ fn login_section_follows_the_login_manager() {
     let c = plasma_login_category();
     assert_eq!(c.name, "Login Screen (Plasma Login Manager)");
     assert_eq!(c.icon, "🔐");
-    // Без сети и без прогрева: номер вне магазина, раздел местный.
+    // Without a network and without warm-up: the number is outside the store, the section is local.
     assert!(c.local_only() && c.id > 900 && !c.requires_root);
-    // Раздел находят по ключу, но в таблицу товаров он не попал.
+    // The section is found by key, but it did not get into the items table.
     assert_eq!(get_category(home(), PLASMA_LOGIN_KEY).unwrap().id, c.id);
     assert!(categories(home()).iter().all(|x| x.key != PLASMA_LOGIN_KEY));
     assert!(category_by_kind(home(), "plasmalogin").is_none());
-    // Матрица окружений у него та же, что у SDDM-полки.
+    // Its desktop matrix is the same as the SDDM shelf's.
     assert_eq!(
         rexon_core::categories::category_kind(PLASMA_LOGIN_KEY),
         rexon_core::categories::category_kind("sddm")
@@ -393,12 +393,12 @@ fn login_section_follows_the_login_manager() {
         i18n_pin::ru()
     };
     assert_eq!(plasma_login_category().name, "Экран входа (Plasma Login Manager)");
-    // Имя SDDM-раздела по-русски — прежнее.
+    // The SDDM section name in Russian is the same as before.
     assert_eq!(get_category(home(), "sddm").unwrap().name, "SDDM (вход)");
 }
 
-/// SteamOS: экран входа и заставка загрузки закрыты ЗАРАНЕЕ — раздел на
-/// месте и сразу говорит почему; прочие разделы не задеты.
+/// SteamOS: the login screen and the boot splash are closed IN ADVANCE — the section is in
+/// place and says why right away; other sections are not affected.
 #[test]
 fn steamos_closes_login_and_boot_splash_up_front() {
     use rexon_core::categories::{steamos_block, steamos_note};
@@ -412,7 +412,7 @@ fn steamos_closes_login_and_boot_splash_up_front() {
         assert_eq!(steamos_block(key), None, "{key}");
         assert_eq!(steamos_note(home(), key, true), None, "{key}");
     }
-    // Не SteamOS — ничего не закрыто.
+    // Not SteamOS — nothing is closed.
     assert_eq!(steamos_note(home(), "sddm", false), None);
     assert_eq!(steamos_note(home(), "plymouth", false), None);
 
@@ -428,7 +428,7 @@ fn steamos_closes_login_and_boot_splash_up_front() {
          On SteamOS the boot splash can't be changed: every system update puts the original one back.\n\
          Pick another section on the left — everything your desktop can actually use is still there."
     );
-    // Тексты — те же, что у отказа установщика: одна причина на продукт.
+    // The texts are the same as the installer's refusal: one reason per product.
     assert!(steamos_note(home(), "sddm", true).unwrap().contains(&SteamOsBlock::LoginScreen.reason()));
 
     drop(_lang);
@@ -442,7 +442,7 @@ fn steamos_closes_login_and_boot_splash_up_front() {
 }
 
 // ============================================================================
-// Группы боковой панели и подписи по окружению (16.10.2026)
+// Sidebar groups and per-desktop captions (16.10.2026)
 // ============================================================================
 
 use rexon_core::categories::{
@@ -450,7 +450,7 @@ use rexon_core::categories::{
     system_section_note, SidebarGroup,
 };
 
-/// Видимые в окружении разделы по группам, в порядке экрана.
+/// Sections visible in a desktop, by group, in screen order.
 fn visible_groups(de: &str) -> Vec<(SidebarGroup, Vec<String>)> {
     let mut out: Vec<(SidebarGroup, Vec<String>)> = Vec::new();
     for c in grouped_sidebar(&sidebar(home()), de) {
@@ -484,10 +484,10 @@ fn mate_sidebar_is_grouped_by_what_it_changes() {
         "{groups:?}"
     );
     let keys = |g: SidebarGroup| groups.iter().find(|(x, _)| *x == g).unwrap().1.clone();
-    // Глобальные темы — первыми, как в KDE (вне Plasma — по частям,
-    // 01.11.2026). Кнопки заголовка — в «⚙️ Настройках» Marco, «Анимации»
-    // в MATE нет (08.11.2026): у Marco нет анимаций окон, галочка для
-    // программ — в «GTK-темах → ⚙️ Настройки».
+    // Global themes first, as in KDE (outside Plasma — in parts,
+    // 01.11.2026). Titlebar buttons are in Marco's «⚙️ Настройки», there is no «Анимации»
+    // in MATE (08.11.2026): Marco has no window animations, the checkbox for
+    // programs is in «GTK-темы → ⚙️ Настройки».
     assert_eq!(keys(SidebarGroup::Desktop), ["global", "marco", "mate-panel", "screeneffects"]);
     assert_eq!(
         keys(SidebarGroup::AllApps),
@@ -496,7 +496,7 @@ fn mate_sidebar_is_grouped_by_what_it_changes() {
     assert_eq!(keys(SidebarGroup::QtApps), ["colors", "widgetstyle"]);
     assert_eq!(keys(SidebarGroup::Widgets), ["conky"]);
     assert_eq!(keys(SidebarGroup::System), ["sddm", "plymouth"]);
-    // Каждая группа идёт одним куском: grouped_sidebar не рвёт группы.
+    // Each group comes in one piece: grouped_sidebar does not split groups.
     let mut seen = std::collections::BTreeSet::new();
     for (g, _) in &groups {
         assert!(seen.insert(*g), "группа {g:?} встречается дважды");
@@ -531,7 +531,7 @@ fn section_names_tell_the_truth_outside_plasma() {
     assert_eq!(display_name(&by("xfwm4"), "xfce"), "Рамки окон");
     assert_eq!(display_name(&by("sddm"), "mate"), "Экран входа в систему");
     assert_eq!(display_name(&by("plymouth"), "kde"), "Заставка загрузки (Plymouth)");
-    // Неизвестное окружение видит обе рамки — приписки остаются.
+    // An unknown desktop sees both frames — the annotations stay.
     assert_eq!(display_name(&by("marco"), "nonesuch"), by("marco").name);
 }
 
@@ -543,17 +543,17 @@ fn login_screen_says_it_is_shared_and_who_draws_it() {
     assert!(plm.contains("Plasma Login Manager"), "{plm}");
     let sddm = system_section_note("sddm", "sddm").unwrap();
     assert!(sddm.contains("SDDM") && !sddm.contains("только если"), "{sddm}");
-    // Полка SDDM-тем при LightDM — предупредить заранее.
+    // The SDDM themes shelf with LightDM — warn in advance.
     let light = system_section_note("sddm", "lightdm").unwrap();
     assert!(light.contains("LightDM") && light.contains("SDDM"), "{light}");
     assert!(system_section_note("plymouth", "").unwrap().contains("до входа"));
     assert!(system_section_note("icons", "sddm").is_none());
 }
 
-/// Сторож общего вида «установленные + «Загрузить новые…»»: у КАЖДОГО
-/// раздела боковой панели, у которого есть и скан диска, и магазин, есть
-/// сетка установленного и кнопка магазина — без списка разделов. Conky и
-/// разделы KWin до 17.10.2026 показывали только магазин, хотя скан у них был.
+/// Guard of the common "installed + «Загрузить новые…»" view: EVERY
+/// sidebar section that has both a disk scan and a store has
+/// a grid of installed items and a store button — without a list of sections. Conky and
+/// the KWin sections until 17.10.2026 showed only the store, although they had a scan.
 #[test]
 fn every_section_with_scan_and_store_shows_installed_and_store_together() {
     use rexon_core::appearance_page::{self as ap, CatalogView};
@@ -565,12 +565,12 @@ fn every_section_with_scan_and_store_shows_installed_and_store_together() {
         }
         let scan = !ap::local_scan_plan(&c.key).0.is_empty();
         let store = !c.local_only();
-        // Неизвестное окружение видит все разделы — проверяются все сразу.
+        // An unknown desktop sees all sections — all are checked at once.
         let v = CatalogView::new(c.clone(), "nonesuch");
         assert_eq!(v.has_installed_view(), scan && store, "{}", c.key);
         if scan && store {
-            // Установленное сверху, магазин раздела под ним сразу — без
-            // кнопки «Загрузить новые…» (решение владельца 18.10.2026).
+            // Installed on top, the section's store right below it — without
+            // the «Загрузить новые…» button (owner's decision 18.10.2026).
             assert!(v.installed_view() && !v.is_local() && v.marks_current(), "{}", c.key);
             assert!(v.request_key().starts_with("combined:"), "{}", c.key);
             let ch = v.chrome();
@@ -582,13 +582,13 @@ fn every_section_with_scan_and_store_shows_installed_and_store_together() {
     for key in ["conky", "tabbox", "kwinscripts", "kwineffects", "icons", "global", "splash"] {
         assert!(checked.iter().any(|k| k == key), "{key}: {checked:?}");
     }
-    // Магазинный раздел без скана (обои, виджеты Plasma) — по-прежнему магазин.
+    // A store section without a scan (wallpapers, Plasma widgets) — still a store.
     assert!(!ap::has_installed_grid("wallpapers") && !ap::has_installed_grid("plasmoids"));
 }
 
-/// Каталог раздела — поле `store`, а не номер: запрос и прогрев берут
-/// номера из него, а переключатель «Магазин:» есть только там, где у AUR
-/// есть что показать.
+/// A section's catalog is the `store` field, not the number: the query and the warm-up take
+/// the numbers from it, and the «Магазин:» switch exists only where AUR
+/// has something to show.
 #[test]
 fn catalog_source_is_a_field_not_a_number() {
     use rexon_core::appearance_page::{self as ap, CatalogView};
@@ -602,7 +602,7 @@ fn catalog_source_is_a_field_not_a_number() {
     let open_store = |k: &str| CatalogView::new(by(k), "kde");
     assert!(open_store("global").source_applicable());
     assert!(CatalogView::new(by("popular"), "kde").source_applicable());
-    // У AUR нет пакетов переключателей окон и наборов Conky — чипа «AUR» нет.
+    // AUR has no window switcher packages and Conky sets — there is no «AUR» chip.
     for k in ["tabbox", "conky", "splash"] {
         let v = open_store(k);
         assert!(!v.is_local() && !v.source_applicable(), "{k}");
@@ -611,10 +611,10 @@ fn catalog_source_is_a_field_not_a_number() {
     assert!(open_store("kwinscripts").source_applicable());
 }
 
-/// Разделы окружений с каталогом pling: установленное — сверху, магазин —
-/// под ним на той же странице, товар с номером категории магазина ведёт в
-/// свой раздел (вид установки и кнопка — оттуда), прогрев спрашивает ту же
-/// категорию, что живой запрос.
+/// Desktop sections with a pling catalog: installed on top, the store
+/// below it on the same page, an item with the store's category number leads to
+/// its section (the install view and the button come from there), the warm-up asks for the same
+/// category as the live query.
 #[test]
 fn de_sections_get_their_pling_catalogs() {
     use rexon_core::appearance_page::{self as ap, CatalogView};
@@ -638,11 +638,11 @@ fn de_sections_get_their_pling_catalogs() {
     }
 }
 
-/// Пять разделов Cinnamon — магазин Cinnamon Spices (как у окна настроек
-/// Cinnamon): установленное сверху и магазин раздела под ним сразу, без
-/// кнопки «Загрузить новые…» (решение владельца 18.10.2026); свой ключ
-/// запроса, поиск, сортировка и страницы; KDE Store и AUR там нет. Прежний
-/// номер каталога тем (cinnamon-look, 133) ведёт в раздел тем Cinnamon.
+/// The five Cinnamon sections — the Cinnamon Spices store (as in the Cinnamon settings
+/// window): installed on top and the section's store right below it, without
+/// the «Загрузить новые…» button (owner's decision 18.10.2026); their own query
+/// key, search, sorting and pages; there is no KDE Store and AUR there. The former
+/// theme catalog number (cinnamon-look, 133) leads to the Cinnamon themes section.
 #[test]
 fn cinnamon_sections_show_installed_and_spices_store() {
     use rexon_core::appearance_page::{self as ap, CatalogView};
@@ -666,7 +666,7 @@ fn cinnamon_sections_show_installed_and_spices_store() {
         assert_eq!(ap::source_keys_for(key), vec![ap::SOURCE_SPICES], "{key}");
         assert!(!v.source_applicable() && !v.aur_mode(), "{key}");
         assert_eq!(v.effective_source(), ap::SOURCE_SPICES, "{key}");
-        // Выбор «AUR» из другого раздела здесь не действует.
+        // Choosing «AUR» from another section has no effect here.
         v.source = ap::SOURCE_AUR.into();
         assert!(!v.aur_mode() && v.spices_mode(), "{key}");
         assert_eq!(v.effective_source(), ap::SOURCE_SPICES, "{key}");
@@ -680,17 +680,17 @@ fn cinnamon_sections_show_installed_and_spices_store() {
         assert!(ch.search_placeholder.contains("Cinnamon Spices"), "{}", ch.search_placeholder);
     }
     assert_eq!(category_by_id(home(), 133).unwrap().key, "cinnamontheme");
-    // Остальные разделы магазина своих источников не потеряли.
+    // The other store sections have not lost their sources.
     assert_eq!(ap::source_keys_for("icons")[0], ap::SOURCE_OCS);
     assert_eq!(CatalogView::new(get_category(home(), "icons").unwrap(), "kde").effective_source(), ap::SOURCE_OCS);
 }
 
-/// Темы Cinnamon Spices вне Cinnamon: в «Темах GTK» (во всех окружениях), в
-/// рамках окон XFCE и MATE и в теме GNOME Shell — чип «Cinnamon Spices»
-/// рядом с KDE Store.
-/// Выбран — витрина тем сайта своего раздела (ключ запроса у каждого
-/// раздела свой: отбор по составу разный), поиск без подсказок KDE Store.
-/// В разделах Cinnamon всё как было: Spices — единственный магазин.
+/// Cinnamon Spices themes outside Cinnamon: in «Темы GTK» (in all desktops), in
+/// the XFCE and MATE window frames and in the GNOME Shell theme — a «Cinnamon Spices» chip
+/// next to KDE Store.
+/// When chosen — the site's themes storefront of its section (each section has its own
+/// query key: the selection by contents differs), search without KDE Store suggestions.
+/// In the Cinnamon sections everything is as it was: Spices is the only store.
 #[test]
 fn spices_themes_live_in_gtk_and_border_sections_too() {
     use rexon_core::appearance_page::{self as ap, CatalogView, SuggestAction};
@@ -712,20 +712,20 @@ fn spices_themes_live_in_gtk_and_border_sections_too() {
         assert!(v.chrome().search_placeholder.contains("Cinnamon Spices"), "{key}");
         assert_eq!(ap::suggest_action("adapta", true, &v), SuggestAction::Local, "{key}");
     }
-    // Разделы Cinnamon: чипа нет (магазин один), подсказки тоже местные.
+    // Cinnamon sections: no chip (one store), the suggestions are local too.
     let v = CatalogView::new(get_category(home(), "cinnamontheme").unwrap(), "cinnamon");
     assert_eq!(ap::source_keys_for("cinnamontheme"), vec![ap::SOURCE_SPICES]);
     assert!(ap::source_chips_for("cinnamontheme").is_empty());
     assert!(v.spices_mode() && !v.spices_parts_mode());
     assert_eq!(ap::suggest_action("adapta", true, &v), SuggestAction::Local);
-    // Где тем Spices быть не может, чипа нет.
+    // Where there can be no Spices themes, there is no chip.
     for key in ["icons", "cursor", "lxqttheme", "plasma", "aurorae"] {
         assert!(!ap::source_keys_for(key).contains(&ap::SOURCE_SPICES), "{key}");
     }
 }
 
-/// «Панель MATE» — раздел рабочего стола MATE со своим экраном: ни
-/// магазина, ни скана, ни шапки каталога; в других окружениях его нет.
+/// «Панель MATE» is a MATE desktop section with its own screen: no
+/// store, no scan, no catalog header; it does not exist in other desktops.
 #[test]
 fn mate_panel_lives_in_the_mate_desktop_group() {
     use rexon_core::appearance_page::{self as ap, CatalogView};
@@ -748,14 +748,14 @@ fn mate_panel_lives_in_the_mate_desktop_group() {
 }
 
 // ============================================================================
-// Виджеты на рабочем столе в каждом окружении (24.10.2026)
+// Desktop widgets in every desktop (24.10.2026)
 // ============================================================================
 
-/// В каждом окружении есть группа «Виджеты рабочего стола»: родные виджеты
-/// стола первыми (Plasma, десклеты Cinnamon), виджеты Conky — рядом, а где
-/// своих нет — одни они. Пояснение группы говорит без жаргона, что это
-/// такое; на столах без слоёв Wayland (GNOME, Cinnamon, Pantheon) conky идёт
-/// через XWayland, поэтому оговорки «обычное окно» здесь нет.
+/// Every desktop has the «Виджеты рабочего стола» group: the desktop's native widgets
+/// first (Plasma, Cinnamon desklets), Conky widgets next to them, and where
+/// there are no native ones — Conky alone. The group's explanation says without jargon what it
+/// is; on desktops without Wayland layers (GNOME, Cinnamon, Pantheon) conky goes
+/// through XWayland, so there is no «обычное окно» caveat here.
 #[test]
 fn every_desktop_has_desktop_widgets_explained() {
     use rexon_core::categories::group_note;
@@ -780,8 +780,8 @@ fn every_desktop_has_desktop_widgets_explained() {
         assert_eq!(group_title(SidebarGroup::Widgets, m.id), "Виджеты рабочего стола");
         let note = group_note(SidebarGroup::Widgets, m.id);
         assert!(note.contains("Conky"), "{}: {note}", m.id);
-        // Через XWayland виджет Conky держится на столе и там, где у
-        // Wayland нет слоёв, — оговорки в пояснении группы нет ни у кого.
+        // Through XWayland the Conky widget stays on the desktop even where
+        // Wayland has no layers — nobody has a caveat in the group's explanation.
         assert!(!note.contains("Wayland"), "{}: {note}", m.id);
         if !matches!(de, De::Kde | De::Cinnamon) {
             assert!(note.starts_with("Часы, погода и датчики системы"), "{}: {note}", m.id);
@@ -791,12 +791,12 @@ fn every_desktop_has_desktop_widgets_explained() {
         }
     }
     assert!(checked >= 10, "окружений проверено мало: {checked}");
-    // Неизвестное окружение видит все разделы виджетов — пояснять нечем.
+    // An unknown desktop sees all widget sections — nothing to explain with.
     assert!(group_note(SidebarGroup::Widgets, "nonesuch").is_empty());
 }
 
-/// Cinnamon на Wayland: заголовок раздела Conky показывает дорогу к
-/// десклетам — они держатся на столе в любом сеансе.
+/// Cinnamon on Wayland: the Conky section header shows the way to
+/// desklets — they stay on the desktop in any session.
 #[test]
 fn conky_section_in_cinnamon_wayland_points_to_desklets() {
     use rexon_core::de_apply::conky_section_note;
@@ -809,14 +809,14 @@ fn conky_section_in_cinnamon_wayland_points_to_desklets() {
     assert!(conky_section_note(true, true, "sway", true).is_none());
 }
 
-/// Общий пункт «Тайловые и Wayfire» в выборе окружения «Оформления»: вне
-/// тайлового сеанса под ним едет Hyprland (первый в секции «Тайловые»), а
-/// не Wayfire, который стоит раньше в базе столов; в тайловом сеансе — он
-/// сам. Пункт один.
+/// The common item «Тайловые и Wayfire» in the desktop choice of «Оформление»: outside
+/// a tiling session Hyprland (the first in the «Тайловые» section) goes under it, not
+/// Wayfire, which comes earlier in the desktops database; in a tiling session — the session's
+/// own one. There is one item.
 #[test]
 fn appearance_tiling_choice_defaults_to_hyprland() {
-    // Язык — общий на процесс, а сравниваются ответы разных вызовов: без
-    // закрепления соседняя сверка переключает язык между ними.
+    // The language is common to the process, while the answers of different calls are compared: without
+    // pinning, a neighbouring check switches the language between them.
     let _lang = i18n_pin::en();
     let label = rexon_core::de_customization::De::Wlroots.display_label();
     let tiling_of = |current: &str| -> Vec<String> {
@@ -833,15 +833,15 @@ fn appearance_tiling_choice_defaults_to_hyprland() {
 }
 
 // ============================================================================
-// Разделы настроек в «Оформлении», как в KDE 6.8 (01.11.2026)
+// Settings sections in «Оформление», as in KDE 6.8 (01.11.2026)
 // ============================================================================
 
-/// Анимация, шрифты, кнопки заголовка, отклик при запуске, значки и панели
-/// инструментов, эффекты рабочего стола переехали из «Настроек» в боковую
-/// панель «Оформления» — туда, где их держит «Внешний вид и стиль» KDE 6.8
-/// (`kcm_kwindecoration` → кнопки, `kcm_cursortheme` → отклик,
-/// `kcm_style` → значки и панели, `kcm_fonts`/`kcm_fontinst` → шрифты,
-/// `kcm_animations` — последним). Порядок сверяется поимённо.
+/// Animation, fonts, titlebar buttons, launch feedback, icons and toolbars,
+/// desktop effects moved from «Настройки» to the sidebar
+/// of «Оформление» — where KDE 6.8 «Внешний вид и стиль» keeps them
+/// (`kcm_kwindecoration` → buttons, `kcm_cursortheme` → feedback,
+/// `kcm_style` → icons and toolbars, `kcm_fonts`/`kcm_fontinst` → fonts,
+/// `kcm_animations` — last). The order is checked by name.
 #[test]
 fn settings_panels_stand_where_kde_keeps_them() {
     use rexon_core::appearance_page::{self as ap, CatalogView};
@@ -871,23 +871,23 @@ fn settings_panels_stand_where_kde_keeps_them() {
         keys(SidebarGroup::AllApps),
         ["icons", "cursor", "gtk", "wallpapers", "fonts", "sounds"]
     );
-    // «Обзор» — по-прежнему первым.
+    // «Обзор» is still first.
     assert_eq!(groups[0].0, SidebarGroup::Overview);
-    // Где виден каждый: эффекты KWin — только KDE, значки и панели — везде,
-    // кроме Deepin; прочие — везде.
+    // Where each is visible: KWin effects — only KDE, icons and toolbars — everywhere
+    // except Deepin; the rest — everywhere.
     for de in ["kde", "gnome", "mate", "xfce", "cinnamon", "hyprland", "deepin", "nonesuch"] {
         let known = rexon_core::de_customization::de_from_id(de).is_some();
-        // «Эффекты рабочего стола» — вид «⚙️ Настройки» «Эффектов KWin»
-        // (08.11.2026): своей строки нет ни в одном столе.
+        // «Эффекты рабочего стола» is the «⚙️ Настройки» view of «Эффекты KWin»
+        // (08.11.2026): it has no row of its own in any desktop.
         assert!(get_category(home(), "desktopeffects").is_none(), "{de}");
         let _ = known;
-        // «Анимация» — где у оконного менеджера есть анимации окон.
+        // «Анимация» — where the window manager has window animations.
         assert_eq!(category_available("animations", de), ["kde", "gnome", "cinnamon", "hyprland", "nonesuch"].contains(&de), "{de}");
-        // Эффекты экрана — где их можно включить хоть в одном роде сеанса.
+        // Screen effects — where they can be enabled in at least one session kind.
         assert_eq!(category_available("screeneffects", de), de != "deepin", "{de}");
     }
-    // Подписи — заголовки самих разделов; магазина, скана и шапки нет,
-    // экран — свой.
+    // Captions are the headings of the sections themselves; no store, scan or header,
+    // the screen is their own.
     let names: Vec<(String, String)> = SETTINGS_PANELS
         .iter()
         .map(|(_, k)| (k.to_string(), get_category(home(), k).unwrap().name))
@@ -913,11 +913,11 @@ fn settings_panels_stand_where_kde_keeps_them() {
     }
 }
 
-/// Каталог и настройки одного рода — в одном разделе (08.11.2026), как
-/// вкладки модулей KDE: у «Шрифтов», «Значков», «Курсоров», рамок окон и
-/// «GTK-тем» настройки открываются кнопкой «⚙️ Настройки» в шапке, своих
-/// строк в боковой панели у этих настроек нет ни в одном столе. Настройки,
-/// которой у стола нет, нет и в виде. Один механизм на все пары.
+/// A catalog and settings of one kind live in one section (08.11.2026), like
+/// the tabs of KDE modules: for «Шрифты», «Значки», «Курсоры», window frames and
+/// «GTK-темы» the settings open with the «⚙️ Настройки» button in the header, and these settings
+/// have no rows of their own in the sidebar in any desktop. A setting
+/// the desktop does not have is not in the view either. One mechanism for all pairs.
 #[test]
 fn section_settings_open_inside_catalog_section() {
     use rexon_core::appearance_page::{self as ap, CatalogView};
@@ -939,25 +939,25 @@ fn section_settings_open_inside_catalog_section() {
         }
         let p = |cat: &str| section_settings_panels(cat, de);
         assert_eq!(p("fonts"), [FONT_SETTINGS_PANEL], "{de}");
-        // Размытие обоев — в «Обоях HD» (из вкладки «Настройки» ушло);
-        // рядом — блок «Razer Axon» (его отбирает вид каталога по тому,
-        // найден ли Axon).
-        // Плейлист обоев — первым: его ищут чаще всего.
+        // Wallpaper blur is in «Обои HD» (it left the «Настройки» tab);
+        // next to it is the «Razer Axon» block (the catalog view selects it by whether
+        // Axon is found).
+        // The wallpaper playlist comes first: it is searched for most often.
         assert_eq!(p("wallpapers"), [WALLPAPER_PLAYLIST_PANEL, WALLPAPER_BLUR_PANEL, AXON_SETTINGS_PANEL], "{de}");
-        // Звуки событий и фоновые звуки — в «Звуках».
+        // Event sounds and background sounds are in «Звуки».
         assert_eq!(p("sounds"), [EVENT_SOUNDS_PANEL, AMBIENT_SOUNDS_PANEL], "{de}");
-        // Значки и панели инструментов в Deepin задаёт его Центр управления.
+        // Icons and toolbars in Deepin are set by its Control Center.
         assert_eq!(p("icons"), if de == "deepin" { vec![] } else { vec![APP_WIDGETS_PANEL] }, "{de}");
-        // Отклик при запуске есть только у KDE: где его нет, нет и кнопки
-        // (пустая страница с «в MATE нет настройки…» — тупик).
+        // Launch feedback exists only in KDE: where it does not exist, there is no button either
+        // (an empty page with «в MATE нет настройки…» is a dead end).
         assert_eq!(p("cursor"), if de == "kde" { vec![LAUNCH_FEEDBACK_PANEL] } else { vec![] }, "{de}");
-        // Включение эффектов KWin — кнопкой в «Эффектах KWin» (08.11.2026);
-        // эффекты есть только у KWin, у незнакомого стола кнопка видна.
+        // Enabling KWin effects — with a button in «Эффекты KWin» (08.11.2026);
+        // only KWin has effects, for an unfamiliar desktop the button is visible.
         let kde_like = de == "kde" || de == "nonesuch";
         assert_eq!(p("kwineffects"), if kde_like { vec![DESKTOP_EFFECTS_PANEL] } else { vec![] }, "{de}");
-        // Кнопки заголовка — ровно в одном видимом разделе стола: при
-        // рамках окон, а без них — в «GTK-темах» (функция не теряется).
-        // У незнакомого стола видны все разделы рамок — кнопки в каждом.
+        // Titlebar buttons are in exactly one visible section of the desktop: with
+        // window frames, and without them — in «GTK-темы» (the feature is not lost).
+        // For an unfamiliar desktop all frame sections are visible — buttons in each.
         let with_buttons: Vec<&str> = ["aurorae", "xfwm4", "marco", "cinnamontheme", "openbox", "gtk"]
             .into_iter()
             .filter(|c| category_available(c, de) && p(c).contains(&WINDOW_BUTTONS_KEY))
@@ -972,8 +972,8 @@ fn section_settings_open_inside_catalog_section() {
             _ => &["gtk"],
         };
         assert_eq!(with_buttons, expect, "{de}");
-        // Галочка «Без анимаций» — в «GTK-темах» ровно там, где нет своей
-        // строки «Анимация»; у незнакомого стола строка «Анимация» видна.
+        // The «Без анимаций» checkbox is in «GTK-темы» exactly where there is no own
+        // «Анимация» row; for an unfamiliar desktop the «Анимация» row is visible.
         let gtk_anim = p("gtk").contains(&ANIMATIONS_KEY);
         assert_eq!(gtk_anim, !category_available(ANIMATIONS_KEY, de), "{de}");
     }
@@ -993,26 +993,26 @@ fn section_settings_open_inside_catalog_section() {
         ("gtk", "deepin", "windowbuttons,animations"),
     ] {
         let mut v = CatalogView::new(get_category(home(), cat).unwrap(), de);
-        // Сначала каталог: кнопка есть, экран — плитки, шапка — каталога.
+        // Catalog first: the button is there, the screen is tiles, the header is the catalog's.
         assert!(v.has_section_settings(), "{cat}/{de}");
         assert!(!v.section_settings_open());
         assert_eq!(v.screen(home()), ap::SCREEN_GRID, "{cat}/{de}");
         assert_eq!(v.settings_panel_key(), cat);
         assert!(v.chrome().search, "{cat}/{de}");
-        // «⚙️ Настройки»: те же разделы вкладки «Настройки», без поиска и
-        // магазина.
+        // «⚙️ Настройки»: the same sections of the «Настройки» tab, without search and
+        // store.
         v.section_settings = true;
         assert!(v.section_settings_open());
         assert_eq!(v.screen(home()), ap::SCREEN_SETTINGS, "{cat}/{de}");
         assert_eq!(v.settings_panel_key(), panels);
         assert_eq!(v.chrome(), ap::Chrome::default(), "{cat}/{de}");
     }
-    // Чужой раздел вида настроек не открывает, даже если флаг остался.
+    // A foreign section does not open the settings view, even if the flag remained.
     let mut v = CatalogView::new(get_category(home(), "plymouth").unwrap(), "kde");
     v.section_settings = true;
     assert_eq!(v.screen(home()), ap::SCREEN_GRID);
     assert_eq!(v.settings_panel_key(), "plymouth");
-    // В MATE у «Курсоров» кнопки нет (отклика при запуске там нет).
+    // In MATE «Курсоры» has no button (there is no launch feedback there).
     let mut v = CatalogView::new(get_category(home(), "cursor").unwrap(), "mate");
     v.section_settings = true;
     assert!(!v.has_section_settings());
@@ -1024,7 +1024,7 @@ fn section_settings_open_inside_catalog_section() {
         2,
         "по строке подсказки на раздел"
     );
-    // Блок «Razer Axon» — только при найденном Axon, вместе с его чипом.
+    // The «Razer Axon» block — only when Axon is found, together with its chip.
     let mut v = CatalogView::new(get_category(home(), "wallpapers").unwrap(), "kde");
     assert_eq!(v.section_settings_panels(), [WALLPAPER_PLAYLIST_PANEL, WALLPAPER_BLUR_PANEL]);
     v.axon = true;
@@ -1035,10 +1035,10 @@ fn section_settings_open_inside_catalog_section() {
     assert!(!ap::section_settings_tooltip(&[AXON_SETTINGS_PANEL]).is_empty());
 }
 
-/// Род сеанса выбранного стола (08.11.2026): невозможное в нём не видно.
-/// Эффекты экрана MATE, Xfce и LXQt работают только на X11 (picom) — на
-/// Wayland раздела нет; «сеанс не известен» — видно, если работает хоть в
-/// одном роде.
+/// The session kind of the chosen desktop (08.11.2026): what is impossible in it is not visible.
+/// The MATE, Xfce and LXQt screen effects work only on X11 (picom) — on
+/// Wayland there is no section; "session unknown" — visible if it works in at least
+/// one kind.
 #[test]
 fn sections_follow_session_kind() {
     use rexon_core::appearance_page::CatalogView;
@@ -1064,7 +1064,7 @@ fn sections_follow_session_kind() {
     assert!(!v.de_blocked());
     v.session = Session::Wayland;
     assert!(v.de_blocked());
-    // Разделы без условия сеанса от него не зависят.
+    // Sections without a session condition do not depend on it.
     for key in ["icons", "cursor", "marco", "gtk", "fonts"] {
         assert!(category_available_in(key, "mate", Session::Wayland), "{key}");
     }

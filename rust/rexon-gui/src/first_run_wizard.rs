@@ -1,47 +1,51 @@
-// FirstRunWizard — мост мастера первого запуска между ядром и QML.
+// FirstRunWizard — the first-run wizard bridge between the core and QML.
 //
-// ЗАЧЕМ. Решение «предлагать ли установку», все подписи мастера и сама
-// установка уже есть в ядре (`rexon_core::installer` и
-// `rexon_core::installer_exec`). Окну на Rust не хватало двери к ним:
-// `rexon-main-window` не проверял, установлен ли Rexon, вовсе, и человек,
-// распаковавший архив, оставался без ярлыка в меню и без дополнений для
-// живых обоев, ничего об этом не узнав.
+// WHY. The decision "whether to offer installation", all the wizard's
+// labels and the installation itself already exist in the core
+// (`rexon_core::installer` and `rexon_core::installer_exec`). The Rust
+// window lacked a door to them: `rexon-main-window` did not check whether
+// Rexon was installed at all, and a person who unpacked the archive was
+// left without a launcher in the menu and without the add-ons for live
+// wallpapers, learning nothing about it.
 //
-// ГРАНИЦА. Здесь НЕТ ни одного решения и ни одной подписи:
+// BOUNDARY. There is NOT A SINGLE decision or label here:
 //
-//   * предлагать ли мастер и в каком режиме — `installer::first_run_offer`
-//     (живой вход `first_run_offer_live`);
-//   * все буквы страницы приветствия, согласия «не спрашивать пароль»,
-//     хода и итога — `installer::welcome_texts`,
+//   * whether to offer the wizard and in which mode —
+//     `installer::first_run_offer` (the live entry `first_run_offer_live`);
+//   * all the texts of the welcome page, of the "do not ask for a password"
+//     consent, of progress and the result — `installer::welcome_texts`,
 //     `passwordless_consent_texts`, `progress_texts`, `result_texts`;
-//   * что и куда копировать, чем спрашивать пароль, как разбирать исход —
-//     `installer_exec::install`;
-//   * «больше не спрашивать» — `installer::session_first_run_decline`, тот
-//     же ключ настроек, который читает решение.
+//   * what to copy and where, what to ask for the password with, how to
+//     parse the outcome — `installer_exec::install`;
+//   * "do not ask again" — `installer::session_first_run_decline`, the same
+//     settings key the decision reads.
 //
-// Здесь — только живые факты машины (семейство дистрибутива, свой бинарь,
-// домашняя папка), фоновый поток и перевод карт ядра в QML. Сторож на
-// копипасту подписей — тест в конце файла.
+// Here there are only the machine's live facts (the distribution family,
+// our own binary, the home folder), the background thread and converting
+// the core's maps for QML. The copy-paste guard for labels is the test at
+// the end of the file.
 //
-// ⚠️ ОКНО ХОДА — ОБЩЕЕ. Свойство `operation` и сигнал `operationLog` имеют
-// ТОТ ЖЕ вид, что у `DesktopsActions` и `SettingsActions` (карта `OpView`),
-// поэтому ход и итог установки показывает существующий
-// `qml/DeOperationDialog.qml` без единой правки: `DeOperationDialog {
-// actions: wizard }`.
+// Warning: THE PROGRESS WINDOW IS SHARED. The `operation` property and the
+// `operationLog` signal have THE SAME shape as in `DesktopsActions` and
+// `SettingsActions` (the `OpView` map), so progress and result of the
+// installation are shown by the existing `qml/DeOperationDialog.qml`
+// without a single edit: `DeOperationDialog { actions: wizard }`.
 //
-// ⚠️ УСТАНОВКА ИДЁТ В ФОНЕ. За `pkexec` стоит окно пароля, которое ждёт
-// сколько угодно, а установка недостающих компонентов — минуты. Синхронный
-// вызов подвесил бы окно на всё это время (так и делал Python-мастер).
+// Warning: INSTALLATION RUNS IN THE BACKGROUND. Behind `pkexec` there is a
+// password window that waits as long as it likes, and installing missing
+// components takes minutes. A synchronous call would hang the window for
+// all that time (that is what the Python wizard did).
 //
-// ⚠️ СУХОЙ ПРОГОН. При `REXON_INSTALL_DRY_RUN=1` подставляется записывающий
-// исполнитель [`DryRunIo`]: ни одной записи на диск, ни одной запущенной
-// команды, живой исполнитель установки (`LiveInstallIo`) не создаётся
-// вовсе. Нужен для приёмки мастера глазами на рабочей машине.
+// Warning: DRY RUN. With `REXON_INSTALL_DRY_RUN=1` a recording executor
+// [`DryRunIo`] is substituted: not a single write to disk, not a single
+// command started, and the live installation executor (`LiveInstallIo`) is
+// not created at all. Needed for accepting the wizard by eye on the work
+// machine.
 
-/// Мост cxx-qt мастера.
+/// cxx-qt bridge of the wizard.
 ///
-/// Тип объявлен `#[qml_element]`, поэтому разметка заводит его себе сама
-/// (`FirstRunWizard { id: wizard }`).
+/// The type is declared `#[qml_element]`, so the markup creates it for
+/// itself (`FirstRunWizard { id: wizard }`).
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -58,8 +62,8 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        /// Окно хода установки: ход дела или итог. Тот же договор, что у
-        /// `DesktopsActions.operation`, — окно одно на всех
+        /// Installation progress window: progress or the result. The same contract
+        /// as `DesktopsActions.operation` — one window for everyone
         /// (`DeOperationDialog.qml`).
         #[qproperty(QMap_QString_QVariant, operation, READ = operation, NOTIFY = operation_changed)]
         type FirstRunWizard = super::FirstRunWizardRust;
@@ -70,20 +74,20 @@ pub mod qobject {
         #[cxx_name = "operationChanged"]
         fn operation_changed(self: Pin<&mut FirstRunWizard>);
 
-        /// Строка журнала хода — дописывается окном, а не пересылается
-        /// картой целиком.
+        /// A progress log line — appended by the window rather than resent as a
+        /// whole map.
         #[qsignal]
         #[cxx_name = "operationLog"]
         fn operation_log(self: Pin<&mut FirstRunWizard>, line: QString);
 
-        /// Установка кончилась: `ok` — получилось ли. По нему разметка
-        /// закрывает мастер и отпускает обучение.
+        /// Installation has finished: `ok` — did it work. By it the markup closes
+        /// the wizard and releases the tutorial.
         #[qsignal]
         #[cxx_name = "installFinished"]
         fn install_finished(self: Pin<&mut FirstRunWizard>, ok: bool);
 
-        /// Мастер просят показать: кнопка «Установить Rexon в систему…» на
-        /// странице «Настройки» ([`super::request_show`]).
+        /// The wizard is asked to be shown: the "Install Rexon into the system…"
+        /// button on the "Settings" page ([`super::request_show`]).
         #[qsignal]
         #[cxx_name = "showRequested"]
         fn show_requested(self: Pin<&mut FirstRunWizard>);
@@ -94,59 +98,60 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Решение ядра и ВСЕ подписи мастера одной картой:
+        /// The core's decision and ALL the wizard's labels as one map:
         /// `{kind: "offer"|"skip", reason, defaultMode, systemBlocked,
         /// forced, dryRun, dryRunNotice, welcome: {…}, passwordless: {…}}`.
         ///
-        /// Настройки только читаются: каталог настроек ради ответа не
-        /// создаётся.
+        /// The settings are only read: the settings directory is not created for
+        /// the sake of the answer.
         #[qinvokable]
         fn start(self: &FirstRunWizard) -> QMap_QString_QVariant;
 
-        /// Согласие «не спрашивать пароль для действий Rexon» — отдельная
-        /// галочка страницы приветствия. Запоминается до [`install`] и
-        /// действует только у установки для всех пользователей.
+        /// Consent "do not ask for a password for Rexon actions" — a separate check
+        /// box on the welcome page. Remembered until [`install`] and effective only
+        /// for an installation for all users.
         #[qinvokable]
         #[cxx_name = "setPasswordlessRule"]
         fn set_passwordless_rule(self: Pin<&mut FirstRunWizard>, allow: bool);
 
-        /// Установить Rexon в режиме `mode` (`"system"`, `"user"`,
-        /// `"portable"`) в фоне. `false` — установка уже идёт либо режим
-        /// незнаком. Ход дела — свойство `operation` и сигнал
-        /// `operationLog`, итог — `installFinished`.
+        /// Install Rexon in mode `mode` (`"system"`, `"user"`, `"portable"`) in the
+        /// background. `false` means an installation is already running or the mode
+        /// is unknown. Progress is the `operation` property and the `operationLog`
+        /// signal, the result is `installFinished`.
         #[qinvokable]
         fn install(self: Pin<&mut FirstRunWizard>, mode: &QString) -> bool;
 
-        /// «Не сейчас». `remember` — отмечено «Больше не спрашивать»: тогда
-        /// отказ уходит в настройки. `false` — записать не вышло (причина в
-        /// журнале), мастер предложится снова.
+        /// "Not now". `remember` — "Don't ask again" is checked: then the refusal
+        /// goes into the settings. `false` means writing failed (the reason is in
+        /// the log), and the wizard will be offered again.
         #[qinvokable]
         fn decline(self: &FirstRunWizard, remember: bool) -> bool;
 
-        /// Идёт ли установка.
+        /// Whether an installation is in progress.
         #[qinvokable]
         fn busy(self: &FirstRunWizard) -> bool;
 
-        /// Сухой прогон (`REXON_INSTALL_DRY_RUN=1`): ничего не пишется и не
-        /// запускается. Разметка говорит об этом человеку — иначе «готово»
-        /// без установки выглядело бы обманом.
+        /// Dry run (`REXON_INSTALL_DRY_RUN=1`): nothing is written or started. The
+        /// markup tells the user so — otherwise "done" without an installation
+        /// would look like a deception.
         #[qinvokable]
         #[cxx_name = "dryRun"]
         fn dry_run(self: &FirstRunWizard) -> bool;
 
-        /// «Да» в окне вопроса — запустить отложенную установку. Свой
-        /// вопрос мастер задаёт страницей приветствия, поэтому обычно
-        /// отложенного режима нет и метод молчит.
+        /// "Yes" in the question window — start the deferred installation. The
+        /// wizard asks its own question with the welcome page, so usually there is
+        /// no deferred mode and the method stays silent.
         #[qinvokable]
         #[cxx_name = "confirmOperation"]
         fn confirm_operation(self: Pin<&mut FirstRunWizard>);
 
-        /// «Закрыть» — убрать окно хода (пока установка идёт, не действует).
+        /// "Close" — remove the progress window (has no effect while the
+        /// installation is running).
         #[qinvokable]
         #[cxx_name = "dismissOperation"]
         fn dismiss_operation(self: Pin<&mut FirstRunWizard>);
 
-        /// «Отменить» — только пока система не тронута.
+        /// "Cancel" — only while the system has not been touched.
         #[qinvokable]
         #[cxx_name = "cancelOperation"]
         fn cancel_operation(self: Pin<&mut FirstRunWizard>);
@@ -182,12 +187,12 @@ fn qstr(value: &str) -> QVariant {
     QVariant::from(&QString::from(value))
 }
 
-/// Переменная сухого прогона: мастер проходится целиком, но ни одной записи
-/// и ни одного запуска не делается.
+/// The dry run variable: the wizard goes all the way through, but not a
+/// single write or start is made.
 pub const DRY_RUN_ENV: &str = "REXON_INSTALL_DRY_RUN";
 
-/// Включён ли сухой прогон. Выключенным считается и пустое значение, и `0`:
-/// `REXON_INSTALL_DRY_RUN=0` должно значить «нет», а не «да».
+/// Whether dry run is on. Both an empty value and `0` count as off:
+/// `REXON_INSTALL_DRY_RUN=0` must mean "no", not "yes".
 pub fn dry_run_enabled() -> bool {
     match std::env::var(DRY_RUN_ENV) {
         Ok(v) => !matches!(v.trim(), "" | "0" | "no" | "false"),
@@ -195,13 +200,14 @@ pub fn dry_run_enabled() -> bool {
     }
 }
 
-/// Решение ядра БЕЗ учёта ответа «больше не спрашивать» — признак
-/// «показывать ли кнопку „Установить Rexon в систему…“ в Настройках»
-/// (решение Wehrwolfmann 15.09.2026). Отказ снимает сама кнопка, поэтому
-/// прятать её из-за отказа нельзя; а у установленного Rexon (пакет, Steam,
-/// установка для всех или для себя) кнопки нет вовсе.
+/// The core's decision WITHOUT taking the "do not ask again" answer into
+/// account — the flag "whether to show the "Install Rexon into the
+/// system…" button in Settings" (Wehrwolfmann's decision 15.09.2026). The
+/// button itself lifts the refusal, so it must not be hidden because of the
+/// refusal; and for an installed Rexon (a package, Steam, an installation
+/// for everyone or for oneself) there is no button at all.
 ///
-/// Настройки подставляются пустые — единственное отличие от
+/// The settings are substituted empty — the only difference from
 /// [`inst::first_run_offer_live`].
 pub fn offer_ignoring_decline() -> inst::FirstRunOffer {
     inst::first_run_offer(
@@ -211,7 +217,7 @@ pub fn offer_ignoring_decline() -> inst::FirstRunOffer {
 }
 
 // ============================================================================
-// Реестр живых мастеров для кнопки в «Настройках»
+// Registry of live wizards for the button in "Settings"
 // ============================================================================
 
 type Notify = Box<dyn Fn() -> Result<(), ()> + Send>;
@@ -221,12 +227,14 @@ fn registry() -> &'static Mutex<(u64, Vec<(u64, Notify)>)> {
     REGISTRY.get_or_init(|| Mutex::new((0, Vec::new())))
 }
 
-/// Попросить окно показать мастер установки (кнопка в «Настройках»).
+/// Ask the window to show the installation wizard (the button in
+/// "Settings").
 ///
-/// `true` — просьбу принял хотя бы один живой мастер, то есть окно на Rust
-/// открыто и покажет мастер само. `false` — окна с мастером в процессе нет
-/// (вкладка открыта одиночным окном), и сказать об этом человеку обязан
-/// вызывающий. Приём тот же, что у «Пройти обучение заново»
+/// `true` means at least one live wizard accepted the request, i.e. the
+/// Rust window is open and will show the wizard by itself. `false` means
+/// there is no window with a wizard in the process (the tab is open as a
+/// standalone window), and the caller is obliged to tell the user so. The
+/// same technique as for "Take the tutorial again"
 /// (`onboarding_overlay::request_replay`).
 pub fn request_show() -> bool {
     let mut reg = registry().lock().expect("реестр мастера не отравлен");
@@ -242,17 +250,17 @@ pub fn request_show() -> bool {
 }
 
 // ============================================================================
-// Объект
+// Object
 // ============================================================================
 
-/// Rust-состояние моста.
+/// Rust state of the bridge.
 #[derive(Default)]
 pub struct FirstRunWizardRust {
     op: OpView,
-    /// Режим, ждущий «Да» (страница приветствия задаёт вопрос сама).
+    /// The mode waiting for "Yes" (the welcome page asks the question itself).
     pending: Option<InstallMode>,
     cancel: Option<CancelToken>,
-    /// Согласие на правило «не спрашивать пароль для действий Rexon».
+    /// Consent to the "do not ask for a password for Rexon actions" rule.
     passwordless: bool,
     show_watch: u64,
 }
@@ -290,7 +298,7 @@ impl cxx_qt::Initialize for qobject::FirstRunWizard {
 }
 
 impl qobject::FirstRunWizard {
-    // ── Решение и подписи ────────────────────────────────────────────────
+    // ── Decision and labels ──────────────────────────────────────────────
 
     fn start(&self) -> VMap {
         let lang = ui_lang();
@@ -311,7 +319,8 @@ impl qobject::FirstRunWizard {
             ),
             inst::FirstRunOffer::Skip(_) => ("skip", "", String::new(), false),
         };
-        // Подписи набирает ядро — здесь только пересылка (правило #12).
+        // The labels are composed by the core — here there is only forwarding
+        // (rule #12).
         let welcome = inst::welcome_texts(&distro_id, &home, xdg_data.as_deref(), lang);
         let consent = inst::passwordless_consent_texts(lang);
         let dry_run_notice = inst::dry_run_notice(lang);
@@ -320,14 +329,14 @@ impl qobject::FirstRunWizard {
             out.insert(QString::from(key), value);
         };
         put("kind", qstr(kind));
-        // Строка для журнала, не для человека: почему решено так.
+        // A line for the log, not for a human: why it was decided so.
         put("reason", qstr(&offer.log_line()));
         put("defaultMode", qstr(default_mode));
         put("systemBlocked", qstr(&system_blocked));
         put("forced", QVariant::from(&forced));
         put("dryRun", QVariant::from(&dry_run_enabled()));
-        // Пояснение сухого прогона — только когда он включён: иначе строка
-        // стояла бы на странице приветствия у каждого покупателя.
+        // The dry run explanation — only when it is on: otherwise the line would
+        // sit on the welcome page of every customer.
         put(
             "dryRunNotice",
             qstr(if dry_run_enabled() { &dry_run_notice } else { "" }),
@@ -365,7 +374,7 @@ impl qobject::FirstRunWizard {
         }
     }
 
-    // ── Окно хода ────────────────────────────────────────────────────────
+    // ── Progress window ──────────────────────────────────────────────────
 
     fn operation(&self) -> VMap {
         self.rust().op.to_map()
@@ -395,7 +404,8 @@ impl qobject::FirstRunWizard {
         self.run_install(mode);
     }
 
-    /// Запустить установку в фоне. `false` — уже идёт.
+    /// Start the installation in the background. `false` means it is already
+    /// running.
     fn run_install(mut self: Pin<&mut Self>, mode: InstallMode) -> bool {
         if self.as_ref().get_ref().busy() {
             return false;
@@ -407,8 +417,8 @@ impl qobject::FirstRunWizard {
         self.as_mut().rust_mut().cancel = Some(token.clone());
         self.as_mut().rust_mut().pending = None;
         let mut op = OpView::running(&texts.title);
-        // Подзаголовок ядра заранее говорит про окно пароля — он и стоит
-        // строкой состояния, пока исполнитель не назвал свой этап.
+        // The core's subtitle already mentions the password window — it stays as
+        // the status line until the executor names its stage.
         op.status = texts.subtitle;
         self.as_mut().set_op(op);
         let handle = self.as_mut().qt_thread();
@@ -422,8 +432,8 @@ impl qobject::FirstRunWizard {
         true
     }
 
-    /// Итог установки: окно хода превращается в окно итога, подписи — из
-    /// ядра (`installer::result_texts`).
+    /// Installation result: the progress window turns into a result window,
+    /// the labels come from the core (`installer::result_texts`).
     fn finish_install(mut self: Pin<&mut Self>, result: iexec::InstallResult) {
         let lang = ui_lang();
         let ok = result.ok();
@@ -449,7 +459,7 @@ impl qobject::FirstRunWizard {
         if let Some(line) = op.apply_done(&outcome, summary.clone()) {
             self.as_mut().operation_log(QString::from(&line));
         }
-        // Неудача: итог ядра тоже должен быть виден, а не только в журнале.
+        // Failure: the core's result must be visible too, not only in the log.
         if !ok {
             op.result_text = summary;
         }
@@ -466,11 +476,11 @@ impl qobject::FirstRunWizard {
         if let Some(line) = log_line {
             self.as_mut().operation_log(QString::from(&line));
         }
-        // Этапов установки в `de_progress::STAGE_TITLES` нет, и заголовка
-        // ядро для них не даёт: строкой состояния служит последнее
-        // сообщение исполнителя, иначе окно всю установку показывало бы
-        // «Подготовка...». Общие этапы («ошибка», «предупреждение») свой
-        // заголовок имеют — их не трогаем.
+        // There are no installation stages in `de_progress::STAGE_TITLES`, and the
+        // core gives no title for them: the status line is the executor's last
+        // message, otherwise the window would show "Preparing..." for the whole
+        // installation. The shared stages ("error", "warning") have their own
+        // title — we leave them alone.
         if !message.is_empty() && matches!(stage.as_str(), iexec::STAGE_PREPARE | iexec::STAGE_INSTALL) {
             op.status = message;
         }
@@ -501,32 +511,34 @@ impl qobject::FirstRunWizard {
         if let Some(token) = &self.as_ref().get_ref().rust().cancel {
             token.cancel();
         }
-        // Кнопка гаснет сразу: второй щелчок ничего не добавит.
+        // The button goes off at once: a second click adds nothing.
         let mut op = self.as_ref().get_ref().rust().op.clone();
         op.cancellable = false;
         self.set_op(op);
     }
 }
 
-/// Язык подписей мастера — язык ИНТЕРФЕЙСА (`rexon_core::i18n`: настройка
-/// человека ▸ локаль ▸ английский), а не голая локаль процесса.
+/// The language of the wizard's labels is the INTERFACE language
+/// (`rexon_core::i18n`: the user's setting ▸ the locale ▸ English), not the
+/// bare process locale.
 ///
-/// Тексты мастера набирает установщик ядра парами «русский/английский»
-/// (`installer.rs`, `Lang`); прежде пара выбиралась по `Lang::from_env`, и при
-/// выбранном в настройках языке мастер говорил бы не на языке остального окна.
+/// The wizard's texts are composed by the core installer in
+/// "Russian/English" pairs (`installer.rs`, `Lang`); previously the pair was
+/// chosen by `Lang::from_env`, and with a language chosen in the settings
+/// the wizard would speak a different language from the rest of the window.
 fn ui_lang() -> Lang {
     Lang::from_code(&rexon_core::i18n::current_language())
 }
 
-/// Простой HTML для окна: переносы строк — `<br>` (в `RichText` голый
-/// перевод строки стал бы пробелом). Тот же приём, что у окна операции со
-/// столом.
+/// Plain HTML for the window: line breaks are `<br>` (in `RichText` a bare
+/// newline would become a space). The same technique as for the desktop
+/// operation window.
 fn html(text: &str) -> String {
     text.replace('\n', "<br>")
 }
 
-/// Структура ядра → JSON. Отказ сериализации недостижим (все поля —
-/// строки, числа и списки), но молчать о нём нельзя.
+/// Core structure → JSON. A serialization failure is unreachable (all
+/// fields are strings, numbers and lists), but it must not be kept quiet.
 fn serde_value<T: serde::Serialize>(value: &T) -> Value {
     serde_json::to_value(value).unwrap_or_else(|e| {
         rexon_core::log_warn!("first-run", "подписи не переведены в JSON: {e}");
@@ -535,12 +547,12 @@ fn serde_value<T: serde::Serialize>(value: &T) -> Value {
 }
 
 // ============================================================================
-// Исполнение установки
+// Executing the installation
 // ============================================================================
 
-/// Что ставить на этой машине. Решения и исполнение — в ядре; здесь только
-/// живые факты: семейство дистрибутива, свой бинарь, дерево разработчика и
-/// домашняя папка.
+/// What to install on this machine. Decisions and execution are in the
+/// core; here there are only live facts: the distribution family, our own
+/// binary, the developer tree and the home folder.
 fn live_request<IO: InstallIo + ?Sized>(
     io: &IO,
     lang: Lang,
@@ -566,8 +578,8 @@ fn live_request<IO: InstallIo + ?Sized>(
     req
 }
 
-/// Установка выбранным исполнителем. Живой исполнитель при сухом прогоне НЕ
-/// создаётся: `LiveInstallIo` стоит только во второй ветке.
+/// Installation with the chosen executor. The live executor is NOT created
+/// in a dry run: `LiveInstallIo` stands only in the second branch.
 fn run_install_with_io(
     mode: InstallMode,
     passwordless: bool,
@@ -589,7 +601,8 @@ fn run_install_with_io(
     iexec::install(&io, mode, &req, sink, cancel)
 }
 
-/// Приёмник хода исполнителя ядра: каждое событие уходит в поток Qt.
+/// Receiver of the core executor's progress: every event goes to the Qt
+/// thread.
 struct QtSink {
     handle: CxxQtThread<qobject::FirstRunWizard>,
 }
@@ -607,7 +620,8 @@ impl DeOpSink for QtSink {
     }
 }
 
-/// Поставить работу в поток Qt; окно уже закрыто — молча, иначе в журнал.
+/// Queue work in the Qt thread; if the window is already closed —
+/// silently, otherwise to the log.
 fn deliver(
     handle: &CxxQtThread<qobject::FirstRunWizard>,
     work: impl FnOnce(Pin<&mut qobject::FirstRunWizard>) + Send + 'static,
@@ -620,31 +634,31 @@ fn deliver(
 }
 
 // ============================================================================
-// Сухой прогон
+// Dry run
 // ============================================================================
 
-/// Записывающий исполнитель: наблюдения берутся у живой машины
-/// (`LiveSystemIo` — только чтение), а всё, что меняет машину, пишется в
-/// журнал и не делается.
+/// A recording executor: observations are taken from the live machine
+/// (`LiveSystemIo` — read-only), while everything that changes the machine
+/// is written to the log and not done.
 ///
-/// ⚠️ ЖИВОЙ ИСПОЛНИТЕЛЬ УСТАНОВКИ (`LiveInstallIo`) ЗДЕСЬ НЕ УЧАСТВУЕТ: у
-/// него нет ни одного метода, который нельзя было бы вызвать по ошибке.
-/// Наблюдения взяты у отдельного читающего исполнителя ядра, поэтому
-/// записать что-либо этот тип не может в принципе.
+/// Warning: THE LIVE INSTALLATION EXECUTOR (`LiveInstallIo`) TAKES NO PART
+/// HERE: it has not a single method that could not be called by mistake.
+/// The observations are taken from a separate reading executor of the core,
+/// so this type cannot write anything in principle.
 ///
-/// Созданное прогоном помнится в памяти: без этого исполнитель ядра на
-/// следующем шаге не нашёл бы только что «записанный» файл и сорвался бы на
-/// ровном месте. По той же причине после «запуска» корневого скрипта пути
-/// установки для всех пользователей считаются разложенными — иначе сухой
-/// прогон всегда упирался бы в проверку «Rexon на месте» и показать итог
-/// успеха глазами было бы нечем.
+/// What the run created is remembered in memory: without this the core
+/// executor would not find the just "written" file on the next step and
+/// would fail for no reason. For the same reason, after "running" the root
+/// script the paths of an installation for all users count as laid out —
+/// otherwise a dry run would always hit the "Rexon is in place" check and
+/// there would be no way to show the success result by eye.
 struct DryRunIo {
     live: LiveSystemIo,
     journal: RefCell<Vec<String>>,
     files: RefCell<HashSet<String>>,
     dirs: RefCell<HashSet<String>>,
     executable: RefCell<HashSet<String>>,
-    /// Корни, которые «разложил» корневой скрипт.
+    /// Roots that the root script "laid out".
     pretend: RefCell<Vec<String>>,
 }
 
@@ -660,7 +674,7 @@ impl DryRunIo {
         }
     }
 
-    /// Что прогон сделал бы с машиной — по строке на действие.
+    /// What the run would have done to the machine — one line per action.
     fn journal(&self) -> Vec<String> {
         self.journal.borrow().clone()
     }
@@ -721,12 +735,12 @@ impl SystemIo for DryRunIo {
         self.live.env(name)
     }
 
-    // ── Побочные действия: только журнал ─────────────────────────────────
+    // ── Side actions: only the log ───────────────────────────────────────
 
     fn run(&self, argv: &[String], _timeout_secs: Option<u64>, _lang_c: bool) -> RunOut {
         self.note(format!("запустил бы: {}", argv.join(" ")));
-        // Корневой скрипт «разложил» файлы установки для всех: дальше ядро
-        // проверяет, что Rexon на месте.
+        // The root script "laid out" the files of an installation for everyone:
+        // then the core checks that Rexon is in place.
         if argv.first().is_some_and(|p| p.ends_with("pkexec")) {
             let sys = inst::install_paths(InstallMode::System, "", None);
             let mut pretend = self.pretend.borrow_mut();
@@ -819,9 +833,9 @@ impl InstallIo for DryRunIo {
 mod tests {
     use super::*;
 
-    /// Исходный текст файла без собственного тестового модуля: список
-    /// запрещённых строк лежит в тестах, и без отсечки сторож ловил бы сам
-    /// себя.
+    /// Source text of the file without its own test module: the list of
+    /// forbidden strings lies in the tests, and without the cut-off the guard
+    /// would catch itself.
     fn code() -> &'static str {
         include_str!("first_run_wizard.rs")
             .split_once("#[cfg(test)]")
@@ -829,10 +843,10 @@ mod tests {
             .expect("тестовый модуль на месте")
     }
 
-    /// Ни одна подпись мастера в этом файле не набрана заново: все приходят
-    /// из ядра. Сторож на копипасту — вторая копия человеческой строки
-    /// разошлась бы с продуктом молча (правило #12). Образец —
-    /// `window_menu.rs::no_human_text_is_typed_twice_in_this_file`.
+    /// Not a single wizard label is typed anew in this file: all of them come
+    /// from the core. A copy-paste guard — a second copy of a human-readable
+    /// string would silently drift away from the product (rule #12). The model
+    /// is `window_menu.rs::no_human_text_is_typed_twice_in_this_file`.
     #[test]
     fn no_human_text_is_typed_twice_in_this_file() {
         let src = code();
@@ -864,8 +878,9 @@ mod tests {
         }
     }
 
-    /// Мост не решает сам: ключ настроек, режимы, признак «предлагать ли» и
-    /// разбор исхода — только вызовами ядра.
+    /// The bridge does not decide by itself: the settings key, the modes, the
+    /// "whether to offer" flag and parsing the outcome — only through core
+    /// calls.
     #[test]
     fn decisions_are_asked_of_the_core() {
         let src = code();
@@ -878,9 +893,9 @@ mod tests {
         }
     }
 
-    /// Сухой прогон: подставной исполнитель, ни одной записи и ни одного
-    /// запуска. Проверяется на настоящем пути в подставном каталоге — файл
-    /// после «записи» на диске не появляется.
+    /// Dry run: a fake executor, not a single write or start. Checked on a real
+    /// path in a fake directory — the file does not appear on disk after the
+    /// "write".
     #[test]
     fn dry_run_substitutes_a_recording_io() {
         let scratch = std::env::temp_dir().join("rexon-first-run-wizard-dry-run");
@@ -893,34 +908,37 @@ mod tests {
         io.write_file_mode(&path, "#!/bin/sh\n", 0o755).unwrap();
         let out = io.run(&["/usr/bin/pkexec".into(), "bash".into(), "/tmp/x".into()], None, false);
 
-        // Ни папки, ни файла на диске нет — всё осталось в журнале.
+        // Neither the folder nor the file exists on disk — everything stayed in
+        // the log.
         assert!(!scratch.exists(), "сухой прогон завёл настоящую папку {scratch:?}");
         assert_eq!(out.returncode, Some(0), "прогон обязан идти дальше, не запуская команду");
         let journal = io.journal();
         assert_eq!(journal.len(), 3, "в журнале не все действия: {journal:?}");
         assert!(journal[2].starts_with("запустил бы:"), "{journal:?}");
 
-        // Записанное видно исполнителю ядра: иначе следующий шаг сорвался бы.
+        // What was written is visible to the core executor: otherwise the next
+        // step would fail.
         assert!(SystemIo::is_file(&io, &path));
         assert!(SystemIo::is_executable(&io, &path));
-        // После «корневого скрипта» установка для всех считается на месте.
+        // After the "root script" the installation for everyone counts as in
+        // place.
         let sys = inst::install_paths(InstallMode::System, "", None);
         assert!(SystemIo::exists(&io, &sys.install_dir.unwrap()));
     }
 
-    /// Переменная сухого прогона читается честно: `0` — это «нет».
+    /// The dry run variable is read honestly: `0` means "no".
     #[test]
     fn dry_run_flag_is_read_strictly() {
-        // Значение переменной берётся у процесса, поэтому проверяем разбор
-        // на той же таблице, что и `dry_run_enabled`.
+        // The variable's value is taken from the process, so we check the parsing
+        // on the same table as `dry_run_enabled`.
         for (value, want) in [("1", true), ("yes", true), ("", false), ("0", false), ("no", false)] {
             let on = !matches!(value.trim(), "" | "0" | "no" | "false");
             assert_eq!(on, want, "значение «{value}»");
         }
     }
 
-    /// Окно хода мастера — то же самое, что у «Рабочих столов»: ключи карты
-    /// `operation` читает общий `DeOperationDialog.qml`.
+    /// The wizard's progress window is the same as in "Desktops": the keys of
+    /// the `operation` map are read by the shared `DeOperationDialog.qml`.
     #[test]
     fn operation_map_matches_the_shared_dialog() {
         let op = OpView::running("проверка");

@@ -1,9 +1,10 @@
-// WindowButtonsActions — объект раздела «Кнопки заголовка окна» вкладки
-// «Оформление» (раскладка кнопок перетаскиванием и галочками, флажки
-// заголовка KDE и размер рамки).
+// WindowButtonsActions — the object of the "Title bar buttons" section of
+// the "Appearance" tab (button layout by drag and drop and check boxes,
+// the KDE title bar check boxes and the border size).
 //
-// Логики здесь нет: снимок и запись — ядро (`rexon_core::window_buttons`),
-// тот же путь, что у стенда `de_matrix_stand`.
+// There is no logic here: snapshot and writing come from the core
+// (`rexon_core::window_buttons`), the same path as for the
+// `de_matrix_stand` test bench.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -19,25 +20,25 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок раздела (JSON `window_buttons::ButtonsState`).
+        /// Section snapshot (JSON `window_buttons::ButtonsState`).
         #[qinvokable]
         fn state(self: &WindowButtonsActions) -> QString;
 
-        /// Готовая раскладка: сторона кнопок управления (`right`/`left`) и
-        /// набор кнопок через запятую.
+        /// A ready layout: the side of the control buttons (`right`/`left`) and a
+        /// comma-separated set of buttons.
         #[qinvokable]
         #[cxx_name = "setLayout"]
         fn set_layout(self: &WindowButtonsActions, side: &QString, buttons: &QString) -> QString;
 
-        /// Поставить (`on`) или снять кнопку `id` на стороне `side`
-        /// (`left`/`right`); остальные кнопки остаются, где стоят.
+        /// Put (`on`) or remove button `id` on side `side` (`left`/`right`); the
+        /// other buttons stay where they are.
         #[qinvokable]
         #[cxx_name = "toggleButton"]
         fn toggle_button(self: &WindowButtonsActions, side: &QString, id: &QString, on: bool) -> QString;
 
-        /// Перетаскивание: кнопку `id` из `from` (`left`/`right` с позицией
-        /// `from_index` или `shelf`) на `to` в позицию `to_index` (место в
-        /// стороне уже без кнопки) или на полку.
+        /// Drag and drop: button `id` from `from` (`left`/`right` with position
+        /// `from_index`, or `shelf`) to `to` at position `to_index` (the place in
+        /// the side already without the button) or onto the shelf.
         #[qinvokable]
         #[cxx_name = "moveButton"]
         fn move_button(
@@ -49,28 +50,28 @@ pub mod qobject {
             to_index: i32,
         ) -> QString;
 
-        /// Шаг кнопкой «влево / вправо / на полку» (`left`/`right`/`shelf`):
-        /// JSON `{message, at: [сторона, позиция] | null}`.
+        /// A step with the "left / right / to shelf" button (`left`/`right`/`shelf`):
+        /// JSON `{message, at: [side, position] | null}`.
         #[qinvokable]
         #[cxx_name = "nudgeButton"]
         fn nudge_button(self: &WindowButtonsActions, side: &QString, index: i32, dir: &QString) -> QString;
 
-        /// «Добавить слева / справа» с полки.
+        /// "Add left / right" from the shelf.
         #[qinvokable]
         #[cxx_name = "addButton"]
         fn add_button(self: &WindowButtonsActions, id: &QString, side: &QString) -> QString;
 
-        /// Размер рамки (id варианта из снимка).
+        /// Border size (option id from the snapshot).
         #[qinvokable]
         #[cxx_name = "setBorder"]
         fn set_border(self: &WindowButtonsActions, value: &QString) -> QString;
 
-        /// Флажок заголовка KDE (id из снимка, `flags`).
+        /// KDE title bar check box (id from the snapshot, `flags`).
         #[qinvokable]
         #[cxx_name = "setFlag"]
         fn set_flag(self: &WindowButtonsActions, id: &QString, on: bool) -> QString;
 
-        /// «По умолчанию».
+        /// "Defaults".
         #[qinvokable]
         fn defaults(self: &WindowButtonsActions) -> QString;
     }

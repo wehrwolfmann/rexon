@@ -1,69 +1,70 @@
-//! Порт `rexon/qt_wallpaper_engine/client.py` — клиент демона waywallen для
-//! вкладки «Wallpaper Engine».
+//! Port of `rexon/qt_wallpaper_engine/client.py` — the waywallen daemon client
+//! for the «Wallpaper Engine» tab.
 //!
-//! Оригинал — два слоя поверх Qt: `DaemonControl` (discovery/автозапуск демона
-//! по D-Bus) и `WaywallenClient` (control plane по WebSocket+protobuf). Здесь
-//! живёт ВСЯ логика, свободная от Qt:
+//! The original is two layers on top of Qt: `DaemonControl` (daemon
+//! discovery/autostart over D-Bus) and `WaywallenClient` (control plane over
+//! WebSocket+protobuf). ALL the Qt-free logic lives here:
 //!
-//! 1. **Поиск бинаря демона** — [`daemon_binary_candidates`] /
-//!    [`find_daemon_binary`]. Порядок проверок значим (фикс бага 2026-06-24) и
-//!    закреплён отдельным тестом.
-//! 2. **Автозапуск при входе** — содержимое systemd-юнита и `.desktop`, пути,
-//!    argv `systemctl --user`, планы включения/выключения ([`enable_plan`],
-//!    [`disable_plan`]). ⛔ Ядро НИЧЕГО не запускает и НИЧЕГО не пишет: план
-//!    исполняет `rexon-gui::autostart_queries` (Python-исполнителя не
-//!    осталось с 07.09.2026), там же он подключён к переключателю
-//!    «Start at login» страницы настроек вкладки.
-//! 3. **Решения `DaemonControl`** — [`probe`] поверх уже существующего трейта
-//!    [`WaywallenIo`] (свойства `WsPort`/`Version`/`CurrentWallpaperId` НЕ
-//!    дублируются — единый механизм, правило #12), argv detached-запуска,
-//!    [`ensure_running_decision`], [`poll_decision`], разбор `ListTasks`
-//!    (QtDBus-строки и фолбэк `busctl --json`).
-//! 4. **Кодек ЗАПРОСОВ** — выдача `request_id` ([`RequestIds`]) и сборка байтов
-//!    `Request` поверх prost-структур [`crate::proto`]: типизированные обёртки
-//!    (`health`, `wallpaper_list`, …) и универсальный [`request_bytes`] для
-//!    пути `call(field, msg)` из `qml_ui/bridge.py`.
+//! 1. **Finding the daemon binary** — [`daemon_binary_candidates`] /
+//!    [`find_daemon_binary`]. The order of checks matters (bug fix 2026-06-24)
+//!    and is pinned by a separate test.
+//! 2. **Autostart at login** — contents of the systemd unit and the `.desktop`,
+//!    paths, `systemctl --user` argv, enable/disable plans ([`enable_plan`],
+//!    [`disable_plan`]). ⛔ The core starts NOTHING and writes NOTHING: the plan
+//!    is executed by `rexon-gui::autostart_queries` (the Python executor has
+//!    been gone since 07.09.2026), where it is also wired to the
+//!    «Start at login» switch on the tab's settings page.
+//! 3. **`DaemonControl` decisions** — [`probe`] on top of the already existing
+//!    trait [`WaywallenIo`] (the `WsPort`/`Version`/`CurrentWallpaperId`
+//!    properties are NOT duplicated — one mechanism, rule #12), the detached
+//!    launch argv, [`ensure_running_decision`], [`poll_decision`], parsing
+//!    `ListTasks` (QtDBus strings and the `busctl --json` fallback).
+//! 4. **REQUEST codec** — handing out `request_id` ([`RequestIds`]) and
+//!    assembling `Request` bytes on top of the prost structs [`crate::proto`]:
+//!    typed wrappers (`health`, `wallpaper_list`, …) and the generic
+//!    [`request_bytes`] for the `call(field, msg)` path from `qml_ui/bridge.py`.
 //!
-//! ⛔ Что СОЗНАТЕЛЬНО остаётся на Python (граница этапа 2):
-//! * `QWebSocket` целиком (открытие/закрытие/состояние/`sendBinaryMessage`) —
-//!   второй event loop (tokio/tungstenite) в процесс не тащим;
-//! * `QtDBus`/`QProcess`/`QTimer` — исполнители решений ядра;
-//! * карта `_pending` с владельцами-QObject и `shiboken6.isValid` при доставке
-//!   (фикс краша `39617f2` по умершим QML-объектам) — владельцы это живые
-//!   Qt-объекты, в Rust им делать нечего;
-//! * **РАЗБОР ОТВЕТОВ** демона в QML-страницах: `bridge.py` читает поля
-//!   `pb.Response` напрямую (разбор портированных запросов — в
-//!   [`crate::we_query`]). Это этап 3. Исключение — ответы, нужные САМОМУ
-//!   `client.py` в его синхронном пути: [`renderer_ids_from_frame`].
+//! ⛔ What DELIBERATELY stays in Python (the stage 2 boundary):
+//! * `QWebSocket` as a whole (open/close/state/`sendBinaryMessage`) — we do not
+//!   drag a second event loop (tokio/tungstenite) into the process;
+//! * `QtDBus`/`QProcess`/`QTimer` — executors of the core's decisions;
+//! * the `_pending` map with QObject owners and `shiboken6.isValid` on delivery
+//!   (crash fix `39617f2` for dead QML objects) — the owners are live Qt
+//!   objects, they have no business in Rust;
+//! * **PARSING the daemon's RESPONSES** in QML pages: `bridge.py` reads the
+//!   `pb.Response` fields directly (parsing of ported requests is in
+//!   [`crate::we_query`]). That is stage 3. The exception is responses that
+//!   `client.py` ITSELF needs on its synchronous path: [`renderer_ids_from_frame`].
 //!
-//! ## Починенные при порте баги оригинала (правило авто-починки)
+//! ## Bugs of the original fixed during the port (auto-fix rule)
 //!
-//! 1. **`int(ws_port)` в `probe`** падал необработанным `ValueError`, если
-//!    демон отдавал нечисловое `WsPort` (старая/битая версия интерфейса) —
-//!    вкладка WE не открывалась вообще. Здесь неконвертируемое значение даёт
-//!    `ws_port = 0`, что уводит `ensure_running` в ветку автозапуска. Тот же
-//!    класс, что уже починен в [`crate::waywallen_client`].
-//! 2. **Путь systemd-юнита игнорировал `XDG_CONFIG_HOME`.**
-//!    `_autostart_unit_path` жёстко брал `~/.config/systemd/user`, а
-//!    `_autostart_desktop_path` рядом — уважал `XDG_CONFIG_HOME`. При
-//!    нестандартном `XDG_CONFIG_HOME` юнит писался туда, где systemd его НЕ
-//!    ищет, и следом `systemctl --user enable` падал «Unit file does not
-//!    exist» — автозапуск молча не включался. Здесь оба пути считаются от
-//!    одного корня ([`config_home`]).
-//! 3. **Юнит убивал демона сигналом BUS на КАЖДОЙ остановке.** В юните не был
-//!    задан `KillMode`, а значение по умолчанию — `control-group`: systemd шлёт
-//!    SIGTERM ВСЕМ процессам cgroup разом. Демон запускается из AppImage, и
-//!    рядом с ним в той же cgroup живёт процесс AppImage-обёртки, держащий
-//!    FUSE-монтирование squashfs (`/tmp/.mount_*`), откуда исполняется сам
-//!    бинарь. Обёртка на SIGTERM размонтирует образ немедленно, а демон в это
-//!    время ещё доигрывает штатное завершение — первая же страница кода,
-//!    которой не оказалось в памяти, даёт SIGBUS/`BUS_ADRERR`. Итог: каждый
-//!    `stop`/`restart`/выход из сессии (`PartOf=graphical-session.target`)
-//!    оканчивался core dump, а `Restart=on-failure` считал это сбоем и поднимал
-//!    демона обратно. Здесь юнит несёт [`KillMode=mixed`](AUTOSTART_UNIT_TMPL):
-//!    SIGTERM получает ТОЛЬКО главный процесс, монтирование живёт до его
-//!    выхода. Замер: SIGTERM одному главному PID — чистый выход, SIGTERM всей
-//!    cgroup — `status=7/BUS` (воспроизведено 2026-08-22).
+//! 1. **`int(ws_port)` in `probe`** crashed with an unhandled `ValueError` if
+//!    the daemon returned a non-numeric `WsPort` (an old/broken interface
+//!    version) — the WE tab did not open at all. Here an unconvertible value
+//!    gives `ws_port = 0`, which sends `ensure_running` into the autostart
+//!    branch. The same class as already fixed in [`crate::waywallen_client`].
+//! 2. **The systemd unit path ignored `XDG_CONFIG_HOME`.**
+//!    `_autostart_unit_path` hard-coded `~/.config/systemd/user`, while
+//!    `_autostart_desktop_path` next to it respected `XDG_CONFIG_HOME`. With a
+//!    non-standard `XDG_CONFIG_HOME` the unit was written where systemd does
+//!    NOT look for it, and then `systemctl --user enable` failed with «Unit file
+//!    does not exist» — autostart silently stayed off. Here both paths are
+//!    computed from one root ([`config_home`]).
+//! 3. **The unit killed the daemon with SIGBUS on EVERY stop.** The unit had no
+//!    `KillMode`, and the default is `control-group`: systemd sends SIGTERM to
+//!    ALL processes of the cgroup at once. The daemon runs from an AppImage,
+//!    and next to it in the same cgroup lives the AppImage wrapper process that
+//!    holds the squashfs FUSE mount (`/tmp/.mount_*`) the binary itself
+//!    executes from. On SIGTERM the wrapper unmounts the image immediately,
+//!    while the daemon is still finishing its normal shutdown — the first code
+//!    page not in memory gives SIGBUS/`BUS_ADRERR`. Result: every
+//!    `stop`/`restart`/session logout (`PartOf=graphical-session.target`)
+//!    ended in a core dump, and `Restart=on-failure` counted it as a failure
+//!    and brought the daemon back up. Here the unit carries
+//!    [`KillMode=mixed`](AUTOSTART_UNIT_TMPL): ONLY the main process gets
+//!    SIGTERM, the mount lives until it exits. Measured: SIGTERM to the main
+//!    PID alone — clean exit, SIGTERM to the whole cgroup — `status=7/BUS`
+//!    (reproduced 2026-08-22).
 
 use std::collections::HashMap;
 use serde::Serialize;
@@ -73,149 +74,154 @@ use crate::proto::control as pb;
 use crate::waywallen_client::{DbusValue, WaywallenIo};
 
 // ============================================================================
-// Константы D-Bus и опроса
+// D-Bus and polling constants
 // ============================================================================
 
-/// Имя сервиса демона (то же, что в [`crate::waywallen_client::BUS_NAME`] —
-/// реэкспорт, чтобы вкладка WE не заводила вторую копию адреса).
+/// Daemon service name (the same as [`crate::waywallen_client::BUS_NAME`] — a
+/// re-export so the WE tab does not keep a second copy of the address).
 pub use crate::waywallen_client::{
     BUS_NAME as DBUS_SERVICE, IFACE as DBUS_IFACE, OBJECT_PATH as DBUS_PATH,
 };
 
-/// Интервал поллинга D-Bus после автозапуска демона, мс.
+/// D-Bus polling interval after autostarting the daemon, ms.
 pub const POLL_MS: u64 = 500;
 
-/// Сколько раз опрашивать (≈12 секунд на холодный старт демона).
+/// How many times to poll (≈12 seconds for a cold daemon start).
 pub const POLL_LIMIT: i64 = 24;
 
-/// Таймаут `Properties.Get`, мс.
+/// `Properties.Get` timeout, ms.
 pub const PROPERTY_TIMEOUT_MS: u64 = 1000;
 
-/// Таймаут `ListTasks` по D-Bus, мс.
+/// `ListTasks` over D-Bus timeout, ms.
 pub const LIST_TASKS_TIMEOUT_MS: u64 = 2000;
 
-/// Таймаут фолбэка `busctl`, секунды.
+/// `busctl` fallback timeout, seconds.
 pub const BUSCTL_TIMEOUT_SECS: u64 = 3;
 
-/// Аргументы, с которыми демон стартует из Rexon: свой UI и трей не открывать,
-/// обои демон восстанавливает сам по своему конфигу.
+/// Arguments the daemon starts with from Rexon: do not open its own UI and
+/// tray; the daemon restores wallpapers itself from its config.
 pub const DAEMON_ARGS: [&str; 2] = ["--no-ui", "--no-tray"];
 
 // ============================================================================
-// 1. Поиск бинаря демона
+// 1. Finding the daemon binary
 // ============================================================================
 
-/// Запасные кандидаты (по приоритету), порт `_DAEMON_FALLBACKS`.
+/// Fallback candidates (by priority), port of `_DAEMON_FALLBACKS`.
 ///
-/// ⚠️ Заведомо устаревший извлечённый бинарь `owe-ref/install/bin/waywallen`
-/// НЕ включён сознательно: он не знает миграции БД, переписанной новым
-/// AppImage, → демон падает на старте (баг 2026-06-24).
+/// ⚠️ The knowingly outdated extracted binary `owe-ref/install/bin/waywallen`
+/// is deliberately NOT included: it does not know the DB migration rewritten
+/// by the new AppImage → the daemon crashes at startup (bug 2026-06-24).
 ///
-/// ⚠️ Бывший второй кандидат `~/Projects/waywallen/waywallen.AppImage`
-/// (dev-сборка) убран: файла больше нет, симлинк `~/.local/bin/waywallen`
-/// ведёт на управляемый AppImage. Мёртвый путь только удлинял поиск.
+/// ⚠️ The former second candidate `~/Projects/waywallen/waywallen.AppImage`
+/// (dev build) was removed: the file is gone, the symlink
+/// `~/.local/bin/waywallen` points to the managed AppImage. The dead path only
+/// made the search longer.
 pub const DAEMON_FALLBACKS: [&str; 1] = [
-    // симлинк на управляемый AppImage
+    // symlink to the managed AppImage
     "~/.local/bin/waywallen",
 ];
 
-/// Имена вшитого AppImage в `rexon/vendor/` (в порядке проверки).
+/// Names of the bundled AppImage in `rexon/vendor/` (in check order).
 pub const BUNDLED_NAMES: [&str; 2] = ["waywallen.AppImage", "waywallen"];
 
-/// Каталог движка, который ставит пакет Rexon (`packaging/aur/PKGBUILD`):
-/// AppImage waywallen и рядом `plugins/<id>/` — плагин Open Wallpaper Engine.
+/// Engine directory installed by the Rexon package (`packaging/aur/PKGBUILD`):
+/// the waywallen AppImage and next to it `plugins/<id>/` — the Open Wallpaper
+/// Engine plugin.
 ///
-/// Почему `/usr/lib`, а не `/usr/share`: там лежат исполняемые файлы под
-/// архитектуру (AppImage, рендереры плагина, CEF). Почему у каталога ИМЕННО
-/// такая раскладка: демон waywallen принимает флаг `--plugin <каталог>` и
-/// ищет плагины в `<каталог>/plugins/` (waywallen v0.4.2,
-/// `daemon/bootstrap.rs`), поэтому каталог движка передаётся демону как есть
-/// — вторая раскладка не нужна.
+/// Why `/usr/lib` and not `/usr/share`: it holds architecture-specific
+/// executables (AppImage, plugin renderers, CEF). Why the directory has
+/// EXACTLY this layout: the waywallen daemon accepts the `--plugin <dir>` flag
+/// and looks for plugins in `<dir>/plugins/` (waywallen v0.4.2,
+/// `daemon/bootstrap.rs`), so the engine directory is passed to the daemon as
+/// is — no second layout is needed.
 pub const ENGINE_DIR: &str = "/usr/lib/rexon/engine";
 
-/// Имя AppImage движка в [`ENGINE_DIR`].
+/// Name of the engine AppImage in [`ENGINE_DIR`].
 pub const ENGINE_APPIMAGE_NAME: &str = "waywallen.AppImage";
 
-/// Подкаталог плагинов внутри каталога, переданного демону флагом
-/// [`PLUGIN_FLAG`] (договор демона, см. [`ENGINE_DIR`]).
+/// Plugins subdirectory inside the directory passed to the daemon with the
+/// [`PLUGIN_FLAG`] flag (the daemon's contract, see [`ENGINE_DIR`]).
 pub const ENGINE_PLUGINS_SUBDIR: &str = "plugins";
 
-/// Флаг демона «ещё один корень плагинов». Есть у waywallen с 0.3.x; у
-/// 0.2.x его нет вовсе (незнакомый флаг — отказ старта), поэтому флаг
-/// передаётся ТОЛЬКО когда каталог плагинов комплекта реально лежит на
-/// диске, то есть рядом стоит движок того же комплекта или новее.
+/// The daemon flag «one more plugin root». waywallen has it since 0.3.x; 0.2.x
+/// does not have it at all (an unknown flag means refusing to start), so the
+/// flag is passed ONLY when the bundle's plugins directory really exists on
+/// disk, i.e. the engine of the same bundle or newer sits next to it.
 pub const PLUGIN_FLAG: &str = "--plugin";
 
-/// AppImage движка из комплекта пакета.
+/// Engine AppImage from the package bundle.
 pub fn engine_appimage_path(engine_dir: &str) -> String {
     format!("{}/{ENGINE_APPIMAGE_NAME}", engine_dir.trim_end_matches('/'))
 }
 
-/// Каталог плагинов комплекта (`<каталог движка>/plugins`).
+/// Bundle plugins directory (`<engine dir>/plugins`).
 pub fn engine_plugins_path(engine_dir: &str) -> String {
     format!("{}/{ENGINE_PLUGINS_SUBDIR}", engine_dir.trim_end_matches('/'))
 }
 
-// ── Движок из пакетов дистрибутива (с 30.10.2026) ───────────────────────────
+// ── Engine from distribution packages (since 30.10.2026) ────────────────────
 //
-// Пакет Rexon для дистрибутивов (`packaging/aur/PKGBUILD`) больше НЕ вшивает
-// движок: он зависит от отдельных пакетов `waywallen` и
-// `open-wallpaper-engine`. Чужой AppImage со статически вшитыми библиотеками
-// и свой архив GPL-исходников внутри pacman-пакета — то, что сопровождающие
-// дистрибутива на ревью не пропустят; обновлять движок — дело пакетного
-// менеджера, а не Rexon. Вшитая раскладка ([`ENGINE_DIR`]) в ядре остаётся
-// для поставок, где системного пакета движка нет; стоят оба — первым идёт
-// системный ([`engine_layouts`]).
+// The Rexon package for distributions (`packaging/aur/PKGBUILD`) NO LONGER
+// bundles the engine: it depends on the separate `waywallen` and
+// `open-wallpaper-engine` packages. A foreign AppImage with statically
+// bundled libraries and our own archive of GPL sources inside a pacman
+// package is what distribution maintainers will not let through review;
+// updating the engine is the package manager's job, not Rexon's. The bundled
+// layout ([`ENGINE_DIR`]) stays in the core for deliveries without a system
+// engine package; if both are installed, the system one goes first
+// ([`engine_layouts`]).
 //
-// Куда ставят файлы пакеты Arch/AUR (сверено по их PKGBUILD 30.10.2026):
-//   * `waywallen` — `lito install --prefix /usr`: демон `/usr/bin/waywallen`,
-//     встроенные плагины в `/usr/share/waywallen/plugins/`,
-//     `libwaywallen-bridge.so` в `/usr/lib`; юнита systemd апстрим не ставит
-//     (его пишет Rexon, [`AUTOSTART_UNIT`]);
-//   * `waywallen-bin` — распакованный AppImage в `/opt/waywallen-bin`,
-//     `/usr/bin/waywallen` — символьная ссылка на его `AppRun`;
-//   * `open-wallpaper-engine` — плагин в
+// Where Arch/AUR packages put files (checked against their PKGBUILDs 30.10.2026):
+//   * `waywallen` — `lito install --prefix /usr`: daemon `/usr/bin/waywallen`,
+//     built-in plugins in `/usr/share/waywallen/plugins/`,
+//     `libwaywallen-bridge.so` in `/usr/lib`; upstream installs no systemd
+//     unit (Rexon writes it, [`AUTOSTART_UNIT`]);
+//   * `waywallen-bin` — the unpacked AppImage in `/opt/waywallen-bin`,
+//     `/usr/bin/waywallen` is a symlink to its `AppRun`;
+//   * `open-wallpaper-engine` — the plugin in
 //     `/usr/share/waywallen/plugins/org.waywallen.open-wallpaper-engine/`
-//     (`install.lua` тега v0.3.2), рисовальщики `waywallen-wescene-renderer` и
-//     `waywallen-weweb-renderer` в `/usr/bin` (CEF — системный пакет `cef`).
+//     (`install.lua` of tag v0.3.2), renderers `waywallen-wescene-renderer`
+//     and `waywallen-weweb-renderer` in `/usr/bin` (CEF is the system `cef`
+//     package).
 //
-// Демон, лежащий в `<префикс>/bin`, САМ ищет плагины в
-// `<префикс>/share/waywallen/plugins` (`standard_plugin_roots`, waywallen
-// v0.5.0) — по настоящему пути своего файла, после символьных ссылок. Значит,
-// демону `waywallen` из пакета флаг `--plugin` не нужен, а `waywallen-bin` и
-// управляемому AppImage человека — нужен: их файл живёт не под `/usr`.
-// Передавать флаг «на всякий случай» нельзя: тот же каталог дважды демон
-// сканирует дважды и держит две одинаковые записи каждого плагина.
+// A daemon living in `<prefix>/bin` looks for plugins in
+// `<prefix>/share/waywallen/plugins` ITSELF (`standard_plugin_roots`,
+// waywallen v0.5.0) — by the real path of its file, after symlinks. So the
+// `waywallen` daemon from the package does not need the `--plugin` flag,
+// while `waywallen-bin` and the user's managed AppImage do: their file does
+// not live under `/usr`. Passing the flag «just in case» is not allowed: the
+// daemon scans the same directory twice and keeps two identical entries of
+// every plugin.
 
-/// Демон движка из пакета дистрибутива.
+/// Engine daemon from the distribution package.
 pub const SYSTEM_DAEMON: &str = "/usr/bin/waywallen";
 
-/// Каталог данных движка из пакетов дистрибутива: в нём `plugins/`.
+/// Engine data directory from distribution packages: holds `plugins/`.
 pub const SYSTEM_ENGINE_DIR: &str = "/usr/share/waywallen";
 
-/// Чей движок: вшитый в пакет Rexon или из пакетов дистрибутива.
+/// Whose engine: bundled into the Rexon package or from distribution packages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EngineKind {
-    /// Вшит в поставку Rexon ([`ENGINE_DIR`]): AppImage и плагины рядом.
+    /// Bundled into the Rexon delivery ([`ENGINE_DIR`]): AppImage and plugins side by side.
     Bundled,
-    /// Отдельные пакеты дистрибутива ([`SYSTEM_DAEMON`],
-    /// [`SYSTEM_ENGINE_DIR`]): обновляет их пакетный менеджер.
+    /// Separate distribution packages ([`SYSTEM_DAEMON`],
+    /// [`SYSTEM_ENGINE_DIR`]): the package manager updates them.
     System,
 }
 
-/// Раскладка движка, который поставил не человек, а пакет: где демон и
-/// где каталог с `plugins/`.
+/// Layout of an engine installed by a package rather than by the user: where
+/// the daemon is and where the directory with `plugins/` is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineLayout {
     pub kind: EngineKind,
-    /// Бинарь демона.
+    /// Daemon binary.
     pub daemon: String,
-    /// Каталог, в котором лежит `plugins/` (его же получает `--plugin`).
+    /// Directory holding `plugins/` (it is also what `--plugin` receives).
     pub dir: String,
 }
 
 impl EngineLayout {
-    /// Вшитый комплект в каталоге `engine_dir`.
+    /// Bundled set in the `engine_dir` directory.
     pub fn bundled_in(engine_dir: &str) -> EngineLayout {
         EngineLayout {
             kind: EngineKind::Bundled,
@@ -224,7 +230,7 @@ impl EngineLayout {
         }
     }
 
-    /// Движок пакетов дистрибутива: демон `daemon`, данные в `dir`.
+    /// Engine from distribution packages: daemon `daemon`, data in `dir`.
     pub fn system_in(daemon: &str, dir: &str) -> EngineLayout {
         EngineLayout {
             kind: EngineKind::System,
@@ -239,15 +245,16 @@ impl EngineLayout {
     }
 }
 
-/// Раскладки движка на машине покупателя, по приоритету: пакеты
-/// дистрибутива, затем вшитый комплект. Одна точка правды для поиска демона,
-/// флага `--plugin` и сторожа пакета.
+/// Engine layouts on the customer's machine, by priority: distribution
+/// packages, then the bundled set. One source of truth for finding the
+/// daemon, the `--plugin` flag and the package watcher.
 ///
-/// Системный пакет первым: его обновляет пакетный менеджер вместе с
-/// библиотеками системы, а вшитый комплект (поставка Steam, ручная
-/// установка) — только запасной путь там, где пакета движка нет. Стоят оба —
-/// запускается системный, плагины комплекта он получает флагом `--plugin`
-/// ([`plugin_root_for`]), и из двух копий плагина демон берёт новую.
+/// System package first: the package manager updates it together with the
+/// system libraries, while the bundled set (Steam delivery, manual install)
+/// is only a fallback where there is no engine package. If both are installed,
+/// the system one is launched, it gets the bundle's plugins via the `--plugin`
+/// flag ([`plugin_root_for`]), and of two plugin copies the daemon takes the
+/// newer one.
 pub fn engine_layouts() -> Vec<EngineLayout> {
     vec![
         EngineLayout::system_in(SYSTEM_DAEMON, SYSTEM_ENGINE_DIR),
@@ -255,27 +262,27 @@ pub fn engine_layouts() -> Vec<EngineLayout> {
     ]
 }
 
-/// Раскладка, чей демон — `binary` (путь из поиска демона, до ссылок).
+/// The layout whose daemon is `binary` (the path from the daemon search, before links).
 pub fn layout_of<'a>(layouts: &'a [EngineLayout], binary: &str) -> Option<&'a EngineLayout> {
     layouts.iter().find(|l| l.daemon == binary)
 }
 
-/// Каталог данных, который демон видит сам: `<префикс>/share/waywallen` для
-/// файла `<префикс>/bin/<имя>`. `resolved` — НАСТОЯЩИЙ путь файла (после
-/// символьных ссылок): по нему демон и считает свой префикс.
+/// The data directory the daemon sees on its own: `<prefix>/share/waywallen`
+/// for the file `<prefix>/bin/<name>`. `resolved` is the REAL path of the file
+/// (after symlinks): the daemon computes its prefix from it.
 pub fn daemon_own_engine_dir(resolved: &str) -> Option<String> {
     let p = std::path::Path::new(resolved);
     let prefix = p.parent()?.parent()?;
     Some(prefix.join("share/waywallen").to_string_lossy().into_owned())
 }
 
-/// Какой каталог передать демону флагом `--plugin`.
+/// Which directory to pass to the daemon with the `--plugin` flag.
 ///
-/// `present` — раскладки, у которых `plugins/` реально лежит на диске (по
-/// приоритету [`engine_layouts`]); `resolved_binary` — настоящий путь
-/// бинаря демона, который будет запущен (`None` — не известен). Берётся
-/// первая раскладка, чей каталог демон не видит сам
-/// ([`daemon_own_engine_dir`]); `None` — флаг не нужен.
+/// `present` — layouts whose `plugins/` really exists on disk (in
+/// [`engine_layouts`] priority); `resolved_binary` — the real path of the
+/// daemon binary that will be launched (`None` — unknown). The first layout
+/// whose directory the daemon does not see on its own is taken
+/// ([`daemon_own_engine_dir`]); `None` — the flag is not needed.
 pub fn plugin_root_for(present: &[EngineLayout], resolved_binary: Option<&str>) -> Option<String> {
     let own = resolved_binary.and_then(daemon_own_engine_dir);
     present
@@ -284,24 +291,24 @@ pub fn plugin_root_for(present: &[EngineLayout], resolved_binary: Option<&str>) 
         .find(|d| own.as_deref() != Some(d.as_str()))
 }
 
-/// Аргументы запуска демона: [`DAEMON_ARGS`] и, если у комплекта есть
-/// каталог плагинов, `--plugin <каталог движка>`.
+/// Daemon launch arguments: [`DAEMON_ARGS`] and, if the bundle has a plugins
+/// directory, `--plugin <engine dir>`.
 ///
-/// `plugin_root` — каталог движка, если в нём лежит `plugins/` (наблюдение
-/// снимает исполнитель), `None` — комплекта нет.
+/// `plugin_root` — the engine directory if it holds `plugins/` (the executor
+/// makes the observation), `None` — no bundle.
 ///
-/// Какой плагин побеждает, если тот же `id` лежит и в комплекте, и у
-/// человека в `~/.local/share/waywallen/plugins`, решает САМ демон, и
-/// решение у него ровно то, какое нам нужно: новее по `version` из
-/// `plugin.toml` (семантическое сравнение), при равенстве — копия человека
-/// (`select_active_plugins`/`plugin_priority`, waywallen v0.4.2). Значит:
-///   * пакет обновился, а у человека завалялась старая ручная копия — работает
-///     новая из пакета, старая не мешает;
-///   * человек сам поставил плагин новее комплекта — работает его копия, и
-///     обновление пакета её не «откатит».
-/// Дублировать этот выбор у себя мы не стали: второе решение рядом с
-/// решением демона разъехалось бы с ним молча. Зеркало правила для
-/// отчётов и проверок — [`active_plugin_source`].
+/// Which plugin wins when the same `id` lies both in the bundle and in the
+/// user's `~/.local/share/waywallen/plugins` is decided by the daemon ITSELF,
+/// and its decision is exactly what we need: newer by `version` from
+/// `plugin.toml` (semantic comparison), on a tie — the user's copy
+/// (`select_active_plugins`/`plugin_priority`, waywallen v0.4.2). So:
+///   * the package got updated while the user still has an old manual copy —
+///     the new one from the package runs, the old one does not get in the way;
+///   * the user installed a plugin newer than the bundle — their copy runs,
+///     and a package update will not «roll it back».
+/// We did not duplicate this choice on our side: a second decision next to
+/// the daemon's would silently drift from it. The mirror of the rule for
+/// reports and checks is [`active_plugin_source`].
 pub fn engine_launch_args(plugin_root: Option<&str>) -> Vec<String> {
     let mut args: Vec<String> = DAEMON_ARGS.iter().map(|a| a.to_string()).collect();
     if let Some(root) = plugin_root {
@@ -311,19 +318,19 @@ pub fn engine_launch_args(plugin_root: Option<&str>) -> Vec<String> {
     args
 }
 
-/// Откуда демон возьмёт плагин, лежащий в двух местах.
+/// Where the daemon takes a plugin from when it lies in two places.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PluginSource {
-    /// Копия из комплекта пакета ([`ENGINE_DIR`]).
+    /// The copy from the package bundle ([`ENGINE_DIR`]).
     Bundled,
-    /// Копия человека (`$XDG_DATA_HOME/waywallen/plugins`).
+    /// The user's copy (`$XDG_DATA_HOME/waywallen/plugins`).
     User,
 }
 
-/// Зеркало выбора демона между копиями одного плагина (см.
-/// [`engine_launch_args`]): новее по версии, при равенстве — копия
-/// человека. Версия, не разобранная как `X.Y.Z`, сравнивается строкой —
-/// как у демона.
+/// Mirror of the daemon's choice between copies of one plugin (see
+/// [`engine_launch_args`]): newer by version, on a tie — the user's copy. A
+/// version that does not parse as `X.Y.Z` is compared as a string — like the
+/// daemon does.
 pub fn active_plugin_source(bundled_version: &str, user_version: &str) -> PluginSource {
     let norm = |v: &str| v.trim().trim_start_matches(['v', 'V']).to_string();
     let (b, u) = (norm(bundled_version), norm(user_version));
@@ -346,27 +353,27 @@ pub fn active_plugin_source(bundled_version: &str, user_version: &str) -> Plugin
     }
 }
 
-// ── Живой демон не взял плагин из пакета ────────────────────────────────────
+// ── The live daemon did not pick up the plugin from the package ─────────────
 //
-// Дефект живой проверки 24.10.2026: в списке плагинов waywallen стояла копия
-// человека 0.3.0 и предложение обновиться до 0.3.1, хотя пакет Rexon уже
-// положил 0.3.1 в [`ENGINE_DIR`]. Сам выбор копии у демона правильный (новее
-// по версии, при равенстве — копия человека, см. [`engine_launch_args`]), но
-// делает он его ОДИН раз — когда сканирует корни плагинов при старте
-// (`daemon/bootstrap.rs`, `scan_plugin_roots`) и после установки плагина
-// через свой API. Команды «пересканировать» у демона нет. Демон, запущенный
-// ДО обновления пакета (или кем-то без флага `--plugin`), так и держит
-// старую копию, пока его не перезапустят.
+// Defect from the live check 24.10.2026: the waywallen plugin list showed the
+// user's copy 0.3.0 and an offer to update to 0.3.1, although the Rexon
+// package had already put 0.3.1 into [`ENGINE_DIR`]. The daemon's choice of
+// copy itself is correct (newer by version, on a tie — the user's copy, see
+// [`engine_launch_args`]), but it makes it ONCE — when it scans plugin roots
+// at startup (`daemon/bootstrap.rs`, `scan_plugin_roots`) and after a plugin
+// is installed through its API. The daemon has no «rescan» command. A daemon
+// started BEFORE the package update (or by someone without the `--plugin`
+// flag) keeps holding the old copy until it is restarted.
 //
-// Поэтому лекарство — перезапуск демона, а не правка файлов человека:
-//   * удалять его копию не нужно — после перезапуска демон сам её не
-//     возьмёт, пока в пакете новее;
-//   * «обновить» её штатной кнопкой waywallen — значит поставить самую
-//     свежую версию с GitHub мимо пакета, и дальше она перекрывала бы уже
-//     пакетную;
-//   * выключить одну копию у демона нечем — такого запроса нет.
+// So the cure is restarting the daemon, not editing the user's files:
+//   * their copy need not be deleted — after a restart the daemon will not
+//     take it as long as the package has a newer one;
+//   * «updating» it with the regular waywallen button means installing the
+//     freshest version from GitHub bypassing the package, and from then on it
+//     would override the packaged one;
+//   * the daemon has no way to disable one copy — there is no such request.
 
-/// Копия плагина: из `plugin.toml` комплекта или активная у демона.
+/// A plugin copy: from the bundle's `plugin.toml` or active in the daemon.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginCopy {
     pub id: String,
@@ -374,8 +381,8 @@ pub struct PluginCopy {
     pub version: String,
 }
 
-/// `id`, `name` и `version` из текста `plugin.toml` (секция `[plugin]`).
-/// `None` — манифест битый или без `id`/`version`.
+/// `id`, `name` and `version` from the text of `plugin.toml` (the `[plugin]`
+/// section). `None` — the manifest is broken or lacks `id`/`version`.
 pub fn plugin_manifest_copy(toml_text: &str) -> Option<PluginCopy> {
     let value = toml_text.parse::<toml::Value>().ok()?;
     let plugin = value.get("plugin")?;
@@ -389,8 +396,9 @@ pub fn plugin_manifest_copy(toml_text: &str) -> Option<PluginCopy> {
     })
 }
 
-/// Активные копии плагинов из ответа демона на `plugin_list`. `None` —
-/// кадр не разобрался, это не ответ `plugin_list` или демон ответил ошибкой.
+/// Active plugin copies from the daemon's response to `plugin_list`. `None` —
+/// the frame did not parse, it is not a `plugin_list` response, or the daemon
+/// answered with an error.
 pub fn active_plugins_from_frame(frame_bytes: &[u8]) -> Option<Vec<PluginCopy>> {
     let frame = pb::ServerFrame::decode(frame_bytes).ok()?;
     let pb::server_frame::Kind::Response(rsp) = frame.kind? else {
@@ -410,23 +418,24 @@ pub fn active_plugins_from_frame(frame_bytes: &[u8]) -> Option<Vec<PluginCopy>> 
     )
 }
 
-/// Плагин комплекта, которого живой демон не взял, хотя по своему же правилу
-/// обязан был.
+/// A bundle plugin the live daemon did not pick up, although by its own rule
+/// it should have.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StalePlugin {
     pub id: String,
     pub name: String,
     pub bundled_version: String,
-    /// Версия, которую держит демон; пусто — плагина у демона нет вовсе
-    /// (его запустили без `--plugin`, а копии у человека нет).
+    /// The version the daemon holds; empty — the daemon has no such plugin at all
+    /// (it was started without `--plugin`, and the user has no copy).
     pub active_version: String,
 }
 
-/// Плагины комплекта, которые демон держит в старой версии (или не видит).
+/// Bundle plugins the daemon holds in an old version (or does not see).
 ///
-/// Правило то же, что у демона ([`active_plugin_source`]): копия комплекта
-/// обязана работать, если она СТРОГО новее активной. Активная новее или
-/// равна — так и задумано (человек поставил свою), это не дефект.
+/// The rule is the same as the daemon's ([`active_plugin_source`]): the bundle
+/// copy must be running if it is STRICTLY newer than the active one. The
+/// active one is newer or equal — that is intended (the user installed their
+/// own), not a defect.
 pub fn stale_bundled_plugins(bundled: &[PluginCopy], active: &[PluginCopy]) -> Vec<StalePlugin> {
     let mut out: Vec<StalePlugin> = bundled
         .iter()
@@ -450,11 +459,11 @@ pub fn stale_bundled_plugins(bundled: &[PluginCopy], active: &[PluginCopy]) -> V
     out
 }
 
-/// Ключ попытки: какие плагины и до каких версий перезапуск должен поднять.
-/// Тот же ключ второй раз — перезапуск уже не помог. Ключ печатается в
-/// журнал, поэтому читается слева направо: «у демона → в пакете»
-/// (`id=0.3.1→0.3.2`; плагина у демона нет — `id=нет→0.3.2`). Прежний вид
-/// `id=0.3.2<0.3.1` читался как «0.3.2 меньше 0.3.1».
+/// Attempt key: which plugins and up to which versions the restart should
+/// bring up. The same key a second time — the restart did not help. The key is
+/// printed to the log, so it reads left to right: «in the daemon → in the
+/// package» (`id=0.3.1→0.3.2`; no plugin in the daemon — `id=нет→0.3.2`). The
+/// former form `id=0.3.2<0.3.1` read as «0.3.2 is less than 0.3.1».
 pub fn stale_plugins_key(stale: &[StalePlugin]) -> String {
     stale
         .iter()
@@ -466,19 +475,20 @@ pub fn stale_plugins_key(stale: &[StalePlugin]) -> String {
         .join(";")
 }
 
-/// Что делать после сверки плагинов живого демона с комплектом.
+/// What to do after comparing the live daemon's plugins with the bundle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginRefresh {
-    /// Демон держит то, что должен.
+    /// The daemon holds what it should.
     Fine,
-    /// Перезапустить демона; `key` запомнить ([`stale_plugins_key`]).
+    /// Restart the daemon; remember `key` ([`stale_plugins_key`]).
     Restart { key: String, stale: Vec<StalePlugin> },
-    /// Ради ровно этого уже перезапускали — не помогло. Второй раз не
-    /// трогаем: перезапуск по кругу гасил бы обои каждые несколько секунд.
+    /// A restart for exactly this was already done — it did not help. We do not
+    /// touch it a second time: restarting in a loop would kill the wallpaper
+    /// every few seconds.
     GiveUp { stale: Vec<StalePlugin> },
 }
 
-/// Решение сверки. `tried_key` — ключ прошлой попытки в этом процессе.
+/// The comparison decision. `tried_key` — the key of the previous attempt in this process.
 pub fn plugin_refresh_decision(
     bundled: &[PluginCopy],
     active: &[PluginCopy],
@@ -496,32 +506,33 @@ pub fn plugin_refresh_decision(
     }
 }
 
-/// Что делать, когда живой демон и движок комплекта на диске разошлись.
+/// What to do when the live daemon and the bundle engine on disk diverge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineRefresh {
-    /// Демон — тот же движок, что на диске (или сверять не с чем).
+    /// The daemon is the same engine as on disk (or there is nothing to compare with).
     Fine,
-    /// Перезапустить демона; `key` запомнить ([`engine_refresh_key`]).
+    /// Restart the daemon; remember `key` ([`engine_refresh_key`]).
     Restart { key: String },
-    /// Ради ровно этой пары версий уже перезапускали — не помогло.
+    /// A restart for exactly this pair of versions was already done — it did not help.
     GiveUp,
 }
 
-/// Ключ попытки: с какой версии на какую перезапуск должен перевести.
+/// Attempt key: from which version to which the restart should move.
 pub fn engine_refresh_key(live: &str, on_disk: &str) -> String {
     format!("engine={live}→{on_disk}")
 }
 
-/// Сверка живого демона с AppImage комплекта после замены файла пакетом.
+/// Comparing the live daemon with the bundle AppImage after the package
+/// replaced the file.
 ///
-/// `runs_bundled` — запуск демона идёт из комплекта (поиск бинаря выбрал
-/// его, а не AppImage человека: тот обновляет сам человек, и перезапуск
-/// ради чужого файла был бы самоуправством). `live` — свойство `Version`
-/// живого демона, `on_disk` — `--version` файла на диске. Сравниваются
-/// разобранные номера ([`crate::engine_update::parse_binary_version`]):
-/// хвост сборки у одного из источников (`0.5.0-x86_64`) — не повод.
-/// Версию не узнать с любой стороны — не трогаем: перезапуск вслепую гасил
-/// бы обои без пользы.
+/// `runs_bundled` — the daemon is launched from the bundle (the binary search
+/// chose it, not the user's AppImage: the user updates that one, and a
+/// restart for someone else's file would be overreach). `live` — the live
+/// daemon's `Version` property, `on_disk` — `--version` of the file on disk.
+/// Parsed numbers are compared ([`crate::engine_update::parse_binary_version`]):
+/// a build suffix on one of the sources (`0.5.0-x86_64`) is no reason. If the
+/// version cannot be learned on either side — do not touch: a blind restart
+/// would kill the wallpaper for nothing.
 pub fn engine_refresh_decision(runs_bundled: bool, live: &str, on_disk: &str, tried_key: Option<&str>) -> EngineRefresh {
     let live = crate::engine_update::parse_binary_version(live);
     let on_disk = crate::engine_update::parse_binary_version(on_disk);
@@ -536,14 +547,14 @@ pub fn engine_refresh_decision(runs_bundled: bool, live: &str, on_disk: &str, tr
     }
 }
 
-/// Текст уведомления о перезапуске ради нового движка из пакета
-/// (заголовок — общий, [`plugin_refresh_title`]).
+/// Text of the notification about a restart for a new engine from the package
+/// (the title is shared, [`plugin_refresh_title`]).
 pub fn engine_refresh_body(live: &str, on_disk: &str) -> String {
     engine_refresh_body_for(EngineKind::Bundled, live, on_disk)
 }
 
-/// [`engine_refresh_body`] для движка той раскладки, что его поставила:
-/// вшитый приходит с обновлением Rexon, системный — с обновлением системы.
+/// [`engine_refresh_body`] for the engine of the layout that installed it: the
+/// bundled one comes with a Rexon update, the system one with a system update.
 pub fn engine_refresh_body_for(kind: EngineKind, live: &str, on_disk: &str) -> String {
     let (live, on_disk) = (
         crate::engine_update::parse_binary_version(live),
@@ -563,26 +574,26 @@ pub fn engine_refresh_body_for(kind: EngineKind, live: &str, on_disk: &str) -> S
     }
 }
 
-/// Вид задачи демона «служба»: долгоживущий цикл (сокет вывода, звук, MPRIS,
-/// сторож питания…). Такие задачи стоят в `running` всю жизнь демона.
+/// Daemon task kind «service»: a long-lived loop (output socket, sound, MPRIS,
+/// power watcher…). Such tasks stay `running` for the daemon's whole life.
 pub const TASK_KIND_SERVICE: &str = "service";
 
-/// Задачи, которые ЖДУТ события, а не работают: перезапуск им ничего не
-/// обрывает. `boot/display-watcher` ждёт первого дисплея и стоит в
-/// `running`, пока его нет, — на столе без вывода (MATE, XFCE на X11) это
-/// навсегда.
+/// Tasks that WAIT for an event rather than work: a restart cuts nothing off
+/// for them. `boot/display-watcher` waits for the first display and stays
+/// `running` while there is none — on a desktop without an output (MATE, XFCE
+/// on X11) that is forever.
 pub const WAITING_TASK_NAMES: &[&str] = &["boot/display-watcher"];
 
-/// Занят ли демон работой, которую перезапуск оборвал бы (скачивание,
-/// сканирование, установка плагина, применение обоев): в `ListTasks` есть
-/// такая задача в состоянии `running`. Тогда перезапуск откладывается до
-/// следующего подключения.
+/// Whether the daemon is busy with work a restart would cut off (downloading,
+/// scanning, installing a plugin, applying a wallpaper): `ListTasks` has such
+/// a task in the `running` state. Then the restart is postponed until the next
+/// connection.
 ///
-/// ⛔ Дефект 30.10.2026 (MATE, демон 0.5.0): считалась ЛЮБАЯ задача в
-/// `running`, а у демона 0.5.0 их всегда больше десятка — службы
-/// ([`TASK_KIND_SERVICE`]) и ждущий `boot/display-watcher`
-/// ([`WAITING_TASK_NAMES`]). Демон выходил «занятым» вечно, и перезапуск
-/// ради плагина из пакета откладывался при каждой сверке.
+/// ⛔ Defect 30.10.2026 (MATE, daemon 0.5.0): ANY task in `running` was
+/// counted, and daemon 0.5.0 always has more than a dozen of them — services
+/// ([`TASK_KIND_SERVICE`]) and the waiting `boot/display-watcher`
+/// ([`WAITING_TASK_NAMES`]). The daemon came out «busy» forever, and the
+/// restart for the plugin from the package was postponed at every comparison.
 pub fn daemon_busy(tasks: &[DaemonTask]) -> bool {
     tasks.iter().any(|t| {
         t.state == "running"
@@ -591,17 +602,17 @@ pub fn daemon_busy(tasks: &[DaemonTask]) -> bool {
     })
 }
 
-/// Заголовок уведомления о перезапуске ради плагина из пакета.
+/// Title of the notification about a restart for a plugin from the package.
 pub fn plugin_refresh_title() -> String {
     crate::i18n::tr("The wallpaper engine was restarted")
 }
 
-/// Текст уведомления: что демон теперь возьмёт из пакета и вместо чего.
+/// Notification text: what the daemon will now take from the package and instead of what.
 pub fn plugin_refresh_body(stale: &[StalePlugin]) -> String {
     plugin_refresh_body_for(EngineKind::Bundled, stale)
 }
 
-/// [`plugin_refresh_body`] для плагинов той раскладки, что их поставила.
+/// [`plugin_refresh_body`] for plugins of the layout that installed them.
 pub fn plugin_refresh_body_for(kind: EngineKind, stale: &[StalePlugin]) -> String {
     let mut lines = vec![match kind {
         EngineKind::Bundled => crate::i18n::tr(
@@ -621,43 +632,48 @@ pub fn plugin_refresh_body_for(kind: EngineKind, stale: &[StalePlugin]) -> Strin
     lines.join("\n")
 }
 
-// ── Сторож пакета: сверка сразу после обновления ────────────────────────────
+// ── Package watcher: comparison right after an update ───────────────────────
 //
-// Сверка выше идёт при подключении вкладки к демону. Но Rexon обычно живёт в
-// лотке, вкладку никто не открывает, и после `pacman -Syu` демон держал бы
-// старый плагин до следующего входа в сеанс. Поэтому лоток следит за
-// каталогом движка (inotify, `fs_watch`) и после затишья делает ту же сверку.
+// The comparison above runs when the tab connects to the daemon. But Rexon
+// usually lives in the tray, nobody opens the tab, and after `pacman -Syu`
+// the daemon would keep the old plugin until the next session login. So the
+// tray watches the engine directory (inotify, `fs_watch`) and after things
+// settle down runs the same comparison.
 
-/// Пауза тишины после последней записи пакетного менеджера, мс: pacman
-/// пишет файлы пачкой, а смотреть плагины надо, когда она кончилась.
+/// Quiet pause after the package manager's last write, ms: pacman writes
+/// files in a batch, and plugins must be looked at once it is over.
 pub const ENGINE_WATCH_QUIET_MS: i32 = 8000;
-/// Потолок ожидания конца пачки, мс: даже если запись не утихает (большое
-/// обновление системы), сверить через две минуты от первой.
+/// Cap on waiting for the end of the batch, ms: even if writing does not
+/// settle (a big system update), compare two minutes after the first write.
 pub const ENGINE_WATCH_MAX_MS: u64 = 120_000;
-/// Повторная сверка, пока демон занят задачами (скачивание, сканирование), мс.
+/// Repeated comparison while the daemon is busy with tasks (downloading, scanning), ms.
 pub const ENGINE_WATCH_BUSY_RETRY_MS: i32 = 60_000;
-/// Сколько раз повторять сверку при занятом демоне (час при паузе в минуту);
-/// дальше — до следующего изменения пакета или подключения вкладки.
+/// How many times to repeat the comparison while the daemon is busy (an hour
+/// at a one-minute pause); after that — until the next package change or tab
+/// connection.
 pub const ENGINE_WATCH_BUSY_RETRIES: u32 = 60;
-/// Срок разового запроса `plugin_list` сторожа, мс.
+/// Deadline of the watcher's one-off `plugin_list` request, ms.
 pub const ENGINE_WATCH_QUERY_MS: i32 = 5000;
 
-/// За чем следить, чтобы заметить новый плагин в пакете.
+/// What to watch to notice a new plugin in the package.
 ///
-/// * родитель каталога движка — имя самого каталога (пакет мог заменить его
-///   целиком или он появился впервые);
-/// * каталог движка — `plugins/` и сам AppImage движка: заменённый пакетом
-///   движок живой демон не подхватит, пока его не перезапустят
-///   ([`engine_refresh_decision`]);
-/// * `plugins/` — любое имя: появилась, пропала или заменена папка плагина;
-/// * каждая `plugins/<папка>/` — только `plugin.toml`: версию демон берёт
-///   оттуда, а замена библиотек без смены версии сверку не меняет.
+/// * the parent of the engine directory — the name of the directory itself
+///   (the package may have replaced it entirely, or it appeared for the first
+///   time);
+/// * the engine directory — `plugins/` and the engine AppImage itself: the
+///   live daemon will not pick up an engine replaced by the package until it
+///   is restarted ([`engine_refresh_decision`]);
+/// * `plugins/` — any name: a plugin folder appeared, vanished or was replaced;
+/// * every `plugins/<folder>/` — only `plugin.toml`: the daemon takes the
+///   version from there, and replacing libraries without a version change does
+///   not change the comparison.
 ///
-/// `plugin_dirs` — имена папок в `plugins/` на момент постановки слежки;
-/// новые подхватываются, когда сторож переставит слежку после пачки.
+/// `plugin_dirs` — folder names in `plugins/` at the time the watch was set
+/// up; new ones are picked up when the watcher re-arms the watch after a batch.
 ///
-/// Демон вне каталога движка (пакеты дистрибутива: `/usr/bin/waywallen`) —
-/// отдельная цель: его каталог, только имя демона.
+/// A daemon outside the engine directory (distribution packages:
+/// `/usr/bin/waywallen`) is a separate target: its directory, only the
+/// daemon's name.
 pub fn engine_watch_targets(layout: &EngineLayout, plugin_dirs: &[String]) -> Vec<crate::fs_watch::WatchTarget> {
     use crate::fs_watch::WatchTarget;
     let engine = layout.dir.trim_end_matches('/');
@@ -687,55 +703,56 @@ pub fn engine_watch_targets(layout: &EngineLayout, plugin_dirs: &[String]) -> Ve
     out
 }
 
-/// Один шаг поиска бинаря. Порядок списка = приоритет.
+/// One step of the binary search. List order = priority.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DaemonCandidate {
-    /// Годен, если это существующий исполняемый ФАЙЛ
+    /// Valid if it is an existing executable FILE
     /// (`os.path.isfile && os.access(X_OK)`).
     File(String),
-    /// `shutil.which(name)` — поиск исполняемого в `PATH`.
+    /// `shutil.which(name)` — search for an executable in `PATH`.
     PathLookup(String),
 }
 
-/// Живые проверки ФС для [`find_daemon_binary`]. Ядро само в ФС не лезет —
-/// тот же приём, что `WaywallenIo`: транспорт снаружи, порядок внутри.
+/// Live FS checks for [`find_daemon_binary`]. The core does not touch the FS
+/// itself — the same trick as `WaywallenIo`: transport outside, order inside.
 pub trait DaemonFs {
     /// `os.path.isfile(path) and os.access(path, os.X_OK)`.
     fn is_exec_file(&mut self, path: &str) -> bool;
-    /// `shutil.which(name)` → полный путь или `None`.
+    /// `shutil.which(name)` → full path or `None`.
     fn which(&mut self, name: &str) -> Option<String>;
-    /// Версия движка по пути (`X.Y.Z`) либо `None`, если её не узнать.
+    /// Engine version at the path (`X.Y.Z`) or `None` if it cannot be learned.
     ///
-    /// Спрашивается ТОЛЬКО когда на диске одновременно лежат движок комплекта
-    /// и управляемый AppImage (см. [`find_daemon_binary_in`]) — исполнителю
-    /// разрешено запускать `--version`. По умолчанию `None`: тогда остаётся
-    /// порядок списка.
+    /// Asked ONLY when the bundle engine and the managed AppImage both lie on
+    /// disk at the same time (see [`find_daemon_binary_in`]) — the executor is
+    /// allowed to run `--version`. Defaults to `None`: then the list order
+    /// stands.
     fn binary_version(&mut self, _path: &str) -> Option<String> {
         None
     }
 }
 
-/// `~` в начале пути → `home` (порт `os.path.expanduser`; достаточно формы
-/// `~/...`, других в модуле нет). Общий расширитель ядра, ветка
-/// `~/.config` уважает `$XDG_CONFIG_HOME` — см. [`crate::utils::expand_user`].
+/// `~` at the start of a path → `home` (port of `os.path.expanduser`; the
+/// `~/...` form is enough, the module has no others). The core's shared
+/// expander, the `~/.config` branch respects `$XDG_CONFIG_HOME` — see
+/// [`crate::utils::expand_user`].
 pub fn expanduser(path: &str, home: &str) -> String {
     crate::utils::expand_user(path, home, None)
 }
 
-/// Полный упорядоченный список кандидатов на бинарь демона.
+/// The full ordered list of daemon binary candidates.
 ///
-/// `rexon_pkg_dir` — каталог пакета `rexon/` (в Python вычисляется от
-/// `__file__`), `home` — домашний каталог. Порядок НАМЕРЕННЫЙ (фикс бага
-/// 2026-06-24, покрыт тестом `порядок кандидатов`):
-///   1. вшитый в дерево AppImage (`rexon/vendor/`) — переопределение
-///      разработчика: положил образ рядом с исходниками, и запускается он;
-///   2. движок из пакета дистрибутива ([`SYSTEM_DAEMON`]);
-///   3. движок, вшитый в поставку Rexon ([`ENGINE_DIR`]);
-///   4. управляемый AppImage в `~/.local/share/waywallen/`;
-///   5. `waywallen` в `PATH` (обычно симлинк на управляемый);
-///   6. известные запасные пути ([`DAEMON_FALLBACKS`]).
+/// `rexon_pkg_dir` — the `rexon/` package directory (computed from `__file__`
+/// in Python), `home` — the home directory. The order is INTENTIONAL (bug fix
+/// 2026-06-24, covered by the test `порядок кандидатов`):
+///   1. the AppImage bundled into the tree (`rexon/vendor/`) — a developer
+///      override: put an image next to the sources, and that is what runs;
+///   2. the engine from the distribution package ([`SYSTEM_DAEMON`]);
+///   3. the engine bundled into the Rexon delivery ([`ENGINE_DIR`]);
+///   4. the managed AppImage in `~/.local/share/waywallen/`;
+///   5. `waywallen` in `PATH` (usually a symlink to the managed one);
+///   6. known fallback paths ([`DAEMON_FALLBACKS`]).
 ///
-/// ⚠️ Между 2–3 и 4 порядок не окончательный: см. [`find_daemon_binary_in`].
+/// ⚠️ The order between 2–3 and 4 is not final: see [`find_daemon_binary_in`].
 pub fn daemon_binary_candidates(
     rexon_pkg_dir: &str,
     home: &str,
@@ -743,8 +760,8 @@ pub fn daemon_binary_candidates(
     daemon_binary_candidates_in(rexon_pkg_dir, home, ENGINE_DIR)
 }
 
-/// [`daemon_binary_candidates`] с явным каталогом движка комплекта (для
-/// проверок — настоящий `/usr/lib/rexon/engine` у стенда может и лежать).
+/// [`daemon_binary_candidates`] with an explicit bundle engine directory (for
+/// checks — a real `/usr/lib/rexon/engine` may well exist on the test bench).
 pub fn daemon_binary_candidates_in(
     rexon_pkg_dir: &str,
     home: &str,
@@ -753,8 +770,8 @@ pub fn daemon_binary_candidates_in(
     daemon_binary_candidates_for(rexon_pkg_dir, home, &layouts_with(engine_dir))
 }
 
-/// Раскладки [`engine_layouts`] с подменённым каталогом вшитого комплекта
-/// (проверкам: настоящий `/usr/lib/rexon/engine` у стенда может и лежать).
+/// [`engine_layouts`] layouts with a substituted bundle directory (for checks:
+/// a real `/usr/lib/rexon/engine` may well exist on the test bench).
 fn layouts_with(engine_dir: &str) -> Vec<EngineLayout> {
     engine_layouts()
         .into_iter()
@@ -765,7 +782,7 @@ fn layouts_with(engine_dir: &str) -> Vec<EngineLayout> {
         .collect()
 }
 
-/// [`daemon_binary_candidates`] с явным набором раскладок движка пакетов.
+/// [`daemon_binary_candidates`] with an explicit set of package engine layouts.
 pub fn daemon_binary_candidates_for(
     rexon_pkg_dir: &str,
     home: &str,
@@ -787,19 +804,20 @@ pub fn daemon_binary_candidates_for(
     out
 }
 
-/// Управляемый AppImage в пользовательском data-dir — порт
-/// `_managed_appimage`. Сюда dev-режим ставит новые версии движка, и сюда же
-/// указывает симлинк `~/.local/bin/waywallen`; этот файл мигрирует БД движка
-/// под себя → его надо предпочитать извлечённым устаревшим бинарям.
+/// The managed AppImage in the user data dir — port of `_managed_appimage`.
+/// Dev mode installs new engine versions here, and the
+/// `~/.local/bin/waywallen` symlink points here too; this file migrates the
+/// engine DB to its own schema → it must be preferred over extracted outdated
+/// binaries.
 ///
-/// Путь НЕ дублируется: единственный источник — [`crate::engine_update`],
-/// который этот же файл и устанавливает (правило полноты — одно место
-/// правки при смене каталога).
+/// The path is NOT duplicated: the single source is [`crate::engine_update`],
+/// which installs this very file (completeness rule — one place to edit when
+/// the directory changes).
 pub fn managed_appimage_path(home: &str) -> String {
     crate::engine_update::managed_appimage(home)
 }
 
-/// Пути вшитого AppImage — порт `_bundled_appimage` (кандидаты, без проверок).
+/// Paths of the bundled AppImage — port of `_bundled_appimage` (candidates, no checks).
 pub fn bundled_appimage_paths(rexon_pkg_dir: &str) -> Vec<String> {
     let pkg = rexon_pkg_dir.trim_end_matches('/');
     BUNDLED_NAMES
@@ -808,7 +826,7 @@ pub fn bundled_appimage_paths(rexon_pkg_dir: &str) -> Vec<String> {
         .collect()
 }
 
-/// Порт `find_daemon_binary` — первый годный кандидат из
+/// Port of `find_daemon_binary` — the first valid candidate from
 /// [`daemon_binary_candidates`].
 pub fn find_daemon_binary<FS: DaemonFs>(
     fs: &mut FS,
@@ -818,19 +836,21 @@ pub fn find_daemon_binary<FS: DaemonFs>(
     find_daemon_binary_in(fs, rexon_pkg_dir, home, ENGINE_DIR)
 }
 
-/// Движок пакета (вшитый комплект или пакет дистрибутива) или управляемый
-/// AppImage — что запускать, если на диске лежат оба.
+/// The package engine (bundled set or distribution package) or the managed
+/// AppImage — which one to run when both lie on disk.
 ///
-/// Движок пакета стоит в списке выше: пакет ставит его ради того, чтобы обои
-/// работали сразу и без сети. Но управляемый AppImage ставит сам человек
-/// (кнопка обновления страницы «Разработчик»), и если он НОВЕЕ комплекта,
-/// то он уже переписал базу движка под свою схему. Запуск более старого
-/// комплекта после этого кончается отказом старта («migration … is
-/// missing») — ровно дефект 2026-06-24. Поэтому новее — побеждает он.
+/// The package engine is higher in the list: the package installs it so that
+/// wallpapers work right away and without a network. But the managed
+/// AppImage is installed by the user (the update button on the «Developer»
+/// page), and if it is NEWER than the bundle, it has already rewritten the
+/// engine database to its schema. Running the older bundle after that ends in
+/// a refusal to start («migration … is missing») — exactly the 2026-06-24
+/// defect. So when it is newer, it wins.
 ///
-/// Версию не узнать (старая сборка без `--version`, сбой запуска) — остаётся
-/// порядок списка: комплект. Равные версии — тоже комплект: его файл не
-/// подменят под живым демоном ни кнопка, ни пакетный менеджер человека.
+/// The version cannot be learned (an old build without `--version`, a launch
+/// failure) — the list order stands: the bundle. Equal versions — the bundle
+/// too: its file will not be swapped under a live daemon by either the button
+/// or the user's package manager.
 pub fn prefer_managed_over_bundled(
     bundled_version: Option<&str>,
     managed_version: Option<&str>,
@@ -843,7 +863,7 @@ pub fn prefer_managed_over_bundled(
     }
 }
 
-/// [`find_daemon_binary`] с явным каталогом движка комплекта.
+/// [`find_daemon_binary`] with an explicit bundle engine directory.
 pub fn find_daemon_binary_in<FS: DaemonFs>(
     fs: &mut FS,
     rexon_pkg_dir: &str,
@@ -853,12 +873,11 @@ pub fn find_daemon_binary_in<FS: DaemonFs>(
     find_daemon_binary_for(fs, rexon_pkg_dir, home, &layouts_with(engine_dir))
 }
 
-/// [`find_daemon_binary`] с явным набором раскладок движка пакетов.
+/// [`find_daemon_binary`] with an explicit set of package engine layouts.
 ///
-/// Правило «управляемый AppImage побеждает, только если строго новее»
-/// ([`prefer_managed_over_bundled`]) одно для обеих раскладок: базу движка
-/// под свою схему переписывает любой более новый движок, кто бы его ни
-/// поставил.
+/// The rule «the managed AppImage wins only if strictly newer»
+/// ([`prefer_managed_over_bundled`]) is one for both layouts: any newer engine
+/// rewrites the engine database to its schema, whoever installed it.
 pub fn find_daemon_binary_for<FS: DaemonFs>(
     fs: &mut FS,
     rexon_pkg_dir: &str,
@@ -891,25 +910,26 @@ pub fn find_daemon_binary_for<FS: DaemonFs>(
 }
 
 // ============================================================================
-// 2. Автозапуск движка при входе в систему
+// 2. Engine autostart at login
 // ============================================================================
 
-/// Имя systemd user unit автозапуска.
+/// Name of the autostart systemd user unit.
 pub const AUTOSTART_UNIT: &str = "rexon-wallpaper-engine.service";
 
-/// Имя `.desktop` XDG-автозапуска (фолбэк для систем без systemd).
+/// Name of the XDG autostart `.desktop` (fallback for systems without systemd).
 pub const AUTOSTART_DESKTOP: &str = "rexon-wallpaper-engine.desktop";
 
-/// Шаблон systemd user unit. `{binary}` — абсолютный путь бинаря демона.
+/// systemd user unit template. `{binary}` — absolute path of the daemon binary.
 ///
-/// ⚠️ `KillMode=mixed` обязателен и снимать его нельзя (починка бага #3 шапки
-/// модуля). Демон исполняется из AppImage, то есть из FUSE-монтирования,
-/// которое держит соседний процесс в ТОЙ ЖЕ cgroup. При умолчательном
-/// `control-group` SIGTERM прилетает обоим разом, образ отваливается под ещё
-/// живым демоном, и штатное завершение оканчивается SIGBUS вместо кода 0.
+/// ⚠️ `KillMode=mixed` is mandatory and must not be removed (fix of bug #3 in
+/// the module header). The daemon executes from an AppImage, i.e. from a FUSE
+/// mount held by a neighbouring process in the SAME cgroup. With the default
+/// `control-group` SIGTERM hits both at once, the image falls away under a
+/// still-living daemon, and the normal shutdown ends in SIGBUS instead of
+/// code 0.
 ///
-/// `Description` — по-английски: systemd не умеет локализованных ключей, а
-/// видна строка только в `systemctl`/журнале (см. `session_splash`).
+/// `Description` is in English: systemd has no localized keys, and the line
+/// is only visible in `systemctl`/the journal (see `session_splash`).
 const AUTOSTART_UNIT_TMPL: &str = "\
 [Unit]
 Description=Rexon: wallpaper engine (waywallen)
@@ -939,10 +959,10 @@ const AUTOSTART_NAME: &str = crate::i18n::n_("Rexon Wallpaper Engine");
 // TRANSLATORS: Description of the wallpaper engine autostart entry. waywallen is a program name.
 const AUTOSTART_COMMENT: &str = crate::i18n::n_("Start the wallpaper engine (waywallen) at login");
 
-/// Шаблон `.desktop` XDG-автозапуска. `{name}` и `{comment}` — строки
-/// `Key=` + `Key[<код>]=` на всех языках каталога
-/// ([`crate::system_l10n::desktop_key`]): прежде `Comment` был только
-/// русским, без ключа языка, а `Name[ru]` — парой в коде.
+/// XDG autostart `.desktop` template. `{name}` and `{comment}` are
+/// `Key=` + `Key[<code>]=` lines in all catalog languages
+/// ([`crate::system_l10n::desktop_key`]): previously `Comment` was Russian
+/// only, without a language key, and `Name[ru]` was a pair in code.
 const AUTOSTART_DESKTOP_TMPL: &str = "\
 [Desktop Entry]
 Type=Application
@@ -952,19 +972,19 @@ NoDisplay=true
 X-GNOME-Autostart-enabled=true
 ";
 
-/// Содержимое systemd user unit для данного бинаря (без плагинов комплекта).
+/// systemd user unit contents for the given binary (without bundle plugins).
 pub fn autostart_unit_content(binary: &str) -> String {
     autostart_unit_content_with(binary, None)
 }
 
-/// Содержимое `.desktop` XDG-автозапуска для данного бинаря.
+/// XDG autostart `.desktop` contents for the given binary.
 pub fn autostart_desktop_content(binary: &str) -> String {
     autostart_desktop_content_with(binary, None)
 }
 
-/// Хвост `ExecStart`/`Exec` с каталогом плагинов комплекта (см.
-/// [`engine_launch_args`]); без комплекта — пусто, строка юнита та же, что
-/// до появления комплекта.
+/// `ExecStart`/`Exec` tail with the bundle plugins directory (see
+/// [`engine_launch_args`]); without a bundle — empty, the unit line is the
+/// same as before the bundle existed.
 fn plugin_tail(plugin_root: Option<&str>) -> String {
     match plugin_root {
         Some(root) => format!(" {PLUGIN_FLAG} \"{}\"", root.trim_end_matches('/')),
@@ -972,9 +992,9 @@ fn plugin_tail(plugin_root: Option<&str>) -> String {
     }
 }
 
-/// [`autostart_unit_content`] с каталогом плагинов комплекта: служба,
-/// поднятая при входе, обязана видеть плагин Open Wallpaper Engine из пакета
-/// так же, как демон, запущенный из окна.
+/// [`autostart_unit_content`] with the bundle plugins directory: the service
+/// brought up at login must see the Open Wallpaper Engine plugin from the
+/// package just like a daemon started from the window.
 pub fn autostart_unit_content_with(binary: &str, plugin_root: Option<&str>) -> String {
     AUTOSTART_UNIT_TMPL
         .replace("{bus}", DBUS_SERVICE)
@@ -982,11 +1002,11 @@ pub fn autostart_unit_content_with(binary: &str, plugin_root: Option<&str>) -> S
         .replace("{plugin}", &plugin_tail(plugin_root))
 }
 
-/// [`autostart_desktop_content`] с каталогом плагинов комплекта.
+/// [`autostart_desktop_content`] with the bundle plugins directory.
 pub fn autostart_desktop_content_with(binary: &str, plugin_root: Option<&str>) -> String {
     use crate::system_l10n::desktop_key as key;
-    // Сначала строки языков (в них нет `{…}`), потом путь — путь с
-    // фигурными скобками не должен задеть меток шаблона.
+    // Language lines first (they have no `{…}`), then the path — a path with
+    // curly braces must not hit the template's placeholders.
     AUTOSTART_DESKTOP_TMPL
         .replace("{name}", &key("Name", AUTOSTART_NAME))
         .replace("{comment}", &key("Comment", AUTOSTART_COMMENT))
@@ -994,23 +1014,23 @@ pub fn autostart_desktop_content_with(binary: &str, plugin_root: Option<&str>) -
         .replace("{plugin}", &plugin_tail(plugin_root))
 }
 
-/// Корень пользовательских конфигов: `$XDG_CONFIG_HOME` либо `~/.config`.
-/// Реэкспорт единой точки ядра — [`crate::utils::config_home`].
+/// Root of user configs: `$XDG_CONFIG_HOME` or `~/.config`.
+/// Re-export of the core's single point — [`crate::utils::config_home`].
 pub fn config_home(xdg_config_home: Option<&str>, home: &str) -> String {
     crate::utils::config_home(xdg_config_home, home)
 }
 
-/// Путь systemd user unit.
+/// Path of the systemd user unit.
 ///
-/// ⚠️ Намеренное расхождение с Python (починка, см. шапку модуля):
-/// `XDG_CONFIG_HOME` учитывается — иначе при нестандартном значении юнит
-/// пишется туда, где systemd его не ищет, и `enable` падает.
+/// ⚠️ Intentional divergence from Python (a fix, see the module header):
+/// `XDG_CONFIG_HOME` is respected — otherwise with a non-standard value the
+/// unit is written where systemd does not look for it, and `enable` fails.
 pub fn autostart_unit_path(xdg_config_home: Option<&str>, home: &str) -> String {
     let cfg = config_home(xdg_config_home, home);
     format!("{cfg}/systemd/user/{AUTOSTART_UNIT}")
 }
 
-/// Путь `.desktop` XDG-автозапуска.
+/// Path of the XDG autostart `.desktop`.
 pub fn autostart_desktop_path(
     xdg_config_home: Option<&str>,
     home: &str,
@@ -1019,14 +1039,15 @@ pub fn autostart_desktop_path(
     format!("{cfg}/autostart/{AUTOSTART_DESKTOP}")
 }
 
-/// Каталог живого user-менеджера systemd — порт условия
+/// Directory of the live systemd user manager — port of the condition
 /// `os.path.isdir(f"/run/user/{uid}/systemd")`.
 pub fn systemd_runtime_dir(uid: u32) -> String {
     format!("/run/user/{uid}/systemd")
 }
 
-/// Есть ли живой user-менеджер systemd (иначе — XDG-фолбэк). Наблюдения:
-/// `shutil.which("systemctl") is not None` и наличие [`systemd_runtime_dir`].
+/// Whether a live systemd user manager exists (otherwise — the XDG fallback).
+/// Observations: `shutil.which("systemctl") is not None` and the presence of
+/// [`systemd_runtime_dir`].
 pub fn systemd_user_available(
     systemctl_present: bool,
     runtime_dir_exists: bool,
@@ -1034,17 +1055,17 @@ pub fn systemd_user_available(
     systemctl_present && runtime_dir_exists
 }
 
-/// argv `systemctl --user <args…>` — порт `_systemctl_user`.
+/// argv `systemctl --user <args…>` — port of `_systemctl_user`.
 pub fn systemctl_user_argv(args: &[&str]) -> Vec<String> {
     let mut argv = vec!["systemctl".to_string(), "--user".to_string()];
     argv.extend(args.iter().map(|a| a.to_string()));
     argv
 }
 
-/// Таймаут вызовов `systemctl --user`, секунды.
+/// Timeout of `systemctl --user` calls, seconds.
 pub const SYSTEMCTL_TIMEOUT_SECS: u64 = 15;
 
-/// argv проверки «включён ли юнит».
+/// argv of the «is the unit enabled» check.
 pub fn autostart_is_enabled_argv() -> Vec<String> {
     systemctl_user_argv(&["is-enabled", AUTOSTART_UNIT])
 }
@@ -1054,19 +1075,20 @@ pub fn autostart_daemon_reload_argv() -> Vec<String> {
     systemctl_user_argv(&["daemon-reload"])
 }
 
-/// argv включения юнита.
+/// argv for enabling the unit.
 pub fn autostart_enable_argv() -> Vec<String> {
     systemctl_user_argv(&["enable", AUTOSTART_UNIT])
 }
 
-/// Команда для конфигов композиторов, которые `graphical-session.target` не
-/// поднимают (sway без sway-systemd, Hyprland без uwsm, river, labwc,
-/// Wayfire): включённый юнит там при входе не стартует сам, и строка в
-/// конфиге стартует его явно (`crate::compositor_autostart`). Повторный
-/// `start` уже работающей службы ничего не делает — двух движков не будет.
-/// Переменные сеанса передаются менеджеру прежде старта: без
-/// `WAYLAND_DISPLAY` движку не к чему подключиться, а импорт у композиторов
-/// идёт своей строкой, наперегонки с нашей.
+/// Command for configs of compositors that do not bring up
+/// `graphical-session.target` (sway without sway-systemd, Hyprland without
+/// uwsm, river, labwc, Wayfire): an enabled unit does not start by itself at
+/// login there, and the config line starts it explicitly
+/// (`crate::compositor_autostart`). A repeated `start` of an already running
+/// service does nothing — there will not be two engines. Session variables
+/// are passed to the manager before the start: without `WAYLAND_DISPLAY` the
+/// engine has nothing to connect to, and compositors import them on a line of
+/// their own, racing with ours.
 pub fn autostart_unit_start_argv() -> Vec<String> {
     vec![
         "sh".to_string(),
@@ -1078,17 +1100,17 @@ pub fn autostart_unit_start_argv() -> Vec<String> {
     ]
 }
 
-/// argv выключения юнита.
+/// argv for disabling the unit.
 pub fn autostart_disable_argv() -> Vec<String> {
     systemctl_user_argv(&["disable", AUTOSTART_UNIT])
 }
 
-/// Порт `autostart_enabled`: вердикт по наблюдениям.
+/// Port of `autostart_enabled`: a verdict from observations.
 ///
-/// `is_enabled` — результат `systemctl --user is-enabled` (код возврата и
-/// stdout) либо `None`, если systemd недоступен или вызов упал (в Python —
-/// перехваченный `OSError`/`SubprocessError`). `desktop_exists` — наличие
-/// `.desktop` XDG-автозапуска.
+/// `is_enabled` — result of `systemctl --user is-enabled` (exit code and
+/// stdout) or `None` if systemd is unavailable or the call failed (in Python —
+/// a caught `OSError`/`SubprocessError`). `desktop_exists` — whether the XDG
+/// autostart `.desktop` exists.
 pub fn autostart_enabled(
     is_enabled: Option<(i32, &str)>,
     desktop_exists: bool,
@@ -1101,24 +1123,24 @@ pub fn autostart_enabled(
     desktop_exists
 }
 
-/// План выключения автозапуска — порт ветки `not enabled` в
-/// `_set_autostart_inner`. Снимаются ОБА механизма (после смены системы не
-/// оставлять хвост).
+/// Plan for disabling autostart — port of the `not enabled` branch in
+/// `_set_autostart_inner`. BOTH mechanisms are removed (leave no leftovers
+/// after the system changes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisablePlan {
-    /// argv `systemctl --user disable` — только если systemd жив И юнит есть.
+    /// argv `systemctl --user disable` — only if systemd is alive AND the unit exists.
     pub disable_argv: Option<Vec<String>>,
-    /// Файл юнита к удалению (отсутствие — не ошибка).
+    /// Unit file to delete (absence is not an error).
     pub remove_unit: String,
-    /// argv `daemon-reload` — выполнить, только если юнит РЕАЛЬНО удалён.
+    /// argv `daemon-reload` — run only if the unit was REALLY deleted.
     pub daemon_reload_argv: Option<Vec<String>>,
-    /// `.desktop` к удалению (отсутствие — не ошибка).
+    /// `.desktop` to delete (absence is not an error).
     pub remove_desktop: String,
-    /// Итоговое сообщение (`ok = true`).
+    /// Final message (`ok = true`).
     pub message: String,
 }
 
-/// Построить [`DisablePlan`].
+/// Build a [`DisablePlan`].
 pub fn disable_plan(
     xdg_config_home: Option<&str>,
     home: &str,
@@ -1142,27 +1164,27 @@ pub fn disable_plan(
     }
 }
 
-/// План включения автозапуска — порт ветки `enabled` в `_set_autostart_inner`.
+/// Plan for enabling autostart — port of the `enabled` branch in `_set_autostart_inner`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnablePlan {
-    /// Бинарь движка не найден — настраивать нечего.
+    /// Engine binary not found — nothing to configure.
     NoBinary { message: String },
-    /// Основной путь: systemd user unit.
+    /// Main path: systemd user unit.
     Systemd {
         unit_path: String,
         unit_content: String,
         daemon_reload_argv: Vec<String>,
         enable_argv: Vec<String>,
-        /// Второй механизм параллельно не держим.
+        /// We do not keep the second mechanism in parallel.
         remove_desktop: String,
         message: String,
     },
-    /// Фолбэк для систем без systemd.
+    /// Fallback for systems without systemd.
     Xdg { desktop_path: String, desktop_content: String, message: String },
 }
 
-/// Построить [`EnablePlan`]. `binary` — результат [`find_daemon_binary`]
-/// (АБСОЛЮТНЫЙ путь; повторное включение просто перезаписывает файл).
+/// Build an [`EnablePlan`]. `binary` — result of [`find_daemon_binary`]
+/// (an ABSOLUTE path; enabling again simply overwrites the file).
 pub fn enable_plan(
     binary: Option<&str>,
     xdg_config_home: Option<&str>,
@@ -1172,7 +1194,7 @@ pub fn enable_plan(
     enable_plan_with(binary, xdg_config_home, home, systemd_available, None)
 }
 
-/// [`enable_plan`] с каталогом плагинов комплекта (см. [`engine_launch_args`]).
+/// [`enable_plan`] with the bundle plugins directory (see [`engine_launch_args`]).
 pub fn enable_plan_with(
     binary: Option<&str>,
     xdg_config_home: Option<&str>,
@@ -1202,17 +1224,17 @@ pub fn enable_plan_with(
     }
 }
 
-/// Может ли Rexon поставить автозапуск движка на этой машине →
+/// Whether Rexon can set up engine autostart on this machine →
 /// `(supported, unavailable_reason)`.
 ///
-/// Ответ для свойств `supported`/`unavailableReason` запроса
-/// `W.AutostartGetQuery`: вендорная страница настроек (waywallen с #380)
-/// держит переключатель серым, пока `supported` ложно, а причину
-/// показывает подсказкой у подписи. У Rexon автозапуск локальный: systemd
-/// user unit, а без systemd — XDG autostart, писать который можно всегда.
-/// Значит, помешать может только одно — отсутствие самого движка: тогда
-/// [`enable_plan_with`] ответит `NoBinary`, и включать нечего. Причина
-/// пустая, когда `supported` истинно — как у апстрима.
+/// The answer for the `supported`/`unavailableReason` properties of the
+/// `W.AutostartGetQuery` request: the vendor settings page (waywallen since
+/// #380) keeps the switch greyed out while `supported` is false, and shows the
+/// reason as a hint next to the label. Rexon's autostart is local: a systemd
+/// user unit, and without systemd — XDG autostart, which can always be
+/// written. So only one thing can get in the way — the engine itself being
+/// absent: then [`enable_plan_with`] answers `NoBinary`, and there is nothing
+/// to enable. The reason is empty when `supported` is true — as upstream does.
 pub fn autostart_availability(binary: Option<&str>) -> (bool, String) {
     match binary {
         Some(_) => (true, String::new()),
@@ -1225,23 +1247,24 @@ pub fn autostart_availability(binary: Option<&str>) -> (bool, String) {
     }
 }
 
-/// Сообщение о неудаче `systemctl enable` — `stderr`, а если он пуст, `stdout`
-/// (оба обрезаются по краям, порт `r.stderr.strip() or r.stdout.strip()`).
+/// Message about a failed `systemctl enable` — `stderr`, or `stdout` if it is
+/// empty (both trimmed, port of `r.stderr.strip() or r.stdout.strip()`).
 pub fn enable_failed_message(stderr: &str, stdout: &str) -> String {
     let s = stderr.trim();
     let text = if s.is_empty() { stdout.trim() } else { s };
     format!("systemctl enable: {text}")
 }
 
-/// Сообщение внешнего перехвата `set_autostart`.
+/// Message of the outer `set_autostart` catch.
 pub fn set_autostart_error_message(err: &str) -> String {
     crate::i18n::trf("Could not set up autostart: %1", &[&err])
 }
 
-/// Бинарь из строки `ExecStart="…" --no-ui --no-tray` уже записанного юнита.
+/// The binary from the `ExecStart="…" --no-ui --no-tray` line of an already
+/// written unit.
 ///
-/// Нужен освежению: путь к движку выбрал пользователь (или прежняя установка),
-/// и переписывание юнита не смеет его подменять.
+/// Needed for refreshing: the engine path was chosen by the user (or an
+/// earlier install), and rewriting the unit must not replace it.
 pub fn unit_binary(existing: &str) -> Option<String> {
     let line = existing
         .lines()
@@ -1259,15 +1282,15 @@ pub fn unit_binary(existing: &str) -> Option<String> {
     }
 }
 
-/// Что делать с уже лежащим на диске юнитом автозапуска.
+/// What to do with an autostart unit already on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitRefresh {
-    /// Юнита нет (автозапуск не включён) либо `ExecStart` не разобран —
-    /// трогать нечего.
+    /// No unit (autostart is not enabled) or `ExecStart` did not parse —
+    /// nothing to touch.
     Skip,
-    /// Содержимое совпадает с актуальным шаблоном.
+    /// The contents match the current template.
     UpToDate,
-    /// Юнит устарел: переписать и перечитать конфигурацию systemd.
+    /// The unit is outdated: rewrite it and reload the systemd configuration.
     Rewrite {
         unit_path: String,
         unit_content: String,
@@ -1275,15 +1298,16 @@ pub enum UnitRefresh {
     },
 }
 
-/// План освежения ранее записанного юнита автозапуска.
+/// Plan for refreshing a previously written autostart unit.
 ///
-/// Зачем: юнит пишется ОДИН раз — в момент включения «Start at login», и потом
-/// живёт у пользователя годами. Любая починка шаблона (например `KillMode=mixed`,
-/// баг #3 шапки модуля) без этого механизма достаётся только тем, кто заново
-/// щёлкнул переключатель. Здесь шаблон пересобирается на СТАРОМ пути бинаря
-/// ([`unit_binary`]) — выбор движка сохраняется, чинится только обвязка.
+/// Why: the unit is written ONCE — when «Start at login» is switched on, and
+/// then lives at the user's for years. Without this mechanism any template
+/// fix (e.g. `KillMode=mixed`, bug #3 of the module header) only reaches those
+/// who flipped the switch again. Here the template is rebuilt on the OLD
+/// binary path ([`unit_binary`]) — the engine choice is kept, only the wiring
+/// gets fixed.
 ///
-/// `existing` — содержимое файла юнита (`None`, если файла нет).
+/// `existing` — contents of the unit file (`None` if there is no file).
 pub fn refresh_unit_plan(
     existing: Option<&str>,
     xdg_config_home: Option<&str>,
@@ -1292,12 +1316,12 @@ pub fn refresh_unit_plan(
     refresh_unit_plan_with(existing, xdg_config_home, home, None)
 }
 
-/// [`refresh_unit_plan`] с каталогом плагинов комплекта.
+/// [`refresh_unit_plan`] with the bundle plugins directory.
 ///
-/// Бинарь юнита по-прежнему не трогается (его выбрал человек или прежняя
-/// установка), а хвост `--plugin` следует за комплектом: поставили пакет —
-/// служба начинает видеть его плагин; сняли — флаг уходит, и демон не
-/// ищет каталог, которого больше нет.
+/// The unit's binary is still not touched (the user or an earlier install
+/// chose it), while the `--plugin` tail follows the bundle: the package got
+/// installed — the service starts seeing its plugin; removed — the flag goes
+/// away, and the daemon does not look for a directory that no longer exists.
 pub fn refresh_unit_plan_with(
     existing: Option<&str>,
     xdg_config_home: Option<&str>,
@@ -1310,22 +1334,25 @@ pub fn refresh_unit_plan_with(
     refresh_unit_plan_on(existing, &binary, xdg_config_home, home, plugin_root)
 }
 
-/// Бинарь, на котором пересобрать юнит: тот, что Rexon запустил бы сейчас
-/// ([`find_daemon_binary`]); не нашлось ничего — прежний (юнит без движка
-/// всё равно не поднимется, а чужой выбор не затираем).
+/// The binary to rebuild the unit on: the one Rexon would launch now
+/// ([`find_daemon_binary`]); nothing found — the previous one (a unit without
+/// an engine will not come up anyway, and we do not overwrite someone else's
+/// choice).
 ///
-/// Зачем: 30.10.2026 пакет Rexon перестал вшивать движок
-/// (`/usr/lib/rexon/engine/waywallen.AppImage` ушёл вместе с обновлением), и
-/// юнит, записанный на этот путь, после обновления пакета смотрел бы в
-/// пустоту — обои пропали бы со следующего входа.
+/// Why: on 30.10.2026 the Rexon package stopped bundling the engine
+/// (`/usr/lib/rexon/engine/waywallen.AppImage` went away with the update), and
+/// a unit written to that path would point into nowhere after the package
+/// update — wallpapers would vanish from the next login.
 ///
-/// ⚠️ «Записанный ещё лежит на диске» юнит НЕ оправдывает: 08.11.2026 живой
-/// юнит смотрел в управляемый AppImage `~/.local/share/waywallen/` от 23.10
-/// (побайтно равный тогдашнему пакетному), а Rexon стоял пакетом с движком
-/// `/usr/lib/rexon/engine/`. Окно запускает движок пакета, служба при входе —
-/// старую копию, и после следующего обновления пакета при входе поднялся бы
-/// прежний демон. Управляемый AppImage, который НОВЕЕ пакетного, поиск демона
-/// выбирает сам ([`prefer_managed_over_bundled`]) — его юнит и сохранит.
+/// ⚠️ «The recorded one still lies on disk» does NOT justify the unit: on
+/// 08.11.2026 the live unit pointed at the managed AppImage
+/// `~/.local/share/waywallen/` from 23.10 (byte-identical to the packaged one
+/// of the time), while Rexon was installed as a package with the engine in
+/// `/usr/lib/rexon/engine/`. The window launches the package engine, the
+/// login service — the old copy, and after the next package update the old
+/// daemon would have come up at login. A managed AppImage that is NEWER than
+/// the packaged one is chosen by the daemon search itself
+/// ([`prefer_managed_over_bundled`]) — so the unit keeps it.
 pub fn unit_refresh_binary(written: &str, found: Option<&str>) -> String {
     match found {
         Some(f) if !f.is_empty() => f.to_string(),
@@ -1333,8 +1360,8 @@ pub fn unit_refresh_binary(written: &str, found: Option<&str>) -> String {
     }
 }
 
-/// [`refresh_unit_plan_with`] на явно выбранном бинаре
-/// ([`unit_refresh_binary`]); `existing` — содержимое юнита.
+/// [`refresh_unit_plan_with`] on an explicitly chosen binary
+/// ([`unit_refresh_binary`]); `existing` — contents of the unit.
 pub fn refresh_unit_plan_on(
     existing: Option<&str>,
     binary: &str,
@@ -1357,10 +1384,10 @@ pub fn refresh_unit_plan_on(
 }
 
 // ============================================================================
-// 3. Решения DaemonControl
+// 3. DaemonControl decisions
 // ============================================================================
 
-/// Статус демона — порт датакласса `DaemonStatus`.
+/// Daemon status — port of the `DaemonStatus` dataclass.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct DaemonStatus {
     pub running: bool,
@@ -1369,15 +1396,16 @@ pub struct DaemonStatus {
     pub current_wallpaper_id: String,
 }
 
-/// Порт `DaemonControl.probe` — синхронный опрос состояния демона.
+/// Port of `DaemonControl.probe` — a synchronous poll of the daemon state.
 ///
-/// Свойства читаются через уже существующий трейт [`WaywallenIo`] (`WsPort` /
-/// `Version` / `CurrentWallpaperId` не дублируются — правило #12). Отсутствие
-/// `WsPort` ([`DbusValue::None`], в Python — `reply.type() != ReplyMessage`
-/// или пустые аргументы) означает «демон не отвечает».
+/// Properties are read through the already existing trait [`WaywallenIo`]
+/// (`WsPort` / `Version` / `CurrentWallpaperId` are not duplicated — rule #12).
+/// A missing `WsPort` ([`DbusValue::None`], in Python —
+/// `reply.type() != ReplyMessage` or empty arguments) means «the daemon does
+/// not answer».
 ///
-/// ⚠️ Намеренное расхождение: нечисловое `WsPort` даёт `0` (Python падал
-/// необработанным `ValueError`).
+/// ⚠️ Intentional divergence: a non-numeric `WsPort` gives `0` (Python crashed
+/// with an unhandled `ValueError`).
 pub fn probe<IO: WaywallenIo>(io: &mut IO) -> DaemonStatus {
     let ws_port = io.get_property("WsPort");
     if ws_port == DbusValue::None {
@@ -1393,23 +1421,24 @@ pub fn probe<IO: WaywallenIo>(io: &mut IO) -> DaemonStatus {
     }
 }
 
-/// Порт `str(value or "")`.
+/// Port of `str(value or "")`.
 fn str_or_empty(v: DbusValue) -> String {
     if v.is_truthy() { v.py_str() } else { String::new() }
 }
 
-/// argv detached-запуска демона: `(program, args)`. Демон должен пережить
-/// закрытие Rexon — запуск отдельной сессией делает окно (`we_socket::spawn_engine`).
+/// argv of the detached daemon launch: `(program, args)`. The daemon must
+/// survive Rexon closing — the window launches it as a separate session
+/// (`we_socket::spawn_engine`).
 pub fn daemon_launch_argv(binary: &str) -> (String, Vec<String>) {
     daemon_launch_argv_with(binary, None)
 }
 
-/// [`daemon_launch_argv`] с каталогом плагинов комплекта.
+/// [`daemon_launch_argv`] with the bundle plugins directory.
 pub fn daemon_launch_argv_with(binary: &str, plugin_root: Option<&str>) -> (String, Vec<String>) {
     (binary.to_string(), engine_launch_args(plugin_root))
 }
 
-/// Сообщение «бинарь не найден» из `ensure_running`.
+/// The «binary not found» message from `ensure_running`.
 pub fn daemon_not_found_message() -> String {
     format!(
         "Движок waywallen не найден. Ожидается вшитый AppImage (rexon/vendor/), \
@@ -1419,50 +1448,50 @@ pub fn daemon_not_found_message() -> String {
     )
 }
 
-/// Сообщение о неудачном detached-запуске.
+/// Message about a failed detached launch.
 pub fn daemon_launch_failed_message(binary: &str) -> String {
     format!("Не удалось запустить {binary}")
 }
 
-/// Сообщение таймаута поллинга.
+/// Polling timeout message.
 pub fn daemon_poll_timeout_message() -> String {
     "Демон waywallen не поднялся за 12 секунд.".to_string()
 }
 
-/// Сообщение «транспортный слой не собран» из `ensure_running`.
+/// The «transport layer is not built» message from `ensure_running`.
 ///
-/// Текст жил литералом в `client.py` — единственный из сообщений клиента,
-/// который не спрашивали у ядра. Одна подпись — одно место правки
-/// (правило #12), иначе следующее переименование скрипта сборки разъедется
-/// с остальными такими же строками вкладки.
+/// The text lived as a literal in `client.py` — the only client message that
+/// was not asked of the core. One label — one place to edit (rule #12),
+/// otherwise the next rename of the build script would drift apart from the
+/// other such strings of the tab.
 pub fn transport_missing_message() -> String {
     crate::i18n::tr(
         "The wallpaper engine module is not built: build it with tools/build_qml_control.sh",
     )
 }
 
-/// Сообщение о неразобранном кадре сервера (несовпадение версий протокола).
+/// Message about a server frame that did not parse (protocol version mismatch).
 pub fn frame_parse_error_message(err: &str) -> String {
     crate::i18n::trf("Could not parse a server frame: %1", &[&err])
 }
 
-/// Показывать ли тостом очередную ошибку транспорта (сокет, битый кадр).
+/// Whether to show the next transport error (socket, broken frame) as a toast.
 ///
-/// Пока демона нет, транспорт пробует переподключиться снова и снова, и
-/// каждая попытка даёт ту же ошибку сокета. Тост на каждую — это стена
-/// одинаковых сообщений, которые человек не может ни прочесть, ни закрыть
-/// (правило #13). Поэтому один тост на одно «пропало соединение»; следующий —
-/// только когда соединение восстановилось и пропало снова, либо когда
-/// ошибка стала ДРУГОЙ (новая причина — новое знание для человека).
+/// While there is no daemon, the transport tries to reconnect again and
+/// again, and every attempt gives the same socket error. A toast for each is
+/// a wall of identical messages a person can neither read nor close (rule
+/// #13). So one toast per «connection lost»; the next one — only when the
+/// connection was restored and lost again, or when the error became
+/// DIFFERENT (a new cause is new knowledge for the person).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TransportErrorToast {
-    /// Текст последнего показанного тоста в текущем обрыве; `None` — с
-    /// последнего подключения тостов не было.
+    /// Text of the last toast shown during the current outage; `None` — no
+    /// toasts since the last connection.
     shown: Option<String>,
 }
 
 impl TransportErrorToast {
-    /// Пришла ошибка. `true` — показать её тостом.
+    /// An error arrived. `true` — show it as a toast.
     pub fn on_error(&mut self, text: &str) -> bool {
         if self.shown.as_deref() == Some(text) {
             return false;
@@ -1471,21 +1500,21 @@ impl TransportErrorToast {
         true
     }
 
-    /// Соединение установлено: следующая ошибка — уже новый обрыв.
+    /// Connection established: the next error is already a new outage.
     pub fn on_connected(&mut self) {
         self.shown = None;
     }
 }
 
-/// Решение `ensure_running`.
+/// The `ensure_running` decision.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EnsureAction {
-    /// Демон жив → `ready(status)` сразу.
+    /// The daemon is alive → `ready(status)` right away.
     Ready { status: DaemonStatus },
-    /// Бинарь не найден → `failed(message)`.
+    /// Binary not found → `failed(message)`.
     NoBinary { message: String },
-    /// Автозапуск + поллинг D-Bus.
+    /// Autostart + D-Bus polling.
     Launch {
         program: String,
         args: Vec<String>,
@@ -1495,20 +1524,20 @@ pub enum EnsureAction {
 }
 
 impl EnsureAction {
-    /// Нужно ли перед действием тихо поставить+выбрать Plasma-плагин
-    /// `org.waywallen.kde` (best-effort, KDE-only).
+    /// Whether to quietly install+select the Plasma plugin `org.waywallen.kde`
+    /// before the action (best-effort, KDE-only).
     ///
-    /// ТОЛЬКО при живом/запускаемом движке: без него containment-плагин
-    /// подменит обои пользователя чёрным экраном.
+    /// ONLY with a live/launchable engine: without it the containment plugin
+    /// would replace the user's wallpaper with a black screen.
     pub fn ensure_kde_plugin(&self) -> bool {
         !matches!(self, EnsureAction::NoBinary { .. })
     }
 }
 
-/// Порт `DaemonControl.ensure_running` (без побочных эффектов).
+/// Port of `DaemonControl.ensure_running` (without side effects).
 ///
-/// Живым демон считается при `running && ws_port != 0` — как `st.running and
-/// st.ws_port` в Python.
+/// The daemon counts as alive when `running && ws_port != 0` — like
+/// `st.running and st.ws_port` in Python.
 pub fn ensure_running_decision(
     status: &DaemonStatus,
     binary: Option<&str>,
@@ -1516,7 +1545,7 @@ pub fn ensure_running_decision(
     ensure_running_decision_with(status, binary, None)
 }
 
-/// [`ensure_running_decision`] с каталогом плагинов комплекта.
+/// [`ensure_running_decision`] with the bundle plugins directory.
 pub fn ensure_running_decision_with(
     status: &DaemonStatus,
     binary: Option<&str>,
@@ -1539,15 +1568,16 @@ pub fn ensure_running_decision_with(
     }
 }
 
-/// [`ensure_running_decision_with`], когда известно, есть ли служба
-/// автозапуска (`service` — юнит [`AUTOSTART_UNIT`] записан и systemd
-/// пользователя жив).
+/// [`ensure_running_decision_with`] when it is known whether an autostart
+/// service exists (`service` — the [`AUTOSTART_UNIT`] unit is written and the
+/// user's systemd is alive).
 ///
-/// Есть служба — демон поднимается ЧЕРЕЗ неё (`systemctl --user start`): так
-/// он один и под присмотром службы, с её `--plugin` и `KillMode`. Прежде
-/// вкладка запускала второй, отдельный процесс мимо службы, и та потом при
-/// старте натыкалась на чужого демона (19.10.2026). Уже работающий демон —
-/// чей угодно — не трогается.
+/// If there is a service, the daemon is brought up THROUGH it
+/// (`systemctl --user start`): that way it is the only one and supervised by
+/// the service, with its `--plugin` and `KillMode`. Previously the tab
+/// launched a second, separate process bypassing the service, and the
+/// service then ran into someone else's daemon at startup (19.10.2026). An
+/// already running daemon — whoever's — is not touched.
 pub fn ensure_running_decision_service(
     status: &DaemonStatus,
     binary: Option<&str>,
@@ -1556,9 +1586,9 @@ pub fn ensure_running_decision_service(
 ) -> EnsureAction {
     let action = ensure_running_decision_with(status, binary, plugin_root);
     match action {
-        // Переменные сеанса — менеджеру прежде старта (как строка
-        // автозапуска композиторов): без `WAYLAND_DISPLAY` демону службы не
-        // к чему подключиться, если сеанс их не передал сам.
+        // Session variables go to the manager before the start (like the
+        // compositors' autostart line): without `WAYLAND_DISPLAY` the service's
+        // daemon has nothing to connect to, if the session did not pass them itself.
         EnsureAction::Launch { polls_left, poll_interval_ms, .. } if service => {
             let mut argv = autostart_unit_start_argv();
             let program = argv.remove(0);
@@ -1568,19 +1598,19 @@ pub fn ensure_running_decision_service(
     }
 }
 
-/// Решение одного тика поллинга.
+/// Decision of one polling tick.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PollAction {
-    /// Демон поднялся → остановить таймер, `ready(status)`.
+    /// The daemon came up → stop the timer, `ready(status)`.
     Ready { status: DaemonStatus },
-    /// Ждём дальше; сколько попыток осталось.
+    /// Keep waiting; how many attempts are left.
     Continue { polls_left: i64 },
-    /// Попытки кончились → остановить таймер, `failed(message)`.
+    /// Attempts ran out → stop the timer, `failed(message)`.
     Timeout { message: String },
 }
 
-/// Порт `DaemonControl._poll_once`.
+/// Port of `DaemonControl._poll_once`.
 pub fn poll_decision(status: &DaemonStatus, polls_left: i64) -> PollAction {
     if status.running && status.ws_port != 0 {
         return PollAction::Ready { status: status.clone() };
@@ -1593,67 +1623,72 @@ pub fn poll_decision(status: &DaemonStatus, polls_left: i64) -> PollAction {
 }
 
 // ============================================================================
-// Сторож запуска движка: ждать, пока процесс жив и работает
+// Engine launch watcher: wait while the process is alive and working
 // ============================================================================
 //
-// ⛔ Дефект 30.10.2026 (ВМ, пакет r1895): первое открытие вкладки сразу после
-// установки пакета кончалось экраном «движок запускается слишком долго» —
-// [`poll_decision`] сдавался ровно через 24 × 500 мс, хотя движок честно
-// стартовал: первый запуск AppImage на медленной машине (монтирование и
-// распаковка образа, миграции базы) длится дольше 12 с. «Повторить запуск»
-// тут же всё открывал. Покупатель видел ошибку там, где ошибки не было
-// (правило #13).
+// ⛔ Defect 30.10.2026 (VM, package r1895): the first opening of the tab
+// right after installing the package ended in the «the engine is taking too
+// long to start» screen — [`poll_decision`] gave up exactly after
+// 24 × 500 ms, although the engine was honestly starting: the first AppImage
+// launch on a slow machine (mounting and unpacking the image, DB migrations)
+// takes longer than 12 s. «Retry launch» opened everything right away. The
+// customer saw an error where there was none (rule #13).
 //
-// Теперь срок не один, а три, и судит сторож по ПРОЦЕССУ, а не по часам:
-//   * первые [`START_QUIET_MS`] — просто ждём шину, как прежде;
-//   * дальше ждём, пока процесс жив и подаёт признаки жизни (растёт время
-//     процессора или счётчики ввода-вывода у него или у его потомков); на
-//     экране — «запускается…» с пояснением, что первый запуск бывает долгим;
-//   * отказ — только если процесс умер, затих на [`START_STALL_MS`] или
-//     истёк предельный срок [`START_HARD_LIMIT_MS`] (зациклился).
-// Умер процесс — отказ сразу, а не по истечении 12 с: ждать нечего.
+// Now there are three deadlines instead of one, and the watcher judges by
+// the PROCESS, not by the clock:
+//   * for the first [`START_QUIET_MS`] — simply wait for the bus, as before;
+//   * then wait while the process is alive and shows signs of life (CPU time
+//     or I/O counters grow for it or its descendants); the screen shows
+//     «starting…» with an explanation that the first launch can be long;
+//   * failure — only if the process died, went quiet for [`START_STALL_MS`]
+//     or the hard limit [`START_HARD_LIMIT_MS`] expired (it is looping).
+// The process died — fail right away, not after 12 s: there is nothing to
+// wait for.
 
-/// Тихое окно запуска, мс: столько ждём шину, ни о чём не спрашивая процесс.
-/// Это прежний жёсткий срок ([`POLL_LIMIT`] × [`POLL_MS`]): обычный старт
-/// укладывается в 3–5 с (замер в шапке `we_window::CONNECT_TIMEOUT_MS`).
+/// Quiet launch window, ms: this long we wait for the bus without asking the
+/// process anything. It is the former hard deadline ([`POLL_LIMIT`] ×
+/// [`POLL_MS`]): a normal start fits in 3–5 s (measured in the header of
+/// `we_window::CONNECT_TIMEOUT_MS`).
 pub const START_QUIET_MS: u64 = POLL_LIMIT as u64 * POLL_MS;
 
-/// Сколько процесс может не подавать признаков жизни после тихого окна, мс,
-/// прежде чем счесть его зависшим. Признаки жизни не видны вовсе (нет
-/// `/proc`, служба не отвечает) — тот же срок отсчитывается от запуска.
+/// How long the process may show no signs of life after the quiet window, ms,
+/// before it is considered hung. If signs of life are not visible at all (no
+/// `/proc`, the service does not answer) — the same deadline counts from the
+/// launch.
 pub const START_STALL_MS: u64 = 30_000;
 
-/// Предельный срок запуска, мс: дольше не ждём даже работающий процесс —
-/// так ловится зацикливание, при котором процессор занят, а шины нет.
+/// Hard launch limit, ms: we do not wait longer even for a working process —
+/// this catches a loop where the CPU is busy but there is no bus.
 pub const START_HARD_LIMIT_MS: u64 = 180_000;
 
-/// Снимок признаков жизни запущенного движка.
+/// Snapshot of the launched engine's signs of life.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EngineLife {
-    /// Процесс жив (для службы — юнит запускается или работает).
+    /// The process is alive (for a service — the unit is starting or running).
     pub alive: bool,
-    /// Счётчик работы дерева процессов: время процессора в тиках плюс байты
-    /// ввода-вывода. Важно не значение, а то, меняется ли оно.
+    /// Work counter of the process tree: CPU time in ticks plus I/O bytes. What
+    /// matters is not the value but whether it changes.
     pub activity: u64,
-    /// Сколько раз служба перезапускала движок (`NRestarts`); у процесса
-    /// вне службы — 0. Рост за время запуска значит: движок упал.
+    /// How many times the service restarted the engine (`NRestarts`); for a
+    /// process outside a service — 0. Growth during the launch means the engine
+    /// crashed.
     pub restarts: u32,
 }
 
-/// Решение одного тика сторожа запуска.
+/// Decision of one launch watcher tick.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartStep {
-    /// Движок на шине и слушает порт — запуск окончен.
+    /// The engine is on the bus and listening on the port — the launch is over.
     Ready { status: DaemonStatus },
-    /// Ждём дальше. `slow` — тихое окно позади: пора сказать человеку, что
-    /// первый запуск бывает долгим.
+    /// Keep waiting. `slow` — the quiet window is behind: time to tell the person
+    /// that the first launch can be long.
     Wait { slow: bool },
-    /// Запуск не удался; `message` — СЫРАЯ причина для журнала (подпись для
-    /// человека складывает `we_window::no_daemon_text_in`).
+    /// The launch failed; `message` — the RAW cause for the log (the label for
+    /// the person is assembled by `we_window::no_daemon_text_in`).
     Failed { message: String },
 }
 
-/// Сторож запуска движка. Тикает с шагом поллинга шины.
+/// Engine launch watcher. Ticks at the bus polling step.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StartWatch {
     elapsed_ms: u64,
@@ -1664,20 +1699,21 @@ pub struct StartWatch {
 }
 
 impl StartWatch {
-    /// `started` — процесс точно был запущен нами (известен его PID).
-    /// Служба (`systemctl --user start`) поднимает движок не сразу, и пока
-    /// юнит ещё не перешёл в «запускается», «мёртв» не значит «умер».
+    /// `started` — the process was definitely launched by us (its PID is known).
+    /// A service (`systemctl --user start`) does not bring the engine up right
+    /// away, and until the unit has moved to «activating», «dead» does not mean
+    /// «died».
     pub fn new(started: bool) -> Self {
         Self { seen_alive: started, ..Self::default() }
     }
 
-    /// Сколько уже ждём, мс.
+    /// How long we have been waiting already, ms.
     pub fn elapsed_ms(&self) -> u64 {
         self.elapsed_ms
     }
 
-    /// Очередной тик: `status` — шина, `life` — признаки жизни процесса
-    /// (`None` — узнать не удалось), `step_ms` — шаг с прошлого тика.
+    /// Next tick: `status` — the bus, `life` — the process's signs of life
+    /// (`None` — could not be learned), `step_ms` — the step since the last tick.
     pub fn tick(&mut self, status: &DaemonStatus, life: Option<EngineLife>, step_ms: u64) -> StartStep {
         if status.running && status.ws_port != 0 {
             return StartStep::Ready { status: status.clone() };
@@ -1715,17 +1751,17 @@ impl StartWatch {
     }
 }
 
-/// Сырая причина: процесс движка завершился, не выйдя на связь.
+/// Raw cause: the engine process exited without getting in touch.
 pub fn daemon_exited_message() -> String {
     "Процесс движка waywallen завершился, не выйдя на связь.".to_string()
 }
 
-/// Начало сырой причины «не вышел на связь за срок» — по нему отказ
-/// опознаёт `we_window::daemon_failure`.
+/// Start of the raw cause «did not get in touch in time» — by it
+/// `we_window::daemon_failure` recognizes the failure.
 pub const START_TIMEOUT_HEAD: &str = "Демон waywallen не вышел на связь за";
 
-/// Сырая причина таймаута сторожа запуска. `stalled` — процесс затих;
-/// иначе истёк предельный срок.
+/// Raw cause of the launch watcher timeout. `stalled` — the process went
+/// quiet; otherwise the hard limit expired.
 pub fn daemon_start_timeout_message(secs: u64, stalled: bool) -> String {
     let why = if stalled {
         "процесс перестал подавать признаки жизни"
@@ -1735,46 +1771,47 @@ pub fn daemon_start_timeout_message(secs: u64, stalled: bool) -> String {
     format!("{START_TIMEOUT_HEAD} {secs} с: {why}.")
 }
 
-// ── Что рассказать журналу, когда движок умер на запуске ────────────────────
+// ── What to tell the log when the engine died at launch ─────────────────────
 //
-// ⏳ Случай 30.10.2026 (ВМ, чистый профиль, движок из пакета системы): первый
-// запуск кончился «процесс завершился, не выйдя на связь», повторные шли.
-// Журналов не осталось, а в нашем было бы нечего читать: демон запускался
-// `QProcess::startDetached` — код выхода у чужого потомка не узнать, а его
-// stderr молча уходил в rexon.log вперемешку с нашими строками (окно уводит
-// туда свой дескриптор 2, демон его наследовал).
+// ⏳ Case 30.10.2026 (VM, clean profile, engine from the system package): the
+// first launch ended in «the process exited without getting in touch»,
+// repeated ones worked. No logs were left, and ours would have had nothing
+// to read: the daemon was launched with `QProcess::startDetached` — the exit
+// code of a foreign descendant cannot be learned, and its stderr silently
+// went into rexon.log mixed with our lines (the window redirects its
+// descriptor 2 there, the daemon inherited it).
 //
-// Что известно по исходнику демона v0.5.0 (`daemon/bootstrap.rs`,
-// `system/dbus.rs`): имя шины он захватывает ДО базы, сканирования плагинов
-// и публикации объекта; второй экземпляр при занятом имени и `--no-ui`
-// печатает «already running, no UI to launch» и выходит с кодом 0, ещё не
-// открыв порт. Проба шины (`WsPort`) всё это время отвечает «не запущен».
-// Остальные ранние выходы — код 1 и строка `Error: …` в stderr (сокет
-// вывода, база, переводы плагинов). Отсюда три сведения, которые отличают
-// причины друг от друга: код выхода, хвост stderr демона и кто держит имя
-// шины в момент отказа.
+// What is known from the daemon v0.5.0 source (`daemon/bootstrap.rs`,
+// `system/dbus.rs`): it grabs the bus name BEFORE the database, the plugin
+// scan and publishing the object; a second instance with the name taken and
+// `--no-ui` prints «already running, no UI to launch» and exits with code 0
+// before opening the port. The bus probe (`WsPort`) answers «not running»
+// all that time. The other early exits are code 1 and an `Error: …` line in
+// stderr (output socket, database, plugin translations). Hence three facts
+// that tell the causes apart: the exit code, the tail of the daemon's stderr
+// and who holds the bus name at the moment of failure.
 
-/// Файл вывода демона, запущенного Rexon (stdout и stderr), — рядом с
-/// rexon.log. Перезаписывается при каждом запуске: история демона и так
-/// лежит в его собственном журнале (`~/.local/state/waywallen/logs`).
+/// Output file of the daemon launched by Rexon (stdout and stderr) — next to
+/// rexon.log. Overwritten on every launch: the daemon's history is in its own
+/// log anyway (`~/.local/state/waywallen/logs`).
 pub const DAEMON_OUTPUT_LOG: &str = "waywallen-daemon.log";
 
-/// Сколько последних строк вывода демона класть в журнал при отказе.
+/// How many last lines of daemon output to put into the log on failure.
 pub const DAEMON_OUTPUT_TAIL_LINES: usize = 15;
 
-/// Путь файла вывода демона в каталоге журнала `log_dir`.
+/// Path of the daemon output file in the log directory `log_dir`.
 pub fn daemon_output_log_path(log_dir: &str) -> String {
     format!("{}/{DAEMON_OUTPUT_LOG}", log_dir.trim_end_matches('/'))
 }
 
-/// Последние `max` непустых строк текста (без хвостовых пробелов).
+/// The last `max` non-empty lines of text (without trailing whitespace).
 pub fn text_tail(text: &str, max: usize) -> Vec<String> {
     let lines: Vec<&str> = text.lines().map(str::trim_end).filter(|l| !l.is_empty()).collect();
     let from = lines.len().saturating_sub(max);
     lines[from..].iter().map(|l| l.to_string()).collect()
 }
 
-/// argv «чей процесс держит имя шины демона» (`GetConnectionUnixProcessID`).
+/// argv «whose process holds the daemon's bus name» (`GetConnectionUnixProcessID`).
 pub fn daemon_name_owner_pid_argv() -> Vec<String> {
     [
         "busctl",
@@ -1792,37 +1829,37 @@ pub fn daemon_name_owner_pid_argv() -> Vec<String> {
     .collect()
 }
 
-/// Ответ `busctl call … GetConnectionUnixProcessID`: `u 1234` → `1234`.
+/// Answer of `busctl call … GetConnectionUnixProcessID`: `u 1234` → `1234`.
 pub fn parse_name_owner_pid(stdout: &str) -> Option<u32> {
     let mut it = stdout.split_whitespace();
     (it.next()? == "u").then_some(())?;
     it.next()?.parse().ok().filter(|p| *p != 0)
 }
 
-/// Как завершился процесс движка: код или сигнал.
+/// How the engine process ended: a code or a signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EngineExit {
-    /// Ещё жив (отказ по сроку) или узнать не удалось.
+    /// Still alive (failure by deadline) or could not be learned.
     Unknown,
     Code(i32),
     Signal(i32),
 }
 
-/// Владелец имени шины демона в момент отказа.
+/// Owner of the daemon's bus name at the moment of failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BusNameOwner {
-    /// Имя свободно.
+    /// The name is free.
     Free,
-    /// Держит процесс `pid` с командной строкой `cmdline` (пусто — не прочлась).
+    /// Held by process `pid` with command line `cmdline` (empty — could not be read).
     Process { pid: u32, cmdline: String },
 }
 
-/// Строки журнала об отказе запуска: код выхода, владелец имени шины и
-/// хвост вывода демона. Только журнал — человеку это не показывается.
+/// Log lines about a launch failure: exit code, bus name owner and the tail
+/// of the daemon's output. Log only — this is not shown to the person.
 ///
-/// Код 0 при чужом владельце имени — почти наверняка второй экземпляр:
-/// движок поднимал кто-то ещё (служба, другое окно, плагин рабочего стола),
-/// и наш процесс уступил ему имя.
+/// Code 0 with a foreign name owner is almost certainly a second instance:
+/// someone else was bringing the engine up (a service, another window, a
+/// desktop plugin), and our process yielded the name to it.
 pub fn daemon_exit_report(
     pid: u32,
     exit: EngineExit,
@@ -1859,11 +1896,11 @@ pub fn daemon_exit_report(
     out
 }
 
-/// Одна строка `/proc/<pid>/stat`: `(pid, ppid, состояние, utime+stime)`.
+/// One line of `/proc/<pid>/stat`: `(pid, ppid, state, utime+stime)`.
 ///
-/// Имя процесса в скобках может содержать пробелы и скобки — режем по
-/// последней `)`. Дальше поля с третьего: состояние (3), ppid (4) … utime
-/// (14), stime (15).
+/// The process name in parentheses may contain spaces and parentheses — we
+/// cut at the last `)`. Then fields from the third: state (3), ppid (4) …
+/// utime (14), stime (15).
 pub fn parse_proc_stat(text: &str) -> Option<(u32, u32, char, u64)> {
     let open = text.find('(')?;
     let pid = text[..open].trim().parse().ok()?;
@@ -1876,9 +1913,9 @@ pub fn parse_proc_stat(text: &str) -> Option<(u32, u32, char, u64)> {
     Some((pid, ppid, state, utime.saturating_add(stime)))
 }
 
-/// Байты ввода-вывода из `/proc/<pid>/io` (`rchar` + `wchar`). Читаются они
-/// и при чтении из монтирования образа — то есть растут, пока AppImage
-/// распаковывается, даже если процессор ждёт диска.
+/// I/O bytes from `/proc/<pid>/io` (`rchar` + `wchar`). They are also counted
+/// when reading from the image mount — that is, they grow while the AppImage
+/// unpacks, even if the CPU is waiting for the disk.
 pub fn parse_proc_io(text: &str) -> u64 {
     text.lines()
         .filter_map(|line| {
@@ -1888,20 +1925,21 @@ pub fn parse_proc_io(text: &str) -> u64 {
         .fold(0u64, u64::saturating_add)
 }
 
-/// Процесс из `/proc` для [`tree_life`].
+/// A process from `/proc` for [`tree_life`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProcEntry {
     pub pid: u32,
     pub ppid: u32,
-    /// Состояние из `stat` (`R`, `S`, `Z` …).
+    /// State from `stat` (`R`, `S`, `Z` …).
     pub state: char,
-    /// Время процессора + байты ввода-вывода.
+    /// CPU time + I/O bytes.
     pub activity: u64,
 }
 
-/// Признаки жизни дерева процессов с корнем `root`: жив ли корень (зомби —
-/// уже нет) и сумма работы корня и всех его потомков. Потомки нужны
-/// потому, что у AppImage образ обслуживает отдельный процесс.
+/// Signs of life of the process tree rooted at `root`: whether the root is
+/// alive (a zombie no longer is) and the sum of work of the root and all its
+/// descendants. Descendants are needed because with an AppImage a separate
+/// process serves the image.
 pub fn tree_life(root: u32, entries: &[ProcEntry]) -> EngineLife {
     let alive = entries
         .iter()
@@ -1924,7 +1962,7 @@ pub fn tree_life(root: u32, entries: &[ProcEntry]) -> EngineLife {
     EngineLife { alive, activity, restarts: 0 }
 }
 
-/// Снять процессы пользователя из `/proc` (свои `io` читаются без прав).
+/// Collect the user's processes from `/proc` (one's own `io` is readable without privileges).
 pub fn read_proc_entries() -> Vec<ProcEntry> {
     let Ok(dir) = std::fs::read_dir("/proc") else { return Vec::new() };
     dir.flatten()
@@ -1941,8 +1979,8 @@ pub fn read_proc_entries() -> Vec<ProcEntry> {
         .collect()
 }
 
-/// Признаки жизни процесса `pid`, запущенного вне службы. `None` — `/proc`
-/// недоступен вовсе, и судить не по чему.
+/// Signs of life of process `pid` launched outside a service. `None` —
+/// `/proc` is not available at all, and there is nothing to judge by.
 pub fn read_process_life(pid: u32) -> Option<EngineLife> {
     let entries = read_proc_entries();
     if entries.is_empty() || pid == 0 {
@@ -1951,7 +1989,7 @@ pub fn read_process_life(pid: u32) -> Option<EngineLife> {
     Some(tree_life(pid, &entries))
 }
 
-/// argv опроса службы движка: состояние, главный PID и число перезапусков.
+/// argv for querying the engine service: state, main PID and restart count.
 pub fn engine_unit_show_argv() -> Vec<String> {
     systemctl_user_argv(&[
         "show",
@@ -1960,9 +1998,9 @@ pub fn engine_unit_show_argv() -> Vec<String> {
     ])
 }
 
-/// Состояние службы из вывода [`engine_unit_show_argv`]: `(жива, главный
-/// PID, перезапуски)`. «Жива» — юнит запускается, работает или ждёт
-/// перезапуска (`activating`), но не `failed`/`inactive`.
+/// Service state from the [`engine_unit_show_argv`] output: `(alive, main
+/// PID, restarts)`. «Alive» — the unit is starting, running or waiting for a
+/// restart (`activating`), but not `failed`/`inactive`.
 pub fn parse_engine_unit_show(stdout: &str) -> Option<(bool, u32, u32)> {
     let mut state = None;
     let mut pid = 0;
@@ -1982,15 +2020,15 @@ pub fn parse_engine_unit_show(stdout: &str) -> Option<(bool, u32, u32)> {
     Some((alive, pid, restarts))
 }
 
-/// Признаки жизни движка под службой: состояние юнита плюс работа дерева
-/// его главного процесса. `unit_show` — вывод [`engine_unit_show_argv`].
+/// Signs of life of the engine under a service: the unit state plus the work
+/// of its main process tree. `unit_show` — output of [`engine_unit_show_argv`].
 pub fn service_life(unit_show: &str, entries: &[ProcEntry]) -> Option<EngineLife> {
     let (alive, pid, restarts) = parse_engine_unit_show(unit_show)?;
     let activity = if pid != 0 { tree_life(pid, entries).activity } else { 0 };
     Some(EngineLife { alive, activity, restarts })
 }
 
-/// Порт `dbus_quick`: `str(args[0]) if args else ""`.
+/// Port of `dbus_quick`: `str(args[0]) if args else ""`.
 pub fn dbus_quick_result(arguments: &[DbusValue]) -> String {
     match arguments.first() {
         Some(v) => v.py_str(),
@@ -1998,8 +2036,8 @@ pub fn dbus_quick_result(arguments: &[DbusValue]) -> String {
     }
 }
 
-/// Запись `ListTasks` — порт кортежа
-/// `(id, kind, name, started_at_ms, state)`; схема D-Bus `a(tssxs)`.
+/// A `ListTasks` entry — port of the tuple
+/// `(id, kind, name, started_at_ms, state)`; D-Bus signature `a(tssxs)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonTask {
     pub id: i64,
@@ -2009,11 +2047,11 @@ pub struct DaemonTask {
     pub state: String,
 }
 
-/// Порт разбора демаршалённого QtDBus-ответа `ListTasks`.
+/// Port of parsing the demarshalled QtDBus `ListTasks` reply.
 ///
-/// `None` — строка не разобралась (не 5 элементов / нечисловой id), в Python
-/// это `TypeError`/`ValueError` → фолбэк на `busctl` ([`busctl_tasks_argv`] +
-/// [`parse_busctl_tasks`]).
+/// `None` — the row did not parse (not 5 elements / non-numeric id), in
+/// Python that is `TypeError`/`ValueError` → fallback to `busctl`
+/// ([`busctl_tasks_argv`] + [`parse_busctl_tasks`]).
 pub fn tasks_from_dbus_rows(rows: &[Vec<DbusValue>]) -> Option<Vec<DaemonTask>> {
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
@@ -2031,7 +2069,7 @@ pub fn tasks_from_dbus_rows(rows: &[Vec<DbusValue>]) -> Option<Vec<DaemonTask>> 
     Some(out)
 }
 
-/// argv фолбэка `busctl --json=short` (systemd есть на всех целевых Arch).
+/// argv of the `busctl --json=short` fallback (systemd exists on all target Arch systems).
 pub fn busctl_tasks_argv() -> Vec<String> {
     [
         "busctl",
@@ -2048,8 +2086,8 @@ pub fn busctl_tasks_argv() -> Vec<String> {
     .collect()
 }
 
-/// Порт `_list_tasks_busctl`: разбор `json.loads(stdout)["data"][0]`.
-/// Любая ошибка формата → пустой список (оригинал глушит всё через
+/// Port of `_list_tasks_busctl`: parsing `json.loads(stdout)["data"][0]`.
+/// Any format error → an empty list (the original swallows everything with
 /// `except Exception: return []`).
 pub fn parse_busctl_tasks(stdout: &str) -> Vec<DaemonTask> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(stdout) else {
@@ -2080,7 +2118,7 @@ pub fn parse_busctl_tasks(stdout: &str) -> Vec<DaemonTask> {
     out
 }
 
-/// `int(x)` над JSON-значением: число или числовая строка.
+/// `int(x)` over a JSON value: a number or a numeric string.
 fn json_int(v: &serde_json::Value) -> Option<i64> {
     match v {
         serde_json::Value::Number(n) => n
@@ -2094,7 +2132,7 @@ fn json_int(v: &serde_json::Value) -> Option<i64> {
     }
 }
 
-/// `str(x)` над JSON-значением (в ответе busctl это всегда строка).
+/// `str(x)` over a JSON value (in the busctl answer it is always a string).
 fn json_str(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::String(s) => s.clone(),
@@ -2105,22 +2143,23 @@ fn json_str(v: &serde_json::Value) -> String {
     }
 }
 
-// ── синхронная остановка активных WE-обоев (для установщика статичных) ──────
+// ── synchronous stop of active WE wallpapers (for the static installer) ─────
 
-/// Итог `stop_active_wallpapers`: сняли `n` активных рендереров.
+/// Result of `stop_active_wallpapers`: `n` active renderers were stopped.
 pub const STOP_STOPPED: &str = "stopped";
-/// Демон waywallen не запущен → WE-обои нет, делать нечего.
+/// The waywallen daemon is not running → no WE wallpapers, nothing to do.
 pub const STOP_NOT_RUNNING: &str = "not_running";
-/// Нет `QApplication` (headless/CLI) → синхронно снять нельзя.
+/// No `QApplication` (headless/CLI) → cannot stop synchronously.
 pub const STOP_NO_QT: &str = "no_qt";
-/// Демон есть, но снять не удалось (таймаут/обрыв WS).
+/// The daemon exists, but stopping failed (timeout/WS drop).
 pub const STOP_ERROR: &str = "error";
 
-/// Таймаут всей операции по умолчанию, мс.
+/// Default timeout of the whole operation, ms.
 pub const STOP_TIMEOUT_MS: u64 = 4000;
 
-/// Порт ранних веток `stop_active_wallpapers`: можно ли вообще работать.
-/// `None` — можно, идём в WS-часть; `Some((код, 0))` — сразу этот результат.
+/// Port of the early branches of `stop_active_wallpapers`: whether work is
+/// possible at all. `None` — yes, go to the WS part; `Some((code, 0))` — this
+/// result right away.
 pub fn stop_active_gate(
     status: &DaemonStatus,
     qt_available: bool,
@@ -2134,16 +2173,16 @@ pub fn stop_active_gate(
     None
 }
 
-/// Порт финальной ветки `stop_active_wallpapers`.
+/// Port of the final branch of `stop_active_wallpapers`.
 pub fn stop_active_result(ok: bool, killed: i64) -> (&'static str, i64) {
     if ok { (STOP_STOPPED, killed) } else { (STOP_ERROR, 0) }
 }
 
 // ============================================================================
-// 4. Кодек ЗАПРОСОВ
+// 4. REQUEST codec
 // ============================================================================
 
-/// Выдача `request_id` — порт поля `_next_id` (нумерация с 1).
+/// Handing out `request_id` — port of the `_next_id` field (numbering from 1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestIds {
     next: u64,
@@ -2160,32 +2199,33 @@ impl RequestIds {
         Self::default()
     }
 
-    /// Следующий `request_id` (и сдвиг счётчика).
+    /// The next `request_id` (and advancing the counter).
     pub fn alloc(&mut self) -> u64 {
         let id = self.next;
         self.next += 1;
         id
     }
 
-    /// Текущее значение счётчика (не сдвигая) — для сверки с шимом.
+    /// Current counter value (without advancing) — for comparison with the shim.
     pub fn peek(&self) -> u64 {
         self.next
     }
 }
 
-// Таблица номеров полей `oneof payload` сообщения `Request` — нужна
-// универсальному [`request_bytes`] (путь `call(field, msg)` из
-// `qml_ui/bridge.py`, где payload приходит уже сериализованным).
+// Table of `oneof payload` field numbers of the `Request` message — needed
+// by the generic [`request_bytes`] (the `call(field, msg)` path from
+// `qml_ui/bridge.py`, where the payload arrives already serialized).
 //
-// ⚠️ Файл ГЕНЕРИТСЯ build.rs из того же `control.proto`, что и структуры
-// [`crate::proto`]. Рукописный список тут уже отставал от вендора: апстрим
-// добавил поля 69–74 (`plugin_action`, `subscription_status`,
-// `subscription_set`, `qr_login_cancel`, `remote_settings_patch`,
-// `wallpaper_unsubscribe`), а таблица про них не знала — эти запросы молча
-// уходили на Python-фолбэк. Теперь новое поле в `.proto` подхватывается само.
+// ⚠️ The file is GENERATED by build.rs from the same `control.proto` as the
+// [`crate::proto`] structs. The hand-written list here already lagged behind
+// the vendor: upstream added fields 69–74 (`plugin_action`,
+// `subscription_status`, `subscription_set`, `qr_login_cancel`,
+// `remote_settings_patch`, `wallpaper_unsubscribe`), and the table did not
+// know about them — those requests silently went to the Python fallback.
+// Now a new field in `.proto` is picked up by itself.
 include!(concat!(env!("OUT_DIR"), "/request_payload_fields.rs"));
 
-/// Номер поля `oneof payload` по его имени.
+/// Number of a `oneof payload` field by its name.
 pub fn request_payload_field_number(field: &str) -> Option<u32> {
     REQUEST_PAYLOAD_FIELDS
         .iter()
@@ -2193,12 +2233,12 @@ pub fn request_payload_field_number(field: &str) -> Option<u32> {
         .map(|(_, num)| *num)
 }
 
-/// Сборка `Request{request_id, <field>: msg}` из УЖЕ сериализованного payload
-/// — универсальный путь `WaywallenClient.call(field, msg)`.
+/// Assembling `Request{request_id, <field>: msg}` from an ALREADY serialized
+/// payload — the generic path of `WaywallenClient.call(field, msg)`.
 ///
-/// Байты собираются напрямую: `request_id` (поле 1, varint, при 0 опускается
-/// как proto3-дефолт), затем length-delimited payload с номером поля из
-/// [`REQUEST_PAYLOAD_FIELDS`]. Порядок восходящий — тот же, что у
+/// The bytes are assembled directly: `request_id` (field 1, varint, omitted
+/// at 0 as the proto3 default), then a length-delimited payload with the
+/// field number from [`REQUEST_PAYLOAD_FIELDS`]. Ascending order — the same as
 /// `google.protobuf`.
 pub fn request_bytes(
     request_id: u64,
@@ -2209,7 +2249,7 @@ pub fn request_bytes(
         .ok_or_else(|| format!("неизвестное поле Request: {field}"))?;
     let mut out = Vec::with_capacity(payload.len() + 16);
     if request_id != 0 {
-        out.push(0x08); // поле 1, varint
+        out.push(0x08); // field 1, varint
         put_varint(&mut out, request_id);
     }
     put_varint(&mut out, (u64::from(num) << 3) | 2);
@@ -2218,7 +2258,7 @@ pub fn request_bytes(
     Ok(out)
 }
 
-/// Запись varint по протоколу protobuf.
+/// Writing a varint per the protobuf protocol.
 fn put_varint(out: &mut Vec<u8>, mut v: u64) {
     loop {
         let byte = (v & 0x7f) as u8;
@@ -2231,31 +2271,31 @@ fn put_varint(out: &mut Vec<u8>, mut v: u64) {
     }
 }
 
-/// Собрать `Request` из готовой полезной нагрузки prost-типа.
+/// Assemble a `Request` from a ready payload of a prost type.
 fn encode(request_id: u64, payload: pb::request::Payload) -> Vec<u8> {
     pb::Request { request_id, payload: Some(payload) }.encode_to_vec()
 }
 
-// ── обёртки, используемые страницами вкладки ────────────────────────────────
+// ── wrappers used by the tab's pages ────────────────────────────────────────
 
 /// `health`.
 pub fn health(request_id: u64) -> Vec<u8> {
     encode(request_id, pb::request::Payload::Health(pb::HealthRequest {}))
 }
 
-/// Параметры `wallpaper_list` — быстрые фильтры диалога Filters.
+/// `wallpaper_list` parameters — quick filters of the Filters dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WallpaperListParams {
     pub search_text: String,
-    /// `filter.proto`: `WallpaperSortKey`; по умолчанию
+    /// `filter.proto`: `WallpaperSortKey`; defaults to
     /// `WALLPAPER_SORT_KEY_NAME` (1).
     pub sort_key: i32,
     pub sort_desc: bool,
-    /// Исключить типы.
+    /// Exclude types.
     pub skip_types: Vec<String>,
-    /// Только обои с любым из тегов (пусто = все).
+    /// Only wallpapers with any of the tags (empty = all).
     pub filter_tags: Vec<String>,
-    /// Исключить рейтинги.
+    /// Exclude ratings.
     pub skip_content_ratings: Vec<String>,
 }
 
@@ -2272,7 +2312,7 @@ impl Default for WallpaperListParams {
     }
 }
 
-/// `wallpaper_list`. `page_size = 0` — все записи, без пагинации.
+/// `wallpaper_list`. `page_size = 0` — all entries, no pagination.
 pub fn wallpaper_list(request_id: u64, p: &WallpaperListParams) -> Vec<u8> {
     let direction = if p.sort_desc {
         pb::SortDirection::Desc
@@ -2299,18 +2339,19 @@ pub fn display_list(request_id: u64) -> Vec<u8> {
     )
 }
 
-/// Цели применения из номеров дисплеев — `PresentationTarget` v0.3.5.
+/// Apply targets from display numbers — `PresentationTarget` v0.3.5.
 ///
-/// С v0.3.5 поле 5 `WallpaperApplyRequest` (и поля 2/1 у активации и
-/// деактивации плейлиста) сменило тип: было `repeated uint64 display_ids`,
-/// стало `repeated PresentationTarget targets`. НОМЕР ПОЛЯ ТОТ ЖЕ, а тип на
-/// проводе другой (упакованные varint'ы против вложенных сообщений), поэтому
-/// кадры двух версий несовместимы в обе стороны и демон роняет чужой кадр
-/// молча. Отсюда единственная точка сборки целей — здесь, чтобы номера
-/// дисплеев не превращались в кадр где-то ещё по старой форме.
+/// Since v0.3.5 field 5 of `WallpaperApplyRequest` (and fields 2/1 of playlist
+/// activation and deactivation) changed type: it was
+/// `repeated uint64 display_ids`, it became `repeated PresentationTarget
+/// targets`. The FIELD NUMBER IS THE SAME, but the wire type differs (packed
+/// varints vs nested messages), so frames of the two versions are
+/// incompatible both ways and the daemon silently drops a foreign frame.
+/// Hence the single point for building targets is here, so that display
+/// numbers do not turn into a frame somewhere else in the old form.
 ///
-/// Нули отбрасываются: у вендора id дисплея — ненулевой ключ, а `0` приходит
-/// от QML как «значения нет» (`presentationTargetsFromVariant`).
+/// Zeros are dropped: in the vendor a display id is a non-zero key, and `0`
+/// comes from QML as «no value» (`presentationTargetsFromVariant`).
 pub fn display_targets(display_ids: &[u64]) -> Vec<pb::PresentationTarget> {
     display_ids
         .iter()
@@ -2321,7 +2362,7 @@ pub fn display_targets(display_ids: &[u64]) -> Vec<pb::PresentationTarget> {
         .collect()
 }
 
-/// Цель-холст (`PresentationTarget.canvas_id`). Пустой id — не цель.
+/// A canvas target (`PresentationTarget.canvas_id`). An empty id is not a target.
 pub fn canvas_target(canvas_id: &str) -> Option<pb::PresentationTarget> {
     if canvas_id.is_empty() {
         return None;
@@ -2357,8 +2398,8 @@ pub fn wallpaper_scan(request_id: u64) -> Vec<u8> {
     )
 }
 
-/// `wallpaper_get` — свежий снимок одной обоины (только здесь приходит
-/// `user_properties_schema` + `user_property_overrides`).
+/// `wallpaper_get` — a fresh snapshot of one wallpaper (only here do
+/// `user_properties_schema` + `user_property_overrides` arrive).
 pub fn wallpaper_get(request_id: u64, wallpaper_id: &str) -> Vec<u8> {
     encode(
         request_id,
@@ -2368,8 +2409,8 @@ pub fn wallpaper_get(request_id: u64, wallpaper_id: &str) -> Vec<u8> {
     )
 }
 
-/// `wallpaper_property_set` — одно user-property override. Пустое `value` =
-/// сброс к дефолту `project.json` (у демона это валидное значение oneof).
+/// `wallpaper_property_set` — one user-property override. An empty `value` =
+/// reset to the `project.json` default (a valid oneof value for the daemon).
 pub fn wallpaper_property_set(
     request_id: u64,
     wallpaper_id: &str,
@@ -2392,7 +2433,7 @@ pub fn wallpaper_property_set(
     )
 }
 
-// ── плейлисты ───────────────────────────────────────────────────────────────
+// ── playlists ───────────────────────────────────────────────────────────────
 
 /// `playlist_list`.
 pub fn playlist_list(request_id: u64) -> Vec<u8> {
@@ -2425,16 +2466,16 @@ pub fn playlist_create(
             mode,
             interval_secs,
             entry_ids: entry_ids.to_vec(),
-            // Поле появилось в протоколе 0.3.7 (общий выбор обоев у
-            // плейлиста). `false` — ровно нынешнее поведение: в proto3
-            // нулевой bool на провод не пишется, кадр остаётся тем же
-            // байт-в-байт. Значение придёт из формы, когда на неё
-            // переедет вендорный QML 0.3.7.
+            // The field appeared in protocol 0.3.7 (a shared wallpaper choice
+            // for the playlist). `false` is exactly the current behaviour: in
+            // proto3 a zero bool is not written to the wire, the frame stays
+            // the same byte for byte. The value will come from the form once
+            // the vendor QML 0.3.7 moves to it.
             synchronized_selection: false,
-            // waywallen 0.5.0: источник плейлиста (курируемый список или
-            // умная выборка). `None` демон читает как курируемый из
-            // `entry_ids` — ровно прежнее поведение; умные плейлисты Rexon
-            // пока не создаёт.
+            // waywallen 0.5.0: playlist source (a curated list or a smart
+            // selection). The daemon reads `None` as curated from
+            // `entry_ids` — exactly the previous behaviour; Rexon does not
+            // create smart playlists yet.
             source: None,
         }),
     )
@@ -2472,9 +2513,9 @@ pub fn playlist_set_items(
         pb::request::Payload::PlaylistSetItems(pb::PlaylistSetItemsRequest {
             id: playlist_id,
             entry_ids: entry_ids.to_vec(),
-            // Сторож гонки правок из протокола 0.3.7. Ноль = «не сверять»,
-            // то есть нынешнее поведение; на проводе нулевое поле не
-            // появляется вовсе.
+            // Edit race guard from protocol 0.3.7. Zero = «do not check»,
+            // i.e. the current behaviour; a zero field does not appear on
+            // the wire at all.
             expected_revision: 0,
         }),
     )
@@ -2554,18 +2595,18 @@ pub fn playlist_jump_to(
     )
 }
 
-// ⚠️ playlist_export / playlist_import УДАЛЕНЫ демоном в v0.2.3 (поля 55/56
-// Request — reserved). Обёрток нет намеренно.
+// ⚠️ playlist_export / playlist_import were REMOVED by the daemon in v0.2.3
+// (Request fields 55/56 are reserved). There are no wrappers on purpose.
 
-// ── дисплеи ─────────────────────────────────────────────────────────────────
+// ── displays ────────────────────────────────────────────────────────────────
 
 /// `display_rename`.
 ///
-/// ⚠️ `display_id` обязателен ровно по той же причине, что и у
-/// `display_layout_set` ниже: с v0.2.4 демон резолвит цель по номеру, а
-/// `name` держит только для старых клиентов. Прежняя обёртка номер не
-/// слала вовсе (`..Default::default()`), и переименование ушло бы в
-/// никуда — починено при переносе запроса на Rust (правило #16).
+/// ⚠️ `display_id` is mandatory for exactly the same reason as in
+/// `display_layout_set` below: since v0.2.4 the daemon resolves the target by
+/// number, and keeps `name` only for old clients. The previous wrapper did not
+/// send the number at all (`..Default::default()`), and the rename would have
+/// gone nowhere — fixed when moving the request to Rust (rule #16).
 pub fn display_rename(
     request_id: u64,
     name: &str,
@@ -2584,11 +2625,11 @@ pub fn display_rename(
     )
 }
 
-/// Sparse-override per-display layout — параметры `display_layout_set`.
+/// Sparse-override per-display layout — `display_layout_set` parameters.
 ///
-/// С v0.2.4 таргет резолвится по `display_id` («name is retained for older
-/// clients but is not used for target resolution», фикс #79) — передавать
-/// ОБЯЗАТЕЛЬНО; `name` шлём тоже, для старых демонов.
+/// Since v0.2.4 the target is resolved by `display_id` («name is retained for
+/// older clients but is not used for target resolution», fix #79) — passing it
+/// is MANDATORY; we send `name` too, for old daemons.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DisplayLayoutParams {
     pub name: String,
@@ -2596,7 +2637,7 @@ pub struct DisplayLayoutParams {
     pub fillmode: Option<i32>,
     pub align: Option<i32>,
     pub rotation: Option<i32>,
-    /// `(x, y)` в процентах 0..100, 50 = центр.
+    /// `(x, y)` in percent 0..100, 50 = center.
     pub location: Option<(u32, u32)>,
     pub clear_fillmode: bool,
     pub clear_align: bool,
@@ -2604,9 +2645,9 @@ pub struct DisplayLayoutParams {
     pub clear_location: bool,
 }
 
-/// `display_layout_set`. Подсообщение `override` появляется в кадре, только
-/// если задано хоть одно из `fillmode`/`align`/`rotation`/`location` (в Python
-/// оно создаётся самим обращением `req.override.*`).
+/// `display_layout_set`. The `override` submessage appears in the frame only
+/// if at least one of `fillmode`/`align`/`rotation`/`location` is set (in
+/// Python it is created by the very access `req.override.*`).
 pub fn display_layout_set(request_id: u64, p: &DisplayLayoutParams) -> Vec<u8> {
     let touched = p.fillmode.is_some()
         || p.align.is_some()
@@ -2643,15 +2684,15 @@ pub fn display_layout_set(request_id: u64, p: &DisplayLayoutParams) -> Vec<u8> {
             clear_rotation: p.clear_rotation,
             display_id: p.display_id,
             clear_location: p.clear_location,
-            // waywallen 0.4.4: отражение (`flip`). Органа управления у нас
-            // нет: `flip_set` в оверрайде ложен, сброса не просим — демон
-            // оставляет то отражение, что уже стоит у дисплея.
+            // waywallen 0.4.4: mirroring (`flip`). We have no control for
+            // it: `flip_set` in the override is false, we do not ask for a
+            // reset — the daemon keeps whatever mirroring the display has.
             clear_flip: false,
         }),
     )
 }
 
-// ── статус ──────────────────────────────────────────────────────────────────
+// ── status ──────────────────────────────────────────────────────────────────
 
 /// `renderer_list`.
 pub fn renderer_list(request_id: u64) -> Vec<u8> {
@@ -2686,8 +2727,9 @@ pub fn gpu_list(request_id: u64) -> Vec<u8> {
     encode(request_id, pb::request::Payload::GpuList(pb::GpuListRequest {}))
 }
 
-/// `wallpaper_lookup` — обоины по известным идентификаторам (карточка
-/// «Текущие обои»). Демон отвечает из своей базы, источники не опрашивает.
+/// `wallpaper_lookup` — wallpapers by known identifiers (the «Current
+/// wallpaper» card). The daemon answers from its database, it does not query
+/// sources.
 pub fn wallpaper_lookup(request_id: u64, wallpaper_ids: &[String]) -> Vec<u8> {
     encode(
         request_id,
@@ -2697,7 +2739,7 @@ pub fn wallpaper_lookup(request_id: u64, wallpaper_ids: &[String]) -> Vec<u8> {
     )
 }
 
-// ── фильтры (справочники тегов/рейтингов) ───────────────────────────────────
+// ── filters (tag/rating references) ─────────────────────────────────────────
 
 /// `tag_list`.
 pub fn tag_list(request_id: u64) -> Vec<u8> {
@@ -2712,7 +2754,7 @@ pub fn content_rating_list(request_id: u64) -> Vec<u8> {
     )
 }
 
-// ── источники/библиотеки ────────────────────────────────────────────────────
+// ── sources/libraries ───────────────────────────────────────────────────────
 
 /// `source_list`.
 pub fn source_list(request_id: u64) -> Vec<u8> {
@@ -2730,20 +2772,20 @@ pub fn library_list(request_id: u64) -> Vec<u8> {
     )
 }
 
-/// Имя библиотеки так, как его шлёт вендорный интерфейс waywallen 0.5.0:
-/// пробелы по краям срезаны, пустое не шлётся вовсе (`None` — имя по
-/// умолчанию выбирает демон). Одно правило на добавление и переименование.
+/// The library name as the waywallen 0.5.0 vendor interface sends it: spaces
+/// at the edges trimmed, an empty one is not sent at all (`None` — the daemon
+/// picks the default name). One rule for adding and renaming.
 fn library_name(name: &str) -> Option<String> {
     let name = name.trim();
     (!name.is_empty()).then(|| name.to_string())
 }
 
-/// Значения настроек библиотеки так, как их шлёт вендорный интерфейс
-/// waywallen 0.6.0: карта страницы (`QVariantMap`) → `map<string, string>`
-/// запроса, каждое значение — `QVariant::toString()`. Целое число,
-/// пришедшее из QML дробным (`3.0`), пишется без хвоста — как у Qt; `null`
-/// и вложенные значения дают пустую строку (у `QVariant` они тоже ничего
-/// не печатают). Не карта — настроек нет.
+/// Library settings values as the waywallen 0.6.0 vendor interface sends
+/// them: the page's map (`QVariantMap`) → the request's
+/// `map<string, string>`, each value is `QVariant::toString()`. An integer
+/// that came from QML as a fraction (`3.0`) is written without the tail — like
+/// Qt does; `null` and nested values give an empty string (`QVariant` prints
+/// nothing for them either). Not a map — no settings.
 pub fn library_settings(value: &serde_json::Value) -> HashMap<String, String> {
     use serde_json::Value;
     let Value::Object(map) = value else {
@@ -2770,10 +2812,11 @@ pub fn library_settings(value: &serde_json::Value) -> HashMap<String, String> {
         .collect()
 }
 
-/// Тело `library_add` — или `None`, если запрос не должен уйти: без пути
-/// или без плагина оригинал молча выходит. Имя — по [`library_name`]
-/// (waywallen 0.5.0, необязательное поле `LibraryAddRequest.name`);
-/// настройки библиотеки (0.6.0, `librarySettings` плагина) — как есть.
+/// Body of `library_add` — or `None` if the request must not go out: without
+/// a path or without a plugin the original silently returns. The name is per
+/// [`library_name`] (waywallen 0.5.0, optional field
+/// `LibraryAddRequest.name`); library settings (0.6.0, the plugin's
+/// `librarySettings`) — as is.
 pub fn library_add_request(
     path: &str,
     plugin_name: &str,
@@ -2791,8 +2834,8 @@ pub fn library_add_request(
     })
 }
 
-/// `library_add`. Пустое `name` — имя по умолчанию от демона, как до
-/// появления поля в 0.5.0.
+/// `library_add`. An empty `name` — the default name from the daemon, as
+/// before the field appeared in 0.5.0.
 pub fn library_add(request_id: u64, path: &str, plugin_name: &str, name: &str) -> Vec<u8> {
     encode(
         request_id,
@@ -2805,10 +2848,10 @@ pub fn library_add(request_id: u64, path: &str, plugin_name: &str, name: &str) -
     )
 }
 
-/// Тело `library_edit` (waywallen 0.6.0: имя и настройки библиотеки одним
-/// запросом; прежний `library_rename` вендорный интерфейс больше не шлёт) —
-/// или `None`: номер не положительный или имя пусто после среза пробелов,
-/// оригинал тогда молча выходит.
+/// Body of `library_edit` (waywallen 0.6.0: the library name and settings in
+/// one request; the vendor interface no longer sends the former
+/// `library_rename`) — or `None`: the number is not positive or the name is
+/// empty after trimming spaces, then the original silently returns.
 pub fn library_edit_request(
     library_id: i64,
     name: &str,
@@ -2824,7 +2867,7 @@ pub fn library_edit_request(
     })
 }
 
-/// `library_edit` — новое имя и настройки библиотеки.
+/// `library_edit` — the new name and settings of the library.
 pub fn library_edit(
     request_id: u64,
     library_id: i64,
@@ -2851,8 +2894,8 @@ pub fn library_remove(request_id: u64, library_id: i64) -> Vec<u8> {
     )
 }
 
-/// `library_auto_detect` — источник-плагины сами ищут библиотеки в типовых
-/// местах (Pictures, Steam workshop) и регистрируют найденное.
+/// `library_auto_detect` — source plugins themselves look for libraries in
+/// typical places (Pictures, Steam workshop) and register what they find.
 pub fn library_auto_detect(request_id: u64) -> Vec<u8> {
     encode(
         request_id,
@@ -2860,7 +2903,7 @@ pub fn library_auto_detect(request_id: u64) -> Vec<u8> {
     )
 }
 
-// ── настройки демона ────────────────────────────────────────────────────────
+// ── daemon settings ─────────────────────────────────────────────────────────
 
 /// `settings_get`.
 pub fn settings_get(request_id: u64) -> Vec<u8> {
@@ -2872,15 +2915,15 @@ pub fn settings_get(request_id: u64) -> Vec<u8> {
 
 /// `settings_set`.
 ///
-/// ⚠️ Full-replace: демон перезаписывает `global` И карту плагинов тем, что
-/// пришло — плагины, не попавшие в запрос, УДАЛЯЮТСЯ. Всегда передавать
-/// `plugins` из последнего `settings_get`.
+/// ⚠️ Full-replace: the daemon overwrites `global` AND the plugin map with
+/// what arrived — plugins missing from the request are DELETED. Always pass
+/// `plugins` from the last `settings_get`.
 ///
-/// Подсообщения приходят уже сериализованными (их формируют страницы
-/// настроек на Python) и здесь декодируются в prost-типы.
+/// Submessages arrive already serialized (the Python settings pages form
+/// them) and are decoded into prost types here.
 ///
-/// ⚠️ Байтовая сверка с Python для этого запроса НЕ применима: порядок
-/// `map`-записей на проводе не определён ни в одной из реализаций.
+/// ⚠️ A byte comparison with Python does NOT apply to this request: the order
+/// of `map` entries on the wire is undefined in either implementation.
 pub fn settings_set(
     request_id: u64,
     global_settings: &[u8],
@@ -2904,7 +2947,7 @@ pub fn settings_set(
     ))
 }
 
-// ── installable-плагины ─────────────────────────────────────────────────────
+// ── installable plugins ─────────────────────────────────────────────────────
 
 /// `plugin_list`.
 pub fn plugin_list(request_id: u64) -> Vec<u8> {
@@ -2914,8 +2957,8 @@ pub fn plugin_list(request_id: u64) -> Vec<u8> {
     )
 }
 
-/// `plugin_install` — установка плагина из ЛОКАЛЬНОГО `.zip`
-/// (`$XDG_DATA_HOME/waywallen/plugins/`, демон ничего не качает).
+/// `plugin_install` — installing a plugin from a LOCAL `.zip`
+/// (`$XDG_DATA_HOME/waywallen/plugins/`, the daemon downloads nothing).
 pub fn plugin_install(request_id: u64, zip_path: &str) -> Vec<u8> {
     encode(
         request_id,
@@ -2925,7 +2968,7 @@ pub fn plugin_install(request_id: u64, zip_path: &str) -> Vec<u8> {
     )
 }
 
-// ── Workshop (страница «Discover») ──────────────────────────────────────────
+// ── Workshop (the «Discover» page) ──────────────────────────────────────────
 
 /// `remote_availability`.
 pub fn remote_availability(request_id: u64) -> Vec<u8> {
@@ -2935,11 +2978,11 @@ pub fn remote_availability(request_id: u64) -> Vec<u8> {
     )
 }
 
-/// Условия запроса `remote_search`. v0.2.3+: источник задаётся
-/// `source_id` (из `RemoteAvailability.sources`), `sort_key` — строковый
-/// ключ из `RemoteSourceInfo.sorts`. waywallen 0.6.0: исключённые теги,
-/// режим сопоставления по фильтрам и курсор продолжения (пустой — первая
-/// страница либо источник листает номерами).
+/// Conditions of the `remote_search` request. v0.2.3+: the source is given by
+/// `source_id` (from `RemoteAvailability.sources`), `sort_key` is a string key
+/// from `RemoteSourceInfo.sorts`. waywallen 0.6.0: excluded tags, the filter
+/// match mode and a continuation cursor (empty — the first page, or the
+/// source pages by numbers).
 pub struct RemoteSearch<'a> {
     pub query: &'a str,
     pub sort_key: &'a str,
@@ -2949,6 +2992,8 @@ pub struct RemoteSearch<'a> {
     pub excluded_tags: &'a [String],
     pub filter_match_modes: &'a std::collections::BTreeMap<String, String>,
     pub cursor: &'a str,
+    /// waywallen 0.6.1: limit the search to one author (empty = everyone).
+    pub artist_id: &'a str,
 }
 
 /// `remote_search`.
@@ -2968,6 +3013,7 @@ pub fn remote_search(request_id: u64, search: &RemoteSearch<'_>) -> Vec<u8> {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
             excluded_tags: search.excluded_tags.to_vec(),
+            artist_id: search.artist_id.to_string(),
         }),
     )
 }
@@ -3010,23 +3056,25 @@ pub fn remote_uninstall(
 }
 
 // ============================================================================
-// Разбор ОТВЕТОВ, нужных самому модулю
+// Parsing RESPONSES the module itself needs
 // ============================================================================
 //
-// Разбор ответов вкладки живёт в [`crate::we_query`] (там же — состояние
-// `Query` и сигналы Qt). Здесь только то, что читает СИНХРОННЫЙ путь
-// `client.py`, у которого никакого `Query` нет: `stop_active_wallpapers`
-// снимает активные рендереры перед установкой статичных обоев.
+// Parsing of the tab's responses lives in [`crate::we_query`] (along with the
+// `Query` state and the Qt signals). Here is only what the SYNCHRONOUS path
+// of `client.py` reads, which has no `Query` at all: `stop_active_wallpapers`
+// stops active renderers before installing static wallpapers.
 
-/// Идентификаторы активных рендереров из кадра ответа `renderer_list`.
+/// Identifiers of active renderers from a `renderer_list` response frame.
 ///
-/// Вход — СЫРЫЕ байты `ServerFrame` (как их отдаёт WebSocket). `None` —
-/// кадр не разобрался или это не ответ `renderer_list`: вызывающий тогда
-/// считает, что рендереров нет (порт `except → ids = []` оригинала, где
-/// «не смогли прочитать» и «нечего снимать» ведут себя одинаково).
+/// Input — RAW `ServerFrame` bytes (as the WebSocket delivers them). `None` —
+/// the frame did not parse or it is not a `renderer_list` response: the caller
+/// then assumes there are no renderers (port of the original's
+/// `except → ids = []`, where «could not read» and «nothing to stop» behave
+/// the same).
 ///
-/// Пустые `renderer_id` отбрасываются: убивать рендерер без адреса нечем, а
-/// в счётчик снятых он бы попал и соврал бы пользователю про результат.
+/// Empty `renderer_id`s are dropped: there is nothing to kill a renderer
+/// without an address with, and it would get into the stopped counter and lie
+/// to the user about the result.
 pub fn renderer_ids_from_frame(frame_bytes: &[u8]) -> Option<Vec<String>> {
     let frame = pb::ServerFrame::decode(frame_bytes).ok()?;
     let pb::server_frame::Kind::Response(rsp) = frame.kind? else {
@@ -3045,48 +3093,50 @@ pub fn renderer_ids_from_frame(frame_bytes: &[u8]) -> Option<Vec<String>> {
 }
 
 // ============================================================================
-// Кадр сервера для колбэков на Python
+// Server frame for Python callbacks
 // ============================================================================
 //
-// Питоновские колбэки вкладки читали поля `pb.Response` САМИ — ради этого в
-// поставке покупателя лежал сгенерированный `control_pb2.py` и зависимость
-// `python-protobuf`. Разбор у всех трёх колбэков один и тот же, поэтому он
-// здесь ОДИН (правило #12), а не по копии на каждый.
+// The tab's Python callbacks read `pb.Response` fields THEMSELVES — for that
+// the customer delivery carried a generated `control_pb2.py` and the
+// `python-protobuf` dependency. Parsing is the same for all three callbacks,
+// so it is here ONCE (rule #12), not a copy for each.
 //
-// ⚠️ Нагрузки, которые Python НЕ читает, сюда не расписаны намеренно: их
-// разбирает ядро на своей стороне (`crate::we_query`), и вторая копия разбора
-// рядом старела бы молча. Появился новый потребитель на Python — добавьте ему
-// ветку в `payload_fields`, а не свой разбор по месту.
+// ⚠️ Payloads that Python does NOT read are deliberately not laid out here:
+// the core parses them on its side (`crate::we_query`), and a second copy of
+// the parsing next to it would silently go stale. A new Python consumer
+// appeared — add a branch for it to `payload_fields`, not its own in-place
+// parsing.
 
-/// Имя нагрузки, для которой разбора здесь нет.
+/// Name of a payload for which there is no parsing here.
 ///
-/// Не пустая строка и не «ok»: колбэк, увидевший это имя, обязан понять, что
-/// поля ему никто не разобрал, а не принять пустоту за ответ демона.
+/// Not an empty string and not «ok»: a callback that sees this name must
+/// understand that nobody parsed the fields for it, and not take emptiness
+/// for the daemon's answer.
 pub const REPLY_PAYLOAD_UNPARSED: &str = "unparsed";
 
-/// Кадр `ServerFrame`, разобранный для кода на Python.
+/// A `ServerFrame` parsed for Python code.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ReplyFields {
-    /// `"response"`, `"event"` либо `""` — кадр без содержимого.
+    /// `"response"`, `"event"` or `""` — a frame without contents.
     pub kind: String,
     pub request_id: u64,
     pub status: i32,
     pub error_code: i32,
     pub message: String,
-    /// Имя поля `oneof payload` — `""` (нагрузки нет) либо
-    /// [`REPLY_PAYLOAD_UNPARSED`], если разбора для неё здесь не заведено.
+    /// Name of the `oneof payload` field — `""` (no payload) or
+    /// [`REPLY_PAYLOAD_UNPARSED`] if no parsing is set up for it here.
     pub payload: String,
-    /// Строковые поля нагрузки.
+    /// String fields of the payload.
     pub text: Vec<(String, String)>,
-    /// Логические поля нагрузки.
+    /// Boolean fields of the payload.
     pub flags: Vec<(String, bool)>,
 }
 
-/// Поля нагрузки ответа, которые читают колбэки на Python.
+/// Response payload fields that the Python callbacks read.
 fn payload_fields(payload: Option<pb::response::Payload>) -> (String, Vec<(String, String)>, Vec<(String, bool)>) {
     match payload {
         None => (String::new(), Vec::new(), Vec::new()),
-        // Окно вкладки: здоров ли движок после подключения сокета.
+        // Tab window: whether the engine is healthy after the socket connects.
         Some(pb::response::Payload::Health(h)) => (
             "health".to_owned(),
             vec![
@@ -3096,7 +3146,7 @@ fn payload_fields(payload: Option<pb::response::Payload>) -> (String, Vec<(Strin
             ],
             Vec::new(),
         ),
-        // Страница «Разработчик»: горячая установка плагина движка.
+        // «Developer» page: hot install of an engine plugin.
         Some(pb::response::Payload::PluginInstall(p)) => (
             "plugin_install".to_owned(),
             vec![("plugin_id".to_owned(), p.plugin_id)],
@@ -3106,11 +3156,11 @@ fn payload_fields(payload: Option<pb::response::Payload>) -> (String, Vec<(Strin
     }
 }
 
-/// Разобрать СЫРЫЕ байты `ServerFrame` для колбэка на Python.
+/// Parse RAW `ServerFrame` bytes for a Python callback.
 ///
-/// Ошибка разбора возвращается вызывающему: битый кадр обязан дать понятную
-/// ошибку и потеряться, а не быть принятым за пустой ответ (демон может быть
-/// новее нас).
+/// A parse error is returned to the caller: a broken frame must give a clear
+/// error and be dropped, not be taken for an empty answer (the daemon may be
+/// newer than us).
 pub fn reply_fields(frame_bytes: &[u8]) -> Result<ReplyFields, prost::DecodeError> {
     let frame = pb::ServerFrame::decode(frame_bytes)?;
     match frame.kind {
@@ -3149,7 +3199,7 @@ mod start_watch_tests {
         assert_eq!(parse_name_owner_pid("Call failed: name has no owner"), None);
         assert_eq!(daemon_name_owner_pid_argv().last().map(String::as_str), Some(crate::waywallen_client::BUS_NAME));
 
-        // Второй экземпляр: код 0, имя держит другой процесс.
+        // Second instance: code 0, another process holds the name.
         let owner = BusNameOwner::Process { pid: 77, cmdline: "/usr/bin/waywallen --no-ui".into() };
         let tail = vec!["waywallen: already running, no UI to launch".to_string()];
         let r = daemon_exit_report(55, EngineExit::Code(0), Some(&owner), "/s/w.log", &tail);
@@ -3157,12 +3207,12 @@ mod start_watch_tests {
         assert!(r[1].contains("pid 77") && r[1].contains("уступил"), "{r:?}");
         assert_eq!(r[3], "  | waywallen: already running, no UI to launch");
 
-        // Свой отказ: код 1, имя свободно, ошибка в хвосте.
+        // Own failure: code 1, the name is free, the error is in the tail.
         let r = daemon_exit_report(55, EngineExit::Code(1), Some(&BusNameOwner::Free), "/s/w.log", &[]);
         assert_eq!(r, ["движок pid 55: код выхода 1", "имя шины демона свободно", "вывод демона пуст (/s/w.log)"]);
         let r = daemon_exit_report(55, EngineExit::Signal(9), None, "/s/w.log", &[]);
         assert!(r[0].ends_with("убит сигналом 9") && r[1].contains("не удалось"));
-        // Своё имя при отказе по сроку — без догадки о втором экземпляре.
+        // Own name on a deadline failure — no guess about a second instance.
         let me = BusNameOwner::Process { pid: 55, cmdline: String::new() };
         let r = daemon_exit_report(55, EngineExit::Unknown, Some(&me), "/s/w.log", &[]);
         assert_eq!(r[1], "имя шины демона держит pid 55 (?)");
@@ -3176,8 +3226,8 @@ mod start_watch_tests {
         Some(EngineLife { alive, activity, restarts: 0 })
     }
 
-    /// Дефект 30.10 (r1895): живой, работающий процесс через 12 с — не
-    /// отказ, а «ждём, первый запуск бывает долгим».
+    /// Defect 30.10 (r1895): a live, working process after 12 s is not a failure
+    /// but «waiting, the first launch can be long».
     #[test]
     fn working_process_is_waited_past_the_old_12_seconds() {
         let mut w = StartWatch::new(true);
@@ -3199,7 +3249,7 @@ mod start_watch_tests {
         assert_eq!(w.tick(&dead_bus(), life(true, 1), POLL_MS), StartStep::Wait { slow: false });
     }
 
-    /// Умер — отказ сразу, ждать 12 с нечего.
+    /// Died — fail right away, there is nothing to wait 12 s for.
     #[test]
     fn dead_process_fails_at_once() {
         let mut w = StartWatch::new(true);
@@ -3209,8 +3259,8 @@ mod start_watch_tests {
         );
     }
 
-    /// Служба ещё не перешла в «запускается» — это не смерть, пока не
-    /// истекло тихое окно.
+    /// The service has not moved to «activating» yet — that is not death while
+    /// the quiet window has not expired.
     #[test]
     fn service_not_yet_started_is_not_dead_until_quiet_window_ends() {
         let mut w = StartWatch::new(false);
@@ -3240,8 +3290,8 @@ mod start_watch_tests {
         );
     }
 
-    /// Живой, но затихший процесс — завис: отказ после тихого окна и срока
-    /// затишья, не раньше.
+    /// A live but quiet process is hung: failure after the quiet window and the
+    /// stall deadline, not earlier.
     #[test]
     fn silent_process_fails_after_stall() {
         let mut w = StartWatch::new(true);
@@ -3267,7 +3317,7 @@ mod start_watch_tests {
         assert_eq!(t + POLL_MS, START_STALL_MS.max(START_QUIET_MS));
     }
 
-    /// Работает без конца, а шины нет — предельный срок.
+    /// Works endlessly but there is no bus — the hard limit.
     #[test]
     fn busy_forever_hits_hard_limit() {
         let mut w = StartWatch::new(true);

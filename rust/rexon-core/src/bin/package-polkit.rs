@@ -1,43 +1,46 @@
-//! `package-polkit` — печать привилегированных помощников Rexon и их
-//! polkit-политик для ПАКЕТА дистрибутива.
+//! `package-polkit` prints Rexon's privileged helpers and their polkit
+//! policies for a distribution PACKAGE.
 //!
-//! Зачем
-//! -----
-//! Помощники (`rexon-de-helper`, `rexon-pkg-helper`, `rexon-stage-helper`,
-//! `rexon-system-helper`) и их политики дают вариант «пароль реже»
-//! (`auth_admin_keep`: пять минут на процесс Rexon, а подтверждённое
-//! действие `org.rexon.pkg` покрывает и три остальных): без них каждая
-//! системная операция спрашивает пароль сырым `pkexec`, а темы экрана
-//! входа и загрузки из «Оформления» не ставятся вовсе. Ручная установка
-//! кладёт их сама (`installer_exec`), а у пакета такого шага нет — и
-//! человек с пакетом жил на пароле за операцию.
+//! Why
+//! ---
+//! The helpers (`rexon-de-helper`, `rexon-pkg-helper`, `rexon-stage-helper`,
+//! `rexon-system-helper`) and their policies provide the "ask for the password
+//! less often" option (`auth_admin_keep`: five minutes per Rexon process, and a
+//! confirmed `org.rexon.pkg` action also covers the other three): without them
+//! every system operation asks for the password through bare `pkexec`, and
+//! login screen and boot themes from "Appearance" cannot be installed at all.
+//! A manual installation puts them in place itself (`installer_exec`), but a
+//! package has no such step, so a person with the package lived with a
+//! password prompt for every operation.
 //!
-//! Тексты помощников и политик живут в ядре
-//! ([`rexon_core::system_plan`], помощник тем — [`rexon_core::installer`]). Второй копии в PKGBUILD быть не должно:
-//! расходятся они молча, а видно это только по пароля́м на живой машине.
-//! Поэтому пакет печатает их этой программой при сборке.
+//! The texts of the helpers and policies live in the core
+//! ([`rexon_core::system_plan`], the theme helper in [`rexon_core::installer`]). There must be no second copy in the PKGBUILD:
+//! the copies drift apart silently, and that only shows up as password prompts
+//! on a live machine. That is why the package prints them with this program at
+//! build time.
 //!
-//! Путь у пакета свой ([`rexon_core::system_plan::HELPER_DIR_PACKAGE`] —
-//! `/usr/lib`): нормы Arch запрещают пакету писать в `/usr/local`, а файлы
-//! вне базы pacman не снял бы `pacman -R`. Политика обязана annotate'ить
-//! ровно тот путь, по которому помощник и лежит, — иначе pkexec наше
-//! действие не выберет.
+//! The package has its own path ([`rexon_core::system_plan::HELPER_DIR_PACKAGE`],
+//! `/usr/lib`): Arch packaging guidelines forbid a package from writing to
+//! `/usr/local`, and files outside the pacman database would not be removed by
+//! `pacman -R`. The policy must annotate exactly the path where the helper
+//! lives, otherwise pkexec will not pick our action.
 //!
-//! Помощник сеанса прав `rexon-priv-helper` (действие `org.rexon.session`,
-//! «один пароль на запуск») — не скрипт, а бинарь того же крейта: его тело
-//! собирает cargo, а эта программа печатает только его путь в пакете и
-//! политику. PKGBUILD перебирает такие помощники по `--list-binaries` и
-//! берёт файл из каталога сборки по имени из `--path`.
+//! The privilege session helper `rexon-priv-helper` (action `org.rexon.session`,
+//! "one password per launch") is not a script but a binary of the same crate:
+//! its body is built by cargo, and this program prints only its path in the
+//! package and its policy. The PKGBUILD iterates over such helpers via
+//! `--list-binaries` and takes the file from the build directory by the name
+//! given by `--path`.
 //!
 //! ```text
-//! package-polkit --helper de|pkg|stage|system    # тело скрипта (режим 755)
-//! package-polkit --policy de|pkg|stage|system|session   # XML политики (режим 644)
-//! package-polkit --path   de|pkg|stage|system|session   # путь помощника в пакете
-//! package-polkit --policy-path de|pkg|stage|system|session   # путь файла политики
-//! package-polkit --list                          # помощники-скрипты пакета
-//! package-polkit --list-binaries                 # помощники-бинари пакета
+//! package-polkit --helper de|pkg|stage|system    # script body (mode 755)
+//! package-polkit --policy de|pkg|stage|system|session   # policy XML (mode 644)
+//! package-polkit --path   de|pkg|stage|system|session   # helper path in the package
+//! package-polkit --policy-path de|pkg|stage|system|session   # policy file path
+//! package-polkit --list                          # the package's script helpers
+//! package-polkit --list-binaries                 # the package's binary helpers
 //! ```
-//! Коды возврата: 0 — напечатано; 2 — неверные аргументы.
+//! Exit codes: 0 — printed; 2 — invalid arguments.
 
 use rexon_core::installer as inst;
 use rexon_core::system_plan as plan;
@@ -46,14 +49,15 @@ const USAGE: &str = "использование: package-polkit \
 (--helper | --policy | --path | --policy-path) (de | pkg | stage | system | session) \
 | --list | --list-binaries";
 
-/// Помощники, которые ставит пакет. PKGBUILD перебирает их по `--list`, а
-/// не своим списком: пятый помощник, заведённый в ядре, иначе молча не
-/// попал бы в пакет — ровно так в пакет не попал `rexon-system-helper`.
+/// Helpers installed by the package. The PKGBUILD iterates over them via
+/// `--list` rather than its own list: otherwise a fifth helper added in the
+/// core would silently miss the package — exactly how `rexon-system-helper`
+/// once missed it.
 const HELPERS: [&str; 4] = ["de", "pkg", "stage", "system"];
 
-/// Помощники-бинари: тело собирает cargo (`rexon-priv-helper`), пакет кладёт
-/// файл из каталога сборки. Перебор — по `--list-binaries`, по той же
-/// причине, что и у [`HELPERS`].
+/// Binary helpers: cargo builds the body (`rexon-priv-helper`), and the
+/// package installs the file from the build directory. They are iterated via
+/// `--list-binaries`, for the same reason as [`HELPERS`].
 const BINARY_HELPERS: [&str; 1] = ["session"];
 
 fn main() {
@@ -87,7 +91,7 @@ fn main() {
                 "pkg" => plan::pkg_helper_script(),
                 "stage" => plan::stage_helper_script(),
                 "system" => inst::system_helper_script(),
-                // Тело — бинарь сборки, а не текст: печатать нечего.
+                // The body is a build binary, not text: there is nothing to print.
                 _ => fail(&format!("{which}: помощник-бинарь, его собирает cargo")),
             }
         ),
@@ -122,12 +126,12 @@ mod tests {
         std::fs::read_to_string(path).expect("PKGBUILD читается")
     }
 
-    /// Пакет обязан ставить помощников и печатать их этой программой.
+    /// The package must install the helpers and print them with this program.
     ///
-    /// Без помощников человек с пакетом получает пароль на КАЖДУЮ системную
-    /// операцию, и заметно это только на живой машине — тест краснеет
-    /// раньше. Вторая половина: тексты берутся у ядра, а не переписаны в
-    /// PKGBUILD руками.
+    /// Without the helpers a person with the package gets a password prompt for
+    /// EVERY system operation, and that only shows on a live machine — the test
+    /// turns red earlier. The second half: the texts come from the core rather
+    /// than being rewritten by hand in the PKGBUILD.
     #[test]
     fn пакет_ставит_помощников_polkit() {
         let src = pkgbuild();
@@ -135,7 +139,7 @@ mod tests {
             src.contains("package-polkit"),
             "PKGBUILD не печатает помощников генератором ядра"
         );
-        // Список помощников — у генератора (`--list`), а не в PKGBUILD.
+        // The list of helpers belongs to the generator (`--list`), not to the PKGBUILD.
         assert!(
             src.contains("package-polkit\" --list)"),
             "PKGBUILD перебирает помощников своим списком, а не `package-polkit --list`"
@@ -158,16 +162,17 @@ mod tests {
                 );
             }
         }
-        // Passwordless-правило пакет не ставит: это отдельный выбор человека.
+        // The package does not install the passwordless rule: that is a separate choice for the person.
         assert!(
             !src.contains("49-rexon-nopasswd"),
             "пакет ставит passwordless-правило polkit"
         );
     }
 
-    /// ⛔ Помощник тем экрана входа и загрузки едет в пакете (28.09.2026:
-    /// не ехал, и темы SDDM/Plymouth у покупателя пакета не ставились), и
-    /// его политика указывает на путь пакета.
+    /// Never drop this: the login screen and boot theme helper ships in the
+    /// package (28.09.2026: it did not, and SDDM/Plymouth themes could not be
+    /// installed by people using the package), and its policy points at the
+    /// package path.
     #[test]
     fn пакет_везёт_помощника_тем_экрана_входа() {
         use rexon_core::installer as inst;
@@ -179,7 +184,7 @@ mod tests {
             "<annotate key=\"org.freedesktop.policykit.exec.path\">{path}</annotate>"
         )));
         assert!(xml.contains(inst::SYSTEM_INSTALL_ACTION));
-        // Форма ручной установки не сдвинулась.
+        // The manual installation form has not moved.
         assert_eq!(inst::system_policy_xml(), inst::system_policy_xml_for(inst::SYSTEM_HELPER_PATH));
         assert_eq!(
             inst::SYSTEM_HELPER_PATH,
@@ -187,10 +192,10 @@ mod tests {
         );
     }
 
-    /// ⛔ «Один пароль на запуск» (Б11): помощник сеанса едет в пакете
-    /// бинарём в `/usr/lib`, его политика указывает ровно на этот путь, и
-    /// PKGBUILD ставит его с правами 755 (клиент окна откажется от файла с
-    /// записью для группы или всех).
+    /// Never drop this: "one password per launch" (B11): the session helper ships
+    /// in the package as a binary in `/usr/lib`, its policy points at exactly that
+    /// path, and the PKGBUILD installs it with mode 755 (the window's client
+    /// refuses a file writable by the group or by everyone).
     #[test]
     fn пакет_везёт_помощника_сеанса_прав() {
         assert!(super::BINARY_HELPERS.contains(&"session"));
@@ -213,8 +218,8 @@ mod tests {
         assert!(block.contains("--policy \"$who\""), "{block}");
     }
 
-    /// Каталог пакета и каталог ручной установки — разные, и политика
-    /// печатается под тот путь, по которому помощник лежит.
+    /// The package directory and the manual installation directory differ, and the
+    /// policy is printed for the path where the helper actually lives.
     #[test]
     fn политика_пакета_указывает_на_путь_пакета() {
         let path = plan::helper_path_in(plan::HELPER_DIR_PACKAGE, plan::DE_HELPER_NAME);
@@ -222,7 +227,7 @@ mod tests {
         assert!(plan::de_policy_xml_for(&path).contains(&format!(
             "<annotate key=\"org.freedesktop.policykit.exec.path\">{path}</annotate>"
         )));
-        // А зарегистрированная без пути форма остаётся за ручной установкой.
+        // The form registered without a path stays with the manual installation.
         assert!(plan::de_policy_xml().contains(plan::DE_HELPER_PATH));
         assert_ne!(plan::DE_HELPER_PATH, path);
     }

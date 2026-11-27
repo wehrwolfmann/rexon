@@ -1,12 +1,12 @@
-// Сборка cxx-qt-моста модели фильтров + обобщённого C++-шима мета-рефлексии
-// гаджетов. Регистрационный шим (cpp/rexon_register.cpp) подключается после
-// того, как известно имя сгенерированного заголовка cxx-qt.
+// Build of the filter model cxx-qt bridge + the generic C++ shim for gadget
+// meta-reflection. The registration shim (cpp/rexon_register.cpp) is added after
+// the name of the generated cxx-qt header is known.
 use cxx_qt_build::CxxQtBuilder;
 
 fn main() {
-    // Собирать против того же Qt6, что использует PySide6 (ABI обязан
-    // совпадать). Если QMAKE не задан — указать на qmake6 (в системе есть и
-    // qmake от Qt5, cxx-qt по умолчанию может взять его).
+    // Build against the same Qt6 that PySide6 uses (the ABI must
+    // match). If QMAKE is not set — point to qmake6 (the system also has
+    // qmake from Qt5, and cxx-qt may pick it by default).
     if std::env::var_os("QMAKE").is_none() {
         for cand in ["/usr/bin/qmake6", "/usr/lib/qt6/bin/qmake"] {
             if std::path::Path::new(cand).exists() {

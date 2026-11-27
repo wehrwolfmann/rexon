@@ -1,13 +1,13 @@
-//! Светлое и тёмное по расписанию (`rexon_core::day_night`).
+//! Light and dark on a schedule (`rexon_core::day_night`).
 //!
-//! * Солнце — проверочные точки по опубликованным таблицам восхода и
-//!   заката (средние широты обоих полушарий, экватор, полярный круг);
-//!   допуск — 3 минуты.
-//! * Что применяется в каком окружении, тексты таймера и настройки Plasma —
-//!   эталон `golden/day_night_cases.json` (переснять:
+//! * The sun — check points from published sunrise and sunset
+//!   tables (mid latitudes of both hemispheres, the equator, the polar circle);
+//!   tolerance — 3 minutes.
+//! * What is applied in which desktop, the timer texts and the Plasma settings —
+//!   golden file `golden/day_night_cases.json` (to recapture:
 //!   `REXON_GOLDEN_WRITE=1 cargo test -p rexon-core --test day_night`).
-//! * «Сохранить» и запуск по таймеру — на поддельной машине: какие файлы
-//!   пишутся, какие команды зовутся, что применяется.
+//! * «Сохранить» and the timer run — on a fake machine: which files
+//!   are written, which commands are called, what is applied.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -32,24 +32,24 @@ fn normal(day: SunDay) -> (i64, i64) {
     }
 }
 
-/// Проверочные точки: (место, широта, долгота, полдень дня в UTC,
-/// восход UTC, закат UTC). Время по таблицам местное, здесь — переведено в UTC.
+/// Check points: (place, latitude, longitude, noon of the day in UTC,
+/// sunrise UTC, sunset UTC). The table times are local; here they are converted to UTC.
 #[test]
 fn восход_и_закат_по_проверочным_точкам() {
     let cases: [(&str, f64, f64, i64, i64, i64); 6] = [
-        // Берлин, солнцестояние: 04:43 и 21:33 CEST.
+        // Berlin, solstice: 04:43 and 21:33 CEST.
         ("Берлин 21.06", 52.52, 13.405, at(2026, 6, 21, 11, 0), at(2026, 6, 21, 2, 43), at(2026, 6, 21, 19, 33)),
-        // Берлин, зимнее солнцестояние: 08:15 и 15:54 CET.
+        // Berlin, winter solstice: 08:15 and 15:54 CET.
         ("Берлин 21.12", 52.52, 13.405, at(2026, 12, 21, 11, 0), at(2026, 12, 21, 7, 15), at(2026, 12, 21, 14, 54)),
-        // Москва: 03:44 и 21:18 MSK.
+        // Moscow: 03:44 and 21:18 MSK.
         ("Москва 21.06", 55.7558, 37.6173, at(2026, 6, 21, 9, 30), at(2026, 6, 21, 0, 44), at(2026, 6, 21, 18, 18)),
-        // Экватор, нулевой меридиан, равноденствие: полдень ≈ 12:07 UTC
-        // (уравнение времени), день чуть длиннее 12 ч из-за рефракции.
+        // Equator, prime meridian, equinox: noon ≈ 12:07 UTC
+        // (equation of time), the day slightly longer than 12 h due to refraction.
         ("Экватор 20.03", 0.0, 0.0, at(2026, 3, 20, 12, 0), at(2026, 3, 20, 6, 4), at(2026, 3, 20, 18, 11)),
-        // Сидней, южное лето: 05:41 и 20:05 AEDT (UTC+11) — восход ещё
-        // 20 декабря по UTC.
+        // Sydney, southern summer: 05:41 and 20:05 AEDT (UTC+11) — sunrise is still
+        // on 20 December in UTC.
         ("Сидней 21.12", -33.8688, 151.2093, at(2026, 12, 21, 1, 0), at(2026, 12, 20, 18, 41), at(2026, 12, 21, 9, 5)),
-        // Нью-Йорк, равноденствие: 06:59 и 19:09 EDT (UTC−4).
+        // New York, equinox: 06:59 and 19:09 EDT (UTC−4).
         ("Нью-Йорк 20.03", 40.7128, -74.006, at(2026, 3, 20, 17, 0), at(2026, 3, 20, 10, 59), at(2026, 3, 20, 23, 9)),
     ];
     for (place, lat, lon, noon, rise, set) in cases {
@@ -61,7 +61,7 @@ fn восход_и_закат_по_проверочным_точкам() {
 
 #[test]
 fn полярный_день_и_ночь() {
-    let (lat, lon) = (69.6492, 18.9553); // Тромсё
+    let (lat, lon) = (69.6492, 18.9553); // Tromsø
     assert_eq!(sun_around(at(2026, 12, 21, 11, 0), lat, lon), SunDay::PolarNight);
     assert_eq!(sun_around(at(2026, 6, 21, 11, 0), lat, lon), SunDay::PolarDay);
     assert_eq!(phase_by_sun(at(2026, 12, 21, 11, 0), lat, lon), Phase::Dark);
@@ -81,7 +81,7 @@ fn сейчас_и_следующие_смены_по_солнцу() {
     near(next[0].0, at(2026, 6, 21, 19, 33), "закат");
     assert_eq!(next[1].1, Phase::Light);
     near(next[1].0, at(2026, 6, 22, 2, 43), "восход назавтра");
-    // Сразу после заката следующая — восход, а не тот же закат.
+    // Right after sunset the next event is sunrise, not the same sunset.
     let after = next_sun_switches(next[0].0, lat, lon, 1);
     assert_eq!(after[0].1, Phase::Light);
 }
@@ -148,7 +148,7 @@ fn эталон_планов_и_файлов() {
     assert_eq!(got, want, "эталон {GOLDEN} разошёлся");
 }
 
-// ── Поддельная машина ───────────────────────────────────────────────────
+// ── Fake machine ────────────────────────────────────────────────────────
 
 #[derive(Default)]
 struct Fake {
@@ -224,7 +224,7 @@ fn plasma_только_глобальная_тема_отдаётся_plasma() {
     };
     let (ok, msg) = save(&env(&io, "kde", at(2026, 11, 1, 12, 0)), &cfg);
     assert!(ok, "{msg}");
-    // Ни таймера, ни своего применения: всё делает Plasma.
+    // Neither a timer nor our own applying: Plasma does everything.
     assert!(systemctl(&io).is_empty(), "{:?}", io.runs.borrow());
     assert!(io.applied.borrow().is_empty(), "{:?}", io.applied.borrow());
     let runs = io.runs.borrow();
@@ -237,7 +237,7 @@ fn plasma_только_глобальная_тема_отдаётся_plasma() {
 fn gnome_по_времени_таймер_и_применение() {
     let io = Fake::default();
     let cfg = full_config(Mode::Auto, Schedule::Times);
-    // 20:00 по местным (UTC+1) — тёмное.
+    // 20:00 local time (UTC+1) — dark.
     let (ok, msg) = save(&env(&io, "gnome", at(2026, 11, 1, 19, 0)), &cfg);
     assert!(ok, "{msg}");
     assert_eq!(systemctl(&io), ["daemon-reload", "enable rexon-day-night.timer", "restart rexon-day-night.timer"]);
@@ -255,8 +255,8 @@ fn gnome_по_времени_таймер_и_применение() {
     assert_eq!(memo["phase"], "dark");
 }
 
-/// Один хозяин обоев: пока играет плейлист обоев Rexon, пара картинок
-/// расписания обои не меняет, а темы — меняет.
+/// One owner of the wallpaper: while a Rexon wallpaper playlist is playing, the schedule's
+/// picture pair does not change the wallpaper, but it does change the themes.
 #[test]
 fn пара_обоев_уступает_плейлисту() {
     let io = Fake::default();
@@ -282,7 +282,7 @@ fn таймер_без_окружения_в_переменных_берёт_о�
     let before = io.files.borrow()["/h/.config/systemd/user/rexon-day-night.timer"].clone();
     io.runs.borrow_mut().clear();
     io.applied.borrow_mut().clear();
-    // Служба systemd: XDG_CURRENT_DESKTOP нет, время — после заката.
+    // systemd service: no XDG_CURRENT_DESKTOP, the time is after sunset.
     let mut e = env(&io, "", at(2026, 11, 1, 17, 0));
     e.de = None;
     assert_eq!(run_scheduled(&e, false, &mut |_| {}), 0);
@@ -321,7 +321,7 @@ fn cosmic_по_солнцу_отдаётся_cosmic() {
     assert!(save(&env(&io, "cosmic", at(2026, 11, 1, 12, 0)), &cfg).0);
     assert_eq!(io.files.borrow()["/h/.config/cosmic/com.system76.CosmicTheme.Mode/v1/auto_switch"], "true");
     assert!(systemctl(&io).is_empty());
-    // По времени — COSMIC так не умеет: переключает Rexon.
+    // By time — COSMIC cannot do that: Rexon switches.
     let io = Fake::default();
     let cfg = Config { schedule: Schedule::Times, ..cfg };
     assert!(save(&env(&io, "cosmic", at(2026, 11, 1, 12, 0)), &cfg).0);

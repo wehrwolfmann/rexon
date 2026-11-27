@@ -1,45 +1,50 @@
-// Запросы-действия страницы «Обои»: применить, прочитать, удалить,
-// пересканировать, записать свойство, задать раскладку, отдать через портал.
+// Action queries of the "Wallpapers" page: apply, read, remove, rescan,
+// write a property, set the layout, hand over through the portal.
 //
-// Список обоей и выбор живут рядом (wallpaper_queries.rs,
-// wallpaper_list_model.rs, wallpaper_select_storage.rs).
+// The wallpaper list and the selection live next door
+// (wallpaper_queries.rs, wallpaper_list_model.rs,
+// wallpaper_select_storage.rs).
 //
-// ⚠️ Эталон — ОРИГИНАЛ (waywallen `ui/src/query/wallpaper_query.cpp`),
-// а не наш Python. Порт чинит пять расхождений, которые перенос «как было»
-// законсервировал бы (правило #16):
+// Warning: the reference is the ORIGINAL (waywallen
+// `ui/src/query/wallpaper_query.cpp`), not our Python. The port fixes five
+// divergences that porting "as it was" would have preserved (rule #16):
 //
-//   1. `WallpaperApplyQuery` ВЫБРАСЫВАЛ ответ демона (`lambda rsp: None`), а в
-//      нём приезжает `renderer_id`. Свойство `rendererId` у нас поэтому было
-//      вечно пустым, и `rendererIdChanged` не слался никогда.
-//   2. `WallpaperRemoveQuery.remove()` не отсеивал пустые идентификаторы,
-//      всегда слал списком и НИКОГДА не эмитил `removed(id)` — а вендорный
-//      QML на него подписан (`WallpaperDetailPanel.qml:162`), то есть
-//      обработчик был мёртв. Оригинал при единственном id кладёт его в
-//      `wallpaper_id`, шлёт `removed` и только потом `removedMany`.
-//   3. `removedMany` нёс длину ОТПРАВЛЕННОГО набора вместо `removed_count`
-//      из ОТВЕТА демона: тост обещал «удалено 3», когда демон снёс одну.
-//   4. `WallpaperRemoveQuery.reload()` не был переопределён вовсе — свойство
-//      `wallpaperId` этого запроса было мёртвым. У оригинала
+//   1. `WallpaperApplyQuery` THREW AWAY the daemon's answer
+//      (`lambda rsp: None`), while `renderer_id` arrives in it. So our
+//      `rendererId` property was forever empty, and `rendererIdChanged` was
+//      never sent.
+//   2. `WallpaperRemoveQuery.remove()` did not filter out empty identifiers,
+//      always sent a list and NEVER emitted `removed(id)` — while the
+//      vendored QML subscribes to it (`WallpaperDetailPanel.qml:162`), that
+//      is, the handler was dead. With a single id the original puts it into
+//      `wallpaper_id`, sends `removed` and only then `removedMany`.
+//   3. `removedMany` carried the length of the SENT set instead of
+//      `removed_count` from the daemon's ANSWER: the toast promised "3
+//      removed" when the daemon removed one.
+//   4. `WallpaperRemoveQuery.reload()` was not overridden at all — the
+//      `wallpaperId` property of this query was dead. In the original
 //      `reload() == remove([wallpaperId])`.
-//   5. `WallpaperGetQuery` не проверял, тот ли предмет приехал. Оригинал
-//      сверяет `m_wallpaper_id` с запрошенным и молча выходит при
-//      расхождении — иначе при быстром переключении карточек панель деталей
-//      показывает ЧУЖУЮ обоину.
+//   5. `WallpaperGetQuery` did not check whether the right item arrived. The
+//      original compares `m_wallpaper_id` with the requested one and silently
+//      returns on a mismatch — otherwise when switching cards quickly the
+//      details panel shows SOMEONE ELSE's wallpaper.
 //
-// Каждая из пяти починок закрыта своим случаем реплея голдена
-// (`wallpaper_page_golden.rs`, стенд `--wallpaper-selftest`): снятие любой из
-// них немедленно валит сверку — проверено укусом.
+// Each of the five fixes is covered by its own golden replay case
+// (`wallpaper_page_golden.rs`, the `--wallpaper-selftest` bench): removing
+// any of them immediately fails the comparison — verified with a bite.
 //
-// Сознательное отличие от оригинала, НЕ дефект: у `WallpaperPropertySetQuery`
-// протокол v0.2.5 даёт `oneof operation { value | reset }`, которого у
-// оригинала нет вовсе. Сброс свойства — наша ветка, она остаётся. А вот
-// сигналы свойств разведены по одному на свойство, как у оригинала: наш
-// Python схлопывал их все в общий `paramsChanged`.
+// A deliberate difference from the original, NOT a defect: for
+// `WallpaperPropertySetQuery` the v0.2.5 protocol gives
+// `oneof operation { value | reset }`, which the original does not have at
+// all. Resetting a property is our branch, and it stays. The property
+// signals, however, are split one per property, as in the original: our
+// Python collapsed them all into a shared `paramsChanged`.
 
-// waywallen 0.4.4 добавил восьмой — `WallpaperHideQuery` (скрыть обои из
-// библиотеки и вернуть их), и отражение `flip` у `WallpaperLayoutSetQuery`.
+// waywallen 0.4.4 added an eighth one — `WallpaperHideQuery` (hide
+// wallpapers from the library and restore them), and the `flip` of
+// `WallpaperLayoutSetQuery`.
 
-/// Мост cxx-qt: запросы-действия страницы «Обои».
+/// cxx-qt bridge: action queries of the "Wallpapers" page.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -58,17 +63,17 @@ pub mod qobject {
 
     unsafe extern "C++" {
         include!("rexon_gui_factory.h");
-        /// Таймер отложенной перезагрузки под своим именем — третье
-        /// объявление той же C++-функции в крейте дало бы duplicate symbol.
+        /// Deferred reload timer under its own name — a third declaration of the
+        /// same C++ function in the crate would give a duplicate symbol.
         ///
         /// # Safety
-        /// `owner` — живой QObject с инвокаблом `reload()`.
+        /// `owner` is a live QObject with a `reload()` invokable.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_action_debounce(owner: *mut QObject, interval_ms: i32)
             -> *mut QObject;
 
         /// # Safety
-        /// `timer` — таймер, созданный `rexon_new_action_debounce`.
+        /// `timer` is a timer created by `rexon_new_action_debounce`.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_restart_action_debounce(timer: *mut QObject);
     }
@@ -84,22 +89,22 @@ pub mod qobject {
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
         #[qproperty(QVariant, wallpaper, READ = wallpaper, WRITE = set_wallpaper,
                     NOTIFY = wallpaper_changed)]
-        /// Цели применения v0.3.5: список карт, в каждой ЛИБО `displayId`,
-        /// ЛИБО `canvasId`. Пусто = «все выбираемые цели» (так трактует и
-        /// демон). Свойство обязательное: `WallpaperDetailPanel.qml:343`
-        /// присваивает его в обработчике кнопки Apply, а присвоение
-        /// несуществующего свойства в QML — исключение, после которого
-        /// обработчик обрывается и запрос не уходит вовсе.
+        /// Apply targets of v0.3.5: a list of maps, each with EITHER `displayId` OR
+        /// `canvasId`. Empty = "all selectable targets" (the daemon treats it the
+        /// same way). The property is mandatory: `WallpaperDetailPanel.qml:343`
+        /// assigns it in the Apply button handler, and assigning a non-existent
+        /// property in QML is an exception after which the handler aborts and the
+        /// request does not go out at all.
         #[qproperty(QVariant, targets, READ = targets, WRITE = set_targets,
                     NOTIFY = targets_changed)]
         #[qproperty(QString, renderer_name, cxx_name = "rendererName", READ = renderer_name,
                     WRITE = set_renderer_name, NOTIFY = renderer_name_changed)]
         #[qproperty(QString, renderer_id, cxx_name = "rendererId", READ = renderer_id,
                     NOTIFY = renderer_id_changed)]
-        /// Плейлисты, которые демон остановил этим применением: список
-        /// карт `{playlistId, playlistName, allDisplays, displayIds}`.
-        /// Панель деталей показывает по тосту на каждый
-        /// (`WallpaperDetailPanel.qml`, `toastStoppedPlaylists`).
+        /// Playlists the daemon stopped with this apply: a list of maps
+        /// `{playlistId, playlistName, allDisplays, displayIds}`. The details panel
+        /// shows a toast for each (`WallpaperDetailPanel.qml`,
+        /// `toastStoppedPlaylists`).
         #[qproperty(QVariant, stopped_playlists, cxx_name = "stoppedPlaylists",
                     READ = stopped_playlists, NOTIFY = stopped_playlists_changed)]
         type WallpaperApplyQuery = super::WallpaperApplyQueryRust;
@@ -171,8 +176,8 @@ pub mod qobject {
                     WRITE = set_location_y, NOTIFY = params_changed)]
         #[qproperty(i32, rotation, READ = rotation, WRITE = set_rotation,
                     NOTIFY = params_changed)]
-        /// waywallen 0.4.4: отражение (`Flip`), панель деталей пишет его
-        /// вместе с остальной раскладкой.
+        /// waywallen 0.4.4: flip (`Flip`); the details panel writes it together with
+        /// the rest of the layout.
         #[qproperty(i32, flip, READ = flip, WRITE = set_flip, NOTIFY = params_changed)]
         type WallpaperLayoutSetQuery = super::WallpaperLayoutSetQueryRust;
 
@@ -188,7 +193,7 @@ pub mod qobject {
         #[qproperty(QString, uri, READ = uri, NOTIFY = uri_changed)]
         type WallpaperApplyViaPortalQuery = super::WallpaperApplyViaPortalQueryRust;
 
-        /// waywallen 0.4.4: скрыть обои из библиотеки или вернуть их.
+        /// waywallen 0.4.4: hide wallpapers from the library or restore them.
         #[qobject]
         #[qml_element]
         #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
@@ -202,7 +207,7 @@ pub mod qobject {
         type WallpaperHideQuery = super::WallpaperHideQueryRust;
     }
 
-    // ── Сигналы базы Query (одинаковые у всех семи) ───────────────────────
+    // ── Signals of the Query base (the same for all seven) ────────────────
     unsafe extern "RustQt" {
         #[qsignal]
         #[cxx_name = "statusChanged"]
@@ -302,12 +307,12 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "wallpaperIdChanged"]
         fn wallpaper_id_changed(self: Pin<&mut WallpaperRemoveQuery>);
-        /// Удалён ОДИН предмет. Вендорный QML на него подписан
-        /// (`WallpaperDetailPanel.qml:162`); у нашего Python он не эмитился
-        /// никогда.
+        /// ONE item was removed. The vendored QML subscribes to it
+        /// (`WallpaperDetailPanel.qml:162`); our Python never emitted it.
         #[qsignal]
         fn removed(self: Pin<&mut WallpaperRemoveQuery>, wallpaper_id: QString);
-        /// Удалён набор: что просили и СКОЛЬКО демон снял на самом деле.
+        /// A set was removed: what was asked for and HOW MANY the daemon actually
+        /// removed.
         #[qsignal]
         #[cxx_name = "removedMany"]
         fn removed_many(self: Pin<&mut WallpaperRemoveQuery>, wallpaper_ids: QStringList,
@@ -365,8 +370,8 @@ pub mod qobject {
         #[cxx_name = "sendRequest"]
         fn send_request(self: Pin<&mut WallpaperPropertySetQuery>, token: i64, field: QString,
                         request: QByteArray);
-        /// Сигналы по одному на свойство — как у оригинала. Наш Python
-        /// схлопывал их в общий `paramsChanged`.
+        /// Signals one per property — as in the original. Our Python collapsed them
+        /// into a shared `paramsChanged`.
         #[qsignal]
         #[cxx_name = "wallpaperIdChanged"]
         fn wallpaper_id_changed(self: Pin<&mut WallpaperPropertySetQuery>);
@@ -376,7 +381,7 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "propertyValueChanged"]
         fn property_value_changed(self: Pin<&mut WallpaperPropertySetQuery>);
-        /// Своё, протокола v0.2.5: у оригинала сброса свойства нет вовсе.
+        /// Our own, protocol v0.2.5: the original has no property reset at all.
         #[qsignal]
         #[cxx_name = "resetChanged"]
         fn reset_changed(self: Pin<&mut WallpaperPropertySetQuery>);
@@ -405,7 +410,8 @@ pub mod qobject {
         #[cxx_name = "sendRequest"]
         fn send_request(self: Pin<&mut WallpaperLayoutSetQuery>, token: i64, field: QString,
                         request: QByteArray);
-        /// Один сигнал на все шесть свойств — так у оригинала (макрос WW_SET).
+        /// One signal for all six properties — as in the original (the WW_SET
+        /// macro).
         #[qsignal]
         #[cxx_name = "paramsChanged"]
         fn params_changed(self: Pin<&mut WallpaperLayoutSetQuery>);
@@ -471,14 +477,14 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "hiddenChanged"]
         fn hidden_changed(self: Pin<&mut WallpaperHideQuery>);
-        /// Что просили, в какую сторону и у скольких признак РЕАЛЬНО
-        /// сменился (`updated_count` ответа демона) — тост страницы.
+        /// What was asked for, in which direction and for how many the flag REALLY
+        /// changed (`updated_count` of the daemon's answer) — the page's toast.
         #[qsignal]
         fn updated(self: Pin<&mut WallpaperHideQuery>, wallpaper_ids: QStringList,
                    hidden: bool, updated_count: u32);
     }
 
-    // ── Геттеры и сеттеры ─────────────────────────────────────────────────
+    // ── Getters and setters ───────────────────────────────────────────────
     extern "RustQt" {
         fn status(self: &WallpaperApplyQuery) -> i32;
         fn error(self: &WallpaperApplyQuery) -> QString;
@@ -620,7 +626,7 @@ pub mod qobject {
         fn set_hidden(self: Pin<&mut WallpaperHideQuery>, value: bool);
     }
 
-    // ── Инвокаблы ─────────────────────────────────────────────────────────
+    // ── Invokables ────────────────────────────────────────────────────────
     extern "RustQt" {
         #[qinvokable]
         fn reload(self: Pin<&mut WallpaperApplyQuery>);
@@ -634,8 +640,8 @@ pub mod qobject {
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut WallpaperGetQuery>, token: i64, frame: &QByteArray);
 
-        /// Удалить набор. Оригинал отсеивает пустые, при единственном
-        /// идентификаторе кладёт его в `wallpaper_id` и шлёт `removed`.
+        /// Remove a set. The original filters out empty ones, with a single
+        /// identifier puts it into `wallpaper_id` and sends `removed`.
         #[qinvokable]
         fn remove(self: Pin<&mut WallpaperRemoveQuery>, wallpaper_ids: QStringList);
         #[qinvokable]
@@ -671,11 +677,11 @@ pub mod qobject {
         fn deliver_response(self: Pin<&mut WallpaperApplyViaPortalQuery>, token: i64,
                             frame: &QByteArray);
 
-        /// `reload() == setHiddenForIds([wallpaperId], hidden)` оригинала.
+        /// The original's `reload() == setHiddenForIds([wallpaperId], hidden)`.
         #[qinvokable]
         fn reload(self: Pin<&mut WallpaperHideQuery>);
-        /// Скрыть (или вернуть) набор: пустые отсеиваются, единственный
-        /// идентификатор уходит в `wallpaper_id`, как у оригинала.
+        /// Hide (or restore) a set: empty ones are filtered out, a single
+        /// identifier goes into `wallpaper_id`, as in the original.
         #[qinvokable]
         #[cxx_name = "setHiddenForIds"]
         fn set_hidden_for_ids(self: Pin<&mut WallpaperHideQuery>, wallpaper_ids: QStringList,
@@ -710,32 +716,33 @@ use rexon_core::we_wallpaper;
 use crate::qvalue::{json_to_variant, variant_to_json};
 use crate::we_transport;
 
-/// Дебаунс перезагрузки — 100 мс, как у оригинала (qextra query.cpp:16).
+/// Reload debounce — 100 ms, as in the original (qextra query.cpp:16).
 const DEBOUNCE_MS: i32 = 100;
 
-/// Указатель на сам объект как на QObject.
+/// Pointer to the object itself as a QObject.
 fn self_ptr<T>(object: Pin<&mut T>) -> *mut qobject::QObject {
     let raw: *mut T = unsafe { object.get_unchecked_mut() };
     raw.cast()
 }
 
-/// Чем кончился запрос-действие.
+/// How the action query ended.
 ///
-/// Ветки разные не для красоты: у оригинала лямбду разбора зовёт
-/// `inspect_set` ТОЛЬКО на успехе, а на отказе ставит Error и на этом
-/// заканчивает (`qextra-ref/src/async.cppm:157`). Пока обе ветки шли одним
-/// путём, после отказа демона выполнялся общий хвост `finish()` — статус
-/// Error тут же перебивался на Finished, и страница видела успех там, где
-/// демон отказал.
+/// The branches differ not for looks: in the original the parsing lambda is
+/// called by `inspect_set` ONLY on success, while on a refusal it sets Error
+/// and stops there (`qextra-ref/src/async.cppm:157`). While both branches
+/// went the same way, after the daemon's refusal the shared `finish()` tail
+/// ran — the Error status was immediately overwritten with Finished, and
+/// the page saw success where the daemon had refused.
 enum Answer {
-    /// Демон ответил ошибкой: текст и статус Error уже посчитаны, разбирать
-    /// нечего и доезжать до `finish()` нельзя.
+    /// The daemon answered with an error: the text and the Error status are
+    /// already computed, there is nothing to parse, and `finish()` must not be
+    /// reached.
     Failed(Vec<QuerySignal>),
-    /// Демон ответил успехом; у части действий полезной нагрузки нет вовсе.
+    /// The daemon answered with success; some actions have no payload at all.
     Ok(Option<pb::response::Payload>),
 }
 
-/// Разобрать кадр ответа.
+/// Parse the answer frame.
 fn take_payload(st: &mut QueryState, frame: &[u8]) -> Result<Answer, prost::DecodeError> {
     let f = pb::ServerFrame::decode(frame)?;
     let Some(pb::server_frame::Kind::Response(rsp)) = f.kind else {
@@ -750,16 +757,17 @@ fn take_payload(st: &mut QueryState, frame: &[u8]) -> Result<Answer, prost::Deco
     Ok(Answer::Ok(rsp.payload))
 }
 
-/// Сигналы «кадр не разобрался»: демон может быть новее нас.
+/// "The frame did not parse" signals: the daemon may be newer than us.
 fn decode_failed(st: &mut QueryState) -> Vec<QuerySignal> {
     let mut out = we_query::set_error(st, &rexon_core::i18n::tr("could not parse the daemon response"));
     out.extend(we_query::set_status(st, STATUS_ERROR));
     out
 }
 
-/// Общая часть всех семи: свойства базы `Query`, отправка кадра и рассылка
-/// сигналов базы. Это и есть обещанная планом замена Qt-наследования —
-/// макрос печатает то, что у оригинала давал общий базовый класс.
+/// The part shared by all seven: properties of the `Query` base, sending a
+/// frame and emitting the base's signals. This is the replacement for Qt
+/// inheritance promised by the plan — the macro emits what the original got
+/// from a shared base class.
 macro_rules! impl_action_base {
     ($query:ident) => {
         impl qobject::$query {
@@ -785,10 +793,10 @@ macro_rules! impl_action_base {
                 self.dispatch(signals);
             }
 
-            /// Отправить кадр наружу общим швом партий 2-3.
+            /// Send the frame out through the shared seam of batches 2-3.
             ///
-            /// Возвращает токен или `None`, если соединения нет: тогда ядро
-            /// уже перевело запрос в Error и слать нечего.
+            /// Returns a token, or `None` if there is no connection: then the core has
+            /// already switched the request to Error and there is nothing to send.
             pub fn send_frame(mut self: Pin<&mut Self>, field: &'static str, payload: Vec<u8>)
                 -> Option<i64>
             {
@@ -799,16 +807,16 @@ macro_rules! impl_action_base {
                 if !send {
                     return None;
                 }
-                // Номер выдаётся ДО сборки кадра — он же `request_id`
-                // протокола.
+                // The number is issued BEFORE the frame is built — it is also the
+                // protocol's `request_id`.
                 let token = crate::discover_queries::next_token();
                 let Ok(bytes) = we_client::request_bytes(token as u64, field, &payload) else {
                     debug_assert!(false, "поле {field} неизвестно протоколу");
                     return None;
                 };
                 let owner = self_ptr(self.as_mut());
-                // Владельца токена запоминаем ДО отправки: ответ может
-                // прийти раньше, чем мы вернёмся из колбэка.
+                // The token owner is remembered BEFORE sending: the answer may arrive
+                // before we return from the callback.
                 unsafe { we_transport::remember(token, owner.cast()) };
                 self.as_mut().send_request(
                     token,
@@ -819,7 +827,7 @@ macro_rules! impl_action_base {
                 Some(token)
             }
 
-            /// Разослать сигналы базы. Свойства читаются живые.
+            /// Emit the base's signals. The properties are read live.
             pub fn dispatch_base(mut self: Pin<&mut Self>, signals: Vec<QuerySignal>) {
                 for signal in signals {
                     match signal {
@@ -845,21 +853,21 @@ macro_rules! impl_action_base {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperApplyQuery — применить обою к экранам
+// WallpaperApplyQuery — apply a wallpaper to screens
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
 pub struct WallpaperApplyQueryRust {
     base: QueryState,
     wallpaper: Value,
-    /// Список как его присвоил QML — хранится дословно, разбирается в
-    /// момент отправки (так же у оригинала: `m_targets` — QVariantList,
-    /// а `presentationTargetsFromVariant` зовётся в `reload`).
+    /// The list as QML assigned it — stored verbatim and parsed at sending time
+    /// (the same in the original: `m_targets` is a QVariantList, and
+    /// `presentationTargetsFromVariant` is called in `reload`).
     targets: Value,
     renderer_name: String,
     renderer_id: String,
-    /// Плейлисты, остановленные ПОСЛЕДНИМ применением
-    /// (`we_wallpaper::stopped_playlists`); всегда массив.
+    /// Playlists stopped by the LAST apply (`we_wallpaper::stopped_playlists`);
+    /// always an array.
     stopped_playlists: Value,
     pending: std::collections::BTreeSet<i64>,
 }
@@ -879,8 +887,8 @@ impl qobject::WallpaperApplyQuery {
         json_to_variant(&self.wallpaper)
     }
 
-    /// Сравнение ТОЛЬКО по `id_proto` — как у оригинала. Наш Python
-    /// присваивал и слал сигнал всегда, даже когда пришла та же обоя.
+    /// Comparison ONLY by `id_proto` — as in the original. Our Python assigned
+    /// and sent the signal always, even when the same wallpaper arrived.
     pub fn set_wallpaper(mut self: Pin<&mut Self>, value: QVariant) {
         let next = variant_to_json(&value);
         let id_of = |v: &Value| {
@@ -900,7 +908,7 @@ impl qobject::WallpaperApplyQuery {
         json_to_variant(&self.targets)
     }
 
-    /// Сравнение списка целиком — как у оригинала (`setTargets`).
+    /// Comparing the whole list — as in the original (`setTargets`).
     pub fn set_targets(mut self: Pin<&mut Self>, value: QVariant) {
         let next = match variant_to_json(&value) {
             arr @ Value::Array(_) => arr,
@@ -944,18 +952,17 @@ impl qobject::WallpaperApplyQuery {
         if wallpaper_id.is_empty() {
             return;
         }
-        // Список прошлого применения к новому не относится: чистим ДО
-        // отправки, как у оригинала, — иначе при отказе демона панель
-        // прочла бы плейлисты предыдущего ответа.
+        // The list of the previous apply has nothing to do with the new one: it is
+        // cleared BEFORE sending, as in the original — otherwise on a daemon
+        // refusal the panel would read the playlists of the previous answer.
         if self.stopped_playlists.as_array().is_some_and(|a| !a.is_empty()) {
             self.as_mut().rust_mut().stopped_playlists = Value::Array(Vec::new());
             self.as_mut().stopped_playlists_changed();
         }
-        // Вход ровно один — `targets`, как у оригинала: в
-        // `WallpaperApplyRequest` v0.3.5 другого поля адресации нет.
-        // Пустой список — законное значение, а не «ничего не задано»:
-        // демон трактует его как «каждый холст по разу плюс каждый
-        // самостоятельный дисплей».
+        // There is exactly one input — `targets`, as in the original: the v0.3.5
+        // `WallpaperApplyRequest` has no other addressing field. An empty list is a
+        // legitimate value, not "nothing set": the daemon treats it as "every
+        // canvas once plus every standalone display".
         let targets = we_manage::presentation_targets(&self.targets);
         let payload = pb::WallpaperApplyRequest {
             wallpaper_id,
@@ -991,15 +998,15 @@ impl qobject::WallpaperApplyQuery {
         };
         let mut signals = Vec::new();
         if let Some(pb::response::Payload::WallpaperApply(wa)) = payload {
-            // ⚠️ Ровно то, что терял Python: имя вставшего рендерера. Сигнал
-            // БЕЗУСЛОВНЫЙ, как у оригинала (wallpaper_query.cpp:539): он
-            // означает «демон ответил», а не «значение стало другим».
+            // Warning: exactly what Python lost: the name of the renderer that came up.
+            // The signal is UNCONDITIONAL, as in the original (wallpaper_query.cpp:539):
+            // it means "the daemon answered", not "the value changed".
             let mut rust = self.as_mut().rust_mut();
             rust.stopped_playlists = we_wallpaper::stopped_playlists(&wa);
             rust.renderer_id = wa.renderer_id;
             signals.push(QuerySignal::Property("rendererId"));
-            // Тоже безусловный: панель читает список по переходу статуса,
-            // и оба свойства обязаны быть свежими ДО него.
+            // Also unconditional: the panel reads the list on the status transition,
+            // and both properties must be fresh BEFORE it.
             signals.push(QuerySignal::Property("stoppedPlaylists"));
         }
         let signals = {
@@ -1023,7 +1030,7 @@ impl qobject::WallpaperApplyQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperGetQuery — свежий вид одной обои для панели деталей
+// WallpaperGetQuery — a fresh view of one wallpaper for the details panel
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1031,8 +1038,8 @@ pub struct WallpaperGetQueryRust {
     base: QueryState,
     data: we_wallpaper::WallpaperGetData,
     wallpaper_id: String,
-    /// token → какой предмет им спрашивали. Ответ на устаревший запрос
-    /// отбрасывается — иначе панель показывает чужую обоину.
+    /// token → which item was asked with it. An answer to a stale request is
+    /// dropped — otherwise the panel shows someone else's wallpaper.
     pending: std::collections::BTreeMap<i64, String>,
     debounce: *mut qobject::QObject,
 }
@@ -1059,8 +1066,7 @@ impl qobject::WallpaperGetQuery {
         }
         self.as_mut().rust_mut().wallpaper_id = next;
         self.as_mut().wallpaper_id_changed();
-        // connect_requet_reload оригинала: смена предмета → отложенная
-        // перезагрузка.
+        // The original's connect_requet_reload: an item change → a deferred reload.
         let timer = self.debounce;
         if !timer.is_null() {
             unsafe { qobject::rexon_restart_action_debounce(timer) };
@@ -1089,8 +1095,9 @@ impl qobject::WallpaperGetQuery {
         let Some(wanted) = self.as_mut().rust_mut().pending.remove(&token) else {
             return;
         };
-        // ⚠️ Защита от устаревшего ответа (`wallpaper_query.cpp:311`):
-        // пока ответ шёл, панель могла переключиться на другую карточку.
+        // Warning: protection against a stale answer (`wallpaper_query.cpp:311`):
+        // while the answer was on its way, the panel may have switched to another
+        // card.
         if wanted != self.wallpaper_id {
             return;
         }
@@ -1121,15 +1128,15 @@ impl qobject::WallpaperGetQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperRemoveQuery — удалить обои из библиотеки
+// WallpaperRemoveQuery — remove wallpapers from the library
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
 pub struct WallpaperRemoveQueryRust {
     base: QueryState,
     wallpaper_id: String,
-    /// token → что именно просили удалить: `removedMany` обязан вернуть
-    /// в QML тот же набор.
+    /// token → what exactly was asked to be removed: `removedMany` must return
+    /// the same set to QML.
     pending: std::collections::BTreeMap<i64, Vec<String>>,
 }
 
@@ -1156,7 +1163,8 @@ impl qobject::WallpaperRemoveQuery {
     }
 
     pub fn remove(mut self: Pin<&mut Self>, wallpaper_ids: QStringList) {
-        // Пустые идентификаторы отсеиваются — Python слал их демону как есть.
+        // Empty identifiers are filtered out — Python sent them to the daemon as
+        // is.
         let ids: Vec<String> = wallpaper_ids
             .iter()
             .map(|s| s.to_string())
@@ -1165,8 +1173,8 @@ impl qobject::WallpaperRemoveQuery {
         if ids.is_empty() {
             return;
         }
-        // Единственный предмет уезжает в `wallpaper_id`, а не списком —
-        // так у оригинала.
+        // A single item goes into `wallpaper_id`, not as a list — as in the
+        // original.
         let payload = if ids.len() == 1 {
             pb::WallpaperRemoveRequest {
                 wallpaper_id: ids[0].clone(),
@@ -1184,8 +1192,8 @@ impl qobject::WallpaperRemoveQuery {
         }
     }
 
-    /// `reload() == remove([wallpaperId])` оригинала. У нашего Python
-    /// переопределения не было вовсе, и свойство было мёртвым.
+    /// The original's `reload() == remove([wallpaperId])`. Our Python had no
+    /// override at all, and the property was dead.
     pub fn reload(mut self: Pin<&mut Self>) {
         let id = self.wallpaper_id.clone();
         let mut list = QStringList::default();
@@ -1204,7 +1212,7 @@ impl qobject::WallpaperRemoveQuery {
         let payload = match parsed {
             Ok(Answer::Ok(payload)) => payload,
             Ok(Answer::Failed(signals)) => {
-                // Демон отказал — отчёта об удалении нет вовсе.
+                // The daemon refused — there is no removal report at all.
                 self.dispatch(signals);
                 return;
             }
@@ -1214,16 +1222,17 @@ impl qobject::WallpaperRemoveQuery {
                 return;
             }
         };
-        // ⚠️ Число берётся из ОТВЕТА демона, а не из длины отправленного
-        // набора: Python обещал «удалено N», сколько бы демон ни снял.
+        // Warning: the number is taken from the daemon's ANSWER, not from the
+        // length of the sent set: Python promised "N removed" however many the
+        // daemon actually removed.
         let removed_count = match payload {
             Some(pb::response::Payload::WallpaperRemove(wr)) => wr.removed_count as i32,
             _ => 0,
         };
-        // ⚠️ Отчёт уходит ДО перевода в Finished: у оригинала он эмитится
-        // внутри лямбды разбора, а статус ставится уже после неё. Пока было
-        // наоборот, обработчик QML на `finished` срабатывал раньше, чем
-        // страница узнавала, что и сколько удалено.
+        // Warning: the report goes out BEFORE switching to Finished: in the
+        // original it is emitted inside the parsing lambda, and the status is set
+        // after it. While it was the other way round, the QML handler on
+        // `finished` fired before the page learned what and how much was removed.
         if ids.len() == 1 {
             self.as_mut().removed(QString::from(&ids[0]));
         }
@@ -1247,7 +1256,7 @@ impl qobject::WallpaperRemoveQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperScanQuery — пересканировать библиотеку
+// WallpaperScanQuery — rescan the library
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1299,8 +1308,9 @@ impl qobject::WallpaperScanQuery {
         };
         let mut signals = Vec::new();
         if let Some(pb::response::Payload::WallpaperScan(ws)) = payload {
-            // Сигнал БЕЗУСЛОВНЫЙ (wallpaper_query.cpp:270): пересканирование
-            // с тем же числом обоев — всё равно событие «демон досчитал».
+            // The signal is UNCONDITIONAL (wallpaper_query.cpp:270): a rescan with the
+            // same number of wallpapers is still the event "the daemon finished
+            // counting".
             let mut rust = self.as_mut().rust_mut();
             rust.count = ws.count as i32;
             signals.push(QuerySignal::Property("count"));
@@ -1325,7 +1335,7 @@ impl qobject::WallpaperScanQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperPropertySetQuery — записать одно свойство обои
+// WallpaperPropertySetQuery — write one wallpaper property
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1402,8 +1412,8 @@ impl qobject::WallpaperPropertySetQuery {
         if self.wallpaper_id.is_empty() || self.property_key.is_empty() {
             return;
         }
-        // v0.2.5: пустое `value` — валидный оверрайд (текстовые свойства),
-        // сброс к значению из project.json — ТОЛЬКО `reset = true`.
+        // v0.2.5: an empty `value` is a valid override (text properties); a reset
+        // to the value from project.json is ONLY `reset = true`.
         let operation = if self.reset {
             pb::wallpaper_property_set_request::Operation::Reset(true)
         } else {
@@ -1428,7 +1438,7 @@ impl qobject::WallpaperPropertySetQuery {
             let mut rust = self.as_mut().rust_mut();
             take_payload(&mut rust.base, frame.as_slice())
         };
-        // Полезной нагрузки у ответа нет: успех — это отсутствие ошибки.
+        // The answer has no payload: success is the absence of an error.
         let signals = match parsed {
             Ok(Answer::Ok(_)) => {
                 let mut rust = self.as_mut().rust_mut();
@@ -1451,7 +1461,7 @@ impl qobject::WallpaperPropertySetQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperLayoutSetQuery — персональная раскладка одной обои
+// WallpaperLayoutSetQuery — the personal layout of one wallpaper
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1465,8 +1475,8 @@ impl_action_base!(WallpaperLayoutSetQuery);
 
 impl cxx_qt::Initialize for qobject::WallpaperLayoutSetQuery {
     fn initialize(mut self: Pin<&mut Self>) {
-        // waywallen 0.4.4: `m_flip { 1 }` оригинала — FLIP_NONE, а не
-        // «не задано»: раскладка обоины всегда несёт явное отражение.
+        // waywallen 0.4.4: the original's `m_flip { 1 }` is FLIP_NONE, not "not
+        // set": a wallpaper layout always carries an explicit flip.
         self.as_mut().rust_mut().data.flip = pb::Flip::None as i32;
     }
 }
@@ -1528,7 +1538,8 @@ impl qobject::WallpaperLayoutSetQuery {
         self.set_layout("flip", Value::from(value));
     }
 
-    /// Сравнение и сигнал считает ядро — у оригинала это макрос WW_SET.
+    /// The comparison and the signal are computed by the core — in the original
+    /// this is the WW_SET macro.
     pub fn set_layout(mut self: Pin<&mut Self>, name: &str, value: Value) {
         let Some(signals) = ({
             let mut rust = self.as_mut().rust_mut();
@@ -1541,8 +1552,8 @@ impl qobject::WallpaperLayoutSetQuery {
     }
 
     pub fn reload(mut self: Pin<&mut Self>) {
-        // `None` — обои не выбрана: оригинал выходит ДО перевода статуса,
-        // то есть запрос не начинается вовсе.
+        // `None` means no wallpaper is selected: the original returns BEFORE
+        // switching the status, that is, the request does not start at all.
         let Some(payload) = we_wallpaper::encode_layout_set(&self.data) else {
             return;
         };
@@ -1583,7 +1594,7 @@ impl qobject::WallpaperLayoutSetQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperApplyViaPortalQuery — отдать обою через портал рабочего стола
+// WallpaperApplyViaPortalQuery — hand a wallpaper over through the desktop portal
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1658,7 +1669,7 @@ impl qobject::WallpaperApplyViaPortalQuery {
         };
         let mut signals = Vec::new();
         if let Some(pb::response::Payload::WallpaperApplyViaPortal(wp)) = payload {
-            // Сигнал безусловный — wallpaper_query.cpp:574.
+            // The signal is unconditional — wallpaper_query.cpp:574.
             let mut rust = self.as_mut().rust_mut();
             rust.uri = wp.uri;
             signals.push(QuerySignal::Property("uri"));
@@ -1686,10 +1697,11 @@ impl qobject::WallpaperApplyViaPortalQuery {
 mod tests {
     use super::*;
 
-    /// Кадр с целью-дисплеем обязан совпасть с тем, который живой демон
-    /// 0.3.5 принял в замере 18.08 (обоя 71 встала на дисплей 2). Кадр с
-    /// упакованными `display_ids` (`0a0237312a0102`) тот же демон роняет
-    /// молча — потому цели и собираются по схеме v0.3.5.
+    /// A frame with a target display must match the one the live 0.3.5 daemon
+    /// accepted in the measurement of 18.08 (wallpaper 71 went onto display 2).
+    /// The same daemon silently drops a frame with packed `display_ids`
+    /// (`0a0237312a0102`) — which is why the targets are built by the v0.3.5
+    /// scheme.
     #[test]
     fn target_frame_matches_live_daemon() {
         let targets = we_manage::presentation_targets(&serde_json::json!([{"displayId": 2}]));
@@ -1702,9 +1714,9 @@ mod tests {
         assert_eq!(hex(&bytes), "0a0237312a020802");
     }
 
-    /// Номера дисплеев, пропущенные через ядровый `display_targets`, дают
-    /// тот же кадр, что и карты целей из QML: движок сборки целей один на
-    /// всю вкладку (правило #12), второй формы адресации нет.
+    /// Display numbers passed through the core's `display_targets` give the
+    /// same frame as target maps from QML: the target building engine is one
+    /// for the whole tab (rule #12), and there is no second form of addressing.
     #[test]
     fn display_numbers_give_the_same_frame() {
         let bytes = pb::WallpaperApplyRequest {
@@ -1722,7 +1734,7 @@ mod tests {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// WallpaperHideQuery — скрыть обои из библиотеки (waywallen 0.4.4)
+// WallpaperHideQuery — hide wallpapers from the library (waywallen 0.4.4)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1730,8 +1742,8 @@ pub struct WallpaperHideQueryRust {
     base: QueryState,
     wallpaper_id: String,
     hidden: bool,
-    /// token → (что просили, в какую сторону): `updated` обязан вернуть в
-    /// QML ровно то, что уходило, даже если свойства с тех пор сменились.
+    /// token → (what was asked, in which direction): `updated` must return to
+    /// QML exactly what was sent, even if the properties changed since.
     pending: std::collections::BTreeMap<i64, (Vec<String>, bool)>,
 }
 
@@ -1739,7 +1751,7 @@ impl_action_base!(WallpaperHideQuery);
 
 impl cxx_qt::Initialize for qobject::WallpaperHideQuery {
     fn initialize(mut self: Pin<&mut Self>) {
-        // `m_hidden { true }` оригинала: голый `reload()` прячет.
+        // The original's `m_hidden { true }`: a bare `reload()` hides.
         self.as_mut().rust_mut().hidden = true;
     }
 }
@@ -1812,8 +1824,9 @@ impl qobject::WallpaperHideQuery {
             Some(pb::response::Payload::WallpaperHide(wh)) => wh.updated_count,
             _ => 0,
         };
-        // Отчёт ДО перевода в Finished — как у `WallpaperRemoveQuery`: у
-        // оригинала `updated` эмитится внутри лямбды разбора.
+        // The report goes out BEFORE switching to Finished — as in
+        // `WallpaperRemoveQuery`: in the original `updated` is emitted inside the
+        // parsing lambda.
         let list = QStringList::from_iter(ids.iter().map(QString::from));
         self.as_mut().updated(list, hidden, updated_count);
         let signals = {

@@ -1,18 +1,18 @@
-//! Golden-сверка порта `wallpaper_mmap.rs` с оригиналом
-//! `rexon/wallpaper_mmap.py`. ⚠️ Сам модуль снят с дерева 2026-08-23:
-//! записанные ниже наблюдения — единственная оставшаяся запись его
-//! поведения, перегенерировать их больше нечем.
+//! Golden check of the `wallpaper_mmap.rs` port against the original
+//! `rexon/wallpaper_mmap.py`. ⚠️ The module itself was removed from the tree on
+//! 2026-08-23: the observations recorded below are the only remaining record
+//! of its behaviour, there is nothing left to regenerate them with.
 //!
-//! Эталон снят read-only с ЖИВОГО `rexon.wallpaper_mmap` одноразовым
-//! генератором: реальный xprop НЕ запускался (subprocess подменён стабом с
-//! захватом argv), Qt не стартовал (PySide6 подменён стабами, interval QTimer
-//! и имя приложения захвачены), `prime_output_file` писал только во
-//! временный каталог (сняты байты/размер/права). Покрыто: разбор ENV-размера
-//! экрана, путь вывода из ENV, layout кадра (размер + чёрная непрозрачная
-//! строка прайминга), детект Wayland-сессии, argv обеих xprop-команд,
-//! интервал headless-тика.
+//! The reference was captured read-only from the LIVE `rexon.wallpaper_mmap`
+//! by a one-off generator: the real xprop was NOT run (subprocess replaced by
+//! a stub capturing argv), Qt was not started (PySide6 replaced by stubs, the
+//! QTimer interval and the application name captured), `prime_output_file`
+//! wrote only to a temporary directory (bytes/size/permissions captured).
+//! Covered: parsing the screen size from ENV, the output path from ENV, the
+//! frame layout (size + a black opaque priming row), Wayland session
+//! detection, argv of both xprop commands, the headless tick interval.
 //!
-//! `golden/wallpaper_mmap_cases.json` — снятые значения.
+//! `golden/wallpaper_mmap_cases.json` — the captured values.
 
 use rexon_core::wallpaper_mmap as wm;
 use serde_json::Value;
@@ -71,7 +71,7 @@ fn output_path_from_env() {
 fn wayland_detect() {
     let g = fx();
     for case in g["is_wayland_session"].as_array().unwrap() {
-        // ENV не задана → пустая строка (os.environ.get(..., ""))
+        // ENV not set → empty string (os.environ.get(..., ""))
         let st = case["session_type"].as_str().unwrap_or("");
         let wd = case["wayland_display"].as_str().unwrap_or("");
         assert_eq!(
@@ -83,11 +83,11 @@ fn wayland_detect() {
     }
 }
 
-/// Набор EWMH у окна обоев тот же, что ставил Python через `xprop`: тип
-/// рабочего стола и состояния. Поменялся способ (свойства до показа,
-/// просьбы корневому окну после), а не то, чем окно становится. Одно
-/// намеренное расхождение — без `_NET_WM_STATE_BELOW`: xfwm4 по нему
-/// поднимает окно из слоя стола над окном значков
+/// The wallpaper window's EWMH set is the same as Python set via `xprop`: the
+/// desktop type and states. The method changed (properties before showing,
+/// requests to the root window after), not what the window becomes. One
+/// intentional divergence — without `_NET_WM_STATE_BELOW`: xfwm4 uses it to
+/// raise the window from the desktop layer above the icon window
 /// ([`wm::X11_DESKTOP_STATES`]).
 #[test]
 fn x11_desktop_plan_keeps_python_atoms() {
@@ -123,9 +123,9 @@ fn x11_desktop_plan_keeps_python_atoms() {
     }
 }
 
-/// Всё ставится ДО показа: тип первым (WM читает его при показе), состояние
-/// и «на всех столах» = 0xFFFFFFFF. Показанному окну `_NET_WM_STATE`
-/// свойством больше не пишется — только просьбой.
+/// Everything is set BEFORE showing: the type first (the WM reads it on
+/// show), the state and «on all desktops» = 0xFFFFFFFF. `_NET_WM_STATE` is no
+/// longer written as a property to a shown window — only as a request.
 #[test]
 fn x11_desktop_plan_sets_everything_before_map() {
     let plan = wm::x11_desktop_plan();
@@ -140,9 +140,9 @@ fn x11_desktop_plan_sets_everything_before_map() {
     );
 }
 
-/// Просьбы `_NET_WM_STATE` по EWMH: data.l[0] = ADD, l[1] — атом, l[2] —
-/// атом или 0, l[3] = 1 (приложение); вместе покрывают все состояния ровно
-/// по разу. `_NET_WM_DESKTOP`: l[0] = 0xFFFFFFFF, l[1] = 1.
+/// `_NET_WM_STATE` requests per EWMH: data.l[0] = ADD, l[1] — an atom, l[2] —
+/// an atom or 0, l[3] = 1 (application); together they cover all states
+/// exactly once. `_NET_WM_DESKTOP`: l[0] = 0xFFFFFFFF, l[1] = 1.
 #[test]
 fn x11_desktop_messages_follow_ewmh() {
     let plan = wm::x11_desktop_plan();
@@ -173,10 +173,11 @@ fn x11_desktop_messages_follow_ewmh() {
     assert_eq!(desk.data[1], wm::X11Word::Num(1));
 }
 
-/// Окну типа «рабочий стол» BELOW не ставится ни до показа, ни просьбой:
-/// xfwm4 4.20 переносит такое окно из слоя стола (0) в слой BELOW (2) —
-/// над окном значков, и опустить его оттуда нельзя. Marco и Muffin слой
-/// окна стола от BELOW не меняют, им он не нужен.
+/// A window of type «desktop» gets no BELOW, neither before showing nor by
+/// request: xfwm4 4.20 moves such a window from the desktop layer (0) to the
+/// BELOW layer (2) — above the icon window, and it cannot be lowered from
+/// there. Marco and Muffin do not change the desktop window layer on BELOW,
+/// they do not need it.
 #[test]
 fn x11_desktop_plan_never_sets_below() {
     let plan = wm::x11_desktop_plan();
@@ -190,8 +191,8 @@ fn x11_desktop_plan_never_sets_below() {
     assert!(!wm::x11_desktop_plan_atoms(&plan).contains(&"_NET_WM_STATE_BELOW"));
 }
 
-/// Атомы узнаются у сервера один раз каждый; в списке есть всё, что
-/// упоминает план.
+/// Atoms are queried from the server once each; the list has everything the
+/// plan mentions.
 #[test]
 fn x11_desktop_plan_atoms_cover_plan() {
     let plan = wm::x11_desktop_plan();
@@ -209,11 +210,11 @@ fn x11_desktop_plan_atoms_cover_plan() {
         assert!(lookup(m.message_type).is_some(), "{}", m.message_type);
         assert!(wm::x11_resolve_words(&m.data, lookup).is_some(), "{}", m.message_type);
     }
-    // Неизвестный серверу атом — слово не ставится вовсе.
+    // An atom unknown to the server — the word is not set at all.
     assert_eq!(wm::x11_resolve_words(&[wm::X11Word::Atom("X")], |_| None), None);
 }
 
-/// Раскладка 32 байт ClientMessage для `xcb_send_event`.
+/// The 32-byte ClientMessage layout for `xcb_send_event`.
 #[test]
 fn x11_client_message_layout() {
     let ev = wm::x11_client_message_bytes(0x0420_0007, 301, [1, 302, 303, 1, 0]);
@@ -243,7 +244,7 @@ fn prime_frame_layout() {
             case["size"].as_u64().unwrap(),
             "frame_size {label}"
         );
-        // Файл прайминга = чёрная непрозрачная строка × max(1, height)
+        // Priming file = a black opaque row × max(1, height)
         if let Some(hex) = case.get("hex").and_then(Value::as_str) {
             let row = wm::black_row(w);
             let mut expected_file = Vec::new();
@@ -261,7 +262,7 @@ fn prime_frame_layout() {
 
 #[test]
 fn frame_path() {
-    // Канонический путь extension'ов: GLib.get_user_runtime_dir() + имя файла
+    // The extensions' canonical path: GLib.get_user_runtime_dir() + file name
     assert_eq!(
         wm::default_frame_path("/run/user/1000"),
         "/run/user/1000/rexon-wp-frame.rgba"
@@ -282,9 +283,10 @@ fn headless_tick() {
     assert_eq!(wm::HEADLESS_APP_NAME, s(&g["headless_app_name"]));
 }
 
-/// План прайминга собирает ровно то, что оригинал делал в `prime_output_file`
-/// руками: размер файла, число записей строки (`max(1, height)`), саму строку
-/// и права. Эталон — тот же golden, что у `prime_frame_layout`.
+/// The priming plan builds exactly what the original did by hand in
+/// `prime_output_file`: file size, the number of row writes (`max(1,
+/// height)`), the row itself and the permissions. The reference is the same
+/// golden as for `prime_frame_layout`.
 #[test]
 fn prime_plan_matches_manual_layout() {
     let g = fx();
@@ -299,8 +301,8 @@ fn prime_plan_matches_manual_layout() {
         assert_eq!(plan.width, w.max(1), "width {label}");
         assert_eq!(plan.height, h.max(1), "height {label}");
         assert_eq!(plan.mode, wm::FRAME_FILE_MODE, "mode {label}");
-        // Файл ровно покрывается строками: щелей и хвоста быть не должно,
-        // иначе расширение оболочки прочитает мусор за последним пикселем.
+        // The file is covered by rows exactly: there must be no gaps and no tail,
+        // otherwise the shell extension would read garbage after the last pixel.
         assert_eq!(
             plan.rows * plan.row.len() as u64,
             plan.size,
@@ -309,9 +311,9 @@ fn prime_plan_matches_manual_layout() {
     }
 }
 
-/// `REXON_WP_FPS` — порт `_env_fps` из `video_wallpaper.py`: мусор и выход за
-/// 1..=120 откатываются к 30, чтобы кривая переменная не оставила человека
-/// без обоев.
+/// `REXON_WP_FPS` is a port of `_env_fps` from `video_wallpaper.py`: garbage
+/// and values outside 1..=120 fall back to 30, so that a broken variable does
+/// not leave the person without wallpapers.
 #[test]
 fn env_fps_falls_back_on_garbage() {
     assert_eq!(wm::env_fps(None), wm::DEFAULT_FPS);
@@ -327,8 +329,8 @@ fn env_fps_falls_back_on_garbage() {
     assert_eq!(wm::env_fps(Some("120")), wm::MAX_FPS);
 }
 
-/// Признак сеанса Wayland — ОДИН на весь Rexon: здесь только переадресация
-/// в `wallpaper_backend`, своей реализации быть не должно.
+/// The Wayland session sign is ONE for all of Rexon: here only a redirection
+/// to `wallpaper_backend`, there must be no implementation of its own.
 #[test]
 fn wayland_detect_shares_engine_with_backend() {
     for (st, wd) in [
@@ -349,8 +351,8 @@ fn wayland_detect_shares_engine_with_backend() {
     }
 }
 
-/// Имя Qt-приложения headless-цикла не должно разъезжаться с общей таблицей
-/// точек входа.
+/// The Qt application name of the headless loop must not drift from the
+/// shared entry point table.
 #[test]
 fn headless_app_name_matches_entry_table() {
     let ident = rexon_core::qt_app::identity("rexon.wallpaper_mmap")
@@ -358,21 +360,21 @@ fn headless_app_name_matches_entry_table() {
     assert_eq!(ident.application_name, wm::HEADLESS_APP_NAME);
 }
 
-/// Сторож от возврата вспышки чужих обоев при смене обоев.
+/// Guard against the return of a flash of the previous wallpaper on a wallpaper change.
 ///
-/// Что стерегём. Файл кадра `rexon-wp-frame.rgba` один на сеанс, а расширения
-/// GNOME и Cinnamon решают «кадр годен» по одному признаку — размеру файла
-/// (`bytes.get_size() < expected` → тик пропускается). Пока поток кадров при
-/// старте открывал ПРЕЖНИЙ файл и сразу раздувал его до `width*height*4`,
-/// расширение видело полный размер и рисовало последний кадр ПРЕЖНИХ обоев,
-/// пока новый хост не успевал записать свой первый (замер на подставном пути:
-/// 34 мс на готовом окне плюс весь запуск процесса хоста; а пока прежний хост
-/// доживал после `kill`, оба писали в один файл и картинки чередовались
-/// секундами).
+/// What we guard. The frame file `rexon-wp-frame.rgba` is one per session, and
+/// the GNOME and Cinnamon extensions decide «the frame is valid» by one sign
+/// — the file size (`bytes.get_size() < expected` → the tick is skipped).
+/// While the frame stream on start opened the FORMER file and immediately
+/// grew it to `width*height*4`, the extension saw the full size and drew the
+/// last frame of the FORMER wallpaper until the new host managed to write its
+/// first one (measured on a mocked path: 34 ms on a ready window plus the
+/// whole host process start; and while the former host lingered after
+/// `kill`, both wrote into one file and the pictures alternated for seconds).
 ///
-/// Проверка идёт по исходнику шима: сам поток кадров без Qt-окна не поднять,
-/// а признак починки в нём короткий и однозначный — файл отцепляется и до
-/// первого настоящего кадра остаётся коротким.
+/// The check goes over the shim source: the frame stream itself cannot be
+/// brought up without a Qt window, and the sign of the fix in it is short and
+/// unambiguous — the file is unlinked and stays short until the first real frame.
 #[test]
 fn frame_file_is_detached_and_not_preallocated() {
     let cpp_path = concat!(
@@ -380,8 +382,9 @@ fn frame_file_is_detached_and_not_preallocated() {
         "/../rexon-gui/cpp/rexon_wallpaper_host.cpp"
     );
     let raw = std::fs::read_to_string(cpp_path).expect("нет шима rexon_wallpaper_host.cpp");
-    // Смотрим на КОД, а не на пояснения: слова `ftruncate` и `unlink` стоят и
-    // в комментариях рядом с починкой, и по ним проверка сказала бы неправду.
+    // We look at the CODE, not at the explanations: the words `ftruncate` and
+    // `unlink` also stand in the comments next to the fix, and by them the check
+    // would tell a lie.
     let cpp: String = raw
         .lines()
         .filter(|l| !l.trim_start().starts_with("//"))
@@ -411,12 +414,12 @@ fn frame_file_is_detached_and_not_preallocated() {
     );
 }
 
-// ── Сторожа по исходникам расширений оболочки ─────────────────────────────
+// ── Guards over the shell extension sources ─────────────────────────────
 
-/// Пути обоих `extension.js`: GNOME и Cinnamon.
+/// Paths of both `extension.js`: GNOME and Cinnamon.
 ///
-/// Файлы разные (ESM против классических `imports`), а дефекты у них были
-/// общие — оба лечатся одинаково, поэтому и стерегутся вместе.
+/// The files differ (ESM versus classic `imports`), but their defects were
+/// shared — both are cured the same way, so they are guarded together.
 fn shell_extension_sources() -> [(&'static str, String); 2] {
     let gnome = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -435,7 +438,7 @@ fn shell_extension_sources() -> [(&'static str, String); 2] {
     ]
 }
 
-/// Вырезать общий блок диагностики запуска между метками.
+/// Cut out the shared launch diagnostics block between the markers.
 fn launch_diagnostics_block(src: &str, de: &str) -> String {
     let begin = "[rexon-wp:launch-diagnostics:begin]";
     let end = "[rexon-wp:launch-diagnostics:end]";
@@ -450,13 +453,14 @@ fn launch_diagnostics_block(src: &str, de: &str) -> String {
     src[from..to].to_string()
 }
 
-/// Сторож: объяснение отказа в обоих расширениях — ОДНО И ТО ЖЕ.
+/// Guard: the refusal explanation in both extensions is THE SAME.
 ///
-/// Что стерегём. Дефект «расширение зовёт не тот интерпретатор и молчит о
-/// причине» был одинаков в обоих файлах, и лечение у него одно (правило
-/// #12). Разъехаться эти блоки могут незаметно: правку вносят в тот файл,
-/// на котором сидит человек, а второй проверить не на чем — GNOME и
-/// Cinnamon рядом не поставишь. Поэтому сравниваем посимвольно.
+/// What we guard. The defect «the extension calls the wrong interpreter and
+/// is silent about the reason» was identical in both files, and its cure is
+/// one (rule #12). These blocks can drift apart unnoticed: the edit is made
+/// in the file the person is sitting on, and the second one cannot be checked
+/// — GNOME and Cinnamon cannot be installed side by side. So we compare
+/// character by character.
 #[test]
 fn shell_extensions_share_launch_diagnostics() {
     let [(de_a, src_a), (de_b, src_b)] = shell_extension_sources();
@@ -473,15 +477,16 @@ fn shell_extensions_share_launch_diagnostics() {
     );
 }
 
-/// Сторож: падение хоста на ходу оба расширения отдают сторожу Rexon, а не
-/// показывают своё сообщение на каждое падение, и запоздалый выход прежнего
-/// хоста не снимает актёров нового.
+/// Guard: both extensions hand a host crash at run time to the Rexon watcher
+/// instead of showing their own message on every crash, and a late exit of
+/// the former host does not remove the new one's actors.
 ///
-/// Что стерегём. Сторож падений (`renderer_watch::HostWatch`) поднимает хост
-/// сменой настроек расширения и сам говорит человеку ОДИН раз. Расширение,
-/// ругающееся на каждый выход, дало бы второе уведомление на каждое падение;
-/// а выход прежнего хоста, пришедший после подъёма нового, стирал бы
-/// актёры нового — стол оставался бы без обоев при живом хосте.
+/// What we guard. The crash watcher (`renderer_watch::HostWatch`) brings the
+/// host back up by changing the extension settings and tells the person ONCE
+/// by itself. An extension complaining on every exit would give a second
+/// notification on every crash; and an exit of the former host arriving after
+/// the new one came up would erase the new one's actors — the desktop would
+/// stay without wallpapers with a live host.
 #[test]
 fn shell_extensions_leave_crashes_to_rexon() {
     for (de, src) in shell_extension_sources() {
@@ -499,7 +504,7 @@ fn shell_extensions_leave_crashes_to_rexon() {
     }
 }
 
-/// Вырезать общий блок чтения кадра между метками.
+/// Cut out the shared frame-reading block between the markers.
 fn frame_read_block(src: &str, de: &str) -> String {
     let begin = "[rexon-wp:frame-read:begin]";
     let end = "[rexon-wp:frame-read:end]";
@@ -514,14 +519,14 @@ fn frame_read_block(src: &str, de: &str) -> String {
     src[from..to].to_string()
 }
 
-/// Сторож: кадр оба расширения читают ОДНИМ кодом, огороженным счётчиком
-/// поколения, и сам тик файл кадра напрямую не отображает.
+/// Guard: both extensions read the frame with ONE piece of code fenced by the
+/// generation counter, and the tick itself does not map the frame file directly.
 ///
-/// Что стерегём. Хост пишет кадр под `flock(LOCK_EX)`, а GJS замок взять не
-/// может; без счётчика читатель попадал на середину записи (замер: 12 рваных
-/// кадров из 180 тиков на 1920×1080/30). Окончание имени счётчика в JS
-/// обязано совпадать с ядром — иначе расширение молча читало бы
-/// несуществующий файл и вернулось к рваным кадрам.
+/// What we guard. The host writes the frame under `flock(LOCK_EX)`, and GJS
+/// cannot take the lock; without the counter the reader landed in the middle
+/// of a write (measured: 12 torn frames out of 180 ticks at 1920×1080/30).
+/// The counter name suffix in JS must match the core — otherwise the
+/// extension would silently read a nonexistent file and go back to torn frames.
 #[test]
 fn shell_extensions_share_frame_read() {
     let [(de_a, src_a), (de_b, src_b)] = shell_extension_sources();
@@ -555,9 +560,9 @@ fn shell_extensions_share_frame_read() {
     }
 }
 
-/// Договор счётчика поколения: путь рядом с файлом кадра, u64 little-endian
-/// (JS читает `DataView.getBigUint64(0, true)`), и шим пишет нечётное ДО строк
-/// кадра и чётное ПОСЛЕ.
+/// The generation counter contract: a path next to the frame file, u64
+/// little-endian (JS reads `DataView.getBigUint64(0, true)`), and the shim
+/// writes an odd value BEFORE the frame rows and an even one AFTER.
 #[test]
 fn frame_generation_contract() {
     assert_eq!(
@@ -585,11 +590,11 @@ fn frame_generation_contract() {
     assert!(last_gen > 0, "чётное поколение ставится не ПОСЛЕ строк кадра");
 }
 
-/// Платформа Qt хоста в режиме потока кадров. Видео и Flash — всегда
-/// `offscreen`, даже если оболочка унаследовала хосту `QT_QPA_PLATFORM=wayland`:
-/// иначе окно обоев выходит обычным окном поверх рабочего стола (замер:
-/// `xdg_toplevel` «RexonVideoWallpaper» под Wayland-композитором без
-/// layer-shell).
+/// The host's Qt platform in frame streaming mode. Video and Flash are always
+/// `offscreen`, even if the shell passed `QT_QPA_PLATFORM=wayland` on to the
+/// host: otherwise the wallpaper window comes out as a regular window above
+/// the desktop (measured: `xdg_toplevel` «RexonVideoWallpaper» under a Wayland
+/// compositor without layer-shell).
 #[test]
 fn host_qpa_platform_own_frames_forced_offscreen_when_streaming() {
     use wm::StreamCapture::OwnFrames;
@@ -604,11 +609,12 @@ fn host_qpa_platform_own_frames_forced_offscreen_when_streaming() {
     }
 }
 
-/// Веб в режиме потока рисует `QQuickRenderControl` без окна — и получает
-/// видеокарту только на НАСТОЯЩЕЙ платформе сеанса: на `offscreen` у Qt нет
-/// EGL, а QtWebEngine там не кладёт GPU-кадр в сцену (замер: WebGL нет, CSS
-/// 20 к/с при 166 % CPU). Порядок: Wayland, затем X11/XWayland, без обоих —
-/// `offscreen`. Унаследованное значение перебивается и здесь.
+/// Web in streaming mode draws with `QQuickRenderControl` without a window —
+/// and gets the GPU only on the REAL session platform: on `offscreen` Qt has
+/// no EGL, and QtWebEngine there does not put the GPU frame into the scene
+/// (measured: no WebGL, CSS at 20 fps with 166 % CPU). Order: Wayland, then
+/// X11/XWayland, without both — `offscreen`. The inherited value is
+/// overridden here too.
 #[test]
 fn host_qpa_platform_render_control_takes_session_platform() {
     use wm::StreamCapture::RenderControl;
@@ -620,12 +626,12 @@ fn host_qpa_platform_render_control_takes_session_platform() {
     assert_eq!(wm::host_qpa_platform(true, RenderControl, Some("wayland"), "  ", ":1"), Some("xcb"));
     assert_eq!(wm::host_qpa_platform(true, RenderControl, None, "", ""), Some("offscreen"));
     assert_eq!(wm::host_qpa_platform(true, RenderControl, Some("offscreen"), "", ""), None);
-    // Не поток — платформу выбирает Qt сам (слой, X11, отладочное окно).
+    // Not a stream — Qt chooses the platform itself (layer, X11, debug window).
     assert_eq!(wm::host_qpa_platform(false, RenderControl, None, "wayland-0", ":0"), None);
 }
 
-/// Показать окно ради снимка кадра можно только на `offscreen`: на настоящей
-/// платформе окно на Mutter выходит поверх рабочего стола.
+/// Showing the window for a frame grab is allowed only on `offscreen`: on a
+/// real platform the window on Mutter comes out above the desktop.
 #[test]
 fn stream_window_shows_only_on_offscreen() {
     assert!(wm::stream_window_may_show("offscreen"));
@@ -634,7 +640,7 @@ fn stream_window_shows_only_on_offscreen() {
     }
 }
 
-/// Таблица «чем снимается кадр»: сцену Qt Quick рисует только веб.
+/// The «what captures the frame» table: only web draws a Qt Quick scene.
 #[test]
 fn host_stream_capture_per_mode() {
     use rexon_core::wallpaper_engine::HostMode;
@@ -643,14 +649,14 @@ fn host_stream_capture_per_mode() {
     assert_eq!(wm::host_stream_capture(HostMode::Swf), wm::StreamCapture::OwnFrames);
 }
 
-/// Сторож: платформу Qt и способ показа все режимы хоста обоев получают
-/// ОДНИМ общим решением, а не своей копией. Копия у прежнего веб-хоста уже
-/// была — и видео остался без неё: на GNOME/Cinnamon-Wayland его окно
-/// выходило поверх рабочего стола. С 15.09.2026 хост один
-/// (`rexon-wallpaper-host --mode video|web|swf`): решение живёт в общем
-/// `main.rs`, файлы режимов его не повторяют — Flash (`swf.rs`) тоже только
-/// планирует, а платформу Qt ему выставляет `main.rs`. Каталог читается
-/// целиком — следующий режим попадёт под сторож сам.
+/// Guard: all wallpaper host modes get the Qt platform and the show method
+/// from ONE shared decision, not their own copy. The former web host already
+/// had a copy — and video was left without it: on GNOME/Cinnamon Wayland its
+/// window came out above the desktop. Since 15.09.2026 there is one host
+/// (`rexon-wallpaper-host --mode video|web|swf`): the decision lives in the
+/// shared `main.rs`, the mode files do not repeat it — Flash (`swf.rs`) also
+/// only plans, and `main.rs` sets the Qt platform for it. The directory is
+/// read in full — the next mode falls under the guard by itself.
 #[test]
 fn wallpaper_hosts_share_qpa_platform_decision() {
     let gui = format!("{}/../rexon-gui/src/bin", env!("CARGO_MANIFEST_DIR"));
@@ -689,34 +695,34 @@ fn wallpaper_hosts_share_qpa_platform_decision() {
                 "{name}: режим решает способ показа сам, мимо общего main.rs"
             );
         }
-        // Chromium поднимается ТОЛЬКО веб-режимом: видео не платит за него.
+        // Chromium is brought up ONLY by web mode: video does not pay for it.
         assert_eq!(
             code.contains("init_web_engine("),
             name == "web.rs",
             "{name}: подъём QtWebEngine не там, где ему место"
         );
     }
-    // Второго хоста обоев рядом больше нет.
+    // There is no second wallpaper host next to it any more.
     assert!(
         !std::path::Path::new(&format!("{gui}/web_host.rs")).exists(),
         "вернулся отдельный бинарь веб-хоста"
     );
 }
 
-/// Сторож: расширения не ищут хост обоев в `PATH` и не зовут Python.
+/// Guard: the extensions do not look for the wallpaper host in `PATH` and do not call Python.
 ///
-/// Что стерегём. `SpawnFlags.SEARCH_PATH` берёт ПЕРВУЮ подходящую программу
-/// из `PATH` оболочки, а у покупателя с venv, переносным каталогом или
-/// Flatpak это не тот Rexon, что установлен: обои не появлялись, а
-/// расширение говорило только «spawn failed». Путь к хосту присылает сам
-/// Rexon ключом `daemon-argv` (`wallpaper_engine::SHELL_EXT_DAEMON_KEY`), и
-/// второго способа выбрать программу быть не должно.
+/// What we guard. `SpawnFlags.SEARCH_PATH` takes the FIRST matching program
+/// from the shell's `PATH`, and for a buyer with a venv, a portable directory
+/// or Flatpak that is not the installed Rexon: no wallpapers appeared, and the
+/// extension said only «spawn failed». Rexon itself sends the host path in
+/// the `daemon-argv` key (`wallpaper_engine::SHELL_EXT_DAEMON_KEY`), and there
+/// must be no second way to choose the program.
 #[test]
 fn shell_extensions_never_search_path_for_host() {
     for (de, raw) in shell_extension_sources() {
-        // Смотрим на КОД, а не на пояснения: и `SEARCH_PATH`, и `python3`
-        // стоят в комментариях рядом с починкой — по ним проверка сказала бы
-        // неправду.
+        // We look at the CODE, not at the explanations: both `SEARCH_PATH` and
+        // `python3` stand in the comments next to the fix — by them the check would
+        // tell a lie.
         let code: String = raw
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
@@ -740,13 +746,13 @@ fn shell_extensions_never_search_path_for_host() {
     }
 }
 
-/// Сторож: у каждого отказа запуска есть объяснение и в журнале, и на экране.
+/// Guard: every launch refusal has an explanation both in the log and on screen.
 ///
-/// Что стерегём. Прежде расширение молчало ровно там, где человеку нужнее
-/// всего: `spawn_async` вернул `false` — не логировалось ничего, хост лёг
-/// сразу после старта — в журнал уходил голый код выхода, а на экране
-/// оставался чёрный прямоугольник поверх обоев. Наружу не выходило ничего:
-/// ни строки в журнал, ни сообщения в оболочке.
+/// What we guard. Formerly the extension was silent exactly where the person
+/// needed it most: `spawn_async` returned `false` — nothing was logged, the
+/// host died right after the start — a bare exit code went to the log, and a
+/// black rectangle stayed on screen over the wallpaper. Nothing got out:
+/// neither a log line nor a message in the shell.
 #[test]
 fn shell_extensions_report_launch_failures_to_user() {
     for (de, raw) in shell_extension_sources() {
@@ -756,10 +762,10 @@ fn shell_extensions_report_launch_failures_to_user() {
             .collect::<Vec<_>>()
             .join("\n");
         for needle in [
-            "launchProblem(",     // проверка строки запуска ДО вызова оболочки
-            "spawnFailureText(",  // отказ самой оболочки
-            "earlyExitText(",     // хост лёг сразу после старта
-            "Main.notifyError(",  // сообщение человеку, а не только в журнал
+            "launchProblem(",     // checking the launch line BEFORE calling the shell
+            "spawnFailureText(",  // the shell's own refusal
+            "earlyExitText(",     // the host died right after the start
+            "Main.notifyError(",  // a message to the person, not only to the log
         ] {
             assert!(
                 code.contains(needle),
@@ -770,14 +776,15 @@ fn shell_extensions_report_launch_failures_to_user() {
     }
 }
 
-/// Сторож: расширение Cinnamon ставит кадр туда, где он виден.
+/// Guard: the Cinnamon extension puts the frame where it is visible.
 ///
-/// Что стерегём. Расширение искало фон в `Main.layoutManager._bgManagers` —
-/// поле GNOME Shell, которого у Cinnamon нет: цикл шёл по пустому массиву, и
-/// на Cinnamon Wayland обои не появлялись никогда. Фон там рисует
-/// csd-background окнами в `global.bottom_window_group`; кадр встаёт поверх
-/// них, а без них — в `Meta.BackgroundGroup`, которую Muffin держит под
-/// окнами (любой другой актёр в группе окон всплывает над ними).
+/// What we guard. The extension looked for the background in
+/// `Main.layoutManager._bgManagers` — a GNOME Shell field Cinnamon does not
+/// have: the loop went over an empty array, and on Cinnamon Wayland the
+/// wallpapers never appeared. There the background is drawn by csd-background
+/// with windows in `global.bottom_window_group`; the frame goes above them,
+/// and without them — into `Meta.BackgroundGroup`, which Muffin keeps under
+/// the windows (any other actor in the window group floats above them).
 #[test]
 fn cinnamon_extension_uses_muffin_background_layers() {
     let [_, (de, raw)] = shell_extension_sources();
@@ -792,10 +799,10 @@ fn cinnamon_extension_uses_muffin_background_layers() {
          обои не появятся"
     );
     for needle in [
-        "global.bottom_window_group",   // где живут окна фона csd-background
-        "'csd-background'",             // по чему окно фона узнаётся
-        "Meta.BackgroundGroup",         // запасное место под окнами
-        "'actor-added'",                // csd поднимает окна позже расширения
+        "global.bottom_window_group",   // where the csd-background windows live
+        "'csd-background'",             // what the background window is recognised by
+        "Meta.BackgroundGroup",         // the fallback place under the windows
+        "'actor-added'",                // csd brings up its windows later than the extension
     ] {
         assert!(
             code.contains(needle),
@@ -804,13 +811,14 @@ fn cinnamon_extension_uses_muffin_background_layers() {
     }
 }
 
-/// Сторож: на Cinnamon с layer-shell расширение хост НЕ запускает.
+/// Guard: on Cinnamon with layer-shell the extension does NOT start the host.
 ///
-/// Живьём 15.11.2026 (Cinnamon 6.8 Wayland) рядом с хостом Rexon слоем стола
-/// шёл второй хост, поднятый расширением по старым ключам: двойная нагрузка
-/// на декодирование. Проверка признака сеанса обязана стоять в `_reload` ДО
-/// `_spawnDaemon`, и признак — тот же, что у ядра без ответа композитора:
-/// Wayland и файл активации службы фона Cinnamon в каталогах данных.
+/// Live on 15.11.2026 (Cinnamon 6.8 Wayland) next to the Rexon host on the
+/// desktop layer ran a second host, brought up by the extension from the old
+/// keys: double decoding load. The session sign check must stand in `_reload`
+/// BEFORE `_spawnDaemon`, and the sign is the same as the core's without a
+/// compositor answer: Wayland and the Cinnamon background service activation
+/// file in the data directories.
 #[test]
 fn cinnamon_extension_skips_host_on_layer_shell() {
     use rexon_core::wallpaper_backend as wb;
@@ -840,12 +848,12 @@ fn cinnamon_extension_skips_host_on_layer_shell() {
         code.contains(&format!("const CINNAMON_BG_SERVICE = '{}';", wb::CINNAMON_BG_BUS)),
         "имя службы фона в расширении разошлось с ядром"
     );
-    // Тот же файл, что ищет ядро.
+    // The same file the core looks for.
     let files = wb::cinnamon_bg_service_files("", "/home/u", "/usr/share");
     assert!(files.iter().all(|f| f.ends_with(&format!("/dbus-1/services/{}.service", wb::CINNAMON_BG_BUS))));
 }
 
-// ── порядок окна обоев и окна значков стола (X11) ─────────────────────────
+// ── order of the wallpaper window and the desktop icon window (X11) ─────────────────────────
 
 fn facts(desktop_type: bool, instance: &str, depth: u8) -> wm::X11ClientFacts {
     wm::X11ClientFacts {
@@ -857,7 +865,7 @@ fn facts(desktop_type: bool, instance: &str, depth: u8) -> wm::X11ClientFacts {
     }
 }
 
-/// Роль окна: сквозными значки бывают только с альфой И при композиторе.
+/// The window role: icons are see-through only with alpha AND with a compositor.
 #[test]
 fn x11_icons_window_is_see_through_only_with_alpha_and_compositor() {
     use wm::X11StackRole as R;
@@ -866,15 +874,15 @@ fn x11_icons_window_is_see_through_only_with_alpha_and_compositor() {
     assert_eq!(wm::x11_stack_role(&facts(true, "desktop_window", 24), true), R::Icons { see_through: false });
     assert_eq!(wm::x11_stack_role(&facts(true, "csd-background", 24), true), R::Background);
     assert_eq!(wm::x11_stack_role(&facts(false, "caja", 32), true), R::Other, "обычное окно Caja");
-    // Корневое свойство Caja называет окно стола раньше, чем тип прочитан.
+    // Caja's root property names the desktop window before the type is read.
     let mut announced = facts(false, "", 32);
     announced.announced_icons = true;
     assert_eq!(wm::x11_stack_role(&announced, true), R::Icons { see_through: true });
 }
 
-/// Дефект 31.10.2026 (MATE): окно обоев показано позже и стоит над
-/// непрозрачной Caja — так и надо (иначе обоев не видно); над сквозной —
-/// под неё.
+/// Defect of 31.10.2026 (MATE): the wallpaper window is shown later and stands
+/// above an opaque Caja — that is right (otherwise the wallpaper is not
+/// visible); above a see-through one — goes under it.
 #[test]
 fn x11_wallpaper_goes_below_see_through_icons_and_above_opaque_ones() {
     use wm::X11Restack as M;
@@ -885,20 +893,20 @@ fn x11_wallpaper_goes_below_see_through_icons_and_above_opaque_ones() {
     assert_eq!(wm::x11_restack_goal(&opaque, own), None, "непрозрачная Caja: обои остаются сверху");
     let see_through = [(1, R::Other), (caja, R::Icons { see_through: true }), (own, R::Own)];
     assert_eq!(wm::x11_restack_goal(&see_through, own), Some(M::Below(caja)));
-    // После перестановки — на месте, второй запрос не нужен.
+    // After the restack — in place, a second request is not needed.
     let settled = [(own, R::Own), (caja, R::Icons { see_through: true }), (1, R::Other)];
     assert_eq!(wm::x11_restack_goal(&settled, own), None);
-    // Caja пересоздала окно непрозрачным (ключ выключили) — обои наверх.
+    // Caja recreated the window opaque (the key was turned off) — the wallpaper goes on top.
     let reopened = [(own, R::Own), (caja, R::Icons { see_through: false })];
     assert_eq!(wm::x11_restack_goal(&reopened, own), Some(M::Above(caja)));
-    // Значков нет — трогать нечего.
+    // No icons — nothing to touch.
     assert_eq!(wm::x11_restack_goal(&[(own, R::Own), (1, R::Other)], own), None);
-    // Не наше окно — не наше дело.
+    // Not our window — not our business.
     assert_eq!(wm::x11_restack_goal(&see_through, 0x42), None);
 }
 
-/// Окно, рисующее только фон (Cinnamon под XWayland), — всегда под обоями;
-/// несколько окон значков (xfdesktop по окну на монитор).
+/// A window drawing only the background (Cinnamon under XWayland) is always
+/// under the wallpaper; several icon windows (xfdesktop has a window per monitor).
 #[test]
 fn x11_background_painter_stays_below_and_all_icon_windows_count() {
     use wm::X11Restack as M;
@@ -920,10 +928,10 @@ fn x11_background_painter_stays_below_and_all_icon_windows_count() {
     assert_eq!(M::Above(4).sibling_and_mode(), (4, wm::X11_STACK_ABOVE));
 }
 
-/// Дефект 31.10.2026 (xfwm4 + nemo-desktop): менеджер просьбу о порядке не
-/// исполняет, а сверка раз в 2 с просила снова и снова. Теперь — не больше
-/// `X11_RESTACK_TRIES` просьб при том же стеке, затем одна запись об отказе и
-/// тишина; любое изменение нижнего слоя начинает счёт заново.
+/// Defect of 31.10.2026 (xfwm4 + nemo-desktop): the manager does not fulfil
+/// the stacking request, and the check every 2 s asked again and again. Now —
+/// no more than `X11_RESTACK_TRIES` requests with the same stack, then one
+/// refusal record and silence; any change of the bottom layer restarts the count.
 #[test]
 fn x11_restack_gives_up_once_when_wm_ignores_request() {
     use wm::X11Restack as M;
@@ -939,13 +947,13 @@ fn x11_restack_gives_up_once_when_wm_ignores_request() {
     for _ in 0..5 {
         assert_eq!(t.step(&stuck, own), Some(S::Quiet), "дальше молчим");
     }
-    // Чужие окна вне нижнего слоя (открыли терминал) счёт не сбрасывают.
+    // Foreign windows outside the bottom layer (a terminal was opened) do not reset the count.
     let other_moved = [(nemo, R::Icons { see_through: true }), (own, R::Own), (1, R::Other)];
     assert_eq!(t.step(&other_moved, own), Some(S::Quiet));
-    // nemo-desktop пересоздал окно — новая попытка.
+    // nemo-desktop recreated the window — a new attempt.
     let recreated = [(0x1600009, R::Icons { see_through: true }), (own, R::Own)];
     assert_eq!(t.step(&recreated, own), Some(S::Ask(M::Below(0x1600009))));
-    // Менеджер исполнил — счёт обнулён; снова сбилось — снова просим.
+    // The manager complied — the count is zeroed; it slipped again — we ask again.
     let settled = [(own, R::Own), (0x1600009, R::Icons { see_through: true })];
     assert_eq!(t.step(&settled, own), None);
     assert_eq!(t.step(&recreated, own), Some(S::Ask(M::Below(0x1600009))));
@@ -960,9 +968,9 @@ fn x11_compositor_selection_follows_display_screen() {
     assert_eq!(wm::x11_compositor_selection(1), "_NET_WM_CM_S1");
 }
 
-/// Дефект 31.10.2026 (xfwm4 + nemo-desktop, показанный раньше хоста):
-/// после признанного отказа окно значков пересоздаётся — но только ради
-/// цели «под значки» и один раз на окно обоев, без повторов по кругу.
+/// Defect of 31.10.2026 (xfwm4 + nemo-desktop shown before the host): after
+/// an acknowledged refusal the icon window is recreated — but only for the
+/// «under the icons» goal and once per wallpaper window, without repeating in circles.
 #[test]
 fn x11_icons_window_recreated_once_after_give_up() {
     use wm::X11Restack as M;
@@ -973,8 +981,8 @@ fn x11_icons_window_recreated_once_after_give_up() {
     let mut t = wm::X11RestackTracker::default();
     assert!(t.take_icons_recreate(M::Below(nemo)));
     assert!(!t.take_icons_recreate(M::Below(nemo)), "второй раз — нет");
-    // Новое окно значков снова не под обоями — просим, признаём отказ, но
-    // окно значков больше не трогаем.
+    // The new icon window is again not under the wallpaper — we ask, acknowledge
+    // the refusal, but no longer touch the icon window.
     let stuck = [(0x400076, R::Icons { see_through: true }), (own, R::Own)];
     for _ in 0..=wm::X11_RESTACK_TRIES {
         t.step(&stuck, own);

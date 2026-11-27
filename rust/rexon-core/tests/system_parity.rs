@@ -1,26 +1,29 @@
-//! Golden-сверка порта `system.rs` с оригиналом `rexon/system.py`.
+//! Golden check of the `system.rs` port against the original `rexon/system.py`.
 //!
-//! Эталоны сняты с самого Python (генератор импортирует живой `rexon.system`
-//! из корня репо и дампит выходы через `json.dump(..., ensure_ascii=False)`):
-//!   * `golden/system_detect_cases.json` — `DistroDetector` на батарее
-//!     os-release фикстур (CachyOS/SteamOS/Astra/ROSA/ALT/NixOS/Ubuntu/
-//!     Tumbleweed/Bazzite/Silverblue + кавычки/комментарии/пустой NAME/
-//!     фолбэк /usr/lib/os-release/бинарная детекция); `open()` в оракуле
-//!     замокан на текст фикстуры, `shutil.which` — на список бинарников.
-//!   * `golden/system_de_db.json` — `ID_MAP`, вся `_DE_DATABASE` (9 DE,
-//!     включая LXQt), `_DE_META` и прогон get_packages/is_available/
-//!     get_aur_packages по каждому DE × ВСЕ 12 семейств (+ неизвестный DE).
-//!   * `golden/system_installer_cases.json` — `_expand_groups` (группы
-//!     mate/mate-extra, дедуп общего члена, пустой вывод), `_qi_field`
-//!     (версионные констрейнты — "gtk3>=…"→"gtk3" по самому левому
-//!     сепаратору, поле None, строка без двоеточия), `_required_by_outside` и
-//!     `_filter_removable_transitive` (пример из докстринга, транзитивная
-//!     цепочка, ЦИКЛ в зависимостях, всё-safe, не-Arch); `safe_run` в
-//!     оракуле замокан на фикстуры вывода pacman. Отдельные кейсы
-//!     `russian-locale-*` — вывод pacman на русской локали (грабля LANG=C):
-//!     поля не парсятся, поведение Rust совпадает с Python на той же фикстуре.
+//! References were captured from Python itself (the generator imports the live
+//! `rexon.system` from the repo root and dumps outputs via
+//! `json.dump(..., ensure_ascii=False)`):
+//!   * `golden/system_detect_cases.json` — `DistroDetector` on a battery of
+//!     os-release fixtures (CachyOS/SteamOS/Astra/ROSA/ALT/NixOS/Ubuntu/
+//!     Tumbleweed/Bazzite/Silverblue + quotes/comments/empty NAME/
+//!     /usr/lib/os-release fallback/binary detection); `open()` in the oracle
+//!     is mocked to the fixture text, `shutil.which` to a list of binaries.
+//!   * `golden/system_de_db.json` — `ID_MAP`, the whole `_DE_DATABASE` (9 DEs,
+//!     including LXQt), `_DE_META` and a run of
+//!     get_packages/is_available/get_aur_packages for each DE × ALL 12
+//!     families (+ an unknown DE).
+//!   * `golden/system_installer_cases.json` — `_expand_groups` (groups
+//!     mate/mate-extra, dedup of a shared member, empty output), `_qi_field`
+//!     (version constraints — "gtk3>=…"→"gtk3" by the leftmost separator,
+//!     field None, a line without a colon), `_required_by_outside` and
+//!     `_filter_removable_transitive` (the docstring example, a transitive
+//!     chain, a CYCLE in dependencies, all-safe, non-Arch); `safe_run` in the
+//!     oracle is mocked to pacman output fixtures. Separate cases
+//!     `russian-locale-*` — pacman output on a Russian locale (the LANG=C
+//!     trap): fields are not parsed, Rust behaviour matches Python on the same
+//!     fixture.
 //!
-//! Любое расхождение — ошибка порта, а не теста.
+//! Any divergence is a port bug, not a test bug.
 
 use std::collections::HashSet;
 
@@ -49,16 +52,16 @@ fn db_fx() -> Value {
 }
 
 fn installer_fx() -> Value {
-    // Каталог помощника — живой ответ этой машины (голден снят там, где
-    // пакета не было): `system_plan::retarget_helper_paths`.
+    // The helper directory is a live answer of this machine (the golden was
+    // captured where the package was absent): `system_plan::retarget_helper_paths`.
     let raw = rexon_core::system_plan::retarget_helper_paths(include_str!(
         "golden/system_installer_cases.json"
     ));
     serde_json::from_str(&raw).unwrap()
 }
 
-/// Замыкание «stdout команды по пакету» из JSON-объекта фикстуры
-/// (ключ отсутствует = returncode != 0 = None).
+/// A «command stdout per package» closure from a fixture JSON object
+/// (missing key = returncode != 0 = None).
 fn output_map(fixture: &Value) -> impl Fn(&str) -> Option<String> + '_ {
     let map = fixture.as_object().expect("объект pkg→stdout");
     move |pkg: &str| map.get(pkg).and_then(Value::as_str).map(String::from)
@@ -129,8 +132,8 @@ fn id_map_matches_python() {
     assert_eq!(json!(order), fx["id_map_order"], "порядок ID_MAP");
 }
 
-/// Kylin: openKylin — Debian по таблице (`ID_LIKE` у неё нет), Kylin OS —
-/// по менеджеру пакетов машины (один `ID=kylin` у Debian- и RPM-редакции).
+/// Kylin: openKylin is Debian by the table (it has no `ID_LIKE`), Kylin OS —
+/// by the machine's package manager (one `ID=kylin` for the Debian and RPM editions).
 #[test]
 fn kylin_family_by_id_or_binaries() {
     let det = |text: &str| DistroDetector::from_os_release_files(Some(text), None);
@@ -145,9 +148,10 @@ fn kylin_family_by_id_or_binaries() {
     assert_eq!(kylin.family(&none), PkgFamily::Unknown);
 }
 
-/// Сеанс UKUI узнаётся по `XDG_CURRENT_DESKTOP` и по имени сеанса, на X11 и
-/// на Wayland, но стол остаётся «узнанным и неподдержанным»: не тайловым, не
-/// MATE, без записи в каталоге — и с честной строкой для человека.
+/// A UKUI session is recognised by `XDG_CURRENT_DESKTOP` and by the session
+/// name, on X11 and on Wayland, but the desktop stays «recognised and
+/// unsupported»: not tiling, not MATE, without a catalog entry — and with an
+/// honest line for the person.
 #[test]
 fn ukui_session_recognized_but_unsupported() {
     use rexon_core::system::{detect_current_de, unsupported_desktop_name, unsupported_desktop_notice};
@@ -206,12 +210,12 @@ fn de_database_matches_python() {
     );
 }
 
-/// Мета столов для витрины — как у Python, на русском каталоге.
+/// Desktop metadata for the showcase — as in Python, on the Russian catalog.
 ///
-/// Тексты для человека в `DE_META` — английские `msgid`; эталон снят с
-/// русского оригинала, поэтому сверка идёт через `po/ru.po` тем же путём,
-/// каким их показывает интерфейс (`description_text`/`compositor_text`,
-/// нагрузка — подписью `CpuLoad`).
+/// Texts for the person in `DE_META` are English `msgid`s; the reference was
+/// captured from the Russian original, so the check goes through `po/ru.po`
+/// the same way the interface shows them (`description_text`/`compositor_text`,
+/// load — as the `CpuLoad` label).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn de_meta_matches_python_in_russian() {
@@ -225,7 +229,7 @@ fn de_meta_matches_python_in_russian() {
     assert_eq!(ours, fx["de_meta"], "_DE_META");
 }
 
-/// Английская витрина столов — без единой русской буквы.
+/// The English desktop showcase — without a single Russian letter.
 #[test]
 fn de_meta_english_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -273,12 +277,12 @@ fn db_queries_match_python() {
 }
 
 // ============================================================================
-// Чистые алгоритмы установщика
+// Pure installer algorithms
 // ============================================================================
 
 #[test]
 fn expand_groups_matches_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -295,15 +299,15 @@ fn expand_groups_matches_python() {
     }
 }
 
-/// Вопрос движка «что входит в ГРУППУ» — команда по семейству.
+/// The engine question «what is in a GROUP» — a command per family.
 ///
-/// Группы есть не у всех: у Debian понятия нет вовсе, у dnf и zypper они
-/// зовутся иначе и печатают другой формат, руками не проверенный. Такие
-/// семейства обязаны отвечать `None` — выдуманная команда молча дала бы
-/// пустые списки вместо ответа.
+/// Not everyone has groups: Debian has no such concept at all, dnf and zypper
+/// call them differently and print another format not verified by hand. Such
+/// families must answer `None` — an invented command would silently give
+/// empty lists instead of an answer.
 #[test]
 fn package_group_query_only_where_groups_exist() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -326,10 +330,10 @@ fn package_group_query_only_where_groups_exist() {
     }
 }
 
-/// Разбор ответа: члены группы, «это не группа» и мусор в выводе.
+/// Parsing the answer: group members, «this is not a group» and garbage in the output.
 #[test]
 fn parse_group_members_matches_golden() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -343,12 +347,12 @@ fn parse_group_members_matches_golden() {
     }
 }
 
-/// Разбор состава группы на весь проект ОДИН: `expand_groups` обязан
-/// отвечать ровно тем же, чем `parse_group_members`, иначе копия разбора
-/// заведётся снова.
+/// The group contents parsing is ONE for the whole project: `expand_groups`
+/// must answer exactly the same as `parse_group_members`, otherwise a copy of
+/// the parsing will appear again.
 #[test]
 fn expand_groups_uses_the_single_parser() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -359,7 +363,7 @@ fn expand_groups_uses_the_single_parser() {
         let qg = |_pkg: &str| if ok { Some(stdout.clone()) } else { None };
         let asked = vec!["группа".to_string()];
         let want: Vec<String> = match parse_group_members(ok, &stdout) {
-            // Дедуп с сохранением порядка — это уже дело `expand_groups`.
+            // Order-preserving dedup is already `expand_groups`'s job.
             Some(members) => {
                 let mut seen = HashSet::new();
                 members.into_iter().filter(|m| seen.insert(m.clone())).collect()
@@ -374,11 +378,11 @@ fn expand_groups_uses_the_single_parser() {
     }
 }
 
-/// Семейства без групп не платят ни одним запросом: `expand_groups` отдаёт
-/// список как есть и колбэка не дёргает вовсе.
+/// Families without groups do not pay a single query: `expand_groups` returns
+/// the list as is and does not call the callback at all.
 #[test]
 fn families_without_groups_are_not_asked() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -394,7 +398,7 @@ fn families_without_groups_are_not_asked() {
         }
         let family = PkgFamily::from_value(case["family"].as_str().unwrap()).unwrap();
         if family == PkgFamily::Arch {
-            continue; // негодное имя — семейство тут ни при чём
+            continue; // invalid name — the family has nothing to do with it
         }
         assert_eq!(
             expand_groups(family, &packages, &qg),
@@ -406,14 +410,14 @@ fn families_without_groups_are_not_asked() {
     assert_eq!(asked.get(), 0, "у семейства без групп спрашивать нечего");
 }
 
-/// Происхождение установленного пакета («из репозиториев или собран на
-/// месте») умеет отвечать не всякое семейство: у Debian такого понятия нет
-/// вовсе, а `dpkg --print-foreign-architectures` — ложный друг, там «foreign»
-/// про архитектуру. Кто не умеет — обязан ответить `None`: выдуманная команда
-/// молча зачислила бы AUR-темы в «Системные».
+/// Not every family can tell the origin of an installed package («from the
+/// repositories or built locally»): Debian has no such concept at all, and
+/// `dpkg --print-foreign-architectures` is a false friend, «foreign» there is
+/// about architecture. Whoever cannot must answer `None`: an invented command
+/// would silently put AUR themes into «System».
 #[test]
 fn foreign_packages_query_only_where_origin_is_known() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -437,13 +441,13 @@ fn foreign_packages_query_only_where_origin_is_known() {
     }
 }
 
-/// Вопрос о владельце файла: годные пути уходят пачками, негодные не уходят
-/// вовсе, а семейство с другим форматом ответа отвечает `None`. Пустой список
-/// команд и `None` — РАЗНОЕ: первое «спрашивать не о чем», второе «спросить
-/// нечем».
+/// The file owner question: valid paths go in batches, invalid ones do not go
+/// at all, and a family with a different answer format answers `None`. An
+/// empty command list and `None` are DIFFERENT: the first is «nothing to
+/// ask», the second «nothing to ask with».
 #[test]
 fn file_owner_queries_only_where_format_is_known() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -475,9 +479,10 @@ fn file_owner_queries_only_where_format_is_known() {
     }
 }
 
-/// Резать пути на пачки — дело движка: у исполнителя своего числа больше нет.
-/// Одна пачка ровно `FILE_OWNER_BATCH` путей, лишний путь заводит вторую, и
-/// вместе они дают исходный список без потерь и без перестановок.
+/// Cutting paths into batches is the engine's job: the executor no longer has
+/// its own number. One batch is exactly `FILE_OWNER_BATCH` paths, an extra
+/// path starts a second one, and together they give the original list without
+/// losses and without reordering.
 #[test]
 fn file_owner_queries_batch_by_the_engine_limit() {
     let paths: Vec<String> = (0..FILE_OWNER_BATCH + 1)
@@ -492,23 +497,23 @@ fn file_owner_queries_batch_by_the_engine_limit() {
         .flat_map(|q| q.cmd.argv[2..].to_vec())
         .collect();
     assert_eq!(seen, paths, "пути не потерялись и не переставились");
-    // Ровно граница: лишней пустой пачки быть не должно.
+    // Exactly the boundary: there must be no extra empty batch.
     let exact = file_owner_queries(PkgFamily::Arch, &paths[..FILE_OWNER_BATCH]).unwrap();
     assert_eq!(exact.len(), 1, "ровно предел — одна пачка");
 }
 
-/// Девятый вопрос движка — «синхронизировать ОДИН репозиторий». Отдельно
-/// подключаемый репозиторий есть только у Gentoo (это и есть overlay): pacman
-/// и apt обновляют все базы разом, а у dnf и zypper синтаксис хоть и есть, но
-/// репозиториев Rexon там не подключает — имени взять неоткуда. Кто не умеет,
-/// обязан ответить `None`: выдуманная привилегированная команда хуже честного
-/// «не знаю».
+/// The engine's ninth question is «synchronise ONE repository». A separately
+/// attached repository exists only in Gentoo (that is the overlay): pacman
+/// and apt update all databases at once, and dnf and zypper do have the
+/// syntax, but Rexon does not attach repositories there — there is nowhere to
+/// take a name from. Whoever cannot must answer `None`: an invented
+/// privileged command is worse than an honest «don't know».
 ///
-/// ⚠️ Gentoo на машине сборки нет: и команда, и отказы закреплены ТОЛЬКО
-/// голденами, ничего не выполнялось.
+/// ⚠️ There is no Gentoo on the build machine: both the command and the
+/// refusals are pinned ONLY by goldens, nothing was executed.
 #[test]
 fn sync_repo_cmd_only_where_repos_are_separate() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -528,9 +533,9 @@ fn sync_repo_cmd_only_where_repos_are_separate() {
     }
 }
 
-/// Имена overlay'ев движок берёт из своей же таблицы — значит, каждое обязано
-/// проходить проверку имени репозитория и доезжать до команды последним
-/// аргументом. Иначе «подключили, но не синхронизировали» случалось бы молча.
+/// The engine takes overlay names from its own table — so each must pass the
+/// repository name check and reach the command as the last argument.
+/// Otherwise «attached but not synchronised» would happen silently.
 #[test]
 fn every_known_overlay_can_be_synced() {
     for (de_id, overlay) in GENTOO_OVERLAYS {
@@ -541,12 +546,11 @@ fn every_known_overlay_can_be_synced() {
     }
 }
 
-/// Команда установки overlay-инструмента: именованный путь через
-/// rexon-pkg-helper и сырой откат. Не-Gentoo отвечает `None` при любом
-/// состоянии helper'а.
+/// The overlay tool install command: the named path via rexon-pkg-helper and
+/// the raw fallback. Non-Gentoo answers `None` in any helper state.
 #[test]
 fn gentoo_overlay_tool_install_cmd_matches_golden() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -571,10 +575,10 @@ fn gentoo_overlay_tool_install_cmd_matches_golden() {
     }
 }
 
-/// Второй копии команды установки быть не должно: сырой откат обязан
-/// совпасть с `pkexec` + [`install_cmd`] буква в букву. Именно на этом
-/// расхождении и попались — рукописная копия в `ensure_gentoo_overlay` шла
-/// без `--quiet`, который есть и в таблице движка, и в шаблоне helper'а.
+/// There must be no second copy of the install command: the raw fallback must
+/// match `pkexec` + [`install_cmd`] letter for letter. This very divergence
+/// is where it was caught — the hand-written copy in `ensure_gentoo_overlay`
+/// went without `--quiet`, which is in both the engine table and the helper template.
 #[test]
 fn overlay_tool_raw_path_is_the_engine_install_cmd() {
     let packages = vec![GENTOO_OVERLAY_TOOL_PACKAGE.to_string()];
@@ -587,19 +591,19 @@ fn overlay_tool_raw_path_is_the_engine_install_cmd() {
     );
 }
 
-/// Единственный ответ движка на «какой командой поставить эти пакеты».
+/// The engine's only answer to «which command installs these packages».
 ///
-/// Своих таблиц установки в продукте больше нет: и `wallpaper_engine`, и
-/// `compliance` спрашивают эту функцию. Прежние копии знали три семейства из
-/// одиннадцати и успели разойтись с движком — `pacman -S --noconfirm` без
-/// `--needed` и `apt install -y` вместо
+/// The product no longer has its own install tables: both `wallpaper_engine`
+/// and `compliance` ask this function. The former copies knew three families
+/// out of eleven and had already drifted from the engine — `pacman -S
+/// --noconfirm` without `--needed` and `apt install -y` instead of
 /// `apt-get install -y --no-install-recommends`.
 ///
-/// ⛔ Ни одна команда не выполнялась: эталон записан руками, проверка ничего
-/// не ставит.
+/// ⛔ Not a single command was executed: the reference is written by hand, the
+/// check installs nothing.
 #[test]
 fn install_argv_matches_golden() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -620,15 +624,15 @@ fn install_argv_matches_golden() {
     }
 }
 
-/// Сторож второй таблицы: для КАЖДОГО семейства сырой путь обязан совпасть с
-/// `pkexec` + [`install_cmd`] буква в букву, а именованный — с
-/// [`privileged_pkg_cmd`]. Ровно на этом расхождении и попались дважды, так
-/// что проверка идёт не по списку из голдена, а по всем двенадцати значениям
-/// перечисления: новое семейство мимо неё не проедет.
+/// Guard against a second table: for EVERY family the raw path must match
+/// `pkexec` + [`install_cmd`] letter for letter, and the named one
+/// [`privileged_pkg_cmd`]. This very divergence was caught twice, so the check
+/// goes not over the golden's list but over all twelve enum values: a new
+/// family will not slip past it.
 #[test]
 fn install_argv_has_no_table_of_its_own() {
-    // Язык — общий на процесс, а сравниваются ответы разных вызовов: без
-    // закрепления соседняя сверка переключает язык между ними.
+    // The language is per process, and answers of different calls are compared:
+    // without pinning, a neighbouring check switches the language between them.
     let _lang = i18n_pin::en();
     let packages = vec!["mpv".to_string()];
     for family in [
@@ -638,12 +642,12 @@ fn install_argv_has_no_table_of_its_own() {
     ] {
         let fam = family.as_str();
         let Ok(base) = install_cmd(family, &packages) else {
-            // UNKNOWN: команды нет ни при каком состоянии helper'а.
+            // UNKNOWN: no command in any helper state.
             assert_eq!(install_argv(family, &packages, false), None, "{fam}: сырой");
             assert_eq!(install_argv(family, &packages, true), None, "{fam}: именованный");
             continue;
         };
-        // NixOS ставит в профиль пользователя — pkexec здесь был бы ошибкой.
+        // NixOS installs into the user profile — pkexec would be a mistake here.
         let want_raw = if family == PkgFamily::Nix {
             base.clone()
         } else {
@@ -663,8 +667,8 @@ fn install_argv_has_no_table_of_its_own() {
             Some(want_named),
             "{fam}: именованный путь разошёлся с privileged_pkg_cmd"
         );
-        // И встроенный шаблон самого helper'а — из той же таблицы: семейство
-        // либо в списке helper'а и идёт именованным путём, либо нет.
+        // And the helper's own built-in template comes from the same table: a family
+        // is either in the helper's list and goes by the named path, or not.
         assert_eq!(
             PKG_HELPER_FAMILIES.contains(&fam),
             privileged_pkg_cmd(family, "install", &packages, true).is_some(),
@@ -673,10 +677,9 @@ fn install_argv_has_no_table_of_its_own() {
     }
 }
 
-/// «Поставить ничего» командой не выражается: `pacman -S --needed
-/// --noconfirm` без единого имени вернул бы от имени root ошибку
-/// использования. Пустой список — отказ при любом семействе и любом
-/// состоянии helper'а.
+/// «Install nothing» cannot be expressed as a command: `pacman -S --needed
+/// --noconfirm` without a single name would return a usage error as root. An
+/// empty list is a refusal for any family and any helper state.
 #[test]
 fn install_argv_refuses_empty_package_list() {
     for family in [
@@ -697,7 +700,7 @@ fn install_argv_refuses_empty_package_list() {
 
 #[test]
 fn qi_field_matches_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -720,7 +723,7 @@ fn qi_field_matches_python() {
 
 #[test]
 fn required_by_outside_matches_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -744,7 +747,7 @@ fn required_by_outside_matches_python() {
 
 #[test]
 fn filter_removable_matches_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language before parsing the reference: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
@@ -759,12 +762,12 @@ fn filter_removable_matches_python() {
     }
 }
 
-/// Без pkexec молча не работает всё привилегированное — сообщение об этом
-/// одно на весь проект и с именем пакета для текущего дистрибутива.
+/// Without pkexec everything privileged silently fails — the message about it
+/// is one for the whole project and carries the package name for the current distro.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn polkit_missing_message_matches_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The reference is the original's Russian texts: checked via po/ru.po.
     let _lang = i18n_pin::ru();
     let fx = installer_fx();
     let c = &fx["polkit_missing"];
@@ -776,19 +779,18 @@ fn polkit_missing_message_matches_python() {
 }
 
 // ============================================================================
-// Какое окружение запущено
+// Which environment is running
 // ============================================================================
 
-/// Автоопределение обязано узнавать ВСЕ 11 рабочих столов, которые Rexon
-/// умеет ставить, — включая тайловые, ради которых оно и переписывалось.
-/// Раньше три разных детектора отвечали по-разному, и sway/niri не знал ни
-/// один из них.
+/// Autodetection must recognise ALL 11 desktops Rexon can install —
+/// including the tiling ones it was rewritten for. Formerly three different
+/// detectors answered differently, and none of them knew sway/niri.
 #[test]
 fn detects_every_installable_desktop() {
     use rexon_core::system::{detect_current_de, list_de_ids};
 
-    // Как окружение представляется на самом деле: значение
-    // XDG_CURRENT_DESKTOP из сеанса каждого рабочего стола.
+    // How an environment really presents itself: the XDG_CURRENT_DESKTOP value
+    // from each desktop's session.
     let sessions: &[(&str, &str)] = &[
         ("kde", "KDE"),
         ("gnome", "GNOME"),
@@ -797,15 +799,15 @@ fn detects_every_installable_desktop() {
         ("mate", "MATE"),
         ("budgie", "Budgie:GNOME"),
         ("pantheon", "Pantheon"),
-        // DDE v23/v25 ставит `DDE` (dde-session), deepin 20 — `Deepin`.
+        // DDE v23/v25 sets `DDE` (dde-session), deepin 20 — `Deepin`.
         ("deepin", "DDE"),
         ("lxqt", "LXQt"),
         ("cosmic", "COSMIC"),
         ("hyprland", "Hyprland"),
         ("sway", "sway"),
         ("niri", "niri"),
-        // river-classic сам переменную не ставит — её кладёт стартовый init
-        // Rexon; Wayfire ставит `wayfire` сам.
+        // river-classic does not set the variable itself — Rexon's startup init
+        // sets it; Wayfire sets `wayfire` itself.
         ("river", "river"),
         ("wayfire", "wayfire"),
     ];
@@ -816,18 +818,18 @@ fn detects_every_installable_desktop() {
             "сеанс {xdg} не опознан"
         );
     }
-    // Pantheon узнаётся и без Wayland, и по имени сеанса (X11 «Classic
-    // Session» — pantheon, Wayland «Secure Session» — pantheon-wayland).
+    // Pantheon is recognised even without Wayland, and by the session name (X11
+    // «Classic Session» — pantheon, Wayland «Secure Session» — pantheon-wayland).
     assert_eq!(detect_current_de("Pantheon", "pantheon", false).as_deref(), Some("pantheon"));
     assert_eq!(detect_current_de("", "pantheon-wayland", false).as_deref(), Some("pantheon"));
-    // Deepin: deepin 20, Wayland-сеанс Treeland и имя сеанса X11.
+    // Deepin: deepin 20, the Treeland Wayland session and the X11 session name.
     assert_eq!(detect_current_de("Deepin", "", false).as_deref(), Some("deepin"));
     assert_eq!(detect_current_de("Treeland", "treeland", true).as_deref(), Some("deepin"));
     assert_eq!(detect_current_de("", "deepin", false).as_deref(), Some("deepin"));
-    // River из экрана входа без стартового init: `XDG_CURRENT_DESKTOP` пуст,
-    // но экран входа называет сеанс по файлу `river.desktop`.
+    // River from the login screen without the startup init: `XDG_CURRENT_DESKTOP`
+    // is empty, but the login screen names the session after the `river.desktop` file.
     assert_eq!(detect_current_de("", "river", true).as_deref(), Some("river"));
-    // Ни один рабочий стол из базы не забыт.
+    // Not a single desktop from the database is forgotten.
     for de_id in list_de_ids() {
         assert!(
             sessions.iter().any(|(id, _)| *id == de_id),
@@ -836,7 +838,7 @@ fn detects_every_installable_desktop() {
     }
 }
 
-/// Регистр, составные значения и запасной путь по имени сеанса.
+/// Case, compound values and the fallback by session name.
 #[test]
 fn detect_handles_case_and_session_fallback() {
     use rexon_core::system::detect_current_de;
@@ -844,44 +846,45 @@ fn detect_handles_case_and_session_fallback() {
     assert_eq!(detect_current_de("kde", "", false).as_deref(), Some("kde"));
     assert_eq!(detect_current_de("KDE:plasma", "", false).as_deref(), Some("kde"));
     assert_eq!(detect_current_de("ubuntu:GNOME", "", false).as_deref(), Some("gnome"));
-    // Budgie объявляет себя вместе с GNOME — выиграть должен Budgie.
+    // Budgie declares itself together with GNOME — Budgie must win.
     assert_eq!(detect_current_de("Budgie:GNOME", "", false).as_deref(), Some("budgie"));
-    // Имя сеанса как запасной путь (на Plasma это ровно "plasma").
+    // The session name as the fallback (on Plasma it is exactly "plasma").
     assert_eq!(detect_current_de("", "plasma", false).as_deref(), Some("kde"));
     assert_eq!(detect_current_de("", "gnome-xorg", false).as_deref(), Some("gnome"));
     assert_eq!(detect_current_de("", "cinnamon", false).as_deref(), Some("cinnamon-mint"));
-    // Незнакомый композитор на Wayland — отдаём как есть, а не «не знаю».
-    // (river для этого больше не годится: с 30.09 он в общей таблице.)
+    // An unfamiliar compositor on Wayland — returned as is, not «don't know».
+    // (river no longer fits for this: since 30.09 it is in the shared table.)
     assert_eq!(detect_current_de("hikari", "", true).as_deref(), Some("hikari"));
     assert_eq!(detect_current_de("hikari", "", false), None);
-    // river, wayfire и labwc узнаются и без Wayland, и по имени сеанса —
-    // их знал движок обоев, теперь знает общая таблица.
+    // river, wayfire and labwc are recognised even without Wayland and by the
+    // session name — the wallpaper engine knew them, now the shared table does.
     assert_eq!(detect_current_de("river", "", false).as_deref(), Some("river"));
     assert_eq!(detect_current_de("labwc:wlroots", "", false).as_deref(), Some("labwc"));
     assert_eq!(detect_current_de("", "wayfire", false).as_deref(), Some("wayfire"));
     assert_eq!(detect_current_de("", "", false), None);
 }
 
-/// ⛔ Наборы столов на Arch не тянут чужое окружение и не ломают экран
-/// входа соседнего стола.
+/// ⛔ Desktop package sets on Arch do not drag in a foreign environment and do
+/// not break a neighbouring desktop's login screen.
 ///
-/// Сверено 19.10.2026 по AUR RPC v5 (`info`) и `LC_ALL=C pacman -Si`:
-///   * `vala-panel-appmenu` — общий пакет, зависит от `-budgie` (а тот от
-///     всего `budgie-desktop`) и от `-valapanel` (тянет `vala-panel`);
-///     глобальному меню MATE нужны только `-mate` и `-registrar`;
-///   * `mint-artwork` объявляет `conflicts=(lightdm-gtk-greeter
-///     lightdm-gtk-greeter-settings)` и сам кладёт
-///     `/etc/lightdm/lightdm-gtk-greeter.conf`, а `lightdm-gtk-greeter` Rexon
-///     ставит с XFCE и MATE: на такой машине pacman отказал бы в установке
-///     Cinnamon, а без отказа снёс бы чужой экран входа.
-/// Сторожатся все места, откуда Rexon ставит пакеты столов: база столов,
-/// проверка соответствия MATE и пост-установка MATE.
+/// Checked on 19.10.2026 via AUR RPC v5 (`info`) and `LC_ALL=C pacman -Si`:
+///   * `vala-panel-appmenu` is a shared package, depends on `-budgie` (which
+///     depends on all of `budgie-desktop`) and on `-valapanel` (pulls in
+///     `vala-panel`); the MATE global menu needs only `-mate` and `-registrar`;
+///   * `mint-artwork` declares `conflicts=(lightdm-gtk-greeter
+///     lightdm-gtk-greeter-settings)` and itself ships
+///     `/etc/lightdm/lightdm-gtk-greeter.conf`, while Rexon installs
+///     `lightdm-gtk-greeter` with XFCE and MATE: on such a machine pacman would
+///     refuse to install Cinnamon, and without the refusal it would wipe the
+///     foreign login screen.
+/// All places Rexon installs desktop packages from are guarded: the desktop
+/// database, the MATE compliance check and the MATE post-install.
 #[test]
 fn de_package_sets_do_not_pull_foreign_desktops() {
     use rexon_core::compliance::MATE_AUR_PACKAGES;
     use rexon_core::system_plan::MATE_EXTRA_PACKAGES;
 
-    // Пакет → чем плох.
+    // Package → what is wrong with it.
     const PULLS_FOREIGN_DESKTOP: &[(&str, &str)] = &[
         ("vala-panel-appmenu", "общий пакет: тянет budgie-desktop и vala-panel"),
         ("vala-panel-appmenu-budgie", "тянет budgie-desktop"),
@@ -906,8 +909,8 @@ fn de_package_sets_do_not_pull_foreign_desktops() {
         ));
     }
 
-    // Экран входа GTK стоит хотя бы в одном наборе — значит, конфликт с
-    // ним недопустим ни в одном (машина может нести оба стола).
+    // The GTK login screen is in at least one set — so a conflict with it is
+    // unacceptable in any (the machine may carry both desktops).
     let gtk_greeter_used = sets
         .iter()
         .any(|(_, pkgs)| pkgs.iter().any(|p| p == "lightdm-gtk-greeter"));
@@ -926,12 +929,12 @@ fn de_package_sets_do_not_pull_foreign_desktops() {
     }
     assert!(bad.is_empty(), "{bad:#?}");
 
-    // Глобальное меню MATE — ровно своя часть и реестр меню.
+    // The MATE global menu — exactly its own part and the menu registrar.
     let mate_aur = get_aur_packages("mate", PkgFamily::Arch);
     for p in ["vala-panel-appmenu-mate", "vala-panel-appmenu-registrar"] {
         assert!(mate_aur.iter().any(|x| x == p), "MATE без {p}: {mate_aur:?}");
     }
-    // Вид Mint остаётся: темы и значки на месте.
+    // The Mint look stays: themes and icons are in place.
     let mint_aur = get_aur_packages("cinnamon-mint", PkgFamily::Arch);
     for p in ["mint-themes", "mint-y-icons", "mint-x-icons"] {
         assert!(mint_aur.iter().any(|x| x == p), "Cinnamon без {p}: {mint_aur:?}");

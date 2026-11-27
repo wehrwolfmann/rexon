@@ -1,32 +1,35 @@
-//! Общий план установки, применения и удаления — и один его исполнитель.
+//! The shared plan for installing, applying and removing — and its single
+//! executor.
 //!
-//! ЗАЧЕМ. В Rexon было три вида шагов и три исполнителя:
-//!   * [`ExtStep`] (`ext_manager`) — установка и удаление `.rxn`: файлы,
-//!     раскладка под `/tmp`, системная часть через pkexec, заметки человеку;
-//!     исполнитель — `ext_exec::exec_plan_noted`;
-//!   * `appearance_installer::InstallStep` — установка товара магазина
-//!     «Оформления»: те же файловые шаги, только беднее (подмножество
-//!     [`ExtStep`]); исполнитель — `exec_install_steps`. С шага 2 своего
-//!     типа у магазина нет: его планировщики строят [`ExtStep`];
-//!   * [`ApplyStep`] (`themes`) — «Применить» темы раздела: команды с флагом
-//!     `ok`, записи ini, конфиг композитора, сверка D-Bus Deepin; исполнитель —
-//!     `exec_apply_plan_report`.
+//! WHY. Rexon had three kinds of steps and three executors:
+//!   * [`ExtStep`] (`ext_manager`) — installing and removing `.rxn`: files,
+//!     staging under `/tmp`, the system part via pkexec, notes for the person;
+//!     executor — `ext_exec::exec_plan_noted`;
+//!   * `appearance_installer::InstallStep` — installing a product from the
+//!     "Appearance" store: the same file steps, only poorer (a subset of
+//!     [`ExtStep`]); executor — `exec_install_steps`. Since step 2 the store has
+//!     no type of its own: its planners build [`ExtStep`];
+//!   * [`ApplyStep`] (`themes`) — "Apply" of a section's theme: commands with an
+//!     `ok` flag, ini writes, the compositor config, the Deepin D-Bus check;
+//!     executor — `exec_apply_plan_report`.
 //!
-//! Формат `.rxn` v5 ставит пакет ОДНИМ планом: «положить файлы» и «включить».
-//! Здесь первый шаг слияния: один тип шага
-//! [`Step`] (файловый слой — [`ExtStep`], он покрывает шаги магазина целиком;
-//! слой включения — [`ApplyStep`]) и один исполнитель [`exec`]. Старые
-//! исполнители стали тонкими обёртками над ним, их планы не менялись.
+//! The `.rxn` v5 format installs a package as ONE plan: "put the files" and
+//! "enable". Here is the first step of the merge: one step type [`Step`] (the
+//! file layer — [`ExtStep`], which fully covers the store's steps; the enabling
+//! layer — [`ApplyStep`]) and one executor [`exec`]. The old executors became
+//! thin wrappers over it; their plans did not change.
 //!
-//! Различие путей, которое пока сохранено, — есть ли у плана системная
-//! часть ([`Ctx::privileged`]). Копирование у всех путей одно (шаг 2): см.
-//! [`copy_tree`] и [`copy_file`]; запуск команд тоже один — [`Ctx::run`],
-//! [`Ctx::have`], [`Ctx::spawn`], живая машина — [`Ctx::live`]. Текст ошибки каждый путь собирает сам из [`Failure`] — так,
-//! как собирал раньше.
+//! The difference between the paths that is kept for now is whether the plan
+//! has a system part ([`Ctx::privileged`]). Copying is the same for all paths
+//! (step 2): see [`copy_tree`] and [`copy_file`]; running commands is also one —
+//! [`Ctx::run`], [`Ctx::have`], [`Ctx::spawn`], the live machine — [`Ctx::live`].
+//! Each path assembles the error text itself from [`Failure`] — the way it did
+//! before.
 //!
-//! Откат при сбое посреди установки (шаг 4) тоже один: [`Undo`] — его
-//! пишут копирование и прочие файловые шаги, исполняет [`exec`] (или
-//! установка, у которой после плана есть свои шаги, — [`exec_undoable`]).
+//! Rollback on a failure in the middle of an installation (step 4) is also one:
+//! [`Undo`] — it is written by copying and the other file steps, and executed by
+//! [`exec`] (or by an installation that has its own steps after the plan —
+//! [`exec_undoable`]).
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -36,12 +39,12 @@ use crate::ext_manager::ExtStep;
 use crate::ext_exec::PrivOutcome;
 use crate::themes::{ApplyStep, CursorReport};
 
-/// Шаг общего плана.
+/// A step of the shared plan.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Step {
-    /// Положить, убрать, запустить: файловый и системный слой.
+    /// Put, remove, run: the file and system layer.
     File(ExtStep),
-    /// Включить: шаг применения с флагом `ok` (см. [`ApplyStep`]).
+    /// Enable: an apply step with an `ok` flag (see [`ApplyStep`]).
     Apply(ApplyStep),
 }
 
@@ -57,11 +60,12 @@ impl From<ApplyStep> for Step {
     }
 }
 
-/// Чем кончился неудавшийся шаг. Текст для человека из него собирает
-/// вызывающий — у каждого пути свой (см. обёртки).
+/// How a failed step ended. The caller assembles the text for the person from
+/// it — each path has its own (see the wrappers).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Failure {
-    /// Текст уже готов (системная часть, SteamOS, проверка темы до пароля).
+    /// The text is already ready (the system part, SteamOS, the theme check before
+    /// the password).
     Text(String),
     MakeDirs { path: String, err: String },
     Copy { src: String, dest: String, err: String },
@@ -72,43 +76,42 @@ pub enum Failure {
     Prepare { source: String, err: String },
 }
 
-/// Внешнее для прогона плана.
+/// What is external to the plan run.
 pub struct Ctx<'a> {
-    /// План установки (`true`) или удаления — от этого зависит системная
-    /// часть на SteamOS.
+    /// An installation plan (`true`) or a removal — the system part on SteamOS
+    /// depends on this.
     pub install: bool,
-    /// Мы на SteamOS: системный раздел закрыт.
+    /// We are on SteamOS: the system partition is closed.
     pub steamos: bool,
-    /// Исполнитель системных шагов (pkexec). `None` — системной части у
-    /// плана не бывает (магазин): `Run` с `pkexec` идёт обычной командой.
+    /// Executor of system steps (pkexec). `None` — the plan never has a system part
+    /// (the store): a `Run` with `pkexec` goes as an ordinary command.
     pub privileged: Option<&'a dyn Fn(&ExtStep) -> PrivOutcome>,
-    /// ЕДИНСТВЕННЫЙ запуск команд плана с ожиданием: и файловых шагов
-    /// (`Run`, `RunNoted`), и шагов включения ([`ApplyStep`] — команды,
-    /// пробы, сверка Deepin, проверка конфига композитора). argv, таймаут
-    /// шага (`None` — по классу команды, [`crate::utils::run_duration`]) →
-    /// итог с выводом. Живой — [`run_live`].
+    /// The ONLY way the plan's commands are run with waiting: both the file steps
+    /// (`Run`, `RunNoted`) and the enabling steps ([`ApplyStep`] — commands,
+    /// probes, the Deepin check, the compositor config check). argv, the step's
+    /// timeout (`None` — by command class, [`crate::utils::run_duration`]) → a
+    /// result with output. Live — [`run_live`].
     pub run: &'a dyn Fn(&[String], Option<u64>) -> crate::utils::RunReport,
-    /// Есть ли программа — по тому же правилу поиска, что у [`Self::run`]
+    /// Whether a program exists — by the same lookup rule as [`Self::run`]
     /// ([`have_live`]).
     pub have: &'a dyn Fn(&str) -> bool,
-    /// Запуск без ожидания ([`ExtStep::Spawn`]: `conky`, перезапуск
-    /// оболочки). Живой — [`spawn_live`]; в проверках — ничего не запускать.
+    /// Launch without waiting ([`ExtStep::Spawn`]: `conky`, restarting the shell).
+    /// Live — [`spawn_live`]; in checks — launch nothing.
     pub spawn: &'a dyn Fn(&[String]),
-    /// Идёт ли сеанс Treeland — причина остановки на
-    /// [`ApplyStep::DdeTreelandGate`] ([`crate::dde::refusal`]). Имя поля
-    /// прежнее: живые вызовы передают сюда
-    /// [`crate::dde::treeland_session_live`].
+    /// Whether a Treeland session is running — the reason for stopping at
+    /// [`ApplyStep::DdeTreelandGate`] ([`crate::dde::refusal`]). The field name is
+    /// the former one: live calls pass [`crate::dde::treeland_session_live`] here.
     pub wayland: bool,
-    /// План записал переменные в `environment.d` — отзеркалить их в
-    /// сеансы, которые этот каталог не читают; записи — под откатом
-    /// прогона. Живой — [`sync_env_live`]; в проверках — ничего: живая
-    /// синхронизация пишет в конфиги композиторов настоящего профиля.
+    /// The plan wrote variables to `environment.d` — mirror them into sessions that
+    /// do not read this directory; the writes are under the run's rollback. Live —
+    /// [`sync_env_live`]; in checks — nothing: the live sync writes into the
+    /// compositor configs of the real profile.
     pub sync_env: &'a dyn Fn(&mut Undo),
 }
 
 impl<'a> Ctx<'a> {
-    /// Живая машина: команды — [`run_live`], поиск программ — [`have_live`],
-    /// запуск без ожидания — [`spawn_live`].
+    /// The live machine: commands — [`run_live`], program lookup — [`have_live`],
+    /// launch without waiting — [`spawn_live`].
     pub fn live(
         install: bool,
         steamos: bool,
@@ -119,12 +122,13 @@ impl<'a> Ctx<'a> {
     }
 }
 
-/// Отзеркалить переменные `environment.d` в сеансы живой машины
-/// ([`crate::compositor_autostart::sync_session_env_live`]) под откатом
-/// `undo`: файлы сеансов (`labwc/environment`, `.xprofile`, конфиг
-/// Hyprland) — копией до записи, заведённое — отметкой. Прежде эта запись
-/// шла мимо отката, и «вернуть как было» после курсора оставляло блок
-/// переменных в `~/.config/xfce4/labwc/environment` (найдено 25.10.2026).
+/// Mirror the `environment.d` variables into the sessions of the live machine
+/// ([`crate::compositor_autostart::sync_session_env_live`]) under the `undo`
+/// rollback: session files (`labwc/environment`, `.xprofile`, the Hyprland
+/// config) — as a copy before writing, created ones — as a mark. Previously this
+/// write bypassed the rollback, and "revert to how it was" after a cursor change
+/// left a block of variables in `~/.config/xfce4/labwc/environment` (found on
+/// 25.10.2026).
 pub fn sync_env_live(undo: &mut Undo) {
     let paths: Vec<std::path::PathBuf> =
         crate::compositor_autostart::session_env_paths_live().into_iter().map(Into::into).collect();
@@ -133,24 +137,24 @@ pub fn sync_env_live(undo: &mut Undo) {
     undo.after_external(missing);
 }
 
-/// Ничего не синхронизировать (проверки, подменные контексты).
+/// Synchronize nothing (checks, substitute contexts).
 pub fn no_sync_env(_: &mut Undo) {}
 
-/// `$PATH` процесса — одно правило поиска программ у всех шагов плана.
+/// The process's `$PATH` — one program lookup rule for all plan steps.
 fn path_env() -> Option<String> {
     std::env::var("PATH").ok()
 }
 
-/// Запустить команду плана и дождаться — через единственную точку запуска
-/// продукта ([`crate::utils::run`]): синонимы бинаря (`kwriteconfig6` →
-/// `kwriteconfig5`, `qdbus` → `qdbus6`, каталоги вне PATH), таймаут по классу
-/// команды, если шаг не задал свой, журнал запуска; вывод забирается.
+/// Run a plan command and wait — through the product's single launch point
+/// ([`crate::utils::run`]): binary synonyms (`kwriteconfig6` → `kwriteconfig5`,
+/// `qdbus` → `qdbus6`, directories outside PATH), a timeout by command class if
+/// the step did not set its own, the launch log; the output is collected.
 ///
-/// Магазин оформления системного исполнителя не имеет ([`Ctx::privileged`]
-/// = `None`): его шаг помощника тем и раскладок (`pkexec <помощник> …`)
-/// сперва идёт сеансу прав окна
-/// ([`crate::ext_exec::run_system_argv_session`]), сеанса нет — прежней
-/// командой. Отказ помощника ею не повторяется (З5).
+/// The appearance store has no system executor ([`Ctx::privileged`] = `None`):
+/// its step of the themes and layouts helper (`pkexec <helper> …`) first goes to
+/// the window's privilege session
+/// ([`crate::ext_exec::run_system_argv_session`]); if there is no session — the
+/// former command. A helper's refusal is not repeated by it (Z5).
 pub fn run_live(argv: &[String], timeout_secs: Option<u64>) -> crate::utils::RunReport {
     if let Some(report) = crate::ext_exec::run_system_argv_session(argv, timeout_secs) {
         return report;
@@ -166,15 +170,15 @@ pub fn run_live(argv: &[String], timeout_secs: Option<u64>) -> crate::utils::Run
     )
 }
 
-/// Есть ли программа `binary` — с той же подменой синонимов, что у
-/// [`run_live`]: проба и запуск не расходятся во мнении.
+/// Whether program `binary` exists — with the same synonym substitution as in
+/// [`run_live`]: the probe and the launch do not disagree.
 pub fn have_live(binary: &str) -> bool {
     let path = path_env();
     let argv = crate::utils::resolved_argv(&[binary.to_string()], path.as_deref());
     argv.first().is_some_and(|b| crate::utils::which(b, path.as_deref()).is_some())
 }
 
-/// Запустить программу и не ждать (stdin/stdout/stderr — в никуда).
+/// Launch a program and do not wait (stdin/stdout/stderr — to nowhere).
 pub fn spawn_live(argv: &[String]) {
     if let Some(program) = argv.first() {
         let _ = Command::new(program)
@@ -186,28 +190,29 @@ pub fn spawn_live(argv: &[String]) {
     }
 }
 
-/// Итог прогона.
+/// Result of the run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Report {
-    /// Что из плана сделано не было и почему ([`ExtStep::Notice`],
-    /// неудавшийся [`ExtStep::RunNoted`]).
+    /// What in the plan was not done and why ([`ExtStep::Notice`], a failed
+    /// [`ExtStep::RunNoted`]).
     pub notes: Vec<String>,
-    /// Итог слоя включения (флаг `ok` и подробности курсора).
+    /// Result of the enabling layer (the `ok` flag and the cursor details).
     pub apply: CursorReport,
 }
 
-/// Исполнить общий план.
+/// Execute the shared plan.
 ///
-/// Файловый шаг с ошибкой останавливает план (`Err`). Шаги включения не
-/// падают: они ведут флаг `ok` ([`Report::apply`]); стоп Treeland прекращает
-/// план целиком. `pre_ran` — пробы, исполненные ещё при сборке плана: их
-/// одноимённые шаги `Run` пропускаются по очереди.
+/// A file step with an error stops the plan (`Err`). Enabling steps do not fail:
+/// they keep the `ok` flag ([`Report::apply`]); the Treeland stop ends the plan
+/// entirely. `pre_ran` — probes executed while the plan was being built: their
+/// `Run` steps of the same name are skipped in turn.
 ///
-/// ОТКАТ (шаг 4 слияния установщиков). План установки (`ctx.install`) при
-/// ошибке снимает всё, что положил ЭТОТ прогон, и возвращает отложенное
-/// ([`Undo`]); при успехе отложенные копии стираются. Одно правило у `.rxn`
-/// и магазина. Планы удаления (`ctx.install == false`) не откатываются: им
-/// возвращать нечего, кроме того, что человек и просил снять.
+/// ROLLBACK (step 4 of merging the installers). An installation plan
+/// (`ctx.install`) on an error removes everything THIS run put and restores what
+/// was set aside ([`Undo`]); on success the set-aside copies are erased. One
+/// rule for `.rxn` and the store. Removal plans (`ctx.install == false`) are not
+/// rolled back: they have nothing to restore except what the person asked to
+/// remove.
 pub fn exec(steps: &[Step], pre_ran: &mut Vec<Vec<String>>, ctx: &Ctx) -> Result<Report, Failure> {
     let mut undo = if ctx.install { Undo::new() } else { Undo::off() };
     let outcome = exec_undoable(steps, pre_ran, ctx, &mut undo);
@@ -215,11 +220,11 @@ pub fn exec(steps: &[Step], pre_ran: &mut Vec<Vec<String>>, ctx: &Ctx) -> Result
     outcome
 }
 
-/// То же, что [`exec`], но откат копится в `undo` вызывающего и НЕ
-/// исполняется: установка, у которой после плана есть свои шаги (копия
-/// пакета `.rxn`, запись состояния), решает сама — [`Undo::finish`].
-/// Исключение — прежние значения стола ([`Undo::keeping_values`]): при
-/// сбое они возвращаются здесь же.
+/// The same as [`exec`], but the rollback accumulates in the caller's `undo` and
+/// is NOT executed: an installation that has its own steps after the plan (a
+/// copy of the `.rxn` package, writing state) decides itself —
+/// [`Undo::finish`]. The exception is the desktop's previous values
+/// ([`Undo::keeping_values`]): on failure they are restored right here.
 pub fn exec_undoable(
     steps: &[Step],
     pre_ran: &mut Vec<Vec<String>>,
@@ -229,8 +234,9 @@ pub fn exec_undoable(
     let mut notes = Vec::new();
     let mut apply = crate::appearance_installer::ApplyRun::new(ctx.wayland, ctx.run, ctx.have, ctx.sync_env);
 
-    // Отказ установки целиком (всё основное пропущено — на месте чужое):
-    // ответ причиной до первого шага, ничего не тронуто.
+    // Refusal of the whole installation (all the main parts are skipped — something
+    // foreign is in place): the answer is the reason before the first step, nothing
+    // is touched.
     if let Some(text) = steps.iter().find_map(|s| match s {
         Step::File(ExtStep::Refuse { text }) => Some(text),
         _ => None,
@@ -250,22 +256,22 @@ pub fn exec_undoable(
         }
     }
 
-    // Последняя раскладка (`Stage`) перед системным шагом — её содержимое он
-    // унесёт в систему.
+    // The last stage (`Stage`) before a system step — the system step will carry
+    // its contents into the system.
     let mut last_stage: Option<&str> = None;
     let run = run_steps(steps, pre_ran, ctx, &mut notes, &mut apply, undo, &mut last_stage);
     if let Err(f) = run {
-        // Файлы, заведённые командами после `Guard`, — тоже под откат.
+        // Files created by commands after `Guard` are also under the rollback.
         apply.settle(undo);
-        // Значения стола, которые успел сменить прогон, — назад сразу:
-        // команде нужен запуск, а у отката файлов его нет.
+        // Desktop values the run managed to change go back right away: the
+        // command needs a launch, and the file rollback does not have one.
         let _ = restore_values(&undo.take_values(), ctx.run);
         return Err(f);
     }
     Ok(Report { notes, apply: apply.finish(undo) })
 }
 
-/// Шаги плана по порядку — тело [`exec_undoable`].
+/// The plan's steps in order — the body of [`exec_undoable`].
 fn run_steps<'s>(
     steps: &'s [Step],
     pre_ran: &mut Vec<Vec<String>>,
@@ -288,7 +294,7 @@ fn run_steps<'s>(
         if let Some(privileged) = ctx.privileged {
             if is_privileged(file) {
                 if ctx.steamos {
-                    continue; // удаление на SteamOS: системной части не касаемся
+                    continue; // removal on SteamOS: we do not touch the system part
                 }
                 if ctx.install {
                     if let Some(problem) = system_theme_problem(file, *last_stage) {
@@ -313,8 +319,8 @@ fn io(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-/// Текст неудавшегося шага для человека (строчная буква: идёт после
-/// вступления вызывающего).
+/// Text of a failed step for the person (lower-case first letter: it comes after
+/// the caller's introduction).
 pub fn failure_text(f: &Failure) -> String {
     use crate::i18n::trf;
     match f {
@@ -346,14 +352,14 @@ fn exec_file_step(
             .map_err(|e| Failure::Copy { src: src.clone(), dest: dest.clone(), err: io(e) })?,
         ExtStep::RemoveTree { path, safe, ignore_errors } => {
             if *safe {
-                // Те же границы, что у `safe_rmtree`: ссылка — сама, каталог —
-                // только под домом или временным каталогом; иначе — ничего.
+                // The same bounds as `safe_rmtree`: a symlink — itself, a directory —
+                // only under the home or the temporary directory; otherwise — nothing.
                 let p = Path::new(path);
                 if !(crate::ext_utils::safe_rmtree_removes(p) && undo.set_aside(p)) {
                     crate::ext_utils::safe_rmtree(p);
                 }
             } else {
-                // `remove_dir_all` снимает каталог и ссылку; файл — ошибка.
+                // `remove_dir_all` removes a directory and a symlink; a file is an error.
                 let p = Path::new(path);
                 let tree_or_link = std::fs::symlink_metadata(p).is_ok_and(|m| m.is_dir() || m.file_type().is_symlink());
                 if !(tree_or_link && undo.set_aside(p)) {
@@ -396,9 +402,9 @@ fn exec_file_step(
                     .map_err(|e| Failure::Unpack { archive: archive.clone(), err: io(e) })
             };
             if undo.enabled && d.is_dir() {
-                // Поверх существующего каталога: распаковать рядом и
-                // перенести общим копированием — так откат знает каждый
-                // положенный и заменённый файл.
+                // On top of an existing directory: unpack next to it and move with
+                // the shared copying — that way the rollback knows every file put and
+                // replaced.
                 let side = undo.side_path(d, "unpack");
                 let r = unpack(&side).and_then(|()| {
                     copy_tree(&side, d, undo)
@@ -412,8 +418,8 @@ fn exec_file_step(
             }
         }
         ExtStep::Stage { staged, sources } => {
-            // `_staged_under_tmp`: содержимое каталогов — в корень staged,
-            // файлы — под своим именем.
+            // `_staged_under_tmp`: directory contents go to the staged root,
+            // files under their own name.
             make_dirs(Path::new(staged), undo, false)
                 .map_err(|e| Failure::MakeDirs { path: staged.clone(), err: io(e) })?;
             for p in sources {
@@ -435,12 +441,13 @@ fn exec_file_step(
                 }
             }
         }
-        // Без системного исполнителя скрипту-обёртке взяться неоткуда; с
-        // ним он исполнен выше вместе с прочими системными шагами.
+        // Without a system executor the wrapper script has nowhere to come
+        // from; with one it was executed above together with the other
+        // system steps.
         ExtStep::PkexecScript { .. } => {}
         ExtStep::Run { argv, timeout_secs } => {
             if pre_ran.first().map(|a| a == argv).unwrap_or(false) {
-                pre_ran.remove(0); // уже исполнено пробой при сборке плана
+                pre_ran.remove(0); // already executed as a probe while building the plan
                 return Ok(());
             }
             let _ = undo.run_kept(ctx.run, argv, *timeout_secs);
@@ -454,7 +461,7 @@ fn exec_file_step(
         ExtStep::Refuse { text } => return Err(Failure::Text(text.clone())),
         ExtStep::Spawn { argv } => {
             if argv.first().map(|a| a == "conky").unwrap_or(false) {
-                // оригинал: pkill → time.sleep(0.5) → Popen
+                // the original: pkill → time.sleep(0.5) → Popen
                 std::thread::sleep(Duration::from_millis(500));
             }
             (ctx.spawn)(argv);
@@ -463,8 +470,8 @@ fn exec_file_step(
     Ok(())
 }
 
-/// Имена в каталоге по алфавиту (порядок от файловой системы не зависит);
-/// имена не в UTF-8 пропускаются — как у снимка `ext_exec`.
+/// Names in a directory alphabetically (the order does not depend on the file
+/// system); names that are not UTF-8 are skipped — as in the `ext_exec` snapshot.
 fn sorted_names(dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .map(|rd| rd.flatten().filter_map(|e| e.file_name().to_str().map(str::to_string)).collect())
@@ -474,10 +481,10 @@ fn sorted_names(dir: &Path) -> Vec<String> {
 }
 
 // ============================================================================
-// Системная часть плана
+// The plan's system part
 // ============================================================================
 
-/// Привилегированный ли шаг: пишет в систему через pkexec.
+/// Whether a step is privileged: it writes into the system via pkexec.
 pub(crate) fn is_privileged(step: &ExtStep) -> bool {
     match step {
         ExtStep::PkexecScript { .. } => true,
@@ -486,12 +493,13 @@ pub(crate) fn is_privileged(step: &ExtStep) -> bool {
     }
 }
 
-/// Аргументы помощника после `pkexec <помощник>` без необязательного
-/// `--lang=…`: категория — первым словом.
+/// The helper's arguments after `pkexec <helper>` without the optional
+/// `--lang=…`: the category is the first word.
 ///
-/// ⭐ Починка 09.10.2026: прежде категория бралась третьим словом argv, а при
-/// русском интерфейсе там стоит `--lang=ru` — проверка темы до окна пароля
-/// молча не срабатывала, а на SteamOS причина отказа выходила общей.
+/// ⭐ Fix of 09.10.2026: previously the category was taken as the third word of
+/// argv, and with a Russian interface `--lang=ru` stands there — the theme check
+/// before the password dialog silently did not trigger, and on SteamOS the
+/// refusal reason came out generic.
 pub(crate) fn helper_args(argv: &[String]) -> &[String] {
     let rest = argv.get(2..).unwrap_or(&[]);
     match rest.first() {
@@ -500,9 +508,9 @@ pub(crate) fn helper_args(argv: &[String]) -> &[String] {
     }
 }
 
-/// Что именно пишет привилегированный шаг — для причины на SteamOS. Метка
-/// берётся из самого шага: у помощников это категория третьим словом argv
-/// (`pkexec <помощник> sddm …`), у скриптов-обёрток — их префикс
+/// What exactly a privileged step writes — for the reason on SteamOS. The label
+/// is taken from the step itself: for helpers it is the category as the third
+/// word of argv (`pkexec <helper> sddm …`), for wrapper scripts — their prefix
 /// (`rexon_sddm`, `rexon_plymouth`, `rexon_gdm-bg`…).
 pub(crate) fn steamos_block_of(step: &ExtStep) -> crate::distro_compat::SteamOsBlock {
     use crate::distro_compat::SteamOsBlock;
@@ -520,15 +528,16 @@ pub(crate) fn steamos_block_of(step: &ExtStep) -> crate::distro_compat::SteamOsB
     }
 }
 
-/// Тема экрана входа или загрузки, которую системный шаг `step` сейчас унесёт
-/// в `/usr/share`: проверка ДО окна пароля ([`crate::installer::system_theme_problem`]).
+/// The login or boot screen theme that system step `step` is about to carry into
+/// `/usr/share`: a check BEFORE the password dialog
+/// ([`crate::installer::system_theme_problem`]).
 ///
-/// Содержимое — последний шаг раскладки (`Stage`) перед системным
-/// (`last_stage`): его копирует и помощник, и запасной скрипт (тот берёт
-/// исходный каталог, а раскладка — его копия, сделанная только что). На
-/// запасном пути (сырой `pkexec bash`, помощника нет) эта проверка —
-/// единственная: код от root через `ModuleName=../…` и `.so` в теме Plymouth
-/// не проходит и там.
+/// The contents are the last stage step (`Stage`) before the system one
+/// (`last_stage`): both the helper and the fallback script copy it (the latter
+/// takes the source directory, and the stage is its copy, made just now). On the
+/// fallback path (a raw `pkexec bash`, no helper) this check is the only one:
+/// code running as root via `ModuleName=../…` and a `.so` in a Plymouth theme do
+/// not get through there either.
 fn system_theme_problem(
     step: &ExtStep,
     last_stage: Option<&str>,
@@ -548,32 +557,34 @@ fn system_theme_problem(
 }
 
 // ============================================================================
-// Копирование
+// Copying
 // ============================================================================
 
-/// Перенести дерево `src` в `dest` — одно поведение у всех путей установки
-/// (шаг 2 слияния; прежде у `.rxn` и у магазина были разные).
+/// Move tree `src` into `dest` — one behavior for all installation paths (step 2
+/// of the merge; previously `.rxn` and the store behaved differently).
 ///
-/// * Символьная ссылка ПЕРЕСОЗДАЁТСЯ ссылкой с той же целью (иконочные наборы
-///   вроде Buuf состоят из них почти целиком, и раскрытие раздуло бы тему в
-///   разы; к тому же раскрытие ссылки наружу скопировало бы чужой файл).
-///   Висячая ссылка тоже переносится: относительная цель (`../hicolor/…`)
-///   под временным каталогом распаковки висит, а на месте установки может
-///   быть жива. Если повторить висячую ссылку не удалось, она пропускается
-///   — не повод ронять установку целиком; живая ссылка, которую не удалось
-///   повторить, — ошибка.
-/// * Файл или ссылка, уже лежащие на месте ссылки, заменяются (повторная
-///   установка поверх); каталог — нет.
-/// * Обычный файл не пишется СКВОЗЬ ссылку, оставшуюся на его месте: ссылка
-///   снимается, файл кладётся на её место (иначе копия ушла бы туда, куда
-///   ссылка указывает, — за пределы темы).
+/// * A symbolic link is RECREATED as a link with the same target (icon sets like
+///   Buuf consist almost entirely of them, and following them would bloat the
+///   theme many times over; besides, following a link leading outside would copy
+///   a foreign file). A dangling link is moved too: a relative target
+///   (`../hicolor/…`) dangles under the temporary unpacking directory but may be
+///   alive at the install location. If a dangling link could not be recreated,
+///   it is skipped — not a reason to fail the whole installation; a live link
+///   that could not be recreated is an error.
+/// * A file or link already lying in place of a link is replaced (a repeated
+///   installation on top); a directory is not.
+/// * A regular file is not written THROUGH a link left in its place: the link is
+///   removed, and the file is put in its place (otherwise the copy would go
+///   where the link points — outside the theme).
 ///
-/// С записью в откат `undo` ([`Undo::off`] — без неё): каталог, которого не было, —
-/// заведён целиком (внутри него поштучно не записывается); в существующий
-/// каталог — поштучно, заменённое откладывается в сторону.
+/// With writing to the `undo` rollback ([`Undo::off`] — without it): a directory
+/// that did not exist is created entirely (nothing inside it is recorded one by
+/// one); into an existing directory — one by one, and what is replaced is set
+/// aside.
 ///
-/// Имена обходятся по порядку (сравнение байтов имени): порядок файловой
-/// системы от машины к машине разный, а с ним — что успело лечь до сбоя.
+/// Names are walked in order (by comparing the bytes of the name): the file
+/// system order differs from machine to machine, and with it — what managed to
+/// land before a failure.
 pub(crate) fn copy_tree(src: &Path, dest: &Path, undo: &mut Undo) -> std::io::Result<()> {
     if undo.enabled && std::fs::symlink_metadata(dest).is_err() {
         make_dirs(dest, undo, true)?;
@@ -606,16 +617,17 @@ pub(crate) fn copy_tree(src: &Path, dest: &Path, undo: &mut Undo) -> std::io::Re
     Ok(())
 }
 
-/// Копия файла `src` строго в файл `dest` — одно поведение у всех путей:
-/// каталог назначения создаётся, ссылка на месте `dest` снимается (копия не
-/// пишется сквозь неё). `dest` — существующий каталог — ошибка: план обязан
-/// назвать файл явно (прежде у `.rxn` каталог означал «положить внутрь»,
-/// а у магазина — ошибку, и один и тот же шаг значил разное).
+/// A copy of file `src` strictly into file `dest` — one behavior for all paths:
+/// the destination directory is created, a link in place of `dest` is removed
+/// (the copy is not written through it). `dest` being an existing directory is
+/// an error: the plan must name the file explicitly (previously for `.rxn` a
+/// directory meant "put inside", while for the store it meant an error, and the
+/// same step meant different things).
 pub(crate) fn copy_file(src: &Path, dest: &Path) -> std::io::Result<()> {
     copy_file_undo(src, dest, &mut Undo::off())
 }
 
-/// [`copy_file`] с записью в откат `undo`.
+/// [`copy_file`] with writing to the `undo` rollback.
 pub(crate) fn copy_file_undo(src: &Path, dest: &Path, undo: &mut Undo) -> std::io::Result<()> {
     if let Some(parent) = dest.parent() {
         make_dirs(parent, undo, false)?;
@@ -626,8 +638,9 @@ pub(crate) fn copy_file_undo(src: &Path, dest: &Path, undo: &mut Undo) -> std::i
 fn copy_regular(src: &Path, dest: &Path, undo: &mut Undo) -> std::io::Result<()> {
     let before = std::fs::symlink_metadata(dest).ok();
     match &before {
-        // Файл или ссылка на месте: с откатом — в сторону (вернётся при
-        // сбое), без него ссылка снимается, файл перезаписывается.
+        // A file or link in place: with a rollback — set aside (it will come
+        // back on failure); without one the link is removed and the file is
+        // overwritten.
         Some(m) if !m.is_dir() => {
             if !undo.set_aside(dest) && m.file_type().is_symlink() {
                 std::fs::remove_file(dest)?;
@@ -642,9 +655,9 @@ fn copy_regular(src: &Path, dest: &Path, undo: &mut Undo) -> std::io::Result<()>
     Ok(())
 }
 
-/// Завести каталог `path` с недостающими родителями. С откатом каждый
-/// заведённый записывается: родители — снимаются, только если пусты; сам
-/// `path` при `tree` — целиком (всё внутри положил этот прогон).
+/// Create directory `path` with missing parents. With a rollback each one
+/// created is recorded: parents are removed only if empty; `path` itself with
+/// `tree` — entirely (everything inside was put by this run).
 pub(crate) fn make_dirs(path: &Path, undo: &mut Undo, tree: bool) -> std::io::Result<()> {
     if !undo.enabled {
         return std::fs::create_dir_all(path);
@@ -671,96 +684,101 @@ pub(crate) fn make_dirs(path: &Path, undo: &mut Undo, tree: bool) -> std::io::Re
     if path.is_dir() {
         Ok(())
     } else {
-        // Тот же ответ, что дал бы `create_dir_all` (файл на месте каталога).
+        // The same answer `create_dir_all` would give (a file in place of a directory).
         std::fs::create_dir_all(path)
     }
 }
 
 // ============================================================================
-// Откат установки
+// Installation rollback
 // ============================================================================
 
-/// Откат одного прогона плана установки: что прогон положил и что отложил.
+/// Rollback of one run of an installation plan: what the run put and what it
+/// set aside.
 ///
-/// Записывается по ходу копирования, а не выводится из плана заранее
-/// ([`crate::install_journal::placed_from_steps`] служит журналу): в
-/// существующий каталог (чужой или базовый вроде `~/.local/share/fonts`)
-/// план кладёт файлы поштучно, и снять при сбое надо именно их — и только
-/// их, не трогая того, что лежало там до установки.
+/// It is recorded during copying rather than derived from the plan in advance
+/// ([`crate::install_journal::placed_from_steps`] serves the journal): into an
+/// existing directory (a foreign one or a base one like `~/.local/share/fonts`)
+/// the plan puts files one by one, and on failure exactly those must be removed
+/// — and only those, without touching what lay there before the installation.
 ///
-/// * Заведённое прогоном (файл, ссылка, каталог) — снимается; каталог,
-///   заведённый под копию целиком, — целиком; родительский — только пустой.
-/// * Замещаемое (файл, ссылка, прежняя копия темы под `RemoveTree`)
-///   откладывается переименованием рядом (`.<имя>.rexon-undo-<pid>-<n>`, та
-///   же файловая система) и при сбое возвращается на место. Файл, который
-///   `WriteFile` пишет по месту, — копией. Снимок нужен: повторная установка
-///   своей темы сначала снимает прежнюю копию, и без него сбой оставил бы
-///   человека без темы вовсе; так же для конфигов, которые план пишет.
-/// * Успех — отложенное стирается ([`Undo::finish`]).
+/// * What the run created (a file, a link, a directory) is removed; a directory
+///   created for a copy as a whole is removed as a whole; a parent one only if
+///   empty.
+/// * What is being replaced (a file, a link, the previous copy of a theme under
+///   `RemoveTree`) is set aside by renaming next to it
+///   (`.<name>.rexon-undo-<pid>-<n>`, the same file system) and put back on
+///   failure. A file that `WriteFile` writes in place — as a copy. The snapshot
+///   is needed: a repeated installation of one's own theme first removes the
+///   previous copy, and without the snapshot a failure would leave the person
+///   with no theme at all; the same for the configs the plan writes.
+/// * Success — what was set aside is erased ([`Undo::finish`]).
 ///
-/// Файловые записи слоя включения ([`ApplyStep`]: ini, наши файлы, конфиг
-/// композитора) с шага 5а идут под тем же откатом
-/// ([`Undo::write_text`], [`Undo::remove_file`]): сбой записи посреди
-/// нажатия «Применить» возвращает всё, что нажатие успело записать.
+/// File writes of the enabling layer ([`ApplyStep`]: ini, our files, the
+/// compositor config) go under the same rollback since step 5a
+/// ([`Undo::write_text`], [`Undo::remove_file`]): a write failure in the middle
+/// of an "Apply" click restores everything the click managed to write.
 ///
-/// Не откатываются: системная часть (pkexec — снять её можно только
-/// помощником от root) и прочие команды плана (кеши значков, `fc-cache`).
+/// Not rolled back: the system part (pkexec — it can be removed only by the root
+/// helper) and the plan's other commands (icon caches, `fc-cache`).
 ///
-/// Значения стола, которые хранит не файл, а служба (`gsettings`/`dconf`,
-/// `xfconf-query`), откат с [`Undo::keeping_values`] снимает ДО команды,
-/// которая их меняет ([`Undo::run_kept`]): прежнее значение или «ключ не
-/// был задан» ложится в [`ValueBefore`] — командой возврата. Файл KDE,
-/// который пишет `kwriteconfig6`, там же снимается обычной копией. Сбой посреди
-/// плана возвращает их сразу ([`exec_undoable`]), удача отдаёт их в снимок
-/// «что было» ([`Undo::take_values`]).
+/// Desktop values stored not in a file but by a service (`gsettings`/`dconf`,
+/// `xfconf-query`) are captured by a rollback with [`Undo::keeping_values`]
+/// BEFORE the command that changes them ([`Undo::run_kept`]): the previous value
+/// or "the key was not set" goes into a [`ValueBefore`] — as a restoring
+/// command. A KDE file written by `kwriteconfig6` is captured there too, as an
+/// ordinary copy. A failure in the middle of the plan restores them right away
+/// ([`exec_undoable`]); success hands them to the "how it was" snapshot
+/// ([`Undo::take_values`]).
 #[derive(Debug, Default)]
 pub struct Undo {
     enabled: bool,
     done: Vec<Done>,
     seq: u32,
-    /// Прежние значения стола в порядке записи; `None` — не снимаются.
+    /// Previous desktop values in write order; `None` — they are not captured.
     values: Option<Vec<ValueBefore>>,
-    /// Пути, которых до прогона не было и которые ждут отметки «заведено»
-    /// после чужой записи ([`Self::guard_external`] → [`Self::after_external`]).
-    /// Их «что было» — «не было»: промежуточную копию с них не снимаем.
+    /// Paths that did not exist before the run and are waiting for a "created" mark
+    /// after a foreign write ([`Self::guard_external`] → [`Self::after_external`]).
+    /// Their "how it was" is "it did not exist": no intermediate copy is taken from
+    /// them.
     pending: Vec<std::path::PathBuf>,
 }
 
-/// Путь, тронутый прогоном ([`Undo::keep_into`]).
+/// A path touched by the run ([`Undo::keep_into`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Touched {
     pub path: std::path::PathBuf,
-    /// Копия прежнего содержимого; `None` — путь заведён прогоном.
+    /// A copy of the previous contents; `None` — the path was created by the run.
     pub before: Option<std::path::PathBuf>,
-    /// Заведённый прогоном каталог.
+    /// A directory created by the run.
     pub dir: bool,
 }
 
 #[derive(Debug)]
 enum Done {
-    /// Заведено прогоном: файл, ссылка или каталог (снимается, только если пуст).
+    /// Created by the run: a file, a link or a directory (removed only if empty).
     Created(std::path::PathBuf),
-    /// Каталог заведён прогоном под копию целиком.
+    /// A directory created by the run for a copy as a whole.
     CreatedTree(std::path::PathBuf),
-    /// Прежнее содержимое `path` отложено в `backup`.
+    /// The previous contents of `path` are set aside in `backup`.
     Saved { path: std::path::PathBuf, backup: std::path::PathBuf },
 }
 
 impl Undo {
-    /// Откат, который записывает.
+    /// A rollback that records.
     pub fn new() -> Self {
         Undo { enabled: true, ..Default::default() }
     }
 
-    /// Без отката: ничего не записывается и не откладывается (удаление,
-    /// копирование вне плана).
+    /// Without a rollback: nothing is recorded or set aside (removal, copying
+    /// outside a plan).
     pub fn off() -> Self {
         Undo::default()
     }
 
-    /// Снимать и прежние значения стола (`gsettings`/`dconf`, `xfconf`) до
-    /// команд, которые их меняют, — для нажатий «Применить», у которых
-    /// есть «Вернуть как было». Без отката ничего не снимается.
+    /// Also capture the previous desktop values (`gsettings`/`dconf`, `xfconf`)
+    /// before the commands that change them — for "Apply" clicks that have a "Revert
+    /// to how it was". Without a rollback nothing is captured.
     pub fn keeping_values(mut self) -> Self {
         if self.enabled {
             self.values = Some(Vec::new());
@@ -768,10 +786,10 @@ impl Undo {
         self
     }
 
-    /// Запустить команду плана через `run`; меняет она значение стола —
-    /// прежнее снять до неё (у ключа — один раз за прогон: первое и есть
-    /// «что было»). Команда не удалась — значение не менялось, снятое
-    /// забывается.
+    /// Run a plan command via `run`; if it changes a desktop value, capture the
+    /// previous one before it (once per run for a key: the first one is the "how it
+    /// was"). If the command failed, the value did not change, and what was
+    /// captured is forgotten.
     pub(crate) fn run_kept(
         &mut self,
         run: &dyn Fn(&[String], Option<u64>) -> crate::utils::RunReport,
@@ -792,8 +810,8 @@ impl Undo {
                 }
             }
         }
-        // Файл KDE, который перепишет `kwriteconfig6`, — копией до команды
-        // (заведённое ею — отметкой после): возврат — файлом.
+        // A KDE file that `kwriteconfig6` will rewrite — as a copy before the
+        // command (what it created — as a mark after): restored as a file.
         let guarded = match (&self.values, kconfig_written_file(argv, &crate::utils::config_home_env())) {
             (Some(_), Some(file)) => Some(self.guard_external(&[file])),
             _ => None,
@@ -810,28 +828,28 @@ impl Undo {
         report
     }
 
-    /// Снятые прежние значения стола (в порядке записи); у отката их больше
-    /// нет.
+    /// The captured previous desktop values (in write order); the rollback no
+    /// longer has them.
     pub fn take_values(&mut self) -> Vec<ValueBefore> {
         self.values.as_mut().map(std::mem::take).unwrap_or_default()
     }
 
-    /// Путь `path` заведён прогоном.
+    /// Path `path` was created by the run.
     fn created(&mut self, path: &Path) {
         if self.enabled {
             self.done.push(Done::Created(path.to_path_buf()));
         }
     }
 
-    /// Пути `paths` сейчас перепишет чужая запись (не через этот откат):
-    /// у существующих файлов снять копию, для отсутствующих запомнить
-    /// первого недостающего предка — после записи [`Self::after_external`]
-    /// отметит заведённое.
+    /// Paths `paths` are about to be rewritten by a foreign write (not through this
+    /// rollback): take a copy of existing files, and for missing ones remember the
+    /// first missing ancestor — after the write [`Self::after_external`] will mark
+    /// what was created.
     pub(crate) fn guard_external(&mut self, paths: &[std::path::PathBuf]) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
         let mut missing = Vec::new();
         for p in paths {
             if self.pending.contains(p) {
-                continue; // уже ждёт отметки: «что было» — «не было»
+                continue; // already waiting for a mark: "how it was" is "it did not exist"
             }
             match std::fs::symlink_metadata(p) {
                 Ok(m) if m.is_dir() => {}
@@ -854,8 +872,9 @@ impl Undo {
         missing
     }
 
-    /// Чужая запись прошла: отметить заведённое ею (каталоги от предка
-    /// вниз, затем файл) — откат и снимок «что было» снимут их.
+    /// The foreign write went through: mark what it created (directories from the
+    /// ancestor down, then the file) — the rollback and the "how it was" snapshot
+    /// will remove them.
     pub(crate) fn after_external(&mut self, missing: Vec<(std::path::PathBuf, std::path::PathBuf)>) {
         let mut seen: Vec<std::path::PathBuf> = Vec::new();
         for (path, top) in missing {
@@ -876,7 +895,7 @@ impl Undo {
         }
     }
 
-    /// Свободное имя рядом с `path` для служебной копии.
+    /// A free name next to `path` for a service copy.
     fn side_path(&mut self, path: &Path, what: &str) -> std::path::PathBuf {
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let dir = path.parent().unwrap_or(Path::new("."));
@@ -889,16 +908,17 @@ impl Undo {
         }
     }
 
-    /// Отложить то, что лежит на `path` (файл, ссылку, каталог), в сторону
-    /// вместо удаления. `false` — откат выключен или переименовать не
-    /// удалось: вызывающий поступает как без отката.
+    /// Set aside what lies at `path` (a file, a link, a directory) instead of
+    /// deleting it. `false` — the rollback is off or renaming failed: the caller
+    /// acts as without a rollback.
     fn set_aside(&mut self, path: &Path) -> bool {
         if !self.enabled {
             return false;
         }
-        // Заведённое этим же прогоном откладывать незачем: до прогона его не
-        // было, при сбое его снимет сам откат, а отложенная копия стала бы
-        // ложным «что было» (см. [`Self::keep_copy`]).
+        // There is no point in setting aside what this same run created: it
+        // did not exist before the run, on failure the rollback itself removes
+        // it, and a set-aside copy would become a false "how it was" (see
+        // [`Self::keep_copy`]).
         if self.made_by_run(path) {
             return false;
         }
@@ -915,8 +935,8 @@ impl Undo {
         }
     }
 
-    /// Файл или ссылку на месте `path` убрать: с откатом — в сторону, без
-    /// него — снять; каталог не трогается.
+    /// Remove the file or link at `path`: with a rollback — set it aside, without
+    /// one — remove it; a directory is not touched.
     fn clear_non_dir(&mut self, path: &Path) {
         if let Ok(md) = std::fs::symlink_metadata(path) {
             if !md.is_dir() && !self.set_aside(path) {
@@ -925,17 +945,18 @@ impl Undo {
         }
     }
 
-    /// Завести каталог `path` с недостающими родителями под откатом
-    /// (родители снимаются при сбое, только если пусты).
+    /// Create directory `path` with missing parents under the rollback (parents are
+    /// removed on failure only if empty).
     pub(crate) fn make_dirs(&mut self, path: &Path) -> std::io::Result<()> {
         make_dirs(path, self, false)
     }
 
-    /// Записать `content` в файл `path` под откатом — общий путь файловых
-    /// записей слоя включения («Применить», шаг 5а): каталог заводится,
-    /// прежнее содержимое снимается копией (сквозь ссылку — копия её цели,
-    /// сама ссылка остаётся), заведённый файл при сбое снимается. `atomic` —
-    /// запись подменой имени ([`crate::utils::atomic_write`]), иначе по месту.
+    /// Write `content` into file `path` under the rollback — the shared path of the
+    /// enabling layer's file writes ("Apply", step 5a): the directory is created,
+    /// the previous contents are captured as a copy (through a link — a copy of its
+    /// target, the link itself stays), a created file is removed on failure.
+    /// `atomic` — writing by renaming ([`crate::utils::atomic_write`]), otherwise in
+    /// place.
     pub(crate) fn write_text(&mut self, path: &Path, content: &str, atomic: bool) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -944,7 +965,8 @@ impl Undo {
         }
         let fresh = match std::fs::symlink_metadata(path) {
             Err(_) => true,
-            // Висячая ссылка: запись заменит её файлом — откладываем саму ссылку.
+            // A dangling link: the write will replace it with a file — we set the
+            // link itself aside.
             Ok(m) if m.file_type().is_symlink() && !path.exists() => !self.set_aside(path),
             Ok(_) => {
                 self.keep_copy(path);
@@ -962,8 +984,8 @@ impl Undo {
         Ok(())
     }
 
-    /// Убрать файл или ссылку `path` под откатом (в сторону, при сбое
-    /// вернётся). Нет файла — не ошибка.
+    /// Remove file or link `path` under the rollback (set aside, it will come back
+    /// on failure). No file is not an error.
     pub(crate) fn remove_file(&mut self, path: &Path) -> std::io::Result<()> {
         match std::fs::symlink_metadata(path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -979,8 +1001,8 @@ impl Undo {
         }
     }
 
-    /// Файл `path` будет переписан по месту: сохранить копию (той файловой
-    /// системы, где он лежит; сквозь ссылку — копию её цели).
+    /// File `path` will be rewritten in place: keep a copy (on the file system where
+    /// it lies; through a link — a copy of its target).
     fn keep_copy(&mut self, path: &Path) {
         if !self.enabled {
             return;
@@ -989,10 +1011,11 @@ impl Undo {
         if !real.is_file() {
             return;
         }
-        // Заведённое этим же прогоном (сам файл, каталог-копия над ним или
-        // путь, ждущий отметки после чужой записи): до прогона его не было,
-        // и промежуточная копия стала бы ложным «что было» — «Вернуть как
-        // было» воскресило бы файл, которого у человека не было.
+        // Created by this same run (the file itself, a copy directory above it,
+        // or a path waiting for a mark after a foreign write): it did not exist
+        // before the run, and an intermediate copy would become a false "how it
+        // was" — "Revert to how it was" would resurrect a file the person never
+        // had.
         if self.made_by_run(path) || self.made_by_run(&real) {
             return;
         }
@@ -1003,8 +1026,8 @@ impl Undo {
         }
     }
 
-    /// `path` заведён этим прогоном: отмечен заведённым (сам или каталог-копия
-    /// над ним) или ждёт отметки после чужой записи.
+    /// `path` was created by this run: marked as created (itself or a copy directory
+    /// above it) or waiting for a mark after a foreign write.
     fn made_by_run(&self, path: &Path) -> bool {
         self.pending.iter().any(|p| p == path)
             || self.done.iter().any(|d| match d {
@@ -1014,8 +1037,8 @@ impl Undo {
             })
     }
 
-    /// Итог прогона: успех — отложенное стереть; сбой — снять положенное и
-    /// вернуть отложенное, в обратном порядке.
+    /// Result of the run: success — erase what was set aside; failure — remove what
+    /// was put and restore what was set aside, in reverse order.
     pub fn finish(self, ok: bool) {
         if ok {
             self.commit()
@@ -1024,11 +1047,11 @@ impl Undo {
         }
     }
 
-    /// Успех с сохранением «что было» (шаг 5а, «Применить»): отложенные
-    /// копии не стираются, а переносятся в каталог снимка `dir` (имена —
-    /// номера с `first`). Отдаёт каждый тронутый путь в порядке прогона, по
-    /// разу: первое появление пути — правда о том, что было до прогона
-    /// (позднейшие копии того же пути — промежуточные, стираются).
+    /// Success while keeping "how it was" (step 5a, "Apply"): the set-aside copies
+    /// are not erased but moved into the snapshot directory `dir` (names — numbers
+    /// starting from `first`). Returns every touched path in run order, once each:
+    /// the first appearance of a path is the truth about what was before the run
+    /// (later copies of the same path are intermediate and are erased).
     pub fn keep_into(self, dir: &Path, first: usize) -> Vec<Touched> {
         let mut out: Vec<Touched> = Vec::new();
         let mut n = first;
@@ -1056,7 +1079,7 @@ impl Undo {
                 if moved {
                     to
                 } else {
-                    // Не перенеслось — копия остаётся рядом с файлом.
+                    // Did not move — the copy stays next to the file.
                     crate::log_warn!("install", "{}: копия «что было» не перенесена в снимок", b.display());
                     b
                 }
@@ -1079,7 +1102,7 @@ impl Undo {
             match d {
                 Done::Created(p) => match std::fs::symlink_metadata(&p) {
                     Ok(m) if m.is_dir() => {
-                        let _ = std::fs::remove_dir(&p); // не пуст — значит, не только наше
+                        let _ = std::fs::remove_dir(&p); // not empty — so it is not only ours
                     }
                     Ok(_) => {
                         let _ = std::fs::remove_file(&p);
@@ -1088,9 +1111,9 @@ impl Undo {
                 },
                 Done::CreatedTree(p) => remove_any(&p),
                 Done::Saved { path, backup } => {
-                    // На месте — то, что положил этот прогон (его записи уже
-                    // сняты выше); каталог не пуст — не наш, отложенное
-                    // остаётся рядом, а не затирает чужое.
+                    // In place is what this run put (its records have already been
+                    // removed above); the directory is not empty — not ours, what was set
+                    // aside stays next to it instead of overwriting someone else's.
                     let free = match std::fs::symlink_metadata(&path) {
                         Ok(m) if m.is_dir() => std::fs::remove_dir(&path).is_ok(),
                         Ok(_) => std::fs::remove_file(&path).is_ok(),
@@ -1111,7 +1134,8 @@ impl Undo {
     }
 }
 
-/// Снять путь целиком: каталог — с содержимым, файл и ссылку — сами.
+/// Remove a path entirely: a directory with its contents, a file and a link by
+/// themselves.
 fn remove_any(path: &Path) {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.is_dir() => {
@@ -1125,21 +1149,21 @@ fn remove_any(path: &Path) {
 }
 
 // ============================================================================
-// Значения стола под снимком «что было»
+// Desktop values under the "how it was" snapshot
 // ============================================================================
 
-/// Прежнее значение ключа стола, которое переписала команда плана: чем его
-/// вернуть. Ключ не был задан — возврат сбрасывает его (`reset`, `-r`).
+/// The previous value of a desktop key that a plan command overwrote: how to
+/// restore it. If the key was not set, the restore resets it (`reset`, `-r`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValueBefore {
-    /// Какой ключ (`gsettings org.gnome.desktop.interface gtk-theme`,
+    /// Which key (`gsettings org.gnome.desktop.interface gtk-theme`,
     /// `dconf /org/x/y`, `xfconf xsettings /Net/ThemeName`).
     pub key: String,
-    /// Команда возврата.
+    /// The restoring command.
     pub restore: Vec<String>,
 }
 
-/// Ключ, который меняет команда, и как прочитать его нынешнее значение.
+/// The key the command changes, and how to read its current value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ValueTarget {
     key: String,
@@ -1148,19 +1172,19 @@ struct ValueTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TargetKind {
-    /// `base` — `[env …] gsettings [--schemadir D]`; `assigns` — переменные
-    /// `env` перед ним, `tool` — `gsettings [--schemadir D]` (из них
-    /// собирается чтение умолчания схемы).
+    /// `base` — `[env …] gsettings [--schemadir D]`; `assigns` — the `env`
+    /// variables in front of it, `tool` — `gsettings [--schemadir D]` (reading the
+    /// schema default is assembled from them).
     Gsettings { base: Vec<String>, assigns: Vec<String>, tool: Vec<String>, schema: String, key: String },
     /// `base` — `[env …] dconf`.
     Dconf { base: Vec<String>, key: String },
-    /// `base` — `[env …] xfconf-query -c CH -p PROP`; `create` — `-n -t T`
-    /// команды (одно значение одного типа): чем завести свойство заново.
+    /// `base` — `[env …] xfconf-query -c CH -p PROP`; `create` — `-n -t T` of the
+    /// command (one value of one type): how to create the property anew.
     Xfconf { base: Vec<String>, create: Vec<String> },
 }
 
-/// Программа команды под префиксом `env VAR=…`: `(префикс, переменные,
-/// имя программы, её аргументы)`. Опции самого `env` — не разбираем.
+/// The command's program under an `env VAR=…` prefix: `(prefix, variables,
+/// program name, its arguments)`. Options of `env` itself are not parsed.
 fn split_env(argv: &[String]) -> Option<(&[String], &[String], &str, &[String])> {
     let mut i = 0;
     if argv.first().map(String::as_str) == Some("env") {
@@ -1178,10 +1202,10 @@ fn split_env(argv: &[String]) -> Option<(&[String], &[String], &str, &[String])>
     Some((&argv[..=i], assigns, name, &argv[i + 1..]))
 }
 
-/// Меняет ли команда значение стола — и какое: `gsettings set|reset`,
-/// `dconf write|reset` (один ключ), `xfconf-query … -s|-r` (одно свойство).
-/// Остальное (`reset -f`, `-R`, сценарии `bash -c`) не разбирается —
-/// снимать такое нечем.
+/// Whether the command changes a desktop value — and which one:
+/// `gsettings set|reset`, `dconf write|reset` (one key), `xfconf-query … -s|-r`
+/// (one property). Anything else (`reset -f`, `-R`, `bash -c` scripts) is not
+/// parsed — there is nothing to capture it with.
 fn value_target(argv: &[String]) -> Option<ValueTarget> {
     let (head, assigns, name, args) = split_env(argv)?;
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -1243,7 +1267,7 @@ fn value_target(argv: &[String]) -> Option<ValueTarget> {
                     "-t" | "--type" => types.extend(value),
                     "-n" | "--create" => create = true,
                     "-r" | "--reset" => reset = true,
-                    // Массив, ветка целиком, переключатель — не снимаем.
+                    // An array, a whole branch, a toggle — we do not capture.
                     _ => return None,
                 }
                 i += 1;
@@ -1265,9 +1289,9 @@ fn value_target(argv: &[String]) -> Option<ValueTarget> {
     }
 }
 
-/// Файл, который перепишет `kwriteconfig6`/`kwriteconfig5`: `--file` (имя —
-/// в каталоге конфигов `config_home`, путь — как есть), без него —
-/// `kdeglobals`. `None` — команда не она.
+/// The file `kwriteconfig6`/`kwriteconfig5` will rewrite: `--file` (a name — in
+/// the `config_home` config directory, a path — as is), without it —
+/// `kdeglobals`. `None` — the command is not that one.
 fn kconfig_written_file(argv: &[String], config_home: &str) -> Option<std::path::PathBuf> {
     let (_, _, name, args) = split_env(argv)?;
     if !matches!(name, "kwriteconfig6" | "kwriteconfig5") {
@@ -1295,15 +1319,17 @@ fn kconfig_written_file(argv: &[String], config_home: &str) -> Option<std::path:
     Some(if file.starts_with('/') { file.into() } else { Path::new(config_home).join(file) })
 }
 
-/// Ключ стола, который меняет команда (как [`ValueBefore::key`]), — чтобы
-/// свои команды возврата не возвращали второй раз то, что вернёт снимок.
+/// The desktop key the command changes (as [`ValueBefore::key`]) — so that our
+/// own restoring commands do not restore a second time what the snapshot will
+/// restore.
 pub fn value_key_of(argv: &[String]) -> Option<String> {
     value_target(argv).map(|t| t.key)
 }
 
-/// Команда только читает значение стола (`gsettings get`, `dconf read`,
-/// `xfconf-query` без записи) — так снимается «что было»
-/// ([`Undo::run_kept`]). Неудача такого чтения — не причина неудачи нажатия.
+/// The command only reads a desktop value (`gsettings get`, `dconf read`,
+/// `xfconf-query` without writing) — that is how "how it was" is captured
+/// ([`Undo::run_kept`]). A failure of such a read is not a reason for the click
+/// to fail.
 pub fn is_value_read(argv: &[String]) -> bool {
     let Some((_, _, name, args)) = split_env(argv) else { return false };
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -1321,13 +1347,13 @@ pub fn is_value_read(argv: &[String]) -> bool {
     }
 }
 
-/// Ответ чтения без перевода строки в конце.
+/// The read answer without a trailing newline.
 fn read_text(r: &crate::utils::RunReport) -> String {
     crate::utils::decode_text(&r.stdout).trim_end_matches(['\n', '\r']).to_string()
 }
 
-/// Прочитать нынешнее значение `target` и собрать команду, которая его
-/// вернёт. `None` — прочитать не удалось (вернуть будет нечем).
+/// Read the current value of `target` and assemble a command that will restore
+/// it. `None` — reading failed (there will be nothing to restore with).
 fn value_before(target: &ValueTarget, run: &dyn Fn(&[String], Option<u64>) -> crate::utils::RunReport) -> Option<ValueBefore> {
     let with = |base: &[String], tail: &[&str]| -> Vec<String> {
         base.iter().cloned().chain(tail.iter().map(|s| s.to_string())).collect()
@@ -1339,9 +1365,10 @@ fn value_before(target: &ValueTarget, run: &dyn Fn(&[String], Option<u64>) -> cr
                 return None;
             }
             let now = read_text(&now);
-            // Умолчание схемы (с поправками дистрибутива) — мимо записанных
-            // значений: совпало — возвращаем сбросом. У gsettings нет вопроса
-            // «задан ли ключ», а сброс к тому же значению стол не отличит.
+            // The schema default (with the distribution's overrides) — bypassing
+            // written values: if it matches, we restore by resetting. gsettings has
+            // no question "is the key set", and the desktop cannot tell a reset to
+            // the same value apart anyway.
             let mut default = vec!["env".to_string()];
             default.extend(assigns.iter().filter(|a| !a.starts_with("GSETTINGS_BACKEND=")).cloned());
             default.push("GSETTINGS_BACKEND=memory".into());
@@ -1369,13 +1396,14 @@ fn value_before(target: &ValueTarget, run: &dyn Fn(&[String], Option<u64>) -> cr
         TargetKind::Xfconf { base, create } => {
             let now = run(base, Some(5));
             if now.returncode != Some(0) {
-                // Свойства нет. (Нет и службы — тогда не удастся и сама
-                // запись, и снятое забудется: см. [`Undo::run_kept`].)
+                // There is no property. (If there is no service either, the write
+                // itself will fail too, and what was captured will be forgotten: see
+                // [`Undo::run_kept`].)
                 with(base, &["-r"])
             } else {
                 let now = read_text(&now);
                 if now.contains('\n') {
-                    return None; // массив: «Value is an array with N items…»
+                    return None; // an array: "Value is an array with N items…"
                 }
                 let mut out = base.clone();
                 out.extend(create.iter().cloned());
@@ -1387,8 +1415,8 @@ fn value_before(target: &ValueTarget, run: &dyn Fn(&[String], Option<u64>) -> cr
     Some(ValueBefore { key: target.key.clone(), restore })
 }
 
-/// Вернуть прежние значения стола — в обратном порядке записи. Отдаёт
-/// ключи, которые вернуть не вышло.
+/// Restore the previous desktop values — in reverse write order. Returns the
+/// keys that could not be restored.
 pub fn restore_values(values: &[ValueBefore], run: &dyn Fn(&[String], Option<u64>) -> crate::utils::RunReport) -> Vec<String> {
     let mut failed = Vec::new();
     for v in values.iter().rev() {
@@ -1428,8 +1456,8 @@ pub(crate) mod tests {
         Ctx { install: true, steamos: false, privileged: None, run: &no_run, have: &nothing, spawn: &no_spawn, wayland: false, sync_env: &no_sync_env }
     }
 
-    /// Один план — файлы и включение: файлы кладутся, `ok` ведёт слой
-    /// включения, заметки собираются.
+    /// One plan — files and enabling: files are put, the enabling layer keeps `ok`,
+    /// notes are collected.
     #[test]
     fn mixed_plan_puts_files_and_keeps_ok_flag() {
         let dir = scratch("mixed");
@@ -1446,7 +1474,7 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Ошибка файлового шага останавливает план и говорит, какой шаг и где.
+    /// An error of a file step stops the plan and says which step and where.
     #[test]
     fn file_failure_stops_plan() {
         let dir = scratch("fail");
@@ -1462,9 +1490,9 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Копия файла — строго файл в файл: каталог назначения создаётся,
-    /// существующий каталог на месте файла — ошибка, ссылка на месте файла
-    /// снимается, а не пишется насквозь.
+    /// A file copy is strictly file to file: the destination directory is created,
+    /// an existing directory in place of the file is an error, a link in place of
+    /// the file is removed rather than written through.
     #[test]
     fn copy_file_is_file_to_file() {
         let dir = scratch("copy");
@@ -1490,8 +1518,8 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Дерево: ссылки переносятся ссылками (и висячие тоже), поверх старой
-    /// ссылки ложится новая.
+    /// A tree: links are moved as links (dangling ones too), a new link goes on top
+    /// of an old one.
     #[test]
     fn copy_tree_keeps_links() {
         let dir = scratch("tree");
@@ -1511,10 +1539,10 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Команды и запуск без ожидания идут ТОЛЬКО через контекст: и файловые
-    /// шаги, и шаги включения; подделка ничего настоящего не запускает
-    /// (25.10.2026 тест с подделкой запустил `cinnamon --replace` на живом
-    /// экране — здесь такой путь закрыт).
+    /// Commands and launching without waiting go ONLY through the context: both
+    /// file steps and enabling steps; the fake launches nothing real (on 25.10.2026
+    /// a test with a fake launched `cinnamon --replace` on the live screen — this
+    /// path is closed here).
     #[test]
     fn commands_and_spawn_go_through_ctx() {
         use crate::themes::Cmd;
@@ -1552,8 +1580,8 @@ pub(crate) mod tests {
         assert_eq!(*spawned.borrow(), vec![v(&["cinnamon", "--replace"])]);
     }
 
-    /// Без системного исполнителя (магазин) проверка SteamOS не срабатывает,
-    /// а `pkexec` идёт обычной командой.
+    /// Without a system executor (the store) the SteamOS check does not trigger, and
+    /// `pkexec` goes as an ordinary command.
     #[test]
     fn plan_without_privileged_runner_runs_pkexec_as_command() {
         let seen = std::cell::RefCell::new(Vec::<Vec<String>>::new());
@@ -1568,7 +1596,7 @@ pub(crate) mod tests {
         assert_eq!(*seen.borrow(), vec![argv]);
     }
 
-    /// Всё под `root` побайтно: путь, вид, содержимое файла или цель ссылки.
+    /// Everything under `root` byte for byte: path, kind, file contents or link target.
     fn snapshot(root: &Path) -> Vec<(String, String)> {
         let mut out = Vec::new();
         let mut stack = vec![root.to_path_buf()];
@@ -1592,9 +1620,10 @@ pub(crate) mod tests {
         out
     }
 
-    /// Сбой посреди установки: всё, что успел положить прогон, снято, всё
-    /// замещённое (файл, ссылка, прежняя копия темы, конфиг, переписанный по
-    /// месту) возвращено — профиль побайтно как до установки.
+    /// A failure in the middle of an installation: everything the run managed to put
+    /// is removed, everything replaced (a file, a link, the previous copy of a
+    /// theme, a config rewritten in place) is restored — the profile is byte for
+    /// byte as before the installation.
     #[test]
     fn failed_install_rolls_back_to_byte_identical_profile() {
         let dir = scratch("rollback");
@@ -1606,14 +1635,15 @@ pub(crate) mod tests {
         std::fs::write(src.join("one.colors"), "новая схема").unwrap();
 
         let home = dir.join("home");
-        // Чужой каталог на пути копии — с чужим файлом и файлом того же имени.
+        // A foreign directory on the copy's path — with a foreign file and a file of
+        // the same name.
         std::fs::create_dir_all(home.join("icons/Foreign")).unwrap();
         std::fs::write(home.join("icons/Foreign/index.theme"), "чужой").unwrap();
         std::fs::write(home.join("icons/Foreign/own.txt"), "чужой свой").unwrap();
-        // Прежняя копия своей темы (повторная установка снимает её).
+        // The previous copy of one's own theme (a repeated installation removes it).
         std::fs::create_dir_all(home.join("themes/Mine/gtk-3.0")).unwrap();
         std::fs::write(home.join("themes/Mine/gtk-3.0/gtk.css"), "старая").unwrap();
-        // Файл и ссылка, которые план заменит, и конфиг, который перепишет.
+        // A file and a link the plan will replace, and a config it will rewrite.
         std::fs::create_dir_all(home.join("schemes")).unwrap();
         std::fs::write(home.join("schemes/one.colors"), "старая схема").unwrap();
         std::os::unix::fs::symlink("/нет/такого", home.join("schemes/two.colors")).unwrap();
@@ -1643,10 +1673,11 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Шаг 5а: «Применить» — записи слоя включения под тем же откатом. Сбой
-    /// записи посреди нажатия: все конфиги нажатия побайтно прежние (правка
-    /// ini по месту, ini сквозь ссылку, наш новый файл, снятый файл, ключ,
-    /// убранный из `settings.ini`); шаги после сбоя не исполнены.
+    /// Step 5a: "Apply" — the enabling layer's writes under the same rollback. A
+    /// write failure in the middle of a click: all the click's configs are byte for
+    /// byte as before (an ini edited in place, an ini through a link, our new file, a
+    /// removed file, a key removed from `settings.ini`); the steps after the failure
+    /// are not executed.
     #[test]
     fn failed_apply_press_rolls_back_config_writes() {
         use crate::themes::Cmd;
@@ -1656,13 +1687,13 @@ pub(crate) mod tests {
         std::fs::create_dir_all(cfg.join("gtk-3.0")).unwrap();
         std::fs::write(cfg.join("gtk-3.0/settings.ini"), "[Settings]\ngtk-theme-name=Old\ngtk-cursor-theme-name=Old\n").unwrap();
         std::fs::write(cfg.join("kdeglobals"), "[General]\nfoo=1\n[Icons]\nTheme=Old\n").unwrap();
-        // Конфиг человека, разложенный ссылкой из его хранилища.
+        // The person's config, laid out as a link from their store.
         std::fs::create_dir_all(dir.join("store")).unwrap();
         std::fs::write(dir.join("store/lxqt.conf"), "[General]\nicon_theme=Old\n").unwrap();
         std::fs::create_dir_all(cfg.join("lxqt")).unwrap();
         std::os::unix::fs::symlink(dir.join("store/lxqt.conf"), cfg.join("lxqt/lxqt.conf")).unwrap();
         std::fs::write(cfg.join("ours.conf"), "наш прежний").unwrap();
-        // На месте каталога — файл: запись под ним не удастся.
+        // A file in place of a directory: writing under it will fail.
         std::fs::write(cfg.join("gtk-4.0"), "не каталог").unwrap();
         let before = (snapshot(&home), snapshot(&dir.join("store")));
 
@@ -1696,8 +1727,8 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Шаг 5а: удачное нажатие пишет конфиги и не оставляет служебных копий;
-    /// ссылка на конфиг человека остаётся ссылкой.
+    /// Step 5a: a successful click writes the configs and leaves no service copies;
+    /// a link to the person's config stays a link.
     #[test]
     fn apply_press_writes_and_leaves_no_undo_copies() {
         let dir = scratch("press-ok");
@@ -1726,8 +1757,8 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Сбой внутри чужого каталога (закрыт на запись): чужое цело, своё
-    /// снято, а то, что легло до сбоя, — тоже.
+    /// A failure inside a foreign directory (closed for writing): the foreign stays
+    /// intact, our own is removed, and so is what landed before the failure.
     #[test]
     fn failure_inside_foreign_dir_keeps_foreign() {
         use std::os::unix::fs::PermissionsExt;
@@ -1751,7 +1782,7 @@ pub(crate) mod tests {
         let after = snapshot(&home);
         std::fs::set_permissions(foreign.join("xfwm4"), std::fs::Permissions::from_mode(0o755)).unwrap();
         if std::fs::write(foreign.join("xfwm4/probe"), "").is_ok() && r.is_ok() {
-            // Под root права на запись не действуют — сбоя не будет.
+            // Write permissions do not apply under root — there will be no failure.
             let _ = std::fs::remove_dir_all(&dir);
             return;
         }
@@ -1760,8 +1791,8 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Успех: отложенные для отката копии не остаются рядом; удаление
-    /// (`install = false`) не откатывается.
+    /// Success: the copies set aside for the rollback do not remain next to the
+    /// files; removal (`install = false`) is not rolled back.
     #[test]
     fn success_leaves_no_undo_copies_and_removal_is_not_rolled_back() {
         let dir = scratch("commit");
@@ -1791,10 +1822,9 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Подменный стол: хранилища `gsettings` (заданное человеком поверх
-    /// умолчаний схем), `dconf` и `xfconf` в памяти и журнал запусков.
-    /// Отвечает на те же формы команд, что настоящие программы; настоящие
-    /// не запускаются.
+    /// A substitute desktop: `gsettings` stores (set by the person on top of schema
+    /// defaults), `dconf` and `xfconf` in memory, and a launch log. It answers the
+    /// same command forms as the real programs; the real ones are not launched.
     #[derive(Default)]
     pub(crate) struct FakeDesk {
         pub defaults: std::collections::BTreeMap<String, String>,
@@ -1864,7 +1894,7 @@ pub(crate) mod tests {
             }
         }
 
-        /// Всё, что хранит стол, — для сверки «как было».
+        /// Everything the desktop stores — for the "as it was" check.
         pub(crate) fn state(&self) -> String {
             format!("{:?} {:?} {:?}", self.gsettings.borrow(), self.dconf.borrow(), self.xfconf.borrow())
         }
@@ -1874,8 +1904,8 @@ pub(crate) mod tests {
         a.iter().map(|x| x.to_string()).collect()
     }
 
-    /// Разбор команд, меняющих значения стола: какой ключ и чем он
-    /// читается; чего не разбираем — не трогаем.
+    /// Parsing commands that change desktop values: which key and how it is read;
+    /// what we do not parse we do not touch.
     #[test]
     fn value_targets_of_commands() {
         let key = |a: &[&str]| value_target(&v(a)).map(|t| t.key);
@@ -1892,7 +1922,7 @@ pub(crate) mod tests {
         assert_eq!(key(&["xfconf-query", "-c", "c", "-p", "/p"]), None, "чтение не запись");
         assert_eq!(key(&["bash", "-c", "gsettings set org.a k v"]), None);
         assert_eq!(key(&["env", "-i", "gsettings", "set", "org.a", "k", "v"]), None);
-        // Чтение умолчания схемы — с теми же переменными и каталогом схем.
+        // Reading the schema default — with the same variables and schema directory.
         let desk = FakeDesk::default();
         let run = |a: &[String], _: Option<u64>| desk.run(a);
         let t = value_target(&v(&["env", "X=1", "gsettings", "--schemadir", "/d", "set", "org.a", "k", "1"])).unwrap();
@@ -1917,8 +1947,9 @@ pub(crate) mod tests {
         }
     }
 
-    /// Сбой файлового шага посреди нажатия: значения стола, которые успели
-    /// смениться, возвращаются сразу (вместе с файлами), снятого не остаётся.
+    /// A file step failure in the middle of a click: desktop values that managed to
+    /// change are restored right away (together with the files), nothing captured
+    /// remains.
     #[test]
     fn failed_press_puts_values_back() {
         use crate::themes::Cmd;
@@ -1938,7 +1969,7 @@ pub(crate) mod tests {
             Step::from(ApplyStep::Primary(Cmd { argv: v(&["gsettings", "set", "org.a", "gtk-theme", "'New'"]), timeout: None })),
             Step::from(ExtStep::Run { argv: v(&["xfconf-query", "-c", "xsettings", "-p", "/Net/ThemeName", "-s", "New"]), timeout_secs: None }),
             Step::from(ExtStep::Run { argv: v(&["xfconf-query", "-c", "xsettings", "-p", "/Net/IconThemeName", "-n", "-t", "string", "-s", "New"]), timeout_secs: None }),
-            // Запись под файлом, как под каталогом, — сбой.
+            // Writing under a file as if under a directory — a failure.
             Step::from(ExtStep::WriteFile { path: s(&blocker.join("x.ini")), content: "x".into() }),
         ];
         let mut undo = Undo::new().keeping_values();
@@ -1946,7 +1977,7 @@ pub(crate) mod tests {
         assert_eq!(desk.state(), before, "значения стола не вернулись после сбоя");
         assert!(undo.take_values().is_empty(), "снятое осталось в откате");
         undo.finish(false);
-        // Без `keeping_values` чтений нет: прочие планы идут как прежде.
+        // Without `keeping_values` there are no reads: other plans go as before.
         desk.ran.borrow_mut().clear();
         let mut plain = Undo::new();
         let _ = exec_undoable(&steps[..1], &mut Vec::new(), &c, &mut plain);
@@ -1954,10 +1985,10 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// `kwriteconfig6`: файл, который она перепишет, снимается копией до
-    /// команды — сбой посреди нажатия возвращает его, удача кладёт копию в
-    /// снимок «что было». Имя без пути — в каталоге конфигов, без `--file` —
-    /// `kdeglobals`.
+    /// `kwriteconfig6`: the file it will rewrite is captured as a copy before the
+    /// command — a failure in the middle of a click restores it, success puts the
+    /// copy into the "how it was" snapshot. A name without a path — in the config
+    /// directory, without `--file` — `kdeglobals`.
     #[test]
     fn kwriteconfig_file_is_kept() {
         let cfg = "/h/.config";
@@ -1972,7 +2003,7 @@ pub(crate) mod tests {
         std::fs::write(&rc, "[Icons]\nTheme=Old\n").unwrap();
         let fresh = dir.join("sub/kcminputrc");
         let run = |a: &[String], _: Option<u64>| {
-            // Подделка kwriteconfig6: пишет файл из `--file`.
+            // A kwriteconfig6 fake: writes the file from `--file`.
             if a[0] == "kwriteconfig6" {
                 let p = Path::new(&a[2]);
                 std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -1987,7 +2018,7 @@ pub(crate) mod tests {
             Step::from(ExtStep::Run { argv: v(&["kwriteconfig6", "--file", &s(&rc), "--group", "Icons", "--key", "Theme", "New"]), timeout_secs: None }),
             Step::from(ExtStep::Run { argv: v(&["kwriteconfig6", "--file", &s(&fresh), "--key", "K", "v"]), timeout_secs: None }),
         ];
-        // Сбой после команд: файл прежний, заведённое снято.
+        // A failure after the commands: the file is as before, what was created is removed.
         let mut failing = steps.clone();
         failing.push(Step::from(ExtStep::WriteFile { path: s(&blocker.join("x")), content: "x".into() }));
         let mut undo = Undo::new().keeping_values();
@@ -1995,7 +2026,7 @@ pub(crate) mod tests {
         undo.finish(false);
         assert_eq!(std::fs::read_to_string(&rc).unwrap(), "[Icons]\nTheme=Old\n");
         assert!(!fresh.exists() && !dir.join("sub").exists(), "заведённое командой осталось");
-        // Удача: копия — в снимок, заведённое — отметкой.
+        // Success: the copy goes into the snapshot, what was created — as a mark.
         let mut undo = Undo::new().keeping_values();
         exec_undoable(&steps, &mut Vec::new(), &c, &mut undo).unwrap();
         let touched = undo.keep_into(&dir.join("snap"), 1);

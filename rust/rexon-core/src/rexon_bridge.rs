@@ -1,28 +1,29 @@
-//! Мост Rexon ↔ внешние приложения — порт `rexon/rexon_bridge.py`.
+//! Bridge between Rexon and external applications — port of
+//! `rexon/rexon_bridge.py`.
 //!
-//! Двусторонний обмен состоянием между Rexon и BonziBuddy (и другими)
-//! через общий JSON-файл `~/.config/rexon/bridge.json` плюс файловые
-//! команды/события в `~/.config/rexon/bridge_commands/`. Оригинал —
-//! самодостаточный модуль (чистый Python + JSON, без Qt), поэтому
-//! портируется почти целиком: данные DE-реакций, построение сообщений,
-//! слияние секций, геттеры состояния, опрос и очистка команд.
+//! Two-way exchange of state between Rexon and BonziBuddy (and others) through
+//! a shared JSON file `~/.config/rexon/bridge.json` plus file commands/events in
+//! `~/.config/rexon/bridge_commands/`. The original is a self-contained module
+//! (pure Python + JSON, no Qt), so it is ported almost entirely: the DE reaction
+//! data, building messages, merging sections, state getters, polling and
+//! cleaning up commands.
 //!
-//! I/O-границы (остаются вызывающему/шиму):
-//! - текущее время — параметрами `now_iso` (ISO-строка `datetime.now()
-//!   .isoformat()`) и `epoch_ms`/`now_epoch` (`time.time()`);
-//! - проверка живости процесса (`os.kill(pid, 0)`) — замыканием
-//!   `pid_alive` в [`app_running`];
-//! - межпроцессная блокировка `fcntl.flock` из `_update` — вне ядра
-//!   (шим держит `.lock`-файл вокруг [`RexonBridge::update_section`];
-//!   атомарность самой записи обеспечена tmp + rename);
-//! - CLI-утилита `main()` (argparse + random) не портируется — это
-//!   отладочный симулятор, не логика моста.
+//! I/O boundaries (they stay with the caller/the shim):
+//! - the current time — via the parameters `now_iso` (the ISO string of
+//!   `datetime.now().isoformat()`) and `epoch_ms`/`now_epoch` (`time.time()`);
+//! - the process liveness check (`os.kill(pid, 0)`) — via the `pid_alive`
+//!   closure in [`app_running`];
+//! - the inter-process lock `fcntl.flock` from `_update` — outside the core (the
+//!   shim holds a `.lock` file around [`RexonBridge::update_section`]; the
+//!   atomicity of the write itself is ensured by tmp + rename);
+//! - the CLI utility `main()` (argparse + random) is not ported — it is a
+//!   debugging simulator, not bridge logic.
 //!
-//! Файловые операции над bridge.json/командами выполняются напрямую
-//! (как в `favorites.rs`) — это локальные файлы, не сокеты и не демон.
+//! File operations on bridge.json/commands are done directly (as in
+//! `favorites.rs`) — these are local files, not sockets or a daemon.
 //!
-//! Формат записи: `json.dump(indent=2, ensure_ascii=False)` — сверяется
-//! побайтово (golden-тест `rexon_bridge_parity.rs`).
+//! Write format: `json.dump(indent=2, ensure_ascii=False)` — checked byte for
+//! byte (golden test `rexon_bridge_parity.rs`).
 
 use std::path::{Path, PathBuf};
 
@@ -30,20 +31,22 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 // ============================================================================
-// Пути
+// Paths
 // ============================================================================
 
-/// Каталог моста (модульная константа `BRIDGE_DIR`) — папка настроек Rexon.
+/// The bridge directory (the module constant `BRIDGE_DIR`) — the Rexon settings
+/// folder.
 ///
-/// ⚠️ Починка: раньше путь склеивался литералом `~/.config/rexon` от голого
-/// `$HOME`, мимо `$XDG_CONFIG_HOME`. Мост — межпроцессный: BonziBuddy и
-/// прочие читают `bridge.json` по своему пути, а окно настроек Rexon,
-/// избранное и расширения живут в XDG-осведомлённой папке. На машине с
-/// нестандартным `XDG_CONFIG_HOME` мост уезжал в ДРУГУЮ папку: Rexon писал
-/// состояние туда, где его никто не ищет, файловые команды из
-/// `bridge_commands/` не доходили, а удаление Rexon оставляло эту папку на
-/// диске. Путь считается [`crate::utils::rexon_config_dir`] — той же
-/// единой точкой, что и все остальные хранилища Rexon в конфигах.
+/// Warning — fix: the path used to be glued together as the literal
+/// `~/.config/rexon` from bare `$HOME`, bypassing `$XDG_CONFIG_HOME`. The bridge
+/// is inter-process: BonziBuddy and others read `bridge.json` from their path,
+/// while the Rexon settings window, favorites and extensions live in the
+/// XDG-aware folder. On a machine with a non-standard `XDG_CONFIG_HOME` the
+/// bridge drifted into ANOTHER folder: Rexon wrote state where nobody looks for
+/// it, file commands from `bridge_commands/` did not arrive, and uninstalling
+/// Rexon left this folder on disk. The path is computed by
+/// [`crate::utils::rexon_config_dir`] — the same single point as all other
+/// Rexon stores in the configs.
 pub fn bridge_dir() -> PathBuf {
     crate::utils::rexon_config_dir()
 }
@@ -58,14 +61,14 @@ pub fn default_commands_dir() -> PathBuf {
     bridge_dir().join("bridge_commands")
 }
 
-/// Лимит размера файла команды: 1 МиБ — защита от DoS (`MAX_CMD_SIZE`).
+/// Size limit of a command file: 1 MiB — protection against DoS (`MAX_CMD_SIZE`).
 pub const MAX_CMD_SIZE: u64 = 1024 * 1024;
 
 // ============================================================================
-// DE-реакции для BonziBuddy
+// DE reactions for BonziBuddy
 // ============================================================================
 
-/// Наборы реплик для одного DE (ключи словаря `DE_REACTIONS[de]`).
+/// Sets of lines for one DE (the keys of the dictionary `DE_REACTIONS[de]`).
 pub struct DeReactions {
     pub greetings: &'static [&'static str],
     pub jokes: &'static [&'static str],
@@ -75,7 +78,7 @@ pub struct DeReactions {
 }
 
 impl DeReactions {
-    /// JSON-объект с тем же порядком ключей, что у Python-словаря.
+    /// A JSON object with the same key order as the Python dictionary.
     pub fn to_value(&self) -> Value {
         let mut obj = Map::new();
         for (key, list) in [
@@ -94,7 +97,7 @@ impl DeReactions {
     }
 }
 
-/// `DE_REACTIONS` — реплики BonziBuddy по DE (порядок как в оригинале).
+/// `DE_REACTIONS` — BonziBuddy's lines per DE (order as in the original).
 pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
     (
         "kde",
@@ -338,10 +341,11 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
             idle_comments: &["Тут всё так плавно двигается. Залипательно!"],
         },
     ),
-    // ⚠️ Правило #12: список DE тут обязан совпадать с `_DE_DATABASE`
-    // (rexon/system.py). LXQt, niri и sway туда добавили, а сюда забыли —
-    // BonziBuddy молчал в трёх поддерживаемых окружениях (get_de_reactions
-    // отдавал {}, потому что «-» в имени нет и нормализация не спасала).
+    // Warning — rule #12: the list of DEs here must match `_DE_DATABASE`
+    // (rexon/system.py). LXQt, niri and sway were added there but forgotten here —
+    // BonziBuddy was silent in three supported environments (get_de_reactions
+    // returned {}, because there is no "-" in the name and normalization did not
+    // help).
     (
         "lxqt",
         DeReactions {
@@ -434,13 +438,13 @@ pub static DE_REACTIONS: &[(&str, DeReactions)] = &[
     ),
 ];
 
-/// Имя события моста: живые обои пошли. Название сцены — полем `name`, если
-/// приславший его знает.
+/// Bridge event name: the live wallpaper started. The scene name goes in the
+/// `name` field, if the sender knows it.
 pub const WALLPAPER_STARTED_EVENT: &str = "video_wallpaper_started";
-/// Имя события моста: живые обои встали.
+/// Bridge event name: the live wallpaper stopped.
 pub const WALLPAPER_STOPPED_EVENT: &str = "video_wallpaper_stopped";
 
-/// `EVENT_REACTIONS` — шаблоны реакций на события.
+/// `EVENT_REACTIONS` — reaction templates for events.
 pub static EVENT_REACTIONS: &[(&str, &[&str])] = &[
     (
         "de_installed",
@@ -495,9 +499,9 @@ pub static EVENT_REACTIONS: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// Реакции для DE с нормализацией `"cinnamon-mint"` → `"cinnamon"` —
-/// порт `get_de_reactions` (без ветки чтения current_de из файла: её
-/// делает вызывающий через [`get_current_de`]).
+/// Reactions for a DE with the normalization `"cinnamon-mint"` → `"cinnamon"` —
+/// port of `get_de_reactions` (without the branch reading current_de from the
+/// file: the caller does that via [`get_current_de`]).
 pub fn lookup_de_reactions(de: &str) -> Option<&'static DeReactions> {
     if let Some((_, r)) = DE_REACTIONS.iter().find(|(k, _)| *k == de) {
         return Some(r);
@@ -509,7 +513,7 @@ pub fn lookup_de_reactions(de: &str) -> Option<&'static DeReactions> {
     None
 }
 
-/// То же, но JSON-объектом (Python возвращает `{}` для неизвестного DE).
+/// The same, but as a JSON object (Python returns `{}` for an unknown DE).
 pub fn de_reactions_value(de: &str) -> Value {
     match lookup_de_reactions(de) {
         Some(r) => r.to_value(),
@@ -517,7 +521,7 @@ pub fn de_reactions_value(de: &str) -> Value {
     }
 }
 
-/// Все реакции всех DE — порт `get_all_de_reactions` (для предзагрузки).
+/// All reactions of all DEs — port of `get_all_de_reactions` (for preloading).
 pub fn all_de_reactions_value() -> Value {
     let mut obj = Map::new();
     for (de, r) in DE_REACTIONS {
@@ -526,8 +530,8 @@ pub fn all_de_reactions_value() -> Value {
     Value::Object(obj)
 }
 
-/// Шаблоны реакций на событие — порт `get_event_reactions`
-/// (пустой срез, если тип неизвестен).
+/// Reaction templates for an event — port of `get_event_reactions` (an empty
+/// slice if the type is unknown).
 pub fn event_reactions(event_type: &str) -> &'static [&'static str] {
     EVENT_REACTIONS
         .iter()
@@ -537,10 +541,10 @@ pub fn event_reactions(event_type: &str) -> &'static [&'static str] {
 }
 
 // ============================================================================
-// Хелперы семантики Python
+// Python semantics helpers
 // ============================================================================
 
-/// Истинность значения по правилам Python (`bool(x)`).
+/// Truthiness of a value per Python's rules (`bool(x)`).
 fn truthy(v: Option<&Value>) -> bool {
     match v {
         None | Some(Value::Null) => false,
@@ -552,9 +556,9 @@ fn truthy(v: Option<&Value>) -> bool {
     }
 }
 
-/// `json.dumps(obj, ensure_ascii=False, indent=2)` — формат bridge.json
-/// и файлов команд. Локальный аналог `models::to_json_indent1`, но с
-/// отступом 2 (дефолт `PrettyFormatter` serde_json).
+/// `json.dumps(obj, ensure_ascii=False, indent=2)` — the format of bridge.json
+/// and of the command files. A local analogue of `models::to_json_indent1`, but
+/// with an indent of 2 (the serde_json `PrettyFormatter` default).
 fn to_json_indent2(value: &Value) -> String {
     let mut buf = Vec::new();
     let mut ser = serde_json::Serializer::pretty(&mut buf);
@@ -565,12 +569,11 @@ fn to_json_indent2(value: &Value) -> String {
 }
 
 // ============================================================================
-// Чтение / запись / слияние bridge.json (чистая логика над данными)
+// Reading / writing / merging bridge.json (pure logic over data)
 // ============================================================================
 
-/// Прочитать bridge.json — порт `_read`. Любая ошибка чтения/парса или
-/// не-объект на верхнем уровне → пустой словарь (Python логирует warning
-/// и возвращает `{}`).
+/// Read bridge.json — port of `_read`. Any read/parse error or a non-object at
+/// the top level → an empty dictionary (Python logs a warning and returns `{}`).
 pub fn read_bridge(path: &Path) -> Map<String, Value> {
     match std::fs::read_to_string(path) {
         Ok(text) => match serde_json::from_str::<Value>(&text) {
@@ -581,23 +584,22 @@ pub fn read_bridge(path: &Path) -> Map<String, Value> {
     }
 }
 
-/// Записать bridge.json общей дверью ([`crate::utils::atomic_write`]) — порт
-/// `_write`. Формат `json.dump(indent=2, ensure_ascii=False)`, без
-/// завершающего перевода строки. Ошибка возвращается (Python логирует и
-/// молчит).
+/// Write bridge.json through the shared door ([`crate::utils::atomic_write`]) —
+/// port of `_write`. Format `json.dump(indent=2, ensure_ascii=False)`, without a
+/// trailing newline. The error is returned (Python logs it and keeps quiet).
 pub fn write_bridge(path: &Path, data: &Map<String, Value>) -> std::io::Result<()> {
     let text = to_json_indent2(&Value::Object(data.clone()));
     crate::utils::atomic_write(&path.to_string_lossy(), &text)
 }
 
-/// Слить обновления в секцию + проставить `_updated_at` — ядро `_update`
-/// (без файла и flock). Порядок ключей: существующие сохраняют позицию,
-/// новые добавляются в конец — как у Python dict.
+/// Merge updates into a section + set `_updated_at` — the core of `_update`
+/// (without the file and flock). Key order: existing keys keep their position,
+/// new ones are appended at the end — as with a Python dict.
 ///
-/// Намеренное расхождение: в оригинале секция-НЕ-словарь (мусор от
-/// стороннего приложения) роняла `AttributeError` и в основной ветке,
-/// и в fallback без блокировки — крэш любого notify. Здесь такая секция
-/// молча заменяется свежим словарём.
+/// A deliberate divergence: in the original a section that is NOT a dictionary
+/// (garbage from a third-party application) raised `AttributeError` both in the
+/// main branch and in the fallback without a lock — a crash of any notify. Here
+/// such a section is silently replaced with a fresh dictionary.
 pub fn merge_update(
     data: &mut Map<String, Value>,
     section: &str,
@@ -618,16 +620,17 @@ pub fn merge_update(
 }
 
 // ============================================================================
-// Геттеры состояния (чистые, над прочитанным словарём)
+// State getters (pure, over the dictionary that was read)
 // ============================================================================
 
-/// Секция словаря (аналог `data.get(name, {})`); не-объект → None.
+/// A section of the dictionary (the analogue of `data.get(name, {})`); a
+/// non-object → None.
 fn section<'a>(data: &'a Map<String, Value>, name: &str) -> Option<&'a Map<String, Value>> {
     data.get(name).and_then(|v| v.as_object())
 }
 
-/// Строковое поле секции с дефолтом. Нестроковое значение → дефолт
-/// (Python возвращал значение как есть вопреки аннотации `-> str`).
+/// A string field of a section with a default. A non-string value → the default
+/// (Python returned the value as is, contrary to the `-> str` annotation).
 fn section_str(data: &Map<String, Value>, sect: &str, key: &str, default: &str) -> String {
     section(data, sect)
         .and_then(|s| s.get(key))
@@ -636,29 +639,29 @@ fn section_str(data: &Map<String, Value>, sect: &str, key: &str, default: &str) 
         .to_string()
 }
 
-/// Установлен ли Rexon — порт `is_rexon_installed` (truthy-проверка).
+/// Whether Rexon is installed — port of `is_rexon_installed` (a truthy check).
 pub fn is_rexon_installed(data: &Map<String, Value>) -> bool {
     truthy(section(data, "rexon").and_then(|s| s.get("rexon_installed")))
 }
 
-/// Версия Rexon — порт `get_rexon_version`.
+/// Rexon version — port of `get_rexon_version`.
 pub fn get_rexon_version(data: &Map<String, Value>) -> String {
     section_str(data, "rexon", "rexon_version", "")
 }
 
-/// Текущий DE (lowercase) — порт `get_current_de`.
+/// Current DE (lowercase) — port of `get_current_de`.
 pub fn get_current_de(data: &Map<String, Value>) -> String {
     section_str(data, "rexon", "current_de", "unknown")
 }
 
-/// Человекочитаемое имя DE — порт `get_de_display`.
+/// Human-readable DE name — port of `get_de_display`.
 pub fn get_de_display(data: &Map<String, Value>) -> String {
     section_str(data, "rexon", "current_de_display", "")
 }
 
-/// Список установленных DE — порт `get_installed_des`. Нестроковые
-/// элементы пропускаются (Python возвращал список как есть вопреки
-/// аннотации `list[str]`).
+/// List of installed DEs — port of `get_installed_des`. Non-string items are
+/// skipped (Python returned the list as is, contrary to the `list[str]`
+/// annotation).
 pub fn get_installed_des(data: &Map<String, Value>) -> Vec<String> {
     section(data, "rexon")
         .and_then(|s| s.get("installed_des"))
@@ -671,17 +674,17 @@ pub fn get_installed_des(data: &Map<String, Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Текущая GTK-тема — порт `get_current_theme`.
+/// Current GTK theme — port of `get_current_theme`.
 pub fn get_current_theme(data: &Map<String, Value>) -> String {
     section_str(data, "rexon", "current_theme", "")
 }
 
-/// Текущий набор иконок — порт `get_current_icons`.
+/// Current icon set — port of `get_current_icons`.
 pub fn get_current_icons(data: &Map<String, Value>) -> String {
     section_str(data, "rexon", "current_icons", "")
 }
 
-/// Количество расширений — порт `get_extensions_count` (не-целое → 0).
+/// Number of extensions — port of `get_extensions_count` (a non-integer → 0).
 pub fn get_extensions_count(data: &Map<String, Value>) -> i64 {
     section(data, "rexon")
         .and_then(|s| s.get("extensions_count"))
@@ -689,14 +692,14 @@ pub fn get_extensions_count(data: &Map<String, Value>) -> i64 {
         .unwrap_or(0)
 }
 
-/// Запущены ли живые обои — порт `is_video_wallpaper_active`.
+/// Whether the live wallpaper is running — port of `is_video_wallpaper_active`.
 pub fn is_video_wallpaper_active(data: &Map<String, Value>) -> bool {
     truthy(section(data, "rexon").and_then(|s| s.get("video_wallpaper_active")))
 }
 
-/// Последнее переключение DE — порт `get_last_switch`:
-/// `{"from": …, "to": …, "time": …}` либо None, если ключей
-/// `switched_from`/`switched_to` нет. Значения возвращаются как есть.
+/// The last DE switch — port of `get_last_switch`:
+/// `{"from": …, "to": …, "time": …}` or None if there are no
+/// `switched_from`/`switched_to` keys. The values are returned as is.
 pub fn get_last_switch(data: &Map<String, Value>) -> Option<Value> {
     let rexon = section(data, "rexon")?;
     let from = rexon.get("switched_from")?;
@@ -711,18 +714,20 @@ pub fn get_last_switch(data: &Map<String, Value>) -> Option<Value> {
     Some(Value::Object(obj))
 }
 
-/// Состояние приложения — порт `get_app_state` (`data["app_<id>"]`).
+/// Application state — port of `get_app_state` (`data["app_<id>"]`).
 pub fn get_app_state(data: &Map<String, Value>, app_id: &str) -> Map<String, Value> {
     section(data, &format!("app_{app_id}")).cloned().unwrap_or_default()
 }
 
-/// Запущено ли приложение — порт `is_app_running` без `os.kill`:
-/// живость pid решает замыкание `pid_alive` (I/O-граница).
+/// Whether an application is running — port of `is_app_running` without
+/// `os.kill`: pid liveness is decided by the `pid_alive` closure (the I/O
+/// boundary).
 ///
-/// Намеренное расхождение: в оригинале нецелый pid (строка/float) ронял
-/// `TypeError` из `os.kill` мимо `except`, а pid ≤ 0 отправлял сигнал
-/// группе процессов (спецсемантика kill). Здесь такой pid трактуется как
-/// отсутствующий — возврат по truthy(`running`), как в ветке без pid.
+/// A deliberate divergence: in the original a non-integer pid (a string/float)
+/// raised `TypeError` from `os.kill` past the `except`, and a pid ≤ 0 sent a
+/// signal to a process group (kill's special semantics). Here such a pid is
+/// treated as missing — the return follows truthy(`running`), as in the branch
+/// without a pid.
 pub fn app_running(
     state: &Map<String, Value>,
     pid_alive: impl FnOnce(i64) -> bool,
@@ -732,11 +737,11 @@ pub fn app_running(
     }
     match state.get("pid").and_then(|v| v.as_i64()) {
         Some(pid) if pid > 0 => pid_alive(pid),
-        _ => true, // running уже truthy
+        _ => true, // running is already truthy
     }
 }
 
-/// Настроение BonziBuddy — порт `get_bonzi_mood` (default `"neutral"`).
+/// BonziBuddy's mood — port of `get_bonzi_mood` (default `"neutral"`).
 pub fn get_bonzi_mood(data: &Map<String, Value>) -> String {
     get_app_state(data, "bonzi")
         .get("mood")
@@ -745,7 +750,7 @@ pub fn get_bonzi_mood(data: &Map<String, Value>) -> String {
         .to_string()
 }
 
-/// Позиция BonziBuddy — порт `get_bonzi_position`
+/// BonziBuddy's position — port of `get_bonzi_position`
 /// (default `{"x": 0, "y": 0}`).
 pub fn get_bonzi_position(data: &Map<String, Value>) -> Value {
     get_app_state(data, "bonzi")
@@ -755,22 +760,22 @@ pub fn get_bonzi_position(data: &Map<String, Value>) -> Value {
 }
 
 // ============================================================================
-// Построение команд и событий (чистая логика)
+// Building commands and events (pure logic)
 // ============================================================================
 
-/// Готовое сообщение моста: id, имя файла и JSON-содержимое.
+/// A ready bridge message: id, file name and JSON content.
 pub struct BridgeMessage {
     pub id: String,
     pub filename: String,
     pub value: Value,
 }
 
-/// id команды/события: `{prefix}_{epoch_ms}` + антиколлизионный суффикс.
+/// Command/event id: `{prefix}_{epoch_ms}` + an anti-collision suffix.
 ///
-/// Намеренное расхождение: в оригинале id строился только из миллисекунд —
-/// две команды в одну мс получали одно имя файла, и вторая молча затирала
-/// первую (команда терялась). Здесь при `seq > 0` добавляется `_{seq}`
-/// (записывающий подбирает первый свободный номер).
+/// A deliberate divergence: in the original the id was built from the
+/// milliseconds only — two commands within one ms got the same file name, and
+/// the second silently overwrote the first (a command was lost). Here with
+/// `seq > 0`, `_{seq}` is appended (the writer picks the first free number).
 fn message_id(prefix: &str, epoch_ms: u64, seq: u32) -> String {
     if seq == 0 {
         format!("{prefix}_{epoch_ms}")
@@ -779,8 +784,8 @@ fn message_id(prefix: &str, epoch_ms: u64, seq: u32) -> String {
     }
 }
 
-/// Построить команду — порт словаря из `send_command`.
-/// Порядок ключей: target, command, params, timestamp, id.
+/// Build a command — port of the dictionary from `send_command`.
+/// Key order: target, command, params, timestamp, id.
 pub fn build_command(
     target: &str,
     command: &str,
@@ -806,7 +811,7 @@ pub fn build_command(
     }
 }
 
-/// Построить broadcast-событие — порт словаря из `send_event`:
+/// Build a broadcast event — port of the dictionary from `send_event`:
 /// `target="*"`, `command="event"`, `params={"type": …, **data}`.
 pub fn build_event(
     event_type: &str,
@@ -819,7 +824,7 @@ pub fn build_event(
     let mut params = Map::new();
     params.insert("type".to_string(), Value::from(event_type));
     for (k, v) in data {
-        params.insert(k, v); // повторный "type" перезапишет значение, позиция сохранится
+        params.insert(k, v); // a repeated "type" overwrites the value, the position is kept
     }
     let mut obj = Map::new();
     obj.insert("target".to_string(), Value::from("*"));
@@ -834,8 +839,8 @@ pub fn build_event(
     }
 }
 
-/// Обновления секции `rexon` при переключении DE — порт словаря из
-/// `notify_de_switch` (`last_de_switch` = тот же `now_iso`).
+/// Updates of the `rexon` section on a DE switch — port of the dictionary from
+/// `notify_de_switch` (`last_de_switch` = the same `now_iso`).
 pub fn de_switch_updates(from_de: &str, to_de: &str, now_iso: &str) -> Map<String, Value> {
     let mut m = Map::new();
     m.insert("current_de".to_string(), Value::from(to_de));
@@ -846,20 +851,20 @@ pub fn de_switch_updates(from_de: &str, to_de: &str, now_iso: &str) -> Map<Strin
 }
 
 // ============================================================================
-// RexonBridge — файловая обвязка (bridge.json + bridge_commands/)
+// RexonBridge — the file plumbing (bridge.json + bridge_commands/)
 // ============================================================================
 
-/// Мост с конкретными путями. В отличие от Python-оригинала (где
-/// `commands_dir` всегда брался из глобальной константы даже при
-/// кастомном `bridge_file`) каталог команд задаётся явно — иначе
-/// тесты/песочницы писали бы в реальный `~/.config/rexon`.
+/// A bridge with concrete paths. Unlike the Python original (where
+/// `commands_dir` was always taken from the global constant even with a custom
+/// `bridge_file`), the command directory is given explicitly — otherwise tests
+/// and sandboxes would write into the real `~/.config/rexon`.
 pub struct RexonBridge {
     pub bridge_file: PathBuf,
     pub commands_dir: PathBuf,
 }
 
 impl RexonBridge {
-    /// Мост на стандартных путях (`~/.config/rexon/…`).
+    /// A bridge on the standard paths (`~/.config/rexon/…`).
     pub fn new_default() -> Self {
         Self {
             bridge_file: default_bridge_file(),
@@ -867,12 +872,12 @@ impl RexonBridge {
         }
     }
 
-    /// Мост на явных путях (тесты, песочницы).
+    /// A bridge on explicit paths (tests, sandboxes).
     pub fn new(bridge_file: PathBuf, commands_dir: PathBuf) -> Self {
         Self { bridge_file, commands_dir }
     }
 
-    /// Создать каталоги (как `os.makedirs(..., exist_ok=True)` в `__init__`).
+    /// Create the directories (like `os.makedirs(..., exist_ok=True)` in `__init__`).
     pub fn ensure_dirs(&self) -> std::io::Result<()> {
         if let Some(parent) = self.bridge_file.parent() {
             std::fs::create_dir_all(parent)?;
@@ -880,18 +885,18 @@ impl RexonBridge {
         std::fs::create_dir_all(&self.commands_dir)
     }
 
-    /// Порт `_read`.
+    /// Port of `_read`.
     pub fn read(&self) -> Map<String, Value> {
         read_bridge(&self.bridge_file)
     }
 
-    /// Порт `_write`.
+    /// Port of `_write`.
     pub fn write(&self, data: &Map<String, Value>) -> std::io::Result<()> {
         write_bridge(&self.bridge_file, data)
     }
 
-    /// Порт `_update`: read → merge → write. Межпроцессный flock —
-    /// I/O-граница (шим); атомарность записи — tmp + rename.
+    /// Port of `_update`: read → merge → write. The inter-process flock is an I/O
+    /// boundary (the shim); write atomicity — tmp + rename.
     pub fn update_section(
         &self,
         section: &str,
@@ -903,8 +908,8 @@ impl RexonBridge {
         self.write(&data)
     }
 
-    /// Порт `update_rexon_state`: форсирует `rexon_installed = true`
-    /// (позиция уже переданного ключа сохраняется — семантика dict).
+    /// Port of `update_rexon_state`: forces `rexon_installed = true` (the position
+    /// of an already passed key is kept — dict semantics).
     pub fn update_rexon_state(
         &self,
         mut updates: Map<String, Value>,
@@ -914,7 +919,7 @@ impl RexonBridge {
         self.update_section("rexon", updates, now_iso)
     }
 
-    /// Порт `notify_de_switch`: обновление секции + событие `de_switched`.
+    /// Port of `notify_de_switch`: section update + the `de_switched` event.
     pub fn notify_de_switch(
         &self,
         from_de: &str,
@@ -930,7 +935,7 @@ impl RexonBridge {
         Ok(())
     }
 
-    /// Порт `notify_de_installed`.
+    /// Port of `notify_de_installed`.
     pub fn notify_de_installed(
         &self,
         de_name: &str,
@@ -942,7 +947,7 @@ impl RexonBridge {
         self.send_event("de_installed", data, now_iso, epoch_ms).map(|_| ())
     }
 
-    /// Порт `notify_de_removed`.
+    /// Port of `notify_de_removed`.
     pub fn notify_de_removed(
         &self,
         de_name: &str,
@@ -954,7 +959,7 @@ impl RexonBridge {
         self.send_event("de_removed", data, now_iso, epoch_ms).map(|_| ())
     }
 
-    /// Порт `notify_theme_changed`: обновление темы + событие.
+    /// Port of `notify_theme_changed`: theme update + an event.
     pub fn notify_theme_changed(
         &self,
         theme_name: &str,
@@ -969,7 +974,7 @@ impl RexonBridge {
         self.send_event("theme_changed", data, now_iso, epoch_ms).map(|_| ())
     }
 
-    /// Порт `notify_extension_installed`.
+    /// Port of `notify_extension_installed`.
     pub fn notify_extension_installed(
         &self,
         ext_name: &str,
@@ -981,32 +986,33 @@ impl RexonBridge {
         self.send_event("extension_installed", data, now_iso, epoch_ms).map(|_| ())
     }
 
-    /// Порт `notify_backup_created`.
+    /// Port of `notify_backup_created`.
     pub fn notify_backup_created(&self, now_iso: &str, epoch_ms: u64) -> std::io::Result<()> {
         self.send_event("backup_created", Map::new(), now_iso, epoch_ms).map(|_| ())
     }
 
-    /// Порт `notify_video_wallpaper`: признак в секцию и весть о том, что
-    /// живые обои пошли или встали.
+    /// Port of `notify_video_wallpaper`: the flag in the section and the news that
+    /// the live wallpaper started or stopped.
     ///
-    /// Признак `video_wallpaper_active` пишется ВСЕГДА, что бы ни решил
-    /// вызывающий про весть: на него смотрит читающая сторона, когда события
-    /// до неё не дошли, и лгать он не имеет права.
+    /// The `video_wallpaper_active` flag is ALWAYS written, whatever the caller
+    /// decides about the news: the reading side looks at it when events did not
+    /// reach it, and it has no right to lie.
     ///
-    /// ⚠️ Починка: остановка не слала НИЧЕГО — только гасила признак. Слушатель
-    /// узнавал о запуске событием, а об остановке — лишь если сам догадается
-    /// перечитать признак. Теперь у остановки есть своё событие
-    /// [`WALLPAPER_STOPPED_EVENT`], парное к [`WALLPAPER_STARTED_EVENT`].
+    /// Warning — fix: stopping sent NOTHING — it only cleared the flag. A listener
+    /// learned about the start through an event, but about the stop only if it
+    /// thought of re-reading the flag itself. Now stopping has its own event
+    /// [`WALLPAPER_STOPPED_EVENT`], paired with [`WALLPAPER_STARTED_EVENT`].
     ///
-    /// `name` — название сцены; пустое (или из одних пробелов) поля при
-    /// событии не даёт вовсе, выдумывать за движок нечего. У остановки
-    /// названия нет: встали — и всё, какие именно обои встали, слушатель
-    /// помнит с запуска.
+    /// `name` — the scene name; an empty one (or only spaces) gives no field in the
+    /// event at all, there is nothing to invent on the engine's behalf. Stopping has
+    /// no name: it stopped, that is all — the listener remembers which wallpaper
+    /// stopped from the start.
     ///
-    /// `announce` — рассказывать ли о смене событием. Ложь оставляет признак
-    /// верным и молчит: так проходит ПОДМЕНА обоев другими (движок снимает
-    /// прежние перед запуском новых), которая остановкой не является и парой
-    /// «встали — пошли» слушателя только обманывала бы.
+    /// `announce` — whether to announce the change with an event. False keeps the
+    /// flag correct and stays silent: this is how REPLACING the wallpaper with
+    /// another one goes (the engine removes the old one before starting the new
+    /// one), which is not a stop, and a "stopped — started" pair would only mislead
+    /// the listener.
     pub fn notify_video_wallpaper(
         &self,
         active: bool,
@@ -1035,7 +1041,7 @@ impl RexonBridge {
         Ok(())
     }
 
-    /// Порт `update_app_state` (секция `app_<id>`).
+    /// Port of `update_app_state` (the `app_<id>` section).
     pub fn update_app_state(
         &self,
         app_id: &str,
@@ -1045,12 +1051,12 @@ impl RexonBridge {
         self.update_section(&format!("app_{app_id}"), updates, now_iso)
     }
 
-    /// Порт `get_app_state`.
+    /// Port of `get_app_state`.
     pub fn get_app_state(&self, app_id: &str) -> Map<String, Value> {
         get_app_state(&self.read(), app_id)
     }
 
-    /// Порт `is_app_running` (живость pid — замыканием, см. [`app_running`]).
+    /// Port of `is_app_running` (pid liveness via a closure, see [`app_running`]).
     pub fn is_app_running(
         &self,
         app_id: &str,
@@ -1059,13 +1065,13 @@ impl RexonBridge {
         app_running(&self.get_app_state(app_id), pid_alive)
     }
 
-    /// Порт `send_command`: записать команду JSON-файлом в каталог команд.
-    /// Возвращает имя записанного файла.
+    /// Port of `send_command`: write the command as a JSON file into the command
+    /// directory. Returns the name of the written file.
     ///
-    /// Намеренные расхождения: запись атомарная (tmp + rename) — в
-    /// оригинале получатель мог прочитать недописанный файл, счесть его
-    /// битым и удалить (команда терялась); при коллизии имени в одну мс
-    /// подбирается свободный суффикс `_{N}` вместо молчаливой перезаписи.
+    /// Deliberate divergences: the write is atomic (tmp + rename) — in the original
+    /// the receiver could read a half-written file, consider it broken and delete
+    /// it (the command was lost); on a name collision within one ms a free suffix
+    /// `_{N}` is picked instead of a silent overwrite.
     pub fn send_command(
         &self,
         target: &str,
@@ -1082,8 +1088,8 @@ impl RexonBridge {
         Ok(msg.filename)
     }
 
-    /// Порт `send_event`: broadcast-событие (`target="*"`). Возвращает имя
-    /// записанного файла. Та же атомарность/антиколлизия, что у команд.
+    /// Port of `send_event`: a broadcast event (`target="*"`). Returns the name of
+    /// the written file. The same atomicity/anti-collision as for commands.
     pub fn send_event(
         &self,
         event_type: &str,
@@ -1099,7 +1105,7 @@ impl RexonBridge {
         Ok(msg.filename)
     }
 
-    /// Первый свободный номер суффикса для имени файла сообщения.
+    /// The first free suffix number for a message file name.
     fn next_free_message(
         &self,
         prefix: &str,
@@ -1116,22 +1122,22 @@ impl RexonBridge {
         }
     }
 
-    /// Запись файла сообщения общей дверью ([`crate::utils::atomic_write`]).
+    /// Writing a message file through the shared door ([`crate::utils::atomic_write`]).
     ///
-    /// Читатель сообщений — чужой процесс, он берёт файл сразу, как увидел.
-    /// Половина сообщения для него — «битый JSON», и такой файл он УДАЛЯЕТ:
-    /// команда теряется молча, без единого следа.
+    /// The message reader is a foreign process, it takes the file as soon as it
+    /// sees it. Half a message is "broken JSON" for it, and it DELETES such a file:
+    /// the command is lost silently, without a trace.
     fn write_message(&self, msg: &BridgeMessage) -> std::io::Result<()> {
         let path = self.commands_dir.join(&msg.filename);
         let text = to_json_indent2(&msg.value);
         crate::utils::atomic_write(&path.to_string_lossy(), &text)
     }
 
-    /// Порт `poll_commands`: команды для `app_id` в отсортированном по
-    /// имени порядке. `delete` — удалять отданные. Битые (не-JSON,
-    /// JSON-не-объект) и превышающие [`MAX_CMD_SIZE`] файлы удаляются
-    /// независимо от `delete` (как в оригинале); файлы без `.json` и
-    /// команды чужих target не трогаются. Отсутствие каталога → пусто.
+    /// Port of `poll_commands`: commands for `app_id` in name-sorted order.
+    /// `delete` — delete the ones returned. Broken files (non-JSON, JSON that is not
+    /// an object) and those exceeding [`MAX_CMD_SIZE`] are deleted regardless of
+    /// `delete` (as in the original); files without `.json` and commands for other
+    /// targets are not touched. A missing directory → empty.
     pub fn poll_commands(&self, app_id: &str, delete: bool) -> Vec<Value> {
         let mut commands = Vec::new();
         let Ok(entries) = std::fs::read_dir(&self.commands_dir) else {
@@ -1150,8 +1156,8 @@ impl RexonBridge {
             let size = match std::fs::metadata(&filepath) {
                 Ok(m) => m.len(),
                 Err(_) => {
-                    // Файл исчез между листингом и stat — как общий except:
-                    // попытка удаления, подавление ошибки.
+                    // The file disappeared between listing and stat — as with the general
+                    // except: attempt to delete, suppress the error.
                     let _ = std::fs::remove_file(&filepath);
                     continue;
                 }
@@ -1164,7 +1170,7 @@ impl RexonBridge {
                 .ok()
                 .and_then(|text| serde_json::from_str::<Value>(&text).ok());
             let Some(cmd @ Value::Object(_)) = parsed else {
-                // Битый файл — удаляем (ошибку удаления подавляем).
+                // A broken file — delete it (suppress a deletion error).
                 let _ = std::fs::remove_file(&filepath);
                 continue;
             };
@@ -1178,18 +1184,18 @@ impl RexonBridge {
         commands
     }
 
-    /// Порт `poll_events`: все broadcast-события (`target="*"`).
+    /// Port of `poll_events`: all broadcast events (`target="*"`).
     pub fn poll_events(&self, delete: bool) -> Vec<Value> {
         self.poll_commands("*", delete)
     }
 
-    /// Порт `cleanup_commands`: удалить файлы команд старше
-    /// `max_age_seconds` (по mtime). `now_epoch` — текущее время
-    /// (`time.time()`), параметром.
+    /// Port of `cleanup_commands`: delete command files older than
+    /// `max_age_seconds` (by mtime). `now_epoch` — the current time
+    /// (`time.time()`), as a parameter.
     ///
-    /// Намеренное расхождение: в оригинале ошибка на одном файле
-    /// (исчез между листингом и stat) прерывала весь проход — здесь
-    /// подавляется по-файлово, очистка продолжается.
+    /// A deliberate divergence: in the original an error on one file (it
+    /// disappeared between listing and stat) aborted the whole pass — here it is
+    /// suppressed per file, and the cleanup continues.
     pub fn cleanup_commands(&self, max_age_seconds: f64, now_epoch: f64) {
         let Ok(entries) = std::fs::read_dir(&self.commands_dir) else {
             return;
@@ -1214,11 +1220,11 @@ impl RexonBridge {
         }
     }
 
-    /// Порт `reset`: пустой bridge.json + очистка каталога команд.
+    /// Port of `reset`: an empty bridge.json + cleaning up the command directory.
     ///
-    /// Намеренное расхождение: в оригинале первый сбой `os.remove`
-    /// (например, подкаталог в каталоге команд) прерывал очистку —
-    /// здесь ошибки подавляются по-файлово, каталоги пропускаются.
+    /// A deliberate divergence: in the original the first `os.remove` failure (for
+    /// example, a subdirectory in the command directory) aborted the cleanup — here
+    /// errors are suppressed per file, directories are skipped.
     pub fn reset(&self) -> std::io::Result<()> {
         self.write(&Map::new())?;
         if let Ok(entries) = std::fs::read_dir(&self.commands_dir) {

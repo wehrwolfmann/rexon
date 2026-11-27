@@ -6194,7 +6194,7 @@ msgid ""
 msgstr ""
 
 #. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-#. Вход в Treeland — только через DDM (treeland#1656), см. `deepin_treeland`.
+#. Login into Treeland is only possible through DDM (treeland#1656), see `deepin_treeland`.
 #: rust/rexon-core/src/dde.rs
 msgid ""
 "Rexon supports Deepin only on Treeland. To switch, open Rexon → Desktops → "
@@ -12636,8 +12636,8 @@ msgstr ""
 #. translate the prose and the sample values of "name", "author" and
 #. "description". The <pre> blocks stay left-to-right in every language,
 #. so keep their arrows ← as they are.
-#. Без ведущего перевода строки: xgettext срезает его у msgid, и
-#. строка в коде разошлась бы с ключом каталога.
+#. No leading line break: xgettext strips it from the msgid, and the
+#. string in the code would diverge from the catalog key.
 #: rust/rexon-core/src/qt_extensions.rs
 msgid ""
 "<p>A Rexon extension is a plain <b>ZIP archive</b> with the <code>.rxn</"
@@ -21439,6 +21439,20 @@ msgid ""
 "starts with no keyboard shortcuts."
 msgstr ""
 
+#. TRANSLATORS: %1 is a desktop (Hyprland…), %2 program names (“hyprlock, hypridle”).
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"ℹ️ %1: screen lock programs are missing (%2) — your distribution may not have "
+"them; the screen lock wasn't set up"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop (Hyprland, niri…), %2 a file path.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"ℹ️ %1: there is no settings file yet (%2). Log in once, then run “Check / "
+"Repair” and Rexon will set up the screen lock."
+msgstr ""
+
 #. TRANSLATORS: %1 is a desktop (Wayfire, LXQt…), %2 a key combination,
 #. %3 a file path.
 #: rust/rexon-core/src/system_plan.rs
@@ -23219,6 +23233,14 @@ msgid "Nothing new in the Razer Axon queue."
 msgstr ""
 
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "kpackagetool6 was not found — KDE Plasma 6 is required"
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "the bundled plugin package was not found: %1"
+msgstr ""
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid ""
 "Wallpaper Engine wallpapers are not on the desktop yet. Pick a wallpaper or "
 "a playlist and press “Apply” or “Play playlist” — Rexon will put them on the "
@@ -24617,6 +24639,10 @@ msgstr ""
 
 #: rust/rexon-gui/src/we_socket.rs
 msgid "The connection to the wallpaper engine was lost"
+msgstr ""
+
+#: rust/rexon-gui/src/we_socket.rs
+msgid "kpackagetool6 failed to start: %1"
 msgstr ""
 
 #: rust/rexon-gui/src/we_update_workers.rs

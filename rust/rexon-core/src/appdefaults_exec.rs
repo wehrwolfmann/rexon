@@ -1,82 +1,82 @@
-//! Живой исполнитель маршрута `--apply-defaults` — приложения по умолчанию
-//! при входе в сеанс.
+//! Live executor of the `--apply-defaults` route — default applications
+//! at session login.
 //!
-//! ЗАЧЕМ. Решения этого маршрута давно на Rust: таблицы «окружение →
-//! программы», разбор `$XDG_CURRENT_DESKTOP`, текст per-DE `mimeapps.list`,
-//! DE-специфичные команды терминала и весь поток проверки комплектности
-//! ([`crate::appdefaults`], [`crate::compliance`]). Но ДЕЙСТВИЯ не было
-//! ни одного: порядок шагов и запись файлов держал Python
-//! (`rexon/app.py:625` → `DEAppSwitcher` + `ComplianceCheck`). Из-за этого
-//! автозапуск при входе в систему обязан был поднимать интерпретатор с
-//! колесом моста, а Rust-процессу маршрут был недоступен вовсе.
+//! WHY. The decisions of this route have long been in Rust: the "desktop →
+//! programs" tables, parsing `$XDG_CURRENT_DESKTOP`, the per-DE `mimeapps.list` text,
+//! DE-specific terminal commands and the whole completeness check flow
+//! ([`crate::appdefaults`], [`crate::compliance`]). But there was not a single
+//! ACTION: the step order and file writes were held by Python
+//! (`rexon/app.py:625` → `DEAppSwitcher` + `ComplianceCheck`). Because of that,
+//! autostart at login had to bring up the interpreter with the
+//! bridge wheel, and the route was not available to the Rust process at all.
 //!
-//! Разделение здесь такое же, как у соседних исполнителей — `wallpaper_exec`,
-//! `splash_exec`, `ext_exec`, `imp_live`: **ядро решает, исполнитель делает**.
-//!   * ЧТО делать — [`crate::appdefaults`] (исход `generate_profile`, план
-//!     `apply_de_specific`, argv `xdg-mime`/`busctl`, тексты автозапуска) и
-//!     [`crate::compliance`] (весь поток проверок);
-//!   * ЧЕМ делать — трейт [`AppDefaultsIo`]: каждый метод ровно один побочный
-//!     вызов или наблюдение. В продукте его исполняет [`LiveAppDefaultsIo`]
-//!     (настоящие ФС и подпроцессы), в сверках — подставной исполнитель, и
-//!     живая машина при этом не меняется вовсе;
-//!   * ПОРЯДОК шагов — [`DeAppSwitcher`] и [`apply_defaults_route`].
+//! The split here is the same as in the neighboring executors — `wallpaper_exec`,
+//! `splash_exec`, `ext_exec`, `imp_live`: **the core decides, the executor does**.
+//!   * WHAT to do — [`crate::appdefaults`] (the `generate_profile` outcome, the
+//!     `apply_de_specific` plan, `xdg-mime`/`busctl` argv, autostart texts) and
+//!     [`crate::compliance`] (the whole check flow);
+//!   * WITH WHAT — the [`AppDefaultsIo`] trait: each method is exactly one side
+//!     call or observation. In the product it is executed by [`LiveAppDefaultsIo`]
+//!     (the real FS and subprocesses), in checks — by a fake executor, and
+//!     the live machine does not change at all;
+//!   * the ORDER of steps — [`DeAppSwitcher`] and [`apply_defaults_route`].
 //!
-//! Проверке комплектности исполнитель нужен свой ([`LiveComplianceIo`],
-//! реализация [`crate::compliance::ComplianceIo`]): до сих пор он жил только
-//! в мосте `rexon-py` поверх Python-объекта, и вкладка «Настройки» на Rust
-//! честно писала, что запустить проверку не может. Теперь исполнитель один
-//! на продукт и лежит рядом с маршрутом, который его и заводит; кнопка
-//! «Проверить и доустановить» идёт через `system_de_exec::complete_de`.
+//! The completeness check needs its own executor ([`LiveComplianceIo`],
+//! an implementation of [`crate::compliance::ComplianceIo`]): until now it lived only
+//! in the `rexon-py` bridge on top of a Python object, and the Rust "Settings" tab
+//! honestly wrote that it could not run the check. Now there is one executor
+//! for the product, and it sits next to the route that sets it up; the
+//! "Check and install missing" button goes through `system_de_exec::complete_de`.
 //!
-//! ⭐ ЧТО ПОЧИНЕНО ПРИ ПЕРЕНОСЕ (правило #16 — дефекты оригинала не
-//! консервируем):
+//! ⭐ WHAT WAS FIXED DURING THE PORT (rule #16 — we do not preserve the original's
+//! defects):
 //!
-//!   1. **Автозапуск больше не указывает в пустоту.** Оригинал, не найдя
-//!      `rexon` в `PATH`, писал в автозапуск путь
-//!      `/usr/local/lib/rexon/rexon_apply_defaults.sh` и пытался создать там
-//!      bash-обёртку. Обычный пользовательский процесс в `/usr/local/lib`
-//!      писать не может: `_create_apply_script` ловил ошибку, писал строку в
-//!      журнал — и автозапуск оставался с `Exec=` на НЕСУЩЕСТВУЮЩИЙ файл.
-//!      Дефолты приложений после этого не применялись никогда, а узнать об
-//!      этом было неоткуда: следующий вход в сеанс молча ничего не делал.
-//!      Здесь запасной путь — САМ работающий бинарь Rexon
-//!      ([`AppDefaultsIo::self_exe`]): он и обрабатывает `--apply-defaults`,
-//!      посредник не нужен. Не нашлось и его — автозапуск НЕ ставится и
-//!      говорит почему (правило #13), а не рапортует успех.
-//!   2. **Пропуск окружения перестал называться созданием файла.** Оригинал
-//!      в `apply_for_current_de` печатал «📝 Создан kde-mimeapps.list» на
-//!      ЛЮБОМ успехе `generate_profile` — включая исход «окружение не
-//!      установлено, пропуск», когда файла не появлялось. Исход теперь
-//!      различим по типу ([`GenerateOutcome`]), и в лог идёт то, что было на
-//!      самом деле.
-//!   3. **Неудачная запись `helpers.rc` больше не проглатывается.** У XFCE
-//!      оригинал писал ошибку записи в отладочный журнал и возвращал логи
-//!      так, будто настройка применилась. Теперь неудача — строка в том же
-//!      логе, который человек видит при входе.
-//!   4. **`~/.local/share/dbus-1/services` уважает `$XDG_DATA_HOME`.**
-//!      В оригинале путь override'а FileManager1 раскрывался помощником,
-//!      который знает обе XDG-ветки, но в самом модуле лежал константой,
-//!      посчитанной на импорте, — то есть до того, как окружение процесса
-//!      могло стать известным. Здесь путь строится от окружения запуска.
-//!   5. **«Открыть содержащую папку» перестало зависеть от того, кто успел
-//!      первым.** Оригинал считал, что дефолты — это mimeapps, и на этом
-//!      останавливался. Но кнопка «показать файл в папке» идёт по имени
-//!      `org.freedesktop.FileManager1` на пользовательской шине, и пока имя
-//!      держит ЖИВОЙ чужой демон, D-Bus не смотрит ни на один `.service` —
-//!      ни вендорный, ни наш override. Пойманный случай (09.09.2026, живая
-//!      машина владельца): `xdg-mime query default inode/directory` →
-//!      `org.kde.dolphin.desktop`, а папки открывал Thunar, поднятый KDE из
-//!      сохранённой сессии (`ksmserverrc`, `program1=Thunar`,
-//!      `restartCommand1=Thunar,…,--daemon`). Маршрут теперь проверяет слот
-//!      при каждом входе и возвращает его назначенному менеджеру
-//!      ([`DeAppSwitcher::ensure_filemanager1`]). Заодно чинится и прежняя
-//!      попытка выгнать владельца: она сравнивала `/proc/<pid>/comm` со
-//!      строчными короткими именами, а у Thunar `comm` — `Thunar`, так что
-//!      на нём не срабатывала никогда.
+//!   1. **Autostart no longer points into the void.** The original, not finding
+//!      `rexon` in `PATH`, wrote the path
+//!      `/usr/local/lib/rexon/rexon_apply_defaults.sh` into autostart and tried to create a
+//!      bash wrapper there. A regular user process cannot write to `/usr/local/lib`:
+//!      `_create_apply_script` caught the error, wrote a line to the
+//!      log — and autostart was left with `Exec=` pointing to a NONEXISTENT file.
+//!      After that the application defaults were never applied, and there was no way
+//!      to find out: the next session login silently did nothing.
+//!      Here the fallback is the running Rexon binary ITSELF
+//!      ([`AppDefaultsIo::self_exe`]): it handles `--apply-defaults` itself,
+//!      no intermediary is needed. If even that is not found, autostart is NOT installed and
+//!      says why (rule #13) instead of reporting success.
+//!   2. **Skipping a desktop is no longer called creating a file.** The original
+//!      in `apply_for_current_de` printed "📝 Created kde-mimeapps.list" on
+//!      ANY success of `generate_profile` — including the outcome "the desktop is not
+//!      installed, skipping", when no file appeared. The outcome is now
+//!      distinguishable by type ([`GenerateOutcome`]), and the log gets what actually
+//!      happened.
+//!   3. **A failed `helpers.rc` write is no longer swallowed.** For XFCE the
+//!      original wrote the write error to the debug log and returned the logs
+//!      as if the setting had been applied. Now a failure is a line in the same
+//!      log the person sees at login.
+//!   4. **`~/.local/share/dbus-1/services` respects `$XDG_DATA_HOME`.**
+//!      In the original, the FileManager1 override path was expanded by a helper
+//!      that knows both XDG branches, but in the module itself it was a constant
+//!      computed at import — that is, before the process environment
+//!      could be known. Here the path is built from the launch environment.
+//!   5. **"Open containing folder" no longer depends on who got there
+//!      first.** The original assumed the defaults are mimeapps and stopped
+//!      there. But the "show file in folder" button goes by the name
+//!      `org.freedesktop.FileManager1` on the user bus, and while the name
+//!      is held by a LIVE foreign daemon, D-Bus does not look at any `.service` —
+//!      neither the vendor one nor our override. A caught case (09.09.2026, the owner's live
+//!      machine): `xdg-mime query default inode/directory` →
+//!      `org.kde.dolphin.desktop`, while folders were opened by Thunar, brought up by KDE from
+//!      a saved session (`ksmserverrc`, `program1=Thunar`,
+//!      `restartCommand1=Thunar,…,--daemon`). The route now checks the slot
+//!      at every login and returns it to the assigned manager
+//!      ([`DeAppSwitcher::ensure_filemanager1`]). This also fixes the old
+//!      attempt to evict the owner: it compared `/proc/<pid>/comm` with
+//!      lowercase short names, while Thunar's `comm` is `Thunar`, so
+//!      it never fired on it.
 //!
-//! Bash-обёртки автозапуска на python3 больше нет нигде: Python-фасад ушёл
-//! в архив (02.10.2026), вместе с ним из ядра снят и её текст
-//! (`apply_script_content`) — см. пункт 1.
+//! The python3 bash autostart wrapper is gone everywhere: the Python facade went
+//! to the archive (02.10.2026), and its text (`apply_script_content`) was removed
+//! from the core along with it — see item 1.
 
 use std::path::Path;
 
@@ -88,24 +88,24 @@ use crate::system_plan;
 use crate::utils::{self, RunOutcome, RunOutput, RunSpec};
 
 // ============================================================================
-// Трейт исполнителя
+// The executor trait
 // ============================================================================
 
-/// Итог `safe_run(argv, capture_output=True)`: `ok` = код возврата 0.
-/// `None` у [`AppDefaultsIo::run`] — команда не запустилась либо не уложилась
-/// в таймаут (тот же безопасный дефолт, что `safe_run` → `None`).
+/// The result of `safe_run(argv, capture_output=True)`: `ok` = return code 0.
+/// `None` from [`AppDefaultsIo::run`] — the command did not start or did not fit
+/// into the timeout (the same safe default as `safe_run` → `None`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunOut {
     pub ok: bool,
     pub stdout: String,
 }
 
-/// Каталог vendor-файлов D-Bus активации: оттуда берётся текст сервиса
-/// FileManager1, который перекрывается пользовательской копией.
+/// The directory of vendor D-Bus activation files: the FileManager1 service text is taken
+/// from there and shadowed by a user copy.
 pub const VENDOR_DBUS_SERVICES: &str = "/usr/share/dbus-1/services";
 
-/// Каталоги, где ищется `.desktop` — порт `_DESKTOP_DIRS` (порядок важен:
-/// пользовательский слой перекрывает системный, flatpak идёт последним).
+/// Directories where `.desktop` is searched — port of `_DESKTOP_DIRS` (order matters:
+/// the user layer shadows the system one, flatpak comes last).
 const DESKTOP_DIRS: &[&str] = &[
     "~/.local/share/applications",
     "/usr/share/applications",
@@ -114,62 +114,62 @@ const DESKTOP_DIRS: &[&str] = &[
     "~/.local/share/flatpak/exports/share/applications",
 ];
 
-/// Побочные действия и наблюдения маршрута — ровно те, что делал Python.
+/// Side actions and observations of the route — exactly the ones Python made.
 ///
-/// Методы берут `&self`, а не `&mut self` (как у соседнего
-/// [`ComplianceIo`]), намеренно: решающий слой [`crate::appdefaults`]
-/// принимает наблюдения замыканиями `&dyn Fn(&str) -> bool`, и с
-/// `&mut self` каждый такой вызов упирался бы в двойное заимствование
-/// исполнителя. Подставным исполнителям это ничего не стоит — счётчики
-/// и журнал они держат в `Cell`/`RefCell`.
+/// The methods take `&self`, not `&mut self` (unlike the neighboring
+/// [`ComplianceIo`]), deliberately: the deciding layer [`crate::appdefaults`]
+/// takes observations as `&dyn Fn(&str) -> bool` closures, and with
+/// `&mut self` each such call would run into a double borrow of the
+/// executor. It costs fake executors nothing — they keep counters
+/// and the log in `Cell`/`RefCell`.
 pub trait AppDefaultsIo {
     /// `os.path.exists`.
     fn exists(&self, path: &str) -> bool;
-    /// `safe_check_command(name)` — есть ли программа (с учётом синонимов).
+    /// `safe_check_command(name)` — whether a program exists (taking synonyms into account).
     fn which(&self, name: &str) -> bool;
-    /// `shutil.which(name)` — путь к программе.
+    /// `shutil.which(name)` — the path to a program.
     fn which_path(&self, name: &str) -> Option<String>;
-    /// Чтение текстового файла; `None` — не прочли (аналог `except OSError`).
+    /// Reading a text file; `None` — could not read (like `except OSError`).
     fn read_text(&self, path: &str) -> Option<String>;
-    /// Запись текстового файла целиком.
+    /// Writing a whole text file.
     fn write_text(&self, path: &str, content: &str) -> Result<(), String>;
     /// `os.makedirs(path, exist_ok=True)`.
     fn makedirs(&self, path: &str) -> Result<(), String>;
-    /// Имена файлов каталога (несуществующий каталог — пусто).
+    /// File names in a directory (a nonexistent directory — empty).
     fn list_dir(&self, dir: &str) -> Vec<String>;
     /// `safe_run(argv, capture_output=True)`.
     fn run(&self, argv: &[String]) -> Option<RunOut>;
-    /// Содержимое `/proc/<pid>/comm` без перевода строки.
+    /// The contents of `/proc/<pid>/comm` without the newline.
     fn proc_comm(&self, pid: i64) -> Option<String>;
-    /// PID процессов, у которых есть ОКНА на экране. `None` — узнать не
-    /// удалось; это НЕ «окон нет», и решение тогда принимается осторожно
-    /// (см. [`crate::appdefaults::fm1_verdict`]).
+    /// PIDs of processes that have WINDOWS on screen. `None` — could not
+    /// find out; this is NOT "no windows", and the decision is then made cautiously
+    /// (see [`crate::appdefaults::fm1_verdict`]).
     fn window_pids(&self) -> Option<Vec<i64>>;
     /// `os.kill(pid, SIGTERM)`.
     fn terminate(&self, pid: i64);
-    /// Путь к работающему бинарю Rexon (`/proc/self/exe`).
+    /// The path to the running Rexon binary (`/proc/self/exe`).
     fn self_exe(&self) -> Option<String>;
-    /// Какой вход продукта сейчас выбран — у живого исполнителя это
-    /// [`crate::installer::launch_entry_live`], то же правило, что у ярлыка.
+    /// Which product entry point is currently selected — for the live executor this is
+    /// [`crate::installer::launch_entry_live`], the same rule as for the shortcut.
     fn launch_entry(&self) -> crate::installer::LaunchEntry;
-    /// Строка автозапуска в конфигах композиторов, которые `.desktop` не
-    /// исполняют (`crate::compositor_autostart`): поставить для записи
-    /// `desktop` и вернуть окончательный текст записи (с `NotShowIn=`) и
-    /// отказ для текущего сеанса. По умолчанию — ничего не трогать
-    /// (подставные исполнители сверок живых конфигов не касаются).
+    /// The autostart line in configs of compositors that do not execute `.desktop`
+    /// (`crate::compositor_autostart`): install it for the record
+    /// `desktop` and return the final record text (with `NotShowIn=`) and
+    /// the refusal for the current session. By default — touch nothing
+    /// (fake executors of the checks do not touch live configs).
     fn login_lines(&self, desktop: &str) -> (String, Option<String>) {
         (desktop.to_string(), None)
     }
 }
 
 // ============================================================================
-// Окружение запуска
+// Launch environment
 // ============================================================================
 
-/// Значения окружения, от которых зависит маршрут. Читаются ОДИН раз на
-/// входе ([`AppDefaultsEnv::from_process`]) и дальше едут значениями: так
-/// весь исполнитель прогоняется на подставном `$XDG_CONFIG_HOME`, не трогая
-/// живой сеанс.
+/// Environment values the route depends on. They are read ONCE at
+/// entry ([`AppDefaultsEnv::from_process`]) and then travel as values: this way
+/// the whole executor runs on a fake `$XDG_CONFIG_HOME` without touching
+/// the live session.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AppDefaultsEnv {
     pub home: String,
@@ -185,7 +185,7 @@ fn env_nonempty(name: &str) -> Option<String> {
 }
 
 impl AppDefaultsEnv {
-    /// Окружение текущего процесса.
+    /// The current process environment.
     pub fn from_process() -> Self {
         AppDefaultsEnv {
             home: std::env::var("HOME").unwrap_or_default(),
@@ -198,31 +198,31 @@ impl AppDefaultsEnv {
     }
 }
 
-/// Склейка пути (`os.path.join` для наших случаев).
+/// Path joining (`os.path.join` for our cases).
 fn join(a: &str, b: &str) -> String {
     format!("{}/{}", a.trim_end_matches('/'), b.trim_start_matches('/'))
 }
 
 // ============================================================================
-// Исход генерации профиля
+// Profile generation outcome
 // ============================================================================
 
-/// Что вышло из `generate_profile` — порт его пары `(ok, message)`, но с
-/// РАЗЛИЧИМЫМ пропуском: оригинал отдавал «пропущено» и «записано» одним и
-/// тем же `True`, и вход в сеанс докладывал о создании файла, которого не
-/// появилось (см. пункт 2 в шапке модуля).
+/// What came out of `generate_profile` — port of its `(ok, message)` pair, but with
+/// a DISTINGUISHABLE skip: the original returned "skipped" and "written" as one and
+/// the same `True`, and session login reported creating a file that never
+/// appeared (see item 2 in the module header).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenerateOutcome {
-    /// Файл записан; поле — полный путь.
+    /// The file was written; the field is the full path.
     Wrote(String),
-    /// Окружение не установлено — файл не нужен.
+    /// The desktop is not installed — no file needed.
     Skipped(String),
-    /// Не вышло: нет ни одного приложения либо ошибка записи.
+    /// Did not work: not a single application or a write error.
     Failed(String),
 }
 
 impl GenerateOutcome {
-    /// Пара `(ok, message)` оригинала — для мест, где различие не нужно.
+    /// The original's `(ok, message)` pair — for places where the distinction is not needed.
     pub fn ok_msg(&self) -> (bool, String) {
         match self {
             GenerateOutcome::Wrote(p) => (true, p.clone()),
@@ -236,15 +236,15 @@ impl GenerateOutcome {
 // DEAppSwitcher
 // ============================================================================
 
-/// Имя записи автозапуска дефолтов в `<config>/autostart`.
+/// Name of the defaults autostart record in `<config>/autostart`.
 pub const AUTOSTART_FILE: &str = "rexon-appdefaults.desktop";
 
-/// Порт класса `DEAppSwitcher` — переключение приложений по умолчанию при
-/// смене окружения.
+/// Port of the `DEAppSwitcher` class — switching default applications when
+/// the desktop changes.
 ///
-/// Каталога `~/.config/rexon` здесь, в отличие от оригинала, никто не
-/// создаёт: конструктор Python делал это на каждом создании объекта, а сам
-/// класс в тот каталог ни разу не писал.
+/// Unlike the original, nobody creates the `~/.config/rexon` directory here:
+/// the Python constructor did it on every object creation, while the
+/// class itself never once wrote into that directory.
 pub struct DeAppSwitcher<'a, IO: AppDefaultsIo + ?Sized> {
     io: &'a IO,
     env: AppDefaultsEnv,
@@ -257,10 +257,10 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         DeAppSwitcher { io, env, cfg_dir }
     }
 
-    /// Завести пользовательские копии записей автозапуска, которым место
-    /// только в своём столе ([`ad::CONFINED_AUTOSTARTS`]). Своё у человека
-    /// (копия с тем же именем) не трогается; пакет, поставленный человеком
-    /// сам, — тоже (проверка `pacman -Qqd`: стоит ли он как зависимость).
+    /// Create user copies of autostart records that belong
+    /// only in their own desktop ([`ad::CONFINED_AUTOSTARTS`]). The person's own
+    /// (a copy with the same name) is not touched; neither is a package the person installed
+    /// themselves (the `pacman -Qqd` check: whether it is installed as a dependency).
     pub fn confine_desktop_autostarts(&self, logs: &mut Vec<String>) {
         const SYSTEM_DIR: &str = "/etc/xdg/autostart";
         let user_dir = join(&self.cfg_dir, "autostart");
@@ -296,7 +296,7 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         }
     }
 
-    /// Каталог пользовательских конфигов сеанса (`$XDG_CONFIG_HOME`).
+    /// The directory of the session's user configs (`$XDG_CONFIG_HOME`).
     pub fn config_dir(&self) -> &str {
         &self.cfg_dir
     }
@@ -310,16 +310,16 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         )
     }
 
-    /// `_desktop_exists` — есть ли `.desktop` хоть в одном из каталогов.
+    /// `_desktop_exists` — whether the `.desktop` is in at least one of the directories.
     pub fn desktop_exists(&self, desktop_id: &str) -> bool {
         DESKTOP_DIRS
             .iter()
             .any(|d| self.io.exists(&join(&self.expand(d), desktop_id)))
     }
 
-    // ── 1. Генерация per-DE mimeapps.list ────────────────────────────────
+    // ── 1. Generating the per-DE mimeapps.list ──────────────────────────
 
-    /// Порт `generate_profile`: ядро строит исход, здесь — запись.
+    /// Port of `generate_profile`: the core builds the outcome, here — the write.
     pub fn generate_profile(&self, de_id: &str) -> GenerateOutcome {
         let outcome = ad::generate_profile(de_id, &|p| self.desktop_exists(p));
         match outcome {
@@ -337,7 +337,7 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         }
     }
 
-    /// Порт `generate_all_profiles`: `{de_id: сообщение}` + строки лога.
+    /// Port of `generate_all_profiles`: `{de_id: message}` + log lines.
     pub fn generate_all_profiles(
         &self,
         installed_des: Option<&[String]>,
@@ -357,14 +357,14 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         results
     }
 
-    // ── 2. DE-специфичные настройки (терминал и т.д.) ────────────────────
+    // ── 2. DE-specific settings (terminal and so on) ─────────────────────
 
-    /// Список терминалов своего стола (`<стол>-xdg-terminals.list`): он
-    /// перебивает общий у `xdg-terminal-exec`, поэтому стол с родным
-    /// терминалом получает его здесь (решение —
-    /// [`ad::native_terminals_list_plan`]). Выбор, сделанный человеком для
-    /// этого стола в Rexon, не трогается и возвращается: он главнее родного
-    /// терминала и во всех остальных местах стола.
+    /// The desktop's own terminal list (`<desktop>-xdg-terminals.list`): it
+    /// overrides the shared one for `xdg-terminal-exec`, so a desktop with a native
+    /// terminal gets it here (the decision is
+    /// [`ad::native_terminals_list_plan`]). The choice the person made for
+    /// this desktop in Rexon is not touched and is returned: it takes priority over the native
+    /// terminal in all the desktop's other places too.
     pub fn ensure_terminals_list(
         &self,
         de_id: &str,
@@ -402,23 +402,23 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         }
     }
 
-    /// Порт `apply_de_specific`: ядро строит план (argv + текст
-    /// `helpers.rc` + логи), здесь — запуск команд и запись.
+    /// Port of `apply_de_specific`: the core builds the plan (argv + the
+    /// `helpers.rc` text + logs), here — running commands and writing.
     pub fn apply_de_specific(&self, de_id: &str) -> Vec<String> {
         self.apply_de_specific_with_terminal(de_id, None)
     }
 
-    /// [`Self::apply_de_specific`] с терминалом, который человек выбрал для
-    /// этого стола (см. [`ad::apply_de_specific_with_terminal`]).
+    /// [`Self::apply_de_specific`] with the terminal the person chose for
+    /// this desktop (see [`ad::apply_de_specific_with_terminal`]).
     pub fn apply_de_specific_with_terminal(
         &self,
         de_id: &str,
         chosen_terminal: Option<&str>,
     ) -> Vec<String> {
-        // XFCE читается ТЕМ ЖЕ раскрытием пути, каким ниже пишется: иначе
-        // при нестандартном `$XDG_CONFIG_HOME` к старому файлу из `~/.config`
-        // подмешивались бы новые строки, а результат ложился в другой
-        // каталог — настройка молча не доезжала.
+        // XFCE is read with THE SAME path expansion it is written with below: otherwise
+        // with a non-standard `$XDG_CONFIG_HOME` new lines would be mixed into the old file
+        // from `~/.config`, and the result would land in another
+        // directory — the setting would silently not arrive.
         let helpers_path = self.expand("~/.config/xfce4/helpers.rc");
         let xfce_existing = if de_id == "xfce" && self.io.exists(&helpers_path) {
             self.io.read_text(&helpers_path)
@@ -445,16 +445,16 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
                 .makedirs(&dir)
                 .and_then(|()| self.io.write_text(&helpers_path, text));
             if let Err(e) = written {
-                // Оригинал прятал это в отладочный журнал и возвращал логи
-                // так, будто настройка применилась (правило #13).
+                // The original hid this in the debug log and returned the logs
+                // as if the setting had been applied (rule #13).
                 logs.push(trf("⚠️ XFCE: couldn't write %1: %2", &[&helpers_path, &e]));
             }
         }
-        // Правки чужих конфигов по месту (LXQt `lxqt-qtxdg.conf`): те же
-        // шаги общей таблицы терминала, что у вкладки «Настройки».
+        // In-place edits of foreign configs (LXQt `lxqt-qtxdg.conf`): the same
+        // steps of the shared terminal table as in the "Settings" tab.
         for step in &plan.file_steps {
-            // Свой помощник exo (XFCE, выбранный терминал без помощника
-            // системы): каталог и файл — тем же раскрытием путей.
+            // Our own exo helper (XFCE, a chosen terminal without a system
+            // helper): the directory and the file — with the same path expansion.
             match step {
                 crate::defaults::TermStep::MakeDirs { path } => {
                     let path = self.expand(path);
@@ -490,9 +490,9 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         logs
     }
 
-    // ── 3. Полное применение для текущего окружения ──────────────────────
+    // ── 3. Full application for the current desktop ──────────────────────
 
-    /// Порт `apply_for_current_de` — то, что зовётся при входе в сеанс.
+    /// Port of `apply_for_current_de` — what is called at session login.
     pub fn apply_for_current_de(&self) -> (bool, Vec<String>) {
         let Some(de_id) = ad::detect_current_de(
             &self.env.xdg_current_desktop,
@@ -505,9 +505,9 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         // TRANSLATORS: %1 is a desktop environment id (kde, gnome…).
         let mut logs = vec![trf("🖥️ Current desktop: %1", &[&de_id])];
 
-        // 1. Убедиться, что per-DE mimeapps.list существует. Имя есть у
-        //    ЛЮБОГО окружения (незнакомое даёт `<id>-mimeapps.list`), поэтому
-        //    ветки «имени нет» здесь, в отличие от оригинала, не бывает.
+        // 1. Make sure the per-DE mimeapps.list exists. EVERY desktop has a name
+        //    (an unknown one gives `<id>-mimeapps.list`), so unlike the original
+        //    there is never a "no name" branch here.
         let filename = ad::resolve_mimeapps_filename(&de_id);
         let filepath = join(&self.cfg_dir, &filename);
         if self.io.exists(&filepath) {
@@ -520,35 +520,35 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
             }
         }
 
-        // 2. Список терминалов своего стола: его `xdg-terminal-exec` читает
-        //    раньше общего (см. `ad::native_terminals_list_plan`).
+        // 2. The desktop's own terminal list: `xdg-terminal-exec` reads it
+        //    before the shared one (see `ad::native_terminals_list_plan`).
         let desktop = self.env.xdg_current_desktop.clone();
         let chosen = self.ensure_terminals_list(&de_id, &desktop, &mut logs);
 
-        // 3. DE-специфичные настройки — с выбором человека, если он есть.
+        // 3. DE-specific settings — with the person's choice, if there is one.
         logs.extend(self.apply_de_specific_with_terminal(&de_id, chosen.as_deref()));
 
-        // 4. Слот «Показать в папке». Идёт ПОСЛЕ mimeapps намеренно: вопрос
-        //    решается не там, и порядок делает это видимым в журнале —
-        //    сначала «дефолты записаны», потом «а имя на шине держит вот кто».
+        // 4. The "Show in folder" slot. It comes AFTER mimeapps deliberately: the question
+        //    is not decided there, and the order makes this visible in the log —
+        //    first "defaults written", then "and the name on the bus is held by this one".
         logs.extend(self.ensure_filemanager1(&de_id));
 
-        // 5. Чужой автозапуск других столов — только в своём столе
-        //    (`ad::CONFINED_AUTOSTARTS`): иначе, например, fcitx5 от Deepin
-        //    перехватывает раскладки в MATE.
+        // 5. Other desktops' foreign autostart — only in their own desktop
+        //    (`ad::CONFINED_AUTOSTARTS`): otherwise, for example, fcitx5 from Deepin
+        //    hijacks keyboard layouts in MATE.
         self.confine_desktop_autostarts(&mut logs);
 
-        // 6. Своя запись автозапуска из прежних версий — без фазы
-        //    gnome-session (`ad::heal_autostart_text`).
+        // 6. Our own autostart record from earlier versions — without the
+        //    gnome-session phase (`ad::heal_autostart_text`).
         self.heal_autostart();
 
         (true, logs)
     }
 
-    /// Снять из уже лежащей записи автозапуска дефолтов строку фазы,
-    /// которую gnome-session 49+ не исполняет. Записи нет — ничего не
-    /// создаётся: выключенный человеком автозапуск остаётся выключенным.
-    /// Молча: строка в журнале входа ничего человеку не скажет.
+    /// Remove from the existing defaults autostart record the phase line
+    /// that gnome-session 49+ does not execute. If there is no record, nothing is
+    /// created: autostart turned off by the person stays off.
+    /// Silently: a line in the login log would tell the person nothing.
     pub fn heal_autostart(&self) -> bool {
         let path = join(&join(&self.cfg_dir, "autostart"), AUTOSTART_FILE);
         let Some(text) = self.io.read_text(&path) else {
@@ -560,10 +560,10 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         }
     }
 
-    // ── 4. При переключении окружения через Rexon ────────────────────────
+    // ── 4. When switching the desktop through Rexon ──────────────────────
 
-    /// Порт `on_switch_de`: профиль целевого окружения + его настройки +
-    /// автозапуск.
+    /// Port of `on_switch_de`: the target desktop's profile + its settings +
+    /// autostart.
     pub fn on_switch_de(&self, target_de: &str, logs: &mut Vec<String>) -> bool {
         logs.push(trf("🔄 Switching default apps to %1…", &[&target_de]));
 
@@ -571,16 +571,16 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         let status = if ok { "✅" } else { "⚠️" };
         logs.push(format!("  {status} {msg}"));
 
-        // Список терминалов целевого стола — по идентификатору Rexon
-        // (`ad::terminals_list_filename` знает и его).
+        // The target desktop's terminal list — by the Rexon identifier
+        // (`ad::terminals_list_filename` knows it too).
         let mut term_logs = Vec::new();
         let chosen = self.ensure_terminals_list(target_de, target_de, &mut term_logs);
         term_logs.extend(self.apply_de_specific_with_terminal(target_de, chosen.as_deref()));
         for line in term_logs {
             logs.push(format!("  {line}"));
         }
-        // Слот «Показать в папке» — часть тех же дефолтов (правило #12: одно
-        // место решает, а не «на входе чиним, при переключении нет»).
+        // The "Show in folder" slot is part of the same defaults (rule #12: one
+        // place decides, not "fixed at login, but not on switching").
         for line in self.ensure_filemanager1(target_de) {
             logs.push(format!("  {line}"));
         }
@@ -590,14 +590,14 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         ok
     }
 
-    // ── 5. Автозапуск ────────────────────────────────────────────────────
+    // ── 5. Autostart ─────────────────────────────────────────────────────
 
-    /// Порт `install_autostart`: `.desktop` в автозапуске сеанса.
+    /// Port of `install_autostart`: a `.desktop` in the session autostart.
     ///
-    /// Чем запускать — решает вход продукта ([`ad::autostart_exec_for`]):
-    /// Rust-вход — бинарь окна; Python-вход (откат) — `rexon` из `PATH`,
-    /// иначе САМ работающий бинарь. Пути в `/usr/local/lib` здесь нет
-    /// вовсе — см. пункт 1 в шапке модуля.
+    /// What to launch with is decided by the product entry point ([`ad::autostart_exec_for`]):
+    /// the Rust entry — the window binary; the Python entry (rollback) — `rexon` from `PATH`,
+    /// otherwise the running binary ITSELF. There is no `/usr/local/lib` path here
+    /// at all — see item 1 in the module header.
     pub fn install_autostart(&self) -> (bool, Vec<String>) {
         let mut notes = Vec::new();
         let entry = self.io.launch_entry();
@@ -626,7 +626,7 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
             .and_then(|()| self.io.write_text(&autostart_path, &content));
         match written {
             Ok(()) => match refusal {
-                // Запись легла, но в этом сеансе её не исполнят.
+                // The record was written, but it will not be executed in this session.
                 Some(msg) => {
                     notes.push(format!("⚠️ {msg}"));
                     (false, notes)
@@ -643,35 +643,35 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         }
     }
 
-    // ── 6. Информация ────────────────────────────────────────────────────
+    // ── 6. Information ───────────────────────────────────────────────────
 
-    /// Порт `get_de_apps_info` — `[(категория, .desktop | None)]`.
+    /// Port of `get_de_apps_info` — `[(category, .desktop | None)]`.
     pub fn de_apps_info(&self, de_id: &str) -> Vec<(String, Option<String>)> {
         ad::de_apps_info(de_id, &|p| self.desktop_exists(p))
     }
 
-    /// Порт `get_installed_des`.
+    /// Port of `get_installed_des`.
     pub fn installed_des(&self) -> Vec<String> {
         ad::installed_des(&|p| self.desktop_exists(p))
     }
 
-    // ── 7. Файловый менеджер по умолчанию ────────────────────────────────
+    // ── 7. Default file manager ──────────────────────────────────────────
 
-    /// Каталог пользовательских файлов D-Bus активации.
+    /// The directory of user D-Bus activation files.
     fn user_dbus_services(&self) -> String {
         self.expand("~/.local/share/dbus-1/services")
     }
 
-    /// Порт `_override_filemanager1`: перекрыть D-Bus активацию
-    /// `org.freedesktop.FileManager1` пользовательской копией.
+    /// Port of `_override_filemanager1`: shadow the D-Bus activation of
+    /// `org.freedesktop.FileManager1` with a user copy.
     ///
-    /// «Показать в папке» идёт НЕ через mimeapps, а через это имя на шине;
-    /// системным файлом на Arch владеет пакет nautilus, и без override'а
-    /// GNOME Files перехватывает такие вызовы в любом окружении.
+    /// "Show in folder" goes NOT through mimeapps but through this name on the bus;
+    /// on Arch the system file is owned by the nautilus package, and without an override
+    /// GNOME Files intercepts such calls on any desktop.
     ///
-    /// ⚠️ Одного override'а МАЛО: он решает, кого ЗАПУСТИТЬ по имени, и не
-    /// действует вовсе, пока имя держит живой процесс. Второй половиной
-    /// занимается [`Self::reclaim_filemanager1`].
+    /// ⚠️ An override alone is NOT ENOUGH: it decides whom to START by name, and has no
+    /// effect at all while a live process holds the name. The second half
+    /// is handled by [`Self::reclaim_filemanager1`].
     pub fn override_filemanager1(&self, binary: &str, notes: &mut Vec<String>) -> bool {
         let mut vendor_txt: Option<String> = None;
         for name in self.io.list_dir(VENDOR_DBUS_SERVICES) {
@@ -709,13 +709,13 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         true
     }
 
-    /// Кто СЕЙЧАС держит имя `org.freedesktop.FileManager1` — и есть ли у
-    /// него окна.
+    /// Who holds the name `org.freedesktop.FileManager1` RIGHT NOW — and whether it
+    /// has windows.
     ///
-    /// Один вопрос шине (`busctl status`) отдаёт сразу всё нужное: `PID`,
-    /// `Comm`, `Exe` и `CommandLine`. Прежний разбор брал оттуда ОДИН PID и
-    /// добирал имя из `/proc/<pid>/comm` — чтения остались запасным ходом на
-    /// случай скупого вывода старой шины.
+    /// One question to the bus (`busctl status`) returns everything needed at once: `PID`,
+    /// `Comm`, `Exe` and `CommandLine`. The old parse took ONE PID from there and
+    /// fetched the name from `/proc/<pid>/comm` — those reads remain as a fallback for
+    /// the terse output of an old bus.
     fn fm1_owner(&self) -> Option<ad::Fm1Owner> {
         let res = self.io.run(&ad::busctl_status_cmd(ad::FM1_NAME))?;
         if !res.ok {
@@ -729,12 +729,12 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         Some(ad::Fm1Owner { facts, has_windows })
     }
 
-    /// Убрать менеджер из сохранённой сессии KDE, чтобы при следующем входе
-    /// он не поднялся демоном снова и не отобрал имя обратно.
+    /// Remove the manager from the saved KDE session so that at the next login
+    /// it does not come up as a daemon again and take the name back.
     ///
-    /// Файла нет (не KDE) — молча ничего не делаем: решение о содержимом
-    /// принимает ядро ([`ad::ksmserver_forget`]), здесь только чтение и
-    /// запись.
+    /// No file (not KDE) — silently do nothing: the decision about the contents
+    /// is made by the core ([`ad::ksmserver_forget`]), here only reading and
+    /// writing.
     fn forget_in_kde_session(&self, short: &str, notes: &mut Vec<String>) {
         let path = join(&self.cfg_dir, ad::KSMSERVERRC_NAME);
         let Some(text) = self.io.read_text(&path) else {
@@ -752,7 +752,7 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         }
     }
 
-    /// Сказать вслух, кому досталось имя после лечения.
+    /// Say out loud who got the name after the fix.
     fn confirm_filemanager1(&self, desired_short: &str, notes: &mut Vec<String>) {
         match ad::fm1_verdict(self.fm1_owner().as_ref(), desired_short) {
             ad::Fm1Verdict::Free => notes.push(format!(
@@ -777,13 +777,13 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         }
     }
 
-    /// Вернуть слот `org.freedesktop.FileManager1` назначенному менеджеру.
+    /// Return the `org.freedesktop.FileManager1` slot to the assigned manager.
     ///
-    /// ⛔ Гасится ТОЛЬКО чужой демон и ТОЛЬКО тот процесс, чей PID назвала
-    /// шина: ни поиска по имени, ни `pkill`. Владелец с окнами не трогается
-    /// вовсе — у человека там открытая работа.
+    /// ⛔ ONLY a foreign daemon is killed, and ONLY the process whose PID the
+    /// bus named: no searching by name, no `pkill`. An owner with windows is not touched
+    /// at all — the person has open work there.
     ///
-    /// Возвращает `true`, если слот пришлось отбирать.
+    /// Returns `true` if the slot had to be taken back.
     pub fn reclaim_filemanager1(
         &self,
         desired_short: &str,
@@ -854,9 +854,9 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         }
     }
 
-    /// Короткое имя файлового менеджера, который Rexon считает умолчанием
-    /// для `inode/directory`: сперва то, что реально записано в mime, иначе
-    /// родной менеджер окружения.
+    /// Short name of the file manager Rexon considers the default
+    /// for `inode/directory`: first what is actually written in mime, otherwise
+    /// the desktop's native manager.
     pub fn desired_file_manager(&self, de_id: &str) -> String {
         if let Some(res) = self.io.run(&ad::xdg_mime_query_cmd()) {
             if res.ok {
@@ -869,12 +869,12 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         ad::default_file_manager_for_de(Some(de_id), &|c| self.io.which(c))
     }
 
-    /// Полная проверка «Показать в папке» для окружения: наш override
-    /// D-Bus-активации на месте, и имя на шине принадлежит тому менеджеру,
-    /// который назначен умолчанием.
+    /// The full "Show in folder" check for a desktop: our D-Bus activation
+    /// override is in place, and the name on the bus belongs to the manager
+    /// assigned as the default.
     ///
-    /// Зовётся при каждом входе в сеанс: верных `mimeapps.list` для этой
-    /// кнопки НЕ ДОСТАТОЧНО (почему — см. раздел про слот FileManager1 в
+    /// Called at every session login: correct `mimeapps.list` is NOT ENOUGH for this
+    /// button (why — see the section about the FileManager1 slot in
     /// [`crate::appdefaults`]).
     pub fn ensure_filemanager1(&self, de_id: &str) -> Vec<String> {
         let mut notes = Vec::new();
@@ -884,8 +884,8 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         notes
     }
 
-    /// Порт `set_file_manager_default`: `fm_id` — короткое имя из настроек
-    /// («dolphin», «nemo») либо готовый `.desktop`-id.
+    /// Port of `set_file_manager_default`: `fm_id` — a short name from the settings
+    /// ("dolphin", "nemo") or a ready `.desktop` id.
     pub fn set_file_manager_default(
         &self,
         fm_id: &str,
@@ -909,7 +909,7 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         self.override_filemanager1(&short, &mut notes);
         self.reclaim_filemanager1(&short, &mut notes);
 
-        // Проверка: что реально записалось.
+        // Check: what was actually written.
         let chk = self.io.run(&ad::xdg_mime_query_cmd());
         let applied = chk
             .map(|r| r.ok && r.stdout.contains(&desktop))
@@ -923,12 +923,12 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
 }
 
 // ============================================================================
-// Маршрут `--apply-defaults` целиком
+// The whole `--apply-defaults` route
 // ============================================================================
 
-/// Что маршруту нужно знать о машине для проверки комплектности. Добывается
-/// снаружи ([`ComplianceEnv::from_live_machine`]), чтобы сверки гоняли
-/// маршрут на подставных значениях.
+/// What the route needs to know about the machine for the completeness check. Obtained
+/// from outside ([`ComplianceEnv::from_live_machine`]), so that checks can run
+/// the route on fake values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComplianceEnv {
     pub pkg_family: PkgFamily,
@@ -946,10 +946,10 @@ impl ComplianceEnv {
         )
     }
 
-    /// Та же диагностика на поданных пробах: `is_exec` выбирает раскладку
-    /// помощников (пакет `/usr/lib` или ручная установка `/usr/local/lib`),
-    /// `exists` отвечает про файлы. Сверки гоняют ОБЕ раскладки, не трогая
-    /// живую машину.
+    /// The same diagnostics on supplied probes: `is_exec` picks the helper
+    /// layout (a `/usr/lib` package or a manual `/usr/local/lib` install),
+    /// `exists` answers about files. The checks run BOTH layouts without touching
+    /// the live machine.
     pub fn probe(
         pkg_family: PkgFamily,
         has_pkexec: bool,
@@ -976,17 +976,17 @@ impl ComplianceEnv {
     }
 }
 
-/// Развёрнут ли привилегированный helper и его polkit-политика — порт
-/// `system._helper_available` (один вопрос на все helper'ы Rexon).
+/// Whether the privileged helper and its polkit policy are deployed — port of
+/// `system._helper_available` (one question for all Rexon helpers).
 ///
-/// ⚠️ Помощник спрашивается ПО ИМЕНИ, а путь выбирает проба
-/// ([`system_plan::pick_helper_path`]): раскладок две — пакет дистрибутива
-/// кладёт помощников в `/usr/lib`, ручная установка в `/usr/local/lib`.
-/// Прибитая константа `/usr/local/lib` заставляла диагностику маршрута
-/// `--apply-defaults` говорить «помощников нет» на машине с пакетом, где
-/// они есть. Политика у обеих раскладок одна — `/usr/share/polkit-1`.
+/// ⚠️ The helper is asked for BY NAME, and the path is chosen by a probe
+/// ([`system_plan::pick_helper_path`]): there are two layouts — a distribution package
+/// puts helpers in `/usr/lib`, a manual install in `/usr/local/lib`.
+/// A hard-coded `/usr/local/lib` constant made the diagnostics of the
+/// `--apply-defaults` route say "no helpers" on a machine with the package, where
+/// they exist. The policy is the same for both layouts — `/usr/share/polkit-1`.
 ///
-/// Пробы приходят снаружи: решение остаётся проверяемым на обеих раскладках.
+/// Probes come from outside: the decision stays checkable on both layouts.
 fn helper_available(
     name: &str,
     policy_path: &str,
@@ -997,16 +997,16 @@ fn helper_available(
     has_pkexec && exists(&system_plan::pick_helper_path(name, is_exec)) && exists(policy_path)
 }
 
-/// Маршрут `--apply-defaults` целиком — порт ветки `rexon/app.py:625`.
+/// The whole `--apply-defaults` route — port of the `rexon/app.py:625` branch.
 ///
-/// Порядок шагов тот же, что у оригинала, и он важен: сначала применяются
-/// дефолты (их результат и решает код возврата), потом идёт ДИАГНОСТИКА
-/// комплектности. Проверка зовётся `allow_privileged = false`: при входе в
-/// систему Rexon не спрашивает пароль и не ходит в сеть — недостающее
-/// доустанавливается человеком по кнопке в настройках.
+/// The step order is the same as in the original, and it matters: first the
+/// defaults are applied (their result decides the return code), then comes the completeness
+/// DIAGNOSTICS. The check is called with `allow_privileged = false`: at
+/// login Rexon does not ask for a password and does not go online — what is missing
+/// is installed by the person with a button in the settings.
 ///
-/// `out` — приёмник строк (в продукте `println!`): строки идут ровно в том
-/// порядке, в каком их печатал оригинал.
+/// `out` — the line sink (in the product `println!`): lines go in exactly the
+/// order the original printed them.
 pub fn apply_defaults_route<IO, C>(
     io: &IO,
     env: &AppDefaultsEnv,
@@ -1031,7 +1031,7 @@ where
             &env.home,
             env.xdg_config_home.as_deref(),
             compliance_env.pkg_family,
-            false, // вход в систему: только диагностика
+            false, // login: diagnostics only
             compliance_env.pkg_helper_available,
             compliance_env.stage_helper_available,
         );
@@ -1048,7 +1048,7 @@ where
     }
 }
 
-/// Тот же маршрут на ЖИВОЙ машине: исполнители настоящие, окружение — своё.
+/// The same route on the LIVE machine: real executors, its own environment.
 pub fn apply_defaults_route_live(out: &mut dyn FnMut(&str)) -> i32 {
     let io = LiveAppDefaultsIo;
     let env = AppDefaultsEnv::from_process();
@@ -1058,15 +1058,15 @@ pub fn apply_defaults_route_live(out: &mut dyn FnMut(&str)) -> i32 {
 }
 
 // ============================================================================
-// Живые исполнители
+// Live executors
 // ============================================================================
 
 fn path_env() -> Option<String> {
     std::env::var("PATH").ok()
 }
 
-/// `safe_run(argv, capture_output=True)` на Rust: единая точка запуска ядра.
-/// `None` — команда не запустилась либо не уложилась в таймаут.
+/// `safe_run(argv, capture_output=True)` in Rust: the core's single launch point.
+/// `None` — the command did not start or did not fit into the timeout.
 fn live_run(argv: &[String], timeout_secs: Option<u64>) -> Option<(bool, String)> {
     if argv.is_empty() {
         return None;
@@ -1087,23 +1087,23 @@ fn live_run(argv: &[String], timeout_secs: Option<u64>) -> Option<(bool, String)
     }
 }
 
-/// Текст файла с заменой негодных байт; `None` — не прочли.
+/// File text with invalid bytes replaced; `None` — could not read.
 fn read_text_lossy(path: &str) -> Option<String> {
     std::fs::read(path)
         .ok()
         .map(|raw| String::from_utf8_lossy(&raw).into_owned())
 }
 
-/// Запись файла целиком общей дверью ядра, с созданием каталога.
+/// Writing a whole file through the core's shared door, creating the directory.
 ///
-/// Каталог создаётся здесь, а не у вызывающего: оригинал в
-/// `generate_profile` писал в `~/.config` предполагая, что каталог есть, и
-/// на свежем `$XDG_CONFIG_HOME` (наш же случай на стенде) запись падала.
+/// The directory is created here, not by the caller: the original in
+/// `generate_profile` wrote to `~/.config` assuming the directory exists, and
+/// on a fresh `$XDG_CONFIG_HOME` (our own case on the test bench) the write failed.
 ///
-/// Сюда уходят `mimeapps.list`, `kdeglobals` и строка автозапуска — файлы
-/// покупателя, а не наши. Половина `mimeapps.list` — это ссылки, картинки и
-/// документы, которые перестали открываться; милости «битое читается как
-/// пустое», как у эталона, тут нет.
+/// `mimeapps.list`, `kdeglobals` and the autostart line go here — the buyer's
+/// files, not ours. Half of a `mimeapps.list` means links, pictures and
+/// documents that stopped opening; the reference's mercy of "broken reads as
+/// empty" does not apply here.
 fn write_text_live(path: &str, content: &str) -> Result<(), String> {
     if let Some(dir) = Path::new(path).parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -1111,7 +1111,7 @@ fn write_text_live(path: &str, content: &str) -> Result<(), String> {
     crate::utils::atomic_write_str_err(path, content)
 }
 
-/// Настоящий исполнитель маршрута: файловая система, подпроцессы, сигналы.
+/// The real route executor: the file system, subprocesses, signals.
 pub struct LiveAppDefaultsIo;
 
 impl AppDefaultsIo for LiveAppDefaultsIo {
@@ -1120,9 +1120,9 @@ impl AppDefaultsIo for LiveAppDefaultsIo {
     }
 
     fn which(&self, name: &str) -> bool {
-        // Порт `safe_check_command`: у имён с синонимами (`kwriteconfig6` →
-        // `kwriteconfig5`) ответ даётся по ВСЕМ вариантам, иначе проверка и
-        // последующий запуск расходятся.
+        // Port of `safe_check_command`: for names with synonyms (`kwriteconfig6` →
+        // `kwriteconfig5`) the answer covers ALL variants, otherwise the check and
+        // the subsequent launch diverge.
         let path = path_env();
         if utils::tool_has_variants(name) {
             return utils::tool_argv(name, &[], path.as_deref()).is_some();
@@ -1147,9 +1147,9 @@ impl AppDefaultsIo for LiveAppDefaultsIo {
     }
 
     fn list_dir(&self, dir: &str) -> Vec<String> {
-        // Имена сортируются: `glob` в Python отдаёт порядок файловой
-        // системы, и «первый подходящий vendor-файл» иначе зависел бы от
-        // машины (тот же довод, что у соседних исполнителей).
+        // Names are sorted: Python's `glob` returns the file system's
+        // order, and "the first matching vendor file" would otherwise depend on the
+        // machine (the same argument as in the neighboring executors).
         let Ok(entries) = std::fs::read_dir(dir) else {
             return Vec::new();
         };
@@ -1171,7 +1171,7 @@ impl AppDefaultsIo for LiveAppDefaultsIo {
 
     fn terminate(&self, pid: i64) {
         if pid <= 0 {
-            return; // 0 и отрицательные — это ГРУППА процессов, не наш случай
+            return; // 0 and negative ones are a process GROUP, not our case
         }
         unsafe {
             libc::kill(pid as libc::pid_t, libc::SIGTERM);
@@ -1179,11 +1179,11 @@ impl AppDefaultsIo for LiveAppDefaultsIo {
     }
 
     fn window_pids(&self) -> Option<Vec<i64>> {
-        // Спросить список окон ВМЕСТЕ с PID умеет только X11 (`wmctrl -lp`
-        // читает `_NET_CLIENT_LIST` + `_NET_WM_PID`). У Wayland такого
-        // протокола нет вовсе, и врать «окон нет» нельзя — это привело бы к
-        // гашению менеджера с открытой у человека работой. Отвечаем честное
-        // «не знаю», решение примут по командной строке владельца.
+        // Only X11 can list windows TOGETHER with PIDs (`wmctrl -lp`
+        // reads `_NET_CLIENT_LIST` + `_NET_WM_PID`). Wayland has no such
+        // protocol at all, and lying "no windows" is not allowed — it would lead to
+        // killing a manager with the person's work open. We answer an honest
+        // "don't know", and the decision is made by the owner's command line.
         if env_nonempty("WAYLAND_DISPLAY").is_some() || env_nonempty("DISPLAY").is_none() {
             return None;
         }
@@ -1192,7 +1192,7 @@ impl AppDefaultsIo for LiveAppDefaultsIo {
         if !ok {
             return None;
         }
-        // Столбцы wmctrl -lp: id, рабочий стол, PID, машина, заголовок.
+        // wmctrl -lp columns: id, desktop, PID, host, title.
         Some(
             stdout
                 .lines()
@@ -1217,15 +1217,15 @@ impl AppDefaultsIo for LiveAppDefaultsIo {
     }
 }
 
-/// Настоящий исполнитель проверки комплектности — порт
-/// `_LiveComplianceIo` из `rexon/compliance.py`.
+/// The real executor of the completeness check — port of
+/// `_LiveComplianceIo` from `rexon/compliance.py`.
 ///
-/// Каждый метод — ровно один побочный вызов оригинала; на ошибке даётся тот
-/// же безопасный дефолт (`safe_run` → `None`, `OSError` → `None`/`False`).
-/// Порядок вызовов задаёт ядро ([`comp::Compliance`]).
+/// Each method is exactly one side call of the original; on error the same
+/// safe default is returned (`safe_run` → `None`, `OSError` → `None`/`False`).
+/// The call order is set by the core ([`comp::Compliance`]).
 pub struct LiveComplianceIo;
 
-/// Уникальное имя во временном каталоге (`tempfile` без крейта tempfile).
+/// A unique name in the temporary directory (`tempfile` without the tempfile crate).
 fn tmp_name(prefix: &str, suffix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);

@@ -1,26 +1,31 @@
-// Action — QML-синглтон общих действий вкладки Wallpaper Engine.
+// Action — the QML singleton of shared actions of the Wallpaper Engine
+// tab.
 //
-// Порт
-// `ui/src/action.cpp` waywallen (MIT, (c) hypengw; атрибуция в NOTICE).
+// A port of waywallen's `ui/src/action.cpp` (MIT, (c) hypengw; attribution
+// in NOTICE).
 //
-// ⚠️ Две починки по сравнению с нашим Python-мостом — эталон ОРИГИНАЛ:
+// Warning: two fixes compared with our Python bridge — the reference is
+// the ORIGINAL:
 //
-//   1. `toast` у оригинала — СИГНАЛ с дефолтными аргументами, его слушает
-//      вендорный `Window.qml:86` (`function onToast(text, duration, flags,
-//      action)`). Python-мост переименовал сигнал в `toasted`, а `toast`
-//      сделал слотом, и обработчик вендора не срабатывал НИ РАЗУ: тосты
-//      видел только наш шелл. Здесь `toast` вернулся сигналом с теми же
-//      дефолтами — он живёт в moc'аемой базе `cpp/rexon_we_action_base.h`
-//      (почему именно так — разобрано в шапке того файла).
-//   2. `copyToClipboard` в Python-мосте НЕ БЫЛО ВОВСЕ, а вендорный
-//      `Global.qml:44` зовёт его на кнопке «Скопировать» в тосте ошибки:
-//      нажатие падало в TypeError и текст в буфер не попадал.
+//   1. In the original `toast` is a SIGNAL with default arguments, listened
+//      to by the vendored `Window.qml:86` (`function onToast(text,
+//      duration, flags, action)`). The Python bridge renamed the signal to
+//      `toasted` and made `toast` a slot, and the vendor's handler NEVER
+//      fired: only our shell saw the toasts. Here `toast` is a signal again
+//      with the same defaults — it lives in the moc-processed base
+//      `cpp/rexon_we_action_base.h` (why exactly so is analysed in that
+//      file's header).
+//   2. The Python bridge had NO `copyToClipboard` AT ALL, while the vendored
+//      `Global.qml:44` calls it on the "Copy" button of an error toast: the
+//      press failed with a TypeError and the text did not reach the
+//      clipboard.
 //
-// Третья, мелкая: `enterWallpaperSelect` у оригинала шлёт
-// `wallpaperSelectStorageChanged` ТОЛЬКО при смене хранилища, наш слал
-// всегда (лишний пересчёт привязок на каждом входе в режим выбора).
+// A third, minor one: in the original `enterWallpaperSelect` emits
+// `wallpaperSelectStorageChanged` ONLY when the storage changes, ours
+// emitted it always (an extra binding recomputation on every entry into
+// selection mode).
 
-/// Мост cxx-qt: синглтон `Action`.
+/// cxx-qt bridge: the `Action` singleton.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -28,38 +33,39 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
 
         include!("rexon_we_action_base.h");
-        /// База с сигналом `toast` и его дефолтными аргументами.
+        /// Base with the `toast` signal and its default arguments.
         ///
-        /// ⚠️ Без `#[qobject]` — на каждый `#[qobject]`-тип в `extern "C++"`
-        /// cxx-qt печатает пару шимов приведения по имени ТИПА, и второй
-        /// такой мост в крейте дал бы `duplicate symbol` на линковке (та же
-        /// грабля, что с базой моделей).
+        /// Warning: without `#[qobject]` — for every `#[qobject]` type in
+        /// `extern "C++"` cxx-qt emits a pair of cast shims keyed by the TYPE name,
+        /// and a second such bridge in the crate would give a `duplicate symbol` at
+        /// link time (the same trap as with the model base).
         type RexonWeActionBase;
     }
 
     unsafe extern "C++" {
-        // QObject приходится объявить руками: cxx-qt печатает объявление сам
-        // только для QObject'ов без базы, а у Action база своя (см. выше).
+        // The QObject has to be declared by hand: cxx-qt emits the declaration by
+        // itself only for QObjects without a base, and Action has its own base
+        // (see above).
         #[namespace = ""]
         type QObject = cxx_qt::QObject;
 
         include!("rexon_we_singletons.h");
 
-        /// Запомнить хранилище выбора под QPointer'ом.
+        /// Remember the selection storage under a QPointer.
         ///
-        /// Не поле структуры: у оригинала здесь `QPointer<QObject>`, и это
-        /// не украшение — хранилище живёт в QML-странице и умирает вместе с
-        /// ней, а синглтон переживает страницу. Голый указатель после этого
-        /// стал бы висячим, и первое же чтение свойства из QML уронило бы
-        /// вкладку.
+        /// Not a struct field: in the original this is a `QPointer<QObject>`, and
+        /// not for decoration — the storage lives in a QML page and dies together
+        /// with it, while the singleton outlives the page. A bare pointer would
+        /// then dangle, and the very first property read from QML would crash the
+        /// tab.
         ///
         /// # Safety
-        /// `storage` — либо nullptr, либо живой QObject.
+        /// `storage` is either nullptr or a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_we_action_set_storage(storage: *mut QObject);
         fn rexon_we_action_storage() -> *mut QObject;
 
-        /// Текст в буфер обмена (QGuiApplication::clipboard()).
+        /// Text to the clipboard (QGuiApplication::clipboard()).
         fn rexon_we_copy_to_clipboard(text: &QString);
     }
 
@@ -89,14 +95,14 @@ pub mod qobject {
         #[cxx_name = "wallpaperSelectStorage"]
         fn wallpaper_select_storage(self: &Action) -> *mut QObject;
 
-        /// Войти в режим выбора обоей с этим хранилищем.
+        /// Enter wallpaper selection mode with this storage.
         #[qinvokable]
         #[cxx_name = "enterWallpaperSelect"]
         unsafe fn enter_wallpaper_select(self: Pin<&mut Action>, storage: *mut QObject);
     }
 
     extern "RustQt" {
-        /// Скопировать текст в буфер обмена (кнопка тоста ошибки).
+        /// Copy text to the clipboard (the error toast button).
         #[qinvokable]
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: Pin<&mut Action>, text: &QString);
@@ -106,8 +112,9 @@ pub mod qobject {
 use core::pin::Pin;
 use cxx_qt_lib::QString;
 
-/// Своего состояния у синглтона нет: единственное поле оригинала —
-/// `QPointer` на хранилище выбора, а QPointer живёт в шиме (см. шапку).
+/// The singleton has no state of its own: the original's only field is a
+/// `QPointer` to the selection storage, and the QPointer lives in the shim
+/// (see the header).
 #[derive(Default)]
 pub struct ActionRust;
 
@@ -117,15 +124,16 @@ impl qobject::Action {
     }
 
     /// # Safety
-    /// `storage` — либо nullptr, либо живой QObject: шим кладёт его под
-    /// `QPointer`, а тот читает мета-объект по этому адресу.
+    /// `storage` is either nullptr or a live QObject: the shim puts it under a
+    /// `QPointer`, which reads the metaobject at that address.
     pub unsafe fn enter_wallpaper_select(mut self: Pin<&mut Self>, storage: *mut qobject::QObject) {
-        // Сигнал смены — только при РЕАЛЬНОЙ смене (ветка оригинала).
+        // The change signal — only on a REAL change (the original's branch).
         if qobject::rexon_we_action_storage() != storage {
             unsafe { qobject::rexon_we_action_set_storage(storage) };
             self.as_mut().wallpaper_select_storage_changed();
         }
-        // unsafe: аргумент — сырой указатель; сам вызов ничего не разыменовывает.
+        // unsafe: the argument is a raw pointer; the call itself dereferences
+        // nothing.
         unsafe { self.as_mut().wallpaper_select_entered(storage) };
     }
 

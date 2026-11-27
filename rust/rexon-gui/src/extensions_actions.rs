@@ -1,52 +1,60 @@
-// ExtensionsActions — объект побочных действий вкладки «Расширения» на Rust.
+// ExtensionsActions — the side-actions object of the "Extensions" tab in
+// Rust.
 //
-// ЗАЧЕМ. Каждая QML-страница продукта ждёт свойством `actions` объект, который
-// умеет то, что меняет мир: поставить .rxn, снять расширение, включить его,
-// открыть каталог. Когда писался этот объект, такой был ОДИН на Rust — у
-// «Сравнения DE», и даже он останавливался на границе исполнения (сейчас его
-// место занял `DesktopsActions`). У «Расширений» объект жил на PySide6
-// (`rexon/qt_extensions/window.py`, класс `ExtensionsActions`, 259 строк вместе
-// с хозяином окна), и пока он там, страница получала `actions` от Python — то
-// есть уйти с PySide6 вкладка не могла в принципе.
+// WHY. Every QML page of the product expects, as the `actions` property, an
+// object that can do what changes the world: install an .rxn, remove an
+// extension, enable it, open a directory. When this object was written,
+// there was only ONE such object in Rust — for "DE comparison", and even
+// that one stopped at the execution boundary (its place is now taken by
+// `DesktopsActions`). For "Extensions" the object lived in PySide6
+// (`rexon/qt_extensions/window.py`, the `ExtensionsActions` class, 259 lines
+// together with the window host), and as long as it was there, the page got
+// `actions` from Python — that is, the tab could not leave PySide6 in
+// principle.
 //
-// Здесь тот же договор — те же СЕМЬ методов и те же два сигнала — исполняет
-// Rust. Приём тот же, что у объектов действий других вкладок: объект ничего не решает
-// сам, все решения берёт ядро.
+// Here the same contract — the same SEVEN methods and the same two
+// signals — is executed by Rust. The approach is the same as for the
+// action objects of other tabs: the object decides nothing by itself, all
+// decisions come from the core.
 //
-//   * ЧТО делать при установке/удалении оформления решает планировщик
-//     `rexon_core::ext_manager` (он был готов давно);
-//   * ДЕЛАЕТ это исполнитель `rexon_core::ext_exec` — дописан вместе с этим
-//     объектом, потому что настоящей файловой системы у планировщика не было
-//     вовсе (вход у него — снимок `FsSnap`);
-//   * ЧТО сказать человеку — тексты ядра (`rexon_core::qt_extensions`), те же
-//     самые, что показывает виджетная вкладка.
+//   * WHAT to do when installing/removing a look is decided by the planner
+//     `rexon_core::ext_manager` (it was ready long ago);
+//   * it is DONE by the executor `rexon_core::ext_exec` — written together
+//     with this object, because the planner had no real file system at all
+//     (its input is an `FsSnap` snapshot);
+//   * WHAT to tell the user — the core's texts (`rexon_core::qt_extensions`),
+//     the very same ones the widget tab shows.
 //
-// ⚠️ ФОНОВОСТЬ СОХРАНЕНА, И ЭТО НЕ УКРАШЕНИЕ. У виджетной вкладки установка и
-// удаление шли в `QThread`, и окно во время распаковки .rxn не подвисало.
-// Синхронный вызов, как у «Сравнения DE», был бы здесь потерей: распаковка
-// большой темы занимает секунды, а `pkexec` ждёт пароля сколько угодно.
-// Поэтому `installPath`/`uninstall` только БЕРУТСЯ за дело и сразу возвращают
-// управление, а итог приходит сигналом `installFinished`/`uninstallFinished` —
-// его страница уже слушает блоком `Connections`.
+// Warning: RUNNING IN THE BACKGROUND IS PRESERVED, AND THIS IS NOT
+// DECORATION. In the widget tab installation and removal ran in a
+// `QThread`, and the window did not hang while an .rxn was being unpacked.
+// A synchronous call, as in "DE comparison", would be a loss here:
+// unpacking a big theme takes seconds, and `pkexec` waits for a password as
+// long as it likes. So `installPath`/`uninstall` only START the job and
+// return control at once, and the result arrives with the
+// `installFinished`/`uninstallFinished` signal — the page already listens
+// to it with a `Connections` block.
 //
-// ⚠️ ПЕРЕКЛЮЧЕНИЕ — НАОБОРОТ, СИНХРОННОЕ: это запись одного файла состояния, и
-// ответ нужен странице немедленно. Возвращается строка «on» / «off» /
-// «!текст ошибки», как и у Python: пары «получилось ли + новое состояние»
-// одним значением не выразить, а два вызова подряд разошлись бы с диском.
+// Warning: TOGGLING IS THE OPPOSITE, SYNCHRONOUS: it is writing one state
+// file, and the page needs the answer immediately. The returned string is
+// "on" / "off" / "!error text", as in Python: a pair "did it work + the new
+// state" cannot be expressed as one value, and two calls in a row could
+// disagree with the disk.
 //
-// ⚠️ ДИАЛОГИ. `installDialog` и `confirm` на Python были однострочниками из
-// QtWidgets (`QFileDialog`, `QMessageBox`), а в QML-процессе виджетов нет
-// вовсе. Разбор решения и его цена — в шапке `cpp/rexon_ext_dialogs.h`;
-// коротко: диалог поднимается штатным QML-типом `QtQuick.Dialogs`, а
-// синхронность договора с ней мирит вложенный цикл событий, как у
+// Warning: DIALOGS. `installDialog` and `confirm` were one-liners from
+// QtWidgets in Python (`QFileDialog`, `QMessageBox`), while a QML process
+// has no widgets at all. The analysis of the solution and its cost are in
+// the header of `cpp/rexon_ext_dialogs.h`; in short: the dialog is brought
+// up with the standard QML type `QtQuick.Dialogs`, and the synchronous
+// contract is reconciled with it by a nested event loop, as with
 // `QDialog::exec()`.
 
-/// Мост cxx-qt объекта действий.
+/// cxx-qt bridge of the actions object.
 ///
-/// Тип объявлен `#[qml_element]`, поэтому страница может завести его себе сама
-/// (`ExtensionsActions { }`), а хозяин окна — подставить свой. Регистрации в
-/// `main_window.rs` для этого не требуется: там лежит карта разделов, а не
-/// список побочных объектов.
+/// The type is declared `#[qml_element]`, so the page can create it for
+/// itself (`ExtensionsActions { }`), and the window host can substitute its
+/// own. No registration in `main_window.rs` is needed for this: that file
+/// holds the section map, not a list of side objects.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -54,14 +62,14 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
     }
 
-    // Диалоги — см. шапку `cpp/rexon_ext_dialogs.h`.
+    // Dialogs — see the header of `cpp/rexon_ext_dialogs.h`.
     unsafe extern "C++" {
         include!("rexon_ext_dialogs.h");
 
         #[rust_name = "pick_file"]
         fn rexon_ext_pick_file(title: &QString, filter: &QString, folder: &QString) -> QString;
 
-        /// Окно сохранения файла (экспорт группы шрифтов в «Настройках»).
+        /// File save window (exporting a font group in "Settings").
         #[rust_name = "save_file"]
         fn rexon_ext_save_file(title: &QString, filter: &QString, path: &QString) -> QString;
 
@@ -71,9 +79,9 @@ pub mod qobject {
         #[rust_name = "open_folder_url"]
         fn rexon_ext_open_folder(path: &QString) -> bool;
 
-        /// Окно выбора шрифта. Живёт здесь же, потому что шим диалогов в
-        /// проекте один: им пользуются и «Настройки» (`settings_actions.rs`),
-        /// как уже пользуются `pick_file` для импорта тем Windows.
+        /// Font chooser window. It lives here too, because there is one dialog shim
+        /// in the project: "Settings" (`settings_actions.rs`) use it as well, just
+        /// as they already use `pick_file` for importing Windows themes.
         #[rust_name = "pick_font"]
         fn rexon_ext_pick_font(
             title: &QString,
@@ -92,73 +100,76 @@ pub mod qobject {
     }
 
     unsafe extern "RustQt" {
-        /// Установка закончилась: `ok` — получилось ли, `message` — имя
-        /// поставленного расширения либо текст ошибки.
+        /// Installation has finished: `ok` — did it work, `message` — the name of
+        /// the installed extension or the error text.
         #[qsignal]
         #[cxx_name = "installFinished"]
         fn install_finished(self: Pin<&mut ExtensionsActions>, ok: bool, message: QString);
 
-        /// Удаление закончилось: `ok` — получилось ли, `message` —
-        /// идентификатор снятого расширения либо текст ошибки.
+        /// Removal has finished: `ok` — did it work, `message` — the identifier of
+        /// the removed extension or the error text.
         #[qsignal]
         #[cxx_name = "uninstallFinished"]
         fn uninstall_finished(self: Pin<&mut ExtensionsActions>, ok: bool, message: QString);
 
-        /// «Применить» закончилось: `message` — готовая строка итога.
+        /// "Apply" has finished: `message` is the ready result line.
         #[qsignal]
         #[cxx_name = "applyFinished"]
         fn apply_finished(self: Pin<&mut ExtensionsActions>, message: QString);
     }
 
     extern "RustQt" {
-        /// Идёт ли уже установка или удаление. Один ответ на оба вопроса: у
-        /// виджетной вкладки были две проверки, но обе вели к одному —
-        /// «дождись, потом жми».
+        /// Whether an installation or removal is already running. One answer to
+        /// both questions: the widget tab had two checks, but both led to the same
+        /// thing — "wait, then press".
         #[qinvokable]
         fn busy(self: &ExtensionsActions) -> bool;
 
-        /// Окно выбора .rxn. Пустая строка — человек передумал.
+        /// Picker window for an .rxn. An empty string means the user changed their
+        /// mind.
         #[qinvokable]
         #[cxx_name = "installDialog"]
         fn install_dialog(self: &ExtensionsActions) -> QString;
 
-        /// Взяться за установку файла в фоне. `false` — не взялись.
+        /// Start installing the file in the background. `false` means it was not
+        /// started.
         #[qinvokable]
         #[cxx_name = "installPath"]
         fn install_path(self: Pin<&mut ExtensionsActions>, path: &QString) -> bool;
 
-        /// Вопрос «да/нет» перед необратимым действием.
+        /// A "yes/no" question before an irreversible action.
         #[qinvokable]
         fn confirm(self: &ExtensionsActions, title: &QString, text: &QString) -> bool;
 
-        /// Взяться за удаление расширения в фоне. `false` — не взялись.
+        /// Start removing the extension in the background. `false` means it was not
+        /// started.
         #[qinvokable]
         fn uninstall(self: Pin<&mut ExtensionsActions>, ext_id: &QString) -> bool;
 
-        /// Переключить расширение. «on» / «off» / «!ошибка».
+        /// Toggle the extension. "on" / "off" / "!error".
         #[qinvokable]
         fn toggle(self: Pin<&mut ExtensionsActions>, ext_id: &QString) -> QString;
 
-        /// Открыть каталог расширения в файловом менеджере.
+        /// Open the extension's directory in the file manager.
         #[qinvokable]
         #[cxx_name = "openFolder"]
         fn open_folder(self: &ExtensionsActions, path: &QString) -> bool;
 
-        /// Подпись кнопки «Применить» — пустая, если это расширение применить
-        /// отсюда нельзя (не набор обоев либо в наборе нет файлов).
+        /// Label of the "Apply" button — empty if this extension cannot be applied
+        /// from here (not a wallpaper set, or the set has no files).
         #[qinvokable]
         #[cxx_name = "applyText"]
         fn apply_text(self: &ExtensionsActions, ext_id: &QString) -> QString;
 
-        /// Поставить обои набора на рабочий стол (первые из набора; остальные
-        /// выбираются в «Настройки → Библиотека обоев»). Возвращает строку
-        /// «применяю…»; итог придёт сигналом `applyFinished`.
+        /// Put the set's wallpaper on the desktop (the first one of the set; the
+        /// others are chosen in "Settings → Wallpaper library"). Returns the line
+        /// "applying…"; the result will arrive with the `applyFinished` signal.
         #[qinvokable]
         fn apply(self: Pin<&mut ExtensionsActions>, ext_id: &QString) -> QString;
     }
 
-    // Объявление трейта обязано быть В МОСТЕ: cxx-qt печатает по нему алиас
-    // типа потока, без которого фоновая работа не доедет до сигнала.
+    // The trait declaration must be IN THE BRIDGE: cxx-qt emits the thread type
+    // alias from it, without which background work would not reach the signal.
     impl cxx_qt::Threading for ExtensionsActions {}
 }
 
@@ -172,23 +183,23 @@ use cxx_qt_lib::QString;
 use rexon_core::ext_exec;
 use rexon_core::qt_extensions as qe;
 
-/// Rust-состояние объекта действий: два флажка занятости, по одному на вид
-/// работы. Не один общий: установка и удаление идут разными потоками, и общий
-/// флажок гасился бы первым же завершившимся.
+/// Rust state of the actions object: two busy flags, one per kind of work.
+/// Not one shared flag: installation and removal run in different threads,
+/// and a shared flag would be cleared by whichever finishes first.
 #[derive(Default)]
 pub struct ExtensionsActionsRust {
     install_busy: Arc<AtomicBool>,
     uninstall_busy: Arc<AtomicBool>,
 }
 
-/// Цвета действующего скина и подписи кнопок для окна вопроса — в порядке,
-/// которого ждёт шим (`rexon_ext_confirm`): фон, карточка, текст, акцент,
-/// рамка, «Да», «Нет»; разделитель U+001F.
+/// Colours of the active skin and the button labels for the question
+/// window — in the order the shim expects (`rexon_ext_confirm`): background,
+/// card, text, accent, border, "Yes", "No"; separator U+001F.
 pub fn confirm_skin() -> String {
     confirm_skin_labeled(&rexon_core::i18n::tr("Yes"), &rexon_core::i18n::tr("No"))
 }
 
-/// [`confirm_skin`] со своими подписями кнопок.
+/// [`confirm_skin`] with custom button labels.
 fn confirm_skin_labeled(yes: &str, no: &str) -> String {
     let colors = rexon_core::ui_base::active_skin_colors();
     let tone = |key: &str| colors.get(key).cloned().unwrap_or_default();
@@ -204,15 +215,15 @@ fn confirm_skin_labeled(yes: &str, no: &str) -> String {
     .join("\u{1f}")
 }
 
-/// Вопрос «да/нет» окном в скине Rexon. `false` — «Нет», закрытое окно и
-/// окно, которое не поднялось.
+/// A "yes/no" question in a Rexon-skinned window. `false` means "No", a
+/// closed window, or a window that did not come up.
 pub fn ask_confirm(title: &QString, text: &QString) -> bool {
     qobject::ask_confirm_skinned(title, text, &QString::from(&confirm_skin()))
 }
 
-/// [`ask_confirm`] со своими подписями кнопок («Скачать и включить» /
-/// «Оставить мои»). `false` — вторая кнопка, закрытое окно и окно, которое
-/// не поднялось.
+/// [`ask_confirm`] with custom button labels ("Download and enable" / "Keep
+/// mine"). `false` means the second button, a closed window, or a window
+/// that did not come up.
 pub fn ask_confirm_labeled(title: &str, text: &str, yes: &str, no: &str) -> bool {
     qobject::ask_confirm_skinned(&QString::from(title), &QString::from(text), &QString::from(&confirm_skin_labeled(yes, no)))
 }
@@ -224,9 +235,9 @@ impl qobject::ExtensionsActions {
     }
 
     fn install_dialog(&self) -> QString {
-        // Заголовок и фильтр приходят из ядра: странице они уже известны
-        // (`fileDialogTitle` / `fileDialogFilter`), и второй их копии здесь
-        // быть не должно.
+        // The title and the filter come from the core: the page already knows them
+        // (`fileDialogTitle` / `fileDialogFilter`), and there must be no second
+        // copy of them here.
         let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
         qobject::pick_file(
             &QString::from(&qe::file_dialog_title()),
@@ -252,9 +263,9 @@ impl qobject::ExtensionsActions {
         let path = path.to_string();
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
-            // Итог установки — имя расширения И предупреждения о пропущенных
-            // шагах (нет конвертера, нечем измерить обои). Предупреждение,
-            // не дошедшее до строки состояния, равно его отсутствию.
+            // The installation result — the extension name AND warnings about skipped
+            // steps (no converter, nothing to measure the wallpaper with). A warning
+            // that did not reach the status line is as good as none.
             let outcome = ext_exec::install_from_file(&path)
                 .map(|done| qe::installed_with_notes(&done.name, &done.notes));
             flag.store(false, Ordering::SeqCst);
@@ -299,8 +310,8 @@ impl qobject::ExtensionsActions {
         let applying = qs::library_applying_status(&basename, &wallpaper_engine::format_label(&first.format));
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
-            // Та же дверь ядра, что у «Библиотеки обоев» в «Настройках»: один
-            // исполнитель на процесс, надзор за живыми обоями — его забота.
+            // The same core door as for the "Wallpaper library" in "Settings": one
+            // executor per process, and supervising live wallpapers is its business.
             let status = wallpaper_exec::run_in_slot(
                 &wallpaper_exec::live_slot(),
                 move |exec: &mut wallpaper_exec::WallpaperExec<wallpaper_exec::LiveSys>| {
@@ -324,16 +335,16 @@ impl qobject::ExtensionsActions {
         match ext_exec::toggle(&id) {
             Ok(true) => QString::from("on"),
             Ok(false) => QString::from("off"),
-            // Приставка «!» — часть договора со страницей: по ней она отличает
-            // ошибку от нового состояния.
+            // The "!" prefix is part of the contract with the page: by it the page
+            // tells an error from a new state.
             Err(text) => QString::from(&format!("!{text}")),
         }
     }
 }
 
-/// Обои набора `ext_id` из каталога расширений — те же записи, что
-/// показывает «Библиотека обоев» в «Настройках». Пусто — расширение не набор
-/// обоев либо файлов в нём нет.
+/// Wallpapers of set `ext_id` from the extension directory — the same
+/// entries the "Wallpaper library" in "Settings" shows. Empty means the
+/// extension is not a wallpaper set or it has no files.
 fn pack_wallpapers(ext_id: &str) -> Vec<rexon_core::wallpaper_engine::LibraryItem> {
     let dir = qe::extensions_dir();
     rexon_core::wallpaper_engine::list_installed_wallpapers(&dir.to_string_lossy())
@@ -342,11 +353,11 @@ fn pack_wallpapers(ext_id: &str) -> Vec<rexon_core::wallpaper_engine::LibraryIte
         .collect()
 }
 
-/// Доставить итог фоновой работы в поток интерфейса.
+/// Deliver the result of background work to the interface thread.
 ///
-/// Ни `unwrap()`, ни предварительной проверки «жив ли объект»: между проверкой
-/// и постановкой страница успевает закрыться, и это не ошибка — просто отчёт
-/// показывать уже некому.
+/// Neither `unwrap()` nor a preceding "is the object alive" check: between
+/// the check and the queueing the page may close, and that is not an error —
+/// there is simply nobody to show the report to any more.
 fn report(
     handle: cxx_qt::CxxQtThread<qobject::ExtensionsActions>,
     outcome: Result<String, String>,
@@ -366,8 +377,8 @@ fn report(
     });
     if let Err(e) = queued {
         if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
-            // Молчать нельзя: итог установки пропал, и вкладка осталась бы со
-            // строкой «Устанавливаю…» навсегда.
+            // Staying silent is not allowed: the installation result was lost, and the
+            // tab would be left with the "Installing…" line forever.
             rexon_core::log_warn!("extensions", "итог действия «Расширений» не доставлен: {e:?}");
         }
     }
@@ -377,9 +388,9 @@ fn report(
 mod tests {
     use super::*;
 
-    /// Договор со страницей: ответ переключения — «on», «off» либо текст с
-    /// приставкой «!». Страница разбирает его именно так
-    /// (`answer.substring(1)`), и третьей формы у ответа быть не может.
+    /// Contract with the page: the toggle answer is "on", "off" or a text with
+    /// the "!" prefix. The page parses it exactly so (`answer.substring(1)`), and
+    /// there can be no third form of the answer.
     #[test]
     fn toggle_answer_of_unknown_extension_is_marked_as_error() {
         let answer = match ext_exec::toggle("rexon-нет-такого-расширения") {

@@ -1,29 +1,31 @@
-//! Порт `rexon/qt_appearance/gtk_sanitizer.py` — санитайзер GTK/KDE-конфигов.
+//! Port of `rexon/qt_appearance/gtk_sanitizer.py` — the GTK/KDE config sanitizer.
 //!
-//! Зачем модуль вообще есть: после применения Plasma Global Theme в
-//! `gtk-{3,4}.0/settings.ini` и `kdeglobals` остаются ссылки на темы, которых
-//! в системе нет. GTK4 4.22 на таких ссылках уходит в рекурсию резолва и
-//! падает SIGSEGV — вместе с Firefox и любым GTK4-приложением. Санитайзер
-//! ищет битые ссылки и подменяет их безопасным дефолтом.
+//! Why the module exists at all: after applying a Plasma Global Theme,
+//! `gtk-{3,4}.0/settings.ini` and `kdeglobals` keep references to themes that do
+//! not exist on the system. GTK4 4.22 goes into resolution recursion on such
+//! references and crashes with SIGSEGV — along with Firefox and any GTK4
+//! application. The sanitizer finds broken references and replaces them with a
+//! safe default.
 //!
-//! Здесь — ЧИСТАЯ логика: разбор ini-текста, правила «тема существует /
-//! курсорная тема безопасна», выбор дефолта, формирование НОВОГО текста
-//! `settings.ini`, план правок `kdeglobals`/`kcminputrc` и тексты журнала.
-//! Наблюдения файловой системы приходят через трейт [`GtkFs`] (ленивый: ровно
-//! те же обращения к ФС, что делал оригинал), а сами записи на диск и запуск
-//! `kwriteconfig6` остаются исполнителю — ядро ничего не пишет.
+//! This module holds PURE logic: parsing ini text, the rules "the theme exists /
+//! the cursor theme is safe", choosing the default, building the NEW text of
+//! `settings.ini`, the plan of edits to `kdeglobals`/`kcminputrc` and the log
+//! texts. File-system observations come through the [`GtkFs`] trait (lazy:
+//! exactly the same file-system accesses the original made), while the actual
+//! disk writes and running `kwriteconfig6` stay with the executor — the core
+//! writes nothing.
 //!
-//! ⚠️ ЭТОТ путь КАНОНИЧЕН: в нём починены три дефекта оригинала (каждый
-//! помечен `Починка:` по месту) —
-//!   1. пути `~/.local/share/{icons,sounds,themes,color-schemes}` строились
-//!      от `Path.home()`, минуя `XDG_DATA_HOME`;
-//!   2. строка журнала называлась просто `settings.ini` — правка gtk-3.0 и
-//!      gtk-4.0 выглядела одинаково;
-//!   3. в `kdeglobals` пустой дефолт писался как значение (в ветке GTK такая
-//!      защита была).
+//! Warning: THIS path IS CANONICAL: three defects of the original are fixed in
+//! it (each marked `Fix:` in place) —
+//!   1. the paths `~/.local/share/{icons,sounds,themes,color-schemes}` were
+//!      built from `Path.home()`, bypassing `XDG_DATA_HOME`;
+//!   2. the log line was named just `settings.ini` — an edit to gtk-3.0 and to
+//!      gtk-4.0 looked the same;
+//!   3. in `kdeglobals` an empty default was written as a value (the GTK branch
+//!      had such protection).
 //!
-//! Сверка с живым Python — `rust/rexon-core/tests/gtk_sanitizer_parity.rs`
-//! (на РЕАЛЬНЫХ конфигах и каталогах тем этой машины, только чтение) и
+//! Parity with live Python — `rust/rexon-core/tests/gtk_sanitizer_parity.rs`
+//! (on REAL configs and theme directories of this machine, read-only) and
 //! `rust/rexon-py/tests/gtk_sanitizer_roundtrip.py`.
 
 use std::collections::HashMap;
@@ -32,16 +34,16 @@ use crate::i18n::{tr, trf};
 use crate::installed_scan::FsSnapshot;
 
 // ============================================================================
-// Наблюдения файловой системы
+// File-system observations
 // ============================================================================
 
-/// Три операции ФС, которых хватает санитайзеру. `&mut self` — чтобы живой
-/// исполнитель мог запомнить свою первую ошибку и поднять её после (трейт
-/// синхронный и без `Result`, как у `WaywallenIo`).
+/// The three file-system operations the sanitizer needs. `&mut self` — so that
+/// the live executor can remember its first error and raise it afterwards (the
+/// trait is synchronous and without `Result`, like `WaywallenIo`).
 pub trait GtkFs {
     fn is_dir(&mut self, path: &str) -> bool;
     fn is_file(&mut self, path: &str) -> bool;
-    /// `None` — файла нет либо чтение не удалось (аналог `except OSError`).
+    /// `None` — no file or reading failed (the analogue of `except OSError`).
     fn read_text(&mut self, path: &str) -> Option<String>;
 }
 
@@ -58,18 +60,18 @@ impl GtkFs for FsSnapshot {
 }
 
 // ============================================================================
-// Таблицы дефолтов и путей
+// Tables of defaults and paths
 // ============================================================================
 
-/// Типы тем в порядке проверки — порт ключей `SAFE_DEFAULTS`.
+/// Theme types in checking order — port of the `SAFE_DEFAULTS` keys.
 pub const THEME_TYPES: &[&str] = &["icon-theme", "cursor-theme", "gtk-theme", "sound-theme"];
 
-/// Небезопасные курсорные темы. ЕДИНЫЙ список на весь проект — реэкспорт
-/// [`crate::themes::UNSAFE_CURSOR_THEMES`], чтобы pre-flight применения темы
-/// и санитайзер не могли разойтись.
+/// Unsafe cursor themes. A SINGLE list for the whole project — a re-export of
+/// [`crate::themes::UNSAFE_CURSOR_THEMES`], so that the theme-apply pre-flight
+/// and the sanitizer cannot diverge.
 pub use crate::themes::UNSAFE_CURSOR_THEMES;
 
-/// Порт `SAFE_DEFAULTS` — крайний случай, когда ни один fallback не найден.
+/// Port of `SAFE_DEFAULTS` — the last resort when no fallback is found.
 pub fn safe_default(theme_type: &str) -> &'static str {
     match theme_type {
         "icon-theme" => "breeze",
@@ -80,7 +82,7 @@ pub fn safe_default(theme_type: &str) -> &'static str {
     }
 }
 
-/// Порт `DEFAULT_FALLBACKS` — кандидаты в порядке предпочтения.
+/// Port of `DEFAULT_FALLBACKS` — candidates in order of preference.
 pub fn default_fallbacks(theme_type: &str) -> &'static [&'static str] {
     match theme_type {
         "icon-theme" => &["breeze", "Adwaita", "hicolor"],
@@ -91,22 +93,24 @@ pub fn default_fallbacks(theme_type: &str) -> &'static [&'static str] {
     }
 }
 
-/// Порт `THEME_DIRS` — где искать тему данного типа, в порядке приоритета.
+/// Port of `THEME_DIRS` — where to look for a theme of the given type, in order
+/// of priority.
 ///
-/// `data_home` — корень пользовательских данных (`$XDG_DATA_HOME` либо
-/// `~/.local/share`). ⚠️ Починка: оригинал строил эти пути от `Path.home()`
-/// литералом, минуя XDG. При нестандартном `XDG_DATA_HOME` (Flatpak,
-/// Steam-runtime, кастомный профиль) санитайзер не находил темы, которые
-/// РЕАЛЬНО стоят у пользователя, объявлял рабочую ссылку битой и подменял её
-/// дефолтом — то есть сам ломал оформление, вместо того чтобы его починить.
-/// `~/.icons` и `~/.themes` — не XDG-каталоги, они остаются от `home`.
+/// `data_home` is the root of user data (`$XDG_DATA_HOME` or `~/.local/share`).
+/// Warning — fix: the original built these paths literally from `Path.home()`,
+/// bypassing XDG. With a non-standard `XDG_DATA_HOME` (Flatpak, the Steam
+/// runtime, a custom profile) the sanitizer did not find themes the user REALLY
+/// has installed, declared a working reference broken and replaced it with a
+/// default — i.e. it broke the appearance itself instead of fixing it.
+/// `~/.icons` and `~/.themes` are not XDG directories, they stay relative to
+/// `home`.
 pub fn theme_dirs(theme_type: &str, home: &str, data_home: &str) -> Vec<String> {
     let home = home.trim_end_matches('/');
     let data = data_home.trim_end_matches('/');
     match theme_type {
-        // `~/.icons` GTK читает и для иконок, не только для курсоров: без
-        // него набор, лежащий там, санитайзер объявлял несуществующим и
-        // подменял по умолчанию (16.10.2026).
+        // GTK reads `~/.icons` for icons too, not only for cursors: without it the
+        // sanitizer declared a set lying there non-existent and replaced it with the
+        // default (16.10.2026).
         "icon-theme" => vec![
             format!("{home}/.icons"),
             format!("{data}/icons"),
@@ -127,9 +131,9 @@ pub fn theme_dirs(theme_type: &str, home: &str, data_home: &str) -> Vec<String> 
     }
 }
 
-/// Каталоги, в которых ищется `cursors/` родителя из `Inherits=` — порт
-/// пары из `_is_cursor_theme_chain_safe` (та же починка XDG, что в
-/// [`theme_dirs`]).
+/// Directories in which the `cursors/` of a parent from `Inherits=` is looked
+/// for — port of the pair from `_is_cursor_theme_chain_safe` (the same XDG fix
+/// as in [`theme_dirs`]).
 pub fn cursor_parent_dirs(data_home: &str) -> Vec<String> {
     vec![
         "/usr/share/icons".to_string(),
@@ -138,18 +142,20 @@ pub fn cursor_parent_dirs(data_home: &str) -> Vec<String> {
 }
 
 // ============================================================================
-// Существование и безопасность темы
+// Theme existence and safety
 // ============================================================================
 
-/// Порт `_is_cursor_theme_chain_safe`: не уведёт ли `Inherits=` курсорной
-/// темы GTK4 в рекурсию. Безопасна, если есть `cursor.theme`; либо нет
-/// `index.theme`; либо `index.theme` не читается; либо нет `Inherits=`; либо
-/// хоть один не-`hicolor` родитель имеет свой `cursors/`.
+/// Port of `_is_cursor_theme_chain_safe`: whether the `Inherits=` of a cursor
+/// theme will lead GTK4 into recursion. It is safe if there is a
+/// `cursor.theme`; or there is no `index.theme`; or `index.theme` cannot be read;
+/// or there is no `Inherits=`; or at least one non-`hicolor` parent has its own
+/// `cursors/`.
 ///
-/// То же правило уже портировано как [`crate::themes::is_cursor_theme_chain_safe`]
-/// (pre-flight применения курсора, поверх `FsSnapshot`). Разница только в
-/// абстракции ФС; согласие двух реализаций проверяется в
-/// `gtk_sanitizer_parity.rs`, чтобы правила не разъехались.
+/// The same rule is already ported as
+/// [`crate::themes::is_cursor_theme_chain_safe`] (the cursor-apply pre-flight,
+/// on top of `FsSnapshot`). The only difference is the file-system abstraction;
+/// the agreement of the two implementations is checked in
+/// `gtk_sanitizer_parity.rs`, so that the rules do not drift apart.
 pub fn is_cursor_theme_chain_safe<F: GtkFs + ?Sized>(
     fs: &mut F,
     theme_dir: &str,
@@ -160,10 +166,10 @@ pub fn is_cursor_theme_chain_safe<F: GtkFs + ?Sized>(
     }
     let idx = format!("{theme_dir}/index.theme");
     if !fs.is_file(&idx) {
-        return true; // самодостаточная, без наследования
+        return true; // self-contained, no inheritance
     }
     let Some(content) = fs.read_text(&idx) else {
-        return true; // не прочли — считаем безопасной (как оригинал)
+        return true; // could not read — we consider it safe (as the original does)
     };
     let mut parents: Vec<String> = Vec::new();
     for line in content.lines() {
@@ -179,8 +185,8 @@ pub fn is_cursor_theme_chain_safe<F: GtkFs + ?Sized>(
     let bases = cursor_parent_dirs(data_home);
     for parent in &parents {
         if parent == "hicolor" {
-            // Для иконок это терминатор, для курсоров — тупик: своего
-            // `cursors/` у hicolor нет никогда.
+            // For icons this is a terminator, for cursors a dead end: hicolor never has
+            // its own `cursors/`.
             continue;
         }
         for base in &bases {
@@ -192,8 +198,8 @@ pub fn is_cursor_theme_chain_safe<F: GtkFs + ?Sized>(
     false
 }
 
-/// Порт `_theme_exists`: есть ли тема физически (и безопасна ли она, если
-/// это курсор). Пустое имя — `false`.
+/// Port of `_theme_exists`: whether the theme physically exists (and whether it
+/// is safe, if it is a cursor theme). An empty name — `false`.
 pub fn theme_exists<F: GtkFs + ?Sized>(
     fs: &mut F,
     theme_type: &str,
@@ -217,7 +223,7 @@ pub fn theme_exists<F: GtkFs + ?Sized>(
         }
         if theme_type == "cursor-theme" {
             if !fs.is_dir(&format!("{candidate}/cursors")) {
-                continue; // не курсорная тема в этом каталоге — ищем дальше
+                continue; // not a cursor theme in this directory — keep looking
             }
             return is_cursor_theme_chain_safe(fs, &candidate, data_home);
         }
@@ -226,8 +232,8 @@ pub fn theme_exists<F: GtkFs + ?Sized>(
     false
 }
 
-/// Порт `_pick_safe_default`: первый существующий fallback, иначе
-/// [`safe_default`] (даже если его в системе нет — крайний случай).
+/// Port of `_pick_safe_default`: the first existing fallback, otherwise
+/// [`safe_default`] (even if it is not on the system — the last resort).
 pub fn pick_safe_default<F: GtkFs + ?Sized>(
     fs: &mut F,
     theme_type: &str,
@@ -246,18 +252,18 @@ pub fn pick_safe_default<F: GtkFs + ?Sized>(
 // gtk-{3,4}.0/settings.ini
 // ============================================================================
 
-/// Версии GTK, чьи `settings.ini` санируются — порт кортежа в `sanitize_all`.
+/// GTK versions whose `settings.ini` is sanitized — port of the tuple in `sanitize_all`.
 pub const GTK_VERSIONS: &[&str] = &["3.0", "4.0"];
 
-/// Путь `settings.ini` данной версии GTK. `config_home` — `$XDG_CONFIG_HOME`
-/// либо `~/.config` (см. [`crate::utils::config_home`]).
+/// Path of `settings.ini` of the given GTK version. `config_home` —
+/// `$XDG_CONFIG_HOME` or `~/.config` (see [`crate::utils::config_home`]).
 pub fn gtk_ini_path(config_home: &str, version: &str) -> String {
     format!("{}/gtk-{version}/settings.ini", config_home.trim_end_matches('/'))
 }
 
-/// Порт `_read_ini_settings`: секция `[Settings]` из текста `settings.ini`.
-/// `None` (файла нет / не прочли) — пустая карта. Ключи и значения
-/// обрезаются по краям, строки-комментарии (`#`) и пустые пропускаются.
+/// Port of `_read_ini_settings`: the `[Settings]` section from the text of
+/// `settings.ini`. `None` (no file / not read) — an empty map. Keys and values
+/// are trimmed at the edges, comment lines (`#`) and empty ones are skipped.
 pub fn read_ini_settings(text: Option<&str>) -> HashMap<String, String> {
     let mut result = HashMap::new();
     let Some(text) = text else {
@@ -280,24 +286,25 @@ pub fn read_ini_settings(text: Option<&str>) -> HashMap<String, String> {
     result
 }
 
-/// Порт `_write_ini_setting` — НОВЫЙ текст файла (запись делает исполнитель).
+/// Port of `_write_ini_setting` — the NEW text of the file (the executor does
+/// the writing).
 ///
-/// `existing = None` — файла нет: получаем минимальный `[Settings]`-файл.
-/// Иначе значение заменяется в существующей секции `[Settings]`; если ключа
-/// там не было — дописывается в конец секции; если самой секции нет — секция
-/// создаётся в конце файла.
+/// `existing = None` — there is no file: we get a minimal `[Settings]` file.
+/// Otherwise the value is replaced in the existing `[Settings]` section; if the
+/// key was not there, it is appended to the end of the section; if the section
+/// itself is missing, it is created at the end of the file.
 pub fn write_ini_setting(existing: Option<&str>, key: &str, value: &str) -> String {
     write_ini_setting_in(existing, "Settings", key, value)
 }
 
-/// То же для ЛЮБОЙ секции ini-файла.
+/// The same for ANY section of an ini file.
 ///
-/// Правило #12: тот же движок обслуживает и `settings.ini` GTK, и
-/// `kdeglobals` KDE — второй копии «найти секцию, заменить или дописать» в
-/// проекте быть не должно. Прежняя копия во вкладке «Настройки»
-/// (`_kde_set_terminal_konsole`, `_patch_gtk_ini`) дописывала ключ по индексу
-/// «строка после первой найденной секции» и при отсутствии нужной секции в
-/// начале файла попадала в чужую.
+/// Rule #12: the same engine serves both GTK's `settings.ini` and KDE's
+/// `kdeglobals` — there must be no second copy of "find the section, replace or
+/// append" in the project. The former copy in the "Settings" tab
+/// (`_kde_set_terminal_konsole`, `_patch_gtk_ini`) appended the key at the index
+/// "line after the first section found" and, when the needed section was
+/// missing at the start of the file, ended up in someone else's.
 pub fn write_ini_setting_in(
     existing: Option<&str>,
     section: &str,
@@ -314,8 +321,8 @@ pub fn write_ini_setting_in(
     for line in text.lines() {
         let stripped = line.trim();
         if stripped.starts_with('[') && stripped.ends_with(']') {
-            // Секция кончилась, а ключа в ней не было — дописываем перед
-            // заголовком следующей.
+            // The section ended and the key was not in it — append before the next
+            // section's header.
             if in_section && !replaced {
                 out.push(format!("{key}={value}"));
                 replaced = true;
@@ -342,7 +349,7 @@ pub fn write_ini_setting_in(
     s
 }
 
-/// Ключ `settings.ini` → тип темы, в порядке проверки — порт `keys_to_check`.
+/// `settings.ini` key → theme type, in checking order — port of `keys_to_check`.
 pub const INI_KEYS: &[(&str, &str)] = &[
     ("gtk-icon-theme-name", "icon-theme"),
     ("gtk-cursor-theme-name", "cursor-theme"),
@@ -350,30 +357,32 @@ pub const INI_KEYS: &[(&str, &str)] = &[
     ("gtk-sound-theme-name", "sound-theme"),
 ];
 
-/// Типы тем, ссылку на которые санитайзер НЕ заменяет, даже если темы нет.
+/// Theme types whose reference the sanitizer does NOT replace, even if the theme
+/// is missing.
 ///
-/// ⚠️ Починка (13.10.2026): звуковая тема подменялась на `ocean` наравне со
-/// значками и курсорами. Причины оставить её как есть:
-///   * отсутствующая тема звуков ничего не роняет — libcanberra и KDE молча
-///     играют `freedesktop`; санитайзер существует ради падений GTK4 на
-///     битых темах значков и курсоров, к звукам это не относится;
-///   * правилась только пара `gtk-{3,4}.0/settings.ini`, а `kdeglobals`
-///     `[Sounds] Theme`, gsettings и `.gtkrc-2.0` оставались прежними —
-///     настройка расходилась сама с собой;
-///   * в KDE служба `gtkconfig` (kded) при каждом входе в сеанс переносит
-///     `[Sounds] Theme` в файлы GTK — подмена жила до следующего входа и
-///     повторялась при первом же запуске окна, значение «прыгало»;
-///   * выбор человека молча менялся на тему, которую он не выбирал.
+/// Warning — fix (13.10.2026): the sound theme was replaced with `ocean` on a
+/// par with icons and cursors. Reasons to leave it as is:
+///   * a missing sound theme breaks nothing — libcanberra and KDE silently play
+///     `freedesktop`; the sanitizer exists because of GTK4 crashes on broken
+///     icon and cursor themes, which does not apply to sounds;
+///   * only the pair `gtk-{3,4}.0/settings.ini` was edited, while `kdeglobals`
+///     `[Sounds] Theme`, gsettings and `.gtkrc-2.0` stayed as before — the
+///     setting contradicted itself;
+///   * in KDE the `gtkconfig` service (kded) copies `[Sounds] Theme` into the GTK
+///     files on every session login — the replacement lived until the next login
+///     and was repeated on the very first launch of the window, so the value
+///     "jumped";
+///   * the person's choice was silently changed to a theme they did not choose.
 ///
-/// О такой ссылке санитайзер только сообщает ([`plan_gtk_ini_notes`]); сам
-/// раздел «Звуки событий» показывает её как отсутствующую тему.
+/// The sanitizer only reports such a reference ([`plan_gtk_ini_notes`]); the
+/// "Event sounds" section itself shows it as a missing theme.
 pub const KEPT_TYPES: &[&str] = &["sound-theme"];
 
-/// Есть ли звуковая тема `name`: `<каталог>/<name>/index.theme` с разделом
-/// `[Sound Theme]` — то же правило, что у применения
-/// ([`crate::qt_settings::is_sound_theme_dir`]), поверх [`GtkFs`]. Голый
-/// каталог без `index.theme` (обёртка архива, `/usr/share/sounds/mate`) —
-/// не тема.
+/// Whether sound theme `name` exists: `<dir>/<name>/index.theme` with a
+/// `[Sound Theme]` section — the same rule as for applying
+/// ([`crate::qt_settings::is_sound_theme_dir`]), on top of [`GtkFs`]. A bare
+/// directory without `index.theme` (an archive wrapper,
+/// `/usr/share/sounds/mate`) is not a theme.
 pub fn sound_theme_exists<F: GtkFs + ?Sized>(
     fs: &mut F,
     name: &str,
@@ -390,9 +399,9 @@ pub fn sound_theme_exists<F: GtkFs + ?Sized>(
     })
 }
 
-/// Замечания по ключам из [`KEPT_TYPES`]: ссылка ведёт на тему, которой нет,
-/// но значение ОСТАВЛЕНО как есть. Строки готовы для журнала; файл не
-/// меняется ни здесь, ни исполнителем.
+/// Notes on keys from [`KEPT_TYPES`]: the reference points to a theme that does
+/// not exist, but the value is LEFT as is. The lines are ready for the log; the
+/// file is not changed either here or by the executor.
 pub fn plan_gtk_ini_notes<F: GtkFs + ?Sized>(
     fs: &mut F,
     ini_path: &str,
@@ -420,40 +429,42 @@ pub fn plan_gtk_ini_notes<F: GtkFs + ?Sized>(
     notes
 }
 
-/// Одна правка `settings.ini`: что записать и что об этом сказать в журнал.
+/// One edit of `settings.ini`: what to write and what to say about it in the log.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IniEdit {
     pub key: String,
     pub value: String,
-    /// Строка журнала — добавляется вызывающим ТОЛЬКО если запись удалась.
+    /// The log line — added by the caller ONLY if the write succeeded.
     pub change: String,
 }
 
-/// Имя для журнала: `gtk-3.0/settings.ini`.
+/// Name for the log: `gtk-3.0/settings.ini`.
 ///
-/// ⚠️ Починка: оригинал брал `ini_path.name`, то есть всегда просто
-/// `settings.ini`. Правки gtk-3.0 и gtk-4.0 в журнале и в отчёте UI были
-/// неотличимы — при разборе жалобы «Firefox всё ещё падает» нельзя было
-/// понять, какой из двух конфигов уже починен.
+/// Warning — fix: the original took `ini_path.name`, i.e. always just
+/// `settings.ini`. Edits of gtk-3.0 and gtk-4.0 were indistinguishable in the
+/// log and in the UI report — when investigating a complaint "Firefox still
+/// crashes" it was impossible to tell which of the two configs had already been
+/// fixed.
 pub fn ini_label(ini_path: &str) -> String {
     let mut it = ini_path.rsplitn(3, '/');
     let name = it.next().unwrap_or("");
-    // Пустой родитель — файл в корне либо без каталога вовсе: `Path.parent.name`
-    // в этих случаях тоже пуст, и остаётся одно имя файла.
+    // An empty parent — the file is at the root or has no directory at all:
+    // `Path.parent.name` is empty in these cases too, and only the file name remains.
     match it.next() {
         Some(parent) if !parent.is_empty() => format!("{parent}/{name}"),
         _ => name.to_string(),
     }
 }
 
-/// Порт решений `sanitize_gtk_settings_ini`: какие ключи битые и чем их
-/// заменить. Пустое/отсутствующее значение и живая тема пропускаются; если
-/// подставить нечего — правки нет. Ключи типов из [`KEPT_TYPES`] (звуковая
-/// тема) не правятся никогда — о них говорит [`plan_gtk_ini_notes`].
+/// Port of the decisions of `sanitize_gtk_settings_ini`: which keys are broken
+/// and what to replace them with. An empty/missing value and a live theme are
+/// skipped; if there is nothing to substitute, there is no edit. Keys of types
+/// from [`KEPT_TYPES`] (the sound theme) are never edited — [`plan_gtk_ini_notes`]
+/// talks about them.
 ///
-/// Записи здесь НЕ происходит: исполнитель для каждой правки зовёт
-/// [`write_ini_setting`] на СВЕЖЕМ содержимом файла и пишет результат — ровно
-/// как оригинал, который перечитывал файл на каждый ключ.
+/// NO writing happens here: for each edit the executor calls
+/// [`write_ini_setting`] on the FRESH contents of the file and writes the result
+/// — exactly like the original, which re-read the file for every key.
 pub fn plan_gtk_ini_edits<F: GtkFs + ?Sized>(
     fs: &mut F,
     ini_path: &str,
@@ -491,8 +502,8 @@ pub fn plan_gtk_ini_edits<F: GtkFs + ?Sized>(
 // kdeglobals / kcminputrc
 // ============================================================================
 
-/// Порт `_read_kdeglobals`: `{секция: {ключ: значение}}`. Ключи до первой
-/// секции отбрасываются, комментарии (`#`) и пустые строки пропускаются.
+/// Port of `_read_kdeglobals`: `{section: {key: value}}`. Keys before the first
+/// section are dropped, comments (`#`) and empty lines are skipped.
 pub fn read_kde_ini(text: Option<&str>) -> HashMap<String, HashMap<String, String>> {
     let mut result: HashMap<String, HashMap<String, String>> = HashMap::new();
     let Some(text) = text else {
@@ -519,7 +530,7 @@ pub fn read_kde_ini(text: Option<&str>) -> HashMap<String, HashMap<String, Strin
     result
 }
 
-/// Значение `секция/ключ` либо `""` — порт `config.get(s, {}).get(k, "")`.
+/// Value of `section/key` or `""` — port of `config.get(s, {}).get(k, "")`.
 pub fn kde_value(cfg: &HashMap<String, HashMap<String, String>>, section: &str, key: &str) -> String {
     cfg.get(section)
         .and_then(|m| m.get(key))
@@ -527,8 +538,8 @@ pub fn kde_value(cfg: &HashMap<String, HashMap<String, String>>, section: &str, 
         .unwrap_or_default()
 }
 
-/// Порт `_read_kcminput_cursor`: первый `cursorTheme=` в секции `[Mouse]`.
-/// Комментарии здесь НЕ пропускаются — как в оригинале.
+/// Port of `_read_kcminput_cursor`: the first `cursorTheme=` in the `[Mouse]`
+/// section. Comments are NOT skipped here — as in the original.
 pub fn read_kcminput_cursor(text: Option<&str>) -> String {
     let Some(text) = text else {
         return String::new();
@@ -547,8 +558,8 @@ pub fn read_kcminput_cursor(text: Option<&str>) -> String {
     String::new()
 }
 
-/// Порт `_colorscheme_exists`: где лежат `.colors` цветовой схемы (та же
-/// починка XDG, что в [`theme_dirs`]).
+/// Port of `_colorscheme_exists`: where the `.colors` of a color scheme lie (the
+/// same XDG fix as in [`theme_dirs`]).
 pub fn colorscheme_paths(name: &str, data_home: &str) -> Vec<String> {
     vec![
         format!("{}/color-schemes/{name}.colors", data_home.trim_end_matches('/')),
@@ -556,33 +567,35 @@ pub fn colorscheme_paths(name: &str, data_home: &str) -> Vec<String> {
     ]
 }
 
-/// Порт `_colorscheme_exists`.
+/// Port of `_colorscheme_exists`.
 pub fn colorscheme_exists<F: GtkFs + ?Sized>(fs: &mut F, name: &str, data_home: &str) -> bool {
     colorscheme_paths(name, data_home)
         .iter()
         .any(|p| fs.is_file(p))
 }
 
-/// Дефолт цветовой схемы, когда текущей нет — порт литерала `"BreezeDark"`.
+/// Default color scheme when the current one is missing — port of the literal
+/// `"BreezeDark"`.
 pub const COLORSCHEME_DEFAULT: &str = "BreezeDark";
 
-/// Таймаут запуска `kwriteconfig6` (секунды) — как `timeout=10` в Python.
+/// Timeout for running `kwriteconfig6` (seconds) — like `timeout=10` in Python.
 pub const KWRITECONFIG_TIMEOUT: u64 = 10;
 
-/// Одна правка KDE-конфига: что передать `kwriteconfig6` и что сказать
-/// журналу.
+/// One edit of a KDE config: what to pass to `kwriteconfig6` and what to tell
+/// the log.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KdeEdit {
     pub file: String,
     pub group: String,
     pub key: String,
     pub value: String,
-    /// Строка журнала — добавляется ТОЛЬКО если `kwriteconfig6` отработал.
+    /// The log line — added ONLY if `kwriteconfig6` succeeded.
     pub change: String,
 }
 
-/// argv записи в KDE-конфиг — порт `_kwriteconfig`. `tool` — уже разрешённый
-/// бинарь (`kwriteconfig6`/`kwriteconfig5`, см. `rexon.utils.resolve_tool`).
+/// argv for writing a KDE config — port of `_kwriteconfig`. `tool` — the already
+/// resolved binary (`kwriteconfig6`/`kwriteconfig5`, see
+/// `rexon.utils.resolve_tool`).
 pub fn kwriteconfig_argv(tool: &str, edit: &KdeEdit) -> Vec<String> {
     vec![
         tool.to_string(),
@@ -596,13 +609,13 @@ pub fn kwriteconfig_argv(tool: &str, edit: &KdeEdit) -> Vec<String> {
     ]
 }
 
-/// Порт решений `sanitize_kdeglobals`: ColorScheme, иконки и курсор в
-/// `kdeglobals` плюс курсор в `kcminputrc` (Plasma 6 предпочитает его).
+/// Port of the decisions of `sanitize_kdeglobals`: ColorScheme, icons and cursor
+/// in `kdeglobals` plus the cursor in `kcminputrc` (Plasma 6 prefers it).
 ///
-/// ⚠️ Починка: оригинал проверял «нечего подставить» только в GTK-ветке, а в
-/// KDE-ветке писал что дали — пустой дефолт уезжал в конфиг значением и
-/// Plasma получала `Theme=`/`cursorTheme=` без темы вовсе. Здесь пустой
-/// дефолт правку отменяет, как и для GTK.
+/// Warning — fix: the original checked "nothing to substitute" only in the GTK
+/// branch, while in the KDE branch it wrote whatever it got — an empty default
+/// went into the config as a value, and Plasma got `Theme=`/`cursorTheme=`
+/// without any theme. Here an empty default cancels the edit, as for GTK.
 pub fn plan_kde_edits<F: GtkFs + ?Sized>(
     fs: &mut F,
     kdeglobals: &HashMap<String, HashMap<String, String>>,
@@ -612,7 +625,7 @@ pub fn plan_kde_edits<F: GtkFs + ?Sized>(
 ) -> Vec<KdeEdit> {
     let mut edits = Vec::new();
 
-    // 1. ColorScheme в [General] — у него дефолт литеральный, не по ФС.
+    // 1. ColorScheme in [General] — its default is a literal, not from the file system.
     let cs = kde_value(kdeglobals, "General", "ColorScheme");
     if !cs.is_empty() && !colorscheme_exists(fs, &cs, data_home) {
         edits.push(KdeEdit {
@@ -626,7 +639,7 @@ pub fn plan_kde_edits<F: GtkFs + ?Sized>(
         });
     }
 
-    // 2. Icon Theme в [Icons]
+    // 2. Icon Theme in [Icons]
     let icons = kde_value(kdeglobals, "Icons", "Theme");
     if !icons.is_empty() && !theme_exists(fs, "icon-theme", &icons, home, data_home) {
         let safe = pick_safe_default(fs, "icon-theme", home, data_home);
@@ -641,7 +654,7 @@ pub fn plan_kde_edits<F: GtkFs + ?Sized>(
         }
     }
 
-    // 3. Cursor в [Mouse] — kdeglobals
+    // 3. Cursor in [Mouse] — kdeglobals
     let cursor = kde_value(kdeglobals, "Mouse", "cursorTheme");
     if !cursor.is_empty() && !theme_exists(fs, "cursor-theme", &cursor, home, data_home) {
         let safe = pick_safe_default(fs, "cursor-theme", home, data_home);
@@ -656,7 +669,7 @@ pub fn plan_kde_edits<F: GtkFs + ?Sized>(
         }
     }
 
-    // 4. Cursor в [Mouse] — kcminputrc
+    // 4. Cursor in [Mouse] — kcminputrc
     if !kcminput_cursor.is_empty()
         && !theme_exists(fs, "cursor-theme", kcminput_cursor, home, data_home)
     {
@@ -678,11 +691,11 @@ pub fn plan_kde_edits<F: GtkFs + ?Sized>(
 }
 
 // ============================================================================
-// Отчёт
+// Report
 // ============================================================================
 
-/// Порт печати `sanitize_all(verbose=True)` — весь текст целиком (с
-/// завершающим переводом строки), чтобы исполнителю осталось одно `print`.
+/// Port of the printing of `sanitize_all(verbose=True)` — the whole text (with a
+/// trailing newline), so that only a single `print` is left to the executor.
 pub fn verbose_report(changes: &[String]) -> String {
     if changes.is_empty() {
         return tr("✅ All GTK/KDE configs are OK, nothing was fixed") + "\n";
@@ -734,14 +747,15 @@ mod tests {
 
     #[test]
     fn пустой_дефолт_не_попадает_в_kde_правку() {
-        // Ни одной иконочной темы в системе → pick_safe_default отдаст
-        // литерал "breeze"; при пустом типе — пустую строку, правки нет.
+        // No icon theme at all on the system → pick_safe_default returns the literal
+        // "breeze"; for an empty type — an empty string, no edit.
         let mut fs = snap(json!({"dirs": {}, "files": {}}));
         assert_eq!(pick_safe_default(&mut fs, "нет-такого", "/h", "/h/.local/share"), "");
     }
 
-    /// Живой случай 13.10.2026: `gtk-sound-theme-name=Sounds`, темы «Sounds»
-    /// нет. Значение не правится (в плане правок его нет), о нём — замечание.
+    /// A live case from 13.10.2026: `gtk-sound-theme-name=Sounds`, there is no
+    /// "Sounds" theme. The value is not edited (it is not in the edit plan), there
+    /// is a note about it.
     #[test]
     fn звуковая_тема_которой_нет_не_подменяется() {
         let mut fs = snap(json!({
@@ -778,8 +792,8 @@ mod tests {
         assert!(notes[0].contains("Sounds"), "{}", notes[0]);
     }
 
-    /// Существующая тема (своя или системная) и пустое значение — без
-    /// замечаний; каталог без `index.theme` темой не считается.
+    /// An existing theme (user or system) and an empty value — no notes; a directory
+    /// without `index.theme` does not count as a theme.
     #[test]
     fn замечание_о_звуковой_теме_только_когда_темы_нет() {
         let mut fs = snap(json!({

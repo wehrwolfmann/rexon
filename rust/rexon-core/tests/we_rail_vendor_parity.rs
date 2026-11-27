@@ -1,34 +1,34 @@
-//! Сторож подписей рейла вкладки «Wallpaper Engine»: эталон — ВЕНДОРНЫЙ
-//! перевод waywallen, а не наша же копия списка.
+//! Guard of the rail labels of the «Wallpaper Engine» tab: the reference is
+//! the VENDOR waywallen translation, not our own copy of the list.
 //!
-//! ЗАЧЕМ. Страницы рейла — чужие (`vendor: true`), их рисует waywallen.
-//! Мерило для чужой вкладки одно: паритет с оригиналом. А сверка
-//! `we_window_parity.rs` сравнивает наш список с ВЫПИСАННОЙ РЯДОМ копией
-//! того же списка — то есть нас с нами же. Ровно этим мерилом приёмка
-//! вкладок три недели зеленела на пустой панели свойств обоев: пропажа
-//! была одинаковой в обоих снимках.
+//! WHY. The rail pages are foreign (`vendor: true`), waywallen draws them.
+//! There is one yardstick for a foreign tab: parity with the original. And the
+//! `we_window_parity.rs` check compares our list with a copy of the same list
+//! WRITTEN OUT NEXT TO IT — i.e. us with ourselves. With exactly this
+//! yardstick the tab acceptance stayed green for three weeks on an empty
+//! wallpaper properties panel: the loss was identical in both snapshots.
 //!
-//! Здесь эталон лежит СНАРУЖИ нашего кода — в вендорном
-//! `ui/i18n/waywallen_ru.ts`, контекст `Window`, откуда сам waywallen
-//! берёт подписи своего рейла. Разойдись наши названия с чужими при
-//! следующем обновлении вендора — краснеет этот тест, а не глаз владельца.
+//! Here the reference lies OUTSIDE our code — in the vendor
+//! `ui/i18n/waywallen_ru.ts`, context `Window`, where waywallen itself takes
+//! its rail labels from. Should our names diverge from theirs on the next
+//! vendor update, this test goes red, not the owner's eye.
 //!
-//! ЧЕГО ЗДЕСЬ НЕТ. Пункт «Разработчик» — наш собственный, эталона у него
-//! нет и быть не может; проверяются только пункты с вендорной страницей.
+//! WHAT IS NOT HERE. The «Developer» item is our own, it has no reference and
+//! cannot have one; only items with a vendor page are checked.
 
 use rexon_core::we_window as w;
 
 mod i18n_pin;
 
-/// Вендорный перевод: единственный источник эталонных подписей.
+/// The vendor translation: the only source of reference labels.
 const VENDOR_TS: &str = include_str!(
     "../../../data/qt_wallpaper_engine/qml_ui/waywallen/ui/i18n/waywallen_ru.ts"
 );
 
-/// Английский оригинал подписи для каждого вендорного пункта рейла.
+/// The English original label for each vendor rail item.
 ///
-/// Связь «наш идентификатор ↔ чужая строка» — единственное, что мы тут
-/// пишем руками: сами русские слова берутся из перевода.
+/// The «our id ↔ foreign string» link is the only thing we write by hand
+/// here: the Russian words themselves come from the translation.
 const RAIL_SOURCES: &[(&str, &str)] = &[
     ("wallpapers_qml", "Wallpapers"),
     ("discover_qml", "Discover"),
@@ -39,13 +39,13 @@ const RAIL_SOURCES: &[(&str, &str)] = &[
     ("about_qml", "About"),
 ];
 
-/// Сколько переведённых сообщений заведомо есть в контексте `Window`.
+/// How many translated messages are known to exist in the `Window` context.
 ///
-/// Страховка САМОГО РАЗБОРА: сломайся поиск — и словарь вышел бы пустым,
-/// а «расхождений не найдено» стало бы правдой ни о чём.
+/// Insurance of the PARSING ITSELF: should the search break, the dictionary
+/// would come out empty, and «no divergences found» would be a truth about nothing.
 const KNOWN_WINDOW_MESSAGES: usize = 10;
 
-/// Вырезать содержимое первого тега `<tag>…</tag>` начиная с позиции.
+/// Cut out the content of the first `<tag>…</tag>` starting at a position.
 fn tag_body<'a>(hay: &'a str, tag: &str) -> Option<&'a str> {
     let open = format!("<{tag}");
     let close = format!("</{tag}>");
@@ -55,7 +55,7 @@ fn tag_body<'a>(hay: &'a str, tag: &str) -> Option<&'a str> {
     Some(&hay[body_start..end])
 }
 
-/// Развернуть те немногие сущности XML, что встречаются в подписях.
+/// Expand the few XML entities that occur in labels.
 fn unescape_xml(s: &str) -> String {
     s.replace("&amp;", "&")
         .replace("&lt;", "<")
@@ -64,7 +64,7 @@ fn unescape_xml(s: &str) -> String {
         .replace("&apos;", "'")
 }
 
-/// Словарь «английский оригинал → русский перевод» контекста `Window`.
+/// The «English original → Russian translation» dictionary of the `Window` context.
 fn window_translations() -> Vec<(String, String)> {
     let ctx = VENDOR_TS
         .split("<context>")
@@ -76,7 +76,7 @@ fn window_translations() -> Vec<(String, String)> {
         let (Some(src), Some(tr)) = (tag_body(msg, "source"), tag_body(msg, "translation")) else {
             continue;
         };
-        // Незаконченный перевод эталоном не считается.
+        // An unfinished translation does not count as a reference.
         if tr.trim().is_empty() {
             continue;
         }
@@ -87,8 +87,8 @@ fn window_translations() -> Vec<(String, String)> {
 
 #[test]
 fn vendor_rail_labels_are_the_reference() {
-    // Эталон — русский перевод waywallen, значит и наши подписи берём
-    // по-русски: из `po/ru.po`, как их увидит русский покупатель.
+    // The reference is the Russian waywallen translation, so we take our labels
+    // in Russian too: from `po/ru.po`, as a Russian buyer will see them.
     let _lang = i18n_pin::ru();
     let dict = window_translations();
     assert!(
@@ -123,9 +123,9 @@ fn vendor_rail_labels_are_the_reference() {
     }
 }
 
-/// По-английски подпись пункта — ровно исходная строка waywallen: наш
-/// `msgid` и есть вендорный `source`, иначе английский покупатель увидел
-/// бы в рейле одно слово, а в заголовке самой страницы — другое.
+/// In English the item label is exactly the original waywallen string: our
+/// `msgid` is the vendor `source`, otherwise an English buyer would see one
+/// word in the rail and another in the page's own title.
 #[test]
 fn english_rail_labels_are_the_vendor_source_strings() {
     let _lang = i18n_pin::en();
@@ -141,8 +141,8 @@ fn english_rail_labels_are_the_vendor_source_strings() {
 
 #[test]
 fn every_vendor_rail_item_has_a_reference() {
-    // Появится восьмая ЧУЖАЯ страница — эталон для неё нужно вписать
-    // сюда же, иначе сторож молча пропустит новую подпись.
+    // Should an eighth FOREIGN page appear, its reference must be added here
+    // too, otherwise the guard will silently skip the new label.
     let specs = w::qml_page_specs();
     let vendor_ids: Vec<&str> = specs
         .iter()
@@ -159,48 +159,47 @@ fn every_vendor_rail_item_has_a_reference() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Шапка вендорной страницы: эталон — САМА вендорная страница
+// Vendor page header: the reference is the vendor page ITSELF
 // ════════════════════════════════════════════════════════════════════════
 //
-// ЗАЧЕМ. Заголовок страницы и ВСЕ её кнопки действий живут в шапке
-// (`MD.AppBar`), а шапку `MD.Page` рисует по `MD.MProp.page.showHeader` —
-// по свойству ХОЗЯИНА, а не своему (`Qcm.Material/qml/control/Page.qml`,
-// строка 25). У waywallen хозяев два: контейнер страниц рейла
-// (`ui/qml/Window.qml`) ставит `showHeader: false`, всплывающее окно
-// (`component/PagePopup.qml`) — `showHeader: true`. Поэтому страницы рейла
-// либо шапки не имеют, либо включают её СЕБЕ САМИ, а страницы
-// всплывающего окна на своё `showHeader` не полагаются вовсе.
+// WHY. The page title and ALL its action buttons live in the header
+// (`MD.AppBar`), and `MD.Page` draws the header by `MD.MProp.page.showHeader`
+// — a property of the HOST, not its own (`Qcm.Material/qml/control/Page.qml`,
+// line 25). waywallen has two hosts: the rail page container
+// (`ui/qml/Window.qml`) sets `showHeader: false`, the popup window
+// (`component/PagePopup.qml`) — `showHeader: true`. So rail pages either have
+// no header or turn it on FOR THEMSELVES, and popup pages do not rely on
+// their own `showHeader` at all.
 //
-// Наш рейл держит и те и другие. Ошибись мы признаком `header` — вендорная
-// страница откроется без заголовка и без всех кнопок: у «Плагинов» это
-// «Неактивные плагины», «Проверить обновления» и «Установить из .zip», то
-// есть вся установка и всё обновление плагинов. Список плагинов при этом
-// рисуется, и снимок выглядит рабочим — ровно так дефект и прожил от
-// коммита a200237 до живого снимка 08.09.2026.
+// Our rail holds both kinds. Should we get the `header` flag wrong, the
+// vendor page opens without a title and without all its buttons: for
+// «Plugins» these are «Inactive plugins», «Check for updates» and «Install
+// from .zip», i.e. all plugin installation and updating. The plugin list is
+// still drawn, and the snapshot looks working — exactly how the defect lived
+// from commit a200237 until the live snapshot of 08.09.2026.
 //
-// ⛔ Эталон НЕ выписывается рядом списком: это снова сверяло бы нас с
-// нами. Он читается из САМОЙ вендорной страницы — по правилу, которое
-// waywallen соблюдает во всех своих страницах: чья шапка, тот её и
-// включает.
+// ⛔ The reference is NOT written out as a list nearby: that would again
+// compare us with ourselves. It is read from the vendor page ITSELF — by the
+// rule waywallen follows in all its pages: whoever owns the header turns it on.
 
-/// Каталог вендорных страниц waywallen.
+/// The waywallen vendor page directory.
 const VENDOR_PAGE_DIR: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../data/qt_wallpaper_engine/qml_ui/waywallen/ui/qml/page"
 );
 
-/// Свойство верхнего уровня вендорной страницы: у waywallen корень
-/// страницы отбит ровно четырьмя пробелами, а всё вложенное — глубже.
-/// Отступ здесь и есть признак «своё, а не чужого органа управления»:
-/// `actions:` встречается и внутри страницы (например, у своей же
-/// `MD.AppBar` в `WallpaperPage.qml`), и такое к шапке отношения не имеет.
+/// A top-level property of a vendor page: in waywallen the page root is
+/// indented by exactly four spaces, and everything nested deeper. The indent
+/// here is the sign of «own, not of a foreign control»: `actions:` also occurs
+/// inside the page (e.g. in its own `MD.AppBar` in `WallpaperPage.qml`), and
+/// that has nothing to do with the header.
 fn has_root_property(src: &str, name: &str) -> bool {
     let head = format!("    {name}:");
     src.lines().any(|l| l.starts_with(&head))
 }
 
-/// Разобрать вендорную страницу: (корень — `MD.Page`, ставит ли она себе
-/// `showHeader` сама, есть ли у неё заголовок или кнопки действий).
+/// Parse a vendor page: (root is `MD.Page`, whether it sets `showHeader`
+/// itself, whether it has a title or action buttons).
 fn read_vendor_page(qml: &str) -> (bool, bool, bool) {
     let path = format!("{VENDOR_PAGE_DIR}/{qml}");
     let src = std::fs::read_to_string(&path)
@@ -215,10 +214,10 @@ fn read_vendor_page(qml: &str) -> (bool, bool, bool) {
 #[test]
 fn vendor_page_decides_whether_the_host_shows_the_header() {
     let specs = w::qml_page_specs();
-    // Страховка САМОГО разбора: правило доказывает что-то, только если в
-    // рейле нашлись обе стороны — и страница, включающая шапку себе сама,
-    // и страница, которая ждёт её от хозяина. Сломайся разбор — оба счёта
-    // станут нулевыми, и сверка честно покраснеет вместо «всё сошлось».
+    // Insurance of the parsing itself: the rule proves something only if both
+    // sides were found in the rail — a page turning the header on for itself,
+    // and a page waiting for it from the host. Should the parsing break, both
+    // counts would become zero, and the check honestly goes red instead of «all matched».
     let mut own = 0;
     let mut hosted = 0;
 
@@ -230,8 +229,8 @@ fn vendor_page_decides_whether_the_host_shows_the_header() {
             item.qml
         );
 
-        // Шапку ждёт от хозяина та страница, которой есть что в ней
-        // показать и которая не включает её себе сама.
+        // A page waits for the header from the host if it has something to show in
+        // it and does not turn it on for itself.
         let wants_host_header = has_bar_content && !own_header;
         if own_header {
             own += 1;
@@ -255,9 +254,9 @@ fn vendor_page_decides_whether_the_host_shows_the_header() {
 
 #[test]
 fn only_vendor_pages_ask_the_host_for_a_header() {
-    // Шапка — вендорная (`MD.AppBar` их `MD.Page`). Нашей странице
-    // («Разработчик», заглушка «модули не собраны») просить её не у кого:
-    // контекст `MD.MProp.page` живёт в шелле вокруг ВЕНДОРНОЙ страницы.
+    // The header is vendor (`MD.AppBar` of their `MD.Page`). Our page
+    // («Developer», the «modules not built» stub) has no one to ask for it: the
+    // `MD.MProp.page` context lives in the shell around a VENDOR page.
     for item in w::build_rail(true, true).items.iter() {
         if !item.vendor {
             assert!(

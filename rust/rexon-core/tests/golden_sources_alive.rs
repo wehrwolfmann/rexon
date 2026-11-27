@@ -1,24 +1,24 @@
-//! Сторож того, что эталоны ядра и слоя интерфейса живы и читаются.
+//! Guard that the goldens of the core and the interface layer are alive and readable.
 //!
-//! ЗАЧЕМ. Сверки берут ожидания из `tests/golden/*.json` через
-//! `include_str!` + `serde_json::from_str(…).unwrap()`. Битый эталон красит
-//! только ту сверку, что его читает, и выглядит как её собственный дефект;
-//! эталон, который не читает уже ни одна сверка, не красит ничего. Здесь —
-//! одна проверка на все эталоны сразу: каждый `.json` разбирается и не пуст.
+//! WHY. The checks take their expectations from `tests/golden/*.json` via
+//! `include_str!` + `serde_json::from_str(…).unwrap()`. A broken golden turns red
+//! only the check that reads it, and looks like that check's own defect;
+//! a golden that no check reads any more turns nothing red. Here is
+//! one check for all goldens at once: every `.json` parses and is not empty.
 //!
-//! ЧТО БЫЛО РАНЬШЕ. До 02.10.2026 этот файл стерёг ссылки генераторов
-//! эталонов на Python (`tests/golden/*_cases.py`, объявления `# blob:` и
-//! запрет `git show <коммит>:путь`): эталоны переснимались с прежнего
-//! Python-продукта. Решение владельца 02.10.2026 — Python в Rexon только
-//! архив, не эталон и не мост, — снимает этот путь: переснимать эталоны с
-//! Python больше не будут, ожидания в JSON — собственные эталоны Rust. Сами
-//! генераторы лежат в архиве как есть, но ядро их не читает и от их наличия
-//! не зависит.
+//! WHAT IT USED TO BE. Until 02.10.2026 this file guarded the references of the
+//! Python golden generators (`tests/golden/*_cases.py`, the `# blob:` declarations and
+//! the ban on `git show <commit>:path`): the goldens were recaptured from the former
+//! Python product. The owner's decision of 02.10.2026 — Python in Rexon is only
+//! an archive, not a golden and not a bridge — removes that path: goldens will no longer be
+//! recaptured from Python, the expectations in JSON are Rust's own goldens. The
+//! generators themselves lie in the archive as they are, but the core does not read them and does not
+//! depend on their presence.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Каталоги эталонов: ядро и слой интерфейса.
+/// Golden directories: the core and the interface layer.
 fn golden_dirs() -> Vec<PathBuf> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     vec![
@@ -38,9 +38,9 @@ fn json_goldens(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Нижний порог числа JSON-эталонов ядра (02.10.2026 их 89). Страховка
-/// самого обхода: перестань он находить файлы — «битых нет» стало бы
-/// правдой на пустом множестве. Эталонов убыло по делу — поправьте число.
+/// Lower bound on the number of the core's JSON goldens (89 on 02.10.2026). A safeguard
+/// of the walk itself: should it stop finding files, "nothing is broken" would become
+/// true on an empty set. If goldens were removed for a reason, adjust the number.
 const KNOWN_CORE_GOLDENS: usize = 85;
 
 #[test]

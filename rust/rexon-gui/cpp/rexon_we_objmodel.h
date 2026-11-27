@@ -1,11 +1,11 @@
-// Фабрика дочерних объектов живых моделей App (рендереры, дисплеи, холсты,
-// видеокарты).
+// Factory of child objects of the App live models (renderers, displays,
+// canvases, GPUs).
 //
-// Отдельный заголовок, а не строки в rexon_gui_factory.h: cxx печатает
-// шим-обёртку на каждое объявление `extern "C++"`, собранное по имени
-// C++-функции, и одно и то же имя, объявленное в двух мостах крейта, даёт
-// `duplicate symbol` на линковке. Здесь имена свои, и объявлены они ровно в
-// одном мосте — src/we_objmodel.rs.
+// A separate header rather than lines in rexon_gui_factory.h: cxx emits a
+// shim wrapper for every `extern "C++"` declaration, keyed by the C++
+// function name, and the same name declared in two bridges of the crate
+// gives a `duplicate symbol` at link time. The names here are our own, and
+// they are declared in exactly one bridge — src/we_objmodel.rs.
 #pragma once
 
 #include <QtCore/QString>
@@ -13,37 +13,40 @@
 class QObject;
 class QVariant;
 
-/// Создать `Renderer`/`Display`/`Canvas`/`Gpu` ребёнком менеджера. Владение —
-/// у Qt.
+/// Create a `Renderer`/`Display`/`Canvas`/`Gpu` as a child of the manager.
+/// Ownership belongs to Qt.
 QObject* rexon_new_renderer(QObject* parent);
 QObject* rexon_new_display(QObject* parent);
 QObject* rexon_new_canvas(QObject* parent);
 QObject* rexon_new_gpu(QObject* parent);
 
-/// Создать живые модели ребёнком App (зовёт мост src/we_app.rs).
+/// Create the live models as children of App (called by the bridge
+/// src/we_app.rs).
 QObject* rexon_new_renderer_manager(QObject* parent);
 QObject* rexon_new_display_manager(QObject* parent);
 QObject* rexon_new_library_manager(QObject* parent);
 QObject* rexon_new_gpu_manager(QObject* parent);
 QObject* rexon_new_presentation_manager(QObject* parent);
 
-/// Модель строк карточки «Текущие обои» — ребёнок менеджера показов.
+/// The row model of the "Current wallpapers" card — a child of the display
+/// manager.
 QObject* rexon_new_now_playing_model(QObject* parent);
 
-/// Строка каталога перевода по контексту и исходному тексту
-/// (`QCoreApplication::translate`). Rust своих строк так не переводит — это
-/// только для строк ВЕНДОРА, у которых каталог `.qm` и контекст C++-класса.
+/// A translation catalogue string by context and source text
+/// (`QCoreApplication::translate`). Rust does not translate its own strings
+/// this way — this is only for the VENDOR's strings, which have a `.qm`
+/// catalogue and a C++ class context.
 QString rexon_we_vendor_tr(const QString& context, const QString& source);
 
-/// Снести дочерний объект отложенно.
+/// Delete a child object deferred.
 ///
-/// Именно `deleteLater`, а не `delete`: на объект могут висеть привязки QML
-/// текущего кадра (`Repeater { model: rendererManager.renderers }`), и
-/// немедленное удаление вырвало бы у них землю из-под ног. Оригинал делает
-/// то же самое (`renderer.cpp`, `display.cpp`).
+/// Exactly `deleteLater`, not `delete`: QML bindings of the current frame
+/// may hang on the object (`Repeater { model: rendererManager.renderers }`),
+/// and immediate deletion would pull the rug out from under them. The
+/// original does the same (`renderer.cpp`, `display.cpp`).
 void rexon_delete_child_later(QObject* object);
 
-/// Указатель на QObject значением QVariant — так вендорный QML получает
-/// список объектов (`QVariantList` свойств `renderers`/`displays`).
-/// cxx-qt-lib свой QVariant указателем на QObject наполнять не умеет.
+/// A pointer to a QObject as a QVariant value — that is how the vendored QML
+/// gets a list of objects (the `QVariantList` of the `renderers`/`displays`
+/// properties). cxx-qt-lib cannot fill its QVariant with a QObject pointer.
 QVariant rexon_object_to_variant(QObject* object);

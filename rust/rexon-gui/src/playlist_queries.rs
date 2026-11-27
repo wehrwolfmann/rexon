@@ -1,25 +1,26 @@
-// Плейлисты обоев: список, подробности одного и мутации (создать,
-// удалить, переименовать, задать состав/режим/интервал, обновить целиком,
-// включить, выключить, перескочить).
+// Wallpaper playlists: the list, details of one, and mutations (create,
+// delete, rename, set the contents/mode/interval, update as a whole,
+// enable, disable, skip).
 //
-// Эталон — waywallen `ui/src/query/playlist_query.cpp`
-// @e5626c1 (вендорный коммит v0.2.6+9).
+// Reference: waywallen `ui/src/query/playlist_query.cpp` @e5626c1 (vendor
+// commit v0.2.6+9).
 //
-// Что изменилось против нашего Python-моста:
+// What changed compared with our Python bridge:
 //
-//   * убраны свойства `data` и `count`. `data` отдавало пустую
-//     модель-заглушку (`_EmptyListModel`), `count` — длину списка; ни того,
-//     ни другого нет у оригинала, и НИ ОДНА строка QML их не читает
-//     (проверено grep'ом по вендорному дереву и по нашим страницам).
-//     Держать мёртвую модель ради имени свойства незачем.
-//   * `sourceKind` в карте плейлиста ОСТАВЛЕН, хотя у оригинала его нет:
-//     по нему наши страницы отличают «умный» плейлист от обычного, а
-//     лишний ключ вендорному QML не мешает.
+//   * the `data` and `count` properties were removed. `data` returned an
+//     empty stub model (`_EmptyListModel`), `count` the list length; the
+//     original has neither, and NOT A SINGLE QML line reads them (checked
+//     with grep over the vendored tree and our pages). There is no reason to
+//     keep a dead model for the sake of a property name.
+//   * `sourceKind` in the playlist map is KEPT, although the original does
+//     not have it: our pages use it to tell a "smart" playlist from an
+//     ordinary one, and an extra key does not bother the vendored QML.
 //
-// Сигнал `done()` летит ВСЕГДА — и при отказе демона тоже: QML после него
-// читает `.status` (так же у оригинала, `PlaylistMutationQuery::send`).
+// The `done()` signal ALWAYS fires — on a daemon refusal too: QML reads
+// `.status` after it (the same in the original,
+// `PlaylistMutationQuery::send`).
 
-/// Мост cxx-qt: список плейлистов и мутации.
+/// cxx-qt bridge: the playlist list and mutations.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -38,38 +39,39 @@ pub mod qobject {
 
     unsafe extern "C++" {
         include!("rexon_gui_factory.h");
-        /// Создать модель состава плейлиста как ребёнка запроса.
+        /// Create the playlist contents model as a child of the query.
         ///
-        /// Имена свои, а не общие с мостом страницы «Обои»: одно и то же
-        /// объявление `extern "C++"` в двух мостах одного крейта даёт
-        /// `duplicate symbol` на линковке.
+        /// Our own names, not shared with the "Wallpapers" page bridge: the same
+        /// `extern "C++"` declaration in two bridges of one crate gives a
+        /// `duplicate symbol` at link time.
         ///
         /// # Safety
-        /// `parent` — живой QObject (владение уходит Qt).
+        /// `parent` is a live QObject (ownership goes to Qt).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_playlist_wallpaper_list_model(parent: *mut QObject) -> *mut QObject;
 
-        /// Одноразовый таймер отложенной перезагрузки (`delayReload`
-        /// базы `Query`, 100 мс).
+        /// Single-shot deferred reload timer (`delayReload` of the `Query` base,
+        /// 100 ms).
         ///
         /// # Safety
-        /// `owner` — живой QObject с инвокаблом `reload()`.
+        /// `owner` is a live QObject with a `reload()` invokable.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_playlist_debounce(owner: *mut QObject, interval_ms: i32)
             -> *mut QObject;
 
         /// # Safety
-        /// `timer` — таймер, созданный `rexon_new_playlist_debounce`.
+        /// `timer` is a timer created by `rexon_new_playlist_debounce`.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_restart_playlist_debounce(timer: *mut QObject);
 
-        // ── Фабрики стенда (src/wallpaper_page_selftest.rs) ──────────────
+        // ── Test bench factories (src/wallpaper_page_selftest.rs) ────────
         //
-        // В живом Rexon эти объекты создаёт QML; стенду нужны те же классы
-        // без окна и без QML — как у запросов страницы «Обои».
+        // In the live Rexon these objects are created by QML; the bench needs the
+        // same classes without a window and without QML — as for the "Wallpapers"
+        // page queries.
         //
         // # Safety
-        // `parent` — либо nullptr, либо живой QObject (владение уходит Qt).
+        // `parent` is either nullptr or a live QObject (ownership goes to Qt).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_playlist_list_query(parent: *mut QObject) -> *mut QObject;
         #[allow(clippy::missing_safety_doc)]
@@ -96,15 +98,15 @@ pub mod qobject {
         #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
-        /// ⚠️ `f64`, а не `i64`: 64-битное целое наружу в QML не выпускаем
-        /// (разбор — `src/qvalue.rs`, живая проверка —
+        /// Warning: `f64`, not `i64`: we do not expose a 64-bit integer to QML (the
+        /// analysis is in `src/qvalue.rs`, the live check in
         /// `src/qml_int64_probe.rs`).
         #[qproperty(f64, created_id, cxx_name = "createdId", READ = created_id,
                     NOTIFY = created_id_changed)]
         type PlaylistMutationQuery = super::PlaylistMutationQueryRust;
 
-        /// Подробности одного плейлиста — страница правки `PlaylistEditPage`
-        /// вендора 0.3.7 (она заменила снятую `PlaylistDetailPanel`).
+        /// Details of one playlist — the vendor's 0.3.7 `PlaylistEditPage` edit page
+        /// (it replaced the removed `PlaylistDetailPanel`).
         #[qobject]
         #[qml_element]
         #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
@@ -112,27 +114,26 @@ pub mod qobject {
         #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
-        /// ⚠️ `double`, а не `qint64`, хотя у оригинала здесь `qint64`.
-        /// Причина техническая и проверена живьём: cxx-qt печатает
-        /// `Q_PROPERTY(::std::int64_t …)`, а на 64-битном Linux это `long`
-        /// — отдельный метатип Qt, для которого движок QML НЕ умеет
-        /// декларативную привязку. `playlistId: root.playlistId` в
-        /// `PlaylistEditPage.qml` падало бы на загрузке страницы
-        /// («Cannot assign value … to property playlistId»), причём
-        /// императивное присваивание при этом работает — потому дефект и
-        /// не виден ни сборке, ни гейту типов. Сам вендор объявляет это
-        /// значение на стороне QML как `required property double
-        /// playlistId`, так что расхождения в наблюдаемом поведении нет:
-        /// номера плейлистов далеко ниже 2^53.
+        /// Warning: `double`, not `qint64`, although the original has `qint64`
+        /// here. The reason is technical and verified live: cxx-qt emits
+        /// `Q_PROPERTY(::std::int64_t …)`, and on 64-bit Linux that is `long` — a
+        /// separate Qt metatype for which the QML engine CANNOT do a declarative
+        /// binding. `playlistId: root.playlistId` in `PlaylistEditPage.qml` would
+        /// fail when loading the page ("Cannot assign value … to property
+        /// playlistId"), while an imperative assignment works — which is why the
+        /// defect is visible neither to the build nor to the type gate. The vendor
+        /// itself declares this value on the QML side as `required property double
+        /// playlistId`, so there is no divergence in observable behaviour: playlist
+        /// numbers are far below 2^53.
         #[qproperty(f64, playlist_id, cxx_name = "playlistId", READ = playlist_id,
                     WRITE = set_playlist_id, NOTIFY = playlist_id_changed)]
         #[qproperty(QVariant, playlist, READ = playlist, NOTIFY = playlist_changed)]
         #[qproperty(f64, revision, READ = revision, NOTIFY = playlist_changed)]
         #[qproperty(QStringList, entry_ids, cxx_name = "entryIds", READ = entry_ids,
                     NOTIFY = playlist_changed)]
-        /// Модель состава. Имя свойства — `data`, как у оригинала:
-        /// вендорный QML пишет `model: detailQuery.data`. CONSTANT —
-        /// модель создаётся в пост-конструкции и живёт, пока жив запрос.
+        /// Contents model. The property name is `data`, as in the original: the
+        /// vendored QML writes `model: detailQuery.data`. CONSTANT — the model is
+        /// created in post-construction and lives as long as the query does.
         #[qproperty(*mut QObject, model, cxx_name = "data", READ = data, CONSTANT)]
         type PlaylistDetailQuery = super::PlaylistDetailQueryRust;
     }
@@ -215,7 +216,8 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "playlistIdChanged"]
         fn playlist_id_changed(self: Pin<&mut PlaylistDetailQuery>);
-        /// Один сигнал на карту, номер правки и состав — как у оригинала.
+        /// One signal for the map, the revision number and the contents — as in the
+        /// original.
         #[qsignal]
         #[cxx_name = "playlistChanged"]
         fn playlist_changed(self: Pin<&mut PlaylistDetailQuery>);
@@ -226,7 +228,8 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "createdIdChanged"]
         fn created_id_changed(self: Pin<&mut PlaylistMutationQuery>);
-        /// «Мутация доиграла» — успех это или отказ, читается из `status`.
+        /// "The mutation has finished" — whether it is a success or a refusal is
+        /// read from `status`.
         #[qsignal]
         fn done(self: Pin<&mut PlaylistMutationQuery>);
     }
@@ -269,7 +272,7 @@ pub mod qobject {
         fn entry_ids(self: &PlaylistDetailQuery) -> QStringList;
     }
 
-    // unsafe-блок: геттер свойства `data` отдаёт голый указатель.
+    // unsafe block: the getter of the `data` property returns a raw pointer.
     unsafe extern "RustQt" {
         fn data(self: &PlaylistDetailQuery) -> *mut QObject;
     }
@@ -281,23 +284,23 @@ pub mod qobject {
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut PlaylistListQuery>, token: i64, frame: &QByteArray);
 
-        /// У оригинала `reload()` мутации — пустой: она запускается только
-        /// явным вызовом одного из действий ниже.
+        /// In the original a mutation's `reload()` is empty: it is started only by
+        /// an explicit call of one of the actions below.
         #[qinvokable]
         fn reload(self: Pin<&mut PlaylistMutationQuery>);
-        /// ⚠️ Сигнатура 0.3.7: `synchronizedSelection` встал ЧЕТВЁРТЫМ,
-        /// перед составом (`PlaylistMutationQuery::create` оригинала).
+        /// Warning: the 0.3.7 signature: `synchronizedSelection` became FOURTH,
+        /// before the contents (the original's `PlaylistMutationQuery::create`).
         #[qinvokable]
         fn create(self: Pin<&mut PlaylistMutationQuery>, name: QString, mode: i32,
                   interval_secs: i32, synchronized_selection: bool, item_ids: QVariant);
 
-        /// Обновить плейлист целиком — форма правки 0.3.7.
+        /// Update the playlist as a whole — the 0.3.7 edit form.
         #[qinvokable]
         fn update(self: Pin<&mut PlaylistMutationQuery>, id: f64, name: QString, mode: i32,
                   interval_secs: i32, synchronized_selection: bool, item_ids: QVariant,
                   expected_revision: f64);
-        /// Сохранить умный плейлист (waywallen 0.5.0): `id > 0` — обновить,
-        /// иначе создать. `selection` — непрозрачная выборка
+        /// Save a smart playlist (waywallen 0.5.0): `id > 0` — update, otherwise
+        /// create. `selection` is the opaque selection of
         /// `WallpaperListQuery.selection`.
         #[qinvokable]
         #[cxx_name = "saveSmart"]
@@ -308,10 +311,10 @@ pub mod qobject {
         fn remove(self: Pin<&mut PlaylistMutationQuery>, id: f64);
         #[qinvokable]
         fn rename(self: Pin<&mut PlaylistMutationQuery>, id: f64, name: QString);
-        /// ⚠️ Сигнатура 0.3.7: третьим параметром — номер правки, на
-        /// которой состав читали. Демон сверяет его со своим и отвечает
-        /// `ERROR_CODE_PLAYLIST_REVISION_CONFLICT`, если между чтением и
-        /// записью плейлист успел измениться.
+        /// Warning: the 0.3.7 signature: the third parameter is the revision number
+        /// the contents were read at. The daemon compares it with its own and
+        /// answers `ERROR_CODE_PLAYLIST_REVISION_CONFLICT` if the playlist changed
+        /// between reading and writing.
         #[qinvokable]
         #[cxx_name = "setItems"]
         fn set_items(self: Pin<&mut PlaylistMutationQuery>, id: f64, item_ids: QVariant,
@@ -338,11 +341,10 @@ pub mod qobject {
 
         #[qinvokable]
         fn reload(self: Pin<&mut PlaylistDetailQuery>);
-        /// `delayReload` базы `Query` (qextra): перезагрузка через 100 мс,
-        /// подряд идущие поводы склеиваются в ОДИН запрос. Из вендорного
-        /// QML её зовёт только страница правки плейлиста — она же
-        /// перечитывает состав после каждой мутации и после события
-        /// демона.
+        /// `delayReload` of the `Query` base (qextra): a reload after 100 ms,
+        /// consecutive triggers are glued into ONE request. In the vendored QML it
+        /// is called only by the playlist edit page — it also re-reads the contents
+        /// after every mutation and after a daemon event.
         #[qinvokable]
         #[cxx_name = "delayReload"]
         fn delay_reload(self: Pin<&mut PlaylistDetailQuery>);
@@ -352,7 +354,7 @@ pub mod qobject {
                             frame: &QByteArray);
     }
 
-    // Пост-конструкция: модель состава и таймер отложенной перезагрузки.
+    // Post-construction: the contents model and the deferred reload timer.
     impl cxx_qt::Constructor<()> for PlaylistDetailQuery {}
 }
 
@@ -370,11 +372,11 @@ use crate::impl_query_base;
 use crate::query_base::decode_failed;
 use crate::qvalue::{json_to_variant, variant_to_json};
 
-/// Плейлист ядра → карта QML. Выборку умного плейлиста (waywallen 0.5.0)
-/// кладём под `smartSelection` байтами — тем же непрозрачным значением,
-/// что `WallpaperListQuery.selection`: `PlaylistEditPage` отдаёт его прямо
-/// в `restoreSelection`/`matchesSelection`. В JSON карты ядра байтам места
-/// нет, поэтому ключ дописывается здесь.
+/// A core playlist → a QML map. The smart playlist's selection (waywallen
+/// 0.5.0) goes under `smartSelection` as bytes — the same opaque value as
+/// `WallpaperListQuery.selection`: `PlaylistEditPage` passes it straight to
+/// `restoreSelection`/`matchesSelection`. There is no place for bytes in the
+/// JSON of the core map, so the key is added here.
 fn playlist_variant(view: &we_manage::PlaylistView) -> QVariant {
     let (Value::Object(map), Some(bytes)) = (&view.map, &view.smart_selection) else {
         return json_to_variant(&view.map);
@@ -412,8 +414,8 @@ impl qobject::PlaylistListQuery {
         QVariant::from(&list)
     }
 
-    /// Новое поколение (`++m_generation` оригинала): ответ на прежний
-    /// запрос, если он ещё в полёте, больше не наш.
+    /// A new generation (the original's `++m_generation`): an answer to the
+    /// previous request, if still in flight, is no longer ours.
     pub fn reload(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().pending.clear();
         let payload = pb::PlaylistListRequest {}.encode_to_vec();
@@ -460,7 +462,8 @@ impl qobject::PlaylistListQuery {
 pub struct PlaylistMutationQueryRust {
     base: QueryState,
     created_id: i64,
-    /// token → брать ли из ответа номер созданного плейлиста.
+    /// token → whether to take the number of the created playlist from the
+    /// answer.
     pending: std::collections::BTreeMap<i64, bool>,
 }
 
@@ -471,8 +474,8 @@ impl qobject::PlaylistMutationQuery {
         crate::qvalue::i64_to_qml(self.created_id)
     }
 
-    /// Отправить мутацию. `capture_create` — ждать ли номер нового
-    /// плейлиста в ответе.
+    /// Send a mutation. `capture_create` — whether to expect the new playlist's
+    /// number in the answer.
     fn send(
         mut self: Pin<&mut Self>,
         field: &'static str,
@@ -483,8 +486,8 @@ impl qobject::PlaylistMutationQuery {
             self.as_mut().rust_mut().pending.insert(token, capture_create);
             return;
         }
-        // Соединения нет — кадр не ушёл, но `done()` обязан прилететь:
-        // страница ждёт его, чтобы снять «сохраняем…».
+        // No connection — the frame did not go out, but `done()` must arrive: the
+        // page waits for it to clear "saving…".
         self.done();
     }
 
@@ -506,17 +509,18 @@ impl qobject::PlaylistMutationQuery {
             interval_secs: interval_secs.max(0) as u32,
             entry_ids: we_manage::list_to_strings(&variant_to_json(&item_ids)),
             synchronized_selection,
-            // waywallen 0.5.0: без `source` демон создаёт курируемый
-            // плейлист из `entry_ids` — то, что и делает эта форма.
+            // waywallen 0.5.0: without `source` the daemon creates a curated playlist
+            // from `entry_ids` — which is exactly what this form does.
             source: None,
         }
         .encode_to_vec();
         self.send("playlist_create", payload, true);
     }
 
-    /// `PlaylistUpdate` (поле 87 протокола 0.3.7): имя, режим, интервал,
-    /// синхронный выбор и состав одним кадром — так их правит форма
-    /// `PlaylistEditPage`. `expected_revision` — сторож гонки правок.
+    /// `PlaylistUpdate` (field 87 of the 0.3.7 protocol): name, mode, interval,
+    /// synchronized selection and contents in one frame — that is how the
+    /// `PlaylistEditPage` form edits them. `expected_revision` is the edit race
+    /// guard.
     #[allow(clippy::too_many_arguments)]
     pub fn update(
         self: Pin<&mut Self>,
@@ -528,8 +532,8 @@ impl qobject::PlaylistMutationQuery {
         item_ids: QVariant,
         expected_revision: f64,
     ) {
-        // Умному плейлисту (waywallen 0.5.0) ядро подставит его выборку
-        // вместо состава — см. `we_manage::playlist_update_request`.
+        // For a smart playlist (waywallen 0.5.0) the core substitutes its
+        // selection for the contents — see `we_manage::playlist_update_request`.
         let payload = we_manage::playlist_update_request(
             crate::qvalue::qml_to_i64(id),
             &name.to_string(),
@@ -543,9 +547,10 @@ impl qobject::PlaylistMutationQuery {
         self.send("playlist_update", payload, false);
     }
 
-    /// `saveSmart` оригинала (waywallen 0.5.0). Кадр собирает ядро
-    /// (`we_manage::playlist_save_smart_request`): выборка очищена, состав
-    /// пустой. Не выборка — кадра нет, ошибка и `done()`, как у оригинала.
+    /// The original's `saveSmart` (waywallen 0.5.0). The frame is built by the
+    /// core (`we_manage::playlist_save_smart_request`): the selection is
+    /// cleaned, the contents empty. Not a selection — no frame, an error and
+    /// `done()`, as in the original.
     #[allow(clippy::too_many_arguments)]
     pub fn save_smart(
         mut self: Pin<&mut Self>,
@@ -591,8 +596,8 @@ impl qobject::PlaylistMutationQuery {
         self.send("playlist_rename", payload, false);
     }
 
-    /// `expected_revision` — номер правки, на которой состав читали. Ноль
-    /// демон трактует как «не сверять».
+    /// `expected_revision` is the revision number the contents were read at.
+    /// The daemon treats zero as "do not compare".
     pub fn set_items(
         self: Pin<&mut Self>,
         id: f64,
@@ -623,9 +628,9 @@ impl qobject::PlaylistMutationQuery {
         self.send("playlist_set_interval", payload, false);
     }
 
-    /// `targets` — цели v0.3.5: список карт с `displayId` либо `canvasId`
-    /// (`WallpaperPage.qml:854`). Пустой список демон трактует как «каждый
-    /// холст по разу плюс каждый самостоятельный дисплей».
+    /// `targets` are the v0.3.5 targets: a list of maps with `displayId` or
+    /// `canvasId` (`WallpaperPage.qml:854`). The daemon treats an empty list as
+    /// "every canvas once plus every standalone display".
     pub fn activate(self: Pin<&mut Self>, id: f64, targets: QVariant, auto_attach: bool) {
         let payload = pb::PlaylistActivateRequest {
             id: crate::qvalue::qml_to_i64(id),
@@ -645,9 +650,10 @@ impl qobject::PlaylistMutationQuery {
         self.send("playlist_deactivate", payload, false);
     }
 
-    /// ⚠️ Демон v0.2.4 выполняет прыжок, но НЕ рассылает `playlist_changed`
-    /// — push-статусы дисплеев остаются старыми. Проверено живьём
-    /// 2026-07-12, кандидат в патч демону; со стороны UI лечить нечем.
+    /// Warning: daemon v0.2.4 performs the skip but does NOT broadcast
+    /// `playlist_changed` — the displays' push statuses stay old. Verified live
+    /// on 2026-07-12, a candidate for a daemon patch; there is nothing to fix
+    /// on the UI side.
     pub fn jump_to(self: Pin<&mut Self>, id: f64, entry_id: QString) {
         let payload = pb::PlaylistJumpToRequest {
             id: crate::qvalue::qml_to_i64(id),
@@ -698,17 +704,17 @@ impl qobject::PlaylistMutationQuery {
 // PlaylistDetailQuery
 // ════════════════════════════════════════════════════════════════════════
 
-/// Дебаунс перезагрузки — 100 мс, как у базы `Query` (qextra query.cpp:16).
+/// Reload debounce — 100 ms, as in the `Query` base (qextra query.cpp:16).
 const DETAIL_DEBOUNCE_MS: i32 = 100;
 
 pub struct PlaylistDetailQueryRust {
     base: QueryState,
     data: we_manage::PlaylistDetailData,
     playlist_id: i64,
-    /// Токены отправленных кадров: ответ на устаревший запрос не должен
-    /// перебивать свежий.
+    /// Tokens of sent frames: an answer to a stale request must not override a
+    /// fresh one.
     pending: std::collections::BTreeSet<i64>,
-    /// Модель состава — свойство `data`, ставится в пост-конструкции.
+    /// Contents model — the `data` property, set in post-construction.
     model: *mut qobject::QObject,
     debounce: *mut qobject::QObject,
 }
@@ -731,8 +737,8 @@ impl cxx_qt::Initialize for qobject::PlaylistDetailQuery {
         let owner: *mut qobject::PlaylistDetailQuery =
             unsafe { self.as_mut().get_unchecked_mut() };
         let owner = owner.cast::<qobject::QObject>();
-        // Модель создаётся в пост-конструкции, а не лениво в геттере: QML
-        // читает `data` при первой же привязке.
+        // The model is created in post-construction, not lazily in the getter: QML
+        // reads `data` on the very first binding.
         let model = unsafe { qobject::rexon_new_playlist_wallpaper_list_model(owner) };
         let timer = unsafe { qobject::rexon_new_playlist_debounce(owner, DETAIL_DEBOUNCE_MS) };
         let mut rust = self.as_mut().rust_mut();
@@ -752,19 +758,20 @@ impl qobject::PlaylistDetailQuery {
         self.playlist_id as f64
     }
 
-    /// У оригинала на `playlistIdChanged` висит `delayReload`
-    /// (`connect_requet_reload` в `componentComplete`). Отдельного
-    /// «доигрывания при создании» нам не нужно: QML присваивает свойство
-    /// привязкой, и первая же запись заводит тот же таймер.
+    /// In the original `delayReload` hangs on `playlistIdChanged`
+    /// (`connect_requet_reload` in `componentComplete`). We do not need a
+    /// separate "finish on creation": QML assigns the property with a binding,
+    /// and the very first write starts the same timer.
     pub fn set_playlist_id(mut self: Pin<&mut Self>, value: f64) {
-        // Дробную часть отбрасываем: номер плейлиста целый, а QML
-        // присваивает своё `double`.
+        // The fractional part is dropped: a playlist number is an integer, while
+        // QML assigns its `double`.
         let value = value as i64;
         if self.playlist_id == value {
             return;
         }
-        // Новое поколение и отмена (`setPlaylistId` оригинала): ответ про
-        // прежний плейлист, ещё летящий, новый не перебьёт.
+        // A new generation and cancellation (the original's `setPlaylistId`): an
+        // answer about the previous playlist, still in flight, will not override
+        // the new one.
         let mut rust = self.as_mut().rust_mut();
         rust.playlist_id = value;
         rust.pending.clear();
@@ -787,26 +794,26 @@ impl qobject::PlaylistDetailQuery {
     pub fn delay_reload(self: Pin<&mut Self>) {
         let timer = self.debounce;
         if timer.is_null() {
-            // Таймера нет только в голом Rust-стенде без Qt — там
-            // перезагрузка идёт сразу, как у оригинала при `delay: false`.
+            // There is no timer only in a bare Rust bench without Qt — there the
+            // reload happens at once, as in the original with `delay: false`.
             self.reload();
             return;
         }
         unsafe { qobject::rexon_restart_playlist_debounce(timer) };
     }
 
-    /// Новое поколение на каждый вызов, как у оригинала. Без номера —
-    /// МОЛЧА: ни кадра, ни ошибки, ни смены статуса (waywallen 0.5.0,
-    /// `playlist_query.cpp`). Страница создания умного плейлиста живёт с
-    /// `playlistId: 0`, и ошибка здесь показала бы «Playlist unavailable».
+    /// A new generation on every call, as in the original. Without a number —
+    /// SILENTLY: no frame, no error, no status change (waywallen 0.5.0,
+    /// `playlist_query.cpp`). The smart playlist creation page lives with
+    /// `playlistId: 0`, and an error here would show "Playlist unavailable".
     pub fn reload(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().pending.clear();
         let id = self.playlist_id;
         if id <= 0 {
             return;
         }
-        // waywallen 0.5.0: страницы состава. Ноль в `page_size` — ответ
-        // целиком, как до появления полей.
+        // waywallen 0.5.0: contents pages. Zero in `page_size` means the whole
+        // answer, as before these fields appeared.
         let payload = pb::PlaylistGetRequest {
             id,
             page: 0,
@@ -839,9 +846,8 @@ impl qobject::PlaylistDetailQuery {
     pub fn emit_property(mut self: Pin<&mut Self>, name: &str) {
         match name {
             "items" => {
-                // Модель перестраивается ПЕРВОЙ: страница пересобирает
-                // черновик по `playlistChanged` и обязана увидеть уже
-                // новый состав.
+                // The model is rebuilt FIRST: the page rebuilds its draft on
+                // `playlistChanged` and must already see the new contents.
                 let rows = self.data.items.clone();
                 if !self.model.is_null() {
                     let model: Pin<&mut crate::wallpaper_list_model::qobject::WallpaperListModel> =

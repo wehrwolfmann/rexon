@@ -1,11 +1,11 @@
-//! «Управление шрифтами»: фильтры списка (производитель, тип файла,
-//! письменность), таблица символов по блокам Юникода и свой текст образца
-//! (`qt_settings`). `fc-list`/`fc-query` не запускаются: их вывод подставлен
-//! строками ниже (снят с настоящего fontconfig 2.17 и сокращён).
+//! «Font management»: list filters (foundry, file type,
+//! script), the character table by Unicode blocks and a custom sample text
+//! (`qt_settings`). `fc-list`/`fc-query` are not run: their output is substituted
+//! by the strings below (taken from a real fontconfig 2.17 and shortened).
 //!
-//! Итоги сверяются с эталоном `golden/font_library_cases.json`; переснять:
-//! `REXON_GOLDEN_WRITE=1 cargo test-core --test font_library`, затем
-//! прочитать разницу глазами.
+//! The results are compared with the golden `golden/font_library_cases.json`; to recapture:
+//! `REXON_GOLDEN_WRITE=1 cargo test-core --test font_library`, then
+//! read the diff by eye.
 
 mod i18n_pin;
 
@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 const GOLDEN: &str = "tests/golden/font_library_cases.json";
 
-/// Вывод `fc-list` в формате [`qs::FC_FONT_FORMAT`].
+/// `fc-list` output in the [`qs::FC_FONT_FORMAT`] format.
 const FC_LIST: &str = "\
 Noto Sans\tRegular\t/usr/share/fonts/noto/NotoSans-Regular.ttf\tGOOG\taa|be|en|ru|uk|el|vi\n\
 Noto Sans\tBold\t/usr/share/fonts/noto/NotoSans-Bold.ttf\tGOOG\taa|be|en|ru|uk|el|vi\n\
@@ -28,10 +28,10 @@ Mine\tRegular\t/home/u/.fonts/mine.woff2\t\ten\n\
 Old Thing\tRegular\t/home/u/.fonts/old.TTF\tUKWN\the|ar\n\
 Bitmap Fixed\tRegular\t/usr/share/fonts/misc/fixed.bdf\tNONE\ten\n";
 
-/// Вывод пробы рунического письма (`fc-list :charset=16a0`).
+/// Output of the Runic script probe (`fc-list :charset=16a0`).
 const PROBE_RUNIC: &str = "/usr/share/fonts/noto/NotoSans-Regular.ttf\n/usr/share/fonts/misc/clB8x10.pcf.gz\n";
 
-/// Вывод `fc-query` набора символов коллекции из двух лиц.
+/// `fc-query` output of the character set of a two-face collection.
 const CHARSET: &str = "\
 Regular\t20-7e a0-ff 401-44f 2116 e000-e002 1f600 20000-20001 d800 zz 110000\n\
 Bold\t41-43\n";
@@ -56,7 +56,7 @@ fn pairs(v: &[(String, String)]) -> Value {
     v.iter().map(|(id, label)| json!([id, label])).collect()
 }
 
-/// Всё, что сверяется с эталоном.
+/// Everything that is compared with the golden.
 fn cases() -> Value {
     let _lang = i18n_pin::en();
     let fonts = fonts();
@@ -121,13 +121,13 @@ fn формат_и_разбор_fc_list() {
     assert_eq!(qs::fc_query_fonts_argv("/x/a.ttf"), vec!["fc-query", "--format", qs::FC_FONT_FORMAT, "/x/a.ttf"]);
     assert_eq!(qs::fc_list_char_argv(0x16A0), vec!["fc-list", "--format", "%{file}\n", ":charset=16a0"]);
     assert_eq!(qs::fc_query_charset_argv("/x/a.ttf")[2], "%{style[0]}\t%{charset}\n");
-    // Прежний трёхполевой вывод разбирается: производитель «не указан»,
-    // письменностей нет.
+    // The old three-field output is parsed: foundry «not specified»,
+    // no scripts.
     let old = qs::parse_fc_list_fonts("A\tRegular\t/usr/share/fonts/a.ttf\n", &[]);
     assert_eq!(old[0].file, "/usr/share/fonts/a.ttf");
     assert_eq!(old[0].foundry, qs::FONT_FOUNDRY_UNKNOWN);
     assert!(old[0].scripts.is_empty());
-    // Проба не дописывает повтор и не принимает «other» и чужое.
+    // The probe does not append a repeat and does not accept "other" or foreign values.
     let mut f = fonts();
     qs::font_add_probed_script(&mut f, "runic", PROBE_RUNIC);
     qs::font_add_probed_script(&mut f, "other", PROBE_RUNIC);
@@ -135,7 +135,7 @@ fn формат_и_разбор_fc_list() {
     let noto = f.iter().find(|x| x.file.ends_with("NotoSans-Regular.ttf")).unwrap();
     assert_eq!(noto.scripts.iter().filter(|s| **s == "runic").count(), 1);
     assert_eq!(noto.scripts.last(), Some(&"runic"), "порядок — как в FONT_SCRIPTS");
-    // Каждая письменность и каждый тип подписаны.
+    // Every script and every type has a label.
     let _lang = i18n_pin::en();
     for s in qs::FONT_SCRIPTS {
         assert_ne!(qs::font_script_label(s), *s, "{s}");
@@ -173,7 +173,7 @@ fn свой_текст_образца() {
     let long = "ж".repeat(qs::FONT_SAMPLE_TEXT_MAX + 10);
     assert_eq!(qs::font_sample_text_to_store(&long).chars().count(), qs::FONT_SAMPLE_TEXT_MAX);
     assert_eq!(qs::font_sample_text(Some(&long)).chars().count(), qs::FONT_SAMPLE_TEXT_MAX);
-    // Образец по умолчанию следует языку интерфейса.
+    // The default sample follows the interface language.
     drop(_lang);
     let _ru = i18n_pin::ru();
     assert_ne!(qs::font_sample_default(), default);
@@ -209,11 +209,11 @@ fn подписи_раздела() {
     }
 }
 
-// ── Свои группы шрифтов (`fontgroups.xml`, общий с KDE) ─────────────────
+// ── Custom font groups (`fontgroups.xml`, shared with KDE) ─────────────────
 
-/// Файл групп в том виде, в каком его пишет KDE (порядок семейств у KDE
-/// случайный), плюс то, что бывает в руках: сущности, пустая группа,
-/// повтор группы, группа без имени, лишняя вложенность.
+/// The groups file as KDE writes it (KDE's family order is
+/// random), plus what turns up in practice: entities, an empty group,
+/// a repeated group, a group without a name, extra nesting.
 const KDE_GROUPS: &str = "\
 <groups>
  <group name=\"Работа &amp; учёба\">
@@ -246,7 +246,7 @@ fn group_cases() -> Value {
     let xml = qs::font_groups_xml(&parsed);
     assert_eq!(qs::parse_font_groups(&xml).unwrap(), parsed, "запись читается обратно без потерь");
 
-    // Цепочка правок, как их делает человек.
+    // A chain of edits, as a person makes them.
     let mut groups = parsed.clone();
     let mut steps = Vec::new();
     for edit in [
@@ -273,7 +273,7 @@ fn group_cases() -> Value {
         groups = next;
     }
 
-    // Фильтр «место» со своими группами.
+    // The «location» filter with custom groups.
     let all = qs::group_font_families(&fonts());
     let in_view = |origin: &str, extra: Value| {
         let mut f = extra.as_object().cloned().unwrap_or_default();
@@ -391,17 +391,17 @@ fn архив_группы_пишется_и_читается() {
         got.push((f.name().to_string(), buf));
     }
     assert_eq!(got, vec![("X.ttf".to_string(), "one".to_string()), ("X-2.ttf".to_string(), "two".to_string())]);
-    // Дата в архиве — время изменения файла, а не 1980 год.
+    // The date in the archive is the file modification time, not the year 1980.
     let year = zip.by_index(0).unwrap().last_modified().map(|d| d.year()).unwrap_or(0);
     assert!(year >= 2024, "год в архиве: {year}");
     let f = std::fs::File::options().write(true).open(dir.join("a/X.ttf")).unwrap();
     f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_709_210_096)).unwrap(); // 2024-02-29 12:34:56 UTC
-    // ZIP хранит местное время: пояс прогона прибит к UTC.
+    // ZIP stores local time: the run's time zone is pinned to UTC.
     std::env::set_var("TZ", "UTC");
     extern "C" {
         fn tzset();
     }
-    // SAFETY: tzset (libc) только перечитывает TZ.
+    // SAFETY: tzset (libc) only rereads TZ.
     unsafe { tzset() };
     drop(f);
     let dest3 = dir.join("date.zip");
@@ -409,7 +409,7 @@ fn архив_группы_пишется_и_читается() {
     let mut z3 = zip::ZipArchive::new(std::fs::File::open(&dest3).unwrap()).unwrap();
     let d = z3.by_index(0).unwrap().last_modified().unwrap();
     assert_eq!((d.year(), d.month(), d.day(), d.hour(), d.minute(), d.second()), (2024, 2, 29, 12, 34, 56));
-    // Пропавший файл — ошибка, и под нужным именем ничего не остаётся.
+    // A vanished file is an error, and nothing is left under the target name.
     let bad = vec![("Y.ttf".to_string(), dir.join("нет.ttf").to_string_lossy().into_owned())];
     let dest2 = dir.join("bad.zip");
     assert!(qs::write_font_group_zip(&bad, &dest2).is_err());

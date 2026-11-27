@@ -1,14 +1,14 @@
-// Мини-карта экрана для виджетов Conky: мониторы в масштабе, на них —
-// окна запущенных виджетов (и виджета открытой карточки) своего размера в
-// своём месте. Перетащить прямоугольник мышью или сдвинуть стрелками —
-// Rexon выберет ближайший угол или край экрана, пересчитает отступы и
-// запишет их в накладку виджета, как числа в настройках карточки. Файл
-// автора не меняется; «Вернуть» ставит передвинутые здесь виджеты на
-// прежние места.
+// Mini map of the screen for Conky widgets: monitors to scale, and on them
+// the windows of the running widgets (and of the widget of the open card)
+// at their own size in their own place. Drag a rectangle with the mouse or
+// move it with the arrow keys — Rexon picks the nearest screen corner or
+// edge, recomputes the offsets and writes them into the widget's overlay,
+// like the numbers in the card settings. The author's file is not changed;
+// "Restore" puts the widgets moved here back in their previous places.
 //
-// Только разметка: геометрия, прилипание и подписи — ядро
-// (rexon_core::conky_layout), действия — `conkyScreenMap`,
-// `moveConkyWidget`, `restoreConkyPosition` в
+// Markup only: geometry, snapping and labels — the core
+// (rexon_core::conky_layout), actions — `conkyScreenMap`,
+// `moveConkyWidget`, `restoreConkyPosition` in
 // rust/rexon-gui/src/appearance_actions.rs.
 
 pragma ComponentBehavior: Bound
@@ -22,22 +22,22 @@ ColumnLayout {
 
     property var pal: null
     property var actions: null
-    /// Плитка и файл открытой карточки; пусто — только запущенные.
+    /// Tile and file of the open card; empty means only the running ones.
     property string itemId: ""
     property string conf: ""
     property bool busy: false
 
-    /// Положение поменялось (карточке — перечитать числа).
+    /// The position changed (the card should re-read its numbers).
     signal moved()
 
     property var view: ({})
     readonly property var t: map.view.t || ({})
     readonly property var widgets: map.view.widgets || []
     readonly property var frame: map.view.bounds || ({ x: 0, y: 0, w: 1, h: 1 })
-    /// Что ставить на место по «Вернуть»: файл → {item_id, saved}.
+    /// What to put back on "Restore": file → {item_id, saved}.
     property var undo: ({})
     readonly property int undoCount: Object.keys(map.undo).length
-    /// Файл, которому вернуть фокус после перечитывания карты.
+    /// File to give focus back to after the map is re-read.
     property string keepFocus: ""
 
     readonly property color colText: map.pal ? map.pal.text_primary : "#ffffff"
@@ -71,7 +71,7 @@ ColumnLayout {
         }
     }
 
-    /// Окно виджета `w` положили в `x, y` (точки экрана).
+    /// Window of widget `w` was dropped at `x, y` (screen pixels).
     function commit(w, x, y, snap) {
         if (!map.actions || !map.actions.moveConkyWidget || map.busy)
             return;
@@ -102,7 +102,7 @@ ColumnLayout {
     onVisibleChanged: if (visible) map.reload()
     Component.onCompleted: map.reload()
 
-    // Виджет запустили, остановили или поменяли настройки — карта заново.
+    // A widget was started, stopped or had its settings changed — rebuild the map.
     Connections {
         target: map.actions
         ignoreUnknownSignals: true
@@ -152,9 +152,10 @@ ColumnLayout {
     Item {
         id: canvas
         objectName: "conkyMapCanvas"
-        // Физическая зона: это схема настоящего экрана — левый монитор слева
-        // при любом языке, прямоугольники стоят ручными `x`, стрелки ← →
-        // двигают виджет к левому и правому краю экрана.
+        // Physical zone: this is a diagram of the real screen — the left monitor
+        // is on the left in any language, the rectangles are placed with manual
+        // `x`, and the ← → arrows move the widget towards the left and right edges
+        // of the screen.
         LayoutMirroring.enabled: false
         LayoutMirroring.childrenInherit: true
 
@@ -162,7 +163,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.maximumWidth: 560
         Layout.preferredHeight: Math.min(320, Math.max(120, width * map.frame.h / Math.max(1, map.frame.w)))
-        /// Точек карты на точку экрана.
+        /// Map pixels per screen pixel.
         readonly property real k: Math.min(width / Math.max(1, map.frame.w), height / Math.max(1, map.frame.h))
         readonly property real offX: (width - map.frame.w * k) / 2
         readonly property real offY: (height - map.frame.h * k) / 2
@@ -197,7 +198,7 @@ ColumnLayout {
                 id: gadget
                 required property var modelData
                 objectName: "conkyMapWidget"
-                /// Сдвиг рукой или стрелками, в точках экрана, — до записи.
+                /// Offset by hand or by arrows, in screen pixels, before writing.
                 property real dx: 0
                 property real dy: 0
                 readonly property bool guess: gadget.modelData.size_from === "guess"
@@ -267,8 +268,8 @@ ColumnLayout {
                     }
                 }
 
-                // Стрелки копят сдвиг и пишут его после паузы: conky
-                // перечитывает накладку один раз, а не на каждое нажатие.
+                // Arrows accumulate the offset and write it after a pause: conky re-reads
+                // the overlay once rather than on every key press.
                 Timer {
                     id: keyCommit
                     interval: 600

@@ -1,54 +1,58 @@
-// SteamActions — объект побочных действий вкладки «Steam» на Rust.
+// SteamActions — the side-actions object of the "Steam" tab in Rust.
 //
-// ЗАЧЕМ. `SteamPage.qml` ждёт свойством `actions` объект с восемью методами:
-// снимок витрины (`scan`), окно выбора своего ролика (`pickFile`), выбор
-// (`select`), звёздочка (`setFavorite`), три переключателя (`setSound`,
-// `setRotation`, `setAutostart`) и полноэкранный показ (`play`). Пока такого
-// объекта на Rust не было, раздел «Steam» под Rust-хозяином окна открывался
-// живым НА ВИД: витрина пуста, кнопки нажимаются и ничего не делают. Здесь
-// объект появляется, и раздел начинает работать.
+// WHY. `SteamPage.qml` expects, as the `actions` property, an object with
+// eight methods: the showcase snapshot (`scan`), the picker window for your
+// own clip (`pickFile`), choosing (`select`), the star (`setFavorite`),
+// three toggles (`setSound`, `setRotation`, `setAutostart`) and the
+// full-screen show (`play`). While there was no such object in Rust, the
+// "Steam" section under the Rust window host opened ALIVE IN LOOKS ONLY:
+// the showcase was empty, the buttons pressed and did nothing. Here the
+// object appears, and the section starts working.
 //
-// ⚠️ Девятого метода, `webapiToken()`, с 13.10.2026 нет. Он ходил в сеть из
-// потока интерфейса, а с 08.09.2026 вдобавок не был виден из QML (потерян
-// `#[qinvokable]`), так что страница молча жила без токена и без
-// анимированных фонов. Токен добывает фоновая задача инвентаря
+// Warning: the ninth method, `webapiToken()`, has not existed since
+// 13.10.2026. It went to the network from the interface thread, and since
+// 08.09.2026 it was moreover not visible from QML (`#[qinvokable]` was
+// lost), so the page silently lived without a token and without animated
+// backgrounds. The token is obtained by the inventory background task
 // (`steam_workers.rs`, `start_inventory`).
 //
-// Договор со страницей взят у Python-класса `SteamActions`
-// (`rexon/qt_steam/qml_window.py`) БУКВА В БУКВУ — те же имена, те же типы
-// ответов. Разметка страницы поэтому не изменилась ни на строку.
+// The contract with the page is taken from the Python `SteamActions` class
+// (`rexon/qt_steam/qml_window.py`) TO THE LETTER — the same names, the same
+// answer types. So the page markup did not change by a single line.
 //
-// ГДЕ ЖИВЁТ ЛОГИКА. Своей здесь нет вовсе:
-//   * ЧТО делать с заставкой — поток `rexon_core::session_splash::Splash`
-//     (скан роликов Steam, конфиг, избранное, ротация, гибрид KSplash,
-//     автозапуск, все три пути прогона);
-//   * ДЕЛАЕТ это исполнитель `rexon_core::splash_exec::LiveSplashIo` — тот
-//     самый, которым работает и живой Python-фасад;
-//   * ЧТО сказать человеку — тексты ядра (`rexon_core::qt_steam`), те же,
-//     что показывает виджетная вкладка;
+// WHERE THE LOGIC LIVES. There is none of our own here at all:
+//   * WHAT to do with the splash — the `rexon_core::session_splash::Splash`
+//     flow (scanning Steam clips, config, favourites, rotation, the KSplash
+//     hybrid, autostart, all three run paths);
+//   * it is DONE by the executor `rexon_core::splash_exec::LiveSplashIo` —
+//     the very one the live Python facade works with too;
+//   * WHAT to tell the user — the core's texts (`rexon_core::qt_steam`), the
+//     same ones the widget tab shows;
 //
-// ⚠️ ЧТО ПРИШЛОСЬ ПЕРЕДВИНУТЬ РАДИ ЭТОГО ОБЪЕКТА (обе правки — не побочный
-// эффект, а условие того, чтобы второй копии правил не появилось):
-//   1. Живой исполнитель заставки переехал из `rexon-py` в ядро
-//      (`splash_exec.rs`). В `rexon-py` он был недосягаем: тот крейт
-//      собирается только как `cdylib` для Python.
-//   2. Обмен cookie клиента Steam на `webapi_token` дописан в ядро
-//      (`steam_token.rs`). Он один оставался на `urllib` Python, хотя
-//      сетевой слой ядра давно есть и вкладка ходит им же за инвентарём.
+// Warning: WHAT HAD TO BE MOVED FOR THIS OBJECT (both changes are not a side
+// effect but a condition for no second copy of the rules appearing):
+//   1. The live splash executor moved from `rexon-py` into the core
+//      (`splash_exec.rs`). In `rexon-py` it was unreachable: that crate is
+//      built only as a `cdylib` for Python.
+//   2. Exchanging the Steam client cookie for a `webapi_token` was added to
+//      the core (`steam_token.rs`). It alone remained on Python's `urllib`,
+//      although the core's network layer has long existed and the tab uses
+//      it for the inventory too.
 //
-// ⚠️ ВСЕ МЕТОДЫ СИНХРОННЫ — как и у Python-оригинала. Каждый из них либо
-// читает готовый снимок, либо пишет один файл, и ответ странице нужен
-// немедленно; долгие работы (сеть, миниатюры, кадры-превью) вкладка ведёт
-// сама задачами tokio (`steam_workers.rs`). Фоновость, как у «Расширений»,
-// здесь была бы не улучшением, а разрывом договора: страница читает ответ
-// той же строкой, которой позвала.
+// Warning: ALL METHODS ARE SYNCHRONOUS — as in the Python original. Each of
+// them either reads a ready snapshot or writes one file, and the page needs
+// the answer immediately; long jobs (network, thumbnails, preview frames)
+// are run by the tab itself as tokio tasks (`steam_workers.rs`). Running in
+// the background, as in "Extensions", would not be an improvement here but
+// a breach of the contract: the page reads the answer on the same line it
+// made the call on.
 
-/// Мост cxx-qt объекта действий.
+/// cxx-qt bridge of the actions object.
 ///
-/// Тип объявлен `#[qml_element]`, поэтому хозяин окна заводит его сам
-/// (`SteamActions { }`) и подставляет странице свойством `actions`.
-/// Регистрации в `main_window.rs` для этого не требуется: там карта
-/// разделов, а не список побочных объектов.
+/// The type is declared `#[qml_element]`, so the window host creates it by
+/// itself (`SteamActions { }`) and hands it to the page as the `actions`
+/// property. No registration in `main_window.rs` is needed for this: that
+/// file holds the section map, not a list of side objects.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -66,52 +70,53 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Витрина заставок и состояние переключателей ОДНИМ снимком:
+        /// The splash showcase and the state of the toggles as ONE snapshot:
         /// `{movies, current, favorites, enabled, rotate, sound}`.
         ///
-        /// Пустой снимок — не поломка: у машины без Steam роликов нет, и
-        /// страница честно скажет это словами ядра.
+        /// An empty snapshot is not a breakage: a machine without Steam has no
+        /// clips, and the page will honestly say so in the core's words.
         #[qinvokable]
         fn scan(self: &SteamActions) -> QVariant;
 
-        /// Окно выбора своего видео. Пустая строка — человек передумал.
+        /// Picker window for your own video. An empty string means the user changed
+        /// their mind.
         #[qinvokable]
         #[cxx_name = "pickFile"]
         fn pick_file(self: &SteamActions) -> QString;
 
-        /// Запомнить выбранный ролик в конфиге заставки.
+        /// Remember the chosen clip in the splash config.
         #[qinvokable]
         fn select(self: &SteamActions, path: &QString) -> bool;
 
-        /// Переключить звёздочку. Отдаёт АКТУАЛЬНЫЙ список избранного, а не
-        /// «получилось ли»: страница держит избранное у себя, и два вызова
-        /// подряд («переключи», «а теперь прочитай») разошлись бы с диском.
+        /// Toggle the star. Returns the CURRENT favourites list rather than "did it
+        /// work": the page keeps the favourites on its side, and two calls in a row
+        /// ("toggle", "now read it") could disagree with the disk.
         #[qinvokable]
         #[cxx_name = "setFavorite"]
         fn set_favorite(self: &SteamActions, path: &QString) -> QVariant;
 
-        /// Проиграть заставку полноэкранно. «» — пошло, иначе причина.
+        /// Play the splash full screen. "" means it started, otherwise the reason.
         #[qinvokable]
         fn play(self: &SteamActions, path: &QString, sound: bool) -> QString;
 
-        /// Где стоит Steam — тот же ответ, что модель находит себе
-        /// сама. Наружу отдан ради сверки: расхождение значит, что
-        /// страница осталась без корня и секция фонов будет пуста.
+        /// Where Steam is — the same answer the model finds by itself. Exposed for
+        /// the comparison: a divergence means the page has been left without a root
+        /// and the backgrounds section will be empty.
         #[qinvokable]
         #[cxx_name = "steamRoot"]
         fn steam_root(self: &SteamActions) -> QString;
 
-        /// Автозапуск заставки при входе. «» — получилось, иначе причина.
+        /// Splash autostart at login. "" means it worked, otherwise the reason.
         #[qinvokable]
         #[cxx_name = "setAutostart"]
         fn set_autostart(self: &SteamActions, on: bool) -> QString;
 
-        /// Случайная заставка при каждом входе.
+        /// A random splash on every login.
         #[qinvokable]
         #[cxx_name = "setRotation"]
         fn set_rotation(self: &SteamActions, on: bool) -> bool;
 
-        /// Звук у заставки. Пишется в конфиг вместе с выбранным роликом.
+        /// Splash sound. Written to the config together with the chosen clip.
         #[qinvokable]
         #[cxx_name = "setSound"]
         fn set_sound(self: &SteamActions, on: bool) -> bool;
@@ -126,12 +131,12 @@ use rexon_core::qt_steam as qs;
 use rexon_core::session_splash::{self as ss, Splash};
 use rexon_core::splash_exec::LiveSplashIo;
 
-/// Rust-состояние объекта: пусто, и это не упущение.
+/// Rust state of the object: empty, and this is not an oversight.
 ///
-/// Исполнитель заставки заводится НА ОДИН вызов — так же, как это делает
-/// Python-фасад (`session_splash._io()`). Держать его полем нельзя: внутри
-/// лежат дескрипторы своих процессов и X11-слоёв, а объект действий живёт
-/// столько же, сколько окно.
+/// The splash executor is created FOR ONE call — just as the Python facade
+/// does it (`session_splash._io()`). Keeping it as a field is not possible:
+/// it holds descriptors of its own processes and X11 layers inside, while
+/// the actions object lives as long as the window.
 #[derive(Default)]
 pub struct SteamActionsRust;
 
@@ -158,9 +163,9 @@ impl qobject::SteamActions {
             .to_string();
 
         let mut movies = splash.scan_startup_movies();
-        // Надо ли доклеивать СВОЙ ролик — решает ядро; отсюда приходит только
-        // наблюдение «файл на диске есть». Иначе выбор покупателя пропадал бы
-        // из виду, не попав в скан Steam.
+        // Whether to append OUR OWN clip is decided by the core; from here only the
+        // observation "the file exists on disk" comes. Otherwise the customer's
+        // choice would disappear from view without getting into the Steam scan.
         let scanned: Vec<String> = movies
             .iter()
             .map(|m| m.get("path").and_then(Value::as_str).unwrap_or("").to_string())
@@ -185,17 +190,18 @@ impl qobject::SteamActions {
     }
 
     fn pick_file(&self) -> QString {
-        // Заголовок и фильтр — из ядра: те же, что показывала виджетная
-        // вкладка. Начальный каталог — корень Steam, а если его нет, дом.
+        // Title and filter come from the core: the same as the widget tab showed.
+        // The initial directory is the Steam root, and if there is none, home.
         let mut io = live_io();
         let start = Splash::new(&mut io, &home())
             .steam_root()
             .unwrap_or_else(home);
-        // Диалог поднимает ОБЩИЙ шим крейта (`cpp/rexon_ext_dialogs.h`):
-        // синхронный ответ, вложенный цикл событий, портал рабочего стола на
-        // Wayland. Второго объявления той же C++-функции в этом мосте нет
-        // намеренно — cxx печатает шим по имени функции, и дубль дал бы
-        // `duplicate symbol` на линковке.
+        // The dialog is brought up by the crate's SHARED shim
+        // (`cpp/rexon_ext_dialogs.h`): a synchronous answer, a nested event loop,
+        // the desktop portal on Wayland. There is deliberately no second
+        // declaration of the same C++ function in this bridge — cxx emits the shim
+        // by the function name, and a duplicate would give a `duplicate symbol` at
+        // link time.
         crate::extensions_actions::qobject::pick_file(
             &QString::from(&qs::sv_pick_dialog_title()),
             &QString::from(&qs::sv_pick_filter()),
@@ -210,9 +216,9 @@ impl qobject::SteamActions {
         }
         let mut io = live_io();
         let mut splash = Splash::new(&mut io, &home());
-        // Звук берётся из конфига, а не выдумывается: страница переключает
-        // его отдельным действием, и своё умолчание тихо сбрасывало бы выбор
-        // покупателя.
+        // The sound is taken from the config, not invented: the page toggles it
+        // with a separate action, and a default of our own would silently reset
+        // the customer's choice.
         let sound = splash
             .load_config()
             .get("sound")
@@ -225,19 +231,20 @@ impl qobject::SteamActions {
         let path = path.to_string();
         let mut io = live_io();
         let mut splash = Splash::new(&mut io, &home());
-        // ⚠️ Починка при переносе (правило #16): пустой путь отдаёт то, что
-        // ЛЕЖИТ НА ДИСКЕ, а не пустой список, как делал Python. Список
-        // уезжает прямо в `page.setFavorites(...)`, и пустой ответ стирал бы
-        // все звёздочки разом — на экране это неотличимо от «человек их снял».
+        // Warning: a fix made during the port (rule #16): an empty path returns
+        // what IS ON DISK, not an empty list as Python did. The list goes straight
+        // into `page.setFavorites(...)`, and an empty answer would wipe all the
+        // stars at once — on screen that is indistinguishable from "the user
+        // removed them".
         if path.is_empty() {
             return crate::qvalue::json_to_variant(&strings_to_json(&splash.favorites()));
         }
         let current = splash.favorites();
         let on = !current.iter().any(|p| p == &path);
         let (favorites, err) = splash.set_favorite(&path, on);
-        // ⚠️ Вторая починка того же рода: конфиг не записался — отдаём
-        // ПРЕЖНИЙ список. Ядро в этом случае возвращает желаемый, и звёздочка
-        // загоралась бы на экране, не пережив перезапуск.
+        // Warning: a second fix of the same kind: if the config was not written, we
+        // return the PREVIOUS list. The core returns the desired one in this case,
+        // and the star would light up on screen without surviving a restart.
         let favorites = if err.is_some() { current } else { favorites };
         crate::qvalue::json_to_variant(&strings_to_json(&favorites))
     }
@@ -248,9 +255,9 @@ impl qobject::SteamActions {
             return QString::from(&tr(qs::SV_TEST_NO_ITEM));
         }
         let mut io = live_io();
-        // `blocking=false` — управление возвращается сразу: это проверка из
-        // интерфейса, а не вход в систему. `hybrid=false` — эстафета
-        // ksplash→mpv тут ни при чём, как и у виджетной вкладки.
+        // `blocking=false` — control returns at once: this is a check from the
+        // interface, not a login. `hybrid=false` — the ksplash→mpv relay has
+        // nothing to do with it, as in the widget tab.
         let (ok, msg) = Splash::new(&mut io, &home()).play(
             Some(&path),
             Some(sound),
@@ -287,8 +294,8 @@ impl qobject::SteamActions {
             .unwrap_or("")
             .to_string();
         if path.is_empty() {
-            // Ролик ещё не выбран — записывать звук некуда; выбор сохранит
-            // его вместе с путём.
+            // No clip is chosen yet — there is nowhere to write the sound; the choice
+            // will save it together with the path.
             return false;
         }
         splash.save_config(&path, on).is_none()
@@ -296,44 +303,47 @@ impl qobject::SteamActions {
 }
 
 // ============================================================================
-// Наблюдения, которых у ядра нет
+// Observations the core does not have
 // ============================================================================
 
-/// Домашний каталог (`os.path.expanduser("~")` оригинала).
+/// Home directory (the original's `os.path.expanduser("~")`).
 fn home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
 }
 
-/// Живой исполнитель заставки — на ОДИН вызов, как у Python-фасада.
+/// The live splash executor — FOR ONE call, as in the Python facade.
 ///
-/// ⛔ Интерпретатор НЕ передаётся и не подразумевается: с 16.09.2026 (блок
-/// H) ни один путь заставки его не зовёт. Строку автозапуска и
-/// `ExecStart=` юнита собирает `rexon_core::app::launch_program` — бинарь
-/// окна при Rust-входе, лаунчер `rexon` полным путём при откате, и НИЧЕГО
-/// (отказ вслух), если не нашлось ни того, ни другого. Второй аргумент
-/// конструктора остался только ради подписи, которую держит мост `rexon-py`
-/// (`splash_io::PyLiveSplashIo`); уйдёт вместе с мостом.
+/// Never: no interpreter is passed or implied: since 16.09.2026 (block H) no
+/// splash path calls it. The autostart line and the unit's `ExecStart=` are
+/// built by `rexon_core::app::launch_program` — the window binary for a Rust
+/// entry, the `rexon` launcher with its full path as a fallback, and NOTHING
+/// (a refusal out loud) if neither was found. The constructor's second
+/// argument remained only for the sake of the signature held by the
+/// `rexon-py` bridge (`splash_io::PyLiveSplashIo`); it will go away together
+/// with the bridge.
 fn live_io() -> LiveSplashIo {
     LiveSplashIo::new(&home(), "")
 }
 
-/// Корень дерева разработки: там ядро ищет собранный `rexon-splash-overlay`.
+/// Root of the development tree: the core looks for the built
+/// `rexon-splash-overlay` there.
 ///
-/// ⚠️ Нужен ровно одному пути прогона — блокирующему Wayland-показу при входе,
-/// которого из вкладки не бывает (`play` зовётся с `blocking=false`). Величина
-/// не выдумывается и не выводится здесь: правило «что считать деревом
-/// разработчика» одно на весь продукт и живёт в ядре (правило #12). Не
-/// вывелось — пустая строка, и ядро уйдёт на поиск по `PATH`, как оно и умеет.
+/// Warning: it is needed by exactly one run path — the blocking Wayland show
+/// at login, which never happens from the tab (`play` is called with
+/// `blocking=false`). The value is neither invented nor derived here: the
+/// rule "what counts as a developer tree" is one for the whole product and
+/// lives in the core (rule #12). If it was not derived — an empty string,
+/// and the core will fall back to searching `PATH`, as it knows how.
 fn repo_root() -> String {
     rexon_core::cli::repo_root()
 }
 
 // ============================================================================
-// Мелочи перевода
+// Translation odds and ends
 // ============================================================================
 
-/// `(имя файла, имя без расширения)` — то, что Python считал
-/// `os.path.basename` и `os.path.splitext` перед `describe_custom`.
+/// `(file name, name without extension)` — what Python computed with
+/// `os.path.basename` and `os.path.splitext` before `describe_custom`.
 fn name_and_stem(path: &str) -> (String, String) {
     let p = std::path::Path::new(path);
     let basename = p
@@ -347,10 +357,11 @@ fn name_and_stem(path: &str) -> (String, String) {
     (basename, stem)
 }
 
-/// Ответ действия, которое либо получилось, либо назвало причину.
+/// The answer of an action that either worked or named the reason.
 ///
-/// Пустая строка — успех. Отказ без слов подменяется общей причиной ядра:
-/// молчаливая кнопка читается как поломка (правило #13).
+/// An empty string means success. A refusal without words is replaced with
+/// the core's generic reason: a silent button reads as a breakage (rule
+/// #13).
 fn reason(ok: bool, message: String) -> String {
     if ok {
         String::new()
@@ -365,14 +376,15 @@ fn strings_to_json(items: &[String]) -> Value {
     Value::Array(items.iter().map(|s| Value::from(s.as_str())).collect())
 }
 
-/// Ключи снимка, которые страница читает точкой (`snapshot.movies`,
-/// `snapshot.rotate`…). Список назван отдельно не для красоты: забытый ключ
-/// приезжает в QML как `undefined`, а `undefined` в переключателе — это
-/// молчаливое «выключено». Такой разъезд не виден ни на сборке, ни глазом.
+/// Snapshot keys the page reads with a dot (`snapshot.movies`,
+/// `snapshot.rotate`…). The list is named separately not for looks: a
+/// forgotten key arrives in QML as `undefined`, and `undefined` in a toggle
+/// is a silent "off". Such a divergence is visible neither at build time
+/// nor to the eye.
 const SNAPSHOT_KEYS: [&str; 6] = ["movies", "current", "favorites", "enabled", "rotate", "sound"];
 
-/// Собрать снимок витрины и переключателей — единственное место, где состав
-/// ответа `scan()` записан.
+/// Build the snapshot of the showcase and the toggles — the only place where
+/// the composition of the `scan()` answer is written down.
 fn snapshot(
     movies: Vec<Value>,
     current: &str,
@@ -381,9 +393,9 @@ fn snapshot(
     rotate: bool,
     sound: bool,
 ) -> Value {
-    // Карта собирается ПО СПИСКУ ключей, а не россыпью вставок: так состав
-    // ответа записан ровно один раз, и сторож ниже проверяет тот самый
-    // список, которым страница и наполняется.
+    // The map is built FROM THE LIST of keys, not with scattered inserts: that
+    // way the composition of the answer is written exactly once, and the guard
+    // below checks the very list the page is filled from.
     let values = [
         Value::Array(movies),
         Value::from(current),
@@ -403,9 +415,9 @@ fn snapshot(
 mod tests {
     use super::*;
 
-    /// Договор со страницей: отказ ВСЕГДА со словами. Пустую строку она
-    /// понимает как «получилось» и пишет в состояние «▶ Проигрываю…» —
-    /// то есть безмолвный отказ показал бы человеку успех.
+    /// Contract with the page: a refusal ALWAYS comes with words. The page
+    /// understands an empty string as "it worked" and writes "▶ Playing…" into
+    /// the state — that is, a silent refusal would show the user a success.
     #[test]
     fn refusal_is_never_wordless() {
         assert_eq!(reason(true, String::new()), "");
@@ -414,8 +426,9 @@ mod tests {
         assert_eq!(reason(false, "нет файла".into()), "нет файла");
     }
 
-    /// Своё имя ролика для витрины считается по ФАЙЛУ, а не по всему пути:
-    /// карточка подписана `title`, и путь целиком в неё не влезал бы.
+    /// Our own clip's name for the showcase is computed from the FILE, not from
+    /// the whole path: the card is labelled with `title`, and the whole path
+    /// would not fit into it.
     #[test]
     fn custom_movie_is_named_by_its_file() {
         let (basename, stem) = name_and_stem("/дом/видео/Мой ролик.webm");
@@ -426,15 +439,16 @@ mod tests {
         assert_eq!(stem, "");
     }
 
-    /// Снимок обязан назвать ВСЕ шесть ключей — и на пустой машине тоже.
-    /// Страница читает их точкой, и забытый ключ приехал бы в неё как
-    /// `undefined`, то есть переключатель молча встал бы в «выключено».
+    /// The snapshot must name ALL six keys — on an empty machine too. The page
+    /// reads them with a dot, and a forgotten key would arrive in it as
+    /// `undefined`, that is, the toggle would silently go to "off".
     ///
-    /// ⚠️ Имена здесь выписаны ЗАНОВО, а не взяты из `SNAPSHOT_KEYS`. Сверка
-    /// со списком, который сама же и проверяет, зеленела бы на любом его
-    /// переименовании — то есть не проверяла бы ничего. Настоящий источник
-    /// этих шести слов — `qml/SteamPage.qml` (`snapshot.movies`,
-    /// `snapshot.rotate`…), и переписать их можно только вместе с ним.
+    /// Warning: the names here are written out ANEW, not taken from
+    /// `SNAPSHOT_KEYS`. Comparing with the list that is itself being checked
+    /// would go green on any renaming of it — that is, it would check nothing.
+    /// The real source of these six words is `qml/SteamPage.qml`
+    /// (`snapshot.movies`, `snapshot.rotate`…), and they can only be rewritten
+    /// together with it.
     #[test]
     fn snapshot_names_every_key_the_page_reads() {
         let wanted = ["movies", "current", "favorites", "enabled", "rotate", "sound"];
@@ -446,10 +460,10 @@ mod tests {
         assert_eq!(map.len(), wanted.len(), "в снимке появился лишний ключ");
     }
 
-    /// Типы полей снимка держат разметку: `movies` и `favorites` — списки,
-    /// три переключателя — истина/ложь. Приедь сюда строка «false», и QML
-    /// принял бы её за истину (непустая строка), а переключатель встал бы во
-    /// «включено» сам собой.
+    /// The field types of the snapshot hold the markup: `movies` and
+    /// `favorites` are lists, the three toggles are true/false. If the string
+    /// "false" arrived here, QML would take it for true (a non-empty string),
+    /// and the toggle would go to "on" by itself.
     #[test]
     fn snapshot_field_types_are_what_qml_expects() {
         let full = snapshot(

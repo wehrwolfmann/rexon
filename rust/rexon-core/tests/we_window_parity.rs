@@ -1,32 +1,33 @@
-//! Сверка [`rexon_core::we_window`] — вкладки Wallpaper Engine.
+//! Check of [`rexon_core::we_window`] — the Wallpaper Engine tab.
 //!
-//! Ожидаемые значения выписаны ДОСЛОВНО (когда-то — из прежней
-//! `rexon/qt_wallpaper_engine/window.py`, коммит `ec8a809`; с 02.10.2026
-//! Python в Rexon — только архив, и эти записи — собственный эталон Rust),
-//! включая склейку строк, разорванных по ширине колонки. Отдельно проверены три починки: удаление временного
-//! файла после провалившейся установки, опознание попытки IPC-таймаутом и
-//! единая подпись версии движка.
+//! The expected values are written out VERBATIM (once — from the former
+//! `rexon/qt_wallpaper_engine/window.py`, commit `ec8a809`; since 02.10.2026
+//! Python in Rexon is only an archive, and these records are Rust's own
+//! reference), including the joining of strings broken at column width.
+//! Three fixes are checked separately: deleting the temporary file after a
+//! failed install, recognising the attempt by the IPC timeout and a single
+//! label for the engine version.
 
 use rexon_core::we_window as w;
 
 mod i18n_pin;
 
-// ── Скрытый режим разработчика ───────────────────────────────────────
+// ── Hidden developer mode ───────────────────────────────────────
 
 #[test]
 fn dev_env_beats_marker_both_ways() {
     let _lang = i18n_pin::ru();
-    // env выключает даже при маркере («как увидит покупатель»)
+    // env turns it off even with the marker («as the buyer will see it»)
     for raw in ["0", "false", "no", "NO", " False "] {
         assert!(!w::dev_mode(raw, true), "{raw}");
         assert!(!w::dev_mode(raw, false), "{raw}");
     }
-    // env включает без маркера
+    // env turns it on without the marker
     for raw in ["1", "true", "yes", "YES", " True "] {
         assert!(w::dev_mode(raw, false), "{raw}");
         assert!(w::dev_mode(raw, true), "{raw}");
     }
-    // пусто/мусор — решает маркер
+    // empty/garbage — the marker decides
     for raw in ["", "  ", "maybe", "2"] {
         assert!(w::dev_mode(raw, true), "{raw}");
         assert!(!w::dev_mode(raw, false), "{raw}");
@@ -39,17 +40,17 @@ fn dev_marker_stays_under_config_rexon() {
     assert_eq!(w::DEV_ENV_VAR, "REXON_DEV");
 }
 
-// ── Рейл и страницы ──────────────────────────────────────────────────
+// ── Rail and pages ──────────────────────────────────────────────────
 
 #[test]
 fn qml_specs_match_the_vendor_pages() {
     let _lang = i18n_pin::ru();
     let specs = w::qml_page_specs();
-    // Пятым в строке — признак вендорной ШАПКИ. Он тут не для полноты:
-    // страница без шапки теряет заголовок и ВСЕ кнопки действий, а список
-    // при этом рисуется, и снимок выглядит рабочим. Само ПРАВИЛО, по
-    // которому признак ставится, сторожит `we_rail_vendor_parity.rs` —
-    // он читает саму вендорную страницу, а не этот список.
+    // Fifth in the row is the vendor HEADER flag. It is not here for
+    // completeness: a page without a header loses its title and ALL action
+    // buttons, while the list is still drawn, and the snapshot looks working.
+    // The RULE by which the flag is set is guarded by
+    // `we_rail_vendor_parity.rs` — it reads the vendor page itself, not this list.
     let got: Vec<(&str, &str, &str, &str, bool)> = specs
         .iter()
         .map(|i| {
@@ -79,7 +80,7 @@ fn qml_specs_match_the_vendor_pages() {
 #[test]
 fn rail_index_equals_page_index_in_every_case() {
     let _lang = i18n_pin::ru();
-    // QML собран, без dev: семь пунктов, семь контейнеров
+    // QML built, without dev: seven items, seven containers
     let p = w::build_rail(true, false);
     assert_eq!(p.items.len(), 7);
     assert_eq!(p.stub_index, None);
@@ -89,18 +90,18 @@ fn rail_index_equals_page_index_in_every_case() {
         assert!(p.vendor_qml_for_index(i).is_some(), "{i}");
     }
 
-    // QML собран, dev: восьмым пунктом «Разраб.», у него вендорной страницы нет
+    // QML built, dev: «Dev» as the eighth item, it has no vendor page
     let p = w::build_rail(true, true);
     assert_eq!(p.items.len(), 8);
     assert_eq!(p.dev_index, Some(7));
     assert_eq!(p.items[7].id, "dev");
-    // Страница «Разработчик» — НАША (QML-модуль `org.rexon.gui`): имя файла
-    // у пункта есть, но вендорной страницы у него нет и быть не может.
+    // The «Developer» page is OURS (QML module `org.rexon.gui`): the item has a
+    // file name, but it has no vendor page and cannot have one.
     assert_eq!(p.qml_for_index(7), Some(w::DEV_PAGE_QML));
     assert_eq!(p.vendor_qml_for_index(7), None);
     assert!(!p.items[7].vendor);
 
-    // QML не собран: заглушка нулевой страницей
+    // QML not built: a stub as page zero
     let p = w::build_rail(false, false);
     assert_eq!(p.items.len(), 1);
     assert_eq!(p.items[0].id, "no_qml");
@@ -108,7 +109,7 @@ fn rail_index_equals_page_index_in_every_case() {
     assert_eq!(p.qml_for_index(0), None);
     assert_eq!(p.vendor_qml_for_index(0), None);
 
-    // QML не собран + dev: заглушка и dev идут подряд, индексы не разъезжаются
+    // QML not built + dev: the stub and dev come in a row, the indices do not drift
     let p = w::build_rail(false, true);
     assert_eq!(p.items.len(), 2);
     assert_eq!(p.stub_index, Some(0));
@@ -124,7 +125,7 @@ fn rail_button_label_marks_only_drift() {
     assert_eq!(w::RAIL_WIDTH, 96);
 }
 
-// ── Цвета и стили ────────────────────────────────────────────────────
+// ── Colours and styles ────────────────────────────────────────────────────
 
 #[test]
 fn variant_color_matches_the_original_format() {
@@ -135,12 +136,12 @@ fn variant_color_matches_the_original_format() {
 
 #[test]
 fn rail_qss_matches_the_original_concatenation() {
-    // ⭐ Скругление здесь НАМЕРЕННО разошлось со снапшотом оригинала
-    // (`ec8a809` давал 12px): 12 были нашей выдумкой, а вкладка чужая, и
-    // мерило у неё одно — waywallen. Его рейл рисует подсветку выбранного
-    // «пилюлей», `radius: height / 2` (`RailItem.qml` модуля
-    // `Qcm.Material`), поэтому `RAIL_BUTTON_RADIUS` теперь считается от
-    // высоты пункта: 56 / 2 = 28. Остальная склейка — дословно прежняя.
+    // ⭐ The rounding here DELIBERATELY diverged from the original's snapshot
+    // (`ec8a809` gave 12px): 12 was our invention, while the tab is foreign, and
+    // its only yardstick is waywallen. Its rail draws the selection highlight as
+    // a «pill», `radius: height / 2` (`RailItem.qml` of the `Qcm.Material`
+    // module), so `RAIL_BUTTON_RADIUS` is now computed from the item height:
+    // 56 / 2 = 28. The rest of the joining is verbatim as before.
     let dark = w::rail_qss(true, 102, 192, 244);
     assert_eq!(
         dark,
@@ -156,14 +157,14 @@ QFrame#weRail QToolButton:checked { background: rgba(102,192,244,0.25); }"
 #[test]
 fn rail_background_color_matches_the_qss_alpha() {
     let _lang = i18n_pin::ru();
-    // Долю таблицы стилей парсер Qt усекает: 0.03 → 7/255, 0.02 → 5/255.
-    // QML-версия берёт ту же краску восьмибитной, иначе полоса рейла
-    // выходит на уровень светлее оригинала (замер 04.09.2026).
+    // Qt's parser truncates the style sheet fraction: 0.03 → 7/255, 0.02 → 5/255.
+    // The QML version takes the same paint as 8-bit, otherwise the rail bar
+    // comes out one level lighter than the original (measurement of 04.09.2026).
     assert_eq!(w::rail_background_argb_hex(true), "#07ffffff");
     assert_eq!(w::rail_background_argb_hex(false), "#05000000");
     assert_eq!((w::RAIL_BG_ALPHA_DARK * 255.0) as u8, 7);
     assert_eq!((w::RAIL_BG_ALPHA_LIGHT * 255.0) as u8, 5);
-    // И сами доли — те, что стоят в таблице стилей оригинала.
+    // And the fractions themselves are those in the original's style sheet.
     assert!(w::rail_qss(true, 1, 2, 3).contains("rgba(255,255,255,0.03)"));
     assert!(w::rail_qss(false, 1, 2, 3).contains("rgba(0,0,0,0.02)"));
 }
@@ -171,14 +172,14 @@ fn rail_background_color_matches_the_qss_alpha() {
 #[test]
 fn rail_selected_color_matches_the_qss_alpha() {
     let _lang = i18n_pin::ru();
-    // Ту же долю подсветки выбранного пункта парсер Qt усекает:
-    // 0.25 → 63/255. QML-версия берёт краску восьмибитной, иначе
-    // подсветка выходит на уровень светлее оригинала — (51,82,107)
-    // против (50,82,106) (замер 04.09.2026, раздел «Дисплеи»).
+    // Qt's parser truncates the same fraction of the selected item highlight:
+    // 0.25 → 63/255. The QML version takes the paint as 8-bit, otherwise the
+    // highlight comes out one level lighter than the original — (51,82,107)
+    // versus (50,82,106) (measurement of 04.09.2026, «Displays» section).
     assert_eq!(w::rail_selected_argb_hex(0x66, 0xc0, 0xf4), "#3f66c0f4");
     assert_eq!(w::rail_selected_argb_hex(37, 99, 235), "#3f2563eb");
     assert_eq!((w::RAIL_SELECTED_ALPHA * 255.0) as u8, 0x3f);
-    // И сама доля — та, что стоит в таблице стилей оригинала.
+    // And the fraction itself is the one in the original's style sheet.
     assert!(w::rail_qss(true, 0x66, 0xc0, 0xf4)
         .contains("background: rgba(102,192,244,0.25); }"));
 }
@@ -190,7 +191,7 @@ fn logo_and_muted_qss_match() {
         w::logo_qss("#66c0f4"),
         "font-size: 22px; font-weight: 700; color: #66c0f4;"
     );
-    // Те же числа берёт QML-версия свойствами модели.
+    // The QML version takes the same numbers as model properties.
     assert_eq!(w::LOGO_FONT_SIZE, 22);
     assert_eq!(w::LOGO_FONT_WEIGHT, 700);
     assert_eq!(
@@ -203,18 +204,18 @@ fn logo_and_muted_qss_match() {
     );
 }
 
-// ── Состояния вкладки ────────────────────────────────────────────────
+// ── Tab states ────────────────────────────────────────────────
 
 #[test]
 fn start_screen_qss_matches_the_original_literals() {
     let _lang = i18n_pin::ru();
-    // `ic.setStyleSheet("font-size: 48px;")` и
-    // `self._no_daemon_lbl.setStyleSheet("font-size: 15px;")` оригинала.
+    // The original's `ic.setStyleSheet("font-size: 48px;")` and
+    // `self._no_daemon_lbl.setStyleSheet("font-size: 15px;")`.
     assert_eq!(w::no_daemon_icon_qss(), "font-size: 48px;");
     assert_eq!(w::no_daemon_text_qss(), "font-size: 15px;");
     assert_eq!(w::STATE_TEXT_FONT_SIZE, 15);
     assert_eq!(w::NO_DAEMON_ICON_FONT_SIZE, 48);
-    // Умолчание `QVBoxLayout` под стилем продукта, замер 03.09.2026.
+    // The `QVBoxLayout` default under the product style, measurement of 03.09.2026.
     assert_eq!(w::STATE_COLUMN_SPACING, 6);
     assert_eq!(w::STATE_COLUMN_MARGIN, 6);
 }
@@ -231,13 +232,13 @@ fn state_indices_keep_the_original_order() {
     assert_eq!(w::STARTUP_DELAY_MS, 100);
 }
 
-/// Общий срок ожидания движка обязан быть КОНЕЧНЫМ и ПОСЛЕДНИМ.
+/// The overall engine wait must be FINITE and LAST.
 ///
-/// Последним — потому что до него срабатывают точные сторожа: 12 секунд
-/// опроса шины и 5 секунд на ответ `health`. Сделай его короче их суммы —
-/// и покупатель вместо «движок запускается слишком долго» получит общие
-/// слова, а мы потеряем диагноз. Проверка стоит здесь, чтобы это выяснялось
-/// на `cargo test`, а не на живом окне.
+/// Last — because the precise guards fire before it: 12 seconds of bus
+/// polling and 5 seconds for the `health` answer. Make it shorter than their
+/// sum — and instead of «the engine takes too long to start» the buyer gets
+/// generic words, and we lose the diagnosis. The check is here so that this
+/// comes out on `cargo test`, not in the live window.
 #[test]
 fn connect_timeout_outlives_every_inner_guard() {
     let _lang = i18n_pin::ru();
@@ -252,9 +253,9 @@ fn connect_timeout_outlives_every_inner_guard() {
         polling_ms,
         w::HEALTH_TIMEOUT_MS
     );
-    // Замер холодного старта демона на машине владельца — 3,2–5,0 с
-    // (стенд `measure-start.sh`, 18.09.2026). Полминуты ожидания покупателю
-    // уже не объяснить ничем.
+    // A cold daemon start measured on the owner's machine — 3.2–5.0 s (stand
+    // `measure-start.sh`, 18.09.2026). Half a minute of waiting can no longer be
+    // explained to the buyer by anything.
     assert!(w::CONNECT_TIMEOUT_MS <= 30_000);
 }
 
@@ -263,7 +264,7 @@ fn health_verdict_trusts_old_daemons_and_stops_broken_ones() {
     let _lang = i18n_pin::ru();
     assert_eq!(w::health_verdict("healthy"), w::HealthVerdict::Ready);
     assert_eq!(w::health_verdict("HEALTHY"), w::HealthVerdict::Ready);
-    // старый демон без поля health — пустая строка, страницы показываем
+    // an old daemon without the health field — empty string, we show the pages
     assert_eq!(w::health_verdict(""), w::HealthVerdict::Ready);
     assert_eq!(
         w::health_verdict("degraded"),
@@ -273,12 +274,12 @@ fn health_verdict_trusts_old_daemons_and_stops_broken_ones() {
     );
 }
 
-/// Каждая причина, которую продукт умеет сказать, обязана ОПОЗНАВАТЬСЯ.
+/// Every reason the product can state must be RECOGNISED.
 ///
-/// Иначе покупатель молча съезжает на общие слова: разбор идёт по строке,
-/// и любое переписывание сообщения в `we_client` рвёт его беззвучно — ни
-/// сборка, ни работа об этом не скажут. Поэтому сообщения берутся прямо у
-/// их авторов, а не переписаны сюда копиями.
+/// Otherwise the buyer silently slides to generic words: parsing goes by
+/// string, and any rewording of a message in `we_client` breaks it silently —
+/// neither the build nor the run will say so. So the messages are taken
+/// directly from their authors rather than copied here.
 #[test]
 fn every_known_reason_is_recognised() {
     let _lang = i18n_pin::ru();
@@ -308,11 +309,11 @@ fn every_known_reason_is_recognised() {
     assert_eq!(w::daemon_failure(""), F::Unknown);
 }
 
-/// Экран отказа — для покупателя, а машинная кухня — для журнала.
+/// The refusal screen is for the buyer, and the machine internals are for the log.
 ///
-/// Сторож ровно на то, из-за чего задача и заводилась: пути, `PATH` и слово
-/// AppImage стояли на весь экран у человека, который купил программу ради
-/// обоев.
+/// A guard exactly for what the task was started for: paths, `PATH` and the
+/// word AppImage filled the whole screen of a person who bought the program
+/// for wallpapers.
 #[test]
 fn failure_screen_says_what_to_do_and_hides_the_machinery() {
     use rexon_core::we_client as c;
@@ -327,13 +328,13 @@ fn failure_screen_says_what_to_do_and_hides_the_machinery() {
             );
         }
     }
-    // Та же подробность обязана оказаться в журнале — целиком и дословно.
+    // The same detail must end up in the log — in full and verbatim.
     let line = w::daemon_failure_log_line(&raw).expect("строка журнала");
     assert!(line.contains(&raw), "{line}");
     assert_eq!(w::daemon_failure_log_line("   "), None);
 
-    // Каждый случай говорит, ЧТО делать: либо кнопкой, либо переустановкой
-    // пакета — и совет про пакет звучит ТОЛЬКО у пакетной установки.
+    // Every case says WHAT to do: either with a button or by reinstalling the
+    // package — and the package advice sounds ONLY for a package install.
     for reason in [
         c::daemon_launch_failed_message("/opt/waywallen"),
         c::daemon_poll_timeout_message(),
@@ -357,10 +358,10 @@ fn failure_screen_says_what_to_do_and_hides_the_machinery() {
     }
 }
 
-/// Ложный совет снят (28.09.2026): «он ставится вместе с Rexon —
-/// переустановите Rexon» звучал там, где движка в поставке не было, и
-/// переустановка ничего не давала. Теперь «переустановите пакет» —
-/// только когда движок действительно приезжает с пакетом.
+/// False advice removed (28.09.2026): «it is installed together with Rexon —
+/// reinstall Rexon» sounded where the engine was not shipped, and
+/// reinstalling gave nothing. Now «reinstall the package» — only when the
+/// engine really comes with the package.
 #[test]
 fn missing_engine_text_is_honest_about_the_package() {
     use rexon_core::we_client as c;
@@ -372,17 +373,17 @@ fn missing_engine_text_is_honest_about_the_package() {
         assert!(!off_package.contains("ставится вместе с Rexon"), "{off_package}");
         assert!(!off_package.contains("ереустановите"), "{off_package}");
         assert!(off_package.contains("установлена без движка"), "{off_package}");
-        // С 30.10.2026 движок — отдельный пакет-зависимость: совет называет его.
+        // Since 30.10.2026 the engine is a separate dependency package: the advice names it.
         assert!(packaged.contains("Переустановите пакет waywallen"), "{packaged}");
         assert_eq!(w::no_daemon_text(&raw), off_package, "прежняя дверь = не пакет");
-        // Состояние health экрану неизвестно — «устарел» он больше не обещает.
+        // The health state is unknown to the screen — it no longer promises «outdated».
         let not_ready = match w::health_verdict("degraded") {
             w::HealthVerdict::NotReady(r) => r,
             w::HealthVerdict::Ready => unreachable!(),
         };
         assert!(!w::no_daemon_text_in(&not_ready, true).contains("устарел"));
     }
-    // Исходный язык — английский; русский приходит из po/ru.po.
+    // The source language is English; Russian comes from po/ru.po.
     let _lang = i18n_pin::en();
     let en = w::no_daemon_text_in(&raw, true);
     assert!(en.starts_with("The waywallen wallpaper engine is missing."), "{en}");
@@ -391,14 +392,14 @@ fn missing_engine_text_is_honest_about_the_package() {
     assert!(en.contains("installed without the engine"), "{en}");
 }
 
-// ── Страница «Разработчик» ───────────────────────────────────────────
+// ── «Developer» page ───────────────────────────────────────────
 
 #[test]
 fn settings_keys_and_defaults_match() {
     assert_eq!(w::KEY_AUTO_DOWNLOAD, "dev_engine_auto_download");
     assert_eq!(w::KEY_AUTO_UPSTREAM, "dev_auto_upstream_check");
     assert_eq!(w::KEY_AUTO_PARITY, "dev_auto_parity_check");
-    // авто-УСТАНОВКА выключена, авто-ПРОВЕРКИ включены
+    // auto-INSTALL off, auto-CHECKS on
     assert!(!w::DEFAULT_AUTO_DOWNLOAD);
     assert!(w::DEFAULT_AUTO_UPSTREAM);
     assert!(w::DEFAULT_AUTO_PARITY);
@@ -451,8 +452,8 @@ fn installed_and_seen_lines_match() {
 #[test]
 fn version_label_speaks_with_one_voice() {
     let _lang = i18n_pin::ru();
-    // ⚠️ Починка 3: одно поле — одно имя. В оригинале до проверки было
-    // «Версия движка: —», после — «Версия waywallen: …».
+    // ⚠️ Fix 3: one field — one name. In the original before the check it was
+    // «Engine version: —», after it — «waywallen version: …».
     assert_eq!(w::version_label_initial(), "Версия waywallen: —");
     assert!(w::version_label_initial().starts_with("Версия waywallen: "));
     assert_eq!(w::version_label("0.2.6"), "Версия waywallen: 0.2.6");
@@ -517,20 +518,20 @@ fn changelog_panel_falls_back_to_honest_text() {
     assert_eq!(w::changelog_panel_text("v0.2.7\n  раз"), "v0.2.7\n  раз");
 }
 
-// ── Починка 2: таймаут IPC знает свою попытку ────────────────────────
+// ── Fix 2: the IPC timeout knows its attempt ────────────────────────
 
 #[test]
 fn stale_ipc_timeout_does_not_kill_the_next_install() {
-    // ждём ответа на попытку 1, будильник от неё же — таймаут законен
+    // waiting for the answer to attempt 1, the alarm is from it too — the timeout is legitimate
     assert!(w::owe_ipc_timeout_fires(1, 1, true));
-    // ответ уже пришёл (ничего не ждём) — молчим
+    // the answer already arrived (waiting for nothing) — stay silent
     assert!(!w::owe_ipc_timeout_fires(1, 1, false));
-    // ⚠️ Починка 2: будильник от прошлой попытки, идёт вторая — молчим,
-    // иначе он удалил бы её временный zip и соврал «демон не ответил»
+    // ⚠️ Fix 2: an alarm from the previous attempt, the second is running — stay
+    // silent, otherwise it would delete its temporary zip and lie «the daemon did not answer»
     assert!(!w::owe_ipc_timeout_fires(1, 2, true));
 }
 
-// ── Сверка паритета ──────────────────────────────────────────────────
+// ── Parity check ──────────────────────────────────────────────────
 
 #[test]
 fn parity_header_and_badge_match_the_original() {
@@ -544,7 +545,7 @@ fn parity_header_and_badge_match_the_original() {
         "Демон: (версия неизвестна) · proto-снапшот Rexon: (тег не записан)\n"
     );
 
-    // снапшот протокола разошёлся — «✅» не показываем вовсе
+    // the protocol snapshot diverged — «✅» is not shown at all
     let b = w::parity_badge(Some(false), "0.2.9", "v0.2.6", false, 0, 0, 0);
     assert_eq!(
         b.text,
@@ -552,30 +553,30 @@ fn parity_header_and_badge_match_the_original() {
     );
     assert_eq!(b.qss, "font-size: 13px; color: #e65100; font-weight: 600;");
 
-    // сошлись и расхождений нет
+    // matched and no divergences
     let b = w::parity_badge(Some(true), "0.2.6", "v0.2.6", false, 0, 0, 0);
     assert_eq!(b.text, "✅ схема renderer-настроек");
     assert_eq!(b.qss, "font-size: 13px; color: #2e7d32;");
 
-    // версию демона узнать не удалось — честная оговорка
+    // the daemon version could not be found out — an honest caveat
     let b = w::parity_badge(None, "", "v0.2.6", false, 0, 0, 0);
     assert_eq!(
         b.text,
         "✅ схема renderer-настроек (версию демона сверить не удалось)"
     );
 
-    // расхождения: с важными и без
+    // divergences: with important ones and without
     let b = w::parity_badge(Some(true), "0.2.6", "v0.2.6", true, 3, 0, 0);
     assert_eq!(b.text, "⚠️ расхождений: 3");
     assert_eq!(b.qss, "font-size: 13px; color: #c62828; font-weight: 600;");
     let b = w::parity_badge(Some(true), "0.2.6", "v0.2.6", true, 3, 2, 0);
     assert_eq!(b.text, "⚠️ расхождений: 3 (важных: 2)");
 
-    // расхождений нет, но часть настроек сверить было не с чем — «⚠️» вместо «✅»
+    // no divergences, but some settings had nothing to compare with — «⚠️» instead of «✅»
     let b = w::parity_badge(Some(true), "0.2.6", "v0.2.6", false, 0, 0, 4);
     assert_eq!(b.text, "⚠️ схема renderer-настроек · не проверено: 4");
     assert_eq!(b.qss, "font-size: 13px; color: #e65100;");
-    // настоящие расхождения оговоркой не заслоняются
+    // real divergences are not hidden by the caveat
     let b = w::parity_badge(Some(true), "0.2.6", "v0.2.6", true, 3, 0, 4);
     assert_eq!(b.text, "⚠️ расхождений: 3");
 }
@@ -588,7 +589,7 @@ fn drift_flag_covers_both_causes() {
     assert!(!w::parity_drift_flag(false, None));
 }
 
-// ── Воркеры ──────────────────────────────────────────────────────────
+// ── Workers ──────────────────────────────────────────────────────────
 
 #[test]
 fn download_progress_matches_the_original_mib_math() {
@@ -601,9 +602,9 @@ fn download_progress_matches_the_original_mib_math() {
         w::download_progress("OWE-плагин: ", 5 << 20, 12 << 20),
         Some("OWE-плагин: Скачивание… 5 / 12 МиБ".to_string())
     );
-    // размера сервер не сказал — оригинал молчал, молчим и мы
+    // the server did not tell the size — the original was silent, so are we
     assert_eq!(w::download_progress("", 1234, 0), None);
-    // неполный мебибайт округляется вниз, как сдвиг в оригинале
+    // an incomplete mebibyte is rounded down, like the shift in the original
     assert_eq!(
         w::download_progress("", (1 << 20) - 1, 1 << 20),
         Some("Скачивание… 0 / 1 МиБ".to_string())
@@ -623,8 +624,8 @@ fn download_start_texts_match() {
 #[test]
 fn download_failure_names_its_reason() {
     let _lang = i18n_pin::ru();
-    // Причина обязана доезжать до человека: без неё «не удалось/отменено»
-    // не отличить обрыв сети от ошибки импорта ядра (живой случай 09.09.2026).
+    // The reason must reach the person: without it «failed/cancelled» cannot
+    // tell a network drop from a core import error (live case of 09.09.2026).
     let o = w::after_download(w::PREFIX_ENGINE, false, false,
                               Some("ImportError: rexon_py")).unwrap();
     assert_eq!(o.message, "скачивание не удалось: ImportError: rexon_py");
@@ -634,7 +635,7 @@ fn download_failure_names_its_reason() {
     assert_eq!(o.message,
                "скачивание OWE-плагина не удалось: URLError: timed out");
 
-    // Пустую причину не показываем — это отмена, а не сбой.
+    // An empty reason is not shown — this is a cancellation, not a failure.
     let o = w::after_download(w::PREFIX_ENGINE, false, false, Some("   ")).unwrap();
     assert_eq!(o.message, "скачивание не удалось/отменено");
 }
@@ -642,7 +643,7 @@ fn download_failure_names_its_reason() {
 #[test]
 fn worker_steps_match_the_original_messages() {
     let _lang = i18n_pin::ru();
-    // скачивание не удалось: файла нет — удалять нечего
+    // the download failed: no file — nothing to delete
     let o = w::after_download(w::PREFIX_ENGINE, false, false, None).unwrap();
     assert!(!o.ok);
     assert_eq!(o.message, "скачивание не удалось/отменено");
@@ -651,15 +652,15 @@ fn worker_steps_match_the_original_messages() {
     let o = w::after_download(&w::prefix_owe(), false, false, None).unwrap();
     assert_eq!(o.message, "скачивание OWE-плагина не удалось/отменено");
 
-    // выход из приложения посреди скачивания: файл есть, убрать
+    // quitting the app in the middle of a download: the file is there, remove it
     let o = w::after_download(w::PREFIX_ENGINE, true, true, None).unwrap();
     assert_eq!(o.message, "отменено (выход из приложения)");
     assert!(o.remove_tmp);
 
-    // всё хорошо — идём дальше
+    // all is well — go on
     assert!(w::after_download(w::PREFIX_ENGINE, true, false, None).is_none());
 
-    // валидация
+    // validation
     assert!(w::after_validate(false, true, "").is_none());
     let o = w::after_validate(false, false, "не исполняемый").unwrap();
     assert_eq!(o.message, "AppImage невалиден: не исполняемый");
@@ -672,9 +673,9 @@ fn worker_steps_match_the_original_messages() {
 #[test]
 fn failed_appimage_install_no_longer_leaks_the_download() {
     let _lang = i18n_pin::ru();
-    // ⚠️ Починка 1: оригинал убирал скачанные ~200 МиБ только при отмене и
-    // провале валидации. Провал самой установки оставлял файл в /tmp — на
-    // этой машине это ОЗУ.
+    // ⚠️ Fix 1: the original removed the downloaded ~200 MiB only on cancellation
+    // and on a failed validation. A failure of the install itself left the file
+    // in /tmp — which is RAM on this machine.
     let bad = w::after_install_appimage(false, "Text file busy");
     assert!(!bad.ok);
     assert!(bad.remove_tmp, "провал установки обязан убрать временный файл");
@@ -686,26 +687,27 @@ fn failed_appimage_install_no_longer_leaks_the_download() {
 #[test]
 fn plugin_route_hands_the_zip_over_only_for_ipc() {
     let _lang = i18n_pin::ru();
-    // демон подключён → zip уходит GUI-потоку под IPC (QWebSocket из чужого
-    // потока трогать нельзя), сам воркер файл не убирает
+    // the daemon is connected → the zip goes to the GUI thread under IPC
+    // (QWebSocket must not be touched from a foreign thread), the worker itself
+    // does not remove the file
     let ipc = w::after_validate_plugin_route(false, "архив в порядке");
     assert!(ipc.ok && ipc.hand_over_tmp && !ipc.remove_tmp);
-    // демон не запущен → ставим сами, отдавать нечего
+    // the daemon is not running → we install ourselves, nothing to hand over
     let fs = w::after_validate_plugin_route(true, "архив в порядке");
     assert!(fs.ok && !fs.hand_over_tmp && !fs.remove_tmp);
-    // после ФС-установки временный zip убирается в обоих исходах
+    // after an FS install the temporary zip is removed in both outcomes
     assert!(w::after_install_plugin_fs(true, "ок").remove_tmp);
     assert!(w::after_install_plugin_fs(false, "нет прав").remove_tmp);
 }
 
-// ── Решения GUI-потока ───────────────────────────────────────────────
+// ── GUI thread decisions ───────────────────────────────────────────────
 
 #[test]
 fn auto_install_needs_all_three_conditions() {
     assert!(w::should_auto_install(true, true, false));
     assert!(!w::should_auto_install(false, true, false));
     assert!(!w::should_auto_install(true, false, false));
-    // один раз за сессию
+    // once per session
     assert!(!w::should_auto_install(true, true, true));
 }
 
@@ -715,9 +717,10 @@ fn plugin_install_mode_follows_the_daemon() {
     assert!(w::plugin_fs_install(false));
 }
 
-/// Числа dev-страницы и таблицы стилей, которые из них собраны, — одно и то
-/// же. Сторож на случай, когда правят одно и забывают второе: у страницы
-/// две версии, виджетная читает строку стиля, сцена QML — само число.
+/// The numbers of the dev page and the style sheets built from them are one
+/// and the same. A guard for when one is edited and the other forgotten: the
+/// page has two versions, the widget one reads the style string, the QML
+/// scene the number itself.
 #[test]
 fn dev_page_style_numbers_match_their_stylesheets() {
     let _lang = i18n_pin::ru();
@@ -751,8 +754,8 @@ fn dev_page_style_numbers_match_their_stylesheets() {
     );
 }
 
-/// Строка статуса и бейдж паритета: краска и её таблица стилей — из одного
-/// решения. Виджетная версия берёт `Styled`, сцена QML — `StatusLine`.
+/// The status line and the parity badge: the paint and its style sheet come
+/// from one decision. The widget version takes `Styled`, the QML scene `StatusLine`.
 #[test]
 fn status_line_and_styled_agree() {
     let parts = w::target_status_parts(true, "waywallen", "0.3.7", true);
@@ -773,15 +776,16 @@ fn status_line_and_styled_agree() {
     );
 }
 
-// ── Английский интерфейс ─────────────────────────────────────────────
+// ── English interface ─────────────────────────────────────────────
 
 fn has_cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Все подписи вкладки для человека — без русских букв на английском. Сырые
-/// причины отказа (`TEXT_HEALTH_TIMEOUT`, `REASON_CONNECT_TIMEOUT`, вердикт
-/// `health`) идут в журнал и не переводятся — их здесь нет намеренно.
+/// All tab labels for a person — without Russian letters in English. Raw
+/// refusal reasons (`TEXT_HEALTH_TIMEOUT`, `REASON_CONNECT_TIMEOUT`, the
+/// `health` verdict) go to the log and are not translated — they are absent
+/// here on purpose.
 #[test]
 fn english_we_window_texts_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -869,7 +873,7 @@ fn english_we_window_texts_have_no_russian() {
     }
 }
 
-/// Английский звучит естественно, а рейл — словами самого waywallen.
+/// The English sounds natural, and the rail uses waywallen's own words.
 #[test]
 fn english_phrases_read_naturally() {
     let _lang = i18n_pin::en();
@@ -889,7 +893,7 @@ fn english_phrases_read_naturally() {
         w::parity_badge(Some(true), "", "", true, 3, 2, 0).text,
         "⚠️ mismatches: 3 (2 important)"
     );
-    // Кнопка, на которую ссылается экран отказа, названа там её же словами.
+    // The button the refusal screen refers to is named there with its own words.
     use rexon_core::we_client as c;
     for reason in [c::daemon_poll_timeout_message(), "unknown".to_string()] {
         for packaged in [false, true] {
@@ -899,8 +903,8 @@ fn english_phrases_read_naturally() {
     }
 }
 
-/// «По-русски как было»: подписи рейла и dev-страницы из `po/ru.po` —
-/// дословно прежние литералы (снимок до перевода на каталог).
+/// «In Russian as it was»: rail and dev page labels from `po/ru.po` are
+/// verbatim the former literals (snapshot before moving to the catalog).
 #[test]
 fn russian_reads_as_before() {
     let _lang = i18n_pin::ru();
@@ -916,8 +920,8 @@ fn russian_reads_as_before() {
         (w::text_retry_daemon(), "Повторить запуск"),
         (
             w::text_no_qml_modules(),
-            // Отступ «  » перед командами съедало продолжение строки `\` ещё
-            // в исходном литерале — на экране его не было и прежде.
+            // The «  » indent before commands was eaten by the `\` line continuation
+            // already in the original literal — it was not on screen before either.
             "QML-модули интерфейса не собраны.\n\nСоберите их и перезапустите Rexon:\n\
 bash tools/build_qml_material.sh\nbash tools/build_qml_control.sh",
         ),
@@ -968,10 +972,10 @@ bash tools/build_qml_material.sh\nbash tools/build_qml_control.sh",
     }
 }
 
-// ── Цвета вендорного интерфейса ──────────────────────────────────────
+// ── Vendor interface colours ──────────────────────────────────────
 
-/// По умолчанию вкладка красится скином Rexon: стандартный «Тёмный
-/// (Steam)» даёт ровно краски страницы этого скина.
+/// By default the tab is painted with the Rexon skin: the standard «Dark
+/// (Steam)» gives exactly the page paints of this skin.
 #[test]
 fn vendor_theme_follows_rexon_skin_by_default() {
     let t = w::vendor_theme(rexon_core::ui_base::DEFAULT_SKIN);
@@ -980,13 +984,13 @@ fn vendor_theme_follows_rexon_skin_by_default() {
     assert_eq!(t.background, "#1b2838");
     assert_eq!(t.text, "#ffffff");
     assert!(t.dark);
-    // Незнакомый скин откатывается к стандартному, а не к схеме waywallen.
+    // An unknown skin falls back to the standard one, not to the waywallen scheme.
     assert_eq!(w::vendor_theme("no-such-skin"), t);
 }
 
-/// Каждый скин Rexon, кроме «Как в waywallen», красит вкладку своими
-/// красками: фон и текст — те же, что у соседних QML-страниц, тёмность —
-/// по фону, текст на фоне различим.
+/// Every Rexon skin except «As in waywallen» paints the tab with its own
+/// paints: background and text are the same as on neighbouring QML pages,
+/// darkness is by background, text is legible on the background.
 #[test]
 fn vendor_theme_takes_colors_of_every_rexon_skin() {
     use rexon_core::ui_base as ui;
@@ -1006,7 +1010,7 @@ fn vendor_theme_takes_colors_of_every_rexon_skin() {
     assert_eq!(light.accent, "#2563eb");
 }
 
-/// Схема самого waywallen — отдельный пункт в списке скинов, и только он.
+/// waywallen's own scheme is a separate item in the skin list, and only it.
 #[test]
 fn vendor_scheme_is_a_separate_skin() {
     use rexon_core::ui_base as ui;
@@ -1014,14 +1018,14 @@ fn vendor_scheme_is_a_separate_skin() {
     assert_ne!(ui::DEFAULT_SKIN, ui::VENDOR_SCHEME_SKIN);
     let t = w::vendor_theme(ui::VENDOR_SCHEME_SKIN);
     assert!(t.follow_vendor);
-    // Стартовые экраны страницы красятся тёмными красками Material.
+    // The page's start screens are painted with dark Material paints.
     assert!(t.dark);
     assert_eq!(t.background, "#201f21");
 }
 
-/// Роли схемы Material красятся скином поштучно: на «Тёмном (Steam)»
-/// карточки вкладки (`surface_container`) — ровно фон страницы `#1b2838`,
-/// рабочая область — краска поля, текст — текст скина.
+/// Material scheme roles are painted by the skin one by one: on «Dark
+/// (Steam)» the tab cards (`surface_container`) are exactly the page
+/// background `#1b2838`, the work area the field paint, the text the skin text.
 #[test]
 fn vendor_roles_paint_cards_with_skin_colors() {
     use rexon_core::ui_base as ui;
@@ -1035,9 +1039,8 @@ fn vendor_roles_paint_cards_with_skin_colors() {
     assert_eq!(json["surface_container"], "#1b2838");
 }
 
-/// У каждого скина Rexon каждая роль задана готовой краской `#rrggbb` из
-/// его же палитры; у схемы самого waywallen ролей нет — там действуют его
-/// собственные настройки.
+/// For every Rexon skin each role is given a ready `#rrggbb` paint from its
+/// own palette; waywallen's own scheme has no roles — its own settings apply there.
 #[test]
 fn vendor_roles_cover_every_rexon_skin() {
     use rexon_core::ui_base as ui;

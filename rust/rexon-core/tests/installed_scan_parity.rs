@@ -1,37 +1,37 @@
-//! Golden-сверка порта `installed_scan.rs` с оригиналом
+//! Golden check of the `installed_scan.rs` port against the original
 //! `rexon/appearance/installed_scan.py`.
 //!
-//! Эталоны сняты с самого Python по схеме «песочница + снимок»:
-//!   1. Одноразовый генератор снял снимок РЕАЛЬНОГО дерева тем машины
-//!      Wehrwolfmann (~/.local/share/plasma, /usr/share/themes, иконки,
-//!      курсоры, Kvantum, sddm, plymouth — только структура + файлы
-//!      метаданных, бинарные превью пустышками; пути нормализованы в
-//!      /sb/home и /sb/usr) и добавил синтетику: junk look-and-feel без
-//!      metadata, битый metadata.json, тема с пустым Name, metadata.desktop
-//!      с Name и без, курсорная тема в icons/, цвет-схема с пробелом в
-//!      имени, сайдкар-превью, кейсы бэкофилла из кеша магазина
-//!      (однозначный и неоднозначный матч).
-//!   2. Снимок материализован в РЕАЛЬНУЮ песочницу — Python-эталон гонялся
-//!      по настоящим os.scandir/open (файловый слой не мокался), а
-//!      `snapshot` в фикстуре хранит порядок имён так, как их вернул
-//!      os.scandir эталону → Rust итерирует в том же порядке.
-//!   3. Немокаемое в Python: `_active_map`/`_qstyle_factory`/pacman/кеш
-//!      магазина подменялись фикстурами — в Rust это параметры сканеров.
+//! The goldens were captured from Python itself using the "sandbox + snapshot" scheme:
+//!   1. A one-off generator took a snapshot of the REAL theme tree of
+//!      Wehrwolfmann's machine (~/.local/share/plasma, /usr/share/themes, icons,
+//!      cursors, Kvantum, sddm, plymouth — only the structure + metadata
+//!      files, binary previews as dummies; paths normalized to
+//!      /sb/home and /sb/usr) and added synthetic cases: a junk look-and-feel without
+//!      metadata, a broken metadata.json, a theme with an empty Name, metadata.desktop
+//!      with and without Name, a cursor theme in icons/, a color scheme with a space in
+//!      its name, a sidecar preview, backfill cases from the store cache
+//!      (an unambiguous and an ambiguous match).
+//!   2. The snapshot was materialized into a REAL sandbox — the Python golden ran
+//!      over the real os.scandir/open (the file layer was not mocked), and
+//!      `snapshot` in the fixture keeps the order of names as os.scandir returned
+//!      them to the golden → Rust iterates in the same order.
+//!   3. What cannot be mocked in Python: `_active_map`/`_qstyle_factory`/pacman/the store
+//!      cache were replaced by fixtures — in Rust these are scanner parameters.
 //!
-//! ⚠️ Снимок УСЕЧЁН по ширине (в каждом корне — полтора десятка тем из
-//! реальных сотен), но по глубине честен: тексты `metadata.json`,
-//! `metadata.desktop`, `index.theme` и `*.colors` лежат в нём ДОСЛОВНО
-//! такими, как на машине Wehrwolfmann. Именно из них берётся подпись
-//! карточки, поэтому пустой текст означал бы «у темы нет имени» и голден
-//! перестал бы что-либо доказывать про иконки, курсоры, GTK-темы и
-//! цветовые схемы.
+//! ⚠️ The snapshot is TRUNCATED in width (each root has about fifteen themes out of
+//! real hundreds), but honest in depth: the texts of `metadata.json`,
+//! `metadata.desktop`, `index.theme` and `*.colors` lie in it VERBATIM
+//! as on Wehrwolfmann's machine. The card label is taken from them,
+//! so an empty text would mean "the theme has no name" and the golden
+//! would stop proving anything about icons, cursors, GTK themes and
+//! color schemes.
 //!
-//! `golden/installed_scan_tree.json` — снимок + эталоны сканеров
-//! (dataclasses.asdict ПОЛЕ-В-ПОЛЕ, включая порядок элементов).
-//! `golden/installed_scan_pure.json` — чистые парсеры: нормализация имён,
-//! сайдкар-ключи, политика `pacman -Qm` (ретраи по db.lck), разбор
-//! `pacman -Qo`, сборка `_active_map` из готовых источников (Python гонялся
-//! с замоканными ThemeManager/kreadconfig6/конфигами).
+//! `golden/installed_scan_tree.json` — the snapshot + scanner goldens
+//! (dataclasses.asdict FIELD-BY-FIELD, including the order of items).
+//! `golden/installed_scan_pure.json` — pure parsers: name normalization,
+//! sidecar keys, the `pacman -Qm` policy (retries on db.lck), parsing of
+//! `pacman -Qo`, building `_active_map` from ready sources (Python ran
+//! with mocked ThemeManager/kreadconfig6/configs).
 
 use std::collections::{HashMap, HashSet};
 
@@ -45,14 +45,14 @@ use rexon_core::system::PkgFamily;
 use rexon_core::system_plan::{file_owner_queries, foreign_packages_query};
 use serde_json::{json, Value};
 
-/// Язык, на котором сняты эталоны: интерфейс у нас русский, и подписи тем
-/// в голдене — те, что увидит покупатель. Прибит к фикстуре намеренно —
-/// иначе списки зависели бы от локали машины, где гоняются тесты.
+/// The language the goldens were captured in: our interface is Russian, and the theme labels
+/// in the golden are those the buyer will see. Pinned to the fixture on purpose —
+/// otherwise the lists would depend on the locale of the machine running the tests.
 const FX_LOCALE: &str = "ru_RU.UTF-8";
 
-// Подписи карточек (вид темы, «✅ Активна», «⬇ Скачано») переводятся, а
-// эталоны сняты с русского интерфейса: сверки идут на русском каталоге
-// `po/ru.po` и заодно держат слово, что по-русски всё как было.
+// Card labels (theme kind, «✅ Active», «⬇ Downloaded») are translated, and
+// the goldens were captured from the Russian interface: the checks run on the Russian catalog
+// `po/ru.po` and at the same time keep the promise that in Russian everything is as before.
 mod i18n_pin;
 
 fn tree_fx() -> Value {
@@ -79,8 +79,8 @@ fn str_vec(v: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Окружение из фикстуры. Возвращает замыкание preview_file отдельно,
-/// чтобы времена жизни ссылок в ScanEnv были корректны.
+/// Environment from the fixture. Returns the preview_file closure separately,
+/// so that the lifetimes of the references in ScanEnv are correct.
 struct FxEnv {
     fs: FsSnapshot,
     ocs_cache: Vec<(String, String)>,
@@ -128,7 +128,7 @@ fn items_json(items: &[rexon_core::models::ThemeItem]) -> Value {
 }
 
 // ============================================================================
-// Сканеры по снимку
+// Scanners over the snapshot
 // ============================================================================
 
 #[test]
@@ -190,8 +190,8 @@ fn scanners_match_python() {
         e.cases["scan_kvantum_off"],
         "scan_kvantum(off)"
     );
-    // Последняя плитка заставки — «Нет» (её в эталоне нет: подпись
-    // переводится и сверяется отдельно, `splash_none_tile_is_last`).
+    // The last splash screen tile is «None» (it is not in the golden: the label
+    // is translated and checked separately, `splash_none_tile_is_last`).
     let mut splash = scan_lnf_component(&env, "splash", &e.amap_full);
     assert_eq!(splash.pop().map(|it| it.id), Some("local:splash:None".to_string()));
     assert_eq!(items_json(&splash), e.cases["scan_lnf_splash"], "scan_lnf(splash)");
@@ -202,12 +202,12 @@ fn scanners_match_python() {
     );
 }
 
-/// Человеческое имя видно ТОЛЬКО покупателю: номер карточки, путь установки
-/// и признак активной темы остались на именах каталогов.
+/// The human name is visible ONLY to the buyer: the card number, the install path
+/// and the active theme mark stayed on the directory names.
 ///
-/// Здесь же сверяется, что поиск по списку продолжает работать — он
-/// фильтрует по тому, что человек читает на карточке (`local_matches`), и
-/// после подмены подписи должен находить тему по её НАСТОЯЩЕМУ названию.
+/// This also checks that list search keeps working — it
+/// filters by what a person reads on the card (`local_matches`), and
+/// after replacing the label it must find the theme by its REAL name.
 #[test]
 fn human_name_is_shown_but_identity_stays_on_directory() {
     let _lang = i18n_pin::ru();
@@ -236,7 +236,7 @@ fn human_name_is_shown_but_identity_stays_on_directory() {
         "путь установки трогать нельзя"
     );
 
-    // Активная тема помечается по имени каталога, а не по подписи.
+    // The active theme is marked by directory name, not by label.
     let active = splash
         .iter()
         .find(|it| it.local_kind.as_deref() == Some("active"))
@@ -255,25 +255,25 @@ fn human_name_is_shown_but_identity_stays_on_directory() {
         "признак «активна» — только у одной темы"
     );
 
-    // Имя для применения по-прежнему достаётся из номера карточки.
+    // The name for applying is still taken from the card number.
     assert_eq!(
         rexon_core::appearance_page::local_theme_name(&ours.id, &ours.name),
         "org.rexon.sessionsplash"
     );
 
-    // Поиск идёт по подписи — покупатель ищет то, что видит.
+    // Search goes by the label — the buyer searches for what they see.
     assert!(rexon_core::appearance_page::local_matches(&ours.name, "session"));
     let found = rexon_core::appearance_page::local_filter(&splash, "rexon session");
     assert_eq!(found.len(), 1, "поиск по человеческому имени: {found:?}");
     assert_eq!(found[0].id, ours.id);
 }
 
-/// Иконки, курсоры, GTK-темы и цветовые схемы тоже подписаны по-человечески.
+/// Icons, cursors, GTK themes and color schemes are also labelled in a human way.
 ///
-/// Метаданных KDE у них нет: имя лежит в `index.theme` (иконки, курсоры,
-/// GTK) либо внутри самого файла `*.colors`. Проверяется ровно то, что и у
-/// look-and-feel: подпись — человеческая, а номер карточки, путь установки
-/// и имя для применения остались на имени каталога/файла.
+/// They have no KDE metadata: the name lies in `index.theme` (icons, cursors,
+/// GTK) or inside the `*.colors` file itself. Exactly the same is checked as for
+/// look-and-feel: the label is human, while the card number, the install path
+/// and the name for applying stayed on the directory/file name.
 #[test]
 fn human_name_reaches_icons_cursors_gtk_and_colors() {
     let _lang = i18n_pin::ru();
@@ -297,24 +297,24 @@ fn human_name_reaches_icons_cursors_gtk_and_colors() {
         .iter()
         .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
         .collect();
-    // Тема GTK с переведённым именем: в эталонной карте владельцев её нет.
+    // A GTK theme with a translated name: it is not in the golden owner map.
     owners.insert("/sb/usr/share/themes/BlueMenta".to_string(), "mate-themes".to_string());
     let scan = scan_system(&env, &e.amap_full, true, Some(&foreign), &owners)
         .expect("scan_system ok");
 
-    // вид → (номер карточки, ожидаемая подпись, путь установки)
+    // kind → (card number, expected label, install path)
     let want = [
-        // курсор: имя каталога и имя темы РАЗНЫЕ, да ещё и переведены
+        // cursor: the directory name and the theme name are DIFFERENT, and translated as well
         ("local:cursor:breeze_cursors", "Breeze, тёмный вариант",
          "/sb/usr/share/icons/breeze_cursors"),
         ("local:cursor:Oxygen_Black", "Oxygen, чёрный вариант",
          "/sb/usr/share/icons/Oxygen_Black"),
-        // иконки: имя не переводится, но пишется иначе, чем каталог
+        // icons: the name is not translated, but is spelled differently from the directory
         ("local:icons:Cosmic", "COSMIC", "/sb/usr/share/icons/Cosmic"),
-        // GTK-тема: имя в [Desktop Entry] index.theme
+        // GTK theme: the name in [Desktop Entry] of index.theme
         ("local:gtk:BlueMenta", "Menta (Синяя)",
          "/sb/usr/share/themes/BlueMenta"),
-        // цветовая схема: каталога нет вовсе, имя внутри файла *.colors
+        // color scheme: no directory at all, the name is inside the *.colors file
         ("local:colors:BreezeClassic", "Breeze, классический вариант",
          "/sb/usr/share/color-schemes/BreezeClassic"),
         ("local:colors:IridescentLightly", "Iridescent Lightly",
@@ -328,27 +328,27 @@ fn human_name_reaches_icons_cursors_gtk_and_colors() {
             .unwrap_or_else(|| panic!("нет карточки {id}"));
         assert_eq!(it.name, display, "подпись для человека у {id}");
         assert_eq!(it.install_path, path, "путь установки у {id} трогать нельзя");
-        // Имя для применения темы по-прежнему достаётся из номера карточки,
-        // а не из подписи: иначе plasma-apply-* получил бы «COSMIC».
+        // The name for applying the theme is still taken from the card number,
+        // not from the label: otherwise plasma-apply-* would get «COSMIC».
         let dir = id.rsplit(':').next().unwrap();
         assert_eq!(
             rexon_core::appearance_page::local_theme_name(&it.id, &it.name),
             dir,
             "имя для применения у {id}"
         );
-        // Поиск идёт по подписи — покупатель ищет то, что видит.
+        // Search goes by the label — the buyer searches for what they see.
         assert!(
             rexon_core::appearance_page::local_matches(&it.name, display),
             "поиск по подписи {display:?}"
         );
     }
 
-    // …и по тому, как тему зовут в оригинале: имя без перевода (`Name=`) и
-    // имя каталога. Живая проверка r1434: «Adwaita» и «HighContrast» не
-    // находились, потому что на карточке стоят «Адвайта» и
+    // …and by what the theme is called in the original: the untranslated name (`Name=`) and
+    // the directory name. Live check r1434: «Adwaita» and «HighContrast» were not
+    // found, because the cards say «Адвайта» and
     // «Высококонтрастная».
     let by_id = |id: &str| scan.items.iter().find(|it| it.id == id).unwrap().clone();
-    // вид → (номер карточки, имя без перевода, запросы, которые обязаны найти)
+    // kind → (card number, untranslated name, queries that must find it)
     let want_source = [
         ("local:cursor:breeze_cursors", "Breeze Dark",
          &["breeze dark", "BREEZE_CURSORS", "breezecursors"][..]),
@@ -369,9 +369,9 @@ fn human_name_reaches_icons_cursors_gtk_and_colors() {
             );
         }
     }
-    // Имя без перевода, совпадающее с подписью, не дублируется.
+    // An untranslated name equal to the label is not duplicated.
     assert_eq!(by_id("local:colors:IridescentLightly").source_name, "");
-    // Оригинальные имена не размывают поиск: чужая тема по ним не находится.
+    // Original names do not blur the search: another theme is not found by them.
     let found = rexon_core::appearance_page::local_filter(&scan.items, "bluementa");
     assert!(found.iter().all(|f| f.id.contains("BlueMenta")), "лишнее: {found:?}");
 }
@@ -405,7 +405,7 @@ fn scan_system_matches_python() {
     assert_eq!(json!(scan.qo_paths), case["qo_paths"], "пути в pacman -Qo");
     assert_eq!(items_json(&scan.items), case["items"], "элементы");
 
-    // pacman нет → пусто (вне Arch классификация невозможна).
+    // No pacman → empty (outside Arch the classification is impossible).
     let no_pacman = scan_system(&env, &e.amap_full, false, Some(&foreign), &owners)
         .expect("без pacman — Ok");
     assert_eq!(
@@ -414,7 +414,7 @@ fn scan_system_matches_python() {
         "без pacman"
     );
 
-    // pacman -Qm недоступен → SystemScanUnavailable (текст 1-в-1).
+    // pacman -Qm unavailable → SystemScanUnavailable (text 1-to-1).
     let err = scan_system(&env, &e.amap_full, true, None, &owners)
         .expect_err("должен быть Err");
     assert_eq!(
@@ -425,7 +425,7 @@ fn scan_system_matches_python() {
 }
 
 // ============================================================================
-// Чистые парсеры
+// Pure parsers
 // ============================================================================
 
 #[test]
@@ -448,8 +448,8 @@ fn normalize_and_sidecar_match_python() {
 #[test]
 fn backfill_preview_matches_python() {
     let _lang = i18n_pin::ru();
-    // Бэкофилл проверяется и внутри сканеров (WhiteSur-Dark в downloaded);
-    // здесь — точечные случаи однозначности.
+    // Backfill is also checked inside the scanners (WhiteSur-Dark in downloaded);
+    // here — point cases of unambiguity.
     let e = load_env();
     let preview_file = |url: &str| e.preview_files.get(url).cloned();
     let env = ScanEnv {
@@ -462,22 +462,22 @@ fn backfill_preview_matches_python() {
         locale: FX_LOCALE,
         standard_icons: None,
     };
-    // Однозначный матч → локальный файл из кеша (эталоны сняты с живого
-    // Python: _backfill_preview на этом же кеше).
+    // An unambiguous match → a local file from the cache (the goldens were captured from live
+    // Python: _backfill_preview on this same cache).
     assert_eq!(
         backfill_preview(&env, "WhiteSur-Dark"),
         "/sb/home/.cache/rexon/previews/whitesur.png"
     );
-    // «nord» ⊂ «nordsomething», а «nordic» — нет → матч ОДНОЗНАЧЕН (только
-    // nord-a) и превью подставляется. Python подтверждён: тот же путь.
+    // "nord" ⊂ "nordsomething", but "nordic" is not → the match is UNAMBIGUOUS (only
+    // nord-a) and the preview is substituted. Python confirmed: the same path.
     assert_eq!(
         backfill_preview(&env, "Nord-something"),
         "/sb/home/.cache/rexon/previews/whitesur.png"
     );
-    // Неоднозначный: «nordic» матчит и «Nord» (nord-a), и «Nordic Theme»
-    // (nord-b) → 2 URL → пусто (Python подтверждён).
+    // Ambiguous: "nordic" matches both "Nord" (nord-a) and "Nordic Theme"
+    // (nord-b) → 2 URLs → empty (Python confirmed).
     assert_eq!(backfill_preview(&env, "Nordic"), "");
-    // Короткий стержень (<4) → пусто.
+    // A short stem (<4) → empty.
     assert_eq!(backfill_preview(&env, "abc"), "");
 }
 
@@ -511,7 +511,7 @@ fn foreign_pkgs_policy_matches_python() {
         assert_eq!(got, case["result"], "{label}: результат");
         assert_eq!(json!(used), case["used"], "{label}: число попыток");
     }
-    // Вне Arch — пустое множество без попыток.
+    // Outside Arch — an empty set without attempts.
     let (res, used) = foreign_pkgs_from_attempts(false, &[]);
     assert_eq!(res, Some(HashSet::new()));
     assert_eq!(used, 0);
@@ -532,8 +532,8 @@ fn qo_parser_matches_python() {
     assert_eq!(got, want, "разбор ответа о владельце файла");
 }
 
-/// Живой ответ этой машины, пустой ответ, ответ не выполнившейся команды и
-/// мусор в выводе — на одном и том же разборе.
+/// This machine's live answer, an empty answer, the answer of a command that did not run and
+/// garbage in the output — on one and the same parser.
 #[test]
 fn qo_parser_extra_cases_match_golden() {
     let _lang = i18n_pin::ru();
@@ -553,9 +553,9 @@ fn qo_parser_extra_cases_match_golden() {
     }
 }
 
-/// Команда на весь проект ОДНА: argv, записанный в голдене скана рядом с
-/// ответом (`calls`), обязан совпасть с тем, что отдаёт движок пакетов.
-/// Разойдётся — значит вторая копия команды снова где-то завелась.
+/// There is ONE command for the whole project: the argv recorded in the scan golden next to
+/// the answer (`calls`) must match what the package engine returns.
+/// If it diverges, a second copy of the command has crept in somewhere again.
 #[test]
 fn pkg_origin_calls_come_from_the_engine() {
     let _lang = i18n_pin::ru();
@@ -621,24 +621,24 @@ fn active_map_matches_python() {
             splash: opt("splash"),
             lockscreen: opt("lockscreen"),
             kwin_decoration_theme: opt("kwin_decoration_theme"),
-            // `library` эталон Python не читал: None — прежнее правило по `theme=`.
+            // The Python golden did not read `library`: None — the old rule by `theme=`.
             kwin_decoration_library: None,
             kvantum_kvconfig: opt("kvantum_kvconfig"),
             sddm_confs: confs("sddm_confs"),
             plymouth_confs: confs("plymouth_confs"),
-            // Источники стиля Qt вне KDE эталон Python не знал вовсе (там он
-            // читал только kdeglobals): пустые — значит поведение прежнее.
+            // The Python golden did not know the Qt style sources outside KDE at all (there it
+            // read only kdeglobals): empty means the behaviour is as before.
             qt_style_override_env: s("qt_style_override_env"),
             qt_style_env_file: opt("qt_style_env_file"),
             lxqt_conf: opt("lxqt_conf"),
             qtct_conf: opt("qtct_conf"),
-            // Родное хранилище окружения эталон Python тоже не знал: пусто —
-            // прежняя цепочка kdeglobals/settings.ini.
+            // The Python golden did not know the environment's native store either: empty —
+            // the old kdeglobals/settings.ini chain.
             native_gtk: None,
             native_icons: None,
             native_cursor: None,
-            // Звук и обои эталон Python тоже не знал: в старых случаях этих
-            // источников нет, и карта обязана остаться прежней.
+            // The Python golden did not know sound and wallpapers either: the old cases have no such
+            // sources, and the map must stay as before.
             sound_theme: opt("sound_theme"),
             wallpaper_current: opt("wallpaper_current"),
             home: s("home"),
@@ -652,8 +652,8 @@ fn active_map_matches_python() {
     }
 }
 
-/// Звук и обои в карте активных тем: два новых вида считаются той же картой,
-/// что и все остальные, — отдельного пути для них нет.
+/// Sound and wallpapers in the active theme map: the two new kinds are computed by the same map
+/// as all the others — there is no separate path for them.
 #[test]
 fn sound_and_wallpaper_in_active_map() {
     let _lang = i18n_pin::ru();
@@ -666,18 +666,18 @@ fn sound_and_wallpaper_in_active_map() {
             .to_string()
     };
 
-    // Звук: ответ команды приходит как есть, кавычки gsettings снимаются.
+    // Sound: the command's answer arrives as is, gsettings quotes are stripped.
     let snd = ActiveMapSources { sound_theme: Some("'zorinos2'\n"), ..base() };
     assert_eq!(key(&snd, "sounds"), "zorinos2");
-    // Читать нечем — строки в карте нет вовсе (а не пустое значение).
+    // Nothing to read with — there is no line in the map at all (rather than an empty value).
     assert!(active_map_from_sources(&base()).get("sounds").is_none());
-    // Тема не задана (ответ пуст) — применённой звуковой темы нет. Прежде
-    // пустой ответ подменялся на `freedesktop`, и во вкладке «Оформление»
-    // невыбранная тема светилась применённой.
+    // The theme is not set (empty answer) — there is no applied sound theme. Previously
+    // an empty answer was replaced by `freedesktop`, and in the «Appearance» tab
+    // an unselected theme showed up as applied.
     let empty = ActiveMapSources { sound_theme: Some("  \n"), ..base() };
     assert!(active_map_from_sources(&empty).get("sounds").is_none());
 
-    // Обои: в карту идёт имя ПАЧКИ, внутри которой лежит текущая картинка.
+    // Wallpapers: the map gets the name of the PACK that contains the current picture.
     let home = "/sb/home";
     let usr = "/sb/usr";
     let wp = |cur: &'static str| -> String {
@@ -695,26 +695,26 @@ fn sound_and_wallpaper_in_active_map() {
         wp("/sb/home/.local/share/wallpapers/Пейзажи/contents/images/1920x1080.png"),
         "Пейзажи"
     );
-    // Одиночная картинка лежит прямо в каталоге обоев — имя пачки = её имя,
-    // ровно так она записана и в журнале.
+    // A single picture lies right in the wallpaper directory — the pack name is its name,
+    // exactly as it is recorded in the journal too.
     assert_eq!(wp("/sb/home/.local/share/wallpapers/Горы.png"), "Горы.png");
-    // Системная пачка.
+    // A system pack.
     assert_eq!(wp("/sb/usr/share/wallpapers/Next/"), "Next");
-    // gsettings отдаёт URI с процентами — раскодируем, иначе кириллица не
-    // совпадёт ни с одной пачкой.
+    // gsettings returns a percent-encoded URI — we decode it, otherwise Cyrillic would not
+    // match any pack.
     assert_eq!(
         wp("'file:///sb/home/.local/share/wallpapers/%D0%9F%D0%B0%D1%87%D0%BA%D0%B0/a.png'"),
         "Пачка"
     );
-    // Свой файл вне каталогов обоев пачкой не считается.
+    // A user's own file outside the wallpaper directories does not count as a pack.
     assert_eq!(wp("/sb/home/Изображения/своё.png"), "");
 }
 
-/// Бейдж «Активна» у темы Kvantum должен работать не только в KDE.
+/// The «Active» badge on a Kvantum theme must work not only in KDE.
 ///
-/// Активность определяется по widgetStyle, а он вне KDE берётся не из
-/// kdeglobals: переменная сеанса, наш файл environment.d, lxqt.conf, конфиг
-/// qt6ct. Пока источник был один, вне KDE бейдж не появлялся никогда.
+/// Activity is determined by widgetStyle, and outside KDE it is not taken from
+/// kdeglobals: the session variable, our environment.d file, lxqt.conf, the
+/// qt6ct config. While there was only one source, the badge never appeared outside KDE.
 #[test]
 fn widget_style_is_read_from_every_desktop_source() {
     let _lang = i18n_pin::ru();
@@ -727,11 +727,11 @@ fn widget_style_is_read_from_every_desktop_source() {
             .to_string()
     };
 
-    // KDE — как было.
+    // KDE — as before.
     let kde = ActiveMapSources { widget_style: "Breeze", ..base() };
     assert_eq!(style(&kde), "Breeze");
 
-    // Переменная сеанса главнее: Qt читает её раньше платформенной темы.
+    // The session variable takes precedence: Qt reads it before the platform theme.
     let overridden = ActiveMapSources {
         widget_style: "Breeze",
         qt_style_override_env: "kvantum",
@@ -739,32 +739,32 @@ fn widget_style_is_read_from_every_desktop_source() {
     };
     assert_eq!(style(&overridden), "kvantum");
 
-    // Наш файл environment.d: сеанс его ещё не видел, но выбор уже сделан.
+    // Our environment.d file: the session has not seen it yet, but the choice is already made.
     let pending = ActiveMapSources {
         qt_style_env_file: Some("# Rexon\nQT_STYLE_OVERRIDE=kvantum\n"),
         ..base()
     };
     assert_eq!(style(&pending), "kvantum");
 
-    // LXQt — свой lxqt.conf, секция [Qt].
+    // LXQt — its own lxqt.conf, section [Qt].
     let lxqt = ActiveMapSources {
         lxqt_conf: Some("[General]\ntheme=frost\n\n[Qt]\nstyle=kvantum\n"),
         ..base()
     };
     assert_eq!(style(&lxqt), "kvantum");
 
-    // qt6ct — секция [Appearance]; ключ из ЧУЖОЙ секции не берём.
+    // qt6ct — section [Appearance]; a key from SOMEONE ELSE'S section is not taken.
     let qtct = ActiveMapSources {
         qtct_conf: Some("[Fonts]\nstyle=Fusion\n[Appearance]\nstyle=kvantum\n"),
         ..base()
     };
     assert_eq!(style(&qtct), "kvantum");
 
-    // Ничего не задано — ключа нет вовсе (как и раньше).
+    // Nothing set — no key at all (as before).
     assert_eq!(style(&base()), "");
 }
 
-/// По-английски подписи карточек — исходные: вид темы и бейдж активной.
+/// In English the card labels are the source ones: the theme kind and the active badge.
 #[test]
 fn card_labels_in_english() {
     let _lang = i18n_pin::en();
@@ -799,9 +799,9 @@ fn card_labels_in_english() {
     );
 }
 
-/// ⭐ Дефект 28.09.2026: при Plasma Login Manager активной SDDM-темы нет —
-/// даже если в `/etc/sddm.conf.d` остался `Current=breeze` от прежнего SDDM
-/// (живая машина владельца). И `Current=` засчитывается только в `[Theme]`.
+/// ⭐ Defect of 28.09.2026: with Plasma Login Manager there is no active SDDM theme —
+/// even if `Current=breeze` from the former SDDM remained in `/etc/sddm.conf.d`
+/// (the owner's live machine). And `Current=` counts only in `[Theme]`.
 #[test]
 fn sddm_current_only_under_sddm_and_only_in_theme_group() {
     use rexon_core::installed_scan::sddm_confs_for_active_map;
@@ -813,31 +813,31 @@ fn sddm_current_only_under_sddm_and_only_in_theme_group() {
             .and_then(Value::as_str)
             .map(str::to_string)
     };
-    // Файл, что лежит на машине владельца после перехода на PLM.
+    // The file that lies on the owner's machine after switching to PLM.
     let leftover = "[Autologin]\nRelogin=false\n\n[Theme]\nCurrent=breeze\nCursorTheme=breeze_cursors\n";
 
-    // SDDM активен — тема отмечается, как и прежде.
+    // SDDM is active — the theme is marked, as before.
     assert_eq!(sddm_of(sddm_confs_for_active_map(vec![leftover], false)).as_deref(), Some("breeze"));
-    // Plasma Login Manager — отметки нет вовсе.
+    // Plasma Login Manager — no mark at all.
     assert_eq!(sddm_of(sddm_confs_for_active_map(vec![leftover], true)), None);
 
-    // `Current=` вне `[Theme]` — не тема.
+    // `Current=` outside `[Theme]` is not a theme.
     assert_eq!(sddm_of(vec!["[General]\nCurrent=foo\n"]), None);
     assert_eq!(sddm_of(vec!["Current=bare\n"]), None, "ключ до первой группы");
     assert_eq!(
         sddm_of(vec!["[Theme]\nCurrent=a\n[Other]\nCurrent=b\n"]).as_deref(),
         Some("a")
     );
-    // Последний файл выигрывает (порядок источников не изменился).
+    // The last file wins (the order of sources did not change).
     assert_eq!(
         sddm_of(vec!["[Theme]\nCurrent=elarun\n", "[Theme]\nCurrent=breeze\n"]).as_deref(),
         Some("breeze")
     );
 }
 
-/// Плитка «Нет» раздела «Заставка» (как у модуля KDE): последняя, без
-/// каталога (значит, без «Удалить»), текущая — только когда заставка
-/// выключена; у экрана блокировки такой плитки нет.
+/// The «None» tile of the «Splash screen» section (as in the KDE module): last, without
+/// a directory (hence without «Remove»), current only when the splash screen
+/// is off; the lock screen has no such tile.
 #[test]
 fn splash_none_tile_is_last() {
     let e = load_env();

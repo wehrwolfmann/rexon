@@ -1,30 +1,31 @@
-// App — корневой QML-синглтон вкладки Wallpaper Engine.
+// App — the root QML singleton of the Wallpaper Engine tab.
 //
-// Порт
-// `ui/src/app.cpp` waywallen (MIT, (c) hypengw; атрибуция в NOTICE).
+// A port of waywallen's `ui/src/app.cpp` (MIT, (c) hypengw; attribution in
+// NOTICE).
 //
-// Что делает: держит живые модели (`rendererManager`/`displayManager`/
-// `libraryManager`/`gpuManager`/`presentationManager`), кормит их событиями демона и заведует сетевым кэшем
-// QML-картинок, который у вендорной страницы настроек есть отдельным
-// разделом.
+// What it does: holds the live models (`rendererManager`/`displayManager`/
+// `libraryManager`/`gpuManager`/`presentationManager`), feeds them daemon events and manages the network cache of
+// QML images, which the vendored settings page has as a separate section.
 //
-// ⚠️ Четыре члена, которых в Python-мосте НЕ БЫЛО ВОВСЕ, хотя вендорный QML
-// их зовёт: `networkCacheSize`, `networkCacheMaximumSize`,
-// `refreshNetworkCacheSize()` и `clearNetworkCache()`
-// (`SettingsPage.qml:124/132/768/776/778`). Раздел «Сетевой кэш картинок»
-// показывал «NaN из NaN», а кнопка «Очистить» падала в TypeError. Кэш при
-// этом существовал — его ставил `host.py` своей фабрикой, — просто им никто
-// не управлял. Теперь кэш один и живёт в шиме
-// (`cpp/rexon_we_singletons.cpp`), а host.py только показывает ему движок:
-// две копии настройки кэша разъехались бы молча (правило #12).
+// Warning: four members that the Python bridge did NOT HAVE AT ALL,
+// although the vendored QML calls them: `networkCacheSize`,
+// `networkCacheMaximumSize`, `refreshNetworkCacheSize()` and
+// `clearNetworkCache()` (`SettingsPage.qml:124/132/768/776/778`). The
+// "Network image cache" section showed "NaN of NaN", and the "Clear"
+// button failed with a TypeError. The cache did exist — `host.py` set it up
+// with its factory — nobody just managed it. Now there is one cache, and it
+// lives in the shim (`cpp/rexon_we_singletons.cpp`), while host.py only
+// shows it the engine: two copies of the cache setup would silently drift
+// apart (rule #12).
 //
-// Видеокарты (`gpuManager`) — единственная модель, которую демон событиями
-// не кормит: карты он перечисляет один раз при старте. Поэтому App сам
-// спрашивает `gpu_list` — при создании, если сокет уже открыт, и на каждом
-// подключении (у оригинала это `GpuListQuery::reload` в `App::init`). Ответ
-// возвращается сюда же по номеру запроса (`deliverResponse`).
+// GPUs (`gpuManager`) are the only model the daemon does not feed with
+// events: it lists the cards once at start-up. So App itself asks for
+// `gpu_list` — on creation if the socket is already open, and on every
+// connection (in the original this is `GpuListQuery::reload` in
+// `App::init`). The answer comes back here by request number
+// (`deliverResponse`).
 
-/// Мост cxx-qt: синглтон `App`.
+/// cxx-qt bridge: the `App` singleton.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -46,10 +47,11 @@ pub mod qobject {
 
     unsafe extern "C++" {
         include!("rexon_we_objmodel.h");
-        /// Живые модели — дети App, как `Box<...>` в `AppPrivate` оригинала.
+        /// The live models are children of App, like the `Box<...>` in the
+        /// original's `AppPrivate`.
         ///
         /// # Safety
-        /// `parent` — живой QObject (владение уходит Qt).
+        /// `parent` is a live QObject (ownership goes to Qt).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_renderer_manager(parent: *mut QObject) -> *mut QObject;
         #[allow(clippy::missing_safety_doc)]
@@ -62,17 +64,17 @@ pub mod qobject {
         unsafe fn rexon_new_presentation_manager(parent: *mut QObject) -> *mut QObject;
 
         include!("rexon_we_singletons.h");
-        /// Записаться получателем кадров демона.
+        /// Register as a receiver of daemon frames.
         ///
         /// # Safety
-        /// `app` — живой QObject (указатель на самого себя).
+        /// `app` is a live QObject (a pointer to itself).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_we_register_app(app: *mut QObject);
 
-        /// Язык интерфейса вендорных страниц. Какой язык — решает Rexon
-        /// (`rexon_core::i18n`, настройка `ui_language`), какой каталог
-        /// грузить — ядро (`rexon_core::remote_l10n`); здесь только Qt:
-        /// QTranslator и пересборка привязок движка.
+        /// Interface language of the vendored pages. Which language is decided by
+        /// Rexon (`rexon_core::i18n`, the `ui_language` setting), which catalogue to
+        /// load by the core (`rexon_core::remote_l10n`); here there is only Qt: the
+        /// QTranslator and re-evaluating the engine's bindings.
         fn rexon_we_apply_ui_language(
             locale_name: &QString,
             qm_path: &QString,
@@ -80,8 +82,8 @@ pub mod qobject {
         ) -> QString;
 
         include!("rexon_register_we.h");
-        /// Язык подписей плагинов — вслед за языком интерфейса, как в
-        /// `App::setUiLanguage` оригинала.
+        /// Language of plugin labels — following the interface language, as in the
+        /// original's `App::setUiLanguage`.
         fn rexon_we_set_plugin_locale(locale: &QString);
 
         fn rexon_we_network_cache_size() -> i64;
@@ -100,25 +102,25 @@ pub mod qobject {
                     READ = display_manager, CONSTANT)]
         #[qproperty(*mut QObject, library_manager, cxx_name = "libraryManager",
                     READ = library_manager, CONSTANT)]
-        /// Сам менеджер один на всю жизнь App. Оповещение у свойства —
-        /// наше, у оригинала оно постоянное: значок карты (`GpuTag.qml`)
-        /// ищет карту вызовом `find` внутри привязки, которая читает это
-        /// свойство, и без сигнала не узнал бы, что список сменился, —
-        /// показывал бы пустую плашку до пересоздания страницы.
+        /// The manager itself is one for App's whole life. The property's
+        /// notification is ours, in the original it is constant: the card icon
+        /// (`GpuTag.qml`) looks the card up with a `find` call inside a binding that
+        /// reads this property, and without a signal it would not learn that the
+        /// list changed — it would show an empty plate until the page is recreated.
         #[qproperty(*mut QObject, gpu_manager, cxx_name = "gpuManager",
                     READ = gpu_manager, NOTIFY = gpu_manager_changed)]
-        /// ⚠️ Оба размера уходят наружу `f64`, а не `i64`: 64-битное целое в
-        /// QML не выпускаем (разбор — `src/qvalue.rs`). Байты кэша до
-        /// потолка `double` (2^53 = 9 ПБ) не дотягиваются даже близко.
-        /// Выбор языка интерфейса — ОБЩИЙ с Rexon (`ui_language`):
-        /// `system`, `en` или код каталога Rexon (`ru`).
+        /// Warning: both sizes are exposed as `f64`, not `i64`: we do not expose a
+        /// 64-bit integer to QML (the analysis is in `src/qvalue.rs`). Cache bytes
+        /// come nowhere near the `double` ceiling (2^53 = 9 PB).
+        /// The interface language choice is SHARED with Rexon (`ui_language`):
+        /// `system`, `en` or a Rexon catalogue code (`ru`).
         #[qproperty(QString, ui_language, cxx_name = "uiLanguage",
                     READ = ui_language, NOTIFY = ui_language_changed)]
-        /// Список для комбобокса «Язык»: карты `{code, label}` — тот же
-        /// список, что в «Настройках» Rexon (`qt_settings::language_choices`):
-        /// «Как в системе», English, дальше языки Rexon самоназваниями.
-        /// Оповещается тем же сигналом, что и выбор
-        /// (`availableUiLanguages NOTIFY uiLanguageChanged` оригинала).
+        /// List for the "Language" combo box: `{code, label}` maps — the same list
+        /// as in Rexon's "Settings" (`qt_settings::language_choices`): "As in the
+        /// system", English, then the Rexon languages in their own names.
+        /// Notified by the same signal as the choice (the original's
+        /// `availableUiLanguages NOTIFY uiLanguageChanged`).
         #[qproperty(QList_QVariant, available_ui_languages,
                     cxx_name = "availableUiLanguages",
                     READ = available_ui_languages, NOTIFY = ui_language_changed)]
@@ -127,46 +129,48 @@ pub mod qobject {
         #[qproperty(f64, network_cache_maximum_size, cxx_name = "networkCacheMaximumSize",
                     READ = network_cache_maximum_size,
                     NOTIFY = network_cache_maximum_size_changed)]
-        /// Текущие показы обоев (`PresentationManager`): по нему рейка
-        /// вкладки рисует карточку «Текущие обои» (`qml_ui/PageHost.qml`).
+        /// Current wallpaper displays (`PresentationManager`): from it the tab rail
+        /// draws the "Current wallpapers" card (`qml_ui/PageHost.qml`).
         #[qproperty(*mut QObject, presentation_manager, cxx_name = "presentationManager",
                     READ = presentation_manager, CONSTANT)]
-        /// Версия ВЕНДОРНОГО интерфейса (`0.5.0`) — тег `ui/UPSTREAM_TAG`,
-        /// разбор в `rexon_core::qml_modules::ui_version`. Своего члена у
-        /// оригинала нет: там строку «Версия %1» на «О программе» пишет
-        /// `Qt.application.version`, а у нас это версия Rexon (патч 0002).
+        /// Version of the VENDORED interface (`0.5.0`) — the `ui/UPSTREAM_TAG` tag,
+        /// parsed in `rexon_core::qml_modules::ui_version`. The original has no
+        /// such member: there the "Version %1" line on "About" is written by
+        /// `Qt.application.version`, while for us that is the Rexon version (patch
+        /// 0002).
         #[qproperty(QString, ui_version, cxx_name = "uiVersion",
                     READ = ui_version, CONSTANT)]
-        /// Своего члена у оригинала нет (патч 0010): «Применить» на
-        /// карточке обоев доступна и при нуле дисплеев там, где дисплей
-        /// поднимает Rexon (KDE — плагин, X11 — хост-клиент вывода): кадр
-        /// придержится, вывод поднимется, обои лягут на все столы
-        /// (`waywallen_kde_plugin::apply_without_displays`).
+        /// The original has no such member (patch 0010): "Apply" on the wallpaper
+        /// card is available even with zero displays where the display is brought
+        /// up by Rexon (KDE — the plugin, X11 — the output client host): the frame
+        /// is held back, the output comes up, and the wallpaper lands on all
+        /// desktops (`waywallen_kde_plugin::apply_without_displays`).
         #[qproperty(bool, apply_without_displays, cxx_name = "applyWithoutDisplays",
                     READ = apply_without_displays, CONSTANT)]
-        /// Своего члена у оригинала нет (патч 0010): запуск плейлиста при
-        /// нуле дисплеев — цель «все рабочие столы», кадр придержится,
-        /// вывод поднимется (`waywallen_kde_plugin::play_without_displays`).
+        /// The original has no such member (patch 0010): starting a playlist with
+        /// zero displays — the target is "all desktops", the frame is held back,
+        /// the output comes up (`waywallen_kde_plugin::play_without_displays`).
         #[qproperty(bool, play_without_displays, cxx_name = "playWithoutDisplays",
                     READ = play_without_displays, CONSTANT)]
-        /// Подсказка страницы «Мониторы» при нуле дисплеев вместо вендорной
-        /// «поставьте расширение руками» (KDE) или голого «Мониторы не
-        /// зарегистрированы» (X11) — патч 0010; пусто — не наш случай.
+        /// Hint of the "Monitors" page with zero displays instead of the vendor's
+        /// "install the extension by hand" (KDE) or a bare "No monitors registered"
+        /// (X11) — patch 0010; empty means not our case.
         #[qproperty(QString, no_displays_hint, cxx_name = "noDisplaysHint",
                     READ = no_displays_hint, CONSTANT)]
         type App = super::AppRust;
     }
 
     unsafe extern "RustQt" {
-        /// Ошибка транспорта → тост окна (v0.2.6, `Window.qml
-        /// onErrorOccurred`, у нас — `PageHost.qml`).
+        /// Transport error → a window toast (v0.2.6, `Window.qml onErrorOccurred`,
+        /// for us `PageHost.qml`).
         #[qsignal]
         #[cxx_name = "errorOccurred"]
         fn error_occurred(self: Pin<&mut App>, error: QString);
 
-        /// Информационное сообщение транспорта (не ошибка): тост, который
-        /// гаснет сам через `duration_ms` (`ui_base::toast_timeout_for_text`).
-        /// Сигнал Rexon, у вендора его нет; слушает `PageHost.qml`.
+        /// An informational transport message (not an error): a toast that goes
+        /// away by itself after `duration_ms` (`ui_base::toast_timeout_for_text`).
+        /// A Rexon signal, the vendor does not have it; `PageHost.qml` listens to
+        /// it.
         #[qsignal]
         #[cxx_name = "noticeOccurred"]
         fn notice_occurred(self: Pin<&mut App>, text: QString, duration_ms: i32);
@@ -219,13 +223,13 @@ pub mod qobject {
         #[cxx_name = "networkCacheMaximumSize"]
         fn network_cache_maximum_size(self: &App) -> f64;
 
-        /// Пересчитать размер кэша (страница настроек зовёт при открытии).
+        /// Recompute the cache size (the settings page calls it on opening).
         #[qinvokable]
         #[cxx_name = "refreshNetworkCacheSize"]
         fn refresh_network_cache_size(self: Pin<&mut App>);
 
-        /// Порт `App::setNetworkCacheMaximumSize`: неположительное значение
-        /// и повтор игнорируются.
+        /// A port of `App::setNetworkCacheMaximumSize`: a non-positive value and a
+        /// repeat are ignored.
         #[qinvokable]
         #[cxx_name = "setNetworkCacheMaximumSize"]
         fn set_network_cache_maximum_size(self: Pin<&mut App>, size: f64);
@@ -234,58 +238,58 @@ pub mod qobject {
         #[cxx_name = "clearNetworkCache"]
         fn clear_network_cache(self: Pin<&mut App>);
 
-        /// Сменить язык интерфейса (порт `App::setUiLanguage`). Выбор
-        /// записывается в настройку Rexon `ui_language` — ту же, что меняют
-        /// «Настройки», — вендорные страницы переводятся сразу, остальной
-        /// Rexon после перезапуска. `false` — язык не поддерживается или
-        /// каталог не загрузился; вендорный QML показывает тост
-        /// «Не удалось изменить язык».
+        /// Change the interface language (a port of `App::setUiLanguage`). The
+        /// choice is written into the Rexon setting `ui_language` — the same one
+        /// "Settings" change — the vendored pages are translated at once, the rest
+        /// of Rexon after a restart. `false` means the language is not supported or
+        /// the catalogue did not load; the vendored QML shows the toast "Failed to
+        /// change the language".
         #[qinvokable]
         #[cxx_name = "setUiLanguage"]
         fn set_ui_language(self: Pin<&mut App>, language: &QString) -> bool;
 
-        /// Переключатель «одно окно интерфейса» со страницы настроек
-        /// (вендор 0.3.7).
+        /// The "single interface window" switch from the settings page (vendor
+        /// 0.3.7).
         ///
-        /// ⚠️ Осознанная развилка Rexon. Оригинал занимает на шине имя
-        /// `org.waywallen.waywallen.UI` и экспортирует метод `Raise`:
-        /// второй запуск ЕГО интерфейса не открывает окно, а поднимает
-        /// уже открытое. У нас интерфейс — вкладка внутри Rexon, и
-        /// занять это имя означало бы отобрать его у настоящего окна
-        /// waywallen: тот при запуске увидел бы занятое имя, позвал бы
-        /// `Raise` в никуда и молча закрылся, так и не открывшись.
-        /// Своё единственное окно Rexon держит сам, поэтому переключатель
-        /// только помнит выбор (`Global.qml` хранит его в настройках), а
-        /// имя на шине не занимается.
+        /// Warning: a deliberate Rexon divergence. The original takes the bus name
+        /// `org.waywallen.waywallen.UI` and exports a `Raise` method: a second
+        /// launch of ITS interface does not open a window but raises the already
+        /// open one. For us the interface is a tab inside Rexon, and taking this
+        /// name would mean taking it away from the real waywallen window: on
+        /// start-up it would see the name taken, call `Raise` into nowhere and
+        /// silently close without ever opening. Rexon keeps its single window
+        /// itself, so the switch only remembers the choice (`Global.qml` stores it
+        /// in the settings), and no name is taken on the bus.
         #[qinvokable]
         #[cxx_name = "setSingleUiEnabled"]
         fn set_single_ui_enabled(self: Pin<&mut App>, enabled: bool);
 
-        /// Сырой кадр демона от шва (`rexon_we_do_deliver_event`) — раздать
-        /// живым моделям. Имя обязано совпадать с тем, что ищет
-        /// `QMetaObject::invokeMethod`.
+        /// A raw daemon frame from the seam (`rexon_we_do_deliver_event`) — hand it
+        /// to the live models. The name must match what
+        /// `QMetaObject::invokeMethod` looks for.
         #[qinvokable]
         #[cxx_name = "deliverEvent"]
         fn deliver_event(self: Pin<&mut App>, frame: &QByteArray);
 
-        /// Ошибка питоновского клиента → сигнал `errorOccurred`.
+        /// Python client error → the `errorOccurred` signal.
         #[qinvokable]
         #[cxx_name = "clientError"]
         fn client_error(self: Pin<&mut App>, error: &QString);
 
-        /// Полная замена списка рендереров ответом `renderer_list`.
+        /// A full replacement of the renderer list with the `renderer_list` answer.
         ///
-        /// На вход СЫРОЙ кадр демона — тот же, что разобрал сам запрос
-        /// (`status_queries::RendererListQuery`). У оригинала эту
-        /// синхронизацию делает сам запрос; у нас он в другом мосте, и
-        /// добраться до живых моделей `App` можно только через шов.
+        /// The input is the RAW daemon frame — the same one the query itself parsed
+        /// (`status_queries::RendererListQuery`). In the original this
+        /// synchronization is done by the query itself; for us it is in another
+        /// bridge, and the live models of `App` can be reached only through the
+        /// seam.
         #[qinvokable]
         #[cxx_name = "replaceRenderers"]
         fn replace_renderers(self: Pin<&mut App>, frame: &QByteArray);
 
-        /// Ответ демона на запрос, отправленный самим App (`gpu_list`).
-        /// Зовёт транспортный шов по номеру запроса; имя обязано совпадать
-        /// с тем, что ищет `QMetaObject::invokeMethod`.
+        /// The daemon's answer to a request sent by App itself (`gpu_list`). Called
+        /// by the transport seam by request number; the name must match what
+        /// `QMetaObject::invokeMethod` looks for.
         #[qinvokable]
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut App>, token: i64, frame: &QByteArray);
@@ -308,37 +312,38 @@ use crate::we_objmodel::qobject::{
 };
 use crate::we_socket::{self, DaemonEvent};
 
-/// Указатели на модели сырые: владеет ими Qt (они дети App и умрут вместе
-/// с ним) — та же схема, что у владеемых моделей запросов.
+/// The model pointers are raw: Qt owns them (they are children of App and
+/// will die with it) — the same scheme as for the queries' owned models.
 pub struct AppRust {
     renderer_manager: *mut qobject::QObject,
     display_manager: *mut qobject::QObject,
     library_manager: *mut qobject::QObject,
     gpu_manager: *mut qobject::QObject,
-    /// Номер ждущего запроса `gpu_list` (`0` — не ждём). Ответ с другим
-    /// номером — от прошлого подключения, его не берём.
+    /// Number of the pending `gpu_list` request (`0` — not waiting). An answer
+    /// with another number is from a previous connection, we do not take it.
     gpu_request: i64,
     presentation_manager: *mut qobject::QObject,
-    /// Номер ждущего запроса `wallpaper_lookup` для карточки текущих обоев
-    /// (`0` — не ждём). Новый снимок показов заводит новый запрос, и ответ
-    /// на прежний уже не берётся.
+    /// Number of the pending `wallpaper_lookup` request for the current
+    /// wallpaper card (`0` — not waiting). A new display snapshot starts a new
+    /// request, and the answer to the previous one is no longer taken.
     presentation_request: i64,
-    /// Подписка на события транспорта: по ней ловим подключение и обрыв.
+    /// Subscription to transport events: through it we catch connection and
+    /// disconnection.
     subscription: u64,
-    /// Кэш размера: сигнал шлётся только при РЕАЛЬНОЙ смене (ветка
-    /// `App::refreshNetworkCacheSize` оригинала).
+    /// Size cache: the signal is sent only on a REAL change (the branch of the
+    /// original's `App::refreshNetworkCacheSize`).
     network_cache_size: i64,
-    /// Выбор языка интерфейса (`system`, `en`, `ru`) — настройка Rexon
-    /// `ui_language`, а не своя.
+    /// Interface language choice (`system`, `en`, `ru`) — the Rexon setting
+    /// `ui_language`, not a separate one.
     ui_language: String,
-    /// Языки, у которых рядом с модулем есть собранный каталог `.qm`.
-    /// Считается один раз: каталоги приезжают вместе со сборкой и за время
-    /// работы не появляются.
+    /// Languages that have a built `.qm` catalogue next to the module. Computed
+    /// once: the catalogues come with the build and do not appear while
+    /// running.
     ui_language_codes: Vec<String>,
-    /// Каталог, где лежат эти `.qm` (рядом с модулем UI).
+    /// The directory where these `.qm` lie (next to the UI module).
     ui_module_dir: String,
-    /// Версия вендорного интерфейса (`uiVersion`): читается один раз — тег
-    /// приезжает вместе с разметкой и за время работы не меняется.
+    /// Version of the vendored interface (`uiVersion`): read once — the tag
+    /// comes with the markup and does not change while running.
     ui_version: String,
 }
 
@@ -374,9 +379,9 @@ impl cxx_qt::Initialize for qobject::App {
             let this: &mut qobject::App = unsafe { self.as_mut().get_unchecked_mut() };
             (this as *mut qobject::App).cast()
         };
-        // Модели создаются в пост-конструкции, а не лениво в геттере: QML
-        // читает свойство при первой же привязке, а геттер по контракту
-        // константный. Порядок как у `AppPrivate` оригинала.
+        // The models are created in post-construction, not lazily in the getter:
+        // QML reads the property on the very first binding, and the getter is
+        // const by contract. The order is as in the original's `AppPrivate`.
         let renderers = unsafe { qobject::rexon_new_renderer_manager(parent) };
         let displays = unsafe { qobject::rexon_new_display_manager(parent) };
         let libraries = unsafe { qobject::rexon_new_library_manager(parent) };
@@ -393,14 +398,14 @@ impl cxx_qt::Initialize for qobject::App {
             rust.gpu_manager = gpus;
             rust.presentation_manager = presentations;
         }
-        // Язык вендорных страниц — ДО первой загрузки QML: переводчик
-        // должен стоять к моменту, когда движок компилирует страницу.
+        // Language of the vendored pages — BEFORE the first QML load: the
+        // translator must be in place by the time the engine compiles the page.
         //
-        // ⭐ Язык — тот же, на котором говорит весь Rexon в этом процессе
-        // (`i18n::current_language`). Раньше у вкладки был свой выбор в
-        // `QSettings` (`ui/language`) и свой «Системный» по `QLocale`: при
-        // английском Rexon на русской системе вкладка обоев оставалась
-        // русской, и наоборот. Прежний ключ `QSettings` больше не читается.
+        // ⭐ The language is the same one the whole of Rexon speaks in this process
+        // (`i18n::current_language`). Previously the tab had its own choice in
+        // `QSettings` (`ui/language`) and its own "System" by `QLocale`: with an
+        // English Rexon on a Russian system the wallpaper tab stayed Russian, and
+        // vice versa. The former `QSettings` key is no longer read.
         let module_dir = l10n::ui_module_dir(&crate::we_env::pkg_dir());
         let codes = discover_ui_languages(&module_dir);
         let spoken = rexon_core::i18n::current_language();
@@ -420,29 +425,31 @@ impl cxx_qt::Initialize for qobject::App {
             rust.ui_language = rexon_core::i18n::saved_setting();
         }
 
-        // Получателем кадров — сразу: демон шлёт снимки дисплеев и
-        // рендереров один раз на WS-connect.
+        // Register as a frame receiver at once: the daemon sends the display and
+        // renderer snapshots once per WS connect.
         unsafe { qobject::rexon_we_register_app(parent) };
 
-        // Видеокарты: спросить сразу (App мог родиться при уже открытом
-        // сокете — сигнала подключения тогда не будет) и на каждом
-        // следующем подключении.
+        // GPUs: ask at once (App may have been born with the socket already open —
+        // then there will be no connection signal) and on every following
+        // connection.
         let thread = self.qt_thread();
         let subscription = we_socket::subscribe(move |event| match event {
             DaemonEvent::Connected => {
-                // Объект мог умереть — это не повод падать.
+                // The object may have died — that is no reason to crash.
                 let _ = thread.queue(|app| app.request_gpu_list());
             }
-            // Обрыв связи: показов нет, пока демон не пришлёт новый снимок
-            // (у оригинала список чистит `Backend::disconnected`).
+            // Connection lost: there are no displays until the daemon sends a new
+            // snapshot (in the original the list is cleared by `Backend::disconnected`).
             DaemonEvent::Disconnected { .. } => {
                 let _ = thread.queue(|app| app.presentations_disconnected());
             }
-            // Сообщение транспорта человеку (например, «живые обои не
-            // запустились — прежние обои стола возвращены») — ИНФОРМАЦИОННЫМ
-            // тостом, который гаснет сам (`PageHost.qml`, `onNoticeOccurred`).
-            // ⛔ Прежде шло тостом ошибки: тот без срока, и плашка висела
-            // больше минуты поверх кнопок панели (ВМ, r1895, 30.10.2026).
+            // A transport message for the user (for example, "the live wallpaper did
+            // not start — the previous desktop wallpaper is restored") — as an
+            // INFORMATIONAL toast that goes away by itself (`PageHost.qml`,
+            // `onNoticeOccurred`).
+            // Never: previously it went as an error toast: that one has no timeout, and
+            // the plate hung for more than a minute over the panel buttons (VM, r1895,
+            // 30.10.2026).
             DaemonEvent::Notice(text) => {
                 let text = text.clone();
                 let ms = rexon_core::ui_base::toast_timeout_for_text(&text);
@@ -456,10 +463,11 @@ impl cxx_qt::Initialize for qobject::App {
     }
 }
 
-/// Языки собранных каталогов рядом с модулем UI.
+/// Languages of the built catalogues next to the UI module.
 ///
-/// Оригинал берёт их из ресурса `:/i18n`; у нас `.qm` лежат файлами рядом с
-/// `remote_l10n.py` — читаем каталог, а отбор и порядок оставляем ядру.
+/// The original takes them from the `:/i18n` resource; for us the `.qm`
+/// files lie next to `remote_l10n.py` — we read the directory and leave
+/// selection and ordering to the core.
 fn discover_ui_languages(module_dir: &str) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(module_dir) else {
         rexon_core::log_warn!(
@@ -475,28 +483,29 @@ fn discover_ui_languages(module_dir: &str) -> Vec<String> {
     l10n::ui_language_codes(&names)
 }
 
-/// Язык вендорного каталога для языка Rexon `code` (`ru`, `pt_BR`, `en`):
-/// свой каталог (точно или по базовому языку), иначе английский — строки
-/// вендора и так английские. «Системного» здесь не бывает: систему уже
-/// разобрал Rexon.
+/// The vendor catalogue language for Rexon language `code` (`ru`, `pt_BR`,
+/// `en`): its own catalogue (exactly or by the base language), otherwise
+/// English — the vendor's strings are English anyway. There is no "system"
+/// here: Rexon has already figured out the system.
 fn vendor_language(code: &str, codes: &[String]) -> String {
     l10n::normalize_ui_language(code, codes)
         .filter(|c| c != l10n::UI_LANGUAGE_SYSTEM)
         .unwrap_or_else(|| l10n::UI_LANGUAGE_ENGLISH.to_string())
 }
 
-/// Поставить вкладке обоев язык Rexon `rexon_language` (`ru`, `de`, `en`,
-/// `pt_BR`); `None` — не вышло.
+/// Give the wallpaper tab the Rexon language `rexon_language` (`ru`, `de`,
+/// `en`, `pt_BR`); `None` means it failed.
 ///
-/// Не «системный»: какой язык у системы, решает Rexon, а не `QLocale`
-/// вендора. Решений здесь два, и они РАЗНЫЕ:
-///   * каталог вендорных страниц — свой каталог языка Rexon, а нет его —
-///     исходные (английские) строки ([`vendor_language`]);
-///   * подписи плагинов — язык Rexon как есть: у плагинов свои каталоги
-///     (`i18n/ru.po`, `zh-CN.po`), и есть ли каталог у вендорных страниц, им
-///     безразлично. Раньше сюда уходил выбор вендорного каталога, и при
-///     языке, у которого страниц нет, а плагин переведён, подписи плагина
-///     оставались английскими.
+/// Not "system": what language the system has is decided by Rexon, not by
+/// the vendor's `QLocale`. There are two decisions here, and they are
+/// DIFFERENT:
+///   * the vendored pages' catalogue — the catalogue of the Rexon language,
+///     and without one, the source (English) strings ([`vendor_language`]);
+///   * plugin labels — the Rexon language as is: plugins have their own
+///     catalogues (`i18n/ru.po`, `zh-CN.po`), and whether the vendored pages
+///     have a catalogue does not matter to them. Previously the vendor
+///     catalogue choice went here, and with a language that has no pages but
+///     a translated plugin, the plugin labels stayed English.
 fn apply_ui_language(codes: &[String], module_dir: &str, rexon_language: &str) -> Option<String> {
     let preference = vendor_language(rexon_language, codes);
     let plan = l10n::plan_ui_language(&preference, "", codes)?;
@@ -516,19 +525,20 @@ fn apply_ui_language(codes: &[String], module_dir: &str, rexon_language: &str) -
     if resolved.to_string().is_empty() {
         return None;
     }
-    // Подписи плагинов идут за языком Rexon (см. выше), а не за каталогом
-    // страниц; английский — тот, что разрешил Qt.
+    // Plugin labels follow the Rexon language (see above), not the page
+    // catalogue; English is the one Qt resolved.
     let plugin_locale = if rexon_language.trim().is_empty() {
         resolved.to_string()
     } else {
         rexon_language.to_string()
     };
     qobject::rexon_we_set_plugin_locale(&QString::from(&plugin_locale));
-    // Строка того же назначения, что `applyLanguage` оригинала: без неё
-    // «страницы вдруг по-английски» неотличимо от «каталог не собрался» и
-    // от «каталог не нашли». ⚠️ Язык Rexon и язык страниц пишутся ОБА:
-    // прежняя строка «выбор=en» при немецком Rexon читалась как «вкладка
-    // выбрала английский вместо немецкого», хотя выбирать было не из чего.
+    // A line of the same purpose as the original's `applyLanguage`: without it
+    // "the pages are suddenly in English" is indistinguishable from "the
+    // catalogue did not build" and from "the catalogue was not found".
+    // Warning: BOTH the Rexon language and the page language are written: the
+    // former line "choice=en" with a German Rexon read as "the tab chose
+    // English instead of German", although there was nothing to choose from.
     rexon_core::log_info!(
         "lang",
         "язык вкладки обоев: Rexon={} → страницы waywallen={} (Qt: {}), каталог={}; подписи плагинов={}{}",
@@ -550,8 +560,8 @@ fn apply_ui_language(codes: &[String], module_dir: &str, rexon_language: &str) -
     Some(plan.preference)
 }
 
-/// Элемент списка языков в том виде, в каком его читает вендорный QML:
-/// `languages[i].code` и `languages[i].label`.
+/// An element of the language list in the form the vendored QML reads it:
+/// `languages[i].code` and `languages[i].label`.
 fn language_entry(code: &str, label: &QString) -> QVariant {
     let mut map = QMap::<QMapPair_QString_QVariant>::default();
     map.insert(
@@ -563,7 +573,8 @@ fn language_entry(code: &str, label: &QString) -> QVariant {
 }
 
 /// # Safety
-/// `ptr` — живой менеджер соответствующего типа, созданный фабрикой.
+/// `ptr` is a live manager of the corresponding type, created by the
+/// factory.
 unsafe fn pin_as<'a, T>(ptr: *mut qobject::QObject) -> Option<Pin<&'a mut T>> {
     if ptr.is_null() {
         return None;
@@ -592,16 +603,17 @@ impl qobject::App {
         self.rust().presentation_manager
     }
 
-    /// Дисплеи и холсты — по ним менеджер показов подписывает цели.
+    /// Displays and canvases — the display manager labels its targets by them.
     fn displays_ref<'a>(&self) -> Option<&'a DisplayManager> {
         let ptr = self.rust().display_manager;
-        // SAFETY: менеджер — ребёнок App и живёт столько же.
+        // SAFETY: the manager is a child of App and lives as long as it does.
         (!ptr.is_null()).then(|| unsafe { &*ptr.cast::<DisplayManager>() })
     }
 
-    /// Спросить у демона обоины текущих показов (`wallpaper_lookup`).
+    /// Ask the daemon for the wallpapers of the current displays
+    /// (`wallpaper_lookup`).
     fn request_presentation_wallpapers(mut self: Pin<&mut Self>, ids: Vec<String>) {
-        // Прежний запрос, если был, относится к прежнему снимку.
+        // The previous request, if any, belongs to the previous snapshot.
         self.as_mut().rust_mut().presentation_request = 0;
         if ids.is_empty() || !we_socket::is_open() {
             return;
@@ -609,7 +621,7 @@ impl qobject::App {
         let token = crate::discover_queries::next_token();
         let frame = rexon_core::we_client::wallpaper_lookup(token as u64, &ids);
         let owner: *mut qobject::App = unsafe { self.as_mut().get_unchecked_mut() };
-        // Владельца номера запоминаем ДО отправки, как у `gpu_list`.
+        // The number's owner is remembered BEFORE sending, as for `gpu_list`.
         unsafe { crate::we_transport::remember(token, owner.cast()) };
         self.as_mut().rust_mut().presentation_request = token;
         crate::we_transport::send(token, "wallpaper_lookup", &frame);
@@ -623,8 +635,8 @@ impl qobject::App {
         }
     }
 
-    /// Спросить у демона список видеокарт. Сокет закрыт — молчим: запрос
-    /// уйдёт на подключении.
+    /// Ask the daemon for the GPU list. The socket is closed — stay silent: the
+    /// request will go out on connection.
     fn request_gpu_list(mut self: Pin<&mut Self>) {
         if !we_socket::is_open() {
             return;
@@ -632,8 +644,8 @@ impl qobject::App {
         let token = crate::discover_queries::next_token();
         let frame = rexon_core::we_client::gpu_list(token as u64);
         let owner: *mut qobject::App = unsafe { self.as_mut().get_unchecked_mut() };
-        // Владельца номера запоминаем ДО отправки: ответ может прийти
-        // раньше, чем мы вернёмся.
+        // The number's owner is remembered BEFORE sending: the answer may arrive
+        // before we return.
         unsafe { crate::we_transport::remember(token, owner.cast()) };
         self.as_mut().rust_mut().gpu_request = token;
         crate::we_transport::send(token, "gpu_list", &frame);
@@ -642,8 +654,8 @@ impl qobject::App {
     fn deliver_response(mut self: Pin<&mut Self>, token: i64, frame: &QByteArray) {
         if token != 0 && self.rust().presentation_request == token {
             self.as_mut().rust_mut().presentation_request = 0;
-            // Отказ и кадр обрыва обоин не несут — строки остаются с тем,
-            // что уже известно.
+            // A refusal and a disconnection frame carry no wallpapers — the rows keep
+            // what is already known.
             let Some(entries) = rexon_core::we_query::wallpaper_lookup_from_frame(frame.as_slice())
             else {
                 return;
@@ -659,8 +671,8 @@ impl qobject::App {
             return;
         }
         self.as_mut().rust_mut().gpu_request = 0;
-        // Отказ демона и кадр обрыва соединения списка не несут — прежние
-        // карты остаются на месте.
+        // A daemon refusal and a disconnection frame carry no list — the previous
+        // cards stay in place.
         let Some(gpus) = rexon_core::we_query::gpu_list_from_frame(frame.as_slice()) else {
             return;
         };
@@ -674,8 +686,8 @@ impl qobject::App {
             if changed { "новый" } else { "прежний" }
         );
         if changed {
-            // Прежние объекты карт сняты — значки на живых страницах
-            // обязаны найти свои карты заново.
+            // The previous card objects are removed — the icons on live pages must
+            // find their cards anew.
             self.as_mut().gpu_manager_changed();
         }
     }
@@ -684,12 +696,14 @@ impl qobject::App {
         QString::from(&self.rust().ui_version)
     }
 
-    /// Решение — ядро; сеанс за время работы не меняется (`CONSTANT`).
+    /// The decision is the core's; the session does not change while running
+    /// (`CONSTANT`).
     fn apply_without_displays(&self) -> bool {
         rexon_core::waywallen_kde_plugin::apply_without_displays(we_socket::display_setup().rexon_brings_display())
     }
 
-    /// Решение — ядро, тот же `apply_gate`, что у транспорта (`CONSTANT`).
+    /// The decision is the core's, the same `apply_gate` as the transport's
+    /// (`CONSTANT`).
     fn play_without_displays(&self) -> bool {
         rexon_core::waywallen_kde_plugin::play_without_displays(we_socket::display_setup().rexon_brings_display())
     }
@@ -707,7 +721,7 @@ impl qobject::App {
 
     fn available_ui_languages(&self) -> QList<QVariant> {
         let mut out = QList::<QVariant>::default();
-        // Тот же список, что в «Настройках» Rexon: язык один на программу.
+        // The same list as in Rexon's "Settings": one language for the program.
         for (code, label) in rexon_core::qt_settings::language_choices() {
             out.append(language_entry(&code, &QString::from(&label)));
         }
@@ -727,8 +741,9 @@ impl qobject::App {
         if !rexon_core::qt_settings::language_choice_valid(&wanted) {
             return false;
         }
-        // Повтор — не ошибка: кнопка «Сбросить» зовёт `setUiLanguage("system")`
-        // и на уже системном языке, а `false` оборвал бы весь сброс тостом.
+        // A repeat is not an error: the "Reset" button calls
+        // `setUiLanguage("system")` even on an already system language, and
+        // `false` would abort the whole reset with a toast.
         if wanted == current {
             return true;
         }
@@ -780,7 +795,8 @@ impl qobject::App {
         self.refresh_network_cache_size();
     }
 
-    /// Имя на шине не занимается — почему, сказано у объявления в мосте.
+    /// No name is taken on the bus — why is explained at the declaration in
+    /// the bridge.
     fn set_single_ui_enabled(self: Pin<&mut Self>, enabled: bool) {
         let _ = (self, enabled);
     }
@@ -790,9 +806,9 @@ impl qobject::App {
     }
 
     fn deliver_event(self: Pin<&mut Self>, frame: &QByteArray) {
-        // Кадр разбирается ОДИН раз на все три модели: событие приходит
-        // часто (fps рендерера), и три отдельных декода протобуфа были бы
-        // тройной работой на ровном месте.
+        // The frame is parsed ONCE for all three models: the event comes often
+        // (the renderer's fps), and three separate protobuf decodes would be
+        // triple work for nothing.
         let Ok(server_frame) = pb::ServerFrame::decode(frame.as_slice()) else {
             return;
         };
@@ -814,9 +830,9 @@ impl qobject::App {
         if let Some(manager) = unsafe { pin_as::<LibraryManager>(libraries) } {
             manager.handle_event(&event);
         }
-        // Показы: снимок приходит целиком (на подключении и при каждой
-        // смене) и заменяет список; любое другое событие могло сменить имя
-        // дисплея или холста, а по ним подписаны цели показов.
+        // Displays: the snapshot arrives whole (on connection and on every change)
+        // and replaces the list; any other event may have changed the name of a
+        // display or canvas, and the display targets are labelled by them.
         let presentations = self.rust().presentation_manager;
         let displays_ref = self.displays_ref();
         let Some(mut manager) = (unsafe { pin_as::<PresentationManager>(presentations) }) else {

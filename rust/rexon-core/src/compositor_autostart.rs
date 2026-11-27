@@ -1,61 +1,61 @@
-//! Автозапуск при входе там, где окружение НЕ исполняет XDG autostart.
+//! Autostart at login where the desktop does NOT execute XDG autostart.
 //!
-//! Записи `~/.config/autostart/*.desktop` исполняют полные окружения (KDE,
-//! GNOME, Cinnamon, XFCE, MATE, Budgie, LXQt, COSMIC) и сессии под systemd,
-//! в которых поднимается `xdg-desktop-autostart.target`. Голые композиторы
-//! их не читают вовсе, и переключатель «Запускать при входе» горел, а после
-//! входа не стартовало ничего: ни лоток, ни заставка, ни движок обоев.
+//! `~/.config/autostart/*.desktop` records are executed by full desktops (KDE,
+//! GNOME, Cinnamon, XFCE, MATE, Budgie, LXQt, COSMIC) and by systemd sessions
+//! that bring up `xdg-desktop-autostart.target`. Bare compositors
+//! do not read them at all, and the "Start at login" switch was lit, while after
+//! login nothing started: neither the tray, nor the splash, nor the wallpaper engine.
 //!
-//! Кто что исполняет (сверено по исходникам и man-страницам, 02.10.2026):
+//! Who executes what (checked against the sources and man pages, 02.10.2026):
 //!
-//! | композитор | XDG autostart                                  | родной способ                         |
+//! | compositor | XDG autostart                                  | native way                            |
 //! |------------|------------------------------------------------|---------------------------------------|
-//! | sway       | нет (только при sway-systemd / своих строках)  | `exec …` в `~/.config/sway/config`    |
-//! | Hyprland   | нет; да только под uwsm                        | `hl.on("hyprland.start", …)` в `hyprland.lua`, `exec-once =` в `hyprland.conf` |
-//! | niri       | да через `niri-session` (systemd), иначе нет   | `spawn-at-startup` в `config.kdl`     |
-//! | river      | нет                                            | исполняемый `~/.config/river/init`    |
-//! | labwc      | нет                                            | скрипт `~/.config/labwc/autostart`    |
-//! | Wayfire    | нет                                            | раздел `[autostart]` в `wayfire.ini`  |
+//! | sway       | no (only with sway-systemd / its own lines)    | `exec …` in `~/.config/sway/config`   |
+//! | Hyprland   | no; yes only under uwsm                        | `hl.on("hyprland.start", …)` in `hyprland.lua`, `exec-once =` in `hyprland.conf` |
+//! | niri       | yes via `niri-session` (systemd), otherwise no | `spawn-at-startup` in `config.kdl`    |
+//! | river      | no                                             | the executable `~/.config/river/init` |
+//! | labwc      | no                                             | the script `~/.config/labwc/autostart` |
+//! | Wayfire    | no                                             | the `[autostart]` section in `wayfire.ini` |
 //!
-//! Поэтому в этих шести Rexon пишет СВОЮ строку в родной конфиг — управляемым
-//! блоком между метками — и прячет от них `.desktop`-запись ключом
-//! `NotShowIn=` ([`with_not_show_in`]). Получается ровно один путь запуска на
-//! окружение: где композитор исполняет и XDG, и свою строку (niri из
-//! `niri-session`, Hyprland под uwsm), `.desktop` для него скрыт, и программа
-//! не стартует дважды. `NotShowIn=` получает только тот композитор, в чей
-//! конфиг строка РЕАЛЬНО легла: иначе под uwsm спрятали бы запись, у которой
-//! не осталось замены.
+//! So in these six Rexon writes ITS OWN line into the native config — as a managed
+//! block between markers — and hides the `.desktop` record from them with the key
+//! `NotShowIn=` ([`with_not_show_in`]). The result is exactly one launch path per
+//! desktop: where the compositor executes both XDG and its own line (niri from
+//! `niri-session`, Hyprland under uwsm), the `.desktop` is hidden from it, and the program
+//! does not start twice. `NotShowIn=` gets only the compositor into whose
+//! config the line REALLY went: otherwise under uwsm we would hide a record that
+//! had no replacement left.
 //!
-//! Блок обратим бит-в-бит: метка начала помнит, добавлял ли Rexon перевод
-//! строки перед блоком (` +nl`) и заводил ли файл сам (` +new`); снятие
-//! возвращает файл к прежним байтам, а заведённый файл — удаляет.
+//! The block is reversible bit for bit: the start marker remembers whether Rexon added a
+//! newline before the block (` +nl`) and whether it created the file itself (` +new`); removal
+//! returns the file to its previous bytes, and deletes a created file.
 //!
-//! ⚠️ Файлы, которых нет, заводятся только там, где это ничего не ломает:
-//! * sway — свой `config` с `include` системного (без него свой файл
-//!   отключил бы системный конфиг целиком, вместе с клавишами);
-//! * labwc — свой `autostart`, который сперва исполняет системный;
-//! * Wayfire — свой `wayfire.ini` (умолчания всё равно читаются из
-//!   `defaults.ini`).
+//! ⚠️ Missing files are created only where it breaks nothing:
+//! * sway — our own `config` with an `include` of the system one (without it our own file
+//!   would disable the whole system config, keybindings included);
+//! * labwc — our own `autostart` that first executes the system one;
+//! * Wayfire — our own `wayfire.ini` (the defaults are read from
+//!   `defaults.ini` anyway).
 //!
-//! Hyprland и niri при первом входе сами кладут конфиг по умолчанию — если
-//! опередить их файлом из одной строки, человек остался бы без клавиш.
-//! river без `init` бесполезен сам по себе. Там файла не заводим и честно
-//! говорим, что строка не легла.
+//! Hyprland and niri put a default config themselves on first login — if
+//! we got ahead of them with a one-line file, the person would be left without keybindings.
+//! river without `init` is useless by itself. There we do not create a file and honestly
+//! say the line did not go in.
 //!
-//! Общий помощник для чужих строк автозапуска (например, шелл, который
-//! ставит вкладка «Рабочие столы»): [`ensure_block`] / [`remove_block`] на
-//! файл, [`resolve_target`] — какой файл у композитора главный,
-//! [`launch_line`] — строка запуска в его синтаксисе.
+//! A shared helper for other autostart lines (for example, a shell that
+//! the "Desktops" tab installs): [`ensure_block`] / [`remove_block`] per
+//! file, [`resolve_target`] — which file is the compositor's main one,
+//! [`launch_line`] — the launch line in its syntax.
 
 use std::path::Path;
 
 use crate::i18n::{n_, tr, trf};
 
 // ============================================================================
-// Композиторы и синтаксисы
+// Compositors and syntaxes
 // ============================================================================
 
-/// Композитор, который сам XDG-записи автозапуска не исполняет.
+/// A compositor that does not execute XDG autostart records itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Compositor {
     Sway,
@@ -67,7 +67,7 @@ pub enum Compositor {
 }
 
 impl Compositor {
-    /// Все, по порядку.
+    /// All of them, in order.
     pub const ALL: [Compositor; 6] = [
         Compositor::Sway,
         Compositor::Hyprland,
@@ -77,7 +77,7 @@ impl Compositor {
         Compositor::Wayfire,
     ];
 
-    /// Имя для человека (имена программ не переводятся).
+    /// Name for the person (program names are not translated).
     pub fn display_name(self) -> &'static str {
         match self {
             Compositor::Sway => "Sway",
@@ -89,8 +89,8 @@ impl Compositor {
         }
     }
 
-    /// Имена в `XDG_CURRENT_DESKTOP` (их же получает `NotShowIn=`):
-    /// `DesktopNames=` сеансовых файлов плюс то, что композитор ставит сам.
+    /// Names in `XDG_CURRENT_DESKTOP` (`NotShowIn=` gets the same ones):
+    /// `DesktopNames=` of the session files plus what the compositor sets itself.
     pub fn desktop_names(self) -> &'static [&'static str] {
         match self {
             Compositor::Sway => &["sway"],
@@ -102,7 +102,7 @@ impl Compositor {
         }
     }
 
-    /// Бинари в `PATH`, по которым видно, что композитор стоит.
+    /// Binaries in `PATH` that show the compositor is installed.
     pub fn binaries(self) -> &'static [&'static str] {
         match self {
             Compositor::Sway => &["sway"],
@@ -114,8 +114,8 @@ impl Compositor {
         }
     }
 
-    /// Переменная, которую композитор ставит своим детям, — признак того,
-    /// что сеанс сейчас его. У river такой нет (только `XDG_CURRENT_DESKTOP`).
+    /// A variable the compositor sets for its children — a sign that
+    /// the session is currently its own. river has none (only `XDG_CURRENT_DESKTOP`).
     fn session_marker(self) -> Option<&'static str> {
         match self {
             Compositor::Sway => Some("SWAYSOCK"),
@@ -128,25 +128,25 @@ impl Compositor {
     }
 }
 
-/// Синтаксис файла, в который ложится блок.
+/// The syntax of the file the block goes into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Syntax {
-    /// `~/.config/sway/config`: `exec <команда оболочки>`.
+    /// `~/.config/sway/config`: `exec <shell command>`.
     Sway,
-    /// `hyprland.conf` (hyprlang): `exec-once = <команда>`.
+    /// `hyprland.conf` (hyprlang): `exec-once = <command>`.
     HyprConf,
     /// `hyprland.lua`: `hl.on("hyprland.start", …)`.
     HyprLua,
     /// `config.kdl`: `spawn-at-startup "argv0" "argv1" …`.
     NiriKdl,
-    /// Скрипт оболочки (river `init`, labwc `autostart`): `<команда> &`.
+    /// A shell script (river `init`, labwc `autostart`): `<command> &`.
     Shell,
-    /// `wayfire.ini`: ключ в разделе `[autostart]`.
+    /// `wayfire.ini`: a key in the `[autostart]` section.
     WayfireIni,
 }
 
 impl Syntax {
-    /// Начало строки-комментария.
+    /// The start of a comment line.
     pub fn comment(self) -> &'static str {
         match self {
             Syntax::HyprLua => "--",
@@ -157,21 +157,21 @@ impl Syntax {
 }
 
 // ============================================================================
-// Строка запуска
+// The launch line
 // ============================================================================
 
-/// Почему строку в этот конфиг не написать.
+/// Why the line cannot be written into this config.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
-    /// Главного файла настроек нет, а заводить его самим нельзя.
+    /// There is no main settings file, and we must not create it ourselves.
     ConfigMissing,
-    /// Файл устроен так, что безопасно дописать его нельзя.
+    /// The file is structured so that it cannot be safely appended to.
     Unsupported,
-    /// В команде есть знаки, которых этот синтаксис не держит.
+    /// The command has characters this syntax cannot hold.
     BadCharacters,
-    /// В конфиге выключен модуль автозапуска (Wayfire).
+    /// The autostart module is disabled in the config (Wayfire).
     PluginOff,
-    /// Запись на диск не удалась.
+    /// Writing to disk failed.
     Io(String),
 }
 
@@ -192,7 +192,7 @@ const MSG_NOT_COVERED: &str =
 const MSG_MANUAL: &str = n_("Add this line to %1 yourself: %2");
 
 impl Refusal {
-    /// Причина словами человека.
+    /// The reason in the person's words.
     pub fn text(&self) -> String {
         match self {
             Refusal::ConfigMissing => tr(R_MISSING),
@@ -204,13 +204,13 @@ impl Refusal {
     }
 }
 
-/// Знак, которому в оболочке кавычки не нужны. Не-ASCII (кириллица в путях)
-/// оболочка держит как часть слова.
+/// A character that needs no quotes in the shell. Non-ASCII (Cyrillic in paths)
+/// the shell keeps as part of a word.
 fn shell_safe(c: char) -> bool {
     c.is_alphanumeric() || "_@%+=:,./-".contains(c)
 }
 
-/// Одно слово для `sh -c`: как есть или в одинарных кавычках.
+/// One word for `sh -c`: as is or in single quotes.
 pub fn shell_quote(arg: &str) -> String {
     if !arg.is_empty() && arg.chars().all(shell_safe) {
         return arg.to_string();
@@ -218,24 +218,24 @@ pub fn shell_quote(arg: &str) -> String {
     format!("'{}'", arg.replace('\'', "'\\''"))
 }
 
-/// argv → командная строка оболочки.
+/// argv → a shell command line.
 pub fn shell_command(argv: &[String]) -> String {
     argv.iter().map(|a| shell_quote(a)).collect::<Vec<_>>().join(" ")
 }
 
-/// Строка KDL в кавычках.
+/// A KDL string in quotes.
 fn kdl_string(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Ключ Wayfire для своей записи: `rexon_<id>` (дефис в ключе не нужен).
+/// The Wayfire key for our record: `rexon_<id>` (no hyphen needed in the key).
 fn wayfire_key(id: &str) -> String {
     format!("rexon_{}", id.replace('-', "_"))
 }
 
-/// Строки тела блока: запуск `argv` в синтаксисе `syntax`.
+/// The block body lines: launching `argv` in the syntax `syntax`.
 ///
-/// `id` нужен только Wayfire — ключи раздела должны различаться.
+/// `id` is needed only by Wayfire — the section keys must differ.
 pub fn launch_line(syntax: Syntax, id: &str, argv: &[String]) -> Result<Vec<String>, Refusal> {
     if argv.is_empty() || argv.iter().any(|a| a.contains('\n') || a.contains('\r') || a.contains('\0')) {
         return Err(Refusal::BadCharacters);
@@ -243,20 +243,20 @@ pub fn launch_line(syntax: Syntax, id: &str, argv: &[String]) -> Result<Vec<Stri
     let sh = shell_command(argv);
     Ok(match syntax {
         Syntax::Sway => {
-            // sway разворачивает `$имя` и снимает экранирование `\` ещё до
-            // оболочки (`unescape_string` у всех аргументов `exec`).
+            // sway expands `$name` and removes `\` escaping even before
+            // the shell (`unescape_string` for all `exec` arguments).
             if sh.contains('$') || sh.contains('\\') {
                 return Err(Refusal::BadCharacters);
             }
-            // `,` вне кавычек sway считает границей команд (`;` оболочка и
-            // так берёт в кавычки) — слово с запятой идёт в кавычках.
+            // sway treats `,` outside quotes as a command boundary (the shell quotes
+            // `;` anyway) — a word with a comma goes in quotes.
             let words: Vec<String> = argv
                 .iter()
                 .map(|a| if a.contains(',') { format!("'{}'", a.replace('\'', "'\\''")) } else { shell_quote(a) })
                 .collect();
             let sh = words.join(" ");
-            // Единственное слово в кавычках sway раскавычивает сам, и
-            // оболочка резала бы путь по пробелам: оборачиваем ещё раз.
+            // sway unquotes a single quoted word itself, and
+            // the shell would split the path by spaces: we wrap it once more.
             if words.len() == 1 && sh.starts_with('\'') {
                 if sh.contains('"') {
                     return Err(Refusal::BadCharacters);
@@ -266,7 +266,7 @@ pub fn launch_line(syntax: Syntax, id: &str, argv: &[String]) -> Result<Vec<Stri
             vec![format!("exec {sh}")]
         }
         Syntax::HyprConf => {
-            // hyprlang: `#` — комментарий, `$` — переменная.
+            // hyprlang: `#` is a comment, `$` is a variable.
             if sh.contains('#') || sh.contains('$') {
                 return Err(Refusal::BadCharacters);
             }
@@ -282,7 +282,7 @@ pub fn launch_line(syntax: Syntax, id: &str, argv: &[String]) -> Result<Vec<Stri
         }
         Syntax::Shell => vec![format!("{sh} &")],
         Syntax::WayfireIni => {
-            // wf-config: `#` начинает комментарий, `\` — экранирование.
+            // wf-config: `#` starts a comment, `\` is escaping.
             if sh.contains('#') || sh.contains('\\') {
                 return Err(Refusal::BadCharacters);
             }
@@ -292,7 +292,7 @@ pub fn launch_line(syntax: Syntax, id: &str, argv: &[String]) -> Result<Vec<Stri
 }
 
 // ============================================================================
-// Управляемый блок (чистые функции над текстом)
+// The managed block (pure functions over text)
 // ============================================================================
 
 const FLAG_NL: &str = " +nl";
@@ -318,13 +318,13 @@ fn end_line(syntax: Syntax, id: &str) -> String {
     format!("{} <<< rexon:{id} <<<", syntax.comment())
 }
 
-/// Найденный блок: байтовые границы строк начала и конца (конец — после
-/// перевода строки метки конца, если он есть) и флаги метки.
+/// A found block: the byte boundaries of the start and end lines (the end — after
+/// the end marker's newline, if there is one) and the marker flags.
 struct Found {
     start: usize,
-    /// Начало тела (сразу за строкой метки начала).
+    /// The start of the body (right after the start marker line).
     body_start: usize,
-    /// Начало строки метки конца.
+    /// The start of the end marker line.
     end_line_start: usize,
     end: usize,
     body: String,
@@ -332,7 +332,7 @@ struct Found {
     new_file: bool,
 }
 
-/// Начало и конец каждой строки (с её `\n`).
+/// The start and end of each line (with its `\n`).
 fn line_spans(text: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     let mut pos = 0;
@@ -351,7 +351,7 @@ fn find_block(text: &str, syntax: Syntax, id: &str) -> Option<Found> {
     while i < spans.len() {
         let (s, e) = spans[i];
         let line = text[s..e].trim_end_matches(['\n', '\r']);
-        // `rexon:tray` не должен поймать `rexon:tray-extra`.
+        // `rexon:tray` must not catch `rexon:tray-extra`.
         if let Some(rest) = line.strip_prefix(&prefix) {
             if rest.starts_with(' ') {
                 let flags = rest.split(" >>>").next().unwrap_or("");
@@ -372,7 +372,7 @@ fn find_block(text: &str, syntax: Syntax, id: &str) -> Option<Found> {
                         });
                     }
                 }
-                return None; // метка начала без конца — не трогаем
+                return None; // a start marker without an end — we do not touch it
             }
         }
         i += 1;
@@ -380,17 +380,17 @@ fn find_block(text: &str, syntax: Syntax, id: &str) -> Option<Found> {
     None
 }
 
-/// Есть ли в тексте блок `id`.
+/// Whether the text has the block `id`.
 pub fn has_block(text: &str, syntax: Syntax, id: &str) -> bool {
     find_block(text, syntax, id).is_some()
 }
 
-/// Куда в существующем файле вставлять новый блок.
+/// Where to insert a new block in an existing file.
 fn insertion_point(text: &str, syntax: Syntax) -> Result<Option<usize>, Refusal> {
     match syntax {
         Syntax::Shell => {
-            // `exec` в начале строки заменяет оболочку — всё после него не
-            // исполнится. Встаём перед первым таким.
+            // `exec` at the start of a line replaces the shell — nothing after it
+            // will run. We go before the first such line.
             for (s, e) in line_spans(text) {
                 let l = &text[s..e];
                 if l.starts_with("exec ") || l.starts_with("exec\t") || l.trim_end() == "exec" {
@@ -400,7 +400,7 @@ fn insertion_point(text: &str, syntax: Syntax) -> Result<Option<usize>, Refusal>
             Ok(None)
         }
         Syntax::HyprLua => {
-            // После `return` верхнего уровня Lua не принимает операторов.
+            // After a top-level `return` Lua accepts no statements.
             if line_spans(text).iter().any(|&(s, e)| {
                 let l = &text[s..e];
                 l.starts_with("return") && l[6..].chars().next().is_none_or(|c| !c.is_alphanumeric() && c != '_')
@@ -410,11 +410,11 @@ fn insertion_point(text: &str, syntax: Syntax) -> Result<Option<usize>, Refusal>
             Ok(None)
         }
         Syntax::WayfireIni => {
-            // Внутри уже существующего раздела `[autostart]` — сразу после
-            // заголовка (второй такой раздел wf-config не обязан склеивать).
-            // Заголовок завёл наш же блок — встаём за ЕГО меткой конца:
-            // иначе новый блок оказался бы внутри старого и ушёл бы вместе
-            // с ним при снятии.
+            // Inside an already existing `[autostart]` section — right after
+            // the header (wf-config is not obliged to merge a second such section).
+            // If the header was created by our own block, we go after ITS end marker:
+            // otherwise the new block would end up inside the old one and would go away together
+            // with it on removal.
             let mut open_end: Option<String> = None;
             let mut header_inside = false;
             for (s, e) in line_spans(text) {
@@ -432,7 +432,7 @@ fn insertion_point(text: &str, syntax: Syntax) -> Result<Option<usize>, Refusal>
                     continue;
                 }
                 if l.trim() == "[autostart]" {
-                    return Ok(at_end); // заголовок последней строкой — в конец
+                    return Ok(at_end); // the header is the last line — to the end
                 }
                 if let Some(id) = our_block_id(l, syntax) {
                     open_end = Some(end_line(syntax, id));
@@ -444,17 +444,17 @@ fn insertion_point(text: &str, syntax: Syntax) -> Result<Option<usize>, Refusal>
     }
 }
 
-/// Метка начала нашего блока (любого) — его `id`.
+/// The start marker of our block (any) — its `id`.
 fn our_block_id(line: &str, syntax: Syntax) -> Option<&str> {
     let head = format!("{} >>> rexon:", syntax.comment());
     let rest = line.strip_prefix(&head)?;
     rest.find(' ').map(|i| &rest[..i])
 }
 
-/// Строка — преамбула, которую блок несёт за весь файл, а не за себя:
-/// sway — `include` системного конфига в заведённом нами файле, labwc —
-/// исполнение системного `autostart`, Wayfire — заголовок `[autostart]`.
-/// Пока в файле есть наши блоки, она должна в нём остаться.
+/// A line is a preamble the block carries for the whole file, not for itself:
+/// sway — the `include` of the system config in a file we created, labwc —
+/// executing the system `autostart`, Wayfire — the `[autostart]` header.
+/// While the file has our blocks, it must stay in it.
 fn preamble_like(syntax: Syntax, line: &str) -> bool {
     match syntax {
         Syntax::Sway => line.starts_with("include "),
@@ -464,27 +464,27 @@ fn preamble_like(syntax: Syntax, line: &str) -> bool {
     }
 }
 
-/// Есть ли в `wayfire.ini` раздел `[autostart]`.
+/// Whether `wayfire.ini` has an `[autostart]` section.
 fn wayfire_has_section(text: &str) -> bool {
     text.lines().any(|l| l.trim() == "[autostart]")
 }
 
-/// Итог правки текста.
+/// The result of a text edit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TextEdit {
-    /// Ничего менять не надо.
+    /// Nothing needs changing.
     Unchanged,
-    /// Новый текст файла.
+    /// The new file text.
     Write(String),
-    /// Файл был заведён нами и теперь пуст — удалить.
+    /// The file was created by us and is now empty — delete it.
     Delete,
 }
 
-/// Поставить/обновить блок `id` с телом `body` (строки без `\n`).
+/// Install/update the block `id` with the body `body` (lines without `\n`).
 ///
-/// `existing` — текущий текст или `None`, если файла нет (тогда файл
-/// заводится, и метка помнит это). `preamble` — строки, которые идут в блок
-/// ПЕРЕД телом только при заведении файла (sway: `include` системного).
+/// `existing` — the current text or `None` if there is no file (then the file
+/// is created, and the marker remembers it). `preamble` — lines that go into the block
+/// BEFORE the body only when the file is created (sway: an `include` of the system one).
 pub fn upsert_text(
     existing: Option<&str>,
     syntax: Syntax,
@@ -512,8 +512,8 @@ pub fn upsert_text(
 
     let text = existing.unwrap_or("");
     if let Some(found) = find_block(text, syntax, id) {
-        // Обновление: преамбула и заголовок раздела у старого блока свои —
-        // меняются только строки тела, флаги и окружение блока остаются.
+        // An update: the preamble and section header of the old block are its own —
+        // only the body lines change, the flags and the block's surroundings stay.
         let old_body = &found.body;
         let mut kept = String::new();
         for l in old_body.split_inclusive('\n') {
@@ -560,7 +560,7 @@ pub fn upsert_text(
     Ok(TextEdit::Write(out))
 }
 
-/// Строка — наше тело запуска (а не преамбула/заголовок раздела)?
+/// Is the line our launch body (rather than a preamble/section header)?
 fn body_like(syntax: Syntax, line: &str) -> bool {
     match syntax {
         Syntax::Sway => line.starts_with("exec "),
@@ -572,7 +572,7 @@ fn body_like(syntax: Syntax, line: &str) -> bool {
     }
 }
 
-/// Снять блок `id`: текст становится байт-в-байт прежним.
+/// Remove the block `id`: the text becomes byte for byte as before.
 pub fn remove_text(existing: &str, syntax: Syntax, id: &str) -> TextEdit {
     let Some(found) = find_block(existing, syntax, id) else {
         return TextEdit::Unchanged;
@@ -580,30 +580,30 @@ pub fn remove_text(existing: &str, syntax: Syntax, id: &str) -> TextEdit {
     let mut start = found.start;
     let mut tail = existing[found.end..].to_string();
     let our_nl = found.added_nl && start > 0 && existing.as_bytes()[start - 1] == b'\n';
-    // Файл завели мы, и до блока в нём ничего нет.
+    // We created the file, and there is nothing in it before the block.
     let our_file = found.new_file && start == 0;
     if tail.is_empty() {
         if our_nl {
             start -= 1;
         }
     } else if our_nl || our_file {
-        // За блоком стоит другой наш блок (его поставили позже — файл уже
-        // кончался нашим `\n`)? Сними мы перевод строки — метка следующего
-        // блока прилипла бы к последней строке человека, а заведённый нами
-        // файл после снятия всех блоков остался бы пустым, а не удалён.
-        // Перевод строки и файл переходят к следующему блоку вместе с
-        // флагами: его снятие вернёт файлу прежние байты.
-        // За блоком чужие строки (человек дописал их после нас) — перевод
-        // строки перед ними нужен, и он остаётся.
+        // Is there another block of ours after this one (it was installed later — the file already
+        // ended with our `\n`)? If we removed the newline, the next block's marker
+        // would stick to the person's last line, and a file we created
+        // would remain empty instead of being deleted after all blocks were removed.
+        // The newline and the file pass to the next block together with
+        // the flags: its removal will return the file to its previous bytes.
+        // If foreign lines follow the block (the person added them after us), the newline
+        // before them is needed, and it stays.
         if let Some(next) = inherit_flags(&tail, syntax, our_nl, our_file) {
             tail = next;
         }
     }
-    // Преамбула блока (sway: `include` системного конфига) принадлежит
-    // файлу, а не блоку: снять её, пока за блоком что-то остаётся, — значит
-    // отключить системный конфиг вместе с клавишами. Следующий наш блок
-    // забирает её себе (и уйдёт с ней последним); чужие строки получают
-    // её как обычные строки перед собой.
+    // The block's preamble (sway: the `include` of the system config) belongs to
+    // the file, not to the block: removing it while something remains after the block means
+    // disabling the system config together with the keybindings. The next block of ours
+    // takes it over (and will go away with it last); foreign lines get
+    // it as ordinary lines before them.
     let preamble: String = found
         .body
         .split_inclusive('\n')
@@ -631,9 +631,9 @@ pub fn remove_text(existing: &str, syntax: Syntax, id: &str) -> TextEdit {
     TextEdit::Write(out)
 }
 
-/// Если `tail` начинается с метки начала нашего блока — вернуть `tail`, где
-/// этой метке добавлены флаги `add_nl`/`add_new` (наследство снимаемого
-/// блока); иначе `None`.
+/// If `tail` starts with our block's start marker — return `tail` where
+/// this marker gets the `add_nl`/`add_new` flags (inherited from the block being
+/// removed); otherwise `None`.
 fn inherit_flags(tail: &str, syntax: Syntax, add_nl: bool, add_new: bool) -> Option<String> {
     let line_end = tail.find('\n').unwrap_or(tail.len());
     let line = tail[..line_end].trim_end_matches('\r');
@@ -647,30 +647,30 @@ fn inherit_flags(tail: &str, syntax: Syntax, add_nl: bool, add_new: bool) -> Opt
 }
 
 // ============================================================================
-// Окружение и выбор файла
+// Environment and choosing the file
 // ============================================================================
 
-/// Что известно о машине и сеансе. Живое — [`SessionEnv::live`]; сверки
-/// собирают своё с временным домашним каталогом.
+/// What is known about the machine and the session. Live — [`SessionEnv::live`]; checks
+/// assemble their own with a temporary home directory.
 #[derive(Debug, Clone, Default)]
 pub struct SessionEnv {
     pub home: String,
-    /// `$XDG_CONFIG_HOME` или `~/.config`.
+    /// `$XDG_CONFIG_HOME` or `~/.config`.
     pub config_home: String,
-    /// `$XDG_CONFIG_DIRS` или `/etc/xdg`.
+    /// `$XDG_CONFIG_DIRS` or `/etc/xdg`.
     pub config_dirs: Vec<String>,
-    /// Системный каталог конфигов (`/etc`): sway и niri ищут там.
+    /// The system config directory (`/etc`): sway and niri look there.
     pub sysconf: String,
-    /// Компоненты `XDG_CURRENT_DESKTOP`.
+    /// Components of `XDG_CURRENT_DESKTOP`.
     pub current_desktop: Vec<String>,
-    /// Переменные, которые здесь читаются (маркеры сеанса и переопределения
-    /// путей конфигов); пустые не кладутся.
+    /// Variables read here (session markers and config path
+    /// overrides); empty ones are not stored.
     pub vars: std::collections::BTreeMap<String, String>,
-    /// Какие композиторы стоят (бинарь в `PATH`).
+    /// Which compositors are installed (the binary in `PATH`).
     pub installed: Vec<Compositor>,
 }
 
-/// Переменные, которые [`SessionEnv::live`] снимает с процесса.
+/// Variables [`SessionEnv::live`] takes from the process.
 const LIVE_VARS: &[&str] = &[
     "SWAYSOCK",
     "HYPRLAND_INSTANCE_SIGNATURE",
@@ -682,7 +682,7 @@ const LIVE_VARS: &[&str] = &[
 ];
 
 impl SessionEnv {
-    /// Окружение живого процесса.
+    /// The live process environment.
     pub fn live() -> Self {
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let home = get("HOME").unwrap_or_default();
@@ -718,27 +718,27 @@ impl SessionEnv {
     }
 }
 
-/// Полные окружения, которые XDG-записи исполняют сами (своим менеджером
-/// сеанса или через systemd). Сравнение без учёта регистра.
+/// Full desktops that execute XDG records themselves (with their own session
+/// manager or via systemd). Case-insensitive comparison.
 const XDG_DESKTOPS: &[&str] = &[
     "KDE", "GNOME", "X-Cinnamon", "Cinnamon", "XFCE", "MATE", "Budgie", "LXQt", "LXDE",
     "COSMIC", "Pantheon", "Unity", "Deepin", "DDE", "Enlightenment", "Lumina", "UKUI",
 ];
 
-/// Чей сеанс сейчас идёт.
+/// Whose session is running now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CurrentSession {
-    /// Полное окружение — XDG-записи исполняются.
+    /// A full desktop — XDG records are executed.
     FullDesktop,
-    /// Один из шести композиторов.
+    /// One of the six compositors.
     Compositor(Compositor),
-    /// Не распознан — судим только по наличию `.desktop`, как прежде.
+    /// Not recognized — we judge only by the presence of the `.desktop`, as before.
     Unknown,
 }
 
-/// Распознать сеанс. Полное окружение важнее маркеров композитора: Budgie
-/// и Xfce на Wayland бегут поверх labwc, LXQt — поверх любого из шести, и
-/// автозапуск у них исполняет свой менеджер сеанса.
+/// Recognize the session. A full desktop matters more than compositor markers: Budgie
+/// and Xfce on Wayland run on top of labwc, LXQt — on top of any of the six, and
+/// their autostart is executed by their own session manager.
 pub fn current_session(env: &SessionEnv) -> CurrentSession {
     let has_name = |n: &str| env.current_desktop.iter().any(|d| d.eq_ignore_ascii_case(n));
     if XDG_DESKTOPS.iter().any(|n| has_name(n)) {
@@ -754,13 +754,13 @@ pub fn current_session(env: &SessionEnv) -> CurrentSession {
     CurrentSession::Unknown
 }
 
-/// Какой файл у композитора главный и как его править.
+/// Which file is the compositor's main one and how to edit it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     pub path: String,
     pub syntax: Syntax,
-    /// Файла нет. `Some(преамбула)` — заводить можно с этими строками
-    /// впереди; `None` у несуществующего файла — заводить нельзя.
+    /// There is no file. `Some(preamble)` — it may be created with these lines
+    /// at the front; `None` for a nonexistent file — it must not be created.
     pub create_with: Option<Vec<String>>,
     pub exists: bool,
 }
@@ -773,7 +773,7 @@ fn join(dir: &str, rel: &str) -> String {
     format!("{}/{}", dir.trim_end_matches('/'), rel)
 }
 
-/// Главный файл композитора — тем же порядком поиска, что у него самого.
+/// The compositor's main file — in the same lookup order as the compositor's own.
 pub fn resolve_target(c: Compositor, env: &SessionEnv) -> Target {
     let existing = |path: String, syntax: Syntax| Target { path, syntax, create_with: None, exists: true };
     let missing = |path: String, syntax: Syntax, create_with: Option<Vec<String>>| Target {
@@ -805,7 +805,7 @@ pub fn resolve_target(c: Compositor, env: &SessionEnv) -> Target {
                 let syntax = if p.ends_with(".lua") { Syntax::HyprLua } else { Syntax::HyprConf };
                 return if is_file(p) { existing(p.to_string(), syntax) } else { missing(p.to_string(), syntax, None) };
             }
-            // 0.55+: сначала `hyprland.lua`, без него — прежний `hyprland.conf`.
+            // 0.55+: first `hyprland.lua`, without it — the old `hyprland.conf`.
             let lua = join(&env.config_home, "hypr/hyprland.lua");
             let conf = join(&env.config_home, "hypr/hyprland.conf");
             if is_file(&lua) {
@@ -832,8 +832,8 @@ pub fn resolve_target(c: Compositor, env: &SessionEnv) -> Target {
             if is_file(&p) {
                 return existing(p, Syntax::Shell);
             }
-            // labwc читает ПЕРВЫЙ найденный `autostart`: свой файл заслонит
-            // системный, поэтому заведённый сперва исполняет его.
+            // labwc reads the FIRST `autostart` found: our own file would shadow
+            // the system one, so the created one first executes it.
             let system = env.config_dirs.iter().map(|d| join(d, "labwc/autostart")).find(|p| is_file(p));
             let preamble = match system {
                 Some(s) => vec![format!(". {}", shell_quote(&s))],
@@ -854,7 +854,7 @@ pub fn resolve_target(c: Compositor, env: &SessionEnv) -> Target {
     }
 }
 
-/// Все файлы, где у композитора МОЖЕТ лежать наш блок (для снятия).
+/// All files where our block MAY be for the compositor (for removal).
 fn all_candidates(c: Compositor, env: &SessionEnv) -> Vec<(String, Syntax)> {
     let mut out = vec![{
         let t = resolve_target(c, env);
@@ -887,12 +887,12 @@ fn all_candidates(c: Compositor, env: &SessionEnv) -> Vec<(String, Syntax)> {
     out
 }
 
-/// Проверки самого файла до правки: формат, который нельзя дописать.
+/// Checks of the file itself before editing: a format that cannot be appended to.
 fn precheck(c: Compositor, target: &Target, text: Option<&str>) -> Result<(), Refusal> {
     match (c, text) {
         (Compositor::River, Some(t)) => {
-            // init исполняется как программа: дописывать можно только скрипт
-            // оболочки, и он обязан остаться исполняемым.
+            // init is executed as a program: only a shell script can be appended to,
+            // and it must remain executable.
             let first = t.lines().next().unwrap_or("");
             let shell = first.starts_with("#!")
                 && ["sh", "bash", "dash", "zsh", "ksh", "mksh", "ash"].iter().any(|s| {
@@ -904,8 +904,8 @@ fn precheck(c: Compositor, target: &Target, text: Option<&str>) -> Result<(), Re
             Ok(())
         }
         (Compositor::Wayfire, Some(t)) => {
-            // Модуль `autostart` должен быть в `[core] plugins`, если список
-            // задан (без ключа действует умолчательный — с ним).
+            // The `autostart` module must be in `[core] plugins` if the list
+            // is set (without the key the default applies — with it).
             let mut in_core = false;
             let mut lines = t.lines().peekable();
             while let Some(l) = lines.next() {
@@ -940,10 +940,10 @@ fn precheck(c: Compositor, target: &Target, text: Option<&str>) -> Result<(), Re
 }
 
 // ============================================================================
-// Файловые помощники (общий API для чужих строк автозапуска)
+// File helpers (a shared API for other autostart lines)
 // ============================================================================
 
-/// Что случилось с файлом.
+/// What happened to the file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
     Unchanged,
@@ -960,12 +960,12 @@ fn write_file(path: &str, text: &str) -> Result<(), Refusal> {
     crate::utils::atomic_write(path, text).map_err(|e| Refusal::Io(e.to_string()))
 }
 
-/// Поставить/обновить управляемый блок `id` в файле `path`.
+/// Install/update the managed block `id` in the file `path`.
 ///
-/// `body` — строки тела (готовые, в синтаксисе файла: см. [`launch_line`]).
-/// `create_with` — `Some(преамбула)`, если файла может не быть и его можно
-/// завести; `None` — отсутствие файла есть отказ [`Refusal::ConfigMissing`].
-/// Повтор с тем же телом файла не трогает.
+/// `body` — the body lines (ready, in the file's syntax: see [`launch_line`]).
+/// `create_with` — `Some(preamble)` if the file may be missing and may be
+/// created; `None` — a missing file is the refusal [`Refusal::ConfigMissing`].
+/// A repeat with the same body does not touch the file.
 pub fn ensure_block(
     path: &str,
     syntax: Syntax,
@@ -992,8 +992,8 @@ pub fn ensure_block(
     }
 }
 
-/// Снять блок `id` из файла `path`; заведённый нами и опустевший файл
-/// удаляется. Нет файла или блока — [`Change::Unchanged`].
+/// Remove the block `id` from the file `path`; a file we created that became empty
+/// is deleted. No file or no block — [`Change::Unchanged`].
 pub fn remove_block(path: &str, syntax: Syntax, id: &str) -> Result<Change, Refusal> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
@@ -1014,39 +1014,39 @@ pub fn remove_block(path: &str, syntax: Syntax, id: &str) -> Result<Change, Refu
 }
 
 // ============================================================================
-// Строки автозапуска программ Rexon
+// Autostart lines of Rexon programs
 // ============================================================================
 
-/// Итог по одному композитору.
+/// The result for one compositor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Outcome {
     pub compositor: Compositor,
     pub path: String,
-    /// `Ok` — блок на месте (записан или уже был).
+    /// `Ok` — the block is in place (written or already there).
     pub result: Result<Change, Refusal>,
-    /// Готовая строка для ручной вставки (если её удалось составить).
+    /// A ready line for manual insertion (if it could be composed).
     pub manual_line: Option<String>,
 }
 
-/// Итог установки строк.
+/// The result of installing the lines.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SyncReport {
     pub outcomes: Vec<Outcome>,
 }
 
 impl SyncReport {
-    /// Композиторы, в чьих конфигах блок стоит.
+    /// Compositors in whose configs the block is.
     pub fn covered(&self) -> Vec<Compositor> {
         self.outcomes.iter().filter(|o| o.result.is_ok()).map(|o| o.compositor).collect()
     }
 
-    /// Имена для `NotShowIn=`.
+    /// Names for `NotShowIn=`.
     pub fn not_show_in(&self) -> Vec<&'static str> {
         self.covered().into_iter().flat_map(|c| c.desktop_names().iter().copied()).collect()
     }
 
-    /// Отказ по композитору текущего сеанса — фраза для человека, или
-    /// `None`, если в этом сеансе всё сработает.
+    /// The refusal for the current session's compositor — a sentence for the person, or
+    /// `None` if everything will work in this session.
     pub fn current_refusal(&self, env: &SessionEnv) -> Option<String> {
         let CurrentSession::Compositor(c) = current_session(env) else {
             return None;
@@ -1064,8 +1064,8 @@ impl SyncReport {
     }
 }
 
-/// Для каких композиторов писать строку: стоящие на машине плюс тот, чей
-/// сеанс идёт сейчас.
+/// For which compositors to write the line: those installed on the machine plus the one whose
+/// session is running now.
 fn targets_for(env: &SessionEnv) -> Vec<Compositor> {
     let mut out: Vec<Compositor> = env.installed.clone();
     if let CurrentSession::Compositor(c) = current_session(env) {
@@ -1076,31 +1076,31 @@ fn targets_for(env: &SessionEnv) -> Vec<Compositor> {
     out
 }
 
-/// Какие конфиги композиторов правит [`sync_command_in`].
+/// Which compositor configs [`sync_command_in`] edits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
-    /// Все композиторы, стоящие на машине, и тот, чей сеанс идёт (строки
-    /// программ Rexon: лоток и прочие).
+    /// All compositors installed on the machine and the one whose session is running (lines
+    /// of Rexon programs: the tray and others).
     Installed,
-    /// Только композитор ТЕКУЩЕГО сеанса; в полном окружении и в
-    /// нераспознанном сеансе — ни один. В конфигах прочих композиторов
-    /// подновляется лишь строка, которая там уже стоит (от прежних
-    /// включений), — новой не появляется. Так пишутся строки виджетов
-    /// Conky (решение Wehrwolfmann 23.10.2026).
+    /// Only the CURRENT session's compositor; in a full desktop and in an
+    /// unrecognized session — none. In the configs of the other compositors
+    /// only a line that is already there (from earlier
+    /// enablings) is refreshed — no new one appears. This is how the lines of Conky
+    /// widgets are written (Wehrwolfmann's decision of 23.10.2026).
     Current,
-    /// Ни одной новой строки: подновить только уже стоящие (виджет, который
-    /// текущему сеансу не нужен — «только в другом окружении»).
+    /// Not a single new line: only refresh existing ones (a widget the
+    /// current session does not need — "only on another desktop").
     Present,
 }
 
-/// Поставить строку запуска `argv` под меткой `id` во все применимые
-/// конфиги композиторов (`None` — снять отовсюду).
+/// Install the launch line `argv` under the marker `id` into all applicable
+/// compositor configs (`None` — remove from everywhere).
 pub fn sync_command(env: &SessionEnv, id: &str, argv: Option<&[String]>) -> SyncReport {
     sync_command_in(env, id, argv, Scope::Installed)
 }
 
-/// [`sync_command`] с выбором, какие конфиги трогать ([`Scope`]). `None`
-/// снимает строку отовсюду при любом `scope`.
+/// [`sync_command`] with a choice of which configs to touch ([`Scope`]). `None`
+/// removes the line from everywhere with any `scope`.
 pub fn sync_command_in(env: &SessionEnv, id: &str, argv: Option<&[String]>, scope: Scope) -> SyncReport {
     let mut report = SyncReport::default();
     let Some(argv) = argv else {
@@ -1112,7 +1112,7 @@ pub fn sync_command_in(env: &SessionEnv, id: &str, argv: Option<&[String]>, scop
             let wanted = targets_for(env);
             for c in Compositor::ALL {
                 if !wanted.contains(&c) {
-                    // Не стоит и не текущий — блока там быть не должно.
+                    // Not installed and not current — the block must not be there.
                     let target = resolve_target(c, env);
                     let _ = remove_block(&target.path, target.syntax, id);
                     continue;
@@ -1136,8 +1136,8 @@ pub fn sync_command_in(env: &SessionEnv, id: &str, argv: Option<&[String]>, scop
     report
 }
 
-/// Поставить строку `argv` под меткой `id` в конфиг ОДНОГО композитора
-/// `c` (и снять её из его прочих файлов-кандидатов).
+/// Install the line `argv` under the marker `id` into the config of ONE compositor
+/// `c` (and remove it from its other candidate files).
 fn sync_one(env: &SessionEnv, c: Compositor, id: &str, argv: &[String]) -> Outcome {
     let target = resolve_target(c, env);
     let line = launch_line(target.syntax, id, argv);
@@ -1148,8 +1148,8 @@ fn sync_one(env: &SessionEnv, c: Compositor, id: &str, argv: &[String]) -> Outco
         precheck(c, &target, text.as_deref())?;
         ensure_block(&target.path, target.syntax, id, &body, target.create_with.as_deref())
     })();
-    // Строка, которая не легла в главный файл, могла остаться в другом
-    // кандидате (сменился формат Hyprland) — не держать двух.
+    // A line that did not go into the main file may have remained in another
+    // candidate (the Hyprland format changed) — do not keep two.
     for (p, s) in all_candidates(c, env) {
         if p != target.path {
             let _ = remove_block(&p, s, id);
@@ -1158,7 +1158,7 @@ fn sync_one(env: &SessionEnv, c: Compositor, id: &str, argv: &[String]) -> Outco
     Outcome { compositor: c, path: target.path, result, manual_line }
 }
 
-/// Композиторы, в чьих конфигах (любом из файлов-кандидатов) стоит блок `id`.
+/// Compositors in whose configs (any of the candidate files) the block `id` is.
 pub fn compositors_with_block(env: &SessionEnv, id: &str) -> Vec<Compositor> {
     Compositor::ALL
         .into_iter()
@@ -1170,14 +1170,14 @@ pub fn compositors_with_block(env: &SessionEnv, id: &str) -> Vec<Compositor> {
         .collect()
 }
 
-/// Снять блок `id` из всех файлов-кандидатов композитора `c`.
+/// Remove the block `id` from all candidate files of the compositor `c`.
 pub fn remove_from(env: &SessionEnv, c: Compositor, id: &str) {
     for (p, s) in all_candidates(c, env) {
         let _ = remove_block(&p, s, id);
     }
 }
 
-/// Снять блок `id` из всех возможных конфигов всех шести композиторов.
+/// Remove the block `id` from all possible configs of all six compositors.
 pub fn remove_everywhere(env: &SessionEnv, id: &str) -> Vec<(String, Result<Change, Refusal>)> {
     let mut out = Vec::new();
     for c in Compositor::ALL {
@@ -1191,13 +1191,13 @@ pub fn remove_everywhere(env: &SessionEnv, id: &str) -> Vec<(String, Result<Chan
     out
 }
 
-/// Сработает ли автозапуск `id` в ТЕКУЩЕМ сеансе, если `.desktop`-запись
-/// (или юнит) на месте. Полные окружения и нераспознанные сеансы — да;
-/// у композитора — если в его главном конфиге стоит наш блок, либо
-/// `session_runs_it()` говорит, что этот сеанс всё же исполнит запись сам
-/// (для `.desktop` — поднят `xdg-desktop-autostart.target`: uwsm,
-/// `niri-session`; для юнита — `graphical-session.target`), и запись от
-/// него не скрыта `NotShowIn=`. `desktop_text` — `None` у юнита.
+/// Whether the autostart `id` will work in the CURRENT session if the `.desktop` record
+/// (or the unit) is in place. Full desktops and unrecognized sessions — yes;
+/// for a compositor — if our block is in its main config, or
+/// `session_runs_it()` says this session will execute the record itself after all
+/// (for a `.desktop` — `xdg-desktop-autostart.target` is up: uwsm,
+/// `niri-session`; for a unit — `graphical-session.target`), and the record is not
+/// hidden from it by `NotShowIn=`. `desktop_text` — `None` for a unit.
 pub fn works_in_current_session(
     env: &SessionEnv,
     id: &str,
@@ -1219,13 +1219,13 @@ pub fn works_in_current_session(
     !hidden && session_runs_it()
 }
 
-/// Живая проверка: поднят ли в этом сеансе `xdg-desktop-autostart.target`.
+/// A live check: whether `xdg-desktop-autostart.target` is up in this session.
 pub fn xdg_autostart_target_active() -> bool {
     user_unit_active("xdg-desktop-autostart.target")
 }
 
-/// Живая проверка: поднят ли `graphical-session.target` (его ждут юниты
-/// с `WantedBy=graphical-session.target`).
+/// A live check: whether `graphical-session.target` is up (units
+/// with `WantedBy=graphical-session.target` wait for it).
 pub fn graphical_session_target_active() -> bool {
     user_unit_active("graphical-session.target")
 }
@@ -1241,10 +1241,10 @@ fn user_unit_active(unit: &str) -> bool {
 }
 
 // ============================================================================
-// .desktop: NotShowIn и разбор Exec
+// .desktop: NotShowIn and parsing Exec
 // ============================================================================
 
-/// Значения `NotShowIn=` записи.
+/// The record's `NotShowIn=` values.
 fn not_show_in_of(desktop: &str) -> Vec<String> {
     desktop
         .lines()
@@ -1253,8 +1253,8 @@ fn not_show_in_of(desktop: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Запись `desktop` с ключом `NotShowIn=<names>` (пустой список — без
-/// ключа). Прежний ключ заменяется; новый встаёт сразу после `Type=`.
+/// The record `desktop` with the key `NotShowIn=<names>` (an empty list — without
+/// the key). The previous key is replaced; a new one goes right after `Type=`.
 pub fn with_not_show_in(desktop: &str, names: &[&str]) -> String {
     let mut out = String::with_capacity(desktop.len() + 64);
     let mut placed = names.is_empty();
@@ -1280,10 +1280,10 @@ pub fn with_not_show_in(desktop: &str, names: &[&str]) -> String {
     out
 }
 
-/// argv из значения `Exec=` по спецификации Desktop Entry: сперва
-/// разэкранирование значения ключа (`\s \n \t \r \\`), затем разбор
-/// кавычек (`\"`, `` \` ``, `\$`, `\\` внутри) и `%%`; коды полей (`%f` …)
-/// отбрасываются. `None` — строка разбита (незакрытая кавычка).
+/// argv from the `Exec=` value per the Desktop Entry specification: first
+/// unescaping the key value (`\s \n \t \r \\`), then parsing
+/// quotes (`\"`, `` \` ``, `\$`, `\\` inside) and `%%`; field codes (`%f` …)
+/// are dropped. `None` — the line is broken (an unclosed quote).
 pub fn exec_argv(exec_value: &str) -> Option<Vec<String>> {
     let mut value = String::with_capacity(exec_value.len());
     let mut chars = exec_value.chars();
@@ -1338,7 +1338,7 @@ pub fn exec_argv(exec_value: &str) -> Option<Vec<String>> {
                     in_word = true;
                     cur.push('%');
                 }
-                Some(_) | None => {} // код поля — не аргумент
+                Some(_) | None => {} // a field code — not an argument
             },
             o => {
                 in_word = true;
@@ -1352,7 +1352,7 @@ pub fn exec_argv(exec_value: &str) -> Option<Vec<String>> {
     Some(argv)
 }
 
-/// argv из `Exec=` записи `[Desktop Entry]`.
+/// argv from `Exec=` of a `[Desktop Entry]` record.
 pub fn desktop_argv(desktop: &str) -> Option<Vec<String>> {
     let mut in_main = false;
     for line in desktop.lines() {
@@ -1370,16 +1370,16 @@ pub fn desktop_argv(desktop: &str) -> Option<Vec<String>> {
     None
 }
 
-/// Итог установки XDG-записи вместе со строками композиторов.
+/// The result of installing an XDG record together with the compositor lines.
 #[derive(Debug, Clone)]
 pub struct DesktopMirror {
-    /// Окончательный текст `.desktop` (с `NotShowIn=` для покрытых).
+    /// The final `.desktop` text (with `NotShowIn=` for the covered ones).
     pub desktop: String,
     pub report: SyncReport,
 }
 
-/// Строки композиторов для XDG-записи `desktop` под меткой `id`. Вызвать
-/// ПЕРЕД записью `.desktop` и писать на диск уже [`DesktopMirror::desktop`].
+/// Compositor lines for the XDG record `desktop` under the marker `id`. Call
+/// BEFORE writing the `.desktop` and write [`DesktopMirror::desktop`] to disk.
 pub fn mirror_desktop(env: &SessionEnv, id: &str, desktop: &str) -> DesktopMirror {
     let Some(argv) = desktop_argv(desktop) else {
         return DesktopMirror { desktop: desktop.to_string(), report: SyncReport::default() };
@@ -1390,24 +1390,24 @@ pub fn mirror_desktop(env: &SessionEnv, id: &str, desktop: &str) -> DesktopMirro
 }
 
 // ============================================================================
-// Метки программ Rexon и живая дверь для писателей автозапуска
+// Rexon program markers and the live door for autostart writers
 // ============================================================================
 
-/// Лоток Rexon (`~/.config/autostart/rexon.desktop`).
+/// The Rexon tray (`~/.config/autostart/rexon.desktop`).
 pub const ID_TRAY: &str = "tray";
-/// Заставка входа (`rexon-session-splash.desktop`).
+/// The login splash (`rexon-session-splash.desktop`).
 pub const ID_SPLASH: &str = "session-splash";
-/// Применение приложений по умолчанию (`rexon-appdefaults.desktop`).
+/// Applying default applications (`rexon-appdefaults.desktop`).
 pub const ID_APPDEFAULTS: &str = "appdefaults";
-/// Движок обоев (юнит systemd или `rexon-wallpaper-engine.desktop`).
+/// The wallpaper engine (a systemd unit or `rexon-wallpaper-engine.desktop`).
 pub const ID_ENGINE: &str = "wallpaper-engine";
 
-/// Все метки блоков Rexon — для снятия при удалении Rexon: строки запуска
-/// программ и переменные сеанса ([`ID_SESSION_ENV`]).
+/// All Rexon block markers — for removal when Rexon is uninstalled: program launch
+/// lines and session variables ([`ID_SESSION_ENV`]).
 pub const REXON_IDS: &[&str] = &[ID_TRAY, ID_SPLASH, ID_APPDEFAULTS, ID_ENGINE, ID_SESSION_ENV];
 
-/// [`mirror_desktop`] на живой машине. Возвращает окончательный текст
-/// записи и отказ для текущего сеанса (`None` — здесь сработает).
+/// [`mirror_desktop`] on the live machine. Returns the final record text
+/// and the refusal for the current session (`None` — it will work here).
 pub fn mirror_desktop_live(id: &str, desktop: &str) -> (String, Option<String>) {
     let env = SessionEnv::live();
     let m = mirror_desktop(&env, id, desktop);
@@ -1415,24 +1415,24 @@ pub fn mirror_desktop_live(id: &str, desktop: &str) -> (String, Option<String>) 
     (m.desktop, refusal)
 }
 
-/// Снять строки `id` из конфигов всех композиторов на живой машине.
+/// Remove the `id` lines from the configs of all compositors on the live machine.
 pub fn remove_live(id: &str) {
     remove_everywhere(&SessionEnv::live(), id);
 }
 
-/// [`works_in_current_session`] на живой машине.
+/// [`works_in_current_session`] on the live machine.
 pub fn works_live(id: &str, desktop_text: Option<&str>) -> bool {
     works_in_current_session(&SessionEnv::live(), id, desktop_text, xdg_autostart_target_active)
 }
 
-/// Освежить строки композиторов по уже лежащим XDG-записям программ Rexon.
+/// Refresh the compositor lines from the existing XDG records of Rexon programs.
 ///
-/// Строки пишутся при включении переключателя — для композиторов, которые
-/// стояли в ту минуту. Поставленный позже композитор (или сменившийся путь
-/// к Rexon) иначе остался бы без строки до следующего щелчка. Зовётся при
-/// старте лотка: записи без изменений не трогаются ни на байт. Юнит движка
-/// здесь не смотрится (для этого нужен `systemctl`) — его строки ставит
-/// переключатель движка.
+/// The lines are written when the switch is turned on — for the compositors that
+/// were installed at that moment. A compositor installed later (or a changed path
+/// to Rexon) would otherwise be left without a line until the next click. Called at
+/// tray start: unchanged records are not touched by a single byte. The engine unit
+/// is not looked at here (that needs `systemctl`) — its lines are installed by
+/// the engine switch.
 pub fn resync_rexon_live() {
     let env = SessionEnv::live();
     for (id, path) in rexon_autostart_entries(&env) {
@@ -1446,8 +1446,8 @@ pub fn resync_rexon_live() {
     }
 }
 
-/// XDG-записи автозапуска программ Rexon: метка и путь. ОДИН список на
-/// освежение строк композиторов и на починку устаревших путей.
+/// XDG autostart records of Rexon programs: marker and path. ONE list for
+/// refreshing compositor lines and for fixing outdated paths.
 pub fn rexon_autostart_entries(env: &SessionEnv) -> Vec<(&'static str, String)> {
     let cfg = &env.config_home;
     vec![
@@ -1458,17 +1458,17 @@ pub fn rexon_autostart_entries(env: &SessionEnv) -> Vec<(&'static str, String)> 
     ]
 }
 
-/// Починка записи, чья программа исчезла. `Some((старая программа, новый
-/// текст))` — запись устарела и есть чем заменить; `None` — чинить нечего.
+/// Fixing a record whose program vanished. `Some((old program, new
+/// text))` — the record is outdated and there is something to replace it with; `None` — nothing to fix.
 ///
-/// Живой случай 08.10.2026: `rexon.desktop` и `rexon-appdefaults.desktop`
-/// у владельца звали `/usr/local/bin/rexon` — путь давно снятой установки
-/// разработчика. systemd-xdg-autostart-generator такие записи молча
-/// пропускает («executable specified in Exec= does not exist»), и Rexon
-/// при входе не стартовал, а галочка автозапуска в окне горела.
+/// A live case on 08.10.2026: the owner's `rexon.desktop` and `rexon-appdefaults.desktop`
+/// called `/usr/local/bin/rexon` — the path of a long-removed developer
+/// install. systemd-xdg-autostart-generator silently skips such records
+/// ("executable specified in Exec= does not exist"), and Rexon
+/// did not start at login, while the autostart checkbox in the window was lit.
 ///
-/// Меняется ТОЛЬКО программа (`argv[0]`); флаги записи (`--tray`,
-/// `--apply-defaults`…) и прочие строки — как были.
+/// ONLY the program changes (`argv[0]`); the record's flags (`--tray`,
+/// `--apply-defaults`…) and other lines stay as they were.
 pub fn repaired_exec(
     desktop: &str,
     new_program: &str,
@@ -1502,7 +1502,7 @@ pub fn repaired_exec(
             continue;
         }
         if in_main && t.starts_with("TryExec=") {
-            // TryExec со старым путём спрятал бы запись так же, как Exec.
+            // A TryExec with the old path would hide the record just like Exec.
             out.push_str(&format!("TryExec={}\n", new_argv[0]));
             continue;
         }
@@ -1511,7 +1511,7 @@ pub fn repaired_exec(
     Some((old, out))
 }
 
-/// Есть ли программа: абсолютный путь — исполняемый файл, имя — в `PATH`.
+/// Whether a program exists: an absolute path — an executable file, a name — in `PATH`.
 pub fn program_exists_live(program: &str) -> bool {
     use std::os::unix::fs::PermissionsExt;
     if program.contains('/') {
@@ -1522,9 +1522,9 @@ pub fn program_exists_live(program: &str) -> bool {
     crate::utils::which(program, std::env::var("PATH").ok().as_deref()).is_some()
 }
 
-/// Починить устаревшие записи автозапуска Rexon на живой машине.
-/// `program_for(метка)` — чем запускать сейчас (в формате `Exec=`); `None`
-/// — заменить нечем, запись остаётся и об этом пишется в журнал.
+/// Fix outdated Rexon autostart records on the live machine.
+/// `program_for(marker)` — what to launch with now (in `Exec=` format); `None`
+/// — nothing to replace with, the record stays and this is written to the log.
 pub fn repair_stale_rexon_live(program_for: &dyn Fn(&str) -> Option<String>) {
     let env = SessionEnv::live();
     for (id, path) in rexon_autostart_entries(&env) {
@@ -1562,9 +1562,9 @@ pub fn repair_stale_rexon_live(program_for: &dyn Fn(&str) -> Option<String>) {
     }
 }
 
-/// Снять ВСЕ блоки Rexon (удаление Rexon): строки запуска из конфигов
-/// композиторов и переменные сеанса — ещё и из `~/.xprofile` и
-/// `labwc/environment`, которых в списке конфигов композиторов нет.
+/// Remove ALL Rexon blocks (uninstalling Rexon): launch lines from compositor
+/// configs and session variables — also from `~/.xprofile` and
+/// `labwc/environment`, which are not in the compositor config list.
 pub fn remove_all_rexon(env: &SessionEnv) -> Vec<(String, Result<Change, Refusal>)> {
     let mut out = Vec::new();
     for id in REXON_IDS {
@@ -1579,49 +1579,49 @@ pub fn remove_all_rexon(env: &SessionEnv) -> Vec<(String, Result<Change, Refusal
     out
 }
 
-/// [`remove_all_rexon`] на живой машине.
+/// [`remove_all_rexon`] on the live machine.
 pub fn remove_all_rexon_live() {
     remove_all_rexon(&SessionEnv::live());
 }
 
 // ============================================================================
-// Переменные окружения сеанса там, где ~/.config/environment.d не читают
+// Session environment variables where ~/.config/environment.d is not read
 // ============================================================================
 //
-// Переменные Rexon (стиль Qt — `QT_QPA_PLATFORMTHEME`/`QT_STYLE_OVERRIDE`,
-// курсор — `XCURSOR_*`, терминал — `TERMINAL`) живут в
-// `~/.config/environment.d/rexon-*.conf`. Этот каталог читает только сеанс,
-// который берёт окружение у systemd: Plasma, GNOME, COSMIC, niri через
-// `niri-session`, Hyprland под uwsm. Остальные его не видят (проверка
-// окружений 02.10.2026, Д1; сверено по скриптам запуска на машине):
+// Rexon's variables (the Qt style — `QT_QPA_PLATFORMTHEME`/`QT_STYLE_OVERRIDE`,
+// the cursor — `XCURSOR_*`, the terminal — `TERMINAL`) live in
+// `~/.config/environment.d/rexon-*.conf`. This directory is read only by a session
+// that takes its environment from systemd: Plasma, GNOME, COSMIC, niri via
+// `niri-session`, Hyprland under uwsm. The others do not see it (desktop check
+// of 02.10.2026, D1; checked against the launch scripts on the machine):
 //
-// | сеанс                              | что он читает                          | что делает Rexon                     |
+// | session                            | what it reads                          | what Rexon does                      |
 // |------------------------------------|----------------------------------------|--------------------------------------|
-// | Cinnamon, MATE, XFCE, Budgie на X11| `~/.xprofile` (Xsession SDDM, LightDM, GDM) | блок в `~/.xprofile` только для этих окружений (`case` по `XDG_CURRENT_DESKTOP`) |
-// | XFCE на Wayland (`startxfce4 --wayland`) | `~/.config/xfce4/labwc/environment` | блок `KEY=value` в этот файл         |
-// | Budgie на labwc (`startbudgielabwc`)| `~/.config/budgie-desktop/labwc/environment` | то же                          |
-// | labwc сам по себе                  | `~/.config/labwc/environment`          | то же                                |
-// | Hyprland без uwsm                  | `env =` в своём конфиге                | блок `env =` / `hl.env(…)` в главный конфиг (курсор — уже в своём блоке) |
-// | sway (`Exec=sway`), river, Wayfire | ничего: в их конфигах переменных нет   | НЕ берёт — честная оговорка в матрице (`de_customization::condition_note_id`) |
+// | Cinnamon, MATE, XFCE, Budgie on X11| `~/.xprofile` (Xsession of SDDM, LightDM, GDM) | a block in `~/.xprofile` only for these desktops (`case` on `XDG_CURRENT_DESKTOP`) |
+// | XFCE on Wayland (`startxfce4 --wayland`) | `~/.config/xfce4/labwc/environment` | a `KEY=value` block in this file     |
+// | Budgie on labwc (`startbudgielabwc`)| `~/.config/budgie-desktop/labwc/environment` | the same                       |
+// | labwc by itself                    | `~/.config/labwc/environment`          | the same                             |
+// | Hyprland without uwsm              | `env =` in its config                  | an `env =` / `hl.env(…)` block in the main config (the cursor is already in its own block) |
+// | sway (`Exec=sway`), river, Wayfire | nothing: their configs have no variables | does NOT take them — an honest caveat in the matrix (`de_customization::condition_note_id`) |
 //
-// Источник правды один — файлы `environment.d`: эти блоки их зеркалят и
-// пересобираются после каждой записи туда ([`sync_session_env`]).
+// There is one source of truth — the `environment.d` files: these blocks mirror them and
+// are rebuilt after every write there ([`sync_session_env`]).
 //
-// ⚠️ Файлы окружения labwc у XFCE и Budgie их скрипты запуска копируют из
-// системного образца, только если файла ещё нет. Заведи Rexon файл из одного
-// своего блока — образец (раскладка клавиатуры) больше не приехал бы, поэтому
-// отсутствующий файл сперва засевается образцом.
+// ⚠️ The labwc environment files of XFCE and Budgie are copied by their launch scripts from
+// a system template only if the file does not exist yet. If Rexon created the file from its single
+// block, the template (the keyboard layout) would no longer arrive, so
+// a missing file is first seeded with the template.
 
-/// Метка блока переменных сеанса.
+/// The marker of the session variables block.
 pub const ID_SESSION_ENV: &str = "session-env";
 
-/// Окружения X11, которые `environment.d` не читают (`XDG_CURRENT_DESKTOP`).
+/// X11 desktops that do not read `environment.d` (`XDG_CURRENT_DESKTOP`).
 const X11_ENV_DESKTOPS: &str = "*X-Cinnamon*|*MATE*|*XFCE*|*Budgie*";
-/// Их сеансовые бинари: есть хоть один — `~/.xprofile` нужен.
+/// Their session binaries: if at least one exists, `~/.xprofile` is needed.
 const X11_ENV_SESSION_BINS: &[&str] = &["cinnamon-session", "mate-session", "xfce4-session", "budgie-desktop"];
 
-/// Переменные из `~/.config/environment.d/rexon-*.conf` (файлы — по имени,
-/// внутри — по порядку; повтор ключа — последний побеждает).
+/// Variables from `~/.config/environment.d/rexon-*.conf` (files by name,
+/// inside — in order; a repeated key — the last one wins).
 pub fn rexon_environment_vars(config_home: &str) -> Vec<(String, String)> {
     let dir = join(config_home, "environment.d");
     let mut files: Vec<String> = std::fs::read_dir(&dir)
@@ -1644,8 +1644,8 @@ pub fn rexon_environment_vars(config_home: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Разбор файла `environment.d`: строки `KEY=value`, комментарии `#`.
-/// Ключ — только `[A-Za-z0-9_]`, значение без переводов строки.
+/// Parsing an `environment.d` file: `KEY=value` lines, `#` comments.
+/// The key is only `[A-Za-z0-9_]`, the value without newlines.
 pub fn parse_environment_d(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|l| {
@@ -1663,15 +1663,15 @@ pub fn parse_environment_d(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Куда и что положить блоком переменных.
+/// Where and what to put as the variables block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvTarget {
     pub path: String,
     pub syntax: Syntax,
     pub body: Vec<String>,
-    /// Файла нет — сперва скопировать этот образец (labwc у XFCE и Budgie).
+    /// No file — first copy this template (labwc of XFCE and Budgie).
     pub seed: Option<String>,
-    /// Файла нет (и образца нет) — можно ли заводить.
+    /// No file (and no template) — whether it may be created.
     pub create: bool,
 }
 
@@ -1679,8 +1679,8 @@ fn lua_string(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Тело блока для Hyprland: `XCURSOR_*`/`HYPRCURSOR_*` уже ставит свой блок
-/// курсора — второй раз их не пишем.
+/// The block body for Hyprland: `XCURSOR_*`/`HYPRCURSOR_*` are already set by the cursor's own block
+/// — we do not write them a second time.
 fn hypr_env_body(syntax: Syntax, vars: &[(String, String)]) -> Vec<String> {
     vars.iter()
         .filter(|(k, _)| !k.starts_with("XCURSOR_") && !k.starts_with("HYPRCURSOR_"))
@@ -1691,8 +1691,8 @@ fn hypr_env_body(syntax: Syntax, vars: &[(String, String)]) -> Vec<String> {
         .collect()
 }
 
-/// Где этой машине нужны переменные Rexon помимо `environment.d`.
-/// `has_bin` — есть ли программа в `PATH`; `is_file` — есть ли файл.
+/// Where this machine needs Rexon's variables besides `environment.d`.
+/// `has_bin` — whether a program is in `PATH`; `is_file` — whether a file exists.
 pub fn session_env_targets(
     env: &SessionEnv,
     vars: &[(String, String)],
@@ -1703,8 +1703,8 @@ pub fn session_env_targets(
     if vars.is_empty() {
         return out;
     }
-    // X11-сеансы через экран входа: `~/.xprofile`, только для своих окружений
-    // (Plasma и GNOME на X11 его тоже читают — им переменные не нужны).
+    // X11 sessions through a login screen: `~/.xprofile`, only for its own desktops
+    // (Plasma and GNOME on X11 read it too — they do not need the variables).
     if X11_ENV_SESSION_BINS.iter().any(|b| has_bin(b)) {
         let mut body = vec![format!("case \"$XDG_CURRENT_DESKTOP\" in"), format!("    {X11_ENV_DESKTOPS})")];
         body.extend(vars.iter().map(|(k, v)| format!("        export {k}={}", shell_quote(v))));
@@ -1718,7 +1718,7 @@ pub fn session_env_targets(
             create: true,
         });
     }
-    // labwc-сеансы XFCE и Budgie: свой файл окружения у каждого.
+    // labwc sessions of XFCE and Budgie: each has its own environment file.
     for (rel, sample) in [
         ("xfce4/labwc/environment", "/usr/share/xfce4/labwc/labwc-environment"),
         ("budgie-desktop/labwc/environment", "/usr/share/budgie-desktop/labwc/environment"),
@@ -1733,8 +1733,8 @@ pub fn session_env_targets(
             });
         }
     }
-    // labwc сам по себе: `~/.config/labwc/environment` (у XFCE и Budgie
-    // свой каталог настроек labwc — выше).
+    // labwc by itself: `~/.config/labwc/environment` (XFCE and Budgie have
+    // their own labwc settings directory — above).
     if env.installed.contains(&Compositor::Labwc) {
         out.push(EnvTarget {
             path: join(&env.config_home, "labwc/environment"),
@@ -1744,8 +1744,8 @@ pub fn session_env_targets(
             create: true,
         });
     }
-    // Hyprland без uwsm: `env =` в главном конфиге (под uwsm — повтор того,
-    // что он и так взял из environment.d, вреда нет).
+    // Hyprland without uwsm: `env =` in the main config (under uwsm it repeats what
+    // it already took from environment.d, no harm done).
     if env.installed.contains(&Compositor::Hyprland) {
         let t = resolve_target(Compositor::Hyprland, env);
         let body = hypr_env_body(t.syntax, vars);
@@ -1756,7 +1756,7 @@ pub fn session_env_targets(
     out
 }
 
-/// Все файлы, где может лежать блок переменных (для снятия).
+/// All files where the variables block may be (for removal).
 fn session_env_candidates(env: &SessionEnv) -> Vec<(String, Syntax)> {
     let mut out = vec![
         (join(&env.home, ".xprofile"), Syntax::Shell),
@@ -1768,9 +1768,9 @@ fn session_env_candidates(env: &SessionEnv) -> Vec<(String, Syntax)> {
     out
 }
 
-/// Поставить блок `id` с телом `body`, заменив прежний ЦЕЛИКОМ (обычная
-/// правка блока оставляет строки, не похожие на строку запуска, — для
-/// переменных это были бы повторы).
+/// Install the block `id` with the body `body`, replacing the previous one ENTIRELY (a regular
+/// block edit keeps lines that do not look like a launch line — for
+/// variables these would be repeats).
 fn replace_block(path: &str, syntax: Syntax, id: &str, body: &[String], create: bool) -> Result<Change, Refusal> {
     let existing = match std::fs::read_to_string(path) {
         Ok(t) => Some(t),
@@ -1797,9 +1797,9 @@ fn replace_block(path: &str, syntax: Syntax, id: &str, body: &[String], create: 
     }
 }
 
-/// Зеркалить переменные Rexon из `environment.d` туда, где их читают сеансы
-/// без systemd (см. таблицу выше). Нет переменных — блоки снимаются.
-/// Итог по каждому файлу, где что-то делалось.
+/// Mirror Rexon's variables from `environment.d` to where sessions
+/// without systemd read them (see the table above). No variables — the blocks are removed.
+/// The result for each file where something was done.
 pub fn sync_session_env(env: &SessionEnv, has_bin: &dyn Fn(&str) -> bool) -> Vec<(String, Result<Change, Refusal>)> {
     let vars = rexon_environment_vars(&env.config_home);
     let targets = session_env_targets(env, &vars, has_bin, &|p| is_file(p));
@@ -1829,15 +1829,15 @@ pub fn sync_session_env(env: &SessionEnv, has_bin: &dyn Fn(&str) -> bool) -> Vec
     out
 }
 
-/// [`sync_session_env`] на живой машине.
+/// [`sync_session_env`] on the live machine.
 pub fn sync_session_env_live() -> Vec<(String, Result<Change, Refusal>)> {
     let path = std::env::var("PATH").ok();
     sync_session_env(&SessionEnv::live(), &|b| crate::utils::which(b, path.as_deref()).is_some())
 }
 
-/// Пути, которые может тронуть [`sync_session_env_live`] (снимаются до
-/// записи — под откат «Применить»): цели и все кандидаты, где блок
-/// переменных снимается.
+/// Paths [`sync_session_env_live`] may touch (captured before
+/// writing — for the "Apply" rollback): the targets and all candidates where the variables
+/// block is removed.
 pub fn session_env_paths_live() -> Vec<String> {
     let env = SessionEnv::live();
     let path = std::env::var("PATH").ok();
@@ -1852,7 +1852,7 @@ pub fn session_env_paths_live() -> Vec<String> {
     out
 }
 
-/// Касается ли запись по этому пути переменных сеанса (`environment.d`).
+/// Whether writing at this path concerns session variables (`environment.d`).
 pub fn is_environment_d_path(path: &str) -> bool {
     path.contains("/environment.d/")
 }
@@ -1869,11 +1869,11 @@ mod tests {
         assert_eq!(was, "/usr/local/bin/rexon");
         assert!(fixed.contains("\nExec=/usr/lib/rexon/rexon-main-window --tray\n"), "{fixed}");
         assert!(fixed.contains("NotShowIn=sway;labwc;"), "прочие строки не трогаются");
-        // Рабочая запись не трогается.
+        // A working record is not touched.
         assert!(super::repaired_exec(&fixed, "/x/other", &|_| true).is_none());
-        // Замена, которой тоже нет, не пишется.
+        // A replacement that does not exist either is not written.
         assert!(super::repaired_exec(old, "/nope/rexon", &|_| false).is_none());
-        // Путь с пробелом — в кавычках, флаги сохраняются.
+        // A path with a space — in quotes, the flags are preserved.
         let ad = "[Desktop Entry]\nExec=/usr/local/bin/rexon --apply-defaults\nTryExec=/usr/local/bin/rexon\n";
         let (_, f) = super::repaired_exec(ad, "\"/opt/My Rexon/rexon-main-window\"", &|p| p.starts_with("/opt/")).unwrap();
         assert!(f.contains("Exec=\"/opt/My Rexon/rexon-main-window\" --apply-defaults\n"), "{f}");
@@ -1890,8 +1890,8 @@ mod tests {
     fn exec_roundtrip_with_desktop_quoting() {
         let path = "/home/u/My Apps/rexon \"x\" $y";
         let exec = format!("{} --tray", crate::installer::desktop_exec_arg(path));
-        // В файле ключ ещё раз экранирован? desktop_exec_arg уже отдаёт
-        // значение ключа — разбор обязан вернуть путь как был.
+        // Is the key escaped once more in the file? desktop_exec_arg already returns
+        // the key value — parsing must return the path as it was.
         assert_eq!(exec_argv(&exec), Some(s(&[path, "--tray"])));
         assert_eq!(exec_argv("rexon %U --x 100%%"), Some(s(&["rexon", "--x", "100%"])));
         assert_eq!(exec_argv("\"unterminated"), None);
@@ -1918,12 +1918,12 @@ mod tests {
     fn hyprlua_return_refused() {
         let r = upsert_text(Some("hl.config({})\nreturn cfg\n"), Syntax::HyprLua, "t", &s(&["x"]), &[]);
         assert_eq!(r, Err(Refusal::Unsupported));
-        // `returns_x = 1` — не `return`.
+        // `returns_x = 1` is not `return`.
         assert!(upsert_text(Some("returns_x = 1\n"), Syntax::HyprLua, "t", &s(&["x"]), &[]).is_ok());
     }
 
-    /// Д1 (проверка окружений 02.10.2026): переменные Rexon доходят до
-    /// сеансов, которые `environment.d` не читают, — и только до них.
+    /// D1 (desktop check of 02.10.2026): Rexon's variables reach
+    /// sessions that do not read `environment.d` — and only them.
     #[test]
     fn session_env_reaches_sessions_without_systemd() {
         let dir = std::env::temp_dir().join(format!("rexon-senv-{}", std::process::id()));
@@ -1974,27 +1974,27 @@ mod tests {
             ])
         );
         assert_eq!(targets[1].body, s(&["XCURSOR_THEME=Bibata", "XCURSOR_SIZE=32", "QT_QPA_PLATFORMTHEME=qt6ct"]));
-        // Курсор у Hyprland — в своём блоке; здесь только остальное.
+        // Hyprland's cursor is in its own block; here only the rest.
         assert_eq!(targets[2].body, s(&["env = QT_QPA_PLATFORMTHEME,qt6ct"]));
-        // Ни одного окружения без environment.d — некуда и незачем.
+        // Not a single desktop without environment.d — nowhere and no need.
         assert!(session_env_targets(&SessionEnv { installed: vec![], ..env.clone() }, &vars, &|_| false, &|_| false).is_empty());
 
-        // Запись на диск: файл .xprofile заводится, конфиг Hyprland дописывается.
+        // Writing to disk: the .xprofile file is created, the Hyprland config is appended to.
         let r = sync_session_env(&env, &|b| b == "mate-session");
         assert!(r.iter().all(|(_, x)| x.is_ok()), "{r:?}");
         let xp = std::fs::read_to_string(format!("{home}/.xprofile")).unwrap();
         assert!(xp.contains("export QT_QPA_PLATFORMTHEME=qt6ct\n"), "{xp}");
         let hy = std::fs::read_to_string(format!("{cfg}/hypr/hyprland.conf")).unwrap();
         assert!(hy.starts_with("monitor=,preferred,auto,1\n") && hy.contains("\nenv = QT_QPA_PLATFORMTHEME,qt6ct\n"), "{hy}");
-        // Повтор — ни байта; смена значения — без повторов строк.
+        // A repeat — not a byte; a value change — without repeated lines.
         let again = sync_session_env(&env, &|b| b == "mate-session");
         assert!(again.iter().all(|(_, x)| *x == Ok(Change::Unchanged)), "{again:?}");
         std::fs::write(format!("{cfg}/environment.d/rexon-qt-style.conf"), "QT_STYLE_OVERRIDE=kvantum\n").unwrap();
         sync_session_env(&env, &|b| b == "mate-session");
         let hy = std::fs::read_to_string(format!("{cfg}/hypr/hyprland.conf")).unwrap();
         assert!(!hy.contains("QT_QPA_PLATFORMTHEME") && hy.matches("QT_STYLE_OVERRIDE").count() == 1, "{hy}");
-        // Переменных не осталось — блоки сняты, заведённый .xprofile удалён,
-        // конфиг Hyprland вернулся байт-в-байт.
+        // No variables left — the blocks are removed, the created .xprofile is deleted,
+        // the Hyprland config is back byte for byte.
         for f in ["rexon-qt-style.conf", "rexon-cursor.conf"] {
             std::fs::remove_file(format!("{cfg}/environment.d/{f}")).unwrap();
         }
@@ -2004,7 +2004,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Hyprland на Lua: `hl.env("K", "v")`.
+    /// Hyprland in Lua: `hl.env("K", "v")`.
     #[test]
     fn session_env_hyprland_lua_syntax() {
         let vars = vec![("QT_QPA_PLATFORMTHEME".to_string(), "qt6ct".to_string())];

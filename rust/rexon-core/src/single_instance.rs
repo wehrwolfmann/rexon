@@ -1,47 +1,47 @@
-//! Один Rexon на сессию: замок второго запуска и слушатель «подними окно».
+//! One Rexon per session: the second-launch lock and the «raise the window» listener.
 //!
-//! ЗАЧЕМ ОТДЕЛЬНЫЙ МОДУЛЬ. До этой правки механизм был разорван на три
-//! конца, и ни один не был в ядре целиком:
-//!   * адреса замка и сокета лежали в `app.rs` (чистые функции);
-//!   * сам `flock` — в Python-биндинге `rust/rexon-py/src/lib.rs`, то есть
-//!     Rust-точке входа продукта он был недоступен в принципе: биндинг
-//!     существует только внутри процесса Python;
-//!   * слушатель «подними окно» (`QLocalServer`) и стук в него — в Python
+//! WHY A SEPARATE MODULE. Before this change the mechanism was torn into three
+//! pieces, and none was in the core in full:
+//!   * the lock and socket addresses lived in `app.rs` (pure functions);
+//!   * the `flock` itself — in the Python binding `rust/rexon-py/src/lib.rs`, i.e.
+//!     it was fundamentally unavailable to the product's Rust entry point: the binding
+//!     exists only inside the Python process;
+//!   * the «raise the window» listener (`QLocalServer`) and knocking on it — in Python
 //!     (`rexon/qt_main/app.py::_serve_activation`, `rexon/app.py::
 //!     _activate_running_instance`).
-//! Пока замок живёт в биндинге, Rust-бинарь не может стать точкой входа
-//! продукта: он либо поднимет второе окно рядом с работающим Rexon, либо
-//! обзаведётся ВТОРОЙ копией замка — а два замка на один продукт означают
-//! два разных ответа на один вопрос «я первый?» (правило #12).
+//! While the lock lives in the binding, the Rust binary cannot become the product's
+//! entry point: it either brings up a second window next to the running Rexon, or
+//! acquires a SECOND copy of the lock — and two locks for one product mean
+//! two different answers to the single question «am I first?» (rule #12).
 //!
-//! Здесь весь механизм собран в одном месте: адреса, замок, слушатель и
-//! стук. Биндинг и обе точки входа (Python и Rust) зовут ядро.
+//! Here the whole mechanism is gathered in one place: addresses, lock, listener and
+//! knock. The binding and both entry points (Python and Rust) call the core.
 //!
-//! ── ИСТОРИЯ ДЕФЕКТОВ, КОТОРЫЕ ЭТИМ ЗАКРЫТЫ ─────────────────────────────
+//! ── HISTORY OF THE DEFECTS THIS CLOSES ─────────────────────────────────
 //!
-//! 2026-09-02, «пять кактусов в трее». У владельца в системном лотке KDE
-//! висело пять-шесть одинаковых значков Rexon. `qdbus6` +
-//! `GetConnectionUnixProcessID` + `/proc/<pid>/cmdline` показали пять ЖИВЫХ
-//! процессов `rexon` (не мёртвых записей StatusNotifierWatcher), запущенных
-//! в разное время за трое суток: часть ярлыком лаунчера, часть вручную из
-//! каталога разработки. Ни один запуск не проверял, что он не первый.
+//! 2026-09-02, «five cacti in the tray». The owner's KDE system tray
+//! held five or six identical Rexon icons. `qdbus6` +
+//! `GetConnectionUnixProcessID` + `/proc/<pid>/cmdline` showed five LIVE
+//! `rexon` processes (not dead StatusNotifierWatcher records), started
+//! at different times over three days: some by the launcher shortcut, some by hand from
+//! the development directory. No launch checked that it was not the first.
 //!
-//! 2026-09-06, «программа работает, двери в неё нет». Замка ОДНОГО МАЛО.
-//! Сам по себе он ведёт себя правильно и молча уходит — но покупателю от
-//! этого ничего не видно: предупреждение уходит в консоль, которой у ярлыка
-//! нет. Окно первого Rexon было спрятано в лоток крестиком (при живом
-//! значке крестик прячет, а не гасит), человек дважды нажал ярлык, оба
-//! запуска уткнулись в замок, и на экране не произошло РОВНО НИЧЕГО.
-//! Правильный ответ единственного экземпляра на второй запуск — не «уйти»,
-//! а ПОДНЯТЬ окно того, кто уже работает.
+//! 2026-09-06, «the program is running, but there is no door into it». A lock ALONE IS NOT ENOUGH.
+//! By itself it behaves correctly and quietly exits — but the user sees
+//! nothing of it: the warning goes to a console the shortcut does not
+//! have. The first Rexon's window had been hidden to the tray with the close button (with a live
+//! icon the close button hides rather than quits), the person clicked the shortcut twice, both
+//! launches hit the lock, and EXACTLY NOTHING happened on the screen.
+//! The right answer of a single instance to a second launch is not «leave»,
+//! but RAISE the window of the one already running.
 //!
-//! 2026-09-15, «дверь не помещается в адрес». `sun_path` вмещает 107 байт,
-//! и при длинном `XDG_RUNTIME_DIR` слушатель не вставал вовсе, а второй
-//! запуск говорил «уже запущен — второй значок не создаю» вместо поднятого
-//! окна. Теперь адрес решает одна функция [`socket_path`] ДО `bind` и
-//! `connect` (запасной короткий каталог `/tmp/rexon-<uid>`), обе стороны
-//! сверяют uid собеседника, а человеку при молчащем слушателе ядро говорит
-//! правду ([`said_not_responding`]).
+//! 2026-09-15, «the door does not fit into the address». `sun_path` holds 107 bytes,
+//! and with a long `XDG_RUNTIME_DIR` the listener did not come up at all, while the second
+//! launch said «already running — not creating a second icon» instead of a raised
+//! window. Now one function, [`socket_path`], decides the address BEFORE `bind` and
+//! `connect` (a short fallback directory `/tmp/rexon-<uid>`), both sides
+//! check the peer's uid, and when the listener is silent the core tells the person
+//! the truth ([`said_not_responding`]).
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -54,14 +54,14 @@ use std::time::{Duration, Instant};
 use crate::i18n::{tr, trf};
 
 // ============================================================================
-// Адреса: каталог, замок, сокет
+// Addresses: directory, lock, socket
 // ============================================================================
 
-/// Каталог замка и сокета: `$XDG_RUNTIME_DIR`, а при его отсутствии `/tmp`.
+/// Directory of the lock and socket: `$XDG_RUNTIME_DIR`, or `/tmp` when it is missing.
 ///
-/// Порт выражения `os.environ.get("XDG_RUNTIME_DIR") or "/tmp"`, которое в
-/// Python повторялось в двух концах механизма. Пустая строка в переменной
-/// равна её отсутствию — ровно как `or` у Python, где `""` ложна.
+/// Port of the expression `os.environ.get("XDG_RUNTIME_DIR") or "/tmp"`, which in
+/// Python was repeated at two ends of the mechanism. An empty string in the variable
+/// equals its absence — exactly like Python's `or`, where `""` is falsy.
 pub fn runtime_dir(xdg_runtime_dir: Option<&str>) -> String {
     match xdg_runtime_dir {
         Some(dir) if !dir.is_empty() => dir.to_string(),
@@ -69,53 +69,53 @@ pub fn runtime_dir(xdg_runtime_dir: Option<&str>) -> String {
     }
 }
 
-/// То же по живому окружению — единственное место, где читается переменная.
+/// The same from the live environment — the only place where the variable is read.
 pub fn runtime_dir_from_env() -> String {
     runtime_dir(std::env::var("XDG_RUNTIME_DIR").ok().as_deref())
 }
 
-/// flock-файл «один Rexon на сессию».
+/// The «one Rexon per session» flock file.
 pub fn lock_path(runtime_dir: &str) -> String {
     format!("{runtime_dir}/rexon.lock")
 }
 
-/// Самый длинный адрес сокета, который примет ядро: `sockaddr_un.sun_path` —
-/// 108 байт вместе с завершающим нулём.
+/// The longest socket address the kernel accepts: `sockaddr_un.sun_path` —
+/// 108 bytes including the terminating zero.
 pub const SUN_PATH_MAX: usize = 107;
 
-/// Имя сокета в runtime-каталоге.
+/// Socket name in the runtime directory.
 const SOCKET_FILE: &str = "rexon-activate.sock";
 
-/// Корень запасного каталога. Именно `/tmp`, а не `std::env::temp_dir()`:
-/// `TMPDIR` бывает сколь угодно длинным, и запасной адрес вылетел бы за
-/// предел по той же причине, что и основной.
+/// Root of the fallback directory. Exactly `/tmp`, not `std::env::temp_dir()`:
+/// `TMPDIR` can be arbitrarily long, and the fallback address would exceed
+/// the limit for the same reason as the main one.
 const FALLBACK_ROOT: &str = "/tmp";
 
-/// Действующий uid этого процесса — владелец запасного каталога и
-/// единственный, чей стук слушатель принимает.
+/// The effective uid of this process — the owner of the fallback directory and
+/// the only one whose knock the listener accepts.
 pub fn current_uid() -> u32 {
     unsafe { libc::geteuid() }
 }
 
-/// Основной адрес сокета — рядом с flock-файлом, в том же каталоге.
+/// The main socket address — next to the flock file, in the same directory.
 pub fn preferred_socket_path(runtime_dir: &str) -> String {
     format!("{runtime_dir}/{SOCKET_FILE}")
 }
 
-/// Запасной каталог пользователя `uid`: `/tmp/rexon-<uid>` (права 0700).
+/// Fallback directory of user `uid`: `/tmp/rexon-<uid>` (mode 0700).
 pub fn fallback_socket_dir(uid: u32) -> String {
     format!("{FALLBACK_ROOT}/rexon-{uid}")
 }
 
-/// Запасной адрес для runtime-каталога: `/tmp/rexon-<uid>/activate-<хеш>.sock`.
+/// Fallback address for a runtime directory: `/tmp/rexon-<uid>/activate-<hash>.sock`.
 ///
-/// Хеш каталога в имени обязателен: у одного пользователя бывает несколько
-/// сеансов с разными (и оба длинными) `XDG_RUNTIME_DIR`, замки у них
-/// разные, и без хеша второй сеанс стучался бы в окно первого.
+/// The directory hash in the name is mandatory: one user can have several
+/// sessions with different (and both long) `XDG_RUNTIME_DIR`s, their locks are
+/// different, and without the hash the second session would knock on the first one's window.
 ///
-/// ⚠️ Хеш — свой FNV-1a, а не `DefaultHasher`: его алгоритм std не обещает
-/// сохранять между выпусками, а слушатель и стук бывают разными бинарями
-/// (колесо Python и `rexon-gui`), собранными разными версиями Rust.
+/// ⚠️ The hash is our own FNV-1a, not `DefaultHasher`: std does not promise to keep
+/// its algorithm between releases, and the listener and the knock can be different binaries
+/// (the Python wheel and `rexon-gui`) built by different Rust versions.
 pub fn fallback_socket_path(runtime_dir: &str, uid: u32) -> String {
     let key = match runtime_dir.trim_end_matches('/') {
         "" => runtime_dir,
@@ -129,7 +129,7 @@ pub fn fallback_socket_path(runtime_dir: &str, uid: u32) -> String {
     format!("{}/activate-{hash:016x}.sock", fallback_socket_dir(uid))
 }
 
-/// Сокет «подними окно» для пользователя `uid` — см. [`socket_path`].
+/// The «raise the window» socket for user `uid` — see [`socket_path`].
 pub fn socket_path_for(runtime_dir: &str, uid: u32) -> String {
     let preferred = preferred_socket_path(runtime_dir);
     if preferred.len() <= SUN_PATH_MAX {
@@ -139,30 +139,30 @@ pub fn socket_path_for(runtime_dir: &str, uid: u32) -> String {
     }
 }
 
-/// Сокет «подними окно» — ЕДИНСТВЕННАЯ функция адреса: на нём первый Rexon
-/// слушает, второй стучится (оба входа, Rust и Python через мост).
+/// The «raise the window» socket — the ONLY address function: the first Rexon
+/// listens on it, the second knocks (both entries, Rust and Python via the bridge).
 ///
-/// ⚠️ Обычно — рядом с замком, в том же каталоге: сокет живёт и умирает
-/// вместе с сеансом. Но `sun_path` вмещает 107 байт, и при длинном
-/// `XDG_RUNTIME_DIR` (замер 15.09: слушатель Rust-окна не вставал с
-/// «path must be shorter than SUN_LEN», второй запуск врал «уже запущен»
-/// вместо поднятого окна) адрес уходит в короткий запасной каталог
-/// [`fallback_socket_path`]. Решение принимается ЗДЕСЬ, до `bind` и
-/// `connect`, поэтому обе стороны приходят к одному адресу.
+/// ⚠️ Usually — next to the lock, in the same directory: the socket lives and dies
+/// together with the session. But `sun_path` holds 107 bytes, and with a long
+/// `XDG_RUNTIME_DIR` (measurement 15.09: the Rust window's listener did not come up with
+/// «path must be shorter than SUN_LEN», the second launch falsely said «already running»
+/// instead of a raised window) the address moves to the short fallback directory
+/// [`fallback_socket_path`]. The decision is made HERE, before `bind` and
+/// `connect`, so both sides arrive at the same address.
 ///
-/// Почему запасной адрес — файл в `/tmp/rexon-<uid>/`, а не абстрактное имя
-/// Linux: слушатель классического окна — `QLocalServer`, он получает
-/// адрес строкой через мост и абстрактного имени без правки Python не
-/// понимает. Абстрактный адрес у Rust и файловый у Python — это два
-/// адреса на один механизм, и Rust-запуск не достучался бы до
-/// Python-хозяина. Чужого пользователя отсекают права каталога (0700,
-/// владелец проверяется, [`ensure_private_dir`]) и сверка uid собеседника
-/// на ОБОИХ концах соединения (`SO_PEERCRED`).
+/// Why the fallback address is a file in `/tmp/rexon-<uid>/` and not a Linux abstract
+/// name: the classic window's listener is a `QLocalServer`, it receives the
+/// address as a string via the bridge and does not understand an abstract name without
+/// changing Python. An abstract address in Rust and a file one in Python are two
+/// addresses for one mechanism, and a Rust launch would not reach the
+/// Python host. A foreign user is cut off by the directory permissions (0700,
+/// the owner is checked, [`ensure_private_dir`]) and by checking the peer's uid
+/// at BOTH ends of the connection (`SO_PEERCRED`).
 pub fn socket_path(runtime_dir: &str) -> String {
     socket_path_for(runtime_dir, current_uid())
 }
 
-/// Строка в журнал, если адрес ушёл в запасной каталог; `None` — основной.
+/// A log line if the address went to the fallback directory; `None` — the main one.
 pub fn socket_address_note(runtime_dir: &str) -> Option<String> {
     let preferred = preferred_socket_path(runtime_dir);
     if preferred.len() <= SUN_PATH_MAX {
@@ -176,13 +176,13 @@ pub fn socket_address_note(runtime_dir: &str) -> Option<String> {
     ))
 }
 
-/// Подготовить личный каталог сокета: создать с правами 0700 либо
-/// убедиться, что существующий — настоящий каталог (не ссылка) этого
-/// пользователя. Свой каталог с лишними правами поправляется до 0700.
+/// Prepare the private socket directory: create it with mode 0700 or
+/// make sure the existing one is a real directory (not a link) of this
+/// user. Our own directory with extra permissions is fixed to 0700.
 ///
-/// ⚠️ `/tmp` общий на всю машину: чужой пользователь может заранее создать
-/// `/tmp/rexon-<uid>` у себя и подложить туда свой сокет. Такой каталог НЕ
-/// используется — вставать там нельзя, и причина уходит в журнал.
+/// ⚠️ `/tmp` is shared by the whole machine: a foreign user can create
+/// `/tmp/rexon-<uid>` in advance as their own and plant their socket there. Such a directory is NOT
+/// used — we must not come up there, and the reason goes to the log.
 pub fn ensure_private_dir(dir: &str, uid: u32) -> Result<(), BindError> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     let refuse = |reason: String| BindError::UnsafeDir {
@@ -193,8 +193,8 @@ pub fn ensure_private_dir(dir: &str, uid: u32) -> Result<(), BindError> {
         Ok(meta) => meta,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             match std::fs::DirBuilder::new().mode(0o700).create(dir) {
-                // Гонка с соседним запуском, создавшим каталог первым, —
-                // не ошибка: ниже его всё равно проверяем.
+                // A race with a neighbouring launch that created the directory first
+                // is not an error: it is checked below anyway.
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(e) => return Err(refuse(format!("не создаётся: {e}"))),
@@ -222,8 +222,8 @@ pub fn ensure_private_dir(dir: &str, uid: u32) -> Result<(), BindError> {
     Ok(())
 }
 
-/// uid процесса на том конце соединения (`SO_PEERCRED`); `None` — ядро не
-/// ответило.
+/// uid of the process at the other end of the connection (`SO_PEERCRED`); `None` — the kernel did not
+/// answer.
 pub fn peer_uid(stream: &UnixStream) -> Option<u32> {
     let mut cred = libc::ucred {
         pid: 0,
@@ -244,31 +244,31 @@ pub fn peer_uid(stream: &UnixStream) -> Option<u32> {
 }
 
 // ============================================================================
-// Протокол стука
+// The knock protocol
 // ============================================================================
 
-/// Просьба второго запуска: «подними своё окно».
+/// The second launch's request: «raise your window».
 pub const SHOW_REQUEST: &[u8] = b"show\n";
-/// Ответ «поднял».
+/// The reply «raised».
 pub const REPLY_RAISED: &[u8] = b"ok\n";
-/// Ответ «не смог поднять» — второй запуск обязан сказать человеку правду
-/// про лоток, а не сделать вид, что окно на экране.
+/// The reply «could not raise» — the second launch must tell the person the truth
+/// about the tray instead of pretending the window is on screen.
 pub const REPLY_FAILED: &[u8] = b"no\n";
 
-/// Сколько ждать ответа. Секунды хватает с запасом: на том конце живой цикл
-/// событий, а не работа. Ждать дольше — держать человека перед пустым
-/// экраном вместо того, чтобы сказать ему про лоток.
+/// How long to wait for the reply. A second is more than enough: at the other end is a live event
+/// loop, not work. Waiting longer means keeping the person in front of an empty
+/// screen instead of telling them about the tray.
 pub const KNOCK_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Больше принимать нечего: просьба — «show» с разделом и подразделом,
-/// ответ — короткое слово. 16 байт прежнего предела обрезали бы уже
+/// There is nothing larger to accept: a request is «show» with a section and subsection,
+/// a reply is a short word. The former 16-byte limit would already cut
 /// «show desktops compare».
 const WIRE_BUF: usize = 128;
 
-/// Первое слово просьбы «подними окно».
+/// The first word of the «raise the window» request.
 const SHOW_WORD: &str = "show";
 
-/// Обрезка перевода строки и пробелов по краям — порт `bytes.strip()`.
+/// Trim the newline and whitespace at both ends — port of `bytes.strip()`.
 fn trimmed(bytes: &[u8]) -> &[u8] {
     let start = bytes
         .iter()
@@ -281,25 +281,25 @@ fn trimmed(bytes: &[u8]) -> &[u8] {
     &bytes[start..end]
 }
 
-/// Просьба ли это «подними окно» — голая или с разделом.
+/// Whether this is a «raise the window» request — bare or with a section.
 pub fn is_show_request(bytes: &[u8]) -> bool {
     parse_show_request(bytes).is_some()
 }
 
-/// Разобранная просьба «подними окно».
+/// A parsed «raise the window» request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShowRequest {
-    /// (раздел, подраздел), который открыть; `None` — открыть как есть.
+    /// (section, subsection) to open; `None` — open as is.
     pub section: Option<(String, String)>,
 }
 
-/// Проверенная цель: раздел из [`crate::qt_main::SECTIONS`] и подраздел,
-/// который у этого раздела действительно бывает (иначе подраздел пуст).
+/// A verified target: a section from [`crate::qt_main::SECTIONS`] and a subsection
+/// that this section really has (otherwise the subsection is empty).
 ///
-/// Своего списка здесь нет: подразделы берутся из тех же двух таблиц,
-/// которыми раздел выбирается при старте (`app::PAGE_TARGETS` и
-/// `cli::SINGLE_TAB_SECTIONS`). Незнакомый раздел — `None`: чужое или
-/// мусорное имя окно поднимает, но никуда не переключает.
+/// There is no list of its own here: subsections come from the same two tables
+/// used to choose the section at startup (`app::PAGE_TARGETS` and
+/// `cli::SINGLE_TAB_SECTIONS`). An unknown section is `None`: a foreign or
+/// garbage name raises the window but does not switch anywhere.
 pub fn valid_target(section: &str, subpage: &str) -> Option<(String, String)> {
     if !crate::qt_main::SECTIONS.contains(&section) {
         return None;
@@ -314,12 +314,12 @@ pub fn valid_target(section: &str, subpage: &str) -> Option<(String, String)> {
     Some((section.to_string(), subpage.to_string()))
 }
 
-/// Разобрать просьбу: `show`, `show <раздел>` или `show <раздел> <подраздел>`.
+/// Parse a request: `show`, `show <section>` or `show <section> <subsection>`.
 ///
-/// `None` — это не «show» вовсе (окно не трогать). Голое `show` — прежний
-/// протокол, работает как раньше. Раздел проверяется [`valid_target`];
-/// незнакомый раздел или лишние слова дают просьбу БЕЗ раздела: окно
-/// поднимается, но на мусор не переключается.
+/// `None` — this is not «show» at all (do not touch the window). A bare `show` is the old
+/// protocol and works as before. The section is checked by [`valid_target`];
+/// an unknown section or extra words give a request WITHOUT a section: the window
+/// is raised but does not switch to garbage.
 pub fn parse_show_request(bytes: &[u8]) -> Option<ShowRequest> {
     let text = std::str::from_utf8(trimmed(bytes)).ok()?;
     let mut words = text.split_ascii_whitespace();
@@ -335,8 +335,8 @@ pub fn parse_show_request(bytes: &[u8]) -> Option<ShowRequest> {
     Some(ShowRequest { section })
 }
 
-/// Слово стука для цели: `show\n` либо `show <раздел>[ <подраздел>]\n`.
-/// Непроверенная цель в провод не уходит — уходит голое `show`.
+/// The knock word for a target: `show\n` or `show <section>[ <subsection>]\n`.
+/// An unverified target does not go on the wire — a bare `show` does.
 pub fn show_request(target: Option<(&str, &str)>) -> Vec<u8> {
     match target.and_then(|(s, p)| valid_target(s, p)) {
         Some((section, subpage)) if subpage.is_empty() => {
@@ -347,19 +347,19 @@ pub fn show_request(target: Option<(&str, &str)>) -> Vec<u8> {
     }
 }
 
-/// Какой раздел нести в стуке по командной строке второго запуска.
+/// Which section to carry in the knock, from the second launch's command line.
 ///
-/// Тот же перевод, каким раздел выбирается при старте
-/// (`cli::start_section`: `--section=`, флаг одиночной вкладки, `--page=`),
-/// плюс проверка [`valid_target`]. Иначе быстрое действие ярлыка
-/// («Управление резервными копиями») при работающем Rexon поднимало окно
-/// на том разделе, где его оставили, — раздел терялся в стуке.
+/// The same translation used to choose the section at startup
+/// (`cli::start_section`: `--section=`, the single-tab flag, `--page=`),
+/// plus the [`valid_target`] check. Otherwise a shortcut quick action
+/// («Manage backups») with Rexon running raised the window
+/// on the section where it was left — the section got lost in the knock.
 pub fn knock_target(args: &[String]) -> Option<(String, String)> {
     let (section, subpage) = crate::cli::start_section(args)?;
     valid_target(&section, &subpage)
 }
 
-/// Ответ слушателя по факту: поднялось окно или нет.
+/// The listener's reply based on the outcome: whether the window came up or not.
 pub fn reply_for(raised: bool) -> &'static [u8] {
     if raised {
         REPLY_RAISED
@@ -368,33 +368,33 @@ pub fn reply_for(raised: bool) -> &'static [u8] {
     }
 }
 
-/// Принял ли первый экземпляр просьбу и поднял ли окно.
+/// Whether the first instance accepted the request and raised the window.
 ///
-/// Порт `reply.strip() == b"ok"`: любой другой ответ (включая пустой и
-/// мусорный) считается отказом — соврать покупателю «поднял» хуже, чем
-/// честно отправить его в лоток.
+/// Port of `reply.strip() == b"ok"`: any other reply (including empty and
+/// garbage) counts as a refusal — lying to the user «raised» is worse than
+/// honestly sending them to the tray.
 pub fn knock_accepted(reply: &[u8]) -> bool {
     trimmed(reply) == trimmed(REPLY_RAISED)
 }
 
 // ============================================================================
-// Замок
+// Lock
 // ============================================================================
 
-/// Дескриптор замка живёт до конца ЭТОГО процесса вместе с `flock`.
+/// The lock descriptor lives until the end of THIS process together with the `flock`.
 ///
-/// Порт модульной переменной `_LOCK_FD` из биндинга. Стухшего замка не
-/// бывает: ядро освобождает `flock` само при закрытии дескриптора или
-/// смерти держателя, поэтому оставшийся с прошлой сессии файл замка второй
-/// запуск не обманывает.
+/// Port of the module variable `_LOCK_FD` from the binding. There is no such thing as a stale
+/// lock: the kernel releases the `flock` itself when the descriptor is closed or
+/// the holder dies, so a lock file left over from a previous session does not
+/// fool a second launch.
 ///
-/// Рядом с дескриптором — путь замка: по нему [`holds_lock`] отвечает, взял
-/// ли замок уже ЭТОТ процесс.
+/// Next to the descriptor is the lock path: by it [`holds_lock`] answers whether
+/// THIS process has already taken the lock.
 static LOCK_FD: Mutex<Option<(String, File)>> = Mutex::new(None);
 
-/// `flock(LOCK_EX|LOCK_NB)` на `path`; `false` — замок уже держит живой
-/// процесс, и вызывающий обязан не поднимать второе окно, а постучаться в
-/// первое ([`activate_running_instance`]).
+/// `flock(LOCK_EX|LOCK_NB)` on `path`; `false` — the lock is already held by a live
+/// process, and the caller must not bring up a second window but knock on
+/// the first one ([`activate_running_instance`]).
 pub fn acquire_lock(path: &str) -> bool {
     let Ok(file) = File::create(path) else {
         return false;
@@ -409,14 +409,14 @@ pub fn acquire_lock(path: &str) -> bool {
     true
 }
 
-/// Держит ли ЭТОТ процесс замок на `path`.
+/// Whether THIS process holds the lock on `path`.
 ///
-/// Нужна точке входа, до которой можно дойти и после взятия замка, и в
-/// обход него: `rexon/qt_main/app.py::main` зовётся из `rexon/app.py`, где
-/// замок уже взят, но и напрямую (`python3 -m rexon.qt_main.app`), где его
-/// не брал никто. Повторный `flock` из того же процесса на новом
-/// дескрипторе блокирует сам себя — без этого вопроса первый экземпляр
-/// принял бы себя за второй.
+/// Needed by an entry point that can be reached both after taking the lock and
+/// bypassing it: `rexon/qt_main/app.py::main` is called from `rexon/app.py`, where
+/// the lock is already taken, but also directly (`python3 -m rexon.qt_main.app`), where nobody
+/// took it. A repeated `flock` from the same process on a new
+/// descriptor blocks itself — without this question the first instance
+/// would take itself for the second.
 pub fn holds_lock(path: &str) -> bool {
     LOCK_FD
         .lock()
@@ -424,32 +424,32 @@ pub fn holds_lock(path: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Флаг классического окна (Python-вход): пункт ярлыка «Rexon (классическое
-/// окно)». При занятом замке такой запуск просит держателя уступить место.
+/// The classic window flag (Python entry): the shortcut item «Rexon (classic
+/// window)». With the lock taken, such a launch asks the holder to give way.
 pub const CLASSIC_FLAG: &str = "--classic";
 
-/// Что делать запуску, упёршемуся в занятый замок.
+/// What a launch that hit a taken lock should do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnBusyLock {
-    /// Постучаться в первый экземпляр и поднять его окно.
+    /// Knock on the first instance and raise its window.
     Knock,
-    /// Уйти молча с кодом 0, ничего не трогая: окна никто не просил.
+    /// Exit silently with code 0 without touching anything: nobody asked for a window.
     ExitQuietly,
-    /// Классическое окно (`--classic`): попросить держателя уступить замок
-    /// ([`request_handover`]). Иначе при хозяине-Rust ярлык «классическое
-    /// окно» лишь поднимал бы Rust-окно — открыть классическое было нельзя.
+    /// Classic window (`--classic`): ask the holder to hand over the lock
+    /// ([`request_handover`]). Otherwise, with a Rust host, the «classic
+    /// window» shortcut would only raise the Rust window — the classic one could not be opened.
     RequestHandover,
 }
 
-/// Решение для запуска, упёршегося в занятый замок (`args` — без имени
-/// программы). Одно на обе точки входа: Python (`rexon/app.py`) и Rust
+/// Decision for a launch that hit a taken lock (`args` — without the program
+/// name). One for both entry points: Python (`rexon/app.py`) and Rust
 /// (`rexon-gui/src/bin/main_window.rs`).
 ///
-/// ⚠️ Скрытый запуск (`--tray`, им Rexon стартует при входе в систему) НЕ
-/// стучится. Раньше стучался — и вытаскивал уже открытое окно на экран:
-/// запуск, которому окно не нужно по определению, показывал его человеку
-/// поверх рабочего стола. Если Rexon уже работает, скрытому запуску делать
-/// нечего вовсе: значок в лотке уже есть.
+/// ⚠️ A hidden launch (`--tray`, which Rexon uses at login) does NOT
+/// knock. It used to — and pulled an already open window onto the screen:
+/// a launch that by definition needs no window showed it to the person
+/// over the desktop. If Rexon is already running, a hidden launch has nothing
+/// to do at all: the tray icon is already there.
 pub fn on_busy_lock(args: &[String]) -> OnBusyLock {
     if crate::tray::starts_hidden(args) {
         OnBusyLock::ExitQuietly
@@ -461,41 +461,41 @@ pub fn on_busy_lock(args: &[String]) -> OnBusyLock {
 }
 
 // ============================================================================
-// Стук: «подними своё окно»
+// Knock: «raise your window»
 // ============================================================================
 
-/// Попросить уже работающий Rexon поднять окно и ДОЖДАТЬСЯ ответа.
+/// Ask an already running Rexon to raise its window and WAIT for the reply.
 ///
-/// `false` — слушателя нет (Rexon старее этой правки), сокет мёртв либо
-/// окно поднять не удалось. Без ответа мы не знаем, поднялось ли окно, а
-/// соврать покупателю «поднял» хуже, чем честно отправить его в лоток.
+/// `false` — there is no listener (Rexon is older than this change), the socket is dead or
+/// the window could not be raised. Without a reply we do not know whether the window came up, and
+/// lying to the user «raised» is worse than honestly sending them to the tray.
 pub fn activate_running_instance(socket_path: &str) -> bool {
     activate_running_instance_to(socket_path, None)
 }
 
-/// То же, но с разделом, который открыть в поднятом окне ([`show_request`]).
+/// The same, but with a section to open in the raised window ([`show_request`]).
 pub fn activate_running_instance_to(socket_path: &str, target: Option<(&str, &str)>) -> bool {
     knock(socket_path, target) == KnockOutcome::Raised
 }
 
-/// Чем кончился стук — от этого зависит, что сказать человеку.
+/// How the knock ended — what to tell the person depends on it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KnockOutcome {
-    /// Слушатель поднял окно.
+    /// The listener raised the window.
     Raised,
-    /// Слушатель ответил, но окно не поднялось.
+    /// The listener replied, but the window did not come up.
     Refused,
-    /// Ответа не было: слушатель не встал, сокет мёртв, чужой владелец либо
-    /// истёк срок. Строка — настоящая причина для журнала.
+    /// There was no reply: the listener did not come up, the socket is dead, a foreign owner, or
+    /// the timeout expired. The string is the real reason for the log.
     NoAnswer(String),
 }
 
-/// Постучаться и узнать исход подробно (для текста второго запуска).
+/// Knock and learn the outcome in detail (for the second launch's text).
 pub fn knock(socket_path: &str, target: Option<(&str, &str)>) -> KnockOutcome {
     knock_expecting_owner(socket_path, target, current_uid())
 }
 
-/// То же, но слушатель обязан принадлежать пользователю `owner_uid`.
+/// The same, but the listener must belong to user `owner_uid`.
 pub fn knock_expecting_owner(
     socket_path: &str,
     target: Option<(&str, &str)>,
@@ -511,16 +511,16 @@ pub fn knock_expecting_owner(
     }
 }
 
-/// Сказать слово слушателю и дождаться ответа; `Err` — настоящая причина,
-/// почему ответа нет (слушателя нет, сокет мёртв, чужой владелец, срок).
+/// Say a word to the listener and wait for the reply; `Err` — the real reason
+/// why there is no reply (no listener, dead socket, foreign owner, timeout).
 fn exchange(socket_path: &str, word: &[u8], owner_uid: u32) -> Result<Vec<u8>, String> {
     if socket_path.len() > SUN_PATH_MAX {
         return Err(too_long(socket_path));
     }
     let mut sock = UnixStream::connect(socket_path)
         .map_err(|e| format!("к {socket_path} не подключиться: {e}"))?;
-    // Слово уходит только своему: на чужом конце может стоять процесс
-    // другого пользователя, подложивший сокет по нашему адресу.
+    // The word goes only to our own: the other end may be a process
+    // of another user that planted a socket at our address.
     match peer_uid(&sock) {
         Some(uid) if uid == owner_uid => {}
         other => {
@@ -531,8 +531,8 @@ fn exchange(socket_path: &str, word: &[u8], owner_uid: u32) -> Result<Vec<u8>, S
             ));
         }
     }
-    // Оба таймаута обязательны: без них мёртвый на другом конце процесс
-    // (сокет цел, цикл событий стоит) подвесил бы запуск навсегда.
+    // Both timeouts are mandatory: without them a process dead at the other end
+    // (the socket is intact, the event loop is stuck) would hang the launch forever.
     let io = |e: std::io::Error| format!("обмен с {socket_path} оборвался: {e}");
     sock.set_read_timeout(Some(KNOCK_TIMEOUT)).map_err(io)?;
     sock.set_write_timeout(Some(KNOCK_TIMEOUT)).map_err(io)?;
@@ -543,7 +543,7 @@ fn exchange(socket_path: &str, word: &[u8], owner_uid: u32) -> Result<Vec<u8>, S
     Ok(reply[..n].to_vec())
 }
 
-/// Причина «адрес не помещается» — с путём, длиной и пределом.
+/// The «address does not fit» reason — with the path, length and limit.
 fn too_long(path: &str) -> String {
     format!(
         "адрес {path} — {} байт, а в sun_path помещается {SUN_PATH_MAX}",
@@ -552,35 +552,35 @@ fn too_long(path: &str) -> String {
 }
 
 // ============================================================================
-// Передача хозяина: классическое окно просит держателя уступить замок
+// Handing over the host: the classic window asks the holder to give up the lock
 // ============================================================================
 //
-// Хозяином сеанса может быть Rust-окно (с треем и автозапуском так будет
-// всегда), а пункт ярлыка «Rexon (классическое окно)» запускает Python-вход.
-// Обычный стук поднял бы Rust-окно — классическое открыть было бы нельзя.
-// Поэтому классический запуск говорит особое слово, и держатель решает по
-// себе ([`listener_action`]): Rust-держатель закрывает окно и значок и
-// уходит (замок освобождается вместе с процессом), Python-держатель просто
-// поднимает окно — оно и есть классическое, передавать нечего.
+// The session host can be the Rust window (with the tray and autostart it always
+// will be), while the shortcut item «Rexon (classic window)» starts the Python entry.
+// A normal knock would raise the Rust window — the classic one could not be opened.
+// So the classic launch says a special word, and the holder decides for
+// itself ([`listener_action`]): a Rust holder closes the window and the icon and
+// exits (the lock is released together with the process), a Python holder simply
+// raises its window — it is the classic one, there is nothing to hand over.
 
-/// Просьба классического окна «уступи замок» — одно слово протокола.
+/// The classic window's request «give up the lock» — one protocol word.
 pub const HANDOVER_REQUEST: &[u8] = b"handover\n";
-/// Ответ держателя «ухожу, замок сейчас освободится».
+/// The holder's reply «leaving, the lock will be free now».
 pub const REPLY_LEAVING: &[u8] = b"bye\n";
-/// Сколько новый процесс ждёт освобождения замка после «bye»: держателю
-/// нужно закрыть окно и значок и выйти.
+/// How long the new process waits for the lock to be released after «bye»: the holder
+/// needs to close the window and the icon and exit.
 pub const HANDOVER_WAIT: Duration = Duration::from_secs(5);
 
-/// Разобранное слово на сокете.
+/// A parsed word on the socket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
-    /// «Подними окно» (с разделом или без).
+    /// «Raise the window» (with or without a section).
     Show(ShowRequest),
-    /// «Уступи замок» от классического окна.
+    /// «Give up the lock» from the classic window.
     Handover,
 }
 
-/// Разобрать слово: `show …` ([`parse_show_request`]) либо `handover`.
+/// Parse a word: `show …` ([`parse_show_request`]) or `handover`.
 pub fn parse_request(bytes: &[u8]) -> Option<Request> {
     if let Some(show) = parse_show_request(bytes) {
         return Some(Request::Show(show));
@@ -593,40 +593,40 @@ fn trimmed_str(bytes: &'static [u8]) -> &'static str {
     std::str::from_utf8(trimmed(bytes)).unwrap_or("")
 }
 
-/// Кто держит замок — от этого зависит ответ на `handover`.
+/// Who holds the lock — the reply to `handover` depends on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Holder {
-    /// Классическое окно на Python.
+    /// The classic window in Python.
     Python,
-    /// Окно на Rust.
+    /// The window in Rust.
     Rust,
 }
 
-/// Что делать слушателю на слово.
+/// What the listener should do on a word.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ListenerAction {
-    /// Поднять окно и, если задан, открыть раздел.
+    /// Raise the window and, if given, open the section.
     Raise(Option<(String, String)>),
-    /// Уступить замок: закрыть окно и значок, выйти.
+    /// Give up the lock: close the window and the icon, exit.
     HandOver,
 }
 
-/// Решение слушателя держателя `holder` на слово; `None` — чужое слово,
-/// окно не трогать. Одно на оба слушателя.
+/// Decision of the listener of holder `holder` on a word; `None` — a foreign word,
+/// do not touch the window. One for both listeners.
 pub fn listener_action(holder: Holder, bytes: &[u8]) -> Option<ListenerAction> {
     Some(match parse_request(bytes)? {
         Request::Show(show) => ListenerAction::Raise(show.section),
-        // Держатель — само классическое окно: передавать нечего.
+        // The holder is the classic window itself: nothing to hand over.
         Request::Handover if holder == Holder::Python => ListenerAction::Raise(None),
         Request::Handover => ListenerAction::HandOver,
     })
 }
 
-/// Взять замок, подождав его освобождения не дольше `limit`.
+/// Take the lock, waiting for it to be released no longer than `limit`.
 ///
-/// Нужна после «bye»: держатель уходит не мгновенно (закрывает окно и
-/// значок), и гадать с таймингами снаружи значило бы то промахиваться, то
-/// ждать зря.
+/// Needed after «bye»: the holder does not leave instantly (it closes the window and
+/// the icon), and guessing timings from outside would mean sometimes missing, sometimes
+/// waiting in vain.
 pub fn wait_for_lock(path: &str, limit: Duration) -> bool {
     let deadline = Instant::now() + limit;
     loop {
@@ -641,34 +641,34 @@ pub fn wait_for_lock(path: &str, limit: Duration) -> bool {
 }
 
 // ============================================================================
-// Перезапуск: новый процесс ждёт, пока уйдёт прежний
+// Restart: the new process waits for the old one to leave
 // ============================================================================
 //
-// Живой случай 08.10.2026: «Перезапустить» после смены языка — и Rexon не
-// вернулся. Прежняя схема ждала выхода старого процесса снаружи (`sh` с
-// `kill -0` до 30 с) и запускала новый «вслепую»: не ушёл старый вовремя —
-// новый утыкался в замок, стучался в уходящее окно и тихо выходил, а
-// следом уходил и старый. Теперь новый процесс знает, что он перезапуск
-// ([`RESTART_OF_ENV`] = pid прежнего), и сам ждёт освобождения замка
-// ([`wait_for_previous`]); каждый шаг — строкой в журнал.
+// Live case 08.10.2026: «Restart» after changing the language — and Rexon did not
+// come back. The old scheme waited for the old process to exit from outside (`sh` with
+// `kill -0` for up to 30 s) and started the new one «blindly»: if the old one did not leave in time,
+// the new one hit the lock, knocked on the leaving window and quietly exited, and then
+// the old one left too. Now the new process knows it is a restart
+// ([`RESTART_OF_ENV`] = pid of the previous one) and waits for the lock to be released itself
+// ([`wait_for_previous`]); each step is a line in the log.
 
-/// Переменная «я перезапуск процесса <pid>» — ставит перезапускающий.
+/// The variable «I am a restart of process <pid>» — set by the restarting side.
 pub const RESTART_OF_ENV: &str = "REXON_RESTART_OF";
 
-/// Сколько новый процесс ждёт ухода прежнего. Выход прежнего ограничен
-/// сторожем выхода (`main_window`: `EXIT_WATCHDOG`), так что ждать дольше
-/// него незачем, а меньше — значит снова уйти раньше старого.
+/// How long the new process waits for the previous one to leave. The previous one's exit is bounded
+/// by the exit watchdog (`main_window`: `EXIT_WATCHDOG`), so there is no point waiting longer
+/// than that, and less means leaving before the old one again.
 pub const RESTART_LOCK_WAIT: Duration = Duration::from_secs(45);
 
-/// Жив ли процесс `pid` по-настоящему (зомби — уже не жив: замки он
-/// отпустил, а `kill -0` на нём отвечает «есть»).
+/// Whether process `pid` is really alive (a zombie is no longer alive: it released its
+/// locks, yet `kill -0` on it answers «exists»).
 pub fn process_alive(pid: u32) -> bool {
     if pid == 0 || unsafe { libc::kill(pid as libc::pid_t, 0) } != 0 {
-        // EPERM — процесс есть, но чужой; для нашего случая он «жив».
+        // EPERM — the process exists but belongs to someone else; for our case it is «alive».
         return std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
     }
     match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
-        // Состояние — первое поле после закрывающей скобки имени.
+        // The state is the first field after the closing parenthesis of the name.
         Ok(stat) => stat
             .rsplit_once(") ")
             .and_then(|(_, rest)| rest.chars().next())
@@ -677,8 +677,8 @@ pub fn process_alive(pid: u32) -> bool {
     }
 }
 
-/// Кто держит `flock` на файле `path` — по `/proc/locks`. Для журнала:
-/// «замок занят» без имени держателя ничего не объясняет.
+/// Who holds the `flock` on file `path` — from `/proc/locks`. For the log:
+/// «lock taken» without the holder's name explains nothing.
 pub fn lock_holder_pid(path: &str) -> Option<u32> {
     let meta = std::fs::metadata(path).ok()?;
     let dev = meta.dev();
@@ -688,11 +688,11 @@ pub fn lock_holder_pid(path: &str) -> Option<u32> {
     lock_holder_in(&locks, major, minor, ino)
 }
 
-/// Разбор строк `/proc/locks`: `1: FLOCK ADVISORY WRITE <pid> <maj>:<min>:<ino> 0 EOF`.
+/// Parse `/proc/locks` lines: `1: FLOCK ADVISORY WRITE <pid> <maj>:<min>:<ino> 0 EOF`.
 pub fn lock_holder_in(locks: &str, major: u32, minor: u32, ino: u64) -> Option<u32> {
     locks.lines().find_map(|line| {
         let f: Vec<&str> = line.split_whitespace().collect();
-        // Строки ожидающих (` -> FLOCK …`) сдвинуты на одно поле — пропускаем.
+        // Lines of waiters (` -> FLOCK …`) are shifted by one field — skip them.
         if f.len() < 6 || f[1] != "FLOCK" {
             return None;
         }
@@ -704,25 +704,25 @@ pub fn lock_holder_in(locks: &str, major: u32, minor: u32, ino: u64) -> Option<u
     })
 }
 
-/// Чем кончилось ожидание прежнего процесса.
+/// How waiting for the previous process ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreviousWait {
-    /// Замок наш — прежний ушёл.
+    /// The lock is ours — the previous one left.
     Acquired(Duration),
-    /// Прежний так и не ушёл за отведённое время.
+    /// The previous one never left within the allotted time.
     PreviousStillRunning,
-    /// Прежний ушёл, а замок держит кто-то ещё (pid, если известен):
-    /// например, Rexon запустили вручную, пока шёл перезапуск.
+    /// The previous one left, but someone else holds the lock (pid, if known):
+    /// for example, Rexon was started by hand while the restart was in progress.
     OtherHolder(Option<u32>),
 }
 
-/// Ждать освобождения замка `path`, пока жив прежний процесс `previous`,
-/// но не дольше `limit`.
+/// Wait for lock `path` to be released while the previous process `previous` is alive,
+/// but no longer than `limit`.
 pub fn wait_for_previous(path: &str, previous: u32, limit: Duration) -> PreviousWait {
     let started = Instant::now();
     let deadline = started + limit;
-    // После смерти прежнего замок освобождается сразу; полсекунды запаса —
-    // на случай, если ядро ещё не дочистило дескрипторы.
+    // After the previous one dies the lock is released immediately; half a second of margin
+    // in case the kernel has not finished cleaning up the descriptors.
     let mut gone_since: Option<Instant> = None;
     loop {
         if acquire_lock(path) {
@@ -742,18 +742,18 @@ pub fn wait_for_previous(path: &str, previous: u32, limit: Duration) -> Previous
     }
 }
 
-/// Чем кончилась просьба уступить замок.
+/// How the request to give up the lock ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandoverOutcome {
-    /// Держатель — классическое окно: поднял себя, этому запуску уходить.
+    /// The holder is the classic window: it raised itself, this launch should leave.
     Raised,
-    /// Держатель ушёл, замок теперь наш: запуск продолжается первым.
+    /// The holder left, the lock is ours now: the launch continues as the first.
     Acquired,
-    /// Не вышло: слушателя нет, он отказал либо замок не освободился в срок.
+    /// Did not work out: no listener, it refused, or the lock was not released in time.
     Failed,
 }
 
-/// Попросить держателя замка `lock_path` уступить место классическому окну.
+/// Ask the holder of lock `lock_path` to make way for the classic window.
 pub fn request_handover(socket_path: &str, lock_path: &str, wait: Duration) -> HandoverOutcome {
     let Ok(reply) = exchange(socket_path, HANDOVER_REQUEST, current_uid()) else {
         return HandoverOutcome::Failed;
@@ -767,31 +767,31 @@ pub fn request_handover(socket_path: &str, lock_path: &str, wait: Duration) -> H
     HandoverOutcome::Failed
 }
 
-/// Жив ли слушатель на адресе — БЕЗ просьбы поднять окно.
+/// Whether a listener is alive at the address — WITHOUT asking it to raise the window.
 ///
-/// Отдельно от стука намеренно: проверка живости нужна тому, кто СОБИРАЕТСЯ
-/// слушать, и она не вправе дёргать окно чужого экземпляра как побочный
-/// эффект своего запуска.
+/// Deliberately separate from the knock: the liveness check is needed by whoever IS ABOUT
+/// to listen, and it must not poke another instance's window as a side
+/// effect of its own launch.
 pub fn socket_alive(path: &str) -> bool {
     UnixStream::connect(path).is_ok()
 }
 
 // ============================================================================
-// Слушатель
+// Listener
 // ============================================================================
 
-/// Почему не удалось встать слушателем.
+/// Why we could not come up as the listener.
 #[derive(Debug)]
 pub enum BindError {
-    /// На адресе уже кто-то слушает: мы не первый.
+    /// Someone is already listening at the address: we are not the first.
     Busy,
-    /// Адрес занят НЕ сокетом — чужой файл сносить нельзя.
+    /// The address is taken by something that is NOT a socket — a foreign file must not be removed.
     NotASocket,
-    /// Ошибка файловой системы или ядра.
+    /// A file system or kernel error.
     Io(std::io::Error),
-    /// Адрес не помещается в `sun_path` (путь, длина — в тексте).
+    /// The address does not fit into `sun_path` (path, length — in the text).
     TooLong(String),
-    /// Запасной каталог непригоден: чужой владелец, ссылка, не каталог.
+    /// The fallback directory is unfit: a foreign owner, a link, not a directory.
     UnsafeDir { dir: String, reason: String },
 }
 
@@ -809,18 +809,18 @@ impl std::fmt::Display for BindError {
     }
 }
 
-/// Освободить адрес под слушателя: снести файл, только если это МЁРТВЫЙ
-/// сокет. `Ok(())` — адрес свободен (файла не было либо мёртвый снесён).
+/// Free the address for the listener: remove the file only if it is a DEAD
+/// socket. `Ok(())` — the address is free (there was no file, or the dead one was removed).
 ///
-/// Одна на оба слушателя: Rust ([`ActivationListener::bind`]) и Python
-/// (`QLocalServer` в `rexon/qt_main/app.py`). Python-слушатель раньше звал
-/// `QLocalServer::removeServer`, который сносит файл БЕЗУСЛОВНО, — и прямой
-/// запуск модуля в обход замка отнимал живой общий сокет у работающего
-/// Rexon, оставляя его без двери для вторых запусков.
+/// One for both listeners: Rust ([`ActivationListener::bind`]) and Python
+/// (`QLocalServer` in `rexon/qt_main/app.py`). The Python listener used to call
+/// `QLocalServer::removeServer`, which removes the file UNCONDITIONALLY — and running
+/// the module directly, bypassing the lock, took the live shared socket away from the running
+/// Rexon, leaving it without a door for second launches.
 ///
-/// Она же готовит запасной каталог ([`socket_path`] при длинном
-/// `XDG_RUNTIME_DIR`): Python-слушатель зовёт её перед `QLocalServer.listen`,
-/// и каталог 0700 появляется у обоих слушателей одним кодом.
+/// It also prepares the fallback directory ([`socket_path`] with a long
+/// `XDG_RUNTIME_DIR`): the Python listener calls it before `QLocalServer.listen`,
+/// and the 0700 directory appears for both listeners from one piece of code.
 pub fn clear_stale_socket(path: &str) -> Result<(), BindError> {
     if path.len() > SUN_PATH_MAX {
         return Err(BindError::TooLong(path.to_string()));
@@ -842,30 +842,30 @@ pub fn clear_stale_socket(path: &str) -> Result<(), BindError> {
     std::fs::remove_file(path).map_err(BindError::Io)
 }
 
-/// Слушатель просьб «подними окно» от вторых запусков.
+/// Listener of «raise the window» requests from second launches.
 ///
-/// Порт `rexon/qt_main/app.py::_serve_activation` без Qt: `QLocalServer` на
-/// Unix — это тот же `AF_UNIX`-сокет, и ядру для него Qt не нужен.
+/// Port of `rexon/qt_main/app.py::_serve_activation` without Qt: a `QLocalServer` on
+/// Unix is the same `AF_UNIX` socket, and the core does not need Qt for it.
 pub struct ActivationListener {
     listener: UnixListener,
     path: String,
-    /// inode сокета на момент захвата — см. [`Drop`].
+    /// Socket inode at the moment of capture — see [`Drop`].
     inode: u64,
-    /// Чей стук принимается: по умолчанию — свой uid ([`current_uid`]).
+    /// Whose knock is accepted: by default — our own uid ([`current_uid`]).
     owner_uid: u32,
 }
 
 impl ActivationListener {
-    /// Встать слушателем на `path`.
+    /// Come up as the listener on `path`.
     ///
-    /// ⚠️⚠️ ПОЧЕМУ НЕ `QLocalServer::removeServer`, КАК В PYTHON. Тот сносит
-    /// файл по адресу БЕЗУСЛОВНО — и это ровно та ловушка, которая уже
-    /// стоила проекту сеанса: `$XDG_RUNTIME_DIR` общий на весь сеанс, и
-    /// прогон, снёсший чужой сокет, отобрал у живой программы её адрес.
-    /// Поэтому здесь порядок обратный: сперва спрашиваем, не слушает ли по
-    /// адресу ЖИВОЙ Rexon (`socket_alive`), и если да — уходим с
-    /// [`BindError::Busy`], ничего не снося. Сносим только мёртвый файл, и
-    /// только если он действительно сокет.
+    /// ⚠️⚠️ WHY NOT `QLocalServer::removeServer`, AS IN PYTHON. That one removes
+    /// the file at the address UNCONDITIONALLY — and that is exactly the trap that already
+    /// cost the project a session: `$XDG_RUNTIME_DIR` is shared by the whole session, and
+    /// a run that removed someone else's socket took a live program's address away.
+    /// So here the order is reversed: first we ask whether a LIVE Rexon is listening at
+    /// the address (`socket_alive`), and if so we leave with
+    /// [`BindError::Busy`] without removing anything. We remove only a dead file, and
+    /// only if it really is a socket.
     pub fn bind(path: &str) -> Result<ActivationListener, BindError> {
         clear_stale_socket(path)?;
         let listener = UnixListener::bind(path).map_err(BindError::Io)?;
@@ -880,33 +880,33 @@ impl ActivationListener {
         })
     }
 
-    /// Принимать стук только от пользователя `uid` (по умолчанию — свой).
+    /// Accept knocks only from user `uid` (by default — our own).
     ///
-    /// ⚠️ Стук чужого пользователя — отказ без чтения слова: иначе процесс
-    /// другого пользователя мог бы дёргать окно или, хуже, словом
-    /// `handover` закрыть Rexon и забрать место.
+    /// ⚠️ A foreign user's knock is refused without reading the word: otherwise a process
+    /// of another user could poke the window or, worse, close Rexon with the word
+    /// `handover` and take its place.
     pub fn with_owner_uid(mut self, uid: u32) -> ActivationListener {
         self.owner_uid = uid;
         self
     }
 
-    /// Адрес, на котором стоим.
+    /// The address we are listening on.
     pub fn path(&self) -> &str {
         &self.path
     }
 
-    /// Обслужить ОДНУ просьбу: принять соединение, прочитать слово, поднять
-    /// окно и ответить по факту.
+    /// Serve ONE request: accept a connection, read the word, raise the
+    /// window and reply based on the outcome.
     ///
-    /// `Some(поднялось)` — просьба обслужена; `None` — соединение не
-    /// состоялось либо на нём пришло не «show» (тогда мы не трогаем окно и
-    /// отвечаем отказом: чужой стук в наш адрес не повод дёргать экран).
+    /// `Some(raised)` — the request was served; `None` — the connection did not
+    /// happen or something other than «show» arrived on it (then we do not touch the window and
+    /// reply with a refusal: a foreign knock at our address is no reason to poke the screen).
     pub fn serve_one<F: FnMut() -> bool>(&self, raise: &mut F) -> Option<bool> {
         self.serve_one_to(&mut |_section| raise())
     }
 
-    /// То же, но `raise` получает раздел из просьбы (`None` — без раздела).
-    /// Хозяина такой слушатель не передаёт: на `handover` — отказ «no».
+    /// The same, but `raise` gets the section from the request (`None` — no section).
+    /// Such a listener does not hand over the host: on `handover` — the refusal «no».
     pub fn serve_one_to<F: FnMut(Option<(String, String)>) -> bool>(
         &self,
         raise: &mut F,
@@ -917,13 +917,13 @@ impl ActivationListener {
         })
     }
 
-    /// Слушатель держателя `holder`, умеющий передать хозяина
+    /// Listener of holder `holder` that can hand over the host
     /// ([`listener_action`]).
     ///
-    /// ⚠️ На [`ListenerAction::HandOver`] обработчик обязан НЕ выходить сам,
-    /// а запланировать выход (в потоке GUI: закрыть окно и значок, выйти —
-    /// замок уйдёт вместе с процессом) и вернуть `true`: ответ «bye» уходит
-    /// ПОСЛЕ его возврата. `false` — остаюсь, запуск получит отказ.
+    /// ⚠️ On [`ListenerAction::HandOver`] the handler must NOT exit by itself,
+    /// but schedule an exit (in the GUI thread: close the window and the icon, exit —
+    /// the lock goes away with the process) and return `true`: the reply «bye» is sent
+    /// AFTER it returns. `false` — staying, the launch gets a refusal.
     pub fn serve_one_for<F: FnMut(ListenerAction) -> bool>(
         &self,
         holder: Holder,
@@ -951,7 +951,7 @@ impl ActivationListener {
         let word = &buf[..read];
         let action = match holder {
             Some(holder) => listener_action(holder, word),
-            // Слушатель без передачи хозяина понимает только «show».
+            // A listener without host handover understands only «show».
             None => parse_show_request(word).map(|show| ListenerAction::Raise(show.section)),
         };
         let Some(action) = action else {
@@ -968,32 +968,32 @@ impl ActivationListener {
         };
         let _ = conn.write_all(reply);
         let _ = conn.flush();
-        // Закрытие — сразу после ответа: второй запуск ждёт одно слово и
-        // уходит, держать соединение открытым нечем и незачем.
+        // Close right after the reply: the second launch waits for one word and
+        // leaves, there is nothing to keep the connection open with and no reason to.
         let _ = conn.shutdown(std::net::Shutdown::Both);
         Some(raised)
     }
 
-    /// Обслуживать просьбы до конца процесса.
+    /// Serve requests until the end of the process.
     pub fn serve_forever<F: FnMut() -> bool>(&self, mut raise: F) {
         self.serve_forever_to(move |_section| raise())
     }
 
-    /// То же, но `raise` получает раздел из просьбы.
+    /// The same, but `raise` gets the section from the request.
     pub fn serve_forever_to<F: FnMut(Option<(String, String)>) -> bool>(&self, mut raise: F) {
         loop {
-            // Сорванное соединение — не причина перестать слушать: иначе
-            // один кривой стук лишил бы покупателя двери в программу до
-            // перезапуска.
+            // A broken connection is no reason to stop listening: otherwise
+            // one malformed knock would deprive the user of the door into the program until
+            // a restart.
             let _ = self.serve_one_to(&mut raise);
         }
     }
 
-    /// Встать слушателем и обслуживать просьбы в своём потоке.
+    /// Come up as the listener and serve requests in its own thread.
     ///
-    /// ⚠️ `raise` зовётся ИЗ ЭТОГО ПОТОКА. Вызывающий отвечает за то, чтобы
-    /// внутри `raise` работа с окном попадала в поток GUI (у Qt поднимать
-    /// окно из чужого потока нельзя).
+    /// ⚠️ `raise` is called FROM THIS THREAD. The caller is responsible for making sure
+    /// that window work inside `raise` lands in the GUI thread (Qt does not allow raising
+    /// a window from another thread).
     pub fn spawn<F>(path: &str, raise: F) -> Result<(), BindError>
     where
         F: FnMut() -> bool + Send + 'static,
@@ -1002,8 +1002,8 @@ impl ActivationListener {
         ActivationListener::spawn_to(path, move |_section| raise())
     }
 
-    /// То же, но `raise` получает раздел из просьбы (быстрое действие ярлыка
-    /// при работающем Rexon). ⚠️ Зовётся из потока слушателя — как и `spawn`.
+    /// The same, but `raise` gets the section from the request (a shortcut quick action
+    /// with Rexon running). ⚠️ Called from the listener thread — as with `spawn`.
     pub fn spawn_to<F>(path: &str, raise: F) -> Result<(), BindError>
     where
         F: FnMut(Option<(String, String)>) -> bool + Send + 'static,
@@ -1016,16 +1016,16 @@ impl ActivationListener {
         Ok(())
     }
 
-    /// Обслуживать просьбы держателя `holder` до конца процесса.
+    /// Serve requests of holder `holder` until the end of the process.
     pub fn serve_forever_for<F: FnMut(ListenerAction) -> bool>(&self, holder: Holder, mut handler: F) {
         loop {
             let _ = self.serve_one_for(holder, &mut handler);
         }
     }
 
-    /// Встать слушателем держателя `holder` в своём потоке — с передачей
-    /// хозяина ([`Self::serve_one_for`]). ⚠️ `handler` зовётся из потока
-    /// слушателя, как и у `spawn`.
+    /// Come up as the listener of holder `holder` in its own thread — with host
+    /// handover ([`Self::serve_one_for`]). ⚠️ `handler` is called from the listener
+    /// thread, as with `spawn`.
     pub fn spawn_for<F>(path: &str, holder: Holder, handler: F) -> Result<(), BindError>
     where
         F: FnMut(ListenerAction) -> bool + Send + 'static,
@@ -1041,10 +1041,10 @@ impl ActivationListener {
 
 impl Drop for ActivationListener {
     fn drop(&mut self) {
-        // Убираем ТОЛЬКО свой сокет: сверяем inode с тем, что захватили.
-        // Иначе слушатель, встающий на наш адрес после нас, лишился бы его
-        // от нашего же завершения — та самая кража общего сокета, только
-        // задним ходом.
+        // Remove ONLY our own socket: compare the inode with the one we captured.
+        // Otherwise a listener that came up on our address after us would lose it
+        // because of our own shutdown — the very same theft of the shared socket, only
+        // in reverse.
         let ours = std::fs::symlink_metadata(&self.path)
             .map(|m| m.file_type().is_socket() && m.ino() == self.inode)
             .unwrap_or(false);
@@ -1055,35 +1055,35 @@ impl Drop for ActivationListener {
 }
 
 // ============================================================================
-// Rexon обновился, а работает прежняя копия
+// Rexon was updated, but the old copy is running
 // ============================================================================
 //
-// Пакетный менеджер не трогает работающий процесс: он кладёт новый файл
-// рядом и переименованием ставит его на место старого. Окно и лоток живут
-// дальше прежней копией — до выхода из сеанса, иногда неделями, — и человек
-// не понимает, почему «обновлённый» Rexon ведёт себя по-старому. Признаки
-// замены видны прямо из процесса: ядро дописывает « (deleted)» к ссылке
-// `/proc/self/exe`, если файл, из которого процесс запущен, снят с диска, а
-// по прежнему пути лежит файл с другим inode/временем изменения.
-// Решение — здесь (чистые функции под тестами на подставном пути), опрос и
-// уведомление с кнопкой «Перезапустить» — у лотка (`rexon-gui::tray`).
+// The package manager does not touch a running process: it puts the new file
+// next to it and renames it into the old one's place. The window and the tray live
+// on as the old copy — until logout, sometimes for weeks — and the person
+// does not understand why the «updated» Rexon behaves the old way. Signs of
+// the replacement are visible right from the process: the kernel appends « (deleted)» to the
+// `/proc/self/exe` link if the file the process was started from was removed from disk, and
+// the old path holds a file with a different inode/modification time.
+// The decision is here (pure functions under tests on a fake path), polling and
+// the notification with the «Restart» button are in the tray (`rexon-gui::tray`).
 
-/// Хвост, который ядро дописывает к ссылке на снятый с диска файл.
+/// The tail the kernel appends to a link to a file removed from disk.
 pub const DELETED_EXE_SUFFIX: &str = " (deleted)";
 
-/// Ссылка процесса на свой исполняемый файл.
+/// The process's link to its own executable.
 pub const PROC_SELF_EXE: &str = "/proc/self/exe";
 
-/// Как часто лоток сверяет свой бинарь с диском, с. Опрос, а не inotify:
-/// это `readlink` и два `stat` раз в полминуты, а слежка за каталогом
-/// пакета будила бы лоток на каждом файле любого обновления системы.
+/// How often the tray compares its binary with the disk, s. Polling, not inotify:
+/// it is a `readlink` and two `stat`s every half minute, while watching the package
+/// directory would wake the tray on every file of any system update.
 pub const SELF_UPDATE_POLL_SECS: u64 = 30;
 
-/// Сколько ждать нажатия кнопки уведомления, с: сутки — человек мог отойти.
+/// How long to wait for the notification button to be pressed, s: a day — the person may have stepped away.
 pub const SELF_UPDATE_NOTICE_WAIT_SECS: u64 = 24 * 3600;
 
-/// Отпечаток файла: устройство, inode и время изменения. Сменился любой из
-/// трёх — на диске уже другой файл (или тот же, переписанный на месте).
+/// File fingerprint: device, inode and modification time. If any of the
+/// three changed, there is a different file on disk now (or the same one rewritten in place).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FileStamp {
     pub dev: u64,
@@ -1093,29 +1093,29 @@ pub struct FileStamp {
 }
 
 impl FileStamp {
-    /// Отпечаток файла по пути (ссылки разворачиваются). `None` — файла нет.
+    /// File fingerprint by path (links are resolved). `None` — no file.
     pub fn of(path: &std::path::Path) -> Option<Self> {
         let meta = std::fs::metadata(path).ok()?;
         Some(Self { dev: meta.dev(), ino: meta.ino(), mtime_sec: meta.mtime(), mtime_nsec: meta.mtime_nsec() })
     }
 }
 
-/// Что стало с исполняемым файлом работающего процесса.
+/// What happened to the running process's executable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExeChange {
-    /// Работает то, что лежит на диске.
+    /// What is running is what lies on disk.
     Same,
-    /// По прежнему пути лежит другой файл — новая версия. `stamp` — её
-    /// отпечаток: по нему уведомление показывается один раз на обновление.
+    /// A different file lies at the old path — a new version. `stamp` is its
+    /// fingerprint: by it the notification is shown once per update.
     Replaced { path: String, stamp: FileStamp },
-    /// Файла по прежнему пути нет вовсе (пакет удалили или замена ещё
-    /// идёт) — перезапускаться не во что, предлагать нечего.
+    /// There is no file at the old path at all (the package was removed or the replacement is still
+    /// in progress) — nothing to restart into, nothing to offer.
     Gone,
 }
 
-/// Решение по наблюдениям: `link_target` — содержимое ссылки
-/// `/proc/self/exe`, `running` — отпечаток работающего файла, `on_disk` —
-/// отпечаток файла по пути из ссылки (без хвоста « (deleted)»).
+/// Decision from observations: `link_target` — contents of the
+/// `/proc/self/exe` link, `running` — fingerprint of the running file, `on_disk` —
+/// fingerprint of the file at the path from the link (without the « (deleted)» tail).
 pub fn exe_change(link_target: &str, running: Option<FileStamp>, on_disk: Option<FileStamp>) -> ExeChange {
     let (path, deleted) = match link_target.strip_suffix(DELETED_EXE_SUFFIX) {
         Some(p) => (p, true),
@@ -1132,10 +1132,10 @@ pub fn exe_change(link_target: &str, running: Option<FileStamp>, on_disk: Option
     }
 }
 
-/// Живая сверка по ссылке `link` (в продукте — [`PROC_SELF_EXE`], в тестах
-/// — подставная ссылка). `running` — отпечаток работающего файла; у
-/// `/proc/self/exe` это `FileStamp::of(link)`: ядро отдаёт по ней сам
-/// работающий файл, даже снятый с диска.
+/// Live check via link `link` (in the product — [`PROC_SELF_EXE`], in tests
+/// — a fake link). `running` — fingerprint of the running file; for
+/// `/proc/self/exe` it is `FileStamp::of(link)`: through it the kernel returns the
+/// running file itself, even one removed from disk.
 pub fn exe_change_at(link: &std::path::Path, running: Option<FileStamp>) -> ExeChange {
     let Ok(target) = std::fs::read_link(link) else {
         return ExeChange::Same;
@@ -1145,22 +1145,22 @@ pub fn exe_change_at(link: &std::path::Path, running: Option<FileStamp>) -> ExeC
     exe_change(&target, running, FileStamp::of(std::path::Path::new(path)))
 }
 
-/// Память уведомления «Rexon обновлён»: показать ОДИН раз на обновление и
-/// не раньше, чем замена устоялась.
+/// Memory of the «Rexon updated» notification: show it ONCE per update and
+/// not before the replacement has settled.
 ///
-/// Устоялась — значит один и тот же новый файл виден на двух опросах
-/// подряд: посреди транзакции пакетного менеджера бинарь уже новый, а
-/// библиотеки рядом ещё старые, и перезапуск в эту секунду только упал бы.
+/// Settled means the same new file is seen on two polls
+/// in a row: in the middle of a package manager transaction the binary is already new while
+/// the libraries next to it are still old, and a restart at that second would only crash.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SelfUpdateNotice {
-    /// Отпечаток, о котором уже сказали.
+    /// The fingerprint already announced.
     told: Option<FileStamp>,
-    /// Отпечаток, замеченный прошлым опросом и ещё не подтверждённый.
+    /// A fingerprint noticed by the previous poll and not yet confirmed.
     pending: Option<FileStamp>,
 }
 
 impl SelfUpdateNotice {
-    /// Шаг опроса. `true` — показать уведомление сейчас.
+    /// A polling step. `true` — show the notification now.
     pub fn step(&mut self, change: &ExeChange) -> bool {
         let ExeChange::Replaced { stamp, .. } = change else {
             self.pending = None;
@@ -1178,10 +1178,10 @@ impl SelfUpdateNotice {
         false
     }
 
-    /// Шаг опроса по толчку ([`nudge_self_update_watch`]): обновление уже
-    /// подтвердил помощник сеанса прав другой сборки, второй опрос
-    /// «устоялось ли» не нужен. `true` — показать уведомление сейчас (о том
-    /// же файле второй раз не говорим).
+    /// A polling step on a nudge ([`nudge_self_update_watch`]): the update has already been
+    /// confirmed by the privileged session helper of another build, a second «has it settled»
+    /// poll is not needed. `true` — show the notification now (we do not speak about the same
+    /// file a second time).
     pub fn confirm(&mut self, change: &ExeChange) -> bool {
         let ExeChange::Replaced { stamp, .. } = change else {
             return false;
@@ -1195,19 +1195,19 @@ impl SelfUpdateNotice {
     }
 }
 
-/// Толчок сторожу «Rexon обновлён» и его ожидание.
+/// The nudge to the «Rexon updated» watcher and waiting for it.
 static SELF_UPDATE_NUDGE: (Mutex<bool>, std::sync::Condvar) = (Mutex::new(false), std::sync::Condvar::new());
 
-/// Разбудить сторожа «Rexon обновлён» сейчас, не дожидаясь опроса: сеанс
-/// прав ответил «помощник другой сборки» (пакет обновили при открытом окне,
-/// Б13). Уведомление то же самое и одно — второго окна про обновление нет.
+/// Wake the «Rexon updated» watcher now without waiting for the poll: the privileged session
+/// replied «helper of another build» (the package was updated with the window open,
+/// B13). The notification is the same and single — there is no second window about the update.
 pub fn nudge_self_update_watch() {
     let (flag, cv) = &SELF_UPDATE_NUDGE;
     *flag.lock().unwrap_or_else(|e| e.into_inner()) = true;
     cv.notify_all();
 }
 
-/// Ждать следующего опроса сторожа: `timeout` или толчок. `true` — толкнули.
+/// Wait for the watcher's next poll: `timeout` or a nudge. `true` — nudged.
 pub fn wait_self_update_poll(timeout: Duration) -> bool {
     let (flag, cv) = &SELF_UPDATE_NUDGE;
     let guard = flag.lock().unwrap_or_else(|e| e.into_inner());
@@ -1217,11 +1217,11 @@ pub fn wait_self_update_poll(timeout: Duration) -> bool {
     std::mem::take(&mut *guard)
 }
 
-/// Аргументы новой копии при перезапуске ради обновления: те же, что у
-/// прежней, но без скрытого старта, самопроверки и раздела ярлыка.
-/// Человек сам нажал «Перезапустить» — окно новой копии и есть ответ, что
-/// перезапуск случился; молча вернуться в лоток значило бы оставить его
-/// гадать.
+/// Arguments of the new copy when restarting for an update: the same as the
+/// previous one's, but without the hidden start, the self-check and the shortcut section.
+/// The person pressed «Restart» themselves — the new copy's window is the answer that
+/// the restart happened; silently returning to the tray would leave them
+/// guessing.
 pub fn update_restart_args(args: &[String]) -> Vec<String> {
     args.iter()
         .filter(|a| {
@@ -1234,7 +1234,7 @@ pub fn update_restart_args(args: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Ключ кнопки «Перезапустить» в уведомлении.
+/// Key of the «Restart» button in the notification.
 pub const SELF_UPDATE_RESTART_ACTION: &str = "restart";
 
 pub fn self_update_title() -> String {
@@ -1247,62 +1247,62 @@ pub fn self_update_body() -> String {
     tr("A new version of Rexon is installed, but the old one is still running. Restart Rexon to start using the new version.")
 }
 
-/// Кнопки уведомления.
+/// Notification buttons.
 pub fn self_update_actions() -> Vec<(String, String)> {
     // TRANSLATORS: Button in the "Rexon was updated" notification.
     vec![(SELF_UPDATE_RESTART_ACTION.to_string(), tr("Restart Rexon"))]
 }
 
-/// Заголовок уведомления, если перезапуск не удался (текст — причина).
+/// Notification title if the restart failed (the text is the reason).
 pub fn self_update_restart_failed_title() -> String {
     // TRANSLATORS: Title of a desktop notification when Rexon failed to come back after a restart.
     tr("Rexon didn't restart")
 }
 
-/// Что сделать самому, если служба уведомлений кнопок не умеет.
+/// What to do yourself if the notification service does not support buttons.
 pub fn self_update_no_buttons() -> String {
     // TRANSLATORS: Added to the "Rexon was updated" notification when the system can't show buttons.
     tr("To restart, choose “Quit” in the menu of the Rexon tray icon and open Rexon again.")
 }
 
 // ============================================================================
-// Что говорить человеку
+// What to tell the person
 // ============================================================================
 //
-// Ни одна точка входа не вправе держать свою копию этих строк: их видит
-// покупатель, а значит расхождение между Python- и Rust-входом было бы
-// расхождением в продукте.
+// No entry point may keep its own copy of these strings: the user
+// sees them, so a difference between the Python and Rust entries would be
+// a difference in the product.
 
-/// Второй запуск поднял окно первого.
+/// The second launch raised the first one's window.
 pub fn said_raised() -> String {
     tr("↑ Rexon is already running — brought its window to the front.")
 }
-/// Второй запуск уткнулся в замок и поднять окно не смог.
+/// The second launch hit the lock and could not raise the window.
 pub fn said_already_running() -> String {
     tr("⚠️  Rexon is already running — not adding a second tray icon.")
 }
-/// Строка с адресом замка (для второго запуска, ушедшего ни с чем).
+/// A line with the lock address (for a second launch that left empty-handed).
 pub fn said_lock_path(lock_path: &str) -> String {
     format!("    {}", trf("Lock: %1", &[&lock_path]))
 }
-/// Куда смотреть, когда окно поднять не удалось.
+/// Where to look when the window could not be raised.
 pub fn said_look_in_tray() -> String {
     format!(
         "    {}",
         tr("Couldn't bring up the window — look for the Rexon icon in the system tray.")
     )
 }
-/// Rexon работает (замок занят), но на просьбу показать окно не ответил:
-/// слушатель не встал, адрес непригоден либо программа не отвечает. Прежние
-/// строки («второй значок не создаю» и путь замка) здесь вводили в
-/// заблуждение: человек просил окно, а не значок.
+/// Rexon is running (the lock is taken), but did not answer the request to show the window:
+/// the listener did not come up, the address is unfit or the program is not responding. The former
+/// lines («not creating a second icon» and the lock path) were misleading
+/// here: the person asked for a window, not an icon.
 pub fn said_not_responding() -> String {
     tr("⚠️  Rexon is already open but doesn't respond to the request to show its window. \
         Open it from the icon in the system tray or restart Rexon.")
 }
 
-/// Что сказать запуску, упёршемуся в занятый замок: `knock` — исход стука,
-/// `None` — стука не было (скрытый запуск). Одно решение на все входы.
+/// What to tell a launch that hit a taken lock: `knock` — the knock's outcome,
+/// `None` — there was no knock (a hidden launch). One decision for all entries.
 pub fn said_on_busy_lock(lock_path: &str, knock: Option<&KnockOutcome>) -> Vec<String> {
     let already = || vec![said_already_running(), said_lock_path(lock_path)];
     match knock {
@@ -1318,31 +1318,31 @@ pub fn said_on_busy_lock(lock_path: &str, knock: Option<&KnockOutcome>) -> Vec<S
 }
 
 // ============================================================================
-// Уведомление о запуске (X11, freedesktop startup-notification)
+// Launch notification (X11, freedesktop startup-notification)
 // ============================================================================
 //
-// 2026-11-01, «окно открыто, а курсор думает». MATE на X11: Rexon уже
-// работает, человек жмёт пункт меню — второй запуск упирается в замок,
-// стучит первому (окно поднимается) и выходит. Панель же запускала его с
-// `DESKTOP_STARTUP_ID` и ждёт ответа «remove: ID=…» в `_NET_STARTUP_INFO`:
-// до него курсор «думает», а на панели висит «Запускается Rexon». Ответ
-// обычно шлёт сама Qt (`QXcbScreen::windowShown` при показе первого
-// верхнего окна), но второй запуск до `QApplication` не доходит — и не
-// отвечал никто, пока панель не сдавалась по таймауту. Журнал владельца:
-// каждый такой запуск из меню — «замок занят» → «стук: Raised» → выход.
+// 2026-11-01, «the window is open, but the cursor keeps thinking». MATE on X11: Rexon is already
+// running, the person clicks the menu item — the second launch hits the lock,
+// knocks on the first (the window is raised) and exits. The panel, however, started it with
+// `DESKTOP_STARTUP_ID` and waits for the reply «remove: ID=…» in `_NET_STARTUP_INFO`:
+// until then the cursor «thinks», and the panel shows «Starting Rexon». The reply
+// is usually sent by Qt itself (`QXcbScreen::windowShown` when the first
+// top-level window is shown), but the second launch never reaches `QApplication` — and
+// nobody replied until the panel gave up on a timeout. The owner's log:
+// every such launch from the menu — «lock taken» → «knock: Raised» → exit.
 //
-// Теперь запуск, уходящий без своего окна, завершает уведомление сам.
+// Now a launch that leaves without its own window completes the notification itself.
 
-/// Переменная, в которой запускающий (панель, меню) передаёт ID запуска.
+/// The variable in which the launcher (panel, menu) passes the launch ID.
 pub const STARTUP_ID_ENV: &str = "DESKTOP_STARTUP_ID";
 
-/// ID запуска из окружения; пустое значение — запуска с уведомлением не было.
+/// Launch ID from the environment; an empty value — there was no launch with a notification.
 pub fn startup_id_from(value: Option<&str>) -> Option<String> {
     value.map(str::trim).filter(|v| !v.is_empty()).map(str::to_string)
 }
 
-/// Сообщение «запуск окончен» по спецификации startup-notification:
-/// значение в кавычках, если в нём пробел, кавычка или обратная черта.
+/// The «launch finished» message per the startup-notification spec:
+/// the value is quoted if it contains a space, a quote or a backslash.
 pub fn startup_remove_message(id: &str) -> String {
     let needs_quotes = id.chars().any(|c| c == ' ' || c == '"' || c == '\\');
     if needs_quotes {
@@ -1359,9 +1359,9 @@ pub fn startup_remove_message(id: &str) -> String {
     }
 }
 
-/// Нарезка сообщения на клиентские сообщения X по 20 байт, с завершающим
-/// нулём (как в libstartup-notification и в Qt): первый кусок идёт с типом
-/// `_NET_STARTUP_INFO_BEGIN`, остальные — `_NET_STARTUP_INFO`.
+/// Slice the message into 20-byte X client messages, with a terminating
+/// zero (as in libstartup-notification and in Qt): the first piece goes with type
+/// `_NET_STARTUP_INFO_BEGIN`, the rest with `_NET_STARTUP_INFO`.
 pub fn startup_message_chunks(message: &str) -> Vec<[u8; 20]> {
     let mut bytes = message.as_bytes().to_vec();
     bytes.push(0);
@@ -1375,9 +1375,9 @@ pub fn startup_message_chunks(message: &str) -> Vec<[u8; 20]> {
         .collect()
 }
 
-/// Послать «remove: ID=…» на корневое окно дисплея `display` (`None` —
-/// `DISPLAY` процесса). libX11 грузится в момент вызова: без неё (чистый
-/// Wayland) — честная ошибка, а не падение.
+/// Send «remove: ID=…» to the root window of display `display` (`None` —
+/// the process's `DISPLAY`). libX11 is loaded at call time: without it (pure
+/// Wayland) — an honest error, not a crash.
 pub fn send_startup_remove(display: Option<&str>, id: &str) -> Result<(), String> {
     use std::ffi::CString;
     use x11_dl::xlib;
@@ -1387,8 +1387,8 @@ pub fn send_startup_remove(display: Option<&str>, id: &str) -> Result<(), String
         .map(|d| CString::new(d).map_err(|_| "имя дисплея с нулевым байтом".to_string()))
         .transpose()?;
     let chunks = startup_message_chunks(&startup_remove_message(id));
-    // SAFETY: свой дисплей, открыт и закрыт здесь же; событие заполнено
-    // целиком (обнулено), указатели живут до конца блока.
+    // SAFETY: our own display, opened and closed right here; the event is filled
+    // completely (zeroed), the pointers live until the end of the block.
     unsafe {
         let dpy = (lib.XOpenDisplay)(name.as_ref().map_or(std::ptr::null(), |n| n.as_ptr()));
         if dpy.is_null() {
@@ -1416,10 +1416,10 @@ pub fn send_startup_remove(display: Option<&str>, id: &str) -> Result<(), String
     Ok(())
 }
 
-/// Запуск уходит без своего окна (замок занят): завершить уведомление о
-/// запуске, если оно было. `None` — уведомления не было; иначе — ID и исход
-/// отправки. Переменную не снимаем: повторный «remove» того же ID (если её
-/// унаследует ребёнок на Qt) безвреден, а снятие при живых потоках — нет.
+/// The launch leaves without its own window (the lock is taken): complete the launch
+/// notification if there was one. `None` — there was no notification; otherwise — the ID and the outcome
+/// of sending. We do not unset the variable: a repeated «remove» of the same ID (if a Qt
+/// child inherits it) is harmless, while unsetting it with live threads is not.
 pub fn complete_startup_notification() -> Option<(String, Result<(), String>)> {
     let id = startup_id_from(std::env::var(STARTUP_ID_ENV).ok().as_deref())?;
     let has_x = std::env::var_os("DISPLAY").is_some_and(|d| !d.is_empty());

@@ -1,22 +1,22 @@
-// Источники и библиотеки обоев: список source-плагинов, добавление,
-// правка (waywallen 0.6.0: имя и настройки; в 0.5.0 — только
-// переименование) и удаление библиотеки, автоопределение.
+// Wallpaper sources and libraries: the list of source plugins, adding,
+// editing (waywallen 0.6.0: name and settings; in 0.5.0 — only renaming)
+// and removing a library, auto-detection.
 //
-// Эталон — waywallen `ui/src/query/{source,library}_query.cpp`
-// @e5626c1 (вендорный коммит v0.2.6+9), а не наш Python-мост. Порт чинит два
-// расхождения, которые перенос «как было» законсервировал бы (правило #16):
+// Reference: waywallen `ui/src/query/{source,library}_query.cpp` @e5626c1
+// (vendor commit v0.2.6+9), not our Python bridge. The port fixes two
+// divergences that porting "as it was" would have preserved (rule #16):
 //
-//   1. `SourceListQuery` отдавал карту из пяти ключей, а оригинал на этом
-//      вендоре кладёт ещё `pluginId` и полную схему `settings` — без них
-//      страница настроек источника не знает ни владельца источника, ни
-//      того, какие у него настройки есть.
-//   2. `LibraryAutoDetectQuery` выбрасывал ответ демона целиком
-//      (`lambda rsp: None`), хотя у оригинала есть свойство `addedCount`:
-//      сколько библиотек нашлось, показать было нечем.
+//   1. `SourceListQuery` returned a map of five keys, while the original at
+//      this vendor revision also puts `pluginId` and the full `settings`
+//      schema — without them the source settings page knows neither the
+//      source's owner nor what settings it has.
+//   2. `LibraryAutoDetectQuery` threw away the daemon's answer entirely
+//      (`lambda rsp: None`), although the original has an `addedCount`
+//      property: how many libraries were found had nowhere to be shown.
 //
-// Разбор обоих ответов уехал в ядро (`rexon_core::we_manage`).
+// Parsing of both answers moved to the core (`rexon_core::we_manage`).
 
-/// Мост cxx-qt: пять запросов источников и библиотек.
+/// cxx-qt bridge: five source and library queries.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -49,21 +49,21 @@ pub mod qobject {
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
         #[qproperty(QString, path, READ = path, WRITE = set_path, NOTIFY = path_changed)]
-        /// waywallen 0.5.0: имя новой библиотеки (поле «Name» AddLibraryPage).
-        /// Пустое — имя по умолчанию выбирает демон.
+        /// waywallen 0.5.0: name of the new library (the "Name" field of
+        /// AddLibraryPage). Empty means the daemon picks the default name.
         #[qproperty(QString, name, READ = name, WRITE = set_name, NOTIFY = name_changed)]
         #[qproperty(QString, plugin_name, cxx_name = "pluginName", READ = plugin_name,
                     WRITE = set_plugin_name, NOTIFY = plugin_name_changed)]
-        /// waywallen 0.6.0: значения настроек новой библиотеки
-        /// (`librarySettings` плагина, `LibrarySettingsFields`) — карта.
+        /// waywallen 0.6.0: setting values of the new library (the plugin's
+        /// `librarySettings`, `LibrarySettingsFields`) — a map.
         #[qproperty(QVariant, settings, READ = settings, WRITE = set_settings,
                     NOTIFY = settings_changed)]
         type LibraryAddQuery = super::LibraryAddQueryRust;
 
-        /// waywallen 0.6.0: правка библиотеки — имя и настройки
-        /// (`EditLibraryPage`; в 0.5.0 это был `LibraryRenameQuery` диалога
-        /// «Rename library»). Номер — `f64` по той же причине, что у
-        /// `LibraryRemoveQuery` ниже.
+        /// waywallen 0.6.0: editing a library — name and settings
+        /// (`EditLibraryPage`; in 0.5.0 this was the `LibraryRenameQuery` of the
+        /// "Rename library" dialog). The number is `f64` for the same reason as for
+        /// `LibraryRemoveQuery` below.
         #[qobject]
         #[qml_element]
         #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
@@ -85,14 +85,33 @@ pub mod qobject {
         #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
-        /// ⚠️ `f64`, а не `i64`, — и это не небрежность. Номер библиотеки
-        /// целый, но 64-битное целое наружу в QML выпускать нельзя:
-        /// литеральная привязка «libraryId: 7» отказывает вместе со всем
-        /// документом. Разбор и границы точности — `src/qvalue.rs`,
-        /// живая проверка — `src/qml_int64_probe.rs`.
+        /// Warning: `f64`, not `i64` — and this is not carelessness. The library
+        /// number is an integer, but a 64-bit integer must not be exposed to QML: a
+        /// literal binding "libraryId: 7" fails together with the whole document.
+        /// The analysis and precision limits are in `src/qvalue.rs`, the live check
+        /// in `src/qml_int64_probe.rs`.
         #[qproperty(f64, library_id, cxx_name = "libraryId", READ = library_id,
                     WRITE = set_library_id, NOTIFY = library_id_changed)]
         type LibraryRemoveQuery = super::LibraryRemoveQueryRust;
+
+        /// waywallen 0.6.1: move a library to another folder
+        /// (SourceManagePage, "Change library folder").
+        #[qobject]
+        #[qml_element]
+        #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
+        #[qproperty(QString, error, READ = error, NOTIFY = error_changed)]
+        #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
+        #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
+                    WRITE = set_forward_error, NOTIFY = forward_error_changed)]
+        /// Warning: `f64`, not `i64` — and this is not carelessness. The library
+        /// number is an integer, but a 64-bit integer must not be exposed to QML: a
+        /// literal binding "libraryId: 7" fails together with the whole document.
+        /// The analysis and precision limits are in `src/qvalue.rs`, the live check
+        /// in `src/qml_int64_probe.rs`.
+        #[qproperty(f64, library_id, cxx_name = "libraryId", READ = library_id,
+                    WRITE = set_library_id, NOTIFY = library_id_changed)]
+        #[qproperty(QString, path, READ = path, WRITE = set_path, NOTIFY = path_changed)]
+        type LibraryRelocateQuery = super::LibraryRelocateQueryRust;
 
         #[qobject]
         #[qml_element]
@@ -209,6 +228,31 @@ pub mod qobject {
 
         #[qsignal]
         #[cxx_name = "statusChanged"]
+        fn status_changed(self: Pin<&mut LibraryRelocateQuery>, status: i32);
+        #[qsignal]
+        #[cxx_name = "queryingChanged"]
+        fn querying_changed(self: Pin<&mut LibraryRelocateQuery>);
+        #[qsignal]
+        #[cxx_name = "errorChanged"]
+        fn error_changed(self: Pin<&mut LibraryRelocateQuery>);
+        #[qsignal]
+        #[cxx_name = "forwardErrorChanged"]
+        fn forward_error_changed(self: Pin<&mut LibraryRelocateQuery>);
+        #[qsignal]
+        fn finished(self: Pin<&mut LibraryRelocateQuery>);
+        #[qsignal]
+        #[cxx_name = "errorOccurred"]
+        fn error_occurred(self: Pin<&mut LibraryRelocateQuery>, error: QString);
+        #[qsignal]
+        #[cxx_name = "appErrorOccurred"]
+        fn app_error_occurred(self: Pin<&mut LibraryRelocateQuery>, error: QString);
+        #[qsignal]
+        #[cxx_name = "sendRequest"]
+        fn send_request(self: Pin<&mut LibraryRelocateQuery>, token: i64, field: QString,
+                        request: QByteArray);
+
+        #[qsignal]
+        #[cxx_name = "statusChanged"]
         fn status_changed(self: Pin<&mut LibraryAutoDetectQuery>, status: i32);
         #[qsignal]
         #[cxx_name = "queryingChanged"]
@@ -260,6 +304,12 @@ pub mod qobject {
         #[cxx_name = "libraryIdChanged"]
         fn library_id_changed(self: Pin<&mut LibraryRemoveQuery>);
         #[qsignal]
+        #[cxx_name = "libraryIdChanged"]
+        fn library_id_changed(self: Pin<&mut LibraryRelocateQuery>);
+        #[qsignal]
+        #[cxx_name = "pathChanged"]
+        fn path_changed(self: Pin<&mut LibraryRelocateQuery>);
+        #[qsignal]
         #[cxx_name = "addedCountChanged"]
         fn added_count_changed(self: Pin<&mut LibraryAutoDetectQuery>);
     }
@@ -297,6 +347,14 @@ pub mod qobject {
         #[cxx_name = "setForwardError"]
         fn set_forward_error(self: Pin<&mut LibraryRemoveQuery>, value: bool);
 
+        fn status(self: &LibraryRelocateQuery) -> i32;
+        fn error(self: &LibraryRelocateQuery) -> QString;
+        fn querying(self: &LibraryRelocateQuery) -> bool;
+        #[cxx_name = "forwardError"]
+        fn forward_error(self: &LibraryRelocateQuery) -> bool;
+        #[cxx_name = "setForwardError"]
+        fn set_forward_error(self: Pin<&mut LibraryRelocateQuery>, value: bool);
+
         fn status(self: &LibraryAutoDetectQuery) -> i32;
         fn error(self: &LibraryAutoDetectQuery) -> QString;
         fn querying(self: &LibraryAutoDetectQuery) -> bool;
@@ -326,6 +384,13 @@ pub mod qobject {
         fn library_id(self: &LibraryRemoveQuery) -> f64;
         #[cxx_name = "setLibraryId"]
         fn set_library_id(self: Pin<&mut LibraryRemoveQuery>, value: f64);
+        #[cxx_name = "libraryId"]
+        fn library_id(self: &LibraryRelocateQuery) -> f64;
+        #[cxx_name = "setLibraryId"]
+        fn set_library_id(self: Pin<&mut LibraryRelocateQuery>, value: f64);
+        fn path(self: &LibraryRelocateQuery) -> QString;
+        #[cxx_name = "setPath"]
+        fn set_path(self: Pin<&mut LibraryRelocateQuery>, value: QString);
         #[cxx_name = "libraryId"]
         fn library_id(self: &LibraryEditQuery) -> f64;
         #[cxx_name = "setLibraryId"]
@@ -363,6 +428,12 @@ pub mod qobject {
         fn deliver_response(self: Pin<&mut LibraryRemoveQuery>, token: i64, frame: &QByteArray);
 
         #[qinvokable]
+        fn reload(self: Pin<&mut LibraryRelocateQuery>);
+        #[qinvokable]
+        #[cxx_name = "deliverResponse"]
+        fn deliver_response(self: Pin<&mut LibraryRelocateQuery>, token: i64, frame: &QByteArray);
+
+        #[qinvokable]
         fn reload(self: Pin<&mut LibraryAutoDetectQuery>);
         #[qinvokable]
         #[cxx_name = "deliverResponse"]
@@ -386,7 +457,7 @@ use crate::impl_query_base;
 use crate::query_base::decode_failed;
 use crate::qvalue::{json_to_variant, variant_to_json};
 
-/// Разослать сигналы «кадр не разобрался» — одинаково у всех пяти.
+/// Emit the "frame did not parse" signals — the same for all five.
 macro_rules! on_decode_error {
     ($self:ident) => {{
         let signals = decode_failed(&mut $self.as_mut().rust_mut().base);
@@ -395,7 +466,7 @@ macro_rules! on_decode_error {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// SourceListQuery — список source-плагинов (SourceManagePage/AddLibraryPage)
+// SourceListQuery — list of source plugins (SourceManagePage/AddLibraryPage)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -447,7 +518,7 @@ impl qobject::SourceListQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LibraryAddQuery — добавить путь библиотеки под конкретный плагин
+// LibraryAddQuery — add a library path under a specific plugin
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -456,7 +527,7 @@ pub struct LibraryAddQueryRust {
     path: String,
     name: String,
     plugin_name: String,
-    /// Карта настроек библиотеки, как её выставила страница (JSON).
+    /// Library settings map as the page set it (JSON).
     settings: Value,
     pending: std::collections::BTreeSet<i64>,
 }
@@ -516,9 +587,10 @@ impl qobject::LibraryAddQuery {
         self.settings_changed();
     }
 
-    /// Оригинал молча выходит, если не заданы ОБА поля. Имя (0.5.0)
-    /// обрезается, пустое не шлётся; настройки (0.6.0) — строками
-    /// (`QVariant::toString`). Решение в ядре (`we_client::library_add_request`).
+    /// The original silently returns if BOTH fields are not set. The name
+    /// (0.5.0) is trimmed, an empty one is not sent; the settings (0.6.0) go as
+    /// strings (`QVariant::toString`). The decision is in the core
+    /// (`we_client::library_add_request`).
     pub fn reload(mut self: Pin<&mut Self>) {
         let Some(request) = we_client::library_add_request(
             &self.path,
@@ -538,8 +610,9 @@ impl qobject::LibraryAddQuery {
         if !self.as_mut().rust_mut().pending.remove(&token) {
             return;
         }
-        // Полезной нагрузки нет: важен только исход (`inspect_set` с пустой
-        // лямбдой у оригинала). Общая точка на все такие запросы — в ядре.
+        // There is no useful payload: only the outcome matters (`inspect_set` with
+        // an empty lambda in the original). The shared point for all such requests
+        // is in the core.
         let parsed = {
             let mut rust = self.as_mut().rust_mut();
             rexon_core::we_query::apply_ack(&mut rust.base, frame.as_slice())
@@ -560,7 +633,7 @@ impl qobject::LibraryAddQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LibraryEditQuery — имя и настройки библиотеки (waywallen 0.6.0)
+// LibraryEditQuery — library name and settings (waywallen 0.6.0)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -614,8 +687,9 @@ impl qobject::LibraryEditQuery {
         self.settings_changed();
     }
 
-    /// Номер не положительный или имя пусто после среза пробелов — оригинал
-    /// молча выходит, статус не трогается (`we_client::library_edit_request`).
+    /// The number is not positive or the name is empty after trimming spaces —
+    /// the original silently returns, the status is not touched
+    /// (`we_client::library_edit_request`).
     pub fn reload(mut self: Pin<&mut Self>) {
         let Some(request) = we_client::library_edit_request(
             self.library_id,
@@ -634,7 +708,8 @@ impl qobject::LibraryEditQuery {
         if !self.as_mut().rust_mut().pending.remove(&token) {
             return;
         }
-        // Ответ демона — `Empty`: важен только исход, как у удаления.
+        // The daemon's answer is `Empty`: only the outcome matters, as for
+        // removal.
         let parsed = {
             let mut rust = self.as_mut().rust_mut();
             rexon_core::we_query::apply_ack(&mut rust.base, frame.as_slice())
@@ -655,7 +730,7 @@ impl qobject::LibraryEditQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LibraryRemoveQuery — убрать библиотеку по номеру
+// LibraryRemoveQuery — remove a library by number
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -718,7 +793,86 @@ impl qobject::LibraryRemoveQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LibraryAutoDetectQuery — поиск библиотек на диске
+// LibraryRelocateQuery — move a library to another folder (waywallen 0.6.1)
+// ════════════════════════════════════════════════════════════════════════
+
+#[derive(Default)]
+pub struct LibraryRelocateQueryRust {
+    base: QueryState,
+    library_id: i64,
+    path: String,
+    pending: std::collections::BTreeSet<i64>,
+}
+
+impl_query_base!(LibraryRelocateQuery);
+
+impl qobject::LibraryRelocateQuery {
+    pub fn library_id(&self) -> f64 {
+        crate::qvalue::i64_to_qml(self.library_id)
+    }
+
+    pub fn set_library_id(mut self: Pin<&mut Self>, value: f64) {
+        let value = crate::qvalue::qml_to_i64(value);
+        if self.library_id == value {
+            return;
+        }
+        self.as_mut().rust_mut().library_id = value;
+        self.library_id_changed();
+    }
+
+    pub fn path(&self) -> QString {
+        QString::from(&self.path)
+    }
+
+    pub fn set_path(mut self: Pin<&mut Self>, value: QString) {
+        let value = value.to_string();
+        if self.path == value {
+            return;
+        }
+        self.as_mut().rust_mut().path = value;
+        self.path_changed();
+    }
+
+    /// Same guard as upstream: nothing is sent without an id and a path.
+    pub fn reload(mut self: Pin<&mut Self>) {
+        if self.library_id <= 0 || self.path.is_empty() {
+            return;
+        }
+        let payload = pb::LibraryRelocateRequest {
+            id: self.library_id,
+            path: self.path.clone(),
+        }
+        .encode_to_vec();
+        if let Some(token) = self.as_mut().send_frame("library_relocate", payload) {
+            self.rust_mut().pending.insert(token);
+        }
+    }
+
+    pub fn deliver_response(mut self: Pin<&mut Self>, token: i64, frame: &QByteArray) {
+        if !self.as_mut().rust_mut().pending.remove(&token) {
+            return;
+        }
+        let parsed = {
+            let mut rust = self.as_mut().rust_mut();
+            rexon_core::we_query::apply_ack(&mut rust.base, frame.as_slice())
+        };
+        match parsed {
+            Ok(signals) => self.dispatch(signals),
+            Err(_) => on_decode_error!(self),
+        }
+    }
+
+    pub fn emit_property(self: Pin<&mut Self>, name: &str) {
+        debug_assert!(false, "no signal for property {name}");
+    }
+
+    pub fn dispatch(self: Pin<&mut Self>, signals: Vec<QuerySignal>) {
+        self.dispatch_base(signals);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// LibraryAutoDetectQuery — searching for libraries on disk
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]

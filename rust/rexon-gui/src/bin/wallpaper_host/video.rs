@@ -1,8 +1,10 @@
-// Режим «видео» хоста обоев: что показывать и с какими свойствами.
+// "Video" mode of the wallpaper host: what to show and with which
+// properties.
 //
-// Замена `python -m rexon.video_wallpaper`: те же аргументы, те же
-// переменные окружения, тот же контракт mmap-файла с расширениями оболочки.
-// Разбор устройства и границ — src/wallpaper_host.rs.
+// Replacement for `python -m rexon.video_wallpaper`: the same arguments,
+// the same environment variables, the same mmap file contract with the
+// shell extensions. The design and its boundaries are analysed in
+// src/wallpaper_host.rs.
 
 use std::path::{Path, PathBuf};
 
@@ -14,13 +16,13 @@ use rexon_gui::wallpaper_host::{
 
 use crate::{HostEnv, QmlPlan};
 
-/// Имя модуля в таблице точек входа ядра (`rexon-core::qt_app`).
+/// Module name in the core's entry point table (`rexon-core::qt_app`).
 const ENTRY_MODULE: &str = "rexon.video_wallpaper";
 
-/// Адрес QML внутри статического ресурса модуля `org.rexon.gui`.
+/// QML address inside the static resource of the `org.rexon.gui` module.
 const QML_URL: &str = "qrc:/qt/qml/org/rexon/gui/qml/WallpaperVideo.qml";
 
-/// Метка строк журнала режима.
+/// Log line tag of the mode.
 const TAG: &str = "REXON-WPH";
 
 pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
@@ -41,10 +43,9 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
         properties.insert(QString::from(&prop.name), to_variant(&prop.value));
     }
     env.common_properties(&mut properties, cli.selftest_ms)?;
-    // Громкость из командной строки отменяет слежение за настройкой:
-    // ручной прогон обязан звучать ровно так, как попросили. Из продукта
-    // ключ не приходит — там громкость живёт в настройках и меняется на
-    // ходу.
+    // A volume from the command line cancels following the setting: a manual
+    // run must sound exactly as requested. The option never comes from the
+    // product — there the volume lives in the settings and changes on the fly.
     properties.insert(
         QString::from("volumeFixed"),
         QVariant::from(&cli.volume.unwrap_or(-1.0)),
@@ -70,36 +71,38 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
     })
 }
 
-/// ⚠️ ДО первой звуковой операции Qt и до создания QGuiApplication.
-/// Роль потока Qt Multimedia наружу не отдаёт: значение зашито в саму
-/// библиотеку, и обои уезжали в звуковую систему как `media.role=music` —
-/// то есть в общую ячейку восстановления громкости со всеми музыкальными
-/// плеерами и под приглушение чужими программами. Задать роль можно только
-/// снаружи, переменной окружения, которую звуковой клиент читает при
-/// создании своего контекста; список свойств считает ядро.
+/// Warning: BEFORE the first Qt audio operation and before QGuiApplication
+/// is created. Qt Multimedia does not expose the stream role: the value is
+/// hard-coded into the library itself, and wallpapers went into the sound
+/// system as `media.role=music` — that is, into the shared volume restore
+/// slot with all music players and under ducking by other programs. The
+/// role can only be set from outside, with an environment variable that
+/// the sound client reads when it creates its context; the property list
+/// is computed by the core.
 fn before_app(_plan: &QmlPlan) -> Result<(), String> {
     for (name, value) in rexon_core::wallpaper_audio::stream_env() {
         if std::env::var_os(name).is_none() {
-            // SAFETY: зовётся из main до создания приложения Qt и до любых
-            // потоков — читателей окружения ещё нет.
+            // SAFETY: called from main before the Qt application is created and
+            // before any threads — there are no environment readers yet.
             unsafe { std::env::set_var(name, &value) };
         }
     }
     Ok(())
 }
 
-/// Что играть: видеофайл напрямую либо файл из каталога обоев со свойствами
-/// из его `project.json`.
+/// What to play: a video file directly, or a file from a wallpaper
+/// directory with the properties from its `project.json`.
 fn resolve_target(
     cli: &Cli,
 ) -> Result<(PathBuf, serde_json::Map<String, serde_json::Value>), String> {
     let raw = PathBuf::from(&cli.path);
     let mut path = raw.canonicalize().unwrap_or(raw);
 
-    // Путь на файл ВНУТРИ каталога обоев (`project.json`, `index.html`…) —
-    // так звали прежнюю общую точку входа обоев, и такие вызовы обязаны
-    // продолжать работать: человеку, ткнувшему в project.json, отказ «не
-    // видео и не каталог» ничего не объясняет (правило #13).
+    // A path to a file INSIDE a wallpaper directory (`project.json`,
+    // `index.html`…) — that is how the former shared wallpaper entry point was
+    // called, and such calls must keep working: to someone who pointed at
+    // project.json, the refusal "neither a video nor a directory" explains
+    // nothing (rule #13).
     if rexon_core::wallpaper::use_parent_dir(&path.to_string_lossy(), path.is_file())
         && !is_video_file(&path)
     {
@@ -114,7 +117,7 @@ fn resolve_target(
     }
 
     let (target_file, user_props) = if is_video_file(&path) {
-        // Прямой путь к видеофайлу: своих свойств у него нет.
+        // A direct path to a video file: it has no properties of its own.
         (path.clone(), serde_json::Map::new())
     } else if path.is_dir() {
         from_wallpaper_dir(&path)?
@@ -131,8 +134,8 @@ fn resolve_target(
     Ok((target_file, user_props))
 }
 
-/// Каталог обоев с `project.json`: разбор, определение типа и честный отказ
-/// для всего, что рисует не этот режим.
+/// A wallpaper directory with `project.json`: parsing, type detection and
+/// an honest refusal for everything this mode does not draw.
 fn from_wallpaper_dir(
     dir: &Path,
 ) -> Result<(PathBuf, serde_json::Map<String, serde_json::Value>), String> {
@@ -146,9 +149,9 @@ fn from_wallpaper_dir(
         rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN {w}");
     }
 
-    // Поля `type` может не быть вовсе — и у части официальных обоев WE, и у
-    // обычных работ Мастерской. Тогда тип определяется по содержимому
-    // каталога, как это делает сам Wallpaper Engine.
+    // The `type` field may be missing altogether — both in some official WE
+    // wallpapers and in ordinary Workshop items. Then the type is determined
+    // by the directory content, as Wallpaper Engine itself does.
     let mut wp_type = project.r#type.clone();
     if wp_type.is_empty() {
         wp_type = rexon_core::user_props::infer_type_fs(dir, &project).to_string();
@@ -177,7 +180,8 @@ fn from_wallpaper_dir(
     Ok((target, project.defaults_for_js()))
 }
 
-/// Видеофайл ли это. Список расширений ОДИН на весь продукт и живёт в ядре.
+/// Whether this is a video file. The list of extensions is ONE for the
+/// whole product and lives in the core.
 fn is_video_file(path: &Path) -> bool {
     if !path.is_file() {
         return false;

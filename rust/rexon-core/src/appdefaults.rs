@@ -1,49 +1,49 @@
-//! Порт `rexon/appdefaults.py` — автопереключение приложений по умолчанию
-//! при смене DE (класс `DEAppSwitcher`).
+//! Port of `rexon/appdefaults.py` — automatic switching of default applications
+//! when the DE changes (the `DEAppSwitcher` class).
 //!
-//! Здесь — ЧИСТАЯ логика: таблицы `DE → категория → .desktop`, построение
-//! текста per-DE `mimeapps.list`, определение DE по окружению, построение
-//! argv DE-специфичных команд (kdeglobals/gsettings) и текста XFCE
-//! `helpers.rc`, тексты autostart-`.desktop` и apply-скрипта. Ничего не
-//! исполняется: проверки существования `.desktop`-файлов и наличия бинарей
-//! приходят замыканиями (`exists` / `which` — как `qg`/`qi` в
-//! `system_plan::remove_plan`), а результат выражается структурами
-//! (`ProfileOutcome`, `ApplyDeSpecific` — argv команд + содержимое файла).
-//! Живой subprocess / запись файлов остаются на исполнителе (пока Python
-//! через мост, позже rexon-gui).
+//! Here is the PURE logic: the `DE → category → .desktop` tables, building
+//! the per-DE `mimeapps.list` text, detecting the DE from the environment, building
+//! the argv of DE-specific commands (kdeglobals/gsettings) and the XFCE
+//! `helpers.rc` text, the texts of the autostart `.desktop` and the apply script. Nothing
+//! is executed: checks for existing `.desktop` files and present binaries
+//! come in as closures (`exists` / `which` — like `qg`/`qi` in
+//! `system_plan::remove_plan`), and the result is expressed as structures
+//! (`ProfileOutcome`, `ApplyDeSpecific` — command argv + file contents).
+//! Live subprocesses / file writes stay with the executor (Python
+//! through the bridge for now, rexon-gui later).
 //!
-//! Портировано:
-//!   * таблицы `DE_NATIVE_APPS` (8 DE) + generic-набор тайловых/wlroots WM
-//!     (`wm_app_set`), `MIME_GROUPS`, `_FALLBACKS`, имена per-DE
-//!     `mimeapps.list`, `_XDG_DESKTOP_TO_DE`, `_FM_DESKTOP_CANDIDATES`;
+//! Ported:
+//!   * the `DE_NATIVE_APPS` tables (8 DEs) + a generic set for tiling/wlroots WMs
+//!     (`wm_app_set`), `MIME_GROUPS`, `_FALLBACKS`, per-DE
+//!     `mimeapps.list` names, `_XDG_DESKTOP_TO_DE`, `_FM_DESKTOP_CANDIDATES`;
 //!   * `resolve_de_apps` / `resolve_mimeapps_filename` / `is_tiling_wm` /
 //!     `detect_current_de` / `fm_short_name` / `default_file_manager_for_de`;
-//!   * `resolve_desktop` (с fallback-цепочкой), `generate_profile` (текст
-//!     mimeapps.list байт-в-байт), `apply_de_specific` (+ приватные
+//!   * `resolve_desktop` (with a fallback chain), `generate_profile` (the
+//!     mimeapps.list text byte for byte), `apply_de_specific` (+ the private
 //!     `_apply_kde/_gnome/_mate/_cinnamon/_xfce/_generic_wm`),
 //!     `get_installed_des`, `get_de_apps_info`;
-//!   * текст autostart-`.desktop` (`autostart_desktop_content`); прежний
-//!     bash apply-скрипт на python3 снят 02.10.2026 — автозапуск зовёт бинарь
-//!     с `--apply-defaults`;
-//!   * чистая часть `set_file_manager_default` (выбор `.desktop`-цели +
-//!     argv `xdg-mime default/query`) и regex-хелперы override'а
-//!     `org.freedesktop.FileManager1` (`fm1_exec_basename` / `fm1_matches` /
-//!     `busctl_pid`, argv busctl).
+//!   * the autostart `.desktop` text (`autostart_desktop_content`); the old
+//!     python3 bash apply script was removed on 02.10.2026 — autostart calls the binary
+//!     with `--apply-defaults`;
+//!   * the pure part of `set_file_manager_default` (choosing the `.desktop` target +
+//!     the `xdg-mime default/query` argv) and regex helpers for the
+//!     `org.freedesktop.FileManager1` override (`fm1_exec_basename` / `fm1_matches` /
+//!     `busctl_pid`, busctl argv).
 //!
-//! НЕ портировано (исполнение — при подключении к живому Python/мосту):
-//!   реальный `glob` каталогов `.desktop`, запуск `xdg-mime`/`busctl`,
-//!   запись `mimeapps.list` / `helpers.rc` / autostart, чтение
-//!   `/proc/<pid>/comm` и `os.kill` в `_override_filemanager1`,
-//!   оркестрация `apply_for_current_de` / `on_switch_de` /
-//!   `generate_all_profiles` / `install_autostart` (склейка вокруг чистых
-//!   функций + файловые проверки).
+//! NOT ported (execution — when hooked up to live Python/the bridge):
+//!   the actual `glob` of `.desktop` directories, running `xdg-mime`/`busctl`,
+//!   writing `mimeapps.list` / `helpers.rc` / autostart, reading
+//!   `/proc/<pid>/comm` and `os.kill` in `_override_filemanager1`,
+//!   orchestrating `apply_for_current_de` / `on_switch_de` /
+//!   `generate_all_profiles` / `install_autostart` (glue around the pure
+//!   functions + file checks).
 
 use crate::defaults::{terminal_exec_name, TerminalHome};
 use crate::i18n::{tr, trf};
 use serde::Serialize;
 
 // ============================================================================
-// Таблицы DE → категория → .desktop
+// DE → category → .desktop tables
 // ============================================================================
 
 type AppTable = &'static [(&'static str, &'static str)];
@@ -104,11 +104,11 @@ const XFCE_APPS: AppTable = &[
     ("archive_manager", "xarchiver.desktop"),
 ];
 
-// Budgie: программы Ubuntu Budgie 26.04 (её `defaults.list`), их ставит набор
-// пакетов `budgie` в `system::DE_DATABASE`. Имена `.desktop` сверены со
-// списками файлов пакетов Arch. Музыка у Ubuntu Budgie поделена: FLAC/OGG —
-// Lollypop, MP3/M4A/WAV — VLC; у нас одна категория, и в ней — музыкальная
-// программа стола, Lollypop.
+// Budgie: the programs of Ubuntu Budgie 26.04 (its `defaults.list`), installed by the
+// `budgie` package set in `system::DE_DATABASE`. The `.desktop` names are checked against
+// the Arch package file lists. Ubuntu Budgie splits music: FLAC/OGG —
+// Lollypop, MP3/M4A/WAV — VLC; we have one category, and it holds the desktop's
+// music program, Lollypop.
 const BUDGIE_APPS: AppTable = &[
     ("file_manager", "nemo.desktop"),
     ("terminal", "xfce4-terminal.desktop"),
@@ -120,10 +120,10 @@ const BUDGIE_APPS: AppTable = &[
     ("music_player", "org.gnome.Lollypop.desktop"),
 ];
 
-// Pantheon: родные программы elementary из группы `pantheon` (идентификаторы
-// `.desktop` — `meson.project_name()` их репозиториев; просмотр картинок —
-// отдельный `.viewer` у Photos). Своих PDF-читалки и архиватора у Pantheon
-// нет — их и не записываем.
+// Pantheon: elementary's native programs from the `pantheon` group (the `.desktop`
+// identifiers are `meson.project_name()` of their repositories; the picture viewer is
+// a separate `.viewer` of Photos). Pantheon has no PDF reader or archiver of its own —
+// so we do not write them.
 const PANTHEON_APPS: AppTable = &[
     ("file_manager", "io.elementary.files.desktop"),
     ("terminal", "io.elementary.terminal.desktop"),
@@ -132,8 +132,8 @@ const PANTHEON_APPS: AppTable = &[
     ("video_player", "io.elementary.videos.desktop"),
 ];
 
-// Deepin: программы групп `deepin` и `deepin-extra` (имена `.desktop`
-// сверены с репозиториями linuxdeepin). Своего PDF-читателя в группах нет.
+// Deepin: programs of the `deepin` and `deepin-extra` groups (the `.desktop` names
+// are checked against the linuxdeepin repositories). The groups have no PDF reader of their own.
 const DEEPIN_APPS: AppTable = &[
     ("file_manager", "dde-file-manager.desktop"),
     ("terminal", "deepin-terminal.desktop"),
@@ -151,8 +151,8 @@ const LXQT_APPS: AppTable = &[
     ("archive_manager", "lxqt-archiver.desktop"),
 ];
 
-/// Родные приложения известного DE. None → тайловый/wlroots WM (generic).
-/// Порядок в таблице = порядок словаря Python (важен для итераций).
+/// Native applications of a known DE. None → a tiling/wlroots WM (generic).
+/// Table order = Python dict order (matters for iteration).
 fn native_apps(de_id: &str) -> Option<AppTable> {
     match de_id {
         "kde" => Some(KDE_APPS),
@@ -169,22 +169,22 @@ fn native_apps(de_id: &str) -> Option<AppTable> {
     }
 }
 
-/// Терминал generic-набора по WM — порт `_WM_TERMINALS` (пакеты из system.py).
+/// The generic set's terminal per WM — port of `_WM_TERMINALS` (packages from system.py).
 fn wm_terminal(wm_id: &str) -> &'static str {
     match wm_id {
         "hyprland" => "kitty.desktop",
         "niri" => "alacritty.desktop",
         "sway" => "foot.desktop",
-        // Оба ставятся с foot (`system::DE_DATABASE`); его же зовёт Super+Enter
-        // стартового init River.
+        // Both are installed with foot (`system::DE_DATABASE`); it is also what Super+Enter
+        // of the starter River init calls.
         "river" => "foot.desktop",
         "wayfire" => "foot.desktop",
         _ => "xterm.desktop",
     }
 }
 
-/// Generic-набор дефолтов для тайлового / wlroots WM (любого) —
-/// порт `_wm_app_set`. Один общий набор, терминал по WM (rule #12).
+/// The generic set of defaults for a tiling / wlroots WM (any) —
+/// port of `_wm_app_set`. One shared set, the terminal per WM (rule #12).
 fn wm_app_set(wm_id: &str) -> Vec<(&'static str, String)> {
     vec![
         ("file_manager", "thunar.desktop".to_string()),
@@ -196,7 +196,7 @@ fn wm_app_set(wm_id: &str) -> Vec<(&'static str, String)> {
     ]
 }
 
-/// Legacy / fallback имена `.desktop` — порт `_FALLBACKS` (порядок важен).
+/// Legacy / fallback `.desktop` names — port of `_FALLBACKS` (order matters).
 fn fallbacks(desktop_id: &str) -> &'static [&'static str] {
     match desktop_id {
         "org.gnome.Console.desktop" => {
@@ -213,7 +213,7 @@ fn fallbacks(desktop_id: &str) -> &'static [&'static str] {
 }
 
 // ============================================================================
-// Категория → MIME-типы (порт MIME_GROUPS, порядок как в Python)
+// Category → MIME types (port of MIME_GROUPS, order as in Python)
 // ============================================================================
 
 fn mime_group(category: &str) -> &'static [&'static str] {
@@ -256,46 +256,46 @@ fn mime_group(category: &str) -> &'static [&'static str] {
 }
 
 // ============================================================================
-// Имена per-DE mimeapps.list, XDG-детект, порядок DE
+// Per-DE mimeapps.list names, XDG detection, DE order
 // ============================================================================
 
-/// Порядок DE как в `DE_NATIVE_APPS` после регистрации WM (8 базовых +
-/// hyprland/niri/sway через `setdefault`; River и Wayfire — с 24.10). Важен
-/// для `get_installed_des` и подстрочного поиска в `detect_current_de`.
+/// DE order as in `DE_NATIVE_APPS` after WM registration (8 basic ones +
+/// hyprland/niri/sway via `setdefault`; River and Wayfire — since 24.10). Matters
+/// for `get_installed_des` and the substring search in `detect_current_de`.
 const DE_ORDER: &[&str] = &[
     "kde", "gnome", "mate", "cosmic", "cinnamon-mint", "xfce", "budgie",
     "pantheon", "deepin", "lxqt", "hyprland", "niri", "sway", "river", "wayfire",
 ];
 
-/// Множество «известных» (не-generic) DE — порт `_KNOWN_DE_IDS`.
+/// The set of "known" (non-generic) DEs — port of `_KNOWN_DE_IDS`.
 fn is_known_de(de_id: &str) -> bool {
     DE_ORDER.contains(&de_id)
 }
 
-/// Отвечает на вопрос «нет своего набора родных приложений» — порт
+/// Answers the question "has no native application set of its own" — port of
 /// `_is_tiling_wm`.
 ///
-/// ⚠️ Имя уже́ смысла. Условие «или вообще неизвестный DE» стоит здесь не
-/// случайно: для такого окружения у нас всё равно нет своего списка программ,
-/// и годится тот же общий набор, что для тайловых. Поэтому предикат отвечает
-/// «использовать generic-набор и `<id>-mimeapps.list`», а НЕ «это тайловый
-/// композитор».
+/// ⚠️ The name is narrower than the meaning. The condition "or an unknown DE at all" is here
+/// on purpose: for such a desktop we have no program list of our own anyway,
+/// and the same shared set as for tiling ones fits. So the predicate answers
+/// "use the generic set and `<id>-mimeapps.list`", NOT "this is a tiling
+/// compositor".
 ///
-/// Вопрос «тайловый ли композитор» решает другой источник —
-/// [`crate::de_customization::de_from_id`] → `De::Wlroots`. Не путать: у них
-/// разный состав (здесь любое неизвестное окружение даст `true`).
+/// The question "is it a tiling compositor" is decided by another source —
+/// [`crate::de_customization::de_from_id`] → `De::Wlroots`. Do not confuse them: they
+/// have different contents (here any unknown desktop gives `true`).
 ///
-/// ⚠️ Wayfire родных программ тоже не имеет, но он НЕ тайловый и стоит в
-/// своей секции «Композиторы с эффектами» (`qt_desktops::TILING_IDS`
-/// сверяется с этим предикатом),
-/// поэтому здесь его нет. Общий набор программ он получает по другому
-/// признаку — «своего набора нет» (`native_apps`), см. `apply_de_specific`.
+/// ⚠️ Wayfire has no native programs either, but it is NOT tiling and sits in
+/// its own section "Compositors with effects" (`qt_desktops::TILING_IDS`
+/// is checked against this predicate),
+/// so it is not here. It gets the shared program set by another
+/// criterion — "no set of its own" (`native_apps`), see `apply_de_specific`.
 pub fn is_tiling_wm(de_id: &str) -> bool {
     matches!(de_id, "hyprland" | "niri" | "sway" | "river") || !is_known_de(de_id)
 }
 
-/// Родные приложения DE; для тайлового/wlroots WM — общий набор.
-/// Порт `_resolve_de_apps`.
+/// Native applications of a DE; for a tiling/wlroots WM — the shared set.
+/// Port of `_resolve_de_apps`.
 pub fn resolve_de_apps(de_id: &str) -> Vec<(&'static str, String)> {
     match native_apps(de_id) {
         Some(t) => t.iter().map(|(k, v)| (*k, v.to_string())).collect(),
@@ -303,12 +303,12 @@ pub fn resolve_de_apps(de_id: &str) -> Vec<(&'static str, String)> {
     }
 }
 
-/// Значение категории в наборе (аналог `apps.get(category)`).
+/// A category's value in the set (like `apps.get(category)`).
 fn app_get<'a>(apps: &'a [(&'static str, String)], category: &str) -> Option<&'a str> {
     apps.iter().find(|(k, _)| *k == category).map(|(_, v)| v.as_str())
 }
 
-/// Имя per-DE mimeapps.list — порт `_resolve_mimeapps_filename`.
+/// Per-DE mimeapps.list name — port of `_resolve_mimeapps_filename`.
 pub fn resolve_mimeapps_filename(de_id: &str) -> String {
     let known = match de_id {
         "kde" => Some("kde-mimeapps.list"),
@@ -319,47 +319,47 @@ pub fn resolve_mimeapps_filename(de_id: &str) -> String {
         "xfce" => Some("xfce-mimeapps.list"),
         "budgie" => Some("budgie-mimeapps.list"),
         "pantheon" => Some("pantheon-mimeapps.list"),
-        // `XDG_CURRENT_DESKTOP=DDE` — файл называется по нему, не по «deepin».
+        // `XDG_CURRENT_DESKTOP=DDE` — the file is named after it, not after "deepin".
         "deepin" => Some("dde-mimeapps.list"),
         "hyprland" => Some("hyprland-mimeapps.list"),
         "niri" => Some("niri-mimeapps.list"),
         "sway" => Some("sway-mimeapps.list"),
-        // `XDG_CURRENT_DESKTOP=river` (стартовый init Rexon) и `wayfire`
-        // (Wayfire ставит сам).
+        // `XDG_CURRENT_DESKTOP=river` (Rexon's starter init) and `wayfire`
+        // (Wayfire sets it itself).
         "river" => Some("river-mimeapps.list"),
         "wayfire" => Some("wayfire-mimeapps.list"),
         _ => None,
     };
-    // lxqt и неизвестный WM: `{de_id}-mimeapps.list` (dict.get(...) or default).
+    // lxqt and an unknown WM: `{de_id}-mimeapps.list` (dict.get(...) or default).
     known.map(str::to_string).unwrap_or_else(|| format!("{de_id}-mimeapps.list"))
 }
 
-// ── Чужой автозапуск стола — только в его столе ─────────────────────────────
+// ── A desktop's foreign autostart — only in that desktop ─────────────────
 //
-// Некоторые столы приносят программы, которые стартуют при входе в ЛЮБОЙ
-// стол: их записи в `/etc/xdg/autostart` не ограничены `OnlyShowIn=`.
-// Живой случай 08.11.2026: Deepin притащил менеджер ввода fcitx5 и его
-// помощника; в MATE fcitx5 перехватил раскладки (английская и русская у
-// него в разных группах — Alt+Shift перестал переключать), а значок
-// раскладки MATE пропал. Лечится пользовательской копией записи с
-// `OnlyShowIn=` того стола, который её принёс (`~/.config/autostart`
-// перекрывает системную запись с тем же именем).
+// Some desktops bring programs that start at login to ANY
+// desktop: their records in `/etc/xdg/autostart` are not limited by `OnlyShowIn=`.
+// A live case on 08.11.2026: Deepin brought the fcitx5 input manager and its
+// helper; in MATE fcitx5 hijacked the keyboard layouts (it had English and Russian
+// in different groups — Alt+Shift stopped switching), and the MATE layout
+// icon disappeared. The cure is a user copy of the record with
+// `OnlyShowIn=` of the desktop that brought it (`~/.config/autostart`
+// shadows the system record with the same name).
 
-/// Запись автозапуска, которой место только в своём столе.
+/// An autostart record that belongs only in its own desktop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConfinedAutostart {
-    /// Имя файла в `/etc/xdg/autostart`.
+    /// File name in `/etc/xdg/autostart`.
     pub file: &'static str,
-    /// Значение `OnlyShowIn=` (имена из `XDG_CURRENT_DESKTOP` стола).
+    /// The `OnlyShowIn=` value (names from the desktop's `XDG_CURRENT_DESKTOP`).
     pub only_show_in: &'static str,
-    /// Ограничивать, только если этот пакет стоит КАК ЗАВИСИМОСТЬ: тогда его
-    /// притащил стол. Поставленный человеком сам (например, fcitx5 для
-    /// китайского ввода) не трогаем. `None` — помощник самого стола,
-    /// ограничивается всегда.
+    /// Restrict only if this package is installed AS A DEPENDENCY: then the
+    /// desktop brought it. One installed by the person themselves (for example, fcitx5 for
+    /// Chinese input) is not touched. `None` — the desktop's own helper,
+    /// always restricted.
     pub only_if_dependency: Option<&'static str>,
 }
 
-/// Таблица: что и каким столом ограничивать.
+/// Table: what to restrict and to which desktop.
 pub const CONFINED_AUTOSTARTS: &[ConfinedAutostart] = &[
     ConfinedAutostart {
         file: "fcitx5-helper.desktop",
@@ -373,11 +373,11 @@ pub const CONFINED_AUTOSTARTS: &[ConfinedAutostart] = &[
     },
 ];
 
-/// Пометка в пользовательской копии: её завёл Rexon.
+/// A mark in the user copy: Rexon created it.
 pub const CONFINED_AUTOSTART_MARK: &str = "X-Rexon-Confined=true";
 
-/// Нужна ли копия: системная запись не ограничена столами, а своей копии
-/// у человека нет (её он мог завести сам — тогда решение за ним).
+/// Whether a copy is needed: the system record is not restricted to desktops, and the person
+/// has no copy of their own (they might have created it themselves — then it is their call).
 pub fn needs_confined_autostart(system_text: &str, user_text: Option<&str>) -> bool {
     if user_text.is_some() {
         return false;
@@ -387,8 +387,8 @@ pub fn needs_confined_autostart(system_text: &str, user_text: Option<&str>) -> b
         .any(|l| l.trim_start().starts_with("OnlyShowIn=") || l.trim_start().starts_with("NotShowIn="))
 }
 
-/// Текст пользовательской копии: системная запись без своих `OnlyShowIn=`/
-/// `NotShowIn=`, плюс ограничение столом и пометка Rexon.
+/// Text of the user copy: the system record without its own `OnlyShowIn=`/
+/// `NotShowIn=`, plus the desktop restriction and the Rexon mark.
 pub fn confined_autostart_text(system_text: &str, only_show_in: &str) -> String {
     let mut out = String::new();
     for line in system_text.lines() {
@@ -403,13 +403,13 @@ pub fn confined_autostart_text(system_text: &str, only_show_in: &str) -> String 
     out
 }
 
-/// Имя списка терминалов своего стола — `<стол>-xdg-terminals.list`, где
-/// стол — ПЕРВЫЙ элемент `XDG_CURRENT_DESKTOP` в нижнем регистре: его список
-/// `xdg-terminal-exec` читает раньше всех остальных. Принимает и сырое
-/// `XDG_CURRENT_DESKTOP` (`MATE`, `X-Cinnamon`, `Budgie:GNOME`), и
-/// идентификатор Rexon (`cinnamon-mint` → `x-cinnamon-…`, `deepin` →
-/// `dde-…`) — по тому же правилу имён, что у `<стол>-mimeapps.list`.
-/// `None` — стол неизвестен (пустое окружение): общий список остаётся один.
+/// Name of the desktop's own terminal list — `<desktop>-xdg-terminals.list`, where
+/// the desktop is the FIRST element of `XDG_CURRENT_DESKTOP` in lowercase: its list
+/// is read by `xdg-terminal-exec` before all others. Accepts both the raw
+/// `XDG_CURRENT_DESKTOP` (`MATE`, `X-Cinnamon`, `Budgie:GNOME`) and
+/// a Rexon identifier (`cinnamon-mint` → `x-cinnamon-…`, `deepin` →
+/// `dde-…`) — by the same naming rule as `<desktop>-mimeapps.list`.
+/// `None` — the desktop is unknown (empty environment): only the shared list remains.
 pub fn terminals_list_filename(desktop: &str) -> Option<String> {
     let token = desktop.split(':').next().unwrap_or("").trim().to_lowercase();
     if token.is_empty() {
@@ -424,32 +424,32 @@ pub fn terminals_list_filename(desktop: &str) -> Option<String> {
     Some(format!("{prefix}xdg-terminals.list"))
 }
 
-/// Что сделать при входе в сеанс со списком терминалов своего стола.
+/// What to do at session login with the desktop's own terminal list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalsListPlan {
-    /// Записать родной терминал стола (`content` — весь текст файла).
+    /// Write the desktop's native terminal (`content` — the whole file text).
     Write { filename: String, terminal: String, content: String },
-    /// Человек выбрал терминал для этого стола в Rexon — не трогать.
+    /// The person chose a terminal for this desktop in Rexon — do not touch.
     KeepChosen { filename: String, terminal: String },
-    /// Уже записан родной терминал — ничего не делать.
+    /// The native terminal is already written — do nothing.
     UpToDate { filename: String },
-    /// Родного терминала нет (тайловые WM, незнакомые окружения) или он не
-    /// установлен, либо имя стола неизвестно — список не ведём.
+    /// There is no native terminal (tiling WMs, unknown desktops) or it is not
+    /// installed, or the desktop name is unknown — we do not maintain the list.
     Nothing,
 }
 
-/// Решение «список терминалов своего стола» при входе в сеанс.
+/// The "desktop's own terminal list" decision at session login.
 ///
-/// Чужой список (без пометки Rexon) и прежний «родной» переписываются
-/// родным терминалом стола: именно чужой `mate-xdg-terminals.list` с
-/// GNOME Terminal открывал программы с `Terminal=true` не в mate-terminal
-/// (08.11.2026). Список с пометкой «выбрано человеком» — осознанный выбор во
-/// вкладке «Настройки» — остаётся как есть. Родной терминал — тот же, что
-/// [`apply_de_specific`] пишет в родное место стола (тайловые WM своего не
-/// имеют: у них терминал задаётся конфигом композитора).
+/// A foreign list (without the Rexon mark) and an earlier "native" one are rewritten
+/// with the desktop's native terminal: it was exactly a foreign `mate-xdg-terminals.list` with
+/// GNOME Terminal that opened programs with `Terminal=true` outside mate-terminal
+/// (08.11.2026). A list marked "chosen by the person" — a deliberate choice in
+/// the "Settings" tab — stays as is. The native terminal is the same one
+/// [`apply_de_specific`] writes to the desktop's native place (tiling WMs have none
+/// of their own: their terminal is set by the compositor config).
 ///
-/// `desktop` — сырое `XDG_CURRENT_DESKTOP`; `existing` — текущий текст
-/// списка (None — файла нет).
+/// `desktop` — the raw `XDG_CURRENT_DESKTOP`; `existing` — the current text of
+/// the list (None — no file).
 pub fn native_terminals_list_plan(
     de_id: &str,
     desktop: &str,
@@ -479,15 +479,15 @@ pub fn native_terminals_list_plan(
     TerminalsListPlan::Write { filename, terminal, content }
 }
 
-/// Определить текущий DE — порт `_detect_current_de`. Вход — значения
-/// окружения (`XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, наличие
-/// `WAYLAND_DISPLAY`) вместо чтения `os.environ` внутри.
+/// Detect the current DE — port of `_detect_current_de`. The input is environment
+/// values (`XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, presence of
+/// `WAYLAND_DISPLAY`) instead of reading `os.environ` inside.
 ///
-/// Своей таблицы окружений здесь больше нет — она одна на весь продукт
-/// ([`crate::system::detect_current_de`]). Попутно починены два дефекта
-/// оригинала: токены сравнивались С УЧЁТОМ РЕГИСТРА (`kde` вместо `KDE` не
-/// опознавался), а имя сеанса не знало ни `plasma`, ни `cinnamon` — самые
-/// ходовые значения `DESKTOP_SESSION` на Plasma и на Mint давали «не знаю».
+/// There is no desktop table of its own here anymore — there is one for the whole product
+/// ([`crate::system::detect_current_de`]). Two defects of the original were fixed
+/// along the way: tokens were compared CASE-SENSITIVELY (`kde` instead of `KDE` was not
+/// recognized), and the session name knew neither `plasma` nor `cinnamon` — the most
+/// common `DESKTOP_SESSION` values on Plasma and on Mint gave "don't know".
 pub fn detect_current_de(
     xdg_current_desktop: &str,
     desktop_session: &str,
@@ -497,11 +497,11 @@ pub fn detect_current_de(
 }
 
 // ============================================================================
-// resolve_desktop + короткие имена файловых менеджеров
+// resolve_desktop + short file manager names
 // ============================================================================
 
-/// Вернуть `desktop_id`, если он существует, иначе первый существующий
-/// fallback, иначе None — порт `_resolve_desktop`.
+/// Return `desktop_id` if it exists, otherwise the first existing
+/// fallback, otherwise None — port of `_resolve_desktop`.
 pub fn resolve_desktop(desktop_id: &str, exists: &dyn Fn(&str) -> bool) -> Option<String> {
     if exists(desktop_id) {
         return Some(desktop_id.to_string());
@@ -514,10 +514,10 @@ pub fn resolve_desktop(desktop_id: &str, exists: &dyn Fn(&str) -> bool) -> Optio
     None
 }
 
-/// Короткие имена файловых менеджеров, которые знает Rexon — В ПОРЯДКЕ
-/// предпочтения. Один список на программу: из него собирается и разбор
-/// `.desktop`-имени, и набор пунктов во вкладке «Настройки» (правило #12 —
-/// новый файловый менеджер добавляется в одном месте).
+/// Short names of file managers Rexon knows — IN ORDER of
+/// preference. One list per program: both parsing the
+/// `.desktop` name and the set of options in the "Settings" tab are built from it (rule #12 —
+/// a new file manager is added in one place).
 pub const FM_SHORT_NAMES: &[&str] = &[
     "dolphin",
     "nautilus",
@@ -531,8 +531,8 @@ pub const FM_SHORT_NAMES: &[&str] = &[
     "dde-file-manager",
 ];
 
-/// Короткое имя FM (как хранит SettingsManager) → кандидаты `.desktop`.
-/// Первый существующий выигрывает. Порт `_FM_DESKTOP_CANDIDATES` (порядок!).
+/// Short FM name (as SettingsManager stores it) → `.desktop` candidates.
+/// The first existing one wins. Port of `_FM_DESKTOP_CANDIDATES` (order!).
 fn fm_desktop_candidates(short: &str) -> Option<&'static [&'static str]> {
     match short {
         "dolphin" => Some(&["org.kde.dolphin.desktop", "dolphin.desktop"]),
@@ -551,12 +551,12 @@ fn fm_desktop_candidates(short: &str) -> Option<&'static [&'static str]> {
     }
 }
 
-/// «org.kde.dolphin.desktop» → «dolphin» — порт `_fm_short_name`.
+/// "org.kde.dolphin.desktop" → "dolphin" — port of `_fm_short_name`.
 pub fn fm_short_name(fm_id: &str, desktop: &str) -> String {
     if !fm_id.ends_with(".desktop") {
         return fm_id.to_lowercase();
     }
-    // Порядок словаря _FM_DESKTOP_CANDIDATES.
+    // The order of the _FM_DESKTOP_CANDIDATES dict.
     for short in FM_SHORT_NAMES {
         if let Some(cands) = fm_desktop_candidates(short) {
             if cands.contains(&desktop) {
@@ -569,10 +569,10 @@ pub fn fm_short_name(fm_id: &str, desktop: &str) -> String {
     stem.rsplit('.').next().unwrap_or(stem).to_lowercase()
 }
 
-/// Режим «auto»: DE → короткое имя родного файлового менеджера —
-/// порт `default_file_manager_for_de`. `which` — `shutil.which` (наличие
-/// бинаря); ветка перебора фактически недостижима (resolve_de_apps всегда
-/// даёт file_manager), сохранена для паритета.
+/// "auto" mode: DE → short name of the native file manager —
+/// port of `default_file_manager_for_de`. `which` — `shutil.which` (presence of
+/// a binary); the iteration branch is effectively unreachable (resolve_de_apps always
+/// gives a file_manager), kept for parity.
 pub fn default_file_manager_for_de(de: Option<&str>, which: &dyn Fn(&str) -> bool) -> String {
     let de_l = de.unwrap_or("").to_lowercase();
     let apps = resolve_de_apps(&de_l);
@@ -588,30 +588,30 @@ pub fn default_file_manager_for_de(de: Option<&str>, which: &dyn Fn(&str) -> boo
 }
 
 // ============================================================================
-// generate_profile — текст per-DE mimeapps.list
+// generate_profile — the per-DE mimeapps.list text
 // ============================================================================
 
-/// Результат `generate_profile`. Исполнитель дописывает `filepath =
-/// ~/.config/{filename}`: при `Write` пишет `content` и возвращает
-/// `(true, filepath)`; `Skip`/`NoApps` — готовые `(true|false, message)`.
+/// The result of `generate_profile`. The executor appends `filepath =
+/// ~/.config/{filename}`: on `Write` it writes `content` and returns
+/// `(true, filepath)`; `Skip`/`NoApps` are ready `(true|false, message)`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ProfileOutcome {
-    /// DE не установлен (file_manager не найден) → `(true, message)`.
+    /// The DE is not installed (file_manager not found) → `(true, message)`.
     Skip { message: String },
-    /// Нет доступных приложений → `(false, message)`. Практически недостижимо
-    /// (file_manager даёт хотя бы одну ассоциацию), сохранено для паритета.
+    /// No applications available → `(false, message)`. Practically unreachable
+    /// (file_manager gives at least one association), kept for parity.
     NoApps { message: String },
-    /// Записать `content` в `~/.config/{filename}`; `count` ассоциаций.
+    /// Write `content` to `~/.config/{filename}`; `count` associations.
     Write { filename: String, content: String, count: usize },
 }
 
-/// Порт `DEAppSwitcher.generate_profile`. `exists` — `_desktop_exists`.
+/// Port of `DEAppSwitcher.generate_profile`. `exists` — `_desktop_exists`.
 pub fn generate_profile(de_id: &str, exists: &dyn Fn(&str) -> bool) -> ProfileOutcome {
     let apps = resolve_de_apps(de_id);
     let filename = resolve_mimeapps_filename(de_id);
 
-    // Проверка «установлен ли DE»: file_manager DE не найден → пропуск молча.
+    // The "is the DE installed" check: the DE's file_manager not found → silent skip.
     if let Some(fm) = app_get(&apps, "file_manager") {
         if !exists(fm) {
             return ProfileOutcome::Skip {
@@ -621,18 +621,18 @@ pub fn generate_profile(de_id: &str, exists: &dyn Fn(&str) -> bool) -> ProfileOu
         }
     }
 
-    // MIME → .desktop (dict Python; итог сортируется по MIME).
+    // MIME → .desktop (a Python dict; the result is sorted by MIME).
     let mut associations: Vec<(&'static str, String)> = Vec::new();
     for (category, desktop_id) in &apps {
         if *category == "terminal" || *category == "screenshot" {
-            continue; // терминал/скриншот — не через MIME
+            continue; // terminal/screenshot — not via MIME
         }
         let Some(resolved) = resolve_desktop(desktop_id, exists) else {
             continue;
         };
         for mime in mime_group(category) {
-            // dict[mime] = resolved (перезапись при повторе; MIME-группы
-            // не пересекаются, так что перезаписей нет).
+            // dict[mime] = resolved (overwritten on repeat; MIME groups
+            // do not overlap, so there are no overwrites).
             if let Some(e) = associations.iter_mut().find(|(m, _)| m == mime) {
                 e.1 = resolved.clone();
             } else {
@@ -640,11 +640,11 @@ pub fn generate_profile(de_id: &str, exists: &dyn Fn(&str) -> bool) -> ProfileOu
             }
         }
     }
-    // Браузер не перезаписываем (Firefox/Chrome кроссплатформенные).
+    // We do not overwrite the browser (Firefox/Chrome are cross-platform).
 
     if associations.is_empty() {
         return ProfileOutcome::NoApps {
-            // Имя стола для человека, а не идентификатор («для unknown»).
+            // The desktop name for the person, not the identifier ("for unknown").
             message: crate::screenshots::place_de_name(
                 // TRANSLATORS: %1 is the name of a desktop environment.
                 &tr("No apps available for %1"),
@@ -665,25 +665,25 @@ pub fn generate_profile(de_id: &str, exists: &dyn Fn(&str) -> bool) -> ProfileOu
 }
 
 // ============================================================================
-// apply_de_specific — DE-специфичные настройки терминала
+// apply_de_specific — DE-specific terminal settings
 // ============================================================================
 
-/// DE-специфичный план: argv команд `safe_run` в порядке вызова, содержимое
-/// XFCE `helpers.rc` (если DE = xfce), логи. Порт `apply_de_specific`.
+/// DE-specific plan: argv of `safe_run` commands in call order, the contents of
+/// XFCE `helpers.rc` (if DE = xfce), logs. Port of `apply_de_specific`.
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 pub struct ApplyDeSpecific {
-    /// argv каждого `safe_run(..., capture_output=True)`.
+    /// The argv of each `safe_run(..., capture_output=True)`.
     pub commands: Vec<Vec<String>>,
-    /// Новое содержимое `~/.config/xfce4/helpers.rc` (пишется исполнителем).
+    /// New contents of `~/.config/xfce4/helpers.rc` (written by the executor).
     pub helpers_rc: Option<String>,
-    /// Правки чужих конфигов по месту (LXQt: `lxqt-qtxdg.conf`). Пути
-    /// начинаются с `~/.config/` — исполнитель раскрывает их тем же
-    /// `expand`, что и `helpers.rc` (с учётом `$XDG_CONFIG_HOME`).
+    /// In-place edits of foreign configs (LXQt: `lxqt-qtxdg.conf`). Paths
+    /// start with `~/.config/` — the executor expands them with the same
+    /// `expand` as `helpers.rc` (taking `$XDG_CONFIG_HOME` into account).
     pub file_steps: Vec<crate::defaults::TermStep>,
     pub logs: Vec<String>,
 }
 
-/// Команды (`Run`) из общей таблицы терминала [`crate::defaults::terminal_home_steps`].
+/// Commands (`Run`) from the shared terminal table [`crate::defaults::terminal_home_steps`].
 fn terminal_commands(home: TerminalHome, term: &str) -> Vec<Vec<String>> {
     crate::defaults::terminal_home_steps(home, term, "~/.config")
         .into_iter()
@@ -695,9 +695,9 @@ fn terminal_commands(home: TerminalHome, term: &str) -> Vec<Vec<String>> {
 }
 
 
-/// Порт `apply_de_specific`. `exists`/`which` — `_desktop_exists`/
-/// `shutil.which`; `xfce_helpers_existing` — прочитанный существующий
-/// `helpers.rc` (None, если файла нет; учитывается только для xfce).
+/// Port of `apply_de_specific`. `exists`/`which` — `_desktop_exists`/
+/// `shutil.which`; `xfce_helpers_existing` — the existing `helpers.rc` as read
+/// (None if there is no file; only taken into account for xfce).
 pub fn apply_de_specific(
     de_id: &str,
     exists: &dyn Fn(&str) -> bool,
@@ -714,14 +714,14 @@ pub fn apply_de_specific(
     )
 }
 
-/// То же, но с терминалом, который человек выбрал для этого стола во вкладке
-/// «Настройки» (`chosen_terminal` — из списка своего стола с пометкой
-/// «выбрано человеком», см. [`native_terminals_list_plan`]). Выбор человека
-/// главнее родного терминала (решение Wehrwolfmann 08.11.2026): он идёт во
-/// ВСЕ родные места стола. Выбранный терминал не установлен — остаётся родной,
-/// и это сказано в журнале. `xfce_helper_exists` — есть ли у системы
-/// помощник exo для программы (для выбранного терминала XFCE без помощника
-/// заводится свой `custom-TerminalEmulator`, как во вкладке «Настройки»).
+/// The same, but with the terminal the person chose for this desktop in the
+/// "Settings" tab (`chosen_terminal` — from the desktop's own list marked
+/// "chosen by the person", see [`native_terminals_list_plan`]). The person's choice
+/// takes priority over the native terminal (Wehrwolfmann's decision of 08.11.2026): it goes into
+/// ALL the desktop's native places. If the chosen terminal is not installed, the native one stays,
+/// and the log says so. `xfce_helper_exists` — whether the system has an exo
+/// helper for the program (for a chosen XFCE terminal without a helper
+/// our own `custom-TerminalEmulator` is created, as in the "Settings" tab).
 pub fn apply_de_specific_with_terminal(
     de_id: &str,
     chosen_terminal: Option<&str>,
@@ -752,8 +752,8 @@ pub fn apply_de_specific_with_terminal(
         }
     }
     let mut out = apply_de_specific_for(de_id, &apps, exists, which, xfce_helpers_existing);
-    // XFCE: имя помощника в `helpers.rc` пишет `apply_xfce`, но программе без
-    // помощника системы нужен свой — те же шаги, что у вкладки «Настройки».
+    // XFCE: the helper name in `helpers.rc` is written by `apply_xfce`, but a program without
+    // a system helper needs its own — the same steps as in the "Settings" tab.
     if let (Some(c), "xfce") = (&chosen, de_id) {
         out.file_steps.extend(crate::defaults::terminal_home_steps_with(
             TerminalHome::Xfce,
@@ -784,7 +784,7 @@ fn apply_de_specific_for(
         "cinnamon-mint" => apply_cinnamon(terminal, which),
         "xfce" => apply_xfce(apps, xfce_helpers_existing),
         "lxqt" => apply_lxqt(terminal),
-        // Budgie: схема GNOME, а также схема Cinnamon — её читает Nemo
+        // Budgie: the GNOME schema, and also the Cinnamon schema — Nemo reads it
         // (`crate::defaults::terminal_extra_homes`).
         "budgie" => {
             let mut out = apply_gnome(terminal, which);
@@ -795,15 +795,15 @@ fn apply_de_specific_for(
             }
             out
         }
-        // Pantheon: своего ключа терминала в схемах io.elementary.* нет —
-        // родное место то же, что у GNOME.
+        // Pantheon: the io.elementary.* schemas have no terminal key of their own —
+        // the native place is the same as GNOME's.
         "pantheon" => apply_gnome(terminal, which),
         "deepin" => apply_deepin(terminal, which),
         "cosmic" => ApplyDeSpecific {
             logs: vec![tr("ℹ️ COSMIC: default apps via XDG MIME (no gsettings)")],
             ..Default::default()
         },
-        // Своего набора программ нет — тайловые, Wayfire и незнакомые.
+        // No program set of its own — tiling ones, Wayfire and unknown ones.
         _ if native_apps(de_id).is_none() => apply_generic_wm(de_id, terminal),
         _ => ApplyDeSpecific::default(),
     }
@@ -835,7 +835,7 @@ fn apply_gnome(terminal: Option<&str>, which: &dyn Fn(&str) -> bool) -> ApplyDeS
     out
 }
 
-/// Deepin: терминал — своя схема `com.deepin.desktop.default-applications.terminal`.
+/// Deepin: the terminal is its own schema `com.deepin.desktop.default-applications.terminal`.
 fn apply_deepin(terminal: Option<&str>, which: &dyn Fn(&str) -> bool) -> ApplyDeSpecific {
     let mut out = ApplyDeSpecific::default();
     if !which("gsettings") {
@@ -875,8 +875,8 @@ fn apply_cinnamon(terminal: Option<&str>, which: &dyn Fn(&str) -> bool) -> Apply
     out
 }
 
-/// LXQt: терминал libqtxdg (`lxqt-qtxdg.conf`) — его берут панель, lxqt-runner
-/// и «Открыть в терминале» программ на libqtxdg.
+/// LXQt: the libqtxdg terminal (`lxqt-qtxdg.conf`) — used by the panel, lxqt-runner
+/// and "Open in terminal" of libqtxdg programs.
 fn apply_lxqt(terminal: Option<&str>) -> ApplyDeSpecific {
     let mut out = ApplyDeSpecific::default();
     if let Some(term) = terminal {
@@ -886,25 +886,25 @@ fn apply_lxqt(terminal: Option<&str>) -> ApplyDeSpecific {
     out
 }
 
-/// Имя XFCE-помощника файлового менеджера по `.desktop` — короткое имя
-/// программы ([`fm_short_name`]), под которым лежат и помощники системы
+/// Name of the XFCE file manager helper by `.desktop` — the program's short
+/// name ([`fm_short_name`]), which the system helpers are also named after
 /// (`/usr/share/xfce4/helpers/thunar.desktop`).
 ///
-/// Починка 02.10.2026: порт `desktop_to_helper` писал `Thunar` с заглавной,
-/// а файл помощника — `thunar.desktop`; на файловой системе с учётом регистра
-/// exo его не находил, и вместо Thunar открывалось окно выбора программы.
-/// Умолчание самого XFCE (`/etc/xdg/xfce4/helpers.rc`) — `FileManager=thunar`.
+/// Fix of 02.10.2026: the `desktop_to_helper` port wrote `Thunar` capitalized,
+/// while the helper file is `thunar.desktop`; on a case-sensitive file system
+/// exo did not find it, and instead of Thunar a program chooser window opened.
+/// XFCE's own default (`/etc/xdg/xfce4/helpers.rc`) is `FileManager=thunar`.
 fn xfce_helper_name(desktop_id: &str) -> String {
     fm_short_name(desktop_id, desktop_id)
 }
 
-/// Шаги «файловый менеджер по умолчанию» в родном месте окружения сверх
-/// `xdg-mime` — общие для вкладки «Настройки» и стенда. Сейчас это XFCE:
-/// `helpers.rc FileManager=` (его читают `exo-open --launch FileManager`,
-/// панель и рабочий стол XFCE), при отсутствии помощника системы — свой
-/// `custom-FileManager` (см. [`crate::defaults::xfce_helper_steps`]).
-/// `desktop` — `XDG_CURRENT_DESKTOP` или идентификатор Rexon; `cfg` —
-/// каталог настроек.
+/// "Default file manager" steps in the desktop's native place beyond
+/// `xdg-mime` — shared by the "Settings" tab and the test bench. Currently this is XFCE:
+/// `helpers.rc FileManager=` (read by `exo-open --launch FileManager`,
+/// the XFCE panel and desktop), and when there is no system helper — our own
+/// `custom-FileManager` (see [`crate::defaults::xfce_helper_steps`]).
+/// `desktop` — `XDG_CURRENT_DESKTOP` or a Rexon identifier; `cfg` —
+/// the settings directory.
 pub fn file_manager_home_steps(
     fm_desktop: &str,
     desktop: &str,
@@ -921,7 +921,7 @@ pub fn file_manager_home_steps(
 
 fn apply_xfce(apps: &[(&'static str, String)], existing: Option<&str>) -> ApplyDeSpecific {
     let mut out = ApplyDeSpecific::default();
-    // Существующие пары k=v (dict — перезапись; итог сортируется).
+    // Existing k=v pairs (a dict — overwritten; the result is sorted).
     let mut lines: Vec<(String, String)> = Vec::new();
     if let Some(text) = existing {
         for line in text.lines() {
@@ -939,11 +939,11 @@ fn apply_xfce(apps: &[(&'static str, String)], existing: Option<&str>) -> ApplyD
             }
         }
     }
-    // Категория → ключ helper'а (порядок Python dict).
+    // Category → helper key (Python dict order).
     for (cat, helper_key) in [("terminal", "TerminalEmulator"), ("file_manager", "FileManager")] {
         if let Some(desktop_id) = app_get(apps, cat) {
-            // Имя помощника терминала — из общей таблицы (то же, что пишет
-            // вкладка «Настройки»): у помощников exo имена в нижнем регистре.
+            // The terminal helper name — from the shared table (the same one the
+            // "Settings" tab writes): exo helper names are lowercase.
             let helper_name = if cat == "terminal" {
                 terminal_exec_name(desktop_id)
             } else {
@@ -979,11 +979,11 @@ fn apply_generic_wm(de_id: &str, terminal: Option<&str>) -> ApplyDeSpecific {
 }
 
 // ============================================================================
-// Информация / список установленных DE
+// Information / list of installed DEs
 // ============================================================================
 
-/// Список DE, для которых найден хотя бы file_manager — порт
-/// `get_installed_des` (итерация в порядке `DE_ORDER`).
+/// List of DEs for which at least a file_manager was found — port of
+/// `get_installed_des` (iteration in `DE_ORDER` order).
 pub fn installed_des(exists: &dyn Fn(&str) -> bool) -> Vec<String> {
     let mut out = Vec::new();
     for de_id in DE_ORDER {
@@ -997,7 +997,7 @@ pub fn installed_des(exists: &dyn Fn(&str) -> bool) -> Vec<String> {
     out
 }
 
-/// Таблица `категория → resolved_desktop_id | None` — порт `get_de_apps_info`.
+/// The table `category → resolved_desktop_id | None` — port of `get_de_apps_info`.
 pub fn de_apps_info(
     de_id: &str,
     exists: &dyn Fn(&str) -> bool,
@@ -1009,32 +1009,32 @@ pub fn de_apps_info(
 }
 
 // ============================================================================
-// Autostart / apply-скрипт (тексты)
+// Autostart / apply script (texts)
 // ============================================================================
 
-/// Программа для `Exec=` автозапуска дефолтов (флаг `--apply-defaults`
-/// добавляет [`autostart_desktop_content`]). `None` — запускать нечем.
+/// The program for the defaults autostart `Exec=` (the `--apply-defaults` flag
+/// is added by [`autostart_desktop_content`]). `None` — nothing to launch with.
 ///
-/// ⚠️ Вход выбирает ТА ЖЕ функция, что у ярлыка и лотка
-/// ([`crate::installer::launch_entry_live`]), — сюда он приходит готовым.
-/// Rust-вход — бинарь окна: он отрабатывает `--apply-defaults` без окна
-/// (`cli::run_headless`), и интерпретатор при входе в сеанс не поднимается.
-/// Python-вход (откат) — как прежде: `rexon` из `PATH`, иначе сам
-/// работающий бинарь.
+/// ⚠️ The entry point is chosen by THE SAME function as for the shortcut and the tray
+/// ([`crate::installer::launch_entry_live`]) — it arrives here ready.
+/// The Rust entry is the window binary: it handles `--apply-defaults` without a window
+/// (`cli::run_headless`), and no interpreter is brought up at session login.
+/// The Python entry (rollback) — as before: `rexon` from `PATH`, otherwise the
+/// running binary itself.
 ///
-/// ⭐ Починка при переносе: путь уходил в `Exec=` без кавычек, и каталог с
-/// пробелом разрывал команду на два аргумента. Теперь любой вход — по
-/// правилам Desktop Entry ([`crate::installer::desktop_exec_arg`]).
+/// ⭐ Fix during the port: the path went into `Exec=` without quotes, and a directory with
+/// a space split the command into two arguments. Now any entry follows the
+/// Desktop Entry rules ([`crate::installer::desktop_exec_arg`]).
 pub fn autostart_exec_for(
     entry: &crate::installer::LaunchEntry,
     rexon_path: Option<&str>,
     self_exe: Option<&str>,
 ) -> Option<String> {
     use crate::installer::desktop_exec_arg;
-    // Общее правило — [`crate::app::launch_program`], ОДНО на лоток,
-    // заставку входа и эту запись. Своё здесь только последнее звено:
-    // сам работающий бинарь Rexon, который и обрабатывает
-    // `--apply-defaults`, — посредник для этого маршрута не нужен.
+    // The shared rule is [`crate::app::launch_program`], ONE for the tray,
+    // the login splash and this record. Only the last link is our own here:
+    // the running Rexon binary itself, which handles
+    // `--apply-defaults` — no intermediary is needed for this route.
     crate::app::launch_program(entry, rexon_path).or_else(|| {
         self_exe
             .map(str::trim)
@@ -1046,23 +1046,23 @@ pub fn autostart_exec_for(
 // TRANSLATORS: Description of the autostart entry that applies Rexon's default applications at login (shown in the desktop's autostart settings).
 const AUTOSTART_COMMENT: &str = crate::i18n::n_("Switches default applications for the current desktop environment");
 
-/// Шаблон autostart-`.desktop` — порт `_AUTOSTART_DESKTOP`.
+/// The autostart `.desktop` template — port of `_AUTOSTART_DESKTOP`.
 ///
-/// `Comment` — на всех языках каталога ([`crate::system_l10n::desktop_key`]):
-/// прежде он был только русским, без ключа языка, и английский покупатель
-/// видел русский.
+/// `Comment` — in all catalog languages ([`crate::system_l10n::desktop_key`]):
+/// previously it was Russian only, without a language key, and an English buyer
+/// saw Russian.
 ///
-/// ⛔ Фазы запуска (`X-GNOME-Autostart-Phase`) здесь НЕТ, и возвращать её
-/// нельзя. Прежний шаблон нёс `Initialization`, а gnome-session 49+
-/// сторонние записи с фазой не исполняет вовсе («sets
+/// ⛔ There is NO launch phase (`X-GNOME-Autostart-Phase`) here, and it must not
+/// be brought back. The old template carried `Initialization`, and gnome-session 49+
+/// does not execute third-party records with a phase at all ("sets
 /// X-GNOME-Autostart-Phase, but gnome-session no longer manages session
-/// services» в журнале) — в GNOME дефолты при входе молча не применялись.
-/// Ранний запуск больше никому не нужен: mimeapps читаются при открытии
-/// файла, а слот FileManager1 у живого процесса забирает
-/// [`crate::appdefaults_exec::DeAppSwitcher::ensure_filemanager1`]. Запись
-/// одна на все сеансы (`~/.config/autostart`), так что «фаза только для
-/// Cinnamon/MATE» невозможна — нужен общий знаменатель. Старые файлы
-/// чинит [`heal_autostart_text`].
+/// services" in the journal) — in GNOME the defaults were silently not applied at login.
+/// Nobody needs an early start anymore: mimeapps are read when a file
+/// is opened, and the FileManager1 slot is taken from a live process by
+/// [`crate::appdefaults_exec::DeAppSwitcher::ensure_filemanager1`]. There is one record
+/// for all sessions (`~/.config/autostart`), so "a phase only for
+/// Cinnamon/MATE" is impossible — a common denominator is needed. Old files
+/// are fixed by [`heal_autostart_text`].
 pub fn autostart_desktop_content(exec_path: &str) -> String {
     format!(
         "[Desktop Entry]\n\
@@ -1076,20 +1076,20 @@ pub fn autostart_desktop_content(exec_path: &str) -> String {
     )
 }
 
-/// Ключ фазы gnome-session, которого в нашей записи быть не должно (см.
+/// The gnome-session phase key that must not be in our record (see
 /// [`autostart_desktop_content`]).
 pub const LEGACY_AUTOSTART_PHASE_KEY: &str = "X-GNOME-Autostart-Phase";
 
-/// Починка уже лежащей у человека записи автозапуска дефолтов: снять строку
-/// фазы, всё остальное (Exec, `NotShowIn=` от зеркала композиторов,
-/// перевод) оставить как есть. `None` — чинить нечего.
+/// Fixing the defaults autostart record the person already has: remove the phase
+/// line, leave everything else (Exec, `NotShowIn=` from the compositor mirror,
+/// the translation) as is. `None` — nothing to fix.
 ///
-/// Перезаписи «при следующем переключении стола» мало: в GNOME 49+ сама
-/// запись не исполняется, и сеанс GNOME её не исправит никогда. Поэтому
-/// починку зовёт ещё и вход в сеанс любого другого стола
+/// Rewriting "on the next desktop switch" is not enough: in GNOME 49+ the
+/// record itself is not executed, and the GNOME session will never fix it. So
+/// the fix is also called by session login to any other desktop
 /// ([`crate::appdefaults_exec::DeAppSwitcher::apply_for_current_de`]):
-/// там старая запись исполняется и сама себя чинит к следующему входу в
-/// GNOME. Переключение стола через Rexon пишет запись заново целиком.
+/// there the old record is executed and fixes itself for the next login to
+/// GNOME. Switching the desktop through Rexon rewrites the whole record.
 pub fn heal_autostart_text(text: &str) -> Option<String> {
     let is_phase = |l: &str| {
         l.trim_start()
@@ -1103,13 +1103,13 @@ pub fn heal_autostart_text(text: &str) -> Option<String> {
 }
 
 // ============================================================================
-// set_file_manager_default (чистая часть) + FileManager1 regex-хелперы
+// set_file_manager_default (pure part) + FileManager1 regex helpers
 // ============================================================================
 
 pub const FM1_NAME: &str = "org.freedesktop.FileManager1";
 
-/// Выбор целевого `.desktop` для FM по умолчанию — чистая часть
-/// `set_file_manager_default` (до subprocess). None → кандидат не найден.
+/// Choosing the target `.desktop` for the default FM — the pure part of
+/// `set_file_manager_default` (before the subprocess). None → no candidate found.
 pub fn fm_default_target(fm_id: &str, exists: &dyn Fn(&str) -> bool) -> Option<String> {
     let candidates: Vec<String> = if fm_id.ends_with(".desktop") {
         vec![fm_id.to_string()]
@@ -1138,14 +1138,14 @@ pub fn xdg_mime_query_cmd() -> Vec<String> {
     ]
 }
 
-/// `re.search(r"^Exec=(\S+)", txt, re.M)` → basename(group(1)). None — нет.
+/// `re.search(r"^Exec=(\S+)", txt, re.M)` → basename(group(1)). None — none.
 pub fn fm1_exec_basename(txt: &str) -> Option<String> {
     for line in txt.split('\n') {
         if let Some(rest) = line.strip_prefix("Exec=") {
-            // \S+ — до первого пробельного символа.
+            // \S+ — up to the first whitespace character.
             let val: &str = rest.split_whitespace().next().unwrap_or("");
             if val.is_empty() {
-                return None; // \S+ требует хотя бы один символ
+                return None; // \S+ requires at least one character
             }
             let base = val.rsplit('/').next().unwrap_or(val);
             return Some(base.to_string());
@@ -1154,14 +1154,14 @@ pub fn fm1_exec_basename(txt: &str) -> Option<String> {
     None
 }
 
-/// Условие установки override'а FileManager1: `Name=<FM1>` в тексте И
-/// basename(Exec) == binary — порт условия в `_override_filemanager1`.
+/// The condition for installing the FileManager1 override: `Name=<FM1>` in the text AND
+/// basename(Exec) == binary — port of the condition in `_override_filemanager1`.
 pub fn fm1_matches(txt: &str, binary: &str) -> bool {
     txt.contains(&format!("Name={FM1_NAME}"))
         && fm1_exec_basename(txt).as_deref() == Some(binary)
 }
 
-/// `re.search(r"^PID=(\d+)", stdout, re.M)` → int. Порт разбора busctl.
+/// `re.search(r"^PID=(\d+)", stdout, re.M)` → int. Port of the busctl parsing.
 pub fn busctl_pid(stdout: &str) -> Option<i64> {
     for line in stdout.split('\n') {
         if let Some(rest) = line.strip_prefix("PID=") {
@@ -1182,7 +1182,7 @@ pub fn busctl_status_cmd(name: &str) -> Vec<String> {
     ]
 }
 
-/// argv перезагрузки конфигурации шины (`busctl ... ReloadConfig`).
+/// argv for reloading the bus configuration (`busctl ... ReloadConfig`).
 pub fn busctl_reload_cmd() -> Vec<String> {
     vec![
         "busctl".into(), "--user".into(), "call".into(),
@@ -1192,41 +1192,41 @@ pub fn busctl_reload_cmd() -> Vec<String> {
 }
 
 // ============================================================================
-// Слот `org.freedesktop.FileManager1`: кто его держит и как вернуть
+// The `org.freedesktop.FileManager1` slot: who holds it and how to get it back
 // ============================================================================
 //
-// ЗАЧЕМ ЭТО ЗДЕСЬ. Пункт «Открыть содержащую папку» идёт МИМО mimeapps: у
-// приложений это вызов метода `ShowItems` по имени `org.freedesktop.FileManager1`
-// на пользовательской шине. Пока имя держит ЖИВОЙ процесс, D-Bus не смотрит на
-// `.service`-файлы вовсе — ни на вендорные, ни на наш override в
-// `~/.local/share/dbus-1/services`. Поэтому верных mimeapps НЕ ДОСТАТОЧНО:
-// правильно настроенная машина всё равно открывает чужой файловый менеджер,
-// если тот успел заявить имя первым (нам такой сеанс восстанавливал KDE из
-// сохранённой сессии — `Thunar --daemon` из `ksmserverrc`).
+// WHY THIS IS HERE. The "Open containing folder" item BYPASSES mimeapps: in
+// applications it is a call of the `ShowItems` method by the name `org.freedesktop.FileManager1`
+// on the user bus. While a LIVE process holds the name, D-Bus does not look at
+// `.service` files at all — neither the vendor ones nor our override in
+// `~/.local/share/dbus-1/services`. So correct mimeapps are NOT ENOUGH:
+// a properly configured machine still opens someone else's file manager
+// if it managed to claim the name first (in our case KDE restored such a session from
+// the saved session — `Thunar --daemon` from `ksmserverrc`).
 //
-// Имя заявляют СРАЗУ НЕСКОЛЬКО пакетов (у нас на машине четыре: nautilus,
-// dolphin, nemo, Thunar), так что «кто первый — того и папки». Здесь чистая
-// часть лечения: опознать владельца, решить, свой он или чужой, и можно ли его
-// гасить. Действия — в [`crate::appdefaults_exec`].
+// SEVERAL packages claim the name at once (four on our machine: nautilus,
+// dolphin, nemo, Thunar), so "whoever is first gets the folders". Here is the pure
+// part of the cure: identify the owner, decide whether it is ours or foreign, and whether it may
+// be killed. The actions are in [`crate::appdefaults_exec`].
 
-/// Как файловый менеджер ведёт себя вокруг имени FileManager1: чем гасится
-/// штатно и по каким признакам узнаётся режим службы (без окон).
+/// How a file manager behaves around the FileManager1 name: how it is stopped
+/// the standard way and by what signs its service mode (no windows) is recognized.
 ///
-/// Одна таблица на продукт (правило #12): новый менеджер добавляется сюда, а
-/// не веткой в потоке исполнителя. Полноту стережёт сверка — каждое имя из
-/// [`FM_SHORT_NAMES`] обязано иметь здесь запись.
+/// One table for the product (rule #12): a new manager is added here, not
+/// as a branch in the executor flow. Completeness is guarded by a check — every name from
+/// [`FM_SHORT_NAMES`] must have a record here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FmDaemonInfo {
-    /// Короткое имя менеджера — ключ, общий с [`FM_SHORT_NAMES`].
+    /// The manager's short name — a key shared with [`FM_SHORT_NAMES`].
     pub short: &'static str,
-    /// Флаг штатного выхода (`thunar --quit`). Пусто — своего выхода нет,
-    /// остаётся мягкий сигнал ровно тому PID, что держит имя.
+    /// The standard quit flag (`thunar --quit`). Empty — no quit of its own,
+    /// what remains is a gentle signal to exactly the PID that holds the name.
     pub quit_flag: &'static str,
-    /// Признаки режима службы в командной строке процесса.
+    /// Signs of service mode in the process command line.
     pub daemon_flags: &'static [&'static str],
 }
 
-/// Таблица «менеджер → как гасится штатно → чем выдаёт режим службы».
+/// The "manager → how it is stopped the standard way → what reveals service mode" table.
 pub const FM_DAEMONS: &[FmDaemonInfo] = &[
     FmDaemonInfo { short: "dolphin", quit_flag: "", daemon_flags: &["--daemon"] },
     FmDaemonInfo {
@@ -1256,37 +1256,37 @@ pub const FM_DAEMONS: &[FmDaemonInfo] = &[
         daemon_flags: &["--daemon-mode"],
     },
     FmDaemonInfo { short: "cosmic-files", quit_flag: "", daemon_flags: &["--daemon"] },
-    // Pantheon Files: короткое имя = имя бинаря (по нему процесс и узнаётся);
-    // `--quit` — свой ключ программы (src/Application.vala), службой её
-    // поднимает D-Bus с `--gapplication-service`.
+    // Pantheon Files: short name = binary name (the process is recognized by it);
+    // `--quit` is the program's own switch (src/Application.vala), D-Bus brings it up
+    // as a service with `--gapplication-service`.
     FmDaemonInfo {
         short: "io.elementary.files",
         quit_flag: "--quit",
         daemon_flags: &["--gapplication-service"],
     },
-    // Deepin File Manager: своего ключа выхода нет; служба без окон — `-d`
+    // Deepin File Manager: no quit switch of its own; the windowless service is `-d`
     // (`backendOption`, src/apps/dde-file-manager/commandparser.cpp).
     FmDaemonInfo { short: "dde-file-manager", quit_flag: "", daemon_flags: &["-d"] },
 ];
 
-/// Запись таблицы по короткому имени.
+/// A table record by short name.
 pub fn fm_daemon_info(short: &str) -> Option<&'static FmDaemonInfo> {
     let lower = short.to_lowercase();
     FM_DAEMONS.iter().find(|d| d.short == lower)
 }
 
-/// Последний сегмент пути (`/usr/bin/Thunar` → `Thunar`).
+/// The last path segment (`/usr/bin/Thunar` → `Thunar`).
 fn path_basename(value: &str) -> &str {
     value.rsplit('/').next().unwrap_or(value)
 }
 
-/// Опознать файловый менеджер по тому, как назвался процесс: `Comm` шины
-/// (обрезан ядром до 15 символов) и полный путь `Exe`.
+/// Identify a file manager by how the process named itself: the bus `Comm`
+/// (truncated by the kernel to 15 characters) and the full `Exe` path.
 ///
-/// ⚠️ Регистр здесь принципиален: `/proc/<pid>/comm` у Thunar — `Thunar` с
-/// большой буквы, а короткие имена в [`FM_SHORT_NAMES`] строчные. Прежняя
-/// сверка владельца сравнивала их как есть и на Thunar не срабатывала
-/// никогда — ровно тот дефект, из-за которого чужой демон и жил.
+/// ⚠️ Case matters here: Thunar's `/proc/<pid>/comm` is `Thunar` with
+/// a capital letter, while the short names in [`FM_SHORT_NAMES`] are lowercase. The old
+/// owner check compared them as is and never fired on Thunar
+/// — exactly the defect that let the foreign daemon live.
 pub fn fm_short_from_process(comm: &str, exe: &str) -> Option<String> {
     for candidate in [path_basename(exe), comm] {
         let name = candidate.trim().to_lowercase();
@@ -1300,20 +1300,20 @@ pub fn fm_short_from_process(comm: &str, exe: &str) -> Option<String> {
     None
 }
 
-/// Что шина рассказала о владельце имени — разбор `busctl status`.
+/// What the bus said about the name's owner — parsing `busctl status`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Fm1OwnerFacts {
     pub pid: i64,
-    /// `Comm=` (обрезано ядром до 15 символов).
+    /// `Comm=` (truncated by the kernel to 15 characters).
     pub comm: String,
-    /// `Exe=` — полный путь бинаря.
+    /// `Exe=` — the full binary path.
     pub exe: String,
-    /// `CommandLine=` целиком, как её отдала шина.
+    /// The whole `CommandLine=`, as the bus gave it.
     pub cmdline: String,
 }
 
 impl Fm1OwnerFacts {
-    /// Как назвать владельца человеку.
+    /// How to name the owner to the person.
     pub fn display(&self) -> String {
         if !self.exe.is_empty() {
             return path_basename(&self.exe).to_string();
@@ -1325,11 +1325,11 @@ impl Fm1OwnerFacts {
     }
 }
 
-/// Разбор вывода `busctl --user status <имя>`: `PID`, `Comm`, `Exe`,
-/// `CommandLine`. `None` — владельца в выводе нет (имя никто не держит).
+/// Parsing the output of `busctl --user status <name>`: `PID`, `Comm`, `Exe`,
+/// `CommandLine`. `None` — no owner in the output (nobody holds the name).
 ///
-/// Заменяет прежний [`busctl_pid`]: одного PID мало — по нему нельзя ни
-/// опознать менеджер, ни отличить режим службы от открытых окон.
+/// Replaces the old [`busctl_pid`]: one PID is not enough — by it one can neither
+/// identify the manager nor tell service mode from open windows.
 pub fn busctl_owner(stdout: &str) -> Option<Fm1OwnerFacts> {
     let mut facts = Fm1OwnerFacts::default();
     for line in stdout.split('\n') {
@@ -1352,38 +1352,38 @@ pub fn busctl_owner(stdout: &str) -> Option<Fm1OwnerFacts> {
     (facts.pid > 0).then_some(facts)
 }
 
-/// Владелец имени вместе с наблюдением об окнах.
+/// The name's owner together with the window observation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fm1Owner {
     pub facts: Fm1OwnerFacts,
-    /// Есть ли у процесса окна на экране. `None` — узнать НЕ УДАЛОСЬ
-    /// (сеанс Wayland: списка окон с PID оттуда не добыть). Тогда решение
-    /// принимается по командной строке, и по умолчанию — в пользу человека.
+    /// Whether the process has windows on screen. `None` — could NOT find out
+    /// (a Wayland session: a window list with PIDs cannot be obtained there). Then the decision
+    /// is made by the command line, and by default — in the person's favor.
     pub has_windows: Option<bool>,
 }
 
-/// Приговор слоту `org.freedesktop.FileManager1`.
+/// The verdict on the `org.freedesktop.FileManager1` slot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fm1Verdict {
-    /// Имя никто не держит — его отдаст D-Bus-активация, то есть наш override.
+    /// Nobody holds the name — D-Bus activation will give it out, i.e. our override.
     Free,
-    /// Имя держит тот самый менеджер, что назначен умолчанием. Делать нечего.
+    /// The name is held by the very manager assigned as the default. Nothing to do.
     Owned { short: String, pid: i64 },
-    /// Имя держит не файловый менеджер (или незнакомый нам) — не наше дело.
+    /// The name is held by something that is not a file manager (or one unknown to us) — none of our business.
     Unknown { process: String, pid: i64 },
-    /// Чужой менеджер, но с ОТКРЫТЫМИ ОКНАМИ: у человека там работа, гасить
-    /// нельзя (правило #13 — защита от дурака работает в обе стороны).
+    /// A foreign manager, but with OPEN WINDOWS: the person has work there, killing it
+    /// is not allowed (rule #13 — foolproofing works both ways).
     Busy { short: String, pid: i64 },
-    /// Чужой менеджер в режиме службы — слот возвращаем.
+    /// A foreign manager in service mode — we take the slot back.
     Evict {
         short: String,
         pid: i64,
-        /// Чем гасить штатно; пусто — своего выхода у менеджера нет.
+        /// How to stop it the standard way; empty — the manager has no quit of its own.
         quit: Vec<String>,
     },
 }
 
-/// Есть ли в командной строке признак режима службы.
+/// Whether the command line has a service-mode sign.
 fn cmdline_is_daemon(cmdline: &str, short: &str) -> bool {
     let Some(info) = fm_daemon_info(short) else {
         return false;
@@ -1393,8 +1393,8 @@ fn cmdline_is_daemon(cmdline: &str, short: &str) -> bool {
         .any(|token| info.daemon_flags.contains(&token))
 }
 
-/// argv штатного выхода: бинарь владельца (а не одноимённый из `PATH`) плюс
-/// флаг из таблицы. Пусто — гасить нечем, остаётся сигнал по PID.
+/// argv of the standard quit: the owner's binary (not the same-named one from `PATH`) plus
+/// the flag from the table. Empty — nothing to stop it with, a signal by PID remains.
 pub fn fm_quit_argv(short: &str, exe: &str) -> Vec<String> {
     let Some(info) = fm_daemon_info(short) else {
         return Vec::new();
@@ -1406,14 +1406,14 @@ pub fn fm_quit_argv(short: &str, exe: &str) -> Vec<String> {
     vec![binary.to_string(), info.quit_flag.to_string()]
 }
 
-/// Решение по слоту: сравнить владельца имени с назначенным умолчанием.
+/// The slot decision: compare the name's owner with the assigned default.
 ///
-/// `desired_short` — короткое имя менеджера, который Rexon считает
-/// умолчанием для `inode/directory`.
+/// `desired_short` — the short name of the manager Rexon considers the
+/// default for `inode/directory`.
 ///
-/// ⛔ Гасим ТОЛЬКО режим службы. Порядок доводов: наблюдение об окнах
-/// сильнее командной строки, а когда наблюдения нет вовсе — решает командная
-/// строка, и отсутствие флага службы читается как «у человека открыто окно».
+/// ⛔ We stop ONLY service mode. The order of arguments: the window observation
+/// is stronger than the command line, and when there is no observation at all, the command
+/// line decides, and the absence of the service flag reads as "the person has a window open".
 pub fn fm1_verdict(owner: Option<&Fm1Owner>, desired_short: &str) -> Fm1Verdict {
     let Some(owner) = owner else {
         return Fm1Verdict::Free;
@@ -1437,12 +1437,12 @@ pub fn fm1_verdict(owner: Option<&Fm1Owner>, desired_short: &str) -> Fm1Verdict 
     Fm1Verdict::Evict { short, pid, quit }
 }
 
-// ── Сохранённая сессия KDE ───────────────────────────────────────────────
+// ── Saved KDE session ────────────────────────────────────────────────────
 
-/// Путь файла сохранённой сессии KDE относительно `$XDG_CONFIG_HOME`.
+/// Path of the saved KDE session file relative to `$XDG_CONFIG_HOME`.
 pub const KSMSERVERRC_NAME: &str = "ksmserverrc";
 
-/// Ключ и его порядковый номер: `restartCommand12=…` → `("restartCommand", "12")`.
+/// A key and its ordinal number: `restartCommand12=…` → `("restartCommand", "12")`.
 fn ksmserver_key_index(line: &str) -> Option<(&str, &str)> {
     let key = line.split_once('=')?.0;
     let digits_at = key.len() - key.chars().rev().take_while(|c| c.is_ascii_digit()).count();
@@ -1452,39 +1452,39 @@ fn ksmserver_key_index(line: &str) -> Option<(&str, &str)> {
     Some((&key[..digits_at], &key[digits_at..]))
 }
 
-/// Имя группы из строки `[Имя]`.
+/// Group name from a `[Name]` line.
 fn ini_group(line: &str) -> Option<&str> {
     let t = line.trim();
     t.strip_prefix('[')?.strip_suffix(']')
 }
 
-/// Группа сохранённой сессии (`[Session: …]`, `[LegacySession: …]`).
+/// A saved session group (`[Session: …]`, `[LegacySession: …]`).
 fn is_session_group(group: &str) -> bool {
     group.starts_with("Session:") || group.starts_with("LegacySession:")
 }
 
-/// Убрать менеджер из сохранённой сессии KDE: стереть его запись из
-/// `[Session: …]` и внести имя в `excludeApps` группы `[General]`.
+/// Remove a manager from the saved KDE session: erase its record from
+/// `[Session: …]` and add the name to `excludeApps` of the `[General]` group.
 ///
-/// ЗАЧЕМ ОБА ДЕЙСТВИЯ. Погашенного демона KDE поднимет обратно при следующем
-/// входе — он записан в сохранённой сессии вместе со своей командой запуска
-/// (`Thunar,--sm-client-id,…,--daemon`). Стереть запись мало: сессия
-/// пересохраняется при выходе, и демон вернётся. `excludeApps` — тот самый
-/// штатный список KDE, по которому менеджер сессий не восстанавливает и не
-/// сохраняет приложение.
+/// WHY BOTH ACTIONS. KDE brings a stopped daemon back at the next
+/// login — it is recorded in the saved session together with its launch command
+/// (`Thunar,--sm-client-id,…,--daemon`). Erasing the record is not enough: the session
+/// is saved again at logout, and the daemon comes back. `excludeApps` is exactly the
+/// standard KDE list by which the session manager neither restores nor
+/// saves an application.
 ///
-/// Номер записи НЕ перенумеровывается, а `count` остаётся прежним: KDE
-/// пропускает запись с пустым `program`, а перенумерация сдвинула бы чужие
-/// строки — в чужом файле это лишний риск.
+/// The record number is NOT renumbered, and `count` stays the same: KDE
+/// skips a record with an empty `program`, while renumbering would shift other
+/// lines — an extra risk in someone else's file.
 ///
-/// `None` — менять нечего (записи нет и имя уже в исключениях).
+/// `None` — nothing to change (no record and the name is already excluded).
 pub fn ksmserver_forget(text: &str, short: &str) -> Option<String> {
     let short_l = short.trim().to_lowercase();
     if short_l.is_empty() {
         return None;
     }
 
-    // 1. Найти номера записей этого менеджера в группах сохранённой сессии.
+    // 1. Find the record numbers of this manager in the saved session groups.
     let mut doomed: Vec<(String, String)> = Vec::new();
     let mut group = String::new();
     let mut has_general = false;
@@ -1513,7 +1513,7 @@ pub fn ksmserver_forget(text: &str, short: &str) -> Option<String> {
         }
     }
 
-    // 2. Переписать: выкинуть строки обречённых записей, дополнить excludeApps.
+    // 2. Rewrite: drop the lines of doomed records, extend excludeApps.
     let mut out: Vec<String> = Vec::new();
     let mut group = String::new();
     let mut changed = false;

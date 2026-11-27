@@ -1,30 +1,36 @@
-// Слой обоев из Rust: обёртка над LayerShellQt (C++-шим cpp/rexon_layer_shell.*).
+// The wallpaper layer from Rust: a wrapper over LayerShellQt (C++ shim
+// cpp/rexon_layer_shell.*).
 //
-// Зачем это первым из шимов Qt-подсистем: от wlr-layer-shell зависят и обои,
-// и видеозаставка входа — флагманская фича продукта. Пока слоя не было в
-// Rust, окно обоев умел поднять только QML-путь на PySide6, и ни один
-// Rust-путь обоев не работал.
+// Why this is the first of the Qt subsystem shims: both wallpapers and the
+// login video splash — the product's flagship feature — depend on
+// wlr-layer-shell. While the layer was not in Rust, only the QML path on
+// PySide6 could bring up a wallpaper window, and not a single Rust
+// wallpaper path worked.
 //
-// ⚠️ Тот Python/QML-путь снят с дерева 2026-08-23 — свойства ниже уже не с
-// чем сверять глазами, они и есть источник истины. Правка любого из них
-// меняет поведение обоев и заставки разом:
+// Warning: that Python/QML path was removed from the tree on 2026-08-23 —
+// there is nothing left to compare the properties below with by eye; they
+// are the source of truth. Changing any of them changes the behaviour of
+// both wallpapers and the splash at once:
 //
 //     LS.Window.layer: LS.Window.LayerBackground
 //     LS.Window.anchors: AnchorTop | AnchorBottom | AnchorLeft | AnchorRight
 //     LS.Window.exclusionZone: -1
 //     LS.Window.keyboardInteractivity: KeyboardInteractivityNone
 //
-// ⚠️ Грабля из канона проекта: в QML свойство называется `exclusionZone`, а
-// сеттер в C++ — `setExclusiveZone`. Разнобой в самой библиотеке KDE. Здесь
-// принято имя из QML (`exclusionZone`), потому что именно оно на виду у
-// вендорного QML и у нашего.
+// Warning: a trap from the project canon: in QML the property is called
+// `exclusionZone`, while the C++ setter is `setExclusiveZone`. The
+// inconsistency is in the KDE library itself. Here the QML name
+// (`exclusionZone`) is used, because that is what the vendored QML and our
+// own see.
 //
-// ⚠️ Второе: слой ставится ДО первого показа окна. LayerShellQt подменяет
-// интеграцию оболочки при создании платформенного окна; показанное окно уже
-// стало обычным xdg_toplevel и в слой не переселится. Стенд ниже проверяет
-// это не на слово, а по байтам протокола Wayland.
+// Warning: second: the layer is set BEFORE the window is first shown.
+// LayerShellQt replaces the shell integration when the platform window is
+// created; a shown window has already become an ordinary xdg_toplevel and
+// will not move into the layer. The test bench below checks this not on
+// trust but by the bytes of the Wayland protocol.
 
-/// Мост cxx-qt: настройка слоя wlr-layer-shell для существующего QWindow.
+/// cxx-qt bridge: setting up a wlr-layer-shell layer for an existing
+/// QWindow.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -32,16 +38,17 @@ pub mod qobject {
         type QString = cxx_qt_lib::QString;
     }
 
-    // Шим LayerShellQt. QObject объявлять не надо — cxx-qt знает его сам.
+    // The LayerShellQt shim. QObject does not need to be declared — cxx-qt
+    // knows it by itself.
     unsafe extern "C++" {
         include!("rexon_layer_shell.h");
 
-        /// Платформа Qt — Wayland (на X11 слоя нет вообще).
+        /// The Qt platform is Wayland (on X11 there is no layer at all).
         fn rexon_layer_shell_available() -> bool;
 
         /// # Safety
-        /// `window` обязан быть живым QObject (обычно QWindow); вызывать до
-        /// первого показа окна.
+        /// `window` must be a live QObject (usually a QWindow); call before the
+        /// window is first shown.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_layer_shell_configure(
             window: *mut QObject,
@@ -53,37 +60,38 @@ pub mod qobject {
         ) -> bool;
 
         /// # Safety
-        /// `window` обязан быть живым QObject, уже настроенным на слой и
-        /// ещё не показанным.
+        /// `window` must be a live QObject, already set up for the layer and not
+        /// yet shown.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_layer_shell_pin_to_window_screen(window: *mut QObject) -> bool;
 
         /// # Safety
-        /// `window` обязан быть живым QObject.
+        /// `window` must be a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_layer_shell_screen_name(window: *mut QObject) -> QString;
 
         /// # Safety
-        /// `window` обязан быть живым QObject.
+        /// `window` must be a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_layer_shell_layer(window: *mut QObject) -> i32;
         /// # Safety
-        /// `window` обязан быть живым QObject.
+        /// `window` must be a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_layer_shell_anchors(window: *mut QObject) -> i32;
         /// # Safety
-        /// `window` обязан быть живым QObject.
+        /// `window` must be a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_layer_shell_exclusion_zone(window: *mut QObject) -> i32;
         /// # Safety
-        /// `window` обязан быть живым QObject.
+        /// `window` must be a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_layer_shell_keyboard(window: *mut QObject) -> i32;
     }
 
     extern "RustQt" {
-        /// Настройщик слоя. Экземпляр создаётся рядом с окном в QML и не
-        /// владеет им: окно живёт своей жизнью, здесь только его настройка.
+        /// The layer configurator. An instance is created next to the window in QML
+        /// and does not own it: the window lives its own life, here there is only
+        /// its configuration.
         #[qobject]
         #[qml_element]
         #[qproperty(i32, layer)]
@@ -95,72 +103,73 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Возможен ли слой в этой сессии (платформа Qt — Wayland).
+        /// Whether a layer is possible in this session (the Qt platform is
+        /// Wayland).
         #[qinvokable]
         fn available(self: &WallpaperLayer) -> bool;
 
-        /// Поставить окну КАНОНИЧЕСКИЙ слой обоев, не глядя на свойства
-        /// объекта. Единственная точка, где записано, что такое «обои»
-        /// (правило #12): все пути обоев обязаны звать её, а не собирать
-        /// значения заново у себя.
+        /// Give the window the CANONICAL wallpaper layer regardless of the object's
+        /// properties. The only point where it is written what a "wallpaper" is
+        /// (rule #12): all wallpaper paths must call it rather than assemble the
+        /// values anew themselves.
         ///
         /// # Safety
-        /// `window` — живой QWindow, ещё не показанный.
+        /// `window` is a live QWindow, not yet shown.
         #[qinvokable]
         #[cxx_name = "applyWallpaperLayer"]
         unsafe fn apply_wallpaper_layer(self: &WallpaperLayer, window: *mut QObject) -> bool;
 
-        /// Поставить окну слой по текущим свойствам объекта — для случаев,
-        /// которые обоями не являются (панели, оверлеи).
+        /// Give the window a layer according to the object's current properties —
+        /// for cases that are not wallpapers (panels, overlays).
         ///
         /// # Safety
-        /// `window` — живой QWindow, ещё не показанный.
+        /// `window` is a live QWindow, not yet shown.
         #[qinvokable]
         unsafe fn apply(self: &WallpaperLayer, window: *mut QObject) -> bool;
 
-        /// Прицелить поверхность слоя на экран САМОГО окна
-        /// (`Window.screen` в QML) и снять «пусть решает композитор».
+        /// Aim the layer surface at the screen of the window ITSELF (`Window.screen`
+        /// in QML) and clear "let the compositor decide".
         ///
-        /// Нужно ровно для второго монитора: обоями заняты все экраны, по
-        /// окну на каждый, и каждое обязано лечь на свой выход, а не туда,
-        /// куда композитор сочтёт нужным. Звать ПОСЛЕ
-        /// `applyWallpaperLayer` и ДО первого показа окна: выход уходит в
-        /// запрос `get_layer_surface`.
+        /// Needed precisely for the second monitor: wallpapers occupy all screens,
+        /// one window each, and each must land on its own output, not wherever the
+        /// compositor sees fit. Call AFTER `applyWallpaperLayer` and BEFORE the
+        /// window is first shown: the output goes into the `get_layer_surface`
+        /// request.
         ///
         /// # Safety
-        /// `window` — живой QWindow, уже настроенный на слой и ещё не
-        /// показанный.
+        /// `window` is a live QWindow, already set up for the layer and not yet
+        /// shown.
         #[qinvokable]
         #[cxx_name = "pinScreen"]
         unsafe fn pin_screen(self: &WallpaperLayer, window: *mut QObject) -> bool;
 
-        /// Имя экрана, на который нацелена поверхность; пусто — экран не
-        /// назван. Для отчёта самопроверки: «окно на своём мониторе» и
-        /// «окно вообще поднялось» — разные утверждения.
+        /// Name of the screen the surface is aimed at; empty means no screen is
+        /// named. For the self-test report: "the window is on its own monitor" and
+        /// "the window came up at all" are different statements.
         ///
         /// # Safety
-        /// `window` — живой QObject.
+        /// `window` is a live QObject.
         #[qinvokable]
         #[cxx_name = "screenName"]
         unsafe fn screen_name(self: &WallpaperLayer, window: *mut QObject) -> QString;
 
         /// # Safety
-        /// `window` — живой QObject.
+        /// `window` is a live QObject.
         #[qinvokable]
         #[cxx_name = "readLayer"]
         unsafe fn read_layer(self: &WallpaperLayer, window: *mut QObject) -> i32;
         /// # Safety
-        /// `window` — живой QObject.
+        /// `window` is a live QObject.
         #[qinvokable]
         #[cxx_name = "readAnchors"]
         unsafe fn read_anchors(self: &WallpaperLayer, window: *mut QObject) -> i32;
         /// # Safety
-        /// `window` — живой QObject.
+        /// `window` is a live QObject.
         #[qinvokable]
         #[cxx_name = "readExclusionZone"]
         unsafe fn read_exclusion_zone(self: &WallpaperLayer, window: *mut QObject) -> i32;
         /// # Safety
-        /// `window` — живой QObject.
+        /// `window` is a live QObject.
         #[qinvokable]
         #[cxx_name = "readKeyboardInteractivity"]
         unsafe fn read_keyboard_interactivity(self: &WallpaperLayer, window: *mut QObject) -> i32;
@@ -169,7 +178,7 @@ pub mod qobject {
 
 use cxx_qt_lib::QString;
 
-/// Слой поверхности — LayerShellQt::Window::Layer.
+/// Surface layer — LayerShellQt::Window::Layer.
 pub mod layer {
     pub const BACKGROUND: i32 = 0;
     pub const BOTTOM: i32 = 1;
@@ -177,39 +186,40 @@ pub mod layer {
     pub const OVERLAY: i32 = 3;
 }
 
-/// Якоря — LayerShellQt::Window::Anchor, битовая маска.
+/// Anchors — LayerShellQt::Window::Anchor, a bit mask.
 pub mod anchor {
     pub const NONE: i32 = 0;
     pub const TOP: i32 = 1;
     pub const BOTTOM: i32 = 2;
     pub const LEFT: i32 = 4;
     pub const RIGHT: i32 = 8;
-    /// Все четыре стороны — растянуть на весь выход.
+    /// All four sides — stretch over the whole output.
     pub const ALL: i32 = TOP | BOTTOM | LEFT | RIGHT;
 }
 
-/// Реакция на клавиатуру — LayerShellQt::Window::KeyboardInteractivity.
+/// Keyboard behaviour — LayerShellQt::Window::KeyboardInteractivity.
 pub mod keyboard {
     pub const NONE: i32 = 0;
     pub const EXCLUSIVE: i32 = 1;
     pub const ON_DEMAND: i32 = 2;
 }
 
-/// Набор свойств поверхности слоя.
+/// Set of layer surface properties.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LayerSpec {
     pub layer: i32,
     pub anchors: i32,
-    /// Зона вытеснения. -1 = поверхность не резервирует места и не
-    /// вытесняется панелями — единственное правильное значение для обоев.
+    /// Exclusion zone. -1 = the surface reserves no space and is not pushed
+    /// aside by panels — the only correct value for wallpapers.
     pub exclusion_zone: i32,
     pub keyboard_interactivity: i32,
 }
 
 impl LayerSpec {
-    /// Канонический слой обоев Rexon. Значения сняты с прежнего
-    /// Python/QML-пути (четыре его файла задавали одно и то же); сам путь
-    /// снят с дерева, эти константы — единственная их запись.
+    /// The canonical Rexon wallpaper layer. The values were taken from the
+    /// former Python/QML path (its four files set the same thing); the path
+    /// itself was removed from the tree, and these constants are their only
+    /// record.
     pub const WALLPAPER: LayerSpec = LayerSpec {
         layer: layer::BACKGROUND,
         anchors: anchor::ALL,
@@ -218,9 +228,9 @@ impl LayerSpec {
     };
 }
 
-/// Rust-состояние настройщика. По умолчанию — слой обоев: безопасное
-/// умолчание, при котором забытая настройка даёт обои, а не окно поверх
-/// всего (правило #13, защита от дурака).
+/// Rust state of the configurator. The default is the wallpaper layer: a
+/// safe default under which a forgotten setting gives a wallpaper rather
+/// than a window on top of everything (rule #13, foolproofing).
 pub struct WallpaperLayerRust {
     layer: i32,
     anchors: i32,
@@ -242,11 +252,12 @@ impl Default for WallpaperLayerRust {
     }
 }
 
-/// Настроить окну слой по описанию. Пустой `scope` — не трогать умолчание
-/// LayerShellQt (композитор использует его для порядка внутри слоя).
+/// Give the window a layer by the description. An empty `scope` means leave
+/// the LayerShellQt default alone (the compositor uses it for ordering
+/// within the layer).
 ///
 /// # Safety
-/// `window` обязан указывать на живой QWindow, ещё не показанный на экране.
+/// `window` must point to a live QWindow not yet shown on screen.
 pub unsafe fn apply_spec(window: *mut qobject::QObject, spec: &LayerSpec, scope: &QString) -> bool {
     if window.is_null() {
         return false;
@@ -263,15 +274,16 @@ pub unsafe fn apply_spec(window: *mut qobject::QObject, spec: &LayerSpec, scope:
     }
 }
 
-/// Прицелить поверхность слоя на экран самого окна (`QWindow::screen()`)
-/// и снять «пусть выбирает композитор».
+/// Aim the layer surface at the window's own screen (`QWindow::screen()`)
+/// and clear "let the compositor choose".
 ///
-/// Нужно там, где окон обоев несколько — по одному на монитор: без явного
-/// выхода композитор вправе положить все поверхности на один экран.
+/// Needed where there are several wallpaper windows — one per monitor:
+/// without an explicit output the compositor is free to put all surfaces on
+/// one screen.
 ///
 /// # Safety
-/// `window` обязан указывать на живой QWindow, которому уже поставлен слой
-/// ([`apply_spec`]) и который ещё не показан.
+/// `window` must point to a live QWindow that already has a layer
+/// ([`apply_spec`]) and is not yet shown.
 pub unsafe fn pin_to_window_screen(window: *mut qobject::QObject) -> bool {
     if window.is_null() {
         return false;
@@ -287,10 +299,10 @@ impl qobject::WallpaperLayer {
     unsafe fn apply_wallpaper_layer(&self, window: *mut qobject::QObject) -> bool {
         let ok = unsafe { apply_spec(window, &LayerSpec::WALLPAPER, &self.scope) };
         if ok {
-            // Cinnamon с layer-shell: служба фона оболочки старше нашего
-            // окна и закрыла бы его — уложить её под нас. Здесь только
-            // запасной заказ; сразу — по вести «первый кадр на экране»
-            // (`wallpaper_host::first_frame_shown`).
+            // Cinnamon with layer-shell: the shell's background service is older than
+            // our window and would cover it — put it under us. Here this is only a
+            // fallback order; the immediate one goes on the "first frame on screen"
+            // notice (`wallpaper_host::first_frame_shown`).
             crate::wallpaper_host::cinnamon_layer::surface_up("окно обоев слоем стола");
         }
         ok

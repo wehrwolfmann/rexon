@@ -1,13 +1,14 @@
-//! Утилиты работы с расширениями — порт `rexon/extensions/utils.py`.
+//! Utilities for working with extensions: a port of `rexon/extensions/utils.py`.
 //!
-//! Безопасная распаковка ZIP (защита от ZipSlip), упаковка `.rxn`, запись
-//! `manifest.json`, безопасное удаление каталога.
+//! Safe ZIP extraction (protection against ZipSlip), `.rxn` packing, writing
+//! `manifest.json`, safe directory removal.
 //!
-//! ⚠️ Сверка ZIP-упаковки — СТРУКТУРНАЯ, не побайтовая: `.zip` содержит
-//! таймстемпы файлов и зависит от версии/уровня deflate, поэтому байт-в-байт
-//! с Python не совпадёт в принципе. Проверяем инвариант, который важен для
-//! приложения: набор имён-в-архиве и содержимое каждого файла (golden-тест
-//! `ext_utils_parity.rs` сверяет их с архивом, собранным самим Python).
+//! Warning: the ZIP packing check is STRUCTURAL, not byte for byte: a `.zip`
+//! contains file timestamps and depends on the deflate version/level, so it
+//! can never match Python byte for byte. We check the invariant that matters
+//! to the application: the set of names in the archive and the contents of
+//! each file (golden test `ext_utils_parity.rs` compares them with an archive
+//! built by Python itself).
 
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -15,10 +16,10 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::Value;
 use zip::write::SimpleFileOptions;
 
-/// Лексическая нормализация пути (без обращения к ФС): убирает `.`, схлопывает
-/// `..`. Аналог того, что `os.path.realpath` делает с несуществующим путём
-/// (символические ссылки при этом НЕ разрешаются — для свежего каталога
-/// распаковки их нет; осознанное отклонение от Python-realpath).
+/// Lexical path normalization (without touching the file system): removes
+/// `.` and collapses `..`. The counterpart of what `os.path.realpath` does with
+/// a non-existent path (symbolic links are NOT resolved — a fresh extraction
+/// directory has none; a deliberate deviation from Python's realpath).
 fn normalize_lexical(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for comp in path.components() {
@@ -33,9 +34,9 @@ fn normalize_lexical(path: &Path) -> PathBuf {
     out
 }
 
-/// `os.path.realpath` для, возможно, ещё не созданного пути: канонизируется
-/// самый глубокий существующий предок, несуществующий хвост добавляется
-/// лексически (как в CPython posixpath.realpath, strict=False).
+/// `os.path.realpath` for a path that may not exist yet: the deepest existing
+/// ancestor is canonicalized and the non-existent tail is appended lexically
+/// (as in CPython's posixpath.realpath, strict=False).
 fn realpath_missing_ok(path: &Path) -> std::io::Result<PathBuf> {
     if let Ok(real) = std::fs::canonicalize(path) {
         return Ok(real);
@@ -60,16 +61,17 @@ fn realpath_missing_ok(path: &Path) -> std::io::Result<PathBuf> {
     Ok(real)
 }
 
-/// Куда `zipfile.extractall` реально кладёт запись — порт санитайзера
-/// `ZipFile._extract_member`: имя разбивается по `/`, а пустые компоненты,
-/// `.` и `..` ВЫБРАСЫВАЮТСЯ (не схлопываются). Поэтому `a/../b.txt` у Python
-/// оказывается в `a/b.txt`, а не в `b.txt`, а ведущий `/` просто теряется.
+/// Where `zipfile.extractall` actually puts an entry: a port of the sanitizer
+/// in `ZipFile._extract_member`. The name is split at `/`, and empty
+/// components, `.` and `..` are DROPPED (not collapsed). So in Python
+/// `a/../b.txt` ends up in `a/b.txt`, not in `b.txt`, and a leading `/` is
+/// simply lost.
 ///
-/// Раньше здесь стоял `normalize_lexical`, который `..` схлопывал, — тот же
-/// архив распаковывался Rust'ом в ДРУГОЙ каталог, чем Python (у `.rxn` это
-/// значит другой корень с `manifest.json`). Проверка ZipSlip выше остаётся на
-/// схлопывающей нормализации: она повторяет `os.path.realpath` из проверки
-/// оригинала.
+/// This used to be `normalize_lexical`, which collapsed `..`, so the same
+/// archive was extracted by Rust into a DIFFERENT directory than by Python
+/// (for a `.rxn` this means a different root with `manifest.json`). The
+/// ZipSlip check above stays on the collapsing normalization: it reproduces
+/// the `os.path.realpath` of the original's check.
 fn extract_member_name(name: &str) -> PathBuf {
     let mut out = PathBuf::new();
     for part in name.split('/') {
@@ -81,9 +83,9 @@ fn extract_member_name(name: &str) -> PathBuf {
     out
 }
 
-/// `repr()` строки как в CPython — для `{имя!r}` в текстах ошибок оригинала.
-/// Печатаемые не-ASCII остаются как есть; экранируются `\`, `\n`, `\r`, `\t`,
-/// сама кавычка и управляющие C0/DEL.
+/// A string's `repr()` as in CPython, for `{name!r}` in the original's error
+/// texts. Printable non-ASCII stays as is; `\`, `\n`, `\r`, `\t`, the quote
+/// itself and C0/DEL control characters are escaped.
 pub(crate) fn py_repr_str(s: &str) -> String {
     let quote = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
     let mut out = String::with_capacity(s.len() + 2);
@@ -108,31 +110,32 @@ pub(crate) fn py_repr_str(s: &str) -> String {
     out
 }
 
-/// Сообщение об ошибке ZIP словами оригинала (`zipfile`).
+/// A ZIP error message in the original's words (`zipfile`).
 ///
-/// Тексты крейта `zip` английские и внутренние («invalid Zip archive: Could
-/// not find EOCD»), а доезжают они прямиком до окна покупателя: установщик
-/// `.rxn` подклеивает `str(e)` к своему префиксу. `zipfile` в тех же местах
-/// поднимает `BadZipFile` с короткими текстами — их и отдаём, иначе Rust-путь
-/// и Python-фолбэк говорят покупателю разное про один и тот же архив.
+/// The texts of the `zip` crate are English and internal ("invalid Zip
+/// archive: Could not find EOCD"), and they go straight to the customer's
+/// window: the `.rxn` installer appends `str(e)` to its prefix. In the same
+/// places `zipfile` raises `BadZipFile` with short texts, and those are what
+/// we return; otherwise the Rust path and the Python fallback would tell the
+/// customer different things about the same archive.
 pub fn zip_error_text(e: &zip::result::ZipError) -> String {
     use zip::result::ZipError;
     match e {
-        // Не ZIP вовсе либо обрезан так, что каталога записей нет.
+        // Not a ZIP at all, or truncated so that there is no central directory.
         ZipError::InvalidArchive(_) | ZipError::UnsupportedArchive(_) => {
             "File is not a zip file".to_string()
         }
         ZipError::FileNotFound => "There is no item named in the archive".to_string(),
         ZipError::InvalidPassword => "Bad password for file".to_string(),
         ZipError::Io(io) => io.to_string(),
-        // Крейт помечен non_exhaustive: всё новое — тоже «не тот архив».
+        // The crate marks it non_exhaustive: anything new is also "not that archive".
         _ => "File is not a zip file".to_string(),
     }
 }
 
-/// Ошибка чтения записи архива словами оригинала. Крейт `zip` отдаёт
-/// несовпадение контрольной суммы обычной io-ошибкой «Invalid checksum»,
-/// `zipfile` — `BadZipFile("Bad CRC-32 for file 'имя'")`.
+/// An error reading an archive entry, in the original's words. The `zip`
+/// crate reports a checksum mismatch as a plain io error "Invalid checksum",
+/// `zipfile` as `BadZipFile("Bad CRC-32 for file 'name'")`.
 fn entry_read_error(e: std::io::Error, member: &str) -> ArchiveError {
     if e.kind() == std::io::ErrorKind::InvalidData && e.to_string().contains("Invalid checksum") {
         return ArchiveError::BadZip(format!("Bad CRC-32 for file {}", py_repr_str(member)));
@@ -140,17 +143,17 @@ fn entry_read_error(e: std::io::Error, member: &str) -> ArchiveError {
     ArchiveError::Io(e.to_string())
 }
 
-/// Ошибка распаковки/упаковки.
+/// An extraction/packing error.
 #[derive(Debug)]
 pub enum ArchiveError {
-    /// Обнаружен ZipSlip — опасный путь в архиве (аналог `ValueError`).
+    /// ZipSlip detected: a dangerous path in the archive (the counterpart of `ValueError`).
     ZipSlip(String),
-    /// Повреждённый архив — аналог `zipfile.BadZipFile`. Отдельно от `Io`,
-    /// потому что `BadZipFile` НЕ наследник `OSError`: вызывающие (установка
-    /// `.rxn`, импортёр иконок) ловят именно его, чтобы сказать «Файл
-    /// повреждён…» и уйти на запасной путь.
+    /// A corrupted archive, the counterpart of `zipfile.BadZipFile`. Separate from
+    /// `Io` because `BadZipFile` does NOT inherit from `OSError`: the callers
+    /// (`.rxn` installation, the icon importer) catch exactly it to say "The file
+    /// is corrupted…" and take the fallback path.
     BadZip(String),
-    /// Ошибка ввода-вывода.
+    /// An I/O error.
     Io(String),
 }
 
@@ -181,21 +184,21 @@ impl From<zip::result::ZipError> for ArchiveError {
     }
 }
 
-/// Распаковать ZIP с защитой от path traversal (ZipSlip) — порт
-/// `_safe_zip_extract`. Сначала проверяет ВСЕ записи (как Python: сперва
-/// цикл проверки, потом `extractall`), при опасном пути — ошибка до записи
-/// хоть одного файла.
+/// Extracts a ZIP with protection against path traversal (ZipSlip): a port of
+/// `_safe_zip_extract`. First checks ALL entries (like Python: the check loop
+/// first, then `extractall`); on a dangerous path, fails before writing a
+/// single file.
 pub fn safe_zip_extract(archive_path: &Path, dest: &Path) -> Result<(), ArchiveError> {
-    // Python: os.path.realpath(dest) — существования dest НЕ требует
-    // (extractall создаёт каталоги сам); canonicalize ещё не созданного
-    // назначения (импортёры зовут с dest внутри свежего mkdtemp) шёл бы
-    // ENOENT — канонизируем ближайшего существующего предка, хвост
-    // добавляем лексически.
+    // Python: os.path.realpath(dest) does NOT require dest to exist
+    // (extractall creates the directories itself); canonicalizing a destination
+    // that does not exist yet (importers call this with dest inside a fresh
+    // mkdtemp) would fail with ENOENT, so we canonicalize the nearest existing
+    // ancestor and append the tail lexically.
     let dest = realpath_missing_ok(dest)?;
     let file = std::fs::File::open(archive_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
 
-    // Проверка путей (ZipSlip): target должен быть внутри dest либо == dest.
+    // Path check (ZipSlip): target must be inside dest or == dest.
     for i in 0..archive.len() {
         let entry = archive.by_index(i)?;
         let target = normalize_lexical(&dest.join(entry.name()));
@@ -207,24 +210,24 @@ pub fn safe_zip_extract(archive_path: &Path, dest: &Path) -> Result<(), ArchiveE
         }
     }
 
-    // Извлечение (пути — как их формирует zipfile.extractall).
+    // Extraction (paths are formed the way zipfile.extractall forms them).
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
         let member = entry.name().to_string();
         let rel = extract_member_name(&member);
         if rel.as_os_str().is_empty() {
-            // Имя целиком из отброшенных компонентов ("/", "./", "..") —
-            // extractall для такой записи не создаёт ничего.
+            // A name consisting entirely of dropped components ("/", "./", "..") —
+            // extractall creates nothing for such an entry.
             continue;
         }
         let target = dest.join(&rel);
         if entry.is_dir() {
             std::fs::create_dir_all(&target)?;
         } else if entry.is_symlink() {
-            // Ссылка-синоним внутри архива (см. [`pack_rxn`]) восстанавливается
-            // ссылкой — только относительная и без `..`, то есть не дальше
-            // своего каталога вглубь; иная пропускается (за пределы `dest`
-            // архив не дотянется ни записью, ни ссылкой).
+            // An alias link inside the archive (see [`pack_rxn`]) is restored as a
+            // link — only a relative one without `..`, i.e. reaching no further than
+            // deeper into its own directory; any other is skipped (the archive cannot
+            // reach beyond `dest` either with an entry or with a link).
             let mut link_to = String::new();
             entry
                 .read_to_string(&mut link_to)
@@ -241,14 +244,13 @@ pub fn safe_zip_extract(archive_path: &Path, dest: &Path) -> Result<(), ArchiveE
                 std::fs::create_dir_all(parent)?;
             }
             let mut out = std::fs::File::create(&target)?;
-            // Битая полезная нагрузка при живом каталоге записей — это
-            // BadZipFile («Bad CRC-32…»), а не OSError.
+            // A broken payload with an intact central directory is BadZipFile
+            // ("Bad CRC-32…"), not OSError.
             std::io::copy(&mut entry, &mut out)
                 .map_err(|e| entry_read_error(e, &member))?;
-            // Бит исполнения из архива (`external_attr >> 16`): без него
-            // скрипты виджета или темы, которые зовут друг друга напрямую,
-            // получают «Отказано в доступе». Переносятся ТОЛЬКО x-биты —
-            // см. [`safe_extracted_mode`].
+            // The execute bit from the archive (`external_attr >> 16`): without it,
+            // widget or theme scripts that call each other directly get "Permission
+            // denied". ONLY the x bits are carried over — see [`safe_extracted_mode`].
             if let Some(archived) = entry.unix_mode().filter(|m| m & 0o111 != 0) {
                 use std::os::unix::fs::PermissionsExt;
                 let disk = out.metadata()?.permissions().mode();
@@ -260,23 +262,24 @@ pub fn safe_zip_extract(archive_path: &Path, dest: &Path) -> Result<(), ArchiveE
     Ok(())
 }
 
-/// Права распакованного из архива файла или каталога — общее правило для
-/// zip, tar и 7z: биты исполнения (владельцу, группе, прочим) остаются,
-/// setuid/setgid/sticky и запись для группы и прочих снимаются, владельцу
-/// чтение и запись (у каталога — и вход) оставляются всегда, чтобы Rexon
-/// мог потом обновить и удалить установленное.
+/// The permissions of a file or directory extracted from an archive, a common
+/// rule for zip, tar and 7z: the execute bits (for owner, group, others) stay,
+/// setuid/setgid/sticky and write access for group and others are removed,
+/// and the owner always keeps read and write (and, for a directory, search)
+/// so that Rexon can later update and remove what was installed.
 ///
-/// Права запуска не обходят окно разрешения виджета Conky: Rexon запускает
-/// виджет только после «Да» ([`crate::conky_safety`]), а отпечаток
-/// разрешения считается по содержимому файлов, не по их правам.
+/// Execute permissions do not bypass the Conky widget permission dialog: Rexon
+/// starts a widget only after "Yes" ([`crate::conky_safety`]), and the
+/// permission fingerprint is computed from the file contents, not from their
+/// permissions.
 pub fn safe_extracted_mode(mode: u32, is_dir: bool) -> u32 {
     (mode & 0o755) | if is_dir { 0o700 } else { 0o600 }
 }
 
-/// Привести права всего распакованного дерева `root` к
-/// [`safe_extracted_mode`]: системный `tar` и 7-Zip кладут права из архива
-/// как есть (в пределах umask), в том числе setuid. Ссылки не трогаются и
-/// не разыменовываются — обход не выходит за `root`.
+/// Brings the permissions of the whole extracted tree `root` to
+/// [`safe_extracted_mode`]: the system `tar` and 7-Zip apply the permissions
+/// from the archive as they are (within the umask), setuid included. Links are
+/// neither touched nor dereferenced — the walk does not leave `root`.
 pub fn clamp_extracted_modes(root: &Path) {
     use std::os::unix::fs::PermissionsExt;
     fn walk(dir: &Path, depth: u32) {
@@ -300,11 +303,11 @@ pub fn clamp_extracted_modes(root: &Path) {
     walk(root, 0);
 }
 
-/// Упаковать каталог в `.rxn` (ZIP, DEFLATE) — порт `_pack_rxn`. Обходит
-/// дерево, кладёт файлы под относительными к `source_dir` именами.
+/// Packs a directory into a `.rxn` (ZIP, DEFLATE): a port of `_pack_rxn`.
+/// Walks the tree and stores the files under names relative to `source_dir`.
 ///
-/// Таймстемпы намеренно НЕ фиксируются — как и в Python; сверять архив
-/// побайтово нельзя (см. заголовок модуля), только структурно.
+/// Timestamps are deliberately NOT fixed, as in Python; the archive cannot be
+/// compared byte for byte (see the module header), only structurally.
 pub fn pack_rxn(source_dir: &Path, rxn_path: &Path) -> Result<(), ArchiveError> {
     let file = std::fs::File::create(rxn_path)?;
     let mut zip = zip::ZipWriter::new(file);
@@ -318,10 +321,11 @@ pub fn pack_rxn(source_dir: &Path, rxn_path: &Path) -> Result<(), ArchiveError> 
             .expect("файл внутри source_dir")
             .to_string_lossy()
             .replace('\\', "/");
-        // Ссылка-синоним на файл того же дерева уходит ССЫЛКОЙ, а не копией:
-        // тема курсоров держит десятки имён одного курсора (`left_ptr`,
-        // `default`, `arrow`…), и копии анимаций раздули бы `.rxn` в разы.
-        // Ссылка наружу или на несуществующее — по-прежнему содержимым.
+        // An alias link to a file in the same tree is stored AS A LINK, not as a
+        // copy: a cursor theme keeps dozens of names for one cursor (`left_ptr`,
+        // `default`, `arrow`…), and copies of the animations would bloat the `.rxn`
+        // several times over. A link pointing outside or to something non-existent
+        // is still stored as contents.
         if let Ok(link_to) = std::fs::read_link(&full) {
             let resolved = full.parent().map(|p| p.join(&link_to));
             if is_inner_link_target(&link_to) && resolved.is_some_and(|r| r.is_file()) {
@@ -339,8 +343,8 @@ pub fn pack_rxn(source_dir: &Path, rxn_path: &Path) -> Result<(), ArchiveError> 
     Ok(())
 }
 
-/// Ссылка «внутрь»: относительная, непустая, без `..` и корня — значит, не
-/// выходит за каталог, где лежит.
+/// An "inward" link: relative, non-empty, without `..` and the root — so it
+/// does not leave the directory it lives in.
 fn is_inner_link_target(target: &Path) -> bool {
     !target.as_os_str().is_empty()
         && target
@@ -348,8 +352,8 @@ fn is_inner_link_target(target: &Path) -> bool {
             .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
 }
 
-/// Рекурсивно собрать пути ФАЙЛОВ (не каталогов) под `dir` — аналог
-/// `os.walk` + сбор `files`.
+/// Recursively collects the paths of FILES (not directories) under `dir`: the
+/// counterpart of `os.walk` + collecting `files`.
 fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -363,27 +367,27 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Записать `manifest.json` в каталог — порт `_write_manifest`
-/// (`json.dump(indent=2, ensure_ascii=False)` — 2 пробела, UTF-8 без
-/// экранирования). Совпадает побайтово с Python.
+/// Writes `manifest.json` into a directory: a port of `_write_manifest`
+/// (`json.dump(indent=2, ensure_ascii=False)`: 2 spaces, UTF-8 without
+/// escaping). Matches Python byte for byte.
 pub fn write_manifest(manifest: &Value, directory: &Path) -> std::io::Result<()> {
     let path = directory.join("manifest.json");
     let data = serde_json::to_string_pretty(manifest).expect("serde_json::Value сериализуется");
     std::fs::write(path, data)
 }
 
-/// Безопасное удаление каталога — порт `_safe_rmtree`.
+/// Safe directory removal: a port of `_safe_rmtree`.
 ///
-/// * Несуществующий путь (и не симлинк) → `false`.
-/// * Симлинк → удаляется САМА ссылка (не цель), `true`.
-/// * Реальный путь ВНЕ `$HOME` и вне временного каталога → отказ, `false`;
-///   сам `$HOME` (как и сам временный каталог) — тоже отказ, удаляем только
-///   то, что лежит ВНУТРИ них.
-/// * Иначе — рекурсивное удаление (ошибки игнорируются, как
+/// * A non-existent path (and not a symlink) → `false`.
+/// * A symlink → the link ITSELF is removed (not its target), `true`.
+/// * A real path OUTSIDE `$HOME` and outside the temporary directory → refused,
+///   `false`; `$HOME` itself (like the temporary directory itself) is refused
+///   too — we only remove what lies INSIDE them.
+/// * Otherwise, recursive removal (errors are ignored, like
 ///   `shutil.rmtree(ignore_errors=True)`), `true`.
 ///
-/// Как и в Python, обычный ФАЙЛ внутри `$HOME` не удаляется (rmtree работает
-/// только над каталогом), но функция всё равно возвращает `true`.
+/// As in Python, a plain FILE inside `$HOME` is not removed (rmtree works only
+/// on a directory), but the function still returns `true`.
 pub fn safe_rmtree(path: &Path) -> bool {
     let link_meta = std::fs::symlink_metadata(path);
     let is_symlink = link_meta.as_ref().map(|m| m.file_type().is_symlink()).unwrap_or(false);
@@ -405,11 +409,11 @@ pub fn safe_rmtree(path: &Path) -> bool {
     true
 }
 
-/// Снимет ли [`safe_rmtree`] что-нибудь по пути `path`: ссылку — да,
-/// каталог — только под `$HOME` или временным каталогом (не сами они), файл
-/// — нет (rmtree над файлом не работает). Откат установки
-/// (`install_plan::Undo`) по этому ответу откладывает путь в сторону вместо
-/// удаления — с теми же границами.
+/// Whether [`safe_rmtree`] would remove anything at `path`: a link — yes; a
+/// directory — only under `$HOME` or the temporary directory (not those
+/// themselves); a file — no (rmtree does not work on a file). An installation
+/// rollback (`install_plan::Undo`) uses this answer to move the path aside
+/// instead of deleting it, within the same boundaries.
 pub(crate) fn safe_rmtree_removes(path: &Path) -> bool {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => true,
@@ -419,19 +423,20 @@ pub(crate) fn safe_rmtree_removes(path: &Path) -> bool {
     }
 }
 
-/// Разрешено ли удалять уже разрешённый (`realpath`) путь — вынесено из
-/// [`safe_rmtree`] отдельной чистой функцией, чтобы проверку можно было
-/// тестировать без настоящего `$HOME` на диске.
+/// Whether an already resolved (`realpath`) path may be removed: extracted
+/// from [`safe_rmtree`] into a separate pure function so that the check can be
+/// tested without a real `$HOME` on disk.
 ///
-/// Эталон (`rexon/extensions/utils.py`) сравнивает с `home + os.sep`, то есть
-/// требует строгого ПОТОМКА: `_py_safe_rmtree($HOME)` отказывает. У
-/// `Path::starts_with` равенство истинно, поэтому корень отсекается явно —
-/// без этого `safe_rmtree($HOME)` снёс бы домашний каталог целиком.
+/// The reference (`rexon/extensions/utils.py`) compares with `home + os.sep`,
+/// i.e. it requires a strict DESCENDANT: `_py_safe_rmtree($HOME)` refuses.
+/// For `Path::starts_with` equality is true, so the root is cut off
+/// explicitly — without this `safe_rmtree($HOME)` would wipe the whole home
+/// directory.
 pub fn rmtree_allowed(real: &Path, home: &Path, tmp: &Path) -> bool {
     (real.starts_with(home) && real != home) || (real.starts_with(tmp) && real != tmp)
 }
 
-/// Домашний каталог из `$HOME` (fallback — текущий каталог).
+/// The home directory from `$HOME` (falls back to the current directory).
 fn home_dir() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
 }

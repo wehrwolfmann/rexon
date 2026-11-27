@@ -1,65 +1,65 @@
-//! «Цвет акцента» раздела «Цветовые схемы» — как в KDE «Цвета»: из цветовой
-//! схемы, из обоев или свой (10 готовых цветов и выбор любого).
+//! "Accent color" of the "Color schemes" section — as in KDE "Colors": from the color
+//! scheme, from the wallpaper or a custom one (10 preset colors and picking any).
 //!
-//! Где цвет живёт (сверено с исходниками и схемами в системе, 30.10.2026):
+//! Where the color lives (checked against the sources and the schemes on the system, 30.10.2026):
 //!
-//! * хранилище Rexon во ВСЕХ окружениях — те же ключи, что у KDE:
-//!   `kdeglobals [General] AccentColor` (нет ключа — «из схемы»),
-//!   `LastUsedCustomAccentColor` и `accentColorFromWallpaper`
+//! * Rexon's storage on ALL desktops — the same keys as KDE's:
+//!   `kdeglobals [General] AccentColor` (no key — "from the scheme"),
+//!   `LastUsedCustomAccentColor` and `accentColorFromWallpaper`
 //!   (plasma-workspace 6.8.2 `kcms/colors/colorssettings.kcfg`);
-//! * KDE — сначала ключи, потом `plasma-apply-colorscheme --accent-color
-//!   <цвет>` (тот же `applyScheme`, что у модуля «Цвета»: перекрашивает
-//!   выделение, ссылки и рамку фокуса и шлёт «палитра сменилась»);
-//!   «из схемы» — `--accent-color transparent` (`applyScheme` с прозрачным
-//!   акцентом копирует схему как есть). «Из обоев» — цвет, который Plasma
-//!   сама вычисляет по обоям (`org.kde.PlasmaShell.color`), и флаг: дальше
-//!   за обоями следит служба Plasma `plasma_accentcolor_service`;
-//! * вне Plasma — слой Rexon программ KDE и Qt
-//!   ([`crate::shell_palette::plan_scheme_layer`]): он подмешивает акцент
-//!   из `kdeglobals` в цвета схемы так же, как `applyScheme`
-//!   ([`scheme_accent_edits`]), и палитра qt6ct/qt5ct или LXQt получает
-//!   выделение этого цвета. Слоя нет (схему Rexon вне Plasma ещё не
-//!   применял) — цвет вступит вместе со схемой, это сказано человеку;
-//! * GNOME и niri (портал GNOME) — `org.gnome.desktop.interface
-//!   accent-color` (GNOME 47+): девять имён, ближайшее берётся правилом
-//!   самой libadwaita (`adw_accent_color_nearest_from_rgba`, OKLCH);
-//! * Cinnamon и Xfce — `org.x.apps.portal accent-rgb` (`#rrggbb`): его
-//!   отдаёт программам GTK 4 портал xapp, если тема GTK не задаёт свой
-//!   `accent_color` (строки `xdg-desktop-portal-xapp`); пустая строка —
-//!   «как в теме»;
-//! * COSMIC — акцент лежит в `com.system76.CosmicTheme.*.Builder/v2/accent`,
-//!   а тему из него собирает только сам cosmic-settings (libcosmic
-//!   `ThemeBuilder::build`; cosmic-settings-daemon её не пересобирает).
-//!   Поэтому — его же командами: `cosmic-settings appearance export <файл>.ron`
-//!   (построитель нынешнего режима, тёмного или светлого), в нём меняется
-//!   поле `accent` (`Some("#RRGGBBFF")`, `None` — цвет палитры), и
-//!   `cosmic-settings appearance import` собирает и применяет тему
+//! * KDE — first the keys, then `plasma-apply-colorscheme --accent-color
+//!   <color>` (the same `applyScheme` as the "Colors" module: recolors
+//!   selection, links and the focus frame and sends "the palette changed");
+//!   "from the scheme" — `--accent-color transparent` (`applyScheme` with a transparent
+//!   accent copies the scheme as is). "From the wallpaper" — the color Plasma
+//!   computes from the wallpaper itself (`org.kde.PlasmaShell.color`), plus a flag: from then on
+//!   the Plasma service `plasma_accentcolor_service` follows the wallpaper;
+//! * outside Plasma — Rexon's layer for KDE and Qt programs
+//!   ([`crate::shell_palette::plan_scheme_layer`]): it mixes the accent
+//!   from `kdeglobals` into the scheme colors the same way `applyScheme` does
+//!   ([`scheme_accent_edits`]), and the qt6ct/qt5ct or LXQt palette gets
+//!   the selection in this color. No layer (Rexon has not applied a scheme outside Plasma
+//!   yet) — the color takes effect together with the scheme, and the person is told so;
+//! * GNOME and niri (the GNOME portal) — `org.gnome.desktop.interface
+//!   accent-color` (GNOME 47+): nine names, the nearest is picked by libadwaita's
+//!   own rule (`adw_accent_color_nearest_from_rgba`, OKLCH);
+//! * Cinnamon and Xfce — `org.x.apps.portal accent-rgb` (`#rrggbb`): the xapp
+//!   portal hands it to GTK 4 programs if the GTK theme does not set its own
+//!   `accent_color` (the `xdg-desktop-portal-xapp` lines); an empty string —
+//!   "as in the theme";
+//! * COSMIC — the accent lives in `com.system76.CosmicTheme.*.Builder/v2/accent`,
+//!   and only cosmic-settings itself builds the theme from it (libcosmic
+//!   `ThemeBuilder::build`; cosmic-settings-daemon does not rebuild it).
+//!   Hence — with its own commands: `cosmic-settings appearance export <file>.ron`
+//!   (the builder of the current mode, dark or light), the
+//!   `accent` field is changed in it (`Some("#RRGGBBFF")`, `None` — the palette color), and
+//!   `cosmic-settings appearance import` builds and applies the theme
 //!   (`pages/desktop/appearance/commands.rs`, cosmic-settings 1.11.0;
-//!   проверено в отдельном HOME 31.10.2026);
-//! * Deepin — `org.deepin.dde.Appearance1.SetActiveColors("#свет,#тьма")`
-//!   на сеансовой шине (dde-appearance: пишет `Active_Colors` и ключи Qt
-//!   `qt-active-color`/`qt-dark-active-color`); раздел цветов там закрыт,
-//!   блок стоит над объяснением;
-//! * Pantheon — `io.elementary.settings-daemon.interface accent-color`: одно
-//!   из 11 имён (ближайшее) или `automatic` — тогда служба elementary сама
-//!   берёт цвет из обоев и следит за их сменой (`AccentColorManager`);
-//! * LXQt без слоя — свои ключи `lxqt.conf [Palette] highlight_color` и
-//!   `highlighted_text_color` (их читает lxqt-qtplugin и перечитывает сам);
-//! * Hyprland, sway, niri, labwc — «акцент» тайловых: рамка активного окна
+//!   checked in a separate HOME on 31.10.2026);
+//! * Deepin — `org.deepin.dde.Appearance1.SetActiveColors("#light,#dark")`
+//!   on the session bus (dde-appearance: writes `Active_Colors` and the Qt keys
+//!   `qt-active-color`/`qt-dark-active-color`); the colors section is closed there,
+//!   the block sits above the explanation;
+//! * Pantheon — `io.elementary.settings-daemon.interface accent-color`: one
+//!   of 11 names (the nearest) or `automatic` — then the elementary service itself
+//!   takes the color from the wallpaper and follows its changes (`AccentColorManager`);
+//! * LXQt without a layer — its own keys `lxqt.conf [Palette] highlight_color` and
+//!   `highlighted_text_color` (lxqt-qtplugin reads them and rereads them itself);
+//! * Hyprland, sway, niri, labwc — the "accent" of tiling compositors: the active window border
 //!   (Hyprland `general:col.active_border`, sway `client.focused`, niri
 //!   `focus-ring`/`border active-color`, labwc `window.active.border.color`)
-//!   — нашим файлом с управляемым блоком в конфиге ([`crate::animations::wm_include`]);
-//! * MATE и Budgie — общего цвета акцента нет: GTK 3 берёт цвета из темы, а
-//!   их портал (`xdg-desktop-portal-gtk`) акцент программам GTK 4 не отдаёт
-//!   (в `settings.c` у него только `color-scheme` и `contrast`). Цвет
-//!   получают программы KDE и Qt через слой, остальное — темой GTK.
+//!   — via our file with a managed block in the config ([`crate::animations::wm_include`]);
+//! * MATE and Budgie — there is no shared accent color: GTK 3 takes colors from the theme, and
+//!   their portal (`xdg-desktop-portal-gtk`) does not hand the accent to GTK 4 programs
+//!   (its `settings.c` has only `color-scheme` and `contrast`). KDE and Qt programs
+//!   get the color through the layer, the rest — through the GTK theme.
 //!
-//! «Из обоев» вне Plasma: цвет берётся из картинки обоев; когда обои меняет
-//! сам Rexon ([`crate::wallpaper_exec`]), акцент пересчитывается
-//! ([`follow_wallpaper`]). Чужую смену обоев Rexon не отслеживает.
+//! "From the wallpaper" outside Plasma: the color is taken from the wallpaper picture; when Rexon
+//! itself changes the wallpaper ([`crate::wallpaper_exec`]), the accent is recomputed
+//! ([`follow_wallpaper`]). Rexon does not track wallpaper changes made by others.
 //!
-//! «Вернуть как было» — по памятке `~/.local/state/rexon/accent.json`:
-//! прежние значения всех ключей, которые Rexon тронул первым разом.
+//! "Restore as it was" — from the memo `~/.local/state/rexon/accent.json`:
+//! the previous values of all keys Rexon touched the first time.
 
 use std::path::PathBuf;
 
@@ -70,10 +70,10 @@ use crate::themes::WmSyntax;
 use crate::i18n::{n_, tr, trf};
 use crate::shell_palette::{ini_apply, ini_get, IniEdit, Rgb, SchemeCtx, SchemeWay};
 
-/// Раздел «Оформления», над сеткой которого стоит блок.
+/// The "Appearance" section above whose grid the block sits.
 pub const SECTION_KEY: &str = "colors";
 
-/// Готовые цвета — те же десять, что у KDE (`AccentColorUI.qml`).
+/// Preset colors — the same ten as KDE's (`AccentColorUI.qml`).
 pub const PRESETS: [&str; 10] =
     ["#e93a9a", "#e93d58", "#e9643a", "#e8cb2d", "#3dd425", "#00d3b8", "#3daee9", "#b875dc", "#926ee4", "#686b6f"];
 
@@ -94,21 +94,21 @@ const DEEPIN_DEST: &str = "org.deepin.dde.Appearance1";
 const DEEPIN_PATH: &str = "/org/deepin/dde/Appearance1";
 const LXQT_KEYS: [&str; 2] = ["highlight_color", "highlighted_text_color"];
 const WM_TARGET: &str = "wm:accent";
-/// Управляемый блок и наш файл рамки у тайловых композиторов.
+/// The managed block and our border file for tiling compositors.
 pub const WM_TAG: &str = "accent color";
 pub const WM_STEM: &str = "rexon-accent";
 const LABWC_KEY: &str = "window.active.border.color";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Цветовая математика (как у Qt/KDE)
+// Color math (as in Qt/KDE)
 // ═══════════════════════════════════════════════════════════════════════════
 
 fn chan(c: u8) -> f64 {
     c as f64 / 255.0
 }
 
-/// Канал `QColor::fromRgbF` → 8 бит: Qt хранит 16 бит (`qRound(x·65535)`),
-/// а `red()` делит на 257 с округлением (`qt_div_257`).
+/// A `QColor::fromRgbF` channel → 8 bits: Qt stores 16 bits (`qRound(x·65535)`),
+/// and `red()` divides by 257 with rounding (`qt_div_257`).
 fn from_f(x: f64) -> u8 {
     let v = (x.clamp(0.0, 1.0) * 65535.0).round() as u32;
     ((v - (v >> 8) + 0x80) >> 8) as u8
@@ -131,7 +131,7 @@ fn linear_to_srgb(x: f64) -> f64 {
     }
 }
 
-/// OKLab из sRGB (матрицы Björn Ottosson — те же у KDE и libadwaita).
+/// OKLab from sRGB (Björn Ottosson's matrices — the same in KDE and libadwaita).
 fn oklab(c: Rgb) -> (f64, f64, f64) {
     let (r, g, b) = (srgb_to_linear(chan(c.0)), srgb_to_linear(chan(c.1)), srgb_to_linear(chan(c.2)));
     let l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).cbrt();
@@ -155,7 +155,7 @@ fn from_oklab(lab: (f64, f64, f64)) -> Rgb {
     Rgb(from_f(linear_to_srgb(r)), from_f(linear_to_srgb(g)), from_f(linear_to_srgb(bl)))
 }
 
-/// OKLCH: светлота, насыщенность, оттенок в градусах.
+/// OKLCH: lightness, chroma, hue in degrees.
 fn oklch(c: Rgb) -> (f64, f64, f64) {
     let (l, a, b) = oklab(c);
     let mut h = b.atan2(a).to_degrees();
@@ -165,23 +165,23 @@ fn oklch(c: Rgb) -> (f64, f64, f64) {
     (l, (a * a + b * b).sqrt(), h)
 }
 
-/// `tintColor` из `colorsapplicator.cpp`: оттенок `with` в долю `factor`,
-/// светлота основы на месте.
+/// `tintColor` from `colorsapplicator.cpp`: the hue of `with` at the share `factor`,
+/// the base's lightness stays.
 pub fn tint(base: Rgb, with: Rgb, factor: f64) -> Rgb {
     let (l, a, b) = oklab(base);
     let (_, wa, wb) = oklab(with);
     from_oklab((l, a + (wa - a) * factor, b + (wb - b) * factor))
 }
 
-/// Альфа так, как её отдаёт `QColor::alphaF()`: 16 бит, число `float`.
+/// Alpha as `QColor::alphaF()` returns it: 16 bits, a `float` number.
 fn qalpha(a: f64) -> f32 {
     ((a * 65535.0).round() / 65535.0) as f32
 }
 
-/// `alphaBlend` из `colorsapplicator.h` для непрозрачного фона. Точность —
-/// как у Qt: доля переднего цвета считается во `float`, остаток — в
-/// `double`, сумма обрезается до целого (`QColor::fromRgb(int…)`). Иначе
-/// на границах выходит лишняя единица (172 против 173 у KDE).
+/// `alphaBlend` from `colorsapplicator.h` for an opaque background. Precision is
+/// as in Qt: the foreground share is computed in `float`, the rest in
+/// `double`, the sum is truncated to an integer (`QColor::fromRgb(int…)`). Otherwise
+/// an extra unit appears at the boundaries (172 vs KDE's 173).
 fn alpha_blend(fg: Rgb, alpha: f64, bg: Rgb) -> Rgb {
     let a = qalpha(alpha);
     let inv = 1.0 - a as f64;
@@ -189,20 +189,20 @@ fn alpha_blend(fg: Rgb, alpha: f64, bg: Rgb) -> Rgb {
     Rgb(m(fg.0, bg.0), m(fg.1, bg.1), m(fg.2, bg.2))
 }
 
-/// `accentBackground`: акцент с прозрачностью 0.7 поверх фона.
+/// `accentBackground`: the accent at 0.7 opacity over the background.
 pub fn accent_background(accent: Rgb, background: Rgb) -> Rgb {
     alpha_blend(accent, 0.7, background)
 }
 
-/// `accentForeground`: белый или чёрный текст поверх акцента (WCAG 4.5),
-/// у неактивного — с прозрачностью 0.6.
+/// `accentForeground`: white or black text over the accent (WCAG 4.5),
+/// for the inactive one — at 0.6 opacity.
 pub fn accent_foreground(accent: Rgb, active: bool) -> Rgb {
     let white = Rgb(255, 255, 255);
     let c = if contrast_ratio(accent, white) < 4.5 { Rgb(0, 0, 0) } else { white };
     alpha_blend(c, if active { 1.0 } else { 0.6 }, accent)
 }
 
-// KHCY из kguiaddons (`kcolorspaces.cpp`, Rec.709, гамма 2.2).
+// KHCY from kguiaddons (`kcolorspaces.cpp`, Rec.709, gamma 2.2).
 const YC: [f64; 3] = [0.2126, 0.7152, 0.0722];
 
 fn kgamma(n: f64) -> f64 {
@@ -301,7 +301,7 @@ impl Khcy {
     }
 }
 
-/// `KColorUtils::lighten(color)` (доля 0.5, насыщенность как есть).
+/// `KColorUtils::lighten(color)` (amount 0.5, chroma as is).
 fn lighten(color: Rgb) -> Rgb {
     let mut c = Khcy::new(color);
     c.y = 1.0 - ((1.0 - c.y) * 0.5).clamp(0.0, 1.0);
@@ -309,7 +309,7 @@ fn lighten(color: Rgb) -> Rgb {
     c.color()
 }
 
-/// `KColorUtils::darken(color)` (доля 0.5, насыщенность как есть).
+/// `KColorUtils::darken(color)` (amount 0.5, chroma as is).
 fn darken(color: Rgb) -> Rgb {
     let mut c = Khcy::new(color);
     c.y = (c.y * 0.5).clamp(0.0, 1.0);
@@ -318,7 +318,7 @@ fn darken(color: Rgb) -> Rgb {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Акцент в цветах схемы — `applyScheme` KDE
+// The accent in scheme colors — KDE's `applyScheme`
 // ═══════════════════════════════════════════════════════════════════════════
 
 const ACCENT_SETS: &[&str] = &[
@@ -346,7 +346,7 @@ const ACCENT_SET_KEYS: &[&str] = &[
     "DecorationHover",
 ];
 
-/// Ключи, которые акцент заменяет целиком.
+/// Keys the accent replaces entirely.
 const ACCENT_KEYS: &[&str] = &["ForegroundActive", "ForegroundLink", "DecorationFocus", "DecorationHover"];
 
 fn color_of(scheme: &str, group: &str, key: &str) -> Option<Rgb> {
@@ -361,13 +361,13 @@ fn truthy(v: Option<String>) -> bool {
     v.is_some_and(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"))
 }
 
-/// Правки поверх применённой схемы, которыми `applyScheme` KDE
-/// (`colorsapplicator.cpp`, plasma-workspace 6.8.2) вносит акцент: ссылки,
-/// фокус и наведение — цвет акцента (ссылка — читаемый вариант), выделение
-/// — акцент с прозрачностью 0.7 поверх фона, у схем с `TintFactor` — лёгкая
-/// подкраска всех цветов, у схем с акцентным заголовком — заголовок окна.
-/// Ключей, которых в схеме нет, подкраска не трогает (KDE записал бы для
-/// них цвет «недействительного» `QColor`).
+/// Edits on top of the applied scheme with which KDE's `applyScheme`
+/// (`colorsapplicator.cpp`, plasma-workspace 6.8.2) brings in the accent: links,
+/// focus and hover get the accent color (a link gets a readable variant), selection
+/// gets the accent at 0.7 opacity over the background, schemes with `TintFactor` get a light
+/// tint of all colors, schemes with an accented title get the window title.
+/// Keys missing from the scheme are not tinted (KDE would write the color
+/// of an "invalid" `QColor` for them).
 pub fn scheme_accent_edits(scheme: &str, accent: Rgb) -> Vec<IniEdit> {
     let titlebar = ini_get(scheme, "General", "TitlebarIsAccentColored")
         .map(|v| truthy(Some(v)))
@@ -447,13 +447,13 @@ pub fn scheme_accent_edits(scheme: &str, accent: Rgb) -> Vec<IniEdit> {
     out
 }
 
-/// Текст схемы с подмешанным акцентом — из него слой строит палитру Qt.
+/// Scheme text with the accent mixed in — the layer builds the Qt palette from it.
 pub fn accented_scheme(scheme: &str, accent: Rgb) -> String {
     ini_apply(Some(scheme), &scheme_accent_edits(scheme, accent))
 }
 
-/// Свой акцент из `kdeglobals` (`None` — «из схемы»: ключа нет или он
-/// прозрачный, как KDE пишет значение по умолчанию).
+/// The custom accent from `kdeglobals` (`None` — "from the scheme": no key, or it is
+/// transparent, as KDE writes the default value).
 pub fn accent_from_kdeglobals(kdeglobals: &str) -> Option<Rgb> {
     let v = ini_get(kdeglobals, "General", KDE_ACCENT)?;
     let t = v.trim();
@@ -465,16 +465,16 @@ pub fn accent_from_kdeglobals(kdeglobals: &str) -> Option<Rgb> {
         return None;
     }
     if t.starts_with('#') && t.len() == 9 && t[1..3].eq_ignore_ascii_case("00") {
-        return None; // #00rrggbb — тоже прозрачный
+        return None; // #00rrggbb — transparent too
     }
     Rgb::parse(t)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GNOME: ближайший из девяти
+// GNOME: the nearest of nine
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Акценты GNOME (`adw-accent-color.c`): имя ключа, подпись, цвет.
+/// GNOME accents (`adw-accent-color.c`): key name, label, color.
 pub const GNOME_ACCENTS: &[(&str, &str, &str)] = &[
     ("blue", n_("blue"), "#3584e4"),
     ("teal", n_("teal"), "#2190a4"),
@@ -487,7 +487,7 @@ pub const GNOME_ACCENTS: &[(&str, &str, &str)] = &[
     ("slate", n_("slate"), "#6f8396"),
 ];
 
-/// Ближайший акцент GNOME — правило самой libadwaita
+/// The nearest GNOME accent — libadwaita's own rule
 /// (`adw_accent_color_nearest_from_rgba`).
 pub fn nearest_gnome(c: Rgb) -> &'static str {
     let (_, chroma, h) = oklch(c);
@@ -512,12 +512,12 @@ fn gnome_label(id: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Pantheon: ближайший из одиннадцати
+// Pantheon: the nearest of eleven
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Акценты elementary (`io.elementary.settings-daemon.interface
-/// accent-color`, цвета — те, по которым служба elementary сама ищет
-/// ближайший): имя ключа, подпись, цвет.
+/// elementary accents (`io.elementary.settings-daemon.interface
+/// accent-color`, the colors are the ones the elementary service itself uses to find
+/// the nearest): key name, label, color.
 pub const PANTHEON_ACCENTS: &[(&str, &str, &str)] = &[
     ("red", n_("red"), "#ed5353"),
     ("orange", n_("orange"), "#ffa154"),
@@ -532,8 +532,8 @@ pub const PANTHEON_ACCENTS: &[(&str, &str, &str)] = &[
     ("latte", n_("latte"), "#e7c591"),
 ];
 
-/// Ближайший акцент elementary: наименьшее расстояние в RGB — той же мерой
-/// служба elementary подбирает акцент к однотонному фону.
+/// The nearest elementary accent: the smallest distance in RGB — the same measure
+/// the elementary service uses to match an accent to a solid-color background.
 pub fn nearest_pantheon(c: Rgb) -> &'static str {
     let dist = |hex: &str| {
         let p = Rgb::parse(hex).unwrap_or(Rgb(0, 0, 0));
@@ -548,12 +548,12 @@ fn pantheon_label(id: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// COSMIC: поле `accent` построителя темы (RON)
+// COSMIC: the `accent` field of the theme builder (RON)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Где в тексте RON лежит значение поля верхнего уровня `field`:
-/// `(начало, конец)` байтов значения без пробелов по краям. Поля вложенных
-/// структур (`palette: (… accent_blue: …)`) не считаются.
+/// Where in the RON text the value of the top-level field `field` sits:
+/// `(start, end)` bytes of the value without surrounding whitespace. Fields of nested
+/// structures (`palette: (… accent_blue: …)`) do not count.
 fn ron_field_span(text: &str, field: &str) -> Option<(usize, usize)> {
     let bytes = text.as_bytes();
     let mut depth = 0i32;
@@ -582,7 +582,7 @@ fn ron_field_span(text: &str, field: &str) -> Option<(usize, usize)> {
                 if before_ok && rest.starts_with(':') {
                     let start_raw = text.len() - rest.len() + 1;
                     let start = start_raw + (text[start_raw..].len() - text[start_raw..].trim_start().len());
-                    // Конец — запятая или закрывающая скобка на том же уровне.
+                    // The end is a comma or a closing parenthesis at the same level.
                     let (mut d, mut s, mut j) = (0i32, false, start);
                     while j < bytes.len() {
                         let b = bytes[j];
@@ -617,13 +617,13 @@ fn ron_field_span(text: &str, field: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Значение поля верхнего уровня как текст RON (`Some("#63D0DFFF")`).
+/// The value of a top-level field as RON text (`Some("#63D0DFFF")`).
 pub fn ron_field(text: &str, field: &str) -> Option<String> {
     ron_field_span(text, field).map(|(a, b)| text[a..b].to_string())
 }
 
-/// Текст RON с заменённым значением поля верхнего уровня; поля нет —
-/// дописывается перед последней скобкой.
+/// RON text with the value of a top-level field replaced; if there is no field, it is
+/// appended before the last parenthesis.
 pub fn ron_with_field(text: &str, field: &str, value: &str) -> Option<String> {
     if let Some((a, b)) = ron_field_span(text, field) {
         return Some(format!("{}{value}{}", &text[..a], &text[b..]));
@@ -634,12 +634,12 @@ pub fn ron_with_field(text: &str, field: &str, value: &str) -> Option<String> {
     Some(format!("{head}{comma}\n    {field}: {value},\n{}", &text[close..]))
 }
 
-/// Цвет в записи построителя COSMIC (`Some("#RRGGBBFF")`).
+/// A color in COSMIC builder notation (`Some("#RRGGBBFF")`).
 pub fn cosmic_accent_value(c: Rgb) -> String {
     format!("Some(\"#{:02X}{:02X}{:02X}FF\")", c.0, c.1, c.2)
 }
 
-/// Строка из ответа `dbus-send --print-reply` (`string "…"`).
+/// A string from a `dbus-send --print-reply` answer (`string "…"`).
 pub fn parse_dbus_string(reply: &str) -> Option<String> {
     let line = reply.lines().rev().find(|l| l.contains("string \""))?;
     let start = line.find('"')? + 1;
@@ -648,10 +648,10 @@ pub fn parse_dbus_string(reply: &str) -> Option<String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Тайловые: рамка активного окна
+// Tiling compositors: the active window border
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Наш файл рамки активного окна цвета акцента.
+/// Our file for the active window border in the accent color.
 pub fn wm_border_content(syntax: WmSyntax, accent: Rgb) -> String {
     let c = syntax.comment();
     let hex = accent.hex();
@@ -671,8 +671,8 @@ pub fn wm_border_content(syntax: WmSyntax, accent: Rgb) -> String {
     out
 }
 
-/// Последняя строка `client.focused` в конфиге sway (без неё — цвета
-/// sway по умолчанию, sway(5)).
+/// The last `client.focused` line in the sway config (without it — sway's
+/// default colors, sway(5)).
 pub fn sway_focused_colors(config: Option<&str>) -> String {
     config
         .unwrap_or("")
@@ -684,12 +684,12 @@ pub fn sway_focused_colors(config: Option<&str>) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Цвет из обоев
+// Color from the wallpaper
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Цвет акцента по картинке: самый «весомый» оттенок (24 корзины по кругу
-/// OKLCH, вес — насыщенность), средний цвет его корзины; серую картинку
-/// выдаёт её средний цвет. Светлота зажата, чтобы на акценте читался текст.
+/// Accent color from a picture: the "weightiest" hue (24 buckets around the
+/// OKLCH circle, weight is chroma), the average color of its bucket; a gray picture
+/// yields its average color. Lightness is clamped so text stays readable on the accent.
 pub fn wallpaper_accent(img: &image::RgbImage) -> Option<Rgb> {
     const BINS: usize = 24;
     let mut weight = [0.0f64; BINS];
@@ -730,14 +730,14 @@ pub fn wallpaper_accent(img: &image::RgbImage) -> Option<Rgb> {
     Some(from_oklab((l.clamp(0.45, 0.75), a, b)))
 }
 
-/// Цвет по файлу картинки (уменьшенной до 64 точек — быстро и без шума).
+/// Color from a picture file (scaled down to 64 pixels — fast and noise-free).
 pub fn wallpaper_accent_file(path: &str) -> Option<Rgb> {
     let img = image::open(path).ok()?;
     wallpaper_accent(&img.thumbnail(64, 64).to_rgb8())
 }
 
-/// Ответ `org.kde.PlasmaShell.color` (`dbus-send --print-reply`: `uint32
-/// N`, ARGB). Прозрачный — Plasma цвет ещё не вычислила.
+/// The `org.kde.PlasmaShell.color` answer (`dbus-send --print-reply`: `uint32
+/// N`, ARGB). Transparent — Plasma has not computed the color yet.
 pub fn parse_plasma_color(reply: &str) -> Option<Rgb> {
     let v: u32 = reply.split_whitespace().last()?.parse().ok()?;
     if v >> 24 == 0 {
@@ -747,31 +747,31 @@ pub fn parse_plasma_color(reply: &str) -> Option<Rgb> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Окружения
+// Desktops
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Родной ключ окружения.
+/// The desktop's native key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Native {
-    /// Plasma: ключи `kdeglobals` и `plasma-apply-colorscheme`.
+    /// Plasma: the `kdeglobals` keys and `plasma-apply-colorscheme`.
     Plasma,
-    /// `org.gnome.desktop.interface accent-color` (девять имён).
+    /// `org.gnome.desktop.interface accent-color` (nine names).
     Gnome,
-    /// `org.x.apps.portal accent-rgb` (портал xapp).
+    /// `org.x.apps.portal accent-rgb` (the xapp portal).
     Xapp,
-    /// COSMIC: `cosmic-settings appearance export/import` с полем `accent`.
+    /// COSMIC: `cosmic-settings appearance export/import` with the `accent` field.
     Cosmic,
     /// Deepin: `org.deepin.dde.Appearance1.SetActiveColors`.
     Deepin,
     /// Pantheon: `io.elementary.settings-daemon.interface accent-color`.
     Pantheon,
-    /// LXQt: `lxqt.conf [Palette]` (когда слоя схемы нет).
+    /// LXQt: `lxqt.conf [Palette]` (when there is no scheme layer).
     Lxqt,
-    /// Общего акцента нет (MATE, Budgie, прочие).
+    /// No shared accent (MATE, Budgie, others).
     None,
 }
 
-/// Родной путь окружения по идентификатору (`system::detect_current_de`).
+/// The desktop's native path by identifier (`system::detect_current_de`).
 pub fn native_way(de: &str) -> Native {
     match de {
         "kde" => Native::Plasma,
@@ -785,7 +785,7 @@ pub fn native_way(de: &str) -> Native {
     }
 }
 
-/// Композитор, у которого акцент — рамка активного окна.
+/// A compositor whose accent is the active window border.
 pub fn border_wm(de: &str) -> Option<&'static str> {
     match de {
         "hyprland" => Some("hyprland"),
@@ -796,7 +796,7 @@ pub fn border_wm(de: &str) -> Option<&'static str> {
     }
 }
 
-/// Где искать и куда писать.
+/// Where to look and where to write.
 #[derive(Debug, Clone)]
 pub struct AccentCtx {
     pub de: String,
@@ -809,8 +809,8 @@ impl AccentCtx {
         AccentCtx { scheme: SchemeCtx::live(&de), de }
     }
 
-    /// Для раздела «Акцент» вкладки «Оформление»: стол — выбранный в
-    /// «Текущее окружение» ([`crate::animations::LookCtx::for_look`]).
+    /// For the "Accent" section of the "Appearance" tab: the desktop is the one selected in
+    /// "Current desktop" ([`crate::animations::LookCtx::for_look`]).
     pub fn for_look() -> AccentCtx {
         let de = crate::animations::LookCtx::for_look().de;
         AccentCtx { scheme: SchemeCtx::live(&de), de }
@@ -824,7 +824,7 @@ impl AccentCtx {
         self.scheme.home.state_dir().join("rexon/accent.json")
     }
 
-    /// Рабочий файл обмена с cosmic-settings (расширение `.ron` он требует).
+    /// Working exchange file with cosmic-settings (it requires the `.ron` extension).
     fn cosmic_file(&self) -> PathBuf {
         self.scheme.home.state_dir().join("rexon/accent-cosmic.ron")
     }
@@ -837,7 +837,7 @@ impl AccentCtx {
         self.config_dir().join("lxqt/lxqt.conf")
     }
 
-    /// Те же каталоги для общих планов композиторов.
+    /// The same directories for the shared compositor plans.
     fn look(&self) -> LookCtx {
         let config = self.config_dir().to_string_lossy().into_owned();
         LookCtx::new(&self.de, &self.scheme.home.home, Some(&config))
@@ -845,11 +845,11 @@ impl AccentCtx {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Памятка «как было»
+// The "as it was" memo
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Прежнее значение одного ключа: `kde:<ключ>` или
-/// `gsettings:<схема>:<ключ>`; `prev = None` — ключа не было.
+/// The previous value of one key: `kde:<key>` or
+/// `gsettings:<schema>:<key>`; `prev = None` — the key did not exist.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoEntry {
     pub target: String,
@@ -892,7 +892,7 @@ fn gsettings_target(schema: &str, key: &str) -> String {
     format!("gsettings:{schema}:{key}")
 }
 
-/// Ключ есть в схемах этой системы (`accent-color` — только с GNOME 47).
+/// The key exists in this system's schemas (`accent-color` — only from GNOME 47).
 fn gsettings_has(io: &dyn LookIo, schema: &str, key: &str) -> bool {
     io.have("gsettings") && io.run(&argv(&["gsettings", "range", schema, key])).0
 }
@@ -913,7 +913,7 @@ fn gsettings_write(io: &dyn LookIo, schema: &str, key: &str, value: &str) -> Res
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Снимок для окна
+// Snapshot for the window
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Serialize)]
@@ -922,32 +922,32 @@ pub struct ModeOption {
     pub label: String,
 }
 
-/// Снимок блока (JSON для `AccentSection.qml`).
+/// Block snapshot (JSON for `AccentSection.qml`).
 #[derive(Debug, Clone, Serialize)]
 pub struct AccentState {
-    /// Раздел «Оформления», где блок стоит.
+    /// The "Appearance" section where the block sits.
     pub section: String,
-    /// Блок показывается (в Deepin — нет: там раздел цветов закрыт).
+    /// The block is shown (not in Deepin: the colors section is closed there).
     pub available: bool,
     pub title: String,
-    /// `scheme`, `wallpaper` или `custom`.
+    /// `scheme`, `wallpaper` or `custom`.
     pub mode: String,
     pub modes: Vec<ModeOption>,
-    /// Нынешний цвет акцента `#rrggbb` (пусто — из схемы).
+    /// The current accent color `#rrggbb` (empty — from the scheme).
     pub color: String,
-    /// Последний свой цвет (для плитки «Свой»).
+    /// The last custom color (for the "Custom" tile).
     pub custom: String,
     pub presets: Vec<String>,
     pub pick_label: String,
     pub pick_title: String,
-    /// Где цвет действует в этом окружении — честно.
+    /// Where the color takes effect on this desktop — honestly.
     pub note: String,
     pub can_revert: bool,
     pub revert_label: String,
-    /// Подпись кнопки «открыть настройки окружения» (COSMIC), пусто — нет.
+    /// Label of the "open desktop settings" button (COSMIC), empty — none.
     pub open_label: String,
-    /// Блок стоит и над объяснением раздела (Deepin: схем там нет, а
-    /// акцент есть).
+    /// The block also sits above the section's explanation (Deepin: there are no schemes there, but
+    /// there is an accent).
     pub on_note: bool,
 }
 
@@ -955,7 +955,7 @@ fn kdeglobals_text(io: &dyn LookIo, ctx: &AccentCtx) -> String {
     io.read(&ctx.kdeglobals().to_string_lossy()).unwrap_or_default()
 }
 
-/// Схема, которую слой Rexon применил вне Plasma (`None` — слоя нет).
+/// The scheme Rexon's layer applied outside Plasma (`None` — no layer).
 fn layer_scheme(ctx: &AccentCtx) -> Option<String> {
     crate::shell_palette::read_layer_memo(&ctx.scheme.home).scheme
 }
@@ -964,7 +964,7 @@ fn qt_note(ctx: &AccentCtx) -> String {
     match crate::shell_palette::scheme_way(&ctx.de) {
         SchemeWay::Layer { lxqt } => match layer_scheme(ctx) {
             Some(s) => trf("KDE and Qt apps get it together with the color scheme “%1”.", &[&s]),
-            // LXQt без схемы — цвет выделения пишется в его палитру прямо.
+            // LXQt without a scheme — the selection color is written into its palette directly.
             None if lxqt => tr("LXQt and its Qt apps get it as the selection color."),
             None => tr("KDE and Qt apps get it once you apply a color scheme in this section."),
         },
@@ -972,7 +972,7 @@ fn qt_note(ctx: &AccentCtx) -> String {
     }
 }
 
-/// Где цвет действует здесь — одной-двумя фразами.
+/// Where the color takes effect here — in a sentence or two.
 pub fn note(ctx: &AccentCtx) -> String {
     let label = de_label(&ctx.de);
     let native = match native_way(&ctx.de) {
@@ -1052,10 +1052,10 @@ pub fn read_state(io: &dyn LookIo, ctx: &AccentCtx) -> AccentState {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Применение
+// Applying
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Что выбрал человек.
+/// What the person chose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Change {
     Scheme,
@@ -1064,7 +1064,7 @@ pub enum Change {
 }
 
 impl Change {
-    /// Из окна: `scheme`, `wallpaper` или цвет `#rrggbb`.
+    /// From the window: `scheme`, `wallpaper` or a color `#rrggbb`.
     pub fn parse(text: &str) -> Option<Change> {
         match text.trim() {
             "scheme" => Some(Change::Scheme),
@@ -1074,7 +1074,7 @@ impl Change {
     }
 }
 
-/// Цвет, который Plasma сама вычислила по обоям.
+/// The color Plasma itself computed from the wallpaper.
 fn plasma_wallpaper_color(io: &dyn LookIo) -> Option<Rgb> {
     if !io.have("dbus-send") {
         return None;
@@ -1094,7 +1094,7 @@ fn plasma_wallpaper_color(io: &dyn LookIo) -> Option<Rgb> {
     }
 }
 
-/// Правки `kdeglobals [General]` под выбор (хранилище Rexon везде).
+/// `kdeglobals [General]` edits for the choice (Rexon's storage everywhere).
 fn kde_edits(change: Change, color: Option<Rgb>) -> Vec<IniEdit> {
     let e = |key: &str, value: Option<String>| IniEdit { group: "General".into(), key: key.into(), value };
     let mut out = vec![e(KDE_ACCENT, color.map(|c| c.kde()))];
@@ -1109,14 +1109,14 @@ fn kde_target(key: &str) -> String {
     format!("kde:{key}")
 }
 
-/// Заново применить схему слоем Rexon (вне Plasma) — подхватит акцент.
+/// Reapply the scheme with Rexon's layer (outside Plasma) — it picks up the accent.
 fn reapply_layer(io: &dyn LookIo, ctx: &AccentCtx) -> Option<Result<(), String>> {
     let SchemeWay::Layer { lxqt } = crate::shell_palette::scheme_way(&ctx.de) else { return None };
     let scheme = layer_scheme(ctx)?;
     Some(crate::shell_palette::apply_scheme_layer(io, &ctx.scheme, lxqt, &scheme).map(|_| ()))
 }
 
-/// `plasma-apply-colorscheme --accent-color` (прозрачный — «из схемы»).
+/// `plasma-apply-colorscheme --accent-color` (transparent — "from the scheme").
 fn plasma_apply(io: &dyn LookIo, color: Option<Rgb>) -> Result<(), String> {
     let value = color.map(|c| c.hex()).unwrap_or_else(|| "transparent".into());
     let (ok, out) = io.run(&argv(&["plasma-apply-colorscheme", "--accent-color", &value]));
@@ -1138,7 +1138,7 @@ fn cmd(io: &dyn LookIo, args: &[&str]) -> Result<(), String> {
 
 // ── COSMIC ───────────────────────────────────────────────────────────────
 
-/// Построитель темы нынешнего режима — текстом RON.
+/// The theme builder of the current mode — as RON text.
 fn cosmic_export(io: &dyn LookIo, ctx: &AccentCtx) -> Result<String, String> {
     if !io.have("cosmic-settings") {
         return Err(trf("The program %1 is not installed.", &[&"cosmic-settings"]));
@@ -1148,7 +1148,7 @@ fn cosmic_export(io: &dyn LookIo, ctx: &AccentCtx) -> Result<String, String> {
     io.read(&path).ok_or_else(|| trf("Could not read %1.", &[&path]))
 }
 
-/// Поле `accent` построителя — и тему собирает сам cosmic-settings.
+/// The builder's `accent` field — and cosmic-settings builds the theme itself.
 fn cosmic_set(io: &dyn LookIo, ctx: &AccentCtx, value: &str) -> Result<(), String> {
     let text = cosmic_export(io, ctx)?;
     let path = ctx.cosmic_file().to_string_lossy().into_owned();
@@ -1172,7 +1172,7 @@ fn deepin_call(io: &dyn LookIo, method: &str, args: &[&str]) -> (bool, String) {
     io.run(&argv(&a))
 }
 
-/// Нынешние цвета `#свет,#тьма`; не заданы — нынешний цвет Qt на оба.
+/// The current colors `#light,#dark`; if not set — the current Qt color for both.
 fn deepin_colors(io: &dyn LookIo) -> Option<String> {
     let get = format!("{DEEPIN_DEST}.GetActiveColors");
     let (ok, out) = deepin_call(io, &get, &[]);
@@ -1197,7 +1197,7 @@ fn deepin_set(io: &dyn LookIo, colors: &str) -> Result<(), String> {
     }
 }
 
-// ── LXQt и тайловые ──────────────────────────────────────────────────────
+// ── LXQt and tiling compositors ──────────────────────────────────────────
 
 fn lxqt_target(key: &str) -> String {
     format!("lxqt:{key}")
@@ -1207,8 +1207,8 @@ fn labwc_target() -> String {
     format!("labwc:{LABWC_KEY}")
 }
 
-/// Шаги рамки активного окна: цвет — наш файл с блоком, `None` — блок
-/// снять (у человека остаются его цвета). `labwc_prev` — прежний ключ labwc.
+/// Active window border steps: a color — our file with the block, `None` — remove
+/// the block (the person keeps their colors). `labwc_prev` — the previous labwc key.
 fn wm_steps(io: &dyn LookIo, ctx: &AccentCtx, color: Option<Rgb>, labwc_prev: Option<String>) -> Vec<LookStep> {
     let Some(wm) = border_wm(&ctx.de) else { return Vec::new() };
     let look = ctx.look();
@@ -1229,8 +1229,8 @@ fn wm_steps(io: &dyn LookIo, ctx: &AccentCtx, color: Option<Rgb>, labwc_prev: Op
         Some(c) => {
             steps.push(LookStep::Wm(wm_include(&look, wm, WM_TAG, WM_STEM, &move |s| wm_border_content(s, c))));
             if wm == "sway" {
-                // sway конфиг сам не перечитывает, а `reload` перезапускает
-                // его swaybg поверх обоев Rexon — цвет говорим командой.
+                // sway does not reread its config by itself, and `reload` restarts
+                // its swaybg over Rexon's wallpaper — so we tell it the color with a command.
                 let text = accent_foreground(c, true).hex();
                 let h = c.hex();
                 steps.push(notify(&["swaymsg", &format!("client.focused {h} {h} {text} {h} {h}")]));
@@ -1253,15 +1253,15 @@ fn wm_steps(io: &dyn LookIo, ctx: &AccentCtx, color: Option<Rgb>, labwc_prev: Op
             }
         }
     }
-    // Hyprland перечитывает свой конфиг сам, но не подключённые файлы.
+    // Hyprland rereads its config by itself, but not the included files.
     if wm == "hyprland" && !steps.is_empty() {
         steps.push(notify(&["hyprctl", "reload"]));
     }
     steps
 }
 
-/// Записать выбор. `wallpaper` — картинка обоев стола сейчас (для «из
-/// обоев» вне Plasma и если Plasma цвет не дала). `(получилось, текст)`.
+/// Record the choice. `wallpaper` — the current desktop wallpaper picture (for "from
+/// the wallpaper" outside Plasma and if Plasma gave no color). `(succeeded, text)`.
 pub fn apply(io: &dyn LookIo, ctx: &AccentCtx, change: Change, wallpaper: &dyn Fn() -> Option<String>) -> (bool, String) {
     let native = native_way(&ctx.de);
     let way = crate::shell_palette::scheme_way(&ctx.de);
@@ -1287,7 +1287,7 @@ pub fn apply(io: &dyn LookIo, ctx: &AccentCtx, change: Change, wallpaper: &dyn F
     // TRANSLATORS: %1 is the technical reason.
     let failed = |why: String| (false, trf("Couldn't apply the accent color: %1", &[&why]));
 
-    // Памятка — до первой записи.
+    // The memo — before the first write.
     let mut memo = read_memo(io, ctx);
     let kg_path = ctx.kdeglobals();
     let kg = kdeglobals_text(io, ctx);
@@ -1321,7 +1321,7 @@ pub fn apply(io: &dyn LookIo, ctx: &AccentCtx, change: Change, wallpaper: &dyn F
             memo.remember(DEEPIN_TARGET, deepin_colors(io));
         }
     }
-    // LXQt без слоя схемы — его собственная палитра.
+    // LXQt without a scheme layer — its own palette.
     let lxqt_direct = native == Native::Lxqt && layer_scheme(ctx).is_none();
     let lxqt_path = ctx.lxqt_conf();
     let lxqt_text = io.read(&lxqt_path.to_string_lossy()).unwrap_or_default();
@@ -1358,7 +1358,7 @@ pub fn apply(io: &dyn LookIo, ctx: &AccentCtx, change: Change, wallpaper: &dyn F
         Native::Gnome if gnome_key => {
             let value = match color {
                 Some(c) => Some(nearest_gnome(c).to_string()),
-                // «Как в теме»: у GNOME своего «из схемы» нет — то, что было до Rexon.
+                // "As in the theme": GNOME has no "from the scheme" of its own — what was there before Rexon.
                 None => memo.prev(&gsettings_target(GNOME_SCHEMA, GNOME_KEY)).flatten(),
             };
             if let Some(v) = value {
@@ -1381,8 +1381,8 @@ pub fn apply(io: &dyn LookIo, ctx: &AccentCtx, change: Change, wallpaper: &dyn F
             }
         }
         Native::Pantheon if pantheon_key => {
-            // «Из обоев» — родное `automatic`: дальше за обоями следит сам
-            // Pantheon; «как в теме» — то, что было до Rexon.
+            // "From the wallpaper" — the native `automatic`: from then on Pantheon itself
+            // follows the wallpaper; "as in the theme" — what was there before Rexon.
             let value = match change {
                 Change::Wallpaper => Some("automatic".to_string()),
                 Change::Custom(c) => Some(nearest_pantheon(c).to_string()),
@@ -1469,7 +1469,7 @@ pub fn apply(io: &dyn LookIo, ctx: &AccentCtx, change: Change, wallpaper: &dyn F
     (true, parts.join(" "))
 }
 
-/// «Вернуть как было»: ключи — к виду до Rexon, цвета — заново.
+/// "Restore as it was": keys back to how they were before Rexon, colors reapplied.
 pub fn revert(io: &dyn LookIo, ctx: &AccentCtx) -> (bool, String) {
     let memo = read_memo(io, ctx);
     if memo.entries.is_empty() {
@@ -1538,8 +1538,8 @@ pub fn revert(io: &dyn LookIo, ctx: &AccentCtx) -> (bool, String) {
     (true, tr("The accent color is back as it was before Rexon."))
 }
 
-/// Обои стола сменил сам Rexon: при «из обоев» вне Plasma цвет берётся
-/// заново из новой картинки (Plasma ведёт его сама). `None` — делать нечего.
+/// Rexon itself changed the desktop wallpaper: with "from the wallpaper" outside Plasma the color is taken
+/// again from the new picture (Plasma handles it itself). `None` — nothing to do.
 pub fn follow_wallpaper(io: &dyn LookIo, ctx: &AccentCtx, picture: &str) -> Option<(bool, String)> {
     if native_way(&ctx.de) == Native::Plasma {
         return None;
@@ -1557,14 +1557,14 @@ pub fn follow_wallpaper(io: &dyn LookIo, ctx: &AccentCtx, picture: &str) -> Opti
     Some(apply(io, ctx, Change::Wallpaper, &move || Some(path.clone())))
 }
 
-/// Открыть «Внешний вид» COSMIC.
+/// Open COSMIC "Appearance".
 pub fn open_native(io: &dyn LookIo, ctx: &AccentCtx) -> bool {
     native_way(&ctx.de) == Native::Cosmic && io.spawn(&argv(&["cosmic-settings", "appearance"]))
 }
 
-// ── Живая машина ──────────────────────────────────────────────────────────
+// ── Live machine ──────────────────────────────────────────────────────────
 
-/// Картинка обоев стола сейчас (та же проба, что у наборов Conky).
+/// The current desktop wallpaper picture (the same probe as Conky sets use).
 fn live_wallpaper() -> Option<String> {
     crate::conky_sets::live_current_wallpaper()
 }
@@ -1579,8 +1579,8 @@ pub fn live_apply(change: &str) -> (bool, String) {
     };
     let ctx = AccentCtx::for_look();
     let (ok, mut msg) = apply(&crate::animations::SystemIo, &ctx, change, &live_wallpaper);
-    // Акцент меняет цвета темы: терминалы, берущие их, — на читаемую пару
-    // (под запись раздела цветов: её «Вернуть как было» вернёт и терминал).
+    // The accent changes the theme colors: terminals that take them get a readable pair
+    // (under the colors section's record: its "Restore as it was" restores the terminal too).
     if ok {
         if let Some(line) = crate::terminal_guard::guard_live(&ctx.de, "colors", &tr("Accent color"), None) {
             msg.push('\n');
@@ -1594,7 +1594,7 @@ pub fn live_revert() -> (bool, String) {
     revert(&crate::animations::SystemIo, &AccentCtx::for_look())
 }
 
-/// Rexon поставил обоями картинку `picture` — см. [`follow_wallpaper`].
+/// Rexon set the picture `picture` as the wallpaper — see [`follow_wallpaper`].
 pub fn live_follow_wallpaper(picture: &str) {
     if let Some((ok, msg)) = follow_wallpaper(&crate::animations::SystemIo, &AccentCtx::live(), picture) {
         let level = if ok { crate::applog::Level::Info } else { crate::applog::Level::Warn };
@@ -1624,12 +1624,12 @@ mod tests {
 
     #[test]
     fn kde_helpers_match_qt() {
-        // accentBackground: акцент 0.7 поверх белого — каналы обрезаются.
+        // accentBackground: accent 0.7 over white — the channels are truncated.
         assert_eq!(accent_background(Rgb(61, 174, 233), Rgb(255, 255, 255)), Rgb(119, 198, 239));
-        // Светлый фон под акцентом — чёрный текст, тёмный — белый.
+        // A light background under the accent — black text, a dark one — white.
         assert_eq!(accent_foreground(Rgb(232, 203, 45), true), Rgb(0, 0, 0));
         assert_eq!(accent_foreground(Rgb(20, 20, 60), true), Rgb(255, 255, 255));
-        // Подкраска с долей 0 — тот же цвет.
+        // Tinting with a share of 0 — the same color.
         assert_eq!(tint(Rgb(49, 54, 59), Rgb(233, 58, 154), 0.0), Rgb(49, 54, 59));
         assert!((contrast_ratio(Rgb(0, 0, 0), Rgb(255, 255, 255)) - 21.0).abs() < 1e-9);
     }
@@ -1653,11 +1653,11 @@ mod tests {
 
     #[test]
     fn wallpaper_color_takes_the_dominant_hue() {
-        // Три четверти — синее небо, четверть — серый асфальт.
+        // Three quarters blue sky, a quarter gray asphalt.
         let img = image::RgbImage::from_fn(40, 40, |_, y| if y < 30 { image::Rgb([40, 110, 220]) } else { image::Rgb([90, 90, 90]) });
         let c = wallpaper_accent(&img).unwrap();
         assert_eq!(nearest_gnome(c), "blue", "{c:?}");
-        // Серая картинка — серый акцент.
+        // A gray picture — a gray accent.
         let grey = image::RgbImage::from_pixel(8, 8, image::Rgb([128, 128, 128]));
         assert_eq!(nearest_gnome(wallpaper_accent(&grey).unwrap()), "slate");
     }
@@ -1676,9 +1676,9 @@ mod tests {
         assert_eq!(get("Colors:Window", "ForegroundActive").as_deref(), Some("233,58,154"));
         let sel = Rgb::parse(&get("Colors:Selection", "BackgroundNormal").unwrap()).unwrap();
         assert_eq!(sel, accent_background(accent, Rgb(20, 22, 24)));
-        // Значения, которые записал настоящий `plasma-apply-colorscheme
-        // --accent-color '#e93a9a'` (Plasma 6.8.2) поверх Breeze Dark: те же
-        // фон вида и выделения, что у PLAIN.
+        // Values written by the real `plasma-apply-colorscheme
+        // --accent-color '#e93a9a'` (Plasma 6.8.2) over Breeze Dark: the same
+        // view and selection backgrounds as PLAIN.
         assert_eq!(get("Colors:Selection", "BackgroundNormal").as_deref(), Some("169,47,115"));
         assert_eq!(get("Colors:Selection", "BackgroundAlternate").as_deref(), Some("169,47,115"));
         assert_eq!(get("Colors:Selection", "ForegroundNormal").as_deref(), Some("255,255,255"));
@@ -1687,19 +1687,19 @@ mod tests {
         assert_eq!(get("Colors:Button", "BackgroundAlternate").as_deref(), Some("175,53,122"));
         assert!(get("Colors:Header", "DecorationFocus").is_none(), "без своего заголовка группа не появляется");
         assert!(edits.iter().all(|e| e.group != "WM"), "без подкраски и акцентного заголовка WM не трогается");
-        // Схема с подкраской (как Oxygen Dark): заголовки окон — эталон KDE.
+        // A scheme with tinting (like Oxygen Dark): window titles — the KDE reference.
         let tinted = "[Colors:Window]\nBackgroundNormal=38,36,35\n\n[General]\nTintFactor=0.15\n";
         let edits = scheme_accent_edits(tinted, accent);
         let wm = |k: &str| edits.iter().rev().find(|e| e.group == "WM" && e.key == k).and_then(|e| e.value.clone());
         assert_eq!(wm("inactiveBackground").as_deref(), Some("50,29,37"));
         assert_eq!(wm("inactiveForeground").as_deref(), Some("172,164,167"));
-        // Палитра Qt из подкрашенной схемы — выделение цвета акцента.
+        // Qt palette from the tinted scheme — selection in the accent color.
         let qt = crate::shell_palette::qtct_palette_text(&accented_scheme(PLAIN, accent));
         assert!(qt.contains(&format!("#ff{}", &sel.hex()[1..])), "{qt}");
     }
 
-    /// Подставная машина. `cosmic` — построитель темы, который «отдаёт» и
-    /// «принимает» cosmic-settings; `deepin` — ответ `GetActiveColors`.
+    /// A fake machine. `cosmic` — the theme builder that cosmic-settings "exports" and
+    /// "imports"; `deepin` — the `GetActiveColors` answer.
     #[derive(Default)]
     struct FakeIo {
         tools: Vec<&'static str>,
@@ -1799,7 +1799,7 @@ mod tests {
         );
         assert!(io.calls.borrow().iter().all(|c| c[0] != "plasma-apply-colorscheme"));
         assert!(msg.contains("color scheme"), "без слоя честно сказано, когда получат Qt: {msg}");
-        // «Как в теме» — то, что было до Rexon.
+        // "As in the theme" — what was there before Rexon.
         let (ok, _) = apply(&io, &ctx, Change::Scheme, &|| None);
         assert!(ok);
         assert_eq!(io.calls.borrow().last().unwrap(), &argv(&["gsettings", "set", GNOME_SCHEMA, GNOME_KEY, "'purple'"]));
@@ -1831,21 +1831,21 @@ mod tests {
         io.calls.borrow().iter().filter(|c| c.iter().any(|a| a.contains(needle))).cloned().collect()
     }
 
-    /// Настоящий вывод `cosmic-settings appearance export` (1.11.0, отдельный
-    /// HOME, тёмная тема по умолчанию).
+    /// Real output of `cosmic-settings appearance export` (1.11.0, a separate
+    /// HOME, the default dark theme).
     const COSMIC_EXPORT: &str = include_str!("../tests/golden/accent_cosmic_export.ron");
 
     #[test]
     fn ron_accent_field_is_the_top_level_one() {
         assert_eq!(ron_field(COSMIC_EXPORT, "accent").as_deref(), Some("Some(\"#63D0DFFF\")"));
-        // `accent_blue` палитры и `accent_text` — другие поля.
+        // The palette's `accent_blue` and `accent_text` are other fields.
         assert_eq!(ron_field(COSMIC_EXPORT, "accent_blue"), None);
         let new = ron_with_field(COSMIC_EXPORT, "accent", &cosmic_accent_value(Rgb(233, 58, 154))).unwrap();
         assert_eq!(ron_field(&new, "accent").as_deref(), Some("Some(\"#E93A9AFF\")"));
         assert_eq!(new.lines().count(), COSMIC_EXPORT.lines().count(), "прочее не тронуто");
         assert!(new.contains("accent_blue: \"#63D0DFFF\""));
         assert_eq!(ron_field(&new, "success").as_deref(), Some("Some(\"#5EDB8CFF\")"));
-        // Многострочное значение и поле, которого нет.
+        // A multi-line value and a field that does not exist.
         let multi = "(\n    a: 1,\n    accent: Some((\n        red: 0.5,\n        green: 0.1,\n        blue: 0.2,\n    )),\n    b: \"x)\",\n)";
         assert_eq!(ron_with_field(multi, "accent", "None").unwrap(), "(\n    a: 1,\n    accent: None,\n    b: \"x)\",\n)");
         let added = ron_with_field("(\n    a: 1,\n)", "accent", "None").unwrap();
@@ -1864,7 +1864,7 @@ mod tests {
         assert_eq!(ron_field(&io.cosmic.borrow(), "accent").as_deref(), Some("Some(\"#E93A9AFF\")"));
         assert_eq!(calls_with(&io, "import").len(), 1);
         assert!(!ctx.cosmic_file().exists(), "рабочий файл убран");
-        // «Как в теме» — акцент, что был до Rexon.
+        // "As in the theme" — the accent that was there before Rexon.
         let (ok, _) = apply(&io, &ctx, Change::Custom(Rgb(61, 212, 37)), &|| None);
         assert!(ok);
         let (ok, _) = apply(&io, &ctx, Change::Scheme, &|| None);
@@ -1875,7 +1875,7 @@ mod tests {
         let (ok, msg) = revert(&io, &ctx);
         assert!(ok, "{msg}");
         assert_eq!(*io.cosmic.borrow(), COSMIC_EXPORT, "построитель — ровно как был");
-        // Без cosmic-settings — отказ до записи.
+        // Without cosmic-settings — a refusal before writing.
         let (root2, ctx2) = home("cosmic-none", "cosmic");
         let bare = FakeIo::default();
         let (ok, msg) = apply(&bare, &ctx2, Change::Custom(Rgb(1, 2, 3)), &|| None);
@@ -1941,7 +1941,7 @@ mod tests {
         assert!(!msg.contains("once you apply"), "{msg}");
         let text = std::fs::read_to_string(&conf).unwrap();
         assert_eq!(ini_get(&text, "Palette", "highlight_color").as_deref(), Some("#e93a9a"));
-        // На светлом розовом — чёрный текст (то же правило WCAG, что у KDE).
+        // On light pink — black text (the same WCAG rule as KDE's).
         assert_eq!(ini_get(&text, "Palette", "highlighted_text_color").as_deref(), Some("#000000"));
         let (ok, _) = revert(&io, &ctx);
         assert!(ok);
@@ -1954,14 +1954,14 @@ mod tests {
 
     #[test]
     fn tiling_compositors_get_the_active_window_border() {
-        // Hyprland: наш файл и строка `source` в его конфиге; «как в теме» —
-        // блок снят, конфиг человека — как был.
+        // Hyprland: our file and a `source` line in its config; "as in the theme" —
+        // the block is removed, the person's config is as it was.
         let (root, ctx) = home("hypr", "hyprland");
         let conf = root.join(".config/hypr/hyprland.conf");
         std::fs::create_dir_all(conf.parent().unwrap()).unwrap();
         let mine = "general {\n    col.active_border = rgba(33ccffee)\n}\n";
         std::fs::write(&conf, mine).unwrap();
-        // Уведомлять — только то, что «стоит» (`LookStep::Notify`).
+        // Notify only what is "in place" (`LookStep::Notify`).
         let io = FakeIo { tools: vec!["hyprctl", "swaymsg", "labwc"], ..Default::default() };
         let (ok, msg) = apply(&io, &ctx, Change::Custom(Rgb(233, 58, 154)), &|| None);
         assert!(ok, "{msg}");
@@ -1976,8 +1976,8 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&conf).unwrap(), mine);
         let _ = std::fs::remove_dir_all(&root);
 
-        // sway: файл, подключение и цвет работающему sway командой; откат —
-        // строкой `client.focused` из конфига человека.
+        // sway: the file, the include and the color to the running sway via a command; rollback —
+        // with the `client.focused` line from the person's config.
         let (root, ctx) = home("sway", "sway");
         let conf = root.join(".config/sway/config");
         std::fs::create_dir_all(conf.parent().unwrap()).unwrap();
@@ -1992,7 +1992,7 @@ mod tests {
         assert_eq!(io.calls.borrow().last().unwrap(), &argv(&["swaymsg", "client.focused #111111 #222222 #ffffff"]));
         let _ = std::fs::remove_dir_all(&root);
 
-        // niri: и акцент GNOME (портал), и кольцо фокуса.
+        // niri: both the GNOME accent (portal) and the focus ring.
         let (root, ctx) = home("niri", "niri");
         let conf = root.join(".config/niri/config.kdl");
         std::fs::create_dir_all(conf.parent().unwrap()).unwrap();
@@ -2005,7 +2005,7 @@ mod tests {
         assert!(gio.calls.borrow().iter().any(|c| *c == argv(&["gsettings", "set", GNOME_SCHEMA, GNOME_KEY, "'pink'"])));
         let _ = std::fs::remove_dir_all(&root);
 
-        // labwc: ключ поправок темы, откат — к прежнему значению.
+        // labwc: the theme overrides key, rollback — to the previous value.
         let (root, ctx) = home("labwc", "labwc");
         let over = root.join(".config/labwc/themerc-override");
         std::fs::create_dir_all(over.parent().unwrap()).unwrap();
@@ -2042,11 +2042,11 @@ mod tests {
         image::RgbImage::from_pixel(16, 16, image::Rgb([200, 40, 60])).save(&red).unwrap();
         image::RgbImage::from_pixel(16, 16, image::Rgb([40, 90, 220])).save(&blue).unwrap();
         let (red, blue) = (red.to_string_lossy().into_owned(), blue.to_string_lossy().into_owned());
-        // Свой цвет — обои его не трогают.
+        // A custom color — the wallpaper does not touch it.
         let (ok, _) = apply(&io, &ctx, Change::Custom(Rgb(1, 2, 3)), &|| None);
         assert!(ok);
         assert!(follow_wallpaper(&io, &ctx, &blue).is_none());
-        // «Из обоев» — новый цвет из новой картинки.
+        // "From the wallpaper" — a new color from the new picture.
         let r = red.clone();
         let (ok, _) = apply(&io, &ctx, Change::Wallpaper, &move || Some(r.clone()));
         assert!(ok);
@@ -2059,7 +2059,7 @@ mod tests {
         assert_ne!(st.color, before);
         assert_eq!(nearest_gnome(Rgb::parse(&st.color).unwrap()), "blue");
         assert!(st.note.contains("Rexon updates the color"), "{}", st.note);
-        // Plasma ведёт цвет сама.
+        // Plasma handles the color itself.
         let (root2, kde) = home("follow-kde", "kde");
         std::fs::write(root2.join(".config/kdeglobals"), "[General]\nAccentColor=1,2,3\naccentColorFromWallpaper=true\n").unwrap();
         assert!(follow_wallpaper(&io, &kde, &blue).is_none());

@@ -1,28 +1,30 @@
-//! Кнопки разделов окружений во вкладке «Оформление»: «Применить» у тем,
-//! «Включить»/«Выключить» у дополнений, «Запустить»/«Остановить» у Conky.
+//! Buttons of the environment sections in the "Appearance" tab: "Apply" for
+//! themes, "Enable"/"Disable" for add-ons, "Start"/"Stop" for Conky.
 //!
-//! Решение владельца 04.10.2026: установка `.rxn` ТОЛЬКО кладёт файлы на
-//! диск, включает человек — кнопкой. Прежде у типов матрицы без раздела во
-//! вкладке (рамки xfwm4 и Marco, темы оболочек GNOME/Cinnamon/LXQt,
-//! переключатель окон KDE, скрипты и эффекты KWin, расширения GNOME,
-//! апплеты/десклеты/расширения Cinnamon, действия Nemo, Conky) включала сама
-//! установка: «поставил — и у тебя уже другие рамки», без выбора.
+//! The owner's decision of 04.10.2026: installing an `.rxn` ONLY puts files
+//! on disk; the person enables it with a button. Previously, for matrix
+//! types without a section in the tab (xfwm4 and Marco frames,
+//! GNOME/Cinnamon/LXQt shell themes, the KDE window switcher, KWin scripts
+//! and effects, GNOME extensions, Cinnamon applets/desklets/extensions,
+//! Nemo actions, Conky), the installation itself enabled them: "installed
+//! it, and you already have different frames", without a choice.
 //!
-//! Второго списка команд здесь нет (правило #12). Что писать и куда,
-//! описывает матрица ([`crate::de_customization`]), шаги включения и
-//! выключения — те же, что делала установка и делает удаление
-//! ([`crate::ext_manager::de_enable_steps`] / [`de_disable_steps`]). Этот
-//! модуль добавляет только то, чего у установки не было:
-//!   * ЧТЕНИЕ — что включено сейчас (плитки «Активные» и кнопка «Выключить»
-//!     обязаны говорить правду, а не помнить, что нажимали);
-//!   * исполнение кнопки с проверкой — после шагов значение перечитывается,
-//!     и «✅» ставится только если окружение действительно его приняло;
-//!   * Conky — запуск, остановка и автозапуск ОДНОГО виджета (установка
-//!     гасила все conky разом по имени процесса).
+//! There is no second command list here (rule #12). What to write and
+//! where is described by the matrix ([`crate::de_customization`]); the
+//! enable and disable steps are the same ones the installation did and the
+//! removal does ([`crate::ext_manager::de_enable_steps`] /
+//! [`de_disable_steps`]). This module adds only what the installation did
+//! not have:
+//!   * READING what is enabled now (the "Active" tiles and the "Disable"
+//!     button must tell the truth rather than remember what was pressed);
+//!   * executing the button with a check: after the steps the value is
+//!     reread, and "✅" is set only if the environment really accepted it;
+//!   * Conky: starting, stopping and autostarting ONE widget (the
+//!     installation killed all conky processes at once by process name).
 //!
-//! Экран входа (SDDM) и заставка загрузки (Plymouth) идут через системный
-//! помощник от root — их «Применить» живёт рядом с установкой в
-//! [`crate::appearance_installer`]; здесь только строка вызова
+//! The login screen (SDDM) and the boot splash (Plymouth) go through the
+//! system helper as root: their "Apply" lives next to the installation in
+//! [`crate::appearance_installer`]; here only the call line
 //! ([`system_apply_argv`]).
 //!
 //! [`de_disable_steps`]: crate::ext_manager::de_disable_steps
@@ -32,30 +34,30 @@ use crate::de_customization::{self as dec, Activate, EntryFmt, Payload, Row};
 use crate::i18n::{tr, trf};
 
 // ============================================================================
-// Вид кнопки
+// Button kind
 // ============================================================================
 
-/// Какая кнопка у раздела.
+/// Which button a section has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Button {
-    /// «🎨 Применить»: одна тема на окружение, выбор заменяет прежний.
+    /// "🎨 Apply": one theme per environment, the choice replaces the previous one.
     Apply,
-    /// «▶ Включить» / «⏸ Выключить»: дополнений включено сколько угодно.
+    /// "▶ Enable" / "⏸ Disable": any number of add-ons can be enabled.
     Toggle,
-    /// «▶ Запустить» / «⏹ Остановить»: отдельная программа (Conky).
+    /// "▶ Start" / "⏹ Stop": a separate program (Conky).
     Run,
 }
 
-/// Как включается тип `.rxn` кнопкой раздела.
+/// How an `.rxn` type is enabled with a section button.
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
-    /// Тема — одно значение ключа окружения (xfwm4, Marco, оболочки GNOME,
-    /// Cinnamon и LXQt, раскладка Alt+Tab).
+    /// A theme: one value of an environment key (xfwm4, Marco, GNOME, Cinnamon
+    /// and LXQt shells, the Alt+Tab layout).
     Theme(&'static Row),
-    /// Дополнение — элемент списка включённых (скрипты и эффекты KWin,
-    /// расширения GNOME, апплеты/десклеты/расширения Cinnamon, действия Nemo).
+    /// An add-on: an item of the enabled list (KWin scripts and effects, GNOME
+    /// extensions, Cinnamon applets/desklets/extensions, Nemo actions).
     Addon(&'static Row),
-    /// Виджет Conky — отдельная программа, у неё запуск и автозапуск.
+    /// A Conky widget: a separate program, with starting and autostart.
     Conky,
 }
 
@@ -69,29 +71,31 @@ impl Mode {
     }
 }
 
-/// Тип Conky.
+/// The Conky type.
 pub const CONKY_KIND: &str = "theme-conky";
 
-/// Тип действий Nemo: файлы, которые Nemo подхватывает сам; выключенные он
-/// держит в своём списке [`NEMO_DISABLED`] (родной ключ — так же выключает
-/// их «Настройка действий» самого Nemo).
+/// The Nemo actions type: files Nemo picks up by itself; it keeps the
+/// disabled ones in its [`NEMO_DISABLED`] list (the native key: Nemo's own
+/// "Actions configuration" disables them the same way).
 pub const NEMO_KIND: &str = "nemo-action";
 pub const NEMO_DISABLED: (&str, &str) = ("org.nemo.plugins", "disabled-actions");
 
-/// Тип рамок окон Marco (MATE).
+/// The Marco (MATE) window frame type.
 pub const MARCO_KIND: &str = "theme-marco";
 
-/// Тип рамок окон Openbox и labwc: `<theme><name>` в `rc.xml` менеджера
-/// окон сеанса ([`session_wm`]).
+/// The Openbox and labwc window frame type: `<theme><name>` in the
+/// `rc.xml` of the session's window manager ([`session_wm`]).
 pub const OPENBOX_KIND: &str = "theme-openbox";
 
-/// Схема расширения User Themes: через её ключ `name` GNOME берёт тему
-/// оболочки. Схемы нет — расширение не установлено, и записать тему некуда.
+/// The User Themes extension schema: GNOME takes the shell theme through
+/// its `name` key. No schema means the extension is not installed, and
+/// there is nowhere to write the theme.
 pub const USER_THEME_SCHEMA: &str = "org.gnome.shell.extensions.user-theme";
 
-/// Способ включения типа кнопкой. `None` — у типа нет кнопки этого модуля
-/// (типы общего установщика оформления, у которых свои действия; плагин
-/// обоев Plasma, который выбирается только в настройках стола).
+/// How a type is enabled with a button. `None` means the type has no
+/// button of this module (types of the common appearance installer, which
+/// have their own actions; the Plasma wallpaper plugin, which is chosen
+/// only in the desktop settings).
 pub fn mode(kind: &str) -> Option<Mode> {
     if kind == CONKY_KIND {
         return Some(Mode::Conky);
@@ -111,8 +115,8 @@ pub fn mode(kind: &str) -> Option<Mode> {
     }
 }
 
-/// Кнопка раздела по его виду применения (`apply_kind` = ключ раздела).
-/// Разделы, которых этот модуль не ведёт, — обычное «Применить».
+/// The section button by its application kind (`apply_kind` = the section
+/// key). Sections this module does not handle get the plain "Apply".
 pub fn button_for_apply_kind(apply_kind: &str) -> Button {
     crate::categories::category_kind(apply_kind)
         .and_then(mode)
@@ -120,30 +124,30 @@ pub fn button_for_apply_kind(apply_kind: &str) -> Button {
         .unwrap_or(Button::Apply)
 }
 
-/// Вид применения из номера местной плитки `local:<вид>:<имя>`.
+/// The application kind from a local tile id `local:<kind>:<name>`.
 pub fn apply_kind_of_local_id(id: &str) -> Option<&str> {
     id.strip_prefix("local:")?.split_once(':').map(|(k, _)| k)
 }
 
 // ============================================================================
-// Чтение: что включено сейчас
+// Reading: what is enabled now
 // ============================================================================
 
-/// Где искать файлы пользователя.
+/// Where to look for the user's files.
 #[derive(Debug, Clone)]
 pub struct Ctx {
     pub home: String,
-    /// `$XDG_CONFIG_HOME`, если задан (иначе `~/.config`).
+    /// `$XDG_CONFIG_HOME`, if set (otherwise `~/.config`).
     pub xdg_config_home: Option<String>,
-    /// Сеанс Wayland (для оговорки у Conky).
+    /// A Wayland session (for the Conky caveat).
     pub wayland: bool,
-    /// Запущенное окружение (`mate`, `gnome`…; пусто — не опознано) — для
-    /// оговорки у Conky: на Wayland он работает не везде одинаково.
+    /// The running environment (`mate`, `gnome`…; empty means not recognised),
+    /// for the Conky caveat: on Wayland it does not work the same everywhere.
     pub de: String,
 }
 
 impl Ctx {
-    /// Живой сеанс.
+    /// The live session.
     pub fn live() -> Self {
         let env = |k: &str| std::env::var(k).unwrap_or_default();
         let home = {
@@ -167,9 +171,10 @@ impl Ctx {
         }
     }
 
-    /// Контекст для дома `home`: живой сеанс, если это дом этого процесса
-    /// (`$XDG_CONFIG_HOME` сеанса), иначе — чужое дерево без переменных
-    /// сеанса (сверки на подставном доме живые каталоги не читают).
+    /// Context for home `home`: the live session if this is this process's
+    /// home (the session's `$XDG_CONFIG_HOME`), otherwise a foreign tree
+    /// without session variables (parity checks on a fake home do not read
+    /// live directories).
     pub fn for_home(home: &str) -> Self {
         let live = Ctx::live();
         if live.home.trim_end_matches('/') == home.trim_end_matches('/') {
@@ -191,7 +196,7 @@ fn argv(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| (*s).to_string()).collect()
 }
 
-/// Значение ini-ключа в секции (`[группа]` → `ключ=`).
+/// The value of an ini key in a section (`[group]` -> `key=`).
 pub fn ini_value(text: &str, group: &str, key: &str) -> Option<String> {
     let mut here = false;
     for line in text.lines() {
@@ -213,13 +218,13 @@ pub fn ini_value(text: &str, group: &str, key: &str) -> Option<String> {
     None
 }
 
-/// Значение `gsettings get` без кавычек (`'Name'` → `Name`).
+/// The `gsettings get` value without quotes (`'Name'` -> `Name`).
 pub fn parse_gsettings_string(out: &str) -> Option<String> {
     let v = out.trim().trim_matches('\'').trim_matches('"').trim();
     (!v.is_empty()).then(|| v.to_string())
 }
 
-/// Список строк из ответа `gsettings get` (`['a', 'b']`, `@as []`).
+/// A list of strings from a `gsettings get` answer (`['a', 'b']`, `@as []`).
 pub fn parse_gsettings_list(out: &str) -> Vec<String> {
     let mut items = Vec::new();
     let mut cur = String::new();
@@ -238,21 +243,22 @@ pub fn parse_gsettings_list(out: &str) -> Vec<String> {
     items
 }
 
-/// Идентификатор объекта из элемента списка включённых.
+/// The object identifier from an item of the enabled list.
 pub fn entry_uuid(entry: &str, fmt: EntryFmt) -> Option<String> {
     let field = match fmt {
         EntryFmt::Uuid => Some(entry),
-        // panel1:<зона>:<порядок>:<uuid>:<номер>
+        // panel1:<zone>:<order>:<uuid>:<number>
         EntryFmt::CinnamonApplet => entry.split(':').nth(3),
-        // <uuid>:<номер>:<x>:<y>
+        // <uuid>:<number>:<x>:<y>
         EntryFmt::CinnamonDesklet => entry.split(':').next(),
     }?;
     let field = field.trim();
     (!field.is_empty()).then(|| field.to_string())
 }
 
-/// Включён ли плагин KWin по тексту `kwinrc` (`[Plugins] <id>Enabled=`).
-/// Ключа нет — решает `EnabledByDefault` из метаданных плагина.
+/// Whether a KWin plugin is enabled by the `kwinrc` text
+/// (`[Plugins] <id>Enabled=`). No key means `EnabledByDefault` from the
+/// plugin metadata decides.
 pub fn kwin_plugin_enabled(kwinrc: Option<&str>, id: &str, enabled_by_default: bool) -> bool {
     match kwinrc.and_then(|t| ini_value(t, "Plugins", &format!("{id}Enabled"))) {
         Some(v) => v.eq_ignore_ascii_case("true"),
@@ -260,7 +266,7 @@ pub fn kwin_plugin_enabled(kwinrc: Option<&str>, id: &str, enabled_by_default: b
     }
 }
 
-/// `KPlugin.EnabledByDefault` из `metadata.json`.
+/// `KPlugin.EnabledByDefault` from `metadata.json`.
 fn kpackage_enabled_by_default(meta_json: Option<&str>) -> bool {
     meta_json
         .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
@@ -268,9 +274,10 @@ fn kpackage_enabled_by_default(meta_json: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
-/// Системный каталог объектов типа рядом с пользовательским каталогом
-/// матрицы: `.local/share/X` → `/usr/share/X`, `.themes` → `/usr/share/themes`.
-/// Пусто — у типа системного каталога нет (Conky).
+/// The system directory of a type's objects next to the matrix user
+/// directory: `.local/share/X` -> `/usr/share/X`, `.themes` ->
+/// `/usr/share/themes`. Empty means the type has no system directory
+/// (Conky).
 pub fn system_dir(row: &Row, usr_root: &str) -> String {
     if let Some(rest) = row.dest.strip_prefix(".local/share/") {
         return format!("{usr_root}/share/{rest}");
@@ -281,7 +288,7 @@ pub fn system_dir(row: &Row, usr_root: &str) -> String {
     String::new()
 }
 
-/// Каталоги, где лежат объекты типа (пользовательский, затем системный).
+/// Directories holding a type's objects (the user one, then the system one).
 fn object_dirs(ctx: &Ctx, row: &Row) -> Vec<String> {
     let mut dirs = vec![row.dest_path(&ctx.home)];
     let sys = system_dir(row, "/usr");
@@ -291,7 +298,7 @@ fn object_dirs(ctx: &Ctx, row: &Row) -> Vec<String> {
     dirs
 }
 
-/// Текущее значение темы (`None` — не задано или прочитать нечем).
+/// The current theme value (`None` means not set or nothing to read it with).
 pub fn theme_value(io: &dyn LookIo, ctx: &Ctx, row: &Row) -> Option<String> {
     match row.activate {
         Activate::KdeConfig { file, group, key, .. } => {
@@ -326,29 +333,30 @@ pub fn theme_value(io: &dyn LookIo, ctx: &Ctx, row: &Row) -> Option<String> {
 }
 
 // ============================================================================
-// Рамки Openbox и labwc: `rc.xml` менеджера окон сеанса
+// Openbox and labwc frames: the `rc.xml` of the session's window manager
 // ============================================================================
 
-/// Кто рисует рамки в этом сеансе — для LXQt по его `session.conf`, в
-/// сеансе labwc — labwc (`qt_settings::session_title_wm`).
+/// Who draws the frames in this session: for LXQt by its `session.conf`,
+/// in a labwc session labwc (`qt_settings::session_title_wm`).
 pub fn session_wm(io: &dyn LookIo, ctx: &Ctx) -> Option<crate::qt_settings::TitleWm> {
     let dirs = std::env::var("XDG_CONFIG_DIRS").unwrap_or_default();
     let home = ctx.config("");
     crate::qt_settings::session_title_wm(&ctx.de, home.trim_end_matches('/'), &dirs, ctx.wayland, &|p| io.read(p))
 }
 
-/// `rc.xml` менеджера: путь своего, текст (свой либо системный образец) и
-/// взят ли он из системного.
+/// The manager's `rc.xml`: the path of our own, the text (our own or the
+/// system sample) and whether it was taken from the system one.
 fn rc_xml(io: &dyn LookIo, ctx: &Ctx, wm: crate::qt_settings::TitleWm) -> (String, Option<String>, bool) {
     let dirs = std::env::var("XDG_CONFIG_DIRS").unwrap_or_default();
     let home = ctx.config("");
     crate::qt_settings::rc_xml_source(wm, home.trim_end_matches('/'), &dirs, &|p| io.read(p))
 }
 
-/// Шаги темы рамок `name`: новый текст `rc.xml` (меняется только
-/// `<theme><name>`) и `--reconfigure` менеджера. `Err` — отказ для человека
-/// до первой записи: рамки рисует не Openbox и не labwc, либо `rc.xml`
-/// писать некуда или он не разбирается.
+/// Steps for frame theme `name`: the new `rc.xml` text (only
+/// `<theme><name>` changes) and the manager's `--reconfigure`. `Err` is a
+/// refusal for the person before the first write: the frames are drawn
+/// neither by Openbox nor by labwc, or there is nowhere to write `rc.xml`,
+/// or it does not parse.
 pub fn rc_theme_steps(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Result<Vec<crate::ext_manager::ExtStep>, String> {
     use crate::qt_settings::TitleWm;
     let refuse = |why: String| Err(trf("Couldn't apply “%1”: %2", &[&name, &why]));
@@ -382,7 +390,7 @@ pub fn rc_theme_steps(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Result<Vec<crat
     ])
 }
 
-/// Включённые объекты дополнения (имена каталогов/файлов, как на диске).
+/// Enabled objects of an add-on (directory/file names as on disk).
 pub fn enabled_addons(io: &dyn LookIo, ctx: &Ctx, kind: &str, row: &Row) -> Vec<String> {
     if kind == NEMO_KIND {
         let (schema, key) = NEMO_DISABLED;
@@ -422,9 +430,9 @@ pub fn enabled_addons(io: &dyn LookIo, ctx: &Ctx, kind: &str, row: &Row) -> Vec<
             out
         }
         Activate::GnomeExtension => {
-            // В сеансе GNOME правда — сама оболочка: включено в её
-            // настройке (даже если запуститься не смогло). Ключ
-            // `enabled-extensions` — запасной путь без оболочки.
+            // In a GNOME session the truth is the shell itself: enabled in its
+            // settings (even if it failed to start). The `enabled-extensions`
+            // key is the fallback path without the shell.
             if let Some(list) = io.gnome_shell_extensions() {
                 return crate::gnome_ext_section::enabled_uuids(&list);
             }
@@ -450,19 +458,20 @@ pub fn enabled_addons(io: &dyn LookIo, ctx: &Ctx, kind: &str, row: &Row) -> Vec<
     }
 }
 
-/// Что включено сейчас у типа: имя темы, включённые дополнения либо
-/// запущенные виджеты Conky. Пусто — ничего (или прочитать нечем).
+/// What is enabled now for a type: the theme name, the enabled add-ons or
+/// the running Conky widgets. Empty means nothing (or nothing to read it
+/// with).
 pub fn active_names(io: &dyn LookIo, ctx: &Ctx, kind: &str) -> Vec<String> {
     match mode(kind) {
-        // Тему рамок, которую Marco не загрузил, он не показывает, сколько
-        // бы её имя ни стояло в ключе: «Активна» у неё была бы неправдой.
+        // A frame theme Marco did not load is not shown by it, however long its
+        // name stands in the key: "Active" would be untrue for it.
         Some(Mode::Theme(row)) => theme_value(io, ctx, row)
             .filter(|name| kind != MARCO_KIND || marco_theme_problem(io, ctx, name).is_none())
             .into_iter()
             .collect(),
-        // «Активно» у расширения GNOME — то, что оболочка запустила
-        // (`state` = включено), а не только записано в настройке: упавшее
-        // при включении активным не показывается.
+        // "Active" for a GNOME extension is what the shell started (`state` =
+        // enabled), not only what is written in the settings: one that crashed
+        // while being enabled is not shown as active.
         Some(Mode::Addon(row)) if kind == crate::gnome_ext_section::KIND => match io.gnome_shell_extensions() {
             Some(list) => crate::gnome_ext_section::active_uuids(&list),
             None => enabled_addons(io, ctx, kind, row),
@@ -473,8 +482,8 @@ pub fn active_names(io: &dyn LookIo, ctx: &Ctx, kind: &str) -> Vec<String> {
     }
 }
 
-/// Шаг вызова оболочки GNOME (`EnableExtension`/`DisableExtension`) через
-/// `gdbus` — тем же исполнителем, что прочие шаги кнопки.
+/// A GNOME shell call step (`EnableExtension`/`DisableExtension`) through
+/// `gdbus`, by the same executor as the other button steps.
 fn gnome_shell_call(method: &str, uuid: &str) -> crate::ext_manager::ExtStep {
     crate::ext_manager::ExtStep::Run {
         argv: argv(&[
@@ -494,10 +503,10 @@ fn gnome_shell_call(method: &str, uuid: &str) -> crate::ext_manager::ExtStep {
 }
 
 // ============================================================================
-// Исполнение кнопки
+// Executing a button
 // ============================================================================
 
-/// Шаги плана из установщика расширений — исполнить по-живому.
+/// Plan steps from the extension installer: execute them for real.
 fn run_steps(io: &dyn LookIo, steps: &[crate::ext_manager::ExtStep]) -> Option<String> {
     let steps: Vec<crate::install_plan::Step> = steps.iter().cloned().map(Into::into).collect();
     match exec_plan(io, &steps, &mut crate::install_plan::Undo::off()) {
@@ -506,18 +515,19 @@ fn run_steps(io: &dyn LookIo, steps: &[crate::ext_manager::ExtStep]) -> Option<S
     }
 }
 
-/// Исполнить шаги кнопки раздела ОБЩИМ исполнителем
-/// ([`crate::install_plan::exec_undoable`]) под откатом `undo`; команды и
-/// запуск без ожидания идут через `io` (`io.run`, `io.spawn`: в проверках —
-/// подделка, ничего не запускается), так что подмена машины та же, что
-/// прежде.
+/// Execute a section button's steps with the COMMON executor
+/// ([`crate::install_plan::exec_undoable`]) under the `undo` rollback;
+/// commands and fire-and-forget launches go through `io` (`io.run`,
+/// `io.spawn`: in checks it is a fake and nothing is launched), so the
+/// machine substitution is the same as before.
 ///
-/// Исполняются ВСЕ шаги; неудача команды не обрывает прогон, а
-/// возвращается первой (`Ok(Some(текст))`). Мерило успеха — не коды
-/// команд, а то, что окружение отдаёт после записи ([`check`]): обновление
-/// окружения (`qdbus … reconfigure`) законно падает, когда KWin не запущен,
-/// а ключ при этом записан. `Err` — сбой файлового шага (записи под
-/// откатом, [`crate::themes::ApplyStep::Guard`]).
+/// ALL steps are executed; a command failure does not abort the run but is
+/// returned first (`Ok(Some(text))`). The measure of success is not the
+/// command codes but what the environment returns after the write
+/// ([`check`]): refreshing the environment (`qdbus … reconfigure`)
+/// legitimately fails when KWin is not running, while the key has been
+/// written. `Err` is a failure of a file step (writes under rollback,
+/// [`crate::themes::ApplyStep::Guard`]).
 pub fn exec_plan(
     io: &dyn LookIo,
     steps: &[crate::install_plan::Step],
@@ -527,8 +537,9 @@ pub fn exec_plan(
     let first: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
     let run = |argv: &[String], _timeout: Option<u64>| -> RunReport {
         let (ok, out) = io.run(argv);
-        // Чтение прежнего значения под снимок «что было» не причина неудачи:
-        // у свойства xfconf, которого ещё нет, оно и должно не удаться.
+        // Reading the previous value for the "what was there" snapshot is not a
+        // reason for failure: for an xfconf property that does not exist yet it
+        // is supposed to fail.
         if !ok && first.borrow().is_none() && !crate::install_plan::is_value_read(argv) {
             let tool = argv.first().map(String::as_str).unwrap_or("");
             let detail = out.trim();
@@ -542,7 +553,7 @@ pub fn exec_plan(
         }
     };
     let have = |tool: &str| io.have(tool);
-    // Обновление окружения (`cinnamon --replace`) запускается и не ждётся.
+    // Refreshing the environment (`cinnamon --replace`) is launched and not waited for.
     let spawn = |argv: &[String]| {
         io.spawn(argv);
     };
@@ -560,31 +571,32 @@ pub fn exec_plan(
     Ok(first.into_inner())
 }
 
-/// Что сверить после записи: правду окружения, а не то, что писали.
+/// What to check after the write: the environment's truth, not what was written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
-    /// Тема: окружение отдаёт `name`.
+    /// A theme: the environment returns `name`.
     Theme { kind: String, name: String },
-    /// Дополнение было включено (`was_on`) — после нажатия должно стать
-    /// наоборот.
+    /// The add-on was enabled (`was_on`): after the press it must become the
+    /// opposite.
     Addon { kind: String, name: String, was_on: bool },
 }
 
-/// План нажатия кнопки раздела ([`press_plan`]).
+/// Plan of a section button press ([`press_plan`]).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Plan {
-    /// Отказ до первого шага — ничего не записано.
+    /// Refusal before the first step: nothing was written.
     Refused(String),
-    /// Шаги общего плана, затем сверка [`check`].
+    /// Steps of the common plan, then the [`check`].
     Steps { steps: Vec<crate::install_plan::Step>, check: Check },
-    /// Conky — запуск и остановка процессов своим путём ([`press`]).
+    /// Conky: starting and stopping processes its own way ([`press`]).
     Own,
 }
 
-/// Файлы, которые перепишут команды кнопки раздела (`kwriteconfig6
-/// --file …`, сценарий правки ini): их «что было» снимает шаг
-/// [`crate::themes::ApplyStep::Guard`]. Записи `gsettings` и `xfconf-query`
-/// держат службы (dconf, xfconfd) — снимать там нечего.
+/// Files the section button commands will rewrite (`kwriteconfig6 --file
+/// …`, the ini editing script): their "what was there" is taken by the
+/// [`crate::themes::ApplyStep::Guard`] step. `gsettings` and
+/// `xfconf-query` writes are held by services (dconf, xfconfd), so there
+/// is nothing to snapshot there.
 fn written_files(ctx: &Ctx, row: &Row) -> Vec<String> {
     match row.activate {
         Activate::KdeConfig { file, .. } => vec![ctx.config(file)],
@@ -604,16 +616,17 @@ fn plan_steps(ctx: &Ctx, row: &Row, steps: Vec<crate::ext_manager::ExtStep>, che
     Plan::Steps { steps: out, check }
 }
 
-/// План нажатия кнопки раздела — без единой записи и запуска (только пробы:
-/// включено ли дополнение сейчас, есть ли схема User Themes, загрузит ли
-/// Marco тему). Тема — включить; дополнение — переключить по правде
-/// окружения; Conky — своим путём ([`Plan::Own`]).
+/// Plan of a section button press, without a single write or launch (only
+/// probes: whether the add-on is enabled now, whether the User Themes
+/// schema exists, whether Marco will load the theme). A theme: enable it;
+/// an add-on: toggle it according to the environment's truth; Conky: its
+/// own way ([`Plan::Own`]).
 pub fn press_plan(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> Plan {
     match mode(kind) {
         Some(Mode::Theme(row)) => {
             if kind == MARCO_KIND {
-                // Ключ не пишется вовсе: Marco такую тему не загрузит, оставит
-                // прежние рамки, а вкладка показала бы «Применено».
+                // The key is not written at all: Marco will not load such a theme
+                // and will keep the old frames, while the tab would show "Applied".
                 if let Some(problem) = marco_theme_problem(io, ctx, name) {
                     return Plan::Refused(marco_refusal(name, &problem));
                 }
@@ -622,8 +635,8 @@ pub fn press_plan(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> Plan {
                 return Plan::Refused(trf("Couldn't apply “%1”: %2", &[&name, &reason]));
             }
             if kind == OPENBOX_KIND {
-                // Свой `rc.xml` пишется шагом записи файла — под откатом
-                // нажатия, как запись своими руками.
+                // Our own `rc.xml` is written by a file write step, under the press
+                // rollback, like a write done by hand.
                 return match rc_theme_steps(io, ctx, name) {
                     Ok(steps) => Plan::Steps {
                         steps: steps.into_iter().map(Into::into).collect(),
@@ -649,15 +662,16 @@ pub fn press_plan(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> Plan {
     }
 }
 
-/// Сверка после шагов: что окружение отдаёт — `(получилось, сообщение)`.
-/// `err` — первая неудача команды ([`exec_plan`]): её называет отказ.
+/// The check after the steps: what the environment returns, `(success,
+/// message)`. `err` is the first command failure ([`exec_plan`]): the
+/// refusal names it.
 pub fn check(io: &dyn LookIo, ctx: &Ctx, check: &Check, err: Option<String>) -> (bool, String) {
     match check {
         Check::Theme { kind, name } => {
             let Some(Mode::Theme(row)) = mode(kind) else {
                 return (false, trf("“%1” can't be applied here", &[name]));
             };
-            // Правда — то, что окружение отдаёт после записи, а не то, что писали.
+            // The truth is what the environment returns after the write, not what was written.
             match theme_value(io, ctx, row) {
                 Some(v) if v == *name => (true, trf("✅ Applied: %1", &[name])),
                 _ => (false, trf("Couldn't apply “%1”: %2", &[name, &not_accepted(err)])),
@@ -676,7 +690,7 @@ pub fn check(io: &dyn LookIo, ctx: &Ctx, check: &Check, err: Option<String>) -> 
             } else {
                 trf("⏸️ Disabled: %1", &[name])
             };
-            // Когда это станет видно — то же условие, что в подписи раздела.
+            // When this becomes visible: the same condition as in the section label.
             if let Some(note) = refresh_note(io, row, ctx, name) {
                 msg.push_str(" — ");
                 msg.push_str(&note);
@@ -686,33 +700,35 @@ pub fn check(io: &dyn LookIo, ctx: &Ctx, check: &Check, err: Option<String>) -> 
     }
 }
 
-/// Отказ «окружение не приняло» — с причиной от команды, если она была.
+/// The "the environment did not accept it" refusal, with the command's reason if there was one.
 fn not_accepted(err: Option<String>) -> String {
     err.unwrap_or_else(|| tr("the desktop didn't accept the setting"))
 }
 
-/// Окружение планировщика для шагов включения: из него нужны только дом и
-/// поиск программ (шагов копирования здесь нет).
+/// The planner environment for the enable steps: only the home and the
+/// program lookup are needed from it (there are no copy steps here).
 fn with_ext_env<R>(io: &dyn LookIo, ctx: &Ctx, body: impl FnOnce(&crate::ext_manager::ExtEnv) -> R) -> R {
     use crate::ext_manager::{ExtEnv, FsSnap, TmpAlloc};
     let fs = FsSnap::from_json(&serde_json::json!({}));
     let tmp = TmpAlloc::new("/tmp/rexon-de-apply");
     let which = |name: &str| io.have(name).then(|| name.to_string());
     let run_ok = |_: &[String]| false;
-    // Запущенный стол — ТОЛЬКО из контекста, как и род сеанса ниже: оба
-    // берутся из одного источника. Прежде при неопознанном столе (`ctx.de`
-    // пуст) подмешивался `XDG_CURRENT_DESKTOP` процесса, а род сеанса
-    // оставался из контекста — на чужом доме (`Ctx::for_home`) из сеанса
-    // Cinnamon выходило «Cinnamon X11» и план получал лишний
-    // `cinnamon --replace` (сверка краснела от стола, на котором её гоняли).
-    // Живой путь от этого не теряет: `Ctx::live` уже опознал стол по той же
-    // переменной; пусто — значит стол не опознан и перезапускать нечего.
+    // The running desktop comes ONLY from the context, like the session kind
+    // below: both come from one source. Previously, with an unrecognised
+    // desktop (`ctx.de` empty), the process's `XDG_CURRENT_DESKTOP` was mixed
+    // in while the session kind stayed from the context: on a foreign home
+    // (`Ctx::for_home`) run from a Cinnamon session this gave "Cinnamon X11",
+    // and the plan got an extra `cinnamon --replace` (the parity check turned
+    // red depending on the desktop it was run on). The live path loses
+    // nothing from this: `Ctx::live` has already recognised the desktop by
+    // the same variable; empty means the desktop is not recognised and there
+    // is nothing to restart.
     let xdg = ctx.de.clone();
-    // Род сеанса — тоже из контекста: `Ctx::live` уже учёл и
-    // `WAYLAND_DISPLAY`, и `XDG_SESSION_TYPE`. Переменная процесса здесь
-    // делала план зависимым от стола, на котором его строят: сверка для
-    // Cinnamon X11 теряла `cinnamon --replace`, если её гоняли из сеанса
-    // Wayland.
+    // The session kind also comes from the context: `Ctx::live` has already
+    // taken into account both `WAYLAND_DISPLAY` and `XDG_SESSION_TYPE`. The
+    // process variable here made the plan depend on the desktop it was built
+    // on: the check for Cinnamon X11 lost `cinnamon --replace` if it was run
+    // from a Wayland session.
     let session = if ctx.wayland { "wayland" } else { "x11" };
     let env = ExtEnv {
         home: &ctx.home,
@@ -731,7 +747,7 @@ fn with_ext_env<R>(io: &dyn LookIo, ctx: &Ctx, body: impl FnOnce(&crate::ext_man
     body(&env)
 }
 
-/// Шаги включения объекта кнопкой (видны сверкам).
+/// Steps that enable an object with the button (visible to parity checks).
 pub fn enable_steps(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> Vec<crate::ext_manager::ExtStep> {
     if kind == NEMO_KIND {
         let (schema, key) = NEMO_DISABLED;
@@ -740,14 +756,14 @@ pub fn enable_steps(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> Vec<c
     if kind == OPENBOX_KIND {
         return rc_theme_steps(io, ctx, name).unwrap_or_default();
     }
-    // Живая оболочка включает сама и сразу; сценарий — запасной путь.
+    // The live shell enables it by itself and immediately; the script is the fallback.
     if kind == crate::gnome_ext_section::KIND && io.gnome_shell_extensions().is_some() {
         return vec![gnome_shell_call("EnableExtension", name)];
     }
     with_ext_env(io, ctx, |env| crate::ext_manager::de_enable_steps(env, kind, name))
 }
 
-/// Шаги выключения объекта кнопкой (видны сверкам).
+/// Steps that disable an object with the button (visible to parity checks).
 pub fn disable_steps(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> Vec<crate::ext_manager::ExtStep> {
     if kind == NEMO_KIND {
         let (schema, key) = NEMO_DISABLED;
@@ -766,7 +782,7 @@ fn sh(script: String) -> crate::ext_manager::ExtStep {
     }
 }
 
-/// Включено ли дополнение сейчас (правда окружения).
+/// Whether the add-on is enabled now (the environment's truth).
 pub fn addon_enabled(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> bool {
     match mode(kind) {
         Some(Mode::Addon(row)) => enabled_addons(io, ctx, kind, row).iter().any(|n| n == name),
@@ -774,7 +790,7 @@ pub fn addon_enabled(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> bool
     }
 }
 
-/// Включить или выключить дополнение (вкладка «Расширения» — пакет целиком).
+/// Enable or disable an add-on (the "Extensions" tab: the whole package).
 pub fn set_addon(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str, on: bool) -> Result<(), String> {
     let steps = if on {
         enable_steps(io, ctx, kind, name)
@@ -789,17 +805,18 @@ pub fn set_addon(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str, on: bool) -
     }
 }
 
-/// Нажатие кнопки раздела: применить тему, включить/выключить дополнение,
-/// запустить/остановить Conky. `(получилось, сообщение для человека)`.
+/// A section button press: apply a theme, enable/disable an add-on,
+/// start/stop Conky. `(success, message for the person)`.
 ///
-/// Направление у дополнений и Conky решает НЕ кнопка, а окружение: включено
-/// сейчас — выключаем, нет — включаем. Плитка могла устареть (человек
-/// успел переключить в настройках самого окружения), а кнопка обязана
-/// сделать то, что на ней написано по правде.
+/// For add-ons and Conky the direction is decided NOT by the button but by
+/// the environment: enabled now means we disable, otherwise we enable. The
+/// tile may be stale (the person may have toggled it in the environment's
+/// own settings), and the button must do what is truthfully written on it.
 ///
-/// Тема и дополнение — план ([`press_plan`]), общий исполнитель
-/// ([`exec_plan`], здесь без отката: «Применить» вкладки исполняет тот же
-/// план под откатом сам) и сверка ([`check`]).
+/// A theme and an add-on go through the plan ([`press_plan`]), the common
+/// executor ([`exec_plan`], here without rollback: the tab's "Apply"
+/// executes the same plan under rollback itself) and the check
+/// ([`check`]).
 pub fn press(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> (bool, String) {
     match press_plan(io, ctx, kind, name) {
         Plan::Refused(m) => (false, m),
@@ -817,11 +834,12 @@ pub fn press(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> (bool, Strin
     }
 }
 
-/// Тема оболочки GNOME без расширения User Themes: схемы
-/// [`USER_THEME_SCHEMA`] нет, `gsettings set` отказывает с «No such schema»,
-/// и человеку надо сказать, чего не хватает, а не пересказать ошибку
-/// gsettings. `None` — тип не про оболочку, схема есть или спросить некого
-/// (без gsettings запись откажет сама и назовёт причину).
+/// A GNOME shell theme without the User Themes extension: there is no
+/// [`USER_THEME_SCHEMA`] schema, `gsettings set` refuses with "No such
+/// schema", and the person must be told what is missing rather than given
+/// a retelling of the gsettings error. `None` means the type is not about
+/// the shell, the schema exists, or there is nobody to ask (without
+/// gsettings the write fails by itself and names the reason).
 fn missing_user_themes(io: &dyn LookIo, row: &Row) -> Option<String> {
     let Activate::Gsettings { schema, .. } = row.activate else { return None };
     if schema != USER_THEME_SCHEMA || !io.have("gsettings") {
@@ -830,8 +848,8 @@ fn missing_user_themes(io: &dyn LookIo, row: &Row) -> Option<String> {
     if io.run(&argv(&["gsettings", "list-keys", schema])).0 {
         return None;
     }
-    // Расширения оболочки лежат в разделе «Оформления», а не во вкладке
-    // «Расширения» — там только пакеты .rxn.
+    // Shell extensions live in an "Appearance" section, not in the
+    // "Extensions" tab: that one holds only .rxn packages.
     let place = format!("{} → {}", tr("Appearance"), crate::i18n::trc("appearance section", "GNOME Extensions"));
     Some(trf(
         // TRANSLATORS: %1 is the place in Rexon, e.g. “Appearance → GNOME Extensions”.
@@ -840,8 +858,9 @@ fn missing_user_themes(io: &dyn LookIo, row: &Row) -> Option<String> {
     ))
 }
 
-/// Каталоги `metacity-1` темы `name` в порядке поиска Marco: `~/.themes`,
-/// `$XDG_DATA_HOME/themes`, затем каталоги `$XDG_DATA_DIRS`.
+/// The `metacity-1` directories of theme `name` in Marco's search order:
+/// `~/.themes`, `$XDG_DATA_HOME/themes`, then the `$XDG_DATA_DIRS`
+/// directories.
 pub fn marco_theme_dirs(ctx: &Ctx, name: &str) -> Vec<String> {
     let data_home = crate::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &ctx.home);
     let data_dirs = std::env::var("XDG_DATA_DIRS")
@@ -853,16 +872,16 @@ pub fn marco_theme_dirs(ctx: &Ctx, name: &str) -> Vec<String> {
     roots.into_iter().map(|r| format!("{r}/{name}/metacity-1")).collect()
 }
 
-/// Почему Marco тему рамок не загрузит
-/// ([`crate::local_preview::marco_theme_problem`]); `None` — помехи нет.
+/// Why Marco will not load a frame theme
+/// ([`crate::local_preview::marco_theme_problem`]); `None` means no obstacle.
 pub fn marco_theme_problem(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<crate::local_preview::MarcoProblem> {
     crate::local_preview::marco_theme_problem(&marco_theme_dirs(ctx, name), &|path| io.read(path))
 }
 
-/// Подпись кнопки рамки для человека (точная функция кнопки — в скобках
-/// рядом, поэтому парам «un…» хватает подписи основной кнопки). Подписи
-/// общих кнопок — те же, что в настройке кнопок заголовка
-/// ([`crate::window_buttons::MANAGED`]).
+/// The frame button label for the person (the exact button function is in
+/// parentheses next to it, so for the "un…" pairs the main button's label
+/// is enough). The labels of the common buttons are the same as in the
+/// title bar buttons settings ([`crate::window_buttons::MANAGED`]).
 fn marco_button_label(function: &str) -> String {
     let managed = match function {
         "above" | "unabove" => "above",
@@ -879,7 +898,7 @@ fn marco_button_label(function: &str) -> String {
     }
 }
 
-/// Отказ применить тему рамок, которую Marco не загрузит, — для человека.
+/// The refusal to apply a frame theme Marco will not load, for the person.
 pub fn marco_refusal(name: &str, problem: &crate::local_preview::MarcoProblem) -> String {
     use crate::local_preview::MarcoProblem;
     match problem {
@@ -904,12 +923,12 @@ pub fn marco_refusal(name: &str, problem: &crate::local_preview::MarcoProblem) -
     }
 }
 
-/// Когда изменение станет видно, если не сразу.
+/// When the change becomes visible, if not right away.
 ///
-/// GNOME включает и выключает расширение сразу, если уже знает его: оно
-/// было на месте при входе в сеанс (проверено на gnome-shell 51.1,
-/// 16.10.2026). Перезаход на Wayland нужен только расширению, которое
-/// поставили после входа, — его оболочка ещё не видела.
+/// GNOME enables and disables an extension immediately if it already knows
+/// it: it was in place at login (verified on gnome-shell 51.1,
+/// 16.10.2026). A re-login on Wayland is needed only for an extension
+/// installed after login, which the shell has not seen yet.
 fn refresh_note(io: &dyn LookIo, row: &Row, ctx: &Ctx, name: &str) -> Option<String> {
     use dec::Refresh;
     match row.refresh {
@@ -923,8 +942,9 @@ fn refresh_note(io: &dyn LookIo, row: &Row, ctx: &Ctx, name: &str) -> Option<Str
     }
 }
 
-/// Знает ли запущенная оболочка GNOME расширение `uuid`. Не ответила —
-/// «не знает»: лишняя оговорка про перезаход безопаснее ложного «готово».
+/// Whether the running GNOME shell knows extension `uuid`. No answer means
+/// "does not know": an extra caveat about re-login is safer than a false
+/// "done".
 fn gnome_shell_knows(io: &dyn LookIo, uuid: &str) -> bool {
     let (ok, out) = io.run(&argv(&[
         "gdbus",
@@ -938,7 +958,7 @@ fn gnome_shell_knows(io: &dyn LookIo, uuid: &str) -> bool {
         "org.gnome.Shell.Extensions.GetExtensionInfo",
         uuid,
     ]));
-    // Неизвестный uuid — пустой словарь `(@a{sv} {},)`, известный — с `state`.
+    // An unknown uuid gives an empty dictionary `(@a{sv} {},)`, a known one comes with `state`.
     ok && out.contains("'state': <")
 }
 
@@ -946,33 +966,33 @@ fn gnome_shell_knows(io: &dyn LookIo, uuid: &str) -> bool {
 // Conky
 // ============================================================================
 
-/// Каталог виджетов Conky (туда кладёт установка).
+/// The Conky widgets directory (the installation puts them there).
 pub fn conky_root(ctx: &Ctx) -> String {
     dec::row(CONKY_KIND)
         .map(|r| r.dest_path(&ctx.home))
         .unwrap_or_else(|| format!("{}/.config/conky", ctx.home))
 }
 
-// ── Несколько виджетов в одном пакете ───────────────────────────────────
+// ── Several widgets in one package ──────────────────────────────────────
 //
-// Обычный пакет Conky (`theme-conky`, не набор) лежит одним каталогом
-// `<корень>/<id>`. Если в его `data/` нет своего файла настроек, а
-// подпапок с файлами настроек две и больше (`data/A`, `data/B`), — это
-// несколько виджетов: каждый — своя плитка с именем `<id>/A` (запуск,
-// автозапуск, удаление, «Цвета», починка путей — по нему). Файлы при этом
-// лежат в одном месте, `<корень>/<id>/A`; прежняя вторая копия в
-// `<корень>/A` больше не кладётся (дефект 14.11.2026). Решение — по
-// установленной копии пакета (`<конфиги>/rexon/extensions/<id>`), а не по
-// тому, что осталось в `<корень>/<id>`: снятый виджет не меняет имён
-// остальных.
+// A normal Conky package (`theme-conky`, not a set) lies in one directory
+// `<root>/<id>`. If its `data/` has no settings file of its own, but there
+// are two or more subfolders with settings files (`data/A`, `data/B`),
+// these are several widgets: each is its own tile named `<id>/A` (start,
+// autostart, removal, "Colours", path repair all go by it). The files lie
+// in one place, `<root>/<id>/A`; the former second copy in `<root>/A` is
+// no longer placed (defect of 14.11.2026). The decision is made from the
+// installed copy of the package (`<configs>/rexon/extensions/<id>`), not
+// from what remains in `<root>/<id>`: a removed widget does not change
+// the names of the others.
 
-/// Имя без косой черты и не `.`/`..`.
+/// A name without a slash and not `.`/`..`.
 fn conky_plain_name(n: &str) -> bool {
     !n.is_empty() && n != "." && n != ".." && !n.contains('/')
 }
 
-/// Вложенные виджеты пакета `top` (`["top/A", "top/B"]`); пусто — пакет
-/// (или каталог не из пакета) — один виджет `top`.
+/// Nested widgets of package `top` (`["top/A", "top/B"]`); empty means the
+/// package (or a directory not from a package) is one widget `top`.
 pub fn conky_nested_widgets(io: &dyn LookIo, ctx: &Ctx, top: &str) -> Vec<String> {
     if !conky_plain_name(top) {
         return Vec::new();
@@ -1015,10 +1035,10 @@ pub fn conky_nested_widgets(io: &dyn LookIo, ctx: &Ctx, top: &str) -> Vec<String
     subs
 }
 
-/// Виджет по пути под корнем Conky: `<корень>/<имя>` — `<имя>`,
-/// `<корень>/<id>/<подпапка>` вложенного виджета — `<id>/<подпапка>`
-/// ([`conky_nested_widgets`]). Глубже — тот виджет, которому путь
-/// принадлежит, если `deeper`; иначе `None`.
+/// The widget for a path under the Conky root: `<root>/<name>` is
+/// `<name>`, `<root>/<id>/<subfolder>` of a nested widget is
+/// `<id>/<subfolder>` ([`conky_nested_widgets`]). Deeper paths give the
+/// widget the path belongs to if `deeper`; otherwise `None`.
 fn conky_widget_under_root(io: &dyn LookIo, ctx: &Ctx, path: &str, deeper: bool) -> Option<String> {
     let root = format!("{}/", conky_root(ctx));
     let rest = path.trim_end_matches('/').strip_prefix(&root)?;
@@ -1033,14 +1053,15 @@ fn conky_widget_under_root(io: &dyn LookIo, ctx: &Ctx, path: &str, deeper: bool)
     deeper.then(|| top.to_string())
 }
 
-/// Папка ли `path` виджета в каталоге Rexon (свой или вложенный): имя
-/// виджета; иначе `None`.
+/// Whether `path` is a widget folder in the Rexon directory (own or
+/// nested): the widget name; otherwise `None`.
 pub fn conky_widget_of_dir(io: &dyn LookIo, ctx: &Ctx, path: &str) -> Option<String> {
     conky_widget_under_root(io, ctx, path, false)
 }
 
-/// Виджет Rexon, которому принадлежит файл настроек `conf` (по пути, без
-/// обхода диска, кроме описания пакета). `None` — файл не в папке виджета.
+/// The Rexon widget that settings file `conf` belongs to (by path, without
+/// walking the disk except for the package description). `None` means the
+/// file is not in a widget folder.
 pub fn conky_widget_of_conf(io: &dyn LookIo, ctx: &Ctx, conf: &str) -> Option<String> {
     let root = format!("{}/", conky_root(ctx));
     if !conf.strip_prefix(&root).is_some_and(|r| r.contains('/')) {
@@ -1049,12 +1070,13 @@ pub fn conky_widget_of_conf(io: &dyn LookIo, ctx: &Ctx, conf: &str) -> Option<St
     conky_widget_under_root(io, ctx, conf, true)
 }
 
-/// Файл настроек виджета: `conky.conf`, `.conkyrc`, `*.conkyrc`, затем
-/// любой `*conky*.conf` уровнем ниже — тот же порядок, что у установки.
+/// A widget's settings file: `conky.conf`, `.conkyrc`, `*.conkyrc`, then
+/// any `*conky*.conf` one level down: the same order as the installation.
 ///
-/// Виджет, найденный на диске вне каталога Rexon (имя — абсолютный путь,
-/// `conky_scan`), и тема, где файл назван как угодно (`Jhalak.conf`,
-/// `Gotham`), — по содержимому ([`crate::conky_scan::config_files`]).
+/// A widget found on disk outside the Rexon directory (the name is an
+/// absolute path, `conky_scan`) and a theme whose file is named anything
+/// at all (`Jhalak.conf`, `Gotham`) are found by content
+/// ([`crate::conky_scan::config_files`]).
 pub fn conky_conf(io: &dyn LookIo, ctx: &Ctx, id: &str) -> Option<String> {
     if crate::conky_scan::is_found_name(id) {
         return crate::conky_scan::widget_confs(io, ctx, id, None).into_iter().next();
@@ -1085,17 +1107,17 @@ pub fn conky_conf(io: &dyn LookIo, ctx: &Ctx, id: &str) -> Option<String> {
     crate::conky_scan::config_files(io, &dir).into_iter().next()
 }
 
-/// Файл настроек из командной строки процесса conky (`-c X`, `--config=X`,
-/// `--config X`). `None` — это не conky либо он без своего файла. Conky,
-/// запущенный с накладкой Rexon, отвечает файлом автора
-/// ([`crate::conky_overlay::original_of_launch`]): для «Остановить»,
-/// «Запущенные» и автозапуска это тот же виджет.
+/// The settings file from a conky process command line (`-c X`,
+/// `--config=X`, `--config X`). `None` means it is not conky or it runs
+/// without its own file. A conky started with a Rexon overlay answers with
+/// the author's file ([`crate::conky_overlay::original_of_launch`]): for
+/// "Stop", "Running" and autostart it is the same widget.
 pub fn conky_conf_of_cmdline(cmdline: &str) -> Option<String> {
     let launch = conky_launch_of_cmdline(cmdline)?;
     Some(crate::conky_overlay::original_of_launch(&launch).unwrap_or(launch))
 }
 
-/// Файл из `-c` командной строки conky как есть (накладка — накладкой).
+/// The file from conky's `-c` command line as is (an overlay stays an overlay).
 pub fn conky_launch_of_cmdline(cmdline: &str) -> Option<String> {
     let args: Vec<&str> = cmdline.split('\0').filter(|a| !a.is_empty()).collect();
     let prog = args.first()?.rsplit('/').next()?;
@@ -1117,7 +1139,7 @@ pub fn conky_launch_of_cmdline(cmdline: &str) -> Option<String> {
     None
 }
 
-/// Процессы conky: `(pid, файл настроек)`.
+/// conky processes: `(pid, settings file)`.
 fn conky_processes(io: &dyn LookIo) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for pid in io.list_dir("/proc") {
@@ -1125,7 +1147,7 @@ fn conky_processes(io: &dyn LookIo) -> Vec<(String, String)> {
             continue;
         }
         let Some(cmd) = io.read(&format!("/proc/{pid}/cmdline")) else { continue };
-        // Копия на невидимом экране снимков (`conky_preview`) — не виджет.
+        // A copy on the invisible screenshot screen (`conky_preview`) is not a widget.
         if conky_launch_of_cmdline(&cmd).is_some_and(|l| crate::conky_preview::is_preview_launch(&l)) {
             continue;
         }
@@ -1136,12 +1158,12 @@ fn conky_processes(io: &dyn LookIo) -> Vec<(String, String)> {
     out
 }
 
-/// Виджет, которому принадлежит файл настроек (`<корень>/<id>/…`).
+/// The widget a settings file belongs to (`<root>/<id>/…`).
 fn conky_id_of_conf(io: &dyn LookIo, ctx: &Ctx, conf: &str) -> Option<String> {
     conky_widget_of_conf(io, ctx, conf)
 }
 
-/// Виджеты Conky, которые работают сейчас.
+/// Conky widgets running now.
 pub fn conky_running_ids(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     let mut ids = Vec::new();
     for (_, conf) in conky_processes(io) {
@@ -1151,9 +1173,9 @@ pub fn conky_running_ids(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
             }
         }
     }
-    // Найденные на диске (`~/.conky`, `~/.conkyrc`…) — по пути.
+    // Those found on disk (`~/.conky`, `~/.conkyrc`…) go by path.
     let extra = crate::conky_scan::extra_dirs_for(ctx);
-    // Окна темы со сценарием — по метке: файл окна бывает и вне её папки.
+    // Windows of a theme with a script go by marker: a window file can lie outside its folder.
     for p in crate::conky_procs::all(io) {
         if let Some(dir) = p.widget.as_deref() {
             let id = crate::conky_theme::widget_of_dir(ctx, &extra, dir);
@@ -1170,38 +1192,41 @@ pub fn conky_running_ids(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     ids
 }
 
-// ── Пути «чужой папки» в файлах виджета ─────────────────────────────────
+// ── "Foreign folder" paths in a widget's files ──────────────────────────
 //
-// Темы магазина писались под установку в `~/.conky/<Имя>/` (так раскладывали
-// архивы программы-менеджера Conky и инструкции авторов) и прописывают туда
-// абсолютные пути: `lua_load ~/.conky/<Имя>/rings.lua`, `${image
-// ~/.conky/<Имя>/bg.png}`, `$HOME/.conky/<Имя>/weather.sh`, а то и
-// `/home/<автор>/.conky/…`. Rexon ставит виджет в `~/.config/conky/<id>/`,
-// и такие пути ведут мимо. Ремонт — в файлах самого виджета: путь, который
-// никуда не ведёт, но чей «хвост» есть в папке виджета, переписывается на
-// эту папку. Остальное не трогается:
-//   * путь, который уже существует (у человека и правда есть
-//     `~/.conky/<Имя>`), — остаётся как есть;
-//   * путь, уже ведущий в папку виджета, — тоже (повторный ремонт ничего не
-//     меняет, его можно звать перед каждым запуском);
-//   * «хвоста» в папке виджета нет — не наш файл, правка не угадывается;
-//   * подстановка дала бы пробел или кавычку там, где их не было, — строка
-//     разбилась бы на два аргумента; оставляем.
-// В `~/.conky` при этом ничего не создаётся — чужое там не трогается, и при
-// удалении виджета убирать за собой нечего.
+// Store themes were written for installation into `~/.conky/<Name>/`
+// (that is how the Conky manager program's archives and the authors'
+// instructions laid them out) and hardcode absolute paths there:
+// `lua_load ~/.conky/<Name>/rings.lua`, `${image
+// ~/.conky/<Name>/bg.png}`, `$HOME/.conky/<Name>/weather.sh`, or even
+// `/home/<author>/.conky/…`. Rexon installs the widget into
+// `~/.config/conky/<id>/`, and such paths miss. The repair happens in the
+// widget's own files: a path that leads nowhere, but whose "tail" exists
+// in the widget folder, is rewritten to that folder. Everything else is
+// left alone:
+//   * a path that already exists (the person really has
+//     `~/.conky/<Name>`) stays as is;
+//   * a path that already leads to the widget folder too (a repeated
+//     repair changes nothing, so it can be called before every start);
+//   * no "tail" in the widget folder: not our file, the edit cannot be
+//     guessed;
+//   * the substitution would put a space or a quote where there was none,
+//     so the line would split into two arguments; we leave it.
+// Nothing is created in `~/.conky`: other people's things there are not
+// touched, and when the widget is removed there is nothing to clean up.
 
-/// Корни, под которые писались темы (после `~/`, `$HOME/` или
-/// `/home/<кто-то>/`).
+/// Roots the themes were written for (after `~/`, `$HOME/` or
+/// `/home/<someone>/`).
 const CONKY_FOREIGN_ROOTS: &[&str] = &[".conky/", ".Conky/", ".config/conky/", ".config/Conky/"];
 
-/// Конец пути в тексте конфига, Lua или сценария.
+/// The end of a path in config, Lua or script text.
 fn conky_path_end(c: char) -> bool {
     c.is_whitespace() || "'\"`}{)(][,;|<>&$\\=".contains(c)
 }
 
-/// Начало пути `~/`, `$HOME/`, `${HOME}/` или `/home/<имя>/` в позиции `i`
-/// строки `text`: `(длина префикса, абсолютный префикс-дом или None —
-/// «дом этого человека»)`.
+/// The start of a `~/`, `$HOME/`, `${HOME}/` or `/home/<name>/` path at
+/// position `i` of string `text`: `(prefix length, absolute home prefix or
+/// None meaning "this person's home")`.
 fn conky_home_prefix(text: &str, i: usize) -> Option<(usize, Option<String>)> {
     let rest = &text[i..];
     for p in ["~/", "$HOME/", "${HOME}/"] {
@@ -1219,9 +1244,9 @@ fn conky_home_prefix(text: &str, i: usize) -> Option<(usize, Option<String>)> {
     Some((6 + n + 1, Some(format!("/home/{}", &user[..n]))))
 }
 
-/// Починить пути одного текста. `home` — домашняя папка, `widget` —
-/// папка виджета (абсолютная, без `/` в конце), `exists`/`is_dir` —
-/// наблюдения диска. `None` — менять нечего.
+/// Repair the paths of one text. `home` is the home folder, `widget` the
+/// widget folder (absolute, without a trailing `/`), `exists`/`is_dir` are
+/// disk observations. `None` means nothing to change.
 pub fn conky_repair_text(
     text: &str,
     home: &str,
@@ -1253,8 +1278,8 @@ pub fn conky_repair_text(
             continue;
         };
         let tail_all = &after[root.len()..];
-        // В кавычках путь идёт до закрывающей кавычки (пробелы в нём —
-        // часть имени), без кавычек — до первого разделителя.
+        // In quotes a path runs up to the closing quote (spaces in it are part
+        // of the name); without quotes up to the first separator.
         let quote = text[..i].chars().next_back().filter(|c| *c == '"' || *c == '\'');
         let tail_len = match quote {
             Some(q) => tail_all.find(|c: char| c == q || c == '\n'),
@@ -1269,12 +1294,12 @@ pub fn conky_repair_text(
         let inside = |p: &str| p == widget || p.starts_with(&format!("{widget}/"));
         let pick = (!parts.is_empty() && !exists(&original) && !inside(&original))
             .then(|| {
-                // Сначала хвост, который есть целиком, — от самого длинного.
+                // First a tail that exists in full, starting from the longest.
                 (0..parts.len())
                     .map(|k| parts[k..].join("/"))
                     .find(|s| exists(&format!("{widget}/{s}")))
-                    // Затем файл, который виджет пишет сам (погода, кэш):
-                    // его ещё нет, но есть его папка.
+                    // Then a file the widget writes itself (weather, cache):
+                    // it does not exist yet, but its folder does.
                     .or_else(|| {
                         (0..parts.len().saturating_sub(1))
                             .find(|&k| is_dir(&format!("{widget}/{}", parts[k..parts.len() - 1].join("/"))))
@@ -1285,7 +1310,7 @@ pub fn conky_repair_text(
         if let Some(sub) = pick {
             let slash = if tail.ends_with('/') { "/" } else { "" };
             let target = format!("{widget}/{sub}{slash}");
-            // Тот же вид начала пути, что у автора: `~/…` остаётся `~/…`.
+            // The same kind of path start as the author's: `~/…` stays `~/…`.
             let head = &text[i..i + plen];
             let written = match (author_home.is_some(), target.strip_prefix(&format!("{home}/"))) {
                 (false, Some(rel)) => format!("{head}{rel}"),
@@ -1312,11 +1337,12 @@ pub fn conky_repair_text(
     Some(out)
 }
 
-/// Починить пути во всех текстовых файлах папки виджета `widget` (см.
-/// [`conky_repair_text`]), а сценариям Lua под прежний conky — подключить
-/// модуль X11-рисования ([`crate::conky_safety::lua_xlib_compat`]).
-/// Возвращает изменённые файлы. Ссылки не проходятся, двоичные и большие
-/// файлы не читаются, файлы вне папки виджета не трогаются.
+/// Repair the paths in all text files of widget folder `widget` (see
+/// [`conky_repair_text`]), and for Lua scripts written for the old conky
+/// hook up the X11 drawing module
+/// ([`crate::conky_safety::lua_xlib_compat`]). Returns the changed files.
+/// Links are not followed, binary and large files are not read, files
+/// outside the widget folder are not touched.
 pub fn conky_repair_paths(home: &str, widget: &str) -> Vec<String> {
     const MAX_FILES: usize = 4000;
     const MAX_SIZE: u64 = 1 << 20;
@@ -1342,8 +1368,8 @@ pub fn conky_repair_paths(home: &str, widget: &str) -> Vec<String> {
             if !ft.is_file() || e.metadata().map_or(true, |m| m.len() > MAX_SIZE) {
                 continue;
             }
-            // Установщик автора (`install.sh`) описывает, КУДА класть тему, —
-            // переписанный, он копировал бы виджет сам в себя.
+            // The author's installer (`install.sh`) describes WHERE to put the
+            // theme; rewritten, it would copy the widget into itself.
             let name = e.file_name().to_string_lossy().to_lowercase();
             if name.starts_with("install") || name.starts_with("uninstall") {
                 continue;
@@ -1354,7 +1380,7 @@ pub fn conky_repair_paths(home: &str, widget: &str) -> Vec<String> {
             }
             let Ok(text) = String::from_utf8(bytes) else { continue };
             let paths = conky_repair_text(&text, home, widget, &exists, &is_dir);
-            // Сценарий Lua под прежний conky: X11-рисование — отдельным модулем.
+            // A Lua script for the old conky: X11 drawing as a separate module.
             let lua = name.ends_with(".lua").then(|| crate::conky_safety::lua_xlib_compat(paths.as_deref().unwrap_or(&text))).flatten();
             if let Some(fixed) = lua.or(paths) {
                 if std::fs::write(&path, fixed).is_ok() {
@@ -1366,11 +1392,12 @@ pub fn conky_repair_paths(home: &str, widget: &str) -> Vec<String> {
     changed
 }
 
-/// Рабочий каталог conky для файла настроек `conf` — его папка. Виджеты
-/// пишут пути к своим файлам от неё (`lua_load ./x.lua`, `${image
-/// ./bg.png}`, `${execi 60 ./weather.sh}`): conky и запущенные им команды
-/// ищут их от рабочего каталога процесса. Так же запускают виджет программы,
-/// под которые темы рисовались (переход в папку файла, затем conky).
+/// conky's working directory for settings file `conf`: its folder. Widgets
+/// write the paths to their files relative to it (`lua_load ./x.lua`,
+/// `${image ./bg.png}`, `${execi 60 ./weather.sh}`): conky and the
+/// commands it runs look for them relative to the process's working
+/// directory. The programs the themes were drawn for start a widget the
+/// same way (change into the file's folder, then conky).
 pub fn conky_work_dir(conf: &str) -> &str {
     match conf.rsplit_once('/') {
         Some(("", _)) => "/",
@@ -1379,7 +1406,7 @@ pub fn conky_work_dir(conf: &str) -> &str {
     }
 }
 
-/// Строка запуска кнопки «Запустить»: `(argv, рабочий каталог)`.
+/// The launch line of the "Start" button: `(argv, working directory)`.
 pub fn conky_start_command(conf: &str) -> (Vec<String>, String) {
     (
         ["conky", "-d", "-c", conf].map(String::from).to_vec(),
@@ -1387,23 +1414,26 @@ pub fn conky_start_command(conf: &str) -> (Vec<String>, String) {
     )
 }
 
-/// Сценарий `sh -c` автозапуска при входе: `$0` — файл настроек; переход
-/// в его папку и замена оболочки на conky с тем же файлом. Путь в сценарий
-/// не подставляется — он приходит отдельным аргументом, поэтому пробелы,
-/// кавычки и `$` в имени папки экранировать внутри сценария не нужно. После
-/// `exec` в `/proc` остаётся сам conky с `-c <файл>`, и «запущен ли виджет»
-/// узнаётся как у кнопки.
+/// The `sh -c` script for autostart at login: `$0` is the settings file;
+/// change into its folder and replace the shell with conky on the same
+/// file. The path is not substituted into the script: it arrives as a
+/// separate argument, so spaces, quotes and `$` in the folder name need no
+/// escaping inside the script. After `exec`, conky itself with
+/// `-c <file>` remains in `/proc`, and "is the widget running" is
+/// detected the same way as for the button.
 ///
-/// Знака `%` в сценарии нет намеренно: в `Exec=` он служебный, и
-/// запускальщики по-разному разбирают `%%` внутри кавычек.
+/// There is deliberately no `%` sign in the script: in `Exec=` it is
+/// special, and launchers parse `%%` inside quotes differently.
 ///
-/// Переход на XWayland в начале сценария может задать
-/// [`crate::conky_overlay::XWAYLAND_LAUNCH_VAR`] — тогда conky идёт с файлом
-/// запуска через XWayland (окно под окнами), рабочий каталог тот же.
+/// A switch to XWayland at the start of the script can be set by
+/// [`crate::conky_overlay::XWAYLAND_LAUNCH_VAR`]: then conky runs with the
+/// launch file through XWayland (a window under the windows), with the
+/// same working directory.
 pub const CONKY_AUTOSTART_SCRIPT: &str = r#"cd "$(dirname "$0")" && exec conky -c "${rexon_xw:-$0}""#;
 
-/// То же для виджета с накладкой Rexon: `$0` — накладка (с ней conky
-/// запускается), `$1` — файл автора (его папка — рабочий каталог).
+/// The same for a widget with a Rexon overlay: `$0` is the overlay (conky
+/// is started with it), `$1` the author's file (its folder is the working
+/// directory).
 pub const CONKY_OVERLAY_AUTOSTART_SCRIPT: &str = r#"cd "$(dirname "$1")" && exec conky -c "${rexon_xw:-$0}""#;
 
 fn conky_start(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
@@ -1417,27 +1447,29 @@ fn conky_start(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
         return (false, conky_missing_refusal());
     }
     conky_prepare(ctx, id);
-    // Виджет выполняет команды или сценарии, а человек этого ещё не
-    // разрешил (или файлы с тех пор изменились): не запускать. Вопрос
-    // задаёт интерфейс до нажатия (`conky_safety::start_question`); сюда
-    // доходят запуски мимо него — «Установить и применить» из магазина.
-    // Сверка — ПОСЛЕ ремонта путей: он правит файлы, и отпечаток,
-    // снятый до него, при следующем запуске уже не совпал бы.
+    // The widget runs commands or scripts, and the person has not allowed
+    // this yet (or the files have changed since): do not start it. The
+    // interface asks the question before the press
+    // (`conky_safety::start_question`); starts that bypass it arrive here,
+    // such as "Install and apply" from the store. The check comes AFTER the
+    // path repair: it edits files, and a fingerprint taken before it would
+    // no longer match at the next start.
     if let Some(why) = crate::conky_safety::start_refusal(io, ctx, id) {
         return (false, why);
     }
-    // Запуск из папки виджета, вывод ошибок — в журнал; не запустился —
-    // причина словами conky (`conky_procs::start_conf`).
+    // Start from the widget folder, errors go to the log; if it did not
+    // start, the reason in conky's words (`conky_procs::start_conf`).
     crate::conky_procs::start_conf(io, ctx, &crate::conky_scan::widget_title(id), &conf)
 }
 
-/// Подготовка виджета к запуску: пути под `~/.conky/<Имя>/` — на папку
-/// виджета (виджеты, поставленные раньше этой починки, чинятся здесь же,
-/// при первом запуске). Найденный на диске виджет и так лежит там, куда
-/// смотрят его пути, — его файлы не трогаются. Интерфейс зовёт её и ДО
-/// вопроса о командах виджета: разрешение помнит файлы уже починенными.
-/// Виджет, разрешённый ДО починки, остаётся разрешённым: правка — своя,
-/// Rexon, и второй раз спрашивать о тех же командах незачем.
+/// Preparing a widget for start: paths under `~/.conky/<Name>/` are
+/// pointed at the widget folder (widgets installed before this repair are
+/// fixed here too, on the first start). A widget found on disk already
+/// lies where its paths point, so its files are not touched. The interface
+/// calls it BEFORE the question about the widget's commands too: the
+/// permission remembers the files already repaired. A widget allowed
+/// BEFORE the repair stays allowed: the edit is our own, by Rexon, and
+/// there is no reason to ask about the same commands a second time.
 pub fn conky_prepare(ctx: &Ctx, id: &str) {
     if crate::conky_scan::is_found_name(id) {
         return;
@@ -1450,29 +1482,31 @@ pub fn conky_prepare(ctx: &Ctx, id: &str) {
     }
 }
 
-/// Отказ «Запустить», когда программы Conky нет.
+/// The "Start" refusal when the Conky program is missing.
 pub fn conky_missing_refusal() -> String {
     tr("The widget wasn't started: it needs the Conky program, and Conky isn't installed.")
 }
 
-/// Оговорка Conky на Wayland для окружения `de_id`. `None` — оговорка не
-/// нужна.
+/// The Conky on Wayland caveat for environment `de_id`. `None` means no
+/// caveat is needed.
 ///
-/// Conky на Wayland рисует виджет на столе через wlr-layer-shell: его знают
-/// KWin, композиторы на wlroots (Sway, Hyprland, labwc — на нём и Budgie
-/// 10.10), niri и COSMIC. Mutter (GNOME), Muffin (Cinnamon) и Gala (Pantheon)
-/// его не реализуют: там виджет идёт только через XWayland и встаёт как
-/// обычное окно — или не встаёт вовсе. Прежняя оговорка «на Wayland идёт
-/// через XWayland» про KDE и тайловые устарела, а GNOME ложно обнадёживала.
+/// On Wayland Conky draws the widget on the desktop through
+/// wlr-layer-shell: it is known to KWin, wlroots compositors (Sway,
+/// Hyprland, labwc, which Budgie 10.10 runs on too), niri and COSMIC.
+/// Mutter (GNOME), Muffin (Cinnamon) and Gala (Pantheon) do not implement
+/// it: there the widget goes only through XWayland and appears as a normal
+/// window, or does not appear at all. The old caveat "on Wayland it goes
+/// through XWayland" was outdated for KDE and the tiling ones, and gave
+/// false hope for GNOME.
 pub fn conky_wayland_note(de_id: &str, wayland: bool) -> Option<String> {
     conky_wayland_note_for(de_id, wayland, None)
 }
 
-/// [`conky_wayland_note`] с версией conky. С 1.25 conky сам выбирает вывод
-/// (`output_backend`) и на столе без слоёв встаёт обычным окном Wayland —
-/// предупреждение говорит именно это
-/// ([`crate::conky_overlay::preset_note`]); у прежних выпусков и без версии
-/// — прежнее «ненадёжно».
+/// [`conky_wayland_note`] with the conky version. Since 1.25 conky chooses
+/// the output itself (`output_backend`) and on a desktop without layers
+/// appears as a normal Wayland window: the warning says exactly that
+/// ([`crate::conky_overlay::preset_note`]); for older releases and without
+/// a version, the old "unreliable".
 pub fn conky_wayland_note_for(de_id: &str, wayland: bool, version: Option<(u32, u32)>) -> Option<String> {
     use crate::de_customization::De;
     if !wayland {
@@ -1491,10 +1525,11 @@ pub fn conky_wayland_note_for(de_id: &str, wayland: bool, version: Option<(u32, 
     }
 }
 
-/// Подпись-условие раздела «Виджеты Conky»: нет программы — сказать
-/// заранее, а не после кнопки «Запустить»; ненадёжный Wayland — тоже.
-/// `installable` — Rexon может сам поставить пакет (не SteamOS, не
-/// неизменяемая система, знакомый менеджер пакетов). `None` — всё в порядке.
+/// The condition label of the "Conky widgets" section: no program means
+/// saying so up front, not after the "Start" button; an unreliable Wayland
+/// too. `installable`: Rexon can install the package itself (not SteamOS,
+/// not an immutable system, a known package manager). `None` means all is
+/// fine.
 pub fn conky_section_note(installed: bool, installable: bool, de_id: &str, wayland: bool) -> Option<String> {
     let mut parts = Vec::new();
     if !installed {
@@ -1506,8 +1541,8 @@ pub fn conky_section_note(installed: bool, installable: bool, de_id: &str, wayla
         });
     }
     parts.extend(conky_wayland_note(de_id, wayland));
-    // Cinnamon на Wayland: свои виджеты стола у него есть и держатся на
-    // столе в любом сеансе — показать дорогу к ним (24.10.2026).
+    // Cinnamon on Wayland: it has its own desktop widgets, and they stay on
+    // the desktop in any session: show the way to them (24.10.2026).
     if wayland && crate::de_customization::de_from_id(de_id) == Some(crate::de_customization::De::Cinnamon) {
         parts.push(crate::i18n::trf(
             // TRANSLATORS: %1 is the name of the neighbouring section (“Cinnamon Desklets”).
@@ -1518,10 +1553,10 @@ pub fn conky_section_note(installed: bool, installable: bool, de_id: &str, wayla
     (!parts.is_empty()).then(|| parts.join(" "))
 }
 
-/// Пакет программы Conky, который Rexon может поставить на ЭТОЙ системе.
-/// `None` — не может: SteamOS, неизменяемая система (системный пакет там не
-/// встанет) или незнакомый менеджер пакетов — тогда установку не
-/// предлагаем, только предупреждаем.
+/// The Conky program package Rexon can install on THIS system. `None`
+/// means it cannot: SteamOS, an immutable system (a system package will
+/// not install there) or an unknown package manager; then installation is
+/// not offered, only a warning.
 pub fn live_conky_package() -> Option<&'static str> {
     let detector = crate::system::DistroDetector::detect_live();
     if detector.is_steamos() || detector.is_immutable() {
@@ -1530,19 +1565,21 @@ pub fn live_conky_package() -> Option<&'static str> {
     conky_package(detector.family_live().as_str())
 }
 
-/// Виджет ли это Conky — карточка магазина (раздел 124) или местная плитка
-/// `local:conky:<имя>`.
+/// Whether this is a Conky widget: a store card (section 124) or a local
+/// tile `local:conky:<name>`.
 pub fn is_conky_item(item: &crate::models::ThemeItem) -> bool {
     apply_kind_of_local_id(&item.id) == Some("conky")
         || crate::categories::section_id_for(item.category_id) == crate::categories::CONKY_SECTION_ID
 }
 
-/// Товар раздела Conky — программа, а не виджет: КАЖДЫЙ его файл — пакет
-/// дистрибутива или установщик ([`crate::ocs::DISTRO_PACKAGE_EXTS`]: `.deb`,
-/// `.rpm`, `.pkg.tar.zst`, `.AppImage`…). Так в категории «Conky» магазина
-/// лежат «Conky Manager GTK» и «Conky Manager Qt»: ставить их как виджет
-/// нечего, а наверху витрины они шли первыми. У виджета есть хоть один
-/// архив или файл настроек — он остаётся, даже если рядом лежит пакет.
+/// An item of the Conky section that is a program, not a widget: EVERY
+/// file of it is a distribution package or an installer
+/// ([`crate::ocs::DISTRO_PACKAGE_EXTS`]: `.deb`, `.rpm`, `.pkg.tar.zst`,
+/// `.AppImage`…). That is how "Conky Manager GTK" and "Conky Manager Qt"
+/// sit in the store's "Conky" category: there is nothing to install as a
+/// widget, yet they came first at the top of the showcase. A widget has at
+/// least one archive or settings file, and it stays even if a package lies
+/// next to it.
 pub fn is_conky_program(item: &crate::models::ThemeItem) -> bool {
     if !is_conky_item(item) {
         return false;
@@ -1562,13 +1599,15 @@ pub fn is_conky_program(item: &crate::models::ThemeItem) -> bool {
             .all(|n| crate::ocs::DISTRO_PACKAGE_EXTS.iter().any(|e| n.ends_with(e)))
 }
 
-/// Пакет Conky, который Rexon ставит перед запуском виджета САМ, без
-/// вопроса «Да/Нет» (решение владельца 24.10: в вопросе легко по ошибке
-/// нажать «Нет»; защита — окно пароля polkit). `None` — ставить нечего:
-/// Conky стоит или поставить его Rexon здесь не может (тогда раздел
-/// предупредил заранее, а «Запустить» скажет [`conky_missing_refusal`]).
+/// The Conky package Rexon installs before starting a widget BY ITSELF,
+/// without a "Yes/No" question (the owner's decision of 24.10: it is easy
+/// to press "No" by mistake in the question; the protection is the polkit
+/// password window). `None` means there is nothing to install: Conky is
+/// installed, or Rexon cannot install it here (then the section warned up
+/// front, and "Start" will say [`conky_missing_refusal`]).
 ///
-/// `have_conky` — есть ли `conky` в PATH, `package` — [`live_conky_package`].
+/// `have_conky` tells whether `conky` is in PATH, `package` is
+/// [`live_conky_package`].
 pub fn conky_install_package(have_conky: bool, package: Option<&str>) -> Option<String> {
     if have_conky {
         return None;
@@ -1576,11 +1615,12 @@ pub fn conky_install_package(have_conky: bool, package: Option<&str>) -> Option<
     package.map(str::to_string)
 }
 
-/// Поставить Conky тем же путём, что вся установка пакетов Rexon (pkexec +
-/// `rexon-pkg-helper`), только из официальных репозиториев
-/// (`appearance_installer::live_install_repo_packages`: AUR без вопроса не
-/// собирается), и проверить по факту — бинарь `conky` в PATH. `Err` —
-/// причина для человека (виджет после неё не запускается).
+/// Install Conky the same way as all of Rexon's package installation
+/// (pkexec + `rexon-pkg-helper`), only from the official repositories
+/// (`appearance_installer::live_install_repo_packages`: the AUR is not
+/// built without a question), and check the fact: the `conky` binary in
+/// PATH. `Err` is the reason for the person (the widget does not start
+/// after it).
 pub fn install_conky_live() -> Result<(), String> {
     let Some(package) = live_conky_package() else {
         return Err(tr("Rexon can't install programs on this system by itself."));
@@ -1595,16 +1635,18 @@ pub fn install_conky_live() -> Result<(), String> {
     Ok(())
 }
 
-/// Есть ли программа `conky` в PATH процесса. `utils::which(_, None)` ищет
-/// по запасному списку каталогов, а не по `$PATH`: Conky, поставленный не в
-/// `/usr/bin` (или подложенный стендом), он бы не увидел.
+/// Whether the `conky` program is in the process's PATH.
+/// `utils::which(_, None)` searches a fallback list of directories, not
+/// `$PATH`: it would not see a Conky installed outside `/usr/bin` (or
+/// planted by the test bench).
 pub fn have_conky() -> bool {
     crate::utils::which("conky", std::env::var("PATH").ok().as_deref()).is_some()
 }
 
-/// Итог неудачной установки Conky: виджет не запущен, и сказано почему и
-/// что сделать. Окно пароля закрыто — «передумал», а не поломка: совет
-/// повторить «▶️ Запустить» и ввести пароль.
+/// Result of a failed Conky installation: the widget is not started, and
+/// it says why and what to do. A closed password window means "changed my
+/// mind", not a breakage: the advice is to repeat "▶️ Start" and enter the
+/// password.
 pub fn conky_install_failed(why: &str) -> String {
     if why == crate::appearance_installer::password_not_confirmed() {
         return trf(
@@ -1617,9 +1659,10 @@ pub fn conky_install_failed(why: &str) -> String {
     trf("Couldn't install Conky: %1. The widget wasn't started.", &[&why])
 }
 
-/// Пакет программы Conky для семейства пакетов (`system::PkgFamily::as_str`).
-/// `None` — Rexon его здесь не ставит. Имена сверены с репозиториями:
-/// Arch (extra), Debian/Ubuntu, Fedora и openSUSE — везде `conky`.
+/// The Conky program package for a package family
+/// (`system::PkgFamily::as_str`). `None` means Rexon does not install it
+/// here. The names were checked against the repositories: Arch (extra),
+/// Debian/Ubuntu, Fedora and openSUSE all use `conky`.
 pub fn conky_package(family: &str) -> Option<&'static str> {
     match family {
         "arch" | "debian" | "fedora" | "suse" => Some("conky"),
@@ -1628,9 +1671,9 @@ pub fn conky_package(family: &str) -> Option<&'static str> {
 }
 
 fn conky_stop(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
-    // Гасим ТОЛЬКО процессы этого виджета — по номеру процесса, найденному по
-    // его файлу настроек. Чужие conky (свои у человека) не трогаем.
-    // В сообщении — имя виджета, а не путь найденного на диске.
+    // We kill ONLY this widget's processes, by the process number found by
+    // its settings file. Other conky processes (the person's own) are left
+    // alone. The message has the widget name, not the path found on disk.
     let title = crate::conky_scan::widget_title(id);
     let pids: Vec<String> = if crate::conky_scan::is_found_name(id) {
         crate::conky_procs::pids_where(io, ctx, &|conf| crate::conky_scan::widget_owns(ctx, id, conf))
@@ -1641,8 +1684,8 @@ fn conky_stop(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
             .map(|(pid, _)| pid)
             .collect()
     };
-    // Тема со сценарием запуска — целиком: циклы сценария и группа
-    // (`conky_theme`), даже если сам conky уже упал.
+    // A theme with a launch script goes as a whole: the script's loops and
+    // the group (`conky_theme`), even if conky itself has already crashed.
     let mut pids = crate::conky_theme::with_companions(io, pids);
     for p in crate::conky_theme::widget_companions(io, &crate::conky_scan::widget_path(ctx, id)) {
         if !pids.contains(&p) {
@@ -1659,16 +1702,17 @@ fn conky_stop(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
     (true, trf("⏹️ Stopped: %1", &[&title]))
 }
 
-/// Перед «Удалить»: погасить процессы виджета (по номерам, как
-/// «Остановить») и снять его запись автозапуска — иначе удалённый виджет
-/// продолжал бы висеть на столе, а при входе автозапуск звал бы conky с
-/// файлом, которого нет. `widget_dir` — путь из журнала установки; не
-/// папка виджета (`<корень Conky>/<id>`) — ничего не делается. `Some(id)` —
-/// виджет опознан.
+/// Before "Remove": kill the widget's processes (by number, like "Stop")
+/// and remove its autostart entry; otherwise the removed widget would keep
+/// hanging on the desktop, and at login autostart would call conky with a
+/// file that does not exist. `widget_dir` is the path from the
+/// installation log; if it is not a widget folder (`<Conky root>/<id>`),
+/// nothing is done. `Some(id)` means the widget was recognised.
 pub fn conky_forget_widget(io: &dyn LookIo, ctx: &Ctx, widget_dir: &str) -> Option<String> {
     let id = conky_widget_of_dir(io, ctx, widget_dir)?;
-    // Пакет с несколькими виджетами: каждый вложенный — свои процессы и
-    // свой автозапуск (папки уже может не быть — имя берётся из пакета).
+    // A package with several widgets: each nested one has its own processes
+    // and its own autostart (the folder may already be gone: the name comes
+    // from the package).
     if !id.contains('/') {
         for nested in conky_nested_widgets(io, ctx, &id) {
             let _ = conky_stop(io, ctx, &nested);
@@ -1683,16 +1727,16 @@ pub fn conky_forget_widget(io: &dyn LookIo, ctx: &Ctx, widget_dir: &str) -> Opti
     Some(id)
 }
 
-/// Файл автозапуска виджета (имя то же, что писала прежняя установка, —
-/// уже включённые раньше виджеты остаются включёнными).
+/// The widget's autostart file (the name is the same the old installation
+/// wrote, so widgets enabled earlier stay enabled).
 pub fn conky_autostart_path(ctx: &Ctx, id: &str) -> String {
     ctx.config(&format!("autostart/rexon-conky-{}.desktop", crate::conky_scan::autostart_key(id)))
 }
 
-/// Запись автозапуска виджета `id` для файла `conf` с настройками `opts`
-/// (строки композиторов ставятся тут же, [`crate::conky_autostart::build`]).
+/// The autostart entry of widget `id` for file `conf` with settings `opts`
+/// (the compositor lines are set right here, [`crate::conky_autostart::build`]).
 fn conky_autostart_built(io: &dyn LookIo, ctx: &Ctx, id: &str, conf: &str, opts: &crate::conky_autostart::Options) -> crate::conky_autostart::Built {
-    // Тема со своим `start.sh` и при входе запускается им (`conky_theme`).
+    // A theme with its own `start.sh` is started by it at login too (`conky_theme`).
     if let Some(plan) = crate::conky_theme::script_launch(io, ctx, id) {
         let env = crate::conky_autostart::session_env(ctx);
         let key = crate::conky_scan::autostart_key(id);
@@ -1707,28 +1751,30 @@ fn conky_autostart_built(io: &dyn LookIo, ctx: &Ctx, id: &str, conf: &str, opts:
     crate::conky_autostart::build(&env, &key, &title, conf, launch.as_deref(), xwayland.as_deref(), opts)
 }
 
-/// Убрать автозапуск виджета: запись и строки композиторов.
+/// Remove the widget's autostart: the entry and the compositor lines.
 pub fn conky_autostart_forget(ctx: &Ctx, id: &str) {
     let _ = std::fs::remove_file(conky_autostart_path(ctx, id));
     crate::conky_autostart::remove(&crate::conky_autostart::session_env(ctx), &crate::conky_scan::autostart_key(id));
 }
 
-/// Включён ли автозапуск виджета.
+/// Whether the widget's autostart is enabled.
 ///
-/// Запись прежнего вида (без перехода в папку виджета, без
-/// `X-KDE-autostart-after`, без перехода на XWayland) заодно переписывается на нынешнюю с теми же
-/// задержкой и окружением: включённый раньше виджет иначе так и запускался
-/// бы при входе по-старому. Нынешняя запись не трогается.
+/// An entry of the old kind (without changing into the widget folder,
+/// without `X-KDE-autostart-after`, without the switch to XWayland) is
+/// rewritten along the way to the current kind with the same delay and
+/// environment: otherwise a widget enabled earlier would keep starting the
+/// old way at login. A current entry is not touched.
 pub fn conky_autostart(io: &dyn LookIo, ctx: &Ctx, id: &str) -> bool {
     let path = conky_autostart_path(ctx, id);
     let Some(text) = io.read(&path) else { return false };
-    // Запись без перехода на XWayland (до 15.11.2026) или без файла запуска
-    // через него (окно поверх окон) — тоже прежнего вида.
+    // An entry without the switch to XWayland (before 15.11.2026) or without
+    // the launch file through it (a window above the windows) is of the old
+    // kind too.
     let script = crate::conky_theme::start_script(io, ctx, id).is_some();
     let old_session = !text.contains(crate::conky_overlay::XWAYLAND_SESSION_TYPE)
         || (!script && !text.contains(crate::conky_overlay::XWAYLAND_LAUNCH_VAR));
-    // Тема получила (или потеряла) свой `start.sh` — запись под другой путь
-    // запуска.
+    // The theme gained (or lost) its own `start.sh`: the entry goes under a
+    // different launch path.
     let wrong_path = script != text.contains(crate::conky_theme::MARKER_ENV);
     if text.contains("\nExec=conky -c ") || !text.contains("\nX-KDE-autostart-after=") || old_session || wrong_path {
         if let Some(conf) = conky_conf(io, ctx, id) {
@@ -1739,8 +1785,8 @@ pub fn conky_autostart(io: &dyn LookIo, ctx: &Ctx, id: &str) -> bool {
     true
 }
 
-/// Переключатель «Запускать при входе». `(получилось, сообщение)`. Новая
-/// запись — с задержкой [`crate::conky_autostart::DEFAULT_DELAY`].
+/// The "Start at login" toggle. `(success, message)`. A new entry gets the
+/// [`crate::conky_autostart::DEFAULT_DELAY`] delay.
 pub fn set_conky_autostart(io: &dyn LookIo, ctx: &Ctx, id: &str, on: bool) -> (bool, String) {
     let path = conky_autostart_path(ctx, id);
     if !on {
@@ -1762,9 +1808,9 @@ pub fn set_conky_autostart(io: &dyn LookIo, ctx: &Ctx, id: &str, on: bool) -> (b
     set_conky_autostart_options(io, ctx, id, &opts)
 }
 
-/// Записать автозапуск виджета с настройками `opts` (включает его).
-/// `(получилось, сообщение)`; в сеансе композитора, куда строка запуска не
-/// легла, сообщение говорит, что вставить руками.
+/// Write the widget's autostart with settings `opts` (this enables it).
+/// `(success, message)`; in a compositor session where the launch line did
+/// not fit in, the message says what to insert by hand.
 pub fn set_conky_autostart_options(io: &dyn LookIo, ctx: &Ctx, id: &str, opts: &crate::conky_autostart::Options) -> (bool, String) {
     let path = conky_autostart_path(ctx, id);
     let Some(conf) = conky_conf(io, ctx, id) else {
@@ -1773,7 +1819,7 @@ pub fn set_conky_autostart_options(io: &dyn LookIo, ctx: &Ctx, id: &str, opts: &
             tr("This Conky widget has no settings file (conky.conf) — there's nothing to start."),
         );
     };
-    // При входе виджет запустится без Rexon — пути чинятся заранее.
+    // At login the widget will start without Rexon, so the paths are repaired in advance.
     conky_prepare(ctx, id);
     let built = conky_autostart_built(io, ctx, id, &conf, opts);
     if !io.write(&path, &built.desktop) {
@@ -1789,14 +1835,14 @@ pub fn set_conky_autostart_options(io: &dyn LookIo, ctx: &Ctx, id: &str, opts: &
 }
 
 // ============================================================================
-// Экран входа и заставка загрузки — строка вызова помощника
+// Login screen and boot splash: the helper call line
 // ============================================================================
 
-/// `pkexec <помощник> [--lang=…] apply-<вид> <тема> - <семейство>`: режим
-/// «Применить» системного помощника — тема уже стоит в `/usr/share/<вид>/
-/// themes`, её только выбирают. Тот же помощник и то же действие polkit,
-/// что у установки, — пароль спрашивается тем же «одним паролем»
-/// (`auth_admin_keep`), новых запросов не появляется.
+/// `pkexec <helper> [--lang=…] apply-<kind> <theme> - <family>`: the
+/// system helper's "Apply" mode: the theme is already in
+/// `/usr/share/<kind>/themes`, it is only selected. The same helper and the
+/// same polkit action as the installation, so the password is asked with
+/// the same "one password" (`auth_admin_keep`), and no new prompts appear.
 pub fn system_apply_argv(
     helper: &str,
     lang_args: &[String],
@@ -1807,10 +1853,11 @@ pub fn system_apply_argv(
     system_mode_argv(helper, lang_args, "apply", kind, theme, family)
 }
 
-/// `pkexec <помощник> [--lang=…] remove-<вид> <тема> - <семейство>`: режим
-/// «Удалить» того же помощника — снять `/usr/share/<вид>/themes/<тема>`.
-/// Активную тему и файлы пакета системы помощник не трогает сам; проверка
-/// до окна пароля — у вызывающего
+/// `pkexec <helper> [--lang=…] remove-<kind> <theme> - <family>`: the
+/// "Remove" mode of the same helper: remove
+/// `/usr/share/<kind>/themes/<theme>`. The helper itself does not touch the
+/// active theme or the system package's files; the check before the
+/// password window is the caller's
 /// ([`crate::appearance_installer::system_theme_remove_with`]).
 pub fn system_remove_argv(
     helper: &str,
@@ -1822,7 +1869,7 @@ pub fn system_remove_argv(
     system_mode_argv(helper, lang_args, "remove", kind, theme, family)
 }
 
-/// Общая строка вызова режимов помощника, которым каталог не нужен.
+/// The common call line of helper modes that need no directory.
 fn system_mode_argv(
     helper: &str,
     lang_args: &[String],
@@ -1867,21 +1914,21 @@ mod tests {
             download_links: names.iter().map(|n| serde_json::json!({"url": "u", "name": n})).collect(),
             ..Default::default()
         };
-        // «Conky Manager Qt» с магазина: одни пакеты и AppImage.
+        // "Conky Manager Qt" from the store: only packages and an AppImage.
         assert!(is_conky_program(&item(&[
             "conky-manager-1.0-2-x86-64.AppImage",
             "conky-manager-q-1.0-2-x86-64.deb",
             "conky-manager-q-1.0-2-x86-64.pkg.tar.zst",
             "conky-manager-q-1.0-2.x86-64.rpm",
         ])));
-        // Виджеты остаются: архив, голый файл настроек, архив рядом с пакетом.
+        // Widgets stay: an archive, a bare settings file, an archive next to a package.
         assert!(!is_conky_program(&item(&["Mimosa-AmethystC-v4.0.zip"])));
         assert!(!is_conky_program(&item(&["conky.conf", "readme.txt"])));
         assert!(!is_conky_program(&item(&["3D-Plus.tar.xz"])));
         assert!(!is_conky_program(&item(&["w.zip", "w-1.0.deb"])));
-        // Файлов нет — признака нет.
+        // No files, no sign.
         assert!(!is_conky_program(&item(&[])));
-        // Не раздел Conky — не наше дело.
+        // Not the Conky section: none of our business.
         let mut other = item(&["x.deb"]);
         other.category_id = 107;
         assert!(!is_conky_program(&other));
@@ -1898,10 +1945,10 @@ mod tests {
         assert_eq!(entry_uuid("clock@cinnamon.org:0:100:100", EntryFmt::CinnamonDesklet).as_deref(), Some("clock@cinnamon.org"));
     }
 
-    /// Файл настроек с любым именем узнаётся по содержимому (у Jhalak —
-    /// `Jhalak.conf`, рядом `cava.conf` визуализатора), а плитка «Найдено на
-    /// диске» — путь — ведёт в свой каталог; её автозапуск — файл без косых
-    /// черт в имени.
+    /// A settings file with any name is recognised by its content (Jhalak has
+    /// `Jhalak.conf`, with the visualiser's `cava.conf` next to it), and the
+    /// "Found on disk" tile, a path, leads to its own directory; its autostart
+    /// is a file without slashes in the name.
     #[test]
     fn conky_conf_by_content_and_for_found_widgets() {
         use crate::animations::SystemIo;
@@ -1939,21 +1986,21 @@ mod tests {
         assert_eq!(conky_id_of_conf(&io, &ctx, "/h/.config/conky/conky.conf"), None);
     }
 
-    /// Кнопка «Запустить» пускает conky из папки файла настроек: виджеты с
-    /// `lua_load ./x.lua`, `${image ./bg.png}` и `${execi … ./s.sh}` ищут
-    /// свои файлы от рабочего каталога процесса.
+    /// The "Start" button runs conky from the settings file's folder: widgets
+    /// with `lua_load ./x.lua`, `${image ./bg.png}` and `${execi … ./s.sh}`
+    /// look for their files relative to the process's working directory.
     #[test]
     fn conky_starts_in_widget_folder() {
         let (argv, dir) = conky_start_command("/h/.config/conky/My w/sub/conky.conf");
         assert_eq!(argv, ["conky", "-d", "-c", "/h/.config/conky/My w/sub/conky.conf"]);
         assert_eq!(dir, "/h/.config/conky/My w/sub");
-        // Файл в корне — корень, а не пустая строка.
+        // A file in the root gives the root, not an empty string.
         assert_eq!(conky_work_dir("/conky.conf"), "/");
     }
 
-    /// Автозапуск при входе: та же папка, что у кнопки, — и строка запуска
-    /// переживает пробелы, кавычки и `$` в пути (прежде путь шёл в
-    /// одинарных кавычках, и апостроф в имени виджета ломал строку).
+    /// Autostart at login: the same folder as the button, and the launch line
+    /// survives spaces, quotes and `$` in the path (previously the path went
+    /// in single quotes, and an apostrophe in a widget name broke the line).
     #[test]
     fn conky_autostart_entry_runs_in_widget_folder() {
         let conf = "/h/.config/conky/It's \"my\" $w/conky.conf";
@@ -1971,10 +2018,10 @@ mod tests {
         assert_eq!(value("Path="), "/h/.config/conky/It's \"my\" $w");
     }
 
-    /// Строка автозапуска на деле: `sh` из записи заходит в папку виджета и
-    /// заменяется conky с тем же файлом (подставной conky пишет, где его
-    /// запустили и с чем) — значит, «запущен ли виджет» по `/proc` его
-    /// по-прежнему узнаёт.
+    /// The autostart line in practice: `sh` from the entry changes into the
+    /// widget folder and is replaced by conky with the same file (a fake conky
+    /// records where it was started and with what), so "is the widget
+    /// running" by `/proc` still recognises it.
     #[test]
     fn conky_autostart_script_really_changes_directory() {
         use std::os::unix::fs::PermissionsExt;
@@ -2006,8 +2053,9 @@ mod tests {
         assert_eq!(got, format!("{}\n-c\n{conf}\n", widget.display()));
     }
 
-    /// Автозапуск, включённый до перехода в папку виджета, переписывается
-    /// при первом же взгляде на переключатель; нынешний — не трогается.
+    /// An autostart enabled before the change into the widget folder is
+    /// rewritten at the very first look at the toggle; a current one is not
+    /// touched.
     #[test]
     fn old_conky_autostart_entry_is_upgraded() {
         use std::cell::RefCell;
@@ -2039,10 +2087,10 @@ mod tests {
         assert_eq!(*io.writes.borrow(), 1, "нынешняя запись не переписывается");
     }
 
-    /// Пути под установку в `~/.conky/<Имя>/` — строки из настоящих
-    /// архивов раздела Conky магазина (victorConky, conky_orange, Conky
-    /// Nord, conky_grey_redux): переписываются на папку виджета, если там
-    /// есть их «хвост»; существующие и чужие пути не трогаются.
+    /// Paths for installation into `~/.conky/<Name>/`: lines from real
+    /// archives of the store's Conky section (victorConky, conky_orange, Conky
+    /// Nord, conky_grey_redux): rewritten to the widget folder if their "tail"
+    /// is there; existing and foreign paths are not touched.
     #[test]
     fn conky_foreign_paths_point_into_widget() {
         let home = "/h";
@@ -2059,45 +2107,46 @@ mod tests {
         let is_dir = |p: &str| dirs.contains(&p);
         let fix = |t: &str| conky_repair_text(t, home, w, &exists, &is_dir);
 
-        // Обёртка архива: хвост целиком есть в папке виджета.
+        // An archive wrapper: the whole tail exists in the widget folder.
         assert_eq!(
             fix("${image ~/.conky/victorConky/ArchLarge.png -p 10,0}").as_deref(),
             Some("${image ~/.config/conky/victorConky1.1/victorConky/ArchLarge.png -p 10,0}")
         );
-        // Файл прямо в `~/.conky` (архив с папкой, а путь — без неё).
+        // A file directly in `~/.conky` (an archive with a folder, while the path has none).
         assert_eq!(
             fix("lua_load ~/.conky/conky_orange.lua").as_deref(),
             Some("lua_load ~/.config/conky/victorConky1.1/conky_orange.lua")
         );
-        // Lua-строка и `${HOME}`: файл, который виджет пишет сам, — его ещё
-        // нет, но есть его папка.
+        // A Lua string and `${HOME}`: a file the widget writes itself does not
+        // exist yet, but its folder does.
         assert_eq!(
             fix("x = '${HOME}/.conky/nordcore/weather_raw'").as_deref(),
             Some("x = '${HOME}/.config/conky/victorConky1.1/nordcore/weather_raw'")
         );
-        // Дом автора — абсолютный путь в дом этого человека.
+        // The author's home: an absolute path into this person's home.
         assert_eq!(
             fix("Exec=/home/linuxscoop/.conky/nordcore/start_conky.sh").as_deref(),
             Some("Exec=/h/.config/conky/victorConky1.1/nordcore/start_conky.sh")
         );
-        // Чужое имя в `~/.config/conky/<Имя>/` — тоже мимо, тоже чинится.
+        // A foreign name in `~/.config/conky/<Name>/` also misses and is repaired too.
         assert_eq!(
             fix("lua_load = '~/.config/conky/Regulus/lib/rings.lua'").as_deref(),
             Some("lua_load = '~/.config/conky/victorConky1.1/lib/rings.lua'")
         );
-        // Существующий путь, уже наш путь, просто слово и чужой файл — без правки.
+        // An existing path, an already-ours path, a plain word and a foreign file: no edit.
         assert_eq!(fix("lua_load ~/.conky/Mine/clock.lua"), None);
         assert_eq!(fix("${image ~/.config/conky/victorConky1.1/victorConky/ArchLarge.png}"), None);
         assert_eq!(fix("Copy the files to ~/.conky/ and run"), None);
         assert_eq!(fix("${image ~/.conky/Other/nothing.png}"), None);
         assert_eq!(fix("x=~/.conky.bak/a"), None);
-        // Повторный ремонт ничего не меняет.
+        // A repeated repair changes nothing.
         let once = fix("${image ~/.conky/victorConky/ArchLarge.png}").unwrap();
         assert_eq!(fix(&once), None);
     }
 
-    /// Папка виджета с пробелом: подстановка разбила бы аргумент на два —
-    /// путь остаётся, как был; в кавычках автора — чинится.
+    /// A widget folder with a space: the substitution would split the argument
+    /// in two, so the path stays as it was; in the author's quotes it is
+    /// repaired.
     #[test]
     fn conky_path_repair_keeps_arguments_whole() {
         let w = "/h/.config/conky/Rock and Roll";
@@ -2110,9 +2159,9 @@ mod tests {
         );
     }
 
-    /// Ремонт на диске: меняются только текстовые файлы с такими путями,
-    /// права файла (сценарий остаётся исполняемым) сохраняются, `~/.conky`
-    /// не появляется.
+    /// Repair on disk: only text files with such paths change, file
+    /// permissions are kept (a script stays executable), `~/.conky` does not
+    /// appear.
     #[test]
     fn conky_repair_paths_on_disk() {
         use std::os::unix::fs::PermissionsExt;
@@ -2128,7 +2177,7 @@ mod tests {
         std::fs::set_permissions(&sh, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::fs::write(w.join("bg.png"), b"\x89PNG\0~/.conky/nordcore/x").unwrap();
         std::fs::write(w.join("install.sh"), "cp -r nordcore ~/.conky/nordcore\n").unwrap();
-        // Сценарий под прежний conky: и путь, и модуль X11-рисования.
+        // A script for the old conky: both the path and the X11 drawing module.
         let viz = w.join("viz.lua");
         std::fs::write(&viz, "require 'cairo'\ndofile('~/.conky/nordcore/clock01_rings.lua')\ncs = cairo_xlib_surface_create(d)\n").unwrap();
         let wd = w.to_string_lossy().into_owned();
@@ -2154,8 +2203,9 @@ mod tests {
         assert!(!changed.iter().any(|p| p.ends_with("install.sh")), "установщик автора не трогается");
     }
 
-    /// «Удалить» виджета: гаснут только его процессы (по номерам), запись
-    /// автозапуска снимается; путь не из папки виджетов — ничего не делается.
+    /// A widget's "Remove": only its processes are killed (by number), the
+    /// autostart entry is removed; a path not from the widgets folder does
+    /// nothing.
     #[test]
     fn forgetting_a_widget_stops_it_and_drops_autostart() {
         use std::cell::RefCell;
@@ -2223,8 +2273,8 @@ mod tests {
         );
     }
 
-    /// Тема рамок, которую Marco не загрузит: применение отказывает с
-    /// причиной и ключ не трогает; уже записанная в ключ — не «Активна».
+    /// A frame theme Marco will not load: applying refuses with a reason and
+    /// does not touch the key; one already written to the key is not "Active".
     #[test]
     fn marco_theme_marco_cannot_load_is_refused() {
         use std::cell::RefCell;
@@ -2243,7 +2293,7 @@ mod tests {
             }
             fn have(&self, _t: &str) -> bool { true }
             fn read(&self, p: &str) -> Option<String> {
-                // Тема, которую Marco принимает, — с порчей по имени темы.
+                // A theme Marco accepts, damaged by the theme name.
                 let (extra, skip) = match p {
                     "/h/.themes/Shine/metacity-1/metacity-theme-3.xml" => (r#"<button function="unmaximize" state="normal"/>"#, ""),
                     "/h/.themes/Win8/metacity-1/metacity-theme-3.xml" => ("", "shade"),
@@ -2275,14 +2325,14 @@ mod tests {
         assert!(!ok);
         assert!(msg.contains("Shine") && msg.contains("unmaximize"), "{msg}");
         assert_eq!(*io.sets.borrow(), 0, "ключ не записан");
-        // Темы Win8 из магазина без кнопки shade: отказ называет кнопку.
+        // Win8 themes from the store without a shade button: the refusal names the button.
         let (ok, msg) = press(&io, &ctx, MARCO_KIND, "Win8");
         assert!(!ok);
         assert!(msg.contains("Win8") && msg.contains("(shade)"), "{msg}");
         assert_eq!(*io.sets.borrow(), 0, "ключ не записан");
         assert_eq!(active_names(&io, &ctx, MARCO_KIND), vec!["Plain".to_string()]);
 
-        // Записанная в обход Rexon — Marco её не показывает, и мы не говорим «Активна».
+        // Written bypassing Rexon: Marco does not show it, and we do not say "Active".
         *io.key.borrow_mut() = "Shine".into();
         assert!(active_names(&io, &ctx, MARCO_KIND).is_empty());
 
@@ -2291,8 +2341,9 @@ mod tests {
         assert_eq!(*io.sets.borrow(), 1);
     }
 
-    /// Тема оболочки GNOME без расширения User Themes: отказ называет
-    /// расширение, ключ не пишется; со схемой — применяется как прежде.
+    /// A GNOME shell theme without the User Themes extension: the refusal
+    /// names the extension, the key is not written; with the schema it applies
+    /// as before.
     #[test]
     fn gnome_shell_theme_without_user_themes_says_so() {
         use std::cell::RefCell;
@@ -2333,10 +2384,10 @@ mod tests {
         assert_eq!(*io.sets.borrow(), 1);
     }
 
-    /// Включение расширения, которое оболочка уже знает, видно сразу —
-    /// оговорки про перезаход нет; не знает или не ответила — оговорка
-    /// остаётся (живая проверка на gnome-shell 51.1, 16.10.2026: Rexon
-    /// обещал перезаход, а выключение срабатывало тут же).
+    /// Enabling an extension the shell already knows is visible right away:
+    /// no re-login caveat; if it does not know it or did not answer, the
+    /// caveat stays (live check on gnome-shell 51.1, 16.10.2026: Rexon
+    /// promised a re-login, while disabling worked immediately).
     #[test]
     fn relogin_note_only_for_extension_the_shell_hasnt_seen() {
         struct Fake {
@@ -2368,10 +2419,11 @@ mod tests {
         assert_eq!(refresh_note(&unseen, row, &x11, "x@y"), None);
     }
 
-    /// В сеансе GNOME «Активно» и направление кнопки берутся у оболочки:
-    /// активно — только запущенное (`state` = 1), упавшее при включении —
-    /// включено, но не активно; кнопка зовёт D-Bus через `gdbus`, сценарий
-    /// с `gnome-extensions` — только без оболочки.
+    /// In a GNOME session "Active" and the button direction come from the
+    /// shell: active means only a started one (`state` = 1), one that crashed
+    /// while being enabled is enabled but not active; the button calls D-Bus
+    /// through `gdbus`, the script with `gnome-extensions` only without the
+    /// shell.
     #[test]
     fn gnome_extensions_follow_the_live_shell() {
         use crate::gnome_shell_ext::{ExtInfo, ExtState};
@@ -2428,7 +2480,7 @@ mod tests {
         let text = |steps: &[crate::ext_manager::ExtStep]| format!("{steps:?}");
         assert!(text(&on).contains("org.gnome.Shell.Extensions.EnableExtension"), "{on:?}");
         assert!(text(&off).contains("org.gnome.Shell.Extensions.DisableExtension"), "{off:?}");
-        // Оболочки нет — прежний путь: ключ и сценарий.
+        // No shell: the old path, the key and the script.
         let down = Fake { shell: None, runs: RefCell::new(Vec::new()) };
         assert_eq!(active_names(&down, &ctx, kind), vec!["old@example.org".to_string()]);
         assert!(!text(&enable_steps(&down, &ctx, kind, "off@example.org")).contains("gdbus"));

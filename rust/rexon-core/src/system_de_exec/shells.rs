@@ -1,14 +1,15 @@
-//! Исполнитель связки «композитор + оболочка» (шаг 3 поддержки оболочек).
+//! Executor of the "compositor + shell" bundle (step 3 of shell support).
 //!
-//! Решения — [`crate::shell_bundle`]; здесь только порядок шагов поверх того
-//! же [`DeOpsIo`], что у установки столов. Пакеты идут ТЕМ ЖЕ путём, что у
-//! всего продукта: `system_plan::install_plan` (именованный помощник
-//! `rexon-pkg-helper`, один пароль на сеанс) и `pkg_remove` исполнителя
-//! столов с его защитами. Своих команд пакетного менеджера здесь нет.
+//! Decisions live in [`crate::shell_bundle`]; here is only the order of steps
+//! on top of the same [`DeOpsIo`] the desktop install uses. Packages go THE
+//! SAME way as in the whole product: `system_plan::install_plan` (the named
+//! helper `rexon-pkg-helper`, one password per session) and the desktop
+//! executor's `pkg_remove` with its safeguards. No package manager commands
+//! of our own here.
 //!
-//! ⭐ Обратимость: «Убрать» снимает ровно наш управляемый блок (общий
-//! помощник `compositor_autostart::remove_text`) — файл возвращается
-//! бит-в-бит, а заведённый нами удаляется. Сам композитор не трогается.
+//! ⭐ Reversibility: «Remove» takes out exactly our managed block (the shared
+//! helper `compositor_autostart::remove_text`): the file comes back bit for
+//! bit, and a file we created is deleted. The compositor itself is not touched.
 
 use super::*;
 use crate::compositor_autostart::TextEdit;
@@ -97,11 +98,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             .unwrap_or("")
     }
 
-    /// Режим композитора `wm`: `Some(shell)` — входить с этой оболочкой
-    /// (её отметка кладётся, отметки других снимаются), `None` — стол сам по
-    /// себе (все отметки снимаются). Отсутствующую отметку не трогаем вовсе:
-    /// у композитора без оболочек переключение не делает ни одного лишнего
-    /// шага.
+    /// Compositor mode `wm`: `Some(shell)` means log in with this shell (its mark
+    /// is put, the marks of others are removed), `None` means the desktop on its
+    /// own (all marks are removed). A missing mark is not touched at all: for a
+    /// compositor without shells, switching does not take a single extra step.
     pub(super) fn set_shell_mode(&self, wm: &str, shell: Option<DesktopShell>) -> Step<()> {
         if !sb::SHELL_WMS.contains(&wm) {
             return Ok(());
@@ -131,8 +131,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         !bins.is_empty() && bins.iter().all(|b| self.io.which(b))
     }
 
-    /// Проверка конфига самим композитором (тем же argv, что у записи
-    /// курсора). `None` — проверять нечем.
+    /// Config check by the compositor itself (the same argv as the cursor
+    /// write). `None`: nothing to check with.
     fn wm_config_valid(&self, wm: &str, path: &str) -> Option<bool> {
         let cw = crate::themes::CursorWm::from_de(wm)?;
         let mut argv =
@@ -144,7 +144,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Some(self.io.run(&argv, Some(30), true).rc() == Some(0))
     }
 
-    /// Поставить недостающие пакеты оболочки — общим планом продукта.
+    /// Install the missing shell packages with the product's common plan.
     fn shell_pkg_install(&self, family: PkgFamily, packages: &[String]) -> Step<()> {
         let ip = plan::install_plan(family, packages, false, None, self.sys.pkg_helper_available())
             .map_err(Stop::Failed)?;
@@ -158,8 +158,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         for step in &ip.steps {
             if let PlanStep::Run { id, cmd, .. } = step {
                 self.point_of_no_return()?;
-                // Установка из таблицы оболочек — сеанс прав окна; его нет
-                // (или шаг не от root) — прежняя команда плана.
+                // Install from the shell table goes through the window's privilege session;
+                // without it (or if the step is not root) the old plan command is used.
                 let session = (*id == plan::RunStepId::PkgInstall
                     && cmd.argv.first().map(String::as_str) == Some("pkexec"))
                 .then(|| PrivOp::PkgInstall { family, packages: packages.to_vec(), source: PkgSource::Shell })
@@ -178,8 +178,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok(())
     }
 
-    /// Установка оболочки в композитор: пакеты (если их нет) и строка
-    /// автозапуска управляемым блоком.
+    /// Install a shell into a compositor: packages (if missing) and the
+    /// autostart line as a managed block.
     pub fn shell_install(&self, wm: &str, shell: DesktopShell) -> DeOpOutcome {
         let result = self.shell_install_steps(wm, shell);
         self.finish(result)
@@ -191,7 +191,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             return Err(Stop::Failed(unknown_de_message(wm)));
         }
         self.set_cancellable(true);
-        // Отказы — до первого побочного действия и до пароля.
+        // Refusals come before the first side effect and before the password.
         if let Some(reason) = dc::SteamOsBlock::Desktops.on(self.on_steamos()) {
             return Err(Stop::Failed(reason));
         }
@@ -241,8 +241,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             self.io
                 .write_text(&path, &content)
                 .map_err(|e| Stop::Failed(config_write_failed(&path, &e)))?;
-            // Конфиг был исправен (или заведён нами), а после правки
-            // композитор его не принимает — вернуть как было.
+            // The config was valid (or created by us), and after the edit the
+            // compositor rejects it: put it back as it was.
             let must_hold = created || was_valid == Some(true);
             if must_hold && self.wm_config_valid(wm, &path) == Some(false) {
                 match before {
@@ -258,7 +258,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok(de_progress::MSG_OK.to_string())
     }
 
-    /// «Переключиться» у оболочки: отметка режима и вход в композитор с ней.
+    /// «Switch» on a shell: the mode mark and logging into the compositor with it.
     pub fn shell_switch(&self, wm: &str, shell: DesktopShell, current_de: &str) -> DeOpOutcome {
         let result = self.shell_switch_steps(wm, shell, current_de);
         self.finish(result)
@@ -278,11 +278,11 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             return Err(Stop::Failed(shell_not_set_up(shell.label(), name)));
         }
         if current_de != wm {
-            // Обычный путь смены стола (копии, приложения по умолчанию,
-            // выход), но отметка кладётся, а не снимается.
+            // The usual desktop switch path (copies, default applications, logout),
+            // but the mark is put instead of removed.
             return self.switch_steps_with(wm, current_de, Some(shell));
         }
-        // Мы уже в этом композиторе: перезайти в него с оболочкой.
+        // We are already in this compositor: log back into it with the shell.
         self.set_cancellable(true);
         self.point_of_no_return()?;
         self.set_shell_mode(wm, Some(shell))?;
@@ -290,8 +290,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.logout_session()
     }
 
-    /// «Убрать» у оболочки: её пакеты (если больше никому не нужны), отметку
-    /// и ровно наш блок в конфиге. Композитор остаётся.
+    /// «Remove» on a shell: its packages (if nobody else needs them), the mark
+    /// and exactly our block in the config. The compositor stays.
     pub fn shell_remove(&self, wm: &str, shell: DesktopShell, current_de: &str) -> DeOpOutcome {
         let result = self.shell_remove_steps(wm, shell, current_de);
         self.finish(result)
@@ -311,7 +311,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         let cfg = self.env_opt("XDG_CONFIG_HOME");
         let read = |p: &str| self.io.read_text(p);
         let edit = sb::disable_plan(wm, shell, &home, cfg.as_deref(), &read);
-        // Кто ещё держит эту оболочку: тем её общие пакеты нужны дальше.
+        // Who else holds this shell: they still need its shared packages.
         let still: Vec<&str> = sb::SHELL_WMS
             .iter()
             .copied()
@@ -325,7 +325,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             .collect();
         self.checkpoint()?;
 
-        // Пакеты — первыми: отказ в пароле не меняет ничего.
+        // Packages first: a refused password changes nothing.
         if !packages.is_empty() {
             self.emit("remove", &removing_packages(&packages.join(" ")), Some(0.10));
             let (ok, message) = self.pkg_remove(family, &packages)?;
@@ -358,7 +358,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
     }
 }
 
-/// Установка оболочки на живой машине одним вызовом.
+/// Install a shell on the live machine in one call.
 pub fn shell_install_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -369,7 +369,7 @@ pub fn shell_install_live(
     DeOpsExec::new(&io, sink, cancel).shell_install(wm, shell)
 }
 
-/// Вход в композитор с оболочкой на живой машине.
+/// Log into a compositor with a shell on the live machine.
 pub fn shell_switch_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -381,7 +381,7 @@ pub fn shell_switch_live(
     DeOpsExec::new(&io, sink, cancel).shell_switch(wm, shell, current_de)
 }
 
-/// Снятие оболочки на живой машине.
+/// Remove a shell on the live machine.
 pub fn shell_remove_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -402,8 +402,8 @@ mod tests {
     const NIRI_TEXT: &str = "input {\n    keyboard { }\n}\nspawn-at-startup \"waybar\"";
     const MARKER: &str = "/home/t/.local/state/rexon/shells/niri-noctalia";
 
-    /// Машина: Arch, стоят niri и sway, конфиг niri есть. `installed` —
-    /// какие пакеты уже стоят (ответ `pacman -Q`).
+    /// Machine: Arch, niri and sway installed, the niri config exists.
+    /// `installed` is which packages are already installed (`pacman -Q` answer).
     fn machine(installed: &'static [&'static str]) -> FakeIo {
         let mut io = FakeIo::arch(Box::new(move |argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -431,9 +431,9 @@ mod tests {
         (DeOpsExec::new(io, sink, CancelToken::new()), rec)
     }
 
-    /// Установка: один запуск пакетного менеджера тем же путём, что у всего
-    /// продукта, и ровно наш блок в конфиге niri. Юнит `dms.service` и
-    /// `systemctl --user enable` не трогаются вовсе.
+    /// Install: one package manager run the same way as in the whole product,
+    /// and exactly our block in the niri config. The `dms.service` unit and
+    /// `systemctl --user enable` are not touched at all.
     #[test]
     fn install_puts_packages_and_one_block() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -453,13 +453,13 @@ mod tests {
             )),
             "{text}"
         );
-        // Отметку ставит только «Переключиться» — установка режим не меняет.
+        // Only «Switch» puts the mark: installing does not change the mode.
         assert!(!io.files.borrow().contains_key(MARKER));
         assert_eq!(rec.stages().last().map(String::as_str), Some("done"));
     }
 
-    /// Б9: сеанс прав есть — пакеты оболочки уходят помощнику по таблице
-    /// оболочек (`Shell`), и имена её проходят; `pkexec` нет.
+    /// B9: there is a privilege session, so the shell packages go to the helper
+    /// by the shell table (`Shell`), and its names pass; no `pkexec`.
     #[test]
     fn install_goes_through_privilege_session() {
         let mut io = machine(&[]);
@@ -480,7 +480,7 @@ mod tests {
         .is_ok());
     }
 
-    /// Пакет уже стоит — пароль не спрашивается вовсе.
+    /// The package is already installed: no password is asked at all.
     #[test]
     fn install_without_missing_packages_asks_no_password() {
         let io = machine(&["noctalia"]);
@@ -489,7 +489,7 @@ mod tests {
         assert!(!io.runs().iter().any(|r| r.starts_with("pkexec")), "{:#?}", io.runs());
     }
 
-    /// DMS под sway: отказ ДО пароля и до записи файлов.
+    /// DMS under sway: refusal BEFORE the password and before writing files.
     #[test]
     fn dms_for_sway_is_refused_before_anything() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -502,7 +502,7 @@ mod tests {
         assert!(!io.runs().iter().any(|r| r.starts_with("pkexec")));
     }
 
-    /// Композитора нет — «сначала установите стол», без пароля.
+    /// No compositor: «install the desktop first», no password.
     #[test]
     fn missing_compositor_is_refused() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -515,14 +515,14 @@ mod tests {
         assert!(io.runs().iter().all(|r| !r.starts_with("pkexec")));
     }
 
-    /// Композитор отверг конфиг после правки — файл возвращается бит-в-бит.
+    /// The compositor rejected the config after the edit: the file comes back bit for bit.
     #[test]
     fn rejected_config_is_rolled_back() {
         let io = FakeIo::arch(Box::new(|argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
             match a.as_slice() {
                 ["pacman", "-Q", "noctalia"] => out(0, "noctalia 5.2\n", ""),
-                // До правки конфиг исправен, после — нет.
+                // Before the edit the config is valid, after it, not.
                 ["niri", "validate", "--config", _] => {
                     out(if VALIDATED.fetch_add(1, Ordering::SeqCst) == 0 { 0 } else { 1 }, "", "")
                 }
@@ -540,9 +540,9 @@ mod tests {
         assert_eq!(io.files.borrow().get(NIRI_CFG).map(String::as_str), Some(NIRI_TEXT));
     }
 
-    /// Полный круг: установить → переключиться → «Переключиться» у самого
-    /// стола → убрать. Конфиг возвращается бит-в-бит, отметка снята, пакет
-    /// снят одной командой.
+    /// Full circle: install → switch → «Switch» on the desktop itself → remove.
+    /// The config comes back bit for bit, the mark is removed, the package is
+    /// removed with one command.
     #[test]
     fn full_cycle_is_reversible_bit_for_bit() {
         let io = machine(&["noctalia"]);
@@ -551,15 +551,15 @@ mod tests {
         let installed = io.files.borrow().get(NIRI_CFG).cloned().unwrap();
         assert_ne!(installed, NIRI_TEXT);
 
-        // Мы в sway → обычная смена стола, но с отметкой.
+        // We are in sway → the usual desktop switch, but with the mark.
         let r = ex.shell_switch("niri", DesktopShell::Noctalia, "sway");
         assert!(io.files.borrow().contains_key(MARKER), "{r:?} {:#?}", io.calls.borrow());
 
-        // Левая «Переключиться» на niri снимает отметку.
+        // The plain «Switch» on niri removes the mark.
         let _ = ex.switch_de("niri", "sway");
         assert!(!io.files.borrow().contains_key(MARKER));
 
-        // Уже в niri: «Переключиться» у оболочки — отметка и выход.
+        // Already in niri: «Switch» on the shell means the mark and logout.
         let _ = ex.shell_switch("niri", DesktopShell::Noctalia, "niri");
         assert!(io.files.borrow().contains_key(MARKER));
 
@@ -572,8 +572,8 @@ mod tests {
         assert!(removes[0].ends_with("noctalia"), "{removes:?}");
     }
 
-    /// Оболочка стоит и в niri, и в sway: «Убрать» из niri не снимает общий
-    /// пакет и не трогает конфиг sway.
+    /// The shell is installed both in niri and in sway: «Remove» from niri does
+    /// not remove the shared package and does not touch the sway config.
     #[test]
     fn remove_keeps_package_used_by_another_desktop() {
         let io = machine(&["noctalia"]);
@@ -588,8 +588,8 @@ mod tests {
         assert_eq!(io.files.borrow().get(sway_cfg), Some(&sway_with));
     }
 
-    /// sway без личного конфига: файл заводится с `include` системного, а
-    /// «Убрать» его удаляет — машина как до нас.
+    /// sway without a personal config: the file is created with an `include` of
+    /// the system one, and «Remove» deletes it: the machine is as before us.
     #[test]
     fn sway_file_created_by_us_is_deleted_on_remove() {
         let io = machine(&["noctalia"]);
@@ -603,8 +603,8 @@ mod tests {
         assert!(!io.files.borrow().contains_key(path));
     }
 
-    /// Переключение БЕЗ оболочек не делает лишних шагов: ни записи, ни
-    /// удаления отметок, которых нет.
+    /// Switching WITHOUT shells takes no extra steps: no writes, no removal of
+    /// marks that do not exist.
     #[test]
     fn plain_switch_without_shells_touches_no_markers() {
         let io = machine(&[]);

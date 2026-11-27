@@ -1,21 +1,21 @@
-//! «Сохранить текущее оформление…» — своя глобальная тема из того, что
-//! стоит на столе сейчас, как кнопка модуля KDE «Глобальная тема».
+//! "Save current appearance…" — a custom global theme from what is on the
+//! desktop right now, like the button of the KDE "Global Theme" module.
 //!
-//! Пакет один для всех окружений — пакет глобальной темы Plasma
+//! There is one package for all environments — a Plasma global theme package
 //! (`~/.local/share/plasma/look-and-feel/<id>/`): `metadata.json`,
-//! `contents/defaults` (вложенные группы `[kdeglobals][General]` и т. д.),
-//! `contents/layouts/` (кнопки заголовка, раскладка панелей), превью в
-//! `contents/previews/`. Его читает и сама Plasma, и окно «Применить «X»?»
-//! Rexon вне Plasma (`themes::lnf_contents_with`, `outside_global_plan`) —
-//! поэтому тема, сохранённая в MATE, применяется по частям в XFCE или
-//! целиком в Plasma.
+//! `contents/defaults` (nested groups `[kdeglobals][General]` and so on),
+//! `contents/layouts/` (title bar buttons, panel layout), previews in
+//! `contents/previews/`. It is read both by Plasma itself and by Rexon's "Apply
+//! "X"?" dialog outside Plasma (`themes::lnf_contents_with`,
+//! `outside_global_plan`) — so a theme saved in MATE is applied part by part in
+//! XFCE or entirely in Plasma.
 //!
-//! В Plasma части берутся из её файлов (как снимок самой Plasma) и сверх
-//! того — шрифты (`[General] font…`, `[WM] activeFont`), размер рамки,
-//! кнопки заголовка, заставка и файл цветов схемы. Вне Plasma — то, что
-//! Rexon умеет переносить: цвета (схема слоя Qt), стиль приложений,
-//! значки, курсоры, шрифты и кнопки заголовка, каждое из родного места
-//! этого стола.
+//! In Plasma the parts are taken from its files (like Plasma's own snapshot)
+//! and, on top of that, fonts (`[General] font…`, `[WM] activeFont`), border
+//! size, title bar buttons, the splash screen and the scheme's colors file.
+//! Outside Plasma — what Rexon can carry over: colors (the Qt layer scheme),
+//! application style, icons, cursors, fonts and title bar buttons, each from
+//! the native place of this desktop.
 
 use std::collections::BTreeMap;
 
@@ -25,7 +25,7 @@ use crate::animations::{LookCtx, LookIo};
 use crate::i18n::{tr, trc, trf};
 use crate::themes::LnfPart;
 
-/// Ключи частей: «файл/группа/ключ» — так их называет и состав темы
+/// Part keys: "file/group/key" — that is also how the theme contents name them
 /// (`themes::LnfContents::values`).
 const COLORS: &str = "kdeglobals/General/ColorScheme";
 const WIDGET_STYLE: &str = "kdeglobals/KDE/widgetStyle";
@@ -40,8 +40,8 @@ const PLACEMENT: &str = "kwinrc/Windows/Placement";
 const FONT_GENERAL: &str = "kdeglobals/General/font";
 const FONT_FIXED: &str = "kdeglobals/General/fixed";
 const FONT_TITLE: &str = "kdeglobals/WM/activeFont";
-/// Шрифты: интерфейс, моноширинный, мелкий, панели инструментов, меню — в
-/// `[General]`; заголовок окна — в `[WM]` (так лежат у тем Plasma).
+/// Fonts: interface, monospace, small, toolbar, menu — in `[General]`; window
+/// title — in `[WM]` (that is where Plasma themes keep them).
 const FONT_KEYS: [&str; 6] = [
     FONT_GENERAL,
     FONT_FIXED,
@@ -51,31 +51,30 @@ const FONT_KEYS: [&str; 6] = [
     FONT_TITLE,
 ];
 
-/// Имя каталога раскладки Plasma в пакете.
+/// Name of the Plasma layout directory in the package.
 pub const LAYOUT_SCRIPT: &str = "org.kde.plasma.desktop-layout.js";
 
-/// Ширина малого превью — как у снимка Plasma.
+/// Width of the small preview — as in Plasma's snapshot.
 pub const PREVIEW_SMALL_WIDTH: u32 = 512;
 
-/// Что стоит сейчас — значения частей.
+/// What is set now — the values of the parts.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Snapshot {
-    /// «файл/группа/ключ» → значение (только непустые).
+    /// "file/group/key" → value (only non-empty ones).
     pub values: BTreeMap<String, String>,
-    /// Кнопки заголовка буквами KWin: (слева, справа).
+    /// Title bar buttons as KWin letters: (left, right).
     pub buttons: Option<(String, String)>,
     /// `[Windows] BorderlessMaximizedWindows` KWin.
     pub borderless: Option<String>,
-    /// Раскладка панелей и виджетов — сценарий Plasma
-    /// (`dumpCurrentLayoutJS`).
+    /// Panel and widget layout — a Plasma script (`dumpCurrentLayoutJS`).
     pub layout_js: Option<String>,
-    /// Каталог `contents/splash` пакета текущей заставки Plasma.
+    /// The `contents/splash` directory of the current Plasma splash screen's package.
     pub splash_dir: Option<String>,
-    /// Имя текущей заставки (для подписи).
+    /// Name of the current splash screen (for the label).
     pub splash_name: Option<String>,
-    /// Файл цветовой схемы (`*.colors`) — кладётся в пакет файлом `colors`.
+    /// The color scheme file (`*.colors`) — put into the package as the `colors` file.
     pub scheme_file: Option<String>,
-    /// Текст с цветами для плитки-превью (`[Colors:*]`).
+    /// Text with colors for the preview tile (`[Colors:*]`).
     pub colors_text: Option<String>,
 }
 
@@ -90,7 +89,7 @@ impl Snapshot {
         }
     }
 
-    /// Есть ли что сохранить у части.
+    /// Whether a part has anything to save.
     pub fn has(&self, part: LnfPart) -> bool {
         match part {
             LnfPart::TitlebarLayout => self.buttons.is_some(),
@@ -101,7 +100,7 @@ impl Snapshot {
     }
 }
 
-/// Ключи, которые часть кладёт в `contents/defaults`.
+/// Keys a part puts into `contents/defaults`.
 fn part_keys(part: LnfPart) -> &'static [&'static str] {
     match part {
         LnfPart::Colors => &[COLORS],
@@ -118,8 +117,8 @@ fn part_keys(part: LnfPart) -> &'static [&'static str] {
     }
 }
 
-/// Части, которые можно сохранить на столе `de`: в Plasma — всё, что пишет
-/// пакет; вне Plasma — то, что Rexon переносит на любой стол.
+/// Parts that can be saved on desktop `de`: in Plasma — everything the package
+/// writes; outside Plasma — what Rexon carries over to any desktop.
 pub fn parts_for(de: &str) -> &'static [LnfPart] {
     if de == "kde" {
         &[
@@ -148,9 +147,9 @@ pub fn parts_for(de: &str) -> &'static [LnfPart] {
     }
 }
 
-// ── Чтение текущего ────────────────────────────────────────────────────────
+// ── Reading the current state ──────────────────────────────────────────────
 
-/// Окружение снимка: машина, пути и переменные процесса.
+/// Environment of the snapshot: the machine, the paths and the process variables.
 pub struct SaveEnv<'a> {
     pub io: &'a dyn LookIo,
     pub ctx: LookCtx,
@@ -167,28 +166,27 @@ impl SaveEnv<'_> {
     }
 }
 
-/// Значение ключа «файл/группа/ключ» из файлов настроек KDE.
+/// Value of the "file/group/key" key from the KDE settings files.
 fn kread_path(env: &SaveEnv, path: &str) -> Option<String> {
     let (file, rest) = path.split_once('/')?;
     let (group, key) = rest.rsplit_once('/')?;
     env.kread(file, group, key)
 }
 
-/// Снимок текущего оформления стола из `env.ctx.de`.
+/// Snapshot of the desktop's current appearance from `env.ctx.de`.
 pub fn snapshot(env: &SaveEnv) -> Snapshot {
     let mut s = if env.ctx.de == "kde" { snapshot_plasma(env) } else { snapshot_outside(env) };
     common_parts(env, &mut s);
     s
 }
 
-/// Plasma: её файлы; где ключа нет — то, что Plasma показывает по
-/// умолчанию.
+/// Plasma: its files; where a key is missing — what Plasma shows by default.
 fn snapshot_plasma(env: &SaveEnv) -> Snapshot {
     let mut s = Snapshot::default();
     let or = |path: &str, default: &str| Some(kread_path(env, path).unwrap_or_else(|| default.to_string()));
     s.put(WIDGET_STYLE, or(WIDGET_STYLE, "Breeze"));
-    // ⭐ Починка: по умолчанию Plasma 6 — «Breeze Light» (`BreezeLight`);
-    // схемы `Breeze` в ней нет, и тема с таким именем цвета не меняла бы.
+    // ⭐ Fix: by default Plasma 6 has "Breeze Light" (`BreezeLight`); it has no
+    // `Breeze` scheme, and a theme with that name would not change the colors.
     s.put(COLORS, or(COLORS, "BreezeLight"));
     s.put(ICONS, or(ICONS, "breeze"));
     s.put(PLASMA_THEME, or(PLASMA_THEME, "default"));
@@ -203,7 +201,7 @@ fn snapshot_plasma(env: &SaveEnv) -> Snapshot {
     }
     s.borderless = env.kread("kwinrc", "Windows", "BorderlessMaximizedWindows");
 
-    // Раскладка панелей — сценарий самой Plasma.
+    // Panel layout — Plasma's own script.
     let tool = ["qdbus6", "qdbus"].into_iter().find(|t| env.io.have(t));
     if let Some(tool) = tool {
         let argv: Vec<String> = [tool, "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.dumpCurrentLayoutJS"]
@@ -216,8 +214,8 @@ fn snapshot_plasma(env: &SaveEnv) -> Snapshot {
         }
     }
 
-    // Заставка: файлы текущей заставки — в пакет (свою заставку Plasma
-    // показывает только из самого пакета темы).
+    // Splash screen: the files of the current splash go into the package (Plasma
+    // shows a custom splash only from the theme package itself).
     let engine = env.kread("ksplashrc", "KSplash", "Engine");
     if engine.as_deref() != Some("none") {
         let theme = env.kread("ksplashrc", "KSplash", "Theme").unwrap_or_else(|| crate::themes::LNF_FALLBACK_PACKAGE.into());
@@ -232,20 +230,20 @@ fn snapshot_plasma(env: &SaveEnv) -> Snapshot {
     s
 }
 
-/// Вне Plasma: каждое — из родного места этого стола, как его видит Rexon.
+/// Outside Plasma: each from the native place of this desktop, as Rexon sees it.
 fn snapshot_outside(env: &SaveEnv) -> Snapshot {
     let mut s = Snapshot::default();
     let de = env.ctx.de.as_str();
     let deepin = de == "deepin";
 
-    // Цвета — схема слоя Qt Rexon (`[General] ColorScheme` kdeglobals). В
-    // Deepin программы рисует Chameleon, слоя нет.
+    // Colors — the scheme of Rexon's Qt layer (`[General] ColorScheme` in
+    // kdeglobals). In Deepin programs are drawn by Chameleon, there is no layer.
     if !deepin {
         s.put(COLORS, kread_path(env, COLORS));
     }
 
-    // Стиль приложений — порядок самого Qt: переменная, наш файл
-    // environment.d, kdeglobals, lxqt.conf, qt6ct/qt5ct.
+    // Application style — Qt's own order: the variable, our environment.d file,
+    // kdeglobals, lxqt.conf, qt6ct/qt5ct.
     if !deepin {
         let style = Some((env.env)("QT_STYLE_OVERRIDE"))
             .filter(|v| !v.trim().is_empty())
@@ -257,7 +255,7 @@ fn snapshot_outside(env: &SaveEnv) -> Snapshot {
         s.put(WIDGET_STYLE, style);
     }
 
-    // Значки и курсоры — родное хранилище стола, иначе запасные места.
+    // Icons and cursors — the desktop's native storage, otherwise fallback places.
     let [_, icons, cursor] = crate::installed_scan::native_role_values(de, |cmd| {
         let (ok, out) = env.io.run(&cmd.argv);
         (ok && !out.trim().is_empty()).then_some(out)
@@ -270,9 +268,9 @@ fn snapshot_outside(env: &SaveEnv) -> Snapshot {
             .or_else(|| Some((env.env)("XCURSOR_THEME")).filter(|v| !v.trim().is_empty())),
     );
 
-    // Шрифты: интерфейс, моноширинный, заголовок — из родных ключей стола;
-    // маленький, панели инструментов и меню — из нашего блока в gtk.css
-    // (родного ключа у них вне KDE нет), если они заданы.
+    // Fonts: interface, monospace, title — from the desktop's native keys; small,
+    // toolbar and menu — from our block in gtk.css (outside KDE they have no native
+    // key), if they are set.
     if crate::qt_settings::font_refusal_live(de).is_none() {
         let wm = crate::qt_settings::session_title_wm(
             de,
@@ -300,13 +298,13 @@ fn snapshot_outside(env: &SaveEnv) -> Snapshot {
                     .filter(|(ok, _)| *ok)
                     .map(|(_, out)| out)
                     .unwrap_or_default(),
-                // sway: действующий шрифт заголовков — наш блок, строка
-                // `font` конфига или умолчание sway, с начертанием.
+                // sway: the effective title font — our block, the `font` line of the config or
+                // sway's default, with the style.
                 crate::qt_settings::FontStore::File(crate::qt_settings::FontFile::SwayConf) => {
                     crate::qt_settings::sway_title_font_current(env.io, &env.ctx)
                 }
-                // rc.xml Openbox/labwc: свой, без него — системный, которым
-                // менеджер и пользуется; `<weight>`/`<slant>` — в начертание.
+                // Openbox/labwc rc.xml: the user's own, without it the system one that the
+                // manager uses; `<weight>`/`<slant>` go into the style.
                 crate::qt_settings::FontStore::File(file @ crate::qt_settings::FontFile::RcXml { wm }) => {
                     let (_, text, _) = crate::qt_settings::rc_xml_source(
                         wm,
@@ -326,7 +324,7 @@ fn snapshot_outside(env: &SaveEnv) -> Snapshot {
     s
 }
 
-/// Общее для всех столов: кнопки заголовка, файл схемы и цвета плитки.
+/// Common for all desktops: title bar buttons, the scheme file and the tile colors.
 fn common_parts(env: &SaveEnv, s: &mut Snapshot) {
     use crate::window_buttons as wb;
     let mut wm = env.ctx.clone();
@@ -344,8 +342,8 @@ fn common_parts(env: &SaveEnv, s: &mut Snapshot) {
             .map(|d| format!("{}/color-schemes/{name}.colors", d.trim_end_matches('/')))
             .find(|p| env.io.read(p).is_some());
     }
-    // Цвета плитки: kdeglobals несёт цвета применённой схемы; нет их там —
-    // файл схемы.
+    // Tile colors: kdeglobals carries the colors of the applied scheme; if they
+    // are not there — the scheme file.
     let kdeglobals = env.conf("kdeglobals");
     s.colors_text = if has_color_groups(&kdeglobals) {
         Some(kdeglobals)
@@ -358,7 +356,7 @@ fn has_color_groups(text: &str) -> bool {
     text.lines().any(|l| l.trim().starts_with("[Colors:"))
 }
 
-/// `ИМЯ=значение` файла environment.d.
+/// `NAME=value` of an environment.d file.
 fn env_file_value(text: &str, name: &str) -> Option<String> {
     text.lines()
         .map(str::trim)
@@ -367,12 +365,13 @@ fn env_file_value(text: &str, name: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// Шрифт из родной записи стола («'Sans Bold 10'», «Sans,10,…») — запись
-/// KDE (`Семейство,10,-1,5,…`). Запись KDE уже нужного вида — как есть.
+/// A font from the desktop's native entry ("'Sans Bold 10'", "Sans,10,…") — a KDE
+/// entry (`Family,10,-1,5,…`). A KDE entry already in the right form — as is.
 ///
-/// Начертание из описания Pango уходит в поля QFont, а не в имя семейства:
-/// «Sans Bold 10» — это `Sans,10,-1,5,700,0,…` (так его записала бы сама
-/// Plasma), а не семейство «Sans Bold», которого нет ни в одной системе.
+/// The style from a Pango description goes into the QFont fields, not into the
+/// family name: "Sans Bold 10" is `Sans,10,-1,5,700,0,…` (that is how Plasma
+/// itself would write it), not a "Sans Bold" family that does not exist on any
+/// system.
 pub fn kde_font_from_raw(raw: &str) -> Option<String> {
     let raw = raw.trim().trim_matches(['\'', '"']).trim();
     if raw.is_empty() {
@@ -386,23 +385,23 @@ pub fn kde_font_from_raw(raw: &str) -> Option<String> {
         .then(|| crate::qt_settings::kde_font_spec_face(family.trim(), size, face))
 }
 
-// ── Окно ──────────────────────────────────────────────────────────────────
+// ── Window ────────────────────────────────────────────────────────────────
 
-/// Строка «что сохранить».
+/// A "what to save" row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavePartRow {
     pub id: LnfPart,
     pub text: String,
-    /// Что стоит сейчас (подпись под флажком).
+    /// What is set now (the caption under the checkbox).
     pub value: String,
     pub enabled: bool,
     pub checked: bool,
-    /// Почему сохранить нечего.
+    /// Why there is nothing to save.
     pub reason: String,
 }
 
-/// Всё, что рисует окно «Сохранить текущее оформление».
+/// Everything the "Save current appearance" window draws.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveDialog {
@@ -426,10 +425,10 @@ pub struct SaveDialog {
     pub cancel_text: String,
 }
 
-/// Подпись того, что стоит сейчас.
+/// Caption of what is set now.
 fn part_value(s: &Snapshot, part: LnfPart) -> String {
     match part {
-        // С начертанием: «DejaVu Sans Bold 10» (поля QFont → слова Pango).
+        // With the style: "DejaVu Sans Bold 10" (QFont fields → Pango words).
         LnfPart::Fonts => FONT_KEYS
             .iter()
             .find_map(|k| s.get(k))
@@ -464,7 +463,7 @@ fn part_value(s: &Snapshot, part: LnfPart) -> String {
     }
 }
 
-/// Кнопка заголовка по букве KWin — для подписи.
+/// A title bar button by its KWin letter — for the caption.
 fn button_name(c: char) -> Option<String> {
     Some(match c {
         'M' => tr("menu"),
@@ -481,7 +480,7 @@ fn button_name(c: char) -> Option<String> {
     })
 }
 
-/// Окно для стола `de` по снимку `s`; `author` — имя по умолчанию.
+/// The window for desktop `de` from snapshot `s`; `author` — the default name.
 pub fn dialog(de: &str, s: &Snapshot, author: &str) -> SaveDialog {
     let parts = parts_for(de)
         .iter()
@@ -531,7 +530,7 @@ fn trc_cancel() -> String {
     crate::i18n::trc("dialog button", "Cancel")
 }
 
-/// Почему части нечего сохранить.
+/// Why a part has nothing to save.
 fn missing_reason(de: &str, part: LnfPart) -> String {
     if de == "deepin" && matches!(part, LnfPart::Colors | LnfPart::WidgetStyle | LnfPart::Fonts) {
         return tr("in Deepin this is set by Deepin itself, and Rexon does not carry it over");
@@ -544,28 +543,28 @@ fn missing_reason(de: &str, part: LnfPart) -> String {
     }
 }
 
-// ── Имя и пакет ──────────────────────────────────────────────────────────
+// ── Name and package ─────────────────────────────────────────────────────
 
-/// Приставка идентификатора темы, сохранённой из текущего оформления.
+/// Prefix of the identifier of a theme saved from the current appearance.
 pub const LOCAL_ID_PREFIX: &str = "local.";
 
-/// Идентификатор (`KPlugin.Id`) и имя каталога новой темы по имени, которое
-/// ввёл человек: `local.` и имя строчными латинскими буквами, цифрами и
-/// дефисами («Stend Proba» → `local.stend-proba`, кириллица —
-/// транслитом, имя без латиницы — устойчивым хешем).
+/// Identifier (`KPlugin.Id`) and directory name of the new theme from the name
+/// the person entered: `local.` and the name in lower-case Latin letters, digits
+/// and hyphens ("Stend Proba" → `local.stend-proba`; Cyrillic is
+/// transliterated; a name without Latin letters gets a stable hash).
 ///
-/// Сама Plasma (`KCMLookandFeel::saveCurrentTheme`) берёт введённое имя и
-/// в `Id`, и в имя каталога как есть — с пробелами и любыми знаками. Пакеты
-/// Plasma и магазина называются иначе (`org.kde.breeze.desktop`): точки,
-/// латиница, дефисы — так и здесь; `KPlugin.Name` остаётся как введено.
+/// Plasma itself (`KCMLookandFeel::saveCurrentTheme`) takes the entered name
+/// both into `Id` and into the directory name as is — with spaces and any
+/// characters. Plasma and store packages are named differently
+/// (`org.kde.breeze.desktop`): dots, Latin letters, hyphens — and so here;
+/// `KPlugin.Name` stays as entered.
 pub fn theme_id(name: &str) -> String {
     format!("{LOCAL_ID_PREFIX}{}", crate::importers::slug60(name.trim()))
 }
 
-/// Что не так с именем новой темы; `None` — годится. Как у Plasma
-/// (`LookAndFeelNameValidator`): ни имя, ни идентификатор новой темы
-/// ([`theme_id`]) не должны совпадать с именем или идентификатором
-/// существующей.
+/// What is wrong with the new theme's name; `None` — it is fine. As in Plasma
+/// (`LookAndFeelNameValidator`): neither the name nor the identifier of the new
+/// theme ([`theme_id`]) may match the name or identifier of an existing one.
 pub fn name_problem(io: &dyn LookIo, home: &str, name: &str) -> Option<String> {
     let name = name.trim();
     if name.is_empty() {
@@ -589,12 +588,12 @@ pub fn name_problem(io: &dyn LookIo, home: &str, name: &str) -> Option<String> {
     None
 }
 
-/// Каталог новой темы.
+/// Directory of the new theme.
 pub fn package_dir(home: &str, id: &str) -> String {
     format!("{}/{id}", crate::themes::kde_global_dirs(home)[0])
 }
 
-/// Подписи пакета.
+/// Package labels.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Manifest {
     pub id: String,
@@ -603,7 +602,7 @@ pub struct Manifest {
     pub description: String,
 }
 
-/// `metadata.json` пакета — поля пакета глобальной темы Plasma 6.
+/// The package's `metadata.json` — the fields of a Plasma 6 global theme package.
 pub fn metadata_json(m: &Manifest) -> String {
     let v = serde_json::json!({
         "KPackageStructure": "Plasma/LookAndFeel",
@@ -620,8 +619,8 @@ pub fn metadata_json(m: &Manifest) -> String {
     serde_json::to_string_pretty(&v).unwrap_or_default() + "\n"
 }
 
-/// Значение для файла KConfig: обратная черта, перевод строки, табуляция
-/// и пробелы по краям — экранированными, как пишет KConfig.
+/// A value for a KConfig file: backslash, newline, tab and spaces at the edges
+/// are escaped, as KConfig writes them.
 fn kconfig_escape(v: &str) -> String {
     let mut out = String::new();
     let n = v.chars().count();
@@ -638,8 +637,8 @@ fn kconfig_escape(v: &str) -> String {
     out
 }
 
-/// Текст файла KConfig из записей «файл/группа/ключ» → значение: группы
-/// вложенные (`[kdeglobals][General]`), по порядку первого появления.
+/// Text of a KConfig file from "file/group/key" → value entries: groups are
+/// nested (`[kdeglobals][General]`), in order of first appearance.
 fn kconfig_text(entries: &[(&str, &str)]) -> String {
     let mut groups: Vec<(String, Vec<(String, String)>)> = Vec::new();
     for (path, value) in entries {
@@ -664,9 +663,9 @@ fn kconfig_text(entries: &[(&str, &str)]) -> String {
     out
 }
 
-/// Текстовые файлы пакета (путь от каталога пакета → текст) по снимку и
-/// отмеченным частям. Заставка (копия каталога) и превью (картинки) —
-/// отдельно, у живого сохранения.
+/// Text files of the package (path from the package directory → text) from the
+/// snapshot and the checked parts. The splash screen (a directory copy) and the
+/// previews (pictures) are separate, in the live save.
 pub fn package_files(m: &Manifest, s: &Snapshot, parts: &[LnfPart]) -> Vec<(String, String)> {
     let on = |p: LnfPart| parts.contains(&p) && s.has(p);
     let mut files = vec![("metadata.json".to_string(), metadata_json(m))];
@@ -703,10 +702,10 @@ pub fn package_files(m: &Manifest, s: &Snapshot, parts: &[LnfPart]) -> Vec<(Stri
     files
 }
 
-// ── Превью ───────────────────────────────────────────────────────────────
+// ── Preview ──────────────────────────────────────────────────────────────
 
-/// Плитка-превью — окно цветами темы (тот же рисунок, что у плитки схемы
-/// в «Цветах»), в `scale` раз крупнее кадра превью.
+/// Preview tile — a window in the theme's colors (the same drawing as the scheme
+/// tile in "Colors"), `scale` times larger than the preview frame.
 pub fn tile_image(colors_text: &str, scale: u32) -> image::RgbaImage {
     use crate::local_preview::{scheme_look, scheme_window_sample, DrawOp, PREVIEW_HEIGHT, PREVIEW_WIDTH};
     let (w, h) = (PREVIEW_WIDTH as u32 * scale, PREVIEW_HEIGHT as u32 * scale);
@@ -726,10 +725,10 @@ pub fn tile_image(colors_text: &str, scale: u32) -> image::RgbaImage {
     img
 }
 
-/// Записать превью в `contents/previews` пакета: из картинки `source`
-/// (снимок экрана, свой рисунок) — `fullscreenpreview.jpg` и
-/// `preview.png` шириной [`PREVIEW_SMALL_WIDTH`], как у Plasma; без неё —
-/// плитку цветами темы.
+/// Write the previews into the package's `contents/previews`: from picture
+/// `source` (a screenshot, a custom drawing) — `fullscreenpreview.jpg` and
+/// `preview.png` of width [`PREVIEW_SMALL_WIDTH`], as in Plasma; without it — a
+/// tile in the theme's colors.
 pub fn write_previews(dir: &str, source: Option<&str>, colors_text: &str) -> Result<(), String> {
     let previews = format!("{dir}/contents/previews");
     std::fs::create_dir_all(&previews).map_err(|e| e.to_string())?;
@@ -749,7 +748,7 @@ pub fn write_previews(dir: &str, source: Option<&str>, colors_text: &str) -> Res
     }
 }
 
-/// Скопировать каталог целиком (заставка темы).
+/// Copy a whole directory (the theme's splash screen).
 fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
@@ -764,21 +763,21 @@ fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()>
     Ok(())
 }
 
-// ── Живая машина ─────────────────────────────────────────────────────────
+// ── Live machine ─────────────────────────────────────────────────────────
 
-/// Что прислало окно.
+/// What the window sent.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SaveRequest {
     pub name: String,
     pub author: String,
-    /// Отмеченные части — их имена в окне (`colors`, `widgetStyle`, …).
+    /// Checked parts — their names in the window (`colors`, `widgetStyle`, …).
     pub parts: Vec<String>,
-    /// Картинка превью; пусто — плитка.
+    /// Preview picture; empty — a tile.
     pub preview: String,
 }
 
-/// Итог сохранения.
+/// Result of saving.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveResult {
@@ -788,13 +787,13 @@ pub struct SaveResult {
     pub path: String,
 }
 
-/// Часть по имени из окна — то же имя, что у [`SavePartRow::id`].
+/// A part by its name from the window — the same name as [`SavePartRow::id`].
 pub fn part_by_id(id: &str) -> Option<LnfPart> {
     LnfPart::ALL.into_iter().find(|p| serde_json::to_value(p).ok().and_then(|v| v.as_str().map(|s| s == id)) == Some(true))
 }
 
-/// Имя человека для поля «Автор»: полное имя учётной записи
-/// (`/etc/passwd`, поле GECOS), иначе имя входа.
+/// The person's name for the "Author" field: the account's full name
+/// (`/etc/passwd`, the GECOS field), otherwise the login name.
 pub fn author_from_passwd(passwd: &str, user: &str) -> String {
     passwd
         .lines()
@@ -811,7 +810,7 @@ fn live_env_get(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
-/// Окно для этой машины и стола.
+/// The window for this machine and desktop.
 pub fn live_dialog() -> SaveDialog {
     let io = crate::animations::SystemIo;
     let env = SaveEnv { io: &io, ctx: LookCtx::from_env(), env: &live_env_get };
@@ -821,12 +820,12 @@ pub fn live_dialog() -> SaveDialog {
     dialog(&env.ctx.de, &s, &author)
 }
 
-/// Проверка имени для окна: пусто — годится.
+/// Name check for the window: empty — fine.
 pub fn live_name_problem(name: &str) -> String {
     name_problem(&crate::animations::SystemIo, &live_env_get("HOME"), name).unwrap_or_default()
 }
 
-/// Плитка для окна (до выбора снимка): PNG в кеше, путь к нему.
+/// Tile for the window (before a screenshot is chosen): a PNG in the cache, its path.
 pub fn live_tile() -> Result<String, String> {
     let io = crate::animations::SystemIo;
     let env = SaveEnv { io: &io, ctx: LookCtx::from_env(), env: &live_env_get };
@@ -838,7 +837,7 @@ pub fn live_tile() -> Result<String, String> {
     Ok(path)
 }
 
-/// Сохранить тему по запросу окна (JSON [`SaveRequest`]).
+/// Save the theme at the window's request (JSON [`SaveRequest`]).
 pub fn live_save(json: &str) -> SaveResult {
     let req: SaveRequest = match serde_json::from_str(json) {
         Ok(r) => r,
@@ -887,16 +886,16 @@ pub fn live_save(json: &str) -> SaveResult {
             SaveResult { ok: true, message: trf("Global theme “%1” saved.", &[&name]), id, path: dir }
         }
         Err(e) => {
-            // Недописанный пакет в сетке не нужен.
+            // A half-written package is not needed in the grid.
             let _ = std::fs::remove_dir_all(&dir);
             fail(e)
         }
     }
 }
 
-// ── Снимок экрана ────────────────────────────────────────────────────────
+// ── Screenshot ───────────────────────────────────────────────────────────
 
-/// Путь из ответа портала (`file:///…`, с %-кодами).
+/// Path from the portal's answer (`file:///…`, with %-escapes).
 pub fn path_from_uri(uri: &str) -> Option<String> {
     let rest = uri.strip_prefix("file://")?;
     let bytes = rest.as_bytes();
@@ -916,8 +915,8 @@ pub fn path_from_uri(uri: &str) -> Option<String> {
     String::from_utf8(out).ok().filter(|p| !p.is_empty())
 }
 
-/// Снимок экрана через портал (`org.freedesktop.portal.Screenshot`, с
-/// выбором, как у Plasma): путь к файлу.
+/// A screenshot through the portal (`org.freedesktop.portal.Screenshot`, with a
+/// choice, as in Plasma): the path to the file.
 fn portal_screenshot() -> Result<String, String> {
     use std::collections::HashMap;
     use zbus::zvariant::{OwnedValue, Value};
@@ -966,10 +965,10 @@ fn portal_screenshot() -> Result<String, String> {
     Err(tr("The screenshot was not saved."))
 }
 
-/// Пауза перед снимком программой снимков (когда портала нет).
+/// Pause before a screenshot by a screenshot program (when there is no portal).
 pub const SHOT_DELAY_SECS: u64 = 5;
 
-/// Подсказка, пока снимок ждёт.
+/// Hint while the screenshot is waiting.
 pub fn shot_waiting_text() -> String {
     trf(
         "Choose what to capture in the window that opens. If no window opens, the screen is captured in %1 seconds — minimize Rexon meanwhile.",
@@ -977,16 +976,16 @@ pub fn shot_waiting_text() -> String {
     )
 }
 
-/// Снимок экрана для превью: портал, без него — первая найденная
-/// программа снимков. `Ok(путь)`; `Err("")` — человек отменил.
+/// A screenshot for the preview: the portal, without it the first screenshot
+/// program found. `Ok(path)`; `Err("")` — the person cancelled.
 pub fn live_screenshot() -> Result<String, String> {
     match portal_screenshot() {
         Ok(p) => return Ok(p),
         Err(e) if e.is_empty() => return Err(e),
         Err(e) => crate::log_info!("theme", "снимок через портал не вышел ({e}), берём программу снимков"),
     }
-    // Без портала окно выбора не появится: даём время свернуть Rexon, иначе
-    // на снимке будет он сам.
+    // Without the portal no choice dialog will appear: we give time to minimize
+    // Rexon, otherwise it would be in the screenshot itself.
     std::thread::sleep(std::time::Duration::from_secs(SHOT_DELAY_SECS));
     let home = live_env_get("HOME");
     let dir = format!("{}/rexon", crate::utils::cache_home(std::env::var("XDG_CACHE_HOME").ok().as_deref(), &home));
@@ -1080,7 +1079,7 @@ mod tests {
         let env = SaveEnv { io: &io, ctx: ctx("kde"), env: &no_env };
         let s = snapshot(&env);
         assert_eq!(s.get(COLORS), Some("BreezeDark"));
-        // Чего нет в файлах — то, что Plasma показывает по умолчанию.
+        // What is missing from the files — what Plasma shows by default.
         assert_eq!(s.get(WIDGET_STYLE), Some("Breeze"));
         assert_eq!(s.get(CURSORS), Some("breeze_cursors"));
         assert_eq!(s.get(FONT_TITLE).map(|f| f.starts_with("Noto Sans,12")), Some(true));
@@ -1091,7 +1090,7 @@ mod tests {
         let m = Manifest { id: "Моя".into(), name: "Моя".into(), author: "Wehrwolfmann".into(), description: String::new() };
         let files: HashMap<String, String> = package_files(&m, &s, parts_for("kde")).into_iter().collect();
         let d = &files["contents/defaults"];
-        // Шрифты — в [General], заголовок — в [WM].
+        // Fonts in [General], the title in [WM].
         assert!(d.contains("[kdeglobals][General]\nColorScheme=BreezeDark\nfont=Noto Sans,11"), "{d}");
         assert!(d.contains("[kdeglobals][WM]\nactiveFont=Noto Sans,12"), "{d}");
         assert!(d.contains("[kwinrc][org.kde.kdecoration2]\nlibrary=org.kde.kwin.aurorae\ntheme=__aurorae__svg__Sweet"));
@@ -1103,8 +1102,8 @@ mod tests {
         assert_eq!(meta["KPackageStructure"], "Plasma/LookAndFeel");
     }
 
-    /// Пакет, записанный здесь, читается составом темы Rexon с теми же
-    /// частями и значениями — для Plasma и для применения вне неё.
+    /// A package written here is read by Rexon's theme contents with the same parts
+    /// and values — for Plasma and for applying outside it.
     #[test]
     fn пакет_читается_составом_темы() {
         let io = Fake::default();
@@ -1127,9 +1126,9 @@ mod tests {
         assert_eq!(c.values.get(COLORS).map(String::as_str), Some("Nordic"));
         assert_eq!(c.values.get(FONT_GENERAL).map(String::as_str), Some("Cantarell,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"));
         assert_eq!(c.layout.buttons, Some(("X".into(), "IA".into())));
-        // Кнопки заголовка — не раскладка панелей: отметки плитки нет.
+        // Title bar buttons are not the panel layout: the tile has no mark.
         assert!(!c.layout.desktop);
-        // Вне Plasma переносятся все сохранённые части.
+        // Outside Plasma all saved parts are carried over.
         for part in &c.parts {
             if !part.is_layout() || *part == LnfPart::TitlebarLayout {
                 assert_eq!(crate::themes::lnf_part_outside(*part, &c, "xfce"), None, "{part:?}");
@@ -1148,17 +1147,17 @@ mod tests {
         assert_eq!(s.get(WIDGET_STYLE), Some("Fusion"));
         assert_eq!(s.get(FONT_GENERAL), Some("Ubuntu,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"));
         assert_eq!(s.get(FONT_FIXED), Some("Ubuntu Mono,13,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"));
-        // Схемы нет — цвета не сохраняются, окно говорит почему.
+        // No scheme — colors are not saved, the window says why.
         let d = dialog("mate", &s, "Wehrwolfmann");
         let colors = d.parts.iter().find(|p| p.id == LnfPart::Colors).unwrap();
         assert!(!colors.enabled && !colors.reason.is_empty());
         assert!(d.parts.iter().all(|p| !matches!(p.id, LnfPart::PlasmaTheme | LnfPart::DesktopLayout)));
     }
 
-    /// MATE: шрифты меню, панели инструментов и маленький — из нашего
-    /// блока в gtk.css, с начертанием (Bold Italic у меню), в пакет
-    /// темы полями QFont; метка прежних версий (без начертания) читается
-    /// обычным шрифтом. Подпись в окне сохранения — с начертанием.
+    /// MATE: the menu, toolbar and small fonts — from our block in gtk.css, with the
+    /// style (Bold Italic for the menu), into the theme package as QFont fields; a
+    /// marker from earlier versions (without a style) is read as a regular font. The
+    /// caption in the save window includes the style.
     #[test]
     fn вне_plasma_шрифты_меню_панели_и_маленький_с_начертанием() {
         use crate::qt_settings::{FontFace, FontFile};
@@ -1168,7 +1167,7 @@ mod tests {
         let toolbar = FontFile::GtkCss { version: "3.0".into(), target: "toolbar".into() };
         let css = menu.try_new_text_face(None, "Noto Sans", 9, FontFace { weight: 700, italic: true }).unwrap();
         let css = toolbar.try_new_text_face(Some(&css), "Inter", 10, FontFace { weight: 400, italic: false }).unwrap();
-        // Метка прежней версии: без поля начертания.
+        // A marker from an earlier version: without the style field.
         let css = css.replace("/* <<< Rexon: fonts */", "/* rexon:font small 8 Cantarell */\n/* <<< Rexon: fonts */");
         io.files.borrow_mut().insert("/h/.config/gtk-3.0/gtk.css".into(), css);
         let env = SaveEnv { io: &io, ctx: ctx("mate"), env: &no_env };
@@ -1185,14 +1184,14 @@ mod tests {
         assert!(defaults.contains("menuFont=Noto Sans,9,-1,5,700,1,0,0,0,0,0,0,0,0,0,1"), "{defaults}");
         assert!(defaults.contains("toolBarFont=Inter,10,-1,5,400,0,"), "{defaults}");
         assert!(defaults.contains("smallestReadableFont=Cantarell,8,-1,5,400,0,"), "{defaults}");
-        // Не заданы — в пакет не попадают.
+        // Not set — they do not get into the package.
         let mut bare = Fake { tools: vec!["gsettings"], ..Default::default() };
         bare.answers.insert("gsettings get org.mate.interface font-name".into(), "'Ubuntu 11'\n".into());
         let s = snapshot(&SaveEnv { io: &bare, ctx: ctx("mate"), env: &no_env });
         assert!(FONT_KEYS[2..5].iter().all(|k| s.get(k).is_none()));
     }
 
-    /// Все команды плана применения — одной строкой каждая.
+    /// All commands of the apply plan — one line each.
     fn plan_argvs(plan: &crate::themes::Plan) -> Vec<String> {
         use crate::themes::ApplyStep as A;
         plan.steps
@@ -1204,8 +1203,8 @@ mod tests {
             .collect()
     }
 
-    /// Снимок MATE с жирным заголовком, наклонным интерфейсом и
-    /// полужирным моноширинным → пакет темы → состав темы.
+    /// A MATE snapshot with a bold title, an italic interface and a semi-bold
+    /// monospace → theme package → theme contents.
     fn mate_faces_theme() -> crate::themes::LnfContents {
         let mut io = Fake { tools: vec!["gsettings"], ..Default::default() };
         io.answers.insert("gsettings get org.mate.interface font-name".into(), "'Sans Italic 10'\n".into());
@@ -1213,7 +1212,7 @@ mod tests {
         io.answers.insert("gsettings get org.mate.Marco.general titlebar-font".into(), "'Sans Bold 10'\n".into());
         let env = SaveEnv { io: &io, ctx: ctx("mate"), env: &no_env };
         let s = snapshot(&env);
-        // Начертание — в полях QFont (жирность, наклон), семейство — чистое.
+        // The style is in the QFont fields (weight, slant), the family is clean.
         assert_eq!(s.get(FONT_TITLE), Some("Sans,10,-1,5,700,0,0,0,0,0,0,0,0,0,0,1"));
         assert_eq!(s.get(FONT_GENERAL), Some("Sans,10,-1,5,400,1,0,0,0,0,0,0,0,0,0,1"));
         assert_eq!(s.get(FONT_FIXED), Some("Mono,11,-1,5,600,0,0,0,0,0,0,0,0,0,0,1"));
@@ -1233,8 +1232,8 @@ mod tests {
         }
     }
 
-    /// MATE → тема → MATE: жирность и наклон возвращаются словами Pango, а
-    /// не доезжают случайно внутри имени семейства.
+    /// MATE → theme → MATE: weight and slant come back as Pango words rather than
+    /// accidentally riding inside the family name.
     #[test]
     fn шрифты_с_начертанием_mate_тема_mate() {
         let g = crate::themes::apply_global_choice_plan("t", &fonts_press(mate_faces_theme()), "mate").unwrap();
@@ -1249,12 +1248,12 @@ mod tests {
         assert!(g.skipped.is_empty(), "{:?}", g.skipped);
     }
 
-    /// MATE → тема → Plasma: в kdeglobals уходит запись QFont с
-    /// жирностью и наклоном, которую Plasma читает как свою.
+    /// MATE → theme → Plasma: a QFont entry with weight and slant goes into
+    /// kdeglobals, and Plasma reads it as its own.
     #[test]
     fn шрифты_с_начертанием_mate_тема_plasma() {
-        // Ещё одна часть темы — чтобы шрифты шли своими командами, а не
-        // всей темой через plasma-apply-lookandfeel.
+        // One more theme part — so that fonts go through their own commands rather than
+        // the whole theme via plasma-apply-lookandfeel.
         let mut c = mate_faces_theme();
         c.values.insert(ICONS.into(), "Papirus".into());
         c.parts.push(LnfPart::Icons);
@@ -1269,8 +1268,8 @@ mod tests {
         }
     }
 
-    /// Заголовок labwc и sway с начертанием → поля QFont темы. labwc без
-    /// своего rc.xml читается системный; sway — строка `font` его конфига.
+    /// labwc and sway title with a style → the theme's QFont fields. labwc without
+    /// its own rc.xml reads the system one; sway — the `font` line of its config.
     #[test]
     fn шрифт_заголовка_с_начертанием_labwc_и_sway() {
         let io = Fake::default();
@@ -1287,7 +1286,7 @@ mod tests {
         assert_eq!(s.get(FONT_TITLE), Some("Noto Sans,11,-1,5,700,0,0,0,0,0,0,0,0,0,0,1"));
     }
 
-    /// Тема Plasma с начертанием (Qt 6 и старая запись Qt 5) → XFCE.
+    /// A Plasma theme with a style (Qt 6 and the old Qt 5 entry) → XFCE.
     #[test]
     fn шрифты_с_начертанием_plasma_тема_xfce() {
         let mut c = crate::themes::LnfContents::default();
@@ -1308,8 +1307,8 @@ mod tests {
         assert!(name_problem(&io, "/h", "org.x").is_some(), "имя = id существующей");
         assert!(name_problem(&io, "/h", "Тёмная").is_some(), "имя = имя существующей");
         assert_eq!(name_problem(&io, "/h", "Моя тема"), None);
-        // Каталог и id у сохранённой — из имени, а имя — как введено:
-        // «Stend proba» даёт тот же id, что «Stend Proba».
+        // The directory and id of the saved theme come from the name, and the name is
+        // as entered: "Stend proba" gives the same id as "Stend Proba".
         io.write(
             "/h/.local/share/plasma/look-and-feel/local.stend-proba/metadata.json",
             r#"{"KPlugin":{"Id":"local.stend-proba","Name":"Stend Proba"}}"#,
@@ -1345,10 +1344,10 @@ mod tests {
     fn превью_как_у_plasma_и_плитка() {
         let root = std::env::temp_dir().join(format!("rexon-global-save-{}", std::process::id()));
         let dir = root.to_string_lossy().into_owned();
-        // Без снимка — плитка.
+        // Without a screenshot — a tile.
         write_previews(&dir, None, "").unwrap();
         assert!(root.join("contents/previews/preview.png").is_file());
-        // Снимок 1600×900 — полный JPEG и малый PNG шириной 512.
+        // A 1600×900 screenshot — a full JPEG and a small PNG of width 512.
         let shot = root.join("shot.png");
         image::RgbaImage::from_pixel(1600, 900, image::Rgba([1, 2, 3, 255])).save(&shot).unwrap();
         write_previews(&dir, Some(&shot.to_string_lossy()), "").unwrap();

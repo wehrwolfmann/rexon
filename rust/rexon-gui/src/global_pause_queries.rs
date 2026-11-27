@@ -1,20 +1,21 @@
-// Глобальные переключатели демона: пауза, звук, полная остановка.
+// Global daemon switches: pause, sound, full stop.
 //
-// Первая
-// порция того, что вендор добавил в v0.3.5 и чего у нас не было ВООБЩЕ:
-// эти четыре типа не регистрировал ни C++-слой, ни Python-мост, и
-// `Window.qml` со `StatusPage.qml` падали на «is not a type».
+// The first portion of what the vendor added in v0.3.5 and what we did not
+// have AT ALL: neither the C++ layer nor the Python bridge registered these
+// four types, and `Window.qml` and `StatusPage.qml` failed with "is not a
+// type".
 //
-// Эталон — `ui/src/query/global_pause_query.cpp` вендора на теге v0.3.5
-// (f7baecd), тем же тегом вендорен наш QML. Разбор ответа — в ядре
-// (`rexon_core::we_manage::apply_global_flag`), здесь только Qt-сторона.
+// Reference: the vendor's `ui/src/query/global_pause_query.cpp` at tag
+// v0.3.5 (f7baecd); our QML is vendored at the same tag. Response parsing
+// is in the core (`rexon_core::we_manage::apply_global_flag`); here there
+// is only the Qt side.
 //
-// Три «Set»-запроса и «Toggle» отличаются ровно двумя вещами: именем поля
-// протокола и тем, что Toggle не имеет сеттера (демон сам решает, во что
-// переключиться) и всегда шлёт сигнал `toggled`. Всё остальное общее и
-// печатается одним макросом ниже — правило #12, движок один.
+// The three "Set" requests and "Toggle" differ in exactly two things: the
+// protocol field name, and that Toggle has no setter (the daemon decides
+// what to switch to) and always emits the `toggled` signal. Everything
+// else is shared and emitted by one macro below — rule #12, one engine.
 
-/// Мост cxx-qt: четыре глобальных переключателя.
+/// cxx-qt bridge: four global switches.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -33,7 +34,7 @@ pub mod qobject {
         #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
-        // Только чтение: значение называет демон в ответе.
+        // Read-only: the value is named by the daemon in its answer.
         #[qproperty(bool, paused, READ = paused, NOTIFY = paused_changed)]
         type GlobalPauseToggleQuery = super::GlobalPauseToggleQueryRust;
 
@@ -274,8 +275,8 @@ use rexon_core::we_query::{QuerySignal, QueryState};
 use crate::impl_query_base;
 use crate::query_base::decode_failed;
 
-/// Общая часть всех четырёх: состояние базы, один булев флаг и журнал
-/// отправленных кадров.
+/// The part shared by all four: base state, one boolean flag and a log of
+/// sent frames.
 macro_rules! global_flag_query {
     (
         $query:ident,
@@ -352,8 +353,8 @@ macro_rules! global_flag_query {
     };
 }
 
-/// Кадр запроса. Toggle нагрузки не несёт вовсе, остальные — один булев
-/// флаг, который клиент ХОЧЕТ выставить.
+/// Request frame. Toggle carries no payload at all, the others carry one
+/// boolean flag that the client WANTS to set.
 fn payload(flag: GlobalFlag, value: bool) -> Vec<u8> {
     match flag {
         GlobalFlag::PauseToggle => pb::GlobalPauseToggleRequest {}.encode_to_vec(),
@@ -363,8 +364,8 @@ fn payload(flag: GlobalFlag, value: bool) -> Vec<u8> {
     }
 }
 
-/// Сеттер свойства — общий у трёх «Set»-запросов. У Toggle сеттера нет:
-/// значение называет демон.
+/// Property setter — shared by the three "Set" requests. Toggle has no
+/// setter: the value is named by the daemon.
 macro_rules! global_flag_setter {
     ($query:ident, $setter:ident, $changed:ident) => {
         impl qobject::$query {
@@ -422,8 +423,8 @@ global_flag_query!(
 );
 global_flag_setter!(GlobalStopSetQuery, set_stopped, stopped_changed);
 
-/// Хвост ответа: у трёх «Set»-запросов его нет, у Toggle — сигнал
-/// `toggled(paused)` на каждом успешном ответе демона.
+/// Response tail: the three "Set" requests have none, Toggle emits the
+/// `toggled(paused)` signal on every successful daemon answer.
 trait OnAnswer {
     fn on_answer(self: Pin<&mut Self>, answered: Option<bool>);
 }

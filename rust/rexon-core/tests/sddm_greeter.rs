@@ -1,10 +1,10 @@
-//! Экран входа SDDM: фон темы и перенос оформления стола (паритет с модулем
-//! KDE «Экран входа (SDDM)», sddm-kcm 6.8). Чистые решения ядра
-//! (`system_plan::plan_sddm_look`, `sddm_theme_background`,
-//! `sddm_background_user_text`, `desktop_greeter_look`) — на подставных
-//! файлах; ожидаемые тексты правок — эталон `golden/sddm_greeter_cases.json`
-//! (переснять: `REXON_GOLDEN_WRITE=1 cargo test-core --test sddm_greeter`,
-//! затем прочитать разницу глазами).
+//! SDDM login screen: theme background and carrying over the desktop look
+//! (parity with the KDE module «Login Screen (SDDM)», sddm-kcm 6.8). Pure core
+//! decisions (`system_plan::plan_sddm_look`, `sddm_theme_background`,
+//! `sddm_background_user_text`, `desktop_greeter_look`) — on mocked files; the
+//! expected edit texts are the reference `golden/sddm_greeter_cases.json`
+//! (recapture: `REXON_GOLDEN_WRITE=1 cargo test-core --test sddm_greeter`,
+//! then review the diff by eye).
 
 use std::collections::BTreeMap;
 
@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 
 const GOLDEN: &str = "tests/golden/sddm_greeter_cases.json";
 
-/// Подставная система: путь → текст.
+/// Mock system: path → text.
 fn fs(files: &[(&str, &str)]) -> BTreeMap<String, String> {
     files.iter().map(|(p, t)| (p.to_string(), t.to_string())).collect()
 }
@@ -48,7 +48,7 @@ fn switch_json(sw: &SessionSwitch) -> Value {
     }
 }
 
-/// Значение ключа так, как его прочтёт SDDM.
+/// The key value as SDDM will read it.
 fn effective(files: &BTreeMap<String, String>, group: &str, key: &str) -> Option<String> {
     let mut order: Vec<&String> = Vec::new();
     for dir in [plan::SDDM_DISTRO_CONF_D, plan::SDDM_CONF_D] {
@@ -62,8 +62,8 @@ fn effective(files: &BTreeMap<String, String>, group: &str, key: &str) -> Option
     rexon_core::login_rescue::ini_value(&texts, group, key)
 }
 
-/// Машина как у CachyOS: значения пакета в `/usr/lib`, настройки KDE в
-/// `kde_settings.conf`, автовход в `/etc/sddm.conf`.
+/// A machine like CachyOS: package values in `/usr/lib`, KDE settings in
+/// `kde_settings.conf`, autologin in `/etc/sddm.conf`.
 fn cachyos() -> BTreeMap<String, String> {
     fs(&[
         (
@@ -89,7 +89,7 @@ fn plasma_look() -> SddmLook {
     }
 }
 
-/// Все случаи — в один эталон.
+/// All cases go into one reference.
 fn cases() -> Value {
     let mut out = serde_json::Map::new();
     let base = cachyos();
@@ -98,16 +98,16 @@ fn cases() -> Value {
     let synced = apply(&base, &sync);
     let reset = plan_on(&synced, None);
     out.insert("cachyos_reset_after_sync".into(), switch_json(&reset));
-    // Ключ задан в `/etc/sddm.conf` (его SDDM читает последним): правится
-    // там, в `kde_settings.conf` не дублируется.
+    // The key is set in `/etc/sddm.conf` (SDDM reads it last): it is edited
+    // there, not duplicated in `kde_settings.conf`.
     let mut over = cachyos();
     over.insert("/etc/sddm.conf".into(), "[Autologin]\nSession=plasma\n\n[Theme]\nCursorTheme=Adwaita\n".into());
     out.insert("override_in_sddm_conf".into(), switch_json(&plan_on(&over, Some(&plasma_look()))));
-    // Чистая машина: своих настроек нет — файл KDE создаётся.
+    // Clean machine: no own settings — the KDE file is created.
     let bare = fs(&[("/usr/lib/sddm/sddm.conf.d/default.conf", "[X11]\nServerArguments=-nolisten tcp\n")]);
     let minimal = SddmLook { cursor_theme: Some("Adwaita".into()), ..SddmLook::default() };
     out.insert("bare_machine".into(), switch_json(&plan_on(&bare, Some(&minimal))));
-    // Фон темы: текст `.user`.
+    // Theme background: the `.user` text.
     out.insert(
         "background_user_new".into(),
         json!(plan::sddm_background_user_text(None, Some("rexon-background.jpg"))),
@@ -123,7 +123,7 @@ fn cases() -> Value {
             None
         )),
     );
-    // «Показывать часы»: ключ пишется явно (и при «да»), фон не трогается.
+    // «Show clock»: the key is written explicitly (even for «yes»), the background is not touched.
     out.insert(
         "clock_user_off".into(),
         json!(plan::sddm_clock_user_text(Some("[General]\nbackground=rexon-background.png\ntype=image\n"), false)),
@@ -143,9 +143,9 @@ fn эталон_правок_экрана_входа() {
     assert_eq!(got, want, "эталон {GOLDEN} разошёлся");
 }
 
-/// После переноса SDDM читает ровно значения стола; `-nolisten tcp` пакета
-/// не теряется (у модуля KDE теряется); после «Сбросить» — снова значения
-/// пакета и прежние аргументы X-сервера.
+/// After the carry-over SDDM reads exactly the desktop values; the package's
+/// `-nolisten tcp` is not lost (the KDE module loses it); after «Reset» —
+/// the package values and the former X server arguments again.
 #[test]
 fn перенос_и_сброс_по_итогу_чтения_sddm() {
     let base = cachyos();
@@ -157,7 +157,7 @@ fn перенос_и_сброс_по_итогу_чтения_sddm() {
     assert_eq!(effective(&synced, "X11", "ServerArguments").as_deref(), Some("-nolisten tcp -dpi 120"));
     assert_eq!(effective(&synced, "Theme", "Current").as_deref(), Some("breeze"), "тема не тронута");
     assert_eq!(synced["/etc/sddm.conf"], base["/etc/sddm.conf"], "автовход не тронут");
-    // Повтор — менять нечего.
+    // A repeat — nothing to change.
     assert_eq!(plan_on(&synced, Some(&plasma_look())), SessionSwitch::Nothing);
     let reset = apply(&synced, &plan_on(&synced, None));
     assert_eq!(effective(&reset, "X11", "ServerArguments").as_deref(), Some("-nolisten tcp"));
@@ -166,12 +166,12 @@ fn перенос_и_сброс_по_итогу_чтения_sddm() {
     }
     assert!(!reset["/etc/sddm.conf.d/kde_settings.conf"].contains("ServerArguments"));
     assert!(reset["/etc/sddm.conf.d/kde_settings.conf"].contains("Current=breeze"));
-    // Повторный сброс — менять нечего.
+    // A repeated reset — nothing to change.
     assert_eq!(plan_on(&reset, None), SessionSwitch::Nothing);
 }
 
-/// Шрифт, NumLock и DPI не заданы — их ключи не трогаются (как у модуля
-/// KDE): меняется только курсор.
+/// Font, NumLock and DPI are not set — their keys are not touched (as in the
+/// KDE module): only the cursor changes.
 #[test]
 fn курсор_не_трогается_при_незаданном_dpi() {
     let base = cachyos();
@@ -204,7 +204,7 @@ fn фон_темы_как_у_модуля_kde() {
     assert!(bg.supported && !bg.custom && !bg.ours);
     assert_eq!(bg.image, "/usr/share/wallpapers/Next/contents/images/5120x2880.png");
     assert_eq!(bg.config, "/usr/share/sddm/themes/breeze/theme.conf");
-    // Свой фон поверх — относительное имя в каталоге темы.
+    // Own background on top — a relative name in the theme directory.
     let mut with_user = files.clone();
     with_user.insert(
         "/usr/share/sddm/themes/breeze/theme.conf.user".into(),
@@ -214,7 +214,7 @@ fn фон_темы_как_у_модуля_kde() {
     let bg = plan::sddm_theme_background(dir, &read);
     assert!(bg.custom && bg.ours);
     assert_eq!(bg.image, "/usr/share/sddm/themes/breeze/rexon-background.jpg");
-    // Тема без файла настроек и путь вместо имени — фон не меняется.
+    // A theme without a settings file and a path instead of a name — the background does not change.
     for meta in ["[SddmGreeterTheme]\nName=X\n", "[SddmGreeterTheme]\nConfigFile=../../../etc/passwd\n"] {
         let f = fs(&[("/t/metadata.desktop", meta), ("/etc/passwd", "root:x:0:0")]);
         let read = |p: &str| f.get(p).cloned();
@@ -234,9 +234,9 @@ fn картинка_по_сигнатуре() {
     assert!(!plan::sddm_background_is_ours("background.jpg"));
 }
 
-/// Plasma: всё как у модуля KDE (`kcminputrc`, `kdeglobals`, `kcmfonts`,
-/// файлы `.config`); вне Plasma — курсор и шрифт стола, из файлов только
-/// цвета Qt и fontconfig, остальное честно в «не переносится».
+/// Plasma: everything as in the KDE module (`kcminputrc`, `kdeglobals`,
+/// `kcmfonts`, `.config` files); outside Plasma — the desktop cursor and font,
+/// from files only Qt colours and fontconfig, the rest honestly «not carried over».
 #[test]
 fn что_берётся_со_стола() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -274,13 +274,13 @@ fn что_берётся_со_стола() {
     assert_eq!(view.theme, "Theme: Breeze");
     assert!(view.look.confirm.contains("• Font") && view.look.confirm.contains("• Plasma theme"));
     assert!(!view.background.supported && !view.background.note.is_empty());
-    // Встроенная тема (ничего не задано) — раздела нет.
+    // Built-in theme (nothing set) — no section.
     assert!(!plan::sddm_greeter_view(None, None, &plan::SddmBackground::default(), &l, false, "").visible);
 }
 
-/// «Показывать часы» — как kcm (`ThemesModel::add`): `showClock` из
-/// `.user` сильнее файла темы, нет нигде — да; значения — как у KConfig.
-/// Версия Qt темы — `[SddmGreeterTheme] QtVersion`, нет — 5.
+/// «Show clock» — as in the kcm (`ThemesModel::add`): `showClock` from `.user`
+/// beats the theme file, absent everywhere — yes; values as in KConfig.
+/// Theme Qt version — `[SddmGreeterTheme] QtVersion`, absent — 5.
 #[test]
 fn часы_и_версия_qt_темы() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -305,9 +305,9 @@ fn часы_и_версия_qt_темы() {
     assert_eq!(plan::kconfig_bool("maybe"), None);
     assert_eq!(plan::sddm_theme_qt_version("[SddmGreeterTheme]\nName=X\n"), 5);
     assert_eq!(plan::sddm_theme_qt_version("[SddmGreeterTheme]\nQtVersion=abc\n"), 5);
-    // Повторная запись того же — менять нечего.
+    // Writing the same again — nothing to change.
     assert_eq!(plan::sddm_clock_user_text(Some("[General]\nshowClock=true\n"), true), None);
-    // Вид блока: галочка — у темы с файлом настроек.
+    // Block view: the checkbox is on a theme with a settings file.
     let l = plan::DesktopLook::default();
     let v = plan::sddm_greeter_view(Some("breeze"), None, &bg, &l, true, "");
     assert!(v.clock.supported && v.clock.checked && !v.clock.label.is_empty());
@@ -315,8 +315,9 @@ fn часы_и_версия_qt_темы() {
     assert!(!none.clock.supported);
 }
 
-/// WebP — по сигнатуре и только при модуле WebP у Qt приветствия; отказ до
-/// пароля называет, чего не хватает; фильтр окна выбора — с `*.webp`.
+/// WebP — by signature and only with the WebP module in the greeter's Qt; the
+/// refusal before the password names what is missing; the picker filter
+/// includes `*.webp`.
 #[test]
 fn webp_по_модулю_qt() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -331,18 +332,18 @@ fn webp_по_модулю_qt() {
     assert!(plan::login_image_filter(true).contains("*.webp"));
     assert!(!plan::login_image_filter(false).contains("webp"));
     assert!(plan::sddm_background_is_ours("rexon-background.webp"));
-    // Раскладки модуля: Qt 6 и Qt 5 ищутся в своих каталогах.
+    // Module layouts: Qt 6 and Qt 5 are looked up in their own directories.
     let q6 = plan::qt_webp_plugin_paths(6);
     assert!(q6.contains(&"/usr/lib/qt6/plugins/imageformats/libqwebp.so".to_string()), "{q6:?}");
     let q5 = plan::qt_webp_plugin_paths(5);
     assert!(q5.contains(&"/usr/lib/qt/plugins/imageformats/libqwebp.so".to_string()), "{q5:?}");
     assert!(plan::qt_has_webp(6, &|p| p == "/usr/lib/qt6/plugins/imageformats/libqwebp.so"));
     assert!(!plan::qt_has_webp(5, &|p| p == "/usr/lib/qt6/plugins/imageformats/libqwebp.so"));
-    // Вид блока: фильтр по `webp` фона.
+    // Block view: filter by the background's `webp`.
     let bg = plan::SddmBackground { supported: true, webp: true, ..Default::default() };
     let v = plan::sddm_greeter_view(Some("breeze"), None, &bg, &plan::DesktopLook::default(), true, "");
     assert!(v.background.filter.contains("*.webp"));
-    // Отказ клиента до пароля: WebP без модуля — без запроса помощнику.
+    // Client refusal before the password: WebP without the module — no request to the helper.
     let mut asked = false;
     let r = plan::sddm_background_with("breeze", Some("/x.webp"), false, 6, &|_| Some(webp.to_vec()), &mut |_, _| {
         asked = true;
@@ -351,9 +352,9 @@ fn webp_по_модулю_qt() {
     assert!(r.unwrap_err().contains("qt6-imageformats") && !asked);
 }
 
-/// Превью — приветствие по версии Qt темы, как у демона SDDM 0.21:
-/// `sddm-greeter` для Qt 5, `sddm-greeter-qt6` для `QtVersion=6`; флаги —
-/// `--test-mode --theme <каталог>`. Нет темы или приветствия — отказ словами.
+/// Preview — the greeter matching the theme's Qt version, as in the SDDM 0.21
+/// daemon: `sddm-greeter` for Qt 5, `sddm-greeter-qt6` for `QtVersion=6`;
+/// flags — `--test-mode --theme <directory>`. No theme or greeter — a refusal in words.
 #[test]
 fn превью_темы_sddm() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -373,7 +374,7 @@ fn превью_темы_sddm() {
     for bad in ["", "..", "../etc", "-x", "nope"] {
         assert!(plan::sddm_preview_argv(bad, &read, &both).is_err(), "{bad}");
     }
-    // Плитка темы SDDM в сетке получает знак превью, заставка — своё имя.
+    // An SDDM theme tile in the grid gets the preview badge, a splash screen gets its own name.
     use rexon_core::appearance_page::local_splash_demo;
     assert_eq!(local_splash_demo("local:sddm:breeze").as_deref(), Some("sddm:breeze"));
     assert_eq!(local_splash_demo("local:sddm:-x"), None);
@@ -385,9 +386,9 @@ fn превью_темы_sddm() {
     assert!(!off.available && off.note == "нет");
 }
 
-/// Ход превью: Rexon гасит его по кнопке и по потолку времени (это не
-/// ошибка), сам вышедший с кодом 0 — тоже не ошибка; упавший — отказ с
-/// последними строками вывода; болтливая программа не встаёт на канале.
+/// Preview run: Rexon stops it on a button and on a time ceiling (not an
+/// error), exiting by itself with code 0 is not an error either; a crash is a
+/// refusal with the last output lines; a chatty program does not stall on the pipe.
 #[test]
 fn ход_превью() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -395,22 +396,22 @@ fn ход_превью() {
     use std::time::{Duration, Instant};
     let sh = |script: &str| vec!["/bin/sh".to_string(), "-c".to_string(), script.to_string()];
     let never = AtomicBool::new(false);
-    // Потолок времени.
+    // Time ceiling.
     let t = Instant::now();
     assert_eq!(plan::run_greeter_preview(&sh("sleep 30"), &never, Duration::from_millis(300)), Ok(()));
     assert!(t.elapsed() < Duration::from_secs(5));
-    // Кнопка «Закрыть предпросмотр».
+    // The «Close preview» button.
     let stop = AtomicBool::new(true);
     let t = Instant::now();
     assert_eq!(plan::run_greeter_preview(&sh("sleep 30"), &stop, Duration::from_secs(60)), Ok(()));
     assert!(t.elapsed() < Duration::from_secs(5));
-    // SIGTERM игнорирует — добивается.
+    // Ignores SIGTERM — gets killed.
     let t = Instant::now();
     assert_eq!(plan::run_greeter_preview(&sh("trap '' TERM; sleep 30"), &stop, Duration::from_secs(60)), Ok(()));
     assert!(t.elapsed() < Duration::from_secs(8));
-    // Сам вышел успешно (подставной вход PLM).
+    // Exited successfully by itself (mock PLM login).
     assert_eq!(plan::run_greeter_preview(&sh("exit 0"), &never, Duration::from_secs(10)), Ok(()));
-    // Упал: последние строки — в отказ; 200 КиБ вывода не вешают.
+    // Crashed: the last lines go into the refusal; 200 KiB of output do not hang it.
     let err = plan::run_greeter_preview(
         &sh("head -c 200000 /dev/zero | tr '\\0' 'x' >&2; echo >&2; echo 'qt.qpa: no platform plugin' >&2; exit 1"),
         &never,
@@ -422,10 +423,10 @@ fn ход_превью() {
     assert!(err.contains("Couldn't show"), "{err}");
 }
 
-/// Своя копия картинки фона: кладётся с отметкой (что и когда), прежняя
-/// копия того же вида уходит, «Вернуть фон» убирает всё; чужие имена в
-/// отметке не принимаются. Превью: своя — из копии, чужая — только если
-/// читается, иначе честная подпись.
+/// Own copy of the background picture: placed with a stamp (what and when),
+/// the former copy of the same kind goes away, «Restore background» removes
+/// everything; foreign names in the stamp are not accepted. Preview: own —
+/// from the copy, foreign — only if readable, otherwise an honest label.
 #[test]
 fn своя_копия_фона() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -445,21 +446,21 @@ fn своя_копия_фона() {
     assert_eq!(got, path);
     assert_eq!(kept, plan::KeptBackground { file: "plm.png".into(), source: src.to_string_lossy().into_owned(), set_at: 1793500000 });
     assert!(plan::kept_login_background(&dir, plan::LOGIN_BG_SDDM, &read, &exists).is_none(), "виды не путаются");
-    // Новая картинка другого формата сменяет прежнюю.
+    // A new picture of another format replaces the former one.
     std::fs::write(&src, b"\xff\xd8\xffjpg").unwrap();
     plan::keep_login_background_in(&dir, plan::LOGIN_BG_PLM, &src.to_string_lossy(), "jpg", 1793500100).unwrap();
     assert!(!std::path::Path::new(&path).exists());
     assert!(plan::kept_login_background(&dir, plan::LOGIN_BG_PLM, &read, &exists).unwrap().0.ends_with("/plm.jpg"));
-    // Отметка с чужим именем файла — не копия.
+    // A stamp with a foreign file name is not a copy.
     std::fs::write(format!("{dir}/sddm.json"), r#"{"file":"../../../etc/passwd","source":"x","set_at":1}"#).unwrap();
     assert!(plan::kept_login_background(&dir, plan::LOGIN_BG_SDDM, &read, &exists).is_none());
-    // «Вернуть фон».
+    // «Restore background».
     plan::drop_login_background_in(&dir, plan::LOGIN_BG_PLM);
     assert!(plan::kept_login_background(&dir, plan::LOGIN_BG_PLM, &read, &exists).is_none());
     assert!(!std::path::Path::new(&format!("{dir}/plm.json")).exists());
     let _ = std::fs::remove_dir_all(&root);
 
-    // Превью и подпись.
+    // Preview and label.
     let yes = |_: &str| true;
     let no = |_: &str| false;
     assert_eq!(
@@ -472,7 +473,7 @@ fn своя_копия_фона() {
     let (img, state) = plan::custom_background_preview(false, "/x/mine.jpg", Some("/k/sddm.png"), &no);
     assert!(img.is_empty() && state.contains("set outside Rexon"), "{state}");
     assert_eq!(plan::custom_background_preview(false, "/x/mine.jpg", None, &yes).0, "/x/mine.jpg");
-    // Вид SDDM: свой фон — превью из копии.
+    // SDDM view: own background — preview from the copy.
     let bg = plan::SddmBackground {
         supported: true,
         custom: true,

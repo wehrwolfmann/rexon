@@ -1,22 +1,23 @@
-//! Миниатюры карточек обоев, у которых движок не дал готового превью.
+//! Thumbnails for wallpaper cards the engine gave no ready preview for.
 //!
-//! Вкладка обоев рисует готовое превью напрямую; сюда попадает только
-//! остаток — обои без картинки (в первую очередь видео из своей папки:
-//! у ролика превью нет, пока его кто-нибудь не снимет). Для них кадр
-//! берётся из самого файла и кладётся в общий кэш миниатюр рабочего стола
+//! The wallpaper tab draws a ready preview directly; only the rest gets here —
+//! wallpapers without a picture (first of all videos from one's own folder: a
+//! clip has no preview until someone takes one). For them a frame is taken
+//! from the file itself and put into the desktop's shared thumbnail cache
 //! (Thumbnail Managing Standard, freedesktop.org):
-//! `<кэш>/thumbnails/x-large/<md5 адреса>.png`, с подписями `Thumb::URI`,
-//! `Thumb::MTime`, `Thumb::Size` внутри PNG. Запросов к демону нет — всё
-//! решается на месте, по файлу.
+//! `<cache>/thumbnails/x-large/<md5 of the URI>.png`, with the `Thumb::URI`,
+//! `Thumb::MTime`, `Thumb::Size` keys inside the PNG. There are no requests to
+//! the daemon — everything is decided on the spot, from the file.
 //!
-//! Здесь всё решение: что считать источником, где лежит миниатюра, свежа ли
-//! она, как звать `ffmpeg`, как собрать PNG. Объект для QML
-//! (`rexon-gui/src/thumbnail_request.rs`) только исполняет: зовёт
-//! [`live_lookup`] в главном потоке и [`live_generate`] в рабочем.
+//! The whole decision is here: what counts as the source, where the thumbnail
+//! lies, whether it is fresh, how to call `ffmpeg`, how to build the PNG. The
+//! QML object (`rexon-gui/src/thumbnail_request.rs`) only executes: it calls
+//! [`live_lookup`] on the main thread and [`live_generate`] on a worker.
 //!
-//! Договор со страницей (читает `component/ThumbnailImage.qml`): свойства
-//! `source`, `resource`, `wpType` — на вход; `state` (`Idle`/`Loading`/
-//! `Ready`/`Failed`), `cachePath` (адрес готового PNG) и `error` — на выход.
+//! Contract with the page (read by `component/ThumbnailImage.qml`): the
+//! properties `source`, `resource`, `wpType` — input; `state`
+//! (`Idle`/`Loading`/`Ready`/`Failed`), `cachePath` (the address of the ready
+//! PNG) and `error` — output.
 
 use std::io::Read;
 use std::path::Path;
@@ -25,44 +26,45 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use md5::{Digest, Md5};
 
-/// Состояния запроса — порядок тот же, что у перечисления `State` на
-/// странице (`W.ThumbnailRequest.Ready` читается оттуда числом).
+/// Request states — the order is the same as the page's `State` enum
+/// (`W.ThumbnailRequest.Ready` is read from there as a number).
 pub const STATE_IDLE: i32 = 0;
 pub const STATE_LOADING: i32 = 1;
 pub const STATE_READY: i32 = 2;
 pub const STATE_FAILED: i32 = 3;
 
-/// Длинная сторона миниатюры. Карточка просит не больше 512 (`maxSize`).
+/// Long edge of a thumbnail. The card asks for no more than 512 (`maxSize`).
 pub const MAX_EDGE: u32 = 512;
 
-/// Сколько кадров от начала ролика просматривает `ffmpeg`, выбирая самый
-/// показательный: первый кадр часто чёрный (затемнение, заставка).
+/// How many frames from the start of a clip `ffmpeg` looks through to pick the
+/// most representative: the first frame is often black (a fade, an intro).
 pub const VIDEO_PROBE_FRAMES: u32 = 30;
 
-/// Сколько ждём `ffmpeg` на один файл. Битый или сетевой файл не должен
-/// навсегда занять одно из мест очереди миниатюр.
+/// How long we wait for `ffmpeg` per file. A broken or network file must not
+/// occupy one of the thumbnail queue slots forever.
 pub const FRAME_TIMEOUT_SECS: u64 = 20;
 
-/// Причины отказа — строки свойства `error`. Латиницей: это поле для
-/// журнала и отладки, человеку страница его не показывает.
+/// Refusal causes — strings of the `error` property. In English: this field is
+/// for the log and debugging, the page does not show it to the person.
 pub const ERR_NO_SOURCE: &str = "no preview source";
 pub const ERR_NOT_FOUND: &str = "source file not found";
 
-/// Что именно превращать в миниатюру.
+/// What exactly to turn into a thumbnail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Job {
-    /// Файл-источник (как пришёл со страницы, ещё не абсолютный).
+    /// The source file (as it came from the page, not yet absolute).
     pub path: String,
-    /// `true` — ролик (кадр достаёт `ffmpeg`), `false` — картинка.
+    /// `true` — a clip (`ffmpeg` gets the frame), `false` — a picture.
     pub is_video: bool,
 }
 
-/// Выбор источника по трём свойствам запроса.
+/// Choosing the source by the request's three properties.
 ///
-/// * есть `source` (готовое превью) — миниатюра делается из него;
-/// * иначе, если обои — видео или картинка, — из самого файла обоев;
-/// * иначе брать не из чего: сцену или веб-страницу в картинку без
-///   рисовальщика не превратить.
+/// * there is `source` (a ready preview) — the thumbnail is made from it;
+/// * otherwise, if the wallpaper is a video or a picture — from the wallpaper
+///   file itself;
+/// * otherwise there is nothing to take it from: a scene or a web page cannot
+///   be turned into a picture without a renderer.
 pub fn resolve_job(source: &str, resource: &str, wp_type: &str) -> Result<Job, &'static str> {
     if !source.is_empty() {
         return Ok(Job { path: source.to_string(), is_video: false });
@@ -73,34 +75,34 @@ pub fn resolve_job(source: &str, resource: &str, wp_type: &str) -> Result<Job, &
     Err(ERR_NO_SOURCE)
 }
 
-/// Причины отказа waywallen 0.6.0 (`ThumbnailRequest::submit` оригинала).
+/// Refusal causes of waywallen 0.6.0 (the original's `ThumbnailRequest::submit`).
 pub const ERR_NO_PREVIEW: &str = "No thumbnail preview source";
 pub const ERR_NOT_LOCAL: &str = "Thumbnail generation requires a local resource";
-/// Миниатюру «таймлайна» (обои по времени суток: KDE/GNOME) оригинал
-/// собирает из картинок описания. Этого у нас нет — без готового превью
-/// карточка честно пустая.
+/// A «timeline» thumbnail (time-of-day wallpapers: KDE/GNOME) the original
+/// assembles from the description's pictures. We do not have that — without a
+/// ready preview the card is honestly empty.
 pub const ERR_TIMELINE: &str = "Timeline thumbnails are not supported";
 
-/// Что делать с запросом миниатюры (waywallen 0.6.0).
+/// What to do with a thumbnail request (waywallen 0.6.0).
 ///
-/// С 0.6.0 карточка ВСЕГДА показывает `cachePath` запроса, поэтому готовое
-/// превью (и картинка без превью) отдаётся адресом как есть — анимированное
-/// превью остаётся анимированным. Делать кадр нужно только ролику без
-/// превью.
+/// Since 0.6.0 the card ALWAYS shows the request's `cachePath`, so a ready
+/// preview (and a picture without a preview) is handed over as an address as
+/// is — an animated preview stays animated. A frame needs to be made only for
+/// a clip without a preview.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
-    /// Запрос выключен или входа нет.
+    /// The request is disabled or there is no input.
     Idle,
-    /// Показать этот адрес как есть.
+    /// Show this address as is.
     Direct(String),
-    /// Отказ с причиной.
+    /// Refusal with a cause.
     Failed(String),
-    /// Кадр из ролика (`resource`) — через кэш ([`live_lookup`]).
+    /// A frame from the clip (`resource`) — through the cache ([`live_lookup`]).
     Generate,
 }
 
-/// Решение по свойствам запроса — порт `ThumbnailRequest::submit`.
-/// `cwd` — текущий каталог (относительный путь из QML).
+/// The decision by the request's properties — port of `ThumbnailRequest::submit`.
+/// `cwd` — the current directory (a relative path from QML).
 pub fn plan(
     source: &str,
     resource: &str,
@@ -133,8 +135,9 @@ pub fn plan(
     Plan::Generate
 }
 
-/// `input_url` оригинала: `:/…` — ресурс Qt (`qrc:/…`), строка со схемой —
-/// адрес как есть, остальное — путь к файлу (относительный — от `cwd`).
+/// The original's `input_url`: `:/…` is a Qt resource (`qrc:/…`), a string with
+/// a scheme is an address as is, the rest is a file path (a relative one —
+/// from `cwd`).
 pub fn input_url(value: &str, cwd: &str) -> String {
     if let Some(rest) = value.strip_prefix(":/") {
         return format!("qrc:/{rest}");
@@ -157,7 +160,7 @@ pub fn input_url(value: &str, cwd: &str) -> String {
     format!("file://{}", clean_path(&path))
 }
 
-/// `QDir::cleanPath`: без `.`, `..` и повторных `/`.
+/// `QDir::cleanPath`: without `.`, `..` and repeated `/`.
 fn clean_path(path: &str) -> String {
     let mut parts: Vec<&str> = Vec::new();
     for part in path.split('/') {
@@ -172,10 +175,10 @@ fn clean_path(path: &str) -> String {
     format!("/{}", parts.join("/"))
 }
 
-/// Корень кэша миниатюр: `WAYWALLEN_THUMB_DIR`, иначе
-/// `$XDG_CACHE_HOME/thumbnails`, иначе `~/.cache/thumbnails`. Тот же
-/// каталог, куда кладёт миниатюры движок обоев и файловый менеджер, —
-/// снятое однажды видно всем.
+/// Root of the thumbnail cache: `WAYWALLEN_THUMB_DIR`, otherwise
+/// `$XDG_CACHE_HOME/thumbnails`, otherwise `~/.cache/thumbnails`. The same
+/// directory the wallpaper engine and the file manager put thumbnails into —
+/// taken once, it is visible to everyone.
 pub fn thumb_root(thumb_dir: Option<&str>, xdg_cache_home: Option<&str>, home: &str) -> String {
     match thumb_dir {
         Some(v) if !v.is_empty() => v.trim_end_matches('/').to_string(),
@@ -183,27 +186,28 @@ pub fn thumb_root(thumb_dir: Option<&str>, xdg_cache_home: Option<&str>, home: &
     }
 }
 
-/// Адрес файла, под которым миниатюра числится в кэше и в подписи
-/// `Thumb::URI`. Без процентного кодирования — так же считает ключ движок
-/// обоев, и только при совпадении ключа кэш у нас с ним общий.
+/// The file URI under which the thumbnail is registered in the cache and in the
+/// `Thumb::URI` key. Without percent-encoding — the wallpaper engine computes
+/// the key the same way, and only when the key matches is our cache shared
+/// with it.
 pub fn thumb_uri(abs_path: &str) -> String {
     format!("file://{abs_path}")
 }
 
-/// Каталог миниатюр размера `x-large` внутри корня кэша.
+/// The `x-large` thumbnail directory inside the cache root.
 pub fn cache_dir(root: &str) -> String {
     format!("{}/x-large", root.trim_end_matches('/'))
 }
 
-/// Файл миниатюры: `<корень>/x-large/<md5 адреса>.png`.
+/// The thumbnail file: `<root>/x-large/<md5 of the URI>.png`.
 pub fn cache_file(root: &str, abs_path: &str) -> String {
     let digest = Md5::digest(thumb_uri(abs_path).as_bytes());
     let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
     format!("{}/{hex}.png", cache_dir(root))
 }
 
-/// Вписать размер в квадрат `max_edge`, сохранив пропорции. Меньшее не
-/// растягивается. `None` — размер вырожден.
+/// Fit a size into the `max_edge` square keeping proportions. A smaller one is
+/// not stretched. `None` — the size is degenerate.
 pub fn fit_inside(width: u32, height: u32, max_edge: u32) -> Option<(u32, u32)> {
     if width == 0 || height == 0 || max_edge == 0 {
         return None;
@@ -219,19 +223,20 @@ pub fn fit_inside(width: u32, height: u32, max_edge: u32) -> Option<(u32, u32)> 
     }
 }
 
-/// Годится ли лежащая в кэше миниатюра: она должна быть не старше
-/// источника. Сверяется время изменения самих файлов (секунды) — открывать
-/// PNG ради подписи `Thumb::MTime` в главном потоке слишком дорого.
+/// Whether a thumbnail lying in the cache is usable: it must not be older than
+/// the source. The modification times of the files themselves are compared
+/// (seconds) — opening the PNG for the `Thumb::MTime` key on the main thread is
+/// too expensive.
 pub fn cache_is_fresh(source_mtime: i64, thumb_mtime: i64) -> bool {
     thumb_mtime >= source_mtime
 }
 
-/// Команда, достающая один кадр и отдающая его PNG-ом в стандартный вывод.
+/// A command that gets one frame and outputs it as PNG to stdout.
 ///
-/// Для ролика кадр выбирает фильтр `thumbnail` из первых
-/// [`VIDEO_PROBE_FRAMES`] кадров; для картинки (запасной путь, когда формат
-/// не читается своими средствами) берётся единственный кадр. Масштаб —
-/// вписать в [`MAX_EDGE`], не растягивая.
+/// For a clip the frame is chosen by the `thumbnail` filter from the first
+/// [`VIDEO_PROBE_FRAMES`] frames; for a picture (the fallback path when the
+/// format cannot be read by our own means) the single frame is taken. Scale —
+/// fit into [`MAX_EDGE`] without stretching.
 pub fn frame_argv(path: &str, is_video: bool) -> Vec<String> {
     let scale = format!(
         "scale=w='min({e},iw)':h='min({e},ih)':force_original_aspect_ratio=decrease",
@@ -256,7 +261,7 @@ pub fn frame_argv(path: &str, is_video: bool) -> Vec<String> {
     .collect()
 }
 
-/// Собрать PNG миниатюры из пикселей RGBA с тремя подписями стандарта.
+/// Build a thumbnail PNG from RGBA pixels with the standard's three keys.
 pub fn encode_thumb_png(
     rgba: &[u8],
     width: u32,
@@ -273,8 +278,8 @@ pub fn encode_thumb_png(
         let mut encoder = png::Encoder::new(&mut out, width, height);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
-        // Стандарт называет `tEXt`, но он вмещает только Latin-1: адрес с
-        // не-латиницей уходит в `iTXt` (UTF-8 без потерь).
+        // The standard names `tEXt`, but it holds only Latin-1: a URI with
+        // non-Latin characters goes into `iTXt` (UTF-8 without loss).
         if uri.is_ascii() {
             encoder.add_text_chunk("Thumb::URI".to_string(), uri.to_string())
         } else {
@@ -294,7 +299,7 @@ pub fn encode_thumb_png(
     Ok(out)
 }
 
-/// Декодировать картинку из памяти и ужать до [`MAX_EDGE`].
+/// Decode a picture from memory and shrink it to [`MAX_EDGE`].
 pub fn decode_and_fit(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
     let img = image::load_from_memory(bytes).map_err(|e| e.to_string())?;
     let (w, h) = fit_inside(img.width(), img.height(), MAX_EDGE)
@@ -307,29 +312,29 @@ pub fn decode_and_fit(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
     Ok((img.to_rgba8().into_raw(), w, h))
 }
 
-// ── живая часть: диск и ffmpeg ─────────────────────────────────────────────
+// ── the live part: disk and ffmpeg ─────────────────────────────────────────
 
-/// Миниатюры нет — её надо сделать. Всё, что нужно рабочему потоку.
+/// There is no thumbnail — it must be made. Everything the worker thread needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pending {
-    /// Абсолютный путь источника; он же ключ, по которому одинаковые
-    /// запросы разных карточек сливаются в одну работу.
+    /// Absolute path of the source; it is also the key by which identical
+    /// requests of different cards merge into one job.
     pub path: String,
     pub is_video: bool,
-    /// Куда писать готовый PNG.
+    /// Where to write the ready PNG.
     pub cache_path: String,
     pub source_mtime: i64,
     pub source_size: u64,
 }
 
-/// Итог быстрой проверки в главном потоке.
+/// Result of the quick check on the main thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lookup {
-    /// Миниатюра уже лежит в кэше — путь к PNG.
+    /// The thumbnail already lies in the cache — the path to the PNG.
     Ready(String),
-    /// Делать не из чего — причина.
+    /// Nothing to make it from — the cause.
     Failed(String),
-    /// Нужна работа в фоне.
+    /// Background work is needed.
     Miss(Pending),
 }
 
@@ -340,7 +345,7 @@ fn mtime_secs(meta: &std::fs::Metadata) -> i64 {
         .map_or(0, |d| d.as_secs() as i64)
 }
 
-/// [`lookup_in`] с корнем кэша из окружения процесса.
+/// [`lookup_in`] with the cache root from the process environment.
 pub fn live_lookup(source: &str, resource: &str, wp_type: &str) -> Lookup {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
     let root = thumb_root(
@@ -351,8 +356,8 @@ pub fn live_lookup(source: &str, resource: &str, wp_type: &str) -> Lookup {
     lookup_in(&root, source, resource, wp_type)
 }
 
-/// Быстрая проверка без декодирования: источник есть? миниатюра в кэше
-/// есть и не старше него? Только `stat` — годится для главного потока.
+/// A quick check without decoding: is there a source? is there a thumbnail in
+/// the cache that is not older than it? Only `stat` — fit for the main thread.
 pub fn lookup_in(root: &str, source: &str, resource: &str, wp_type: &str) -> Lookup {
     let job = match resolve_job(source, resource, wp_type) {
         Ok(job) => job,
@@ -383,7 +388,7 @@ pub fn lookup_in(root: &str, source: &str, resource: &str, wp_type: &str) -> Loo
     })
 }
 
-/// Запустить `ffmpeg` и забрать PNG кадра из его вывода, не дольше
+/// Run `ffmpeg` and take the frame's PNG from its output, no longer than
 /// [`FRAME_TIMEOUT_SECS`].
 fn live_ffmpeg_frame(path: &str, is_video: bool) -> Result<Vec<u8>, String> {
     let argv = frame_argv(path, is_video);
@@ -394,8 +399,8 @@ fn live_ffmpeg_frame(path: &str, is_video: bool) -> Result<Vec<u8>, String> {
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("{}: {e}", argv[0]))?;
-    // Вывод читают отдельные потоки: иначе полный канал остановит ffmpeg,
-    // а мы будем ждать его завершения.
+    // The output is read by separate threads: otherwise a full pipe would
+    // stop ffmpeg, while we would wait for it to finish.
     let mut stdout = child.stdout.take().ok_or("no stdout")?;
     let mut stderr = child.stderr.take().ok_or("no stderr")?;
     let out_reader = std::thread::spawn(move || {
@@ -432,8 +437,8 @@ fn live_ffmpeg_frame(path: &str, is_video: bool) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Записать файл так, чтобы читатель никогда не увидел половину: во
-/// временный рядом (доступ только владельцу) и переименованием на место.
+/// Write a file so that a reader never sees half of it: into a temporary file
+/// next to it (owner-only access) and rename it into place.
 fn live_write_atomic(cache_path: &str, bytes: &[u8]) -> Result<(), String> {
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let dir = Path::new(cache_path).parent().ok_or("no cache dir")?;
@@ -461,11 +466,11 @@ fn live_write_atomic(cache_path: &str, bytes: &[u8]) -> Result<(), String> {
     })
 }
 
-/// Сделать миниатюру и положить в кэш. Долго (декодирование, `ffmpeg`) —
-/// только из рабочего потока. Возвращает путь к PNG.
+/// Make a thumbnail and put it into the cache. Slow (decoding, `ffmpeg`) — only
+/// from a worker thread. Returns the path to the PNG.
 pub fn live_generate(job: &Pending) -> Result<String, String> {
-    // Картинку читаем сами; не вышло (формат, которого у нас нет) — тем же
-    // путём, что и ролик.
+    // We read the picture ourselves; if that failed (a format we do not have)
+    // — the same way as a clip.
     let own = if job.is_video {
         None
     } else {

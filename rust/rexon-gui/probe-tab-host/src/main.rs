@@ -1,17 +1,18 @@
-// Прогон макета каркаса. Печатает одну машинно-читаемую строку
-// `REXON-TABHOST-PROBE ...` — в том же духе, что `REXON-WS-PROBE` у макета
-// транспорта: проверка обязана быть воспроизводимой, а не «посмотрел глазами».
+// Run of the frame mock-up. Prints one machine-readable line
+// `REXON-TABHOST-PROBE ...` — in the same spirit as `REXON-WS-PROBE` of the
+// transport mock-up: the check must be reproducible, not "looked at it".
 //
-// Выход 0 — Qt повёл себя так, как обещает документация: QML встаёт внутрь
-// вкладки виджетов и держит цепочку фокуса, а виджет в сцену Qt Quick НЕ
-// встаёт. Любое расхождение — выход 1 и перечень провалившихся проверок.
+// Exit 0 means Qt behaved as its documentation promises: QML goes inside a
+// widget tab and keeps the focus chain, while a widget does NOT go into a
+// Qt Quick scene. Any divergence means exit 1 and a list of the failed
+// checks.
 //
-// Заведомо неверные условия задаются переменной среды
-// `REXON_TABHOST_MUTATE` (через запятую): `blank-qml`, `no-focus`,
-// `fake-embed`, `skip-push`. Каждое обязано ронять прогон — стенд, который
-// зеленеет всегда, ничего не проверяет.
+// Deliberately wrong conditions are set with the `REXON_TABHOST_MUTATE`
+// environment variable (comma-separated): `blank-qml`, `no-focus`,
+// `fake-embed`, `skip-push`. Each one must fail the run — a test bench
+// that is always green checks nothing.
 //
-// Каталог для снимков — первым аргументом.
+// The directory for screenshots is the first argument.
 
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
@@ -73,17 +74,18 @@ fn c_str(buf: &[c_char]) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-/// Приговор. Каждая строка — отдельная проверка; в отчёт уходят имена
-/// провалившихся, чтобы по выводу было видно, ЧТО именно не сошлось.
+/// Verdict. Each line is a separate check; the names of the failed ones go
+/// into the report, so the output shows WHAT exactly did not match.
 fn failures(r: &TabHostReport) -> Vec<&'static str> {
     let mut bad = Vec::new();
 
-    // ── Сторона, которая обязана работать: QML внутрь виджетов ───────
+    // ── The side that must work: QML inside widgets ───────────────
     if r.qml_host_ready != 1 {
         bad.push("qml-хост не дошёл до Ready");
     }
-    // Половина площади хоста — с запасом: сцена красит его целиком, но по
-    // краям есть сглаживание, а по центру лежит поле ввода.
+    // Half of the host's area — with a margin: the scene paints it entirely,
+    // but there is antialiasing at the edges, and a text field lies in the
+    // centre.
     if r.qml_pixels_pct < 50 {
         bad.push("сцена QML не нарисовалась внутри вкладки");
     }
@@ -97,12 +99,12 @@ fn failures(r: &TabHostReport) -> Vec<&'static str> {
         bad.push("из QML фокус не возвращается в виджеты");
     }
 
-    // ── Сторона, которая обязана НЕ работать: виджет внутрь QML ──────
+    // ── The side that must NOT work: a widget inside QML ──────────
     if r.widget_is_quickitem != 0 {
         bad.push("QWidget внезапно приводится к QQuickItem");
     }
-    // Страховка от пустой проверки: если сцена виджет вообще не приняла,
-    // «нет визуальных детей» ничего не доказывает.
+    // Safeguard against an empty check: if the scene did not accept the widget
+    // at all, "no visual children" proves nothing.
     if r.qml_data_before < 0 || r.qml_data_after != r.qml_data_before + 1 {
         bad.push("сцена не приняла виджет даже ресурсом — проверка пуста");
     }
@@ -112,8 +114,8 @@ fn failures(r: &TabHostReport) -> Vec<&'static str> {
     if r.widget_pixels_pct != 0 {
         bad.push("виджет нарисовался внутри сцены QML");
     }
-    // У настоящего Item той же сцены parent есть (положительный контроль —
-    // поломка `parent-of-item`); у виджета его нет вовсе.
+    // A real Item of the same scene has a parent (a positive control — the
+    // `parent-of-item` breakage); the widget has none at all.
     if r.parent_undefined != 1 {
         bad.push("QML знает у виджета родителя-элемента");
     }

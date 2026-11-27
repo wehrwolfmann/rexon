@@ -1,23 +1,29 @@
-// ActionJournal — журнал действий человека и пульс окна.
+// ActionJournal — the journal of the user's actions and the window
+// heartbeat.
 //
-// ЗАЧЕМ. Живой случай 15.11.2026: окно зависло, стол предложил «Закрыть»,
-// процесс убит — а в журнале ни что нажимали, ни где стоял главный поток.
+// WHY. A live case on 15.11.2026: the window froze, the desktop offered
+// "Close", the process was killed — and the log had neither what was
+// pressed nor where the main thread was.
 //
-// Действия пишутся в ОДНОЙ точке на всё приложение — фильтром ввода (шим
-// `rexon_install_input_journal`): любая кнопка, флажок, строка списка,
-// пункт меню, карточка магазина с `TapHandler`/`MouseArea` любой вкладки,
-// в том числе вендорной вкладки обоев, попадает в журнал сама, без строчки
-// в странице. QML остаётся только то, чего фильтр знать не может:
-//   * смена раздела окна (`section`, полоса разделов `MainWindow.qml`);
-//   * поле ввода (`typing`/`entered`, общий контрол `RexonTextField`):
-//     по событиям клавиш не понять, что набрано, а пароль писать нельзя.
+// Actions are written at ONE point for the whole application — by the
+// input filter (the `rexon_install_input_journal` shim): any button, check
+// box, list row, menu item, store card with a `TapHandler`/`MouseArea` of
+// any tab, including the vendored wallpaper tab, gets into the journal by
+// itself, without a line in the page. QML is left only with what the
+// filter cannot know:
+//   * a window section change (`section`, the section strip of
+//     `MainWindow.qml`);
+//   * a text field (`typing`/`entered`, the shared `RexonTextField`
+//     control): key events do not tell what was typed, and a password
+//     must not be written.
 //
-// Логики здесь нет (правило крейта): что из нажатия действие, тексты строк,
-// текущее действие и сторож — ядро (`rexon_core::ui_watch`).
+// There is no logic here (the crate rule): what counts as an action, the
+// line texts, the current action and the watchdog belong to the core
+// (`rexon_core::ui_watch`).
 //
-// Самопроверка и стенды журнала не заводят (`applog::is_active`), и
-// синглтон в них молчит: строки действий не должны мешаться в вывод,
-// который разбирают прогоны.
+// The self-test and test benches do not set up the journal
+// (`applog::is_active`), and the singleton stays silent in them: action
+// lines must not get mixed into the output that the runs parse.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -35,21 +41,21 @@ pub mod qobject {
         #[qml_singleton]
         type ActionJournal = super::ActionJournalRust;
 
-        /// Человек набирает текст в поле `item` с подсказкой `field`;
-        /// `secret` — поле пароля (его `value` приходит пустым).
+        /// The user is typing text into field `item` with placeholder `field`;
+        /// `secret` is a password field (its `value` arrives empty).
         #[qinvokable]
         fn typing(self: &ActionJournal, item: &QVariant, field: &QString, value: &QString, secret: bool);
 
-        /// Ввод в поле `item` закончен (Enter или уход фокуса). → номер для
-        /// `finish`, 0 — строки не было.
+        /// Input into field `item` is finished (Enter or focus loss). → the number
+        /// for `finish`, 0 means there was no line.
         #[qinvokable]
         fn entered(self: &ActionJournal, item: &QVariant, field: &QString, value: &QString, secret: bool) -> f64;
 
-        /// Обработчик действия `id` вернул управление циклу событий.
+        /// The handler of action `id` returned control to the event loop.
         #[qinvokable]
         fn finish(self: &ActionJournal, id: f64);
 
-        /// Открыт раздел окна `id`.
+        /// Window section `id` was opened.
         #[qinvokable]
         fn section(self: &ActionJournal, id: &QString);
     }
@@ -69,7 +75,8 @@ extern "C" {
     ) -> bool;
 }
 
-/// Нажатие от фильтра ввода (шим) → ядро. 0 — не действие.
+/// A press from the input filter (the shim) → the core. 0 means not an
+/// action.
 extern "C" fn input_begin(desc: *const c_char, len: c_int, via_key: c_int) -> u64 {
     if desc.is_null() || len <= 0 || !applog::is_active() {
         return 0;
@@ -85,7 +92,7 @@ extern "C" fn input_finish(id: u64) {
 #[derive(Default)]
 pub struct ActionJournalRust;
 
-/// Цепочка классов предков объекта из QML (см. шим).
+/// Chain of ancestor classes of an object from QML (see the shim).
 fn ancestry(item: &cxx_qt_lib::QVariant) -> String {
     let mut buf = vec![0u8; 4096];
     let n = unsafe {
@@ -134,8 +141,9 @@ impl qobject::ActionJournal {
     }
 }
 
-/// Завести сторож главного потока, его пульс и фильтр ввода журнала
-/// действий. Звать из потока GUI после создания приложения и до цикла событий.
+/// Set up the main thread watchdog, its heartbeat and the action journal's
+/// input filter. Call from the GUI thread after the application is created
+/// and before the event loop.
 pub fn install_main_watchdog() {
     if !unsafe { rexon_install_input_journal(input_begin, input_finish) } {
         applog::write(applog::Level::Warn, ui_watch::AREA, "журнал действий не встал: приложения Qt ещё нет");

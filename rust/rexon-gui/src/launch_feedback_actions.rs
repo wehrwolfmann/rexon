@@ -1,7 +1,9 @@
-// LaunchFeedbackActions — объект раздела «Отклик при запуске» вкладки
-// «Настройки» (курсор и панель задач, пока программа запускается).
+// LaunchFeedbackActions — the object of the "Launch feedback" section of
+// the "Settings" tab (the cursor and the task bar while a program is
+// starting).
 //
-// Логики здесь нет: снимок и запись — ядро (`rexon_core::launch_feedback`).
+// There is no logic here: snapshot and writing come from the core
+// (`rexon_core::launch_feedback`).
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -17,26 +19,26 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок раздела (JSON `launch_feedback::LaunchFeedbackState`).
+        /// Section snapshot (JSON `launch_feedback::LaunchFeedbackState`).
         #[qinvokable]
         fn state(self: &LaunchFeedbackActions) -> QString;
 
-        /// Вид курсора: `none` | `static` | `blinking` | `bouncing`.
+        /// Cursor kind: `none` | `static` | `blinking` | `bouncing`.
         #[qinvokable]
         #[cxx_name = "setCursor"]
         fn set_cursor(self: &LaunchFeedbackActions, style: &QString) -> QString;
 
-        /// Анимация на панели задач.
+        /// Animation on the task bar.
         #[qinvokable]
         #[cxx_name = "setTaskbar"]
         fn set_taskbar(self: &LaunchFeedbackActions, on: bool) -> QString;
 
-        /// Через сколько секунд остановить анимацию.
+        /// After how many seconds to stop the animation.
         #[qinvokable]
         #[cxx_name = "setTimeout"]
         fn set_timeout(self: &LaunchFeedbackActions, seconds: i32) -> QString;
 
-        /// «По умолчанию».
+        /// "Defaults".
         #[qinvokable]
         fn defaults(self: &LaunchFeedbackActions) -> QString;
     }

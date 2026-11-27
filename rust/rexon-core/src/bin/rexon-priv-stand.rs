@@ -1,32 +1,35 @@
-//! `rexon-priv-stand` — помощник сеанса прав для СТЕНДА (уровень 2 из
-//! трёх, см. docs/testing.md). ⛔ Только тестовая сборка: бинарь собирается лишь с
-//! feature `stand` (`required-features` в `Cargo.toml`), пакет и `build-app`
-//! его не собирают. Код стенда живёт ТОЛЬКО в этом файле — библиотека ядра и
-//! настоящий `rexon-priv-helper` от feature не меняются ни на байт (сторож —
+//! `rexon-priv-stand` is the privilege session helper for the TEST STAND (level
+//! 2 of three, see docs/testing.md). Never ship it: this is a test-only build —
+//! the binary is built only with the `stand` feature (`required-features` in
+//! `Cargo.toml`); neither the package nor `build-app` builds it. The stand code
+//! lives ONLY in this file: the core library and the real `rexon-priv-helper`
+//! do not change by a single byte because of the feature (the guard is
 //! `tests/priv_userns.rs`, `stand_code_stays_out_of_release`).
 //!
-//! Что это: тот же сеанс помощника ([`helper::run_session`] — проверка
-//! собеседника, рукопожатие, отзыв, проверки операций, исполнение), но вместо
-//! системы — «сухой» [`RootIo`] с корнем-префиксом:
+//! What it is: the same helper session ([`helper::run_session`] — peer check,
+//! handshake, revocation, operation checks, execution), but instead of the
+//! system it uses a "dry" [`RootIo`] with a root prefix:
 //!
-//! * программы НЕ запускаются: argv записывается в журнал стенда;
-//! * файлы читаются и пишутся под `<стенд>/root` (ничего вне каталога стенда);
-//! * logind — файл `<стенд>/session` (ответ `loginctl show-session`), сон —
-//!   `<стенд>/slept_ms`, часы — `<стенд>/clock_ms`: тест меняет файл, и
-//!   настоящий `LogindWatch`/`Revoker` помощника видят блокировку, сон, простой.
+//! * programs are NOT started: the argv is written to the stand journal;
+//! * files are read and written under `<stand>/root` (nothing outside the stand
+//!   directory);
+//! * logind is the file `<stand>/session` (the `loginctl show-session` answer),
+//!   sleep is `<stand>/slept_ms`, the clock is `<stand>/clock_ms`: the test
+//!   changes a file, and the helper's real `LogindWatch`/`Revoker` see the
+//!   lock, the sleep, the idle time.
 //!
-//! Запуск — как у настоящего, через «шим pkexec» теста: сокет окна на fd 0/1,
-//! `PKEXEC_UID`, аргументы `[--session <id>] [--lang <код>]`. Каталог стенда —
-//! `REXON_STAND_DIR` (без него — отказ). Необязательно: `REXON_STAND_POLL_MS`
-//! (опрос logind, по умолчанию 50 мс), `REXON_STAND_BUILD` (чужой отпечаток
-//! сборки — для `BuildMismatch`).
+//! It is started like the real one, via the test's "pkexec shim": the window's
+//! socket on fd 0/1, `PKEXEC_UID`, arguments `[--session <id>] [--lang <code>]`.
+//! The stand directory is `REXON_STAND_DIR` (without it the helper refuses).
+//! Optional: `REXON_STAND_POLL_MS` (logind polling, 50 ms by default),
+//! `REXON_STAND_BUILD` (a foreign build fingerprint, for `BuildMismatch`).
 //!
-//! Журнал `<стенд>/journal` — по строке на событие:
-//! `run <argv>`, `held <argv>`, `write <путь> <режим>`, `copy <куда>`,
-//! `mkdir <путь>`, `rm <путь>`, `log <строка помощника>`, `exit <код>`,
-//! `probe fc-query <копия>` (ответ — файл `<стенд>/fc-query`).
-//! Файл `<стенд>/hold` задерживает каждую команду, пока его не удалят
-//! (операция «посреди транзакции»).
+//! The journal `<stand>/journal` has one line per event:
+//! `run <argv>`, `held <argv>`, `write <path> <mode>`, `copy <dest>`,
+//! `mkdir <path>`, `rm <path>`, `log <helper line>`, `exit <code>`,
+//! `probe fc-query <copy>` (the answer is the file `<stand>/fc-query`).
+//! The file `<stand>/hold` delays every command until it is deleted
+//! (an operation "in the middle of a transaction").
 
 use std::io::Write;
 use std::os::fd::{FromRawFd, OwnedFd};
@@ -39,7 +42,7 @@ use rexon_core::privilege::helper::{self, Captured, RootIo, RunExtra, SessionCon
 use rexon_core::privilege::revoke::{self, Clock, LogindWatch, SuspendGauge};
 use rexon_core::privilege::{client, proto, validate};
 
-/// Переменная с каталогом стенда.
+/// The variable holding the stand directory.
 const DIR_ENV: &str = "REXON_STAND_DIR";
 
 struct Stand {
@@ -56,8 +59,8 @@ impl Stand {
         let _ = f.flush();
     }
 
-    /// Системный путь → путь под корнем стенда. Путь, уже лежащий под
-    /// корнем (рабочий каталог помощника — `work_base`), остаётся как есть.
+    /// Maps a system path to a path under the stand root. A path that already lies
+    /// under the root (the helper's working directory, `work_base`) stays as is.
     fn real(&self, path: &str) -> PathBuf {
         let p = Path::new(path);
         if p.starts_with(&self.root) {
@@ -76,7 +79,7 @@ impl Stand {
     }
 }
 
-/// «Сухой» исполнитель стенда.
+/// The stand's "dry" executor.
 struct StandIo(Arc<Stand>);
 
 fn exec_file(p: &Path) -> bool {
@@ -139,8 +142,8 @@ impl RootIo for StandIo {
                 Err(_) => Captured { code: Some(1), stdout: String::new() },
             },
             [revoke::LOGINCTL, ..] => Captured { code: Some(1), stdout: String::new() },
-            // fontconfig стенда: ответ `fc-query` — файл `<стенд>/fc-query`
-            // (нет файла — «не шрифт»), путь копии — в журнал.
+            // The stand's fontconfig: the `fc-query` answer is the file `<stand>/fc-query`
+            // (no file means "not a font"); the copy path goes to the journal.
             ["fc-query", .., path] => {
                 self.0.note(&format!("probe fc-query {path}"));
                 match std::fs::read_to_string(self.0.dir.join("fc-query")) {
@@ -264,7 +267,7 @@ impl RootIo for StandIo {
     }
 }
 
-/// Часы стенда: `<стенд>/clock_ms`.
+/// The stand clock: `<stand>/clock_ms`.
 struct StandClock(Arc<Stand>);
 
 impl Clock for StandClock {
@@ -273,7 +276,7 @@ impl Clock for StandClock {
     }
 }
 
-/// Счётчик сна стенда: `<стенд>/slept_ms`.
+/// The stand sleep counter: `<stand>/slept_ms`.
 struct StandGauge(Arc<Stand>);
 
 impl SuspendGauge for StandGauge {
@@ -282,12 +285,12 @@ impl SuspendGauge for StandGauge {
     }
 }
 
-/// Сокет окна с fd 0 — в свой fd с `CLOEXEC`, на 0/1 — `/dev/null` (как у
-/// настоящего помощника).
+/// Moves the window socket from fd 0 to its own fd with `CLOEXEC`, and puts
+/// `/dev/null` on 0/1 (like the real helper).
 fn take_socket_from_stdio() -> Option<OwnedFd> {
     let mut ty: libc::c_int = 0;
     let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
-    // SAFETY: getsockopt/fcntl/open/dup2 на своих fd; результаты проверяются.
+    // SAFETY: getsockopt/fcntl/open/dup2 on our own fds; results are checked.
     unsafe {
         if libc::getsockopt(0, libc::SOL_SOCKET, libc::SO_TYPE, (&mut ty as *mut libc::c_int).cast(), &mut len) != 0
             || ty != libc::SOCK_SEQPACKET
@@ -315,7 +318,7 @@ fn own_build() -> String {
 }
 
 fn session(stand: &Arc<Stand>) -> i32 {
-    // SAFETY: getppid без предусловий.
+    // SAFETY: getppid has no preconditions.
     let parent = unsafe { libc::getppid() };
     if parent <= 1 {
         return helper::EXIT_CHANNEL;

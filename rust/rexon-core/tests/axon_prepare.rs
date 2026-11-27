@@ -1,8 +1,8 @@
-//! Подготовка обоев Razer Axon заранее (`rexon_core::axon_prepare`) на
-//! подставном доме: расшифровка на месте, бережная правка описания (BOM,
-//! CRLF), резервная копия, пропуск занятых, повторный проход без работы,
-//! дописывание после обрыва, «Применить» прямо из `Resource/`, возврат
-//! исходных описаний. Ключ — свой тестовый, не Razer.
+//! Preparing Razer Axon wallpapers in advance (`rexon_core::axon_prepare`) on
+//! a fake home: in-place decryption, careful editing of the description (BOM,
+//! CRLF), a backup copy, skipping the ones in use, a repeated pass with no work,
+//! finishing after an interruption, «Применить» straight from `Resource/`, restoring
+//! the original descriptions. The key is our own test key, not Razer's.
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -30,7 +30,7 @@ fn payload(seed: u32) -> Vec<u8> {
     (0..200_000u32).flat_map(|i| (i.wrapping_mul(2654435761) ^ seed).to_le_bytes()).collect()
 }
 
-/// Скачанные обои: описание `config` как есть и контейнер ZIP с `data`.
+/// A downloaded wallpaper: the `config` description as is and a ZIP container with `data`.
 fn encrypted(dir: &Path, file: &str, config: &str, data: &[u8]) {
     fs::create_dir_all(dir.join("Resource")).unwrap();
     fs::write(dir.join(ax::RESOURCE_CONFIG), config).unwrap();
@@ -64,7 +64,7 @@ impl Home {
     }
 }
 
-/// Компактное описание нового вида (как у Axon 2.11).
+/// A compact description of the new form (as in Axon 2.11).
 fn compact(file: &str) -> String {
     format!(
         "{{\"WallPaperType\":\"VIDEO\",\"Version\":\"1.0.0.0\",\"Source\":\"Resource\\\\{file}\",\
@@ -72,7 +72,7 @@ fn compact(file: &str) -> String {
     )
 }
 
-/// Описание с BOM, CRLF и табами, поля шифрования в середине.
+/// A description with BOM, CRLF and tabs, encryption fields in the middle.
 fn pretty(file: &str) -> String {
     format!(
         "{BOM}{{\r\n\t\"Type\": \"VIDEO\",\r\n\t\"SourceEncryptedTypes\": \"ZIP\",\r\n\
@@ -81,8 +81,8 @@ fn pretty(file: &str) -> String {
     )
 }
 
-/// Подставной дом: 12034 (компактное), 13241 (BOM+CRLF), 10038 (играет),
-/// 11111 (старые без шифрования), 13300 (не скачаны).
+/// Fake home: 12034 (compact), 13241 (BOM+CRLF), 10038 (playing),
+/// 11111 (old ones without encryption), 13300 (not downloaded).
 fn home(name: &str) -> Home {
     let home = bench(name);
     let root = home.join(".wine/drive_c/users/u/AppData/Local/Razer/RazerAxon");
@@ -135,18 +135,18 @@ fn pass_prepares_in_place_and_keeps_text_byte_exact() {
     let r = ap::run_pass_with_key(KEY, &lib, &h.opts(false), &busy, &no_stop);
     assert_eq!(r, ap::PassReport { prepared: 2, busy: 1, failed: 0 });
 
-    // Ролик — на месте контейнера, под тем же именем, временных файлов нет.
+    // The video is in place of the container, under the same name, no temporary files.
     let sky = h.dir("1203421603840");
     assert_eq!(fs::read(sky.join("Resource/3840x2160.mp4")).unwrap(), payload(1));
     assert_eq!(listing(&sky.join("Resource")), ["3840x2160.mp4"]);
     assert_eq!(listing(&sky), ["Resource", "ResourceConfig.txt"]);
-    // Описание: ровно без двух полей.
+    // The description: exactly without two fields.
     assert_eq!(
         fs::read_to_string(sky.join(ax::RESOURCE_CONFIG)).unwrap(),
         "{\"WallPaperType\":\"VIDEO\",\"Version\":\"1.0.0.0\",\"Source\":\"Resource\\\\3840x2160.mp4\",\
          \"Integrity\":[\"Resource\\\\3840x2160.mp4\"]}"
     );
-    // BOM, CRLF и табы целы.
+    // BOM, CRLF and tabs are intact.
     let arcade = h.dir("1324121603840");
     assert_eq!(fs::read(arcade.join("Resource/3840x2160.mp4")).unwrap(), payload(2));
     assert_eq!(
@@ -156,11 +156,11 @@ fn pass_prepares_in_place_and_keeps_text_byte_exact() {
              \t\"Integrity\": [\"Resource\\\\3840x2160.mp4\"]\r\n}}\r\n"
         )
     );
-    // Резервная копия: исходное описание байт в байт, ролика нет.
+    // The backup copy: the original description byte for byte, no video.
     let backup = h.opts(false).originals_root.join("13241");
     assert_eq!(fs::read_to_string(backup.join(ax::RESOURCE_CONFIG)).unwrap(), pretty("3840x2160.mp4"));
     assert_eq!(listing(&backup), [ax::RESOURCE_CONFIG, ap::ORIGIN_FILE]);
-    // Играющие не тронуты, старые — тоже.
+    // The playing ones are untouched, and so are the old ones.
     let space = h.dir("1003821603840");
     assert_eq!(fs::read_to_string(space.join(ax::RESOURCE_CONFIG)).unwrap(), compact("space.mp4"));
     assert_eq!(fs::read(h.dir("1111121603840/Resource/old.mp4")).unwrap(), b"old plain video");
@@ -168,12 +168,12 @@ fn pass_prepares_in_place_and_keeps_text_byte_exact() {
 
     let lib = h.lib();
     assert_eq!(ap::counts(&lib, &h.opts(false).originals_root), ap::Counts { prepared: 2, remaining: 1 });
-    // Повторный проход ничего не делает (и ничего не пишет).
+    // A repeated pass does nothing (and writes nothing).
     let before = fs::metadata(sky.join(ax::RESOURCE_CONFIG)).unwrap().modified().unwrap();
     let r = ap::run_pass_with_key(KEY, &lib, &h.opts(false), &busy, &no_stop);
     assert_eq!(r, ap::PassReport { prepared: 0, busy: 1, failed: 0 });
     assert_eq!(fs::metadata(sky.join(ax::RESOURCE_CONFIG)).unwrap().modified().unwrap(), before);
-    // Перестали играть — готовятся.
+    // Stopped playing — they get prepared.
     let r = ap::run_pass_with_key(KEY, &lib, &h.opts(false), &never, &no_stop);
     assert_eq!(r.prepared, 1);
     assert_eq!(fs::read(space.join("Resource/space.mp4")).unwrap(), payload(3));
@@ -196,15 +196,15 @@ fn file_open_by_a_process_is_busy() {
 #[test]
 fn stop_and_errors_do_not_block_others() {
     let h = home("errors");
-    // Испорченный контейнер у 12034 — 13241 всё равно готовится.
+    // A corrupted container in 12034 — 13241 is prepared anyway.
     fs::write(h.dir("1203421603840/Resource/3840x2160.mp4"), b"PK\x03\x04 broken").unwrap();
     let r = ap::run_pass_with_key(KEY, &h.lib(), &h.opts(false), &never, &no_stop);
     assert_eq!((r.prepared, r.failed), (2, 1));
-    // Неудача ничего не испортила: описание прежнее, временных файлов нет.
+    // The failure spoiled nothing: the description is the same, no temporary files.
     let sky = h.dir("1203421603840");
     assert_eq!(fs::read_to_string(sky.join(ax::RESOURCE_CONFIG)).unwrap(), compact("3840x2160.mp4"));
     assert_eq!(listing(&sky.join("Resource")), ["3840x2160.mp4"]);
-    // Остановка — до первых обоев.
+    // Stopping — before the first wallpaper.
     let h = home("stop");
     let r = ap::run_pass_with_key(KEY, &h.lib(), &h.opts(false), &never, &|| true);
     assert_eq!(r, ap::PassReport::default());
@@ -226,7 +226,7 @@ fn interrupted_after_media_is_finished_next_time() {
     let h = home("resume");
     let sky = h.dir("1203421603840");
     let backup = h.opts(false).originals_root.join("12034");
-    // Как будто оборвались между расшифровкой и правкой описания.
+    // As if interrupted between decryption and editing the description.
     fs::create_dir_all(&backup).unwrap();
     fs::copy(sky.join(ax::RESOURCE_CONFIG), backup.join(ax::RESOURCE_CONFIG)).unwrap();
     fs::write(sky.join("Resource/3840x2160.mp4"), payload(1)).unwrap();
@@ -234,7 +234,7 @@ fn interrupted_after_media_is_finished_next_time() {
     let out = ap::prepare_dir_with_key(KEY, &sky, &backup, false).unwrap();
     assert_eq!(out, ap::Outcome::Prepared);
     assert!(!fs::read_to_string(sky.join(ax::RESOURCE_CONFIG)).unwrap().contains("SourceEncrypted"));
-    // Без копии такой случай — ошибка, а не правка вслепую.
+    // Without a copy such a case is an error, not a blind edit.
     let arcade = h.dir("1324121603840");
     fs::write(arcade.join("Resource/3840x2160.mp4"), payload(2)).unwrap();
     let err = ap::prepare_dir_with_key(KEY, &arcade, &h.opts(false).originals_root.join("13241"), false);
@@ -253,7 +253,7 @@ fn apply_takes_prepared_file_from_resource() {
     assert_eq!(&got.path, sky.container.as_ref().unwrap());
     assert_eq!((got.format, got.audio), ("video", true));
     assert!(!env.cache_root().exists(), "кэш не нужен");
-    // Старые без шифрования — прежним путём (через подготовку и кэш).
+    // Old ones without encryption — the old way (through preparation and the cache).
     let old = lib.get("11111").unwrap();
     assert_eq!(ap::prepare_for_apply(old, None, &env), Err(ax::unavailable_text()));
 }
@@ -263,21 +263,21 @@ fn restore_puts_original_descriptions_back() {
     let h = home("restore");
     let root = h.opts(true).originals_root;
     ap::run_pass_with_key(KEY, &h.lib(), &h.opts(true), &never, &no_stop);
-    // Оригинал хранился (keep): копия ролика лежит рядом с описанием.
+    // The original was kept (keep): a copy of the video lies next to the description.
     let sky = h.dir("1203421603840");
     assert!(root.join("12034/3840x2160.mp4").is_file());
     let r = ap::restore_originals(&root);
     assert_eq!(r, ap::RestoreReport { restored: 3, with_media: 3, failed: 0 });
-    // Всё как было: описание байт в байт, контейнер снова ZIP с тем же
-    // паролем — повторная расшифровка даёт тот же ролик.
+    // Everything as it was: the description byte for byte, the container is ZIP again with the same
+    // password — decrypting again gives the same video.
     assert_eq!(fs::read_to_string(sky.join(ax::RESOURCE_CONFIG)).unwrap(), compact("3840x2160.mp4"));
     let out = h.home.join("check");
     let p = rexon_core::axon_extract::extract_with_key(KEY, &sky, &out).unwrap();
     assert_eq!(fs::read(p).unwrap(), payload(1));
-    // Второй возврат — нечего.
+    // A second restore — nothing to do.
     assert_eq!(ap::restore_originals(&root), ap::RestoreReport::default());
 
-    // Без хранения оригинала: описание вернулось, ролик расшифрован.
+    // Without keeping the original: the description is back, the video is decrypted.
     let h = home("restore-nomedia");
     let root = h.opts(false).originals_root;
     ap::run_pass_with_key(KEY, &h.lib(), &h.opts(false), &never, &no_stop);
@@ -286,16 +286,16 @@ fn restore_puts_original_descriptions_back() {
     let sky = h.dir("1203421603840");
     assert_eq!(fs::read_to_string(sky.join(ax::RESOURCE_CONFIG)).unwrap(), compact("3840x2160.mp4"));
     assert_eq!(fs::read(sky.join("Resource/3840x2160.mp4")).unwrap(), payload(1));
-    // Следующий проход (если включат снова) узнаёт полусделанное по копии.
+    // The next pass (if turned on again) recognizes the half-done ones by the copy.
     let r = ap::run_pass_with_key(KEY, &h.lib(), &h.opts(false), &never, &no_stop);
     assert_eq!(r.prepared, 3);
 }
 
-/// Стенд на КОПИИ библиотеки Axon (не на живой!): настоящий фоновый поток с
-/// ключом Razer в доме `REXON_AXON_STAND_HOME`. Сначала играющие обои
-/// пропускаются; затем в копии библиотеки их статус меняется на `Installed`,
-/// и второй запуск готовит всё. Итог «Применить» — путь в `Resource/`; сумму
-/// файла сверяет вызывающий. Запуск:
+/// A stand on a COPY of the Axon library (not the live one!): a real background thread with
+/// the Razer key in the home `REXON_AXON_STAND_HOME`. First the playing wallpapers
+/// are skipped; then in the library copy their status is changed to `Installed`,
+/// and the second run prepares everything. The result of «Применить» is a path in `Resource/`; the
+/// file's checksum is verified by the caller. Run:
 /// `REXON_AXON_STAND_HOME=… cargo test --test axon_prepare -- --ignored stand --nocapture`.
 #[test]
 #[ignore]
@@ -328,7 +328,7 @@ fn stand_background_on_copied_library() {
     ap::request_stop();
     wait(&|| !ap::is_running());
 
-    // Обои перестали играть — в копии библиотеки.
+    // The wallpaper stopped playing — in the library copy.
     let (env, _) = ap::live_env();
     for acc in fs::read_dir(ax::find_roots(&env)[0].root.clone()).unwrap().flatten() {
         let lib = acc.path().join(ax::LIBRARY_FILE);
@@ -348,7 +348,7 @@ fn stand_background_on_copied_library() {
             println!("ПРИМЕНИТЬ {} «{}»: {} ({})", w.id, w.title, p.path.display(), p.format);
         }
     }
-    // Повторный запуск ничего не делает.
+    // A repeated run does nothing.
     ap::spawn_background(Duration::ZERO);
     wait(&|| !ap::is_running());
     println!("третий проход: {:?}", counts());

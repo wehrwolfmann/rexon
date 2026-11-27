@@ -1,31 +1,33 @@
-// Автозапуск движка при входе в систему.
+// Starting the engine at login.
 //
-// ⚠️ СОЗНАТЕЛЬНОЕ отличие от оригинала, а не дефект: у вендора
-// (`ui/src/query/autostart_query.cpp` @e5626c1) автозапуск — RPC демону
-// (`autostart_get`/`autostart_set`), и работает он только во Flatpak через
-// портал Background. У Rexon он роутится ЛОКАЛЬНО: systemd user unit с
-// фолбэком на XDG autostart (роадмап п.0-ter). Демону кадры НЕ уходят
-// вовсе, поэтому у этих двух запросов нет ни `sendRequest`, ни
-// `deliverResponse`-ветки с кадром — только сигналы базы.
+// Warning: a DELIBERATE difference from the original, not a defect: at the
+// vendor (`ui/src/query/autostart_query.cpp` @e5626c1) autostart is an RPC
+// to the daemon (`autostart_get`/`autostart_set`), and it works only in
+// Flatpak through the Background portal. In Rexon it is routed LOCALLY: a
+// systemd user unit with a fallback to XDG autostart (roadmap item
+// 0-ter). No frames go to the daemon at all, so these two queries have
+// neither `sendRequest` nor a `deliverResponse` branch with a frame — only
+// the base signals.
 //
-// QML-контракт при этом ТОТ ЖЕ, что у оригинала: `enabled`, `status`,
-// `error`, `reload()`. SettingsPage по `status == 2` перечитывает
-// состояние, по `status == 3` показывает тост с `.error`.
-// С waywallen#380 (14.11.2026) к договору добавились `supported` и
-// `unavailableReason` (+ сигнал `availabilityChanged`): переключатель
-// серый, пока `supported` ложно, причина — подсказка у подписи. У апстрима
-// без ответа демона `supported` остаётся ложным; у нас ответ локальный
-// ([`autostart_state_on`]) и есть с момента создания объекта, поэтому
-// переключатель живой и при лежачем демоне.
+// The QML contract is THE SAME as the original's: `enabled`, `status`,
+// `error`, `reload()`. SettingsPage re-reads the state on `status == 2` and
+// shows a toast with `.error` on `status == 3`. With waywallen#380
+// (14.11.2026) `supported` and `unavailableReason` were added to the
+// contract (+ the `availabilityChanged` signal): the switch is grey while
+// `supported` is false, and the reason is a hint at the label. Upstream,
+// without the daemon's answer `supported` stays false; for us the answer
+// is local ([`autostart_state_on`]) and exists from the moment the object
+// is created, so the switch is live even with the daemon down.
 //
-// Решения (какой механизм, какие файлы, какие argv, какие сообщения) —
-// целиком в ядре (`rexon_core::we_client`), здесь только исполнение:
-// запуск процессов и запись файлов. Ровно та же граница, что была у
-// `client.py`, только исполнитель теперь не Python: с 07.09.2026
-// питоновских `autostart_enabled`/`set_autostart` не существует, и этот
-// модуль — ЕДИНСТВЕННОЕ место, где автозапуск движка правится на диске.
+// Decisions (which mechanism, which files, which argv, which messages) are
+// entirely in the core (`rexon_core::we_client`); here there is only
+// execution: starting processes and writing files. Exactly the same
+// boundary as `client.py` had, only the executor is no longer Python:
+// since 07.09.2026 the Python `autostart_enabled`/`set_autostart` no longer
+// exist, and this module is the ONLY place where the engine's autostart is
+// edited on disk.
 
-/// Мост cxx-qt: чтение и запись автозапуска.
+/// cxx-qt bridge: reading and writing autostart.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -119,7 +121,7 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "enabledChanged"]
         fn enabled_changed(self: Pin<&mut AutostartSetQuery>);
-        /// Одно оповещение на оба свойства доступности — как у апстрима.
+        /// One notification for both availability properties — as upstream.
         #[qsignal]
         #[cxx_name = "availabilityChanged"]
         fn availability_changed(self: Pin<&mut AutostartGetQuery>);
@@ -167,9 +169,9 @@ pub mod qobject {
                             frame: &QByteArray);
     }
 
-    // Состояние читается уже в конструкторе: вендорная страница зовёт
-    // `reload()` только при готовом демоне, а автозапуск Rexon демона не
-    // касается. Объявление трейта обязано быть В МОСТЕ.
+    // The state is read already in the constructor: the vendored page calls
+    // `reload()` only when the daemon is ready, while Rexon's autostart does
+    // not involve the daemon. The trait declaration must be IN THE BRIDGE.
     impl cxx_qt::Initialize for AutostartGetQuery {}
 }
 
@@ -184,15 +186,16 @@ use rexon_core::we_query::{self, QuerySignal, QueryState, STATUS_ERROR, STATUS_F
 use crate::impl_query_base;
 use crate::we_env;
 
-// ── исполнители решений ядра ─────────────────────────────────────────────
+// ── executors of the core's decisions ────────────────────────────────────
 
-/// Проверки файловой системы для `find_daemon_binary`.
+/// File system checks for `find_daemon_binary`.
 ///
-/// Своей копии здесь больше нет: те же два метода нужны транспорту вкладки
-/// (`we_socket.rs`), а две копии разъехались бы молча (правило #12).
+/// There is no copy of our own here any more: the tab's transport
+/// (`we_socket.rs`) needs the same two methods, and two copies would
+/// silently drift apart (rule #12).
 use crate::we_env::FsProbe as Fs;
 
-/// Выполнить argv и вернуть `(код, stdout, stderr)`.
+/// Run argv and return `(code, stdout, stderr)`.
 fn run(argv: &[String]) -> Option<(i32, String, String)> {
     let (first, rest) = argv.split_first()?;
     let out = std::process::Command::new(first).args(rest).output().ok()?;
@@ -203,47 +206,51 @@ fn run(argv: &[String]) -> Option<(i32, String, String)> {
     ))
 }
 
-/// Есть ли живой user-менеджер systemd.
+/// Whether there is a live systemd user manager.
 fn systemd_available() -> bool {
     let present = we_client::DaemonFs::which(&mut Fs, "systemctl").is_some();
     let dir = we_client::systemd_runtime_dir(
-        // getuid без libc: числовой идентификатор берётся из /proc/self.
+        // getuid without libc: the numeric identifier is taken from /proc/self.
         we_env::uid(),
     );
     we_client::systemd_user_available(present, std::path::Path::new(&dir).is_dir())
 }
 
-/// Всё, что исполнитель берёт у ЖИВОЙ машины: окружение, наличие systemd,
-/// бинарь движка и запуск процессов.
+/// Everything the executor takes from the LIVE machine: the environment,
+/// whether systemd is there, the engine binary and starting processes.
 ///
-/// Вынесено в трейт не ради красоты. Сквозной цикл «включить → прочитать →
-/// выключить» до сих пор проверялся только в Python (`we_client_roundtrip`,
-/// `autostart_cycle`), где эти же четыре наблюдения подменялись заглушками.
-/// Исполнитель уехал в Rust — сюда обязана была уехать и проверка, иначе
-/// снятие Python-кода забрало бы её с собой (правило #11). Подмена нужна
-/// именно здесь: без неё сверка звала бы `systemctl --user enable` живой
-/// сессии и правила бы автозапуск разработчика.
+/// Moved into a trait not for looks. The end-to-end cycle "enable → read →
+/// disable" used to be checked only in Python (`we_client_roundtrip`,
+/// `autostart_cycle`), where these same four observations were replaced
+/// with stubs. The executor moved to Rust — the check had to move here too,
+/// otherwise removing the Python code would have taken it along (rule
+/// #11). The substitution is needed exactly here: without it the comparison
+/// would call `systemctl --user enable` of the live session and edit the
+/// developer's autostart.
 pub trait AutostartHost {
     fn xdg_config_home(&self) -> Option<String>;
     fn home(&self) -> String;
     fn systemd_available(&self) -> bool;
-    /// Абсолютный путь движка — порт `find_daemon_binary()`.
+    /// Absolute path of the engine — a port of `find_daemon_binary()`.
     fn daemon_binary(&self) -> Option<String>;
-    /// Каталог движка из пакета с плагинами (`we_env::engine_plugin_root`).
-    /// По умолчанию `None` — у подставных машин сверок пакета нет.
+    /// Engine directory from the package with plugins
+    /// (`we_env::engine_plugin_root`). `None` by default — fake machines have no
+    /// package comparisons.
     fn engine_plugin_root(&self) -> Option<String> {
         None
     }
-    /// Запустить argv → `(код, stdout, stderr)`; `None` — процесс не стартовал.
+    /// Run argv → `(code, stdout, stderr)`; `None` means the process did not
+    /// start.
     fn run(&mut self, argv: &[String]) -> Option<(i32, String, String)>;
-    /// Окружение для строк автозапуска в конфигах композиторов
-    /// (`compositor_autostart`). По умолчанию `None` — подставные машины
-    /// сверок живых конфигов не касаются.
+    /// Environment for autostart lines in compositor configs
+    /// (`compositor_autostart`). `None` by default — fake machines do not touch
+    /// the comparisons of live configs.
     fn compositor_env(&self) -> Option<ca::SessionEnv> {
         None
     }
-    /// Сработает ли в этом сеансе то, что поднимает движок без нашей строки:
-    /// `graphical-session.target` для юнита, XDG-цель — для `.desktop`.
+    /// Whether what starts the engine without our line will work in this
+    /// session: `graphical-session.target` for the unit, the XDG target for the
+    /// `.desktop`.
     fn session_runs_it(&mut self, systemd: bool) -> bool {
         let _ = systemd;
         true
@@ -252,7 +259,7 @@ pub trait AutostartHost {
 
 use rexon_core::compositor_autostart as ca;
 
-/// Живая машина — единственный `AutostartHost` продукта.
+/// The live machine — the product's only `AutostartHost`.
 pub struct Machine;
 
 impl AutostartHost for Machine {
@@ -293,13 +300,15 @@ impl AutostartHost for Machine {
     }
 }
 
-/// `os.remove`, отсутствие файла — не ошибка. → был ли файл удалён.
+/// `os.remove`; a missing file is not an error. → whether the file was
+/// removed.
 fn remove_quiet(path: &str) -> bool {
     std::fs::remove_file(path).is_ok()
 }
 
-/// Запись общей дверью ядра: строка автозапуска и юнит службы оживают уже
-/// при входе в сеанс, когда объяснить покупателю обрезанный файл некому.
+/// Writing through the core's shared door: the autostart line and the
+/// service unit come alive already at login, when there is nobody to
+/// explain a truncated file to the customer.
 fn write_file(path: &str, content: &str) -> std::io::Result<()> {
     if let Some(parent) = std::path::Path::new(path).parent() {
         std::fs::create_dir_all(parent)?;
@@ -307,14 +316,15 @@ fn write_file(path: &str, content: &str) -> std::io::Result<()> {
     rexon_core::utils::atomic_write(path, content)
 }
 
-/// Освежить уже лежащий на диске юнит автозапуска, если он устарел.
+/// Refresh the autostart unit already on disk if it is outdated.
 ///
-/// Юнит пишется один раз — при включении «Start at login», и дальше живёт у
-/// пользователя как есть. Без этого прохода починки шаблона (первая из них —
-/// `KillMode=mixed`, иначе остановка службы валила движок сигналом BUS)
-/// достались бы только тем, кто заново щёлкнул переключатель. Решение целиком
-/// у ядра ([`we_client::refresh_unit_plan`]), здесь — чтение, запись и
-/// `daemon-reload`. → был ли юнит переписан.
+/// The unit is written once — when "Start at login" is enabled — and then
+/// lives with the user as is. Without this pass, template fixes (the first
+/// of them — `KillMode=mixed`, otherwise stopping the service killed the
+/// engine with a BUS signal) would reach only those who toggled the switch
+/// again. The decision is entirely the core's ([`we_client::refresh_unit_plan`]);
+/// here there is reading, writing and `daemon-reload`. → whether the unit
+/// was rewritten.
 pub fn refresh_autostart_unit() -> bool {
     if !systemd_available() {
         return false;
@@ -327,10 +337,10 @@ pub fn refresh_autostart_unit() -> bool {
     let Some(written) = existing.as_deref().and_then(we_client::unit_binary) else {
         return false;
     };
-    // Юнит обязан поднимать тот же движок, что окно: записанный мог уйти
-    // вместе с обновлением пакета (с 30.10.2026 пакет Rexon не вшивает
-    // движок) или остаться старой копией рядом с движком пакета
-    // (`we_client::unit_refresh_binary`).
+    // The unit must start the same engine as the window: the written one may
+    // have gone away with a package update (since 30.10.2026 the Rexon package
+    // does not bundle the engine) or stayed an old copy next to the package's
+    // engine (`we_client::unit_refresh_binary`).
     let found = we_env::daemon_binary();
     let binary = we_client::unit_refresh_binary(&written, found.as_deref());
     let plugin_root = we_env::engine_plugin_root_for(Some(&binary));
@@ -365,8 +375,9 @@ pub fn refresh_autostart_unit() -> bool {
     }
 }
 
-/// Есть ли служба автозапуска движка, через которую его поднимать: systemd
-/// пользователя жив и юнит записан (`we_client::ensure_running_decision_service`).
+/// Whether there is an engine autostart service to start it through: the
+/// systemd user manager is alive and the unit is written
+/// (`we_client::ensure_running_decision_service`).
 pub fn autostart_service_present() -> bool {
     if !systemd_available() {
         return false;
@@ -376,17 +387,19 @@ pub fn autostart_service_present() -> bool {
     std::path::Path::new(&path).is_file()
 }
 
-/// Состояние автозапуска для `W.AutostartGetQuery`.
+/// Autostart state for `W.AutostartGetQuery`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutostartState {
     pub enabled: bool,
-    /// Может ли Rexon поставить автозапуск здесь ([`we_client::autostart_availability`]).
+    /// Whether Rexon can set up autostart here
+    /// ([`we_client::autostart_availability`]).
     pub supported: bool,
-    /// Почему не может; пусто, когда `supported`.
+    /// Why it cannot; empty when `supported`.
     pub unavailable_reason: String,
 }
 
-/// Снять всё состояние разом — без демона, только наблюдения `host`.
+/// Capture the whole state at once — without the daemon, only the `host`
+/// observations.
 pub fn autostart_state_on<H: AutostartHost + ?Sized>(host: &mut H) -> AutostartState {
     let (supported, unavailable_reason) =
         we_client::autostart_availability(host.daemon_binary().as_deref());
@@ -397,17 +410,19 @@ pub fn autostart_state_on<H: AutostartHost + ?Sized>(host: &mut H) -> AutostartS
     }
 }
 
-/// Порт `client.autostart_enabled()` — на живой машине.
+/// A port of `client.autostart_enabled()` — on the live machine.
 pub fn autostart_enabled() -> bool {
     autostart_enabled_on(&mut Machine)
 }
 
-/// Порт `client.set_autostart()` → `(ok, сообщение)` — на живой машине.
+/// A port of `client.set_autostart()` → `(ok, message)` — on the live
+/// machine.
 pub fn set_autostart(enabled: bool) -> (bool, String) {
     set_autostart_on(&mut Machine, enabled)
 }
 
-/// Включён ли автозапуск. Наблюдения снимает `host`, вердикт выносит ядро.
+/// Whether autostart is enabled. The observations are captured by `host`,
+/// the verdict is given by the core.
 pub fn autostart_enabled_on<H: AutostartHost + ?Sized>(host: &mut H) -> bool {
     let observed = if host.systemd_available() {
         host.run(&we_client::autostart_is_enabled_argv())
@@ -424,8 +439,8 @@ pub fn autostart_enabled_on<H: AutostartHost + ?Sized>(host: &mut H) -> bool {
         observed.as_ref().map(|(c, s)| (*c, s.as_str())),
         std::path::Path::new(&desktop).is_file(),
     );
-    // Включено — но поднимется ли в ЭТОМ сеансе? Голые композиторы не
-    // поднимают ни XDG-записей, ни `graphical-session.target`.
+    // Enabled — but will it come up in THIS session? Bare compositors start
+    // neither XDG entries nor `graphical-session.target`.
     match host.compositor_env() {
         Some(env) if on => {
             let text = if unit_on { None } else { std::fs::read_to_string(&desktop).ok() };
@@ -436,11 +451,11 @@ pub fn autostart_enabled_on<H: AutostartHost + ?Sized>(host: &mut H) -> bool {
     }
 }
 
-/// Идемпотентно поставить/снять автозапуск → `(ok, сообщение)`.
+/// Idempotently set/remove autostart → `(ok, message)`.
 ///
-/// Демона здесь НЕ запускаем и НЕ останавливаем: речь только про вход в
-/// систему, текущая сессия не трогается. Включение пишет АБСОЛЮТНЫЙ путь
-/// сегодняшнего движка — повторное включение просто обновляет путь.
+/// The daemon is NOT started or stopped here: this is only about login,
+/// the current session is not touched. Enabling writes the ABSOLUTE path of
+/// today's engine — enabling again simply updates the path.
 pub fn set_autostart_on<H: AutostartHost + ?Sized>(host: &mut H, enabled: bool) -> (bool, String) {
     let xdg = host.xdg_config_home();
     let home = host.home();
@@ -493,10 +508,10 @@ pub fn set_autostart_on<H: AutostartHost + ?Sized>(host: &mut H, enabled: bool) 
             host.run(&daemon_reload_argv);
             match host.run(&enable_argv) {
                 Some((0, _, _)) => {
-                    // Не держать второй механизм параллельно.
+                    // Do not keep a second mechanism in parallel.
                     remove_quiet(&remove_desktop);
-                    // Где `graphical-session.target` не поднимается, юнит
-                    // стартует строкой в конфиге композитора.
+                    // Where `graphical-session.target` does not come up, the unit is started
+                    // by a line in the compositor config.
                     if let Some(env) = host.compositor_env() {
                         let report = ca::sync_command(
                             &env,
@@ -557,10 +572,11 @@ pub struct AutostartGetQueryRust {
 impl_query_base!(AutostartGetQuery);
 
 impl cxx_qt::Initialize for qobject::AutostartGetQuery {
-    /// Первое чтение — в конструкторе, а не по `reload()`: страница waywallen
-    /// (и v0.6.0, и с #380) зовёт `reload()` только при готовом демоне, и без
-    /// этого при лежачем демоне переключатель был бы серым и «выключенным».
-    /// Статус не трогается: это не запрос, а начальное значение свойств.
+    /// The first read is in the constructor, not on `reload()`: the waywallen
+    /// page (both v0.6.0 and with #380) calls `reload()` only when the daemon is
+    /// ready, and without this, with the daemon down, the switch would be grey
+    /// and "off". The status is not touched: this is not a request but the
+    /// initial value of the properties.
     fn initialize(mut self: Pin<&mut Self>) {
         let state = autostart_state_on(&mut Machine);
         let signals = self.as_mut().apply_state(state);
@@ -581,8 +597,9 @@ impl qobject::AutostartGetQuery {
         QString::from(self.unavailable_reason.as_str())
     }
 
-    /// Разложить снятое состояние по полям → оповещения ТОЛЬКО о том, что
-    /// изменилось (как у оригинала); на оба свойства доступности — одно.
+    /// Spread the captured state over the fields → notifications ONLY about
+    /// what changed (as in the original); one for both availability
+    /// properties.
     fn apply_state(self: Pin<&mut Self>, state: AutostartState) -> Vec<QuerySignal> {
         let mut signals = Vec::new();
         let mut rust = self.rust_mut();
@@ -604,7 +621,7 @@ impl qobject::AutostartGetQuery {
         self.dispatch(signals);
     }
 
-    /// Кадров этот запрос не шлёт — доставлять нечего.
+    /// This query sends no frames — there is nothing to deliver.
     pub fn deliver_response(self: Pin<&mut Self>, _token: i64, _frame: &QByteArray) {
         let _ = self;
     }
@@ -685,9 +702,9 @@ impl qobject::AutostartSetQuery {
 mod tests {
     use super::*;
 
-    /// Подставная машина: подменяет ровно те четыре наблюдения, что в
-    /// Python-сверке подменялись monkey-patch'ем. Ни одного вызова
-    /// `systemctl` наружу — argv только записываются.
+    /// A fake machine: replaces exactly the four observations that were
+    /// monkey-patched in the Python comparison. Not a single `systemctl` call
+    /// goes out — the argv are only recorded.
     struct FakeHost {
         корень: std::path::PathBuf,
         systemd: bool,
@@ -721,9 +738,10 @@ mod tests {
         }
     }
 
-    /// Сквозной цикл «включить → прочитать → выключить» настоящим кодом
-    /// исполнителя, но в подставном HOME. Порт `autostart_cycle` из сверки
-    /// моста: она уходит вместе с Python-исполнителем, покрытие — нет.
+    /// The end-to-end cycle "enable → read → disable" with the executor's real
+    /// code, but in a fake HOME. A port of `autostart_cycle` from the bridge
+    /// comparison: that one goes away together with the Python executor, the
+    /// coverage does not.
     fn цикл(systemd: bool) {
         let корень = std::env::temp_dir().join(format!(
             "rexon-autostart-cycle-{}-{systemd}",
@@ -763,7 +781,7 @@ mod tests {
         for p in [&юнит, &десктоп] {
             assert!(!std::path::Path::new(p).exists(), "после выключения остался {p}");
         }
-        // Повторное выключение идемпотентно.
+        // Disabling again is idempotent.
         assert!(set_autostart_on(&mut host, false).0);
 
         if systemd {
@@ -784,10 +802,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&корень);
     }
 
-    /// Состояние для `W.AutostartGetQuery` (`enabled`, `supported`,
-    /// `unavailableReason`) снимается без демона: наружу уходит разве что
-    /// `systemctl --user is-enabled`, ни одного кадра движку. Переключатель
-    /// серый ровно тогда, когда включать нечего, — движка нет.
+    /// The state for `W.AutostartGetQuery` (`enabled`, `supported`,
+    /// `unavailableReason`) is captured without the daemon: at most
+    /// `systemctl --user is-enabled` goes out, not a single frame to the engine.
+    /// The switch is grey exactly when there is nothing to enable — no engine.
     #[test]
     fn состояние_автозапуска_без_демона() {
         for systemd in [true, false] {
@@ -808,14 +826,14 @@ mod tests {
             let before = autostart_state_on(&mut host);
             assert!(before.supported, "движок есть — переключатель обязан быть живым");
             assert_eq!(before.unavailable_reason, "");
-            // FakeHost на is-enabled отвечает «enabled», так что без systemd
-            // включённость решает только файл XDG — его ещё нет.
+            // FakeHost answers "enabled" to is-enabled, so without systemd the enabled
+            // state is decided only by the XDG file — which does not exist yet.
             assert_eq!(before.enabled, systemd);
             for call in &host.вызовы {
                 assert_eq!(call, &we_client::autostart_is_enabled_argv(), "лишний вызов {call:?}");
             }
 
-            // После включения чтение видит его сразу — без демона.
+            // After enabling, reading sees it at once — without the daemon.
             assert!(set_autostart_on(&mut host, true).0);
             assert!(autostart_state_on(&mut host).enabled);
             assert!(set_autostart_on(&mut host, false).0);
@@ -841,10 +859,11 @@ mod tests {
             let mut bare = NoEngine(host);
             let state = autostart_state_on(&mut bare);
             assert!(!state.supported);
-            // Сам перевод сверяет ядро (`we_client_parity`); здесь важно,
-            // что причина — та же переводимая строка, а не пустота.
+            // The translation itself is compared by the core (`we_client_parity`);
+            // what matters here is that the reason is the same translatable string,
+            // not emptiness.
             assert_eq!(state, AutostartState {
-                // FakeHost на is-enabled всегда отвечает «enabled».
+                // FakeHost always answers "enabled" to is-enabled.
                 enabled: systemd,
                 supported: false,
                 unavailable_reason: we_client::autostart_availability(None).1,
@@ -864,13 +883,13 @@ mod tests {
         цикл(false);
     }
 
-    /// Освежение юнита прогоняется НАСТОЯЩИМ кодом (чтение файла, запись,
-    /// `daemon-reload`), но в подставном `XDG_CONFIG_HOME` — юнит живой
-    /// сессии не трогается.
+    /// Refreshing the unit is run with the REAL code (reading the file, writing,
+    /// `daemon-reload`), but in a fake `XDG_CONFIG_HOME` — the live session's
+    /// unit is not touched.
     #[test]
     fn освежение_переписывает_юнит_прежнего_образца() {
         if !systemd_available() {
-            return; // без systemd освежать нечего
+            return; // without systemd there is nothing to refresh
         }
         let корень = std::env::temp_dir().join(format!(
             "rexon-autostart-refresh-{}",
@@ -891,12 +910,14 @@ mod tests {
             std::fs::set_permissions(&бинарь_путь, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let бинарь = бинарь_путь.to_str().unwrap();
-        // Хвост `--plugin` следует за движком из пакета: освежение берёт
-        // его у машины (`we_env::engine_plugin_root_for`), и ожидание обязано
-        // брать там же — иначе сверка краснеет ровно там, где Rexon стоит
-        // пакетом, и зеленеет в голом дереве разработчика.
-        // Освежённый юнит смотрит в движок, который Rexon запустил бы сейчас
-        // (`we_client::unit_refresh_binary`); на машине без движка — прежний.
+        // The `--plugin` tail follows the engine from the package: the refresh
+        // takes it from the machine (`we_env::engine_plugin_root_for`), and the
+        // expectation must take it from the same place — otherwise the comparison
+        // goes red exactly where Rexon is installed as a package and green in a
+        // bare developer tree.
+        // The refreshed unit points at the engine Rexon would start now
+        // (`we_client::unit_refresh_binary`); on a machine without an engine — the
+        // previous one.
         let expected_binary = we_env::daemon_binary().unwrap_or_else(|| бинарь.to_string());
         let свежий = we_client::autostart_unit_content_with(
             &expected_binary,
@@ -911,7 +932,7 @@ mod tests {
 
         assert!(refresh_autostart_unit(), "юнит прежнего образца обязан переписаться");
         assert_eq!(std::fs::read_to_string(&путь).unwrap(), свежий);
-        // Повторный проход ничего не делает.
+        // A repeated pass does nothing.
         assert!(!refresh_autostart_unit());
 
         let _ = std::fs::remove_dir_all(&корень);

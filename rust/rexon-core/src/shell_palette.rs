@@ -1,57 +1,57 @@
-//! Палитра в обе стороны между Rexon и чужим шеллом (Noctalia,
+//! Two-way palette between Rexon and a third-party shell (Noctalia,
 //! DankMaterialShell).
 //!
-//! ЗАЧЕМ. Оба шелла красят свою панель сами и, что важнее, сами ставят
-//! приложениям тёмный или светлый режим: Noctalia — БЕЗУСЛОВНО, при запуске и
-//! после каждой смены темы (`gsettings … color-scheme prefer-dark|prefer-light`),
-//! DMS — при включённом `syncModeWithPortal`, а он включён по умолчанию.
-//! Применённая в Rexon схема с другим режимом продержится до первой смены
-//! темы в шелле. Устраивать гонку записей бессмысленно, поэтому человеку
-//! даётся выбор «кто ведёт палитру», а две стороны подгоняются друг к другу:
+//! WHY. Both shells color their own panel and, more importantly, set the
+//! dark or light mode for applications themselves: Noctalia — UNCONDITIONALLY, at startup and
+//! after every theme change (`gsettings … color-scheme prefer-dark|prefer-light`),
+//! DMS — with `syncModeWithPortal` enabled, and it is enabled by default.
+//! A scheme applied in Rexon with a different mode would last until the first theme
+//! change in the shell. Staging a write race is pointless, so the person
+//! gets the choice «who leads the palette», and the two sides are fitted to each other:
 //!
-//!   * **Из Rexon в шелл.** Палитра текущей цветовой схемы (цвета, которые
-//!     `plasma-apply-colorscheme` кладёт в `kdeglobals`) уходит шеллу его же
-//!     штатным путём, и РЕЖИМ шелла выставляется таким же, как у схемы. Тогда
-//!     шелл пишет в `color-scheme` то же самое, что подразумевает схема, —
-//!     гонки нет, потому что спорить не о чем.
-//!       - Noctalia: свой файл `palettes/Rexon.json` (формат «палитры» v5) и в
-//!         файле состояния `settings.toml` ключи `[theme] source = "custom"`,
-//!         `custom_palette = "Rexon"`, `mode`. Файл состояния грузится
-//!         последним и перебивает `~/.config/noctalia/*.toml` — туда же пишут
-//!         GUI шелла и его `noctalia msg color-scheme-set / theme-mode-set`.
-//!       - DMS: свой файл темы `rexon-palette.json` (формат «своей темы» DMS:
-//!         `dark`/`light`) и в `settings.json` ключи `currentThemeName =
+//!   * **From Rexon to the shell.** The palette of the current color scheme (the colors
+//!     `plasma-apply-colorscheme` puts into `kdeglobals`) goes to the shell by its own
+//!     standard path, and the shell's MODE is set to the same as the scheme's. Then
+//!     the shell writes into `color-scheme` exactly what the scheme implies —
+//!     there is no race because there is nothing to argue about.
+//!       - Noctalia: our own file `palettes/Rexon.json` (the v5 «palette» format) and in
+//!         the state file `settings.toml` the keys `[theme] source = "custom"`,
+//!         `custom_palette = "Rexon"`, `mode`. The state file is loaded
+//!         last and overrides `~/.config/noctalia/*.toml` — the shell's GUI and its
+//!         `noctalia msg color-scheme-set / theme-mode-set` write there too.
+//!       - DMS: our own theme file `rexon-palette.json` (the DMS «custom theme» format:
+//!         `dark`/`light`) and in `settings.json` the keys `currentThemeName =
 //!         "custom"`, `currentThemeCategory = "custom"`, `customThemeFile`;
-//!         режим — `isLightMode` в `session.json`. Оба файла шелл
-//!         перечитывает сам.
-//!   * **Из шелла в Rexon.** Цвета шелла становятся цветовой схемой KDE
-//!     (`Rexon — цвета оболочки`) и применяются тем же путём, что любая
-//!     схема из раздела «Цветовые схемы».
-//!       - DMS после каждой сборки темы сохраняет полную палитру Material
-//!         в `~/.cache/DankMaterialShell/dms-colors.json` (нужен `matugen`);
-//!         при своей теме — читается её файл.
-//!       - Noctalia своей палитры наружу сама не кладёт (встроенные палитры
-//!         живут в бинаре, палитра из обоев — в памяти). Отдаёт она её только
-//!         через шаблоны, поэтому Rexon с согласия человека подключает ОДИН
-//!         свой шаблон `[theme.templates.user.rexon_palette]`: шелл заполняет
-//!         его при каждой смене палитры, и файл всегда свежий. При своей
-//!         палитре (`source = "custom"`) читается её файл напрямую.
+//!         the mode is `isLightMode` in `session.json`. The shell rereads both
+//!         files itself.
+//!   * **From the shell to Rexon.** The shell's colors become a KDE color scheme
+//!     (`Rexon — Shell Colors`) and are applied the same way as any
+//!     scheme from the «Color Schemes» section.
+//!       - DMS saves the full Material palette after every theme build
+//!         into `~/.cache/DankMaterialShell/dms-colors.json` (needs `matugen`);
+//!         with a custom theme its file is read.
+//!       - Noctalia does not put its palette outside by itself (built-in palettes
+//!         live in the binary, the palette from the wallpaper — in memory). It hands it out only
+//!         through templates, so Rexon, with the person's consent, adds ONE
+//!         template of its own `[theme.templates.user.rexon_palette]`: the shell fills
+//!         it on every palette change, and the file is always fresh. With a custom
+//!         palette (`source = "custom"`) its file is read directly.
 //!
-//! Правило записи то же, что у обоев шелла (`desktop_shell`): правятся ТОЛЬКО
-//! перечисленные ключи, остальной файл остаётся байт в байт; результат
-//! проверяется разбором (иначе отказ, а не порча); перед первой правкой рядом
-//! кладётся резервная копия `*.rexon-palette-backup`; запись — подменой имени
-//! (`utils::atomic_write`). Что было до Rexon, запоминается в
-//! `$XDG_STATE_HOME/rexon/shell-palette.json` ДО записи в файл шелла.
-//! «Вернуть как было»: если файл с тех пор никто не трогал — возвращается
-//! прежнее содержимое целиком, бит в бит; если шелл успел его переписать —
-//! возвращаются только наши ключи, чужие правки остаются.
+//! The write rule is the same as for shell wallpapers (`desktop_shell`): ONLY the
+//! listed keys are edited, the rest of the file stays byte for byte; the result
+//! is verified by parsing (otherwise a refusal, not corruption); before the first edit a
+//! backup `*.rexon-palette-backup` is put next to it; writing is by renaming
+//! (`utils::atomic_write`). What existed before Rexon is remembered in
+//! `$XDG_STATE_HOME/rexon/shell-palette.json` BEFORE writing to the shell's file.
+//! «Return as It Was»: if nobody has touched the file since — the previous
+//! content is restored in full, bit for bit; if the shell has rewritten it —
+//! only our keys are restored, other edits stay.
 //!
-//! ⚠️ Граница: ни один шелл на машине разработки не установлен. Форматы и
-//! ключи сверены по исходникам noctalia v5.2.0 и DMS v1.6.2 (разведка
-//! 01.10.2026), поведение — подставными файлами (`tests/shell_palette.rs`).
-//! Что шелл действительно перечитывает файлы на лету и что Noctalia
-//! принимает шаблон из файла состояния, живьём НЕ проверено.
+//! ⚠️ Boundary: neither shell is installed on the development machine. Formats and
+//! keys were checked against the sources of noctalia v5.2.0 and DMS v1.6.2 (research
+//! 01.10.2026), behavior — with fake files (`tests/shell_palette.rs`).
+//! That the shell really rereads the files on the fly and that Noctalia
+//! accepts a template from the state file has NOT been verified live.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -63,16 +63,16 @@ use crate::i18n::{tr, trf};
 use crate::system::DesktopShell;
 
 // ============================================================================
-// Цвет
+// Color
 // ============================================================================
 
-/// Цвет без прозрачности.
+/// A color without transparency.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
 impl Rgb {
-    /// Разбор `#rgb`, `#rrggbb`, `#rrggbbaa` (прозрачность отбрасывается) и
-    /// KDE-вида `r,g,b` / `r,g,b,a`.
+    /// Parse `#rgb`, `#rrggbb`, `#rrggbbaa` (transparency is dropped) and
+    /// the KDE form `r,g,b` / `r,g,b,a`.
     pub fn parse(text: &str) -> Option<Rgb> {
         let t = text.trim();
         if let Some(hex) = t.strip_prefix('#') {
@@ -97,12 +97,12 @@ impl Rgb {
         format!("#{:02x}{:02x}{:02x}", self.0, self.1, self.2)
     }
 
-    /// `r,g,b` — так цвета записаны в схемах KDE.
+    /// `r,g,b` — that is how colors are written in KDE schemes.
     pub fn kde(self) -> String {
         format!("{},{},{}", self.0, self.1, self.2)
     }
 
-    /// Относительная яркость по WCAG (0 — чёрный, 1 — белый).
+    /// Relative luminance per WCAG (0 — black, 1 — white).
     pub fn luminance(self) -> f64 {
         let lin = |c: u8| {
             let c = c as f64 / 255.0;
@@ -115,14 +115,14 @@ impl Rgb {
         0.2126 * lin(self.0) + 0.7152 * lin(self.1) + 0.0722 * lin(self.2)
     }
 
-    /// Смесь: `t = 0` — этот цвет, `t = 1` — `other`.
+    /// Mix: `t = 0` — this color, `t = 1` — `other`.
     pub fn mix(self, other: Rgb, t: f64) -> Rgb {
         let m = |a: u8, b: u8| (a as f64 + (b as f64 - a as f64) * t).round().clamp(0.0, 255.0) as u8;
         Rgb(m(self.0, other.0), m(self.1, other.1), m(self.2, other.2))
     }
 
-    /// Читаемый текст поверх этого цвета: чёрный или белый, у кого контраст
-    /// больше.
+    /// Readable text over this color: black or white, whichever has the higher
+    /// contrast.
     pub fn readable_on(self) -> Rgb {
         let l = self.luminance();
         if (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) {
@@ -136,14 +136,14 @@ impl Rgb {
 const BLACK: Rgb = Rgb(0, 0, 0);
 
 // ============================================================================
-// Палитра
+// Palette
 // ============================================================================
 
-/// Палитра ролями — те же 16 ролей, что у Noctalia (`mPrimary` …
-/// `mOnHover`); DMS и схема KDE раскладываются на них без потерь смысла.
+/// A palette by roles — the same 16 roles as Noctalia's (`mPrimary` …
+/// `mOnHover`); DMS and a KDE scheme map onto them without losing meaning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Palette {
-    /// Тёмная палитра (фон темнее текста).
+    /// A dark palette (background darker than text).
     pub dark: bool,
     pub primary: Rgb,
     pub on_primary: Rgb,
@@ -164,8 +164,8 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// Роли парами «имя Noctalia (`mPrimary`) → цвет» в порядке её
-    /// документации.
+    /// Roles as pairs «Noctalia name (`mPrimary`) → color» in the order of its
+    /// documentation.
     pub fn noctalia_roles(&self) -> [(&'static str, Rgb); 16] {
         [
             ("mPrimary", self.primary),
@@ -187,8 +187,8 @@ impl Palette {
         ]
     }
 
-    /// Собрать по ролям с запасными значениями для тех, что источник не
-    /// дал. `get` отвечает по имени Material (`on_primary`, `surface` …).
+    /// Assemble by roles with fallback values for those the source did not
+    /// give. `get` answers by Material name (`on_primary`, `surface` …).
     fn from_roles(dark_hint: Option<bool>, get: impl Fn(&str) -> Option<Rgb>) -> Option<Palette> {
         let surface = get("surface")?;
         let on_surface = get("on_surface")?;
@@ -222,11 +222,11 @@ impl Palette {
 }
 
 // ============================================================================
-// Схема KDE ⇄ палитра
+// KDE scheme ⇄ palette
 // ============================================================================
 
-/// Группы INI KDE: `[Colors:Window]` → ключ → значение. Повтор ключа —
-/// последний побеждает, как у KConfig.
+/// KDE INI groups: `[Colors:Window]` → key → value. A repeated key —
+/// the last one wins, as in KConfig.
 fn kde_groups(text: &str) -> BTreeMap<String, BTreeMap<String, String>> {
     let mut out: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut group = String::new();
@@ -248,17 +248,17 @@ fn kde_groups(text: &str) -> BTreeMap<String, BTreeMap<String, String>> {
     out
 }
 
-/// Палитра по тексту схемы KDE (`*.colors`) или `kdeglobals` — туда
-/// `plasma-apply-colorscheme` кладёт те же группы `[Colors:*]`.
+/// Palette from the text of a KDE scheme (`*.colors`) or `kdeglobals` — that is where
+/// `plasma-apply-colorscheme` puts the same `[Colors:*]` groups.
 ///
-/// `None` — в тексте нет цветов окна (схема не применялась ни разу).
+/// `None` — the text has no window colors (the scheme was never applied).
 pub fn palette_from_kde(text: &str) -> Option<Palette> {
     let g = kde_groups(text);
     let c = |group: &str, key: &str| g.get(group).and_then(|m| m.get(key)).and_then(|v| Rgb::parse(v));
     let surface = c("Colors:Window", "BackgroundNormal")?;
     let on_surface = c("Colors:Window", "ForegroundNormal")?;
-    // Акцент: `AccentColor` (Plasma 6, «свой цвет акцента») главнее
-    // выделения — выделение схема могла оставить своим.
+    // Accent: `AccentColor` (Plasma 6, «custom accent color») outranks
+    // the selection — the scheme may have kept its own selection.
     let primary = c("General", "AccentColor")
         .or_else(|| c("Colors:Selection", "BackgroundNormal"))
         .or_else(|| c("Colors:View", "DecorationFocus"))?;
@@ -282,14 +282,14 @@ pub fn palette_from_kde(text: &str) -> Option<Palette> {
     Palette::from_roles(None, get)
 }
 
-/// Подпись схемы, которую Rexon собирает из цветов шелла.
+/// Label of the scheme Rexon assembles from the shell's colors.
 pub fn shell_scheme_display_name() -> String {
     // TRANSLATORS: name of the KDE color scheme Rexon builds from the desktop shell's colors (shown in KDE's color settings).
     tr("Rexon — Shell Colors")
 }
 
-/// Текст схемы KDE по палитре. `id` — имя файла без `.colors` (оно же
-/// `ColorScheme`), `name` — подпись в списке схем.
+/// KDE scheme text from a palette. `id` — the file name without `.colors` (also
+/// `ColorScheme`), `name` — the label in the scheme list.
 pub fn kde_scheme_text(p: &Palette, id: &str, name: &str) -> String {
     let bg = p.surface;
     let fg = p.on_surface;
@@ -324,7 +324,7 @@ pub fn kde_scheme_text(p: &Palette, id: &str, name: &str) -> String {
     out.push_str(&group("Colors:Complementary", bg, alt, fg));
     out.push_str(&group("Colors:Header", bg, alt, fg));
     out.push_str(&group("Colors:Header][Inactive", bg, alt, fg));
-    // Выделение: текст поверх акцента, «неактивный» — тот же текст.
+    // Selection: text over the accent, «inactive» is the same text.
     out.push_str(&format!(
         "[Colors:Selection]\nBackgroundAlternate={}\nBackgroundNormal={}\nDecorationFocus={}\n\
          DecorationHover={}\nForegroundActive={}\nForegroundInactive={}\nForegroundLink={}\n\
@@ -362,15 +362,15 @@ pub fn kde_scheme_text(p: &Palette, id: &str, name: &str) -> String {
 }
 
 // ============================================================================
-// Палитры шеллов ⇄ палитра
+// Shell palettes ⇄ palette
 // ============================================================================
 
-/// Палитра Material, как её кладёт DMS (`dms-colors.json`) и наш шаблон
-/// Noctalia: `{"mode": "dark", "colors": {"dark": {...}, "light": {...}}}`
-/// с именами `primary`, `on_primary`, `surface_container_high` ….
+/// A Material palette as DMS writes it (`dms-colors.json`) and our Noctalia
+/// template: `{"mode": "dark", "colors": {"dark": {...}, "light": {...}}}`
+/// with names `primary`, `on_primary`, `surface_container_high` ….
 ///
-/// `dark_hint` — режим, в котором шелл сейчас (у DMS он хранится отдельно,
-/// в `session.json`); `None` — по полю `mode`, без него — тёмный.
+/// `dark_hint` — the mode the shell is in now (DMS stores it separately,
+/// in `session.json`); `None` — by the `mode` field, without it — dark.
 pub fn palette_from_material(json: &str, dark_hint: Option<bool>) -> Option<Palette> {
     let v: Value = serde_json::from_str(json).ok()?;
     let dark = dark_hint.unwrap_or_else(|| v.get("mode").and_then(Value::as_str) != Some("light"));
@@ -386,8 +386,8 @@ pub fn palette_from_material(json: &str, dark_hint: Option<bool>) -> Option<Pale
     Palette::from_roles(Some(dark), get)
 }
 
-/// Палитра Noctalia (`palettes/*.json`: `dark`/`light` с `mPrimary` …).
-/// Нет нужного варианта — берётся другой, как делает сам шелл.
+/// A Noctalia palette (`palettes/*.json`: `dark`/`light` with `mPrimary` …).
+/// If the needed variant is missing, the other one is taken, as the shell itself does.
 pub fn palette_from_noctalia(json: &str, dark: bool) -> Option<Palette> {
     let v: Value = serde_json::from_str(json).ok()?;
     let first = if dark { "dark" } else { "light" };
@@ -407,8 +407,8 @@ pub fn palette_from_noctalia(json: &str, dark: bool) -> Option<Palette> {
     Palette::from_roles(Some(dark), get)
 }
 
-/// Своя тема DMS (`customThemeFile`): либо `dark`/`light`, либо плоский
-/// набор. Имена — DMS (`primaryText`, `surfaceText` …).
+/// A DMS custom theme (`customThemeFile`): either `dark`/`light` or a flat
+/// set. Names are DMS ones (`primaryText`, `surfaceText` …).
 pub fn palette_from_dms_theme(json: &str, dark: bool) -> Option<Palette> {
     let v: Value = serde_json::from_str(json).ok()?;
     let mode = if dark { "dark" } else { "light" };
@@ -432,9 +432,9 @@ pub fn palette_from_dms_theme(json: &str, dark: bool) -> Option<Palette> {
     Palette::from_roles(Some(dark), get)
 }
 
-/// Файл палитры Noctalia. Оба варианта — одна и та же палитра: режим
-/// шеллу выставляется отдельно, и при любом из них он должен показать
-/// именно её.
+/// Noctalia palette file. Both variants are the same palette: the mode
+/// is set for the shell separately, and in either of them it must show
+/// exactly this palette.
 pub fn noctalia_palette_json(p: &Palette) -> String {
     let mut variant = serde_json::Map::new();
     for (k, c) in p.noctalia_roles() {
@@ -446,7 +446,7 @@ pub fn noctalia_palette_json(p: &Palette) -> String {
     pretty(&Value::Object(root))
 }
 
-/// Файл своей темы DMS (те же ключи, что у его встроенных тем).
+/// DMS custom theme file (the same keys as its built-in themes).
 pub fn dms_theme_json(p: &Palette) -> String {
     let surface_container = |t: f64| p.surface.mix(p.on_surface, t).hex();
     let mut variant = serde_json::Map::new();
@@ -479,7 +479,7 @@ pub fn dms_theme_json(p: &Palette) -> String {
     pretty(&Value::Object(root))
 }
 
-/// Роли, которые шаблон Noctalia отдаёт наружу (имена Material).
+/// Roles the Noctalia template exports (Material names).
 const BRIDGE_TOKENS: &[&str] = &[
     "primary",
     "on_primary",
@@ -498,10 +498,10 @@ const BRIDGE_TOKENS: &[&str] = &[
     "surface_container_high",
 ];
 
-/// Шаблон Noctalia, который пишет палитру в том же виде, что
-/// `dms-colors.json` у DMS, — читатель у обоих один
-/// ([`palette_from_material`]). Синтаксис — `{{ colors.<имя>.<режим>.hex }}`
-/// и `{{ mode }}` (документация Noctalia, «Template Reference»).
+/// A Noctalia template that writes the palette in the same form as DMS's
+/// `dms-colors.json` — both share one reader
+/// ([`palette_from_material`]). Syntax — `{{ colors.<name>.<mode>.hex }}`
+/// and `{{ mode }}` (Noctalia documentation, «Template Reference»).
 pub fn noctalia_bridge_template() -> String {
     let variant = |mode: &str| {
         BRIDGE_TOKENS
@@ -524,19 +524,19 @@ fn pretty(v: &Value) -> String {
 }
 
 // ============================================================================
-// Где что лежит
+// Where things live
 // ============================================================================
 
-/// Имя нашей палитры у Noctalia (`palettes/Rexon.json`).
+/// Name of our palette in Noctalia (`palettes/Rexon.json`).
 pub const NOCTALIA_PALETTE_NAME: &str = "Rexon";
-/// Имя нашего шаблона Noctalia.
+/// Name of our Noctalia template.
 pub const NOCTALIA_BRIDGE_ID: &str = "rexon_palette";
-/// Две схемы KDE с цветами шелла. Две — потому что
-/// `plasma-apply-colorscheme` ничего не делает, если просят ту же схему,
-/// что уже стоит: новые цвета под прежним именем не применились бы.
+/// Two KDE schemes with the shell's colors. Two — because
+/// `plasma-apply-colorscheme` does nothing if asked for the same scheme
+/// that is already set: new colors under the old name would not be applied.
 pub const SHELL_SCHEME_IDS: [&str; 2] = ["RexonShell", "RexonShellAlt"];
 
-/// Домашние корни (пустая строка — переменная не задана).
+/// Home roots (empty string — the variable is not set).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PaletteHome {
     pub home: String,
@@ -586,8 +586,8 @@ impl PaletteHome {
         self.root(&self.xdg_data_home, ".local/share")
     }
 
-    /// Каталог конфигурации Noctalia (`$NOCTALIA_CONFIG_HOME/noctalia`, иначе
-    /// XDG) — все `*.toml` в нём и `palettes/`.
+    /// Noctalia configuration directory (`$NOCTALIA_CONFIG_HOME/noctalia`, otherwise
+    /// XDG) — all `*.toml` in it and `palettes/`.
     pub fn noctalia_config_dir(&self) -> PathBuf {
         if self.noctalia_config_home.is_empty() {
             self.config().join("noctalia")
@@ -596,7 +596,7 @@ impl PaletteHome {
         }
     }
 
-    /// Файл состояния Noctalia — слой, перебивающий конфигурацию.
+    /// Noctalia state file — the layer that overrides the configuration.
     pub fn noctalia_state_file(&self) -> PathBuf {
         let root = if self.noctalia_state_home.is_empty() {
             self.state()
@@ -623,7 +623,7 @@ impl PaletteHome {
         self.config().join("DankMaterialShell/rexon-palette.json")
     }
 
-    /// Памятка Rexon: что было до нас и кто ведёт палитру.
+    /// Rexon's memo: what existed before us and who leads the palette.
     pub fn memo_file(&self) -> PathBuf {
         self.state().join("rexon/shell-palette.json")
     }
@@ -637,7 +637,7 @@ impl PaletteHome {
     pub fn kdeglobals(&self) -> PathBuf {
         self.config().join("kdeglobals")
     }
-    /// `$XDG_STATE_HOME` либо `~/.local/state`.
+    /// `$XDG_STATE_HOME` or `~/.local/state`.
     pub fn state_dir(&self) -> PathBuf {
         self.state()
     }
@@ -646,9 +646,9 @@ impl PaletteHome {
     }
 }
 
-/// Имя резервной копии рядом с файлом шелла. Своё, не то же, что у обоев
-/// шелла (`*.rexon-backup`): копии двух правок одного файла не должны
-/// затирать друг друга.
+/// Name of the backup next to the shell's file. Our own, not the same as for shell
+/// wallpapers (`*.rexon-backup`): copies of two edits of one file must not
+/// overwrite each other.
 pub fn backup_path(file: &Path) -> PathBuf {
     let mut name = file.file_name().map(|n| n.to_os_string()).unwrap_or_default();
     name.push(".rexon-palette-backup");
@@ -656,16 +656,16 @@ pub fn backup_path(file: &Path) -> PathBuf {
 }
 
 // ============================================================================
-// Точечная правка TOML (строками) и JSON (членами верхнего уровня)
+// Targeted edits of TOML (by lines) and JSON (by top-level members)
 // ============================================================================
 
-/// Почему правка не сделана.
+/// Why an edit was not made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditError {
-    /// Файл не разбирается — трогать его нельзя.
+    /// The file does not parse — it must not be touched.
     Unparsable(String),
-    /// После правки разбор показал не то, что задумано (ключ записан
-    /// иначе, чем мы умеем, — точечными ключами, встроенной таблицей …).
+    /// After the edit parsing showed something other than intended (the key is written
+    /// differently from what we can handle — dotted keys, an inline table …).
     Unexpected(String),
 }
 
@@ -681,8 +681,8 @@ fn lines_keep_ends(text: &str) -> Vec<&str> {
     text.split_inclusive('\n').collect()
 }
 
-/// Имя таблицы из строки-заголовка `[a.b]` (пробелы вокруг точек и
-/// внешние кавычки ключей убраны). `[[…]]` и не-заголовки — `None`.
+/// Table name from a header line `[a.b]` (spaces around dots and
+/// outer key quotes removed). `[[…]]` and non-headers — `None`.
 fn toml_header(line: &str) -> Option<String> {
     let t = line.trim();
     let t = match t.find('#') {
@@ -702,7 +702,7 @@ fn toml_header(line: &str) -> Option<String> {
     )
 }
 
-/// Ключ строки вида `key = …` (без пути с точками).
+/// Key of a line of the form `key = …` (without a dotted path).
 fn toml_line_key(line: &str) -> Option<&str> {
     let t = line.trim_start();
     if t.starts_with('#') || t.starts_with('[') {
@@ -717,8 +717,8 @@ fn toml_line_key(line: &str) -> Option<&str> {
     }
 }
 
-/// Диапазон строк таблицы `table`: (строка заголовка, конец исключая).
-/// Пустое имя — корень (до первого заголовка).
+/// Line range of table `table`: (header line, end exclusive).
+/// An empty name is the root (before the first header).
 fn toml_table_span(lines: &[&str], table: &str) -> Option<(Option<usize>, usize)> {
     if table.is_empty() {
         let end = lines.iter().position(|l| toml_header(l).is_some()).unwrap_or(lines.len());
@@ -733,7 +733,7 @@ fn toml_table_span(lines: &[&str], table: &str) -> Option<(Option<usize>, usize)
     Some((Some(start), end))
 }
 
-/// Строка ключа `key` в таблице `table` как есть (без перевода строки).
+/// The line of key `key` in table `table` as is (without the newline).
 pub fn toml_key_line(text: &str, table: &str, key: &str) -> Option<String> {
     let lines = lines_keep_ends(text);
     let (head, end) = toml_table_span(&lines, table)?;
@@ -744,9 +744,9 @@ pub fn toml_key_line(text: &str, table: &str, key: &str) -> Option<String> {
         .map(|l| l.trim_end_matches(['\n', '\r']).to_string())
 }
 
-/// Поставить (`Some(строка)`) или убрать (`None`) строку ключа. Нет таблицы —
-/// дописывается в конец файла. Только текст; проверка смысла — у
-/// вызывающего ([`toml_apply`]).
+/// Set (`Some(line)`) or remove (`None`) a key line. No table —
+/// it is appended at the end of the file. Text only; checking the meaning is up to
+/// the caller ([`toml_apply`]).
 pub fn toml_set_line(text: &str, table: &str, key: &str, line: Option<&str>) -> String {
     let lines = lines_keep_ends(text);
     let Some((head, end)) = toml_table_span(&lines, table) else {
@@ -779,8 +779,8 @@ pub fn toml_set_line(text: &str, table: &str, key: &str, line: Option<&str>) -> 
             out.remove(i);
         }
         (None, Some(new)) => {
-            // После последней непустой строки таблицы — пустые строки,
-            // отделяющие следующую таблицу, остаются на месте.
+            // After the last non-empty line of the table — the empty lines
+            // separating the next table stay in place.
             let mut at = end;
             while at > from && out[at - 1].trim().is_empty() {
                 at -= 1;
@@ -795,9 +795,9 @@ pub fn toml_set_line(text: &str, table: &str, key: &str, line: Option<&str>) -> 
     out.concat()
 }
 
-/// Убрать заголовок таблицы, если в ней не осталось ни одной строки,
-/// кроме пустых, — вместе с пустой строкой перед ним, которую дописывает
-/// [`toml_set_line`].
+/// Remove a table header if not a single line other than empty ones is left in it —
+/// together with the empty line before it that
+/// [`toml_set_line`] appends.
 fn toml_drop_empty_table(text: &str, table: &str) -> String {
     let lines = lines_keep_ends(text);
     let Some((Some(head), end)) = toml_table_span(&lines, table) else {
@@ -819,7 +819,7 @@ fn toml_parse(text: &str) -> Result<toml::Table, EditError> {
     text.parse::<toml::Table>().map_err(|e| EditError::Unparsable(e.to_string()))
 }
 
-/// Значение по пути `a.b.c` в разобранной таблице.
+/// Value at path `a.b.c` in a parsed table.
 fn toml_lookup<'a>(root: &'a toml::Table, table: &str, key: &str) -> Option<&'a toml::Value> {
     let mut cur = root;
     if !table.is_empty() {
@@ -830,7 +830,7 @@ fn toml_lookup<'a>(root: &'a toml::Table, table: &str, key: &str) -> Option<&'a 
     cur.get(key)
 }
 
-/// То же для правки ожидаемого.
+/// The same for editing the expected one.
 fn toml_put(root: &mut toml::Table, table: &str, key: &str, value: Option<toml::Value>) {
     let mut cur = root;
     if !table.is_empty() {
@@ -850,8 +850,8 @@ fn toml_put(root: &mut toml::Table, table: &str, key: &str, value: Option<toml::
     }
 }
 
-/// Убрать пустые таблицы — у разбора «нет таблицы» и «пустая таблица»
-/// отличаются, а по смыслу для шелла это одно.
+/// Remove empty tables — for the parser «no table» and «empty table»
+/// differ, but for the shell they mean the same.
 fn toml_prune(t: &mut toml::Table) {
     let keys: Vec<String> = t.keys().cloned().collect();
     for k in keys {
@@ -864,7 +864,7 @@ fn toml_prune(t: &mut toml::Table) {
     }
 }
 
-/// Строка TOML со строковым значением.
+/// A TOML line with a string value.
 pub fn toml_string_line(key: &str, value: &str) -> String {
     let mut esc = String::new();
     for ch in value.chars() {
@@ -880,7 +880,7 @@ pub fn toml_string_line(key: &str, value: &str) -> String {
     format!("{key} = \"{esc}\"")
 }
 
-/// Одна точечная правка: таблица, ключ, новая строка (`None` — убрать).
+/// One targeted edit: table, key, new line (`None` — remove).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TomlEdit {
     pub table: String,
@@ -888,9 +888,9 @@ pub struct TomlEdit {
     pub line: Option<String>,
 }
 
-/// Применить правки к тексту и проверить разбором: новый файл обязан
-/// отличаться от старого РОВНО этими ключами. `drop_tables` — таблицы,
-/// которые надо убрать, если они опустели (их создавал Rexon).
+/// Apply edits to the text and verify by parsing: the new file must
+/// differ from the old one in EXACTLY these keys. `drop_tables` — tables
+/// to remove if they became empty (Rexon created them).
 pub fn toml_apply(text: &str, edits: &[TomlEdit], drop_tables: &[String]) -> Result<String, EditError> {
     let before = toml_parse(text)?;
     let mut out = text.to_string();
@@ -977,7 +977,7 @@ fn value_end(b: &[u8], i: usize) -> Option<usize> {
     }
 }
 
-/// Член объекта верхнего уровня: начало ключа и конец значения.
+/// A member of the top-level object: start of the key and end of the value.
 #[derive(Debug, Clone)]
 struct Member {
     key: String,
@@ -1019,7 +1019,7 @@ fn json_members(text: &str) -> Option<(usize, Vec<Member>, usize)> {
     }
 }
 
-/// Сырое значение члена верхнего уровня (текст JSON как в файле).
+/// Raw value of a top-level member (JSON text as in the file).
 pub fn json_member_raw(text: &str, key: &str) -> Option<String> {
     let (_, members, _) = json_members(text)?;
     members
@@ -1029,9 +1029,9 @@ pub fn json_member_raw(text: &str, key: &str) -> Option<String> {
         .map(|m| text[m.value_start..m.value_end].to_string())
 }
 
-/// Поставить (`Some(сырое значение)`) или убрать член верхнего уровня,
-/// не трогая остальной текст. Нового члена — в конец объекта, с отступом
-/// как у первого.
+/// Set (`Some(raw value)`) or remove a top-level member
+/// without touching the rest of the text. A new member goes at the end of the object, indented
+/// like the first one.
 pub fn json_set_member(text: &str, key: &str, raw: Option<&str>) -> Result<String, EditError> {
     let before: Value = serde_json::from_str(text).map_err(|e| EditError::Unparsable(e.to_string()))?;
     let Value::Object(mut expected) = before else {
@@ -1050,10 +1050,10 @@ pub fn json_set_member(text: &str, key: &str, raw: Option<&str>) -> Result<Strin
             if members.len() == 1 {
                 format!("{}{}", &text[..open + 1], &text[close..])
             } else if i + 1 < members.len() {
-                // Съедаем «ключ … значение, » до начала следующего ключа.
+                // Eat «key … value, » up to the start of the next key.
                 format!("{}{}", &text[..m.key_start], &text[members[i + 1].key_start..])
             } else {
-                // Последний: съедаем от конца предыдущего значения.
+                // The last one: eat from the end of the previous value.
                 format!("{}{}", &text[..members[i - 1].value_end], &text[m.value_end..])
             }
         }
@@ -1088,17 +1088,17 @@ pub fn json_set_member(text: &str, key: &str, raw: Option<&str>) -> Result<Strin
 }
 
 // ============================================================================
-// Памятка
+// Memo
 // ============================================================================
 
-/// Кто ведёт палитру.
+/// Who leads the palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Lead {
-    /// Схема, применённая в Rexon, сразу уходит шеллу вместе с режимом.
+    /// A scheme applied in Rexon goes to the shell right away together with the mode.
     Rexon,
-    /// Палитру ведёт шелл: Rexon ему ничего не передаёт, а цвета шелла
-    /// берёт по кнопке.
+    /// The shell leads the palette: Rexon passes it nothing and takes the shell's
+    /// colors on a button press.
     Shell,
 }
 
@@ -1118,42 +1118,42 @@ impl Lead {
     }
 }
 
-/// Прежнее значение одного нашего ключа.
+/// Previous value of one of our keys.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyMemo {
-    /// Таблица TOML (`theme`, `theme.templates.user.rexon_palette`); у JSON
-    /// пусто.
+    /// TOML table (`theme`, `theme.templates.user.rexon_palette`); empty for
+    /// JSON.
     pub table: String,
     pub key: String,
-    /// Строка ключа TOML либо сырое значение JSON до нас; `None` — ключа
-    /// не было.
+    /// The TOML key line or the raw JSON value before us; `None` — the key
+    /// did not exist.
     pub prev: Option<String>,
 }
 
-/// Файл, который правил Rexon.
+/// A file Rexon edited.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileMemo {
     pub path: String,
-    /// `toml`, `json` или `own` (файл целиком наш: палитра, шаблон).
+    /// `toml`, `json` or `own` (the whole file is ours: palette, template).
     pub kind: String,
-    /// Содержимое до первой правки Rexon; `None` — файла не было.
+    /// Content before Rexon's first edit; `None` — the file did not exist.
     pub original: Option<String>,
-    /// Что Rexon записал последним.
+    /// What Rexon wrote last.
     pub written: String,
-    /// Наши ключи (у `own` пусто).
+    /// Our keys (empty for `own`).
     #[serde(default)]
     pub keys: Vec<KeyMemo>,
-    /// Таблицы TOML, которые создал Rexon.
+    /// TOML tables Rexon created.
     #[serde(default)]
     pub created_tables: Vec<String>,
 }
 
-/// Что Rexon сделал в окружении, когда брал цвета шелла.
+/// What Rexon did in the environment when taking the shell's colors.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvMemo {
-    /// Схема KDE до нас (`[General] ColorScheme` в `kdeglobals`).
+    /// The KDE scheme before us (`[General] ColorScheme` in `kdeglobals`).
     pub prev_scheme: Option<String>,
-    /// Наши файлы схем.
+    /// Our scheme files.
     #[serde(default)]
     pub scheme_files: Vec<String>,
 }
@@ -1162,7 +1162,7 @@ pub struct EnvMemo {
 pub struct Memo {
     #[serde(default)]
     pub lead: Option<Lead>,
-    /// Какому шеллу что правили (`as_str`); пусто — ничего.
+    /// Which shell had what edited (`as_str`); empty — nothing.
     #[serde(default)]
     pub shell: String,
     #[serde(default)]
@@ -1176,7 +1176,7 @@ impl Memo {
         let p = path.to_string_lossy();
         self.files.iter().find(|f| f.path == p)
     }
-    /// Есть что возвращать.
+    /// There is something to restore.
     pub fn has_changes(&self) -> bool {
         !self.files.is_empty() || self.env.is_some()
     }
@@ -1205,7 +1205,7 @@ fn remove_file(path: &Path) -> Result<(), String> {
     }
 }
 
-/// Памятка с диска (нет или битая — пустая).
+/// The memo from disk (missing or broken — empty).
 pub fn read_memo(home: &PaletteHome) -> Memo {
     read_optional(&home.memo_file())
         .ok()
@@ -1219,7 +1219,7 @@ fn save_memo(home: &PaletteHome, memo: &Memo) -> Result<(), String> {
     write_text(&home.memo_file(), &text)
 }
 
-/// Запомнить выбор «кто ведёт палитру».
+/// Remember the «who leads the palette» choice.
 pub fn set_lead(home: &PaletteHome, lead: Lead) -> Result<(), String> {
     let mut memo = read_memo(home);
     if memo.lead == Some(lead) {
@@ -1230,21 +1230,21 @@ pub fn set_lead(home: &PaletteHome, lead: Lead) -> Result<(), String> {
 }
 
 // ============================================================================
-// Запись в файлы шелла
+// Writing to the shell's files
 // ============================================================================
 
-/// Одна задуманная правка файла.
+/// One intended file edit.
 #[derive(Debug, Clone)]
 enum FileChange {
-    /// Файл целиком наш.
+    /// The whole file is ours.
     Own(String),
-    /// Ключи TOML.
+    /// TOML keys.
     Toml(Vec<TomlEdit>),
-    /// Члены JSON верхнего уровня: ключ → сырое значение.
+    /// Top-level JSON members: key → raw value.
     Json(Vec<(String, String)>),
 }
 
-/// Почему не вышло, словами для человека.
+/// Why it did not work, in words for the person.
 fn edit_refused(shell: DesktopShell, path: &Path, reason: &str) -> String {
     trf(
         // TRANSLATORS: %1 is the shell name, %2 a file path, %3 the technical reason. Nothing was changed.
@@ -1253,16 +1253,16 @@ fn edit_refused(shell: DesktopShell, path: &Path, reason: &str) -> String {
     )
 }
 
-/// Применить правки: что было — в памятку ДО записи, рядом — резервная
-/// копия. Возвращает, изменилось ли хоть что-то.
+/// Apply the edits: what existed goes into the memo BEFORE writing, a backup
+/// next to the file. Returns whether anything changed at all.
 fn apply_changes(
     home: &PaletteHome,
     shell: DesktopShell,
     changes: &[(PathBuf, FileChange)],
 ) -> Result<bool, String> {
     let mut memo = read_memo(home);
-    // Сначала всё посчитать — отказ любого файла не должен оставить
-    // половину правок.
+    // Compute everything first — a refusal of any file must not leave
+    // half of the edits.
     let mut planned: Vec<(PathBuf, Option<String>, String, FileChange)> = Vec::new();
     for (path, change) in changes {
         let current = read_optional(path).map_err(|e| edit_refused(shell, path, &e))?;
@@ -1286,7 +1286,7 @@ fn apply_changes(
     if !any {
         return Ok(false);
     }
-    // Памятка — первой.
+    // The memo goes first.
     for (path, current, new_text, change) in &planned {
         if current.as_deref() == Some(new_text.as_str()) && memo.file(path).is_none() {
             continue;
@@ -1362,12 +1362,12 @@ fn apply_changes(
 }
 
 // ============================================================================
-// Режим шелла
+// Shell mode
 // ============================================================================
 
-/// Слои конфигурации Noctalia по порядку: `*.toml` каталога по алфавиту,
-/// поверх — файл состояния. (`[include]` не раскрывается: ключи темы туда
-/// почти не выносят, а ошибиться здесь стоит лишь лишней правкой режима.)
+/// Noctalia configuration layers in order: the directory's `*.toml` alphabetically,
+/// the state file on top. (`[include]` is not expanded: theme keys are
+/// rarely moved there, and a mistake here costs only an extra mode edit.)
 fn noctalia_layers(home: &PaletteHome) -> Vec<toml::Table> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(home.noctalia_config_dir())
         .map(|rd| {
@@ -1386,7 +1386,7 @@ fn noctalia_layers(home: &PaletteHome) -> Vec<toml::Table> {
         .collect()
 }
 
-/// Значение `[theme] <key>` Noctalia после слияния слоёв.
+/// Value of Noctalia's `[theme] <key>` after merging the layers.
 fn noctalia_theme_value(home: &PaletteHome, key: &str) -> Option<String> {
     noctalia_layers(home)
         .iter()
@@ -1400,8 +1400,8 @@ fn json_file_value(path: &Path, key: &str) -> Option<Value> {
     v.get(key).cloned()
 }
 
-/// Тёмный ли режим у шелла сейчас. `None` — не узнать (у Noctalia
-/// `mode = "auto"`: режим по расписанию солнца).
+/// Whether the shell is in dark mode now. `None` — cannot tell (Noctalia's
+/// `mode = "auto"`: mode follows the sun schedule).
 pub fn shell_dark(shell: DesktopShell, home: &PaletteHome) -> Option<bool> {
     match shell {
         DesktopShell::Noctalia => match noctalia_theme_value(home, "mode").as_deref() {
@@ -1419,15 +1419,15 @@ pub fn shell_dark(shell: DesktopShell, home: &PaletteHome) -> Option<bool> {
 }
 
 // ============================================================================
-// Из Rexon в шелл
+// From Rexon to the shell
 // ============================================================================
 
-/// Палитра текущей цветовой схемы окружения (`kdeglobals`).
+/// Palette of the environment's current color scheme (`kdeglobals`).
 pub fn current_rexon_palette(home: &PaletteHome) -> Option<Palette> {
     palette_from_kde(&std::fs::read_to_string(home.kdeglobals()).ok()?)
 }
 
-/// Схема KDE, стоящая сейчас (`[General] ColorScheme`).
+/// The KDE scheme currently set (`[General] ColorScheme`).
 pub fn current_scheme_name(home: &PaletteHome) -> Option<String> {
     let text = std::fs::read_to_string(home.kdeglobals()).ok()?;
     kde_groups(&text)
@@ -1453,8 +1453,8 @@ fn push_changes(shell: DesktopShell, p: &Palette, home: &PaletteHome) -> Vec<(Pa
             };
             want("source", "custom");
             want("custom_palette", NOCTALIA_PALETTE_NAME);
-            // Режим по умолчанию — тёмный: ключ ставим, только если он
-            // разойдётся со схемой.
+            // The default mode is dark: we set the key only if it
+            // would differ from the scheme.
             if shell_dark(shell, home) != Some(p.dark) {
                 edits.push(TomlEdit {
                     table: "theme".into(),
@@ -1500,8 +1500,8 @@ fn push_changes(shell: DesktopShell, p: &Palette, home: &PaletteHome) -> Vec<(Pa
     }
 }
 
-/// Передать палитру шеллу. `Ok(текст)` — итог для человека (в том числе
-/// «менять нечего»), `Err(текст)` — отказ.
+/// Pass the palette to the shell. `Ok(text)` — the result for the person (including
+/// «nothing to change»), `Err(text)` — a refusal.
 pub fn push_palette(shell: DesktopShell, p: &Palette, home: &PaletteHome) -> Result<String, String> {
     let changed = apply_changes(home, shell, &push_changes(shell, p, home))?;
     if !changed {
@@ -1519,27 +1519,27 @@ pub fn push_palette(shell: DesktopShell, p: &Palette, home: &PaletteHome) -> Res
     ))
 }
 
-/// Нет схемы, чью палитру передавать.
+/// There is no scheme whose palette could be passed on.
 pub fn no_rexon_palette_msg() -> String {
     tr("There is no current color scheme to pass on: kdeglobals has no window colors. Apply a color scheme in “Color Schemes” and try again.")
 }
 
 // ============================================================================
-// Из шелла в Rexon
+// From the shell to Rexon
 // ============================================================================
 
-/// Почему цвета шелла не взяты.
+/// Why the shell's colors were not taken.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PullError {
-    /// Noctalia: нужен наш шаблон (с согласия человека — [`connect_bridge`]).
+    /// Noctalia: our template is needed (with the person's consent — [`connect_bridge`]).
     NeedsBridge,
-    /// Шаблон подключён, но файл шелл ещё не заполнил.
+    /// The template is connected, but the shell has not filled the file yet.
     BridgePending,
-    /// Отказ словами для человека.
+    /// A refusal in words for the person.
     Refused(String),
 }
 
-/// Цвета шелла сейчас.
+/// The shell's colors now.
 pub fn shell_palette(shell: DesktopShell, home: &PaletteHome) -> Result<Palette, PullError> {
     match shell {
         DesktopShell::Noctalia => {
@@ -1601,7 +1601,7 @@ pub fn shell_palette(shell: DesktopShell, home: &PaletteHome) -> Result<Palette,
     }
 }
 
-/// Наш шаблон Noctalia уже прописан.
+/// Our Noctalia template is already registered.
 pub fn bridge_connected(home: &PaletteHome) -> bool {
     std::fs::read_to_string(home.noctalia_state_file())
         .ok()
@@ -1612,8 +1612,8 @@ fn bridge_table() -> String {
     format!("theme.templates.user.{NOCTALIA_BRIDGE_ID}")
 }
 
-/// Подключить наш шаблон Noctalia: шелл будет класть свою палитру в
-/// [`PaletteHome::bridge_output_file`] при каждой смене.
+/// Connect our Noctalia template: the shell will put its palette into
+/// [`PaletteHome::bridge_output_file`] on every change.
 pub fn connect_bridge(home: &PaletteHome) -> Result<(), String> {
     let table = bridge_table();
     let state = home.noctalia_state_file();
@@ -1635,7 +1635,7 @@ pub fn connect_bridge(home: &PaletteHome) -> Result<(), String> {
     apply_changes(home, DesktopShell::Noctalia, &changes).map(|_| ())
 }
 
-/// Ответ на «Шаблон подключён, ждём шелл».
+/// The reply «Template connected, waiting for the shell».
 pub fn bridge_pending_msg(shell: DesktopShell) -> String {
     trf(
         // TRANSLATORS: %1 is the shell name; “Take Shell Colors” is the button name.
@@ -1644,9 +1644,9 @@ pub fn bridge_pending_msg(shell: DesktopShell) -> String {
     )
 }
 
-/// Схема KDE с цветами шелла: (имя, путь, текст). Имя чередуется между
-/// двумя, если наша схема уже стоит (см. [`SHELL_SCHEME_IDS`]); `None` —
-/// стоящая схема уже ровно эта, применять нечего.
+/// A KDE scheme with the shell's colors: (name, path, text). The name alternates between
+/// two if our scheme is already set (see [`SHELL_SCHEME_IDS`]); `None` —
+/// the scheme set is exactly this one already, nothing to apply.
 pub fn shell_scheme_file(home: &PaletteHome, p: &Palette) -> Option<(String, PathBuf, String)> {
     let current = current_scheme_name(home);
     let name = shell_scheme_display_name();
@@ -1666,9 +1666,9 @@ pub fn shell_scheme_file(home: &PaletteHome, p: &Palette) -> Option<(String, Pat
     Some((id.to_string(), home.color_scheme_file(id), kde_scheme_text(p, id, &name)))
 }
 
-/// Записать схему с цветами шелла и запомнить, какая стояла до нас
-/// (только при первом заходе — второй заход не должен затереть «до нас»
-/// нашей же схемой).
+/// Write the scheme with the shell's colors and remember which one was set before us
+/// (only on the first pass — a second pass must not overwrite «before us»
+/// with our own scheme).
 pub fn write_shell_scheme(home: &PaletteHome, path: &Path, text: &str) -> Result<(), String> {
     let mut memo = read_memo(home);
     let prev = current_scheme_name(home);
@@ -1684,7 +1684,7 @@ pub fn write_shell_scheme(home: &PaletteHome, path: &Path, text: &str) -> Result
     write_text(path, text)
 }
 
-/// Итог «Взять цвета оболочки».
+/// Result of «Take Shell Colors».
 pub fn pulled_msg(shell: DesktopShell) -> String {
     trf(
         // TRANSLATORS: %1 is the shell name; %2 is the name of the color scheme.
@@ -1693,7 +1693,7 @@ pub fn pulled_msg(shell: DesktopShell) -> String {
     )
 }
 
-/// Повторное «Взять цвета оболочки» без перемен у шелла.
+/// A repeated «Take Shell Colors» without changes in the shell.
 pub fn pulled_same_msg(shell: DesktopShell) -> String {
     trf(
         // TRANSLATORS: %1 is the shell name.
@@ -1703,28 +1703,28 @@ pub fn pulled_same_msg(shell: DesktopShell) -> String {
 }
 
 // ============================================================================
-// Вернуть как было
+// Return as it was
 // ============================================================================
 
-/// Что осталось сделать вызывающему после возврата файлов.
+/// What the caller still has to do after the files are restored.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RevertOutcome {
-    /// Текст для человека.
+    /// Text for the person.
     pub message: String,
-    /// Схема KDE, которую надо применить обратно (стояла до Rexon).
+    /// The KDE scheme to apply back (the one set before Rexon).
     pub reapply_scheme: Option<String>,
-    /// Наши файлы схем — убрать ПОСЛЕ того, как прежняя схема встанет
+    /// Our scheme files — remove AFTER the previous scheme is in place
     /// ([`forget_env`]).
     pub drop_scheme_files: Vec<String>,
-    /// Ключи, которые вернуть не удалось (файл переписан до
-    /// неузнаваемости), — для честного текста.
+    /// Keys that could not be restored (the file was rewritten beyond
+    /// recognition) — for an honest text.
     pub skipped: Vec<String>,
 }
 
 fn revert_file(fm: &FileMemo) -> Result<Option<String>, String> {
     let path = Path::new(&fm.path);
     let current = read_optional(path)?;
-    // Никто не трогал после нас — бит в бит прежнее.
+    // Nobody touched it after us — the previous content bit for bit.
     if current.as_deref() == Some(fm.written.as_str()) {
         match &fm.original {
             Some(orig) => write_text(path, orig)?,
@@ -1734,7 +1734,7 @@ fn revert_file(fm: &FileMemo) -> Result<Option<String>, String> {
         return Ok(None);
     }
     let Some(current) = current else {
-        // Файла больше нет — шелл или человек убрал его сам.
+        // The file is gone — the shell or the person removed it.
         return Ok(None);
     };
     match fm.kind.as_str() {
@@ -1767,13 +1767,13 @@ fn revert_file(fm: &FileMemo) -> Result<Option<String>, String> {
             }
             Ok(None)
         }
-        // Наш файл кто-то переписал — не наш больше, не трогаем.
+        // Someone rewrote our file — it is no longer ours, leave it alone.
         _ => Ok(Some(fm.path.clone())),
     }
 }
 
-/// Вернуть файлы шелла к тому, что было до Rexon. Схему окружения
-/// вызывающий применяет сам (`reapply_scheme`), затем зовёт [`forget_env`].
+/// Return the shell's files to what they were before Rexon. The caller applies the
+/// environment scheme itself (`reapply_scheme`), then calls [`forget_env`].
 pub fn revert(home: &PaletteHome) -> Result<RevertOutcome, String> {
     let mut memo = read_memo(home);
     if !memo.has_changes() {
@@ -1788,7 +1788,7 @@ pub fn revert(home: &PaletteHome) -> Result<RevertOutcome, String> {
         _ => "",
     };
     let mut out = RevertOutcome::default();
-    // В обратном порядке: последним правили — первым возвращаем.
+    // In reverse order: edited last — restored first.
     for fm in memo.files.iter().rev() {
         if let Some(skip) = revert_file(fm)? {
             out.skipped.push(skip);
@@ -1800,7 +1800,7 @@ pub fn revert(home: &PaletteHome) -> Result<RevertOutcome, String> {
         out.drop_scheme_files = env.scheme_files.clone();
     }
     if out.reapply_scheme.is_none() {
-        // Применять обратно нечего — свои схемы убираем сразу.
+        // Nothing to apply back — remove our schemes right away.
         for f in &out.drop_scheme_files {
             let _ = remove_file(Path::new(f));
         }
@@ -1828,8 +1828,8 @@ pub fn revert(home: &PaletteHome) -> Result<RevertOutcome, String> {
     Ok(out)
 }
 
-/// Прежняя схема снова стоит — убрать наши файлы схем и запись об
-/// окружении.
+/// The previous scheme is set again — remove our scheme files and the record about
+/// the environment.
 pub fn forget_env(home: &PaletteHome) -> Result<(), String> {
     let mut memo = read_memo(home);
     if let Some(env) = memo.env.take() {
@@ -1841,18 +1841,18 @@ pub fn forget_env(home: &PaletteHome) -> Result<(), String> {
 }
 
 // ============================================================================
-// Что показать человеку
+// What to show the person
 // ============================================================================
 
-/// Полоса «Палитра оболочки» в «Оформлении».
+/// The «Shell palette» bar in «Appearance».
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct PaletteBanner {
     pub visible: bool,
-    /// `as_str` шелла.
+    /// The shell's `as_str`.
     pub shell: String,
-    /// Предупреждение о споре за тёмный/светлый режим.
+    /// Warning about the dispute over dark/light mode.
     pub text: String,
-    /// `rexon`, `shell` или пусто (не выбрано).
+    /// `rexon`, `shell` or empty (not chosen).
     pub lead: String,
     pub lead_caption: String,
     pub lead_rexon_label: String,
@@ -1860,7 +1860,7 @@ pub struct PaletteBanner {
     pub push_label: String,
     pub pull_label: String,
     pub revert_label: String,
-    /// Есть что передавать (в `kdeglobals` есть цвета).
+    /// There is something to pass on (`kdeglobals` has colors).
     pub can_push: bool,
     pub can_revert: bool,
 }
@@ -1878,7 +1878,7 @@ pub fn revert_label() -> String {
     tr("Return as It Was")
 }
 
-/// Полоса по готовым наблюдениям.
+/// The bar from ready observations.
 pub fn palette_banner(detected: Option<DesktopShell>, home: &PaletteHome) -> PaletteBanner {
     let Some(shell) = detected else {
         return PaletteBanner::default();
@@ -1918,10 +1918,10 @@ fn trc_shell() -> String {
     crate::i18n::trc("palette lead", "Shell")
 }
 
-/// Что добавить к итогу применения цветовой схемы в Rexon при живом
-/// шелле. Палитру ведёт Rexon — схема сразу уходит шеллу; ведёт шелл —
-/// честно сказать, что режим останется за ним; не выбрано — подсказать
-/// кнопку.
+/// What to add to the result of applying a color scheme in Rexon with a live
+/// shell. Rexon leads the palette — the scheme goes to the shell right away; the shell leads —
+/// honestly say that the mode stays with it; not chosen — point to the
+/// button.
 pub fn after_scheme_applied(detected: Option<DesktopShell>, home: &PaletteHome) -> Option<String> {
     let shell = detected?;
     match read_memo(home).lead {
@@ -1945,27 +1945,27 @@ pub fn after_scheme_applied(detected: Option<DesktopShell>, home: &PaletteHome) 
 }
 
 // ============================================================================
-// Живой сеанс и ход действий
+// Live session and the course of actions
 // ============================================================================
 
-/// Живой шелл этого сеанса — общим сбором наблюдений модуля обоев шелла
-/// (`desktop_shell::LiveFacts`): каталог сеанса, `/proc` своего
-/// пользователя и своё окружение, без внешних процессов.
+/// The live shell of this session — via the shared observation gathering of the shell wallpaper module
+/// (`desktop_shell::LiveFacts`): the session directory, `/proc` of our own
+/// user and our own environment, without external processes.
 pub fn live_detect() -> Option<DesktopShell> {
     crate::desktop_shell::LiveFacts::collect().detect().map(|d| d.shell)
 }
 
-/// Полоса по живому сеансу.
+/// The bar from the live session.
 pub fn live_banner() -> PaletteBanner {
     palette_banner(live_detect(), &PaletteHome::live())
 }
 
-/// Нет живого шелла — действовать не над кем.
+/// No live shell — nobody to act on.
 fn no_shell_msg() -> String {
     tr("No running desktop shell (Noctalia, DankMaterialShell) was found in this session.")
 }
 
-/// «Передать палитру оболочке».
+/// «Pass Palette to Shell».
 pub fn push_flow(shell: Option<DesktopShell>, home: &PaletteHome) -> (bool, String) {
     let Some(shell) = shell else { return (false, no_shell_msg()) };
     let Some(p) = current_rexon_palette(home) else { return (false, no_rexon_palette_msg()) };
@@ -1975,10 +1975,10 @@ pub fn push_flow(shell: Option<DesktopShell>, home: &PaletteHome) -> (bool, Stri
     }
 }
 
-/// «Взять цвета оболочки». `nudge` просит шелл заполнить наш шаблон
-/// (живьём — `noctalia msg templates-apply`), `wait_ms` — сколько ждать
-/// файла после подключения шаблона; `apply` применяет схему KDE по имени
-/// тем же путём, что раздел «Цветовые схемы», и отвечает `(ok, текст)`.
+/// «Take Shell Colors». `nudge` asks the shell to fill our template
+/// (live — `noctalia msg templates-apply`), `wait_ms` — how long to wait for
+/// the file after connecting the template; `apply` applies a KDE scheme by name
+/// the same way as the «Color Schemes» section and answers `(ok, text)`.
 pub fn pull_flow(
     shell: Option<DesktopShell>,
     home: &PaletteHome,
@@ -2025,7 +2025,7 @@ pub fn pull_flow(
     }
 }
 
-/// «Вернуть как было»: файлы шелла, затем прежняя схема окружения.
+/// «Return as It Was»: the shell's files, then the environment's previous scheme.
 pub fn revert_flow(home: &PaletteHome, apply: &mut dyn FnMut(&str) -> (bool, String)) -> (bool, String) {
     let out = match revert(home) {
         Ok(o) => o,
@@ -2043,9 +2043,9 @@ pub fn revert_flow(home: &PaletteHome, apply: &mut dyn FnMut(&str) -> (bool, Str
     (out.skipped.is_empty(), out.message)
 }
 
-/// Попросить Noctalia перерисовать шаблоны сейчас, а не при следующей
-/// смене палитры. Нет команды или шелл не ответил — не беда: шаблон всё
-/// равно заполнится при следующей смене.
+/// Ask Noctalia to redraw the templates now rather than at the next
+/// palette change. No command or the shell did not answer — no problem: the template will
+/// be filled at the next change anyway.
 pub fn nudge_noctalia_live() {
     if crate::utils::which("noctalia", None).is_none() {
         return;
@@ -2062,76 +2062,76 @@ pub fn nudge_noctalia_live() {
 }
 
 // ============================================================================
-// Цветовая схема KDE вне Plasma
+// KDE color scheme outside Plasma
 // ============================================================================
 //
-// ЗАЧЕМ. В Plasma схему применяет `plasma-apply-colorscheme`: он вливает
-// цвета схемы в `~/.config/kdeglobals`, а палитру программам раздаёт
-// платформенная тема Plasma. Вне Plasma (GNOME, Cinnamon, XFCE, MATE, Budgie,
-// Pantheon, LXQt, COSMIC, тайловые) этой связки нет, и раздел «Цветовые
-// схемы» раньше был только в KDE (правило «настройка одного окружения — во
-// всех»). Здесь Rexon делает её сам — тремя слоями, каждый для своих программ:
+// WHY. In Plasma the scheme is applied by `plasma-apply-colorscheme`: it merges
+// the scheme's colors into `~/.config/kdeglobals`, and the Plasma platform theme
+// hands the palette to programs. Outside Plasma (GNOME, Cinnamon, XFCE, MATE, Budgie,
+// Pantheon, LXQt, COSMIC, tiling ones) this link does not exist, and the «Color
+// Schemes» section used to exist only in KDE (rule «a setting of one environment — in
+// all of them»). Here Rexon builds the link itself — in three layers, each for its own programs:
 //
-//   * `kdeglobals` — те же группы и ключи, что пишет сама Plasma при
-//     применении схемы (сверено с `kcms/colors/colorsapplicator.cpp`
-//     `applyScheme` и `plasma-apply-colorscheme.cpp` из plasma-workspace):
+//   * `kdeglobals` — the same groups and keys Plasma itself writes when
+//     applying a scheme (checked against `kcms/colors/colorsapplicator.cpp`
+//     `applyScheme` and `plasma-apply-colorscheme.cpp` from plasma-workspace):
 //     `[Colors:View|Window|Button|Selection|Tooltip|Complementary|Header]`
-//     (12 ключей каждая, `[Colors:Header]` — только если она есть в схеме,
-//     подгруппа `[…][Inactive]` — если она есть в схеме), `[WM]` (6 цветов
-//     заголовка), `[KDE] contrast / frameContrast`, `[ColorEffects:Inactive
-//     |Disabled]`, `[General] ColorScheme / ColorSchemeHash` (SHA-1 файла
-//     схемы — по нему startplasma узнаёт, что файл схемы менялся). Эти цвета
-//     читают KDE-программы через `KColorScheme`.
-//   * `[UiSettings] ColorScheme` в том же `kdeglobals` — без него вне Plasma
-//     не обойтись. Программы KDE с меню «Цветовая схема» (Dolphin, Kate,
-//     Okular…) создают `KColorSchemeManager`, и тот при платформенной теме не
-//     от Plasma САМ ставит программе Breeze или Breeze Dark по светлому/
-//     тёмному режиму — цвета `kdeglobals` ему не указ (kcolorscheme,
-//     `kcolorschememanager.cpp` `init` / `automaticColorSchemeId`). Схему из
-//     `[UiSettings] ColorScheme` он берёт первой, а файл настроек программы
-//     каскадом читает и `kdeglobals` — так один ключ доходит до всех.
-//     ⚠️ В Plasma этот ключ мешал бы: программы держались бы за схему и не
-//     шли за сменой схемы в Параметрах. Поэтому, применяя схему в Plasma,
-//     Rexon свой ключ снимает (если его с тех пор никто не менял).
-//   * Палитра Qt для остальных Qt-программ:
-//       - LXQt — родной ключ: `~/.config/lxqt/lxqt.conf [Palette]`
+//     (12 keys each, `[Colors:Header]` — only if the scheme has it,
+//     the subgroup `[…][Inactive]` — if the scheme has it), `[WM]` (6 title
+//     colors), `[KDE] contrast / frameContrast`, `[ColorEffects:Inactive
+//     |Disabled]`, `[General] ColorScheme / ColorSchemeHash` (SHA-1 of the scheme
+//     file — by it startplasma learns that the scheme file changed). These colors
+//     are read by KDE programs via `KColorScheme`.
+//   * `[UiSettings] ColorScheme` in the same `kdeglobals` — outside Plasma there is no
+//     way around it. KDE programs with a «Color Scheme» menu (Dolphin, Kate,
+//     Okular…) create a `KColorSchemeManager`, and with a non-Plasma platform theme it
+//     sets Breeze or Breeze Dark for the program BY ITSELF according to the light/
+//     dark mode — the `kdeglobals` colors mean nothing to it (kcolorscheme,
+//     `kcolorschememanager.cpp` `init` / `automaticColorSchemeId`). It takes the scheme from
+//     `[UiSettings] ColorScheme` first, and the program's settings file
+//     cascades into `kdeglobals` too — so one key reaches everyone.
+//     ⚠️ In Plasma this key would get in the way: programs would hold on to the scheme and not
+//     follow a scheme change in System Settings. So when applying a scheme in Plasma,
+//     Rexon removes its key (if nobody has changed it since).
+//   * The Qt palette for the remaining Qt programs:
+//       - LXQt — the native key: `~/.config/lxqt/lxqt.conf [Palette]`
 //         (`window_color`, `base_color`, … — `LXQtPlatformTheme::loadSettings`
-//         в lxqt-qtplugin; файл тема платформы перечитывает сама);
-//       - остальные — qt6ct (и qt5ct, если он есть): наш файл
-//         `<tool>/colors/<схема>.conf` (`[ColorScheme] active_colors /
-//         inactive_colors / disabled_colors` — цвета ролей `QPalette` по
-//         порядку ролей, `#aarrggbb`; формат — `Qt6CT::loadColorScheme`) и в
+//         in lxqt-qtplugin; the platform theme rereads the file itself);
+//       - the rest — qt6ct (and qt5ct if present): our file
+//         `<tool>/colors/<scheme>.conf` (`[ColorScheme] active_colors /
+//         inactive_colors / disabled_colors` — `QPalette` role colors in
+//         role order, `#aarrggbb`; format — `Qt6CT::loadColorScheme`) and in
 //         `<tool>.conf [Appearance] custom_palette=true`,
-//         `color_scheme_path=<путь>` (так его записывает страница
-//         «Appearance» самого qt6ct). Если сеанс ещё не отдаёт Qt-программы
-//         qt6ct, в наш файл переменных `environment.d/rexon-qt-style.conf`
-//         (тот же, что у Kvantum и «Стиля приложений») добавляется
-//         `QT_QPA_PLATFORMTHEME=qt6ct` — тогда палитра появится после
-//         следующего входа. Значков qt6ct до этого не знал — кладём нынешние
-//         значки окружения, иначе Qt-программы остались бы с `hicolor`.
+//         `color_scheme_path=<path>` (that is how qt6ct's own «Appearance» page
+//         writes it). If the session does not hand Qt programs to
+//         qt6ct yet, our variables file `environment.d/rexon-qt-style.conf`
+//         (the same one used by Kvantum and «Application Style») gets
+//         `QT_QPA_PLATFORMTHEME=qt6ct` — then the palette appears after the
+//         next login. qt6ct did not know the icons before that — we put the current
+//         environment icons, otherwise Qt programs would be left with `hicolor`.
 //
-// Роли палитры раскладываются из наборов цветов схемы так же, как это
-// делает KDE для своих программ (Window → окно и текст окна, View → поля
-// ввода и списки, Button, Selection → выделение, Tooltip, ссылки и
-// замещающий текст — из View). Оттенки рамок (Light/Mid/Dark/Shadow) и вид
-// неактивных/выключенных элементов посчитаны проще, чем у KDE: близко по
-// смыслу, но не цифра в цифру.
+// Palette roles are derived from the scheme's color sets the same way
+// KDE does for its programs (Window → window and window text, View → input
+// fields and lists, Button, Selection → selection, Tooltip, links and
+// placeholder text — from View). Frame shades (Light/Mid/Dark/Shadow) and the look of
+// inactive/disabled elements are computed more simply than in KDE: close in
+// meaning, but not digit for digit.
 //
-// GTK-программы схему KDE не читают вовсе — у них свои цвета в теме GTK.
-// Это сказано человеку в оговорке раздела (матрица `de_customization`).
+// GTK programs do not read the KDE scheme at all — they have their own colors in the GTK theme.
+// The person is told this in the section's caveat (the `de_customization` matrix).
 //
-// Откат — как у палитры шелла: что было до Rexon, запоминается в
-// `$XDG_STATE_HOME/rexon/color-scheme-layer.json` ДО записи. «Вернуть как
-// было»: файл с тех пор не трогали — прежнее содержимое бит в бит; трогали —
-// только наши ключи возвращаются к прежним значениям, чужие правки остаются.
-// Наши файлы палитры qt6ct удаляются; файл переменных возвращается, только
-// если его с тех пор никто не переписал (его ведёт и применение Kvantum).
+// Rollback — as for the shell palette: what existed before Rexon is remembered in
+// `$XDG_STATE_HOME/rexon/color-scheme-layer.json` BEFORE writing. «Return as
+// It Was»: if the file has not been touched since — the previous content bit for bit; if it was touched —
+// only our keys return to their previous values, other edits stay.
+// Our qt6ct palette files are deleted; the variables file is restored only
+// if nobody has rewritten it since (applying Kvantum maintains it too).
 //
-// ⚠️ Граница: живьём вне Plasma НЕ проверено — только подставными файлами
-// (`tests/shell_palette.rs`); формат и ключи — по исходникам KDE, qt6ct и
-// LXQt (см. выше).
+// ⚠️ Boundary: NOT verified live outside Plasma — only with fake files
+// (`tests/shell_palette.rs`); format and keys follow the sources of KDE, qt6ct and
+// LXQt (see above).
 
-/// Наборы цветов, которые Plasma вливает в `kdeglobals` (по порядку
+/// Color sets Plasma merges into `kdeglobals` (in the order of
 /// `applyScheme`).
 pub const SCHEME_COLOR_SETS: &[&str] = &[
     "Colors:View",
@@ -2143,7 +2143,7 @@ pub const SCHEME_COLOR_SETS: &[&str] = &[
     "Colors:Header",
 ];
 
-/// Ключи набора цветов, которые переносит Plasma.
+/// Color set keys that Plasma carries over.
 pub const SCHEME_COLOR_KEYS: &[&str] = &[
     "BackgroundNormal",
     "BackgroundAlternate",
@@ -2159,7 +2159,7 @@ pub const SCHEME_COLOR_KEYS: &[&str] = &[
     "DecorationHover",
 ];
 
-/// Цвета заголовка окна `[WM]`.
+/// Window title colors `[WM]`.
 const SCHEME_WM_KEYS: &[&str] = &[
     "activeBackground",
     "activeForeground",
@@ -2169,10 +2169,10 @@ const SCHEME_WM_KEYS: &[&str] = &[
     "inactiveBlend",
 ];
 
-/// Группы эффектов неактивного и выключенного состояния.
+/// Effect groups of the inactive and disabled states.
 const SCHEME_EFFECT_GROUPS: &[&str] = &["ColorEffects:Inactive", "ColorEffects:Disabled"];
 
-/// Ключи эффектов.
+/// Effect keys.
 const SCHEME_EFFECT_KEYS: &[&str] = &[
     "Enable",
     "ChangeSelectionColor",
@@ -2185,17 +2185,17 @@ const SCHEME_EFFECT_KEYS: &[&str] = &[
     "ContrastAmount",
 ];
 
-/// Файл переменных сеанса Rexon для Qt — общий со стилем Qt.
+/// Rexon's session variables file for Qt — shared with the Qt style.
 const QT_ENV_REL: &str = "environment.d/rexon-qt-style.conf";
 
-// ── Правка INI в формате KConfig/QSettings строками ────────────────────────
+// ── Editing INI in KConfig/QSettings format by lines ──────────────────────
 //
-// Чужой файл (`kdeglobals`, `qt6ct.conf`, `lxqt.conf`) правится точечно:
-// меняются только наши ключи, остальные строки остаются байт в байт.
-// Вложенная группа KConfig `[Colors:Header][Inactive]` здесь называется
-// `Colors:Header][Inactive` — как её видит [`kde_groups`].
+// A foreign file (`kdeglobals`, `qt6ct.conf`, `lxqt.conf`) is edited in place:
+// only our keys change, the other lines stay byte for byte.
+// The nested KConfig group `[Colors:Header][Inactive]` is called
+// `Colors:Header][Inactive` here — as [`kde_groups`] sees it.
 
-/// Одна правка: `value = None` — убрать ключ.
+/// One edit: `value = None` — remove the key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IniEdit {
     pub group: String,
@@ -2212,8 +2212,8 @@ impl IniEdit {
     }
 }
 
-/// Группа INI: имя (`None` — строки до первой группы) и её строки без
-/// заголовка.
+/// An INI group: name (`None` — lines before the first group) and its lines without
+/// the header.
 struct IniSection {
     name: Option<String>,
     header: String,
@@ -2260,7 +2260,7 @@ fn ini_render(sections: &[IniSection]) -> String {
     out
 }
 
-/// Значение ключа (последнее, как у KConfig). `None` — ключа нет.
+/// Key value (the last one, as in KConfig). `None` — no key.
 pub fn ini_get(text: &str, group: &str, key: &str) -> Option<String> {
     let mut found = None;
     for s in ini_sections(text) {
@@ -2276,7 +2276,7 @@ pub fn ini_get(text: &str, group: &str, key: &str) -> Option<String> {
     found
 }
 
-/// Ключи группы по порядку (без повторов).
+/// Group keys in order (no repeats).
 fn ini_keys(text: &str, group: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for s in ini_sections(text) {
@@ -2294,9 +2294,9 @@ fn ini_keys(text: &str, group: &str) -> Vec<String> {
     out
 }
 
-/// Применить правки по порядку. Новый ключ встаёт в конец своей группы
-/// (перед пустыми строками), новая группа — в конец файла. Группа, из
-/// которой правкой убран последний ключ, исчезает вместе с заголовком.
+/// Apply edits in order. A new key goes at the end of its group
+/// (before empty lines), a new group — at the end of the file. A group from
+/// which an edit removed the last key disappears together with its header.
 pub fn ini_apply(text: Option<&str>, edits: &[IniEdit]) -> String {
     let mut sections = ini_sections(text.unwrap_or_default());
     for e in edits {
@@ -2311,7 +2311,7 @@ pub fn ini_apply(text: Option<&str>, edits: &[IniEdit]) -> String {
                         return true;
                     }
                     if replaced {
-                        return false; // повтор ключа — лишний
+                        return false; // a repeated key is redundant
                     }
                     *l = line.clone();
                     replaced = true;
@@ -2323,7 +2323,7 @@ pub fn ini_apply(text: Option<&str>, edits: &[IniEdit]) -> String {
                 }
             }
             (Some(v), None) => {
-                // Отбить новую группу пустой строкой от предыдущей.
+                // Separate the new group from the previous one with an empty line.
                 if let Some(last) = sections.last_mut() {
                     let has_text = last.name.is_some() || last.lines.iter().any(|l| !l.trim().is_empty());
                     if has_text && last.lines.last().is_none_or(|l| !l.trim().is_empty()) {
@@ -2342,8 +2342,8 @@ pub fn ini_apply(text: Option<&str>, edits: &[IniEdit]) -> String {
                 s.lines.retain(|l| ini_line_key(l) != Some(e.key.as_str()));
                 if s.lines.len() != before && s.lines.iter().all(|l| l.trim().is_empty()) {
                     sections.remove(i);
-                    // Группа была последней — пустая строка-разделитель перед
-                    // ней больше не нужна.
+                    // The group was the last one — the separator empty line before
+                    // it is no longer needed.
                     if i == sections.len() {
                         if let Some(prev) = sections.last_mut() {
                             while prev.lines.last().is_some_and(|l| l.trim().is_empty()) {
@@ -2359,10 +2359,10 @@ pub fn ini_apply(text: Option<&str>, edits: &[IniEdit]) -> String {
     ini_render(&sections)
 }
 
-// ── Цвета схемы ────────────────────────────────────────────────────────────
+// ── Scheme colors ──────────────────────────────────────────────────────────
 
-/// Значения по умолчанию для недостающего ключа набора (светлый Breeze —
-/// так и KDE достраивает неполную схему).
+/// Default values for a missing set key (light Breeze —
+/// that is how KDE completes an incomplete scheme too).
 fn default_scheme_color(key: &str) -> Rgb {
     match key {
         "BackgroundAlternate" => Rgb(227, 229, 231),
@@ -2379,8 +2379,8 @@ fn default_scheme_color(key: &str) -> Rgb {
     }
 }
 
-/// Разобранная схема KDE: цвет набора с запасом (нет ключа — тот же ключ
-/// окна, нет и его — светлый Breeze).
+/// A parsed KDE scheme: a set color with fallback (no key — the same key of
+/// the window set, no that either — light Breeze).
 struct SchemeColors {
     groups: BTreeMap<String, BTreeMap<String, String>>,
 }
@@ -2402,8 +2402,8 @@ impl SchemeColors {
             .or_else(|| self.raw("Colors:Window", key).and_then(|v| Rgb::parse(v)))
             .unwrap_or_else(|| default_scheme_color(key))
     }
-    /// Заголовок окна: набор Header, а без него — Window (так KDE и рисует
-    /// схему без собственного заголовка).
+    /// Window title: the Header set, and without it — Window (that is how KDE draws
+    /// a scheme without its own header).
     fn header(&self, key: &str, inactive: bool) -> Rgb {
         if inactive {
             if let Some(c) = self.raw("Colors:Header][Inactive", key).and_then(|v| Rgb::parse(v)) {
@@ -2416,8 +2416,8 @@ impl SchemeColors {
             self.color("Window", key)
         }
     }
-    /// Доля «выцветания» выключенного текста (`[ColorEffects:Disabled]`,
-    /// эффект контраста «к фону»; у KDE по умолчанию 0.65).
+    /// The «fading» share of disabled text (`[ColorEffects:Disabled]`,
+    /// the «toward background» contrast effect; KDE's default is 0.65).
     fn disabled_fade(&self) -> f64 {
         let g = "ColorEffects:Disabled";
         let effect = self.raw(g, "ContrastEffect").and_then(|v| v.parse::<i32>().ok()).unwrap_or(1);
@@ -2431,19 +2431,19 @@ impl SchemeColors {
     }
 }
 
-/// Цвет в форме KConfig (`r,g,b`).
+/// A color in KConfig form (`r,g,b`).
 fn kcolor(c: Rgb) -> String {
     c.kde()
 }
 
-/// Правки `kdeglobals`, которыми Plasma применяет схему (`applyScheme`), и
-/// сверх них — `[UiSettings] ColorScheme` вне Plasma (`pin`).
+/// `kdeglobals` edits with which Plasma applies a scheme (`applyScheme`), and
+/// on top of them — `[UiSettings] ColorScheme` outside Plasma (`pin`).
 ///
-/// Отличие от Plasma намеренное одно: эффекты (`[ColorEffects:*]`), которых
-/// в схеме нет, Plasma записывает пустыми строками, а здесь ключ убирается —
-/// по смыслу это одно и то же («по умолчанию»), но без пустых значений.
-/// Акцентный цвет (`[General] AccentColor`) здесь не подмешивается — его
-/// вносит [`crate::accent::scheme_accent_edits`] в [`plan_scheme_layer`].
+/// There is one deliberate difference from Plasma: effects (`[ColorEffects:*]`) that
+/// the scheme lacks are written by Plasma as empty strings, while here the key is removed —
+/// in meaning it is the same («default»), but without empty values.
+/// The accent color (`[General] AccentColor`) is not mixed in here — it is
+/// added by [`crate::accent::scheme_accent_edits`] in [`plan_scheme_layer`].
 pub fn scheme_kdeglobals_edits(kdeglobals: &str, scheme_text: &str, id: &str, hash: &str, pin: bool) -> Vec<IniEdit> {
     let s = SchemeColors::new(scheme_text);
     let mut edits = Vec::new();
@@ -2464,7 +2464,7 @@ pub fn scheme_kdeglobals_edits(kdeglobals: &str, scheme_text: &str, id: &str, ha
         }
         if s.has_group(&inactive) {
             for key in SCHEME_COLOR_KEYS {
-                // Неактивный заголовок Plasma берёт с фона окна.
+                // Plasma takes the inactive title from the window background.
                 let src = if *set == "Colors:Header" { s.raw("Colors:Window", key) } else { s.raw(&inactive, key) };
                 if let Some(v) = src {
                     edits.push(IniEdit::set(&inactive, key, v.clone()));
@@ -2507,9 +2507,9 @@ pub fn scheme_kdeglobals_edits(kdeglobals: &str, scheme_text: &str, id: &str, ha
     edits
 }
 
-/// Роли `QPalette` по порядку (Qt 6: `WindowText` = 0 … `Accent` = 21).
-/// Qt 5 и Qt 6 до 6.6 знают первые 21 роль и лишнюю последнюю пропускают;
-/// qt6ct для 21 роли сам достраивает `Accent` из выделения.
+/// `QPalette` roles in order (Qt 6: `WindowText` = 0 … `Accent` = 21).
+/// Qt 5 and Qt 6 before 6.6 know the first 21 roles and skip the extra last one;
+/// for 21 roles qt6ct derives `Accent` from the selection itself.
 fn qt_palette_roles(s: &SchemeColors, disabled: bool) -> Vec<Rgb> {
     let window = s.color("Window", "BackgroundNormal");
     let view = s.color("View", "BackgroundNormal");
@@ -2545,9 +2545,9 @@ fn qt_palette_roles(s: &SchemeColors, disabled: bool) -> Vec<Rgb> {
     ]
 }
 
-/// Файл палитры qt6ct/qt5ct по схеме KDE (`[ColorScheme]`, цвета
-/// `#aarrggbb`). Неактивное окно — те же цвета, что активное (так выглядят
-/// и стандартные схемы KDE: эффект неактивного у них выключен).
+/// qt6ct/qt5ct palette file from a KDE scheme (`[ColorScheme]`, colors
+/// `#aarrggbb`). The inactive window has the same colors as the active one (that is how
+/// the standard KDE schemes look too: their inactive effect is turned off).
 pub fn qtct_palette_text(scheme_text: &str) -> String {
     let s = SchemeColors::new(scheme_text);
     let list = |roles: Vec<Rgb>| roles.iter().map(|c| format!("#ff{}", &c.hex()[1..])).collect::<Vec<_>>().join(", ");
@@ -2558,7 +2558,7 @@ pub fn qtct_palette_text(scheme_text: &str) -> String {
     )
 }
 
-/// Правки `lxqt.conf [Palette]` — родной палитры LXQt.
+/// Edits of `lxqt.conf [Palette]` — LXQt's native palette.
 pub fn lxqt_palette_edits(scheme_text: &str) -> Vec<IniEdit> {
     let s = SchemeColors::new(scheme_text);
     let tooltip = |k: &str| if s.has_group("Colors:Tooltip") { s.color("Tooltip", k) } else { s.color("Window", k) };
@@ -2579,30 +2579,30 @@ pub fn lxqt_palette_edits(scheme_text: &str) -> Vec<IniEdit> {
     .collect()
 }
 
-/// SHA-1 файла схемы шестнадцатеричной строкой — `[General] ColorSchemeHash`.
+/// SHA-1 of the scheme file as a hex string — `[General] ColorSchemeHash`.
 pub fn scheme_hash(bytes: &[u8]) -> String {
     use sha1::{Digest, Sha1};
     Sha1::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
-// ── Окружение и план ───────────────────────────────────────────────────────
+// ── Environment and plan ───────────────────────────────────────────────────
 
-/// Как в этом окружении применяется цветовая схема.
+/// How a color scheme is applied in this environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemeWay {
     /// Plasma: `plasma-apply-colorscheme`.
     Plasma,
-    /// Вне Plasma — слои Rexon. `lxqt` — палитра Qt в родном `lxqt.conf`,
-    /// иначе — qt6ct.
+    /// Outside Plasma — Rexon's layers. `lxqt` — the Qt palette in the native `lxqt.conf`,
+    /// otherwise qt6ct.
     Layer { lxqt: bool },
-    /// Deepin: программы рисуются стилем Chameleon, палитру им даёт сам
-    /// Deepin — раздел скрыт с объяснением (`de_customization`).
+    /// Deepin: programs are drawn with the Chameleon style, Deepin itself gives them
+    /// the palette — the section is hidden with an explanation (`de_customization`).
     Unavailable,
 }
 
-/// Путь применения схемы по идентификатору окружения
-/// (`system::detect_current_de`). Неизвестное окружение — слои Rexon:
-/// они не зависят от оболочки.
+/// The scheme application path by environment identifier
+/// (`system::detect_current_de`). An unknown environment — Rexon's layers:
+/// they do not depend on the shell.
 pub fn scheme_way(de_id: &str) -> SchemeWay {
     use crate::de_customization::{de_from_id, De};
     match de_from_id(de_id) {
@@ -2613,14 +2613,14 @@ pub fn scheme_way(de_id: &str) -> SchemeWay {
     }
 }
 
-/// Где искать и куда писать.
+/// Where to look and where to write.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SchemeCtx {
     pub de_id: String,
     pub home: PaletteHome,
-    /// `$XDG_DATA_DIRS` по порядку (пусто — `/usr/local/share`, `/usr/share`).
+    /// `$XDG_DATA_DIRS` in order (empty — `/usr/local/share`, `/usr/share`).
     pub data_dirs: Vec<String>,
-    /// `$QT_QPA_PLATFORMTHEME` этого сеанса.
+    /// `$QT_QPA_PLATFORMTHEME` of this session.
     pub session_platform_theme: String,
 }
 
@@ -2635,7 +2635,7 @@ impl SchemeCtx {
         }
     }
 
-    /// Файл схемы по имени: сначала свои схемы, потом системные.
+    /// Scheme file by name: own schemes first, then system ones.
     pub fn scheme_candidates(&self, id: &str) -> Vec<PathBuf> {
         let mut out = vec![self.home.color_scheme_file(id)];
         let dirs: Vec<String> = if self.data_dirs.is_empty() {
@@ -2653,47 +2653,47 @@ impl SchemeCtx {
         self.home.config().join(QT_ENV_REL)
     }
 
-    /// Памятка слоя.
+    /// The layer memo.
     pub fn layer_memo_file(&self) -> PathBuf {
         layer_memo_path(&self.home)
     }
 }
 
-/// Файл памятки слоя цветов.
+/// The color layer memo file.
 pub fn layer_memo_path(home: &PaletteHome) -> PathBuf {
     home.state().join("rexon/color-scheme-layer.json")
 }
 
-/// Что известно о машине до плана (собирает исполнитель).
+/// What is known about the machine before the plan (gathered by the executor).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LayerFacts {
-    /// Настройщики Qt, которыми человек может пользоваться: программа есть
-    /// в системе или её конфиг уже заведён (`qt6ct`, `qt5ct`).
+    /// Qt configurators the person may be using: the program exists
+    /// on the system or its config already exists (`qt6ct`, `qt5ct`).
     pub qt_tools: Vec<String>,
-    /// Тема значков окружения сейчас (пусто — неизвестна).
+    /// The environment's icon theme now (empty — unknown).
     pub icon_theme: String,
 }
 
-/// Одна запись по плану.
+/// One write according to the plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LayerWrite {
     pub path: PathBuf,
-    /// `ini` — чужой файл, правятся наши ключи; `own` — файл целиком наш;
-    /// `env` — наш файл переменных, общий со стилем Qt.
+    /// `ini` — a foreign file, our keys are edited; `own` — the whole file is ours;
+    /// `env` — our variables file, shared with the Qt style.
     pub kind: &'static str,
     pub text: String,
-    /// Ключи, которые правка трогает (группа, ключ) — для отката.
+    /// Keys the edit touches (group, key) — for rollback.
     pub keys: Vec<(String, String)>,
 }
 
-/// План слоя схемы вне Plasma.
+/// Plan of the scheme layer outside Plasma.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LayerPlan {
     pub writes: Vec<LayerWrite>,
-    /// В файл переменных добавлен `QT_QPA_PLATFORMTHEME` — палитра qt6ct
-    /// появится после следующего входа.
+    /// `QT_QPA_PLATFORMTHEME` was added to the variables file — the qt6ct palette
+    /// will appear after the next login.
     pub env_added: bool,
-    /// Палитра для Qt-программ (qt6ct/qt5ct или LXQt) записана.
+    /// The palette for Qt programs (qt6ct/qt5ct or LXQt) was written.
     pub qt_layer: bool,
 }
 
@@ -2707,8 +2707,8 @@ fn edit_keys(edits: &[IniEdit]) -> Vec<(String, String)> {
     out
 }
 
-/// Имя нашего файла палитры в `<tool>/colors`: имя схемы, а если там
-/// лежит чужой файл с таким именем — с пометкой.
+/// Name of our palette file in `<tool>/colors`: the scheme name, and if a foreign file
+/// with that name lies there — with a mark.
 fn qtct_palette_path(dir: &Path, id: &str, ours: &dyn Fn(&Path) -> bool, exists: &dyn Fn(&Path) -> bool) -> PathBuf {
     let plain = dir.join(format!("{id}.conf"));
     if !exists(&plain) || ours(&plain) {
@@ -2717,8 +2717,8 @@ fn qtct_palette_path(dir: &Path, id: &str, ours: &dyn Fn(&Path) -> bool, exists:
     dir.join(format!("{id} (Rexon).conf"))
 }
 
-/// План слоя схемы вне Plasma. `read` — текст файла (`None` — нет), `ours`
-/// — записан ли файл Rexon (по памятке).
+/// Plan of the scheme layer outside Plasma. `read` — file text (`None` — missing), `ours`
+/// — whether Rexon wrote the file (per the memo).
 pub fn plan_scheme_layer(
     ctx: &SchemeCtx,
     lxqt: bool,
@@ -2735,13 +2735,13 @@ pub fn plan_scheme_layer(
         LayerWrite { text: ini_apply(current.as_deref(), &edits), keys: edit_keys(&edits), path, kind: "ini" }
     };
 
-    // 1. kdeglobals — цвета для KDE-программ и `[UiSettings]` для их
+    // 1. kdeglobals — colors for KDE programs and `[UiSettings]` for their
     //    `KColorSchemeManager`.
     let kdeglobals = ctx.home.kdeglobals();
     let current = read(&kdeglobals).unwrap_or_default();
     let mut kg_edits = scheme_kdeglobals_edits(&current, scheme_text, id, hash, true);
-    // Свой цвет акцента (`[General] AccentColor`) — поверх схемы, как его
-    // вносит `applyScheme` KDE; палитра Qt строится уже из подкрашенной схемы.
+    // A custom accent color (`[General] AccentColor`) — on top of the scheme, as KDE's
+    // `applyScheme` adds it; the Qt palette is built from the already tinted scheme.
     let accented;
     let scheme_text = match crate::accent::accent_from_kdeglobals(&current) {
         Some(accent) => {
@@ -2753,7 +2753,7 @@ pub fn plan_scheme_layer(
     };
     plan.writes.push(ini(kdeglobals, kg_edits));
 
-    // 2. Палитра Qt.
+    // 2. The Qt palette.
     if lxqt {
         plan.writes.push(ini(ctx.home.config().join("lxqt/lxqt.conf"), lxqt_palette_edits(scheme_text)));
         plan.qt_layer = true;
@@ -2768,8 +2768,8 @@ pub fn plan_scheme_layer(
             IniEdit::set("Appearance", "color_scheme_path", file.to_string_lossy()),
         ];
         let conf = dir.join(format!("{tool}.conf"));
-        // Значков у qt6ct ещё нет — нынешние значки окружения (иначе
-        // Qt-программы под ним останутся с `hicolor`).
+        // qt6ct has no icons yet — the environment's current icons (otherwise
+        // Qt programs under it would be left with `hicolor`).
         let conf_text = read(&conf).unwrap_or_default();
         if !facts.icon_theme.is_empty() && ini_get(&conf_text, "Appearance", "icon_theme").is_none_or(|v| v.is_empty()) {
             edits.push(IniEdit::set("Appearance", "icon_theme", facts.icon_theme.clone()));
@@ -2779,7 +2779,7 @@ pub fn plan_scheme_layer(
         plan.qt_layer = true;
     }
 
-    // 3. Переменная сеанса: Qt-программы должны брать тему платформы qt6ct.
+    // 3. Session variable: Qt programs must use the qt6ct platform theme.
     if facts.qt_tools.iter().any(|t| t == "qt6ct") && !matches!(ctx.session_platform_theme.as_str(), "qt6ct" | "qt5ct") {
         let path = ctx.qt_env_file();
         let current = read(&path).unwrap_or_default();
@@ -2802,20 +2802,20 @@ pub fn plan_scheme_layer(
     plan
 }
 
-// ── Памятка и исполнение ───────────────────────────────────────────────────
+// ── Memo and execution ─────────────────────────────────────────────────────
 
-/// Что Rexon записал слоем схемы.
+/// What Rexon wrote with the scheme layer.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LayerMemo {
     #[serde(default)]
     pub files: Vec<FileMemo>,
-    /// Последняя схема, применённая слоем.
+    /// The last scheme applied by the layer.
     #[serde(default)]
     pub scheme: Option<String>,
 }
 
 impl LayerMemo {
-    /// Есть что возвращать.
+    /// There is something to restore.
     pub fn has_changes(&self) -> bool {
         !self.files.is_empty()
     }
@@ -2825,7 +2825,7 @@ impl LayerMemo {
     }
 }
 
-/// Памятка слоя с диска (нет или битая — пустая).
+/// The layer memo from disk (missing or broken — empty).
 pub fn read_layer_memo(home: &PaletteHome) -> LayerMemo {
     read_optional(&layer_memo_path(home))
         .ok()
@@ -2843,14 +2843,14 @@ fn save_layer_memo(home: &PaletteHome, memo: &LayerMemo) -> Result<(), String> {
     write_text(&path, &text)
 }
 
-/// Итог применения слоя.
+/// Result of applying the layer.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LayerOutcome {
     pub env_added: bool,
     pub qt_layer: bool,
 }
 
-/// Файл схемы и его текст.
+/// The scheme file and its text.
 fn find_scheme(ctx: &SchemeCtx, id: &str) -> Option<(PathBuf, Vec<u8>)> {
     ctx.scheme_candidates(id).into_iter().find_map(|p| std::fs::read(&p).ok().map(|b| (p, b)))
 }
@@ -2860,30 +2860,30 @@ fn scheme_not_found_msg(id: &str) -> String {
     trf("Couldn't find the color scheme “%1”.", &[&id])
 }
 
-/// План нажатия «Применить» схемы слоями Rexon (вне Plasma) — шаги
-/// общего плана ([`crate::install_plan`], шаг 5а слияния установщиков).
+/// Plan of pressing «Apply» for a scheme with Rexon's layers (outside Plasma) — steps of
+/// the shared plan ([`crate::install_plan`], step 5a of merging the installers).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SchemePress {
-    /// По порядку: `ForceOk`, памятка «что было» (до любой записи слоя),
-    /// записи слоёв (одинаковое не переписывается), снятие наших палитр
-    /// прежних схем, уведомление «палитра сменилась». Каждая запись — под
-    /// общим откатом: сбой посреди нажатия возвращает всё, включая памятку.
+    /// In order: `ForceOk`, the «what existed» memo (before any layer write),
+    /// layer writes (identical content is not rewritten), removing our palettes of
+    /// previous schemes, the «palette changed» notification. Each write is under
+    /// the shared rollback: a failure mid-press restores everything, including the memo.
     pub steps: Vec<crate::themes::ApplyStep>,
     pub outcome: LayerOutcome,
-    /// Палитра Qt — в родном `lxqt.conf`.
+    /// The Qt palette goes into the native `lxqt.conf`.
     pub lxqt: bool,
 }
 
 impl SchemePress {
-    /// Текст удачи для человека.
+    /// Success text for the person.
     pub fn applied_msg(&self) -> String {
         layer_applied_msg(&self.outcome, self.lxqt)
     }
 }
 
-/// Собрать план нажатия слоями Rexon: всё прочитано и решено здесь, ни
-/// одной записи (пробы — только `io.have` и чтение значков окружения).
-/// `Err` — отказ до первого шага (схемы нет).
+/// Build the press plan with Rexon's layers: everything is read and decided here, not
+/// a single write (probes are only `io.have` and reading the environment's icons).
+/// `Err` — a refusal before the first step (no scheme).
 pub fn scheme_layer_press(
     io: &dyn crate::animations::LookIo,
     ctx: &SchemeCtx,
@@ -2913,7 +2913,7 @@ pub fn scheme_layer_press(
     let ours = |p: &Path| own_paths.iter().any(|o| Path::new(o) == p);
     let plan = plan_scheme_layer(ctx, lxqt, id, &scheme_text, &scheme_hash(&bytes), &facts, &read, &ours);
 
-    // Памятка: что было до первой правки Rexon.
+    // Memo: what existed before Rexon's first edit.
     for w in &plan.writes {
         let current = read(&w.path);
         let p = w.path.to_string_lossy().to_string();
@@ -2941,7 +2941,7 @@ pub fn scheme_layer_press(
         }
         fm.written = w.text.clone();
     }
-    // Наши файлы палитры прежних схем — больше не нужны.
+    // Our palette files of previous schemes — no longer needed.
     let new_paths: Vec<String> = plan.writes.iter().map(|w| w.path.to_string_lossy().to_string()).collect();
     let stale: Vec<FileMemo> = memo
         .files
@@ -2956,7 +2956,7 @@ pub fn scheme_layer_press(
         let dir = path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
         ApplyStep::WriteSetsOk { dir, path: path.to_string_lossy().into_owned(), content }
     };
-    // Записывать может оказаться нечего (всё уже так) — нажатие всё равно удалось.
+    // There may be nothing to write (everything is already so) — the press still succeeded.
     let mut steps = vec![ApplyStep::ForceOk];
     let memo_path = layer_memo_path(&ctx.home);
     if memo.has_changes() {
@@ -2978,16 +2978,16 @@ pub fn scheme_layer_press(
             steps.push(ApplyStep::RemoveIfOk { path: f.path.clone() });
         }
     }
-    // Программам с темой платформы KDE — «палитра сменилась» (как шлёт
-    // Plasma). Шины нет — не беда.
+    // To programs with the KDE platform theme — «palette changed» (as
+    // Plasma sends). No bus — no problem.
     let notify = ["dbus-send", "--session", "--type=signal", "/KGlobalSettings", "org.kde.KGlobalSettings.notifyChange", "int32:0", "int32:0"];
     steps.push(ApplyStep::BestEffort(Cmd { argv: notify.iter().map(|a| a.to_string()).collect(), timeout: None }));
     Ok(SchemePress { steps, outcome: LayerOutcome { env_added: plan.env_added, qt_layer: plan.qt_layer }, lxqt })
 }
 
-/// Применить схему слоями Rexon (вне Plasma): план [`scheme_layer_press`]
-/// исполняет общий исполнитель, команды — через `io`. Памятка — ДО записи;
-/// не удалась запись — всё, что нажатие записало (и памятка), возвращено.
+/// Apply a scheme with Rexon's layers (outside Plasma): the [`scheme_layer_press`] plan
+/// is executed by the shared executor, commands go through `io`. The memo comes BEFORE writing;
+/// if a write fails, everything the press wrote (and the memo) is restored.
 pub fn apply_scheme_layer(
     io: &dyn crate::animations::LookIo,
     ctx: &SchemeCtx,
@@ -3018,7 +3018,7 @@ fn apply_failed_msg(path: &Path, err: &str) -> String {
     trf("Couldn't apply the scheme: %1 could not be written (%2).", &[&path.to_string_lossy(), &err])
 }
 
-/// Тема значков окружения сейчас — те же ключи, куда её пишет Rexon.
+/// The environment's current icon theme — the same keys Rexon writes it into.
 fn live_icon_theme(io: &dyn crate::animations::LookIo, ctx: &SchemeCtx) -> String {
     use crate::themes::IconThemeSource as S;
     let xdg = (!ctx.home.xdg_config_home.is_empty()).then_some(ctx.home.xdg_config_home.as_str());
@@ -3041,10 +3041,10 @@ fn live_icon_theme(io: &dyn crate::animations::LookIo, ctx: &SchemeCtx) -> Strin
     }
 }
 
-/// В Plasma снять наш `[UiSettings] ColorScheme` (иначе программы KDE
-/// держались бы за схему и не шли за Параметрами) и забыть про `kdeglobals`:
-/// цвета в нём теперь ставит сама Plasma, и «вернуть как было» не должно
-/// перебить её выбор.
+/// In Plasma remove our `[UiSettings] ColorScheme` (otherwise KDE programs
+/// would hold on to the scheme and not follow System Settings) and forget about `kdeglobals`:
+/// Plasma itself sets the colors in it now, and «Return as It Was» must not
+/// override its choice.
 pub fn release_kdeglobals_to_plasma(home: &PaletteHome) -> Result<(), String> {
     let mut memo = read_layer_memo(home);
     let path = home.kdeglobals();
@@ -3061,7 +3061,7 @@ pub fn release_kdeglobals_to_plasma(home: &PaletteHome) -> Result<(), String> {
     save_layer_memo(home, &memo)
 }
 
-/// Текст итога применения слоя.
+/// Result text of applying the layer.
 pub fn layer_applied_msg(out: &LayerOutcome, lxqt: bool) -> String {
     let mut parts = vec![if out.qt_layer {
         tr("Color scheme applied to KDE and Qt apps. Apps that are already open pick it up after a restart.")
@@ -3078,8 +3078,8 @@ pub fn layer_applied_msg(out: &LayerOutcome, lxqt: bool) -> String {
     parts.join(" ")
 }
 
-/// Применить схему в этом окружении: Plasma — её инструментом, вне Plasma
-/// — слоями Rexon. `(получилось, текст)`.
+/// Apply a scheme in this environment: Plasma — with its own tool, outside Plasma
+/// — with Rexon's layers. `(succeeded, text)`.
 pub fn apply_scheme(io: &dyn crate::animations::LookIo, ctx: &SchemeCtx, id: &str) -> (bool, String, LayerOutcome) {
     match scheme_way(&ctx.de_id) {
         SchemeWay::Plasma => {
@@ -3098,8 +3098,8 @@ pub fn apply_scheme(io: &dyn crate::animations::LookIo, ctx: &SchemeCtx, id: &st
     }
 }
 
-/// [`apply_scheme`] на живой машине: после правки переменных сеанса они
-/// передаются и композиторам, которые `environment.d` не читают.
+/// [`apply_scheme`] on the live machine: after editing the session variables they
+/// are also passed to compositors that do not read `environment.d`.
 pub fn apply_scheme_live(de_id: &str, id: &str) -> (bool, String) {
     let ctx = SchemeCtx::live(de_id);
     let (ok, msg, out) = apply_scheme(&crate::animations::SystemIo, &ctx, id);
@@ -3109,7 +3109,7 @@ pub fn apply_scheme_live(de_id: &str, id: &str) -> (bool, String) {
     (ok, msg)
 }
 
-/// Вернуть файлы, которые правил слой схемы, к виду до Rexon.
+/// Return the files the scheme layer edited to their pre-Rexon state.
 pub fn revert_scheme_layer(home: &PaletteHome) -> Result<String, String> {
     let memo = read_layer_memo(home);
     if !memo.has_changes() {
@@ -3138,8 +3138,8 @@ pub fn revert_scheme_layer(home: &PaletteHome) -> Result<String, String> {
                     write_text(path, &text)?;
                 }
             }
-            // Наш файл переписали (палитру qt6ct — в самом qt6ct, файл
-            // переменных — применением Kvantum) — он уже не наш.
+            // Our file was rewritten (the qt6ct palette — in qt6ct itself, the variables
+            // file — by applying Kvantum) — it is no longer ours.
             _ => skipped.push(fm.path.clone()),
         }
     }

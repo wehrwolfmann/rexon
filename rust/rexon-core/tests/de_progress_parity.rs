@@ -1,20 +1,20 @@
-//! Golden-сверка порта `de_progress.rs` с оригиналом
+//! Golden check of the `de_progress.rs` port against the original
 //! `rexon/qt_main/de_progress.py`.
 //!
-//! Эталон снят с ЖИВОГО диалога: PySide6 поднимался offscreen, вызывались
-//! настоящие `DEProgressDialog.on_progress` / `set_done`, и после каждого
-//! вызова снималось состояние всех четырёх элементов — значение полосы,
-//! заголовок, строка текущего пакета и текст журнала, плюс надпись и
-//! доступность кнопки закрытия. Правило воркера снималось так же вживую:
-//! `_DEOperationWorker` запускался настоящим потоком, а испущенные сигналы
-//! записывались.
+//! The golden file was captured from the LIVE dialog: PySide6 was raised offscreen, the
+//! real `DEProgressDialog.on_progress` / `set_done` were called, and after each
+//! call the state of all four elements was captured — the bar value,
+//! the title, the current package line and the log text, plus the label and
+//! availability of the close button. The worker rule was captured live the same way:
+//! `_DEOperationWorker` was run as a real thread, and the emitted signals
+//! were recorded.
 //!
-//! `golden/de_progress_cases.json` — снятые значения.
+//! `golden/de_progress_cases.json` — the captured values.
 //!
-//! Эталон русский: подписи теперь идут через каталог перевода, поэтому
-//! сверки с ним закрепляют русский из `po/ru.po` (`i18n_pin::ru`) — это и
-//! есть проверка «по-русски как было». Английский интерфейс сверяется
-//! отдельно в конце файла.
+//! The golden file is Russian: captions now go through the translation catalog, so
+//! the checks against it pin the Russian from `po/ru.po` (`i18n_pin::ru`) — that is
+//! the "in Russian as it was" check. The English interface is checked
+//! separately at the end of the file.
 
 mod i18n_pin;
 
@@ -25,7 +25,7 @@ fn fx() -> Value {
     serde_json::from_str(include_str!("golden/de_progress_cases.json")).unwrap()
 }
 
-/// Состояние диалога, как его видит эталон.
+/// The dialog state as the golden file sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Dialog {
     bar: i32,
@@ -37,7 +37,7 @@ struct Dialog {
 }
 
 impl Dialog {
-    /// Свежий диалог — ровно то, что собирает его конструктор.
+    /// A fresh dialog — exactly what its constructor builds.
     fn new() -> Self {
         Self {
             bar: 0,
@@ -79,8 +79,8 @@ impl Dialog {
         self.close_enabled = u.close_enabled;
     }
 
-    /// Текст журнала: `appendPlainText` кладёт каждую строку отдельным
-    /// абзацем, а `toPlainText` склеивает абзацы переводом строки.
+    /// The log text: `appendPlainText` puts each line as a separate
+    /// paragraph, and `toPlainText` joins the paragraphs with a line break.
     fn log_text(&self) -> String {
         self.log.join("\n")
     }
@@ -145,14 +145,14 @@ fn stage_titles_match_original() {
             "заголовок этапа {stage}"
         );
     }
-    // Этапа, которого в таблице нет, заголовок не меняет.
+    // A stage that is not in the table does not change the title.
     assert_eq!(dp::stage_title("warning"), None);
     assert_eq!(dp::stage_title("pkg_install"), None);
     assert_eq!(dp::stage_title("raw"), None);
     assert_eq!(dp::stage_title(""), None);
 }
 
-/// Каждое одиночное сообщение — на свежем диалоге, как и снимался эталон.
+/// Every single message — on a fresh dialog, the way the golden file was captured.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn single_messages_match_original() {
@@ -188,10 +188,10 @@ fn single_messages_match_original() {
     }
 }
 
-/// ⚠️ ПОЧИНЕНО (правило #16). Бесконечная доля роняла диалог: оригинал ловил
-/// `TypeError`/`ValueError`, а приведение бесконечности к целому даёт
-/// `OverflowError`. Эталон это падение и зафиксировал; порт вместо падения
-/// оставляет полосу на месте — как при «не числе».
+/// ⚠️ FIXED (rule #16). An infinite fraction crashed the dialog: the original caught
+/// `TypeError`/`ValueError`, while casting infinity to an integer gives
+/// `OverflowError`. The golden file recorded that crash; instead of crashing, the port
+/// leaves the bar in place — as with "not a number".
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn infinite_fraction_no_longer_crashes() {
@@ -206,7 +206,7 @@ fn infinite_fraction_no_longer_crashes() {
     assert_eq!(dp::bar_value(Some(f64::NEG_INFINITY)), None);
     assert_eq!(dp::bar_value(Some(f64::NAN)), None);
 
-    // Диалог при этом остаётся живым и обрабатывает следующее сообщение.
+    // The dialog stays alive meanwhile and handles the next message.
     let mut dlg = Dialog::new();
     dlg.apply(&dp::on_progress("install", "ставим", Some(f64::INFINITY)));
     assert_eq!(dlg.bar, 0, "полоса не двинулась");
@@ -215,7 +215,7 @@ fn infinite_fraction_no_longer_crashes() {
     assert_eq!(dlg.bar, 500, "следующее сообщение принято");
 }
 
-/// Доля усекается к нулю, а не округляется.
+/// The fraction is truncated toward zero, not rounded.
 #[test]
 fn fraction_truncates_towards_zero() {
     assert_eq!(dp::bar_value(Some(0.98765)), Some(987));
@@ -223,18 +223,18 @@ fn fraction_truncates_towards_zero() {
     assert_eq!(dp::bar_value(Some(0.05)), Some(50));
     assert_eq!(dp::bar_value(Some(0.4)), Some(400));
     assert_eq!(dp::bar_value(None), None);
-    // Вне полосы — не двигаем.
+    // Out of the bar's range — we do not move it.
     assert_eq!(dp::bar_value(Some(-0.001)), None);
     assert_eq!(dp::bar_value(Some(1.1)), None);
-    // А вот 1.001 в полосу ПОПАДАЕТ: 1.001 × 1000 в двоичной дроби чуть
-    // меньше 1001, и усечение даёт ровно 1000. Оригинал ведёт себя так же.
+    // But 1.001 DOES fall into the bar: 1.001 × 1000 as a binary fraction is slightly
+    // less than 1001, and truncation gives exactly 1000. The original behaves the same way.
     assert_eq!(dp::bar_value(Some(1.001)), Some(dp::BAR_MAX));
     assert_eq!(dp::bar_value(Some(0.0)), Some(0));
     assert_eq!(dp::bar_value(Some(1.0)), Some(dp::BAR_MAX));
 }
 
-/// Прогнать записанную эталоном последовательность, сверяя состояние ПОСЛЕ
-/// КАЖДОГО сообщения, а не только в конце.
+/// Run the sequence recorded by the golden file, checking the state AFTER
+/// EACH message, not only at the end.
 fn replay(case: &str) {
     let g = fx();
     let input = g[case]["input"].as_array().unwrap();
@@ -251,7 +251,7 @@ fn replay(case: &str) {
     }
 }
 
-/// Настоящая последовательность установки.
+/// A real installation sequence.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn sequence_matches_original_step_by_step() {
@@ -259,11 +259,11 @@ fn sequence_matches_original_step_by_step() {
     replay("sequence");
 }
 
-/// Строка текущего пакета уже заполнена, приходит ПУСТОЕ сообщение. Этапы
-/// ведут себя по-разному, и это не случайность: `pkg_install` ставит строку
-/// без проверки и потому затирает её, а `download`/`check` — только когда
-/// есть что показать. На свежем диалоге разницы не видно (там и так пусто),
-/// поэтому проверяется она именно так.
+/// The current package line is already filled, an EMPTY message arrives. The stages
+/// behave differently, and that is not an accident: `pkg_install` sets the line
+/// without checking and therefore wipes it, while `download`/`check` only when
+/// there is something to show. On a fresh dialog the difference is not visible (it is empty anyway),
+/// so it is checked exactly this way.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn empty_message_overwrites_only_for_pkg_install() {
@@ -290,8 +290,8 @@ fn done_matches_original() {
     }
 }
 
-/// При неудаче журнал НЕ дополняется: текст ошибки там уже есть, положил его
-/// этап `error`. И полоса остаётся там, где стояла.
+/// On failure the log is NOT appended: the error text is already there, put there by
+/// the `error` stage. And the bar stays where it was.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn failure_keeps_log_and_bar() {
@@ -308,12 +308,12 @@ fn failure_keeps_log_and_bar() {
     );
 }
 
-/// Завершение поверх ЗАПОЛНЕННОГО диалога — только так видно, что именно оно
-/// трогает: неудача очищает строку текущего пакета и оставляет полосу на
-/// месте, удача доводит полосу до конца и строку тоже очищает (оригинал её
-/// не трогал, и под «Завершено ✅» висела последняя сырая строка pacman —
-/// живая установка River 24.10.2026). На свежем диалоге обе разницы не
-/// видны — там и полоса на нуле, и строка пуста.
+/// Completion on top of a FILLED dialog — only this way can one see what exactly it
+/// touches: a failure clears the current package line and leaves the bar in
+/// place, a success brings the bar to the end and clears the line too (the original did not
+/// touch it, and the last raw pacman line hung under «Завершено ✅» —
+/// live River installation 24.10.2026). On a fresh dialog both differences are not
+/// visible — the bar is at zero there and the line is empty.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn done_over_populated_dialog() {
@@ -337,8 +337,8 @@ fn done_over_populated_dialog() {
         "под итогом не должна висеть последняя строка пакетного менеджера"
     );
 
-    // Та же беда с сырой строкой вывода (этап `raw` строку шага не ставит,
-    // но этап разбора pacman — ставит).
+    // The same trouble with a raw output line (the `raw` stage does not set the step line,
+    // but the pacman parsing stage does).
     let mut raw = Dialog::new();
     raw.apply(&dp::on_progress("pkg_install", "🔍 looking for conflicting packages...", Some(0.6)));
     raw.apply_done(&dp::on_done(true, ""));
@@ -346,13 +346,13 @@ fn done_over_populated_dialog() {
     assert_eq!(raw.status, "Завершено ✅");
 }
 
-/// Правило воркера: неудача без объявленной ошибки объявляется им самим.
+/// The worker rule: a failure without a declared error is declared by the worker itself.
 #[test]
 fn worker_error_emit_matches_original() {
     let g = fx();
 
     let cases: &[(&str, bool, bool, &str)] = &[
-        // (случай, удача, ошибка уже объявлена, сообщение)
+        // (case, success, error already declared, message)
         ("worker_fail_silent", false, false, "тихий отказ"),
         ("worker_fail_after_error", false, true, "громкий отказ"),
         ("worker_ok", true, false, "ок"),
@@ -361,9 +361,9 @@ fn worker_error_emit_matches_original() {
     ];
 
     for (name, ok, error_seen, msg) in cases {
-        // Эталон записывал ВСЕ сигналы прогресса. Когда операция объявила
-        // ошибку сама, записанный сигнал — её, и воркеру добавлять нечего;
-        // иначе записанный сигнал (если он есть) как раз воркером и испущен.
+        // The golden file recorded ALL progress signals. When the operation declared
+        // the error itself, the recorded signal is its own, and the worker has nothing to add;
+        // otherwise the recorded signal (if any) is exactly the one emitted by the worker.
         let signals = g[*name]["progress"].as_array().unwrap().clone();
         for s in &signals {
             assert_eq!(s[0].as_str(), Some("error"), "случай {name}: этап");
@@ -380,8 +380,8 @@ fn worker_error_emit_matches_original() {
         );
     }
 
-    // Исключение внутри операции превращается в неудачу с его текстом —
-    // и текст доходит до журнала.
+    // An exception inside the operation turns into a failure with its text —
+    // and the text reaches the log.
     assert_eq!(
         g["worker_raises"]["finished"][0][1].as_str(),
         Some("бум"),
@@ -390,11 +390,11 @@ fn worker_error_emit_matches_original() {
     assert_eq!(dp::worker_error_emit(false, false, "бум"), Some("бум".into()));
 }
 
-// ── Подтверждение установки и окно «оформление отстало» ────────────────────
+// ── Install confirmation and the "decoration fell behind" window ───────────
 //
-// Эталон — код `confirm_de_install` и `offer_aeroshell_rebuild` на день
-// переноса: развилка по вердикту, сборка тела вопроса, тексты окон и блок
-// «Подробнее». ⛔ Ничего не устанавливается, Qt не стартует.
+// The golden reference is the code of `confirm_de_install` and `offer_aeroshell_rebuild` as of the day
+// of the move: the branching by verdict, building the question body, the window texts and the
+// «Подробнее» block. ⛔ Nothing is installed, Qt does not start.
 
 fn verdict(allowed: bool, outcome: &str, title: &str, explanation: &str) -> dp::InstallVerdict {
     dp::InstallVerdict {
@@ -419,8 +419,8 @@ fn blocked_verdict_gets_window_without_install_button() {
         } => {
             assert_eq!(window_title, "Установка невозможна");
             assert_eq!(text, "<b>Astra Linux SE: ЗПС включена</b>");
-            // Объяснение уходит как есть: у окна отдельное поле, переносы
-            // там и так переносы.
+            // The explanation goes as is: the window has a separate field, line breaks
+            // are line breaks there anyway.
             assert_eq!(informative, "Что мешает\nЧто делать");
             assert_eq!(button, "Понятно");
         }
@@ -430,8 +430,8 @@ fn blocked_verdict_gets_window_without_install_button() {
 
 #[test]
 fn warning_verdict_shares_the_question_window() {
-    // Цепочки диалогов подряд в Big Picture неудобны (правило #16):
-    // предупреждение попадает В ТО ЖЕ окно вопроса.
+    // Chains of dialogs in a row are inconvenient in Big Picture (rule #16):
+    // the warning goes INTO THE SAME question window.
     let v = verdict(true, "warning", "ROSA: нет метапакета", "Строка один\nСтрока два");
     match dp::confirm_install_plan(Some(&v), "Установить XFCE?") {
         dp::ConfirmPlan::Ask { body } => {
@@ -458,8 +458,8 @@ fn ok_verdict_asks_the_plain_question() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn unknown_verdict_warns_but_does_not_block() {
     let _lang = i18n_pin::ru();
-    // «Неизвестно» — это не «запрещено»: иначе на неизвестном дистрибутиве
-    // Rexon бесполезен. Но и молчать нельзя.
+    // "Unknown" is not "forbidden": otherwise Rexon is useless on an unknown distro.
+    // But staying silent is not allowed either.
     match dp::confirm_install_plan(None, "Установить MATE?") {
         dp::ConfirmPlan::Ask { body } => {
             assert!(body.starts_with(&dp::confirm_unknown_note()), "{body}");
@@ -486,7 +486,7 @@ fn aeroshell_details_describe_every_package() {
             installed: "6.5.0".into(),
             stale: false,
         },
-        // Версия сборки не указана — обе половины считаются неизвестными.
+        // The build version is not given — both halves are considered unknown.
         dp::AeroshellPackage {
             package: "aeroshell-icons".into(),
             built_for: String::new(),
@@ -514,13 +514,13 @@ fn aeroshell_result_keeps_the_builder_output() {
     let (title, body) = dp::aeroshell_result(false, "makepkg: ошибка &lt;3&gt;");
     assert_eq!(title, "Восстановить не удалось");
     assert!(body.starts_with("makepkg: ошибка &lt;3&gt;<br><br>"), "{body}");
-    // Главное в окне неудачи — что система цела.
+    // The main thing in the failure window is that the system is intact.
     assert!(body.contains("система не пострадала"), "{body}");
 }
 
-/// Кнопка согласия называет то же, что заголовок окна: при одном только
-/// риске («нужно пересобрать») — «Пересобрать», при поломке («перестало
-/// работать») — «Восстановить».
+/// The accept button names the same thing as the window title: with only a
+/// risk ("needs a rebuild") — «Пересобрать», with a breakage ("stopped
+/// working") — «Восстановить».
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn aeroshell_confirm_button_matches_the_title() {
@@ -542,27 +542,27 @@ fn aeroshell_confirm_button_matches_the_title() {
         ..Report::empty()
     };
 
-    // Собрано под ту же Plasma, разошёлся только Qt — риск, стол работает.
+    // Built for the same Plasma, only Qt diverged — a risk, the desktop works.
     let risk = report("6.7.5");
     assert!(risk.at_risk_only());
     assert_eq!(aeroshell::confirm_title_for(&risk), "Оформление нужно пересобрать");
     assert_eq!(aeroshell::confirm_button_for(&risk), "🛠️ Пересобрать");
 
-    // Версия Plasma разошлась — поломка, подпись прежняя.
+    // The Plasma version diverged — a breakage, the caption is the same.
     let broken = report("6.7.4");
     assert!(!broken.at_risk_only());
     assert_eq!(aeroshell::confirm_title_for(&broken), "Оформление перестало работать");
     assert_eq!(aeroshell::confirm_button_for(&broken), "🛠️ Восстановить");
 }
 
-// ── Английский интерфейс ───────────────────────────────────────────────────
+// ── English interface ──────────────────────────────────────────────────────
 
 fn cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Все подписи окна хода и окон подтверждения по-английски — ни одной
-/// русской буквы: забытая строка видна здесь, а не покупателю.
+/// All captions of the progress window and the confirmation windows in English — not a single
+/// Russian letter: a forgotten string is seen here, not by the buyer.
 #[test]
 fn english_progress_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -618,7 +618,7 @@ fn english_progress_has_no_russian() {
     }
 }
 
-/// Английские фразы читаются как фразы.
+/// English phrases read as phrases.
 #[test]
 fn english_progress_reads_naturally() {
     let _lang = i18n_pin::en();

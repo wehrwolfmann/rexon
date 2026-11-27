@@ -1,19 +1,19 @@
-//! Golden-сверка порта `Extension` с оригиналом `rexon/extensions/extension.py`.
+//! Golden check of the `Extension` port against the original `rexon/extensions/extension.py`.
 //!
-//! Два эталона сняты с самого Python:
-//!   * `golden/extension_get_info_cases.json` — для набора манифестов (plugin/
-//!     wallpaper-pack/font-pack, с реальными файлами в каталоге) записан вывод
-//!     `get_info()` через `json.dumps(..., ensure_ascii=False, indent=1)`;
-//!     абсолютный префикс каталога нормализован в `DIR`. Среди кейсов —
-//!     НАСТОЯЩИЙ манифест установленного на машине расширения
-//!     (`midnight-office-shift` со store.kde.org) и `font-pack` с составным
-//!     расширением `.pcf.gz` (там `os.path.splitext` давал `.gz` и шрифт
-//!     терялся — починено с обеих сторон).
-//!   * `golden/extension_errors.json` — тексты `ValueError` для невалидных
-//!     манифестов (нет обязательного поля / неизвестный тип).
+//! Two goldens were captured from Python itself:
+//!   * `golden/extension_get_info_cases.json` — for a set of manifests (plugin/
+//!     wallpaper-pack/font-pack, with real files in the directory) the output of
+//!     `get_info()` via `json.dumps(..., ensure_ascii=False, indent=1)` was recorded;
+//!     the absolute directory prefix is normalized to `DIR`. Among the cases is
+//!     the REAL manifest of an extension installed on the machine
+//!     (`midnight-office-shift` from store.kde.org) and a `font-pack` with the compound
+//!     extension `.pcf.gz` (there `os.path.splitext` gave `.gz` and the font
+//!     got lost — fixed on both sides).
+//!   * `golden/extension_errors.json` — `ValueError` texts for invalid
+//!     manifests (missing required field / unknown type).
 //!
-//! Rust-порт обязан вернуть БАЙТ-В-БАЙТ ту же сериализацию `get_info()` (после
-//! той же нормализации каталога) и те же тексты ошибок.
+//! The Rust port must return BYTE-FOR-BYTE the same `get_info()` serialization (after
+//! the same directory normalization) and the same error texts.
 
 
 mod i18n_pin;
@@ -24,12 +24,12 @@ use rexon_core::extension::{Extension, ExtensionError};
 use rexon_core::models::to_json_indent1;
 use serde_json::{Map, Value};
 
-/// Создать временный каталог, разложить `manifest.json` и перечисленные файлы.
+/// Create a temporary directory and lay out `manifest.json` and the listed files.
 fn make_ext_dir(manifest: &Value, files: &[String]) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "rexon_ext_test_{}_{}",
         std::process::id(),
-        // уникальность между кейсами в рамках процесса
+        // uniqueness across cases within the process
         COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).unwrap();
@@ -50,7 +50,7 @@ fn make_ext_dir(manifest: &Value, files: &[String]) -> std::path::PathBuf {
 
 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// `enabled_state` из golden (объект `{id: bool}`) в `Map`.
+/// `enabled_state` from the golden (object `{id: bool}`) into a `Map`.
 fn enabled_map(v: &Value) -> Map<String, Value> {
     v.as_object().cloned().unwrap_or_default()
 }
@@ -58,8 +58,8 @@ fn enabled_map(v: &Value) -> Map<String, Value> {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn get_info_matches_python_all_cases() {
-    // Эталон Python помнит русские подписи типа — сверка идёт на русском
-    // каталоге (`po/ru.po`), в ядре подписи — английские `msgid`.
+    // The Python golden remembers Russian type labels — the check runs on the Russian
+    // catalog (`po/ru.po`); in the core the labels are English `msgid`s.
     let _lang = i18n_pin::ru();
     let golden: Value =
         serde_json::from_str(include_str!("golden/extension_get_info_cases.json")).unwrap();
@@ -79,25 +79,25 @@ fn get_info_matches_python_all_cases() {
         let ext = Extension::from_manifest(manifest.clone(), dir.clone(), &enabled)
             .unwrap_or_else(|e| panic!("кейс {name}: манифест не загрузился: {e}"));
 
-        // Наш get_info → сериализация → нормализация каталога в DIR.
+        // Our get_info → serialization → directory normalized to DIR.
         let got_raw = to_json_indent1(&Value::Object(ext.get_info()));
         let got = got_raw.replace(&dir.to_string_lossy().into_owned(), "DIR");
 
-        // Эталон: тот же объект из golden → та же сериализация (порядок
-        // ключей сохранён благодаря preserve_order).
+        // Golden: the same object from the golden → the same serialization (key
+        // order kept thanks to preserve_order).
         let want = to_json_indent1(&case["info"]);
 
         assert_eq!(got, want, "get_info расходится в кейсе {name}");
         std::fs::remove_dir_all(&dir).ok();
     }
-    // 5 синтетических + реальное установленное расширение с этой машины
-    // (store.kde.org, wallpaper-pack) + font-pack с составным `.pcf.gz`.
+    // 5 synthetic + a real installed extension from this machine
+    // (store.kde.org, wallpaper-pack) + a font-pack with the compound `.pcf.gz`.
     assert_eq!(cases.len(), 7);
 }
 
 #[test]
 fn errors_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let golden: Value =
         serde_json::from_str(include_str!("golden/extension_errors.json")).unwrap();
     let cases = golden.as_array().expect("массив кейсов");
@@ -114,11 +114,11 @@ fn errors_match_python() {
     assert_eq!(cases.len(), 4);
 }
 
-/// `load_from_dir` для несуществующего манифеста даёт `ManifestNotFound` с
-/// путём каталога (как `FileNotFoundError` Python `f"...не найден в {dir}"`).
+/// `load_from_dir` for a missing manifest gives `ManifestNotFound` with
+/// the directory path (like Python's `FileNotFoundError` `f"...не найден в {dir}"`).
 #[test]
 fn load_from_dir_missing_manifest() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let dir = std::env::temp_dir().join(format!("rexon_ext_nomanifest_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let empty = Map::new();
@@ -131,7 +131,7 @@ fn load_from_dir_missing_manifest() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// `load_from_dir` читает манифест с диска и валидирует так же, как из памяти.
+/// `load_from_dir` reads the manifest from disk and validates it the same way as from memory.
 #[test]
 fn load_from_dir_roundtrip() {
     let manifest = serde_json::json!({"id": "rt", "name": "RT", "type": "plugin"});
@@ -146,8 +146,8 @@ fn load_from_dir_roundtrip() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// Английский интерфейс: ошибки манифеста и подписи по умолчанию — без
-/// русских букв; русский — прежний (сверки выше на `po/ru.po`).
+/// English interface: manifest errors and default labels carry no
+/// Russian letters; Russian stays as before (the checks above run on `po/ru.po`).
 #[test]
 fn english_errors_and_defaults_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -168,7 +168,7 @@ fn english_errors_and_defaults_have_no_russian() {
     assert_eq!(info["author"], "Unknown");
 }
 
-/// По-русски подписи по умолчанию — как были.
+/// In Russian the default labels are as they were.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_defaults_keep_old_texts() {

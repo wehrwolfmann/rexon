@@ -1,54 +1,56 @@
-//! Обои по мониторам: кто какой монитор, что на нём показывать и когда
-//! пересобирать показ после горячего подключения.
+//! Per-monitor wallpapers: which monitor is which, what to show on it and
+//! when to rebuild the showing after hot-plugging.
 //!
-//! Модуль — ЯДРО без Qt и без побочных действий (кроме двух тонких
-//! живых обёрток чтения sysfs/hwdata в конце). Его зовут:
+//! The module is a CORE without Qt and without side effects (except two thin
+//! live wrappers reading sysfs/hwdata at the end). It is called by:
 //!
-//!   * хост `rexon-wallpaper-host` и его надсмотрщик — [`plan_show`] (какие
-//!     процессы держать и на каких экранах), [`plan_change`] (что
-//!     перезапустить после смены экранов), [`HotplugSettle`] (когда);
-//!   * страница «Применить ▸ Монитор N» — [`identify_screens`],
-//!     [`ScreenAssignments::assign`] и хранение в `settings.json`
+//!   * the `rexon-wallpaper-host` host and its supervisor — [`plan_show`]
+//!     (which processes to keep and on which screens), [`plan_change`] (what
+//!     to restart after the screens change), [`HotplugSettle`] (when);
+//!   * the «Apply ▸ Monitor N» page — [`identify_screens`],
+//!     [`ScreenAssignments::assign`] and storage in `settings.json`
 //!     ([`ScreenAssignments::from_settings`] / [`ScreenAssignments::write_settings`]);
-//!   * расширения GNOME/Cinnamon и исполнители DE — тот же [`ShowPlan`]:
-//!     у группы есть имена разъёмов, по которым DE раскладывает картинку.
+//!   * the GNOME/Cinnamon extensions and DE executors — the same [`ShowPlan`]:
+//!     a group has connector names by which the DE lays out the picture.
 //!
-//! ## Опознание монитора
+//! ## Identifying a monitor
 //!
-//! Имя разъёма (`DP-1`) не годится как ключ памяти: человек переткнул кабель
-//! в соседний порт — и «тот же» монитор стал другим. Поэтому ключ строится
-//! из EDID — производитель (код PNP), код изделия и серийный номер — и
-//! переживает смену порта. Разъём добавляется к ключу только там, где без
-//! него нельзя: серийника нет (дешёвые панели, ноутбучные eDP) И рядом
-//! стоит монитор с тем же ключом. Два одинаковых монитора без серийника
-//! различаются по порту, один такой — ходит за человеком по портам.
+//! The connector name (`DP-1`) is no good as a memory key: the person moved
+//! the cable to the neighboring port — and "the same" monitor became another
+//! one. So the key is built from the EDID — the manufacturer (PNP code), the
+//! product code and the serial number — and survives a port change. The
+//! connector is added to the key only where it cannot be done without it:
+//! there is no serial (cheap panels, laptop eDP) AND a monitor with the same
+//! key stands next to it. Two identical monitors without a serial are told
+//! apart by port, a single such one follows the person from port to port.
 //!
-//! EDID берётся из `/sys/class/drm/card*-<разъём>/edid` и разбирается здесь
-//! своим кодом ([`parse_edid`], структура блока — по стандарту VESA E-EDID
-//! 1.3/1.4: заголовок, код производителя, код изделия, серийник,
-//! дескрипторы 0xFC/0xFF/0xFE). Qt о том же мониторе знает своё
-//! (`QScreen::name/manufacturer/model/serialNumber`), и на разных
-//! платформах по-разному: на X11 поля приходят из EDID, на Wayland — из
-//! `wl_output` (серийника там, как правило, нет), имена разъёмов X11 у
-//! части драйверов свои (`HDMI-0`, `DisplayPort-0`). Поэтому экран Qt
-//! сопоставляется с выходом DRM по очкам ([`match_screens`]): совпавший
-//! серийник весит больше всего, потом разъём, модель и производитель;
-//! противоречащие серийники запрещают пару вовсе. Не сопоставился —
-//! ключ строится из того, что сказал Qt, а нет и этого — из имени разъёма.
+//! The EDID is taken from `/sys/class/drm/card*-<connector>/edid` and parsed
+//! here with our own code ([`parse_edid`], the block structure follows the
+//! VESA E-EDID 1.3/1.4 standard: header, manufacturer code, product code,
+//! serial, descriptors 0xFC/0xFF/0xFE). Qt knows its own about the same
+//! monitor (`QScreen::name/manufacturer/model/serialNumber`), and differently
+//! on different platforms: on X11 the fields come from the EDID, on Wayland
+//! from `wl_output` (there is usually no serial there), some drivers have
+//! their own X11 connector names (`HDMI-0`, `DisplayPort-0`). So a Qt screen
+//! is matched with a DRM output by points ([`match_screens`]): a matching
+//! serial weighs the most, then the connector, the model and the
+//! manufacturer; contradicting serials forbid the pair altogether. Not
+//! matched — the key is built from what Qt said, and if there is not even
+//! that — from the connector name.
 //!
-//! ## Назначения и совместимость
+//! ## Assignments and compatibility
 //!
-//! `settings.json`, ключ [`KEY_SCREENS`]: обои «на все экраны» и по
-//! ключам мониторов. Ключа нет (все прежние установки) — значит «одни
-//! обои на все экраны», ровно как работал Rexon до этого модуля. Назначение
-//! отключённого монитора НЕ стирается: подключили снова — вернулись его
-//! обои.
+//! `settings.json`, the [`KEY_SCREENS`] key: the «on all screens» wallpaper
+//! and wallpapers by monitor keys. No key (all previous installs) means "one
+//! wallpaper on all screens", exactly how Rexon worked before this module. The
+//! assignment of a disconnected monitor is NOT erased: connected again — its
+//! wallpaper is back.
 //!
-//! ## Показ
+//! ## Showing
 //!
-//! Один процесс на группу экранов с одинаковыми обоями — одинаковые обои
-//! на двух мониторах не должны декодировать видео дважды; разные обои —
-//! разные процессы.
+//! One process per group of screens with the same wallpaper — the same
+//! wallpaper on two monitors must not decode the video twice; different
+//! wallpapers — different processes.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -59,44 +61,44 @@ use serde_json::{Map, Value};
 // EDID
 // ============================================================================
 
-/// Длина базового блока EDID.
+/// Length of the EDID base block.
 pub const EDID_BLOCK_LEN: usize = 128;
 
-/// Заголовок базового блока EDID.
+/// Header of the EDID base block.
 const EDID_HEADER: [u8; 8] = [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00];
 
-/// Смещения четырёх 18-байтовых дескрипторов базового блока.
+/// Offsets of the four 18-byte descriptors of the base block.
 const DESCRIPTOR_OFFSETS: [usize; 4] = [54, 72, 90, 108];
 
-/// Метки текстовых дескрипторов дисплея.
+/// Tags of the display text descriptors.
 const TAG_SERIAL_TEXT: u8 = 0xFF;
 const TAG_UNSPECIFIED_TEXT: u8 = 0xFE;
 const TAG_NAME: u8 = 0xFC;
 
-/// Что ядру нужно из EDID монитора.
+/// What the core needs from a monitor's EDID.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EdidInfo {
-    /// Код производителя PNP, три заглавные буквы (`SAM`, `DEL`).
+    /// PNP manufacturer code, three capital letters (`SAM`, `DEL`).
     pub pnp_id: String,
-    /// Код изделия (байты 10–11, младший первым).
+    /// Product code (bytes 10–11, low byte first).
     pub product_code: u16,
-    /// Числовой серийник (байты 12–15); `0` — производитель не заполнил.
+    /// Numeric serial (bytes 12–15); `0` — the manufacturer did not fill it in.
     pub serial_number: u32,
-    /// Серийник текстом (дескриптор 0xFF), если есть.
+    /// The serial as text (descriptor 0xFF), if present.
     pub serial_text: Option<String>,
-    /// Имя монитора (дескриптор 0xFC), если есть.
+    /// The monitor name (descriptor 0xFC), if present.
     pub monitor_name: Option<String>,
-    /// Прочий текст (дескрипторы 0xFE) — у ноутбучных панелей там модель.
+    /// Other text (descriptors 0xFE) — laptop panels have the model there.
     pub extra_text: Vec<String>,
-    /// Год выпуска, если указан.
+    /// Year of manufacture, if given.
     pub year: Option<u16>,
-    /// Сошлась ли контрольная сумма. Разбор её НЕ требует: у части
-    /// мониторов сумма битая, а остальные поля честные.
+    /// Whether the checksum matched. Parsing does NOT require it: some monitors
+    /// have a broken checksum while the other fields are honest.
     pub checksum_ok: bool,
 }
 
 impl EdidInfo {
-    /// Серийник для ключа: текст, иначе число, иначе пусто.
+    /// The serial for the key: text, otherwise the number, otherwise empty.
     pub fn serial(&self) -> String {
         if let Some(t) = self.serial_text.as_deref().filter(|t| !t.is_empty()) {
             return t.to_string();
@@ -108,19 +110,19 @@ impl EdidInfo {
     }
 }
 
-/// Почему EDID не разобрался.
+/// Why the EDID did not parse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdidError {
-    /// Меньше одного блока (у отключённого разъёма файл пустой).
+    /// Less than one block (a disconnected connector has an empty file).
     TooShort,
-    /// Нет заголовка `00 FF FF FF FF FF FF 00`.
+    /// No `00 FF FF FF FF FF FF 00` header.
     BadHeader,
-    /// Код производителя вне `A..Z`.
+    /// The manufacturer code is outside `A..Z`.
     BadVendor,
 }
 
-/// Текст дескриптора: до 13 байт, конец — `0x0A`, хвост — пробелы.
-/// Непечатаемое отбрасывается: в ключ и в подпись мусор не идёт.
+/// Descriptor text: up to 13 bytes, the end is `0x0A`, the tail is spaces.
+/// Non-printable characters are dropped: no garbage goes into the key and the label.
 fn descriptor_text(raw: &[u8]) -> String {
     let end = raw.iter().position(|&b| b == 0x0A || b == 0x00).unwrap_or(raw.len());
     raw[..end]
@@ -132,7 +134,7 @@ fn descriptor_text(raw: &[u8]) -> String {
         .to_string()
 }
 
-/// Разобрать базовый блок EDID.
+/// Parse the EDID base block.
 pub fn parse_edid(bytes: &[u8]) -> Result<EdidInfo, EdidError> {
     if bytes.len() < EDID_BLOCK_LEN {
         return Err(EdidError::TooShort);
@@ -141,8 +143,8 @@ pub fn parse_edid(bytes: &[u8]) -> Result<EdidInfo, EdidError> {
     if block[..8] != EDID_HEADER {
         return Err(EdidError::BadHeader);
     }
-    // Производитель: 16 бит старшим первым, старший бит — ноль, дальше три
-    // буквы по 5 бит, `1` = `A`.
+    // Manufacturer: 16 bits big-endian, the top bit is zero, then three
+    // letters of 5 bits each, `1` = `A`.
     let word = u16::from_be_bytes([block[8], block[9]]);
     let mut pnp_id = String::with_capacity(3);
     for shift in [10u16, 5, 0] {
@@ -168,7 +170,7 @@ pub fn parse_edid(bytes: &[u8]) -> Result<EdidInfo, EdidError> {
     };
     for off in DESCRIPTOR_OFFSETS {
         let d = &block[off..off + 18];
-        // Дескриптор дисплея: первые два байта нулевые (иначе это режим).
+        // A display descriptor: the first two bytes are zero (otherwise it is a mode).
         if d[0] != 0 || d[1] != 0 || d[2] != 0 {
             continue;
         }
@@ -186,9 +188,9 @@ pub fn parse_edid(bytes: &[u8]) -> Result<EdidInfo, EdidError> {
     Ok(info)
 }
 
-/// Название производителя по коду PNP из текста `hwdata/pnp.ids`
-/// (`КОД<таб>Название`). Нужно для сверки с Qt на Wayland: композиторы
-/// отдают в `wl_output` название, а не код.
+/// The manufacturer name by PNP code from the `hwdata/pnp.ids` text
+/// (`CODE<tab>Name`). Needed for matching with Qt on Wayland: compositors
+/// put the name, not the code, into `wl_output`.
 pub fn pnp_vendor_name(pnp_ids_text: &str, pnp_id: &str) -> Option<String> {
     pnp_ids_text.lines().find_map(|line| {
         let (code, name) = line.split_once('\t')?;
@@ -197,24 +199,24 @@ pub fn pnp_vendor_name(pnp_ids_text: &str, pnp_id: &str) -> Option<String> {
 }
 
 // ============================================================================
-// Выходы DRM и экраны Qt
+// DRM outputs and Qt screens
 // ============================================================================
 
-/// Выход видеокарты из sysfs (`/sys/class/drm/card1-DP-1`).
+/// A graphics card output from sysfs (`/sys/class/drm/card1-DP-1`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DrmOutput {
-    /// Имя разъёма без карты: `DP-1`, `HDMI-A-1`, `eDP-1`.
+    /// The connector name without the card: `DP-1`, `HDMI-A-1`, `eDP-1`.
     pub connector: String,
     /// `status` = `connected`.
     pub connected: bool,
-    /// Разобранный EDID; `None` — файла нет, пустой или битый.
+    /// The parsed EDID; `None` — no file, empty or broken.
     pub edid: Option<EdidInfo>,
-    /// Название производителя из `pnp.ids`, если вызывающий его нашёл.
+    /// The manufacturer name from `pnp.ids`, if the caller found it.
     pub vendor_name: Option<String>,
 }
 
-/// Имя разъёма из имени каталога sysfs: `card1-HDMI-A-1` → `HDMI-A-1`.
-/// Не каталог выхода (`card1`, `renderD128`, `version`) — `None`.
+/// The connector name from the sysfs directory name: `card1-HDMI-A-1` → `HDMI-A-1`.
+/// Not an output directory (`card1`, `renderD128`, `version`) — `None`.
 pub fn connector_from_sysfs_name(dir_name: &str) -> Option<&str> {
     let rest = dir_name.strip_prefix("card")?;
     let (num, connector) = rest.split_once('-')?;
@@ -224,23 +226,23 @@ pub fn connector_from_sysfs_name(dir_name: &str) -> Option<&str> {
     Some(connector)
 }
 
-/// Что о экране сказал Qt (`QScreen`) — или любой другой опрос
-/// (`wlr-randr`, `hyprctl monitors`), где те же четыре поля.
+/// What Qt said about the screen (`QScreen`) — or any other query
+/// (`wlr-randr`, `hyprctl monitors`) with the same four fields.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ScreenFacts {
-    /// `QScreen::name()` — имя разъёма у платформы (`DP-1`, на X11 бывает `HDMI-0`).
+    /// `QScreen::name()` — the platform's connector name (`DP-1`, on X11 it can be `HDMI-0`).
     pub name: String,
-    /// `QScreen::manufacturer()` — код PNP или название производителя.
+    /// `QScreen::manufacturer()` — the PNP code or the manufacturer name.
     pub manufacturer: String,
     /// `QScreen::model()`.
     pub model: String,
-    /// `QScreen::serialNumber()` — на Wayland обычно пусто.
+    /// `QScreen::serialNumber()` — usually empty on Wayland.
     pub serial: String,
 }
 
-/// Тип и номер разъёма в общем виде: `HDMI-A-1` и `HDMI-1` → `("HDMI", 1)`,
-/// `DisplayPort-0` → `("DP", 0)`. Нужно для X11, где драйверы зовут те же
-/// разъёмы по-своему.
+/// Connector type and number in a general form: `HDMI-A-1` and `HDMI-1` →
+/// `("HDMI", 1)`, `DisplayPort-0` → `("DP", 0)`. Needed for X11, where drivers
+/// name the same connectors their own way.
 pub fn connector_family(name: &str) -> Option<(String, u32)> {
     let (kind, index) = name.rsplit_once('-')?;
     let index: u32 = index.parse().ok()?;
@@ -258,7 +260,7 @@ pub fn connector_family(name: &str) -> Option<(String, u32)> {
     Some((kind, index))
 }
 
-/// Пара «экран Qt — выход DRM» несовместима: оба серийника есть и разные.
+/// A "Qt screen — DRM output" pair is incompatible: both serials exist and differ.
 fn serials_conflict(screen: &ScreenFacts, edid: &EdidInfo) -> bool {
     let qs = screen.serial.trim();
     if qs.is_empty() {
@@ -308,11 +310,12 @@ fn manufacturer_equal(qt_manufacturer: &str, out: &DrmOutput, edid: &EdidInfo) -
     })
 }
 
-/// Очки пары; `None` — пара запрещена.
+/// Points of a pair; `None` — the pair is forbidden.
 ///
-/// Веса: серийник 8, точный разъём 6, модель 4, тип и номер разъёма 2,
-/// тип разъёма 1, производитель 1. Порог совпадения — [`MATCH_THRESHOLD`]:
-/// одного производителя мало (у человека бывает два Dell).
+/// Weights: serial 8, exact connector 6, model 4, connector type and number 2,
+/// connector type 1, manufacturer 1. The match threshold is
+/// [`MATCH_THRESHOLD`]: the manufacturer alone is not enough (a person may
+/// have two Dells).
 pub fn match_score(screen: &ScreenFacts, out: &DrmOutput) -> Option<u32> {
     let mut score = 0;
     if let Some(edid) = &out.edid {
@@ -341,13 +344,13 @@ pub fn match_score(screen: &ScreenFacts, out: &DrmOutput) -> Option<u32> {
     Some(score)
 }
 
-/// Наименьшие очки, при которых пара считается одним монитором.
+/// The lowest points at which a pair counts as one monitor.
 pub const MATCH_THRESHOLD: u32 = 2;
 
-/// Сопоставить экраны Qt выходам DRM. Ответ — по одному месту на экран (в
-/// порядке `screens`): индекс выхода в `outputs` или `None`. Учитываются
-/// только подключённые выходы; каждый выход достаётся не больше чем одному
-/// экрану, лучшие пары — первыми.
+/// Match Qt screens to DRM outputs. The answer is one slot per screen (in
+/// `screens` order): the output index in `outputs` or `None`. Only connected
+/// outputs are taken into account; each output goes to no more than one
+/// screen, the best pairs first.
 pub fn match_screens(screens: &[ScreenFacts], outputs: &[DrmOutput]) -> Vec<Option<usize>> {
     let mut pairs = Vec::new();
     for (si, s) in screens.iter().enumerate() {
@@ -360,8 +363,8 @@ pub fn match_screens(screens: &[ScreenFacts], outputs: &[DrmOutput]) -> Vec<Opti
             }
         }
     }
-    // Лучшие пары первыми; при равенстве — по порядку, чтобы ответ не
-    // зависел от сортировки.
+    // The best pairs first; on a tie — in order, so that the answer does not
+    // depend on the sorting.
     pairs.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
     let mut result = vec![None; screens.len()];
     let mut taken = vec![false; outputs.len()];
@@ -375,55 +378,55 @@ pub fn match_screens(screens: &[ScreenFacts], outputs: &[DrmOutput]) -> Vec<Opti
 }
 
 // ============================================================================
-// Ключ монитора
+// Monitor key
 // ============================================================================
 
-/// Разделитель «ключ@разъём» у одинаковых мониторов без серийника.
+/// The "key@connector" separator for identical monitors without a serial.
 pub const CONNECTOR_SEP: char = '@';
 
-/// Кто есть кто среди подключённых экранов.
+/// Who is who among the connected screens.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ScreenIdentity {
-    /// Ключ памяти назначений. Для одинаковых мониторов — с разъёмом.
+    /// The assignment memory key. For identical monitors — with the connector.
     pub key: String,
-    /// Ключ без разъёма (что монитор есть сам по себе).
+    /// The key without the connector (what the monitor is by itself).
     pub base: String,
-    /// Имя экрана у Qt — по нему хост находит `QScreen`.
+    /// The screen name in Qt — the host finds the `QScreen` by it.
     pub screen_name: String,
-    /// Имя разъёма DRM, если экран сопоставлен; иначе имя у Qt.
+    /// The DRM connector name if the screen is matched; otherwise the Qt name.
     pub connector: String,
-    /// Модель для подписи (`DELL U2723QE`); пусто — подписывать разъёмом.
+    /// The model for the label (`DELL U2723QE`); empty — label with the connector.
     pub label: String,
-    /// Ключ построен из EDID (а не из слов Qt или имени разъёма).
+    /// The key was built from the EDID (not from Qt's words or the connector name).
     pub from_edid: bool,
 }
 
-/// Очистить часть ключа: без разделителей и пробелов по краям.
+/// Clean a key part: no separators and no surrounding spaces.
 fn key_part(s: &str) -> String {
     s.trim().chars().map(|c| if c == ':' || c == CONNECTOR_SEP { '_' } else { c }).collect()
 }
 
-/// Ключ из EDID: `edid:SAM:7140:H4ZR123456` (код изделия — 4 hex-цифры).
+/// A key from the EDID: `edid:SAM:7140:H4ZR123456` (the product code is 4 hex digits).
 pub fn edid_base_key(edid: &EdidInfo) -> String {
     format!("edid:{}:{:04X}:{}", edid.pnp_id, edid.product_code, key_part(&edid.serial()))
 }
 
-/// Ключ из слов Qt: `qt:Производитель:Модель:Серийник`; все три пусты —
-/// `port:<имя>`.
+/// A key from Qt's words: `qt:Manufacturer:Model:Serial`; all three empty —
+/// `port:<name>`.
 pub fn screen_base_key(screen: &ScreenFacts) -> String {
     let (m, md, s) = (key_part(&screen.manufacturer), key_part(&screen.model), key_part(&screen.serial));
     if md.is_empty() && s.is_empty() {
-        // Одного производителя для ключа мало — это не монитор, а марка.
+        // The manufacturer alone is not enough for a key — that is a brand, not a monitor.
         return format!("port:{}", key_part(&screen.name));
     }
     format!("qt:{m}:{md}:{s}")
 }
 
-/// Опознать подключённые экраны: ключ, разъём и подпись каждого.
+/// Identify the connected screens: the key, connector and label of each.
 ///
-/// Одинаковые ключи у двух экранов (два одинаковых монитора без серийника
-/// или с одним и тем же серийником) получают разъём в ключ — обои у них
-/// разные, если человек так назначил.
+/// Identical keys on two screens (two identical monitors without a serial or
+/// with the same serial) get the connector into the key — their wallpapers
+/// differ if the person assigned it so.
 pub fn identify_screens(screens: &[ScreenFacts], outputs: &[DrmOutput]) -> Vec<ScreenIdentity> {
     let matched = match_screens(screens, outputs);
     let mut ids: Vec<ScreenIdentity> = screens
@@ -470,31 +473,31 @@ pub fn identify_screens(screens: &[ScreenFacts], outputs: &[DrmOutput]) -> Vec<S
 }
 
 // ============================================================================
-// Назначения
+// Assignments
 // ============================================================================
 
-/// Ключ в `settings.json`.
+/// The key in `settings.json`.
 pub const KEY_SCREENS: &str = "wallpaper_screens";
 
-/// Сколько отключённых мониторов помнить. Больше — забываем давно не
-/// виденные: проектор из переговорной через год никому не нужен.
+/// How many disconnected monitors to remember. More — we forget the ones not
+/// seen for a long time: nobody needs the meeting room projector a year later.
 pub const REMEMBER_MONITORS: usize = 32;
 
-/// Что показывать: те же три величины, что `WallpaperExec::apply(путь,
-/// формат, имя)`.
+/// What to show: the same three values as `WallpaperExec::apply(path,
+/// format, name)`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WallpaperSource {
-    /// Путь к файлу/каталогу или ссылка.
+    /// A path to a file/directory or a link.
     pub path: String,
-    /// Формат обоев (`video`, `web`, `swf`, `static`, …) — как у движка.
+    /// The wallpaper format (`video`, `web`, `swf`, `static`, …) — as in the engine.
     pub format: String,
-    /// Имя для человека (журнал, трей).
+    /// A name for the person (journal, tray).
     pub name: String,
 }
 
 impl WallpaperSource {
-    /// Одни ли это обои — для группировки. Имя не в счёт: одно видео под
-    /// двумя подписями всё равно одно видео.
+    /// Whether this is the same wallpaper — for grouping. The name does not count:
+    /// one video under two labels is still one video.
     pub fn same_show(&self, other: &WallpaperSource) -> bool {
         self.path == other.path && self.format == other.format
     }
@@ -515,42 +518,42 @@ impl WallpaperSource {
     }
 }
 
-/// Назначение одного монитора.
+/// The assignment of one monitor.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MonitorEntry {
-    /// Его обои.
+    /// Its wallpaper.
     pub source: WallpaperSource,
-    /// Подпись монитора на момент назначения — показать в списке, когда
-    /// монитор отключён.
+    /// The monitor label at the time of assignment — to show in the list when the
+    /// monitor is disconnected.
     pub label: String,
-    /// Разъём, на котором его видели последним.
+    /// The connector it was last seen on.
     pub connector: String,
-    /// Когда его видели последним (секунды эпохи; 0 — не знаем).
+    /// When it was last seen (seconds since the epoch; 0 — unknown).
     pub last_seen: u64,
 }
 
-/// Куда применять.
+/// Where to apply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyTarget {
-    /// На все экраны: сбрасывает назначения отдельных мониторов.
+    /// On all screens: resets the assignments of individual monitors.
     AllScreens,
-    /// На этот монитор.
+    /// On this monitor.
     Monitor(ScreenIdentity),
 }
 
-/// Все назначения обоев по экранам.
+/// All per-screen wallpaper assignments.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ScreenAssignments {
-    /// Обои «на все экраны» — для всех, у кого нет своих.
+    /// The «on all screens» wallpaper — for everyone without their own.
     pub all: Option<WallpaperSource>,
-    /// Свои обои мониторов по ключу ([`ScreenIdentity::key`]).
+    /// Monitors' own wallpapers by key ([`ScreenIdentity::key`]).
     pub monitors: BTreeMap<String, MonitorEntry>,
 }
 
 impl ScreenAssignments {
-    /// Прочитать из карты `settings.json`. Ключа нет или он испорчен —
-    /// пустые назначения, то есть прежнее поведение «одни обои на все
-    /// экраны» (сами обои тогда знает вызывающий, как и раньше).
+    /// Read from the `settings.json` map. No key or a corrupted one — empty
+    /// assignments, that is, the former "one wallpaper on all screens" behavior
+    /// (the wallpaper itself is then known by the caller, as before).
     pub fn from_settings(settings: &Map<String, Value>) -> ScreenAssignments {
         let Some(obj) = settings.get(KEY_SCREENS).and_then(Value::as_object) else {
             return ScreenAssignments::default();
@@ -576,7 +579,7 @@ impl ScreenAssignments {
         ScreenAssignments { all, monitors }
     }
 
-    /// Значение для `settings.json`.
+    /// The value for `settings.json`.
     pub fn to_value(&self) -> Value {
         let mut mons = Map::new();
         for (key, e) in &self.monitors {
@@ -593,14 +596,14 @@ impl ScreenAssignments {
         Value::Object(obj)
     }
 
-    /// Записать в карту `settings.json` (остальные ключи не трогаются).
+    /// Write into the `settings.json` map (other keys are left alone).
     pub fn write_settings(&self, settings: &mut Map<String, Value>) {
         settings.insert(KEY_SCREENS.into(), self.to_value());
     }
 
-    /// Применить обои. «На все» сбрасывает свои обои мониторов — человек
-    /// просил, чтобы везде было одно, и вернувшийся монитор тоже это
-    /// покажет.
+    /// Apply a wallpaper. «On all» resets the monitors' own wallpapers — the
+    /// person asked for the same one everywhere, and a returning monitor will
+    /// show it too.
     pub fn assign(&mut self, target: &ApplyTarget, source: WallpaperSource, now: u64) {
         match target {
             ApplyTarget::AllScreens => {
@@ -608,9 +611,9 @@ impl ScreenAssignments {
                 self.monitors.clear();
             }
             ApplyTarget::Monitor(id) => {
-                // Тот же монитор мог быть записан под соседней формой
-                // ключа (с разъёмом и без) — старая запись не должна
-                // всплыть вместо новой.
+                // The same monitor may have been recorded under the neighboring
+                // form of the key (with the connector and without) — the old record
+                // must not pop up instead of the new one.
                 if let Some(old) = self.lookup_key(id) {
                     if old != id.key {
                         self.monitors.remove(&old);
@@ -624,7 +627,7 @@ impl ScreenAssignments {
         }
     }
 
-    /// Снять свои обои монитора: дальше он показывает «на все».
+    /// Remove the monitor's own wallpaper: from now on it shows «on all».
     pub fn clear_monitor(&mut self, id: &ScreenIdentity) -> bool {
         match self.lookup_key(id) {
             Some(k) => self.monitors.remove(&k).is_some(),
@@ -632,12 +635,13 @@ impl ScreenAssignments {
         }
     }
 
-    /// Под каким ключом хранятся обои этого монитора.
+    /// Under which key this monitor's wallpaper is stored.
     ///
-    /// Порядок: точный ключ → ключ с текущим разъёмом → ключ без разъёма →
-    /// единственная запись «этот монитор@какой-то разъём». Последние три —
-    /// про одинаковые мониторы без серийника: пока второго нет, первый
-    /// узнаётся и по старой записи с разъёмом, и наоборот.
+    /// Order: the exact key → the key with the current connector → the key
+    /// without the connector → the only record "this monitor@some connector". The
+    /// last three are about identical monitors without a serial: while there is
+    /// no second one, the first is recognized by the old record with a
+    /// connector too, and vice versa.
     pub fn lookup_key(&self, id: &ScreenIdentity) -> Option<String> {
         let with_port = format!("{}{CONNECTOR_SEP}{}", id.base, id.connector);
         for k in [&id.key, &with_port, &id.base] {
@@ -655,19 +659,19 @@ impl ScreenAssignments {
         None
     }
 
-    /// Свои обои монитора, если есть.
+    /// The monitor's own wallpaper, if any.
     pub fn monitor_source(&self, id: &ScreenIdentity) -> Option<&WallpaperSource> {
         self.lookup_key(id).and_then(|k| self.monitors.get(&k)).map(|e| &e.source)
     }
 
-    /// Что показывать на экране: свои обои, иначе «на все», иначе ничего
-    /// от Rexon (стол показывает свой фон).
+    /// What to show on the screen: its own wallpaper, otherwise «on all»,
+    /// otherwise nothing from Rexon (the desktop shows its own background).
     pub fn source_for(&self, id: &ScreenIdentity) -> Option<&WallpaperSource> {
         self.monitor_source(id).or(self.all.as_ref())
     }
 
-    /// Отметить, что эти мониторы сейчас подключены, и забыть лишние
-    /// отключённые сверх [`REMEMBER_MONITORS`] (давно не виденные первыми).
+    /// Mark these monitors as connected now and forget the extra disconnected
+    /// ones beyond [`REMEMBER_MONITORS`] (the longest unseen first).
     pub fn mark_seen(&mut self, ids: &[ScreenIdentity], now: u64) {
         for id in ids {
             if let Some(k) = self.lookup_key(id) {
@@ -688,37 +692,37 @@ impl ScreenAssignments {
         }
     }
 
-    /// Есть ли у кого-то свои обои (иначе — прежний режим «одни на все»).
+    /// Whether anyone has their own wallpaper (otherwise — the former "one on all" mode).
     pub fn per_monitor(&self) -> bool {
         !self.monitors.is_empty()
     }
 }
 
 // ============================================================================
-// План показа
+// Showing plan
 // ============================================================================
 
-/// Одна группа показа: одни обои на нескольких экранах — один процесс.
+/// One showing group: one wallpaper on several screens — one process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShowGroup {
-    /// Что показывать.
+    /// What to show.
     pub source: WallpaperSource,
-    /// Имена экранов у Qt (`ScreenIdentity::screen_name`) в порядке экранов.
+    /// Qt screen names (`ScreenIdentity::screen_name`) in screen order.
     pub screens: Vec<String>,
-    /// Ключи мониторов тех же экранов.
+    /// Monitor keys of the same screens.
     pub keys: Vec<String>,
 }
 
-/// План: группы показа и экраны, на которых Rexon ничего не показывает.
+/// The plan: showing groups and the screens on which Rexon shows nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ShowPlan {
-    /// Группы в порядке первого экрана.
+    /// Groups in the order of their first screen.
     pub groups: Vec<ShowGroup>,
-    /// Экраны без обоев Rexon (имена у Qt).
+    /// Screens without a Rexon wallpaper (Qt names).
     pub uncovered: Vec<String>,
 }
 
-/// Разложить подключённые экраны по процессам показа.
+/// Lay the connected screens out over showing processes.
 pub fn plan_show(screens: &[ScreenIdentity], assignments: &ScreenAssignments) -> ShowPlan {
     let mut plan = ShowPlan::default();
     for id in screens {
@@ -741,29 +745,29 @@ pub fn plan_show(screens: &[ScreenIdentity], assignments: &ScreenAssignments) ->
     plan
 }
 
-/// Что сделать с процессами, чтобы перейти от плана `old` к плану `new`.
+/// What to do with the processes to go from plan `old` to plan `new`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PlanChange {
-    /// Группы, которые остаются как были (процесс не трогать).
+    /// Groups that stay as they were (leave the process alone).
     pub keep: Vec<ShowGroup>,
-    /// Те же обои, но набор экранов другой — перезапустить (или передать
-    /// процессу новый список экранов).
+    /// The same wallpaper but a different set of screens — restart (or give the
+    /// process the new screen list).
     pub reshape: Vec<ShowGroup>,
-    /// Новые обои — запустить.
+    /// A new wallpaper — start.
     pub start: Vec<ShowGroup>,
-    /// Обоев больше нигде нет — остановить.
+    /// The wallpaper is no longer anywhere — stop.
     pub stop: Vec<ShowGroup>,
 }
 
 impl PlanChange {
-    /// Ничего делать не надо.
+    /// Nothing needs to be done.
     pub fn is_noop(&self) -> bool {
         self.reshape.is_empty() && self.start.is_empty() && self.stop.is_empty()
     }
 }
 
-/// Сравнить два плана. Группы сопоставляются по обоям: одинаковые обои —
-/// тот же процесс.
+/// Compare two plans. Groups are matched by wallpaper: the same wallpaper —
+/// the same process.
 pub fn plan_change(old: &ShowPlan, new: &ShowPlan) -> PlanChange {
     let mut change = PlanChange::default();
     for g in &new.groups {
@@ -781,36 +785,36 @@ pub fn plan_change(old: &ShowPlan, new: &ShowPlan) -> PlanChange {
     change
 }
 
-/// Ключ строки запуска хоста со списком экранов.
+/// The host command line switch with the screen list.
 pub const SCREENS_FLAG: &str = "--screens";
 
-/// Список экранов для строки запуска: имена через запятую.
+/// The screen list for the command line: names separated by commas.
 pub fn format_screens_arg(screens: &[String]) -> String {
     screens.join(",")
 }
 
-/// Разбор значения [`SCREENS_FLAG`]; пусто — «все экраны» (прежнее
-/// поведение хоста без ключа).
+/// Parsing the [`SCREENS_FLAG`] value; empty — "all screens" (the former
+/// behavior of the host without the switch).
 pub fn parse_screens_arg(raw: &str) -> Vec<String> {
     raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
 }
 
 // ============================================================================
-// Горячее подключение: выдержка
+// Hot-plugging: settling
 // ============================================================================
 
-/// Тишина после последнего события, после которой экраны считаются
-/// устоявшимися. Подключение монитора — это несколько событий подряд
-/// (выход появился, сменил режим, сдвинулся), и раскладка по ним по одному
-/// пересобирала бы показ несколько раз.
+/// The silence after the last event after which the screens count as
+/// settled. Connecting a monitor is several events in a row (the output
+/// appeared, changed mode, moved), and laying out after each one would
+/// rebuild the showing several times.
 pub const HOTPLUG_QUIET_MS: u64 = 2000;
 
-/// Дольше этого от первого события не ждём, даже если события идут:
-/// разболтанный разъём не должен оставить человека без обоев навсегда.
+/// We do not wait longer than this from the first event, even if events keep
+/// coming: a loose connector must not leave the person without a wallpaper forever.
 pub const HOTPLUG_MAX_WAIT_MS: u64 = 10_000;
 
-/// Выдержка над событиями «экраны изменились». Время — миллисекунды
-/// любых монотонных часов, их даёт вызывающий.
+/// Settling over "screens changed" events. Time is milliseconds of any
+/// monotonic clock, supplied by the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HotplugSettle {
     quiet_ms: u64,
@@ -826,25 +830,25 @@ impl Default for HotplugSettle {
 }
 
 impl HotplugSettle {
-    /// Выдержка с заданными сроками.
+    /// Settling with the given deadlines.
     pub fn new(quiet_ms: u64, max_wait_ms: u64) -> HotplugSettle {
         HotplugSettle { quiet_ms, max_wait_ms: max_wait_ms.max(quiet_ms), first: None, last: None }
     }
 
-    /// Пришло событие.
+    /// An event arrived.
     pub fn on_change(&mut self, now_ms: u64) {
         self.first.get_or_insert(now_ms);
         self.last = Some(now_ms);
     }
 
-    /// Когда пересобирать (для таймера); `None` — ждать нечего.
+    /// When to rebuild (for the timer); `None` — nothing to wait for.
     pub fn due_at(&self) -> Option<u64> {
         let (first, last) = (self.first?, self.last?);
         Some((last + self.quiet_ms).min(first + self.max_wait_ms))
     }
 
-    /// Пора ли пересобирать. `true` — один раз на пачку событий: выдержка
-    /// сбрасывается и ждёт следующую.
+    /// Whether it is time to rebuild. `true` — once per burst of events: the
+    /// settling resets and waits for the next one.
     pub fn poll(&mut self, now_ms: u64) -> bool {
         match self.due_at() {
             Some(due) if now_ms >= due => {
@@ -856,14 +860,14 @@ impl HotplugSettle {
         }
     }
 
-    /// Есть ли неотработанные события.
+    /// Whether there are unprocessed events.
     pub fn pending(&self) -> bool {
         self.first.is_some()
     }
 }
 
-/// Моменты пересборки для ряда событий (время по возрастанию) — та же
-/// выдержка, прогнанная по списку. Для проверок и журнала.
+/// Rebuild moments for a series of events (time ascending) — the same
+/// settling run over a list. For checks and the journal.
 pub fn settle_times(events_ms: &[u64], quiet_ms: u64, max_wait_ms: u64) -> Vec<u64> {
     let mut s = HotplugSettle::new(quiet_ms, max_wait_ms);
     let mut out = Vec::new();
@@ -883,17 +887,17 @@ pub fn settle_times(events_ms: &[u64], quiet_ms: u64, max_wait_ms: u64) -> Vec<u
 }
 
 // ============================================================================
-// Живое чтение (тонкие обёртки)
+// Live reading (thin wrappers)
 // ============================================================================
 
-/// Каталог выходов DRM.
+/// The DRM outputs directory.
 pub const DRM_SYSFS_DIR: &str = "/sys/class/drm";
 
-/// Таблица производителей PNP из пакета hwdata.
+/// The PNP manufacturer table from the hwdata package.
 pub const PNP_IDS_PATHS: &[&str] = &["/usr/share/hwdata/pnp.ids", "/usr/share/misc/pnp.ids"];
 
-/// Прочитать выходы из каталога в формате `/sys/class/drm` (в проверках —
-/// временный каталог). Порядок — по имени разъёма.
+/// Read outputs from a directory in the `/sys/class/drm` format (in the checks
+/// — a temporary directory). Order — by connector name.
 pub fn read_drm_outputs(root: &Path, pnp_ids_text: Option<&str>) -> Vec<DrmOutput> {
     let Ok(entries) = std::fs::read_dir(root) else {
         return Vec::new();
@@ -914,21 +918,21 @@ pub fn read_drm_outputs(root: &Path, pnp_ids_text: Option<&str>) -> Vec<DrmOutpu
     out
 }
 
-/// Выходы этой машины.
+/// This machine's outputs.
 pub fn live_drm_outputs() -> Vec<DrmOutput> {
     let pnp = PNP_IDS_PATHS.iter().find_map(|p| std::fs::read_to_string(p).ok());
     read_drm_outputs(Path::new(DRM_SYSFS_DIR), pnp.as_deref())
 }
 
 // ============================================================================
-// Проверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Синтетический EDID: свой генератор, а не снятый с чужих мониторов.
+    /// A synthetic EDID: our own generator, not captured from other people's monitors.
     struct EdidSpec<'a> {
         pnp: &'a str,
         product: u16,
@@ -950,8 +954,8 @@ mod tests {
         b[17] = 34; // 2024
         b[18] = 1;
         b[19] = 4;
-        // Первый дескриптор — режим (ненулевая частота), его разбор обязан
-        // пропустить.
+        // The first descriptor is a mode (a non-zero frequency), parsing must
+        // skip it.
         b[54] = 0x01;
         b[55] = 0x1D;
         let mut put = |slot: usize, tag: u8, text: &str| {
@@ -1042,14 +1046,14 @@ mod tests {
         assert_eq!(parse_edid(&b), Err(EdidError::BadHeader));
         let mut b = make_edid(&spec("DEL", 1, 1));
         b[8] = 0;
-        b[9] = 0; // буквы «0» — не буквы
+        b[9] = 0; // the letters «0» are not letters
         assert_eq!(parse_edid(&b), Err(EdidError::BadVendor));
         let mut b = make_edid(&spec("DEL", 1, 1));
         b[127] ^= 0xFF;
         let e = parse_edid(&b).unwrap();
         assert!(!e.checksum_ok);
         assert_eq!(e.pnp_id, "DEL");
-        // Блок расширения в хвосте не мешает.
+        // An extension block at the tail does not get in the way.
         let mut b = make_edid(&spec("DEL", 1, 1));
         b.extend_from_slice(&[0x02; 128]);
         assert!(parse_edid(&b).is_ok());
@@ -1059,7 +1063,7 @@ mod tests {
     fn edid_garbage_in_text_is_dropped() {
         let mut b = make_edid(&EdidSpec { name: Some("AB"), ..spec("DEL", 1, 1) });
         let off = DESCRIPTOR_OFFSETS[1] + 5;
-        b[off + 1] = 0x07; // непечатаемое внутри имени
+        b[off + 1] = 0x07; // non-printable inside the name
         let e = parse_edid(&b).unwrap();
         assert_eq!(e.monitor_name.as_deref(), Some("A"));
     }
@@ -1092,14 +1096,14 @@ mod tests {
         assert_eq!(connector_family("Virtual1"), None);
     }
 
-    // ── сопоставление с Qt ────────────────────────────────────────────
+    // ── matching with Qt ──────────────────────────────────────────────
 
     #[test]
     fn wayland_match_by_connector_with_no_serial_from_qt() {
         let dell = EdidSpec { name: Some("DELL U2723QE"), serial_text: Some("7XK2R93"), ..spec("DEL", 0x41B2, 1) };
         let sam = EdidSpec { name: Some("LS27A600"), ..spec("SAM", 0x7140, 777) };
         let outs = vec![out("DP-1", Some(&dell)), out("HDMI-A-1", Some(&sam))];
-        // Wayland: серийника нет, производитель названием.
+        // Wayland: no serial, the manufacturer as a name.
         let screens = vec![qt("HDMI-A-1", "Samsung Electric Company", "LS27A600", ""), qt("DP-1", "Dell Inc.", "DELL U2723QE", "")];
         assert_eq!(match_screens(&screens, &outs), vec![Some(1), Some(0)]);
         let ids = identify_screens(&screens, &outs);
@@ -1114,8 +1118,8 @@ mod tests {
         let a = EdidSpec { name: Some("XG27AQ"), serial_text: Some("AAA111"), ..spec("AUS", 0x27A1, 0) };
         let b = EdidSpec { name: Some("XG27AQ"), serial_text: Some("BBB222"), ..spec("AUS", 0x27A1, 0) };
         let outs = vec![out("DP-1", Some(&a)), out("DP-2", Some(&b))];
-        // Драйвер nvidia на X11 зовёт их с нуля: DP-0, DP-1. По имени пары
-        // перекрёстно путаются — решает серийник.
+        // The nvidia driver on X11 numbers them from zero: DP-0, DP-1. By name the
+        // pairs get crossed — the serial decides.
         let screens = vec![qt("DP-0", "AUS", "XG27AQ", "BBB222"), qt("DP-1", "AUS", "XG27AQ", "AAA111")];
         assert_eq!(match_screens(&screens, &outs), vec![Some(1), Some(0)]);
     }
@@ -1151,7 +1155,7 @@ mod tests {
         assert_eq!(ids[0].key, "edid:HPN:3456:@DP-1");
         assert_eq!(ids[1].key, "edid:HPN:3456:@HDMI-A-1");
         assert_eq!(ids[0].base, ids[1].base);
-        // Один такой — без разъёма: ходит за человеком по портам.
+        // A single such one — without the connector: it follows the person from port to port.
         let ids = identify_screens(&screens[..1], &outs[..1]);
         assert_eq!(ids[0].key, "edid:HPN:3456:");
     }
@@ -1184,7 +1188,7 @@ mod tests {
         assert!(!model_equal("", &e));
     }
 
-    // ── назначения ────────────────────────────────────────────────────
+    // ── assignments ───────────────────────────────────────────────────
 
     fn id(key: &str, base: &str, conn: &str) -> ScreenIdentity {
         ScreenIdentity {
@@ -1204,7 +1208,7 @@ mod tests {
         let a = ScreenAssignments::from_settings(&settings);
         assert_eq!(a, ScreenAssignments::default());
         assert!(!a.per_monitor());
-        // Испорченное значение — тоже прежнее поведение.
+        // A corrupted value — also the former behavior.
         settings.insert(KEY_SCREENS.into(), Value::from("мусор"));
         assert_eq!(ScreenAssignments::from_settings(&settings), ScreenAssignments::default());
     }
@@ -1221,7 +1225,7 @@ mod tests {
         let back = ScreenAssignments::from_settings(&settings);
         assert_eq!(back, a);
         assert_eq!(back.monitors["edid:DEL:41B2:X"].last_seen, 7);
-        // Запись без пути отбрасывается, а не превращается в пустые обои.
+        // A record without a path is dropped, not turned into an empty wallpaper.
         let text = r#"{"wallpaper_screens":{"all":{"path":""},"monitors":{"k":{"source":{"format":"video"}}}}}"#;
         let m: Map<String, Value> = serde_json::from_str(text).unwrap();
         assert_eq!(ScreenAssignments::from_settings(&m), ScreenAssignments::default());
@@ -1243,12 +1247,12 @@ mod tests {
         let ext = id("edid:SAM:7140:777", "edid:SAM:7140:777", "HDMI-A-1");
         a.assign(&ApplyTarget::Monitor(ext.clone()), src("/sam.mp4", "video"), 2);
         let lap = id("edid:CMN:1629:", "edid:CMN:1629:", "eDP-1");
-        // Отключили — в плане только ноутбук.
+        // Disconnected — only the laptop is in the plan.
         let plan = plan_show(std::slice::from_ref(&lap), &a);
         assert_eq!(plan.groups.len(), 1);
         assert_eq!(plan.groups[0].source.path, "/all.mp4");
         assert!(a.monitors.contains_key(&ext.key));
-        // Подключили в ДРУГОЙ порт — ключ тот же, обои вернулись.
+        // Connected to ANOTHER port — the key is the same, the wallpaper is back.
         let ext_moved = id("edid:SAM:7140:777", "edid:SAM:7140:777", "DP-2");
         assert_eq!(a.source_for(&ext_moved), Some(&src("/sam.mp4", "video")));
         a.mark_seen(&[ext_moved], 9);
@@ -1259,20 +1263,20 @@ mod tests {
     #[test]
     fn twin_monitors_lookup_between_key_forms() {
         let mut a = ScreenAssignments::default();
-        // Пока второго нет — запись без разъёма.
+        // While there is no second one — a record without the connector.
         a.assign(&ApplyTarget::Monitor(id("hp:", "hp:", "DP-1")), src("/one", "video"), 1);
-        // Пришёл близнец: у обоих ключи с разъёмом; первый узнаётся по базе.
+        // A twin arrived: both have keys with the connector; the first is recognized by the base.
         assert_eq!(a.source_for(&id("hp:@DP-1", "hp:", "DP-1")), Some(&src("/one", "video")));
-        // Назначили по формам с разъёмом — старая запись без разъёма ушла.
+        // Assigned by the forms with the connector — the old record without the connector is gone.
         a.assign(&ApplyTarget::Monitor(id("hp:@DP-1", "hp:", "DP-1")), src("/one", "video"), 2);
         a.assign(&ApplyTarget::Monitor(id("hp:@HDMI-A-1", "hp:", "HDMI-A-1")), src("/two", "video"), 2);
         assert_eq!(a.monitors.len(), 2);
-        // Близнеца унесли: оставшийся один на DP-1 — его запись с разъёмом.
+        // The twin was taken away: the remaining one alone on DP-1 — its record with the connector.
         assert_eq!(a.source_for(&id("hp:", "hp:", "DP-1")), Some(&src("/one", "video")));
-        // Две записи с разъёмом, а монитор один и на третьем порту — не
-        // угадываем, какой это из двух.
+        // Two records with a connector, but one monitor and on a third port — we
+        // do not guess which of the two it is.
         assert_eq!(a.monitor_source(&id("hp:", "hp:", "DP-3")), None);
-        // Один из записанных — угадываем.
+        // One of the recorded ones — we guess.
         a.monitors.remove("hp:@HDMI-A-1");
         assert_eq!(a.monitor_source(&id("hp:", "hp:", "DP-3")), Some(&src("/one", "video")));
     }
@@ -1301,7 +1305,7 @@ mod tests {
         assert!(a.monitors.contains_key("k3"));
     }
 
-    // ── план показа ───────────────────────────────────────────────────
+    // ── showing plan ──────────────────────────────────────────────────
 
     #[test]
     fn same_wallpaper_is_one_process() {
@@ -1312,8 +1316,8 @@ mod tests {
         assert_eq!(plan.groups.len(), 1);
         assert_eq!(plan.groups[0].screens, vec!["DP-1", "HDMI-A-1", "eDP-1"]);
         assert!(plan.uncovered.is_empty());
-        // Свои обои у второго монитора — второй процесс; у третьего те же,
-        // что «на все» (подпись другая) — он в первой группе.
+        // The second monitor has its own wallpaper — a second process; the third has
+        // the same as «on all» (a different label) — it is in the first group.
         a.assign(&ApplyTarget::Monitor(screens[1].clone()), src("https://w", "web"), 1);
         let mut same = src("/a.mp4", "video");
         same.name = "другая подпись".into();
@@ -1358,13 +1362,13 @@ mod tests {
         assert_eq!(ch.start.len(), 1);
         assert_eq!(ch.start[0].source.path, "/ext");
         assert!(ch.stop.is_empty() && ch.reshape.is_empty());
-        // Внешний без своих обоев — тот же процесс растёт на второй экран.
+        // An external one without its own wallpaper — the same process grows onto the second screen.
         a.clear_monitor(&ext);
         let after = plan_show(&[lap, ext], &a);
         let ch = plan_change(&before, &after);
         assert_eq!(ch.reshape.len(), 1);
         assert_eq!(ch.reshape[0].screens, vec!["eDP-1", "HDMI-A-1"]);
-        // Обратно — снова тот же процесс сжимается, ничего не стопорится.
+        // Back again — the same process shrinks, nothing stops.
         let back = plan_change(&after, &before);
         assert_eq!(back.reshape.len(), 1);
         assert!(back.stop.is_empty());
@@ -1380,12 +1384,12 @@ mod tests {
         assert!(parse_screens_arg("").is_empty());
     }
 
-    // ── выдержка ──────────────────────────────────────────────────────
+    // ── settling ──────────────────────────────────────────────────────
 
     #[test]
     fn hotplug_burst_settles_once() {
-        // Подключение: четыре события за 600 мс — одна пересборка через 2 с
-        // после последнего.
+        // Connecting: four events within 600 ms — one rebuild 2 s after the
+        // last one.
         assert_eq!(settle_times(&[0, 150, 400, 600], 2000, 10_000), vec![2600]);
         let mut s = HotplugSettle::default();
         assert_eq!(s.due_at(), None);
@@ -1406,8 +1410,8 @@ mod tests {
 
     #[test]
     fn flapping_connector_is_capped() {
-        // Событие каждые 500 мс без конца — пересборка не позже 10 с от
-        // первого, потом следующая пачка.
+        // An event every 500 ms without end — a rebuild no later than 10 s from the
+        // first, then the next burst.
         let events: Vec<u64> = (0..30).map(|i| i * 500).collect();
         assert_eq!(settle_times(&events, 2000, 10_000), vec![10_000, 16_500]);
     }
@@ -1422,7 +1426,7 @@ mod tests {
         assert_eq!(s.due_at(), Some(2000));
     }
 
-    // ── живое чтение на подставном каталоге ───────────────────────────
+    // ── live reading on a fake directory ──────────────────────────────
 
     #[test]
     fn read_drm_outputs_from_fake_sysfs() {
@@ -1446,7 +1450,7 @@ mod tests {
         assert!(!outs[0].connected && outs[0].edid.is_none());
         assert_eq!(outs[1].vendor_name.as_deref(), Some("Samsung Electric Company"));
         assert_eq!(outs[2].edid.as_ref().unwrap().pnp_id, "CMN");
-        // Wayland-экран с названием производителя сходится по разъёму + имени.
+        // A Wayland screen with a manufacturer name matches by connector + name.
         let ids = identify_screens(&[qt("HDMI-A-1", "Samsung Electric Company", "LS27A600", "")], &outs);
         assert_eq!(ids[0].key, "edid:SAM:7140:9");
     }

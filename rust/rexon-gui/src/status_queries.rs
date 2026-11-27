@@ -1,30 +1,31 @@
-// Страница «Статус» целиком: здоровье демона, список живых рендереров,
-// список плагинов-рендереров и снятие рендерера.
+// The whole "Status" page: daemon health, the list of live renderers, the
+// list of renderer plugins and killing a renderer.
 //
-// Последняя
-// четвёрка типов, которые вкладка брала из Python-моста.
-// Эталон — waywallen `ui/src/query/{health,renderer}_query.cpp`;
-// разбор ответов уже жил в ядре (`we_query::apply_health` /
-// `apply_renderer_list` / `apply_renderer_plugin_list`), здесь только
-// Qt-сторона.
+// The last four types that the tab took from the Python bridge.
+// Reference: waywallen `ui/src/query/{health,renderer}_query.cpp`; response
+// parsing already lived in the core (`we_query::apply_health` /
+// `apply_renderer_list` / `apply_renderer_plugin_list`); here there is
+// only the Qt side.
 //
-// Что порт чинит по дороге (правило #16 — баги оригинала не консервируем):
+// What the port fixes along the way (rule #16 — we do not preserve the
+// original's bugs):
 //
-//   1. `HealthQuery.osName` в мосту НЕ БЫЛО. Свойство приехало вместе с
-//      протоколом v0.3.5, и вендорная `StatusPage.qml:222` читает его
-//      прямо: `visible: healthQuery.osName.length > 0`. На несуществующем
-//      свойстве это `undefined.length` — TypeError в привязке, строка
-//      «система демона» не появлялась никогда. Ядро поле разбирало
-//      (`HealthData.os_name`), наружу его не отдавал только мост.
+//   1. The bridge had NO `HealthQuery.osName`. The property came with the
+//      v0.3.5 protocol, and the vendored `StatusPage.qml:222` reads it
+//      directly: `visible: healthQuery.osName.length > 0`. On a
+//      non-existent property this is `undefined.length` — a TypeError in
+//      the binding, and the "daemon system" line never appeared. The core
+//      parsed the field (`HealthData.os_name`); only the bridge did not
+//      expose it.
 //
-//   2. Синхронизация `RendererManager` ответом `renderer_list` шла КАРТАМИ
-//      JSON: мост сериализовал разобранные ядром карты, а `we_objmodel`
-//      разбирал их обратно вторым, «зеркальным» разборщиком. Теперь в
-//      менеджер уезжает тот же СЫРОЙ кадр, что разобрал запрос, и
-//      нормализатор остаётся один на оба пути — событие демона и ответ
-//      (правило #12). Зеркальный разборщик удалён.
+//   2. Synchronizing the `RendererManager` with the `renderer_list` answer
+//      went through JSON MAPS: the bridge serialized the maps parsed by the
+//      core, and `we_objmodel` parsed them back with a second, "mirror"
+//      parser. Now the manager receives the same RAW frame the query
+//      parsed, and there is one normalizer for both paths — the daemon
+//      event and the answer (rule #12). The mirror parser is removed.
 
-/// Мост cxx-qt: четыре запроса страницы «Статус».
+/// cxx-qt bridge: four queries of the "Status" page.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -62,11 +63,11 @@ pub mod qobject {
         #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
-        /// Путь файла журнала демона.
+        /// Path of the daemon log file.
         #[qproperty(QString, path, READ = path, NOTIFY = path_changed)]
-        /// Содержимое журнала (демон отдаёт хвост, не весь файл).
+        /// Log content (the daemon returns the tail, not the whole file).
         #[qproperty(QString, content, READ = content, NOTIFY = content_changed)]
-        /// Демон обрезал журнал — показан не весь.
+        /// The daemon truncated the log — not all of it is shown.
         #[qproperty(bool, truncated, READ = truncated, NOTIFY = truncated_changed)]
         type DaemonLogQuery = super::DaemonLogQueryRust;
 
@@ -91,8 +92,8 @@ pub mod qobject {
         #[qproperty(QVariant, renderers, READ = renderers, NOTIFY = renderers_changed)]
         #[qproperty(QStringList, supported_types, cxx_name = "supportedTypes",
                     READ = supported_types, NOTIFY = supported_types_changed)]
-        /// waywallen 0.4.2: `ключ типа → подпись` (строка либо ключ
-        /// каталога плагина).
+        /// waywallen 0.4.2: `type key → label` (a string or a key of the plugin
+        /// catalogue).
         #[qproperty(QVariant, type_labels, cxx_name = "typeLabels",
                     READ = type_labels, NOTIFY = type_labels_changed)]
         type RendererPluginListQuery = super::RendererPluginListQueryRust;
@@ -382,7 +383,7 @@ use crate::impl_query_base;
 use crate::query_base::decode_failed;
 use crate::qvalue::json_to_variant;
 
-/// Список строк ядра → `QStringList` для QML.
+/// Core string list → `QStringList` for QML.
 fn to_qstringlist(items: &[String]) -> QStringList {
     let mut list = QStringList::default();
     for item in items {
@@ -399,7 +400,7 @@ macro_rules! on_decode_error {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// HealthQuery — здоровье демона (Window.qml и StatusPage.qml)
+// HealthQuery — daemon health (Window.qml and StatusPage.qml)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -461,7 +462,7 @@ impl qobject::HealthQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// DaemonLogQuery — журнал демона (диалог со страницы «Статус», v0.3.8)
+// DaemonLogQuery — daemon log (dialog from the "Status" page, v0.3.8)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -523,11 +524,11 @@ impl qobject::DaemonLogQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// RendererListQuery — живые рендереры (StatusPage.qml)
+// RendererListQuery — live renderers (StatusPage.qml)
 // ════════════════════════════════════════════════════════════════════════
 
-/// `RendererInstance` → карта QML (ключи вендорного `renderer_to_map`
-/// плюс наши `keep`/`lastExitReason`/`processGeneration`).
+/// `RendererInstance` → a QML map (the keys of the vendor's
+/// `renderer_to_map` plus our `keep`/`lastExitReason`/`processGeneration`).
 fn renderer_instance_map(i: &RendererInstance) -> Value {
     json!({
         "id": i.id,
@@ -595,10 +596,10 @@ impl qobject::RendererListQuery {
         };
         match parsed {
             Ok(signals) => {
-                // Живая модель `App.rendererManager` обязана увидеть ответ
-                // так же, как видит события: у оригинала синхронизацию
-                // делает сам запрос (`RendererListQuery::reload` →
-                // `replaceAll`). Кадр отдаём СЫРЫМ — нормализатор один.
+                // The live model `App.rendererManager` must see the answer the same way it
+                // sees events: in the original the synchronization is done by the query
+                // itself (`RendererListQuery::reload` → `replaceAll`). We hand over the
+                // frame RAW — there is one normalizer.
                 crate::we_singletons::renderers_replace_frame(frame.as_slice());
                 self.dispatch(signals);
             }
@@ -620,14 +621,14 @@ impl qobject::RendererListQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// RendererPluginListQuery — плагины-рендереры (StatusPage, «Обои», детали)
+// RendererPluginListQuery — renderer plugins (StatusPage, "Wallpapers", details)
 // ════════════════════════════════════════════════════════════════════════
 
-/// `SettingSchema` → карта.
+/// `SettingSchema` → a map.
 ///
-/// ⚠️ Ключи SNAKE_CASE: `SettingField.qml` написан против
-/// `default_value`/`label_key`/`description_key` оригинала, camelCase он бы
-/// не прочитал.
+/// Warning: the keys are SNAKE_CASE: `SettingField.qml` is written against
+/// the original's `default_value`/`label_key`/`description_key`; it would
+/// not read camelCase.
 fn setting_schema_map(s: &SettingSchema) -> Value {
     json!({
         "key": s.key,
@@ -636,8 +637,8 @@ fn setting_schema_map(s: &SettingSchema) -> Value {
         "identity": s.identity,
         "label_key": s.label_key,
         "description_key": s.description_key,
-        // Переводимые подписи каталога плагина: `SettingField.qml` читает
-        // `label`/`description`, заголовок группы — `group_label`.
+        // Translatable labels of the plugin catalogue: `SettingField.qml` reads
+        // `label`/`description`, and the group title is `group_label`.
         "label": s.label,
         "description": s.description,
         "group_label": s.group_label,
@@ -650,8 +651,8 @@ fn setting_schema_map(s: &SettingSchema) -> Value {
     })
 }
 
-/// `RendererPluginInfo` → карта (`renderer_plugin_to_map` оригинала плюс
-/// наши `bin`/`priority`/`pluginId`; лишние ключи QML не мешают).
+/// `RendererPluginInfo` → a map (the original's `renderer_plugin_to_map`
+/// plus our `bin`/`priority`/`pluginId`; extra keys do not bother QML).
 fn renderer_plugin_map(p: &RendererPlugin) -> Value {
     json!({
         "name": p.name,
@@ -725,7 +726,7 @@ impl qobject::RendererPluginListQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// RendererKillQuery — «Снять рендерер» (StatusPage.qml)
+// RendererKillQuery — "Kill renderer" (StatusPage.qml)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -756,8 +757,8 @@ impl qobject::RendererKillQuery {
         if renderer_id.is_empty() {
             return;
         }
-        // Успех отражается событием `renderer_removed` → RendererManager;
-        // здесь только отправка и статус для UI.
+        // Success is reflected by the `renderer_removed` event → RendererManager;
+        // here there is only sending and the status for the UI.
         let payload = pb::RendererKillRequest { renderer_id }.encode_to_vec();
         if let Some(token) = self.as_mut().send_frame("renderer_kill", payload) {
             self.rust_mut().pending.insert(token);

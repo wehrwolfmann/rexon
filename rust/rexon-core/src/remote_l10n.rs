@@ -1,128 +1,131 @@
-//! Подписи каталогов обоев на языке интерфейса (Мастерская Steam, Wallhaven) — порт
-//! `rexon/qt_wallpaper_engine/qml_ui/remote_l10n.py`.
+//! Labels of wallpaper catalogs in the interface language (Steam Workshop,
+//! Wallhaven) — port of `rexon/qt_wallpaper_engine/qml_ui/remote_l10n.py`.
 //!
-//! Плагины-источники демона отдают всё по-английски: имя источника,
-//! сортировки, названия фильтров, кнопки входа, строки состояния. Покупатель
-//! не должен видеть «Top rated» и «Not signed in» (правило #13), но и
-//! вендорный QML править ради этого нельзя — обновление вендора идёт
-//! `git diff`-ом. Поэтому перевод живёт МЕЖДУ демоном и QML: описание
-//! источника пропускается через [`Localizer::translate_source`].
+//! The daemon's source plugins return everything in English: the source name,
+//! sort orders, filter names, login buttons, status lines. The buyer must not
+//! see "Top rated" and "Not signed in" (rule #13), but the vendored QML must not
+//! be edited for this either — vendor updates go as a `git diff`. So the
+//! translation lives BETWEEN the daemon and QML: the source description is
+//! passed through [`Localizer::translate_source`].
 //!
-//! Значения фильтров (теги) уходят обратно в Steam/Wallhaven как параметры
-//! запроса, поэтому переведённое значение перед отправкой возвращается к
-//! оригиналу — [`Localizer::untranslate_tags`]. Обе стороны берут ОДНУ карту
-//! [`TAGS`], так что новый тег достаточно вписать один раз.
+//! Filter values (tags) go back to Steam/Wallhaven as request parameters, so a
+//! translated value is turned back into the original before sending —
+//! [`Localizer::untranslate_tags`]. Both sides take ONE map, [`TAGS`], so a new
+//! tag needs to be written only once.
 //!
-//! Неизвестная строка остаётся как есть: незнакомая сортировка нового
-//! плагина покажется по-английски, но ничего не сломает.
+//! An unknown string stays as is: an unfamiliar sort order of a new plugin will
+//! show in English but will break nothing.
 //!
-//! # Подписи самого вендорного QML — только через каталог `.qm`
+//! # Labels of the vendored QML itself — only through a `.qm` catalog
 //!
-//! Строки страниц зашиты в вендорные `.qml` через `qsTr()`. Правильный (и
-//! единственный безопасный) путь — собрать настоящий каталог переводов Qt и
-//! отдать его `QTranslator::load()`.
+//! The pages' strings are embedded in the vendored `.qml` via `qsTr()`. The right
+//! (and the only safe) way is to build a real Qt translation catalog and give it
+//! to `QTranslator::load()`.
 //!
-//! ⛔ Переводчик обязан быть НАСТОЯЩИМ каталогом `.qm`, а не `QTranslator` с
-//! переопределённым методом `translate()` на стороне Python. Qt спрашивает
-//! перевод в том числе из потока QQmlThread (компиляция страницы), а PySide6
-//! на вызове Python-метода захватывает GIL; главный поток в этот момент стоит
-//! внутри синхронной загрузки QML и GIL не отпускает — оба потока встают
-//! навсегда, вкладка «не отвечает» (проверено живьём, коммит 3ed7dd2). Каталог
-//! `.qm` ищет строки на C++ и потоков не блокирует.
+//! Never: the translator must be a REAL `.qm` catalog, not a `QTranslator` with
+//! an overridden `translate()` method on the Python side. Qt asks for
+//! translations from the QQmlThread too (page compilation), and PySide6 takes
+//! the GIL on a call to a Python method; the main thread at that moment sits
+//! inside a synchronous QML load and does not release the GIL — both threads
+//! hang forever, and the tab is "not responding" (checked live, commit
+//! 3ed7dd2). A `.qm` catalog looks strings up in C++ and blocks no threads.
 //!
-//! # Что здесь и чего здесь нет
+//! # What is here and what is not
 //!
-//! Здесь — ЧИСТАЯ логика (детерминированный вход→выход), как в
-//! `system_plan.rs` / `importers.rs` / `compliance.rs`:
-//!   * все таблицы перевода и поиск по ним;
-//!   * перевод описания источника и обратный перевод тегов (с состоянием
-//!     карт по источникам — в [`Localizer`]);
-//!   * сверка вендорного каталога переводов с вендорными `.qml` и argv
-//!     `lrelease` — [`plan_build_qm`] (ПЛАН шага, ничего не исполняет);
-//!   * выбор языка вендорных страниц — [`ui_language_codes`],
+//! Here is PURE logic (deterministic input→output), as in `system_plan.rs` /
+//! `importers.rs` / `compliance.rs`:
+//!   * all translation tables and lookup in them;
+//!   * translating a source description and translating tags back (with the
+//!     per-source map state — in [`Localizer`]);
+//!   * checking the vendored translation catalog against the vendored `.qml` and
+//!     the `lrelease` argv — [`plan_build_qm`] (a PLAN of the step, it executes
+//!     nothing);
+//!   * choosing the language of the vendored pages — [`ui_language_codes`],
 //!     [`normalize_ui_language`], [`plan_ui_language`].
 //!
-//! НЕ портировано (исполнение — за мостом): обход дерева `.qml` (`glob`) и
-//! чтение файлов, чтение вендорного `.ts`, запуск `lrelease`
-//! (`subprocess.run(check=True)`
-//! → `FileNotFoundError`/`CalledProcessError` формирует исполнитель),
-//! `QCoreApplication.instance()`, `QTranslator::load/installTranslator`,
-//! `os.path.isfile` — их РЕЗУЛЬТАТ подаётся параметром.
+//! NOT ported (execution is behind the bridge): walking the `.qml` tree (`glob`)
+//! and reading files, reading the vendored `.ts`, running `lrelease`
+//! (`subprocess.run(check=True)` → the executor produces
+//! `FileNotFoundError`/`CalledProcessError`), `QCoreApplication.instance()`,
+//! `QTranslator::load/installTranslator`, `os.path.isfile` — their RESULT is
+//! passed as a parameter.
 //!
-//! # Починки оригинала (правило #16)
+//! # Fixes to the original (rule #16)
 //!
-//!   1. `untranslate_tags` брал карту источника через `or` — пустая строка в
-//!      карте источника молча проваливалась в общую карту. Здесь проверяется
-//!      НАЛИЧИЕ ключа. Починка ЗАЩИТНАЯ: сегодня расхождения не видно, потому
-//!      что пустое значение попадает в карту только под пустой подписью, а
-//!      общая карта на неё тоже ничего не отвечает; но `or` вместо проверки
-//!      ключа — неверный идиом, и первая же подпись с пустым значением
-//!      сломала бы фильтр молча.
-//!   2. `translate_source` пересобирал элемент `sorts` из двух полей и терял
-//!      все остальные ключи (в отличие от `filters`/`actions`, которые
-//!      копируются целиком). Здесь лишние ключи сохраняются.
-//!   3. Карта обратного перевода источника в Python накапливалась вечно
-//!      (`setdefault`): после обновления плагина в ней оставались подписи
-//!      исчезнувших тегов. Здесь карта источника пересобирается при каждом
+//!   1. `untranslate_tags` took the source's map via `or` — an empty string in
+//!      the source's map silently fell through to the shared map. Here the
+//!      PRESENCE of the key is checked. The fix is PROTECTIVE: today no
+//!      difference is visible, because an empty value gets into the map only
+//!      under an empty label, and the shared map answers nothing for it either;
+//!      but `or` instead of a key check is the wrong idiom, and the very first
+//!      label with an empty value would silently break a filter.
+//!   2. `translate_source` rebuilt the `sorts` element from two fields and lost
+//!      all other keys (unlike `filters`/`actions`, which are copied entirely).
+//!      Here extra keys are preserved.
+//!   3. The source's back-translation map in Python accumulated forever
+//!      (`setdefault`): after a plugin update it kept labels of tags that had
+//!      disappeared. Here the source's map is rebuilt on every
 //!      `translate_source`.
-//!   4. Сборщик каталога видел только `qsTr("…")` и не замечал `qsTr('…')` —
-//!      QML одинаково допускает обе кавычки, и строка молча оставалась без
-//!      перевода. Здесь распознаются обе (вендор пишет одинарными, например
-//!      `qsTr('Status')` в `Window.qml` v0.3.5).
-//!   5. Расхождение каталога и `ui/qml` было невидимым в обе стороны. Теперь
-//!      план называет и вендорные строки без перевода
-//!      ([`QmBuildPlan::untranslated`]), и записи каталога, которых в `ui/qml`
-//!      уже нет ([`QmBuildPlan::stale`]).
-//!   6. Путь к `lrelease` был жёстко арчевым (`/usr/lib/qt6/bin/lrelease`).
-//!      Кандидаты вынесены в [`LRELEASE_CANDIDATES`] — исполнитель берёт
-//!      первый найденный (`which`), жёсткий путь остался последним запасным.
-//!   7. Глобальное изменяемое состояние (`_TAGS_BACK_BY_SOURCE`) заменено на
-//!      поле [`Localizer`]: две вкладки/два потока больше не делят одну карту.
-//!   8. Мусор в описании источника (элемент `filters`/`actions` — не словарь)
-//!      ронял `AttributeError` посреди перевода и гасил всю выдачу демона;
-//!      теперь такой элемент пропускается, остальные переводятся.
-//!   9. Сборщик знал только одиночные строки: вызов со счётчиком
-//!      (`qsTr("%n wallpaper(s)", "", n)`) не распознавался ВООБЩЕ — ни как
-//!      совпадение, ни как пропажа. Теперь он считается наравне с прочими, а
-//!      формы числа приходят готовыми из вендорного каталога
-//!      (`numerus`-сообщения).
-//!  10. Свой словарь подписей вендорного QML держал 135 строк из вендорных
-//!      486 — четыре новые страницы покупатель видел по-английски, а на 55
-//!      общих строках наш текст расходился с оригиналом. Источник перевода
-//!      теперь ОДИН — вендорный `ui/i18n/waywallen_ru.ts` ([`VENDOR_TS_REL`]),
-//!      он вендорится тем же `git diff`-ом, что и `ui/qml`.
+//!   4. The catalog builder saw only `qsTr("…")` and did not notice `qsTr('…')`
+//!      — QML allows both quotes equally, and the string silently stayed
+//!      untranslated. Here both are recognized (the vendor writes single ones,
+//!      for example `qsTr('Status')` in `Window.qml` v0.3.5).
+//!   5. Divergence between the catalog and `ui/qml` was invisible in both
+//!      directions. Now the plan names both vendored strings without a
+//!      translation ([`QmBuildPlan::untranslated`]) and catalog entries that are
+//!      no longer in `ui/qml` ([`QmBuildPlan::stale`]).
+//!   6. The path to `lrelease` was hard-coded for Arch
+//!      (`/usr/lib/qt6/bin/lrelease`). The candidates are moved into
+//!      [`LRELEASE_CANDIDATES`] — the executor takes the first one found
+//!      (`which`), the hard-coded path remains the last fallback.
+//!   7. Global mutable state (`_TAGS_BACK_BY_SOURCE`) is replaced by a field of
+//!      [`Localizer`]: two tabs/two threads no longer share one map.
+//!   8. Garbage in a source description (a `filters`/`actions` element that is
+//!      not a dictionary) raised `AttributeError` in the middle of translation
+//!      and killed the daemon's whole output; now such an element is skipped,
+//!      and the rest are translated.
+//!   9. The builder knew only single strings: a call with a counter
+//!      (`qsTr("%n wallpaper(s)", "", n)`) was not recognized AT ALL — neither
+//!      as a match nor as a miss. Now it counts like the others, and the plural
+//!      forms come ready from the vendored catalog (`numerus` messages).
+//!  10. Our own dictionary of vendored QML labels held 135 strings out of the
+//!      vendor's 486 — the buyer saw four new pages in English, and on 55 shared
+//!      strings our text diverged from the original. There is now ONE source of
+//!      translation — the vendored `ui/i18n/waywallen_ru.ts` ([`VENDOR_TS_REL`]),
+//!      vendored with the same `git diff` as `ui/qml`.
 //!
-//! Сохранённый КВИРК оригинала (менять нельзя): в `fields` и `status` ключи
-//! `label`/`description`/`placeholder`/`group`/`value` проставляются ВСЕГДА,
-//! даже если их не было во входе (появляется пустая строка). Вендорный QML
-//! отличает `undefined` от `""` (`text !== ""`), поэтому «починка» тут сломала
-//! бы страницу — поведение сохранено байт-в-байт.
+//! A preserved QUIRK of the original (must not be changed): in `fields` and
+//! `status` the keys `label`/`description`/`placeholder`/`group`/`value` are
+//! ALWAYS set, even if they were not in the input (an empty string appears). The
+//! vendored QML distinguishes `undefined` from `""` (`text !== ""`), so a "fix"
+//! here would break the page — the behavior is preserved byte for byte.
 
 use crate::i18n::{n_, tr};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 // ============================================================================
-// Таблицы перевода (порядок = как в Python-словарях, он важен для TAGS_BACK)
+// Translation tables (order = as in the Python dictionaries, it matters for TAGS_BACK)
 // ============================================================================
 //
-// ⭐ Значение каждой пары — английский msgid каталога Rexon (`n_`), а не
-// готовая подпись: подпись на языке интерфейса даёт [`tr`] в месте показа
-// (русский — дословно прежний, в `po/ru.po`). Ключ остаётся тем, что
-// присылает источник, и переводу не подлежит.
+// ⭐ The value of each pair is the English msgid of the Rexon catalog (`n_`),
+// not a ready label: the label in the interface language is given by [`tr`] at
+// the place of display (the Russian is word for word the former one, in
+// `po/ru.po`). The key stays what the source sends and is not subject to
+// translation.
 
-/// `SOURCE_NAMES` — имена источников.
+/// `SOURCE_NAMES` — source names.
 pub const SOURCE_NAMES: &[(&str, &str)] = &[
     ("wallpaper_engine", n_("Steam Workshop")),
     ("wallhaven", n_("Wallhaven")),
 ];
 
-/// `WP_TYPES` — тип обоины.
+/// `WP_TYPES` — the wallpaper type.
 ///
-/// Ключ — техническая строка движка (она же уходит в запрос миниатюры и в
-/// фильтр по типу), значение — подпись для покупателя. Переводится ТОЛЬКО
-/// показ: [`wp_type_label`] зовут места вывода, сама строка нигде не
-/// подменяется.
+/// The key is a technical string of the engine (it also goes into the thumbnail
+/// request and into the type filter), the value is the label for the buyer.
+/// ONLY the display is translated: [`wp_type_label`] is called by the places of
+/// output, the string itself is substituted nowhere.
 pub const WP_TYPES: &[(&str, &str)] = &[
     ("scene", n_("Scene")),
     ("video", n_("Video")),
@@ -131,9 +134,9 @@ pub const WP_TYPES: &[(&str, &str)] = &[
     ("application", n_("Application")),
 ];
 
-/// `SORTS` — сортировки каталога.
+/// `SORTS` — catalog sort orders.
 pub const SORTS: &[(&str, &str)] = &[
-    // Мастерская Steam
+    // Steam Workshop
     ("trend_day", n_("Trending (Today)")),
     ("trend_week", n_("Trending (Week)")),
     ("trend_month", n_("Trending (Month)")),
@@ -143,7 +146,7 @@ pub const SORTS: &[(&str, &str)] = &[
     ("recent", n_("Recently Added")),
     ("most_subscribed", n_("Most Subscribed")),
     ("top_rated", n_("Top Rated")),
-    // наши собственные режимы показа поверх каталога Мастерской
+    // our own display modes on top of the Workshop catalog
     ("rexon_my_items", n_("My Subscriptions")),
     ("rexon_collections", n_("Collections")),
     // Wallhaven
@@ -151,7 +154,7 @@ pub const SORTS: &[(&str, &str)] = &[
     ("popular", n_("Popular")),
 ];
 
-/// `FILTER_TITLES` — названия фильтров.
+/// `FILTER_TITLES` — filter names.
 pub const FILTER_TITLES: &[(&str, &str)] = &[
     ("type", n_("Type")),
     ("questionable", n_("12+ (Questionable)")),
@@ -162,7 +165,7 @@ pub const FILTER_TITLES: &[(&str, &str)] = &[
     ("topics", n_("Topics")),
 ];
 
-/// `FILTER_DESCRIPTIONS` — пояснения к фильтрам.
+/// `FILTER_DESCRIPTIONS` — explanations of the filters.
 pub const FILTER_DESCRIPTIONS: &[(&str, &str)] = &[
     (
         "questionable",
@@ -171,28 +174,28 @@ pub const FILTER_DESCRIPTIONS: &[(&str, &str)] = &[
     ("mature", n_("Show wallpapers marked 18+.")),
 ];
 
-/// `FILTER_CONFIRMATIONS` — вопрос перед включением фильтра.
+/// `FILTER_CONFIRMATIONS` — the question before enabling a filter.
 pub const FILTER_CONFIRMATIONS: &[(&str, &str)] = &[(
     "mature",
     n_("This shows wallpapers marked 18+. Turn it on only if you are an adult. Continue?"),
 )];
 
-/// `TAGS` — значения фильтров (они же теги запроса).
+/// `TAGS` — filter values (they are also the request tags).
 ///
-/// Ключ — то, что уходит в источник; значение — то, что видит покупатель.
-/// Числовые разрешения (1920 x 1080) не переводятся и здесь не нужны.
+/// The key is what goes to the source; the value is what the buyer sees.
+/// Numeric resolutions (1920 x 1080) are not translated and are not needed here.
 ///
-/// ⚠️ Порядок записей значим для обратной карты: у Wallhaven жанр называется
-/// `CG`, у Мастерской — `CGI`, подпись у обоих одна. Python строил обратную
-/// карту словарным включением, где ПОСЛЕДНЯЯ пара побеждает — здесь то же
-/// самое, см. [`tag_back`].
+/// Warning: the order of entries matters for the reverse map: Wallhaven calls the
+/// genre `CG`, the Workshop `CGI`, and both have the same label. Python built the
+/// reverse map with a dict comprehension, where the LAST pair wins — the same
+/// here, see [`tag_back`].
 pub const TAGS: &[(&str, &str)] = &[
-    // тип обоев
+    // wallpaper type
     ("Scene", n_("Scene")),
     ("Video", n_("Video")),
     ("Web", n_("Web")),
     ("Application", n_("Application")),
-    // возможности
+    // features
     ("Approved", n_("Approved")),
     ("Audio responsive", n_("Audio responsive")),
     ("3D", n_("3D")),
@@ -203,16 +206,16 @@ pub const TAGS: &[(&str, &str)] = &[
     ("User Shortcut", n_("User Shortcut")),
     ("Video Texture", n_("Video Texture")),
     ("No Animation", n_("No Animation")),
-    // что публикуют в Мастерскую кроме самих обоев
+    // what is published in the Workshop besides the wallpapers themselves
     ("Wallpaper", n_("Wallpaper")),
     ("Preset", n_("Preset")),
     ("Asset", n_("Asset")),
     ("Asset Pack", n_("Asset Pack")),
-    // возрастные пометки (они же значения фильтров рейтинга)
+    // age ratings (they are also the values of the rating filters)
     ("Everyone", n_("0+ (Everyone)")),
     ("Questionable", n_("12+ (Questionable)")),
     ("Mature", n_("18+ (Mature)")),
-    // жанры
+    // genres
     ("Abstract", n_("Abstract")),
     ("Animal", n_("Animal")),
     ("Anime", n_("Anime")),
@@ -239,7 +242,7 @@ pub const TAGS: &[(&str, &str)] = &[
     ("Television", n_("Television")),
     ("Vehicle", n_("Vehicle")),
     ("Unspecified", n_("Unspecified genre")),
-    // разрешения
+    // resolutions
     ("Standard Definition", n_("Standard Definition")),
     ("Ultrawide Standard Definition", n_("Ultrawide Standard Definition")),
     ("Ultrawide 2560 x 1080", n_("Ultrawide 2560 x 1080")),
@@ -263,7 +266,7 @@ pub const TAGS: &[(&str, &str)] = &[
     ("Oversized", n_("Larger than the screen")),
 ];
 
-/// `ACTION_LABELS` — кнопки входа плагинов.
+/// `ACTION_LABELS` — the plugins' login buttons.
 pub const ACTION_LABELS: &[(&str, &str)] = &[
     ("Log in to Steam", n_("Log in to Steam")),
     ("Sign out", n_("Sign out")),
@@ -272,16 +275,16 @@ pub const ACTION_LABELS: &[(&str, &str)] = &[
     ("API key", n_("API key")),
 ];
 
-/// `TEXTS` — группы, строки состояния и пояснения плагинов.
+/// `TEXTS` — groups, status lines and explanations of the plugins.
 pub const TEXTS: &[(&str, &str)] = &[
-    // группы и строки состояния
+    // groups and status lines
     ("Steam account", n_("Steam account")),
     ("Wallhaven account", n_("Wallhaven account")),
     ("Status", n_("Status")),
     ("Not signed in", n_("Not signed in")),
     ("Guest mode", n_("Guest mode")),
     ("Signed in", n_("Signed in")),
-    // пояснения плагинов
+    // explanations of the plugins
     (
         "Waywallen only manages Workshop subscriptions and does not download \
          wallpapers. Keep the Steam desktop client running to download \
@@ -300,47 +303,48 @@ pub const TEXTS: &[(&str, &str)] = &[
     ("Wallhaven API key", n_("Wallhaven API key")),
 ];
 
-/// Подписи самого вендорного QML — ВЕНДОРНЫЙ каталог, не наш словарь.
+/// Labels of the vendored QML itself — the VENDORED catalog, not our dictionary.
 ///
-/// Строки страниц зашиты в `.qml` через `qsTr()`, и русский перевод для них
-/// уже есть у самого waywallen: `ui/i18n/waywallen_ru.ts`. Он вендорится
-/// вместе с `ui/qml` из одного и того же тега ([`VENDOR_TS_REL`]), а мы его
-/// только компилируем в `.qm`.
+/// The pages' strings are embedded in `.qml` via `qsTr()`, and waywallen itself
+/// already has a Russian translation for them: `ui/i18n/waywallen_ru.ts`. It is
+/// vendored together with `ui/qml` from the same tag ([`VENDOR_TS_REL`]), and we
+/// only compile it into `.qm`.
 ///
-/// ⚠ Своего словаря здесь БОЛЬШЕ НЕТ. Он держал 135 строк из вендорных 486 —
-/// новые страницы («Мониторы», «Состояние», «Настройки», «О программе»)
-/// покупатель видел по-английски, а на 55 общих строках наш текст расходился
-/// с вендорным («Открыть страницу в Steam» там, где у оригинала «Open web
-/// page»), что и запрещено правилом паритета. Перевод подписей чужой
-/// программы место имеет ОДНО — её собственный каталог: тогда он достаётся
-/// всем её пользователям, а не только нам.
+/// Warning: there is NO LONGER a dictionary of our own here. It held 135 strings
+/// out of the vendor's 486 — the buyer saw the new pages ("Monitors", "Status",
+/// "Settings", "About") in English, and on 55 shared strings our text diverged
+/// from the vendor's («Открыть страницу в Steam» where the original has "Open
+/// web page"), which is exactly what the parity rule forbids. A translation of a
+/// foreign program's labels has ONE proper place — its own catalog: then it
+/// reaches all its users, not just us.
 pub const VENDOR_TS_REL: &str = "waywallen/ui/i18n/waywallen_ru.ts";
 
 // ============================================================================
-// Поиск по таблицам
+// Lookup in the tables
 // ============================================================================
 
-/// `dict.get(key)` для таблицы-среза (ключи в наших таблицах уникальны, кроме
-/// оговорённого случая обратной карты — см. [`tag_back`]).
+/// `dict.get(key)` for a slice table (keys in our tables are unique, except for
+/// the stipulated case of the reverse map — see [`tag_back`]).
 fn lookup(table: &[(&'static str, &'static str)], key: &str) -> Option<&'static str> {
     table.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
 }
 
-/// Положить наш КЛЮЧЕВОЙ перевод в карту `PluginMessage` рядом с `msgid`.
+/// Put our KEYED translation into the `PluginMessage` map next to the `msgid`.
 ///
-/// С waywallen 0.3.7 вендорный QML показывает не строковое поле, а
-/// `*Text: {pluginId, msgid}`, пропущенное через `PluginTranslations`. Наши
-/// таблицы сортировок, заголовков фильтров и имён источников — КЛЮЧЕВЫЕ
-/// (`trend_day`, `mature`, `wallpaper_engine`), а ключа в `PluginMessage`
-/// нет. Поэтому посчитанную здесь подпись мы кладём в ту же карту полем
-/// `rexonFallback`: `plugin_l10n::resolve` возьмёт её вторым пунктом —
-/// после каталога самого плагина и до голого `msgid`.
+/// Since waywallen 0.3.7 the vendored QML shows not a string field but
+/// `*Text: {pluginId, msgid}` passed through `PluginTranslations`. Our tables of
+/// sort orders, filter headings and source names are KEYED (`trend_day`,
+/// `mature`, `wallpaper_engine`), and `PluginMessage` has no key. So we put the
+/// label computed here into the same map as the `rexonFallback` field:
+/// `plugin_l10n::resolve` will take it as the second item — after the plugin's
+/// own catalog and before the bare `msgid`.
 ///
-/// Поле НАШЕ и вендорным QML не читается: лишний ключ в карте безвреден,
-/// а подмена самого `msgid` сломала бы поиск по каталогу плагина.
+/// The field is OURS and is not read by the vendored QML: an extra key in the map
+/// is harmless, while substituting the `msgid` itself would break the lookup in
+/// the plugin's catalog.
 ///
-/// Ничего не делает, когда перевода нет (`ru == original`) или карты
-/// сообщения в описании нет вовсе (демон постарше 0.3.7).
+/// Does nothing when there is no translation (`ru == original`) or there is no
+/// message map in the description at all (a daemon older than 0.3.7).
 fn put_fallback(item: &mut Map<String, Value>, key: &str, ru: &str, original: &str) {
     if ru == original || ru.is_empty() {
         return;
@@ -351,26 +355,27 @@ fn put_fallback(item: &mut Map<String, Value>, key: &str, ru: &str, original: &s
     message.insert("rexonFallback".into(), Value::String(ru.to_string()));
 }
 
-/// Подпись из таблицы на языке интерфейса (`None` — ключа в таблице нет).
+/// A label from the table in the interface language (`None` — the key is not in
+/// the table).
 fn lookup_tr(table: &[(&'static str, &'static str)], key: &str) -> Option<String> {
     lookup(table, key).map(tr)
 }
 
-/// Тип обоины → подпись для покупателя («scene» → «Scene» / «Сцена»).
+/// Wallpaper type → label for the buyer ("scene" → "Scene" / «Сцена»).
 ///
-/// Регистр и пробелы по краям не важны; незнакомый тип возвращается КАК БЫЛ
-/// (не обрезанный и не приведённый к нижнему регистру) — как в Python.
+/// Case and surrounding spaces do not matter; an unknown type is returned AS IT
+/// WAS (neither trimmed nor lower-cased) — as in Python.
 pub fn wp_type_label(value: &str) -> String {
     let key = value.trim().to_lowercase();
     lookup_tr(WP_TYPES, &key).unwrap_or_else(|| value.to_string())
 }
 
-/// Тег источника → подпись для покупателя.
+/// Source tag → label for the buyer.
 pub fn tag_label(value: &str) -> String {
     lookup_tr(TAGS, value).unwrap_or_else(|| value.to_string())
 }
 
-/// [`tag_label`] по списку.
+/// [`tag_label`] over a list.
 pub fn tag_labels<S: AsRef<str>>(values: &[S]) -> Vec<String> {
     values
         .iter()
@@ -378,31 +383,31 @@ pub fn tag_labels<S: AsRef<str>>(values: &[S]) -> Vec<String> {
         .collect()
 }
 
-/// Подпись → исходный тег по ОБЩЕЙ карте (`_TAGS_BACK`).
+/// Label → original tag by the SHARED map (`_TAGS_BACK`).
 ///
-/// Python строил её словарным включением `{ru: en for en, ru in TAGS}`, где
-/// при повторе подписи побеждает ПОСЛЕДНЯЯ пара, — поэтому ищем с конца
-/// (`Компьютерная графика` → `CGI`, а не `CG`).
+/// Python built it with the dict comprehension `{ru: en for en, ru in TAGS}`,
+/// where with a repeated label the LAST pair wins — so we search from the end
+/// («Компьютерная графика», "Computer graphics" → `CGI`, not `CG`).
 pub fn tag_back(label: &str) -> Option<&'static str> {
-    // Подпись сравнивается ПЕРЕВЕДЁННОЙ — той, что видел покупатель.
+    // The label is compared TRANSLATED — the one the buyer saw.
     TAGS.iter()
         .rev()
         .find(|(_, msgid)| tr(msgid) == label)
         .map(|(tag, _)| *tag)
 }
 
-/// Название сортировки; `fallback` — вендорная подпись (`s["label"]`).
+/// Name of a sort order; `fallback` — the vendored label (`s["label"]`).
 pub fn sort_label(key: &str, fallback: &str) -> String {
     lookup_tr(SORTS, key).unwrap_or_else(|| fallback.to_string())
 }
 
-/// Имя источника по его `id` (None — источник нам незнаком).
+/// Source name by its `id` (None — the source is unknown to us).
 pub fn source_name(source_id: &str) -> Option<String> {
     lookup_tr(SOURCE_NAMES, source_id)
 }
 
-/// `_text` — строка состояния/кнопка плагина: сначала [`TEXTS`], потом
-/// [`ACTION_LABELS`], иначе как есть.
+/// `_text` — a plugin's status line/button: first [`TEXTS`], then
+/// [`ACTION_LABELS`], otherwise as is.
 pub fn text(value: &str) -> String {
     lookup_tr(TEXTS, value)
         .or_else(|| lookup_tr(ACTION_LABELS, value))
@@ -410,55 +415,55 @@ pub fn text(value: &str) -> String {
 }
 
 // ============================================================================
-// Перевод описания источника
+// Translating a source description
 // ============================================================================
 
-/// Ошибка перевода описания источника.
+/// An error translating a source description.
 ///
-/// В Python на не-словаре падал `TypeError` (`'NoneType' object is not
-/// iterable` / `object is not iterable`) — здесь тот же случай выражен типом.
+/// In Python a non-dictionary raised `TypeError` (`'NoneType' object is not
+/// iterable` / `object is not iterable`) — here the same case is expressed by a
+/// type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum L10nError {
-    /// Описание источника — не JSON-объект.
+    /// The source description is not a JSON object.
     NotAnObject,
 }
 
-/// Переводчик описаний источников с картами обратного перевода тегов.
+/// A translator of source descriptions with tag back-translation maps.
 ///
-/// Карта обратного перевода ведётся ОТДЕЛЬНО по каждому источнику: её
-/// заполняет [`Self::translate_source`] теми значениями, которые источник
-/// реально отдал. Причина — живой дефект: у Wallhaven жанр называется `CG`, у
-/// Мастерской `CGI`, а подпись у обоих одна («Компьютерная графика»). Одна
-/// общая обратная карта возвращала для Wallhaven чужое `CGI`, и фильтр по
-/// жанру молча не работал. Общая карта осталась запасной, но сначала
-/// спрашиваем тот источник, которому запрос и уходит (правило #12 — чиним
-/// механизм, а не конкретную пару тегов).
+/// The back-translation map is kept SEPARATELY for each source: it is filled by
+/// [`Self::translate_source`] with the values the source actually returned. The
+/// reason is a live defect: Wallhaven calls the genre `CG`, the Workshop `CGI`,
+/// and both have the same label («Компьютерная графика», "Computer graphics").
+/// One shared reverse map returned the foreign `CGI` for Wallhaven, and the
+/// genre filter silently did not work. The shared map remains a fallback, but
+/// first we ask the source the request goes to (rule #12 — fix the mechanism,
+/// not a particular pair of tags).
 #[derive(Debug, Default, Clone)]
 pub struct Localizer {
     back_by_source: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl Localizer {
-    /// Пустой переводчик (карты источников наполнит `translate_source`).
+    /// An empty translator (`translate_source` will fill the source maps).
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Карта «подпись → исходный тег» конкретного источника (для проверок).
+    /// The "label → original tag" map of a particular source (for checks).
     pub fn source_back_map(&self, source_id: &str) -> Option<&BTreeMap<String, String>> {
         self.back_by_source.get(source_id)
     }
 
-    /// Подписи фильтров → значения, которые понимает ЭТОТ источник.
+    /// Filter labels → values that THIS source understands.
     ///
-    /// Сначала смотрим карту самого источника (её собрал
-    /// [`Self::translate_source`] из его же значений), потом общую. Так у двух
-    /// источников могут быть разные исходные теги под одной русской подписью —
-    /// см. `CG`/`CGI` выше.
+    /// First we look at the source's own map (built by [`Self::translate_source`]
+    /// from its own values), then at the shared one. That way two sources can have
+    /// different original tags under one Russian label — see `CG`/`CGI` above.
     ///
-    /// ⚠ Правило #16 (защитно): Python брал значение из карты источника через
-    /// `or`, и пустая строка проваливалась в общую карту. Здесь проверяется
-    /// НАЛИЧИЕ ключа — см. оговорку в шапке модуля.
+    /// Warning — rule #16 (protective): Python took the value from the source's map
+    /// via `or`, and an empty string fell through to the shared map. Here the
+    /// PRESENCE of the key is checked — see the note in the module header.
     pub fn untranslate_tags<S: AsRef<str>>(&self, values: &[S], source_id: &str) -> Vec<String> {
         let back = self.back_by_source.get(source_id);
         values
@@ -473,15 +478,15 @@ impl Localizer {
             .collect()
     }
 
-    /// Копия описания источника с русскими подписями.
+    /// A copy of the source description with Russian labels.
     ///
-    /// Переводится только то, что видит покупатель. Идентификаторы (`id`
-    /// источника, `id` фильтров и действий, ключи сортировок) остаются
-    /// нетронутыми — по ним ходит и вендорный QML, и демон.
+    /// Only what the buyer sees is translated. Identifiers (the source `id`, the
+    /// `id`s of filters and actions, sort keys) stay untouched — both the vendored
+    /// QML and the daemon go by them.
     ///
-    /// Элементы `filters`/`actions`, которые не являются объектами, молча
-    /// пропускаются (в Python на них падал `AttributeError`): демон такого не
-    /// присылает, а ронять из-за этого всю вкладку незачем.
+    /// `filters`/`actions` elements that are not objects are silently skipped (in
+    /// Python they raised `AttributeError`): the daemon does not send such things,
+    /// and there is no reason to break the whole tab because of them.
     pub fn translate_source(&mut self, info: &Value) -> Result<Value, L10nError> {
         let info = info.as_object().ok_or(L10nError::NotAnObject)?;
         let mut out = info.clone();
@@ -493,12 +498,12 @@ impl Localizer {
             out.insert("displayName".into(), Value::String(name));
         }
 
-        // ── сортировки ──────────────────────────────────────────────────
+        // ── sort orders ─────────────────────────────────────────────────
         //
-        // ⚠ Правило #16: Python собирал элемент заново из двух полей и терял
-        // все прочие ключи (в отличие от filters/actions, которые копируются
-        // целиком). Здесь key/label идут первыми — порядок как у оригинала, —
-        // а остальные ключи входа сохраняются следом.
+        // Warning — rule #16: Python rebuilt the element from two fields and lost
+        // all other keys (unlike filters/actions, which are copied entirely).
+        // Here key/label go first — the order as in the original — and the
+        // other input keys are preserved after them.
         let sorts: Vec<Value> = array_of(info.get("sorts"))
             .iter()
             .map(|s| {
@@ -532,12 +537,12 @@ impl Localizer {
             ),
         );
 
-        // ⚠ Правило #16: карта источника пересобирается заново. В Python она
-        // накапливалась вечно (`setdefault`), и после обновления плагина в ней
-        // оставались подписи исчезнувших тегов.
+        // Warning — rule #16: the source's map is rebuilt anew. In Python it
+        // accumulated forever (`setdefault`), and after a plugin update it kept
+        // labels of tags that had disappeared.
         let mut back: BTreeMap<String, String> = BTreeMap::new();
 
-        // ── фильтры ─────────────────────────────────────────────────────
+        // ── filters ─────────────────────────────────────────────────────
         let mut filters: Vec<Value> = Vec::new();
         for f in array_of(info.get("filters")) {
             let src = match f.as_object() {
@@ -564,15 +569,15 @@ impl Localizer {
                 item.insert("confirmation".into(), Value::String(confirmation_ru.clone()));
                 put_fallback(&mut item, "confirmationText", &confirmation_ru, &confirmation);
             }
-            // ── варианты фильтра ────────────────────────────────────────
+            // ── filter options ──────────────────────────────────────────
             //
-            // ⭐ waywallen 0.3.8 развёл техническое значение и подпись:
-            // вариант приходит тройкой `{value, label, labelText}`, в запрос
-            // уходит `value`, человеку показывается подпись. До этого поле
-            // было одно (`repeated string values`), и подпись приходилось
-            // подменять прямо в нём, а перед отправкой переводить обратно
-            // (карта `back_by_source`). Теперь подменяется ТОЛЬКО подпись:
-            // значение остаётся тем, что понимает источник.
+            // ⭐ waywallen 0.3.8 separated the technical value from the label:
+            // an option comes as a triple `{value, label, labelText}`, `value`
+            // goes into the request, the label is shown to the person. Before
+            // that there was a single field (`repeated string values`), and the
+            // label had to be substituted right in it and translated back before
+            // sending (the `back_by_source` map). Now ONLY the label is
+            // substituted: the value stays what the source understands.
             let mut options: Vec<Value> = Vec::new();
             for opt in array_of(src.get("options")) {
                 let Some(o) = opt.as_object() else { continue };
@@ -582,20 +587,20 @@ impl Localizer {
                     let label = str_of(o.get("label"));
                     if label.is_empty() { value.clone() } else { label }
                 };
-                // Словарь тегов ключуется ЗНАЧЕНИЕМ (`Anime`), а не подписью:
-                // подпись плагина у разных источников своя, значение — общее.
+                // The tag dictionary is keyed by the VALUE (`Anime`), not by the
+                // label: the plugin's label differs between sources, the value is
+                // shared.
                 let shown = lookup_tr(TAGS, &value).unwrap_or_else(|| original.clone());
-                // Карта обратного перевода остаётся: она подхватывает выбор,
-                // сохранённый до перехода на 0.3.8 (там в состоянии страницы
-                // лежат подписи, а не значения).
+                // The back-translation map stays: it picks up a choice saved before
+                // the move to 0.3.8 (there the page state holds labels, not values).
                 back.insert(shown.clone(), value.clone());
                 out_opt.insert("label".into(), Value::String(shown.clone()));
                 match out_opt.get("labelText") {
-                    // Карта подписи плагина: наш перевод идёт запаской.
+                    // The plugin's label map: our translation goes as a fallback.
                     Some(Value::Object(_)) => {
                         put_fallback(&mut out_opt, "labelText", &shown, &original)
                     }
-                    // Строка-запаска (подписи у плагина нет) — заменяем её.
+                    // A fallback string (the plugin has no label) — we replace it.
                     Some(_) if shown != original => {
                         out_opt.insert("labelText".into(), Value::String(shown.clone()));
                     }
@@ -609,7 +614,7 @@ impl Localizer {
         out.insert("filters".into(), Value::Array(filters));
         self.back_by_source.insert(source_id, back);
 
-        // ── действия (кнопки входа и настройки источника) ───────────────
+        // ── actions (login buttons and source settings) ─────────────────
         let mut actions: Vec<Value> = Vec::new();
         for a in array_of(info.get("actions")) {
             let src = match a.as_object() {
@@ -629,8 +634,8 @@ impl Localizer {
                     item.insert(key.into(), Value::String(text(&value)));
                 }
             }
-            // Квирк оригинала СОХРАНЁН: три ключа проставляются всегда, даже
-            // если их не было — вендорный QML отличает undefined от "".
+            // The original's quirk is PRESERVED: three keys are always set, even
+            // if they were absent — the vendored QML distinguishes undefined from "".
             item.insert(
                 "fields".into(),
                 Value::Array(
@@ -651,7 +656,7 @@ impl Localizer {
         }
         out.insert("actions".into(), Value::Array(actions));
 
-        // ── строки состояния ────────────────────────────────────────────
+        // ── status lines ────────────────────────────────────────────────
         out.insert(
             "status".into(),
             Value::Array(
@@ -677,20 +682,20 @@ impl Localizer {
     }
 }
 
-/// `str(value or "")` для поля JSON-объекта: строка как есть, отсутствие и
-/// прочие типы — пустая строка (в описании источника все переводимые поля
-/// строковые, их собирает `_source_info` из protobuf).
+/// `str(value or "")` for a field of a JSON object: a string as is, absence and
+/// other types — an empty string (all translatable fields in a source
+/// description are strings, `_source_info` assembles them from protobuf).
 fn str_of(v: Option<&Value>) -> String {
     v.and_then(Value::as_str).unwrap_or("").to_string()
 }
 
-/// `info.get(key) or []` — массив или пусто.
+/// `info.get(key) or []` — an array or empty.
 fn array_of(v: Option<&Value>) -> &[Value] {
     v.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
 }
 
-/// Массив строк (нестроковые элементы отбрасываются — в описании источника
-/// `tags`/`values` протоколом объявлены `repeated string`).
+/// An array of strings (non-string elements are dropped — in a source
+/// description `tags`/`values` are declared `repeated string` by the protocol).
 fn str_list(v: Option<&Value>) -> Vec<String> {
     array_of(v)
         .iter()
@@ -700,21 +705,21 @@ fn str_list(v: Option<&Value>) -> Vec<String> {
 }
 
 // ============================================================================
-// Сборка каталога переводов (.ts → lrelease → .qm)
+// Building the translation catalog (.ts → lrelease → .qm)
 // ============================================================================
 
-/// Имя собранного каталога рядом с модулем UI.
+/// Name of the built catalog next to the UI module.
 pub const QM_FILE_NAME: &str = "waywallen_ru.qm";
 
-/// Каталог вендорных каталогов переводов (`.ts`) относительно модуля UI.
-/// С 0.5.0 их у апстрима два — `waywallen_ru.ts` и `waywallen_de.ts`, и
-/// каждый собирается в свой `waywallen_<язык>.qm` рядом с модулем
-/// ([`qm_file_name`]): тогда немецкий Rexon видит вендорные страницы
-/// по-немецки, а не исходными английскими строками.
+/// Directory of the vendored translation catalogs (`.ts`) relative to the UI
+/// module. Since 0.5.0 the upstream has two of them — `waywallen_ru.ts` and
+/// `waywallen_de.ts`, and each is built into its own `waywallen_<lang>.qm` next
+/// to the module ([`qm_file_name`]): then a German Rexon sees the vendored pages
+/// in German rather than in the source English strings.
 pub const VENDOR_I18N_REL: &str = "waywallen/ui/i18n";
 
-/// Языки вендорных каталогов по именам файлов `waywallen_<язык>.ts`, по
-/// коду, без повторов.
+/// Languages of the vendored catalogs by the file names `waywallen_<lang>.ts`,
+/// by code, without duplicates.
 pub fn vendor_catalog_languages<S: AsRef<str>>(file_names: &[S]) -> Vec<String> {
     let mut codes: BTreeSet<String> = BTreeSet::new();
     for name in file_names {
@@ -730,26 +735,27 @@ pub fn vendor_catalog_languages<S: AsRef<str>>(file_names: &[S]) -> Vec<String> 
     codes.into_iter().collect()
 }
 
-/// Путь вендорного каталога переводов языка `code` относительно модуля UI.
+/// Path of the vendored translation catalog of language `code` relative to the
+/// UI module.
 pub fn vendor_ts_path_for(module_dir: &str, code: &str) -> String {
     join(module_dir, &format!("{VENDOR_I18N_REL}/{QM_PREFIX}{code}.ts"))
 }
 
-/// Путь собранного каталога языка `code` рядом с модулем UI.
+/// Path of the built catalog of language `code` next to the UI module.
 pub fn qm_path_for(module_dir: &str, code: &str) -> String {
     join(module_dir, &qm_file_name(code))
 }
 
-/// Каталог вендорного QML относительно модуля UI.
+/// Directory of the vendored QML relative to the UI module.
 pub const QML_DIR_REL: &str = "waywallen/ui/qml";
 
-/// Жёсткий путь `lrelease` из оригинала (Arch/CachyOS).
+/// The hard-coded `lrelease` path from the original (Arch/CachyOS).
 pub const DEFAULT_LRELEASE: &str = "/usr/lib/qt6/bin/lrelease";
 
-/// ⚠ Правило #16: кандидаты `lrelease` по убыванию предпочтения — исполнитель
-/// берёт первый найденный через `which`. В Python путь был жёстко арчевым, и
-/// на любом другом дистрибутиве сборка каталога падала `FileNotFoundError`.
-/// Жёсткий путь остался последним запасным.
+/// Warning — rule #16: `lrelease` candidates in decreasing order of preference —
+/// the executor takes the first one found via `which`. In Python the path was
+/// hard-coded for Arch, and on any other distribution the catalog build failed
+/// with `FileNotFoundError`. The hard-coded path remains the last fallback.
 pub const LRELEASE_CANDIDATES: &[&str] = &[
     "lrelease-qt6",
     "lrelease6",
@@ -757,71 +763,71 @@ pub const LRELEASE_CANDIDATES: &[&str] = &[
     DEFAULT_LRELEASE,
 ];
 
-/// Каталог модуля UI внутри пакета `rexon/`.
+/// Directory of the UI module inside the `rexon/` package.
 ///
-/// Каталоги `.qm` лежат рядом с `remote_l10n.py`, а крейт знает только
-/// каталог пакета (его сообщает Python при загрузке `.so`,
-/// `we_env::pkg_dir`). Путь между ними держит ядро — второй его копии в
-/// мосте быть не должно.
+/// The `.qm` catalogs lie next to `remote_l10n.py`, while the crate knows only
+/// the package directory (Python reports it when loading the `.so`,
+/// `we_env::pkg_dir`). The core holds the path between them — there must be no
+/// second copy of it in the bridge.
 pub const UI_MODULE_REL: &str = "qt_wallpaper_engine/qml_ui";
 
-/// Каталог модуля UI по каталогу пакета `rexon/`.
+/// Directory of the UI module from the `rexon/` package directory.
 pub fn ui_module_dir(pkg_dir: &str) -> String {
     join(pkg_dir, UI_MODULE_REL)
 }
 
-/// Путь собранного каталога рядом с модулем UI (`QM_PATH`).
+/// Path of the built catalog next to the UI module (`QM_PATH`).
 pub fn qm_path(module_dir: &str) -> String {
     join(module_dir, QM_FILE_NAME)
 }
 
-/// Каталог вендорного QML по умолчанию.
+/// The default vendored QML directory.
 pub fn default_qml_dir(module_dir: &str) -> String {
     join(module_dir, QML_DIR_REL)
 }
 
-/// Путь вендорного каталога переводов относительно модуля UI.
+/// Path of the vendored translation catalog relative to the UI module.
 pub fn vendor_ts_path(module_dir: &str) -> String {
     join(module_dir, VENDOR_TS_REL)
 }
 
-/// План сборки каталога: что скомпилировать и чем.
+/// The catalog build plan: what to compile and with what.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QmBuildPlan {
-    /// Исходник каталога — вендорный `.ts`. Мы его не пишем, а только читаем:
-    /// он приходит с обновлением вендора вместе с `ui/qml`.
+    /// The catalog source is the vendored `.ts`. We do not write it, only read it:
+    /// it comes with a vendor update together with `ui/qml`.
     pub ts_path: String,
-    /// Куда `lrelease` положит скомпилированный каталог.
+    /// Where `lrelease` will put the compiled catalog.
     pub qm_path: String,
-    /// Команда компиляции (`check=True`: ненулевой код — ошибка).
+    /// The compilation command (`check=True`: a non-zero code is an error).
     pub lrelease_argv: Vec<String>,
-    /// ⚠ Строки, которые вендорный QML отдаёт на перевод, а вендорного
-    /// перевода для них нет, — покупатель увидит их по-английски (правило
-    /// #13). Не ноль означает, что каталог отстал от `ui/qml`: чинится
-    /// наверху, у waywallen, а не подпоркой у нас.
+    /// Warning: strings the vendored QML hands out for translation but for which
+    /// there is no vendored translation — the buyer will see them in English (rule
+    /// #13). Non-zero means the catalog has fallen behind `ui/qml`: this is fixed
+    /// upstream, at waywallen, not with a crutch on our side.
     pub untranslated: Vec<String>,
-    /// ⚠ Обратный перекос: в каталоге строка есть, а в `ui/qml` её больше
-    /// нет. Сам по себе безвреден (лишняя запись в `.qm`), но означает, что
-    /// вендорные `qml` и `i18n` вендорены с разных коммитов.
+    /// Warning: the reverse skew: the catalog has a string that is no longer in
+    /// `ui/qml`. Harmless by itself (an extra entry in the `.qm`), but it means the
+    /// vendored `qml` and `i18n` were vendored from different commits.
     pub stale: Vec<String>,
 }
 
-/// Все строки, которые вендорный QML отдаёт на перевод, — первые аргументы
-/// всех `qsTr` дерева.
+/// All strings the vendored QML hands out for translation — the first arguments
+/// of all `qsTr` calls in the tree.
 ///
-/// ⚠ Правило #16: распознаются обе формы записи, `qsTr("…")` и `qsTr('…')` —
-/// QML допускает любые кавычки, а Python видел только двойные; вызов со
-/// счётчиком `qsTr("…", "", n)`, которого Python не видел вовсе; и экранировка
-/// внутри строки. Последнее не мелочь: вендор пишет
-/// `qsTr("Deleted \"%1\"")` и `qsTr("\nRelated display: #%1")`, а в каталоге
-/// эти строки лежат уже РАЗОБРАННЫМИ — без разбора они не совпадут ни с одной
-/// записью, и девять живых подписей числились бы непереведёнными.
+/// Warning — rule #16: both forms are recognized, `qsTr("…")` and `qsTr('…')` —
+/// QML allows either quote, while Python saw only double ones; a call with a
+/// counter `qsTr("…", "", n)`, which Python did not see at all; and escapes
+/// inside the string. The last one is not a trifle: the vendor writes
+/// `qsTr("Deleted \"%1\"")` and `qsTr("\nRelated display: #%1")`, and in the
+/// catalog these strings are stored already UNESCAPED — without unescaping they
+/// would not match any entry, and nine live labels would count as untranslated.
 ///
-/// ⭐ И вторая функция перевода — `qsTranslate("Контекст", "…")`: строка у
-/// неё ВТОРЫМ аргументом. Разметка 0.5.0 впервые зовёт её (вынесенный из
-/// диалога фильтров `WallpaperFilterRules.qml` держит прежний контекст
-/// `WallpaperFilterDialog`: «Group %1», «AND», «OR»), и без её разбора три
-/// живые подписи числились лишними записями каталога.
+/// ⭐ And the second translation function — `qsTranslate("Context", "…")`: its
+/// string is the SECOND argument. The 0.5.0 markup calls it for the first time
+/// (`WallpaperFilterRules.qml`, moved out of the filter dialog, keeps the
+/// previous context `WallpaperFilterDialog`: "Group %1", "AND", "OR"), and
+/// without parsing it three live labels counted as extra catalog entries.
 pub fn vendor_sources<P: AsRef<str>, T: AsRef<str>>(files: &[(P, T)]) -> Vec<String> {
     let mut found: BTreeSet<String> = BTreeSet::new();
     for (_, text) in files {
@@ -853,7 +859,7 @@ pub fn vendor_sources<P: AsRef<str>, T: AsRef<str>>(files: &[(P, T)]) -> Vec<Str
     found.into_iter().collect()
 }
 
-/// Имя функции стоит отдельным словом: `myqsTr(` — чужая функция.
+/// The function name stands as a separate word: `myqsTr(` is someone else's function.
 fn starts_word(text: &str, at: usize) -> bool {
     !text[..at]
         .chars()
@@ -861,7 +867,7 @@ fn starts_word(text: &str, at: usize) -> bool {
         .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
 }
 
-/// Строковый литерал в начале `rest` и остаток после него.
+/// A string literal at the start of `rest` and the remainder after it.
 fn leading_literal(rest: &str) -> Option<(String, &str)> {
     let quote = match rest.chars().next() {
         Some(q @ ('"' | '\'')) => q,
@@ -870,20 +876,20 @@ fn leading_literal(rest: &str) -> Option<(String, &str)> {
     js_string(&rest[quote.len_utf8()..], quote)
 }
 
-/// Литерал — аргумент вызова: за ним закрывающая скобка или следующий
-/// аргумент (счётчик, комментарий). Иначе это выражение (`qsTr(a + b)`), и
-/// строку для каталога из него не вынуть.
+/// The literal is a call argument: it is followed by a closing parenthesis or
+/// the next argument (a counter, a comment). Otherwise it is an expression
+/// (`qsTr(a + b)`), and a string for the catalog cannot be extracted from it.
 fn call_literal(rest: &str) -> Option<String> {
     let (literal, tail) = leading_literal(rest)?;
     matches!(tail.chars().next(), Some(')' | ',')).then_some(literal)
 }
 
-/// Разобрать строковый литерал JS до закрывающей кавычки `quote`: вернуть его
-/// значение (с раскрытой экранировкой) и остаток текста после кавычки.
+/// Parse a JS string literal up to the closing quote `quote`: return its value
+/// (with escapes expanded) and the rest of the text after the quote.
 ///
-/// Неизвестная экранировка (`\d`) отдаёт сам символ — как в JS для всего, что
-/// не в таблице; шестнадцатеричные формы (`\xNN`, `\uNNNN`) вендор в `qsTr`
-/// не использует, и разбирать их было бы догадкой.
+/// An unknown escape (`\d`) gives the character itself — as in JS for anything
+/// not in the table; the vendor does not use hexadecimal forms (`\xNN`,
+/// `\uNNNN`) in `qsTr`, and parsing them would be guesswork.
 fn js_string(body: &str, quote: char) -> Option<(String, &str)> {
     let mut out = String::new();
     let mut chars = body.char_indices();
@@ -907,13 +913,14 @@ fn js_string(body: &str, quote: char) -> Option<(String, &str)> {
     None
 }
 
-/// Строки, для которых в каталоге ЕСТЬ готовый перевод.
+/// Strings for which the catalog HAS a ready translation.
 ///
-/// Разбор нарочно грубый — по тегам `<source>` и `<translation>`, без XML-
-/// парсера: каталог пишет `lupdate` у вендора, формат у него один и тот же, а
-/// лишняя зависимость ради четырёх тегов не окупается. Незавершённый перевод
-/// (`type="unfinished"`) переводом НЕ считается: Qt отдаст исходную строку, и
-/// покупатель увидит английский.
+/// Parsing is deliberately crude — by the `<source>` and `<translation>` tags,
+/// without an XML parser: the catalog is written by the vendor's `lupdate`, its
+/// format is always the same, and an extra dependency for four tags does not pay
+/// off. An unfinished translation (`type="unfinished"`) does NOT count as a
+/// translation: Qt will return the source string, and the buyer will see
+/// English.
 pub fn catalog_translated(ts: &str) -> BTreeSet<String> {
     let mut done = BTreeSet::new();
     let mut pending: Option<String> = None;
@@ -935,7 +942,7 @@ pub fn catalog_translated(ts: &str) -> BTreeSet<String> {
     done
 }
 
-/// Тело простого тега `<name>…</name>` в начале среза.
+/// The body of a simple tag `<name>…</name>` at the start of the slice.
 fn tag_body<'a>(rest: &'a str, name: &str) -> Option<&'a str> {
     let open = format!("<{name}>");
     let close = format!("</{name}>");
@@ -944,8 +951,8 @@ fn tag_body<'a>(rest: &'a str, name: &str) -> Option<&'a str> {
     Some(&body[..end])
 }
 
-/// Обратное к `xml.sax.saxutils.escape`; `&amp;` разбирается последним, чтобы
-/// `&amp;lt;` остался текстом `&lt;`, а не превратился в `<`.
+/// The inverse of `xml.sax.saxutils.escape`; `&amp;` is handled last, so that
+/// `&amp;lt;` stays the text `&lt;` instead of turning into `<`.
 fn xml_unescape(s: &str) -> String {
     s.replace("&lt;", "<")
         .replace("&gt;", ">")
@@ -954,9 +961,9 @@ fn xml_unescape(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
-/// Вендорные строки без вендорного перевода — покупатель видит их
-/// по-английски (правило #13). Появляются, когда `ui/qml` обновили, а
-/// `ui/i18n` нет.
+/// Vendored strings without a vendored translation — the buyer sees them in
+/// English (rule #13). They appear when `ui/qml` was updated but `ui/i18n` was
+/// not.
 pub fn untranslated_vendor_sources<P: AsRef<str>, T: AsRef<str>>(
     files: &[(P, T)],
     ts: &str,
@@ -968,14 +975,14 @@ pub fn untranslated_vendor_sources<P: AsRef<str>, T: AsRef<str>>(
         .collect()
 }
 
-/// Собрать `waywallen_ru.qm` из ВЕНДОРНОГО каталога.
+/// Build `waywallen_ru.qm` from the VENDORED catalog.
 ///
-/// `files` — пары «путь → текст» всех `.qml` вендора (в исполнителе это
-/// `glob("**/*.qml", recursive=True)` + чтение), `ts` — содержимое вендорного
-/// `.ts`. Файлы нужны не для сборки, а для сверки: план заодно докладывает,
-/// где каталог и `ui/qml` разошлись. `lrelease` — компилятор каталогов из Qt:
-/// есть на машине разработчика, покупателю не нужен — в сборку едет готовый
-/// `.qm`.
+/// `files` — "path → text" pairs of all the vendor's `.qml` (in the executor
+/// this is `glob("**/*.qml", recursive=True)` + reading), `ts` — the contents of
+/// the vendored `.ts`. The files are needed not for the build but for the check:
+/// the plan also reports where the catalog and `ui/qml` diverged. `lrelease` is
+/// Qt's catalog compiler: it is on the developer's machine, the buyer does not
+/// need it — a ready `.qm` goes into the build.
 pub fn plan_build_qm<P: AsRef<str>, T: AsRef<str>>(
     files: &[(P, T)],
     ts: &str,
@@ -1000,53 +1007,55 @@ pub fn plan_build_qm<P: AsRef<str>, T: AsRef<str>>(
 }
 
 // ============================================================================
-// Язык интерфейса вендорных страниц
+// Interface language of the vendored pages
 // ============================================================================
 //
-// Порт `ui/src/ui_language.cpp` waywallen. Страница настроек вендора держит
-// комбобокс «Язык», а `App` отдаёт ему три члена — `availableUiLanguages`,
-// `uiLanguage`, `setUiLanguage()`. Здесь чистая часть их устройства: какие
-// языки считать доступными, как привести выбор к поддерживаемому коду и
-// какой каталог грузить. Сам `QTranslator`, подписи локалей и пересборка
-// привязок QML — за исполнителем (шим `cpp/rexon_we_singletons.cpp`).
+// Port of waywallen's `ui/src/ui_language.cpp`. The vendor's settings page has a
+// "Language" combo box, and `App` gives it three members —
+// `availableUiLanguages`, `uiLanguage`, `setUiLanguage()`. Here is the pure
+// part of how they work: which languages to consider available, how to bring a
+// choice to a supported code and which catalog to load. The `QTranslator`
+// itself, the locale labels and rebuilding the QML bindings are with the
+// executor (the `cpp/rexon_we_singletons.cpp` shim).
 //
-// ⚠️ Второго механизма языка здесь НЕ заводится: доступные языки — это ровно
-// те каталоги `.qm`, которые уже собирает [`plan_build_qm`] из вендорного
-// `.ts`. Новое здесь одно — каталог перестал быть намертво русским, и
-// прежнее «поставить русский переводчик» (`plan_install_translator`,
-// `remote_l10n.install_translator()`) удалено целиком: у переводчика теперь
-// один хозяин — синглтон `App`.
+// Warning: NO second language mechanism is created here: the available
+// languages are exactly those `.qm` catalogs that [`plan_build_qm`] already
+// builds from the vendored `.ts`. The only new thing here is that the catalog
+// is no longer hard-wired to Russian, and the former "install the Russian
+// translator" (`plan_install_translator`, `remote_l10n.install_translator()`) is
+// removed entirely: the translator now has one owner — the `App` singleton.
 
-/// Ключ выбора языка в `QSettings`. Тот же, что у оригинала
-/// (`ui_language.cpp`, `kSettingsKey`): настройка одна на программу, и
-/// расходиться ей не с чем.
+/// The language choice key in `QSettings`. The same as in the original
+/// (`ui_language.cpp`, `kSettingsKey`): there is one setting for the program,
+/// and there is nothing for it to diverge from.
 pub const UI_LANGUAGE_KEY: &str = "ui/language";
 
-/// «Как в системе» — значение по умолчанию (`kSystemLanguage` оригинала).
+/// "As in the system" — the default value (the original's `kSystemLanguage`).
 pub const UI_LANGUAGE_SYSTEM: &str = "system";
 
-/// Английский. Каталога для него нет и не нужно: исходные строки `qsTr()`
-/// в вендорном QML английские (`kEnglishLanguage` оригинала).
+/// English. There is no catalog for it and none is needed: the source `qsTr()`
+/// strings in the vendored QML are English (the original's `kEnglishLanguage`).
 pub const UI_LANGUAGE_ENGLISH: &str = "en";
 
-/// Подпись английского языка — его собственное самоназвание. У оригинала
-/// она тоже записана строкой (`QStringLiteral("English")`), а не берётся у
-/// QLocale: каталога для английского нет, и спрашивать локаль не о чем.
+/// Label of the English language — its own endonym. In the original it is also
+/// written as a string (`QStringLiteral("English")`) rather than taken from
+/// QLocale: there is no catalog for English, and there is nothing to ask the
+/// locale about.
 pub const UI_LANGUAGE_ENGLISH_LABEL: &str = "English";
 
-/// Начало и конец имени каталога переводов вендора.
+/// Beginning and end of the vendor's translation catalog name.
 const QM_PREFIX: &str = "waywallen_";
 const QM_SUFFIX: &str = ".qm";
 
-/// Имя каталога переводов для кода языка: `ru` → `waywallen_ru.qm`.
+/// Translation catalog name for a language code: `ru` → `waywallen_ru.qm`.
 pub fn qm_file_name(code: &str) -> String {
     format!("{QM_PREFIX}{code}{QM_SUFFIX}")
 }
 
-/// Код языка из имени каталога; `None` — файл не наш.
+/// Language code from a catalog name; `None` — the file is not ours.
 ///
-/// Ветка `discoverLanguages` оригинала, только там имена приходят из
-/// ресурса `:/i18n`, а у нас — из каталога рядом с модулем UI.
+/// The original's `discoverLanguages` branch, only there the names come from the
+/// `:/i18n` resource, while ours come from the directory next to the UI module.
 pub fn qm_file_language(file_name: &str) -> Option<String> {
     let rest = file_name.strip_prefix(QM_PREFIX)?;
     let code = rest.strip_suffix(QM_SUFFIX)?;
@@ -1056,11 +1065,11 @@ pub fn qm_file_language(file_name: &str) -> Option<String> {
     Some(code.to_string())
 }
 
-/// Языки, у которых рядом с модулем есть собранный каталог.
+/// Languages that have a built catalog next to the module.
 ///
-/// Английский отброшен, как у оригинала: его строки и так исходные, и
-/// каталог для него означал бы перевод английского на английский. Порядок —
-/// по коду (у оригинала `QDir::Name`), повторы снимаются.
+/// English is dropped, as in the original: its strings are the source anyway,
+/// and a catalog for it would mean translating English into English. The order
+/// is by code (the original's `QDir::Name`), duplicates are removed.
 pub fn ui_language_codes<S: AsRef<str>>(file_names: &[S]) -> Vec<String> {
     let mut codes: BTreeSet<String> = BTreeSet::new();
     for name in file_names {
@@ -1075,7 +1084,7 @@ pub fn ui_language_codes<S: AsRef<str>>(file_names: &[S]) -> Vec<String> {
     codes.into_iter().collect()
 }
 
-/// Базовый язык кода локали: `ru_RU` → `ru`, `zh-CN` → `zh`.
+/// Base language of a locale code: `ru_RU` → `ru`, `zh-CN` → `zh`.
 fn base_language(code: &str) -> String {
     let cut = code
         .find(['_', '-', '.', '@'])
@@ -1083,12 +1092,12 @@ fn base_language(code: &str) -> String {
     code[..cut].to_ascii_lowercase()
 }
 
-/// Привести выбор к поддерживаемому коду; `None` — такого языка у нас нет.
+/// Bring a choice to a supported code; `None` — we do not have such a language.
 ///
-/// Порядок ровно как в `normalizePreference` оригинала: «как в системе» и
-/// английский принимаются всегда, дальше точное совпадение с собранным
-/// каталогом, дальше — совпадение по базовому языку (`ru_RU` берёт каталог
-/// `ru`, а `zh` — каталог `zh_CN`).
+/// The order is exactly as in the original's `normalizePreference`: "as in the
+/// system" and English are always accepted, then an exact match with a built
+/// catalog, then a match by base language (`ru_RU` takes the `ru` catalog, and
+/// `zh` the `zh_CN` catalog).
 pub fn normalize_ui_language(preference: &str, codes: &[String]) -> Option<String> {
     let pref = preference.trim();
     if pref.is_empty() {
@@ -1110,28 +1119,30 @@ pub fn normalize_ui_language(preference: &str, codes: &[String]) -> Option<Strin
         .cloned()
 }
 
-/// Решение [`plan_ui_language`]: что показать и что для этого загрузить.
+/// The decision of [`plan_ui_language`]: what to show and what to load for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiLanguagePlan {
-    /// Код, который станет выбором покупателя (`system`, `en`, `ru`).
+    /// The code that will become the buyer's choice (`system`, `en`, `ru`).
     pub preference: String,
-    /// Имя локали Qt для `QTranslator::load` (`ru_RU`, `en`); пусто —
-    /// системная локаль.
+    /// The Qt locale name for `QTranslator::load` (`ru_RU`, `en`); empty — the
+    /// system locale.
     pub locale_name: String,
-    /// Имя каталога рядом с модулем; пусто — переводить нечем и не нужно.
+    /// Name of the catalog next to the module; empty — there is nothing to translate
+    /// with and no need to.
     pub qm_file: String,
-    /// Каталог обязателен: без него смена языка считается неудачной и
-    /// вендорный QML показывает тост «Не удалось изменить язык».
+    /// The catalog is mandatory: without it the language change counts as failed,
+    /// and the vendored QML shows the toast «Не удалось изменить язык» ("Failed to
+    /// change the language").
     pub required: bool,
 }
 
-/// Что сделать, чтобы вендорные страницы заговорили на выбранном языке.
+/// What to do so that the vendored pages speak the chosen language.
 ///
-/// `system_locale` — имя системной локали Qt (`ru_RU`), его знает только
-/// исполнитель. `codes` — ответ [`ui_language_codes`].
+/// `system_locale` — the name of the system Qt locale (`ru_RU`), only the
+/// executor knows it. `codes` — the answer of [`ui_language_codes`].
 ///
-/// `None` — язык не поддерживается; у оригинала это же значит «вернуть
-/// `false` из `setUiLanguage`».
+/// `None` — the language is not supported; in the original this also means
+/// "return `false` from `setUiLanguage`".
 pub fn plan_ui_language(
     preference: &str,
     system_locale: &str,
@@ -1139,8 +1150,8 @@ pub fn plan_ui_language(
 ) -> Option<UiLanguagePlan> {
     let preference = normalize_ui_language(preference, codes)?;
     if preference == UI_LANGUAGE_SYSTEM {
-        // «Как в системе» каталога не требует: нет русского каталога —
-        // страницы останутся английскими, и это не ошибка.
+        // "As in the system" requires no catalog: if there is no Russian
+        // catalog, the pages stay English, and that is not an error.
         let qm_file = normalize_ui_language(system_locale, codes)
             .filter(|code| code != UI_LANGUAGE_SYSTEM && code != UI_LANGUAGE_ENGLISH)
             .map(|code| qm_file_name(&code))
@@ -1169,7 +1180,7 @@ pub fn plan_ui_language(
 }
 
 // ============================================================================
-// Хелперы путей (семантика os.path)
+// Path helpers (os.path semantics)
 // ============================================================================
 
 fn join(a: &str, b: &str) -> String {

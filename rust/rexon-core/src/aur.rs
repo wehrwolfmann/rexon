@@ -1,44 +1,49 @@
-//! Клиент AUR RPC v5 для каталога «Оформление» — порт
-//! `rexon/appearance/aur_client.py` ЦЕЛИКОМ: и разбор ответа, и сетевой слой.
+//! AUR RPC v5 client for the "Appearance" catalog: a port of
+//! `rexon/appearance/aur_client.py` IN FULL, both response parsing and the
+//! network layer.
 //!
-//! Разбор: JSON-ответ RPC → модели (`parse`), вычисляемые атрибуты пакета
-//! (`id`/`aur_url`/`preview_url`/`icon`), проверка RPC-ошибки, сортировка по
-//! голосам и оркестрация над УЖЕ полученным ответом — фильтр многословного
-//! поиска (`search_filter`) и дедуп+пин категории (`dedup_category`).
+//! Parsing: RPC JSON response -> models (`parse`), computed package
+//! attributes (`id`/`aur_url`/`preview_url`/`icon`), RPC error check,
+//! sorting by votes and orchestration over an ALREADY received response:
+//! the multi-word search filter (`search_filter`) and the category
+//! dedup+pin (`dedup_category`).
 //!
-//! Сеть: [`http_json`] (порт `_http_json`) плюс сборщики URL и сами
-//! [`fetch_curated`]/[`fetch_for_category`]/[`search_aur`]. Вызов спрятан за
-//! трейтом [`NetIo`] (`net.rs`) — это единственный способ вообще проверить
-//! ветки: `aur.archlinux.org` из среды разработки недоступен (TLS рвёт
-//! фильтр), поэтому тесты гоняют ЗАПИСАННЫЕ ответы. Прежнее решение «HTTP
-//! остаётся на Python» отменено: цель — убрать Python отовсюду, кроме
-//! интерфейса.
+//! Network: [`http_json`] (a port of `_http_json`) plus the URL builders and
+//! [`fetch_curated`]/[`fetch_for_category`]/[`search_aur`] themselves. The
+//! call is hidden behind the [`NetIo`] trait (`net.rs`): it is the only way
+//! to test the branches at all: `aur.archlinux.org` is unreachable from the
+//! development environment (a filter breaks TLS), so the tests run on
+//! RECORDED responses. The former decision "HTTP stays in Python" is
+//! cancelled: the goal is to remove Python from everywhere except the
+//! interface.
 //!
-//! Сверка с Python: эталоны сняты с самого `aur_client.py` (монипатч
-//! `_http_json`/`urlopen` → канонический ответ, вызваны реальные `search_aur`/
-//! `fetch_for_category`/`_parse`/атрибуты), Rust обязан вернуть тот же список
-//! и те же строки. Голдены — `tests/aur_parity.rs` (разбор) и
-//! `tests/net_parity.rs` (сетевые ветки).
+//! Parity with Python: the golden files were taken from `aur_client.py`
+//! itself (monkeypatched `_http_json`/`urlopen` -> a canonical response,
+//! the real `search_aur`/`fetch_for_category`/`_parse`/attributes called),
+//! and Rust must return the same list and the same strings. Golden tests:
+//! `tests/aur_parity.rs` (parsing) and `tests/net_parity.rs` (network
+//! branches).
 
 use crate::net::{self, NetError, NetIo};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Базовый URL RPC v5 (совпадает с `RPC_BASE`).
+/// Base URL of RPC v5 (matches `RPC_BASE`).
 pub const RPC_BASE: &str = "https://aur.archlinux.org/rpc/v5";
-/// Шаблон страницы пакета (`AUR_PKG_URL`).
+/// Package page template (`AUR_PKG_URL`).
 pub const AUR_PKG_URL_PREFIX: &str = "https://aur.archlinux.org/packages/";
-/// User-Agent запросов (`USER_AGENT`).
+/// User-Agent of the requests (`USER_AGENT`).
 pub const USER_AGENT: &str = "Rexon/5.0";
 
-/// Один пакет AUR (подмножество полей RPC v5) — порт dataclass `AurPackage`.
+/// One AUR package (a subset of RPC v5 fields), a port of the `AurPackage`
+/// dataclass.
 ///
-/// Порядок/дефолты полей повторяют Python. `category` — ключ категории каталога
-/// ("" = свободный поиск). `installed` рантайм-флаг проставляется UI-слоем по
-/// `installed_set` (тут не участвует).
+/// Field order/defaults repeat Python. `category` is the catalog category
+/// key ("" = free search). The `installed` runtime flag is set by the UI
+/// layer from `installed_set` (it plays no part here).
 ///
-/// serde-дериваты — для PyO3-моста (rexon-py): имена полей совпадают с
-/// dataclass, поэтому dict через мост собирается/разбирается напрямую.
+/// serde derives are for the PyO3 bridge (rexon-py): the field names match
+/// the dataclass, so a dict is built/parsed through the bridge directly.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AurPackage {
@@ -56,34 +61,34 @@ pub struct AurPackage {
 }
 
 impl AurPackage {
-    /// `id` для grid-механики (`it.id`) — совпадает с именем пакета.
+    /// `id` for the grid mechanics (`it.id`): matches the package name.
     pub fn id(&self) -> &str {
         &self.name
     }
 
-    /// Страница пакета на aur.archlinux.org (`aur_url`): имя percent-энкодится
-    /// как `urllib.parse.quote` (safe по умолчанию = только `/`).
+    /// The package page on aur.archlinux.org (`aur_url`): the name is
+    /// percent-encoded like `urllib.parse.quote` (safe by default = only `/`).
     pub fn aur_url(&self) -> String {
         format!("{AUR_PKG_URL_PREFIX}{}", url_quote(&self.name))
     }
 
-    /// Источник картинки плитки — НАСТОЯЩАЯ картинка товара либо "".
+    /// The tile picture source: a REAL picture of the item or "".
     ///
-    /// * шрифт — файл этого шрифта с Google Fonts (метка `google-font:`,
-    ///   [`GOOGLE_FONT_SCHEME`]): плитка рисует им образец текста;
-    /// * проект на GitHub — первая картинка README (метка `github-readme:`,
-    ///   [`README_PREVIEW_SCHEME`]): у наборов обоев, значков и тем там
-    ///   снимок самого набора;
-    /// * иначе "" — плитка честно говорит, что картинки нет
+    /// * a font: the file of this font from Google Fonts (the `google-font:`
+    ///   marker, [`GOOGLE_FONT_SCHEME`]): the tile draws a text sample with it;
+    /// * a project on GitHub: the first README picture (the `github-readme:`
+    ///   marker, [`README_PREVIEW_SCHEME`]): for wallpaper, icon and theme sets
+    ///   it is a screenshot of the set itself;
+    /// * otherwise "": the tile honestly says there is no picture
     ///   ([`no_preview_note`]).
     ///
-    /// ⛔ OpenGraph-карточку репозитория (`opengraph.githubassets.com`:
-    /// имя, звёзды, аватар владельца) здесь больше не берём: на плитке
-    /// обоев и шрифтов она выдавала себя за превью товара (живая проверка
-    /// 16.11.2026), а галерея — только настоящие снимки (правило #13).
-    /// Разбор адреса GitHub — регэксп
-    /// `https?://(?:www\.)?github\.com/(owner)/(repo)` с отсечением `.git` и
-    /// хвоста `[/#?].*`.
+    /// ⛔ The repository OpenGraph card (`opengraph.githubassets.com`: name,
+    /// stars, owner avatar) is no longer used here: on wallpaper and font
+    /// tiles it passed itself off as a preview of the item (live check
+    /// 16.11.2026), and the gallery shows only real screenshots (rule #13).
+    /// The GitHub address is parsed with the regexp
+    /// `https?://(?:www\.)?github\.com/(owner)/(repo)`, cutting off `.git` and
+    /// the tail `[/#?].*`.
     pub fn preview_url(&self) -> String {
         if self.is_font() {
             return google_font_family(&self.name)
@@ -96,14 +101,15 @@ impl AurPackage {
         }
     }
 
-    /// Пакет шрифта: раздел «Шрифты» либо имя по соглашению Arch
-    /// (`ttf-*`, `otf-*`) — так он узнаётся и в выдаче сборных разделов.
+    /// A font package: the "Fonts" section or a name following the Arch
+    /// convention (`ttf-*`, `otf-*`): this way it is recognised in the results
+    /// of combined sections too.
     pub fn is_font(&self) -> bool {
         self.category == "fonts" || is_font_package_name(&self.name)
     }
 
-    /// Эмодзи карточки (`icon`): по категории, иначе эвристика по имени пакета.
-    /// Порядок проверок точно повторяет Python.
+    /// The card emoji (`icon`): by category, otherwise a heuristic on the
+    /// package name. The order of checks repeats Python exactly.
     pub fn icon(&self) -> &'static str {
         if let Some(ic) = category_icon(&self.category) {
             return ic;
@@ -129,30 +135,30 @@ impl AurPackage {
     }
 }
 
-/// Имя пакета шрифта по соглашению Arch: `ttf-*`, `otf-*`, `woff2-*`.
+/// A font package name by the Arch convention: `ttf-*`, `otf-*`, `woff2-*`.
 pub fn is_font_package_name(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     ["ttf-", "otf-", "woff-", "woff2-"].iter().any(|p| n.starts_with(p))
 }
 
-/// Метка «картинку плитки — образец шрифта с Google Fonts»
-/// (`google-font:Fira Sans`): её разрешает загрузчик
-/// ([`resolve_google_font`]) в адрес файла шрифта.
+/// The marker "the tile picture is a font sample from Google Fonts"
+/// (`google-font:Fira Sans`): the loader resolves it
+/// ([`resolve_google_font`]) into the font file address.
 pub const GOOGLE_FONT_SCHEME: &str = "google-font:";
 
-/// Хвосты имени пакета, к названию шрифта не относящиеся.
+/// Package name suffixes unrelated to the font name.
 const FONT_NAME_TAILS: &[&str] = &[
     "git", "bin", "variable", "vf", "ttf", "otf", "font", "fonts", "static", "latest", "full",
 ];
 
-/// Название семейства шрифта по имени пакета для Google Fonts:
-/// `ttf-fira-sans-git` → `Fira Sans`. `None` — не пакет шрифта
-/// ([`is_font_package_name`]) или названия не осталось.
+/// The font family name for Google Fonts from the package name:
+/// `ttf-fira-sans-git` -> `Fira Sans`. `None` means not a font package
+/// ([`is_font_package_name`]) or no name is left.
 ///
-/// Google Fonts различает регистр (`JetBrains Mono` есть, `Jetbrains Mono`
-/// — нет), а пакет регистр теряет: слова пишутся с заглавной, и семейства с
-/// заглавными внутри слова честно не находятся — плитка тогда говорит, что
-/// образца нет.
+/// Google Fonts is case-sensitive (`JetBrains Mono` exists, `Jetbrains
+/// Mono` does not), and the package loses case: words are capitalised, and
+/// families with capitals inside a word are honestly not found; the tile
+/// then says there is no sample.
 pub fn google_font_family(name: &str) -> Option<String> {
     if !is_font_package_name(name) {
         return None;
@@ -173,13 +179,13 @@ pub fn google_font_family(name: &str) -> Option<String> {
     Some(words.into_iter().map(title).collect::<Vec<_>>().join(" "))
 }
 
-/// Адрес запроса CSS семейства у Google Fonts (`css2?family=Fira+Sans`).
+/// Address of the family CSS request at Google Fonts (`css2?family=Fira+Sans`).
 pub fn google_font_css_url(family: &str) -> String {
     format!("https://fonts.googleapis.com/css2?family={}", quote_plus(family))
 }
 
-/// Первый адрес файла шрифта из ответа CSS Google Fonts (`src: url(…)`).
-/// Простому клиенту Google отдаёт TrueType одним файлом.
+/// The first font file address from the Google Fonts CSS response
+/// (`src: url(…)`). To a simple client Google returns TrueType as one file.
 pub fn parse_google_font_css(css: &str) -> Option<String> {
     let at = css.find("url(")?;
     let rest = &css[at + 4..];
@@ -188,17 +194,19 @@ pub fn parse_google_font_css(css: &str) -> Option<String> {
     url.starts_with("https://").then(|| url.to_string())
 }
 
-/// Найти файл шрифта для метки `google-font:Семейство`. `None` — такого
-/// семейства у Google Fonts нет (ответ 400) или сеть не ответила.
+/// Find the font file for the `google-font:Family` marker. `None` means
+/// Google Fonts has no such family (a 400 response) or the network did not
+/// answer.
 pub fn resolve_google_font(net: &mut dyn NetIo, marker: &str) -> Option<String> {
     let family = marker.strip_prefix(GOOGLE_FONT_SCHEME)?;
     let body = net.get(&google_font_css_url(family), USER_AGENT, TIMEOUT_SECS).ok()?;
     parse_google_font_css(&String::from_utf8_lossy(&body))
 }
 
-/// Подпись на месте картинки плитки, когда картинки нет: что это за товар
-/// и почему без снимка. Строка правдива и пока картинка грузится (набор
-/// обоев свои картинки несёт внутри пакета). Пусто — подписи не нужно.
+/// The label in place of the tile picture when there is no picture: what
+/// kind of item this is and why there is no screenshot. The line is true
+/// while the picture is loading too (a wallpaper set carries its pictures
+/// inside the package). Empty means no label is needed.
 pub fn no_preview_note(pkg: &AurPackage) -> String {
     use crate::i18n::tr;
     if pkg.is_font() {
@@ -213,12 +221,12 @@ pub fn no_preview_note(pkg: &AurPackage) -> String {
     String::new()
 }
 
-/// Образец текста на плитке шрифта.
+/// Text sample on a font tile.
 pub fn font_sample_text() -> String {
     crate::i18n::tr("Aa Bb Cc 123")
 }
 
-/// Эмодзи категории по ключу (`CATEGORY_ICONS`). `None` — ключа нет.
+/// Category emoji by key (`CATEGORY_ICONS`). `None` means no such key.
 pub fn category_icon(key: &str) -> Option<&'static str> {
     Some(match key {
         "global" => "💎",
@@ -235,20 +243,21 @@ pub fn category_icon(key: &str) -> Option<&'static str> {
         "plasmoids" => "🧊",
         "sddm" => "🔐",
         "plymouth" => "⚡",
-        // Разделы окружений — значок своего типа, как в боковой панели.
+        // Environment sections: an icon of their own type, as in the sidebar.
         _ => return crate::categories::category_kind(key).and_then(crate::constants::type_icon),
     })
 }
 
-/// Курируемый список (`CURATED`) — имена пакетов для `fetch_curated`.
+/// The curated list (`CURATED`): package names for `fetch_curated`.
 ///
-/// Порядок `aerothemeplasma-*` задаёт порядок закрепления наверху подборки:
-/// оболочка, значки, звуки. Звуки добавлены 03.10.2026 — без них комплект
-/// AeroThemePlasma в подборке был неполным, а сам пакет выпадал из выдачи
-/// (`curated_order` берёт в закрепление только то, что перечислено здесь).
-/// В КАТЕГОРИЯХ каталога звуки живут в «Звуках», не в «Глобальных темах»:
-/// раздел отвечает на вопрос «что это ставит», а пакет ставит темы звуков
-/// (см. [`is_relevant`]).
+/// The order of `aerothemeplasma-*` sets the order of pinning at the top
+/// of the selection: shell, icons, sounds. Sounds were added on 03.10.2026:
+/// without them the AeroThemePlasma kit in the selection was incomplete,
+/// and the package itself dropped out of the results (`curated_order` pins
+/// only what is listed here). In the catalog CATEGORIES the sounds live in
+/// "Sounds", not in "Global themes": a section answers the question "what
+/// does this install", and the package installs sound themes (see
+/// [`is_relevant`]).
 pub const CURATED: &[&str] = &[
     "aerothemeplasma-desktop-git",
     "aerothemeplasma-icons-git",
@@ -268,15 +277,17 @@ pub const CURATED: &[&str] = &[
     "catppuccin-gtk-theme-mocha",
 ];
 
-/// Раздел каталога, в котором курируемый пакет стоит наверху.
+/// The catalog section in which a curated package stands at the top.
 ///
-/// Подборка показывается не отдельной витриной, а закреплением в СВОЁМ
-/// разделе источника AUR (без поискового запроса): оболочка AeroThemePlasma —
-/// в «Глобальных темах», её значки — в «Значках», звуки — в «Звуках». Таблица
-/// явная, а не по [`is_relevant`]: правило релевантности для части разделов
-/// пропускает всё подряд и закрепило бы, скажем, значки в «Стилях Plasma».
-/// `None` — своего раздела у пакета в каталоге нет (`klassy` — модуль
-/// оформления окон, а не тема Aurorae), такой пакет не закрепляется нигде.
+/// The selection is shown not as a separate showcase but by pinning in ITS
+/// OWN section of the AUR source (without a search query): the
+/// AeroThemePlasma shell in "Global themes", its icons in "Icons", the
+/// sounds in "Sounds". The table is explicit rather than based on
+/// [`is_relevant`]: for some sections the relevance rule lets everything
+/// through and would pin, say, icons in "Plasma styles". `None` means the
+/// package has no section of its own in the catalog (`klassy` is a window
+/// decoration module, not an Aurorae theme); such a package is not pinned
+/// anywhere.
 pub fn curated_category(name: &str) -> Option<&'static str> {
     Some(match name {
         "aerothemeplasma-desktop-git" => "global",
@@ -295,17 +306,19 @@ pub fn curated_category(name: &str) -> Option<&'static str> {
     })
 }
 
-/// Есть ли у раздела `key` курируемые пакеты (иначе за подборкой не ходим).
+/// Whether section `key` has curated packages (otherwise we do not fetch the selection).
 pub fn has_curated(key: &str) -> bool {
     CURATED.iter().any(|n| curated_category(n) == Some(key))
 }
 
-/// Закрепить курируемые пакеты раздела `key` наверху выдачи раздела.
+/// Pin the curated packages of section `key` at the top of the section's
+/// results.
 ///
-/// Порядок закреплённых — порядок [`CURATED`]; пакет, который уже нашёлся
-/// в выдаче, переезжает наверх (повтора нет). Пакеты чужих разделов и те,
-/// которых в ответе `/info` не оказалось (снят с AUR), не добавляются.
-/// Ключ категории у закреплённых — `key`: от него зависит значок плитки.
+/// The order of pinned packages is the order of [`CURATED`]; a package
+/// already found in the results moves to the top (no duplicate). Packages
+/// of other sections and those missing from the `/info` response (removed
+/// from the AUR) are not added. The category key of the pinned packages is
+/// `key`: the tile icon depends on it.
 pub fn pin_curated(key: &str, curated: &[AurPackage], list: Vec<AurPackage>) -> Vec<AurPackage> {
     let mut pinned: Vec<AurPackage> = Vec::new();
     for name in CURATED {
@@ -325,12 +338,13 @@ pub fn pin_curated(key: &str, curated: &[AurPackage], list: Vec<AurPackage>) -> 
     pinned
 }
 
-/// Раздел источника AUR без поискового запроса: [`fetch_for_category`] и
-/// сверху курируемые пакеты этого раздела ([`pin_curated`]).
+/// An AUR source section without a search query: [`fetch_for_category`]
+/// with this section's curated packages on top ([`pin_curated`]).
 ///
-/// Подборка — украшение, а не условие: не ответил `/info` — раздел всё равно
-/// показывается своей выдачей. Виртуальные `popular`/`new` подборку не
-/// закрепляют (своего раздела у них нет).
+/// The selection is a decoration, not a condition: if `/info` did not
+/// answer, the section is still shown with its own results. The virtual
+/// `popular`/`new` do not pin the selection (they have no section of their
+/// own).
 pub fn fetch_category_with_curated<IO: NetIo + ?Sized>(
     io: &mut IO,
     key: &str,
@@ -346,11 +360,11 @@ pub fn fetch_category_with_curated<IO: NetIo + ?Sized>(
     }
 }
 
-/// Категории-агрегаты для виртуальных popular/new (`AGGREGATE_KEYS`).
+/// Aggregate categories for the virtual popular/new (`AGGREGATE_KEYS`).
 pub const AGGREGATE_KEYS: &[&str] = &["global", "plasma", "colors", "icons", "cursor"];
 
-/// Поисковые запросы AUR по ключу категории (`CATEGORY_QUERIES`).
-/// `(keyword, by)` — `by`=name (подстрока имени) / name-desc (имя+описание).
+/// AUR search queries by category key (`CATEGORY_QUERIES`).
+/// `(keyword, by)`: `by`=name (a name substring) / name-desc (name+description).
 pub fn category_queries(key: &str) -> &'static [(&'static str, &'static str)] {
     match key {
         "global" => &[
@@ -365,10 +379,10 @@ pub fn category_queries(key: &str) -> &'static [(&'static str, &'static str)] {
         "icons" => &[("icon-theme", "name"), ("icons", "name")],
         "cursor" => &[("cursor-theme", "name"), ("cursors", "name"), ("xcursor", "name")],
         "kvantum" => &[("kvantum", "name")],
-        // «Стиль приложений»: темы Kvantum и готовые стили Qt. Своего
-        // именного соглашения у стилей нет (снимок AUR 17.10.2026: `darkly`,
-        // `lightly-qt`, `klassy`, `qt5-styleplugins`, `plastikstyle-qt6`),
-        // поэтому запросы по именам семейств; чужое срезает [`is_relevant`].
+        // "Application style": Kvantum themes and ready Qt styles. Styles have
+        // no naming convention of their own (AUR snapshot 17.10.2026: `darkly`,
+        // `lightly-qt`, `klassy`, `qt5-styleplugins`, `plastikstyle-qt6`), so
+        // the queries go by family names; [`is_relevant`] cuts off the rest.
         "widgetstyle" => &[
             ("kvantum", "name"),
             ("darkly", "name"),
@@ -377,14 +391,15 @@ pub fn category_queries(key: &str) -> &'static [(&'static str, &'static str)] {
             ("styleplugin", "name"),
             ("plastikstyle", "name"),
         ],
-        // Темы GTK. Снимок 04.10.2026: имя `*-gtk-theme(s)*`/`gtk-theme-*` —
-        // 236 пакетов, `gtk3-theme-*` — ещё 4. Классические наборы зовутся
-        // иначе (`zuki-themes`, `vertex-themes`, `ubuntu-themes`,
-        // `xfce-theme-greybird`), но GTK2-часть у них рисует движок Murrine,
-        // и пакет зависит от `gtk-engine-murrine` (110 пакетов). Широкое
-        // «gtk theme» по описанию добирает `flat-remix-gtk`, `darkly-gtk` и
-        // темы без «gtk» в имени; значки, курсоры, стили Fluxbox и
-        // программы-переключатели из этих двух запросов срезает [`is_relevant`].
+        // GTK themes. Snapshot 04.10.2026: names `*-gtk-theme(s)*`/`gtk-theme-*`
+        // are 236 packages, `gtk3-theme-*` 4 more. Classic sets are named
+        // differently (`zuki-themes`, `vertex-themes`, `ubuntu-themes`,
+        // `xfce-theme-greybird`), but their GTK2 part is drawn by the Murrine
+        // engine, and the package depends on `gtk-engine-murrine` (110 packages).
+        // A broad "gtk theme" by description picks up `flat-remix-gtk`,
+        // `darkly-gtk` and themes without "gtk" in the name; [`is_relevant`] cuts
+        // icons, cursors, Fluxbox styles and switcher programs out of these two
+        // queries.
         "gtk" => &[
             ("gtk-theme", "name"),
             ("gtk3-theme", "name"),
@@ -396,10 +411,10 @@ pub fn category_queries(key: &str) -> &'static [(&'static str, &'static str)] {
             &[("plasma6-wallpapers", "name"), ("plasma wallpaper plugin", "name-desc")]
         }
         "fonts" => &[("ttf-", "name"), ("otf-", "name")],
-        // Имя «*-sound-theme» есть не у всех: наборы вроде
-        // `aerothemeplasma-sounds-git` и `xde-sounds` зовутся иначе, а
-        // «sound theme» стоит у них в описании. Лишнее из двух широких
-        // запросов срезает [`is_relevant`].
+        // Not every package has a "*-sound-theme" name: sets like
+        // `aerothemeplasma-sounds-git` and `xde-sounds` are named differently,
+        // and "sound theme" is in their description. [`is_relevant`] cuts the
+        // extras out of the two broad queries.
         "sounds" => &[
             ("sound-theme", "name"),
             ("sound theme", "name-desc"),
@@ -408,38 +423,43 @@ pub fn category_queries(key: &str) -> &'static [(&'static str, &'static str)] {
         "plasmoids" => &[("plasma6-applet", "name"), ("plasmoid", "name")],
         "sddm" => &[("sddm-theme", "name")],
         "plymouth" => &[("plymouth-theme", "name")],
-        // Пакеты KWin в AUR зовутся `kwin-script(s)-*` и `kwin-effect(s)-*`
-        // (снимок 04.10.2026: 17 и 38 пакетов). У переключателей окон своих
-        // пакетов нет — раздел обходится без AUR.
+        // KWin packages in the AUR are named `kwin-script(s)-*` and
+        // `kwin-effect(s)-*` (snapshot 04.10.2026: 17 and 38 packages). Window
+        // switchers have no packages of their own, so the section does without
+        // the AUR.
         "kwinscripts" => &[("kwin-script", "name")],
         "kwineffects" => &[("kwin-effect", "name")],
         _ => &[],
     }
 }
 
-/// Есть ли у AUR полка для раздела: свои запросы ([`category_queries`])
-/// либо сборная витрина «Популярные»/«Новые» ([`AGGREGATE_KEYS`]).
+/// Whether the AUR has a shelf for the section: its own queries
+/// ([`category_queries`]) or the combined "Popular"/"New" showcase
+/// ([`AGGREGATE_KEYS`]).
 pub fn has_category(key: &str) -> bool {
     key == "popular" || key == "new" || !category_queries(key).is_empty()
 }
 
-// ── Фильтр релевантности категории ────────────────────────────────────────
+// ── Category relevance filter ──────────────────────────────────────────────
 //
-// Поиск RPC — подстрока имени или описания, и широкие запросы приносят чужое.
-// Живой снимок 03.10.2026: «look and feel» по name-desc вытащил в «Глобальные
-// темы» терминал cool-retro-term-git, редактор qemacs-git, оконные менеджеры
-// windowmaker-git и labwc-git, клиент Second Life и Java-библиотеку
-// jgoodies-looks — у всех «look and feel» стоит в описании, но к теме Plasma
-// они отношения не имеют. Такие же хвосты были у цветовых схем (схемы vim,
-// Konsole, alacritty), значков (шрифты ttf-ionicons, akonadiconsole), курсоров
-// (emacs-multiple-cursors), обоев (программы-установщики фона) и звуков
-// (голосовые пакеты FreeSWITCH, плагины VST). Решение одно на все категории:
-// пакет обязан быть ТЕМОЙ этого вида, а не просто совпасть по слову.
+// RPC search is a substring of the name or description, and broad queries
+// bring in unrelated things. A live snapshot on 03.10.2026: "look and
+// feel" by name-desc pulled into "Global themes" the cool-retro-term-git
+// terminal, the qemacs-git editor, the windowmaker-git and labwc-git
+// window managers, a Second Life client and the jgoodies-looks Java
+// library: all of them have "look and feel" in the description, but they
+// have nothing to do with a Plasma theme. Colour schemes had the same
+// tails (vim, Konsole, alacritty schemes), as did icons (ttf-ionicons
+// fonts, akonadiconsole), cursors (emacs-multiple-cursors), wallpapers
+// (background installer programs) and sounds (FreeSWITCH voice packages,
+// VST plugins). One decision for all categories: the package must be a
+// THEME of this kind, not merely match a word.
 
-/// Заведомо не темы, которые приносят широкие запросы: имена целиком.
+/// Packages known not to be themes that broad queries bring in: whole names.
 ///
-/// Это страховка поверх правил [`is_relevant`]: правило может поменяться, а
-/// эти пакеты не должны вернуться в каталог ни при каком его изменении.
+/// This is a safety net on top of the [`is_relevant`] rules: a rule may
+/// change, but these packages must not return to the catalog with any
+/// change of it.
 pub const NOT_THEMES: &[&str] = &[
     "cool-retro-term-git",
     "qemacs-git",
@@ -456,19 +476,19 @@ pub const NOT_THEMES: &[&str] = &[
     "aimp-skin-aurorae",
 ];
 
-/// Префиксы пакетов-библиотек и дополнений редакторов: темой оформления
-/// рабочего стола такой пакет не бывает, в какой бы категории ни всплыл.
+/// Prefixes of library packages and editor add-ons: such a package is
+/// never a desktop appearance theme, whatever category it surfaces in.
 const NOT_THEME_PREFIXES: &[&str] = &[
     "vim-", "neovim-", "nvim-", "emacs-", "python-", "python2-", "perl-",
     "ruby-", "nodejs-", "lua-", "haskell-", "rust-", "go-", "lib32-",
     "pidgin-", "geany-", "freeswitch-", "svxlink-",
-    // Снимок 04.10.2026: дополнения GNOME Shell («значки на столе», «обои
-    // Bing»), сборки библиотек под Android и дополнения конструктора Themix
-    // всплывали в «Значках», «Курсорах» и «Обоях».
+    // Snapshot 04.10.2026: GNOME Shell extensions ("desktop icons", "Bing
+    // wallpaper"), Android library builds and Themix theme builder add-ons
+    // surfaced in "Icons", "Cursors" and "Wallpapers".
     "gnome-shell-extension-", "android-", "themix-",
 ];
 
-/// Слова имени, по которым пакет — программа, а не набор (для обоев и звуков).
+/// Name words that make a package a program rather than a set (for wallpapers and sounds).
 const TOOL_NAME_TOKENS: &[&str] = &[
     "cli", "gui", "engine", "wallpaperengine", "switch", "changer", "setter",
     "picker", "manager", "editor", "generator", "plugin", "player", "daemon",
@@ -476,14 +496,14 @@ const TOOL_NAME_TOKENS: &[&str] = &[
     "bing", "importer",
 ];
 
-/// Слова описания, по которым пакет — программа, а не набор.
+/// Description words that make a package a program rather than a set.
 const TOOL_DESC_WORDS: &[&str] = &[
     "setter", "setting utility", "wallpaper manager", "utility", "utilities", "a script",
     "bash script", "simple script", "gui for", "renderer", "runtime",
     "integration", "plugin", "daemon", "tool", "application", "client",
     "implementation of", "a program", "manage ", "fetches", "player",
     "editor", "engine", "voice recordings", "language pack", "effects app",
-    // Программы смены и скачивания обоев (снимок 04.10.2026).
+    // Wallpaper changing and downloading programs (snapshot 04.10.2026).
     "chooser", "change your", "changes your", "changes the desktop",
     "change wallpaper", "downloader", "download of", "fetch", "creator",
     "maker", "split and span", "show up in", "powered by", "wallpaper helper",
@@ -491,16 +511,17 @@ const TOOL_DESC_WORDS: &[&str] = &[
     "animated", "automatically set", "beautify",
 ];
 
-/// Слова описания, по которым пакет из раздела GTK — программа или
-/// дополнение, а не тема: переключатели тем, мосты настроек, дополнения
-/// конструктора тем. Общий [`TOOL_DESC_WORDS`] тут не годится: «engine»
-/// стоит в описании настоящих тем («theme for Clearlooks GTK+ engine»).
+/// Description words that make a package from the GTK section a program
+/// or an add-on rather than a theme: theme switchers, settings bridges,
+/// theme builder add-ons. The general [`TOOL_DESC_WORDS`] will not do
+/// here: "engine" appears in the description of real themes ("theme for
+/// Clearlooks GTK+ engine").
 const GTK_TOOL_DESC_WORDS: &[&str] = &[
     "chooser", "switcher", "theme manager", "gui for", "a gui ", "plugin",
     "syncs ", "a tool", "utility", "extension",
 ];
 
-/// Части имени через `-`/`_` в нижнем регистре.
+/// Name parts split by `-`/`_`, in lower case.
 fn name_tokens(name: &str) -> Vec<String> {
     name.to_lowercase()
         .split(['-', '_'])
@@ -509,11 +530,11 @@ fn name_tokens(name: &str) -> Vec<String> {
         .collect()
 }
 
-/// Подходит ли пакет к категории каталога — см. раздел выше.
+/// Whether a package fits a catalog category: see the section above.
 ///
-/// Неизвестная категория (и шрифты, SDDM, Plymouth, Kvantum, виджеты: у них
-/// запрос по строгому именному соглашению) проверяется только общими
-/// стоп-списками.
+/// An unknown category (and fonts, SDDM, Plymouth, Kvantum, widgets: their
+/// queries follow a strict naming convention) is checked only against the
+/// common stop lists.
 pub fn is_relevant(key: &str, pkg: &AurPackage) -> bool {
     let name = pkg.name.to_lowercase();
     let desc = pkg.description.to_lowercase();
@@ -529,9 +550,9 @@ pub fn is_relevant(key: &str, pkg: &AurPackage) -> bool {
     let plasma_ish = desc.contains("plasma") || desc.contains("kde") || name.contains("plasma");
     match key {
         "global" => {
-            // Значки и звуки AeroThemePlasma — свои разделы («Значки»,
-            // «Звуки»): в «Глобальных темах» карточка значков обещала бы
-            // глобальную тему, которой в пакете нет.
+            // AeroThemePlasma icons and sounds have their own sections ("Icons",
+            // "Sounds"): in "Global themes" the icons card would promise a
+            // global theme the package does not contain.
             let family = name.starts_with("aerothemeplasma") || name.starts_with("vistathemeplasma");
             if family {
                 return !(has_token("icons") || has_token("sounds"));
@@ -547,27 +568,27 @@ pub fn is_relevant(key: &str, pkg: &AurPackage) -> bool {
             lnf && plasma_ish
         }
         "plasma" => true,
-        // Стиль приложений — тема Kvantum либо стиль Qt: в описании стоит
-        // «style» или «Kvantum». Тёзки семейств с другим делом (тема GTK
-        // `darkly-gtk-git`, редактор `darkly-art-bin`, эффект KWin
-        // `lightlyshaders-git`) этого слова не несут.
+        // Application style is a Kvantum theme or a Qt style: the description
+        // says "style" or "Kvantum". Namesakes of the families with another job
+        // (the GTK theme `darkly-gtk-git`, the editor `darkly-art-bin`, the KWin
+        // effect `lightlyshaders-git`) do not carry this word.
         "widgetstyle" => {
             let kvantum = name.contains("kvantum") || desc.contains("kvantum");
             let style = desc.contains("style") && !has_token("gtk");
             !tool_name && (kvantum || style)
         }
-        // Цветовые схемы каталога — схемы KDE (`.colors`); схемы vim, Konsole,
-        // терминалов и TTY к оформлению рабочего стола не относятся.
+        // The catalog's colour schemes are KDE schemes (`.colors`); vim, Konsole,
+        // terminal and TTY schemes have nothing to do with desktop appearance.
         "colors" => plasma_ish && !desc.contains("konsole"),
         "aurorae" => {
             name.contains("aurorae-theme") || desc.contains("aurorae theme") || plasma_ish
         }
-        // «icons» по подстроке ловит akonadiconsole и шрифты-значки.
+        // "icons" as a substring catches akonadiconsole and icon fonts.
         "icons" => {
             let font = ["ttf-", "otf-", "woff-", "woff2-"].iter().any(|p| name.starts_with(p));
             let named = has_token("icons") || has_token("icon") || name.contains("icon-theme");
             let described = desc.contains("icon theme") || desc.contains("icons theme");
-            // Дополнения файловых менеджеров, трафареты, значки в терминале.
+            // File manager add-ons, stencils, icons in the terminal.
             const ADDON_WORDS: &[&str] = &[
                 "extension that", "nautilus extension", "caja extension", "stencil",
                 "in terminal", "file manager", "emoticons", "browser addon",
@@ -578,13 +599,13 @@ pub fn is_relevant(key: &str, pkg: &AurPackage) -> bool {
         "cursor" => {
             !name.contains("multiple-cursors") && !desc.contains("selection") && !tool_name
         }
-        // Обои — наборы картинок; программы для фона и плагины Plasma
-        // живут в «Плагинах обоев» либо не в каталоге вовсе.
+        // Wallpapers are sets of pictures; background programs and Plasma
+        // plugins live in "Wallpaper plugins" or not in the catalog at all.
         "wallpapers" => {
             !["plasma5-wallpapers-", "plasma6-wallpapers-", "plasma6-applets-", "plasma-wallpaper-"]
                 .iter()
                 .any(|p| name.starts_with(p))
-                // Вариант темы GTK с обоями внутри — место ему в «Темах GTK».
+                // A GTK theme variant with wallpapers inside belongs in "GTK themes".
                 && !name.contains("gtk-theme")
                 && !tool_name
                 && !tool_desc
@@ -598,9 +619,9 @@ pub fn is_relevant(key: &str, pkg: &AurPackage) -> bool {
                 || desc.contains("desktop sounds")
                 || (desc.contains("sounds for") && (plasma_ish || desc.contains("desktop")))
         }
-        // Темы GTK. Запросы раздела ([`category_queries`]) приносят и чужое:
-        // значки и курсоры «под тему GTK», стили Fluxbox, файл tint2rc,
-        // переключатели и настройщики тем, движки.
+        // GTK themes. The section's queries ([`category_queries`]) bring in
+        // unrelated things too: icons and cursors "for a GTK theme", Fluxbox
+        // styles, a tint2rc file, theme switchers and configurators, engines.
         "gtk" => {
             let gtk_tool = GTK_TOOL_DESC_WORDS.iter().any(|w| desc.contains(w))
                 || tokens.iter().any(|t| t.starts_with("switch") || t == "config" || t == "bridge");
@@ -612,15 +633,15 @@ pub fn is_relevant(key: &str, pkg: &AurPackage) -> bool {
             if OTHER_PARTS.iter().any(|t| has_token(t)) || desc.contains("fluxbox") {
                 return false;
             }
-            // Набор для Plasma (стиль, глобальная тема) — не тема GTK, даже
-            // если GTK-часть в нём есть; `gtk-theme-plasma` — тема GTK.
+            // A set for Plasma (a style, a global theme) is not a GTK theme,
+            // even if it has a GTK part; `gtk-theme-plasma` is a GTK theme.
             if has_token("plasma") && !name.contains("gtk") {
                 return false;
             }
             const GTK_DESKTOPS: &[&str] =
                 &["gtk", "gnome", "xfce", "mate", "cinnamon", "budgie", "metacity", "openbox", "unity"];
-            // `*-themes` без «gtk» в имени и описании — классические наборы,
-            // которые находит запрос по зависимости от Murrine
+            // `*-themes` without "gtk" in the name and description are classic
+            // sets found by the query on the Murrine dependency
             // (`ubuntu-themes`, `numix-frost-themes`).
             let gtk_ish = name.contains("gtk")
                 || has_token("themes")
@@ -632,18 +653,19 @@ pub fn is_relevant(key: &str, pkg: &AurPackage) -> bool {
     }
 }
 
-/// Слова вида товара раздела: пакет из ПОИСКА обязан нести одно из них в
-/// имени или описании. Пустой список — правило [`is_relevant`] раздела уже
-/// требует вид само («Глобальные темы», «Значки», «Темы GTK», «Стиль
-/// приложений»).
+/// Words for the section's kind of item: a package from SEARCH must carry
+/// one of them in the name or description. An empty list means the
+/// section's [`is_relevant`] rule already requires the kind itself
+/// ("Global themes", "Icons", "GTK themes", "Application style").
 ///
-/// Зачем. Список раздела приходит по именному соглашению
-/// ([`category_queries`]: «wallpaper» в имени), и правилам [`is_relevant`]
-/// остаётся срезать хвосты. Поиск же идёт по всему AUR: на «girl» в «Обоях
-/// HD» приходили словари fcitx, шрифты и игровой движок (живая проверка
-/// 16.11.2026) — у них нет ни одного запретного слова, но нет и слова
-/// «обои». Ключевые слова и группы пакета поиск RPC не отдаёт (только
-/// `info`), поэтому мерило — имя и описание.
+/// Why. The section list arrives by naming convention
+/// ([`category_queries`]: "wallpaper" in the name), and the [`is_relevant`]
+/// rules only have to cut the tails. Search, however, goes across the
+/// whole AUR: for "girl" in "HD wallpapers" fcitx dictionaries, fonts and a
+/// game engine came back (live check 16.11.2026): they have none of the
+/// forbidden words, but no word "wallpaper" either. RPC search does not
+/// return a package's keywords and groups (only `info` does), so the
+/// measure is the name and description.
 pub fn kind_markers(key: &str) -> &'static [&'static str] {
     match key {
         "wallpapers" => &["wallpaper", "background", "backdrop"],
@@ -663,16 +685,17 @@ pub fn kind_markers(key: &str) -> &'static [&'static str] {
     }
 }
 
-/// Подходит ли пакет из ПОИСКА к разделу: правило раздела
-/// ([`is_relevant`]) и слово его вида ([`kind_markers`]). «Популярные» и
-/// «Новые» — сборные: подходит к любому из [`AGGREGATE_KEYS`].
+/// Whether a package from SEARCH fits the section: the section rule
+/// ([`is_relevant`]) and a word of its kind ([`kind_markers`]). "Popular"
+/// and "New" are combined: a package fits if it fits any of
+/// [`AGGREGATE_KEYS`].
 pub fn search_fits(key: &str, pkg: &AurPackage) -> bool {
     search_kind(key, pkg).is_some()
 }
 
-/// Раздел, к которому пакет из поиска подходит ([`search_fits`]): сам
-/// `key`, у сборных — первый подходящий из [`AGGREGATE_KEYS`] (от него
-/// зависит знак плитки). `None` — не подходит.
+/// The section a package from search fits ([`search_fits`]): `key` itself,
+/// for combined ones the first fitting key from [`AGGREGATE_KEYS`] (the
+/// tile icon depends on it). `None` means it does not fit.
 pub fn search_kind<'a>(key: &'a str, pkg: &AurPackage) -> Option<&'a str> {
     if key == "popular" || key == "new" {
         return AGGREGATE_KEYS.iter().copied().find(|k| search_fits(k, pkg));
@@ -688,8 +711,8 @@ pub fn search_kind<'a>(key: &'a str, pkg: &AurPackage) -> Option<&'a str> {
     markers.iter().any(|m| hay.contains(m)).then_some(key)
 }
 
-/// Поиск по AUR внутри раздела: [`search_aur`], затем только то, что
-/// подходит к разделу ([`search_kind`]), с ключом раздела у пакета.
+/// AUR search within a section: [`search_aur`], then only what fits the
+/// section ([`search_kind`]), with the section key on the package.
 pub fn search_in_category<IO: NetIo + ?Sized>(
     io: &mut IO,
     query: &str,
@@ -699,8 +722,9 @@ pub fn search_in_category<IO: NetIo + ?Sized>(
     Ok(filter_search_for_category(found, key))
 }
 
-/// Отбор выдачи поиска для раздела — чистая часть [`search_in_category`].
-/// Раздел без полки AUR ([`has_category`]) — выдача без отбора.
+/// Filtering search results for a section: the pure part of
+/// [`search_in_category`]. A section without an AUR shelf
+/// ([`has_category`]) gets the results unfiltered.
 pub fn filter_search_for_category(found: Vec<AurPackage>, key: &str) -> Vec<AurPackage> {
     if !has_category(key) {
         return found;
@@ -715,15 +739,17 @@ pub fn filter_search_for_category(found: Vec<AurPackage>, key: &str) -> Vec<AurP
         .collect()
 }
 
-/// Разбор одной записи RPC в `AurPackage` — порт `_parse`.
+/// Parse one RPC record into an `AurPackage`: a port of `_parse`.
 ///
-/// ⚠️ Поля числовых типов разбираются ТЕРПИМО к чужой схеме (`int_loose`/
-/// `float_loose`/`truthy`): RPC отдаёт `NumVotes`/`LastModified` целыми,
-/// `Popularity` дробным, `OutOfDate` — `null` или epoch, но у зеркал и
-/// прокси-обёрток AUR попадаются числа, пришедшие СТРОКОЙ. Оригинал на этом
-/// падал (`int("3")` ещё сработает, а `int("")`/`int("n/a")` — ValueError
-/// внутри воркера каталога), поэтому здесь строка разбирается, а мусор даёт
-/// дефолт — карточка потеряет счётчик, но источник AUR не отвалится целиком.
+/// ⚠️ Numeric fields are parsed TOLERANTLY of a foreign schema
+/// (`int_loose`/`float_loose`/`truthy`): RPC returns
+/// `NumVotes`/`LastModified` as integers, `Popularity` as a float,
+/// `OutOfDate` as `null` or an epoch, but AUR mirrors and proxy wrappers
+/// sometimes deliver numbers AS STRINGS. The original crashed on this
+/// (`int("3")` still works, but `int("")`/`int("n/a")` is a ValueError
+/// inside the catalog worker), so here the string is parsed and garbage
+/// gives the default: the card loses a counter, but the AUR source does
+/// not fall apart entirely.
 pub fn parse_record(rec: &Value) -> AurPackage {
     AurPackage {
         name: str_or_empty(rec, "Name"),
@@ -732,7 +758,7 @@ pub fn parse_record(rec: &Value) -> AurPackage {
         votes: int_loose(rec.get("NumVotes")),
         popularity: float_loose(rec.get("Popularity")),
         maintainer: str_or_empty(rec, "Maintainer"),
-        // bool(OutOfDate): null/0/"" → false, ненулевой epoch → true.
+        // bool(OutOfDate): null/0/"" -> false, a non-zero epoch -> true.
         out_of_date: truthy(rec.get("OutOfDate")),
         upstream_url: str_or_empty(rec, "URL"),
         installed: false,
@@ -741,13 +767,14 @@ pub fn parse_record(rec: &Value) -> AurPackage {
     }
 }
 
-/// Записи `results` ответа — только объекты.
+/// The `results` records of a response: objects only.
 ///
-/// Отсутствие `results`, `null`, строка вместо массива, отдельные не-объекты
-/// внутри массива — всё это даёт пустую/усечённую выдачу, а не мусорные пакеты
-/// с пустым именем. Оригинал на `"results": null` падал TypeError'ом (итерация
-/// по None), на строке — AttributeError'ом в `_parse`; починено и в
-/// `aur_client.py` (`_results`).
+/// A missing `results`, `null`, a string instead of an array, individual
+/// non-objects inside the array: all of this gives empty/truncated results
+/// rather than garbage packages with an empty name. The original crashed
+/// with a TypeError on `"results": null` (iterating over None) and with an
+/// AttributeError in `_parse` on a string; fixed in `aur_client.py` too
+/// (`_results`).
 fn results_of(data: &Value) -> impl Iterator<Item = &Value> {
     data.get("results")
         .and_then(Value::as_array)
@@ -756,19 +783,21 @@ fn results_of(data: &Value) -> impl Iterator<Item = &Value> {
         .filter(|r| r.is_object())
 }
 
-/// Все `results` ответа → пакеты. Отсутствие `results` → пустой список.
+/// All `results` of a response -> packages. Missing `results` -> an empty list.
 pub fn parse_results(data: &Value) -> Vec<AurPackage> {
     results_of(data).map(parse_record).collect()
 }
 
-/// Проверка RPC-ошибки (`_check_rpc_error`): `type=="error"` или truthy
-/// `error` → `Err(текст)`.
+/// RPC error check (`_check_rpc_error`): `type=="error"` or a truthy
+/// `error` -> `Err(text)`.
 ///
-/// Порт учитывает, что Python проверяет `data.get("error")` на ИСТИННОСТЬ, а не
-/// на «непустая строка»: ответ вида `{"error": ["слишком много результатов"]}`
-/// (так отвечают некоторые прокси перед AUR) у оригинала тоже был ошибкой.
-/// Текстом такой ошибки берём компактный JSON значения — единственное отличие
-/// от Python, где `str(RuntimeError(list))` дал бы python-repr списка.
+/// The port takes into account that Python checks `data.get("error")` for
+/// TRUTHINESS, not for "a non-empty string": a response like
+/// `{"error": ["too many results"]}` (some proxies in front of the AUR
+/// answer like this) was an error in the original too. As the text of such
+/// an error we take the compact JSON of the value: the only difference
+/// from Python, where `str(RuntimeError(list))` would give the Python repr
+/// of the list.
 pub fn check_rpc_error(data: &Value) -> Result<(), String> {
     let is_err_type = data.get("type").and_then(Value::as_str) == Some("error");
     let err = data.get("error");
@@ -783,16 +812,18 @@ pub fn check_rpc_error(data: &Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Пост-фетч логика `fetch_curated` над ответом `/rpc/v5/info`: записи в
-/// словарь по имени (последняя одноимённая выигрывает, как в Python-словаре),
-/// `aerothemeplasma*` наверх в порядке [`CURATED`], остальные — по голосам
-/// (убыв., стабильно, в порядке появления в ответе).
+/// Post-fetch logic of `fetch_curated` over the `/rpc/v5/info` response:
+/// records into a dictionary by name (the last one with the same name wins,
+/// as in a Python dict), `aerothemeplasma*` at the top in [`CURATED`]
+/// order, the rest by votes (descending, stable, in order of appearance in
+/// the response).
 ///
-/// ⚠️ Починен баг оригинала: он строил словарь через `r["Name"]` и падал
-/// `KeyError` на записи без `Name` (RPC такие отдаёт, когда обрезает ответ по
-/// лимиту). Здесь записи без имени пропускаются.
+/// ⚠️ Fixed a bug of the original: it built the dictionary via `r["Name"]`
+/// and crashed with `KeyError` on a record without `Name` (RPC returns such
+/// records when it truncates a response at the limit). Here records
+/// without a name are skipped.
 pub fn curated_order(data: &Value) -> Vec<AurPackage> {
-    // Порядок вставки + last-value-wins: как dict-comprehension в Python.
+    // Insertion order + last-value-wins: like a dict comprehension in Python.
     let mut order: Vec<String> = Vec::new();
     let mut by_name: std::collections::HashMap<String, AurPackage> =
         std::collections::HashMap::new();
@@ -819,15 +850,15 @@ pub fn curated_order(data: &Value) -> Vec<AurPackage> {
         .filter(|n| !n.starts_with("aerothemeplasma"))
         .filter_map(|n| by_name.get(n).cloned())
         .collect();
-    // key=lambda p: -p.votes — только голоса, out_of_date здесь НЕ участвует
-    // (в отличие от sort_votes); сортировка стабильна, как sorted() в Python.
+    // key=lambda p: -p.votes: votes only; out_of_date does NOT take part here
+    // (unlike sort_votes); the sort is stable, like sorted() in Python.
     rest.sort_by_key(|p| std::cmp::Reverse(p.votes));
 
     pinned.into_iter().chain(rest).collect()
 }
 
-/// Сортировка по голосам (`_sort_votes`): ключ `(out_of_date, -votes)`,
-/// стабильная (устаревшие в конец, при равенстве — исходный порядок).
+/// Sort by votes (`_sort_votes`): key `(out_of_date, -votes)`, stable
+/// (outdated ones at the end, ties keep the original order).
 pub fn sort_votes(pkgs: &mut [AurPackage]) {
     pkgs.sort_by(|a, b| {
         a.out_of_date
@@ -836,7 +867,7 @@ pub fn sort_votes(pkgs: &mut [AurPackage]) {
     });
 }
 
-/// Сортировка «новые» (ветка `key=="new"`): `(out_of_date, -last_modified)`.
+/// The "new" sort (the `key=="new"` branch): `(out_of_date, -last_modified)`.
 pub fn sort_new(pkgs: &mut [AurPackage]) {
     pkgs.sort_by(|a, b| {
         a.out_of_date
@@ -845,11 +876,12 @@ pub fn sort_new(pkgs: &mut [AurPackage]) {
     });
 }
 
-/// Пост-фетч логика `search_aur` над УЖЕ полученным ответом RPC (по самому
-/// длинному слову): локальный AND-фильтр остальными словами по имени+описанию,
-/// затем `sort_votes`. `data` — ответ RPC (объект с `results`).
+/// Post-fetch logic of `search_aur` over an ALREADY received RPC response
+/// (for the longest word): a local AND filter on the remaining words over
+/// name+description, then `sort_votes`. `data` is the RPC response (an
+/// object with `results`).
 ///
-/// `limit` — как в Python (`None` = весь список).
+/// `limit` is as in Python (`None` = the whole list).
 pub fn search_filter(data: &Value, query: &str, limit: Option<usize>) -> Vec<AurPackage> {
     let terms: Vec<String> = query
         .trim()
@@ -860,8 +892,9 @@ pub fn search_filter(data: &Value, query: &str, limit: Option<usize>) -> Vec<Aur
     if terms.is_empty() {
         return Vec::new();
     }
-    // key = самое длинное слово; Python max() при равной длине берёт ПЕРВОЕ
-    // (Rust max_by_key вернул бы последнее), поэтому ищем первое с макс. длиной.
+    // key = the longest word; Python's max() takes the FIRST on equal length
+    // (Rust's max_by_key would return the last), so we look for the first
+    // with the maximum length.
     let max_len = terms.iter().map(|t| t.chars().count()).max().unwrap();
     let key = terms
         .iter()
@@ -887,11 +920,11 @@ pub fn search_filter(data: &Value, query: &str, limit: Option<usize>) -> Vec<Aur
     }
 }
 
-/// Пост-фетч логика `fetch_for_category` (не-виртуальная ветвь): объединение
-/// ответов запросов категории с дедупом по имени (первый выигрывает),
-/// отсев чужого ([`is_relevant`]), проставление `category`, `sort_votes` и
-/// пин `aerothemeplasma` наверх для `global`. `responses` — ответы RPC в
-/// порядке `category_queries(key)`.
+/// Post-fetch logic of `fetch_for_category` (the non-virtual branch):
+/// merging the responses of the category queries with dedup by name (the
+/// first wins), filtering out unrelated packages ([`is_relevant`]), setting
+/// `category`, `sort_votes` and pinning `aerothemeplasma` at the top for
+/// `global`. `responses` are RPC responses in `category_queries(key)` order.
 pub fn dedup_category(responses: &[&Value], key: &str) -> Vec<AurPackage> {
     let mut seen: Vec<AurPackage> = Vec::new();
     let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -920,10 +953,10 @@ pub fn dedup_category(responses: &[&Value], key: &str) -> Vec<AurPackage> {
     seen
 }
 
-// ── вспомогательное ───────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────
 
-/// `rec.get(key)` как строка; null/отсутствие/не-строка → "". Повторяет
-/// `rec.get(k) or ""` (и `rec.get("Name", "")`).
+/// `rec.get(key)` as a string; null/missing/non-string -> "". Repeats
+/// `rec.get(k) or ""` (and `rec.get("Name", "")`).
 fn str_or_empty(rec: &Value, key: &str) -> String {
     rec.get(key)
         .and_then(Value::as_str)
@@ -931,10 +964,11 @@ fn str_or_empty(rec: &Value, key: &str) -> String {
         .to_string()
 }
 
-/// Порт `int(v or 0)`, терпимый к чужой схеме: число → целая часть (усечение к
-/// нулю, как `int()`), строка с числом → разобранное значение, `true` → 1,
-/// всё прочее (null, мусорная строка, объект) → 0. Оригинал на мусорной строке
-/// падал ValueError — здесь дефолт (см. `parse_record`).
+/// A port of `int(v or 0)`, tolerant of a foreign schema: a number -> its
+/// integer part (truncation toward zero, like `int()`), a string with a
+/// number -> the parsed value, `true` -> 1, everything else (null, a
+/// garbage string, an object) -> 0. The original crashed with a ValueError
+/// on a garbage string; here it is the default (see `parse_record`).
 fn int_loose(v: Option<&Value>) -> i64 {
     match v {
         Some(Value::Number(n)) => n
@@ -953,7 +987,7 @@ fn int_loose(v: Option<&Value>) -> i64 {
     }
 }
 
-/// Порт `float(v or 0.0)` с той же терпимостью, что [`int_loose`].
+/// A port of `float(v or 0.0)` with the same tolerance as [`int_loose`].
 fn float_loose(v: Option<&Value>) -> f64 {
     match v {
         Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0),
@@ -963,8 +997,8 @@ fn float_loose(v: Option<&Value>) -> f64 {
     }
 }
 
-/// Порт python-истинности значения: null/отсутствие/`false`/0/""/пустой
-/// список/пустой объект → `false`, остальное → `true`.
+/// A port of Python value truthiness: null/missing/`false`/0/""/an empty
+/// list/an empty object -> `false`, everything else -> `true`.
 fn truthy(v: Option<&Value>) -> bool {
     match v {
         None | Some(Value::Null) => false,
@@ -976,7 +1010,7 @@ fn truthy(v: Option<&Value>) -> bool {
     }
 }
 
-/// Percent-encode как `urllib.parse.quote(s)` — safe = ALPHA/DIGIT/`_.-~/`.
+/// Percent-encode like `urllib.parse.quote(s)`: safe = ALPHA/DIGIT/`_.-~/`.
 fn url_quote(s: &str) -> String {
     fn safe(b: u8) -> bool {
         b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-' | b'~' | b'/')
@@ -993,11 +1027,11 @@ fn url_quote(s: &str) -> String {
     out
 }
 
-/// Разбор GitHub-upstream в `(owner, repo)` по регэкспу Python
+/// Parse a GitHub upstream into `(owner, repo)` by the Python regexp
 /// `https?://(?:www\.)?github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?(?:[/#?].*)?$`.
-/// Возвращает `None`, если это не github-URL нужной формы.
+/// Returns `None` if this is not a github URL of the required form.
 fn github_owner_repo(url: &str) -> Option<(String, String)> {
-    // Класс символов `[\w.-]`: юникод-словосимвол (как Python \w) плюс `.`/`-`.
+    // Character class `[\w.-]`: a Unicode word character (like Python \w) plus `.`/`-`.
     fn cls(c: char) -> bool {
         c.is_alphanumeric() || c == '_' || c == '.' || c == '-'
     }
@@ -1007,10 +1041,10 @@ fn github_owner_repo(url: &str) -> Option<(String, String)> {
     let rest = rest.strip_prefix("www.").unwrap_or(rest);
     let rest = rest.strip_prefix("github.com/")?;
 
-    // owner = максимальный префикс из класса до '/'; должен существовать '/'.
+    // owner = the longest prefix from the class before '/'; the '/' must exist.
     let owner_end = rest.find(|c: char| !cls(c))?;
     if rest.as_bytes().get(owner_end) != Some(&b'/') {
-        return None; // символ после owner не '/' → форма не совпала
+        return None; // the character after owner is not '/' -> the form did not match
     }
     let owner = &rest[..owner_end];
     if owner.is_empty() {
@@ -1018,15 +1052,15 @@ fn github_owner_repo(url: &str) -> Option<(String, String)> {
     }
     let after = &rest[owner_end + 1..];
 
-    // repo = максимальный префикс из класса; далее допустим только конец
-    // строки или хвост, начинающийся с '/'/'#'/'?'.
+    // repo = the longest prefix from the class; after it only the end of the
+    // string or a tail starting with '/'/'#'/'?' is allowed.
     let seg_end = after.find(|c: char| !cls(c)).unwrap_or(after.len());
     let tail = &after[seg_end..];
     if !tail.is_empty() && !matches!(tail.as_bytes()[0], b'/' | b'#' | b'?') {
         return None;
     }
     let mut seg = &after[..seg_end];
-    // Отсечь суффикс `.git` (non-greedy repo его не захватывает).
+    // Cut off the `.git` suffix (the non-greedy repo does not capture it).
     if let Some(stripped) = seg.strip_suffix(".git") {
         if !stripped.is_empty() {
             seg = stripped;
@@ -1038,32 +1072,34 @@ fn github_owner_repo(url: &str) -> Option<(String, String)> {
     Some((owner.to_string(), seg.to_string()))
 }
 
-// ── Сетевой слой ──────────────────────────────────────────────────────────
+// ── Network layer ─────────────────────────────────────────────────────────
 //
-// Порт `_http_json` и сетевых функций `fetch_curated`/`fetch_for_category`/
-// `search_aur`. Сам вызов — за трейтом [`NetIo`] (`net.rs`).
+// A port of `_http_json` and the network functions
+// `fetch_curated`/`fetch_for_category`/`search_aur`. The call itself is
+// behind the [`NetIo`] trait (`net.rs`).
 
-/// Таймаут запроса RPC, секунды (`TIMEOUT`).
+/// RPC request timeout, seconds (`TIMEOUT`).
 pub const TIMEOUT_SECS: u64 = 25;
 
-/// Сбой обращения к AUR RPC — порт исключений, которые `aur_client` НЕ ловит:
-/// они долетают до воркера каталога и показываются покупателю
-/// (`_AurWorker.failed.emit(str(e))`).
+/// A failure talking to the AUR RPC: a port of the exceptions `aur_client`
+/// does NOT catch: they fly up to the catalog worker and are shown to the
+/// customer (`_AurWorker.failed.emit(str(e))`).
 ///
-/// Поэтому [`Display`](std::fmt::Display) даёт ровно тот же текст, что
-/// `str(e)` в Python.
+/// So [`Display`](std::fmt::Display) gives exactly the same text as
+/// `str(e)` in Python.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AurError {
-    /// Сетевой сбой: `_http_json` не ловит НИЧЕГО, исключение urllib уходит
-    /// наверх как есть.
+    /// A network failure: `_http_json` catches NOTHING, the urllib exception
+    /// goes up as is.
     Net(NetError),
-    /// Ответ не разобрался как JSON (HTML-страница ошибки, капча прокси).
+    /// The response did not parse as JSON (an HTML error page, a proxy captcha).
     NotJson(String),
-    /// Ответ разобрался, но это не объект — дальше все читатели зовут
-    /// `.get(...)`, и раньше это вылезало невнятным `AttributeError` глубоко
-    /// в разборе. Внутри — имя типа по-питоновски (`list`, `str`, …).
+    /// The response parsed, but it is not an object: all readers further on
+    /// call `.get(...)`, and previously this surfaced as an obscure
+    /// `AttributeError` deep in parsing. Inside is the type name the Python
+    /// way (`list`, `str`, …).
     NotObject(String),
-    /// RPC вернул ошибку (`type == "error"` либо непустое `error`).
+    /// RPC returned an error (`type == "error"` or a non-empty `error`).
     Rpc(String),
 }
 
@@ -1084,9 +1120,9 @@ impl std::fmt::Display for AurError {
 
 impl std::error::Error for AurError {}
 
-/// Имя типа значения по-питоновски — для текста [`AurError::NotObject`]
-/// (`type(data).__name__`). Целое и дробное различаются так же, как их
-/// различает `json.loads`.
+/// The value's type name the Python way, for the text of
+/// [`AurError::NotObject`] (`type(data).__name__`). Integers and floats
+/// are told apart the same way `json.loads` tells them apart.
 fn python_type_name(v: &Value) -> &'static str {
     match v {
         Value::Null => "NoneType",
@@ -1104,7 +1140,7 @@ fn python_type_name(v: &Value) -> &'static str {
     }
 }
 
-/// `urllib.parse.quote_plus` — safe = ALPHA/DIGIT/`_.-~`, пробел → `+`.
+/// `urllib.parse.quote_plus`: safe = ALPHA/DIGIT/`_.-~`, space -> `+`.
 fn quote_plus(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for &b in s.as_bytes() {
@@ -1119,9 +1155,9 @@ fn quote_plus(s: &str) -> String {
     out
 }
 
-/// URL точных данных по списку имён — порт сборки в `fetch_curated`
-/// (`urlencode([("arg[]", n) for n in names])`; ключ `arg[]` тоже
-/// percent-энкодится → `arg%5B%5D`).
+/// URL of exact data for a list of names: a port of the building in
+/// `fetch_curated` (`urlencode([("arg[]", n) for n in names])`; the `arg[]`
+/// key is percent-encoded too -> `arg%5B%5D`).
 pub fn info_url(names: &[&str]) -> String {
     let q = names
         .iter()
@@ -1131,27 +1167,29 @@ pub fn info_url(names: &[&str]) -> String {
     format!("{RPC_BASE}/info?{q}")
 }
 
-/// URL поиска — порт `f"{RPC_BASE}/search/{quote(kw)}?by={by}"`.
-/// Ключевое слово экранируется `urllib.parse.quote` (safe по умолчанию `/`),
-/// `by` подставляется как есть (значения свои, из [`category_queries`]).
+/// Search URL: a port of `f"{RPC_BASE}/search/{quote(kw)}?by={by}"`. The
+/// keyword is escaped with `urllib.parse.quote` (safe by default is `/`),
+/// `by` is inserted as is (the values are our own, from
+/// [`category_queries`]).
 pub fn search_url(keyword: &str, by: &str) -> String {
     format!("{RPC_BASE}/search/{}?by={by}", url_quote(keyword))
 }
 
-/// Ответ RPC как объект — порт `_http_json`.
+/// The RPC response as an object: a port of `_http_json`.
 ///
-/// Проверка типа обязательна: дальше все читатели зовут `.get(...)`, а RPC
-/// (или прокси/капча перед ним) умеет ответить массивом или строкой. Не-JSON
-/// (HTML-страница ошибки) тоже даёт ошибку наверх, чтобы воркер каталога
-/// показал причину, а не «источник AUR пуст».
+/// The type check is mandatory: all readers further on call `.get(...)`,
+/// and RPC (or a proxy/captcha in front of it) can answer with an array or
+/// a string. Non-JSON (an HTML error page) also produces an error upwards,
+/// so that the catalog worker shows the reason instead of "the AUR source
+/// is empty".
 ///
-/// Тело декодируется как UTF-8 с заменой битых байт — порт
+/// The body is decoded as UTF-8 with broken bytes replaced: a port of
 /// `resp.read().decode("utf-8", "replace")`.
 ///
-/// ⚠️ Расхождение с оригиналом (правило #12): временный сбой ПОВТОРЯЕТСЯ —
-/// см. [`crate::net::with_retry`]. Полка AUR — тот же класс отказов, что
-/// каталог OCS: один обрыв соединения показывал покупателю ошибку вместо
-/// списка пакетов.
+/// ⚠️ A divergence from the original (rule #12): a transient failure IS
+/// RETRIED, see [`crate::net::with_retry`]. The AUR shelf has the same
+/// class of failures as the OCS catalog: a single dropped connection
+/// showed the customer an error instead of the package list.
 pub fn http_json<IO: NetIo + ?Sized>(io: &mut IO, url: &str) -> Result<Value, AurError> {
     let what = format!("AUR RPC {url}");
     let raw = net::with_retry(io, net::Retry::IDEMPOTENT, &what, |io| {
@@ -1168,27 +1206,28 @@ pub fn http_json<IO: NetIo + ?Sized>(io: &mut IO, url: &str) -> Result<Value, Au
     }
 }
 
-/// Один запрос RPC с проверкой ошибки уровня протокола — общий хвост всех
-/// трёх сетевых функций (`_http_json` + `_check_rpc_error`).
+/// One RPC request with a protocol-level error check: the common tail of
+/// all three network functions (`_http_json` + `_check_rpc_error`).
 fn rpc_call<IO: NetIo + ?Sized>(io: &mut IO, url: &str) -> Result<Value, AurError> {
     let data = http_json(io, url)?;
     check_rpc_error(&data).map_err(AurError::Rpc)?;
     Ok(data)
 }
 
-/// Курируемый список одним `/info`-запросом — порт `fetch_curated`.
-/// AeroThemePlasma наверху, остальное по голосам (см. [`curated_order`]).
+/// The curated list in one `/info` request: a port of `fetch_curated`.
+/// AeroThemePlasma at the top, the rest by votes (see [`curated_order`]).
 pub fn fetch_curated<IO: NetIo + ?Sized>(io: &mut IO) -> Result<Vec<AurPackage>, AurError> {
     let data = rpc_call(io, &info_url(CURATED))?;
     Ok(curated_order(&data))
 }
 
-/// Поиск по AUR (имя+описание) — порт `search_aur`.
+/// AUR search (name+description): a port of `search_aur`.
 ///
-/// RPC ищет ОДНУ literal-подстроку («aero plasma» → 0 результатов), поэтому
-/// многословный запрос идёт в RPC самым длинным словом, а остальные слова —
-/// локальный AND-фильтр (см. [`search_filter`]). Пустой запрос сети не
-/// касается. `limit = None` — весь список (страницы режет интерфейс).
+/// RPC searches for ONE literal substring ("aero plasma" -> 0 results), so
+/// a multi-word query goes to RPC with the longest word, and the other
+/// words become a local AND filter (see [`search_filter`]). An empty query
+/// does not touch the network. `limit = None` means the whole list (the
+/// interface cuts the pages).
 pub fn search_aur<IO: NetIo + ?Sized>(
     io: &mut IO,
     query: &str,
@@ -1199,22 +1238,22 @@ pub fn search_aur<IO: NetIo + ?Sized>(
     if terms.is_empty() {
         return Ok(Vec::new());
     }
-    // max() в Python при равной длине берёт ПЕРВОЕ слово.
+    // Python's max() takes the FIRST word on equal length.
     let max_len = terms.iter().map(|t| t.chars().count()).max().unwrap();
     let key = terms.iter().find(|t| t.chars().count() == max_len).unwrap();
     let data = rpc_call(io, &search_url(key, "name-desc"))?;
     Ok(search_filter(&data, query, limit))
 }
 
-/// AUR-пакеты категории каталога — порт `fetch_for_category`.
+/// AUR packages of a catalog category: a port of `fetch_for_category`.
 ///
-/// Обычная категория: объединение поисков по именному соглашению
-/// ([`category_queries`]) с дедупом по имени. Виртуальные `popular`/`new`:
-/// агрегация [`AGGREGATE_KEYS`] с дедупом (первый выигрывает), пакеты
-/// сохраняют СВОЙ ключ категории (от него зависит эмодзи карточки); `new`
-/// сортируется по дате изменения, `popular` — по голосам.
-/// Категория без запросов → пустой список (честное «в AUR ничего нет»),
-/// сеть при этом не трогается.
+/// A normal category: merging searches by naming convention
+/// ([`category_queries`]) with dedup by name. The virtual `popular`/`new`:
+/// aggregation of [`AGGREGATE_KEYS`] with dedup (the first wins); packages
+/// keep THEIR OWN category key (the card emoji depends on it); `new` is
+/// sorted by modification date, `popular` by votes. A category without
+/// queries -> an empty list (an honest "nothing in the AUR"), and the
+/// network is not touched.
 pub fn fetch_for_category<IO: NetIo + ?Sized>(
     io: &mut IO,
     key: &str,
@@ -1249,26 +1288,27 @@ pub fn fetch_for_category<IO: NetIo + ?Sized>(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Карточка пакета: всё, что знает AUR о пакете, — внутри программы
+//  Package card: everything the AUR knows about a package, inside the program
 // ═══════════════════════════════════════════════════════════════════════
 //
-// Плитка AUR открывает подробную карточку, как товар магазина, а не страницу
-// в браузере. Данные — из двух мест:
+// An AUR tile opens a detailed card, like a store item, not a page in the
+// browser. The data comes from two places:
 //
-// * RPC v5 `info` — паспорт пакета: версия, сопровождающий, голоса,
-//   популярность, даты, лицензия, зависимости, ключевые слова, пометка
-//   «устарел» (документация RPC: https://wiki.archlinux.org/title/Aurweb_RPC_interface);
-// * HTML-страница пакета — то, чего RPC не отдаёт вовсе: соисполнители
-//   (co-maintainers) и комментарии. API комментариев у AUR нет, поэтому
-//   страница разбирается; если вместо неё пришла проверка «вы не робот»
-//   (Anubis), карточка честно говорит «комментарии — на сайте» и даёт кнопку.
+// * RPC v5 `info`: the package passport: version, maintainer, votes,
+//   popularity, dates, licence, dependencies, keywords, the "out of date"
+//   flag (RPC documentation: https://wiki.archlinux.org/title/Aurweb_RPC_interface);
+// * the package HTML page: what RPC does not return at all:
+//   co-maintainers and comments. The AUR has no comments API, so the page
+//   is parsed; if an "are you a robot" check (Anubis) arrived instead of
+//   it, the card honestly says "comments are on the site" and offers a
+//   button.
 //
-// Сеть — через тот же [`NetIo`], разбор — чистые функции над записанными
-// ответами (`tests/aur_detail.rs`).
+// Network goes through the same [`NetIo`]; parsing is pure functions over
+// recorded responses (`tests/aur_detail.rs`).
 
-/// Паспорт пакета из RPC `info`.
+/// The package passport from RPC `info`.
 ///
-/// `out_of_date` — время пометки «устарел» (epoch), 0 — не помечен.
+/// `out_of_date` is the time of the "out of date" flag (epoch); 0 means not flagged.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AurInfo {
@@ -1297,7 +1337,7 @@ pub struct AurInfo {
 }
 
 impl AurInfo {
-    /// Плитка из паспорта — для установки и общего пути показа.
+    /// A tile from the passport, for installation and the common display path.
     pub fn as_package(&self) -> AurPackage {
         AurPackage {
             name: self.name.clone(),
@@ -1315,8 +1355,8 @@ impl AurInfo {
     }
 }
 
-/// Строки массива поля; не-строки и пустые строки пропускаются (терпимо к
-/// чужой схеме, как [`parse_record`]).
+/// Strings of a field's array; non-strings and empty strings are skipped
+/// (tolerant of a foreign schema, like [`parse_record`]).
 fn str_list(rec: &Value, key: &str) -> Vec<String> {
     rec.get(key)
         .and_then(Value::as_array)
@@ -1331,7 +1371,7 @@ fn str_list(rec: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Одна запись `info` → паспорт.
+/// One `info` record -> a passport.
 pub fn parse_info_record(rec: &Value) -> AurInfo {
     AurInfo {
         name: str_or_empty(rec, "Name"),
@@ -1359,36 +1399,37 @@ pub fn parse_info_record(rec: &Value) -> AurInfo {
     }
 }
 
-/// Паспорт пакета `name` из ответа `info`. `None` — такого пакета в ответе
-/// нет (удалён из AUR, опечатка).
+/// The passport of package `name` from an `info` response. `None` means
+/// the response has no such package (removed from the AUR, a typo).
 pub fn parse_info(data: &Value, name: &str) -> Option<AurInfo> {
     results_of(data)
         .find(|r| r.get("Name").and_then(Value::as_str) == Some(name))
         .map(parse_info_record)
 }
 
-/// Паспорт одного пакета запросом `info`. `Ok(None)` — AUR о нём не знает.
+/// The passport of one package via an `info` request. `Ok(None)` means the AUR does not know it.
 pub fn fetch_info<IO: NetIo + ?Sized>(io: &mut IO, name: &str) -> Result<Option<AurInfo>, AurError> {
     let data = rpc_call(io, &info_url(&[name]))?;
     Ok(parse_info(&data, name))
 }
 
-// ── Страница пакета: соисполнители и комментарии ─────────────────────────
+// ── Package page: co-maintainers and comments ─────────────────────────────
 
-/// Сколько комментариев на одной странице сайта (`?O=` шагает по 10).
+/// How many comments per site page (`?O=` steps by 10).
 pub const PAGE_COMMENTS: i64 = 10;
 
-/// Сколько держать ответ AUR в памяти, прежде чем спросить снова, секунды.
-/// Карточку открывают и закрывают подряд — сайт от этого страдать не должен.
+/// How long to keep an AUR response in memory before asking again, in
+/// seconds. The card gets opened and closed repeatedly, and the site must
+/// not suffer from it.
 pub const DETAIL_CACHE_SECS: u64 = 15 * 60;
 
-/// Пауза между обращениями к HTML-страницам AUR, миллисекунды. Страница
-/// тяжелее RPC, и защита сайта от ботов срабатывает именно на частые
-/// заходы подряд.
+/// Pause between requests to AUR HTML pages, milliseconds. A page is
+/// heavier than RPC, and the site's bot protection triggers precisely on
+/// frequent requests in a row.
 pub const PAGE_PAUSE_MS: u64 = 2_000;
 
-/// Страница пакета с комментариями; `page` — номер страницы комментариев
-/// с нуля.
+/// The package page with comments; `page` is the comment page number,
+/// starting from zero.
 pub fn package_page_url(name: &str, page: i64) -> String {
     let base = format!("{AUR_PKG_URL_PREFIX}{}", url_quote(name));
     if page > 0 {
@@ -1398,8 +1439,9 @@ pub fn package_page_url(name: &str, page: i64) -> String {
     }
 }
 
-/// Сколько ещё ждать до следующего обращения к странице: `since_last_ms` —
-/// сколько прошло с прошлого (`None` — обращений не было).
+/// How much longer to wait before the next page request: `since_last_ms`
+/// is how much time has passed since the previous one (`None` means there
+/// were no requests).
 pub fn page_pause_left_ms(since_last_ms: Option<u64>) -> u64 {
     match since_last_ms {
         Some(ms) if ms < PAGE_PAUSE_MS => PAGE_PAUSE_MS - ms,
@@ -1407,46 +1449,46 @@ pub fn page_pause_left_ms(since_last_ms: Option<u64>) -> u64 {
     }
 }
 
-/// Комментарий со страницы пакета.
+/// A comment from the package page.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AurComment {
     pub author: String,
-    /// Как на сайте: `2023-09-30 14:14 (UTC)`.
+    /// As on the site: `2023-09-30 14:14 (UTC)`.
     pub date: String,
-    /// Текст без разметки, абзацы — переводами строк.
+    /// Text without markup, paragraphs as newlines.
     pub text: String,
-    /// Закреплён сопровождающим (показывается первым).
+    /// Pinned by the maintainer (shown first).
     pub pinned: bool,
 }
 
-/// Что удалось взять со страницы пакета.
+/// What could be taken from the package page.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AurPage {
     pub comaintainers: Vec<String>,
-    /// Сначала закреплённые, потом последние — как на сайте.
+    /// Pinned ones first, then the latest, as on the site.
     pub comments: Vec<AurComment>,
-    /// Есть следующая страница комментариев.
+    /// There is a next page of comments.
     pub has_more: bool,
 }
 
-/// Почему страницу не разобрать.
+/// Why the page cannot be parsed.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageError {
-    /// Вместо страницы пакета пришло что-то другое — обычно проверка
-    /// «вы не робот». Обходить её нельзя: комментарии — на сайте.
+    /// Something other than the package page arrived, usually an "are you a
+    /// robot" check. It must not be bypassed: the comments are on the site.
     Blocked,
-    /// Сети нет или сервер ответил ошибкой.
+    /// No network, or the server answered with an error.
     Net(NetError),
 }
 
-/// Страница пакета ли это вообще: у настоящей есть таблица сведений.
+/// Whether this is a package page at all: a real one has a details table.
 pub fn is_package_page(html: &str) -> bool {
     html.contains("id=\"pkgdetails\"")
 }
 
-/// Разобрать страницу пакета.
+/// Parse the package page.
 pub fn parse_package_page(html: &str) -> Result<AurPage, PageError> {
     if !is_package_page(html) {
         return Err(PageError::Blocked);
@@ -1455,8 +1497,8 @@ pub fn parse_package_page(html: &str) -> Result<AurPage, PageError> {
         comaintainers: parse_comaintainers(html),
         ..AurPage::default()
     };
-    // Разделы комментариев идут подряд: «Pinned Comments», потом «Latest
-    // Comments». Граница раздела — начало следующего.
+    // The comment sections follow each other: "Pinned Comments", then
+    // "Latest Comments". A section boundary is the start of the next one.
     const SECTION: &str = "<div class=\"comments package-comments\">";
     let starts: Vec<usize> = html.match_indices(SECTION).map(|(i, _)| i).collect();
     for (n, &start) in starts.iter().enumerate() {
@@ -1472,8 +1514,8 @@ pub fn parse_package_page(html: &str) -> Result<AurPage, PageError> {
     Ok(out)
 }
 
-/// Соисполнители: строка «Maintainer:» несёт их в скобках после главного,
-/// через запятую.
+/// Co-maintainers: the "Maintainer:" line carries them in parentheses after
+/// the main one, comma-separated.
 fn parse_comaintainers(html: &str) -> Vec<String> {
     let Some(row) = between(html, "<tr class=\"pkgmaint\">", "</tr>") else {
         return Vec::new();
@@ -1491,12 +1533,12 @@ fn parse_comaintainers(html: &str) -> Vec<String> {
         .collect()
 }
 
-/// Есть ли ссылка «Next ›» в навигации раздела.
+/// Whether there is a "Next ›" link in the section navigation.
 fn section_has_next(section: &str) -> bool {
     section.contains(">Next ›<") || section.contains(">Next &rsaquo;<")
 }
 
-/// Комментарии одного раздела.
+/// Comments of one section.
 fn parse_comments(section: &str, pinned: bool) -> Vec<AurComment> {
     const HEAD: &str = "class=\"comment-header\"";
     let mut out = Vec::new();
@@ -1506,7 +1548,7 @@ fn parse_comments(section: &str, pinned: bool) -> Vec<AurComment> {
         let Some(head_end) = after.find("</h4>") else { break };
         let head = &after[..head_end];
         let body_from = &after[head_end..];
-        // Тело — первый блок `article-content` после заголовка.
+        // The body is the first `article-content` block after the header.
         let text = match body_from.find("class=\"article-content\"") {
             Some(b) => {
                 let block = &body_from[b..];
@@ -1516,10 +1558,10 @@ fn parse_comments(section: &str, pinned: bool) -> Vec<AurComment> {
             }
             None => String::new(),
         };
-        // «ник commented on <дата>» — ник до « commented on », дата — текст
-        // ссылки с классом `date`. Правка («edited on …») к дате не относится.
-        // `head` начинается внутри открывающего тега `<h4 …>` — его хвост
-        // до `>` отрезаем.
+        // "nick commented on <date>": the nick comes before " commented on ",
+        // the date is the text of the link with the `date` class. An edit
+        // ("edited on …") does not belong to the date. `head` starts inside the
+        // opening `<h4 …>` tag; its tail up to `>` is cut off.
         let head_body = head.split_once('>').map(|(_, b)| b).unwrap_or(head);
         let head_text =
             strip_tags(head_body.split("<span class=\"edited\">").next().unwrap_or(head_body));
@@ -1539,8 +1581,8 @@ fn parse_comments(section: &str, pinned: bool) -> Vec<AurComment> {
     out
 }
 
-/// Содержимое `<div>` до парной закрывающей: внутри тела бывают вложенные
-/// `<div>`, первый же `</div>` обрезал бы текст.
+/// Contents of a `<div>` up to its matching closing tag: the body may have
+/// nested `<div>`s, and the very first `</div>` would cut the text.
 fn div_inner(s: &str) -> &str {
     let mut depth = 1i32;
     let mut i = 0;
@@ -1561,14 +1603,14 @@ fn div_inner(s: &str) -> &str {
     s
 }
 
-/// Подстрока между первым `open` и следующим за ним `close`.
+/// The substring between the first `open` and the `close` that follows it.
 fn between<'a>(s: &'a str, open: &str, close: &str) -> Option<&'a str> {
     let a = s.find(open)? + open.len();
     let b = s[a..].find(close)? + a;
     Some(&s[a..b])
 }
 
-/// Теги долой, сущности — в знаки. Пробелы не трогаются.
+/// Tags removed, entities turned into characters. Whitespace is left alone.
 fn strip_tags(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut in_tag = false;
@@ -1583,9 +1625,9 @@ fn strip_tags(s: &str) -> String {
     crate::translator::html_unescape(&out)
 }
 
-/// Разметка комментария (Markdown, отрисованный сайтом) → простой текст:
-/// абзацы и строки — переводами строк, пункты списков — «• », код в
-/// `<pre>` — как есть, с его переводами строк. Ссылка остаётся своим текстом.
+/// Comment markup (Markdown rendered by the site) -> plain text: paragraphs
+/// and lines as newlines, list items as "• ", code in `<pre>` as is, with
+/// its newlines. A link stays as its text.
 pub fn html_to_text(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut i = 0;
@@ -1625,7 +1667,7 @@ pub fn html_to_text(html: &str) -> String {
         if in_pre {
             out.push_str(&chunk);
         } else {
-            // Вне `<pre>` перевод строки исходника — просто пробел.
+            // Outside `<pre>` a source newline is just a space.
             let flat = chunk.replace(['\n', '\r', '\t'], " ");
             let mut prev_space = out.ends_with([' ', '\n']) || out.is_empty();
             for c in flat.chars() {
@@ -1642,7 +1684,7 @@ pub fn html_to_text(html: &str) -> String {
         }
         i = next;
     }
-    // Хвостовые пробелы строк и лишние пустые строки — долой.
+    // Trailing spaces of lines and extra empty lines removed.
     let lines: Vec<&str> = out.lines().map(str::trim_end).collect();
     let mut text = String::new();
     let mut blank = 0;
@@ -1660,8 +1702,8 @@ pub fn html_to_text(html: &str) -> String {
     text
 }
 
-/// Скачать и разобрать страницу пакета. Пауза между обращениями — забота
-/// вызывающего ([`page_pause_left_ms`]).
+/// Download and parse the package page. The pause between requests is the
+/// caller's concern ([`page_pause_left_ms`]).
 pub fn fetch_package_page<IO: NetIo + ?Sized>(
     io: &mut IO,
     name: &str,
@@ -1673,13 +1715,14 @@ pub fn fetch_package_page<IO: NetIo + ?Sized>(
     parse_package_page(&String::from_utf8_lossy(&raw))
 }
 
-// ── Картинка карточки ────────────────────────────────────────────────────
+// ── Card picture ─────────────────────────────────────────────────────────
 
-/// Метка «картинку надо взять из `og:image` страницы проекта»: её
-/// разрешает загрузчик ([`resolve_og_image`]), а не кеш картинок.
+/// The marker "the picture must be taken from the project page's
+/// `og:image`": the loader resolves it ([`resolve_og_image`]), not the
+/// image cache.
 pub const OG_IMAGE_SCHEME: &str = "og-image:";
 
-/// Хосты, где страница проекта несёт `og:image` (GitLab и Forgejo).
+/// Hosts where the project page carries `og:image` (GitLab and Forgejo).
 fn og_image_host(host: &str) -> bool {
     host.contains("gitlab")
         || matches!(
@@ -1688,7 +1731,7 @@ fn og_image_host(host: &str) -> bool {
         )
 }
 
-/// Хост адреса (`https://host/...` → `host`), строчными.
+/// The host of an address (`https://host/...` -> `host`), lower case.
 fn url_host(url: &str) -> Option<String> {
     let rest = url
         .strip_prefix("https://")
@@ -1698,13 +1741,15 @@ fn url_host(url: &str) -> Option<String> {
     (!host.is_empty()).then(|| host.to_ascii_lowercase())
 }
 
-/// Картинки карточки пакета по порядку показа.
+/// Package card pictures in display order.
 ///
-/// * GitHub — первая картинка README (метка `github-readme:`, её ищет
-///   загрузчик; та же, что на плитке). OpenGraph-карточку репозитория
-///   (имя и звёзды) не берём: это не снимок товара (16.11.2026);
-/// * GitLab/Codeberg — `og:image` страницы проекта (метка `og-image:`);
-/// * иначе — ничего: карточка покажет тот же значок, что плитка.
+/// * GitHub: the first README picture (the `github-readme:` marker, looked
+///   up by the loader; the same as on the tile). The repository OpenGraph
+///   card (name and stars) is not used: it is not a screenshot of the item
+///   (16.11.2026);
+/// * GitLab/Codeberg: the project page's `og:image` (the `og-image:`
+///   marker);
+/// * otherwise nothing: the card shows the same icon as the tile.
 pub fn detail_image_sources(upstream_url: &str) -> Vec<String> {
     if let Some((owner, repo)) = github_owner_repo(upstream_url) {
         return vec![format!("{}{owner}/{repo}", README_PREVIEW_SCHEME)];
@@ -1715,7 +1760,7 @@ pub fn detail_image_sources(upstream_url: &str) -> Vec<String> {
     }
 }
 
-/// `og:image` из HTML страницы; относительный адрес — от `page_url`.
+/// `og:image` from the page HTML; a relative address is resolved against `page_url`.
 pub fn parse_og_image(html: &str, page_url: &str) -> Option<String> {
     let lower = html.to_ascii_lowercase();
     let mut from = 0;
@@ -1740,13 +1785,13 @@ pub fn parse_og_image(html: &str, page_url: &str) -> Option<String> {
     None
 }
 
-/// Значение атрибута тега (в кавычках любого рода).
+/// The value of a tag attribute (in quotes of any kind).
 fn attr_value<'a>(tag: &'a str, tag_l: &str, name: &str) -> Option<&'a str> {
     let key = format!("{name}=");
     let mut search = 0;
     while let Some(rel) = tag_l[search..].find(&key) {
         let at = search + rel;
-        // Начало имени атрибута, а не хвост другого (`data-content=`).
+        // The start of an attribute name, not the tail of another one (`data-content=`).
         let ok_start = at == 0 || tag_l.as_bytes()[at - 1].is_ascii_whitespace();
         let val = &tag[at + key.len()..];
         if ok_start {
@@ -1760,7 +1805,7 @@ fn attr_value<'a>(tag: &'a str, tag_l: &str, name: &str) -> Option<&'a str> {
     None
 }
 
-/// Относительный адрес картинки → абсолютный от страницы.
+/// A relative picture address -> an absolute one relative to the page.
 fn absolute_url(link: &str, page_url: &str) -> String {
     if link.starts_with("https://") || link.starts_with("http://") {
         return link.to_string();
@@ -1779,19 +1824,19 @@ fn absolute_url(link: &str, page_url: &str) -> String {
     }
 }
 
-/// Найти картинку для метки `og-image:<адрес страницы>`.
+/// Find the picture for the `og-image:<page address>` marker.
 pub fn resolve_og_image(net: &mut dyn NetIo, marker: &str) -> Option<String> {
     let page = marker.strip_prefix(OG_IMAGE_SCHEME)?;
     let body = net.get(page, USER_AGENT, TIMEOUT_SECS).ok()?;
     parse_og_image(&String::from_utf8_lossy(&body), page)
 }
 
-/// Метка «картинку надо найти в README репозитория GitHub»
-/// (`github-readme:владелец/имя`): её разрешает загрузчик
-/// ([`resolve_readme_preview`]), а не кеш картинок.
+/// The marker "the picture must be found in the GitHub repository README"
+/// (`github-readme:owner/name`): the loader resolves it
+/// ([`resolve_readme_preview`]), not the image cache.
 pub const README_PREVIEW_SCHEME: &str = "github-readme:";
 
-/// Значки-бейджи и прочая мелочь, которая картинкой проекта не является.
+/// Badges and other small stuff that is not a picture of the project.
 const BADGE_MARKERS: &[&str] = &[
     "shields.io", "badge", "badgen", "/workflows/", "travis-ci", "circleci", "codecov",
     "ko-fi.com/img", "buymeacoffee", "liberapay", "paypal", "sponsor", "opencollective",
@@ -1799,8 +1844,8 @@ const BADGE_MARKERS: &[&str] = &[
     "avatars.githubusercontent",
 ];
 
-/// Все ссылки на картинки в тексте README по порядку: `![…](адрес)` и
-/// `<img src="адрес">`.
+/// All picture links in the README text in order: `![…](address)` and
+/// `<img src="address">`.
 fn image_links(md: &str) -> Vec<String> {
     let mut found: Vec<(usize, String)> = Vec::new();
     let mut i = 0;
@@ -1842,9 +1887,9 @@ fn image_links(md: &str) -> Vec<String> {
     found.into_iter().map(|(_, l)| l).collect()
 }
 
-/// Ссылка из README → прямой адрес картинки: относительная — в
-/// `raw.githubusercontent.com` ветки, `github.com/…/blob/…` — в её «сырой»
-/// вид. Чужие адреса — как есть.
+/// A link from the README -> a direct picture address: a relative one goes
+/// to the branch's `raw.githubusercontent.com`, `github.com/…/blob/…` to
+/// its "raw" form. Other addresses as is.
 pub fn absolutize(link: &str, full_name: &str, branch: &str) -> Option<String> {
     let link = link.trim();
     if link.is_empty() || link.starts_with('#') || link.starts_with("data:") {
@@ -1873,9 +1918,9 @@ pub fn absolutize(link: &str, full_name: &str, branch: &str) -> Option<String> {
     Some(format!("https://raw.githubusercontent.com/{full_name}/{branch}/{path}"))
 }
 
-/// Первая картинка README, которая не значок: `None` — картинок нет.
-/// SVG берётся, только если ничего другого нет (их не всякий загрузчик
-/// покажет, а у проектов обычно есть PNG или GIF).
+/// The first README picture that is not a badge: `None` means there are no
+/// pictures. SVG is taken only if there is nothing else (not every loader
+/// shows them, and projects usually have a PNG or GIF).
 pub fn readme_first_image(md: &str, full_name: &str, branch: &str) -> Option<String> {
     let all: Vec<String> = image_links(md)
         .into_iter()
@@ -1889,8 +1934,8 @@ pub fn readme_first_image(md: &str, full_name: &str, branch: &str) -> Option<Str
     all.iter().find(|u| !is_svg(u)).or_else(|| all.first()).cloned()
 }
 
-/// Найти картинку для метки `github-readme:владелец/имя`: прочесть README
-/// ветки по умолчанию (`HEAD`) и взять первую картинку.
+/// Find the picture for the `github-readme:owner/name` marker: read the
+/// README of the default branch (`HEAD`) and take the first picture.
 pub fn resolve_readme_preview(net: &mut dyn NetIo, marker: &str) -> Option<String> {
     let full = marker.strip_prefix(README_PREVIEW_SCHEME)?;
     let branch = "HEAD";
@@ -1903,20 +1948,20 @@ pub fn resolve_readme_preview(net: &mut dyn NetIo, marker: &str) -> Option<Strin
     None
 }
 
-// ── Строки карточки ──────────────────────────────────────────────────────
+// ── Card lines ───────────────────────────────────────────────────────────
 
-/// Строка сведений карточки: подпись, значение, предупреждение, ссылка.
+/// A card details line: label, value, warning, link.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AurFact {
     pub label: String,
     pub value: String,
-    /// Красить как предупреждение («помечен устаревшим»).
+    /// Paint as a warning ("flagged out of date").
     pub warn: bool,
-    /// Значение — адрес, по нему можно перейти.
+    /// The value is an address that can be followed.
     pub link: bool,
 }
 
-/// День по epoch, UTC: `2026-06-19`. 0 и меньше — пусто.
+/// The day from an epoch, UTC: `2026-06-19`. 0 and below give an empty string.
 pub fn epoch_day(ts: i64) -> String {
     if ts <= 0 {
         return String::new();
@@ -1924,7 +1969,7 @@ pub fn epoch_day(ts: i64) -> String {
     crate::engine_update::now_iso(ts).chars().take(10).collect()
 }
 
-/// Необязательная зависимость — «пакет: зачем» → «пакет — зачем».
+/// An optional dependency: "package: why" -> "package — why".
 pub fn opt_depend_line(raw: &str) -> String {
     match raw.split_once(':') {
         Some((pkg, why)) if !why.trim().is_empty() => format!("{} — {}", pkg.trim(), why.trim()),
@@ -1933,7 +1978,7 @@ pub fn opt_depend_line(raw: &str) -> String {
     }
 }
 
-/// Все строки сведений карточки по порядку. Пустые поля не показываются.
+/// All card details lines in order. Empty fields are not shown.
 pub fn info_facts(info: &AurInfo, comaintainers: &[String]) -> Vec<AurFact> {
     use crate::i18n::{tr, trf};
     let mut out: Vec<AurFact> = Vec::new();
@@ -1944,7 +1989,7 @@ pub fn info_facts(info: &AurInfo, comaintainers: &[String]) -> Vec<AurFact> {
     };
     let list = |v: &[String]| v.join(", ");
     if info.out_of_date > 0 {
-        // Первой строкой: это главное, что надо знать перед сборкой.
+        // On the first line: this is the main thing to know before building.
         push(tr("Status"), trf("⚠️ Flagged out-of-date since %1", &[&epoch_day(info.out_of_date)]));
     }
     push(tr("Version"), info.version.clone());
@@ -1986,25 +2031,25 @@ pub fn info_facts(info: &AurInfo, comaintainers: &[String]) -> Vec<AurFact> {
     out
 }
 
-/// Значок закреплённого комментария перед ником.
+/// The pinned comment marker before the nick.
 pub const PINNED_MARK: &str = "📌 ";
 
-/// Подпись вместо комментариев, когда страницу пакета не получить.
+/// The label instead of comments when the package page cannot be obtained.
 pub fn comments_on_site_text() -> String {
     crate::i18n::tr("AUR didn't let us read the comments here (bot protection or no connection) — they are on the website.")
 }
 
-/// Кнопка «Подробнее» на плитке пакета.
+/// The "Details" button on a package tile.
 pub fn details_btn() -> String {
     crate::i18n::tr("📄 Details")
 }
 
-/// Подсказка к ней.
+/// Its tooltip.
 pub fn details_tooltip() -> String {
     crate::i18n::tr("Package card: description, dependencies, comments")
 }
 
-/// Пакет не найден в AUR (удалён или переименован).
+/// The package was not found in the AUR (removed or renamed).
 pub fn info_missing_text() -> String {
     crate::i18n::tr("AUR doesn't know this package anymore — it may have been removed or renamed.")
 }

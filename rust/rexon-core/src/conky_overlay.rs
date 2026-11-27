@@ -1,36 +1,36 @@
-//! Настройки виджета Conky поверх файла автора — «накладка».
+//! Conky widget settings on top of the author's file — the "overlay".
 //!
-//! ЗАЧЕМ. Человек хочет сдвинуть виджет в другой угол, сделать фон
-//! прозрачнее или поменять часы на 12-часовые. Программы-менеджеры conky
-//! для этого переписывают файл автора построчно: при обновлении виджета из
-//! магазина правки пропадают, регистр и форматирование портятся, а поле,
-//! которого в файле не было, не вставляется вовсе. Rexon файл автора не
-//! трогает. Рядом, в `$XDG_STATE_HOME/rexon/conky/overlay/`, лежит свой
-//! файл настроек — накладка ([`render`]): он выполняет файл автора
-//! (`dofile` с абсолютным путём) и переписывает нужные поля таблицы
-//! `conky.config`. conky запускается с накладкой (`-c <накладка>`) и с
-//! рабочим каталогом = папка файла автора, поэтому относительные пути
-//! виджета (`lua_load ./x.lua`, `${image ./bg.png}`) работают как прежде.
-//! «Сбросить» — удалить накладку.
+//! WHY. A person wants to move a widget to another corner, make the background
+//! more transparent or switch the clock to 12-hour. Conky manager programs
+//! rewrite the author's file line by line for this: when the widget is updated from
+//! the store the edits are lost, case and formatting get spoiled, and a field
+//! that was not in the file is not inserted at all. Rexon does not touch the author's
+//! file. Next to it, in `$XDG_STATE_HOME/rexon/conky/overlay/`, lies our own
+//! settings file — the overlay ([`render`]): it executes the author's file
+//! (`dofile` with an absolute path) and overrides the needed fields of the
+//! `conky.config` table. conky is started with the overlay (`-c <overlay>`) and with
+//! the working directory = the folder of the author's file, so the widget's relative paths
+//! (`lua_load ./x.lua`, `${image ./bg.png}`) work as before.
+//! "Reset" — delete the overlay.
 //!
-//! Замеры стенда (conky 1.25.2, Xvfb, свой HOME, 19–20.10.2026):
-//! * `dofile` + замена `conky.config.gap_x` двигает окно; `conky.text`
-//!   приходит из файла автора и в накладке меняется (`gsub`);
-//! * conky следит за изменением ТОЛЬКО файла из `-c`: правка накладки
-//!   подхватывается сама (≤2 с), правка файла автора — нет;
-//! * `dofile` файла синтаксиса 1.9 падает с синтаксической ошибкой — такой
-//!   файл сначала переводится в 1.10 в копию, накладка выполняет копию;
-//! * в состоянии Lua файла настроек нет ни `conky_version`, ни
-//!   `conky_config` — версию conky Rust узнаёт сам (`conky -v`).
+//! Test bench measurements (conky 1.25.2, Xvfb, own HOME, 19–20.10.2026):
+//! * `dofile` + replacing `conky.config.gap_x` moves the window; `conky.text`
+//!   comes from the author's file and can be changed in the overlay (`gsub`);
+//! * conky watches for changes ONLY of the file from `-c`: an overlay edit
+//!   is picked up by itself (≤2 s), an edit of the author's file is not;
+//! * `dofile` of a 1.9-syntax file fails with a syntax error — such a
+//!   file is first converted to 1.10 into a copy, and the overlay executes the copy;
+//! * the Lua state of the settings file has neither `conky_version` nor
+//!   `conky_config` — Rust finds out the conky version itself (`conky -v`).
 //!
-//! Разбор файла автора ([`parse_config`]) понимает только литералы: поле,
-//! заданное выражением (`gap_x = 10 * scale`), показывается «заданным
-//! виджетом», и его ползунок выключен, пока человек не задаст своё.
+//! Parsing the author's file ([`parse_config`]) understands only literals: a field
+//! set by an expression (`gap_x = 10 * scale`) is shown as "set by the
+//! widget", and its slider is disabled until the person sets their own.
 //!
-//! Процесс conky с накладкой узнаётся по пути: имя накладки — закодированный
-//! путь файла автора ([`original_of_launch`]), так что «Остановить»,
-//! «Запущенные» и автозапуск видят виджет, как будто он запущен с файлом
-//! автора.
+//! A conky process with an overlay is recognized by its path: the overlay name is the encoded
+//! path of the author's file ([`original_of_launch`]), so "Stop",
+//! "Running" and autostart see the widget as if it were started with the author's
+//! file.
 
 use std::collections::BTreeMap;
 
@@ -38,42 +38,42 @@ use crate::animations::LookIo;
 use crate::de_apply::Ctx;
 use crate::i18n::{tr, trf};
 
-/// Часть пути накладок: `…/rexon/conky/overlay/<ключ>.rexon.conf`.
+/// Part of the overlay path: `…/rexon/conky/overlay/<key>.rexon.conf`.
 pub const OVERLAY_SEGMENT: &str = "/rexon/conky/overlay/";
-/// Окончание имени накладки.
+/// The overlay name ending.
 pub const OVERLAY_SUFFIX: &str = ".rexon.conf";
-/// Метка файла запуска через XWayland: `<ключ>+x.rexon.conf`. Ключ
-/// ([`key`]) пишет `+` только как `+s`/`+p` — с накладкой не спутать.
+/// The mark of the XWayland launch file: `<key>+x.rexon.conf`. The key
+/// ([`key`]) writes `+` only as `+s`/`+p` — it cannot be confused with an overlay.
 pub const XWAYLAND_KEY_TAG: &str = "+x";
-/// Окончание имени файла с выбранными настройками.
+/// The name ending of the file with the chosen settings.
 pub const SETTINGS_SUFFIX: &str = ".json";
-/// Окончание имени копии, переведённой из синтаксиса 1.9.
+/// The name ending of a copy converted from the 1.9 syntax.
 pub const CONVERTED_SUFFIX: &str = ".v110.lua";
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Где лежит
+//  Where it lives
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Файлы накладки одного файла настроек виджета.
+/// The overlay files of one widget settings file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paths {
-    /// Накладка — с ней запускается conky.
+    /// The overlay — conky is started with it.
     pub overlay: String,
-    /// Выбор человека ([`Overrides`] в JSON): из него накладка пишется
-    /// заново.
+    /// The person's choice ([`Overrides`] in JSON): the overlay is rewritten
+    /// from it.
     pub settings: String,
-    /// Копия файла синтаксиса 1.9, переведённая в 1.10.
+    /// A copy of a 1.9-syntax file converted to 1.10.
     pub converted: String,
 }
 
-/// Каталог накладок: `<state>/rexon/conky/overlay`.
+/// The overlays directory: `<state>/rexon/conky/overlay`.
 pub fn overlay_dir(ctx: &Ctx, xdg_state_home: Option<&str>) -> String {
     format!("{}/overlay", crate::conky_log::log_dir(ctx, xdg_state_home))
 }
 
-/// Ключ файла настроек `conf` — его путь, где `/` записан как `+s`, а сам
-/// `+` — как `+p`. Знака `%` в ключе нет намеренно: путь накладки попадает
-/// в `Exec=` автозапуска, где `%` служебный.
+/// The key of the settings file `conf` is its path, where `/` is written as `+s`, and `+`
+/// itself as `+p`. There is deliberately no `%` in the key: the overlay path goes
+/// into the autostart `Exec=`, where `%` is special.
 pub fn key(conf: &str) -> String {
     let mut out = String::new();
     for c in conf.trim_start_matches('/').chars() {
@@ -86,7 +86,7 @@ pub fn key(conf: &str) -> String {
     out
 }
 
-/// Файл настроек по ключу ([`key`] наоборот).
+/// The settings file by key ([`key`] in reverse).
 pub fn conf_of_key(key: &str) -> String {
     let mut out = String::from("/");
     let mut it = key.chars();
@@ -118,12 +118,12 @@ pub fn paths(ctx: &Ctx, xdg_state_home: Option<&str>, conf: &str) -> Paths {
     }
 }
 
-/// Живые пути (`$XDG_STATE_HOME` из окружения).
+/// Live paths (`$XDG_STATE_HOME` from the environment).
 pub fn live_paths(ctx: &Ctx, conf: &str) -> Paths {
     paths(ctx, std::env::var("XDG_STATE_HOME").ok().as_deref(), conf)
 }
 
-/// Файл автора, если `launch` — накладка Rexon; иначе `None`.
+/// The author's file if `launch` is a Rexon overlay; otherwise `None`.
 pub fn original_of_launch(launch: &str) -> Option<String> {
     let at = launch.rfind(OVERLAY_SEGMENT)?;
     let name = &launch[at + OVERLAY_SEGMENT.len()..];
@@ -133,34 +133,34 @@ pub fn original_of_launch(launch: &str) -> Option<String> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Выбор человека
+//  The person's choice
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Что человек поменял у виджета. `None` — оставить, как у автора.
+/// What the person changed in the widget. `None` — leave it as the author made it.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Overrides {
-    /// Угол или край экрана — полное имя conky (`top_right`).
+    /// A screen corner or edge — the full conky name (`top_right`).
     pub alignment: Option<String>,
     pub gap_x: Option<i64>,
     pub gap_y: Option<i64>,
     pub min_width: Option<i64>,
     pub min_height: Option<i64>,
-    /// Без фона (полностью прозрачный).
+    /// No background (fully transparent).
     pub bg_none: Option<bool>,
-    /// Непрозрачность фона, 0–100 %.
+    /// Background opacity, 0–100 %.
     pub bg_opacity: Option<u8>,
-    /// Цвет фона `RRGGBB`.
+    /// Background color `RRGGBB`.
     pub bg_colour: Option<String>,
-    /// Окно — как советует Rexon для этого рабочего стола.
+    /// The window — as Rexon advises for this desktop.
     pub window_preset: Option<bool>,
-    /// Обновлять раз в N секунд.
+    /// Update every N seconds.
     pub update_interval: Option<f64>,
-    /// Экран X11 (`xinerama_head`).
+    /// The X11 screen (`xinerama_head`).
     pub xinerama_head: Option<u32>,
-    /// Часы: `true` — 24 часа, `false` — 12.
+    /// Clock: `true` — 24-hour, `false` — 12.
     pub clock_24h: Option<bool>,
-    /// Сетевой интерфейс в тексте виджета: прежнее имя → новое.
+    /// A network interface in the widget text: old name → new.
     pub net_ifaces: BTreeMap<String, String>,
 }
 
@@ -169,13 +169,13 @@ impl Overrides {
         *self == Overrides::default()
     }
 
-    /// Задан ли фон хоть одним полем.
+    /// Whether the background is set by at least one field.
     pub fn touches_background(&self) -> bool {
         self.bg_none.is_some() || self.bg_opacity.is_some() || self.bg_colour.is_some()
     }
 }
 
-/// Полные имена выравнивания conky — сетка 3×3 по строкам.
+/// Full conky alignment names — a 3×3 grid by rows.
 pub const ALIGNMENTS: [&str; 9] = [
     "top_left",
     "top_middle",
@@ -188,8 +188,8 @@ pub const ALIGNMENTS: [&str; 9] = [
     "bottom_right",
 ];
 
-/// Полное имя выравнивания по любому написанию conky (`tr`, `top_right`,
-/// `top`, `center`); `None` — не выравнивание (`none` и прочее).
+/// The full alignment name for any conky spelling (`tr`, `top_right`,
+/// `top`, `center`); `None` — not an alignment (`none` and others).
 pub fn normalize_alignment(v: &str) -> Option<&'static str> {
     let v = v.trim().to_ascii_lowercase();
     Some(match v.as_str() {
@@ -207,16 +207,16 @@ pub fn normalize_alignment(v: &str) -> Option<&'static str> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Разбор таблицы conky.config (только литералы)
+//  Parsing the conky.config table (literals only)
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Значение поля файла автора.
+/// A field value of the author's file.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Num(f64),
     Bool(bool),
     Str(String),
-    /// Не литерал: выражение, вызов, таблица — Rexon его не вычисляет.
+    /// Not a literal: an expression, a call, a table — Rexon does not evaluate it.
     Expr,
 }
 
@@ -257,7 +257,7 @@ enum Tok {
     Sym(String),
 }
 
-/// Уровень длинной скобки `[==[` с позиции `i` (там `[`); `None` — не она.
+/// The level of a long bracket `[==[` at position `i` (where `[` is); `None` — not one.
 fn long_bracket(b: &[u8], i: usize) -> Option<usize> {
     if b.get(i) != Some(&b'[') {
         return None;
@@ -269,13 +269,13 @@ fn long_bracket(b: &[u8], i: usize) -> Option<usize> {
     (b.get(j) == Some(&b'[')).then_some(j - i - 1)
 }
 
-/// Конец длинной строки уровня `level`, начатой открывающей скобкой у `i`:
-/// `(содержимое, позиция за закрывающей скобкой)`.
+/// The end of a long string of level `level` started by the opening bracket at `i`:
+/// `(contents, position after the closing bracket)`.
 fn long_string(s: &str, i: usize, level: usize) -> (String, usize) {
     let open = i + level + 2;
     let close = format!("]{}]", "=".repeat(level));
     let mut start = open;
-    // Перевод строки сразу за открывающей скобкой в строку не входит.
+    // A newline right after the opening bracket is not part of the string.
     if s[start..].starts_with("\r\n") {
         start += 2;
     } else if s[start..].starts_with('\n') {
@@ -351,7 +351,7 @@ fn tokenize(s: &str) -> Vec<Tok> {
             out.push(Tok::Name(s[start..i].to_string()));
             continue;
         }
-        // Двухзнаковые знаки — одним, чтобы `==` не читался как `=`.
+        // Two-character tokens as one, so that `==` is not read as `=`.
         let two = s.get(i..i + 2).unwrap_or("");
         if matches!(two, "==" | "~=" | "<=" | ">=" | "..") {
             out.push(Tok::Sym(two.to_string()));
@@ -365,7 +365,7 @@ fn tokenize(s: &str) -> Vec<Tok> {
     out
 }
 
-/// Строка в кавычках с позиции `i`: `(текст, позиция за ней)`.
+/// A quoted string at position `i`: `(text, position after it)`.
 fn quoted(s: &str, i: usize) -> (String, usize) {
     let quote = s.as_bytes()[i] as char;
     let mut out = String::new();
@@ -423,7 +423,7 @@ fn quoted(s: &str, i: usize) -> (String, usize) {
     (out, s.len())
 }
 
-/// Значение из токенов поля: литерал — само значение, иначе [`Value::Expr`].
+/// The value from a field's tokens: a literal — the value itself, otherwise [`Value::Expr`].
 fn literal(toks: &[Tok]) -> Value {
     match toks {
         [Tok::Num(n)] => Value::Num(*n),
@@ -435,8 +435,8 @@ fn literal(toks: &[Tok]) -> Value {
     }
 }
 
-/// Поля таблицы `conky.config = { … }` файла настроек 1.10. `None` —
-/// таблицы нет (файл 1.9 или собирает её кодом).
+/// The fields of the `conky.config = { … }` table of a 1.10 settings file. `None` —
+/// there is no table (a 1.9 file, or one that builds it with code).
 pub fn parse_config(text: &str) -> Option<BTreeMap<String, Value>> {
     let toks = tokenize(text);
     let start = toks.windows(5).position(|w| {
@@ -452,7 +452,7 @@ pub fn parse_config(text: &str) -> Option<BTreeMap<String, Value>> {
         if matches!(&toks[i], Tok::Sym(s) if s == "}") {
             break;
         }
-        // Ключ: `имя =` или `["имя"] =`.
+        // The key: `name =` or `["name"] =`.
         let (key, value_at) = match (&toks[i], toks.get(i + 1), toks.get(i + 2), toks.get(i + 3)) {
             (Tok::Name(k), Some(Tok::Sym(eq)), _, _) if eq == "=" => (Some(k.clone()), i + 2),
             (Tok::Sym(o), Some(Tok::Str(k)), Some(Tok::Sym(c)), Some(Tok::Sym(eq)))
@@ -462,7 +462,7 @@ pub fn parse_config(text: &str) -> Option<BTreeMap<String, Value>> {
             }
             _ => (None, i),
         };
-        // Значение — до запятой или точки с запятой своего уровня.
+        // The value — up to a comma or semicolon of its own level.
         let mut depth = 0i32;
         let mut j = value_at;
         while j < toks.len() {
@@ -491,27 +491,27 @@ pub fn parse_config(text: &str) -> Option<BTreeMap<String, Value>> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Синтаксис 1.9 → 1.10 (в копию)
+//  Syntax 1.9 → 1.10 (into a copy)
 // ════════════════════════════════════════════════════════════════════════════
 //
-// Файл conky до 1.10: строки `имя значение` до строки `TEXT`, после неё —
-// текст виджета как есть. `#` начинает комментарий (`\#` — сам знак).
-// conky 1.10+ переводит такой файл сам, но только когда он передан в `-c`:
-// `dofile` в накладке падает на нём синтаксической ошибкой. Поэтому
-// накладка поверх виджета 1.9 выполняет его копию, переведённую Rexon по
-// описанию формата ([`convert_19`]); сам файл автора не трогается, а без
-// правок виджет запускается с ним, как раньше.
+// A conky file before 1.10: `name value` lines up to the `TEXT` line, after it —
+// the widget text as is. `#` starts a comment (`\#` is the character itself).
+// conky 1.10+ converts such a file itself, but only when it is passed in `-c`:
+// `dofile` in the overlay fails on it with a syntax error. So
+// an overlay on top of a 1.9 widget executes its copy, converted by Rexon following
+// the format description ([`convert_19`]); the author's file itself is not touched, and without
+// edits the widget is started with it, as before.
 
-/// Синтаксис файла настроек.
+/// The settings file syntax.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Syntax {
     /// conky 1.10+: Lua, `conky.config` / `conky.text`.
     V110,
-    /// До 1.10: `имя значение` и `TEXT`.
+    /// Before 1.10: `name value` and `TEXT`.
     V19,
 }
 
-/// Синтаксис по содержимому: строка `TEXT` без `conky.config`/`conky.text`
+/// The syntax by contents: a `TEXT` line without `conky.config`/`conky.text`
 /// — 1.9.
 pub fn syntax(text: &str) -> Syntax {
     let lua = tokenize(text).windows(3).any(|w| {
@@ -524,7 +524,7 @@ pub fn syntax(text: &str) -> Syntax {
     }
 }
 
-/// Поля 1.9 вида «ширина высота» — по полю 1.10 на каждое число.
+/// 1.9 fields of the "width height" kind — one 1.10 field per number.
 const SPLIT_FIELDS: &[(&str, &str, &str)] = &[
     ("minimum_size", "minimum_width", "minimum_height"),
     ("default_bar_size", "default_bar_width", "default_bar_height"),
@@ -532,12 +532,12 @@ const SPLIT_FIELDS: &[(&str, &str, &str)] = &[
     ("default_gauge_size", "default_gauge_width", "default_gauge_height"),
 ];
 
-/// Поле-цвет: значение — строка, даже если состоит из одних цифр (`000000`).
+/// A color field: the value is a string, even if it consists only of digits (`000000`).
 fn is_colour_field(name: &str) -> bool {
     name.contains("color") || name.contains("colour")
 }
 
-/// Строка 1.9 без комментария (`\#` — знак `#`, а не начало комментария).
+/// A 1.9 line without the comment (`\#` is the `#` character, not the start of a comment).
 fn strip_comment_19(line: &str) -> String {
     let mut out = String::new();
     let mut it = line.chars().peekable();
@@ -554,7 +554,7 @@ fn strip_comment_19(line: &str) -> String {
     out
 }
 
-/// Значение поля 1.9 строкой Lua.
+/// A 1.9 field value as a Lua string.
 fn value_19(name: &str, raw: &str) -> String {
     let v = raw.trim();
     if v.is_empty() {
@@ -573,21 +573,21 @@ fn value_19(name: &str, raw: &str) -> String {
     lua_str(unquoted)
 }
 
-/// Длинная строка Lua с текстом `text` — уровень скобки такой, что в тексте
-/// не встречается её закрытия.
+/// A Lua long string with the text `text` — with a bracket level such that its closing
+/// does not occur in the text.
 fn long_lua_string(text: &str) -> String {
     let mut level = 0;
     while text.contains(&format!("]{}", "=".repeat(level))) && level < 64 {
         level += 1;
     }
     let eq = "=".repeat(level);
-    // Перевод строки сразу за открывающей скобкой Lua отбрасывает сам.
+    // Lua itself drops a newline right after the opening bracket.
     format!("[{eq}[\n{text}]{eq}]")
 }
 
-/// Перевести файл 1.9 в 1.10. Порядок полей сохраняется; комментарии
-/// настроек отбрасываются, текст после `TEXT` переносится как есть (conky
-/// 1.10 убирает из него комментарии так же, как 1.9 — сверено стендом).
+/// Convert a 1.9 file to 1.10. The field order is kept; settings comments
+/// are dropped, the text after `TEXT` is carried over as is (conky
+/// 1.10 strips comments from it the same way 1.9 does — checked on the test bench).
 pub fn convert_19(text: &str) -> String {
     let mut fields: Vec<String> = Vec::new();
     let mut lines = text.split_inclusive('\n');
@@ -616,7 +616,7 @@ pub fn convert_19(text: &str) -> String {
             }
             continue;
         }
-        // У 1.10 шрифт Xft — просто `font`.
+        // In 1.10 the Xft font is just `font`.
         let name = if name == "xftfont" { "font" } else { name };
         fields.push(format!("    {name} = {},", value_19(name, value)));
     }
@@ -635,7 +635,7 @@ pub fn convert_19(text: &str) -> String {
     out
 }
 
-/// Поля файла автора и его синтаксис (1.9 — через перевод в памяти).
+/// The fields of the author's file and its syntax (1.9 — via an in-memory conversion).
 pub fn author_config(text: &str) -> (Syntax, Option<BTreeMap<String, Value>>) {
     match syntax(text) {
         Syntax::V19 => (Syntax::V19, parse_config(&convert_19(text))),
@@ -644,11 +644,11 @@ pub fn author_config(text: &str) -> (Syntax, Option<BTreeMap<String, Value>>) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Текущие значения: накладка поверх автора
+//  Current values: the overlay on top of the author
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Цвет conky (`#RGB`, `#ARGB`, `RRGGBB`, `#RRGGBB`, `#AARRGGBB`, несколько
-/// имён) → `(RRGGBB, альфа 0–255, если задана)`.
+/// A conky color (`#RGB`, `#ARGB`, `RRGGBB`, `#RRGGBB`, `#AARRGGBB`, a few
+/// names) → `(RRGGBB, alpha 0–255 if set)`.
 pub fn parse_colour(v: &str) -> Option<(String, Option<u8>)> {
     let v = v.trim();
     let named = match v.to_ascii_lowercase().as_str() {
@@ -677,17 +677,17 @@ pub fn parse_colour(v: &str) -> Option<(String, Option<u8>)> {
     }
 }
 
-/// Поле с подписью «откуда».
+/// A field with a "where from" label.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Field<T> {
     pub value: T,
-    /// Задано человеком в Rexon (иначе — как у автора).
+    /// Set by the person in Rexon (otherwise — as the author made it).
     pub changed: bool,
-    /// У автора не литерал: Rexon не знает значения, ползунок выключен.
+    /// Not a literal at the author's: Rexon does not know the value, the slider is disabled.
     pub locked: bool,
 }
 
-/// Значения виджета, как они действуют сейчас.
+/// The widget values as they are in effect now.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Current {
     pub alignment: Field<String>,
@@ -714,7 +714,7 @@ fn field<T: Clone>(own: Option<T>, author: Option<&Value>, read: impl Fn(&Value)
     }
 }
 
-/// Непрозрачность фона у автора (0–100) и «без фона».
+/// The author's background opacity (0–100) and "no background".
 fn author_background(cfg: &BTreeMap<String, Value>) -> (bool, u8, String) {
     let colour = cfg
         .get("own_window_colour")
@@ -745,7 +745,7 @@ fn alpha_of(percent: u8) -> u8 {
     ((percent.min(100) as u32 * 255 + 50) / 100) as u8
 }
 
-/// Как виджет выглядит сейчас: выбор человека поверх файла автора.
+/// How the widget looks now: the person's choice on top of the author's file.
 pub fn current(cfg: &BTreeMap<String, Value>, ov: &Overrides) -> Current {
     let (none, opacity, colour) = author_background(cfg);
     let bg_locked = ["own_window_transparent", "own_window_argb_value", "own_window_colour", "own_window_color"]
@@ -756,8 +756,8 @@ pub fn current(cfg: &BTreeMap<String, Value>, ov: &Overrides) -> Current {
             ov.alignment.clone(),
             cfg.get("alignment"),
             |v| v.as_str().and_then(normalize_alignment).map(str::to_string),
-            // Умолчания — как у самого conky (без поля он ставит окно
-            // в левый нижний угол с отступами 5 и 60).
+            // Defaults — as in conky itself (without the field it puts the window
+            // in the bottom left corner with gaps of 5 and 60).
             crate::conky_layout::DEFAULT_ALIGNMENT.to_string(),
         ),
         gap_x: field(ov.gap_x, cfg.get("gap_x"), Value::as_i64, crate::conky_layout::DEFAULT_GAP_X),
@@ -786,10 +786,10 @@ pub fn current(cfg: &BTreeMap<String, Value>, ov: &Overrides) -> Current {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Накладка
+//  The overlay
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Строка Lua в кавычках.
+/// A quoted Lua string.
 pub fn lua_str(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
@@ -814,7 +814,7 @@ fn lua_num(n: f64) -> String {
     }
 }
 
-/// Версия conky `(старшая, младшая)` из вывода `conky -v`
+/// The conky version `(major, minor)` from the `conky -v` output
 /// (`conky 1.25.2-pre-6caddca3 compiled …`).
 pub fn parse_version(out: &str) -> Option<(u32, u32)> {
     let first = out.lines().find(|l| l.trim_start().starts_with("conky "))?;
@@ -823,7 +823,7 @@ pub fn parse_version(out: &str) -> Option<(u32, u32)> {
     Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
 }
 
-/// Версия установленного conky; `None` — не узнать.
+/// The installed conky version; `None` — cannot find out.
 pub fn conky_version(io: &dyn LookIo) -> Option<(u32, u32)> {
     let (ok, out) = io.run(&["conky".to_string(), "-v".to_string()]);
     if !ok {
@@ -832,56 +832,56 @@ pub fn conky_version(io: &dyn LookIo) -> Option<(u32, u32)> {
     parse_version(&out)
 }
 
-/// С какой версии conky прозрачность фона — альфа цвета (`#AARRGGBB`), а
-/// `own_window_argb_value`/`own_window_transparent` устарели.
+/// Since which conky version the background transparency is the color's alpha (`#AARRGGBB`), and
+/// `own_window_argb_value`/`own_window_transparent` are deprecated.
 pub const ALPHA_COLOUR_SINCE: (u32, u32) = (1, 23);
 
-/// Обстановка, под которую пишется накладка.
+/// The circumstances the overlay is written for.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Env {
-    /// Версия conky; `None` — не узнали (пишутся поля, понятные всем).
+    /// The conky version; `None` — not found out (fields understood by all are written).
     pub version: Option<(u32, u32)>,
-    /// Рабочий стол (`Ctx::de`) — для советов по окну.
+    /// The desktop (`Ctx::de`) — for window advice.
     pub de: String,
 }
 
-// ── Окно по рабочему столу ──────────────────────────────────────────────
+// ── Window per desktop ──────────────────────────────────────────────────
 //
-// Какое окно conky держится «на столе», зависит от рабочего стола и сеанса
-// (замеры и описание настроек conky ≥ 1.25):
-// * X11 — обычное окно с подсказками «без рамки, под всеми окнами, на всех
-//   столах, не в панели задач»: тип `desktop` на столах со своим окном
-//   значков (Caja, Nemo, xfdesktop) перекрывается этим окном при щелчке;
-// * Wayland с wlr-layer-shell (KWin, wlroots, COSMIC, labwc, Treeland) —
-//   слой фона: тип `desktop`; у KWin с conky 1.25 — обычное окно с теми же
-//   подсказками и пространством имён `desktop` (виден при «Показать рабочий
-//   стол», `dock` резервировал бы место у края);
-// * niri: `desktop` не попадает в фон обзора — обычное окно с `below`
-//   (нижний слой);
-// * GNOME, Cinnamon, Pantheon на Wayland слоёв не знают: виджет — обычное
-//   окно, никакие поля этого не меняют.
+// Which conky window stays "on the desktop" depends on the desktop and the session
+// (measurements and the conky ≥ 1.25 settings description):
+// * X11 — a normal window with the hints "undecorated, below all windows, on all
+//   desktops, not in the taskbar": the `desktop` type on desktops with their own icons
+//   window (Caja, Nemo, xfdesktop) gets covered by that window on a click;
+// * Wayland with wlr-layer-shell (KWin, wlroots, COSMIC, labwc, Treeland) —
+//   the background layer: the `desktop` type; for KWin with conky 1.25 — a normal window with the same
+//   hints and the `desktop` namespace (visible with "Show desktop",
+//   `dock` would reserve space at the edge);
+// * niri: `desktop` does not get into the overview background — a normal window with `below`
+//   (the bottom layer);
+// * GNOME, Cinnamon, Pantheon on Wayland know no layers: the widget is a normal
+//   window, no fields change that.
 
-/// Подсказки окна X11 (и нижний слой на Wayland у conky 1.25).
+/// X11 window hints (and the bottom layer on Wayland for conky 1.25).
 pub const DESKTOP_HINTS: &str = "undecorated,below,sticky,skip_taskbar,skip_pager";
 
-/// Совет Rexon для окна виджета.
+/// Rexon's advice for the widget window.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct WindowPreset {
     pub own_window_type: &'static str,
     pub hints: Option<&'static str>,
-    /// `own_window_namespace` (conky ≥ 1.25, только Wayland).
+    /// `own_window_namespace` (conky ≥ 1.25, Wayland only).
     pub namespace: Option<&'static str>,
 }
 
-/// Рабочие столы, у которых на Wayland нет wlr-layer-shell (то же решение
-/// говорит и пояснение группы виджетов, `categories::group_note`).
+/// Desktops that have no wlr-layer-shell on Wayland (the widgets group
+/// explanation says the same, `categories::group_note`).
 pub fn wayland_without_layers(de_id: &str) -> bool {
     use crate::de_customization::De;
     matches!(crate::de_customization::de_from_id(de_id), Some(De::Gnome | De::Cinnamon | De::Pantheon))
 }
 
-/// Окно виджета для рабочего стола `de_id` и сеанса. `None` — подходящего
-/// окна нет (Wayland без слоёв).
+/// The widget window for the desktop `de_id` and the session. `None` — there is no suitable
+/// window (Wayland without layers).
 pub fn window_preset(de_id: &str, wayland: bool, version: Option<(u32, u32)>) -> Option<WindowPreset> {
     let normal = WindowPreset { own_window_type: "normal", hints: Some(DESKTOP_HINTS), namespace: None };
     if !wayland {
@@ -891,7 +891,7 @@ pub fn window_preset(de_id: &str, wayland: bool, version: Option<(u32, u32)>) ->
         return None;
     }
     let desktop = WindowPreset { own_window_type: "desktop", hints: None, namespace: None };
-    // Слой по подсказкам у обычного окна и пространство имён — с conky 1.25.
+    // A layer by hints for a normal window and a namespace — since conky 1.25.
     if !version.is_some_and(|v| v >= (1, 25)) {
         return Some(desktop);
     }
@@ -902,7 +902,7 @@ pub fn window_preset(de_id: &str, wayland: bool, version: Option<(u32, u32)>) ->
     })
 }
 
-/// Что сказать о виджете на этом рабочем столе; `None` — нечего.
+/// What to say about the widget on this desktop; `None` — nothing.
 pub fn preset_note(de_id: &str, wayland: bool) -> Option<String> {
     (wayland && wayland_without_layers(de_id)).then(|| {
         tr("In the Wayland session of this desktop the widget is a regular window: it can be covered by other \
@@ -910,25 +910,25 @@ pub fn preset_note(de_id: &str, wayland: bool) -> Option<String> {
     })
 }
 
-// ── Вывод X11 через XWayland ────────────────────────────────────────────
+// ── X11 output via XWayland ─────────────────────────────────────────────
 //
-// В сеансе Wayland conky может рисовать своим выводом Wayland или выводом
-// X11 через XWayland. Вывод X11 берётся там, где Wayland-вывод не годится
-// (замеры 15.11.2026, Cinnamon 6.8 Wayland):
-// * GNOME, Cinnamon, Pantheon: слоя стола для conky нет — окно Wayland
-//   обычное, перекрывается окнами и видно в Alt+Tab; через XWayland окно
-//   X11 с подсказками «под всеми, на всех столах» стол держит как надо
-//   (проверено вживую: прозрачный виджет поверх живых обоев);
-// * conky 1.25.0–1.25.2 на любом столе: вывод Wayland падает сразу при
-//   старте (`display-wayland.cc … set_font: Assertion f < pango_fonts.size()`,
-//   исправлено в 1.25.3);
-// * виджет рисует сценарием Lua через `cairo_xlib_*` — это только X11.
-// Без XWayland (`DISPLAY` пуст) остаётся вывод Wayland — других нет.
-// Переход делают два изменения окружения conky: без `WAYLAND_DISPLAY` и с
-// `XDG_SESSION_TYPE=x11` (так conky сам выбирает вывод X11, а ветка окна
-// накладки Rexon, [`window_lines`], — подсказки X11).
+// In a Wayland session conky can draw with its Wayland output or with the
+// X11 output via XWayland. The X11 output is taken where the Wayland output is no good
+// (measurements of 15.11.2026, Cinnamon 6.8 Wayland):
+// * GNOME, Cinnamon, Pantheon: there is no desktop layer for conky — the Wayland window
+//   is a normal one, covered by windows and visible in Alt+Tab; via XWayland an X11
+//   window with the hints "below all, on all desktops" is held by the desktop properly
+//   (checked live: a transparent widget on top of live wallpapers);
+// * conky 1.25.0–1.25.2 on any desktop: the Wayland output crashes right at
+//   startup (`display-wayland.cc … set_font: Assertion f < pango_fonts.size()`,
+//   fixed in 1.25.3);
+// * the widget draws with a Lua script through `cairo_xlib_*` — that is X11 only.
+// Without XWayland (`DISPLAY` is empty) the Wayland output remains — there are no others.
+// The switch is made by two changes in conky's environment: without `WAYLAND_DISPLAY` and with
+// `XDG_SESSION_TYPE=x11` (this way conky itself chooses the X11 output, and the window branch
+// of Rexon's overlay, [`window_lines`], — the X11 hints).
 
-/// Версия conky `(старшая, младшая, выпуск)` из вывода `conky -v`.
+/// The conky version `(major, minor, patch)` from the `conky -v` output.
 pub fn parse_version_full(out: &str) -> Option<(u32, u32, u32)> {
     let first = out.lines().find(|l| l.trim_start().starts_with("conky "))?;
     let ver = first.trim_start().strip_prefix("conky ")?.split_whitespace().next()?;
@@ -938,24 +938,24 @@ pub fn parse_version_full(out: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, it.next().and_then(|p| p.parse().ok()).unwrap_or(0)))
 }
 
-/// Выпуск conky, у которого вывод Wayland падает при старте.
+/// A conky release whose Wayland output crashes at startup.
 pub fn wayland_output_aborts(v: (u32, u32, u32)) -> bool {
     v.0 == 1 && v.1 == 25 && v.2 <= 2
 }
 
-/// Идёт ли conky в этом сеансе через XWayland (вывод X11). `display` —
-/// XWayland есть (`DISPLAY` задан); `needs_x11` — виджет рисует через X11.
+/// Whether conky goes through XWayland in this session (the X11 output). `display` —
+/// XWayland exists (`DISPLAY` is set); `needs_x11` — the widget draws through X11.
 pub fn via_xwayland(de_id: &str, wayland: bool, display: bool, version: Option<(u32, u32, u32)>, needs_x11: bool) -> bool {
     wayland && display && (needs_x11 || wayland_without_layers(de_id) || version.is_some_and(wayland_output_aborts))
 }
 
-/// Есть ли у сеанса сервер X (`DISPLAY`; в сеансе Wayland — XWayland).
+/// Whether the session has an X server (`DISPLAY`; in a Wayland session — XWayland).
 pub fn live_display() -> bool {
     std::env::var("DISPLAY").is_ok_and(|d| !d.is_empty())
 }
 
-/// [`via_xwayland`] для этого сеанса и установленного conky (без учёта
-/// виджета).
+/// [`via_xwayland`] for this session and the installed conky (without taking
+/// the widget into account).
 pub fn live_via_xwayland(io: &dyn LookIo, ctx: &Ctx, needs_x11: bool) -> bool {
     if !ctx.wayland || !live_display() {
         return false;
@@ -964,8 +964,8 @@ pub fn live_via_xwayland(io: &dyn LookIo, ctx: &Ctx, needs_x11: bool) -> bool {
     via_xwayland(&ctx.de, ctx.wayland, true, parse_version_full(&version), needs_x11)
 }
 
-/// Сеанс глазами conky: идёт он через XWayland — для раскладки, экранов
-/// и оговорок это сеанс X11.
+/// The session through conky's eyes: if it goes through XWayland, then for the layout, screens
+/// and caveats this is an X11 session.
 pub fn conky_ctx(io: &dyn LookIo, ctx: &Ctx) -> Ctx {
     let mut c = ctx.clone();
     if live_via_xwayland(io, ctx, false) {
@@ -974,8 +974,8 @@ pub fn conky_ctx(io: &dyn LookIo, ctx: &Ctx) -> Ctx {
     c
 }
 
-/// Рисует ли виджет с файлом `conf` через X11: сценарий Lua в папке файла
-/// (и её подпапках до второго уровня) зовёт `cairo_xlib_*`.
+/// Whether the widget with the file `conf` draws through X11: a Lua script in the file's folder
+/// (and its subfolders down to the second level) calls `cairo_xlib_*`.
 pub fn widget_needs_x11(conf: &str) -> bool {
     fn walk(dir: &std::path::Path, depth: usize, budget: &mut usize) -> bool {
         let Ok(entries) = std::fs::read_dir(dir) else { return false };
@@ -1004,24 +1004,24 @@ pub fn widget_needs_x11(conf: &str) -> bool {
     dir != "/" && dir != "." && walk(std::path::Path::new(dir), 0, &mut budget)
 }
 
-/// Имена `XDG_CURRENT_DESKTOP` столов без слоя для conky
-/// ([`wayland_without_layers`]) — для сценария автозапуска.
+/// `XDG_CURRENT_DESKTOP` names of desktops without a layer for conky
+/// ([`wayland_without_layers`]) — for the autostart script.
 pub const XWAYLAND_DESKTOP_NAMES: &[&str] = &["GNOME", "X-Cinnamon", "Cinnamon", "Pantheon"];
 
-/// Что меняет в окружении переход на XWayland (метка его же в записи
-/// автозапуска).
+/// What switching to XWayland changes in the environment (its marker in the autostart
+/// record too).
 pub const XWAYLAND_SESSION_TYPE: &str = "XDG_SESSION_TYPE=x11";
 
-/// Переменная сценария автозапуска с файлом запуска через XWayland
-/// ([`xwayland_path`]); пуста — conky идёт с файлом из аргументов.
+/// The autostart script variable with the XWayland launch file
+/// ([`xwayland_path`]); empty — conky goes with the file from the arguments.
 pub const XWAYLAND_LAUNCH_VAR: &str = "rexon_xw";
 
-/// Начало сценария `sh` автозапуска: то же решение, что [`via_xwayland`],
-/// но при входе — сеанс и версия conky узнаются там. `needs_x11` — виджет
-/// рисует через X11 (решено при записи). `xwayland_conf` — файл запуска
-/// через XWayland: при переходе он (если есть) попадает в
-/// [`XWAYLAND_LAUNCH_VAR`], окно виджета — под окнами. Знаков `%` сам
-/// сценарий не добавляет (служебный в `Exec=`; путь экранирует запись).
+/// The start of the autostart `sh` script: the same decision as [`via_xwayland`],
+/// but at login — the session and the conky version are found out there. `needs_x11` — the widget
+/// draws through X11 (decided when writing). `xwayland_conf` — the launch file
+/// via XWayland: on switching it (if any) goes into
+/// [`XWAYLAND_LAUNCH_VAR`], the widget window — below windows. The script itself
+/// adds no `%` characters (special in `Exec=`; the record escapes the path).
 pub fn xwayland_shell(needs_x11: bool, xwayland_conf: Option<&str>) -> String {
     let desks = if needs_x11 {
         "x=1; ".to_string()
@@ -1043,52 +1043,52 @@ pub fn xwayland_shell(needs_x11: bool, xwayland_conf: Option<&str>) -> String {
     )
 }
 
-/// Применить переход на XWayland к запуску conky.
+/// Apply the switch to XWayland to a conky launch.
 pub fn apply_xwayland(cmd: &mut std::process::Command) {
     cmd.env_remove("WAYLAND_DISPLAY");
     cmd.env("XDG_SESSION_TYPE", "x11");
 }
 
-// ── Окно на столе через XWayland ────────────────────────────────────────
+// ── A window on the desktop via XWayland ────────────────────────────────
 //
-// Окно X11 conky под Muffin/Mutter в сеансе Wayland (исходники Muffin 6.8,
+// A conky X11 window under Muffin/Mutter in a Wayland session (Muffin 6.8 sources,
 // `compositor.c: get_window_group_for_window`, `window-x11.c:
 // get_standalone_layer`; conky 1.25 `output/x11.cc`):
-// * `override` — окно без управления (override-redirect): слой
-//   META_LAYER_OVERRIDE_REDIRECT, группа top_window_group — ПОВЕРХ всех
-//   окон и панелей; `XLowerWindow` conky там ничего не значит. `utility`
-//   conky тоже создаёт override-redirect;
-// * `desktop` — группа bottom_window_group вместе с окном значков стола
-//   (nemo-desktop): щелчок по столу поднимает значки над виджетом;
-// * `normal` с подсказками «без рамки, под всеми, на всех столах, не в
-//   панели задач» (`_NET_WM_STATE_BELOW` → META_LAYER_BOTTOM): под обычными
-//   окнами, над значками и обоями, фокус не берёт (`input = False` у окна
-//   без рамки), в Alt+Tab не попадает.
-// Поэтому через XWayland conky идёт с файлом, где окно — как советует
-// Rexon для X11 ([`window_preset`]): поверх файла автора и выбора человека
-// ([`load`]). Выбор человека он не трогает; в сеансе X11 не участвует.
+// * `override` — an unmanaged window (override-redirect): the layer
+//   META_LAYER_OVERRIDE_REDIRECT, the group top_window_group — ABOVE all
+//   windows and panels; conky's `XLowerWindow` means nothing there. conky
+//   creates `utility` as override-redirect too;
+// * `desktop` — the group bottom_window_group together with the desktop icons window
+//   (nemo-desktop): a click on the desktop raises the icons above the widget;
+// * `normal` with the hints "undecorated, below all, on all desktops, not in the
+//   taskbar" (`_NET_WM_STATE_BELOW` → META_LAYER_BOTTOM): below normal
+//   windows, above the icons and wallpaper, takes no focus (`input = False` for an
+//   undecorated window), does not get into Alt+Tab.
+// So via XWayland conky goes with a file where the window is as Rexon
+// advises for X11 ([`window_preset`]): on top of the author's file and the person's choice
+// ([`load`]). It does not touch the person's choice; it plays no part in an X11 session.
 
-/// Файл запуска через XWayland для накладки `p`.
+/// The XWayland launch file for the overlay `p`.
 pub fn xwayland_path(p: &Paths) -> String {
     let base = p.overlay.strip_suffix(OVERLAY_SUFFIX).unwrap_or(&p.overlay);
     format!("{base}{XWAYLAND_KEY_TAG}{OVERLAY_SUFFIX}")
 }
 
-/// Текст файла запуска через XWayland: выбор человека `ov` и окно «на
-/// столе» по совету Rexon.
+/// The text of the XWayland launch file: the person's choice `ov` and an "on the
+/// desktop" window per Rexon's advice.
 pub fn render_xwayland(source: &str, cfg: &BTreeMap<String, Value>, ov: &Overrides, env: &Env) -> String {
     let ov = Overrides { window_preset: Some(true), ..ov.clone() };
     render(source, cfg, &ov, env)
 }
 
-/// Записать файл запуска через XWayland для `conf` ([`xwayland_path`]).
-/// `None` — файл автора не прочитать или не записать.
+/// Write the XWayland launch file for `conf` ([`xwayland_path`]).
+/// `None` — the author's file cannot be read or written.
 pub fn write_xwayland(io: &dyn LookIo, p: &Paths, conf: &str, env: &Env) -> Option<String> {
     write_xwayland_with(io, p, conf, &load(io, p), env)
 }
 
-/// [`write_xwayland`] с выбором человека `ov` (только что сохранённым —
-/// не перечитывая его с диска).
+/// [`write_xwayland`] with the person's choice `ov` (just saved —
+/// without rereading it from disk).
 fn write_xwayland_with(io: &dyn LookIo, p: &Paths, conf: &str, ov: &Overrides, env: &Env) -> Option<String> {
     let (source, cfg) = source_of(io, conf, p)?;
     let path = xwayland_path(p);
@@ -1109,9 +1109,9 @@ fn preset_lines(p: &WindowPreset, version: Option<(u32, u32)>, indent: &str, out
     }
 }
 
-/// Строки Lua окна по совету Rexon: ветка Wayland и ветка X11 — сеанс
-/// узнаётся при запуске conky (`WAYLAND_DISPLAY`), автозапуск в другом
-/// сеансе тоже получит верное окно.
+/// Lua window lines per Rexon's advice: a Wayland branch and an X11 branch — the session
+/// is found out when conky starts (`WAYLAND_DISPLAY`), so autostart in another
+/// session also gets the right window.
 fn window_lines(env: &Env, out: &mut Vec<String>) {
     let x11 = window_preset(&env.de, false, env.version);
     let wl = window_preset(&env.de, true, env.version);
@@ -1122,7 +1122,7 @@ fn window_lines(env: &Env, out: &mut Vec<String>) {
     out.push("if os.getenv(\"WAYLAND_DISPLAY\") then".into());
     match &wl {
         Some(p) => preset_lines(p, env.version, "    ", out),
-        // Слоёв нет — окно остаётся, каким его задал автор.
+        // No layers — the window stays as the author set it.
         None => out.push("    -- no layer-shell here: the author's window settings stay".into()),
     }
     out.push("else".into());
@@ -1132,7 +1132,7 @@ fn window_lines(env: &Env, out: &mut Vec<String>) {
     out.push("end".into());
 }
 
-/// Строки Lua для фона.
+/// Lua lines for the background.
 fn background_lines(cfg: &BTreeMap<String, Value>, ov: &Overrides, env: &Env, out: &mut Vec<String>) {
     let (author_none, author_opacity, author_colour) = author_background(cfg);
     let none = ov.bg_none.unwrap_or(author_none && ov.bg_opacity.is_none());
@@ -1142,10 +1142,10 @@ fn background_lines(cfg: &BTreeMap<String, Value>, ov: &Overrides, env: &Env, ou
     out.push("c.own_window = true".into());
     let modern = env.version.is_some_and(|v| v >= ALPHA_COLOUR_SINCE);
     if modern {
-        // Альфа — в самом цвете; устаревшие поля автора иначе спорили бы с
-        // ним. Имя поля с 1.2x — `own_window_color`, прежнее
-        // `own_window_colour` conky понимает с предупреждением, но оба сразу
-        // в таблице — кто победит, не определено.
+        // The alpha is in the color itself; the author's deprecated fields would otherwise argue with
+        // it. The field name since 1.2x is `own_window_color`, conky understands the old
+        // `own_window_colour` with a warning, but with both at once
+        // in the table, which one wins is undefined.
         out.push("c.own_window_transparent = nil".into());
         out.push("c.own_window_argb_value = nil".into());
         out.push("c.own_window_colour = nil".into());
@@ -1159,9 +1159,9 @@ fn background_lines(cfg: &BTreeMap<String, Value>, ov: &Overrides, env: &Env, ou
     }
 }
 
-/// Текст накладки: выполнить `source` (файл автора или его перевод в 1.10)
-/// и переписать выбранные поля. `cfg` — поля автора ([`parse_config`];
-/// для фона, когда человек задал не всё).
+/// The overlay text: execute `source` (the author's file or its 1.10 conversion)
+/// and override the chosen fields. `cfg` — the author's fields ([`parse_config`];
+/// for the background, when the person did not set everything).
 pub fn render(source: &str, cfg: &BTreeMap<String, Value>, ov: &Overrides, env: &Env) -> String {
     let mut lines: Vec<String> = Vec::new();
     if let Some(a) = ov.alignment.as_deref().and_then(normalize_alignment) {
@@ -1190,7 +1190,7 @@ pub fn render(source: &str, cfg: &BTreeMap<String, Value>, ov: &Overrides, env: 
         lines.push(format!("c.xinerama_head = {h}"));
     }
     text_lines(ov, &mut lines);
-    // Окно и фон оба включают своё окно — одной строки хватит.
+    // The window and the background both turn on their own window — one line is enough.
     let mut seen_own_window = false;
     lines.retain(|l| l != "c.own_window = true" || !std::mem::replace(&mut seen_own_window, true));
     let mut out = String::new();
@@ -1207,19 +1207,19 @@ pub fn render(source: &str, cfg: &BTreeMap<String, Value>, ov: &Overrides, env: 
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Экран (X11)
+//  Screen (X11)
 // ════════════════════════════════════════════════════════════════════════════
 //
-// `xinerama_head` — номер экрана в списке Xinerama. Сервер X с RandR 1.5
-// строит этот список из мониторов RandR в том же порядке, что печатает
-// `xrandr --listmonitors` (основной — первым). На Wayland conky выбирать
-// экран не умеет (один вывод на всё, открытые задачи conky #2106, #2111) —
-// пункт скрыт с пояснением.
+// `xinerama_head` is the screen number in the Xinerama list. An X server with RandR 1.5
+// builds this list from the RandR monitors in the same order that
+// `xrandr --listmonitors` prints (the primary first). On Wayland conky cannot choose
+// a screen (one output for everything, open conky issues #2106, #2111) —
+// the item is hidden with an explanation.
 
-/// Монитор X11.
+/// An X11 monitor.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Monitor {
-    /// Номер для `xinerama_head`.
+    /// The number for `xinerama_head`.
     pub index: u32,
     pub name: String,
     pub width: u32,
@@ -1229,7 +1229,7 @@ pub struct Monitor {
     pub primary: bool,
 }
 
-/// Мониторы из вывода `xrandr --listmonitors`
+/// Monitors from the `xrandr --listmonitors` output
 /// (` 0: +*eDP-1 1920/344x1080/193+0+0  eDP-1`).
 pub fn parse_monitors(out: &str) -> Vec<Monitor> {
     let mut list = Vec::new();
@@ -1245,7 +1245,7 @@ pub fn parse_monitors(out: &str) -> Vec<Monitor> {
         let Some((_, rest)) = rest.split_once('x') else { continue };
         let Some((h, rest)) = rest.split_once('/') else { continue };
         let pos: String = rest.chars().skip_while(|c| c.is_ascii_digit()).collect();
-        // Положение — `+X+Y`, отрицательное — `+-200`.
+        // Position — `+X+Y`, a negative one — `+-200`.
         let nums: Vec<&str> = pos.split('+').filter(|p| !p.is_empty()).collect();
         let (Ok(width), Ok(height)) = (w.parse(), h.parse()) else { continue };
         let x = nums.first().and_then(|n| n.parse().ok()).unwrap_or(0);
@@ -1255,8 +1255,8 @@ pub fn parse_monitors(out: &str) -> Vec<Monitor> {
     list
 }
 
-/// Мониторы X11 этого сеанса; пусто — сеанс Wayland, один монитор не
-/// спрашивается, или узнать нечем (`xrandr` нет).
+/// X11 monitors of this session; empty — a Wayland session, a single monitor is not
+/// asked about, or there is nothing to find out with (no `xrandr`).
 pub fn monitors(io: &dyn LookIo, wayland: bool) -> Vec<Monitor> {
     if wayland || !io.have("xrandr") {
         return Vec::new();
@@ -1265,26 +1265,26 @@ pub fn monitors(io: &dyn LookIo, wayland: bool) -> Vec<Monitor> {
     if ok { parse_monitors(&out) } else { Vec::new() }
 }
 
-/// Почему выбора экрана нет; `None` — он есть.
+/// Why there is no screen choice; `None` — there is one.
 pub fn monitor_note(wayland: bool) -> Option<String> {
     wayland.then(|| tr("Conky can't choose a screen in a Wayland session yet — the widget appears where the desktop puts it."))
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Часы и сеть в тексте виджета
+//  Clock and network in the widget text
 // ════════════════════════════════════════════════════════════════════════════
 //
-// Формат часов и имя сетевого интерфейса живут в тексте виджета
-// (`${time %H:%M}`, `${downspeed eth0}`), а не в полях `conky.config`.
-// Накладка меняет их на лету: `conky.text` из файла автора проходит через
-// замену внутри переменных `${…}` (замер стенда: `gsub` в накладке
-// меняет текст, файл автора не трогается). Сеть: у каждого прежнего
-// имени — своя замена, за один проход по словам, так что `eth0 → wlan0` и
-// `wlan0 → eth0` разом не сливаются в одно имя (у программ-менеджеров conky
-// оба имени становились одним). Lua-сценарии виджета (кольца с `arg =
-// 'eth0'`) так не меняются — это код автора.
+// The clock format and the network interface name live in the widget text
+// (`${time %H:%M}`, `${downspeed eth0}`), not in `conky.config` fields.
+// The overlay changes them on the fly: `conky.text` from the author's file goes through
+// a replacement inside `${…}` variables (a test bench measurement: `gsub` in the overlay
+// changes the text, the author's file is not touched). Network: each old
+// name has its own replacement, in a single pass over the words, so `eth0 → wlan0` and
+// `wlan0 → eth0` at once do not merge into one name (in conky manager programs
+// both names became one). The widget's Lua scripts (rings with `arg =
+// 'eth0'`) are not changed this way — that is the author's code.
 
-/// Переменные conky, чей первый аргумент — сетевой интерфейс.
+/// conky variables whose first argument is a network interface.
 pub const NET_VARS: &[&str] = &[
     "addr",
     "addrs",
@@ -1304,11 +1304,11 @@ fn is_net_var(name: &str) -> bool {
     NET_VARS.contains(&name) || name.starts_with("wireless_")
 }
 
-/// Переменные времени: формат strftime — их аргумент.
+/// Time variables: the strftime format is their argument.
 pub const TIME_VARS: &[&str] = &["time", "utime", "tztime"];
 
-/// Начала переменных `${…}` текста — `(имя, аргументы до вложенной
-/// переменной)`, вложенные — тоже.
+/// The starts of the text's `${…}` variables — `(name, arguments up to a nested
+/// variable)`, nested ones too.
 fn var_heads(text: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let b = text.as_bytes();
@@ -1333,8 +1333,8 @@ fn var_heads(text: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Какие часы в тексте: `Some(true)` — 24 часа (`%H`, `%k`, `%R`, `%T`),
-/// `Some(false)` — 12 (`%I`, `%l`, `%r`); `None` — часов в тексте нет.
+/// Which clock is in the text: `Some(true)` — 24-hour (`%H`, `%k`, `%R`, `%T`),
+/// `Some(false)` — 12 (`%I`, `%l`, `%r`); `None` — no clock in the text.
 pub fn clock_style(text: &str) -> Option<bool> {
     let mut found = None;
     for (name, args) in var_heads(text) {
@@ -1352,7 +1352,7 @@ pub fn clock_style(text: &str) -> Option<bool> {
     found
 }
 
-/// Имена сетевых интерфейсов, которые упоминает текст, по порядку.
+/// Network interface names the text mentions, in order.
 pub fn net_names(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for (name, args) in var_heads(text) {
@@ -1369,16 +1369,16 @@ pub fn net_names(text: &str) -> Vec<String> {
     out
 }
 
-/// Сетевой интерфейс машины.
+/// A network interface of the machine.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Iface {
     pub name: String,
-    /// `wifi`, `ethernet` или `virtual`.
+    /// `wifi`, `ethernet` or `virtual`.
     pub kind: &'static str,
 }
 
-/// Интерфейсы из `/sys/class/net` (без `lo`): сначала настоящие — Wi-Fi и
-/// провод, — затем виртуальные.
+/// Interfaces from `/sys/class/net` (without `lo`): first the real ones — Wi-Fi and
+/// wired — then the virtual ones.
 pub fn interfaces(io: &dyn LookIo) -> Vec<Iface> {
     let mut out: Vec<Iface> = io
         .list_dir("/sys/class/net")
@@ -1400,7 +1400,7 @@ pub fn interfaces(io: &dyn LookIo) -> Vec<Iface> {
     out
 }
 
-/// Lua: обход переменных `${…}` текста с заменой начала каждой (`f`).
+/// Lua: walking the text's `${…}` variables replacing the start of each one (`f`).
 const LUA_EACH_VAR: &str = r#"local function rexon_each(t, f)
     return (t:gsub("%$(%b{})", function(b)
         local inner = rexon_each(b:sub(2, -2), f)
@@ -1449,19 +1449,19 @@ fn text_lines(ov: &Overrides, out: &mut Vec<String>) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Хранение, запуск, применение
+//  Storing, launching, applying
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Выбор человека для файла `conf`; нет — пусто.
+/// The person's choice for the file `conf`; none — empty.
 pub fn load(io: &dyn LookIo, p: &Paths) -> Overrides {
     io.read(&p.settings).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
-/// Что выполняет накладка и поля автора: `(файл для dofile, поля)`.
-/// `None` — файла автора нет или его поля не прочитать.
+/// What the overlay executes and the author's fields: `(file for dofile, fields)`.
+/// `None` — there is no author's file or its fields cannot be read.
 ///
-/// Файл 1.9 переводится в копию ([`convert_19`]) при каждом вызове — файл
-/// автора мог обновиться.
+/// A 1.9 file is converted into a copy ([`convert_19`]) on every call — the author's file
+/// might have been updated.
 pub fn source_of(io: &dyn LookIo, conf: &str, p: &Paths) -> Option<(String, BTreeMap<String, Value>)> {
     let text = io.read(conf)?;
     match syntax(&text) {
@@ -1474,11 +1474,11 @@ pub fn source_of(io: &dyn LookIo, conf: &str, p: &Paths) -> Option<(String, BTre
     }
 }
 
-/// Записать выбор и накладку (пустой выбор — убрать обе). `Err` — причина.
+/// Write the choice and the overlay (an empty choice — remove both). `Err` — the reason.
 pub fn save(io: &dyn LookIo, p: &Paths, conf: &str, ov: &Overrides, env: &Env) -> Result<(), String> {
     let saved = save_overlay(io, p, conf, ov, env);
-    // Файл запуска через XWayland — вслед за выбором: запущенный с ним conky
-    // перечитает его сам, автозапуск при входе возьмёт новый.
+    // The XWayland launch file follows the choice: a conky started with it
+    // rereads it itself, autostart at login takes the new one.
     if io.read(&xwayland_path(p)).is_some() {
         let _ = write_xwayland_with(io, p, conf, ov, env);
     }
@@ -1500,15 +1500,15 @@ fn save_overlay(io: &dyn LookIo, p: &Paths, conf: &str, ov: &Overrides, env: &En
     Ok(())
 }
 
-/// Убрать накладку, выбор и копию.
+/// Remove the overlay, the choice and the copy.
 pub fn remove(p: &Paths) {
     for f in [&p.overlay, &p.settings, &p.converted] {
         let _ = std::fs::remove_file(f);
     }
 }
 
-/// Убрать накладки всех файлов под каталогом виджета `dir` (виджет
-/// удаляют — его настройки больше не нужны).
+/// Remove the overlays of all files under the widget directory `dir` (the widget
+/// is being deleted — its settings are no longer needed).
 pub fn forget_under(ctx: &Ctx, dir: &str) {
     let base = overlay_dir(ctx, std::env::var("XDG_STATE_HOME").ok().as_deref());
     let prefix = format!("{}/", dir.trim_end_matches('/'));
@@ -1522,9 +1522,9 @@ pub fn forget_under(ctx: &Ctx, dir: &str) {
     }
 }
 
-/// С каким файлом запускать conky для `conf`: накладка, если человек что-то
-/// менял (она пишется заново — файл автора мог обновиться), иначе сам
-/// `conf`.
+/// Which file to start conky with for `conf`: the overlay if the person changed
+/// something (it is rewritten — the author's file might have been updated), otherwise `conf`
+/// itself.
 pub fn launch_conf(io: &dyn LookIo, ctx: &Ctx, p: &Paths, conf: &str) -> String {
     let ov = load(io, p);
     if ov.is_empty() {
@@ -1537,7 +1537,7 @@ pub fn launch_conf(io: &dyn LookIo, ctx: &Ctx, p: &Paths, conf: &str) -> String 
     }
 }
 
-/// Процессы conky файла `conf`: `(номер, запущен с накладкой)`.
+/// conky processes of the file `conf`: `(pid, started with the overlay)`.
 pub fn processes_of(io: &dyn LookIo, conf: &str) -> Vec<(String, bool)> {
     let mut out = Vec::new();
     for pid in io.list_dir("/proc") {
@@ -1555,8 +1555,8 @@ pub fn processes_of(io: &dyn LookIo, conf: &str) -> Vec<(String, bool)> {
     out
 }
 
-/// Перезапустить процессы `pids` файла `conf`: погасить, дождаться выхода
-/// (иначе новый запуск принял бы старый процесс за свой) и запустить.
+/// Restart the processes `pids` of the file `conf`: stop them, wait for them to exit
+/// (otherwise a new launch would take the old process for its own) and start.
 fn restart(io: &dyn LookIo, ctx: &Ctx, title: &str, conf: &str, pids: Vec<String>) -> (bool, String) {
     let (ok, msg) = crate::conky_procs::stop_pids(io, title, pids.clone());
     if !ok {
@@ -1571,10 +1571,10 @@ fn restart(io: &dyn LookIo, ctx: &Ctx, title: &str, conf: &str, pids: Vec<String
     crate::conky_procs::start_conf(io, ctx, title, conf)
 }
 
-/// Переписать записи автозапуска, которые запускают `conf` (с накладкой
-/// или без): после «Сбросить» вход не должен звать удалённую накладку, а
-/// после первой правки — должен звать её. Задержка и окружение записи
-/// сохраняются, строки композиторов переписываются вместе с ней.
+/// Rewrite the autostart records that launch `conf` (with the overlay
+/// or without): after "Reset" login must not call the deleted overlay, and
+/// after the first edit it must call it. The record's delay and environment
+/// are kept, the compositor lines are rewritten together with it.
 pub fn refresh_autostart(io: &dyn LookIo, ctx: &Ctx, p: &Paths, title: &str, conf: &str, use_overlay: bool) {
     let dir = ctx.config("autostart");
     let quoted = crate::installer::desktop_exec_arg(conf);
@@ -1590,8 +1590,8 @@ pub fn refresh_autostart(io: &dyn LookIo, ctx: &Ctx, p: &Paths, title: &str, con
         }
         let launch = use_overlay.then_some(p.overlay.as_str());
         let opts = crate::conky_autostart::options_of(&text);
-        // Файл запуска через XWayland уже переписан вслед за выбором
-        // ([`save`]); нет его — пишется здесь.
+        // The XWayland launch file has already been rewritten following the choice
+        // ([`save`]); if it is missing, it is written here.
         let ready = xwayland_path(p);
         let xwayland = if io.read(&ready).is_some() { Some(ready) } else { autostart_xwayland(io, ctx, p, conf) };
         let built = crate::conky_autostart::build(&env, key, title, conf, launch, xwayland.as_deref(), &opts);
@@ -1599,23 +1599,23 @@ pub fn refresh_autostart(io: &dyn LookIo, ctx: &Ctx, p: &Paths, title: &str, con
     }
 }
 
-/// Файл запуска через XWayland для записи автозапуска `conf`: пишется
-/// заново (вход в сеанс Wayland GNOME/Cinnamon/Pantheon возьмёт его, сеанс
-/// X11 — нет). `None` — файл автора не прочитать.
+/// The XWayland launch file for the autostart record of `conf`: written
+/// anew (login to a Wayland GNOME/Cinnamon/Pantheon session takes it, an
+/// X11 session does not). `None` — the author's file cannot be read.
 pub fn autostart_xwayland(io: &dyn LookIo, ctx: &Ctx, p: &Paths, conf: &str) -> Option<String> {
     let env = Env { version: conky_version(io), de: ctx.de.clone() };
     write_xwayland(io, p, conf, &env)
 }
 
-/// С чем запускать `conf` при входе: накладка, если она есть.
+/// What to launch `conf` with at login: the overlay, if there is one.
 pub fn autostart_launch(io: &dyn LookIo, p: &Paths) -> Option<String> {
     (!load(io, p).is_empty() && io.read(&p.overlay).is_some()).then(|| p.overlay.clone())
 }
 
-/// Применить выбор человека к файлу `conf` виджета `title`: записать
-/// накладку; виджет, запущенный без неё, перезапустить с ней (запущенный с
-/// ней conky перечитает накладку сам); автозапуск — на накладку.
-/// `(получилось, сообщение)`.
+/// Apply the person's choice to the file `conf` of the widget `title`: write
+/// the overlay; a widget started without it is restarted with it (a conky started with
+/// it rereads the overlay itself); autostart — to the overlay.
+/// `(succeeded, message)`.
 pub fn apply(io: &dyn LookIo, ctx: &Ctx, p: &Paths, title: &str, conf: &str, ov: &Overrides) -> (bool, String) {
     let env = Env { version: conky_version(io), de: ctx.de.clone() };
     if let Err(why) = save(io, p, conf, ov, &env) {
@@ -1624,8 +1624,8 @@ pub fn apply(io: &dyn LookIo, ctx: &Ctx, p: &Paths, title: &str, conf: &str, ov:
     let use_overlay = !ov.is_empty();
     refresh_autostart(io, ctx, p, title, conf, use_overlay);
     let procs = processes_of(io, conf);
-    // Без накладки (сброс) перезапускаются те, что шли с ней; с накладкой —
-    // те, что шли без неё.
+    // Without an overlay (a reset) those that ran with it are restarted; with an overlay —
+    // those that ran without it.
     let stale: Vec<String> = procs.iter().filter(|(_, via)| *via != use_overlay).map(|(p, _)| p.clone()).collect();
     if !stale.is_empty() {
         let (ok, msg) = restart(io, ctx, title, conf, stale);
@@ -1640,16 +1640,16 @@ pub fn apply(io: &dyn LookIo, ctx: &Ctx, p: &Paths, title: &str, conf: &str, ov:
     }
 }
 
-/// «Сбросить»: как у автора.
+/// "Reset": as the author made it.
 pub fn reset(io: &dyn LookIo, ctx: &Ctx, p: &Paths, title: &str, conf: &str) -> (bool, String) {
     apply(io, ctx, p, title, conf, &Overrides::default())
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Для карточки: что показать и как поменять
+//  For the card: what to show and how to change it
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Клетка сетки выравнивания.
+/// A cell of the alignment grid.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct AlignCell {
     pub value: &'static str,
@@ -1657,14 +1657,14 @@ pub struct AlignCell {
     pub label: String,
 }
 
-/// Пункт выпадающего списка.
+/// A drop-down list item.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Choice {
     pub value: serde_json::Value,
     pub label: String,
 }
 
-/// Сетевой интерфейс текста виджета и чем его заменить.
+/// A network interface of the widget text and what to replace it with.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct NetRow {
     pub from: String,
@@ -1673,7 +1673,7 @@ pub struct NetRow {
     pub choices: Vec<Choice>,
 }
 
-/// Подписи блока настроек.
+/// Labels of the settings block.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SettingsTexts {
     pub title: String,
@@ -1742,22 +1742,22 @@ fn align_cells() -> Vec<AlignCell> {
     ALIGNMENTS.iter().zip(arrows).zip(labels).map(|((v, a), l)| AlignCell { value: v, arrow: a, label: l }).collect()
 }
 
-/// Подпись угла или края экрана (`top_right` → «Справа вверху»).
+/// The label of a screen corner or edge (`top_right` → "Top right").
 pub fn align_label(value: &str) -> Option<String> {
     let full = normalize_alignment(value)?;
     align_cells().into_iter().find(|c| c.value == full).map(|c| c.label)
 }
 
-/// Блок настроек виджета для карточки.
+/// The widget settings block for the card.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct SettingsView {
     pub conf: String,
-    /// Настройки доступны (файл прочитан и разобран).
+    /// The settings are available (the file was read and parsed).
     pub available: bool,
-    /// Почему нет.
+    /// Why not.
     pub reason: String,
     pub syntax: Option<Syntax>,
-    /// Человек что-то менял (есть накладка).
+    /// The person changed something (there is an overlay).
     pub changed: bool,
     pub cur: Option<Current>,
     pub alignments: Vec<AlignCell>,
@@ -1766,23 +1766,23 @@ pub struct SettingsView {
     pub monitors: Vec<Monitor>,
     pub screen_choices: Vec<Choice>,
     pub monitor_note: Option<String>,
-    /// Часы в тексте: `Some(24 часа ли у автора)`; `None` — часов нет.
+    /// The clock in the text: `Some(whether the author has 24-hour)`; `None` — no clock.
     pub clock: Option<bool>,
     pub clock_24h: bool,
     pub nets: Vec<NetRow>,
     pub t: SettingsTexts,
 }
 
-/// Что известно о машине для блока настроек.
+/// What is known about the machine for the settings block.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Machine {
     pub monitors: Vec<Monitor>,
     pub interfaces: Vec<Iface>,
-    /// На X11 работает композитор (`None` — не узнать или Wayland).
+    /// A compositor is running on X11 (`None` — cannot find out, or Wayland).
     pub compositor: Option<bool>,
 }
 
-/// Собрать блок настроек файла `conf`.
+/// Assemble the settings block of the file `conf`.
 pub fn settings_view(io: &dyn LookIo, ctx: &Ctx, p: &Paths, conf: &str, m: &Machine) -> SettingsView {
     let ov = load(io, p);
     let mut v = SettingsView {
@@ -1814,7 +1814,7 @@ pub fn settings_view(io: &dyn LookIo, ctx: &Ctx, p: &Paths, conf: &str, m: &Mach
         return v;
     };
     let cur = current(&cfg, &ov);
-    // Прозрачный фон без композитора X11 рисуется чёрным.
+    // A transparent background without an X11 compositor is drawn black.
     let see_through = cur.bg_none.value || cur.bg_opacity.value < 100;
     if !ctx.wayland && see_through && m.compositor == Some(false) {
         v.compositor_note = Some(tr(
@@ -1856,7 +1856,7 @@ pub fn settings_view(io: &dyn LookIo, ctx: &Ctx, p: &Paths, conf: &str, m: &Mach
     v
 }
 
-/// Поменять одно поле выбора. `Err` — неизвестное поле или негодное значение.
+/// Change one choice field. `Err` — an unknown field or an invalid value.
 pub fn set_value(ov: &mut Overrides, key: &str, value: &serde_json::Value) -> Result<(), String> {
     use serde_json::Value as J;
     let bad = || Err(tr("This value can't be used here."));
@@ -1903,7 +1903,7 @@ pub fn set_value(ov: &mut Overrides, key: &str, value: &serde_json::Value) -> Re
                 None if null => None,
                 None => return bad(),
             };
-            // Ползунок двигают, чтобы фон был: «без фона» уходит.
+            // The slider is moved so that there is a background: "no background" goes away.
             if ov.bg_opacity.is_some_and(|o| o > 0) && ov.bg_none == Some(true) {
                 ov.bg_none = Some(false);
             }
@@ -1931,10 +1931,10 @@ pub fn set_value(ov: &mut Overrides, key: &str, value: &serde_json::Value) -> Re
     Ok(())
 }
 
-/// Поле `position` (мини-карта экрана, `conky_layout`): выравнивание,
-/// отступы и экран разом — `{alignment, gap_x, gap_y, xinerama_head}`,
-/// `null` — как у автора, нет ключа — не трогать. Одна запись накладки —
-/// conky перечитывает её один раз.
+/// The `position` field (the screen mini-map, `conky_layout`): alignment,
+/// gaps and the screen at once — `{alignment, gap_x, gap_y, xinerama_head}`,
+/// `null` — as the author made it, no key — do not touch. One overlay write —
+/// conky rereads it once.
 fn set_position(ov: &mut Overrides, value: &serde_json::Value) -> Result<(), String> {
     let Some(obj) = value.as_object() else {
         return Err(tr("This value can't be used here."));
@@ -1950,13 +1950,13 @@ fn set_position(ov: &mut Overrides, value: &serde_json::Value) -> Result<(), Str
     Ok(())
 }
 
-/// Принадлежит ли файл `conf` виджету `name` (настройки чужого файла не
-/// пишутся).
+/// Whether the file `conf` belongs to the widget `name` (settings of someone else's file are not
+/// written).
 fn part_of(io: &dyn LookIo, ctx: &Ctx, name: &str, conf: &str) -> bool {
     crate::conky_procs::parts(io, ctx, name).iter().any(|p| p.conf == conf)
 }
 
-/// Поменять поле `key` файла `conf` виджета `name` и применить.
+/// Change the field `key` of the file `conf` of the widget `name` and apply.
 pub fn set_field(io: &dyn LookIo, ctx: &Ctx, p: &Paths, name: &str, conf: &str, key: &str, value: &serde_json::Value) -> (bool, String) {
     if !part_of(io, ctx, name, conf) {
         return (false, tr("This file isn't part of the widget."));
@@ -1968,13 +1968,13 @@ pub fn set_field(io: &dyn LookIo, ctx: &Ctx, p: &Paths, name: &str, conf: &str, 
     apply(io, ctx, p, &crate::conky_scan::widget_title(name), conf, &ov)
 }
 
-/// Композитор X11 работает: у экрана есть владелец выделения `_NET_WM_CM_S<n>`
-/// (так композиторы X11 заявляют о себе). `None` — X11 не открыть.
+/// An X11 compositor is running: the screen has an owner of the `_NET_WM_CM_S<n>` selection
+/// (that is how X11 compositors announce themselves). `None` — X11 cannot be opened.
 pub fn live_x11_compositor() -> Option<bool> {
     use x11_dl::xlib;
     let lib = xlib::Xlib::open().ok()?;
-    // SAFETY: дисплей открывается и закрывается здесь же, указатели не
-    // уходят из функции.
+    // SAFETY: the display is opened and closed right here, the pointers do not
+    // leave the function.
     unsafe {
         let dpy = (lib.XOpenDisplay)(std::ptr::null());
         if dpy.is_null() {
@@ -1989,10 +1989,10 @@ pub fn live_x11_compositor() -> Option<bool> {
     }
 }
 
-/// Живой блок настроек.
+/// The live settings block.
 pub fn live_settings_view(name: &str, conf: &str) -> SettingsView {
     let io = crate::animations::SystemIo;
-    // Через XWayland conky — в сеансе X11: экраны и места — как там.
+    // Via XWayland conky is in an X11 session: screens and places — as there.
     let ctx = conky_ctx(&io, &Ctx::live());
     let p = live_paths(&ctx, conf);
     let m = Machine {
@@ -2012,7 +2012,7 @@ pub fn live_settings_view(name: &str, conf: &str) -> SettingsView {
 pub fn live_set(name: &str, conf: &str, key: &str, value: &serde_json::Value) -> (bool, String) {
     let ctx = Ctx::live();
     let done = set_field(&crate::animations::SystemIo, &ctx, &live_paths(&ctx, conf), name, conf, key, value);
-    // Снимок плитки — с новыми настройками (`conky_preview`).
+    // The tile snapshot — with the new settings (`conky_preview`).
     crate::conky_preview::want(&ctx, name);
     done
 }
@@ -2096,13 +2096,13 @@ mod tests {
         assert_eq!(parse_version_full("conky 1.26.0\n"), Some((1, 26, 0)));
         assert_eq!(parse_version_full("conky 1.9\n"), Some((1, 9, 0)));
         let v = |s: &str| parse_version_full(s);
-        // Столы без слоя — через XWayland, если он есть.
+        // Desktops without a layer — via XWayland, if it exists.
         for de in ["gnome", "cinnamon", "pantheon"] {
             assert!(via_xwayland(de, true, true, v("conky 1.26.0"), false), "{de}");
             assert!(!via_xwayland(de, true, false, v("conky 1.26.0"), false), "{de}: без XWayland");
             assert!(!via_xwayland(de, false, true, v("conky 1.26.0"), false), "{de}: сеанс X11");
         }
-        // Столы со слоями — свой вывод Wayland, кроме 1.25.0–1.25.2 и виджетов на X11.
+        // Desktops with layers — their own Wayland output, except 1.25.0–1.25.2 and X11 widgets.
         for de in ["kde", "sway", "hyprland", "niri"] {
             assert!(!via_xwayland(de, true, true, v("conky 1.25.3"), false), "{de}");
             assert!(!via_xwayland(de, true, true, None, false), "{de}: версия неизвестна");
@@ -2110,15 +2110,15 @@ mod tests {
             assert!(via_xwayland(de, true, true, v("conky 1.25.0"), false), "{de}: 1.25.0");
             assert!(via_xwayland(de, true, true, v("conky 1.26.0"), true), "{de}: виджет на X11");
         }
-        // Имена сценария автозапуска — ровно столы без слоя.
+        // The autostart script names — exactly the desktops without a layer.
         for name in XWAYLAND_DESKTOP_NAMES {
             let de = crate::system::detect_current_de(name, "", true).unwrap_or_default();
             assert!(wayland_without_layers(&de), "{name} → {de}");
         }
     }
 
-    /// Сценарий автозапуска на деле: подставной conky печатает версию и
-    /// окружение, с которым его запустили.
+    /// The autostart script in action: a fake conky prints the version and
+    /// the environment it was started with.
     #[test]
     fn xwayland_shell_really_switches() {
         use std::os::unix::fs::PermissionsExt;

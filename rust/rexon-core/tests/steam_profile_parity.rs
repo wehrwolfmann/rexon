@@ -1,26 +1,30 @@
-//! Golden-сверка парсера владеемых фонов с оригиналом
+//! Golden check of the owned-backgrounds parser against the original
 //! `rexon/steam_profile_items.py`.
 //!
-//! Эталон снят с самого Python (см. генератор): `steam_owned_raw.json` — ответ
-//! схемы GetProfileItemsOwned (репрезентативный по документированным полям
+//! The reference was captured from Python itself (see the generator):
+//! `steam_owned_raw.json` — a GetProfileItemsOwned response shape
+//! (representative of the documented fields
 //! communityitemid/name/item_title/image_large/image_small/movie_webm/movie_mp4;
-//! живой ответ требует ЛИЧНОГО webapi_token и снят быть не может),
-//! `steam_owned_cases.json` — выход самого `_fetch_owned` на этом ответе
-//! (монипатч `urlopen`). Rust обязан вернуть те же записи/строки/порядок.
+//! a live response needs a PERSONAL webapi_token and cannot be captured),
+//! `steam_owned_cases.json` — the output of `_fetch_owned` itself on that
+//! response (monkeypatched `urlopen`). Rust must return the same
+//! records/strings/order.
 //!
-//! ⚠️ Живой сетевой вызов и добыча токена (cookie/sqlite/cryptography) НЕ
-//! тестируются (недетерминированы и в ядро не портированы) — проверяется только
-//! РАЗБОР зафиксированного ответа.
+//! ⚠️ The live network call and token extraction (cookie/sqlite/cryptography)
+//! are NOT tested (non-deterministic and not ported to the core) — only the
+//! PARSING of the recorded response is checked.
 
-// ЯЗЫК СВЕРКИ (с 28.09.2026): имя фона по умолчанию — английский `msgid`,
-// русский — в `po/ru.po`; эталон Python помнит русское, сверка идёт на нём.
+// CHECK LANGUAGE (since 28.09.2026): the default background name is the
+// English `msgid`, Russian is in `po/ru.po`; the Python reference remembers
+// the Russian one, and the check runs on it.
 mod i18n_pin;
 
 use rexon_core::steam_profile::parse_owned_backgrounds;
 use serde_json::Value;
 
-/// Разбор ответа GetProfileItemsOwned: id/name/url/preview/animated и порядок
-/// (включая пропуск записей без ссылки) совпадают с Python `_fetch_owned`.
+/// Parsing of the GetProfileItemsOwned response: id/name/url/preview/animated
+/// and the order (including skipping records without a link) match Python
+/// `_fetch_owned`.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn parse_owned_matches_python() {
@@ -45,7 +49,7 @@ fn parse_owned_matches_python() {
     }
 }
 
-/// Пустой/отсутствующий ответ → пустой список (порт `(data or {}).get(...)`).
+/// Empty/missing response → empty list (port of `(data or {}).get(...)`).
 #[test]
 fn empty_response_yields_empty() {
     assert!(parse_owned_backgrounds(&serde_json::json!({})).is_empty());
@@ -56,14 +60,16 @@ fn empty_response_yields_empty() {
     );
 }
 
-/// Кривые ответы GetProfileItemsOwned: `response` не объект, список фонов не
-/// массив, записи-не-объекты, поля не того типа (число вместо ссылки/имени),
-/// вырожденный `communityitemid` (null/0). Эталон — тот же починенный
-/// `_py_fetch_owned` (монипатч `urlopen`); разбор обязан совпасть и не паниковать.
+/// Malformed GetProfileItemsOwned responses: `response` is not an object, the
+/// background list is not an array, non-object records, fields of the wrong
+/// type (number instead of link/name), degenerate `communityitemid`
+/// (null/0). The reference is the same fixed `_py_fetch_owned` (monkeypatched
+/// `urlopen`); parsing must match and must not panic.
 ///
-/// Кейсы `truncated_json`/`html_instead_of_json` до ядра не доходят (`json.load`
-/// в Python валится раньше и `_fetch_owned` отдаёт `[]`) — у них `data: null`,
-/// и здесь проверяется только, что Python отдал пустой список.
+/// Cases `truncated_json`/`html_instead_of_json` never reach the core
+/// (`json.load` in Python fails earlier and `_fetch_owned` returns `[]`) —
+/// they have `data: null`, and here we only check that Python returned an
+/// empty list.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn broken_owned_responses_match_python() {
@@ -77,7 +83,7 @@ fn broken_owned_responses_match_python() {
         let name = c["name"].as_str().unwrap();
         let want = c["expected"].as_array().unwrap();
         if c["data"].is_null() {
-            // Сетевой/JSON-сбой: разбора не было, Python вернул пусто.
+            // Network/JSON failure: no parsing happened, Python returned empty.
             assert!(want.is_empty(), "[{name}] Python должен был отдать []");
             continue;
         }

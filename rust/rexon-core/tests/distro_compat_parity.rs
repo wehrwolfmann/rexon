@@ -1,31 +1,31 @@
-//! Golden-сверка порта `distro_compat.rs` с оригиналом `rexon/distro_compat.py`.
+//! Golden check of the `distro_compat.rs` port against the original `rexon/distro_compat.py`.
 //!
-//! Эталон `golden/distro_compat_cases.json` снят с самого Python: функции и
-//! методы `DistroCompat` прогнаны на батарее входов (все известные дистрибутивы,
-//! Astra SE по NAME/VARIANT_ID с ЗПС и без, неизвестные дистрибутивы разных
-//! семейств) через `json.dumps(..., ensure_ascii=False)`. Любое расхождение —
-//! ошибка порта, а не теста.
+//! The golden file `golden/distro_compat_cases.json` was captured from Python itself: the
+//! `DistroCompat` functions and methods were run over a battery of inputs (all known distros,
+//! Astra SE by NAME/VARIANT_ID with and without ZPS, unknown distros of various
+//! families) through `json.dumps(..., ensure_ascii=False)`. Any mismatch is
+//! a bug in the port, not in the test.
 //!
-//! Проверяется структурно (serde_json::Value == Value): таблицы `DISTRO_INFO` /
-//! `ALT_DE_PACKAGES` / `ROSA_DE_PACKAGES` / `ROSA_BRANDING_PACKAGES` и их порядок,
-//! списки региональных дистрибутивов, а также по каждому кейсу — весь публичный
+//! Checked structurally (serde_json::Value == Value): the tables `DISTRO_INFO` /
+//! `ALT_DE_PACKAGES` / `ROSA_DE_PACKAGES` / `ROSA_BRANDING_PACKAGES` and their order,
+//! the lists of regional distros, and for every case the whole public
 //! API (`is_russian_distro`, `distro_name`, `is_known`, `has_de_repos`,
-//! `get_info`, `get_warnings`, `get_compatibility_badge`, а на батарее DE —
+//! `get_info`, `get_warnings`, `get_compatibility_badge`, and on the DE battery
 //! `get_de_packages`, `get_rosa_branding`, `check_install_possible`).
 //!
-//! ⚠️ Осознанное расхождение с Python-оригиналом с 28.09.2026 — SteamOS
-//! (Steam Deck и Steam Machine): установка рабочих столов там запрещена, а
-//! не «разрешена с предупреждением» (обновление SteamOS стирает всё, что
-//! поставлено поверх `/usr`), и тексты переписаны. Записи `steamos` в эталоне правлены руками
-//! поимённо (таблица, `get_info`, `get_warnings`, `check_install_possible`);
-//! прочие дистрибутивы по-прежнему сверяются с тем, что снято с Python.
+//! ⚠️ A deliberate divergence from the Python original since 28.09.2026 — SteamOS
+//! (Steam Deck and Steam Machine): installing desktops there is forbidden, not
+//! "allowed with a warning" (a SteamOS update wipes everything
+//! installed on top of `/usr`), and the texts were rewritten. The `steamos` entries in the golden file were edited by hand
+//! one by one (the table, `get_info`, `get_warnings`, `check_install_possible`);
+//! other distros are still checked against what was captured from Python.
 //!
-//! С 30.09.2026 предупреждения (`get_warnings`, таблица `DISTRO_INFO`) и
-//! бейдж — на каталоге перевода: в эталоне они английские (исходник), а
-//! прежний русский снятого с Python эталона слово в слово лежит в
-//! `golden/distro_compat_ru_before.json` и сверяется под русским каталогом
-//! (`warnings_in_russian_as_before`). Короткая строка
-//! `check_install_possible` — журнал, она русская, как была.
+//! Since 30.09.2026 the warnings (`get_warnings`, the `DISTRO_INFO` table) and
+//! the badge go through the translation catalog: in the golden file they are English (the source), and
+//! the former Russian of the golden file captured from Python lies word for word in
+//! `golden/distro_compat_ru_before.json` and is checked under the Russian catalog
+//! (`warnings_in_russian_as_before`). The short string of
+//! `check_install_possible` is a log line; it is Russian, as it was.
 
 mod i18n_pin;
 
@@ -40,7 +40,7 @@ fn fixture() -> Value {
     serde_json::from_str(include_str!("golden/distro_compat_cases.json")).unwrap()
 }
 
-/// Option<Vec<String>> → Value (None → JSON null, как Python None).
+/// Option<Vec<String>> → Value (None → JSON null, like Python None).
 fn opt_list(v: Option<Vec<String>>) -> Value {
     match v {
         Some(list) => Value::from(list),
@@ -53,7 +53,7 @@ fn tables_match_python() {
     let fx = fixture();
     let tables = &fx["tables"];
 
-    // DISTRO_INFO: id → информация, в порядке вставки.
+    // DISTRO_INFO: id → info, in insertion order.
     let mut di = Map::new();
     for (id, info) in DISTRO_INFO {
         di.insert((*id).to_string(), serde_json::to_value(info).unwrap());
@@ -73,7 +73,7 @@ fn tables_match_python() {
     }
     assert_eq!(Value::Object(rosa), tables["rosa_de_packages"], "ROSA_DE_PACKAGES");
 
-    // ROSA_BRANDING_PACKAGES: id → [пакеты].
+    // ROSA_BRANDING_PACKAGES: id → [packages].
     let mut branding = Map::new();
     for (id, pkgs) in ROSA_BRANDING_PACKAGES {
         branding.insert((*id).to_string(), json!(pkgs));
@@ -84,7 +84,7 @@ fn tables_match_python() {
         "ROSA_BRANDING_PACKAGES"
     );
 
-    // Порядок ключей таблиц (важен для join(keys) в сообщениях).
+    // Table key order (matters for join(keys) in messages).
     let di_order: Vec<&str> = DISTRO_INFO.iter().map(|(k, _)| *k).collect();
     let alt_order: Vec<&str> = ALT_DE_PACKAGES.iter().map(|(k, _)| *k).collect();
     let rosa_order: Vec<&str> = ROSA_DE_PACKAGES.iter().map(|(k, _)| *k).collect();
@@ -126,9 +126,9 @@ fn regional_lists_match_python() {
 
 #[test]
 fn cases_match_python() {
-    // Предупреждения и бейдж — на каталоге перевода: сверяется английский
-    // исходник, что бы ни стояло в локали машины и какой бы каталог ни лежал
-    // в системе.
+    // Warnings and the badge go through the translation catalog: the English
+    // source is checked, whatever the machine's locale and whatever catalog is installed
+    // on the system.
     let _lang = i18n_pin::en();
     let fx = fixture();
     let cases = fx["cases"].as_array().expect("cases[]");
@@ -173,7 +173,7 @@ fn cases_match_python() {
             "{label}: get_compatibility_badge"
         );
 
-        // Батарея DE — сверяем ровно те ключи, что снял оракул.
+        // DE battery — we check exactly the keys the oracle captured.
         let per_de = exp["per_de"].as_object().expect("per_de{}");
         for (de, want) in per_de {
             assert_eq!(
@@ -196,19 +196,19 @@ fn cases_match_python() {
     }
 }
 
-/// Детерминированные части побочных функций (порт `_is_zps_enabled`,
-/// `is_apt_rpm_system`, `detect_alt_variant`) — точечная сверка логики.
+/// Deterministic parts of the side-effect functions (port of `_is_zps_enabled`,
+/// `is_apt_rpm_system`, `detect_alt_variant`) — a pointwise logic check.
 #[test]
 fn side_effect_pure_parts() {
     use rexon_core::distro_compat::{detect_alt_variant_from, is_apt_rpm, zps_enabled_from};
 
-    // is_apt_rpm: apt+rpm без dpkg.
+    // is_apt_rpm: apt+rpm without dpkg.
     assert!(is_apt_rpm(true, true, false));
     assert!(!is_apt_rpm(true, true, true));
     assert!(!is_apt_rpm(false, true, false));
     assert!(!is_apt_rpm(true, false, false));
 
-    // detect_alt_variant_from: приоритет проверок как в Python (сверху вниз).
+    // detect_alt_variant_from: check priority as in Python (top to bottom).
     assert_eq!(detect_alt_variant_from("NAME=\"ALT Workstation\""), "workstation");
     assert_eq!(detect_alt_variant_from("Рабочая станция"), "workstation");
     assert_eq!(detect_alt_variant_from("ALT Education 10"), "education");
@@ -218,19 +218,19 @@ fn side_effect_pure_parts() {
     assert_eq!(detect_alt_variant_from("Simply Linux 10"), "simply");
     assert_eq!(detect_alt_variant_from("ALT Starterkit"), "starterkit");
     assert_eq!(detect_alt_variant_from("Something else"), "unknown");
-    // server раньше simply: строка с обоими даёт server.
+    // server before simply: a string with both gives server.
     assert_eq!(detect_alt_variant_from("simply server"), "server");
 
-    // zps_enabled_from: модуль ядра ИЛИ конфиг.
+    // zps_enabled_from: a kernel module OR the config.
     assert!(zps_enabled_from(Some("... digsig_verif ..."), None));
     assert!(zps_enabled_from(None, Some("DIGSIG_ELF_MODE=1")));
     assert!(!zps_enabled_from(Some("no such module"), Some("DIGSIG_ELF_MODE=0")));
     assert!(!zps_enabled_from(None, None));
 }
 
-/// Русский для SteamOS живёт в `po/ru.po` — и говорит то, что обещано
-/// покупателю: что работает и какие столы ставятся образами (с 25.10.2026),
-/// без сроков и без команд.
+/// The Russian for SteamOS lives in `po/ru.po` — and says what is promised
+/// to the buyer: what works and which desktops are installed as images (since 25.10.2026),
+/// without dates and without commands.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn steamos_texts_in_russian_catalog() {
@@ -271,8 +271,8 @@ fn steamos_texts_in_russian_catalog() {
     }
 }
 
-/// Предупреждения и бейдж по-русски — слово в слово то, что снято с Python
-/// до перехода на каталог перевода.
+/// Warnings and the badge in Russian — word for word what was captured from Python
+/// before switching to the translation catalog.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn warnings_in_russian_as_before() {

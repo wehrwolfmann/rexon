@@ -1,55 +1,55 @@
-//! Сторож сеанса Plasma для AeroThemePlasma: падения KWin и plasmashell
-//! сразу после входа.
+//! Plasma session watchdog for AeroThemePlasma: KWin and plasmashell crashes
+//! right after login.
 //!
-//! ЗАЧЕМ. Сторож до KWin ([`crate::session_guard`]) ловит расхождение по
-//! версиям. Но бывает, что версии сходятся, а модуль всё равно роняет
-//! процесс: KWin пересобран под новый Qt, у эффекта разошёлся приватный ABI.
-//! Тогда `kwin_wayland_wrapper` перезапускает KWin до 10 раз и выкидывает к
-//! экрану входа, а plasmashell после трёх падений за минуту systemd
-//! оставляет мёртвым — чёрный стол с курсором.
+//! WHY. The pre-KWin guard ([`crate::session_guard`]) catches version
+//! mismatches. But sometimes the versions match and a module still crashes the
+//! process: KWin was rebuilt against a new Qt, an effect's private ABI drifted.
+//! Then `kwin_wayland_wrapper` restarts KWin up to 10 times and throws the person back to
+//! the login screen, while systemd leaves plasmashell dead after three crashes within a minute
+//! — a black desktop with a cursor.
 //!
-//! КАК. Пользовательский юнит [`UNIT_NAME`] после `graphical-session.target`
-//! запускает `rexon --session-watch`. Первые [`WATCH_SECS`] секунд он раз в
-//! [`POLL_SECS`] смотрит:
-//!   * `systemctl --user show` у `plasma-plasmashell.service` (`NRestarts`,
-//!     `Result=start-limit-hit`, `ActiveState`) и у `plasma-kwin_x11.service`
-//!     (на X11 KWin перезапускает сам systemd — `NRestarts`);
-//!   * журнал сеанса: записи `systemd-coredump` о падении `kwin_wayland`,
-//!     `kwin_x11`, `plasmashell` (они лежат в журнале пользователя, без root,
-//!     и несут стек упавшего потока — по нему видно, в чьём модуле упало), и
-//!     сколько разных процессов `kwin_wayland` писало в журнал (на Wayland
-//!     обёртка перезапускает KWin молча, без единой строки и без
-//!     `NRestarts`: новый процесс — единственный след без дампа).
+//! HOW. The user unit [`UNIT_NAME`] runs `rexon --session-watch` after
+//! `graphical-session.target`. For the first [`WATCH_SECS`] seconds, every
+//! [`POLL_SECS`] it looks at:
+//!   * `systemctl --user show` of `plasma-plasmashell.service` (`NRestarts`,
+//!     `Result=start-limit-hit`, `ActiveState`) and of `plasma-kwin_x11.service`
+//!     (on X11 systemd itself restarts KWin — `NRestarts`);
+//!   * the session journal: `systemd-coredump` records about crashes of `kwin_wayland`,
+//!     `kwin_x11`, `plasmashell` (they are in the user journal, without root,
+//!     and carry the stack of the crashed thread — it shows whose module crashed), and
+//!     how many distinct `kwin_wayland` processes wrote to the journal (on Wayland the
+//!     wrapper restarts KWin silently, without a single line and without
+//!     `NRestarts`: a new process is the only trace without a dump).
 //!
-//! Порог ([`KWIN_CRASH_THRESHOLD`] падения KWin или отказ plasmashell) ⇒
-//! кто виноват ([`culprits`]): модуль набора в стеке упавшего потока или в
-//! находках [`crate::plugin_journal`] этого входа. Виноват Aero:
-//!   * KWin — эффекты Aero выключаются СРАЗУ ([`crate::session_guard::fall_back_to_stock`]
-//!     с одними эффектами): следующий перезапуск KWin обёрткой уже читает
-//!     новый `kwinrc`, и сеанс выживает;
-//!   * plasmashell жив — раскладку посреди сеанса не тронуть (plasmashell
-//!     держит её в памяти), поэтому отметка
-//!     [`crate::session_guard::request_fallback`] на следующий вход;
-//!   * plasmashell мёртв (systemd сдался) — раскладку держать некому, её
-//!     можно заменить сейчас: откат целиком, потом plasmashell поднимается
-//!     заново (`reset-failed` + `start`).
+//! Threshold ([`KWIN_CRASH_THRESHOLD`] KWin crashes or plasmashell giving up) ⇒
+//! who is to blame ([`culprits`]): a module of the suite in the stack of the crashed thread or in
+//! the [`crate::plugin_journal`] findings of this login. If Aero is to blame:
+//!   * KWin — Aero effects are turned off IMMEDIATELY ([`crate::session_guard::fall_back_to_stock`]
+//!     with effects only): the wrapper's next KWin restart already reads the
+//!     new `kwinrc`, and the session survives;
+//!   * plasmashell is alive — the layout cannot be touched mid-session (plasmashell
+//!     keeps it in memory), so the
+//!     [`crate::session_guard::request_fallback`] marker is set for the next login;
+//!   * plasmashell is dead (systemd gave up) — nobody holds the layout, so it
+//!     can be replaced now: a full rollback, then plasmashell is started
+//!     again (`reset-failed` + `start`).
 //!
-//! После — уведомление с причиной (имя модуля).
+//! Afterwards — a notification with the reason (the module name).
 //!
-//! ЗАЩИТА ОТ ДУРАКА.
-//!   * Не Plasma, нет AeroThemePlasma, проверка выключена в настройках —
-//!     сторож молчит (юнит и не ставится).
-//!   * Виноват не Aero или виновника не видно — только запись в журнал
-//!     Rexon, оформление не трогается: чужая беда (драйвер, Qt, чужой
-//!     виджет) откатом Aero не лечится.
-//!   * Дамп обрабатывается секунды, а `NRestarts` растёт сразу — поэтому
-//!     после порога сторож ждёт стек ещё [`LATE_TRACE_SECS`] секунд, а не
-//!     решает «не Aero» по пустому журналу.
-//!   * Один и тот же случай (сторона + модули + версии KWin/Plasma/Qt/набора)
-//!     обрабатывается один раз ([`handled_path`]): человек, вернувший
-//!     оформление руками без пересборки, не получит отката снова. После
-//!     пересборки версии другие — и отпечаток другой.
-//!   * Никакого root: только `~/.config`, `~/.local/state`, `systemctl --user`.
+//! FOOLPROOFING.
+//!   * Not Plasma, no AeroThemePlasma, the check is turned off in settings —
+//!     the watchdog stays silent (the unit is not even installed).
+//!   * Aero is not to blame or no culprit is visible — only an entry in the Rexon
+//!     log, the theme is left alone: someone else's trouble (driver, Qt, a foreign
+//!     widget) is not cured by rolling back Aero.
+//!   * A dump takes seconds to process, while `NRestarts` grows immediately — so
+//!     after the threshold the watchdog waits for the stack another [`LATE_TRACE_SECS`] seconds instead of
+//!     deciding «not Aero» on an empty journal.
+//!   * The same case (side + modules + KWin/Plasma/Qt/suite versions)
+//!     is handled once ([`handled_path`]): a person who restored the
+//!     theme by hand without a rebuild will not get a rollback again. After a
+//!     rebuild the versions differ — and so does the fingerprint.
+//!   * No root at all: only `~/.config`, `~/.local/state`, `systemctl --user`.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -61,41 +61,41 @@ use crate::plugin_journal::{Finding, PluginKind};
 use crate::session_guard::{self as guard, FallbackCause, FallbackPlan, GuardPaths, PendingNotice};
 
 // ============================================================================
-// Имена, пороги
+// Names, thresholds
 // ============================================================================
 
-/// Флаг маршрута сторожа (его зовёт юнит).
+/// The watchdog route flag (the unit calls it).
 pub const WATCH_FLAG: &str = "--session-watch";
-/// Пользовательский юнит сторожа.
+/// The watchdog user unit.
 pub const UNIT_NAME: &str = "rexon-session-watch.service";
 pub const PLASMASHELL_UNIT: &str = "plasma-plasmashell.service";
 pub const KWIN_WAYLAND_UNIT: &str = "plasma-kwin_wayland.service";
 pub const KWIN_X11_UNIT: &str = "plasma-kwin_x11.service";
 pub const SESSION_TARGET: &str = "graphical-session.target";
 
-/// Сколько следить после входа, секунды. Падения из-за несовместимого
-/// модуля случаются при загрузке — в первые секунды; позже падение уже не
-/// «сразу после входа», и откатывать по нему оформление — ложная тревога.
+/// How long to watch after login, seconds. Crashes caused by an incompatible
+/// module happen at load time — in the first seconds; a later crash is no longer
+/// «right after login», and rolling back the theme over it is a false alarm.
 pub const WATCH_SECS: u64 = 120;
-/// Как часто смотреть, секунды. Обёртка KWin перезапускает его за доли
-/// секунды; десять падений подряд — это 5–20 с, и откат обязан успеть до
-/// того, как она сдастся.
+/// How often to look, seconds. The KWin wrapper restarts it within fractions of a
+/// second; ten crashes in a row take 5–20 s, and the rollback must make it before
+/// the wrapper gives up.
 pub const POLL_SECS: u64 = 1;
-/// Сколько после порога ждать стек упавшего потока, секунды (дамп пишется
-/// с задержкой).
+/// How long to wait for the crashed thread's stack after the threshold, seconds (the dump is written
+/// with a delay).
 pub const LATE_TRACE_SECS: u64 = 20;
-/// Падения KWin: со второго подряд это уже не случайность — второй
-/// перезапуск с тем же модулем падает так же, а на десятом обёртка сдаётся.
+/// KWin crashes: from the second in a row it is no longer a fluke — the second
+/// restart with the same module crashes the same way, and at the tenth the wrapper gives up.
 pub const KWIN_CRASH_THRESHOLD: u32 = 2;
-/// Перезапуски plasmashell: systemd сдаётся на третьем падении за минуту
-/// (`StartLimitBurst=3`); на втором ещё можно предупредить живым столом.
+/// plasmashell restarts: systemd gives up at the third crash within a minute
+/// (`StartLimitBurst=3`); at the second one can still warn with a live desktop.
 pub const SHELL_RESTART_THRESHOLD: u32 = 2;
-/// Запас назад от начала сеанса, секунды (KWin стартует чуть раньше цели).
+/// Margin back from the session start, seconds (KWin starts slightly before the target).
 pub const SINCE_MARGIN_SECS: u64 = 30;
-/// Сколько отпечатков помнить.
+/// How many fingerprints to remember.
 const HANDLED_KEEP: usize = 20;
 
-/// Где помнить обработанные случаи.
+/// Where to remember handled cases.
 pub fn handled_path(paths: &GuardPaths) -> PathBuf {
     paths.state_dir.join("watch-handled")
 }
@@ -104,7 +104,7 @@ pub fn handled_path(paths: &GuardPaths) -> PathBuf {
 // systemctl --user show
 // ============================================================================
 
-/// Состояние одного юнита.
+/// State of one unit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UnitState {
     pub id: String,
@@ -112,7 +112,7 @@ pub struct UnitState {
     pub result: String,
     pub n_restarts: u32,
     pub main_pid: u32,
-    /// Когда юнит вышел из «неактивен», микросекунды эпохи.
+    /// When the unit left «inactive», microseconds since the epoch.
     pub inactive_exit_us: Option<u64>,
 }
 
@@ -120,13 +120,13 @@ impl UnitState {
     pub fn alive(&self) -> bool {
         self.active_state == "active"
     }
-    /// systemd сдался: больше сам не перезапустит.
+    /// systemd gave up: it will not restart it by itself any more.
     pub fn gave_up(&self) -> bool {
         self.result == "start-limit-hit" || self.active_state == "failed"
     }
 }
 
-/// Команда опроса юнитов.
+/// Unit polling command.
 pub fn show_argv() -> Vec<String> {
     let mut argv: Vec<String> = ["systemctl", "--user", "show", "--timestamp=unix"]
         .iter()
@@ -140,15 +140,15 @@ pub fn show_argv() -> Vec<String> {
     argv
 }
 
-/// Метка времени `--timestamp=unix` (`@1729850000`) → микросекунды. Иной
-/// вид (старый systemd без этого ключа) — не знаем.
+/// A `--timestamp=unix` timestamp (`@1729850000`) → microseconds. Any other
+/// form (old systemd without this flag) — unknown.
 fn unix_stamp_us(v: &str) -> Option<u64> {
     let secs: u64 = v.trim().strip_prefix('@')?.split('.').next()?.parse().ok()?;
     (secs > 0).then_some(secs * 1_000_000)
 }
 
-/// Разбор `systemctl show` по нескольким юнитам: блоки `Ключ=значение`
-/// через пустую строку.
+/// Parse `systemctl show` for several units: `Key=value` blocks
+/// separated by an empty line.
 pub fn parse_show(text: &str) -> Vec<UnitState> {
     let mut out = Vec::new();
     let mut cur = UnitState::default();
@@ -186,8 +186,8 @@ fn unit<'a>(units: &'a [UnitState], id: &str) -> Option<&'a UnitState> {
     units.iter().find(|u| u.id == id)
 }
 
-/// С какого времени читать журнал: начало сеанса (выход цели сеанса из
-/// «неактивна») с запасом. None — systemd не назвал.
+/// From what time to read the journal: the session start (the session target leaving
+/// «inactive») with a margin. None — systemd did not say.
 pub fn session_since_us(units: &[UnitState]) -> Option<u64> {
     let t = [SESSION_TARGET, KWIN_WAYLAND_UNIT, KWIN_X11_UNIT]
         .iter()
@@ -197,10 +197,10 @@ pub fn session_since_us(units: &[UnitState]) -> Option<u64> {
 }
 
 // ============================================================================
-// Журнал сеанса: дампы и процессы KWin
+// Session journal: dumps and KWin processes
 // ============================================================================
 
-/// Команда чтения журнала с `since_us`.
+/// Command to read the journal from `since_us`.
 pub fn journal_argv(since_us: u64) -> Vec<String> {
     let mut argv: Vec<String> = ["journalctl", "--user", "-b", "--no-pager", "-q", "-o", "json", "--all"]
         .iter()
@@ -208,33 +208,33 @@ pub fn journal_argv(since_us: u64) -> Vec<String> {
         .collect();
     argv.push(format!("--since=@{}", since_us / 1_000_000));
     argv.push("--output-fields=MESSAGE,_COMM,_PID,SYSLOG_IDENTIFIER,COREDUMP_COMM,COREDUMP_USER_UNIT".into());
-    // Поля одного имени — «или», `+` — «или» между группами.
+    // Fields with one name are «or», `+` is «or» between groups.
     argv.extend(["_COMM=kwin_wayland", "_COMM=kwin_x11", "+", "SYSLOG_IDENTIFIER=systemd-coredump"].iter().map(|s| s.to_string()));
     argv
 }
 
-/// Одно падение по записи `systemd-coredump`.
+/// One crash from a `systemd-coredump` record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Crash {
-    /// Имя процесса (`kwin_wayland`, `plasmashell`).
+    /// Process name (`kwin_wayland`, `plasmashell`).
     pub comm: String,
     pub time_us: u64,
-    /// Модули в стеке упавшего (первого) потока, по порядку кадров.
+    /// Modules in the stack of the crashed (first) thread, in frame order.
     pub modules: Vec<String>,
 }
 
-/// Что увидели в журнале.
+/// What was seen in the journal.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct JournalFacts {
     pub crashes: Vec<Crash>,
-    /// Разные процессы `kwin_wayland`, писавшие в журнал.
+    /// Distinct `kwin_wayland` processes that wrote to the journal.
     pub kwin_pids: BTreeSet<u64>,
 }
 
-/// Процессы, чьи падения считаем.
+/// Processes whose crashes we count.
 const WATCHED_COMMS: &[&str] = &["kwin_wayland", "kwin_x11", "plasmashell"];
 
-/// Модули стека первого потока: кадры `#3 0x… func (libfoo.so + 0x12)`.
+/// Modules of the first thread's stack: frames `#3 0x… func (libfoo.so + 0x12)`.
 pub fn crash_modules(message: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut in_first = false;
@@ -273,7 +273,7 @@ fn field(v: &Value, key: &str) -> Option<String> {
     }
 }
 
-/// Разбор `journalctl -o json` ([`journal_argv`]).
+/// Parse `journalctl -o json` ([`journal_argv`]).
 pub fn parse_journal(text: &str) -> JournalFacts {
     let mut facts = JournalFacts::default();
     for line in text.lines() {
@@ -298,15 +298,15 @@ pub fn parse_journal(text: &str) -> JournalFacts {
 }
 
 // ============================================================================
-// Наблюдение и порог
+// Observation and threshold
 // ============================================================================
 
-/// Что случилось с начала сеанса.
+/// What happened since the session start.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Observation {
     pub kwin_crashes: u32,
     pub shell_restarts: u32,
-    /// systemd больше не поднимет plasmashell.
+    /// systemd will not start plasmashell again.
     pub shell_gave_up: bool,
     pub shell_alive: bool,
     pub crashes: Vec<Crash>,
@@ -321,10 +321,10 @@ impl Observation {
     }
 }
 
-/// Свести юниты и журнал. Падения KWin — наибольшее из: дампов, лишних
-/// процессов `kwin_wayland` (каждый перезапуск обёрткой — новый процесс),
-/// `NRestarts` юнита KWin на X11. Источники пересекаются, поэтому не
-/// складываются.
+/// Combine the units and the journal. KWin crashes are the largest of: dumps, extra
+/// `kwin_wayland` processes (each restart by the wrapper is a new process),
+/// `NRestarts` of the KWin unit on X11. The sources overlap, so they are not
+/// added up.
 pub fn observe(units: &[UnitState], journal: &JournalFacts) -> Observation {
     let dumps = |pred: &dyn Fn(&str) -> bool| journal.crashes.iter().filter(|c| pred(&c.comm)).count() as u32;
     let kwin_dumps = dumps(&|c| c.starts_with("kwin_"));
@@ -341,30 +341,30 @@ pub fn observe(units: &[UnitState], journal: &JournalFacts) -> Observation {
 }
 
 // ============================================================================
-// Кто виноват
+// Who is to blame
 // ============================================================================
 
-/// Сторона, которая падает.
+/// The side that crashes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Side {
     Kwin,
     Shell,
 }
 
-/// Что известно о наборе на этой машине.
+/// What is known about the suite on this machine.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AeroSet {
-    /// Пакеты набора.
+    /// Packages of the suite.
     pub packages: Vec<String>,
-    /// Имена файлов модулей набора (`smodglow.so`) — их ищем в стеке.
+    /// File names of the suite's modules (`smodglow.so`) — we look for them in the stack.
     pub modules: Vec<String>,
     pub effect_ids: Vec<String>,
     pub applet_ids: Vec<String>,
 }
 
-/// Имена `.so` из файлов пакетов набора. Форк libplasma не в счёт: его
-/// библиотеки зовутся как штатные (`libPlasma.so.6`) и есть в стеке любого
-/// падения plasmashell — по ним виновника не назвать.
+/// `.so` names from the suite packages' files. The libplasma fork does not count: its
+/// libraries are named like the stock ones (`libPlasma.so.6`) and appear in the stack of any
+/// plasmashell crash — they cannot name a culprit.
 pub fn aero_modules(files: &[(String, Vec<String>)]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for (pkg, list) in files {
@@ -381,26 +381,26 @@ pub fn aero_modules(files: &[(String, Vec<String>)]) -> Vec<String> {
     out
 }
 
-/// Виновник.
+/// A culprit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Culprit {
     pub side: Side,
-    /// Имя для человека (из метаданных модуля либо имя файла).
+    /// Name for the person (from the module metadata or the file name).
     pub name: String,
-    /// Техническая строка для журнала и «Подробнее».
+    /// Technical line for the log and «Details».
     pub technical: String,
 }
 
-/// Модуль из стека — модуль набора (имя файла, а у библиотеки с версией —
-/// и без хвоста `.so.N`).
+/// A module from the stack is a module of the suite (file name, and for a versioned library
+/// also without the `.so.N` tail).
 fn is_aero_module(module: &str, aero: &AeroSet) -> bool {
     let stem = |m: &str| m.split(".so").next().unwrap_or(m).to_string();
     aero.modules.iter().any(|a| a == module || stem(a) == stem(module))
 }
 
-/// Виновники из набора: модуль набора в стеке упавшего потока или в
-/// находках журнала этого входа ([`crate::plugin_journal`]). Чужие модули
-/// сюда не попадают — по ним оформление не трогают.
+/// Culprits from the suite: a suite module in the stack of the crashed thread or in
+/// this login's journal findings ([`crate::plugin_journal`]). Foreign modules
+/// do not get here — the theme is not touched over them.
 pub fn culprits(obs: &Observation, aero: &AeroSet, findings: &[Finding]) -> Vec<Culprit> {
     let mut out: Vec<Culprit> = Vec::new();
     let mut push = |c: Culprit| {
@@ -435,45 +435,45 @@ pub fn culprits(obs: &Observation, aero: &AeroSet, findings: &[Finding]) -> Vec<
 }
 
 // ============================================================================
-// Решение
+// Decision
 // ============================================================================
 
-/// Что делать с plasmashell.
+/// What to do with plasmashell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellAct {
     None,
-    /// Жив — раскладка со следующего входа ([`guard::request_fallback`]).
+    /// Alive — layout from the next login ([`guard::request_fallback`]).
     NextLogin,
-    /// Мёртв — откат целиком сейчас и поднять заново.
+    /// Dead — full rollback now and start it again.
     Revive,
 }
 
-/// Откат.
+/// Rollback.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Action {
-    /// Выключить эффекты Aero сейчас.
+    /// Turn off the Aero effects now.
     pub kwin: bool,
     pub shell: ShellAct,
-    /// Причина для уведомления (человеческая).
+    /// Reason for the notification (human-readable).
     pub reason: String,
-    /// Технические строки.
+    /// Technical lines.
     pub why: Vec<String>,
     pub fingerprint: String,
 }
 
-/// Итог одного взгляда.
+/// Result of one look.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchDecision {
-    /// Порог не достигнут.
+    /// Threshold not reached.
     Nothing,
-    /// Порог достигнут, виновника пока не видно — ждать стек.
+    /// Threshold reached, no culprit visible yet — wait for the stack.
     Wait,
-    /// Только запись в журнал Rexon.
+    /// Only an entry in the Rexon log.
     LogOnly { why: Vec<String> },
     Act(Action),
 }
 
-/// Причина для уведомления.
+/// Reason for the notification.
 pub fn culprit_reason(c: &Culprit) -> String {
     match c.side {
         // TRANSLATORS: %1 is the name of an AeroThemePlasma module.
@@ -483,12 +483,12 @@ pub fn culprit_reason(c: &Culprit) -> String {
     }
 }
 
-/// Решить по наблюдению.
+/// Decide based on the observation.
 ///
-/// `done` — стороны, по которым этот сторож уже откатил (второй раз не
-/// трогаем); `versions` — версии KWin/Plasma/Qt/набора для отпечатка;
-/// `handled` — отпечатки, обработанные прежними входами; `final_look` —
-/// ждать стек дальше некуда.
+/// `done` — sides this watchdog has already rolled back (we do not touch them
+/// a second time); `versions` — KWin/Plasma/Qt/suite versions for the fingerprint;
+/// `handled` — fingerprints handled by previous logins; `final_look` —
+/// there is no point waiting for the stack any longer.
 pub fn decide(
     obs: &Observation,
     found: &[Culprit],
@@ -527,8 +527,8 @@ pub fn decide(
     } else if obs.shell_gave_up {
         ShellAct::Revive
     } else if final_look {
-        // Ни жив, ни сдался (systemd как раз перезапускает) — раскладку
-        // сейчас не трогать.
+        // Neither alive nor given up (systemd is restarting it right now) — do not touch
+        // the layout now.
         ShellAct::NextLogin
     } else {
         return WatchDecision::Wait;
@@ -550,14 +550,14 @@ pub fn decide(
     WatchDecision::Act(Action { kwin: !kwin_c.is_empty(), shell, reason, why, fingerprint })
 }
 
-/// Прочитать обработанные отпечатки.
+/// Read the handled fingerprints.
 pub fn load_handled(paths: &GuardPaths) -> Vec<String> {
     std::fs::read_to_string(handled_path(paths))
         .map(|t| t.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect())
         .unwrap_or_default()
 }
 
-/// Запомнить отпечаток (последние [`HANDLED_KEEP`]).
+/// Remember a fingerprint (the last [`HANDLED_KEEP`]).
 pub fn remember_handled(paths: &GuardPaths, fingerprint: &str) -> Result<(), String> {
     let mut list = load_handled(paths);
     list.retain(|f| f != fingerprint);
@@ -567,23 +567,23 @@ pub fn remember_handled(paths: &GuardPaths, fingerprint: &str) -> Result<(), Str
 }
 
 // ============================================================================
-// Исполнение решения (общее для живого и проверок)
+// Executing the decision (shared by the live run and the tests)
 // ============================================================================
 
-/// Что сделал откат.
+/// What the rollback did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ActDone {
     pub effects_off: bool,
     pub layout_replaced: bool,
     pub requested: bool,
-    /// Поднять plasmashell заново.
+    /// Start plasmashell again.
     pub revive_shell: bool,
     pub notice: Option<PendingNotice>,
 }
 
-/// Исполнить [`Action`] над файлами. `shell_dead_now` — перепроверка прямо
-/// перед правкой раскладки: plasmashell всё ещё мёртв (иначе только отметка
-/// на следующий вход). Порядок: эффекты → раскладка/отметка → отпечаток.
+/// Execute an [`Action`] on the files. `shell_dead_now` — a re-check right
+/// before editing the layout: plasmashell is still dead (otherwise only the marker
+/// for the next login). Order: effects → layout/marker → fingerprint.
 pub fn apply(paths: &GuardPaths, action: &Action, parts: &guard::AeroParts, shell_dead_now: bool) -> Result<ActDone, String> {
     let cause = FallbackCause::Requested { reason: action.reason.clone() };
     let mut done = ActDone::default();
@@ -624,16 +624,16 @@ pub fn apply(paths: &GuardPaths, action: &Action, parts: &guard::AeroParts, shel
 }
 
 // ============================================================================
-// Юнит
+// Unit
 // ============================================================================
 
-/// Путь юнита.
+/// Unit path.
 pub fn unit_path(config_home: &str) -> String {
     format!("{}/{UNIT_NAME}", crate::update_guard::user_unit_dir(config_home))
 }
 
-/// Текст юнита. Описание — по-английски и не из каталога: его читает
-/// `systemctl`, а не покупатель.
+/// Unit text. The description is in English and not from the catalog: it is read by
+/// `systemctl`, not by the user.
 pub fn unit_text(exec_start: &str, program: Option<&str>) -> String {
     let condition = program
         .filter(|p| p.starts_with('/'))
@@ -659,7 +659,7 @@ pub fn unit_text(exec_start: &str, program: Option<&str>) -> String {
     )
 }
 
-/// Что сделать с юнитом.
+/// What to do with the unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitChange {
     Nothing,
@@ -667,9 +667,9 @@ pub enum UnitChange {
     Remove,
 }
 
-/// План: `wanted` — те же условия, что у сценария до KWin (Plasma-набор
-/// стоит, проверка включена); `exec_start` — строка запуска (None —
-/// заводить нечем, снимаем).
+/// Plan: `wanted` — the same conditions as for the pre-KWin script (the Plasma suite
+/// is installed, the check is enabled); `exec_start` — the launch line (None —
+/// nothing to start it with, remove).
 pub fn unit_change(wanted: bool, exec_start: Option<&str>, program: Option<&str>, existing: Option<&str>) -> UnitChange {
     match (wanted, exec_start) {
         (true, Some(exec)) => {
@@ -685,9 +685,9 @@ pub fn unit_change(wanted: bool, exec_start: Option<&str>, program: Option<&str>
     }
 }
 
-/// `systemctl --user …` по порядку. Включается без `--now`: сторож смотрит
-/// первые минуты ВХОДА, а не сеанс, который уже идёт. Снятие: `disable`
-/// (файл ещё на месте) → файл удаляется → `daemon-reload`.
+/// `systemctl --user …` in order. Enabled without `--now`: the watchdog watches
+/// the first minutes of a LOGIN, not a session that is already running. Removal: `disable`
+/// (the file is still in place) → the file is deleted → `daemon-reload`.
 pub fn unit_systemctl(change: &UnitChange) -> Vec<Vec<String>> {
     let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     match change {
@@ -717,8 +717,8 @@ fn systemctl_live(args: &[String]) -> Result<(), String> {
     }
 }
 
-/// Поставить или снять юнит на живой машине. Зовёт
-/// [`guard::sync_env_script_live`] — одна точка для обоих сторожей.
+/// Install or remove the unit on the live machine. Calls
+/// [`guard::sync_env_script_live`] — one point for both watchdogs.
 pub fn sync_unit_live(config_home: &str, wanted: bool, exec_start: Option<&str>, program: Option<&str>) -> Result<UnitChange, String> {
     let path = unit_path(config_home);
     let existing = std::fs::read_to_string(&path).ok();
@@ -744,7 +744,7 @@ pub fn sync_unit_live(config_home: &str, wanted: bool, exec_start: Option<&str>,
 }
 
 // ============================================================================
-// Живой сторож
+// Live watchdog
 // ============================================================================
 
 fn run_capture(argv: Vec<String>, timeout: u64) -> Option<String> {
@@ -767,8 +767,8 @@ fn units_live() -> Vec<UnitState> {
     if !units.is_empty() {
         return units;
     }
-    // systemd старше 248 не знает `--timestamp=unix`: без него время
-    // начала сеанса неизвестно, но счётчики перезапусков те же.
+    // systemd older than 248 does not know `--timestamp=unix`: without it the session
+    // start time is unknown, but the restart counters are the same.
     let argv: Vec<String> = show_argv().into_iter().filter(|a| a != "--timestamp=unix").collect();
     run_capture(argv, 10).map(|t| parse_show(&t)).unwrap_or_default()
 }
@@ -777,7 +777,7 @@ fn now_us() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0)
 }
 
-/// Набор и версии на живой машине. None — набора нет.
+/// The suite and versions on the live machine. None — no suite.
 fn aero_live() -> Option<(AeroSet, guard::AeroParts, String)> {
     let db = guard::LocalDb::read(Path::new(guard::PACMAN_LOCAL));
     if !guard::aero_installed(&db) {
@@ -803,13 +803,13 @@ fn aero_live() -> Option<(AeroSet, guard::AeroParts, String)> {
     Some((set, parts, versions.join(";")))
 }
 
-/// Поднять plasmashell после отката (systemd уже сдался).
+/// Start plasmashell after the rollback (systemd has already given up).
 fn revive_shell_live() {
     let _ = systemctl_live(&["reset-failed".into(), PLASMASHELL_UNIT.into()]);
     let _ = systemctl_live(&["start".into(), "--no-block".into(), PLASMASHELL_UNIT.into()]);
 }
 
-/// `rexon --session-watch` — его зовёт юнит. Всегда 0.
+/// `rexon --session-watch` — the unit calls it. Always 0.
 pub fn watch_route_live(out: &mut dyn FnMut(&str)) -> i32 {
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
     if !desktop.split(':').any(|p| p.eq_ignore_ascii_case("KDE")) {
@@ -845,7 +845,7 @@ pub fn watch_route_live(out: &mut dyn FnMut(&str)) -> i32 {
         }
         let final_look = threshold_at.is_some_and(|t| t.elapsed().as_secs() >= LATE_TRACE_SECS);
         if reached {
-            // Журнал модулей дороже (pacman -Qo) — не чаще раза в 5 с.
+            // The module journal is more expensive (pacman -Qo) — no more than once every 5 s.
             if findings_at.is_none_or(|t| t.elapsed().as_secs() >= 5) || final_look {
                 findings = crate::system_de_exec::plugin_findings_live()
                     .into_iter()
@@ -907,11 +907,11 @@ pub fn watch_route_live(out: &mut dyn FnMut(&str)) -> i32 {
 }
 
 // ============================================================================
-// Удаление Rexon
+// Uninstalling Rexon
 // ============================================================================
 
-/// `systemctl --user` для снятия юнита при удалении Rexon (файл удаляет
-/// вызывающий между шагами, как у [`unit_systemctl`]).
+/// `systemctl --user` to remove the unit when uninstalling Rexon (the caller deletes the file
+/// between the steps, as with [`unit_systemctl`]).
 pub fn uninstall_systemctl() -> Vec<Vec<String>> {
     unit_systemctl(&UnitChange::Remove)
 }
@@ -999,7 +999,7 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         Crash { comm: comm.into(), time_us: 1, modules: modules.iter().map(|s| s.to_string()).collect() }
     }
 
-    // ── разбор ──
+    // ── parsing ──
 
     #[test]
     fn show_parses_blocks_and_unix_stamps() {
@@ -1011,7 +1011,7 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         assert_eq!(unit(&u, KWIN_WAYLAND_UNIT).unwrap().main_pid, 1234);
         assert_eq!(unit(&u, KWIN_X11_UNIT).unwrap().inactive_exit_us, None);
         assert_eq!(session_since_us(&u), Some((1_792_900_004 - SINCE_MARGIN_SECS) * 1_000_000));
-        // Старый systemd без --timestamp=unix: время не знаем.
+        // Old systemd without --timestamp=unix: the time is unknown.
         assert_eq!(parse_show("Id=x.target\nInactiveExitTimestamp=Sun 2026-10-25 06:00:00 CET\n")[0].inactive_exit_us, None);
         assert!(parse_show("").is_empty());
     }
@@ -1055,7 +1055,7 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         assert_eq!(f.kwin_pids.len(), 2);
     }
 
-    // ── порог ──
+    // ── threshold ──
 
     #[test]
     fn kwin_crash_count_takes_the_largest_source_not_the_sum() {
@@ -1080,7 +1080,7 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         assert!(o.shell_failed() && o.shell_gave_up && !o.shell_alive);
     }
 
-    // ── кто виноват ──
+    // ── who is to blame ──
 
     #[test]
     fn culprit_from_trace_and_from_journal_findings() {
@@ -1113,7 +1113,7 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         assert!(!is_aero_module("libPlasma.so.6", &set), "форк libplasma по имени не опознать");
     }
 
-    // ── решение ──
+    // ── decision ──
 
     fn kwin_obs() -> Observation {
         Observation { kwin_crashes: 2, shell_alive: true, crashes: vec![crash("kwin_wayland", &["smodglow.so"])], ..Default::default() }
@@ -1154,7 +1154,7 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         assert!(matches!(decide(&alive, &found, &[], "v", &[], false), WatchDecision::Act(Action { shell: ShellAct::NextLogin, kwin: false, .. })));
         let dead = Observation { shell_restarts: 3, shell_gave_up: true, ..Default::default() };
         assert!(matches!(decide(&dead, &found, &[], "v", &[], false), WatchDecision::Act(Action { shell: ShellAct::Revive, .. })));
-        // Перезапускается прямо сейчас: ни жив, ни сдался — подождать.
+        // Restarting right now: neither alive nor given up — wait.
         let between = Observation { shell_restarts: 2, ..Default::default() };
         assert_eq!(decide(&between, &found, &[], "v", &[], false), WatchDecision::Wait);
         assert!(matches!(decide(&between, &found, &[], "v", &[], true), WatchDecision::Act(Action { shell: ShellAct::NextLogin, .. })));
@@ -1168,11 +1168,11 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         assert!(matches!(decide(&o, &found, &[], "kwin=6.8.1", &[a.fingerprint.clone()], false), WatchDecision::LogOnly { .. }));
         let WatchDecision::Act(b) = decide(&o, &found, &[], "kwin=6.8.2", &[a.fingerprint.clone()], false) else { panic!() };
         assert_ne!(a.fingerprint, b.fingerprint);
-        // Эту сторону сторож уже откатил в этот вход.
+        // The watchdog has already rolled back this side during this login.
         assert_eq!(decide(&o, &found, &[Side::Kwin], "kwin=6.8.1", &[], false), WatchDecision::Nothing);
     }
 
-    // ── исполнение ──
+    // ── execution ──
 
     fn put(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1219,7 +1219,7 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         let t = Tmp::new("dead");
         let p = t.paths();
         put(&p.appletsrc(), APPLETSRC);
-        // Перепроверка: plasmashell уже поднялся — только отметка.
+        // Re-check: plasmashell has already come up — only the marker.
         let d = apply(&p, &action(false, ShellAct::Revive), &parts(), false).unwrap();
         assert!(d.requested && !d.revive_shell);
         let _ = std::fs::remove_file(p.request_file());
@@ -1243,7 +1243,7 @@ Stack trace of thread 4321:\n#0  0x00007f n/a (libc.so.6 + 0x9a)\n#1  0x00007f _
         assert_eq!(l.last().map(String::as_str), Some("fp29"));
     }
 
-    // ── юнит ──
+    // ── unit ──
 
     #[test]
     fn unit_text_and_plan() {

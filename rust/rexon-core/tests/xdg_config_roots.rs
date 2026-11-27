@@ -1,19 +1,21 @@
-//! Сторож правила «одна правда путей»: ВСЕ хранилища Rexon в конфигах
-//! считаются от `$XDG_CONFIG_HOME`, а не от литерального `~/.config/rexon`.
+//! Guard of the «one truth for paths» rule: ALL Rexon config stores are
+//! computed from `$XDG_CONFIG_HOME`, not from a literal `~/.config/rexon`.
 //!
-//! Зачем отдельный файл. Путь к папке настроек Rexon склеивали десяток
-//! модулей, и часть из них делала это литералом от голого `$HOME`: мост
-//! состояния (`bridge.json`, `bridge_commands/`) и каталог скриншотов. На
-//! машине с нестандартным `XDG_CONFIG_HOME` получались ДВЕ папки настроек:
-//! одна половина продукта писала в одну, другая читала другую, а удаление
-//! Rexon сносило только XDG-шную. Сверка держит оба конца:
-//!   * чистые строители (`*_xdg`) — прямой проверкой значения;
-//!   * те, что снимают корень с ОКРУЖЕНИЯ, — дочерним прогоном в подставном
-//!     `HOME`/`XDG_CONFIG_HOME` (менять окружение в общем процессе нельзя:
-//!     сверки идут в несколько потоков, и соседняя ушла бы в живой профиль).
+//! Why a separate file. The path to the Rexon settings folder was glued
+//! together by a dozen modules, and some of them did it literally from a bare
+//! `$HOME`: the state bridge (`bridge.json`, `bridge_commands/`) and the
+//! screenshots directory. On a machine with a non-standard `XDG_CONFIG_HOME`
+//! this produced TWO settings folders: one half of the product wrote to one,
+//! the other read the other, and uninstalling Rexon removed only the XDG one.
+//! The check holds both ends:
+//!   * pure builders (`*_xdg`) — by checking the value directly;
+//!   * those that take the root from the ENVIRONMENT — by a child run in a
+//!     mocked `HOME`/`XDG_CONFIG_HOME` (the environment cannot be changed in
+//!     the shared process: checks run in several threads, and a neighbour
+//!     would end up in the live profile).
 //!
-//! ⚠️ Дочерний прогон НИЧЕГО не пишет на диск — только считает пути, поэтому
-//! подставные каталоги и не обязаны существовать.
+//! ⚠️ The child run writes NOTHING to disk — it only computes paths, so the
+//! mocked directories need not exist.
 
 use std::path::{Path, PathBuf};
 
@@ -23,14 +25,14 @@ use rexon_core::{
     window_menu as wm,
 };
 
-/// Признак дочернего прогона (он же — запрет запускать тело вручную).
+/// Child-run marker (also forbids running the body by hand).
 const CHILD_ENV: &str = "REXON_XDG_ROOTS_CHILD";
 
-/// Подставной корень конфигов дочернего прогона.
+/// Mocked config root of the child run.
 const CHILD_XDG: &str = "/подставной/xdg-config";
 
-/// Подставной дом дочернего прогона: под ним НЕ должно оказаться ни одного
-/// пути — именно туда уезжала вторая правда.
+/// Mocked home of the child run: NOT a single path may end up under it —
+/// that is exactly where the second truth went.
 const CHILD_HOME: &str = "/подставной/дом";
 
 #[test]
@@ -59,19 +61,19 @@ fn pure_builders_follow_xdg_config_home() {
         format!("{root}/dev_mode")
     );
 
-    // Корень не задан — стандартный `~/.config`, как у `os.path.expanduser`.
+    // Root not set — the standard `~/.config`, as with `os.path.expanduser`.
     assert_eq!(utils::rexon_config_dir_at(None, home), "/дом/.config/rexon");
     assert_eq!(sc::screenshot_dir(home), format!("{home}/{}", sc::SCREENSHOT_SUBDIR));
-    // Пустая строка — это «не задан» (так её трактует спецификация XDG).
+    // An empty string means «not set» (that is how the XDG spec treats it).
     assert_eq!(utils::rexon_config_dir_at(Some(""), home), "/дом/.config/rexon");
     assert_eq!(sc::screenshot_dir_xdg(Some(""), home), format!("{home}/{}", sc::SCREENSHOT_SUBDIR));
 }
 
-/// Пути, которые снимают корень с окружения, — в подставном окружении.
+/// Paths that take the root from the environment — in a mocked environment.
 ///
-/// Тело в отдельном процессе: `std::env::set_var` меняет окружение всего
-/// процесса, а сверки идут параллельно — соседняя могла бы уйти в живой
-/// профиль Wehrwolfmann.
+/// The body runs in a separate process: `std::env::set_var` changes the
+/// environment of the whole process, and checks run in parallel — a
+/// neighbour could end up in Wehrwolfmann's live profile.
 #[test]
 fn env_backed_paths_follow_xdg_config_home() {
     let out = std::process::Command::new(std::env::current_exe().expect("путь бинаря"))
@@ -89,7 +91,7 @@ fn env_backed_paths_follow_xdg_config_home() {
     );
 }
 
-/// Тело сверки — только в дочернем процессе (см. выше).
+/// Check body — only in the child process (see above).
 #[test]
 #[ignore = "запускается дочерним процессом env_backed_paths_follow_xdg_config_home"]
 fn env_backed_paths_child() {
@@ -119,7 +121,7 @@ fn env_backed_paths_child() {
     ];
     for ((what, got), want) in checked.iter().zip(expected.iter()) {
         assert_eq!(got, want, "{what}");
-        // Ни один путь не смотрит в `$HOME/.config` — это и была вторая правда.
+        // No path looks into `$HOME/.config` — that was the second truth.
         assert!(
             !got.starts_with(Path::new(CHILD_HOME)),
             "{what}: путь мимо XDG, в голом $HOME — {got:?}"

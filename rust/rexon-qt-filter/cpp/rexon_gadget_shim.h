@@ -1,9 +1,9 @@
-// Обобщённый мост к Qt-мета-рефлексии гаджетов (Qt Protobuf value-типы
-// WallpaperFilterRule / FilterLogic). Ни одного протобаф-типа по имени тут
-// НЕ линкуется: метатип берётся в рантайме через QMetaType::fromName, а
-// чтение/запись свойств — через QMetaProperty::readOnGadget/writeOnGadget.
-// Это единственная часть модели, которую Rust/cxx-qt выразить не могут
-// (нет доступа к чужому staticMetaObject), поэтому она вынесена в C++.
+// Generic bridge to Qt meta-reflection of gadgets (Qt Protobuf value types
+// WallpaperFilterRule / FilterLogic). Not a single protobuf type is linked here
+// by name: the metatype is looked up at runtime via QMetaType::fromName, and
+// property reads/writes go through QMetaProperty::readOnGadget/writeOnGadget.
+// This is the only part of the model that Rust/cxx-qt cannot express
+// (no access to a foreign staticMetaObject), so it is moved into C++.
 #pragma once
 
 #include <cstdint>
@@ -14,43 +14,46 @@
 
 #include "rust/cxx.h"
 
-// Метатип по имени (waywallen::control::v1::WallpaperFilterRule и т.п.).
-// Тип обязан быть уже зарегистрирован (модуль waywallen.control загружен).
+// Metatype by name (waywallen::control::v1::WallpaperFilterRule and the like).
+// The type must already be registered (the waywallen.control module is loaded).
 QVariant rexon_default_gadget(rust::Str type_name);
 QVariant rexon_coerce_gadget(rust::Str type_name, const QVariant &value);
 
-// Роль == индекс свойства метаобъекта гаджета (как в оригинале:
-// Qt::UserRole + 1 + i). read/set по индексу свойства.
+// Role == property index of the gadget's metaobject (as in the original:
+// Qt::UserRole + 1 + i). read/set by property index.
 QVariant rexon_gadget_read_by_role(const QVariant &gadget, ::std::int32_t role_index);
 QVariant rexon_gadget_set_by_role(const QVariant &gadget, ::std::int32_t role_index,
                                   const QVariant &value);
 
-// Удобные обёртки для скалярных int-полей (group / op / groupA / groupB).
+// Convenience wrappers for scalar int fields (group / op / groupA / groupB).
 ::std::int32_t rexon_gadget_read_int(const QVariant &gadget, rust::Str prop);
+::std::int64_t rexon_gadget_read_i64(const QVariant &gadget, rust::Str prop);
+// A named value property (never a pointer one), for nested gadgets.
+QVariant rexon_gadget_read_named(const QVariant &gadget, rust::Str prop);
 QVariant rexon_gadget_set_int(const QVariant &gadget, rust::Str prop, ::std::int32_t value);
 
 bool rexon_variant_is_valid(const QVariant &v);
 
-// Значение из QML без гаджетов: карты, списки и вложенные гаджеты
-// разворачиваются рекурсивно в обычные QVariantMap/QVariantList, остальное
-// отдаётся как есть.
+// A value from QML without gadgets: maps, lists and nested gadgets
+// are unfolded recursively into plain QVariantMap/QVariantList, the rest
+// is passed as is.
 //
-// Гаджеты приходят двумя путями: их пишет Rust-модель редактора фильтров
-// (правила и логика групп) и собирает страница «Обои» (правила сортировки
-// в настройках). Обычные JS-объекты проходят насквозь — так же, как это
-// делал питоновский `_rules_plain`.
+// Gadgets arrive by two paths: they are written by the Rust filter editor model
+// (rules and group logic) and assembled by the «Wallpapers» page (sort rules
+// in the settings). Plain JS objects pass straight through — the same way the
+// Python `_rules_plain` did.
 //
-// Дескриптор protobuf не нужен: имена ключей — это имена свойств
-// метаобъекта гаджета, то есть тот же camelCase, что у json_name. Ветку
-// oneof отличаем по свойствам `has<Field>` — у гаджета чтение неактивного
-// члена отдаёт не undefined, а сообщение по умолчанию, и без has-флага
-// пустая ветка уехала бы в запрос как настоящая.
+// The protobuf descriptor is not needed: key names are the property names of the
+// gadget's metaobject, i.e. the same camelCase as json_name. The oneof
+// branch is told apart by the `has<Field>` properties — on a gadget, reading an inactive
+// member returns not undefined but a default message, and without the has flag
+// an empty branch would go into the request as a real one.
 //
-// Дверь ОДНА на весь проект (правило #12): её зовёт общий конвертер
-// `rexon_variant_to_json`, и потому гаджеты понимает КАЖДЫЙ путь
-// «QML → ядро», а не только редактор фильтров, где они завелись первыми.
+// There is ONE door for the whole project (rule #12): it is called by the shared converter
+// `rexon_variant_to_json`, and so EVERY "QML → core" path understands gadgets,
+// not only the filter editor where they first appeared.
 QVariant rexon_plain_variant(const QVariant &value);
 
-// roleNames как в оригинале: имена всех свойств метаобъекта гаджета.
+// roleNames as in the original: the names of all properties of the gadget's metaobject.
 QHash<::std::int32_t, QByteArray> rexon_role_names(rust::Str type_name);
 ::std::int32_t rexon_prop_count(rust::Str type_name);

@@ -1,13 +1,13 @@
-//! Сверка разбора характерных цветов схемы KDE и знака вида
-//! (`rexon_core::local_preview`) с записанным эталоном.
+//! Check of parsing the characteristic colors of a KDE scheme and the kind sign
+//! (`rexon_core::local_preview`) against the recorded golden.
 //!
-//! `golden/local_preview_cases.json` — снятые значения: `parse_colors` —
-//! краевые случаи на подставных текстах, `parse_colors_real` — все настоящие
-//! схемы `/usr/share/color-schemes` машины, где эталон снимался (51 файл,
-//! тексты лежат в эталоне), `type_emoji` — знак вида из подписи плитки.
+//! `golden/local_preview_cases.json` — captured values: `parse_colors` —
+//! edge cases on fake texts, `parse_colors_real` — all real
+//! schemes in `/usr/share/color-schemes` of the machine where the golden was captured (51 files,
+//! the texts lie in the golden), `type_emoji` — the kind sign from the tile label.
 //!
-//! Случай `out_of_range`: компоненты вне 0..=255 отбрасываются целиком (в
-//! эталоне на их месте записан чёрный цвет — так рисовала прежняя отрисовка).
+//! The `out_of_range` case: components outside 0..=255 are dropped entirely (in
+//! the golden a black color is recorded in their place — that is how the former rendering drew it).
 
 use rexon_core::local_preview as lp;
 use serde_json::Value;
@@ -34,12 +34,12 @@ fn scheme_colors_parse() {
     let g = fx();
     for case in g["parse_colors"].as_array().unwrap() {
         let label = s(&case["label"]);
-        // Несуществующий файл ядру достаётся пустым текстом.
+        // A nonexistent file reaches the core as an empty text.
         let text = case["text"].as_str().unwrap_or("");
         let expected: Vec<(u8, u8, u8)> = if label == "out_of_range" {
-            // В эталоне на месте записи `-1,300,12` лежит второй чёрный
-            // цвет; запись отбрасывается целиком — остаётся один настоящий
-            // (0,0,0) из `DecorationFocus=0,0,0`.
+            // In the golden, in place of the entry `-1,300,12` there is a second black
+            // color; the entry is dropped entirely — one real one remains
+            // (0,0,0) from `DecorationFocus=0,0,0`.
             vec![(0, 0, 0)]
         } else {
             case["colors"].as_array().unwrap().iter().map(rgb).collect()
@@ -65,9 +65,9 @@ fn emoji_from_author() {
     }
 }
 
-/// Разбор цветов на настоящих схемах (Breeze*, CachyOSNord*, Kv*, Emerald* …):
-/// подставные случаи выше проверяют края, а этот — что на схемах KDE берутся
-/// те же цвета в том же порядке (порядок задаёт полосы образца).
+/// Color parsing on real schemes (Breeze*, CachyOSNord*, Kv*, Emerald* …):
+/// the fake cases above check the edges, and this one checks that the same colors are taken from KDE schemes
+/// in the same order (the order sets the sample stripes).
 #[test]
 fn scheme_colors_parse_real_installed() {
     let g = fx();
@@ -87,16 +87,16 @@ fn scheme_colors_parse_real_installed() {
         if got.len() == lp::MAX_SCHEME_COLORS {
             six += 1;
         }
-        // Настоящая схема обязана дать хотя бы один цвет — иначе плитка
-        // молча осталась бы с заглушкой вида.
+        // A real scheme must give at least one color — otherwise the tile
+        // would silently stay with the kind placeholder.
         assert!(!got.is_empty(), "{file}: ни одного цвета");
     }
     assert!(six >= 20, "мало схем с полным набором из 6 цветов: {six}");
 }
 
-/// Мелкие миниатюры тем (B00merang: 120×35 и 100×32) не растягиваются на
-/// плитку: кадр собирается из них, каждая вписана и не крупнее двух своих
-/// размеров.
+/// Small theme thumbnails (B00merang: 120×35 and 100×32) are not stretched over
+/// the tile: the frame is assembled from them, each one fitted and no larger than twice its
+/// size.
 #[test]
 fn small_theme_thumbnails_are_composed_not_stretched() {
     use rexon_core::local_preview as lp;
@@ -104,7 +104,7 @@ fn small_theme_thumbnails_are_composed_not_stretched() {
     let png = |rel: &str, w: u32, h: u32| {
         let p = root.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        // Заголовок PNG с IHDR — image_size читает только его.
+        // A PNG header with IHDR — image_size reads only that.
         let mut b = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
         b.extend(w.to_be_bytes());
         b.extend(h.to_be_bytes());

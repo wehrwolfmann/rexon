@@ -1,6 +1,6 @@
-//! Накладка настроек виджета Conky ([`rexon_core::conky_overlay`]):
-//! золотые файлы накладки, чтение значений автора, запуск через накладку,
-//! автозапуск и перезапуск запущенного виджета на подставном conky.
+//! The Conky widget settings overlay ([`rexon_core::conky_overlay`]):
+//! golden overlay files, reading the author's values, launching through the overlay,
+//! autostart and restarting a running widget on a fake conky.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -9,7 +9,7 @@ use rexon_core::animations::LookIo;
 use rexon_core::conky_overlay::{self as ov, Env, Overrides, Value};
 use rexon_core::de_apply::Ctx;
 
-/// Подставная машина: файлы в памяти, команды записываются.
+/// Fake machine: files in memory, commands are recorded.
 #[derive(Default)]
 struct Fake {
     files: RefCell<HashMap<String, String>>,
@@ -112,7 +112,7 @@ c.xinerama_head = 1
     );
 }
 
-/// conky до 1.23: прозрачность — прежними полями, цвет — без альфы.
+/// conky before 1.23: transparency through the old fields, color without alpha.
 #[test]
 fn golden_overlay_old_conky_background() {
     let cfg = ov::parse_config(AUTHOR).unwrap();
@@ -148,14 +148,14 @@ fn current_values_author_then_own() {
     assert!(cur.gap_x.changed && cur.gap_x.value == 99);
     assert!(cur.bg_none.value && cur.bg_none.changed);
 
-    // Выражение у автора — поле заперто, пока человек не задаст своё.
+    // An expression from the author — the field is locked until the person sets their own.
     let expr = ov::parse_config("conky.config = { gap_x = 10 * 2, own_window_argb_value = a }").unwrap();
     assert_eq!(expr["gap_x"], Value::Expr);
     let cur = ov::current(&expr, &Overrides::default());
     assert!(cur.gap_x.locked && cur.bg_opacity.locked);
     assert!(!ov::current(&expr, &Overrides { gap_x: Some(3), ..Default::default() }).gap_x.locked);
 
-    // Альфа в самом цвете (conky ≥ 1.23).
+    // Alpha in the color itself (conky ≥ 1.23).
     let modern = ov::parse_config("conky.config = { own_window_color = '#33000000' }").unwrap();
     assert_eq!(ov::current(&modern, &Overrides::default()).bg_opacity.value, 20);
 }
@@ -172,13 +172,13 @@ fn launch_goes_through_overlay_only_when_changed() {
     let o = Overrides { gap_x: Some(1), ..Default::default() };
     ov::save(&io, &p, conf, &o, &Env::default()).unwrap();
     assert_eq!(ov::load(&io, &p), o);
-    // Запуск пишет накладку заново (файл автора мог обновиться).
+    // Launching writes the overlay anew (the author's file may have been updated).
     io.write(&p.overlay, "stale");
     assert_eq!(ov::launch_conf(&io, &ctx(), &p, conf), p.overlay);
     let text = io.read(&p.overlay).unwrap();
     assert!(text.contains(&format!("dofile(\"{conf}\")")) && text.contains("c.gap_x = 1\n"), "{text}");
 
-    // Процесс с накладкой — тот же виджет.
+    // A process with the overlay is the same widget.
     let cmd = format!("conky\0-d\0-c\0{}\0", p.overlay);
     assert_eq!(rexon_core::de_apply::conky_conf_of_cmdline(&cmd).as_deref(), Some(conf));
     assert_eq!(rexon_core::de_apply::conky_launch_of_cmdline(&cmd).as_deref(), Some(p.overlay.as_str()));
@@ -206,7 +206,7 @@ fn autostart_follows_overlay() {
     )), "{via}");
     assert!(via.contains("\nPath=/h/.config/conky/My W\n"), "{via}");
 
-    // Включённый автозапуск переписывается при правке и при сбросе.
+    // An enabled autostart is rewritten on edit and on reset.
     let io = Fake { version: Some("1.25.2"), ..Default::default() };
     io.write(conf, AUTHOR);
     let entry = "/h/.config/autostart/rexon-conky-My W.desktop";
@@ -219,7 +219,7 @@ fn autostart_follows_overlay() {
     assert_eq!(io.read("/h/.config/autostart/rexon-conky-other.desktop").unwrap(), "[Desktop Entry]\nExec=sh -c x /h/o.conf\n");
     let (ok, _) = ov::reset(&io, &ctx(), &p, "My W", conf);
     assert!(ok);
-    // После сброса — запись как у автора, но с файлом запуска через XWayland.
+    // After reset — the entry is as the author's, but with the launch file through XWayland.
     let xw = ov::xwayland_path(&p);
     assert_eq!(io.read(entry).unwrap(), rexon_core::ext_manager::conky_desktop_entry_with("My W", conf, None, Some(&xw), 0, &[]));
     assert!(plain.contains(ov::XWAYLAND_LAUNCH_VAR) && !plain.contains(&xw));
@@ -236,10 +236,10 @@ conky.config = {
 conky.text = [[x]]
 ";
 
-/// Через XWayland виджет идёт с файлом, где окно X11 — обычное «под всеми
-/// окнами» вместо override-redirect автора (Muffin кладёт такие поверх
-/// всех окон); выбор человека в нём сохраняется, файл автора не тронут,
-/// процесс с ним — тот же виджет.
+/// Through XWayland the widget goes with a file where the X11 window is an ordinary "below all
+/// windows" one instead of the author's override-redirect (Muffin puts those above
+/// all windows); the person's choice is kept in it, the author's file is untouched,
+/// a process with it is the same widget.
 #[test]
 fn xwayland_file_keeps_widget_under_windows() {
     let conf = "/h/.config/conky/skyrim/conky.conf";
@@ -263,19 +263,19 @@ fn xwayland_file_keeps_widget_under_windows() {
     );
     assert!(text.contains(&format!("dofile(\"{conf}\")")), "{text}");
     assert_eq!(io.read(conf).unwrap(), OVERRIDE_AUTHOR);
-    // Накладки и выбора человека файл XWayland не заводит.
+    // Without an overlay and the person's choice the XWayland file is not created.
     assert!(io.read(&p.overlay).is_none() && io.read(&p.settings).is_none());
 
-    // Выбор человека — и в файле XWayland: он переписывается вместе с накладкой.
+    // The person's choice is in the XWayland file too: it is rewritten together with the overlay.
     let (ok, _) = ov::apply(&io, &ctx(), &p, "skyrim", conf, &Overrides { gap_y: Some(5), ..Default::default() });
     assert!(ok);
     assert!(io.read(&xw).unwrap().contains("c.gap_y = 5"));
     assert!(!io.read(&p.overlay).unwrap().contains("own_window_type"), "накладка без «окна» не трогает окно автора");
 }
 
-/// Файл XWayland настоящим Lua: без `WAYLAND_DISPLAY` (так conky идёт через
-/// XWayland) окно — обычное «под всеми», override автора снят; в сеансе
-/// Wayland ветка Cinnamon окно автора не трогает. Нет `lua` — пропуск.
+/// The XWayland file through real Lua: without `WAYLAND_DISPLAY` (that is how conky goes through
+/// XWayland) the window is an ordinary "below all", the author's override is removed; in a
+/// Wayland session the Cinnamon branch does not touch the author's window. No `lua` — skipped.
 #[test]
 fn xwayland_file_really_runs() {
     let Some(lua) = ["lua5.4", "lua"].into_iter().find(|l| std::process::Command::new(l).arg("-v").output().is_ok()) else {
@@ -317,9 +317,9 @@ fn alignment_names() {
     assert_eq!(ov::ALIGNMENTS.len(), 9);
 }
 
-/// Настоящие виджеты магазина (архивы раздела 124, скачанные для
-/// исследования в `~/research/conky-samples`): таблица `conky.config`
-/// разбирается, положение — литералами. Нет образцов — проверка пропускается.
+/// Real store widgets (archives of section 124, downloaded for
+/// research into `~/research/conky-samples`): the `conky.config` table
+/// is parsed, the position — as literals. No samples — the check is skipped.
 #[test]
 fn real_store_widgets_parse() {
     let Some(home) = std::env::var_os("HOME") else { return };
@@ -347,11 +347,11 @@ fn real_store_widgets_parse() {
     }
 }
 
-/// Стенд на подставном conky (`tools/de_matrix_stand/fake_conky.c` за
-/// сценарием, который отвечает на `-v`): виджет, запущенный с файлом
-/// автора, после правки перезапускается с накладкой — рабочий каталог —
-/// папка автора; после «Сбросить» — снова с файлом автора. Гасятся только
-/// процессы стенда.
+/// A stand on a fake conky (`tools/de_matrix_stand/fake_conky.c` behind
+/// a script that answers `-v`): a widget launched with the author's
+/// file is restarted with the overlay after an edit — the working directory is
+/// the author's folder; after «Сбросить» — again with the author's file. Only
+/// the stand's processes are stopped.
 #[test]
 fn running_widget_switches_to_overlay_and_back() {
     use rexon_core::animations::SystemIo;
@@ -407,7 +407,7 @@ fn running_widget_switches_to_overlay_and_back() {
     assert!(std::fs::read_to_string(&p.overlay).unwrap().contains("c.gap_x = 77\n"));
     let cwd = std::fs::read_link(format!("/proc/{}/cwd", now[0].0)).unwrap();
     assert_eq!(cwd, home.join(".config/conky/W"));
-    // Сопоставление «запущен ли виджет» видит его по файлу автора.
+    // The "is the widget running" match sees it by the author's file.
     assert!(rexon_core::conky_procs::running_confs(&io, &ctx).contains(&conf));
 
     let (ok, msg) = ov::reset(&io, &ctx, &p, "W", &conf);
@@ -420,13 +420,13 @@ fn running_widget_switches_to_overlay_and_back() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// ── Синтаксис 1.9 ─────────────────────────────────────────────────────────
+// ── Syntax 1.9 ────────────────────────────────────────────────────────────
 
-/// Пары «файл 1.9 → перевод в 1.10».
+/// Pairs "1.9 file → conversion to 1.10".
 #[test]
 fn converts_19_files() {
     let cases: &[(&str, &str)] = &[
-        // 1. Обычная шапка: да/нет, числа, строки с пробелами, цвета из цифр.
+        // 1. An ordinary header: yes/no, numbers, strings with spaces, colors of digits.
         (
             "# comment\nbackground yes\nupdate_interval 1.5\nalignment tr\nxftfont DejaVu Sans:size=8\n\
              color1 000000\ndefault_color white # trailing\nown_window_hints undecorated,below\n\nTEXT\n${time %H:%M}\n",
@@ -435,28 +435,28 @@ fn converts_19_files() {
              color1 = \"000000\",\n    default_color = \"white\",\n    own_window_hints = \"undecorated,below\",\n}\n\
              conky.text = [[\n${time %H:%M}]]\n",
         ),
-        // 2. Размер парой чисел — два поля; поле без значения — «да».
+        // 2. Size as a pair of numbers — two fields; a field without a value — "yes".
         (
             "minimum_size 190 450\ndefault_bar_size 30 8\nown_window\ngap_x -10\nTEXT\nx\n",
             "-- Rexon: a copy of a Conky 1.9 file translated to the 1.10 syntax.\nconky.config = {\n    \
              minimum_width = 190,\n    minimum_height = 450,\n    default_bar_width = 30,\n    default_bar_height = 8,\n    \
              own_window = true,\n    gap_x = -10,\n}\nconky.text = [[\nx]]\n",
         ),
-        // 3. Скобки в тексте: уровень длинной строки — тот, что не закроется
-        //    раньше времени.
+        // 3. Brackets in the text: the long string level is one that will not close
+        //    prematurely.
         (
             "TEXT\n${if_match \"${a}\"==\"]]\"}x]] y]${endif}\n",
             "-- Rexon: a copy of a Conky 1.9 file translated to the 1.10 syntax.\nconky.config = {\n}\n\
              conky.text = [=[\n${if_match \"${a}\"==\"]]\"}x]] y]${endif}]=]\n",
         ),
-        // 4. `\#` в настройке — знак, а не комментарий; кавычки снимаются,
-        //    кавычка внутри экранируется.
+        // 4. `\#` in a setting is a character, not a comment; quotes are stripped,
+        //    a quote inside is escaped.
         (
             "own_window_title \"Conky \\#1\"\ntemplate0 ${cpu \\1}\"\nTEXT\na\n\nb",
             "-- Rexon: a copy of a Conky 1.9 file translated to the 1.10 syntax.\nconky.config = {\n    \
              own_window_title = \"Conky #1\",\n    template0 = \"${cpu \\\\1}\\\"\",\n}\nconky.text = [[\na\n\nb]]\n",
         ),
-        // 5. Переводы строк Windows и пробелы перед TEXT.
+        // 5. Windows line breaks and spaces before TEXT.
         (
             "gap_y 5\r\n  TEXT  \r\nline\r\n",
             "-- Rexon: a copy of a Conky 1.9 file translated to the 1.10 syntax.\nconky.config = {\n    \
@@ -473,8 +473,8 @@ fn converts_19_files() {
     assert_eq!(ov::syntax(AUTHOR), ov::Syntax::V110);
 }
 
-/// Накладка поверх виджета 1.9 выполняет его перевод, а не файл автора
-/// (`dofile` старого синтаксиса падает), и видит его поля.
+/// An overlay on top of a 1.9 widget executes its conversion, not the author's file
+/// (`dofile` of the old syntax fails), and sees its fields.
 #[test]
 fn overlay_over_19_runs_the_translated_copy() {
     let io = Fake { version: Some("1.25.2"), ..Default::default() };
@@ -490,12 +490,12 @@ fn overlay_over_19_runs_the_translated_copy() {
     let overlay = io.read(&p.overlay).unwrap();
     assert!(overlay.contains(&format!("dofile(\"{}\")", p.converted)), "{overlay}");
     assert!(io.read(&p.converted).unwrap().contains("conky.text = [[\nhi]]"));
-    // Файл автора не тронут.
+    // The author's file is untouched.
     assert_eq!(io.read(conf).unwrap(), "alignment tl\ngap_x 7\nminimum_size 100 50\nTEXT\nhi\n");
 }
 
-/// «Окно — как советует Rexon»: ветки Wayland и X11 в накладке, сеанс
-/// узнаётся при запуске conky.
+/// «Окно — как советует Rexon»: Wayland and X11 branches in the overlay, the session
+/// is recognized when conky is launched.
 #[test]
 fn golden_overlay_window_preset() {
     let cfg = ov::parse_config(AUTHOR).unwrap();
@@ -519,7 +519,7 @@ fn golden_overlay_window_preset() {
     );
 }
 
-// ── Экран, часы, сеть ─────────────────────────────────────────────────────
+// ── Screen, clock, network ────────────────────────────────────────────────
 
 #[test]
 fn monitors_only_on_x11() {
@@ -573,9 +573,9 @@ fn clock_and_network_found_in_text() {
     assert_eq!(got, [("wlan0".to_string(), "wifi"), ("eno1".into(), "ethernet"), ("docker0".into(), "virtual")]);
 }
 
-/// Замены в тексте работают в настоящем Lua (если он есть): каждое имя —
-/// своей заменой (обмен eth0 ↔ wlan0 не сливает их), только внутри
-/// сетевых переменных; часы 24 → 12 и обратно.
+/// Text replacements work in real Lua (if it is present): each name gets
+/// its own replacement (swapping eth0 ↔ wlan0 does not merge them), only inside
+/// network variables; clock 24 → 12 and back.
 #[test]
 fn text_rewrites_run_in_real_lua() {
     let Some(lua) = ["lua5.4", "lua", "lua5.3"].iter().find(|l| {
@@ -618,7 +618,7 @@ fn text_rewrites_run_in_real_lua() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// ── Блок настроек карточки ────────────────────────────────────────────────
+// ── The card's settings block ─────────────────────────────────────────────
 
 #[test]
 fn settings_view_and_changes() {
@@ -641,7 +641,7 @@ fn settings_view_and_changes() {
     assert_eq!(v.nets[0].from, "eth0");
     assert_eq!(v.nets[0].choices.len(), 2);
     assert_eq!(v.screen_choices.len(), 3);
-    // Фон полупрозрачный, композитора нет — предупреждение.
+    // A semi-transparent background, no compositor — a warning.
     assert!(v.compositor_note.is_some());
 
     let mut o = Overrides::default();
@@ -666,7 +666,7 @@ fn settings_view_and_changes() {
     assert!(ov::set_value(&mut o, "net:eth0", &serde_json::json!("a b;rm")).is_err());
     assert!(ov::set_value(&mut o, "alignment", &serde_json::json!("sideways")).is_err());
 
-    // Файл, который виджет не читает кодом, — настройки недоступны.
+    // A file the widget does not read as code — settings unavailable.
     io.write("/h/x.conf", "conky.config = make()\nconky.text = [[x]]\n");
     let p2 = ov::paths(&ctx(), None, "/h/x.conf");
     let v2 = ov::settings_view(&io, &ctx(), &p2, "/h/x.conf", &m);

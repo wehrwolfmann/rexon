@@ -1,28 +1,31 @@
-//! Разбор фонов профиля Steam из ПУБЛИЧНОГО инвентаря — порт РАЗБОРА из
-//! `rexon/qt_steam/window.py` (детерминированные функции; сам файл — Qt/сеть).
+//! Parsing of Steam profile backgrounds from the PUBLIC inventory — a port of
+//! the PARSING from `rexon/qt_steam/window.py` (deterministic functions; the file
+//! itself is Qt/network).
 //!
-//! Дополняет [`crate::steam_profile`]: тот покрывает caller-scoped путь
-//! `IPlayerService/GetProfileItemsOwned` (владеемые фоны с ссылками на анимацию,
-//! из `rexon/steam_profile_items.py::_fetch_owned`). ЗДЕСЬ — второй, публичный
-//! путь: без авторизации, только статичная картинка:
-//!   * `parse_inventory_backgrounds` — порт разбора ответа
+//! Complements [`crate::steam_profile`]: that one covers the caller-scoped path
+//! `IPlayerService/GetProfileItemsOwned` (owned backgrounds with links to the
+//! animation, from `rexon/steam_profile_items.py::_fetch_owned`). HERE is the
+//! second, public path: no authorization, static image only:
+//!   * `parse_inventory_backgrounds` — port of parsing the response of
 //!     `steamcommunity.com/inventory/<id64>/753/6` (`_InventoryWorker.run`);
-//!   * `parse_equipped_background` — порт разбора надетого фона из кэша Steam
-//!     `GetEquippedProfileItemsForUser<id64>` (`_equipped_profile_background`);
-//!   * `finalize_items` — порт `_finalize_items` (пометка надетого, сортировка,
-//!     вставка надетого фона, даже если инвентарь его не содержит);
-//!   * `community_url_variants` — порт `_community_url_variants` (перебор
-//!     двух CDN-хостов community-ассетов).
+//!   * `parse_equipped_background` — port of parsing the equipped background
+//!     from the Steam cache `GetEquippedProfileItemsForUser<id64>`
+//!     (`_equipped_profile_background`);
+//!   * `finalize_items` — port of `_finalize_items` (marking the equipped one,
+//!     sorting, inserting the equipped background even if the inventory lacks it);
+//!   * `community_url_variants` — port of `_community_url_variants` (trying
+//!     both CDN hosts of community assets).
 //!
-//! СЮДА НЕ переносится (недетерминированно, зависит от локального Steam/сети —
-//! остаётся на Python): сам HTTP-запрос инвентаря (`urllib`), скачивание
-//! ассетов (`_download_community`), поиск SteamID64 и чтение `localconfig.vdf`
-//! (`_steam_id64`, файловая часть `_equipped_profile_background` — regex-выемка
-//! и un-escape VDF-строки). Python отдаёт сюда уже `json.load`-нутое сырьё.
+//! NOT moved here (non-deterministic, depends on the local Steam/network — stays
+//! in Python): the inventory HTTP request itself (`urllib`), downloading assets
+//! (`_download_community`), finding the SteamID64 and reading `localconfig.vdf`
+//! (`_steam_id64`, the file part of `_equipped_profile_background` — regex
+//! extraction and un-escaping of the VDF string). Python passes in raw data that
+//! is already `json.load`-ed.
 //!
-//! Паритет: разбор фиксированного ответа обязан вернуть те же записи, строки и
-//! порядок, что Python (golden `steam_profile_items_parity.rs`). Живой сетевой
-//! вызов и чтение ФС golden-тестами не покрываются.
+//! Parity: parsing a fixed response must return the same records, strings and
+//! order as Python (golden `steam_profile_items_parity.rs`). The live network
+//! call and file system reads are not covered by golden tests.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -30,40 +33,43 @@ use std::collections::HashMap;
 
 use crate::i18n::tr;
 
-/// Канонический CDN community-ассетов (`_COMMUNITY_IMG_BASE`).
+/// Canonical CDN of community assets (`_COMMUNITY_IMG_BASE`).
 pub const COMMUNITY_IMG_BASE: &str =
     "https://shared.fastly.steamstatic.com/community_assets/images/";
-/// Запасной CDN-хост community-ассетов (`_COMMUNITY_IMG_BASE_LEGACY`).
+/// Fallback CDN host of community assets (`_COMMUNITY_IMG_BASE_LEGACY`).
 pub const COMMUNITY_IMG_BASE_LEGACY: &str =
     "https://cdn.fastly.steamstatic.com/steamcommunity/public/images/";
-/// Economy-CDN — фолбэк, когда у предмета нет action-ссылки (`_ECONOMY_IMG_BASE`).
+/// Economy CDN — fallback when an item has no action link (`_ECONOMY_IMG_BASE`).
 pub const ECONOMY_IMG_BASE: &str =
     "https://community.fastly.steamstatic.com/economy/image/";
-/// Имя по умолчанию для надетого фона без названия (оригинал — «Надетый
-/// фон»; на языке интерфейса).
+/// Default name for an equipped background without a title (the original says
+/// "Equipped background"; in the UI language).
 pub fn default_equipped_name() -> String {
     // TRANSLATORS: name shown for the Steam profile background the user has
     // equipped on their profile, when Steam gives it no name.
     tr("Equipped Background")
 }
-/// Имя по умолчанию для предмета инвентаря без названия (`d.get("name") or "?"`).
+/// Default name for an inventory item without a title (`d.get("name") or "?"`).
 pub const DEFAULT_INVENTORY_NAME: &str = "?";
-/// Префикс подписи-источника, вырезаемый из `type` (`"Фон профиля из "`).
+/// Source caption prefix cut out of `type` (Russian "Profile background from ").
 ///
-/// ⚠️ Это НЕ подпись интерфейса, а кусок ответа Steam — переводу не
-/// подлежит. И он устарел: на 28.09.2026 русский Steam пишет «Фон профиля —
-/// Half-Life 2», «Необычный Фон профиля — …», английский — «Half-Life 2
-/// Profile Background», и вырезка не срабатывала ни на одном из 205 фонов
-/// живого инвентаря. Игра теперь берётся из метки `Game` ([`game_of`]),
-/// префикс — только запасной путь для ответа без этой метки.
+/// ⚠️ This is NOT a UI caption but a piece of the Steam response — it must not be
+/// translated. And it is outdated: as of 28.09.2026 the Russian Steam writes
+/// "Profile background — Half-Life 2", "Unusual Profile background — …" (in
+/// Russian), the English one "Half-Life 2 Profile Background", and the cut did
+/// not fire on any of the 205 backgrounds of the live inventory. The game is now
+/// taken from the `Game` tag ([`game_of`]); the prefix is only a fallback for a
+/// response without that tag.
 pub const GAME_PREFIX: &str = "Фон профиля из ";
 
-/// Игра, к которой относится фон: метка инвентаря `Game` на языке ответа.
+/// The game the background belongs to: the inventory tag `Game` in the response
+/// language.
 ///
-/// ⚠️ Починка (правило #16): оригинал вырезал игру из строки `type`
-/// префиксом [`GAME_PREFIX`], а Steam давно пишет `type` иначе (и на каждом
-/// языке по-своему), — под карточкой стояло «Фон профиля — Half-Life 2»
-/// вместо «Half-Life 2». Метка `Game` от языка по форме не зависит.
+/// ⚠️ Fix (rule #16): the original cut the game out of the `type` string with
+/// the [`GAME_PREFIX`] prefix, but Steam has long written `type` differently (and
+/// differently in each language) — the card showed "Profile background —
+/// Half-Life 2" instead of "Half-Life 2". The form of the `Game` tag does not
+/// depend on the language.
 fn game_of(d: &Value) -> String {
     if let Some(tags) = d.get("tags").and_then(Value::as_array) {
         for t in tags {
@@ -78,13 +84,14 @@ fn game_of(d: &Value) -> String {
     s(d, "type").replace(GAME_PREFIX, "")
 }
 
-/// Один фон профиля из публичного инвентаря/надетый — порт словаря-предмета
-/// (`_InventoryWorker`/`_equipped_profile_background`).
+/// One profile background from the public inventory/equipped — a port of the
+/// item dict (`_InventoryWorker`/`_equipped_profile_background`).
 ///
-/// `animated` у предметов публичного инвентаря всегда `false` (публичный
-/// эндпоинт не отдаёт ссылок на анимацию — их даёт только owned-путь в
-/// [`crate::steam_profile`]); у надетого фона `animated=true`, если есть
-/// `movie_webm`/`movie_mp4`. `game` — короткая подпись-источник (у надетого "").
+/// `animated` of public inventory items is always `false` (the public endpoint
+/// gives no links to the animation — only the owned path in
+/// [`crate::steam_profile`] does); for the equipped background `animated=true`
+/// if there is `movie_webm`/`movie_mp4`. `game` is a short source caption ("" for
+/// the equipped one).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ProfileBackgroundItem {
     pub id: String,
@@ -96,16 +103,16 @@ pub struct ProfileBackgroundItem {
     pub equipped: bool,
 }
 
-/// Строковое поле объекта: "" если ключа нет/`null`/не строка.
+/// String field of an object: "" if the key is missing/`null`/not a string.
 fn s<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
-/// url + его вариант на запасном CDN-хосте — порт `_community_url_variants`.
+/// url + its variant on the fallback CDN host — port of `_community_url_variants`.
 ///
-/// Steam-гниль: один и тот же путь может существовать только на одном из двух
-/// хостов, поэтому качаем, перебирая оба. Возвращает `[url]`, если префикс не
-/// совпал ни с одним из известных CDN-баз.
+/// Steam rot: the same path may exist on only one of the two hosts, so we
+/// download trying both. Returns `[url]` if the prefix matched none of the known
+/// CDN bases.
 pub fn community_url_variants(url: &str) -> Vec<String> {
     for (a, b) in [
         (COMMUNITY_IMG_BASE, COMMUNITY_IMG_BASE_LEGACY),
@@ -118,13 +125,14 @@ pub fn community_url_variants(url: &str) -> Vec<String> {
     vec![url.to_string()]
 }
 
-/// id надетого фона — порт `str(bg.get("communityitemid", "equipped"))`.
+/// id of the equipped background — port of
+/// `str(bg.get("communityitemid", "equipped"))`.
 ///
-/// ⚠️ Починен баг оригинала: `dict.get(key, default)` в Python подставляет
-/// default ТОЛЬКО при отсутствии ключа, поэтому явный `null` давал строку
-/// "None", пустая строка — "", ноль — "0" (мусорные id, ломающие сверку с
-/// `eq_id` в `finalize_items`). Здесь null/пустая строка/0/отсутствие →
-/// фолбэк "equipped"; непустая строка или ненулевое число → их текст.
+/// ⚠️ A bug of the original is fixed: `dict.get(key, default)` in Python uses the
+/// default ONLY when the key is missing, so an explicit `null` gave the string
+/// "None", an empty string "", zero "0" (junk ids that break matching against
+/// `eq_id` in `finalize_items`). Here null/empty string/0/missing → fallback
+/// "equipped"; a non-empty string or non-zero number → their text.
 fn equipped_id(v: Option<&Value>) -> String {
     match v {
         Some(Value::String(s)) if !s.is_empty() => s.clone(),
@@ -144,14 +152,15 @@ fn equipped_id(v: Option<&Value>) -> String {
     }
 }
 
-/// Надетый в профиле фон из распарсенного кэша `GetEquippedProfileItemsForUser`
-/// — порт JSON-части `_equipped_profile_background` (без чтения `localconfig.vdf`).
+/// The background equipped in the profile from the parsed
+/// `GetEquippedProfileItemsForUser` cache — port of the JSON part of
+/// `_equipped_profile_background` (without reading `localconfig.vdf`).
 ///
-/// `data` — уже `json.loads`-нутый payload (Python извлекает его regex-ом из
-/// VDF и un-escape-ит). Нет `profile_background`/нет ни `movie_*`, ни
-/// `image_*` → `None` (UI откатится на публичный инвентарь).
+/// `data` is the payload already `json.loads`-ed (Python extracts it from the
+/// VDF with a regex and un-escapes it). No `profile_background`/neither
+/// `movie_*` nor `image_*` → `None` (the UI falls back to the public inventory).
 pub fn parse_equipped_background(data: &Value) -> Option<ProfileBackgroundItem> {
-    // bg = data.get("profile_background") or {} — объект или пусто.
+    // bg = data.get("profile_background") or {} — an object or empty.
     let null = Value::Null;
     let bg = match data.get("profile_background") {
         Some(v) if v.is_object() => v,
@@ -175,7 +184,7 @@ pub fn parse_equipped_background(data: &Value) -> Option<ProfileBackgroundItem> 
             s(bg, "image_small")
         }
     };
-    // rel = movie or image; нет ссылки → None.
+    // rel = movie or image; no link → None.
     let rel = if !movie.is_empty() { movie } else { image };
     if rel.is_empty() {
         return None;
@@ -212,15 +221,16 @@ pub fn parse_equipped_background(data: &Value) -> Option<ProfileBackgroundItem> 
     })
 }
 
-/// Фоны профиля из ответа публичного инвентаря `…/753/6` — порт цикла
-/// `_InventoryWorker.run` (без сетевого запроса).
+/// Profile backgrounds from the public inventory response `…/753/6` — port of
+/// the `_InventoryWorker.run` loop (without the network request).
 ///
-/// `eq_id` — id надетого фона (для предварительной пометки `equipped`; итог всё
-/// равно пересчитывает [`finalize_items`]). Берутся только предметы с тегом
-/// `item_class`=`item_class_3`; картинка — из первой `actions[].link`,
-/// начинающейся с `http`, иначе economy-CDN по `icon_url_large`/`icon_url`; без
-/// картинки предмет пропускается. Дедуп по `cid` с семантикой Python-словаря:
-/// первое появление держит позицию, значение — последнее (last-value).
+/// `eq_id` is the id of the equipped background (for the preliminary `equipped`
+/// mark; [`finalize_items`] recomputes the result anyway). Only items with the
+/// tag `item_class`=`item_class_3` are taken; the image comes from the first
+/// `actions[].link` starting with `http`, otherwise the economy CDN by
+/// `icon_url_large`/`icon_url`; an item without an image is skipped. Dedup by
+/// `cid` with Python dict semantics: the first occurrence keeps the position, the
+/// value is the last one (last-value).
 pub fn parse_inventory_backgrounds(
     data: &Value,
     eq_id: Option<&str>,
@@ -233,7 +243,7 @@ pub fn parse_inventory_backgrounds(
     let mut by_cid: HashMap<String, ProfileBackgroundItem> = HashMap::new();
 
     for d in descriptions {
-        // Фон профиля = tag item_class / item_class_3.
+        // Profile background = tag item_class / item_class_3.
         let is_bg = d
             .get("tags")
             .and_then(Value::as_array)
@@ -248,7 +258,7 @@ pub fn parse_inventory_backgrounds(
             continue;
         }
 
-        // img = первая actions[].link, начинающаяся с http.
+        // img = the first actions[].link starting with http.
         let mut img = String::new();
         if let Some(actions) = d.get("actions").and_then(Value::as_array) {
             for a in actions {
@@ -259,7 +269,7 @@ pub fn parse_inventory_backgrounds(
                 }
             }
         }
-        // Фолбэк: economy-CDN по icon_url_large or icon_url.
+        // Fallback: economy CDN by icon_url_large or icon_url.
         if img.is_empty() {
             let icon = {
                 let l = s(d, "icon_url_large");
@@ -277,8 +287,8 @@ pub fn parse_inventory_backgrounds(
             continue;
         }
 
-        // cid = str(classid or market_hash_name or img). В 753/6 classid и
-        // market_hash_name — строки, поэтому трактуем как строки.
+        // cid = str(classid or market_hash_name or img). In 753/6 classid and
+        // market_hash_name are strings, so we treat them as strings.
         let cid = {
             let c = s(d, "classid");
             if !c.is_empty() {
@@ -301,14 +311,14 @@ pub fn parse_inventory_backgrounds(
                 DEFAULT_INVENTORY_NAME.to_string()
             }
         };
-        // game = метка Game, иначе (type or "").replace("Фон профиля из ", "").
+        // game = the Game tag, otherwise (type or "").replace(GAME_PREFIX, "").
         let game = game_of(d);
 
         let item = ProfileBackgroundItem {
             id: cid.clone(),
             name,
             game,
-            // Публичный инвентарь отдаёт только картинку — preview == url.
+            // The public inventory gives only the image — preview == url.
             url: img.clone(),
             preview: img,
             animated: false,
@@ -325,12 +335,12 @@ pub fn parse_inventory_backgrounds(
         .collect()
 }
 
-/// Пометить надетый фон, отсортировать (надетый — вверх) и вставить надетый,
-/// даже если инвентарь его не содержит — порт `_finalize_items`.
+/// Mark the equipped background, sort (equipped on top) and insert the equipped
+/// one even if the inventory lacks it — port of `_finalize_items`.
 ///
-/// Признак `equipped` пересчитывается с нуля по `equipped.id` (единый хвост для
-/// сетевого пути и дискового кэша). Сортировка стабильна, ключ —
-/// `(не надет, game.lower, name.lower)`.
+/// The `equipped` flag is recomputed from scratch by `equipped.id` (a single tail
+/// for the network path and the disk cache). The sort is stable, the key is
+/// `(not equipped, game.lower, name.lower)`.
 pub fn finalize_items(
     mut items: Vec<ProfileBackgroundItem>,
     equipped: Option<ProfileBackgroundItem>,
@@ -340,7 +350,7 @@ pub fn finalize_items(
     for it in &mut items {
         it.equipped = eq_id.as_deref() == Some(it.id.as_str());
     }
-    // Python sorted() стабилен; Rust sort_by — тоже.
+    // Python sorted() is stable; Rust sort_by is too.
     items.sort_by(|a, b| {
         (!a.equipped, a.game.to_lowercase(), a.name.to_lowercase()).cmp(&(
             !b.equipped,

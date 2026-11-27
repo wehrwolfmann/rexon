@@ -1,22 +1,25 @@
-// Значок Rexon в системном лотке — исполнитель решений ядра.
+// The Rexon system tray icon — the executor of the core's decisions.
 //
-// ЧТО ГДЕ. Состав меню, подписи на языке покупателя, подсказка, кандидаты
-// значка и содержимое записи автозапуска — в `rexon_core::tray`, и там же они
-// накрыты тестами. Здесь только исполнение: снять состояние (демон на шине,
-// режим очереди, интервал смены, запись автозапуска), скормить план шиму
-// (`cpp/rexon_tray.cpp`) и развести нажатия по действиям.
+// WHAT IS WHERE. The menu contents, the labels in the customer's language,
+// the tooltip, the icon candidates and the content of the autostart entry
+// are in `rexon_core::tray`, and they are covered by tests there too. Here
+// there is only execution: capture the state (the daemon on the bus, the
+// queue mode, the change interval, the autostart entry), feed the plan to
+// the shim (`cpp/rexon_tray.cpp`) and dispatch the presses to actions.
 //
-// ⚠️ Ни одной подписи для человека в этом файле быть не должно — как и в
-// мостах вкладок. Всё, что видно покупателю, приезжает из ядра.
+// Warning: there must not be a single human-readable label in this file —
+// just as in the tab bridges. Everything the customer sees arrives from the
+// core.
 //
-// ПОЧЕМУ QSystemTrayIcon, А НЕ ksni. Оба дают в Plasma один и тот же
-// StatusNotifierItem, но ksni поднимает СВОЙ поток и СВОЁ подключение к шине,
-// и каждое нажатие приезжает в чужом потоке — а пункты этого меню трогают
-// главное окно приложения (поднять, переключить вкладку, спрятать), то есть
-// обязаны выполняться в потоке GUI. Через QSystemTrayIcon нажатие приходит
-// сразу туда, где окно живёт, лишних потоков и подключений нет, а
-// перерегистрацию значка при перезапуске оболочки Qt делает сам. Плата —
-// зависимость от QtWidgets, но процесс Rexon и так QApplication.
+// WHY QSystemTrayIcon AND NOT ksni. Both give the same StatusNotifierItem in
+// Plasma, but ksni brings up ITS OWN thread and ITS OWN bus connection, and
+// every press arrives in a foreign thread — while the items of this menu
+// touch the application's main window (raise it, switch the tab, hide it),
+// that is, they must run in the GUI thread. Through QSystemTrayIcon a press
+// arrives right where the window lives, with no extra threads or
+// connections, and Qt re-registers the icon by itself when the shell
+// restarts. The price is a dependency on QtWidgets, but the Rexon process
+// is a QApplication anyway.
 
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Mutex;
@@ -25,7 +28,7 @@ use rexon_core::tray as core_tray;
 use rexon_core::privilege::revoke::Reason;
 use rexon_core::wallpaper_playlist::Command as PlaylistCommand;
 
-// ── шим ────────────────────────────────────────────────────────────────────
+// ── shim ───────────────────────────────────────────────────────────────────
 
 type TrayClick = extern "C" fn(i32);
 type TrayVoid = extern "C" fn();
@@ -75,8 +78,8 @@ unsafe extern "C" {
 }
 
 fn cstr(text: &str) -> CString {
-    // Нулевой байт в подписи невозможен (таблица ядра), но падать на нём
-    // значку незачем — обрезаем по первому нулю.
+    // A NUL byte in a label is impossible (the core table), but there is no
+    // reason for the icon to crash on it — we cut at the first NUL.
     CString::new(text).unwrap_or_else(|e| {
         let bytes = e.into_vec();
         let head = bytes.split(|b| *b == 0).next().unwrap_or(&[]).to_vec();
@@ -84,10 +87,10 @@ fn cstr(text: &str) -> CString {
     })
 }
 
-// ── число ItemKind для шима ───────────────────────────────────────────────
+// ── ItemKind number for the shim ──────────────────────────────────────────
 
-/// Числовой код вида пункта. Единственное место, где перечисление ядра
-/// превращается в число: шим о смысле значений не знает.
+/// Numeric code of an item kind. The only place where the core's enum turns
+/// into a number: the shim knows nothing about the meaning of the values.
 fn kind_code(kind: core_tray::ItemKind) -> i32 {
     match kind {
         core_tray::ItemKind::Action => 0,
@@ -99,18 +102,19 @@ fn kind_code(kind: core_tray::ItemKind) -> i32 {
     }
 }
 
-// ── живое состояние значка ────────────────────────────────────────────────
+// ── live icon state ───────────────────────────────────────────────────────
 
-/// То, что значок помнит между открытиями меню.
+/// What the icon remembers between menu openings.
 struct Runtime {
-    /// Идентификаторы вкладок главного окна в порядке самого окна.
+    /// Identifiers of the main window's tabs in the window's own order.
     tabs: Vec<String>,
-    /// Обои на паузе / звук заглушён — НАШ учёт: демон этих двух состояний на
-    /// шине не публикует (см. `rexon_core::tray::TrayState`).
+    /// Wallpaper paused / sound muted — OUR bookkeeping: the daemon does not
+    /// publish these two states on the bus (see `rexon_core::tray::TrayState`).
     paused: bool,
     muted: bool,
-    /// Был ли демон на шине при прошлой сборке меню. Переход «не было → есть»
-    /// означает свежий демон: он играет и звучит, наш учёт пора обнулить.
+    /// Whether the daemon was on the bus at the previous menu build. The
+    /// transition "was not → is" means a fresh daemon: it plays and sounds, and
+    /// our bookkeeping should be reset.
     daemon_was: bool,
 }
 
@@ -119,7 +123,7 @@ fn runtime() -> &'static Mutex<Option<Runtime>> {
     &RUNTIME
 }
 
-// ── чтение состояния демона ───────────────────────────────────────────────
+// ── reading the daemon state ──────────────────────────────────────────────
 
 fn daemon_prop(name: &str) -> Option<String> {
     let key = cstr(name);
@@ -139,7 +143,7 @@ fn daemon_call(method: &str) -> bool {
     unsafe { rexon_tray_daemon_call(m.as_ptr()) }
 }
 
-// ── автозапуск при входе ──────────────────────────────────────────────────
+// ── autostart at login ────────────────────────────────────────────────────
 
 fn autostart_file() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -147,11 +151,13 @@ fn autostart_file() -> String {
     core_tray::autostart_path(cfg.as_deref(), &home)
 }
 
-/// Включён ли автозапуск Rexon при входе — и сработает ли он в ЭТОМ сеансе.
+/// Whether Rexon autostart at login is enabled — and whether it will work
+/// in THIS session.
 ///
-/// Одной записи `.desktop` мало: sway, Hyprland без uwsm, river, labwc и
-/// Wayfire её не исполняют, и галочка горела бы впустую. Там автозапуск
-/// держит строка в конфиге композитора, и правду говорит ядро
+/// A single `.desktop` entry is not enough: sway, Hyprland without uwsm,
+/// river, labwc and Wayfire do not execute it, and the check mark would be
+/// lit for nothing. There autostart is held by a line in the compositor
+/// config, and the truth is told by the core
 /// (`compositor_autostart::works_live`).
 pub fn autostart_enabled() -> bool {
     match std::fs::read_to_string(autostart_file()) {
@@ -160,10 +166,11 @@ pub fn autostart_enabled() -> bool {
     }
 }
 
-/// Починить записи автозапуска Rexon, чья программа исчезла (старый путь
-/// установки разработчика, переезд пакета): программа — та же, что у
-/// ярлыка (`app::launch_program`), у движка обоев — найденный бинарь
-/// демона. Каждая починка — строкой в журнал. Звать вне потока GUI.
+/// Repair Rexon autostart entries whose program disappeared (an old
+/// developer installation path, a package move): the program is the same
+/// as the launcher's (`app::launch_program`), for the wallpaper engine — the
+/// found daemon binary. Every repair is a line in the log. Call outside the
+/// GUI thread.
 pub fn repair_autostart_entries() {
     use rexon_core::compositor_autostart as ca;
     let path_env = std::env::var("PATH").ok();
@@ -178,27 +185,27 @@ pub fn repair_autostart_entries() {
     });
 }
 
-/// Метка строки лотка в конфигах композиторов.
+/// Tag of the tray line in compositor configs.
 const ID_LOGIN: &str = rexon_core::compositor_autostart::ID_TRAY;
 
-/// Есть ли в этой сессии системный лоток.
+/// Whether this session has a system tray.
 ///
-/// Спрашивается сам Qt, а не имя оболочки: лоток в сессии либо есть, либо
-/// нет, и гадать по `XDG_CURRENT_DESKTOP` значило бы завести вторую таблицу
-/// окружений, которая молча разойдётся с настоящим положением дел.
-/// Вкладка «Настройки» показывает по этому ответу предупреждение: без лотка
-/// настройка автозапуска в лоток ничего не даст.
+/// Qt itself is asked, not the shell name: a session either has a tray or
+/// does not, and guessing by `XDG_CURRENT_DESKTOP` would mean creating a
+/// second table of environments that silently diverges from the real state
+/// of affairs. The "Settings" tab shows a warning based on this answer:
+/// without a tray the "autostart into the tray" setting does nothing.
 pub fn available() -> bool {
     unsafe { rexon_tray_available() }
 }
 
-/// Включить или выключить автозапуск. `Err` — текст ошибки файловой системы
-/// или отказ «в этом окружении не сработает» (с готовой строкой для ручной
-/// вставки в конфиг композитора).
+/// Enable or disable autostart. `Err` is a file system error text or the
+/// refusal "will not work in this environment" (with a ready line to paste
+/// into the compositor config by hand).
 ///
-/// Выключение именно СНОСИТ запись, а не правит её содержимое: мёртвая запись
-/// с `Hidden=true` пережила бы удаление Rexon и осталась бы в редакторе
-/// автозапуска строкой про несуществующую программу.
+/// Disabling REMOVES the entry rather than editing its content: a dead
+/// entry with `Hidden=true` would survive the removal of Rexon and remain in
+/// the autostart editor as a line about a non-existent program.
 pub fn set_autostart(on: bool) -> Result<(), String> {
     let path = autostart_file();
     let file = std::path::Path::new(&path);
@@ -206,7 +213,7 @@ pub fn set_autostart(on: bool) -> Result<(), String> {
         rexon_core::compositor_autostart::remove_live(ID_LOGIN);
         return match std::fs::remove_file(file) {
             Ok(()) => Ok(()),
-            // Записи не было — просили выключить, выключено.
+            // There was no entry — asked to disable, it is disabled.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e.to_string()),
         };
@@ -214,34 +221,36 @@ pub fn set_autostart(on: bool) -> Result<(), String> {
 
     let path_env = std::env::var("PATH").ok();
     let rexon = rexon_core::utils::which("rexon", path_env.as_deref());
-    // Вход — по тому же правилу, что у ярлыка (одна функция ядра): иначе
-    // лоток и ярлык разъедутся по разным хозяевам при общем замке.
+    // The entry point follows the same rule as the launcher's (one core
+    // function): otherwise the tray and the launcher would end up with
+    // different owners under a shared lock.
     let entry = rexon_core::installer::launch_entry_live();
-    // ⛔Заводить нечем — записи не будет: мёртвая строка в автозапуске
-    // оживает при входе в сеанс, когда объяснить поломку уже некому.
+    // Never: there is nothing to start with — there will be no entry: a dead
+    // line in autostart comes alive at login, when there is nobody left to
+    // explain the breakage.
     let exec = core_tray::autostart_exec(&entry, rexon.as_deref())
         .ok_or_else(|| rexon_core::app::MSG_NOTHING_TO_LAUNCH.to_string())?;
     let body = core_tray::autostart_desktop_content(&exec);
-    // Там, где окружение `.desktop` не исполняет, — строка в конфиге
-    // композитора; от таких окружений запись прячется (`NotShowIn=`), чтобы
-    // лоток не стартовал дважды.
+    // Where the environment does not execute `.desktop` — a line in the
+    // compositor config; the entry is hidden from such environments
+    // (`NotShowIn=`) so that the tray does not start twice.
     let (body, refusal) = rexon_core::compositor_autostart::mirror_desktop_live(ID_LOGIN, &body);
 
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     rexon_core::utils::atomic_write(&file.to_string_lossy(), &body).map_err(|e| e.to_string())?;
-    // Запись для других окружений легла, но в этом сеансе не сработает —
-    // сказать это, а не рапортовать «включено».
+    // The entry for other environments is written, but it will not work in
+    // this session — say so rather than report "enabled".
     match refusal {
         Some(msg) => Err(msg),
         None => Ok(()),
     }
 }
 
-// ── сборка меню ───────────────────────────────────────────────────────────
+// ── building the menu ─────────────────────────────────────────────────────
 
-/// Снять живое состояние и перестроить меню значка.
+/// Capture the live state and rebuild the icon menu.
 fn rebuild_menu() {
     let mut guard = runtime().lock().expect("состояние значка не отравлено");
     let Some(rt) = guard.as_mut() else {
@@ -250,7 +259,7 @@ fn rebuild_menu() {
 
     let daemon = unsafe { rexon_tray_daemon_alive() };
     if daemon && !rt.daemon_was {
-        // Демон только что появился: свежий играет и звучит.
+        // The daemon has just appeared: a fresh one plays and sounds.
         rt.paused = false;
         rt.muted = false;
     }
@@ -289,7 +298,7 @@ fn rebuild_menu() {
     unsafe { rexon_tray_menu_end() };
 }
 
-// ── нажатия ───────────────────────────────────────────────────────────────
+// ── presses ───────────────────────────────────────────────────────────────
 
 extern "C" fn on_menu_show() {
     rebuild_menu();
@@ -300,7 +309,7 @@ extern "C" fn on_activate() {
 }
 
 extern "C" fn on_click(id: i32) {
-    // Разделы главного окна: номер пункта — это порядковый номер вкладки.
+    // Main window sections: the item number is the tab's ordinal number.
     let section = id - core_tray::ID_SECTION_BASE;
     let tabs_len = runtime()
         .lock()
@@ -316,7 +325,7 @@ extern "C" fn on_click(id: i32) {
         return;
     }
 
-    // Интервал автосмены обоев.
+    // Wallpaper auto-change interval.
     if let Some(secs) = core_tray::rotate_secs_for(id) {
         let method = cstr("SetRotationInterval");
         unsafe { rexon_tray_daemon_call_u32(method.as_ptr(), secs.max(0) as u32) };
@@ -327,8 +336,8 @@ extern "C" fn on_click(id: i32) {
         core_tray::ID_OPEN => {
             unsafe { rexon_tray_raise_window() };
         }
-        // Один вход на оба плейлиста: играет плейлист Rexon — ведёт он,
-        // иначе — демон Wallpaper Engine.
+        // One entry for both playlists: if the Rexon playlist is playing, it leads;
+        // otherwise — the Wallpaper Engine daemon.
         core_tray::ID_NEXT => {
             if !playlist_command(PlaylistCommand::Next) {
                 daemon_call("Next");
@@ -376,8 +385,8 @@ extern "C" fn on_click(id: i32) {
             }
         }
         core_tray::ID_REVOKE => {
-            // Окна на экране может не быть — без уведомления нажатие
-            // выглядело бы так, будто ничего не произошло.
+            // There may be no window on screen — without a notification the press
+            // would look as if nothing happened.
             let ended = rexon_core::privilege::run::end_session(Reason::RevokedByUser);
             if let Some(reason) = ended {
                 let (title, body) = rexon_core::privilege::run::permission_ended_notice(reason);
@@ -394,8 +403,9 @@ extern "C" fn on_click(id: i32) {
     }
 }
 
-/// Команда плейлисту обоев Rexon, если он играет. Применение — секунды
-/// команд оболочки, поэтому вне потока GUI. `false` — плейлист не играет.
+/// A command to the Rexon wallpaper playlist if it is playing. Applying
+/// takes seconds of shell commands, so it runs outside the GUI thread.
+/// `false` means the playlist is not playing.
 fn playlist_command(cmd: PlaylistCommand) -> bool {
     if !rexon_core::wallpaper_playlist::tray_state().0 {
         return false;
@@ -406,9 +416,10 @@ fn playlist_command(cmd: PlaylistCommand) -> bool {
     true
 }
 
-/// Таймер плейлиста обоев Rexon и его опрос автопаузы — общий наблюдатель
-/// `wallpaper_audio` (те же условия и то же решение, что у хоста обоев).
-/// Наблюдатель живёт, только пока таймеру нужен ответ.
+/// The Rexon wallpaper playlist timer and its auto-pause polling — the
+/// shared `wallpaper_audio` watcher (the same conditions and the same
+/// decision as for the wallpaper host). The watcher lives only while the
+/// timer needs an answer.
 fn spawn_playlist_runner() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -437,33 +448,37 @@ fn spawn_playlist_runner() {
     rexon_core::wallpaper_playlist::spawn_runner();
 }
 
-/// Крестик главного окна при живом значке. `true` — закрытие проглотить.
+/// The main window's close button with a live icon. `true` means swallow
+/// the close.
 ///
-/// Окно уходит в лоток — право изменять систему гаснет (решение
-/// Wehrwolfmann 28.09): помощник сеанса прав получает конец связи. Обои,
-/// значок и автозапуск живут дальше — им права не нужны.
+/// The window goes to the tray — the right to change the system expires
+/// (Wehrwolfmann's decision 28.09): the session's privilege helper gets an
+/// end of connection. The wallpaper, the icon and autostart live on — they
+/// need no privileges.
 extern "C" fn on_window_close() -> bool {
     let ended = rexon_core::privilege::run::end_session(Reason::WindowToTray);
     if let Some(reason) = ended {
         rexon_core::log_info!("privilege", "окно ушло в лоток: сеанс прав закрыт ({})", reason.code());
     }
-    // Язык подписей — язык интерфейса (`rexon_core::i18n`), выбранный
-    // входом приложения до первого окна; своего выбора у значка нет.
+    // The label language is the interface language (`rexon_core::i18n`), chosen
+    // by the application entry point before the first window; the icon has no
+    // choice of its own.
     show_close_notice(ended);
     true
 }
 
-/// Сказать человеку, что окно ушло в лоток (решает ядро —
+/// Tell the user that the window went to the tray (the core decides —
 /// `privilege::run::tray_close_notice`).
 ///
-/// Молча спрятать окно нельзя: покупатель решит, что закрыл программу, и
-/// удивится живому процессу. Подсказка «остался в лотке» — ровно один раз за
-/// установку (отметка живёт в настройках Rexon), а погасшее право — каждый
-/// раз: о нём отметка не знает.
+/// Hiding the window silently is not allowed: the customer would decide they
+/// closed the program and be surprised by a live process. The hint "stayed
+/// in the tray" is shown exactly once per installation (the mark lives in
+/// the Rexon settings), while an expired right is shown every time: the mark
+/// knows nothing about it.
 fn show_close_notice(ended: Option<Reason>) {
     let mut manager = rexon_core::settings::SettingsManager::new().ok();
-    // Настройки не читаются — подсказку не показываем (не знаем, видели
-    // ли), но о погасшем праве говорим всё равно.
+    // The settings cannot be read — we do not show the hint (we do not know
+    // whether it was seen), but we still tell about the expired right.
     let first_time = manager.as_ref().is_some_and(|m| {
         !m.get(core_tray::SEEN_HIDDEN_NOTICE_KEY)
             .and_then(|v| v.as_bool())
@@ -480,27 +495,28 @@ fn show_close_notice(ended: Option<Reason>) {
     }
 }
 
-/// Всплывающее уведомление от значка Rexon.
+/// A pop-up notification from the Rexon icon.
 fn notify(title: &str, body: &str) {
     let t = cstr(title);
     let b = cstr(body);
     unsafe { rexon_tray_notify(t.as_ptr(), b.as_ptr()) };
 }
 
-/// Поставить значок Rexon в лоток.
+/// Put the Rexon icon into the tray.
 ///
-/// `tab_ids` — идентификаторы вкладок главного окна в порядке самого окна
-/// (их знает каркас окна, поэтому подменю «Разделы» не может с ним
-/// разъехаться). `repo_root` — корень дерева разработчика для поиска файла
-/// значка («» у покупателя). `start_hidden` — окно не показывать, Rexon
-/// поднялся сразу в лоток (автозапуск при входе).
+/// `tab_ids` are the identifiers of the main window's tabs in the window's
+/// own order (the window frame knows them, so the "Sections" submenu cannot
+/// drift away from it). `repo_root` is the developer tree root for finding
+/// the icon file ("" for the customer). `start_hidden` means do not show the
+/// window, Rexon came up straight into the tray (autostart at login).
 ///
-/// `true` — значок стоит. При `false` (лотка в сессии нет либо значок не
-/// создан) вызывающий ОБЯЗАН оставить окно видимым и обычное поведение
-/// крестика: спрятать окно без значка — это потерять программу.
+/// `true` means the icon is in place. With `false` (there is no tray in the
+/// session or the icon was not created) the caller MUST keep the window
+/// visible and the ordinary behaviour of the close button: hiding the
+/// window without an icon means losing the program.
 ///
-/// ⚠️ Звать из потока GUI и только когда главное окно уже создано: значок
-/// сразу берёт его под сторожа закрытия.
+/// Warning: call from the GUI thread and only when the main window already
+/// exists: the icon immediately puts it under the close guard.
 pub fn install(tab_ids: &[String], repo_root: &str, start_hidden: bool) -> bool {
     if unsafe { !rexon_tray_available() } {
         return false;
@@ -526,21 +542,22 @@ pub fn install(tab_ids: &[String], repo_root: &str, start_hidden: bool) -> bool 
     });
 
     rebuild_menu();
-    // Строки автозапуска в конфигах композиторов — по уже лежащим записям
-    // (композитор могли поставить после включения). Вне потока GUI: это
-    // чтение и, изредка, запись нескольких файлов.
+    // Autostart lines in compositor configs — from the entries already present
+    // (the compositor may have been installed after enabling). Outside the GUI
+    // thread: this is reading and, occasionally, writing several files.
     std::thread::spawn(|| {
         repair_autostart_entries();
         rexon_core::compositor_autostart::resync_rexon_live();
     });
-    // Сторож живых обоев (рисовальщики waywallen и свой хост): упал —
-    // поднять обои заново. Живёт, пока жив значок, то есть всё время, пока
-    // Rexon запущен. Поток один на процесс: его же поднимает и применение
-    // живых обоев, если значка нет.
+    // Live wallpaper watchdog (the waywallen renderers and our own host): if it
+    // crashed — bring the wallpaper up again. It lives as long as the icon
+    // does, that is, all the time Rexon is running. There is one thread per
+    // process: applying a live wallpaper also starts it if there is no icon.
     rexon_core::renderer_watch::ensure_running();
-    // Сторож пакета движка: обновление Rexon положило плагин новее того,
-    // что держит живой демон, — сверить и перезапустить демона сразу, а не
-    // при следующем открытии вкладки обоев (`we_socket::spawn_package_watch`).
+    // Engine package watchdog: a Rexon update put a plugin newer than the one
+    // the live daemon holds — compare and restart the daemon at once rather
+    // than on the next opening of the wallpaper tab
+    // (`we_socket::spawn_package_watch`).
     crate::we_socket::spawn_package_watch();
     unsafe { rexon_tray_guard_window() };
     if start_hidden {
@@ -549,20 +566,24 @@ pub fn install(tab_ids: &[String], repo_root: &str, start_hidden: bool) -> bool 
     true
 }
 
-/// Поставить значок главному окну на QML: разделы, значок и `--tray` — сами.
+/// Put the icon on the QML main window: the sections, the icon and `--tray`
+/// by itself.
 ///
-/// Одна дверь вместо трёх решений на стороне вызывающего, потому что все три
-/// уже есть в ядре и второй их копии в продукте быть не должно: список
-/// разделов — `qt_main::section_ids()` (тот же, что рисует полосу окна),
-/// корень дерева для файла значка — `tray::repo_root_from_exe`, флаг «сразу
-/// в лоток» — `tray::starts_hidden`.
+/// One door instead of three decisions on the caller's side, because all
+/// three already exist in the core and there must be no second copy of them
+/// in the product: the section list is `qt_main::section_ids()` (the same
+/// that draws the window strip), the tree root for the icon file is
+/// `tray::repo_root_from_exe`, the "straight into the tray" flag is
+/// `tray::starts_hidden`.
 ///
-/// `args` — аргументы командной строки БЕЗ имени программы.
+/// `args` are the command line arguments WITHOUT the program name.
 ///
-/// Ответ `false` — лотка в сессии нет либо значок не создан. ⚠️ Вызывающий
-/// ОБЯЗАН в этом случае оставить окно видимым, даже если просили `--tray`:
-/// без значка спрятанное окно — это потерянная программа (правило #13).
-/// Файл значка на случай, если темы не хватит («» — файла нет нигде).
+/// The answer `false` means there is no tray in the session or the icon was
+/// not created. Warning: in that case the caller MUST keep the window
+/// visible, even if `--tray` was asked for: without an icon a hidden window
+/// is a lost program (rule #13).
+/// The icon file in case the theme is not enough ("" — there is no file
+/// anywhere).
 fn icon_file(repo_root: &str) -> String {
     core_tray::icon_candidates(repo_root)
         .into_iter()
@@ -570,15 +591,18 @@ fn icon_file(repo_root: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Значок всех окон процесса — та же картинка, что у значка в лотке.
+/// Icon of all windows of the process — the same picture as the tray icon.
 ///
-/// 01.11.2026, MATE на X11: в панели задач у окна Rexon был общий значок.
-/// `setDesktopFileName` хватает Wayland (оболочка находит ярлык по app id),
-/// а на X11 панель берёт картинку из `_NET_WM_ICON` окна — и его не было:
-/// значка окну Qt не давал никто. Ставится после создания приложения и до
-/// первого окна; действует на все окна процесса (главное, диалоги).
+/// 01.11.2026, MATE on X11: the Rexon window had a generic icon in the task
+/// bar. `setDesktopFileName` is enough for Wayland (the shell finds the
+/// launcher by the app id), while on X11 the panel takes the picture from
+/// the window's `_NET_WM_ICON` — and there was none: nobody gave Qt an icon
+/// for the window. Set after the application is created and before the
+/// first window; it applies to all windows of the process (the main one,
+/// dialogs).
 ///
-/// `false` — ни тема, ни файл картинку не дали (в журнал, не человеку).
+/// `false` means neither the theme nor the file gave a picture (to the log,
+/// not to the user).
 pub fn set_app_window_icon() -> bool {
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let file = cstr(&icon_file(&core_tray::repo_root_from_exe(&exe)));
@@ -595,46 +619,53 @@ pub fn install_for_main_window(args: &[String]) -> bool {
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
     let root = core_tray::repo_root_from_exe(&exe);
-    // Мост «не гасить экран» — со значком и без: ему нужен лишь процесс,
-    // живущий весь сеанс, а это и есть процесс главного окна.
+    // The "do not blank the screen" bridge — with or without the icon: it only
+    // needs a process living for the whole session, and that is the main
+    // window's process.
     crate::screensaver_bridge::spawn_once();
-    // Сторож «Rexon обновлён» — тоже со значком и без: уведомление с кнопкой
-    // живёт в службе уведомлений, лоток ему не нужен.
+    // The "Rexon updated" watchdog — also with or without the icon: a
+    // notification with a button lives in the notification service and does
+    // not need the tray.
     spawn_self_update_watch();
-    // Таймер плейлиста обоев — тоже со значком и без: ему нужен лишь
-    // процесс, живущий весь сеанс.
+    // The wallpaper playlist timer — also with or without the icon: it only
+    // needs a process living for the whole session.
     spawn_playlist_runner();
     install(&tabs, &root, core_tray::starts_hidden(args))
 }
 
-/// Запомнить главное окно на QML — корень движка — до первого показа.
+/// Remember the QML main window — the engine's root — before the first
+/// show.
 ///
-/// Окно грузится спрятанным (см. [`first_show_main_window`]), а спрятанных
-/// окон верхнего уровня в процессе несколько: значок, ставящийся следом,
-/// искал бы «первое спрятанное» и мог взять чужое. Потому окно называется
-/// прямо, по движку.
+/// The window loads hidden (see [`first_show_main_window`]), and there are
+/// several hidden top-level windows in the process: the icon, set up right
+/// after, would look for "the first hidden one" and might take a foreign
+/// one. So the window is named directly, by the engine.
 ///
 /// # Safety
-/// `engine` — живой `QQmlApplicationEngine` после `load`; поток GUI.
+/// `engine` is a live `QQmlApplicationEngine` after `load`; the GUI thread.
 pub unsafe fn adopt_main_window(engine: *mut std::ffi::c_void) -> bool {
     unsafe { rexon_tray_adopt_qml_window(engine) }
 }
 
-/// Первый показ главного окна — в самом конце запуска, перед циклом событий.
+/// The first show of the main window — at the very end of start-up, before
+/// the event loop.
 ///
-/// 02.11.2026, MATE на X11: при запуске сначала стояло прозрачное окно и
-/// только потом интерфейс. Замер на стенде: окно с `visible: true` выходило
-/// на экран посреди `engine.load`, а кадр Qt рисует только из цикла событий —
-/// между ними поток GUI ещё догружал QML, ставил значок и заводил сторожей
-/// (на стенде ~0,5 с; у Wehrwolfmann по журналу
-/// от загрузки QML до значка 0,6–1,2 с), и всё это время на экране было
-/// окно без единого пикселя. Теперь окно грузится спрятанным, показывается
-/// здесь, когда до цикла событий не осталось работы, и ещё до показа
-/// получает фон X11 цветом скина (`wallpaper_host::paint_x11_background`):
-/// оставшиеся до первого кадра миллисекунды оно стоит в своей краске.
+/// 02.11.2026, MATE on X11: at start-up a transparent window appeared first
+/// and only then the interface. Measured on a test bench: the window with
+/// `visible: true` went on screen in the middle of `engine.load`, while Qt
+/// draws a frame only from the event loop — in between the GUI thread was
+/// still loading QML, setting up the icon and starting the watchdogs (~0.5
+/// s on the bench; for Wehrwolfmann, by the log, 0.6–1.2 s from QML loading
+/// to the icon), and all that time there was a window without a single
+/// pixel on screen. Now the window loads hidden, is shown here when no work
+/// is left before the event loop, and even before showing gets an X11
+/// background in the skin colour (`wallpaper_host::paint_x11_background`):
+/// for the milliseconds left before the first frame it stands in its own
+/// colour.
 ///
-/// `show == false` — запуск в лоток (значок есть и просили `--tray`): окно
-/// остаётся спрятанным, его покажет значок.
+/// `show == false` means a start into the tray (there is an icon and
+/// `--tray` was asked for): the window stays hidden, and the icon will show
+/// it.
 pub fn first_show_main_window(show: bool) {
     if !show {
         return;
@@ -652,9 +683,9 @@ pub fn first_show_main_window(show: bool) {
     unsafe { rexon_tray_raise_window() };
 }
 
-/// Завести сторожа «Rexon обновлён» один раз на процесс. Только у Rexon из
-/// пакета: в дереве разработчика бинарь меняет каждая сборка, и уведомление
-/// после каждой `cargo build-app` было бы шумом.
+/// Start the "Rexon updated" watchdog once per process. Only for a packaged
+/// Rexon: in a developer tree every build replaces the binary, and a
+/// notification after every `cargo build-app` would be noise.
 pub fn spawn_self_update_watch() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     if !crate::we_env::rexon_packaged() {
@@ -670,18 +701,19 @@ pub fn spawn_self_update_watch() {
     });
 }
 
-/// Опрос своего исполняемого файла: пакет заменил его под работающим
-/// процессом — один раз на обновление предложить перезапуск. Кнопка ведёт
-/// тем же путём, что «Перезапустить» в «Настройках» (проверка новой копии,
-/// сторож её старта, передача замка). Решения — ядро
+/// Polling our own executable: the package replaced it under a running
+/// process — offer a restart once per update. The button goes the same way
+/// as "Restart" in "Settings" (checking the new copy, the guard of its
+/// start, handing over the lock). Decisions are the core's
 /// (`single_instance::exe_change`, `SelfUpdateNotice`).
 fn self_update_watch_loop() {
     use rexon_core::single_instance as si;
     let link = std::path::Path::new(si::PROC_SELF_EXE);
     let mut notice = si::SelfUpdateNotice::default();
     loop {
-        // Толчок — сеанс прав встретил помощника новой сборки: обновление
-        // уже подтверждено, говорим сразу (`SelfUpdateNotice::confirm`).
+        // A push — the privilege session met the helper of the new build: the
+        // update is already confirmed, we say so at once
+        // (`SelfUpdateNotice::confirm`).
         let nudged = si::wait_self_update_poll(std::time::Duration::from_secs(si::SELF_UPDATE_POLL_SECS));
         let change = si::exe_change_at(link, si::FileStamp::of(link));
         let show = if nudged { notice.confirm(&change) } else { notice.step(&change) };
@@ -691,8 +723,8 @@ fn self_update_watch_loop() {
         if let si::ExeChange::Replaced { path, .. } = &change {
             rexon_core::log_info!("update", "исполняемый файл заменён обновлением ({path}) — предлагаю перезапуск");
         }
-        // Ждёт нажатия в этом потоке: опрос на это время стоит, и второе
-        // уведомление поверх первого не встанет.
+        // Waits for a press in this thread: polling stops for that time, and a
+        // second notification will not appear over the first.
         let answer = rexon_core::utils::notify_ask_live(
             &si::self_update_title(),
             &si::self_update_body(),
@@ -705,7 +737,7 @@ fn self_update_watch_loop() {
             continue;
         }
         match crate::settings_actions::restart_for_update() {
-            // Процесс уходит — сторожить больше нечего.
+            // The process is leaving — there is nothing more to guard.
             Ok(()) => return,
             Err(text) => {
                 rexon_core::utils::notify_live(&si::self_update_restart_failed_title(), &text);
@@ -714,78 +746,85 @@ fn self_update_watch_loop() {
     }
 }
 
-/// Выйти из Rexon по-настоящему: снять значок, закрыть окно со стоком
-/// воркеров вкладок и остановить цикл событий.
+/// Quit Rexon for real: remove the icon, close the window with the drain of
+/// the tabs' workers and stop the event loop.
 ///
-/// Звать можно из любого потока — работу шим переносит в поток GUI сам.
+/// Can be called from any thread — the shim moves the work into the GUI
+/// thread by itself.
 pub fn quit() {
     unsafe { rexon_tray_quit() };
 }
 
-/// Переключить главное окно на раздел с этим номером (порядок — тот же, что
-/// у полосы разделов). `false` — полосы нет либо номера такого нет.
+/// Switch the main window to the section with this number (the order is the
+/// same as that of the section strip). `false` means there is no strip or
+/// no such number.
 ///
-/// Звать можно из любого потока — по той же причине и тем же способом, что
-/// и подъём окна ниже.
+/// Can be called from any thread — for the same reason and in the same way
+/// as raising the window below.
 pub fn select_section(index: i32) -> bool {
     unsafe { rexon_tray_select_tab(index) }
 }
 
-/// Поднять главное окно этого процесса. `false` — окна не нашлось.
+/// Raise the main window of this process. `false` means no window was
+/// found.
 ///
-/// ⭐ Звать можно ИЗ ЛЮБОГО ПОТОКА, и это здесь главное: слушатель второго
-/// запуска (`rexon_core::single_instance::ActivationListener`) живёт в своём
-/// потоке, а окно у Qt разрешено трогать только в потоке GUI. Переезд в
-/// нужный поток делает шим (`rexon_tray_raise_window`), и он же ждёт
-/// настоящего ответа — врать второму запуску «поднял» при пустом экране
-/// нельзя.
+/// ⭐ Can be called FROM ANY THREAD, and that is the main point here: the
+/// second-launch listener (`rexon_core::single_instance::ActivationListener`)
+/// lives in its own thread, while Qt allows touching a window only in the
+/// GUI thread. The move into the right thread is done by the shim
+/// (`rexon_tray_raise_window`), and it also waits for the real answer —
+/// lying "raised" to a second launch over an empty screen is not allowed.
 pub fn raise_main_window() -> bool {
     unsafe { rexon_tray_raise_window() }
 }
 
-/// Снять главное окно в PNG (режим обхода `--tour`). Только из потока GUI.
+/// Capture the main window into a PNG (tour mode `--tour`). Only from the
+/// GUI thread.
 pub fn grab_main_window(path: &str) -> bool {
     let path = cstr(path);
     unsafe { rexon_tray_grab_window(path.as_ptr()) }
 }
 
-/// Открыть раздел (и подраздел, `compare` — «Сравнение DE») главного окна
-/// на QML. Зовётся из потока слушателя; в поток GUI переносит шим и ждёт
-/// честного ответа. false — окна нет либо раздела такого нет.
+/// Open a section (and a sub-page, `compare` — "DE comparison") of the QML
+/// main window. Called from the listener thread; the shim moves it into the
+/// GUI thread and waits for an honest answer. false means there is no
+/// window or no such section.
 pub fn open_section(section: &str, subpage: &str) -> bool {
     let (id, sub) = (cstr(section), cstr(subpage));
     unsafe { rexon_tray_open_section(id.as_ptr(), sub.as_ptr()) }
 }
 
-/// Сколько окно ждёт перед выходом, уступая замок классическому окну.
+/// How long the window waits before quitting, yielding the lock to the
+/// classic window.
 ///
-/// Ответ «ухожу» (`bye`) слушатель отправляет ПОСЛЕ возврата обработчика, и
-/// выход не смеет его обогнать: ушедший раньше ответа процесс оставил бы
-/// новый запуск с оборванным соединением. Новый процесс ждёт освобождения
-/// замка до `single_instance::HANDOVER_WAIT` (5 с) — запаса хватает.
+/// The listener sends the answer "leaving" (`bye`) AFTER the handler
+/// returns, and quitting must not overtake it: a process that left before
+/// the answer would leave the new start with a broken connection. The new
+/// process waits for the lock to be released for up to
+/// `single_instance::HANDOVER_WAIT` (5 s) — the margin is enough.
 pub const HANDOVER_QUIT_DELAY_MS: i32 = 200;
 
-/// Запланировать выход (значок, окно, приложение) и вернуться сразу.
-/// `reason` — кто попросил (для журнала: «перезапуск», «передача хозяина»).
+/// Schedule quitting (icon, window, application) and return at once.
+/// `reason` is who asked (for the log: "restart", "owner handover").
 pub fn request_quit(reason: &str) {
     note_quit_reason(reason);
     rexon_core::log_info!("exit", "выход запрошен: {reason}");
     unsafe { rexon_tray_request_quit(HANDOVER_QUIT_DELAY_MS) }
 }
 
-/// Кто попросил выйти — для строки журнала после цикла событий.
+/// Who asked to quit — for the log line after the event loop.
 static QUIT_REASON: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
-/// Запомнить причину выхода (первая побеждает: перезапуск важнее
-/// последовавшего за ним закрытия окна).
+/// Remember the reason for quitting (the first one wins: a restart matters
+/// more than the window close that followed it).
 pub fn note_quit_reason(reason: &str) {
     if let Ok(mut slot) = QUIT_REASON.lock() {
         slot.get_or_insert_with(|| reason.to_string());
     }
 }
 
-/// Причина выхода; не записана — значит закрыли окно (крестик без значка в
-/// лотке, «Выход» в меню окна, Ctrl+Q).
+/// Reason for quitting; if not recorded, the window was closed (the close
+/// button without a tray icon, "Quit" in the window menu, Ctrl+Q).
 pub fn quit_reason() -> String {
     QUIT_REASON
         .lock()
@@ -798,8 +837,8 @@ pub fn quit_reason() -> String {
 mod tests {
     use super::*;
 
-    /// Коды видов пунктов — те же числа, что разбирает `switch` в шиме
-    /// (`cpp/rexon_tray.cpp`). Разъедутся — меню молча станет плоским.
+    /// Item kind codes — the same numbers the `switch` in the shim parses
+    /// (`cpp/rexon_tray.cpp`). If they diverge, the menu silently becomes flat.
     #[test]
     fn коды_видов_пунктов_совпадают_с_шимом() {
         assert_eq!(kind_code(core_tray::ItemKind::Action), 0);
@@ -810,8 +849,8 @@ mod tests {
         assert_eq!(kind_code(core_tray::ItemKind::SubmenuEnd), 5);
     }
 
-    /// Имена методов демона, которые печатает диспетчер нажатий, обязаны
-    /// существовать у него на шине. Сверяем с ядром, где тот же клиент.
+    /// The names of daemon methods that the press dispatcher prints must exist
+    /// on its bus. We compare with the core, where the same client lives.
     #[test]
     fn методы_демона_названы_как_в_ядре() {
         for method in [

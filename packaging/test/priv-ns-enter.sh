@@ -1,26 +1,27 @@
 #!/bin/sh
-# Стенд уровня 3 «один пароль на запуск» (см. docs/testing.md): настоящий
-# rexon-priv-helper от «root» в пространстве имён пользователя, без root на
-# хосте. Запускается ТОЛЬКО так (это делает tests/priv_userns.rs):
+# Level 3 test stand for "one password per launch" (see docs/testing.md): the
+# real rexon-priv-helper as "root" in a user namespace, without root on the
+# host. It is run ONLY like this (tests/priv_userns.rs does it):
 #
-#   PKEXEC_UID=0 unshare -r --mount priv-ns-enter.sh <стенд> <помощник> [аргументы…]
+#   PKEXEC_UID=0 unshare -r --mount priv-ns-enter.sh <stand> <helper> [args…]
 #
-# `unshare -r` даёт uid 0 внутри (снаружи это тот же пользователь), `--mount`
-# — свои точки монтирования: подмены ниже видит только помощник и его
-# потомки, на хосте не меняется ничего. Каталог стенда <стенд> готовит тест:
+# `unshare -r` gives uid 0 inside (outside it is the same user), `--mount`
+# gives its own mount points: the substitutions below are seen only by the
+# helper and its children, nothing changes on the host. The <stand>
+# directory is prepared by the test:
 #
-#   realbin/  — пустой: сюда встаёт настоящий /usr/bin (для шебангов подмен)
-#   fakebin/  — встаёт на /usr/bin: подменные pacman, loginctl, systemctl
-#   etc/      — встаёт на /etc: os-release, passwd
-#   share/    — встаёт на /usr/share: сюда пишет раскладка тем
-#   local/    — (если есть) встаёт на /usr/local: шрифты «для всех»
-#   vartmp/   — встаёт на /var/tmp: рабочие каталоги помощника
-#   nojournal/ — встаёт на /run/systemd/journal: журнал помощника уходит
-#                в stderr (в файл стенда), а не в journald машины
+#   realbin/  — empty: the real /usr/bin is mounted here (for the fakes' shebangs)
+#   fakebin/  — mounted over /usr/bin: fake pacman, loginctl, systemctl
+#   etc/      — mounted over /etc: os-release, passwd
+#   share/    — mounted over /usr/share: the theme layout writes here
+#   local/    — (if present) mounted over /usr/local: fonts "for all users"
+#   vartmp/   — mounted over /var/tmp: the helper's working directories
+#   nojournal/ — mounted over /run/systemd/journal: the helper's log goes
+#                to stderr (into the stand's file), not to the machine's journald
 #
-# Все `mount` — до `exec`: pid не меняется (unshare без --fork, оболочка
-# заменяется помощником), родитель помощника — окно, как после pkexec;
-# сокет окна остаётся на fd 0/1.
+# All `mount`s happen before `exec`: the pid does not change (unshare without
+# --fork, the shell is replaced by the helper), the helper's parent is the
+# window, as after pkexec; the window's socket stays on fd 0/1.
 set -eu
 T=$1
 H=$2
@@ -35,6 +36,6 @@ mount --bind "$T/vartmp" /var/tmp
 if [ -d /run/systemd/journal ]; then
     mount --bind "$T/nojournal" /run/systemd/journal
 fi
-# Последним: после него в /usr/bin только подмены.
+# Last: after it /usr/bin contains only the fakes.
 "$T/realbin/mount" --bind "$T/fakebin" /usr/bin
 exec "$H" "$@"

@@ -1,17 +1,17 @@
-//! Golden-сверка порта `ocs_store.rs` с оригиналом `rexon/ocs_store.py`.
+//! Golden check of the `ocs_store.rs` port against the original `rexon/ocs_store.py`.
 //!
-//! Эталон снят read-only с ЖИВОГО `rexon.ocs_store`: под детект типа темы
-//! во временном каталоге строились НАСТОЯЩИЕ деревья файлов (цветовая
-//! схема, Aurorae, Kvantum, иконки с подпапками и без, «полный пак» из
-//! двух компонентов и из одного, `contents/defaults`, `contents/widgets`,
-//! три варианта `metadata.desktop`, пустой каталог, отсутствующий путь) —
-//! и рядом снимался снимок наблюдений, который получает порт. Так
-//! сверяется решение, а не переписанный обход файловой системы.
+//! The golden was captured read-only from LIVE `rexon.ocs_store`: for theme type detection
+//! REAL file trees were built in a temporary directory (a color
+//! scheme, Aurorae, Kvantum, icons with and without subfolders, a "full pack" of
+//! two components and of one, `contents/defaults`, `contents/widgets`,
+//! three variants of `metadata.desktop`, an empty directory, a missing path) —
+//! and next to it a snapshot of the observations the port receives was taken. This way
+//! the decision is checked, not a rewritten file system walk.
 //!
-//! Журнал установленного снимался в отдельном временном HOME с
-//! замороженным временем; реальный `~/.config/rexon` не трогался.
+//! The installed log was captured in a separate temporary HOME with
+//! frozen time; the real `~/.config/rexon` was not touched.
 //!
-//! `golden/ocs_store_cases.json` — снятые значения.
+//! `golden/ocs_store_cases.json` — the captured values.
 
 use rexon_core::ocs_store as store;
 use serde_json::Value;
@@ -55,23 +55,23 @@ fn detect_matches_original_on_real_trees() {
     }
 }
 
-/// Порядок проверок значим: тема, подходящая сразу под два признака,
-/// должна решаться так же, как в оригинале.
+/// The order of checks matters: a theme matching two markers at once
+/// must be decided the same way as in the original.
 #[test]
 fn detect_priority_is_preserved() {
     let g = fx();
     let inputs = g["detect_input"].as_object().unwrap();
 
-    // Цветовая схема побеждает Aurorae…
+    // A color scheme beats Aurorae…
     let scan = scan_from(&inputs["priority_colors_over_aurorae"]);
     assert_eq!(store::detect_actual_kde_type(&scan), Some("color-scheme"));
-    // …а «полный пак» побеждает цветовую схему.
+    // …and a "full pack" beats a color scheme.
     let scan = scan_from(&inputs["priority_bundle_over_colors"]);
     assert_eq!(store::detect_actual_kde_type(&scan), Some("bundle"));
-    // Один компонент паком не считается.
+    // One component does not count as a pack.
     let scan = scan_from(&inputs["bundle_one"]);
     assert_eq!(store::detect_actual_kde_type(&scan), None);
-    // index.theme без характерных подпапок иконками не считается.
+    // index.theme without the characteristic subfolders does not count as icons.
     let scan = scan_from(&inputs["icons_no_sub"]);
     assert_eq!(store::detect_actual_kde_type(&scan), None);
 }
@@ -112,8 +112,8 @@ fn record_and_serialize_byte_for_byte() {
     store::record_installed(
         &mut log,
         &item,
-        // Пустой путь обязан отфильтроваться — он приходил от неудавшихся
-        // шагов установки.
+        // An empty path must be filtered out — it came from failed
+        // install steps.
         &["/usr/share/themes/Dracula".to_string(), String::new()],
         "2026-07-26T15:00:00",
     );
@@ -123,7 +123,7 @@ fn record_and_serialize_byte_for_byte() {
         "текст журнала"
     );
 
-    // Разбор своего же вывода даёт то, что вернул оригинал.
+    // Parsing its own output gives what the original returned.
     let parsed = store::parse_installed_log(Some(g["log_text"].as_str().unwrap()));
     assert_eq!(Value::Object(parsed), g["log_parsed"]);
 }
@@ -150,9 +150,9 @@ fn forget_removes_only_existing() {
     );
 }
 
-/// Шаг 5б слияния установщиков: писатели пишут общий журнал, а
-/// `ocs_installed.json` получает его зеркало — тот же текст, что писала
-/// прежняя логика, на тех же эталонах (запись, затем удаление).
+/// Step 5b of merging the installers: the writers write the shared log, and
+/// `ocs_installed.json` gets its mirror — the same text the former logic
+/// wrote, on the same goldens (write, then removal).
 #[test]
 fn journal_mirror_matches_old_log_text() {
     let g = fx();
@@ -178,7 +178,7 @@ fn journal_mirror_matches_old_log_text() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Битый или чужой файл журнала не должен ронять карточки установленного.
+/// A broken or foreign log file must not bring down the installed cards.
 #[test]
 fn broken_log_degrades_to_empty() {
     for text in ["", "не json", "[1,2,3]", "\"строка\"", "null", "42"] {

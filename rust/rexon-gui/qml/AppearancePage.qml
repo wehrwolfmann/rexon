@@ -1,124 +1,133 @@
-// Вкладка «Оформление» на QML. Данные и решения — Rust-объект
-// AppearanceModel (rust/rexon-gui/src/appearance_page.rs), который сам
-// ничего не решает, а спрашивает ядро (`rexon_core::appearance_page`).
-// Здесь только РАЗМЕТКА.
+// The «Appearance» tab in QML. Data and decisions come from the Rust
+// object AppearanceModel (rust/rexon-gui/src/appearance_page.rs), which
+// decides nothing itself but asks the core (`rexon_core::appearance_page`).
+// Only MARKUP lives here.
 //
-// Оформление берётся из готового: палитра приходит свойством `palette` от
-// того же объекта и родом из скина по умолчанию всего продукта
-// (правило #17). Своих цветов страница не заводит — даже краски кнопки
-// плитки приезжают из ядра (`page.buttonColors(state)`).
+// The styling is taken ready-made: the palette arrives through the
+// `palette` property of the same object and originates from the default
+// skin of the whole product (rule #17). The page defines no colours of its
+// own — even the tile button colours arrive from the core
+// (`page.buttonColors(state)`).
 //
-// ── Побочные действия ────────────────────────────────────────────────────
+// ── Side actions ─────────────────────────────────────────────────────────
 //
-// Сеть и диск живут снаружи: хозяин страницы кладёт в `root.actions`
-// объект с методами
-//   environment()             -> строка JSON: {qtStyles, widgetStyle,
+// Network and disk live outside: the page host puts into `root.actions` an
+// object with the methods
+//   environment()             -> JSON string: {qtStyles, widgetStyle,
 //                                aurHelper, detectedDe, savedDe, seenDe}
-//   loadCatalog(requestJson)  -> void (работа долгая, ответ приходит
-//                                сигналом catalogReady; поле `fresh`
-//                                значит «обойди свой кеш сканов диска»)
+//   loadCatalog(requestJson)  -> void (a long job, the answer arrives with
+//                                the catalogReady signal; the `fresh` field
+//                                means "bypass your disk scan cache")
 //   loadPreview(job, itemId, url, low)
-//                             -> void (одна картинка; ответ сигналами
-//                                previewDone/previewFailed с тем же `job`.
-//                                Писать её надо туда же, где страница ищет
-//                                попадания в кеш, — путь считает ядро,
+//                             -> void (one picture; the answer arrives with
+//                                the previewDone/previewFailed signals with
+//                                the same `job`. It must be written where
+//                                the page looks for cache hits — the path is
+//                                computed by the core,
 //                                `appearance_page::preview_cache_path`)
-//   cancelPreviews()          -> void (оборвать всё летящее за картинками)
-//   loadPrefetch(requestJson) -> void (фоновый прогрев кеша: показывать
-//                                нечего, ответ сигналом prefetchReady)
-//   remember(deId, seen)      -> bool (запомнить выбор рабочего стола;
-//                                пустой `seen` — «какой стол запущен
-//                                сейчас, спроси у машины сам»)
-//   loadDetail(itemId)        -> void (полные детали товара, ответ сигналом)
-//   installById(itemId, apply, fileName)-> void (установка, ход дела
-//                             сигналами; fileName — файл, выбранный руками,
-//                             пусто — автоматический)
-//   installAur(pkgName)       -> void (сборка пакета помощником)
-//   actOnStoreItem(itemId)    -> void (кнопка товара магазина: не стоит —
-//                                поставить, стоит — применить)
-//   applyLocalById(itemId)    -> void (применить тему с диска; у дополнения
-//                                окружения — включить/выключить, у Conky —
-//                                запустить/остановить)
-//   globalApplyQuestion(itemId)-> строка JSON окна «Применить «X»?»
-//                                глобальной темы Plasma; пусто — окна нет,
-//                                кнопка делает то же, что прежде
-//   applyGlobalById(itemId, appearance, layout, parts) — parts: маска частей
-//                                    подробного вида, -1 — простой вид
-//                             -> void (применить глобальную тему с выбором
-//                                окна; итог сигналом actionDone)
-//   conkyAutostart(itemId)    -> bool (автозапуск виджета Conky включён?)
-//   setConkyAutostart(itemId, on) -> bool (переключить; итог сигналом actionDone)
-//   cursorSize()              -> int (текущий размер курсора, 0 — не задан)
-//   applyCursorSize(size)     -> void (размер курсора; итог сигналом actionDone)
-//   uninstall(itemJson)       -> void (товар магазина — по журналу; тема
-//                                с диска `local:…` — как removeLocalById)
-//   removeLocalById(itemId)   -> void (тему с диска пометить к удалению —
-//                                сигнал removalPending; отказ — actionDone)
-//   commitRemovals()          -> void (снять помеченное; итог removalDone)
-//   undoRemovals()            -> int  (снять пометки; сколько вернулось)
-//   toggleFavorite(itemId)    -> строка JSON: состав избранного после
-//   openUrl(url)              -> bool (страница товара в браузере)
-//   openLinkedCard(requestJson)-> void (ссылка на товар магазина из чужого
-//                                текста: `{card, url}`; ответ сигналом
-//                                linkedCardReady)
-//   purgeTranslations()       -> void (разовая чистка протухших переводов)
-// и сигналами
-//   catalogReady(payload)     — ответ на запрос каталога (строка JSON)
-//   detailReady(payload)      — полные детали товара (строка JSON)
-//   descriptionReady(payload) — перевод описания ВДОГОНКУ уже показанной
-//                               карточке (строка JSON: `itemId`, `source` —
-//                               исходник перевода, и либо `translated`, либо
-//                               `pending`). `pending: true` зажигает пометку
-//                               «Перевожу описание…» (перевод идёт дольше
-//                               порога), `false` гасит её без перевода
-//                               (не переводим или модели нет — на панели
-//                               остаётся оригинал); `translated` кладёт
-//                               перевод и тоже гасит пометку
-//   previewDone(job, path)    — картинка заявки записана в кеш
-//   previewFailed(job, status)— заявка не удалась: `status` это ответ
-//                               сервера числом строкой, пусто (ответа не
-//                               было) либо «canceled» (оборвали мы сами)
-//   prefetchReady(payload)    — ответ на фоновый прогрев (строка JSON: те же
-//                               поля запроса плюс `items`)
-//   installProgress(pct)      — доля выполненного установки, 0–100
-//   installLog(text)          — очередная строка журнала установки
-//   statusMessage(text)       — сообщение в строку состояния
-//   actionDone(text, ok)      — итог установки/применения
-//   removalPending(text)      — тема с диска помечена к удалению: текст
-//                               строки «Вернуть»
-//   removalDone(text)         — помеченное снято: итог для строки состояния
-//   galleryReady(index, path) — готовый кадр карусели
-//   galleryFailed(index)      — кадр не доехал
-//   galleryFinished(count)    — обход ссылок закончен
-//   commentsReady(payload)    — страница комментариев (строка JSON)
+//   cancelPreviews()          -> void (abort everything in flight for
+//                                pictures)
+//   loadPrefetch(requestJson) -> void (background cache warm-up: nothing to
+//                                show, the answer arrives with prefetchReady)
+//   remember(deId, seen)      -> bool (remember the desktop choice; an empty
+//                                `seen` means "ask the machine yourself which
+//                                desktop is running now")
+//   loadDetail(itemId)        -> void (full item details, answer by signal)
+//   installById(itemId, apply, fileName)-> void (installation, progress by
+//                             signals; fileName is a file chosen by hand,
+//                             empty means automatic)
+//   installAur(pkgName)       -> void (building a package with the helper)
+//   actOnStoreItem(itemId)    -> void (store item button: not installed —
+//                                install, installed — apply)
+//   applyLocalById(itemId)    -> void (apply a theme from disk; for an
+//                                environment add-on — enable/disable, for
+//                                Conky — start/stop)
+//   globalApplyQuestion(itemId)-> JSON string of the "Apply "X"?" window of
+//                                a Plasma global theme; empty means no
+//                                window, the button does what it did before
+//   applyGlobalById(itemId, appearance, layout, parts) — parts: mask of the
+//                                    detailed view's parts, -1 — simple view
+//                             -> void (apply a global theme with the window
+//                                choice; result by the actionDone signal)
+//   conkyAutostart(itemId)    -> bool (is Conky widget autostart enabled?)
+//   setConkyAutostart(itemId, on) -> bool (toggle; result by actionDone)
+//   cursorSize()              -> int (current cursor size, 0 — not set)
+//   applyCursorSize(size)     -> void (cursor size; result by actionDone)
+//   uninstall(itemJson)       -> void (a store item — by the journal; a theme
+//                                from disk `local:…` — like removeLocalById)
+//   removeLocalById(itemId)   -> void (mark a theme from disk for removal —
+//                                the removalPending signal; refusal —
+//                                actionDone)
+//   commitRemovals()          -> void (remove the marked; result removalDone)
+//   undoRemovals()            -> int  (clear the marks; how many came back)
+//   toggleFavorite(itemId)    -> JSON string: the favourites after it
+//   openUrl(url)              -> bool (item page in the browser)
+//   openLinkedCard(requestJson)-> void (a link to a store item from
+//                                third-party text: `{card, url}`; answer by
+//                                the linkedCardReady signal)
+//   purgeTranslations()       -> void (one-off cleanup of stale translations)
+// and the signals
+//   catalogReady(payload)     — answer to a catalogue request (JSON string)
+//   detailReady(payload)      — full item details (JSON string)
+//   descriptionReady(payload) — description translation arriving LATE for an
+//                               already shown card (JSON string: `itemId`,
+//                               `source` — the translation's source, and
+//                               either `translated` or `pending`).
+//                               `pending: true` lights the "Translating the
+//                               description…" mark (the translation takes
+//                               longer than the threshold), `false` clears
+//                               it without a translation (we do not
+//                               translate or there is no model — the
+//                               original stays on the panel); `translated`
+//                               puts in the translation and also clears the
+//                               mark
+//   previewDone(job, path)    — the request's picture is written to the cache
+//   previewFailed(job, status)— the request failed: `status` is the server
+//                               answer as a number in a string, empty (there
+//                               was no answer) or "canceled" (we aborted it)
+//   prefetchReady(payload)    — answer to the background warm-up (JSON
+//                               string: the same request fields plus `items`)
+//   installProgress(pct)      — installation progress, 0–100
+//   installLog(text)          — the next line of the installation log
+//   statusMessage(text)       — a message for the status line
+//   actionDone(text, ok)      — result of installing/applying
+//   removalPending(text)      — a theme from disk is marked for removal: the
+//                               text of the "Restore" line
+//   removalDone(text)         — the marked item is removed: result for the
+//                               status line
+//   galleryReady(index, path) — a carousel frame is ready
+//   galleryFailed(index)      — a frame did not arrive
+//   galleryFinished(count)    — the walk over links is finished
+//   commentsReady(payload)    — a page of comments (JSON string)
 //   commentTranslationsReady(payload)
-//                             — переводы комментариев ВДОГОНКУ уже показанному
-//                               списку (строка JSON: `itemId`, `page` и `rows`
-//                               с парами «оригинал → перевод»). В ответе только
-//                               то, что действительно перевелось: русские
-//                               комментарии в нём не упоминаются, и ссылки
-//                               «показать оригинал» у них не будет
-//   suggestReady(payload)     — подсказки поиска (строка JSON)
-//   linkedCardReady(payload)  — товар по ссылке: `item` (ThemeItem) или
-//                               `aur` (имя пакета); `failed` + `url`,
-//                               `status` — открыть не вышло
+//                             — comment translations arriving LATE for an
+//                               already shown list (JSON string: `itemId`,
+//                               `page` and `rows` with "original →
+//                               translation" pairs). The answer contains only
+//                               what was actually translated: Russian
+//                               comments are not mentioned in it, and they
+//                               will not get a "show original" link
+//   suggestReady(payload)     — search suggestions (JSON string)
+//   linkedCardReady(payload)  — the item behind a link: `item` (ThemeItem)
+//                               or `aur` (package name); `failed` + `url`,
+//                               `status` — opening failed
 //
-// Синхронный ответ у всего, что быстро; сигналы — только у долгого
-// (грабля 18 схемы переноса). Пока эти методы на Python
-// (rexon/appearance/ocs_client.py и rexon/appearance/installed_scan.py);
-// когда живой исполнитель магазина приедет на Rust, на их место встанет он
-// с теми же именами — страница не изменится.
+// Everything fast has a synchronous answer; only long jobs have signals
+// (trap 18 of the porting scheme). For now these methods are in Python
+// (rexon/appearance/ocs_client.py and rexon/appearance/installed_scan.py);
+// when the live store executor arrives in Rust, it will take their place
+// with the same names — the page will not change.
 //
-// ⚠️ Объект действий приходит ДВУМЯ разными путями, и страница обязана
-// работать при обоих: хозяин вкладки ставит его начальным свойством
-// (`setInitialProperties`, как у «Steam»), а хозяин-стенд — свойством уже
-// ПОСЛЕ `setSource` (как у «Настроек», грабля 20). Поэтому пуск собран в
-// одну функцию `bootstrap()` со сторожем, и её зовут оба события —
-// `Component.onCompleted` и `onActionsChanged`. Кто придёт первым, тот и
-// поднимет страницу; второй ничего не сделает.
+// Warning: the actions object arrives in TWO different ways, and the page
+// must work with both: the tab host sets it as an initial property
+// (`setInitialProperties`, as in "Steam"), while the test bench host sets
+// it as a property AFTER `setSource` (as in "Settings", trap 20). So the
+// start-up is gathered into one function `bootstrap()` with a guard, and
+// both events call it — `Component.onCompleted` and `onActionsChanged`.
+// Whichever comes first brings the page up; the second does nothing.
 
-// Делегаты обращаются к id внешних элементов (root, page). Без этой прагмы
-// проверка QML справедливо ругается на неквалифицированный доступ.
+// Delegates refer to ids of outer elements (root, page). Without this
+// pragma, QML lint rightly complains about unqualified access.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -131,22 +140,22 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
-    // ── Мост наружу ───────────────────────────────────────────────────────
+    // ── Bridge to the outside ─────────────────────────────────────────────
 
-    // Объект побочных действий. По умолчанию — СВОЙ, на Rust; хозяин страницы
-    // может подставить другой (Python-вкладка так и делает начальным
-    // свойством). Состав методов и сигналов описан в шапке файла выше.
+    // Side-actions object. OUR OWN Rust one by default; the page host may
+    // substitute another (the Python tab does so with an initial property).
+    // The set of methods and signals is described in the file header above.
     property var actions: ownActions
 
     AppearanceActions {
         id: ownActions
-        // Имя нужно проверкам — тем же приёмом, что у модели ниже.
+        // The name is needed by checks — the same approach as for the model below.
         objectName: "appearanceActions"
     }
 
-    // Кнопки «послушать» тем звуков: поиск файла события, проигрыватель и
-    // скачивание товара Магазина до установки — ядро
-    // (`rexon_core::sound_preview`), объект только передаёт вызовы.
+    // "Listen" buttons of sound themes: finding the event file, the player and
+    // downloading a Store item before installation belong to the core
+    // (`rexon_core::sound_preview`); the object only passes the calls on.
     SoundPreviewActions {
         id: soundActions
         objectName: "soundPreviewActions"
@@ -154,16 +163,17 @@ Item {
 
     readonly property string windowTitle: page.windowTitle
 
-    /// Ручные координаты по горизонтали (выпадашка поиска, меню кнопки) —
-    /// по зеркалированию страницы: справа налево отсчёт от правого края.
+    /// Manual horizontal coordinates (the search drop-down, the button menu)
+    /// follow the page's mirroring: for right to left they count from the right
+    /// edge.
     readonly property RexonArrows arrows: RexonArrows {
         mirrored: root.LayoutMirroring.enabled
     }
-    /// Подстановки в подписи, которые собирает сама разметка (изолят при
-    /// письме справа налево).
+    /// Substitutions into labels that the markup assembles itself (an isolate
+    /// when writing right to left).
     RexonBidi { id: bidi }
 
-    /// Подписи раздела «Расширения GNOME» (ядро:
+    /// Labels of the "GNOME extensions" section (core:
     /// `gnome_ext_section::page_texts`).
     readonly property var gnomeTexts: {
         try {
@@ -179,22 +189,22 @@ Item {
     implicitWidth: page.windowMinWidth
     implicitHeight: page.windowMinHeight
 
-    // ── Ядро вкладки ──────────────────────────────────────────────────────
+    // ── Tab core ──────────────────────────────────────────────────────────
 
     AppearanceModel {
         id: page
-        // Имя нужно проверкам: модель достают
-        // `root.findChild(QObject, "appearanceModel")` и спрашивают её без
-        // единой правки в самой странице.
+        // The name is needed by checks: the model is fetched with
+        // `root.findChild(QObject, "appearanceModel")` and queried without a
+        // single change in the page itself.
         objectName: "appearanceModel"
 
-        // Ядро решило, что состав каталога устарел, — идём к хозяину.
+        // The core decided the catalogue contents are stale — go to the host.
         onCatalogWanted: root.askCatalog()
 
-        // Открытому товару нужны полные детали: список магазина отдаёт
-        // меньше скриншотов, чем есть у товара, и описание в нём обрезано.
+        // An opened item needs full details: the store list gives fewer
+        // screenshots than the item has, and the description in it is truncated.
         onDetailWanted: function (itemId) {
-            // Пакет AUR: паспорт RPC и картинки — свой вызов.
+            // AUR package: the RPC record and the pictures are a call of their own.
             if (page.detailSource === "aur") {
                 if (root.actions && root.actions.loadAurDetail)
                     root.actions.loadAurDetail(itemId);
@@ -204,14 +214,15 @@ Item {
                 root.actions.loadDetail(itemId);
         }
 
-        // Кадр карусели просит ядро — оно же знает, какой именно нужен.
+        // A carousel frame is requested by the core — it knows which one is
+        // needed.
         onGalleryWanted: function (index, url) {
             if (root.actions && root.actions.loadGalleryFrame)
                 root.actions.loadGalleryFrame(index, url);
         }
 
         onCommentsWanted: function (itemId, commentsPage) {
-            // У пакета AUR комментарии — со страницы пакета на сайте.
+            // For an AUR package the comments come from the package page on the site.
             if (page.detailSource === "aur") {
                 if (root.actions && root.actions.loadAurComments)
                     root.actions.loadAurComments(itemId, commentsPage);
@@ -226,38 +237,38 @@ Item {
                 root.actions.loadSuggestions(request);
         }
 
-        // ── Картинки ─────────────────────────────────────────────────────
+        // ── Pictures ─────────────────────────────────────────────────────
         //
-        // Кого качать, сколько разом и в каком порядке, решает очередь ядра.
-        // Разметка лишь передаёт заявку хозяину и возвращает ответ обратно
-        // тем же номером.
+        // What to download, how many at once and in what order is decided by the
+        // core queue. The markup only passes the request to the host and returns
+        // the answer back under the same number.
         onPreviewWanted: function (job, itemId, url, low) {
             if (root.actions && root.actions.loadPreview)
                 root.actions.loadPreview(job, itemId, url, low);
         }
 
-        // Сбой был временным — ядро назвало паузу до повтора.
+        // The failure was temporary — the core named a pause before the retry.
         onPreviewRetryWanted: function (generation, job, delayMs) {
             root.schedulePreviewRetry(generation, job, delayMs);
         }
 
-        // Раздел сменили: летящие картинки прежнего к делу больше не
-        // относятся, а канал нужен новому.
+        // The section changed: the pictures in flight for the previous one are no
+        // longer relevant, and the new one needs the channel.
         onPreviewsCanceled: {
             if (root.actions && root.actions.cancelPreviews)
                 root.actions.cancelPreviews();
         }
 
-        // Фоновый прогрев кеша: соседние разделы и следующая страница.
-        // Показывать его нечему — он лишь наполняет кеш.
+        // Background cache warm-up: neighbouring sections and the next page.
+        // There is nothing to show for it — it only fills the cache.
         onPrefetchWanted: function (request) {
             if (root.actions && root.actions.loadPrefetch)
                 root.actions.loadPrefetch(request);
         }
     }
 
-    // Прогрев остальных разделов начинается ПОЗЖЕ первой загрузки: спорить
-    // за сеть с тем разделом, что открыт, он не должен.
+    // Warming up the other sections starts LATER than the first load: it must
+    // not compete for the network with the section that is open.
     Timer {
         interval: page.prefetchStartMs
         repeat: false
@@ -265,8 +276,9 @@ Item {
         onTriggered: page.startCategoryPrefetch()
     }
 
-    // Пауза между прогревами — не долбить магазин. Этим же таймером очередь
-    // будят после ответа каталога: пока открытый раздел грузился, она стояла.
+    // Pause between warm-ups — do not hammer the store. The same timer wakes
+    // the queue after a catalogue answer: while the open section was loading,
+    // the queue stood still.
     Timer {
         id: prefetchPause
         interval: page.prefetchPauseMs
@@ -274,9 +286,9 @@ Item {
         onTriggered: page.pumpPrefetch()
     }
 
-    // Разовая лёгкая чистка протухших переводов. Работа не горячая: записи
-    // и так не отдаются по сроку годности при чтении, чистка лишь
-    // освобождает место в кеше — потому и делается позже всего остального.
+    // A one-off light cleanup of stale translations. The work is not urgent:
+    // expired entries are not served on reading anyway, the cleanup only frees
+    // room in the cache — which is why it runs after everything else.
     Timer {
         interval: page.purgeTranslationsMs
         repeat: false
@@ -287,10 +299,10 @@ Item {
         }
     }
 
-    // Применение полной темы поднимает в НАШЕМ же процессе смену стиля Qt
-    // (Plasma рассылает её по D-Bus). Пересобирать сетку прямо в этот момент
-    // нельзя — ждём, пока шторм осядет, и только потом перечитываем раздел,
-    // чтобы бейдж «✅ Активна» переехал на применённую тему.
+    // Applying a full theme triggers a Qt style change in OUR OWN process
+    // (Plasma broadcasts it over D-Bus). The grid must not be rebuilt right at
+    // that moment — we wait until the storm settles and only then re-read the
+    // section, so the «✅ Active» badge moves to the applied theme.
     Timer {
         interval: page.styleStormMs
         repeat: false
@@ -298,20 +310,21 @@ Item {
         onTriggered: page.reloadAfterStyleStorm()
     }
 
-    // Вкладку закрывают: новых прогревов не выдаём, летящие картинки рвём.
+    // The tab is being closed: no new warm-ups are issued, pictures in flight
+    // are aborted.
     Component.onDestruction: page.closePage()
 
-    // Готовые картинки ставим по одной за проход цикла событий: шесть
-    // раскодированных JPEG подряд дают заметный рывок. Таймер живёт ровно
-    // пока очередь ядра говорит, что отдавать есть что.
+    // Ready pictures are placed one per event loop pass: six decoded JPEGs in
+    // a row give a noticeable stutter. The timer lives exactly as long as the
+    // core queue says there is something to hand out.
     //
-    // ⚠️ Одна миллисекунда, а не ноль: у оригинала стоял QTimer с нулём, но
-    // ПОВТОРЯЮЩИЙСЯ Timer из QtQuick с нулевым промежутком не срабатывает ни
-    // разу — он построен на паузе-анимации, и пауза нулевой длины проходит
-    // мимо. Замер 29.08.2026 (1,5 с): `interval: 0` с `repeat: true` — ноль
-    // срабатываний, с `repeat: false` — одно. Здесь повтор нужен, значит
-    // нулю тут не место: очередь готовых копилась, а на плитках навсегда
-    // оставалась пустота — при полном кеше картинок на диске.
+    // Warning: one millisecond, not zero: the original had a QTimer with zero,
+    // but a REPEATING QtQuick Timer with a zero interval never fires — it is
+    // built on a pause animation, and a zero-length pause slips by.
+    // Measurement 29.08.2026 (1.5 s): `interval: 0` with `repeat: true` — zero
+    // firings, with `repeat: false` — one. A repeat is needed here, so zero
+    // has no place: the queue of ready pictures piled up, and the tiles stayed
+    // empty forever — with a full picture cache on disk.
     Timer {
         interval: 1
         repeat: true
@@ -319,8 +332,9 @@ Item {
         onTriggered: page.drainPreview()
     }
 
-    // Повтор одной заявки: свой таймер на заявку, как одноразовый таймер
-    // оригинала. Повторы редки — плодить их не страшно.
+    // Retrying one request: a timer of its own per request, like the
+    // original's single-shot timer. Retries are rare — creating them is
+    // harmless.
     Component {
         id: previewRetryTimer
         Timer {
@@ -345,9 +359,10 @@ Item {
         t.start();
     }
 
-    // Карусель показанных плиток греется ПОСЛЕ них и с паузой: человек
-    // часто пробегает разделы насквозь, и без паузы каждый мелькнувший
-    // успевал бы заказать два десятка полноразмерных скриншотов.
+    // The carousel of the shown tiles is warmed up AFTER them and with a
+    // pause: people often run straight through the sections, and without the
+    // pause every section that flashed by would manage to order a couple of
+    // dozen full-size screenshots.
     property string galleryWarmGeneration: ""
 
     Timer {
@@ -357,7 +372,7 @@ Item {
         onTriggered: page.warmGallery(root.galleryWarmGeneration)
     }
 
-    // ── Палитра стандартного скина ────────────────────────────────────────
+    // ── Standard skin palette ─────────────────────────────────────────────
 
     readonly property var pal: page.palette
     readonly property color colBg: root.pal.bg_primary
@@ -370,33 +385,35 @@ Item {
     readonly property color colTextSecondary: root.pal.text_secondary
     readonly property color colStar: root.pal.rating_star
 
-    // ── Контролы, перекрытые таблицей стилей вкладки ──────────────────────
+    // ── Controls overridden by the tab's style sheet ──────────────────────
     //
-    // ⚠️ Общие поверхности палитры (`surface_button`, `surface_field`)
-    // отвечают, чем Qt красит контрол САМА по роли. Это верно, пока у
-    // страницы нет своей таблицы стилей. У «Оформления» она есть, и роль в
-    // ней не участвует вовсе: выпадающий список красится токеном
-    // `bg_secondary`, полоса страниц — `bg_card`, второстепенная кнопка —
-    // `bg_card_hover`. Замер 05.09: QML клал туда роль `Button` (42,64,85) и
-    // расходился с оригиналом на 6 475 точек у списка, 2 339 у кнопки
-    // обновления и 2 121 у «Избранного». Решение остаётся в ядре
-    // (`appearance_page::control_colors`), разметка его только кладёт.
+    // Warning: the shared palette surfaces (`surface_button`, `surface_field`)
+    // say what Qt paints a control with ITSELF by role. That holds while the
+    // page has no style sheet of its own. «Appearance» has one, and the role
+    // takes no part in it at all: the combo box is painted with the
+    // `bg_secondary` token, the page strip with `bg_card`, a secondary button
+    // with `bg_card_hover`. Measurement 05.09: QML put the `Button` role
+    // (42,64,85) there and differed from the original by 6 475 pixels on the
+    // combo box, 2 339 on the refresh button and 2 121 on "Favourites". The
+    // decision stays in the core (`appearance_page::control_colors`); the
+    // markup only puts it in place.
     readonly property var toneCombo: page.controlColors("combo")
     readonly property var toneNav: page.controlColors("nav")
     readonly property var toneSecondary: page.controlColors("secondary")
 
-    // ── Чип-переключатель ─────────────────────────────────────────────────
+    // ── Toggle chip ───────────────────────────────────────────────────────
     //
-    // Отдельный вид кнопки, а не общий `RexonButton`: у чипов оригинала
-    // (`#SrcChip` в таблице стилей) свой рисунок — тонкая рамка, невысокая
-    // подложка, а ВЫБРАННЫЙ отличается рамкой и цветом подписи, не заливкой.
-    // Общая кнопка красит выбранное полупрозрачным синим, и ряды «Магазин:»,
-    // «Вид:» выглядели чужими против оригинала. Общий тип трогать нельзя —
-    // он одинаков во всех вкладках; здесь заводим местный, файл-локальный.
+    // A separate kind of button, not the shared `RexonButton`: the original's
+    // chips (`#SrcChip` in the style sheet) have their own drawing — a thin
+    // border, a low backing, and the SELECTED one differs by its border and
+    // label colour, not by fill. The shared button paints the selection in
+    // translucent blue, and the «Store:», «View:» rows looked foreign compared
+    // with the original. The shared type must not be touched — it is the same
+    // in all tabs; here we define a local, file-scoped one.
     component RexonChip: Button {
         id: chip
 
-        /// Палитра скина — та же, что у всей страницы.
+        /// Skin palette — the same as for the whole page.
         property var pal: null
 
         readonly property color colChipBg: chip.pal ? chip.pal.bg_secondary
@@ -411,7 +428,7 @@ Item {
         readonly property color colChipTextOff: chip.pal ? chip.pal.text_secondary
                                                          : "#c7d5e0"
 
-        // Поля из `#SrcChip { padding: 5px 10px }`.
+        // Paddings from `#SrcChip { padding: 5px 10px }`.
         topPadding: 5
         bottomPadding: 5
         leftPadding: 10
@@ -422,8 +439,8 @@ Item {
             color: chip.checked ? chip.colChipOn
                  : (chip.hovered || chip.down ? chip.colChipHover
                                               : chip.colChipBg)
-            // Рамка фокуса важнее прочих: это цепочка управления с геймпада,
-            // а не украшение.
+            // The focus frame matters more than anything else: it is the gamepad
+            // control chain, not a decoration.
             border.color: chip.activeFocus ? chip.colChipAccent
                         : (chip.checked ? chip.colChipAccent : chip.colChipBorder)
             border.width: chip.activeFocus ? 2 : 1
@@ -440,30 +457,31 @@ Item {
         }
     }
 
-    // ── Ряд «Прослушать:» темы звуков ─────────────────────────────────────
+    // ── "Listen:" row of a sound theme ────────────────────────────────────
     //
-    // Паритет с модулем KDE «Системные звуки»: пять кнопок-значков (звонок,
-    // предупреждение, сообщение, батарея, устройство) и «▶» — все пять по
-    // очереди. Какие события стоят за кнопками и где их файлы, решает ядро
-    // (`sound_preview::PREVIEW_SLOTS`); здесь только раскладка и очередь.
-    // Установленная тема играется системой по событию (`theme`), тема из
-    // Магазина до установки — файлами из распакованного архива (`sounds`).
+    // Parity with the KDE "System Sounds" module: five icon buttons (bell,
+    // warning, message, battery, device) and "▶" — all five in turn. Which
+    // events stand behind the buttons and where their files are is decided by
+    // the core (`sound_preview::PREVIEW_SLOTS`); here there is only the layout
+    // and the queue. An installed theme is played by the system by event
+    // (`theme`), a Store theme before installation — with files from the
+    // unpacked archive (`sounds`).
     component SoundButtons: Row {
         id: soundRow
 
-        // ⚠️ Встроенный компонент не видит id страницы (у него своя область
-        // имён) — объект действий, модель с подписями и палитра приходят
-        // свойствами, как у `RexonChip`.
+        // Warning: an inline component does not see the page's ids (it has its own
+        // name scope) — the actions object, the model with labels and the palette
+        // arrive as properties, as with `RexonChip`.
         property var player: null
         property var texts: null
         property var pal: null
 
-        /// Установленная тема — либо пусто.
+        /// The installed theme — or empty.
         property string theme: ""
-        /// Звуки темы из Магазина: [{key, event, file}].
+        /// Sounds of a Store theme: [{key, event, file}].
         property var storeSounds: []
         property int buttonSize: 34
-        /// Ошибка проигрывания для человека (нечем играть, звука нет).
+        /// Playback error for the user (nothing to play with, no sound).
         signal failed(string text)
 
         readonly property var sounds: {
@@ -477,7 +495,8 @@ Item {
                 return [];
             }
         }
-        /// Номер звука, который играет очередь «▶»; -1 — очередь стоит.
+        /// Index of the sound the "▶" queue is playing; -1 means the queue is
+        /// stopped.
         property int queued: -1
 
         spacing: 4
@@ -548,7 +567,7 @@ Item {
                     onClicked: soundRow.play(soundCell.index)
                 }
 
-                // Подсказка — и у выключенной кнопки: «звука нет» тоже ответ.
+                // A tooltip even on a disabled button: "no sound" is an answer too.
                 HoverHandler { id: soundHover }
                 ToolTip.text: !soundRow.texts ? ""
                               : (soundCell.modelData.file !== ""
@@ -589,23 +608,26 @@ Item {
         }
     }
 
-    // ── Пуск ──────────────────────────────────────────────────────────────
+    // ── Start-up ──────────────────────────────────────────────────────────
 
     property bool started: false
 
-    // ── «Установить из файла…» ───────────────────────────────────────────
+    // ── "Install from file…" ─────────────────────────────────────────────
     //
-    // Тема, которая уже лежит на диске (скачал сам, в том числе из Windows):
-    // файлы или папка через стандартное окно выбора (на Wayland — портал
-    // рабочего стола). Что это и куда ставить — ядро (`local_install`), здесь
-    // только выбор и передача адресов.
+    // A theme that is already on disk (downloaded by the user, including from
+    // Windows): files or a folder through the standard picker window (on
+    // Wayland — the desktop portal). What it is and where to install it is
+    // decided by the core (`local_install`); here there is only the choice and
+    // passing on the addresses.
 
-    /// Раздел, который предложено открыть после установки (тема оказалась
-    /// другого вида или видна в «Загруженных»), и подпись кнопки.
+    /// The section suggested for opening after installation (the theme turned
+    /// out to be of another kind or is visible in "Downloaded"), and the button
+    /// label.
     property string fileOpenKey: ""
     property string fileOpenText: ""
 
-    // Ушли в другой раздел — прежнее предложение больше не к месту.
+    // Moved to another section — the previous suggestion is no longer
+    // relevant.
     readonly property string fileSection: page.installFileSection
     onFileSectionChanged: root.fileOpenKey = ""
 
@@ -639,10 +661,10 @@ Item {
 
     Menu {
         id: installFileMenu
-        // Ширина — по самому широкому пункту: у `Menu` стилей Basic и
-        // Fusion она за подписями не следует, и длинная подпись на другом
-        // языке обрезалась («Перейти к расположению фай…»). Тот же счёт,
-        // что у меню окна (`WindowMenu.qml`).
+        // Width follows the widest item: the `Menu` of the Basic and Fusion styles
+        // does not follow the labels, and a long label in another language was
+        // cut ("Go to file locat…"). The same calculation as in the window menu
+        // (`WindowMenu.qml`).
         implicitWidth: {
             let widest = 0;
             for (let i = 0; i < installFileMenu.count; ++i) {
@@ -654,8 +676,8 @@ Item {
             return Math.max(installFileMenu.implicitBackgroundWidth + installFileMenu.leftInset + installFileMenu.rightInset,
                             widest + installFileMenu.leftPadding + installFileMenu.rightPadding);
         }
-        // Подложка — карточка скина, как у меню окна (`WindowMenu.qml`):
-        // подложка стиля Basic белая и палитре не следует.
+        // The backing is the skin card, as in the window menu (`WindowMenu.qml`):
+        // the Basic style backing is white and does not follow the palette.
         background: Rectangle {
             implicitWidth: 220
             color: root.colCard
@@ -675,7 +697,7 @@ Item {
         }
     }
 
-    // Пункт меню выбора: подсветка и рамка фокуса — как у меню окна.
+    // A choice menu item: highlight and focus frame — as in the window menu.
     component PickItem: MenuItem {
         id: pickEntry
         contentItem: RexonText {
@@ -700,18 +722,19 @@ Item {
         root.started = true;
         if (root.actions.environment)
             page.setEnvironment(root.actions.environment());
-        // Что рисует экран входа и не SteamOS ли это — фоном: проба может
-        // звать `systemctl`. Ответ придёт `loginScreenReady`.
+        // What draws the login screen and whether this is SteamOS — in the
+        // background: the probe may call `systemctl`. The answer will arrive as
+        // `loginScreenReady`.
         if (root.actions.probeLoginScreen)
             root.actions.probeLoginScreen();
-        // ⚠️ Звёздочки — тоже часть пуска. Раньше о них говорил хозяин окна
-        // (`_tell_favorites` у Python), и странице с собственным объектом
-        // действий сказать было бы некому: первый показ шёл бы с пустыми
-        // звёздочками у тем, которые человек уже отметил.
+        // Warning: the stars are part of the start-up too. Previously the window
+        // host told the page about them (`_tell_favorites` in Python), and a page
+        // with its own actions object would have nobody to tell it: the first show
+        // would come with empty stars on themes the user had already marked.
         if (root.actions.favorites)
             page.setFavorites(root.actions.favorites());
-        // Очередь установок AUR живёт дольше страницы: открытая заново
-        // страница подхватывает идущую установку и итоги прошлых.
+        // The AUR installation queue lives longer than the page: a reopened page
+        // picks up the running installation and the results of past ones.
         if (root.actions.aurJobs)
             page.setAurJobs(root.actions.aurJobs());
         root.focusFirstControl();
@@ -721,13 +744,14 @@ Item {
     onActionsChanged: root.bootstrap()
     Component.onCompleted: root.bootstrap()
 
-    // Кнопка плитки. Что именно она делает, решает вид плитки: товар
-    // магазина ставится и применяется, местная тема — только применяется,
-    // пакет AUR собирается помощником.
-    // «🗑» на плитке темы с диска: что можно и как снимать — решает хозяин
-    // (`removeLocalById`), итог — сигналами `removalPending`/`actionDone`.
-    /// Плитка, у которой нажали «🗑» последней: по ней `onRemovalDone`
-    /// узнаёт, что открытая карточка — той самой снятой темы.
+    // Tile button. What exactly it does is decided by the tile kind: a store
+    // item is installed and applied, a local theme is only applied, an AUR
+    // package is built by the helper.
+    // "🗑" on the tile of a theme from disk: what is allowed and how to remove
+    // it is decided by the host (`removeLocalById`), the result arrives by the
+    // `removalPending`/`actionDone` signals.
+    /// The tile whose "🗑" was pressed last: through it `onRemovalDone` learns
+    /// that the open card belongs to that very removed theme.
     property string removingId: ""
 
     function removeLocal(itemId) {
@@ -736,9 +760,9 @@ Item {
             root.actions.removeLocalById(itemId);
     }
 
-    /// Глобальная тема Plasma: перед применением — окно «Применить «X»?»
-    /// (оформление / расположение), как в Plasma. `true` — окно открыто,
-    /// применит оно само.
+    /// A Plasma global theme: before applying — the "Apply "X"?" window
+    /// (appearance / layout), as in Plasma. `true` means the window is open and
+    /// will apply by itself.
     function askGlobal(itemId) {
         if (!root.actions || !root.actions.globalApplyQuestion)
             return false;
@@ -757,11 +781,11 @@ Item {
             root.actions.applyLocalById(itemId);
     }
 
-    /// Действие расширения GNOME, которое знает оболочка: `toggle`,
-    /// `prefs`, `folder`, `errorDetails` (удаление — через `removeLocal`:
-    /// вопрос и «Вернуть», как у тем; ядро:
-    /// `gnome_ext_section::run_action`). Итог — `gnomeExtensionDone`, у
-    /// переключения и удаления ещё и `actionDone`.
+    /// An action of a GNOME extension that the shell knows: `toggle`, `prefs`,
+    /// `folder`, `errorDetails` (removal goes through `removeLocal`: a question
+    /// and "Restore", as for themes; core: `gnome_ext_section::run_action`). The
+    /// result is `gnomeExtensionDone`; toggling and removal also give
+    /// `actionDone`.
     function gnomeAction(itemId, action) {
         if (!root.actions || !root.actions.gnomeExtensionAction)
             return;
@@ -773,26 +797,27 @@ Item {
     function actOnCard(kind, itemId) {
         if (!root.actions)
             return;
-        // Долгое действие начинается ЗДЕСЬ, а не по первому ответу хозяина:
-        // иначе между нажатием и первой строкой журнала страница выглядит
-        // так, будто кнопка не сработала. Вид действия решает, будет ли у
-        // него полоса хода и какой подписью оно назовётся.
+        // A long action starts HERE, not on the host's first answer: otherwise
+        // between the press and the first log line the page looks as if the
+        // button did not work. The action kind decides whether it gets a progress
+        // bar and what label it is called by.
         if (kind === "local") {
             root.applyLocal(itemId);
             return;
         }
-        // Пакет AUR встаёт в ОБЩУЮ очередь приложения (по одной установке за
-        // раз): стадию на плитке и строку сверху рисует снимок очереди
-        // (`aurJobsChanged`), а не общий «занят» страницы — пока один пакет
-        // собирается, остальные плитки нажимаются и встают «В очереди».
+        // An AUR package goes into the application's SHARED queue (one
+        // installation at a time): the stage on the tile and the line at the top
+        // are drawn from the queue snapshot (`aurJobsChanged`), not from the
+        // page's general "busy" — while one package is building, the other tiles
+        // can be pressed and go "Queued".
         if (kind === "aur") {
             if (root.actions.installAur)
                 root.actions.installAur(itemId);
             return;
         }
-        // Как в KDE: «Установить» только ставит, у поставленной темы та же
-        // кнопка — «Применить». Что именно сделать, решает ядро.
-        // Поставленная глобальная тема — сперва окно выбора.
+        // As in KDE: «Install» only installs; for an installed theme the same
+        // button is "Apply". What exactly to do is decided by the core.
+        // An installed global theme — the choice window first.
         if (root.askGlobal(itemId))
             return;
         page.actionBegin(itemId, "install");
@@ -800,10 +825,10 @@ Item {
             root.actions.actOnStoreItem(itemId);
     }
 
-    // Запрос уходит не мгновенно: перещёлкивание разделов подряд не должно
-    // слать в магазин по запросу на каждый щелчок. Паузы — числа ядра
-    // (первый заход короче остальных: пустая витрина при открытии вкладки
-    // выглядит поломкой).
+    // The request is not sent instantly: clicking through sections in a row
+    // must not send the store a request per click. The pauses are core numbers
+    // (the first visit is shorter than the rest: an empty showcase when the
+    // tab opens looks broken).
     Timer {
         id: catalogDebounce
         interval: root.firstLoadDone ? page.catalogDebounceMs : page.firstLoadMs
@@ -816,10 +841,11 @@ Item {
 
     property bool firstLoadDone: false
 
-    // ── Ссылка на товар магазина из чужого текста ────────────────────────
+    // ── A link to a store item from third-party text ─────────────────────
     //
-    // Карточку собирает хозяин (`openLinkedCard`, ответ `linkedCardReady`);
-    // хозяин без этого метода — тот же вопрос, что о внешнем сайте.
+    // The card is assembled by the host (`openLinkedCard`, answer
+    // `linkedCardReady`); a host without this method gets the same question as
+    // for an external site.
     function openLinkedCard(card, url) {
         if (root.actions && root.actions.openLinkedCard) {
             root.actions.openLinkedCard(JSON.stringify({ card: card, url: url }));
@@ -846,8 +872,8 @@ Item {
             root.actions.loadCatalog(request);
     }
 
-    // Долгая работа отвечает сигналами — синхронного ответа у сети быть не
-    // может, страница на нём замерла бы вместе с окном.
+    // Long work answers with signals — the network cannot have a synchronous
+    // answer, the page would freeze on it together with the window.
     Connections {
         target: root.actions
         ignoreUnknownSignals: true
@@ -880,8 +906,8 @@ Item {
             page.detailAnswer(payload);
         }
 
-        // Карточка товара по ссылке из чужого текста собрана — показываем;
-        // не вышло — тот же вопрос, что о любом внешнем сайте.
+        // The item card from a link in third-party text is assembled — show it;
+        // if that failed — the same question as for any external site.
         function onLinkedCardReady(payload) {
             const r = JSON.parse(payload);
             if (r.failed) {
@@ -920,10 +946,10 @@ Item {
             page.setAurJobs(payload);
         }
 
-        // Итог действия расширения GNOME. Переключение и удаление сообщают о
-        // себе ещё и `actionDone` (строка под кнопками) — здесь сетка
-        // перечитывается по свежему слову оболочки; подробности ошибки —
-        // в своё окно; путь системного скопирован — строкой состояния.
+        // Result of a GNOME extension action. Toggling and removal also report
+        // through `actionDone` (the line under the buttons) — here the grid is
+        // re-read from the shell's fresh word; error details go to their own
+        // window; a copied system path goes to the status line.
         function onGnomeExtensionDone(payload) {
             let r = {};
             try {
@@ -960,17 +986,18 @@ Item {
             shellPaletteBar.message = text;
             shellPaletteBar.failed = !ok;
             shellPaletteBar.refresh();
-            // Кнопка полосы шелла могла уйти — у цветов появляется своя.
+            // The shell banner button may have gone — the colours get their own.
             appliedRevertBar.rev++;
-            // Схема сменилась мимо плиток: бейдж «✅ Активна» в разделе с
-            // диска переезжает только после перечитывания (кеш сканов
-            // хозяин уже сбросил).
+            // The scheme changed bypassing the tiles: the «✅ Active» badge in the
+            // from-disk section moves only after re-reading (the host has already
+            // dropped the scan cache).
             if (ok)
                 page.reloadLocalFresh();
         }
 
-        // «Установить из файла…»: какой раздел предложить открыть и надо ли
-        // перечитать открытый раздел с диска — решило ядро (`local_install`).
+        // "Install from file…": which section to suggest opening and whether the
+        // open from-disk section needs re-reading — decided by the core
+        // (`local_install`).
         function onLocalInstallDone(payload) {
             let r = {};
             try {
@@ -980,13 +1007,15 @@ Item {
             }
             root.fileOpenKey = r.openKey || "";
             root.fileOpenText = r.openText || "";
-            // Раздел с установленным показывает поставленное сам: перечитать.
+            // A section with installed items shows what was installed by itself:
+            // re-read it.
             if (r.reload)
                 page.showInstalledFresh();
         }
 
-        // Тема с диска помечена к удалению: строка «Вернуть» внизу, плитка
-        // уходит из сетки (хозяин не отдаёт помеченные в ответах сканов).
+        // A theme from disk is marked for removal: the "Restore" line at the
+        // bottom, the tile leaves the grid (the host does not return marked ones
+        // in scan answers).
         function onRemovalPending(text) {
             removalBar.show(text);
             if (page.screen === "detail")
@@ -994,13 +1023,14 @@ Item {
             grid.refreshKeepingScroll();
         }
 
-        // Помеченное снято (или системная тема снята помощником): итог — в
-        // строку состояния, раздел — заново с диска.
+        // The marked item is removed (or a system theme was removed by the
+        // helper): the result goes to the status line, the section is re-read from
+        // disk.
         function onRemovalDone(text) {
             if (text)
                 page.setStatus(text);
-            // Карточка снятой темы показывала бы то, чего на диске уже нет,
-            // с рабочими «Применить» и «Удалить».
+            // The card of a removed theme would show something that is no longer on
+            // disk, with working "Apply" and "Delete".
             if (page.screen === "detail" && page.detailItemId === root.removingId)
                 page.closeDetail();
             root.removingId = "";
@@ -1009,13 +1039,13 @@ Item {
 
         function onActionDone(text, ok) {
             page.setDetailStatus(text, ok);
-            // Применённая схема могла сразу уйти шеллу — «Вернуть как было»
-            // должна это увидеть.
+            // The applied scheme may have gone straight to the shell — "Restore as it
+            // was" must see that.
             shellPaletteBar.refresh();
-            // Удачное «Применить» оставило снимок — кнопка «Вернуть как было».
+            // A successful "Apply" left a snapshot — the "Restore as it was" button.
             appliedRevertBar.rev++;
-            // Размер курсора могли сменить и тема, и чип — отмечаем то, что
-            // получилось на деле.
+            // The cursor size may have been changed both by the theme and by the chip
+            // — we mark what actually came out.
             if (cursorSizeRow.visible && root.actions.cursorSize)
                 cursorSizeRow.current = root.actions.cursorSize();
         }
@@ -1048,8 +1078,9 @@ Item {
             page.setLoginScreen(payload);
         }
 
-        // Страница грузится асинхронно: ответ пробы мог прийти раньше, чем
-        // этот `Connections` подключился. Подключившись, забираем готовый.
+        // The page loads asynchronously: the probe answer may have arrived before
+        // this `Connections` was connected. Once connected, we pick up the ready
+        // one.
         Component.onCompleted: {
             if (root.actions && root.actions.loginScreen) {
                 const last = root.actions.loginScreen();
@@ -1060,12 +1091,12 @@ Item {
     }
 
 
-    // ── Прослушивание товара Магазина до установки ──────────────────────
+    // ── Listening to a Store item before installation ───────────────────
     //
-    // Состояние живёт у страницы, а не у панели: ответ приходит сигналом
-    // через секунды, и панель к тому времени могли закрыть и открыть заново.
-    // Ответ чужого товара (открыли другой, пока качался первый) не
-    // показывается.
+    // The state lives on the page, not on the panel: the answer arrives as a
+    // signal seconds later, and by then the panel may have been closed and
+    // opened again. The answer for another item (a different one was opened
+    // while the first was downloading) is not shown.
     property string storePreviewId: ""
     property bool storePreviewBusy: false
     property bool storePreviewFailed: false
@@ -1076,7 +1107,7 @@ Item {
 
     readonly property string openedItemId: page.detailItemId
     onOpenedItemIdChanged: {
-        // Другой товар — прежний итог к нему не относится.
+        // A different item — the previous result does not apply to it.
         if (root.openedItemId !== root.storePreviewId) {
             root.storePreviewId = "";
             root.storePreviewBusy = false;
@@ -1126,21 +1157,23 @@ Item {
         }
     }
 
-    // Фокус на первом кадре берёт ПЕРВЫЙ УПРАВЛЯЕМЫЙ ЭЛЕМЕНТ, а не корень
-    // страницы: `forceActiveFocus()` на корне делает activeFocusItem
-    // безымянным Item, и страница мертва и с клавиатуры, и с геймпада.
+    // Focus on the first frame goes to the FIRST OPERABLE ELEMENT, not to the
+    // page root: `forceActiveFocus()` on the root makes activeFocusItem a
+    // nameless Item, and the page is dead both from the keyboard and from a
+    // gamepad.
     function focusFirstControl() {
-        // ⚠️ Первый фокус — СТРОКЕ ПОИСКА, как в оригинале: боковая панель у
-        // него `NoFocus` и в обходе не участвует вовсе, а первым по порядку
-        // стоит поиск. Здесь фокус отдавался первой строке панели — живой
-        // запуск 01.09.2026 показал разницу сразу: у оригинала подсвечена
-        // рамкой строка поиска, у нас — чужое место.
+        // Warning: the first focus goes to the SEARCH FIELD, as in the original:
+        // its side panel is `NoFocus` and takes no part in the traversal at all,
+        // and search comes first in order. Here focus used to go to the first row
+        // of the panel — the live run on 01.09.2026 showed the difference at once:
+        // the original highlights the search field with a frame, ours highlighted
+        // some other place.
         if (searchBox.visible) {
             searchBox.forceActiveFocus();
             return;
         }
-        // Поиска в разделе нет — тогда панель разделов: пустого фокуса быть
-        // не должно, цепочка нужна для управления с геймпада.
+        // The section has no search — then the section panel: there must be no
+        // empty focus, the chain is needed for gamepad control.
         if (sidebar.count > 0 && sidebar.itemAtIndex(0)) {
             sidebar.itemAtIndex(0).forceActiveFocus();
             return;
@@ -1155,13 +1188,13 @@ Item {
         }
     }
 
-    // ── Раздел, открытый снаружи ──────────────────────────────────────────
+    // ── Section opened from outside ───────────────────────────────────────
     //
-    // Ссылка «Оформление → …» вкладки «Настройки» открывает вкладку через
-    // дверь окна (`openSection("appearance", ключ)`), ключ раздела едет
-    // подразделом окна (`startSubpage`). Чужой подраздел («compare» у
-    // «Рабочих столов») не трогаем: берём только ключ видимого раздела
-    // боковой панели.
+    // An "Appearance → …" link of the "Settings" tab opens the tab through the
+    // window door (`openSection("appearance", key)`), and the section key
+    // travels as the window's sub-page (`startSubpage`). A foreign sub-page
+    // ("compare" of "Desktops") is left alone: we take only the key of a
+    // visible side panel section.
     function takeSubpage() {
         const w = root.Window.window;
         if (!w || w.startSubpage === undefined || w.startSubpage === "")
@@ -1179,13 +1212,14 @@ Item {
         function onStartSubpageChanged() { root.takeSubpage(); }
     }
 
-    // ── Режим обхода (`rexon-main-window --tour`) ─────────────────────────
+    // ── Tour mode (`rexon-main-window --tour`) ────────────────────────────
     //
-    // Исполнитель обхода (qml/MainWindow.qml) зовёт ТОЛЬКО функции `tour*`
-    // ниже — имя каждой он сверяет с ядром (`main_window_tour::call_allowed`)
-    // — и читает `tourState()`. Это навигация, поиск и просмотр: ни одна не
-    // устанавливает, не применяет и не удаляет. Порядок обхода и разбор
-    // увиденного — в ядре.
+    // The tour executor (qml/MainWindow.qml) calls ONLY the `tour*` functions
+    // below — it checks the name of each with the core
+    // (`main_window_tour::call_allowed`) — and reads `tourState()`. These are
+    // navigation, search and viewing: none of them installs, applies or
+    // removes. The tour order and the analysis of what was seen are in the
+    // core.
 
     function tourCategories() {
         return (page.sidebarRows || []).filter(r => r.available && r.key !== "")
@@ -1211,7 +1245,8 @@ Item {
         return true;
     }
 
-    // Как человек: слово в поле и Enter (тот же путь, что `onAccepted`).
+    // As a human does: a word in the field and Enter (the same path as
+    // `onAccepted`).
     function tourTypeQuery(text) {
         if (!searchBox.visible)
             return false;
@@ -1223,7 +1258,7 @@ Item {
         return true;
     }
 
-    // Как кнопка ✕.
+    // Like the ✕ button.
     function tourClearQuery() {
         searchBox.text = "";
         page.setQuery("");
@@ -1232,7 +1267,14 @@ Item {
     }
 
     function tourState() {
-        const tiles = page.tourTiles();
+        let tiles = page.tourTiles();
+        // Axon has its own library and its own tiles (AxonLibraryView); the
+        // catalogue model does not know them — otherwise the tour would see "0
+        // tiles".
+        if (page.screen === "axon" && axonLoader.item) {
+            const items = (axonLoader.item.v.sections || []).reduce((a, s) => a.concat(s.items || []), []);
+            tiles = { total: items.length, noPreview: items.filter(i => !i.cover).length, pending: 0 };
+        }
         const shown = searchBox.visible && searchBox.width > 0;
         const p = shown ? searchBox.mapToItem(null, 0, 0) : { x: 0, y: 0 };
         const active = (page.sourceChips || []).find(c => c.checked);
@@ -1254,11 +1296,11 @@ Item {
         };
     }
 
-    // ── Выпадашка подсказок поиска ────────────────────────────────────────
+    // ── Search suggestion drop-down ───────────────────────────────────────
     //
-    // Лежит поверх страницы, а не внутри шапки: список обязан накрывать
-    // сетку, а не раздвигать её. Место и размер считает ядро
-    // (`suggest_box`) — своих отступов у разметки нет.
+    // It lies on top of the page, not inside the header: the list must cover
+    // the grid, not push it apart. Position and size are computed by the core
+    // (`suggest_box`) — the markup has no margins of its own.
     Rectangle {
         id: suggestBox
         visible: page.suggestVisible
@@ -1268,9 +1310,10 @@ Item {
         border.width: 1
         radius: 4
 
-        // Ядро считает в отсчёте от начала строки: справа налево край
-        // строки поиска и сама выпадашка переводятся `placeX` туда и обратно,
-        // и выпадашка тянется от правого края поиска влево.
+        // The core computes relative to the start of the line: for right to left
+        // the edge of the search field and the drop-down itself are converted back
+        // and forth by `placeX`, and the drop-down extends from the right edge of
+        // the search field to the left.
         readonly property var box: page.suggestGeometry(
             String(Math.round(root.arrows.placeX(root.mapFromItem(searchBox, 0, 0).x,
                                                  searchBox.width, root.width))),
@@ -1345,19 +1388,19 @@ Item {
         }
     }
 
-    // ── Крупный просмотр картинки ─────────────────────────────────────────
+    // ── Large picture view ────────────────────────────────────────────────
     //
-    // Слой общий на весь продукт (`RexonImageViewer.qml`): тот же, что во
-    // вкладках Steam, «Расширения» и «Настройки», — листание стрелками,
-    // масштаб, полный экран, Esc. Своего просмотра у страницы нет.
+    // The layer is shared across the whole product (`RexonImageViewer.qml`):
+    // the same as in the Steam, "Extensions" and "Settings" tabs — paging with
+    // arrows, zoom, full screen, Esc. The page has no viewer of its own.
 
-    /// Снимки открытой карточки темы: листание по всем её загруженным
-    /// кадрам, открывается на показанном.
+    /// Screenshots of the open theme card: paging over all its loaded frames,
+    /// opening on the one shown.
     function openZoom() {
         const frames = page.zoomFrames();
         if (!frames || frames.length < 2)
             return;
-        // Последним слотом ядро кладёт номер кадра, с которого открывать.
+        // The core puts the index of the frame to open on into the last slot.
         const at = parseInt(frames[frames.length - 1], 10);
         const items = [];
         for (let i = 0; i < frames.length - 1; i++) {
@@ -1373,8 +1416,8 @@ Item {
         zoomPopup.show(items, at);
     }
 
-    /// Картинка плитки витрины — одна, без листания: остальные снимки темы
-    /// живут в её карточке.
+    /// Picture of a showcase tile — a single one, without paging: the theme's
+    /// other screenshots live in its card.
     function openTileZoom(name, path) {
         if (!path)
             return;
@@ -1387,14 +1430,14 @@ Item {
         }], 0);
     }
 
-    // «Применить «X»?» глобальной темы Plasma — то же окно, что в Plasma:
-    // простой вид — «Оформление» и «Расположение рабочего стола и виджетов»
-    // (флажки, когда в теме есть оба; одна часть — строкой), подробный
-    // («Выбрать, что применить…») — флажок на каждую часть темы. Тексты,
-    // видимость и отметки по умолчанию решает ядро
-    // (`themes::global_question_in`); вне Plasma окно сразу подробное, и
-    // части, которые сюда не переносятся, выключены с причиной. Фокус при
-    // открытии — на «Применить», как в Plasma, Escape — отмена.
+    // "Apply "X"?" of a Plasma global theme — the same window as in Plasma:
+    // the simple view — «Appearance» and "Desktop and window layout" (check
+    // boxes when the theme has both; a single part — as a line), the detailed
+    // one ("Choose what to apply…") — a check box for every part of the
+    // theme. Texts, visibility and default marks are decided by the core
+    // (`themes::global_question_in`); outside Plasma the window is detailed
+    // right away, and the parts that do not carry over here are disabled with
+    // a reason. Focus on opening is on "Apply", as in Plasma; Escape cancels.
     Popup {
         id: globalApplyDialog
         objectName: "globalApplyDialog"
@@ -1409,7 +1452,7 @@ Item {
         property var q: ({})
         property bool appearance: false
         property bool layout: false
-        /// Подробный вид и отмеченные в нём части (маска флагов Plasma).
+        /// The detailed view and the parts checked in it (a mask of Plasma flags).
         property bool detailed: false
         property int mask: 0
         readonly property var parts: q.parts || []
@@ -1423,13 +1466,13 @@ Item {
             open();
         }
 
-        /// Отметки по умолчанию — и при каждом переключении вида, как в
-        /// Plasma (`resetCheckboxes`).
+        /// Default marks — also on every view switch, as in Plasma
+        /// (`resetCheckboxes`).
         function reset() {
             appearance = q.appearanceChecked === true;
             layout = q.layoutChecked === true;
-            // Щелчок по флажку рвёт привязку `checked`, поэтому отметки
-            // ставятся заново.
+            // A click on a check box breaks the `checked` binding, so the marks are
+            // set again.
             globalApplyAppearanceBox.checked = appearance;
             globalApplyLayoutBox.checked = layout;
             let m = 0;
@@ -1448,7 +1491,7 @@ Item {
             mask = on ? (mask | p.mask) : (mask & ~p.mask);
         }
 
-        /// Отмечено ли расположение рабочего стола (подробный вид).
+        /// Whether the desktop layout is checked (detailed view).
         readonly property bool desktopLayoutOn: detailed
             && layoutParts.some(p => p.id === "desktopLayout" && partOn(p))
         readonly property bool anyPicked: detailed
@@ -1483,7 +1526,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            // ── Простой вид ──
+            // ── Simple view ──
             RexonText {
                 Layout.fillWidth: true
                 visible: !globalApplyDialog.detailed && (globalApplyDialog.q.emptyText || "") === ""
@@ -1512,8 +1555,8 @@ Item {
             RexonCheckBox {
                 id: globalApplyLayoutBox
                 objectName: "globalApplyLayout"
-                // По ширине окна: подпись «(из Breeze — своего в теме нет)»
-                // длинная и переносится, а не вылезает за край.
+                // Window-wide: the label "(from Breeze — the theme has none of its own)"
+                // is long and wraps rather than sticking out past the edge.
                 Layout.fillWidth: true
                 visible: !globalApplyDialog.detailed && globalApplyDialog.q.layoutRow === "checkbox"
                 pal: root.pal
@@ -1529,9 +1572,9 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            // ── Подробный вид: «Расположение:», затем «Оформление:» ──
-            // У темы со всеми частями список длинный: на низком экране он
-            // прокручивается, а кнопки окна остаются на месте.
+            // ── Detailed view: "Layout:", then "Appearance:" ──
+            // For a theme with all parts the list is long: on a low screen it scrolls,
+            // while the window buttons stay in place.
             ScrollView {
                 id: globalApplyPartsScroll
                 Layout.fillWidth: true
@@ -1576,8 +1619,8 @@ Item {
                 }
             }
 
-            // Предупреждение — пока отмечено расположение: оно сносит
-            // нынешние панели и виджеты.
+            // A warning while the layout is checked: it wipes the current panels and
+            // widgets.
             RexonText {
                 Layout.fillWidth: true
                 visible: globalApplyDialog.detailed
@@ -1600,8 +1643,8 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                // «Выбрать, что применить…» / «Меньше параметров…» — слева,
-                // как в Plasma; отметки при переключении сбрасываются.
+                // "Choose what to apply…" / "Fewer options…" — on the left, as in Plasma;
+                // the marks are reset on switching.
                 RexonButton {
                     objectName: "globalApplyMore"
                     pal: root.pal
@@ -1648,8 +1691,8 @@ Item {
         onOpened: globalApplyYes.forceActiveFocus()
     }
 
-    // Флажок части в подробном виде окна «Применить «X»?»; выключенный —
-    // с причиной под ним (вне Plasma).
+    // A part's check box in the detailed view of the "Apply "X"?" window; a
+    // disabled one has its reason under it (outside Plasma).
     Component {
         id: globalApplyPartRow
 
@@ -1666,7 +1709,7 @@ Item {
                 pal: root.pal
                 text: partRow.modelData.text
                 enabled: partRow.modelData.enabled
-                // Непереносимая часть — приглушённо, с причиной под ней.
+                // A part that does not carry over — muted, with the reason under it.
                 opacity: enabled ? 1 : 0.55
                 checked: globalApplyDialog.partOn(partRow.modelData)
                 onToggled: globalApplyDialog.setPart(partRow.modelData, checked)
@@ -1683,8 +1726,8 @@ Item {
         }
     }
 
-    // Свой редактор цветовой схемы — когда редактора KDE
-    // (kcolorschemeeditor) в системе нет.
+    // Our own colour scheme editor — for when the KDE editor
+    // (kcolorschemeeditor) is not on the system.
     ColorSchemeEditor {
         id: schemeEditor
         objectName: "colorSchemeEditor"
@@ -1697,7 +1740,7 @@ Item {
             schemeEditor.done(r.ok === true, r.message || "");
             if (r.ok === true) {
                 page.setStatus(r.message || "");
-                // Новая схема — в сетке: туда и вернуться.
+                // The new scheme is in the grid: go back there.
                 page.closeDetail();
             }
         }
@@ -1713,8 +1756,8 @@ Item {
         }
     }
 
-    // PKGBUILD пакета AUR — внутри программы, а не в браузере: что будет
-    // скачано и выполнено при сборке.
+    // The PKGBUILD of an AUR package — inside the program, not in the browser:
+    // what will be downloaded and executed during the build.
     Popup {
         id: pkgbuildPopup
         objectName: "aurPkgbuildPopup"
@@ -1812,13 +1855,12 @@ Item {
                     text: pkgbuildPopup.text
                     textFormat: TextEdit.PlainText
                     wrapMode: TextEdit.NoWrap
-                    // Начало строки при языке справа налево. Без явного
-                    // выравнивания поле берёт его из самого текста, а не из
-                    // зеркалирования окна. PKGBUILD — код оболочки, он
-                    // читается слева направо при любом языке интерфейса,
-                    // поэтому выравнивание задано явно и физически слева:
-                    // явное `AlignLeft` зеркалирование перевернуло бы вправо,
-                    // а `AlignRight` при зеркалировании даёт левый край.
+                    // Start of the line for right-to-left languages. Without explicit
+                    // alignment the field takes it from the text itself, not from window
+                    // mirroring. A PKGBUILD is shell code and reads left to right in any
+                    // interface language, so the alignment is set explicitly and physically
+                    // on the left: mirroring would flip an explicit `AlignLeft` to the right,
+                    // while `AlignRight` under mirroring gives the left edge.
                     horizontalAlignment: LayoutMirroring.enabled ? TextEdit.AlignRight
                                                                  : TextEdit.AlignLeft
                     color: root.colText
@@ -1835,9 +1877,9 @@ Item {
         onOpened: pkgbuildClose.forceActiveFocus()
     }
 
-    // «Подробнее об ошибке» расширения GNOME: что сказала оболочка, когда
-    // оно упало (последняя ошибка и её журнал), — скопировать целиком и
-    // отнести автору на его страницу.
+    // "Error details" of a GNOME extension: what the shell said when it
+    // crashed (the last error and its log) — copy it all and take it to the
+    // author on their page.
     Popup {
         id: gnomeErrorPopup
         objectName: "gnomeErrorPopup"
@@ -1918,9 +1960,9 @@ Item {
                     text: gnomeErrorPopup.text
                     textFormat: TextEdit.PlainText
                     wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
-                    // Ошибка JavaScript — код, он читается слева направо при
-                    // любом языке интерфейса: выравнивание явное и физически
-                    // слева (как у PKGBUILD выше).
+                    // A JavaScript error is code and reads left to right in any interface
+                    // language: the alignment is explicit and physically on the left (like
+                    // the PKGBUILD above).
                     horizontalAlignment: LayoutMirroring.enabled ? TextEdit.AlignRight
                                                                  : TextEdit.AlignLeft
                     color: root.colText
@@ -1977,7 +2019,7 @@ Item {
         pal: root.pal
     }
 
-    // ── Подложка ──────────────────────────────────────────────────────────
+    // ── Backing ───────────────────────────────────────────────────────────
 
     Rectangle {
         anchors.fill: parent
@@ -1988,7 +2030,7 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // ── Боковая панель разделов ───────────────────────────────────────
+        // ── Section side panel ────────────────────────────────────────────
         Rectangle {
             Layout.preferredWidth: page.sidebarWidth
             Layout.fillHeight: true
@@ -1998,11 +2040,11 @@ Item {
                 id: sidebar
                 anchors.fill: parent
                 clip: true
-                // Строки приходят списком целиком, и выбор раздела присылает
-                // его заново: прямая связка `model: page.sidebarRows`
-                // пересоздавала список и отбрасывала прокрутку в начало —
-                // выбрав раздел внизу, человек терял его из виду (приёмка
-                // 10.10.2026). Список подменяем сами и возвращаем прокрутку.
+                // The rows arrive as a whole list, and choosing a section sends it again:
+                // a direct `model: page.sidebarRows` binding recreated the list and threw
+                // the scroll position back to the top — after choosing a section at the
+                // bottom, the user lost sight of it (acceptance 10.10.2026). We swap the
+                // list ourselves and restore the scroll position.
                 property var rows: page.sidebarRows
                 onRowsChanged: {
                     const y = sidebar.contentY;
@@ -2012,21 +2054,20 @@ Item {
                         sidebar.contentY = Math.max(0, Math.min(y, bottom));
                     });
                 }
-                // Строк два десятка: держим все созданными, чтобы высота
-                // содержимого была точной сразу после подмены списка.
+                // There are a couple of dozen rows: we keep them all created so the
+                // content height is exact right after the list is swapped.
                 cacheBuffer: 2000
                 Component.onCompleted: sidebar.model = sidebar.rows
-                // Разделы, которых в выбранном рабочем столе не
-                // существует, из панели убраны: оформление, которое в твоём
-                // столе не работает, покупателю не нужно ни при каких
-                // обстоятельствах.
+                // Sections that do not exist in the selected desktop are removed from the
+                // panel: a look that does not work on your desktop is of no use to the
+                // customer under any circumstances.
                 //
-                // Разделы собраны в группы («Обзор», «Рабочий стол «MATE»»,
-                // «Для всех программ»…): заголовок группы приходит в первой
-                // видимой строке группы (`groupTitle`), решение — ядра
-                // (`categories::category_group`). Обёртка-FocusScope отдаёт
-                // фокус самой строке: геймпад и Tab ходят по разделам, а не
-                // по заголовкам.
+                // The sections are gathered into groups ("Overview", "Desktop "MATE"",
+                // "For all programs"…): the group title arrives in the group's first
+                // visible row (`groupTitle`), the decision is the core's
+                // (`categories::category_group`). A FocusScope wrapper hands focus to the
+                // row itself: the gamepad and Tab move between sections, not between
+                // titles.
                 delegate: FocusScope {
                     id: sidebarBox
                     required property var modelData
@@ -2070,11 +2111,10 @@ Item {
                     focus: true
                     y: sidebarHeader.visible ? sidebarHeader.height : 0
                     width: sidebar.width
-                    // Длинная подпись («Window Decorations (Aurorae)», «Экран
-                    // входа (Plasma Login Manager)») переносится на вторую
-                    // строку, а строка раздела подрастает под неё: обрезать
-                    // название посреди слова — значит спрятать, что это за
-                    // раздел.
+                    // A long label ("Window Decorations (Aurorae)", "Login screen (Plasma
+                    // Login Manager)") wraps onto a second line, and the section row grows to
+                    // fit it: cutting a name in the middle of a word would hide what section
+                    // it is.
                     height: sidebarRow.modelData.available
                             ? Math.max(page.sidebarRowHeight,
                                        sidebarLabel.implicitHeight + 12)
@@ -2086,42 +2126,38 @@ Item {
                     background: Rectangle {
                         color: sidebarRow.modelData.current ? root.colCardHover
                              : (sidebarRow.hovered ? root.colCard : "transparent")
-                        // Левая полоса выбранного раздела — тот же приём,
-                        // что в таблице стилей виджетной вкладки.
+                        // The left strip of the selected section — the same technique as in the
+                        // widget tab's style sheet.
                         Rectangle {
                             width: 3
                             height: parent.height
                             color: sidebarRow.modelData.current ? root.colAccent
                                                                 : "transparent"
                         }
-                        // ⚠️ `visualFocus`, а не `activeFocus`. Список
-                        // отдаёт фокус первой строке сразу при показе, и по
-                        // `activeFocus` на «✅ Активные» висела синяя рамка
-                        // ВСЕГДА — даже когда открыт другой раздел (снимки
-                        // 01.09.2026). Оригинал такой рамки не рисует вовсе:
-                        // боковая панель у него `NoFocus`. Совсем убирать
-                        // фокус нельзя — цепочка нужна для управления с
-                        // геймпада; `visualFocus` взводится только при
-                        // переходе с клавиатуры, а не при раздаче фокуса на
-                        // старте.
+                        // Warning: `visualFocus`, not `activeFocus`. The list gives focus to the
+                        // first row right when shown, and with `activeFocus` a blue frame hung on
+                        // «✅ Active» ALWAYS — even when another section was open (screenshots
+                        // 01.09.2026). The original draws no such frame at all: its side panel is
+                        // `NoFocus`. Removing focus entirely is not allowed — the chain is needed
+                        // for gamepad control; `visualFocus` is set only when moving from the
+                        // keyboard, not when focus is handed out at start-up.
                         border.color: sidebarRow.visualFocus ? root.colAccent
                                                              : "transparent"
                         border.width: 2
                     }
 
-                    // Значок раздела и подпись — порознь. Перенесённая вторая
-                    // строка длинной подписи («Экран входа (Plasma Login
-                    // Manager)») обязана начинаться под первой буквой
-                    // подписи, а не под значком у края панели (снимки
-                    // 01.10.2026: перенос без отступа).
+                    // Section icon and label separately. The wrapped second line of a long
+                    // label ("Login screen (Plasma Login Manager)") must start under the first
+                    // letter of the label, not under the icon at the panel edge (screenshots
+                    // 01.10.2026: wrapping without an indent).
                     contentItem: Item {
                         id: sidebarContent
 
                         readonly property string full: sidebarRow.modelData.text.trim()
                         readonly property int gap: full.indexOf(" ")
-                        // Значок — короткое первое слово без регистра и
-                        // цифр (у разделов ядра это всегда эмодзи); обычное
-                        // слово так не выглядит.
+                        // The icon is a short first word without case or digits (for core
+                        // sections it is always an emoji); an ordinary word does not look like
+                        // that.
                         readonly property string head: gap > 0 ? full.substring(0, gap) : ""
                         readonly property bool hasIcon: gap > 0 && gap <= 4
                             && head.toUpperCase() === head.toLowerCase()
@@ -2134,12 +2170,11 @@ Item {
                         RexonText {
                             id: sidebarIcon
                             visible: sidebarContent.hasIcon
-                            // Отступ ядра (два пробела перед значком) — полем.
+                            // The core's indent (two spaces before the icon) becomes padding.
                             anchors.left: parent.left
                             anchors.leftMargin: 7
-                            // Значок стоит на одной линии шрифта с ПЕРВОЙ
-                            // строкой подписи, как стоял, пока был с ней
-                            // одним текстом.
+                            // The icon sits on the same font line as the FIRST line of the label, as
+                            // it did while it was one text with it.
                             y: sidebarLabel.y + sidebarLabel.baselineOffset - baselineOffset
                             text: sidebarContent.head
                             color: sidebarContent.tone
@@ -2159,11 +2194,11 @@ Item {
                                   : sidebarContent.full
                             wrapMode: Text.Wrap
                             maximumLineCount: 2
-                            // Оригинал (`#Sidebar::item:hover`) при наведении
-                            // высветляет и подпись, а не только подложку.
+                            // The original (`#Sidebar::item:hover`) brightens the label on hover too,
+                            // not only the backing.
                             color: sidebarContent.tone
                             font.pointSize: 11
-                            // `#Sidebar { font-weight: 600 }` — полужирный.
+                            // `#Sidebar { font-weight: 600 }` — semi-bold.
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
                         }
@@ -2175,41 +2210,42 @@ Item {
             }
         }
 
-        // ── Правая часть ──────────────────────────────────────────────────
+        // ── Right part ────────────────────────────────────────────────────
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
 
-            // ── Шапка ─────────────────────────────────────────────────────
+            // ── Header ────────────────────────────────────────────────────
             //
-            // Порядок и раскладка — как в оригинале: название раздела слева,
-            // распорка, дальше вправо чипы источника, поиск, рабочий стол,
-            // сортировка и «обновить».
+            // Order and layout are as in the original: the section name on the left,
+            // a spacer, then to the right the source chips, search, desktop, sorting
+            // and "refresh".
             //
-            // ⚠️ Здесь стоял `Flow` — ради переноса строки на наименьшей
-            // ширине окна. Перенос он давал, но ценой вида: без распорки все
-            // органы управления собирались в кучу слева от пустого поля, и
-            // шапка переставала быть похожей на оригинал. Мерило вкладки —
-            // паритет с оригиналом, а он на `QHBoxLayout` со стретчем и на
-            // узком окне точно так же сжимает строку поиска.
+            // Warning: a `Flow` stood here — for line wrapping at the minimum window
+            // width. It did wrap, but at the cost of the look: without a spacer all
+            // the controls bunched up to the left of an empty field, and the header no
+            // longer resembled the original. The tab's yardstick is parity with the
+            // original, and that one is built on a `QHBoxLayout` with a stretch and
+            // squeezes the search field the same way in a narrow window.
             //
-            // ⚠️ Узкое окно (1100 точек, снимки 01.10.2026): одна строка не
-            // помещалась, её наименьшая ширина распирала всю правую часть, и
-            // за правый край уезжали и шапка, и третий столбец плиток. Теперь
-            // органы управления разбиты на две группы — «магазин + поиск» и
-            // «рабочий стол + сортировка + обновить». Хватает ширины — всё в
-            // одну строку, как в оригинале; не хватает — вторая группа
-            // переносится на свою строку, прижатая вправо. Поиск при нехватке
-            // места сжимается (оригинал на узком окне делает так же).
+            // Warning: narrow window (1100 pixels, screenshots 01.10.2026): one line
+            // did not fit, its minimum width stretched the whole right part, and both
+            // the header and the third column of tiles slid past the right edge. Now
+            // the controls are split into two groups — "store + search" and "desktop
+            // + sorting + refresh". When there is enough width, everything is on one
+            // line, as in the original; when there is not, the second group wraps onto
+            // its own line, pressed to the right. The search field shrinks when room
+            // is short (the original does the same in a narrow window).
             GridLayout {
                 id: headerRow
 
-                /// Высота органов управления шапки. Оригинал: 34 точки
-                /// (замер снимка), поля сверху и снизу — из ядра.
+                /// Height of the header controls. Original: 34 pixels (measured from a
+                /// screenshot); the top and bottom paddings come from the core.
                 readonly property int rowHeight: 34
-                /// Всё помещается в одну строку. Мерило — желаемые ширины
-                /// групп; от числа столбцов они не зависят, круга нет.
+                /// Everything fits on one line. The yardstick is the groups' preferred
+                /// widths; they do not depend on the number of columns, so there is no
+                /// loop.
                 readonly property bool oneRow: width >= headerTitle.implicitWidth
                                                         + searchGroup.implicitWidth
                                                         + toolsGroup.fullWidth
@@ -2226,11 +2262,11 @@ Item {
 
                 RexonText {
                     id: headerTitle
-                    // ⚠️ Именно `sectionTitle`, а не `headerTitle`. Второе —
-                    // название вкладки, оно неизменно; оригинал же с первого
-                    // мига показывает ВЫБРАННЫЙ раздел со значком («✅
-                    // Активные», «📥 Загруженные»), и слово «Оформление»
-                    // видно там ровно ноль секунд. Мы держали его всегда.
+                    // Warning: exactly `sectionTitle`, not `headerTitle`. The latter is the
+                    // tab name and never changes; the original, however, shows the SELECTED
+                    // section with its icon («✅ Active», "📥 Downloaded") from the very first
+                    // moment, and the word «Appearance» is visible there for exactly zero
+                    // seconds. We kept showing it all the time.
                     text: page.sectionTitle
                     color: root.colText
                     font.pointSize: page.headerTitlePointSize
@@ -2244,12 +2280,11 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    // Распорка: у оригинала за заголовком стоит
-                    // `addStretch(1)`, и весь остальной ряд прижат к правому
-                    // краю.
+                    // Spacer: in the original there is `addStretch(1)` after the title, and
+                    // the whole rest of the row is pressed to the right edge.
                     Item { Layout.fillWidth: true }
 
-                    // Чипы «Магазин:».
+                    // «Store:» chips.
                     Row {
                         spacing: 4
                         visible: page.sourceBarVisible
@@ -2258,8 +2293,8 @@ Item {
                         RexonText {
                             text: page.sourceLabel
                             color: root.colTextSecondary
-                            // Оригинал: `#SrcLabel { font-weight: 600 }` —
-                            // полужирный, а не жирный. Разница видна глазом.
+                            // Original: `#SrcLabel { font-weight: 600 }` — semi-bold, not bold. The
+                            // difference is visible to the eye.
                             font.weight: Font.DemiBold
                             height: headerRow.rowHeight
                             verticalAlignment: Text.AlignVCenter
@@ -2283,30 +2318,30 @@ Item {
                     RexonTextField {
                         id: searchBox
                         pal: root.pal
-                        // Рамку полю поиска даёт таблица стилей самой вкладки
-                        // (`#SearchBox { border: 1px solid {border} }`), а не
-                        // стиль Qt: замер 05.09 — (42,64,85) у оригинала против
-                        // (73,83,96) обводки стиля.
+                        // The search field's border comes from the tab's own style sheet
+                        // (`#SearchBox { border: 1px solid {border} }`), not from the Qt style:
+                        // measurement 05.09 — (42,64,85) in the original versus (73,83,96) of the
+                        // style outline.
                         borderTone: root.pal.border
                         visible: page.searchVisible
-                        // ⚠️ Именно `Layout.*`, а не `width`/`height`: размеры
-                        // прямых детей раскладки назначает она, и голый `width`
-                        // она молча перебивает — строка поиска выходила ýже
-                        // заказанных ядром 240 точек.
+                        // Warning: exactly `Layout.*`, not `width`/`height`: the layout assigns
+                        // the sizes of its direct children, and it silently overrides a bare
+                        // `width` — the search field came out narrower than the 240 pixels the
+                        // core ordered.
                         Layout.preferredWidth: page.searchWidth
-                        // Шире ядра не растёт; на узком окне сжимается, а не
-                        // выталкивает шапку за край.
+                        // Does not grow wider than the core says; in a narrow window it shrinks
+                        // rather than pushing the header past the edge.
                         Layout.fillWidth: true
                         Layout.maximumWidth: page.searchWidth
                         Layout.minimumWidth: 140
                         Layout.preferredHeight: headerRow.rowHeight
                         placeholderText: page.searchPlaceholder
                         text: page.query
-                        // Поиск идёт по мере набора: обзор диска отбирает сразу,
-                        // магазин — после паузы ядра (`searchDelayMs`), Enter —
-                        // сразу. Очистка поля сбрасывает запрос СРАЗУ — иначе
-                        // запрос залипал на прошлом слове при визуально пустом
-                        // поле (дефект оригинала, починен в ядре).
+                        // Search runs as you type: the disk overview filters immediately, the
+                        // store after the core's pause (`searchDelayMs`), Enter immediately.
+                        // Clearing the field resets the query IMMEDIATELY — otherwise the query
+                        // stuck on the previous word while the field looked empty (a defect of
+                        // the original, fixed in the core).
                         rightPadding: searchClear.visible ? searchClear.width + 6 : 10
                         onTextEdited: {
                             page.setQuery(text);
@@ -2314,34 +2349,33 @@ Item {
                                 searchDebounce.restart();
                             else
                                 searchDebounce.stop();
-                            // Посимвольно магазин не дёргаем: до порога длины
-                            // выпадашка просто закрыта, дальше — пауза из ядра.
+                            // The store is not bothered per character: below the length threshold the
+                            // drop-down simply stays closed, beyond it there is the core's pause.
                             suggestDebounce.restart();
                         }
                         onAccepted: {
-                            // Выбранная подсказка ведёт прямо в карточку темы;
-                            // если не выбрана ни одна — обычный поиск.
+                            // A selected suggestion leads straight to the theme card; if none is
+                            // selected — an ordinary search.
                             if (page.suggestActivate())
                                 return;
                             searchDebounce.stop();
                             page.setQuery(text);
                             page.submitQuery();
-                            // Поиск отправлен — выпадашка своё отработала:
-                            // оставшись открытой, она закрывала кнопки шапки.
+                            // The search was sent — the drop-down has done its job: left open, it
+                            // covered the header buttons.
                             suggestDebounce.stop();
                             page.updateSuggestions("");
                         }
                         onActiveFocusChanged: page.setSearchFocused(activeFocus)
 
-                        // ⚠️ Набор текста РВЁТ связку `text: page.query` — так
-                        // устроено поле ввода Qt. Поэтому смену раздела (там
-                        // запрос сбрасывается) поле само не заметит и осталось
-                        // бы стоять с забытым словом при неотфильтрованной
-                        // витрине. Своё свойство связку не теряет и возвращает
-                        // поле к тому, что говорит ядро.
-                        // Сравнение — по обрезанному тексту: ядро хранит слово
-                        // без пробелов по краям, и набранный пробел иначе
-                        // стирался бы на ходу.
+                        // Warning: typing BREAKS the `text: page.query` binding — that is how the
+                        // Qt text field works. So the field would not notice a section change by
+                        // itself (the query is reset there) and would stay with a forgotten word
+                        // over an unfiltered showcase. A property of our own does not lose the
+                        // binding and brings the field back to what the core says.
+                        // The comparison is by trimmed text: the core stores the word without
+                        // spaces at the ends, and a typed space would otherwise be erased on the
+                        // fly.
                         property string coreQuery: page.query
                         onCoreQueryChanged: {
                             if (searchBox.text.trim() !== searchBox.coreQuery) {
@@ -2354,8 +2388,8 @@ Item {
                         Keys.onUpPressed: page.suggestMove("up")
                         Keys.onEscapePressed: page.setSearchFocused(false)
 
-                        // Пауза набора перед поиском в магазине. Слово к этому
-                        // моменту уже в ядре (`setQuery`), остаётся применить.
+                        // Typing pause before a store search. By this moment the word is already
+                        // in the core (`setQuery`); all that remains is to apply it.
                         Timer {
                             id: searchDebounce
                             interval: Math.max(1, page.searchDelayMs)
@@ -2366,8 +2400,8 @@ Item {
                             }
                         }
 
-                        // ✕ «Очистить»: заметная, пока в поле что-то есть, —
-                        // забытое слово в поле не должно прятать раздел.
+                        // ✕ "Clear": noticeable while there is something in the field — a
+                        // forgotten word in the field must not hide the section.
                         RexonButton {
                             id: searchClear
                             pal: root.pal
@@ -2402,14 +2436,14 @@ Item {
                     }
                 }
 
-                // Органы управления — потоком справа налево: не помещаются в
-                // строку — переносятся, а не выталкивают шапку и сетку плиток
-                // за правый край (окно 1100 точек: «Магазин:» и третий
-                // столбец уезжали за край). Порядок детей
-                // обратный порядку на экране — так у потока справа налево.
+                // The controls are a right-to-left flow: if they do not fit into the line,
+                // they wrap rather than pushing the header and the tile grid past the
+                // right edge (a 1100-pixel window: «Store:» and the third column slid past
+                // the edge). The children's order is the reverse of the on-screen order —
+                // that is how a right-to-left flow works.
                 Flow {
                     id: toolsGroup
-                    /// Ширина всех органов в одну строку — мерило `oneRow`.
+                    /// Width of all controls on one line — the yardstick for `oneRow`.
                     readonly property real fullWidth: {
                         let w = 0, n = 0;
                         for (let i = 0; i < children.length; ++i) {
@@ -2421,16 +2455,15 @@ Item {
                         }
                         return w + Math.max(0, n - 1) * spacing;
                     }
-                    // На своей строке группа занимает оба столбца.
+                    // On its own line the group takes both columns.
                     Layout.columnSpan: headerRow.oneRow ? 1 : 2
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     Layout.preferredWidth: fullWidth
                     Layout.preferredHeight: implicitHeight
-                    // Кнопки прижаты к концу строки. При языке справа налево
-                    // корневое зеркалирование переворачивает и это
-                    // направление — кнопки встают у левого края, то есть
-                    // опять в конце строки для такого читателя.
+                    // The buttons are pressed to the end of the line. For right-to-left
+                    // languages the root mirroring flips this direction too — the buttons go
+                    // to the left edge, i.e. again at the end of the line for such a reader.
                     layoutDirection: Qt.RightToLeft
                     spacing: 8
 
@@ -2442,7 +2475,14 @@ Item {
                         ToolTip.text: page.refreshTooltip
                         ToolTip.visible: hovered
                         ToolTip.delay: 600
-                        onClicked: page.refresh()
+                        // Axon has its own library: this same button refreshes it; a second "🔄"
+                        // in the Axon row is not needed.
+                        onClicked: {
+                            if (page.screen === "axon" && axonLoader.item)
+                                axonLoader.item.reload();
+                            else
+                                page.refresh();
+                        }
                     }
 
                     RexonButton {
@@ -2455,14 +2495,14 @@ Item {
                         height: headerRow.rowHeight
                         text: page.installFileText
                         ToolTip.text: page.installFileTooltip
-                        // Пока открыто меню «Выбрать файлы / папку», подсказки
-                        // нет: она ложилась поверх меню, и кнопка выглядела
-                        // неработающей (приёмка 10.10.2026).
+                        // While the "Choose files / folder" menu is open there is no tooltip: it
+                        // landed over the menu, and the button looked broken (acceptance
+                        // 10.10.2026).
                         ToolTip.visible: hovered && !installFileMenu.opened
                         ToolTip.delay: 600
                         onClicked: {
                             installFileMenu.parent = installFileButton;
-                            // Меню — от начала строки кнопки.
+                            // The menu opens from the start of the button's line.
                             installFileMenu.x = root.arrows.placeX(
                                 0, installFileMenu.width, installFileButton.width);
                             installFileMenu.y = installFileButton.height;
@@ -2491,7 +2531,7 @@ Item {
                         RexonText {
                             text: page.deLabel
                             color: root.colTextSecondary
-                            font.weight: Font.DemiBold   // `#SrcLabel`, вес 600
+                            font.weight: Font.DemiBold   // `#SrcLabel`, weight 600
                             height: headerRow.rowHeight
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -2509,28 +2549,27 @@ Item {
                             ToolTip.delay: 600
                             selectedValue: page.de
                             onActivated: {
-                                // Значение берётся ДО setDe: тот пересобирает
-                                // список (подпись «выбрано вручную»).
+                                // The value is taken BEFORE setDe: that one rebuilds the list (the
+                                // "selected manually" label).
                                 const picked = currentValue;
                                 page.setDe(picked);
-                                // Выбор руками живёт между запусками: без этого
-                                // каждый заход снова показывал стол, определённый
-                                // по сеансу. «Определять автоматически» пишет
-                                // пустой выбор — дальше каталог идёт за сеансом.
-                                // Второй довод — пустой: какой стол запущен
-                                // СЕЙЧАС, знает хозяин, он же и запишет.
+                                // A manual choice survives between launches: without this every visit
+                                // showed the desktop detected from the session again. "Detect
+                                // automatically" writes an empty choice — from then on the catalogue
+                                // follows the session. The second argument is empty: which desktop is
+                                // running NOW is known to the host, and it will write it too.
                                 if (root.actions && root.actions.remember)
                                     root.actions.remember(picked === "auto" ? "" : picked, "");
                             }
                         }
                     }
 
-                    // «⚙️ Настройки» у «Шрифтов», «Значков» и «Курсоров» (08.11.2026):
-                    // настройки того же рода — видом внутри раздела, а не
-                    // своей строкой боковой панели. Последний ребёнок потока
-                    // справа налево — на экране первым, сразу за поиском.
-                    // В виде настроек та же кнопка ведёт назад к плиткам:
-                    // выход там же, где вход.
+                    // «⚙️ Settings» for "Fonts", "Icons" and "Cursors" (08.11.2026): settings
+                    // of the same kind are a view inside the section, not a row of their own
+                    // in the side panel. The last child of a right-to-left flow is first on
+                    // screen, right after the search.
+                    // In the settings view the same button leads back to the tiles: the exit
+                    // is where the entrance is.
                     RexonButton {
                         id: sectionSettingsButton
                         objectName: "sectionSettingsButton"
@@ -2547,7 +2586,7 @@ Item {
                 }
             }
 
-            // ── Под-чипы и строка состояния ───────────────────────────────
+            // ── Sub-chips and the status line ─────────────────────────────
             Flow {
                 Layout.fillWidth: true
                 Layout.leftMargin: page.headerMarginH
@@ -2563,7 +2602,7 @@ Item {
                     RexonText {
                         text: page.submodeLabel
                         color: root.colTextSecondary
-                        font.weight: Font.DemiBold   // `#SrcLabel`, вес 600
+                        font.weight: Font.DemiBold   // `#SrcLabel`, weight 600
                         height: headerRow.rowHeight
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -2596,8 +2635,8 @@ Item {
                         }
                     }
 
-                    // «Все / Светлые / Тёмные» у цветовых схем и стилей Plasma
-                    // (у стилей ещё «С поддержкой цветовых схем»), как у KDE.
+                    // "All / Light / Dark" for colour schemes and Plasma styles (styles also
+                    // have "With colour scheme support"), as in KDE.
                     Repeater {
                         model: page.toneBarVisible ? page.toneChips : []
                         delegate: RexonChip {
@@ -2614,15 +2653,15 @@ Item {
                     }
                 }
 
-                // Размер курсора — в разделе «Курсоры». Ложится на текущую
-                // тему; куда он доходит в каждом окружении, решает ядро
-                // (`themes::apply_cursor_plan_sized`), здесь только выбор.
+                // Cursor size — in the "Cursors" section. Applied over the current theme;
+                // how far it reaches in each environment is decided by the core
+                // (`themes::apply_cursor_plan_sized`); here there is only the choice.
                 Row {
                     id: cursorSizeRow
                     spacing: 4
                     visible: page.cursorSizeBarVisible
 
-                    // Отмеченный размер — ответ хозяина при входе в раздел.
+                    // The checked size is the host's answer on entering the section.
                     property int current: 0
                     onVisibleChanged: {
                         if (visible && root.actions && root.actions.cursorSize)
@@ -2632,7 +2671,7 @@ Item {
                     RexonText {
                         text: page.cursorSizeLabel
                         color: root.colTextSecondary
-                        font.weight: Font.DemiBold   // `#SrcLabel`, вес 600
+                        font.weight: Font.DemiBold   // `#SrcLabel`, weight 600
                         height: headerRow.rowHeight
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -2659,36 +2698,34 @@ Item {
 
                 RexonText {
                     text: page.statusText
-                    // Итог с оговоркой («⚠️ Обои применены: … . …») и ошибка —
-                    // цветом предупреждения, а не серым, как обычный итог.
+                    // A result with a caveat ("⚠️ Wallpaper applied: … . …") and an error are
+                    // shown in the warning colour, not grey like an ordinary result.
                     color: page.statusWarn && root.pal.state_warn !== undefined
                            ? root.pal.state_warn : root.colTextSecondary
-                    // Оригинал: `#StatusBar { font-size: 10pt;
-                    // font-weight: 600 }`.
+                    // Original: `#StatusBar { font-size: 10pt; font-weight: 600 }`.
                     font.pointSize: page.cardMetaPointSize
                     font.weight: Font.DemiBold
-                    // ⚠️ Высота — по тексту, пока рядом нет под-чипов. Здесь
-                    // стояли безусловные 40 точек, и в разделах БЕЗ чипов
-                    // (а их большинство) строка состояния распирала полосу
-                    // вдвое против оригинала: вся сетка плиток съезжала вниз
-                    // на 20 точек. Когда чипы есть, тянемся до их высоты —
-                    // иначе подпись прилипнет к верху вместо середины, как в
-                    // оригинале.
+                    // Warning: the height follows the text while there are no sub-chips next
+                    // to it. An unconditional 40 pixels used to stand here, and in sections
+                    // WITHOUT chips (most of them) the status line stretched the strip to
+                    // twice the original: the whole tile grid shifted down by 20 pixels. When
+                    // there are chips, we stretch to their height — otherwise the label would
+                    // stick to the top instead of the middle, as in the original.
                     height: Math.max(implicitHeight,
                                      submodeRow.visible ? submodeRow.height
                                    : cursorSizeRow.visible ? cursorSizeRow.height
                                                            : 0)
                     verticalAlignment: Text.AlignVCenter
-                    // Длинная причина отказа («X конфликтует с Y…», путь к
-                    // журналу) переносится внутри полосы, а не уходит за
-                    // правый край: ширина — не больше самой полосы.
+                    // A long refusal reason ("X conflicts with Y…", the path to the log) wraps
+                    // inside the strip rather than going past the right edge: the width is no
+                    // more than the strip itself.
                     width: Math.min(implicitWidth, parent.width)
                     wrapMode: Text.WordWrap
                 }
 
-                // После «Установить из файла…»: тема оказалась другого вида
-                // («это курсоры») или видна в «Загруженных» — открыть тот
-                // раздел одним нажатием.
+                // After "Install from file…": the theme turned out to be of another kind
+                // ("these are cursors") or is visible in "Downloaded" — open that section
+                // with one press.
                 RexonButton {
                     objectName: "installFileOpenButton"
                     pal: root.pal
@@ -2704,10 +2741,10 @@ Item {
                 }
             }
 
-            // ── Оговорка раздела: «работает, но при условии» ───────────────
+            // ── Section caveat: "it works, but on a condition" ─────────────
             //
-            // Раздел при этом остаётся на месте: прятать работающее вместо
-            // того, чтобы назвать условие, — не наш способ (правило #13).
+            // The section stays in place: hiding something that works instead of
+            // naming the condition is not our way (rule #13).
             RexonText {
                 Layout.fillWidth: true
                 Layout.leftMargin: 16
@@ -2720,11 +2757,11 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            // ── Ряд раздела «Виджеты Conky» ───────────────────────────────
+            // ── Row of the "Conky widgets" section ────────────────────────
             //
-            // Чип «Запущенные» — в сетке только виджеты с процессом сейчас;
-            // «Остановить все» — все conky на машине, и чужие тоже, после
-            // вопроса со списком (ядро: `conky_procs`). Подписи — ядро.
+            // The "Running" chip — only widgets with a process right now in the grid;
+            // "Stop all" — all conky on the machine, other people's too, after a
+            // question with the list (core: `conky_procs`). Labels come from the core.
             RowLayout {
                 id: conkyToolsRow
                 objectName: "conkyToolsRow"
@@ -2788,33 +2825,31 @@ Item {
                 Connections {
                     target: root.actions
                     ignoreUnknownSignals: true
-                    // Новый виджет распаковали в ~/.conky (или убрали) —
-                    // плитки «Найдено на диске» обновляются сами.
+                    // A new widget was unpacked into ~/.conky (or removed) — the "Found on
+                    // disk" tiles update by themselves.
                     function onConkyDiskChanged() {
                         if (conkyToolsRow.active && page.screen === "grid")
                             page.showInstalledFresh();
                     }
-                    // Сняты новые снимки виджетов для плиток — перечитать,
-                    // не сбивая прокрутку.
+                    // New widget snapshots were taken for the tiles — re-read without
+                    // disturbing the scroll position.
                     function onConkyPreviewsReady() {
                         if (conkyToolsRow.active && page.screen === "grid")
                             grid.refreshKeepingScroll();
-                        // Открытая карточка (сменили цвета или настройки) —
-                        // показать свежий снимок.
+                        // The open card (colours or settings changed) — show the fresh snapshot.
                         if (conkyToolsRow.active && page.screen === "detail")
                             page.refreshConkyDetailPicture();
                     }
                 }
             }
 
-            // ── Ряд раздела «Расширения GNOME» ────────────────────────────
+            // ── Row of the "GNOME extensions" section ─────────────────────
             //
-            // «Только для вашей версии GNOME» (по умолчанию включено;
-            // выключено — витрина показывает всё, несовместимое помечено) и
-            // скачанные оболочкой обновления: «Скачано обновлений: N.
-            // Применятся после выхода из сеанса» + «Выйти из сеанса»
-            // (подтверждение спрашивает сам GNOME). Подписи и число — ядро
-            // (`gnome_ext_section`).
+            // "Only for your GNOME version" (on by default; off — the showcase shows
+            // everything, the incompatible ones are marked) and updates downloaded by
+            // the shell: "Updates downloaded: N. They will apply after logging out" +
+            // "Log out" (the confirmation is asked by GNOME itself). Labels and the
+            // number come from the core (`gnome_ext_section`).
             RowLayout {
                 id: gnomeToolsRow
                 objectName: "gnomeToolsRow"
@@ -2844,8 +2879,8 @@ Item {
                     id: gnomeCompatibleBox
                     objectName: "gnomeCompatibleOnly"
                     pal: root.pal
-                    // Положение — у модели: после перезапуска страницы
-                    // флажок показывает то, по чему отобрана витрина.
+                    // The state belongs to the model: after the page restarts, the check box
+                    // shows what the showcase was filtered by.
                     checked: page.egoCompatibleOnly
                     text: root.gnomeTexts.only_compatible || ""
                     ToolTip.text: root.gnomeTexts.only_compatible_tooltip || ""
@@ -2853,7 +2888,7 @@ Item {
                     ToolTip.delay: 600
                     onToggled: {
                         page.setEgoCompatibleOnly(checked);
-                        // Нажатие рвёт привязку — вернуть её к модели.
+                        // A press breaks the binding — return it to the model.
                         checked = Qt.binding(function () { return page.egoCompatibleOnly; });
                     }
                 }
@@ -2892,7 +2927,7 @@ Item {
                         } catch (e) {
                         }
                     }
-                    // Ответ каталога раздела пересчитал скачанные.
+                    // The section's catalogue answer recomputed the downloaded ones.
                     function onCatalogReady(payload) {
                         if (gnomeToolsRow.active)
                             gnomeToolsRow.reloadUpdates();
@@ -2900,12 +2935,12 @@ Item {
                 }
             }
 
-            // ── Лента «На столе сейчас» ───────────────────────────────────
+            // ── "On the desktop now" ribbon ───────────────────────────────
             //
-            // Запущенные виджеты Conky миниатюрами, как гаджеты на столе
-            // Windows: щелчок — карточка виджета (настройки, части,
-            // журнал), крестик — убрать со стола (виджет остаётся
-            // установленным). Список и подписи — ядро (`conky_procs::ribbon`).
+            // Running Conky widgets as thumbnails, like gadgets on a Windows desktop:
+            // a click opens the widget card (settings, parts, log), the cross removes
+            // it from the desktop (the widget stays installed). The list and labels
+            // come from the core (`conky_procs::ribbon`).
             ColumnLayout {
                 id: conkyRibbon
                 objectName: "conkyRibbon"
@@ -3009,12 +3044,12 @@ Item {
                 }
             }
 
-            // ── Превью виджетов Conky: нет Xvfb ───────────────────────────
+            // ── Conky widget previews: no Xvfb ────────────────────────────
             //
-            // Одна строка на раздел, а не на каждую плитку: превью не
-            // рисуются, потому что нет невидимого X-сервера. Кнопка ставит
-            // пакет общим путём недостающих программ (окно пароля), ✕ —
-            // больше не показывать. Решение, текст и пакет — ядро
+            // One line per section, not per tile: previews are not drawn because there
+            // is no invisible X server. The button installs the package through the
+            // shared missing-programs path (the password window), ✕ means do not show
+            // again. Decision, text and package come from the core
             // (`conky_preview::xvfb_hint`).
             Rectangle {
                 id: conkyXvfbBar
@@ -3098,10 +3133,10 @@ Item {
                 }
             }
 
-            // ── Мини-карта экрана ─────────────────────────────────────────
+            // ── Screen mini map ───────────────────────────────────────────
             //
-            // Запущенные виджеты Conky на схеме экрана: перетащить — сдвинуть
-            // на столе (`conky_layout`, запись — накладка виджета).
+            // Running Conky widgets on a diagram of the screen: drag to move them on
+            // the desktop (`conky_layout`, written as the widget's overlay).
             ConkyScreenMap {
                 id: conkyScreenMap
                 objectName: "conkyScreenMap"
@@ -3115,11 +3150,11 @@ Item {
                 busy: page.actionBusy
             }
 
-            // ── Наборы виджетов Conky ─────────────────────────────────────
+            // ── Conky widget sets ─────────────────────────────────────────
             //
-            // Несколько виджетов и обои одной кнопкой; «Сохранить запущенные
-            // как набор». Наборы из файлов .cmtheme пакетов тем видны сразу.
-            // Решения и подписи — ядро (`conky_sets`).
+            // Several widgets and a wallpaper with one button; "Save running ones as a
+            // set". Sets from the .cmtheme files of theme packages are visible at
+            // once. Decisions and labels come from the core (`conky_sets`).
             ConkySets {
                 id: conkySets
                 objectName: "conkySets"
@@ -3135,11 +3170,11 @@ Item {
                 onChanged: grid.refreshKeepingScroll()
             }
 
-            // ── Системные звуки выключены ─────────────────────────────────
+            // ── System sounds are off ─────────────────────────────────────
             //
-            // В разделе «Звуки» при выключенных звуках событий любая тема
-            // немая — говорим это сразу и даём включить одной кнопкой.
-            // Решение и подписи — ядро (`ap::event_sounds_banner`).
+            // In the "Sounds" section, with event sounds turned off any theme is
+            // silent — we say so right away and offer to turn them on with one button.
+            // Decision and labels come from the core (`ap::event_sounds_banner`).
             Rectangle {
                 id: eventSoundsBar
                 objectName: "eventSoundsBar"
@@ -3147,7 +3182,7 @@ Item {
                 property int rev: 0
                 property string message: ""
                 readonly property var info: {
-                    // Пересчёт при смене раздела и рабочего стола.
+                    // Recompute on a section or desktop change.
                     page.sectionTitle; page.caveatText; eventSoundsBar.rev;
                     try {
                         return JSON.parse(page.eventSoundsBanner());
@@ -3204,15 +3239,15 @@ Item {
                 }
             }
 
-            // ── Палитра оболочки ──────────────────────────────────────────
+            // ── Shell palette ─────────────────────────────────────────────
             //
-            // Полоса видна ТОЛЬКО при живом чужом шелле (Noctalia,
-            // DankMaterialShell): он сам ставит приложениям тёмный/светлый
-            // режим, и спор с ним надо назвать, а не прятать (правило #13).
-            // Решение, текст и подписи — ядро (`shell_palette::PaletteBanner`
-            // через `actions.shellPalette()`); здесь только раскладка и три
-            // кнопки. Шелл могут запустить и погасить при открытом окне —
-            // отсюда редкий таймер.
+            // The strip is visible ONLY with a live foreign shell (Noctalia,
+            // DankMaterialShell): it sets the dark/light mode for applications by
+            // itself, and the conflict with it must be named, not hidden (rule #13).
+            // Decision, text and labels come from the core
+            // (`shell_palette::PaletteBanner` through `actions.shellPalette()`); here
+            // there is only the layout and three buttons. The shell may be started and
+            // stopped while the window is open — hence an infrequent timer.
             Rectangle {
                 id: shellPaletteBar
                 objectName: "shellPaletteBar"
@@ -3344,13 +3379,14 @@ Item {
                 }
             }
 
-            // ── Вернуть как было ──────────────────────────────────────────
+            // ── Restore as it was ─────────────────────────────────────────
             //
-            // Удачное «Применить» оставило снимок того, что было до него, —
-            // в разделе одна кнопка вернуть это. У цветов при видимой кнопке
-            // полосы «Палитра оболочки» своей нет (та возвращает и шелл, и
-            // прежнюю схему). Решение и подписи — ядро
-            // (`ap::applied_revert_banner`, возврат `revert_applied_section`).
+            // A successful "Apply" left a snapshot of what was there before it — the
+            // section has one button to restore that. For colours, while the "Shell
+            // palette" strip button is visible, there is no separate one (that one
+            // restores both the shell and the previous scheme). Decision and labels
+            // come from the core (`ap::applied_revert_banner`, restoring via
+            // `revert_applied_section`).
             Rectangle {
                 id: appliedRevertBar
                 objectName: "appliedRevertBar"
@@ -3358,14 +3394,14 @@ Item {
                 property int rev: 0
                 property string message: ""
                 property bool failed: false
-                // Раздел, к которому относится итог: после удачного возврата
-                // раздел перечитывается (тот же сигнал, что у смены раздела),
-                // и итог должен остаться — уходит он только в другом разделе.
+                // The section the result belongs to: after a successful restore the
+                // section is re-read (the same signal as for a section change), and the
+                // result must stay — it leaves only in another section.
                 property string messageSection: ""
                 readonly property bool showMessage: appliedRevertBar.message !== ""
                         && appliedRevertBar.info.section === appliedRevertBar.messageSection
                 readonly property var info: {
-                    // Пересчёт при смене раздела и после нажатий.
+                    // Recompute on a section change and after presses.
                     page.sectionTitle; page.caveatText; appliedRevertBar.rev;
                     try {
                         return JSON.parse(page.appliedRevertBanner());
@@ -3446,11 +3482,11 @@ Item {
                 }
             }
 
-            // ── Менеджер входа ────────────────────────────────────────────
+            // ── Login manager ─────────────────────────────────────────────
             //
-            // В разделе экрана входа (полка тем SDDM и панель Plasma Login
-            // Manager): установленные экраны входа, основной и «Сделать
-            // основным». Данные — проба экрана входа, тексты — ядро.
+            // In the login screen section (the SDDM theme shelf and the Plasma Login
+            // Manager panel): installed login screens, the default one and "Make
+            // default". Data come from the login screen probe, texts from the core.
             LoginManagerSection {
                 id: loginManagerSection
                 objectName: "loginManagerSection"
@@ -3458,10 +3494,10 @@ Item {
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
                 Layout.bottomMargin: 8
-                // Здесь блок стоит только над объяснением (`note`). Над
-                // сеткой тем он — шапка самой сетки (`grid.header`) и
-                // прокручивается вместе с плитками, при Plasma Login
-                // Manager — в общем потоке с объяснением (`plmView`).
+                // Here the block stands only above the explanation (`note`). Above the
+                // theme grid it is the header of the grid itself (`grid.header`) and
+                // scrolls with the tiles; with Plasma Login Manager it is in a shared flow
+                // with the explanation (`plmView`).
                 visible: page.loginSection && page.screen === "note"
                          && (loginManagerSection.managers.length > 0 || loginManagerSection.sessionOffer !== null)
                 pal: root.pal
@@ -3469,13 +3505,13 @@ Item {
                 actions: root.actions
             }
 
-            // ── Цвет акцента над объяснением ──────────────────────────────
+            // ── Accent colour above the explanation ───────────────────────
             //
-            // Где он стоит и доступен ли здесь — решает ядро (`accent`).
-            // Здесь блок стоит только над объяснением (`on_note`). Над
-            // сеткой схем он — шапка самой сетки (`grid.header`) вместе со
-            // «Светлым и тёмным» и «Сохранить текущее оформление…» и
-            // прокручивается вместе с плитками.
+            // Where it stands and whether it is available here is decided by the core
+            // (`accent`). Here the block stands only above the explanation
+            // (`on_note`). Above the scheme grid it is the header of the grid itself
+            // (`grid.header`) together with "Light and dark" and "Save current look…"
+            // and scrolls with the tiles.
             AccentSection {
                 id: accentSection
                 objectName: "accentSection"
@@ -3490,20 +3526,20 @@ Item {
                 sty: page.sectionStyles
             }
 
-            // ── Сетка плиток либо объяснение ──────────────────────────────
+            // ── Tile grid or explanation ──────────────────────────────────
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                // Экран входа рисует Plasma Login Manager: тем у него нет,
-                // полки нет — объяснение и дорога в его настройки. Все
-                // подписи — ядра (`plasma_login_panel`).
+                // The login screen is drawn by Plasma Login Manager: it has no themes, so
+                // there is no shelf — an explanation and a way into its settings. All
+                // labels come from the core (`plasma_login_panel`).
                 //
-                // Блок «Менеджер входа» и объяснение — один прокручиваемый
-                // поток: в невысоком окне (1100×750) объяснение, отцентрованное
-                // в остатке высоты, вылезало вверх поверх списка, а страница
-                // не прокручивалась. Теперь при нехватке высоты растёт
-                // прокрутка, при запасе объяснение по-прежнему по центру.
+                // The "Login manager" block and the explanation are one scrollable flow:
+                // in a low window (1100×750) the explanation, centred in the remaining
+                // height, climbed up over the list, and the page did not scroll. Now, when
+                // height is short, the scroll area grows; when there is room, the
+                // explanation is still centred.
                 ScrollView {
                     id: plmView
                     objectName: "plasmaLoginView"
@@ -3596,9 +3632,9 @@ Item {
                     }
                 }
 
-                // «Панель MATE»: готовые раскладки mate-panel. Раздел
-                // самостоятельный (`MatePanelSection`, своё окно
-                // подтверждения); ответ на «Применить» — строкой под ним.
+                // "MATE panel": ready mate-panel layouts. The section is self-contained
+                // (`MatePanelSection`, its own confirmation window); the answer to "Apply"
+                // is a line under it.
                 ScrollView {
                     id: matePanelView
                     anchors.fill: parent
@@ -3631,23 +3667,21 @@ Item {
                     }
                 }
 
-                // Разделы настроек (анимация, кнопки заголовка, вид
-                // «⚙️ Настройки» шрифтов и значков…) —
-                // те же, что были во вкладке «Настройки», её страницей в
-                // режиме одного раздела (`SettingsPage.panel`). Строится при
-                // первом заходе и дальше живёт; ключ раздела запоминается,
-                // пока экран не свой, чтобы скрытая страница не пересобралась
-                // в полную вкладку.
+                // Settings sections (animation, title bar buttons, the «⚙️ Settings» view
+                // of fonts and icons…) — the same ones that were in the "Settings" tab, as
+                // its page in single-section mode (`SettingsPage.panel`). Built on the
+                // first visit and lives on afterwards; the section key is remembered while
+                // the screen is not its own, so that the hidden page does not rebuild into
+                // the full tab.
                 Loader {
                     id: settingsPanelLoader
                     objectName: "settingsPanelLoader"
                     anchors.fill: parent
                     visible: page.screen === "settings"
-                    // Строится при первом заходе и дальше живёт. ⚠️ Не по
-                    // `onVisibleChanged`: страница, открытая ссылкой из
-                    // «Настроек», строится асинхронно уже на этом экране, и
-                    // смены видимости загрузчик не видит — раздел оставался
-                    // пустым.
+                    // Built on the first visit and lives on afterwards. Warning: not by
+                    // `onVisibleChanged`: a page opened by a link from "Settings" is built
+                    // asynchronously already on this screen, and the loader does not see a
+                    // visibility change — the section stayed empty.
                     active: page.screen === "settings" || settingsPanelLoader.built
                     asynchronous: true
                     property bool built: false
@@ -3670,10 +3704,10 @@ Item {
                     }
                 }
 
-                // Источник «Razer Axon» раздела обоев — библиотека Axon на
-                // этом компьютере вместо сетки магазина (`SCREEN_AXON`).
-                // Строится при первом выборе чипа и дальше живёт; при
-                // каждом заходе перечитывает библиотеку сама.
+                // The "Razer Axon" source of the wallpaper section — the Axon library on
+                // this computer instead of the store grid (`SCREEN_AXON`). Built on the
+                // first choice of the chip and lives on afterwards; on every visit it
+                // re-reads the library by itself.
                 Loader {
                     id: axonLoader
                     objectName: "axonLoader"
@@ -3688,7 +3722,7 @@ Item {
                         AxonLibraryView {
                             pal: root.pal
                             layout: page
-                            // Слово — из общей строки поиска шапки.
+                            // The word comes from the shared search field of the header.
                             query: page.query
                             onMessage: text => page.setStatus(text)
                             onSearchCleared: page.setQuery("")
@@ -3696,9 +3730,9 @@ Item {
                     }
                 }
 
-                // Пустой экран без объяснения — худшее, что можно показать
-                // человеку (правило #13). Текст собирает ядро по матрице
-                // кастомизации.
+                // An empty screen without an explanation is the worst thing that can be
+                // shown to a person (rule #13). The text is assembled by the core from the
+                // customization matrix.
                 RexonText {
                     anchors.centerIn: parent
                     width: parent.width - 64
@@ -3711,10 +3745,10 @@ Item {
                     wrapMode: Text.WordWrap
                 }
 
-                // ── Панель деталей ────────────────────────────────────
+                // ── Details panel ─────────────────────────────────────
                 //
-                // Отдельный экран, а не окно: у витрины товар открывается
-                // на месте, и возврат — одной кнопкой.
+                // A separate screen, not a window: in the showcase an item opens in place,
+                // and going back takes one button.
                 ScrollView {
                     id: detailView
                     anchors.fill: parent
@@ -3724,9 +3758,9 @@ Item {
 
                     ColumnLayout {
                         width: detailView.availableWidth
-                        // Раскладка внутри ОБЫЧНОГО элемента высоты не
-                        // получает ни от кого и схлопывается в полоску —
-                        // высоту ставим сами (грабля 7 схемы переноса).
+                        // A layout inside an ORDINARY element gets its height from nobody and
+                        // collapses into a strip — we set the height ourselves (trap 7 of the
+                        // porting scheme).
                         height: implicitHeight
                         spacing: 10
 
@@ -3734,15 +3768,14 @@ Item {
                             Layout.margins: 16
                             pal: root.pal
                             tone: root.toneNav
-                            // Стрелка «←» смотрит к началу строки: справа
-                            // налево кнопка стоит справа, и стрелка — вправо.
+                            // The "←" arrow points to the start of the line: for right to left the
+                            // button is on the right, and the arrow points right.
                             text: root.arrows.keyHint(page.detailBackText)
                             onClicked: page.closeDetail()
                         }
 
-                        // Картинка товара. По ней открывается полноэкранный
-                        // просмотр — накладные контролы галереи приезжают
-                        // следующим ломтем.
+                        // Item picture. It opens the full-screen view — the gallery overlay
+                        // controls arrive in the next slice.
                         Rectangle {
                             Layout.alignment: Qt.AlignHCenter
                             Layout.preferredWidth: page.detailPreviewWidth
@@ -3750,10 +3783,9 @@ Item {
                             color: root.colSecondary
                             radius: 4
 
-                            // GIF и анимированный WebP (у курсоров первая
-                            // картинка часто такая) играют, остальное —
-                            // обычной картинкой. Решает ядро по первым байтам
-                            // файла: имя в кеше бывает и без расширения.
+                            // GIF and animated WebP (the first picture of cursors is often like that)
+                            // play; everything else is an ordinary picture. The core decides by the
+                            // first bytes of the file: a cached name may have no extension.
                             readonly property bool previewAnimated:
                                 page.isAnimatedPreview(page.detailPreview)
 
@@ -3770,13 +3802,11 @@ Item {
                                 source: parent.previewAnimated ? page.detailPreview : ""
                                 fillMode: Image.PreserveAspectFit
                                 visible: source !== ""
-                                // Не крутим кадры, пока карточку не видно
-                                // или поверх открыт полноэкранный просмотр.
-                                // ⚠️ Своё `visible` здесь не читать: при
-                                // создании страницы оно давало петлю привязки
-                                // «playing» (журнал r1434). Видна картинка
-                                // ровно тогда, когда у неё есть источник, —
-                                // это и спрашиваем.
+                                // Frames are not cycled while the card is not visible or a full-screen
+                                // view is open on top.
+                                // Warning: do not read our own `visible` here: on page creation it gave a
+                                // "playing" binding loop (log r1434). The picture is visible exactly when
+                                // it has a source — that is what we ask.
                                 playing: parent.previewAnimated && detailView.visible
                                     && !zoomPopup.opened
                             }
@@ -3791,10 +3821,9 @@ Item {
                                 wrapMode: Text.WordWrap
                             }
 
-                            // По картинке открывается крупный просмотр:
-                            // лупа под курсором, щелчок, Enter — общий
-                            // вход (`RexonZoomArea.qml`), как в остальных
-                            // вкладках.
+                            // The picture opens the large view: a magnifier under the cursor, a
+                            // click, Enter — the shared entry point (`RexonZoomArea.qml`), as in the
+                            // other tabs.
                             RexonZoomArea {
                                 anchors.fill: parent
                                 pal: root.pal
@@ -3805,9 +3834,9 @@ Item {
                                 onActivated: root.openZoom()
                             }
 
-                            // ── Накладные контролы карусели ────────────
-                            // Место каждого считает ядро (overlay_*_pos):
-                            // своих отступов у разметки нет.
+                            // ── Carousel overlay controls ──────────────
+                            // The place of each is computed by the core (overlay_*_pos): the markup
+                            // has no margins of its own.
                             RexonButton {
                                 pal: root.pal
                                 visible: page.galleryNavVisible
@@ -3816,10 +3845,9 @@ Item {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 anchors.margins: page.overlayMargin
-                                // Значки «◀️ ▶️» — от ядра и сами не
-                                // переворачиваются, а зеркалирование
-                                // переставляет кнопки: справа налево «назад»
-                                // стоит справа и смотрит вправо.
+                                // The "◀️ ▶️" icons come from the core and do not flip by themselves,
+                                // while mirroring swaps the buttons: for right to left "back" is on the
+                                // right and points right.
                                 text: root.arrows.mirrored ? page.overlayNextText
                                                            : page.overlayPrevText
                                 ToolTip.text: page.overlayPrevTooltip
@@ -3844,8 +3872,8 @@ Item {
                                 onClicked: page.galleryNext()
                             }
 
-                            // Счётчик «2/5»: виден только когда кадров
-                            // больше одного (решение ядра).
+                            // The "2/5" counter: visible only when there is more than one frame (the
+                            // core's decision).
                             Rectangle {
                                 visible: page.galleryCounter !== ""
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -3909,17 +3937,16 @@ Item {
                             }
                         }
 
-                        // Действия. Набор зависит от того, откуда товар:
-                        // у местной темы магазина нет вовсе.
+                        // Actions. The set depends on where the item comes from: a local theme
+                        // has no store at all.
                         Flow {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
                             spacing: 8
 
-                            // Расширение GNOME, которое знает оболочка
-                            // (JSON ядра, `detailGnome`): вместо
-                            // «Установить»/«Применить» — его кнопки ниже.
+                            // A GNOME extension that the shell knows (core JSON, `detailGnome`):
+                            // instead of «Install»/"Apply" — its buttons below.
                             QtObject {
                                 id: detailGnome
                                 readonly property var st: {
@@ -3936,9 +3963,8 @@ Item {
                                 id: installBtn
                                 visible: !page.detailIsLocal && !detailGnome.on
                                 readonly property bool isAur: page.detailSource === "aur"
-                                // Кнопка пакета AUR — ровно та, что на его
-                                // плитке (очередь установок). Ревизия
-                                // перечитывает её при каждом снимке очереди.
+                                // The AUR package button — exactly the one on its tile (the installation
+                                // queue). The revision re-reads it on every queue snapshot.
                                 property int aurRev: 0
                                 readonly property var aurBtn: (aurRev, page.count,
                                                                page.detailItemId, isAur)
@@ -3948,14 +3974,14 @@ Item {
                                     ignoreUnknownSignals: true
                                     function onAurJobsChanged() { installBtn.aurRev++; }
                                 }
-                                // Пока действие идёт, запуск заперт: второе
-                                // нажатие поверх первого ничего не ускоряет.
+                                // While an action is running, starting is locked: a second press on top of
+                                // the first speeds nothing up.
                                 enabled: isAur ? aurBtn.enabled === true : !page.actionBusy
                                 implicitHeight: 40
                                 leftPadding: 14
                                 rightPadding: 14
-                                // Выбран руками не тот файл, что берётся сам:
-                                // кнопка ставит выбранный, даже у стоящего товара.
+                                // A file other than the automatic one was chosen by hand: the button
+                                // installs the chosen one, even for an installed item.
                                 readonly property bool otherFile: !isAur && detailFiles.visible
                                                                   && detailFiles.differs
                                 text: isAur ? (aurBtn.text || "")
@@ -3968,7 +3994,7 @@ Item {
                                 ToolTip.visible: hovered && tip !== ""
                                 ToolTip.delay: 600
                                 onClicked: {
-                                    // Тот же общий вход, что у кнопки плитки.
+                                    // The same shared entry point as the tile button.
                                     if (isAur) {
                                         root.actOnCard("aur", page.detailItemId);
                                         installBtn.aurRev++;
@@ -4010,9 +4036,9 @@ Item {
                                 }
                             }
 
-                            // Признаки риска пакета AUR — рядом с «Установить»,
-                            // не вместо неё: установку это не запрещает.
-                            // Список — в подсказке и в «Проверке источника».
+                            // Risk signs of an AUR package — next to «Install», not instead of it:
+                            // they do not forbid installation. The list is in the tooltip and in
+                            // "Source check".
                             RexonText {
                                 objectName: "aurTrustBadge"
                                 visible: page.detailSource === "aur" && page.aurTrustBadge !== ""
@@ -4030,10 +4056,9 @@ Item {
                                 HoverHandler { id: trustBadgeHover }
                             }
 
-                            // У темы с диска «Удалить» бывает недоступна
-                            // (включённая, системная) — причина подсказкой;
-                            // выключенная кнопка наведения не ловит, его
-                            // ловит обёртка.
+                            // For a theme from disk "Delete" may be unavailable (enabled, system) —
+                            // the reason is in a tooltip; a disabled button does not catch hover, so
+                            // the wrapper catches it.
                             Item {
                                 visible: page.detailUninstallVisible && !detailGnome.on
                                 implicitWidth: uninstallButton.implicitWidth
@@ -4061,8 +4086,8 @@ Item {
                             RexonButton {
                                 visible: !page.detailIsLocal
                                 pal: root.pal
-                                // Сайт — вторично: у пакета AUR вся карточка
-                                // уже здесь.
+                                // The site is secondary: for an AUR package the whole card is already
+                                // here.
                                 tone: page.detailSource === "aur" ? root.toneSecondary
                                                                   : null
                                 text: page.detailSource === "aur" ? page.aurOpenText
@@ -4097,13 +4122,11 @@ Item {
                                 onClicked: root.applyLocal(page.detailItemId)
                             }
 
-                            // ── Кнопки расширения GNOME ──────────────────
-                            // «Включить/Выключить» — по правде оболочки
-                            // (запертое администратором выключено, причина
-                            // подсказкой — её ловит обёртка), «Настройки»,
-                            // «Открыть папку» своего или «Скопировать путь»
-                            // системного, «Подробнее об ошибке», «Удалить»
-                            // только своего.
+                            // ── GNOME extension buttons ──────────────────
+                            // "Enable/Disable" — according to the shell's truth (one locked by the
+                            // administrator is disabled, the reason in a tooltip caught by the
+                            // wrapper), "Settings", "Open folder" for your own or "Copy path" for a
+                            // system one, "Error details", "Delete" only for your own.
                             Item {
                                 objectName: "detailGnomeToggle"
                                 visible: detailGnome.on
@@ -4200,15 +4223,14 @@ Item {
                                 ToolTip.text: root.gnomeTexts.uninstall_tooltip || ""
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 600
-                                // Вопрос и «Вернуть» — как у плитки.
+                                // Question and "Restore" — as for the tile.
                                 onClicked: root.removeLocal(page.detailItemId)
                             }
 
-                            // «Настроить…» стиля приложений (Breeze, Oxygen,
-                            // Kvantum…) — как в модуле KDE «Стиль
-                            // приложений». Нечем открыть — кнопка выключена,
-                            // причина в подсказке (её ловит обёртка:
-                            // выключенная кнопка наведения не видит).
+                            // "Configure…" of an application style (Breeze, Oxygen, Kvantum…) — as in
+                            // the KDE "Application Style" module. If there is nothing to open it with,
+                            // the button is disabled and the reason is in the tooltip (caught by the
+                            // wrapper: a disabled button does not see hover).
                             Item {
                                 id: detailStyleConfig
                                 objectName: "detailStyleConfig"
@@ -4238,11 +4260,10 @@ Item {
                                 ToolTip.delay: 400
                             }
 
-                            // «Настроить…» рамки окна KDE (Breeze, Oxygen,
-                            // Klassy, темы Aurorae) — как кнопка правки в
-                            // окне KDE «Оформление окон». Нет своих настроек
-                            // или нечем открыть — выключена, причина в
-                            // подсказке. Окно закрыли — образец переснимается.
+                            // "Configure…" of a KDE window decoration (Breeze, Oxygen, Klassy, Aurorae
+                            // themes) — like the edit button in the KDE "Window Decorations" window.
+                            // No settings of its own or nothing to open it with — disabled, the reason
+                            // in the tooltip. When the window is closed, the sample is re-captured.
                             Item {
                                 id: detailDecoConfig
                                 objectName: "detailDecoConfig"
@@ -4272,9 +4293,8 @@ Item {
                                 ToolTip.delay: 400
                             }
 
-                            // «Изменить…» и «Создать на основе…» цветовой
-                            // схемы — как в модуле KDE «Цвета»: редактор
-                            // KDE, а без него — своё окно.
+                            // "Edit…" and "Create based on…" of a colour scheme — as in the KDE
+                            // "Colours" module: the KDE editor, and without it — our own window.
                             Repeater {
                                 id: detailSchemeEdit
                                 objectName: "detailSchemeEdit"
@@ -4295,9 +4315,8 @@ Item {
                                 }
                             }
 
-                            // «Запускать при входе» — только у виджетов
-                            // Conky: запуск сейчас и автозапуск у них разные
-                            // вещи (кнопка рядом — «Запустить»/«Остановить»).
+                            // «Start at login» — only for Conky widgets: starting now and autostart
+                            // are different things for them (the button next to it is "Start"/"Stop").
                             RexonCheckBox {
                                 id: detailAutostart
                                 objectName: "detailAutostart"
@@ -4312,9 +4331,9 @@ Item {
                                         detailAutostart.checked = root.actions.setConkyAutostart(
                                             page.detailConkyId, detailAutostart.checked);
                                 }
-                                // Включение проверяет программы виджета в фоне
-                                // (`conky_safety::live_prepare_start`): итог
-                                // приходит позже — перечитать состояние.
+                                // Enabling checks the widget's programs in the background
+                                // (`conky_safety::live_prepare_start`): the result arrives later — re-read
+                                // the state.
                                 Connections {
                                     target: root.actions
                                     ignoreUnknownSignals: true
@@ -4338,9 +4357,9 @@ Item {
                             }
                         }
 
-                        // Файлы товара магазина, когда их несколько: по
-                        // умолчанию выбран тот, что берётся сам (как с
-                        // плитки); выбран другой — главная кнопка ставит его.
+                        // Files of a store item when there are several: by default the one taken
+                        // automatically is selected (as from the tile); if another is selected,
+                        // the main button installs it.
                         StoreFileChoice {
                             id: detailFiles
                             objectName: "detailFiles"
@@ -4356,9 +4375,9 @@ Item {
                             enabled: !page.actionBusy
                         }
 
-                        // Тема GTK в программах GTK 4/libadwaita: ссылки на
-                        // её `gtk-4.0` в ~/.config/gtk-4.0. Переносить нечего —
-                        // переключатель выключен, причина видна строкой.
+                        // A GTK theme in GTK 4/libadwaita programs: links to its `gtk-4.0` in
+                        // ~/.config/gtk-4.0. Nothing to carry over — the switch is disabled, and
+                        // the reason is visible as a line.
                         ColumnLayout {
                             id: detailGtk4
                             objectName: "detailGtk4"
@@ -4395,11 +4414,10 @@ Item {
                             }
                         }
 
-                        // ── Части виджета Conky и его журнал ─────────────
+                        // ── Conky widget parts and its log ───────────────
                         //
-                        // Тема из нескольких виджетов (Seamod, наборы
-                        // вариантов) — у каждой части своя кнопка. Журнал —
-                        // что conky написал при последнем запуске из Rexon.
+                        // A theme of several widgets (Seamod, variant sets) — each part has its
+                        // own button. The log is what conky wrote on its last start from Rexon.
                         ColumnLayout {
                             id: detailConky
                             objectName: "detailConky"
@@ -4413,7 +4431,7 @@ Item {
                             property int rev: 0
                             property var parts: []
                             property string log: ""
-                            // Тема из Conky Studio, и он есть на машине.
+                            // A theme from Conky Studio, and it is on the machine.
                             property bool studio: false
                             readonly property var texts: conkyToolsRow.texts
 
@@ -4445,9 +4463,9 @@ Item {
                                 function onActionDone(text, ok) { detailConky.reload(); }
                             }
 
-                            // Папка виджета и его файл настроек — как
-                            // «открыть папку» и ручная правка у программ
-                            // управления виджетами. Файл — выбранной части.
+                            // The widget folder and its settings file — like "open folder" and manual
+                            // editing in widget management programs. The file is that of the selected
+                            // part.
                             RowLayout {
                                 id: conkyOpenRow
                                 objectName: "conkyOpenRow"
@@ -4483,8 +4501,8 @@ Item {
                                     }
                                 }
 
-                                // Редактор, которым тема сделана; Rexon сам
-                                // редактор не пишет.
+                                // The editor the theme was made with; Rexon does not write an editor
+                                // itself.
                                 RexonButton {
                                     objectName: "conkyEditInStudioButton"
                                     visible: detailConky.studio
@@ -4543,11 +4561,10 @@ Item {
                                 }
                             }
 
-                            // Настройки виджета — для выбранной части (у
-                            // темы из одного файла — для него).
-                            // Выбранная часть помнится сама: части
-                            // перечитываются после каждой правки, и список,
-                            // заведённый заново, иначе прыгал бы на первую.
+                            // Widget settings — for the selected part (for a single-file theme — for
+                            // that file).
+                            // The selected part is remembered by itself: the parts are re-read after
+                            // every edit, and a list created anew would otherwise jump to the first.
                             property string chosenConf: ""
                             readonly property string settingsConf: {
                                 const ps = detailConky.parts;
@@ -4563,8 +4580,8 @@ Item {
                                 function onDetailChanged() { detailConky.chosenConf = ""; }
                             }
 
-                            // «Запускать при входе»: задержка и «только в
-                            // этом окружении» (ядро: conky_autostart).
+                            // «Start at login»: delay and "only in this environment" (core:
+                            // conky_autostart).
                             RowLayout {
                                 id: conkyAutostartRow
                                 objectName: "conkyAutostartRow"
@@ -4650,8 +4667,8 @@ Item {
                                 conf: detailConky.settingsConf
                             }
 
-                            // Палитра цветов — для всего виджета (все его
-                            // файлы), а не для выбранной части.
+                            // The colour palette is for the whole widget (all its files), not for the
+                            // selected part.
                             ConkyColours {
                                 id: conkyColours
                                 objectName: "conkyColours"
@@ -4688,11 +4705,11 @@ Item {
                             }
                         }
 
-                        // ── Прослушать (тема звуков) ───────────────────
+                        // ── Listen (sound theme) ───────────────────────
                         //
-                        // Установленная тема — сразу пять кнопок, как в
-                        // KDE; товар Магазина — сперва «Прослушать до
-                        // установки», после скачивания те же кнопки.
+                        // An installed theme gets five buttons at once, as in KDE; a Store item
+                        // first gets "Listen before installing", and after downloading the same
+                        // buttons.
                         ColumnLayout {
                             id: detailSounds
                             objectName: "detailSounds"
@@ -4762,8 +4779,8 @@ Item {
                                 wrapMode: Text.WordWrap
                             }
 
-                            // В одном архиве бывает несколько тем — у каждой
-                            // свой ряд, с именем, когда тем больше одной.
+                            // One archive may contain several themes — each gets its own row, with a
+                            // name when there is more than one theme.
                             Repeater {
                                 model: page.detailSoundStore ? root.storePreviewThemes : []
                                 delegate: Column {
@@ -4811,10 +4828,10 @@ Item {
                             }
                         }
 
-                        // Полоса хода установки. В оригинале виден именно
-                        // ХОД, а не одна строка итога: сборка помощником AUR
-                        // и большие темы идут десятками секунд, и без полосы
-                        // страница выглядит замершей.
+                        // Installation progress bar. In the original it is the PROGRESS that is
+                        // visible, not a single result line: building with the AUR helper and
+                        // large themes take tens of seconds, and without a bar the page looks
+                        // frozen.
                         ProgressBar {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
@@ -4825,10 +4842,9 @@ Item {
                             value: page.installPercent
                         }
 
-                        // Итог последнего действия — он же построчный журнал
-                        // работы: установщик пишет сюда каждый свой шаг.
-                        // Значок «✅»/«❌» ставит ядро — своей развилки у
-                        // разметки нет.
+                        // Result of the last action — also the line-by-line work log: the
+                        // installer writes each of its steps here. The "✅"/"❌" icon is set by the
+                        // core — the markup has no branching of its own.
                         RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
@@ -4839,12 +4855,11 @@ Item {
                             wrapMode: Text.WordWrap
                         }
 
-                        // Описание с переключателем «перевод ⇄ оригинал».
-                        // Переключатель — ссылка внутри самого текста: его
-                        // собирает ядро, здесь только обработка нажатия.
-                        // Ссылки чужого текста — общим путём (`RexonLinkText`):
-                        // товар своего магазина — карточкой, прочее — с ↗ и
-                        // вопросом перед браузером.
+                        // Description with a "translation ⇄ original" switch. The switch is a link
+                        // inside the text itself: the core builds it, here we only handle the
+                        // press. Links in third-party text go through the shared path
+                        // (`RexonLinkText`): an item of our own store opens as a card, everything
+                        // else gets ↗ and a question before the browser.
                         RexonLinkText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
@@ -4859,11 +4874,11 @@ Item {
                             onStatus: (text) => page.setStatus(text)
                         }
 
-                        // ── Сведения о пакете AUR ──────────────────────
+                        // ── AUR package details ────────────────────────
                         //
-                        // Паспорт RPC: сопровождающие, голоса, даты,
-                        // лицензия, зависимости, конфликты. Подписи и порядок
-                        // строк — ядро (`aur::info_facts`).
+                        // The RPC record: maintainers, votes, dates, licence, dependencies,
+                        // conflicts. Labels and the order of rows come from the core
+                        // (`aur::info_facts`).
                         ColumnLayout {
                             objectName: "aurFacts"
                             Layout.fillWidth: true
@@ -4914,10 +4929,10 @@ Item {
                             }
                         }
 
-                        // ── Проверка источника пакета AUR ──────────────
+                        // ── AUR package source check ───────────────────
                         //
-                        // Признаки риска (`aur_trust`): что насторожило и
-                        // почему это важно. Установку не запрещает.
+                        // Risk signs (`aur_trust`): what raised suspicion and why it matters.
+                        // They do not forbid installation.
                         ColumnLayout {
                             objectName: "aurTrust"
                             Layout.fillWidth: true
@@ -5005,11 +5020,10 @@ Item {
                             }
                         }
 
-                        // ── Комментарии ────────────────────────────────
+                        // ── Comments ───────────────────────────────────
                         //
-                        // У местной темы их нет вовсе: тема лежит на диске,
-                        // страницы магазина у неё не бывает. У Cinnamon
-                        // Spices комментариев для программ нет.
+                        // A local theme has none at all: the theme lies on disk and never has a
+                        // store page. Cinnamon Spices has no comments for programs.
                         RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
@@ -5033,8 +5047,8 @@ Item {
                             color: root.colTextSecondary
                         }
 
-                        // Страницу пакета AUR не дали (защита сайта от ботов,
-                        // нет сети): комментарии — только на сайте.
+                        // The AUR package page was not provided (the site's bot protection, no
+                        // network): comments are only on the site.
                         ColumnLayout {
                             objectName: "aurCommentsBlocked"
                             Layout.fillWidth: true
@@ -5069,7 +5083,7 @@ Item {
                                 id: commentRow
                                 required property var modelData
                                 Layout.fillWidth: true
-                                // Отбивка ответа в ветке — число из ядра.
+                                // Indent of a reply in a thread — a number from the core.
                                 Layout.leftMargin: 16 + commentRow.modelData.indent
                                 Layout.rightMargin: 16
                                 Layout.topMargin: 6
@@ -5080,8 +5094,8 @@ Item {
                                     text: commentRow.modelData.replyPrefix
                                           + commentRow.modelData.author
                                           + "  ·  " + commentRow.modelData.date
-                                    // Автор товара выделен акцентом: его
-                                    // ответ в ветке весит иначе, чем чужой.
+                                    // The item's author is highlighted with the accent: their reply in a
+                                    // thread weighs differently from someone else's.
                                     color: commentRow.modelData.isProductAuthor
                                            ? root.colAccent : root.colTextSecondary
                                     font.bold: true
@@ -5131,40 +5145,37 @@ Item {
                 GridView {
                     id: grid
                     anchors.fill: parent
-                    // ⚠️ Поля СОДЕРЖИМОГО, а не самой области. Разница
-                    // видна на полосе прокрутки: у оригинала полоса стоит у
-                    // края окна, а поля принадлежат сетке внутри неё. Когда
-                    // поля были у области (`anchors.*Margin`), полоса
-                    // уезжала на 16 точек внутрь — замер живого запуска
-                    // 01.09.2026.
+                    // Warning: paddings of the CONTENT, not of the area itself. The difference
+                    // shows on the scroll bar: in the original the bar sits at the window
+                    // edge, and the paddings belong to the grid inside it. When the paddings
+                    // were on the area (`anchors.*Margin`), the bar moved 16 pixels inwards —
+                    // measured on a live run 01.09.2026.
                     //
-                    // Поля разные по осям: по бокам ровно столько же,
-                    // сколько у шапки и строки состояния (16), иначе левый
-                    // край плиток не совпадает с левым краем подписи над
-                    // ними.
+                    // The paddings differ by axis: on the sides exactly as much as the header
+                    // and the status line have (16), otherwise the left edge of the tiles
+                    // would not match the left edge of the label above them.
                     leftMargin: page.gridMarginH
-                    // Справа поле уже на зазор: зазор после последнего
-                    // столбца сидит внутри ячейки, и край плиток встаёт на
-                    // те же 16 точек, что и слева.
+                    // On the right the padding is narrower by the gap: the gap after the last
+                    // column sits inside the cell, and the tile edge lands on the same 16
+                    // pixels as on the left.
                     rightMargin: Math.max(0, page.gridMarginH - page.gridSpacing)
                     topMargin: page.gridMarginV
                     bottomMargin: page.gridMarginV
                     visible: page.screen === "grid"
                     clip: true
-                    // Столбцы — по ширине: сколько плиток ядра (`cardWidth`
-                    // — наименьшая ширина) влезает, столько и столбцов, а
-                    // остаток ширины делится между ними. Раньше плитка была
-                    // постоянной, и на окне 1100 точек справа от двух
-                    // столбцов зияла пустая полоса шириной почти в плитку.
+                    // Columns by width: as many columns as core tiles (`cardWidth` is the
+                    // minimum width) fit, and the remaining width is shared among them.
+                    // Previously the tile was constant, and in a 1100-pixel window an empty
+                    // strip almost a tile wide gaped to the right of the two columns.
                     readonly property int usableWidth:
                         width - leftMargin - rightMargin
-                    // Расчёт — ядро (`ap::grid_columns`/`grid_cell_width`),
-                    // один на все сетки плиток (и на библиотеку Razer Axon).
+                    // The calculation is the core's (`ap::grid_columns`/`grid_cell_width`),
+                    // one for all tile grids (and for the Razer Axon library).
                     readonly property int columns: page.gridColumns(usableWidth)
                     cellWidth: page.gridCellWidth(usableWidth)
-                    // Страница каталога — целые ряды: ядро нарезает её по
-                    // этим столбцам (`ap::grid_page_size`), иначе при девяти
-                    // столбцах последний ряд из двадцати выходил в две плитки.
+                    // A catalogue page is whole rows: the core cuts it by these columns
+                    // (`ap::grid_page_size`), otherwise with nine columns the last row of
+                    // twenty came out with two tiles.
                     onColumnsChanged: page.setGridColumns(columns)
                     Component.onCompleted: page.setGridColumns(columns)
                     cellHeight: page.cardHeight + page.gridSpacing
@@ -5172,16 +5183,16 @@ Item {
 
                     ScrollBar.vertical: ScrollBar {}
 
-                    // Блоки над плитками — шапка самой сетки, а не отдельные
-                    // строки над ней, и прокручиваются вместе с плитками, как
-                    // у KDE. Неподвижными они съедали высоту: в окне 1100×750
-                    // «Менеджер входа» в пять строк оставлял плиткам около
-                    // 60 точек, а над «Цветовыми схемами» акцент со «Светлым
-                    // и тёмным» (развёрнутым — тем более) закрывали сетку
-                    // целиком, и колесу нечего было листать (01.11.2026).
-                    // Шапка стоит в координатах содержимого с x = 0, то есть
-                    // уже после левого поля сетки; ширина — до правого поля
-                    // плиток (16, как у шапки страницы).
+                    // The blocks above the tiles are the header of the grid itself, not
+                    // separate rows above it, and they scroll together with the tiles, as in
+                    // KDE. Fixed in place, they ate the height: in a 1100×750 window the
+                    // five-row "Login manager" left the tiles about 60 pixels, and above
+                    // "Colour schemes" the accent together with "Light and dark" (all the
+                    // more when expanded) covered the grid entirely, and the wheel had
+                    // nothing to scroll (01.11.2026).
+                    // The header sits in content coordinates at x = 0, i.e. already after the
+                    // grid's left padding; its width reaches the right padding of the tiles
+                    // (16, as for the page header).
                     header: Item {
                         width: grid.width - grid.leftMargin - page.gridMarginH
                         height: gridHeaderBlocks.implicitHeight
@@ -5203,9 +5214,8 @@ Item {
                                 actions: root.actions
                             }
 
-                            // Цвет акцента — над «Цветовыми схемами», как в
-                            // KDE «Цвета». Где стоит и доступен ли — ядро
-                            // (`accent`).
+                            // Accent colour — above "Colour schemes", as in KDE "Colours". Where it
+                            // stands and whether it is available — the core (`accent`).
                             AccentSection {
                                 id: gridAccent
                                 objectName: "accentSection"
@@ -5217,10 +5227,9 @@ Item {
                                 sty: page.sectionStyles
                             }
 
-                            // Светлое и тёмное — над «Глобальными темами»
-                            // (Plasma) и «Цветовыми схемами»: пары тем и
-                            // смена по расписанию. Где стоит и доступен ли —
-                            // ядро (`day_night`).
+                            // Light and dark — above "Global themes" (Plasma) and "Colour schemes":
+                            // theme pairs and switching on a schedule. Where it stands and whether it
+                            // is available — the core (`day_night`).
                             DayNightSection {
                                 id: gridDayNight
                                 objectName: "dayNightSection"
@@ -5232,10 +5241,9 @@ Item {
                                 sty: page.sectionStyles
                             }
 
-                            // «Сохранить текущее оформление…» — над
-                            // «Глобальными темами» во всех окружениях (ядро
-                            // `global_save`). Сохранили — сетка перечитывает
-                            // диск, плитка новой темы сразу в ней.
+                            // "Save current look…" — above "Global themes" in all environments (core
+                            // `global_save`). Once saved, the grid re-reads the disk and the new
+                            // theme's tile is in it at once.
                             GlobalSaveSection {
                                 objectName: "globalSaveSection"
                                 Layout.fillWidth: true
@@ -5251,11 +5259,11 @@ Item {
                         }
                     }
 
-                    // Перечитать раздел, не теряя места: после пометки к
-                    // удалению, «Вернуть» и снятия сетка сбрасывается
-                    // моделью и прыгала наверх, а в KDE позиция остаётся.
-                    // Место запоминается здесь и возвращается, когда придёт
-                    // новый состав (`countChanged` шлётся на каждый ответ).
+                    // Re-read the section without losing the place: after marking for removal,
+                    // "Restore" and removal, the grid is reset by the model and used to jump
+                    // to the top, while in KDE the position stays. The place is remembered
+                    // here and restored when the new contents arrive (`countChanged` is sent
+                    // on every answer).
                     property real keptY: NaN
 
                     function refreshKeepingScroll() {
@@ -5321,9 +5329,9 @@ Item {
                         required property string gnomeUuid
                         required property bool gnomePrefs
                         required property bool gnomeErrorInfo
-                        // Текущая тема раздела выделяется, как в KDE: рамка
-                        // цвета выделения и жирная подпись (у остальных
-                        // плиток раздела подпись обычная).
+                        // The section's current theme is highlighted, as in KDE: a frame in the
+                        // highlight colour and a bold label (the other tiles of the section have
+                        // an ordinary label).
                         readonly property bool marked: page.markCurrent && cell.current
 
                         width: grid.cellWidth
@@ -5340,9 +5348,8 @@ Item {
                                           ? root.colAccent : root.colBorder
                             border.width: 1
 
-                            // Рамка текущей темы — поверх картинки: своя
-                            // рамка плитки лежит под содержимым, и картинка
-                            // во всю ширину её закрывает.
+                            // The current theme's frame goes over the picture: the tile's own frame
+                            // lies under the content, and a full-width picture covers it.
                             Rectangle {
                                 objectName: "currentFrame"
                                 anchors.fill: parent
@@ -5359,8 +5366,7 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                // Пакет AUR открывает свою карточку внутри
-                                // программы, как товар магазина.
+                                // An AUR package opens its own card inside the program, like a store item.
                                 onClicked: page.openDetail(cell.itemId)
                             }
 
@@ -5368,31 +5374,28 @@ Item {
                                 anchors.fill: parent
                                 spacing: 0
 
-                                // Картинка товара.
+                                // Item picture.
                                 Rectangle {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: page.cardPreviewHeight
                                     id: previewBox
                                     color: root.colSecondary
 
-                                    // Нарисованная картинка темы без своей
-                                    // (каталог `local_placeholders`): образец
-                                    // из её содержимого либо заглушка вида.
-                                    // Обрезка по высоте, уместная у снимков,
-                                    // срезала бы у неё края: вписываем
-                                    // целиком, а поля по бокам закрывает тот же
-                                    // переход цвета, что на самом кадре.
+                                    // A drawn picture for a theme without its own (the `local_placeholders`
+                                    // catalogue): a sample from its content or a placeholder of its kind.
+                                    // Cropping by height, appropriate for screenshots, would cut its edges: we
+                                    // fit it whole, and the margins on the sides are covered by the same
+                                    // colour gradient as on the frame itself.
                                     readonly property bool placeholder:
                                         cell.preview.indexOf("/local_placeholders/") >= 0
-                                    // Картинки нет вовсе (пакет AUR без
-                                    // ссылки на GitHub): та же заглушка вида,
-                                    // что у местных тем, — знак на той же
-                                    // подложке.
+                                    // There is no picture at all (an AUR package without a GitHub link): the
+                                    // same placeholder of its kind as for local themes — a sign on the same
+                                    // backing.
                                     readonly property bool bare:
                                         cell.preview === "" && cell.previewText !== ""
                                         && fontSample.status !== FontLoader.Ready
-                                    // Пакет шрифта: картинка — сам файл
-                                    // шрифта, им рисуется образец текста.
+                                    // A font package: the picture is the font file itself, which draws a text
+                                    // sample.
                                     FontLoader {
                                         id: fontSample
                                         source: cell.previewFont
@@ -5415,18 +5418,14 @@ Item {
                                                   : Image.PreserveAspectCrop
                                         asynchronous: true
                                         cache: true
-                                        // У темы звуков на этом месте ряд
-                                        // «Прослушать:» (ниже): картинка-
-                                        // заглушка с колокольчиком его
-                                        // перекрывала бы.
+                                        // A sound theme has the "Listen:" row in this place (below): a placeholder
+                                        // picture with a bell would cover it.
                                         visible: source !== "" && cell.soundTheme === ""
                                     }
 
-                                    // Щелчок по плитке занят карточкой
-                                    // темы, поэтому крупный просмотр её
-                                    // картинки открывает лупа под курсором.
-                                    // У нарисованной картинки (образец,
-                                    // заглушка) крупнее показать нечего.
+                                    // A click on the tile is taken by the theme card, so the large view of its
+                                    // picture is opened with the magnifier under the cursor. A drawn picture
+                                    // (a sample, a placeholder) has nothing larger to show.
                                     RexonZoomArea {
                                         anchors.fill: parent
                                         pal: root.pal
@@ -5437,18 +5436,17 @@ Item {
                                         onActivated: root.openTileZoom(cell.name, cell.preview)
                                     }
 
-                                    // «Продемонстрировать» у заставки KDE,
-                                    // как в модуле KDE: заставка во весь
-                                    // экран на несколько секунд (ядро —
-                                    // `splash_demo_argv`). Поверх лупы.
+                                    // "Demonstrate" for a KDE splash screen, as in the KDE module: the splash
+                                    // full screen for a few seconds (core — `splash_demo_argv`). Over the
+                                    // magnifier.
                                     RexonButton {
                                         anchors.right: parent.right
                                         anchors.bottom: parent.bottom
                                         anchors.margins: 8
                                         visible: cell.splashDemo !== ""
                                         pal: root.pal
-                                        // У темы SDDM та же кнопка — «Предпросмотр»
-                                        // экрана входа (ядро — `local_splash_demo`).
+                                        // An SDDM theme has the same button — the login screen "Preview" (core —
+                                        // `local_splash_demo`).
                                         text: "▶ " + (root.actions && root.actions.tileDemoLabel
                                                       ? root.actions.tileDemoLabel(cell.splashDemo)
                                                       : page.splashDemoLabel)
@@ -5467,11 +5465,10 @@ Item {
                                         ToolTip.delay: 500
                                     }
 
-                                    // Картинки нет вовсе — на её месте знак
-                                    // товара. Так делал оригинал: у пакета
-                                    // AUR без ссылки на GitHub взять картинку
-                                    // неоткуда, и пустой прямоугольник читался
-                                    // как «плитка не догрузилась».
+                                    // There is no picture at all — the item's sign is in its place. That is
+                                    // what the original did: for an AUR package without a GitHub link there is
+                                    // nowhere to get a picture from, and an empty rectangle read as "the tile
+                                    // has not finished loading".
                                     Column {
                                         anchors.centerIn: parent
                                         width: parent.width - 24
@@ -5482,16 +5479,14 @@ Item {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: cell.previewText
                                             color: "#ffffff"
-                                            // Кегль знака — как на нарисованной
-                                            // заглушке (48 при высоте кадра 170),
-                                            // меньше, если под ним подпись.
+                                            // Sign size — as on the drawn placeholder (48 at a frame height of 170),
+                                            // smaller if there is a label under it.
                                             font.pixelSize: Math.round(previewBox.height
                                                                        * (cell.previewNote !== "" ? 0.28 : 0.38))
                                         }
 
-                                        // Честная подпись: что это за товар и
-                                        // почему без снимка (ядро —
-                                        // `aur::no_preview_note`).
+                                        // An honest label: what this item is and why there is no screenshot (core
+                                        // — `aur::no_preview_note`).
                                         RexonText {
                                             width: parent.width
                                             visible: cell.previewNote !== ""
@@ -5504,7 +5499,7 @@ Item {
                                         }
                                     }
 
-                                    // Образец шрифта — этим самым шрифтом.
+                                    // Font sample — in this very font.
                                     RexonText {
                                         anchors.centerIn: parent
                                         width: parent.width - 24
@@ -5517,8 +5512,8 @@ Item {
                                         elide: Text.ElideRight
                                     }
 
-                                    // Пакет AUR среди одиночных товаров
-                                    // («Все»): набор, системный пакет, пароль.
+                                    // An AUR package among single items ("All"): a set, a system package, a
+                                    // password.
                                     Rectangle {
                                         anchors.left: parent.left
                                         anchors.top: parent.top
@@ -5546,9 +5541,8 @@ Item {
                                         ToolTip.delay: 500
                                     }
 
-                                    // Тема звуков картинки не имеет: на её
-                                    // месте ряд «Прослушать:», как у
-                                    // карточки KDE «Системные звуки».
+                                    // A sound theme has no picture: in its place there is the "Listen:" row,
+                                    // as on the KDE "System Sounds" card.
                                     Column {
                                         anchors.centerIn: parent
                                         visible: cell.soundTheme !== ""
@@ -5583,9 +5577,8 @@ Item {
 
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    // Поля тела плитки у оригинала разные
-                                    // сверху и снизу (14 против 10), а зазор
-                                    // строк вдвое шире, чем стоял здесь.
+                                    // The tile body paddings in the original differ at the top and bottom (14
+                                    // versus 10), and the row gap is twice as wide as it was here.
                                     Layout.leftMargin: page.cardBodyMargin
                                     Layout.rightMargin: page.cardBodyMargin
                                     Layout.topMargin: page.cardBodyTopMargin
@@ -5596,39 +5589,33 @@ Item {
                                         Layout.fillWidth: true
                                         text: cell.name
                                         color: root.colText
-                                        // Название темы у оригинала КРУПНЕЕ
-                                        // прочих строк плитки (11pt против
-                                        // 10): по нему тему находят в сетке.
-                                        // Здесь кегль не задавался вовсе, и
-                                        // имя выходило мельче автора.
+                                        // In the original the theme name is LARGER than the tile's other lines
+                                        // (11pt versus 10): it is how a theme is found in the grid. Here the size
+                                        // was not set at all, and the name came out smaller than the author.
                                         font.pointSize: page.cardNamePointSize
                                         font.bold: !page.markCurrent || cell.marked
                                         elide: Text.ElideRight
                                     }
 
-                                    // У пакета AUR место автора занимает
-                                    // строка источника («🛠 AUR · версия»),
-                                    // как в оригинале: лишняя строка не
-                                    // влезала в плитку постоянной высоты, и
-                                    // кнопка «Установить» обрезалась снизу
-                                    // (снимки 01.10.2026).
+                                    // For an AUR package the author's place is taken by the source line ("🛠
+                                    // AUR · version"), as in the original: an extra line did not fit into a
+                                    // tile of constant height, and the «Install» button was cut at the bottom
+                                    // (screenshots 01.10.2026).
                                     RexonText {
                                         Layout.fillWidth: true
                                         visible: cell.metaLine === ""
                                         text: cell.author
                                         color: root.colText
                                         font.pointSize: page.cardMetaPointSize
-                                        // `#CardAuthor { font-weight: 600 }`
-                                        // — полужирный, не жирный; у
-                                        // текущей темы — жирный (KDE).
+                                        // `#CardAuthor { font-weight: 600 }` — semi-bold, not bold; for the
+                                        // current theme — bold (KDE).
                                         font.weight: cell.marked ? Font.Bold : Font.DemiBold
                                         elide: Text.ElideRight
                                     }
 
-                                    // Строка источника — только у пакетов AUR:
-                                    // в режиме «Все» они идут вперемешку с
-                                    // магазинными, и откуда возьмётся пакет,
-                                    // человек обязан видеть.
+                                    // The source line — only for AUR packages: in "All" mode they are mixed
+                                    // with store items, and the user must see where the package will come
+                                    // from.
                                     RexonText {
                                         Layout.fillWidth: true
                                         visible: cell.metaLine !== ""
@@ -5646,10 +5633,9 @@ Item {
                                         HoverHandler { id: metaHover }
                                     }
 
-                                    // Отказ установки AUR — на месте
-                                    // стат-строки (высота плитки постоянна:
-                                    // лишняя строка обрезала бы кнопку):
-                                    // причина словами и ссылка «Журнал».
+                                    // An AUR installation refusal goes in place of the stats line (the tile
+                                    // height is constant: an extra line would cut the button): the reason in
+                                    // words and a "Log" link.
                                     RowLayout {
                                         Layout.fillWidth: true
                                         visible: cell.aurNote !== ""
@@ -5688,14 +5674,13 @@ Item {
 
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        // Пустая стат-строка (тема с диска)
-                                        // не показывается вовсе — и звезда тоже.
+                                        // An empty stats line (a theme from disk) is not shown at all — and the
+                                        // star neither.
                                         visible: cell.aurNote === "" && cell.stats !== ""
                                         spacing: 0
 
-                                        // Значок оценки — единственное
-                                        // цветное пятно стат-строки; цвет
-                                        // приходит токеном скина.
+                                        // The rating icon is the only colourful spot of the stats line; the colour
+                                        // comes as a skin token.
                                         RexonText {
                                             text: cell.starGlyph
                                             color: root.colStar
@@ -5718,10 +5703,8 @@ Item {
                                         }
                                     }
 
-                                    // Кнопка плитки. Цвета приходят из ядра:
-                                    // три состояния различаются не только
-                                    // оттенком, но и силуэтом (заливка
-                                    // против контура).
+                                    // Tile button. The colours come from the core: the three states differ
+                                    // not only by shade but also by silhouette (fill versus outline).
                                     RowLayout {
                                         id: cardButtons
                                         Layout.fillWidth: true
@@ -5733,18 +5716,14 @@ Item {
                                             Layout.fillWidth: true
                                             implicitHeight: page.cardButtonHeight
                                             enabled: cell.buttonEnabled
-                                            // ⚠️ Приглушения тут быть не
-                                            // должно. Бейдж «✅ Активна»
-                                            // выключен, но у оригинала он
-                                            // полноцветный: своего правила
-                                            // `:disabled` таблица стилей не
-                                            // держит. Прозрачность подмешивала
-                                            // фон плитки и меняла цвет кнопки.
+                                            // Warning: there must be no muting here. The «✅ Active» badge is
+                                            // disabled, but in the original it is full-colour: the style sheet has no
+                                            // `:disabled` rule of its own. Opacity mixed in the tile background and
+                                            // changed the button colour.
                                             text: cell.buttonText
-                                            // Исключение — действие, которое
-                                            // сейчас не сработает (тема SDDM
-                                            // при Plasma Login Manager): кнопка
-                                            // приглушена, причина — в подсказке.
+                                            // The exception is an action that will not work right now (an SDDM theme
+                                            // with Plasma Login Manager): the button is muted, the reason is in the
+                                            // tooltip.
                                             opacity: (cell.kind !== "aur"
                                                       && cell.buttonTooltip !== "") ? 0.45 : 1.0
                                             ToolTip.text: cell.buttonTooltip
@@ -5752,18 +5731,16 @@ Item {
                                                              && cell.buttonTooltip !== ""
                                             ToolTip.delay: 600
 
-                                            // Расширение GNOME, которое знает
-                                            // оболочка, включает и выключает
-                                            // она сама.
+                                            // A GNOME extension that the shell knows is enabled and disabled by the
+                                            // shell itself.
                                             onClicked: {
                                                 if (cell.gnomeUuid !== "")
                                                     root.gnomeAction(cell.itemId, "toggle");
                                                 else
                                                     root.actOnCard(cell.kind, cell.itemId);
                                             }
-                                            // Пробел кнопка ловит сама; Enter —
-                                            // то же нажатие (у виджета Conky —
-                                            // запустить/остановить).
+                                            // The button catches Space by itself; Enter is the same press (for a Conky
+                                            // widget — start/stop).
                                             Keys.onReturnPressed: cardButton.clicked()
                                             Keys.onEnterPressed: cardButton.clicked()
 
@@ -5793,9 +5770,8 @@ Item {
                                             }
                                         }
 
-                                        // У пакета AUR вместо избранного —
-                                        // страница пакета на сайте, как в
-                                        // оригинале.
+                                        // For an AUR package, instead of favourites — the package page on the
+                                        // site, as in the original.
                                         RexonButton {
                                             Layout.fillWidth: true
                                             visible: cell.kind === "aur"
@@ -5806,14 +5782,13 @@ Item {
                                             ToolTip.text: page.aurDetailsTooltip
                                             ToolTip.visible: hovered
                                             ToolTip.delay: 600
-                                            // Пакет AUR — своя карточка внутри
-                                            // программы; сайт — из неё.
+                                            // An AUR package has its own card inside the program; the site is reached
+                                            // from it.
                                             onClicked: page.openDetail(cell.itemId)
                                         }
 
-                                        // «★ Избранное» — рядом с действием, как
-                                        // в оригинале; у пакета AUR избранного
-                                        // не бывает, и подпись тогда пуста.
+                                        // "★ Favourites" — next to the action, as in the original; an AUR package
+                                        // never has favourites, and then the label is empty.
                                         RexonButton {
                                             Layout.fillWidth: true
                                             visible: cell.favoriteText !== ""
@@ -5831,9 +5806,8 @@ Item {
                                             }
                                         }
 
-                                        // «⚙️» и «⚠️» расширения GNOME: свои
-                                        // настройки и подробности ошибки
-                                        // (папка — в подробностях).
+                                        // "⚙️" and "⚠️" of a GNOME extension: its own settings and error details
+                                        // (the folder is in the details).
                                         RexonButton {
                                             objectName: "gnomeTilePrefs"
                                             visible: cell.gnomePrefs
@@ -5862,11 +5836,10 @@ Item {
                                             onClicked: gnomeErrorPopup.showFor(cell.itemId, cell.name)
                                         }
 
-                                        // «🗑» — удалить тему с диска (решает ядро,
-                                        // `theme_removal`). У включённой и системной
-                                        // кнопка недоступна, причина — подсказкой;
-                                        // выключенная кнопка наведения не ловит,
-                                        // поэтому подсказку держит обёртка.
+                                        // "🗑" — delete a theme from disk (the core decides, `theme_removal`). For
+                                        // an enabled or system one the button is unavailable, the reason in a
+                                        // tooltip; a disabled button does not catch hover, so the wrapper holds
+                                        // the tooltip.
                                         Item {
                                             visible: cell.removeVisible
                                             Layout.preferredWidth: page.cardButtonHeight
@@ -5877,11 +5850,9 @@ Item {
                                                 pal: root.pal
                                                 enabled: cell.removeEnabled
                                                 text: "🗑️"
-                                                // Своё расширение GNOME — тем же
-                                                // путём, что тема: вопрос с его
-                                                // именем и строка «Вернуть»
-                                                // (снимет оболочка); системное
-                                                // «🗑» не получает вовсе.
+                                                // Your own GNOME extension goes the same way as a theme: a question with
+                                                // its name and a "Restore" line (the shell removes it); a system one gets
+                                                // no "🗑" at all.
                                                 onClicked: root.removeLocal(cell.itemId)
                                             }
 
@@ -5902,7 +5873,7 @@ Item {
                 }
             }
 
-            // ── Полоса страниц ────────────────────────────────────────────
+            // ── Page strip ────────────────────────────────────────────────
             RowLayout {
                 Layout.fillWidth: true
                 Layout.margins: 10
@@ -5914,8 +5885,8 @@ Item {
                 RexonButton {
                     pal: root.pal
                     tone: root.toneNav
-                    // Стрелки «← →» в подписях — по зеркалированию, как у
-                    // «Назад к каталогу».
+                    // The "← →" arrows in the labels follow mirroring, as for "Back to
+                    // catalogue".
                     text: root.arrows.keyHint(page.pagePrevText)
                     enabled: page.prevEnabled
                     onClicked: page.prevPage()
@@ -5943,26 +5914,27 @@ Item {
             }
         }
     }
-    // ── Строка «Вернуть» отложенного удаления ────────────────────────────
+    // ── "Restore" line of a deferred removal ─────────────────────────────
     //
-    // Как в KDE: тема с диска не снимается сразу, а помечается; плитка
-    // уходит, внизу висит строка с «Вернуть». Снимает тему хозяин, когда
-    // строка закрылась (✕), истекла или страница закрылась. Сколько висит —
-    // число ядра (`theme_removal::UNDO_TIMEOUT_MS`).
+    // As in KDE: a theme from disk is not removed at once but marked; the tile
+    // goes away, and a line with "Restore" hangs at the bottom. The host
+    // removes the theme when the line is closed (✕), expires or the page
+    // closes. How long it hangs is a core number
+    // (`theme_removal::UNDO_TIMEOUT_MS`).
     Rectangle {
         id: removalBar
 
         property string message: ""
-        // Сколько осталось до снятия, мс. Отсчёт виден (полоса и секунды
-        // на «Вернуть»), стоит на паузе, пока над строкой курсор или фокус
-        // на её кнопках, и начинается заново при каждой новой пометке.
+        // How long is left until removal, ms. The countdown is visible (a bar and
+        // the seconds on "Restore"), pauses while the cursor is over the line or
+        // focus is on its buttons, and starts anew with every new mark.
         property real remainingMs: page.removalUndoMs
         readonly property int remainingSeconds: Math.max(0, Math.ceil(remainingMs / 1000))
         readonly property bool paused: barHover.hovered || undoButton.activeFocus
                                        || closeButton.activeFocus
 
-        // Ширина не скачет вместе с числом секунд: держится самая широкая
-        // за показ.
+        // The width does not jump along with the number of seconds: the widest
+        // one shown is kept.
         property real widest: 0
 
         function show(text) {
@@ -5973,7 +5945,7 @@ Item {
             removalTimer.restart();
         }
 
-        // Закрыть строку и снять помеченное.
+        // Close the line and remove the marked item.
         function finish() {
             if (!removalBar.visible)
                 return;
@@ -6021,8 +5993,8 @@ Item {
             RexonText {
                 objectName: "removalBarText"
                 Layout.fillWidth: true
-                // «Удаляем «X». Осталось 8 секунд — «Вернуть» отменит
-                // удаление.» — подписи ядра (`theme_removal`).
+                // "Deleting "X". 8 seconds left — "Restore" will cancel the deletion." —
+                // labels from the core (`theme_removal`).
                 text: removalBar.message + " "
                       + page.removalCountdownText(removalBar.remainingSeconds)
                 textFormat: Text.PlainText
@@ -6047,7 +6019,7 @@ Item {
             }
         }
 
-        // Полоса отсчёта: убывает к нулю за срок ядра.
+        // Countdown bar: decreases to zero over the core's timeout.
         Rectangle {
             objectName: "removalCountdownBar"
             anchors.left: parent.left

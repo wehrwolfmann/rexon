@@ -1,45 +1,47 @@
-//! «Не давать темам портить цвета терминала» — защита после любой смены
-//! оформления, которая меняет цвета (тема GTK, глобальная тема, цветовая
-//! схема, светлое/тёмное, «Как в дистрибутиве», акцент).
+//! "Don't let themes spoil the terminal colors" — a guard after any change of
+//! looks that changes colors (GTK theme, global theme, color scheme,
+//! light/dark, «Distro Looks», accent).
 //!
-//! Зачем: часть терминалов по умолчанию рисует текст и фон цветами темы
-//! GTK (поле ввода темы: `theme_text_color` на `theme_base_color`). Тёмная
-//! тема с неудачной парой — и терминал становится нечитаемым: так 06.11.2026
-//! после WhiteSur-Dark-nord в MATE терминал показал тёмно-серый текст на
-//! чёрном. Защита закрепляет у такого профиля СВОИ цвета: выключает «цвета
-//! из темы» и пишет контрастную пару (тёмная тема — светлый текст на тёмном,
-//! светлая — тёмный на светлом; контраст WCAG ≥ 4.5).
+//! Why: some terminals by default draw text and background with GTK theme
+//! colors (the theme's input field: `theme_text_color` on `theme_base_color`).
+//! A dark theme with an unlucky pair — and the terminal becomes unreadable: this
+//! is how on 06.11.2026, after WhiteSur-Dark-nord in MATE, the terminal showed
+//! dark gray text on black. The guard pins OWN colors on such a profile: it
+//! turns off "colors from the theme" and writes a contrasting pair (dark theme —
+//! light text on dark, light theme — dark on light; WCAG contrast ≥ 4.5).
 //!
-//! Кто берёт цвета темы (сверено с исходниками и схемами 06.11.2026):
+//! Who takes the theme colors (checked against sources and schemas 06.11.2026):
 //!
-//! | терминал         | цвета темы             | где                                                      |
+//! | terminal         | theme colors           | where                                                    |
 //! |------------------|------------------------|----------------------------------------------------------|
-//! | mate-terminal    | да, по умолчанию       | dconf `/org/mate/terminal/profiles/<п>/use-theme-colors` |
-//! | gnome-terminal   | да, по умолчанию       | dconf `/org/gnome/terminal/legacy/profiles:/:<uuid>/…`   |
-//! | Tilix            | да, по умолчанию       | dconf `/com/gexperts/Tilix/profiles/<uuid>/…`            |
-//! | xfce4-terminal   | только если включено   | xfconf `xfce4-terminal /color-use-theme` (умолч. false)  |
-//! | Terminator       | только если включено   | `~/.config/terminator/config` `use_theme_colors`         |
-//! | Console, Ptyxis  | нет: своя пара палитр под светлое/тёмное (libadwaita)             |
-//! | Konsole          | нет: схема профиля; «Sync profile with system theme» — профили    |
-//! | deepin-terminal  | нет: свои схемы Light/Dark по режиму DDE                          |
-//! | cosmic-term      | нет: COSMIC Dark/Light                                             |
-//! | LXTerminal       | нет: свои `fgcolor`/`bgcolor`                                      |
-//! | QTerminal        | нет: своя `colorScheme`                                            |
-//! | kitty, Alacritty, foot, WezTerm, xterm | нет: только свой конфиг                      |
+//! | mate-terminal    | yes, by default        | dconf `/org/mate/terminal/profiles/<p>/use-theme-colors` |
+//! | gnome-terminal   | yes, by default        | dconf `/org/gnome/terminal/legacy/profiles:/:<uuid>/…`   |
+//! | Tilix            | yes, by default        | dconf `/com/gexperts/Tilix/profiles/<uuid>/…`            |
+//! | xfce4-terminal   | only if enabled        | xfconf `xfce4-terminal /color-use-theme` (default false) |
+//! | Terminator       | only if enabled        | `~/.config/terminator/config` `use_theme_colors`         |
+//! | Console, Ptyxis  | no: own pair of palettes for light/dark (libadwaita)              |
+//! | Konsole          | no: profile scheme; "Sync profile with system theme" — profiles   |
+//! | deepin-terminal  | no: own Light/Dark schemes by DDE mode                            |
+//! | cosmic-term      | no: COSMIC Dark/Light                                              |
+//! | LXTerminal       | no: own `fgcolor`/`bgcolor`                                        |
+//! | QTerminal        | no: own `colorScheme`                                              |
+//! | kitty, Alacritty, foot, WezTerm, xterm | no: own config only                         |
 //!
-//! Правила решения ([`decide`]):
-//! * профиль берёт цвета темы → «цвета темы» выключаются; свои цвета
-//!   профиля, если они заданы и читаемы, остаются, иначе пишется наша пара;
-//! * профиль со своими цветами (цвета темы выключены) — не трогается;
-//! * исключение — НАША пара, закреплённая раньше под другую светлоту: она
-//!   переводится на пару новой темы (иначе после светлой темы терминал так и
-//!   остался бы тёмным).
+//! Decision rules ([`decide`]):
+//! * the profile takes theme colors → "theme colors" are turned off; the
+//!   profile's own colors stay if they are set and readable, otherwise our pair
+//!   is written;
+//! * a profile with its own colors (theme colors off) is not touched;
+//! * the exception is OUR pair pinned earlier for a different lightness: it is
+//!   switched to the pair of the new theme (otherwise after a light theme the
+//!   terminal would have stayed dark).
 //!
-//! Записи — командами `dconf write`/`xfconf-query` и записью файла общего
-//! плана ([`crate::install_plan::exec_undoable`]): прежние значения снимает
-//! общий откат, и они ложатся в запись раздела общего журнала — «Вернуть
-//! как было» раздела возвращает и цвета терминала. Выключатель — ключ
-//! [`SETTING_KEY`] в `settings.json` (нет ключа — включено).
+//! Writes go through `dconf write`/`xfconf-query` commands and a file write of
+//! the shared plan ([`crate::install_plan::exec_undoable`]): the shared undo
+//! takes the previous values, and they go into the section's record of the
+//! shared journal — the section's «Restore as it was» also restores the
+//! terminal colors. The switch is the [`SETTING_KEY`] key in `settings.json`
+//! (no key — enabled).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -48,21 +50,21 @@ use crate::ext_manager::ExtStep;
 use crate::i18n::trf;
 use crate::install_plan::{Ctx, Step};
 
-/// Ключ выключателя в `settings.json`. Нет его — защита включена.
+/// Switch key in `settings.json`. Without it the guard is enabled.
 pub const SETTING_KEY: &str = "terminal_colors_guard";
 
-/// Пара цветов: текст, фон.
+/// Color pair: text, background.
 pub type Pair = ((u8, u8, u8), (u8, u8, u8));
 
-/// Наша пара для тёмной темы: светло-серый Tango на почти чёрном.
+/// Our pair for a dark theme: Tango light gray on almost black.
 pub const DARK_PAIR: Pair = ((0xD3, 0xD7, 0xCF), (0x1E, 0x1E, 0x1E));
-/// Наша пара для светлой темы: тёмно-серый Tango на белом.
+/// Our pair for a light theme: Tango dark gray on white.
 pub const LIGHT_PAIR: Pair = ((0x2E, 0x34, 0x36), (0xFF, 0xFF, 0xFF));
 
-/// Порог читаемости обычного текста (WCAG 2.x, уровень AA).
+/// Readability threshold for normal text (WCAG 2.x, level AA).
 pub const MIN_CONTRAST: f64 = 4.5;
 
-/// Пара под светлоту темы.
+/// The pair for the theme's lightness.
 pub fn pair_for(dark: bool) -> Pair {
     if dark { DARK_PAIR } else { LIGHT_PAIR }
 }
@@ -72,8 +74,9 @@ pub fn hex(c: (u8, u8, u8)) -> String {
     format!("#{:02X}{:02X}{:02X}", c.0, c.1, c.2)
 }
 
-/// Цвет из записи терминала: `#RGB`, `#RRGGBB`, `#RRRRGGGGBBBB` (так пишет
-/// mate-terminal), `rgb(r,g,b)`; кавычки GVariant и конфига снимаются.
+/// A color from a terminal record: `#RGB`, `#RRGGBB`, `#RRRRGGGGBBBB` (as
+/// mate-terminal writes it), `rgb(r,g,b)`; GVariant and config quotes are
+/// stripped.
 pub fn parse_color(raw: &str) -> Option<(u8, u8, u8)> {
     let s = raw.trim().trim_matches(|c| c == '\'' || c == '"').trim();
     if let Some(inner) = s.strip_prefix("rgb(").and_then(|r| r.strip_suffix(')')) {
@@ -88,7 +91,7 @@ pub fn parse_color(raw: &str) -> Option<(u8, u8, u8)> {
     crate::ui_base::parse_hex(s)
 }
 
-/// Относительная яркость WCAG 2.x (sRGB).
+/// WCAG 2.x relative luminance (sRGB).
 fn luminance(c: (u8, u8, u8)) -> f64 {
     let lin = |v: u8| {
         let s = f64::from(v) / 255.0;
@@ -97,7 +100,7 @@ fn luminance(c: (u8, u8, u8)) -> f64 {
     0.2126 * lin(c.0) + 0.7152 * lin(c.1) + 0.0722 * lin(c.2)
 }
 
-/// Контраст WCAG 2.x: от 1 до 21.
+/// WCAG 2.x contrast: from 1 to 21.
 pub fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
     let (x, y) = (luminance(a), luminance(b));
     let (hi, lo) = if x > y { (x, y) } else { (y, x) };
@@ -105,43 +108,43 @@ pub fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
 }
 
 // ============================================================================
-// Решение по профилю
+// Decision per profile
 // ============================================================================
 
-/// Что известно о профиле терминала.
+/// What is known about a terminal profile.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Profile {
-    /// Берёт ли профиль цвета темы (с умолчанием терминала, если ключ не задан).
+    /// Whether the profile takes theme colors (with the terminal's default if the key is not set).
     pub use_theme: bool,
-    /// Свои цвета профиля, если заданы.
+    /// The profile's own colors, if set.
     pub fg: Option<(u8, u8, u8)>,
     pub bg: Option<(u8, u8, u8)>,
 }
 
-/// Что записать профилю.
+/// What to write to the profile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pin {
-    /// Выключить «цвета из темы».
+    /// Turn off "colors from the theme".
     pub theme_off: bool,
-    /// Записать пару (текст, фон); `None` — свои цвета профиля остаются.
+    /// Write the pair (text, background); `None` — the profile's own colors stay.
     pub colors: Option<Pair>,
 }
 
-/// Решение по профилю для темы светлоты `dark`; `None` — не трогать.
+/// Decision for a profile under a theme of lightness `dark`; `None` — don't touch.
 pub fn decide(p: &Profile, dark: bool) -> Option<Pin> {
     let want = pair_for(dark);
     let own = p.fg.zip(p.bg);
     let ours = own.filter(|pair| *pair == DARK_PAIR || *pair == LIGHT_PAIR);
     if p.use_theme {
         let colors = match own {
-            // Свои цвета человека читаемы — остаются.
+            // The person's own colors are readable — they stay.
             Some(pair) if ours.is_none() && contrast(pair.0, pair.1) >= MIN_CONTRAST => None,
             Some(pair) if pair == want => None,
             _ => Some(want),
         };
         return Some(Pin { theme_off: true, colors });
     }
-    // Свои цвета: трогаем только нашу пару, закреплённую под другую светлоту.
+    // Own colors: we touch only our pair pinned for a different lightness.
     match ours {
         Some(pair) if pair != want => Some(Pin { theme_off: false, colors: Some(want) }),
         _ => None,
@@ -149,34 +152,34 @@ pub fn decide(p: &Profile, dark: bool) -> Option<Pin> {
 }
 
 // ============================================================================
-// Терминалы на dconf
+// Terminals on dconf
 // ============================================================================
 
-/// Терминал, профили которого лежат в dconf.
+/// A terminal whose profiles live in dconf.
 #[derive(Debug, Clone, Copy)]
 pub struct DconfTerminal {
-    /// Исполняемый файл (есть он — терминал стоит).
+    /// Executable (if present, the terminal is installed).
     pub binary: &'static str,
-    /// Имя для человека.
+    /// Human-readable name.
     pub name: &'static str,
-    /// Корень `dconf dump`.
+    /// Root of `dconf dump`.
     pub root: &'static str,
-    /// Секция дампа со списком профилей и ключ списка.
+    /// Dump section with the profile list and the list key.
     pub list_section: &'static str,
     pub list_key: &'static str,
-    /// Список профилей по умолчанию (ключ не задан).
+    /// Default profile list (key not set).
     pub default_list: &'static [&'static str],
-    /// Секция профиля в дампе и каталог профиля под корнем: приставки к имени.
+    /// Profile section in the dump and the profile directory under the root: prefixes to the name.
     pub profile_prefix: &'static str,
-    /// Умолчание `use-theme-colors` схемы.
+    /// The schema's default of `use-theme-colors`.
     pub theme_default: bool,
-    /// Ключ «жирный тем же цветом» — пишется вместе с парой.
+    /// The "bold in the same color" key — written together with the pair.
     pub bold_same_key: Option<&'static str>,
 }
 
-/// Схемы: `org.mate.terminal.gschema.xml` (mate-terminal 1.28),
+/// Schemas: `org.mate.terminal.gschema.xml` (mate-terminal 1.28),
 /// `org.gnome.Terminal.gschema.xml` (gnome-terminal 3.60),
-/// `com.gexperts.Tilix.gschema.xml` (Tilix, ветка master).
+/// `com.gexperts.Tilix.gschema.xml` (Tilix, master branch).
 pub const DCONF_TERMINALS: &[DconfTerminal] = &[
     DconfTerminal {
         binary: "mate-terminal",
@@ -213,7 +216,7 @@ pub const DCONF_TERMINALS: &[DconfTerminal] = &[
     },
 ];
 
-/// Разбор `dconf dump`: секция → ключ → значение (текст GVariant).
+/// Parsing `dconf dump`: section → key → value (GVariant text).
 pub fn parse_dump(text: &str) -> BTreeMap<String, BTreeMap<String, String>> {
     let mut out: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut section = String::new();
@@ -229,7 +232,7 @@ pub fn parse_dump(text: &str) -> BTreeMap<String, BTreeMap<String, String>> {
     out
 }
 
-/// Список строк GVariant: `['a', 'b']`, `@as []`.
+/// GVariant string list: `['a', 'b']`, `@as []`.
 fn parse_str_list(raw: &str) -> Vec<String> {
     let s = raw.trim().trim_start_matches("@as").trim();
     let inner = s.strip_prefix('[').and_then(|r| r.strip_suffix(']')).unwrap_or("");
@@ -256,7 +259,7 @@ fn run_step(parts: &[&str]) -> Step {
     Step::from(ExtStep::Run { argv: argv(parts), timeout_secs: Some(10) })
 }
 
-/// Шаги закрепления для терминала `t` по его дампу `dump`.
+/// Pinning steps for terminal `t` from its dump `dump`.
 pub fn dconf_steps(t: &DconfTerminal, dump: &str, dark: bool) -> Vec<Step> {
     let tree = parse_dump(dump);
     let list = tree
@@ -294,11 +297,11 @@ pub fn dconf_steps(t: &DconfTerminal, dump: &str, dark: bool) -> Vec<Step> {
 // xfce4-terminal (xfconf)
 // ============================================================================
 
-/// Канал xfce4-terminal.
+/// The xfce4-terminal channel.
 pub const XFCE_CHANNEL: &str = "xfce4-terminal";
 
-/// Шаги для xfce4-terminal: `use_theme` — `/color-use-theme` (`None` — не
-/// задан, умолчание false), `fg`/`bg` — `/color-foreground`, `/color-background`.
+/// Steps for xfce4-terminal: `use_theme` — `/color-use-theme` (`None` — not
+/// set, default false), `fg`/`bg` — `/color-foreground`, `/color-background`.
 pub fn xfce_steps(use_theme: Option<&str>, fg: Option<&str>, bg: Option<&str>, dark: bool) -> Vec<Step> {
     let profile = Profile {
         use_theme: use_theme.and_then(parse_bool).unwrap_or(false),
@@ -321,14 +324,14 @@ pub fn xfce_steps(use_theme: Option<&str>, fg: Option<&str>, bg: Option<&str>, d
 }
 
 // ============================================================================
-// Terminator (свой конфиг ConfigObj)
+// Terminator (its own ConfigObj config)
 // ============================================================================
 
-/// Новый текст `~/.config/terminator/config`: профили `[profiles] [[имя]]`
-/// под решение [`decide`] (умолчание `use_theme_colors` — False,
-/// `terminatorlib/config.py`). `None` — менять нечего.
+/// New text of `~/.config/terminator/config`: profiles `[profiles] [[name]]`
+/// per the [`decide`] decision (the default of `use_theme_colors` is False,
+/// `terminatorlib/config.py`). `None` — nothing to change.
 pub fn terminator_config(text: &str, dark: bool) -> Option<String> {
-    // Профили: (имя, диапазон строк тела).
+    // Profiles: (name, line range of the body).
     let lines: Vec<&str> = text.lines().collect();
     let depth = |s: &str| {
         let t = s.trim();
@@ -339,7 +342,7 @@ pub fn terminator_config(text: &str, dark: bool) -> Option<String> {
         Some((n, t.trim_matches(|c| c == '[' || c == ']').trim().to_string()))
     };
     let mut top = String::new();
-    let mut profiles: Vec<(usize, usize)> = Vec::new(); // (заголовок, конец тела)
+    let mut profiles: Vec<(usize, usize)> = Vec::new(); // (header, end of body)
     for (i, line) in lines.iter().enumerate() {
         if let Some((n, name)) = depth(line) {
             if let Some(last) = profiles.last_mut().filter(|p| p.1 == usize::MAX) {
@@ -358,7 +361,7 @@ pub fn terminator_config(text: &str, dark: bool) -> Option<String> {
     let key_of = |line: &str| line.split_once('=').map(|(k, v)| (k.trim().to_string(), v.trim().to_string()));
     let mut out: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
     let mut changed = false;
-    // С конца: вставки не сдвигают ещё не разобранные профили.
+    // From the end: insertions don't shift profiles not yet processed.
     for &(head, end) in profiles.iter().rev() {
         let body = head + 1..end;
         let find = |k: &str| body.clone().find(|&i| key_of(lines[i]).is_some_and(|(kk, _)| kk == k));
@@ -374,8 +377,8 @@ pub fn terminator_config(text: &str, dark: bool) -> Option<String> {
             .find(|&i| key_of(lines[i]).is_some())
             .map(|i| lines[i][..lines[i].len() - lines[i].trim_start().len()].to_string())
             .unwrap_or_else(|| "    ".to_string());
-        // Сначала замены по месту (номера строк ещё верны), затем
-        // недостающие ключи — сразу под заголовком профиля, по порядку.
+        // First in-place replacements (line numbers are still valid), then the
+        // missing keys — right under the profile header, in order.
         let mut wanted: Vec<(&str, String)> = Vec::new();
         if pin.theme_off {
             wanted.push(("use_theme_colors", "False".into()));
@@ -408,37 +411,37 @@ pub fn terminator_config(text: &str, dark: bool) -> Option<String> {
 }
 
 // ============================================================================
-// Светлота темы
+// Theme lightness
 // ============================================================================
 
-/// Тёмная ли тема GTK в действии: имя `theme`, свой CSS человека
-/// (`gtk-3.0/gtk.css` и подключённый им `colors.css` — так Plasma отдаёт
-/// цвета схемы программам GTK) и `gtk.css` самой темы. Свой CSS грузится
-/// после темы и перекрывает её, поэтому идёт первым
-/// ([`crate::themes::gtk_theme_is_dark`] берёт первое определение).
+/// Whether the active GTK theme is dark: the `theme` name, the person's own CSS
+/// (`gtk-3.0/gtk.css` and the `colors.css` it imports — this is how Plasma
+/// gives the scheme colors to GTK programs) and the theme's own `gtk.css`. The
+/// own CSS is loaded after the theme and overrides it, so it goes first
+/// ([`crate::themes::gtk_theme_is_dark`] takes the first definition).
 pub fn theme_is_dark(theme: &str, user_css: Option<&str>, theme_css: Option<&str>) -> bool {
     let css: String = [user_css, theme_css].into_iter().flatten().collect::<Vec<_>>().join("\n");
     crate::themes::gtk_theme_is_dark(theme, (!css.is_empty()).then_some(css.as_str()))
 }
 
 // ============================================================================
-// Исполнение
+// Execution
 // ============================================================================
 
-/// Где искать конфиги и темы.
+/// Where to look for configs and themes.
 #[derive(Debug, Clone)]
 pub struct Env {
-    /// Стол Rexon (`mate`, `kde`, `xfce`…).
+    /// Rexon desktop (`mate`, `kde`, `xfce`…).
     pub de: String,
     pub home: String,
-    /// `$XDG_CONFIG_HOME` или `~/.config`.
+    /// `$XDG_CONFIG_HOME` or `~/.config`.
     pub config: String,
-    /// `$XDG_DATA_HOME` или `~/.local/share`.
+    /// `$XDG_DATA_HOME` or `~/.local/share`.
     pub data: String,
 }
 
 impl Env {
-    /// Живая машина: пути из окружения.
+    /// Live machine: paths from the environment.
     pub fn live(de: &str) -> Self {
         let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let home = env("HOME").unwrap_or_default();
@@ -450,13 +453,13 @@ impl Env {
         }
     }
 
-    /// Каталог конфигов Rexon (там же `settings.json` и общий журнал).
+    /// Rexon config directory (`settings.json` and the shared journal are there too).
     pub fn rexon_dir(&self) -> PathBuf {
         Path::new(&self.config).join("rexon")
     }
 }
 
-/// Включена ли защита: ключ [`SETTING_KEY`] в `settings.json` каталога Rexon.
+/// Whether the guard is enabled: the [`SETTING_KEY`] key in `settings.json` of the Rexon directory.
 pub fn enabled(rexon_dir: &Path) -> bool {
     crate::settings::load_settings(&rexon_dir.join("settings.json"))
         .get(SETTING_KEY)
@@ -469,7 +472,7 @@ fn read_out(ctx: &Ctx, parts: &[&str]) -> Option<String> {
     (r.returncode == Some(0)).then(|| crate::utils::decode_text(&r.stdout))
 }
 
-/// Имя темы GTK в действии на столе `env.de`.
+/// Name of the active GTK theme on desktop `env.de`.
 fn live_theme_name(env: &Env, ctx: &Ctx) -> String {
     use crate::themes::Schemas;
     let from_ini = || {
@@ -490,7 +493,7 @@ fn live_theme_name(env: &Env, ctx: &Ctx) -> String {
     name.filter(|n| !n.is_empty()).unwrap_or_else(from_ini)
 }
 
-/// Тёмная ли тема GTK, которая действует сейчас (после применения).
+/// Whether the GTK theme in effect now (after applying) is dark.
 pub fn live_dark(env: &Env, ctx: &Ctx) -> bool {
     let theme = live_theme_name(env, ctx);
     let gtk3 = format!("{}/gtk-3.0", env.config);
@@ -510,9 +513,9 @@ pub fn live_dark(env: &Env, ctx: &Ctx) -> bool {
     theme_is_dark(&theme, user.as_deref(), theme_css.as_deref())
 }
 
-/// Шаги закрепления для всех стоящих терминалов и их имена.
-/// Не прочиталось состояние терминала — он пропускается: писать вслепую
-/// нельзя (можно затереть свои цвета человека).
+/// Pinning steps for all installed terminals and their names.
+/// If a terminal's state could not be read, it is skipped: writing blindly is
+/// not allowed (it could overwrite the person's own colors).
 pub fn plan(env: &Env, ctx: &Ctx, dark: bool) -> (Vec<Step>, Vec<&'static str>) {
     let mut steps = Vec::new();
     let mut names = Vec::new();
@@ -544,11 +547,11 @@ pub fn plan(env: &Env, ctx: &Ctx, dark: bool) -> (Vec<Step>, Vec<&'static str>) 
     (steps, names)
 }
 
-/// Закрепить цвета терминалов после применения оформления раздела
-/// `section` (тема `theme`, запись журнала `item`) и записать прежние
-/// значения в запись раздела общего журнала — «Вернуть как было» вернёт и
-/// их. Выключено, нечего закреплять или не вышло — пустой список; иначе —
-/// строка для человека.
+/// Pin the terminal colors after applying the looks of section `section`
+/// (theme `theme`, journal record `item`) and write the previous values into the
+/// section's record of the shared journal — «Restore as it was» restores them
+/// too. Disabled, nothing to pin or it failed — an empty list; otherwise a line
+/// for the person.
 pub fn guard(env: &Env, ctx: &Ctx, section: &str, theme: &str, item: Option<String>) -> Option<String> {
     use crate::install_journal as journal;
     let rexon = env.rexon_dir();
@@ -566,8 +569,8 @@ pub fn guard(env: &Env, ctx: &Ctx, section: &str, theme: &str, item: Option<Stri
         crate::log_warn!("appearance", "цвета терминалов не закреплены: {}", crate::install_plan::failure_text(&f));
         return None;
     }
-    // Запись раздела уже есть (её оставило само нажатие) — её связь с
-    // карточкой и именем не теряем.
+    // The section record already exists (the click itself left it) — we don't lose
+    // its link to the card and the name.
     let prev = journal::view_at(&rexon).applied.get(section).cloned();
     let item = item.or_else(|| prev.as_ref().and_then(|a| a.item.clone()));
     let record_theme = prev.as_ref().map_or_else(|| theme.to_string(), |a| a.theme.clone());
@@ -611,14 +614,14 @@ pub fn guard(env: &Env, ctx: &Ctx, section: &str, theme: &str, item: Option<Stri
     ))
 }
 
-/// [`guard`] на живой машине стола `de`.
+/// [`guard`] on the live machine of desktop `de`.
 pub fn guard_live(de: &str, section: &str, theme: &str, item: Option<String>) -> Option<String> {
     let ctx = Ctx::live(true, false, None, false);
     guard(&Env::live(de), &ctx, section, theme, item)
 }
 
 // ============================================================================
-// Проверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
@@ -634,7 +637,7 @@ mod tests {
         }
         assert!(luminance(DARK_PAIR.1) < luminance(DARK_PAIR.0));
         assert!(luminance(LIGHT_PAIR.1) > luminance(LIGHT_PAIR.0));
-        // Случай 06.11: тёмно-серый на чёрном — нечитаемо.
+        // The 06.11 case: dark gray on black — unreadable.
         assert!(contrast((0x4C, 0x56, 0x6A), (0, 0, 0)) < MIN_CONTRAST);
     }
 
@@ -652,17 +655,17 @@ mod tests {
         let theme = Profile { use_theme: true, ..Default::default() };
         assert_eq!(decide(&theme, true), Some(Pin { theme_off: true, colors: Some(DARK_PAIR) }));
         assert_eq!(decide(&theme, false), Some(Pin { theme_off: true, colors: Some(LIGHT_PAIR) }));
-        // Свои читаемые цвета под «цветами темы» — остаются, тема выключается.
+        // Own readable colors under "theme colors" — they stay, the theme is turned off.
         let own = Profile { use_theme: true, fg: Some((0, 0, 0)), bg: Some((0xFF, 0xFF, 0xDD)) };
         assert_eq!(decide(&own, true), Some(Pin { theme_off: true, colors: None }));
-        // Свои нечитаемые под «цветами темы» — наша пара.
+        // Own unreadable ones under "theme colors" — our pair.
         let bad = Profile { use_theme: true, fg: Some((0x33, 0x33, 0x33)), bg: Some((0, 0, 0)) };
         assert_eq!(decide(&bad, true), Some(Pin { theme_off: true, colors: Some(DARK_PAIR) }));
-        // Свои цвета человека (тема выключена) — не трогать никогда.
+        // The person's own colors (theme off) — never touch.
         let mine = Profile { use_theme: false, fg: Some((0x33, 0x33, 0x33)), bg: Some((0, 0, 0)) };
         assert_eq!(decide(&mine, true), None);
         assert_eq!(decide(&Profile::default(), true), None);
-        // Наша пара — переводится на новую светлоту, своя — нет.
+        // Our pair is switched to the new lightness, the person's own is not.
         let pinned = Profile { use_theme: false, fg: Some(DARK_PAIR.0), bg: Some(DARK_PAIR.1) };
         assert_eq!(decide(&pinned, true), None);
         assert_eq!(decide(&pinned, false), Some(Pin { theme_off: false, colors: Some(LIGHT_PAIR) }));
@@ -679,8 +682,9 @@ mod tests {
             .collect()
     }
 
-    /// Случай владельца: пустой дамп mate-terminal (профиль `default` берёт
-    /// цвета темы по умолчанию схемы) → тема выключается, пара записана.
+    /// The owner's case: an empty mate-terminal dump (the `default` profile takes
+    /// theme colors by the schema default) → the theme is turned off, the pair is
+    /// written.
     #[test]
     fn mate_default_profile_is_pinned() {
         let mate = &DCONF_TERMINALS[0];
@@ -693,13 +697,13 @@ mod tests {
                 "dconf write /org/mate/terminal/profiles/default/use-theme-colors false",
             ]
         );
-        // Свои цвета (как поправил владелец) — не трогаются.
+        // Own colors (as the owner fixed them) — not touched.
         let own = "[profiles/default]\nuse-theme-colors=false\nforeground-color='#D3D3D7D7CFCF'\nbackground-color='#1E1E1E1E1E1E'\n";
         assert!(!dconf_steps(mate, own, false).is_empty(), "наша пара под светлую тему переводится");
         let mine = "[profiles/default]\nuse-theme-colors=false\nforeground-color='#00FF00'\nbackground-color='#000000'\n";
         assert!(dconf_steps(mate, mine, true).is_empty());
         assert!(dconf_steps(mate, mine, false).is_empty());
-        // Список профилей — из [global].
+        // Profile list — from [global].
         let two = "[global]\nprofile-list=['default', 'Work']\n\n[profiles/default]\nuse-theme-colors=false\n";
         assert_eq!(
             cmds(&dconf_steps(mate, two, true)).last().map(String::as_str),
@@ -749,7 +753,7 @@ mod tests {
             out,
             "[global_config]\n  title_hide_sizetext = True\n[profiles]\n  [[default]]\n    foreground_color = \"#d3d7cf\"\n    background_color = \"#1e1e1e\"\n    use_theme_colors = False\n    font = Mono 11\n  [[mine]]\n    foreground_color = \"#00ff00\"\n[layouts]\n"
         );
-        // Уже закреплено под тёмную — под тёмную менять нечего, под светлую — пара.
+        // Already pinned for dark — nothing to change for dark, for light — the pair.
         assert_eq!(terminator_config(&out, true), None);
         assert!(terminator_config(&out, false).unwrap().contains("foreground_color = \"#2e3436\""));
         assert_eq!(terminator_config("[profiles]\n  [[default]]\n    font = Mono\n", true), None);
@@ -772,7 +776,7 @@ mod tests {
         d
     }
 
-    /// Подделка dconf: `dump`, `read`, `write`, `reset`; журнал команд.
+    /// Fake dconf: `dump`, `read`, `write`, `reset`; command log.
     #[derive(Default)]
     struct FakeDconf {
         keys: RefCell<HashMap<String, String>>,
@@ -813,8 +817,8 @@ mod tests {
     fn no_spawn(_: &[String]) {}
     fn no_sync(_: &mut crate::install_plan::Undo) {}
 
-    /// Весь путь на подделке: закрепление, запись в журнал, «Вернуть как
-    /// было» возвращает прежнее; выключенная настройка — ни одной записи.
+    /// The whole path on the fake: pinning, journal record, «Restore as it was»
+    /// restores the previous state; a disabled setting — not a single write.
     #[test]
     fn guard_records_and_reverts() {
         let dir = scratch("guard");
@@ -838,15 +842,15 @@ mod tests {
         let rec = crate::install_journal::view_at(&env.rexon_dir());
         assert!(rec.applied.contains_key("gtk"), "запись раздела в журнале");
 
-        // Повтор под ту же тему — уже свои (наши) цвета, писать нечего.
+        // A repeat under the same theme — already own (our) colors, nothing to write.
         assert_eq!(guard(&env, &ctx, "gtk", "WhiteSur-Dark-nord", None), None);
 
-        // «Вернуть как было» — ключи сняты (их не было).
+        // «Restore as it was» — the keys are reset (they did not exist).
         let failed = crate::install_journal::revert_applied_with(&env.rexon_dir(), "gtk", &|_| false, &run).unwrap();
         assert_eq!(failed, Some(Vec::new()));
         assert_eq!(k("use-theme-colors"), None);
 
-        // Выключено — ни одной команды.
+        // Disabled — not a single command.
         std::fs::create_dir_all(env.rexon_dir()).unwrap();
         std::fs::write(env.rexon_dir().join("settings.json"), format!("{{\"{SETTING_KEY}\": false}}")).unwrap();
         fake.ran.borrow_mut().clear();

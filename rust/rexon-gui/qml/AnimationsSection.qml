@@ -1,11 +1,12 @@
-// Раздел «Анимация» вкладки «Оформление»: скорость, «без анимаций» и эффекты
-// по событиям — как модуль «Анимация» KDE, но во всех окружениях.
+// The "Animation" section of the "Appearance" tab: speed, "no animations"
+// and per-event effects — like the KDE "Animation" module, but in all
+// environments.
 //
-// Только разметка: снимок и запись — `AnimationsActions`
-// (rust/rexon-gui/src/animations_actions.rs → rexon_core::animations). Что
-// показывать, решает ядро: нет ползунка скорости — его нет в снимке, нет
-// эффектов окружения — нет строк, а пояснение `note` честно говорит, куда
-// настройка не доходит.
+// Markup only: snapshot and writing — `AnimationsActions`
+// (rust/rexon-gui/src/animations_actions.rs → rexon_core::animations). What
+// to show is decided by the core: no speed slider — it is not in the
+// snapshot; no environment effects — no rows; and the `note` explanation
+// honestly says where the setting does not reach.
 
 pragma ComponentBehavior: Bound
 
@@ -17,16 +18,16 @@ import org.rexon.gui 1.0
 Rectangle {
     id: section
 
-    /// Палитра скина и раскладка вкладки — от хозяина страницы.
+    /// Skin palette and tab layout — from the page host.
     property var pal: ({})
     property var sty: ({})
 
-    /// Итог действия для всплывающей плашки хозяина.
+    /// Action result for the host's pop-up banner.
     signal message(string text)
 
     property var st: ({})
 
-    /// Ширина подписей слева: одна на раздел, чтобы списки стояли ровно.
+    /// Width of the labels on the left: one per section, so the lists line up.
     readonly property real labelWidth: Math.max(section.sty.widths.fieldLabel, 300)
 
     function reload() {
@@ -176,8 +177,8 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                // «Настроить…» — страница настроек выбранного эффекта KWin
-                // (признак `configurable` даёт ядро; вне KDE его нет).
+                // "Configure…" — the settings page of the selected KWin effect (the
+                // `configurable` flag comes from the core; outside KDE it is absent).
                 RexonButton {
                     objectName: "animationsConfigure"
                     pal: section.pal

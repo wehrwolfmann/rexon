@@ -10,17 +10,17 @@
 
 namespace {
 
-/// token → запрос, который его выдал. QPointer, а не голый указатель:
-/// именно он превращает поздний ответ из падения в тишину.
+/// token → the query that issued it. A QPointer rather than a bare pointer:
+/// it is exactly what turns a late answer from a crash into silence.
 QHash<qint64, QPointer<QObject>>& targets()
 {
     static QHash<qint64, QPointer<QObject>> map;
     return map;
 }
 
-/// Выбросить записи умерших запросов. Зовётся при каждой отправке: своей
-/// точки «запрос умер» у нас нет (Qt о ней не сообщает), а держать в карте
-/// обнулённые QPointer'ы незачем.
+/// Throw out the records of dead queries. Called on every send: we have no
+/// "the query died" point of our own (Qt does not report it), and there is no
+/// reason to keep nulled QPointers in the map.
 void forget_dead()
 {
     auto& map = targets();
@@ -41,8 +41,9 @@ int rexon_we_do_deliver_response(qint64 token, const char* data, int len)
     const QPointer<QObject> target = targets().take(token);
     if (target.isNull())
         return 0;
-    // DirectConnection: сокет разбирает ответ на главном потоке, там же
-    // живут запросы. Очередь здесь только отложила бы то же самое.
+    // DirectConnection: the socket parses the answer on the main thread, and
+    // the queries live there too. A queue here would only defer the same
+    // thing.
     const bool ok = QMetaObject::invokeMethod(
         target, "deliverResponse", Qt::DirectConnection,
         Q_ARG(::std::int64_t, token), Q_ARG(QByteArray, QByteArray(data, len)));
@@ -57,8 +58,8 @@ int rexon_we_do_pending_count()
 
 int rexon_we_do_fail_pending(const char* data, int len)
 {
-    // Карту забираем ЦЕЛИКОМ до рассылки: обработчик ошибки волен начать
-    // новый запрос, и он не должен попасть под ту же рассылку.
+    // We take the map WHOLE before the broadcast: the error handler is free to
+    // start a new request, and it must not fall under the same broadcast.
     const QHash<qint64, QPointer<QObject>> dying = targets();
     targets().clear();
 

@@ -309,7 +309,7 @@
   "install_no_tool": {
     "result": [
       false,
-      "kpackagetool6 не найден — нужен KDE Plasma 6",
+      "kpackagetool6 was not found — KDE Plasma 6 is required",
       false
     ]
   },

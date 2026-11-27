@@ -1,133 +1,135 @@
-//! Сторож игрового режима (gamescope-session-plus, «как Steam Machine»):
-//! не оставлять человека перед чёрным экраном.
+//! Game mode guard (gamescope-session-plus, "like a Steam Machine"): do not
+//! leave the person in front of a black screen.
 //!
-//! ЗАЧЕМ. gamescope 3.17 (коммит `14328a835`, 06.2026) без подключённого
-//! экрана больше НЕ падает: он работает на «Virtual screen», Steam
-//! запускается, сеанс жив, а экран чёрный. Счётчик коротких сеансов
-//! gamescope-session-plus при этом молчит. На гибридном ноутбуке так бывает,
-//! как только gamescope возьмёт не ту видеокарту: DRM-узел он открывает у
-//! выбранного Vulkan-устройства, а оно — первое по порядку, если
-//! `--prefer-vk-device` (`VULKAN_ADAPTER`) не задан или указывает на
-//! несуществующее устройство (тогда — МОЛЧА первое). Порядок легко
-//! перевернуть: `DRI_PRIME=1` в `~/.config/environment.d`, который сеанс
-//! подгружает сам.
+//! WHY. gamescope 3.17 (commit `14328a835`, 06.2026) no longer crashes without a
+//! connected display: it runs on a "Virtual screen", Steam starts, the session is
+//! alive, but the screen is black. The short-session counter of
+//! gamescope-session-plus stays silent meanwhile. On a hybrid laptop this
+//! happens as soon as gamescope takes the wrong GPU: it opens the DRM node of
+//! the chosen Vulkan device, and that is the first in order if
+//! `--prefer-vk-device` (`VULKAN_ADAPTER`) is not set or points to a
+//! non-existent device (then — SILENTLY the first). The order is easy to flip:
+//! `DRI_PRIME=1` in `~/.config/environment.d`, which the session loads itself.
 //!
-//! КАК (без root). gamescope-session-plus подхватывает
-//! `~/.config/gamescope-session-plus/sessions.d/steam` ПОСЛЕ системного
-//! `sessions.d/steam`. Туда Rexon кладёт тонкий сценарий ([`hook_script`]):
-//!   1. до запуска gamescope — `rexon --gamemode-preflight`
-//!      ([`decide_preflight`]): какая карта держит встроенную панель (eDP,
-//!      LVDS, DSI) по `/sys/class/drm` ([`scan_drm`]); её `vendor:device`
-//!      подставляется в `VULKAN_ADAPTER`, если он пуст, указывает на карту
-//!      без экрана или на устройство, которого нет. Vulkan-устройство PCI-карты
-//!      несёт те же `vendorID:deviceID`, что `/sys/.../device/{vendor,device}`,
-//!      а `--prefer-vk-device` понимает ровно `vendor:device` — PCI-адрес
-//!      (06:00.0) нужен только человеку в журнале. Две одинаковые карты
-//!      так не различить — тогда ничего не меняем ([`KeepReason::SameIdTwice`]);
-//!   2. сразу после ответа gamescope (`post_gamescope_start`, системное тело
-//!      сохраняется и зовётся первым) — `rexon --gamemode-watch` в фоне
-//!      ([`classify_log`], [`output_step`], [`ready_step`]): журнал юнита
-//!      `gamescope-session-plus@steam` (`drm: selecting connector …` ✅ /
-//!      `drm: cannot find any connected connector!` ⛔), потом корневые
-//!      свойства `GAMESCOPE_FOCUSED_APP` = 769 (интерфейс Steam). Отказ —
-//!      запись в `$XDG_STATE_HOME/rexon/gamemode/failures` и остановка юнита:
-//!      сеанс кончается, человек возвращается к экрану входа и выбирает стол;
-//!   3. `short_session_recover` (5 коротких сеансов подряд): системное тело
-//!      (починка Steam) + запись отказа; системный откат зовёт `steamosctl`,
-//!      которого на обычном Arch нет.
+//! HOW (without root). gamescope-session-plus picks up
+//! `~/.config/gamescope-session-plus/sessions.d/steam` AFTER the system
+//! `sessions.d/steam`. Rexon puts a thin script there ([`hook_script`]):
+//!   1. before gamescope starts — `rexon --gamemode-preflight`
+//!      ([`decide_preflight`]): which card holds the built-in panel (eDP, LVDS,
+//!      DSI) according to `/sys/class/drm` ([`scan_drm`]); its `vendor:device`
+//!      is put into `VULKAN_ADAPTER` if it is empty, points to a card without a
+//!      display or to a device that does not exist. The Vulkan device of a PCI
+//!      card carries the same `vendorID:deviceID` as
+//!      `/sys/.../device/{vendor,device}`, and `--prefer-vk-device` understands
+//!      exactly `vendor:device` — the PCI address (06:00.0) is needed only by the
+//!      person in the log. Two identical cards cannot be told apart this way —
+//!      then we change nothing ([`KeepReason::SameIdTwice`]);
+//!   2. right after gamescope answers (`post_gamescope_start`, the system body is
+//!      kept and called first) — `rexon --gamemode-watch` in the background
+//!      ([`classify_log`], [`output_step`], [`ready_step`]): the journal of the
+//!      `gamescope-session-plus@steam` unit (`drm: selecting connector …` ✅ /
+//!      `drm: cannot find any connected connector!` ⛔), then the root
+//!      properties `GAMESCOPE_FOCUSED_APP` = 769 (the Steam interface). A failure
+//!      is recorded in `$XDG_STATE_HOME/rexon/gamemode/failures` and the unit is
+//!      stopped: the session ends, the person returns to the login screen and
+//!      picks a desktop;
+//!   3. `short_session_recover` (5 short sessions in a row): the system body
+//!      (Steam repair) + recording the failure; the system rollback calls
+//!      `steamosctl`, which does not exist on ordinary Arch.
 //!
-//! ЗАЩИТА ОТ ЛОЖНОЙ ТРЕВОГИ. Сеанс гасится сразу только по однозначным
-//! строкам журнала (нет экрана, не прошёл modeset). «Steam не показался за
-//! T» гасит сеанс лишь до первого удачного входа ([`should_end_session`]):
-//! после него долгая загрузка (обновление Steam) только записывается.
+//! PROTECTION AGAINST FALSE ALARMS. The session is ended immediately only on
+//! unambiguous journal lines (no display, modeset failed). "Steam did not show
+//! up within T" ends the session only until the first successful login
+//! ([`should_end_session`]): after that a long load (a Steam update) is only
+//! recorded.
 //!
-//! Сценарий в `sessions.d` чужой файл не перезаписывает ([`hook_change`]) и
-//! убирает сам себя, когда бинаря Rexon больше нет.
+//! The script in `sessions.d` does not overwrite a foreign file
+//! ([`hook_change`]) and removes itself when the Rexon binary is gone.
 
 use crate::i18n::{tr, trf};
 use std::path::{Path, PathBuf};
 
-/// До запуска gamescope: выбрать карту экрана (печатает одну машинную строку).
+/// Before gamescope starts: choose the display card (prints one machine line).
 pub const PREFLIGHT_FLAG: &str = "--gamemode-preflight";
-/// В сеансе: следить, появилась ли картинка.
+/// In the session: watch whether a picture has appeared.
 pub const WATCH_FLAG: &str = "--gamemode-watch";
-/// Счётчик коротких сеансов сработал (зовёт `short_session_recover`).
+/// The short-session counter fired (calls `short_session_recover`).
 pub const RECOVER_FLAG: &str = "--gamemode-recover";
-/// Положить сценарий сторожа в `sessions.d` (руками, для пробы).
+/// Put the guard script into `sessions.d` (by hand, for testing).
 pub const INSTALL_FLAG: &str = "--gamemode-guard-install";
-/// Убрать сценарий сторожа.
+/// Remove the guard script.
 pub const REMOVE_FLAG: &str = "--gamemode-guard-remove";
-/// Не гасить сеанс и ничего не записывать — только сказать.
+/// Do not end the session and record nothing — only report.
 pub const DRY_RUN_FLAG: &str = "--dry-run";
-/// Читать журнал gamescope из файла (проверка без живого сеанса).
+/// Read the gamescope journal from a file (a check without a live session).
 pub const LOG_FLAG: &str = "--log";
-/// С какого момента (секунды эпохи) читать журнал юнита.
+/// From what moment (seconds since the epoch) to read the unit's journal.
 pub const SINCE_FLAG: &str = "--since";
 
-/// Клиент gamescope-session-plus, за которым смотрим.
+/// The gamescope-session-plus client we watch.
 pub const CLIENT: &str = "steam";
-/// Системный сценарий сеанса: в нём должны быть крючки, которые мы заменяем.
+/// The system session script: it must contain the hooks we replace.
 pub const SESSION_SCRIPT: &str = "/usr/share/gamescope-session-plus/gamescope-session-plus";
-/// Где лежит наш сценарий относительно `$XDG_CONFIG_HOME`.
+/// Where our script lies relative to `$XDG_CONFIG_HOME`.
 pub const HOOK_REL_PATH: &str = "gamescope-session-plus/sessions.d/steam";
-/// Первая строка-подпись: по ней отличаем свой файл от файла человека.
+/// The first signature line: it tells our file from the person's file.
 pub const HOOK_MARKER: &str = "# Rexon: game mode guard.";
-/// appid интерфейса Steam в gamescope (`steamcompmgr.cpp`).
+/// appid of the Steam interface in gamescope (`steamcompmgr.cpp`).
 pub const STEAM_APPID: u64 = 769;
-/// Потолок предполётной проверки в сценарии: вход важнее сторожа.
+/// Ceiling of the preflight check in the script: logging in matters more than the guard.
 pub const PREFLIGHT_TIMEOUT_SECS: u64 = 5;
-/// Строка `VULKAN_ADAPTER` в ответе предполётной проверки.
+/// The `VULKAN_ADAPTER` line in the preflight answer.
 pub const SET_PREFIX: &str = "set VULKAN_ADAPTER=";
-/// Ответ «вход бесполезен — сразу назад».
+/// The answer "logging in is pointless — go back right away".
 pub const FAIL_PREFIX: &str = "fail ";
-/// Ответ «ничего не менять».
+/// The answer "change nothing".
 pub const KEEP_LINE: &str = "keep";
 
-/// Имя юнита сеанса.
+/// Name of the session unit.
 pub fn unit_name() -> String {
     format!("gamescope-session-plus@{CLIENT}.service")
 }
 
 // ============================================================================
-// Видеокарты и экраны (/sys/class/drm)
+// GPUs and displays (/sys/class/drm)
 // ============================================================================
 
-/// Разъём карты: `eDP-1`, `HDMI-A-1`.
+/// A card connector: `eDP-1`, `HDMI-A-1`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Connector {
     pub name: String,
     pub connected: bool,
 }
 
-/// DRM-карта: `card1` → PCI `0000:06:00.0`, `1002:15bf`.
+/// A DRM card: `card1` → PCI `0000:06:00.0`, `1002:15bf`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DrmCard {
-    /// `card1`. Номер между загрузками меняется — опираться на него нельзя.
+    /// `card1`. The number changes between boots — it must not be relied on.
     pub card: String,
-    /// PCI-адрес (`0000:06:00.0`), если карта на PCI.
+    /// PCI address (`0000:06:00.0`), if the card is on PCI.
     pub pci: Option<String>,
     pub vendor: u16,
     pub device: u16,
-    /// Драйвер (`amdgpu`, `nvidia`).
+    /// Driver (`amdgpu`, `nvidia`).
     pub driver: Option<String>,
     pub boot_vga: bool,
     pub connectors: Vec<Connector>,
 }
 
 impl DrmCard {
-    /// `vendor:device` в том виде, что понимает `--prefer-vk-device`.
+    /// `vendor:device` in the form `--prefer-vk-device` understands.
     pub fn vk_id(&self) -> String {
         format!("{:04x}:{:04x}", self.vendor, self.device)
     }
-    /// Подключённая встроенная панель (первая).
+    /// A connected built-in panel (the first one).
     pub fn connected_panel(&self) -> Option<&str> {
         self.connectors.iter().find(|c| c.connected && is_internal_panel(&c.name)).map(|c| c.name.as_str())
     }
-    /// Есть ли вообще подключённый экран.
+    /// Whether there is any connected display at all.
     pub fn any_connected(&self) -> bool {
         self.connectors.iter().any(|c| c.connected)
     }
-    /// Для журнала: `card1 (0000:06:00.0, 1002:15bf, amdgpu)`.
+    /// For the log: `card1 (0000:06:00.0, 1002:15bf, amdgpu)`.
     pub fn describe(&self) -> String {
         let mut parts = Vec::new();
         if let Some(p) = &self.pci {
@@ -141,7 +143,7 @@ impl DrmCard {
     }
 }
 
-/// Встроенная панель ноутбука/приставки: eDP, LVDS, DSI.
+/// The built-in panel of a laptop/console: eDP, LVDS, DSI.
 pub fn is_internal_panel(connector: &str) -> bool {
     ["eDP-", "LVDS-", "DSI-"].iter().any(|p| connector.starts_with(p))
 }
@@ -157,14 +159,14 @@ fn card_number(name: &str) -> Option<u32> {
     name.strip_prefix("card").filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))?.parse().ok()
 }
 
-/// PCI-адрес по имени каталога устройства (`0000:06:00.0`).
+/// PCI address from the device directory name (`0000:06:00.0`).
 fn looks_like_pci(name: &str) -> bool {
     let b = name.as_bytes();
     b.len() == 12 && b[4] == b':' && b[7] == b':' && b[10] == b'.'
 }
 
-/// Прочитать карты из `/sys/class/drm` (в тестах — из подставного каталога).
-/// Только чтение; карты без `device/vendor` (виртуальные) пропускаются.
+/// Read the cards from `/sys/class/drm` (in tests — from a substitute directory).
+/// Read-only; cards without `device/vendor` (virtual ones) are skipped.
 pub fn scan_drm(class_drm: &Path) -> Vec<DrmCard> {
     let Ok(rd) = std::fs::read_dir(class_drm) else { return Vec::new() };
     let names: Vec<String> = rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
@@ -205,19 +207,20 @@ pub fn scan_drm(class_drm: &Path) -> Vec<DrmCard> {
     cards.into_iter().map(|(_, c)| c).collect()
 }
 
-/// Разобрать `VULKAN_ADAPTER` так же, как gamescope (`%X:%X`): `1002:15bf`,
-/// `0x1002:0x15BF`. Не разобралось — None (gamescope тогда берёт первое).
+/// Parse `VULKAN_ADAPTER` the same way gamescope does (`%X:%X`): `1002:15bf`,
+/// `0x1002:0x15BF`. If it does not parse — None (gamescope then takes the first).
 pub fn parse_adapter(text: &str) -> Option<(u16, u16)> {
     let (v, d) = text.trim().trim_matches('"').trim_matches('\'').split_once(':')?;
     Some((parse_hex_id(v)?, parse_hex_id(d)?))
 }
 
 // ============================================================================
-// Переменные, которые сеанс подгрузит ПОСЛЕ нас
+// Variables the session will load AFTER us
 // ============================================================================
 
-/// Строки `KEY=VALUE` файла `environment.d` (как их понимает `.` под
-/// `set -a`: необязательный `export`, кавычки снимаются, `#` — комментарий).
+/// `KEY=VALUE` lines of an `environment.d` file (as `.` under `set -a`
+/// understands them: an optional `export`, quotes are removed, `#` is a
+/// comment).
 pub fn parse_env_lines(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|l| {
@@ -241,10 +244,10 @@ pub fn parse_env_lines(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Переменные, которые ПРЯЧУТ Vulkan-устройства (а не только меняют
-/// порядок): с ними `--prefer-vk-device` может не найти карту экрана.
-/// `DRI_PRIME`/`__NV_PRIME_RENDER_OFFLOAD` порядок меняют, но
-/// `VULKAN_ADAPTER` их перебивает — о них не предупреждаем.
+/// Variables that HIDE Vulkan devices (rather than only change their order):
+/// with them `--prefer-vk-device` may not find the display card.
+/// `DRI_PRIME`/`__NV_PRIME_RENDER_OFFLOAD` change the order, but
+/// `VULKAN_ADAPTER` overrides them — we do not warn about them.
 pub fn device_hiding_vars(env: &[(String, String)]) -> Vec<String> {
     let mut out: Vec<String> = env
         .iter()
@@ -262,38 +265,40 @@ pub fn device_hiding_vars(env: &[(String, String)]) -> Vec<String> {
 }
 
 // ============================================================================
-// Предполётная проверка (чистое решение)
+// Preflight check (a pure decision)
 // ============================================================================
 
-/// Почему ничего не меняем.
+/// Why we change nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeepReason {
-    /// Одна карта: выбирать не из чего.
+    /// One card: there is nothing to choose from.
     SingleCard,
-    /// `VULKAN_ADAPTER` уже указывает на карту экрана.
+    /// `VULKAN_ADAPTER` already points to the display card.
     AlreadyScreenCard,
-    /// Человек (или device-quirks) выбрал другую карту, и у неё есть экран.
+    /// The person (or device-quirks) chose another card, and it has a display.
     ChosenCardHasScreen(String),
-    /// У карты экрана такой же `vendor:device`, как у другой карты.
+    /// The display card has the same `vendor:device` as another card.
     SameIdTwice(String),
-    /// Карт с `vendor` нет вовсе (gamescope упадёт сам — это заметит счётчик).
+    /// There are no cards with `vendor` at all (gamescope will crash by itself —
+    /// the counter will notice).
     NoCards,
 }
 
-/// Почему вход бесполезен: картинки не будет, лучше сразу к экрану входа.
+/// Why logging in is pointless: there will be no picture, better go straight to
+/// the login screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FailReason {
-    /// Ни у одной карты нет подключённого экрана.
+    /// No card has a connected display.
     NoConnectedOutput,
-    /// Экран на NVIDIA, а `nvidia_drm.modeset` не `Y`.
+    /// The display is on NVIDIA, and `nvidia_drm.modeset` is not `Y`.
     NvidiaModesetOff,
-    /// `VULKAN_ADAPTER` из `environment.d` (подгрузится после нас и
-    /// перебьёт нашу правку) указывает на карту без экрана.
+    /// `VULKAN_ADAPTER` from `environment.d` (it will be loaded after us and
+    /// override our edit) points to a card without a display.
     EnvironmentAdapterWithoutScreen(String),
 }
 
 impl FailReason {
-    /// Машинный код (журнал отказов, ответ сценарию).
+    /// Machine code (the failure log, the answer to the script).
     pub fn code(&self) -> &'static str {
         match self {
             FailReason::NoConnectedOutput => "no-connected-output",
@@ -303,17 +308,17 @@ impl FailReason {
     }
 }
 
-/// Итог предполётной проверки.
+/// Result of the preflight check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Preflight {
     Keep(KeepReason),
-    /// Подставить `VULKAN_ADAPTER` (`replaced` — что было, если было).
+    /// Set `VULKAN_ADAPTER` (`replaced` — what it was, if anything).
     Set { adapter: String, card: String, replaced: Option<String> },
     Fail(FailReason),
 }
 
 impl Preflight {
-    /// Одна строка для сценария в `sessions.d`.
+    /// One line for the script in `sessions.d`.
     pub fn machine_line(&self) -> String {
         match self {
             Preflight::Keep(_) => KEEP_LINE.to_string(),
@@ -323,20 +328,20 @@ impl Preflight {
     }
 }
 
-/// Что известно до запуска gamescope.
+/// What is known before gamescope starts.
 #[derive(Debug, Clone, Default)]
 pub struct PreflightInput<'a> {
     pub cards: &'a [DrmCard],
-    /// `VULKAN_ADAPTER` сейчас (системный `sessions.d`, device-quirks).
+    /// `VULKAN_ADAPTER` now (the system `sessions.d`, device-quirks).
     pub adapter: Option<&'a str>,
-    /// `VULKAN_ADAPTER` из `environment.d`: сеанс подгрузит его ПОСЛЕ нас.
+    /// `VULKAN_ADAPTER` from `environment.d`: the session will load it AFTER us.
     pub environment_adapter: Option<&'a str>,
-    /// `/sys/module/nvidia_drm/parameters/modeset` = `Y` (None — модуля нет).
+    /// `/sys/module/nvidia_drm/parameters/modeset` = `Y` (None — there is no module).
     pub nvidia_modeset: Option<bool>,
 }
 
-/// Карта, на которой должна быть картинка: со встроенной панелью, иначе —
-/// с любым подключённым экраном (сначала `boot_vga`).
+/// The card that must show the picture: the one with the built-in panel,
+/// otherwise one with any connected display (`boot_vga` first).
 pub fn screen_card(cards: &[DrmCard]) -> Option<&DrmCard> {
     cards
         .iter()
@@ -350,7 +355,7 @@ fn card_by_adapter<'a>(cards: &'a [DrmCard], adapter: &str) -> Option<&'a DrmCar
     cards.iter().find(|c| c.vendor == v && c.device == d)
 }
 
-/// Решение: что делать с `VULKAN_ADAPTER` перед запуском gamescope.
+/// Decision: what to do with `VULKAN_ADAPTER` before gamescope starts.
 pub fn decide_preflight(input: &PreflightInput) -> Preflight {
     let cards = input.cards;
     if cards.is_empty() {
@@ -362,13 +367,14 @@ pub fn decide_preflight(input: &PreflightInput) -> Preflight {
     if target.vendor == 0x10de && input.nvidia_modeset == Some(false) {
         return Preflight::Fail(FailReason::NvidiaModesetOff);
     }
-    // environment.d перебьёт всё, что мы поставим: можно только понять,
-    // будет ли картинка.
+    // environment.d will override anything we set: we can only find out
+    // whether there will be a picture.
     if let Some(env) = input.environment_adapter.filter(|s| !s.trim().is_empty()) {
         return match card_by_adapter(cards, env) {
             Some(c) if !c.any_connected() => Preflight::Fail(FailReason::EnvironmentAdapterWithoutScreen(env.to_string())),
-            // Есть такая карта с экраном — выбор человека. Нет такой —
-            // gamescope возьмёт первую; это решит сторож по журналу.
+            // There is such a card with a display — the person's choice. There is no
+            // such card — gamescope will take the first; the guard decides from the
+            // journal.
             _ => Preflight::Keep(KeepReason::ChosenCardHasScreen(env.to_string())),
         };
     }
@@ -384,13 +390,13 @@ pub fn decide_preflight(input: &PreflightInput) -> Preflight {
         None => Preflight::Set { adapter: target_id, card: target.card.clone(), replaced: None },
         Some((_, Some(c))) if c.vk_id() == target_id => Preflight::Keep(KeepReason::AlreadyScreenCard),
         Some((a, Some(c))) if c.any_connected() => Preflight::Keep(KeepReason::ChosenCardHasScreen(a.to_string())),
-        // Карта без экрана или устройства нет (опечатка, MUX выключил):
-        // gamescope остался бы без экрана.
+        // A card without a display, or no such device (a typo, the MUX turned it
+        // off): gamescope would be left without a display.
         Some((a, _)) => Preflight::Set { adapter: target_id, card: target.card.clone(), replaced: Some(a.to_string()) },
     }
 }
 
-/// Что сказать человеку (журнал юнита / консоль).
+/// What to tell the person (the unit journal / the console).
 pub fn preflight_lines(input: &PreflightInput, decision: &Preflight, hiding: &[String]) -> Vec<String> {
     let mut out = Vec::new();
     for c in input.cards {
@@ -435,19 +441,19 @@ fn fail_text(r: &FailReason) -> String {
 }
 
 // ============================================================================
-// Сторож в сеансе (чистые решения)
+// The in-session guard (pure decisions)
 // ============================================================================
 
-/// Что журнал gamescope говорит о выводе.
+/// What the gamescope journal says about the output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutputSignal {
-    /// Решения ещё нет.
+    /// No decision yet.
     Pending,
-    /// ✅ выбран настоящий разъём.
+    /// ✅ a real connector was selected.
     Selected(String),
-    /// ⛔ безэкранный запуск (`node` — какой DRM-узел открыт).
+    /// ⛔ a headless start (`node` — which DRM node was opened).
     NoConnector { node: Option<String> },
-    /// ⛔ вывод не поднялся.
+    /// ⛔ the output did not come up.
     ModesetFailed(String),
 }
 
@@ -469,8 +475,8 @@ fn strip_ansi(line: &str) -> String {
     out
 }
 
-/// Разобрать журнал gamescope (строки по порядку). Безэкранный запуск
-/// решает сразу; сбой modeset после выбора разъёма — тоже отказ.
+/// Parse the gamescope journal (lines in order). A headless start decides
+/// immediately; a modeset failure after selecting a connector is also a failure.
 pub fn classify_log(text: &str) -> OutputSignal {
     let mut node = None;
     let mut selected = None;
@@ -494,14 +500,14 @@ pub fn classify_log(text: &str) -> OutputSignal {
     selected.map(OutputSignal::Selected).unwrap_or(OutputSignal::Pending)
 }
 
-/// Сроки сторожа, секунды.
+/// Guard deadlines, in seconds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timeouts {
-    /// gamescope должен выбрать разъём.
+    /// gamescope must select a connector.
     pub output: u64,
-    /// Ни одного окна в фокусе столько времени — это не загрузка.
+    /// No focused window for this long — this is not loading.
     pub steam: u64,
-    /// Потолок, если хоть что-то на экране было (обновление Steam).
+    /// The ceiling if anything at all was on screen (a Steam update).
     pub slow: u64,
 }
 
@@ -511,7 +517,7 @@ impl Default for Timeouts {
     }
 }
 
-/// Отказ сторожа.
+/// A guard failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchFailure {
     NoConnectedOutput { node: Option<String> },
@@ -531,11 +537,12 @@ impl WatchFailure {
             WatchFailure::SteamNotReady => "steam-not-ready",
         }
     }
-    /// Однозначный ли это чёрный экран (по журналу), а не «долго грузится».
+    /// Whether this is an unambiguous black screen (by the journal) rather than
+    /// "loading for a long time".
     pub fn is_certain(&self) -> bool {
         matches!(self, WatchFailure::NoConnectedOutput { .. } | WatchFailure::ModesetFailed(_))
     }
-    /// Для человека.
+    /// For the person.
     pub fn text(&self) -> String {
         match self {
             WatchFailure::NoConnectedOutput { node } => {
@@ -552,17 +559,17 @@ impl WatchFailure {
     }
 }
 
-/// Шаг сторожа.
+/// A guard step.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WatchStep {
     Wait,
-    /// Первая стадия пройдена (разъём выбран).
+    /// The first stage is passed (a connector was selected).
     Proceed(String),
     Ready,
     Fail(WatchFailure),
 }
 
-/// Стадия 1: выбран ли настоящий разъём.
+/// Stage 1: whether a real connector was selected.
 pub fn output_step(signal: &OutputSignal, elapsed: u64, t: &Timeouts) -> WatchStep {
     match signal {
         OutputSignal::NoConnector { node } => WatchStep::Fail(WatchFailure::NoConnectedOutput { node: node.clone() }),
@@ -573,8 +580,8 @@ pub fn output_step(signal: &OutputSignal, elapsed: u64, t: &Timeouts) -> WatchSt
     }
 }
 
-/// Стадия 2: показан ли Steam. `focused_app`/`focused_window` — корневые
-/// свойства gamescope; `seen_window` — окно в фокусе уже бывало.
+/// Stage 2: whether Steam is shown. `focused_app`/`focused_window` — gamescope's
+/// root properties; `seen_window` — a focused window has already appeared.
 pub fn ready_step(elapsed: u64, focused_app: Option<u64>, focused_window: Option<u64>, seen_window: bool, t: &Timeouts) -> WatchStep {
     if focused_app == Some(STEAM_APPID) {
         return WatchStep::Ready;
@@ -589,34 +596,35 @@ pub fn ready_step(elapsed: u64, focused_app: Option<u64>, focused_window: Option
     WatchStep::Wait
 }
 
-/// Гасить ли сеанс. Однозначный чёрный экран — всегда; «не дождались
-/// Steam» — только пока игровой режим ни разу не входил удачно.
+/// Whether to end the session. An unambiguous black screen — always; "Steam was
+/// not waited for" — only while game mode has never logged in successfully.
 pub fn should_end_session(failure: &WatchFailure, had_success_before: bool) -> bool {
     failure.is_certain() || !had_success_before
 }
 
-/// Значение CARDINAL из вывода `xprop -root NAME`:
-/// `GAMESCOPE_FOCUSED_APP(CARDINAL) = 769` → 769; «not found» → None.
+/// The CARDINAL value from the output of `xprop -root NAME`:
+/// `GAMESCOPE_FOCUSED_APP(CARDINAL) = 769` → 769; "not found" → None.
 pub fn parse_xprop_cardinal(text: &str) -> Option<u64> {
     let (_, v) = text.lines().next()?.split_once('=')?;
     v.split(',').next()?.trim().parse().ok()
 }
 
 // ============================================================================
-// Сценарий в sessions.d
+// The script in sessions.d
 // ============================================================================
 
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-/// Текст сценария. Его подгружает (`.`) сам gamescope-session-plus под
-/// `set -a`, после системного `sessions.d/steam`. Поэтому: ни `set -e`, ни
-/// чужих имён (`CLIENT` в сеансе readonly), всё своё — с `_rexon_`;
-/// системные `post_gamescope_start` и `short_session_recover` сохраняются
-/// под своими именами и зовутся первыми (OGC может поменять их тело — мы
-/// его не копируем). `exit 1` — только на однозначном «картинки не будет»:
-/// сеанс кончается, человек у экрана входа, счётчик коротких сеансов не растёт.
+/// Script text. gamescope-session-plus itself loads it (`.`) under `set -a`,
+/// after the system `sessions.d/steam`. Therefore: no `set -e`, no foreign names
+/// (`CLIENT` is readonly in the session), everything of ours is prefixed with
+/// `_rexon_`; the system `post_gamescope_start` and `short_session_recover` are
+/// kept under their own names and called first (OGC may change their body — we
+/// do not copy it). `exit 1` — only on an unambiguous "there will be no
+/// picture": the session ends, the person is at the login screen, the
+/// short-session counter does not grow.
 pub fn hook_script(program: &str, hook_path: &str) -> String {
     let bin = sh_quote(program);
     format!(
@@ -658,29 +666,29 @@ pub fn hook_script(program: &str, hook_path: &str) -> String {
     )
 }
 
-/// Есть ли в системном сценарии крючки, на которые мы опираемся.
+/// Whether the system script has the hooks we rely on.
 pub fn session_script_supported(text: &str) -> bool {
     ["post_gamescope_start", "short_session_recover", "CLIENT_CONFIG_DIR_LOCAL", "--prefer-vk-device $VULKAN_ADAPTER"]
         .iter()
         .all(|n| text.contains(n))
 }
 
-/// Что сделать со сценарием.
+/// What to do with the script.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HookChange {
     Nothing,
     Write(String),
     Remove,
-    /// На этом месте файл человека — не трогаем.
+    /// The person's file is in this place — we do not touch it.
     ForeignFile,
 }
 
-/// Свой ли это файл.
+/// Whether this is our file.
 pub fn is_our_hook(text: &str) -> bool {
     text.starts_with(HOOK_MARKER)
 }
 
-/// План: `wanted` — сторож нужен; `program` — абсолютный путь бинаря.
+/// Plan: `wanted` — the guard is needed; `program` — the absolute path of the binary.
 pub fn hook_change(wanted: bool, program: Option<&str>, hook_path: &str, existing: Option<&str>) -> HookChange {
     if existing.is_some_and(|e| !is_our_hook(e)) {
         return HookChange::ForeignFile;
@@ -699,7 +707,7 @@ pub fn hook_change(wanted: bool, program: Option<&str>, hook_path: &str, existin
     }
 }
 
-/// Пути сторожа.
+/// Guard paths.
 #[derive(Debug, Clone)]
 pub struct GamemodePaths {
     pub config_home: PathBuf,
@@ -719,17 +727,17 @@ impl GamemodePaths {
     pub fn hook(&self) -> PathBuf {
         self.config_home.join(HOOK_REL_PATH)
     }
-    /// Журнал отказов: `<время> <код> <текст>`.
+    /// Failure log: `<time> <code> <text>`.
     pub fn failures(&self) -> PathBuf {
         self.state_dir.join("failures")
     }
-    /// Когда игровой режим последний раз показал Steam.
+    /// When game mode last showed Steam.
     pub fn last_ok(&self) -> PathBuf {
         self.state_dir.join("last-ok")
     }
 }
 
-/// Применить план сценария.
+/// Apply the script plan.
 pub fn sync_hook(paths: &GamemodePaths, wanted: bool, program: Option<&str>) -> Result<HookChange, String> {
     let path = paths.hook();
     let existing = std::fs::read_to_string(&path).ok();
@@ -742,7 +750,7 @@ pub fn sync_hook(paths: &GamemodePaths, wanted: bool, program: Option<&str>) -> 
     Ok(change)
 }
 
-/// Дописать отказ в журнал.
+/// Append a failure to the log.
 pub fn record_failure(paths: &GamemodePaths, when: &str, code: &str, text: &str) -> Result<(), String> {
     use std::io::Write;
     std::fs::create_dir_all(&paths.state_dir).map_err(|e| format!("{}: {e}", paths.state_dir.display()))?;
@@ -757,7 +765,7 @@ pub fn record_failure(paths: &GamemodePaths, when: &str, code: &str, text: &str)
 }
 
 // ============================================================================
-// Живые маршруты
+// Live routes
 // ============================================================================
 
 fn now_epoch() -> u64 {
@@ -773,8 +781,8 @@ fn arg_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.get(pos + 1).map(String::as_str)
 }
 
-/// `VULKAN_ADAPTER` и прочее из `environment.d` — в том порядке, в каком
-/// их подгрузит сеанс (`/etc`, потом `~/.config`; последний побеждает).
+/// `VULKAN_ADAPTER` and the rest from `environment.d` — in the order the session
+/// loads them (`/etc`, then `~/.config`; the last one wins).
 fn environment_d_live() -> Vec<(String, String)> {
     let home = std::env::var("HOME").unwrap_or_default();
     let mut files: Vec<PathBuf> = Vec::new();
@@ -792,8 +800,8 @@ fn nvidia_modeset_live() -> Option<bool> {
     std::fs::read_to_string("/sys/module/nvidia_drm/parameters/modeset").ok().map(|s| s.trim() == "Y")
 }
 
-/// `rexon --gamemode-preflight`: строки для человека — в stderr (журнал
-/// юнита), одна машинная строка — в `out` (stdout, её читает сценарий).
+/// `rexon --gamemode-preflight`: lines for the person go to stderr (the unit
+/// journal), one machine line goes to `out` (stdout, the script reads it).
 pub fn preflight_route_live(dry_run: bool, out: &mut dyn FnMut(&str)) -> i32 {
     let cards = scan_drm(Path::new("/sys/class/drm"));
     let env_d = environment_d_live();
@@ -828,7 +836,7 @@ fn journal_since_live(since: u64) -> String {
         .unwrap_or_default()
 }
 
-/// `None` — xprop нет или дисплея нет.
+/// `None` — no xprop or no display.
 fn root_prop_live(name: &str) -> Option<Option<u64>> {
     let display = std::env::var("DISPLAY").ok().filter(|d| !d.is_empty())?;
     let o = std::process::Command::new("xprop").args(["-display", &display, "-root", name]).output().ok()?;
@@ -864,7 +872,7 @@ pub fn watch_route_live(args: &[String], out: &mut dyn FnMut(&str)) -> i32 {
         }
         1
     };
-    // Стадия 1: разъём.
+    // Stage 1: the connector.
     let connector = loop {
         let elapsed = now_epoch().saturating_sub(start);
         match output_step(&classify_log(&read_log()), elapsed, &t) {
@@ -875,7 +883,7 @@ pub fn watch_route_live(args: &[String], out: &mut dyn FnMut(&str)) -> i32 {
     };
     // TRANSLATORS: game mode watcher. %1 = connector like "eDP-1".
     out(&trf("gamescope picked the screen %1.", &[&connector]));
-    // Стадия 2: Steam в фокусе. Без xprop/дисплея (проверка по файлу) — дальше не смотрим.
+    // Stage 2: Steam in focus. Without xprop/display (a check from a file) — we look no further.
     if log_file.is_some() || root_prop_live("GAMESCOPE_FOCUSED_APP").is_none() {
         return 0;
     }
@@ -902,7 +910,7 @@ pub fn watch_route_live(args: &[String], out: &mut dyn FnMut(&str)) -> i32 {
     }
 }
 
-/// `rexon --gamemode-recover`: счётчик коротких сеансов сработал.
+/// `rexon --gamemode-recover`: the short-session counter fired.
 pub fn recover_route_live(out: &mut dyn FnMut(&str)) -> i32 {
     // TRANSLATORS: game mode, five short sessions in a row.
     let text = tr("Game mode stopped right after the start five times in a row.");
@@ -946,7 +954,7 @@ pub fn hook_route_live(install: bool, out: &mut dyn FnMut(&str)) -> i32 {
     }
 }
 
-/// Маршрут без окна. `None` — не наш флаг.
+/// A route without a window. `None` — not our flag.
 pub fn cli_route(args: &[String], out: &mut dyn FnMut(&str)) -> Option<i32> {
     let has = |f: &str| args.iter().any(|a| a == f);
     if has(PREFLIGHT_FLAG) {
@@ -991,9 +999,9 @@ mod tests {
         std::fs::write(path, text).unwrap();
     }
 
-    /// Раскладка как у владельца 14.11: eDP-1 на AMD Phoenix (06:00.0) =
-    /// card1, NVIDIA (01:00.0) = card2 с отключённым HDMI. Каталоги устроены
-    /// как в sysfs: cardN/device — ссылка на каталог PCI-устройства.
+    /// The layout as on the owner's machine on 14.11: eDP-1 on AMD Phoenix (06:00.0)
+    /// = card1, NVIDIA (01:00.0) = card2 with HDMI disconnected. The directories are
+    /// arranged as in sysfs: cardN/device is a link to the PCI device directory.
     fn owner_sysfs(t: &Tmp) -> PathBuf {
         let devices = t.0.join("devices/pci0000:00");
         let class = t.0.join("class/drm");
@@ -1015,7 +1023,7 @@ mod tests {
                 put(&class.join(format!("{card}-{c}")).join("status"), &format!("{st}\n"));
             }
         }
-        // мусор, который не карта
+        // junk that is not a card
         std::fs::create_dir_all(class.join("renderD128")).unwrap();
         put(&class.join("version"), "drm 1.1.0\n");
         class
@@ -1069,7 +1077,7 @@ mod tests {
         let d = decide_preflight(&input(&cards, None));
         assert_eq!(d, Preflight::Set { adapter: "1002:15bf".into(), card: "card1".into(), replaced: None });
         assert_eq!(d.machine_line(), "set VULKAN_ADAPTER=1002:15bf");
-        // пустое значение = не задано
+        // empty value = not set
         assert_eq!(decide_preflight(&input(&cards, Some("  "))).machine_line(), "set VULKAN_ADAPTER=1002:15bf");
     }
 
@@ -1089,7 +1097,7 @@ mod tests {
     fn adapter_already_right_or_users_card_with_screen_is_kept() {
         let cards = hybrid();
         assert_eq!(decide_preflight(&input(&cards, Some("0x1002:0x15BF"))), Preflight::Keep(KeepReason::AlreadyScreenCard));
-        // MUX: внешний монитор на NVIDIA, человек сам выбрал её
+        // MUX: external monitor on NVIDIA, the person chose it themselves
         let mut cards = hybrid();
         cards[1].connectors[0].connected = true;
         assert_eq!(
@@ -1132,7 +1140,7 @@ mod tests {
 
     #[test]
     fn panel_on_nvidia_needs_modeset() {
-        // MUX «только дискретная»: панель на NVIDIA
+        // MUX "discrete only": the panel is on NVIDIA
         let cards = vec![card("card0", 0x10de, 0x2820, &[("eDP-1", true)]), card("card1", 0x1002, 0x15bf, &[])];
         let mut i = input(&cards, None);
         i.nvidia_modeset = Some(false);
@@ -1233,7 +1241,7 @@ mod tests {
         assert_eq!(ready_step(10, Some(STEAM_APPID), Some(0x400001), false, &t), WatchStep::Ready);
         assert_eq!(ready_step(10, None, None, false, &t), WatchStep::Wait);
         assert_eq!(ready_step(181, None, Some(0), false, &t), WatchStep::Fail(WatchFailure::SteamNotShown));
-        // окно было (обновление Steam) — ждём до потолка
+        // there was a window (a Steam update) — wait until the ceiling
         assert_eq!(ready_step(300, Some(0), Some(0x400001), false, &t), WatchStep::Wait);
         assert_eq!(ready_step(300, Some(0), Some(0), true, &t), WatchStep::Wait);
         assert_eq!(ready_step(601, Some(0), Some(0x400001), true, &t), WatchStep::Fail(WatchFailure::SteamNotReady));
@@ -1265,14 +1273,14 @@ mod tests {
         assert!(s.contains("eval \"_rexon_system_$(declare -f short_session_recover)\""));
         assert!(s.contains("'set VULKAN_ADAPTER='*) VULKAN_ADAPTER=\"${_rexon_pf#set VULKAN_ADAPTER=}\""));
         assert!(s.contains("rm -f '/home/u/.config/gamescope-session-plus/sessions.d/steam'"));
-        // CLIENT в сеансе readonly — его не трогаем
+        // CLIENT is readonly in the session — we do not touch it
         assert!(!s.contains("CLIENT="));
         assert!(!s.contains("set -e"));
     }
 
-    /// Сценарий в настоящем bash, как его подключает сеанс: под `set -a`,
-    /// после системного файла и с `declare -r CLIENT`. Подставной «rexon»
-    /// отвечает строкой, крючки зовутся — системное тело выполняется первым.
+    /// The script in real bash, the way the session includes it: under `set -a`,
+    /// after the system file and with `declare -r CLIENT`. A substitute "rexon"
+    /// answers with a line, the hooks are called — the system body runs first.
     #[test]
     fn hook_runs_in_bash_like_the_session() {
         if std::process::Command::new("bash").arg("--version").output().is_err() {
@@ -1314,7 +1322,8 @@ mod tests {
         assert_eq!(&lines[3..], ["system-recover", RECOVER_FLAG]);
     }
 
-    /// Ответ `fail …` обрывает сеанс до gamescope; нет бинаря — файл убирается сам.
+    /// A `fail …` answer cuts the session short before gamescope; with no binary the
+    /// file removes itself.
     #[test]
     fn hook_fail_exits_and_missing_binary_removes_hook() {
         if std::process::Command::new("bash").arg("--version").output().is_err() {
@@ -1383,7 +1392,7 @@ mod tests {
         assert_eq!(text, "2026-11-14T03:00:00+01:00 no-connected-output a b\n2026-11-14T03:01:00+01:00 steam-not-shown c\n");
     }
 
-    /// Живая машина, только чтение /sys: `cargo test-core gamemode_guard::tests::live_ -- --ignored --nocapture`.
+    /// Live machine, read-only /sys: `cargo test-core gamemode_guard::tests::live_ -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn live_preflight_on_this_machine() {

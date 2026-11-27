@@ -1,29 +1,29 @@
-// WallpaperFilterRuleModel на Rust через cxx-qt — пробный порт C++-модели
-// редактора фильтров вкладки Wallpaper Engine (rexon/qt_wallpaper_engine/
-// qml_ui/cpp/filter_rule_model.cpp). Поведение 1-в-1 с оригиналом.
+// WallpaperFilterRuleModel in Rust via cxx-qt — a trial port of the C++ model
+// of the Wallpaper Engine tab filter editor (rexon/qt_wallpaper_engine/
+// qml_ui/cpp/filter_rule_model.cpp). Behavior is 1:1 with the original.
 //
-// Исходная C++-модель (порт waywallen ui/src/model/filter_rule_model.cpp,
-// MIT, (c) hypengw — атрибуция в NOTICE) — плоский QAbstractListModel
-// поверх QList<WallpaperFilterRule>.
+// The original C++ model (a port of waywallen ui/src/model/filter_rule_model.cpp,
+// MIT, (c) hypengw — attribution in NOTICE) is a flat QAbstractListModel
+// over QList<WallpaperFilterRule>.
 //
-// Логика (группы / логические операторы / dirty / сигналы) целиком на
-// Rust. Единственное, что Rust выразить не может, — мета-рефлексия чужих
-// Qt-Protobuf-гаджетов (их staticMetaObject); она вынесена в обобщённый
-// C++-шим rexon_gadget_shim.cpp (без зависимости от filter.qpb.h).
+// The logic (groups / logical operators / dirty / signals) is entirely in
+// Rust. The only thing Rust cannot express is meta-reflection of foreign
+// Qt-Protobuf gadgets (their staticMetaObject); it is moved into a generic
+// C++ shim rexon_gadget_shim.cpp (without depending on filter.qpb.h).
 
-/// Мост cxx-qt: QAbstractListModel-подкласс WallpaperFilterRuleModel.
+/// cxx-qt bridge: the QAbstractListModel subclass WallpaperFilterRuleModel.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++Qt" {
         include!(<QtCore/QAbstractListModel>);
-        /// Базовый Qt-тип.
+        /// Base Qt type.
         #[qobject]
         type QAbstractListModel;
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-lib/qhash.h");
-        /// QHash<i32, QByteArray> — для roleNames.
+        /// QHash<i32, QByteArray> — for roleNames.
         type QHash_i32_QByteArray = cxx_qt_lib::QHash<cxx_qt_lib::QHashPair_i32_QByteArray>;
 
         include!("cxx-qt-lib/qvariant.h");
@@ -35,16 +35,16 @@ pub mod qobject {
         type QModelIndex = cxx_qt_lib::QModelIndex;
 
         include!("cxx-qt-lib/qvector.h");
-        /// QVector<i32> — набор ролей для dataChanged.
+        /// QVector<i32> — the set of roles for dataChanged.
         type QVector_i32 = cxx_qt_lib::QVector<i32>;
 
         include!("cxx-qt-lib/qlist.h");
-        /// QVariantList (QList<QVariant>) — items() / replaceState(). Имя
-        /// алиаса обязано совпадать с ExternType-Id cxx-qt-lib: QList_QVariant.
+        /// QVariantList (QList<QVariant>) — items() / replaceState(). The alias name
+        /// must match the cxx-qt-lib ExternType-Id: QList_QVariant.
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
     }
 
-    // Обобщённый мост к мета-рефлексии гаджетов (см. rexon_gadget_shim.h).
+    // Generic bridge to gadget meta-reflection (see rexon_gadget_shim.h).
     unsafe extern "C++" {
         include!("rexon_gadget_shim.h");
         fn rexon_default_gadget(type_name: &str) -> QVariant;
@@ -53,35 +53,45 @@ pub mod qobject {
         fn rexon_gadget_set_by_role(gadget: &QVariant, role_index: i32, value: &QVariant)
             -> QVariant;
         fn rexon_gadget_read_int(gadget: &QVariant, prop: &str) -> i32;
+        fn rexon_gadget_read_i64(gadget: &QVariant, prop: &str) -> i64;
+        fn rexon_gadget_read_named(gadget: &QVariant, prop: &str) -> QVariant;
         fn rexon_gadget_set_int(gadget: &QVariant, prop: &str, value: i32) -> QVariant;
         fn rexon_variant_is_valid(v: &QVariant) -> bool;
         fn rexon_role_names(type_name: &str) -> QHash_i32_QByteArray;
     }
 
-    // Регистрация типа в QML (qmlRegisterType в "waywallen.ui").
+    // Registering the type in QML (qmlRegisterType in "waywallen.ui").
     unsafe extern "C++" {
         include!("rexon_register.h");
         fn rexon_do_register_filter_model();
     }
 
     extern "RustQt" {
-        // Регистрация типа — императивная: extern "C" rexon_register_filter_model
-        // (cpp/rexon_register.cpp) зовёт qmlRegisterType в "waywallen.ui", как
-        // делал C++-оригинал. Окно грузит .so через dlopen (rexon-gui we_env).
+        // Type registration is imperative: extern "C" rexon_register_filter_model
+        // (cpp/rexon_register.cpp) calls qmlRegisterType in "waywallen.ui", as
+        // the C++ original did. The window loads the .so via dlopen (rexon-gui we_env).
         #[qobject]
         #[base = QAbstractListModel]
         #[qproperty(bool, dirty, READ = dirty, NOTIFY = dirty_changed)]
+        // waywallen 0.6.1: the draft can be applied only when every rule and
+        // group link is something the daemon accepts.
+        #[qproperty(bool, valid, READ = valid, NOTIFY = draft_changed)]
         #[qproperty(QList_QVariant, filter_logics, cxx_name = "filterLogics",
                     READ = filter_logics, NOTIFY = filter_logics_changed)]
         type WallpaperFilterRuleModel = super::WallpaperFilterRuleModelRust;
     }
 
-    // ── Сигналы ───────────────────────────────────────────────────────────
+    // ── Signals ───────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
-        /// Применить фильтры (QML вызывает model.apply(), обработчик onApply).
+        /// waywallen 0.6.1: `apply()` is an invokable now; pages listen to
+        /// `applied`, which fires only for a valid draft.
         #[qsignal]
-        fn apply(self: Pin<&mut WallpaperFilterRuleModel>);
-        /// Сбросить фильтры (QML вызывает model.reset(), обработчик onReset).
+        fn applied(self: Pin<&mut WallpaperFilterRuleModel>);
+        /// waywallen 0.6.1: the draft changed (NOTIFY of `valid`).
+        #[qsignal]
+        #[cxx_name = "draftChanged"]
+        fn draft_changed(self: Pin<&mut WallpaperFilterRuleModel>);
+        /// Reset the filters (QML calls model.reset(), the onReset handler).
         #[qsignal]
         fn reset(self: Pin<&mut WallpaperFilterRuleModel>);
         #[qsignal]
@@ -91,7 +101,7 @@ pub mod qobject {
         #[cxx_name = "filterLogicsChanged"]
         fn filter_logics_changed(self: Pin<&mut WallpaperFilterRuleModel>);
 
-        /// dataChanged базового класса.
+        /// dataChanged of the base class.
         #[inherit]
         #[qsignal]
         #[cxx_name = "dataChanged"]
@@ -103,10 +113,10 @@ pub mod qobject {
         );
     }
 
-    // ── Наследуемые методы базового класса ────────────────────────────────
+    // ── Inherited methods of the base class ────────────────────────────────
     extern "RustQt" {
         /// # Safety
-        /// Требует парного end_insert_rows.
+        /// Requires a matching end_insert_rows.
         #[inherit]
         #[cxx_name = "beginInsertRows"]
         unsafe fn begin_insert_rows(
@@ -116,13 +126,13 @@ pub mod qobject {
             last: i32,
         );
         /// # Safety
-        /// Парный к begin_insert_rows.
+        /// Pairs with begin_insert_rows.
         #[inherit]
         #[cxx_name = "endInsertRows"]
         unsafe fn end_insert_rows(self: Pin<&mut WallpaperFilterRuleModel>);
 
         /// # Safety
-        /// Требует парного end_remove_rows.
+        /// Requires a matching end_remove_rows.
         #[inherit]
         #[cxx_name = "beginRemoveRows"]
         unsafe fn begin_remove_rows(
@@ -132,29 +142,29 @@ pub mod qobject {
             last: i32,
         );
         /// # Safety
-        /// Парный к begin_remove_rows.
+        /// Pairs with begin_remove_rows.
         #[inherit]
         #[cxx_name = "endRemoveRows"]
         unsafe fn end_remove_rows(self: Pin<&mut WallpaperFilterRuleModel>);
 
         /// # Safety
-        /// Требует парного end_reset_model.
+        /// Requires a matching end_reset_model.
         #[inherit]
         #[cxx_name = "beginResetModel"]
         unsafe fn begin_reset_model(self: Pin<&mut WallpaperFilterRuleModel>);
         /// # Safety
-        /// Парный к begin_reset_model.
+        /// Pairs with begin_reset_model.
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut WallpaperFilterRuleModel>);
     }
 
-    // ── Переопределения QAbstractListModel ─────────────────────────────────
-    // Без #[qinvokable]: QML зовёт rowCount()/setData()/removeRows() через
-    // Q_INVOKABLE базового QAbstractItemModel, где у parent/role есть
-    // default-аргументы (moc клонирует укороченные сигнатуры). Инвокабл в
-    // наследнике затеняет клоны базы, и rowCount() без аргументов из JS
-    // падает «Insufficient arguments» — ломая кнопку clear_all диалога.
+    // ── QAbstractListModel overrides ─────────────────────────────────
+    // Without #[qinvokable]: QML calls rowCount()/setData()/removeRows() through
+    // the Q_INVOKABLE of the base QAbstractItemModel, where parent/role have
+    // default arguments (moc clones the shortened signatures). An invokable in
+    // the subclass shadows the base clones, and rowCount() without arguments from JS
+    // fails with "Insufficient arguments" — breaking the dialog's clear_all button.
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -186,17 +196,20 @@ pub mod qobject {
         ) -> bool;
     }
 
-    // ── Property-геттеры ──────────────────────────────────────────────────
+    // ── Property getters ──────────────────────────────────────────────────
     extern "RustQt" {
         fn dirty(self: &WallpaperFilterRuleModel) -> bool;
+        fn valid(self: &WallpaperFilterRuleModel) -> bool;
         #[cxx_name = "filterLogics"]
         fn filter_logics(self: &WallpaperFilterRuleModel) -> QList_QVariant;
     }
 
-    // ── Контракт оригинала (Q_INVOKABLE) ──────────────────────────────────
+    // ── Contract of the original (Q_INVOKABLE) ──────────────────────────────────
     extern "RustQt" {
         #[qinvokable]
         fn items(self: &WallpaperFilterRuleModel) -> QList_QVariant;
+        #[qinvokable]
+        fn apply(self: Pin<&mut WallpaperFilterRuleModel>);
         #[qinvokable]
         #[cxx_name = "replaceState"]
         fn replace_state(
@@ -252,31 +265,120 @@ use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QModelIndex, QVariant, QVector};
 
-// Полные имена метатипов гаджетов (регистрируются модулем waywallen.control).
+// Full metatype names of the gadgets (registered by the waywallen.control module).
 const RULE_TYPE: &str = "waywallen::control::v1::WallpaperFilterRule";
 const LOGIC_TYPE: &str = "waywallen::control::v1::FilterLogic";
-// Оригинал: роль == Qt::UserRole + 1 + индекс_свойства. Qt::UserRole == 256.
+// Original: role == Qt::UserRole + 1 + property_index. Qt::UserRole == 256.
 const ROLE_BASE: i32 = 256 + 1;
-// LogicOp::LOGIC_OP_AND == 1 (см. filter.proto).
+const STRING_FILTER_TYPE: &str = "waywallen::control::v1::WallpaperStringFilter";
+/// `WALLPAPER_FILTER_TYPE_NAME` (filter.proto).
+const RULE_TYPE_NAME: i32 = 1;
+/// `STRING_CONDITION_CONTAINS` (filter.proto).
+const STRING_CONDITION_CONTAINS: i32 = 1;
+
+/// Property index of `name` on the rule gadget (its role minus `ROLE_BASE`).
+fn rule_role(rule: &QVariant, name: &str) -> i32 {
+    let _ = rule;
+    let names = qobject::rexon_role_names(RULE_TYPE);
+    for (role, n) in names.iter() {
+        if n.as_slice() == name.as_bytes() {
+            return *role - ROLE_BASE;
+        }
+    }
+    -1
+}
+
+/// What validation needs from one rule. Inactive oneof branches are `None`
+/// (their getters are never touched, see `rule_view`).
+#[derive(Debug, Clone, Default, PartialEq)]
+struct RuleView {
+    group: i32,
+    ty: i32,
+    string_condition: Option<i32>,
+    /// (condition, value)
+    int_filter: Option<(i32, i64)>,
+    tag_condition: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct LogicView {
+    op: i32,
+    group_a: i32,
+    group_b: i32,
+}
+
+fn rule_view(rule: &QVariant) -> RuleView {
+    let read = |name: &str| qobject::rexon_gadget_read_int(rule, name);
+    let branch = |has: &str, name: &str| {
+        (read(has) != 0).then(|| qobject::rexon_gadget_read_named(rule, name))
+    };
+    RuleView {
+        group: read("group"),
+        ty: read("type"),
+        string_condition: branch("hasStringFilter", "stringFilter")
+            .map(|f| qobject::rexon_gadget_read_int(&f, "condition")),
+        int_filter: branch("hasIntFilter", "intFilter").map(|f| {
+            (
+                qobject::rexon_gadget_read_int(&f, "condition"),
+                qobject::rexon_gadget_read_i64(&f, "value"),
+            )
+        }),
+        tag_condition: branch("hasTagFilter", "tagFilter")
+            .map(|f| qobject::rexon_gadget_read_int(&f, "condition")),
+    }
+}
+
+/// One rule is something the daemon accepts: a known type with the payload
+/// and condition codes that type takes (waywallen 0.6.1 filter validation).
+fn filter_rule_valid(r: &RuleView) -> bool {
+    if r.group < 0 {
+        return false;
+    }
+    let string_ok = matches!(r.string_condition, Some(c) if (1..=4).contains(&c));
+    let int_ok = matches!(r.int_filter, Some((c, _)) if (1..=6).contains(&c));
+    match r.ty {
+        // name, author, path
+        1 | 2 | 8 => string_ok,
+        // size: positive value, only "equal"/"not equal"-style conditions
+        3 => int_ok && matches!(r.int_filter, Some((c, v)) if v > 0 && c <= 2),
+        5..=7 => int_ok,
+        9 => string_ok || matches!(r.tag_condition, Some(c) if (1..=4).contains(&c)),
+        _ => false,
+    }
+}
+
+/// The whole draft: every rule valid, every group link has a known operator
+/// and points at groups that still have rules.
+fn filter_state_valid(rules: &[RuleView], logics: &[LogicView]) -> bool {
+    if !rules.iter().all(filter_rule_valid) {
+        return false;
+    }
+    logics.iter().all(|l| {
+        (l.op == 1 || l.op == 2)
+            && rules.iter().any(|r| r.group == l.group_a)
+            && rules.iter().any(|r| r.group == l.group_b)
+    })
+}
+// LogicOp::LOGIC_OP_AND == 1 (see filter.proto).
 const LOGIC_OP_AND: i32 = 1;
 
 type QVariantList = cxx_qt_lib::QList<QVariant>;
 
-/// Экспортируемая точка входа: окно вкладки обоев грузит эту cdylib через
-/// `dlopen` и берёт символ по имени `dlsym` (`rexon-gui`,
-/// `we_env::register_filter_model`). Экспорт обязателен: крейт отдельный,
-/// а модель — только в cdylib (гаджеты Qt-Protobuf маршалятся лишь в
-/// C++/Rust). Делегирует в C++-шим (qmlRegisterType).
+/// Exported entry point: the wallpaper tab window loads this cdylib via
+/// `dlopen` and takes the symbol by name with `dlsym` (`rexon-gui`,
+/// `we_env::register_filter_model`). The export is mandatory: the crate is separate,
+/// and the model exists only in the cdylib (Qt-Protobuf gadgets are marshalled only in
+/// C++/Rust). Delegates to the C++ shim (qmlRegisterType).
 ///
-/// Вызывать один раз до загрузки QML, из потока с живым QGuiApplication.
-/// Идемпотентно (повторный вызов — no-op).
+/// Call once before QML is loaded, from a thread with a live QGuiApplication.
+/// Idempotent (a repeated call is a no-op).
 #[no_mangle]
 pub extern "C" fn rexon_register_filter_model() {
     qobject::rexon_do_register_filter_model();
 }
 
-/// Rust-состояние модели: строки-правила и логические операторы — гаджеты
-/// в QVariant (мета-рефлексия — через C++-шим).
+/// Rust state of the model: rule rows and logical operators — gadgets
+/// in QVariant (meta-reflection — through the C++ shim).
 #[derive(Default)]
 pub struct WallpaperFilterRuleModelRust {
     rows: Vec<QVariant>,
@@ -285,13 +387,12 @@ pub struct WallpaperFilterRuleModelRust {
     connections: Vec<cxx_qt::QMetaObjectConnectionGuard>,
 }
 
-// Пост-конструкция: связать apply/reset со сбросом dirty (как коннекты в
-// конструкторе C++-модели).
+// Post-construction: connect apply/reset to clearing dirty (like the connects in
+// the C++ model's constructor).
 impl cxx_qt::Initialize for qobject::WallpaperFilterRuleModel {
     fn initialize(mut self: Pin<&mut Self>) {
-        let apply_conn = self.as_mut().on_apply(|q| q.clear_dirty());
+        // waywallen 0.6.1: `apply` is no longer a signal (see `apply()`).
         let reset_conn = self.as_mut().on_reset(|q| q.clear_dirty());
-        self.as_mut().rust_mut().connections.push(apply_conn);
         self.as_mut().rust_mut().connections.push(reset_conn);
     }
 }
@@ -314,6 +415,36 @@ impl qobject::WallpaperFilterRuleModel {
         self.set_dirty(false);
     }
 
+    /// `markDirty` of the original: every edit marks the draft dirty and
+    /// re-announces `valid` (waywallen 0.6.1 `draftChanged`).
+    fn mark_dirty(mut self: Pin<&mut Self>) {
+        self.as_mut().set_dirty(true);
+        self.as_mut().draft_changed();
+    }
+
+    fn valid(&self) -> bool {
+        let rules: Vec<RuleView> = self.rows.iter().map(rule_view).collect();
+        let logics: Vec<LogicView> = self
+            .logics
+            .iter()
+            .map(|l| LogicView {
+                op: qobject::rexon_gadget_read_int(l, "op"),
+                group_a: qobject::rexon_gadget_read_int(l, "groupA"),
+                group_b: qobject::rexon_gadget_read_int(l, "groupB"),
+            })
+            .collect();
+        filter_state_valid(&rules, &logics)
+    }
+
+    /// waywallen 0.6.1: an invalid draft is never applied.
+    fn apply(mut self: Pin<&mut Self>) {
+        if !self.valid() {
+            return;
+        }
+        self.as_mut().set_dirty(false);
+        self.as_mut().applied();
+    }
+
     // ── filterLogics ──────────────────────────────────────────────────────
     fn filter_logics(&self) -> QVariantList {
         let mut out = QVariantList::default();
@@ -323,11 +454,11 @@ impl qobject::WallpaperFilterRuleModel {
         out
     }
 
-    // Оповестить об изменении логик + пометить dirty (как filterLogicsChanged
-    // → markDirty в оригинале).
+    // Notify about a change of the logics + mark dirty (like filterLogicsChanged
+    // → markDirty in the original).
     fn touch_logics(mut self: Pin<&mut Self>) {
         self.as_mut().filter_logics_changed();
-        self.as_mut().set_dirty(true);
+        self.as_mut().mark_dirty();
     }
 
     // ── QAbstractListModel ────────────────────────────────────────────────
@@ -369,10 +500,10 @@ impl qobject::WallpaperFilterRuleModel {
             return false;
         }
         self.as_mut().rust_mut().rows[row as usize] = updated;
-        // запись payload меняет и has*-роли — оповещаем все роли строки
+        // writing the payload changes the has* roles too — notify all roles of the row
         let roles = QVector::<i32>::default();
         self.as_mut().data_changed(index, index, &roles);
-        self.as_mut().set_dirty(true);
+        self.as_mut().mark_dirty();
         true
     }
 
@@ -394,19 +525,19 @@ impl qobject::WallpaperFilterRuleModel {
                 .drain(start..start + count as usize);
             self.as_mut().end_remove_rows();
         }
-        self.as_mut().set_dirty(true);
+        self.as_mut().mark_dirty();
         self.as_mut().drop_orphan_logics();
         true
     }
 
-    /// Убрать логики, ссылающиеся на группу, в которой не осталось правил.
+    /// Remove logics that refer to a group with no rules left.
     ///
-    /// Кнопка «очистить всё» вендорного диалога 0.4.4 удаляет только строки
-    /// (`removeRows`), а логики между группами остаются. Демон waywallen
-    /// 0.5.0 на логику с несуществующей группой отвечает `InvalidArgument`
-    /// на весь список обоев. Апстрим в 0.5.0 дописал очистку в QML; здесь
-    /// она в модели — так её получают и «очистить всё», и удаление
-    /// последнего правила группы любым путём.
+    /// The «Clear all» button of the vendor dialog 0.4.4 removes only rows
+    /// (`removeRows`), while the logics between groups remain. The waywallen
+    /// 0.5.0 daemon answers a logic with a nonexistent group with `InvalidArgument`
+    /// for the whole wallpaper list. Upstream added the cleanup in QML in 0.5.0; here
+    /// it is in the model — that way both «Clear all» and removing the
+    /// last rule of a group by any path get it.
     fn drop_orphan_logics(mut self: Pin<&mut Self>) {
         let groups: Vec<i32> = self
             .rows
@@ -433,7 +564,7 @@ impl qobject::WallpaperFilterRuleModel {
         self.as_mut().touch_logics();
     }
 
-    // ── Контракт оригинала ────────────────────────────────────────────────
+    // ── Contract of the original ────────────────────────────────────────────────
     fn items(&self) -> QVariantList {
         let mut out = QVariantList::default();
         for rule in &self.rows {
@@ -470,6 +601,7 @@ impl qobject::WallpaperFilterRuleModel {
 
         self.as_mut().sort_by_group();
         self.as_mut().set_dirty(false);
+        self.as_mut().draft_changed();
     }
 
     fn new_group_id(&self) -> i32 {
@@ -586,13 +718,26 @@ impl qobject::WallpaperFilterRuleModel {
         let row = self.find_insert_position(group);
         let mut rule = qobject::rexon_default_gadget(RULE_TYPE);
         rule = qobject::rexon_gadget_set_int(&rule, "group", group);
+        // waywallen 0.6.1: a new row starts as a complete "Name contains"
+        // rule instead of an empty one (which would make the draft invalid).
+        rule = qobject::rexon_gadget_set_int(&rule, "type", RULE_TYPE_NAME);
+        let mut string_filter = qobject::rexon_default_gadget(STRING_FILTER_TYPE);
+        string_filter =
+            qobject::rexon_gadget_set_int(&string_filter, "condition", STRING_CONDITION_CONTAINS);
+        let role = rule_role(&rule, "stringFilter");
+        if role >= 0 {
+            let with_filter = qobject::rexon_gadget_set_by_role(&rule, role, &string_filter);
+            if qobject::rexon_variant_is_valid(&with_filter) {
+                rule = with_filter;
+            }
+        }
         unsafe {
             self.as_mut()
                 .begin_insert_rows(&QModelIndex::default(), row, row);
             self.as_mut().rust_mut().rows.insert(row as usize, rule);
             self.as_mut().end_insert_rows();
         }
-        self.as_mut().set_dirty(true);
+        self.as_mut().mark_dirty();
     }
 
     fn append_new_group(mut self: Pin<&mut Self>) {
@@ -644,8 +789,8 @@ impl qobject::WallpaperFilterRuleModel {
         }
     }
 
-    // Последовательность групп в порядке строк (схлопывая повторы) —
-    // соответствует orderedGroups() оригинала.
+    // The sequence of groups in row order (collapsing repeats) —
+    // corresponds to orderedGroups() of the original.
     fn ordered_groups(&self) -> Vec<i32> {
         let mut groups: Vec<i32> = Vec::new();
         for rule in &self.rows {
@@ -658,8 +803,8 @@ impl qobject::WallpaperFilterRuleModel {
     }
 }
 
-/// Номера логик (по возрастанию), чья группа `groupA` или `groupB` не
-/// встречается среди групп оставшихся правил.
+/// Indices of logics (ascending) whose group `groupA` or `groupB` does not
+/// occur among the groups of the remaining rules.
 fn orphan_logic_indices(groups: &[i32], logics: &[(i32, i32)]) -> Vec<usize> {
     logics
         .iter()
@@ -671,17 +816,50 @@ fn orphan_logic_indices(groups: &[i32], logics: &[(i32, i32)]) -> Vec<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::orphan_logic_indices;
+    use super::{filter_state_valid, orphan_logic_indices, LogicView, RuleView};
+
+    fn name_contains(group: i32) -> RuleView {
+        RuleView { group, ty: 1, string_condition: Some(1), ..RuleView::default() }
+    }
+
+    #[test]
+    fn empty_draft_is_valid() {
+        assert!(filter_state_valid(&[], &[]));
+    }
+
+    #[test]
+    fn rule_without_its_payload_is_invalid() {
+        let bare = RuleView { group: 0, ty: 1, ..RuleView::default() };
+        assert!(!filter_state_valid(&[bare], &[]));
+        assert!(filter_state_valid(&[name_contains(0)], &[]));
+    }
+
+    #[test]
+    fn size_needs_positive_value_and_low_condition() {
+        let size = |c, v| RuleView { group: 0, ty: 3, int_filter: Some((c, v)), ..RuleView::default() };
+        assert!(filter_state_valid(&[size(1, 10)], &[]));
+        assert!(!filter_state_valid(&[size(1, 0)], &[]));
+        assert!(!filter_state_valid(&[size(3, 10)], &[]));
+    }
+
+    #[test]
+    fn logic_must_link_existing_groups_with_known_op() {
+        let rules = [name_contains(0), name_contains(1)];
+        let ok = LogicView { op: 1, group_a: 0, group_b: 1 };
+        assert!(filter_state_valid(&rules, &[ok]));
+        assert!(!filter_state_valid(&rules, &[LogicView { op: 0, ..ok }]));
+        assert!(!filter_state_valid(&rules, &[LogicView { group_b: 5, ..ok }]));
+    }
 
     #[test]
     fn clearing_all_rules_orphans_every_logic() {
-        // «Очистить всё»: правил нет — ни одна логика не уцелеет.
+        // «Clear all»: there are no rules — no logic survives.
         assert_eq!(orphan_logic_indices(&[], &[(0, 1), (1, 2)]), vec![0, 1]);
     }
 
     #[test]
     fn only_logics_touching_a_vanished_group_go() {
-        // Группа 1 опустела: уходят обе её связи, связь 0–2 остаётся.
+        // Group 1 became empty: both of its links go away, the 0–2 link remains.
         let groups = [0, 0, 2];
         let logics = [(0, 1), (1, 2), (0, 2)];
         assert_eq!(orphan_logic_indices(&groups, &logics), vec![0, 1]);

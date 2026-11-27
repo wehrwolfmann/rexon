@@ -1,12 +1,12 @@
-// «Сохранить текущее оформление…» над сеткой «Глобальных тем» — как кнопка
-// модуля KDE «Глобальная тема»: то, что стоит на столе сейчас, становится
-// своей глобальной темой (имя, автор, что сохранить, превью — снимок
-// экрана, свой рисунок или плитка цветами темы).
+// "Save current look…" above the "Global themes" grid — like the button of
+// the KDE "Global Theme" module: what is on the desktop right now becomes
+// a global theme of your own (name, author, what to save, preview — a
+// screenshot, your own picture or a tile in the theme colours).
 //
-// Только разметка: снимок, подписи, проверка имени, пакет и превью —
+// Markup only: snapshot, labels, name check, package and preview —
 // `GlobalSaveActions` (rust/rexon-gui/src/global_save_actions.rs →
-// rexon_core::global_save). Сохранили — сигнал `saved`: страница
-// перечитывает сетку, и плитка новой темы появляется сразу.
+// rexon_core::global_save). Once saved, the `saved` signal fires: the page
+// re-reads the grid, and the tile of the new theme appears at once.
 
 pragma ComponentBehavior: Bound
 
@@ -22,7 +22,7 @@ Item {
     property var pal: ({})
     property var sty: ({})
 
-    /// Тема сохранена: `message` — для строки состояния.
+    /// The theme is saved: `message` is for the status line.
     signal saved(string message)
 
     property var st: ({})
@@ -90,9 +90,9 @@ Item {
         closePolicy: Popup.CloseOnEscape
 
         property var q: ({})
-        /// Отмеченные части: id → true.
+        /// Checked parts: id → true.
         property var picked: ({})
-        /// Картинка превью; пусто — плитка `tile`.
+        /// Preview picture; empty means the `tile`.
         property string preview: ""
         property string tile: ""
         property string problem: ""
@@ -205,7 +205,7 @@ Item {
                     RexonText {
                         id: problemText
                         Layout.fillWidth: true
-                        // Пустое имя — без предупреждения: поле и так ждёт ввода.
+                        // An empty name gets no warning: the field is waiting for input anyway.
                         visible: dialog.problem !== "" && nameField.text.trim() !== ""
                         text: dialog.problem
                         color: section.pal.state_warn !== undefined ? section.pal.state_warn : section.pal.text_secondary

@@ -1,116 +1,118 @@
-//! Где лежат собранные QML-плагины и Rust-сборки вкладок — порт
-//! `rexon/qt_wallpaper_engine/qml_ui/__init__.py`, части `qml_ui/bridge.py`
-//! и `rexon/qt_main/__init__.py`.
+//! Where the built QML plugins and the tabs' Rust builds lie — port of
+//! `rexon/qt_wallpaper_engine/qml_ui/__init__.py`, parts of `qml_ui/bridge.py`
+//! and `rexon/qt_main/__init__.py`.
 //!
-//! Вкладка «Wallpaper Engine» показывает вендоренный QML waywallen, а типы
-//! этого QML печатают три отдельные сборки: `Qcm.Material` (C++, MIT),
-//! `waywallen.control` (Qt-Protobuf value-типы) и наш крейт
-//! `rexon-qt-filter` (типы `rexon-gui` вшиты в само окно статически,
-//! отдельной `.so` у него нет). Четвёртая — необязательная: настоящий плагин
-//! `QExtra` автора (C++); без него работает наша QML-подмена, выбор —
-//! [`choose_qextra`]. Все они собираются вне колеса и раскладываются по
-//! каталогам, которые зависят от того, откуда Rexon поставлен: дерево
-//! разработчика, пользовательская сборка скриптами `tools/build_qml_*.sh`
-//! или пакет дистрибутива. Вопрос «где именно» — единственное РЕШЕНИЕ,
-//! которое оставалось в этом слое на Python.
+//! The "Wallpaper Engine" tab shows the vendored waywallen QML, and the types of
+//! this QML are provided by three separate builds: `Qcm.Material` (C++, MIT),
+//! `waywallen.control` (Qt-Protobuf value types) and our crate
+//! `rexon-qt-filter` (the `rexon-gui` types are statically embedded into the
+//! window itself, it has no separate `.so`). The fourth one is optional: the
+//! author's real `QExtra` plugin (C++); without it our QML substitute works, the
+//! choice is made by [`choose_qextra`]. All of them are built outside the wheel
+//! and laid out into directories that depend on where Rexon was installed from:
+//! the developer tree, a user build by the `tools/build_qml_*.sh` scripts, or a
+//! distribution package. The question "where exactly" was the only DECISION
+//! left in this layer in Python.
 //!
-//! Копий этого решения было ТРИ, и они уже разъехались (правило #12):
-//! `qml_ui.rexon_gui_candidates`, `bridge._rust_filter_model_candidates` и
-//! `qt_main.rust_gui_candidates`. Теперь список один; Python остаётся
-//! исполнителем — `os.path.isfile`, `glob` и `ctypes.CDLL`.
+//! There were THREE copies of this decision, and they had already drifted apart
+//! (rule #12): `qml_ui.rexon_gui_candidates`,
+//! `bridge._rust_filter_model_candidates` and `qt_main.rust_gui_candidates`. Now
+//! there is one list; Python stays the executor — `os.path.isfile`, `glob` and
+//! `ctypes.CDLL`.
 //!
-//! ⚠️ Починки оригинала (правило #16), каждая помечена `Починка:` по месту:
-//!   1. `qt_main.rust_gui_candidates` не знал ни `$XDG_DATA_DIRS`, ни
-//!      `/usr/lib64`, ни мультиарх-каталога `/usr/lib/<триплет>` — то есть
-//!      нёс ровно тот дефект поиска только в `/usr/lib`,
-//!      который во второй копии уже был починен. На Fedora, openSUSE,
-//!      Debian и Ubuntu пакетная `librexon_gui.so` не находилась, QML-модуль
-//!      `org.rexon.gui` не поднимался — и на виджеты откатывались ВСЕ
-//!      перенесённые вкладки, не только вкладка обоев;
-//!   2. `.so` наших крейтов искались только в ОДНОМ каталоге модулей — том,
-//!      где нашёлся `Qcm.Material`. Не собран `Qcm.Material` — каталог
-//!      схлопывался в первый кандидат (`~/.local/share/…`), и лежащая в
-//!      `/usr/lib/rexon/qml_modules/waywallen/control/librexon_gui.so`
-//!      сборка не проверялась вовсе: транспорт демона был недостижим при
-//!      живом файле на диске. Теперь каждый файл ищется по ВСЕМУ списку;
-//!   3. пользовательский каталог модулей брался от `~/.local/share`
-//!      литералом, мимо `$XDG_DATA_HOME` — тот же класс, что починенный
-//!      `$XDG_CONFIG_HOME` у юнита автозапуска в `we_client`. Теперь
-//!      уважается и он, а `~/.local/share` остаётся вторым кандидатом:
-//!      `tools/build_qml_*.sh` кладут сборку именно туда.
+//! Warning — fixes to the original (rule #16), each marked `Fix:` in place:
+//!   1. `qt_main.rust_gui_candidates` knew neither `$XDG_DATA_DIRS`, nor
+//!      `/usr/lib64`, nor the multiarch directory `/usr/lib/<triplet>` — i.e. it
+//!      carried exactly the defect of searching only in `/usr/lib` that had
+//!      already been fixed in the second copy. On Fedora, openSUSE, Debian and
+//!      Ubuntu the packaged `librexon_gui.so` was not found, the `org.rexon.gui`
+//!      QML module did not come up — and ALL ported tabs fell back to widgets,
+//!      not just the wallpaper tab;
+//!   2. our crates' `.so` were searched for in only ONE module directory — the
+//!      one where `Qcm.Material` was found. If `Qcm.Material` was not built, the
+//!      directory collapsed to the first candidate (`~/.local/share/…`), and the
+//!      build lying in `/usr/lib/rexon/qml_modules/waywallen/control/librexon_gui.so`
+//!      was not checked at all: the daemon transport was unreachable with a live
+//!      file on disk. Now every file is searched for across the WHOLE list;
+//!   3. the user module directory was taken literally from `~/.local/share`,
+//!      bypassing `$XDG_DATA_HOME` — the same class as the fixed
+//!      `$XDG_CONFIG_HOME` of the autostart unit in `we_client`. Now it is
+//!      respected too, and `~/.local/share` remains the second candidate:
+//!      `tools/build_qml_*.sh` put the build exactly there.
 //!
-//! Сверка — `rust/rexon-core/tests/qml_modules_parity.rs`.
+//! The check is `rust/rexon-core/tests/qml_modules_parity.rs`.
 
 use crate::utils::data_home;
 
 // ============================================================================
-// Живые проверки ФС
+// Live file system checks
 // ============================================================================
 
-/// Проверки файловой системы для поиска сборок. Ядро в ФС не лезет само —
-/// тот же приём, что [`crate::we_client::DaemonFs`]: порядок внутри,
-/// side-effect снаружи.
+/// File system checks for finding builds. The core does not go into the file
+/// system itself — the same technique as [`crate::we_client::DaemonFs`]: the
+/// order inside, the side effect outside.
 pub trait ModuleFs {
-    /// `os.path.isfile(path)` — существующий обычный файл.
+    /// `os.path.isfile(path)` — an existing regular file.
     fn is_file(&mut self, path: &str) -> bool;
 
-    /// Под какую версию Qt (старшая, младшая) собран плагин по этому пути —
-    /// разбор [`plugin_qt_version`] над содержимым файла. `None` — не
-    /// прочитать или не QML-плагин: тогда проверка версии не мешает.
+    /// Which Qt version (major, minor) the plugin at this path was built for —
+    /// [`plugin_qt_version`] parsing over the file's contents. `None` — cannot be
+    /// read or not a QML plugin: then the version check does not interfere.
     fn plugin_qt_version(&mut self, _path: &str) -> Option<(u32, u32)> {
         None
     }
 
-    /// Версия Qt (старшая, младшая), на которой процесс работает сейчас.
-    /// `None` — неизвестна, проверка версии не мешает.
+    /// The Qt version (major, minor) the process is running on now. `None` —
+    /// unknown, the version check does not interfere.
     fn running_qt_version(&mut self) -> Option<(u32, u32)> {
         None
     }
 
-    /// Содержимое малого текстового файла (отметка сборки модуля,
-    /// [`CONTROL_STAMP_REL`]). `None` — файла нет или он не прочитался.
+    /// Contents of a small text file (the module's build mark,
+    /// [`CONTROL_STAMP_REL`]). `None` — there is no file or it could not be read.
     fn read_text(&mut self, _path: &str) -> Option<String> {
         None
     }
 }
 
 // ============================================================================
-// Версия Qt, под которую собран плагин
+// The Qt version a plugin was built for
 // ============================================================================
 //
-// ⚠️ Зачем (поймано 09.10.2026). `Qcm.Material` пользуется ЧАСТНЫМ API Qt
-// Quick (`QuickPrivate`), а частный API между младшими выпусками Qt не
-// совместим. Сам Qt этого не проверяет: плагин, собранный под 6.11,
-// спокойно грузится в Qt 6.12 — и портит дерево узлов сцены. Вкладка обоев
-// падала SIGSEGV в `QSGNode::removeChildNode` ← `updateDirtyNode` при
-// открытии «Настроек» (там строятся поля ввода `Qcm.Material`), примерно
-// в половине запусков. Плагин той же ревизии, пересобранный под 6.12, не
-// падал ни разу. Поэтому сборка `Qcm.Material` под другую младшую версию
-// Qt считается ОТСУТСТВУЮЩЕЙ: вкладка покажет объяснение вместо падения,
-// а годная сборка из другого каталога останется в ходу.
+// Warning — why (caught on 09.10.2026). `Qcm.Material` uses PRIVATE Qt Quick
+// API (`QuickPrivate`), and private API is not compatible between minor Qt
+// releases. Qt itself does not check this: a plugin built for 6.11 happily loads
+// into Qt 6.12 — and corrupts the scene's node tree. The wallpaper tab crashed
+// with SIGSEGV in `QSGNode::removeChildNode` ← `updateDirtyNode` when opening
+// "Settings" (the `Qcm.Material` input fields are built there), in about half
+// of the launches. A plugin of the same revision rebuilt for 6.12 never crashed.
+// So a `Qcm.Material` build for another minor Qt version is considered MISSING:
+// the tab will show an explanation instead of crashing, and a usable build from
+// another directory stays in use.
 
-/// Метка, за которой в заметке `.note.qt.metadata` плагина Qt 6 идут байты
-/// «версия формата, старшая, младшая» версии Qt, под которую он собран
-/// (макрос `QT_PLUGIN_METADATA_SECTION` / `qt_plugin_query_metadata_v2`).
+/// The marker after which the `.note.qt.metadata` note of a Qt 6 plugin has the
+/// bytes "format version, major, minor" of the Qt version it was built for (the
+/// `QT_PLUGIN_METADATA_SECTION` / `qt_plugin_query_metadata_v2` macro).
 pub const QT_PLUGIN_NOTE_MARK: &[u8] = b"qt-project!\0";
 
-/// Версия Qt (старшая, младшая), под которую собран плагин, по байтам его
-/// файла. `None` — метки нет (не плагин Qt 6) или файл обрезан.
+/// The Qt version (major, minor) a plugin was built for, from the bytes of its
+/// file. `None` — there is no marker (not a Qt 6 plugin) or the file is
+/// truncated.
 pub fn plugin_qt_version(bytes: &[u8]) -> Option<(u32, u32)> {
     let at = bytes
         .windows(QT_PLUGIN_NOTE_MARK.len())
         .position(|w| w == QT_PLUGIN_NOTE_MARK)?;
     let rest = &bytes[at + QT_PLUGIN_NOTE_MARK.len()..];
-    // [версия формата метаданных, QT_VERSION_MAJOR, QT_VERSION_MINOR, …]
+    // [metadata format version, QT_VERSION_MAJOR, QT_VERSION_MINOR, …]
     match rest {
         [_, major, minor, ..] if *major >= 5 => Some((*major as u32, *minor as u32)),
         _ => None,
     }
 }
 
-/// Годится ли сборка `Qcm.Material` в этом каталоге для запущенного Qt:
-/// файл есть, и младшая версия Qt сборки совпадает с запущенной (когда
-/// обе известны).
+/// Whether the `Qcm.Material` build in this directory fits the running Qt: the
+/// file exists, and the build's minor Qt version matches the running one (when
+/// both are known).
 pub fn qcm_usable<FS: ModuleFs>(fs: &mut FS, dir: &str) -> bool {
     let path = plugin_path(dir, QCM_MATERIAL_REL);
     if !fs.is_file(&path) {
@@ -119,9 +121,8 @@ pub fn qcm_usable<FS: ModuleFs>(fs: &mut FS, dir: &str) -> bool {
     qt_versions_compatible(fs.plugin_qt_version(&path), fs.running_qt_version())
 }
 
-/// Совпадают ли старшая и младшая версии Qt. Неизвестная с любой стороны —
-/// «совпадают»: проверка не должна отключать вкладку там, где ничего не
-/// знает.
+/// Whether the major and minor Qt versions match. Unknown on either side —
+/// "they match": the check must not disable the tab where it knows nothing.
 pub fn qt_versions_compatible(built: Option<(u32, u32)>, running: Option<(u32, u32)>) -> bool {
     match (built, running) {
         (Some(b), Some(r)) => b == r,
@@ -129,9 +130,9 @@ pub fn qt_versions_compatible(built: Option<(u32, u32)>, running: Option<(u32, u
     }
 }
 
-/// Сборка `Qcm.Material`, найденная, но собранная под другую младшую
-/// версию Qt: `(путь плагина, версия сборки, версия запущенного Qt)`.
-/// Берётся первая по порядку предпочтения — её и назовёт заглушка.
+/// A `Qcm.Material` build that was found but built for another minor Qt version:
+/// `(plugin path, build version, running Qt version)`. The first one in order of
+/// preference is taken — that is the one the placeholder will name.
 pub fn incompatible_qcm<FS: ModuleFs>(
     fs: &mut FS,
     dirs: &[String],
@@ -151,13 +152,14 @@ pub fn incompatible_qcm<FS: ModuleFs>(
     None
 }
 
-/// Каталоги модулей без негодных сборок: без тех, где лежит `Qcm.Material`
-/// под другую версию Qt, и без тех, чей `waywallen.control` собран из
-/// другого протокола (см. [`stale_control_dirs`]).
+/// Module directories without unusable builds: without those holding a
+/// `Qcm.Material` for another Qt version, and without those whose
+/// `waywallen.control` was built from another protocol (see
+/// [`stale_control_dirs`]).
 ///
-/// Такой каталог выкидывается ЦЕЛИКОМ, а не только его негодный модуль:
-/// отдай его движку ради соседнего модуля — и `import` найдёт в нём
-/// негодную сборку раньше годной.
+/// Such a directory is thrown out ENTIRELY, not just its unusable module: hand
+/// it to the engine for the sake of a neighboring module — and `import` will
+/// find the unusable build in it before the usable one.
 pub fn usable_dirs<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Vec<String> {
     let by_qt = qt_usable_dirs(fs, dirs);
     let stale: Vec<String> = stale_control_among(fs, &by_qt)
@@ -168,10 +170,11 @@ pub fn usable_dirs<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Vec<String> {
         return by_qt;
     }
     let mut out: Vec<String> = by_qt.iter().filter(|d| !stale.contains(d)).cloned().collect();
-    // Устаревший каталог мог нести ЕДИНСТВЕННЫЙ годный `Qcm.Material`
-    // (оформление собрано дома, value-типы приехали пакетом). Тогда он не
-    // выбрасывается, а уходит в конец списка: свежий `waywallen.control`
-    // стоит раньше и заслоняет устаревший, а оформление остаётся в ходу.
+    // A stale directory may carry the ONLY usable `Qcm.Material` (the
+    // styling was built at home, the value types came with the package).
+    // Then it is not thrown out but goes to the end of the list: the fresh
+    // `waywallen.control` comes earlier and shadows the stale one, while the
+    // styling stays in use.
     if !out.iter().any(|d| fs.is_file(&plugin_path(d, QCM_MATERIAL_REL))) {
         out.extend(
             stale
@@ -183,7 +186,7 @@ pub fn usable_dirs<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Vec<String> {
     out
 }
 
-/// Каталоги модулей без тех, где лежит `Qcm.Material` под другую версию Qt.
+/// Module directories without those holding a `Qcm.Material` for another Qt version.
 fn qt_usable_dirs<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Vec<String> {
     dirs.iter()
         .filter(|d| {
@@ -195,36 +198,37 @@ fn qt_usable_dirs<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Vec<String> {
 }
 
 // ============================================================================
-// Протокол, из которого собран `waywallen.control`
+// The protocol `waywallen.control` was built from
 // ============================================================================
 //
-// ⚠️ Зачем (поймано 10.10.2026). `waywallen.control` — value-типы и
-// перечисления Qt-Protobuf, порождённые из `control.proto` и `filter.proto`.
-// Вендорные страницы пишутся под протокол ТЕКУЩЕГО выпуска, а сборка модуля
-// в домашней папке (`tools/build_qml_control.sh`) стоит в списке каталогов
-// первой и сама не обновляется. После приёма нового протокола она
-// заслоняла свежую пакетную: в ней не было перечисления `Flip`, и «Мониторы»
-// сыпали `TypeError: Cannot read property 'FLIP_NONE' of undefined`.
+// Warning — why (caught on 10.10.2026). `waywallen.control` is the Qt-Protobuf
+// value types and enums generated from `control.proto` and `filter.proto`. The
+// vendored pages are written for the protocol of the CURRENT release, while the
+// module build in the home folder (`tools/build_qml_control.sh`) stands first
+// in the directory list and does not update itself. After a new protocol was
+// adopted, it shadowed the fresh packaged one: it had no `Flip` enum, and
+// "Monitors" spewed `TypeError: Cannot read property 'FLIP_NONE' of undefined`.
 //
-// Признак свежести — отметка рядом с модулем: SHA-256 тех самых двух
-// `.proto`, из которых модуль порождён. Её пишет скрипт сборки модуля (он же
-// собирает модуль пакета), а Rexon сравнивает со своей — суммой тех же
-// файлов, вшитых в ядро при сборке. Почему так:
-//   * сумма не знает ни про одно имя из протокола — сработает на любом
-//     следующем обновлении, а не только на `Flip`;
-//   * проверка — чтение файла в 65 байт: ни разбора `.so`, ни запуска
-//     процессов;
-//   * тег выпуска (`UPSTREAM_TAG`) не годится: поверх вендорного протокола
-//     лежат наши добавления, и протокол меняется при том же теге;
-//   * время файла не годится: пакет и домашняя сборка делаются на разных
-//     машинах, а `cp -a` и распаковка время переносят.
-// Цена — правка одного комментария в `.proto` тоже объявляет прежние сборки
-// устаревшими. Это безвредно: устаревшая сборка отбрасывается, только когда
-// рядом есть свежая.
+// The sign of freshness is a mark next to the module: the SHA-256 of exactly
+// those two `.proto` files the module was generated from. The module build
+// script writes it (it also builds the package's module), and Rexon compares it
+// with its own — the sum of the same files embedded into the core at build
+// time. Why this way:
+//   * the sum knows no name from the protocol — it will trigger on any
+//     future update, not only on `Flip`;
+//   * the check is reading a 65-byte file: neither parsing the `.so` nor
+//     launching processes;
+//   * the release tag (`UPSTREAM_TAG`) is no good: our additions lie on top of
+//     the vendored protocol, and the protocol changes under the same tag;
+//   * the file time is no good: the package and the home build are made on
+//     different machines, and `cp -a` and unpacking carry the time over.
+// The price — editing a single comment in a `.proto` also declares previous
+// builds stale. This is harmless: a stale build is dropped only when there is a
+// fresh one next to it.
 
-/// Отметка сборки `waywallen.control` внутри каталога модулей: одна строка,
-/// SHA-256 (hex) склейки `control.proto` + `filter.proto`, из которых модуль
-/// порождён. Пишет `tools/build_qml_control.sh`.
+/// The `waywallen.control` build mark inside the module directory: one line, the
+/// SHA-256 (hex) of the concatenation `control.proto` + `filter.proto` the module
+/// was generated from. Written by `tools/build_qml_control.sh`.
 pub const CONTROL_STAMP_REL: &str = "waywallen/control/proto.sha256";
 
 const CONTROL_PROTO: &[u8] =
@@ -232,8 +236,8 @@ const CONTROL_PROTO: &[u8] =
 const FILTER_PROTO: &[u8] =
     include_bytes!("../../../data/qt_wallpaper_engine/proto/filter.proto");
 
-/// Отметка протокола, с которым собран этот Rexon, — то же, что
-/// `cat control.proto filter.proto | sha256sum` в скрипте сборки модуля.
+/// The mark of the protocol this Rexon was built with — the same as
+/// `cat control.proto filter.proto | sha256sum` in the module build script.
 pub fn control_proto_stamp() -> &'static str {
     use sha2::{Digest, Sha256};
     static STAMP: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -249,28 +253,28 @@ pub fn control_proto_stamp() -> &'static str {
     })
 }
 
-/// Чем сборка `waywallen.control` в каталоге приходится текущему протоколу.
+/// How the `waywallen.control` build in a directory relates to the current protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlBuild {
-    /// Модуля в каталоге нет.
+    /// There is no module in the directory.
     Missing,
-    /// Отметка совпала с протоколом этого Rexon.
+    /// The mark matched this Rexon's protocol.
     Fresh,
-    /// Отметка есть, но от другого протокола.
+    /// There is a mark, but from another protocol.
     Stale,
-    /// Отметки нет: сборка старше самой отметки (до 10.10.2026) либо
-    /// сделана чем-то, кроме `tools/build_qml_control.sh`.
+    /// There is no mark: the build is older than the mark itself (before
+    /// 10.10.2026) or was made by something other than `tools/build_qml_control.sh`.
     Unmarked,
 }
 
-/// Состояние сборки `waywallen.control` в каталоге модулей.
+/// State of the `waywallen.control` build in a module directory.
 pub fn control_build<FS: ModuleFs>(fs: &mut FS, dir: &str) -> ControlBuild {
     if !fs.is_file(&plugin_path(dir, WAYWALLEN_CONTROL_REL)) {
         return ControlBuild::Missing;
     }
     match fs.read_text(&plugin_path(dir, CONTROL_STAMP_REL)) {
-        // Берётся первое слово: сырой вывод `sha256sum` («сумма  -») тоже
-        // читается, регистр hex не важен.
+        // The first word is taken: the raw output of `sha256sum` ("sum  -") is
+        // also read, the case of hex does not matter.
         Some(text) => match text.split_whitespace().next() {
             Some(stamp) if stamp.eq_ignore_ascii_case(control_proto_stamp()) => {
                 ControlBuild::Fresh
@@ -282,15 +286,16 @@ pub fn control_build<FS: ModuleFs>(fs: &mut FS, dir: &str) -> ControlBuild {
     }
 }
 
-/// Каталоги, чей `waywallen.control` заслонял бы свежий, и причина
-/// ([`ControlBuild::Stale`] либо [`ControlBuild::Unmarked`]) — для строки в
-/// журнале. Считается над тем же списком, что видит движок: каталоги с
-/// `Qcm.Material` под другую версию Qt уже отброшены и свежими не считаются.
+/// Directories whose `waywallen.control` would shadow the fresh one, and the
+/// reason ([`ControlBuild::Stale`] or [`ControlBuild::Unmarked`]) — for the log
+/// line. Computed over the same list the engine sees: directories with a
+/// `Qcm.Material` for another Qt version are already dropped and do not count as
+/// fresh.
 ///
-/// ⭐ Устаревшей сборка считается, ТОЛЬКО когда в списке есть свежая. Нет
-/// свежей — не отбрасывается ничего: старый модуль лучше, чем никакого
-/// (большая часть страниц на нём работает). Отсюда же правило для каталога
-/// без отметки: один он остаётся в ходу, рядом со свежим — уступает.
+/// ⭐ A build is considered stale ONLY when the list has a fresh one. If there is
+/// no fresh one, nothing is dropped: an old module is better than none (most
+/// pages work on it). Hence the rule for a directory without a mark too: alone
+/// it stays in use, next to a fresh one it gives way.
 pub fn stale_control_dirs<FS: ModuleFs>(
     fs: &mut FS,
     dirs: &[String],
@@ -316,8 +321,8 @@ fn stale_control_among<FS: ModuleFs>(
         .collect()
 }
 
-/// Каталог со свежим `waywallen.control`, первый по порядку предпочтения, —
-/// его назовёт строка журнала рядом с отброшенным.
+/// The directory with a fresh `waywallen.control`, the first in order of
+/// preference — the log line will name it next to the dropped one.
 pub fn fresh_control_dir<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Option<String> {
     qt_usable_dirs(fs, dirs)
         .into_iter()
@@ -325,54 +330,54 @@ pub fn fresh_control_dir<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Option<S
 }
 
 // ============================================================================
-// QExtra: настоящий плагин автора или наша QML-подмена
+// QExtra: the author's real plugin or our QML substitute
 // ============================================================================
 //
-// Вендорная разметка зовёт модуль `QExtra` (`QE.AnimatedImage`,
-// `QE.ImageCache`). Его дают две сборки:
-//   * настоящий плагин автора waywallen (C++, `tools/build_qml_qextra.sh`) —
-//     лежит в каталоге модулей, `QExtra/libqextraplugin.so`;
-//   * наша QML-подмена в каталоге вендорной разметки (`qml_ui/QExtra/`) —
-//     запасная, работает всегда, но беднее (нет общего такта и потолка
-//     памяти кадров).
-// Каталог вендорной разметки стоит в путях импорта первым, поэтому сама по
-// себе побеждает подмена. Настоящий плагин берётся, когда исполнитель
-// ставит его каталог ВПЕРЕДИ вендорного, — и только если выполнено всё:
-//   1. плагин есть в годном каталоге модулей;
-//   2. рядом лежит отметка версии Qt, с которой он собран, и её старшая и
-//      младшая совпадают с Qt процесса. Плагин зовёт частный API Qt
-//      (`QRhi`), а тот между младшими выпусками не совместим — тот же
-//      класс, что у `Qcm.Material` выше. В отличие от него, здесь неизвестная
-//      версия — отказ: есть куда отступить;
-//   3. граф сцены рисует через RHI. На программном графе (`offscreen`,
-//      `QT_QUICK_BACKEND=software`) `QE.AnimatedImage` уходит в ошибку
-//      «Image requires an RHI scene graph backend» и пишет её в журнал на
-//      каждый кадр.
+// The vendored markup calls the `QExtra` module (`QE.AnimatedImage`,
+// `QE.ImageCache`). Two builds provide it:
+//   * the real plugin by the waywallen author (C++,
+//     `tools/build_qml_qextra.sh`) — it lies in the module directory,
+//     `QExtra/libqextraplugin.so`;
+//   * our QML substitute in the vendored markup directory (`qml_ui/QExtra/`) —
+//     a fallback that always works but is poorer (no shared clock and no frame
+//     memory ceiling).
+// The vendored markup directory stands first in the import paths, so on its
+// own the substitute wins. The real plugin is taken when the executor puts its
+// directory AHEAD of the vendored one — and only if everything holds:
+//   1. the plugin is in a usable module directory;
+//   2. next to it lies the mark of the Qt version it was built with, and its
+//      major and minor match the process's Qt. The plugin calls private Qt API
+//      (`QRhi`), which is not compatible between minor releases — the same class
+//      as with `Qcm.Material` above. Unlike it, here an unknown version is a
+//      refusal: there is somewhere to fall back to;
+//   3. the scene graph renders through RHI. On a software graph (`offscreen`,
+//      `QT_QUICK_BACKEND=software`) `QE.AnimatedImage` goes into the error
+//      "Image requires an RHI scene graph backend" and writes it to the log on
+//      every frame.
 
-/// Настоящий плагин `QExtra` внутри каталога модулей; ставит
+/// The real `QExtra` plugin inside the module directory; installed by
 /// `tools/build_qml_qextra.sh`.
 pub const QEXTRA_PLUGIN_REL: &str = "QExtra/libqextraplugin.so";
 
-/// Отметка рядом с плагином `QExtra`: одна строка, версия Qt, с которой он
-/// собран (`6.12.0`). Пишет `tools/build_qml_qextra.sh`.
+/// The mark next to the `QExtra` plugin: one line, the Qt version it was built
+/// with (`6.12.0`). Written by `tools/build_qml_qextra.sh`.
 pub const QEXTRA_QT_STAMP_REL: &str = "QExtra/QT_VERSION";
 
-/// Платформы Qt, у которых графа сцены на RHI нет: Qt Quick на них сам
-/// уходит на программную отрисовку.
+/// Qt platforms that have no RHI scene graph: Qt Quick itself falls back to
+/// software rendering on them.
 pub const SOFTWARE_ONLY_PLATFORMS: [&str; 4] = ["offscreen", "minimal", "linuxfb", "vnc"];
 
-/// Значения `QT_QUICK_BACKEND`, при которых граф сцены не на RHI.
+/// `QT_QUICK_BACKEND` values with which the scene graph is not on RHI.
 pub const NON_RHI_QUICK_BACKENDS: [&str; 3] = ["software", "softwarecontext", "openvg"];
 
-/// Рисует ли граф сцены Qt Quick через RHI — по тому, что известно до
-/// создания первого окна: запрошенная платформа Qt
-/// ([`requested_qpa_platform`]) и `QT_QUICK_BACKEND`.
+/// Whether the Qt Quick scene graph renders through RHI — by what is known
+/// before the first window is created: the requested Qt platform
+/// ([`requested_qpa_platform`]) and `QT_QUICK_BACKEND`.
 ///
-/// `qpa_platform` — сырое значение, как его задают переменной или ключом:
-/// список через `;` (Qt берёт первую платформу, которая поднялась), у каждой
-/// после `:` свои параметры.
-/// Судим по первой записи. Не задана — платформа сеанса (Wayland или X11),
-/// у обеих RHI есть.
+/// `qpa_platform` — the raw value as it is set by the variable or the option: a
+/// list separated by `;` (Qt takes the first platform that comes up), each with
+/// its own parameters after `:`. We judge by the first entry. Unset — the
+/// session's platform (Wayland or X11), both have RHI.
 pub fn scene_graph_uses_rhi(qpa_platform: Option<&str>, quick_backend: Option<&str>) -> bool {
     let backend = quick_backend.unwrap_or("").trim().to_ascii_lowercase();
     if NON_RHI_QUICK_BACKENDS.contains(&backend.as_str()) {
@@ -391,15 +396,16 @@ pub fn scene_graph_uses_rhi(qpa_platform: Option<&str>, quick_backend: Option<&s
     !SOFTWARE_ONLY_PLATFORMS.contains(&platform.as_str())
 }
 
-/// Какую платформу Qt просили: значение для первого аргумента
-/// [`scene_graph_uses_rhi`]. `args` — командная строка процесса вместе с
-/// нулевым аргументом, `env_platform` — сырое `QT_QPA_PLATFORM`.
+/// Which Qt platform was requested: the value for the first argument of
+/// [`scene_graph_uses_rhi`]. `args` — the process command line including the
+/// zeroth argument, `env_platform` — the raw `QT_QPA_PLATFORM`.
 ///
-/// Qt читает переменную, а потом командную строку, и ключ `-platform ИМЯ`
-/// (он же `--platform ИМЯ`) переменную перекрывает; из нескольких ключей
-/// действует последний, ключ без значения не действует. Без этого запуск
-/// `rexon-main-window -platform offscreen` считался бы запуском на платформе
-/// сеанса и получал настоящий `QExtra` на программном графе.
+/// Qt reads the variable and then the command line, and the `-platform NAME`
+/// option (also `--platform NAME`) overrides the variable; of several options
+/// the last one is in effect, an option without a value has no effect. Without
+/// this, launching `rexon-main-window -platform offscreen` would be considered a
+/// launch on the session platform and would get the real `QExtra` on a software
+/// graph.
 pub fn requested_qpa_platform<S: AsRef<str>>(
     args: &[S],
     env_platform: Option<&str>,
@@ -416,8 +422,8 @@ pub fn requested_qpa_platform<S: AsRef<str>>(
     platform
 }
 
-/// Версия Qt (старшая, младшая) из отметки [`QEXTRA_QT_STAMP_REL`]: первое
-/// слово вида `6.12` или `6.12.0`.
+/// The Qt version (major, minor) from the [`QEXTRA_QT_STAMP_REL`] mark: the first
+/// word of the form `6.12` or `6.12.0`.
 pub fn parse_qt_stamp(text: &str) -> Option<(u32, u32)> {
     let mut parts = text.split_whitespace().next()?.split('.');
     let major = parts.next()?.parse().ok()?;
@@ -425,18 +431,19 @@ pub fn parse_qt_stamp(text: &str) -> Option<(u32, u32)> {
     Some((major, minor))
 }
 
-/// Почему вместо настоящего `QExtra` взята подмена.
+/// Why the substitute was taken instead of the real `QExtra`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QExtraFallback {
-    /// Граф сцены не на RHI — настоящий там не рисует.
+    /// The scene graph is not on RHI — the real one does not render there.
     NoRhi,
-    /// Плагина нет ни в одном годном каталоге модулей.
+    /// The plugin is in none of the usable module directories.
     NoPlugin,
-    /// Версия запущенного Qt неизвестна — сверять отметку не с чем.
+    /// The running Qt version is unknown — there is nothing to compare the mark with.
     RunningQtUnknown { path: String },
-    /// Плагин есть, отметки версии Qt рядом нет либо она не читается.
+    /// The plugin is there, but there is no Qt version mark next to it, or it cannot
+    /// be read.
     NoStamp { path: String },
-    /// Плагин собран под другую младшую версию Qt.
+    /// The plugin was built for another minor Qt version.
     WrongQt {
         path: String,
         built: (u32, u32),
@@ -444,27 +451,28 @@ pub enum QExtraFallback {
     },
 }
 
-/// Какой модуль `QExtra` получает движок QML.
+/// Which `QExtra` module the QML engine gets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QExtraChoice {
-    /// Настоящий плагин: `dir` — каталог модулей, который исполнитель ставит
-    /// в пути импорта ВПЕРЕДИ каталога вендорной разметки.
+    /// The real plugin: `dir` — the module directory the executor puts AHEAD of the
+    /// vendored markup directory in the import paths.
     Real { dir: String, qt: (u32, u32) },
-    /// QML-подмена из каталога вендорной разметки — путей менять не надо.
+    /// The QML substitute from the vendored markup directory — no paths need changing.
     Shim(QExtraFallback),
 }
 
-/// Выбрать модуль `QExtra`. `dirs` — полный список каталогов модулей
-/// ([`module_dirs`]), `rhi` — ответ [`scene_graph_uses_rhi`].
+/// Choose the `QExtra` module. `dirs` — the full list of module directories
+/// ([`module_dirs`]), `rhi` — the answer of [`scene_graph_uses_rhi`].
 ///
-/// Ищется по годным каталогам ([`usable_dirs`]) в их порядке; берётся первый
-/// плагин, прошедший сверку. Негодный не закрывает годный в следующем
-/// каталоге, а причина отказа называется по первому встреченному.
+/// It is searched for in the usable directories ([`usable_dirs`]) in their
+/// order; the first plugin that passes the check is taken. An unusable one does
+/// not block a usable one in the next directory, and the reason for the refusal
+/// is named by the first one encountered.
 ///
-/// ⚠️ Каталог с устаревшим `waywallen.control` ([`stale_control_dirs`]) в
-/// счёт не идёт, даже когда он оставлен в хвосте списка ради `Qcm.Material`:
-/// выбранный каталог встаёт в пути импорта первым, и устаревший модуль в нём
-/// снова заслонил бы свежий.
+/// Warning: a directory with a stale `waywallen.control` ([`stale_control_dirs`])
+/// does not count, even when it is kept at the tail of the list for the sake of
+/// `Qcm.Material`: the chosen directory goes first in the import paths, and the
+/// stale module in it would shadow the fresh one again.
 pub fn choose_qextra<FS: ModuleFs>(fs: &mut FS, dirs: &[String], rhi: bool) -> QExtraChoice {
     if !rhi {
         return QExtraChoice::Shim(QExtraFallback::NoRhi);
@@ -492,8 +500,8 @@ pub fn choose_qextra<FS: ModuleFs>(fs: &mut FS, dirs: &[String], rhi: bool) -> Q
         let reject = match stamp {
             None => QExtraFallback::NoStamp { path },
             Some(built) if built != running => QExtraFallback::WrongQt { path, built, running },
-            // Отметка сошлась, но сам плагин называет другую версию Qt
-            // (файл подменили, отметку оставили) — верим плагину.
+            // The mark matched, but the plugin itself names another Qt version
+            // (the file was replaced, the mark was left) — we trust the plugin.
             Some(_) => match fs.plugin_qt_version(&path) {
                 Some(built) if built != running => {
                     QExtraFallback::WrongQt { path, built, running }
@@ -506,7 +514,7 @@ pub fn choose_qextra<FS: ModuleFs>(fs: &mut FS, dirs: &[String], rhi: bool) -> Q
     QExtraChoice::Shim(first_reject.unwrap_or(QExtraFallback::NoPlugin))
 }
 
-/// Строка журнала о выборе модуля `QExtra`: что взято и почему.
+/// A log line about the choice of the `QExtra` module: what was taken and why.
 pub fn qextra_choice_line(choice: &QExtraChoice) -> String {
     const SHIM: &str = "QExtra: взята QML-подмена";
     match choice {
@@ -536,42 +544,43 @@ pub fn qextra_choice_line(choice: &QExtraChoice) -> String {
 }
 
 // ============================================================================
-// Каталоги, где лежат собранные QML-плагины
+// Directories where the built QML plugins lie
 // ============================================================================
 
-/// Шаблон мультиарх-каталога Debian и Ubuntu (`/usr/lib/x86_64-linux-gnu/…`).
+/// Template of the Debian and Ubuntu multiarch directory
+/// (`/usr/lib/x86_64-linux-gnu/…`).
 ///
-/// Разворачивает его вызывающий (`glob.glob`) и отдаёт результат
-/// [`module_dirs`] уже отсортированным: обход каталогов — side-effect.
+/// The caller expands it (`glob.glob`) and gives the result to [`module_dirs`]
+/// already sorted: walking directories is a side effect.
 pub const MULTIARCH_GLOB: &str = "/usr/lib/*/rexon/qml_modules";
 
-/// Хвост пути каталога модулей внутри корня данных.
+/// Tail of the module directory path inside a data root.
 pub const MODULES_REL: &str = "rexon/qml_modules";
 
-/// Системные каталоги модулей фиксированной раскладки: Arch кладёт плагины
-/// в `/usr/lib`, Fedora и openSUSE — в `/usr/lib64`.
+/// System module directories of a fixed layout: Arch puts plugins into
+/// `/usr/lib`, Fedora and openSUSE into `/usr/lib64`.
 ///
-/// Третий — установка в систему (`/usr/local`): её раскладка та же, что у
-/// пакета (`installer_exec::InstallLayout`). ⭐ Починка 15.09.2026: прежде
-/// каталог ручной установки не искался вовсе, и Rust-окно после неё не
-/// находило плагины вкладки обоев.
+/// The third one is an installation into the system (`/usr/local`): its layout
+/// is the same as the package's (`installer_exec::InstallLayout`). ⭐ Fix of
+/// 15.09.2026: previously the manual installation directory was not searched at
+/// all, and after it the Rust window did not find the wallpaper tab's plugins.
 pub const SYSTEM_MODULE_DIRS: [&str; 3] = [
     "/usr/lib/rexon/qml_modules",
     "/usr/lib64/rexon/qml_modules",
     "/usr/local/lib/rexon/qml_modules",
 ];
 
-/// Все каталоги, где могут лежать собранные QML-плагины, по убыванию
-/// предпочтения и без повторов.
+/// All directories where built QML plugins may lie, in decreasing order of
+/// preference and without duplicates.
 ///
-/// Порядок намеренный: пользовательская сборка (её делает разработчик и
-/// именно её он ждёт увидеть) → каталоги данных из `$XDG_DATA_DIRS` →
-/// системные фиксированные → мультиарх-каталоги. Это порядок РАЗРАБОТКИ:
-/// у пакета и установки его переставляет [`order_module_dirs`].
+/// The order is deliberate: the user build (the developer makes it and expects
+/// to see exactly it) → data directories from `$XDG_DATA_DIRS` → fixed system
+/// ones → multiarch directories. This is the DEVELOPMENT order: for a package
+/// and an installation it is rearranged by [`order_module_dirs`].
 ///
-/// `xdg_data_home` — `$XDG_DATA_HOME` (Починка 3), `xdg_data_dirs` — сырое
-/// значение `$XDG_DATA_DIRS` через двоеточие, `multiarch` — уже развёрнутый
-/// и отсортированный [`MULTIARCH_GLOB`].
+/// `xdg_data_home` — `$XDG_DATA_HOME` (Fix 3), `xdg_data_dirs` — the raw value
+/// of `$XDG_DATA_DIRS` separated by colons, `multiarch` — the already expanded
+/// and sorted [`MULTIARCH_GLOB`].
 pub fn module_dirs(
     xdg_data_home: Option<&str>,
     home: &str,
@@ -579,9 +588,9 @@ pub fn module_dirs(
     multiarch: &[String],
 ) -> Vec<String> {
     let mut dirs: Vec<String> = Vec::new();
-    // Починка 3: `$XDG_DATA_HOME` уважается, но `~/.local/share` остаётся
-    // кандидатом — `tools/build_qml_*.sh` пишут туда безусловно, и при
-    // нестандартном XDG иначе потерялась бы уже собранная сборка.
+    // Fix 3: `$XDG_DATA_HOME` is respected, but `~/.local/share` remains a
+    // candidate — `tools/build_qml_*.sh` write there unconditionally, and with
+    // a non-standard XDG an already made build would otherwise be lost.
     dirs.push(format!("{}/{MODULES_REL}", data_home(xdg_data_home, home)));
     dirs.push(format!("{}/{MODULES_REL}", data_home(None, home)));
     for base in xdg_data_dirs.split(':') {
@@ -591,10 +600,10 @@ pub fn module_dirs(
         }
     }
     dirs.extend(SYSTEM_MODULE_DIRS.iter().map(|d| d.to_string()));
-    // ⭐ Починка 15.09.2026: установка в домашнюю папку — та же раскладка
-    // (`installer_exec::InstallLayout`), и её каталог модулей не искался.
-    // Место — сразу за установкой в систему, как у бинаря окна
-    // (`installer::main_window_candidates`).
+    // ⭐ Fix of 15.09.2026: an installation into the home folder has the same
+    // layout (`installer_exec::InstallLayout`), and its module directory was
+    // not searched. The place is right after the system installation, as for
+    // the window binary (`installer::main_window_candidates`).
     if let Some(lib) = crate::installer::user_install_lib_dir(home) {
         dirs.push(format!("{lib}/{}", crate::installer_exec::QML_MODULES_DIR_NAME));
     }
@@ -613,41 +622,41 @@ pub fn module_dirs(
 }
 
 // ============================================================================
-// Пользовательская сборка против пакетной
+// The user build versus the packaged one
 // ============================================================================
 //
-// ⚠️ Зачем (поймано 02.11.2026). [`module_dirs`] ставит пользовательский
-// каталог (`~/.local/share/rexon/qml_modules`, туда пишут
-// `tools/build_qml_*.sh`) ПЕРВЫМ — это порядок разработчика. Но тот же
-// порядок действовал и у пакета дистрибутива: на машине, где когда-то
-// собирали модули руками, установленный Rexon брал `QExtra`, `Qcm.Material` и
-// `waywallen.control` из старой ручной сборки, а не из своего пакета. Пока
-// ревизии совпадают, это незаметно; после обновления пакета в ход пошла бы
-// устаревшая копия, которую пакетный менеджер не обновляет никогда.
+// Warning — why (caught on 02.11.2026). [`module_dirs`] puts the user directory
+// (`~/.local/share/rexon/qml_modules`, where `tools/build_qml_*.sh` write)
+// FIRST — that is the developer's order. But the same order also applied to
+// the distribution package: on a machine where modules had once been built by
+// hand, the installed Rexon took `QExtra`, `Qcm.Material` and
+// `waywallen.control` from the old manual build rather than from its package.
+// While the revisions match this is unnoticeable; after a package update a
+// stale copy that the package manager never updates would come into use.
 //
-// Правило: пользовательский каталог главнее только при запуске из дерева
-// исходников (разработка). У пакета и у установки главнее своя копия, а
-// пользовательская берётся, лишь когда пакетной копии модуля нет. Файлы
-// пользователя не удаляются — это его ручная сборка; журнал говорит, что
-// она пропущена и чем отличается.
+// The rule: the user directory takes precedence only when running from the
+// source tree (development). For a package and an installation their own copy
+// takes precedence, and the user one is taken only when the package has no
+// copy of the module. The user's files are not deleted — it is their manual
+// build; the log says that it was skipped and how it differs.
 
-/// Отметка ревизии `Qcm.Material` рядом с модулем; пишет
-/// `tools/build_qml_material.sh` (и сборка пакета им же).
+/// The `Qcm.Material` revision mark next to the module; written by
+/// `tools/build_qml_material.sh` (and the package build uses it too).
 pub const QCM_MATERIAL_PIN_REL: &str = "Qcm/QML_MATERIAL_PIN";
 
-/// Отметка ревизии `QExtra` рядом с модулем; пишет `tools/build_qml_qextra.sh`.
+/// The `QExtra` revision mark next to the module; written by `tools/build_qml_qextra.sh`.
 pub const QEXTRA_PIN_REL: &str = "QExtra/QEXTRA_PIN";
 
-/// Что сверяется у одного модуля: имя для журнала, файл плагина и отметки
-/// рядом с ним (подпись, путь в каталоге модулей).
+/// What is checked for one module: a name for the log, the plugin file and the
+/// marks next to it (label, path in the module directory).
 struct ComparedModule {
     name: &'static str,
     plugin_rel: &'static str,
     stamps: &'static [(&'static str, &'static str)],
 }
 
-/// Все три модуля вкладки обоев, которые кладут и `tools/build_qml_*.sh`, и
-/// пакет. Новый модуль добавляется строкой сюда (правило #12).
+/// All three modules of the wallpaper tab that both `tools/build_qml_*.sh` and
+/// the package put. A new module is added as a line here (rule #12).
 const COMPARED_MODULES: [ComparedModule; 3] = [
     ComparedModule {
         name: "Qcm.Material",
@@ -666,8 +675,8 @@ const COMPARED_MODULES: [ComparedModule; 3] = [
     },
 ];
 
-/// Каталоги пользовательской сборки — те же первые кандидаты, что у
-/// [`module_dirs`]: `$XDG_DATA_HOME` и `~/.local/share`, без повторов.
+/// User build directories — the same first candidates as in [`module_dirs`]:
+/// `$XDG_DATA_HOME` and `~/.local/share`, without duplicates.
 pub fn user_module_dirs(xdg_data_home: Option<&str>, home: &str) -> Vec<String> {
     let mut out = vec![format!("{}/{MODULES_REL}", data_home(xdg_data_home, home))];
     let plain = format!("{}/{MODULES_REL}", data_home(None, home));
@@ -677,64 +686,64 @@ pub fn user_module_dirs(xdg_data_home: Option<&str>, home: &str) -> Vec<String> 
     out
 }
 
-/// Главнее ли пользовательская сборка модулей: только у запуска из дерева
-/// исходников, и только если лаунчер пакета не сказал «пакет»
+/// Whether the user build of the modules takes precedence: only for a launch
+/// from the source tree, and only if the package launcher did not say "package"
 /// (`installer::PACKAGED_ENV`).
 pub fn user_modules_first(packaged: bool, dev_tree: bool) -> bool {
     dev_tree && !packaged
 }
 
-/// Чем модуль пользовательской сборки отличается от пакетного.
+/// How a module of the user build differs from the packaged one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleDiff {
     pub module: &'static str,
-    /// Что отличается: «ревизия», «протокол», «отметка Qt», «Qt сборки».
+    /// What differs: "revision", "protocol", "Qt mark", "build's Qt".
     pub what: &'static str,
-    /// Значение у пользователя; «нет», когда отметки нет.
+    /// The user's value; "none" when there is no mark.
     pub user: String,
     pub package: String,
 }
 
-/// Что сделано с пользовательским каталогом модулей.
+/// What was done with the user module directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserCopyUse {
-    /// Запуск из дерева исходников — каталог остаётся первым.
+    /// Launch from the source tree — the directory stays first.
     DevTree,
-    /// Пакетной копии нет ни у одного его модуля — берётся он.
+    /// None of its modules has a packaged copy — it is taken.
     NoPackageCopy,
-    /// Часть модулей есть только у него — оставлен ПОЗАДИ пакетных каталогов:
-    /// общие модули идут из пакета.
+    /// Some modules exist only in it — it is kept BEHIND the package directories:
+    /// the shared modules come from the package.
     OnlyHere(Vec<&'static str>),
-    /// Всё, что в нём есть, даёт пакет — каталог не используется.
+    /// Everything in it is provided by the package — the directory is not used.
     Skipped,
 }
 
-/// Решение по одному пользовательскому каталогу — для строки журнала.
+/// The decision for one user directory — for the log line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserCopyNote {
     pub dir: String,
-    /// Первый не пользовательский каталог, где нашлась копия его модулей.
+    /// The first non-user directory where a copy of its modules was found.
     pub package_dir: Option<String>,
     pub diffs: Vec<ModuleDiff>,
     pub used: UserCopyUse,
 }
 
-/// Порядок каталогов модулей и решения по пользовательским каталогам.
+/// The order of module directories and the decisions on the user directories.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleOrder {
     pub dirs: Vec<String>,
     pub notes: Vec<UserCopyNote>,
 }
 
-/// Значение отметки: первое слово файла.
+/// A mark's value: the first word of the file.
 fn stamp_value<FS: ModuleFs>(fs: &mut FS, dir: &str, rel: &str) -> Option<String> {
     fs.read_text(&plugin_path(dir, rel))
         .and_then(|t| t.split_whitespace().next().map(str::to_ascii_lowercase))
 }
 
-/// Чем модуль `m` в каталоге `user` отличается от него же в `package`.
-/// Отметки и версия Qt плагина сверяются, только когда у пакета они есть:
-/// сравнивать не с чем — не отличие.
+/// How module `m` in directory `user` differs from the same module in
+/// `package`. Marks and the plugin's Qt version are compared only when the
+/// package has them: if there is nothing to compare with, it is not a difference.
 fn module_diffs<FS: ModuleFs>(
     fs: &mut FS,
     m: &ComparedModule,
@@ -769,16 +778,17 @@ fn module_diffs<FS: ModuleFs>(
     out
 }
 
-/// Расставить каталоги модулей ([`module_dirs`]) по тому, откуда запущен
-/// Rexon. `user_dirs` — [`user_module_dirs`], `user_first` —
+/// Arrange the module directories ([`module_dirs`]) according to where Rexon was
+/// launched from. `user_dirs` — [`user_module_dirs`], `user_first` —
 /// [`user_modules_first`].
 ///
-/// * `user_first` — порядок не меняется (разработка: своя сборка главнее);
-///   отличия от пакетной копии всё равно попадают в заметки.
-/// * иначе пакетные каталоги идут первыми. Пользовательский каталог
-///   выбрасывается, если всё, что в нём лежит, есть в пакете (совпадает или
-///   устарело — неважно, главнее пакет); оставляется В КОНЦЕ списка, если
-///   хотя бы одного его модуля в пакете нет.
+/// * `user_first` — the order does not change (development: one's own build
+///   takes precedence); differences from the packaged copy still go into the
+///   notes.
+/// * otherwise the package directories go first. A user directory is thrown out
+///   if everything in it is in the package (matching or stale — it does not
+///   matter, the package takes precedence); it is kept AT THE END of the list if
+///   at least one of its modules is not in the package.
 pub fn order_module_dirs<FS: ModuleFs>(
     fs: &mut FS,
     dirs: &[String],
@@ -811,7 +821,7 @@ pub fn order_module_dirs<FS: ModuleFs>(
             }
         }
         if present == 0 {
-            // Пустой каталог ничему не мешает и ничего не даёт.
+            // An empty directory neither interferes nor gives anything.
             if user_first {
                 kept_users.push(user.clone());
             }
@@ -842,9 +852,9 @@ pub fn order_module_dirs<FS: ModuleFs>(
     ModuleOrder { dirs, notes }
 }
 
-/// Строка журнала о пользовательском каталоге модулей и уровень: `true` —
-/// предупреждение (копия отличается от пакетной), `false` — сведение.
-/// `None` — сказать нечего (разработка без отличий).
+/// A log line about the user module directory and its level: `true` — a warning
+/// (the copy differs from the packaged one), `false` — information. `None` —
+/// nothing to say (development without differences).
 pub fn user_copy_note_line(note: &UserCopyNote) -> Option<(bool, String)> {
     let diffs = note
         .diffs
@@ -886,39 +896,39 @@ pub fn user_copy_note_line(note: &UserCopyNote) -> Option<(bool, String)> {
 }
 
 // ============================================================================
-// Что именно ищем в этих каталогах
+// What exactly we look for in these directories
 // ============================================================================
 
-/// `Qcm.Material` — скомпилированный QML-плагин (MIT, QmlMaterial hypengw),
-/// ставит `tools/build_qml_material.sh`.
+/// `Qcm.Material` — a compiled QML plugin (MIT, QmlMaterial by hypengw),
+/// installed by `tools/build_qml_material.sh`.
 pub const QCM_MATERIAL_REL: &str = "Qcm/Material/libqml_materialplugin.so";
 
-/// `waywallen.control` — Qt-Protobuf value-типы, которые PySide6
-/// предоставить не может; ставит `tools/build_qml_control.sh`.
+/// `waywallen.control` — Qt-Protobuf value types that PySide6 cannot provide;
+/// installed by `tools/build_qml_control.sh`.
 pub const WAYWALLEN_CONTROL_REL: &str =
     "waywallen/control/libwaywallen-controlplugin.so";
 
-/// Библиотека самих value-типов `waywallen.control` (плагин выше — её
-/// тонкая QML-обёртка). Типы регистрируются при загрузке библиотеки, так
-/// что стенду без движка QML её достаточно подгрузить.
+/// The library of the `waywallen.control` value types themselves (the plugin
+/// above is its thin QML wrapper). The types are registered when the library is
+/// loaded, so a test stand without a QML engine only needs to load it.
 pub const WAYWALLEN_CONTROL_TYPES_REL: &str = "waywallen/control/libwaywallen-control.so";
 
-/// Куда `tools/build_qml_control.sh` кладёт наши Rust-сборки рядом с
-/// C++-плагином: у ПАКЕТА дерева `rust/target` нет вовсе.
+/// Where `tools/build_qml_control.sh` puts our Rust builds next to the C++
+/// plugin: a PACKAGE has no `rust/target` tree at all.
 pub const RUST_LIB_SUBDIR: &str = "waywallen/control";
 
-/// Крейт `rexon-qt-filter` (cxx-qt): модель редактора фильтров обоев.
+/// The `rexon-qt-filter` crate (cxx-qt): the model of the wallpaper filter editor.
 pub const FILTER_LIB_NAME: &str = "librexon_qt_filter.so";
 
-/// Профили сборки в дереве разработчика, по убыванию свежести.
+/// Build profiles in the developer tree, in decreasing order of freshness.
 pub const TARGET_PROFILES: [&str; 2] = ["release", "debug"];
 
-/// Полный путь плагина в каталоге модулей.
+/// Full path of a plugin in the module directory.
 pub fn plugin_path(modules_dir: &str, rel: &str) -> String {
     format!("{}/{rel}", modules_dir.trim_end_matches('/'))
 }
 
-/// Первый каталог из списка, где лежит нужный плагин.
+/// The first directory in the list where the needed plugin lies.
 pub fn find_plugin<FS: ModuleFs>(
     fs: &mut FS,
     dirs: &[String],
@@ -929,11 +939,11 @@ pub fn find_plugin<FS: ModuleFs>(
         .find(|p| fs.is_file(p))
 }
 
-/// Каталог, который отдаётся движку QML как `addImportPath` первым — тот,
-/// где нашёлся `Qcm.Material`; ни одного нет — первый кандидат (чтобы у
-/// сообщения об ошибке был осмысленный путь).
+/// The directory given to the QML engine as the first `addImportPath` — the one
+/// where `Qcm.Material` was found; if there is none, the first candidate (so that
+/// the error message has a meaningful path).
 ///
-/// Порт `_resolve_qcm_dir` вместе с его запасной веткой.
+/// Port of `_resolve_qcm_dir` together with its fallback branch.
 pub fn resolve_import_dir<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> String {
     for d in dirs {
         if qcm_usable(fs, d) {
@@ -943,14 +953,14 @@ pub fn resolve_import_dir<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> String 
     dirs.first().cloned().unwrap_or_default()
 }
 
-/// Все каталоги модулей, в которых что-то из наших плагинов реально лежит —
-/// их движку QML стоит отдать в `addImportPath`.
+/// All module directories in which some of our plugins actually lie — they
+/// should be given to the QML engine in `addImportPath`.
 ///
-/// Починка 2 с другой стороны: пока путь импорта был ОДИН, раздельная
-/// установка (`Qcm.Material` собран пользователем, `waywallen.control`
-/// приехал пакетом) не работала — половина типов не импортировалась. Список
-/// сохраняет прежний порядок предпочтения, поэтому для обычной установки в
-/// один каталог ответ тот же, что был.
+/// Fix 2 from the other side: while there was ONE import path, a split
+/// installation (`Qcm.Material` built by the user, `waywallen.control` came with
+/// the package) did not work — half of the types were not imported. The list
+/// keeps the previous order of preference, so for an ordinary installation into
+/// one directory the answer is the same as before.
 pub fn import_dirs<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Vec<String> {
     usable_dirs(fs, dirs)
         .iter()
@@ -962,26 +972,27 @@ pub fn import_dirs<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Есть ли ОБА обязательных QML-плагина (иначе QML-интерфейс вкладки
-/// недоступен) — порт `qcm_material_available`.
+/// Whether BOTH mandatory QML plugins are present (otherwise the tab's QML
+/// interface is unavailable) — port of `qcm_material_available`.
 ///
-/// Нужны именно два: `Qcm.Material` даёт оформление, `waywallen.control` —
-/// value-типы Qt-Protobuf, без которых не строится страница «Обои».
+/// Exactly two are needed: `Qcm.Material` provides the styling,
+/// `waywallen.control` the Qt-Protobuf value types without which the
+/// "Wallpapers" page cannot be built.
 ///
-/// Каталоги с `Qcm.Material` под другую версию Qt и с `waywallen.control`
-/// из другого протокола (при живом свежем) в счёт не идут — см.
-/// [`usable_dirs`].
+/// Directories with a `Qcm.Material` for another Qt version and with a
+/// `waywallen.control` from another protocol (with a live fresh one) do not
+/// count — see [`usable_dirs`].
 pub fn qml_plugins_ready<FS: ModuleFs>(fs: &mut FS, dirs: &[String]) -> bool {
     let dirs = usable_dirs(fs, dirs);
     find_plugin(fs, &dirs, QCM_MATERIAL_REL).is_some()
         && find_plugin(fs, &dirs, WAYWALLEN_CONTROL_REL).is_some()
 }
 
-/// Кандидаты на Rust-сборку по убыванию свежести: `release` → `debug` в
-/// дереве разработчика → каталоги QML-модулей.
+/// Candidates for a Rust build in decreasing order of freshness: `release` →
+/// `debug` in the developer tree → the QML module directories.
 ///
-/// Починка 1 и 2: каталоги модулей идут ВСЕ и в том же порядке, что у
-/// [`module_dirs`], а не один выбранный по `Qcm.Material`.
+/// Fixes 1 and 2: the module directories go ALL and in the same order as in
+/// [`module_dirs`], not a single one chosen by `Qcm.Material`.
 pub fn rust_lib_candidates(
     repo_root: &str,
     dirs: &[String],
@@ -999,45 +1010,45 @@ pub fn rust_lib_candidates(
     out
 }
 
-/// Кандидаты на сборку крейта `rexon-qt-filter` — порт
+/// Candidates for the build of the `rexon-qt-filter` crate — port of
 /// `bridge._rust_filter_model_candidates`.
 pub fn filter_lib_candidates(repo_root: &str, dirs: &[String]) -> Vec<String> {
     rust_lib_candidates(repo_root, dirs, FILTER_LIB_NAME)
 }
 
-/// Первый существующий кандидат либо `None`.
+/// The first existing candidate or `None`.
 pub fn pick_existing<FS: ModuleFs>(fs: &mut FS, candidates: &[String]) -> Option<String> {
     candidates.iter().find(|p| fs.is_file(p)).cloned()
 }
 
 // ============================================================================
-// Пути вендоренного QML и дискового кэша миниатюр
+// Paths of the vendored QML and the thumbnail disk cache
 // ============================================================================
 
-/// Корневой QML-хост вкладки: `Loader`, который держит показываемую
-/// страницу, чтобы движок QML на все страницы оставался ОДИН.
+/// The tab's root QML host: a `Loader` holding the page being shown, so that
+/// there remains ONE QML engine for all pages.
 pub const PAGE_HOST_QML: &str = "PageHost.qml";
 
-/// Прогревочная сцена: регистрация Qt-Protobuf модуля `waywallen.control`
-/// обязана пройти на ГЛАВНОМ потоке до первого `QQuickWidget`.
+/// The warm-up scene: the registration of the `waywallen.control` Qt-Protobuf
+/// module must happen on the MAIN thread before the first `QQuickWidget`.
 pub const PREWARM_QML: &str = "_prewarm_control.qml";
 
-/// Файл с тегом вендоренного апстрима внутри каталога QML вкладки.
+/// The file with the vendored upstream tag inside the tab's QML directory.
 pub const UPSTREAM_TAG_REL: &str = "waywallen/ui/UPSTREAM_TAG";
 
-/// Каталог страниц вендоренного QML внутри каталога вкладки.
+/// The directory of vendored QML pages inside the tab's directory.
 pub const VENDOR_PAGE_DIR: &str = "waywallen/ui/qml/page";
 
-/// Ответ [`upstream_tag`], когда файла нет либо он не прочитался.
+/// The answer of [`upstream_tag`] when the file is missing or could not be read.
 pub const UPSTREAM_TAG_UNKNOWN: &str = "?";
 
-/// Путь файла внутри каталога QML вкладки (`qml_ui/`).
+/// Path of a file inside the tab's QML directory (`qml_ui/`).
 pub fn qml_path(qml_dir: &str, rel: &str) -> String {
     format!("{}/{rel}", qml_dir.trim_end_matches('/'))
 }
 
-/// Путь вендоренной страницы по её имени (`"DiscoverPage.qml"`);
-/// пустое имя — пустой ответ, хост показывает пустой `Loader`.
+/// Path of a vendored page by its name (`"DiscoverPage.qml"`); an empty name —
+/// an empty answer, the host shows an empty `Loader`.
 pub fn vendor_page_path(qml_dir: &str, page_qml: &str) -> String {
     if page_qml.is_empty() {
         return String::new();
@@ -1045,25 +1056,25 @@ pub fn vendor_page_path(qml_dir: &str, page_qml: &str) -> String {
     qml_path(qml_dir, &format!("{VENDOR_PAGE_DIR}/{page_qml}"))
 }
 
-/// Тег вендоренного апстрима из прочитанного содержимого файла.
+/// The vendored upstream tag from the file contents that were read.
 pub fn upstream_tag(raw: Option<&str>) -> String {
     match raw {
         Some(s) if !s.trim().is_empty() => s.trim().to_string(),
-        // Пустой файл раньше отдавался как пустая строка и попадал прямо в
-        // заголовок окна («waywallen »). Тот же ответ, что и у отсутствующего
-        // файла, честнее: тега мы не знаем (правило #13).
+        // An empty file used to be returned as an empty string and went right
+        // into the window title ("waywallen "). The same answer as for a missing
+        // file is more honest: we do not know the tag (rule #13).
         _ => UPSTREAM_TAG_UNKNOWN.to_string(),
     }
 }
 
-/// Версия вендорного интерфейса по содержимому `UPSTREAM_TAG`:
+/// Version of the vendored interface from the contents of `UPSTREAM_TAG`:
 /// `v0.5.0 (564eb02)` → `0.5.0`.
 ///
-/// Это то же число, что у апстрима `Qt.application.version` (версия пакета
-/// `waywallen-ui`), и того же вида, что версия демона по D-Bus, — страница
-/// «О программе» сравнивает их и показывает вторую строку «Daemon version»
-/// только при расхождении (наш патч 0002). Тега нет — тот же ответ, что у
-/// [`upstream_tag`]: честное «?», а не пустая строка.
+/// This is the same number as the upstream's `Qt.application.version` (the
+/// version of the `waywallen-ui` package), and of the same form as the daemon
+/// version over D-Bus — the "About" page compares them and shows a second line
+/// "Daemon version" only when they differ (our patch 0002). No tag — the same
+/// answer as [`upstream_tag`]: an honest "?", not an empty string.
 pub fn ui_version(raw: Option<&str>) -> String {
     let tag = upstream_tag(raw);
     let first = tag.split_whitespace().next().unwrap_or(UPSTREAM_TAG_UNKNOWN);
@@ -1075,14 +1086,14 @@ pub fn ui_version(raw: Option<&str>) -> String {
     }
 }
 
-/// Хвост каталога дискового кэша сетевых картинок QML (миниатюры Discover).
+/// Tail of the disk cache directory of QML network pictures (Discover thumbnails).
 pub const NET_CACHE_REL: &str = "rexon/qml_net";
 
-/// Предел дискового кэша миниатюр, байт.
+/// Limit of the thumbnail disk cache, bytes.
 pub const NET_CACHE_MAX_BYTES: i64 = 200 * 1024 * 1024;
 
-/// Каталог дискового кэша миниатюр. `$XDG_CACHE_HOME` уважается — это тот
-/// же класс, что Починка 3 (в оригинале стоял литерал `~/.cache`).
+/// The thumbnail disk cache directory. `$XDG_CACHE_HOME` is respected — this is
+/// the same class as Fix 3 (the original had a literal `~/.cache`).
 pub fn net_cache_dir(xdg_cache_home: Option<&str>, home: &str) -> String {
     let base = match xdg_cache_home {
         Some(x) if !x.is_empty() => x.trim_end_matches('/').to_string(),

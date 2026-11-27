@@ -1,55 +1,58 @@
-//! «Значки и панели инструментов» вкладки «Настройки»: значки в меню, значки
-//! на кнопках и подписи на кнопках панелей инструментов — во ВСЕХ
-//! окружениях, родным ключом каждого.
+//! "Icons and toolbars" in the "Settings" tab: icons in menus, icons on
+//! buttons and toolbar button text — in ALL environments, through each one's
+//! native key.
 //!
-//! Эталон — «Оформление приложений → Настроить значки и панели инструментов»
-//! Параметров системы KDE (`kcm_style`, plasma-workspace 6.8,
+//! The reference is "Application Style → Configure Icons and Toolbars" in KDE
+//! System Settings (`kcm_style`, plasma-workspace 6.8,
 //! `kcms/style/stylesettings.kcfg`): `kdeglobals [KDE] ShowIconsInMenuItems`,
-//! `ShowIconsOnPushButtons` (по умолчанию `true`) и `[Toolbar style]
+//! `ShowIconsOnPushButtons` (default `true`) and `[Toolbar style]
 //! ToolButtonStyle`, `ToolButtonStyleOtherToolbars` (`NoText`, `TextOnly`,
-//! `TextBesideIcon` — по умолчанию, `TextUnderIcon`). После записи модуль
-//! KDE шлёт `KGlobalSettings.notifyChange(SettingsChanged, SETTINGS_STYLE)` и
-//! `org.kde.KToolBar.styleChanged` — шлём то же.
+//! `TextBesideIcon` — the default, `TextUnderIcon`). After writing, the KDE
+//! module sends `KGlobalSettings.notifyChange(SettingsChanged, SETTINGS_STYLE)`
+//! and `org.kde.KToolBar.styleChanged`, and we send the same.
 //!
-//! Кто что читает (сверено по исходникам и строкам установленных библиотек):
-//! * подписи панелей `[Toolbar style]` читает сам `KToolBar` (KXmlGui,
-//!   `KToolBarPrivate::loadKDESettings`): главная панель окна —
-//!   `ToolButtonStyle`, все прочие — `ToolButtonStyleOtherToolbars`; без
-//!   ключа обе — `TextBesideIcon`, регистр не важен, всё незнакомое (и
-//!   `NoText`) — только значки. Стиль KDE (`KStyle`, frameworkintegration)
-//!   берёт тот же ключ прочих панелей для `QToolBar` со свойством
-//!   `otherToolbar`. Значит, программы KDE слушаются обоих ключей в ЛЮБОМ
-//!   окружении; поэтому `kdeglobals` пишется всюду, не только в Plasma, и
-//!   отдельный выбор для прочих панелей есть везде (вне Plasma — с честной
-//!   оговоркой, что он только для программ KDE: у GTK, qt6ct и LXQt
-//!   такого различия нет);
-//! * значки в меню и на кнопках из `kdeglobals` читает тема платформы KDE
-//!   (`KDEPlasmaPlatformTheme6`) — то есть только внутри Plasma;
-//! * остальные программы Qt вне Plasma — qt6ct/qt5ct, `[Interface]
+//! Who reads what (checked against the sources and the strings of the
+//! installed libraries):
+//! * toolbar text in `[Toolbar style]` is read by `KToolBar` itself (KXmlGui,
+//!   `KToolBarPrivate::loadKDESettings`): the window's main toolbar uses
+//!   `ToolButtonStyle`, all others `ToolButtonStyleOtherToolbars`; without the
+//!   key both are `TextBesideIcon`, case does not matter, and anything unknown
+//!   (and `NoText`) means icons only. The KDE style (`KStyle`,
+//!   frameworkintegration) takes the same "other toolbars" key for a
+//!   `QToolBar` with the `otherToolbar` property. So KDE programs obey both
+//!   keys in ANY environment; that is why `kdeglobals` is written everywhere,
+//!   not only in Plasma, and a separate choice for the other toolbars exists
+//!   everywhere (outside Plasma with an honest caveat that it is only for KDE
+//!   programs: GTK, qt6ct and LXQt have no such distinction);
+//! * icons in menus and on buttons from `kdeglobals` are read by the KDE
+//!   platform theme (`KDEPlasmaPlatformTheme6`), i.e. only inside Plasma;
+//! * other Qt programs outside Plasma use qt6ct/qt5ct: `[Interface]
 //!   menus_have_icons` (`AA_DontShowIconsInMenus`), `toolbutton_style`
-//!   (`Qt::ToolButtonStyle` 0–3, 4 — «как у стиля») и
-//!   `dialog_buttons_have_icons` (0 — нет, 1 — как у стиля, 2 — да; читает
-//!   прокси-стиль qt6ct, который его тема платформы ставит всегда);
-//! * LXQt — `lxqt.conf [General] tool_button_style` (`ToolButtonTextBesideIcon`
-//!   и т. п., `lxqt-qtplugin`); значков в меню и на кнопках у LXQt нет;
-//! * GTK 3: `gtk-menu-images` и `gtk-button-images` работают (проба
-//!   30.10.2026 на GTK 3.24.52: значок у `GtkImageMenuItem` и у кнопки с
-//!   подписью появляется и пропадает), а `gtk-toolbar-style` `GtkToolbar`
-//!   больше не слушает — подписи панелей в GTK 3 не меняются; у GTK 4 этих
-//!   настроек нет вовсе. Так и пишем человеку;
-//! * MATE (`org.mate.interface`) и Cinnamon (`org.cinnamon.desktop.interface`)
-//!   — `menus-have-icons`, `buttons-have-icons`, `toolbar-style`; их службы
-//!   xsettings переносят ключи в `Gtk/MenuImages`, `Gtk/ButtonImages`,
-//!   `Gtk/ToolbarStyle`; Xfce — сами свойства `xsettings /Gtk/…`;
-//! * GNOME, Budgie, Pantheon — у схемы есть только `toolbar-style`; значки
-//!   меню и кнопок — `settings.ini` GTK 3.
+//!   (`Qt::ToolButtonStyle` 0–3, 4 means "follow the style") and
+//!   `dialog_buttons_have_icons` (0 — no, 1 — follow the style, 2 — yes; read
+//!   by the qt6ct proxy style, which its platform theme always installs);
+//! * LXQt uses `lxqt.conf [General] tool_button_style`
+//!   (`ToolButtonTextBesideIcon` and so on, `lxqt-qtplugin`); LXQt has no
+//!   icons in menus or on buttons;
+//! * GTK 3: `gtk-menu-images` and `gtk-button-images` work (tested 30.10.2026
+//!   on GTK 3.24.52: the icon of a `GtkImageMenuItem` and of a button with a
+//!   label appears and disappears), but `GtkToolbar` no longer listens to
+//!   `gtk-toolbar-style`, so toolbar text in GTK 3 does not change; GTK 4 has
+//!   none of these settings at all. That is what we tell the person;
+//! * MATE (`org.mate.interface`) and Cinnamon (`org.cinnamon.desktop.interface`)
+//!   use `menus-have-icons`, `buttons-have-icons`, `toolbar-style`; their
+//!   xsettings services carry the keys over to `Gtk/MenuImages`,
+//!   `Gtk/ButtonImages`, `Gtk/ToolbarStyle`; Xfce uses the `xsettings /Gtk/…`
+//!   properties themselves;
+//! * GNOME, Budgie, Pantheon: the schema has only `toolbar-style`; menu and
+//!   button icons go through GTK 3's `settings.ini`.
 //!
-//! `settings.ini` пишется только у GTK 3: у GTK 4 таких ключей нет, и он
-//! ругался бы на каждый из них при запуске каждой программы.
+//! `settings.ini` is written only for GTK 3: GTK 4 has no such keys and would
+//! complain about each of them at the start of every program.
 //!
-//! Устройство как у `animations` и `window_buttons`: снимок ([`read_state`])
-//! и план ([`plan_set`], [`plan_defaults`]) — на подставном [`LookIo`],
-//! исполнитель общий ([`run_steps`]).
+//! The structure is like `animations` and `window_buttons`: a snapshot
+//! ([`read_state`]) and a plan ([`plan_set`], [`plan_defaults`]) over a
+//! substitutable [`LookIo`], with a shared executor ([`run_steps`]).
 
 use serde::Serialize;
 
@@ -59,7 +62,7 @@ use crate::animations::{
 use crate::i18n::{n_, tr, trf};
 use crate::shell_palette::{ini_apply, ini_get, IniEdit};
 
-/// Вид подписей на кнопках панели инструментов.
+/// The style of text on toolbar buttons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Toolbar {
     IconsOnly,
@@ -68,7 +71,7 @@ pub enum Toolbar {
     TextUnder,
 }
 
-/// id для страницы, ключ KDE, имя GTK, число Qt, имя LXQt, подпись.
+/// id for the page, KDE key, GTK name, Qt number, LXQt name, label.
 const TOOLBAR: &[(Toolbar, &str, &str, &str, &str, &str, &str)] = &[
     (Toolbar::IconsOnly, "icons", "NoText", "icons", "0", "ToolButtonIconOnly", n_("Icons only")),
     (Toolbar::TextOnly, "text", "TextOnly", "text", "1", "ToolButtonTextOnly", n_("Text only")),
@@ -102,8 +105,8 @@ impl Toolbar {
     pub fn from_kde(v: &str) -> Option<Toolbar> {
         TOOLBAR.iter().find(|r| r.2 == v.trim()).map(|r| r.0)
     }
-    /// GTK: имя (`both-horiz`), имя перечисления (`GTK_TOOLBAR_BOTH_HORIZ`)
-    /// или число — `settings.ini` принимает все три.
+    /// GTK: a name (`both-horiz`), an enum name (`GTK_TOOLBAR_BOTH_HORIZ`) or a
+    /// number — `settings.ini` accepts all three.
     pub fn from_gtk(v: &str) -> Option<Toolbar> {
         let v = v.trim().trim_matches('\'').to_ascii_lowercase();
         let v = v.strip_prefix("gtk_toolbar_").unwrap_or(&v).replace('_', "-");
@@ -115,7 +118,7 @@ impl Toolbar {
             _ => None,
         }
     }
-    /// Qt: 0–3; 4 («как у стиля») и мусор — `None`.
+    /// Qt: 0–3; 4 ("follow the style") and garbage give `None`.
     pub fn from_qt(v: &str) -> Option<Toolbar> {
         TOOLBAR.iter().find(|r| r.4 == v.trim()).map(|r| r.0)
     }
@@ -124,22 +127,22 @@ impl Toolbar {
     }
 }
 
-/// Настройки раздела.
+/// The section settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Widgets {
     pub menu_icons: bool,
     pub button_icons: bool,
     pub toolbar: Toolbar,
-    /// Прочие панели (не главная) — родное различие KDE; вне Plasma его
-    /// слушаются только программы KDE, остальные берут `toolbar`.
+    /// Other toolbars (not the main one) are a native KDE distinction; outside
+    /// Plasma only KDE programs obey it, the others take `toolbar`.
     pub other_toolbars: Toolbar,
 }
 
-/// Умолчания KDE (`stylesettings.kcfg`).
+/// KDE defaults (`stylesettings.kcfg`).
 pub const KDE_DEFAULTS: Widgets =
     Widgets { menu_icons: true, button_icons: true, toolbar: Toolbar::TextBeside, other_toolbars: Toolbar::TextBeside };
 
-// ── Где что лежит ──────────────────────────────────────────────────────────
+// ── Where things live ──────────────────────────────────────────────────────
 
 const KDEGLOBALS: &str = "kdeglobals";
 const G_KDE: &str = "KDE";
@@ -157,8 +160,8 @@ const QT_MENU: &str = "menus_have_icons";
 const QT_TOOLBAR: &str = "toolbutton_style";
 const QT_BUTTONS: &str = "dialog_buttons_have_icons";
 
-/// Схема gsettings с тремя ключами (`menus-have-icons`, `buttons-have-icons`,
-/// `toolbar-style`) и её служба xsettings.
+/// A gsettings schema with three keys (`menus-have-icons`,
+/// `buttons-have-icons`, `toolbar-style`) and its xsettings service.
 fn full_schema(de: &str) -> Option<&'static str> {
     match de {
         "mate" => Some("org.mate.interface"),
@@ -167,19 +170,19 @@ fn full_schema(de: &str) -> Option<&'static str> {
     }
 }
 
-/// GNOME-семейство: у схемы только `toolbar-style`.
+/// The GNOME family: the schema has only `toolbar-style`.
 fn gnome_family(de: &str) -> bool {
     matches!(de, "gnome" | "budgie" | "pantheon")
 }
 
-/// Раздел есть? В Deepin оформление программ задаёт только его Центр
-/// управления (как и у остальных разделов, `dde::refusal`).
+/// Does the section exist? In Deepin, application appearance is set only by
+/// its Control Center (as with the other sections, `dde::refusal`).
 pub fn available(de: &str) -> bool {
     de != "deepin"
 }
 
-/// Пишутся ли настройки qt6ct/qt5ct: вне Plasma (там тема платформы KDE) и
-/// вне LXQt (там своя тема платформы).
+/// Whether qt6ct/qt5ct settings are written: outside Plasma (there the KDE
+/// platform theme applies) and outside LXQt (it has its own platform theme).
 fn uses_qtct(de: &str) -> bool {
     !matches!(de, "kde" | "lxqt" | "deepin")
 }
@@ -188,8 +191,8 @@ fn qtct_conf(ctx: &LookCtx, tool: &str) -> String {
     ctx.cfg(&format!("{tool}/{tool}.conf"))
 }
 
-/// qt6ct/qt5ct, которыми человек может пользоваться: программа есть или её
-/// конфиг уже заведён (как у слоя цветов `shell_palette`).
+/// The qt6ct/qt5ct the person may be using: the program is installed or its
+/// config already exists (as for the `shell_palette` color layer).
 fn qtct_tools(io: &dyn LookIo, ctx: &LookCtx) -> Vec<&'static str> {
     crate::qt_settings::QTCT_TOOLS
         .iter()
@@ -222,19 +225,19 @@ fn bool_s(b: bool) -> &'static str {
     }
 }
 
-// ── Снимок ─────────────────────────────────────────────────────────────────
+// ── Snapshot ───────────────────────────────────────────────────────────────
 
 fn ini_value(io: &dyn LookIo, path: &str, group: &str, key: &str) -> Option<String> {
     ini_get(&io.read(path)?, group, key).filter(|v| !v.is_empty())
 }
 
-/// Настройки как они стоят сейчас — по главному для окружения источнику.
+/// The settings as they are now, according to the main source for the environment.
 pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> Widgets {
     let de = ctx.de.as_str();
     let kde = |g: &str, k: &str| ini_value(io, &ctx.cfg(KDEGLOBALS), g, k);
     let kde_toolbar = |k: &str| kde(G_TOOLBAR, k).and_then(|v| Toolbar::from_kde(&v));
     let gtk = |k: &str| ini_value(io, &gtk3_ini(ctx), "Settings", k);
-    // У GTK 3 без ключа значков в меню и на кнопках нет.
+    // In GTK 3 without the key there are no icons in menus or on buttons.
     let gtk_bool = |k: &str| gtk(k).and_then(|v| parse_bool(&v)).unwrap_or(false);
     let qtct_toolbar = || {
         qtct_tools(io, ctx)
@@ -278,15 +281,15 @@ pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> Widgets {
                 .unwrap_or(Toolbar::TextBeside);
         }
         _ => {
-            // Тайловые, COSMIC, labwc…: значки — как их видит GTK 3, подписи —
-            // как у qt6ct, иначе как у программ KDE.
+            // Tiling WMs, COSMIC, labwc…: icons as GTK 3 sees them, toolbar text as in
+            // qt6ct, otherwise as in KDE programs.
             w.menu_icons = gtk_bool(GTK_MENU);
             w.button_icons = gtk_bool(GTK_BUTTONS);
             w.toolbar = qtct_toolbar().or_else(|| kde_toolbar(K_TOOLBAR)).unwrap_or(Toolbar::TextBeside);
         }
     }
-    // Прочие панели — только ключ KDE, в любом окружении (умолчание
-    // `KToolBar` — подписи рядом со значками).
+    // Other toolbars: only the KDE key, in any environment (the `KToolBar`
+    // default is text beside icons).
     if de != "deepin" {
         w.other_toolbars = kde_toolbar(K_OTHER).unwrap_or(Toolbar::TextBeside);
     }
@@ -299,29 +302,29 @@ pub struct WidgetsOption {
     pub label: String,
 }
 
-/// Снимок раздела для страницы.
+/// The section snapshot for the page.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WidgetsState {
     pub de: String,
-    /// Раздел есть в этом окружении.
+    /// The section exists in this environment.
     pub available: bool,
     pub menu_icons: bool,
     pub button_icons: bool,
     pub toolbar: String,
     pub other_toolbars: String,
-    /// Отдельный выбор для прочих панелей — везде, где есть раздел
-    /// (ключ KDE слушают программы KDE в любом окружении).
+    /// A separate choice for other toolbars, everywhere the section exists (KDE
+    /// programs obey the KDE key in any environment).
     pub has_other_toolbars: bool,
-    /// Оговорка под выбором прочих панелей: вне Plasma он только для
-    /// программ KDE. В Plasma пусто.
+    /// The caveat under the other-toolbars choice: outside Plasma it applies only
+    /// to KDE programs. Empty in Plasma.
     pub other_toolbars_note: String,
     pub toolbar_options: Vec<WidgetsOption>,
-    /// Честное пояснение: где настройка не доходит.
+    /// An honest explanation of where the setting does not reach.
     pub note: String,
 }
 
-/// Пояснение под заголовком. `qt_platform_theme` — `$QT_QPA_PLATFORMTHEME`
-/// сеанса, `has_qtct` — qt6ct или qt5ct есть.
+/// The explanation under the heading. `qt_platform_theme` is the session's
+/// `$QT_QPA_PLATFORMTHEME`, `has_qtct` means qt6ct or qt5ct is present.
 pub fn note(de: &str, qt_platform_theme: &str, has_qtct: bool) -> String {
     if de == "deepin" {
         return tr("In Deepin, application icons and toolbars are set in its Control Center.");
@@ -345,8 +348,9 @@ pub fn note(de: &str, qt_platform_theme: &str, has_qtct: bool) -> String {
     }
 }
 
-/// Оговорка к выбору прочих панелей: у GTK, qt6ct и LXQt главной и прочих
-/// панелей не различают — там всё по первому выбору.
+/// The caveat for the other-toolbars choice: GTK, qt6ct and LXQt do not
+/// distinguish the main toolbar from the others — there everything follows
+/// the first choice.
 pub fn other_toolbars_note(de: &str) -> String {
     if de == "kde" || !available(de) {
         return String::new();
@@ -371,10 +375,10 @@ pub fn read_state(io: &dyn LookIo, ctx: &LookCtx, qt_platform_theme: &str) -> Wi
     }
 }
 
-// ── План ───────────────────────────────────────────────────────────────────
+// ── Plan ───────────────────────────────────────────────────────────────────
 
-/// Правка ini-файла целиком нашим текстом; `None` — менять нечего (или
-/// файла нет, а правка только снимает ключи).
+/// Rewrites an ini file entirely with our text; `None` means there is nothing
+/// to change (or the file does not exist and the edit only removes keys).
 fn ini_step(io: &dyn LookIo, path: &str, edits: &[IniEdit]) -> Option<LookStep> {
     let before = io.read(path);
     if before.is_none() && edits.iter().all(|e| e.value.is_none()) {
@@ -392,8 +396,9 @@ fn unset(group: &str, key: &str) -> IniEdit {
     IniEdit { group: group.into(), key: key.into(), value: None }
 }
 
-/// Сигналы, которые шлёт модуль KDE: тема платформы перечитывает значки
-/// кнопок и меню, `KToolBar` — подписи панелей. Вне сеанса — молча мимо.
+/// The signals the KDE module sends: the platform theme rereads button and
+/// menu icons, `KToolBar` rereads toolbar text. Outside a session they are
+/// silently skipped.
 fn kde_notify() -> Vec<LookStep> {
     let signal = |path: &str, member: &str, args: &[&str]| {
         let mut a = argv(&["dbus-send", "--session", "--type=signal", path, member]);
@@ -409,8 +414,8 @@ fn kde_notify() -> Vec<LookStep> {
     ]
 }
 
-/// Записи под `w` (`defaults` — снять наши ключи, вернуть умолчания
-/// окружения).
+/// The writes for `w` (`defaults` means removing our keys and returning the
+/// environment's defaults).
 fn plan(io: &dyn LookIo, ctx: &LookCtx, w: Option<&Widgets>) -> Vec<LookStep> {
     let de = ctx.de.as_str();
     if !available(de) {
@@ -422,7 +427,7 @@ fn plan(io: &dyn LookIo, ctx: &LookCtx, w: Option<&Widgets>) -> Vec<LookStep> {
         None => unset(g, k),
     };
 
-    // 1. kdeglobals — Plasma целиком, программы KDE вне Plasma — подписи панелей.
+    // 1. kdeglobals: all of Plasma, and toolbar text for KDE programs outside Plasma.
     let mut edits = vec![
         pick(G_TOOLBAR, K_TOOLBAR, &|w| w.toolbar.kde().into()),
         pick(G_TOOLBAR, K_OTHER, &|w| w.other_toolbars.kde().into()),
@@ -433,7 +438,7 @@ fn plan(io: &dyn LookIo, ctx: &LookCtx, w: Option<&Widgets>) -> Vec<LookStep> {
     }
     let kde_changed = ini_step(io, &ctx.cfg(KDEGLOBALS), &edits).map(|s| steps.push(s)).is_some();
 
-    // 2. Родные ключи окружения для GTK.
+    // 2. The environment's native keys for GTK.
     let gtk_ini = |keys: &[&str]| {
         let edits: Vec<IniEdit> = keys
             .iter()
@@ -482,7 +487,7 @@ fn plan(io: &dyn LookIo, ctx: &LookCtx, w: Option<&Widgets>) -> Vec<LookStep> {
         steps.extend(gtk_ini(&[GTK_MENU, GTK_BUTTONS, GTK_TOOLBAR]));
     }
 
-    // 3. Остальные программы Qt.
+    // 3. Other Qt programs.
     if de == "lxqt" {
         steps.extend(ini_step(io, &lxqt_conf(ctx), &[pick("General", "tool_button_style", &|w| w.toolbar.lxqt().into())]));
     } else if uses_qtct(de) {
@@ -502,25 +507,26 @@ fn plan(io: &dyn LookIo, ctx: &LookCtx, w: Option<&Widgets>) -> Vec<LookStep> {
     steps
 }
 
-/// Записи под новые настройки.
+/// The writes for new settings.
 pub fn plan_set(io: &dyn LookIo, ctx: &LookCtx, w: &Widgets) -> Vec<LookStep> {
     plan(io, ctx, Some(w))
 }
 
-/// «По умолчанию»: наши ключи снимаются, у gsettings и xfconf — сбросом
-/// (умолчание схемы с поправками дистрибутива, а не наша догадка о нём).
+/// "Defaults": our keys are removed; for gsettings and xfconf by resetting
+/// (the schema default with the distribution's adjustments, not our guess
+/// about it).
 pub fn plan_defaults(io: &dyn LookIo, ctx: &LookCtx) -> Vec<LookStep> {
     plan(io, ctx, None)
 }
 
-/// Что поменять.
+/// What to change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WidgetsChange {
     MenuIcons(bool),
     ButtonIcons(bool),
-    /// Подписи главной панели (вне KDE — всех панелей не-KDE программ).
+    /// Main toolbar text (outside KDE, all toolbars of non-KDE programs).
     Toolbar(Toolbar),
-    /// Прочие панели программ KDE (в любом окружении).
+    /// Other toolbars of KDE programs (in any environment).
     OtherToolbars(Toolbar),
 }
 
@@ -535,7 +541,7 @@ pub fn changed(current: &Widgets, change: &WidgetsChange) -> Widgets {
     w
 }
 
-/// Применить одну правку. Ответ — фраза для человека (пусто — менять нечего).
+/// Applies a single change. The answer is a phrase for the person (empty means nothing to change).
 pub fn apply(io: &dyn LookIo, ctx: &LookCtx, change: &WidgetsChange) -> String {
     let new = changed(&read_settings(io, ctx), change);
     finish(io, ctx, plan_set(io, ctx, &new))
@@ -561,7 +567,7 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::BTreeMap;
 
-    /// Подставная машина: файлы, ключи gsettings/xfconf и журнал команд.
+    /// A fake machine: files, gsettings/xfconf keys and a command log.
     #[derive(Default)]
     struct FakeIo {
         files: RefCell<BTreeMap<String, String>>,
@@ -637,11 +643,11 @@ mod tests {
             assert_eq!(Toolbar::from_qt(t.qt()), Some(t));
             assert_eq!(Toolbar::from_lxqt(t.lxqt()), Some(t));
         }
-        // settings.ini GTK: число и имя перечисления тоже.
+        // GTK settings.ini: a number and an enum name work too.
         assert_eq!(Toolbar::from_gtk("3"), Some(Toolbar::TextBeside));
         assert_eq!(Toolbar::from_gtk("GTK_TOOLBAR_BOTH_HORIZ"), Some(Toolbar::TextBeside));
         assert_eq!(Toolbar::from_gtk("'icons'"), Some(Toolbar::IconsOnly));
-        // qt6ct 4 — «как у стиля»: своего вида нет.
+        // qt6ct 4 means "follow the style": there is no own style.
         assert_eq!(Toolbar::from_qt("4"), None);
     }
 
@@ -661,24 +667,24 @@ mod tests {
         let w = read_settings(&io, &c);
         assert!(!w.menu_icons && w.button_icons);
         assert_eq!((w.toolbar, w.other_toolbars), (Toolbar::TextBeside, Toolbar::IconsOnly));
-        // Сигналы модуля KDE ушли.
+        // The KDE module signals were sent.
         let log = io.log.borrow();
         assert!(log.iter().any(|a| a.contains(&"org.kde.KToolBar.styleChanged".to_string())));
         assert!(log.iter().any(|a| a.contains(&"int32:7".to_string())));
         drop(log);
-        // GTK 3 тоже получает значки; GTK 4 — не трогаем.
+        // GTK 3 gets the icons too; GTK 4 is left alone.
         assert!(file(&io, "gtk-3.0/settings.ini").contains("gtk-menu-images=false"));
         assert!(io.read("/h/.config/gtk-4.0/settings.ini").is_none());
-        // Состояние для страницы.
+        // The state for the page.
         let st = read_state(&io, &c, "kde");
         assert!(st.has_other_toolbars && st.available && st.toolbar_options.len() == 4);
-        // «По умолчанию» снимает наши ключи, чужие остаются.
+        // "Defaults" removes our keys; other keys remain.
         apply_defaults(&io, &c);
         let kg = file(&io, "kdeglobals");
         assert!(!kg.contains("ShowIconsInMenuItems") && !kg.contains("ToolButtonStyle"), "{kg}");
         assert!(kg.contains("ColorScheme=BreezeDark"));
         assert_eq!(read_settings(&io, &c), KDE_DEFAULTS);
-        // Повтор «По умолчанию» — менять нечего.
+        // Repeating "Defaults": nothing to change.
         assert!(plan_defaults(&io, &c).iter().all(|s| !matches!(s, LookStep::WriteFile { .. })));
     }
 
@@ -694,12 +700,12 @@ mod tests {
             let keys = io.keys.borrow().clone();
             assert_eq!(keys.get(&format!("{schema} buttons-have-icons")).map(String::as_str), Some("false"), "{de}");
             assert_eq!(keys.get(&format!("{schema} toolbar-style")).map(String::as_str), Some("'icons'"), "{de}");
-            // Программы KDE в этом окружении: главная панель — тот же выбор,
-            // прочие — свой (по умолчанию подписи рядом со значками).
+            // KDE programs in this environment: the main toolbar follows the same
+            // choice, the others have their own (text beside icons by default).
             let kg = file(&io, "kdeglobals");
             assert!(kg.contains("ToolButtonStyle=NoText") && kg.contains("ToolButtonStyleOtherToolbars=TextBesideIcon"), "{kg}");
             assert!(!kg.contains("ShowIconsInMenuItems"), "{kg}");
-            // settings.ini не трогаем: GTK берёт ключи у службы xsettings.
+            // settings.ini is left alone: GTK takes the keys from the xsettings service.
             assert!(io.read("/h/.config/gtk-3.0/settings.ini").is_none());
             apply_defaults(&io, &c);
             assert!(!io.keys.borrow().keys().any(|k| k.starts_with(schema)), "{de}");
@@ -718,7 +724,7 @@ mod tests {
         assert_eq!(io.keys.borrow().get("xsettings /Gtk/ToolbarStyle").map(String::as_str), Some("text"));
         apply_defaults(&io, &c);
         assert!(io.keys.borrow().is_empty());
-        // Повторный сброс — без `-r` у отсутствующих свойств.
+        // A repeated reset: no `-r` for properties that are absent.
         assert!(plan_defaults(&io, &c).iter().all(|s| !matches!(s, LookStep::Cmd(a) if a[0] == "xfconf-query")));
     }
 
@@ -726,7 +732,7 @@ mod tests {
     fn gnome_family_toolbar_key_and_gtk3_ini() {
         let io = FakeIo::default();
         let c = ctx("gnome");
-        // У GTK 3 без ключа значков нет.
+        // In GTK 3 without the key there are no icons.
         let w = read_settings(&io, &c);
         assert!(!w.menu_icons && !w.button_icons);
         apply(&io, &c, &WidgetsChange::MenuIcons(true));
@@ -749,10 +755,10 @@ mod tests {
         assert!(q.contains("[Interface]") && q.contains("dialog_buttons_have_icons=2") && q.contains("toolbutton_style=3"), "{q}");
         let ini = file(&io, "gtk-3.0/settings.ini");
         assert!(ini.contains("gtk-button-images=true") && ini.contains("gtk-toolbar-style=both"), "{ini}");
-        // qt5ct нет — его конфиг не заводим.
+        // There is no qt5ct, so its config is not created.
         assert!(io.read("/h/.config/qt5ct/qt5ct.conf").is_none());
         assert_eq!(read_settings(&io, &c).toolbar, Toolbar::TextUnder);
-        // Пояснение: qt6ct есть, но сеанс его не включил.
+        // Explanation: qt6ct is present, but the session has not enabled it.
         assert!(read_state(&io, &c, "").note.contains("Application Style"));
         assert!(!read_state(&io, &c, "qt6ct").note.contains("Application Style"));
         apply_defaults(&io, &c);
@@ -767,12 +773,12 @@ mod tests {
         apply(&io, &c, &WidgetsChange::Toolbar(Toolbar::IconsOnly));
         assert!(file(&io, "lxqt/lxqt.conf").contains("tool_button_style=ToolButtonIconOnly"));
         assert_eq!(read_settings(&io, &c).toolbar, Toolbar::IconsOnly);
-        // qt6ct в LXQt не действует — не пишем.
+        // qt6ct has no effect in LXQt, so it is not written.
         assert!(io.read("/h/.config/qt6ct/qt6ct.conf").is_none());
     }
 
-    /// Прочие панели вне Plasma: отдельный выбор есть, пишет только ключ KDE
-    /// и не задевается выбором главной панели.
+    /// Other toolbars outside Plasma: there is a separate choice, it writes only
+    /// the KDE key and is not affected by the main toolbar choice.
     #[test]
     fn other_toolbars_outside_kde_write_kdeglobals_only() {
         for de in ["mate", "xfce", "gnome", "lxqt", "hyprland", "cinnamon-mint"] {
@@ -792,19 +798,19 @@ mod tests {
             let w = read_settings(&io, &c);
             assert_eq!((w.toolbar, w.other_toolbars), (Toolbar::TextUnder, Toolbar::TextOnly), "{de}");
 
-            // Выбор главной панели прочие не сбрасывает.
+            // Choosing the main toolbar does not reset the others.
             apply(&io, &c, &WidgetsChange::Toolbar(Toolbar::IconsOnly));
             assert_eq!(read_settings(&io, &c).other_toolbars, Toolbar::TextOnly, "{de}");
 
-            // Родные ключи окружения прочих панелей не знают: qt6ct, LXQt,
-            // GTK берут только главный выбор.
+            // The environment's native keys know nothing about other toolbars: qt6ct,
+            // LXQt and GTK take only the main choice.
             for rel in ["qt6ct/qt6ct.conf", "lxqt/lxqt.conf", "gtk-3.0/settings.ini"] {
                 let t = file(&io, rel);
                 assert!(!t.contains("TextOnly") && !t.contains("toolbutton_style=1") && !t.contains("=text\n"), "{de} {rel}: {t}");
             }
             assert!(!io.keys.borrow().values().any(|v| v.contains("text") && !v.contains("both")), "{de}");
 
-            // «По умолчанию» снимает и ключ прочих панелей.
+            // "Defaults" also removes the other-toolbars key.
             apply_defaults(&io, &c);
             assert!(!file(&io, "kdeglobals").contains("ToolButtonStyleOtherToolbars"), "{de}");
             assert_eq!(read_settings(&io, &c).other_toolbars, Toolbar::TextBeside, "{de}");

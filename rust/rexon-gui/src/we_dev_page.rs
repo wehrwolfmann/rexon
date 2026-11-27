@@ -1,55 +1,59 @@
-// Скрытая страница «Разработчик» вкладки «Wallpaper Engine» на QML —
-// порт `DeveloperPageWidget` из `rexon/qt_wallpaper_engine/window.py`.
+// The hidden "Developer" page of the "Wallpaper Engine" tab in QML — a port
+// of `DeveloperPageWidget` from `rexon/qt_wallpaper_engine/window.py`.
 //
-// Зачем понадобился этот файл. Вкладка переехала на QML шеллом (рейл и
-// место страницы, `we_page.rs`), а «Разработчик» тогда не портировали
-// вовсе: пункт рейла заводился с ПУСТЫМ именем QML-файла, и владелец,
-// открыв его, видел пустую страницу с одним словом `dev`. Через неё, в
-// частности, ставится обновление waywallen — то есть кнопка была
-// недостижима.
+// Why this file was needed. The tab moved to QML as a shell (the rail and
+// the page area, `we_page.rs`), while "Developer" was not ported at all
+// back then: the rail item was created with an EMPTY QML file name, and the
+// owner, opening it, saw an empty page with the single word `dev`. Among
+// other things, the waywallen update is installed through it — that is,
+// the button was unreachable.
 //
-// Что здесь есть и чего нет:
-//   * ЕСТЬ состояние страницы: галки (они же ключи настроек), подпись
-//     версии, строки статуса целей, ход операции, панель changelog,
-//     доступность кнопок, отчёт и бейдж сверки паритета;
-//   * НЕТ ни одной строки для человека и ни одного числа раскладки. Все
-//     подписи, краски, кегли, поля и вердикты считает ядро
-//     (`rexon_core::we_window`), а разбор ответов движка и сверку схемы —
-//     `rexon_core::we_query` и `rexon_core::we_parity`;
-//   * НЕТ и сети с файловой системой: три фоновые задачи (проверка
-//     upstream, установка AppImage, установка OWE-плагина) уже переехали
-//     на Rust отдельным модулем `we_update_workers` и разговаривают
-//     очередью событий, которую страница вычерпывает таймером — тот же
-//     приём, что у вкладки «Steam».
+// What is here and what is not:
+//   * there IS the page state: the check boxes (they are also settings
+//     keys), the version label, the targets' status lines, the operation
+//     progress, the changelog panel, button availability, the parity
+//     report and badge;
+//   * there is NOT a single human-readable string or layout number. All
+//     labels, colours, font sizes, paddings and verdicts are computed by
+//     the core (`rexon_core::we_window`), and parsing the engine's answers
+//     and comparing the schema — by `rexon_core::we_query` and
+//     `rexon_core::we_parity`;
+//   * there is no network or file system either: the three background tasks
+//     (checking upstream, installing the AppImage, installing the OWE
+//     plugin) have already moved to Rust as the separate
+//     `we_update_workers` module and talk through an event queue that the
+//     page drains with a timer — the same technique as in the "Steam" tab.
 //
-// ⚠️ Починки оригинала (правило #16 — баги при порте чиним, не
-// консервируем), каждая помечена `Починка:` по месту:
-//   4. ПОДПИСЬ ВЕРСИИ МОРОЗИЛА ИНТЕРФЕЙС. `_refresh_version` звал
-//      `current_version()` ПРЯМО В GUI-ПОТОКЕ на каждом заходе на
-//      страницу и после каждой установки, а тот уходит в `--version`
-//      бинаря и в `busctl` — до десяти секунд неподвижного окна. Теперь
-//      версию считает фоновая задача (`start_version_refresh`), а подпись
-//      приезжает событием. Номер 4 продолжает нумерацию починок этой
-//      страницы: 1-3 записаны в `rexon_core::we_window`, ещё три — в
-//      `we_update_workers`;
-//   6. ПОДПИСЬ ВЕРСИИ ЗАВИСЕЛА ОТ ЖИВОГО ДЕМОНА, хотя ей до него дела нет.
-//      Виджетная страница грузилась общим ленивым ходом окна
-//      (`_ensure_page_loaded`), а тот молча выходит, пока сокет закрыт, —
-//      и на неподнявшемся движке подпись навсегда оставалась «Версия
-//      waywallen: —», хотя версия читается с ДИСКА (`--version` бинаря и
-//      стейт). Здесь подпись обновляется всегда; на сверку паритета этот
-//      ход НЕ распространён — она действительно спрашивает демона, и её
-//      авто-запуск при закрытом сокете по-прежнему молчит
-//      (`reloadIfConnected`);
-//   5. ГЕЙТ ОТКАЗА ОСТАВЛЯЛ КНОПКУ ВЫКЛЮЧЕННОЙ. В оригинале гейт
-//      совместимости считался ДО `setEnabled(False)`, поэтому отказ
-//      оставлял кнопку живой. Гейт переехал в задачу (починка 1 в
-//      `we_update_workers`), и кнопка гаснет раньше ответа — значит на
-//      отказе её надо вернуть, иначе повторить попытку было бы нечем.
+// Warning: fixes of the original (rule #16 — bugs are fixed during the port,
+// not preserved), each marked `Fix:` in place:
+//   4. THE VERSION LABEL FROZE THE INTERFACE. `_refresh_version` called
+//      `current_version()` RIGHT IN THE GUI THREAD on every visit to the
+//      page and after every installation, and that goes to the binary's
+//      `--version` and to `busctl` — up to ten seconds of a motionless
+//      window. Now the version is computed by a background task
+//      (`start_version_refresh`), and the label arrives as an event. Number
+//      4 continues the numbering of this page's fixes: 1-3 are recorded in
+//      `rexon_core::we_window`, three more in `we_update_workers`;
+//   6. THE VERSION LABEL DEPENDED ON A LIVE DAEMON, although it has nothing
+//      to do with it. The widget page was loaded by the window's shared lazy
+//      path (`_ensure_page_loaded`), which silently returns while the socket
+//      is closed — and with an engine that did not come up the label stayed
+//      "waywallen version: —" forever, although the version is read from
+//      DISK (the binary's `--version` and the state). Here the label is
+//      always updated; this path is NOT extended to the parity
+//      reconciliation — that one really asks the daemon, and its auto-run
+//      with a closed socket still stays silent (`reloadIfConnected`);
+//   5. THE REFUSAL GATE LEFT THE BUTTON DISABLED. In the original the
+//      compatibility gate was computed BEFORE `setEnabled(False)`, so a
+//      refusal left the button live. The gate moved into the task (fix 1 in
+//      `we_update_workers`), and the button goes off before the answer — so
+//      on a refusal it must be brought back, otherwise there would be no way
+//      to retry.
 //
-// ⛔ Установку движка живьём НЕ гонять: это ~200 МиБ и системные пути.
+// Never: do NOT run the engine installation live: it is ~200 MiB and system
+// paths.
 
-/// Мост cxx-qt: страница «Разработчик» и её запрос сверки паритета.
+/// cxx-qt bridge: the "Developer" page and its parity reconciliation query.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -72,19 +76,19 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        // ── Готовые подписи и числа страницы. CONSTANT: и то, и другое —
-        // константы ядра, за время жизни вкладки они не меняются.
+        // ── Ready labels and numbers of the page. CONSTANT: both are core
+        // constants and do not change during the tab's lifetime.
         #[qproperty(QMap_QString_QVariant, texts, READ = texts, CONSTANT)]
         #[qproperty(QMap_QString_QVariant, metrics, READ = metrics, CONSTANT)]
-        // Палитра действующего скина (правило #17); скин меняют на лету.
+        // Palette of the active skin (rule #17); the skin changes on the fly.
         #[qproperty(QMap_QString_QVariant, palette, READ = palette,
                     NOTIFY = palette_changed)]
-        // Прозрачность приглушённого текста — та же доля, какой красит
-        // подписи виджетная версия.
+        // Opacity of muted text — the same share the widget version paints
+        // labels with.
         #[qproperty(f64, variant_alpha, cxx_name = "variantAlpha",
                     READ = variant_alpha, CONSTANT)]
 
-        // ── Галки (они же ключи настроек продукта) ────────────────────
+        // ── Check boxes (they are also the product's settings keys) ───
         #[qproperty(bool, auto_upstream, cxx_name = "autoUpstream",
                     READ = auto_upstream, WRITE = set_auto_upstream,
                     NOTIFY = flags_changed)]
@@ -95,10 +99,10 @@ pub mod qobject {
                     READ = auto_parity, WRITE = set_auto_parity,
                     NOTIFY = flags_changed)]
 
-        // ── Секция «Обновления upstream» ──────────────────────────────
+        // ── "Upstream updates" section ────────────────────────────────
         #[qproperty(QString, version_label, cxx_name = "versionLabel",
                     READ = version_label, NOTIFY = upstream_changed)]
-        /// Строки статуса целей: записи `{key, text, color, bold}`.
+        /// Status lines of the targets: entries `{key, text, color, bold}`.
         #[qproperty(QList_QVariant, targets, READ = targets,
                     NOTIFY = upstream_changed)]
         #[qproperty(QString, update_status, cxx_name = "updateStatus",
@@ -117,12 +121,12 @@ pub mod qobject {
                     READ = copy_enabled, NOTIFY = upstream_changed)]
         type WeDeveloperModel = super::WeDeveloperModelRust;
 
-        // ── Запрос сверки паритета ────────────────────────────────────
+        // ── Parity reconciliation query ───────────────────────────────
         //
-        // Отдельный QObject, а не метод страницы: сверка идёт по сокету
-        // демона, а весь разговор с ним у вкладки ведут запросы с общей
-        // базой (`impl_query_base!`). Второй способ спрашивать движок
-        // здесь заводить незачем.
+        // A separate QObject rather than a page method: the reconciliation goes
+        // over the daemon socket, and all of the tab's talk with it is done by
+        // queries with a shared base (`impl_query_base!`). There is no reason to
+        // create a second way of asking the engine here.
         #[qobject]
         #[qml_element]
         #[qproperty(i32, status, READ = status, NOTIFY = status_changed)]
@@ -131,8 +135,8 @@ pub mod qobject {
         #[qproperty(bool, forward_error, cxx_name = "forwardError",
                     READ = forward_error, WRITE = set_forward_error,
                     NOTIFY = forward_error_changed)]
-        /// Версия ЖИВОГО демона; её называет страница (она знает
-        /// синглтон шины), а не запрос.
+        /// The version of the LIVE daemon; it is named by the page (which knows the
+        /// bus singleton), not by the query.
         #[qproperty(QString, daemon_version, cxx_name = "daemonVersion",
                     READ = daemon_version, WRITE = set_daemon_version,
                     NOTIFY = daemon_version_changed)]
@@ -148,40 +152,40 @@ pub mod qobject {
         type WeParityQuery = super::WeParityQueryRust;
     }
 
-    // ── Сигналы ───────────────────────────────────────────────────────────
+    // ── Signals ───────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
         #[qsignal]
         #[cxx_name = "paletteChanged"]
         fn palette_changed(self: Pin<&mut WeDeveloperModel>);
 
-        /// Галки страницы (они же настройки продукта) изменились.
+        /// The page's check boxes (they are also product settings) changed.
         #[qsignal]
         #[cxx_name = "flagsChanged"]
         fn flags_changed(self: Pin<&mut WeDeveloperModel>);
 
-        /// Что-то в секции «Обновления upstream» изменилось. Сигнал ОДИН
-        /// на всю секцию: её поля меняются пачками (пришёл ответ проверки
-        /// — сменились разом статусы, changelog и четыре кнопки), и
-        /// сигнал на каждое поле означал бы десяток толчков на одно
-        /// событие.
+        /// Something in the "Upstream updates" section changed. There is ONE
+        /// signal for the whole section: its fields change in batches (a check
+        /// answer arrived — the statuses, the changelog and four buttons changed at
+        /// once), and a signal per field would mean a dozen pushes per event.
         #[qsignal]
         #[cxx_name = "upstreamChanged"]
         fn upstream_changed(self: Pin<&mut WeDeveloperModel>);
 
-        /// Архив плагина проверен и ждёт установки ЧЕРЕЗ ДЕМОНА: разметка
-        /// отдаёт путь запросу `PluginInstallQuery` и заводит сторож
-        /// ответа. Номер попытки — для сторожа (починка 2 ядра).
+        /// The plugin archive is verified and waits to be installed THROUGH THE
+        /// DAEMON: the markup passes the path to the `PluginInstallQuery` request
+        /// and starts the answer guard. The attempt number is for the guard (core
+        /// fix 2).
         #[qsignal]
         #[cxx_name = "oweIpcRequested"]
         fn owe_ipc_requested(self: Pin<&mut WeDeveloperModel>, zip_path: QString,
                              attempt: i32);
 
-        /// Пометка расхождения паритета для кнопки «Разраб.» в рейле.
+        /// Parity divergence mark for the "Dev" button in the rail.
         #[qsignal]
         #[cxx_name = "parityDriftChanged"]
         fn parity_drift_changed(self: Pin<&mut WeDeveloperModel>, drift: bool);
 
-        // ── База запроса сверки ───────────────────────────────────────
+        // ── Base of the reconciliation query ──────────────────────────
         #[qsignal]
         #[cxx_name = "statusChanged"]
         fn status_changed(self: Pin<&mut WeParityQuery>, status: i32);
@@ -212,12 +216,13 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "reportChanged"]
         fn report_changed(self: Pin<&mut WeParityQuery>);
-        /// Сверка закончилась: `drift` — показывать ли пометку на «Разраб.».
+        /// The reconciliation has finished: `drift` — whether to show the mark on
+        /// "Dev".
         #[qsignal]
         fn checked(self: Pin<&mut WeParityQuery>, drift: bool);
     }
 
-    // ── Чтение свойств ────────────────────────────────────────────────────
+    // ── Property reading ──────────────────────────────────────────────────
     extern "RustQt" {
         fn texts(self: &WeDeveloperModel) -> QMap_QString_QVariant;
         fn metrics(self: &WeDeveloperModel) -> QMap_QString_QVariant;
@@ -275,87 +280,89 @@ pub mod qobject {
         fn drift(self: &WeParityQuery) -> bool;
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Вычерпать очередь событий фоновых задач. Зовётся таймером
-        /// страницы: очередь, а не колбэки, — граница потоков одна.
+        /// Drain the background task event queue. Called by the page timer: a
+        /// queue rather than callbacks — there is one thread boundary.
         #[qinvokable]
         fn pump(self: Pin<&mut WeDeveloperModel>);
 
-        /// Страницу открыли: обновить подпись версии.
+        /// The page was opened: update the version label.
         ///
-        /// `daemon_version` — свойство `Version` живого демона; спросить
-        /// его умеет только Qt-слой, поэтому его называет разметка.
+        /// `daemon_version` is the `Version` property of the live daemon; only the
+        /// Qt layer can ask for it, so the markup names it.
         #[qinvokable]
         #[cxx_name = "refreshVersion"]
         fn refresh_version(self: Pin<&mut WeDeveloperModel>, daemon_version: &QString);
 
-        /// Кнопка «Проверить сейчас» и авто-проверка при запуске.
+        /// The "Check now" button and the automatic check at start-up.
         #[qinvokable]
         #[cxx_name = "startCheck"]
         fn start_check(self: Pin<&mut WeDeveloperModel>, daemon_version: &QString);
 
-        /// Текст вопроса перед установкой движка; пусто — ставить нечего.
+        /// Text of the question before installing the engine; empty means there is
+        /// nothing to install.
         #[qinvokable]
         #[cxx_name = "confirmUpdateText"]
         fn confirm_update_text(self: &WeDeveloperModel) -> QString;
 
-        /// Согласие на установку движка получено.
+        /// Consent to install the engine was received.
         #[qinvokable]
         #[cxx_name = "startEngineInstall"]
         fn start_engine_install(self: Pin<&mut WeDeveloperModel>);
 
-        /// Текст вопроса перед установкой OWE-плагина; пусто — нечего.
+        /// Text of the question before installing the OWE plugin; empty means there
+        /// is nothing to install.
         #[qinvokable]
         #[cxx_name = "confirmOweText"]
         fn confirm_owe_text(self: &WeDeveloperModel) -> QString;
 
-        /// Согласие на установку OWE-плагина получено.
+        /// Consent to install the OWE plugin was received.
         #[qinvokable]
         #[cxx_name = "startOweInstall"]
         fn start_owe_install(self: Pin<&mut WeDeveloperModel>, daemon_version: &QString);
 
-        /// Кнопка «OWE: отметить изученным».
+        /// The "OWE: mark as reviewed" button.
         #[qinvokable]
         #[cxx_name = "markOweSeen"]
         fn mark_owe_seen(self: Pin<&mut WeDeveloperModel>);
 
-        /// Кнопка «Копировать всё» под панелью changelog.
+        /// The "Copy all" button under the changelog panel.
         #[qinvokable]
         #[cxx_name = "copyChangelog"]
         fn copy_changelog(self: Pin<&mut WeDeveloperModel>);
 
-        /// Демон принял плагин (ответ `plugin_install`).
+        /// The daemon accepted the plugin (the `plugin_install` answer).
         #[qinvokable]
         #[cxx_name = "oweIpcInstalled"]
         fn owe_ipc_installed(self: Pin<&mut WeDeveloperModel>, plugin_id: &QString,
                              needs_restart: bool);
 
-        /// Демон отверг установку плагина.
+        /// The daemon rejected the plugin installation.
         #[qinvokable]
         #[cxx_name = "oweIpcRefused"]
         fn owe_ipc_refused(self: Pin<&mut WeDeveloperModel>, message: &QString);
 
-        /// Сторож ответа демона на `plugin_install` дозвонился.
+        /// The guard of the daemon's answer to `plugin_install` fired.
         #[qinvokable]
         #[cxx_name = "oweIpcTimeout"]
         fn owe_ipc_timeout(self: Pin<&mut WeDeveloperModel>, attempt: i32);
 
-        /// Вкладку закрывают: погасить фоновые задачи и дождаться их.
+        /// The tab is being closed: stop the background tasks and wait for them.
         #[qinvokable]
         fn shutdown(self: Pin<&mut WeDeveloperModel>);
 
         #[qinvokable]
         fn reload(self: Pin<&mut WeParityQuery>);
 
-        /// Авто-сверка при открытии страницы: без живого демона МОЛЧИТ.
+        /// Auto-reconciliation on opening the page: STAYS SILENT without a live
+        /// daemon.
         ///
-        /// Ровно тот же порядок, что у виджетной версии: она грузила
-        /// dev-страницу только при открытом сокете
-        /// (`_ensure_page_loaded`), поэтому на мёртвом демоне человек
-        /// видел не отказ, а обычную заглушку «нажмите „Сверить“».
-        /// Ручное нажатие кнопки, наоборот, обязано объяснить, почему
-        /// ничего не вышло, — им остаётся `reload`.
+        /// Exactly the same order as in the widget version: it loaded the dev page
+        /// only with an open socket (`_ensure_page_loaded`), so with a dead daemon
+        /// the user saw not a refusal but the ordinary placeholder "press
+        /// "Reconcile"". A manual button press, on the contrary, must explain why
+        /// nothing worked — that remains `reload`.
         #[qinvokable]
         #[cxx_name = "reloadIfConnected"]
         fn reload_if_connected(self: Pin<&mut WeParityQuery>);
@@ -387,7 +394,7 @@ use crate::we_env;
 use crate::we_update_workers::{self, UpdateEnv, UpdateEvent, WeUpdateTasks};
 
 // ============================================================================
-// Мелочи перевода в Qt
+// Translation odds and ends in Qt
 // ============================================================================
 
 fn qstr(value: &str) -> QVariant {
@@ -402,7 +409,7 @@ fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
     out
 }
 
-/// Строка статуса в том виде, в каком её читает разметка.
+/// A status line in the form the markup reads it.
 fn line_map(key: &str, line: &ww::StatusLine) -> QVariant {
     QVariant::from(&vmap(vec![
         ("key", qstr(key)),
@@ -413,22 +420,23 @@ fn line_map(key: &str, line: &ww::StatusLine) -> QVariant {
 }
 
 // ============================================================================
-// Состояние страницы
+// Page state
 // ============================================================================
 
 pub struct WeDeveloperModelRust {
-    /// Номер записи в общем реестре смены скина (`crate::skin`).
+    /// Entry number in the shared skin change registry (`crate::skin`).
     skin_watch: u64,
     auto_upstream: bool,
     auto_download: bool,
     auto_parity: bool,
-    /// Фоновые задачи; `None` — рантайм не поднялся, кнопки молчат.
+    /// Background tasks; `None` means the runtime did not come up, and the
+    /// buttons stay silent.
     tasks: Option<Arc<WeUpdateTasks>>,
-    /// Подпись версии движка целиком (её собирает ядро).
+    /// The engine version label in full (composed by the core).
     version_label: String,
-    /// Строки статуса целей по порядку `we_window::STATUS_TARGETS`.
+    /// Status lines of the targets in the order of `we_window::STATUS_TARGETS`.
     lines: Vec<(String, ww::StatusLine)>,
-    /// Последние ответы проверки — из них берутся `latest`/`title`.
+    /// The latest check answers — `latest`/`title` are taken from them.
     statuses: Vec<eu::TargetStatus>,
     update_status: String,
     changelog: String,
@@ -437,18 +445,20 @@ pub struct WeDeveloperModelRust {
     owe_enabled: bool,
     seen_enabled: bool,
     copy_enabled: bool,
-    /// Доступное обновление waywallen и OWE (то, что ставят кнопки).
+    /// The available waywallen and OWE update (what the buttons install).
     pending_update: Option<eu::TargetStatus>,
     pending_owe: Option<eu::TargetStatus>,
-    /// Авто-установка — не больше одного раза за сессию, как в оригинале.
+    /// Auto-installation — no more than once per session, as in the original.
     auto_install_done: bool,
     auto_owe_done: bool,
-    /// Версия живого демона, названная разметкой при последней операции.
+    /// Version of the live daemon named by the markup at the last operation.
     daemon_version: String,
-    /// Временный архив плагина, ждущий ответа демона, и его версия.
+    /// The temporary plugin archive waiting for the daemon's answer, and its
+    /// version.
     owe_ipc_zip: String,
     owe_ipc_version: String,
-    /// Номер попытки IPC-установки (починка 2 ядра: сторож помнит СВОЮ).
+    /// Number of the IPC installation attempt (core fix 2: the guard remembers
+    /// ITS OWN).
     owe_ipc_attempt: u64,
 }
 
@@ -478,9 +488,9 @@ impl Default for WeDeveloperModelRust {
             statuses: Vec::new(),
             update_status: String::new(),
             changelog: String::new(),
-            // Проверять можно сразу, ставить — только после проверки: до
-            // неё неизвестно ни что ставить, ни откуда. Ровно те же
-            // начальные значения, что у виджетной версии.
+            // Checking is possible at once, installing only after a check: before it
+            // neither what to install nor where from is known. Exactly the same
+            // initial values as in the widget version.
             check_enabled: true,
             update_enabled: false,
             owe_enabled: false,
@@ -501,8 +511,8 @@ impl Default for WeDeveloperModelRust {
 impl Drop for WeDeveloperModelRust {
     fn drop(&mut self) {
         crate::skin::unwatch(self.skin_watch);
-        // Задачи гасим и здесь, а не только по `shutdown()` из разметки:
-        // вкладку могут закрыть, не спросив страницу.
+        // The tasks are stopped here too, not only on `shutdown()` from the
+        // markup: the tab may be closed without asking the page.
         if let Some(tasks) = self.tasks.take() {
             tasks.shutdown();
         }
@@ -510,13 +520,13 @@ impl Drop for WeDeveloperModelRust {
 }
 
 impl qobject::WeDeveloperModel {
-    // ── Подписи, числа и оформление ───────────────────────────────────────
+    // ── Labels, numbers and styling ───────────────────────────────────────
 
-    /// Все подписи страницы одной картой: разметка читает их по имени.
+    /// All page labels as one map: the markup reads them by name.
     ///
-    /// Картой, а не два десятка отдельных свойств: подписи — константы
-    /// ядра, у каждой был бы свой геттер и своя строка в мосте, а читаются
-    /// они все одинаково.
+    /// As a map rather than two dozen separate properties: the labels are core
+    /// constants, each would have its own getter and its own line in the
+    /// bridge, while they are all read the same way.
     fn texts(&self) -> QMap<QMapPair_QString_QVariant> {
         vmap(vec![
             ("title", qstr(&ww::dev_title())),
@@ -542,7 +552,7 @@ impl qobject::WeDeveloperModel {
         ])
     }
 
-    /// Все числа раскладки одной картой — тем же доводом, что и подписи.
+    /// All layout numbers as one map — by the same argument as the labels.
     fn metrics(&self) -> QMap<QMapPair_QString_QVariant> {
         let num = |v: i32| QVariant::from(&v);
         vmap(vec![
@@ -566,8 +576,8 @@ impl qobject::WeDeveloperModel {
         ])
     }
 
-    /// Палитра ДЕЙСТВУЮЩЕГО скина (правило #17) — тем же способом, что у
-    /// шелла вкладки: своих цветов страница не заводит.
+    /// Palette of the ACTIVE skin (rule #17) — the same way as for the tab
+    /// shell: the page defines no colours of its own.
     fn palette(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut out = QMap::<QMapPair_QString_QVariant>::default();
         for (key, value) in &ui_base::active_qml_palette() {
@@ -584,7 +594,7 @@ impl qobject::WeDeveloperModel {
         ww::VARIANT_ALPHA as f64
     }
 
-    // ── Галки ─────────────────────────────────────────────────────────────
+    // ── Check boxes ───────────────────────────────────────────────────────
 
     fn auto_upstream(&self) -> bool {
         self.rust().auto_upstream
@@ -625,23 +635,24 @@ impl qobject::WeDeveloperModel {
         self.as_mut().flags_changed();
     }
 
-    /// Записать галку в настройки продукта. Неудача записи молчит: она не
-    /// повод отменять сам переключатель, а без настроек страница работает.
+    /// Write a check box into the product settings. A write failure stays
+    /// silent: it is no reason to cancel the toggle itself, and the page works
+    /// without settings.
     ///
-    /// ⚠️ Менеджер настроек берётся ЗАНОВО на каждую запись, а не держится
-    /// полем страницы. Сохранение отдаёт на диск ВСЮ карту настроек целиком,
-    /// поэтому долгоживущий снимок возвращал файл к тому виду, какой он имел
-    /// в момент открытия страницы: скин, громкость обоев и обучение,
-    /// изменённые с тех пор в «Настройках», молча откатывались одним щелчком
-    /// галки здесь, а ключи, заведённые за это время, пропадали совсем.
-    /// Так же поступают и все остальные писатели этого файла
+    /// Warning: the settings manager is taken ANEW for every write rather than
+    /// kept as a page field. Saving writes the WHOLE settings map to disk, so a
+    /// long-lived snapshot returned the file to the state it had when the page
+    /// was opened: the skin, the wallpaper volume and the tutorial, changed in
+    /// "Settings" since then, were silently rolled back by one click of a check
+    /// box here, and keys added in the meantime disappeared altogether. All the
+    /// other writers of this file do the same
     /// (`settings_actions::save_setting`, `tray`, `appearance_actions`).
     fn store_flag(self: Pin<&mut Self>, key: &str, value: bool) {
         let _ = settings::SettingsManager::new()
             .and_then(|mut m| m.set(key, serde_json::Value::Bool(value)));
     }
 
-    // ── Секция «Обновления upstream» ──────────────────────────────────────
+    // ── "Upstream updates" section ────────────────────────────────────────
 
     fn version_label(&self) -> QString {
         QString::from(&self.rust().version_label)
@@ -683,8 +694,9 @@ impl qobject::WeDeveloperModel {
         self.rust().copy_enabled
     }
 
-    /// Поставить строку статуса цели. Нет такой цели — тишина: состав
-    /// целей называет ядро, и лишний ключ здесь не ошибка страницы.
+    /// Set a target's status line. No such target — silence: the set of
+    /// targets is named by the core, and an extra key here is not the page's
+    /// error.
     fn set_line(mut self: Pin<&mut Self>, key: &str, line: ww::StatusLine) {
         let mut me = self.as_mut().rust_mut();
         if let Some(slot) = me.lines.iter_mut().find(|(k, _)| k == key) {
@@ -692,13 +704,14 @@ impl qobject::WeDeveloperModel {
         }
     }
 
-    // ── Вход из разметки ──────────────────────────────────────────────────
+    // ── Entry from the markup ─────────────────────────────────────────────
 
     fn refresh_version(mut self: Pin<&mut Self>, daemon_version: &QString) {
         let version = daemon_version.to_string();
         self.as_mut().rust_mut().daemon_version = version.clone();
-        // ⚠️ Починка 4: версию считает ФОНОВАЯ задача. У оригинала этот
-        // вызов уходил в `--version` бинаря и `busctl` прямо в GUI-потоке.
+        // Warning: fix 4: the version is computed by a BACKGROUND task. In the
+        // original this call went to the binary's `--version` and to `busctl`
+        // right in the GUI thread.
         if let Some(tasks) = self.rust().tasks.clone() {
             tasks.start_version_refresh(version);
         }
@@ -710,7 +723,7 @@ impl qobject::WeDeveloperModel {
         let Some(tasks) = self.rust().tasks.clone() else {
             return;
         };
-        // Ранний выход оригинала: проверка уже идёт.
+        // The original's early return: a check is already running.
         if !tasks.start_check(version) {
             return;
         }
@@ -759,8 +772,9 @@ impl qobject::WeDeveloperModel {
         let Some(tasks) = self.rust().tasks.clone() else {
             return;
         };
-        // Демон подключён → hot-install его же IPC; иначе распаковка в
-        // каталог плагинов внутри задачи. Развилку решает ядро.
+        // The daemon is connected → hot-install through its own IPC; otherwise
+        // unpacking into the plugin directory inside the task. The core decides
+        // which way.
         let fs_install = ww::plugin_fs_install(crate::discover_queries::connected());
         if !tasks.start_owe_install(st.asset_url, st.latest, fs_install, version) {
             return;
@@ -797,10 +811,11 @@ impl qobject::WeDeveloperModel {
         if text.is_empty() {
             return;
         }
-        // ⚠️ Функция шима зовётся ЧЕРЕЗ мост синглтона `Action`, а не
-        // объявляется здесь второй раз: cxx печатает переходник по имени
-        // функции, и два объявления одной и той же дают дубль символа на
-        // линковке (`duplicate symbol: cxxbridge1$…$rexon_we_copy_to_clipboard`).
+        // Warning: the shim function is called THROUGH the bridge of the `Action`
+        // singleton rather than declared here a second time: cxx emits the adapter
+        // by the function name, and two declarations of the same one give a
+        // duplicate symbol at link time
+        // (`duplicate symbol: cxxbridge1$…$rexon_we_copy_to_clipboard`).
         crate::we_action::qobject::rexon_we_copy_to_clipboard(&QString::from(&text));
         self.as_mut().rust_mut().update_status = ww::text_changelog_copied().to_string();
         self.as_mut().upstream_changed();
@@ -812,7 +827,7 @@ impl qobject::WeDeveloperModel {
         }
     }
 
-    // ── Ответ демона на установку плагина ─────────────────────────────────
+    // ── The daemon's answer to the plugin installation ────────────────────
 
     fn owe_ipc_installed(
         mut self: Pin<&mut Self>,
@@ -839,8 +854,8 @@ impl qobject::WeDeveloperModel {
         self.finish_owe_install(false, &text);
     }
 
-    /// Сторож ответа демона. Срабатывает, только если он от ТЕКУЩЕЙ
-    /// попытки и ответа всё ещё нет — починка 2 ядра.
+    /// Guard of the daemon's answer. It fires only if it belongs to the CURRENT
+    /// attempt and there is still no answer — core fix 2.
     fn owe_ipc_timeout(mut self: Pin<&mut Self>, attempt: i32) {
         let fires = ww::owe_ipc_timeout_fires(
             attempt.max(0) as u64,
@@ -854,13 +869,13 @@ impl qobject::WeDeveloperModel {
         self.finish_owe_install(false, &ww::text_owe_ipc_timeout());
     }
 
-    /// Убрать временный архив, который ждал ответа демона.
+    /// Remove the temporary archive that was waiting for the daemon's answer.
     fn drop_ipc_zip(mut self: Pin<&mut Self>) {
         let zip = std::mem::take(&mut self.as_mut().rust_mut().owe_ipc_zip);
         we_update_workers::drop_tmp(&zip);
     }
 
-    // ── Очередь событий фоновых задач ─────────────────────────────────────
+    // ── Background task event queue ───────────────────────────────────────
 
     fn pump(mut self: Pin<&mut Self>) {
         loop {
@@ -876,7 +891,7 @@ impl qobject::WeDeveloperModel {
 }
 
 // ============================================================================
-// Внутреннее: приём событий и пересчёты
+// Internals: receiving events and recomputations
 // ============================================================================
 
 impl qobject::WeDeveloperModel {
@@ -903,9 +918,9 @@ impl qobject::WeDeveloperModel {
                 {
                     let mut me = self.as_mut().rust_mut();
                     me.update_status = text;
-                    // ⚠️ Починка 5: кнопку возвращаем. Гейт теперь считает
-                    // задача, и кнопка успела погаснуть до его ответа —
-                    // оставить её мёртвой значило бы отнять повтор.
+                    // Warning: fix 5: we bring the button back. The gate is now computed by
+                    // the task, and the button managed to go off before its answer — leaving
+                    // it dead would take away the retry.
                     me.owe_enabled = me.pending_owe.is_some();
                 }
                 self.as_mut().upstream_changed();
@@ -913,11 +928,11 @@ impl qobject::WeDeveloperModel {
         }
     }
 
-    /// Порт `_on_upstream_results`.
+    /// A port of `_on_upstream_results`.
     fn on_check_done(mut self: Pin<&mut Self>, statuses: Vec<eu::TargetStatus>) {
         self.as_mut().rust_mut().check_enabled = true;
         if statuses.is_empty() {
-            // Сеть/рейт-лимит — тихий статус, без крешей.
+            // Network/rate limit — a quiet status, no crashes.
             self.as_mut().rust_mut().update_status = ww::text_check_failed().to_string();
             self.as_mut().upstream_changed();
             return;
@@ -961,8 +976,8 @@ impl qobject::WeDeveloperModel {
         }
         self.as_mut().upstream_changed();
 
-        // Авто-установка: только по галке (дефолт ВЫКЛ) и один раз за
-        // сессию. Вердикт — у ядра.
+        // Auto-installation: only with the check box (default OFF) and once per
+        // session. The verdict is the core's.
         let auto = self.rust().auto_download;
         let want_engine = ww::should_auto_install(
             self.rust().pending_update.is_some(),
@@ -985,12 +1000,12 @@ impl qobject::WeDeveloperModel {
         }
     }
 
-    /// Порт `_on_install_done`.
+    /// A port of `_on_install_done`.
     fn on_engine_done(mut self: Pin<&mut Self>, ok: bool, message: &str) {
         {
             let mut me = self.as_mut().rust_mut();
             me.update_status = ww::install_done_text(ok, message);
-            // Удалась установка — ставить больше нечего.
+            // The installation succeeded — there is nothing more to install.
             me.update_enabled = !ok;
         }
         if ok {
@@ -998,12 +1013,12 @@ impl qobject::WeDeveloperModel {
             self.as_mut().set_line("waywallen", line);
         }
         self.as_mut().upstream_changed();
-        // Подпись версии перечитываем ФОНОМ (починка 4).
+        // The version label is re-read IN THE BACKGROUND (fix 4).
         let version = QString::from(&self.rust().daemon_version);
         self.as_mut().refresh_version(&version);
     }
 
-    /// Порт `_on_owe_worker_done`.
+    /// A port of `_on_owe_worker_done`.
     fn on_owe_done(mut self: Pin<&mut Self>, ok: bool, message: &str, zip_path: &str) {
         if !ok {
             {
@@ -1015,12 +1030,13 @@ impl qobject::WeDeveloperModel {
             return;
         }
         if zip_path.is_empty() {
-            // ФС-установку задача уже выполнила.
+            // The task has already done the file system installation.
             self.finish_owe_install(true, message);
             return;
         }
         if !crate::discover_queries::connected() {
-            // Демон умер, пока качали — ФС-фолбэк (быстро: без сети).
+            // The daemon died while downloading — the file system fallback (fast: no
+            // network).
             let tag = self
                 .rust()
                 .pending_owe
@@ -1035,7 +1051,7 @@ impl qobject::WeDeveloperModel {
             self.finish_owe_install(ok2, &text);
             return;
         }
-        // Hot-install через демона: архив распакует он сам.
+        // Hot-install through the daemon: it unpacks the archive itself.
         let attempt = {
             let mut me = self.as_mut().rust_mut();
             me.update_status = ww::text_owe_ipc_running().to_string();
@@ -1049,15 +1065,15 @@ impl qobject::WeDeveloperModel {
             me.owe_ipc_attempt
         };
         self.as_mut().upstream_changed();
-        // Сокет трогает разметка через `PluginInstallQuery`, она же заводит
-        // сторож ответа: свой второй способ говорить с демоном здесь не
-        // нужен.
+        // The socket is touched by the markup through `PluginInstallQuery`, and it
+        // also starts the answer guard: a second way of talking to the daemon of
+        // our own is not needed here.
         let zip = QString::from(zip_path);
         self.as_mut()
             .owe_ipc_requested(zip, attempt.min(i32::MAX as u64) as i32);
     }
 
-    /// Порт `_finish_owe_install`.
+    /// A port of `_finish_owe_install`.
     fn finish_owe_install(mut self: Pin<&mut Self>, ok: bool, message: &str) {
         {
             let mut me = self.as_mut().rust_mut();
@@ -1096,7 +1112,7 @@ impl cxx_qt::Initialize for qobject::WeDeveloperModel {
 }
 
 // ============================================================================
-// WeParityQuery — сверка схемы renderer-настроек с реестром UI
+// WeParityQuery — reconciling the renderer settings schema with the UI registry
 // ============================================================================
 
 #[derive(Default)]
@@ -1104,13 +1120,13 @@ pub struct WeParityQueryRust {
     base: QueryState,
     data: we_query::ParitySchemaData,
     pending: std::collections::BTreeSet<i64>,
-    /// Версия ЖИВОГО демона — её называет страница.
+    /// Version of the LIVE daemon — named by the page.
     daemon_version: String,
-    /// Текст панели отчёта.
+    /// Text of the report panel.
     report_text: String,
-    /// Бейдж рядом с кнопкой «Сверить с движком».
+    /// Badge next to the "Reconcile with the engine" button.
     badge: Option<ww::StatusLine>,
-    /// Показывать ли пометку на кнопке «Разраб.».
+    /// Whether to show the mark on the "Dev" button.
     drift: bool,
 }
 
@@ -1150,11 +1166,12 @@ impl qobject::WeParityQuery {
         self.drift
     }
 
-    /// Кнопка «Сверить с движком» и авто-сверка при открытии страницы.
+    /// The "Reconcile with the engine" button and auto-reconciliation on opening
+    /// the page.
     ///
-    /// Демона нет — своя короткая строка ядра, а не общая ошибка базы
-    /// «нет соединения»: у виджетной версии проверка стояла ДО отправки, и
-    /// человек читал именно её.
+    /// No daemon — the core's own short line rather than the base's generic "no
+    /// connection" error: in the widget version the check stood BEFORE sending,
+    /// and that is exactly what the user read.
     pub fn reload(mut self: Pin<&mut Self>) {
         if !crate::discover_queries::connected() {
             self.as_mut().rust_mut().report_text = ww::text_parity_no_daemon().to_string();
@@ -1167,7 +1184,7 @@ impl qobject::WeParityQuery {
         }
     }
 
-    /// Авто-сверка при открытии страницы (см. мост).
+    /// Auto-reconciliation on opening the page (see the bridge).
     pub fn reload_if_connected(self: Pin<&mut Self>) {
         if !crate::discover_queries::connected() {
             return;
@@ -1193,9 +1210,10 @@ impl qobject::WeParityQuery {
         self.as_mut().rebuild_report();
     }
 
-    /// Пересобрать панель, бейдж и пометку по последнему ответу.
+    /// Rebuild the panel, the badge and the mark from the last answer.
     fn rebuild_report(mut self: Pin<&mut Self>) {
-        // Движок ответил ошибкой — его текст, а при пустом текст ядра.
+        // The engine answered with an error — its text, or the core's text if it
+        // is empty.
         if self.base.status == we_query::STATUS_ERROR {
             let text = if self.base.error.is_empty() {
                 ww::text_parity_request_failed().to_string()
@@ -1210,12 +1228,13 @@ impl qobject::WeParityQuery {
             return;
         };
         let daemon_version = self.rust().daemon_version.clone();
-        // Тег нашего снапшота протокола: при расхождении с версией живого
-        // демона бейдж честно скажет, что схему сверяли по УСТАРЕВШЕМУ
-        // протоколу.
-        // ⚠️ Тег ищется в каталоге ВКЛАДКИ, а не пакета `rexon/`: путь
-        // между ними знает ядро. Прямой `pkg_dir` не находил файла, и
-        // отчёт писал «(тег не записан)» (снимок стенда 06.09).
+        // Tag of our protocol snapshot: on a mismatch with the live daemon's
+        // version the badge honestly says that the schema was reconciled against
+        // an OUTDATED protocol.
+        // Warning: the tag is looked up in the TAB's directory, not in the
+        // `rexon/` package: the path between them is known by the core. A direct
+        // `pkg_dir` did not find the file, and the report wrote "(tag not
+        // recorded)" (bench snapshot 06.09).
         let tag = we_parity::read_proto_upstream_tag_from_pkg(&we_env::pkg_dir());
         let proto_match = we_parity::daemon_matches_snapshot(&tag, &daemon_version);
         let text = ww::parity_report_header(&daemon_version, &tag)
@@ -1242,8 +1261,8 @@ impl qobject::WeParityQuery {
 
     pub fn emit_property(mut self: Pin<&mut Self>, name: &str) {
         match name {
-            // Панель, бейдж и пометку пересобирает `rebuild_report` —
-            // ему нужен ещё и тег снапшота, которого у ядра нет.
+            // The panel, badge and mark are rebuilt by `rebuild_report` — it also
+            // needs the snapshot tag, which the core does not have.
             "report" => self.as_mut().report_changed(),
             other => debug_assert!(false, "нет сигнала для свойства {other}"),
         }
@@ -1258,8 +1277,8 @@ impl qobject::WeParityQuery {
 mod tests {
     use super::*;
 
-    /// Строки статуса заводятся ровно по списку целей ядра и в его порядке:
-    /// разметка рисует их подряд, а не по именам.
+    /// Status lines are created exactly by the core's list of targets and in its
+    /// order: the markup draws them in sequence, not by name.
     #[test]
     fn initial_lines_follow_core_targets() {
         let me = WeDeveloperModelRust::default();
@@ -1271,8 +1290,9 @@ mod tests {
         }
     }
 
-    /// Кнопки установки заперты до первой проверки: ставить нечего и
-    /// неоткуда — то же начальное состояние, что у виджетной версии.
+    /// Install buttons are locked until the first check: there is nothing to
+    /// install and nowhere to install from — the same initial state as in the
+    /// widget version.
     #[test]
     fn install_buttons_locked_before_first_check() {
         let me = WeDeveloperModelRust::default();

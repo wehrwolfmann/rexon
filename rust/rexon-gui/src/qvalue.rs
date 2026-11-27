@@ -1,25 +1,25 @@
-// Перевод значений между JSON ядра и QVariant, которым живёт QML.
+// Converting values between the core's JSON and the QVariant that QML
+// lives on.
 //
-// Модуль общий на весь крейт намеренно (правило #12 — движок один, а не
-// копия в каждом мосте): одни и те же карты ядра читают и модели выдачи, и
-// модель библиотеки обоев, и запросы. Разъехавшиеся копии конвертера дали бы
-// разное поведение на одном и том же значении, и заметно это стало бы не на
-// сборке, а в интерфейсе.
+// The module is shared across the whole crate on purpose (rule #12 — one
+// engine, not a copy in every bridge): the same core maps are read by the
+// result models, the wallpaper library model and the queries. Diverging
+// copies of the converter would behave differently on the same value, and
+// that would show up not at build time but in the interface.
 
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use serde_json::Value;
 
-/// JSON → QVariant. Вложенные объекты уезжают QVariantMap, массивы —
-/// QVariantList: ровно то, что вендорный QML читает точкой
-/// (`source.sorts[0].key`).
+/// JSON → QVariant. Nested objects become QVariantMap, arrays QVariantList:
+/// exactly what the vendored QML reads with a dot (`source.sorts[0].key`).
 pub fn json_to_variant(value: &Value) -> QVariant {
     match value {
         Value::Null => QVariant::default(),
         Value::Bool(b) => QVariant::from(b),
         Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                // i32 хватает всем полям протокола, а QML читает его как
-                // число без потерь.
+                // i32 is enough for all protocol fields, and QML reads it as a number
+                // without loss.
                 match i32::try_from(i) {
                     Ok(v) => QVariant::from(&v),
                     Err(_) => QVariant::from(&i),
@@ -48,63 +48,68 @@ pub fn json_to_variant(value: &Value) -> QVariant {
 
 /// QVariant → JSON.
 ///
-/// Разбирает не Rust, а Qt: `QVariant::value<T>()` в cxx-qt-lib проверяет
-/// `canConvert`, а он у Qt разрешающий — строка «конвертируется» и в bool, и
-/// в список посимвольно, поэтому определить НАСТОЯЩИЙ тип значения им
-/// нельзя. `QJsonDocument::fromVariant` делает это правилами самого Qt
-/// (шим `cpp/rexon_gui_factory.cpp`).
+/// It is parsed not by Rust but by Qt: `QVariant::value<T>()` in cxx-qt-lib
+/// checks `canConvert`, and in Qt that is permissive — a string "converts"
+/// both to bool and to a character list, so the REAL type of the value
+/// cannot be determined with it. `QJsonDocument::fromVariant` does it by
+/// Qt's own rules (the `cpp/rexon_gui_factory.cpp` shim).
 ///
-/// ⚠️ Объявление C++-функции живёт в мосте партии 3 и переиспользуется
-/// отсюда: второе объявление ТОЙ ЖЕ функции в другом мосте крейта даёт
-/// `duplicate symbol` на линковке (cxx печатает шим по имени C++-функции).
+/// Warning: the declaration of the C++ function lives in the batch 3 bridge
+/// and is reused from here: a second declaration of THE SAME function in
+/// another bridge of the crate gives a `duplicate symbol` at link time (cxx
+/// emits the shim by the C++ function name).
 pub fn variant_to_json(value: &QVariant) -> Value {
     let bytes = crate::discover_queries::qobject::rexon_variant_to_json(value);
     serde_json::from_slice(bytes.as_slice()).unwrap_or(Value::Null)
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 64-битные целые наружу в QML
+// 64-bit integers exposed to QML
 // ════════════════════════════════════════════════════════════════════════
 //
-// ⚠️ ЗАЧЕМ ЭТИ ЧЕТЫРЕ ФУНКЦИИ. cxx-qt печатает `i64`/`u64` как
-// `::std::int64_t` / `::std::uint64_t`, а на 64-битном Linux это `long` /
-// `unsigned long` — ОТДЕЛЬНЫЕ метатипы Qt, не те, что `qlonglong`. Движок
-// QML их не знает, и литеральная декларативная привязка в такое свойство
-// («displayId: 7») ОТКАЗЫВАЕТ: «Cannot assign value 7 to property
-// displayId», причём вместе со всем документом — страница не создаётся
-// вовсе. Замерено живым движком 31.08.2026, разбор и повторяемый стенд —
+// Warning: WHY THESE FOUR FUNCTIONS. cxx-qt emits `i64`/`u64` as
+// `::std::int64_t` / `::std::uint64_t`, and on 64-bit Linux these are
+// `long` / `unsigned long` — SEPARATE Qt metatypes, not the same as
+// `qlonglong`. The QML engine does not know them, and a literal
+// declarative binding to such a property ("displayId: 7") FAILS: "Cannot
+// assign value 7 to property displayId", and with it the whole document —
+// the page is not created at all. Measured on a live engine on 31.08.2026;
+// the analysis and a reproducible test bench are in
 // `src/qml_int64_probe.rs`.
 //
-// Поэтому наружу в QML 64-битное целое НЕ выставляется никогда: свойство,
-// параметр инвокабла и параметр сигнала объявляются `f64` (в QML —
-// `double`), а поле внутри остаётся точным `i64`/`u64`. Так же держит эти
-// значения и сам вендорный QML: `required property double playlistId`.
+// So a 64-bit integer is NEVER exposed to QML: a property, an invokable
+// parameter and a signal parameter are declared `f64` (in QML — `double`),
+// while the field inside stays an exact `i64`/`u64`. The vendored QML
+// itself holds these values the same way: `required property double
+// playlistId`.
 //
-// ⚠️ ГРАНИЦА ТОЧНОСТИ: `double` держит целые без потерь до 2^53
-// (9 007 199 254 740 992). Все значения, которые ходят этим путём, —
-// номера строк базы демона, счётчики правок и поколений процессов, размеры
-// кэша в байтах: до потолка им далеко. Новое значение, которому нужны все
-// 64 бита (например, идентификатор Steam Workshop или отметка времени в
-// наносекундах), этим путём выпускать НЕЛЬЗЯ — его место в `QString`.
-// Сторож `qml_int64` в `src/lib.rs` не даст завести такое свойство молча.
+// Warning: THE PRECISION LIMIT: `double` holds integers without loss up to
+// 2^53 (9 007 199 254 740 992). All values that travel this path are row
+// numbers of the daemon's database, edit counters and process generations,
+// cache sizes in bytes: they are far from the ceiling. A new value that
+// needs all 64 bits (for example, a Steam Workshop identifier or a
+// nanosecond timestamp) must NOT be exposed this way — its place is a
+// `QString`. The `qml_int64` guard in `src/lib.rs` will not let such a
+// property be added silently.
 
-/// Целое со знаком наружу в QML.
+/// A signed integer exposed to QML.
 pub fn i64_to_qml(value: i64) -> f64 {
     value as f64
 }
 
-/// Целое без знака наружу в QML.
+/// An unsigned integer exposed to QML.
 pub fn u64_to_qml(value: u64) -> f64 {
     value as f64
 }
 
-/// Обратно: число из QML в точное целое со знаком. Дробную часть
-/// отбрасываем — QML присваивает своё `double`, а номер целый.
+/// Back: a number from QML into an exact signed integer. The fractional
+/// part is dropped — QML assigns its `double`, and the number is an
+/// integer.
 pub fn qml_to_i64(value: f64) -> i64 {
     value as i64
 }
 
-/// Обратно: число из QML в точное целое без знака.
+/// Back: a number from QML into an exact unsigned integer.
 pub fn qml_to_u64(value: f64) -> u64 {
     value as u64
 }

@@ -1,15 +1,15 @@
-//! Стенд уровня 2 («один пароль на запуск», см. docs/testing.md): помощник сеанса
-//! прав — ОБЫЧНЫЙ ПРОЦЕСС. Тест — настоящее окно ([`Client`]: поток сеанса,
-//! рукопожатие, очередь), помощник — бинарь `rexon-priv-stand` (тот же
-//! `helper::run_session`, «сухой» `RootIo` с корнем-префиксом). Между ними —
-//! `socketpair` на fd 0/1 дочки, как это делает `pkexec`; «шим pkexec» здесь —
-//! [`StandSpawner`]: вместо `pkexec <помощник> …` он запускает сам помощник с
-//! `PKEXEC_UID`. Ни root, ни pkexec, ни pacman: команды помощника только
-//! записываются в журнал стенда, и тест сверяет журнал argv.
+//! Level 2 bench ("one password per launch", see docs/testing.md): the privilege session
+//! helper is an ORDINARY PROCESS. The test is the real window ([`Client`]: session thread,
+//! handshake, queue), the helper is the `rexon-priv-stand` binary (the same
+//! `helper::run_session`, a "dry" `RootIo` with a prefix root). Between them is a
+//! `socketpair` on the child's fd 0/1, as `pkexec` does it; the "pkexec shim" here is
+//! [`StandSpawner`]: instead of `pkexec <helper> …` it starts the helper itself with
+//! `PKEXEC_UID`. No root, no pkexec, no pacman: the helper's commands are only
+//! written to the bench log, and the test compares the argv log.
 //!
-//! ⛔ Собирается только с feature `stand` (`required-features`):
+//! ⛔ Built only with the `stand` feature (`required-features`):
 //! `BUILD_QUEUE_SLOTS=1 scripts/build-queue test -p rexon-core --features stand --test priv_stand`
-//! или `scripts/priv-stand`.
+//! or `scripts/priv-stand`.
 
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
@@ -30,11 +30,11 @@ const WAIT: Duration = Duration::from_secs(10);
 const SESSION: &str = "7";
 
 fn uid() -> u32 {
-    // SAFETY: getuid без предусловий.
+    // SAFETY: getuid has no preconditions.
     unsafe { libc::getuid() }
 }
 
-// ── каталог стенда ──────────────────────────────────────────────────────
+// ── bench directory ─────────────────────────────────────────────────────
 
 struct Bench {
     dir: PathBuf,
@@ -66,7 +66,7 @@ impl Bench {
     }
 
     fn put(&self, name: &str, text: &str) {
-        // Замена одним шагом: помощник читает файл в своём потоке опроса.
+        // Replacement in one step: the helper reads the file in its polling thread.
         let tmp = self.dir.join(format!(".{name}.tmp"));
         std::fs::write(&tmp, text).unwrap();
         std::fs::rename(&tmp, self.dir.join(name)).unwrap();
@@ -80,7 +80,7 @@ impl Bench {
         self.journal().lines().filter(|l| l.starts_with(prefix)).map(str::to_string).collect()
     }
 
-    /// Ждать строку журнала, содержащую `needle`.
+    /// Wait for a log line containing `needle`.
     fn wait_for(&self, needle: &str) {
         let start = Instant::now();
         while start.elapsed() < WAIT {
@@ -92,7 +92,7 @@ impl Bench {
         panic!("в журнале стенда нет «{needle}» за {WAIT:?}:\n{}", self.journal());
     }
 
-    /// Сколько помощников вышло (строк `exit`).
+    /// How many helpers exited (`exit` lines).
     fn exits(&self) -> Vec<String> {
         self.lines("exit ")
     }
@@ -106,15 +106,15 @@ impl Drop for Bench {
     }
 }
 
-// ── «шим pkexec» и файловая система для поиска помощника ────────────────
+// ── the "pkexec shim" and the file system for finding the helper ────────
 
-/// Как запускается помощник.
+/// How the helper is started.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Launch {
-    /// Как pkexec: помощник заменяет шим (`exec`), его родитель — окно.
+    /// Like pkexec: the helper replaces the shim (`exec`), its parent is the window.
     Exec,
-    /// Посредник: оболочка запускает помощника своим потомком — у сокета
-    /// чужой для помощника собеседник (родитель ≠ тот, кто создал пару).
+    /// Intermediary: a shell starts the helper as its child — the socket has
+    /// a peer foreign to the helper (the parent ≠ the one who created the pair).
     Forked,
 }
 
@@ -154,8 +154,8 @@ impl StandSpawner {
 
 impl Spawner for StandSpawner {
     fn spawn(&mut self, argv: &[String], helper_end: OwnedFd) -> std::io::Result<Box<dyn HelperChild>> {
-        // Окно зовёт `pkexec <помощник> [--session …] [--lang …]`; шим делает
-        // то же, что pkexec после пароля: тот же fd 0/1 и `PKEXEC_UID`.
+        // The window calls `pkexec <helper> [--session …] [--lang …]`; the shim does
+        // the same as pkexec after the password: the same fd 0/1 and `PKEXEC_UID`.
         assert_eq!(argv[0], PKEXEC, "окно должно звать pkexec: {argv:?}");
         self.spawned.fetch_add(1, Ordering::SeqCst);
         let out = helper_end.try_clone()?;
@@ -172,7 +172,7 @@ impl Spawner for StandSpawner {
 
     fn probe_build_id(&mut self, helper: &Path) -> Option<String> {
         if !self.probe {
-            return None; // «старый помощник без флага»: сверка — в рукопожатии
+            return None; // "old helper without the flag": the check is in the handshake
         }
         let out = self.command(&helper.to_string_lossy()).arg(BUILD_ID_FLAG).stdin(Stdio::null()).output().ok()?;
         let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -180,9 +180,9 @@ impl Spawner for StandSpawner {
     }
 }
 
-/// Бинарь стенда лежит в каталоге сборки пользователя; проверка владения
-/// (она проверена юнит-тестами `client.rs`) видит его файлом root без записи
-/// для группы и всех.
+/// The bench binary lies in the user's build directory; the ownership check
+/// (it is covered by the `client.rs` unit tests) sees it as a root file not writable
+/// by group and others.
 struct RootLookingFs;
 
 impl HelperFs for RootLookingFs {
@@ -243,10 +243,10 @@ fn wait_no_session(c: &Client) {
     }
 }
 
-// ── сценарии ────────────────────────────────────────────────────────────
+// ── scenarios ───────────────────────────────────────────────────────────
 
-/// Одна сессия → несколько операций без повторного подъёма (одно «окно
-/// пароля»), журнал argv — ровно команды таблицы ядра.
+/// One session → several operations without re-elevation (one "password
+/// window"), the argv log is exactly the commands of the core's table.
 #[test]
 fn one_password_many_operations() {
     let b = Bench::new("many");
@@ -264,19 +264,19 @@ fn one_password_many_operations() {
     b.wait_for("exit 0");
 }
 
-/// Закрытие окна (EOF на сокете) → помощник выходит сам, с кодом 0.
+/// Closing the window (EOF on the socket) → the helper exits by itself, with code 0.
 #[test]
 fn window_closed_eof_helper_exits() {
     let b = Bench::new("eof");
     let (mut c, _) = client(&b, Setup::default());
     request(&mut c, &install("yt-dlp")).unwrap();
-    drop(c); // Drop окна = shutdown сеанса
+    drop(c); // Drop of the window = session shutdown
     b.wait_for("exit 0");
     assert!(b.journal().contains("end Revoked(WindowClosed)"), "{}", b.journal());
 }
 
-/// Окно закрыли посреди транзакции: помощник её доводит и только потом
-/// выходит (З4 — EOF не обрывает pacman).
+/// The window was closed in the middle of a transaction: the helper finishes it and only then
+/// exits (Z4 — EOF does not abort pacman).
 #[test]
 fn eof_mid_operation_is_finished() {
     let b = Bench::new("eof-mid");
@@ -291,28 +291,28 @@ fn eof_mid_operation_is_finished() {
     b.wait_for("exit 0");
     assert_eq!(b.lines("run "), vec![YT_DLP_RUN]);
     assert!(b.journal().contains("ops 1"), "{}", b.journal());
-    // Окно ушло раньше итога: исход ему неизвестен, но не «не исполнено».
+    // The window left before the result: the outcome is unknown to it, but not "not executed".
     assert!(matches!(pending.wait(&mut |_| {}), Err(ClientError::SessionLost { .. } | ClientError::Closed)));
 }
 
 fn revoked_by(b: &Bench, c: &mut Client, spawned: &AtomicU32, reason: &str, act: impl FnOnce()) {
     request(c, &install("yt-dlp")).unwrap();
-    // Первый опрос logind — точка отсчёта блокировки: дать ему пройти.
+    // The first logind poll is the starting point for locking: let it pass.
     std::thread::sleep(Duration::from_millis(250));
     act();
     b.wait_for(&format!("право погашено: {reason}"));
     b.wait_for("exit 0");
     wait_no_session(c);
     let runs_before = b.lines("run ").len();
-    // Новая команда старым правом не исполняется: нужен новый подъём —
-    // новое окно пароля.
+    // A new command is not executed with the old privilege: a new elevation is needed —
+    // a new password window.
     b.set_session(uid(), true, false);
     request(c, &install("yt-dlp")).unwrap();
     assert_eq!(spawned.load(Ordering::SeqCst), 2, "после отзыва — новый пароль");
     assert_eq!(b.lines("run ").len(), runs_before + 1);
 }
 
-/// Блокировка экрана (`LockedHint` нет → да) гасит право.
+/// Screen locking (`LockedHint` no → yes) revokes the privilege.
 #[test]
 fn screen_lock_revokes() {
     let b = Bench::new("lock");
@@ -320,7 +320,7 @@ fn screen_lock_revokes() {
     revoked_by(&b, &mut c, &spawned, "screen-locked", || b.set_session(uid(), true, true));
 }
 
-/// 15 минут без действий (подменные часы) гасят право.
+/// 15 minutes without activity (fake clock) revoke the privilege.
 #[test]
 fn idle_fifteen_minutes_revokes() {
     let b = Bench::new("idle");
@@ -328,7 +328,7 @@ fn idle_fifteen_minutes_revokes() {
     revoked_by(&b, &mut c, &spawned, "idle", || b.put("clock_ms", &(15 * 60 * 1000 + 1000).to_string()));
 }
 
-/// 14 минут простоя — право ещё живо.
+/// 14 minutes of idling — the privilege is still alive.
 #[test]
 fn idle_under_limit_keeps_session() {
     let b = Bench::new("idle-under");
@@ -341,7 +341,7 @@ fn idle_under_limit_keeps_session() {
     assert!(!b.journal().contains("право погашено"), "{}", b.journal());
 }
 
-/// Сон машины (скачок `BOOTTIME − MONOTONIC`) гасит право.
+/// Machine sleep (a jump in `BOOTTIME − MONOTONIC`) revokes the privilege.
 #[test]
 fn sleep_revokes() {
     let b = Bench::new("sleep");
@@ -349,7 +349,7 @@ fn sleep_revokes() {
     revoked_by(&b, &mut c, &spawned, "slept", || b.put("slept_ms", "5000"));
 }
 
-/// Переключили пользователя (сеанс неактивен) — право погашено.
+/// The user was switched (the session is inactive) — the privilege is revoked.
 #[test]
 fn inactive_session_revokes() {
     let b = Bench::new("inactive");
@@ -357,7 +357,7 @@ fn inactive_session_revokes() {
     revoked_by(&b, &mut c, &spawned, "session-inactive", || b.set_session(uid(), false, false));
 }
 
-/// Отзыв посреди операции: идущая доводится, после неё помощник выходит.
+/// Revocation in the middle of an operation: the running one is finished, after it the helper exits.
 #[test]
 fn revoke_during_operation_finishes_it() {
     let b = Bench::new("lock-mid");
@@ -376,8 +376,8 @@ fn revoke_during_operation_finishes_it() {
     assert_eq!(b.lines("run ").len(), 2, "{}", b.journal());
 }
 
-/// Вечное (ядро, mesa, glibc…) и пакеты текущего стола помощник не снимает,
-/// ни одной команды не запускается; отказ сеанс не роняет.
+/// The helper does not remove the permanent things (kernel, mesa, glibc…) or the packages of the current desktop,
+/// not a single command is run; a refusal does not bring down the session.
 #[test]
 fn vital_and_current_desktop_packages_refused() {
     let b = Bench::new("vital");
@@ -394,20 +394,20 @@ fn vital_and_current_desktop_packages_refused() {
         Err(ClientError::Refused { message_key }) => assert_eq!(message_key, "refused.current-desktop-package"),
         other => panic!("{own}: ждали отказ, пришло {other:?}"),
     }
-    // Не из таблицы — тоже отказ (окно не может назвать что угодно).
+    // Not from the table — a refusal too (the window cannot name just anything).
     match request(&mut c, &install("sddm")) {
         Err(ClientError::Refused { message_key }) => assert_eq!(message_key, "refused.not-in-table"),
         other => panic!("ждали отказ, пришло {other:?}"),
     }
     assert!(b.lines("run ").is_empty(), "отказ запустил команду:\n{}", b.journal());
-    // Чужой стол снять можно — тем же сеансом.
+    // Another desktop can be removed — with the same session.
     assert!(request(&mut c, &remove(&["gnome-shell"])).unwrap().ok);
     assert_eq!(b.lines("run "), vec!["run pacman -Rns --noconfirm gnome-shell"]);
     assert_eq!(spawned.load(Ordering::SeqCst), 1);
 }
 
-/// Помощник другой сборки, узнанный ДО пароля (`--build-id`): пароль не
-/// спрашивается, сеанс не поднимается, путь «как сейчас» разрешён.
+/// A helper of another build, recognized BEFORE the password (`--build-id`): the password is not
+/// asked, the session is not brought up, the "as now" path is allowed.
 #[test]
 fn other_build_found_before_password() {
     let b = Bench::new("build-probe");
@@ -420,9 +420,9 @@ fn other_build_found_before_password() {
     assert_eq!(spawned.load(Ordering::SeqCst), 0, "пароль спрошен впустую");
 }
 
-/// Другая сборка, узнанная только в рукопожатии (помощник без
-/// `--build-id`): `BuildMismatch`, липкий — второго пароля не будет, сырого
-/// пути тоже (З5).
+/// Another build, recognized only in the handshake (a helper without
+/// `--build-id`): `BuildMismatch`, sticky — there will be no second password, and no raw
+/// path either (Z5).
 #[test]
 fn build_mismatch_in_handshake_is_sticky() {
     let b = Bench::new("build-hello");
@@ -440,8 +440,8 @@ fn build_mismatch_in_handshake_is_sticky() {
     assert!(b.lines("run ").is_empty());
 }
 
-/// Сеанс logind не того пользователя — рукопожатие отвергнуто, ничего не
-/// исполнено.
+/// A logind session of the wrong user — the handshake is rejected, nothing
+/// executed.
 #[test]
 fn foreign_logind_session_rejected() {
     let b = Bench::new("foreign-session");
@@ -453,11 +453,11 @@ fn foreign_logind_session_rejected() {
     assert!(b.lines("run ").is_empty());
 }
 
-/// Чужой процесс не находит канала:
-/// * помощник, у которого собеседник по сокету — не его родитель (посредник
-///   держит пару), не говорит ни слова и выходит;
-/// * у сокета нет имени (только `socketpair`), и программы, запущенные окном
-///   во время сеанса, его не наследуют.
+/// A foreign process does not find the channel:
+/// * a helper whose socket peer is not its parent (an intermediary
+///   holds the pair) says not a word and exits;
+/// * the socket has no name (only `socketpair`), and programs started by the window
+///   during the session do not inherit it.
 #[test]
 fn stranger_cannot_reach_channel() {
     let b = Bench::new("stranger");
@@ -471,7 +471,7 @@ fn stranger_cannot_reach_channel() {
     assert!(b.journal().contains("чужой собеседник на сокете"), "{}", b.journal());
     assert!(b.lines("run ").is_empty());
 
-    // Обычный сеанс: дочка окна не видит ни одного сокета окна.
+    // An ordinary session: the window's child sees not a single socket of the window.
     let b2 = Bench::new("stranger-fd");
     let (mut c2, _) = client(&b2, Setup::default());
     request(&mut c2, &install("yt-dlp")).unwrap();
@@ -486,7 +486,7 @@ fn stranger_cannot_reach_channel() {
     for s in &own {
         assert!(!child.lines().any(|l| l == s), "дочка окна унаследовала {s}:\n{child}");
     }
-    // Имени у пары нет: в /proc/net/unix у этих сокетов пустой путь.
+    // The pair has no name: in /proc/net/unix these sockets have an empty path.
     let unix = std::fs::read_to_string("/proc/net/unix").unwrap_or_default();
     for s in &own {
         let inode = s.trim_start_matches("socket:[").trim_end_matches(']');
@@ -508,17 +508,17 @@ fn sockets_of(dir: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Стенд без каталога — не помощник: отказ, а не «сухой» root.
+/// A bench without a directory is not a helper: a refusal, not a "dry" root.
 #[test]
 fn stand_without_dir_refuses() {
     let st = Command::new(STAND).env_remove("REXON_STAND_DIR").stdin(Stdio::null()).status().unwrap();
     assert_eq!(st.code(), Some(rexon_core::privilege::helper::EXIT_USAGE));
 }
 
-/// Шрифт «для всех» сеансом прав: копия под корнем стенда в
-/// `/usr/local/share/fonts`, `fc-query` — по копии root (рабочий каталог),
-/// `fc-cache` каталога; занятое имя и не-шрифт — отказ без записи; удаление
-/// шрифта пакета — отказ проверки, своего файла — удалён. Один пароль.
+/// A font "for everyone" via the privilege session: a copy under the bench root in
+/// `/usr/local/share/fonts`, `fc-query` runs on root's copy (the working directory),
+/// `fc-cache` of the directory; a taken name and a non-font — a refusal without writing; removing
+/// a package font — a check refusal, a user's own file — removed. One password.
 #[test]
 fn shared_font_install_and_remove() {
     use std::os::unix::fs::PermissionsExt;
@@ -548,13 +548,13 @@ fn shared_font_install_and_remove() {
     let probes = b.lines("probe fc-query ");
     assert!(probes.iter().all(|l| l.contains("/var/tmp/")), "fc-query не по копии root: {probes:?}");
 
-    // Занятое имя — отказ, файл прежний.
+    // A taken name — a refusal, the file is unchanged.
     match c.request(&op("Stand.ttf"), vec![font("b", "другой")], &mut |_| {}) {
         Err(ClientError::Refused { message_key }) => assert_eq!(message_key, "refused.font-exists"),
         other => panic!("ждали отказ, пришло {other:?}"),
     }
     assert_eq!(std::fs::read_to_string(&dest).unwrap(), "шрифт");
-    // Не шрифт (fontconfig молчит) — отказ, файла нет.
+    // Not a font (fontconfig is silent) — a refusal, no file.
     std::fs::remove_file(b.dir.join("fc-query")).unwrap();
     match c.request(&op("Evil.ttf"), vec![font("c", "#!/bin/sh")], &mut |_| {}) {
         Err(ClientError::Refused { message_key }) => assert_eq!(message_key, "refused.not-a-font"),
@@ -562,7 +562,7 @@ fn shared_font_install_and_remove() {
     }
     assert!(!root.join("usr/local/share/fonts/Evil.ttf").exists());
 
-    // Удаление: шрифт пакета — отказ проверки; свой — удалён.
+    // Removal: a package font — a check refusal; a user's own one — removed.
     let rm = |f: &str| PrivOp::FontRemove { files: vec![f.into()] };
     match request(&mut c, &rm("/usr/share/fonts/noto/N.ttf")) {
         Err(ClientError::Refused { message_key }) => assert_eq!(message_key, "refused.outside-root"),

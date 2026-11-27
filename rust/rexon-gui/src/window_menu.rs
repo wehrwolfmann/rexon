@@ -1,43 +1,48 @@
-// WindowMenuModel — меню главного окна Rexon на Rust: состав, тексты и
-// исполнение трёх пунктов, за которыми стоит работа.
+// WindowMenuModel — the Rexon main window menu in Rust: the contents, the
+// texts and the execution of the three items that have work behind them.
 //
-// ЗАЧЕМ. Меню под кнопкой «☰» — единственное место окна, откуда покупатель
-// добирается до «Восстановить тему KDE», «О программе», «Удалить Rexon» и
-// «Выход». В Rust-каркасе его не было НИ СТРОКИ: окно на QML открывалось без
-// меню вовсе, то есть заменить окно на Python оно не могло в принципе.
+// WHY. The menu under the "☰" button is the only place in the window from
+// which the customer reaches "Restore KDE theme", "About", "Uninstall
+// Rexon" and "Quit". The Rust frame had NOT A SINGLE LINE of it: the QML
+// window opened without a menu at all, that is, it could not replace the
+// Python window in principle.
 //
-// Приём тот же, что у объектов побочных действий вкладок: объект не решает
-// ничего сам.
+// The approach is the same as for the tabs' side-actions objects: the
+// object decides nothing by itself.
 //
-//   * ЧТО в меню, какими словами и что доступно — `rexon_core::window_menu`;
-//   * ЧТО удалять, какой командой и КАК исполнять — ядро: решения в
-//     `rexon_core::installer` (тот самый движок, которым пользуется
-//     `RexonUninstaller` на Python), исполнение — `installer_exec::uninstall`
-//     (детект владельца файла у пакетного менеджера, `pkexec pacman -R` для
-//     пакета дистрибутива, скрипт удаления копии для всех, копия в домашней
-//     папке, профиль, разбор исхода и текст итога). Своего исполнителя у окна
-//     нет: до G8 здесь жила его вторая копия;
-//   * здесь — только живые факты (семейство дистрибутива, свой бинарь) и
-//     фоновый поток.
+//   * WHAT is in the menu, in what words and what is available —
+//     `rexon_core::window_menu`;
+//   * WHAT to remove, with which command and HOW to execute it — the core:
+//     the decisions in `rexon_core::installer` (the very engine the Python
+//     `RexonUninstaller` uses), the execution in `installer_exec::uninstall`
+//     (detecting the file owner with the package manager,
+//     `pkexec pacman -R` for a distribution package, the removal script of
+//     a copy for everyone, a copy in the home folder, the profile, parsing
+//     the outcome and the result text). The window has no executor of its
+//     own: until G8 its second copy lived here;
+//   * here there are only the live facts (the distribution family, our own
+//     binary) and the background thread.
 //
-// ⚠️ УДАЛЕНИЕ ПРОГРАММЫ — ЗДЕСЬ УМЕСТНО. Правило владельца: кнопка удаления
-// живёт только в ПРОГРАММАХ, в играх её не делают. Rexon — программа, и в
-// продукте эта кнопка стоит ровно здесь.
+// Warning: UNINSTALLING THE PROGRAM BELONGS HERE. The owner's rule: an
+// uninstall button lives only in PROGRAMS, games do not get one. Rexon is
+// a program, and in the product this button sits exactly here.
 //
-// ⚠️ ПАКЕТ ДИСТРИБУТИВА — ОТДЕЛЬНЫЙ СПОСОБ УСТАНОВКИ. Файлы в /usr/{bin,lib}
-// ведёт пакетный менеджер, и ручной детект их не видит вовсе: `rm -rf` по
-// таким путям оставил бы в базе pacman/dpkg запись о пакете, чьи файлы
-// исчезли. Поэтому сначала спрашиваем у менеджера ВЛАДЕЛЬЦА наших файлов, и
-// если владелец есть — удаляем пакет его же средствами (`pkexec pacman -R`).
+// Warning: A DISTRIBUTION PACKAGE IS A SEPARATE INSTALLATION METHOD. Files
+// in /usr/{bin,lib} are managed by the package manager, and manual
+// detection does not see them at all: `rm -rf` on such paths would leave
+// in the pacman/dpkg database a record of a package whose files vanished.
+// So we first ask the manager for the OWNER of our files, and if there is
+// an owner, we remove the package with its own means (`pkexec pacman -R`).
 //
-// ⚠️ УДАЛЕНИЕ ИДЁТ В ФОНЕ. За `pkexec` стоит запрос пароля, который ждёт
-// сколько угодно; синхронный вызов подвесил бы окно на всё это время. Итог
-// приходит сигналом `uninstallFinished`.
+// Warning: UNINSTALLING RUNS IN THE BACKGROUND. Behind `pkexec` there is a
+// password prompt that waits as long as it likes; a synchronous call would
+// hang the window for all that time. The result arrives with the
+// `uninstallFinished` signal.
 
-/// Мост cxx-qt меню окна.
+/// cxx-qt bridge of the window menu.
 ///
-/// Тип объявлен `#[qml_element]`, поэтому и хозяин окна, и разметка меню
-/// могут завести его себе сами.
+/// The type is declared `#[qml_element]`, so both the window host and the
+/// menu markup can create it for themselves.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -57,19 +62,20 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        // ── Состав меню: [{id, label, shortcut, separatorBefore, enabled, destructive}, …]
-        // в порядке меню. CONSTANT: за время жизни окна меню не меняется —
-        // ровно как в продукте, где `_build_menubar` зовётся один раз.
+        // ── Menu contents: [{id, label, shortcut, separatorBefore, enabled, destructive}, …]
+        // in menu order. CONSTANT: the menu does not change during the window's
+        // lifetime — exactly as in the product, where `_build_menubar` is called
+        // once.
         #[qproperty(QList_QVariant, items, READ = items, CONSTANT)]
-        // ── Подпись самой кнопки меню («☰»).
+        // ── Label of the menu button itself ("☰").
         #[qproperty(QString, button_text, cxx_name = "buttonText",
                     READ = button_text, CONSTANT)]
         type WindowMenuModel = super::WindowMenuModelRust;
     }
 
     unsafe extern "RustQt" {
-        /// Удаление закончилось: `ok` — получилось ли, `title` и `message` —
-        /// заголовок и текст сообщения, которое показать человеку.
+        /// Uninstalling has finished: `ok` — did it work, `title` and `message` —
+        /// the title and text of the message to show the user.
         #[qsignal]
         #[cxx_name = "uninstallFinished"]
         fn uninstall_finished(
@@ -79,8 +85,8 @@ pub mod qobject {
             message: QString,
         );
 
-        /// Снятие пакетов-замен частей Plasma закончилось: то же устройство,
-        /// что у `uninstallFinished`.
+        /// Removing the packages replacing parts of Plasma has finished: the same
+        /// structure as `uninstallFinished`.
         #[qsignal]
         #[cxx_name = "forksRemoveFinished"]
         fn forks_remove_finished(
@@ -92,15 +98,15 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        // Читатели свойств. Объявлены отдельно от вызываемых методов: у
-        // свойства нет `#[qinvokable]`, его читает сам Qt.
+        // Property readers. Declared separately from the callable methods: a
+        // property has no `#[qinvokable]`, Qt reads it itself.
         fn items(self: &WindowMenuModel) -> QList_QVariant;
         #[cxx_name = "buttonText"]
         fn button_text(self: &WindowMenuModel) -> QString;
     }
 
     extern "RustQt" {
-        // ── «О программе» ─────────────────────────────────────────────────
+        // ── "About" ───────────────────────────────────────────────────────
         #[qinvokable]
         #[cxx_name = "aboutTitle"]
         fn about_title(self: &WindowMenuModel) -> QString;
@@ -109,40 +115,42 @@ pub mod qobject {
         #[cxx_name = "aboutHtml"]
         fn about_html(self: &WindowMenuModel) -> QString;
 
-        /// Журнал для справки: {path, url, location, openLabel, copyLabel, copied}.
+        /// The log for the about box: {path, url, location, openLabel, copyLabel,
+        /// copied}.
         #[qinvokable]
         #[cxx_name = "logInfo"]
         fn log_info(self: &WindowMenuModel) -> QMap_QString_QVariant;
 
-        /// Конец журнала для «Скопировать журнал».
+        /// The log tail for "Copy log".
         #[qinvokable]
         #[cxx_name = "logTail"]
         fn log_tail(self: &WindowMenuModel) -> QString;
 
-        // ── «Восстановить тему KDE» ───────────────────────────────────────
-        /// Заголовок и текст вопроса перед сбросом плюс имя темы, которая
-        /// применится: {title, text, target}.
+        // ── "Restore KDE theme" ───────────────────────────────────────────
+        /// Title and text of the question before the reset plus the name of the
+        /// theme that will be applied: {title, text, target}.
         #[qinvokable]
         #[cxx_name = "recoverPrompt"]
         fn recover_prompt(self: &WindowMenuModel) -> QMap_QString_QVariant;
 
-        /// Запустить сброс. {ok, title, text} — что сказать человеку.
+        /// Start the reset. {ok, title, text} — what to tell the user.
         #[qinvokable]
         #[cxx_name = "recoverApply"]
         fn recover_apply(self: &WindowMenuModel) -> QMap_QString_QVariant;
 
-        /// Стоят ли пакеты, подменяющие части Plasma, и что о них сказать:
-        /// {forks, title, text, removeLabel, themeLabel, cancelLabel}.
-        /// Пустой `forks` — замен нет, сразу вопрос о сбросе темы. Только
-        /// ЧТЕНИЕ списка пакетов; найденный набор запоминается, и дальше
-        /// снимается ровно он.
+        /// Whether packages replacing parts of Plasma are installed and what to say
+        /// about them: {forks, title, text, removeLabel, themeLabel, cancelLabel}.
+        /// An empty `forks` means there are no replacements, straight to the theme
+        /// reset question. Only READING the package list; the found set is
+        /// remembered, and exactly that set is removed later.
         #[qinvokable]
         #[cxx_name = "recoverForks"]
         fn recover_forks(self: &WindowMenuModel) -> QMap_QString_QVariant;
 
-        /// Что выполнит снятие замен — БЕЗ запуска (пробы только на
-        /// чтение): {ok, title, text, runningTitle, runningText}. `ok=false`
-        /// — вернуть стандартные пакеты нечем, `text` объясняет почему.
+        /// What removing the replacements will run — WITHOUT starting it (read-only
+        /// probes): {ok, title, text, runningTitle, runningText}. `ok=false` means
+        /// there is nothing to restore the standard packages with, and `text`
+        /// explains why.
         #[qinvokable]
         #[cxx_name = "forksNext"]
         fn forks_next(self: &WindowMenuModel, button_id: &QString) -> QString;
@@ -151,40 +159,43 @@ pub mod qobject {
         #[cxx_name = "forksPreview"]
         fn forks_preview(self: &WindowMenuModel) -> QMap_QString_QVariant;
 
-        /// Взяться за снятие замен в фоне. `false` — уже идёт либо снимать
-        /// нечего. Итог — сигналом `forksRemoveFinished`.
+        /// Start removing the replacements in the background. `false` means it is
+        /// already running or there is nothing to remove. The result comes with the
+        /// `forksRemoveFinished` signal.
         #[qinvokable]
         #[cxx_name = "forksRemoveRun"]
         fn forks_remove_run(self: Pin<&mut WindowMenuModel>) -> bool;
 
-        // ── «Удалить Rexon» ───────────────────────────────────────────────
-        /// Окно удаления целиком: {title, text, informative, files,
+        // ── "Uninstall Rexon" ─────────────────────────────────────────────
+        /// The whole uninstall window: {title, text, informative, files,
         /// keepLabel, deleteLabel, cancelLabel, defaultId}.
         ///
-        /// Только ЧТЕНИЕ файловой системы и опрос пакетного менеджера —
-        /// ничего не удаляет.
+        /// Only READING the file system and querying the package manager — removes
+        /// nothing.
         #[qinvokable]
         #[cxx_name = "uninstallPrompt"]
         fn uninstall_prompt(self: &WindowMenuModel) -> QMap_QString_QVariant;
 
-        /// Взяться за удаление в фоне. `false` — уже идёт.
+        /// Start uninstalling in the background. `false` means it is already
+        /// running.
         #[qinvokable]
         #[cxx_name = "uninstallRun"]
         fn uninstall_run(self: Pin<&mut WindowMenuModel>, keep_profile: bool) -> bool;
 
-        /// Идёт ли удаление.
+        /// Whether uninstalling is in progress.
         #[qinvokable]
         fn busy(self: &WindowMenuModel) -> bool;
 
-        // ── Общее ─────────────────────────────────────────────────────────
-        /// Доступен ли пункт. Спрашивается у ядра, а не решается разметкой.
+        // ── Shared ────────────────────────────────────────────────────────
+        /// Whether an item is available. Asked of the core, not decided by the
+        /// markup.
         #[qinvokable]
         #[cxx_name = "isEnabled"]
         fn is_enabled(self: &WindowMenuModel, id: &QString) -> bool;
     }
 
-    // Объявление трейта обязано быть В МОСТЕ: cxx-qt печатает по нему алиас
-    // типа потока, без которого фоновая работа не доедет до сигнала.
+    // The trait declaration must be IN THE BRIDGE: cxx-qt emits the thread type
+    // alias from it, without which background work would not reach the signal.
     impl cxx_qt::Threading for WindowMenuModel {}
 }
 
@@ -201,14 +212,15 @@ use rexon_core::system::DistroDetector;
 use rexon_core::system_de_exec::CancelToken;
 use rexon_core::window_menu as wm;
 
-/// Rust-состояние объекта: флажки «идёт» и набор пакетов-замен Plasma,
-/// который показан человеку.
+/// Rust state of the object: the "running" flags and the set of Plasma
+/// replacement packages shown to the user.
 #[derive(Default)]
 pub struct WindowMenuModelRust {
     uninstall_busy: Arc<AtomicBool>,
     forks_busy: Arc<AtomicBool>,
-    /// Что показали в предупреждении — то и снимаем. Второй опрос между
-    /// вопросом и снятием мог бы снять не то, что человек видел.
+    /// What was shown in the warning is what gets removed. A second query
+    /// between the question and the removal could remove something other than
+    /// what the user saw.
     shown_forks: Mutex<Vec<String>>,
 }
 
@@ -225,11 +237,11 @@ fn map(pairs: &[(&str, QVariant)]) -> QMap<QMapPair_QString_QVariant> {
 }
 
 impl qobject::WindowMenuModel {
-    // ── Состав меню ───────────────────────────────────────────────────────
+    // ── Menu contents ─────────────────────────────────────────────────────
 
     fn items(&self) -> QList<QVariant> {
         let mut out = QList::<QVariant>::default();
-        // На чужом рабочем столе пункта «Восстановить тему KDE» нет вовсе.
+        // On a foreign desktop there is no "Restore KDE theme" item at all.
         let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
         for item in wm::menu_items_for(&desktop) {
             out.append(QVariant::from(&map(&[
@@ -252,7 +264,7 @@ impl qobject::WindowMenuModel {
         wm::is_enabled(&id.to_string())
     }
 
-    // ── «О программе» ─────────────────────────────────────────────────────
+    // ── "About" ───────────────────────────────────────────────────────────
 
     fn about_title(&self) -> QString {
         QString::from(&wm::about_title())
@@ -279,12 +291,12 @@ impl qobject::WindowMenuModel {
         QString::from(&rexon_core::applog::tail(wm::LOG_COPY_BYTES))
     }
 
-    // ── «Восстановить тему KDE» ───────────────────────────────────────────
+    // ── "Restore KDE theme" ───────────────────────────────────────────────
 
     fn recover_prompt(&self) -> QMap<QMapPair_QString_QVariant> {
         let target = recover_target();
-        // На чужом рабочем столе маршрут откажет — окно говорит это заранее,
-        // а не докладывает «запущено» (`allowed=false` + `refusal`).
+        // On a foreign desktop the route will refuse — the window says so in
+        // advance rather than reporting "started" (`allowed=false` + `refusal`).
         let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
         map(&[
             ("title", qstr(&wm::recover_title())),
@@ -306,7 +318,8 @@ impl qobject::WindowMenuModel {
         for f in &forks {
             list.append(qstr(f));
         }
-        // Окно и подписи кнопок — те же, что у Python-окна (`forks_prompt`).
+        // The window and the button labels are the same as in the Python window
+        // (`forks_prompt`).
         let Some(prompt) = wm::forks_prompt(&forks) else {
             return map(&[("forks", QVariant::from(&list))]);
         };
@@ -363,9 +376,9 @@ impl qobject::WindowMenuModel {
             return false;
         }
         let handle = self.as_mut().qt_thread();
-        // В фоне: за `pkexec` стоит запрос пароля, который ждёт сколько
-        // угодно, а транзакция пакетов — до минуты. Python на это время
-        // вешал окно; здесь оно остаётся живым.
+        // In the background: behind `pkexec` there is a password prompt that waits
+        // as long as it likes, and the package transaction takes up to a minute.
+        // Python hung the window for that time; here it stays alive.
         std::thread::spawn(move || {
             let (ok, message) =
                 rexon_core::system_exec::live().remove_plasma_forks(Some(&forks));
@@ -387,10 +400,10 @@ impl qobject::WindowMenuModel {
 
     fn recover_apply(&self) -> QMap<QMapPair_QString_QVariant> {
         let target = recover_target();
-        // Запустить и забыть — как `subprocess.Popen` в продукте: за флагом
-        // стоит переключение темы Plasma и перезапуск plasmashell, ждать его
-        // из потока интерфейса нельзя. Зовётся СВОЙ бинарь: маршрут
-        // `--recover-kde` он отрабатывает на Rust до подъёма Qt.
+        // Fire and forget — like `subprocess.Popen` in the product: behind the flag
+        // there is a Plasma theme switch and a plasmashell restart, and waiting for
+        // it from the interface thread is not allowed. OUR OWN binary is called: it
+        // handles the `--recover-kde` route in Rust before Qt comes up.
         let own_exe = std::env::current_exe()
             .ok()
             .map(|p| p.to_string_lossy().into_owned());
@@ -408,7 +421,7 @@ impl qobject::WindowMenuModel {
         }
     }
 
-    // ── «Удалить Rexon» ───────────────────────────────────────────────────
+    // ── "Uninstall Rexon" ─────────────────────────────────────────────────
 
     fn uninstall_prompt(&self) -> QMap<QMapPair_QString_QVariant> {
         let io = LiveInstallIo::new();
@@ -458,7 +471,8 @@ impl qobject::WindowMenuModel {
             });
             if let Err(e) = queued {
                 if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
-                    // Молчать нельзя: окно осталось бы с «Удаляю…» навсегда.
+                    // Staying silent is not allowed: the window would be left with
+                    // "Uninstalling…" forever.
                     rexon_core::log_warn!("uninstall", "итог удаления не доставлен: {e:?}");
                 }
             }
@@ -468,11 +482,11 @@ impl qobject::WindowMenuModel {
 }
 
 // ============================================================================
-// «Восстановить тему KDE»: какая тема применится
+// "Restore KDE theme": which theme will be applied
 // ============================================================================
 
-/// Имя темы из резервной копии либо запасная. Читает файл; решение о том, что
-/// считать пустотой и чем её заменить, принимает ядро.
+/// Theme name from the backup or a fallback. Reads the file; the decision
+/// what counts as empty and what replaces it is made by the core.
 fn recover_target() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let xdg = std::env::var("XDG_CONFIG_HOME").ok();
@@ -481,8 +495,8 @@ fn recover_target() -> String {
     wm::recover_target(saved.as_deref())
 }
 
-/// Запустить и забыть. Ошибку возвращаем текстом: диалог обязан назвать
-/// причину, иначе нажатие выглядит как «ничего не произошло».
+/// Fire and forget. The error is returned as text: the dialog must name the
+/// reason, otherwise the press looks like "nothing happened".
 fn spawn_detached(argv: &[String]) -> Result<(), String> {
     let Some((binary, args)) = argv.split_first() else {
         return Err(rexon_core::i18n::tr("empty command"));
@@ -497,22 +511,25 @@ fn spawn_detached(argv: &[String]) -> Result<(), String> {
 }
 
 // ============================================================================
-// Удаление: живые факты для исполнителя ядра
+// Uninstalling: live facts for the core executor
 // ============================================================================
 
-/// Язык интерфейса парой установщика (`Lang`) — тот же, что у каталога.
+/// The interface language as the installer's pair (`Lang`) — the same as
+/// the catalogue's.
 fn ui_lang() -> Lang {
     Lang::from_code(&rexon_core::i18n::current_language())
 }
 
-/// Что удалять на этой машине. Решения и исполнение — в ядре
+/// What to remove on this machine. Decisions and execution are in the core
 /// (`installer_exec::detect_distro_package`, `UninstallRequest::detect`);
-/// здесь только живые факты: семейство дистрибутива и путь своего бинаря.
+/// here there are only live facts: the distribution family and the path of
+/// our own binary.
 ///
-/// Язык итога — язык интерфейса (`rexon_core::i18n`): заголовки окна
-/// удаления идут через тот же каталог, и итог другим языком дал бы окно на
-/// двух языках. Установщик пока выбирает пару «русский/английский» сам
-/// (`Lang`), поэтому язык ему передаётся тот же, что у каталога.
+/// The result language is the interface language (`rexon_core::i18n`): the
+/// uninstall window titles go through the same catalogue, and a result in
+/// another language would give a window in two languages. The installer
+/// still chooses the "Russian/English" pair by itself (`Lang`), so it is
+/// given the same language as the catalogue.
 fn live_uninstall_request(io: &LiveInstallIo, keep_profile: bool) -> UninstallRequest {
     let family = DistroDetector::detect_live().family_live();
     let own_exe = std::env::current_exe()
@@ -524,14 +541,14 @@ fn live_uninstall_request(io: &LiveInstallIo, keep_profile: bool) -> UninstallRe
 
 #[cfg(test)]
 mod tests {
-    /// Ни один текст меню в этом файле не набран заново: все приходят из
-    /// ядра. Сторож на копипасту — вторая копия человеческой строки
-    /// разошлась бы с продуктом молча (правило #12).
+    /// Not a single menu text is typed anew in this file: all of them come from
+    /// the core. A copy-paste guard — a second copy of a human-readable string
+    /// would silently drift away from the product (rule #12).
     #[test]
     fn no_human_text_is_typed_twice_in_this_file() {
-        // Свой же тестовый модуль не считаем: список запрещённых строк
-        // лежит ниже, и без этой отсечки сторож ловил бы сам себя и не мог
-        // позеленеть никогда.
+        // Our own test module is not counted: the list of forbidden strings lies
+        // below, and without this cut-off the guard would catch itself and could
+        // never go green.
         let whole = include_str!("window_menu.rs");
         let src = whole
             .split_once("#[cfg(test)]")
@@ -548,7 +565,7 @@ mod tests {
             "вернуть обычную Plasma",
             "Замены удалены",
             "--recover-kde",
-            // Английские исходные тексты каталога — тоже только в ядре.
+            // The catalogue's English source texts are also only in the core.
             "Restore KDE Theme",
             "About Rexon",
             "Uninstall Rexon",
@@ -568,11 +585,13 @@ mod tests {
         }
     }
 
-    /// G8: исполнитель удаления один — в ядре. Второй копии шагов плана,
-    /// запуска команд и удаления путей в окне нет: она разошлась бы с ядром
-    /// молча (правило #12). Чужой шаг плана — отказ ядра
-    /// (`installer_exec::tests::foreign_plan_step_is_refused`), перечень —
-    /// только чтение (`installer_exec::tests::nothing_installed_touches_nothing_not_even_settings`).
+    /// G8: there is one uninstall executor — in the core. There is no second
+    /// copy of the plan steps, command execution and path removal in the
+    /// window: it would silently drift away from the core (rule #12). A foreign
+    /// plan step is refused by the core
+    /// (`installer_exec::tests::foreign_plan_step_is_refused`), the listing is
+    /// read-only
+    /// (`installer_exec::tests::nothing_installed_touches_nothing_not_even_settings`).
     #[test]
     fn window_has_no_uninstall_executor_of_its_own() {
         let whole = include_str!("window_menu.rs");

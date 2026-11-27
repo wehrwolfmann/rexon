@@ -1,33 +1,34 @@
-//! «Остановить все» в разделе «Виджеты Conky»: все процессы conky на
-//! машине — свои, найденные на диске и запущенные человеком мимо Rexon.
+//! "Stop all" in the "Conky widgets" section: all conky processes on the
+//! machine — our own, those found on disk, and those the person started
+//! bypassing Rexon.
 //!
-//! ⛔ Никакого `killall conky` / `pkill conky`: гасится только то, что
-//! Rexon перед этим нашёл в `/proc` и показал человеку списком, — по номеру
-//! процесса. Процесс считается conky, только если и имя программы в его
-//! командной строке, и имя процесса ядра (`/proc/<pid>/comm`) — `conky`:
-//! сценарий с «conky» в аргументах (`sh start.sh conky`) или чужая программа
-//! с таким словом в пути не задеваются. Перед `kill` каждый номер
-//! проверяется ещё раз — за время вопроса процесс мог завершиться, а номер
-//! достаться другой программе.
+//! Never use `killall conky` / `pkill conky`: only what Rexon has first found
+//! in `/proc` and shown to the person as a list is stopped, by process ID. A
+//! process counts as conky only if both the program name in its command line
+//! and the kernel process name (`/proc/<pid>/comm`) are `conky`: a script with
+//! "conky" in its arguments (`sh start.sh conky`) or another program with that
+//! word in its path is not affected. Before `kill` every PID is checked once
+//! more: while the question was on screen the process may have exited and its
+//! PID may have gone to another program.
 
 use crate::animations::LookIo;
 use crate::de_apply::Ctx;
 use crate::i18n::{ntr, tr, trf};
 
-/// Запущенный процесс conky.
+/// A running conky process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConkyProc {
     pub pid: String,
-    /// Файл настроек из командной строки; `None` — conky без `-c` (тогда он
-    /// читает `~/.config/conky/conky.conf` или `~/.conkyrc`).
+    /// The settings file from the command line; `None` means conky without `-c`
+    /// (then it reads `~/.config/conky/conky.conf` or `~/.conkyrc`).
     pub conf: Option<String>,
-    /// Папка темы, если conky поднял её сценарий запуска (метка
-    /// [`crate::conky_theme::MARKER_ENV`] в окружении).
+    /// The theme folder, if conky was brought up by the theme's launch script
+    /// (the [`crate::conky_theme::MARKER_ENV`] tag in the environment).
     pub widget: Option<String>,
 }
 
-/// conky ли это: программа `conky` в командной строке и `conky` — имя
-/// процесса у ядра.
+/// Whether this is conky: the program `conky` in the command line, and `conky`
+/// as the kernel's process name.
 fn is_conky(cmdline: &str, comm: Option<&str>) -> bool {
     let prog = cmdline.split('\0').next().unwrap_or("");
     prog.rsplit('/').next() == Some("conky") && comm.map(str::trim) == Some("conky")
@@ -39,9 +40,9 @@ fn proc_of(io: &dyn LookIo, pid: &str) -> Option<ConkyProc> {
     if !is_conky(&cmd, comm.as_deref()) {
         return None;
     }
-    // Копия виджета на невидимом экране снимков (`conky_preview`) — не
-    // виджет на столе: ни в «На столе сейчас», ни в «Остановить все», ни в
-    // «запущен ли» она не попадает.
+    // A copy of a widget on the invisible snapshot screen (`conky_preview`) is
+    // not a widget on the desktop: it is not included in "On the desktop now",
+    // "Stop all" or "is it running".
     if crate::de_apply::conky_launch_of_cmdline(&cmd).is_some_and(|l| crate::conky_preview::is_preview_launch(&l)) {
         return None;
     }
@@ -52,18 +53,18 @@ fn proc_of(io: &dyn LookIo, pid: &str) -> Option<ConkyProc> {
     })
 }
 
-/// Все процессы conky сейчас, по возрастанию номера.
+/// All conky processes right now, in ascending PID order.
 pub fn all(io: &dyn LookIo) -> Vec<ConkyProc> {
     let mut pids: Vec<u64> = io.list_dir("/proc").iter().filter_map(|p| p.parse().ok()).collect();
     pids.sort_unstable();
     pids.into_iter().filter_map(|p| proc_of(io, &p.to_string())).collect()
 }
 
-/// Как назвать процесс человеку: имя виджета Rexon, имя найденного виджета
-/// с пометкой «не из Rexon», имя файла настроек либо «conky без файла
-/// настроек».
+/// How to name a process to the person: the Rexon widget name, the name of a
+/// found widget marked "not from Rexon", the settings file name, or "conky
+/// without a settings file".
 pub fn label(ctx: &Ctx, extra: &[String], p: &ConkyProc) -> String {
-    // Окно темы, поднятой сценарием, — её именем (все окна — одна строка).
+    // A window of a theme brought up by a script is named after the theme (all its windows are one line).
     if let Some(dir) = p.widget.as_deref() {
         return crate::conky_scan::widget_title(&crate::conky_theme::widget_of_dir(ctx, extra, dir));
     }
@@ -79,8 +80,8 @@ pub fn label(ctx: &Ctx, extra: &[String], p: &ConkyProc) -> String {
     trf("%1 (not from Rexon)", &[&name])
 }
 
-/// Вопрос перед «Остановить все»: `(заголовок, текст)` со списком того, что
-/// будет остановлено. `None` — останавливать нечего.
+/// The question before "Stop all": `(title, text)` with a list of what will be
+/// stopped. `None` means there is nothing to stop.
 pub fn stop_all_question(ctx: &Ctx, extra: &[String], procs: &[ConkyProc]) -> Option<(String, String)> {
     if procs.is_empty() {
         return None;
@@ -103,20 +104,20 @@ pub fn stop_all_question(ctx: &Ctx, extra: &[String], procs: &[ConkyProc]) -> Op
     ))
 }
 
-/// Остановить процессы `pids` — только те, что и сейчас conky (номер мог
-/// перейти к другой программе, пока человек читал вопрос). `(получилось,
-/// сообщение)`.
+/// Stops the processes `pids` — only those that are still conky now (a PID may
+/// have moved to another program while the person was reading the question).
+/// Returns `(succeeded, message)`.
 pub fn stop_all(io: &dyn LookIo, pids: &[String]) -> (bool, String) {
     let alive: Vec<String> = pids.iter().filter(|p| proc_of(io, p).is_some()).cloned().collect();
     if alive.is_empty() {
         return (true, tr("⏹️ No Conky widgets are running"));
     }
-    // Тема, поднятая сценарием, гасится целиком: с его циклами и группой.
+    // A theme brought up by a script is stopped as a whole: with its loops and its group.
     let (ok, out) = crate::conky_theme::kill_targets(io, &crate::conky_theme::with_companions(io, alive.clone()));
     if !ok {
         return (false, trf("Couldn't stop the Conky widgets: %1", &[&out.trim().to_string()]));
     }
-    // Окна одной темы со сценарием — один виджет.
+    // The windows of one theme with a script are one widget.
     let mut units: Vec<String> = Vec::new();
     for p in &alive {
         let u = crate::conky_theme::marker_of_pid(io, p).unwrap_or_else(|| p.clone());
@@ -128,11 +129,11 @@ pub fn stop_all(io: &dyn LookIo, pids: &[String]) -> (bool, String) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Запуск и остановка частей виджета
+//  Starting and stopping widget parts
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Файлы настроек всех запущенных conky; у conky без `-c` — файл, который он
-/// читает сам ([`crate::conky_scan::default_conf`]).
+/// The settings files of all running conky instances; for conky without `-c`,
+/// the file it reads by itself ([`crate::conky_scan::default_conf`]).
 pub fn running_confs(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for p in all(io) {
@@ -144,10 +145,10 @@ pub fn running_confs(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     out
 }
 
-/// Запущенные виджеты — по файлу на виджет: как [`running_confs`], но все
-/// окна темы со сценарием запуска значатся одним, главным файлом темы
-/// ([`crate::conky_theme::unit_conf`]). Для наборов: тема в наборе — одна
-/// строка, и набор поднимает её один раз.
+/// Running widgets, one file per widget: like [`running_confs`], but all
+/// windows of a theme with a launch script are listed under one file, the
+/// theme's main file ([`crate::conky_theme::unit_conf`]). For sets: a theme in
+/// a set is one line, and the set brings it up once.
 pub fn running_widget_confs(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     let extra = crate::conky_scan::extra_dirs_for(ctx);
     let mut out: Vec<String> = Vec::new();
@@ -161,8 +162,8 @@ pub fn running_widget_confs(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     out
 }
 
-/// Номера процессов conky виджетов `units` (файлы, как в
-/// [`running_widget_confs`]): у темы со сценарием — все её окна.
+/// The conky PIDs of widgets `units` (files, as in [`running_widget_confs`]):
+/// for a theme with a script, all of its windows.
 pub fn pids_of_units(io: &dyn LookIo, ctx: &Ctx, units: &[String]) -> Vec<String> {
     let extra = crate::conky_scan::extra_dirs_for(ctx);
     all(io)
@@ -175,7 +176,7 @@ pub fn pids_of_units(io: &dyn LookIo, ctx: &Ctx, units: &[String]) -> Vec<String
         .collect()
 }
 
-/// Номера процессов conky, чей файл настроек проходит `belongs`.
+/// The PIDs of conky processes whose settings file passes `belongs`.
 pub fn pids_where(io: &dyn LookIo, ctx: &Ctx, belongs: &dyn Fn(&str) -> bool) -> Vec<String> {
     all(io)
         .into_iter()
@@ -187,10 +188,10 @@ pub fn pids_where(io: &dyn LookIo, ctx: &Ctx, belongs: &dyn Fn(&str) -> bool) ->
         .collect()
 }
 
-/// Остановить процессы `pids` виджета `title`. `(получилось, сообщение)`.
+/// Stops the processes `pids` of widget `title`. Returns `(succeeded, message)`.
 pub fn stop_pids(io: &dyn LookIo, title: &str, pids: Vec<String>) -> (bool, String) {
     if !pids.is_empty() {
-        // У темы со сценарием запуска — все её процессы и группа.
+        // For a theme with a launch script: all of its processes and its group.
         let (ok, out) = crate::conky_theme::kill_targets(io, &crate::conky_theme::with_companions(io, pids));
         if !ok {
             return (false, trf("Couldn't stop “%1”: %2", &[&title, &out.trim().to_string()]));
@@ -199,12 +200,13 @@ pub fn stop_pids(io: &dyn LookIo, title: &str, pids: Vec<String>) -> (bool, Stri
     (true, trf("⏹️ Stopped: %1", &[&title]))
 }
 
-/// Запустить conky с файлом `conf` (часть виджета `title`): из папки файла,
-/// с выводом ошибок в журнал ([`crate::conky_log`]). Правда — процесс в
-/// системе через секунду; нет его — причина из журнала словами conky.
+/// Starts conky with the file `conf` (a part of widget `title`): from the
+/// file's folder, with errors going to the log ([`crate::conky_log`]). The
+/// truth is a process in the system after a second; if there is none, the
+/// cause from the log in conky's own words.
 pub fn start_conf(io: &dyn LookIo, ctx: &Ctx, title: &str, conf: &str) -> (bool, String) {
-    // Тема со сценарием запуска (`start.sh`) поднимается только им —
-    // целиком, со всеми окнами и фоновыми опросчиками (`conky_theme`).
+    // A theme with a launch script (`start.sh`) is brought up only by it — as a
+    // whole, with all its windows and background pollers (`conky_theme`).
     if let Some(name) = crate::conky_theme::script_widget_of_conf(io, ctx, conf) {
         return crate::conky_theme::start_widget_script(io, ctx, &name);
     }
@@ -213,31 +215,31 @@ pub fn start_conf(io: &dyn LookIo, ctx: &Ctx, title: &str, conf: &str) -> (bool,
     }
     let log = crate::conky_log::live_log_path(ctx, conf);
     let started = start_with(io, ctx, "conky", title, conf, &log);
-    // Первый запуск — заодно снимок виджета для плитки (в фоне, X11).
+    // The first start also takes a snapshot of the widget for the tile (in the background, X11).
     if started.0 {
         crate::conky_preview::capture_later(ctx, conf, &log);
     }
     started
 }
 
-/// [`start_conf`] с заданной программой и журналом (сверки подставляют
-/// свою программу вместо conky).
+/// [`start_conf`] with a given program and log (checks substitute their own
+/// program for conky).
 ///
-/// В сеансе Wayland conky идёт через XWayland там, где его вывод Wayland
-/// не годится ([`crate::conky_overlay::via_xwayland`]). Вывод Wayland упал
-/// сразу, а XWayland есть — второй запуск через него: виджет на столе
-/// лучше честной ошибки.
+/// In a Wayland session conky goes through XWayland where its Wayland output
+/// is not suitable ([`crate::conky_overlay::via_xwayland`]). If the Wayland
+/// output failed at once and XWayland is available, there is a second start
+/// through it: a widget on the desktop is better than an honest error.
 pub fn start_with(io: &dyn LookIo, ctx: &Ctx, program: &str, title: &str, conf: &str, log: &str) -> (bool, String) {
-    // Тема называет свой экран (`theme.json`, `monitor`), а человек экран
-    // ещё не выбирал — он становится начальным выбором.
+    // The theme names its screen (`theme.json`, `monitor`) and the person has not
+    // chosen a screen yet, so it becomes the initial choice.
     crate::conky_theme::seed_monitor(io, ctx, conf);
-    // Человек менял настройки виджета — conky идёт с накладкой Rexon, а
-    // рабочий каталог остаётся папкой файла автора.
+    // The person changed the widget settings: conky runs with the Rexon overlay,
+    // while the working directory stays the folder of the author's file.
     let paths = crate::conky_overlay::live_paths(ctx, conf);
     let launch = crate::conky_overlay::launch_conf(io, ctx, &paths, conf);
-    // Через XWayland — свой файл: окно X11 «под всеми окнами» вместо
-    // override-redirect автора, иначе Muffin/Mutter кладут виджет поверх
-    // окон ([`crate::conky_overlay::xwayland_path`]).
+    // Through XWayland we use our own file: an X11 window "below all windows"
+    // instead of the author's override-redirect, otherwise Muffin/Mutter put the
+    // widget above windows ([`crate::conky_overlay::xwayland_path`]).
     let argv_for = |xwayland: bool| {
         let file = if xwayland {
             let env = crate::conky_overlay::Env { version: crate::conky_overlay::conky_version(io), de: ctx.de.clone() };
@@ -260,10 +262,10 @@ pub fn start_with(io: &dyn LookIo, ctx: &Ctx, program: &str, title: &str, conf: 
         return (false, why);
     }
     let mut msg = trf("▶️ Started: %1", &[&title]);
-    // Через XWayland виджет держится на столе, как в сеансе X11, — оговорка
-    // про окно Wayland к нему не относится.
+    // Through XWayland the widget stays on the desktop as in an X11 session, so
+    // the caveat about the Wayland window does not apply to it.
     if !xwayland {
-        // Версия conky нужна оговорке только в сеансе Wayland.
+        // The conky version is needed for the caveat only in a Wayland session.
         let version = if ctx.wayland { crate::conky_overlay::conky_version(io) } else { None };
         if let Some(note) = crate::de_apply::conky_wayland_note_for(&ctx.de, ctx.wayland, version) {
             msg.push_str(" — ");
@@ -273,13 +275,13 @@ pub fn start_with(io: &dyn LookIo, ctx: &Ctx, program: &str, title: &str, conf: 
     (true, msg)
 }
 
-/// Сколько conky должен прожить после запуска, чтобы считаться запущенным:
-/// вывод Wayland у 1.25.2 падает через полторы секунды (Jhalak, 15.11.2026),
-/// и прежняя проверка «процесс есть через секунду» говорила «Запущен».
+/// How long conky must live after start to count as started: the Wayland
+/// output of 1.25.2 crashes after a second and a half (Jhalak, 15.11.2026),
+/// and the old check "the process exists after a second" said "Started".
 const SURVIVE_MS: u64 = 3000;
 
-/// Один запуск: `Ok` — процесс conky с этим файлом появился и дожил до
-/// [`SURVIVE_MS`]; `Err` — сообщение с причиной из журнала.
+/// A single start: `Ok` means a conky process with this file appeared and
+/// lived until [`SURVIVE_MS`]; `Err` is a message with the cause from the log.
 #[allow(clippy::too_many_arguments)]
 fn start_once(
     io: &dyn LookIo,
@@ -292,8 +294,9 @@ fn start_once(
     dir: &str,
     xwayland: bool,
 ) -> Result<(), String> {
-    // Вывод — в файл, не в канал: conky с `-d` уходит в фон и держит
-    // унаследованный вывод, с каналом кнопка ждала бы его конца.
+    // Output goes to a file, not a pipe: conky with `-d` goes into the background
+    // and keeps the inherited output, so with a pipe the button would wait for it
+    // to end.
     let stderr = match crate::conky_log::open_for_start(log) {
         Some(f) => std::process::Stdio::from(f),
         None => std::process::Stdio::null(),
@@ -316,8 +319,8 @@ fn start_once(
     for i in 0..SURVIVE_MS / 100 {
         std::thread::sleep(step);
         let now = alive();
-        // Появился и исчез — упал при старте; не появился и за секунду —
-        // не запустился.
+        // Appeared and disappeared: crashed at startup; did not appear within a
+        // second: did not start.
         if seen && !now {
             seen = false;
             break;
@@ -339,19 +342,19 @@ fn start_once(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Для страницы: части виджета, журнал, подписи раздела
+//  For the page: widget parts, the log, section labels
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Часть виджета для подсписка в карточке.
+/// A widget part for the sub-list in the card.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Part {
     pub conf: String,
-    /// Путь файла от каталога виджета (`variants/small.conf`).
+    /// The file path relative to the widget directory (`variants/small.conf`).
     pub label: String,
     pub running: bool,
 }
 
-/// Части виджета `name` (имя плитки): главная — первой.
+/// The parts of widget `name` (the tile name): the main one first.
 pub fn parts(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Vec<Part> {
     let primary = if crate::conky_scan::is_found_name(name) {
         None
@@ -373,8 +376,8 @@ pub fn parts(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Vec<Part> {
         .collect()
 }
 
-/// Кнопка части: запущена — остановить её процессы, нет — запустить.
-/// Чужой файл (не часть этого виджета) — отказ без действия.
+/// The part button: if running, stop its processes; if not, start it. A
+/// foreign file (not a part of this widget) is refused without any action.
 pub fn press_part(io: &dyn LookIo, ctx: &Ctx, name: &str, conf: &str) -> (bool, String) {
     let Some(part) = parts(io, ctx, name).into_iter().find(|p| p.conf == conf) else {
         return (false, tr("This file isn't part of the widget."));
@@ -383,23 +386,23 @@ pub fn press_part(io: &dyn LookIo, ctx: &Ctx, name: &str, conf: &str) -> (bool, 
     if part.running {
         stop_pids(io, &title, pids_where(io, ctx, &|c| c == conf))
     } else if let Some(why) = crate::conky_safety::start_refusal(io, ctx, name) {
-        // Часть виджета — тот же виджет: без разрешения не запускается.
+        // A part of a widget is the same widget: it does not start without permission.
         (false, why)
     } else {
         start_conf(io, ctx, &title, conf)
     }
 }
 
-/// Последние строки журнала виджета для карточки; пусто — Rexon его ещё
-/// не запускал.
+/// The last lines of the widget log for the card; empty means Rexon has not
+/// started it yet.
 pub fn log_tail(io: &dyn LookIo, ctx: &Ctx, name: &str) -> String {
     let confs: Vec<String> = parts(io, ctx, name).into_iter().map(|p| p.conf).collect();
     crate::conky_log::widget_log(ctx, &confs).map(|(_, text)| text).unwrap_or_default()
 }
 
-/// Папка виджета `name` для «Открыть папку»: каталог темы, а у
-/// виджета-файла (`~/.conkyrc`, найденный одиночный файл) — папка, где этот
-/// файл лежит. `None` — виджета на диске уже нет.
+/// The folder of widget `name` for "Open folder": the theme directory, or for
+/// a single-file widget (`~/.conkyrc`, a found standalone file) the folder
+/// where that file lives. `None` means the widget is no longer on disk.
 pub fn widget_folder(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
     let path = crate::conky_scan::widget_path(ctx, name);
     if !io.list_dir(&path).is_empty() {
@@ -410,14 +413,13 @@ pub fn widget_folder(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
     Some(parent.to_string())
 }
 
-/// Файл настроек `conf` для «Открыть файл настроек» — только если это одна
-/// из частей виджета `name`: страница не может попросить открыть чужой
-/// путь.
+/// The settings file `conf` for "Open settings file", only if it is one of the
+/// parts of widget `name`: the page cannot ask to open an arbitrary path.
 pub fn part_file(io: &dyn LookIo, ctx: &Ctx, name: &str, conf: &str) -> Option<String> {
     parts(io, ctx, name).into_iter().map(|p| p.conf).find(|c| c == conf)
 }
 
-/// Подписи раздела «Виджеты Conky» для страницы.
+/// Labels of the "Conky widgets" section for the page.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SectionTexts {
     pub running_chip: String,
@@ -435,7 +437,7 @@ pub struct SectionTexts {
     pub open_folder_tooltip: String,
     pub open_file: String,
     pub open_file_tooltip: String,
-    /// Кнопка темы, сделанной в Conky Studio (`conky_theme::studio_edit_argv`).
+    /// The button for a theme made in Conky Studio (`conky_theme::studio_edit_argv`).
     pub edit_in_studio: String,
     pub edit_in_studio_tooltip: String,
 }
@@ -447,7 +449,7 @@ pub fn section_texts() -> SectionTexts {
         stop_all: tr("⏹️ Stop all"),
         stop_all_tooltip: tr("Stop every running Conky widget, including the ones not started from Rexon"),
         parts_title: tr("Parts of the widget"),
-        // Те же слова, что на кнопке плитки (`appearance_page::card_local_button_for`).
+        // The same words as on the tile button (`appearance_page::card_local_button_for`).
         part_start: tr("▶️ Start"),
         part_stop: tr("⏹️ Stop"),
         log_title: tr("What Conky reported at the last start"),
@@ -468,31 +470,32 @@ pub fn section_texts() -> SectionTexts {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Лента «На столе сейчас»
+//  The "On the desktop now" strip
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Запущенный виджет в ленте над сеткой: как гаджеты на столе Windows —
-/// видно сразу, что стоит, щелчок открывает карточку, крестик убирает.
+/// A running widget in the strip above the grid, like gadgets on the Windows
+/// desktop: you see at once what is there, a click opens the card, the cross
+/// removes it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct RibbonItem {
-    /// Номер плитки в разделе (`local:conky:<имя или путь>`).
+    /// The tile id in the section (`local:conky:<name or path>`).
     pub item_id: String,
     pub title: String,
-    /// Картинка: своя у виджета либо снимок Rexon; пусто — знак 📊.
+    /// The picture: the widget's own or a Rexon snapshot; empty means the 📊 sign.
     pub picture: String,
-    /// Запущенные файлы настроек этого виджета.
+    /// The running settings files of this widget.
     pub confs: Vec<String>,
 }
 
-/// Запущенные виджеты, по одному на виджет (части — вместе), по порядку
-/// запуска. Процесс conky без файла настроек — тоже виджет (файл, который
-/// conky читает сам).
+/// Running widgets, one per widget (parts together), in start order. A conky
+/// process without a settings file is a widget too (the file conky reads by
+/// itself).
 pub fn ribbon(io: &dyn LookIo, ctx: &Ctx, extra: &[String]) -> Vec<RibbonItem> {
     let mut out: Vec<RibbonItem> = Vec::new();
     for p in all(io) {
         let conf = p.conf.unwrap_or_else(|| crate::conky_scan::default_conf(io, ctx));
-        // Окна темы со сценарием — её плитка, даже если файл окна лежит
-        // вне её папки (копия под свой экран).
+        // The windows of a theme with a script belong to its tile, even if a window
+        // file lies outside its folder (a copy for a particular screen).
         let name = match p.widget.as_deref() {
             Some(dir) => crate::conky_theme::widget_of_dir(ctx, extra, dir),
             None => crate::conky_sets::widget_name_of(ctx, extra, &conf),
@@ -522,8 +525,8 @@ pub fn ribbon(io: &dyn LookIo, ctx: &Ctx, extra: &[String]) -> Vec<RibbonItem> {
     out
 }
 
-/// Крестик ленты: погасить ровно эти файлы настроек (по номерам
-/// процессов, чужие не задеваются).
+/// The strip's cross: stops exactly these settings files (by PID; others are
+/// not affected).
 pub fn stop_confs(io: &dyn LookIo, ctx: &Ctx, title: &str, confs: &[String]) -> (bool, String) {
     stop_pids(io, title, pids_where(io, ctx, &|c| confs.iter().any(|x| x == c)))
 }
@@ -583,17 +586,17 @@ mod tests {
         proc(&mut f, 120, &["conky", "-d", "-c", "/h/.config/conky/Jhalak/Jhalak.conf"], "conky");
         proc(&mut f, 99, &["/usr/bin/conky", "-c", "/h/.conky/Gotham/Gotham"], "conky");
         proc(&mut f, 300, &["conky"], "conky");
-        // Копия Jhalak на невидимом экране снимков — не виджет на столе.
+        // A Jhalak copy on the invisible snapshot screen is not a widget on the desktop.
         proc(
             &mut f,
             130,
             &["conky", "-c", "/run/user/1000/rexon/conky-preview/h+s.config+sconky+sJhalak+sJhalak.conf.preview.conf"],
             "conky",
         );
-        // Не conky: сценарий запуска с «conky» в аргументах, редактор файла.
+        // Not conky: a launch script with "conky" in its arguments, a file editor.
         proc(&mut f, 400, &["sh", "start.sh", "conky"], "sh");
         proc(&mut f, 401, &["/usr/bin/vim", "/h/.config/conky/x/conky.conf"], "vim");
-        // Имя программы подменено, а ядро знает его как другое.
+        // The program name is spoofed, and the kernel knows it as something else.
         proc(&mut f, 402, &["conky"], "python3");
         FakeProc { files: f, ran: RefCell::new(Vec::new()) }
     }
@@ -618,7 +621,7 @@ mod tests {
         assert!(stop_all_question(&ctx(), &[], &[]).is_none());
     }
 
-    /// conky упал сразу — сообщение называет причину из его вывода.
+    /// conky crashed at once: the message names the cause from its output.
     #[test]
     fn failed_start_tells_the_reason_from_log() {
         use std::os::unix::fs::PermissionsExt;
@@ -640,7 +643,7 @@ mod tests {
         let (ok, msg) = start_with(&io, &ctx(), &fake.to_string_lossy(), "w", &conf, &log);
         assert!(!ok);
         assert!(msg.contains("lua script './x.lua' not found"), "{msg}");
-        // Запуск — из папки виджета, вывод — в журнал.
+        // Started from the widget folder, output goes to the log.
         let text = std::fs::read_to_string(&log).unwrap();
         assert!(text.contains(&dir.join("w").to_string_lossy().into_owned()), "{text}");
         let _ = std::fs::remove_dir_all(&dir);
@@ -656,8 +659,8 @@ mod tests {
         assert_eq!(pids, ["99"]);
     }
 
-    /// Гасятся по номеру только показанные процессы, которые и сейчас conky:
-    /// номер 401 за время вопроса достался редактору — его не трогаем.
+    /// Only the shown processes that are still conky are stopped by PID: PID 401
+    /// went to an editor while the question was on screen, so it is left alone.
     #[test]
     fn stop_all_kills_by_pid_and_rechecks() {
         let io = fixture();
@@ -669,7 +672,7 @@ mod tests {
         assert!(io2.ran.borrow().is_empty(), "некого гасить — kill не зовётся");
     }
 
-    /// Каталоги и файлы для «Открыть папку» без /proc.
+    /// Directories and files for "Open folder" without /proc.
     struct DirIo(HashMap<String, String>);
 
     impl LookIo for DirIo {
@@ -698,8 +701,8 @@ mod tests {
         }
     }
 
-    /// «Открыть папку»: у темы — её каталог, у виджета-файла — папка файла,
-    /// пропавший виджет — ничего. «Открыть файл» — только часть виджета.
+    /// "Open folder": for a theme, its directory; for a single-file widget, the
+    /// file's folder; for a vanished widget, nothing. "Open file": only a widget part.
     #[test]
     fn folder_and_file_to_open() {
         let mut f = HashMap::new();
@@ -718,8 +721,8 @@ mod tests {
         assert_eq!(part_file(&io, &ctx(), "/h/.conkyrc", "/h/.conkyrc").as_deref(), Some("/h/.conkyrc"));
     }
 
-    /// Лента: один пункт на виджет, по порядку запуска; крестик гасит только
-    /// процессы своего виджета.
+    /// The strip: one item per widget, in start order; the cross stops only the
+    /// processes of its own widget.
     #[test]
     fn ribbon_lists_running_widgets_and_stops_only_theirs() {
         let f = fixture();

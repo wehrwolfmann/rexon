@@ -1,12 +1,14 @@
-// Макет каркаса главного окна: в какую сторону Qt 6 смешивает QtWidgets и
-// Qt Quick. Только замеры — приговор выносит Rust (src/main.rs).
+// Mock-up of the main window frame: in which direction Qt 6 mixes
+// QtWidgets and Qt Quick. Measurements only — the verdict is given by Rust
+// (src/main.rs).
 //
-// Сцена макета повторяет наш каркас: QTabWidget, у него страница на голых
-// виджетах и страница-хост QML. Именно так выглядит окно Rexon в середине
-// перехода: часть вкладок уже на QML, часть ещё на виджетах.
+// The mock-up scene repeats our frame: a QTabWidget with a page of bare
+// widgets and a QML host page. That is exactly what the Rexon window looks
+// like in the middle of the transition: some tabs already in QML, some
+// still in widgets.
 //
-// Заведомо неверные условия (флаги mutate) нужны, чтобы стенд умел краснеть:
-// зеленеющий всегда стенд ничего не проверяет.
+// Deliberately wrong conditions (the mutate flags) are needed so that the
+// test bench can go red: a test bench that is always green checks nothing.
 
 #include <QApplication>
 #include <QColor>
@@ -34,39 +36,39 @@
 #include <cstring>
 #include <functional>
 
-// ── Флаги заведомо неверных условий ──────────────────────────────────
-// Каждый ломает ровно одну проверку: если стенд после этого всё равно
-// зелёный — проверка ничего не меряет и её надо переписывать.
+// ── Flags of deliberately wrong conditions ───────────────────────────
+// Each breaks exactly one check: if the bench is still green after that,
+// the check measures nothing and must be rewritten.
 enum MutateFlags {
     MUTATE_NONE            = 0,
-    MUTATE_BLANK_QML       = 1 << 0,  // хост грузит пустую сцену → пикселей нет
-    MUTATE_NO_FOCUS        = 1 << 1,  // хосту запрещён фокус → цепочка рвётся
-    MUTATE_FAKE_EMBED      = 1 << 2,  // сцена покрашена в цвет виджета
-    MUTATE_SKIP_PUSH       = 1 << 3,  // виджет не кладут в сцену вовсе
-    MUTATE_PARENT_OF_ITEM  = 1 << 4,  // родителя спрашивают у настоящего Item
+    MUTATE_BLANK_QML       = 1 << 0,  // the host loads an empty scene → no pixels
+    MUTATE_NO_FOCUS        = 1 << 1,  // the host is denied focus → the chain breaks
+    MUTATE_FAKE_EMBED      = 1 << 2,  // the scene is painted in the widget's colour
+    MUTATE_SKIP_PUSH       = 1 << 3,  // the widget is not put into the scene at all
+    MUTATE_PARENT_OF_ITEM  = 1 << 4,  // the parent is asked of a real Item
 };
 
 extern "C" struct TabHostReport {
     int qt_major;
     int qt_minor;
-    // Вложение QML в виджеты
+    // Embedding QML into widgets
     int qml_host_ready;         // QQuickWidget::Status::Ready
-    int qml_pixels_pct;         // доля пикселей цвета QML-сцены в снимке хоста
-    int focus_by_setfocus;      // setFocus() на хосте доводит фокус до элемента QML
-    int focus_by_tab;           // Tab с соседней кнопки доводит фокус до QML
-    int focus_back_to_widget;   // Backtab возвращает фокус в виджет
-    // Обратное вложение: виджет в сцену Qt Quick
-    int widget_is_quickitem;    // QWidget можно привести к QQuickItem?
-    int qml_data_before;        // объектов в data сцены до попытки
-    int qml_data_after;         // …и после: принят ли виджет хотя бы ресурсом
-    int qml_child_before;       // визуальных детей до попытки
-    int qml_child_after;        // …и после: прибавился ли виджет
-    int widget_pixels_pct;      // доля пикселей цвета виджета в снимке сцены
-    int parent_undefined;       // у виджета в QML нет родителя-элемента вовсе
-    int parent_assign_errors;   // отказов QML на попытку задать виджету parent
-    int widget_parent_hijacked; // сцена перевесила виджету QObject-родителя
-    int widget_became_toplevel; // show() у виджета рядом со сценой создал своё окно
-    char focus_detail[96];      // что видно на стороне фокуса после setFocus()
+    int qml_pixels_pct;         // share of QML scene colour pixels in the host snapshot
+    int focus_by_setfocus;      // setFocus() on the host brings focus to the QML element
+    int focus_by_tab;           // Tab from the neighbouring button brings focus to QML
+    int focus_back_to_widget;   // Backtab returns focus to the widget
+    // The reverse embedding: a widget into a Qt Quick scene
+    int widget_is_quickitem;    // can a QWidget be cast to a QQuickItem?
+    int qml_data_before;        // objects in the scene's data before the attempt
+    int qml_data_after;         // …and after: was the widget accepted at least as a resource
+    int qml_child_before;       // visual children before the attempt
+    int qml_child_after;        // …and after: was the widget added
+    int widget_pixels_pct;      // share of widget colour pixels in the scene snapshot
+    int parent_undefined;       // the widget in QML has no parent item at all
+    int parent_assign_errors;   // QML refusals on attempting to set the widget's parent
+    int widget_parent_hijacked; // the scene re-parented the widget's QObject parent
+    int widget_became_toplevel; // show() of the widget next to the scene created its own window
+    char focus_detail[96];      // what is visible on the focus side after setFocus()
     char error[256];
 };
 
@@ -93,10 +95,11 @@ void pump(int ms)
     }
 }
 
-// Ждать наступления условия, крутя цикл событий. Нужно потому, что фокус на
-// Wayland приезжает не в том же такте, что вызов: композитор сначала обязан
-// активировать окно. Ожидание НЕ делает стенд всегда зелёным — при запрете
-// фокуса условие не наступает никогда и мы честно выходим по таймауту.
+// Wait for a condition to come true while spinning the event loop. Needed
+// because on Wayland focus does not arrive in the same tick as the call:
+// the compositor first has to activate the window. Waiting does NOT make
+// the bench always green — with focus denied the condition never comes
+// true and we honestly exit on the timeout.
 bool waitFor(const std::function<bool()> &cond, int timeout_ms)
 {
     QElapsedTimer t;
@@ -123,8 +126,8 @@ bool writeQml(const QString &path, const QString &body, TabHostReport &r)
     return true;
 }
 
-// Доля пикселей заданного цвета в снимке, в процентах. Допуск нужен:
-// композитор и масштабирование дают краевое смешивание.
+// Share of pixels of a given colour in a snapshot, in percent. A tolerance
+// is needed: the compositor and scaling produce edge blending.
 int colorShare(const QImage &shot, const QColor &want)
 {
     if (shot.isNull())
@@ -151,7 +154,7 @@ int colorShare(const QImage &shot, const QColor &want)
 QString qmlHostSource(int mutate)
 {
     if (mutate & MUTATE_BLANK_QML) {
-        // Заведомо неверное условие: сцена ничего не рисует.
+        // Deliberately wrong condition: the scene draws nothing.
         return QStringLiteral(
             "import QtQuick\n"
             "Item { objectName: \"probeRoot\" }\n");
@@ -162,10 +165,10 @@ QString qmlHostSource(int mutate)
         "Rectangle {\n"
         "    objectName: \"probeRoot\"\n"
         "    color: \"%1\"\n"
-        // ⚠️ `focus: true` на КОРНЕ не ставим намеренно: корень и вложенный\n
-        // контрол объявляют фокус в одной области видимости, и активным\n
-        // остаётся корень — управляемый элемент фокус не получает. Замер\n
-        // этого макета показал ровно такую картину (item=probeRoot).\n
+        // Warning: we deliberately do not put `focus: true` on the ROOT: the root\n
+        // and the nested control declare focus in the same scope, and the root\n
+        // remains active — the operable element does not get focus. A measurement\n
+        // of this mock-up showed exactly that picture (item=probeRoot).\n
         "    TextInput {\n"
         "        objectName: \"probeInput\"\n"
         "        anchors.centerIn: parent\n"
@@ -180,18 +183,18 @@ QString qmlHostSource(int mutate)
 
 QString qmlSceneSource(int mutate)
 {
-    // Сцена Qt Quick, которой ПЫТАЮТСЯ скормить настоящий QWidget.
-    // Замеры: приняла ли `data`, прибавилось ли визуальных детей, знает ли
-    // QML у виджета родителя-элемента.
+    // A Qt Quick scene that is being FED a real QWidget. Measurements: whether
+    // `data` accepted it, whether visual children were added, whether QML
+    // knows a parent item of the widget.
     //
-    // `realItem` — положительный контроль: настоящий Item в той же сцене. У
-    // него родитель есть, и заведомо неверное условие PARENT_OF_ITEM
-    // спрашивает родителя именно у него — так видно, что проверка отличает
-    // элемент сцены от виджета, а не возвращает undefined всем подряд.
+    // `realItem` is a positive control: a real Item in the same scene. It has
+    // a parent, and the deliberately wrong PARENT_OF_ITEM condition asks for
+    // the parent precisely of it — that shows the check tells a scene item
+    // from a widget rather than returning undefined for everyone.
     //
-    // Заведомо неверное условие FAKE_EMBED красит саму сцену в цвет виджета
-    // (а не подкладывает лишний прямоугольник) — так ломается ровно счётчик
-    // пикселей и ничего кроме него.
+    // The deliberately wrong FAKE_EMBED condition paints the scene itself in
+    // the widget's colour (rather than slipping in an extra rectangle) — that
+    // way exactly the pixel counter breaks and nothing else.
     const QString background = (mutate & MUTATE_FAKE_EMBED)
         ? QString::fromLatin1(kWidgetColor)
         : QStringLiteral("#101010");
@@ -259,8 +262,8 @@ extern "C" TabHostReport rexon_tab_host_probe(int mutate, const char *out_dir)
     if (!writeQml(sceneQml, qmlSceneSource(mutate), r))
         return r;
 
-    // ── Каркас: ровно наш случай — QTabWidget, вкладка на виджетах и
-    //    вкладка-хост QML в одном окне ────────────────────────────────
+    // ── The frame: exactly our case — a QTabWidget, a widget tab and a
+    //    QML host tab in one window ──────────────────────────────────
     QTabWidget tabs;
     tabs.resize(720, 520);
 
@@ -280,8 +283,8 @@ extern "C" TabHostReport rexon_tab_host_probe(int mutate, const char *out_dir)
     qmlLay.addWidget(neighbour);
     qmlLay.addWidget(host, 1);
 
-    // Сцена обратного вложения — третьей вкладкой того же окна, чтобы
-    // мерить её на живом композиторе, а не в отрыве.
+    // The reverse embedding scene is a third tab of the same window, so that it
+    // is measured on a live compositor rather than in isolation.
     QPushButton *victim = new QPushButton(QStringLiteral("я виджет"));
     victim->setStyleSheet(QStringLiteral("background: %1; color: %1; border: none;")
                               .arg(QString::fromLatin1(kWidgetColor)));
@@ -305,7 +308,7 @@ extern "C" TabHostReport rexon_tab_host_probe(int mutate, const char *out_dir)
     tabs.activateWindow();
     pump(400);
 
-    // ── Замер 1: QML внутри вкладки виджетов ─────────────────────────
+    // ── Measurement 1: QML inside a widget tab ───────────────────────
     tabs.setCurrentIndex(1);
     host->setSource(QUrl::fromLocalFile(hostQml));
     waitFor([&] { return host->status() != QQuickWidget::Status::Loading; }, 5000);
@@ -321,8 +324,9 @@ extern "C" TabHostReport rexon_tab_host_probe(int mutate, const char *out_dir)
     if (out_dir && *out_dir && !hostShot.isNull())
         hostShot.save(QString::fromUtf8(out_dir) + QStringLiteral("/probe-qml-in-widget.png"));
 
-    // ── Замер 2: цепочка фокуса виджет → QML → виджет ────────────────
-    // Условие одно на все три хода: активный элемент сцены — наше поле ввода.
+    // ── Measurement 2: focus chain widget → QML → widget ─────────────
+    // One condition for all three moves: the scene's active item is our text
+    // field.
     auto qmlHasFocus = [&] {
         QQuickItem *f = host->quickWindow() ? host->quickWindow()->activeFocusItem()
                                             : nullptr;
@@ -361,15 +365,15 @@ extern "C" TabHostReport rexon_tab_host_probe(int mutate, const char *out_dir)
         r.focus_by_tab = waitFor(qmlHasFocus, 2000) ? 1 : 0;
     }
     {
-        // Обратный ход: из QML фокус обязан вернуться в виджеты, иначе на
-        // геймпаде и Tab-навигации вкладка станет ловушкой.
+        // The way back: from QML focus must return to the widgets, otherwise with
+        // a gamepad and Tab navigation the tab becomes a trap.
         QKeyEvent back(QEvent::KeyPress, Qt::Key_Backtab, Qt::ShiftModifier, QString());
         QApplication::sendEvent(host, &back);
         r.focus_back_to_widget =
             waitFor([&] { return QApplication::focusWidget() == neighbour; }, 2000) ? 1 : 0;
     }
 
-    // ── Замер 3: попытка вложить виджет в сцену Qt Quick ─────────────
+    // ── Measurement 3: an attempt to embed a widget into a Qt Quick scene ─
     tabs.setCurrentIndex(2);
     scene->setSource(QUrl::fromLocalFile(sceneQml));
     waitFor([&] { return scene->status() != QQuickWidget::Status::Loading; }, 5000);
@@ -393,23 +397,23 @@ extern "C" TabHostReport rexon_tab_host_probe(int mutate, const char *out_dir)
     if (out_dir && *out_dir && !sceneShot.isNull())
         sceneShot.save(QString::fromUtf8(out_dir) + QStringLiteral("/probe-widget-in-qml.png"));
 
-    // ⚠️ Что на самом деле сделал `data.push`: Qt Quick перевесил виджету
-    // QObject-родителя на элемент сцены (QQuickItemPrivate::data_append →
-    // `o->setParent(item)`), а `QWidget::parentWidget()` — это неснимаемый
-    // static_cast от QObject::parent(). То есть у виджета теперь «родитель-
-    // виджет», которого не существует. Проверено этим же макетом: вызов
-    // `victim->show()` в таком состоянии валит процесс SIGSEGV внутри
-    // QWidgetPrivate::createWinId() (Qt 6.11.2). Поэтому здесь только
-    // фиксируем подмену и снимаем её, а показываем ОТДЕЛЬНЫЙ виджет.
+    // Warning: what `data.push` actually did: Qt Quick re-parented the widget's
+    // QObject parent to a scene item (QQuickItemPrivate::data_append →
+    // `o->setParent(item)`), while `QWidget::parentWidget()` is an unremovable
+    // static_cast from QObject::parent(). So the widget now has a "parent
+    // widget" that does not exist. Verified with this same mock-up: calling
+    // `victim->show()` in such a state crashes the process with SIGSEGV inside
+    // QWidgetPrivate::createWinId() (Qt 6.11.2). So here we only record the
+    // substitution and undo it, and show a SEPARATE widget.
     r.widget_parent_hijacked =
         (sceneRoot && static_cast<QObject *>(victim)->parent()
              == static_cast<QObject *>(sceneRoot)) ? 1 : 0;
     static_cast<QObject *>(victim)->setParent(nullptr);
 
-    // Контрольный вопрос к тем, кто скажет «так виджет просто не показан»:
-    // показываем чистый виджет, живущий рядом со сценой. Если бы вложение
-    // работало, ему нашлось бы место внутри сцены. Вместо этого Qt делает
-    // ему собственное окно верхнего уровня.
+    // A control question for anyone who says "the widget is just not shown":
+    // we show a clean widget living next to the scene. If embedding worked, it
+    // would find a place inside the scene. Instead Qt gives it its own
+    // top-level window.
     QPushButton shown(QStringLiteral("я отдельное окно"));
     shown.resize(200, 80);
     shown.show();

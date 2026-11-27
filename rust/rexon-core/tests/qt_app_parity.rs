@@ -1,39 +1,39 @@
-//! Golden-сверка порта `qt_app.rs` с оригиналом — `rexon/qt_main/app.py` и
-//! четырьмя мелкими точками входа.
+//! Golden check of the `qt_app.rs` port against the original — `rexon/qt_main/app.py` and
+//! four small entry points.
 //!
-//! Эталон снят прогоном ЖИВОГО `rexon.qt_main.app`:
-//!   * `_crash_header()` — с подменёнными `datetime`/`platform`/`PySide6` и
-//!     окружением (`mock.patch.dict`), шесть комбинаций полей;
-//!   * `_save_crash_log()` — во ВРЕМЕННОМ каталоге (реальный `~/.config`
-//!     не тронут), четыре наполнения каталога;
-//!   * `_show_crash_dialog()` — с записывающими заглушками `QApplication`/
-//!     `QMessageBox`/`subprocess.Popen`: журнал вызовов окна, буфера и
-//!     `xdg-open`;
-//!   * `_install_excepthook()` — журнал `sys.excepthook` и
-//!     `threading.excepthook` на пяти исключениях;
-//!   * снятие пустого `QT_QPA_PLATFORM` — четырьмя запусками интерпретатора,
-//!     импортирующего модуль;
-//!   * идентичность приложения — разбором исходников двенадцати точек входа
-//!     (`ast`), чтобы сверяться с тем, что реально написано в Python.
+//! The golden was captured by running the LIVE `rexon.qt_main.app`:
+//!   * `_crash_header()` — with `datetime`/`platform`/`PySide6` and the
+//!     environment replaced (`mock.patch.dict`), six combinations of fields;
+//!   * `_save_crash_log()` — in a TEMPORARY directory (the real `~/.config`
+//!     untouched), four directory fillings;
+//!   * `_show_crash_dialog()` — with recording stubs for `QApplication`/
+//!     `QMessageBox`/`subprocess.Popen`: a log of the window, clipboard and
+//!     `xdg-open` calls;
+//!   * `_install_excepthook()` — a log of `sys.excepthook` and
+//!     `threading.excepthook` on five exceptions;
+//!   * removal of an empty `QT_QPA_PLATFORM` — with four runs of an interpreter
+//!     importing the module;
+//!   * the application identity — by parsing the sources of twelve entry points
+//!     (`ast`), to compare against what is really written in Python.
 //!
-//! Санкционированные расхождения (починки оригинала, правило #16) проверяются
-//! отдельными тестами внизу файла и в голдене НЕ отражены — там записано
-//! поведение Python как есть.
+//! Sanctioned deviations (fixes of the original, rule #16) are checked by
+//! separate tests at the bottom of the file and are NOT reflected in the golden — it records
+//! Python's behaviour as is.
 //!
-//! ГЕЙТ «голден обязан ловить регрессию» проверен мутацией: тринадцать
-//! точечных поломок реализации (пустой `XDG_SESSION_TYPE` как отсутствие;
-//! `isoformat` всегда с микросекундами; ротация по вхождению `crash_` вместо
-//! префикса; ротация на файл длиннее; ротации нет вовсе; пробел вместо
-//! перевода строки в подписи лога; `displayName` главного окна не задан;
-//! `dirname` возвращает путь целиком; `KeyboardInterrupt` без stderr; hex
-//! флагов в верхнем регистре; имя платформы без `repr`; переставленный
-//! порядок кнопок; линейка шапки в 59 символов) — все тринадцать красят
-//! тесты. Случай `window_hex_letters` заведён именно для этого: на снятых
-//! ранее флагах `0x2200001` букв нет, и мутант `{:x}` → `{:X}` был бы
-//! эквивалентным, то есть проверка регистра оказалась бы зелёной при любой
-//! реализации.
+//! The GATE "the golden must catch a regression" was checked by mutation: thirteen
+//! point breakages of the implementation (an empty `XDG_SESSION_TYPE` treated as absent;
+//! `isoformat` always with microseconds; rotation by containing `crash_` instead of
+//! the prefix; rotation off by one file; no rotation at all; a space instead of
+//! a newline in the log label; the main window's `displayName` not set;
+//! `dirname` returning the whole path; `KeyboardInterrupt` without stderr; hex
+//! flags in upper case; the platform name without `repr`; a swapped
+//! button order; a 59-character header rule) — all thirteen turn the
+//! tests red. The `window_hex_letters` case was added precisely for this: the flags captured
+//! earlier, `0x2200001`, have no letters, and the mutant `{:x}` → `{:X}` would be
+//! equivalent, i.e. the case check would be green with any
+//! implementation.
 //!
-//! `golden/qt_app_cases.json` — снятые значения.
+//! `golden/qt_app_cases.json` — the captured values.
 
 use std::collections::HashMap;
 
@@ -72,7 +72,7 @@ fn ts_of(v: &Value) -> Timestamp {
 }
 
 // ============================================================================
-// Шапка отчёта
+// Report header
 // ============================================================================
 
 #[test]
@@ -97,8 +97,8 @@ fn crash_header_cases() {
     }
 }
 
-/// `isoformat()` печатает дробную часть только при ненулевых микросекундах —
-/// на этом расходятся два снятых случая.
+/// `isoformat()` prints the fractional part only for non-zero microseconds —
+/// this is where two captured cases differ.
 #[test]
 fn isoformat_drops_zero_microseconds() {
     let g = fx();
@@ -108,9 +108,9 @@ fn isoformat_drops_zero_microseconds() {
     assert_eq!(without.isoformat(), "2026-01-02T03:04:05");
 }
 
-/// Рабочий стол берётся через `or` (пустая строка проваливается дальше), а
-/// тип сессии и локаль — через `get(..., "?")`, где пустая строка остаётся
-/// пустой. Асимметрия снята с живого Python.
+/// The desktop is taken via `or` (an empty string falls through), while
+/// the session type and the locale via `get(..., "?")`, where an empty string stays
+/// empty. The asymmetry was captured from live Python.
 #[test]
 fn empty_env_values_differ_by_field() {
     let g = fx();
@@ -122,11 +122,11 @@ fn empty_env_values_differ_by_field() {
 }
 
 // ============================================================================
-// Сохранение отчёта и ротация
+// Saving the report and rotation
 // ============================================================================
 
-/// Реализация [`CrashIo`] поверх карты «путь → содержимое». Реальная
-/// файловая система в тестах не участвует.
+/// An implementation of [`CrashIo`] over a "path → content" map. The real
+/// file system does not take part in the tests.
 struct MemFs {
     dirs: Vec<String>,
     files: HashMap<String, String>,
@@ -249,9 +249,9 @@ fn rotation_victims_cases() {
     }
 }
 
-/// Чужие файлы каталога ротация не трогает — в снятом случае уцелели
-/// `README.txt`, `old.log` и `zz_crash_9.log` (последний содержит `crash_`,
-/// но не НАЧИНАЕТСЯ с него).
+/// Rotation does not touch other files of the directory — in the captured case
+/// `README.txt`, `old.log` and `zz_crash_9.log` survived (the last one contains `crash_`
+/// but does not START with it).
 #[test]
 fn rotation_keeps_foreign_files() {
     let g = fx();
@@ -272,7 +272,7 @@ fn crash_log_name_and_dir() {
     let ts = ts_of(&g["saves"]["empty_dir"]["ts"]);
     assert_eq!(qt_app::crash_log_name(&ts), s(&g["saves"]["empty_dir"]["name"]));
     assert_eq!(qt_app::CRASH_KEEP as u64, g["crash_keep"].as_u64().unwrap());
-    // CRASH_DIR оригинала снят на этой машине с пустым $XDG_CONFIG_HOME.
+    // The original's CRASH_DIR was captured on this machine with an empty $XDG_CONFIG_HOME.
     assert_eq!(
         qt_app::crash_dir(None, "/home/user"),
         s(&g["crash_dir_expanded"])
@@ -283,8 +283,8 @@ fn crash_log_name_and_dir() {
     );
 }
 
-/// Каталог не создался или запись не удалась — пути нет и ротация не
-/// запускается.
+/// The directory was not created or the write failed — there is no path and rotation does not
+/// start.
 #[test]
 fn save_crash_log_failures() {
     let mut fs = MemFs::new("/tmp/crashes", &[]);
@@ -306,11 +306,11 @@ fn save_crash_log_failures() {
 }
 
 // ============================================================================
-// Диалог о крахе
+// Crash dialog
 // ============================================================================
 
-/// Разыграть журнал `_show_crash_dialog` из голдена по частям, собранным
-/// ядром.
+/// Replay the `_show_crash_dialog` log from the golden with the parts assembled by
+/// the core.
 fn dialog_journal(header: &str, crash_text: &str, log_path: Option<&str>, clicked: usize) -> Vec<(String, Value)> {
     let d = qt_app::crash_dialog(header, crash_text, log_path);
     let mut out: Vec<(String, Value)> = vec![
@@ -349,7 +349,7 @@ fn dialog_journal(header: &str, crash_text: &str, log_path: Option<&str>, clicke
 
 #[test]
 fn crash_dialog_cases() {
-    // Эталон — русский текст окна Python, сверка через po/ru.po.
+    // The golden is the Russian text of the Python window, compared via po/ru.po.
     let _lang = i18n_pin::ru();
     let g = fx();
     let cases = g["dialog"].as_object().unwrap();
@@ -370,7 +370,7 @@ fn crash_dialog_cases() {
     }
 }
 
-/// Текст в буфер — ровно то же, что в развёрнутой части окна.
+/// The text for the clipboard is exactly the same as in the expanded part of the window.
 #[test]
 fn clipboard_text_equals_detailed() {
     let d = qt_app::crash_dialog("HDR\n", "T\n", Some("/tmp/c/crash_1.log"));
@@ -386,8 +386,8 @@ fn open_folder_argv_dirname() {
         qt_app::crash_open_folder_argv("/tmp/crashes/crash_1.log"),
         vec!["xdg-open", "/tmp/crashes"]
     );
-    // Порт `os.path.dirname`: корень остаётся слэшем, имя без каталога даёт
-    // пустую строку.
+    // Port of `os.path.dirname`: the root stays a slash, a name without a directory gives
+    // an empty string.
     assert_eq!(qt_app::crash_open_folder_argv("/crash.log")[1], "/");
     assert_eq!(qt_app::crash_open_folder_argv("crash.log")[1], "");
 }
@@ -405,10 +405,10 @@ fn button_roles_and_labels() {
 }
 
 // ============================================================================
-// Решение перехватчика исключений
+// The exception hook's decision
 // ============================================================================
 
-/// Журнал живого Python: `stderr` → `sys.__excepthook__`, `save` →
+/// The live Python log: `stderr` → `sys.__excepthook__`, `save` →
 /// `_save_crash_log`, `dialog` → `_show_crash_dialog`.
 fn journal_kinds(v: &Value) -> Vec<&str> {
     v.as_array()
@@ -444,10 +444,10 @@ fn crash_decision_matches_python() {
     }
 }
 
-/// Починка №2 (правило #16): `SystemExit` в оригинале проходил как крах —
-/// живой Python на нём пишет отчёт и показывает диалог. Порт молчит.
-/// `sys.exit()` в рабочем потоке доходит до `threading.excepthook`, то есть
-/// штатный выход воркера показывал покупателю «Rexon неожиданно завершился».
+/// Fix No. 2 (rule #16): in the original `SystemExit` passed as a crash —
+/// live Python writes a report on it and shows the dialog. The port stays silent.
+/// `sys.exit()` in a worker thread reaches `threading.excepthook`, i.e.
+/// a normal worker exit showed the buyer «Rexon quit unexpectedly».
 #[test]
 fn system_exit_is_silent_fix() {
     let g = fx();
@@ -462,7 +462,7 @@ fn system_exit_is_silent_fix() {
     assert!(!d.save_log && !d.show_dialog && d.print_stderr);
 }
 
-/// Починка №3: крах в рабочем потоке требует переброса показа в поток GUI.
+/// Fix No. 3: a crash in a worker thread requires passing the display over to the GUI thread.
 #[test]
 fn worker_thread_dialog_hops_to_gui() {
     let main = qt_app::crash_decision("ValueError", true);
@@ -472,7 +472,7 @@ fn worker_thread_dialog_hops_to_gui() {
 }
 
 // ============================================================================
-// Платформа Qt и идентичность
+// Qt platform and identity
 // ============================================================================
 
 #[test]
@@ -522,8 +522,8 @@ fn identity_cases() {
     assert_eq!(qt_app::identity("rexon.qt_steam.app"), None);
 }
 
-/// У главного окна отображаемое имя — ПУСТАЯ строка, а не «не задано»:
-/// KWin иначе приклеил бы «Rexon» в хвост каждого заголовка.
+/// The main window's display name is an EMPTY string, not "not set":
+/// otherwise KWin would stick «Rexon» onto the tail of every title.
 #[test]
 fn main_window_display_name_is_empty_not_absent() {
     let id = qt_app::identity("rexon.qt_main.app").unwrap();
@@ -531,8 +531,8 @@ fn main_window_display_name_is_empty_not_absent() {
     assert_ne!(id.display_name, None);
 }
 
-/// Каждый флаг одиночной вкладки ведёт на модуль, у которого есть
-/// идентичность (правило #12: маршрут и таблица не расходятся).
+/// Every single-tab flag leads to a module that has
+/// an identity (rule #12: the route and the table do not diverge).
 #[test]
 fn every_single_tab_flag_has_identity() {
     for (flag, module) in rexon_core::app::SINGLE_TAB_FLAGS {
@@ -544,7 +544,7 @@ fn every_single_tab_flag_has_identity() {
 }
 
 // ============================================================================
-// Диагностические строки
+// Diagnostic lines
 // ============================================================================
 
 #[test]
@@ -577,15 +577,15 @@ fn banner_cases() {
 }
 
 // ============================================================================
-// Окно о крахе на языке интерфейса
+// The crash window in the interface language
 // ============================================================================
 
 fn has_cyrillic(text: &str) -> bool {
     text.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
 }
 
-/// Всё, что окно о крахе показывает человеку (и Rust-окно, и системные
-/// запасные), при данном адресе трекера.
+/// Everything the crash window shows a person (both the Rust window and the system
+/// fallbacks), for the given tracker address.
 fn crash_window_texts(url: Option<&str>) -> Vec<String> {
     let mut out = vec![
         qt_app::crash_dialog_title(),
@@ -610,8 +610,8 @@ fn crash_window_texts(url: Option<&str>) -> Vec<String> {
     out
 }
 
-/// Окно о крахе по-английски: ни одной русской буквы ни в окне, ни в
-/// системных запасных окнах, с адресом трекера и без.
+/// The crash window in English: not a single Russian letter either in the window or in
+/// the system fallback windows, with and without a tracker address.
 #[test]
 fn english_crash_window_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -632,8 +632,8 @@ fn english_crash_window_has_no_russian() {
     assert_eq!(d.informative.as_deref(), Some("Report saved:\n/c/crash_1.log"));
 }
 
-/// Окно о крахе по-русски — дословно как было до перевода (тексты тогда
-/// были константами; здесь они выписаны буквами).
+/// The crash window in Russian — verbatim as it was before the translation (the texts were
+/// constants then; here they are written out letter by letter).
 #[test]
 fn russian_crash_window_reads_as_before() {
     let _lang = i18n_pin::ru();

@@ -1,43 +1,46 @@
-//! Плейлист собственных обоев Rexon: один ротатор для всех наших видов.
+//! Playlist of Rexon's own wallpapers: one rotator for all our kinds.
 //!
-//! ЧТО ВХОДИТ. Видео, веб-страницы и Flash (хост `rexon-wallpaper-host`),
-//! картинки и GIF (в том числе скачанные в «Обоях HD» из KDE Store и
-//! Wallhaven) и обои библиотеки Razer Axon. Виды можно смешивать в одном
-//! списке. Обои Wallpaper Engine (сцены, веб WE, обои-приложения) сюда НЕ
-//! входят: их показывает демон waywallen со своими плейлистами, и второй
-//! хозяин у них был бы источником войны «кто сейчас на экране».
+//! WHAT IS INCLUDED. Video, web pages and Flash (the `rexon-wallpaper-host`
+//! host), pictures and GIF (including those downloaded in «HD Wallpapers»
+//! from the KDE Store and Wallhaven) and Razer Axon library wallpapers. Kinds
+//! can be mixed in one list. Wallpaper Engine wallpapers (scenes, WE web,
+//! application wallpapers) are NOT included: they are shown by the waywallen
+//! daemon with its own playlists, and a second owner for them would be a
+//! source of a "who is on screen now" war.
 //!
-//! КАК УСТРОЕНО.
-//! * Настройка — ключ [`SETTINGS_KEY`] в `~/.config/rexon/settings.json`
-//!   (её пишет окно). Нет ключа или он испорчен — пустой выключенный
-//!   плейлист; незнакомые поля и виды пропускаются, а не роняют разбор
-//!   (обратная совместимость в обе стороны).
-//! * Живое состояние (что показано, остаток круга перемешивания, история,
-//!   пауза, сколько натикало) — `~/.local/state/rexon/wallpaper-playlist.json`.
-//!   Его пишет только этот модуль, окно его не трогает.
-//! * Решения — чистые функции над (настройка, состояние, время): [`choose`],
-//!   [`tick`], [`login_due`], [`taken_over`]. Исполнитель — [`Applier`]:
-//!   живьём [`LiveApplier`] применяет ТЕМ ЖЕ путём, что кнопка «Применить»
-//!   (`wallpaper_exec::run_in_slot` → `apply_with_audio`; правило #12),
-//!   в сверках — подставной.
-//! * Таймер живёт в долгоживущем процессе Rexon (главное окно со значком в
-//!   лотке, оно же поднимается при входе с `--tray`): [`spawn_runner`].
+//! HOW IT WORKS.
+//! * The setting is the [`SETTINGS_KEY`] key in `~/.config/rexon/settings.json`
+//!   (the window writes it). No key or a corrupted one — an empty disabled
+//!   playlist; unfamiliar fields and kinds are skipped rather than breaking
+//!   the parse (backward compatibility both ways).
+//! * The live state (what is shown, the rest of the shuffle round, history,
+//!   pause, how much time has ticked) — `~/.local/state/rexon/wallpaper-playlist.json`.
+//!   Only this module writes it, the window does not touch it.
+//! * Decisions are pure functions over (setting, state, time): [`choose`],
+//!   [`tick`], [`login_due`], [`taken_over`]. The executor is [`Applier`]:
+//!   live, [`LiveApplier`] applies by THE SAME path as the «Apply» button
+//!   (`wallpaper_exec::run_in_slot` → `apply_with_audio`; rule #12), in the
+//!   checks — a fake one.
+//! * The timer lives in the long-lived Rexon process (the main window with
+//!   the tray icon, which is also started at login with `--tray`): [`spawn_runner`].
 //!
-//! КТО ВЛАДЕЕТ ЭКРАНОМ. Один хозяин решения «что сейчас на экране»:
-//! * пока плейлист включён и не пуст ([`owns_wallpaper`]), пара обоев блока
-//!   «Светлое и тёмное» (`day_night`) обои НЕ меняет — темы и схемы она
-//!   по-прежнему переключает;
-//! * человек сам поставил другие обои (любой кнопкой «Применить» в этом же
-//!   процессе либо обои Wallpaper Engine) — плейлист встаёт на паузу и
-//!   говорит об этом, а не перебивает выбор человека через N минут;
-//! * обои на автопаузе по условию (окно во весь экран, замок, батарея,
-//!   GameMode — общая модель `wallpaper_audio`) — таймер плейлиста стоит:
-//!   менять невидимые обои незачем.
+//! WHO OWNS THE SCREEN. One owner of the "what is on screen now" decision:
+//! * while the playlist is enabled and not empty ([`owns_wallpaper`]), the
+//!   wallpaper pair of the «Light and dark» block (`day_night`) does NOT change
+//!   the wallpaper — it still switches themes and schemes;
+//! * the person set another wallpaper themselves (with any «Apply» button in
+//!   this same process or a Wallpaper Engine wallpaper) — the playlist pauses
+//!   and says so, rather than overriding the person's choice N minutes later;
+//! * the wallpaper is auto-paused by a condition (a full-screen window, the
+//!   lock, the battery, GameMode — the shared `wallpaper_audio` model) — the
+//!   playlist timer stands still: there is no point changing an invisible
+//!   wallpaper.
 //!
-//! МОНИТОРЫ. Плейлист привязан к цели [`Target`]: сейчас исполняется только
-//! [`Target::All`] («на всех экранах»). Цель «один монитор» уже в модели и
-//! в хранилище; когда ядро обоев по мониторам даст применение на экран,
-//! подключается одной правкой в [`LiveApplier::apply`] (ветка `Screen`).
+//! MONITORS. The playlist is bound to a [`Target`]: currently only
+//! [`Target::All`] («on all screens») is executed. The "one monitor" target
+//! is already in the model and in the store; when the per-monitor wallpaper
+//! core provides applying to one screen, it is connected with one edit in
+//! [`LiveApplier::apply`] (the `Screen` branch).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -48,42 +51,42 @@ use serde_json::{json, Map, Value};
 
 use crate::i18n::{n_, ntr, tr, trf};
 
-/// Ключ настройки в `settings.json`.
+/// The setting key in `settings.json`.
 pub const SETTINGS_KEY: &str = "wallpaper_playlist";
-/// Файл живого состояния в `$XDG_STATE_HOME/rexon/`.
+/// The live state file in `$XDG_STATE_HOME/rexon/`.
 pub const STATE_FILE: &str = "wallpaper-playlist.json";
-/// Версия формата настройки.
+/// The setting format version.
 pub const FORMAT_VERSION: u64 = 1;
-/// Шаг таймера исполнителя, с.
+/// The executor's timer step, s.
 pub const TICK_SECS: u64 = 15;
-/// Сколько секунд один тик может «натикать» самое большее. Больше — значит,
-/// машина спала или процесс стоял: сон не должен засчитываться за показ.
+/// How many seconds one tick can "tick" at most. More means the machine slept
+/// or the process stood still: sleep must not count as showing.
 pub const MAX_TICK_GAP: i64 = 120;
-/// Сколько прошлых обоев помнит «Предыдущие».
+/// How many past wallpapers «Previous» remembers.
 pub const HISTORY_LEN: usize = 50;
-/// Интервал по умолчанию, мин.
+/// Default interval, min.
 pub const DEFAULT_INTERVAL_MIN: u32 = 30;
-/// Варианты интервала для выпадающего списка, мин (0 — только вручную).
+/// Interval options for the drop-down list, min (0 — manual only).
 pub const INTERVAL_CHOICES: &[u32] = &[0, 1, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440];
 
 // ============================================================================
-// Модель
+// Model
 // ============================================================================
 
-/// Что показывать.
+/// What to show.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
-    /// Файл любого нашего вида: `format` — формат общего исполнителя
-    /// (`static`, `animated`, `video`, `web`, `swf`). Каталог при `static` —
-    /// пачка обоев «Обоев HD»: картинку из неё выбирает ядро «Оформления».
+    /// A file of any of our kinds: `format` — the shared executor's format
+    /// (`static`, `animated`, `video`, `web`, `swf`). A directory with `static` is
+    /// an «HD Wallpapers» pack: the «Appearance» core chooses the picture from it.
     File { path: String, format: String },
-    /// Обои библиотеки Razer Axon по номеру; файл готовится при показе.
+    /// A Razer Axon library wallpaper by number; the file is prepared when shown.
     Axon { id: String },
 }
 
 impl Source {
-    /// Ключ элемента: по нему ищутся «текущие», история и круг
-    /// перемешивания — переживает перестановку и удаление соседей.
+    /// The item key: "current", history and the shuffle round are looked up by it
+    /// — it survives reordering and removal of neighbors.
     pub fn key(&self) -> String {
         match self {
             Source::File { path, .. } => format!("file:{path}"),
@@ -92,11 +95,11 @@ impl Source {
     }
 }
 
-/// Элемент плейлиста.
+/// A playlist item.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
     pub source: Source,
-    /// Название для человека (пусто — имя файла).
+    /// Human-readable name (empty — the file name).
     pub name: String,
 }
 
@@ -105,7 +108,7 @@ impl Item {
         self.source.key()
     }
 
-    /// Название для списка.
+    /// Name for the list.
     pub fn title(&self) -> String {
         if !self.name.trim().is_empty() {
             return self.name.trim().to_string();
@@ -120,16 +123,16 @@ impl Item {
     }
 }
 
-/// Порядок смены.
+/// Change order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Order {
-    /// По порядку списка.
+    /// In list order.
     InOrder,
-    /// Перемешать: за круг каждые обои по разу, новый круг не начинается с
-    /// только что показанных.
+    /// Shuffle: each wallpaper once per round, a new round does not start with
+    /// the ones just shown.
     #[default]
     Shuffle,
-    /// Случайно: каждый раз любые, кроме нынешних.
+    /// Random: any each time, except the current one.
     Random,
 }
 
@@ -144,7 +147,7 @@ impl Order {
         }
     }
 
-    /// Незнакомое значение — умолчание, а не ошибка разбора.
+    /// An unfamiliar value is the default, not a parse error.
     pub fn from_key(key: &str) -> Order {
         Order::ALL.into_iter().find(|o| o.key() == key).unwrap_or_default()
     }
@@ -161,14 +164,14 @@ impl Order {
     }
 }
 
-/// На каком экране играет плейлист.
+/// Which screen the playlist plays on.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Target {
-    /// Одни обои на всех экранах.
+    /// One wallpaper on all screens.
     #[default]
     All,
-    /// Один монитор — ключ монитора ядра «обои по мониторам». Пока
-    /// исполнитель применяет только [`Target::All`].
+    /// One monitor — the monitor key of the "per-monitor wallpaper" core. For now
+    /// the executor applies only [`Target::All`].
     Screen { key: String },
 }
 
@@ -188,16 +191,16 @@ impl Target {
     }
 }
 
-/// Один плейлист.
+/// One playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Playlist {
-    /// Плейлист играет (выключенный не трогает экран вовсе).
+    /// The playlist plays (a disabled one does not touch the screen at all).
     pub enabled: bool,
     pub items: Vec<Item>,
     pub order: Order,
-    /// Через сколько минут менять; 0 — только вручную.
+    /// After how many minutes to change; 0 — manual only.
     pub interval_min: u32,
-    /// Менять обои при каждом входе в систему.
+    /// Change the wallpaper on every login.
     pub on_login: bool,
     pub target: Target,
 }
@@ -224,12 +227,12 @@ impl Playlist {
         self.items.iter().find(|i| i.key() == key)
     }
 
-    /// Играет ли: включён и есть что показывать.
+    /// Whether it plays: enabled and there is something to show.
     pub fn active(&self) -> bool {
         self.enabled && !self.items.is_empty()
     }
 
-    /// Добавить, если такого ещё нет. `true` — добавлен.
+    /// Add if there is no such item yet. `true` — added.
     pub fn add(&mut self, item: Item) -> bool {
         if self.find(&item.key()).is_some() {
             return false;
@@ -239,7 +242,7 @@ impl Playlist {
     }
 }
 
-/// Вся настройка: плейлисты по целям (сегодня — один, «на всех экранах»).
+/// The whole setting: playlists by target (today — one, «on all screens»).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub playlists: Vec<Playlist>,
@@ -322,7 +325,7 @@ impl Playlist {
 }
 
 impl Config {
-    /// Из настроек Rexon. Нет ключа или он не объект — умолчание.
+    /// From Rexon's settings. No key or it is not an object — the default.
     pub fn from_settings(settings: &Map<String, Value>) -> Config {
         let Some(v) = settings.get(SETTINGS_KEY).filter(|v| v.is_object()) else {
             return Config::default();
@@ -330,7 +333,7 @@ impl Config {
         let mut playlists: Vec<Playlist> = Vec::new();
         for p in v.get("playlists").and_then(Value::as_array).into_iter().flatten() {
             let pl = Playlist::from_value(p);
-            // Одна цель — один плейлист: повтор цели отбрасывается.
+            // One target — one playlist: a repeated target is dropped.
             if !playlists.iter().any(|x| x.target == pl.target) {
                 playlists.push(pl);
             }
@@ -348,7 +351,7 @@ impl Config {
         })
     }
 
-    /// Плейлист «на всех экранах» (он есть всегда).
+    /// The «on all screens» playlist (it always exists).
     pub fn main(&self) -> &Playlist {
         self.playlists.iter().find(|p| p.target == Target::All).expect("плейлист «все экраны» есть всегда")
     }
@@ -361,23 +364,23 @@ impl Config {
     }
 }
 
-/// Плейлист держит обои стола: другим расписаниям (пара обоев «Светлое и
-/// тёмное») их не трогать.
+/// The playlist holds the desktop wallpaper: other schedules (the «Light and
+/// dark» wallpaper pair) must not touch it.
 pub fn owns_wallpaper(settings: &Map<String, Value>) -> bool {
     Config::from_settings(settings).main().active()
 }
 
 // ============================================================================
-// Виды обоев
+// Wallpaper kinds
 // ============================================================================
 
-/// Наш ли это формат: только то, что показывает Rexon сам. Сцены и прочее
-/// Wallpaper Engine — у демона и его плейлистов.
+/// Whether this is our format: only what Rexon shows itself. Scenes and other
+/// Wallpaper Engine content belong to the daemon and its playlists.
 pub fn is_own_format(fmt: &str) -> bool {
     matches!(fmt, "static" | "animated" | "video" | "web" | "swf")
 }
 
-/// Формат файла по расширению; `None` — такие файлы плейлист не берёт.
+/// The file format by extension; `None` — the playlist does not take such files.
 pub fn file_format(path: &Path) -> Option<&'static str> {
     if path.is_dir() {
         return Some("static");
@@ -393,37 +396,37 @@ pub fn file_format(path: &Path) -> Option<&'static str> {
 }
 
 // ============================================================================
-// Живое состояние
+// Live state
 // ============================================================================
 
-/// Состояние одной цели.
+/// The state of one target.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TargetState {
-    /// Ключ показанных сейчас обоев (пусто — плейлист ещё ничего не ставил).
+    /// Key of the wallpaper shown now (empty — the playlist has not set anything yet).
     pub current: String,
-    /// Остаток круга перемешивания по порядку показа.
+    /// The rest of the shuffle round in showing order.
     pub round: Vec<String>,
-    /// Прошлые обои, последние — в конце.
+    /// Past wallpapers, the latest at the end.
     pub history: Vec<String>,
-    /// Сколько секунд показа натикало с последней смены.
+    /// How many seconds of showing have ticked since the last change.
     pub elapsed: u64,
-    /// Пауза плейлиста (кнопкой или потому что человек поставил другие).
+    /// The playlist pause (by the button or because the person set another wallpaper).
     pub paused: bool,
-    /// Пауза потому, что экран заняли другие обои: «Продолжить» сразу
-    /// ставит следующие.
+    /// Paused because another wallpaper took the screen: «Resume» sets the next
+    /// one right away.
     pub yielded: bool,
-    /// Путь, который плейлист отдал исполнителю последним.
+    /// The path the playlist last handed to the executor.
     pub applied_path: String,
-    /// Сеанс, в котором плейлист последний раз смотрел на вход.
+    /// The session in which the playlist last looked at a login.
     pub session: String,
-    /// Время прошлого тика (unix, с).
+    /// Time of the previous tick (unix, s).
     pub last_tick: i64,
-    /// Состояние генератора случайных чисел (0 — ещё не засеян).
+    /// Random number generator state (0 — not seeded yet).
     pub rng: u64,
 }
 
-/// Состояние всех целей.
+/// The state of all targets.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct State {
@@ -440,9 +443,9 @@ impl State {
     }
 }
 
-// ── случайные числа: свои, с зерном — чтобы сверки были детерминированы ──
+// ── random numbers: our own, seeded — so the checks are deterministic ──
 
-/// SplitMix64: шаг генератора.
+/// SplitMix64: a generator step.
 fn next_rand(st: &mut TargetState) -> u64 {
     if st.rng == 0 {
         st.rng = 0x9E37_79B9_7F4A_7C15;
@@ -454,7 +457,7 @@ fn next_rand(st: &mut TargetState) -> u64 {
     z ^ (z >> 31)
 }
 
-/// Засеять, если ещё не засеян.
+/// Seed if not seeded yet.
 pub fn seed(st: &mut TargetState, seed: u64) {
     if st.rng == 0 {
         st.rng = seed.max(1);
@@ -465,7 +468,7 @@ fn below(st: &mut TargetState, n: usize) -> usize {
     (next_rand(st) % n as u64) as usize
 }
 
-/// Перестановка Фишера — Йетса.
+/// Fisher–Yates shuffle.
 fn shuffled(st: &mut TargetState, keys: &[String]) -> Vec<String> {
     let mut out = keys.to_vec();
     for i in (1..out.len()).rev() {
@@ -476,20 +479,20 @@ fn shuffled(st: &mut TargetState, keys: &[String]) -> Vec<String> {
 }
 
 // ============================================================================
-// Решения
+// Decisions
 // ============================================================================
 
-/// Направление ручной смены.
+/// Direction of a manual change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     Next,
     Prev,
 }
 
-/// Выбрать следующие (предыдущие) обои и записать выбор в состояние.
-/// Ответ — ключ новых «текущих»; `None` — выбирать не из чего (пустой
-/// список, «Предыдущие» без истории). Любая смена обнуляет отсчёт таймера:
-/// ручная смена — «пинок», полный интервал начинается заново.
+/// Choose the next (previous) wallpaper and record the choice in the state.
+/// The answer is the key of the new "current"; `None` — nothing to choose
+/// from (an empty list, «Previous» without history). Any change resets the
+/// timer countdown: a manual change is a "kick", the full interval starts over.
 pub fn choose(pl: &Playlist, st: &mut TargetState, step: Step) -> Option<String> {
     let keys = pl.keys();
     let n = keys.len();
@@ -504,7 +507,7 @@ pub fn choose(pl: &Playlist, st: &mut TargetState, step: Step) -> Option<String>
             st.round.retain(|k| keys.contains(k) && *k != st.current);
             if st.round.is_empty() {
                 let mut round = shuffled(st, &keys);
-                // Новый круг не начинается с только что показанных.
+                // A new round does not start with the ones just shown.
                 if n > 1 && round[0] == st.current {
                     round.swap(0, n - 1);
                 }
@@ -529,8 +532,8 @@ pub fn choose(pl: &Playlist, st: &mut TargetState, step: Step) -> Option<String>
                     None => break None,
                 }
             }?;
-            // Вернулись назад — нынешние снова первые в остатке круга, и
-            // «Следующие» после «Предыдущих» вернут их же.
+            // Went back — the current one is first in the rest of the round again, and
+            // «Next» after «Previous» brings it back.
             if pl.order == Order::Shuffle && pos.is_some() {
                 let cur = st.current.clone();
                 st.round.retain(|k| *k != cur);
@@ -551,8 +554,8 @@ pub fn choose(pl: &Playlist, st: &mut TargetState, step: Step) -> Option<String>
     Some(picked)
 }
 
-/// Тик таймера. `held` — обои стоят на автопаузе по условию (тогда и
-/// таймер стоит). Ответ — ключ обоев, которые пора поставить.
+/// A timer tick. `held` — the wallpaper is auto-paused by a condition (then
+/// the timer stands still too). The answer is the key of the wallpaper due to be set.
 pub fn tick(pl: &Playlist, st: &mut TargetState, now: i64, held: bool) -> Option<String> {
     let gap = if st.last_tick == 0 { 0 } else { (now - st.last_tick).clamp(0, MAX_TICK_GAP) };
     st.last_tick = now;
@@ -566,9 +569,9 @@ pub fn tick(pl: &Playlist, st: &mut TargetState, now: i64, held: bool) -> Option
     choose(pl, st, Step::Next)
 }
 
-/// Первый взгляд в новом сеансе: пора ли сменить обои «при входе».
-/// Сеанс запоминается в любом случае — повторный запуск окна в том же
-/// сеансе обои не меняет.
+/// The first look in a new session: whether it is time to change the
+/// wallpaper "on login". The session is remembered in any case — restarting
+/// the window in the same session does not change the wallpaper.
 pub fn login_due(pl: &Playlist, st: &mut TargetState, session: &str) -> bool {
     if session.is_empty() || st.session == session {
         return false;
@@ -577,11 +580,10 @@ pub fn login_due(pl: &Playlist, st: &mut TargetState, session: &str) -> bool {
     pl.active() && pl.on_login && !st.paused
 }
 
-/// Экран заняли другие обои: в исполнителе этого процесса стоит не то,
-/// что ставил плейлист (`on_screen` — его нынешний путь, `None` —
-/// исполнитель ничего не знает), либо живут обои Wallpaper Engine
-/// (`we_running`; наши обои при показе WE снимают, значит, WE поставили
-/// после нас).
+/// Another wallpaper took the screen: this process's executor holds something
+/// other than what the playlist set (`on_screen` — its current path, `None` —
+/// the executor knows nothing), or Wallpaper Engine wallpapers are alive
+/// (`we_running`; our wallpapers stop WE when shown, so WE was set after us).
 pub fn taken_over(st: &TargetState, on_screen: Option<&str>, we_running: bool) -> bool {
     if st.applied_path.is_empty() {
         return false;
@@ -589,8 +591,8 @@ pub fn taken_over(st: &TargetState, on_screen: Option<&str>, we_running: bool) -
     we_running || on_screen.is_some_and(|p| p != st.applied_path)
 }
 
-/// Переключить паузу. Ответ — сразу ли поставить следующие (продолжение
-/// после того, как экран заняли другие обои).
+/// Toggle the pause. The answer is whether to set the next one right away
+/// (resuming after another wallpaper took the screen).
 pub fn toggle_pause(st: &mut TargetState) -> bool {
     if st.paused {
         st.paused = false;
@@ -605,13 +607,14 @@ pub fn toggle_pause(st: &mut TargetState) -> bool {
 }
 
 // ============================================================================
-// Импорт очереди Razer Axon (только чтение файлов Axon)
+// Importing the Razer Axon queue (reading Axon files only)
 // ============================================================================
 
-/// Перенести очередь Axon в плейлист: обои выбранного в Axon экрана (иначе
-/// первого непустого) дописываются в конец без повторов. Порядок и таймер
-/// берутся у Axon, только если плейлист был пуст — свои настройки человека
-/// импорт не переписывает. Ответ — сколько добавлено.
+/// Move the Axon queue into the playlist: wallpapers of the screen selected
+/// in Axon (otherwise the first non-empty one) are appended at the end
+/// without repeats. Order and timer are taken from Axon only if the playlist
+/// was empty — the import does not overwrite the person's own settings. The
+/// answer is how many were added.
 pub fn import_axon(
     pl: &mut Playlist,
     setting: &crate::axon_library::PlayListSetting,
@@ -626,8 +629,8 @@ pub fn import_axon(
     let was_empty = pl.items.is_empty();
     let mut added = 0;
     for id in &queue.wallpaper_ids {
-        // Только то, что есть в библиотеке: от удалённых в Axon обоев в
-        // плейлисте осталась бы вечная ошибка показа.
+        // Only what is in the library: wallpapers deleted in Axon would leave an
+        // eternal showing error in the playlist.
         let Some(name) = title_of(id) else { continue };
         if pl.add(Item { source: Source::Axon { id: id.clone() }, name }) {
             added += 1;
@@ -648,32 +651,32 @@ pub fn import_axon(
 }
 
 // ============================================================================
-// Исполнение
+// Execution
 // ============================================================================
 
-/// Чем ставить обои и что спрашивать у машины.
+/// What to set wallpapers with and what to ask the machine.
 pub trait Applier {
-    /// Поставить обои; `Ok` — путь, отданный исполнителю обоев.
+    /// Set a wallpaper; `Ok` — the path handed to the wallpaper executor.
     fn apply(&mut self, target: &Target, item: &Item) -> Result<String, String>;
-    /// Путь того, что стоит сейчас по учёту исполнителя этого процесса.
+    /// Path of what is set now according to this process's executor.
     fn on_screen(&mut self) -> Option<String>;
-    /// Живут ли обои Wallpaper Engine.
+    /// Whether Wallpaper Engine wallpapers are alive.
     fn we_running(&mut self) -> bool;
 }
 
-/// Что сделал шаг исполнителя — для журнала и уведомления.
+/// What the executor step did — for the journal and the notification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     Nothing,
     Applied { key: String, path: String },
-    /// Ни одни обои из списка не встали (каждая попытка — строка).
+    /// Not a single wallpaper from the list got set (each attempt is a line).
     Failed(Vec<String>),
-    /// Экран заняли другие обои — плейлист встал на паузу.
+    /// Another wallpaper took the screen — the playlist paused.
     Yielded,
 }
 
-/// Поставить выбранные; не встали — пробовать следующие, но не больше
-/// круга (иначе битый список крутился бы вечно).
+/// Set the chosen one; if it did not get set — try the next ones, but no more
+/// than a round (otherwise a broken list would spin forever).
 fn apply_from(pl: &Playlist, st: &mut TargetState, first: String, ap: &mut dyn Applier) -> Outcome {
     let mut key = first;
     let mut errors = Vec::new();
@@ -694,19 +697,19 @@ fn apply_from(pl: &Playlist, st: &mut TargetState, first: String, ap: &mut dyn A
     Outcome::Failed(errors)
 }
 
-/// Что попросили.
+/// What was requested.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
-    /// Тик таймера (`held` — автопауза по условию).
+    /// A timer tick (`held` — auto-pause by a condition).
     Tick { held: bool },
-    /// Первый тик процесса: проверить «при входе» в сеансе `session`.
+    /// The first tick of the process: check "on login" in session `session`.
     Start,
     Next,
     Prev,
     TogglePause,
 }
 
-/// Один шаг исполнителя над плейлистом и его состоянием.
+/// One executor step over the playlist and its state.
 pub fn step(
     pl: &Playlist,
     st: &mut TargetState,
@@ -720,7 +723,7 @@ pub fn step(
         st.last_tick = now;
         return Outcome::Nothing;
     }
-    // Экран заняли — встать на паузу, пока человек не попросит продолжить.
+    // The screen was taken — pause until the person asks to resume.
     if !st.paused && matches!(cmd, Command::Tick { .. } | Command::Start) {
         let screen = ap.on_screen();
         if taken_over(st, screen.as_deref(), ap.we_running()) {
@@ -742,7 +745,7 @@ pub fn step(
             }
         }
         Command::Next => {
-            // Ручная смена во время паузы-уступки — человек вернул плейлист.
+            // A manual change during a yield pause — the person brought the playlist back.
             if st.yielded {
                 st.paused = false;
                 st.yielded = false;
@@ -771,11 +774,11 @@ pub fn step(
 }
 
 // ============================================================================
-// Живой исполнитель
+// Live executor
 // ============================================================================
 
-/// Настоящая машина: тот же исполнитель обоев процесса, что у кнопок
-/// «Применить» во всех вкладках.
+/// The real machine: the same process wallpaper executor as the «Apply»
+/// buttons in all tabs.
 pub struct LiveApplier;
 
 fn screen_size_live() -> (u64, u64) {
@@ -800,8 +803,8 @@ fn run_exec(path: String, format: String, name: String, audio: bool) -> Result<S
 
 impl Applier for LiveApplier {
     fn apply(&mut self, target: &Target, item: &Item) -> Result<String, String> {
-        // ⏳ Обои по мониторам: здесь же — применение на один экран, когда
-        // его даст ядро назначений по мониторам.
+        // ⏳ Per-monitor wallpapers: applying to one screen goes right here, when the
+        // per-monitor assignment core provides it.
         if !matches!(target, Target::All) {
             return Err(tr("Wallpapers for a single screen are not supported yet."));
         }
@@ -819,8 +822,8 @@ impl Applier for LiveApplier {
                 if !p.exists() && format != "web" {
                     return Err(trf("Wallpaper file not found: %1", &[&path]));
                 }
-                // Звук видео — как у «Применить» без выбора: общие настройки
-                // звука обоев решают сами.
+                // Video sound — as with «Apply» without a choice: the shared wallpaper
+                // sound settings decide by themselves.
                 run_exec(path.clone(), format.clone(), String::new(), true)
             }
             Source::Axon { id } => {
@@ -844,7 +847,7 @@ impl Applier for LiveApplier {
     }
 }
 
-/// Пути одного пользователя.
+/// Paths of one user.
 fn settings_path() -> std::path::PathBuf {
     crate::settings::settings_file()
 }
@@ -875,14 +878,14 @@ fn save_state(st: &State) {
     }
 }
 
-/// Записать настройку (окно).
+/// Write the setting (the window).
 pub fn save_config(cfg: &Config) -> Result<(), String> {
     let mut m = crate::settings::SettingsManager::new().map_err(|e| e.to_string())?;
     m.set(SETTINGS_KEY, cfg.to_value()).map_err(|e| e.to_string())
 }
 
-/// Сеанс входа: номер загрузки + сеанс logind (у перезапущенного окна в
-/// том же сеансе он тот же).
+/// The login session: boot ID + logind session (a restarted window in the
+/// same session has the same one).
 pub fn live_session() -> String {
     let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default();
     let session = std::env::var("XDG_SESSION_ID").unwrap_or_default();
@@ -893,15 +896,15 @@ fn now_secs() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
-/// Один исполнитель на процесс: таймер и кнопки не должны применять
-/// одновременно.
+/// One executor per process: the timer and the buttons must not apply at
+/// the same time.
 fn run_lock() -> &'static Mutex<()> {
     static LOCK: Mutex<()> = Mutex::new(());
     &LOCK
 }
 
-/// Опрос автопаузы: `active` — плейлисту нужен ответ (иначе наблюдатель
-/// можно погасить); ответ — обои на паузе по условию.
+/// The auto-pause poll: `active` — the playlist needs an answer (otherwise the
+/// watcher can be turned off); the answer — the wallpaper is paused by a condition.
 pub type HoldProbe = Box<dyn FnMut(bool) -> bool + Send>;
 
 fn hold_probe() -> &'static Mutex<Option<HoldProbe>> {
@@ -909,8 +912,8 @@ fn hold_probe() -> &'static Mutex<Option<HoldProbe>> {
     &PROBE
 }
 
-/// Поставить опрос автопаузы (окно на Qt — там живёт общий наблюдатель
-/// `wallpaper_audio`).
+/// Install the auto-pause poll (the Qt window — that is where the shared
+/// `wallpaper_audio` watcher lives).
 pub fn set_hold_probe(probe: HoldProbe) {
     if let Ok(mut slot) = hold_probe().lock() {
         *slot = Some(probe);
@@ -925,8 +928,8 @@ fn held_now(active: bool) -> bool {
         .unwrap_or(false)
 }
 
-/// Живой шаг: прочитать настройку и состояние, решить, поставить,
-/// сохранить. Для таймера и для кнопок (окно, лоток) — звать вне потока GUI.
+/// A live step: read the setting and the state, decide, set, save. For the
+/// timer and for the buttons (window, tray) — call outside the GUI thread.
 pub fn live_command(cmd: Command) -> Outcome {
     let _guard = run_lock().lock().unwrap_or_else(|e| e.into_inner());
     let cfg = load_config();
@@ -952,7 +955,7 @@ pub fn live_command(cmd: Command) -> Outcome {
         }
         Outcome::Nothing => {}
     }
-    // Отметка тика сама по себе — не повод писать файл каждые 15 с.
+    // A tick mark by itself is no reason to write the file every 15 s.
     let changed = {
         let mut a = state.clone();
         let mut b = before;
@@ -968,7 +971,7 @@ pub fn live_command(cmd: Command) -> Outcome {
     out
 }
 
-/// Завести таймер плейлиста один раз на процесс.
+/// Start the playlist timer once per process.
 pub fn spawn_runner() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     STARTED.call_once(|| {
@@ -985,7 +988,7 @@ pub fn spawn_runner() {
     });
 }
 
-/// Что показать в лотке: (плейлист играет, на паузе).
+/// What to show in the tray: (the playlist plays, paused).
 pub fn tray_state() -> (bool, bool) {
     let cfg = load_config();
     let pl = cfg.main();
@@ -993,10 +996,10 @@ pub fn tray_state() -> (bool, bool) {
 }
 
 // ============================================================================
-// Тексты
+// Texts
 // ============================================================================
 
-/// Подсказка кнопки «⚙️ Настройки» раздела «Обои HD».
+/// Tooltip of the «⚙️ Settings» button of the «HD Wallpapers» section.
 pub fn settings_tooltip() -> String {
     tr("A playlist of Rexon's own wallpapers: change them by a timer, at login or by hand.")
 }
@@ -1009,7 +1012,7 @@ pub fn yielded_text() -> String {
     tr("The playlist is paused because you set other wallpapers. Choose “Resume Playlist” in the Rexon tray icon menu to continue.")
 }
 
-/// Подпись интервала.
+/// Interval label.
 pub fn interval_label(min: u32) -> String {
     match min {
         // TRANSLATORS: wallpaper playlist interval: change only by hand (tray or buttons).
@@ -1019,7 +1022,7 @@ pub fn interval_label(min: u32) -> String {
     }
 }
 
-/// Вид элемента для человека.
+/// Item kind for the person.
 pub fn kind_label(item: &Item) -> String {
     match &item.source {
         Source::Axon { .. } => "Razer Axon".to_string(),
@@ -1027,7 +1030,7 @@ pub fn kind_label(item: &Item) -> String {
     }
 }
 
-/// Подписи блока настроек.
+/// Labels of the settings block.
 pub fn texts() -> Value {
     json!({
         "title": tr("Wallpaper playlist"),
@@ -1056,7 +1059,7 @@ pub fn texts() -> Value {
     })
 }
 
-/// Строка состояния под заголовком.
+/// The status line under the heading.
 fn status_line(pl: &Playlist, st: &TargetState) -> String {
     if pl.items.is_empty() {
         return String::new();
@@ -1080,7 +1083,7 @@ fn status_line(pl: &Playlist, st: &TargetState) -> String {
     }
 }
 
-/// Снимок блока для окна.
+/// A snapshot of the block for the window.
 pub fn view(cfg: &Config, state: &State, axon_queue: bool, day_night_pair: bool) -> Value {
     let pl = cfg.main();
     let st = state.target(&pl.target);
@@ -1104,7 +1107,7 @@ pub fn view(cfg: &Config, state: &State, axon_queue: bool, day_night_pair: bool)
     })
 }
 
-/// Живой снимок блока.
+/// A live snapshot of the block.
 pub fn live_view() -> Value {
     let env = crate::axon_prepare::live_env().0;
     let lib = crate::axon_library::load_library(&env);
@@ -1114,8 +1117,8 @@ pub fn live_view() -> Value {
     view(&load_config(), &load_state(), axon_queue, pair)
 }
 
-/// Правка настройки из окна. `op` — `{"op": …}`; ответ — строка для
-/// человека (пусто — молча).
+/// A setting edit from the window. `op` — `{"op": …}`; the answer is a string
+/// for the person (empty — silently).
 pub fn edit(cfg: &mut Config, op: &Value, axon: Option<&crate::axon_library::AxonLibrary>, hd_files: &[String]) -> String {
     let pl = cfg.main_mut();
     let s = |k: &str| op.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
@@ -1188,7 +1191,7 @@ pub fn edit(cfg: &mut Config, op: &Value, axon: Option<&crate::axon_library::Axo
     String::new()
 }
 
-/// Картинки и пачки «Обоев HD» (`~/.local/share/wallpapers`).
+/// «HD Wallpapers» pictures and packs (`~/.local/share/wallpapers`).
 pub fn hd_files_live() -> Vec<String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let dir = Path::new(&home).join(".local/share/wallpapers");
@@ -1204,7 +1207,7 @@ pub fn hd_files_live() -> Vec<String> {
     out
 }
 
-/// Живая правка из окна: записать и ответить `{"ok", "message"}`.
+/// A live edit from the window: write and answer `{"ok", "message"}`.
 pub fn live_edit(op_json: &str) -> Value {
     let Ok(op) = serde_json::from_str::<Value>(op_json) else {
         return json!({"ok": false, "message": ""});
@@ -1226,7 +1229,7 @@ pub fn live_edit(op_json: &str) -> Value {
 }
 
 // ============================================================================
-// Сверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
@@ -1300,7 +1303,7 @@ mod tests {
             r.dedup();
             assert_eq!(r.len(), 7, "в круге повтор: {round:?}");
         }
-        // Стык кругов: одни обои два раза подряд не показываются.
+        // The junction of rounds: the same wallpaper is not shown twice in a row.
         for w in a.windows(2) {
             assert_ne!(w[0], w[1]);
         }
@@ -1344,24 +1347,24 @@ mod tests {
 
     #[test]
     fn таймер_считает_только_время_показа() {
-        let p = pl(2, Order::InOrder); // 5 минут
+        let p = pl(2, Order::InOrder); // 5 minutes
         let mut st = TargetState::default();
         let mut t = 1_000;
         assert_eq!(tick(&p, &mut st, t, false), None);
-        // 2 минуты показа — рано.
+        // 2 minutes of showing — too early.
         for _ in 0..8 {
             t += 15;
             assert_eq!(tick(&p, &mut st, t, false), None);
         }
-        // Автопауза по условию: час стоит, ничего не меняется.
+        // Auto-pause by a condition: an hour stands still, nothing changes.
         for _ in 0..240 {
             t += 15;
             assert_eq!(tick(&p, &mut st, t, true), None);
         }
-        // Сон машины: скачок времени засчитывается не больше MAX_TICK_GAP.
+        // Machine sleep: a time jump counts for no more than MAX_TICK_GAP.
         t += 3600;
         assert_eq!(tick(&p, &mut st, t, false), None, "сон засчитан за показ: {}", st.elapsed);
-        // Добрали пятую минуту (2 + 2 за сон + 1).
+        // Made up the fifth minute (2 + 2 for the sleep + 1).
         let mut got = None;
         for _ in 0..4 {
             t += 15;
@@ -1430,18 +1433,18 @@ mod tests {
         let mut st = TargetState::default();
         let mut ap = Fake::default();
         step(&p, &mut st, Command::Next, 1, "s", &mut ap);
-        // Человек поставил другие обои той же кнопкой «Применить».
+        // The person set another wallpaper with the same «Apply» button.
         ap.screen = Some("/home/u/своя.png".into());
         assert_eq!(step(&p, &mut st, Command::Tick { held: false }, 16, "s", &mut ap), Outcome::Yielded);
         assert!(st.paused && st.yielded);
-        // Таймер больше не перебивает выбор человека.
+        // The timer no longer overrides the person's choice.
         for i in 0..100 {
             assert_eq!(step(&p, &mut st, Command::Tick { held: false }, 31 + i * 15, "s", &mut ap), Outcome::Nothing);
         }
-        // «Продолжить» сразу ставит следующие.
+        // «Resume» sets the next one right away.
         assert!(matches!(step(&p, &mut st, Command::TogglePause, 9_000, "s", &mut ap), Outcome::Applied { .. }));
         assert!(!st.paused && !st.yielded);
-        // Обои Wallpaper Engine поверх — тоже уступка.
+        // A Wallpaper Engine wallpaper on top — also a yield.
         ap.we = true;
         assert_eq!(step(&p, &mut st, Command::Tick { held: false }, 9_015, "s", &mut ap), Outcome::Yielded);
     }
@@ -1460,15 +1463,15 @@ mod tests {
 
     #[test]
     fn настройка_обратно_совместима() {
-        // Нет ключа — пустой выключенный плейлист «на всех экранах».
+        // No key — an empty disabled «on all screens» playlist.
         let cfg = Config::from_settings(&Map::new());
         assert_eq!(cfg, Config::default());
         assert!(!cfg.main().active());
-        // Испорченный ключ — тоже умолчание.
+        // A corrupted key — also the default.
         let mut m = Map::new();
         m.insert(SETTINGS_KEY.into(), json!("мусор"));
         assert_eq!(Config::from_settings(&m), Config::default());
-        // Будущая версия: незнакомые поля, виды и порядок не роняют разбор.
+        // A future version: unfamiliar fields, kinds and order do not break the parse.
         m.insert(
             SETTINGS_KEY.into(),
             json!({"version": 9, "новое": 1, "playlists": [{
@@ -1487,7 +1490,7 @@ mod tests {
         assert_eq!(p.order, Order::Shuffle);
         assert_eq!(p.interval_min, 15);
         assert_eq!(p.keys(), ["file:/w/a.mp4", "axon:123"], "сцены WE и повторы не берутся");
-        // Туда и обратно — без потерь.
+        // There and back — without losses.
         let mut back = Map::new();
         back.insert(SETTINGS_KEY.into(), cfg.to_value());
         assert_eq!(Config::from_settings(&back), cfg);
@@ -1526,7 +1529,7 @@ mod tests {
         assert_eq!(import_axon(&mut p, &setting, &title), 2);
         assert_eq!(p.keys(), ["axon:1", "axon:2"]);
         assert_eq!((p.order, p.interval_min), (Order::Shuffle, 10));
-        // Повторный импорт ничего не дублирует и свои настройки не трогает.
+        // Importing again duplicates nothing and does not touch the person's own settings.
         p.order = Order::InOrder;
         assert_eq!(import_axon(&mut p, &setting, &title), 0);
         assert_eq!(p.order, Order::InOrder);

@@ -1,56 +1,56 @@
-//! Живой исполнитель видеозаставки входа — реализация трейта
-//! [`crate::session_splash::SplashIo`] на Rust.
+//! Live executor of the login video splash — the Rust implementation of the trait
+//! [`crate::session_splash::SplashIo`].
 //!
-//! Ядро (`rexon-core::session_splash`) ведёт ВЕСЬ поток заставки: скан
-//! заставок Steam, кадр витрины, конфиг/избранное/ротацию, гибрид KSplash,
-//! правило KWin, автозапуск и все три пути прогона вместе со всеми
-//! ожиданиями и их порогами. Здесь — только исполнение того, что ядро
-//! решило: файловая система, подпроцессы (mpv/ffmpeg/systemctl/
-//! kwriteconfig6), unix-сокеты mpv-IPC и sd_notify, flock замка «один
-//! прогон на сессию», собственный X11-слой (override-redirect окно во весь
-//! экран, постер фоном, событийный raise-цикл в своём потоке) и журнал.
+//! The core (`rexon-core::session_splash`) drives the WHOLE splash flow: scanning
+//! Steam splashes, the showcase frame, config/favorites/rotation, the KSplash hybrid,
+//! the KWin rule, autostart and all three run paths together with all the
+//! waits and their thresholds. This module only executes what the core
+//! decided: the file system, subprocesses (mpv/ffmpeg/systemctl/
+//! kwriteconfig6), mpv-IPC unix sockets and sd_notify, the flock of the «one
+//! run per session» lock, its own X11 layer (a fullscreen override-redirect window,
+//! the poster as background, an event-driven raise loop in its own thread) and the log.
 //!
-//! До 2026-08-23 этот слой жил в `rexon/session_splash.py` (ctypes+libX11,
-//! `threading`, `subprocess`, `socket`, `fcntl`, Pillow). Перенесён по
-//! правилу #16 целиком; в Python остался тонкий фасад, который создаёт
-//! исполнителя (`rexon_py.SplashIo`) и передаёт его в потоки ядра.
+//! Until 2026-08-23 this layer lived in `rexon/session_splash.py` (ctypes+libX11,
+//! `threading`, `subprocess`, `socket`, `fcntl`, Pillow). It was moved wholesale per
+//! rule #16; Python kept a thin facade that creates the
+//! executor (`rexon_py.SplashIo`) and hands it to the core flows.
 //!
-//! Что изменилось при переносе (правило #16 — баги не консервируем):
-//!   * остановка raise-цикла БУДИТ поток трубой пробуждения, а не ждёт
-//!     истечения страховочного шага: раньше `join(timeout=1.0)` мог
-//!     вернуться раньше, чем поток дошёл до проверки признака, и слой
-//!     закрывался у него под руками (XRaiseWindow по уничтоженному окну);
-//!   * сроки, которые в шиме были своими числами (2 c на сокетах, 1 c на
-//!     ожидании потока), переехали в ядро — `IPC_SOCK_TIMEOUT_SEC` и
-//!     `RAISE_JOIN_WAIT_SEC`; параллельных копий значений не осталось;
-//!   * отсоединённые процессы (тест из вкладки) собираются в общий список
-//!     и подбираются при следующем запуске — раньше в долгоживущем
-//!     UI-процессе после каждого теста оставался зомби.
+//! What changed in the move (rule #16 — bugs are not preserved):
+//!   * stopping the raise loop WAKES the thread via a wake-up pipe instead of waiting
+//!     for the safety step to expire: previously `join(timeout=1.0)` could
+//!     return before the thread reached the flag check, and the layer
+//!     was closed right under it (XRaiseWindow on a destroyed window);
+//!   * timeouts that were local numbers in the shim (2 s on sockets, 1 s on
+//!     waiting for the thread) moved to the core — `IPC_SOCK_TIMEOUT_SEC` and
+//!     `RAISE_JOIN_WAIT_SEC`; no parallel copies of the values remain;
+//!   * detached processes (a test from the tab) are collected in a shared list
+//!     and reaped on the next launch — previously the long-lived
+//!     UI process was left with a zombie after every test.
 //!
-//! Допущения исполнителя (как у `LiveImpIo` импортёров): порядок `listdir`
-//! — отсортированный (у Python порядок ФС не определён); отсутствие бинаря
-//! и таймаут команды — `None`, то есть тот же безопасный дефолт, что давал
-//! Python на `OSError`/`TimeoutExpired`.
+//! Executor assumptions (as in the importers' `LiveImpIo`): `listdir` order
+//! is sorted (in Python the FS order is undefined); a missing binary
+//! and a command timeout are `None`, i.e. the same safe default that
+//! Python gave on `OSError`/`TimeoutExpired`.
 //!
-//! Сверка: `rust/rexon-core/tests/session_splash_parity.rs` (реплей журнала
-//! исполнителя) + `rust/rexon-py/tests/session_splash_roundtrip.py` (живой
-//! модуль на записанном эталоне, side-effects подменяются обёрткой поверх
-//! ЭТОГО исполнителя).
+//! Verification: `rust/rexon-core/tests/session_splash_parity.rs` (replay of the
+//! executor log) + `rust/rexon-py/tests/session_splash_roundtrip.py` (the live
+//! module on a recorded reference, side effects are swapped by a wrapper over
+//! THIS executor).
 //!
-//! ⚠️ ПОЧЕМУ ИСПОЛНИТЕЛЬ ЖИВЁТ В ЯДРЕ, А НЕ В МОСТЕ. До 2026-09-08 он лежал в
-//! `rexon-py/src/splash_io.rs`, то есть внутри крейта-`cdylib` для Python. Из
-//! Rust такой крейт не подключается вовсе, и вкладке «Steam» на Rust
-//! (`rexon-gui::steam_actions`) заставка была недоступна: её кнопки пришлось
-//! бы либо оставить мёртвыми, либо завести ВТОРУЮ копию исполнителя (правило
-//! #12 — нельзя). Модуль перенесён сюда целиком, ни строки логики не изменив;
-//! в мосте остался только `#[pyclass]`-переходник `rexon_py.SplashIo` поверх
-//! этого же типа.
+//! ⚠️ WHY THE EXECUTOR LIVES IN THE CORE AND NOT IN THE BRIDGE. Until 2026-09-08 it lived in
+//! `rexon-py/src/splash_io.rs`, i.e. inside the `cdylib` crate for Python. Such a
+//! crate cannot be used from Rust at all, and the «Steam» tab in Rust
+//! (`rexon-gui::steam_actions`) had no access to the splash: its buttons would have
+//! had to stay dead or get a SECOND copy of the executor (rule
+//! #12 — not allowed). The module was moved here wholesale without changing a line of logic;
+//! the bridge kept only the `#[pyclass]` adapter `rexon_py.SplashIo` over
+//! this same type.
 //!
-//! Единственное, что при переезде пришлось развязать, — журнал: писать в
-//! `logging` Python ядро не может и не должно. Уровень с сообщением уходят в
-//! СМЕНЯЕМЫЙ приёмник ([`set_log_sink`]); мост ставит свой и продолжает писать
-//! в `rexon.session_splash`, а Rust-процессы получают умолчание — стандартный
-//! поток ошибок.
+//! The only thing that had to be untangled in the move is the log: the core cannot
+//! and must not write into Python `logging`. Level and message go into a
+//! REPLACEABLE sink ([`set_log_sink`]); the bridge installs its own and keeps writing
+//! into `rexon.session_splash`, while Rust processes get the default — the standard
+//! error stream.
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -67,40 +67,40 @@ use crate::session_splash::SplashIo as _;
 use crate::utils as core_utils;
 
 // ============================================================================
-// Общие мелочи: время, PATH, пути, запуск команд
+// Common bits: time, PATH, paths, running commands
 // ============================================================================
 
-/// Точка отсчёта `monotonic()` — одна на процесс, как у `time.monotonic`.
+/// The reference point of `monotonic()` — one per process, like `time.monotonic`.
 fn mono_epoch() -> Instant {
     static EPOCH: OnceLock<Instant> = OnceLock::new();
     *EPOCH.get_or_init(Instant::now)
 }
 
-/// Приёмник журнала заставки: `(уровень, сообщение)`.
+/// Splash log sink: `(level, message)`.
 ///
-/// Ставится один раз на процесс. Мост в Python подставляет сюда запись в
-/// `logging.getLogger("rexon.session_splash")` — тот же логгер, что был у
-/// фасада; Rust-процессы (вкладка «Steam», бинарь заставки) обходятся
-/// умолчанием.
+/// Installed once per process. The Python bridge puts a write into
+/// `logging.getLogger("rexon.session_splash")` here — the same logger the
+/// facade had; Rust processes (the «Steam» tab, the splash binary) make do
+/// with the default.
 type LogSink = Box<dyn Fn(&str, &str) + Send + Sync>;
 
 static LOG_SINK: OnceLock<LogSink> = OnceLock::new();
 
-/// Задать приёмник журнала. Второй вызов ничего не меняет: приёмник у процесса
-/// один, и «последний победил» прятал бы строки заставки от того, кто поставил
-/// свой раньше.
+/// Set the log sink. A second call changes nothing: a process has one sink,
+/// and «last one wins» would hide splash lines from whoever installed
+/// theirs earlier.
 pub fn set_log_sink(sink: impl Fn(&str, &str) + Send + Sync + 'static) {
     let _ = LOG_SINK.set(Box::new(sink));
 }
 
-/// Строка в журнал заставки.
+/// A line into the splash log.
 ///
-/// Уровень неизвестен → `debug` (как `getattr(log, level, log.debug)`).
+/// Unknown level → `debug` (like `getattr(log, level, log.debug)`).
 ///
-/// Без своего приёмника строка уходит в общий журнал Rexon (`applog`,
-/// область `splash`). ⚠️ `debug` там пишется только при `REXON_LOG=debug`:
-/// заставка пишет отладку на каждый шаг ожидания, и запуск ролика из
-/// вкладки залил бы журнал сотнями строк.
+/// Without its own sink the line goes into the shared Rexon log (`applog`,
+/// area `splash`). ⚠️ `debug` is written there only with `REXON_LOG=debug`:
+/// the splash logs debug output on every wait step, and running a clip from
+/// the tab would flood the log with hundreds of lines.
 fn log_line(level: &str, message: &str) {
     let level = match level {
         "warning" | "info" | "error" | "critical" | "debug" => level,
@@ -110,22 +110,22 @@ fn log_line(level: &str, message: &str) {
         sink(level, message);
         return;
     }
-    // Отладка уходит в журнал только при `REXON_LOG=debug` — уровень
-    // отсекает её сам, поток ошибок больше не заливается.
+    // Debug output goes into the log only with `REXON_LOG=debug` — the level
+    // filters it by itself, the error stream is no longer flooded.
     crate::applog::write(crate::applog::level_from_name(level), "splash", message);
 }
 
-/// Исполняемый ли файл (`os.access(path, os.X_OK)`).
+/// Whether the file is executable (`os.access(path, os.X_OK)`).
 fn is_exec(path: &Path) -> bool {
     path.metadata()
         .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
 }
 
-/// Порт `shutil.which`: имя со слэшем — проверка на месте, иначе перебор
-/// `PATH`. Общий резолвер `utils::resolve_tool` здесь НЕ годится — он знает
-/// синонимы (`convert`→`magick`) и лишние каталоги, а оригинал заставки
-/// смотрел ровно `PATH`.
+/// Port of `shutil.which`: a name with a slash is checked in place, otherwise
+/// `PATH` is searched. The shared resolver `utils::resolve_tool` does NOT fit here — it knows
+/// synonyms (`convert`→`magick`) and extra directories, while the original splash
+/// looked at exactly `PATH`.
 fn which_path(name: &str) -> String {
     if name.is_empty() {
         return String::new();
@@ -147,8 +147,8 @@ fn which_path(name: &str) -> String {
     String::new()
 }
 
-/// Порт `os.path.abspath`: приклеить рабочий каталог и свернуть `.`/`..`
-/// БЕЗ обращения к файловой системе.
+/// Port of `os.path.abspath`: prepend the working directory and collapse `.`/`..`
+/// WITHOUT touching the file system.
 fn abspath(path: &str) -> String {
     let p = Path::new(path);
     let joined = if p.is_absolute() {
@@ -171,9 +171,9 @@ fn abspath(path: &str) -> String {
     out.to_string_lossy().into_owned()
 }
 
-/// Порт `os.path.realpath`: символические ссылки разворачиваются, а
-/// несуществующие звенья остаются как есть (`canonicalize` на них падает, и
-/// поиск каталога Steam по несуществующим кандидатам сломался бы).
+/// Port of `os.path.realpath`: symbolic links are resolved, while
+/// nonexistent components stay as they are (`canonicalize` fails on them, and
+/// the search for the Steam directory over nonexistent candidates would break).
 fn realpath(path: &str) -> String {
     let start = abspath(path);
     let mut out = PathBuf::from("/");
@@ -181,7 +181,7 @@ fn realpath(path: &str) -> String {
     for comp in Path::new(&start).components() {
         let Component::Normal(name) = comp else { continue };
         out.push(name);
-        // Разворачиваем цепочку ссылок этого звена (потолок — как у ядра ОС).
+        // Resolve this component's link chain (the limit is the same as the OS kernel's).
         while hops < 40 {
             let Ok(meta) = std::fs::symlink_metadata(&out) else { break };
             if !meta.file_type().is_symlink() {
@@ -208,9 +208,9 @@ fn realpath(path: &str) -> String {
     out.to_string_lossy().into_owned()
 }
 
-/// Порт `subprocess.run(capture_output=True, text=True, timeout=…)`:
-/// `(rc, stdout, stderr)` либо `None` на любой неудаче (нет бинаря,
-/// таймаут) — тот же безопасный дефолт, что давал Python на `OSError`.
+/// Port of `subprocess.run(capture_output=True, text=True, timeout=…)`:
+/// `(rc, stdout, stderr)` or `None` on any failure (no binary,
+/// timeout) — the same safe default that Python gave on `OSError`.
 pub fn run_capture(argv: &[String], timeout: f64) -> Option<core_ss::RunOut> {
     let (bin, rest) = argv.split_first()?;
     let mut child = Command::new(bin)
@@ -222,9 +222,9 @@ pub fn run_capture(argv: &[String], timeout: f64) -> Option<core_ss::RunOut> {
         .ok()?;
     let mut op = child.stdout.take();
     let mut ep = child.stderr.take();
-    // Пайпы вычитываются в своих потоках: команда, напечатавшая больше
-    // ёмкости пайпа, иначе встала бы навсегда (и таймаут её не спас бы —
-    // он ждёт выхода, а выйти она не может).
+    // Pipes are drained in their own threads: otherwise a command that printed more
+    // than the pipe capacity would hang forever (and the timeout would not save it —
+    // it waits for exit, and the command cannot exit).
     let to = std::thread::spawn(move || {
         let mut b = Vec::new();
         if let Some(p) = op.as_mut() {
@@ -265,14 +265,14 @@ pub fn run_capture(argv: &[String], timeout: f64) -> Option<core_ss::RunOut> {
 }
 
 // ============================================================================
-// unix-сокеты: mpv-IPC и sd_notify
+// unix sockets: mpv-IPC and sd_notify
 // ============================================================================
 
-/// Соединение с unix-сокетом по пути ИЛИ в abstract namespace (адрес,
-/// начинающийся с NUL, — так systemd отдаёт `NOTIFY_SOCKET=@…`; ни
-/// `UnixStream::connect`, ни `UnixDatagram::connect` такого не умеют).
+/// Connect to a unix socket by path OR in the abstract namespace (an address
+/// starting with NUL — that is how systemd hands out `NOTIFY_SOCKET=@…`; neither
+/// `UnixStream::connect` nor `UnixDatagram::connect` can do that).
 ///
-/// `dgram` — датаграмма (sd_notify) вместо потока (mpv-IPC).
+/// `dgram` — a datagram (sd_notify) instead of a stream (mpv-IPC).
 fn connect_unix(addr: &str, dgram: bool, timeout: f64) -> Option<UnixSock> {
     let bytes = addr.as_bytes();
     let mut sa: libc::sockaddr_un = unsafe { std::mem::zeroed() };
@@ -318,7 +318,7 @@ fn connect_unix(addr: &str, dgram: bool, timeout: f64) -> Option<UnixSock> {
     Some(sock)
 }
 
-/// Дескриптор сокета, закрывающийся сам (`with socket.socket(...)`).
+/// A socket descriptor that closes itself (`with socket.socket(...)`).
 struct UnixSock(libc::c_int);
 
 impl UnixSock {
@@ -353,17 +353,17 @@ impl Drop for UnixSock {
 }
 
 // ============================================================================
-// X11: собственный override-redirect слой
+// X11: our own override-redirect layer
 // ============================================================================
 
-/// Живой X11-клиент заставки: чёрное окно во весь (primary-)экран, которым
-/// НЕ управляет оконный менеджер.
+/// Live X11 client of the splash: a black window over the whole (primary) screen that
+/// the window manager does NOT manage.
 ///
-/// WM в его судьбе не участвует ⇒ слой работает одинаково на любом X11
-/// DE/WM (Plasma, XFCE, MATE, Cinnamon-X11, Budgie…) и даже ДО старта WM.
-/// mpv рисует внутрь через `--wid`. Время жизни окна = время жизни нашего
-/// соединения с X: упал процесс — X-сервер сам всё уничтожил, экран не
-/// остаётся перекрытым.
+/// The WM plays no part in its fate ⇒ the layer works the same on any X11
+/// DE/WM (Plasma, XFCE, MATE, Cinnamon-X11, Budgie…) and even BEFORE the WM starts.
+/// mpv draws into it via `--wid`. The window lives as long as our
+/// connection to X: if the process dies, the X server destroys everything itself, and the screen
+/// does not stay covered.
 mod x11 {
     use std::ffi::CString;
     use std::os::raw::{c_int, c_uint, c_ulong};
@@ -374,21 +374,21 @@ mod x11 {
     use crate::session_splash as core_ss;
     use x11_dl::xlib;
 
-    /// libX11, поднятая через dlopen. Указатели на функции разделяются с
-    /// потоком raise-цикла (перед первым `XOpenDisplay` зовём
-    /// `XInitThreads`, поэтому libX11 сама разводит потоки).
+    /// libX11 loaded via dlopen. Function pointers are shared with the
+    /// raise-loop thread (`XInitThreads` is called before the first `XOpenDisplay`,
+    /// so libX11 handles threads itself).
     struct Lib(xlib::Xlib);
     unsafe impl Send for Lib {}
     unsafe impl Sync for Lib {}
 
-    /// Соединение с X-сервером. Отдельное на поток; общее только там, где
-    /// без него не обойтись (страховочный поллинг фолбэка).
+    /// Connection to the X server. Separate per thread; shared only where
+    /// it cannot be avoided (the fallback safety polling).
     #[derive(Clone, Copy)]
     struct Dpy(*mut xlib::Display);
     unsafe impl Send for Dpy {}
     unsafe impl Sync for Dpy {}
 
-    /// Труба пробуждения: остановка raise-цикла не ждёт истечения шага.
+    /// Wake-up pipe: stopping the raise loop does not wait for the step to expire.
     struct WakePipe {
         read: c_int,
         write: c_int,
@@ -422,13 +422,13 @@ mod x11 {
         }
     }
 
-    /// Работающий raise-цикл: признак остановки, труба пробуждения и
-    /// уведомление о том, что поток действительно ушёл.
+    /// A running raise loop: the stop flag, the wake-up pipe and
+    /// the notification that the thread has really gone.
     struct RaiseLoop {
         stop: Arc<AtomicBool>,
         pipe: Arc<WakePipe>,
-        /// Приёмник под замком: сам по себе он не `Sync`, а слой лежит
-        /// внутри объекта, который Python вправе трогать из любого потока.
+        /// The receiver is behind a lock: by itself it is not `Sync`, and the layer lives
+        /// inside an object that Python may touch from any thread.
         done: Mutex<mpsc::Receiver<()>>,
     }
 
@@ -443,9 +443,9 @@ mod x11 {
     }
 
     impl Overlay {
-        /// Создать слой. `geometry` — прямоугольник primary-монитора
-        /// (`None` — весь экран). Любая неудача (нет libX11, нет
-        /// X-сервера) — `None`: вызывающий откатывается на оконный mpv.
+        /// Create the layer. `geometry` — the rectangle of the primary monitor
+        /// (`None` — the whole screen). Any failure (no libX11, no
+        /// X server) — `None`: the caller falls back to windowed mpv.
         pub fn create(geometry: Option<(i64, i64, i64, i64)>) -> Option<Overlay> {
             let lib = match xlib::Xlib::open() {
                 Ok(l) => Arc::new(Lib(l)),
@@ -455,7 +455,7 @@ mod x11 {
                 }
             };
             unsafe {
-                // ДО XOpenDisplay: XRaiseWindow дёргается из фонового потока.
+                // BEFORE XOpenDisplay: XRaiseWindow is called from a background thread.
                 (lib.0.XInitThreads)();
                 let dpy = (lib.0.XOpenDisplay)(std::ptr::null());
                 if dpy.is_null() {
@@ -500,8 +500,8 @@ mod x11 {
                 if let Ok(name) = CString::new("rexon-session-splash") {
                     (lib.0.XStoreName)(dpy, win, name.as_ptr());
                 }
-                // НЕ маппим здесь: на тёплом входе постер ставится фоном ДО
-                // маппинга, чтобы окно появилось сразу с картинкой.
+                // Do NOT map here: on a warm login the poster is set as background BEFORE
+                // mapping, so the window appears with the picture right away.
                 Some(Overlay {
                     lib,
                     dpy: Some(Dpy(dpy)),
@@ -518,7 +518,7 @@ mod x11 {
             self.dpy.map(|d| d.0)
         }
 
-        /// Показать слой (поверх всего). Звать после подготовки фона.
+        /// Show the layer (above everything). Call after preparing the background.
         pub fn map(&self) {
             let Some(dpy) = self.dpy() else { return };
             unsafe {
@@ -527,7 +527,7 @@ mod x11 {
             }
         }
 
-        /// Композитор уже работает? Мгновенная проверка `_NET_WM_CM_S<n>`.
+        /// Is a compositor already running? An instant check of `_NET_WM_CM_S<n>`.
         pub fn compositor_present(&self) -> bool {
             let Some(dpy) = self.dpy() else { return false };
             let Ok(name) = CString::new(format!("_NET_WM_CM_S{}", self.screen)) else {
@@ -539,19 +539,19 @@ mod x11 {
             }
         }
 
-        /// Нарисовать постер (первый кадр ролика) фоном слоя вместо чёрного.
+        /// Draw the poster (the clip's first frame) as the layer background instead of black.
         ///
-        /// Закрывает чёрную паузу между гашением постера ksplashqml
-        /// (~0,4 c от входа) и первым кадром mpv (~1,5 c инициализации vo):
-        /// слой показывает тот же кадр, который затем нарисует mpv.
-        /// Letterbox — как у mpv (вписать с сохранением пропорций, поля
-        /// чёрные). Любая неудача не фатальна: остаётся чёрный фон.
+        /// Covers the black pause between ksplashqml hiding its poster
+        /// (~0.4 s after login) and mpv's first frame (~1.5 s of vo initialization):
+        /// the layer shows the same frame that mpv will then draw.
+        /// Letterbox — like mpv (fit preserving the aspect ratio, black
+        /// bars). Any failure is not fatal: the black background stays.
         pub fn set_poster(&self, png: &str) -> bool {
             let Some(dpy) = self.dpy() else { return false };
             let x = &self.lib.0;
             let depth = unsafe { (x.XDefaultDepth)(dpy, self.screen) };
             if !core_ss::X11_POSTER_DEPTHS.contains(&(depth as i64)) {
-                // 30-битный (10bpc) visual: наши BGRX-байты легли бы криво.
+                // A 30-bit (10bpc) visual: our BGRX bytes would land wrong.
                 super::log_line("debug", &format!("set_poster: depth={depth} не поддержан"));
                 return false;
             }
@@ -564,8 +564,8 @@ mod x11 {
                 Some(im) => im.to_rgb8(),
                 None => return false,
             };
-            // Рамку letterbox считает ядро: формула та же, что у mpv
-            // --fullscreen, и живёт она в одном месте.
+            // The core computes the letterbox frame: the formula is the same as mpv's
+            // --fullscreen, and it lives in one place.
             let (ox, oy, sw, sh) = core_ss::letterbox_rect(
                 src.width() as i64,
                 src.height() as i64,
@@ -581,7 +581,7 @@ mod x11 {
                 sh as u32,
                 image::imageops::FilterType::Lanczos3,
             );
-            // Холст BGRX во весь слой: поля остаются чёрными.
+            // A BGRX canvas over the whole layer: the bars stay black.
             let mut buf = vec![0u8; (w as usize) * (h as usize) * 4];
             for row in 0..scaled.height() {
                 let dy = oy as u32 + row;
@@ -625,28 +625,28 @@ mod x11 {
                     return false;
                 }
                 (x.XPutImage)(dpy, pixmap, gc, img, 0, 0, 0, 0, w, h);
-                // НЕ XDestroyImage: данные — наш буфер, освобождаем только
-                // структуру.
+                // NOT XDestroyImage: the data is our buffer, we free only the
+                // structure.
                 (*img).data = std::ptr::null_mut();
                 (x.XFree)(img.cast());
                 (x.XFreeGC)(dpy, gc);
                 (x.XSetWindowBackgroundPixmap)(dpy, self.window, pixmap);
                 (x.XClearWindow)(dpy, self.window);
-                // фон скопирован ссылкой на сервере — pixmap можно отпустить
+                // the background was copied by reference on the server — the pixmap can be released
                 (x.XFreePixmap)(dpy, pixmap);
                 (x.XFlush)(dpy);
             }
             true
         }
 
-        /// Запустить фоновый цикл «держать слой выше чужих поздних попапов».
+        /// Start the background loop «keep the layer above other late popups».
         ///
-        /// Событийно, не поллингом: подписка `SubstructureNotify` на корень —
-        /// map/restack ЛЮБОГО чужого окна (напр. панелька перевода Firefox
-        /// при восстановлении сессии) поднимает слой в ту же миллисекунду,
-        /// до следующего кадра композитора, т.е. попап не успевает попасть
-        /// на экран. Поллинг раз в 0,08 c такие блики оставлял до ~80 мс.
-        /// Своё соединение с X: не делить очередь событий с главным потоком.
+        /// Event-driven, not polling: a `SubstructureNotify` subscription on the root —
+        /// map/restack of ANY foreign window (e.g. Firefox's translation bar
+        /// on session restore) raises the layer in the same millisecond,
+        /// before the compositor's next frame, i.e. the popup has no time to reach
+        /// the screen. Polling every 0.08 s left such flashes for up to ~80 ms.
+        /// Its own X connection: do not share the event queue with the main thread.
         pub fn raise_start(&mut self) {
             if self.raiser.is_some() {
                 return;
@@ -675,8 +675,8 @@ mod x11 {
             });
         }
 
-        /// Остановить цикл и ДОЖДАТЬСЯ потока: закрывать окно, пока он ещё
-        /// зовёт по нему XRaiseWindow, нельзя.
+        /// Stop the loop and WAIT for the thread: the window must not be closed while it still
+        /// calls XRaiseWindow on it.
         pub fn raise_stop(&mut self) {
             let Some(r) = self.raiser.take() else { return };
             r.stop.store(true, Ordering::SeqCst);
@@ -691,7 +691,7 @@ mod x11 {
             }
         }
 
-        /// Уничтожить слой и закрыть соединение с X.
+        /// Destroy the layer and close the X connection.
         pub fn close(&mut self) {
             self.raise_stop();
             let Some(dpy) = self.dpy.take().map(|d| d.0) else { return };
@@ -708,7 +708,7 @@ mod x11 {
         }
     }
 
-    /// Тело raise-цикла (в своём потоке, со своим соединением с X).
+    /// Body of the raise loop (in its own thread, with its own X connection).
     fn raise_loop(
         lib: &Arc<Lib>,
         main_dpy: Option<Dpy>,
@@ -720,12 +720,12 @@ mod x11 {
         let x = &lib.0;
         let dpy = unsafe { (x.XOpenDisplay)(std::ptr::null()) };
         if dpy.is_null() {
-            // Своё соединение не поднялось — страховочный поллинг по
-            // общему (главное соединение живо, пока слой не закрыт).
+            // Our own connection did not come up — safety polling over the
+            // shared one (the main connection is alive until the layer is closed).
             let Some(main) = main_dpy else { return };
             while !stop.load(Ordering::SeqCst) {
                 if wait_fds(&[pipe.read], core_ss::RAISE_POLL_FALLBACK_SEC) == Some(0) {
-                    break; // разбудили — уходим
+                    break; // woken up — leave
                 }
                 unsafe {
                     (x.XRaiseWindow)(main.0, win);
@@ -744,9 +744,9 @@ mod x11 {
             while !stop.load(Ordering::SeqCst) {
                 let ready = wait_fds(&[pipe.read, fd], core_ss::RAISE_INTERVAL_SEC);
                 if ready == Some(0) {
-                    break; // разбудили на остановку
+                    break; // woken up to stop
                 }
-                // таймаут → страховочный raise
+                // timeout → safety raise
                 let mut foreign = ready.is_none();
                 while (x.XPending)(dpy) > 0 {
                     (x.XNextEvent)(dpy, &mut ev);
@@ -756,8 +756,8 @@ mod x11 {
                         xlib::CirculateNotify => (true, ev.circulate.window),
                         _ => (false, 0),
                     };
-                    // свои события фильтруем: наш raise тоже родит
-                    // ConfigureNotify — иначе цикл кормил бы сам себя
+                    // filter our own events: our raise also produces a
+                    // ConfigureNotify — otherwise the loop would feed itself
                     if kind && other != win {
                         foreign = true;
                     }
@@ -771,8 +771,8 @@ mod x11 {
         }
     }
 
-    /// Ждать готовности дескрипторов: `Some(индекс первого готового)` либо
-    /// `None` по таймауту (порт `select.select` с тайм-аутом).
+    /// Wait for descriptors to become ready: `Some(index of the first ready one)` or
+    /// `None` on timeout (port of `select.select` with a timeout).
     fn wait_fds(fds: &[c_int], timeout: f64) -> Option<usize> {
         let mut pfd: Vec<libc::pollfd> = fds
             .iter()
@@ -792,32 +792,32 @@ mod x11 {
 }
 
 // ============================================================================
-// Живой исполнитель трейта SplashIo
+// Live executor of the SplashIo trait
 // ============================================================================
 
-/// Замок «один прогон заставки на сессию»: дескриптор живёт до конца
-/// процесса вместе с flock (порт модульной переменной `_LOCK_FD`).
+/// The «one splash run per session» lock: the descriptor lives until the end of
+/// the process together with the flock (port of the module variable `_LOCK_FD`).
 static LOCK_FD: Mutex<Option<File>> = Mutex::new(None);
 
-/// Отсоединённые процессы (тест заставки из вкладки): держим, чтобы
-/// подобрать их при следующем запуске и не копить зомби в UI-процессе.
+/// Detached processes (a splash test from the tab): we keep them to
+/// reap them on the next launch and not accumulate zombies in the UI process.
 static DETACHED: Mutex<Vec<Child>> = Mutex::new(Vec::new());
 
-/// Реальный исполнитель [`core_ss::SplashIo`].
+/// The real executor of [`core_ss::SplashIo`].
 ///
-/// Один экземпляр — на один вызов фасада: в нём лежат дескрипторы
-/// запущенных процессов и X11-слоёв, поэтому гасим только СВОИ (правило
-/// «никаких pkill/killall по имени»).
+/// One instance per facade call: it holds the descriptors of
+/// started processes and X11 layers, so we only stop OUR OWN (the
+/// «no pkill/killall by name» rule).
 pub struct LiveSplashIo {
-    /// `os.path.expanduser("~")` — наблюдение, которое даёт Python.
+    /// `os.path.expanduser("~")` — the observation Python provides.
     home: String,
-    /// `sys.executable` — нужен составным шагам установки автозапуска.
+    /// `sys.executable` — needed by the compound steps of autostart installation.
     python_exe: String,
     procs: HashMap<i64, Child>,
     overlays: HashMap<i64, x11::Overlay>,
     next: i64,
-    /// Зерно жребия ротации (xorshift): свой, чтобы не тянуть крейт ради
-    /// одного `random.choice`.
+    /// Rotation draw seed (xorshift): our own, so as not to pull in a crate for
+    /// a single `random.choice`.
     seed: u64,
 }
 
@@ -844,14 +844,14 @@ impl LiveSplashIo {
     }
 
     fn rnd(&mut self) -> u64 {
-        // xorshift64*: жребий ротации, к качеству требований нет.
+        // xorshift64*: the rotation draw, no quality requirements.
         self.seed ^= self.seed << 13;
         self.seed ^= self.seed >> 7;
         self.seed ^= self.seed << 17;
         self.seed
     }
 
-    /// Прямоугольник primary-монитора по выводу xrandr (argv и разбор — ядро).
+    /// Rectangle of the primary monitor from xrandr output (argv and parsing are in the core).
     fn primary_geometry(&mut self) -> Option<(i64, i64, i64, i64)> {
         let xr = self.which("xrandr");
         if xr.is_empty() {
@@ -918,8 +918,8 @@ impl core_ss::SplashIo for LiveSplashIo {
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
-        // Порядок ФС не определён и у Python — сортируем, чтобы витрина и
-        // журнал исполнителя были воспроизводимы.
+        // FS order is undefined in Python too — we sort so that the showcase and
+        // the executor log are reproducible.
         out.sort();
         out
     }
@@ -952,10 +952,10 @@ impl core_ss::SplashIo for LiveSplashIo {
     }
 
     fn write_atomic(&mut self, path: &str, content: &str) -> Option<String> {
-        // Недописанный конфиг/юнит на месте настоящего — худшее, что может
-        // случиться при входе в сессию. Отсюда общая дверь ядра: своя пара
-        // «запись + переименование» здесь была без `fsync`, а заставка входа
-        // как раз переживает выключение машины чаще всего прочего.
+        // A half-written config/unit in place of the real one is the worst thing that can
+        // happen at session login. Hence the core's shared door: the local
+        // «write + rename» pair here had no `fsync`, and the login splash is
+        // exactly what most often lives through a machine power-off.
         crate::utils::atomic_write(path, content).err().map(|e| e.to_string())
     }
 
@@ -986,8 +986,8 @@ impl core_ss::SplashIo for LiveSplashIo {
     }
 
     fn spawn(&mut self, argv: &[String], detached: bool) -> Result<i64, String> {
-        // Подобрать отсоединённых предшественников: в долгоживущем
-        // UI-процессе иначе копятся зомби.
+        // Reap detached predecessors: otherwise zombies accumulate in the long-lived
+        // UI process.
         if let Ok(mut kept) = DETACHED.lock() {
             kept.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_))));
         }
@@ -997,8 +997,8 @@ impl core_ss::SplashIo for LiveSplashIo {
         let mut cmd = Command::new(bin);
         cmd.args(rest);
         if detached {
-            // Порт `start_new_session=True`: свой сеанс, чтобы процесс
-            // пережил выход вызывающего и не ловил его сигналы.
+            // Port of `start_new_session=True`: its own session, so the process
+            // outlives the caller's exit and does not catch its signals.
             unsafe {
                 cmd.pre_exec(|| {
                     libc::setsid();
@@ -1012,8 +1012,8 @@ impl core_ss::SplashIo for LiveSplashIo {
                     if let Ok(mut kept) = DETACHED.lock() {
                         kept.push(child);
                     }
-                    // Дескриптор вызывающему не нужен: отсоединённый прогон
-                    // ядро больше не трогает.
+                    // The caller does not need the descriptor: the core no longer touches
+                    // a detached run.
                     let h = self.handle();
                     Ok(h)
                 } else {
@@ -1053,7 +1053,7 @@ impl core_ss::SplashIo for LiveSplashIo {
     }
 
     fn terminate(&mut self, proc: i64) {
-        // Только СВОЙ дескриптор, никогда не по имени процесса.
+        // Only OUR OWN descriptor, never by process name.
         if let Some(c) = self.procs.get_mut(&proc) {
             let pid = c.id() as libc::pid_t;
             unsafe { libc::kill(pid, libc::SIGTERM) };
@@ -1093,9 +1093,9 @@ impl core_ss::SplashIo for LiveSplashIo {
     }
 
     fn ipc_request(&mut self, sock: &str, payload: &str, reply_marker: &str) -> Option<String> {
-        // В сокет вперемешку сыплются события, поэтому читаем, пока не
-        // появится завершённая строка с маркером (его даёт ядро) либо пока
-        // соединение не закроется / не упрёмся в предел. Разбор — в ядре.
+        // Events pour into the socket intermixed, so we read until a complete line with
+        // the marker appears (the core provides it), or until the
+        // connection closes / we hit the limit. Parsing is in the core.
         let s = connect_unix(sock, false, core_ss::IPC_SOCK_TIMEOUT_SEC)?;
         if !s.send_all(payload.as_bytes()) {
             return None;
@@ -1128,7 +1128,7 @@ impl core_ss::SplashIo for LiveSplashIo {
     }
 
     fn acquire_lock(&mut self, path: &str) -> bool {
-        // Один сплеш на сессию (юнит + autostart, двойной клик…).
+        // One splash per session (unit + autostart, double click…).
         let Ok(f) = File::create(path) else { return false };
         let rc = unsafe {
             libc::flock(
@@ -1139,7 +1139,7 @@ impl core_ss::SplashIo for LiveSplashIo {
         if rc != 0 {
             return false;
         }
-        // Дескриптор живёт до конца процесса вместе с замком.
+        // The descriptor lives until the end of the process together with the lock.
         if let Ok(mut slot) = LOCK_FD.lock() {
             *slot = Some(f);
         }
@@ -1147,9 +1147,9 @@ impl core_ss::SplashIo for LiveSplashIo {
     }
 
     fn kwin_reconfigure_dbus(&mut self, timeout: f64) -> bool {
-        // Основной путь reconfigure — сессионная шина: `dbus-send` есть
-        // везде, где есть сама шина. Порядок предпочтения инструментов и
-        // сборка argv — общие (`utils`), своей копии здесь нет.
+        // The main reconfigure path is the session bus: `dbus-send` exists
+        // wherever the bus itself exists. Tool preference order and
+        // argv assembly are shared (`utils`), there is no local copy here.
         let path_env = std::env::var("PATH").ok();
         for (tool, kind) in core_utils::DBUS_TOOL_PREFERENCE {
             let Some(exe) = core_utils::resolve_tool(tool, &[], path_env.as_deref()) else {
@@ -1212,9 +1212,9 @@ impl core_ss::SplashIo for LiveSplashIo {
         }
     }
 
-    // ── составные шаги маршрута автозапуска ────────────────────────────
-    // Их внутренности тоже в ядре; маршрут `install_autostart` зовёт их
-    // ЧЕРЕЗ исполнителя, чтобы сверка маршрутов могла подменить шаг.
+    // ── compound steps of the autostart route ──────────────────────────
+    // Their internals are in the core too; the `install_autostart` route calls them
+    // THROUGH the executor so that route verification can swap a step.
 
     fn step_install_hybrid(&mut self, video: &str) -> (bool, String) {
         let (home, exe) = (self.home.clone(), self.python_exe.clone());

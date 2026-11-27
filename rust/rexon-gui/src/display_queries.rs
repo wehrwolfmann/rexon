@@ -1,31 +1,31 @@
-// Страница «Дисплеи»: холсты (canvas) и сами дисплеи — раскладка,
-// правка холстов и псевдоним дисплея.
+// The "Displays" page: canvases and the displays themselves — layout,
+// canvas editing and a display alias.
 //
-// Холсты
-// появились у вендора в v0.3.5, ни C++-слой, ни Python-мост их не знали —
-// из-за этого `DisplaysPage.qml` не компилировалась вовсе
-// («W.CanvasLayoutSetQuery is not a type»), и вкладка теряла страницу
-// целиком, а не одну кнопку. Партия 8 добавила сюда соседей по вендорному
-// файлу — `DisplayLayoutSetQuery` и `DisplayRenameQuery`.
+// Canvases appeared at the vendor in v0.3.5; neither the C++ layer nor the
+// Python bridge knew them — because of that `DisplaysPage.qml` did not
+// compile at all ("W.CanvasLayoutSetQuery is not a type"), and the tab lost
+// the whole page rather than one button. Batch 8 added the neighbours from
+// the vendor file here — `DisplayLayoutSetQuery` and `DisplayRenameQuery`.
 //
-// Эталон — `ui/src/query/display_query.cpp` вендора на теге v0.3.5
-// (f7baecd). Разбор ответа — в ядре (`rexon_core::we_manage`), здесь
-// только Qt-сторона.
+// Reference: the vendor's `ui/src/query/display_query.cpp` at tag v0.3.5
+// (f7baecd). Response parsing is in the core (`rexon_core::we_manage`);
+// here there is only the Qt side.
 //
-// Что порт чинит по дороге (правило #16):
+// What the port fixes along the way (rule #16):
 //
-//   1. Положение в `display_layout_set` не резалось в 0..100 — у
-//      оригинала `std::clamp`, у питоновского моста ничего. Значение мимо
-//      диапазона уезжало демону как есть.
-//   2. Обёртка ядра `we_client::display_rename` не слала `display_id`
-//      вовсе, хотя с v0.2.4 демон резолвит цель именно по нему, а `name`
-//      держит для старых клиентов. Починено в самой обёртке — она общая.
+//   1. The position in `display_layout_set` was not clamped to 0..100 — the
+//      original has `std::clamp`, the Python bridge had nothing. A value out
+//      of range went to the daemon as is.
+//   2. The core wrapper `we_client::display_rename` did not send
+//      `display_id` at all, although since v0.2.4 the daemon resolves the
+//      target precisely by it and keeps `name` for old clients. Fixed in
+//      the wrapper itself — it is shared.
 //
-// waywallen 0.4.2 добавил `DisplayPauseSetQuery` — ручную паузу одного
-// дисплея (кнопка на странице «Дисплеи»). Эталон — `display_query.cpp`
-// тега v0.4.2 (4d45025).
+// waywallen 0.4.2 added `DisplayPauseSetQuery` — manually pausing one
+// display (a button on the "Displays" page). Reference: `display_query.cpp`
+// of tag v0.4.2 (4d45025).
 
-/// Мост cxx-qt: холсты и дисплеи страницы «Дисплеи».
+/// cxx-qt bridge: canvases and displays of the "Displays" page.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -69,7 +69,7 @@ pub mod qobject {
                     WRITE = set_clear_location, NOTIFY = params_changed)]
         #[qproperty(bool, clear_rotation, cxx_name = "clearRotation", READ = clear_rotation,
                     WRITE = set_clear_rotation, NOTIFY = params_changed)]
-        /// waywallen 0.4.4: отражение — задано ли, какое, и сброс.
+        /// waywallen 0.4.4: flip — whether it is set, which one, and reset.
         #[qproperty(bool, flip_set, cxx_name = "flipSet", READ = flip_set,
                     WRITE = set_flip_set, NOTIFY = params_changed)]
         #[qproperty(i32, flip, READ = flip, WRITE = set_flip, NOTIFY = params_changed)]
@@ -94,9 +94,9 @@ pub mod qobject {
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
         #[qproperty(QString, name, READ = name, WRITE = set_name, NOTIFY = params_changed)]
-        /// ⚠️ `f64`, а не `u64`: 64-битное целое наружу в QML не выпускаем
-        /// — литеральная привязка «displayId: 7» отказывает вместе со всем
-        /// документом. Разбор и границы точности — `src/qvalue.rs`.
+        /// Warning: `f64`, not `u64`: we do not expose a 64-bit integer to QML — a
+        /// literal binding "displayId: 7" fails together with the whole document.
+        /// The analysis and precision limits are in `src/qvalue.rs`.
         #[qproperty(f64, display_id, cxx_name = "displayId", READ = display_id,
                     WRITE = set_display_id, NOTIFY = params_changed)]
         #[qproperty(bool, fillmode_set, cxx_name = "fillmodeSet", READ = fillmode_set,
@@ -124,7 +124,7 @@ pub mod qobject {
                     WRITE = set_clear_align, NOTIFY = params_changed)]
         #[qproperty(bool, clear_rotation, cxx_name = "clearRotation", READ = clear_rotation,
                     WRITE = set_clear_rotation, NOTIFY = params_changed)]
-        /// waywallen 0.4.4: отражение — задано ли, какое, и сброс.
+        /// waywallen 0.4.4: flip — whether it is set, which one, and reset.
         #[qproperty(bool, flip_set, cxx_name = "flipSet", READ = flip_set,
                     WRITE = set_flip_set, NOTIFY = params_changed)]
         #[qproperty(i32, flip, READ = flip, WRITE = set_flip, NOTIFY = params_changed)]
@@ -140,9 +140,9 @@ pub mod qobject {
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
         #[qproperty(QString, name, READ = name, WRITE = set_name, NOTIFY = params_changed)]
-        /// ⚠️ `f64`, а не `u64`: 64-битное целое наружу в QML не выпускаем
-        /// — литеральная привязка «displayId: 7» отказывает вместе со всем
-        /// документом. Разбор и границы точности — `src/qvalue.rs`.
+        /// Warning: `f64`, not `u64`: we do not expose a 64-bit integer to QML — a
+        /// literal binding "displayId: 7" fails together with the whole document.
+        /// The analysis and precision limits are in `src/qvalue.rs`.
         #[qproperty(f64, display_id, cxx_name = "displayId", READ = display_id,
                     WRITE = set_display_id, NOTIFY = params_changed)]
         #[qproperty(QString, alias, READ = alias, WRITE = set_alias, NOTIFY = params_changed)]
@@ -156,7 +156,7 @@ pub mod qobject {
         #[qproperty(bool, querying, READ = querying, NOTIFY = querying_changed)]
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
-        /// ⚠️ `f64`, а не `u64` — по той же причине, что у соседей
+        /// Warning: `f64`, not `u64` — for the same reason as the neighbours
         /// (`src/qvalue.rs`).
         #[qproperty(f64, display_id, cxx_name = "displayId", READ = display_id,
                     WRITE = set_display_id, NOTIFY = params_changed)]
@@ -222,10 +222,10 @@ pub mod qobject {
         fn canvas_created(self: Pin<&mut CanvasMutationQuery>, canvas_id: QString);
         #[qsignal]
         #[cxx_name = "canvasUpdated"]
-        /// ⚠️ `revision` уходит `f64` по той же причине, что и свойства:
-        /// параметр сигнала с метатипом `unsigned long` движку QML
-        /// незнаком. Обработчик у вендора — `onCanvasUpdated: function
-        /// (canvasId, revision)` (DisplaysPage.qml:185).
+        /// Warning: `revision` goes out as `f64` for the same reason as the
+        /// properties: a signal parameter with the `unsigned long` metatype is
+        /// unknown to the QML engine. The vendor's handler is `onCanvasUpdated:
+        /// function (canvasId, revision)` (DisplaysPage.qml:185).
         fn canvas_updated(self: Pin<&mut CanvasMutationQuery>, canvas_id: QString,
                           revision: f64);
         #[qsignal]
@@ -564,7 +564,7 @@ use crate::query_base::decode_failed;
 use crate::qvalue::variant_to_json;
 
 // ════════════════════════════════════════════════════════════════════════
-// CanvasLayoutSetQuery — раскладка холста (заполнение, положение, поворот)
+// CanvasLayoutSetQuery — canvas layout (fill, position, rotation)
 // ════════════════════════════════════════════════════════════════════════
 
 pub struct CanvasLayoutSetQueryRust {
@@ -580,7 +580,7 @@ pub struct CanvasLayoutSetQueryRust {
     clear_fillmode: bool,
     clear_location: bool,
     clear_rotation: bool,
-    /// waywallen 0.4.4: отражение (`m_flip { 1 }` оригинала — FLIP_NONE).
+    /// waywallen 0.4.4: flip (the original's `m_flip { 1 }` — FLIP_NONE).
     flip_set: bool,
     flip: i32,
     clear_flip: bool,
@@ -588,8 +588,8 @@ pub struct CanvasLayoutSetQueryRust {
 }
 
 impl Default for CanvasLayoutSetQueryRust {
-    /// Положение по умолчанию — центр (50/50), как у оригинала. Остальное
-    /// — нули производного `Default`.
+    /// The default position is the centre (50/50), as in the original. The
+    /// rest are zeros of the derived `Default`.
     fn default() -> Self {
         CanvasLayoutSetQueryRust {
             base: QueryState::default(),
@@ -614,11 +614,12 @@ impl Default for CanvasLayoutSetQueryRust {
 
 impl_query_base!(CanvasLayoutSetQuery);
 
-/// Сеттер, который у оригинала печатает макрос `WW_SET`: значение
-/// меняется — летит ОДИН общий `paramsChanged`.
-/// То же для 64-битного поля: наружу в QML — `f64`, внутри — точное `u64`.
-/// Отдельный макрос, а не параметр к прежнему, потому что тип фасада и тип
-/// поля здесь РАЗНЫЕ (почему — `src/qvalue.rs`).
+/// A setter that the original's `WW_SET` macro emits: when the value
+/// changes, ONE shared `paramsChanged` fires.
+/// The same for a 64-bit field: exposed to QML as `f64`, inside an exact
+/// `u64`. A separate macro rather than a parameter of the previous one,
+/// because the facade type and the field type are DIFFERENT here (why — see
+/// `src/qvalue.rs`).
 macro_rules! param_setter_u64 {
     ($setter:ident, $field:ident) => {
         pub fn $setter(mut self: Pin<&mut Self>, value: f64) {
@@ -714,9 +715,9 @@ impl qobject::CanvasLayoutSetQuery {
     }
 
     pub fn reload(mut self: Pin<&mut Self>) {
-        // Проценты режутся в 0..100 здесь же, как у оригинала: страница
-        // тоже режет их своим clampPercent, но кадр обязан быть валидным
-        // и при вызове из другого места.
+        // Percentages are clamped to 0..100 right here, as in the original: the
+        // page also clamps them with its clampPercent, but the frame must be valid
+        // when called from elsewhere too.
         let payload = pb::CanvasLayoutSetRequest {
             canvas_id: self.canvas_id.clone(),
             r#override: Some(pb::LayoutOverride {
@@ -729,8 +730,8 @@ impl qobject::CanvasLayoutSetQuery {
                 location_set: self.location_set,
                 location_x: self.location_x.clamp(0, 100) as u32,
                 location_y: self.location_y.clamp(0, 100) as u32,
-                // waywallen 0.4.4: отражение — орган «Отражение» страницы
-                // «Дисплеи» (`FlipButtons`).
+                // waywallen 0.4.4: flip — the "Flip" control of the "Displays" page
+                // (`FlipButtons`).
                 flip_set: self.flip_set,
                 flip: self.flip,
             }),
@@ -749,7 +750,8 @@ impl qobject::CanvasLayoutSetQuery {
         if !self.as_mut().rust_mut().pending.remove(&token) {
             return;
         }
-        // Оригинал разбирает ответ пустой лямбдой: важен только исход.
+        // The original parses the answer with an empty lambda: only the outcome
+        // matters.
         let parsed = {
             let mut rust = self.as_mut().rust_mut();
             apply_ack(&mut rust.base, frame.as_slice())
@@ -773,14 +775,15 @@ impl qobject::CanvasLayoutSetQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// CanvasMutationQuery — создать, переписать, удалить холст
+// CanvasMutationQuery — create, rewrite, delete a canvas
 // ════════════════════════════════════════════════════════════════════════
 
-/// Кадр, подготовленный вызовом из QML и ещё не ушедший.
+/// A frame prepared by a call from QML and not yet sent.
 struct PreparedRequest {
     field: &'static str,
     payload: Vec<u8>,
-    /// Номер удаляемого холста — демон в ответе его не повторяет.
+    /// Number of the canvas being deleted — the daemon does not repeat it in
+    /// the answer.
     deleted_id: String,
 }
 
@@ -788,16 +791,17 @@ struct PreparedRequest {
 pub struct CanvasMutationQueryRust {
     base: QueryState,
     request: Option<PreparedRequest>,
-    /// Токен → номер удаляемого холста (пусто, если кадр не про удаление).
+    /// Token → number of the canvas being deleted (empty if the frame is not
+    /// about deletion).
     pending: std::collections::BTreeMap<i64, String>,
 }
 
 impl_query_base!(CanvasMutationQuery);
 
 impl qobject::CanvasMutationQuery {
-    /// Подготовленного кадра нет — молча выйти. Так же ведёт себя
-    /// оригинал: `reload()` без `m_request` не делает ничего, и это важно,
-    /// потому что база зовёт `reload()` по своему дебаунсу.
+    /// There is no prepared frame — return silently. The original behaves the
+    /// same way: `reload()` without `m_request` does nothing, and this matters
+    /// because the base calls `reload()` on its own debounce.
     pub fn reload(mut self: Pin<&mut Self>) {
         let Some(request) = self.as_mut().rust_mut().request.take() else {
             return;
@@ -908,7 +912,7 @@ impl qobject::CanvasMutationQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// DisplayLayoutSetQuery — раскладка одного дисплея (DisplaysPage.qml)
+// DisplayLayoutSetQuery — layout of one display (DisplaysPage.qml)
 // ════════════════════════════════════════════════════════════════════════
 
 pub struct DisplayLayoutSetQueryRust {
@@ -928,7 +932,7 @@ pub struct DisplayLayoutSetQueryRust {
     clear_location: bool,
     clear_align: bool,
     clear_rotation: bool,
-    /// waywallen 0.4.4: отражение (`m_flip { 1 }` оригинала — FLIP_NONE).
+    /// waywallen 0.4.4: flip (the original's `m_flip { 1 }` — FLIP_NONE).
     flip_set: bool,
     flip: i32,
     clear_flip: bool,
@@ -936,8 +940,8 @@ pub struct DisplayLayoutSetQueryRust {
 }
 
 impl Default for DisplayLayoutSetQueryRust {
-    /// Нули, как давал производный `Default`, кроме отражения: у оригинала
-    /// оно по умолчанию FLIP_NONE (v0.4.4).
+    /// Zeros, as the derived `Default` gave, except for the flip: in the
+    /// original it defaults to FLIP_NONE (v0.4.4).
     fn default() -> Self {
         DisplayLayoutSetQueryRust {
             base: QueryState::default(),
@@ -1052,9 +1056,9 @@ impl qobject::DisplayLayoutSetQuery {
     }
 
     pub fn reload(mut self: Pin<&mut Self>) {
-        // Проценты режутся в 0..100, как у оригинала (`std::clamp` в
-        // display_query.cpp). Питоновский мост этого не делал: значение
-        // мимо диапазона уезжало демону как есть (правило #16).
+        // Percentages are clamped to 0..100, as in the original (`std::clamp` in
+        // display_query.cpp). The Python bridge did not do this: a value out of
+        // range went to the daemon as is (rule #16).
         let payload = pb::DisplayLayoutSetRequest {
             name: self.name.clone(),
             display_id: self.display_id,
@@ -1068,8 +1072,8 @@ impl qobject::DisplayLayoutSetQuery {
                 location_set: self.location_set,
                 location_x: self.location_x.clamp(0, 100) as u32,
                 location_y: self.location_y.clamp(0, 100) as u32,
-                // waywallen 0.4.4: отражение — орган «Отражение» страницы
-                // «Дисплеи» (`FlipButtons`).
+                // waywallen 0.4.4: flip — the "Flip" control of the "Displays" page
+                // (`FlipButtons`).
                 flip_set: self.flip_set,
                 flip: self.flip,
             }),
@@ -1089,8 +1093,9 @@ impl qobject::DisplayLayoutSetQuery {
         if !self.as_mut().rust_mut().pending.remove(&token) {
             return;
         }
-        // Запись демон разносит событием `display_changed` — живой
-        // DisplayManager подхватит её сам, здесь только исход.
+        // The daemon broadcasts the write with the `display_changed` event — the
+        // live DisplayManager picks it up by itself; here there is only the
+        // outcome.
         let parsed = {
             let mut rust = self.as_mut().rust_mut();
             apply_ack(&mut rust.base, frame.as_slice())
@@ -1114,7 +1119,7 @@ impl qobject::DisplayLayoutSetQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// DisplayRenameQuery — псевдоним дисплея (DisplaysPage.qml)
+// DisplayRenameQuery — display alias (DisplaysPage.qml)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1206,7 +1211,7 @@ impl qobject::DisplayRenameQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// DisplayPauseSetQuery — ручная пауза одного дисплея (waywallen 0.4.2)
+// DisplayPauseSetQuery — manual pause of one display (waywallen 0.4.2)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1245,9 +1250,9 @@ impl qobject::DisplayPauseSetQuery {
         if !self.as_mut().rust_mut().pending.remove(&token) {
             return;
         }
-        // Как у оригинала, из ответа важен только исход: новое состояние
-        // паузы демон разносит событием `display_changed`, и его подхватит
-        // живой DisplayManager (`manualPaused`/`effectivePaused`).
+        // As in the original, only the outcome of the answer matters: the daemon
+        // broadcasts the new pause state with the `display_changed` event, and the
+        // live DisplayManager picks it up (`manualPaused`/`effectivePaused`).
         let parsed = {
             let mut rust = self.as_mut().rust_mut();
             apply_ack(&mut rust.base, frame.as_slice())

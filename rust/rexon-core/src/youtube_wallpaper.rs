@@ -1,64 +1,64 @@
-//! Чистая логика YouTube-обоев — порт `rexon/youtube_wallpaper.py`.
+//! Pure logic of YouTube wallpapers — port of `rexon/youtube_wallpaper.py`.
 //!
-//! Оригинальный `YouTubeWallpaperManager` рендерит видео с YouTube (и ~1800
-//! других сайтов через yt-dlp) как обои в двух режимах:
-//!   * **stream**   — `yt-dlp --get-url` отдаёт прямой URL потока → mpv/mpvpaper;
-//!   * **download** — `yt-dlp -f … -o …` качает в `~/.cache/rexon/youtube/` →
-//!     проигрывается локальный файл.
+//! The original `YouTubeWallpaperManager` renders video from YouTube (and ~1800
+//! other sites via yt-dlp) as wallpaper in two modes:
+//!   * **stream**   — `yt-dlp --get-url` returns a direct stream URL → mpv/mpvpaper;
+//!   * **download** — `yt-dlp -f … -o …` downloads into `~/.cache/rexon/youtube/` →
+//!     the local file is played.
 //!
-//! Класс смешивает детерминированные решения (валидация/классификация URL,
-//! выбор формата по качеству, построение argv yt-dlp для info/stream/download/
-//! playlist, пути кеша по хешу URL, разбор stdout yt-dlp — прямой URL, JSON
-//! метаданных, прогресс скачивания, список форматов/плейлиста, выбор файлов
-//! под вытеснение из кеша) с побочными эффектами (реальные `subprocess`
-//! yt-dlp/mpv, скачивание, `os.scandir`/`makedirs`/`unlink`, чтение/запись
-//! JSON-кеша, `threading`). Здесь — ТОЛЬКО чистая часть: вход → выход, без
-//! файловой системы, сети и процессов.
+//! The class mixes deterministic decisions (URL validation/classification,
+//! format choice by quality, building yt-dlp argv for info/stream/download/
+//! playlist, cache paths by URL hash, parsing yt-dlp stdout — the direct URL, metadata
+//! JSON, download progress, the format/playlist list, choosing files
+//! for cache eviction) with side effects (real yt-dlp/mpv `subprocess`
+//! calls, downloading, `os.scandir`/`makedirs`/`unlink`, reading/writing the
+//! JSON cache, `threading`). Here — ONLY the pure part: input → output, without
+//! the file system, network and processes.
 //!
-//! Наблюдения за средой (установлен ли yt-dlp/ffmpeg, содержимое stdout
-//! yt-dlp, размеры/mtime файлов кеша, `time.time()`) подаются ПАРАМЕТРАМИ.
-//! Реальный запуск yt-dlp/mpv, скачивание и работа с ФС остаются в
-//! Python-шиме `youtube_wallpaper.py`, который исполняет то, что решило ядро
-//! (argv, пути, формат, набор файлов на удаление).
+//! Observations of the environment (whether yt-dlp/ffmpeg is installed, the contents of yt-dlp
+//! stdout, sizes/mtime of cache files, `time.time()`) are passed as PARAMETERS.
+//! Actually running yt-dlp/mpv, downloading and working with the FS stay in the
+//! Python shim `youtube_wallpaper.py`, which executes what the core decided
+//! (argv, paths, format, the set of files to delete).
 //!
-//! Паритет байт-в-байт с живым Python — `tests/youtube_wallpaper_parity.rs`
-//! (эталон снят read-only, реальный yt-dlp/скачивание НЕ запускались; stdout
-//! синтетический, HOME/кеш нормализованы в `/HOME`).
+//! Byte-for-byte parity with live Python — `tests/youtube_wallpaper_parity.rs`
+//! (the reference was captured read-only, real yt-dlp/downloads were NOT run; stdout
+//! is synthetic, HOME/cache normalised to `/HOME`).
 //!
-//! ⚠️ Багов-крешей в оригинале при порте не обнаружено. Отмеченные квирки
-//! сохранены как есть — это осознанное поведение оригинала:
-//!   * `get_stream_url` берёт только ПЕРВУЮ строку `--get-url` (видео-URL),
-//!     отбрасывая аудио-URL при раздельных дорожках — так в оригинале
-//!     (комментарий «Берём первый (видео)»); mpv/mpvpaper это не ломает.
-//!   * пустой/пробельный stdout `--get-url` в Python валит `IndexError`,
-//!     который гасится `except Exception → None`; здесь честно возвращаем
-//!     `None` — наблюдаемый результат тот же.
+//! ⚠️ No crash bugs were found in the original during the port. The noted quirks
+//! are kept as is — this is deliberate behaviour of the original:
+//!   * `get_stream_url` takes only the FIRST line of `--get-url` (the video URL),
+//!     dropping the audio URL with separate tracks — as in the original
+//!     (the comment «Take the first one (video)»); this does not break mpv/mpvpaper.
+//!   * empty/whitespace `--get-url` stdout raises `IndexError` in Python,
+//!     which is swallowed by `except Exception → None`; here we honestly return
+//!     `None` — the observable result is the same.
 
 use serde_json::{Map, Value};
 
 // ============================================================================
-// Константы (порт модульных констант youtube_wallpaper.py)
+// Constants (port of the youtube_wallpaper.py module constants)
 // ============================================================================
 
-/// Лимит кеша видео (МБ) — порт `MAX_CACHE_MB`.
+/// Video cache limit (MB) — port of `MAX_CACHE_MB`.
 pub const MAX_CACHE_MB: u64 = 2048;
-/// Максимальная длительность для скачивания (сек) — порт `MAX_DURATION_SEC`.
+/// Maximum duration for downloading (s) — port of `MAX_DURATION_SEC`.
 pub const MAX_DURATION_SEC: i64 = 3600;
-/// Таймаут загрузки (сек) — порт `MAX_DOWNLOAD_TIMEOUT`.
+/// Download timeout (s) — port of `MAX_DOWNLOAD_TIMEOUT`.
 pub const MAX_DOWNLOAD_TIMEOUT: u64 = 600;
 
-/// Свежесть кеша метаданных (сек) — порт `age < 3600` в `get_video_info`.
+/// Freshness of the metadata cache (s) — port of `age < 3600` in `get_video_info`.
 pub const META_CACHE_FRESH_SEC: f64 = 3600.0;
 
-/// Значение `--socket-timeout` во всех вызовах yt-dlp.
+/// The `--socket-timeout` value in all yt-dlp calls.
 const SOCKET_TIMEOUT: &str = "15";
 
-/// Формат yt-dlp по умолчанию для стриминга — порт `STREAM_FORMAT`
-/// (совпадает с `QUALITY_MAP["1080p"]`).
+/// Default yt-dlp format for streaming — port of `STREAM_FORMAT`
+/// (matches `QUALITY_MAP["1080p"]`).
 pub const STREAM_FORMAT: &str =
     "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]";
 
-/// Таблица «качество → формат yt-dlp» — порт `QUALITY_MAP`.
+/// The "quality → yt-dlp format" table — port of `QUALITY_MAP`.
 pub const QUALITY_MAP: &[(&str, &str)] = &[
     (
         "4k",
@@ -83,15 +83,15 @@ pub const QUALITY_MAP: &[(&str, &str)] = &[
     ("best", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"),
 ];
 
-/// Расширения незавершённых файлов, исключаемых из кеша — порт кортежа
+/// Extensions of unfinished files excluded from the cache — port of the tuple
 /// `(".part", ".temp", ".ytdl")`.
 pub const INCOMPLETE_EXTS: &[&str] = &[".part", ".temp", ".ytdl"];
 
 // ============================================================================
-// Выбор формата — порт QUALITY_MAP.get(...)
+// Format choice — port of QUALITY_MAP.get(...)
 // ============================================================================
 
-/// Поиск формата по ключу качества — порт `QUALITY_MAP.get(quality)`.
+/// Format lookup by quality key — port of `QUALITY_MAP.get(quality)`.
 pub fn quality_format(quality: &str) -> Option<&'static str> {
     QUALITY_MAP
         .iter()
@@ -99,23 +99,23 @@ pub fn quality_format(quality: &str) -> Option<&'static str> {
         .map(|(_, v)| *v)
 }
 
-/// Формат для стриминга — порт `QUALITY_MAP.get(quality, STREAM_FORMAT)`.
+/// Format for streaming — port of `QUALITY_MAP.get(quality, STREAM_FORMAT)`.
 pub fn stream_format(quality: &str) -> &'static str {
     quality_format(quality).unwrap_or(STREAM_FORMAT)
 }
 
-/// Формат для скачивания — порт `QUALITY_MAP.get(quality, QUALITY_MAP["1080p"])`
-/// (неизвестное качество → 1080p, как в оригинале).
+/// Format for downloading — port of `QUALITY_MAP.get(quality, QUALITY_MAP["1080p"])`
+/// (unknown quality → 1080p, as in the original).
 pub fn download_format(quality: &str) -> &'static str {
     quality_format(quality).unwrap_or_else(|| quality_format("1080p").unwrap())
 }
 
 // ============================================================================
-// Пути кеша — порт _CACHE_DIR / _META_DIR / шаблон вывода / meta_path
+// Cache paths — port of _CACHE_DIR / _META_DIR / output template / meta_path
 // ============================================================================
 
-/// Каталог кеша видео — порт `_CACHE_DIR`.
-/// `xdg_cache_home` = `$XDG_CACHE_HOME` (Some — задан, None — не задан → `~/.cache`).
+/// Video cache directory — port of `_CACHE_DIR`.
+/// `xdg_cache_home` = `$XDG_CACHE_HOME` (Some — set, None — not set → `~/.cache`).
 pub fn cache_dir(xdg_cache_home: Option<&str>, home: &str) -> String {
     let base = match xdg_cache_home {
         Some(x) => x.to_string(),
@@ -124,24 +124,24 @@ pub fn cache_dir(xdg_cache_home: Option<&str>, home: &str) -> String {
     format!("{base}/rexon/youtube")
 }
 
-/// Каталог метаданных — порт `_META_DIR`.
+/// Metadata directory — port of `_META_DIR`.
 pub fn meta_dir(cache_dir: &str) -> String {
     format!("{cache_dir}/meta")
 }
 
-/// Путь JSON-кеша метаданных по хешу — порт `os.path.join(_META_DIR, f"{h}.json")`.
+/// Path of the metadata JSON cache by hash — port of `os.path.join(_META_DIR, f"{h}.json")`.
 pub fn meta_path(meta_dir: &str, vid_hash: &str) -> String {
     format!("{meta_dir}/{vid_hash}.json")
 }
 
-/// Шаблон `-o` для yt-dlp — порт `os.path.join(_CACHE_DIR, f"{h}.%(ext)s")`.
+/// The `-o` template for yt-dlp — port of `os.path.join(_CACHE_DIR, f"{h}.%(ext)s")`.
 pub fn output_template(cache_dir: &str, vid_hash: &str) -> String {
     format!("{cache_dir}/{vid_hash}.%(ext)s")
 }
 
-/// Стабильный хеш URL для имени файла кеша — порт `_video_id_hash`:
-/// `sha256(url.utf8).hexdigest()[:16]`. URL передаётся уже обрезанным (`strip`)
-/// — как это делают вызывающие в оригинале.
+/// Stable URL hash for the cache file name — port of `_video_id_hash`:
+/// `sha256(url.utf8).hexdigest()[:16]`. The URL is passed already trimmed (`strip`)
+/// — as the callers do in the original.
 pub fn video_id_hash(url: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(url.as_bytes());
@@ -156,17 +156,17 @@ pub fn video_id_hash(url: &str) -> String {
     hex
 }
 
-/// Свежий ли кеш метаданных — порт `age < 3600`.
+/// Whether the metadata cache is fresh — port of `age < 3600`.
 pub fn meta_cache_fresh(age_sec: f64) -> bool {
     age_sec < META_CACHE_FRESH_SEC
 }
 
 // ============================================================================
-// Классификация / валидация URL — порт is_supported_url / is_youtube_url / …
+// URL classification / validation — port of is_supported_url / is_youtube_url / …
 // ============================================================================
 
-/// Быстрая проверка «поддерживается ли URL» — порт `is_supported_url`:
-/// после `strip` должен начинаться с `http://`/`https://`; пустой → false.
+/// Quick "is the URL supported" check — port of `is_supported_url`:
+/// after `strip` it must start with `http://`/`https://`; empty → false.
 pub fn is_supported_url(url: &str) -> bool {
     let u = url.trim();
     if u.is_empty() {
@@ -175,10 +175,10 @@ pub fn is_supported_url(url: &str) -> bool {
     u.starts_with("http://") || u.starts_with("https://")
 }
 
-/// YouTube ли это URL — порт `is_youtube_url` (регекс `_YOUTUBE_RE.search`,
-/// IGNORECASE). Регекс портирован через подстроки с сохранением `search`- и
-/// `watch\?.*v=`-семантики; префиксы `https?://`/`www.|m.` необязательны и на
-/// результат `search` не влияют, поэтому в проверке не участвуют.
+/// Whether this is a YouTube URL — port of `is_youtube_url` (the `_YOUTUBE_RE.search` regex,
+/// IGNORECASE). The regex is ported via substrings keeping the `search` and
+/// `watch\?.*v=` semantics; the `https?://`/`www.|m.` prefixes are optional and do not
+/// affect the `search` result, so they take no part in the check.
 pub fn is_youtube_url(url: &str) -> bool {
     let l = url.to_lowercase();
     if l.contains("youtu.be/") {
@@ -195,18 +195,18 @@ pub fn is_youtube_url(url: &str) -> bool {
             return true;
         }
     }
-    // `youtube.com/watch?` … `v=` на той же строке (music.youtube.com — частный
-    // случай той же подстроки). Порт `watch\?.*v=` (`.` не матчит `\n`).
+    // `youtube.com/watch?` … `v=` on the same line (music.youtube.com is a special
+    // case of the same substring). Port of `watch\?.*v=` (`.` does not match `\n`).
     watch_then_v(&l)
 }
 
-/// `youtube.com/watch?` с последующим `v=` в пределах той же строки.
+/// `youtube.com/watch?` followed by `v=` within the same line.
 fn watch_then_v(lower: &str) -> bool {
     let needle = "youtube.com/watch?";
     let mut from = 0;
     while let Some(rel) = lower[from..].find(needle) {
         let after = from + rel + needle.len();
-        // конец текущей строки (`.` в регексе не матчит `\n`)
+        // end of the current line (`.` in the regex does not match `\n`)
         let line_end = lower[after..]
             .find('\n')
             .map(|n| after + n)
@@ -219,17 +219,17 @@ fn watch_then_v(lower: &str) -> bool {
     false
 }
 
-/// Плейлист ли это YouTube — порт `is_playlist_url` (`"playlist?list=" in url`).
+/// Whether this is a YouTube playlist — port of `is_playlist_url` (`"playlist?list=" in url`).
 pub fn is_playlist_url(url: &str) -> bool {
     url.contains("playlist?list=")
 }
 
 // ============================================================================
-// argv yt-dlp — порт cmd в get_video_info / get_stream_url / download / playlist
+// yt-dlp argv — port of cmd in get_video_info / get_stream_url / download / playlist
 // ============================================================================
 
-/// argv `yt-dlp --dump-json` (метаданные) — порт cmd из `get_video_info`.
-/// `url` передаётся уже обрезанным (`strip`), как в оригинале.
+/// argv of `yt-dlp --dump-json` (metadata) — port of cmd from `get_video_info`.
+/// `url` is passed already trimmed (`strip`), as in the original.
 pub fn info_argv(url: &str) -> Vec<String> {
     vec![
         "yt-dlp".into(),
@@ -243,8 +243,8 @@ pub fn info_argv(url: &str) -> Vec<String> {
     ]
 }
 
-/// argv `yt-dlp --get-url` (прямой URL потока) — порт cmd из `get_stream_url`.
-/// `fmt` — результат [`stream_format`]; `url` уже обрезан.
+/// argv of `yt-dlp --get-url` (direct stream URL) — port of cmd from `get_stream_url`.
+/// `fmt` is the result of [`stream_format`]; `url` is already trimmed.
 pub fn stream_argv(url: &str, fmt: &str) -> Vec<String> {
     vec![
         "yt-dlp".into(),
@@ -259,9 +259,9 @@ pub fn stream_argv(url: &str, fmt: &str) -> Vec<String> {
     ]
 }
 
-/// argv `yt-dlp` для скачивания в кеш — порт cmd из `download`.
-/// `fmt` — результат [`download_format`]; `output_tmpl` — [`output_template`];
-/// `url` уже обрезан.
+/// argv of `yt-dlp` for downloading into the cache — port of cmd from `download`.
+/// `fmt` is the result of [`download_format`]; `output_tmpl` — [`output_template`];
+/// `url` is already trimmed.
 pub fn download_argv(url: &str, fmt: &str, output_tmpl: &str) -> Vec<String> {
     vec![
         "yt-dlp".into(),
@@ -281,8 +281,8 @@ pub fn download_argv(url: &str, fmt: &str, output_tmpl: &str) -> Vec<String> {
     ]
 }
 
-/// argv `yt-dlp --flat-playlist --dump-json` — порт cmd из `get_playlist_entries`.
-/// `url` уже обрезан.
+/// argv of `yt-dlp --flat-playlist --dump-json` — port of cmd from `get_playlist_entries`.
+/// `url` is already trimmed.
 pub fn playlist_argv(url: &str, max_entries: u64) -> Vec<String> {
     vec![
         "yt-dlp".into(),
@@ -297,29 +297,29 @@ pub fn playlist_argv(url: &str, max_entries: u64) -> Vec<String> {
     ]
 }
 
-// ── argv установки / обновления / версии yt-dlp ────────────────────────────
+// ── argv for installing / updating / querying the version of yt-dlp ───────
 //
-// Порт «сырых» fallback-argv из install_ytdlp / update_ytdlp / ytdlp_version.
-// Именованный privileged-вариант (`privileged_pkg_cmd`) решает system-слой —
-// это наблюдение/side-effect исполнителя; здесь только детерминированные argv.
+// Port of the "raw" fallback argv from install_ytdlp / update_ytdlp / ytdlp_version.
+// The named privileged variant (`privileged_pkg_cmd`) is decided by the system layer —
+// it is an observation/side effect of the executor; here only deterministic argv.
 
-/// Имя пакета yt-dlp — одинаково во всех семействах.
+/// Name of the yt-dlp package — the same in all families.
 pub const YTDLP_PACKAGE: &str = "yt-dlp";
 
-/// Кандидаты бинаря pip в порядке приоритета.
+/// Candidates for the pip binary in priority order.
 ///
-/// На Debian/Ubuntu пакет `python3-pip` кладёт `pip3`, а `pip` появляется
-/// только если поставлен `python-is-python3`; на Arch/Fedora/openSUSE есть
-/// оба. Поэтому сначала `pip3`.
+/// On Debian/Ubuntu the `python3-pip` package installs `pip3`, and `pip` appears
+/// only if `python-is-python3` is installed; Arch/Fedora/openSUSE have
+/// both. So `pip3` first.
 pub const PIP_BINARIES: [&str; 2] = ["pip3", "pip"];
 
-/// argv установки yt-dlp через pip.
+/// argv for installing yt-dlp via pip.
 ///
-/// `--break-system-packages` НЕ ставится по умолчанию: он нужен только там,
-/// где окружение помечено PEP 668 (Arch, Debian/Ubuntu), а на Fedora и
-/// openSUSE такой пометки нет и лишний флаг только шумит. Правильный порядок
-/// — сначала без флага, и лишь если pip отказал по PEP 668
-/// ([`pip_break_system_needed`]), повторить с ним.
+/// `--break-system-packages` is NOT added by default: it is needed only where
+/// the environment is marked by PEP 668 (Arch, Debian/Ubuntu), while Fedora and
+/// openSUSE have no such mark and the extra flag is just noise. The right order
+/// is first without the flag, and only if pip refused because of PEP 668
+/// ([`pip_break_system_needed`]), retry with it.
 pub fn pip_argv(pip_bin: &str, upgrade: bool, break_system: bool) -> Vec<String> {
     let mut v = vec![pip_bin.into(), "install".into(), "--user".into()];
     if break_system {
@@ -332,49 +332,49 @@ pub fn pip_argv(pip_bin: &str, upgrade: bool, break_system: bool) -> Vec<String>
     v
 }
 
-/// Отказ pip из-за PEP 668 («externally-managed-environment») — значит,
-/// стоит повторить с `--break-system-packages`.
+/// A pip refusal because of PEP 668 ("externally-managed-environment") — means
+/// it is worth retrying with `--break-system-packages`.
 pub fn pip_break_system_needed(stderr: &str) -> bool {
     let s = stderr.to_lowercase();
     s.contains("externally-managed-environment") || s.contains("externally managed")
 }
 
-/// Итог установки через пакетный менеджер дистрибутива.
+/// Result of installing via the distribution package manager.
 pub fn msg_installed_via(pkg_manager: &str) -> String {
     crate::i18n::trf("yt-dlp installed with %1", &[&pkg_manager])
 }
 
-/// Итог установки через pip.
+/// Result of installing via pip.
 pub fn msg_installed_via_pip(pip_bin: &str) -> String {
     crate::i18n::trf("yt-dlp installed with %1 (--user)", &[&pip_bin])
 }
 
-/// Итог обновления через pip.
+/// Result of updating via pip.
 pub fn msg_updated_via_pip(pip_bin: &str) -> String {
     crate::i18n::trf("yt-dlp updated with %1", &[&pip_bin])
 }
 
-/// Полный провал установки: что человеку делать дальше.
+/// Complete installation failure: what the person should do next.
 pub fn msg_install_failed() -> String {
     crate::i18n::tr("Could not install yt-dlp automatically. Install it manually: pip install yt-dlp")
 }
 
-/// yt-dlp нет — обновлять нечего.
+/// No yt-dlp — nothing to update.
 pub fn msg_not_installed() -> String {
     crate::i18n::tr("yt-dlp is not installed")
 }
 
-// ── живое скачивание в кеш ─────────────────────────────────────────────────
+// ── live download into the cache ───────────────────────────────────────────
 
-/// Скачанный файл ролика среди имён каталога кеша — порт `_find_cached`.
-/// Порядок имён сортированный: у Python он был порядком файловой системы.
+/// The downloaded clip file among the names of the cache directory — port of `_find_cached`.
+/// The order of names is sorted: in Python it was the file system order.
 pub fn cached_file_name(names: &[String], vid_hash: &str) -> Option<String> {
     let mut hits: Vec<&String> = names.iter().filter(|n| is_cached_file(n, vid_hash)).collect();
     hits.sort();
     hits.first().map(|n| (*n).clone())
 }
 
-/// Файлы каталога кеша: (путь, имя, mtime, размер).
+/// Files of the cache directory: (path, name, mtime, size).
 fn cache_files_live(dir: &str) -> Vec<(String, String, f64, u64)> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -406,8 +406,8 @@ fn find_cached_live(dir: &str, vid_hash: &str) -> Option<String> {
     cached_file_name(&names, vid_hash).map(|name| format!("{dir}/{name}"))
 }
 
-/// Метаданные ролика — порт `get_video_info`: свежий кеш карточки, иначе
-/// `yt-dlp --dump-json` и запись карточки в кеш.
+/// Clip metadata — port of `get_video_info`: a fresh cached card, otherwise
+/// `yt-dlp --dump-json` and writing the card to the cache.
 fn video_info_live(url: &str, cache: &str, vid_hash: &str) -> Option<Value> {
     let meta_dir = meta_dir(cache);
     let meta = meta_path(&meta_dir, vid_hash);
@@ -446,10 +446,10 @@ fn video_info_live(url: &str, cache: &str, vid_hash: &str) -> Option<Value> {
     Some(info)
 }
 
-/// Скачать ролик в кеш — порт `YouTubeWallpaperManager.download`. Путь к
-/// файлу либо `None` (причина — в журнале). Уже скачанный берётся из кеша;
-/// слишком длинный ролик и прямой эфир не качаются; перед загрузкой кеш
-/// ужимается в предел.
+/// Download a clip into the cache — port of `YouTubeWallpaperManager.download`. The path to
+/// the file or `None` (the reason is in the log). An already downloaded one is taken from the cache;
+/// a too long clip and a live stream are not downloaded; before downloading the cache
+/// is shrunk to the limit.
 pub fn download_live(url: &str, quality: &str) -> Option<String> {
     crate::utils::which("yt-dlp", None)?;
     let url = url.trim();
@@ -474,7 +474,7 @@ pub fn download_live(url: &str, quality: &str) -> Option<String> {
             return None;
         }
     }
-    // Освободить место в кеше.
+    // Free up space in the cache.
     let files = cache_files_live(&cache);
     let sizes: Vec<u64> = files.iter().map(|f| f.3).collect();
     let triples: Vec<(String, f64, u64)> =
@@ -493,26 +493,26 @@ pub fn download_live(url: &str, quality: &str) -> Option<String> {
     find_cached_live(&cache, &vid_hash)
 }
 
-/// Обновление прошло.
+/// The update succeeded.
 pub fn msg_updated() -> String {
     crate::i18n::tr("yt-dlp updated")
 }
 
-/// Обновить не удалось ни самим yt-dlp, ни через pip.
+/// Updating failed both with yt-dlp itself and via pip.
 pub fn msg_update_failed() -> String {
     crate::i18n::tr("Could not update yt-dlp")
 }
 
-/// Итог запуска команды: (код возврата, stdout, stderr); `None` — команда не
-/// дошла до кода (нет программы, вышло время).
+/// Result of running a command: (exit code, stdout, stderr); `None` — the command did not
+/// get to an exit code (no program, timed out).
 pub type RunResult = Option<(i32, String, String)>;
 
-/// Запустить pip; при отказе PEP 668 повторить с `--break-system-packages` —
-/// порт `YouTubeWallpaperManager._pip_run`. Запуск — снаружи (`run`), чтобы
-/// порядок попыток сверялся без единого процесса.
+/// Run pip; on a PEP 668 refusal retry with `--break-system-packages` —
+/// port of `YouTubeWallpaperManager._pip_run`. Running is done outside (`run`), so that
+/// the order of attempts is checked without a single process.
 ///
-/// Флаг не ставится заранее: он нужен только там, где окружение помечено
-/// PEP 668 (Arch, Debian/Ubuntu); решаем по факту отказа.
+/// The flag is not added up front: it is needed only where the environment is marked by
+/// PEP 668 (Arch, Debian/Ubuntu); we decide by the actual refusal.
 pub fn pip_run_with(run: &mut dyn FnMut(&[String]) -> RunResult, pip_bin: &str, upgrade: bool) -> bool {
     for break_system in [false, true] {
         let argv = pip_argv(pip_bin, upgrade, break_system);
@@ -533,7 +533,7 @@ pub fn pip_run_with(run: &mut dyn FnMut(&[String]) -> RunResult, pip_bin: &str, 
     false
 }
 
-/// Живой запуск команды со сроком.
+/// Live run of a command with a time limit.
 fn run_live(argv: &[String], timeout_secs: Option<u64>) -> RunResult {
     let report = crate::utils::run(
         &crate::utils::RunSpec {
@@ -552,7 +552,7 @@ fn run_live(argv: &[String], timeout_secs: Option<u64>) -> RunResult {
     ))
 }
 
-/// Бинарь pip в системе — порядок предпочтения [`PIP_BINARIES`].
+/// The pip binary on the system — in the [`PIP_BINARIES`] preference order.
 fn pip_binary_live() -> Option<String> {
     PIP_BINARIES
         .iter()
@@ -560,12 +560,12 @@ fn pip_binary_live() -> Option<String> {
         .map(|name| (*name).to_string())
 }
 
-/// Установить yt-dlp — порт `YouTubeWallpaperManager.install_ytdlp`.
+/// Install yt-dlp — port of `YouTubeWallpaperManager.install_ytdlp`.
 ///
-/// Сначала общий механизм установки пакетов (`system_plan::install_plan` —
-/// тот же, что у установки рабочих столов: знает все семейства и сам
-/// выбирает polkit-помощник либо сырой pkexec), затем pip. Живой запуск:
-/// спрашивает пароль через polkit.
+/// First the shared package installation mechanism (`system_plan::install_plan` —
+/// the same as for installing desktops: it knows all families and itself
+/// chooses the polkit helper or raw pkexec), then pip. Live run:
+/// asks for the password via polkit.
 pub fn install_ytdlp_live() -> (bool, String) {
     let sys = crate::system_exec::live();
     let family = sys.family();
@@ -584,9 +584,9 @@ pub fn install_ytdlp_live() -> (bool, String) {
                     _ => None,
                 });
                 if let Some(cmd) = cmd {
-                    // Сеанс прав окна (один пароль); его нет — прежняя команда
-                    // плана. Не вышло ни так, ни так — дальше pip от
-                    // пользователя (не сырой pkexec).
+                    // The window's privilege session (one password); without it — the previous plan
+                    // command. Neither worked — then pip as the
+                    // user (not raw pkexec).
                     let op = crate::privilege::op::PrivOp::PkgInstall {
                         family,
                         packages: packages.clone(),
@@ -619,11 +619,11 @@ pub fn install_ytdlp_live() -> (bool, String) {
     (false, msg_install_failed())
 }
 
-/// Обновить yt-dlp — порт `YouTubeWallpaperManager.update_ytdlp`.
+/// Update yt-dlp — port of `YouTubeWallpaperManager.update_ytdlp`.
 ///
-/// ⭐ Починка: при удаче Python показывал человеку сырой английский вывод
-/// `yt-dlp --update` («Updated yt-dlp to stable@…»). Теперь ответ — русская
-/// фраза, а вывод остаётся журналу.
+/// ⭐ Fix: on success Python showed the person the raw English output of
+/// `yt-dlp --update` ("Updated yt-dlp to stable@…"). Now the answer is a translated
+/// phrase, and the output stays in the log.
 pub fn update_ytdlp_live() -> (bool, String) {
     if crate::utils::which("yt-dlp", None).is_none() {
         return (false, msg_not_installed());
@@ -643,14 +643,14 @@ pub fn update_ytdlp_live() -> (bool, String) {
     (false, msg_update_failed())
 }
 
-// ── legacy-argv ────────────────────────────────────────────────────────────
+// ── legacy argv ────────────────────────────────────────────────────────────
 //
-// Три функции ниже — «свой перебор pacman/apt/dnf», из-за которого на
-// openSUSE (приоритет 3 в поддержке) кнопка отвечала «Неизвестный пакетный
-// менеджер». Шим их больше НЕ зовёт: установка идёт общим механизмом
-// `system.PackageManager.install` (правило #12), который знает все семейства.
-// Оставлены только потому, что на них ещё смотрят экспорты моста
-// (`rust/rexon-py/src/lib.rs`); удалять их надо вместе с экспортами.
+// The three functions below are the "own pacman/apt/dnf enumeration" because of which on
+// openSUSE (priority 3 in support) the button answered «Unknown package
+// manager». The shim does NOT call them any more: installation goes through the shared mechanism
+// `system.PackageManager.install` (rule #12), which knows all families.
+// They are kept only because the bridge exports still look at them
+// (`rust/rexon-py/src/lib.rs`); remove them together with the exports.
 
 /// `pkexec pacman -S --noconfirm yt-dlp` (Arch/CachyOS).
 pub fn install_pacman_argv() -> Vec<String> {
@@ -696,7 +696,7 @@ pub fn install_pip_argv() -> Vec<String> {
     ]
 }
 
-/// `yt-dlp --update` — самообновление.
+/// `yt-dlp --update` — self-update.
 pub fn update_self_argv() -> Vec<String> {
     vec!["yt-dlp".into(), "--update".into()]
 }
@@ -719,12 +719,12 @@ pub fn version_argv() -> Vec<String> {
 }
 
 // ============================================================================
-// Разбор stdout yt-dlp
+// Parsing yt-dlp stdout
 // ============================================================================
 
-/// Разбор stdout `yt-dlp --get-url` — порт хвоста `get_stream_url`:
-/// берём ПЕРВУЮ строку обрезанного вывода, обрезаем её и возвращаем, если
-/// начинается с `http`. Пустой/непохожий на URL вывод → None.
+/// Parsing the stdout of `yt-dlp --get-url` — port of the tail of `get_stream_url`:
+/// take the FIRST line of the trimmed output, trim it and return it if it
+/// starts with `http`. Empty/non-URL-like output → None.
 pub fn parse_stream_url(stdout: &str) -> Option<String> {
     let first = stdout.trim().lines().next()?;
     let stream = first.trim();
@@ -735,13 +735,13 @@ pub fn parse_stream_url(stdout: &str) -> Option<String> {
     }
 }
 
-/// Разбор строки прогресса — порт `_parse_progress`:
-///   * `[download]<пробелы><число>%` → число (float);
-///   * строка содержит `[Merger]`/`[ExtractAudio]` → 99.0;
-///   * иначе None.
+/// Parsing a progress line — port of `_parse_progress`:
+///   * `[download]<spaces><number>%` → the number (float);
+///   * the line contains `[Merger]`/`[ExtractAudio]` → 99.0;
+///   * otherwise None.
 ///
-/// Нечисловой захват (`float(...)` → ValueError) в Python гасится → падает в
-/// проверку мержинга; здесь при неудачном парсе делаем то же.
+/// A non-numeric capture (`float(...)` → ValueError) is swallowed in Python → falls through to
+/// the merge check; here we do the same on a failed parse.
 pub fn parse_progress(line: &str) -> Option<f64> {
     if let Some(pct) = download_pct(line) {
         return Some(pct);
@@ -752,7 +752,7 @@ pub fn parse_progress(line: &str) -> Option<f64> {
     None
 }
 
-/// Реализация регекса `\[download\]\s+([\d.]+)%` c семантикой `re.search`.
+/// Implementation of the regex `\[download\]\s+([\d.]+)%` with `re.search` semantics.
 fn download_pct(line: &str) -> Option<f64> {
     let needle = "[download]";
     let chars: Vec<char> = line.chars().collect();
@@ -761,13 +761,13 @@ fn download_pct(line: &str) -> Option<f64> {
         let byte_pos = from + rel;
         let char_pos = line[..byte_pos].chars().count();
         let mut i = char_pos + needle.chars().count();
-        // \s+ — минимум один пробельный символ
+        // \s+ — at least one whitespace character
         let ws_start = i;
         while i < chars.len() && chars[i].is_whitespace() {
             i += 1;
         }
         if i > ws_start {
-            // [\d.]+ — минимум один символ из цифр/точки
+            // [\d.]+ — at least one character from digits/dot
             let num_start = i;
             while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
                 i += 1;
@@ -777,7 +777,7 @@ fn download_pct(line: &str) -> Option<f64> {
                 if let Ok(v) = num.parse::<f64>() {
                     return Some(v);
                 }
-                // ValueError в Python → падаем дальше (return None ниже)
+                // ValueError in Python → fall through (return None below)
             }
         }
         from = byte_pos + needle.len();
@@ -786,11 +786,11 @@ fn download_pct(line: &str) -> Option<f64> {
 }
 
 // ============================================================================
-// Разбор JSON yt-dlp: список форматов / карточка видео / плейлист
+// Parsing yt-dlp JSON: format list / video card / playlist
 // ============================================================================
 
-/// Истинность значения по правилам Python `bool(x)`
-/// (для портов выражений вида `A or B`, `if not h`).
+/// Truthiness of a value by the rules of Python `bool(x)`
+/// (for ports of expressions like `A or B`, `if not h`).
 fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -802,14 +802,14 @@ fn truthy(v: &Value) -> bool {
     }
 }
 
-/// `dict.get(key, default)` — значение если ключ присутствует (даже `null`),
-/// иначе `default`.
+/// `dict.get(key, default)` — the value if the key is present (even `null`),
+/// otherwise `default`.
 fn get_or(obj: &Value, key: &str, default: Value) -> Value {
     obj.get(key).cloned().unwrap_or(default)
 }
 
-/// Извлечь список видео-форматов — порт `_extract_format_list`.
-/// Пропускаем без высоты / `<240` / повторную высоту; сортируем по height ↓.
+/// Extract the list of video formats — port of `_extract_format_list`.
+/// Skip those without height / `<240` / a repeated height; sort by height ↓.
 pub fn extract_format_list(data: &Value) -> Vec<Value> {
     let mut out: Vec<Value> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
@@ -826,7 +826,7 @@ pub fn extract_format_list(data: &Value) -> Vec<Value> {
         }
         let hi = match h.as_i64() {
             Some(n) => n,
-            None => continue, // не число → как «нет высоты»
+            None => continue, // not a number → like "no height"
         };
         if hi < 240 {
             continue;
@@ -853,7 +853,7 @@ pub fn extract_format_list(data: &Value) -> Vec<Value> {
         m.insert("filesize".into(), filesize);
         out.push(Value::Object(m));
     }
-    // сортировка по height ↓ (stable, как list.sort в Python)
+    // sort by height ↓ (stable, like list.sort in Python)
     out.sort_by(|a, b| {
         let hb = b["height"].as_i64().unwrap_or(0);
         let ha = a["height"].as_i64().unwrap_or(0);
@@ -862,9 +862,9 @@ pub fn extract_format_list(data: &Value) -> Vec<Value> {
     out
 }
 
-/// Собрать кешируемую карточку видео из JSON yt-dlp — порт формирования `info`
-/// в `get_video_info`. `vid_hash` — [`video_id_hash`], `fetched_at` —
-/// `time.time()` (side-effect исполнителя), `url` — исходный (fallback
+/// Build the cacheable video card from yt-dlp JSON — port of building `info`
+/// in `get_video_info`. `vid_hash` — [`video_id_hash`], `fetched_at` —
+/// `time.time()` (a side effect of the executor), `url` — the original one (fallback
 /// `webpage_url`).
 pub fn build_video_info(data: &Value, url: &str, vid_hash: &str, fetched_at: f64) -> Value {
     // description: (data.get("description","") or "")[:500]
@@ -901,8 +901,8 @@ pub fn build_video_info(data: &Value, url: &str, vid_hash: &str, fetched_at: f64
     Value::Object(m)
 }
 
-/// Разобрать stdout `yt-dlp --flat-playlist --dump-json` — порт разбора в
-/// `get_playlist_entries`: по строке на видео, невалидный JSON пропускаем.
+/// Parse the stdout of `yt-dlp --flat-playlist --dump-json` — port of the parsing in
+/// `get_playlist_entries`: one line per video, invalid JSON is skipped.
 pub fn parse_playlist(stdout: &str) -> Vec<Value> {
     let mut entries = Vec::new();
     for line in stdout.trim().lines() {
@@ -940,7 +940,7 @@ pub fn parse_playlist(stdout: &str) -> Vec<Value> {
     entries
 }
 
-/// Человекочитаемая строка о видео — порт `format_info_text`.
+/// A human-readable line about the video — port of `format_info_text`.
 pub fn format_info_text(info: &Value) -> String {
     // dur = info.get("duration", 0) or 0
     let dur_val = get_or(info, "duration", Value::from(0));
@@ -965,7 +965,7 @@ pub fn format_info_text(info: &Value) -> String {
         "?".to_string()
     };
 
-    // title = info.get("title", ""); усечение до 57 + "…" при len > 60
+    // title = info.get("title", ""); truncated to 57 + "…" when len > 60
     let title_s = value_as_str(&get_or(info, "title", Value::from("")));
     let title = if title_s.chars().count() > 60 {
         format!("{}…", truncate_chars(&title_s, 57))
@@ -988,7 +988,7 @@ pub fn format_info_text(info: &Value) -> String {
     format!("{title}  •  {uploader}  •  {dur_str}  •  до {max_res}")
 }
 
-/// Строковое представление значения для строковых полей (`title`/`uploader`).
+/// String representation of a value for string fields (`title`/`uploader`).
 fn value_as_str(v: &Value) -> String {
     match v.as_str() {
         Some(s) => s.to_string(),
@@ -996,17 +996,17 @@ fn value_as_str(v: &Value) -> String {
     }
 }
 
-/// Усечение строки до `n` СИМВОЛОВ (Python-слайс `s[:n]` работает по кодпойнтам).
+/// Truncate a string to `n` CHARACTERS (the Python slice `s[:n]` works on code points).
 fn truncate_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
 // ============================================================================
-// Кеш: определение файла / вытеснение / precheck скачивания
+// Cache: identifying a file / eviction / download precheck
 // ============================================================================
 
-/// Наш ли это скачанный файл — порт предиката `_find_cached`:
-/// имя начинается с хеша и не оканчивается на `.part`/`.temp`/`.ytdl`.
+/// Whether this is our downloaded file — port of the `_find_cached` predicate:
+/// the name starts with the hash and does not end with `.part`/`.temp`/`.ytdl`.
 pub fn is_cached_file(name: &str, vid_hash: &str) -> bool {
     if !name.starts_with(vid_hash) {
         return false;
@@ -1014,16 +1014,16 @@ pub fn is_cached_file(name: &str, vid_hash: &str) -> bool {
     !INCOMPLETE_EXTS.iter().any(|ext| name.ends_with(ext))
 }
 
-/// Файлы под вытеснение из кеша — порт `_enforce_cache_limit`.
-/// Вход — суммарный размер кеша (МБ) и список `(path, mtime, size_bytes)`;
-/// выход — пути в порядке удаления. Если кеш в пределах лимита — пусто.
-/// Удаляем старейшие (по mtime ↑), пока не уложимся в 80% лимита.
+/// Files for cache eviction — port of `_enforce_cache_limit`.
+/// Input — the total cache size (MB) and a list of `(path, mtime, size_bytes)`;
+/// output — paths in deletion order. If the cache is within the limit — empty.
+/// Delete the oldest (by mtime ↑) until we fit within 80% of the limit.
 pub fn select_evictions(size_mb: f64, files: &[(String, f64, u64)]) -> Vec<String> {
     if size_mb <= MAX_CACHE_MB as f64 {
         return Vec::new();
     }
     let mut sorted: Vec<&(String, f64, u64)> = files.iter().collect();
-    // старые первыми (stable сортировка по mtime, как в Python)
+    // old ones first (stable sort by mtime, as in Python)
     sorted.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
     let target = MAX_CACHE_MB as f64 * 0.8;
@@ -1039,15 +1039,15 @@ pub fn select_evictions(size_mb: f64, files: &[(String, f64, u64)]) -> Vec<Strin
     deleted
 }
 
-/// Размер набора файлов в МБ — порт `_dir_size_mb` (сумма байт / 1 МиБ).
+/// Size of a set of files in MB — port of `_dir_size_mb` (sum of bytes / 1 MiB).
 pub fn dir_size_mb(sizes: &[u64]) -> f64 {
     let total: u64 = sizes.iter().sum();
     total as f64 / (1024.0 * 1024.0)
 }
 
-/// Причина отказа скачивать (статус для progress_cb) — порт проверок в
-/// `download`: сначала длительность, затем live. `None` — можно качать.
-/// Длина проверяется ПЕРВОЙ (как в оригинале).
+/// Reason for refusing to download (a status for progress_cb) — port of the checks in
+/// `download`: first the duration, then live. `None` — downloading is allowed.
+/// The length is checked FIRST (as in the original).
 pub fn download_block_reason(duration: i64, is_live: bool) -> Option<String> {
     if duration > MAX_DURATION_SEC {
         return Some(format!("Видео > {} мин", MAX_DURATION_SEC / 60));

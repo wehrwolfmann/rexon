@@ -1,16 +1,17 @@
-//! Безоконные сценарии `rexon-gui-selftest` в `cargo test -p rexon-gui`.
+//! Windowless `rexon-gui-selftest` scenarios in `cargo test -p rexon-gui`.
 //!
-//! Самопроверки бинаря (выдача и запросы Discover, страница «Обои»,
-//! 64-битные целые в QML, живые модели в QML) раньше запускались только
-//! руками — и потому молча отставали от кода: сценарии стенд-окна
-//! `rexon-gui-demo` пропали вместе с ним, и никто этого не заметил. Здесь
-//! каждый сценарий — отдельный тест, приговор — код возврата бинаря.
+//! The binary's self-tests (Discover results and queries, the "Wallpapers"
+//! page, 64-bit integers in QML, live models in QML) used to be run only by
+//! hand — and so they silently fell behind the code: the scenarios of the
+//! `rexon-gui-demo` test bench window disappeared together with it, and
+//! nobody noticed. Here every scenario is a separate test, and the verdict
+//! is the binary's exit code.
 //!
-//! Обстановка прогона: пустое окружение (`env -i`), свой HOME в
-//! `$HOME/.cache` (не /tmp — там ОЗУ), offscreen, программный рендер, без
-//! дампов памяти — чтобы падение не подняло окно отчёта о сбое.
-//! Слой обоев (`--layer-shell-selftest`) сюда не входит: ему нужна живая
-//! сессия Wayland.
+//! Run environment: an empty environment (`env -i`), our own HOME in
+//! `$HOME/.cache` (not /tmp — that is RAM), offscreen, software rendering,
+//! no core dumps — so that a crash does not bring up the crash report
+//! window. The wallpaper layer (`--layer-shell-selftest`) is not included
+//! here: it needs a live Wayland session.
 
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
@@ -28,7 +29,8 @@ fn private_home(tag: &str) -> PathBuf {
     dir
 }
 
-/// `~/.local/share` разработчика впереди системных каталогов данных.
+/// The developer's `~/.local/share` goes before the system data
+/// directories.
 fn developer_data_dirs() -> String {
     let home = std::env::var("HOME").expect("HOME");
     format!("{home}/.local/share:/usr/local/share:/usr/share")
@@ -44,19 +46,20 @@ fn run_scenario(arg: &str) {
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
         .env("HOME", &home)
         .env("XDG_RUNTIME_DIR", home.join("run"))
-        // Собранные разработчиком QML-модули (`tools/build_qml_*.sh` пишут
-        // в `~/.local/share/rexon/qml_modules`) — только на ЧТЕНИЕ, через
-        // каталоги данных: свой HOME их прячет, и без этого стенд брал
-        // модули УСТАНОВЛЕННОГО пакета — другой редакции, чем пин дерева
-        // (`ui/QML_MATERIAL_PIN`). Пойман 24.10.2026: разметка 0.5.0 против
-        // Qcm.Material 0.4.4 из пакета. Пишется по-прежнему в свой HOME.
+        // QML modules built by the developer (`tools/build_qml_*.sh` write to
+        // `~/.local/share/rexon/qml_modules`) — READ-only, through the data
+        // directories: our own HOME hides them, and without this the test bench
+        // took the modules of the INSTALLED package — a different revision than
+        // the tree's pin (`ui/QML_MATERIAL_PIN`). Caught on 24.10.2026: markup
+        // 0.5.0 versus Qcm.Material 0.4.4 from the package. Writing still goes to
+        // our own HOME.
         .env("XDG_DATA_DIRS", developer_data_dirs())
         .env("LANG", "C.UTF-8")
         .env("QT_QPA_PLATFORM", "offscreen")
         .env("QSG_RHI_BACKEND", "software")
         .env("QT_FORCE_STDERR_LOGGING", "1");
-    // ulimit -c 0: упавший сценарий не должен оставлять дамп и поднимать
-    // окно отчёта о сбое.
+    // ulimit -c 0: a crashed scenario must not leave a dump and bring up the
+    // crash report window.
     unsafe {
         command.pre_exec(|| {
             let zero = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
@@ -80,7 +83,7 @@ fn remote_selftest() {
     run_scenario("--remote-selftest");
 }
 
-/// Снятие живых обоев из рабочего потока против подставного демона.
+/// Removing the live wallpaper from a worker thread against a fake daemon.
 #[test]
 fn we_stop_selftest() {
     run_scenario("--we-stop-selftest");

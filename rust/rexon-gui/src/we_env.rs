@@ -1,21 +1,22 @@
-// Окружение процесса для запросов вкладки WE: домашний каталог, XDG,
-// числовой идентификатор пользователя и каталог пакета `rexon/`.
+// Process environment for the WE tab queries: the home directory, XDG, the
+// numeric user id and the directory of the `rexon/` package.
 //
-// Не мост: чистые функции, которыми пользуются оболочки. Вынесено сюда,
-// чтобы каталог пакета брался из ОДНОГО места (правило #12) — иначе каждый
-// запрос завёл бы свою догадку о том, где лежит `rexon/`.
+// Not a bridge: plain functions used by the wrappers. Moved here so that
+// the package directory is taken from ONE place (rule #12) — otherwise
+// every query would invent its own guess about where `rexon/` lies.
 
 use core::pin::Pin;
 use std::ffi::{c_char, CString};
 use std::sync::{Mutex, OnceLock};
 
-/// Домашний каталог. Пустая строка тоже допустима: ядро тогда соберёт путь
-/// от корня, и файл просто не запишется — так же вёл себя Python.
+/// Home directory. An empty string is acceptable too: the core then builds
+/// the path from the root, and the file simply will not be written — Python
+/// behaved the same way.
 pub fn home() -> String {
     std::env::var("HOME").unwrap_or_default()
 }
 
-/// `$XDG_CONFIG_HOME`, если он задан и непустой.
+/// `$XDG_CONFIG_HOME`, if it is set and non-empty.
 pub fn xdg_config_home() -> Option<String> {
     match std::env::var("XDG_CONFIG_HOME") {
         Ok(v) if !v.is_empty() => Some(v),
@@ -23,20 +24,21 @@ pub fn xdg_config_home() -> Option<String> {
     }
 }
 
-/// Числовой идентификатор пользователя.
+/// Numeric user id.
 ///
-/// Без libc: владелец `/proc/self` — это и есть текущий uid. Ядро просит
-/// его только ради пути `/run/user/<uid>/systemd`.
+/// Without libc: the owner of `/proc/self` is the current uid. The core asks
+/// for it only for the `/run/user/<uid>/systemd` path.
 pub fn uid() -> u32 {
     use std::os::unix::fs::MetadataExt;
     std::fs::metadata("/proc/self").map(|m| m.uid()).unwrap_or(0)
 }
 
-/// Живые проверки файловой системы для `we_client::find_daemon_binary`.
+/// Live file system checks for `we_client::find_daemon_binary`.
 ///
-/// Одна на крейт: бинарь демона ищут и страница автозапуска, и транспорт, а
-/// две копии этих двух методов разъехались бы молча (правило #12). Порядок и
-/// состав кандидатов решает ядро, здесь только `stat` и обход `$PATH`.
+/// One per crate: the daemon binary is looked for both by the autostart page
+/// and by the transport, and two copies of these two methods would silently
+/// drift apart (rule #12). The order and the set of candidates are decided
+/// by the core; here there is only `stat` and walking `$PATH`.
 pub struct FsProbe;
 
 impl rexon_core::we_client::DaemonFs for FsProbe {
@@ -58,12 +60,13 @@ impl rexon_core::we_client::DaemonFs for FsProbe {
         None
     }
 
-    /// `<движок> --version`, с запоминанием по (путь, размер, время правки).
+    /// `<engine> --version`, memoized by (path, size, modification time).
     ///
-    /// Ядро спрашивает версию, только когда на диске лежат ОБА движка —
-    /// из пакета и управляемый. Запуск AppImage стоит полсекунды, а поиск
-    /// бинаря зовут на каждом открытии вкладки и на каждом тике автозапуска,
-    /// поэтому ответ помнится, пока файл не подменили.
+    /// The core asks for the version only when BOTH engines are on disk — the
+    /// packaged one and the managed one. Starting an AppImage costs half a
+    /// second, while the binary search is called on every tab opening and on
+    /// every autostart tick, so the answer is remembered until the file is
+    /// replaced.
     fn binary_version(&mut self, path: &str) -> Option<String> {
         use std::collections::HashMap;
         use std::time::{Duration, Instant};
@@ -90,7 +93,7 @@ impl rexon_core::we_client::DaemonFs for FsProbe {
         let version = loop {
             match child.try_wait() {
                 Ok(Some(_)) => {
-                    // Разные сборки печатают версию то в stdout, то в stderr.
+                    // Different builds print the version to stdout or to stderr.
                     use std::io::Read;
                     let mut out = String::new();
                     if let Some(mut stdout) = child.stdout.take() {
@@ -106,8 +109,8 @@ impl rexon_core::we_client::DaemonFs for FsProbe {
                 Ok(None) if started.elapsed() < limit => {
                     std::thread::sleep(Duration::from_millis(50));
                 }
-                // Завис или не ждётся — это НАШ дочерний процесс по его
-                // идентификатору, не поиск по имени.
+                // Hung or not waited for — this is OUR child process by its id, not a
+                // lookup by name.
                 _ => {
                     let _ = child.kill();
                     let _ = child.wait();
@@ -122,13 +125,15 @@ impl rexon_core::we_client::DaemonFs for FsProbe {
     }
 }
 
-/// Путь к бинарю демона обоев (или `None`). Одна дверь на весь крейт.
+/// Path to the wallpaper daemon binary (or `None`). One door for the whole
+/// crate.
 pub fn daemon_binary() -> Option<String> {
     rexon_core::we_client::find_daemon_binary(&mut FsProbe, &pkg_dir(), &home())
 }
 
-/// Раскладки движка из пакетов (`we_client::engine_layouts`), которые
-/// реально стоят на этой машине: лежит `plugins/` или сам демон.
+/// Engine layouts from packages (`we_client::engine_layouts`) that are
+/// really installed on this machine: `plugins/` or the daemon itself is
+/// there.
 pub fn present_engine_layouts() -> Vec<rexon_core::we_client::EngineLayout> {
     use rexon_core::we_client::DaemonFs;
     rexon_core::we_client::engine_layouts()
@@ -137,10 +142,11 @@ pub fn present_engine_layouts() -> Vec<rexon_core::we_client::EngineLayout> {
         .collect()
 }
 
-/// Движок из пакета, с которым сверяется живой демон: раскладка запускаемого
-/// демона, а если запускается чужой (управляемый AppImage человека) — первая
-/// стоящая на диске. `None` — движка из пакетов нет (дерево разработчика,
-/// ручная установка без пакетов).
+/// The packaged engine the live daemon is compared with: the layout of the
+/// daemon being started, and if a foreign one is started (the user's
+/// managed AppImage) — the first one present on disk. `None` means there is
+/// no packaged engine (a developer tree, a manual installation without
+/// packages).
 pub fn package_engine() -> Option<rexon_core::we_client::EngineLayout> {
     let present = present_engine_layouts();
     let binary = daemon_binary();
@@ -150,11 +156,12 @@ pub fn package_engine() -> Option<rexon_core::we_client::EngineLayout> {
         .or_else(|| present.into_iter().next())
 }
 
-/// Каталог, который демон получает флагом `--plugin`
-/// (`we_client::engine_launch_args`), для запуска бинаря `binary`. Решает
-/// ядро (`we_client::plugin_root_for`): флаг нужен, только если демон не
-/// видит каталог плагинов пакета сам — `waywallen` из пакета дистрибутива
-/// его видит, `waywallen-bin` и управляемый AppImage нет.
+/// The directory the daemon gets with the `--plugin` flag
+/// (`we_client::engine_launch_args`) for starting binary `binary`. Decided
+/// by the core (`we_client::plugin_root_for`): the flag is needed only if
+/// the daemon does not see the package's plugin directory by itself —
+/// `waywallen` from the distribution package sees it, `waywallen-bin` and a
+/// managed AppImage do not.
 pub fn engine_plugin_root_for(binary: Option<&str>) -> Option<String> {
     let with_plugins: Vec<_> = rexon_core::we_client::engine_layouts()
         .into_iter()
@@ -166,13 +173,13 @@ pub fn engine_plugin_root_for(binary: Option<&str>) -> Option<String> {
     rexon_core::we_client::plugin_root_for(&with_plugins, resolved.as_deref().or(binary))
 }
 
-/// [`engine_plugin_root_for`] для демона, которого запустит Rexon.
+/// [`engine_plugin_root_for`] for the daemon Rexon will start.
 pub fn engine_plugin_root() -> Option<String> {
     engine_plugin_root_for(daemon_binary().as_deref())
 }
 
-/// Плагины движка из пакета: `id`/`name`/`version` каждого
-/// `<каталог движка>/plugins/*/plugin.toml`. Пусто — пакета нет.
+/// Plugins of the packaged engine: `id`/`name`/`version` of each
+/// `<engine dir>/plugins/*/plugin.toml`. Empty means there is no package.
 pub fn bundled_plugins() -> Vec<rexon_core::we_client::PluginCopy> {
     let Some(layout) = package_engine() else {
         return Vec::new();
@@ -187,10 +194,11 @@ pub fn bundled_plugins() -> Vec<rexon_core::we_client::PluginCopy> {
         .collect()
 }
 
-/// Поставлен ли Rexon пакетом дистрибутива: лаунчер пакета выставил
-/// `REXON_PACKAGED`, либо сам бинарь лежит там, куда кладёт только пакетный
-/// менеджер (ярлык может звать окно напрямую, мимо лаунчера). Решения —
-/// ядра (`installer::PACKAGED_ENV`, `installer::packaged_location`).
+/// Whether Rexon is installed as a distribution package: the package
+/// launcher set `REXON_PACKAGED`, or the binary itself lies where only the
+/// package manager puts things (a launcher may call the window directly,
+/// bypassing the package launcher). The decisions are the core's
+/// (`installer::PACKAGED_ENV`, `installer::packaged_location`).
 pub fn rexon_packaged() -> bool {
     if std::env::var_os(rexon_core::installer::PACKAGED_ENV).is_some() {
         return true;
@@ -205,11 +213,12 @@ fn pkg_dir_slot() -> &'static Mutex<String> {
     SLOT.get_or_init(|| Mutex::new(String::new()))
 }
 
-/// Каталог пакета `rexon/` — от него ядро строит путь к вшитому бинарю
-/// движка (`rexon/vendor/`).
+/// Directory of the `rexon/` package — from it the core builds the path to
+/// the bundled engine binary (`rexon/vendor/`).
 ///
-/// Пусто, пока вкладку не готовили: значение кладёт [`discover_pkg_dir`] при
-/// первой подготовке процесса (`prepare_process`), выводя его из пути своего бинаря.
+/// Empty until the tab has been prepared: the value is put in by
+/// [`discover_pkg_dir`] on the first process preparation
+/// (`prepare_process`), deriving it from the path of its own binary.
 pub fn pkg_dir() -> String {
     pkg_dir_slot()
         .lock()
@@ -218,13 +227,13 @@ pub fn pkg_dir() -> String {
 }
 
 // ============================================================================
-// Собранные QML-плагины вкладки
+// Built QML plugins of the tab
 // ============================================================================
 
-/// Живые проверки ФС для [`rexon_core::qml_modules`].
+/// Live file system checks for [`rexon_core::qml_modules`].
 ///
-/// Не копия решения: порядок и состав каталогов держит ядро, здесь только
-/// `is_file`.
+/// Not a copy of the decision: the order and the set of directories are held
+/// by the core; here there is only `is_file`.
 struct ModuleProbe;
 
 impl rexon_core::qml_modules::ModuleFs for ModuleProbe {
@@ -232,8 +241,9 @@ impl rexon_core::qml_modules::ModuleFs for ModuleProbe {
         std::path::Path::new(path).is_file()
     }
 
-    /// Заметка `.note.qt.metadata` лежит в самом начале файла плагина
-    /// (первые сотни байт), поэтому хватает головы файла, а не всего его.
+    /// The `.note.qt.metadata` note lies at the very start of the plugin file
+    /// (the first few hundred bytes), so the head of the file is enough, not the
+    /// whole of it.
     fn plugin_qt_version(&mut self, path: &str) -> Option<(u32, u32)> {
         use std::io::Read;
         let mut head = vec![0u8; 64 * 1024];
@@ -246,7 +256,7 @@ impl rexon_core::qml_modules::ModuleFs for ModuleProbe {
         running_qt_version()
     }
 
-    /// Отметка сборки модуля — одна строка; больше килобайта не читается.
+    /// The module's build stamp is one line; no more than a kilobyte is read.
     fn read_text(&mut self, path: &str) -> Option<String> {
         use std::io::Read;
         let mut text = String::new();
@@ -260,12 +270,12 @@ impl rexon_core::qml_modules::ModuleFs for ModuleProbe {
 }
 
 unsafe extern "C" {
-    /// `qVersion()` из QtCore — версия Qt, с которой процесс РАБОТАЕТ (не
-    /// та, с которой собран). Объявлена в Qt с C-связыванием.
+    /// `qVersion()` from QtCore — the Qt version the process RUNS with (not the
+    /// one it was built with). Declared in Qt with C linkage.
     fn qVersion() -> *const c_char;
 }
 
-/// Версия запущенного Qt (старшая, младшая).
+/// Version of the running Qt (major, minor).
 pub fn running_qt_version() -> Option<(u32, u32)> {
     let raw = unsafe { qVersion() };
     if raw.is_null() {
@@ -278,9 +288,9 @@ pub fn running_qt_version() -> Option<(u32, u32)> {
     Some((major, minor))
 }
 
-/// `Qcm.Material` нашёлся, но собран под другую младшую версию Qt:
-/// `(версия сборки, версия запущенного Qt)`. Такая сборка не грузится
-/// (см. `rexon_core::qml_modules`), и заглушка вкладки объясняет почему.
+/// `Qcm.Material` was found but built for a different minor Qt version:
+/// `(build version, running Qt version)`. Such a build does not load (see
+/// `rexon_core::qml_modules`), and the tab placeholder explains why.
 pub fn qml_modules_wrong_qt() -> Option<((u32, u32), (u32, u32))> {
     let found = rexon_core::qml_modules::incompatible_qcm(&mut ModuleProbe, &qml_module_dirs())?;
     let (path, built, running) = found;
@@ -295,7 +305,7 @@ pub fn qml_modules_wrong_qt() -> Option<((u32, u32), (u32, u32))> {
     Some((built, running))
 }
 
-/// `$XDG_DATA_HOME`, если он задан и непустой.
+/// `$XDG_DATA_HOME`, if it is set and non-empty.
 pub fn xdg_data_home() -> Option<String> {
     match std::env::var("XDG_DATA_HOME") {
         Ok(v) if !v.is_empty() => Some(v),
@@ -303,15 +313,16 @@ pub fn xdg_data_home() -> Option<String> {
     }
 }
 
-/// `$XDG_DATA_DIRS` сырым значением (через двоеточие).
+/// `$XDG_DATA_DIRS` as the raw value (colon-separated).
 pub fn xdg_data_dirs() -> String {
     std::env::var("XDG_DATA_DIRS").unwrap_or_default()
 }
 
-/// Развернуть `qml_modules::MULTIARCH_GLOB` обходом `/usr/lib`.
+/// Expand `qml_modules::MULTIARCH_GLOB` by walking `/usr/lib`.
 ///
-/// Тот же ответ, что у `sorted(glob.glob(...))` в Python и у соседнего
-/// исполнителя в `rexon-py`; шаблон и здесь берётся у ядра.
+/// The same answer as `sorted(glob.glob(...))` in Python and as the
+/// neighbouring executor in `rexon-py`; the pattern is taken from the core
+/// here too.
 fn multiarch_dirs() -> Vec<String> {
     let Ok(rd) = std::fs::read_dir("/usr/lib") else {
         return Vec::new();
@@ -326,10 +337,10 @@ fn multiarch_dirs() -> Vec<String> {
     out
 }
 
-/// Все каталоги, где могут лежать собранные QML-плагины, по убыванию
-/// предпочтения. Состав и порядок — ядро: пользовательская сборка
-/// (`tools/build_qml_*.sh`) главнее только при запуске из дерева исходников,
-/// у пакета главнее пакетная копия (`qml_modules::order_module_dirs`).
+/// All directories where built QML plugins may lie, in decreasing order of
+/// preference. The set and the order are the core's: the user build
+/// (`tools/build_qml_*.sh`) wins only when run from the source tree, while
+/// for a package the packaged copy wins (`qml_modules::order_module_dirs`).
 pub fn qml_module_dirs() -> Vec<String> {
     use rexon_core::qml_modules as qm;
     let xdg = xdg_data_home();
@@ -353,28 +364,30 @@ pub fn qml_module_dirs() -> Vec<String> {
 }
 
 // ============================================================================
-// Хозяин вкладки: подготовка процесса и движка QML
+// Tab host: preparing the process and the QML engine
 // ============================================================================
 //
-// Подготовка вкладки обоев для Rust-окна (`bin/main_window.rs`).
-// Решений здесь нет: состав и порядок каталогов, имена файлов, кандидаты
-// сборок и кэш — ядро (`qml_modules`, `remote_l10n`).
+// Preparing the wallpaper tab for the Rust window (`bin/main_window.rs`).
+// There are no decisions here: the set and order of directories, file
+// names, build candidates and the cache are the core's (`qml_modules`,
+// `remote_l10n`).
 
-/// Найти каталог пакета `rexon/`, если его ещё никто не назвал.
+/// Find the directory of the `rexon/` package if nobody has named it yet.
 ///
-/// Корень выводится из пути своего бинаря — той же функцией ядра, какой
-/// окно ищет заставку (`cli::repo_root`).
-/// Пакет признаётся, только если в нём действительно лежит вендорный
-/// интерфейс: чужой каталог `rexon` рядом не должен сойти за него.
+/// The root is derived from the path of our own binary — with the same core
+/// function the window uses to look for the splash (`cli::repo_root`).
+/// The package is accepted only if it really contains the vendored
+/// interface: a foreign `rexon` directory nearby must not pass for it.
 fn discover_pkg_dir() -> String {
     let known = pkg_dir();
     if !known.is_empty() {
         return known;
     }
-    // Раскладок три — дерево разработчика, пакет дистрибутива и установка
-    // `installer.py`; их состав и порядок держит ядро, здесь только живая
-    // проба файла (правило #12). Без этого окно из пакета открывало вкладку
-    // обоев без вендорных страниц: дерева `rust/Cargo.toml` рядом с ним нет.
+    // There are three layouts — a developer tree, a distribution package and
+    // an `installer.py` installation; their set and order are held by the
+    // core, here there is only a live file probe (rule #12). Without this the
+    // window from a package opened the wallpaper tab without the vendored
+    // pages: there is no `rust/Cargo.toml` tree next to it.
     let root = rexon_core::cli::repo_root();
     let Some(candidate) = rexon_core::installer::pick_package_data_dir(&root, &|path: &str| {
         std::path::Path::new(path).is_file()
@@ -385,8 +398,9 @@ fn discover_pkg_dir() -> String {
     candidate
 }
 
-/// Каталог вендорного интерфейса waywallen (`qml_ui/` пакета); пусто —
-/// пакета нет, и страница открывается без вендорных страниц.
+/// Directory of the vendored waywallen interface (`qml_ui/` of the
+/// package); empty means there is no package, and the page opens without
+/// the vendored pages.
 pub fn vendor_qml_dir() -> String {
     let pkg = pkg_dir();
     if pkg.is_empty() {
@@ -400,8 +414,9 @@ pub fn vendor_qml_dir() -> String {
     }
 }
 
-/// Корень дерева для кандидатов сборок: родитель пакета `rexon/`, по
-/// настоящему пути (симлинк установленной копии ведёт в рабочее дерево).
+/// Tree root for build candidates: the parent of the `rexon/` package, by
+/// the real path (the symlink of the installed copy leads into the working
+/// tree).
 fn repo_root_of_pkg() -> String {
     let pkg = pkg_dir();
     std::fs::canonicalize(&pkg)
@@ -410,9 +425,9 @@ fn repo_root_of_pkg() -> String {
         .unwrap_or_default()
 }
 
-/// Сказать в журнале (один раз за процесс), какой каталог модулей пропущен
-/// из-за `waywallen.control`, собранного из другого протокола. Само решение —
-/// ядро (`qml_modules::stale_control_dirs`).
+/// Say in the log (once per process) which module directory is skipped
+/// because of a `waywallen.control` built from another protocol. The
+/// decision itself is the core's (`qml_modules::stale_control_dirs`).
 fn log_stale_control_once(dirs: &[String]) {
     use rexon_core::qml_modules::{self as qm, ControlBuild};
     static DONE: std::sync::Once = std::sync::Once::new();
@@ -436,8 +451,9 @@ fn log_stale_control_once(dirs: &[String]) {
     });
 }
 
-/// Каталоги для `addImportPath` в порядке предпочтения: где реально что-то
-/// лежит, а если нигде — каталог, где искали `Qcm.Material` (как у Python).
+/// Directories for `addImportPath` in order of preference: where something
+/// really lies, and if nowhere — the directory where `Qcm.Material` was
+/// looked for (as in Python).
 fn engine_import_dirs() -> Vec<String> {
     let dirs = qml_module_dirs();
     log_stale_control_once(&dirs);
@@ -453,10 +469,10 @@ fn engine_import_dirs() -> Vec<String> {
     }
 }
 
-/// Какой модуль `QExtra` получит движок: настоящий плагин автора или наша
-/// QML-подмена из каталога вендорной разметки. Решение — ядро
-/// (`qml_modules::choose_qextra`); здесь живые пробы и одна строка в журнал
-/// на процесс.
+/// Which `QExtra` module the engine gets: the author's real plugin or our
+/// QML replacement from the vendored markup directory. The decision is the
+/// core's (`qml_modules::choose_qextra`); here there are live probes and one
+/// log line per process.
 fn qextra_choice() -> &'static rexon_core::qml_modules::QExtraChoice {
     use rexon_core::qml_modules as qm;
     static CHOICE: OnceLock<qm::QExtraChoice> = OnceLock::new();
@@ -485,10 +501,11 @@ unsafe extern "C" {
 const RTLD_NOW: i32 = 2;
 const RTLD_GLOBAL: i32 = 0x100;
 
-/// Загрузить в процесс value-типы Qt-Protobuf `waywallen.control` без
-/// движка QML: библиотека типов берётся из свежего каталога модулей (того
-/// же, что отдаётся движку). Нужна стенду страницы «Обои» — он гоняет шим
-/// гаджетов на НАСТОЯЩИХ типах, а не на подделке. `Ok` — путь библиотеки.
+/// Load the Qt Protobuf value types of `waywallen.control` into the process
+/// without a QML engine: the type library is taken from a fresh module
+/// directory (the same one handed to the engine). Needed by the
+/// "Wallpapers" page bench — it runs the gadget shim on REAL types, not on a
+/// fake. `Ok` is the library path.
 pub fn load_control_types() -> Result<String, String> {
     use rexon_core::qml_modules as qm;
     let dirs = qml_module_dirs();
@@ -502,18 +519,19 @@ pub fn load_control_types() -> Result<String, String> {
     Ok(so)
 }
 
-/// Зарегистрировать модель редактора фильтров в `waywallen.ui`.
+/// Register the filter editor model in `waywallen.ui`.
 ///
-/// Модель — отдельный крейт (`rexon-qt-filter`, только `cdylib`: гаджеты
-/// Qt-Protobuf маршалятся лишь в C++/Rust), поэтому её сборка грузится с
-/// диска, первым существующим кандидатом ядра. `false` — не нашлась ни
-/// одна: редактор фильтров будет пуст, но страница не упадёт.
+/// The model is a separate crate (`rexon-qt-filter`, `cdylib` only: Qt
+/// Protobuf gadgets are marshalled only in C++/Rust), so its build is
+/// loaded from disk, the first existing core candidate. `false` means none
+/// was found: the filter editor will be empty, but the page will not crash.
 pub fn register_filter_model() -> bool {
     static DONE: OnceLock<bool> = OnceLock::new();
     *DONE.get_or_init(|| {
         let root = repo_root_of_pkg();
-        // Каталоги — уже без устаревших: модель фильтров пишет гаджеты
-        // Qt-Protobuf и обязана быть из той же сборки, что `waywallen.control`.
+        // Directories — already without stale ones: the filter model writes Qt
+        // Protobuf gadgets and must come from the same build as
+        // `waywallen.control`.
         let dirs = rexon_core::qml_modules::usable_dirs(&mut ModuleProbe, &qml_module_dirs());
         for so in rexon_core::qml_modules::filter_lib_candidates(&root, &dirs) {
             if !std::path::Path::new(&so).is_file() {
@@ -540,18 +558,18 @@ pub fn register_filter_model() -> bool {
 }
 
 thread_local! {
-    /// Движок прогрева живёт до конца процесса — как у Python.
+    /// The warm-up engine lives until the end of the process — as in Python.
     static PREWARM: std::cell::RefCell<Option<cxx::UniquePtr<cxx_qt_lib::QQmlApplicationEngine>>> =
         const { std::cell::RefCell::new(None) };
 }
 
-/// Прогреть регистрацию Qt-Protobuf на ГЛАВНОМ потоке.
+/// Warm up Qt Protobuf registration on the MAIN thread.
 ///
-/// Вендорные страницы грузятся асинхронно, то есть компилируются в
-/// `QQmlThread`; первая встреча с `waywallen.control` там встаёт на
-/// дедлоке глобальной регистрации protobuf-типов. Поэтому модуль один раз
-/// импортируется здесь, синхронно, отдельным движком. `false` — греть
-/// нечего (пакета или плагинов нет).
+/// The vendored pages load asynchronously, that is, they are compiled in
+/// `QQmlThread`; the first encounter with `waywallen.control` there
+/// deadlocks on the global registration of protobuf types. So the module is
+/// imported once here, synchronously, with a separate engine. `false` means
+/// there is nothing to warm up (no package or plugins).
 pub fn prewarm() -> bool {
     if PREWARM.with(|p| p.borrow().is_some()) {
         return true;
@@ -571,50 +589,53 @@ pub fn prewarm() -> bool {
     true
 }
 
-/// Подготовка процесса для Rust-окна: всё, что питоновский хозяин делает
-/// до первой загрузки QML. Звать из главного потока с живым приложением.
+/// Process preparation for the Rust window: everything the Python host does
+/// before the first QML load. Call from the main thread with a live
+/// application.
 pub fn prepare_process() {
     let pkg = discover_pkg_dir();
     if pkg.is_empty() {
         rexon_core::log_warn!("wallpaper", "пакет rexon/ рядом не найден — вкладка обоев откроется без своих страниц");
     }
-    // Типы `waywallen.ui` и синглтоны Notify/App — раньше подключения к
-    // демону: стартовый снимок он шлёт один раз. `App` при рождении ставит
-    // переводчик вендорных страниц по каталогу пакета.
+    // The `waywallen.ui` types and the Notify/App singletons — before
+    // connecting to the daemon: it sends the start snapshot only once. At
+    // birth `App` installs the translator of the vendored pages by the package
+    // catalogue.
     crate::register_we_types();
-    // Цвет ссылок скина — в палитру приложения до первой страницы QML:
-    // HTML разбирается при загрузке, и без этого ссылки выходят `#0000ff`.
+    // The skin's link colour goes into the application palette before the
+    // first QML page: HTML is parsed on loading, and without this links come
+    // out `#0000ff`.
     crate::skin::apply_app_palette();
     register_filter_model();
     crate::we_singletons::set_launch_hook(Some(crate::we_socket::launch_daemon_hook));
     prewarm();
 }
 
-/// Подготовить движок QML к вендорным страницам: пути импорта плагинов и
-/// вендорного `waywallen.ui`, дисковый кэш миниатюр (один на процесс,
-/// им управляет `App` со страницы настроек) и запись движка для смены
-/// языка на лету.
+/// Prepare the QML engine for the vendored pages: import paths of the
+/// plugins and of the vendored `waywallen.ui`, the thumbnail disk cache (one
+/// per process, managed by `App` from the settings page) and recording the
+/// engine for changing the language on the fly.
 ///
 /// # Safety
-/// `engine` — живой `QQmlEngine` (или наследник первым предком) из главного
-/// потока либо nullptr.
+/// `engine` is a live `QQmlEngine` (or one with it as the first ancestor)
+/// from the main thread, or nullptr.
 pub unsafe fn prepare_engine(engine: *mut std::ffi::c_void) -> bool {
     if engine.is_null() {
         return false;
     }
     let mut eng = unsafe { Pin::new_unchecked(&mut *engine.cast::<cxx_qt_lib::QQmlEngine>()) };
-    // `addImportPath` кладёт путь В НАЧАЛО списка — обходим с конца, чтобы
-    // первым остался самый желанный каталог.
+    // `addImportPath` puts the path AT THE START of the list — we walk from
+    // the end, so that the most wanted directory ends up first.
     for dir in engine_import_dirs().iter().rev() {
         eng.as_mut().add_import_path(&cxx_qt_lib::QString::from(dir.as_str()));
     }
     let vendor = vendor_qml_dir();
     if !vendor.is_empty() {
         eng.as_mut().add_import_path(&cxx_qt_lib::QString::from(vendor.as_str()));
-        // В каталоге вендора лежит QML-подмена модуля `QExtra`, и стоит он в
-        // списке первым. Настоящий плагин берётся тем, что его каталог
-        // модулей встаёт ещё раньше; не выбран — список не трогаем, и
-        // работает подмена.
+        // The vendor directory contains a QML replacement of the `QExtra` module,
+        // and it is first in the list. The real plugin is taken because its module
+        // directory goes even earlier; if it is not chosen, the list is left
+        // alone, and the replacement works.
         if let rexon_core::qml_modules::QExtraChoice::Real { dir, .. } = qextra_choice() {
             eng.as_mut().add_import_path(&cxx_qt_lib::QString::from(dir.as_str()));
         }
@@ -637,11 +658,11 @@ pub unsafe fn prepare_engine(engine: *mut std::ffi::c_void) -> bool {
     true
 }
 
-/// Собраны ли ОБА плагина вендорного интерфейса — `Qcm.Material` и
-/// `waywallen.control`.
+/// Whether BOTH plugins of the vendored interface are built — `Qcm.Material`
+/// and `waywallen.control`.
 ///
-/// Без них вендорные страницы не импортируются вовсе, и вкладка обязана
-/// показать заглушку с инструкцией по сборке, а не пустое место.
+/// Without them the vendored pages do not import at all, and the tab must
+/// show a placeholder with build instructions rather than an empty space.
 pub fn qml_plugins_ready() -> bool {
     rexon_core::qml_modules::qml_plugins_ready(&mut ModuleProbe, &qml_module_dirs())
 }

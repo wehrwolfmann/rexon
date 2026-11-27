@@ -1,9 +1,11 @@
-// WallpaperPlaylistActions — блок «Плейлист обоев» в «⚙️ Настройках»
-// раздела «Обои HD» и кнопка «В плейлист» у обоев Razer Axon.
+// WallpaperPlaylistActions — the "Wallpaper playlist" block in "⚙️
+// Settings" of the "HD Wallpapers" section and the "To playlist" button of
+// Razer Axon wallpapers.
 //
-// Логики здесь нет: модель, правки, снимок и подписи — ядро
-// (`rexon_core::wallpaper_playlist`). Смена обоев идёт тем же исполнителем,
-// что у таймера и лотка, — вне потока GUI; итог приходит сигналом.
+// There is no logic here: the model, edits, snapshot and labels come from
+// the core (`rexon_core::wallpaper_playlist`). Changing the wallpaper goes
+// through the same executor as for the timer and the tray — outside the
+// GUI thread; the result arrives as a signal.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -19,25 +21,26 @@ pub mod qobject {
     }
 
     unsafe extern "RustQt" {
-        /// Смена обоев закончилась (текст для человека; пусто — молча).
+        /// The wallpaper change has finished (text for the user; empty — silently).
         #[qsignal]
         fn finished(self: Pin<&mut WallpaperPlaylistActions>, message: QString);
     }
 
     extern "RustQt" {
-        /// Подписи блока (JSON).
+        /// Block labels (JSON).
         #[qinvokable]
         fn texts(self: &WallpaperPlaylistActions) -> QString;
 
-        /// Снимок блока (JSON `wallpaper_playlist::view`).
+        /// Block snapshot (JSON `wallpaper_playlist::view`).
         #[qinvokable]
         fn state(self: &WallpaperPlaylistActions) -> QString;
 
-        /// Правка (JSON `{"op": …}`). Ответ — `{"ok", "message"}`.
+        /// An edit (JSON `{"op": …}`). The answer is `{"ok", "message"}`.
         #[qinvokable]
         fn edit(self: &WallpaperPlaylistActions, op: &QString) -> QString;
 
-        /// `next`, `prev`, `pause` — смена в фоне, итог сигналом `finished`.
+        /// `next`, `prev`, `pause` — the change happens in the background, the
+        /// result comes with the `finished` signal.
         #[qinvokable]
         fn command(self: Pin<&mut WallpaperPlaylistActions>, name: &QString);
     }

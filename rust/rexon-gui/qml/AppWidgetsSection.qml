@@ -1,8 +1,8 @@
-// Раздел «Значки и панели инструментов» вкладки «Оформление»: значки в меню и
-// на кнопках, подписи на кнопках панелей инструментов — во всех окружениях
-// (как «Настроить значки и панели инструментов» стиля приложений KDE).
+// The "Icons and toolbars" section of the "Appearance" tab: icons in menus
+// and on buttons, labels on toolbar buttons — in all environments (like
+// "Configure icons and toolbars" of the KDE application style).
 //
-// Только разметка: снимок и запись — `AppWidgetsActions`
+// Markup only: snapshot and writing — `AppWidgetsActions`
 // (rust/rexon-gui/src/app_widgets_actions.rs → rexon_core::app_widgets).
 
 pragma ComponentBehavior: Bound
@@ -103,8 +103,8 @@ Rectangle {
             RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
-                // Главная панель — различие KDE; вне Plasma первый выбор
-                // действует на все панели остальных программ.
+                // The main toolbar is a KDE distinction; outside Plasma the first choice
+                // applies to all toolbars of other programs.
                 text: section.st.de === "kde"
                       ? qsTranslate("rexon", "Main toolbar labels:")
                       : qsTranslate("rexon", "Toolbar labels:")
@@ -149,7 +149,7 @@ Rectangle {
             }
         }
 
-        // Вне Plasma прочие панели различают только программы KDE.
+        // Outside Plasma, only KDE programs distinguish the other toolbars.
         RexonText {
             Layout.fillWidth: true
             visible: section.st.has_other_toolbars === true && (section.st.other_toolbars_note || "") !== ""

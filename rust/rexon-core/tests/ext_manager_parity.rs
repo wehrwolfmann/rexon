@@ -1,24 +1,24 @@
-//! Golden-сверка порта `ext_manager.rs` с оригиналом
+//! Golden check of the `ext_manager.rs` port against the original
 //! `rexon/extensions/manager.py`.
 //!
-//! Эталоны сняты с ЖИВОГО Python по схеме «песочница + журнал побочных
-//! вызовов»: одноразовый генератор материализовал деревья расширений в
-//! песочнице (HOME → временный каталог, реальный HOME не тронут), прогнал
-//! настоящие `_safe_install`/`_safe_uninstall`/`install_from_file`/
-//! `_discover` и записал КАЖДЫЙ побочный вызов (shutil.copytree/copy2/
-//! rmtree, os.makedirs/symlink/remove, subprocess.run/Popen с argv и
-//! timeout, тексты pkexec-скриптов и генерируемых файлов) как op-лог.
-//! Снимок ФС в фикстуре хранит листинги в порядке os.scandir/os.listdir,
-//! КАК ИХ ВИДЕЛ Python (включая каталоги, прочитанные после его же
-//! копирований). tempfile.mkdtemp подменялся детерминированным счётчиком
-//! `{base}/{prefix}{N}` — те же пути даёт `TmpAlloc`.
+//! The goldens were captured from LIVE Python using the "sandbox + side-call
+//! log" scheme: a one-off generator materialized extension trees in a
+//! sandbox (HOME → a temporary directory, the real HOME untouched), ran the
+//! real `_safe_install`/`_safe_uninstall`/`install_from_file`/
+//! `_discover` and recorded EVERY side call (shutil.copytree/copy2/
+//! rmtree, os.makedirs/symlink/remove, subprocess.run/Popen with argv and
+//! timeout, texts of pkexec scripts and generated files) as an op log.
+//! The FS snapshot in the fixture keeps listings in os.scandir/os.listdir order,
+//! AS PYTHON SAW THEM (including directories read after its own
+//! copies). tempfile.mkdtemp was replaced by a deterministic counter
+//! `{base}/{prefix}{N}` — `TmpAlloc` gives the same paths.
 //!
-//! План Rust обязан совпасть с op-логом Python 1-в-1 (порядок, argv,
-//! таймауты, тексты скриптов/конфигов байт-в-байт).
+//! The Rust plan must match the Python op log 1-to-1 (order, argv,
+//! timeouts, script/config texts byte-for-byte).
 //!
-//! Известное отклонение: текст ошибки битого JSON — деталь после
-//! `manifest.json повреждён: ` у serde своя (JSONDecodeError Python
-//! не воспроизводится) — сверяется префикс.
+//! Known deviation: the broken-JSON error text — the detail after
+//! `manifest.json повреждён: ` is serde's own (Python's JSONDecodeError
+//! is not reproduced) — only the prefix is checked.
 
 use std::collections::HashMap;
 
@@ -34,15 +34,15 @@ use serde_json::{json, Map, Value};
 mod i18n_pin;
 
 fn fx() -> Value {
-    // Каталог помощника раскладки — живой ответ этой машины (голден снят
-    // там, где пакета не было): `system_plan::retarget_helper_paths`.
+    // The layout helper directory is this machine's live answer (the golden was captured
+    // where the package was absent): `system_plan::retarget_helper_paths`.
     let raw = rexon_core::system_plan::retarget_helper_paths(include_str!(
         "golden/ext_manager_cases.json"
     ));
     serde_json::from_str(&raw).unwrap()
 }
 
-/// Окружение кейса, собранное из фикстуры (владеет данными для замыканий).
+/// Case environment built from the fixture (owns the data for the closures).
 struct CaseData {
     fs: FsSnap,
     which: HashMap<String, String>,
@@ -135,14 +135,14 @@ impl CaseData {
 }
 
 // ============================================================================
-// Планы установки / удаления
+// Install / uninstall plans
 // ============================================================================
 
 #[test]
 fn safe_install_plans_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let fx = fx();
-    // Все расхождения разом: правка планировщика видна по всем случаям.
+    // All mismatches at once: a planner change shows up across all cases.
     let mut diverged = Vec::new();
     for (name, case) in fx["install"].as_object().unwrap() {
         let data = CaseData::load(case);
@@ -156,11 +156,11 @@ fn safe_install_plans_match_python() {
 
 #[test]
 fn safe_uninstall_plans_match_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language comes before parsing the golden: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = fx();
-    // Все расхождения разом: правка планировщика видна по всем случаям.
+    // All mismatches at once: a planner change shows up across all cases.
     let mut diverged = Vec::new();
     for (name, case) in fx["uninstall"].as_object().unwrap() {
         let data = CaseData::load(case);
@@ -173,11 +173,11 @@ fn safe_uninstall_plans_match_python() {
 }
 
 // ============================================================================
-// Валидационный конвейер установки (_install_rxn)
+// Install validation pipeline (_install_rxn)
 // ============================================================================
 
-/// Лексическая нормализация — аналог os.path.realpath для путей без
-/// симлинков (в фикстурах их нет).
+/// Lexical normalization — the analogue of os.path.realpath for paths without
+/// symlinks (the fixtures have none).
 fn lexical_realpath(p: &str) -> String {
     let mut parts: Vec<&str> = Vec::new();
     for comp in p.split('/') {
@@ -194,13 +194,13 @@ fn lexical_realpath(p: &str) -> String {
 
 #[test]
 fn install_rxn_check_matches_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let fx = fx();
     for (name, case) in fx["rxn_check"].as_object().unwrap() {
         let result = &case["result"];
         if name == "bad_zip" {
-            // Распаковка — исполнение (ext_utils/BadZipFile); текст ошибки
-            // Python фиксируем как контракт исполнителя.
+            // Unpacking is execution (ext_utils/BadZipFile); the Python error text
+            // is pinned as the executor's contract.
             assert_eq!(
                 result["error"]["message"],
                 json!("Файл повреждён или не является архивом .rxn"),
@@ -285,7 +285,7 @@ fn install_rxn_check_matches_python() {
 
 #[test]
 fn discover_stats_state_match_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // Language comes before parsing the golden: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = fx();
@@ -324,12 +324,12 @@ fn discover_stats_state_match_python() {
 }
 
 // ============================================================================
-// Чистые функции
+// Pure functions
 // ============================================================================
 
 #[test]
 fn pure_helpers_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let fx = fx();
     let pure = &fx["pure"];
 
@@ -370,11 +370,11 @@ fn pure_helpers_match_python() {
 }
 
 // ============================================================================
-// Перевод
+// Translation
 // ============================================================================
 
-/// Английский интерфейс: отказы установки — без русских букв. Русский —
-/// прежний: сверки с эталоном Python выше идут на `po/ru.po`.
+/// English interface: install refusals carry no Russian letters. Russian stays
+/// as before: the checks against the Python golden above run on `po/ru.po`.
 #[test]
 fn english_install_errors_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -388,7 +388,7 @@ fn english_install_errors_have_no_russian() {
     assert!(msg.starts_with("Requires Rexon >=99.0.0, but "), "{msg}");
     assert!(msg.ends_with(" is installed"), "{msg}");
 
-    // Все отказы конвейера на фикстурах Python — по-английски.
+    // All pipeline refusals on the Python fixtures are in English.
     let fx = fx();
     let mut checked = 0;
     for (name, case) in fx["rxn_check"].as_object().unwrap() {
@@ -423,11 +423,11 @@ fn english_install_errors_have_no_russian() {
 }
 
 // ============================================================================
-// Фон экрана входа LightDM — по приветствию, которое стоит
+// LightDM login screen background — by the installed greeter
 // ============================================================================
 
-/// План установки фона экрана входа при LightDM с заданными файлами
-/// настроек LightDM (путь → текст).
+/// Install plan for the login screen background under LightDM with the given LightDM
+/// settings files (path → text).
 fn lightdm_bg_plan(lightdm_files: &[(&str, &str)]) -> Vec<ExtStep> {
     let mut dirs = serde_json::Map::new();
     let mut files = serde_json::Map::new();
@@ -471,9 +471,9 @@ fn staged_category(steps: &[ExtStep]) -> Option<String> {
     })
 }
 
-/// Приветствие узнаётся по файлам LightDM (поздний перекрывает ранний,
-/// `[SeatDefaults]` — тоже) и по `Exec=` описания: у Debian имя сеанса —
-/// общий `lightdm-greeter`.
+/// The greeter is recognized from the LightDM files (a later one overrides an earlier one,
+/// `[SeatDefaults]` too) and from the description's `Exec=`: on Debian the session name is
+/// the generic `lightdm-greeter`.
 #[test]
 fn lightdm_greeter_is_read_from_its_config() {
     let fs = FsSnap::from_json(&json!({
@@ -501,10 +501,10 @@ fn lightdm_greeter_is_read_from_its_config() {
     assert_eq!(lightdm_background_way("lightdm-webkit2-greeter"), LightdmBackground::Unknown);
 }
 
-/// slick-greeter и lightdm-gtk-greeter — их файл настроек (как прежде);
-/// lightdm-deepin-greeter — картинка в общий каталог и в учётную запись;
-/// приветствие Pantheon своего фона не имеет — ни пароля, ни записи, а
-/// объяснение; незнакомое — тоже без записи.
+/// slick-greeter and lightdm-gtk-greeter — their settings file (as before);
+/// lightdm-deepin-greeter — the picture into the shared directory and the user account;
+/// the Pantheon greeter has no background of its own — no password, no write, just an
+/// explanation; an unknown one — no write either.
 #[test]
 fn lightdm_background_follows_the_greeter() {
     let _lang = i18n_pin::ru();
@@ -533,13 +533,13 @@ fn lightdm_background_follows_the_greeter() {
 }
 
 // ============================================================================
-// Общий набор значков `hicolor` пакет не ставит
+// The package does not install the shared `hicolor` icon set
 // ============================================================================
 
-/// Пакет значков (курсоров) с подпапками `hicolor`/`locolor` рядом со своей
-/// темой: тема ставится, общие наборы — нет (заметка), даже когда их
-/// каталогов в профиле ещё нет. Иначе `index.theme` пакета перекрыл бы
-/// системный и спрятал значки всего стола (дефект 09.11.2026).
+/// An icon (cursor) package with `hicolor`/`locolor` subfolders next to its own
+/// theme: the theme is installed, the shared sets are not (a note), even when their
+/// directories do not exist in the profile yet. Otherwise the package's `index.theme` would override
+/// the system one and hide the icons of the whole desktop (defect of 09.11.2026).
 #[test]
 fn rxn_never_installs_shared_hicolor() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));

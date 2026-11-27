@@ -1,21 +1,21 @@
-// «Управление шрифтами» в разделе шрифтов вкладки «Настройки»: все
-// установленные шрифты по семействам, группы «Все / Личные / Системные /
-// Неклассифицированные» и свои группы (общие с KDE: создать, переименовать,
-// удалить, добавить шрифт кнопкой или перетаскиванием, включить и выключить
-// группу целиком, экспорт в ZIP), производитель, тип файла и письменность, образец каждого начертания с
-// выбором кегля и своим текстом, таблица символов по блокам Юникода,
-// поиск, установка шрифта из
-// файла для себя или для всех пользователей, удаление своих и поставленных
-// для всех (с паролем), включение и выключение без удаления, поиск
-// дубликатов. Шрифты пакетов не удаляются.
+// "Font management" in the fonts section of the "Settings" tab: all
+// installed fonts by family, the groups "All / Personal / System /
+// Unclassified" and custom groups (shared with KDE: create, rename,
+// delete, add a font with a button or by drag and drop, enable and disable
+// a whole group, export to ZIP), foundry, file type and script, a sample
+// of every style with a choice of size and custom text, a character table
+// by Unicode blocks, search, installing a font from a file for yourself
+// or for all users, removing your own fonts and those installed for
+// everyone (with a password), enabling and disabling without removal,
+// finding duplicates. Package fonts are not removed.
 //
-// Только разметка: список, фильтры, символы, текст образца, установка,
-// удаление, выключение, группы и дубликаты — `SettingsActions`
+// Markup only: the list, filters, characters, sample text, installation,
+// removal, disabling, groups and duplicates — `SettingsActions`
 // (`fontLibrary`, `fontChars`, `setFontSampleText`, `installFontFile`,
 // `removeFont`, `setFontEnabled`, `fontGroupEdit`, `setFontGroupEnabled`,
-// `exportFontGroup`, `fontDuplicates` в
-// rust/rexon-gui/src/settings_actions.rs), решения и подписи — ядро
-// (`rexon_core::qt_settings`, раздел «Управление шрифтами»).
+// `exportFontGroup`, `fontDuplicates` in
+// rust/rexon-gui/src/settings_actions.rs), decisions and labels — the core
+// (`rexon_core::qt_settings`, the "Font management" section).
 
 pragma ComponentBehavior: Bound
 
@@ -30,56 +30,55 @@ ColumnLayout {
     property var pal: ({})
     property var sty: ({})
 
-    /// Ответ действия — показать человеку.
+    /// Action answer — to show to the user.
     signal message(string text)
-    /// Элемент получил фокус — странице прокрутить к нему.
+    /// An element got focus — the page should scroll to it.
     signal focused(Item item)
 
     property bool expanded: false
     property var lib: ({})
     property string query: ""
     property string origin: "all"
-    /// Фильтры производителя, типа файла и письменности; пусто — любой.
+    /// Foundry, file type and script filters; empty means any.
     property string foundry: ""
     property string fileType: ""
     property string script: ""
-    /// Для кого ставить шрифт (`lib.scopes`): «user» — для себя, «all» —
-    /// для всех пользователей (с паролем).
+    /// Whom to install the font for (`lib.scopes`): "user" — for yourself,
+    /// "all" — for all users (with a password).
     property string installScope: "user"
     property string selected: ""
-    /// Кегль образца (пункты); пределы — из ядра (`lib.sample`).
+    /// Sample size (points); limits come from the core (`lib.sample`).
     property int sampleSize: 16
-    /// Показан список дубликатов вместо списка шрифтов.
+    /// The list of duplicates is shown instead of the font list.
     property bool showDuplicates: false
     property var dups: ({})
-    /// Правая часть: «sample» — образцы начертаний, «chars» — таблица
-    /// символов.
+    /// The right part: "sample" — style samples, "chars" — the character table.
     property string view: "sample"
-    /// Начертание, чьи символы показаны (номер в `current.styles`).
+    /// The style whose characters are shown (index in `current.styles`).
     property int charsStyle: 0
-    /// Таблица символов (`fontChars`): блоки с кодами символов.
+    /// Character table (`fontChars`): blocks with character codes.
     property var chars: ({})
     property string charsBlock: ""
     property int pickedChar: -1
-    /// Правка имени группы: «create» — новая, «rename» — выбранная; пусто —
-    /// поле имени скрыто.
+    /// Group name edit: "create" — a new one, "rename" — the selected one;
+    /// empty means the name field is hidden.
     property string naming: ""
-    /// Семейство, которое сейчас перетаскивают на группу.
+    /// The family currently being dragged onto a group.
     property string dragFamily: ""
-    /// Выбранная своя группа (фильтр `group:Имя`) или пусто.
+    /// Selected custom group (filter `group:Name`) or empty.
     readonly property string customGroup: section.origin.startsWith("group:") ? section.origin.substring(6) : ""
 
     readonly property var texts: section.lib.texts || ({})
-    /// Текст образцов: свой из настроек или по умолчанию (ядро).
+    /// Sample text: custom from the settings or the default one (core).
     readonly property string sampleText: section.lib.sample ? section.lib.sample.text : ""
     readonly property color colText: section.pal.text_primary || "#ffffff"
     readonly property color colTextSecondary: section.pal.text_secondary || "#8f98a0"
     readonly property color colBorder: section.pal.border || "#3d4450"
 
-    /// Семейства под фильтр и строку поиска — отбирает ядро.
+    /// Families matching the filter and the search string — selected by the core.
     readonly property var shown: section.lib.families || []
 
-    /// Выбранное семейство целиком (или null).
+    /// The whole selected family (or null).
     readonly property var current: {
         const all = section.lib.families || [];
         for (let i = 0; i < all.length; ++i) {
@@ -107,7 +106,7 @@ ColumnLayout {
             section.reloadDuplicates();
     }
 
-    /// Начертание, чьи символы показаны (или null).
+    /// The style whose characters are shown (or null).
     readonly property var charsFace: {
         const styles = section.current ? section.current.styles : [];
         if (styles.length === 0)
@@ -115,7 +114,7 @@ ColumnLayout {
         return styles[Math.min(section.charsStyle, styles.length - 1)];
     }
 
-    /// Символы выбранного блока.
+    /// Characters of the selected block.
     readonly property var blockChars: {
         const blocks = section.chars.blocks || [];
         for (let i = 0; i < blocks.length; ++i) {
@@ -136,7 +135,7 @@ ColumnLayout {
         } catch (e) {
             section.chars = ({});
         }
-        // Прежний блок, если он есть и у этого шрифта; иначе — первый.
+        // The previous block if this font has it too; otherwise the first one.
         const blocks = section.chars.blocks || [];
         if (!blocks.some(b => b.id === section.charsBlock))
             section.charsBlock = blocks.length > 0 ? blocks[0].id : "";
@@ -157,8 +156,8 @@ ColumnLayout {
         }
     }
 
-    /// Правка своих групп (`fontGroupEdit`): ядро говорит, что выбрать
-    /// после неё; удачное создание и переименование закрывают поле имени.
+    /// Editing custom groups (`fontGroupEdit`): the core says what to select
+    /// afterwards; successful creation and renaming close the name field.
     function groupEdit(op, group, arg) {
         if (!section.actions)
             return;
@@ -184,8 +183,8 @@ ColumnLayout {
         section.reload();
     }
 
-    // Установка и удаление «для всех» кончаются в фоне (окно пароля):
-    // список перечитывается, когда пришёл итог.
+    // Installing and removing "for everyone" finish in the background (the
+    // password window): the list is re-read when the result arrives.
     Connections {
         target: section.actions
         function onRefreshed() {
@@ -194,7 +193,7 @@ ColumnLayout {
         }
     }
 
-    // Поиск спрашивает ядро не на каждую букву, а когда набор затих.
+    // Search asks the core not on every letter but once typing has paused.
     Timer {
         id: searchDelay
         interval: 200
@@ -203,8 +202,8 @@ ColumnLayout {
 
     spacing: section.sty.group ? section.sty.group.spacing : 8
 
-    // До первого открытия читаются только подписи: список шрифтов (fc-list)
-    // спрашивается, когда человек раскрыл раздел.
+    // Until the first opening only the labels are read: the font list
+    // (fc-list) is requested when the user expands the section.
     Component.onCompleted: {
         section.reload();
         if (section.lib.sample)
@@ -225,8 +224,8 @@ ColumnLayout {
                 section.expanded = !section.expanded;
                 if (section.expanded) {
                     section.reload();
-                    // Список раскрывается ниже кнопки и без этого оставался
-                    // за краем окна: человек нажал и ничего не увидел.
+                    // The list opens below the button, and without this it stayed beyond the
+                    // window edge: the user pressed and saw nothing.
                     Qt.callLater(function () { section.focused(panes); });
                 }
             }
@@ -249,7 +248,7 @@ ColumnLayout {
 
         RexonComboBox {
             id: scopeCombo
-            // Один вариант (NixOS, SteamOS: только «для себя») — выбора нет.
+            // A single option (NixOS, SteamOS: only "for yourself") — no choice.
             visible: section.expanded && (section.lib.scopes || []).length > 1
             enabled: section.lib.available === true
             pal: section.pal
@@ -291,8 +290,8 @@ ColumnLayout {
         color: section.colTextSecondary
     }
 
-    // Группы — как список групп KDE: встроенные, затем свои. На свою
-    // группу можно бросить семейство из списка ниже.
+    // Groups — like the KDE group list: built-in ones, then custom ones. A
+    // family from the list below can be dropped onto a custom group.
     Flow {
         id: groupChips
         Layout.fillWidth: true
@@ -321,7 +320,7 @@ ColumnLayout {
                 }
                 onActiveFocusChanged: if (activeFocus) section.focused(chip)
 
-                // Подсветка, пока над своей группой держат семейство.
+                // Highlight while a family is held over a custom group.
                 Rectangle {
                     anchors.fill: parent
                     visible: chipDrop.containsDrag
@@ -356,7 +355,7 @@ ColumnLayout {
         }
     }
 
-    // Действия с выбранной своей группой.
+    // Actions with the selected custom group.
     Flow {
         Layout.fillWidth: true
         Layout.preferredWidth: 0
@@ -419,7 +418,8 @@ ColumnLayout {
         }
     }
 
-    // Имя новой группы или новое имя выбранной — в строке, без окна.
+    // The name of a new group or the new name of the selected one — inline,
+    // without a window.
     RowLayout {
         Layout.fillWidth: true
         visible: section.expanded && section.naming !== ""
@@ -454,19 +454,19 @@ ColumnLayout {
         }
     }
 
-    // Фильтры переносятся на следующую строку, а не распирают страницу
-    // вширь: у узкого окна правая часть списка уходила за край.
+    // Filters wrap onto the next line instead of stretching the page
+    // sideways: in a narrow window the right part of the list went past the
+    // edge.
     Flow {
         Layout.fillWidth: true
-        // Своя ширина Flow — ряд целиком; без нуля она распирала бы
-        // страницу так же, как прежняя строка.
+        // Flow's own width is the whole row; without the zero it would stretch
+        // the page just like the previous row did.
         Layout.preferredWidth: 0
         visible: section.expanded && section.lib.available === true && !section.showDuplicates
         spacing: 8
 
-        // Производитель, тип файла, письменность — как у фильтра KDE;
-        // складываются с местом и поиском. Варианты — только то, что
-        // установлено (ядро).
+        // Foundry, file type, script — as in the KDE filter; they combine with
+        // location and search. The options are only what is installed (core).
         RexonComboBox {
             id: foundryCombo
             visible: (section.lib.foundries || []).length > 1
@@ -542,12 +542,13 @@ ColumnLayout {
     RowLayout {
         id: panes
         Layout.fillWidth: true
-        // Таблице символов — выше: иначе в ней видно всего три ряда.
+        // The character table gets more height: otherwise only three rows of it
+        // are visible.
         Layout.preferredHeight: section.view === "chars" ? 480 : 360
         visible: section.expanded && section.lib.available === true && !section.showDuplicates
         spacing: 8
 
-        // ── Семейства ────────────────────────────────────────────────────
+        // ── Families ─────────────────────────────────────────────────────
         Rectangle {
             Layout.preferredWidth: Math.max(220, panes.width * 0.38)
             Layout.fillHeight: true
@@ -556,7 +557,8 @@ ColumnLayout {
             border.width: 1
             radius: 4
 
-            // То, что видно под указателем, пока семейство несут на группу.
+            // What is visible under the pointer while a family is being carried to a
+            // group.
             Rectangle {
                 id: dragGhost
                 z: 10
@@ -609,7 +611,7 @@ ColumnLayout {
                         anchors.verticalCenter: parent.verticalCenter
                         text: famRow.modelData.family
                         elide: Text.ElideRight
-                        // Выключенное семейство видно сразу — бледным.
+                        // A disabled family is visible at once — dimmed.
                         color: famRow.modelData.disabled === true ? section.colTextSecondary
                                                                   : section.colText
                         font.italic: famRow.modelData.disabled === true
@@ -620,8 +622,8 @@ ColumnLayout {
                         anchors.right: parent.right
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        // Свои — отмечены: их одних можно удалить.
-                        // Выключенные — подписью «выкл.».
+                        // Your own fonts are marked: only they can be removed.
+                        // Disabled ones get the label "off".
                         text: (famRow.modelData.disabled === true || famRow.modelData.partly === true
                                ? (section.texts.off || "") + (famRow.modelData.user ? " " : "") : "")
                               + (famRow.modelData.user ? "⭐" : "")
@@ -632,14 +634,13 @@ ColumnLayout {
                         id: famMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        // Семейство можно унести на свою группу; список
-                        // при этом не прокручивается тасканием (колесо и
-                        // полоса прокрутки остаются).
+                        // A family can be carried to a custom group; the list does not scroll by
+                        // dragging meanwhile (the wheel and the scroll bar remain).
                         drag.target: (section.lib.groups || []).length > 0 ? dragGhost : null
                         drag.threshold: 12
-                        // Без сглаживания то, что несут, стоит ровно под
-                        // указателем: иначе оно отстаёт на порог и бросок
-                        // мимо кнопки группы.
+                        // Without smoothing, what is being carried sits exactly under the
+                        // pointer: otherwise it lags behind by the threshold and the drop misses
+                        // the group button.
                         drag.smoothed: false
                         preventStealing: true
                         onPressed: mouse => {
@@ -682,7 +683,7 @@ ColumnLayout {
             }
         }
 
-        // ── Начертания выбранного семейства ──────────────────────────────
+        // ── Styles of the selected family ────────────────────────────────
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -723,7 +724,7 @@ ColumnLayout {
                         id: toggleFamily
                         visible: section.current !== null
                         pal: section.pal
-                        // Частично выключенное семейство включается целиком.
+                        // A partially disabled family is enabled as a whole.
                         readonly property bool turnOn: section.current !== null
                                                        && (section.current.disabled === true
                                                            || section.current.partly === true)
@@ -736,7 +737,7 @@ ColumnLayout {
                         onActiveFocusChanged: if (activeFocus) section.focused(toggleFamily)
                     }
 
-                    // Добавить в свою группу: первая строка — подпись.
+                    // Add to a custom group: the first row is the label.
                     RexonComboBox {
                         id: addToGroup
                         readonly property var choices: {
@@ -793,8 +794,8 @@ ColumnLayout {
 
                 RexonText {
                     Layout.fillWidth: true
-                    // Честно: шрифт пакета из окна настроек не удаляется,
-                    // поставленный для всех — удаляется с паролем.
+                    // Honestly: a package font is not removed from the settings window, one
+                    // installed for everyone is removed with a password.
                     text: section.current === null ? ""
                           : ((section.current.packaged === true ? section.texts.system
                              : section.current.shared === true ? section.texts.shared
@@ -804,8 +805,7 @@ ColumnLayout {
                     color: section.colTextSecondary
                 }
 
-                // Образцы начертаний или таблица символов — как «Тип
-                // предпросмотра» KDE.
+                // Style samples or the character table — like the KDE "Preview type".
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 6
@@ -835,7 +835,7 @@ ColumnLayout {
                     Item { Layout.fillWidth: true }
                 }
 
-                // Кегль образца: 12–48 пт, как у предпросмотра KDE.
+                // Sample size: 12–48 pt, as in the KDE preview.
                 RowLayout {
                     Layout.fillWidth: true
                     visible: section.view === "sample"
@@ -860,8 +860,8 @@ ColumnLayout {
                     }
                 }
 
-                // Свой текст образца: запоминается в настройках Rexon;
-                // пустое поле — образец по умолчанию на языке интерфейса.
+                // Custom sample text: remembered in the Rexon settings; an empty field
+                // means the default sample in the interface language.
                 RowLayout {
                     Layout.fillWidth: true
                     visible: section.view === "sample"
@@ -873,8 +873,8 @@ ColumnLayout {
                         pal: section.pal
                         maximumLength: section.lib.sample ? section.lib.sample.maxLength : 300
                         placeholderText: section.lib.sample ? section.lib.sample.default : ""
-                        // Поле показывает только свой текст: образец по
-                        // умолчанию стоит подсказкой.
+                        // The field shows only the custom text: the default sample is shown as
+                        // the placeholder.
                         Component.onCompleted: sampleField.text = section.lib.sample
                                                && section.lib.sample.text !== section.lib.sample.default
                                                ? section.lib.sample.text : ""
@@ -898,7 +898,7 @@ ColumnLayout {
                         onActiveFocusChanged: if (activeFocus) section.focused(sampleReset)
                     }
 
-                    // Запись — когда набор затих, а не на каждую букву.
+                    // Writing happens when typing has paused, not on every letter.
                     Timer {
                         id: sampleSave
                         interval: 400
@@ -929,17 +929,17 @@ ColumnLayout {
                     delegate: ColumnLayout {
                         id: styleRow
                         required property var modelData
-                        // Запас под полосу прокрутки: при 12 точках кнопки
-                        // начертаний уходили под неё правым краем.
-                        // С края полосы прокрутки: при языке справа налево она слева,
-                        // и якорь с отступом зеркалится вместе с ней.
+                        // Room for the scroll bar: at 12 pixels the style buttons went under it
+                        // with their right edge.
+                        // From the scroll bar edge: for right-to-left languages it is on the
+                        // left, and the anchor with its margin is mirrored along with it.
                         anchors.left: parent ? parent.left : undefined
                         anchors.right: parent ? parent.right : undefined
                         anchors.rightMargin: 22
                         spacing: 2
 
-                        // Образец рисуется самим файлом шрифта: только что
-                        // поставленный шрифт Qt ещё не знает по имени.
+                        // The sample is drawn by the font file itself: Qt does not know a just
+                        // installed font by name yet.
                         FontLoader {
                             id: loader
                             source: "file://" + encodeURI(styleRow.modelData.file).replace(/#/g, "%23")
@@ -962,8 +962,7 @@ ColumnLayout {
 
                             RexonButton {
                                 id: toggleStyle
-                                // Одно начертание переключается отдельно,
-                                // только если у семейства их несколько.
+                                // A single style is toggled separately only if the family has several.
                                 visible: section.current !== null && section.current.styles.length > 1
                                 pal: section.pal
                                 readonly property bool turnOn: styleRow.modelData.disabled === true
@@ -979,8 +978,7 @@ ColumnLayout {
 
                             RexonDangerButton {
                                 id: removeStyle
-                                // Одно начертание удаляется отдельно, только
-                                // если у семейства их несколько.
+                                // A single style is removed separately only if the family has several.
                                 visible: (styleRow.modelData.user === true || styleRow.modelData.shared === true)
                                          && section.current !== null
                                          && section.current.styles.length > 1
@@ -1010,7 +1008,7 @@ ColumnLayout {
                     }
                 }
 
-                // ── Таблица символов: блоки Юникода, что есть в файле ────
+                // ── Character table: the Unicode blocks present in the file ────
                 ColumnLayout {
                     visible: section.view === "chars"
                     Layout.fillWidth: true
@@ -1071,8 +1069,8 @@ ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
-                        // Клетка — не меньше 40 точек: так её удобно
-                        // выбрать и пальцем, и геймпадом.
+                        // A cell is no smaller than 40 pixels: that way it is easy to select
+                        // with a finger and with a gamepad.
                         readonly property int cell: Math.max(40, Math.floor(charGrid.width / Math.max(1, Math.floor(charGrid.width / 44))))
                         cellWidth: charGrid.cell
                         cellHeight: charGrid.cell
@@ -1119,8 +1117,8 @@ ColumnLayout {
                         }
                     }
 
-                    // Выбранный символ: код и сам символ — в поле, откуда
-                    // их можно скопировать.
+                    // The selected character: its code and the character itself, in a field
+                    // they can be copied from.
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
@@ -1161,7 +1159,7 @@ ColumnLayout {
         }
     }
 
-    // ── Дубликаты: одно начертание в нескольких файлах ───────────────────
+    // ── Duplicates: one style in several files ───────────────────────────
     ColumnLayout {
         Layout.fillWidth: true
         visible: section.expanded && section.lib.available === true && section.showDuplicates
@@ -1185,8 +1183,8 @@ ColumnLayout {
 
         Rectangle {
             Layout.fillWidth: true
-            // По содержимому, но не выше прежних 360: один найденный
-            // дубликат не должен занимать пол-экрана пустой рамкой.
+            // Sized by content, but no taller than the previous 360: a single found
+            // duplicate must not take half the screen with an empty frame.
             Layout.preferredHeight: Math.min(360, dupList.contentHeight + 18)
             visible: (section.dups.groups || []).length > 0
             color: "transparent"
@@ -1207,8 +1205,8 @@ ColumnLayout {
                 delegate: ColumnLayout {
                     id: dupGroup
                     required property var modelData
-                    // С края полосы прокрутки: при языке справа налево она слева,
-                    // и якорь с отступом зеркалится вместе с ней.
+                    // From the scroll bar edge: for right-to-left languages it is on the
+                    // left, and the anchor with its margin is mirrored along with it.
                     anchors.left: parent ? parent.left : undefined
                     anchors.right: parent ? parent.right : undefined
                     anchors.rightMargin: 12
@@ -1248,8 +1246,8 @@ ColumnLayout {
                                 color: section.colTextSecondary
                             }
 
-                            // Удалить можно свою копию и поставленную для
-                            // всех (с паролем); остальные принадлежат пакетам.
+                            // Your own copy and one installed for everyone (with a password) can be
+                            // removed; the others belong to packages.
                             RexonDangerButton {
                                 visible: copyRow.modelData.user === true || copyRow.modelData.shared === true
                                 pal: section.pal

@@ -1,103 +1,107 @@
-//! Перевод интерфейса Rexon: один каталог gettext на весь продукт.
+//! Translation of the Rexon interface: one gettext catalog for the whole product.
 //!
-//! ЗАЧЕМ. Раньше подписи были зашиты по-русски прямо в код, и добавить
-//! польский или чешский значило бы править сотни мест. Теперь исходный
-//! язык строк — английский (так принято в gettext и так их поймёт любой
-//! переводчик), а каждый язык — один файл `po/<код>.po`. Добавить язык =
-//! положить `.po` и вписать код в `po/LINGUAS`; код не трогается.
+//! WHY. Labels used to be hard-coded in Russian right in the code, and adding
+//! Polish or Czech would have meant editing hundreds of places. Now the source
+//! language of the strings is English (that is the gettext convention, and any
+//! translator will understand them), and every language is one file
+//! `po/<code>.po`. Adding a language = putting a `.po` and adding the code to
+//! `po/LINGUAS`; the code is not touched.
 //!
-//! КАК УСТРОЕНО.
-//! * Строки в Rust помечаются функциями этого модуля: [`tr`], [`trc`]
-//!   (с контекстом), [`ntr`] (форма по числу), [`trf`] (с подстановкой
-//!   `%1`, `%2`…) и маркером [`n_`] для таблиц и констант, где функцию
-//!   позвать нельзя. Их имена — ключевые слова `xgettext` в
-//!   `scripts/i18n-update.sh`: переименовать функцию = переучить скрипт.
-//! * Заполнители — в стиле Qt (`%1`, `%n`), а не `{}`: одна и та же строка
-//!   каталога уходит и сюда, и в QML (`qsTranslate`), и переводчик видит
-//!   один синтаксис.
-//! * Каталог читается из `.mo` чистым Rust — без libintl и без
-//!   `setlocale`: язык Rexon выбирается своей настройкой и не обязан
-//!   совпадать с локалью процесса.
-//! * QML читает ТОТ ЖЕ `.mo`: `qsTranslate("rexon", …)` попадает в
-//!   переводчик окна (`QTranslator`-наследник в
-//!   `rexon-gui/cpp/rexon_gui_factory.cpp`), а тот спрашивает
-//!   [`qt_translate`]. Второго каталога (`.qm`) у Rexon нет: перевод
-//!   хранится в одном месте, и разойтись QML с Rust не может.
+//! HOW IT WORKS.
+//! * Strings in Rust are marked with the functions of this module: [`tr`],
+//!   [`trc`] (with a context), [`ntr`] (plural form by number), [`trf`] (with
+//!   `%1`, `%2`… substitution) and the [`n_`] marker for tables and constants
+//!   where a function cannot be called. Their names are `xgettext` keywords in
+//!   `scripts/i18n-update.sh`: renaming a function = re-teaching the script.
+//! * Placeholders are in the Qt style (`%1`, `%n`), not `{}`: the same catalog
+//!   string goes both here and into QML (`qsTranslate`), and the translator sees
+//!   one syntax.
+//! * The catalog is read from `.mo` in pure Rust — without libintl and without
+//!   `setlocale`: the Rexon language is chosen by its own setting and does not
+//!   have to match the process locale.
+//! * QML reads THE SAME `.mo`: `qsTranslate("rexon", …)` goes to the window's
+//!   translator (a `QTranslator` subclass in
+//!   `rexon-gui/cpp/rexon_gui_factory.cpp`), which asks [`qt_translate`]. Rexon
+//!   has no second catalog (`.qm`): the translation is stored in one place, and
+//!   QML cannot diverge from Rust.
 //!
-//! ВЫБОР ЯЗЫКА: настройка пользователя (`ui_language` в `settings.json`) ▸
-//! системная локаль (`LANGUAGE`, затем первое непустое из `LC_ALL`,
-//! `LC_MESSAGES`, `LANG`), с откатом до базового языка (`pt_BR` → `pt`) ▸
-//! английский. Английский — исходный язык, каталога у него нет.
+//! LANGUAGE CHOICE: the user setting (`ui_language` in `settings.json`) ▸ the
+//! system locale (`LANGUAGE`, then the first non-empty of `LC_ALL`,
+//! `LC_MESSAGES`, `LANG`), falling back to the base language (`pt_BR` → `pt`) ▸
+//! English. English is the source language, it has no catalog.
 //!
-//! ГДЕ ИЩУТСЯ КАТАЛОГИ (первый найденный): `$REXON_LOCALEDIR` ▸ `locale/`
-//! рядом с исполняемым файлом (туда кладёт сборка `cargo build-app`, это
-//! путь дерева разработки) ▸ `/usr/share/locale` (пакет). Внутри —
-//! обычная раскладка gettext: `<язык>/LC_MESSAGES/rexon.mo`.
+//! WHERE CATALOGS ARE LOOKED FOR (the first one found): `$REXON_LOCALEDIR` ▸
+//! `locale/` next to the executable (that is where the `cargo build-app` build
+//! puts them; it is the development tree path) ▸ `/usr/share/locale` (the
+//! package). Inside — the ordinary gettext layout:
+//! `<language>/LC_MESSAGES/rexon.mo`.
 //!
-//! Формат `.mo` — по руководству GNU gettext, раздел «The Format of GNU MO
-//! Files»; выражение `Plural-Forms` — там же, раздел «Plural forms».
+//! The `.mo` format is per the GNU gettext manual, section "The Format of GNU MO
+//! Files"; the `Plural-Forms` expression — ibid., section "Plural forms".
 
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
-/// Имя каталога (домен gettext): `rexon.mo`, `rexon.pot`.
+/// Catalog name (gettext domain): `rexon.mo`, `rexon.pot`.
 pub const DOMAIN: &str = "rexon";
 
-/// Контекст Qt, на который отвечает переводчик окна (см. [`qt_translate`]).
-/// QML обязан звать `qsTranslate("rexon", "…")`, а не `qsTr("…")`: у `qsTr`
-/// контекст — имя файла, а у вендорного waywallen в том же процессе есть
-/// свои контексты с теми же именами (`SettingsPage`), и каталоги
-/// пересекались бы. Строки чужих контекстов переводчик не трогает.
+/// The Qt context the window's translator answers to (see [`qt_translate`]).
+/// QML must call `qsTranslate("rexon", "…")`, not `qsTr("…")`: for `qsTr` the
+/// context is the file name, and the vendored waywallen in the same process has
+/// its own contexts with the same names (`SettingsPage`), so the catalogs would
+/// overlap. The translator does not touch strings of foreign contexts.
 pub const QT_CONTEXT: &str = "rexon";
 
-/// Исходный язык строк. Для него каталога нет и быть не должно.
+/// The source language of the strings. There is no catalog for it and there
+/// must not be one.
 pub const SOURCE_LANGUAGE: &str = "en";
 
-/// Переменная окружения с каталогом переводов для разработки и проверки.
+/// Environment variable with the translation directory for development and checks.
 pub const ENV_LOCALEDIR: &str = "REXON_LOCALEDIR";
 
-/// Системный каталог переводов (туда ставит пакет).
+/// The system translation directory (the package installs there).
 pub const SYSTEM_LOCALEDIR: &str = "/usr/share/locale";
 
-/// Ключ настройки языка в `settings.json`. Пусто или `"system"` — как в
-/// системе.
+/// The language setting key in `settings.json`. Empty or `"system"` — as in the
+/// system.
 pub const SETTINGS_KEY: &str = "ui_language";
 
 // ============================================================================
-// Пометки строк
+// Marking strings
 // ============================================================================
 
-/// Маркер «эта строка переводится», ничего не делающий сам.
+/// A marker "this string is translatable" that does nothing by itself.
 ///
-/// Для таблиц и `const`, где звать [`tr`] нельзя: строку извлечёт
-/// `xgettext`, а переведёт её место показа — `tr(STEP.title)`.
+/// For tables and `const`, where [`tr`] cannot be called: `xgettext` will
+/// extract the string, and the place that shows it will translate it —
+/// `tr(STEP.title)`.
 pub const fn n_(msgid: &'static str) -> &'static str {
     msgid
 }
 
-/// Перевести строку.
+/// Translate a string.
 pub fn tr(msgid: &str) -> String {
     lookup(None, msgid).unwrap_or_else(|| msgid.to_string())
 }
 
-/// Перевести строку с контекстом — когда одно английское слово значит
-/// разное («Open» — глагол на кнопке и прилагательное в статусе).
+/// Translate a string with a context — when one English word means different
+/// things ("Open" — a verb on a button and an adjective in a status).
 pub fn trc(context: &str, msgid: &str) -> String {
     lookup(Some(context), msgid).unwrap_or_else(|| msgid.to_string())
 }
 
-/// Перевести строку и подставить `%1`, `%2`… по порядку.
+/// Translate a string and substitute `%1`, `%2`… in order.
 pub fn trf(msgid: &str, args: &[&dyn Display]) -> String {
     fill(&tr(msgid), args)
 }
 
-/// Форма строки по числу `n` с подстановкой `%n`.
+/// A string's form by number `n` with `%n` substitution.
 ///
-/// Форм у языка бывает от одной до шести, и какая из них нужна, решает
-/// выражение `Plural-Forms` каталога — не код. Без каталога работает
-/// английское правило: одна вещь — `singular`, остальное — `plural`.
+/// A language has from one to six forms, and which one is needed is decided by
+/// the catalog's `Plural-Forms` expression — not by the code. Without a catalog
+/// the English rule works: one thing — `singular`, the rest — `plural`.
 pub fn ntr(singular: &str, plural: &str, n: u64) -> String {
     let form = catalog()
         .and_then(|c| c.plural_lookup(singular, n))
@@ -105,22 +109,22 @@ pub fn ntr(singular: &str, plural: &str, n: u64) -> String {
     form.replace("%n", &isolate(&n.to_string()))
 }
 
-/// Подставить `%1`…`%99` в уже переведённый шаблон.
+/// Substitute `%1`…`%99` into an already translated template.
 ///
-/// Номер берётся целиком (`%12` — двенадцатый, а не первый с «2»), чужой
-/// номер и одинокий `%` остаются как есть: лучше видимый заполнитель, чем
-/// молча пропавшее слово.
+/// The number is taken as a whole (`%12` is the twelfth, not the first followed
+/// by "2"); a foreign number and a lone `%` stay as they are: a visible
+/// placeholder is better than a silently missing word.
 ///
-/// При языке интерфейса справа налево каждая подстановка обёрнута в
-/// изолят ([`isolate`]). Текст для консоли, файла или команды — через
+/// With a right-to-left interface language every substitution is wrapped in an
+/// isolate ([`isolate`]). Text for a console, a file or a command goes through
 /// [`fill_plain`].
 pub fn fill(template: &str, args: &[&dyn Display]) -> String {
     fill_with(template, args, ui_is_rtl())
 }
 
-/// [`fill`] без изолятов — для того, что читает не окно Qt: текстовая
-/// консоль ядра (у неё нет двунаправленного письма, и U+2068 она рисует
-/// мусором), файлы, команды, которые человек копирует в терминал.
+/// [`fill`] without isolates — for what is read not by a Qt window: the core's
+/// text console (it has no bidirectional writing, and it draws U+2068 as
+/// garbage), files, commands the person copies into a terminal.
 pub fn fill_plain(template: &str, args: &[&dyn Display]) -> String {
     fill_with(template, args, false)
 }
@@ -152,8 +156,9 @@ fn fill_with(template: &str, args: &[&dyn Display], isolated: bool) -> String {
                 }
             }
         }
-        // Байт за байтом нельзя — UTF-8; идём до следующего `%`. Сам `%`
-        // однобайтовый, поэтому `i + 1` после него — граница символа.
+        // Byte by byte is not allowed — it is UTF-8; we go to the next `%`. The
+        // `%` itself is a single byte, so `i + 1` after it is a character
+        // boundary.
         let from = if bytes[i] == b'%' { i + 1 } else { i };
         let next = template[from..].find('%').map_or(bytes.len(), |p| from + p);
         out.push_str(&template[i..next]);
@@ -163,39 +168,40 @@ fn fill_with(template: &str, args: &[&dyn Display], isolated: bool) -> String {
 }
 
 // ============================================================================
-// Письмо справа налево
+// Right-to-left writing
 // ============================================================================
 //
-// В арабском, иврите и фарси строка интерфейса — предложение справа налево,
-// а подставляемое в него (имя программы, путь, версия, число) часто пишется
-// латиницей. Без разметки алгоритм двунаправленного текста (Unicode UAX #9)
-// склеивает подстановку с соседними знаками препинания и цифрами и
-// переставляет их: «Firefox 2.0» с точкой в конце фразы уезжает не туда, а
-// направление всего абзаца берётся по первой сильной букве — латинской.
-// Изолят FIRST STRONG ISOLATE … POP DIRECTIONAL ISOLATE (U+2068 … U+2069)
-// делает подстановку отдельным куском со своим направлением, а для
-// окружающей фразы — одним нейтральным знаком.
+// In Arabic, Hebrew and Persian an interface string is a right-to-left
+// sentence, while what is substituted into it (a program name, a path, a
+// version, a number) is often written in Latin script. Without markup the
+// bidirectional text algorithm (Unicode UAX #9) glues the substitution to
+// neighboring punctuation and digits and rearranges them: "Firefox 2.0" with a
+// period at the end of the sentence moves to the wrong place, and the direction
+// of the whole paragraph is taken from the first strong letter — a Latin one.
+// The FIRST STRONG ISOLATE … POP DIRECTIONAL ISOLATE isolate (U+2068 … U+2069)
+// makes the substitution a separate piece with its own direction, and for the
+// surrounding sentence — a single neutral character.
 //
-// Qt 6.12 изоляты понимает (проверено сборкой против системного Qt
-// 06.11.2026): `QString::isRightToLeft` пропускает содержимое изолята —
-// фраза «FSI Firefox PDI + арабский» считается справа налево, без изолята — слева
-// направо; раскладка `QTextLayout` ставит изолят одним куском. Выравнивание
-// `RexonText` от содержимого не зависит вовсе (явный `AlignLeft`,
-// переворачивается зеркалированием), так что изолят на него не влияет.
+// Qt 6.12 understands isolates (checked by building against the system Qt on
+// 06.11.2026): `QString::isRightToLeft` skips the contents of an isolate — the
+// phrase "FSI Firefox PDI + Arabic" counts as right-to-left, without the isolate
+// as left-to-right; `QTextLayout` lays an isolate out as one piece. The
+// alignment of `RexonText` does not depend on the contents at all (an explicit
+// `AlignLeft`, flipped by mirroring), so the isolate does not affect it.
 //
-// При письме слева направо ничего не добавляется: строки ru/en/de/zh_CN
-// побайтно прежние.
+// With left-to-right writing nothing is added: the ru/en/de/zh_CN strings stay
+// byte for byte as before.
 
-/// FIRST STRONG ISOLATE: начало подстановки со своим направлением.
+/// FIRST STRONG ISOLATE: the start of a substitution with its own direction.
 pub const FSI: char = '\u{2068}';
-/// POP DIRECTIONAL ISOLATE: конец изолята.
+/// POP DIRECTIONAL ISOLATE: the end of the isolate.
 pub const PDI: char = '\u{2069}';
 
-/// Языки, которые пишутся справа налево (базовый код, без региона).
+/// Languages written right to left (the base code, without a region).
 const RTL_LANGUAGES: &[&str] = &["ar", "fa", "he", "iw", "ckb", "ps", "ur", "yi", "dv", "ug"];
 
-/// Пишется ли язык `code` справа налево: `"ar"`, `"fa_IR"`, `"he-IL"`,
-/// `"ar_EG.UTF-8"`, `"ur@latin"` (латиница — нет).
+/// Whether language `code` is written right to left: `"ar"`, `"fa_IR"`,
+/// `"he-IL"`, `"ar_EG.UTF-8"`, `"ur@latin"` (Latin script — no).
 pub fn is_rtl_language(code: &str) -> bool {
     if code.contains("@latin") {
         return false;
@@ -204,30 +210,30 @@ pub fn is_rtl_language(code: &str) -> bool {
     RTL_LANGUAGES.iter().any(|l| l.eq_ignore_ascii_case(base))
 }
 
-/// Действующий язык интерфейса пишется справа налево.
+/// The current interface language is written right to left.
 pub fn ui_is_rtl() -> bool {
     is_rtl_language(&current_language())
 }
 
-/// Обернуть подстановку в изолят, если интерфейс справа налево; иначе —
-/// как есть. Для мест, где подставляет не [`fill`] (`{метка}` в чужом
-/// шаблоне, `%n` у [`ntr`]).
+/// Wrap a substitution in an isolate if the interface is right to left;
+/// otherwise — as is. For places where the substitution is not done by
+/// [`fill`] (`{label}` in a foreign template, `%n` in [`ntr`]).
 pub fn isolate(text: &str) -> String {
     isolate_if(text, ui_is_rtl())
 }
 
 // ============================================================================
-// Числа для человека
+// Numbers for the person
 // ============================================================================
 
-/// Число с `decimals` знаками после запятой так, как его пишут на языке
-/// интерфейса: «1.4» по-английски, «1,4» по-русски и по-немецки. Один путь
-/// на весь продукт — размеры файлов, секунды, популярность, рейтинг.
+/// A number with `decimals` digits after the decimal separator, as it is written
+/// in the interface language: "1.4" in English, "1,4" in Russian and German. One
+/// path for the whole product — file sizes, seconds, popularity, rating.
 ///
-/// Разделитель дробной части — строка каталога «decimal separator» (её
-/// переводчик и решает). Цифры: у фарси — персидские «۰–۹», у остальных
-/// языков, и у арабского тоже (решение Wehrwolfmann 06.11.2026), —
-/// обычные 0–9. `decimals == 0` — целое без разделителя.
+/// The decimal separator is the catalog string "decimal separator" (its
+/// translator decides). Digits: for Persian — Persian "۰–۹", for the other
+/// languages, Arabic included (Wehrwolfmann's decision of 06.11.2026) —
+/// ordinary 0–9. `decimals == 0` — an integer without a separator.
 pub fn format_decimal(value: f64, decimals: usize) -> String {
     // TRANSLATORS: decimal separator in numbers like "1.4 MiB".
     let sep = trc("decimal separator", ".");
@@ -259,31 +265,31 @@ fn isolate_if(text: &str, rtl: bool) -> String {
 }
 
 // ============================================================================
-// Каталог .mo
+// The .mo catalog
 // ============================================================================
 
-/// Разобранный каталог одного языка.
+/// A parsed catalog of one language.
 #[derive(Debug, Clone)]
 pub struct Catalog {
-    /// Ключ — `msgid` (у форм по числу — единственное число), с
-    /// контекстом через `\u{4}`, как пишет его `msgfmt`.
+    /// The key is the `msgid` (for plural forms — the singular), with the
+    /// context joined by `\u{4}`, as `msgfmt` writes it.
     messages: HashMap<String, Vec<String>>,
     plural: Option<PluralExpr>,
     nplurals: usize,
 }
 
-/// Магическое число `.mo` в порядке байтов файла.
+/// The `.mo` magic number in the file's byte order.
 const MO_MAGIC: u32 = 0x9504_12de;
 
 impl Catalog {
-    /// Прочитать `.mo` с диска.
+    /// Read a `.mo` from disk.
     pub fn load(path: &Path) -> Result<Self, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         Self::parse_mo(&bytes).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    /// Разобрать `.mo` из памяти. Любая порча — ошибка, а не паника:
-    /// каталог лежит на диске и мог обрезаться.
+    /// Parse a `.mo` from memory. Any corruption is an error, not a panic: the
+    /// catalog lies on disk and may have been truncated.
     pub fn parse_mo(data: &[u8]) -> Result<Self, String> {
         let word = |at: usize, big: bool| -> Result<u32, String> {
             let raw: [u8; 4] = data
@@ -318,8 +324,8 @@ impl Catalog {
                 header = translated;
                 continue;
             }
-            // У форм по числу оригинал — «единственное\0множественное»,
-            // искать же будут по единственному.
+            // For plural forms the original is "singular\0plural", while lookups
+            // will be by the singular.
             let key = original.split('\0').next().unwrap_or(original);
             let forms = translated.split('\0').map(str::to_string).collect();
             messages.insert(key.to_string(), forms);
@@ -329,7 +335,8 @@ impl Catalog {
         Ok(Self { messages, plural, nplurals })
     }
 
-    /// Перевод строки; `None` — в каталоге её нет (или перевод пуст).
+    /// Translation of a string; `None` — it is not in the catalog (or the
+    /// translation is empty).
     pub fn get(&self, context: Option<&str>, msgid: &str) -> Option<&str> {
         let forms = match context {
             Some(ctx) => self.messages.get(&format!("{ctx}\u{4}{msgid}")),
@@ -338,45 +345,46 @@ impl Catalog {
         forms.first().map(String::as_str).filter(|s| !s.is_empty())
     }
 
-    /// Форма по числу; `None` — строки нет, формы нет или она пуста.
+    /// Form by number; `None` — no string, no form, or it is empty.
     pub fn plural_lookup(&self, singular: &str, n: u64) -> Option<String> {
         let forms = self.messages.get(singular)?;
         forms.get(self.plural_index(n)).filter(|s| !s.is_empty()).cloned()
     }
 
-    /// Номер формы по числу — по выражению `Plural-Forms` каталога.
+    /// Form number by number — per the catalog's `Plural-Forms` expression.
     fn plural_index(&self, n: u64) -> usize {
         let index = match &self.plural {
             Some(expr) => expr.eval(n) as usize,
-            // Заголовка нет — правило германских языков, как у gettext.
+            // No header — the rule of Germanic languages, as in gettext.
             None => usize::from(n != 1),
         };
         if self.nplurals > 0 { index.min(self.nplurals - 1) } else { index }
     }
 
-    /// Перевод в смысле `QTranslator::translate`: то, что QML получает из
-    /// `qsTranslate("rexon", source, disambiguation, n)`. `None` — перевода
-    /// нет, и Qt покажет исходник (подставив `%n` сама).
+    /// A translation in the sense of `QTranslator::translate`: what QML gets from
+    /// `qsTranslate("rexon", source, disambiguation, n)`. `None` — there is no
+    /// translation, and Qt will show the source (substituting `%n` itself).
     ///
-    /// Правила Qt повторены там, где их ждёт автор QML:
-    /// * уточнение = `msgctxt`; записи с таким уточнением нет — берётся
-    ///   запись без него (у gettext такого отката нет, у Qt есть);
-    /// * `n < 0` — «числа нет»: первая форма;
-    /// * форма по числу — по `Plural-Forms` каталога, тем же правилом, что
-    ///   у [`ntr`] в Rust, а не по своим таблицам Qt.
+    /// The Qt rules are repeated where the QML author expects them:
+    /// * disambiguation = `msgctxt`; if there is no entry with such disambiguation,
+    ///   the entry without it is taken (gettext has no such fallback, Qt does);
+    /// * `n < 0` — "no number": the first form;
+    /// * the plural form follows the catalog's `Plural-Forms`, by the same rule as
+    ///   [`ntr`] in Rust, not by Qt's own tables.
     ///
-    /// Сверено 10.10.2026 с прежним каталогом `.qm` (тот же `.po` через
-    /// `lconvert6` + `lrelease6`) на ru и de: все строки QML и весь шаблон
-    /// с его собственными уточнениями, у строк с `%n` — 15 разных чисел,
-    /// расхождений 0. Расходятся только запросы, которых нет ни в QML, ни
-    /// в каталоге, и оба раза нарочно:
-    /// * у записи одна форма (в `.po` нет `msgid_plural`), а число задано —
-    ///   здесь перевод, у `.qm` был исходник (Qt искал форму с номером по
-    ///   числу, а она у записи одна);
-    /// * строка есть в каталоге только под ДРУГИМ уточнением — здесь
-    ///   исходник, а `.qm` отдавал перевод той записи (`lrelease` пишет и
-    ///   ключ без уточнения). Чужой смысл подсовывать нельзя; строки QML без
-    ///   уточнения `xgettext` и так кладёт в каталог отдельной записью.
+    /// Checked on 10.10.2026 against the former `.qm` catalog (the same `.po` via
+    /// `lconvert6` + `lrelease6`) on ru and de: all QML strings and the whole
+    /// template with its own disambiguations, for strings with `%n` — 15 different
+    /// numbers, 0 differences. Only requests that exist neither in QML nor in the
+    /// catalog differ, and both times on purpose:
+    /// * the entry has one form (no `msgid_plural` in the `.po`), and a number is
+    ///   given — here the translation, the `.qm` gave the source (Qt looked for the
+    ///   form with the number, while the entry has only one);
+    /// * the string exists in the catalog only under ANOTHER disambiguation — here
+    ///   the source, while the `.qm` gave that entry's translation (`lrelease` also
+    ///   writes a key without disambiguation). A foreign meaning must not be slipped
+    ///   in; `xgettext` already puts QML strings without disambiguation into the
+    ///   catalog as a separate entry.
     pub fn qt_lookup(&self, disambiguation: Option<&str>, source: &str, n: i32) -> Option<String> {
         let with_context = disambiguation
             .filter(|d| !d.is_empty())
@@ -389,18 +397,18 @@ impl Catalog {
         form.filter(|s| !s.is_empty()).cloned()
     }
 
-    /// Все пары «оригинал → перевод» (для сверок каталогов).
+    /// All "original → translation" pairs (for catalog checks).
     pub fn entries(&self) -> impl Iterator<Item = (&str, &[String])> {
         self.messages.iter().map(|(k, v)| (k.as_str(), v.as_slice()))
     }
 
-    /// Сколько форм по числу у языка (из заголовка каталога).
+    /// How many plural forms the language has (from the catalog header).
     pub fn nplurals(&self) -> usize {
         self.nplurals
     }
 }
 
-/// Разобрать `Plural-Forms: nplurals=N; plural=ВЫРАЖЕНИЕ;` из заголовка.
+/// Parse `Plural-Forms: nplurals=N; plural=EXPRESSION;` from the header.
 fn parse_plural_header(header: &str) -> (usize, Option<PluralExpr>) {
     let Some(line) = header
         .lines()
@@ -422,13 +430,14 @@ fn parse_plural_header(header: &str) -> (usize, Option<PluralExpr>) {
 }
 
 // ============================================================================
-// Выражение Plural-Forms
+// The Plural-Forms expression
 // ============================================================================
 //
-// Это подмножество Си: `n`, целые, скобки, `?:`, `||`, `&&`, сравнения,
-// `+ - * / %` и `!`. Разбор — рекурсивным спуском по приоритетам Си.
+// This is a subset of C: `n`, integers, parentheses, `?:`, `||`, `&&`,
+// comparisons, `+ - * / %` and `!`. Parsing is by recursive descent over C
+// precedences.
 
-/// Разобранное выражение формы по числу.
+/// A parsed plural form expression.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PluralExpr {
     N,
@@ -456,7 +465,7 @@ pub enum BinOp {
 }
 
 impl PluralExpr {
-    /// Разобрать выражение; хвостовая `;` допускается.
+    /// Parse an expression; a trailing `;` is allowed.
     pub fn parse(text: &str) -> Result<Self, String> {
         let text = text.trim().trim_end_matches(';');
         let mut p = ExprParser { s: text.as_bytes(), i: 0 };
@@ -468,8 +477,8 @@ impl PluralExpr {
         Ok(expr)
     }
 
-    /// Вычислить для `n`. Деление на ноль даёт 0, а не панику: выражение
-    /// пришло из файла переводчика.
+    /// Evaluate for `n`. Division by zero gives 0, not a panic: the expression came
+    /// from a translator's file.
     pub fn eval(&self, n: u64) -> u64 {
         match self {
             PluralExpr::N => n,
@@ -484,7 +493,7 @@ impl PluralExpr {
             }
             PluralExpr::Bin(a, op, b) => {
                 let x = a.eval(n);
-                // `||` и `&&` — с коротким замыканием, как в Си.
+                // `||` and `&&` — short-circuiting, as in C.
                 match op {
                     BinOp::Or => return u64::from(x != 0 || b.eval(n) != 0),
                     BinOp::And => return u64::from(x != 0 && b.eval(n) != 0),
@@ -545,8 +554,8 @@ impl ExprParser<'_> {
         Ok(cond)
     }
 
-    /// Уровни приоритета Си снизу вверх. Двухзнаковые операторы стоят
-    /// раньше своих однозначных префиксов (`<=` раньше `<`).
+    /// C precedence levels from bottom to top. Two-character operators come
+    /// before their one-character prefixes (`<=` before `<`).
     const LEVELS: &'static [&'static [(&'static str, BinOp)]] = &[
         &[("||", BinOp::Or)],
         &[("&&", BinOp::And)],
@@ -563,8 +572,8 @@ impl ExprParser<'_> {
         let mut left = self.binary(level + 1)?;
         'outer: loop {
             for (token, op) in Self::LEVELS[level] {
-                // `!=` не должен съесться как `!` уровнем ниже, а `|`/`&`
-                // одиночных в выражении не бывает.
+                // `!=` must not be eaten as `!` by the level below, and single `|`/`&`
+                // never occur in the expression.
                 if self.eat(token) {
                     let right = self.binary(level + 1)?;
                     left = PluralExpr::Bin(Box::new(left), *op, Box::new(right));
@@ -607,16 +616,17 @@ impl ExprParser<'_> {
 }
 
 // ============================================================================
-// Выбор языка
+// Choosing the language
 // ============================================================================
 
-/// Коды языков для поиска каталога, по убыванию предпочтения.
+/// Language codes for the catalog search, in decreasing order of preference.
 ///
-/// `setting` — значение настройки (`None`/пусто/`"system"` — как в
-/// системе), `env` — чтение переменной окружения (снаружи — чтобы сверки
-/// не зависели от окружения прогона). Каждый код даёт себя и базовый язык:
-/// `pt_BR.UTF-8` → `pt_BR`, `pt`. Английский (исходный) и `C`/`POSIX`
-/// обрывают список: дальше искать незачем — строки и так английские.
+/// `setting` — the value of the setting (`None`/empty/`"system"` — as in the
+/// system), `env` — reading an environment variable (from outside — so that
+/// checks do not depend on the run's environment). Each code gives itself and
+/// its base language: `pt_BR.UTF-8` → `pt_BR`, `pt`. English (the source) and
+/// `C`/`POSIX` cut the list off: there is no point in searching further — the
+/// strings are English anyway.
 pub fn language_candidates(
     setting: Option<&str>,
     env: &dyn Fn(&str) -> Option<String>,
@@ -627,9 +637,9 @@ pub fn language_candidates(
         None => {
             let nonempty = |k: &str| env(k).filter(|v| !v.trim().is_empty());
             let locale = ["LC_ALL", "LC_MESSAGES", "LANG"].iter().find_map(|k| nonempty(k));
-            // `LANGUAGE` — список через «:»; gettext не слушает его при
-            // локали `C`, но мы слушаем: `LANGUAGE=en rexon` — ровно тот
-            // способ проверить английский, которого ждёт разработчик.
+            // `LANGUAGE` is a list separated by ":"; gettext ignores it with the
+            // `C` locale, but we do not: `LANGUAGE=en rexon` is exactly the way
+            // to check English that a developer expects.
             if let Some(list) = nonempty("LANGUAGE") {
                 raw.extend(list.split(':').map(str::to_string));
             }
@@ -660,7 +670,7 @@ pub fn language_candidates(
     out
 }
 
-/// Каталоги переводов в порядке поиска.
+/// Translation directories in search order.
 pub fn locale_dirs(env: &dyn Fn(&str) -> Option<String>, exe_dir: Option<&Path>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(dir) = env(ENV_LOCALEDIR).filter(|d| !d.trim().is_empty()) {
@@ -673,13 +683,13 @@ pub fn locale_dirs(env: &dyn Fn(&str) -> Option<String>, exe_dir: Option<&Path>)
     dirs
 }
 
-/// Путь к файлу каталога: `<dir>/<язык>/LC_MESSAGES/rexon.<ext>`.
+/// Path to the catalog file: `<dir>/<language>/LC_MESSAGES/rexon.<ext>`.
 pub fn catalog_file(dir: &Path, language: &str, ext: &str) -> PathBuf {
     dir.join(language).join("LC_MESSAGES").join(format!("{DOMAIN}.{ext}"))
 }
 
-/// Первый язык из `candidates`, для которого нашёлся `.mo`, и путь к нему.
-/// `None` — остаёмся на английском.
+/// The first language from `candidates` for which a `.mo` was found, and the path
+/// to it. `None` — we stay with English.
 pub fn resolve(
     candidates: &[String],
     dirs: &[PathBuf],
@@ -694,12 +704,12 @@ pub fn resolve(
 }
 
 // ============================================================================
-// Действующий каталог процесса
+// The process's current catalog
 // ============================================================================
 
 #[derive(Debug, Default)]
 struct Active {
-    /// Код языка; пусто — английский.
+    /// Language code; empty — English.
     language: String,
     mo: Option<PathBuf>,
     catalog: Option<Arc<Catalog>>,
@@ -708,22 +718,25 @@ struct Active {
 fn state() -> &'static RwLock<Active> {
     static STATE: OnceLock<RwLock<Active>> = OnceLock::new();
     STATE.get_or_init(|| {
-        // Ленивый выбор — только по окружению, БЕЗ чтения настроек:
-        // сверки и мост в Python зовут `tr` без `init`, и читать им живой
-        // профиль человека незачем. Настройку учитывает [`init`].
+        // A lazy choice — by the environment only, WITHOUT reading the
+        // settings: checks and the Python bridge call `tr` without `init`, and
+        // they have no reason to read a person's live profile. [`init`] takes
+        // the setting into account.
         //
-        // Сверки самой библиотеки (`cargo test --lib`) начинают с ИСХОДНОГО
-        // языка, а не с локали машины: иначе текстовая сверка краснела у
-        // того, у кого `LANG=ru_RU` и стоит каталог (пакет в
-        // /usr/share/locale или `REXON_LOCALEDIR`), и зеленела у остальных.
+        // The library's own checks (`cargo test --lib`) start with the SOURCE
+        // language rather than the machine's locale: otherwise a text check
+        // went red for someone with `LANG=ru_RU` and an installed catalog (the
+        // package in /usr/share/locale or `REXON_LOCALEDIR`) and green for
+        // everyone else.
         //
-        // То же для сверок из `tests/` (каждая — свой бинарь, а библиотека
-        // собрана БЕЗ `cfg(test)`): 15.11.2026 у владельца (LANG=ru_RU,
-        // пакет положил каталог в /usr/share/locale) сверки, сравнивающие
-        // с английским литералом, получили русские строки. Закреплять язык
-        // в каждой из сотни сверок — ловушка для следующей; поэтому решение
-        // одно и здесь. Сверка, которой нужен русский, по-прежнему просит
-        // его явно (`tests/i18n_pin::ru()` или `set_language(Some("ru"))`).
+        // The same for the checks from `tests/` (each is its own binary, and the
+        // library is built WITHOUT `cfg(test)`): on 15.11.2026 at the owner's
+        // (LANG=ru_RU, the package put the catalog into /usr/share/locale) the
+        // checks comparing against an English literal got Russian strings.
+        // Pinning the language in each of a hundred checks is a trap for the
+        // next one; so there is a single decision here as well. A check that
+        // needs Russian still asks for it explicitly (`tests/i18n_pin::ru()` or
+        // `set_language(Some("ru"))`).
         if cfg!(test) || exe_is_test_harness(std::env::current_exe().ok().as_deref()) {
             return RwLock::new(Active::default());
         }
@@ -731,17 +744,17 @@ fn state() -> &'static RwLock<Active> {
     })
 }
 
-/// Бинарь — сверка cargo (`cargo test`/`cargo bench`), а не программа.
+/// The binary is a cargo check (`cargo test`/`cargo bench`), not a program.
 ///
-/// Бинарь сверки cargo зовёт `<имя>-<хэш>` (16 шестнадцатеричных знаков)
-/// и кладёт: до cargo 1.100 — в `<профиль>/deps/`, с 1.100 (новая
-/// раскладка каталога сборки) — в `<профиль>/build/<пакет>/<хэш>/out/`,
-/// где каталог над `out` назван тем же хэшем. Программы
-/// (`rexon-main-window`, помощники ядра) cargo кладёт в `<профиль>/` без
-/// хэша, пакет ставит их в `/usr/lib/rexon` и `/usr/bin` — под признак они
-/// не попадают. Признака сборки (`cfg`) у сверок в `tests/` нет:
-/// библиотеку для них cargo собирает обычной, — поэтому смотрим на место
-/// запуска.
+/// cargo names a check binary `<name>-<hash>` (16 hexadecimal digits) and puts
+/// it: before cargo 1.100 — into `<profile>/deps/`, since 1.100 (the new build
+/// directory layout) — into `<profile>/build/<package>/<hash>/out/`, where the
+/// directory above `out` is named with the same hash. Programs
+/// (`rexon-main-window`, the core's helpers) cargo puts into `<profile>/`
+/// without a hash, and the package installs them into `/usr/lib/rexon` and
+/// `/usr/bin` — they do not match the sign. The checks in `tests/` have no
+/// build sign (`cfg`): cargo builds the library for them as an ordinary one —
+/// so we look at the launch location.
 fn exe_is_test_harness(exe: Option<&Path>) -> bool {
     fn name(p: Option<&Path>) -> Option<&str> {
         p.and_then(Path::file_name).and_then(|n| n.to_str())
@@ -761,8 +774,9 @@ fn exe_is_test_harness(exe: Option<&Path>) -> bool {
     }
 }
 
-/// Окружение процесса для выбора языка. Переменные локали — ИСХОДНЫЕ,
-/// снятые до того, как окно подменило `LANGUAGE` ([`original_locale_env`]).
+/// Process environment for choosing the language. The locale variables are the
+/// ORIGINAL ones, captured before the window substituted `LANGUAGE`
+/// ([`original_locale_env`]).
 fn process_env(key: &str) -> Option<String> {
     if let Some((_, value)) = original_locale_env().iter().find(|(k, _)| *k == key) {
         return value.clone();
@@ -771,33 +785,34 @@ fn process_env(key: &str) -> Option<String> {
 }
 
 // ============================================================================
-// Исходные переменные локали
+// Original locale variables
 // ============================================================================
 //
-// Живой случай 08.10.2026. Окно ставит `LANGUAGE=<язык Rexon>` (без этого
-// стандартные кнопки Qt под Plasma говорят на языке системы), а выбор языка
-// «как в системе» читал тот же `LANGUAGE` — уже подменённый. У владельца
-// (система ru_RU, форматы LC_*=de_DE, выбран «de») пункт списка гласил
-// «Wie im System (Deutsch)», а перезапуск после выбора «как в системе»
-// возвращал немецкий: новый процесс наследовал подменённое окружение.
+// A live case on 08.10.2026. The window sets `LANGUAGE=<Rexon language>`
+// (without it the standard Qt buttons under Plasma speak the system language),
+// while the "as in the system" language choice read the same `LANGUAGE` —
+// already substituted. At the owner's (system ru_RU, LC_* formats = de_DE, "de"
+// chosen) the list item said «Wie im System (Deutsch)», and a restart after
+// choosing "as in the system" brought German back: the new process inherited
+// the substituted environment.
 //
-// Теперь исходные значения снимаются ОДИН раз, до подмены, и «системный»
-// язык считается только по ним. Дочерним процессам Rexon исходный
-// `LANGUAGE` едет переменной [`ORIGINAL_LANGUAGE_ENV`], а перезапуск
-// возвращает окружение языка как было ([`restore_original_locale_env`]).
-// Форматы (`LC_NUMERIC`, `LC_TIME`…) на язык интерфейса не влияют и в
-// снимок не входят.
+// Now the original values are captured ONCE, before the substitution, and the
+// "system" language is computed only from them. The original `LANGUAGE`
+// travels to Rexon's child processes in the [`ORIGINAL_LANGUAGE_ENV`] variable,
+// and a restart restores the language environment as it was
+// ([`restore_original_locale_env`]). Formats (`LC_NUMERIC`, `LC_TIME`…) do not
+// affect the interface language and are not part of the snapshot.
 
-/// Переменные локали, по которым выбирается язык, — в порядке gettext.
+/// Locale variables by which the language is chosen — in gettext order.
 pub const LOCALE_ENV_KEYS: [&str; 4] = ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"];
 
-/// Исходный `LANGUAGE` процесса-родителя Rexon, подменившего свой: пусто —
-/// переменной не было. Ставит [`override_ui_language_env`].
+/// The original `LANGUAGE` of the Rexon parent process that substituted its own:
+/// empty — there was no variable. Set by [`override_ui_language_env`].
 pub const ORIGINAL_LANGUAGE_ENV: &str = "REXON_ORIGINAL_LANGUAGE";
 
-/// Снимок исходных переменных локали по окружению `env`. Если `env` несёт
-/// [`ORIGINAL_LANGUAGE_ENV`] (процесс запущен Rexon'ом с подменённым
-/// `LANGUAGE`), исходным считается он.
+/// Snapshot of the original locale variables from environment `env`. If `env`
+/// carries [`ORIGINAL_LANGUAGE_ENV`] (the process was started by Rexon with a
+/// substituted `LANGUAGE`), that is considered the original.
 pub fn snapshot_locale_env(
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<(&'static str, Option<String>)> {
@@ -817,17 +832,17 @@ pub fn snapshot_locale_env(
         .collect()
 }
 
-/// Исходные переменные локали этого процесса (снимаются при первом
-/// обращении — в окне это `i18n::init`, раньше подмены `LANGUAGE`).
+/// The original locale variables of this process (captured on first access — in
+/// the window this is `i18n::init`, before `LANGUAGE` is substituted).
 pub fn original_locale_env() -> &'static [(&'static str, Option<String>)] {
     static ORIGINAL: OnceLock<Vec<(&'static str, Option<String>)>> = OnceLock::new();
     ORIGINAL.get_or_init(|| snapshot_locale_env(&|k| std::env::var(k).ok()))
 }
 
-/// Подменить `LANGUAGE` процесса языком Rexon `value`, запомнив исходный
-/// для детей в [`ORIGINAL_LANGUAGE_ENV`].
+/// Substitute the process's `LANGUAGE` with Rexon language `value`, remembering
+/// the original for children in [`ORIGINAL_LANGUAGE_ENV`].
 ///
-/// ⚠️ Звать до создания потоков (меняет окружение процесса).
+/// Warning: call before threads are created (it changes the process environment).
 pub fn override_ui_language_env(value: &str) {
     let original = original_locale_env()
         .iter()
@@ -840,9 +855,9 @@ pub fn override_ui_language_env(value: &str) {
     }
 }
 
-/// Вернуть дочерней команде окружение языка, с которым запустили этот
-/// процесс: новый Rexon (перезапуск) выбирает язык сам, по настройке и
-/// ИСХОДНОЙ локали, и подменённый `LANGUAGE` ему только мешает.
+/// Give a child command back the language environment this process was started
+/// with: a new Rexon (a restart) chooses the language itself, by the setting
+/// and the ORIGINAL locale, and a substituted `LANGUAGE` only gets in its way.
 pub fn restore_original_locale_env(cmd: &mut std::process::Command) {
     for (key, value) in original_locale_env() {
         match value {
@@ -853,7 +868,7 @@ pub fn restore_original_locale_env(cmd: &mut std::process::Command) {
     cmd.env_remove(ORIGINAL_LANGUAGE_ENV);
 }
 
-/// Строка журнала о переменных языка: исходные и нынешние.
+/// A log line about the language variables: the original and the current ones.
 pub fn locale_env_report() -> String {
     let show = |v: &Option<String>| v.clone().unwrap_or_else(|| "—".to_string());
     let orig: Vec<String> =
@@ -865,7 +880,7 @@ pub fn locale_env_report() -> String {
     format!("исходные [{}], сейчас [{}]", orig.join(" "), now.join(" "))
 }
 
-/// Каталог `.mo` действующего языка; `None` — английский.
+/// The `.mo` catalog of the current language; `None` — English.
 pub fn mo_path() -> Option<PathBuf> {
     state().read().ok()?.mo.clone()
 }
@@ -901,29 +916,32 @@ fn lookup(context: Option<&str>, msgid: &str) -> Option<String> {
     catalog()?.get(context, msgid).map(str::to_string)
 }
 
-/// Перевод строки QML действующим каталогом — дверь переводчика окна
-/// (`rexon_gui::install_app_translator`). Правила — [`Catalog::qt_lookup`].
+/// Translation of a QML string by the current catalog — the door of the window's
+/// translator (`rexon_gui::install_app_translator`). The rules are
+/// [`Catalog::qt_lookup`].
 ///
-/// Зовётся из ЛЮБОГО потока: Qt переводит и в потоке загрузки QML. Каталог
-/// читается под `RwLock`, без блокировки на запись, — поток GUI не ждёт.
+/// Called from ANY thread: Qt also translates in the QML loading thread. The
+/// catalog is read under an `RwLock`, without a write lock — the GUI thread does
+/// not wait.
 pub fn qt_translate(disambiguation: Option<&str>, source: &str, n: i32) -> Option<String> {
     catalog()?.qt_lookup(disambiguation, source, n)
 }
 
-/// Выбрать язык с учётом настройки пользователя. Зовёт вход приложения
-/// до первого окна. Возвращает код выбранного языка (`"en"` — исходный).
+/// Choose the language taking the user setting into account. The application
+/// entry point calls this before the first window. Returns the code of the
+/// chosen language (`"en"` — the source).
 pub fn init() -> String {
     let settings = crate::settings::load_settings(&crate::settings::settings_file());
     let setting = settings.get(SETTINGS_KEY).and_then(|v| v.as_str()).map(str::to_string);
     set_language(setting.as_deref())
 }
 
-/// Переключить язык: код (`"ru"`, `"pt_BR"`), `"en"` — исходный, `None`
-/// или `"system"` — как в системе. Возвращает, что получилось.
+/// Switch the language: a code (`"ru"`, `"pt_BR"`), `"en"` — the source, `None`
+/// or `"system"` — as in the system. Returns what came out.
 ///
-/// Уже показанные строки сами не обновятся: Qt-стороне после этого надо
-/// заново поставить переводчик окна (у него кэш строк), позвать
-/// `retranslate()` движка и пересобрать модели страниц.
+/// Strings already shown will not update by themselves: after this the Qt side
+/// has to reinstall the window's translator (it has a string cache), call the
+/// engine's `retranslate()` and rebuild the page models.
 pub fn set_language(language: Option<&str>) -> String {
     let next = activate(language);
     let code = current_code(&next);
@@ -941,30 +959,31 @@ fn current_code(active: &Active) -> String {
     }
 }
 
-/// Код действующего языка (`"en"` — исходный, каталога нет).
+/// Code of the current language (`"en"` — the source, no catalog).
 pub fn current_language() -> String {
     state().read().map(|a| current_code(&a)).unwrap_or_else(|_| SOURCE_LANGUAGE.into())
 }
 
 // ============================================================================
-// Выбор языка человеком: список, подписи, настройка
+// Language choice by the person: the list, labels, the setting
 // ============================================================================
 //
-// Список языков в «Настройках» строится из `po/LINGUAS` — того же файла, по
-// которому сборка собирает каталоги. Добавили строчку `pl` в LINGUAS и
-// положили `po/pl.po` — польский появился в списке сам, код не трогается
-// (правило #12). Показываются только языки, чей каталог действительно
-// нашёлся: пункт, который ничего не переводит, был бы обманом.
+// The list of languages in "Settings" is built from `po/LINGUAS` — the same
+// file from which the build assembles the catalogs. Add a `pl` line to LINGUAS
+// and put `po/pl.po` — Polish appears in the list by itself, the code is not
+// touched (rule #12). Only languages whose catalog was actually found are
+// shown: an item that translates nothing would be a deception.
 
-/// Содержимое `po/LINGUAS` на момент сборки.
+/// Contents of `po/LINGUAS` at build time.
 pub const LINGUAS: &str = include_str!("../../../po/LINGUAS");
 
-/// Значение настройки «как в системе».
+/// The value of the "as in the system" setting.
 pub const SYSTEM_SETTING: &str = "system";
 
-/// Коды языков из текста `LINGUAS`: через пробелы и переводы строк,
-/// `#` — комментарий до конца строки (так же читает `scripts/i18n-update.sh`).
-/// Повторы снимаются, порядок — как в файле.
+/// Language codes from the `LINGUAS` text: separated by spaces and line breaks,
+/// `#` — a comment until the end of the line (the same way
+/// `scripts/i18n-update.sh` reads it). Duplicates are removed, the order is as in
+/// the file.
 pub fn parse_linguas(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in text.lines() {
@@ -978,13 +997,15 @@ pub fn parse_linguas(text: &str) -> Vec<String> {
     out
 }
 
-/// Самоназвание языка — так, как его ищет в списке носитель, а не перевод
-/// на язык интерфейса: человек, случайно включивший чужой язык, должен
-/// найти свой, не читая по-чужому.
+/// The language's own name (endonym) — the way a native speaker looks for it in
+/// the list, not a translation into the interface language: a person who
+/// accidentally switched on a foreign language must find their own without
+/// reading a foreign one.
 ///
-/// Таблица заранее покрывает все языки плана (решение владельца 29.09:
-/// 36 языков), чтобы новый язык появлялся в списке без правки кода. Код,
-/// которого здесь нет, подписывается самим кодом — видно, но не пусто.
+/// The table covers all languages of the plan in advance (the owner's decision
+/// of 29.09: 36 languages), so that a new language appears in the list without
+/// editing the code. A code that is not here is labeled with the code itself —
+/// visible, but not empty.
 pub fn native_name(code: &str) -> String {
     const NAMES: &[(&str, &str)] = &[
         ("en", "English"),
@@ -1032,8 +1053,8 @@ pub fn native_name(code: &str) -> String {
         .iter()
         .find(|(c, _)| *c == code)
         .or_else(|| {
-            // `ru_RU` → «Русский»: страна к имени языка ничего не добавляет,
-            // если отдельного перевода под неё нет.
+            // `ru_RU` → «Русский»: the country adds nothing to the language name if
+            // there is no separate translation for it.
             let base = code.split(['_', '-', '.', '@']).next().unwrap_or(code);
             NAMES.iter().find(|(c, _)| *c == base)
         })
@@ -1041,10 +1062,10 @@ pub fn native_name(code: &str) -> String {
         .unwrap_or_else(|| code.to_string())
 }
 
-/// Языки, которые можно выбрать: английский (исходный, каталог не нужен)
-/// и каждый язык из `linguas`, для которого нашёлся `.mo`.
+/// Languages that can be chosen: English (the source, no catalog needed) and
+/// every language from `linguas` for which a `.mo` was found.
 ///
-/// `exists` — снаружи, чтобы сверка не зависела от диска прогона.
+/// `exists` — from outside, so that the check does not depend on the run's disk.
 pub fn selectable_languages(
     linguas: &[String],
     dirs: &[PathBuf],
@@ -1062,20 +1083,21 @@ pub fn selectable_languages(
     out
 }
 
-/// Языки для списка в «Настройках» на этой машине (см.
+/// Languages for the list in "Settings" on this machine (see
 /// [`selectable_languages`]).
 pub fn available_languages() -> Vec<String> {
     let dirs = locale_dirs(&process_env, exe_dir().as_deref());
     selectable_languages(&parse_linguas(LINGUAS), &dirs, &|p| p.is_file())
 }
 
-/// Перевод строки на каждый язык из `linguas`, чей `.mo` нашёлся в `dirs`,
-/// — без смены языка процесса. Повторы снимаются, порядок — как в `linguas`.
+/// Translation of a string into every language from `linguas` whose `.mo` was
+/// found in `dirs` — without changing the process language. Duplicates are
+/// removed, the order is as in `linguas`.
 ///
-/// ЗАЧЕМ. Кое-что Rexon пишет в ЧУЖИЕ файлы на языке интерфейса (название
-/// правила KWin видно в «Правилах окон» KDE). Человек мог сменить язык после
-/// записи, и найти свою прежнюю запись надо по любому из переводов, а не
-/// только по нынешнему.
+/// WHY. Some things Rexon writes into FOREIGN files in the interface language
+/// (the name of a KWin rule is visible in KDE's "Window Rules"). The person may
+/// have changed the language after writing, and their previous entry has to be
+/// found by any of the translations, not only the current one.
 pub fn translations_in(msgid: &str, linguas: &[String], dirs: &[PathBuf]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for code in linguas {
@@ -1093,22 +1115,21 @@ pub fn translations_in(msgid: &str, linguas: &[String], dirs: &[PathBuf]) -> Vec
     out
 }
 
-/// [`translations_in`] по всем языкам `po/LINGUAS`, установленным на этой
-/// машине.
+/// [`translations_in`] over all `po/LINGUAS` languages installed on this machine.
 pub fn translations_everywhere(msgid: &str) -> Vec<String> {
     let dirs = locale_dirs(&process_env, exe_dir().as_deref());
     translations_in(msgid, &parse_linguas(LINGUAS), &dirs)
 }
 
-/// Какой язык получится при такой настройке — без загрузки каталога.
-/// `None`/`"system"` — как в системе. Ответ — код (`"en"`, `"ru"`).
+/// What language this setting would give — without loading the catalog.
+/// `None`/`"system"` — as in the system. The answer is a code (`"en"`, `"ru"`).
 pub fn language_for_setting(setting: Option<&str>) -> String {
     let dirs = locale_dirs(&process_env, exe_dir().as_deref());
     resolve_setting(setting, &process_env, &dirs, &|p| p.is_file())
 }
 
-/// Чистая часть [`language_for_setting`]: окружение и диск — снаружи.
-/// Язык без каталога даёт английский, а не пустоту.
+/// The pure part of [`language_for_setting`]: the environment and the disk come
+/// from outside. A language without a catalog gives English, not emptiness.
 pub fn resolve_setting(
     setting: Option<&str>,
     env: &dyn Fn(&str) -> Option<String>,
@@ -1120,14 +1141,14 @@ pub fn resolve_setting(
         .unwrap_or_else(|| SOURCE_LANGUAGE.to_string())
 }
 
-/// Сохранённый выбор человека: `"system"`, `"en"`, `"ru"`… Пусто и
-/// отсутствие ключа — `"system"`.
+/// The person's saved choice: `"system"`, `"en"`, `"ru"`… Empty and a missing
+/// key — `"system"`.
 pub fn saved_setting() -> String {
     let settings = crate::settings::load_settings(&crate::settings::settings_file());
     normalize_setting(settings.get(SETTINGS_KEY).and_then(|v| v.as_str()))
 }
 
-/// Привести значение настройки к виду списка: пусто → `"system"`.
+/// Bring the setting value to the list's form: empty → `"system"`.
 pub fn normalize_setting(value: Option<&str>) -> String {
     match value.map(str::trim) {
         None | Some("") => SYSTEM_SETTING.to_string(),
@@ -1135,12 +1156,13 @@ pub fn normalize_setting(value: Option<&str>) -> String {
     }
 }
 
-/// Нужен ли перезапуск, чтобы сохранённый выбор вступил в силу: язык,
-/// который он даст, не совпадает с языком этого процесса.
+/// Whether a restart is needed for the saved choice to take effect: the language
+/// it gives does not match this process's language.
 ///
-/// Язык на лету не меняется намеренно: строки вкладок собраны на Rust при
-/// постройке моделей, и полупереведённое окно хуже честного «после
-/// перезапуска». Процесс свой язык держит до выхода.
+/// The language deliberately does not change on the fly: the tabs' strings are
+/// assembled in Rust when the models are built, and a half-translated window is
+/// worse than an honest "after a restart". A process keeps its language until it
+/// exits.
 pub fn restart_needed(setting: &str) -> bool {
     language_for_setting(Some(setting)) != current_language()
 }
@@ -1149,8 +1171,8 @@ pub fn restart_needed(setting: &str) -> bool {
 mod tests {
     use super::*;
 
-    /// Собрать `.mo` в памяти — как `msgfmt`, без таблицы хэшей (она
-    /// необязательна, и читатель её не использует).
+    /// Build a `.mo` in memory — like `msgfmt`, without the hash table (it is
+    /// optional, and the reader does not use it).
     pub(crate) fn build_mo(entries: &[(&str, &str)], big_endian: bool) -> Vec<u8> {
         let mut sorted: Vec<_> = entries.to_vec();
         sorted.sort_by(|a, b| a.0.cmp(b.0));
@@ -1237,29 +1259,30 @@ mod tests {
         );
     }
 
-    /// Правила `qsTranslate` поверх `.mo` (сверка с прежним `.qm` — у
-    /// [`Catalog::qt_lookup`]).
+    /// The `qsTranslate` rules on top of `.mo` (the check against the former `.qm`
+    /// is in [`Catalog::qt_lookup`]).
     #[test]
     fn qt_lookup_follows_qtranslator_rules() {
         let c = ru_catalog(false);
         let t = |d: Option<&str>, s: &str, n: i32| c.qt_lookup(d, s, n);
         assert_eq!(t(None, "Next", -1).as_deref(), Some("Далее"));
-        // Пустое уточнение — то же, что его отсутствие.
+        // An empty disambiguation is the same as its absence.
         assert_eq!(t(Some(""), "Next", -1).as_deref(), Some("Далее"));
         assert_eq!(t(Some("verb"), "Open", -1).as_deref(), Some("Открыть"));
-        // Записи без уточнения нет — запись под другим уточнением не
-        // подставляется (прежний `.qm` подставлял, см. `qt_lookup`).
+        // There is no entry without disambiguation — an entry under another
+        // disambiguation is not substituted (the former `.qm` substituted it, see
+        // `qt_lookup`).
         assert_eq!(t(None, "Open", -1), None);
-        // Чужое уточнение — откат к записи без него, как у QTranslator.
+        // A foreign disambiguation — fall back to the entry without it, as QTranslator does.
         assert_eq!(t(Some("no such"), "Next", -1).as_deref(), Some("Далее"));
-        // У записи одна форма — она для любого числа.
+        // The entry has one form — it serves any number.
         assert_eq!(t(None, "Next", 5).as_deref(), Some("Далее"));
-        // Формы по числу — по Plural-Forms каталога; `%n` подставляет Qt.
+        // Plural forms follow the catalog's Plural-Forms; Qt substitutes `%n`.
         assert_eq!(t(None, "%n file", 1).as_deref(), Some("%n файл"));
         assert_eq!(t(None, "%n file", 3).as_deref(), Some("%n файла"));
         assert_eq!(t(None, "%n file", 11).as_deref(), Some("%n файлов"));
         assert_eq!(t(None, "%n file", -1).as_deref(), Some("%n файл"));
-        // Пустой перевод и неизвестная строка — исходник (None).
+        // An empty translation and an unknown string — the source (None).
         assert_eq!(t(None, "Untranslated", -1), None);
         assert_eq!(t(None, "Nowhere", -1), None);
     }
@@ -1275,7 +1298,7 @@ mod tests {
 
     #[test]
     fn plural_expressions_of_target_languages() {
-        // Выражения — из заголовков каталогов этих языков у GNU gettext.
+        // The expressions come from the catalog headers of these languages in GNU gettext.
         let cases: &[(&str, &[(u64, u64)])] = &[
             ("n != 1", &[(0, 1), (1, 0), (2, 1)]),
             ("n > 1", &[(0, 0), (1, 0), (2, 1)]),
@@ -1321,34 +1344,34 @@ mod tests {
     #[test]
     fn decimals_follow_the_language() {
         assert_eq!(format_decimal_in(1.44, 1, "en", "."), "1.4");
-        assert_eq!(format_decimal_in(1.45, 1, "ru", ","), "1,4"); // как `{:.1}`: 1.45 в double чуть меньше
+        assert_eq!(format_decimal_in(1.45, 1, "ru", ","), "1,4"); // like `{:.1}`: 1.45 as a double is slightly less
         assert_eq!(format_decimal_in(12.0, 2, "de", ","), "12,00");
         assert_eq!(format_decimal_in(3.6, 0, "ru", ","), "4");
         assert_eq!(format_decimal_in(1.4, 1, "zh_CN", "."), "1.4");
         assert_eq!(format_decimal_in(1.4, 1, "ar", "٫"), "1٫4");
         assert_eq!(format_decimal_in(10.25, 2, "fa_IR", "٫"), "۱۰٫۲۵");
         assert_eq!(format_decimal_in(-0.5, 1, "fa", "٫"), "-۰٫۵");
-        // Без каталога (сверки библиотеки — на исходном языке) — точка.
+        // Without a catalog (the library checks run in the source language) — a dot.
         assert_eq!(format_decimal(2.25, 1), format!("{:.1}", 2.25));
     }
 
     #[test]
     fn fill_isolates_substitutions_only_for_rtl() {
-        // Слева направо — побайтно как раньше, ни одного невидимого знака.
+        // Left to right — byte for byte as before, not a single invisible character.
         let ltr = fill_with("Installed %1 (%2).", &[&"Firefox", &"2.0"], false);
         assert_eq!(ltr, "Installed Firefox (2.0).");
         assert_eq!(fill_plain("%1 — %2", &[&"a", &"b"]), "a — b");
-        // Справа налево — каждая подстановка своим изолятом, шаблон не тронут.
+        // Right to left — each substitution in its own isolate, the template untouched.
         let rtl = fill_with("تم تثبيت %1 (%2).", &[&"Firefox", &"2.0"], true);
         assert_eq!(rtl, "تم تثبيت \u{2068}Firefox\u{2069} (\u{2068}2.0\u{2069}).");
-        // Пустая подстановка и чужой номер — без изолята.
+        // An empty substitution and a foreign number — without an isolate.
         assert_eq!(fill_with("%1|%3", &[&""], true), "|%3");
         assert_eq!(isolate_if("x", true), "\u{2068}x\u{2069}");
         assert_eq!(isolate_if("x", false), "x");
         assert_eq!(isolate_if("", true), "");
-        // Сверки библиотеки идут на исходном языке: обычный `fill` — без
-        // изолятов (`ntr` здесь не зовём: xgettext унёс бы строку сверки в
-        // каталог).
+        // The library checks run in the source language: a plain `fill` — without
+        // isolates (`ntr` is not called here: xgettext would carry the check's
+        // string off into the catalog).
         assert_eq!(fill("%1", &[&"a"]), "a");
     }
 
@@ -1357,17 +1380,17 @@ mod tests {
         let yes = |p: &str| exe_is_test_harness(Some(Path::new(p)));
         assert!(yes("/r/target-wt/debug/deps/gnome_ego-f98ca29bd4e205d1"));
         assert!(yes("/r/target/x86_64-unknown-linux-gnu/release/deps/rexon_core-0123456789abcdef"));
-        // Раскладка cargo 1.100: `build/<пакет>/<хэш>/out/<имя>-<хэш>`.
+        // The cargo 1.100 layout: `build/<package>/<hash>/out/<name>-<hash>`.
         assert!(yes("/r/target-wt/debug/build/rexon-core/3ebdb07b8fb945e3/out/rexon_core-3ebdb07b8fb945e3"));
         assert!(!yes("/r/target-wt/debug/build/rexon-core/3ebdb07b8fb945e3/out/rexon_core-0123456789abcdef"));
-        // Программы — в каталоге профиля и в пакете.
+        // Programs — in the profile directory and in the package.
         assert!(!yes("/r/target/debug/rexon-main-window"));
         assert!(!yes("/usr/lib/rexon/rexon-wallpaper-host"));
         assert!(!yes("/usr/bin/rexon"));
-        // Каталог `deps` без хэша в имени — не сверка.
+        // A `deps` directory without a hash in the name is not a check.
         assert!(!yes("/opt/deps/rexon-main-window"));
         assert!(!exe_is_test_harness(None));
-        // Сам этот бинарь сверок опознаётся.
+        // This check binary itself is recognized.
         assert!(exe_is_test_harness(std::env::current_exe().ok().as_deref()));
     }
 
@@ -1385,12 +1408,12 @@ mod tests {
             language_candidates(None, &env(&[("LANGUAGE", "cs:pl"), ("LANG", "de_DE.UTF-8")])),
             ["cs", "pl", "de_DE", "de"]
         );
-        // Английский и C обрывают поиск: `LANGUAGE=en` — проверка английского.
+        // English and C cut the search off: `LANGUAGE=en` is the English check.
         assert!(language_candidates(None, &env(&[("LANGUAGE", "en"), ("LANG", "ru_RU.UTF-8")]))
             .is_empty());
         assert!(language_candidates(None, &env(&[("LANG", "C.UTF-8")])).is_empty());
         assert!(language_candidates(None, &env(&[])).is_empty());
-        // Настройка сильнее окружения; «system» — значит окружение.
+        // The setting is stronger than the environment; "system" means the environment.
         assert_eq!(language_candidates(Some("pl"), &env(&[("LANG", "ru_RU.UTF-8")])), ["pl"]);
         assert_eq!(
             language_candidates(Some("system"), &env(&[("LANG", "ru_RU.UTF-8")])),
@@ -1399,14 +1422,14 @@ mod tests {
         assert!(language_candidates(Some("en"), &env(&[("LANG", "ru_RU.UTF-8")])).is_empty());
     }
 
-    /// Живой случай 08.10.2026: система ru, форматы de, выбран de — окно
-    /// подменило `LANGUAGE=de`, но «как в системе» обязано остаться русским.
+    /// A live case on 08.10.2026: system ru, formats de, de chosen — the window
+    /// substituted `LANGUAGE=de`, but "as in the system" must remain Russian.
     #[test]
     fn системный_язык_считается_по_исходной_локали() {
         let env = |pairs: &'static [(&'static str, &'static str)]| {
             move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
         };
-        // Дочерний процесс Rexon: LANGUAGE подменён, исходный — в метке.
+        // A Rexon child process: LANGUAGE is substituted, the original is in the marker.
         let child = env(&[
             ("LANG", "ru_RU.UTF-8"),
             ("LANGUAGE", "de"),
@@ -1417,16 +1440,16 @@ mod tests {
         let lookup = |k: &str| snap.iter().find(|(n, _)| *n == k).and_then(|(_, v)| v.clone());
         assert_eq!(lookup("LANGUAGE").as_deref(), Some("ru"));
         assert_eq!(language_candidates(None, &lookup), ["ru", "ru_RU"]);
-        // Метка пустая — исходного LANGUAGE не было вовсе.
+        // The marker is empty — there was no original LANGUAGE at all.
         let unset = env(&[("LANG", "ru_RU.UTF-8"), ("LANGUAGE", "de"), (ORIGINAL_LANGUAGE_ENV, "")]);
         let snap = snapshot_locale_env(&unset);
         let lookup = |k: &str| snap.iter().find(|(n, _)| *n == k).and_then(|(_, v)| v.clone());
         assert_eq!(lookup("LANGUAGE"), None);
         assert_eq!(language_candidates(None, &lookup), ["ru_RU", "ru"]);
-        // Форматы (LC_NUMERIC) на язык не влияют.
+        // Formats (LC_NUMERIC) do not affect the language.
         let formats = env(&[("LANG", "ru_RU.UTF-8"), ("LC_NUMERIC", "de_DE.UTF-8"), ("LC_TIME", "de_DE.UTF-8")]);
         assert_eq!(language_candidates(None, &formats), ["ru_RU", "ru"]);
-        // Без метки (обычный запуск) — как есть.
+        // Without a marker (an ordinary launch) — as is.
         let plain = env(&[("LANGUAGE", "ru"), ("LANG", "ru_RU.UTF-8")]);
         let snap = snapshot_locale_env(&plain);
         assert_eq!(snap[0], ("LANGUAGE", Some("ru".to_string())));
@@ -1440,7 +1463,7 @@ mod tests {
                 || p == Path::new("/dev-tree/locale/ru/LC_MESSAGES/rexon.mo")
         };
         let c = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        // `pt_BR` не нашёлся — берём базовый `pt`.
+        // `pt_BR` was not found — we take the base `pt`.
         assert_eq!(
             resolve(&c(&["pt_BR", "pt"]), &dirs, &have),
             Some(("pt".into(), PathBuf::from("/usr/share/locale/pt/LC_MESSAGES/rexon.mo")))
@@ -1452,13 +1475,13 @@ mod tests {
         assert_eq!(resolve(&c(&["cs"]), &dirs, &have), None);
     }
 
-    // ── Сверки самих каталогов po/ ───────────────────────────────────────
+    // ── Checks of the po/ catalogs themselves ────────────────────────────
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
 
-    /// Номера заполнителей `%1`, `%2`… строки (без `%n`).
+    /// Numbers of the `%1`, `%2`… placeholders of a string (without `%n`).
     fn placeholders(text: &str) -> std::collections::BTreeSet<u32> {
         let b = text.as_bytes();
         let mut out = std::collections::BTreeSet::new();
@@ -1474,10 +1497,10 @@ mod tests {
         out
     }
 
-    /// Каждый язык из `po/LINGUAS` собирается настоящим `msgfmt --check`,
-    /// читается нашим читателем, и в каждом переводе те же заполнители,
-    /// что в оригинале: потерянный `%2` у переводчика дал бы строку без
-    /// числа, и заметили бы это только глазами.
+    /// Every language from `po/LINGUAS` is built with a real `msgfmt --check`, read
+    /// by our reader, and every translation has the same placeholders as the
+    /// original: a `%2` lost by a translator would give a string without a number,
+    /// and that would be noticed only by eye.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/*.po настоящим msgfmt")]
     fn every_catalog_compiles_and_keeps_placeholders() {
@@ -1511,8 +1534,8 @@ mod tests {
         }
     }
 
-    /// Шаблон `po/rexon.pot` не отстал от исходников: новая строка без
-    /// обновления шаблона не дошла бы ни до одного переводчика.
+    /// The `po/rexon.pot` template has not fallen behind the sources: a new string
+    /// without a template update would not reach a single translator.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: извлекает строки настоящим xgettext")]
     fn template_is_up_to_date() {
@@ -1532,13 +1555,13 @@ mod tests {
     #[test]
     fn linguas_parsing_and_selectable_languages() {
         assert_eq!(parse_linguas("ru\n# comment\npl cs # tail\n\nru\n"), ["ru", "pl", "cs"]);
-        // Настоящий LINGUAS читается и в нём есть русский.
+        // The real LINGUAS is read, and it contains Russian.
         assert!(parse_linguas(LINGUAS).iter().any(|c| c == "ru"));
 
         let dirs = vec![PathBuf::from("/dev-tree/locale"), PathBuf::from("/usr/share/locale")];
         let have = |p: &Path| p == Path::new("/usr/share/locale/ru/LC_MESSAGES/rexon.mo");
         let linguas: Vec<String> = ["ru", "pl", "en"].iter().map(|s| s.to_string()).collect();
-        // Английский — всегда и первым; польский без каталога не показывается.
+        // English — always and first; Polish without a catalog is not shown.
         assert_eq!(selectable_languages(&linguas, &dirs, &have), ["en", "ru"]);
         assert_eq!(selectable_languages(&[], &dirs, &have), ["en"]);
     }
@@ -1550,7 +1573,7 @@ mod tests {
         assert_eq!(native_name("ru_RU"), "Русский");
         assert_eq!(native_name("pt_BR"), "Português (Brasil)");
         assert_eq!(native_name("xx"), "xx");
-        // Каждый язык плана подписан самоназванием, а не кодом.
+        // Every language of the plan is labeled with its endonym, not a code.
         for code in [
             "ar", "zh_CN", "ja", "it", "es", "de", "fr", "pt_BR", "tr", "pl", "he", "cs", "vi",
             "th", "ko", "fil", "hi", "sv", "nb", "hy", "ka", "uk", "nl", "fi", "da", "hu", "ro",
@@ -1560,8 +1583,9 @@ mod tests {
         }
     }
 
-    /// Три обещания выбора языка: `en` на русской системе — английский;
-    /// «как в системе» — язык системы; язык без каталога — английский.
+    /// Three promises of the language choice: `en` on a Russian system — English;
+    /// "as in the system" — the system's language; a language without a catalog —
+    /// English.
     #[test]
     fn setting_resolves_to_language() {
         let ru_system = |k: &str| (k == "LANG").then(|| "ru_RU.UTF-8".to_string());

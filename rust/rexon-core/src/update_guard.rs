@@ -1,39 +1,39 @@
-//! Защита от обновления, которое поставит набор пакетов вразнобой.
+//! Protection against an update that installs a set of packages mismatched.
 //!
-//! ЗАЧЕМ. 07.10.2026 `pacman -Syu` на CachyOS поставил `qt6-base` 6.12.0 из
-//! Arch `extra`, а `qt6-declarative` остался 6.11.2: CachyOS кладёт свои
-//! сборки части модулей Qt в репозиторий, который pacman смотрит раньше
-//! `extra`, и выкладывает их позже. `libQt6Qml` 6.11.2 требует приватный
-//! интерфейс ровно той версии Qt, под которую собран
-//! (`undefined symbol … QtPrivate_6_11_2`), — после перезагрузки экран входа
-//! падал, и человек видел чёрный экран. Это повторяющийся класс (CachyOS
-//! distribution #453, #549, #605; с другой библиотекой — #604:
-//! `gdk-pixbuf2` 2.44.8 при старом `glycin`, Firefox не запускался), и
-//! узнать о нём можно ДО обновления: `checkupdates` говорит, что придёт.
+//! WHY. On 07.10.2026 `pacman -Syu` on CachyOS installed `qt6-base` 6.12.0 from
+//! Arch `extra`, while `qt6-declarative` stayed at 6.11.2: CachyOS puts its own
+//! builds of some Qt modules into a repository that pacman looks at before
+//! `extra`, and publishes them later. `libQt6Qml` 6.11.2 requires the private
+//! interface of exactly the Qt version it was built against
+//! (`undefined symbol … QtPrivate_6_11_2`) — after a restart the login screen
+//! crashed, and the person saw a black screen. This is a recurring class (CachyOS
+//! distribution #453, #549, #605; with another library — #604:
+//! `gdk-pixbuf2` 2.44.8 with an old `glycin`, Firefox did not start), and
+//! it can be learned about BEFORE the update: `checkupdates` tells what will come.
 //!
-//! Что делает модуль:
-//!   * правила наборов — ДАННЫМИ ([`PACKAGE_SETS`]): какие пакеты должны
-//!     идти одной версией и с какой точностью; новый набор — новая запись;
-//!   * сверка «установленное + ждущее обновление» ([`evaluate`]): разойдётся
-//!     ли набор после обновления, разошёлся ли он уже и чинит ли его то, что
-//!     ждёт;
-//!   * пакет-сирота: член набора, которого больше нет в репозиториях
-//!     (`pacman -Qm`), не «отстаёт» — он не обновится никогда (25.10.2026:
-//!     `kwin-x11` 6.7.5 при Plasma 6.8.1, сеанс X11 из Plasma убран). Такой
-//!     пакет из сверки набора выводится, о нём — своя находка
-//!     [`Stage::Orphaned`] с советом удалить, а не «подождать»;
-//!   * тексты для человека, отпечаток состояния («об этом уже говорили»);
-//!   * пользовательские юниты фоновой проверки — общие для всех проверок
-//!     «до/после обновления» ([`watch_units`]); в них же идёт и сверка
-//!     AeroThemePlasma, своих юнитов у неё больше нет (см. ниже).
+//! What the module does:
+//!   * set rules — as DATA ([`PACKAGE_SETS`]): which packages must
+//!     go at one version and with what precision; a new set — a new entry;
+//!   * the "installed + pending update" check ([`evaluate`]): whether
+//!     the set will diverge after the update, whether it has already diverged and whether what is
+//!     pending fixes it;
+//!   * an orphan package: a set member that is no longer in the repositories
+//!     (`pacman -Qm`) does not "lag" — it will never be updated (25.10.2026:
+//!     `kwin-x11` 6.7.5 with Plasma 6.8.1, the X11 session was removed from Plasma). Such a
+//!     package is taken out of the set check, it gets its own finding
+//!     [`Stage::Orphaned`] with the advice to remove it, not to "wait";
+//!   * texts for a human, the state fingerprint ("this has already been said");
+//!   * user units of the background check — shared by all the
+//!     "before/after update" checks ([`watch_units`]); the AeroThemePlasma check
+//!     also runs in them, it no longer has units of its own (see below).
 //!
-//! ⛔ Только предупреждение: никаких IgnorePkg, хуков pacman, удержания
-//! пакетов. Сверка пароля не спрашивает никогда. Действия — две кнопки окна
-//! через сеанс прав окна: удаление сироты ([`remove_orphans_live`]) и
-//! возврат прежних версий набора из кэша pacman ([`rollback_live`]); «сирота
-//! ли это» и «откат ли это ровно набора находки» root-сторона проверяет
-//! сама. Команд в окне и уведомлении нет; консоли спасения при упавшем
-//! экране входа команды остаются ([`orphan_advice`], откат —
+//! ⛔ Only a warning: no IgnorePkg, pacman hooks or holding
+//! packages. The check never asks for a password. Actions — two window buttons
+//! through the window's privilege session: removing an orphan ([`remove_orphans_live`]) and
+//! bringing back the previous versions of a set from the pacman cache ([`rollback_live`]); "is it
+//! an orphan" and "is this a rollback of exactly the finding's set" the root side checks
+//! itself. There are no commands in the window and the notification; the rescue console with a crashed
+//! login screen keeps the commands ([`orphan_advice`], rollback —
 //! [`crate::login_rescue`]).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -45,22 +45,22 @@ use crate::system_de_exec::DeOpsIo;
 use crate::system_exec::SystemIo;
 
 // ══════════════════════════════════════════════════════════════════════════
-// Что придёт с обновлением: `checkupdates`
+// What will come with the update: `checkupdates`
 // ══════════════════════════════════════════════════════════════════════════
 //
-// `checkupdates` (pacman-contrib) синхронизирует СВОЮ копию базы
-// репозиториев во временном каталоге, без прав администратора и не трогая
-// базу системы. Нет его — честно «не знаем»: читать системную базу
-// (`pacman -Si`) значит видеть её такой, какой она была при последнем
-// `-Sy`, а синхронизировать её саму — root.
+// `checkupdates` (pacman-contrib) synchronises ITS OWN copy of the repository
+// database in a temporary directory, without administrator rights and without touching
+// the system database. If it is missing — an honest "we don't know": reading the system database
+// (`pacman -Si`) means seeing it as it was at the last
+// `-Sy`, and synchronising it itself needs root.
 
-/// Программа, которая безопасно (без root) говорит, что придёт с обновлением.
+/// The program that safely (without root) tells what will come with the update.
 pub const PENDING_UPDATES_BINARY: &str = "checkupdates";
 
-/// Таймаут `checkupdates`, секунды: он скачивает базы репозиториев.
+/// `checkupdates` timeout, seconds: it downloads the repository databases.
 pub const PENDING_UPDATES_TIMEOUT_SECS: u64 = 180;
 
-/// Одно ждущее обновление: пакет, версия сейчас, версия в репозиториях.
+/// One pending update: the package, the version now, the version in the repositories.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingUpdate {
     pub package: String,
@@ -68,8 +68,8 @@ pub struct PendingUpdate {
     pub available: String,
 }
 
-/// Разбор вывода `checkupdates`: строки `имя старая -> новая`. Цвет
-/// (на случай, если его всё же включили) и строки иной формы пропускаются.
+/// Parsing the `checkupdates` output: lines `name old -> new`. Color
+/// (in case it was turned on after all) and lines of other forms are skipped.
 pub fn parse_pending_updates(text: &str) -> Vec<PendingUpdate> {
     let plain = strip_ansi(text);
     plain
@@ -87,7 +87,7 @@ pub fn parse_pending_updates(text: &str) -> Vec<PendingUpdate> {
         .collect()
 }
 
-/// Убрать управляющие последовательности цвета терминала.
+/// Strip terminal color escape sequences.
 fn strip_ansi(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -108,9 +108,9 @@ fn strip_ansi(text: &str) -> String {
     out
 }
 
-/// Что придёт с обновлением системы: разобранный вывод `checkupdates`.
-/// None — не Arch, программы нет или она не смогла (нет сети) — честно
-/// «не знаем». Код 2 у `checkupdates` — «обновлений нет».
+/// What will come with the system update: the parsed output of `checkupdates`.
+/// None — not Arch, the program is missing or it failed (no network) — an honest
+/// "we don't know". Exit code 2 of `checkupdates` — "no updates".
 pub fn pending_updates<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily) -> Option<Vec<PendingUpdate>> {
     if family != PkgFamily::Arch || !io.which(PENDING_UPDATES_BINARY) {
         return None;
@@ -123,8 +123,8 @@ pub fn pending_updates<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily) -> Opt
     }
 }
 
-/// Каталог базы, которую синхронизирует `checkupdates`: `CHECKUPDATES_DB`
-/// либо `${TMPDIR:-/tmp}/checkup-db-${UID}/` — так считает он сам.
+/// The directory of the database that `checkupdates` synchronises: `CHECKUPDATES_DB`
+/// or `${TMPDIR:-/tmp}/checkup-db-${UID}/` — as it computes it itself.
 pub fn checkupdates_db(env_db: &str, tmpdir: &str, uid: u32) -> String {
     if !env_db.trim().is_empty() {
         return env_db.trim().to_string();
@@ -133,7 +133,7 @@ pub fn checkupdates_db(env_db: &str, tmpdir: &str, uid: u32) -> String {
     format!("{}/checkup-db-{uid}/", tmp.trim_end_matches('/'))
 }
 
-/// Разбор `pacman -Q`: `(имя, версия)`.
+/// Parsing `pacman -Q`: `(name, version)`.
 pub fn parse_installed(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|line| {
@@ -143,13 +143,13 @@ pub fn parse_installed(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Разбор `pacman -Qg <группы>`: `(группа, пакет)`.
+/// Parsing `pacman -Qg <groups>`: `(group, package)`.
 pub fn parse_groups(text: &str) -> Vec<(String, String)> {
     parse_installed(text)
 }
 
-/// Разбор `pacman -Sl` (под `LANG=C`): все версии каждого пакета во всех
-/// включённых репозиториях — `имя → [версия…]`.
+/// Parsing `pacman -Sl` (under `LANG=C`): all versions of each package in all
+/// enabled repositories — `name → [version…]`.
 pub fn parse_sync_list(text: &str) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for line in text.lines() {
@@ -162,16 +162,16 @@ pub fn parse_sync_list(text: &str) -> BTreeMap<String, Vec<String>> {
     out
 }
 
-/// Разбор `pacman -Qmq`: пакеты, которых нет ни в одном включённом
-/// репозитории (сторонние из AUR и ушедшие из репозиториев).
+/// Parsing `pacman -Qmq`: packages that are in no enabled
+/// repository (third-party ones from the AUR and those gone from the repositories).
 pub fn parse_foreign(text: &str) -> BTreeSet<String> {
     text.lines().filter_map(|l| l.split_whitespace().next()).map(str::to_string).collect()
 }
 
-/// Пакеты вне репозиториев: `pacman -Qmq` (только чтение, без сети — по
-/// синхронизированным базам). `dbpath` — база `checkupdates` (в ней
-/// свежие базы репозиториев и ссылка `local` на установленное), без неё —
-/// база системы. None — не узнали (тогда сирот не судим).
+/// Packages outside the repositories: `pacman -Qmq` (read-only, without network — by
+/// the synchronised databases). `dbpath` — the `checkupdates` database (it has
+/// fresh repository databases and a `local` link to the installed ones), without it —
+/// the system database. None — unknown (then we do not judge orphans).
 pub fn foreign_packages<IO: SystemIo + ?Sized>(io: &IO, dbpath: Option<&str>) -> Option<BTreeSet<String>> {
     let mut argv = vec!["pacman".to_string(), "-Qmq".to_string()];
     if let Some(db) = dbpath {
@@ -181,29 +181,29 @@ pub fn foreign_packages<IO: SystemIo + ?Sized>(io: &IO, dbpath: Option<&str>) ->
     let r = io.run(&argv, Some(60), true);
     match r.rc() {
         Some(0) => Some(parse_foreign(&r.stdout)),
-        // Код 1 без вывода — сторонних пакетов нет вовсе.
+        // Code 1 without output — there are no third-party packages at all.
         Some(1) if r.stdout.trim().is_empty() && r.stderr.trim().is_empty() => Some(BTreeSet::new()),
         _ => None,
     }
 }
 
-/// Версия без эпохи и выпуска пакета: `1:6.30.0-1.1` → `6.30.0`.
+/// A version without the epoch and the package release: `1:6.30.0-1.1` → `6.30.0`.
 pub fn upstream_version(pacman_version: &str) -> String {
     crate::aeroshell::upstream_version(pacman_version)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Правила наборов — данные
+// Set rules — data
 // ══════════════════════════════════════════════════════════════════════════
 
-/// С какой точностью версии набора обязаны совпадать.
+/// With what precision the versions of a set must match.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Precision {
-    /// Только первое число (`51` у GNOME).
+    /// Only the first number (`51` for GNOME).
     Major,
-    /// Два числа (`6.30` у KDE Frameworks).
+    /// Two numbers (`6.30` for KDE Frameworks).
     Minor,
-    /// Три числа (`6.12.0` у Qt).
+    /// Three numbers (`6.12.0` for Qt).
     Patch,
 }
 
@@ -217,104 +217,104 @@ impl Precision {
     }
 }
 
-/// Кто входит в набор.
+/// Who belongs to the set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Members {
-    /// Все установленные пакеты с таким началом имени.
+    /// All installed packages with such a name prefix.
     Prefix(&'static str),
-    /// Установленные члены группы pacman (`pacman -Qg`).
+    /// Installed members of a pacman group (`pacman -Qg`).
     Group(&'static str),
-    /// Ровно эти пакеты (из установленных).
+    /// Exactly these packages (among the installed ones).
     Names(&'static [&'static str]),
 }
 
-/// Как набор должен двигаться.
+/// How the set must move.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rule {
-    /// Все члены — той же версии, что `anchor`, с точностью `precision`.
-    /// `may_lag` — члены, которым можно отставать (но не обгонять).
-    /// Члены `Prefix`/`Group` с другим первым числом версии в набор не
-    /// входят: это чужая схема нумерации (сторонний `qt6-…` из AUR).
+    /// All members — at the same version as `anchor`, with precision `precision`.
+    /// `may_lag` — members that may lag behind (but not get ahead).
+    /// `Prefix`/`Group` members with a different first version number are not part of
+    /// the set: it is someone else's numbering scheme (a third-party `qt6-…` from the AUR).
     SameVersion {
         anchor: &'static str,
         precision: Precision,
         may_lag: &'static [&'static str],
-        /// Члены со СВОЕЙ нумерацией начиная с указанной версии (`qt6-webengine`
-        /// с 6.140.0): с неё номер с опорным не сравнивается вовсе — это не
-        /// версия Qt. Ниже — член сверяется как обычно (с учётом `may_lag`).
+        /// Members with THEIR OWN numbering starting from the given version (`qt6-webengine`
+        /// from 6.140.0): from it on the number is not compared with the anchor at all — it is not
+        /// a Qt version. Below it the member is checked as usual (taking `may_lag` into account).
         own_numbering: &'static [OwnNumbering],
     },
-    /// Номера разные, но двигаться обязаны вместе: один член обновляется,
-    /// а у другого в репозиториях уже есть новее, чем ставит pacman
-    /// (репозиторий с приоритетом держит старую сборку), — разойдутся.
+    /// The numbers differ, but they must move together: one member is updated,
+    /// and for the other the repositories already have a newer one than pacman installs
+    /// (a priority repository holds an old build) — they will diverge.
     MoveTogether,
 }
 
-/// Член набора, который с какой-то версии нумеруется сам по себе.
+/// A set member that from some version on is numbered on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OwnNumbering {
     pub package: &'static str,
-    /// Первая версия своей нумерации (первые числа: `[6, 140]`).
+    /// The first version of its own numbering (the first numbers: `[6, 140]`).
     pub from: &'static [u128],
 }
 
 impl OwnNumbering {
-    /// Эта версия пакета — уже в своей нумерации.
+    /// This package version is already in its own numbering.
     fn covers(&self, name: &str, version: &str) -> bool {
         name == self.package && ver_tuple(&upstream_version(version)).as_slice() >= self.from
     }
 }
 
-/// Версия члена — в своей нумерации, сверять с опорным нечего.
+/// The member's version is in its own numbering, there is nothing to compare with the anchor.
 fn own_scheme(own: &[OwnNumbering], name: &str, version: &str) -> bool {
     own.iter().any(|o| o.covers(name, version))
 }
 
-/// Чем грозит разошедшийся набор.
+/// What a diverged set threatens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect {
-    /// Экран входа / рабочий стол после перезагрузки.
+    /// The login screen / the desktop after a restart.
     LoginScreen,
-    /// Программы, которые пользуются набором.
+    /// Programs that use the set.
     Programs,
 }
 
-/// Один набор.
+/// One set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PackageSet {
-    /// Опознаватель для отпечатка.
+    /// Identifier for the fingerprint.
     pub id: &'static str,
-    /// Имя набора для человека — собственное имя, без перевода.
+    /// Name of the set for a human — a proper name, not translated.
     pub name: &'static str,
     pub members: Members,
     pub rule: Rule,
     pub effect: Effect,
 }
 
-/// Правила наборов. Новый набор — новая запись, кода не нужно.
+/// Set rules. A new set — a new entry, no code needed.
 ///
-/// * **Qt** — до третьего числа: модули Qt пользуются приватным интерфейсом
-///   `qt6-base`, привязанным к ТОЧНОЙ версии (`QtPrivate_6_12_0`; замер
-///   08.10.2026 `objdump -T`: 16 пакетов `qt6-*` требуют этот знак). Исключение
-///   — `qt6-webengine`: его библиотеки приватным интерфейсом с такой
-///   привязкой не пользуются (замер 14.11.2026 `objdump -T`: у 6.140.0 нет
-///   ни одного `QtPrivate_6_*`, у `qt6-declarative` 6.12.0 — 57, у
-///   `qt6-wayland` — 4). Пока он нумеровался как Qt, ему можно было
-///   отставать (6.11.2 при `qt6-base` 6.12.0), но не обгонять. С Qt 6.12
-///   Qt WebEngine (вместе с Qt PDF и движком Qt WebView) — отдельный продукт
-///   со СВОЕЙ нумерацией: второе число — базовая версия Chromium (6.140.0 —
-///   Chromium 140, вышел рядом с Qt 6.12.0; блог qt.io «Qt WebEngine will
-///   release separately»). Номер 6.140 ничего не говорит о версии Qt, и
-///   сравнивать его с `qt6-base` нельзя (ложная тревога 14.11.2026: «qt6-base
-///   6.12.0 при qt6-webengine 6.140.0», пакет из Arch `extra`, `ldd` чисто).
-///   ⚠️ Граница: требование «Qt не старее той, под которую собран» по номеру
-///   своей нумерации не видно — в Arch `depends` у него просто `qt6-base`.
-/// * **KDE Frameworks** и **Plasma** — до второго числа (группы pacman
-///   `kf6` и `plasma`: точечные выпуски отдельных пакетов — норма).
-/// * **GNOME** — `gnome-shell` работает только со своим `mutter` (номер
-///   библиотеки = первое число).
-/// * **gdk-pixbuf2 + glycin** — случай CachyOS #604: номера разные, двигаться
-///   обязаны вместе.
+/// * **Qt** — up to the third number: Qt modules use the private interface of
+///   `qt6-base`, bound to the EXACT version (`QtPrivate_6_12_0`; measured on
+///   08.10.2026 with `objdump -T`: 16 `qt6-*` packages require this symbol). The exception
+///   is `qt6-webengine`: its libraries do not use the private interface with such
+///   a binding (measured on 14.11.2026 with `objdump -T`: 6.140.0 has
+///   not a single `QtPrivate_6_*`, `qt6-declarative` 6.12.0 has 57,
+///   `qt6-wayland` — 4). While it was numbered like Qt, it was allowed to
+///   lag (6.11.2 with `qt6-base` 6.12.0), but not to get ahead. Since Qt 6.12
+///   Qt WebEngine (together with Qt PDF and the Qt WebView engine) is a separate product
+///   with ITS OWN numbering: the second number is the base Chromium version (6.140.0 —
+///   Chromium 140, released alongside Qt 6.12.0; qt.io blog "Qt WebEngine will
+///   release separately"). The number 6.140 says nothing about the Qt version, and
+///   it must not be compared with `qt6-base` (a false alarm on 14.11.2026: "qt6-base
+///   6.12.0 with qt6-webengine 6.140.0", a package from Arch `extra`, `ldd` clean).
+///   ⚠️ The boundary: the requirement "Qt not older than the one it was built against" is not visible
+///   from its own numbering — in Arch its `depends` is just `qt6-base`.
+/// * **KDE Frameworks** and **Plasma** — up to the second number (pacman groups
+///   `kf6` and `plasma`: point releases of individual packages are the norm).
+/// * **GNOME** — `gnome-shell` works only with its own `mutter` (the library
+///   number = the first number).
+/// * **gdk-pixbuf2 + glycin** — the CachyOS #604 case: the numbers differ, they must
+///   move together.
 pub const PACKAGE_SETS: &[PackageSet] = &[
     PackageSet {
         id: "qt6",
@@ -358,7 +358,7 @@ pub const PACKAGE_SETS: &[PackageSet] = &[
     },
 ];
 
-/// Группы pacman, которые нужно спросить (`pacman -Qg …`).
+/// The pacman groups that need to be queried (`pacman -Qg …`).
 pub fn groups_needed(sets: &[PackageSet]) -> Vec<&'static str> {
     sets.iter()
         .filter_map(|s| match s.members {
@@ -369,40 +369,40 @@ pub fn groups_needed(sets: &[PackageSet]) -> Vec<&'static str> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Сверка
+// Check
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Что видно на машине: установленное, группы, ждущее, версии в репозиториях.
+/// What is visible on the machine: the installed packages, groups, pending updates, versions in the repositories.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Survey {
     /// `pacman -Q`.
     pub installed: Vec<(String, String)>,
-    /// `pacman -Qg`: `(группа, пакет)`.
+    /// `pacman -Qg`: `(group, package)`.
     pub groups: Vec<(String, String)>,
     /// `checkupdates`.
     pub pending: Vec<PendingUpdate>,
-    /// `pacman -Sl` по базе `checkupdates`: все версии во всех репозиториях.
-    /// None — не спрашивали либо не удалось (тогда «двигаться вместе» не
-    /// судим: без этого ложная тревога на каждое обновление gdk-pixbuf2).
+    /// `pacman -Sl` by the `checkupdates` database: all versions in all repositories.
+    /// None — not asked or failed (then we do not judge "move together":
+    /// without this there would be a false alarm on every gdk-pixbuf2 update).
     pub repo: Option<BTreeMap<String, Vec<String>>>,
-    /// `pacman -Qmq`: пакеты, которых нет в репозиториях. None — не
-    /// спрашивали либо не удалось: тогда такие пакеты сверяются как все
-    /// (прежнее поведение — «вразнобой»).
+    /// `pacman -Qmq`: packages that are not in the repositories. None — not
+    /// asked or failed: then such packages are checked like all others
+    /// (the former behaviour — "mismatched").
     pub foreign: Option<BTreeSet<String>>,
 }
 
-/// Где набор разошёлся.
+/// Where the set diverged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
-    /// Сейчас всё сходится, обновление разведёт: «не обновляйтесь».
+    /// Everything matches now, the update will split it: "don't update".
     Hold,
-    /// Уже разошёлся, и обновление не чинит: «не перезагружайтесь».
+    /// Already diverged, and the update does not fix it: "don't restart".
     DontReboot,
-    /// Уже разошёлся, а ждущее обновление чинит: «обновитесь ещё раз».
+    /// Already diverged, and the pending update fixes it: "update once more".
     UpdateNow,
-    /// Член набора ушёл из репозиториев и остался от прежней версии: он не
-    /// обновится никогда — «удалите, если не пользуетесь». Одна находка —
-    /// один такой пакет (`odd[0]`).
+    /// A set member left the repositories and remained from the previous version: it will never
+    /// be updated — "remove it if you don't use it". One finding —
+    /// one such package (`odd[0]`).
     Orphaned,
 }
 
@@ -417,26 +417,26 @@ impl Stage {
     }
 }
 
-/// Куда откатить пакет: точная версия (она стоит сейчас) либо любая из
-/// кэша с такими первыми числами.
+/// Where to roll a package back to: the exact version (the one installed now) or any from
+/// the cache with such first numbers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RollbackTarget {
     Exact(String),
     Series(Precision, Vec<u128>),
 }
 
-/// Находка по одному набору.
+/// A finding for one set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub set: PackageSet,
     pub stage: Stage,
-    /// Ведущий пакет и его версия (без эпохи и выпуска) в разошедшемся
-    /// состоянии: опорный пакет либо (для «двигаться вместе») обновляемый.
+    /// The leading package and its version (without the epoch and release) in the diverged
+    /// state: the anchor package or (for "move together") the one being updated.
     pub lead: (String, String),
-    /// Разошедшиеся с ним: имя, версия, и (для «двигаться вместе») версия,
-    /// которая уже есть в другом репозитории.
+    /// Those diverged from it: name, version, and (for "move together") the version
+    /// that is already in another repository.
     pub odd: Vec<(String, String, Option<String>)>,
-    /// Что вернуть из кэша, чтобы набор снова сошёлся.
+    /// What to bring back from the cache so that the set matches again.
     pub rollback: Vec<(String, RollbackTarget)>,
 }
 
@@ -448,7 +448,7 @@ fn major_of(version: &str) -> Option<u128> {
     ver_tuple(&upstream_version(version)).first().copied()
 }
 
-/// Члены набора среди установленного.
+/// Set members among the installed packages.
 fn members_of<'a>(set: &PackageSet, survey: &'a Survey) -> Vec<&'a (String, String)> {
     let in_group = |group: &str, name: &str| survey.groups.iter().any(|(g, p)| g == group && p == name);
     survey
@@ -462,7 +462,7 @@ fn members_of<'a>(set: &PackageSet, survey: &'a Survey) -> Vec<&'a (String, Stri
         .collect()
 }
 
-/// Сверить все наборы. Пусто — говорить не о чем.
+/// Check all sets. Empty — nothing to talk about.
 pub fn evaluate(survey: &Survey, sets: &[PackageSet]) -> Vec<Finding> {
     sets.iter().flat_map(|set| evaluate_set(set, survey)).collect()
 }
@@ -476,7 +476,7 @@ fn evaluate_set(set: &PackageSet, survey: &Survey) -> Vec<Finding> {
     }
 }
 
-/// Разошедшиеся с опорным пакетом в одном состоянии (`version(имя)`).
+/// Those that diverged from the anchor package in one state (`version(name)`).
 fn mismatched(
     names: &[&str],
     anchor: &str,
@@ -520,8 +520,8 @@ fn same_version(
         .filter(|(_, v)| matches!(set.members, Members::Names(_)) || major_of(v) == anchor_major)
         .map(|(n, _)| n.as_str())
         .collect();
-    // Ушедшие из репозиториев не обновятся никогда: в сверке набора их нет,
-    // о них — своя находка. Опорный пакет сиротой не считаем.
+    // Those gone from the repositories will never be updated: they are not in the set check,
+    // they get their own finding. The anchor package is not considered an orphan.
     let orphan = |n: &str| n != anchor && survey.foreign.as_ref().is_some_and(|f| f.contains(n));
     let (orphans, names): (Vec<&str>, Vec<&str>) = all_names.iter().copied().partition(|n| orphan(n));
     let installed = |name: &str| -> String {
@@ -530,8 +530,8 @@ fn same_version(
     let pending = |name: &str| survey.pending.iter().find(|u| u.package == name);
     let after = |name: &str| -> String { pending(name).map(|u| u.available.clone()).unwrap_or_else(|| installed(name)) };
 
-    // Сирота против опорного пакета ПОСЛЕ ждущего обновления: сама она
-    // не сдвинется, а набор уйдёт вперёд.
+    // An orphan against the anchor package AFTER the pending update: it will not
+    // move by itself, and the set will move ahead.
     let anchor_after = key_of(&after(anchor), precision);
     let mut out: Vec<Finding> = orphans
         .iter()
@@ -564,12 +564,12 @@ fn same_version(
         };
 
     let rollback = match stage {
-        // Вернуть всё, что обновление тронет в наборе: до него набор сходился.
+        // Bring back everything the update will touch in the set: before it the set matched.
         Stage::Hold => names
             .iter()
             .filter_map(|n| pending(n).map(|u| (n.to_string(), RollbackTarget::Exact(u.installed.clone()))))
             .collect(),
-        // Уже разошлось: вернуть обогнавших к самой старой серии набора.
+        // Already diverged: bring those that got ahead back to the oldest series of the set.
         Stage::DontReboot => {
             let strict: Vec<&str> = names.iter().copied().filter(|n| !may_lag.contains(n)).collect();
             let Some(oldest) = strict.iter().map(|n| key_of(&installed(n), precision)).min() else {
@@ -583,7 +583,7 @@ fn same_version(
         }
         Stage::UpdateNow | Stage::Orphaned => Vec::new(),
     };
-    // Набор вразнобой — первым: он важнее сироты.
+    // A mismatched set — first: it is more important than an orphan.
     out.insert(
         0,
         Finding {
@@ -607,7 +607,7 @@ fn move_together(set: &PackageSet, survey: &Survey) -> Option<Finding> {
     };
     let moved: Vec<&PendingUpdate> = members.iter().filter_map(|(n, _)| pending(n)).collect();
     let lead = moved.first()?;
-    // Остаются на месте, хотя в каком-то репозитории уже есть новее.
+    // They stay in place, although some repository already has a newer one.
     let stale: Vec<(String, String, Option<String>)> = members
         .iter()
         .filter(|(n, _)| survey.pending.iter().all(|u| &u.package != n))
@@ -638,23 +638,23 @@ fn move_together(set: &PackageSet, survey: &Survey) -> Option<Finding> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Откат из кэша pacman
+// Rollback from the pacman cache
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Кэш пакетов pacman по умолчанию.
+/// The default pacman package cache.
 pub const PACKAGE_CACHE_DIR: &str = "/var/cache/pacman/pkg";
 
-/// Длиннее этого команда отката нечитаема — тогда только словами. Предел
-/// КОНСОЛИ спасения ([`crate::login_rescue`]): там человек набирает её сам.
+/// A rollback command longer than this is unreadable — then only words. The limit
+/// of the rescue CONSOLE ([`crate::login_rescue`]): there the person types it themselves.
 pub const ROLLBACK_MAX_PACKAGES: usize = 8;
 
-/// Предел кнопки «Вернуть прежние версии»: сколько пакетов одного набора
-/// окно возвращает одной транзакцией (Plasma — до ~50 пакетов группы). Тот
-/// же предел проверяет помощник от root.
+/// The limit of the «Put Previous Versions Back» button: how many packages of one set
+/// the window brings back in one transaction (Plasma — up to ~50 packages of the group). The
+/// root helper checks the same limit.
 pub const ROLLBACK_BUTTON_MAX: usize = 64;
 
 impl RollbackTarget {
-    /// Подходит ли версия файла кэша (полная, `6.11.2-1`) под цель.
+    /// Whether the version of a cache file (full, `6.11.2-1`) fits the target.
     pub fn accepts(&self, version: &str) -> bool {
         match self {
             RollbackTarget::Exact(want) => version == want,
@@ -663,8 +663,8 @@ impl RollbackTarget {
     }
 }
 
-/// Разбор имени файла кэша: `qt6-base-6.11.2-1-x86_64.pkg.tar.zst` →
-/// `("qt6-base", "6.11.2-1")`. Подписи (`.sig`) и прочее — None.
+/// Parsing a cache file name: `qt6-base-6.11.2-1-x86_64.pkg.tar.zst` →
+/// `("qt6-base", "6.11.2-1")`. Signatures (`.sig`) and everything else — None.
 pub fn parse_cache_file(file: &str) -> Option<(String, String)> {
     if file.ends_with(".sig") {
         return None;
@@ -675,10 +675,10 @@ pub fn parse_cache_file(file: &str) -> Option<(String, String)> {
     (!name.is_empty()).then(|| (name.to_string(), format!("{ver}-{rel}")))
 }
 
-/// Каталоги кэша из вывода `pacman-conf CacheDir` (по строке, с `/` на
-/// конце) плюс [`PACKAGE_CACHE_DIR`]; только нормальные абсолютные пути, без
-/// хвостового `/`, без повторов. Тот же разбор — у помощника от root (он
-/// зовёт `pacman-conf` сам).
+/// Cache directories from the output of `pacman-conf CacheDir` (one per line, with a trailing
+/// `/`) plus [`PACKAGE_CACHE_DIR`]; only normal absolute paths, without
+/// the trailing `/`, without duplicates. The root helper has the same parsing (it
+/// calls `pacman-conf` itself).
 pub fn parse_cache_dirs(pacman_conf: &str) -> Vec<String> {
     let mut out = vec![PACKAGE_CACHE_DIR.to_string()];
     for line in pacman_conf.lines() {
@@ -693,8 +693,8 @@ pub fn parse_cache_dirs(pacman_conf: &str) -> Vec<String> {
     out
 }
 
-/// Кэш пакетов машины: `(каталог, имена файлов)` по каждому каталогу
-/// [`parse_cache_dirs`] (`pacman-conf` читается и без прав).
+/// The machine's package cache: `(directory, file names)` for each directory of
+/// [`parse_cache_dirs`] (`pacman-conf` can be read without privileges).
 pub fn cache_listing<IO: SystemIo + ?Sized>(io: &IO) -> Vec<(String, Vec<String>)> {
     let conf = io.run(&["pacman-conf".to_string(), "CacheDir".to_string()], Some(30), true);
     let text = if conf.rc() == Some(0) { conf.stdout } else { String::new() };
@@ -707,22 +707,22 @@ pub fn cache_listing<IO: SystemIo + ?Sized>(io: &IO) -> Vec<(String, Vec<String>
         .collect()
 }
 
-/// Один пакет отката: что стоит сейчас и что вернётся из кэша.
+/// One rollback package: what is installed now and what will come back from the cache.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RollbackItem {
     pub name: String,
-    /// Установленная версия (полная, как у `pacman -Q`); пусто — не знаем.
+    /// The installed version (full, as in `pacman -Q`); empty — we do not know.
     pub from: String,
-    /// Версия файла кэша (полная).
+    /// The version of the cache file (full).
     pub to: String,
-    /// Путь файла кэша.
+    /// The path of the cache file.
     pub path: String,
 }
 
-/// Откат находки по кэшу: для каждого пакета — самая новая подходящая
-/// версия из всех каталогов `caches`. Пусто — хоть одного пакета нет в кэше
-/// (половинчатый откат хуже никакого) либо их больше `max`. `installed` —
-/// `pacman -Q` (для «было»).
+/// Rollback of a finding from the cache: for each package — the newest fitting
+/// version from all `caches` directories. Empty — at least one package is not in the cache
+/// (a half rollback is worse than none) or there are more than `max` of them. `installed` —
+/// `pacman -Q` (for "was").
 pub fn rollback_items(
     finding: &Finding,
     installed: &[(String, String)],
@@ -759,17 +759,17 @@ pub fn rollback_items(
     out
 }
 
-/// Пути файлов кэша для команды отката консоли (не больше
-/// [`ROLLBACK_MAX_PACKAGES`]). Пусто — хоть одного пакета нет в кэше.
+/// Cache file paths for the console rollback command (no more than
+/// [`ROLLBACK_MAX_PACKAGES`]). Empty — at least one package is not in the cache.
 pub fn rollback_paths(finding: &Finding, caches: &[(String, Vec<String>)]) -> Vec<String> {
     rollback_items(finding, &[], caches, ROLLBACK_MAX_PACKAGES).into_iter().map(|i| i.path).collect()
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Тексты
+// Texts
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Заголовок предупреждения по самой важной находке.
+/// Title of the warning by the most important finding.
 pub fn title(findings: &[Finding]) -> String {
     let stage = |s: Stage| findings.iter().any(|f| f.stage == s);
     if stage(Stage::DontReboot) {
@@ -783,9 +783,9 @@ pub fn title(findings: &[Finding]) -> String {
     }
 }
 
-// Тексты о сироте — константами: их показывает и окно Rexon (язык сеанса,
-// [`tr`]), и консоль при упавшем экране входа (вшитый каталог,
-// [`crate::login_rescue`]), каждый своим переводчиком.
+// Texts about an orphan are constants: they are shown both by the Rexon window (the session language,
+// [`tr`]) and by the console when the login screen has crashed (the embedded catalog,
+// [`crate::login_rescue`]), each with its own translator.
 
 // TRANSLATORS: %1 is a package name, %2 packages with versions, e.g. "kwin-x11 6.7.5 with plasma-workspace 6.8.1".
 const T_ORPHAN: &str = n_(
@@ -796,19 +796,19 @@ const T_ORPHAN_PAIR: &str = n_("%1 with %2");
 // TRANSLATORS: %1 is a command line, keep it as is.
 const T_ORPHAN_REMOVE: &str = n_("If you don't use it, remove the package: %1");
 
-/// Почему пакет ушёл из репозиториев — для известных случаев: (пакет,
-/// пояснение). Новый случай — новая запись.
+/// Why a package left the repositories — for known cases: (package,
+/// explanation). A new case — a new entry.
 pub const ORPHAN_NOTES: &[(&str, &str)] = &[(
     "kwin-x11",
     // TRANSLATORS: Explains why the package kwin-x11 left the repositories. "Plasma (X11)" is a session name.
     n_("The Plasma (X11) session is not supported on this version of Plasma."),
 )];
 
-/// Все строки о сироте (для сверки «каждая — через gettext и с вставками»).
+/// All the orphan strings (for the check "each one goes through gettext and with substitutions").
 pub const ORPHAN_TEXTS: &[&str] = &[T_ORPHAN, T_ORPHAN_PAIR, T_ORPHAN_REMOVE, ORPHAN_NOTES[0].1];
 
-/// Команда удаления сироты (`pacman -Rns`: с зависимостями, ставшими
-/// ненужными, и без сохранённых настроек). None — находка не о сироте.
+/// The orphan removal command (`pacman -Rns`: with dependencies that became
+/// unneeded, and without saved settings). None — the finding is not about an orphan.
 pub fn orphan_remove_command(f: &Finding) -> Option<String> {
     if f.stage != Stage::Orphaned {
         return None;
@@ -817,14 +817,14 @@ pub fn orphan_remove_command(f: &Finding) -> Option<String> {
     Some(format!("sudo pacman -Rns {name}"))
 }
 
-/// Что с сиротой: «ушёл из репозиториев, остался от прежней версии» и,
-/// если причина известна, — пояснение. `t` — переводчик (msgid → текст).
+/// What is up with the orphan: "left the repositories, remained from the previous version" and,
+/// if the cause is known, an explanation. `t` — the translator (msgid → text).
 pub fn orphan_cause(f: &Finding, t: &dyn Fn(&str) -> String) -> String {
     orphan_cause_with(f, t, fill)
 }
 
-/// [`orphan_cause`] для текстовой консоли: без изолятов письма справа налево
-/// (консоль ядра их не понимает, см. [`crate::i18n::fill_plain`]).
+/// [`orphan_cause`] for the text console: without right-to-left script isolates
+/// (the kernel console does not understand them, see [`crate::i18n::fill_plain`]).
 pub fn orphan_cause_plain(f: &Finding, t: &dyn Fn(&str) -> String) -> String {
     orphan_cause_with(f, t, fill_plain)
 }
@@ -844,28 +844,28 @@ fn orphan_cause_with(
     text
 }
 
-/// Совет о сироте для КОНСОЛИ: «удалите, если не пользуетесь: команда».
-/// Человек за консолью спасения команду набирает сам — она здесь к месту.
-/// Окну Rexon и уведомлению — [`finding_text_for`]: там команды нет.
+/// Advice about an orphan for the CONSOLE: "remove it if you don't use it: command".
+/// A person at the rescue console types the command themselves — it belongs here.
+/// For the Rexon window and the notification — [`finding_text_for`]: there is no command there.
 pub fn orphan_advice(f: &Finding, t: &dyn Fn(&str) -> String) -> Option<String> {
     orphan_remove_command(f).map(|cmd| fill_plain(&t(T_ORPHAN_REMOVE), &[&cmd]))
 }
 
-/// Кому текст находки. Консоль спасения сюда не ходит — у неё свой текст с
-/// командой ([`orphan_advice`], [`crate::login_rescue`]).
+/// Who the finding text is for. The rescue console does not come here — it has its own text with
+/// the command ([`orphan_advice`], [`crate::login_rescue`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Audience {
-    /// Окно Rexon. `removable` — в окне есть кнопка удаления сироты
-    /// ([`removable_orphans`]); нет её — о том, что делать с сиротой,
-    /// молчим (на SteamOS удалить пакет нельзя вовсе). `rollback` — в окне
-    /// есть кнопка «Вернуть прежние версии» ([`rollback_offer`]); нет её —
-    /// об откате молчим.
+    /// The Rexon window. `removable` — the window has an orphan removal button
+    /// ([`removable_orphans`]); if not — we stay silent about what to do with the orphan
+    /// (on SteamOS a package cannot be removed at all). `rollback` — the window
+    /// has the «Put Previous Versions Back» button ([`rollback_offer`]); if not —
+    /// we stay silent about the rollback.
     Window { removable: bool, rollback: bool },
-    /// Уведомление фоновой проверки: кнопки нет — «откройте Rexon».
+    /// The background check notification: no button — "open Rexon".
     Notification,
 }
 
-/// Совет о сироте окну Rexon либо уведомлению — без команд.
+/// Advice about an orphan for the Rexon window or the notification — without commands.
 fn orphan_advice_for(f: &Finding, audience: Audience) -> Option<String> {
     if f.stage != Stage::Orphaned {
         return None;
@@ -874,9 +874,9 @@ fn orphan_advice_for(f: &Finding, audience: Audience) -> Option<String> {
         // TRANSLATORS: About a package that no longer gets updates; the window has a button to remove it.
         Audience::Window { removable: true, .. } => Some(tr("If you don't use it, Rexon can remove it.")),
         Audience::Window { removable: false, .. } => None,
-        // Окно с кнопкой «Удалить» само при запуске не открывается
-        // ([`window_should_show`]) — уведомление называет кнопку, которой
-        // человек сам о нём попросит, теми же словами, что на ней.
+        // The window with the «Remove» button does not open by itself at startup
+        // ([`window_should_show`]) — the notification names the button with which
+        // the person will ask for it themselves, in the same words as on it.
         Audience::Notification => Some(trf(
             // TRANSLATORS: In a desktop notification about a package that no longer gets updates; %1 is the label of the “Check Now” button in Rexon settings.
             "If you don't use it, remove it in Rexon settings with “%1”.",
@@ -885,14 +885,14 @@ fn orphan_advice_for(f: &Finding, audience: Audience) -> Option<String> {
     }
 }
 
-/// Подпись кнопки «Проверить сейчас» настроек Rexon без значка — так, как её
-/// видит человек.
+/// The label of the «Check Now» button of the Rexon settings without the icon — as
+/// the person sees it.
 fn check_now_label() -> String {
     let button = crate::qt_settings::text("aero.check_now", &[]).unwrap_or_default();
     button.trim_start_matches(|c: char| !c.is_alphanumeric()).to_string()
 }
 
-/// Сироты находок — имена пакетов, по порядку, без повторов.
+/// Orphans of the findings — package names, in order, without duplicates.
 pub fn orphan_names(findings: &[Finding]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for f in findings.iter().filter(|f| f.stage == Stage::Orphaned) {
@@ -905,8 +905,8 @@ pub fn orphan_names(findings: &[Finding]) -> Vec<String> {
     out
 }
 
-/// Каких сирот окно предлагает удалить кнопкой: на SteamOS — никаких
-/// (`/usr` только для чтения, части системы ставит обновление образа).
+/// Which orphans the window offers to remove with the button: on SteamOS — none
+/// (`/usr` is read-only, parts of the system are installed by the image update).
 pub fn removable_orphans(findings: &[Finding], steamos: bool) -> Vec<String> {
     if steamos {
         Vec::new()
@@ -915,32 +915,32 @@ pub fn removable_orphans(findings: &[Finding], steamos: bool) -> Vec<String> {
     }
 }
 
-// ── Сирота, на которой работает сеанс ───────────────────────────────────
+// ── An orphan the session runs on ───────────────────────────────────────
 //
-// Защита от дурака: человек сидит в сеансе Plasma (X11) и удаляет kwin-x11
-// — следующий вход в этот сеанс не сработает. То же, если экран входа
-// открывает такой сеанс сам (автовход, последний выбранный). Решение —
-// данными: пакет → сеанс, которому он нужен. Новый случай — новая запись.
+// Foolproofing: the person is in a Plasma (X11) session and removes kwin-x11
+// — the next login into this session will not work. The same if the login screen
+// opens such a session by itself (autologin, the last chosen one). The decision is made
+// by data: package → the session that needs it. A new case — a new entry.
 
-/// Сеанс, который держится на пакете-сироте.
+/// A session that depends on an orphan package.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrphanSession {
-    /// Пакет-сирота.
+    /// The orphan package.
     pub package: &'static str,
-    /// Тип сеанса logind (`Type=`, `XDG_SESSION_TYPE`), где пакет нужен.
+    /// logind session type (`Type=`, `XDG_SESSION_TYPE`) where the package is needed.
     pub session_type: &'static str,
-    /// Стол сеанса по базе Rexon ([`crate::system::detect_current_de`]).
+    /// The session's desktop by the Rexon database ([`crate::system::detect_current_de`]).
     pub desktop: &'static str,
-    /// Имена файлов сеанса (`/usr/share/xsessions/<имя>.desktop`) — то, что
-    /// экран входа пишет в `Session=`.
+    /// Session file names (`/usr/share/xsessions/<name>.desktop`) — what
+    /// the login screen writes into `Session=`.
     pub sessions: &'static [&'static str],
-    /// Имя сеанса для человека — как в списке экрана входа (не переводится).
+    /// Session name for a human — as in the login screen list (not translated).
     pub session_name: &'static str,
-    /// Сеанс, из которого пакет удалять безопасно.
+    /// A session from which the package can be removed safely.
     pub instead: &'static str,
 }
 
-/// Пакеты-сироты, на которых работает сеанс.
+/// Orphan packages a session runs on.
 pub const ORPHAN_SESSIONS: &[OrphanSession] = &[OrphanSession {
     package: "kwin-x11",
     session_type: "x11",
@@ -950,13 +950,13 @@ pub const ORPHAN_SESSIONS: &[OrphanSession] = &[OrphanSession {
     instead: "Plasma (Wayland)",
 }];
 
-/// Запись таблицы по имени пакета.
+/// A table entry by package name.
 pub fn orphan_session_of(package: &str) -> Option<&'static OrphanSession> {
     ORPHAN_SESSIONS.iter().find(|s| s.package == package)
 }
 
-/// Удаление унесёт пакет, на котором работает сеанс `session_type` стола
-/// `current_de` (тот, где человек сейчас).
+/// The removal will take away a package that session `session_type` of desktop
+/// `current_de` runs on (the one the person is in now).
 pub fn orphan_in_use(names: &[String], session_type: &str, current_de: &str) -> Option<&'static OrphanSession> {
     let kind = session_type.trim().to_ascii_lowercase();
     ORPHAN_SESSIONS
@@ -964,14 +964,14 @@ pub fn orphan_in_use(names: &[String], session_type: &str, current_de: &str) -> 
         .find(|s| names.iter().any(|n| n == s.package) && s.session_type == kind && s.desktop == current_de.trim())
 }
 
-/// Имя сеанса из значения `Session=` экрана входа: `plasmax11`,
+/// Session name from the login screen's `Session=` value: `plasmax11`,
 /// `plasmax11.desktop`, `/usr/share/xsessions/plasmax11.desktop` → `plasmax11`.
 pub fn session_file_name(value: &str) -> String {
     let base = value.trim().rsplit('/').next().unwrap_or_default();
     base.strip_suffix(".desktop").unwrap_or(base).to_string()
 }
 
-/// Удаление унесёт пакет сеанса, который экран входа открывает сам
+/// The removal will take away a package of a session that the login screen opens by itself
 /// (`defaults` — [`login_default_sessions`]).
 pub fn orphan_login_default(names: &[String], defaults: &[String]) -> Option<&'static OrphanSession> {
     ORPHAN_SESSIONS.iter().find(|s| {
@@ -979,11 +979,11 @@ pub fn orphan_login_default(names: &[String], defaults: &[String]) -> Option<&'s
     })
 }
 
-/// Сеансы, которые экран входа открывает или предлагает сам: автовход
-/// SDDM и Plasma Login Manager, последний выбранный в SDDM, предвыбранный
-/// у Plasma Login Manager (источники и порядок —
-/// [`crate::system_plan::LOGIN_SESSION_SOURCES`]). `read` — текст файла,
-/// `list` — имена в каталоге.
+/// Sessions that the login screen opens or offers by itself: SDDM and Plasma Login
+/// Manager autologin, the last chosen one in SDDM, the preselected one
+/// in Plasma Login Manager (sources and order —
+/// [`crate::system_plan::LOGIN_SESSION_SOURCES`]). `read` — file text,
+/// `list` — names in a directory.
 pub fn login_default_sessions(read: &dyn Fn(&str) -> Option<String>, list: &dyn Fn(&str) -> Vec<String>) -> Vec<String> {
     crate::system_plan::login_session_values(read, list)
 }
@@ -997,29 +997,29 @@ const T_ORPHAN_LOGIN_DEFAULT: &str = n_(
      screen remembers it, and remove the package from there.",
 );
 
-/// Строки отказов «сеанс держится на пакете» — шаблоны с `%1`/`%2` (для
-/// сверки переводов: готовый текст подставляет имена сеансов).
+/// Lines of the "the session depends on the package" refusals — templates with `%1`/`%2` (for
+/// checking translations: the finished text substitutes the session names).
 pub const ORPHAN_SESSION_TEXTS: &[&str] = &[T_ORPHAN_IN_USE, T_ORPHAN_LOGIN_DEFAULT, T_ORPHAN_NOW_REMOVABLE];
 
 // TRANSLATORS: Said after the login screen was switched to another session; the package is the one Rexon offered to remove.
 const T_ORPHAN_NOW_REMOVABLE: &str = n_("Now the package can be removed.");
 
-/// Отказ: человек сейчас в сеансе, который держится на пакете.
+/// Refusal: the person is currently in a session that depends on the package.
 pub fn orphan_in_use_text(s: &OrphanSession) -> String {
     trf(T_ORPHAN_IN_USE, &[&s.session_name, &s.instead])
 }
 
-/// Отказ: экран входа сам открывает сеанс, который держится на пакете.
+/// Refusal: the login screen itself opens a session that depends on the package.
 pub fn orphan_login_default_text(s: &OrphanSession) -> String {
     trf(T_ORPHAN_LOGIN_DEFAULT, &[&s.session_name, &s.instead])
 }
 
-/// Отказ помощника `why` при удалении `names` — «экран входа сам открывает
-/// сеанс на пакете»: тогда окно вместо голого отказа предлагает сделать
-/// пару сеанса на Wayland сеансом по умолчанию (её запись в
-/// [`crate::system_plan::X11_SESSION_SUCCESSORS`]). Отказ приходит готовым
-/// текстом того же языка ([`crate::privilege::client::key_text`]), поэтому
-/// узнаётся сверкой с тем же текстом.
+/// The helper's refusal `why` when removing `names` — "the login screen itself opens
+/// a session on the package": then instead of a bare refusal the window offers to make
+/// the Wayland counterpart of the session the default session (its entry in
+/// [`crate::system_plan::X11_SESSION_SUCCESSORS`]). The refusal arrives as ready
+/// text in the same language ([`crate::privilege::client::key_text`]), so it
+/// is recognised by comparing with the same text.
 pub fn login_default_successor(names: &[String], why: &str) -> Option<&'static crate::system_plan::SessionSuccessor> {
     ORPHAN_SESSIONS
         .iter()
@@ -1028,24 +1028,24 @@ pub fn login_default_successor(names: &[String], why: &str) -> Option<&'static c
         .and_then(|s| s.sessions.iter().find_map(|x| crate::system_plan::session_successor(x)))
 }
 
-/// Приписка после смены сеанса по умолчанию: теперь сироту можно снять.
+/// A note after changing the default session: now the orphan can be removed.
 pub fn orphan_now_removable() -> String {
     crate::i18n::tr(T_ORPHAN_NOW_REMOVABLE)
 }
 
-/// Что окно сторожа предлагает с сиротами.
+/// What the guard window offers for orphans.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OrphanOffer {
-    /// Кнопка «Удалить …».
+    /// The «Remove …» button.
     Remove(Vec<String>),
-    /// Удалять отсюда нельзя — вместо кнопки этот текст.
+    /// Removing from here is not possible — this text instead of the button.
     Blocked(String),
-    /// Сирот нет либо удалить нельзя вовсе (SteamOS) — ни кнопки, ни совета.
+    /// No orphans, or removal is impossible altogether (SteamOS) — neither a button nor advice.
     Nothing,
 }
 
-/// Решение окна. `session_type` и `current_de` — сеанс окна (тот же, что
-/// помощник от root узнает у logind и сверит сам).
+/// The window's decision. `session_type` and `current_de` — the window's session (the same one
+/// the root helper learns from logind and checks itself).
 pub fn orphan_offer(findings: &[Finding], steamos: bool, session_type: &str, current_de: &str) -> OrphanOffer {
     let names = removable_orphans(findings, steamos);
     if names.is_empty() {
@@ -1057,7 +1057,7 @@ pub fn orphan_offer(findings: &[Finding], steamos: bool, session_type: &str, cur
     }
 }
 
-/// [`orphan_offer`] на живой машине (сеанс окна — по окружению).
+/// [`orphan_offer`] on the live machine (the window session — from the environment).
 pub fn orphan_offer_live(findings: &[Finding]) -> OrphanOffer {
     let env = |n: &str| std::env::var(n).unwrap_or_default();
     let steamos = crate::system::DistroDetector::detect_live().is_steamos();
@@ -1066,24 +1066,24 @@ pub fn orphan_offer_live(findings: &[Finding]) -> OrphanOffer {
     orphan_offer(findings, steamos, &env("XDG_SESSION_TYPE"), &de)
 }
 
-/// Список имён для подписи: «kwin-x11» либо «kwin-x11, foo».
+/// A list of names for the label: «kwin-x11» or «kwin-x11, foo».
 fn names_list(names: &[String]) -> String {
     names.join(", ")
 }
 
-/// Кнопка окна: «Удалить kwin-x11».
+/// The window button: «Remove kwin-x11».
 pub fn orphan_remove_button(names: &[String]) -> String {
     // TRANSLATORS: Button. %1 is a package name (or several, comma-separated), e.g. "kwin-x11".
     trf("Remove %1", &[&names_list(names)])
 }
 
-/// Заголовок окна хода удаления.
+/// Title of the removal progress window.
 pub fn orphan_remove_title(names: &[String]) -> String {
     // TRANSLATORS: Window title while packages are being removed. %1 is a package name (or several).
     trf("Removing %1", &[&names_list(names)])
 }
 
-/// Итог удаления. `rest_clean` — повторная сверка ничего больше не нашла.
+/// Result of the removal. `rest_clean` — the repeated check found nothing more.
 pub fn orphan_removed_text(names: &[String], rest_clean: bool) -> String {
     // TRANSLATORS: Result of removing packages. %1 is a package name (or several).
     let done = trf("Removed: %1.", &[&names_list(names)]);
@@ -1095,21 +1095,21 @@ pub fn orphan_removed_text(names: &[String], rest_clean: bool) -> String {
     }
 }
 
-/// Удаление не удалось, а пояснения нет.
+/// The removal failed, and there is no explanation.
 pub fn orphan_remove_failed(names: &[String]) -> String {
     // TRANSLATORS: %1 is a package name (or several).
     trf("Rexon couldn't remove %1.", &[&names_list(names)])
 }
 
-/// Удалить сирот через сеанс прав окна ([`crate::privilege`]). Что пакет и
-/// правда сирота (установлен, нет ни в одном репозитории, член набора), не
-/// жизненно важен и не часть текущего стола — проверяет помощник от root
-/// сам; окну он не верит. `run` — исполнитель операции
-/// ([`crate::privilege::run::run_live`] на живой машине). Прежнего пути
-/// через `pkexec` у этой операции нет намеренно: без помощника проверить
-/// «сироту» от root некому.
+/// Remove orphans through the window's privilege session ([`crate::privilege`]). That the package
+/// really is an orphan (installed, in no repository, a set member), is not
+/// vital and not part of the current desktop — the root helper checks
+/// itself; it does not trust the window. `run` — the operation executor
+/// ([`crate::privilege::run::run_live`] on the live machine). This operation deliberately has
+/// no former path through `pkexec`: without the helper there is nobody to check the
+/// "orphan" as root.
 ///
-/// `Err` — готовый текст для человека.
+/// `Err` — ready text for a human.
 pub fn remove_orphans_with(
     names: &[String],
     run: &mut dyn FnMut(&crate::privilege::op::PrivOp) -> Option<crate::system_exec::RunOut>,
@@ -1119,27 +1119,27 @@ pub fn remove_orphans_with(
     }
     let op = crate::privilege::op::PrivOp::OrphanRemove { names: names.to_vec() };
     let Some(out) = run(&op) else {
-        // Помощника сеанса нет вовсе.
+        // There is no session helper at all.
         return Err(crate::privilege::client::ClientError::HelperMissing.human_text());
     };
     if out.returncode == Some(0) {
         return Ok(());
     }
-    // Отказ проверки — готовый текст в stderr; провал pacman — его строки в
-    // stdout (они уже в журнале окна), человеку — общий итог.
+    // A check refusal — ready text in stderr; a pacman failure — its lines in
+    // stdout (they are already in the window's log), the person gets a general result.
     let why = out.stderr.lines().map(str::trim).rfind(|l| !l.is_empty()).map(str::to_string);
     Err(why.unwrap_or_else(|| orphan_remove_failed(names)))
 }
 
-/// [`remove_orphans_with`] на живой машине: строки хода — в `line`.
+/// [`remove_orphans_with`] on the live machine: progress lines go to `line`.
 pub fn remove_orphans_live(names: &[String], line: &mut dyn FnMut(&str)) -> Result<(), String> {
     remove_orphans_with(names, &mut |op| crate::privilege::run::run_live(op, &[], None, &mut *line))
 }
 
-/// Член набора, который может стать сиротой: пакет набора «одной версией»,
-/// но не его опорный (опорный сиротой не считается, см. [`evaluate`]).
-/// `groups` — `(группа, пакет)` из `pacman -Qg` ([`groups_needed`]). Эта
-/// проверка — и для помощника от root: удалять он берётся только такие.
+/// A set member that can become an orphan: a package of a "single version" set,
+/// but not its anchor (an anchor is not considered an orphan, see [`evaluate`]).
+/// `groups` — `(group, package)` from `pacman -Qg` ([`groups_needed`]). This
+/// check is also for the root helper: it agrees to remove only such packages.
 pub fn orphan_candidate(name: &str, groups: &[(String, String)]) -> bool {
     PACKAGE_SETS.iter().any(|set| {
         let Rule::SameVersion { anchor, .. } = set.rule else {
@@ -1168,14 +1168,14 @@ fn versions_list(odd: &[(String, String, Option<String>)]) -> String {
     list
 }
 
-/// Абзац о наборе для окна Rexon с кнопками (удаление сирот, откат).
-/// `rollback` — прежние версии всех пакетов отката есть в кэше
+/// A paragraph about the set for the Rexon window with buttons (removing orphans, rollback).
+/// `rollback` — the previous versions of all rollback packages are in the cache
 /// ([`rollback_items`]).
 pub fn finding_text(f: &Finding, rollback: bool) -> String {
     finding_text_for(f, rollback, Audience::Window { removable: true, rollback: true })
 }
 
-/// Абзац о наборе для окна либо уведомления ([`Audience`]).
+/// A paragraph about the set for the window or the notification ([`Audience`]).
 pub fn finding_text_for(f: &Finding, rollback: bool, audience: Audience) -> String {
     if f.stage == Stage::Orphaned {
         let translate = |m: &str| tr(m);
@@ -1248,10 +1248,10 @@ pub fn finding_text_for(f: &Finding, rollback: bool, audience: Audience) -> Stri
             ),
         });
     }
-    // Откат — только когда новые несогласованные версии уже стоят и прежние
-    // есть в кэше: в «не обновляйтесь» ставить обратно нечего (стоят ещё
-    // прежние; обновится человек всё же — следующая сверка скажет «не
-    // перезагружайтесь» с кнопкой). Команды нет: возвращает кнопка окна.
+    // Rollback — only when the new mismatched versions are already installed and the previous ones
+    // are in the cache: in "don't update" there is nothing to put back (the previous
+    // ones are still installed; if the person updates anyway, the next check will say "don't
+    // restart" with a button). No command: the window button puts things back.
     if f.stage == Stage::DontReboot && rollback {
         match audience {
             Audience::Window { rollback: true, .. } => paragraphs.push(tr(
@@ -1278,8 +1278,8 @@ fn pair_text(lead: &str, odd: &[(String, String, Option<String>)]) -> String {
     )
 }
 
-/// Весь текст предупреждения. `rollback(находка)` — прежние версии есть в
-/// кэше.
+/// The whole warning text. `rollback(finding)` — the previous versions are in the
+/// cache.
 pub fn advice_text(findings: &[Finding], rollback: &dyn Fn(&Finding) -> bool) -> String {
     findings
         .iter()
@@ -1289,11 +1289,11 @@ pub fn advice_text(findings: &[Finding], rollback: &dyn Fn(&Finding) -> bool) ->
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// «Об этом уже говорили»
+// "This has already been said"
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Отпечаток состояния: о том же самом второй раз не говорим (окно Rexon и
-/// уведомление делят его — показанное окном уведомлением не повторяется).
+/// A state fingerprint: we do not say the same thing twice (the Rexon window and
+/// the notification share it — what the window showed is not repeated by a notification).
 pub fn fingerprint(findings: &[Finding]) -> String {
     findings
         .iter()
@@ -1312,69 +1312,69 @@ pub fn fingerprint(findings: &[Finding]) -> String {
         .join(" ")
 }
 
-/// Говорить ли: есть что сказать, и это не то же, о чём уже говорили
-/// (`last` — сохранённый отпечаток). При входе в сеанс — всегда.
+/// Whether to speak: there is something to say, and it is not what has already been said
+/// (`last` — the saved fingerprint). At session login — always.
 pub fn should_notify(findings: &[Finding], fingerprint: &str, last: Option<&str>, login: bool) -> bool {
     !findings.is_empty() && (login || last.map(str::trim) != Some(fingerprint))
 }
 
-/// Файл отпечатка в кэше пользователя.
+/// The fingerprint file in the user's cache.
 pub fn stamp_path(cache_home: &str) -> String {
     format!("{}/rexon/update-guard-notified", cache_home.trim_end_matches('/'))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Фоновая проверка: пользовательские юниты systemd
+// Background check: systemd user units
 // ══════════════════════════════════════════════════════════════════════════
 //
-// Одни юниты на все проверки «до и после обновления» — и на эту, и на
-// сверку AeroThemePlasma (её прежние юниты `rexon-aeroshell-check.*`
-// снимаются: два таймера гоняли бы `checkupdates` дважды).
-//   * `.path` следит за `/var/lib/pacman/local` — каталогом базы
-//     установленных пакетов. pacman на каждый пакет заводит там каталог
-//     `<имя>-<версия>` и убирает прежний, а `PathChanged=` на каталоге
-//     срабатывает на появление, переименование и удаление записей в нём
-//     (проверено 04.10.2026 отдельным `systemd --user` в песочнице,
-//     systemd 262). Каталог читаем всем, прав не надо. Нужен, чтобы сразу
-//     после обновления, разведшего набор, сказать «не перезагружайтесь»;
-//   * `.timer` — после входа в сеанс и дальше раз в 6 часов: новое в
-//     репозиториях появляется без всякой транзакции на машине;
-//   * `.service` — `rexon --update-check`: дождаться конца транзакции
-//     pacman, сверить (только чтение), при беде — уведомление.
-// ⛔ Никаких хуков pacman от root: хук работает внутри транзакции, до
-// сеанса пользователя ему не достучаться, а установка хука — пароль.
+// One set of units for all the "before and after an update" checks — both this one and
+// the AeroThemePlasma check (its former `rexon-aeroshell-check.*` units
+// are removed: two timers would run `checkupdates` twice).
+//   * `.path` watches `/var/lib/pacman/local` — the directory of the installed
+//     packages database. For each package pacman creates a directory
+//     `<name>-<version>` there and removes the previous one, and `PathChanged=` on a directory
+//     fires on entries appearing, being renamed and removed in it
+//     (verified 04.10.2026 with a separate `systemd --user` in a sandbox,
+//     systemd 262). The directory is world-readable, no privileges needed. Needed to say
+//     "don't restart" right after an update that split a set;
+//   * `.timer` — after session login and then every 6 hours: new things in
+//     the repositories appear without any transaction on the machine;
+//   * `.service` — `rexon --update-check`: wait for the end of the pacman
+//     transaction, check (read-only), on trouble — a notification.
+// ⛔ No pacman hooks as root: a hook runs inside the transaction, it cannot reach
+// the user's session, and installing a hook means a password.
 
-/// Флаг безоконного маршрута проверки (его зовёт `.service`).
+/// Flag of the windowless check route (called by the `.service`).
 pub const CHECK_FLAG: &str = "--update-check";
 
-/// Имена юнитов.
+/// Unit names.
 pub const WATCH_PATH_UNIT: &str = "rexon-update-check.path";
 pub const WATCH_TIMER_UNIT: &str = "rexon-update-check.timer";
 pub const WATCH_SERVICE_UNIT: &str = "rexon-update-check.service";
-/// Прежние юниты сверки AeroThemePlasma — снимаются при установке общих.
+/// The former AeroThemePlasma check units — removed when the shared ones are installed.
 pub const LEGACY_UNITS: &[&str] = &[
     "rexon-aeroshell-check.path",
     "rexon-aeroshell-check.timer",
     "rexon-aeroshell-check.service",
 ];
 
-/// База установленных пакетов pacman и её замок.
+/// The pacman installed packages database and its lock.
 pub const PACMAN_LOCAL_DB: &str = "/var/lib/pacman/local";
 pub const PACMAN_DB_LOCK: &str = "/var/lib/pacman/db.lck";
-/// Сколько ждать конца чужой транзакции, секунды (большое обновление
-/// с пересборкой initramfs идёт минутами).
+/// How long to wait for someone else's transaction to finish, seconds (a large update
+/// with an initramfs rebuild takes minutes).
 pub const LOCK_WAIT_SECS: u64 = 45 * 60;
 
-/// Каталог пользовательских юнитов.
+/// The user units directory.
 pub fn user_unit_dir(config_home: &str) -> String {
     format!("{}/systemd/user", config_home.trim_end_matches('/'))
 }
 
-/// Юниты проверки: (имя, текст). `exec_start` — готовая строка запуска
-/// Rexon для `ExecStart=` ([`crate::app::unit_launch_command`] с
-/// [`CHECK_FLAG`]); `program` — путь к его бинарю: Rexon удалили — проверка
-/// тихо пропускается, а не падает каждые 6 часов. Описания — по-английски и
-/// не из каталога: их читает `systemctl`, а не покупатель.
+/// Check units: (name, text). `exec_start` — the ready Rexon launch line
+/// for `ExecStart=` ([`crate::app::unit_launch_command`] with
+/// [`CHECK_FLAG`]); `program` — the path to its binary: if Rexon was removed, the check
+/// is quietly skipped rather than failing every 6 hours. Descriptions are in English and
+/// not from the catalog: they are read by `systemctl`, not by the customer.
 pub fn watch_units(exec_start: &str, program: Option<&str>) -> Vec<(&'static str, String)> {
     let condition = program
         .filter(|p| p.starts_with('/'))
@@ -1432,23 +1432,23 @@ pub fn watch_units(exec_start: &str, program: Option<&str>) -> Vec<(&'static str
     ]
 }
 
-/// Что сделать с юнитами проверки.
+/// What to do with the check units.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct WatchPlan {
-    /// (путь, текст) — записать.
+    /// (path, text) — write.
     pub write: Vec<(String, String)>,
-    /// Пути — удалить (перед первым `daemon-reload`).
+    /// Paths — delete (before the first `daemon-reload`).
     pub remove: Vec<String>,
-    /// Аргументы `systemctl --user …` по порядку.
+    /// Arguments of `systemctl --user …` in order.
     pub systemctl: Vec<Vec<String>>,
 }
 
-/// План: `wanted` — нужна ли слежка (Arch); `exec_start` — строка запуска
-/// (None — заводить нечем, слежку снимаем); `existing(путь)` — текущий
-/// текст файла юнита либо None. Прежние юниты AeroThemePlasma снимаются в
-/// любом случае.
+/// The plan: `wanted` — whether watching is needed (Arch); `exec_start` — the launch line
+/// (None — nothing to launch, watching is removed); `existing(path)` — the current
+/// text of the unit file or None. The former AeroThemePlasma units are removed in
+/// any case.
 ///
-/// Идемпотентно: всё совпадает — план пуст, `systemctl` не зовётся.
+/// Idempotent: everything matches — the plan is empty, `systemctl` is not called.
 pub fn watch_plan(
     config_home: &str,
     wanted: bool,
@@ -1462,7 +1462,7 @@ pub fn watch_plan(
     let enable_names = [WATCH_PATH_UNIT, WATCH_TIMER_UNIT];
     let mut disable: Vec<&str> = Vec::new();
 
-    // Прежние юниты — снять.
+    // The former units — remove.
     for name in LEGACY_UNITS {
         if existing(&path(name)).is_some() {
             plan.remove.push(path(name));
@@ -1511,8 +1511,8 @@ pub fn watch_plan(
     plan
 }
 
-/// Исполнить план юнитов. Без root: только `~/.config/systemd/user` и
-/// `systemctl --user`. Пустой план — ничего не делается.
+/// Execute the units plan. Without root: only `~/.config/systemd/user` and
+/// `systemctl --user`. An empty plan — nothing is done.
 pub fn apply_watch_plan<IO: DeOpsIo + ?Sized>(io: &IO, plan: &WatchPlan) -> Result<(), String> {
     if let Some((first, _)) = plan.write.first() {
         if let Some((dir, _)) = first.rsplit_once('/') {
@@ -1529,7 +1529,7 @@ pub fn apply_watch_plan<IO: DeOpsIo + ?Sized>(io: &IO, plan: &WatchPlan) -> Resu
         return Err("systemctl not found".to_string());
     }
     for args in &plan.systemctl {
-        // Снятие: сначала disable (юниты ещё на месте), потом файлы.
+        // Removal: first disable (the units are still in place), then the files.
         if args.first().map(String::as_str) == Some("daemon-reload") {
             for path in &plan.remove {
                 io.remove_file(path);
@@ -1546,11 +1546,11 @@ pub fn apply_watch_plan<IO: DeOpsIo + ?Sized>(io: &IO, plan: &WatchPlan) -> Resu
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Исполнение
+// Execution
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Собрать [`Survey`]. None — не Arch, нет pacman/checkupdates, либо
-/// `checkupdates` не смог (нет сети): «не знаем» — молчим.
+/// Build a [`Survey`]. None — not Arch, no pacman/checkupdates, or
+/// `checkupdates` failed (no network): "we don't know" — silent.
 pub fn survey<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily, uid: u32, sets: &[PackageSet]) -> Option<Survey> {
     if family != PkgFamily::Arch || !io.which("pacman") {
         return None;
@@ -1565,19 +1565,19 @@ pub fn survey<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily, uid: u32, sets:
     let groups = if groups.is_empty() {
         Vec::new()
     } else {
-        // Код 1, если какой-то группы нет вовсе, — найденные всё равно в выводе.
+        // Code 1 if some group does not exist at all — the found ones are in the output anyway.
         let mut argv = vec!["pacman".to_string(), "-Qg".to_string()];
         argv.extend(groups.iter().map(|g| g.to_string()));
         parse_groups(&io.run(&argv, Some(60), true).stdout)
     };
     let db = checkupdates_db(&io.env("CHECKUPDATES_DB"), &io.env("TMPDIR"), uid);
-    // Сироты — по свежей базе `checkupdates` (в ней есть ссылка `local` на
-    // установленное), без неё — по базе системы.
+    // Orphans — by the fresh `checkupdates` database (it has a `local` link to
+    // the installed ones), without it — by the system database.
     let fresh = io.exists(&format!("{}/local", db.trim_end_matches('/'))).then_some(db.as_str());
     let foreign = foreign_packages(io, fresh).or_else(|| fresh.and_then(|_| foreign_packages(io, None)));
     let mut survey = Survey { installed, groups, pending, repo: None, foreign };
-    // Версии в репозиториях нужны только «двигаться вместе», и только когда
-    // кто-то из такого набора обновляется: `pacman -Sl` — десятки тысяч строк.
+    // Repository versions are needed only for "move together", and only when
+    // someone from such a set is updated: `pacman -Sl` is tens of thousands of lines.
     let needs_repo = sets.iter().any(|s| {
         s.rule == Rule::MoveTogether
             && members_of(s, &survey).iter().any(|(n, _)| survey.pending.iter().any(|u| &u.package == n))
@@ -1597,15 +1597,15 @@ pub fn survey<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily, uid: u32, sets:
     Some(survey)
 }
 
-/// Итог сверки: находки и готовые пути отката для каждой.
+/// Result of the check: the findings and the ready rollback paths for each.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Advice {
     pub findings: Vec<Finding>,
-    /// Откат каждой находки из кэша ([`rollback_items`], не больше
-    /// [`ROLLBACK_BUTTON_MAX`]); пусто — откатывать нечего или нечем.
+    /// Rollback of each finding from the cache ([`rollback_items`], no more than
+    /// [`ROLLBACK_BUTTON_MAX`]); empty — nothing to roll back or nothing to roll back with.
     pub rollback: Vec<Vec<RollbackItem>>,
-    /// Установленные форки Plasma (AeroThemePlasma): маршрут фоновой
-    /// проверки ведёт к их сверке только при них.
+    /// Installed Plasma forks (AeroThemePlasma): the background check route
+    /// leads to their check only when they are present.
     pub plasma_forks: Vec<String>,
 }
 
@@ -1613,11 +1613,11 @@ impl Advice {
     pub fn title(&self) -> String {
         title(&self.findings)
     }
-    /// Текст окна Rexon с кнопками удаления сирот и отката.
+    /// Text of the Rexon window with the orphan removal and rollback buttons.
     pub fn text(&self) -> String {
         self.text_for(Audience::Window { removable: true, rollback: true })
     }
-    /// Текст для окна либо уведомления ([`Audience`]).
+    /// Text for the window or the notification ([`Audience`]).
     pub fn text_for(&self, audience: Audience) -> String {
         self.findings
             .iter()
@@ -1626,7 +1626,7 @@ impl Advice {
             .collect::<Vec<_>>()
             .join("\n\n")
     }
-    /// Сироты находок ([`orphan_names`]).
+    /// Orphans among the findings ([`orphan_names`]).
     pub fn orphans(&self) -> Vec<String> {
         orphan_names(&self.findings)
     }
@@ -1635,7 +1635,7 @@ impl Advice {
     }
 }
 
-/// Сверка целиком: [`survey`] → [`evaluate`] → откат из кэша.
+/// The whole check: [`survey`] → [`evaluate`] → rollback from the cache.
 pub fn advise<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily, uid: u32) -> Advice {
     let Some(survey) = survey(io, family, uid, PACKAGE_SETS) else {
         return Advice::default();
@@ -1649,22 +1649,22 @@ pub fn advise<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily, uid: u32) -> Ad
     Advice { findings, rollback, plasma_forks }
 }
 
-// ── Кнопка «Вернуть прежние версии» ─────────────────────────────────────
+// ── The «Put Previous Versions Back» button ─────────────────────────────
 
-/// Что окно предлагает вернуть одной кнопкой: прежние версии ОДНОГО набора.
+/// What the window offers to bring back with one button: the previous versions of ONE set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RollbackOffer {
-    /// Имя набора для человека (Qt, Plasma, …).
+    /// Name of the set for a human (Qt, Plasma, …).
     pub set_name: String,
     pub items: Vec<RollbackItem>,
 }
 
-/// Решение окна об откате. Только «не перезагружайтесь»: новые
-/// несогласованные версии уже стоят, а в кэше есть прежние для ВСЕХ
-/// пакетов отката. «Не обновляйтесь» — ставить обратно нечего (стоят ещё
-/// прежние), «обновитесь сейчас» — чинит обновление, сирота — своя кнопка.
-/// На SteamOS — никогда (`/usr` только для чтения). Несколько наборов —
-/// первый: остальные покажет повторная сверка после отката.
+/// The window's decision about a rollback. Only "don't restart": the new
+/// mismatched versions are already installed, and the cache has the previous ones for ALL
+/// rollback packages. "Don't update" — there is nothing to put back (the
+/// previous ones are still installed), "update now" — the update fixes it, an orphan has its own button.
+/// On SteamOS — never (`/usr` is read-only). Several sets — the
+/// first: the others will be shown by the repeated check after the rollback.
 pub fn rollback_offer(advice: &Advice, steamos: bool) -> Option<RollbackOffer> {
     if steamos {
         return None;
@@ -1677,13 +1677,13 @@ pub fn rollback_offer(advice: &Advice, steamos: bool) -> Option<RollbackOffer> {
         .map(|(f, items)| RollbackOffer { set_name: f.set.name.to_string(), items: items.clone() })
 }
 
-/// [`rollback_offer`] на живой машине.
+/// [`rollback_offer`] on the live machine.
 pub fn rollback_offer_live(advice: &Advice) -> Option<RollbackOffer> {
     rollback_offer(advice, crate::system::DistroDetector::detect_live().is_steamos())
 }
 
-/// Версия для человека: без эпохи и выпуска, если по ним «было» и «станет»
-/// различимы; иначе полная.
+/// A version for a human: without the epoch and release, if "was" and "will be" are
+/// distinguishable without them; otherwise the full one.
 fn shown_versions(from: &str, to: &str) -> (String, String) {
     let (f, t) = (upstream_version(from), upstream_version(to));
     if f == t || f.is_empty() {
@@ -1693,22 +1693,22 @@ fn shown_versions(from: &str, to: &str) -> (String, String) {
     }
 }
 
-/// Сколько строк «было → станет» показывает окно подтверждения.
+/// How many "was → will be" lines the confirmation window shows.
 const ROLLBACK_SHOWN: usize = 10;
 
-/// Кнопка окна сторожа.
+/// The guard window button.
 pub fn rollback_button() -> String {
     // TRANSLATORS: Button. Puts back the package versions that were installed before the last update.
     tr("Put Previous Versions Back")
 }
 
-/// Заголовок окна подтверждения: «Вернуть прежние версии Qt?».
+/// Title of the confirmation window: «Put Previous Qt Versions Back?».
 pub fn rollback_confirm_title(offer: &RollbackOffer) -> String {
     // TRANSLATORS: Window title. %1 is a product name (Qt, Plasma, KDE Frameworks, GNOME).
     trf("Put Back the Previous Versions of %1?", &[&offer.set_name])
 }
 
-/// Текст окна подтверждения: перечень «было → станет».
+/// Text of the confirmation window: the "was → will be" list.
 pub fn rollback_confirm_text(offer: &RollbackOffer) -> String {
     let mut lines: Vec<String> = offer
         .items
@@ -1735,20 +1735,20 @@ pub fn rollback_confirm_text(offer: &RollbackOffer) -> String {
     format!("{lead}\n\n{}\n\n{tail}", lines.join("\n"))
 }
 
-/// Кнопка «да» окна подтверждения.
+/// The "yes" button of the confirmation window.
 pub fn rollback_confirm_button() -> String {
-    // Свой контекст: «Put Back» без него делит перевод с другой кнопкой.
+    // Its own context: without it «Put Back» shares a translation with another button.
     // TRANSLATORS: Button in the window that confirms putting previous package versions back.
     trc("update guard rollback", "Put Back")
 }
 
-/// Заголовок окна хода.
+/// Title of the progress window.
 pub fn rollback_title(offer: &RollbackOffer) -> String {
     // TRANSLATORS: Window title while Rexon puts previous package versions back. %1 is a product name (Qt, Plasma, …).
     trf("Putting Back the Previous Versions of %1", &[&offer.set_name])
 }
 
-/// Итог отката. `rest_clean` — повторная сверка ничего больше не нашла.
+/// Result of the rollback. `rest_clean` — the repeated check found nothing more.
 pub fn rollback_done_text(offer: &RollbackOffer, rest_clean: bool) -> String {
     // TRANSLATORS: Result. %1 is a product name (Qt, Plasma, KDE Frameworks, GNOME).
     let done = trf("The previous versions of %1 are back. Restarting the computer is safe again.", &[&offer.set_name]);
@@ -1759,24 +1759,24 @@ pub fn rollback_done_text(offer: &RollbackOffer, rest_clean: bool) -> String {
     }
 }
 
-/// Откат прошёл, а набор всё ещё не сходится — перезагружаться рано.
+/// The rollback went through, but the set still does not match — too early to restart.
 pub fn rollback_still_mixed_text(offer: &RollbackOffer) -> String {
     // TRANSLATORS: Result. %1 is a product name (Qt, Plasma, KDE Frameworks, GNOME).
     trf("Rexon put the previous versions of %1 back, but the packages still don't fit together.", &[&offer.set_name])
 }
 
-/// Откат не удался, а пояснения нет.
+/// The rollback failed, and there is no explanation.
 pub fn rollback_failed(offer: &RollbackOffer) -> String {
     // TRANSLATORS: %1 is a product name (Qt, Plasma, KDE Frameworks, GNOME).
     trf("Rexon couldn't put the previous versions of %1 back.", &[&offer.set_name])
 }
 
-/// Вернуть прежние версии через сеанс прав окна ([`crate::privilege`]).
-/// Что каждый файл — пакет кэша root, что это ровно откат набора находки
-/// (строго меньшие версии, ничего сверх) — проверяет помощник от root сам;
-/// окну он не верит. Прежнего пути через `pkexec` нет намеренно.
+/// Put the previous versions back through the window's privilege session ([`crate::privilege`]).
+/// That each file is a package from the root cache, that it is exactly the rollback of the finding's set
+/// (strictly lower versions, nothing extra) — the root helper checks itself;
+/// it does not trust the window. The former `pkexec` path is deliberately absent.
 ///
-/// `Err` — готовый текст для человека.
+/// `Err` — ready text for a human.
 pub fn rollback_with(
     offer: &RollbackOffer,
     run: &mut dyn FnMut(&crate::privilege::op::PrivOp) -> Option<crate::system_exec::RunOut>,
@@ -1796,16 +1796,16 @@ pub fn rollback_with(
     Err(why.unwrap_or_else(|| rollback_failed(offer)))
 }
 
-/// [`rollback_with`] на живой машине: строки хода — в `line`.
+/// [`rollback_with`] on the live machine: progress lines go to `line`.
 pub fn rollback_live(offer: &RollbackOffer, line: &mut dyn FnMut(&str)) -> Result<(), String> {
     rollback_with(offer, &mut |op| crate::privilege::run::run_live(op, &[], None, &mut *line))
 }
 
-/// Сверка на живой машине (только чтение, без пароля).
+/// The check on the live machine (read-only, without a password).
 pub fn advise_live() -> Advice {
     let io = crate::system_exec::LiveSystemIo;
     let family = crate::system::DistroDetector::detect_live().family_live();
-    // SAFETY: getuid не имеет предусловий и не может провалиться.
+    // SAFETY: getuid has no preconditions and cannot fail.
     let uid = unsafe { libc::getuid() };
     advise(&io, family, uid)
 }
@@ -1819,12 +1819,12 @@ fn stamp_live() -> String {
     stamp_path(&cache_live())
 }
 
-/// Говорили ли уже об этом состоянии (окно Rexon и уведомление).
+/// Whether this state has already been reported (the Rexon window and the notification).
 pub fn notice_seen_live(fingerprint: &str) -> bool {
     std::fs::read_to_string(stamp_live()).is_ok_and(|last| last.trim() == fingerprint)
 }
 
-/// Запомнить, что об этом состоянии сказали.
+/// Remember that this state has been reported.
 pub fn notice_mark_live(fingerprint: &str) {
     write_stamp(&stamp_live(), fingerprint);
 }
@@ -1836,10 +1836,10 @@ fn write_stamp(stamp: &str, fingerprint: &str) {
     let _ = std::fs::write(stamp, fingerprint);
 }
 
-/// Файл отпечатка, показанного именно ОКНОМ (рядом с [`stamp_path`]).
-/// Уведомление о сироте зовёт «откройте Rexon, чтобы удалить» — значит,
-/// окно с кнопкой обязано показаться и после уведомления о том же; общего
-/// отпечатка для этого мало.
+/// The file of the fingerprint shown specifically by the WINDOW (next to [`stamp_path`]).
+/// The orphan notification says "open Rexon to remove it" — so the
+/// window with the button must show up even after a notification about the same thing; the shared
+/// fingerprint is not enough for that.
 pub fn window_stamp_path(cache_home: &str) -> String {
     format!("{}/rexon/update-guard-shown", cache_home.trim_end_matches('/'))
 }
@@ -1848,29 +1848,29 @@ fn window_stamp_live() -> String {
     window_stamp_path(&cache_live())
 }
 
-/// Показывало ли окно Rexon это состояние.
+/// Whether the Rexon window has shown this state.
 pub fn window_seen_live(fingerprint: &str) -> bool {
     std::fs::read_to_string(window_stamp_live()).is_ok_and(|last| last.trim() == fingerprint)
 }
 
-/// Запомнить, что окно показало это состояние (и уведомлению повторять нечего).
+/// Remember that the window showed this state (and the notification has nothing to repeat).
 pub fn window_mark_live(fingerprint: &str) {
     write_stamp(&window_stamp_live(), fingerprint);
     notice_mark_live(fingerprint);
 }
 
-/// Показывать ли окно (`manual` — по кнопке «Проверить сейчас», всегда).
+/// Whether to show the window (`manual` — by the «Check Now» button, always).
 ///
-/// Без просьбы человека — только:
-///   * откат (`rollback`): набор УЖЕ разошёлся, после перезагрузки грозит
-///     чёрный экран, — по отпечатку ОКНА (после уведомления «откройте Rexon,
-///     чтобы вернуть» окно обязано показаться);
-///   * сообщение без кнопки — по общему с уведомлением отпечатку.
+/// Without the person's request — only:
+///   * rollback (`rollback`): the set has ALREADY diverged, after a restart a
+///     black screen threatens — by the WINDOW fingerprint (after the notification "open Rexon
+///     to put back" the window must show up);
+///   * a message without a button — by the fingerprint shared with the notification.
 ///
-/// ⛔ Предложение УДАЛИТЬ пакет (`removal`, сирота вроде `kwin-x11`) само не
-/// всплывает никогда: 08.11.2026 окно «Remove kwin-x11» выскочило на стенде
-/// при первом открытии «Оформления», без всякого действия человека. О сироте
-/// говорит уведомление и называет кнопку настроек; окно — по ней.
+/// ⛔ An offer to REMOVE a package (`removal`, an orphan like `kwin-x11`) never
+/// pops up by itself: on 08.11.2026 the «Remove kwin-x11» window popped up on the test bench
+/// when «Appearance» was first opened, without any action by the person. The orphan
+/// is reported by the notification, which names the settings button; the window comes from that button.
 pub fn window_should_show(manual: bool, rollback: bool, removal: bool, notified: bool, window_seen: bool) -> bool {
     if manual {
         return true;
@@ -1881,8 +1881,8 @@ pub fn window_should_show(manual: bool, rollback: bool, removal: bool, notified:
     !removal && !notified
 }
 
-/// argv уведомления: `notify-send` (важное — не гаснет само), без него —
-/// служба уведомлений через `dbus-send`. None — показать нечем.
+/// argv of the notification: `notify-send` (important — does not fade by itself), without it —
+/// the notification service via `dbus-send`. None — nothing to show it with.
 pub fn notify_argv(which: &dyn Fn(&str) -> bool, summary: &str, body: &str) -> Option<Vec<String>> {
     let icon = "rexon";
     if which("notify-send") {
@@ -1901,8 +1901,8 @@ pub fn notify_argv(which: &dyn Fn(&str) -> bool, summary: &str, body: &str) -> O
     }
 }
 
-/// Дождаться конца транзакции pacman: сверять наполовину обновлённую
-/// систему значит пугать зря. false — так и не дождались.
+/// Wait for the pacman transaction to finish: checking a half-updated
+/// system means scaring for nothing. false — we never waited it out.
 fn wait_pacman_lock_live(out: &mut dyn FnMut(&str)) -> bool {
     let started = std::time::Instant::now();
     while std::path::Path::new(PACMAN_DB_LOCK).exists() {
@@ -1915,12 +1915,12 @@ fn wait_pacman_lock_live(out: &mut dyn FnMut(&str)) -> bool {
     true
 }
 
-/// Безоконная проверка (`rexon --update-check [--login]`), её зовёт
-/// пользовательский юнит. Дождаться конца транзакции pacman → сверить наборы
-/// (только чтение) → при беде уведомление, один раз на одно состояние →
-/// если стоят форки Plasma, их сверка ([`crate::system_de_exec::aeroshell_check_route_live`]).
-/// Пароль не спрашивается никогда. → код возврата процесса (0 — проверка
-/// прошла, что бы она ни нашла).
+/// The windowless check (`rexon --update-check [--login]`), called by the
+/// user unit. Wait for the pacman transaction to finish → check the sets
+/// (read-only) → on trouble a notification, once per state →
+/// if Plasma forks are installed, their check ([`crate::system_de_exec::aeroshell_check_route_live`]).
+/// The password is never asked. → the process exit code (0 — the check
+/// ran, whatever it found).
 pub fn check_route_live(login: bool, out: &mut dyn FnMut(&str)) -> i32 {
     if !wait_pacman_lock_live(out) {
         return 0;
@@ -1932,8 +1932,8 @@ pub fn check_route_live(login: bool, out: &mut dyn FnMut(&str)) -> i32 {
     if should_notify(&advice.findings, &fp, last.as_deref(), login) {
         notice_mark_live(&fp);
         let io = crate::system_exec::LiveSystemIo;
-        // На SteamOS ни удалить, ни вернуть пакет нельзя — «откройте Rexon»
-        // там не к месту.
+        // On SteamOS a package can be neither removed nor put back — "open Rexon"
+        // is out of place there.
         let audience = if crate::system::DistroDetector::detect_live().is_steamos() {
             Audience::Window { removable: false, rollback: false }
         } else {
@@ -1943,8 +1943,8 @@ pub fn check_route_live(login: bool, out: &mut dyn FnMut(&str)) -> i32 {
             let _ = io.run(&argv, Some(10), false);
         }
     } else if advice.findings.is_empty() && last.is_some_and(|l| !l.trim().is_empty()) {
-        // Набор сошёлся — забыть прежнее: если он разойдётся так же снова,
-        // сказать снова.
+        // The set matches — forget the previous state: if it diverges the same way again,
+        // say it again.
         notice_mark_live("");
     }
     if !advice.plasma_forks.is_empty() {
@@ -1961,7 +1961,7 @@ mod tests {
         list.iter().map(|(n, v)| (n.to_string(), v.to_string())).collect()
     }
 
-    /// Qt на машине 07.10.2026 до обновления: всё 6.11.2, webengine тоже.
+    /// Qt on the machine on 07.10.2026 before the update: everything 6.11.2, webengine too.
     fn qt_611() -> Vec<(String, String)> {
         installed(&[
             ("qt6-base", "6.11.2-1"),
@@ -1987,8 +1987,8 @@ mod tests {
         );
     }
 
-    /// Случай 07.10: qt6-base 6.11.2 → 6.12.0 ждёт, qt6-declarative 6.11.2
-    /// не ждёт (CachyOS ещё не выложил) — «не обновляйтесь».
+    /// The case of 07.10: qt6-base 6.11.2 → 6.12.0 pending, qt6-declarative 6.11.2
+    /// not pending (CachyOS has not published it yet) — "don't update".
     #[test]
     fn qt_base_ahead_of_declarative_says_hold() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2000,19 +2000,19 @@ mod tests {
         assert_eq!(f.stage, Stage::Hold);
         assert_eq!(f.lead, ("qt6-base".into(), "6.12.0".into()));
         let odd: Vec<&str> = f.odd.iter().map(|(n, _, _)| n.as_str()).collect();
-        // webengine 6.11.2 отстаёт законно; qt6ct — не модуль Qt.
+        // webengine 6.11.2 lags legitimately; qt6ct is not a Qt module.
         assert_eq!(odd, ["qt6-declarative", "qt6-svg", "qt6-wayland"]);
         assert_eq!(f.rollback, vec![("qt6-base".into(), RollbackTarget::Exact("6.11.2-1".into()))]);
         let text = finding_text(f, true);
         assert!(text.contains("qt6-base 6.12.0 with qt6-declarative 6.11.2"), "{text}");
         assert!(text.contains("Ctrl+Alt+F3"), "{text}");
-        // «Не обновляйтесь»: стоят ещё прежние версии — ставить обратно
-        // нечего, ни команды, ни кнопки.
+        // "Don't update": the previous versions are still installed — there is nothing
+        // to put back, neither a command nor a button.
         assert!(!text.contains("pacman -U") && !text.contains("previous versions"), "{text}");
         assert_eq!(title(&found), "Don't Update the System Yet");
     }
 
-    /// Всё Qt приходит разом — молчим.
+    /// All of Qt arrives at once — we stay silent.
     #[test]
     fn whole_qt_at_once_is_quiet() {
         let survey = survey_with(
@@ -2021,12 +2021,12 @@ mod tests {
              qt6-svg 6.11.2-1.1 -> 6.12.0-1.1\nqt6-wayland 6.11.2-1.1 -> 6.12.0-1.1\nfirefox 141.0-1 -> 142.0-1\n",
         );
         assert!(evaluate(&survey, PACKAGE_SETS).is_empty());
-        // Нет обновлений вовсе — тоже.
+        // No updates at all — likewise.
         assert!(evaluate(&survey_with(qt_611(), ""), PACKAGE_SETS).is_empty());
     }
 
-    /// webengine отстаёт на серию (как у Arch сейчас) — молчим; обогнать
-    /// qt6-base ему нельзя.
+    /// webengine lags one series behind (as on Arch now) — we stay silent; it must not
+    /// get ahead of qt6-base.
     #[test]
     fn webengine_may_lag_but_not_lead() {
         let all_612 = installed(&[
@@ -2040,9 +2040,9 @@ mod tests {
         assert_eq!(found[0].odd[0].0, "qt6-webengine");
     }
 
-    /// Случай 14.11.2026: Arch выложил qt6-webengine 6.140.0 — у Qt WebEngine
-    /// своя нумерация (второе число — Chromium), это не «части Qt разных
-    /// версий». Молчим и когда он уже стоит, и когда только приходит.
+    /// The case of 14.11.2026: Arch published qt6-webengine 6.140.0 — Qt WebEngine has
+    /// its own numbering (the second number is Chromium), this is not "Qt parts of different
+    /// versions". We stay silent both when it is already installed and when it is only arriving.
     #[test]
     fn webengine_own_numbering_is_not_mixed_qt() {
         let qt_612 = installed(&[
@@ -2056,16 +2056,16 @@ mod tests {
         let mut old_web = qt_612.clone();
         old_web[4].1 = "6.11.2-2".into();
         assert!(evaluate(&survey_with(old_web, "qt6-webengine 6.11.2-2 -> 6.140.0-1\n"), PACKAGE_SETS).is_empty());
-        // Следующий выпуск своей нумерации — тоже молчим.
+        // The next release of its own numbering — also silent.
         assert!(evaluate(&survey_with(qt_612.clone(), "qt6-webengine 6.140.0-1 -> 6.146.0-1\n"), PACKAGE_SETS).is_empty());
-        // Весь Qt уходит на 6.13, webengine остаётся 6.140 — молчим.
+        // All of Qt goes to 6.13, webengine stays 6.140 — silent.
         let whole = "qt6-base 6.12.0-5 -> 6.13.0-1\nqt6-declarative 6.12.0-4.1 -> 6.13.0-1\n\
                      qt6-wayland 6.12.0-1.1 -> 6.13.0-1\nqt6-webview 6.12.0-1.1 -> 6.13.0-1\n";
         assert!(evaluate(&survey_with(qt_612, whole), PACKAGE_SETS).is_empty());
     }
 
-    /// Настоящее частичное обновление рядом с webengine своей нумерации:
-    /// тревога есть, и в тексте только модули с нумерацией Qt.
+    /// A real partial update next to a webengine with its own numbering:
+    /// there is an alarm, and the text has only the modules with Qt numbering.
     #[test]
     fn real_mixed_qt_next_to_webengine_own_numbering() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2079,12 +2079,12 @@ mod tests {
         assert_eq!(found[0].stage, Stage::DontReboot);
         let odd: Vec<&str> = found[0].odd.iter().map(|(n, _, _)| n.as_str()).collect();
         assert_eq!(odd, ["qt6-declarative"]);
-        // Откатывать webengine к «серии 6.11» нельзя: его номер — не Qt.
+        // webengine must not be rolled back to "the 6.11 series": its number is not Qt's.
         assert_eq!(found[0].rollback.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["qt6-base"]);
         let text = finding_text(&found[0], true);
         assert!(text.contains("qt6-base 6.12.0 with qt6-declarative 6.11.2"), "{text}");
         assert!(!text.contains("webengine"), "{text}");
-        // До обновления: qt6-base уходит на 6.13, declarative остаётся — «не обновляйтесь».
+        // Before the update: qt6-base goes to 6.13, declarative stays — "don't update".
         let qt_612 = installed(&[
             ("qt6-base", "6.12.0-5"),
             ("qt6-declarative", "6.12.0-4.1"),
@@ -2096,8 +2096,8 @@ mod tests {
         assert_eq!(hold[0].odd.iter().map(|(n, _, _)| n.as_str()).collect::<Vec<_>>(), ["qt6-declarative"]);
     }
 
-    /// Граница своей нумерации — ровно 6.140: 6.14.0 ещё нумерация Qt (и
-    /// обгоняет qt6-base 6.12 — тревога), 6.139.x тоже; сам 6.140.0 — уже своя.
+    /// The boundary of its own numbering is exactly 6.140: 6.14.0 is still Qt numbering (and
+    /// gets ahead of qt6-base 6.12 — alarm), 6.139.x too; 6.140.0 itself is already its own.
     #[test]
     fn webengine_own_numbering_boundary() {
         let qt = |web: &str| {
@@ -2111,15 +2111,15 @@ mod tests {
         for web in ["6.140.0-1", "6.140.1-2", "1:6.150.0-1"] {
             assert!(evaluate(&survey_with(qt(web), ""), PACKAGE_SETS).is_empty(), "{web}");
         }
-        // Своя нумерация — только у webengine: qt6-webview 6.140 — тревога.
+        // Only webengine has its own numbering: qt6-webview 6.140 — alarm.
         let mut odd_view = qt("6.140.0-1");
         odd_view.push(("qt6-webview".into(), "6.140.0-1".into()));
         let found = evaluate(&survey_with(odd_view, ""), PACKAGE_SETS);
         assert_eq!(found[0].odd.iter().map(|(n, _, _)| n.as_str()).collect::<Vec<_>>(), ["qt6-webview"]);
     }
 
-    /// Обновление уже развело Qt и не чинит — «не перезагружайтесь», откат из
-    /// кэша к старой серии; ждущее обновление чинит — «обновитесь ещё раз».
+    /// The update has already split Qt and does not fix it — "don't restart", rollback from
+    /// the cache to the old series; a pending update fixes it — "update once more".
     #[test]
     fn already_mixed_qt_dont_reboot_or_update_now() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2145,7 +2145,7 @@ mod tests {
             rollback_paths(&found[0], &caches(&cache)),
             vec!["/var/cache/pacman/pkg/qt6-base-6.11.2-1-x86_64.pkg.tar.zst".to_string()]
         );
-        // Нужной версии в кэше нет — команды нет, только слова.
+        // The needed version is not in the cache — no command, only words.
         assert!(rollback_paths(&found[0], &caches(&cache[3..])).is_empty());
         assert_eq!(title(&found), "Don't Restart the Computer Yet");
 
@@ -2154,8 +2154,8 @@ mod tests {
         assert!(!finding_text(&fixed[0], false).contains("Ctrl+Alt+F3"));
     }
 
-    /// Точечная разница Qt — тоже разнобой (приватный знак — до третьего
-    /// числа); у Plasma и KF6 точечные выпуски — норма.
+    /// A point difference in Qt is also a mismatch (the private marker goes up to the third
+    /// number); for Plasma and KF6 point releases are the norm.
     #[test]
     fn precision_per_set() {
         let mut survey = survey_with(
@@ -2185,7 +2185,7 @@ mod tests {
         .collect();
         let found = evaluate(&survey, PACKAGE_SETS);
         assert_eq!(found.iter().map(|f| f.set.id).collect::<Vec<_>>(), ["qt6"]);
-        // Plasma: kwin 6.8 при plasma-workspace 6.7 — разнобой.
+        // Plasma: kwin 6.8 with plasma-workspace 6.7 — a mismatch.
         survey.pending = parse_pending_updates("kwin 6.7.5-3.1 -> 6.8.0-1\n");
         let found = evaluate(&survey, PACKAGE_SETS);
         assert_eq!(found.iter().map(|f| f.set.id).collect::<Vec<_>>(), ["plasma"]);
@@ -2193,8 +2193,8 @@ mod tests {
         assert_eq!(found[0].odd[0].0, "kwin");
     }
 
-    /// CachyOS #604: gdk-pixbuf2 обновляется, glycin остаётся 2.1.5, хотя в
-    /// extra уже 2.2.2 — разнобой. glycin свежий везде — молчим.
+    /// CachyOS #604: gdk-pixbuf2 is updated, glycin stays 2.1.5, although
+    /// extra already has 2.2.2 — a mismatch. glycin fresh everywhere — silent.
     #[test]
     fn pixbuf_without_new_glycin_says_hold() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2217,15 +2217,15 @@ mod tests {
         assert!(text.contains("Firefox"), "{text}");
         assert!(!text.contains("Ctrl+Alt+F3"), "{text}");
 
-        // glycin в репозиториях не новее установленного — обычное обновление.
+        // glycin in the repositories is not newer than the installed one — an ordinary update.
         survey.repo = Some(parse_sync_list("extra glycin 2.1.5-2 [installed]\n"));
         assert!(evaluate(&survey, PACKAGE_SETS).is_empty());
-        // Версий репозиториев не узнали — не судим.
+        // The repository versions are unknown — we do not judge.
         survey.repo = None;
         assert!(evaluate(&survey, PACKAGE_SETS).is_empty());
     }
 
-    /// GNOME: gnome-shell 52 при mutter 51.
+    /// GNOME: gnome-shell 52 with mutter 51.
     #[test]
     fn gnome_shell_needs_its_mutter() {
         let survey = survey_with(
@@ -2269,8 +2269,8 @@ mod tests {
         assert_eq!(checkupdates_db("/x/db", "/var/tmp", 1000), "/x/db");
     }
 
-    /// Об одном состоянии — один раз; новое состояние — снова; при входе —
-    /// всегда. Тексты без жаргона служебных программ.
+    /// About one state — once; a new state — again; at login —
+    /// always. Texts without the jargon of system utilities.
     #[test]
     fn once_per_state_and_plain_texts() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2316,7 +2316,7 @@ mod tests {
         assert!(service.contains(&format!("\nExecStart={exec}\n")), "{service}");
         assert!(service.contains("\nConditionPathExists=/usr/lib/rexon/rexon-main-window\n"), "{service}");
         assert!(!watch_units(exec, None)[2].1.contains("ConditionPathExists"));
-        // Ни root, ни пароля: юниты только пользовательские.
+        // Neither root nor a password: the units are user units only.
         for (_, t) in &units {
             for word in ["pkexec", "sudo", "User=", "/etc/"] {
                 assert!(!t.contains(word), "«{word}» в юните: {t}");
@@ -2336,15 +2336,15 @@ mod tests {
         let written: std::collections::HashMap<String, String> = fresh.write.iter().cloned().collect();
         let have = |p: &str| written.get(p).cloned();
         assert_eq!(watch_plan("/h/.config", true, Some(exec), Some("/x/rexon"), &have), WatchPlan::default());
-        // Сменилась строка запуска — переписать.
+        // The launch line changed — rewrite.
         assert_eq!(watch_plan("/h/.config", true, Some("/y/rexon --update-check"), Some("/x/rexon"), &have).write.len(), 1);
-        // Не нужна либо заводить нечем — снять.
+        // Not needed or nothing to launch — remove.
         let off = watch_plan("/h/.config", false, Some(exec), None, &have);
         assert_eq!(off.remove.len(), 3);
         assert_eq!(off.systemctl[0][0], "disable");
         assert_eq!(watch_plan("/h/.config", true, None, None, &have).remove.len(), 3);
         assert_eq!(watch_plan("/h/.config", false, None, None, &none), WatchPlan::default());
-        // Прежние юниты AeroThemePlasma снимаются, новые ставятся.
+        // The old AeroThemePlasma units are removed, the new ones are installed.
         let current = |p: &str| written.get(p).cloned().or_else(|| p.contains("rexon-aeroshell-check").then(String::new));
         let migrate = watch_plan("/h/.config", true, Some(exec), Some("/x/rexon"), &current);
         assert_eq!(migrate.remove.len(), 3);
@@ -2358,11 +2358,11 @@ mod tests {
         );
     }
 
-    /// Подставной pacman: argv (через пробел) → (код, вывод). Чего нет в
-    /// таблице — код 1 без вывода.
+    /// A fake pacman: argv (space-separated) → (code, output). What is not in
+    /// the table — code 1 without output.
     struct PacmanIo {
         answers: Vec<(&'static str, i32, &'static str)>,
-        /// Каталоги кэша: каталог → файлы.
+        /// Cache directories: directory → files.
         dirs: Vec<(&'static str, &'static [&'static str])>,
     }
     impl SystemIo for PacmanIo {
@@ -2406,10 +2406,10 @@ mod tests {
         }
     }
 
-    /// Кнопка «Вернуть прежние версии»: Plasma вразнобой (plasma-workspace и
-    /// kwin 6.8.1 при kwin-x11 6.7.5 из репозиториев) — откат к 6.7 из ДВУХ
-    /// каталогов кэша (`pacman-conf CacheDir`), «было → станет», тексты без
-    /// команд; без полного кэша, на SteamOS и в прочих стадиях — кнопки нет.
+    /// The «Put Previous Versions Back» button: Plasma mismatched (plasma-workspace and
+    /// kwin 6.8.1 with kwin-x11 6.7.5 from the repositories) — rollback to 6.7 from TWO
+    /// cache directories (`pacman-conf CacheDir`), "was → will be", texts without
+    /// commands; without a full cache, on SteamOS and in other stages — no button.
     #[test]
     fn rollback_button_only_when_mixed_and_cache_complete() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2451,29 +2451,29 @@ mod tests {
         let confirm = rollback_confirm_text(&offer);
         assert!(confirm.contains("plasma-workspace 6.8.1 → 6.7.5\nkwin 6.8.1 → 6.7.5"), "{confirm}");
         assert_eq!(rollback_confirm_title(&offer), "Put Back the Previous Versions of Plasma?");
-        // Абзац консоли («Ctrl+Alt+F3 … sudo pacman -Syu») — для человека за
-        // консолью при чёрном экране, он не про откат; команды отката нет нигде.
+        // The console paragraph («Ctrl+Alt+F3 … sudo pacman -Syu») is for a person at
+        // the console with a black screen, it is not about the rollback; there is no rollback command anywhere.
         for t in [&window, &notice, &confirm] {
             for jargon in ["pacman -U", "/var/cache", "cache", ".pkg.tar"] {
                 assert!(!t.contains(jargon), "жаргон «{jargon}»: {t}");
             }
         }
 
-        // Прежней kwin в кэше нет — ни кнопки, ни слов об откате.
+        // The previous kwin is not in the cache — neither a button nor words about a rollback.
         io.dirs.truncate(1);
         let partial = advise(&io, PkgFamily::Arch, 1000);
         assert_eq!(rollback_offer(&partial, false), None);
         assert!(!partial.text().contains("previous versions"), "{}", partial.text());
         assert!(!partial.text_for(Audience::Notification).contains("previous versions"));
 
-        // Ждущее обновление чинит — «обновитесь», кнопки нет.
+        // A pending update fixes it — "update", no button.
         let pending = advise(&plasma_io(q, (0, "kwin-x11 6.7.5-3.1 -> 6.8.1-1\n"), (1, "")), PkgFamily::Arch, 1000);
         assert_eq!(pending.findings[0].stage, Stage::UpdateNow);
         assert_eq!(rollback_offer(&pending, false), None);
     }
 
-    /// «Не обновляйтесь»: прежняя версия в кэше есть (ровно та, что стоит),
-    /// но ставить обратно нечего — кнопки нет; сирота — тоже не откат.
+    /// "Don't update": the previous version is in the cache (exactly the installed one),
+    /// but there is nothing to put back — no button; an orphan is not a rollback either.
     #[test]
     fn no_rollback_button_before_update_or_for_orphan() {
         let survey = survey_with(qt_611(), "qt6-base 6.11.2-1 -> 6.12.0-2\n");
@@ -2487,11 +2487,11 @@ mod tests {
         assert_eq!(rollback_offer(&advice, false), None);
         assert!(!advice.text().contains("previous versions"));
         assert!(!advice.text_for(Audience::Notification).contains("previous versions"));
-        // Предел кнопки и консоли разный: консоли — 8, кнопке — 64.
+        // The limits of the button and the console differ: the console — 8, the button — 64.
         const _: () = assert!(ROLLBACK_MAX_PACKAGES < ROLLBACK_BUTTON_MAX);
     }
 
-    /// Каталоги кэша: из `pacman-conf`, без повторов и странных путей.
+    /// Cache directories: from `pacman-conf`, without duplicates and odd paths.
     #[test]
     fn cache_dirs_from_pacman_conf() {
         assert_eq!(parse_cache_dirs(""), [PACKAGE_CACHE_DIR]);
@@ -2505,7 +2505,7 @@ mod tests {
         assert!(!RollbackTarget::Exact("6.11.2-1".into()).accepts("6.11.2-2"));
     }
 
-    /// Откат: операция сеанса прав с путями кэша, итог — словами.
+    /// Rollback: a privilege session operation with cache paths, the result in words.
     #[test]
     fn rollback_goes_through_privilege_session() {
         use crate::privilege::op::PrivOp;
@@ -2543,35 +2543,35 @@ mod tests {
             rollback_done_text(&offer, true),
             "The previous versions of Qt are back. Restarting the computer is safe again. Everything else is in order."
         );
-        // Длинный перечень — первые десять и «ещё».
+        // A long list — the first ten and "more".
         let many = RollbackOffer { set_name: "Plasma".into(), items: (0..13).map(|i| item(&format!("p{i}"))).collect() };
         let text = rollback_confirm_text(&many);
         assert!(text.contains("p9 6.12.0 → 6.11.2\n…and 3 more") && !text.contains("p10 "), "{text}");
     }
 
-    /// Три случая Plasma 6.8 на подставных выводах pacman: набор вразнобой
-    /// (все в репозиториях, обновлений нет), отставший ждёт обновления, и
-    /// пакет-сирота вне репозиториев (машина Wehrwolfmann 25.10.2026:
-    /// `kwin-x11` 6.7.5, `pacman -Si kwin-x11` пусто, `pacman -Qm` его
-    /// называет).
+    /// Three Plasma 6.8 cases on fake pacman outputs: a mismatched set
+    /// (all in the repositories, no updates), a lagging one waiting for an update, and
+    /// an orphan package outside the repositories (Wehrwolfmann's machine 25.10.2026:
+    /// `kwin-x11` 6.7.5, `pacman -Si kwin-x11` empty, `pacman -Qm`
+    /// names it).
     #[test]
     fn plasma_mix_pending_and_orphan_told_apart() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let q = "plasma-workspace 6.8.1-1.1\nkwin 6.8.1-2.1\nkwin-x11 6.7.5-3.1\nfirefox 141.0-1\n";
 
-        // 1. Вразнобой: kwin-x11 в репозиториях есть (сирот нет), ждущего нет.
+        // 1. Mismatched: kwin-x11 is in the repositories (no orphans), nothing pending.
         let mix = advise(&plasma_io(q, (2, ""), (0, "decky-loader\n")), PkgFamily::Arch, 1000);
         assert_eq!(mix.findings.len(), 1, "{:?}", mix.findings);
         assert_eq!(mix.findings[0].stage, Stage::DontReboot);
         assert!(mix.text().contains("parts of Plasma of different versions"), "{}", mix.text());
 
-        // 2. Ждёт обновления: kwin-x11 6.8.1 уже в репозиториях.
+        // 2. Waiting for an update: kwin-x11 6.8.1 is already in the repositories.
         let pending = advise(&plasma_io(q, (0, "kwin-x11 6.7.5-3.1 -> 6.8.1-1\n"), (1, "")), PkgFamily::Arch, 1000);
         assert_eq!(pending.findings.len(), 1, "{:?}", pending.findings);
         assert_eq!(pending.findings[0].stage, Stage::UpdateNow);
         assert_eq!(pending.title(), "Update the System Once More");
 
-        // 3. Сирота: kwin-x11 нет в репозиториях.
+        // 3. Orphan: kwin-x11 is not in the repositories.
         let orphan = advise(&plasma_io(q, (2, ""), (0, "decky-loader\nkwin-x11\n")), PkgFamily::Arch, 1000);
         assert_eq!(orphan.findings.len(), 1, "{:?}", orphan.findings);
         let f = &orphan.findings[0];
@@ -2588,12 +2588,12 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("The Plasma (X11) session is not supported"), "{text}");
-        // Окну — без команды: удаляет кнопка «Удалить kwin-x11».
+        // For the window — without a command: the «Remove kwin-x11» button removes it.
         assert!(text.contains("If you don't use it, Rexon can remove it."), "{text}");
         assert_eq!(orphan.orphans(), ["kwin-x11"]);
         assert!(removable_orphans(&orphan.findings, true).is_empty(), "SteamOS: удалить нельзя");
         assert_eq!(orphan_remove_button(&orphan.orphans()), "Remove kwin-x11");
-        // Уведомлению — какой кнопкой настроек удалить; на SteamOS (кнопки нет) — молчим.
+        // For the notification — which settings button removes it; on SteamOS (no button) — silent.
         let notice = orphan.text_for(Audience::Notification);
         assert!(notice.contains("remove it in Rexon settings with “Check Now”"), "{notice}");
         let steamos = orphan.text_for(Audience::Window { removable: false, rollback: false });
@@ -2603,21 +2603,21 @@ mod tests {
                 assert!(!t.contains(jargon), "жаргон «{jargon}»: {t}");
             }
         }
-        // Консоли спасения команда остаётся.
+        // The rescue console keeps the command.
         let console = orphan_advice(f, &|m: &str| m.to_string()).unwrap();
         assert_eq!(console, "If you don't use it, remove the package: sudo pacman -Rns kwin-x11");
         assert!(!text.contains("different versions") && !text.contains("Ctrl+Alt+F3"), "{text}");
         assert_eq!(orphan.title(), "A Package No Longer Gets Updates");
         assert_ne!(orphan.fingerprint(), mix.fingerprint());
 
-        // Сирот не узнали (pacman -Qm не смог) — прежнее «вразнобой».
+        // Orphans are unknown (pacman -Qm failed) — the former "mismatched".
         let unknown = advise(&plasma_io(q, (2, ""), (3, "")), PkgFamily::Arch, 1000);
         assert_eq!(unknown.findings, mix.findings);
     }
 
-    /// Обновление Plasma ждёт, а сирота за ним не пойдёт: не «не
-    /// обновляйтесь» навсегда, а «удалите»; вразнобой у остальных — отдельно
-    /// и первым.
+    /// A Plasma update is pending, but the orphan will not follow it: not "don't
+    /// update" forever, but "remove"; a mismatch of the others — separately
+    /// and first.
     #[test]
     fn orphan_does_not_hold_the_update() {
         let mut survey = survey_with(
@@ -2625,15 +2625,15 @@ mod tests {
             "plasma-workspace 6.7.5-3.1 -> 6.8.1-1.1\nkwin 6.7.5-3.1 -> 6.8.1-2.1\n",
         );
         survey.groups = ["plasma-workspace", "kwin", "kwin-x11"].iter().map(|p| ("plasma".into(), p.to_string())).collect();
-        // Без сведений о сиротах — прежний «не обновляйтесь».
+        // Without information about orphans — the former "don't update".
         assert_eq!(evaluate(&survey, PACKAGE_SETS)[0].stage, Stage::Hold);
         survey.foreign = Some(parse_foreign("kwin-x11\n"));
         let found = evaluate(&survey, PACKAGE_SETS);
         assert_eq!(found.iter().map(|f| f.stage).collect::<Vec<_>>(), [Stage::Orphaned]);
-        // Сирота той же серии, обновления нет — молчим.
+        // An orphan of the same series, no update — silent.
         survey.pending.clear();
         assert!(evaluate(&survey, PACKAGE_SETS).is_empty());
-        // Отстал и kwin (в репозиториях) — вразнобой первым, сирота вторым.
+        // kwin (in the repositories) lags too — the mismatch first, the orphan second.
         survey.installed[0].1 = "6.8.1-1.1".into();
         let found = evaluate(&survey, PACKAGE_SETS);
         assert_eq!(found.iter().map(|f| f.stage).collect::<Vec<_>>(), [Stage::DontReboot, Stage::Orphaned]);
@@ -2643,27 +2643,27 @@ mod tests {
         }
     }
 
-    /// Кого помощник от root берётся удалять: член набора «одной версией»,
-    /// не опорный; группы — по `pacman -Qg`.
+    /// Whom the root helper agrees to remove: a member of a "single version" set,
+    /// not an anchor; groups — by `pacman -Qg`.
     #[test]
     fn orphan_candidate_only_set_members() {
         let groups = parse_groups(PLASMA_QG);
         assert!(orphan_candidate("kwin-x11", &groups));
         assert!(orphan_candidate("qt6-svg", &[]));
         assert!(orphan_candidate("gnome-shell", &[]));
-        // Опорные сиротой не считаются.
+        // Anchors are not considered orphans.
         for anchor in ["plasma-workspace", "qt6-base", "mutter"] {
             assert!(!orphan_candidate(anchor, &groups), "{anchor}");
         }
-        // Не член набора; член набора «двигаться вместе»; группа не та.
+        // Not a set member; a member of a "move together" set; the wrong group.
         for other in ["firefox", "glycin", "decky-loader"] {
             assert!(!orphan_candidate(other, &groups), "{other}");
         }
         assert!(!orphan_candidate("kwin-x11", &[]));
     }
 
-    /// Сирота, на которой держится сеанс: сеанс окна и сеанс экрана входа
-    /// по умолчанию; окно заранее говорит, откуда удалить.
+    /// An orphan the session depends on: the window session and the default login screen
+    /// session; the window says in advance where to remove it from.
     #[test]
     fn orphan_session_in_use_and_login_default() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2678,7 +2678,7 @@ mod tests {
         assert!(orphan_login_default(&k, &["/usr/share/xsessions/plasmax11.desktop".into()]).is_some());
         assert!(orphan_login_default(&k, &["plasma".into(), "plasma.desktop".into()]).is_none());
 
-        // Порядок чтения: каталог по имени, затем файл; поздний перекрывает.
+        // Reading order: the directory by name, then the file; the later one overrides.
         let files: std::collections::HashMap<&str, &str> = [
             ("/usr/lib/sddm/sddm.conf.d/default.conf", "[Autologin]\nSession=plasmax11\n"),
             ("/etc/sddm.conf.d/kde_settings.conf", "[Autologin]\nSession=plasma\n"),
@@ -2693,7 +2693,7 @@ mod tests {
         };
         assert_eq!(login_default_sessions(&read, &list), ["plasma", "/usr/share/wayland-sessions/plasma.desktop"]);
 
-        // Решение окна: X11-сеанс Plasma — текст вместо кнопки.
+        // The window's decision: a Plasma X11 session — text instead of the button.
         let f = Finding {
             set: PACKAGE_SETS[2],
             stage: Stage::Orphaned,
@@ -2710,17 +2710,17 @@ mod tests {
         assert_eq!(orphan_offer(std::slice::from_ref(&f), false, "wayland", "kde"), OrphanOffer::Remove(k.clone()));
         assert_eq!(orphan_offer(std::slice::from_ref(&f), true, "x11", "kde"), OrphanOffer::Nothing);
         assert_eq!(orphan_offer(&[], false, "x11", "kde"), OrphanOffer::Nothing);
-        // Тексты отказов помощника — те же, по имени пакета.
+        // The helper's refusal texts are the same, by package name.
         let s = orphan_session_of("kwin-x11").unwrap();
         assert_eq!(crate::privilege::client::key_text("refused.orphan-in-use.kwin-x11"), orphan_in_use_text(s));
         assert_eq!(crate::privilege::client::key_text("refused.orphan-login-default.kwin-x11"), orphan_login_default_text(s));
-        // Отказ «экран входа открывает сеанс» опознаётся окном — и только он.
+        // The "the login screen opens the session" refusal is recognised by the window — and only it.
         let why = crate::privilege::client::key_text("refused.orphan-login-default.kwin-x11");
         assert_eq!(login_default_successor(&k, &why).map(|p| p.wayland), Some("plasma"));
         assert!(login_default_successor(&k, &orphan_in_use_text(s)).is_none());
         assert!(login_default_successor(&["qt6-svg".to_string()], &why).is_none());
-        // Каждая запись таблицы — член набора сторожа, и у каждого её сеанса
-        // есть пара на Wayland (кнопка «Сделать … сеансом по умолчанию»).
+        // Every table entry is a member of a guard set, and each of its sessions
+        // has a Wayland counterpart (the «Make … the default session» button).
         for s in ORPHAN_SESSIONS {
             assert!(orphan_candidate(s.package, &parse_groups(PLASMA_QG)), "{}", s.package);
             for x11 in s.sessions {
@@ -2730,29 +2730,29 @@ mod tests {
         }
     }
 
-    /// Когда окно показывается: по кнопке — всегда; откат — по отпечатку
-    /// окна (после уведомления «откройте Rexon» — непременно); сообщение без
-    /// кнопки — по общему; предложение удалить сироту само — никогда.
+    /// When the window shows up: by the button — always; rollback — by the window
+    /// fingerprint (after the "open Rexon" notification — without fail); a message without
+    /// a button — by the shared one; an offer to remove an orphan by itself — never.
     #[test]
     fn window_after_notice_only_when_it_can_act() {
         assert!(window_should_show(true, false, true, true, true));
         assert!(window_should_show(true, false, false, true, true));
-        // Откат: после уведомления — да, уже показанное — нет.
+        // Rollback: after the notification — yes, already shown — no.
         assert!(window_should_show(false, true, false, true, false));
         assert!(!window_should_show(false, true, false, true, true));
-        // Сообщение без кнопки — один раз на двоих с уведомлением.
+        // A message without a button — once, shared with the notification.
         assert!(!window_should_show(false, false, false, true, false));
         assert!(window_should_show(false, false, false, false, true));
-        // Удалить сироту без просьбы — ни до, ни после уведомления.
+        // Removing an orphan without a request — neither before nor after the notification.
         assert!(!window_should_show(false, false, true, false, false));
         assert!(!window_should_show(false, false, true, true, false));
-        // Откат и сирота вместе — окно отката (сирота — после его итога).
+        // Rollback and orphan together — the rollback window (the orphan — after its result).
         assert!(window_should_show(false, true, true, true, false));
         assert_eq!(window_stamp_path("/h/.cache/"), "/h/.cache/rexon/update-guard-shown");
         assert_ne!(window_stamp_path("/h/.cache"), stamp_path("/h/.cache"));
     }
 
-    /// Удаление сироты: операция сеанса прав, итог — словами.
+    /// Removing an orphan: a privilege session operation, the result in words.
     #[test]
     fn remove_orphans_goes_through_privilege_session() {
         use crate::privilege::op::PrivOp;
@@ -2772,27 +2772,27 @@ mod tests {
         });
         assert_eq!(ok, Ok(()));
         assert_eq!(seen, vec![PrivOp::OrphanRemove { names: names.clone() }]);
-        // Отказ помощника — его готовый текст.
+        // A helper refusal — its ready text.
         let refused = remove_orphans_with(&names, &mut |_| Some(out(1, "", "Rexon didn't remove the package: x")));
         assert_eq!(refused, Err("Rexon didn't remove the package: x".to_string()));
-        // pacman не смог — общий итог без его строк.
+        // pacman failed — a general result without its lines.
         let failed = remove_orphans_with(&names, &mut |_| Some(out(1, "error: failed to commit transaction\n", "")));
         assert_eq!(failed, Err("Rexon couldn't remove kwin-x11.".to_string()));
-        // Помощника нет — прежнего пути нет: сказать, без pkexec.
+        // No helper — there is no former path: say so, without pkexec.
         let missing = remove_orphans_with(&names, &mut |_| None).unwrap_err();
         assert!(!missing.contains("pkexec") && !missing.is_empty(), "{missing}");
-        // Пусто — ни одной операции.
+        // Empty — not a single operation.
         let mut called = false;
         assert!(remove_orphans_with(&[], &mut |_| { called = true; None }).is_err());
         assert!(!called);
-        // Подписи окна.
+        // Window labels.
         assert_eq!(orphan_remove_title(&names), "Removing kwin-x11");
         assert_eq!(orphan_removed_text(&names, true), "Removed: kwin-x11. Everything else is in order.");
         assert_eq!(orphan_removed_text(&names, false), "Removed: kwin-x11.");
         assert_eq!(removable_orphans(&[], false), Vec::<String>::new());
     }
 
-    /// Сверка через подставной ввод-вывод: какие команды, без root.
+    /// The check through fake I/O: which commands, without root.
     #[test]
     fn survey_asks_pacman_and_checkupdates_only() {
         use crate::system_exec::RunOut;
@@ -2830,11 +2830,11 @@ mod tests {
         assert_eq!(advice.findings.len(), 1);
         assert_eq!(advice.findings[0].set.id, "pixbuf");
         for call in io.calls.borrow().iter() {
-            // `pacman-conf CacheDir` — только чтение: где кэш для отката.
+            // `pacman-conf CacheDir` — read-only: where the cache for the rollback is.
             assert!(matches!(call[0].as_str(), "pacman" | "checkupdates" | "pacman-conf"), "{call:?}");
             assert!(!call.iter().any(|a| a == "-S" || a == "-Sy" || a == "-Syu" || a == "-U"), "{call:?}");
         }
-        // Не Arch — ни одной команды.
+        // Not Arch — not a single command.
         let io = Io { calls: RefCell::new(Vec::new()) };
         assert_eq!(advise(&io, PkgFamily::Debian, 1000), Advice::default());
         assert!(io.calls.borrow().is_empty());

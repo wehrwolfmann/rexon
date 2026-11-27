@@ -1,42 +1,44 @@
-//! Светлое и тёмное оформление по расписанию — во всех окружениях.
+//! Light and dark appearance on a schedule, in all environments.
 //!
-//! Человек выбирает «Светлое», «Тёмное» или «Автоматически». В автоматическом
-//! режиме смена идёт по двум временам («светлое с 07:00, тёмное с 19:00») либо
-//! по восходу и закату солнца в своём месте. Что переключается — выбирает он
-//! же: пара глобальных тем (Plasma), пара цветовых схем, пара тем GTK, пара
-//! тем значков, пара картинок обоев и светлый/тёмный режим программ
-//! (`color-scheme` портала freedesktop).
+//! The person chooses "Light", "Dark" or "Automatic". In automatic mode the
+//! switch happens at two times of day ("light from 07:00, dark from 19:00")
+//! or at sunrise and sunset at their location. What gets switched is also
+//! their choice: a pair of global themes (Plasma), a pair of color schemes, a
+//! pair of GTK themes, a pair of icon themes, a pair of wallpaper pictures and
+//! the light/dark mode of applications (the freedesktop portal's
+//! `color-scheme`).
 //!
-//! Как это делают сами окружения (сверено 01.11.2026):
-//! * Plasma 6.8 — своё переключение глобальной темы: `kdeglobals [KDE]
+//! How the environments themselves do it (checked 01.11.2026):
+//! * Plasma 6.8 has its own global theme switching: `kdeglobals [KDE]
 //!   AutomaticLookAndFeel`, `DefaultLightLookAndFeel`, `DefaultDarkLookAndFeel`
-//!   (схема `lookandfeelsettings.kcfg`), исполняет модуль kded
-//!   `lookandfeelautoswitcher` (следит за `kdeglobals` через `KConfigWatcher`,
-//!   поэтому запись — с `--notify`). Расписание общее с ночной цветовой
-//!   температурой — `knighttimerc` (`[General] Source=Location|Times`,
+//!   (schema `lookandfeelsettings.kcfg`), executed by the kded module
+//!   `lookandfeelautoswitcher` (it watches `kdeglobals` via `KConfigWatcher`,
+//!   hence the write uses `--notify`). The schedule is shared with the night
+//!   color temperature — `knighttimerc` (`[General] Source=Location|Times`,
 //!   `[Location] Automatic/Latitude/Longitude`, `[Times] SunriseStart/
-//!   SunsetStart`), его читает служба `knighttimed`. Глобальную тему в Plasma
-//!   Rexon НЕ переключает сам — он настраивает Plasma.
-//! * COSMIC — `com.system76.CosmicTheme.Mode/v1/auto_switch` (переключает
-//!   cosmic-settings-daemon по восходу и закату, своих времён у него нет) и
-//!   `is_dark`. Режим «по солнцу» отдаётся COSMIC, «по времени» — пишет
-//!   `is_dark` Rexon.
-//! * GNOME, Cinnamon, MATE, Xfce, Budgie, LXQt, тайловые — своего расписания
-//!   нет: переключает Rexon.
+//!   SunsetStart`), read by the `knighttimed` service. Rexon does NOT switch
+//!   the global theme in Plasma itself — it configures Plasma.
+//! * COSMIC has `com.system76.CosmicTheme.Mode/v1/auto_switch` (switched by
+//!   cosmic-settings-daemon at sunrise and sunset; it has no times of its own)
+//!   and `is_dark`. The "by the sun" mode is left to COSMIC; for "by time",
+//!   Rexon writes `is_dark`.
+//! * GNOME, Cinnamon, MATE, Xfce, Budgie, LXQt and tiling WMs have no schedule
+//!   of their own: Rexon switches.
 //!
-//! Исполнитель — без постоянно висящего процесса: пользовательский таймер
-//! systemd [`TIMER_UNIT`] будит `rexon --apply-day-night` в моменты смены
-//! (по солнцу — точные моменты следующих смен в UTC, после каждой смены
-//! таймер переписывается; по времени — два ежедневных момента), а при входе в
-//! сеанс тот же запуск делает запись автозапуска [`AUTOSTART_FILE`]. Таймер
-//! на настенных часах: пропущенная во сне смена срабатывает после
-//! пробуждения, пропущенная при выключенной машине — при старте
+//! The executor has no permanently running process: the systemd user timer
+//! [`TIMER_UNIT`] wakes `rexon --apply-day-night` at the switch moments (by
+//! the sun, the exact moments of the next switches in UTC, with the timer
+//! rewritten after each switch; by time, two daily moments), and at session
+//! login the same run is triggered by the autostart entry [`AUTOSTART_FILE`].
+//! The timer uses wall-clock time: a switch missed during sleep fires after
+//! wake-up, one missed while the machine was off fires at startup
 //! (`Persistent=true`).
 //!
-//! Применение каждой части — ТЕМИ ЖЕ путями, что у кнопки «Применить» в
-//! «Оформлении» ([`crate::appearance_installer::LiveInstaller::apply`]): в
-//! каждом окружении глобальная тема, схема, GTK и значки пишутся так, как
-//! там положено. Второго способа применять тему здесь нет (правило #12).
+//! Each part is applied through THE SAME paths as the "Apply" button in
+//! "Appearance" ([`crate::appearance_installer::LiveInstaller::apply`]): in
+//! each environment the global theme, scheme, GTK and icons are written the
+//! way that environment expects. There is no second way to apply a theme
+//! here (rule #12).
 
 use std::path::Path;
 
@@ -45,27 +47,27 @@ use serde_json::Value;
 
 use crate::i18n::{tr, trc, trf};
 
-/// Флаг запуска без окна.
+/// The flag for running without a window.
 pub const CLI_FLAG: &str = "--apply-day-night";
-/// Таймер смены.
+/// The switch timer.
 pub const TIMER_UNIT: &str = "rexon-day-night.timer";
-/// Служба, которую будит таймер.
+/// The service the timer wakes.
 pub const SERVICE_UNIT: &str = "rexon-day-night.service";
-/// Запись автозапуска: применить нынешнее при входе в сеанс.
+/// The autostart entry: apply the current state at session login.
 pub const AUTOSTART_FILE: &str = "rexon-day-night.desktop";
-/// Разделы «Оформления», где стоит блок.
+/// The "Appearance" sections that show the block.
 pub const SECTIONS_KDE: &[&str] = &["global", "colors"];
 pub const SECTIONS_OTHER: &[&str] = &["colors", "gtk"];
 
 // ============================================================================
-// Настройка
+// Settings
 // ============================================================================
 
-/// Выбор человека.
+/// The person's choice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    /// Rexon светлым и тёмным не управляет (ничего не выбрано).
+    /// Rexon does not manage light and dark (nothing is chosen).
     #[default]
     Off,
     Light,
@@ -73,18 +75,18 @@ pub enum Mode {
     Auto,
 }
 
-/// Расписание автоматического режима.
+/// The automatic mode schedule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Schedule {
-    /// От восхода до заката — светлое.
+    /// Light from sunrise to sunset.
     #[default]
     Sun,
-    /// Два времени суток.
+    /// Two times of day.
     Times,
 }
 
-/// Светлое или тёмное.
+/// Light or dark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Phase {
@@ -98,7 +100,7 @@ impl Phase {
     }
 }
 
-/// Пара «светлое / тёмное» одной части.
+/// A "light / dark" pair for one part.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Pair {
@@ -116,17 +118,17 @@ impl Pair {
     }
 }
 
-/// Настройка (`~/.config/rexon/day-night.json`).
+/// The settings (`~/.config/rexon/day-night.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub mode: Mode,
     pub schedule: Schedule,
-    /// «ЧЧ:ММ» местного времени.
+    /// "HH:MM" local time.
     pub light_at: String,
     pub dark_at: String,
-    /// Место определяется само (по часовому поясу; в Plasma — службой
-    /// Plasma, в COSMIC — самим COSMIC).
+    /// The location is determined automatically (by the time zone; in Plasma by
+    /// the Plasma service, in COSMIC by COSMIC itself).
     pub auto_location: bool,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
@@ -135,7 +137,7 @@ pub struct Config {
     pub gtk: Pair,
     pub icons: Pair,
     pub wallpaper: Pair,
-    /// Светлый/тёмный режим программ (портал freedesktop).
+    /// The light/dark mode of applications (the freedesktop portal).
     pub portal: bool,
 }
 
@@ -159,37 +161,38 @@ impl Default for Config {
     }
 }
 
-/// Последнее применённое (`~/.local/state/rexon/day-night.json`).
+/// The last applied state (`~/.local/state/rexon/day-night.json`).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Memo {
-    /// Окружение последнего входа: таймер будит службу без
-    /// `XDG_CURRENT_DESKTOP` в окружении (Xfce, MATE его в systemd не отдают).
+    /// The environment of the last login: the timer wakes the service without
+    /// `XDG_CURRENT_DESKTOP` in the environment (Xfce and MATE do not pass it to
+    /// systemd).
     pub de: String,
     pub phase: Option<Phase>,
-    /// Когда применили (unix, с).
+    /// When it was applied (unix, s).
     pub at: i64,
 }
 
-/// «ЧЧ:ММ» → минуты от полуночи.
+/// "HH:MM" → minutes since midnight.
 pub fn parse_hhmm(s: &str) -> Option<u32> {
     let (h, m) = s.trim().split_once(':')?;
     let (h, m): (u32, u32) = (h.trim().parse().ok()?, m.trim().parse().ok()?);
     (h < 24 && m < 60).then_some(h * 60 + m)
 }
 
-/// Широта/долгота из поля ввода: запятая или точка.
+/// Latitude/longitude from an input field: a comma or a period.
 pub fn parse_coord(s: &str, limit: f64) -> Option<f64> {
     let v: f64 = s.trim().replace(',', ".").parse().ok()?;
     (v.is_finite() && v.abs() <= limit).then_some(v)
 }
 
 // ============================================================================
-// Время и солнце
+// Time and the sun
 // ============================================================================
 
-/// Светлое или тёмное по двум временам. `light_from == dark_from` —
-/// расписание без смены: всегда светлое (такую настройку не сохраняем).
+/// Light or dark by two times. `light_from == dark_from` is a schedule
+/// without a switch: always light (such settings are not saved).
 pub fn phase_by_times(now_min: u32, light_from: u32, dark_from: u32) -> Phase {
     let light = if light_from <= dark_from {
         now_min >= light_from && now_min < dark_from
@@ -199,14 +202,14 @@ pub fn phase_by_times(now_min: u32, light_from: u32, dark_from: u32) -> Phase {
     if light || light_from == dark_from { Phase::Light } else { Phase::Dark }
 }
 
-/// Солнце в один солнечный день.
+/// The sun on one solar day.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SunDay {
-    /// Восход и закат, unix-секунды.
+    /// Sunrise and sunset, unix seconds.
     Normal { rise: i64, set: i64 },
-    /// Солнце не заходит.
+    /// The sun does not set.
     PolarDay,
-    /// Солнце не восходит.
+    /// The sun does not rise.
     PolarNight,
 }
 
@@ -221,15 +224,16 @@ fn unix_of_jd(j: f64) -> i64 {
     ((j - UNIX_EPOCH_JD) * 86_400.0).round() as i64
 }
 
-/// Номер солнечного дня (от J2000), чей полдень ближе всего к `t`.
+/// The number of the solar day (since J2000) whose noon is closest to `t`.
 fn day_number(t: i64, lon: f64) -> i64 {
     (jd_of_unix(t) - J2000 - 0.0009 + lon / 360.0).round() as i64
 }
 
-/// Восход и закат солнечного дня `n` — уравнение восхода (средняя аномалия,
-/// уравнение центра, эклиптическая долгота, склонение; рефракция и диск —
-/// −0,833°). Точность — около минуты на средних широтах; высота над морем не
-/// учитывается. Широта — градусы (север +), долгота — градусы (восток +).
+/// Sunrise and sunset of solar day `n` via the sunrise equation (mean
+/// anomaly, equation of the center, ecliptic longitude, declination;
+/// refraction and the solar disk give −0.833°). Accuracy is about a minute at
+/// middle latitudes; altitude above sea level is not taken into account.
+/// Latitude in degrees (north +), longitude in degrees (east +).
 pub fn sun_day(n: i64, lat: f64, lon: f64) -> SunDay {
     let j_star = n as f64 + 0.0009 - lon / 360.0;
     let m = (357.5291 + 0.985_600_28 * j_star).rem_euclid(360.0);
@@ -251,12 +255,12 @@ pub fn sun_day(n: i64, lat: f64, lon: f64) -> SunDay {
     SunDay::Normal { rise: unix_of_jd(transit - half), set: unix_of_jd(transit + half) }
 }
 
-/// Солнце в день, чей полдень ближе всего к `t`.
+/// The sun on the day whose noon is closest to `t`.
 pub fn sun_around(t: i64, lat: f64, lon: f64) -> SunDay {
     sun_day(day_number(t, lon), lat, lon)
 }
 
-/// Светлое или тёмное по солнцу в момент `t`.
+/// Light or dark by the sun at moment `t`.
 pub fn phase_by_sun(t: i64, lat: f64, lon: f64) -> Phase {
     match sun_around(t, lat, lon) {
         SunDay::Normal { rise, set } if t >= rise && t < set => Phase::Light,
@@ -265,8 +269,8 @@ pub fn phase_by_sun(t: i64, lat: f64, lon: f64) -> Phase {
     }
 }
 
-/// Ближайшие смены по солнцу после `t`: (момент, что наступает). Пусто —
-/// полярный день или ночь на ближайшие дни.
+/// The next switches by the sun after `t`: (moment, what begins). Empty means
+/// polar day or night for the coming days.
 pub fn next_sun_switches(t: i64, lat: f64, lon: f64, count: usize) -> Vec<(i64, Phase)> {
     let n0 = day_number(t, lon);
     let mut out: Vec<(i64, Phase)> = (n0 - 1..=n0 + 3)
@@ -282,8 +286,8 @@ pub fn next_sun_switches(t: i64, lat: f64, lon: f64, count: usize) -> Vec<(i64, 
     out
 }
 
-/// Ближайшие смены по двум временам после `now_min` (минуты от местной
-/// полуночи): (через сколько минут, что наступает).
+/// The next switches by two times after `now_min` (minutes since local
+/// midnight): (in how many minutes, what begins).
 pub fn next_time_switches(now_min: u32, light_from: u32, dark_from: u32) -> Vec<(u32, Phase)> {
     if light_from == dark_from {
         return Vec::new();
@@ -294,7 +298,7 @@ pub fn next_time_switches(now_min: u32, light_from: u32, dark_from: u32) -> Vec<
     out
 }
 
-/// Дни от 1970-01-01 → (год, месяц, день) — григорианский календарь.
+/// Days since 1970-01-01 → (year, month, day) in the Gregorian calendar.
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = z.div_euclid(146_097);
@@ -307,7 +311,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (yoe + era * 400 + i64::from(m <= 2), m, d)
 }
 
-/// (год, месяц, день) → дни от 1970-01-01.
+/// (year, month, day) → days since 1970-01-01.
 pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
@@ -318,26 +322,27 @@ pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// Момент для `OnCalendar=` в UTC: «2026-11-01 16:41:00 UTC». Часовой пояс
-/// машины тогда не нужен вовсе: таймер и расчёт солнца говорят на UTC.
+/// A moment for `OnCalendar=` in UTC: "2026-11-01 16:41:00 UTC". The
+/// machine's time zone is then not needed at all: the timer and the sun
+/// calculation both speak UTC.
 pub fn utc_calendar(t: i64) -> String {
     let (y, mo, d) = civil_from_days(t.div_euclid(86_400));
     let s = t.rem_euclid(86_400);
     format!("{y:04}-{mo:02}-{d:02} {:02}:{:02}:{:02} UTC", s / 3600, s / 60 % 60, s % 60)
 }
 
-/// «ЧЧ:ММ» момента `t` по местным часам со сдвигом `offset` (секунды).
+/// "HH:MM" of moment `t` on the local clock with offset `offset` (seconds).
 pub fn local_hhmm(t: i64, offset: i64) -> String {
     let s = (t + offset).rem_euclid(86_400);
     format!("{:02}:{:02}", s / 3600, s / 60 % 60)
 }
 
 // ============================================================================
-// Место по часовому поясу
+// Location by time zone
 // ============================================================================
 
-/// Имя пояса: `$TZ` (без `:` впереди), иначе цель ссылки `/etc/localtime`
-/// после `zoneinfo/`.
+/// The zone name: `$TZ` (without a leading `:`), otherwise the target of the
+/// `/etc/localtime` link after `zoneinfo/`.
 pub fn tz_name(tz_env: Option<&str>, localtime_link: Option<&str>) -> Option<String> {
     if let Some(tz) = tz_env.map(|t| t.trim().trim_start_matches(':')).filter(|t| t.contains('/')) {
         return Some(tz.rsplit("zoneinfo/").next().unwrap_or(tz).to_string());
@@ -348,7 +353,7 @@ pub fn tz_name(tz_env: Option<&str>, localtime_link: Option<&str>) -> Option<Str
     (!zone.is_empty()).then(|| zone.to_string())
 }
 
-/// «+5230» / «-0011532» → градусы.
+/// "+5230" / "-0011532" → degrees.
 fn iso6709_part(s: &str, deg_digits: usize) -> Option<f64> {
     let sign = match s.as_bytes().first()? {
         b'+' => 1.0,
@@ -366,9 +371,10 @@ fn iso6709_part(s: &str, deg_digits: usize) -> Option<f64> {
     Some(sign * (deg + min / 60.0 + sec / 3600.0))
 }
 
-/// Координаты главного города пояса из `zone1970.tab` (`DE\t+5230+01322\t
-/// Europe/Berlin`). Это то место, по которому часы и так идут, — точности
-/// хватает на минуты-десятки минут восхода и заката.
+/// The coordinates of the zone's main city from `zone1970.tab`
+/// (`DE\t+5230+01322\tEurope/Berlin`). This is the place the clock already
+/// follows, and the accuracy is enough for sunrise and sunset to within
+/// minutes or tens of minutes.
 pub fn zone_coords(tab: &str, zone: &str) -> Option<(f64, f64)> {
     tab.lines().filter(|l| !l.starts_with('#')).find_map(|line| {
         let mut cols = line.split('\t');
@@ -382,38 +388,38 @@ pub fn zone_coords(tab: &str, zone: &str) -> Option<(f64, f64)> {
     })
 }
 
-/// Название места по поясу: «Europe/Berlin» → «Berlin».
+/// The place name from the zone: "Europe/Berlin" → "Berlin".
 pub fn zone_place(zone: &str) -> String {
     zone.rsplit('/').next().unwrap_or(zone).replace('_', " ")
 }
 
 // ============================================================================
-// Где что делает само окружение
+// What the environment does by itself
 // ============================================================================
 
-/// Есть ли смысл в блоке. Deepin — нет: темы там задаёт только Центр
-/// управления (у него своё «Автоматически»).
+/// Whether the block makes sense. Not in Deepin: themes there are set only by
+/// the Control Center (it has its own "Automatic").
 pub fn available(de: &str) -> bool {
     de != "deepin"
 }
 
-/// Глобальная тема есть только в Plasma.
+/// Only Plasma has a global theme.
 fn has_global(de: &str) -> bool {
     de == "kde"
 }
 
-/// Глобальную тему переключает сама Plasma.
+/// Plasma switches the global theme itself.
 pub fn kde_native(cfg: &Config, de: &str) -> bool {
     cfg.mode == Mode::Auto && has_global(de) && cfg.global.on
 }
 
-/// Светлое и тёмное переключает сам COSMIC (только по солнцу).
+/// COSMIC switches light and dark itself (only by the sun).
 pub fn cosmic_native(cfg: &Config, de: &str) -> bool {
     cfg.mode == Mode::Auto && de == "cosmic" && cfg.schedule == Schedule::Sun && cfg.portal
 }
 
-/// Нужен ли таймер Rexon: в автоматическом режиме есть хоть одна часть,
-/// которую окружение само не переключает.
+/// Whether Rexon's timer is needed: in automatic mode there is at least one
+/// part the environment does not switch by itself.
 pub fn needs_timer(cfg: &Config, de: &str) -> bool {
     if cfg.mode != Mode::Auto {
         return false;
@@ -424,25 +430,25 @@ pub fn needs_timer(cfg: &Config, de: &str) -> bool {
     portal_ours || global_ours || (cfg.colors.on && !covered) || cfg.gtk.on || (cfg.icons.on && !covered) || cfg.wallpaper.on
 }
 
-/// В Plasma глобальная тема несёт свою цветовую схему и значки: при
-/// включённой паре глобальных тем отдельные пары схем и значков не
-/// применяются — иначе модуль Plasma, переключив тему, перебил бы их (или
-/// наоборот, смотря кто успел позже).
+/// In Plasma a global theme carries its own color scheme and icons: when a
+/// pair of global themes is enabled, separate scheme and icon pairs are not
+/// applied — otherwise the Plasma module would override them after switching
+/// the theme (or the other way round, depending on who came later).
 pub fn global_covers(cfg: &Config, de: &str) -> bool {
     has_global(de) && cfg.global.on
 }
 
-/// Одно действие применения.
+/// A single apply action.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Action {
-    /// Тема раздела «Оформления» (`kind` — его `apply_kind`).
+    /// A theme of an "Appearance" section (`kind` is its `apply_kind`).
     Theme { kind: &'static str, name: String },
-    /// Картинка обоев.
+    /// A wallpaper picture.
     Wallpaper { path: String },
-    /// Команда (`gsettings` режима программ).
+    /// A command (`gsettings` for the application mode).
     Run { argv: Vec<String> },
-    /// COSMIC: записать `is_dark`.
+    /// COSMIC: write `is_dark`.
     CosmicDark { dark: bool },
 }
 
@@ -450,8 +456,8 @@ fn gsettings(schema: &str, key: &str, value: &str) -> Action {
     Action::Run { argv: ["gsettings", "set", schema, key, value].iter().map(|s| s.to_string()).collect() }
 }
 
-/// Режим программ: чем говорить окружению «светлое / тёмное». Plasma —
-/// ничем: портал KDE выводит режим из цветовой схемы.
+/// Application mode: how to tell the environment "light / dark". Plasma needs
+/// nothing: the KDE portal derives the mode from the color scheme.
 pub fn portal_actions(de: &str, phase: Phase) -> Vec<Action> {
     let dark = phase.is_dark();
     let (gs, gk) = crate::themes::COLOR_SCHEME_KEY;
@@ -459,7 +465,7 @@ pub fn portal_actions(de: &str, phase: Phase) -> Vec<Action> {
     match de {
         "kde" | "deepin" => Vec::new(),
         "cosmic" => vec![Action::CosmicDark { dark }, gnome],
-        // Портал xapp берёт режим из своей схемы.
+        // The xapp portal takes the mode from its own schema.
         "cinnamon" | "cinnamon-mint" | "xfce" => {
             vec![gsettings("org.x.apps.portal", "color-scheme", if dark { "prefer-dark" } else { "prefer-light" }), gnome]
         }
@@ -471,11 +477,11 @@ pub fn portal_actions(de: &str, phase: Phase) -> Vec<Action> {
     }
 }
 
-/// Что применить для `phase`. `scheduled` — запуск по таймеру или при
-/// входе: тогда части, которые окружение переключает само, пропускаются.
-/// Порядок: глобальная тема (она несёт свою схему и значки) → схема →
-/// значки → GTK → обои → режим программ последним (тема GTK в GNOME сама
-/// ставит режим по своей тёмности — выбор человека должен победить).
+/// What to apply for `phase`. `scheduled` means a run by the timer or at
+/// login: then the parts the environment switches by itself are skipped. The
+/// order: global theme (it carries its own scheme and icons) → scheme →
+/// icons → GTK → wallpaper → application mode last (in GNOME the GTK theme
+/// sets the mode by its own darkness, and the person's choice must win).
 pub fn plan(cfg: &Config, de: &str, phase: Phase, scheduled: bool) -> Vec<Action> {
     if !available(de) {
         return Vec::new();
@@ -506,10 +512,10 @@ pub fn plan(cfg: &Config, de: &str, phase: Phase, scheduled: bool) -> Vec<Action
 }
 
 // ============================================================================
-// Файлы: таймер, служба, автозапуск, настройка Plasma и COSMIC
+// Files: timer, service, autostart, Plasma and COSMIC settings
 // ============================================================================
 
-/// Пути одного пользователя.
+/// The paths of one user.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Paths {
     pub config_home: String,
@@ -528,7 +534,7 @@ impl Paths {
     pub fn config(&self) -> String {
         format!("{}/rexon/day-night.json", self.config_home)
     }
-    /// Общие настройки Rexon (там — плейлист обоев).
+    /// Rexon's general settings (they contain the wallpaper playlist).
     pub fn settings(&self) -> String {
         format!("{}/rexon/settings.json", self.config_home)
     }
@@ -546,10 +552,10 @@ impl Paths {
     }
 }
 
-/// Текст таймера. По времени — два ежедневных момента по местным часам; по
-/// солнцу — точные моменты следующих смен в UTC (после каждой смены
-/// служба переписывает таймер) и ежедневная сверка на случай полярного
-/// дня или ночи. Описание — по-английски: его читает `systemctl`.
+/// The timer text. By time: two daily moments on the local clock; by the
+/// sun: the exact moments of the next switches in UTC (after each switch the
+/// service rewrites the timer) plus a daily check in case of polar day or
+/// night. The description is in English: `systemctl` reads it.
 pub fn timer_text(cfg: &Config, sun_events: &[i64]) -> String {
     let mut calendar = String::new();
     match cfg.schedule {
@@ -581,7 +587,7 @@ pub fn timer_text(cfg: &Config, sun_events: &[i64]) -> String {
     )
 }
 
-/// Текст службы.
+/// The service text.
 pub fn service_text(exec_start: &str, program: Option<&str>) -> String {
     let condition = program
         .filter(|p| p.starts_with('/'))
@@ -599,7 +605,7 @@ pub fn service_text(exec_start: &str, program: Option<&str>) -> String {
     )
 }
 
-/// Запись автозапуска: при входе применить нынешнее.
+/// The autostart entry: apply the current state at login.
 pub fn autostart_text(exec: &str) -> String {
     format!(
         "[Desktop Entry]\n\
@@ -619,10 +625,10 @@ fn kwrite(file: &str, group: &str, key: &str, value: &str) -> Vec<String> {
         .collect()
 }
 
-/// Настройка Plasma: переключение глобальной темы и общее расписание
-/// (`knighttimerc` — то же, что «Параметры системы → Время суток»).
-/// `currently_auto` — включено ли переключение Plasma сейчас: выбор
-/// «Светлое»/«Тёмное» его выключает, «не управлять» — не трогает.
+/// Plasma settings: global theme switching and the shared schedule
+/// (`knighttimerc`, the same as "System Settings → Day-Night Cycle").
+/// `currently_auto` is whether Plasma's switching is on right now: choosing
+/// "Light"/"Dark" turns it off, "do not manage" leaves it alone.
 pub fn kde_native_argv(cfg: &Config, currently_auto: bool) -> Vec<Vec<String>> {
     if !kde_native(cfg, "kde") {
         return if currently_auto && cfg.mode != Mode::Off {
@@ -656,16 +662,16 @@ pub fn kde_native_argv(cfg: &Config, currently_auto: bool) -> Vec<Vec<String>> {
             }
         }
     }
-    // Последним: модуль Plasma перечитывает настройку по этому ключу.
+    // Last: the Plasma module rereads the settings on this key.
     out.push(kwrite("kdeglobals", "KDE", "AutomaticLookAndFeel", "true"));
     out
 }
 
 // ============================================================================
-// Ввод-вывод
+// Input/output
 // ============================================================================
 
-/// Машина: файлы, команды, часы.
+/// The machine: files, commands, clock.
 pub trait DayNightIo {
     fn read(&self, path: &str) -> Option<String>;
     fn write(&self, path: &str, text: &str) -> bool;
@@ -673,13 +679,13 @@ pub trait DayNightIo {
     fn list_dir(&self, path: &str) -> Vec<String>;
     fn run(&self, argv: &[String]) -> (bool, String);
     fn have(&self, tool: &str) -> bool;
-    /// Применить тему раздела «Оформления» (`kind` — `apply_kind`).
+    /// Applies a theme of an "Appearance" section (`kind` is `apply_kind`).
     fn apply_theme(&self, de: &str, kind: &str, name: &str) -> (bool, String);
-    /// Поставить картинку обоями.
+    /// Sets a picture as the wallpaper.
     fn apply_wallpaper(&self, path: &str) -> (bool, String);
 }
 
-/// Настоящая машина.
+/// The real machine.
 pub struct SystemDayNightIo;
 
 impl DayNightIo for SystemDayNightIo {
@@ -739,12 +745,12 @@ fn write_json<T: Serialize>(io: &dyn DayNightIo, path: &str, v: &T) -> bool {
     io.write(path, &(serde_json::to_string_pretty(v).unwrap_or_default() + "\n"))
 }
 
-/// Часы и место для решения.
+/// The clock and the location for the decision.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Clock {
-    /// unix, с.
+    /// unix, s.
     pub now: i64,
-    /// Местное время минус UTC, с.
+    /// Local time minus UTC, s.
     pub offset: i64,
 }
 
@@ -754,13 +760,13 @@ impl Clock {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        // Местные часы — общая точка продукта (`Timestamp::now_local`);
-        // сдвиг — разница с UTC той же секунды.
+        // The local clock is the product's shared point (`Timestamp::now_local`);
+        // the offset is the difference from UTC of the same second.
         let offset = crate::qt_app::Timestamp::now_local()
             .map(|ts| {
                 let local = days_from_civil(i64::from(ts.year), ts.month, ts.day) * 86_400
                     + i64::from(ts.hour * 3600 + ts.minute * 60 + ts.second);
-                // Секунда могла смениться между двумя чтениями — до минуты.
+                // The second may have changed between the two reads: round to the minute.
                 ((local - now) as f64 / 60.0).round() as i64 * 60
             })
             .unwrap_or(0);
@@ -771,7 +777,7 @@ impl Clock {
     }
 }
 
-/// Место для расчёта солнца: своё либо по часовому поясу.
+/// The location for the sun calculation: one's own or by the time zone.
 pub fn location(io: &dyn DayNightIo, cfg: &Config, tz_env: Option<&str>, localtime_link: Option<&str>) -> Option<(f64, f64, String)> {
     if !cfg.auto_location {
         if let (Some(lat), Some(lon)) = (cfg.lat, cfg.lon) {
@@ -791,7 +797,7 @@ fn live_tz() -> (Option<String>, Option<String>) {
     )
 }
 
-/// Светлое или тёмное сейчас. Вне автоматического режима — выбранное.
+/// Light or dark right now. Outside automatic mode, the chosen one.
 pub fn current_phase(cfg: &Config, clock: Clock, place: Option<(f64, f64)>) -> Phase {
     match cfg.mode {
         Mode::Dark => Phase::Dark,
@@ -806,11 +812,12 @@ pub fn current_phase(cfg: &Config, clock: Clock, place: Option<(f64, f64)>) -> P
     }
 }
 
-/// Исполнить план. Возвращает сбои (по строке на часть).
+/// Executes the plan. Returns the failures (one line per part).
 pub fn run_plan(io: &dyn DayNightIo, paths: &Paths, de: &str, actions: &[Action]) -> Vec<String> {
     let mut failed = Vec::new();
-    // Один хозяин обоев: играет плейлист обоев Rexon — пара картинок
-    // расписания экран не трогает (темы и схемы переключаются как обычно).
+    // One owner of the wallpaper: if the Rexon wallpaper playlist is playing,
+    // the schedule's picture pair does not touch the screen (themes and schemes
+    // switch as usual).
     let playlist_owns = io
         .read(&paths.settings())
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
@@ -842,8 +849,8 @@ pub fn run_plan(io: &dyn DayNightIo, paths: &Paths, de: &str, actions: &[Action]
     failed
 }
 
-/// Что сделать с файлами исполнителя: (путь, текст) — записать; пути —
-/// удалить; команды `systemctl --user` по порядку.
+/// What to do with the executor's files: (path, text) to write; paths to
+/// delete; `systemctl --user` commands in order.
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct UnitsPlan {
     pub write: Vec<(String, String)>,
@@ -851,8 +858,9 @@ pub struct UnitsPlan {
     pub systemctl: Vec<Vec<String>>,
 }
 
-/// План таймера, службы и автозапуска. `launch` — (строка `ExecStart=`,
-/// строка `Exec=` автозапуска, путь бинаря); `None` — запускать нечем.
+/// The plan for the timer, the service and autostart. `launch` is (the
+/// `ExecStart=` line, the autostart `Exec=` line, the binary path); `None`
+/// means there is nothing to launch with.
 pub fn units_plan(
     paths: &Paths,
     cfg: &Config,
@@ -873,8 +881,8 @@ pub fn units_plan(
                 }
             }
             if plan.write.iter().any(|(p, _)| p != &files[2]) {
-                // `restart` и запускает новый таймер, и заставляет прежний
-                // взять новые моменты.
+                // `restart` both starts a new timer and makes the previous one pick up the
+                // new moments.
                 plan.systemctl = vec![v(&["daemon-reload"]), v(&["enable", TIMER_UNIT]), v(&["restart", TIMER_UNIT])];
             }
         }
@@ -895,13 +903,13 @@ pub fn units_plan(
     plan
 }
 
-/// `systemctl --user` при удалении Rexon.
+/// `systemctl --user` when Rexon is removed.
 pub fn uninstall_paths(paths: &Paths) -> Vec<String> {
     vec![paths.unit(TIMER_UNIT), paths.unit(SERVICE_UNIT), paths.autostart()]
 }
 
 fn exec_units(io: &dyn DayNightIo, plan: &UnitsPlan) -> Result<(), String> {
-    // Снятие: сначала `disable --now` (файл ещё на месте), потом файлы.
+    // Removal: first `disable --now` (the file is still in place), then the files.
     let (first, rest): (Vec<&Vec<String>>, Vec<&Vec<String>>) =
         plan.systemctl.iter().partition(|a| a.first().map(String::as_str) == Some("disable"));
     let systemctl = |args: &Vec<String>| -> Result<(), String> {
@@ -933,7 +941,7 @@ fn exec_units(io: &dyn DayNightIo, plan: &UnitsPlan) -> Result<(), String> {
     Ok(())
 }
 
-/// Моменты следующих смен по солнцу для таймера.
+/// The moments of the next switches by the sun, for the timer.
 fn sun_events_for(cfg: &Config, clock: Clock, place: Option<(f64, f64)>) -> Vec<i64> {
     match (cfg.schedule, place) {
         (Schedule::Sun, Some((lat, lon))) => next_sun_switches(clock.now, lat, lon, 2).into_iter().map(|(t, _)| t).collect(),
@@ -941,20 +949,20 @@ fn sun_events_for(cfg: &Config, clock: Clock, place: Option<(f64, f64)>) -> Vec<
     }
 }
 
-/// Окружение запуска: из переменных сеанса, иначе — последнего входа.
+/// The launch environment: from the session variables, otherwise from the last login.
 fn de_of(env_de: Option<String>, memo: &Memo) -> String {
     env_de.filter(|d| !d.is_empty()).unwrap_or_else(|| memo.de.clone())
 }
 
-/// Всё, что зависит от машины, для одного прохода.
+/// Everything machine-dependent, for a single pass.
 pub struct Env<'a> {
     pub io: &'a dyn DayNightIo,
     pub paths: Paths,
     pub clock: Clock,
-    /// Окружение из переменных сеанса (None — их нет: служба systemd).
+    /// The environment from the session variables (None means there are none: a systemd service).
     pub de: Option<String>,
     pub tz: (Option<String>, Option<String>),
-    /// (`ExecStart=`, `Exec=` автозапуска, путь бинаря).
+    /// (`ExecStart=`, the autostart `Exec=`, the binary path).
     pub launch: Option<(String, String, Option<String>)>,
 }
 
@@ -967,7 +975,7 @@ impl Env<'_> {
     }
 }
 
-/// Проверка настройки перед сохранением. `None` — годна.
+/// Validates the settings before saving. `None` means they are valid.
 pub fn validate(cfg: &Config, de: &str) -> Option<String> {
     if cfg.mode == Mode::Auto && cfg.schedule == Schedule::Times {
         match (parse_hhmm(&cfg.light_at), parse_hhmm(&cfg.dark_at)) {
@@ -990,8 +998,8 @@ pub fn validate(cfg: &Config, de: &str) -> Option<String> {
     None
 }
 
-/// «Сохранить»: записать настройку, настроить Plasma/COSMIC, поставить или
-/// снять таймер и применить нынешнее. (получилось, сообщение).
+/// "Save": writes the settings, configures Plasma/COSMIC, installs or removes
+/// the timer and applies the current state. Returns (succeeded, message).
 pub fn save(env: &Env, cfg: &Config) -> (bool, String) {
     let io = env.io;
     let memo = read_memo(io, &env.paths);
@@ -1060,16 +1068,16 @@ pub fn save(env: &Env, cfg: &Config) -> (bool, String) {
     }
 }
 
-/// `rexon --apply-day-night [--login]`: применить нынешнее и, по солнцу,
-/// переписать таймер на следующие смены. Код 0 — применено либо делать
-/// нечего; 1 — часть не применилась.
+/// `rexon --apply-day-night [--login]`: applies the current state and, for
+/// the sun schedule, rewrites the timer for the next switches. Exit code 0
+/// means applied or nothing to do; 1 means some part was not applied.
 pub fn run_scheduled(env: &Env, _login: bool, out: &mut dyn FnMut(&str)) -> i32 {
     let io = env.io;
     let cfg = read_config(io, &env.paths);
     let mut memo = read_memo(io, &env.paths);
     let de = de_of(env.de.clone(), &memo);
     if cfg.mode != Mode::Auto || !available(&de) {
-        // Таймер остался от прежней настройки — снять.
+        // A timer is left over from previous settings: remove it.
         let units = units_plan(&env.paths, &Config { mode: Mode::Off, ..cfg.clone() }, &de, &[], None, &|p| io.read(p));
         let _ = exec_units(io, &units);
         return 0;
@@ -1090,17 +1098,17 @@ pub fn run_scheduled(env: &Env, _login: bool, out: &mut dyn FnMut(&str)) -> i32 
 }
 
 // ============================================================================
-// Снимок блока для окна
+// The block snapshot for the window
 // ============================================================================
 
-/// Пункт выпадающего списка.
+/// A drop-down list item.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Choice {
     pub id: String,
     pub label: String,
 }
 
-/// Одна часть в окне.
+/// One part in the window.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PartView {
     pub id: &'static str,
@@ -1109,11 +1117,11 @@ pub struct PartView {
     pub light: String,
     pub dark: String,
     pub items: Vec<Choice>,
-    /// Выбор файла, а не списка (обои).
+    /// A file choice rather than a list (wallpaper).
     pub file: bool,
 }
 
-/// Снимок блока.
+/// The block snapshot.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct State {
     pub available: bool,
@@ -1135,15 +1143,16 @@ pub struct State {
     pub place: String,
     pub pick_label: String,
     pub save_label: String,
-    /// «Сейчас — светлое. Следующая смена — тёмное в 17:41.»
+    /// "It is light now. The next switch is to dark at 17:41."
     pub status: String,
-    /// Строка свёрнутого блока: что выбрано сейчас («Светлое и тёмное: по
-    /// расписанию 07:00–19:00»).
+    /// The line of the collapsed block: what is chosen now ("Light and dark: on a
+    /// schedule 07:00–19:00").
     pub summary: String,
-    /// Раскрыт ли блок. По умолчанию свёрнут: развёрнутый занимал полэкрана
-    /// над сеткой тем. Помнится между запусками ([`EXPANDED_KEY`]).
+    /// Whether the block is expanded. Collapsed by default: when expanded it took
+    /// half the screen above the theme grid. Remembered between runs
+    /// ([`EXPANDED_KEY`]).
     pub expanded: bool,
-    /// Что переключает само окружение.
+    /// What the environment switches by itself.
     pub native_note: String,
 }
 
@@ -1157,13 +1166,13 @@ fn lower_dirs(home: &str, rel: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// Имя из `metadata.json` глобальной темы.
+/// The name from the global theme's `metadata.json`.
 fn lnf_label(text: &str) -> Option<String> {
     let v: Value = serde_json::from_str(text).ok()?;
     v.pointer("/KPlugin/Name").and_then(Value::as_str).map(str::to_string)
 }
 
-/// Установленное для части: (имя для применения, подпись).
+/// What is installed for a part: (name for applying, label).
 pub fn list_items(io: &dyn DayNightIo, home: &str, kind: &str) -> Vec<Choice> {
     let mut out: Vec<Choice> = Vec::new();
     let mut push = |id: String, label: String| {
@@ -1211,7 +1220,7 @@ pub fn list_items(io: &dyn DayNightIo, home: &str, kind: &str) -> Vec<Choice> {
                         continue;
                     }
                     let Some(index) = io.read(&format!("{dir}/{name}/index.theme")) else { continue };
-                    // Тема курсоров без значков — не сюда.
+                    // A cursor theme without icons does not belong here.
                     let dirs = crate::shell_palette::ini_get(&index, "Icon Theme", "Directories").unwrap_or_default();
                     if dirs.trim().is_empty() {
                         continue;
@@ -1231,8 +1240,8 @@ fn norm_name(s: &str) -> String {
     s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
-/// Пара по именам: тёмная — с «dark» в имени, светлая — то же имя без него
-/// (`Adwaita` / `Adwaita-dark`, `org.kde.breeze.desktop` /
+/// A pair by names: the dark one has "dark" in its name, the light one is the
+/// same name without it (`Adwaita` / `Adwaita-dark`, `org.kde.breeze.desktop` /
 /// `org.kde.breezedark.desktop`, `BreezeLight` / `BreezeDark`).
 pub fn suggest_pair(items: &[Choice]) -> Option<(String, String)> {
     for dark in items.iter().filter(|c| c.id.to_lowercase().contains("dark")) {
@@ -1276,10 +1285,10 @@ fn status_text(cfg: &Config, clock: Clock, place: Option<(f64, f64)>) -> String 
     }
 }
 
-/// Ключ `settings.json`: раскрыт ли блок «Светлое и тёмное».
+/// The `settings.json` key: whether the "Light and dark" block is expanded.
 pub const EXPANDED_KEY: &str = "day_night_expanded";
 
-/// Строка свёрнутого блока — что выбрано.
+/// The line of the collapsed block: what is chosen.
 fn summary_text(cfg: &Config) -> String {
     match (cfg.mode, cfg.schedule) {
         (Mode::Off, _) => tr("Light and dark: off"),
@@ -1300,7 +1309,7 @@ fn native_note(cfg: &Config, de: &str) -> String {
     }
 }
 
-/// Снимок блока для окна.
+/// The block snapshot for the window.
 pub fn state(env: &Env, home: &str) -> State {
     let io = env.io;
     let memo = read_memo(io, &env.paths);
@@ -1378,7 +1387,7 @@ pub fn state(env: &Env, home: &str) -> State {
 }
 
 // ============================================================================
-// Живые входы
+// Live entry points
 // ============================================================================
 
 fn live_env(io: &dyn DayNightIo) -> Env<'_> {
@@ -1388,8 +1397,9 @@ fn live_env(io: &dyn DayNightIo) -> Env<'_> {
         &env_str("DESKTOP_SESSION"),
         !env_str("WAYLAND_DISPLAY").is_empty(),
     );
-    // Раздел вкладки «Оформление» — за выбором «Текущее окружение»; запуск
-    // по таймеру (отдельный процесс) выбора не знает и берёт сеанс.
+    // The section of the "Appearance" tab follows the "Current environment"
+    // choice; a run by the timer (a separate process) does not know that choice
+    // and takes the session.
     let de = match crate::animations::LookCtx::from_env().for_chosen(&crate::animations::chosen_desktop()).de {
         chosen if !chosen.is_empty() && de.as_deref() != Some(chosen.as_str()) => Some(chosen),
         _ => de,
@@ -1412,7 +1422,7 @@ fn live_env(io: &dyn DayNightIo) -> Env<'_> {
     }
 }
 
-/// Снимок для окна (JSON).
+/// The snapshot for the window (JSON).
 pub fn live_state() -> State {
     let home = std::env::var("HOME").unwrap_or_default();
     let mut st = state(&live_env(&SystemDayNightIo), &home);
@@ -1423,14 +1433,14 @@ pub fn live_state() -> State {
     st
 }
 
-/// Запомнить, раскрыт ли блок. `false` — записать не удалось.
+/// Remembers whether the block is expanded. `false` means it could not be written.
 pub fn live_set_expanded(on: bool) -> bool {
     crate::settings::SettingsManager::new()
         .and_then(|mut m| m.set(EXPANDED_KEY, serde_json::Value::from(on)))
         .is_ok()
 }
 
-/// «Сохранить» из окна: `json` — [`Config`].
+/// "Save" from the window: `json` is a [`Config`].
 pub fn live_save(json: &str) -> (bool, String) {
     match serde_json::from_str::<Config>(json) {
         Ok(cfg) => save(&live_env(&SystemDayNightIo), &cfg),
@@ -1438,7 +1448,7 @@ pub fn live_save(json: &str) -> (bool, String) {
     }
 }
 
-/// Маршрут `--apply-day-night`.
+/// The `--apply-day-night` route.
 pub fn cli_route(args: &[String], out: &mut dyn FnMut(&str)) -> i32 {
     let login = args.iter().any(|a| a == crate::aeroshell::LOGIN_FLAG);
     run_scheduled(&live_env(&SystemDayNightIo), login, out)
@@ -1448,7 +1458,7 @@ pub fn cli_route(args: &[String], out: &mut dyn FnMut(&str)) -> i32 {
 mod tests {
     use super::*;
 
-    /// Строка свёрнутого блока называет выбранное.
+    /// The line of the collapsed block names what is chosen.
     #[test]
     fn строка_свёрнутого_блока() {
         let mut cfg = Config::default();
@@ -1468,11 +1478,11 @@ mod tests {
         assert_eq!(parse_hhmm("24:00"), None);
         assert_eq!(phase_by_times(8 * 60, 7 * 60, 19 * 60), Phase::Light);
         assert_eq!(phase_by_times(20 * 60, 7 * 60, 19 * 60), Phase::Dark);
-        // Светлое с 22:00 (ночная смена) до 06:00.
+        // Light from 22:00 (a night shift) to 06:00.
         assert_eq!(phase_by_times(23 * 60, 22 * 60, 6 * 60), Phase::Light);
         assert_eq!(phase_by_times(12 * 60, 22 * 60, 6 * 60), Phase::Dark);
         assert_eq!(next_time_switches(18 * 60, 7 * 60, 19 * 60), vec![(60, Phase::Dark), (13 * 60, Phase::Light)]);
-        // Ровно в момент смены следующая — через сутки, а не через 0 минут.
+        // Exactly at the switch moment, the next one is a day away, not 0 minutes.
         assert_eq!(next_time_switches(19 * 60, 7 * 60, 19 * 60)[1], (1440, Phase::Dark));
     }
 

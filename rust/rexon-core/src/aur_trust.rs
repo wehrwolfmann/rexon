@@ -1,56 +1,56 @@
-//! Признаки риска пакета AUR — «Проверка источника» на карточке пакета и
-//! короткий значок на плитке.
+//! AUR package risk signs — the "Source check" on the package card and
+//! a short badge on the tile.
 //!
-//! Зачем. AUR — пакеты, которые выкладывают сами пользователи; правила Arch
-//! прямо говорят, что проверять источник — забота того, кто ставит. Обычный
-//! покупатель PKGBUILD не читает, поэтому Rexon сам собирает то, что можно
-//! узнать без входа на сайты, и говорит человеческими словами, что насторожило.
-//! Установку это НЕ запрещает — только предупреждает.
+//! Why. The AUR is packages uploaded by users themselves; the Arch rules
+//! say plainly that checking the source is the job of whoever installs. A regular
+//! buyer does not read PKGBUILDs, so Rexon itself collects what can be
+//! learned without logging into sites, and says in human words what looked suspicious.
+//! This does NOT forbid installation — it only warns.
 //!
-//! Откуда что берётся:
+//! Where things come from:
 //!
-//! * RPC `info` (уже есть у карточки и плитки) — голоса, популярность,
-//!   «устарел», нет сопровождающего;
-//! * RPC `search?by=maintainer` — сколько пакетов у сопровождающего и когда
-//!   появился первый из них (даты регистрации учётки RPC не отдаёт, а
-//!   страница учётки закрыта для гостей); если по нему видно, что за одну
-//!   неделю обновили много СТАРЫХ пакетов, — ещё один запрос `info` по
-//!   ним: кто их когда-то выложил. Учётка без своих давних пакетов,
-//!   разом подобравшая чужие брошенные, — так захватили пакеты в июне
+//! * the RPC `info` (the card and tile already have it) — votes, popularity,
+//!   "out of date", no maintainer;
+//! * the RPC `search?by=maintainer` — how many packages the maintainer has and when
+//!   the first of them appeared (the RPC does not give the account registration date, and
+//!   the account page is closed to guests); if it shows that many OLD packages
+//!   were updated within one week — one more `info` request for
+//!   them: who originally uploaded them. An account without old packages of its own
+//!   that picked up other people's abandoned ones all at once — that is how packages were hijacked in June
 //!   2026;
-//! * журнал git пакета (страница `cgit … /log/`) — кто правил пакет: новое
-//!   имя в последние полгода при прежних других — «пакет перешёл в другие
-//!   руки»; и дата самой новой правки: если AUR пишет «обновлён» заметно
-//!   ПОЗЖЕ неё, историю пакета переписали (силой это может только
-//!   сотрудник Arch, вычищая вредную правку) или правку выложили с
-//!   поддельной датой. Отдельного запроса не нужно — журнал уже есть;
-//! * страница пакета на сайте AUR — кто выложил последнюю версию (Last
-//!   Packager; RPC этого не отдаёт). Если это не сопровождающий и не его
-//!   помощник, а сотрудник Arch (списки Package Maintainers и Developers
-//!   на archlinux.org, держатся неделю), — так Arch вычищает взломанные
-//!   пакеты. Отметку «Inactive since» и дату регистрации учётки сайт
-//!   показывает только вошедшим (страница учётки отвечает гостю 401),
-//!   поэтому Rexon их не видит;
-//! * собственные снимки: при каждом открытии карточки запоминается
-//!   сопровождающий, смена между открытиями видна сразу;
-//! * `.SRCINFO` — откуда берутся исходники и сверяются ли они по
-//!   контрольной сумме;
-//! * API GitHub для источников на GitHub — форк ли это и не меняли ли
-//!   недавно сценарии GitHub Actions (`.github/workflows`): ровно так
-//!   выглядела атака 09.10.2026 — украденная учётка, во все репозитории
-//!   дописан сценарий, крадущий ключи. Новый файл сценария, который в
-//!   текущей версии репозитория (ветка по умолчанию) уже удалён, — жёлтый
-//!   признак, а не красный: после той атаки автор удалил вредный файл, и
-//!   красный ещё 30 дней был бы ложной тревогой.
+//! * the package's git log (the `cgit … /log/` page) — who edited the package: a new
+//!   name in the last half year where there used to be others — "the package changed
+//!   hands"; and the date of the newest edit: if the AUR says "updated" noticeably
+//!   LATER than it, the package history was rewritten (only an Arch staff member
+//!   can force that, when scrubbing a malicious edit) or the edit was uploaded with
+//!   a forged date. No separate request is needed — the log is already there;
+//! * the package page on the AUR site — who uploaded the latest version (Last
+//!   Packager; the RPC does not give it). If it is neither the maintainer nor their
+//!   co-maintainer but an Arch staff member (the Package Maintainers and Developers lists
+//!   on archlinux.org, kept for a week) — that is how Arch scrubs hacked
+//!   packages. The site shows the "Inactive since" mark and the account registration date
+//!   only to logged-in users (the account page answers a guest with 401),
+//!   so Rexon cannot see them;
+//! * our own snapshots: every time the card is opened the maintainer is
+//!   remembered, a change between openings is visible right away;
+//! * `.SRCINFO` — where the sources come from and whether they are verified by
+//!   a checksum;
+//! * the GitHub API for sources on GitHub — whether it is a fork and whether the
+//!   GitHub Actions workflows (`.github/workflows`) were changed recently: this is exactly
+//!   what the attack of 09.10.2026 looked like — a stolen account, a key-stealing
+//!   workflow added to every repository. A new workflow file that is already deleted in
+//!   the current version of the repository (the default branch) is a yellow
+//!   sign, not a red one: after that attack the author deleted the malicious file, and
+//!   red would have been a false alarm for another 30 days.
 //!
-//! Нагрузка. Глубокая проверка идёт ТОЛЬКО при открытии карточки, ответ
-//! лежит на диске сутки (`~/.cache/rexon/aur-trust.json`), обращения к
-//! страницам AUR — с паузой (её даёт вызывающий), к GitHub без входа —
-//! не больше `MAX_GITHUB_REPOS` репозиториев и `MAX_GITHUB_PER_REPO`
-//! запросов на каждый (лимит GitHub для гостя — 60 в час). Нет сети, защита сайта от ботов,
-//! лимит GitHub — проверка молча пропускается и помечается неполной.
+//! Load. The deep check runs ONLY when the card is opened, the answer
+//! stays on disk for a day (`~/.cache/rexon/aur-trust.json`), requests to
+//! AUR pages go with a pause (provided by the caller), to GitHub without logging in —
+//! no more than `MAX_GITHUB_REPOS` repositories and `MAX_GITHUB_PER_REPO`
+//! requests each (GitHub's guest limit is 60 per hour). No network, the site's bot protection,
+//! the GitHub limit — the check is silently skipped and marked incomplete.
 //!
-//! Разбор — чистые функции над записанными ответами (`tests/aur_trust.rs`).
+//! Parsing — pure functions over recorded responses (`tests/aur_trust.rs`).
 
 use crate::aur::{AurInfo, AurPackage};
 use crate::i18n::{fill, ntr, tr, trf};
@@ -60,98 +60,98 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-// ── Пороги ────────────────────────────────────────────────────────────────
+// ── Thresholds ────────────────────────────────────────────────────────────
 
-/// Сколько держать глубокую проверку на диске, секунды.
+/// How long to keep a deep check on disk, seconds.
 pub const CACHE_TTL_SECS: i64 = 24 * 3600;
-/// Неполную проверку (сеть, лимит GitHub) повторяем раньше — через час.
+/// An incomplete check (network, GitHub limit) is repeated sooner — after an hour.
 pub const PARTIAL_TTL_SECS: i64 = 3600;
-/// Записи старше этого из файла выбрасываются (снимки сопровождающих тоже).
+/// Records older than this are dropped from the file (maintainer snapshots too).
 pub const KEEP_SECS: i64 = 365 * 24 * 3600;
 
-/// «Недавно» для смены сопровождающего и нового имени в журнале: полгода.
-/// Захват брошенного пакета и вредное обновление разнесены во времени на
-/// недели-месяцы; старые передачи пакета из рук в руки шумом не считаются.
+/// "Recently" for a maintainer change and a new name in the log: half a year.
+/// Hijacking an abandoned package and a malicious update are weeks to months
+/// apart; old handovers of a package from hand to hand are not counted as noise.
 pub const RECENT_OWNER_SECS: i64 = 180 * 24 * 3600;
-/// «Недавно» для сценариев GitHub: 30 дней, как просили после атаки 09.10.
+/// "Recently" for GitHub workflows: 30 days, as requested after the 09.10 attack.
 pub const WORKFLOW_SECS: i64 = 30 * 24 * 3600;
-/// Новый сопровождающий: все его пакеты моложе полугода.
+/// A new maintainer: all their packages are younger than half a year.
 pub const NEW_MAINTAINER_SECS: i64 = 180 * 24 * 3600;
 
-/// Мало голосов: меньше пяти — пакет, по сути, никто, кроме автора, не
-/// пробовал и не смотрел.
+/// Few votes: fewer than five — essentially nobody but the author has
+/// tried or looked at the package.
 pub const FEW_VOTES: i64 = 5;
-/// …или меньше двадцати при популярности ниже 0,1. Популярность AUR — сумма
-/// голосов с затуханием 0,98 в день: 0,1 — это меньше одного свежего голоса
-/// за последние ~4 месяца (0,98^114 ≈ 0,1), то есть пакетом сейчас не
-/// пользуются.
+/// …or fewer than twenty with popularity below 0.1. AUR popularity is a sum
+/// of votes decaying by 0.98 per day: 0.1 is less than one fresh vote
+/// over the last ~4 months (0.98^114 ≈ 0.1), i.e. nobody uses the package
+/// now.
 pub const LOW_POP_VOTES: i64 = 20;
 pub const LOW_POPULARITY: f64 = 0.1;
-/// Мало пакетов у сопровождающего: два и меньше.
+/// Few packages for the maintainer: two or fewer.
 pub const FEW_PACKAGES: i64 = 2;
 
-/// Сколько репозиториев GitHub проверять у одного пакета.
+/// How many GitHub repositories to check per package.
 pub const MAX_GITHUB_REPOS: usize = 2;
-/// Сколько свежих правок сценариев раскрывать подробно (новый ли файл).
+/// How many fresh workflow edits to expand in detail (whether a file is new).
 pub const MAX_COMMIT_DETAILS: usize = 2;
-/// Сколько всего запросов к GitHub на один репозиторий: паспорт, список
-/// правок сценариев, до [`MAX_COMMIT_DETAILS`] правок подробно и, если на
-/// это осталось место, список сценариев в текущей версии.
+/// How many GitHub requests in total per repository: the profile, the list of
+/// workflow edits, up to [`MAX_COMMIT_DETAILS`] edits in detail and, if there is
+/// room left, the list of workflows in the current version.
 pub const MAX_GITHUB_PER_REPO: usize = 4;
 
-/// Список сотрудников Arch держим неделю: меняется он редко, а страницы
-/// большие (две по 80–230 КБ).
+/// We keep the Arch staff list for a week: it changes rarely, and the pages
+/// are big (two of 80–230 KB).
 pub const STAFF_TTL_SECS: i64 = 7 * 24 * 3600;
 
-/// «Обновлён» позже самой новой правки в git больше чем на неделю —
-/// историю переписали. Меньше — обычное дело: правку сделали, а выложили
-/// через несколько дней.
+/// "Updated" later than the newest git edit by more than a week —
+/// the history was rewritten. Less is normal: the edit was made and uploaded
+/// a few days later.
 pub const HISTORY_GAP_SECS: i64 = 7 * 24 * 3600;
-/// Только что обновлённый пакет так не судим: страница журнала на сайте
-/// отдаётся из кеша и может отставать от выкладки.
+/// A just-updated package is not judged this way: the site's log page
+/// is served from a cache and may lag behind the upload.
 pub const CGIT_LAG_SECS: i64 = 6 * 3600;
 
-/// Массовая подборка: столько чужих старых пакетов, обновлённых за одну
-/// неделю. Честный новичок обычно подбирает один-четыре связанных
-/// пакета; при захвате июня 2026 (учётка fennekuiper) — 13 за два дня.
+/// Mass adoption: this many other people's old packages updated within one
+/// week. An honest newcomer usually picks up one to four related
+/// packages; in the June 2026 hijack (the fennekuiper account) — 13 in two days.
 pub const MASS_ADOPT: usize = 8;
-/// «Короткое время» для подборки.
+/// The "short time" for an adoption.
 pub const ADOPT_WINDOW_SECS: i64 = 7 * 24 * 3600;
-/// Пакет «старый» (подобран, а не только что выложен): существовал хотя
-/// бы месяц до обновления.
+/// A package is "old" (adopted, not just uploaded): it existed at least
+/// a month before the update.
 pub const ADOPT_OLD_SECS: i64 = 30 * 24 * 3600;
-/// Больше паспортов одним запросом `info` не спрашиваем.
+/// We do not ask for more profiles than this in one `info` request.
 pub const MAX_INFO_NAMES: usize = 100;
 
-/// Таймаут запросов, секунды.
+/// Request timeout, seconds.
 pub const TIMEOUT_SECS: u64 = 25;
-/// Имя файла кеша в `~/.cache/rexon/`.
+/// The cache file name in `~/.cache/rexon/`.
 pub const CACHE_FILE: &str = "aur-trust.json";
-/// Версия формата файла: чужой формат читается как пустой.
+/// File format version: a foreign format is read as empty.
 pub const CACHE_VERSION: u32 = 1;
 
-/// Цвет красного значка: тот же, что у опасных действий вкладки
-/// «Расширения».
+/// The red badge color: the same as for the dangerous actions of the
+/// "Extensions" tab.
 pub const DANGER_COLOR: &str = crate::qt_extensions::DANGER_COLOR;
 
-// ── Адреса ────────────────────────────────────────────────────────────────
+// ── Addresses ─────────────────────────────────────────────────────────────
 
 const AUR_WEB: &str = "https://aur.archlinux.org";
 const CGIT: &str = "https://aur.archlinux.org/cgit/aur.git";
 
-/// Списки сотрудников Arch с правом выкладывать в ЛЮБОЙ пакет AUR:
-/// Package Maintainers (прежние Trusted Users) и Developers.
+/// Lists of Arch staff with the right to upload to ANY AUR package:
+/// Package Maintainers (formerly Trusted Users) and Developers.
 pub const STAFF_PAGES: [&str; 2] = [
     "https://archlinux.org/people/package-maintainers/",
     "https://archlinux.org/people/developers/",
 ];
-/// Адрес API GitHub (сведения о репозитории верхнего проекта пакета).
+/// GitHub API address (information about the package's upstream repository).
 const GH_API: &str = "https://api.github.com";
-/// `User-Agent` запросов к API GitHub: без него оно отвечает 403.
+/// `User-Agent` of GitHub API requests: without it the API answers 403.
 const GH_USER_AGENT: &str = "Rexon";
 
-/// Заголовки запросов к API GitHub (без входа: токен человека программа
-/// не трогает).
+/// Headers of GitHub API requests (without logging in: the program does not touch the
+/// person's token).
 pub fn github_api_headers() -> Vec<(String, String)> {
     vec![
         ("Accept".to_string(), "application/vnd.github+json".to_string()),
@@ -159,7 +159,7 @@ pub fn github_api_headers() -> Vec<(String, String)> {
     ]
 }
 
-/// Значение для `?h=` (имя ветки в общем git AUR) — экранированное.
+/// The value for `?h=` (the branch name in the shared AUR git) — escaped.
 fn q(base: &str) -> String {
     let mut out = String::new();
     for &b in base.as_bytes() {
@@ -172,37 +172,37 @@ fn q(base: &str) -> String {
     out
 }
 
-/// Журнал правок пакета (страница cgit).
+/// The package's edit log (the cgit page).
 pub fn cgit_log_url(pkgbase: &str) -> String {
     format!("{CGIT}/log/?h={}", q(pkgbase))
 }
 
-/// Страница пакета на сайте AUR.
+/// The package page on the AUR site.
 pub fn package_page_url(name: &str) -> String {
     format!("{AUR_WEB}/packages/{}", q(name))
 }
 
-/// `.SRCINFO` пакета.
+/// The package's `.SRCINFO`.
 pub fn srcinfo_url(pkgbase: &str) -> String {
     format!("{CGIT}/plain/.SRCINFO?h={}", q(pkgbase))
 }
 
-/// PKGBUILD пакета — открывается внутри программы.
+/// The package's PKGBUILD — opened inside the program.
 pub fn pkgbuild_url(pkgbase: &str) -> String {
     format!("{CGIT}/plain/PKGBUILD?h={}", q(pkgbase))
 }
 
-/// Все пакеты сопровождающего (RPC).
+/// All of the maintainer's packages (RPC).
 pub fn maintainer_url(maintainer: &str) -> String {
     crate::aur::search_url(maintainer, "maintainer")
 }
 
-/// Паспорт репозитория на GitHub.
+/// The repository profile on GitHub.
 pub fn github_repo_url(repo: &str) -> String {
     format!("{GH_API}/repos/{repo}")
 }
 
-/// Правки сценариев GitHub Actions с момента `since`.
+/// GitHub Actions workflow edits since `since`.
 pub fn github_workflows_url(repo: &str, since: i64) -> String {
     format!(
         "{GH_API}/repos/{repo}/commits?path=.github/workflows&since={}&per_page=20",
@@ -210,13 +210,13 @@ pub fn github_workflows_url(repo: &str, since: i64) -> String {
     )
 }
 
-/// Одна правка целиком (какие файлы она добавила).
+/// One whole edit (which files it added).
 pub fn github_commit_url(repo: &str, sha: &str) -> String {
     format!("{GH_API}/repos/{repo}/commits/{sha}")
 }
 
-/// Сценарии в текущей версии репозитория (ветка `branch`; пусто — ветка
-/// по умолчанию на стороне GitHub). 404 — каталога сценариев нет вовсе.
+/// Workflows in the current version of the repository (branch `branch`; empty — the
+/// default branch on GitHub's side). 404 — there is no workflows directory at all.
 pub fn github_workflow_dir_url(repo: &str, branch: &str) -> String {
     let base = format!("{GH_API}/repos/{repo}/contents/.github/workflows");
     if branch.is_empty() {
@@ -226,9 +226,9 @@ pub fn github_workflow_dir_url(repo: &str, branch: &str) -> String {
     }
 }
 
-// ── Время ─────────────────────────────────────────────────────────────────
+// ── Time ──────────────────────────────────────────────────────────────────
 
-/// Дней от 1970-01-01 до даты (григорианский календарь).
+/// Days from 1970-01-01 to a date (Gregorian calendar).
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = if y >= 0 { y } else { y - 399 } / 400;
@@ -240,7 +240,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 }
 
 /// `2026-10-08T20:08:55Z` / `2026-06-19 21:25:48 +0000` → epoch (UTC).
-/// Смещение пояса учитывается; мусор — `None`.
+/// The time zone offset is taken into account; garbage — `None`.
 pub fn parse_time(s: &str) -> Option<i64> {
     let s = s.trim();
     let num = |a: usize, b: usize| -> Option<i64> { s.get(a..b)?.parse().ok() };
@@ -254,7 +254,7 @@ pub fn parse_time(s: &str) -> Option<i64> {
         (0, 0, 0)
     };
     let mut ts = days_from_civil(y, mo, d) * 86_400 + h * 3600 + mi * 60 + sec;
-    // Пояс: `Z`, `+0000`, `+02:00`.
+    // Zone: `Z`, `+0000`, `+02:00`.
     let tail = s.get(19..).unwrap_or("").trim();
     if let Some(sign) = tail.chars().next().filter(|c| *c == '+' || *c == '-') {
         let digits: String = tail[1..].chars().filter(char::is_ascii_digit).collect();
@@ -273,12 +273,12 @@ pub fn iso_utc(ts: i64) -> String {
     crate::engine_update::now_iso(ts)
 }
 
-/// Epoch → `2026-10-08` (пусто для нуля).
+/// Epoch → `2026-10-08` (empty for zero).
 fn day(ts: i64) -> String {
     crate::aur::epoch_day(ts)
 }
 
-/// Сейчас, epoch.
+/// Now, epoch.
 pub fn now_secs() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -286,9 +286,9 @@ pub fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-// ── Журнал пакета (cgit) ─────────────────────────────────────────────────
+// ── Package log (cgit) ───────────────────────────────────────────────────
 
-/// Строка журнала: когда и кто.
+/// A log line: when and who.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LogEntry {
@@ -296,8 +296,8 @@ pub struct LogEntry {
     pub author: String,
 }
 
-/// Журнал со страницы cgit. `None` — пришла не страница журнала (защита
-/// сайта от ботов, ошибка): обходить её нельзя, проверка пропускается.
+/// The log from a cgit page. `None` — something other than a log page arrived (the site's
+/// bot protection, an error): it must not be bypassed, the check is skipped.
 pub fn parse_cgit_log(html: &str) -> Option<Vec<LogEntry>> {
     if !html.contains("<table class='list nowrap'>") {
         return None;
@@ -321,21 +321,21 @@ pub fn parse_cgit_log(html: &str) -> Option<Vec<LogEntry>> {
     Some(out)
 }
 
-/// Пакет недавно стал править новый человек.
+/// A new person recently started editing the package.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NewAuthor {
-    /// Новое имя (как подписаны правки).
+    /// The new name (as the edits are signed).
     pub name: String,
-    /// Первая его правка.
+    /// Their first edit.
     pub since: i64,
-    /// Кто правил раньше (самый частый автор старых правок).
+    /// Who edited before (the most frequent author of old edits).
     pub before: String,
 }
 
-/// Новое имя в журнале: в последние полгода правки подписаны тем, кого
-/// среди старых правок нет вовсе. Нет старых правок на странице (пакет
-/// молодой или очень активный) — судить не о чем.
+/// A new name in the log: in the last half year edits are signed by someone who
+/// does not appear among the old edits at all. No old edits on the page (the package
+/// is young or very active) — nothing to judge.
 pub fn new_author(log: &[LogEntry], now: i64) -> Option<NewAuthor> {
     let border = now - RECENT_OWNER_SECS;
     let norm = |s: &str| s.trim().to_lowercase();
@@ -344,7 +344,7 @@ pub fn new_author(log: &[LogEntry], now: i64) -> Option<NewAuthor> {
         return None;
     }
     let old_names: Vec<String> = old.iter().map(|e| norm(&e.author)).collect();
-    // Самая ранняя свежая правка нового имени (журнал — от новых к старым).
+    // The earliest fresh edit by the new name (the log goes from new to old).
     let newcomer = log
         .iter()
         .filter(|e| e.date >= border && !old_names.contains(&norm(&e.author)))
@@ -362,19 +362,19 @@ pub fn new_author(log: &[LogEntry], now: i64) -> Option<NewAuthor> {
     Some(NewAuthor { name: newcomer.author.clone(), since: newcomer.date, before })
 }
 
-// ── Страница пакета и сотрудники Arch ────────────────────────────────────
+// ── The package page and Arch staff ──────────────────────────────────────
 
-/// Что берём со страницы пакета (гостевой вид, имена — текстом).
+/// What we take from the package page (the guest view, names as text).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PackagePage {
     pub maintainer: String,
-    /// Помощники сопровождающего (в скобках после его имени).
+    /// The maintainer's co-maintainers (in parentheses after their name).
     pub comaintainers: Vec<String>,
-    /// Кто выложил последнюю версию («» — неизвестно, учётка удалена).
+    /// Who uploaded the latest version ("" — unknown, the account was deleted).
     pub last_packager: String,
 }
 
-/// Ячейка таблицы паспорта по подписи строки, текстом в одну строку.
+/// A profile table cell by the row label, as single-line text.
 fn page_cell(html: &str, label: &str) -> Option<String> {
     let at = html.find(&format!("<th>{label}:</th>"))?;
     let rest = &html[at..];
@@ -383,8 +383,8 @@ fn page_cell(html: &str, label: &str) -> Option<String> {
     Some(crate::aur::html_to_text(inner).split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
-/// Разобрать страницу пакета. `None` — пришла не она (защита сайта от
-/// ботов, ошибка).
+/// Parse the package page. `None` — something else arrived (the site's bot
+/// protection, an error).
 pub fn parse_package_page(html: &str) -> Option<PackagePage> {
     if !html.contains("id=\"pkgdetails\"") {
         return None;
@@ -406,8 +406,8 @@ pub fn parse_package_page(html: &str) -> Option<PackagePage> {
     Some(PackagePage { maintainer: none(name), comaintainers: co, last_packager: none(&packager) })
 }
 
-/// Имена сотрудников со страницы списка archlinux.org (в нижнем регистре):
-/// и имя учётки (якорь карточки), и псевдоним. `None` — не та страница.
+/// Staff names from an archlinux.org list page (in lowercase):
+/// both the account name (the card anchor) and the alias. `None` — the wrong page.
 pub fn parse_staff_page(html: &str) -> Option<Vec<String>> {
     if !html.contains("schema.org/Person") {
         return None;
@@ -425,7 +425,7 @@ pub fn parse_staff_page(html: &str) -> Option<Vec<String>> {
     Some(out)
 }
 
-/// Сотрудники Arch (лежит в файле кеша неделю).
+/// Arch staff (kept in the cache file for a week).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StaffList {
@@ -447,9 +447,9 @@ impl StaffList {
     }
 }
 
-/// Последнюю версию выложил кто-то со стороны: не сопровождающий и не его
-/// помощник. Обычный человек так не может — только сотрудник Arch или
-/// прежний сопровождающий (пакет с тех пор передали).
+/// The latest version was uploaded by an outsider: neither the maintainer nor their
+/// co-maintainer. A regular person cannot do that — only an Arch staff member or
+/// a previous maintainer (the package has been handed over since).
 pub fn packager_is_outsider(page: &PackagePage, maintainer: &str) -> bool {
     let norm = |s: &str| s.trim().to_lowercase();
     let p = norm(&page.last_packager);
@@ -458,29 +458,29 @@ pub fn packager_is_outsider(page: &PackagePage, maintainer: &str) -> bool {
 
 // ── .SRCINFO ──────────────────────────────────────────────────────────────
 
-/// Один источник из `.SRCINFO`.
+/// One source from `.SRCINFO`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Source {
-    /// Адрес без `имя::`, без `git+` и без `#…`.
+    /// The address without `name::`, without `git+` and without `#…`.
     pub url: String,
-    /// Как записан (для показа человеку).
+    /// As written (for showing to the person).
     pub raw: String,
-    /// Система контроля версий (`git`, `hg`, …), пусто — обычный файл.
+    /// Version control system (`git`, `hg`, …), empty — a plain file.
     pub vcs: String,
-    /// Хвост после `#` (`branch=…`, `tag=…`, `commit=…`).
+    /// The tail after `#` (`branch=…`, `tag=…`, `commit=…`).
     pub fragment: String,
-    /// Хоть одна контрольная сумма — не `SKIP`.
+    /// At least one checksum is not `SKIP`.
     pub verified: bool,
 }
 
 impl Source {
-    /// Скачивается из сети (а не лежит рядом с PKGBUILD в git AUR).
+    /// Downloaded from the network (rather than sitting next to the PKGBUILD in the AUR git).
     pub fn remote(&self) -> bool {
         !self.vcs.is_empty() || self.url.contains("://")
     }
 }
 
-/// Разобранный `.SRCINFO`: адрес проекта и источники.
+/// A parsed `.SRCINFO`: the project address and the sources.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SrcInfo {
     pub pkgbase: String,
@@ -492,14 +492,14 @@ const SUM_ALGOS: &[&str] =
     &["ck", "md5", "sha1", "sha224", "sha256", "sha384", "sha512", "b2"];
 const VCS: &[&str] = &["git", "hg", "svn", "bzr", "fossil"];
 
-/// Разобрать `.SRCINFO`. `None` — это не он (защита сайта от ботов).
+/// Parse `.SRCINFO`. `None` — it is not one (the site's bot protection).
 pub fn parse_srcinfo(text: &str) -> Option<SrcInfo> {
     if !text.trim_start().starts_with("pkgbase") {
         return None;
     }
     let mut out = SrcInfo::default();
-    // Ключ → значения по порядку (только раздел pkgbase: источники и
-    // суммы в разделах pkgname не задаются).
+    // Key → values in order (only the pkgbase section: sources and
+    // sums are not set in pkgname sections).
     let mut fields: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for line in text.lines() {
         let line = line.trim();
@@ -552,15 +552,15 @@ fn split_source(raw: &str, verified: bool) -> Source {
     Source { url, raw: raw.to_string(), vcs, fragment, verified }
 }
 
-/// Имя пакета говорит, что он собирается из свежего кода (`-git` и т. п.):
-/// у таких источник «ветка» — норма, а не риск.
+/// The package name says it is built from fresh code (`-git` and the like):
+/// for such packages a "branch" source is the norm, not a risk.
 pub fn is_vcs_package(name: &str) -> bool {
     ["-git", "-hg", "-svn", "-bzr", "-fossil", "-darcs", "-cvs", "-nightly"]
         .iter()
         .any(|s| name.ends_with(s))
 }
 
-/// Файлы из сети без контрольной суммы (у пакета не из свежего кода).
+/// Files from the network without a checksum (for a package not built from fresh code).
 pub fn unverified_sources(info: &SrcInfo) -> Vec<String> {
     info.sources
         .iter()
@@ -569,7 +569,7 @@ pub fn unverified_sources(info: &SrcInfo) -> Vec<String> {
         .collect()
 }
 
-/// Код из ветки, а не из закреплённой версии (у пакета не из свежего кода).
+/// Code from a branch rather than a pinned version (for a package not built from fresh code).
 pub fn branch_sources(info: &SrcInfo) -> Vec<String> {
     if is_vcs_package(&info.pkgbase) {
         return Vec::new();
@@ -582,8 +582,8 @@ pub fn branch_sources(info: &SrcInfo) -> Vec<String> {
         .collect()
 }
 
-/// `владелец/репозиторий` на GitHub из адреса (страница, архив, выпуск,
-/// raw/codeload). Регистр сохраняется, сравнение — без регистра.
+/// `owner/repository` on GitHub from an address (a page, an archive, a release,
+/// raw/codeload). Case is preserved, comparison is case-insensitive.
 pub fn github_repo_of(url: &str) -> Option<String> {
     let rest = url
         .strip_prefix("https://")
@@ -604,8 +604,8 @@ pub fn github_repo_of(url: &str) -> Option<String> {
     (ok(owner) && ok(repo)).then(|| format!("{owner}/{repo}"))
 }
 
-/// Репозитории GitHub, которые стоит проверить: сначала источники (из них
-/// собирается пакет), потом страница проекта. Без повторов, не больше
+/// GitHub repositories worth checking: first the sources (the package is built
+/// from them), then the project page. Without repeats, no more than
 /// [`MAX_GITHUB_REPOS`].
 pub fn github_repos(src: Option<&SrcInfo>, upstream_url: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -628,7 +628,7 @@ pub fn github_repos(src: Option<&SrcInfo>, upstream_url: &str) -> Vec<String> {
 
 // ── GitHub ────────────────────────────────────────────────────────────────
 
-/// Правка сценариев GitHub Actions.
+/// A GitHub Actions workflow edit.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WorkflowChange {
@@ -636,49 +636,49 @@ pub struct WorkflowChange {
     pub date: i64,
     pub author: String,
     pub message: String,
-    /// Какие файлы сценариев правка ДОБАВИЛА (пусто — только меняла или не
-    /// раскрывали).
+    /// Which workflow files the edit ADDED (empty — it only changed them or was not
+    /// expanded).
     pub added: Vec<String>,
-    /// Какие файлы сценариев правка УДАЛИЛА.
+    /// Which workflow files the edit DELETED.
     pub removed: Vec<String>,
-    /// Правку раскрыли (известно, какие файлы она добавила и удалила).
+    /// The edit was expanded (it is known which files it added and deleted).
     pub detailed: bool,
-    /// Те из `added`, которых в текущей версии репозитория уже нет
-    /// (проверено). Неизвестно — сюда не попадает: осторожнее считать
-    /// файл на месте.
+    /// Those of `added` that are no longer in the current version of the repository
+    /// (checked). Unknown ones do not go here: it is safer to assume
+    /// the file is in place.
     pub gone: Vec<String>,
 }
 
 impl WorkflowChange {
-    /// Добавленные файлы, которые (насколько известно) всё ещё на месте.
+    /// Added files that (as far as is known) are still in place.
     pub fn still_present(&self) -> Vec<&String> {
         self.added.iter().filter(|f| !self.gone.contains(f)).collect()
     }
 }
 
-/// Что известно про репозиторий на GitHub.
+/// What is known about a repository on GitHub.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GithubFacts {
-    /// `владелец/репозиторий`.
+    /// `owner/repository`.
     pub repo: String,
-    /// Паспорт получен.
+    /// The profile was received.
     pub checked: bool,
-    /// Репозитория нет (404).
+    /// The repository does not exist (404).
     pub missing: bool,
     pub fork: bool,
-    /// Откуда форк (`владелец/репозиторий`).
+    /// Where the fork comes from (`owner/repository`).
     pub parent: String,
     pub archived: bool,
-    /// Ветка по умолчанию (её и считаем «текущей версией»).
+    /// The default branch (this is what we consider the "current version").
     pub default_branch: String,
-    /// Правки сценариев получены.
+    /// The workflow edits were received.
     pub workflows_checked: bool,
-    /// Свежие правки сценариев не роботами, от новых к старым.
+    /// Fresh workflow edits not by bots, from new to old.
     pub workflow_changes: Vec<WorkflowChange>,
 }
 
-/// Разобрать паспорт репозитория.
+/// Parse the repository profile.
 pub fn parse_github_repo(repo: &str, json: &Value) -> GithubFacts {
     GithubFacts {
         repo: json
@@ -705,15 +705,15 @@ pub fn parse_github_repo(repo: &str, json: &Value) -> GithubFacts {
     }
 }
 
-/// Правка сделана роботом (обновление зависимостей и т. п.) — такие идут
-/// потоком у любого живого проекта и шумом не считаются.
+/// The edit was made by a bot (dependency updates and the like) — these come in
+/// a stream in any living project and are not counted as noise.
 fn is_bot(login: &str, name: &str) -> bool {
     let l = login.to_ascii_lowercase();
     let n = name.to_ascii_lowercase();
     l.ends_with("[bot]") || n.ends_with("[bot]") || l == "dependabot" || l == "renovate-bot"
 }
 
-/// Свежие (за [`WORKFLOW_SECS`]) правки сценариев не роботами.
+/// Fresh (within [`WORKFLOW_SECS`]) workflow edits not by bots.
 pub fn parse_workflow_commits(json: &Value, now: i64) -> Vec<WorkflowChange> {
     let Some(list) = json.as_array() else { return Vec::new() };
     let border = now - WORKFLOW_SECS;
@@ -724,7 +724,7 @@ pub fn parse_workflow_commits(json: &Value, now: i64) -> Vec<WorkflowChange> {
             if is_bot(login, name) {
                 return None;
             }
-            // Дату автора подделать проще всего — берём позднюю из двух.
+            // The author date is the easiest to forge — we take the later of the two.
             let date = ["/commit/author/date", "/commit/committer/date"]
                 .iter()
                 .filter_map(|p| c.pointer(p).and_then(Value::as_str).and_then(parse_time))
@@ -752,7 +752,7 @@ pub fn parse_workflow_commits(json: &Value, now: i64) -> Vec<WorkflowChange> {
         .collect()
 }
 
-/// Файлы сценариев правки с данным состоянием (`added`, `removed`).
+/// Workflow files of an edit with the given status (`added`, `removed`).
 fn workflow_files_with(json: &Value, status: &str) -> Vec<String> {
     json.get("files")
         .and_then(Value::as_array)
@@ -765,19 +765,19 @@ fn workflow_files_with(json: &Value, status: &str) -> Vec<String> {
         .collect()
 }
 
-/// Файлы сценариев, которые правка добавила.
+/// Workflow files the edit added.
 pub fn parse_added_workflows(json: &Value) -> Vec<String> {
     workflow_files_with(json, "added")
 }
 
-/// Файлы сценариев, которые правка удалила. Переименование удалением НЕ
-/// считается: содержимое осталось, только под другим именем.
+/// Workflow files the edit deleted. A rename does NOT count as a deletion:
+/// the content stayed, just under another name.
 pub fn parse_removed_workflows(json: &Value) -> Vec<String> {
     workflow_files_with(json, "removed")
 }
 
-/// Список каталога `.github/workflows` (ответ `contents`) → пути файлов.
-/// `None` — пришло не то (не список).
+/// The listing of the `.github/workflows` directory (the `contents` answer) → file paths.
+/// `None` — something else arrived (not a list).
 pub fn parse_workflow_listing(json: &Value) -> Option<Vec<String>> {
     let list = json.as_array()?;
     Some(
@@ -795,10 +795,10 @@ pub fn parse_workflow_listing(json: &Value) -> Option<Vec<String>> {
     )
 }
 
-/// Добавленные файлы, которые удалила более поздняя правка. Правки — от
-/// новых к старым; судим только по непрерывно раскрытым сверху правкам:
-/// нераскрытая правка новее добавления могла файл вернуть. Ставит `gone`
-/// и возвращает, остались ли добавленные файлы, чья судьба неизвестна.
+/// Added files that a later edit deleted. Edits go from
+/// new to old; we judge only by edits expanded continuously from the top:
+/// an unexpanded edit newer than the addition could have brought the file back. Sets `gone`
+/// and returns whether there are added files left whose fate is unknown.
 pub fn resolve_gone_by_commits(changes: &mut [WorkflowChange]) -> bool {
     let mut unknown = false;
     for i in 0..changes.len() {
@@ -812,7 +812,7 @@ pub fn resolve_gone_by_commits(changes: &mut [WorkflowChange]) -> bool {
         }
         let mut gone = Vec::new();
         for file in &changes[i].added {
-            // Самое новое событие с файлом решает: удалён или возвращён.
+            // The newest event with the file decides: deleted or brought back.
             let last = newer
                 .iter()
                 .find(|c| c.added.contains(file) || c.removed.contains(file));
@@ -827,8 +827,8 @@ pub fn resolve_gone_by_commits(changes: &mut [WorkflowChange]) -> bool {
     unknown
 }
 
-/// Сверить добавленные файлы со списком сценариев текущей версии: чего в
-/// списке нет — удалено. `listing = None` — каталога нет вовсе (404).
+/// Check the added files against the workflow list of the current version: what is not in
+/// the list is deleted. `listing = None` — there is no directory at all (404).
 pub fn resolve_gone_by_listing(changes: &mut [WorkflowChange], listing: Option<&[String]>) {
     for c in changes.iter_mut() {
         c.gone = c
@@ -840,9 +840,9 @@ pub fn resolve_gone_by_listing(changes: &mut [WorkflowChange], listing: Option<&
     }
 }
 
-// ── Сопровождающий ───────────────────────────────────────────────────────
+// ── Maintainer ───────────────────────────────────────────────────────────
 
-/// Сколько пакетов у сопровождающего и когда появился самый ранний.
+/// How many packages the maintainer has and when the earliest appeared.
 pub fn parse_maintainer_packages(json: &Value) -> Option<(i64, i64)> {
     crate::aur::check_rpc_error(json).ok()?;
     let list = json.get("results")?.as_array()?;
@@ -855,18 +855,18 @@ pub fn parse_maintainer_packages(json: &Value) -> Option<(i64, i64)> {
     Some((list.len() as i64, first))
 }
 
-/// Пакет сопровождающего: из поиска и (если спрашивали) из паспорта.
+/// A maintainer's package: from the search and (if asked) from the profile.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MaintPkg {
     pub name: String,
     pub first_submitted: i64,
     pub last_modified: i64,
-    /// Кто выложил пакет впервые: `None` — паспорт не спрашивали, «» —
-    /// учётки больше нет.
+    /// Who first uploaded the package: `None` — the profile was not asked for, "" —
+    /// the account no longer exists.
     pub submitter: Option<String>,
 }
 
-/// Пакеты сопровождающего из ответа `search by=maintainer`.
+/// The maintainer's packages from the `search by=maintainer` answer.
 pub fn parse_maintainer_list(json: &Value) -> Option<Vec<MaintPkg>> {
     crate::aur::check_rpc_error(json).ok()?;
     let list = json.get("results")?.as_array()?;
@@ -884,15 +884,15 @@ pub fn parse_maintainer_list(json: &Value) -> Option<Vec<MaintPkg>> {
     )
 }
 
-/// Обновлён недавно, а существовал задолго до того — подобран, а не
-/// только что выложен.
+/// Updated recently, but existed long before that — adopted, not
+/// just uploaded.
 fn old_and_recently_updated(p: &MaintPkg, now: i64) -> bool {
     p.last_modified >= now - RECENT_OWNER_SECS
         && p.first_submitted > 0
         && p.first_submitted < p.last_modified - ADOPT_OLD_SECS
 }
 
-/// Самая плотная неделя обновлений: (начало, сколько в ней пакетов).
+/// The densest week of updates: (start, how many packages in it).
 fn densest_week(times: &mut [i64]) -> (i64, usize) {
     times.sort_unstable();
     let (mut best, mut start, mut j) = (0usize, 0i64, 0usize);
@@ -908,10 +908,10 @@ fn densest_week(times: &mut [i64]) -> (i64, usize) {
     (start, best)
 }
 
-/// Чьи паспорта спросить, чтобы проверить массовую подборку. Пусто —
-/// по одному поиску видно, что подборки нет (так у почти всех). Иначе —
-/// пакеты той недели и самые давние (по ним видно, есть ли у учётки
-/// свои старые пакеты), не больше [`MAX_INFO_NAMES`], по алфавиту.
+/// Whose profiles to ask for in order to check a mass adoption. Empty —
+/// the search alone shows there is no adoption (true for almost everyone). Otherwise —
+/// the packages of that week and the oldest ones (they show whether the account has
+/// old packages of its own), no more than [`MAX_INFO_NAMES`], alphabetically.
 pub fn adoption_info_names(list: &[MaintPkg], now: i64) -> Vec<String> {
     let mut times: Vec<i64> = list
         .iter()
@@ -939,7 +939,7 @@ pub fn adoption_info_names(list: &[MaintPkg], now: i64) -> Vec<String> {
     names
 }
 
-/// Вписать, кто выложил пакеты впервые, из ответа `info`.
+/// Fill in who first uploaded the packages, from the `info` answer.
 pub fn fill_submitters(list: &mut [MaintPkg], info: &Value) {
     for p in list.iter_mut() {
         if let Some(i) = crate::aur::parse_info(info, &p.name) {
@@ -948,21 +948,21 @@ pub fn fill_submitters(list: &mut [MaintPkg], info: &Value) {
     }
 }
 
-/// Новая учётка массово подобрала чужие старые пакеты.
+/// A new account mass-adopted other people's old packages.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MassAdoption {
-    /// Сколько чужих старых пакетов обновлено за ту неделю.
+    /// How many other people's old packages were updated during that week.
     pub count: i64,
-    /// Начало недели (первое обновление).
+    /// Start of the week (the first update).
     pub since: i64,
 }
 
-/// Массовая подборка: не меньше [`MASS_ADOPT`] пакетов, выложенных
-/// КОГДА-ТО другими (паспорт получен), обновлены за одну неделю в
-/// последние полгода, и у учётки нет своих пакетов, выложенных больше
-/// чем за полгода до этой недели (дату регистрации AUR гостю не
-/// показывает — это её замена).
+/// Mass adoption: at least [`MASS_ADOPT`] packages uploaded
+/// at SOME POINT by others (the profile was received) were updated within one week in
+/// the last half year, and the account has no packages of its own uploaded more
+/// than half a year before that week (the AUR does not show the registration date to a guest —
+/// this is its substitute).
 pub fn mass_adoption(maintainer: &str, list: &[MaintPkg], now: i64) -> Option<MassAdoption> {
     let me = maintainer.trim().to_lowercase();
     let adopted = |p: &&MaintPkg| {
@@ -981,13 +981,13 @@ pub fn mass_adoption(maintainer: &str, list: &[MaintPkg], now: i64) -> Option<Ma
     (!veteran).then_some(MassAdoption { count: count as i64, since })
 }
 
-/// Чьи паспорта спросить, чтобы узнать возраст учётки по СВОИМ пакетам.
-/// Пусто — по одному поиску всё ясно (так у почти всех): либо у учётки
-/// есть пакет, не обновлявшийся больше полугода (она точно не новая —
-/// свой он или подобранный, она держит его с тех пор), либо все её пакеты
-/// выложены недавно (новая при любом раскладе). Иначе — старые пакеты,
-/// которые могли быть подобраны, от самых давних, не больше
-/// [`MAX_INFO_NAMES`], по алфавиту.
+/// Whose profiles to ask for in order to learn the account's age from its OWN packages.
+/// Empty — the search alone makes everything clear (true for almost everyone): either the account
+/// has a package not updated for more than half a year (it is definitely not new —
+/// its own or adopted, it has held it since then), or all its packages
+/// were uploaded recently (new either way). Otherwise — old packages
+/// that could have been adopted, from the oldest, no more than
+/// [`MAX_INFO_NAMES`], alphabetically.
 pub fn account_age_info_names(list: &[MaintPkg], now: i64) -> Vec<String> {
     let border = now - NEW_MAINTAINER_SECS;
     if list.iter().any(|p| p.last_modified > 0 && p.last_modified < border) {
@@ -1000,8 +1000,8 @@ pub fn account_age_info_names(list: &[MaintPkg], now: i64) -> Vec<String> {
     names
 }
 
-/// Паспорта для обоих признаков учётки — одним запросом: сначала нужные
-/// массовой подборке, потом возрасту, не больше [`MAX_INFO_NAMES`].
+/// Profiles for both account signs in one request: first those needed by
+/// the mass adoption check, then by the age check, no more than [`MAX_INFO_NAMES`].
 pub fn trust_info_names(list: &[MaintPkg], now: i64) -> Vec<String> {
     let mut names = adoption_info_names(list, now);
     for n in account_age_info_names(list, now) {
@@ -1014,10 +1014,10 @@ pub fn trust_info_names(list: &[MaintPkg], now: i64) -> Vec<String> {
     names
 }
 
-/// С каких пор учётка в AUR: самый ранний пакет, который она выложила
-/// сама. Подобранный чужой пакет говорит не о дате его выкладки, а только
-/// о последнем обновлении (раньше него учётка его не держала наверняка).
-/// Пакет без паспорта — по дате выкладки, как раньше.
+/// Since when the account has been in the AUR: the earliest package it uploaded
+/// itself. An adopted package of someone else's says nothing about its upload date, only
+/// about the last update (the account surely did not hold it before that).
+/// A package without a profile — by the upload date, as before.
 pub fn account_since(maintainer: &str, list: &[MaintPkg]) -> Option<i64> {
     let me = maintainer.trim().to_lowercase();
     list.iter()
@@ -1029,35 +1029,35 @@ pub fn account_since(maintainer: &str, list: &[MaintPkg]) -> Option<i64> {
         .min()
 }
 
-// ── Итог глубокой проверки ───────────────────────────────────────────────
+// ── Result of the deep check ─────────────────────────────────────────────
 
-/// Всё, что узнала глубокая проверка (лежит на диске сутки).
+/// Everything the deep check learned (stays on disk for a day).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TrustFacts {
     pub name: String,
     pub checked_at: i64,
-    /// Часть проверок не удалась (сеть, защита сайта, лимит GitHub).
+    /// Some of the checks failed (network, site protection, GitHub limit).
     pub partial: bool,
     pub maintainer: String,
-    /// Пакетов у сопровождающего (`None` — не узнали).
+    /// Packages of the maintainer (`None` — not found out).
     pub maintainer_packages: Option<i64>,
-    /// С каких пор учётка в AUR (epoch): самый ранний СВОЙ пакет, см.
-    /// [`account_since`]; без паспортов — самый ранний из всех.
+    /// Since when the account has been in the AUR (epoch): the earliest package of its OWN, see
+    /// [`account_since`]; without profiles — the earliest of all.
     pub maintainer_since: Option<i64>,
-    /// Учётка сопровождающего массово подобрала чужие старые пакеты.
+    /// The maintainer's account mass-adopted other people's old packages.
     pub mass_adoption: Option<MassAdoption>,
     pub log_checked: bool,
     pub new_author: Option<NewAuthor>,
-    /// Дата самой новой правки в журнале git (дата коммитера).
+    /// Date of the newest edit in the git log (the committer date).
     pub tip_date: Option<i64>,
-    /// «Обновлён» по RPC на момент проверки.
+    /// "Updated" per the RPC at the time of the check.
     pub last_modified: i64,
-    /// Страница пакета прочитана.
+    /// The package page was read.
     pub page_checked: bool,
-    /// Кто выложил последнюю версию.
+    /// Who uploaded the latest version.
     pub last_packager: String,
-    /// …и это сотрудник Arch, а не сопровождающий и не его помощник.
+    /// …and it is an Arch staff member, not the maintainer or their co-maintainer.
     pub staff_packager: bool,
     pub srcinfo_checked: bool,
     pub unverified: Vec<String>,
@@ -1066,14 +1066,14 @@ pub struct TrustFacts {
 }
 
 impl TrustFacts {
-    /// Свежа ли проверка.
+    /// Whether the check is fresh.
     pub fn fresh(&self, now: i64) -> bool {
         let ttl = if self.partial { PARTIAL_TTL_SECS } else { CACHE_TTL_SECS };
         self.checked_at > 0 && now >= self.checked_at && now - self.checked_at < ttl
     }
 }
 
-/// Кто сопровождал пакет при открытии карточки.
+/// Who maintained the package when the card was opened.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MaintainerSeen {
@@ -1082,26 +1082,26 @@ pub struct MaintainerSeen {
     pub last_seen: i64,
 }
 
-/// Запись файла кеша о пакете.
+/// A cache file record about a package.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CacheEntry {
     pub facts: Option<TrustFacts>,
-    /// История сопровождающих по нашим снимкам, от старых к новым.
+    /// The maintainer history from our snapshots, from old to new.
     pub maintainers: Vec<MaintainerSeen>,
 }
 
-/// Файл кеша целиком.
+/// The whole cache file.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TrustCache {
     pub version: u32,
     pub packages: BTreeMap<String, CacheEntry>,
-    /// Сотрудники Arch — общий для всех пакетов список.
+    /// Arch staff — a list shared by all packages.
     pub staff: StaffList,
 }
 
-/// Смена сопровождающего, замеченная нашими снимками.
+/// A maintainer change noticed by our snapshots.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MaintainerChange {
     pub from: String,
@@ -1110,7 +1110,7 @@ pub struct MaintainerChange {
 }
 
 impl CacheEntry {
-    /// Запомнить, кто сопровождает пакет сейчас («» — никто).
+    /// Remember who maintains the package now ("" — nobody).
     pub fn record_maintainer(&mut self, name: &str, now: i64) {
         match self.maintainers.last_mut() {
             Some(last) if last.name == name => last.last_seen = now,
@@ -1124,8 +1124,8 @@ impl CacheEntry {
         self.maintainers.drain(..extra);
     }
 
-    /// Сопровождающий сменился между открытиями карточки за последние
-    /// полгода. Пакет, брошенный прежним («» → имя), — тоже смена.
+    /// The maintainer changed between card openings within the last
+    /// half year. A package abandoned by the previous one ("" → name) is also a change.
     pub fn maintainer_change(&self, now: i64) -> Option<MaintainerChange> {
         let n = self.maintainers.len();
         if n < 2 {
@@ -1140,7 +1140,7 @@ impl CacheEntry {
 }
 
 impl TrustCache {
-    /// Выбросить устаревшие записи.
+    /// Drop outdated records.
     pub fn prune(&mut self, now: i64) {
         self.packages.retain(|_, e| {
             let fact = e.facts.as_ref().map(|f| f.checked_at).unwrap_or(0);
@@ -1150,18 +1150,18 @@ impl TrustCache {
     }
 }
 
-/// Путь файла кеша.
+/// The cache file path.
 pub fn cache_path(xdg_cache_home: Option<&str>, home: &str) -> String {
     format!("{}/rexon/{CACHE_FILE}", crate::utils::cache_home(xdg_cache_home, home))
 }
 
-/// Путь файла кеша этого процесса.
+/// The cache file path of this process.
 pub fn live_cache_path() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
     cache_path(std::env::var("XDG_CACHE_HOME").ok().as_deref(), &home)
 }
 
-/// Прочитать кеш; нет файла, битый, чужая версия — пустой.
+/// Read the cache; no file, broken, a foreign version — empty.
 pub fn load_cache(path: &str) -> TrustCache {
     std::fs::read_to_string(path)
         .ok()
@@ -1170,7 +1170,7 @@ pub fn load_cache(path: &str) -> TrustCache {
         .unwrap_or_else(|| TrustCache { version: CACHE_VERSION, ..TrustCache::default() })
 }
 
-/// Записать кеш (через временный файл).
+/// Write the cache (via a temporary file).
 pub fn save_cache(path: &str, cache: &TrustCache) -> Result<(), String> {
     if let Some(dir) = std::path::Path::new(path).parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -1179,11 +1179,11 @@ pub fn save_cache(path: &str, cache: &TrustCache) -> Result<(), String> {
     crate::utils::atomic_write_str_err(path, &text)
 }
 
-/// Кеш в памяти процесса: файл читается один раз, плитки спрашивают
-/// отсюда без диска.
+/// The in-process memory cache: the file is read once, tiles ask
+/// from here without the disk.
 static MEMORY: Mutex<Option<(String, TrustCache)>> = Mutex::new(None);
 
-/// Запись о пакете из кеша (память, при первом обращении — файл).
+/// A package record from the cache (memory, on first access — the file).
 pub fn cached_entry(path: &str, name: &str) -> Option<CacheEntry> {
     let mut guard = MEMORY.lock().ok()?;
     if guard.as_ref().map(|(p, _)| p != path).unwrap_or(true) {
@@ -1192,7 +1192,7 @@ pub fn cached_entry(path: &str, name: &str) -> Option<CacheEntry> {
     guard.as_ref()?.1.packages.get(name).cloned()
 }
 
-/// Сотрудники Arch из кеша (память, при первом обращении — файл).
+/// Arch staff from the cache (memory, on first access — the file).
 pub fn cached_staff(path: &str) -> StaffList {
     let Ok(mut guard) = MEMORY.lock() else { return StaffList::default() };
     if guard.as_ref().map(|(p, _)| p != path).unwrap_or(true) {
@@ -1201,7 +1201,7 @@ pub fn cached_staff(path: &str) -> StaffList {
     guard.as_ref().map(|(_, c)| c.staff.clone()).unwrap_or_default()
 }
 
-/// Поправить файл кеша целиком: в памяти и на диске.
+/// Amend the whole cache file: in memory and on disk.
 fn with_cache<R>(path: &str, now: i64, f: impl FnOnce(&mut TrustCache) -> R) -> Option<R> {
     let mut guard = MEMORY.lock().ok()?;
     if guard.as_ref().map(|(p, _)| p != path).unwrap_or(true) {
@@ -1217,7 +1217,7 @@ fn with_cache<R>(path: &str, now: i64, f: impl FnOnce(&mut TrustCache) -> R) -> 
     Some(out)
 }
 
-/// Обновить запись о пакете в памяти и на диске.
+/// Update a package record in memory and on disk.
 pub fn update_entry(path: &str, name: &str, now: i64, f: impl FnOnce(&mut CacheEntry)) -> CacheEntry {
     let mut f = Some(f);
     let out = with_cache(path, now, |cache| {
@@ -1236,10 +1236,10 @@ pub fn update_entry(path: &str, name: &str, now: i64, f: impl FnOnce(&mut CacheE
     })
 }
 
-// ── Сеть ──────────────────────────────────────────────────────────────────
+// ── Network ───────────────────────────────────────────────────────────────
 
-/// Чем ходить за данными: AUR (RPC и страницы), GitHub (API с его
-/// заголовками) и пауза перед обращением к страницам AUR.
+/// How to fetch data: the AUR (RPC and pages), GitHub (the API with its
+/// headers) and a pause before requesting AUR pages.
 pub struct Fetchers<'a> {
     pub aur: &'a mut dyn NetIo,
     pub github: &'a mut dyn NetIo,
@@ -1250,8 +1250,8 @@ fn get_text(net: &mut dyn NetIo, url: &str, ua: &str) -> Result<String, NetError
     net.get(url, ua, TIMEOUT_SECS).map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
-/// То же для AUR: одиночный обрыв повторяется (сайт временами не отвечает
-/// с первого раза). GitHub не повторяем — каждая попытка съедает лимит.
+/// The same for the AUR: a single dropped connection is retried (the site sometimes does not answer
+/// on the first try). GitHub is not retried — each attempt eats into the limit.
 fn get_aur(net: &mut dyn NetIo, url: &str) -> Result<String, NetError> {
     let what = format!("AUR {url}");
     crate::net::with_retry(net, crate::net::Retry::IDEMPOTENT, &what, |io| {
@@ -1260,13 +1260,13 @@ fn get_aur(net: &mut dyn NetIo, url: &str) -> Result<String, NetError> {
     .map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
-/// Лимит GitHub исчерпан (или доступ закрыт) — дальше к нему не ходим.
+/// The GitHub limit is exhausted (or access is denied) — we do not go there anymore.
 fn github_blocked(e: &NetError) -> bool {
     matches!(e, NetError::Status { code: 403 | 429, .. })
 }
 
-/// Список сотрудников Arch с archlinux.org. `None` — хоть одна из страниц
-/// не пришла: неполный список хуже никакого (кого-то не узнаем).
+/// The Arch staff list from archlinux.org. `None` — at least one of the pages
+/// did not arrive: an incomplete list is worse than none (we would miss someone).
 pub fn fetch_staff(net: &mut dyn NetIo, now: i64) -> Option<StaffList> {
     let mut names: Vec<String> = Vec::new();
     for url in STAFF_PAGES {
@@ -1279,14 +1279,14 @@ pub fn fetch_staff(net: &mut dyn NetIo, now: i64) -> Option<StaffList> {
     (!names.is_empty()).then_some(StaffList { names, checked_at: now })
 }
 
-/// Глубокая проверка пакета по сети без кеша списка сотрудников Arch.
+/// A deep check of a package over the network without the Arch staff list cache.
 pub fn collect_facts(f: &mut Fetchers, info: &AurInfo, now: i64) -> TrustFacts {
     collect_facts_with(f, info, now, &mut StaffList::default())
 }
 
-/// Глубокая проверка пакета по сети. Каждая часть, которая не удалась,
-/// просто пропускается (и проверка помечается неполной). `staff` — список
-/// сотрудников Arch: несвежий обновляется, только если он понадобился.
+/// A deep check of a package over the network. Each part that fails
+/// is simply skipped (and the check is marked incomplete). `staff` — the
+/// Arch staff list: a stale one is refreshed only if it was needed.
 pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mut StaffList) -> TrustFacts {
     let base = if info.package_base.is_empty() { &info.name } else { &info.package_base };
     let mut facts = TrustFacts {
@@ -1297,7 +1297,7 @@ pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mu
         ..TrustFacts::default()
     };
 
-    // Сопровождающий: сколько пакетов и с каких пор.
+    // Maintainer: how many packages and since when.
     if !info.maintainer.is_empty() {
         let answer = get_aur(f.aur, &maintainer_url(&info.maintainer))
             .ok()
@@ -1309,9 +1309,9 @@ pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mu
             }
             None => facts.partial = true,
         }
-        // Паспорта пакетов (кто их выложил) спрашиваем, только если по
-        // поиску видна неделя, когда обновили много старых пакетов, или
-        // возраст учётки под сомнением: старые пакеты могли быть подобраны.
+        // Package profiles (who uploaded them) are asked for only if
+        // the search shows a week when many old packages were updated, or
+        // the account's age is in doubt: old packages could have been adopted.
         if let Some(mut list) = answer.as_ref().and_then(parse_maintainer_list) {
             let names = trust_info_names(&list, now);
             if !names.is_empty() {
@@ -1332,7 +1332,7 @@ pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mu
         }
     }
 
-    // Журнал правок.
+    // The edit log.
     (f.pause)();
     match get_aur(f.aur, &cgit_log_url(base)).ok().as_deref().and_then(parse_cgit_log) {
         Some(log) => {
@@ -1343,8 +1343,8 @@ pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mu
         None => facts.partial = true,
     }
 
-    // Кто выложил последнюю версию (страница пакета). Список сотрудников
-    // Arch нужен, только если это не сопровождающий и не его помощник.
+    // Who uploaded the latest version (the package page). The Arch staff list
+    // is needed only if it is neither the maintainer nor their co-maintainer.
     (f.pause)();
     match get_aur(f.aur, &package_page_url(&info.name)).ok().as_deref().and_then(parse_package_page) {
         Some(page) => {
@@ -1366,7 +1366,7 @@ pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mu
         None => facts.partial = true,
     }
 
-    // Источники.
+    // Sources.
     (f.pause)();
     let src = get_aur(f.aur, &srcinfo_url(base)).ok().as_deref().and_then(parse_srcinfo);
     match &src {
@@ -1409,7 +1409,7 @@ pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mu
                 continue;
             }
         };
-        // Паспорт и список правок сценариев.
+        // The profile and the list of workflow edits.
         let mut used = 2usize;
         match get_text(f.github, &github_workflows_url(&gh.repo, now - WORKFLOW_SECS), gh_ua) {
             Ok(t) => {
@@ -1437,15 +1437,15 @@ pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mu
                     }
                 }
                 Err(e) => {
-                    // Правка не раскрыта — проверка неполная (повтор через час).
+                    // The edit was not expanded — the check is incomplete (repeated in an hour).
                     blocked = github_blocked(&e);
                     facts.partial = true;
                 }
             }
         }
-        // Новый файл сценария ещё на месте? Сначала по уже раскрытым правкам
-        // (бесплатно), потом, если осталось место, — списком каталога в
-        // текущей версии. Не узнали — файл считается на месте (красный).
+        // Is the new workflow file still in place? First by the already expanded edits
+        // (free), then, if there is room left, by the directory listing in
+        // the current version. Not found out — the file counts as in place (red).
         let unknown = resolve_gone_by_commits(&mut gh.workflow_changes);
         if unknown && !blocked && used < MAX_GITHUB_PER_REPO {
             match get_text(f.github, &github_workflow_dir_url(&gh.repo, &gh.default_branch), gh_ua) {
@@ -1472,14 +1472,14 @@ pub fn collect_facts_with(f: &mut Fetchers, info: &AurInfo, now: i64, staff: &mu
     facts
 }
 
-/// Проверка с кешем: свежая запись с диска либо сбор по сети; снимок
-/// сопровождающего пишется всегда. Возвращает запись целиком.
+/// A check with the cache: a fresh record from disk or collecting over the network; the
+/// maintainer snapshot is always written. Returns the whole record.
 pub fn check_cached(path: &str, f: &mut Fetchers, info: &AurInfo, now: i64) -> CacheEntry {
     let cached = cached_entry(path, &info.name);
     let fresh = cached
         .as_ref()
         .and_then(|e| e.facts.as_ref())
-        // Новая выкладка — проверка с диска не годится.
+        // A new upload — the check from disk is no good.
         .filter(|fa| {
             fa.fresh(now) && fa.maintainer == info.maintainer && fa.last_modified == info.last_modified
         })
@@ -1505,7 +1505,7 @@ pub fn check_cached(path: &str, f: &mut Fetchers, info: &AurInfo, now: i64) -> C
     })
 }
 
-/// Текст PKGBUILD. Ошибка — словами для человека.
+/// The PKGBUILD text. An error — in words for the person.
 pub fn fetch_pkgbuild(net: &mut dyn NetIo, pkgbase: &str) -> Result<String, String> {
     let text = get_aur(net, &pkgbuild_url(pkgbase))
         .map_err(|e| trf("Couldn't load PKGBUILD: %1", &[&e]))?;
@@ -1516,14 +1516,14 @@ pub fn fetch_pkgbuild(net: &mut dyn NetIo, pkgbase: &str) -> Result<String, Stri
     Ok(text)
 }
 
-// ── Признаки ──────────────────────────────────────────────────────────────
+// ── Signs ─────────────────────────────────────────────────────────────────
 
-/// Насколько серьёзен признак.
+/// How serious a sign is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
-    /// Жёлтый: стоит присмотреться.
+    /// Yellow: worth a closer look.
     Warn,
-    /// Красный: похоже на то, как выглядят атаки.
+    /// Red: looks like attacks look.
     Danger,
 }
 
@@ -1536,23 +1536,23 @@ impl Level {
     }
 }
 
-/// Один признак риска: что не так и почему это важно.
+/// One risk sign: what is wrong and why it matters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Signal {
-    /// Машинный ключ (для проверок и порядка).
+    /// A machine key (for checks and ordering).
     pub key: &'static str,
     pub level: Level,
     pub text: String,
     pub why: String,
 }
 
-/// Что известно о пакете без глубокой проверки — плитка и паспорт RPC.
+/// What is known about a package without a deep check — the tile and the RPC profile.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RpcView {
     pub maintainer: String,
     pub votes: i64,
     pub popularity: f64,
-    /// Epoch пометки «устарел»; 1 — помечен, дата неизвестна; 0 — нет.
+    /// Epoch of the "out of date" flag; 1 — flagged, date unknown; 0 — not flagged.
     pub out_of_date: i64,
 }
 
@@ -1586,7 +1586,7 @@ fn why_workflows() -> String {
     tr("This is how the attack of 9 October 2026 looked: a stolen GitHub account got a new automation script added to all its projects, and AUR packages were built from them. Such changes are usually harmless, but check who made them and why.")
 }
 
-/// Признаки по данным RPC (то, что видно и на плитке).
+/// Signs from the RPC data (what is also visible on the tile).
 pub fn rpc_signals(v: &RpcView) -> Vec<Signal> {
     let mut out = Vec::new();
     if v.maintainer.is_empty() {
@@ -1628,14 +1628,14 @@ pub fn rpc_signals(v: &RpcView) -> Vec<Signal> {
     out
 }
 
-/// AUR пишет «обновлён» заметно позже самой новой правки в git пакета.
+/// The AUR says "updated" noticeably later than the newest edit in the package's git.
 pub fn history_rewritten(facts: &TrustFacts) -> bool {
     let Some(tip) = facts.tip_date else { return false };
     let lm = facts.last_modified;
     lm > 0 && lm - tip > HISTORY_GAP_SECS && facts.checked_at - lm >= CGIT_LAG_SECS
 }
 
-/// Признаки глубокой проверки.
+/// Deep check signs.
 pub fn deep_signals(facts: &TrustFacts, change: Option<&MaintainerChange>, now: i64) -> Vec<Signal> {
     let mut out = Vec::new();
     if let Some(c) = change {
@@ -1687,8 +1687,8 @@ pub fn deep_signals(facts: &TrustFacts, change: Option<&MaintainerChange>, now: 
     }
     let rewritten = history_rewritten(facts);
     if facts.staff_packager && rewritten {
-        // Сотрудник Arch выложил версию, и история переписана: так Arch
-        // вычищает взломанный пакет.
+        // An Arch staff member uploaded a version, and the history was rewritten: this is how Arch
+        // scrubs a hacked package.
         out.push(Signal {
             key: "compromised_cleaned",
             level: Level::Danger,
@@ -1772,8 +1772,8 @@ pub fn deep_signals(facts: &TrustFacts, change: Option<&MaintainerChange>, now: 
                 why: why_workflows(),
             });
         } else if let Some(c) = removed {
-            // Все недавно добавленные файлы уже удалены: жёлтый, и сочетание
-            // с форком или новым человеком его НЕ поднимает до красного.
+            // All recently added files are already deleted: yellow, and a combination
+            // with a fork or a new person does NOT raise it to red.
             let files: Vec<String> = c.added.iter().map(short).collect();
             out.push(Signal {
                 key: "workflow_added_removed",
@@ -1815,11 +1815,11 @@ pub fn deep_signals(facts: &TrustFacts, change: Option<&MaintainerChange>, now: 
     out
 }
 
-/// Все признаки: глубокие (если были) и по RPC, красные первыми.
+/// All signs: deep ones (if any) and RPC ones, red first.
 ///
-/// Свежая правка сценариев GitHub вместе с форком, новым человеком или
-/// новым сопровождающим — уже красный: так и выглядит захват. Добавленный
-/// и уже удалённый сценарий (`workflow_added_removed`) так не поднимается.
+/// A fresh GitHub workflow edit together with a fork, a new person or
+/// a new maintainer is already red: this is what a hijack looks like. An added
+/// and already deleted workflow (`workflow_added_removed`) is not raised like that.
 pub fn signals(rpc: &RpcView, entry: Option<&CacheEntry>, now: i64) -> Vec<Signal> {
     let mut out = Vec::new();
     if let Some(e) = entry {
@@ -1839,8 +1839,8 @@ pub fn signals(rpc: &RpcView, entry: Option<&CacheEntry>, now: i64) -> Vec<Signa
             s.level = Level::Danger;
         }
     }
-    // Массовая подборка вместе с вычисткой, переписанной историей или
-    // сменой рук — уже красный: так и выглядит захват.
+    // Mass adoption together with a scrub, a rewritten history or
+    // a change of hands is already red: this is what a hijack looks like.
     let tampered = out.iter().any(|s| {
         matches!(
             s.key,
@@ -1856,12 +1856,12 @@ pub fn signals(rpc: &RpcView, entry: Option<&CacheEntry>, now: i64) -> Vec<Signa
     out
 }
 
-/// Общий уровень: самый серьёзный из признаков.
+/// The overall level: the most serious of the signs.
 pub fn level(signals: &[Signal]) -> Option<Level> {
     signals.iter().map(|s| s.level).max()
 }
 
-/// Значок рядом с «Установить»: «⚠ 3 признака риска».
+/// The badge next to "Install": "⚠ 3 risk signs".
 pub fn badge_text(signals: &[Signal]) -> String {
     let glyph = match level(signals) {
         Some(Level::Danger) => "⛔",
@@ -1874,7 +1874,7 @@ pub fn badge_text(signals: &[Signal]) -> String {
     )
 }
 
-/// Краткий список для подсказки значка.
+/// A short list for the badge tooltip.
 pub fn badge_tooltip(signals: &[Signal]) -> String {
     let mut lines: Vec<String> = signals.iter().map(|s| format!("• {}", s.text)).collect();
     if !lines.is_empty() {
@@ -1884,7 +1884,7 @@ pub fn badge_tooltip(signals: &[Signal]) -> String {
     lines.join("\n")
 }
 
-/// Значок перед строкой источника на плитке (пусто — признаков нет).
+/// The badge before the source line on the tile (empty — no signs).
 pub fn tile_mark(signals: &[Signal]) -> &'static str {
     match level(signals) {
         Some(Level::Danger) => "⛔ ",
@@ -1893,7 +1893,7 @@ pub fn tile_mark(signals: &[Signal]) -> &'static str {
     }
 }
 
-/// Подсказка значка на плитке.
+/// The tile badge tooltip.
 pub fn tile_tooltip(signals: &[Signal], deep_known: bool) -> String {
     if signals.is_empty() {
         return String::new();
@@ -1906,22 +1906,22 @@ pub fn tile_tooltip(signals: &[Signal], deep_known: bool) -> String {
     lines.join("\n")
 }
 
-/// Заголовок раздела карточки.
+/// The card section title.
 pub fn section_title() -> String {
     tr("Source check")
 }
 
-/// Подпись раздела: что это и чего Rexon НЕ делает.
+/// The section caption: what this is and what Rexon does NOT do.
 pub fn section_note() -> String {
     tr("AUR packages are published by users. Arch's rule: checking the source is up to whoever installs. Rexon doesn't block installation — it shows what it noticed.")
 }
 
-/// Пока идёт проверка.
+/// While the check is running.
 pub fn status_checking() -> String {
     tr("⏳ Checking the source…")
 }
 
-/// Итог проверки словами.
+/// The check result in words.
 pub fn status_text(facts: Option<&TrustFacts>, signals: &[Signal]) -> String {
     let Some(f) = facts else {
         return tr("Couldn't check the source (no connection) — only what AUR reports is shown.");
@@ -1938,28 +1938,28 @@ pub fn status_text(facts: Option<&TrustFacts>, signals: &[Signal]) -> String {
     line
 }
 
-/// Кнопка «Показать PKGBUILD».
+/// The "Show PKGBUILD" button.
 pub fn pkgbuild_btn() -> String {
     tr("📄 Show PKGBUILD")
 }
 
-/// Подсказка к ней.
+/// Its tooltip.
 pub fn pkgbuild_tooltip() -> String {
     tr("The build script of the package: what will be downloaded and run")
 }
 
-/// Заголовок окна с PKGBUILD.
+/// The title of the PKGBUILD window.
 pub fn pkgbuild_title(name: &str) -> String {
     trf("PKGBUILD — %1", &[&name])
 }
 
-/// Пока PKGBUILD едет.
+/// While the PKGBUILD is on its way.
 pub fn pkgbuild_loading() -> String {
     tr("Loading PKGBUILD…")
 }
 
-/// Строка-предупреждение для «Рабочих столов»: у каких пакетов из AUR в
-/// наборе стола есть признаки риска. Пусто — нет.
+/// A warning line for "Desktops": which AUR packages in the desktop's
+/// set have risk signs. Empty — none.
 pub fn desktop_notice(rows: &[(String, Vec<Signal>)]) -> String {
     let parts: Vec<String> = rows
         .iter()
@@ -1979,19 +1979,19 @@ pub fn desktop_notice(rows: &[(String, Vec<Signal>)]) -> String {
     )
 }
 
-// ── «Рабочие столы»: пакеты из AUR в наборе стола ────────────────────────
+// ── "Desktops": AUR packages in the desktop's set ────────────────────────
 //
-// У стола свой короткий список пакетов из AUR (без карточки и без
-// PKGBUILD), поэтому здесь только то, что даёт ОДИН запрос RPC `info` на
-// весь список, плюс глубокая проверка с диска, если карточку пакета уже
-// открывали в «Оформлении». Ответ RPC держится в памяти 15 минут.
+// A desktop has its own short list of AUR packages (without a card and without
+// a PKGBUILD), so here there is only what ONE RPC `info` request gives for
+// the whole list, plus the deep check from disk if the package card was already
+// opened in "Appearance". The RPC answer is kept in memory for 15 minutes.
 
 static RPC_MEMO: Mutex<BTreeMap<String, (i64, RpcView)>> = Mutex::new(BTreeMap::new());
 
-/// Данные RPC по списку пакетов: из памяти, если свежие (15 минут), иначе
-/// одним запросом `info`. Без сети (`None`) — всё, что есть в памяти.
+/// RPC data for a list of packages: from memory if fresh (15 minutes), otherwise
+/// with one `info` request. Without network (`None`) — whatever is in memory.
 pub fn rpc_views(net: Option<&mut dyn NetIo>, names: &[String], now: i64) -> BTreeMap<String, RpcView> {
-    // Без сети годится любой ответ из памяти: устаревший лучше, чем ничего.
+    // Without network any answer from memory will do: an outdated one is better than nothing.
     let online = net.is_some();
     let fresh = |at: i64| !online || now - at < crate::aur::DETAIL_CACHE_SECS as i64;
     let mut out = BTreeMap::new();
@@ -2025,7 +2025,7 @@ pub fn rpc_views(net: Option<&mut dyn NetIo>, names: &[String], now: i64) -> BTr
     out
 }
 
-/// Предупреждение стола по пакетам из AUR (см. [`desktop_notice`]).
+/// The desktop warning about AUR packages (see [`desktop_notice`]).
 pub fn desktop_notice_for(names: &[String], views: &BTreeMap<String, RpcView>, path: &str, now: i64) -> String {
     let rows: Vec<(String, Vec<Signal>)> = names
         .iter()

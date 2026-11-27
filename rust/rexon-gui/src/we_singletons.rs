@@ -1,20 +1,24 @@
-// Обёртки Rust над шимом синглтонов вкладки WE (cpp/rexon_we_singletons.cpp):
-// события демона — живым синглтонам Notify/App, ошибка транспорта — тостом
-// окна, пускатель демона, сетевой кэш QML и движок для смены языка.
+// Rust wrappers over the WE tab's singleton shim (cpp/rexon_we_singletons.cpp):
+// daemon events to the live Notify/App singletons, a transport error as a
+// window toast, the daemon launcher, the QML network cache and the engine
+// for language changes.
 //
-// Зовёт их только сам крейт (we_socket.rs, we_env.rs, status_queries.rs):
-// экспортных C-символов наружу нет — прежний хозяин вкладки на Python, ради
-// которого они были, в архиве. Почему сам шим на C++ — в шапке его заголовка.
+// Only the crate itself calls them (we_socket.rs, we_env.rs,
+// status_queries.rs): there are no exported C symbols — the former Python
+// host of the tab, for whose sake they existed, is in the archive. Why the
+// shim itself is in C++ is explained in its header's preamble.
 //
-// Файл НЕ мост cxx-qt: обычные `extern "C"`, moc'у здесь работы нет.
+// This file is NOT a cxx-qt bridge: ordinary `extern "C"`, moc has no work
+// here.
 
 use std::ffi::{c_char, c_void};
 
-/// Колбэк «запусти демона» (у Rexon — `we_socket::launch_daemon_hook`).
+/// The "launch the daemon" callback (for Rexon — `we_socket::launch_daemon_hook`).
 ///
-/// Пускатель Rexon знает больше оригинала: он ищет бинарь там, куда его
-/// ставит сама вкладка, и на KDE доводит плагин показа. Без колбэка шим
-/// падает в ветку оригинала — `QProcess::startDetached("waywallen")`.
+/// The Rexon launcher knows more than the original: it looks for the binary
+/// where the tab itself installs it, and on KDE it finishes the display
+/// plugin. Without the callback the shim falls back to the original's branch
+/// — `QProcess::startDetached("waywallen")`.
 pub type LaunchHook = Option<extern "C" fn() -> bool>;
 
 unsafe extern "C" {
@@ -28,11 +32,11 @@ unsafe extern "C" {
     fn rexon_we_do_register_qml_engine(engine: *mut c_void);
 }
 
-/// Раздать синглтонам сырой кадр `ServerFrame` от демона.
+/// Hand a raw `ServerFrame` frame from the daemon to the singletons.
 ///
-/// Возвращает, скольким синглтонам кадр доехал ПРЯМО СЕЙЧАС. Ноль — не
-/// потеря: кадр для ещё не построенного синглтона ложится в кэш повтора и
-/// уедет ему при регистрации (`cpp/rexon_we_singletons.cpp`).
+/// Returns how many singletons the frame reached RIGHT NOW. Zero is not a
+/// loss: a frame for a not yet built singleton goes into the replay cache and
+/// will be delivered to it on registration (`cpp/rexon_we_singletons.cpp`).
 pub fn deliver_singleton_event_bytes(frame: &[u8]) -> i32 {
     let Ok(len) = i32::try_from(frame.len()) else {
         return 0;
@@ -40,15 +44,17 @@ pub fn deliver_singleton_event_bytes(frame: &[u8]) -> i32 {
     unsafe { rexon_we_do_deliver_event(frame.as_ptr().cast::<c_char>(), len) }
 }
 
-/// Обрыв WebSocket: `Notify` возвращается к пессимистичному состоянию.
+/// WebSocket disconnection: `Notify` goes back to the pessimistic state.
 pub fn transport_disconnected() -> i32 {
     unsafe { rexon_we_do_transport_disconnected() }
 }
 
-/// Ошибка транспорта → сигнал `App.errorOccurred` (тост окна вкладки).
+/// Transport error → the `App.errorOccurred` signal (a toast of the tab
+/// window).
 ///
-/// Возвращает, доехало ли: `false` — синглтона `App` ещё нет (вкладку не
-/// открывали), и показывать ошибку некому.
+/// Returns whether it got through: `false` means there is no `App`
+/// singleton yet (the tab was not opened), and there is nobody to show the
+/// error.
 pub fn client_error(message: &str) -> bool {
     let Ok(len) = i32::try_from(message.len()) else {
         return false;
@@ -56,15 +62,16 @@ pub fn client_error(message: &str) -> bool {
     unsafe { rexon_we_do_client_error(message.as_ptr().cast::<c_char>(), len) != 0 }
 }
 
-/// Полная замена списка рендереров ответом `renderer_list`.
+/// A full replacement of the renderer list with the `renderer_list` answer.
 ///
-/// `frame` — СЫРОЙ кадр демона, тот же, что разобрал запрос. Дверь
-/// внутренняя (наружу C-символа нет): `RendererListQuery` живёт в другом
-/// мосте того же крейта, и добраться до живых моделей `App` он может
-/// только через шим — у оригинала этот запрос и менеджер лежат в одном
-/// C++-объектном графе.
+/// `frame` is the RAW daemon frame, the same one the query parsed. The door
+/// is internal (there is no C symbol outside): `RendererListQuery` lives in
+/// another bridge of the same crate, and it can reach the live models of
+/// `App` only through the shim — in the original this query and the manager
+/// lie in one C++ object graph.
 ///
-/// Возвращает, доехал ли кадр: `false` — синглтона `App` ещё нет.
+/// Returns whether the frame got through: `false` means there is no `App`
+/// singleton yet.
 pub fn renderers_replace_frame(frame: &[u8]) -> bool {
     if frame.is_empty() || i32::try_from(frame.len()).is_err() {
         return false;
@@ -75,15 +82,16 @@ pub fn renderers_replace_frame(frame: &[u8]) -> bool {
     ok != 0
 }
 
-/// Поставить пускатель демона. `None` снимает его.
+/// Set the daemon launcher. `None` removes it.
 pub fn set_launch_hook(hook: LaunchHook) {
     unsafe { rexon_we_do_set_launch_hook(hook) }
 }
 
-/// Задать каталог и предел сетевого кэша QML-картинок (до установки фабрики).
+/// Set the directory and limit of the QML picture network cache (before
+/// installing the factory).
 ///
 /// # Safety
-/// `dir` — живая нуль-терминированная C-строка.
+/// `dir` is a live null-terminated C string.
 pub unsafe fn set_network_cache(dir: *const c_char, max_bytes: i64) {
     if dir.is_null() {
         return;
@@ -91,13 +99,13 @@ pub unsafe fn set_network_cache(dir: *const c_char, max_bytes: i64) {
     unsafe { rexon_we_do_set_network_cache(dir, max_bytes) }
 }
 
-/// Поставить движку QML фабрику менеджера сети с дисковым кэшем.
+/// Give the QML engine a network manager factory with a disk cache.
 ///
-/// Приведение к QQmlEngine внутри шима проверенное, чужой объект он не
-/// примет.
+/// The cast to QQmlEngine inside the shim is checked, it will not accept
+/// someone else's object.
 ///
 /// # Safety
-/// `engine` — живой QObject.
+/// `engine` is a live QObject.
 pub unsafe fn install_qml_network_cache(engine: *mut c_void) {
     if engine.is_null() {
         return;
@@ -105,15 +113,16 @@ pub unsafe fn install_qml_network_cache(engine: *mut c_void) {
     unsafe { rexon_we_install_network_cache(engine) }
 }
 
-/// Записать движок QML вкладки для смены языка на лету.
+/// Record the tab's QML engine for changing the language on the fly.
 ///
-/// Комбобокс «Язык» на вендорной странице настроек меняет каталог
-/// переводов, а привязки `qsTr()` уже показанной страницы пересобирает сам
-/// движок (`QQmlEngine::retranslate`). Без этой записи выбор запоминался бы,
-/// но страница оставалась бы на прежнем языке до перезапуска.
+/// The «Language» combo box on the vendored settings page changes the
+/// translation catalogue, while the `qsTr()` bindings of an already shown
+/// page are re-evaluated by the engine itself (`QQmlEngine::retranslate`).
+/// Without this record the choice would be remembered, but the page would
+/// stay in the previous language until a restart.
 ///
 /// # Safety
-/// `engine` — живой QObject.
+/// `engine` is a live QObject.
 pub unsafe fn register_qml_engine(engine: *mut c_void) {
     if engine.is_null() {
         return;

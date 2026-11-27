@@ -1,63 +1,70 @@
-// Хост веб-обоев на Rust: замена удалённого `python -m rexon.web_wallpaper`.
+// The web wallpaper host in Rust: a replacement for the removed
+// `python -m rexon.web_wallpaper`.
 //
-// Что это за кусок и почему он появился заново. 30.07.2026 из дерева убрали
-// хосты web-, app- и parallax-обоев (2 179 строк) под тем предлогом, что всё
-// это рисует движок waywallen. Для app и parallax это так, для веба — нет:
-// строку запуска `python -m rexon.web_wallpaper` движок обоев продолжал
-// собирать (`wallpaper_engine::web_plan`), модуля под ней уже не было, и
-// формат «веб» с того дня не показывался НИ НА ОДНОМ рабочем столе. При этом
-// `qt6-webengine` продолжал ставиться каждому покупателю
-// (`installer::dep_packages`), а в коде не использовался ни разу.
+// What this piece is and why it appeared again. On 30.07.2026 the hosts of
+// web, app and parallax wallpapers (2 179 lines) were removed from the
+// tree on the pretext that the waywallen engine draws all of that. For app
+// and parallax that is true, for the web it is not: the wallpaper engine
+// kept building the `python -m rexon.web_wallpaper` command line
+// (`wallpaper_engine::web_plan`), the module behind it no longer existed,
+// and from that day the "web" format was not shown on A SINGLE desktop.
+// Meanwhile `qt6-webengine` kept being installed for every customer
+// (`installer::dep_packages`) and was not used once in the code.
 //
-// Разделение обязанностей ровно то же, что у видео-хоста:
+// The division of duties is exactly the same as for the video host:
 //
-//   * ЧТО показывать, какие свойства класть в корень QML и какой JS
-//     подмешивать в страницу — `rexon-core::wallpaper`
+//   * WHAT to show, which properties to put into the QML root and which JS
+//     to inject into the page — `rexon-core::wallpaper`
 //     (`web_context_properties`, `web_defaults_json`, `WE_POLYFILL_JS`,
 //     `web_apply_defaults_js`, `WE_TICKER_JS`, `web_host_reject_reason`).
-//     Своих строк и чисел здесь нет;
-//   * КАК положить окно на задний план — три способа, и все три общие с
-//     видео-хостом: `WallpaperLayer` (src/layer_shell.rs) и
-//     `WallpaperPlacement` (src/wallpaper_host.rs). Второго решения про слой,
-//     xprop и поток кадров в проекте нет (правило #12).
+//     There are no strings or numbers of our own here;
+//   * HOW to put the window into the background — three ways, and all three
+//     are shared with the video host: `WallpaperLayer` (src/layer_shell.rs)
+//     and `WallpaperPlacement` (src/wallpaper_host.rs). There is no second
+//     decision about the layer, xprop or the frame stream in the project
+//     (rule #12).
 //
-// ⭐ С 15.09.2026 это РЕЖИМ единого хоста обоев `rexon-wallpaper-host`
-// (`--mode web`), а не отдельный бинарь `rexon-web-host`: хосты решено не
-// плодить. Подъём Qt общий — src/bin/wallpaper_host/main.rs, что показывать
-// — src/bin/wallpaper_host/web.rs.
+// Since 15.09.2026 this is a MODE of the single wallpaper host
+// `rexon-wallpaper-host` (`--mode web`), not a separate `rexon-web-host`
+// binary: it was decided not to multiply hosts. Bringing up Qt is shared —
+// src/bin/wallpaper_host/main.rs; what to show —
+// src/bin/wallpaper_host/web.rs.
 //
-// ⚠️ Единственное, чего у видео нет: `QtWebEngineQuick::initialize()` обязан
-// отработать ДО создания `QGuiApplication`. Биндинга в cxx-qt-lib нет, шима
-// на C++ тоже нет.
+// Warning: the only thing video does not have: `QtWebEngineQuick::initialize()`
+// must run BEFORE `QGuiApplication` is created. cxx-qt-lib has no binding
+// for it, and there is no C++ shim either.
 //
-// ⭐ Почему функция берётся `dlopen`/`dlsym`, а не мостом cxx, как было у
-// отдельного веб-хоста. Мост давал прямую ссылку на символ, и бинарь
-// линковался с libQt6WebEngineQuick, а через неё с Chromium: у веб-хоста
-// было 240 библиотек в зависимостях против 96 у видео. В одном бинаре с
-// видео это значило бы грузить Chromium при КАЖДОМ старте видео-обоев.
-// Замер до объединения (платформа offscreen, `--selftest=500`, 5 прогонов,
-// медиана): видео-хост 956 мс и 335,5 МиБ пика, он же с принудительно
-// подгруженной QtWebEngineQuick (`LD_PRELOAD`) — 997 мс и 347,2 МиБ. Поэтому
-// библиотека открывается здесь и только в веб-режиме; QML-импорт
-// `QtWebEngine` потом находит её уже загруженной.
+// Why the function is taken with `dlopen`/`dlsym` rather than with a cxx
+// bridge, as the separate web host did. The bridge gave a direct reference
+// to the symbol, and the binary was linked with libQt6WebEngineQuick and
+// through it with Chromium: the web host had 240 libraries among its
+// dependencies versus 96 for video. In one binary with video this would
+// mean loading Chromium on EVERY start of a video wallpaper. Measurement
+// before the merge (offscreen platform, `--selftest=500`, 5 runs, median):
+// the video host 956 ms and a 335.5 MiB peak, the same with QtWebEngineQuick
+// force-loaded (`LD_PRELOAD`) — 997 ms and 347.2 MiB. So the library is
+// opened here and only in web mode; the `QtWebEngine` QML import then finds
+// it already loaded.
 //
-// Своего C++ по-прежнему ноль, и правило #16 не нарушено:
-// `void QtWebEngineQuick::initialize()` — свободная функция без аргументов и
-// без возврата; по ABI Itanium её вызов не отличается от `extern "C" fn()`.
-// Искажённое имя стабильно у всего Qt 6 (версия символа `Qt_6`), а если его
-// не окажется — отказ с объяснением, а не падение загрузчика с кодом 127.
+// There is still zero C++ of our own, and rule #16 is not broken:
+// `void QtWebEngineQuick::initialize()` is a free function without
+// arguments and without a return value; under the Itanium ABI calling it
+// is no different from an `extern "C" fn()`. The mangled name is stable
+// across all of Qt 6 (symbol version `Qt_6`), and if it turns out to be
+// missing — a refusal with an explanation, not a loader crash with code
+// 127.
 
 use std::ffi::{c_char, c_int, c_void, CStr};
 
-/// Библиотека QtWebEngine для Qt Quick (пакет `qt6-webengine`).
+/// The QtWebEngine library for Qt Quick (the `qt6-webengine` package).
 const WEB_ENGINE_QUICK_LIB: &CStr = c"libQt6WebEngineQuick.so.6";
 
-/// Искажённое имя `QtWebEngineQuick::initialize()`.
+/// Mangled name of `QtWebEngineQuick::initialize()`.
 const INITIALIZE_SYMBOL: &CStr = c"_ZN16QtWebEngineQuick10initializeEv";
 
 const RTLD_NOW: c_int = 0x2;
-/// Глобально: QML-плагин `QtWebEngine`, который грузится позже, обязан
-/// увидеть ТУ ЖЕ копию библиотеки, что уже подняла Chromium.
+/// Global: the `QtWebEngine` QML plugin, loaded later, must see THE SAME
+/// copy of the library that has already brought up Chromium.
 const RTLD_GLOBAL: c_int = 0x100;
 
 unsafe extern "C" {
@@ -67,8 +74,8 @@ unsafe extern "C" {
 }
 
 fn dl_error() -> String {
-    // SAFETY: dlerror возвращает либо NULL, либо строку, живущую до
-    // следующего вызова dl* в этом потоке; копируем её сразу.
+    // SAFETY: dlerror returns either NULL or a string that lives until the
+    // next dl* call in this thread; we copy it at once.
     let raw = unsafe { dlerror() };
     if raw.is_null() {
         "причина не названа".to_string()
@@ -77,11 +84,11 @@ fn dl_error() -> String {
     }
 }
 
-/// Открыть QtWebEngineQuick и найти в ней `initialize`, НЕ вызывая.
+/// Open QtWebEngineQuick and find `initialize` in it WITHOUT calling it.
 fn resolve_initialize() -> Result<extern "C" fn(), String> {
     let lib = WEB_ENGINE_QUICK_LIB.to_string_lossy();
-    // SAFETY: имя библиотеки — строка с нулём на конце; дескриптор
-    // намеренно не закрывается: библиотека нужна процессу до выхода.
+    // SAFETY: the library name is a NUL-terminated string; the handle is
+    // deliberately not closed: the process needs the library until exit.
     let handle = unsafe { dlopen(WEB_ENGINE_QUICK_LIB.as_ptr(), RTLD_NOW | RTLD_GLOBAL) };
     if handle.is_null() {
         return Err(format!(
@@ -89,7 +96,8 @@ fn resolve_initialize() -> Result<extern "C" fn(), String> {
             dl_error()
         ));
     }
-    // SAFETY: дескриптор получен выше, имя символа — строка с нулём.
+    // SAFETY: the handle was obtained above, the symbol name is a
+    // NUL-terminated string.
     let symbol = unsafe { dlsym(handle, INITIALIZE_SYMBOL.as_ptr()) };
     if symbol.is_null() {
         return Err(format!(
@@ -97,43 +105,44 @@ fn resolve_initialize() -> Result<extern "C" fn(), String> {
             dl_error()
         ));
     }
-    // SAFETY: символ — `void QtWebEngineQuick::initialize()`, свободная
-    // функция без аргументов и возврата (см. разбор в начале файла).
+    // SAFETY: the symbol is `void QtWebEngineQuick::initialize()`, a free
+    // function without arguments or return value (see the analysis at the
+    // start of the file).
     Ok(unsafe { std::mem::transmute::<*mut c_void, extern "C" fn()>(symbol) })
 }
 
-/// Поднять QtWebEngine. Звать ТОЛЬКО в веб-режиме и ДО `QGuiApplication`:
-/// подсистема выставляет общий контекст OpenGL для всех окон процесса, а
-/// после создания приложения это уже поздно.
+/// Bring up QtWebEngine. Call ONLY in web mode and BEFORE `QGuiApplication`:
+/// the subsystem sets up a shared OpenGL context for all windows of the
+/// process, and after the application is created it is too late.
 pub fn init_web_engine() -> Result<(), String> {
     let initialize = resolve_initialize()?;
     initialize();
     Ok(())
 }
 
-// ── Разбор аргументов ──────────────────────────────────────────────────────
+// ── Argument parsing ───────────────────────────────────────────────────────
 
-/// Ключи командной строки хоста.
+/// Command line options of the host.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Cli {
-    /// Ссылка (`http://`, `https://`, `file://`), путь к HTML или каталог
-    /// обоев с `project.json`.
+    /// A link (`http://`, `https://`, `file://`), a path to HTML or a wallpaper
+    /// directory with `project.json`.
     pub target: String,
     pub windowed: bool,
     pub verbose: bool,
-    /// Самопроверка: через сколько миллисекунд окно отчитается и закроется.
+    /// Self-test: after how many milliseconds the window reports and closes.
     pub selftest_ms: i64,
 }
 
-/// Умолчание паузы самопроверки. Больше, чем у видео (3 с): Chromium
-/// поднимается медленнее проигрывателя, и на холодном запуске трёх секунд не
-/// хватает даже на пустую страницу — отчёт выходил бы «не загрузилось» там,
-/// где загружалось.
+/// Default self-test pause. Longer than for video (3 s): Chromium comes up
+/// more slowly than the player, and on a cold start three seconds are not
+/// enough even for an empty page — the report would say "did not load"
+/// where it did load.
 pub const DEFAULT_SELFTEST_MS: i64 = 6000;
 
-/// Разбор аргументов веб-режима (ключ `--mode` уже снят
-/// [`crate::wallpaper_host::take_mode`]). Ошибка — готовая строка для
-/// человека; `--help` отвечает общей справкой хоста.
+/// Parsing of web mode arguments (the `--mode` option has already been
+/// removed by [`crate::wallpaper_host::take_mode`]). An error is a ready
+/// string for the user; `--help` answers with the host's shared help.
 pub fn parse_args(argv: &[String]) -> Result<Cli, String> {
     let mut cli = Cli::default();
     for arg in argv {
@@ -142,8 +151,8 @@ pub fn parse_args(argv: &[String]) -> Result<Cli, String> {
             "-v" | "--verbose" => cli.verbose = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             "--audio" | "--no-audio" | "--volume" => {
-                // Звук веб-обоев ведёт сама страница; молча проглотить ключ
-                // значило бы сделать вид, что он что-то включил.
+                // The sound of web wallpapers is driven by the page itself; silently
+                // swallowing the option would pretend it turned something on.
                 return Err(format!("ключ {arg} есть только у режима video"));
             }
             "--selftest" => cli.selftest_ms = DEFAULT_SELFTEST_MS,
@@ -175,9 +184,9 @@ use crate::wallpaper_host::USAGE;
 mod tests {
     use super::*;
 
-    /// Библиотека и символ, которые открывает веб-режим, на месте — без
-    /// вызова: поднимать Chromium в процессе тестов незачем. Краснеет, если
-    /// Qt сменит имя библиотеки или искажение имени функции.
+    /// The library and the symbol that web mode opens are in place — without
+    /// calling: there is no reason to bring up Chromium in the test process.
+    /// Goes red if Qt changes the library name or the function's name mangling.
     #[test]
     fn qtwebengine_initialize_находится_без_линковки() {
         assert!(resolve_initialize().is_ok(), "{:?}", resolve_initialize().err());

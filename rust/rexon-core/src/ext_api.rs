@@ -1,29 +1,31 @@
-//! Публичный API расширений — чистая часть порта `rexon/extensions/api.py`.
+//! The public extension API: the pure part of the port of `rexon/extensions/api.py`.
 //!
-//! `ExtensionAPI` в Python — тонкая обёртка над главным окном (Qt) и
-//! подпроцессами (`gsettings`/`xfconf-query`/`notify-send`/`fc-cache`,
-//! `shutil.copytree`), поэтому целиком в ядро без Qt не переносится.
-//! Портирована ЧИСТАЯ, детерминированная часть: построение команды применения
-//! GTK-/иконочной темы по текущему DE (`apply_gtk_theme`/`apply_icon_theme`) —
-//! маппинг DE → бэкенд настроек (gsettings-схема или xfconf-свойство). Само
-//! исполнение команды (`safe_run`) и возврат `bool` по коду выхода остаются за
-//! GUI-слоем; здесь — только «какую команду запустить».
+//! `ExtensionAPI` in Python is a thin wrapper over the main window (Qt) and
+//! subprocesses (`gsettings`/`xfconf-query`/`notify-send`/`fc-cache`,
+//! `shutil.copytree`), so it cannot be moved into the Qt-free core as a whole.
+//! The PURE, deterministic part has been ported: building the command that
+//! applies a GTK or icon theme for the current DE (`apply_gtk_theme`/
+//! `apply_icon_theme`), i.e. mapping the DE to its settings backend (a
+//! gsettings schema or an xfconf property). Running the command (`safe_run`)
+//! and returning a `bool` from the exit code remain in the GUI layer; here we
+//! only decide "which command to run".
 //!
-//! Сверено байт-в-байт с Python: аргументы команд сняты монипатчем `safe_run`
-//! на реальном `ExtensionAPI` (golden-тест `ext_api_parity.rs`).
+//! Verified byte for byte against Python: the command arguments were captured
+//! by monkeypatching `safe_run` on a real `ExtensionAPI` (golden test
+//! `ext_api_parity.rs`).
 
-/// Что применяем: GTK-тему или тему иконок. Отличие только в ключе gsettings
-/// (`gtk-theme`/`icon-theme`) и в имени xfconf-свойства.
+/// What is being applied: a GTK theme or an icon theme. The only differences
+/// are the gsettings key (`gtk-theme`/`icon-theme`) and the xfconf property name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemeKind {
-    /// GTK-тема (`apply_gtk_theme`).
+    /// GTK theme (`apply_gtk_theme`).
     Gtk,
-    /// Тема иконок (`apply_icon_theme`).
+    /// Icon theme (`apply_icon_theme`).
     Icon,
 }
 
 impl ThemeKind {
-    /// Ключ gsettings для gnome/cinnamon/mate.
+    /// The gsettings key for gnome/cinnamon/mate.
     fn gsettings_key(self) -> &'static str {
         match self {
             ThemeKind::Gtk => "gtk-theme",
@@ -31,7 +33,7 @@ impl ThemeKind {
         }
     }
 
-    /// Имя xfconf-свойства канала `xsettings` для XFCE.
+    /// The name of the xfconf property in the `xsettings` channel for XFCE.
     fn xfconf_property(self) -> &'static str {
         match self {
             ThemeKind::Gtk => "/Net/ThemeName",
@@ -40,11 +42,11 @@ impl ThemeKind {
     }
 }
 
-/// gsettings-схема интерфейса для DE (`schema_map` в Python). `None` — DE не
-/// использует gsettings-путь.
+/// The interface gsettings schema for a DE (`schema_map` in Python). `None`
+/// means the DE does not use the gsettings path.
 fn gsettings_schema(de: &str) -> Option<&'static str> {
     match de {
-        // Pantheon оформляется теми же ключами GNOME.
+        // Pantheon is themed with the same GNOME keys.
         "gnome" | "pantheon" => Some("org.gnome.desktop.interface"),
         "cinnamon" => Some("org.cinnamon.desktop.interface"),
         "mate" => Some("org.mate.interface"),
@@ -52,12 +54,13 @@ fn gsettings_schema(de: &str) -> Option<&'static str> {
     }
 }
 
-/// Команда применения темы (`kind`) с именем `name` для текущего DE `de`.
+/// The command that applies a theme (`kind`) named `name` for the current DE `de`.
 ///
-/// Порт ветвления `apply_gtk_theme`/`apply_icon_theme`: gnome/cinnamon/mate →
-/// `gsettings set <schema> <key> <name>`; xfce → `xfconf-query -c xsettings -p
-/// <prop> -s <name>`. Для остальных DE (kde/budgie/…) команды нет → `None`
-/// (в Python — `return False`, тема через этот путь не применяется).
+/// A port of the branching in `apply_gtk_theme`/`apply_icon_theme`:
+/// gnome/cinnamon/mate → `gsettings set <schema> <key> <name>`; xfce →
+/// `xfconf-query -c xsettings -p <prop> -s <name>`. For other DEs
+/// (kde/budgie/…) there is no command → `None` (in Python, `return False`: the
+/// theme is not applied through this path).
 pub fn theme_apply_command(de: &str, kind: ThemeKind, name: &str) -> Option<Vec<String>> {
     if let Some(schema) = gsettings_schema(de) {
         return Some(vec![
@@ -82,19 +85,21 @@ pub fn theme_apply_command(de: &str, kind: ThemeKind, name: &str) -> Option<Vec<
     None
 }
 
-/// Полный путь цели копирования каталога оформления — чистая часть
-/// `copy_theme_files`/`copy_icon_files`: `os.path.join(base_dir,
+/// The full target path for copying an appearance directory: the pure part of
+/// `copy_theme_files`/`copy_icon_files`, i.e. `os.path.join(base_dir,
 /// os.path.basename(src_dir.rstrip("/")))`.
 ///
-/// Каталог-приёмник (`~/.themes`, `/usr/share/themes`, каталог иконок)
-/// выбирает шим: он раскрывается через `utils.expand_user`, то есть зависит
-/// от `XDG_DATA_HOME`, и вычислять его тут — значит потерять эту поправку.
+/// The destination directory (`~/.themes`, `/usr/share/themes`, the icon
+/// directory) is chosen by the shim: it is expanded via `utils.expand_user`,
+/// so it depends on `XDG_DATA_HOME`, and computing it here would lose that
+/// adjustment.
 ///
-/// `None` — имя пустое (`src_dir` вида `"/"`, `"///"` или пустая строка).
-/// Оригинал в этом случае получал `os.path.join(base, "")` = САМ каталог-
-/// приёмник и шёл его сносить (`_safe_rmtree(~/.themes)`) — снос всех тем
-/// пользователя из-за мусорного аргумента. Порт такой вход отвергает
-/// (правило «защита от дурака»); шим на `None` возвращает `False`.
+/// `None` means the name is empty (`src_dir` like `"/"`, `"///"` or an empty
+/// string). In that case the original got `os.path.join(base, "")`, i.e. the
+/// destination directory ITSELF, and went on to delete it
+/// (`_safe_rmtree(~/.themes)`): wiping all of the user's themes because of a
+/// garbage argument. The port rejects such input (the "foolproofing" rule);
+/// on `None` the shim returns `False`.
 pub fn copy_target(base_dir: &str, src_dir: &str) -> Option<String> {
     let trimmed = src_dir.trim_end_matches('/');
     let name = trimmed.rsplit('/').next().unwrap_or("");

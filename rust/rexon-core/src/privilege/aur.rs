@@ -1,62 +1,65 @@
-//! Шим `sudo` для сборщиков AUR (пункт Б10 плана, см. [`super`]).
+//! `sudo` shim for AUR builders (item B10 of the plan, see [`super`]).
 //!
-//! paru и yay собирают пакет от пользователя, а root им нужен только для
-//! вызовов pacman: поставить зависимости из репозиториев, поставить
-//! собранное, пометить причину установки, снять сборочные. Каждый такой
-//! вызов они делают через свой «sudo» — программу из `--sudo` (оба
-//! сборщика, см. `man paru`, `man yay`: «--sudo <command>», «--sudoflags
-//! <flags> … passed to every instance where sudo is called»). Раньше это
-//! был `pkexec` — отдельное окно пароля мимо сеанса прав на каждый вызов.
+//! paru and yay build a package as the user, and they need root only for
+//! pacman calls: installing dependencies from the repositories, installing what
+//! was built, marking the install reason, removing build dependencies. They make
+//! each such call through their own "sudo" — the program from `--sudo` (both
+//! builders, see `man paru`, `man yay`: "--sudo <command>", "--sudoflags
+//! <flags> … passed to every instance where sudo is called"). This used to be
+//! `pkexec` — a separate password dialog, bypassing the privilege session, for
+//! every call.
 //!
-//! Теперь в `--sudo` стоит `rexon-sudo-shim`, а в `--sudoflags` — метка
-//! операции `--rexon-op=<pid окна>.<токен>`. Шим ничего не исполняет сам:
-//! он передаёт строку pacman окну, и окно решает.
+//! Now `--sudo` is `rexon-sudo-shim`, and `--sudoflags` carries the operation
+//! mark `--rexon-op=<window pid>.<token>`. The shim executes nothing by itself:
+//! it passes the pacman command line to the window, and the window decides.
 //!
-//! # Пара «окно — шим»
+//! # The "window — shim" pair
 //!
-//! * **Где окно слушает.** `$XDG_RUNTIME_DIR/rexon-sudo-shim/<pid>.sock`,
-//!   каталог 0700 пользователя (проверяется владелец и права, ссылка —
-//!   отказ). Сокет и принятые соединения — с `CLOEXEC`: потомки окна их не
-//!   наследуют.
-//! * **Кто может спросить** ([`Broker::decide`]):
-//!   1. `SO_PEERCRED`: uid — тот же, что у окна;
-//!   2. токен — 128 бит из `getrandom`, выдан окном на ОДНУ операцию
-//!      ([`Broker::register`]): имена пакетов, которые окно просило собрать,
-//!      и согласие на замену конфликтующего;
-//!   3. первый запрос ПРИВЯЗЫВАЕТ операцию к процессу-сборщику: родитель
-//!      шима должен быть потомком окна и нести метку операции в своей
-//!      командной строке (это ровно тот paru/yay, которого запустило окно).
-//!      Запоминаются pid и время старта (защита от повторного pid);
-//!   4. дальше — только потомки привязанного сборщика.
-//! * **Конец операции.** Сборщик вышел (нет процесса с тем pid и временем
-//!   старта) — операция закрыта навсегда, токен в списке использованных;
-//!   любой следующий запрос с ним — отказ. Непривязанная операция живёт
-//!   [`UNBOUND_TTL`], привязанная — не дольше [`BOUND_MAX`].
+//! * **Where the window listens.** `$XDG_RUNTIME_DIR/rexon-sudo-shim/<pid>.sock`,
+//!   a 0700 directory of the user (owner and permissions are checked, a symlink
+//!   means refusal). The socket and accepted connections are `CLOEXEC`: the
+//!   window's children do not inherit them.
+//! * **Who may ask** ([`Broker::decide`]):
+//!   1. `SO_PEERCRED`: the uid is the same as the window's;
+//!   2. the token — 128 bits from `getrandom`, issued by the window for ONE
+//!      operation ([`Broker::register`]): the package names the window asked to
+//!      build, and consent to replacing a conflicting package;
+//!   3. the first request BINDS the operation to the builder process: the
+//!      shim's parent must be a descendant of the window and carry the operation
+//!      mark in its command line (that is exactly the paru/yay the window
+//!      started). The pid and the start time are remembered (protection against
+//!      pid reuse);
+//!   4. after that — only descendants of the bound builder.
+//! * **End of the operation.** The builder has exited (there is no process with
+//!   that pid and start time) — the operation is closed forever, the token goes
+//!   into the used list; any subsequent request with it is refused. An unbound
+//!   operation lives [`UNBOUND_TTL`], a bound one no longer than [`BOUND_MAX`].
 //!
-//! # Что пропускается (всё прочее — отказ, [`parse_pacman`])
+//! # What is let through (everything else is refused, [`parse_pacman`])
 //!
-//! | Строка сборщика | Что делает окно |
+//! | Builder's command | What the window does |
 //! |---|---|
-//! | `pacman -S … -- [repo/]имя…` | [`PrivOp::AurDeps`]: помощник ставит `--asdeps --needed`, только имена из sync-базы своей машины |
-//! | `pacman -U … -- /путь/файл.pkg.tar…` | [`PrivOp::AurInstallBuilt`]: имя из имени файла — из списка операции или его зависимость из AUR по `.SRCINFO` каталога сборщика ([`aur_dep_closure`]; иначе отказ ДО пароля), файл открывает окно (`O_NOFOLLOW`) и отдаёт дескриптором; помощник сверяет `.PKGINFO` копии |
-//! | `pacman -D --asdeps/--asexplicit -- имя…` | ничего от root: `-S` уже ставит зависимостью, `-U` — явно; имена обязаны быть из операции |
-//! | `pacman -R[s][u] … -- имя…` | [`PrivOp::AurDropMake`]: только имена, которые эта операция ставила через `-S`; помощник снимает лишь сироты |
+//! | `pacman -S … -- [repo/]name…` | [`PrivOp::AurDeps`]: the helper installs with `--asdeps --needed`, only names from its machine's sync database |
+//! | `pacman -U … -- /path/file.pkg.tar…` | [`PrivOp::AurInstallBuilt`]: the name from the file name — from the operation's list or its AUR dependency per the `.SRCINFO` of the builder's directory ([`aur_dep_closure`]; otherwise refusal BEFORE the password), the window opens the file (`O_NOFOLLOW`) and passes it as a descriptor; the helper checks the copy's `.PKGINFO` |
+//! | `pacman -D --asdeps/--asexplicit -- name…` | nothing as root: `-S` already installs as a dependency, `-U` explicitly; the names must be from the operation |
+//! | `pacman -R[s][u] … -- name…` | [`PrivOp::AurDropMake`]: only names this operation installed via `-S`; the helper removes only orphans |
 //!
-//! Флаги вне белого списка (`--overwrite`, `--dbpath`, `--root`, `-d`,
-//! чужой `--config`, `--ask` без согласия на замену…) — отказ.
+//! Flags outside the allow-list (`--overwrite`, `--dbpath`, `--root`, `-d`, a
+//! foreign `--config`, `--ask` without consent to replacement…) are refused.
 //!
-//! # Исполнение
+//! # Execution
 //!
-//! Через [`super::run`]: первый запрос поднимает сеанс прав (одно окно
-//! пароля), остальные идут в тот же сеанс. Помощника сеанса нет вовсе
-//! ([`LegacyReason::HelperUnavailable`]) — шим получает «прежний путь» и
-//! сам запускает `pkexec` той же строки pacman, как было до Б10 (З5: при
-//! отказе проверки прежнего пути нет). Без помощника на машине окно шим и не
-//! ставит ([`sudo_for`]): `--sudo pkexec`, как раньше.
+//! Through [`super::run`]: the first request raises the privilege session (one
+//! password dialog), the rest go into the same session. If there is no session
+//! helper at all ([`LegacyReason::HelperUnavailable`]), the shim gets "the old
+//! path" and itself runs `pkexec` with the same pacman command line, as before
+//! B10 (Z5: on a check refusal there is no old path). Without a helper on the
+//! machine the window does not install the shim at all ([`sudo_for`]):
+//! `--sudo pkexec`, as before.
 //!
-//! Пересборка AeroShell в чистом окружении (`paru --chroot`) зовёт через
-//! sudo `mkarchroot`/`arch-nspawn` — это не pacman, шим такое не пропустит,
-//! поэтому она идёт прежним путём (`--sudo pkexec`).
+//! Rebuilding AeroShell in a clean environment (`paru --chroot`) calls
+//! `mkarchroot`/`arch-nspawn` via sudo — that is not pacman, the shim will not
+//! let it through, so it goes the old way (`--sudo pkexec`).
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -74,42 +77,42 @@ use super::op::{LocalFile, PrivOp};
 use super::run::{LegacyReason, RunOutcome};
 use crate::i18n::tr;
 
-/// Имя бинаря шима.
+/// Name of the shim binary.
 pub const SHIM_NAME: &str = "rexon-sudo-shim";
 
-/// Метка операции в `--sudoflags`: `--rexon-op=<pid окна>.<токен>`.
+/// The operation mark in `--sudoflags`: `--rexon-op=<window pid>.<token>`.
 pub const OP_FLAG: &str = "--rexon-op=";
 
-/// Подкаталог `$XDG_RUNTIME_DIR` с сокетами окон.
+/// Subdirectory of `$XDG_RUNTIME_DIR` with the windows' sockets.
 pub const SOCKET_DIR: &str = "rexon-sudo-shim";
 
-/// Сколько живёт операция, к которой ещё не пришёл ни один запрос: команда
-/// AUR может стоять в плане после долгой установки стола.
+/// How long an operation lives before any request has come for it: an AUR
+/// command may sit in the plan after a long desktop installation.
 pub const UNBOUND_TTL: Duration = Duration::from_secs(12 * 3600);
 
-/// Предел жизни привязанной операции (сборка крупного комплекта — часы).
+/// Lifetime limit of a bound operation (building a large set takes hours).
 pub const BOUND_MAX: Duration = Duration::from_secs(24 * 3600);
 
-/// Сколько окно ждёт строку запроса от шима.
+/// How long the window waits for the request line from the shim.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Самый длинный запрос шима, байт.
+/// The longest shim request, in bytes.
 const REQUEST_MAX: u64 = 256 * 1024;
 
-/// Сколько операций окно держит разом (неиспользованные старые вытесняются).
+/// How many operations the window holds at once (unused old ones are evicted).
 const MAX_OPS: usize = 64;
 
-/// Пути pacman, которые шим пропускает (имя — как его даёт сборщик).
+/// pacman paths the shim lets through (the name as the builder gives it).
 const PACMAN_BINS: &[&str] = &["pacman", "/usr/bin/pacman"];
 
-/// Единственный конфиг pacman, который может прийти в `--config`.
+/// The only pacman config that may come in `--config`.
 const PACMAN_CONF: &str = "/etc/pacman.conf";
 
 // ============================================================================
-// Протокол шим ↔ окно (строки JSON)
+// Shim ↔ window protocol (JSON lines)
 // ============================================================================
 
-/// Запрос шима: токен операции и строка, которую сборщик отдал «sudo».
+/// Shim request: the operation token and the command line the builder gave to "sudo".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ShimRequest {
@@ -117,38 +120,38 @@ pub struct ShimRequest {
     pub argv: Vec<String>,
 }
 
-/// Ответ окна (поток строк; последняя — `Exit`, `Fallback` или `Refused`).
+/// Window answer (a stream of lines; the last one is `Exit`, `Fallback` or `Refused`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ShimReply {
-    /// Строка хода (вывод pacman у помощника).
+    /// A progress line (pacman output at the helper).
     Line(String),
-    /// Исполнено, код pacman.
+    /// Executed, pacman's exit code.
     Exit(i32),
-    /// Помощника сеанса нет: шим сам запускает `pkexec` той же строки.
+    /// There is no session helper: the shim itself runs `pkexec` with the same command line.
     Fallback,
-    /// Отказ: текст для человека.
+    /// Refusal: text for the person.
     Refused(String),
 }
 
 // ============================================================================
-// Разбор строки pacman
+// Parsing the pacman command line
 // ============================================================================
 
-/// Что просит сборщик (строка pacman после белого списка флагов).
+/// What the builder asks for (the pacman command line after the flag allow-list).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PacmanCall {
-    /// `-S`: имена без `repo/`.
+    /// `-S`: names without `repo/`.
     Sync(Vec<String>),
-    /// `-U`: абсолютные пути файлов.
+    /// `-U`: absolute file paths.
     Upgrade(Vec<String>),
-    /// `-D --asdeps` (`explicit = false`) или `--asexplicit`.
+    /// `-D --asdeps` (`explicit = false`) or `--asexplicit`.
     Database { explicit: bool, names: Vec<String> },
-    /// `-R` (с `-s`/`-u`/`-n`).
+    /// `-R` (with `-s`/`-u`/`-n`).
     Remove(Vec<String>),
 }
 
-/// Вид операции pacman.
+/// Kind of pacman operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PacOp {
     Sync,
@@ -157,10 +160,12 @@ enum PacOp {
     Remove,
 }
 
-/// Разобрать строку pacman от сборщика. `replace` — человек согласился на
-/// замену конфликтующего (`--ask=4`). `Err` — короткая причина для журнала.
+/// Parse a pacman command line from the builder. `replace` — the person agreed
+/// to replacing a conflicting package (`--ask=4`). `Err` — a short reason for the
+/// log.
 ///
-/// Флаги — до `--`, цели — только после него (так строят и paru, и yay).
+/// Flags come before `--`, targets only after it (that is how both paru and yay
+/// build it).
 pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String> {
     let Some((bin, rest)) = argv.split_first() else {
         return Err("пустая команда".into());
@@ -184,7 +189,7 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
     let mut i = 0;
     while i < flags.len() {
         let f = flags[i].as_str();
-        // Флаг со значением: `--x=v` или `--x v`.
+        // A flag with a value: `--x=v` or `--x v`.
         let mut value = |name: &str| -> Option<Result<String, String>> {
             if let Some(v) = f.strip_prefix(name).and_then(|r| r.strip_prefix('=')) {
                 return Some(Ok(v.to_string()));
@@ -216,8 +221,8 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
                 "-U" | "--upgrade" => set_op(PacOp::Upgrade, &mut op)?,
                 "-D" | "--database" => set_op(PacOp::Database, &mut op)?,
                 "-R" | "--remove" => set_op(PacOp::Remove, &mut op)?,
-                // `-q`: yay 13 помечает причину установки `pacman -D -q
-                // --asdeps` (живьём 08.11.2026: отказ ронял всю сборку).
+                // `-q`: yay 13 marks the install reason with `pacman -D -q --asdeps` (live on
+                // 08.11.2026: refusing it broke the whole build).
                 "--noconfirm" | "--needed" | "-q" | "--quiet" => {}
                 "--asdeps" | "--asdep" => asdeps = true,
                 "--asexplicit" | "--asexp" => asexplicit = true,
@@ -287,12 +292,12 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
 }
 
 // ============================================================================
-// Зависимости из AUR: что сборщик собрал ради пакетов окна
+// AUR dependencies: what the builder built for the window's packages
 // ============================================================================
 
-/// Один пакет из `.SRCINFO`: имя, что он даёт (`provides`) и что ему нужно
-/// для сборки и работы (`depends`, `makedepends`, `checkdepends` основы и
-/// своего раздела, с архитектурными вариантами).
+/// One package from `.SRCINFO`: the name, what it provides (`provides`) and what
+/// it needs to build and run (`depends`, `makedepends`, `checkdepends` of the
+/// base and of its own section, with architecture variants).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SrcPkg {
     pub name: String,
@@ -300,12 +305,12 @@ pub struct SrcPkg {
     pub needs: Vec<String>,
 }
 
-/// Имя из записи зависимости: `foo>=1.2` → `foo`, `libx.so=1-64` → `libx.so`.
+/// Name from a dependency entry: `foo>=1.2` → `foo`, `libx.so=1-64` → `libx.so`.
 fn dep_name(dep: &str) -> &str {
     dep.split(['<', '>', '=', ':']).next().unwrap_or("").trim()
 }
 
-/// Разобрать `.SRCINFO` в пакеты (раздельные пакеты — каждый своим).
+/// Parse `.SRCINFO` into packages (split packages — each separately).
 pub fn parse_srcinfo_pkgs(text: &str) -> Vec<SrcPkg> {
     let mut base_needs: Vec<String> = Vec::new();
     let mut out: Vec<SrcPkg> = Vec::new();
@@ -331,9 +336,10 @@ pub fn parse_srcinfo_pkgs(text: &str) -> Vec<SrcPkg> {
     out
 }
 
-/// Пакеты из AUR, без которых не собрать `allowed`: обход зависимостей по
-/// `.SRCINFO` каталога сборщика (только найденные там имена; официальные
-/// зависимости ставит `-S`, их тут нет). Возвращает новые имена.
+/// AUR packages without which `allowed` cannot be built: a dependency walk over
+/// the `.SRCINFO` files of the builder's directory (only names found there;
+/// official dependencies are installed by `-S` and are not here). Returns the
+/// new names.
 pub fn aur_dep_closure(allowed: &[String], pkgs: &[SrcPkg]) -> Vec<String> {
     let find = |dep: &str| -> Option<&SrcPkg> {
         pkgs.iter().find(|p| p.name == dep).or_else(|| pkgs.iter().find(|p| p.provides.iter().any(|x| x == dep)))
@@ -355,9 +361,10 @@ pub fn aur_dep_closure(allowed: &[String], pkgs: &[SrcPkg]) -> Vec<String> {
     extra
 }
 
-/// Каталоги исходников сборщика по его командной строке: yay —
-/// `--builddir` или `buildDir` из `~/.config/yay/config.json`, иначе
-/// `$XDG_CACHE_HOME/yay`; paru — `--clonedir`, иначе `$XDG_CACHE_HOME/paru/clone`.
+/// The builder's source directories from its command line: yay — `--builddir`
+/// or `buildDir` from `~/.config/yay/config.json`, otherwise
+/// `$XDG_CACHE_HOME/yay`; paru — `--clonedir`, otherwise
+/// `$XDG_CACHE_HOME/paru/clone`.
 fn builder_clone_dirs(cmd: &[String]) -> Vec<PathBuf> {
     let helper = cmd.first().map(|a| a.rsplit('/').next().unwrap_or(a).to_string()).unwrap_or_default();
     let flag = |name: &str| -> Option<String> {
@@ -401,7 +408,7 @@ fn builder_clone_dirs(cmd: &[String]) -> Vec<PathBuf> {
     dirs
 }
 
-/// Все `.SRCINFO` из каталогов сборщика (по одному на подкаталог).
+/// All `.SRCINFO` files from the builder's directories (one per subdirectory).
 fn read_srcinfos(dirs: &[PathBuf]) -> Vec<SrcPkg> {
     const MAX_ENTRIES: usize = 4096;
     let mut out = Vec::new();
@@ -418,27 +425,27 @@ fn read_srcinfos(dirs: &[PathBuf]) -> Vec<SrcPkg> {
     out
 }
 
-/// Имя репозитория в цели `repo/имя` (`core`, `extra`, `cachyos-v3`…).
+/// Repository name in a `repo/name` target (`core`, `extra`, `cachyos-v3`…).
 fn is_repo_name(s: &str) -> bool {
     !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
 }
 
 // ============================================================================
-// Процессы (/proc)
+// Processes (/proc)
 // ============================================================================
 
-/// Процесс с временем старта (pid может достаться другому).
+/// A process with its start time (the pid may go to another one).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Proc {
     pid: i32,
     start: u64,
 }
 
-/// `(ppid, время старта)` из `/proc/<pid>/stat`.
+/// `(ppid, start time)` from `/proc/<pid>/stat`.
 fn proc_stat(pid: i32) -> Option<(i32, u64)> {
     let text = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    // Имя процесса в скобках может содержать пробелы и скобки — режем по
-    // последней `)`. Дальше: состояние (3), ppid (4) … starttime (22).
+    // The process name in parentheses may contain spaces and parentheses — we cut
+    // at the last `)`. Then: state (3), ppid (4) … starttime (22).
     let rest = &text[text.rfind(')')? + 1..];
     let f: Vec<&str> = rest.split_whitespace().collect();
     Some((f.get(1)?.parse().ok()?, f.get(19)?.parse().ok()?))
@@ -452,7 +459,7 @@ fn alive(p: Proc) -> bool {
     proc_of(p.pid) == Some(p)
 }
 
-/// `pid` — потомок `ancestor` (не сам он).
+/// `pid` is a descendant of `ancestor` (not itself).
 fn is_descendant(pid: i32, ancestor: i32) -> bool {
     let mut cur = pid;
     for _ in 0..256 {
@@ -480,52 +487,52 @@ fn cmdline(pid: i32) -> Vec<String> {
 }
 
 // ============================================================================
-// Операции и решение
+// Operations and decisions
 // ============================================================================
 
-/// Одна сборка AUR, как её задумало окно.
+/// One AUR build, as the window intended it.
 #[derive(Debug)]
 struct AurOp {
-    /// Что окно просило собрать (имя собранного — только отсюда).
+    /// What the window asked to build (the name of a built package comes only from here).
     allowed: Vec<String>,
-    /// Согласие на замену конфликтующего (`--ask=4`).
+    /// Consent to replacing a conflicting package (`--ask=4`).
     replace: bool,
-    /// Что эта операция ставила через `-S` (для `-D --asdeps` и `-R`).
+    /// What this operation installed via `-S` (for `-D --asdeps` and `-R`).
     deps: BTreeSet<String>,
     created: Instant,
-    /// Сборщик, к которому привязана операция.
+    /// The builder the operation is bound to.
     bound: Option<(Proc, Instant)>,
 }
 
-/// Решение по запросу шима.
+/// Decision on a shim request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
-    /// Отказ, причина для журнала.
+    /// Refusal, the reason for the log.
     Refuse(String),
-    /// Ответить успехом без root (`-D`).
+    /// Answer with success without root (`-D`).
     NoOp,
-    /// Исполнить через сеанс прав; `files` — пути для `-U` (в порядке слотов).
+    /// Execute through the privilege session; `files` — paths for `-U` (in slot order).
     Run { op: PrivOp, files: Vec<String> },
 }
 
-/// Исполнитель операции: в окне — [`super::run::run`].
+/// Operation executor: in the window — [`super::run::run`].
 pub type ExecFn = dyn Fn(&PrivOp, Vec<OwnedFd>, &mut dyn FnMut(&str)) -> RunOutcome + Send + Sync;
 
-/// Посредник окна: операции, сокет, решения.
+/// The window's broker: operations, the socket, decisions.
 pub struct Broker {
     dir: PathBuf,
     window_pid: i32,
     ops: Mutex<HashMap<String, AurOp>>,
-    /// Токены закончившихся операций: повтор — отказ с этой причиной.
+    /// Tokens of finished operations: a repeat is refused with this reason.
     used: Mutex<HashSet<String>>,
     exec: Box<ExecFn>,
 }
 
-/// Метка операции для `--sudoflags`.
+/// Operation mark for `--sudoflags`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Registration {
     pub token: String,
-    /// `--rexon-op=<pid>.<токен>`.
+    /// `--rexon-op=<pid>.<token>`.
     pub flag: String,
 }
 
@@ -533,12 +540,12 @@ fn random_token() -> String {
     let mut buf = [0u8; 16];
     let mut got = 0;
     while got < buf.len() {
-        // SAFETY: пишем в свой буфер не больше его остатка.
+        // SAFETY: we write into our own buffer no more than what remains of it.
         let n = unsafe { libc::getrandom(buf[got..].as_mut_ptr().cast(), buf.len() - got, 0) };
         if n > 0 {
             got += n as usize;
         } else if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
-            // getrandom есть с Linux 3.17; без него — /dev/urandom.
+            // getrandom exists since Linux 3.17; without it — /dev/urandom.
             let mut f = std::fs::File::open("/dev/urandom").expect("нет источника случайности");
             f.read_exact(&mut buf).expect("нет источника случайности");
             got = buf.len();
@@ -551,8 +558,8 @@ fn is_token(s: &str) -> bool {
     s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
-/// Подготовить каталог сокетов: создать 0700 или принять существующий,
-/// только если он наш, 0700 и не ссылка.
+/// Prepare the socket directory: create it 0700 or accept an existing one only
+/// if it is ours, 0700 and not a symlink.
 fn prepare_dir(dir: &Path) -> std::io::Result<()> {
     match std::fs::DirBuilder::new().mode(0o700).create(dir) {
         Ok(()) => {}
@@ -560,7 +567,7 @@ fn prepare_dir(dir: &Path) -> std::io::Result<()> {
         Err(e) => return Err(e),
     }
     let m = std::fs::symlink_metadata(dir)?;
-    // SAFETY: getuid не ошибается.
+    // SAFETY: getuid does not fail.
     let uid = unsafe { libc::getuid() };
     if !m.is_dir() || m.uid() != uid || m.permissions().mode() & 0o777 != 0o700 {
         return Err(std::io::Error::new(
@@ -572,8 +579,8 @@ fn prepare_dir(dir: &Path) -> std::io::Result<()> {
 }
 
 impl Broker {
-    /// Посредник окна `window_pid` с сокетом в `dir` (каталог 0700). Поток
-    /// приёма живёт, пока жив процесс.
+    /// Broker of window `window_pid` with a socket in `dir` (a 0700 directory). The
+    /// accepting thread lives as long as the process does.
     pub fn start(dir: &Path, window_pid: i32, exec: Box<ExecFn>) -> std::io::Result<Arc<Self>> {
         prepare_dir(dir)?;
         let path = dir.join(format!("{window_pid}.sock"));
@@ -597,19 +604,19 @@ impl Broker {
         Ok(broker)
     }
 
-    /// Путь сокета.
+    /// Socket path.
     pub fn socket_path(&self) -> PathBuf {
         self.dir.join(format!("{}.sock", self.window_pid))
     }
 
-    /// Завести операцию: имена, которые окно просит собрать, и согласие на
-    /// замену конфликтующего.
+    /// Register an operation: the names the window asks to build, and consent to
+    /// replacing a conflicting package.
     pub fn register(&self, allowed: &[String], replace: bool) -> Registration {
         let token = random_token();
         let mut ops = self.lock_ops();
         self.sweep(&mut ops);
         if ops.len() >= MAX_OPS {
-            // Вытесняем самую старую непривязанную (такие — неиспользованные планы).
+            // Evict the oldest unbound one (such ones are unused plans).
             if let Some(old) = ops
                 .iter()
                 .filter(|(_, o)| o.bound.is_none())
@@ -635,7 +642,7 @@ impl Broker {
         self.used.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Закрыть всё, что кончилось: сборщик вышел, срок истёк.
+    /// Close everything that has ended: the builder exited, the time ran out.
     fn sweep(&self, ops: &mut HashMap<String, AurOp>) {
         let over: Vec<String> = ops.iter().filter(|(_, o)| op_over(o)).map(|(t, _)| t.clone()).collect();
         let mut used = self.lock_used();
@@ -645,7 +652,7 @@ impl Broker {
         }
     }
 
-    /// Решение по запросу шима от процесса `peer_pid` (uid уже сверен).
+    /// Decision on a shim request from process `peer_pid` (the uid is already checked).
     pub fn decide(&self, token: &str, peer_pid: i32, argv: &[String]) -> Decision {
         let refuse = |why: &str| Decision::Refuse(why.to_string());
         if !is_token(token) {
@@ -666,8 +673,8 @@ impl Broker {
                 }
             }
             None => {
-                // Первый запрос: родитель шима — сборщик, запущенный окном
-                // с меткой ЭТОЙ операции.
+                // First request: the shim's parent is a builder started by the window with
+                // the mark of THIS operation.
                 let Some((parent, _)) = proc_stat(peer_pid) else {
                     return refuse("нет процесса шима");
                 };
@@ -689,9 +696,9 @@ impl Broker {
         match call {
             PacmanCall::Sync(names) => Decision::Run { op: PrivOp::AurDeps { names }, files: Vec::new() },
             PacmanCall::Upgrade(files) => {
-                // Чужое имя — отказ сразу, без подъёма сеанса.
-                // Зависимость из AUR (yay/paru собрали её ради пакета из
-                // списка) — в список операции по `.SRCINFO` сборщика.
+                // A foreign name — refusal right away, without raising the session.
+                // An AUR dependency (yay/paru built it for a package from the list) — into
+                // the operation's list per the builder's `.SRCINFO`.
                 let names: Vec<String> =
                     files.iter().map(|f| super::helper::pkgname_from_file(f).unwrap_or_default()).collect();
                 if names.iter().any(|n| !op.allowed.contains(n)) {
@@ -735,14 +742,14 @@ impl Broker {
         }
     }
 
-    /// После успешного `-S` — запомнить поставленные имена операции.
+    /// After a successful `-S`, remember the operation's installed names.
     fn note_deps(&self, token: &str, names: &[String]) {
         if let Some(op) = self.lock_ops().get_mut(token) {
             op.deps.extend(names.iter().cloned());
         }
     }
 
-    /// Обслужить одно соединение шима.
+    /// Serve one shim connection.
     fn serve(&self, conn: UnixStream) {
         let mut out = match conn.try_clone() {
             Ok(c) => c,
@@ -754,7 +761,7 @@ impl Broker {
                 let _ = out.write_all(line.as_bytes());
             }
         };
-        // SAFETY: getuid не ошибается.
+        // SAFETY: getuid does not fail.
         let uid = unsafe { libc::getuid() };
         let peer = super::helper::peer_cred(conn.as_fd());
         let Some((_, peer_pid)) = peer.filter(|(u, p)| *u == uid && *p > 1) else {
@@ -798,8 +805,8 @@ impl Broker {
                         send(&ShimReply::Exit(o.code.unwrap_or(1)));
                     }
                     RunOutcome::Legacy(LegacyReason::HelperUnavailable(_)) => {
-                        // Прежний путь — только для того, что окно уже
-                        // проверило; `-S` запомним заранее (pkexec исполнит).
+                        // The old path — only for what the window has already
+                        // checked; `-S` is remembered in advance (pkexec will execute it).
                         if let PrivOp::AurDeps { names } = &op {
                             self.note_deps(&req.token, names);
                         }
@@ -818,7 +825,7 @@ impl Broker {
     }
 }
 
-/// Операция кончилась: сборщик вышел или срок истёк.
+/// The operation has ended: the builder exited or the time ran out.
 fn op_over(o: &AurOp) -> bool {
     match o.bound {
         Some((p, since)) => !alive(p) || since.elapsed() > BOUND_MAX,
@@ -826,27 +833,28 @@ fn op_over(o: &AurOp) -> bool {
     }
 }
 
-/// Отказ шима для человека (строка уходит в вывод сборщика и окно хода).
+/// A shim refusal for the person (the line goes to the builder's output and the
+/// progress window).
 pub fn refused_text() -> String {
     // TRANSLATORS: An AUR package builder asked for administrator rights for something Rexon did not ask it to do.
     tr("Rexon refused this request from the AUR builder: it only installs what you chose to build")
 }
 
 // ============================================================================
-// Окно: включение и метка для сборщика
+// Window: enabling and the mark for the builder
 // ============================================================================
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static LIVE: OnceLock<Option<Arc<Broker>>> = OnceLock::new();
 
-/// Включить шим в этом процессе (окно Rexon). Без вызова сборщики AUR
-/// получают `--sudo pkexec`, как до Б10 (консольные инструменты, тесты).
+/// Enable the shim in this process (the Rexon window). Without this call AUR
+/// builders get `--sudo pkexec`, as before B10 (console tools, tests).
 pub fn enable() {
     ENABLED.store(true, Ordering::SeqCst);
 }
 
-/// Установленный шим: рядом с помощником сеанса ([`crate::system_plan::HELPER_DIRS`],
-/// каталог SteamOS).
+/// The installed shim: next to the session helper
+/// ([`crate::system_plan::HELPER_DIRS`], the SteamOS directory).
 pub fn shim_path() -> Option<String> {
     crate::system_plan::HELPER_DIRS
         .iter()
@@ -872,16 +880,16 @@ fn live_broker() -> Option<&'static Arc<Broker>> {
     .as_ref()
 }
 
-/// «sudo» сборщика AUR и его флаги.
+/// The AUR builder's "sudo" and its flags.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SudoArgs {
     pub program: String,
     pub flags: String,
 }
 
-/// `--sudo`/`--sudoflags` для сборки `packages`: шим и метка новой операции,
-/// если шим включён ([`enable`]), установлен и помощник сеанса на месте;
-/// иначе `None` — прежний `--sudo pkexec`.
+/// `--sudo`/`--sudoflags` for building `packages`: the shim and the mark of a
+/// new operation, if the shim is enabled ([`enable`]), installed and the session
+/// helper is in place; otherwise `None` — the old `--sudo pkexec`.
 pub fn sudo_for(packages: &[String], replace: bool) -> Option<SudoArgs> {
     if !ENABLED.load(Ordering::SeqCst) || packages.is_empty() {
         return None;
@@ -896,19 +904,19 @@ pub fn sudo_for(packages: &[String], replace: bool) -> Option<SudoArgs> {
 }
 
 // ============================================================================
-// Сам шим (бинарь `rexon-sudo-shim`)
+// The shim itself (the `rexon-sudo-shim` binary)
 // ============================================================================
 
-/// Разобрать метку `--rexon-op=<pid>.<токен>`.
+/// Parse the mark `--rexon-op=<pid>.<token>`.
 pub fn parse_op_flag(arg: &str) -> Option<(u32, String)> {
     let (pid, token) = arg.strip_prefix(OP_FLAG)?.split_once('.')?;
     let pid: u32 = pid.parse().ok().filter(|p| *p > 1)?;
     is_token(token).then(|| (pid, token.to_string()))
 }
 
-/// `main` шима: `rexon-sudo-shim --rexon-op=<pid>.<токен> pacman …`.
-/// `-v` (продление sudo у yay с `sudoloop`) — успех без окна: ничего не
-/// продлевается и не исполняется.
+/// The shim's `main`: `rexon-sudo-shim --rexon-op=<pid>.<token> pacman …`.
+/// `-v` (sudo extension by yay with `sudoloop`) — success without the window:
+/// nothing is extended or executed.
 pub fn shim_main(args: &[String]) -> i32 {
     let say = |text: &str| eprintln!("{SHIM_NAME}: {text}");
     let rest = args.get(1..).unwrap_or_default();
@@ -953,7 +961,7 @@ pub fn shim_main(args: &[String]) -> i32 {
                 return 1;
             }
             Ok(ShimReply::Fallback) => {
-                // Помощника сеанса нет — как до Б10: окно пароля на вызов.
+                // There is no session helper — as before B10: a password dialog per call.
                 use std::os::unix::process::CommandExt;
                 let err = std::process::Command::new(super::client::PKEXEC).args(&argv).exec();
                 say(&err.to_string());
@@ -993,7 +1001,7 @@ mod tests {
             parse_pacman(&s(&["pacman", "--remove", "--noconfirm", "--noconfirm", "--", "cmake"]), false),
             Ok(PacmanCall::Remove(s(&["cmake"])))
         );
-        // yay: флаги в любом порядке, `--ask 4` отдельным словом, свой --config.
+        // yay: flags in any order, `--ask 4` as a separate word, its own --config.
         assert_eq!(
             parse_pacman(
                 &s(&["pacman", "-U", "--ask", "4", "--needed", "--noconfirm", "--config", "/etc/pacman.conf", "--", "/a/t-1-1-x86_64.pkg.tar.zst"]),
@@ -1011,21 +1019,21 @@ mod tests {
     fn прочее_отказ() {
         for (argv, replace) in [
             (s(&["bash", "-c", "id"]), false), // сторож: имена, не запуск
-            (s(&["pacman", "-S", "x"]), false),                      // цели без `--`
-            (s(&["pacman", "-Syu", "--"]), false),                   // склейка, нет целей
-            (s(&["pacman", "-S", "--", "x", "-y"]), false),          // флаг среди целей
-            (s(&["pacman", "-S", "-U", "--", "x"]), false),          // две операции
+            (s(&["pacman", "-S", "x"]), false),                      // targets without `--`
+            (s(&["pacman", "-Syu", "--"]), false),                   // glued flags, no targets
+            (s(&["pacman", "-S", "--", "x", "-y"]), false),          // a flag among the targets
+            (s(&["pacman", "-S", "-U", "--", "x"]), false),          // two operations
             (s(&["pacman", "-U", "--overwrite", "*", "--", "/a/t-1-1-any.pkg.tar.zst"]), false),
             (s(&["pacman", "-U", "--dbpath", "/tmp", "--", "/a/t-1-1-any.pkg.tar.zst"]), false),
             (s(&["pacman", "-U", "--root=/tmp", "--", "/a/t-1-1-any.pkg.tar.zst"]), false),
             (s(&["pacman", "-U", "-d", "--", "/a/t-1-1-any.pkg.tar.zst"]), false),
-            (s(&["pacman", "-U", "--ask=4", "--", "/a/t-1-1-any.pkg.tar.zst"]), false), // замена без согласия
+            (s(&["pacman", "-U", "--ask=4", "--", "/a/t-1-1-any.pkg.tar.zst"]), false), // replacement without consent
             (s(&["pacman", "-U", "--ask=255", "--", "/a/t-1-1-any.pkg.tar.zst"]), true),
             (s(&["pacman", "-U", "--config=/tmp/p.conf", "--", "/a/t-1-1-any.pkg.tar.zst"]), false),
             (s(&["pacman", "-U", "--", "/tmp/x.deb"]), false),
-            (s(&["pacman", "-U", "--", "t-1-1-any.pkg.tar.zst"]), false), // не абсолютный
+            (s(&["pacman", "-U", "--", "t-1-1-any.pkg.tar.zst"]), false), // not absolute
             (s(&["pacman", "-U", "--", "/a/../etc/t-1-1-any.pkg.tar.zst"]), false),
-            (s(&["pacman", "-D", "--", "x"]), false),                 // без причины
+            (s(&["pacman", "-D", "--", "x"]), false),                 // no reason
             (s(&["pacman", "-S", "--asexplicit", "--", "x"]), false),
             (s(&["pacman", "-S", "-s", "--", "x"]), false),
             (s(&["pacman", "-S", "--", "../x"]), false),
@@ -1038,7 +1046,7 @@ mod tests {
 
     #[test]
     fn yay_помечает_причину_с_q() {
-        // Живьём 08.11.2026 (yay 13.1.0): отказ на `-q` ронял сборку тем MATE.
+        // Live on 08.11.2026 (yay 13.1.0): refusing `-q` broke the build of MATE themes.
         assert_eq!(
             parse_pacman(&s(&["pacman", "-D", "-q", "--asdeps", "--noconfirm", "--config", "/etc/pacman.conf", "--", "gtk2"]), false),
             Ok(PacmanCall::Database { explicit: false, names: s(&["gtk2"]) })
@@ -1047,9 +1055,9 @@ mod tests {
 
     #[test]
     fn зависимости_из_aur_по_srcinfo() {
-        // Живьём 08.11.2026: ayatana-indicator-session/-datetime тянут из AUR
-        // libayatana-common, librda, properties-cpp, ayatana-indicator-messages;
-        // шим отказывал «окно не просило собирать этот пакет».
+        // Live on 08.11.2026: ayatana-indicator-session/-datetime pull from AUR
+        // libayatana-common, librda, properties-cpp, ayatana-indicator-messages; the
+        // shim refused with "the window did not ask to build this package".
         let session = "pkgbase = ayatana-indicator-session\n\tmakedepends = cmake-extras\n\tdepends = glib2\n\tdepends = libayatana-common\n\tdepends = librda>=0.0.5\n\npkgname = ayatana-indicator-session\n";
         let datetime = "pkgbase = ayatana-indicator-datetime\n\tmakedepends = properties-cpp\n\tdepends = ayatana-indicator-messages\n\npkgname = ayatana-indicator-datetime\n";
         let common = "pkgbase = libayatana-common\n\tdepends = glib2\n\npkgname = libayatana-common\n";
@@ -1062,7 +1070,7 @@ mod tests {
         let mut got = aur_dep_closure(&s(&["ayatana-indicator-session", "ayatana-indicator-datetime"]), &pkgs);
         got.sort();
         assert_eq!(got, s(&["ayatana-indicator-messages", "libayatana-common", "librda", "properties-cpp"]));
-        // Ничьей зависимостью не являющийся пакет из кеша — не добавляется.
+        // A package from the cache that is nobody's dependency is not added.
         assert!(aur_dep_closure(&s(&["librda"]), &pkgs).is_empty());
     }
 

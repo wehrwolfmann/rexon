@@ -1,10 +1,10 @@
-// Свой редактор цветовой схемы «Оформления» — когда редактора KDE
-// (kcolorschemeeditor) в системе нет. Основные роли — окно, область
-// просмотра, кнопка, выделение, подсказка, заголовок окна: фон и текст.
+// Our own colour scheme editor for "Appearance" — for when the KDE editor
+// (kcolorschemeeditor) is not on the system. The main roles — window, view
+// area, button, selection, tooltip, window title: background and text.
 //
-// Только разметка: роли, подписи и запись схемы — ядро
-// (rexon_core::color_scheme_edit) через AppearanceModel
-// (`editDetailScheme` даёт состояние, `saveSchemeCopy` пишет файл).
+// Markup only: roles, labels and writing the scheme — the core
+// (rexon_core::color_scheme_edit) through AppearanceModel
+// (`editDetailScheme` gives the state, `saveSchemeCopy` writes the file).
 
 pragma ComponentBehavior: Bound
 
@@ -17,10 +17,10 @@ Popup {
     id: editor
 
     property var pal: ({})
-    /// Подписи (`color_scheme_edit::EditorTexts`).
+    /// Labels (`color_scheme_edit::EditorTexts`).
     property var texts: ({})
 
-    /// Роли `[{key, label, background, foreground}]`.
+    /// Roles `[{key, label, background, foreground}]`.
     property var roles: []
     property string base: ""
     property string overwrite: ""
@@ -37,7 +37,7 @@ Popup {
         editor.open();
     }
 
-    /// Ответ записи: при успехе окно закрывается, иначе показывает причину.
+    /// Write result: on success the window closes, otherwise it shows the reason.
     function done(ok, message) {
         if (ok) {
             editor.close();
@@ -138,7 +138,7 @@ Popup {
                     id: roleRow
                     required property var modelData
                     required property int index
-                    // Образец роли и две кнопки цвета.
+                    // Role sample and two colour buttons.
                     Layout.fillWidth: true
                     implicitHeight: 40
 
@@ -146,7 +146,7 @@ Popup {
                         anchors.fill: parent
                         spacing: 12
 
-                        // Образец: текст роли на её фоне.
+                        // Sample: the role's text on its background.
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.fillHeight: true

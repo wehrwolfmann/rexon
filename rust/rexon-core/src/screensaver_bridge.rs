@@ -1,89 +1,89 @@
-//! Мост «не гасить экран»: `org.freedesktop.ScreenSaver` там, где его нет.
+//! The «do not blank the screen» bridge: `org.freedesktop.ScreenSaver` where it is missing.
 //!
-//! ЗАЧЕМ. Браузеры и проигрыватели просят «не гасить экран, идёт видео» через
-//! службу `org.freedesktop.ScreenSaver` (`Inhibit(приложение, причина)` →
-//! куки, `UnInhibit(куки)`). В Plasma эту службу даёт сам сеанс, а в MATE её
-//! нет вовсе: хранитель экрана там отзывается только на `org.mate.ScreenSaver`,
-//! вызов уходит в пустоту (`ServiceUnknown`), и экран гаснет посреди фильма.
-//! Замер на живой машине 16.10.2026 (MATE 1.28, X11, Firefox 157): на шине
-//! владельца имени нет; портал `org.freedesktop.portal.Inhibit` до
-//! `mate-session` не доходит (`IsInhibited(8)` остаётся `false`); прямой
-//! `org.gnome.SessionManager.Inhibit(…, 8)` от живого клиента —
+//! WHY. Browsers and players ask «do not blank the screen, a video is playing» through
+//! the `org.freedesktop.ScreenSaver` service (`Inhibit(application, reason)` →
+//! cookie, `UnInhibit(cookie)`). In Plasma the session itself provides this service, while in MATE it
+//! does not exist at all: the screensaver there answers only to `org.mate.ScreenSaver`,
+//! the call goes nowhere (`ServiceUnknown`), and the screen blanks in the middle of a film.
+//! Measurement on a live machine 16.10.2026 (MATE 1.28, X11, Firefox 157): the name has
+//! no owner on the bus; the `org.freedesktop.portal.Inhibit` portal does not reach
+//! `mate-session` (`IsInhibited(8)` stays `false`); a direct
+//! `org.gnome.SessionManager.Inhibit(…, 8)` from a live client gives
 //! `IsInhibited(8)` = `true`.
 //!
-//! ЧТО ДЕЛАЕТ. Rexon живёт весь сеанс (значок в лотке), поэтому имя занимает
-//! он: если в сеансе у `org.freedesktop.ScreenSaver` нет хозяина, Rexon ставит
-//! объект на оба пути, как у Plasma (`/org/freedesktop/ScreenSaver` и
-//! `/ScreenSaver`), и каждое удержание пробрасывает в то, что в этой среде
-//! действительно держит экран: у MATE это `org.gnome.SessionManager.Inhibit`
-//! с флагом 8 («простой»; его держит mate-session), у XFCE —
-//! `org.freedesktop.PowerManagement.Inhibit` (xfce4-power-manager). Там, где
-//! экран гасит служба, слушающая только протокол Wayland (swayidle у sway и
-//! Budgie, KIdleTime у LXQt — оба через `ext-idle-notify-v1`), по шине
-//! удержать нечем: мост держит запрет простоя протоколом Wayland
-//! `idle-inhibit-unstable-v1` на своей невидимой слой-поверхности
-//! ([`WAYLAND_IDLE`]) — но только у композиторов, про которых по исходникам
-//! известно, что такую поверхность они учитывают ([`WAYLAND_IDLE_COMPOSITORS`]).
-//! У прочих имя мост НЕ занимает: нативный Firefox, не получив ответа по
-//! шине, сам доходит до Wayland idle-inhibit на своём окне, а занятое нами
-//! имя остановило бы его на нас. Удержание снимается по `UnInhibit` и само —
-//! когда клиент исчезает с шины (закрыли браузер, он упал): иначе экран не
-//! гас бы уже никогда.
+//! WHAT IT DOES. Rexon lives for the whole session (tray icon), so it takes
+//! the name: if `org.freedesktop.ScreenSaver` has no owner in the session, Rexon places
+//! the object on both paths, as Plasma does (`/org/freedesktop/ScreenSaver` and
+//! `/ScreenSaver`), and forwards every inhibition to whatever in this environment
+//! really holds the screen: in MATE that is `org.gnome.SessionManager.Inhibit`
+//! with flag 8 («idle»; mate-session holds it), in XFCE —
+//! `org.freedesktop.PowerManagement.Inhibit` (xfce4-power-manager). Where the
+//! screen is blanked by a service that listens only to the Wayland protocol (swayidle in sway and
+//! Budgie, KIdleTime in LXQt — both via `ext-idle-notify-v1`), there is nothing on the bus
+//! to hold it with: the bridge holds an idle inhibition with the Wayland protocol
+//! `idle-inhibit-unstable-v1` on its own invisible layer surface
+//! ([`WAYLAND_IDLE`]) — but only on compositors that, according to their sources,
+//! are known to honor such a surface ([`WAYLAND_IDLE_COMPOSITORS`]).
+//! On the others the bridge does NOT take the name: native Firefox, getting no answer on
+//! the bus, falls back to Wayland idle-inhibit on its own window by itself, and a name
+//! taken by us would stop it at us. An inhibition is released on `UnInhibit` and on its own —
+//! when the client disappears from the bus (the browser was closed or crashed): otherwise the screen
+//! would never blank again.
 //!
-//! ⚠️ Удержание у менеджера сеанса числится за ПОДКЛЮЧЕНИЕМ Rexon к шине и
-//! снимается само, когда это подключение закрывается. Поэтому пробрасывать
-//! можно только из долгоживущего подключения процесса — не из `gdbus` и не
-//! из другого короткого процесса: тот выйдет, и удержание исчезнет вместе с
-//! ним.
+//! ⚠️ The session manager attributes the inhibition to Rexon's bus CONNECTION and
+//! releases it by itself when that connection closes. So forwarding
+//! is only possible from the process's long-lived connection — not from `gdbus` and not
+//! from another short-lived process: it would exit, and the inhibition would vanish along with
+//! it.
 //!
-//! ГРАНИЦА. Здесь только решения: нужен ли мост в этом окружении, во что
-//! пробрасывать, учёт куки и что ответить. Шина — на исполнителе
-//! (`rexon-gui/src/screensaver_bridge.rs` поверх шима
-//! `cpp/rexon_screensaver_bridge.cpp`). Всё ниже проверяется обычными тестами
-//! ядра, без шины.
+//! BOUNDARY. Only decisions live here: whether the bridge is needed in this environment, where to
+//! forward, cookie bookkeeping and what to reply. The bus is on the executor
+//! (`rexon-gui/src/screensaver_bridge.rs` over the shim
+//! `cpp/rexon_screensaver_bridge.cpp`). Everything below is checked by ordinary core
+//! tests, without a bus.
 //!
-//! Описание интерфейса — по спецификации freedesktop (черновик
-//! idle-inhibition, <https://specifications.freedesktop.org/idle-inhibit-spec/latest/>)
-//! и по описанию интерфейса KDE, которое ставит kscreenlocker
+//! The interface description follows the freedesktop specification (the
+//! idle-inhibition draft, <https://specifications.freedesktop.org/idle-inhibit-spec/latest/>)
+//! and the KDE interface description installed by kscreenlocker
 //! (`/usr/share/dbus-1/interfaces/kf6_org.freedesktop.ScreenSaver.xml`).
-//! Реализуем то, что можем исполнить честно: `Inhibit`, `UnInhibit`,
+//! We implement what we can honestly execute: `Inhibit`, `UnInhibit`,
 //! `GetActive`, `SetActive`, `GetActiveTime`, `SimulateUserActivity`, `Lock`.
-//! `Throttle`/`GetSessionIdleTime` и сигнал `ActiveChanged` не объявлены:
-//! исполнить их нечем, а объявить и молчать — хуже, чем не объявить.
+//! `Throttle`/`GetSessionIdleTime` and the `ActiveChanged` signal are not declared:
+//! there is nothing to execute them with, and declaring them and staying silent is worse than not declaring them.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-/// Имя службы на шине сеанса.
+/// Service name on the session bus.
 pub const SERVICE: &str = "org.freedesktop.ScreenSaver";
-/// Имя интерфейса.
+/// Interface name.
 pub const INTERFACE: &str = "org.freedesktop.ScreenSaver";
-/// Пути объекта: оба, как у Plasma. Клиенты зовут то один, то другой
-/// (Firefox и Chromium — `/ScreenSaver`, часть проигрывателей —
+/// Object paths: both, as in Plasma. Clients call one or the other
+/// (Firefox and Chromium — `/ScreenSaver`, some players —
 /// `/org/freedesktop/ScreenSaver`).
 pub const OBJECT_PATHS: [&str; 2] = ["/org/freedesktop/ScreenSaver", "/ScreenSaver"];
 
-/// Сколько ждать после запуска Rexon, прежде чем смотреть, свободно ли имя.
+/// How long to wait after Rexon starts before checking whether the name is free.
 ///
-/// Rexon поднимается автозапуском при входе — вместе со службами сеанса.
-/// Настоящий хозяин имени (в средах, где он есть) мог ещё не встать, и
-/// занять имя раньше него значило бы отнять его у сеанса. Окружения, где
-/// хозяин известен, мост и так обходит ([`desktop_policy`]); пауза — защита
-/// для тех, кого в таблице нет, и для MATE с хранителем экрана, который имя
-/// даёт сам (с 1.28.1): он берёт имя без очереди и без замены, и занятое
-/// раньше него имя ему уже не достанется.
+/// Rexon comes up via autostart at login — together with the session services.
+/// The real owner of the name (in environments that have one) may not be up yet, and
+/// taking the name before it would mean taking it away from the session. Environments where
+/// the owner is known are skipped by the bridge anyway ([`desktop_policy`]); the pause protects
+/// those not in the table, and MATE with a screensaver that provides the name
+/// itself (since 1.28.1): it takes the name without queueing and without replacement, so a name
+/// taken before it will never reach it.
 pub const START_DELAY: Duration = Duration::from_secs(30);
 
-/// С этой версии mate-screensaver сам держит `org.freedesktop.ScreenSaver`
-/// на обоих путях (выпуск 1.28.1 от 18.05.2026) — мост в MATE не нужен.
+/// From this version mate-screensaver holds `org.freedesktop.ScreenSaver` itself
+/// on both paths (release 1.28.1 of 18.05.2026) — the bridge is not needed in MATE.
 pub const MATE_SCREENSAVER_FDO_SINCE: (u32, u32, u32) = (1, 28, 1);
 
-/// Команда, которой узнаём версию mate-screensaver. Клиент, а не сам
-/// хранитель: тот на `--version` поднимает GTK и лезет к шине доступности.
-/// Пакет у них один, версия одна.
+/// The command that tells us the mate-screensaver version. The client, not the
+/// screensaver itself: that one brings up GTK on `--version` and reaches for the accessibility bus.
+/// They share one package, one version.
 pub const MATE_SCREENSAVER_VERSION_ARGV: [&str; 2] = ["mate-screensaver-command", "--version"];
 
-/// Версия из строки вида `mate-screensaver-command 1.28.0`.
+/// Version from a line like `mate-screensaver-command 1.28.0`.
 pub fn parse_version(output: &str) -> Option<(u32, u32, u32)> {
     output.split_whitespace().rev().find_map(|word| {
         let mut parts = word.split('.').map(|p| p.parse::<u32>());
@@ -97,23 +97,23 @@ pub fn parse_version(output: &str) -> Option<(u32, u32, u32)> {
     })
 }
 
-/// Нужно ли исполнителю узнать версию mate-screensaver для [`decide`].
+/// Whether the executor needs to learn the mate-screensaver version for [`decide`].
 pub fn wants_mate_screensaver_version(de: Option<&str>) -> bool {
     de == Some("mate")
 }
 
-/// Флаг «простой» у `org.gnome.SessionManager.Inhibit`: не считать сеанс
-/// бездействующим — не включать хранитель экрана и не гасить экран.
+/// The «idle» flag of `org.gnome.SessionManager.Inhibit`: do not consider the session
+/// idle — do not start the screensaver and do not blank the screen.
 pub const GSM_INHIBIT_IDLE: u32 = 8;
 
-/// Ошибки D-Bus, которыми мост отвечает.
+/// D-Bus errors the bridge replies with.
 pub const ERROR_UNKNOWN_METHOD: &str = "org.freedesktop.DBus.Error.UnknownMethod";
 pub const ERROR_INVALID_ARGS: &str = "org.freedesktop.DBus.Error.InvalidArgs";
 pub const ERROR_NOT_SUPPORTED: &str = "org.freedesktop.DBus.Error.NotSupported";
 pub const ERROR_FAILED: &str = "org.freedesktop.DBus.Error.Failed";
 
-/// Описание интерфейса для `Introspect` (только `<interface>`: узел и
-/// стандартные интерфейсы добавляет QtDBus).
+/// Interface description for `Introspect` (only `<interface>`: the node and
+/// standard interfaces are added by QtDBus).
 pub const INTROSPECTION_XML: &str = r#"<interface name="org.freedesktop.ScreenSaver">
   <method name="Inhibit">
     <arg name="application_name" type="s" direction="in"/>
@@ -140,10 +140,10 @@ pub const INTROSPECTION_XML: &str = r#"<interface name="org.freedesktop.ScreenSa
 </interface>
 "#;
 
-/// Стандартный интерфейс описания объекта.
+/// The standard object description interface.
 pub const INTROSPECTABLE: &str = "org.freedesktop.DBus.Introspectable";
 
-/// Полный ответ на `Introspect`: узел с описанием и нашим интерфейсом.
+/// The full reply to `Introspect`: a node with the description and our interface.
 pub fn introspection_node() -> String {
     format!(
         "<!DOCTYPE node PUBLIC \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\" \
@@ -155,62 +155,62 @@ pub fn introspection_node() -> String {
 }
 
 // ============================================================================
-// Окружения: где мост нужен
+// Environments: where the bridge is needed
 // ============================================================================
 
-/// Как в окружении обстоит дело с `org.freedesktop.ScreenSaver`.
+/// How the environment stands with respect to `org.freedesktop.ScreenSaver`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DesktopPolicy {
-    /// Имя даёт само окружение (названо, кто). Мост не нужен и НЕ ставится,
-    /// даже если в эту минуту имя свободно: его хозяин мог перезапускаться,
-    /// и занятое нами имя он бы уже не получил.
+    /// The environment provides the name itself (named who). The bridge is not needed and is NOT installed,
+    /// even if the name is free at this minute: its owner may be restarting,
+    /// and it would never get a name taken by us.
     OwnProvider(&'static str),
-    /// Своего хозяина нет, но и пробросить по шине нечем: экран там гасит
-    /// служба, которая смотрит только на протокол Wayland idle-inhibit, а
-    /// не на менеджер сеанса. Держать можно только Wayland-запретом
-    /// ([`WAYLAND_IDLE`]); нечем — имя НЕ занимаем: клиент получил бы куки
-    /// при гаснущем экране.
+    /// There is no own owner, but nothing to forward to on the bus either: the screen there is blanked by
+    /// a service that looks only at the Wayland idle-inhibit protocol, not
+    /// at the session manager. It can only be held with a Wayland inhibition
+    /// ([`WAYLAND_IDLE`]); if that is unavailable — we do NOT take the name: the client would get a cookie
+    /// while the screen blanks.
     NoBusTarget(&'static str),
-    /// Своего хозяина у окружения нет — мост ставится, если есть во что
-    /// пробрасывать.
+    /// The environment has no own owner — the bridge is installed if there is something to
+    /// forward to.
     Bridge,
 }
 
-/// Окружения со своим хозяином имени. Ключ — идентификатор окружения ядра
+/// Environments with their own owner of the name. Key — the core's environment identifier
 /// ([`crate::system::detect_current_de`]).
 ///
-/// Источники — в таблице отчёта к коммиту и в комментариях строк.
+/// Sources are in the table of the commit report and in the line comments.
 const OWN_PROVIDERS: &[(&str, &str)] = &[
-    // Plasma: служба экрана блокировки (libKScreenLocker в ksmserver) и
-    // PowerDevil — оба пути, `Inhibit` уходит в управление питанием.
+    // Plasma: the lock screen service (libKScreenLocker in ksmserver) and
+    // PowerDevil — both paths, `Inhibit` goes to power management.
     ("kde", "ksmserver (kscreenlocker) + PowerDevil"),
-    // GNOME: gsd-screensaver-proxy из gnome-settings-daemon, юнит
-    // `org.gnome.SettingsDaemon.ScreensaverProxy` — пробрасывает в
-    // gnome-session с флагом «простой».
+    // GNOME: gsd-screensaver-proxy from gnome-settings-daemon, unit
+    // `org.gnome.SettingsDaemon.ScreensaverProxy` — forwards to
+    // gnome-session with the «idle» flag.
     ("gnome", "gsd-screensaver-proxy"),
-    // Cinnamon: csd-screensaver-proxy из cinnamon-settings-daemon,
-    // автозапуск с `OnlyShowIn=X-Cinnamon`, тот же проброс в cinnamon-session.
+    // Cinnamon: csd-screensaver-proxy from cinnamon-settings-daemon,
+    // autostart with `OnlyShowIn=X-Cinnamon`, the same forwarding to cinnamon-session.
     ("cinnamon-mint", "csd-screensaver-proxy"),
-    // COSMIC: cosmic-idle (запускает cosmic-session), оба пути, Inhibit и
-    // UnInhibit снимают таймеры гашения экрана и сна.
+    // COSMIC: cosmic-idle (started by cosmic-session), both paths, Inhibit and
+    // UnInhibit remove the screen blanking and sleep timers.
     ("cosmic", "cosmic-idle"),
-    // niri с 0.1.2 сам держит имя на обоих путях и переводит Inhibit в запрет
-    // простоя (src/dbus/freedesktop_screensaver.rs) — в сеансовом экземпляре.
-    // Под LXQt niri запущен без `--session`, имя не берёт, и окружение там
-    // «lxqt», а не «niri».
+    // niri since 0.1.2 holds the name itself on both paths and turns Inhibit into an idle
+    // inhibition (src/dbus/freedesktop_screensaver.rs) — in the session instance.
+    // Under LXQt niri runs without `--session`, does not take the name, and the environment there
+    // is «lxqt», not «niri».
     ("niri", "niri"),
 ];
 
-/// Окружения, где по шине удержать экран нечем — только протоколом Wayland.
+/// Environments where nothing on the bus can hold the screen — only the Wayland protocol.
 const NO_BUS_TARGET: &[(&str, &str)] = &[
-    // Budgie 10.10 (labwc): экран гасит `swayidle -w`, запущенный
-    // budgie-daemon (src/daemon/screenlock.vala); он слушает только Wayland.
-    // budgie-session держит org.gnome.SessionManager, но флаг «простой» там
-    // меняет лишь присутствие (Presence), а swayidle на него не смотрит.
+    // Budgie 10.10 (labwc): the screen is blanked by `swayidle -w`, started by
+    // budgie-daemon (src/daemon/screenlock.vala); it listens only to Wayland.
+    // budgie-session holds org.gnome.SessionManager, but the «idle» flag there
+    // changes only Presence, and swayidle does not look at it.
     ("budgie", "swayidle (только Wayland idle-inhibit)"),
 ];
 
-/// Решение по окружению. `de` — ответ [`crate::system::detect_current_de`].
+/// Decision by environment. `de` — the answer of [`crate::system::detect_current_de`].
 pub fn desktop_policy(de: Option<&str>) -> DesktopPolicy {
     let Some(de) = de else {
         return DesktopPolicy::Bridge;
@@ -225,10 +225,10 @@ pub fn desktop_policy(de: Option<&str>) -> DesktopPolicy {
 }
 
 // ============================================================================
-// Куда пробрасывать
+// Where to forward
 // ============================================================================
 
-/// Служба, которая в этой среде действительно держит экран.
+/// The service that really holds the screen in this environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Upstream {
     pub service: &'static str,
@@ -237,22 +237,22 @@ pub struct Upstream {
     pub kind: UpstreamKind,
 }
 
-/// Каким вызовом служба берёт и снимает удержание.
+/// Which call the service uses to take and release an inhibition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpstreamKind {
     /// `Inhibit(s app_id, u toplevel_xid, s reason, u flags) → u`, `Uninhibit(u)`.
     GnomeSession,
     /// `Inhibit(s application, s reason) → u`, `UnInhibit(u)`.
     PowerManagement,
-    /// Хранитель экрана: удержаний через него не берём.
+    /// A screensaver: we do not take inhibitions through it.
     Companion,
-    /// Не служба шины, а запрет простоя протоколом Wayland: один на все
-    /// удержания, держит исполнитель ([`Action::HoldIdle`]).
+    /// Not a bus service but an idle inhibition via the Wayland protocol: one for all
+    /// inhibitions, held by the executor ([`Action::HoldIdle`]).
     WaylandIdleInhibit,
 }
 
-/// Менеджер сеанса семейства gnome-session: mate-session, budgie-session,
-/// gnome-session, cinnamon-session — все держат это имя.
+/// A session manager of the gnome-session family: mate-session, budgie-session,
+/// gnome-session, cinnamon-session — all hold this name.
 /// `Inhibit(s app_id, u toplevel_xid, s reason, u flags) → u`, `Uninhibit(u)`.
 pub const GNOME_SESSION: Upstream = Upstream {
     service: "org.gnome.SessionManager",
@@ -261,10 +261,10 @@ pub const GNOME_SESSION: Upstream = Upstream {
     kind: UpstreamKind::GnomeSession,
 };
 
-/// Управление питанием XFCE (xfce4-power-manager): `Inhibit` отключает и
-/// DPMS, и хранитель экрана (через libxfce4ui зовёт org.xfce.ScreenSaver).
-/// Голый `org.xfce.ScreenSaver.Inhibit` DPMS у xfpm не трогает, поэтому
-/// пробрасываем сюда.
+/// XFCE power management (xfce4-power-manager): `Inhibit` disables both
+/// DPMS and the screensaver (it calls org.xfce.ScreenSaver via libxfce4ui).
+/// A bare `org.xfce.ScreenSaver.Inhibit` does not touch xfpm's DPMS, so
+/// we forward here.
 pub const POWER_MANAGEMENT: Upstream = Upstream {
     service: "org.freedesktop.PowerManagement",
     path: "/org/freedesktop/PowerManagement/Inhibit",
@@ -272,9 +272,9 @@ pub const POWER_MANAGEMENT: Upstream = Upstream {
     kind: UpstreamKind::PowerManagement,
 };
 
-/// Запрет простоя протоколом Wayland (`zwp_idle_inhibit_manager_v1`) на
-/// невидимой слой-поверхности 1×1 из своего подключения Rexon к композитору.
-/// Шины здесь нет: путь и интерфейс пусты, имя — для журнала.
+/// Idle inhibition via the Wayland protocol (`zwp_idle_inhibit_manager_v1`) on
+/// an invisible 1×1 layer surface from Rexon's own connection to the compositor.
+/// There is no bus here: path and interface are empty, the name is for the log.
 pub const WAYLAND_IDLE: Upstream = Upstream {
     service: "zwp_idle_inhibit_manager_v1",
     path: "",
@@ -282,38 +282,38 @@ pub const WAYLAND_IDLE: Upstream = Upstream {
     kind: UpstreamKind::WaylandIdleInhibit,
 };
 
-/// Глобалы композитора, без которых Wayland-запрет не поставить.
+/// Compositor globals without which a Wayland inhibition cannot be set.
 pub const WAYLAND_GLOBALS_NEEDED: [&str; 4] =
     ["wl_compositor", "wl_shm", "zwlr_layer_shell_v1", "zwp_idle_inhibit_manager_v1"];
 
-/// Композиторы, которые запрет на невидимой слой-поверхности учитывают, —
-/// по их исходникам. Ключ — имя процесса композитора (`/proc/PID/comm`
-/// хозяина сокета Wayland), а не окружение: под LXQt и Budgie композиторы
-/// разные, а `XDG_CURRENT_DESKTOP` у них один.
+/// Compositors that honor an inhibition on an invisible layer surface —
+/// according to their sources. Key — the compositor's process name (`/proc/PID/comm`
+/// of the Wayland socket owner), not the environment: under LXQt and Budgie the compositors
+/// differ, while `XDG_CURRENT_DESKTOP` is the same.
 pub const WAYLAND_IDLE_COMPOSITORS: &[(&str, &str)] = &[
-    // sway/desktop/idle_inhibit_v1.c: запрет слой-поверхности действует,
-    // пока она отображена на включённом выходе («layer surfaces are always
+    // sway/desktop/idle_inhibit_v1.c: a layer surface's inhibition is in effect
+    // while it is mapped on an enabled output («layer surfaces are always
     // on screen after they have been mapped»).
     ("sway", "sway"),
-    // src/idle.c: любой живой запрет = простой запрещён, видимость не
-    // проверяется. Композитор Budgie 10.10 и сеанса LXQt по умолчанию.
+    // src/idle.c: any live inhibition = idle is inhibited, visibility is not
+    // checked. The default compositor of Budgie 10.10 and of the LXQt session.
     ("labwc", "labwc"),
-    // src/managers/input/IdleInhibitor.cpp: запрет действует, если вид
-    // отображён и принимает ввод; у слой-поверхности ввод доступен всегда
-    // (CLayerSurface::focusAvailable). Обычно имя там держит hypridle, и мост
-    // не встаёт вовсе; это — на случай swayidle вместо него.
+    // src/managers/input/IdleInhibitor.cpp: the inhibition is in effect if the view
+    // is mapped and accepts input; a layer surface always has input available
+    // (CLayerSurface::focusAvailable). Usually hypridle holds the name there, and the bridge
+    // does not come up at all; this is for the case of swayidle instead of it.
     ("Hyprland", "Hyprland"),
 ];
 
-/// Что исполнитель узнал о сеансе Wayland: имя процесса композитора и
-/// объявленные им глобалы.
+/// What the executor learned about the Wayland session: the compositor's process name and
+/// the globals it announced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WaylandFacts {
     pub compositor: String,
     pub globals: Vec<String>,
 }
 
-/// Можно ли здесь держать экран Wayland-запретом; `Err` — почему нет.
+/// Whether the screen can be held here with a Wayland inhibition; `Err` — why not.
 pub fn wayland_idle_check(facts: Option<&WaylandFacts>) -> Result<(), String> {
     let Some(f) = facts else {
         return Err("сеанс не Wayland или композитор не ответил".into());
@@ -335,13 +335,13 @@ pub fn wayland_idle_check(facts: Option<&WaylandFacts>) -> Result<(), String> {
     Ok(())
 }
 
-/// Кандидаты проброса в порядке предпочтения: менеджер сеанса держит и
-/// хранитель экрана, и гашение (MATE: mate-screensaver смотрит Presence,
-/// mate-power-manager — `IsInhibited(8)`), поэтому он первый.
+/// Forwarding candidates in order of preference: the session manager holds both
+/// the screensaver and the blanking (MATE: mate-screensaver watches Presence,
+/// mate-power-manager — `IsInhibited(8)`), so it comes first.
 pub const UPSTREAMS: &[Upstream] = &[GNOME_SESSION, POWER_MANAGEMENT];
 
-/// Хранитель экрана окружения — у него спрашиваем `GetActive` и прочее.
-/// У всех ниже интерфейс наследника gnome-screensaver 2.x: `GetActive() → b`,
+/// The environment's screensaver — we ask it for `GetActive` and the rest.
+/// All below share the interface of the gnome-screensaver 2.x successor: `GetActive() → b`,
 /// `GetActiveTime() → u`, `SetActive(b)`, `SimulateUserActivity()`, `Lock()`.
 pub const COMPANIONS: &[Upstream] = &[
     Upstream {
@@ -370,27 +370,27 @@ pub const COMPANIONS: &[Upstream] = &[
     },
 ];
 
-/// Что поставить.
+/// What to install.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Plan {
     pub upstream: Upstream,
     pub companion: Option<Upstream>,
 }
 
-/// Ответ «ставить ли мост».
+/// The answer «install the bridge or not».
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Start(Plan),
-    /// Не ставить — с причиной для журнала.
+    /// Do not install — with a reason for the log.
     Skip(String),
 }
 
-/// Решить, ставить ли мост. `has_owner(имя)` — есть ли у имени хозяин на
-/// шине сеанса (`None` — шины нет).
-/// `mate_screensaver_version` — вывод [`MATE_SCREENSAVER_VERSION_ARGV`]
-/// (`None` — не спрашивали или команды нет).
-/// `wayland()` — что известно о сеансе Wayland (`None` — не Wayland или
-/// композитор не ответил); спрашивается, только когда по шине держать нечем.
+/// Decide whether to install the bridge. `has_owner(name)` — whether the name has an owner on
+/// the session bus (`None` — no bus).
+/// `mate_screensaver_version` — output of [`MATE_SCREENSAVER_VERSION_ARGV`]
+/// (`None` — not asked or no such command).
+/// `wayland()` — what is known about the Wayland session (`None` — not Wayland or
+/// the compositor did not answer); asked only when nothing on the bus can hold the screen.
 pub fn decide(
     de: Option<&str>,
     mate_screensaver_version: Option<&str>,
@@ -433,7 +433,7 @@ pub fn decide(
             companion,
         });
     }
-    // По шине держать нечем — остаётся протокол Wayland.
+    // Nothing on the bus can hold it — the Wayland protocol remains.
     let facts = wayland();
     match wayland_idle_check(facts.as_ref()) {
         Ok(()) => Decision::Start(Plan { upstream: WAYLAND_IDLE, companion: None }),
@@ -451,55 +451,55 @@ pub fn decide(
 }
 
 // ============================================================================
-// Учёт удержаний
+// Inhibition bookkeeping
 // ============================================================================
 
-/// Что сделать исполнителю. Исполняется по порядку.
+/// What the executor should do. Executed in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    /// Ответить на квитанцию значениями по сигнатуре.
+    /// Reply to the receipt with values matching the signature.
     Reply {
         token: u64,
         signature: &'static str,
         values: Vec<String>,
     },
-    /// Ответить ошибкой.
+    /// Reply with an error.
     ReplyError {
         token: u64,
         name: &'static str,
         text: String,
     },
-    /// Позвать чужую службу; ответ вернуть в [`Book::on_call_done`] с `ctx`.
+    /// Call a foreign service; return the reply into [`Book::on_call_done`] with `ctx`.
     Call {
         ctx: u64,
         target: Upstream,
         method: &'static str,
         signature: &'static str,
         values: Vec<String>,
-        /// Сколько ждать ответа, мс; [`CALL_TIMEOUT_DEFAULT`] — срок шины.
+        /// How long to wait for the reply, ms; [`CALL_TIMEOUT_DEFAULT`] — the bus timeout.
         timeout_ms: i32,
     },
-    /// Держать (`true`) или отпустить (`false`) запрет простоя протоколом
-    /// Wayland ([`WAYLAND_IDLE`]). Один на все удержания: «держать» — когда
-    /// появилось первое, «отпустить» — когда ушло последнее.
+    /// Hold (`true`) or release (`false`) the idle inhibition via the
+    /// Wayland protocol ([`WAYLAND_IDLE`]). One for all inhibitions: «hold» — when
+    /// the first appears, «release» — when the last is gone.
     HoldIdle(bool),
-    /// Следить за исчезновением имени / перестать.
+    /// Watch for a name disappearing / stop watching.
     Watch(String),
     Unwatch(String),
-    /// Строка в журнал.
+    /// A line into the log.
     Note(String),
 }
 
-/// Состояние проброса одного удержания.
+/// Forwarding state of one inhibition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Held {
-    /// Вызов к менеджеру сеанса ушёл, ответа ещё нет.
+    /// The call to the session manager went out, no reply yet.
     Pending,
-    /// Менеджер сеанса выдал свою куки.
+    /// The session manager issued its own cookie.
     Upstream(u32),
-    /// Менеджер сеанса отказал.
+    /// The session manager refused.
     Failed,
-    /// Держит сам мост общим запретом Wayland — снимать у сеанса нечего.
+    /// Held by the bridge itself with the shared Wayland inhibition — nothing to release at the session.
     Local,
 }
 
@@ -510,39 +510,39 @@ struct Entry {
     held: Held,
 }
 
-/// Чего ждёт вызов к чужой службе.
+/// What a call to a foreign service is waiting for.
 #[derive(Debug, Clone, Copy)]
 enum Purpose {
-    /// Проброс удержания с нашей куки.
+    /// Forwarding an inhibition with our cookie.
     Inhibit(u32),
-    /// Снятие проброшенного удержания.
+    /// Releasing a forwarded inhibition.
     Release,
-    /// Вопрос хранителю экрана; ответить на квитанцию клиента.
+    /// A question to the screensaver; reply to the client's receipt.
     Companion { token: u64, reply: CompanionReply },
 }
 
-/// Как превратить ответ хранителя экрана в ответ клиенту.
+/// How to turn the screensaver's reply into a reply to the client.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompanionReply {
-    /// `b` из ответа; при ошибке — `false`.
+    /// `b` from the reply; on error — `false`.
     Bool,
-    /// `u` из ответа; при ошибке — 0.
+    /// `u` from the reply; on error — 0.
     Uint,
-    /// Успех → `true`, ошибка → `false` (`SetActive`).
+    /// Success → `true`, error → `false` (`SetActive`).
     Success,
-    /// Пустой ответ в любом случае (`SimulateUserActivity`).
+    /// An empty reply in any case (`SimulateUserActivity`).
     Empty,
-    /// Пустой ответ при успехе, ошибка — клиенту (`Lock`).
+    /// An empty reply on success, the error goes to the client (`Lock`).
     EmptyOrError,
 }
 
-/// Срок ответа шины по умолчанию (QtDBus: `-1`, около 25 с).
+/// The default bus reply timeout (QtDBus: `-1`, about 25 s).
 pub const CALL_TIMEOUT_DEFAULT: i32 = -1;
-/// Срок ответа хранителя экрана: его ответа ждёт клиент, служба локальная.
+/// The screensaver's reply timeout: the client is waiting for its reply, the service is local.
 pub const COMPANION_TIMEOUT_MS: i32 = 2000;
 
-/// Первая куки живого моста: от часов, чтобы у мостов разных запусков
-/// Rexon номера не совпадали. Никогда не 0 и не 1.
+/// The first cookie of the live bridge: derived from the clock so that bridges of different
+/// Rexon runs do not share numbers. Never 0 and never 1.
 pub fn live_first_cookie() -> u32 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -551,7 +551,7 @@ pub fn live_first_cookie() -> u32 {
     mixed.max(2)
 }
 
-/// Учёт удержаний моста: куки, кто взял, что выдал менеджер сеанса.
+/// The bridge's inhibition bookkeeping: cookies, who took them, what the session manager issued.
 #[derive(Debug)]
 pub struct Book {
     plan: Plan,
@@ -559,7 +559,7 @@ pub struct Book {
     next_ctx: u64,
     entries: BTreeMap<u32, Entry>,
     calls: BTreeMap<u64, Purpose>,
-    /// Держится ли сейчас запрет Wayland (что последним велели исполнителю).
+    /// Whether the Wayland inhibition is held now (what the executor was last told).
     holding_idle: bool,
 }
 
@@ -575,14 +575,14 @@ impl Book {
         }
     }
 
-    /// Учёт, чьи куки начинаются с `first` ([`live_first_cookie`] у живого
-    /// моста). С единицы у каждого процесса нельзя: клиент, взявший куки 1 у
-    /// прежнего Rexon, после перезапуска снял бы ею чужое удержание нового.
+    /// Bookkeeping whose cookies start at `first` ([`live_first_cookie`] for the live
+    /// bridge). Starting from one in every process is not allowed: a client that took cookie 1 from
+    /// the previous Rexon would, after a restart, release someone else's inhibition in the new one with it.
     pub fn starting_at(plan: Plan, first: u32) -> Self {
         Self { next_cookie: first.max(1), ..Self::new(plan) }
     }
 
-    /// Сколько удержаний живо (для журнала и тестов).
+    /// How many inhibitions are alive (for the log and tests).
     pub fn active(&self) -> usize {
         self.entries.len()
     }
@@ -601,9 +601,9 @@ impl Book {
             signature: &'static str, values: Vec<String>) -> Action {
         let ctx = self.next_ctx;
         self.next_ctx += 1;
-        // Ответа хранителя ждёт клиент — срок короткий. Проброс и снятие
-        // удержания никто не ждёт, а выброшенный по сроку ответ оставил бы
-        // выданную сеансом куки без хозяина.
+        // The client is waiting for the screensaver's reply — the timeout is short. Nobody waits for
+        // forwarding and releasing an inhibition, and a reply dropped on timeout would leave
+        // the cookie issued by the session without an owner.
         let timeout_ms = match purpose {
             Purpose::Companion { .. } => COMPANION_TIMEOUT_MS,
             Purpose::Inhibit(_) | Purpose::Release => CALL_TIMEOUT_DEFAULT,
@@ -612,7 +612,7 @@ impl Book {
         Action::Call { ctx, target, method, signature, values, timeout_ms }
     }
 
-    /// Запрет Wayland: держать, пока живо хоть одно удержание.
+    /// Wayland inhibition: hold it while at least one inhibition is alive.
     fn sync_idle_hold(&mut self, out: &mut Vec<Action>) {
         if self.plan.upstream.kind != UpstreamKind::WaylandIdleInhibit {
             return;
@@ -628,12 +628,12 @@ impl Book {
         self.entries.values().any(|e| e.sender == sender)
     }
 
-    /// Снять проброшенное удержание, если оно есть.
+    /// Release the forwarded inhibition, if there is one.
     fn release(&mut self, held: Held, out: &mut Vec<Action>) {
         if let Held::Upstream(up) = held {
             let target = self.plan.upstream;
-            // У менеджера сеанса — `Uninhibit`, у управления питанием —
-            // `UnInhibit`: имена различаются регистром одной буквы.
+            // The session manager has `Uninhibit`, power management has
+            // `UnInhibit`: the names differ in the case of one letter.
             let method = match target.kind {
                 UpstreamKind::GnomeSession => "Uninhibit",
                 UpstreamKind::PowerManagement
@@ -644,7 +644,7 @@ impl Book {
         }
     }
 
-    /// Пришёл вызов на наш объект.
+    /// A call arrived at our object.
     pub fn on_message(
         &mut self,
         token: u64,
@@ -655,14 +655,14 @@ impl Book {
         args: &[String],
     ) -> Vec<Action> {
         let mut out = Vec::new();
-        // QtDBus отдаёт объекту-наследнику QDBusVirtualObject и вызов
-        // Introspect (замер стенда 17.10.2026) — отвечаем описанием узла.
+        // QtDBus also hands the Introspect call to a QDBusVirtualObject subclass
+        // (bench measurement 17.10.2026) — we reply with the node description.
         if iface == INTROSPECTABLE && member == "Introspect" {
             out.push(Action::Reply { token, signature: "s", values: vec![introspection_node()] });
             return out;
         }
-        // Интерфейс в вызове необязателен (D-Bus разрешает звать по одному
-        // имени метода); чужой — не наш.
+        // The interface in a call is optional (D-Bus allows calling by the method
+        // name alone); a foreign one is not ours.
         if !iface.is_empty() && iface != INTERFACE {
             out.push(Action::ReplyError {
                 token,
@@ -728,9 +728,9 @@ impl Book {
     fn inhibit(&mut self, token: u64, sender: &str, app: &str, reason: &str, out: &mut Vec<Action>) {
         let cookie = self.alloc_cookie();
         let first_of_sender = !self.sender_has_entries(sender);
-        // Менеджер сеанса отказывает в удержании без имени приложения или без
-        // причины — подставляем то, что знаем точно: имя клиента на шине и
-        // имя приложения.
+        // The session manager refuses an inhibition without an application name or without
+        // a reason — we substitute what we know for sure: the client's bus name and
+        // the application name.
         let app_id = if app.trim().is_empty() { sender.to_string() } else { app.to_string() };
         let why = if reason.trim().is_empty() { app_id.clone() } else { reason.to_string() };
         self.entries.insert(
@@ -741,7 +741,7 @@ impl Book {
                 held: Held::Pending,
             },
         );
-        // Клиенту — сразу: ему нужна куки, а не ответ менеджера сеанса.
+        // Reply to the client right away: it needs a cookie, not the session manager's reply.
         out.push(Action::Reply { token, signature: "u", values: vec![cookie.to_string()] });
         if first_of_sender {
             out.push(Action::Watch(sender.to_string()));
@@ -771,8 +771,8 @@ impl Book {
     }
 
     fn uninhibit(&mut self, token: u64, cookie: u32, out: &mut Vec<Action>) {
-        // Спецификация ошибки для чужой/неизвестной куки не задаёт; как и у
-        // Plasma, отвечаем пусто — клиенту нечего с этим делать.
+        // The specification defines no error for a foreign/unknown cookie; like
+        // Plasma, we reply empty — the client has nothing to do with it.
         out.push(Action::Reply { token, signature: "", values: vec![] });
         let Some(entry) = self.entries.remove(&cookie) else {
             out.push(Action::Note(format!("снятие {cookie}: такой куки нет")));
@@ -801,7 +801,7 @@ impl Book {
         }
     }
 
-    /// Пришёл ответ чужой службы на `Action::Call`.
+    /// A foreign service's reply to `Action::Call` arrived.
     pub fn on_call_done(&mut self, ctx: u64, ok: bool, value: &str) -> Vec<Action> {
         let mut out = Vec::new();
         let Some(purpose) = self.calls.remove(&ctx) else {
@@ -819,8 +819,8 @@ impl Book {
                         e.held = Held::Failed;
                         out.push(Action::Note(format!("сеанс не принял удержание {cookie}: {value}")));
                     }
-                    // Клиент успел снять удержание (или исчез), пока сеанс
-                    // отвечал, — снять и у сеанса, иначе оно повиснет.
+                    // The client released the inhibition (or vanished) while the session
+                    // was replying — release it at the session too, otherwise it will hang.
                     (None, Some(up)) => self.release(Held::Upstream(up), &mut out),
                     (None, None) => {}
                 }
@@ -837,11 +837,11 @@ impl Book {
         out
     }
 
-    /// Имя ушло другому хозяину (или мост сходит): снять у сеанса всё.
+    /// The name went to another owner (or the bridge is going away): release everything at the session.
     ///
-    /// Удержания, ответа на которые сеанс ещё не дал, снимутся по его ответу
-    /// ([`Book::on_call_done`] видит, что записи уже нет) — если исполнитель
-    /// к тому времени ещё жив.
+    /// Inhibitions the session has not replied to yet are released on its reply
+    /// ([`Book::on_call_done`] sees that the record is already gone) — if the executor
+    /// is still alive by then.
     pub fn release_all(&mut self) -> Vec<Action> {
         let mut out = Vec::new();
         let all = std::mem::take(&mut self.entries);
@@ -853,7 +853,7 @@ impl Book {
         out
     }
 
-    /// Имя клиента исчезло с шины: снять всё, что он держал.
+    /// The client's name disappeared from the bus: release everything it held.
     pub fn on_vanished(&mut self, name: &str) -> Vec<Action> {
         let mut out = Vec::new();
         let gone: Vec<u32> = self
@@ -880,8 +880,8 @@ impl Book {
     }
 }
 
-/// Ответ клиенту по ответу хранителя экрана (`None` — ошибка или хранителя
-/// нет).
+/// Reply to the client based on the screensaver's reply (`None` — an error or no
+/// screensaver).
 fn companion_reply(token: u64, reply: CompanionReply, value: Option<&str>) -> Action {
     match reply {
         CompanionReply::Bool => Action::Reply {
@@ -930,7 +930,7 @@ mod tests {
         v.to_string()
     }
 
-    /// Номер вызова и его аргументы из списка действий.
+    /// Call number and its arguments from the action list.
     fn calls(actions: &[Action]) -> Vec<(u64, &'static str, Vec<String>)> {
         actions
             .iter()
@@ -950,8 +950,8 @@ mod tests {
 
     #[test]
     fn known_providers_are_left_alone() {
-        // Даже при свободном имени и живом менеджере сеанса: хозяин имени в
-        // этих окружениях свой, и отнимать его нельзя.
+        // Even with a free name and a live session manager: the name owner in
+        // these environments is their own, and it must not be taken away.
         for de in ["kde", "gnome", "cinnamon-mint", "cosmic", "budgie"] {
             let d = decide(Some(de), None, |_| Some(false), || None);
             assert!(matches!(d, Decision::Skip(_)), "{de}: {d:?}");
@@ -982,15 +982,15 @@ mod tests {
         let owners = ["org.gnome.SessionManager", "org.mate.ScreenSaver"];
         let d = decide(Some("mate"), None, |n| Some(owners.contains(&n)), || None);
         assert_eq!(d, Decision::Start(plan(Some(MATE_SS))));
-        // Живая машина 17.10.2026: 1.28.0 — мост нужен.
+        // Live machine 17.10.2026: 1.28.0 — the bridge is needed.
         let d = decide(Some("mate"), Some("mate-screensaver-command 1.28.0\n"), |n| Some(owners.contains(&n)), || None);
         assert_eq!(d, Decision::Start(plan(Some(MATE_SS))));
     }
 
     #[test]
     fn mate_screensaver_1_28_1_owns_the_name_itself() {
-        // Даже если в эту минуту имя свободно (хранитель ещё не встал или
-        // перезапускается): он берёт имя без замены, занимать нельзя.
+        // Even if the name is free at this minute (the screensaver is not up yet or
+        // is restarting): it takes the name without replacement, so it must not be taken.
         let owners = ["org.gnome.SessionManager", "org.mate.ScreenSaver"];
         for v in ["mate-screensaver-command 1.28.1", "mate-screensaver-command 1.30.0"] {
             let d = decide(Some("mate"), Some(v), |n| Some(owners.contains(&n)), || None);
@@ -1000,9 +1000,9 @@ mod tests {
         assert_eq!(parse_version("ошибка"), None);
     }
 
-    /// Куки прежнего процесса Rexon (клиент держал её до перезапуска) не
-    /// снимает чужое удержание нового моста: нумерация у каждого моста
-    /// своя, а не с единицы.
+    /// A cookie of the previous Rexon process (the client held it across the restart) does not
+    /// release someone else's inhibition in the new bridge: each bridge has its own
+    /// numbering, not starting from one.
     #[test]
     fn stale_cookie_of_previous_bridge_releases_nothing() {
         let mut b = Book::starting_at(plan(None), 70_001);
@@ -1011,14 +1011,14 @@ mod tests {
         let a = b.on_message(2, ":1.7", INTERFACE, "UnInhibit", "u", &[s("1")]);
         assert!(calls(&a).is_empty(), "снято чужое удержание: {a:?}");
         assert_eq!(b.active(), 1);
-        // Живой мост начинает не с единицы и не с нуля.
+        // The live bridge starts neither from one nor from zero.
         assert!(live_first_cookie() > 1);
     }
 
-    /// Проброс удержания сеансу ждёт ответа сколько нужно: по истечении
-    /// короткого срока ответ выбрасывался, а сеанс всё равно выдавал куки —
-    /// удержание висело за Rexon до конца сеанса. Короткий срок — только у
-    /// вопросов хранителю, ответа на которые ждёт клиент.
+    /// Forwarding an inhibition to the session waits for the reply as long as needed: after
+    /// a short timeout the reply used to be dropped while the session still issued a cookie —
+    /// the inhibition hung on Rexon until the end of the session. A short timeout is only for
+    /// questions to the screensaver, whose reply the client is waiting for.
     #[test]
     fn forwarded_inhibit_waits_for_the_session_answer() {
         let timeouts = |actions: &[Action]| -> Vec<(&'static str, i32)> {
@@ -1057,8 +1057,8 @@ mod tests {
     fn taken_name_or_no_bus_or_no_upstream_means_nothing() {
         assert!(matches!(decide(Some("mate"), None, |_| Some(true), || None), Decision::Skip(_)));
         assert!(matches!(decide(Some("mate"), None, |_| None, || None), Decision::Skip(_)));
-        // Имя свободно, но держать экран нечем — имя НЕ занимаем: иначе
-        // клиент получил бы «удержано» при гаснущем экране.
+        // The name is free, but nothing can hold the screen — we do NOT take the name: otherwise
+        // the client would get «inhibited» while the screen blanks.
         assert!(matches!(decide(Some("sway"), None, |_| Some(false), || None), Decision::Skip(_)));
     }
 
@@ -1097,7 +1097,7 @@ mod tests {
         let ctx = calls(&a)[0].0;
         let a = b.on_message(2, ":1.5", INTERFACE, "UnInhibit", "u", &[s("1")]);
         assert!(calls(&a).is_empty(), "снимать у сеанса пока нечего");
-        // Сеанс ответил уже после снятия — его куки обязаны вернуть.
+        // The session replied after the release — its cookie must be returned.
         let a = b.on_call_done(ctx, true, "99");
         let c = calls(&a);
         assert_eq!((c[0].1, c[0].2.clone()), ("Uninhibit", vec![s("99")]));
@@ -1111,7 +1111,7 @@ mod tests {
             let a = b.on_message(tok, who, INTERFACE, "Inhibit", "ss", &[s("app"), s("r")]);
             ctxs.push(calls(&a)[0].0);
         }
-        // Второе удержание того же клиента следить повторно не просит.
+        // A second inhibition from the same client does not ask to watch again.
         for (i, ctx) in ctxs.iter().enumerate() {
             b.on_call_done(*ctx, true, &(100 + i).to_string());
         }
@@ -1192,7 +1192,7 @@ mod tests {
         let a = b.on_message(2, ":1.1", "", "SetActive", "b", &[s("true")]);
         let c = calls(&a);
         assert_eq!(c[0].2, vec![s("true")]);
-        // У mate-screensaver SetActive ничего не возвращает: успех — `true`.
+        // mate-screensaver's SetActive returns nothing: success is `true`.
         assert_eq!(reply_values(&b.on_call_done(c[0].0, true, ""), 2), Some(vec![s("true")]));
         let a = b.on_message(3, ":1.1", "", "GetActiveTime", "", &[]);
         assert_eq!(reply_values(&b.on_call_done(calls(&a)[0].0, false, "err"), 3), Some(vec![s("0")]));
@@ -1205,23 +1205,23 @@ mod tests {
         })
     }
 
-    /// sway, Budgie и LXQt на labwc: имя свободно, по шине пробросить некуда
-    /// — мост держит экран запретом Wayland.
+    /// sway, Budgie and LXQt on labwc: the name is free, nothing on the bus to forward to
+    /// — the bridge holds the screen with a Wayland inhibition.
     #[test]
     fn wayland_without_bus_target_holds_idle_inhibit() {
         let wayland_plan = Decision::Start(Plan { upstream: WAYLAND_IDLE, companion: None });
         for (de, comp) in [("sway", "sway"), ("budgie", "labwc"), ("lxqt", "labwc"), ("hyprland", "Hyprland")] {
             assert_eq!(decide(Some(de), None, |_| Some(false), || wl(comp)), wayland_plan, "{de}/{comp}");
         }
-        // Budgie: budgie-session держит org.gnome.SessionManager, но swayidle
-        // на него не смотрит — всё равно Wayland.
+        // Budgie: budgie-session holds org.gnome.SessionManager, but swayidle
+        // does not look at it — still Wayland.
         let owners = ["org.gnome.SessionManager"];
         assert_eq!(decide(Some("budgie"), None, |n| Some(owners.contains(&n)), || wl("labwc")), wayland_plan);
     }
 
-    /// Композитор, учёт которого не проверен, или нет нужных глобалов, или
-    /// сеанс не Wayland — имя НЕ занимаем: нативный Firefox иначе остановился
-    /// бы на нас вместо своего Wayland-запрета.
+    /// A compositor whose honoring is unverified, or the needed globals are missing, or
+    /// the session is not Wayland — we do NOT take the name: native Firefox would otherwise stop
+    /// at us instead of its own Wayland inhibition.
     #[test]
     fn unverified_compositor_or_missing_globals_means_no_bridge() {
         for comp in ["niri", "kwin_wayland", "magpie-wm", "wayfire", "river", ""] {
@@ -1236,8 +1236,8 @@ mod tests {
         assert!(matches!(decide(Some("budgie"), None, |_| Some(false), || None), Decision::Skip(_)));
     }
 
-    /// По шине есть куда пробросить (XFCE на Wayland) — шина в приоритете,
-    /// у композитора даже не спрашиваем.
+    /// There is something to forward to on the bus (XFCE on Wayland) — the bus takes priority,
+    /// we do not even ask the compositor.
     #[test]
     fn bus_upstream_wins_over_wayland() {
         let owners = ["org.freedesktop.PowerManagement"];
@@ -1245,8 +1245,8 @@ mod tests {
         assert!(matches!(d, Decision::Start(Plan { upstream: POWER_MANAGEMENT, .. })), "{d:?}");
     }
 
-    /// niri держит имя сам; занятое имя и хозяин окружения — Wayland не
-    /// спрашиваем вовсе.
+    /// niri holds the name itself; a taken name and an environment owner — we do not ask
+    /// Wayland at all.
     #[test]
     fn own_provider_or_taken_name_never_asks_wayland() {
         assert!(matches!(decide(Some("niri"), None, |_| Some(false), || panic!()), Decision::Skip(_)));
@@ -1263,8 +1263,8 @@ mod tests {
             .collect()
     }
 
-    /// Один запрет Wayland на все удержания: «держать» с первым, «отпустить»
-    /// с последним, к шине ни одного вызова.
+    /// One Wayland inhibition for all inhibitions: «hold» with the first, «release»
+    /// with the last, not a single call to the bus.
     #[test]
     fn wayland_hold_follows_first_and_last_inhibitor() {
         let mut b = Book::new(Plan { upstream: WAYLAND_IDLE, companion: None });
@@ -1276,18 +1276,18 @@ mod tests {
         assert!(holds(&a).is_empty(), "второе удержание держит тот же запрет");
         let a = b.on_message(3, ":1.20", INTERFACE, "UnInhibit", "u", &[s("1")]);
         assert!(holds(&a).is_empty() && calls(&a).is_empty(), "{a:?}");
-        // Последний держатель ушёл с шины — отпустить.
+        // The last holder left the bus — release.
         let a = b.on_vanished(":1.21");
         assert_eq!(holds(&a), [false]);
         assert_eq!(b.active(), 0);
-        // И снова с нуля.
+        // And again from scratch.
         let a = b.on_message(4, ":1.22", INTERFACE, "Inhibit", "ss", &[s("mpv"), s("play")]);
         assert_eq!(holds(&a), [true]);
         let a = b.on_message(5, ":1.22", INTERFACE, "UnInhibit", "u", &[s("3")]);
         assert_eq!(holds(&a), [false]);
     }
 
-    /// Имя забрали — запрет Wayland отпускается вместе со всеми удержаниями.
+    /// The name was taken — the Wayland inhibition is released together with all inhibitions.
     #[test]
     fn wayland_hold_released_when_bridge_steps_down() {
         let mut b = Book::new(Plan { upstream: WAYLAND_IDLE, companion: None });

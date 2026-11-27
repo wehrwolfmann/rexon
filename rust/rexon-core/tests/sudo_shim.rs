@@ -1,8 +1,8 @@
-//! Шим `rexon-sudo-shim` (пункт Б10): настоящий бинарь шима, поддельный
-//! сборщик AUR (скрипт bash вместо paru — настоящие paru/yay/makepkg здесь
-//! не запускаются) и окно — посредник [`Broker`] этого процесса тестов.
-//! Сеанс прав — [`Runner`] с поддельным клиентом: он считает подъёмы сеанса
-//! (окна пароля) и записывает, что ушло бы помощнику. Ни root, ни pkexec.
+//! The `rexon-sudo-shim` shim (item B10): the real shim binary, a fake AUR
+//! builder (a bash script instead of paru — real paru/yay/makepkg are not run
+//! here) and the window — the [`Broker`] of this test process. The privilege
+//! session is a [`Runner`] with a fake client: it counts session raises
+//! (password windows) and records what would go to the helper. No root, no pkexec.
 
 use std::os::fd::OwnedFd;
 use std::os::unix::fs::PermissionsExt;
@@ -20,7 +20,7 @@ use rexon_core::privilege::run::{Backend, Runner, Waiter};
 const SHIM: &str = env!("CARGO_BIN_EXE_rexon-sudo-shim");
 const WAIT: Duration = Duration::from_secs(60);
 
-/// Что ушло «помощнику» и сколько раз поднимался сеанс.
+/// What went to the «helper» and how many times the session was raised.
 #[derive(Default)]
 struct Seen {
     ops: Mutex<Vec<(PrivOp, usize)>>,
@@ -44,7 +44,7 @@ impl Waiter for Done {
 impl Backend for FakeBackend {
     fn submit(&mut self, op: &PrivOp, fds: Vec<OwnedFd>) -> Result<Box<dyn Waiter>, ClientError> {
         if !self.session {
-            // Подъём сеанса = одно окно пароля.
+            // Session raise = one password window.
             self.seen.raises.fetch_add(1, Ordering::SeqCst);
             self.session = true;
         }
@@ -59,7 +59,7 @@ impl Backend for FakeBackend {
     }
 }
 
-/// Стенд: каталог «XDG_RUNTIME_DIR», посредник окна, поддельный сборщик.
+/// Stand: an «XDG_RUNTIME_DIR» directory, the window broker, a fake builder.
 struct Stand {
     root: PathBuf,
     broker: Arc<Broker>,
@@ -75,8 +75,8 @@ fn stand(tag: &str) -> Stand {
     let runner = Arc::new(Runner::new(Box::new(FakeBackend { seen: Arc::clone(&seen), session: false })));
     let exec: Box<ExecFn> = Box::new(move |op, fds, progress| runner.run(op, fds, progress));
     let broker = Broker::start(&root.join(SOCKET_DIR), std::process::id() as i32, exec).unwrap();
-    // Поддельный paru: берёт `--sudo`/`--sudoflags` из своей строки и
-    // зовёт «sudo» с каждой строкой файла команд — как paru/yay.
+    // Fake paru: takes `--sudo`/`--sudoflags` from its command line and calls
+    // «sudo» with every line of the command file — like paru/yay.
     let script = root.join("paru");
     std::fs::write(
         &script,
@@ -107,8 +107,8 @@ impl Stand {
         p.to_string_lossy().into_owned()
     }
 
-    /// Запустить поддельный сборщик с меткой `reg` и командами `cmds`;
-    /// итог — коды «sudo» по строкам и stderr шима.
+    /// Run the fake builder with tag `reg` and commands `cmds`; the result is the
+    /// «sudo» exit codes per line and the shim's stderr.
     fn build(&self, reg: &Registration, cmds: &[String]) -> (Vec<i32>, String) {
         let out = self.root.join("out");
         let err = self.root.join("err");
@@ -132,7 +132,7 @@ impl Stand {
         (codes, std::fs::read_to_string(&err).unwrap_or_default())
     }
 
-    /// Шим напрямую из процесса тестов (не из сборщика).
+    /// The shim directly from the test process (not from the builder).
     fn shim_direct(&self, args: &[&str]) -> i32 {
         let mut child = Command::new(SHIM)
             .args(args)
@@ -159,10 +159,10 @@ impl Drop for Stand {
     }
 }
 
-/// Запуск только что записанного сценария-заглушки. Пока параллельный тест
-/// в этом же процессе делает fork, у ребёнка на миг остаётся открытый на
-/// запись дескриптор нашего файла, и exec отвечает ETXTBSY («Text file
-/// busy») — гонка ядра, а не дефект шима. Короткий повтор её снимает.
+/// Run a freshly written stub script. While a parallel test in the same
+/// process forks, the child briefly keeps a write descriptor of our file open,
+/// and exec answers ETXTBSY («Text file busy») — a kernel race, not a shim
+/// defect. A short retry removes it.
 fn spawn_retry_busy(cmd: &mut Command) -> std::process::Child {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -199,8 +199,8 @@ fn сборка_целиком_одним_подъёмом_сеанса() {
     let st = stand("ok");
     let t = st.package("t-1.0-1-x86_64.pkg.tar.zst");
     let reg = st.broker.register(&s(&["t"]), false);
-    // Как paru: зависимости из репозитория, собранное, причины установки,
-    // снятие сборочных. И как yay: флаги в другом порядке, `--config`.
+    // Like paru: dependencies from the repo, the built package, install reasons,
+    // removing build deps. And like yay: flags in a different order, `--config`.
     let (codes, err) = st.build(
         &reg,
         &[
@@ -227,7 +227,7 @@ fn сборка_целиком_одним_подъёмом_сеанса() {
     assert_eq!(ops[2].0, PrivOp::AurDropMake { names: s(&["cmake", "ninja"]) });
     assert_eq!(st.raises(), 1, "одна сборка — один подъём сеанса");
 
-    // Следующая сборка при живом сеансе — без пароля.
+    // The next build with a live session — no password.
     let reg2 = st.broker.register(&s(&["t"]), false);
     let (codes, err) = st.build(&reg2, &[format!("pacman -U --noconfirm -- {t}")]);
     assert_eq!(codes, vec![0], "{err}");
@@ -243,16 +243,16 @@ fn запрещённое_отказ_без_пароля() {
     let (codes, err) = st.build(
         &reg,
         &[
-            format!("pacman -U --noconfirm -- {evil}"),           // чужое имя
-            format!("pacman -U --ask=4 -- {t}"),                  // замена без согласия
-            format!("pacman -U --overwrite=* -- {t}"),            // флаг вне списка
+            format!("pacman -U --noconfirm -- {evil}"),           // foreign name
+            format!("pacman -U --ask=4 -- {t}"),                  // replacement without consent
+            format!("pacman -U --overwrite=* -- {t}"),            // flag outside the list
             format!("pacman -U --dbpath /tmp -- {t}"),
             "pacman -S --noconfirm --config /tmp/evil.conf -- cmake".into(),
-            "pacman -R --noconfirm -- glibc".into(),              // не ставилось операцией
+            "pacman -R --noconfirm -- glibc".into(),              // not installed by the operation
             "pacman -D --asexplicit -- linux".into(),
             "pacman -Syu --".into(),
             "bash -c id".into(),
-            "pacman -S cmake".into(),                             // цели без `--`
+            "pacman -S cmake".into(),                             // targets without `--`
         ],
     );
     assert_eq!(codes, vec![1; 10], "{err}");
@@ -268,21 +268,21 @@ fn токен_одноразовый_и_привязан_к_сборщику() {
     let reg = st.broker.register(&s(&["t"]), false);
     let flag = reg.flag.clone();
 
-    // Чужой процесс (родитель шима — не сборщик с этой меткой) операцию
-    // не привяжет.
+    // A foreign process (the shim's parent is not the builder with this tag)
+    // will not bind the operation.
     assert_eq!(st.shim_direct(&[&flag, "pacman", "-U", "--", &t]), 1);
-    // Неизвестный токен и метка не по форме.
+    // Unknown token and a malformed tag.
     let fake = format!("--rexon-op={}.{}", std::process::id(), "0".repeat(32));
     assert_eq!(st.shim_direct(&[&fake, "pacman", "-U", "--", &t]), 1);
     assert_eq!(st.shim_direct(&["pacman", "-U", "--", &t]), 1);
     assert!(st.ops().is_empty());
 
-    // Сборка прошла и вышла.
+    // The build went through and exited.
     let (codes, err) = st.build(&reg, &[format!("pacman -U -- {t}")]);
     assert_eq!(codes, vec![0], "{err}");
     assert_eq!(st.ops().len(), 1);
 
-    // После конца операции: та же метка у нового «сборщика» и напрямую — отказ.
+    // After the operation ends: the same tag from a new «builder» and directly — refused.
     let (codes, _) = st.build(&reg, &[format!("pacman -U -- {t}")]);
     assert_eq!(codes, vec![1]);
     assert_eq!(st.shim_direct(&[&flag, "pacman", "-U", "--", &t]), 1);
@@ -292,7 +292,7 @@ fn токен_одноразовый_и_привязан_к_сборщику() {
 #[test]
 fn продление_sudo_без_окна() {
     let st = stand("v");
-    // yay с `sudoloop` зовёт `<sudo> -v` без флагов — успех, ничего не исполнено.
+    // yay with `sudoloop` calls `<sudo> -v` without flags — success, nothing executed.
     assert_eq!(st.shim_direct(&["-v"]), 0);
     assert!(st.ops().is_empty());
 }
@@ -304,7 +304,7 @@ fn сокет_в_каталоге_0700() {
     let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o700);
     assert!(Path::new(&st.broker.socket_path()).starts_with(&dir));
-    // Каталог с правами шире — посредник не поднимается.
+    // A directory with wider permissions — the broker does not start.
     let other = st.root.join("wide");
     std::fs::create_dir(&other).unwrap();
     std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o755)).unwrap();

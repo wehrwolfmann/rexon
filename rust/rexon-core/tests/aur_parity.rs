@@ -1,12 +1,12 @@
-//! Golden-сверка AUR-парсера с оригиналом `rexon/appearance/aur_client.py`.
+//! Golden check of the AUR parser against the original `rexon/appearance/aur_client.py`.
 //!
-//! Эталоны сняты с самого Python (см. генератор): `aur_search_raw.json` —
-//! РЕАЛЬНЫЙ ответ RPC (`curl` search/aerothemeplasma), `aur_cases.json` —
-//! выходы оракула (реальные `_parse`/атрибуты/`search_aur`/`fetch_for_category`
-//! с монипатчем сети). Rust обязан вернуть те же модели/строки/порядок.
+//! The golden files were captured from Python itself (see the generator): `aur_search_raw.json` is
+//! a REAL RPC response (`curl` search/aerothemeplasma), `aur_cases.json` is
+//! the oracle's outputs (the real `_parse`/attributes/`search_aur`/`fetch_for_category`
+//! with the network monkeypatched). Rust must return the same models/strings/order.
 //!
-//! ⚠️ Живой сетевой вызов НЕ тестируется (недетерминирован и в ядро не
-//! портирован) — проверяется только РАЗБОР зафиксированного ответа.
+//! ⚠️ The live network call is NOT tested (non-deterministic and not ported
+//! to the core) — only the PARSING of a recorded response is checked.
 
 use rexon_core::aur::{
     check_rpc_error, curated_order, dedup_category, parse_results, search_filter, AurPackage,
@@ -17,8 +17,8 @@ fn cases() -> Value {
     serde_json::from_str(include_str!("golden/aur_cases.json")).unwrap()
 }
 
-/// Разбор РЕАЛЬНОГО ответа RPC: все поля и вычисляемые атрибуты совпадают с
-/// Python `_parse` + свойствами `AurPackage`.
+/// Parsing a REAL RPC response: all fields and computed attributes match
+/// Python `_parse` + the `AurPackage` properties.
 #[test]
 fn parse_real_response_matches_python() {
     let raw: Value = serde_json::from_str(include_str!("golden/aur_search_raw.json")).unwrap();
@@ -36,7 +36,7 @@ fn parse_real_response_matches_python() {
         assert_eq!(p.out_of_date, w["out_of_date"].as_bool().unwrap());
         assert_eq!(p.upstream_url, w["upstream_url"].as_str().unwrap());
         assert_eq!(p.last_modified, w["last_modified"].as_i64().unwrap());
-        // вычисляемые
+        // computed
         assert_eq!(p.id(), w["id"].as_str().unwrap());
         assert_eq!(p.aur_url(), w["aur_url"].as_str().unwrap());
         assert_eq!(p.preview_url(), readme_marker(w["preview_url"].as_str().unwrap()));
@@ -44,18 +44,18 @@ fn parse_real_response_matches_python() {
     }
 }
 
-/// Эталон Python давал OpenGraph-карточку репозитория; с 16.11.2026 плитка
-/// берёт первую картинку README того же репозитория (карточка с именем и
-/// звёздами — не снимок товара). Разбор адреса — прежний, поэтому эталон
-/// сверяется через замену вида адреса.
+/// The Python golden file gave the repository's OpenGraph card; since 16.11.2026 the tile
+/// takes the first README picture of the same repository (a card with the name and
+/// stars is not a product screenshot). The URL parsing is the same, so the golden file
+/// is checked through a replacement of the URL form.
 fn readme_marker(og: &str) -> String {
     og.strip_prefix("https://opengraph.githubassets.com/0/")
         .map(|rest| format!("{}{rest}", rexon_core::aur::README_PREVIEW_SCHEME))
         .unwrap_or_else(|| og.to_string())
 }
 
-/// preview_url: github-регэксп (owner/repo, .git и хвост отсекаются),
-/// не-github → "".
+/// preview_url: the github regexp (owner/repo, .git and the tail are cut off),
+/// non-github → "".
 #[test]
 fn preview_url_matches_python() {
     for (url, want) in cases()["url_cases"].as_object().unwrap() {
@@ -65,8 +65,8 @@ fn preview_url_matches_python() {
     }
 }
 
-/// Плитка шрифта — образец с Google Fonts по имени пакета; набор обоев и
-/// прочие без снимка — честная подпись (16.11.2026).
+/// A font tile is a Google Fonts sample by package name; a wallpaper set and
+/// others without a screenshot get an honest caption (16.11.2026).
 #[test]
 fn font_and_wallpaper_tiles_show_the_goods_or_say_so() {
     use rexon_core::aur::*;
@@ -103,9 +103,9 @@ fn font_and_wallpaper_tiles_show_the_goods_or_say_so() {
     assert_eq!(no_preview_note(&shown), "", "снимок README будет — подпись не нужна");
 }
 
-/// Поиск AUR внутри раздела: только товар раздела. Живая проверка
-/// 16.11.2026 — на «girl» в «Обоях HD» приходили словари fcitx, шрифт и
-/// игровой движок.
+/// AUR search inside a section: only the section's goods. Live check
+/// 16.11.2026 — «girl» in «Обои HD» brought fcitx dictionaries, a font and
+/// a game engine.
 #[test]
 fn search_inside_a_section_keeps_only_its_kind() {
     use rexon_core::aur::*;
@@ -125,11 +125,11 @@ fn search_inside_a_section_keeps_only_its_kind() {
     assert!(filter_search_for_category(found.clone(), "wallpapers").iter().all(|p| p.category == "wallpapers"));
     let fonts: Vec<String> = filter_search_for_category(found.clone(), "fonts").into_iter().map(|p| p.name).collect();
     assert_eq!(fonts, ["ttf-league-script-number-one"]);
-    // Раздел без полки AUR — выдача как есть.
+    // A section without an AUR shelf — results as is.
     assert_eq!(filter_search_for_category(found.clone(), "нет-такого").len(), found.len());
 }
 
-/// icon: по категории, иначе эвристика по имени (порядок проверок как в Python).
+/// icon: by category, otherwise a name heuristic (check order as in Python).
 #[test]
 fn icon_matches_python() {
     for case in cases()["icon_cases"].as_array().unwrap() {
@@ -142,7 +142,7 @@ fn icon_matches_python() {
     }
 }
 
-/// aur_url: percent-encode имени как `urllib.parse.quote`.
+/// aur_url: percent-encode the name like `urllib.parse.quote`.
 #[test]
 fn aur_url_matches_python() {
     for (name, want) in cases()["aururl_cases"].as_object().unwrap() {
@@ -151,7 +151,7 @@ fn aur_url_matches_python() {
     }
 }
 
-/// search_aur: локальный AND-фильтр многословного запроса + sort_votes.
+/// search_aur: local AND filter of a multi-word query + sort_votes.
 #[test]
 fn search_filter_matches_python() {
     let sc = &cases()["search"];
@@ -170,10 +170,10 @@ fn search_filter_matches_python() {
     assert_eq!(got, want);
 }
 
-/// fetch_for_category("global"): дедуп по имени (первый выигрывает),
-/// sort_votes, пин aerothemeplasma наверх; category проставлена.
-/// `aerothemeplasma-icons-git` с 03.10.2026 НЕ в «Глобальных темах» — он
-/// живёт в «Значках» (`aur::is_relevant`).
+/// fetch_for_category("global"): dedup by name (the first wins),
+/// sort_votes, aerothemeplasma pinned to the top; category is set.
+/// `aerothemeplasma-icons-git` is NOT in «Глобальные темы» since 03.10.2026 — it
+/// lives in «Значки» (`aur::is_relevant`).
 #[test]
 fn dedup_category_matches_python() {
     let dc = &cases()["dedup_global"];
@@ -190,26 +190,26 @@ fn dedup_category_matches_python() {
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
     assert_eq!(got, want, "порядок дедупа/пина");
-    // category у каждого = "global"
+    // category of each = "global"
     for p in &out {
         assert_eq!(p.category, key);
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Закрытие дыр паритета: курируемый список, «поле не того типа», ошибки RPC
-//  и кривые/обрезанные ответы. Эталоны сняты с живого aur_client.py при
-//  Python-путь до его удаления (генератор — ad-hoc, вход указан в каждом тесте).
+//  Closing parity holes: the curated list, "a field of the wrong type", RPC errors
+//  and malformed/truncated responses. The golden values were captured from the live aur_client.py
+//  on the Python path before its removal (the generator is ad hoc, the input is given in each test).
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// `fetch_curated` на РЕАЛЬНОМ ответе AUR: пин `aerothemeplasma*` идёт в
-/// порядке `CURATED`.
+/// `fetch_curated` on a REAL AUR response: the `aerothemeplasma*` pin goes in
+/// `CURATED` order.
 ///
-/// ⚠️ Тест закрепляет КВИРК оригинала: пакеты `aerothemeplasma-*`, которых нет
-/// в `CURATED` (`-desktop-x11-git` в живом ответе), выпадают из выдачи вообще
-/// — в пин они не попадают (нет в списке), а из «остальных» отфильтрованы по
-/// префиксу. Поведение сохранено осознанно: подборка показывает ровно то, что
-/// в `CURATED`. `-sounds-git` с 03.10.2026 в `CURATED` и закреплён третьим.
+/// ⚠️ The test pins a QUIRK of the original: `aerothemeplasma-*` packages that are not
+/// in `CURATED` (`-desktop-x11-git` in the live response) drop out of the results entirely
+/// — they do not get into the pin (not in the list), and they are filtered out of "the rest" by
+/// prefix. The behaviour is kept deliberately: the selection shows exactly what
+/// is in `CURATED`. `-sounds-git` is in `CURATED` since 03.10.2026 and pinned third.
 #[test]
 fn curated_order_on_real_response() {
     let raw: Value = serde_json::from_str(include_str!("golden/aur_search_raw.json")).unwrap();
@@ -224,8 +224,8 @@ fn curated_order_on_real_response() {
     assert!(!want.is_empty(), "фикстура не должна быть пустой");
 }
 
-/// `fetch_curated` на смешанном ответе: пин по порядку `CURATED`, остальные по
-/// голосам (убыв.), запись без `Name` пропущена (оригинал падал KeyError).
+/// `fetch_curated` on a mixed response: pinned in `CURATED` order, the rest by
+/// votes (descending), an entry without `Name` skipped (the original crashed with KeyError).
 #[test]
 fn curated_order_mixed_and_nameless_record() {
     let c = &cases()["curated_mixed"];
@@ -242,8 +242,8 @@ fn curated_order_mixed_and_nameless_record() {
     assert_eq!(got, want);
 }
 
-/// «Поле не того типа»: числа строками/дробными/bool, мусор и null дают ровно
-/// те же значения, что починенный Python (`_num`), без паники.
+/// "A field of the wrong type": numbers as strings/fractions/bool, junk and null give exactly
+/// the same values as the fixed Python (`_num`), without a panic.
 #[test]
 fn loose_typed_fields_match_python() {
     let c = &cases()["loose_types"];
@@ -274,8 +274,8 @@ fn loose_typed_fields_match_python() {
     }
 }
 
-/// Ответ с ошибкой RPC (в т.ч. реальный формат `type=error`) распознаётся с тем
-/// же текстом, что у Python; нормальный ответ ошибкой не считается.
+/// A response with an RPC error (including the real `type=error` format) is recognized with the
+/// same text as in Python; a normal response is not considered an error.
 #[test]
 fn rpc_error_detection_matches_python() {
     for c in cases()["rpc_errors"].as_array().unwrap() {
@@ -287,9 +287,9 @@ fn rpc_error_detection_matches_python() {
     }
 }
 
-/// Кривые и обрезанные ответы: `{}`, `results: null`, строка вместо массива,
-/// не-объекты внутри массива. Разбор обязан вернуть то же, что починенный
-/// Python, и НИ В КАКОМ случае не паниковать.
+/// Malformed and truncated responses: `{}`, `results: null`, a string instead of an array,
+/// non-objects inside the array. The parse must return the same as the fixed
+/// Python, and in NO case panic.
 #[test]
 fn broken_responses_degrade_like_python() {
     for c in cases()["broken_responses"].as_array().unwrap() {
@@ -313,7 +313,7 @@ fn broken_responses_degrade_like_python() {
             .collect();
         assert_eq!(curated, want_curated, "curated_order для {data:?}");
 
-        // search_filter по единственному слову — тот же путь, что _py_search_aur.
+        // search_filter on a single word — the same path as _py_search_aur.
         let search: Vec<String> = search_filter(data, "survivor", None)
             .into_iter()
             .map(|p| p.name)
@@ -340,10 +340,10 @@ fn broken_responses_degrade_like_python() {
     }
 }
 
-/// Тело ответа — HTML (страница ошибки/капчи вместо JSON). До ядра такое не
-/// доходит: `_http_json` валит RuntimeError'ом на `json.loads`. Здесь
-/// проверяется вторая линия — валидный JSON, но НЕ объект: ядро не должно
-/// считать его ни ошибкой RPC, ни выдачей.
+/// The response body is HTML (an error/captcha page instead of JSON). Such a thing does not
+/// reach the core: `_http_json` fails with a RuntimeError on `json.loads`. Here
+/// the second line of defence is checked — valid JSON, but NOT an object: the core must
+/// consider it neither an RPC error nor results.
 #[test]
 fn non_object_response_yields_nothing() {
     for raw in [
@@ -365,8 +365,8 @@ fn non_object_response_yields_nothing() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Релевантность категорий (03.10.2026): живой снимок AUR RPC, где широкие
-//  запросы тянули в каталог программы и библиотеки вместо тем.
+//  Category relevance (03.10.2026): a live AUR RPC snapshot where broad
+//  queries pulled programs and libraries into the catalog instead of themes.
 // ═══════════════════════════════════════════════════════════════════════════
 
 fn rpc(records: &[(&str, &str)]) -> Value {
@@ -384,7 +384,7 @@ fn kept(key: &str, records: &[(&str, &str)]) -> Vec<String> {
     out
 }
 
-/// «Глобальные темы»: «look and feel» в описании ещё не тема Plasma.
+/// «Глобальные темы»: "look and feel" in the description does not make a Plasma theme yet.
 #[test]
 fn global_drops_look_and_feel_programs() {
     let got = kept(
@@ -413,7 +413,7 @@ fn global_drops_look_and_feel_programs() {
     );
 }
 
-/// Значки и звуки AeroThemePlasma — в своих разделах.
+/// AeroThemePlasma icons and sounds — in their own sections.
 #[test]
 fn aerothemeplasma_parts_live_in_own_sections() {
     let icons = kept("icons", &[("aerothemeplasma-icons-git", "Icon theme designed for AeroThemePlasma")]);
@@ -433,7 +433,7 @@ fn aerothemeplasma_parts_live_in_own_sections() {
     assert_eq!(sounds, ["aerothemeplasma-sounds-git", "plasma-mobile-sounds", "yaru-sound-theme"]);
 }
 
-/// Цветовые схемы, значки, курсоры, обои: хвосты широких запросов.
+/// Color schemes, icons, cursors, wallpapers: the tails of broad queries.
 #[test]
 fn other_categories_drop_non_themes() {
     let colors = kept(
@@ -481,8 +481,8 @@ fn other_categories_drop_non_themes() {
     assert_eq!(walls, ["arch-wallpapers-git", "plasma6-themes-matchama-wallpapers"]);
 }
 
-/// Обои: программы смены и скачивания фона, дополнения GNOME, плагины
-/// Plasma и вариант темы GTK (живой снимок 04.10.2026).
+/// Wallpapers: background changing and downloading programs, GNOME extensions, Plasma
+/// plugins and a GTK theme variant (live snapshot 04.10.2026).
 #[test]
 fn wallpapers_drop_changers_and_downloaders() {
     let walls = kept(
@@ -522,10 +522,10 @@ fn wallpapers_drop_changers_and_downloaders() {
     assert_eq!(cursors, ["xcursor-breeze-neutral-git"]);
 }
 
-/// Темы GTK: до 04.10.2026 у раздела не было запросов, и AUR показывал
-/// только подборку. Запросы приносят и чужое — значки «под тему GTK»,
-/// курсоры, стили Fluxbox, переключатели тем; темы без «gtk» в имени
-/// (найденные по зависимости от Murrine) остаются.
+/// GTK themes: until 04.10.2026 the section had no queries, and AUR showed
+/// only the selection. The queries also bring foreign things — icons "for a GTK theme",
+/// cursors, Fluxbox styles, theme switchers; themes without "gtk" in the name
+/// (found through a dependency on Murrine) stay.
 #[test]
 fn gtk_section_keeps_themes_only() {
     assert!(!rexon_core::aur::category_queries("gtk").is_empty());
@@ -566,14 +566,14 @@ fn gtk_section_keeps_themes_only() {
     );
 }
 
-// ── Подборка CURATED в своих разделах ──────────────────────────────────
+// ── The CURATED selection in its sections ──────────────────────────────
 
 fn pkg(name: &str, votes: i64) -> AurPackage {
     AurPackage { name: name.to_string(), votes, ..Default::default() }
 }
 
-/// У каждого курируемого пакета, кроме модуля оформления окон `klassy`,
-/// есть свой раздел; AeroThemePlasma разложена по трём разделам.
+/// Every curated package except the window decoration module `klassy`
+/// has its own section; AeroThemePlasma is spread over three sections.
 #[test]
 fn every_curated_package_has_its_section() {
     use rexon_core::aur::{curated_category, has_curated, CURATED};
@@ -589,8 +589,8 @@ fn every_curated_package_has_its_section() {
     assert!(!has_curated("popular"));
 }
 
-/// Закрепление: курируемые раздела — наверху в порядке CURATED, найденный в
-/// выдаче не повторяется, чужие разделы и пропавшие из AUR не добавляются.
+/// Pinning: a section's curated packages are at the top in CURATED order, one found in
+/// the results is not repeated, other sections' and ones gone from AUR are not added.
 #[test]
 fn pin_curated_puts_section_picks_on_top() {
     use rexon_core::aur::pin_curated;
@@ -611,7 +611,7 @@ fn pin_curated_puts_section_picks_on_top() {
     assert_eq!(sounds[0].name, "aerothemeplasma-sounds-git");
     assert_eq!(sounds[0].category, "sounds", "ключ раздела — для значка плитки");
     assert_eq!(sounds.len(), 2);
-    // Раздел без подборки — выдача как есть.
+    // A section without a selection — results as is.
     let colors: Vec<String> = pin_curated("colors", &curated, list).into_iter().map(|p| p.name).collect();
     assert_eq!(colors, ["papirus-icon-theme", "tela-icon-theme", "x-icons"]);
 }

@@ -1,10 +1,10 @@
-//! Окно «Применить «X»?» глобальной темы Plasma: что тема несёт, что окно
-//! показывает и что делает каждое сочетание флажков.
+//! The «Apply "X"?» window of a Plasma global theme: what the theme carries, what the window
+//! shows and what each combination of checkboxes does.
 //!
-//! Машина подставная: каталоги тем и ответы программ — из таблицы, ничего не
-//! исполняется. Эталон — `golden/global_theme_apply.json`; намеренную
-//! перемену записать: `REXON_UPDATE_GOLDEN=1 cargo test -p rexon-core --test
-//! global_theme_apply` и просмотреть `git diff` эталона.
+//! The machine is fake: theme directories and program answers come from a table, nothing is
+//! executed. The golden is `golden/global_theme_apply.json`; to record a deliberate
+//! change: `REXON_UPDATE_GOLDEN=1 cargo test -p rexon-core --test
+//! global_theme_apply` and review the `git diff` of the golden.
 
 mod i18n_pin;
 
@@ -20,8 +20,8 @@ const HOME: &str = "/home/t";
 const USER: &str = "/home/t/.local/share/plasma/look-and-feel";
 const SYSTEM: &str = "/usr/share/plasma/look-and-feel";
 
-/// Подставная машина: файлы — таблица путь → текст, каталоги выводятся из
-/// путей файлов; `dbus-send` отвечает заданным `immutable`.
+/// Fake machine: files are a path → text table, directories are derived from
+/// file paths; `dbus-send` answers with the given `immutable`.
 #[derive(Default)]
 struct Machine {
     files: BTreeMap<String, String>,
@@ -68,8 +68,8 @@ impl LookIo for Machine {
 
 const BREEZE_LIKE: &str = "[kdeglobals][General]\nColorScheme=BreezeDark\n\n[kdeglobals][Icons]\nTheme=breeze-dark\n\n[kwinrc][Windows]\nPlacement=Centered\n";
 
-/// Темы стенда: с раскладкой и кнопками заголовка, без раскладки, только
-/// раскладка, пустая, и одноимённая своя поверх системной.
+/// Bench themes: with a layout and title bar buttons, without a layout, only
+/// a layout, an empty one, and a same-named user one over the system one.
 fn machine() -> Machine {
     Machine::default()
         .file(&format!("{SYSTEM}/Full/metadata.json"), "{}")
@@ -87,15 +87,15 @@ fn machine() -> Machine {
         .file(&format!("{USER}/LayoutOnly/contents/layouts/org.kde.plasma.desktop-layout.js"), "")
         .file(&format!("{USER}/Empty/metadata.json"), "{}")
         .file(&format!("{USER}/Empty/contents/defaults"), "[kdeglobals][General]\nColorScheme=\n")
-        // Своя копия темы перекрывает системную, как в Plasma.
+        // The user's copy of a theme overrides the system one, as in Plasma.
         .file(&format!("{USER}/Shadowed/metadata.json"), "{}")
         .file(&format!("{USER}/Shadowed/contents/defaults"), "[Wallpaper]\nImage=Next\n")
         .file(&format!("{SYSTEM}/Shadowed/metadata.json"), "{}")
         .file(&format!("{SYSTEM}/Shadowed/contents/layouts/x.js"), "")
 }
 
-/// Тема со всеми частями Plasma 6.8 и запасной пакет Breeze (своя
-/// раскладка, заставка, кнопки заголовка).
+/// A theme with all parts of Plasma 6.8 and the Breeze fallback package (its own
+/// layout, splash screen, title bar buttons).
 const RICH: &str = "[kdeglobals][General]\nColorScheme=SweetDark\nfont=Noto Sans,10,-1,5,50,0,0,0,0,0\nfixed=Hack,9,-1,5,50,0,0,0,0,0\n\n\
 [kdeglobals][WM]\nactiveFont=Noto Sans,11,-1,5,75,0,0,0,0,0\n\n\
 [kdeglobals][KDE]\nwidgetStyle=kvantum\n\n[kdeglobals][Icons]\nTheme=candy-icons\n\n\
@@ -125,8 +125,8 @@ fn contents_of(m: &Machine, theme: &str) -> th::LnfContents {
     th::lnf_contents(m, &dir)
 }
 
-/// Все четыре сочетания флажков → план «Применить» тем же путём, что у
-/// живого установщика (`press_plan_with`).
+/// All four checkbox combinations → the «Apply» plan by the same path as the
+/// live installer (`press_plan_with`).
 fn plans(theme: &str, contents: &th::LnfContents) -> Value {
     let mut out = serde_json::Map::new();
     for (appearance, layout) in [(true, false), (true, true), (false, true), (false, false)] {
@@ -185,29 +185,29 @@ fn golden() {
     }
 }
 
-/// Поведение Plasma 6.8, которое эталон держит, словами — чтобы перемена не
-/// прошла пересъёмкой незамеченной.
+/// Plasma 6.8 behaviour that the golden holds, in words — so that a change does not
+/// slip through a recapture unnoticed.
 #[test]
 fn kde_rules() {
     let _lang = i18n_pin::en();
     let m = machine();
-    // Оба вида — два флажка, расположение по умолчанию НЕ отмечено.
+    // Both kinds — two checkboxes, the default layout is NOT checked.
     let q = th::global_question("Full", &contents_of(&m, "Full"), false);
     assert_eq!((q.appearance_row, q.layout_row), (GlobalRow::Checkbox, GlobalRow::Checkbox));
     assert!(q.appearance_checked && !q.layout_checked);
-    // Закреплённые виджеты: флажка расположения нет.
+    // Locked widgets: no layout checkbox.
     let q = th::global_question("Full", &contents_of(&m, "Full"), true);
     assert_eq!(q.layout_row, GlobalRow::Hidden);
-    // Своей раскладки нет — расположение всё равно предложено, как в KDE
-    // (Plasma возьмёт раскладку Breeze), подпись говорит это прямо, флажок
-    // не отмечен; отметки плитки нет.
+    // No layout of its own — the layout is still offered, as in KDE
+    // (Plasma takes the Breeze layout), the label says so plainly, the checkbox
+    // is unchecked; there is no tile mark.
     let q = th::global_question("LooksOnly", &contents_of(&m, "LooksOnly"), false);
     assert_eq!((q.appearance_row, q.layout_row), (GlobalRow::Checkbox, GlobalRow::Checkbox));
     assert!(q.appearance_checked && !q.layout_checked);
     assert_eq!(q.layout_text, "Desktop and widget layout (from Breeze — the theme has none of its own)");
     assert!(!th::lnf_has_desktop_layout(&m, &th::lnf_package_dir(&m, HOME, "LooksOnly").unwrap()));
-    // Расположение из Breeze — тот же вызов plasmashell с именем темы:
-    // запасной пакет подставляет сама Plasma.
+    // The layout from Breeze is the same plasmashell call with the theme name:
+    // Plasma substitutes the fallback package itself.
     assert_eq!(th::LNF_FALLBACK_PACKAGE, "org.kde.breeze.desktop");
     let press = GlobalPress {
         choice: GlobalChoice { appearance: false, layout: true, parts: None },
@@ -216,22 +216,22 @@ fn kde_rules() {
     };
     let plan = format!("{:?}", th::apply_kde_global_choice_plan("LooksOnly", &press).unwrap().steps);
     assert!(plan.contains("loadLookAndFeelDefaultLayout") && plan.contains("string:LooksOnly"), "{plan}");
-    // Одна часть — строка без флажка, и она отмечена.
+    // One part — a line without a checkbox, and it is checked.
     let q = th::global_question("LayoutOnly", &contents_of(&m, "LayoutOnly"), false);
     assert_eq!((q.appearance_row, q.layout_row), (GlobalRow::Hidden, GlobalRow::Bullet));
     assert!(q.layout_checked && !q.appearance_checked);
-    // Пустая тема — объяснение вместо флажков.
+    // An empty theme — an explanation instead of checkboxes.
     let q = th::global_question("Empty", &contents_of(&m, "Empty"), false);
     assert!(!q.empty_text.is_empty());
-    // Своя копия темы перекрывает системную.
+    // The user's copy of a theme overrides the system one.
     assert_eq!(th::lnf_package_dir(&m, HOME, "Shadowed").unwrap(), format!("{USER}/Shadowed"));
     assert!(!contents_of(&m, "Shadowed").layout.desktop);
-    // Чужое имя с «/» каталогом темы не станет.
+    // A foreign name with "/" will not become a theme directory.
     assert_eq!(th::lnf_package_dir(&m, HOME, "../Full"), None);
 }
 
-/// Окно спрашивает у plasmashell, закреплены ли виджеты; нет оболочки — не
-/// закреплены (флажок расположения на месте).
+/// The window asks plasmashell whether widgets are locked; no shell — not
+/// locked (the layout checkbox stays).
 #[test]
 fn live_question_asks_plasmashell() {
     let _lang = i18n_pin::en();
@@ -246,7 +246,7 @@ fn live_question_asks_plasmashell() {
     assert!(th::global_question_live(&m, HOME, "Missing", "Missing", "kde").is_none());
 }
 
-/// Без окна (`global: None`) «Применить» — прежний `-a` без расположения.
+/// Without the window (`global: None`) «Apply» is the old `-a` without the layout.
 #[test]
 fn without_question_plan_is_unchanged() {
     let facts = ai::PressFacts { de: "kde".into(), home: HOME.into(), global_theme_ok: true, ..Default::default() };
@@ -258,7 +258,7 @@ fn without_question_plan_is_unchanged() {
     assert!(line.contains("\"plasma-apply-lookandfeel\", \"-a\", \"Full\"]"), "{line}");
 }
 
-/// Русские подписи окна — из настоящего `po/ru.po`.
+/// The window's Russian labels come from the real `po/ru.po`.
 #[test]
 fn russian_texts() {
     let _lang = i18n_pin::ru();
@@ -272,7 +272,7 @@ fn russian_texts() {
     assert_eq!(th::lnf_layout_badge(), "Содержит расположение виджетов");
 }
 
-// ── Части темы: «Выбрать, что применить…» и применение вне Plasma ─────────
+// ── Theme parts: «Choose what to apply…» and applying outside Plasma ─────────
 
 fn rich() -> (Machine, th::LnfContents) {
     let m = with_rich(machine());
@@ -280,10 +280,10 @@ fn rich() -> (Machine, th::LnfContents) {
     (m, c)
 }
 
-/// Планы разделов, которые живой установщик снимает пробами
-/// (`LiveInstaller::global_sections`): здесь — те же построители кнопок
-/// «Значки» и «Курсоры» с подставными пробами, цвета и стиль — условные
-/// шаги, кнопки заголовка — план раздела «Кнопки заголовка» на стенде.
+/// Plans of the sections that the live installer captures by probes
+/// (`LiveInstaller::global_sections`): here — the same builders of the
+/// «Icons» and «Cursors» buttons with fake probes, colors and style are conditional
+/// steps, title bar buttons are the plan of the «Title bar buttons» section on the bench.
 fn sections(m: &Machine, c: &th::LnfContents, de: &str, choice: GlobalChoice) -> GlobalPress {
     use rexon_core::themes::{ApplyStep, Cmd, LnfPart};
     let mut press = GlobalPress { choice, contents: c.clone(), ..Default::default() };
@@ -373,8 +373,8 @@ fn rich_golden() -> Value {
     })
 }
 
-/// Части и их признаки — как `KLookAndFeelManager::packageContents`
-/// Plasma 6.8; недостающее у темы (раскладка, кнопки) — из Breeze.
+/// Parts and their flags — as in `KLookAndFeelManager::packageContents` of
+/// Plasma 6.8; what the theme lacks (layout, buttons) comes from Breeze.
 #[test]
 fn parts_like_plasma() {
     use rexon_core::themes::LnfPart::*;
@@ -386,22 +386,22 @@ fn parts_like_plasma() {
             SplashScreen, Wallpaper, DesktopLayout, TitlebarLayout
         ]
     );
-    // Своей раскладки у темы нет — подпись «из Breeze», но часть есть.
+    // The theme has no layout of its own — the label says «from Breeze», but the part exists.
     assert!(!c.layout.desktop);
     assert_eq!(c.layout.buttons, Some(("MS".into(), "HIAX".into())));
-    // Без запасного пакета — только своё.
+    // Without the fallback package — only its own.
     let m = with_rich(machine());
     let own = th::lnf_contents(&m, &format!("{USER}/Rich"));
     assert!(!own.parts.contains(&DesktopLayout) && !own.parts.contains(&TitlebarLayout));
-    // Флаги — значения Plasma.
+    // Flags are Plasma's values.
     assert_eq!(Colors.bit(), 1);
     assert_eq!(BorderSize.bit(), 1 << 11);
     assert_eq!(DesktopLayout.bit(), 1 << 16);
     assert_eq!(th::LNF_APPEARANCE_MASK, 0xfff);
 }
 
-/// Подробный вид в Plasma: флажок на часть, расположение не отмечено,
-/// при закреплённых виджетах флажка «Расположение рабочего стола» нет.
+/// The detailed view in Plasma: a checkbox per part, the layout is unchecked,
+/// with locked widgets there is no «Desktop layout» checkbox.
 #[test]
 fn detailed_view_in_plasma() {
     let _lang = i18n_pin::en();
@@ -421,8 +421,8 @@ fn detailed_view_in_plasma() {
     assert!(q.parts.iter().all(|p| p.text != "Desktop layout"));
 }
 
-/// Plasma: всё оформление — `plasma-apply-lookandfeel -a`; одна часть —
-/// её ключи, тема записывается выбранной; значки — план раздела.
+/// Plasma: the whole look is `plasma-apply-lookandfeel -a`; one part is
+/// its keys, the theme is recorded as chosen; icons are the section plan.
 #[test]
 fn kde_partial_plans() {
     use rexon_core::themes::LnfPart;
@@ -439,12 +439,12 @@ fn kde_partial_plans() {
     assert!(only(LnfPart::Fonts).contains("refreshFonts"));
     assert!(only(LnfPart::WindowDecoration).contains("reloadConfig"));
     assert!(only(LnfPart::Icons).contains("candy-icons"));
-    // Обои Plasma 6.8 не применяет — одни они ничего не дают.
+    // Plasma 6.8 does not apply wallpapers — on their own they give nothing.
     assert!(!only(LnfPart::PlasmaTheme).contains("plasma-apply-lookandfeel"));
 }
 
-/// Вне Plasma: окно сразу подробное, непереносимые части выключены с
-/// причиной, план — шаги разделов этого стола, шрифты — родные ключи.
+/// Outside Plasma: the window is detailed right away, non-portable parts are disabled with
+/// a reason, the plan is the section steps of this desktop, fonts use the native keys.
 #[test]
 fn outside_plasma() {
     use rexon_core::themes::LnfPart;
@@ -464,7 +464,7 @@ fn outside_plasma() {
     assert!(!plan.contains("plasma-apply") && !plan.contains("kwriteconfig6"), "{plan}");
     assert!(plan.contains("org.mate.interface") && plan.contains("Noto Sans 10"), "{plan}");
     assert!(plan.contains("org.mate.Marco.general"), "кнопки заголовка: {plan}");
-    // Deepin: цвета и стиль — Chameleon, шрифты — Центр управления.
+    // Deepin: colors and style — Chameleon, fonts — Control Center.
     let q = th::global_question_in("Rich", &c, false, "deepin");
     assert!(q.parts.iter().filter(|p| matches!(p.id, LnfPart::Colors | LnfPart::WidgetStyle | LnfPart::Fonts)).all(|p| !p.enabled));
 }

@@ -1,64 +1,68 @@
-//! `LiveImpIo` — РЕАЛЬНЫЙ исполнитель трейта [`crate::importers::ImpIo`].
+//! `LiveImpIo` — the REAL executor of the [`crate::importers::ImpIo`] trait.
 //!
-//! ЗАЧЕМ ОТДЕЛЬНЫЙ МОДУЛЬ. Логика импортёров чужих форматов (`.themepack`,
-//! `.theme`, `.msstyles`, курсоры, иконки) портирована целиком
-//! (`crate::importers`), но она ИНТЕРАКТИВНА: ход разбора зависит от вывода
-//! `convert`/`ffmpeg`/`wrestool`/`7z` и от файлов, появившихся после них.
-//! Поэтому у неё нет статического плана — только трейт `ImpIo`, за которым
-//! стоит живая ФС и живые подпроцессы.
+//! WHY A SEPARATE MODULE. The logic of the importers of foreign formats
+//! (`.themepack`, `.theme`, `.msstyles`, cursors, icons) is fully ported
+//! (`crate::importers`), but it is INTERACTIVE: the course of parsing depends on
+//! the output of `convert`/`ffmpeg`/`wrestool`/`7z` and on the files that appear
+//! after them. So it has no static plan — only the `ImpIo` trait, behind which
+//! stand the live file system and live subprocesses.
 //!
-//! До 07.09.2026 единственная живая реализация трейта жила в PyO3-мосте
-//! (`rust/rexon-py/src/lib.rs`), то есть импорт Windows-темы работал ТОЛЬКО
-//! в процессе с Python. Из-за этого `ext_exec::install_from_file` умел
-//! ставить лишь `.rxn`, а вкладка «Расширения» в процессе без Python теряла
-//! половину того, что обещает своим же фильтром окна выбора файла
-//! (`qt_extensions::FILE_DIALOG_FILTER`). Исполнитель переехал сюда целиком
-//! и байт-в-байт: мост теперь берёт его отсюда же, второй копии нет.
+//! Until 07.09.2026 the only live implementation of the trait lived in the PyO3
+//! bridge (`rust/rexon-py/src/lib.rs`), i.e. importing a Windows theme worked
+//! ONLY in a process with Python. Because of that `ext_exec::install_from_file`
+//! could install only `.rxn`, and the "Extensions" tab in a process without
+//! Python lost half of what its own file-dialog filter promises
+//! (`qt_extensions::FILE_DIALOG_FILTER`). The executor moved here in full and
+//! byte for byte: the bridge now takes it from here too, there is no second
+//! copy.
 //!
-//! ЕДИНСТВЕННЫЙ ШОВ НАРУЖУ — апскейл обоев: `upscaler.rs` ведёт свой поток
-//! через трейт `UpIo`, и его живой исполнитель может быть разным (в процессе
-//! с Python — тот, что умеет Pillow и скачивание Real-ESRGAN). Поэтому
-//! [`LiveImpIo`] принимает апскейл ЗАМЫКАНИЕМ: `None` — не апскейлить вовсе
-//! (так ведёт себя `can_import`, которому побочные эффекты не нужны).
+//! THE ONLY SEAM TO THE OUTSIDE is wallpaper upscaling: `upscaler.rs` runs its
+//! own flow through the `UpIo` trait, and its live executor may differ (in a
+//! process with Python — the one that knows Pillow and downloading
+//! Real-ESRGAN). That is why [`LiveImpIo`] takes upscaling as a CLOSURE: `None`
+//! — do not upscale at all (that is how `can_import` behaves, which needs no
+//! side effects).
 //!
-//! ⭐ НИ ОДИН ПРОПУЩЕННЫЙ ШАГ ЗДЕСЬ НЕ МОЛЧИТ. Импорт чужой темы держится на
-//! посторонних программах, и часть из них может отсутствовать. Раньше это
-//! кончалось тихой потерей: обои копировались как есть, превью не строилось,
-//! человек видел «✅ Установлено» и решал, что так и надо. Теперь каждый
-//! пропуск кладётся в [`Notes`] и доходит до строки состояния вкладки.
+//! ⭐ NO SKIPPED STEP HERE IS SILENT. Importing a foreign theme relies on
+//! third-party programs, and some of them may be missing. This used to end in a
+//! silent loss: wallpapers were copied as is, no preview was built, the person
+//! saw "✅ Installed" and decided that was how it should be. Now every skip goes
+//! into [`Notes`] and reaches the tab's status line.
 //!
-//! ⚠️ Таблицы синонимов инструментов ниже — те же, что у `utils::TOOL_SETS`,
-//! но НЕ они: здесь сознательно сохранён набор, с которым снят эталон
-//! паритета моста (`rust/rexon-py/tests/importers_roundtrip.py`). Сводить их
-//! в одну — отдельная работа со своим замером, а не побочный эффект переезда.
+//! Warning: the tool synonym tables below are the same as `utils::TOOL_SETS`,
+//! but they are NOT them: the set used here is deliberately the one with which
+//! the bridge parity reference was captured
+//! (`rust/rexon-py/tests/importers_roundtrip.py`). Merging them into one is
+//! separate work with its own measurement, not a side effect of the move.
 
 use crate::ext_utils as core_ext;
 use crate::importers as core_imp;
 
-/// Замыкание апскейла обоев: `f(data_dir) -> сколько обработано`.
+/// Wallpaper upscaling closure: `f(data_dir) -> how many were processed`.
 ///
-/// Порт `WallpaperUpscaler.process_wallpapers_in_dir`. Живёт снаружи, потому
-/// что живой исполнитель апскейлера зависит от процесса (см. шапку модуля).
+/// Port of `WallpaperUpscaler.process_wallpapers_in_dir`. It lives outside
+/// because the upscaler's live executor depends on the process (see the module
+/// header).
 pub type UpscaleFn = Box<dyn FnMut(&str) -> u64 + Send>;
 
-/// Копилка предупреждений о ПРОПУЩЕННЫХ необязательных шагах импорта.
+/// A collector of warnings about SKIPPED optional import steps.
 ///
-/// Общая на весь конвейер и разделяемая: замыкание апскейла работает уже
-/// внутри импорта, а прочитать написанное надо снаружи, после его конца.
-/// Пропуск, о котором никто не узнал, — это и есть молчаливый отказ, ради
-/// которого копилка и заведена.
+/// Shared across the whole pipeline: the upscaling closure runs inside the
+/// import, and what it wrote has to be read outside, after the import ends. A
+/// skip nobody learned about is exactly the silent failure the collector was
+/// created for.
 pub type Notes = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
 
-/// Пустая копилка предупреждений.
+/// An empty warning collector.
 pub fn new_notes() -> Notes {
     std::sync::Arc::new(std::sync::Mutex::new(Vec::new()))
 }
 
-/// Записать предупреждение, если такого ещё нет.
+/// Record a warning if there is no such one yet.
 ///
-/// Повторы гасятся намеренно: обоев в теме бывает десяток, и одна и та же
-/// строка «размер определить нечем» десять раз подряд — это не информация,
-/// а стена текста (правило #13).
+/// Duplicates are suppressed on purpose: a theme may have a dozen wallpapers,
+/// and the same line "nothing to determine the size with" ten times in a row is
+/// not information but a wall of text (rule #13).
 fn note(notes: &Notes, text: String) {
     if let Ok(mut list) = notes.lock() {
         if !list.iter().any(|t| *t == text) {
@@ -67,7 +71,7 @@ fn note(notes: &Notes, text: String) {
     }
 }
 
-/// Забрать накопленное и оставить копилку пустой.
+/// Take what was collected and leave the collector empty.
 pub fn take_notes(notes: &Notes) -> Vec<String> {
     notes
         .lock()
@@ -76,18 +80,18 @@ pub fn take_notes(notes: &Notes) -> Vec<String> {
 }
 
 
-/// Реальный исполнитель ImpIo: настоящие ФС-операции и подпроцессы.
+/// The real ImpIo executor: actual file-system operations and subprocesses.
 pub struct LiveImpIo {
-    /// Апскейл обоев (None — можно только can_import).
+    /// Wallpaper upscaling (None — only can_import is possible).
     upscaler: Option<UpscaleFn>,
-    /// Первая ошибка side-effect операции (текст для OSError).
+    /// The first error of a side-effecting operation (text for OSError).
     pub io_err: Option<String>,
-    /// Счётчик для уникальности имён mkdtemp внутри процесса.
+    /// Counter for unique mkdtemp names within the process.
     tmp_seq: u64,
 }
 
 impl LiveImpIo {
-    /// Исполнитель с апскейлом обоев (`None` — без апскейла).
+    /// Executor with wallpaper upscaling (`None` — without upscaling).
     pub fn new(upscaler: Option<UpscaleFn>) -> Self {
         LiveImpIo { upscaler, io_err: None, tmp_seq: 0 }
     }
@@ -99,7 +103,7 @@ impl LiveImpIo {
     }
 }
 
-/// Есть ли исполняемый файл по пути (для which).
+/// Whether there is an executable file at the path (for which).
 fn is_executable(p: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     p.metadata()
@@ -107,25 +111,25 @@ fn is_executable(p: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
-// Имена внешних конвертеров в разных дистрибутивах — зеркало таблиц
-// `_TOOL_SETS` / `_TOOL_SUBCOMMANDS` из `rexon/utils.py`. Ядро строит argv
-// с КАНОНИЧЕСКИМ именем (`convert`, `7z`, `identify`), а знает реальные
-// имена исполнитель — здесь этот модуль, а не Python (у прочих планов
-// подменой занимается `utils.safe_run`). Без этого проверка «программа
-// есть» на стороне Python (там `convert` находится как `magick`)
-// расходилась бы с запуском на стороне моста.
+// Names of external converters in different distributions — a mirror of the
+// `_TOOL_SETS` / `_TOOL_SUBCOMMANDS` tables from `rexon/utils.py`. The core
+// builds argv with the CANONICAL name (`convert`, `7z`, `identify`), while the
+// real names are known to the executor — here, this module, not Python (for
+// other plans `utils.safe_run` does the substitution). Without this, the
+// "program exists" check on the Python side (where `convert` is found as
+// `magick`) would diverge from the launch on the bridge side.
 const TOOL_ALIASES: &[(&str, &[&str])] = &[
-    // ImageMagick 7: `magick` — drop-in замена `convert`
+    // ImageMagick 7: `magick` is a drop-in replacement for `convert`
     ("convert", &["convert", "magick"]),
-    // пакет `7zip` кладёт `7zz` (Debian/Ubuntu), старый p7zip — `7za`
+    // the `7zip` package installs `7zz` (Debian/Ubuntu), the old p7zip — `7za`
     ("7z", &["7z", "7zz", "7za"]),
 ];
 
-// Инструменты, у которых своего бинаря может не быть вовсе: в ImageMagick 7
-// `identify` — это подкоманда `magick identify`, то есть ДВА слова.
+// Tools that may have no binary of their own at all: in ImageMagick 7
+// `identify` is the subcommand `magick identify`, i.e. TWO words.
 const TOOL_SUBCOMMANDS: &[(&str, &[&str])] = &[("identify", &["magick", "identify"])];
 
-/// Есть ли программа с таким именем в PATH.
+/// Whether a program with this name is in PATH.
 fn in_path(name: &str) -> bool {
     if name.contains('/') {
         return is_executable(std::path::Path::new(name));
@@ -134,7 +138,8 @@ fn in_path(name: &str) -> bool {
     std::env::split_paths(&paths).any(|d| is_executable(&d.join(name)))
 }
 
-/// Есть ли инструмент в системе — с учётом синонимов и подкоманд.
+/// Whether the tool is present on the system — taking synonyms and subcommands
+/// into account.
 pub fn tool_available(name: &str) -> bool {
     if in_path(name) {
         return true;
@@ -152,7 +157,7 @@ pub fn tool_available(name: &str) -> bool {
     false
 }
 
-/// argv с реальным именем инструмента (если каноническое не нашлось).
+/// argv with the real tool name (if the canonical one was not found).
 fn resolved_tool_argv(argv: Vec<String>) -> Vec<String> {
     let Some(head) = argv.first() else { return argv };
     if in_path(head) {
@@ -177,7 +182,7 @@ fn resolved_tool_argv(argv: Vec<String>) -> Vec<String> {
     argv
 }
 
-/// Рекурсивный обход для walk (topdown, симлинки-каталоги не раскрываются).
+/// Recursive traversal for walk (topdown, directory symlinks are not followed).
 fn walk_rec(dir: &std::path::Path, out: &mut Vec<core_imp::WalkEntry>) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
     let mut names: Vec<String> = rd
@@ -209,7 +214,7 @@ fn walk_rec(dir: &std::path::Path, out: &mut Vec<core_imp::WalkEntry>) {
     }
 }
 
-/// Рекурсивное копирование каталога (shutil.copytree, symlinks=False).
+/// Recursive directory copy (shutil.copytree, symlinks=False).
 fn copy_tree_rec(src: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(src)? {
@@ -225,18 +230,19 @@ fn copy_tree_rec(src: &std::path::Path, dest: &std::path::Path) -> std::io::Resu
     Ok(())
 }
 
-/// Запустить внешний конвертер: `(получилось ли, stdout)`.
+/// Run an external converter: `(whether it succeeded, stdout)`.
 ///
-/// Общее тело для обоих живых исполнителей модуля (`ImpIo::run` импортёров и
-/// `UpIo::run` апскейлера): у них один и тот же оригинал — `utils.run_tool`,
-/// и две копии этого цикла разошлись бы молча (правило #12).
+/// A shared body for both live executors of the module (`ImpIo::run` of the
+/// importers and `UpIo::run` of the upscaler): they have the same original —
+/// `utils.run_tool` — and two copies of this loop would silently drift apart
+/// (rule #12).
 fn run_tool(argv: Vec<String>, timeout: u64) -> (bool, Vec<u8>) {
         use std::io::Read;
         use std::process::{Command, Stdio};
         let none = (false, Vec::new());
-        // Имя конвертера — через общий резолвер: на ImageMagick 7 вместо
-        // `convert` запустится `magick`, вместо `identify` — `magick
-        // identify`. Программы нет вовсе — ниже честный неуспех команды.
+        // The converter name goes through the shared resolver: on ImageMagick 7
+        // `magick` runs instead of `convert`, and `magick identify` instead of
+        // `identify`. If there is no program at all — an honest command failure below.
         let argv = resolved_tool_argv(argv);
         let Some((bin, rest)) = argv.split_first() else { return none };
         let child = Command::new(bin)
@@ -247,7 +253,7 @@ fn run_tool(argv: Vec<String>, timeout: u64) -> (bool, Vec<u8>) {
             .spawn();
         let mut child = match child {
             Ok(c) => c,
-            // бинарника нет — допущение исполнителя: как неуспех команды
+            // no binary — an executor assumption: treated as a command failure
             Err(_) => return none,
         };
         let reader = |pipe: Option<std::process::ChildStdout>,
@@ -272,7 +278,7 @@ fn run_tool(argv: Vec<String>, timeout: u64) -> (bool, Vec<u8>) {
                 Ok(Some(st)) => break Some(st),
                 Ok(None) => {
                     if std::time::Instant::now() >= deadline {
-                        // таймаут — допущение исполнителя: неуспех команды
+                        // timeout — an executor assumption: a command failure
                         let _ = child.kill();
                         let _ = child.wait();
                         break None;
@@ -369,14 +375,14 @@ impl core_imp::ImpIo for LiveImpIo {
     }
 
     fn read_text(&mut self, path: &str) -> Option<String> {
-        // errors="replace": U+FFFD на битых байтах — как from_utf8_lossy
+        // errors="replace": U+FFFD on broken bytes — like from_utf8_lossy
         std::fs::read(path)
             .ok()
             .map(|b| String::from_utf8_lossy(&b).into_owned())
     }
 
     fn read_head_text(&mut self, path: &str, n: usize) -> Option<String> {
-        // .read(n) в текстовом режиме — n СИМВОЛОВ
+        // .read(n) in text mode — n CHARACTERS
         self.read_text(path).map(|s| s.chars().take(n).collect())
     }
 
@@ -399,7 +405,7 @@ impl core_imp::ImpIo for LiveImpIo {
     }
 
     fn zip_open(&mut self, path: &str) -> bool {
-        // ошибка открытия файла приравнена к BadZipFile (допущение)
+        // a file open error is treated as BadZipFile (an assumption)
         std::fs::File::open(path)
             .ok()
             .map(|f| zip::ZipArchive::new(f).is_ok())
@@ -407,8 +413,8 @@ impl core_imp::ImpIo for LiveImpIo {
     }
 
     fn which(&mut self, name: &str) -> bool {
-        // С учётом синонимов — иначе ядро сочло бы `7z` отсутствующим там,
-        // где пакет положил только `7zz` (см. `TOOL_ALIASES`).
+        // Taking synonyms into account — otherwise the core would consider `7z`
+        // missing where the package installed only `7zz` (see `TOOL_ALIASES`).
         tool_available(name)
     }
 
@@ -507,10 +513,10 @@ impl core_imp::ImpIo for LiveImpIo {
 }
 
 // ============================================================================
-// Курсоры Windows: стабильный вход для витрин и «перевести заново»
+// Windows cursors: a stable entry point for storefronts and "convert again"
 // ============================================================================
 
-/// Семейство пакетного менеджера этой машины (для имён пакетов в отказах).
+/// Package manager family of this machine (for package names in refusals).
 fn live_family() -> String {
     crate::system::DistroDetector::detect_live()
         .family_live()
@@ -518,17 +524,18 @@ fn live_family() -> String {
         .to_string()
 }
 
-/// ⭐ СТАБИЛЬНЫЙ ВХОД: набор курсоров Windows → `.rxn` в `out_dir`.
+/// ⭐ STABLE ENTRY POINT: a Windows cursor set → `.rxn` in `out_dir`.
 ///
-/// `path` — архив (`.zip`/`.rar`/`.7z`), папка, `.inf`/`.crs` или один
-/// `.cur`/`.ani`. В `.rxn` — тема Xcursor (все кадры анимации), оригиналы
-/// набора и manifest с `source: "windows"` и сведениями из `source`
-/// (сайт, адрес страницы, автор, лицензия). Ставится потом как обычный
-/// `.rxn` (`ext_exec::install_from_file`). Ошибка — готовый текст для
-/// человека на языке интерфейса.
+/// `path` — an archive (`.zip`/`.rar`/`.7z`), a folder, an `.inf`/`.crs` or a
+/// single `.cur`/`.ani`. The `.rxn` contains an Xcursor theme (all animation
+/// frames), the set's originals and a manifest with `source: "windows"` and the
+/// details from `source` (site, page address, author, license). It is then
+/// installed like an ordinary `.rxn` (`ext_exec::install_from_file`). An error
+/// is a ready text for the person in the interface language.
 ///
-/// Нужны ли чужие программы: только для `.rar`/`.7z` (`bsdtar` или `7z`);
-/// их нет — отказ с именем пакета этой системы ДО любых действий.
+/// Whether third-party programs are needed: only for `.rar`/`.7z` (`bsdtar` or
+/// `7z`); if they are missing — a refusal with this system's package name
+/// BEFORE any action.
 pub fn import_windows_cursor_archive(
     path: &std::path::Path,
     out_dir: &std::path::Path,
@@ -551,11 +558,13 @@ pub fn import_windows_cursor_archive(
         .map_err(|e| core_imp::friendly_error_text(&e.message, &family).unwrap_or(e.message))
 }
 
-/// Перевести тему курсоров Windows заново из её оригиналов — без перекачки.
+/// Convert a Windows cursor theme again from its originals — without
+/// re-downloading.
 ///
-/// `src` — `.rxn` или каталог (распакованный `.rxn` либо установленное
-/// расширение `~/.config/rexon/extensions/wincur-…`). Новый `.rxn` с тем же
-/// id кладётся в `out_dir`; ставится как обычно и заменяет прежний.
+/// `src` — an `.rxn` or a directory (an unpacked `.rxn` or an installed
+/// extension `~/.config/rexon/extensions/wincur-…`). A new `.rxn` with the same
+/// id is put into `out_dir`; it is installed as usual and replaces the previous
+/// one.
 pub fn retranslate_windows_cursors(
     src: &std::path::Path,
     out_dir: &std::path::Path,
@@ -592,45 +601,47 @@ pub fn retranslate_windows_cursors(
 }
 
 // ============================================================================
-// Живой исполнитель апскейлера обоев (`upscaler::UpIo`)
+// Live executor of the wallpaper upscaler (`upscaler::UpIo`)
 // ============================================================================
 //
-// ЗАЧЕМ ЗДЕСЬ. Импорт `.themepack`/`.theme` заканчивается апскейлом маленьких
-// обоев (`ImpIo::upscale_wallpapers`), а сам апскейл — это второй трейт со
-// своим живым исполнителем. Без него переезд импортёров в процесс без Python
-// был бы разменом: импорт заработал бы, а обои из тем XP/Vista остались бы
-// в своём 800×600. Поэтому исполнитель апскейлера лежит рядом с исполнителем
-// импортёров и подставляется одной функцией [`upscale_hook`].
+// WHY HERE. Importing a `.themepack`/`.theme` ends with upscaling small
+// wallpapers (`ImpIo::upscale_wallpapers`), and the upscaling itself is a
+// second trait with its own live executor. Without it, moving the importers to
+// a process without Python would be a trade-off: import would work, but the
+// wallpapers from XP/Vista themes would stay at their 800×600. That is why the
+// upscaler's executor lies next to the importers' executor and is plugged in
+// by a single function, [`upscale_hook`].
 //
-// РАЗЛИЧИЕ С PYTHON-ИСПОЛНИТЕЛЕМ ровно одно и названо вслух: `image_size`.
-// Оригинал спрашивает размер сначала у Pillow и лишь потом у `identify`;
-// Pillow здесь нет, поэтому метод не переопределяется и ядро идёт запасным
-// путём через `identify`. Для этого пути это не потеря: весь конвейер импорта
-// Windows-темы и без того держится на ImageMagick (`convert` для превью и
-// битмапов), то есть на машине, где импорт вообще возможен, `identify` есть.
+// THERE IS EXACTLY ONE DIFFERENCE FROM THE PYTHON EXECUTOR, and it is named out
+// loud: `image_size`. The original asks Pillow for the size first and only then
+// `identify`; there is no Pillow here, so the method is not overridden and the
+// core takes the fallback path via `identify`. For this path that is no loss:
+// the whole Windows theme import pipeline relies on ImageMagick anyway
+// (`convert` for previews and bitmaps), i.e. on a machine where import is
+// possible at all, `identify` is present.
 
-/// Живой исполнитель [`crate::upscaler::UpIo`]: настоящие ФС и подпроцессы.
+/// Live executor of [`crate::upscaler::UpIo`]: real file system and subprocesses.
 pub struct LiveUpIo {
-    /// Куда сказать, что апскейл пропущен и почему.
+    /// Where to report that upscaling was skipped and why.
     notes: Notes,
-    /// Семейство пакетного менеджера — чтобы назвать пакет ИМЕНЕМ этой
-    /// системы, а не арчевым (правило #13).
+    /// Package manager family — to name the package by THIS system's name, not the
+    /// Arch one (rule #13).
     family: String,
 }
 
 impl LiveUpIo {
-    /// Исполнитель, который умеет пожаловаться.
+    /// An executor that knows how to complain.
     pub fn new(notes: Notes, family: &str) -> Self {
         LiveUpIo { notes, family: family.to_string() }
     }
 }
 
-/// Домашний каталог (`$HOME`) либо текущий — как у прочих точек ядра.
+/// The home directory (`$HOME`) or the current one — as for other core entry points.
 fn home_dir() -> String {
     std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
 }
 
-/// Путь исполняемого файла в `$PATH` — семантика `shutil.which`.
+/// Path of an executable in `$PATH` — `shutil.which` semantics.
 fn which_path(name: &str) -> Option<String> {
     if name.contains('/') {
         let p = std::path::Path::new(name);
@@ -648,24 +659,25 @@ fn access_x(path: &str) -> bool {
     is_executable(std::path::Path::new(path))
 }
 
-/// Выставить права `0o755` (порт `os.chmod(..., 0o755)`).
+/// Set permissions `0o755` (port of `os.chmod(..., 0o755)`).
 fn chmod_755(path: &str) {
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
 }
 
 impl crate::upscaler::UpIo for LiveUpIo {
-    /// Размер картинки — СВОИМИ силами, без посторонних программ.
+    /// Image size — BY OUR OWN MEANS, without third-party programs.
     ///
-    /// Порядок ровно как у оригинала, только вместо Pillow — разбор
-    /// заголовка самого файла: он покрывает все пять форматов, до которых
-    /// апскейлер вообще добирается. Не опознали — пробуем `identify`. Не
-    /// вышло и это — говорим об этом словами и отвечаем «0×0»: тот же
-    /// ответ, что ядро получило бы само, но теперь человек о нём узнает.
+    /// The order is exactly as in the original, only instead of Pillow we parse the
+    /// file's own header: it covers all five formats the upscaler ever gets to. If
+    /// it is not recognized, we try `identify`. If that fails too, we say so in words
+    /// and answer "0×0": the same answer the core would have got by itself, but now
+    /// the person will learn about it.
     ///
-    /// `identify` зовётся здесь, а не оставляется ядру, именно ради
-    /// последней ветки: иначе исполнителю неоткуда узнать, что запасной ход
-    /// тоже не сработал, и пропуск снова стал бы молчаливым.
+    /// `identify` is called here rather than left to the core precisely for the
+    /// sake of the last branch: otherwise the executor would have no way to learn
+    /// that the fallback did not work either, and the skip would become silent
+    /// again.
     fn image_size(&mut self, path: &str) -> Option<(i64, i64)> {
         let head = read_head_bytes(path, crate::upscaler::HEADER_PROBE_BYTES);
         if let Some(size) = head
@@ -715,7 +727,7 @@ impl crate::upscaler::UpIo for LiveUpIo {
     }
 
     fn remove_file(&mut self, path: &str) {
-        // ошибка подавлена оригиналом (`except OSError: log.debug`)
+        // the error is suppressed by the original (`except OSError: log.debug`)
         let _ = std::fs::remove_file(path);
     }
 
@@ -738,14 +750,14 @@ impl crate::upscaler::UpIo for LiveUpIo {
     }
 }
 
-/// Порт `WallpaperUpscaler._download_realesrgan_impl`: скачать и распаковать
-/// Real-ESRGAN, вернуть путь к бинарю.
+/// Port of `WallpaperUpscaler._download_realesrgan_impl`: download and unpack
+/// Real-ESRGAN, return the path to the binary.
 ///
-/// Оригинал (Python) в этом месте всегда падал `NameError` — `zipfile` и
-/// `_safe_zip_extract` в модуле не импортированы, — то есть автоскачивания у
-/// покупателя не было ни разу. Здесь оно работает: правило #16 (баг оригинала
-/// чинится в порте). Любой сбой — тихий `None`: апскейл просто уйдёт на
-/// следующую стратегию (waifu2x, затем ImageMagick).
+/// The original (Python) always failed at this point with `NameError` —
+/// `zipfile` and `_safe_zip_extract` are not imported in the module — i.e. the
+/// buyer never once had automatic download. Here it works: rule #16 (a bug of
+/// the original is fixed in the port). Any failure is a silent `None`: upscaling
+/// simply moves on to the next strategy (waifu2x, then ImageMagick).
 fn download_realesrgan_impl() -> Option<String> {
     use crate::net::NetIo;
 
@@ -755,9 +767,9 @@ fn download_realesrgan_impl() -> Option<String> {
     std::fs::create_dir_all(&esrgan_dir).ok()?;
     let zip_path = esrgan_dir.join("realesrgan.zip");
 
-    // Скачивание потоком в файл, а не тело целиком в память: архив
-    // Real-ESRGAN — десятки мегабайт, и `urlretrieve` оригинала тоже писал
-    // его на диск по кускам.
+    // Downloading as a stream into a file rather than the whole body into memory:
+    // the Real-ESRGAN archive is tens of megabytes, and the original's
+    // `urlretrieve` also wrote it to disk in chunks.
     let mut net = crate::net::UreqNet::new();
     let zip_str = zip_path.to_string_lossy().into_owned();
     let ok = (|| -> bool {
@@ -802,8 +814,8 @@ fn download_realesrgan_impl() -> Option<String> {
     if std::path::Path::new(&local_exe).is_file() {
         chmod_755(&local_exe);
     } else {
-        // Бинарь может лежать в подпапке архива — как и у оригинала, первый
-        // найденный переносится на штатное место вместе со своими моделями.
+        // The binary may lie in a subfolder of the archive — as in the original, the
+        // first one found is moved to the standard place together with its models.
         let mut walked = Vec::new();
         walk_rec(&esrgan_dir, &mut walked);
         'outer: for (root, _dirs, files) in &walked {
@@ -840,7 +852,7 @@ fn download_realesrgan_impl() -> Option<String> {
     None
 }
 
-/// Прочитать начало файла (до `limit` байт). `None` — файл не открылся.
+/// Read the start of a file (up to `limit` bytes). `None` — the file did not open.
 fn read_head_bytes(path: &str, limit: usize) -> Option<Vec<u8>> {
     use std::io::Read;
     let f = std::fs::File::open(path).ok()?;
@@ -849,11 +861,11 @@ fn read_head_bytes(path: &str, limit: usize) -> Option<Vec<u8>> {
     Some(buf)
 }
 
-/// Апскейл обоев живым исполнителем — готовое замыкание для [`LiveImpIo`].
+/// Wallpaper upscaling by the live executor — a ready closure for [`LiveImpIo`].
 ///
-/// Порт `WallpaperUpscaler.process_wallpapers_in_dir`: в процессе с Python его
-/// подставлял мост, здесь то же делает само ядро. Пропущенные шаги попадают в
-/// `notes`, а не в тишину.
+/// Port of `WallpaperUpscaler.process_wallpapers_in_dir`: in a process with
+/// Python the bridge plugged it in, here the core itself does the same. Skipped
+/// steps go into `notes`, not into silence.
 pub fn upscale_hook(notes: Notes, family: &str) -> UpscaleFn {
     let family = family.to_string();
     Box::new(move |data_dir: &str| {

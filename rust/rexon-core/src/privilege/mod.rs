@@ -1,14 +1,16 @@
-//! «Один пароль на запуск» (вариант «Б»): сеанс прав Rexon.
+//! "One password per launch" (variant "B"): the Rexon privilege session.
 //!
-//! Окно поднимает root-помощника одним `pkexec` (действие `org.rexon.session`,
-//! `auth_admin` без запоминания) и дальше говорит с ним по `socketpair`:
-//! помощник исполняет только узкие операции из белых списков ядра и гаснет,
-//! когда окно закрыто (в том числе в лоток), после 15 минут без действий,
-//! при блокировке экрана и сне. Пометки вида «Б4» и «З1» в модулях подсистемы —
-//! номера пунктов её плана: Б — шаги сборки, З — запреты.
+//! The window starts the root helper with a single `pkexec` (action
+//! `org.rexon.session`, `auth_admin` without caching) and then talks to it over
+//! a `socketpair`: the helper performs only narrow operations from the core's
+//! allow-lists and exits when the window is closed (including to the tray),
+//! after 15 minutes of inactivity, on screen lock and on suspend. Marks such as
+//! "B4" and "Z1" in this subsystem's modules are item numbers from its plan:
+//! B are build steps, Z are prohibitions (in the original Russian plan they are
+//! written «Б» and «З»).
 //!
-//! Подсистема собирается по частям; пока не подключён `run`, все вызовы идут
-//! прежним путём — через `rexon-*-helper` и сырой `pkexec`.
+//! The subsystem is built piece by piece; until `run` is wired in, all calls go
+//! the old way — through `rexon-*-helper` and plain `pkexec`.
 
 pub mod aur;
 pub mod client;

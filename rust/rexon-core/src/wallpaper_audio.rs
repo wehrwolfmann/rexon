@@ -1,111 +1,112 @@
-//! Звук обоев: одна модель, одна политика, один источник значений.
+//! Wallpaper sound: one model, one policy, one source of values.
 //!
-//! До этого модуля звук обоев жил тремя несвязанными кусками:
+//! Before this module wallpaper sound lived in three unrelated pieces:
 //!
-//!   * галочка «Звук видео-обоев» в наших настройках — нигде не
-//!     сохранялась и при каждом открытии вкладки снова вставала в «да»;
-//!   * громкость нашего хоста — константа `50` в памяти Python-объекта,
-//!     контрола в интерфейсе не было вовсе;
-//!   * громкость, «глушить при чужом звуке» и таблица «глушить когда…»
-//!     чужого движка — отдельная карта, уезжавшая в его демон и никак не
-//!     связанная с первыми двумя.
+//!   * the «Video wallpaper sound» check box in our settings — saved nowhere
+//!     and reset to "yes" every time the tab was opened;
+//!   * our host's volume — a constant `50` in a Python object's memory, there
+//!     was no control in the interface at all;
+//!   * the foreign engine's volume, "mute when other audio plays" and "mute
+//!     when…" table — a separate map that went to its daemon and had nothing
+//!     to do with the first two.
 //!
-//! Из-за этого человек, поставивший громкость 30 % во вкладке чужого
-//! движка, у наших видео-обоев получал 50 %, а переключатель «без звука»
-//! накрывал только чужой движок. Правило #12: чинить общий механизм, а не
-//! обе копии по отдельности — поэтому модель настроек, значения по
-//! умолчанию и решение «играть/глушить/паузить» считаются ЗДЕСЬ, а обе
-//! стороны только читают отсюда:
+//! Because of this, a person who set the volume to 30 % in the foreign
+//! engine's tab got 50 % for our video wallpapers, and the "no sound" switch
+//! covered only the foreign engine. Rule #12: fix the shared mechanism, not
+//! both copies separately — so the settings model, the defaults and the
+//! "play/mute/pause" decision are computed HERE, and both sides only read
+//! from here:
 //!
-//!   * наш хост обоев `rexon-wallpaper-host` — [`AudioSettings::from_map`]
-//!     поверх `~/.config/rexon/settings.json` и [`AudioSettings::decide`];
-//!   * чужой движок — та же структура, разложенная в его карту глобальных
-//!     настроек ([`AudioSettings::write_engine_global`]).
+//!   * our wallpaper host `rexon-wallpaper-host` — [`AudioSettings::from_map`]
+//!     over `~/.config/rexon/settings.json` and [`AudioSettings::decide`];
+//!   * the foreign engine — the same structure laid out into its global
+//!     settings map ([`AudioSettings::write_engine_global`]).
 //!
-//! Хранилище одно — `settings.json`. Отдельного файла состояния нет
-//! намеренно: живое применение работает от того же файла, который пишет
-//! окно настроек, поэтому «сохранил» и «услышал» не могут разойтись.
+//! There is one store — `settings.json`. There is deliberately no separate
+//! state file: live application works from the same file the settings window
+//! writes, so "saved" and "heard" cannot diverge.
 
 use serde_json::{Map, Value};
 
-// ── Ключи хранилища ────────────────────────────────────────────────────────
+// ── Store keys ─────────────────────────────────────────────────────────────
 
-/// Играет ли звук обоев вообще.
+/// Whether wallpaper sound plays at all.
 pub const KEY_ENABLED: &str = "wallpaper_audio_enabled";
-/// Громкость обоев, проценты 0..100.
+/// Wallpaper volume, percent 0..100.
 pub const KEY_VOLUME: &str = "wallpaper_audio_volume";
-/// Глушить, когда звук играет кто-то ещё.
+/// Mute when someone else is playing sound.
 pub const KEY_MUTE_OTHER: &str = "wallpaper_audio_mute_when_other";
-/// Что делать в каждом из состояний окон — объект «условие → действие».
+/// What to do in each window state — a "condition → action" object.
 pub const KEY_ACTIONS: &str = "wallpaper_audio_actions";
-/// Плавность приглушения, миллисекунды.
+/// Mute fade smoothness, milliseconds.
 pub const KEY_FADE_MS: &str = "wallpaper_audio_fade_ms";
 
-// ── Ключи чужого движка ────────────────────────────────────────────────────
+// ── Foreign engine keys ────────────────────────────────────────────────────
 
-/// Те же значения в карте глобальных настроек чужого движка.
+/// The same values in the foreign engine's global settings map.
 pub const ENGINE_KEY_ENABLED: &str = "renderer.enable_audio";
 pub const ENGINE_KEY_VOLUME: &str = "renderer.volume";
 pub const ENGINE_KEY_MUTE_OTHER: &str = "muteWhenOtherAudio";
 pub const ENGINE_KEY_FADE_MS: &str = "audioFadeMs";
 pub const ENGINE_KEY_ACTIONS: &str = "autoReplay";
 
-// ── Свойства звукового потока ──────────────────────────────────────────────
+// ── Audio stream properties ────────────────────────────────────────────────
 
-/// Роль потока обоев.
+/// The role of the wallpaper stream.
 ///
-/// ⚠️ НЕ `music`. Qt Multimedia помечает свои потоки `Music` жёстко —
-/// публичного способа это изменить нет, значение зашито в саму библиотеку.
-/// Обои от этого попадают в корзину музыкальных плееров: по роли строится
-/// ячейка запоминания громкости (общая со ВСЕМИ музыкальными
-/// программами — громкость обоев затирает громкость плеера и наоборот), и
-/// по ней же работают `module-role-cork` и `module-role-ducking`.
+/// ⚠️ NOT `music`. Qt Multimedia hard-labels its streams `Music` — there is no
+/// public way to change that, the value is baked into the library itself.
+/// Because of this wallpapers end up in the music players' bucket: the role
+/// determines the volume memory slot (shared with ALL music programs — the
+/// wallpaper volume overwrites the player's volume and vice versa), and
+/// `module-role-cork` and `module-role-ducking` work by it too.
 ///
-/// Почему именно `Movie`, а не «что-нибудь про анимацию». Проверено
-/// замером на PipeWire 1.6: словарь ролей там свой (`Movie`, `Music`,
-/// `Camera`, `Screen`, `Communication`, `Game`, `Notification`, `DSP`,
-/// `Production`, `Accessibility`, `Test`), а роли PulseAudio в него
-/// переводятся — `animation` схлопывается в `Movie` и наружу выходит как
-/// `video`. То есть «поставить обоям роль анимации» физически
-/// недостижимо: выбор не между `animation` и `video`, а между `Music` и
-/// всем остальным. `Movie` описывает видео-обои честно и, в отличие от
-/// `Screen` (это про захват экрана), не врёт о происхождении потока.
+/// Why exactly `Movie` and not "something about animation". Verified by
+/// measurement on PipeWire 1.6: it has its own role dictionary (`Movie`,
+/// `Music`, `Camera`, `Screen`, `Communication`, `Game`, `Notification`,
+/// `DSP`, `Production`, `Accessibility`, `Test`), and PulseAudio roles are
+/// translated into it — `animation` collapses into `Movie` and comes out as
+/// `video`. That is, "giving wallpapers the animation role" is physically
+/// unreachable: the choice is not between `animation` and `video` but between
+/// `Music` and everything else. `Movie` describes video wallpapers honestly
+/// and, unlike `Screen` (which is about screen capture), does not lie about
+/// the stream's origin.
 pub const STREAM_ROLE: &str = "Movie";
 
-/// Имя узла в звуковой системе — латиницей и без пробелов: это ключ, а не
-/// подпись.
+/// Node name in the sound system — Latin letters and no spaces: it is a key,
+/// not a label.
 pub const STREAM_NODE: &str = "rexon-wallpaper";
 
-/// Ключ, по которому звуковая система запоминает громкость обоев отдельно
-/// от всего остального. Именно он, а не роль, отвечает за память громкости
-/// на PipeWire.
+/// The key by which the sound system remembers the wallpaper volume
+/// separately from everything else. It, not the role, is responsible for
+/// volume memory on PipeWire.
 pub const STREAM_APP_ID: &str = "com.rexon.wallpaper";
 
-/// Имя, под которым обои видно в системном микшере. По-человечески и на
-/// языке интерфейса: в микшере KDE строка идёт рядом с «Firefox» и
-/// «Steam», и `RexonVideoWallpaper` там читается как сбой, а не как
-/// программа (правило #13).
+/// The name under which the wallpaper is visible in the system mixer. Human
+/// and in the interface language: in the KDE mixer the line sits next to
+/// «Firefox» and «Steam», and `RexonVideoWallpaper` reads there as a glitch,
+/// not as a program (rule #13).
 ///
-/// ⚠️ Это ПОДПИСЬ, а не ключ: свой поток звуковая система узнаёт по
-/// [`STREAM_APP_ID`] и [`STREAM_NODE`] (см. [`OWN_STREAM_MARKERS`]), а
-/// память громкости держится на `application.id`. Двойная кавычка
-/// из перевода вырезается — имя стоит внутри кавычек строки свойств.
+/// ⚠️ This is a LABEL, not a key: the sound system recognizes its own stream
+/// by [`STREAM_APP_ID`] and [`STREAM_NODE`] (see [`OWN_STREAM_MARKERS`]), and
+/// volume memory is kept on `application.id`. A double quote is cut out of
+/// the translation — the name sits inside the quotes of the properties string.
 pub fn stream_description() -> String {
     // TRANSLATORS: name of the wallpaper's audio stream in the system volume mixer
     crate::i18n::tr("Rexon Wallpaper").replace('"', "")
 }
 
-/// Имя потока до перевода интерфейса. Уже не подпись, а примета: у людей
-/// оно ещё живёт в ячейках памяти громкости звуковой системы.
+/// The stream name before the interface was translated. No longer a label but
+/// a sign: people still have it in the sound system's volume memory slots.
 const LEGACY_STREAM_DESCRIPTION: &str = "Обои Rexon";
 
-/// Строка `PIPEWIRE_PROPS` для процесса обоев.
+/// The `PIPEWIRE_PROPS` string for the wallpaper process.
 ///
-/// Почему именно окружение, а не вызов Qt: роль потока Qt Multimedia
-/// наружу не отдаёт. Зато проигрыватель Qt 6.11 ходит в звук нативным
-/// клиентом PipeWire, а тот читает `PIPEWIRE_PROPS` при создании
-/// контекста, то есть уже после старта процесса: достаточно выставить
-/// переменную в своём же `main()` до первой звуковой операции.
+/// Why exactly the environment and not a Qt call: Qt Multimedia does not
+/// expose the stream role. But the Qt 6.11 player goes to the sound system
+/// with a native PipeWire client, and that one reads `PIPEWIRE_PROPS` when
+/// creating the context, that is, already after process start: it is enough
+/// to set the variable in our own `main()` before the first sound operation.
 pub fn pipewire_props() -> String {
     let description = stream_description();
     format!(
@@ -116,25 +117,27 @@ pub fn pipewire_props() -> String {
     )
 }
 
-/// Та же просьба для клиента PulseAudio — на машинах без PipeWire.
+/// The same request for the PulseAudio client — on machines without PipeWire.
 ///
-/// Роль там пишется словарём PulseAudio (`video`), и свойства потока
-/// задаёт сама программа, так что переменная перебивает не всё; вреда от
-/// неё нет, а на стеках, где роль ставится на контексте, она попадает в
-/// цель.
+/// There the role is written in the PulseAudio dictionary (`video`), and the
+/// stream properties are set by the program itself, so the variable does not
+/// override everything; it does no harm, and on stacks where the role is set
+/// on the context it hits the target.
 pub fn pulse_props() -> String {
     format!(
         "media.role=video media.category=Playback application.id={STREAM_APP_ID}"
     )
 }
 
-/// Та же просьба для клиента ALSA — ею в звук ходит Flash (Ruffle через cpal).
+/// The same request for the ALSA client — Flash goes to the sound system
+/// through it (Ruffle via cpal).
 ///
-/// ⚠️ Без неё `PIPEWIRE_PROPS` доносит роль и `application.id`, но ИМЯ
-/// переписывает плагин ALSA: в системном микшере строка выходит как
-/// «PipeWire ALSA [rexon-wallpaper-host]» (живой замер 16.09.2026). Для
-/// покупателя это не название программы, а сбой (правило #13), да и нам
-/// самим поток удобнее узнавать по своему имени, а не по чужой обёртке.
+/// ⚠️ Without it `PIPEWIRE_PROPS` carries the role and `application.id`, but
+/// the NAME is rewritten by the ALSA plugin: in the system mixer the line
+/// comes out as «PipeWire ALSA [rexon-wallpaper-host]» (live measurement
+/// 16.09.2026). For the customer this is not a program name but a glitch
+/// (rule #13), and for us too it is handier to recognize the stream by its
+/// own name rather than by someone else's wrapper.
 pub fn alsa_props() -> String {
     let description = stream_description();
     format!(
@@ -144,14 +147,14 @@ pub fn alsa_props() -> String {
     )
 }
 
-/// Все переменные окружения разом — то, что хост ставит себе в `main()`.
+/// All environment variables at once — what the host sets for itself in `main()`.
 ///
-/// Трое, а не один: у каждого звукового клиента свой способ прочитать
-/// свойства потока. Qt Multimedia (видео) ходит нативным клиентом PipeWire —
-/// его слушает `PIPEWIRE_PROPS`; на машинах без PipeWire работает
-/// `PULSE_PROP_OVERRIDE`; Ruffle (Flash) ходит через cpal и ALSA — там
-/// решает `PIPEWIRE_ALSA`. Лишняя переменная вреда не делает: чужой клиент
-/// её просто не читает.
+/// Three, not one: each sound client has its own way of reading stream
+/// properties. Qt Multimedia (video) goes with a native PipeWire client — it
+/// listens to `PIPEWIRE_PROPS`; on machines without PipeWire
+/// `PULSE_PROP_OVERRIDE` works; Ruffle (Flash) goes via cpal and ALSA — there
+/// `PIPEWIRE_ALSA` decides. An extra variable does no harm: a foreign client
+/// simply does not read it.
 pub fn stream_env() -> Vec<(&'static str, String)> {
     vec![
         ("PIPEWIRE_PROPS", pipewire_props()),
@@ -160,29 +163,29 @@ pub fn stream_env() -> Vec<(&'static str, String)> {
     ]
 }
 
-// ── Действия ───────────────────────────────────────────────────────────────
+// ── Actions ────────────────────────────────────────────────────────────────
 
-/// Что делать с обоями, когда условие выполнено.
+/// What to do with the wallpaper when the condition is met.
 ///
-/// Числа совпадают с `AutoAction` протокола чужого движка (`NONE`, `MUTE`,
-/// `PAUSE`, `STOP`) — намеренно: одна и та же настройка не должна значить
-/// в двух местах разное.
+/// The numbers match the foreign engine protocol's `AutoAction` (`NONE`,
+/// `MUTE`, `PAUSE`, `STOP`) — on purpose: the same setting must not mean
+/// different things in two places.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Action {
-    /// Ничего не делать.
+    /// Do nothing.
     #[default]
     None = 0,
-    /// Заглушить звук, картинку оставить.
+    /// Mute the sound, keep the picture.
     Mute = 1,
-    /// Остановить воспроизведение (и звук, и картинку).
+    /// Stop playback (both sound and picture).
     Pause = 2,
-    /// То же, что пауза, плюс вернуться в начало.
+    /// The same as pause, plus going back to the start.
     Stop = 3,
 }
 
 impl Action {
-    /// Из числа протокола; всё непонятное — «ничего не делать», а не
-    /// случайная тишина.
+    /// From a protocol number; anything unclear is "do nothing", not accidental
+    /// silence.
     pub fn from_i64(v: i64) -> Self {
         match v {
             1 => Action::Mute,
@@ -192,29 +195,29 @@ impl Action {
         }
     }
 
-    /// Число протокола.
+    /// The protocol number.
     pub fn as_i64(self) -> i64 {
         self as i64
     }
 
-    /// Заглушён ли звук этим действием.
+    /// Whether this action mutes the sound.
     pub fn mutes(self) -> bool {
         self != Action::None
     }
 
-    /// Останавливается ли воспроизведение этим действием.
+    /// Whether this action stops playback.
     pub fn pauses(self) -> bool {
         matches!(self, Action::Pause | Action::Stop)
     }
 }
 
-/// Имена условий — одни на оба хранилища.
+/// Condition names — the same for both stores.
 ///
-/// Последние два (`gamemode`, `onBattery`) названы ровно так, как их зовёт
-/// протокол чужого движка (повод паузы GameMode и питания от батареи): в его
-/// карту таблица ложится одним и тем же [`AutoActions::to_map`], и своё
-/// второе имя у одного и того же условия значило бы, что выбор человека до
-/// демона не доезжает.
+/// The last two (`gamemode`, `onBattery`) are named exactly as the foreign
+/// engine's protocol calls them (the GameMode pause reason and battery
+/// power): the table goes into its map through the same
+/// [`AutoActions::to_map`], and a second name of our own for the same
+/// condition would mean the person's choice never reaches the daemon.
 pub const CONDITIONS: [&str; 8] = [
     "anyWindow",
     "focused",
@@ -226,48 +229,48 @@ pub const CONDITIONS: [&str; 8] = [
     "onBattery",
 ];
 
-/// Таблица «условие → действие».
+/// The "condition → action" table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AutoActions {
-    /// Открыто хоть какое-то окно.
+    /// Some window is open.
     pub any_window: Action,
-    /// Окно поверх обоев в фокусе.
+    /// A window over the wallpaper has focus.
     pub focused: Action,
-    /// Окно развёрнуто во весь экран (обоев не видно).
+    /// A window is maximized to the whole screen (the wallpaper is not visible).
     pub maximized: Action,
-    /// Полноэкранное окно — игра или видео.
+    /// A full-screen window — a game or a video.
     pub fullscreen: Action,
-    /// Сеанс заблокирован.
+    /// The session is locked.
     pub session_locked: Action,
-    /// Сеанс неактивен (переключились на другой).
+    /// The session is inactive (switched to another one).
     pub session_inactive: Action,
-    /// Идёт игра: включён игровой режим (Feral GameMode) или запущен
-    /// gamescope.
+    /// A game is running: game mode is on (Feral GameMode) or gamescope is
+    /// running.
     pub gamemode: Action,
-    /// Компьютер работает от батареи. На машине без батареи не бывает
-    /// никогда.
+    /// The computer runs on battery. Never happens on a machine without a
+    /// battery.
     pub on_battery: Action,
 }
 
 impl Default for AutoActions {
-    /// Умолчания продукта, а не пустая таблица.
+    /// The product defaults, not an empty table.
     ///
-    /// Жалоба, с которой начался этот модуль, звучала «обои орут поверх
-    /// игры и видео», поэтому безопасное поведение включено сразу
-    /// (правило #13: не спрашивать там, где неверный ответ ломает
-    /// впечатление). Полноэкранное окно — это игра или кино: обои там
-    /// не видно вовсе, значит и работать им незачем — пауза. Окно во весь
-    /// экран — обоев тоже не видно, но пауза дала бы рывок при каждом
-    /// сворачивании, поэтому только тишина.
+    /// The complaint this module started with was "the wallpaper blares over
+    /// games and videos", so the safe behavior is on right away (rule #13: do
+    /// not ask where a wrong answer spoils the impression). A full-screen window
+    /// is a game or a movie: the wallpaper is not visible there at all, so it has
+    /// no reason to work — pause. A window maximized to the whole screen — the
+    /// wallpaper is not visible either, but a pause would cause a jerk on every
+    /// minimize, so only silence.
     ///
-    /// Батарея и игра — пауза, а не «ничего» (у чужого движка там «ничего»).
-    /// Разница намеренная, решение Wehrwolfmann 15.11.2026: живые обои на
-    /// ноутбуке от батареи — это заметно короче работа без розетки, а во
-    /// время игры — кадры, отнятые у игры той же видеокартой. Человек,
-    /// который этого не знает, чинить не пойдёт — он решит, что «ноутбук
-    /// слабый» (правило #13: безопасное поведение по умолчанию). Пауза, а не
-    /// «остановить»: вернулся к розетке — обои идут дальше с того же места,
-    /// без рывка в начало.
+    /// Battery and game — pause, not "nothing" (the foreign engine has "nothing"
+    /// there). The difference is deliberate, Wehrwolfmann's decision of
+    /// 15.11.2026: a live wallpaper on a laptop on battery means noticeably
+    /// shorter time away from the outlet, and during a game — frames taken away
+    /// from the game by the same graphics card. A person who does not know this
+    /// will not go fix it — they will decide the "laptop is weak" (rule #13: safe
+    /// behavior by default). Pause, not "stop": back at the outlet, the wallpaper
+    /// continues from the same place, without a jump to the start.
     fn default() -> Self {
         Self {
             any_window: Action::None,
@@ -283,7 +286,7 @@ impl Default for AutoActions {
 }
 
 impl AutoActions {
-    /// Разложить в карту с именами условий (обе стороны — одна раскладка).
+    /// Lay out into a map with condition names (both sides — one layout).
     pub fn to_map(self) -> Map<String, Value> {
         let mut m = Map::new();
         for (name, action) in CONDITIONS.iter().zip(self.list()) {
@@ -292,7 +295,7 @@ impl AutoActions {
         m
     }
 
-    /// Собрать из карты; чего нет — берётся из умолчаний.
+    /// Build from a map; whatever is missing is taken from the defaults.
     pub fn from_map(m: &Map<String, Value>) -> Self {
         let pick = |name: &str, fallback: Action| -> Action {
             m.get(name)
@@ -313,7 +316,7 @@ impl AutoActions {
         }
     }
 
-    /// Действия в порядке [`CONDITIONS`].
+    /// Actions in [`CONDITIONS`] order.
     pub fn list(self) -> [Action; 8] {
         [
             self.any_window,
@@ -327,25 +330,25 @@ impl AutoActions {
         ]
     }
 
-    /// Нужно ли вообще спрашивать про окна: хоть одно из «оконных» условий
-    /// что-то делает. Опрос оконного менеджера — это процесс на каждом тике,
-    /// и ради одной батареи его гонять незачем.
+    /// Whether to ask about windows at all: at least one of the "window"
+    /// conditions does something. Querying the window manager is a process on
+    /// every tick, and there is no point running it just for the battery.
     pub fn windows_matter(self) -> bool {
         [self.any_window, self.focused, self.maximized, self.fullscreen]
             .iter()
             .any(|a| *a != Action::None)
     }
 
-    /// Нужно ли спрашивать logind о сеансе (заблокирован / неактивен).
+    /// Whether to ask logind about the session (locked / inactive).
     pub fn session_matters(self) -> bool {
         self.session_locked != Action::None || self.session_inactive != Action::None
     }
 }
 
-// ── Наблюдаемое состояние рабочего стола ───────────────────────────────────
+// ── Observed desktop state ─────────────────────────────────────────────────
 
-/// Что сейчас происходит вокруг обоев. Заполняет наблюдатель хоста; здесь
-/// только решение по этим фактам.
+/// What is happening around the wallpaper right now. Filled in by the host's
+/// observer; here is only the decision based on these facts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Conditions {
     pub any_window: bool,
@@ -354,16 +357,16 @@ pub struct Conditions {
     pub fullscreen: bool,
     pub session_locked: bool,
     pub session_inactive: bool,
-    /// Идёт игра: игровой режим включён или запущен gamescope.
+    /// A game is running: game mode is on or gamescope is running.
     pub gamemode: bool,
-    /// Питание от батареи.
+    /// Running on battery.
     pub on_battery: bool,
-    /// Звук играет кто-то ещё (не мы).
+    /// Someone else (not us) is playing sound.
     pub other_audio: bool,
 }
 
 impl Conditions {
-    /// Флаги в порядке [`CONDITIONS`].
+    /// Flags in [`CONDITIONS`] order.
     pub fn list(self) -> [bool; 8] {
         [
             self.any_window,
@@ -378,18 +381,18 @@ impl Conditions {
     }
 }
 
-// ── Настройки ──────────────────────────────────────────────────────────────
+// ── Settings ───────────────────────────────────────────────────────────────
 
-/// Громкость по умолчанию, проценты.
+/// Default volume, percent.
 ///
-/// У оригинала 100, у нас 50: обои — фон, и первое включение не должно
-/// оглушать. Поднять до 100 человек может одним движением, а вот
-/// «испугался и выключил навсегда» назад не отыгрывается.
+/// The original has 100, we have 50: the wallpaper is a background, and the
+/// first time it is switched on must not deafen. A person can raise it to 100
+/// in one move, but "got scared and turned it off forever" cannot be undone.
 pub const DEFAULT_VOLUME_PCT: i64 = 50;
-/// Плавность приглушения по умолчанию, мс (как у чужого движка).
+/// Default mute fade smoothness, ms (as in the foreign engine).
 pub const DEFAULT_FADE_MS: i64 = 500;
 
-/// Настройки звука обоев целиком.
+/// The complete wallpaper sound settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AudioSettings {
     pub enabled: bool,
@@ -404,11 +407,10 @@ impl Default for AudioSettings {
         Self {
             enabled: true,
             volume_pct: DEFAULT_VOLUME_PCT,
-            // У чужого движка это выключено по умолчанию, у нас включено.
-            // Разница намеренная и та же по смыслу, что в `AutoActions`:
-            // обои, перекрикивающие фильм, человек воспринимает как
-            // поломку продукта, а не как настройку, которую он забыл
-            // включить.
+            // The foreign engine has this off by default, we have it on. The
+            // difference is deliberate and has the same meaning as in `AutoActions`:
+            // a wallpaper shouting over a film is perceived by a person as a broken
+            // product, not as a setting they forgot to turn on.
             mute_when_other_audio: true,
             fade_ms: DEFAULT_FADE_MS,
             actions: AutoActions::default(),
@@ -416,13 +418,13 @@ impl Default for AudioSettings {
     }
 }
 
-/// Зажать громкость в 0..100.
+/// Clamp the volume to 0..100.
 pub fn clamp_volume_pct(v: i64) -> i64 {
     v.clamp(0, 100)
 }
 
 impl AudioSettings {
-    /// Прочитать из карты настроек Rexon (`settings.json`).
+    /// Read from Rexon's settings map (`settings.json`).
     pub fn from_map(m: &Map<String, Value>) -> Self {
         let d = Self::default();
         let actions = match m.get(KEY_ACTIONS) {
@@ -449,7 +451,7 @@ impl AudioSettings {
         }
     }
 
-    /// Разложить в карту настроек Rexon.
+    /// Lay out into Rexon's settings map.
     pub fn to_map(&self) -> Map<String, Value> {
         let mut m = Map::new();
         m.insert(KEY_ENABLED.into(), Value::Bool(self.enabled));
@@ -463,11 +465,11 @@ impl AudioSettings {
         m
     }
 
-    /// Прочитать из карты глобальных настроек ЧУЖОГО движка.
+    /// Read from the FOREIGN engine's global settings map.
     ///
-    /// Ровно те же значения под его именами — чтобы «громкость обоев»
-    /// значила одно и то же по обе стороны и её нельзя было развести
-    /// правкой одной из копий.
+    /// Exactly the same values under its names — so that "wallpaper volume"
+    /// means the same thing on both sides and cannot be split apart by editing
+    /// one of the copies.
     pub fn from_engine_global(g: &Map<String, Value>) -> Self {
         let d = Self::default();
         let actions = match g.get(ENGINE_KEY_ACTIONS) {
@@ -496,11 +498,11 @@ impl AudioSettings {
         }
     }
 
-    /// Вписать значения в карту глобальных настроек чужого движка.
+    /// Write the values into the foreign engine's global settings map.
     ///
-    /// ⚠️ Именно вписать в существующую, а не собрать новую: у того движка
-    /// сохранение настроек — полная замена карты, и потерянный по дороге
-    /// ключ стирается у человека насовсем.
+    /// ⚠️ Exactly write into the existing one, not build a new one: that engine
+    /// saves settings by replacing the whole map, and a key lost on the way is
+    /// erased from the person's settings for good.
     pub fn write_engine_global(&self, g: &mut Map<String, Value>) {
         g.insert(ENGINE_KEY_ENABLED.into(), Value::Bool(self.enabled));
         g.insert(ENGINE_KEY_VOLUME.into(), Value::from(self.volume_pct));
@@ -515,17 +517,17 @@ impl AudioSettings {
         );
     }
 
-    /// Громкость в долях единицы — в таком виде её ждёт проигрыватель.
+    /// Volume as a fraction of one — the form the player expects.
     pub fn volume01(&self) -> f64 {
         clamp_volume_pct(self.volume_pct) as f64 / 100.0
     }
 
-    /// Решение по текущей обстановке.
+    /// The decision for the current situation.
     pub fn decide(&self, c: &Conditions) -> Decision {
-        // Самое строгое из сработавших действий и побеждает: «остановить»
-        // сильнее «паузы», пауза сильнее тишины. Порядок задан порядком
-        // вариантов `Action`, поэтому новая строка таблицы попадает в
-        // решение сама, без правки этой функции.
+        // The strictest of the triggered actions wins: "stop" is stronger than
+        // "pause", pause is stronger than silence. The order is given by the order
+        // of the `Action` variants, so a new table row gets into the decision by
+        // itself, without editing this function.
         let mut worst = Action::None;
         for (action, active) in self.actions.list().iter().zip(c.list()) {
             if active && *action > worst {
@@ -534,7 +536,7 @@ impl AudioSettings {
         }
         let muted_by_other = self.mute_when_other_audio && c.other_audio;
         Decision {
-            // Звук отдаём, только когда его просили И ничто не велит молчать.
+            // Sound is given only when it was requested AND nothing says to be silent.
             audio_on: self.enabled && !worst.mutes() && !muted_by_other,
             paused: worst.pauses(),
             rewind: worst == Action::Stop,
@@ -543,13 +545,13 @@ impl AudioSettings {
     }
 }
 
-/// Простой вид настройки «останавливать обои, когда их не видно».
+/// The simple form of the "stop the wallpaper when it is not visible" setting.
 ///
-/// В интерфейсе продукта таблица «шесть условий × четыре действия» — это
-/// экран для того, кто уже знает, чего хочет (правило #13: покупателю
-/// нужно «легко и просто»). Поэтому наружу выходит одна галочка, а
-/// разворачивает её в таблицу ядро — чтобы значение галочки и значения
-/// таблицы не могли разойтись.
+/// In the product's interface a "six conditions × four actions" table is a
+/// screen for someone who already knows what they want (rule #13: the
+/// customer needs "easy and simple"). So one check box goes outside, and the
+/// core expands it into the table — so that the check box value and the
+/// table values cannot diverge.
 pub fn actions_for_hide_when_covered(on: bool) -> AutoActions {
     actions_for_choices(SimpleChoices {
         hide_when_covered: on,
@@ -557,24 +559,24 @@ pub fn actions_for_hide_when_covered(on: bool) -> AutoActions {
     })
 }
 
-/// Обратный вопрос: включена ли эта галочка сейчас.
+/// The reverse question: whether this check box is on right now.
 pub fn hide_when_covered(actions: &AutoActions) -> bool {
     actions.fullscreen != Action::None || actions.maximized != Action::None
 }
 
-/// Три галочки раздела «Обои» вместо таблицы «условие × действие».
+/// Three check boxes of the «Wallpaper» section instead of the "condition × action" table.
 ///
-/// Каждая галочка разворачивается в строки таблицы здесь, в ядре, — чтобы
-/// окно настроек и хост обоев не могли понять одну и ту же галочку
-/// по-разному (правило #12). Умолчание — все три включены: то же, что
+/// Each check box is expanded into table rows here, in the core — so that the
+/// settings window and the wallpaper host cannot understand the same check
+/// box differently (rule #12). The default is all three on: the same as
 /// [`AutoActions::default`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SimpleChoices {
-    /// «Останавливать обои, когда их не видно за окном».
+    /// «Stop the wallpaper when it is hidden behind a window».
     pub hide_when_covered: bool,
-    /// «Ставить обои на паузу при работе от батареи».
+    /// «Pause the wallpaper when running on battery».
     pub pause_on_battery: bool,
-    /// «Ставить обои на паузу во время игры».
+    /// «Pause the wallpaper while gaming».
     pub pause_in_game: bool,
 }
 
@@ -584,7 +586,7 @@ impl Default for SimpleChoices {
     }
 }
 
-/// Галочки → таблица.
+/// Check boxes → table.
 pub fn actions_for_choices(c: SimpleChoices) -> AutoActions {
     let d = AutoActions::default();
     let covered = |on: bool, action: Action| if on { action } else { Action::None };
@@ -593,9 +595,9 @@ pub fn actions_for_choices(c: SimpleChoices) -> AutoActions {
         focused: covered(c.hide_when_covered, d.focused),
         maximized: covered(c.hide_when_covered, d.maximized),
         fullscreen: covered(c.hide_when_covered, d.fullscreen),
-        // Заблокированный и неактивный сеанс галочками не выключаются:
-        // играть обоями в чужом сеансе или на замке — это не «настройка
-        // на любителя», а разряженная батарея и звук из ниоткуда.
+        // A locked and an inactive session are not switched off by the check boxes:
+        // playing the wallpaper in someone else's session or on the lock screen is
+        // not "a matter of taste" but a drained battery and sound out of nowhere.
         session_locked: d.session_locked,
         session_inactive: d.session_inactive,
         gamemode: if c.pause_in_game { Action::Pause } else { Action::None },
@@ -603,7 +605,7 @@ pub fn actions_for_choices(c: SimpleChoices) -> AutoActions {
     }
 }
 
-/// Таблица → галочки (что показать в окне настроек).
+/// Table → check boxes (what to show in the settings window).
 pub fn choices_of(actions: &AutoActions) -> SimpleChoices {
     SimpleChoices {
         hide_when_covered: hide_when_covered(actions),
@@ -612,34 +614,34 @@ pub fn choices_of(actions: &AutoActions) -> SimpleChoices {
     }
 }
 
-/// Что хост должен сделать прямо сейчас.
+/// What the host must do right now.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Decision {
-    /// Держать звуковой поток открытым.
+    /// Keep the audio stream open.
     ///
-    /// ⚠️ Именно «поток есть / потока нет», а не «громкость 0». Открытый
-    /// молчащий поток весь сеанс висит в микшере отдельным ползунком,
-    /// который ничего не играет, и не даёт звуковой карте уснуть; кроме
-    /// того, по нему невозможно отличить «работает тихо» от «не работает
-    /// вовсе» — а ровно на этой неразличимости самопроверка обоев уже
-    /// однажды зеленела там, где до звуковой карты не доходило ничего.
+    /// ⚠️ Exactly "there is a stream / there is no stream", not "volume 0". An
+    /// open silent stream hangs in the mixer the whole session as a separate
+    /// slider that plays nothing, and keeps the sound card from sleeping;
+    /// besides, it makes it impossible to tell "works quietly" from "does not
+    /// work at all" — and exactly on this indistinguishability the wallpaper
+    /// self-check once already went green where nothing reached the sound card.
     pub audio_on: bool,
-    /// Держать воспроизведение на паузе.
+    /// Keep playback paused.
     pub paused: bool,
-    /// Перемотать в начало (действие «остановить»).
+    /// Rewind to the start (the "stop" action).
     pub rewind: bool,
-    /// Громкость в долях единицы.
+    /// Volume as a fraction of one.
     pub volume01: f64,
 }
 
-// ── Чужой звук ─────────────────────────────────────────────────────────────
+// ── Foreign sound ──────────────────────────────────────────────────────────
 
-/// По каким свойствам потока его вообще можно опознать.
+/// By which stream properties it can be recognized at all.
 ///
-/// ⚠️ `application.id` в списке ПЕРВЫМ не случайно: это единственное
-/// свойство, которое доезжает до звуковой системы неизменным по ОБОИМ
-/// дорогам — и у видео (клиент PipeWire от Qt Multimedia), и у Flash
-/// (клиент ALSA от cpal). Остальные плагин ALSA переписывает по-своему.
+/// ⚠️ `application.id` is FIRST in the list for a reason: it is the only
+/// property that reaches the sound system unchanged along BOTH roads — for
+/// video (the PipeWire client of Qt Multimedia) and for Flash (the ALSA client
+/// of cpal). The ALSA plugin rewrites the others in its own way.
 pub const STREAM_ID_KEYS: [&str; 5] = [
     "application.id",
     "node.name",
@@ -648,36 +650,37 @@ pub const STREAM_ID_KEYS: [&str; 5] = [
     "application.process.binary",
 ];
 
-/// Приметы НАШЕГО потока обоев — одни на все виды обоев и на оба режима
-/// хоста.
+/// Signs of OUR wallpaper stream — the same for all wallpaper kinds and both
+/// host modes.
 ///
-/// ⭐ Починка 16.09.2026, найдена замером. Список жил в хосте и сверялся
-/// ТОЧНЫМ равенством, поэтому узнавал только видео. Flash ходит в звук
-/// клиентом ALSA (cpal), а плагин ALSA у PipeWire подписывает поток
-/// по-своему: `node.name = "alsa_playback.rexon-wallpaper-host"`,
-/// `application.name = "PipeWire ALSA [rexon-wallpaper-host]"`. Точного
-/// совпадения там нет ни с одним прежним именем — и Flash-обои при
-/// включённой по умолчанию настройке «приглушать, когда звук идёт из
-/// другой программы» принимали СЕБЯ за чужую программу и глушили сами
-/// себя. В журнале это выглядело как «звук играет другая программа» при
-/// пустом рабочем столе, а для человека — просто «у Flash нет звука».
+/// ⭐ A fix of 16.09.2026, found by measurement. The list lived in the host
+/// and was compared by EXACT equality, so it recognized only video. Flash
+/// goes to the sound system with an ALSA client (cpal), and PipeWire's ALSA
+/// plugin labels the stream in its own way:
+/// `node.name = "alsa_playback.rexon-wallpaper-host"`,
+/// `application.name = "PipeWire ALSA [rexon-wallpaper-host]"`. There is no
+/// exact match with any former name there — and Flash wallpapers, with the
+/// "mute when sound comes from another program" setting on by default, took
+/// THEMSELVES for another program and muted themselves. In the journal this
+/// looked like "another program is playing sound" on an empty desktop, and to
+/// a person simply like "Flash has no sound".
 ///
-/// Поэтому: приметы сверяются вхождением, а не равенством, и живут в
-/// ядре, а не в хосте, — чтобы третий вид обоев не завёл себе третью
-/// копию списка (правило #12).
+/// Hence: the signs are compared by containment, not equality, and live in
+/// the core, not in the host — so that a third wallpaper kind does not start
+/// a third copy of the list (rule #12).
 pub const OWN_STREAM_MARKERS: [&str; 4] = [
     STREAM_APP_ID,
     STREAM_NODE,
     LEGACY_STREAM_DESCRIPTION,
-    // Прежнее имя потока видео-обоев: у людей оно ещё живёт в ячейках
-    // памяти громкости звуковой системы.
+    // The former video wallpaper stream name: people still have it in the sound
+    // system's volume memory slots.
     "RexonVideoWallpaper",
 ];
 
-/// Команда, которой спрашивают у звуковой системы список потоков.
+/// The command that asks the sound system for the list of streams.
 ///
-/// ⚠️ `LANG=C` обязателен: под русской локалью `pactl` переводит имена
-/// полей, и разбор ниже перестаёт находить `Corked`.
+/// ⚠️ `LANG=C` is mandatory: under a Russian locale `pactl` translates field
+/// names, and the parser below stops finding `Corked`.
 pub fn sink_inputs_argv() -> Vec<String> {
     ["pactl", "list", "sink-inputs"]
         .iter()
@@ -685,20 +688,20 @@ pub fn sink_inputs_argv() -> Vec<String> {
         .collect()
 }
 
-/// Играет ли звук кто-то, кроме нас.
+/// Whether someone other than us is playing sound.
 ///
-/// Разбирается вывод [`sink_inputs_argv`]. Свои потоки узнаются по
-/// приметам [`OWN_STREAM_MARKERS`] в свойствах [`STREAM_ID_KEYS`];
-/// остановленные (`Corked: yes`) не в счёт — иначе за «чужой звук» сходил
-/// бы любой поставленный на паузу проигрыватель, и обои молчали бы всегда.
+/// Parses the output of [`sink_inputs_argv`]. Our own streams are recognized
+/// by the [`OWN_STREAM_MARKERS`] signs in the [`STREAM_ID_KEYS`] properties;
+/// stopped ones (`Corked: yes`) do not count — otherwise any paused player
+/// would pass for "foreign sound", and the wallpaper would always be silent.
 ///
-/// ⚠️ Примета ищется ВХОЖДЕНИЕМ. Точное равенство здесь уже стоило нам
-/// самозаглушающихся Flash-обоев: см. [`OWN_STREAM_MARKERS`].
+/// ⚠️ The sign is searched by CONTAINMENT. Exact equality here already cost
+/// us self-muting Flash wallpapers: see [`OWN_STREAM_MARKERS`].
 pub fn other_audio_playing(stdout: &str, own_names: &[&str]) -> bool {
     let mut corked = false;
     let mut ours = false;
     let mut any = false;
-    // Разбор поблочный: блок начинается со строки «Sink Input #N».
+    // Block-wise parsing: a block starts with the «Sink Input #N» line.
     let finish = |any: bool, ours: bool, corked: bool| any && !ours && !corked;
     for line in stdout.lines() {
         let t = line.trim();
@@ -726,9 +729,9 @@ pub fn other_audio_playing(stdout: &str, own_names: &[&str]) -> bool {
     finish(any, ours, corked)
 }
 
-// ── Опрос обстановки ───────────────────────────────────────────────────────
+// ── Polling the situation ──────────────────────────────────────────────────
 
-/// Заблокирован ли сеанс — один вопрос хранителю экрана.
+/// Whether the session is locked — one question to the screen saver.
 pub fn screensaver_argv() -> Vec<String> {
     [
         "qdbus6",
@@ -741,7 +744,7 @@ pub fn screensaver_argv() -> Vec<String> {
     .collect()
 }
 
-/// Разбор ответа хранителя экрана.
+/// Parsing the screen saver's answer.
 pub fn parse_screensaver_active(stdout: &str) -> bool {
     stdout.trim().eq_ignore_ascii_case("true")
 }
@@ -750,13 +753,13 @@ fn argv(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| (*s).to_string()).collect()
 }
 
-/// Свойство D-Bus — вызовом `Properties.Get`, а не `busctl get-property`.
+/// A D-Bus property — via a `Properties.Get` call, not `busctl get-property`.
 ///
-/// ⚠️ `--auto-start=no` обязателен, и именно поэтому `call`: служба
-/// игрового режима запускается шиной по первому обращению. Опрос «идёт ли
-/// игра» раз в пару секунд сам поднимал бы демон игрового режима на каждой
-/// машине, где его поставили, но не пользуются. Ключ `--auto-start` у
-/// `busctl` действует только на `call`.
+/// ⚠️ `--auto-start=no` is mandatory, and that is exactly why `call`: the game
+/// mode service is started by the bus on first access. Polling "is a game
+/// running" every couple of seconds would by itself start the game mode
+/// daemon on every machine where it is installed but not used. The
+/// `--auto-start` switch of `busctl` works only for `call`.
 fn dbus_property_argv(bus: &str, service: &str, path: &str, iface: &str, prop: &str) -> Vec<String> {
     argv(&[
         "busctl",
@@ -773,8 +776,8 @@ fn dbus_property_argv(bus: &str, service: &str, path: &str, iface: &str, prop: &
     ])
 }
 
-/// Работает ли машина от батареи — свойство `OnBattery` службы UPower
-/// (системная шина). На компьютере без батареи UPower отвечает `false`.
+/// Whether the machine runs on battery — the `OnBattery` property of the
+/// UPower service (system bus). On a computer without a battery UPower answers `false`.
 pub fn upower_on_battery_argv() -> Vec<String> {
     dbus_property_argv(
         "--system",
@@ -785,8 +788,8 @@ pub fn upower_on_battery_argv() -> Vec<String> {
     )
 }
 
-/// Сколько программ попросили игровой режим — свойство `ClientCount`
-/// службы Feral GameMode (шина сеанса). Больше нуля — идёт игра.
+/// How many programs requested game mode — the `ClientCount` property of the
+/// Feral GameMode service (session bus). Above zero — a game is running.
 pub fn gamemode_client_count_argv() -> Vec<String> {
     dbus_property_argv(
         "--user",
@@ -797,18 +800,18 @@ pub fn gamemode_client_count_argv() -> Vec<String> {
     )
 }
 
-/// Последнее слово ответа `busctl call … Properties.Get`: `v b true`,
-/// `v i 2`. Пусто — ответа нет.
+/// The last word of the `busctl call … Properties.Get` answer: `v b true`,
+/// `v i 2`. Empty — no answer.
 fn dbus_value(stdout: &str) -> Option<&str> {
     let mut words = stdout.split_whitespace();
-    // Ответ начинается с подписи варианта `v` и типа значения.
+    // The answer starts with the variant signature `v` and the value type.
     if words.next()? != "v" {
         return None;
     }
     words.nth(1)
 }
 
-/// Разбор логического свойства (`v b true`). Непонятный ответ — `None`.
+/// Parsing a boolean property (`v b true`). An unclear answer — `None`.
 pub fn parse_dbus_bool(stdout: &str) -> Option<bool> {
     match dbus_value(stdout)? {
         "true" => Some(true),
@@ -817,37 +820,37 @@ pub fn parse_dbus_bool(stdout: &str) -> Option<bool> {
     }
 }
 
-/// Разбор целого свойства (`v i 2`, `v u 2`). Непонятный ответ — `None`.
+/// Parsing an integer property (`v i 2`, `v u 2`). An unclear answer — `None`.
 pub fn parse_dbus_int(stdout: &str) -> Option<i64> {
     dbus_value(stdout)?.parse().ok()
 }
 
-/// Запасной путь для батареи, когда UPower нет или он молчит: состояние
-/// батарей из `/sys/class/power_supply/BAT*/status`. От батареи — когда
-/// хоть одна разряжается. Батарей нет — никогда.
+/// The battery fallback when there is no UPower or it is silent: the battery
+/// state from `/sys/class/power_supply/BAT*/status`. On battery — when at
+/// least one is discharging. No batteries — never.
 pub fn sysfs_on_battery(statuses: &[String]) -> bool {
     statuses
         .iter()
         .any(|s| s.trim().eq_ignore_ascii_case("Discharging"))
 }
 
-/// Имена процесса gamescope в `/proc/PID/comm`. Отдельный gamescope на
-/// рабочем столе — это игра, запущенная в нём (Steam так запускает игры с
-/// параметром `gamescope %command%`), даже когда игровой режим не включён.
+/// gamescope process names in `/proc/PID/comm`. A separate gamescope on the
+/// desktop is a game running in it (Steam launches games like that with the
+/// `gamescope %command%` parameter), even when game mode is not on.
 pub const GAMESCOPE_COMMS: [&str; 2] = ["gamescope", "gamescope-wl"];
 
-/// Процесс с таким `comm` — gamescope.
+/// A process with such a `comm` is gamescope.
 pub fn is_gamescope_comm(comm: &str) -> bool {
     let comm = comm.trim();
     GAMESCOPE_COMMS.iter().any(|g| *g == comm)
 }
 
-/// Состояние сеанса — один вопрос logind: активен ли он и заблокирован ли.
+/// Session state — one question to logind: whether it is active and whether it is locked.
 ///
-/// `session_id` — `XDG_SESSION_ID` процесса. Если его нет (хост запущен
-/// службой пользователя, вне сеанса) или он негоден для командной строки,
-/// спрашиваем про `auto` — так logind называет сеанс вызывающего, а без
-/// него — графический сеанс того же пользователя.
+/// `session_id` — the process's `XDG_SESSION_ID`. If there is none (the host
+/// was started by a user service, outside a session) or it is unfit for a
+/// command line, we ask about `auto` — that is what logind calls the caller's
+/// session, and without one, the graphical session of the same user.
 pub fn logind_session_argv(session_id: &str) -> Vec<String> {
     let id = if crate::privilege::revoke::valid_session_id(session_id) {
         session_id
@@ -857,11 +860,12 @@ pub fn logind_session_argv(session_id: &str) -> Vec<String> {
     argv(&["loginctl", "show-session", id, "-p", "Active", "-p", "LockedHint"])
 }
 
-/// Разбор ответа logind в `(неактивен, заблокирован)`.
+/// Parsing logind's answer into `(inactive, locked)`.
 ///
-/// ⚠️ Непонятный ответ (нет logind, сеанс не нашёлся) — `(false, false)`:
-/// «сеанс неактивен» по ошибке опроса оставил бы человека с вечно стоящими
-/// обоями, и чинить это он не пошёл бы — решил бы, что обои сломаны.
+/// ⚠️ An unclear answer (no logind, the session was not found) is
+/// `(false, false)`: a "session inactive" caused by a polling error would
+/// leave the person with a forever-stopped wallpaper, and they would not go
+/// fix it — they would decide the wallpaper is broken.
 pub fn parse_logind_session(stdout: &str) -> (bool, bool) {
     use crate::privilege::revoke::{parse_active_locked, SessionAnswer};
     match parse_active_locked(stdout) {
@@ -870,23 +874,25 @@ pub fn parse_logind_session(stdout: &str) -> (bool, bool) {
     }
 }
 
-/// Разбор геометрии активного окна X11 в наблюдаемые условия.
+/// Parsing the X11 active window geometry into observed conditions.
 ///
-/// Близнец [`kwin_window_conditions`] для X11, и отсев у них ОБЩИЙ
-/// ([`crate::wallpaper_engine::window_is_wallpaper_layer`]), поэтому «окно
-/// поверх обоев» по обе стороны сеанса значит одно и то же (правило #12).
+/// The twin of [`kwin_window_conditions`] for X11, and their filtering is
+/// SHARED ([`crate::wallpaper_engine::window_is_wallpaper_layer`]), so "a
+/// window over the wallpaper" means the same thing on both sides of the
+/// session (rule #12).
 ///
-/// ⚠️ Замер 16.09.2026 на стенде X11 с оконным менеджером: активным окном
-/// `xdotool getactivewindow` называл САМИ обои — окно во весь экран с
-/// `_NET_WM_WINDOW_TYPE_DESKTOP`. Правило «поверх играет полноэкранное
-/// окно» срабатывало всегда, и Flash-обои давали 4 кадра вместо 240 за тот
-/// же прогон.
+/// ⚠️ Measurement of 16.09.2026 on an X11 test bench with a window manager:
+/// `xdotool getactivewindow` named THE WALLPAPER ITSELF as the active window —
+/// a full-screen window with `_NET_WM_WINDOW_TYPE_DESKTOP`. The "a full-screen
+/// window is playing on top" rule always fired, and Flash wallpapers gave 4
+/// frames instead of 240 over the same run.
 ///
-/// `geometry` — вывод `xdotool … --shell`, `screen` — мерка экрана,
-/// `own_pids` — процессы, чьи окна и есть обои. `window_props` зовётся
-/// ЛЕНИВО и только когда окно вообще назвали; `None` (нет `xprop`, не
-/// ответил) и непонятный ответ оставляют ПРЕЖНЕЕ поведение — окно
-/// считается обычным. Ни «глушим всегда», ни «не глушим никогда».
+/// `geometry` — the output of `xdotool … --shell`, `screen` — the screen
+/// yardstick, `own_pids` — the processes whose windows are the wallpaper.
+/// `window_props` is called LAZILY and only when a window was named at all;
+/// `None` (no `xprop`, it did not answer) and an unclear answer keep the
+/// UNCHANGED behavior — the window counts as an ordinary one. Neither "always
+/// mute" nor "never mute".
 pub fn x11_window_conditions(
     geometry: &str,
     screen: &str,
@@ -904,8 +910,8 @@ pub fn x11_window_conditions(
             }
         }
     }
-    // Отдельного признака «во весь экран» на X11 без лишних расспросов
-    // нет: считаем по геометрии тем же правилом, что и на Wayland.
+    // On X11 there is no separate "maximized" flag without extra questions:
+    // we compute it from the geometry by the same rule as on Wayland.
     let covers = we::parse_xdotool_fullscreen(geometry, screen);
     Conditions {
         any_window: true,
@@ -916,17 +922,18 @@ pub fn x11_window_conditions(
     }
 }
 
-/// Разбор словаря свойств окна KWin в наблюдаемые условия.
+/// Parsing the KWin window property dictionary into observed conditions.
 ///
-/// `fullscreen` KWin называет сам; «во весь экран» и «есть окно поверх»
-/// считаются по геометрии — тем же способом, что и на X11, поэтому
-/// поведение по обе стороны сессии одинаковое (правило #12). Размер экрана
-/// приходит от окна обоев: оно ровно во весь экран и есть.
+/// KWin names `fullscreen` itself; "maximized" and "there is a window on top"
+/// are computed from the geometry — the same way as on X11, so the behavior
+/// is the same on both sides of the session (rule #12). The screen size comes
+/// from the wallpaper window: it is exactly full-screen.
 ///
-/// `own_pids` — процессы, чьи окна и есть обои: своё окно «окном поверх
-/// обоев» не считается. Кого отсеиваем по типу окна, решает ядро движка
-/// ([`crate::wallpaper_engine::kwin_window_is_wallpaper_layer`]) — список
-/// один на продукт, и он же работает на X11.
+/// `own_pids` — the processes whose windows are the wallpaper: our own window
+/// does not count as "a window over the wallpaper". Which window types are
+/// filtered out is decided by the engine core
+/// ([`crate::wallpaper_engine::kwin_window_is_wallpaper_layer`]) — the list is
+/// one per product, and it also works on X11.
 pub fn kwin_window_conditions(
     info: &str,
     screen_w: i64,
@@ -980,20 +987,21 @@ mod tests {
 
     #[test]
     fn роль_потока_не_музыкальная() {
-        // Ровно та подмена, ради которой модуль и написан: обои с ролью
-        // `music` попадают в общую ячейку восстановления громкости со
-        // всеми музыкальными плеерами.
+        // Exactly the substitution this module was written for: a wallpaper with
+        // the `music` role ends up in the shared volume restore slot with all
+        // music players.
         assert_ne!(STREAM_ROLE.to_lowercase(), "music");
         let pw = pipewire_props();
         assert!(pw.contains("media.role = Movie"));
         assert!(pw.contains(&stream_description()), "в микшере — по-человечески");
         assert!(pw.contains(STREAM_APP_ID), "ключ памяти громкости обязателен");
         assert!(pw.contains(STREAM_NODE));
-        // Роль в словаре PulseAudio называется иначе, и подмена обязана
-        // ехать в обоих видах — иначе на машине без PipeWire снова музыка.
+        // The role is named differently in the PulseAudio dictionary, and the
+        // substitution must travel in both forms — otherwise on a machine without
+        // PipeWire it is music again.
         assert!(pulse_props().contains("media.role=video"));
-        // И для клиента ALSA — им в звук ходит Flash; без этой просьбы имя
-        // потока переписывает плагин ALSA.
+        // And for the ALSA client — Flash goes to the sound system through it;
+        // without this request the ALSA plugin rewrites the stream name.
         assert!(alsa_props().contains(&stream_description()));
         assert!(alsa_props().contains(STREAM_NODE));
         assert_eq!(stream_env().len(), 3);
@@ -1007,7 +1015,7 @@ mod tests {
         assert!(s.mute_when_other_audio);
         assert_eq!(s.actions.fullscreen, Action::Pause);
         assert_eq!(s.actions.maximized, Action::Mute);
-        // Спокойный стол — звук идёт.
+        // A calm desktop — sound plays.
         let d = s.decide(&Conditions::default());
         assert!(d.audio_on && !d.paused);
         assert_eq!(d.volume01, 0.5);
@@ -1051,7 +1059,7 @@ mod tests {
             ..Conditions::default()
         };
         assert!(!s.decide(&c).audio_on);
-        // Выключенная настройка — обои играют поверх, как их и просили.
+        // The setting is off — the wallpaper plays on top, as it was asked to.
         let s = AudioSettings {
             mute_when_other_audio: false,
             ..AudioSettings::default()
@@ -1089,9 +1097,9 @@ mod tests {
 
     #[test]
     fn обе_стороны_читают_одни_значения() {
-        // Значение, заданное в наших настройках, разложенное для чужого
-        // движка и прочитанное обратно, обязано совпасть само с собой —
-        // иначе «громкость обоев» опять значит разное в двух местах.
+        // A value set in our settings, laid out for the foreign engine and read
+        // back, must match itself — otherwise "wallpaper volume" again means
+        // different things in two places.
         let s = AudioSettings {
             enabled: false,
             volume_pct: 30,
@@ -1105,10 +1113,10 @@ mod tests {
         let mut engine = map(r#"{"queueMode":"sequential"}"#);
         s.write_engine_global(&mut engine);
         assert_eq!(AudioSettings::from_engine_global(&engine), s);
-        // И чужие ключи на месте: сохранение настроек там — полная замена
-        // карты, потерянный ключ стирается у человека.
+        // And the foreign keys are in place: saving settings there replaces the
+        // whole map, a lost key is erased from the person's settings.
         assert_eq!(engine.get("queueMode"), Some(&Value::from("sequential")));
-        // Наше хранилище — тот же круг.
+        // Our store — the same round trip.
         let ours = s.to_map();
         assert_eq!(AudioSettings::from_map(&ours), s);
     }
@@ -1151,13 +1159,13 @@ Sink Input #353
 
     #[test]
     fn поток_flash_обоев_узнаётся_своим() {
-        // ⭐ Живой замер 16.09.2026 (`pactl list sink-inputs`, строки ниже
-        // сняты дословно). Flash ходит в звук клиентом ALSA, и плагин ALSA
-        // у PipeWire подписывает поток своими словами — точного совпадения
-        // ни с одним нашим именем там нет. Пока приметы сверялись
-        // равенством, Flash-обои при включённой по умолчанию настройке
-        // «приглушать, когда звук идёт из другой программы» принимали СЕБЯ
-        // за чужую программу и глушили сами себя.
+        // ⭐ Live measurement of 16.09.2026 (`pactl list sink-inputs`, the lines
+        // below are copied verbatim). Flash goes to the sound system with an ALSA
+        // client, and PipeWire's ALSA plugin labels the stream in its own words —
+        // there is no exact match with any of our names. While the signs were
+        // compared by equality, Flash wallpapers, with the "mute when sound comes
+        // from another program" setting on by default, took THEMSELVES for another
+        // program and muted themselves.
         let flash = "\
 Sink Input #72
 \tCorked: no
@@ -1171,13 +1179,13 @@ Sink Input #72
             !other_audio_playing(flash, &OWN_STREAM_MARKERS),
             "поток Flash-обоев обязан быть узнан своим"
         );
-        // Сам по себе `application.id` уже обязан хватать: у видео и у Flash
-        // он один и до звуковой системы доезжает по обеим дорогам.
+        // `application.id` by itself must already be enough: it is the same for
+        // video and Flash and reaches the sound system along both roads.
         let only_id = "Sink Input #1\n\tCorked: no\n\t\tapplication.id = \"com.rexon.wallpaper\"\n";
         assert!(!other_audio_playing(only_id, &OWN_STREAM_MARKERS));
 
-        // Чужой проигрыватель, подписанный тем же плагином ALSA, остаётся
-        // чужим: вхождение ищется по НАШИМ приметам, а не по слову «alsa».
+        // A foreign player labeled by the same ALSA plugin stays foreign: the
+        // containment is searched by OUR signs, not by the word «alsa».
         let alien = "Sink Input #1\n\tCorked: no\n\t\t                     application.name = \"PipeWire ALSA [mpv]\"\n\t\t                     node.name = \"alsa_playback.mpv\"\n";
         assert!(other_audio_playing(alien, &OWN_STREAM_MARKERS));
         assert_eq!(OWN_STREAM_MARKERS[0], STREAM_APP_ID);
@@ -1199,49 +1207,50 @@ width: 1920
         let full = maximized.replace("fullscreen: false", "fullscreen: true");
         assert!(kwin_window_conditions(&full, 1920, 1080, &[]).fullscreen);
 
-        // Сам рабочий стол — не окно поверх обоев.
+        // The desktop itself is not a window over the wallpaper.
         let desktop = maximized.replace("type: 0", "type: 1");
         assert_eq!(
             kwin_window_conditions(&desktop, 1920, 1080, &[]),
             Conditions::default()
         );
 
-        // Панель/док — тоже не «окно поверх обоев»: полоска у края экрана
-        // обои не закрывает, а прежний отсев знал только рабочий стол.
+        // A panel/dock is not "a window over the wallpaper" either: a strip at the
+        // screen edge does not cover the wallpaper, and the former filter knew only
+        // the desktop.
         let dock = maximized.replace("type: 0", "type: 2");
         assert_eq!(
             kwin_window_conditions(&dock, 1920, 1080, &[]),
             Conditions::default()
         );
 
-        // Свёрнутое окно обоев не закрывает.
+        // A minimized window does not cover the wallpaper.
         let mini = maximized.replace("minimized: false", "minimized: true");
         assert_eq!(
             kwin_window_conditions(&mini, 1920, 1080, &[]),
             Conditions::default()
         );
 
-        // Нет активного окна — пустой ответ, а не «полноэкранное».
+        // No active window — an empty answer, not "full-screen".
         assert_eq!(
             kwin_window_conditions("", 1920, 1080, &[]),
             Conditions::default()
         );
 
-        // Окно меньше экрана — обои видно.
+        // A window smaller than the screen — the wallpaper is visible.
         let small = maximized.replace("width: 1920", "width: 800");
         assert!(!kwin_window_conditions(&small, 1920, 1080, &[]).maximized);
     }
 
-    /// Ответ `xdotool … --shell` для окна во весь экран 1280×800.
+    /// The `xdotool … --shell` answer for a 1280×800 full-screen window.
     fn окно_во_весь_экран(id: i64) -> String {
         format!("WINDOW={id}\nX=0\nY=0\nWIDTH=1280\nHEIGHT=800\nSCREEN=0\n")
     }
 
     #[test]
     fn окно_рабочего_стола_не_ставит_обои_на_паузу() {
-        // ⭐ Замер 16.09.2026 на стенде X11 с оконным менеджером: активным
-        // окном назывались САМИ обои — окно во весь экран с типом DESKTOP.
-        // Flash-обои давали 4 кадра вместо 240 за тот же прогон.
+        // ⭐ Measurement of 16.09.2026 on an X11 test bench with a window manager:
+        // THE WALLPAPER ITSELF was named the active window — a full-screen window of
+        // type DESKTOP. Flash wallpapers gave 4 frames instead of 240 over the same run.
         let g = окно_во_весь_экран(10485771);
         let desktop = "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP\n\
                        _NET_WM_PID(CARDINAL) = 2742555\n";
@@ -1251,7 +1260,7 @@ width: 1920
             "рабочий стол"
         );
 
-        // Панель/док — тоже не «окно поверх обоев».
+        // A panel/dock is not "a window over the wallpaper" either.
         let dock = "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DOCK\n";
         assert_eq!(
             x11_window_conditions(&g, "1280x800", &[], |_| Some(dock.to_string())),
@@ -1259,7 +1268,7 @@ width: 1920
             "панель"
         );
 
-        // Своё окно обоев — тем более, даже если тип проставить не удалось.
+        // Our own wallpaper window — all the more so, even if the type could not be set.
         let no_type = "_NET_WM_WINDOW_TYPE:  not found.\n\
                        _NET_WM_PID(CARDINAL) = 2742555\n";
         assert_eq!(
@@ -1270,7 +1279,7 @@ width: 1920
             "свои обои"
         );
 
-        // Настоящая игра во весь экран обои по-прежнему гасит.
+        // A real full-screen game still turns the wallpaper off.
         let game = "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL\n\
                     _NET_WM_PID(CARDINAL) = 999\n";
         let c = x11_window_conditions(&g, "1280x800", &[2742555], |_| {
@@ -1283,12 +1292,12 @@ width: 1920
     fn отсев_окон_рабочего_стола_защищён_от_дурака() {
         let g = окно_во_весь_экран(10485771);
 
-        // `xprop` не установлен или не ответил — поведение ПРЕЖНЕЕ: окно во
-        // весь экран считается окном во весь экран. Ни «глушим всегда», ни
-        // «не глушим никогда».
+        // `xprop` is not installed or did not answer — the behavior is UNCHANGED: a
+        // full-screen window counts as a full-screen window. Neither "always mute"
+        // nor "never mute".
         assert!(x11_window_conditions(&g, "1280x800", &[], |_| None).fullscreen);
 
-        // Ответ есть, но непонятный — тоже прежнее поведение.
+        // There is an answer, but an unclear one — also the unchanged behavior.
         assert!(
             x11_window_conditions(&g, "1280x800", &[], |_| Some(
                 "тарабарщина".to_string()
@@ -1299,8 +1308,8 @@ width: 1920
             x11_window_conditions(&g, "1280x800", &[], |_| Some(String::new())).fullscreen
         );
 
-        // `WINDOW=` в ответе нет — спрашивать не о чем, прежнее поведение,
-        // и лишний процесс не запускается.
+        // No `WINDOW=` in the answer — nothing to ask about, the unchanged behavior,
+        // and no extra process is started.
         let без_id = "X=0\nY=0\nWIDTH=1280\nHEIGHT=800\n";
         assert!(
             x11_window_conditions(без_id, "1280x800", &[], |_| panic!(
@@ -1309,7 +1318,7 @@ width: 1920
             .fullscreen
         );
 
-        // Активного окна нет вовсе — обои играют.
+        // No active window at all — the wallpaper plays.
         assert_eq!(
             x11_window_conditions("", "1280x800", &[], |_| panic!(
                 "свойства спросили, хотя окна нет"
@@ -1317,12 +1326,12 @@ width: 1920
             Conditions::default()
         );
 
-        // Окно МЕНЬШЕ экрана: окно есть, но обоев оно не закрывает.
+        // A window SMALLER than the screen: there is a window, but it does not cover the wallpaper.
         let маленькое = "WINDOW=7\nWIDTH=800\nHEIGHT=600\n";
         let c = x11_window_conditions(маленькое, "1280x800", &[], |_| Some(String::new()));
         assert!(c.any_window && c.focused && !c.maximized && !c.fullscreen);
 
-        // Мерка экрана не разобралась — как и было, «не полноэкранное».
+        // The screen yardstick did not parse — as before, "not full-screen".
         assert!(
             !x11_window_conditions(&g, "мусор", &[], |_| Some(String::new())).fullscreen
         );
@@ -1330,9 +1339,9 @@ width: 1920
 
     #[test]
     fn своё_окно_обоев_не_считается_окном_поверх_обоев() {
-        // Тип окна KWin может не назвать вовсе (`type` в ответе нет) — тогда
-        // остаётся хозяин окна. Процесс, который рисует обои, закрывать их
-        // сам себе не может.
+        // KWin may not name the window type at all (no `type` in the answer) — then
+        // the window's owner remains. The process drawing the wallpaper cannot cover
+        // it for itself.
         let own = "\
 caption: Rexon Wallpaper
 fullscreen: true
@@ -1345,9 +1354,9 @@ width: 1920
             kwin_window_conditions(own, 1920, 1080, &[4242]),
             Conditions::default()
         );
-        // Чужой процесс с тем же ответом обои закрывает, как и раньше.
+        // A foreign process with the same answer covers the wallpaper, as before.
         assert!(kwin_window_conditions(own, 1920, 1080, &[7]).fullscreen);
-        // Про своих не знаем ничего — поведение прежнее.
+        // We know nothing about our own — the behavior is unchanged.
         assert!(kwin_window_conditions(own, 1920, 1080, &[]).fullscreen);
     }
 
@@ -1358,7 +1367,7 @@ width: 1920
         assert_eq!(on, AutoActions::default());
         let off = actions_for_hide_when_covered(false);
         assert!(!hide_when_covered(&off));
-        // Замок и чужой сеанс галочкой не отключаются.
+        // The lock and a foreign session are not switched off by the check box.
         assert_eq!(off.session_locked, Action::Stop);
         assert_eq!(off.session_inactive, Action::Stop);
     }
@@ -1371,12 +1380,12 @@ width: 1920
         assert!(a.session_inactive.pauses(), "чужой сеанс — обои стоят");
         assert_eq!(CONDITIONS.len(), a.list().len());
         assert_eq!(CONDITIONS.len(), Conditions::default().list().len());
-        // Имена — ровно как у протокола чужого движка.
+        // The names are exactly as in the foreign engine's protocol.
         assert_eq!(&CONDITIONS[6..], &["gamemode", "onBattery"]);
     }
 
-    /// Каждое новое условие × каждое действие: решение то, что обещает
-    /// действие, и только когда условие выполнено.
+    /// Every new condition × every action: the decision is what the action
+    /// promises, and only when the condition is met.
     #[test]
     fn новые_условия_на_все_действия() {
         type Set = fn(&mut AutoActions, Action);
@@ -1388,7 +1397,7 @@ width: 1920
         ];
         for (name, set, flag) in rows {
             for action in [Action::None, Action::Mute, Action::Pause, Action::Stop] {
-                // Остальные условия выключены — проверяется одна строка.
+                // The other conditions are off — one row is checked.
                 let mut actions = actions_for_choices(SimpleChoices {
                     hide_when_covered: false,
                     pause_on_battery: false,
@@ -1404,7 +1413,7 @@ width: 1920
                 assert_eq!(d.audio_on, !action.mutes(), "{name} × {action:?}: звук");
                 assert_eq!(d.paused, action.pauses(), "{name} × {action:?}: пауза");
                 assert_eq!(d.rewind, action == Action::Stop, "{name} × {action:?}: в начало");
-                // Условие не выполнено — действие не срабатывает.
+                // The condition is not met — the action does not fire.
                 let calm = s.decide(&Conditions::default());
                 assert!(calm.audio_on && !calm.paused, "{name} × {action:?}: спокойно");
             }
@@ -1422,7 +1431,7 @@ width: 1920
             let d = s.decide(&c);
             assert!(d.paused && !d.audio_on, "{c:?}");
         }
-        // Неактивный сеанс строже батареи: «остановить» побеждает «паузу».
+        // An inactive session is stricter than the battery: "stop" beats "pause".
         let both = Conditions { on_battery: true, session_inactive: true, ..Conditions::default() };
         assert!(s.decide(&both).rewind);
     }
@@ -1437,13 +1446,13 @@ width: 1920
             };
             let a = actions_for_choices(c);
             assert_eq!(choices_of(&a), c, "{c:?}");
-            // Замок и чужой сеанс галочками не выключаются никогда.
+            // The lock and a foreign session are never switched off by the check boxes.
             assert_eq!(a.session_locked, Action::Stop);
             assert_eq!(a.session_inactive, Action::Stop);
         }
         assert_eq!(SimpleChoices::default(), choices_of(&AutoActions::default()));
         assert_eq!(actions_for_choices(SimpleChoices::default()), AutoActions::default());
-        // Старая галочка «когда не видно» новых строк не трогает.
+        // The old "when not visible" check box does not touch the new rows.
         let off = actions_for_hide_when_covered(false);
         assert_eq!(off.on_battery, Action::Pause);
         assert_eq!(off.gamemode, Action::Pause);
@@ -1464,13 +1473,13 @@ width: 1920
         let Some(Value::Object(policy)) = g.get(ENGINE_KEY_ACTIONS) else {
             panic!("нет таблицы")
         };
-        // Та же карта, которую разбирает раскладка протокола демона.
+        // The same map that the daemon protocol's layout parses.
         let pb = crate::we_settings::map_to_auto_replay(policy);
         assert_eq!(pb.gamemode, Action::Stop.as_i64() as i32);
         assert_eq!(pb.on_battery, Action::Mute.as_i64() as i32);
         assert_eq!(pb.session_inactive, Action::Stop.as_i64() as i32);
         assert_eq!(AudioSettings::from_engine_global(&g), s);
-        // Прежняя запись без новых ключей — умолчания, а не «ничего».
+        // A former record without the new keys — defaults, not "nothing".
         let old = map(r#"{"wallpaper_audio_actions": {"fullscreen": 0}}"#);
         let a = AudioSettings::from_map(&old).actions;
         assert_eq!((a.on_battery, a.gamemode), (Action::Pause, Action::Pause));
@@ -1478,17 +1487,17 @@ width: 1920
 
     #[test]
     fn ответы_upower_и_gamemode_разбираются() {
-        // Сняты с `busctl call … Properties.Get` дословно.
+        // Copied verbatim from `busctl call … Properties.Get`.
         assert_eq!(parse_dbus_bool("v b false\n"), Some(false));
         assert_eq!(parse_dbus_bool("v b true\n"), Some(true));
         assert_eq!(parse_dbus_int("v i 0\n"), Some(0));
         assert_eq!(parse_dbus_int("v i 2\n"), Some(2));
-        // Служба не запущена: busctl пишет ошибку в stderr, stdout пуст.
+        // The service is not running: busctl writes an error to stderr, stdout is empty.
         assert_eq!(parse_dbus_bool(""), None);
         assert_eq!(parse_dbus_int(""), None);
         assert_eq!(parse_dbus_bool("b true"), None, "без подписи варианта — не наш ответ");
         assert_eq!(parse_dbus_int("v i много"), None);
-        // Шиной службу не поднимаем: игровой режим не стартует от опроса.
+        // We do not start the service via the bus: game mode does not start from polling.
         for argv in [upower_on_battery_argv(), gamemode_client_count_argv()] {
             assert_eq!(argv[0], "busctl");
             assert!(argv.iter().any(|a| a == "--auto-start=no"), "{argv:?}");
@@ -1518,7 +1527,7 @@ width: 1920
         assert_eq!(parse_logind_session("Active=yes\nLockedHint=no\n"), (false, false));
         assert_eq!(parse_logind_session("Active=no\nLockedHint=no\n"), (true, false));
         assert_eq!(parse_logind_session("Active=yes\nLockedHint=yes\n"), (false, true));
-        // logind молчит или сеанса нет — обои не встают навсегда.
+        // logind is silent or there is no session — the wallpaper does not stop forever.
         assert_eq!(parse_logind_session(""), (false, false));
         assert_eq!(parse_logind_session("мусор"), (false, false));
         assert_eq!(logind_session_argv("2")[2], "2");

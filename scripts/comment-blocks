@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""Extract comments from source files and put edited text back.
+
+Used to translate comments without sending the code around:
+
+    scripts/comment-blocks extract FILE... > blocks.txt   # only comments with Cyrillic
+    scripts/comment-blocks extract --all FILE...           # every comment
+    (edit the text under each @@ header)
+    scripts/comment-blocks apply blocks.txt
+    scripts/check-comment-only-diff                        # must report 0 code changes
+
+Block format, one header per block, text lines follow:
+
+    @@ <path> <first>-<last> line <marker> <indent>
+    consecutive full-line comments (//, ///, //!) with one indent and marker;
+    the text is given without indent and marker but WITH the space after the
+    marker (keep it); the number of lines may grow or shrink
+
+    @@ <path> <line> tail <marker>
+    the comment after code on one line; exactly one text line, with the space
+    after the marker kept
+
+    @@ <path> <first>-<last> raw
+    a /* ... */ comment, given verbatim (lines as they are, indent included)
+
+Files: .rs .qml .js .mjs .cpp .h .hpp. Blocks are applied bottom-up per file,
+so line numbers in one blocks file stay valid while it is applied.
+"""
+import re
+import sys
+
+CYR = re.compile("[А-Яа-яЁё]")
+LINE_RE = re.compile(r"^([ \t]*)(///|//!|//)(.*)$")
+
+
+def find_tail(line: str):
+    """Position of a trailing // comment outside string literals, or -1."""
+    i, n, quote = 0, len(line), None
+    while i < n:
+        c = line[i]
+        if quote:
+            if c == "\\":
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in "\"`":
+            quote = c
+        elif c == "'" and re.match(r"'(\\.[^']*|[^'\\])'", line[i:i + 12]):
+            i += len(re.match(r"'(\\.[^']*|[^'\\])'", line[i:i + 12]).group(0))
+            continue
+        elif line.startswith("//", i):
+            return i
+        i += 1
+    return -1
+
+
+def lines_inside_strings(text: str, rust: bool):
+    """Indices of lines that begin inside a string literal.
+
+    Raw strings often carry shell or JS templates whose `//` and `/*` are
+    text, not comments; such lines must never be offered for translation.
+    """
+    inside, line, i, n = set(), 0, 0, len(text)
+
+    def advance(j):
+        nonlocal line
+        line += text.count("\n", i, j)
+
+    while i < n:
+        c = text[i]
+        nxt = text[i + 1] if i + 1 < n else ""
+        if c == "\n":
+            line += 1
+            i += 1
+            continue
+        if c == "/" and nxt == "/":
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if c == "/" and nxt == "*":
+            j, depth = i + 2, 1
+            while j < n and depth:
+                if rust and text.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif text.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            advance(j)
+            i = j
+            continue
+        m = None
+        if rust and c in "rb" and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            m = re.match(r'b?r(#*)"', text[i:i + 300])
+        if m:
+            close = '"' + m.group(1)
+            j = text.find(close, i + len(m.group(0)))
+            j = n if j < 0 else j + len(close)
+        elif c in "\"`" or (c == "'" and not rust):
+            j = i + 1
+            while j < n and text[j] != c:
+                j += 2 if text[j] == "\\" else 1
+            j += 1
+        elif rust and c == "'" and re.match(r"'(\\.[^']*|[^'\\])'", text[i:i + 12]):
+            i += len(re.match(r"'(\\.[^']*|[^'\\])'", text[i:i + 12]).group(0))
+            continue
+        else:
+            i += 1
+            continue
+        start_line = line
+        advance(j)
+        inside.update(range(start_line + 1, line + 1))
+        i = j
+    return inside
+
+
+def extract(path: str, want_all: bool):
+    text = open(path, encoding="utf-8").read()
+    lines = text.split("\n")
+    in_string = lines_inside_strings(text, path.endswith(".rs"))
+    out = []
+    i, n = 0, len(lines)
+    while i < n:
+        s = lines[i]
+        stripped = s.lstrip()
+        if i in in_string:
+            i += 1
+            continue
+        if stripped.startswith("/*"):
+            j = i
+            while j < n and "*/" not in lines[j]:
+                j += 1
+            block = lines[i:j + 1]
+            if want_all or any(CYR.search(b) for b in block):
+                out.append(f"@@ {path} {i + 1}-{j + 1} raw")
+                out.extend(block)
+            i = j + 1
+            continue
+        m = LINE_RE.match(s)
+        if m:
+            indent, marker = m.group(1), m.group(2)
+            j = i
+            texts = []
+            while j < n and j not in in_string:
+                mm = LINE_RE.match(lines[j])
+                if not mm or mm.group(1) != indent or mm.group(2) != marker:
+                    break
+                texts.append(mm.group(3))
+                j += 1
+            if want_all or any(CYR.search(t) for t in texts):
+                out.append(f"@@ {path} {i + 1}-{j} line {marker} {len(indent)}{'t' if indent.startswith(chr(9)) else ''}")
+                out.extend(texts)
+            i = j
+            continue
+        pos = find_tail(s)
+        if pos > 0 and s[:pos].strip():
+            m = re.match(r"(///|//!|//)", s[pos:])
+            text = s[pos + len(m.group(0)):]
+            if want_all or CYR.search(text):
+                out.append(f"@@ {path} {i + 1} tail {m.group(1)}")
+                out.append(text)
+        i += 1
+    return out
+
+
+def apply(blocks_path: str):
+    per_file = {}
+    cur = None
+    for raw in open(blocks_path, encoding="utf-8").read().split("\n"):
+        if raw.startswith("@@ "):
+            parts = raw[3:].split(" ")
+            cur = {"path": parts[0], "range": parts[1], "kind": parts[2], "rest": parts[3:], "text": []}
+            per_file.setdefault(parts[0], []).append(cur)
+        elif cur is not None:
+            cur["text"].append(raw)
+    if cur is not None and cur["text"] and cur["text"][-1] == "":
+        cur["text"].pop()  # the newline at the end of the blocks file
+    for path, blocks in per_file.items():
+        lines = open(path, encoding="utf-8").read().split("\n")
+        for b in sorted(blocks, key=lambda b: int(b["range"].split("-")[0]), reverse=True):
+            first = int(b["range"].split("-")[0])
+            last = int(b["range"].split("-")[-1])
+            if b["kind"] == "line":
+                marker, ind = b["rest"][0], b["rest"][1]
+                indent = ("\t" * int(ind[:-1])) if ind.endswith("t") else " " * int(ind)
+                new = [indent + marker + t for t in b["text"]]
+            elif b["kind"] == "tail":
+                if len(b["text"]) != 1:
+                    sys.exit(f"{path}:{first}: a tail block must have exactly one line")
+                line = lines[first - 1]
+                pos = find_tail(line)
+                new = [line[:pos] + b["rest"][0] + b["text"][0]]
+            elif b["kind"] == "raw":
+                new = b["text"]
+            else:
+                sys.exit(f"unknown block kind: {b['kind']}")
+            lines[first - 1:last] = new
+        open(path, "w", encoding="utf-8").write("\n".join(lines))
+        print(f"{path}: {len(blocks)} block(s)")
+
+
+def main():
+    if len(sys.argv) < 3 or sys.argv[1] not in ("extract", "apply"):
+        sys.exit(__doc__)
+    if sys.argv[1] == "apply":
+        apply(sys.argv[2])
+        return
+    args = sys.argv[2:]
+    want_all = "--all" in args
+    for p in [a for a in args if a != "--all"]:
+        for line in extract(p, want_all):
+            print(line)
+
+
+if __name__ == "__main__":
+    main()

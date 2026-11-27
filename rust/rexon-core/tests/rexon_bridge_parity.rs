@@ -1,14 +1,14 @@
-//! Golden-сверка порта моста с оригиналом `rexon/rexon_bridge.py`.
+//! Golden check of the bridge port against the original `rexon/rexon_bridge.py`.
 //!
-//! Эталон `golden/rexon_bridge_cases.json` снят с живого Python:
-//! `datetime.now`/`time.time` заморожены (2026-07-22T12:00:00.123456 /
-//! 1753185600.0), пути → tempdir; в golden попадают только имена файлов
-//! команд и содержимое JSON, без абсолютных путей. Демон/сокеты/сеть не
-//! использовались — мост целиком файловый.
+//! The golden `golden/rexon_bridge_cases.json` was captured from live Python:
+//! `datetime.now`/`time.time` frozen (2026-07-22T12:00:00.123456 /
+//! 1753185600.0), paths → tempdir; only the command file names
+//! and the JSON contents get into the golden, without absolute paths. No daemon/sockets/network
+//! were used — the bridge is entirely file-based.
 //!
-//! Кейсы намеренных расхождений (починки багов оригинала) сверяются не
-//! по golden, а отдельными тестами с пометкой — Python-поведение там
-//! было крэшем или потерей данных.
+//! Cases of deliberate deviations (fixes of the original's bugs) are checked not
+//! against the golden but by separate marked tests — the Python behaviour there
+//! was a crash or data loss.
 
 use rexon_core::rexon_bridge::{
     all_de_reactions_value, app_running, build_command, build_event, de_reactions_value,
@@ -31,7 +31,7 @@ fn golden() -> Value {
         .expect("golden парсится")
 }
 
-/// Свежий мост в уникальном временном каталоге.
+/// A fresh bridge in a unique temporary directory.
 fn fresh_bridge(tag: &str) -> RexonBridge {
     let dir = std::env::temp_dir().join(format!(
         "rexon_bridge_parity_{}_{}",
@@ -44,8 +44,8 @@ fn fresh_bridge(tag: &str) -> RexonBridge {
     b
 }
 
-/// Снимок состояния: содержимое bridge.json + файлы команд (имя → текст),
-/// как `snap()` в python-скрипте снятия эталона.
+/// A state snapshot: the contents of bridge.json + the command files (name → text),
+/// like `snap()` in the python golden capture script.
 fn snap(b: &RexonBridge) -> (Option<String>, BTreeMap<String, String>) {
     let bridge = std::fs::read_to_string(&b.bridge_file).ok();
     let mut cmds = BTreeMap::new();
@@ -60,7 +60,7 @@ fn snap(b: &RexonBridge) -> (Option<String>, BTreeMap<String, String>) {
     (bridge, cmds)
 }
 
-/// Golden-снимок `{"bridge": …, "commands": {…}}` в ту же форму.
+/// The golden snapshot `{"bridge": …, "commands": {…}}` in the same shape.
 fn golden_snap(v: &Value) -> (Option<String>, BTreeMap<String, String>) {
     let bridge = v["bridge"].as_str().map(str::to_string);
     let cmds = v["commands"]
@@ -73,16 +73,16 @@ fn golden_snap(v: &Value) -> (Option<String>, BTreeMap<String, String>) {
 }
 
 // ============================================================================
-// Статика: реакции
+// Statics: reactions
 // ============================================================================
 
-/// Полный словарь DE-реакций совпадает с Python `DE_REACTIONS`
-/// (состав DE, порядок и содержимое всех реплик).
+/// The full dictionary of DE reactions matches Python's `DE_REACTIONS`
+/// (the set of DEs, the order and the contents of all lines).
 #[test]
 fn all_de_reactions_match_golden() {
     let g = golden();
     assert_eq!(all_de_reactions_value(), g["all_de_reactions"]);
-    // Порядок DE как в оригинале.
+    // The DE order as in the original.
     let keys: Vec<&str> = DE_REACTIONS.iter().map(|(k, _)| *k).collect();
     let golden_keys: Vec<&str> = g["all_de_reactions"]
         .as_object()
@@ -93,7 +93,7 @@ fn all_de_reactions_match_golden() {
     assert_eq!(keys, golden_keys);
 }
 
-/// Полный словарь событийных реакций совпадает с Python `EVENT_REACTIONS`.
+/// The full dictionary of event reactions matches Python's `EVENT_REACTIONS`.
 #[test]
 fn event_reactions_match_golden() {
     let g = golden();
@@ -107,8 +107,8 @@ fn event_reactions_match_golden() {
     assert_eq!(Value::Object(built), g["event_reactions_full"]);
 }
 
-/// `get_de_reactions`: точное совпадение, нормализация "cinnamon-mint" →
-/// "cinnamon", неизвестные/пустые → `{}` — все входы из golden.
+/// `get_de_reactions`: an exact match, normalization "cinnamon-mint" →
+/// "cinnamon", unknown/empty → `{}` — all inputs from the golden.
 #[test]
 fn de_reactions_lookup_matches_golden() {
     let g = golden();
@@ -119,12 +119,12 @@ fn de_reactions_lookup_matches_golden() {
             "get_de_reactions({input:?})"
         );
     }
-    // Типизированный доступ согласован с JSON-вариантом.
+    // Typed access agrees with the JSON variant.
     assert!(lookup_de_reactions("kde-x11").is_some());
     assert!(lookup_de_reactions("nope").is_none());
 }
 
-/// `get_event_reactions`: известные типы, неизвестный `de_switched` → [].
+/// `get_event_reactions`: known types, the unknown `de_switched` → [].
 #[test]
 fn event_reactions_lookup_matches_golden() {
     let g = golden();
@@ -138,12 +138,12 @@ fn event_reactions_lookup_matches_golden() {
 }
 
 // ============================================================================
-// Сценарий A: запись состояния Rexon (байт-в-байт с json.dump(indent=2))
+// Scenario A: writing Rexon's state (byte-for-byte with json.dump(indent=2))
 // ============================================================================
 
-/// Последовательность update_rexon_state → notify_de_switch → все notify →
-/// update_app_state даёт побайтно те же bridge.json и файлы команд/событий,
-/// что Python (порядок ключей, indent=2, ensure_ascii=False, имена файлов).
+/// The sequence update_rexon_state → notify_de_switch → all notify →
+/// update_app_state gives byte-wise the same bridge.json and command/event files
+/// as Python (key order, indent=2, ensure_ascii=False, file names).
 #[test]
 fn rexon_writes_scenario_byte_identical() {
     let g = golden();
@@ -185,18 +185,18 @@ fn rexon_writes_scenario_byte_identical() {
     assert_eq!(snap(&b), golden_snap(&steps[3]), "update_app_state");
 }
 
-/// Живые обои: у запуска и остановки СВОИ события, название сцены идёт
-/// полем при запуске, а признак `video_wallpaper_active` пишется в любом
-/// случае — даже когда весть подавлена.
+/// Live wallpapers: starting and stopping have THEIR OWN events, the scene name goes
+/// as a field on start, and the `video_wallpaper_active` flag is written in any
+/// case — even when the notice is suppressed.
 ///
-/// ⚠️ Не golden: у оригинала этого поведения не было вовсе. Остановка только
-/// гасила признак и не слала НИЧЕГО, названия сцены событие не носило, а
-/// подавить весть было нельзя — сверять не с чем.
+/// ⚠️ Not golden: the original did not have this behaviour at all. Stopping only
+/// cleared the flag and sent NOTHING, the event did not carry the scene name, and
+/// the notice could not be suppressed — there is nothing to compare with.
 #[test]
 fn video_wallpaper_events_carry_name_and_stop() {
     let b = fresh_bridge("wallpaper_events");
 
-    // Запуск с названием: поле `name` при событии.
+    // Start with a name: the `name` field on the event.
     b.notify_video_wallpaper(true, "Ночной город", true, NOW_ISO, EPOCH_MS)
         .unwrap();
     assert!(is_video_wallpaper_active(&b.read()), "признак поднят");
@@ -207,7 +207,7 @@ fn video_wallpaper_events_carry_name_and_stop() {
     assert_eq!(started["params"]["type"], "video_wallpaper_started");
     assert_eq!(started["params"]["name"], "Ночной город");
 
-    // Остановка: своё событие, названия при нём нет.
+    // Stop: its own event, without a name.
     b.notify_video_wallpaper(false, "", true, NOW_ISO, EPOCH_MS).unwrap();
     assert!(!is_video_wallpaper_active(&b.read()), "признак погашен");
     let (_, cmds) = snap(&b);
@@ -221,7 +221,7 @@ fn video_wallpaper_events_carry_name_and_stop() {
         "у остановки нет полей, кроме типа"
     );
 
-    // Пустое название и название из одних пробелов равносильны отсутствию.
+    // An empty name and a whitespace-only name are equivalent to no name.
     for name in ["", "   "] {
         let b = fresh_bridge("wallpaper_noname");
         b.notify_video_wallpaper(true, name, true, NOW_ISO, EPOCH_MS).unwrap();
@@ -236,7 +236,7 @@ fn video_wallpaper_events_carry_name_and_stop() {
         );
     }
 
-    // Подавленная весть: признак меняется, событий не появляется вовсе.
+    // A suppressed notice: the flag changes, no events appear at all.
     let b = fresh_bridge("wallpaper_silent");
     b.notify_video_wallpaper(true, "Ночной город", false, NOW_ISO, EPOCH_MS)
         .unwrap();
@@ -249,11 +249,11 @@ fn video_wallpaper_events_carry_name_and_stop() {
 }
 
 // ============================================================================
-// Сценарий B: геттеры
+// Scenario B: getters
 // ============================================================================
 
-/// Все геттеры на заполненном bridge.json дают значения Python
-/// (включая нормализацию current_de "cinnamon-mint" в get_de_reactions).
+/// All getters on a filled bridge.json give Python's values
+/// (including normalization of current_de "cinnamon-mint" in get_de_reactions).
 #[test]
 fn getters_filled_match_golden() {
     let g = golden();
@@ -303,14 +303,14 @@ fn getters_filled_match_golden() {
     );
     assert_eq!(get_bonzi_mood(&data), exp["get_bonzi_mood"].as_str().unwrap());
     assert_eq!(get_bonzi_position(&data), exp["get_bonzi_position"]);
-    // get_de_reactions() без аргумента = реакции для current_de из файла.
+    // get_de_reactions() without an argument = reactions for current_de from the file.
     assert_eq!(
         de_reactions_value(&get_current_de(&data)),
         exp["get_de_reactions_current"]
     );
 }
 
-/// Геттеры на отсутствующем bridge.json — дефолты Python
+/// Getters on a missing bridge.json — Python's defaults
 /// ("unknown"/""/0/false/None/"neutral"/{"x":0,"y":0}).
 #[test]
 fn getters_empty_match_golden() {
@@ -337,7 +337,7 @@ fn getters_empty_match_golden() {
     assert_eq!(get_bonzi_position(&data), exp["get_bonzi_position"]);
 }
 
-/// Битый bridge.json → `_read()` возвращает `{}` (Python логирует warning).
+/// A broken bridge.json → `_read()` returns `{}` (Python logs a warning).
 #[test]
 fn read_broken_bridge_is_empty() {
     let g = golden();
@@ -348,10 +348,10 @@ fn read_broken_bridge_is_empty() {
 }
 
 // ============================================================================
-// Сценарий C: команды / события / очистка
+// Scenario C: commands / events / cleanup
 // ============================================================================
 
-/// Выставить mtime файла (аналог `os.utime` в python-генераторе).
+/// Set a file's mtime (the analogue of `os.utime` in the python generator).
 fn set_mtime(path: &Path, epoch: f64) {
     let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64(epoch);
     std::fs::File::options()
@@ -362,10 +362,10 @@ fn set_mtime(path: &Path, epoch: f64) {
         .unwrap();
 }
 
-/// Полный сценарий: send_command/send_event → poll (с delete и без) →
-/// удаление мусора (битый JSON, JSON-не-объект, oversize; `.txt` не
-/// трогается) → cleanup_commands по возрасту → reset. Все снимки —
-/// побайтно как Python; списки poll — те же объекты в том же порядке.
+/// The full scenario: send_command/send_event → poll (with and without delete) →
+/// removing garbage (broken JSON, JSON that is not an object, oversize; `.txt` is not
+/// touched) → cleanup_commands by age → reset. All snapshots are
+/// byte-wise as in Python; the poll lists are the same objects in the same order.
 #[test]
 fn commands_scenario_matches_golden() {
     let g = golden();
@@ -396,7 +396,7 @@ fn commands_scenario_matches_golden() {
     assert_eq!(Value::Array(events), c["poll_events"], "poll_events");
     assert_eq!(snap(&b), golden_snap(&c["after_poll_events"]), "after_poll_events");
 
-    // Мусор: битый JSON, JSON-не-объект, oversize, не-.json.
+    // Garbage: broken JSON, JSON that is not an object, oversize, not .json.
     std::fs::write(b.commands_dir.join("aaa_broken.json"), "{{{").unwrap();
     std::fs::write(b.commands_dir.join("list.json"), "[1, 2]").unwrap();
     std::fs::write(
@@ -409,9 +409,9 @@ fn commands_scenario_matches_golden() {
     assert_eq!(Value::Array(polled), c["poll_garbage"], "poll_garbage");
     assert_eq!(snap(&b), golden_snap(&c["after_poll_garbage"]), "after_poll_garbage");
 
-    // Очистка по возрасту: старый (age 400 > 300) удаляется, свежий и
-    // notes.txt (age 10) остаются; файл с реальным mtime (будущее
-    // относительно EPOCH) — отрицательный age, остаётся.
+    // Cleanup by age: the old one (age 400 > 300) is removed, the fresh one and
+    // notes.txt (age 10) stay; a file with the real mtime (in the future
+    // relative to EPOCH) has a negative age and stays.
     b.send_command("bonzi", "old", Some(Map::new()), NOW_ISO, EPOCH_MS).unwrap();
     set_mtime(
         &b.commands_dir.join("bonzi_old_1753185600000.json"),
@@ -431,11 +431,11 @@ fn commands_scenario_matches_golden() {
 }
 
 // ============================================================================
-// Билдеры (чистые) — согласованность с файлами из golden
+// Builders (pure) — consistency with the files from the golden
 // ============================================================================
 
-/// `build_command`/`build_event` без записи дают тот же JSON, что файлы
-/// в golden-сценарии (порядок ключей: target, command, params, timestamp, id).
+/// `build_command`/`build_event` without writing give the same JSON as the files
+/// in the golden scenario (key order: target, command, params, timestamp, id).
 #[test]
 fn builders_match_golden_files() {
     let g = golden();
@@ -452,7 +452,7 @@ fn builders_match_golden_files() {
         serde_json::from_str(files["bonzi_say_1753185600000.json"].as_str().unwrap()).unwrap();
     assert_eq!(msg.value, expected);
 
-    // params=None → {} (как `params or {}`).
+    // params=None → {} (like `params or {}`).
     let msg = build_command("bonzi", "animate", None, NOW_ISO, EPOCH_MS, 0);
     let expected: Value =
         serde_json::from_str(files["bonzi_animate_1753185600000.json"].as_str().unwrap()).unwrap();
@@ -468,7 +468,7 @@ fn builders_match_golden_files() {
     assert_eq!(msg.value, expected);
 }
 
-/// Обновления секции при переключении DE — те же 4 ключа в том же порядке.
+/// Section updates on a DE switch — the same 4 keys in the same order.
 #[test]
 fn de_switch_updates_keys() {
     let m = de_switch_updates("kde", "gnome", NOW_ISO);
@@ -483,14 +483,14 @@ fn de_switch_updates_keys() {
 }
 
 // ============================================================================
-// Намеренные расхождения (починки багов оригинала — golden под починенное
-// поведение, Python-поведение было крэшем/потерей данных)
+// Deliberate deviations (fixes of the original's bugs — the golden is for the fixed
+// behaviour, the Python behaviour was a crash/data loss)
 // ============================================================================
 
-/// Починка: секция-НЕ-словарь в bridge.json (мусор стороннего приложения)
-/// молча заменяется словарём. В оригинале `data[section].update(...)`
-/// ронял AttributeError и в основной ветке, и в fallback — любой notify
-/// падал, мост оставался сломанным навсегда.
+/// Fix: a section that is NOT a dict in bridge.json (garbage from a third-party application)
+/// is silently replaced by a dict. In the original `data[section].update(...)`
+/// raised AttributeError both in the main branch and in the fallback — any notify
+/// crashed, the bridge stayed broken forever.
 #[test]
 fn fixed_merge_into_non_dict_section() {
     let mut data = Map::new();
@@ -503,9 +503,9 @@ fn fixed_merge_into_non_dict_section() {
     assert_eq!(rexon["_updated_at"], NOW_ISO);
 }
 
-/// Починка: нецелый pid (строка) в `is_app_running`. В оригинале
-/// `os.kill("123", 0)` ронял TypeError мимо `except (ProcessLookupError,
-/// PermissionError)`. Теперь — как ветка без pid: truthy(running).
+/// Fix: a non-integer pid (a string) in `is_app_running`. In the original
+/// `os.kill("123", 0)` raised TypeError past `except (ProcessLookupError,
+/// PermissionError)`. Now — like the branch without a pid: truthy(running).
 #[test]
 fn fixed_app_running_non_int_pid() {
     let mut state = Map::new();
@@ -514,40 +514,40 @@ fn fixed_app_running_non_int_pid() {
     assert!(app_running(&state, |_| unreachable!("pid_alive не должен вызываться")));
 }
 
-/// Починка: pid ≤ 0. В оригинале `os.kill(-1, 0)` слал сигнал ГРУППЕ
-/// процессов (спецсемантика kill) и почти всегда давал true. Теперь
-/// такой pid игнорируется, живость решается по truthy(running).
+/// Fix: pid ≤ 0. In the original `os.kill(-1, 0)` sent a signal to a process GROUP
+/// (kill's special semantics) and almost always gave true. Now
+/// such a pid is ignored, liveness is decided by truthy(running).
 #[test]
 fn fixed_app_running_non_positive_pid() {
     let mut state = Map::new();
     state.insert("running".into(), Value::Bool(true));
     state.insert("pid".into(), Value::from(-1));
     assert!(app_running(&state, |_| unreachable!("pid_alive не должен вызываться")));
-    // pid=0 falsy и в Python (`if pid:`) — ветка без проверки процесса.
+    // pid=0 is falsy in Python too (`if pid:`) — the branch without a process check.
     state.insert("pid".into(), Value::from(0));
     assert!(app_running(&state, |_| unreachable!()));
 }
 
-/// Обычные ветки `is_app_running` (паритет): running falsy → false;
-/// валидный pid → ответ pid_alive.
+/// The ordinary branches of `is_app_running` (parity): running falsy → false;
+/// a valid pid → the pid_alive answer.
 #[test]
 fn app_running_normal_branches() {
     let mut state = Map::new();
-    assert!(!app_running(&state, |_| true)); // running отсутствует
+    assert!(!app_running(&state, |_| true)); // running is absent
     state.insert("running".into(), Value::Bool(true));
     state.insert("pid".into(), Value::from(4242));
     assert!(app_running(&state, |pid| {
         assert_eq!(pid, 4242);
         true
     }));
-    assert!(!app_running(&state, |_| false)); // процесс мёртв
+    assert!(!app_running(&state, |_| false)); // the process is dead
     state.insert("running".into(), Value::Bool(false));
-    assert!(!app_running(&state, |_| true)); // running=false — pid не проверяется
+    assert!(!app_running(&state, |_| true)); // running=false — the pid is not checked
 }
 
-/// Починка: коллизия имён при двух командах в одну миллисекунду.
-/// В оригинале второй файл молча затирал первый (команда терялась) —
-/// теперь второй получает суффикс `_1`, обе команды доходят.
+/// Fix: a name collision with two commands in the same millisecond.
+/// In the original the second file silently overwrote the first one (the command was lost) —
+/// now the second one gets the `_1` suffix, both commands get through.
 #[test]
 fn fixed_command_name_collision_gets_suffix() {
     let b = fresh_bridge("collision");
@@ -559,13 +559,13 @@ fn fixed_command_name_collision_gets_suffix() {
         .unwrap();
     assert_eq!(f1, "bonzi_say_1753185600000.json");
     assert_eq!(f2, "bonzi_say_1753185600000_1.json");
-    // id внутри файла согласован с именем.
+    // The id inside the file agrees with the name.
     let cmds = b.poll_commands("bonzi", false);
     assert_eq!(cmds.len(), 2);
     assert_eq!(cmds[1]["id"], "bonzi_say_1753185600000_1");
 }
 
-/// Пути по умолчанию строятся от $HOME (как expanduser в оригинале).
+/// Default paths are built from $HOME (like expanduser in the original).
 #[test]
 fn default_paths_under_home() {
     let b = RexonBridge::new_default();
@@ -573,8 +573,8 @@ fn default_paths_under_home() {
     assert!(b.commands_dir.ends_with(".config/rexon/bridge_commands"));
 }
 
-/// Запись bridge.json атомарна: после write нет `.tmp`-огрызка, а
-/// чтение возвращает записанное.
+/// Writing bridge.json is atomic: after a write there is no `.tmp` stub, and
+/// reading returns what was written.
 #[test]
 fn write_bridge_atomic_roundtrip() {
     let b = fresh_bridge("atomic");
@@ -586,13 +586,13 @@ fn write_bridge_atomic_roundtrip() {
     assert_eq!(read_bridge(&b.bridge_file), data);
 }
 
-/// Правило #12: у КАЖДОГО поддерживаемого рабочего стола должны быть реплики.
+/// Rule #12: EVERY supported desktop must have lines.
 ///
-/// Инцидент, который этот тест закрывает: LXQt, niri и sway добавили в
-/// `_DE_DATABASE` (rexon/system.py), а в `DE_REACTIONS` забыли — BonziBuddy
-/// в этих трёх окружениях молчал (`get_de_reactions` отдавал `{}`, а
-/// нормализация «имя до дефиса» им не помогает, дефиса в именах нет).
-/// Добавляешь DE в базу — добавь и реплики, иначе тест упадёт.
+/// The incident this test closes: LXQt, niri and sway were added to
+/// `_DE_DATABASE` (rexon/system.py), but forgotten in `DE_REACTIONS` — BonziBuddy
+/// was silent in these three environments (`get_de_reactions` returned `{}`, and
+/// the "name up to the hyphen" normalization does not help them, their names have no hyphen).
+/// Adding a DE to the database — add the lines too, otherwise the test will fail.
 #[test]
 fn every_supported_de_has_reactions() {
     let missing: Vec<&str> = rexon_core::system::list_de_ids()
@@ -603,6 +603,6 @@ fn every_supported_de_has_reactions() {
         missing.is_empty(),
         "нет реплик BonziBuddy для DE: {missing:?} — правило #12"
     );
-    // Нормализация «имя до дефиса» покрывает редакции вроде cinnamon-mint.
+    // The "name up to the hyphen" normalization covers editions like cinnamon-mint.
     assert!(lookup_de_reactions("cinnamon-mint").is_some());
 }

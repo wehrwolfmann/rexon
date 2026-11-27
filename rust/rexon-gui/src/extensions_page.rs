@@ -1,44 +1,46 @@
-// ExtensionsModel — вкладка «Расширения» на Rust + cxx-qt + QML.
+// ExtensionsModel — the "Extensions" tab on Rust + cxx-qt + QML.
 //
-// Перенесена на QML по общей схеме вкладок: решения и подписи — ядро,
-// здесь оболочка QObject, в QML только разметка.
+// Moved to QML by the shared tab scheme: decisions and labels come from the
+// core, here is the QObject wrapper, and QML has only markup.
 //
-// Особенность именно этой вкладки: до переноса она была ЕДИНСТВЕННОЙ крупной
-// Qt-вкладкой, не подключённой к ядру вовсе — в `rexon/qt_extensions/window.py`
-// не встречалось ни одного обращения к `rexon_py`, хотя вся механика
-// расширений давно жила в `rexon_core::{ext_manager, extension, constants}`.
-// Поэтому перенос — это не только разметка: содержимое витрины уехало в
-// `rexon_core::qt_extensions`, а состав установленного модель читает с диска
-// сама, через ядро.
+// The peculiarity of this tab: before the port it was the ONLY large Qt
+// tab not connected to the core at all — `rexon/qt_extensions/window.py`
+// did not contain a single call to `rexon_py`, although all the extension
+// mechanics had long lived in `rexon_core::{ext_manager, extension,
+// constants}`. So the port is not only markup: the showcase content moved
+// to `rexon_core::qt_extensions`, and the model reads the set of installed
+// extensions from disk by itself, through the core.
 //
-// Что здесь есть и чего нет:
-//   * ЕСТЬ оболочка QObject: модель списка расширений (роли для делегата в
-//     обоих режимах показа), неизменные подписи страницы, кнопки фильтров,
-//     строка статистики, подробный разбор одним вызовом, тексты строки
-//     состояния;
-//   * НЕТ ни одной строки продуктовых решений — что показать, в каком
-//     порядке, каким цветом и какими словами, отвечает ядро.
+// What is here and what is not:
+//   * there IS the QObject wrapper: the extension list model (roles for the
+//     delegate in both display modes), the fixed page labels, the filter
+//     buttons, the statistics line, the detailed view in one call, the
+//     status line texts;
+//   * there is NOT a single line of product decisions — what to show, in
+//     what order, in what colour and with what words is the core's
+//     business.
 //
-// Побочные действия (установка .rxn, удаление, включение/выключение) в этот
-// объект НЕ входят: они ходят в файловую систему, запускают скрипты
-// расширений и при нужде поднимают pkexec — всё это пока делает
-// `rexon/extensions/manager.py`. QML зовёт их через объект `actions`,
-// который кладёт хозяин страницы, и после каждого исхода просит модель
-// перечитать состав (`refresh`).
+// Side actions (installing an .rxn, removal, enabling/disabling) are NOT
+// part of this object: they touch the file system, run extension scripts
+// and bring up pkexec when needed — all of that is still done by
+// `rexon/extensions/manager.py`. QML calls them through the `actions`
+// object put in by the page host, and after each outcome asks the model to
+// re-read the set (`refresh`).
 
-/// Мост cxx-qt: содержимое вкладки «Расширения». Оно же — модель списка.
+/// cxx-qt bridge: the content of the "Extensions" tab. It is also the list
+/// model.
 ///
-/// ⚠️ Тип зовётся `ExtensionsModel`, а не `ExtensionsPage`: .qml-файлы модуля
-/// сами становятся QML-типами по имени файла, и `ExtensionsPage` занят
-/// `qml/ExtensionsPage.qml`. Правило на все вкладки: вид — `<Имя>Page.qml`,
-/// объект — `<Имя>Model`.
+/// Warning: the type is called `ExtensionsModel`, not `ExtensionsPage`: the
+/// module's .qml files become QML types by file name themselves, and
+/// `ExtensionsPage` is taken by `qml/ExtensionsPage.qml`. The rule for all
+/// tabs: the view is `<Name>Page.qml`, the object `<Name>Model`.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        /// Базовый Qt-тип. БЕЗ `#[qobject]`: на каждый `#[qobject]`-тип в
-        /// `extern "C++Qt"` cxx-qt печатает шимы приведения с именем по ТИПУ,
-        /// и второй мост крейта с той же базой даёт `duplicate symbol`.
+        /// The base Qt type. WITHOUT `#[qobject]`: for every `#[qobject]` type in
+        /// `extern "C++Qt"` cxx-qt emits cast shims named after the TYPE, and a
+        /// second bridge of the crate with the same base gives a `duplicate symbol`.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -67,7 +69,7 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        // ── Неизменные подписи страницы ──────────────────────────────────
+        // ── Fixed page labels ────────────────────────────────────────────
         #[qproperty(QString, window_title, cxx_name = "windowTitle",
                     READ = window_title, CONSTANT)]
         #[qproperty(i32, window_min_width, cxx_name = "windowMinWidth",
@@ -108,7 +110,7 @@ pub mod qobject {
                     READ = card_text_width, CONSTANT)]
         #[qproperty(i32, preview_height, cxx_name = "previewHeight",
                     READ = preview_height, CONSTANT)]
-        // Блок «⬇ Установить»: [{kind, icon, label, tooltip, enabled, text}, …].
+        // The "⬇ Install" block: [{kind, icon, label, tooltip, enabled, text}, …].
         #[qproperty(QList_QVariant, install_sources, cxx_name = "installSources",
                     READ = install_sources, CONSTANT)]
         #[qproperty(i32, source_min_width, cxx_name = "sourceMinWidth",
@@ -117,7 +119,7 @@ pub mod qobject {
                     READ = source_max_width, CONSTANT)]
         #[qproperty(i32, source_min_height, cxx_name = "sourceMinHeight",
                     READ = source_min_height, CONSTANT)]
-        // Справка «Создать своё».
+        // The "Create your own" help.
         #[qproperty(QString, create_title, cxx_name = "createTitle",
                     READ = create_title, CONSTANT)]
         #[qproperty(QString, create_header, cxx_name = "createHeader",
@@ -130,7 +132,7 @@ pub mod qobject {
                     READ = create_min_width, CONSTANT)]
         #[qproperty(i32, create_min_height, cxx_name = "createMinHeight",
                     READ = create_min_height, CONSTANT)]
-        // Подробный разбор.
+        // Detailed view.
         #[qproperty(i32, detail_min_width, cxx_name = "detailMinWidth",
                     READ = detail_min_width, CONSTANT)]
         #[qproperty(i32, detail_min_height, cxx_name = "detailMinHeight",
@@ -145,23 +147,23 @@ pub mod qobject {
                     READ = detail_uninstall_text, CONSTANT)]
         #[qproperty(QString, detail_close_text, cxx_name = "detailCloseText",
                     READ = detail_close_text, CONSTANT)]
-        // Окно выбора файла и подтверждение — хозяину побочных действий.
+        // The file picker window and the confirmation — for the side-actions host.
         #[qproperty(QString, file_dialog_title, cxx_name = "fileDialogTitle",
                     READ = file_dialog_title, CONSTANT)]
         #[qproperty(QString, file_dialog_filter, cxx_name = "fileDialogFilter",
                     READ = file_dialog_filter, CONSTANT)]
         #[qproperty(QString, confirm_title, cxx_name = "confirmTitle",
                     READ = confirm_title, CONSTANT)]
-        // Палитра стандартного скина приложения (steam_dark, правило #17).
+        // The application's standard skin palette (steam_dark, rule #17).
         #[qproperty(QMap_QString_QVariant, palette, READ = palette,
                     NOTIFY = palette_changed)]
-        // Оформление вкладки, которого нет в палитре скина: чипы, плитка,
-        // заглушка превью, строка списка, блок «Установить», раскладка.
-        // Меняется вместе со скином (пары «тёмная/светлая»), поэтому тот же
-        // сигнал, что у палитры.
+        // Tab styling that is not in the skin palette: chips, the tile, the
+        // preview placeholder, the list row, the "Install" block, the layout. It
+        // changes together with the skin ("dark/light" pairs), hence the same
+        // signal as for the palette.
         #[qproperty(QMap_QString_QVariant, styles, READ = styles,
                     NOTIFY = palette_changed)]
-        // ── Меняющееся ───────────────────────────────────────────────────
+        // ── Changing ─────────────────────────────────────────────────────
         #[qproperty(QString, stats_line, cxx_name = "statsLine",
                     READ = stats_line, NOTIFY = summary_changed)]
         #[qproperty(QString, my_header, cxx_name = "myHeader",
@@ -182,19 +184,19 @@ pub mod qobject {
         type ExtensionsModel = super::ExtensionsModelRust;
     }
 
-    // ── Сигналы ───────────────────────────────────────────────────────────
+    // ── Signals ───────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
-        /// Всё, что меняется вместе с составом витрины: статистика, заголовок
-        /// «Мои расширения», подсказка пустого состояния, кнопки фильтров,
-        /// счётчик. Один сигнал, а не пять: меняются они всегда разом, и
-        /// пятью сигналами разметка получила бы пять пересчётов подряд.
-        /// Скин сменили на лету — палитру пересчитать.
+        /// Everything that changes together with the showcase contents: the
+        /// statistics, the "My extensions" title, the empty state hint, the filter
+        /// buttons, the counter. One signal, not five: they always change together,
+        /// and with five signals the markup would get five recomputations in a row.
+        /// The skin was changed on the fly — recompute the palette.
         ///
-        /// Свойство `palette` НЕ `CONSTANT` именно поэтому: без сигнала
-        /// привязки QML (`readonly property var pal: page.palette`) не
-        /// пересчитываются, и открытая вкладка остаётся в цветах прошлого
-        /// скина, пока окно на виджетах уже перекрашено. Толчок приходит из
-        /// общего реестра (`crate::skin`), а не отсюда.
+        /// The `palette` property is NOT `CONSTANT` precisely because of this:
+        /// without a signal the QML bindings (`readonly property var pal:
+        /// page.palette`) do not recompute, and an open tab stays in the previous
+        /// skin's colours while the widget window is already repainted. The push
+        /// comes from the shared registry (`crate::skin`), not from here.
         #[qsignal]
         #[cxx_name = "paletteChanged"]
         fn palette_changed(self: Pin<&mut ExtensionsModel>);
@@ -208,28 +210,29 @@ pub mod qobject {
         fn status_changed(self: Pin<&mut ExtensionsModel>);
     }
 
-    // ── Наследуемые методы базового класса ────────────────────────────────
+    // ── Inherited methods of the base class ───────────────────────────────
     //
-    // Сброс модели целиком, а не точечное `dataChanged`: смена фильтра,
-    // поиска или режима показа меняет и состав строк, и их порядок — это и
-    // есть тот случай, ради которого в Qt существует reset.
+    // Resetting the whole model rather than a targeted `dataChanged`: a change
+    // of the filter, the search or the display mode changes both the set of
+    // rows and their order — exactly the case reset exists for in Qt.
     extern "RustQt" {
         /// # Safety
-        /// Требует парного end_reset_model.
+        /// Requires a paired end_reset_model.
         #[inherit]
         #[cxx_name = "beginResetModel"]
         unsafe fn begin_reset_model(self: Pin<&mut ExtensionsModel>);
         /// # Safety
-        /// Парный к begin_reset_model.
+        /// Paired with begin_reset_model.
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut ExtensionsModel>);
     }
 
-    // ── Переопределения QAbstractListModel ────────────────────────────────
-    // Без #[qinvokable]: инвокабл в наследнике затеняет укороченные клоны
-    // сигнатур базы, которые moc делает ради default-аргументов, и
-    // rowCount() без аргументов из JS падает «Insufficient arguments».
+    // ── QAbstractListModel overrides ──────────────────────────────────────
+    // Without #[qinvokable]: an invokable in a subclass shadows the shortened
+    // clones of the base's signatures that moc makes for default arguments,
+    // and rowCount() without arguments from JS fails with "Insufficient
+    // arguments".
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -243,7 +246,7 @@ pub mod qobject {
         fn data(self: &ExtensionsModel, index: &QModelIndex, role: i32) -> QVariant;
     }
 
-    // ── Чтение свойств ────────────────────────────────────────────────────
+    // ── Property reading ──────────────────────────────────────────────────
     extern "RustQt" {
         #[cxx_name = "windowTitle"]
         fn window_title(self: &ExtensionsModel) -> QString;
@@ -345,63 +348,65 @@ pub mod qobject {
         fn status_text(self: &ExtensionsModel) -> QString;
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     //
-    // ⚠️ Ни одного инвокабла с числом в подписи: cxx-qt пишет в метаобъект
-    // тип как `::std::int32_t`, метатипа с таким именем нет, и вызов через
-    // `QMetaObject.invokeMethod` молча возвращает False. Всё, что нужно
-    // звать снаружи (проверки, хозяин страницы), принимает QString.
+    // Warning: not a single invokable with a number in its signature: cxx-qt
+    // writes the type into the metaobject as `::std::int32_t`, there is no
+    // metatype with that name, and a call through `QMetaObject.invokeMethod`
+    // silently returns False. Everything that must be called from outside
+    // (checks, the page host) takes a QString.
     extern "RustQt" {
-        /// Перечитать состав установленных расширений с диска.
+        /// Re-read the set of installed extensions from disk.
         #[qinvokable]
         fn refresh(self: Pin<&mut ExtensionsModel>);
 
-        /// Выбрать фильтр по типу (`all` либо идентификатор типа).
+        /// Choose a filter by type (`all` or a type identifier).
         #[qinvokable]
         #[cxx_name = "setFilter"]
         fn set_filter(self: Pin<&mut ExtensionsModel>, filter_type: &QString);
 
-        /// Задать строку поиска.
+        /// Set the search string.
         #[qinvokable]
         #[cxx_name = "setSearch"]
         fn set_search(self: Pin<&mut ExtensionsModel>, text: &QString);
 
-        /// Переключить режим показа (`grid` либо `list`).
+        /// Switch the display mode (`grid` or `list`).
         #[qinvokable]
         #[cxx_name = "setViewMode"]
         fn set_view_mode(self: Pin<&mut ExtensionsModel>, mode: &QString);
 
-        /// Подробный разбор расширения целиком. Пустой QVariant — такого
-        /// расширения на витрине нет (окно тогда не открывается).
+        /// The detailed view of an extension in full. An empty QVariant means there
+        /// is no such extension on the showcase (then the window does not open).
         #[qinvokable]
         #[cxx_name = "detailFor"]
         fn detail_for(self: &ExtensionsModel, ext_id: &QString) -> QVariant;
 
-        /// Текст подтверждения удаления с витрины.
+        /// Text of the removal confirmation from the showcase.
         #[qinvokable]
         #[cxx_name = "confirmUninstall"]
         fn confirm_uninstall(self: &ExtensionsModel, ext_id: &QString) -> QString;
 
-        /// Текст подтверждения удаления из подробного разбора (с каталогом).
+        /// Text of the removal confirmation from the detailed view (with the
+        /// directory).
         #[qinvokable]
         #[cxx_name = "confirmUninstallDetailed"]
         fn confirm_uninstall_detailed(self: &ExtensionsModel, ext_id: &QString) -> QString;
 
-        /// Название расширения по идентификатору (для строки состояния).
+        /// Extension name by identifier (for the status line).
         #[qinvokable]
         #[cxx_name = "displayName"]
         fn display_name(self: &ExtensionsModel, ext_id: &QString) -> QString;
 
-        /// Принимаем ли такой файл перетаскиванием.
+        /// Whether such a file is accepted by drag and drop.
         #[qinvokable]
         #[cxx_name = "acceptsDrop"]
         fn accepts_drop(self: &ExtensionsModel, path: &QString) -> bool;
 
-        // ── Строка состояния: текст собирает ядро, разметка только зовёт ──
+        // ── Status line: the core composes the text, the markup only calls ──
         #[qinvokable]
         #[cxx_name = "noteInstalling"]
         fn note_installing(self: Pin<&mut ExtensionsModel>, path: &QString);
-        /// Готовая строка в строку состояния (итог «Применить»).
+        /// A ready line for the status line (the result of "Apply").
         #[qinvokable]
         #[cxx_name = "noteText"]
         fn note_text(self: Pin<&mut ExtensionsModel>, text: &QString);
@@ -436,25 +441,27 @@ pub mod qobject {
         #[cxx_name = "noteToggleError"]
         fn note_toggle_error(self: Pin<&mut ExtensionsModel>, message: &QString);
 
-        /// Номер роли по имени (-1, если роли нет) — для проверок без
-        /// делегата, как в соседних моделях крейта.
+        /// Role number by name (-1 if there is no such role) — for checks without a
+        /// delegate, as in the neighbouring models of the crate.
         #[qinvokable]
         #[cxx_name = "roleNumber"]
         fn role_number(self: &ExtensionsModel, name: &QString) -> i32;
 
-        /// Значение роли строки по её идентификатору — проверки без делегата.
-        /// Номер строки не годится: инвокабл с числом снаружи не зовётся.
+        /// A row's role value by its identifier — checks without a delegate. A row
+        /// number will not do: an invokable with a number is not callable from
+        /// outside.
         #[qinvokable]
         #[cxx_name = "roleValueOf"]
         fn role_value_of(self: &ExtensionsModel, ext_id: &QString, name: &QString) -> QVariant;
     }
 
-    // Объявление трейта обязано быть В МОСТЕ, иначе `impl cxx_qt::Initialize`
-    // снаружи не находит конструктора: cxx-qt печатает его по этой строке.
+    // The trait declaration must be IN THE BRIDGE, otherwise an
+    // `impl cxx_qt::Initialize` outside does not find the constructor: cxx-qt
+    // emits it from this line.
     impl cxx_qt::Initialize for ExtensionsModel {}
-    // Подписка на смену скина идёт через `CxxQtThread::queue`, и трейт
-    // потока обязан быть объявлен В МОСТЕ: cxx-qt печатает по этой
-    // строке и сам `qt_thread()`, и его алиас типа.
+    // Subscribing to skin changes goes through `CxxQtThread::queue`, and the
+    // thread trait must be declared IN THE BRIDGE: cxx-qt emits both
+    // `qt_thread()` itself and its type alias from this line.
     impl cxx_qt::Threading for ExtensionsModel {}
 }
 
@@ -468,19 +475,19 @@ use rexon_core::qt_extensions as qe;
 use rexon_core::ui_base;
 
 // ============================================================================
-// Роли модели
+// Model roles
 // ============================================================================
 
-/// Роли начинаются с Qt::UserRole + 1 (Qt::UserRole == 256).
+/// Roles start at Qt::UserRole + 1 (Qt::UserRole == 256).
 const ROLE_BASE: i32 = 256 + 1;
 
-/// Имена ролей в порядке номеров — единственный источник истины и для
-/// roleNames, и для data(), и для roleNumber().
+/// Role names in number order — the single source of truth for roleNames,
+/// data() and roleNumber().
 ///
-/// Роли покрывают ОБА режима показа сразу: делегат сетки берёт `typeLine` и
-/// `name`, делегат списка — `titleHtml` и `subtitle`. Двух моделей на одну
-/// витрину не заводим: состав и порядок у них общие, разной остаётся только
-/// разметка.
+/// The roles cover BOTH display modes at once: the grid delegate takes
+/// `typeLine` and `name`, the list delegate `titleHtml` and `subtitle`. We do
+/// not create two models for one showcase: their set and order are shared,
+/// only the markup differs.
 const ROLE_NAMES: [&str; 16] = [
     "extId",
     "extType",
@@ -500,16 +507,18 @@ const ROLE_NAMES: [&str; 16] = [
     "subtitle",
 ];
 
-/// Роль заголовка группы режима «список» — она одна не про расширение, а про
-/// его место в списке, поэтому идёт последней и отдельно.
+/// The group title role of "list" mode — the only one that is not about the
+/// extension but about its place in the list, so it goes last and
+/// separately.
 const ROLE_GROUP_HEADER: &str = "groupHeader";
 const ROLE_GROUP_HEADER_NUM: i32 = ROLE_BASE + ROLE_NAMES.len() as i32;
 
 // ============================================================================
-// Мелочи перевода в Qt
+// Translation odds and ends in Qt
 // ============================================================================
 
-/// Собрать QVariantMap из пар. QML читает такую карту точкой (`row.label`).
+/// Build a QVariantMap from pairs. QML reads such a map with a dot
+/// (`row.label`).
 fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
     let mut out = QMap::<QMapPair_QString_QVariant>::default();
     for (key, value) in pairs {
@@ -522,8 +531,8 @@ fn qstr(value: &str) -> QVariant {
     QVariant::from(&QString::from(value))
 }
 
-/// Путь на диске → адрес для `Image.source`. Пустой путь остаётся пустым:
-/// разметка по нему решает, рисовать ли значок-заглушку.
+/// A path on disk → an address for `Image.source`. An empty path stays
+/// empty: the markup decides by it whether to draw a placeholder icon.
 fn file_url(path: &str) -> String {
     if path.is_empty() {
         String::new()
@@ -533,35 +542,37 @@ fn file_url(path: &str) -> String {
 }
 
 // ============================================================================
-// Rust-состояние страницы
+// Rust state of the page
 // ============================================================================
 
-/// Состояние вкладки: что прочитано с диска и что из этого показано.
+/// Tab state: what was read from disk and what of it is shown.
 #[derive(Default)]
 pub struct ExtensionsModelRust {
-    /// Номер записи в общем реестре смены скина (`crate::skin`).
-    /// 0 — страница ещё не подписана.
+    /// Entry number in the shared skin change registry (`crate::skin`).
+    /// 0 means the page is not subscribed yet.
     skin_watch: u64,
-    /// Всё установленное, в порядке ядра.
+    /// Everything installed, in core order.
     all: Vec<qe::ExtView>,
-    /// Номера показанных строк в `all`, уже с учётом фильтра, поиска и
-    /// режима показа (в режиме «список» порядок групповой).
+    /// Numbers of the shown rows in `all`, already taking the filter, the
+    /// search and the display mode into account (in "list" mode the order is by
+    /// group).
     visible: Vec<usize>,
-    /// Заголовок группы для каждой показанной строки («» — не первая в
-    /// группе либо режим сетки).
+    /// Group title for each shown row ("" — not the first in the group, or grid
+    /// mode).
     group_headers: Vec<String>,
     filter_type: String,
     search: String,
     view_mode: String,
     status: String,
-    /// Состав собирается при первом обращении, а не в конструкторе:
-    /// объявленный конструктор в cxx-qt отменяет дефолтный с родителем.
+    /// The set is built on first access, not in the constructor: a declared
+    /// constructor in cxx-qt cancels the default one with a parent.
     loaded: bool,
 }
 
-/// Снять подписку на смену скина. Без этого реестр держал бы запись
-/// закрытой вкладки до первой рассылки — та её отсеет по
-/// `ObjectDestroyed`, но копить мусор незачем.
+/// Remove the skin change subscription. Without this the registry would
+/// keep the closed tab's entry until the next broadcast — that one would
+/// filter it out by `ObjectDestroyed`, but there is no reason to accumulate
+/// garbage.
 impl Drop for ExtensionsModelRust {
     fn drop(&mut self) {
         crate::skin::unwatch(self.skin_watch);
@@ -569,20 +580,20 @@ impl Drop for ExtensionsModelRust {
 }
 
 impl ExtensionsModelRust {
-    /// Пересобрать показанное по текущим фильтру, поиску и режиму.
+    /// Rebuild what is shown by the current filter, search and mode.
     fn recompute(&mut self) {
         let filter = if self.filter_type.is_empty() {
             qe::FILTER_ALL_ID.to_string()
         } else {
             self.filter_type.clone()
         };
-        // Фильтр мог остаться от состава, которого больше нет.
+        // The filter may have stayed from a set that no longer exists.
         let items = qe::filter_items(&qe::installed_types(&self.all));
         self.filter_type = qe::normalize_filter(&filter, &items);
 
         let picked = qe::apply_filters(&self.all, &self.filter_type, &self.search);
-        // От ссылок обратно к номерам: модель хранит номера, чтобы не
-        // держать вторую копию расширений.
+        // From references back to numbers: the model stores numbers so as not to
+        // keep a second copy of the extensions.
         let mut order: Vec<usize> = picked
             .iter()
             .map(|p| {
@@ -626,22 +637,22 @@ impl ExtensionsModelRust {
         }
     }
 
-    /// Расширение по номеру показанной строки.
+    /// Extension by the number of a shown row.
     fn row(&self, row: i32) -> Option<&qe::ExtView> {
         let index = *self.visible.get(usize::try_from(row).ok()?)?;
         self.all.get(index)
     }
 
-    /// Расширение по идентификатору — среди ВСЕГО установленного, а не
-    /// только показанного: подробный разбор открывают и по строке, которую
-    /// поиск через мгновение спрячет.
+    /// Extension by identifier — among EVERYTHING installed, not only what is
+    /// shown: the detailed view is also opened from a row that the search will
+    /// hide a moment later.
     fn by_id(&self, ext_id: &str) -> Option<&qe::ExtView> {
         self.all.iter().find(|e| e.ext_id == ext_id)
     }
 }
 
 impl qobject::ExtensionsModel {
-    // ── Неизменные подписи ────────────────────────────────────────────────
+    // ── Fixed labels ──────────────────────────────────────────────────────
     fn window_title(&self) -> QString {
         QString::from(&qe::window_title())
     }
@@ -813,10 +824,10 @@ impl qobject::ExtensionsModel {
         QString::from(&qe::confirm_title())
     }
 
-    /// Палитра ДЕЙСТВУЮЩЕГО скина (сохранённый `ui_skin`, откат к
-    /// стандартному по правилу #17) плюс цвета, которые задаёт сама вкладка
-    /// через ядро. Оформление QML-вкладки берётся отсюда, а не пишется
-    /// заново: скин один на весь продукт.
+    /// Palette of the ACTIVE skin (the saved `ui_skin`, falling back to the
+    /// standard one by rule #17) plus the colours the tab itself sets through
+    /// the core. The QML tab's styling is taken from here rather than written
+    /// anew: there is one skin for the whole product.
     fn palette(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut out = QMap::<QMapPair_QString_QVariant>::default();
         for (key, value) in &ui_base::active_qml_palette() {
@@ -831,9 +842,8 @@ impl qobject::ExtensionsModel {
             qstr(qe::STATE_DISABLED_COLOR),
         );
         out.insert(QString::from("accent_info"), qstr(qe::ACCENT_INFO_COLOR));
-        // Начертание вторичных подписей (600 — `secondary_text_qss`
-        // виджетов): число одно на обе обёртки, ключ — тот же, что у
-        // «Сравнения».
+        // Weight of secondary labels (600 — the widgets' `secondary_text_qss`):
+        // one number for both wrappers, the key is the same as in "Compare".
         out.insert(
             QString::from("text_secondary_weight"),
             QVariant::from(&ui_base::SECONDARY_TEXT_WEIGHT),
@@ -847,8 +857,9 @@ impl qobject::ExtensionsModel {
             QString::from("danger_fill_hover_alpha"),
             QVariant::from(&qe::DANGER_FILL_HOVER_ALPHA),
         );
-        // Затемнение фона под модальным окном — общее решение продукта
-        // (`ui_base::MODAL_DIM_RGBA`), тем же цветом гасит окно обучение.
+        // Background dimming under a modal window is a product-wide decision
+        // (`ui_base::MODAL_DIM_RGBA`); the tutorial dims the window with the same
+        // colour.
         out.insert(
             QString::from("modal_dim"),
             qstr(&ui_base::modal_dim_argb_hex()),
@@ -856,11 +867,12 @@ impl qobject::ExtensionsModel {
         out
     }
 
-    /// Оформление вкладки, которого нет в палитре скина.
+    /// Tab styling that is not in the skin palette.
     ///
-    /// ⚠️ КАЖДАЯ краска проходит через [`ui_base::css_color_to_qml`]: у ядра
-    /// они набраны так, как их понимает QSS виджетов (`rgba(r,g,b,a)`), а QML
-    /// такую запись молча читает как недопустимый цвет и рисует ЧЁРНЫМ.
+    /// Warning: EVERY colour goes through [`ui_base::css_color_to_qml`]: the
+    /// core writes them the way the widgets' QSS understands them
+    /// (`rgba(r,g,b,a)`), while QML silently reads such notation as an invalid
+    /// colour and draws it BLACK.
     fn styles(&self) -> QMap<QMapPair_QString_QVariant> {
         let dark = ui_base::active_skin_is_dark();
         let col = |css: &str| qstr(&ui_base::css_color_to_qml(css));
@@ -937,7 +949,8 @@ impl qobject::ExtensionsModel {
             ("spacing", num(qe::INSTALL_SOURCE_SPACING)),
         ]);
 
-        // Модальные окна вкладки: разбор и справка «Создать своё».
+        // Modal windows of the tab: the detailed view and the "Create your own"
+        // help.
         let dialog = vmap(vec![
             ("margin", num(qe::DIALOG_MARGIN)),
             ("detailSpacing", num(qe::DETAIL_SPACING)),
@@ -966,7 +979,7 @@ impl qobject::ExtensionsModel {
         ])
     }
 
-    // ── Меняющееся ────────────────────────────────────────────────────────
+    // ── Changing ──────────────────────────────────────────────────────────
     fn stats_line(&self) -> QString {
         QString::from(&qe::stats_line(&qe::stats(&self.rust().all)))
     }
@@ -1048,7 +1061,7 @@ impl qobject::ExtensionsModel {
         role_value(ext, name)
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     fn refresh(mut self: Pin<&mut Self>) {
         unsafe { self.as_mut().begin_reset_model() };
         {
@@ -1093,9 +1106,9 @@ impl qobject::ExtensionsModel {
 
     fn set_view_mode(mut self: Pin<&mut Self>, mode: &QString) {
         let wanted = mode.to_string();
-        // Режим переключается только на ИЗВЕСТНЫЙ: нажатие на уже
-        // выбранную кнопку не должно снимать выбор (как в оригинале, где
-        // кнопке возвращали `checked`).
+        // The mode is switched only to a KNOWN one: pressing the already selected
+        // button must not clear the selection (as in the original, where the
+        // button got `checked` back).
         if wanted != qe::VIEW_GRID && wanted != qe::VIEW_LIST {
             return;
         }
@@ -1167,7 +1180,7 @@ impl qobject::ExtensionsModel {
         qe::is_supported_drop(&path.to_string())
     }
 
-    // ── Строка состояния ──────────────────────────────────────────────────
+    // ── Status line ───────────────────────────────────────────────────────
     fn set_status(mut self: Pin<&mut Self>, text: String) {
         self.as_mut().rust_mut().status = text;
         self.as_mut().status_changed();
@@ -1223,7 +1236,7 @@ impl qobject::ExtensionsModel {
         self.set_status(qe::status_toggle_error(&message.to_string()));
     }
 
-    // ── Проверки без делегата ─────────────────────────────────────────────
+    // ── Checks without a delegate ─────────────────────────────────────────
     fn role_number(&self, name: &QString) -> i32 {
         let wanted = name.to_string();
         if wanted == ROLE_GROUP_HEADER {
@@ -1240,8 +1253,8 @@ impl qobject::ExtensionsModel {
         let id = ext_id.to_string();
         let key = name.to_string();
         if key == ROLE_GROUP_HEADER {
-            // Заголовок группы — свойство МЕСТА, поэтому ищем строку среди
-            // показанных, а не расширение среди установленных.
+            // The group title is a property of the PLACE, so we look for the row among
+            // the shown ones, not for the extension among the installed ones.
             for (row, index) in self.rust().visible.iter().enumerate() {
                 if self.rust().all[*index].ext_id == id {
                     return qstr(&self.rust().group_headers[row]);
@@ -1256,8 +1269,8 @@ impl qobject::ExtensionsModel {
     }
 }
 
-/// Значение роли расширения по её имени. Одна таблица на `data()`,
-/// `roleValueOf` и проверки — двух копий у ролей быть не должно.
+/// An extension role's value by its name. One table for `data()`,
+/// `roleValueOf` and the checks — the roles must not have two copies.
 fn role_value(ext: &qe::ExtView, name: &str) -> QVariant {
     let card = qe::card(ext);
     let row = qe::list_row(ext);
@@ -1284,8 +1297,8 @@ fn role_value(ext: &qe::ExtView, name: &str) -> QVariant {
 
 impl cxx_qt::Initialize for qobject::ExtensionsModel {
     fn initialize(mut self: Pin<&mut Self>) {
-        // Подписка на смену скина: одна строка на страницу, рассылка — общая
-        // (`crate::skin`). Снимается в `Drop` того же состояния.
+        // Subscribing to skin changes: one line per page, the broadcast is shared
+        // (`crate::skin`). Removed in `Drop` of the same state.
         let watch = crate::skin::watch(
             self.as_ref().get_ref().qt_thread(),
             qobject::ExtensionsModel::palette_changed,

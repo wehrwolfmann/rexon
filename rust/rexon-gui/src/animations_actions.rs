@@ -1,10 +1,12 @@
-// AnimationsActions — объект раздела «Анимация» вкладки «Настройки».
+// AnimationsActions — the object of the "Animation" section of the
+// "Settings" tab.
 //
-// Логики здесь нет: снимок и запись делает ядро (`rexon_core::animations`)
-// тем же путём, что стенд `de_matrix_stand`. Объект только переводит вызовы
-// QML в вызовы ядра и отдаёт готовые строки (JSON снимка, фраза итога).
-// Запись короткая (gsettings, kwriteconfig6, файл композитора и его
-// проверка), поэтому идёт сразу, без рабочего потока.
+// There is no logic here: snapshot and writing are done by the core
+// (`rexon_core::animations`) the same way as the `de_matrix_stand` test
+// bench. The object only translates QML calls into core calls and hands
+// back ready strings (the snapshot JSON, the result phrase). Writing is
+// short (gsettings, kwriteconfig6, the compositor file and its check), so
+// it happens right away, without a worker thread.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -20,46 +22,48 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок раздела (JSON `animations::AnimState`).
+        /// Section snapshot (JSON `animations::AnimState`).
         #[qinvokable]
         fn state(self: &AnimationsActions) -> QString;
 
-        /// «Без анимаций» выкл/вкл.
+        /// "No animations" off/on.
         #[qinvokable]
         #[cxx_name = "setEnabled"]
         fn set_enabled(self: &AnimationsActions, on: bool) -> QString;
 
-        /// Ползунок скорости: индекс ступени `SPEED_STEPS`.
+        /// Speed slider: index of the `SPEED_STEPS` step.
         #[qinvokable]
         #[cxx_name = "setSpeedIndex"]
         fn set_speed_index(self: &AnimationsActions, index: i32) -> QString;
 
-        /// Эффект события: строка и выбранный вариант (у флажка `true`/`false`).
+        /// Event effect: the row and the chosen option (for a check box
+        /// `true`/`false`).
         #[qinvokable]
         #[cxx_name = "setRow"]
         fn set_row(self: &AnimationsActions, id: &QString, value: &QString) -> QString;
 
-        /// «По умолчанию».
+        /// "Defaults".
         #[qinvokable]
         fn defaults(self: &AnimationsActions) -> QString;
 
-        /// Список «Эффекты рабочего стола» (JSON
-        /// `animations::DesktopEffectsState`; вне KDE — `available: false`).
+        /// The "Desktop effects" list (JSON `animations::DesktopEffectsState`;
+        /// outside KDE — `available: false`).
         #[qinvokable]
         #[cxx_name = "effectsState"]
         fn effects_state(self: &AnimationsActions) -> QString;
 
-        /// Включить или выключить эффект списка.
+        /// Enable or disable an effect of the list.
         #[qinvokable]
         #[cxx_name = "setEffect"]
         fn set_effect(self: &AnimationsActions, id: &QString, on: bool) -> QString;
 
-        /// «По умолчанию» для списка эффектов.
+        /// "Defaults" for the effects list.
         #[qinvokable]
         #[cxx_name = "effectsDefaults"]
         fn effects_defaults(self: &AnimationsActions) -> QString;
 
-        /// «Настроить…»: страница настроек эффекта KWin. Пусто — открыта.
+        /// "Configure…": the settings page of a KWin effect. Empty means it was
+        /// opened.
         #[qinvokable]
         fn configure(self: &AnimationsActions, id: &QString) -> QString;
     }

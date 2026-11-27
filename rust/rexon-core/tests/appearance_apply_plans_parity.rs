@@ -1,22 +1,22 @@
-//! Страховка перед слиянием установщиков: эталон «Применить» и установки
-//! вкладки «Оформление» по разделам и столам.
+//! Insurance before merging the installers: golden file of «Применить» and installation
+//! in the «Оформление» tab by section and desktop.
 //!
-//! ЗАЧЕМ. `appearance_installer` («Установить» / «Применить» тем по
-//! разделам) сливается с установщиком пакетов `.rxn`. Сверки с Python
-//! (`themes_parity.rs`, `appearance_installer_parity.rs`) держат отдельные
-//! формы планов; здесь — для КАЖДОГО раздела в КАЖДОМ из восьми окружений:
+//! WHY. `appearance_installer` («Установить» / «Применить» of themes by
+//! section) is being merged with the `.rxn` package installer. The checks against Python
+//! (`themes_parity.rs`, `appearance_installer_parity.rs`) hold separate
+//! plan shapes; here it is for EVERY section in EACH of the eight desktops:
 //!
-//!   * `available` — показывается ли раздел на этом столе;
-//!   * `action`    — что делает «Применить» (`apply_action_for`);
-//!   * `apply`     — план или трасса команд «Применить» ровно теми
-//!     построителями, которые зовёт `LiveInstaller::apply` (подменные
-//!     машина и программы — ничего не исполняется);
-//!   * `install`   — план установки распакованного архива (`plan_install`),
-//!     запись журнала, план удаления по ней и повторная установка поверх.
+//!   * `available` — whether the section is shown on this desktop;
+//!   * `action`    — what «Применить» does (`apply_action_for`);
+//!   * `apply`     — the plan or command trace of «Применить» by exactly the
+//!     builders that `LiveInstaller::apply` calls (fake
+//!     machine and programs — nothing is executed);
+//!   * `install`   — the install plan of an unpacked archive (`plan_install`),
+//!     the log entry, the removal plan from it and a reinstall on top.
 //!
-//! Эталон — `golden/appearance_apply_plans.json`. Намеренную перемену
-//! записать: `REXON_UPDATE_GOLDEN=1 cargo test -p rexon-core --test
-//! appearance_apply_plans_parity` и просмотреть `git diff` эталона.
+//! Golden file — `golden/appearance_apply_plans.json`. To record a deliberate change:
+//! `REXON_UPDATE_GOLDEN=1 cargo test -p rexon-core --test
+//! appearance_apply_plans_parity` and review the `git diff` of the golden file.
 
 mod i18n_pin;
 
@@ -37,12 +37,12 @@ use serde_json::{json, Map, Value};
 const HOME: &str = "/home/t";
 const THEME: &str = "MyTheme";
 
-/// Идентификаторы окружений, как их отдаёт `system::detect_current_de`
-/// и получает `LiveInstaller::new`.
+/// Desktop identifiers as `system::detect_current_de` returns them
+/// and `LiveInstaller::new` receives them.
 const DES: &[&str] = &["kde", "gnome", "xfce", "cinnamon", "mate", "lxqt", "sway", ""];
 
-/// Подменная машина: все программы есть, команды «удаются», записи
-/// запоминаются. Трасса — то, что «Применить» сделало бы.
+/// Fake machine: all programs exist, commands "succeed", writes
+/// are remembered. The trace is what «Применить» would have done.
 struct Machine {
     trace: RefCell<Vec<String>>,
     files: RefCell<HashMap<String, String>>,
@@ -97,8 +97,8 @@ fn plan_lines(plan: &th::Plan) -> Value {
     json!({"history": plan.history_kind, "steps": dbg_lines(&plan.steps)})
 }
 
-/// Окружение Qt-стиля, как его собирает `qt_style_env` живого установщика
-/// на машине с qt6ct и темой значков Papirus.
+/// The Qt style environment as the live installer's `qt_style_env` builds it
+/// on a machine with qt6ct and the Papirus icon theme.
 fn kv_env(de: &str) -> th::KvantumEnv<'_> {
     th::KvantumEnv {
         de_id: de,
@@ -109,7 +109,7 @@ fn kv_env(de: &str) -> th::KvantumEnv<'_> {
     }
 }
 
-/// Где искать файлы пользователя у кнопок разделов окружения.
+/// Where the desktop section buttons look for the user's files.
 fn de_ctx(de: &str) -> rexon_core::de_apply::Ctx {
     rexon_core::de_apply::Ctx {
         home: HOME.to_string(),
@@ -119,8 +119,8 @@ fn de_ctx(de: &str) -> rexon_core::de_apply::Ctx {
     }
 }
 
-/// План или трасса «Применить» тем же построителем, что у
-/// `LiveInstaller::apply` для этого действия.
+/// The plan or trace of «Применить» by the same builder that
+/// `LiveInstaller::apply` uses for this action.
 fn apply_plan(action: &ApplyAction, cat: &ThemeCategory, de: &str, theme: &str) -> Value {
     match action {
         ApplyAction::KdeGlobal => plan_lines(&th::apply_kde_global_plan(theme)),
@@ -160,8 +160,8 @@ fn apply_plan(action: &ApplyAction, cat: &ThemeCategory, de: &str, theme: &str) 
             ];
             json!({"pick_1080p": ai::pick_pack_image(&files, 1920, 1080)})
         }
-        // Картинку фоном ставит общий исполнитель обоев — его планы по
-        // столам сторожит `wallpaper_backend_parity.rs`.
+        // A picture is set as the background by the common wallpaper executor — its plans per
+        // desktop are guarded by `wallpaper_backend_parity.rs`.
         ApplyAction::WallpaperBackground => json!("wallpaper_exec::live_slot"),
         ApplyAction::DeSection => {
             let kind = categories::category_kind(&cat.key).unwrap_or("");
@@ -193,10 +193,10 @@ fn apply_plan(action: &ApplyAction, cat: &ThemeCategory, de: &str, theme: &str) 
     }
 }
 
-/// «Применить» схемы цветов: на Plasma — штатная утилита, вне Plasma —
-/// слои Rexon (`shell_palette::apply_scheme`). Слоям нужен настоящий
-/// каталог: схема ищется на диске и памятка «что было» пишется рядом —
-/// поэтому временный HOME (не профиль владельца), пути в трассе — `/HOME`.
+/// «Применить» of a color scheme: on Plasma — the stock utility, outside Plasma —
+/// Rexon layers (`shell_palette::apply_scheme`). The layers need a real
+/// directory: the scheme is looked up on disk and the "what was there" note is written next to it —
+/// hence a temporary HOME (not the owner's profile), the paths in the trace are `/HOME`.
 fn colors_trace(de: &str, theme: &str) -> Value {
     use rexon_core::shell_palette as sp;
     let dir = std::env::temp_dir().join(format!("rexon-apply-golden-{}-{}", std::process::id(), if de.is_empty() { "none" } else { de }));
@@ -217,7 +217,7 @@ fn colors_trace(de: &str, theme: &str) -> Value {
     };
     let io = Machine::new();
     let (ok, msg, _) = sp::apply_scheme(&io, &ctx, theme);
-    // Что легло на диск мимо `io` (памятка, файлы слоёв).
+    // What landed on disk bypassing `io` (the note, layer files).
     let mut on_disk = Vec::new();
     let mut stack = vec![dir.clone()];
     while let Some(d) = stack.pop() {
@@ -246,9 +246,9 @@ fn colors_trace(de: &str, theme: &str) -> Value {
     })
 }
 
-/// Распакованный архив «похож на что угодно» (как пакет в
-/// `rxn_install_plans_parity.rs`): тема с метаданными, содержимым,
-/// курсорами, `index.theme`, цветами и картинкой.
+/// An unpacked archive that "looks like anything" (like the package in
+/// `rxn_install_plans_parity.rs`): a theme with metadata, contents,
+/// cursors, `index.theme`, colors and a picture.
 fn archive_snapshot() -> FsSnapshot {
     FsSnapshot::from_json(&json!({
         "dirs": {
@@ -278,16 +278,16 @@ fn archive_snapshot() -> FsSnapshot {
     }))
 }
 
-/// Путь из журнала — файл, если у последней части расширение файла темы
-/// (`org.rexon.mytheme` у виджетов — каталог).
+/// A path from the log is a file if its last component has a theme file extension
+/// (`org.rexon.mytheme` for widgets is a directory).
 fn looks_like_file(p: &str) -> bool {
     const EXTS: &[&str] = &["colors", "png", "jpg", "jpeg", "webp", "svg", "ttf", "otf", "qss", "plymouth", "kvconfig"];
     p.rsplit('/').next().and_then(|n| n.rsplit_once('.')).is_some_and(|(_, e)| EXTS.contains(&e))
 }
 
-/// Установка архива, запись журнала, удаление по ней и повтор поверх —
-/// с корнем распаковки (`/x`, тема — подпапка) и с корнем-темой
-/// (`/x/MyTheme`, как у пакетов KPackage).
+/// Installing an archive, writing the log, removing from it and repeating on top —
+/// with the unpack root (`/x`, the theme is a subfolder) and with the theme as the root
+/// (`/x/MyTheme`, as with KPackage packages).
 fn install_block(cat: &ThemeCategory) -> Value {
     let home = Path::new(HOME);
     let fs = archive_snapshot();
@@ -295,7 +295,7 @@ fn install_block(cat: &ThemeCategory) -> Value {
     for root in ["/x", "/x/MyTheme"] {
         let first = ai::plan_install(home, &fs, cat, root);
         let paths = first.record.as_ref().map(|r| r.paths.clone()).unwrap_or_default();
-        // После установки на месте всё, что записано в журнал.
+        // After installation everything recorded in the log is in place.
         let uninstall = ai::plan_uninstall(&paths, &|p| !looks_like_file(p), &|p| looks_like_file(p));
         let again = ai::plan_install_with(home, &fs, cat, root, Some(&paths));
         out.insert(
@@ -347,7 +347,7 @@ fn collect() -> BTreeMap<String, Value> {
 
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/appearance_apply_plans.json");
 
-/// «Применить» и установка по всем разделам и столам совпадают с эталоном.
+/// «Применить» and installation over all sections and desktops match the golden file.
 #[test]
 fn appearance_plans_match_golden() {
     let _lang = i18n_pin::en();
@@ -381,12 +381,12 @@ fn appearance_plans_match_golden() {
     );
 }
 
-/// Сторож дефекта 15.11: эталон не зависит от стола, на котором гоняют
-/// сверку. Тот же бинарь перезапускается с `XDG_CURRENT_DESKTOP=X-Cinnamon`
-/// (Wayland и X11) и без переменных стола — сверка с эталоном зелёная
-/// везде. Прежде из сеанса Cinnamon в план «неопознанного» стола попадал
-/// лишний `cinnamon --replace`. Ничего, кроме самого теста, не запускается;
-/// дисплея у потомка нет.
+/// Guard for the 15.11 defect: the golden file does not depend on the desktop the check
+/// is run on. The same binary is restarted with `XDG_CURRENT_DESKTOP=X-Cinnamon`
+/// (Wayland and X11) and without desktop variables — the golden check is green
+/// everywhere. Previously, from a Cinnamon session, an extra `cinnamon --replace` got into
+/// the plan of an "unrecognized" desktop. Nothing but the test itself is launched;
+/// the child has no display.
 #[test]
 fn golden_does_not_depend_on_session_env() {
     if std::env::var("REXON_UPDATE_GOLDEN").is_ok() {
@@ -419,15 +419,15 @@ fn golden_does_not_depend_on_session_env() {
             "сверка с эталоном зависит от окружения ({label}):\n{}",
             String::from_utf8_lossy(&out.stdout)
         );
-        // Фильтр не должен промахнуться: тест реально прошёл.
+        // The filter must not miss: the test really passed.
         assert!(String::from_utf8_lossy(&out.stdout).contains("1 passed"), "{label}: тест не найден");
     }
 }
 
-/// Шаг 5а: «Применить» выдаёт план ([`ai::press_plan_with`]) и исполняет
-/// его общим исполнителем. План нажатия — ТЕ ЖЕ шаги тех же построителей,
-/// что в эталоне выше (порядок и argv), без единого запуска; действия,
-/// которые пока идут своим путём, — `Own`, «ничего» — `Nothing`.
+/// Step 5a: «Применить» produces a plan ([`ai::press_plan_with`]) and executes
+/// it with the common executor. The press plan is THE SAME steps of the same builders
+/// as in the golden file above (order and argv), without a single launch; actions
+/// that still go their own way are `Own`, "nothing" is `Nothing`.
 #[test]
 fn press_plan_is_the_golden_plan() {
     use rexon_core::install_plan::Step;
@@ -495,7 +495,7 @@ fn press_plan_is_the_golden_plan() {
                     },
                     ApplyAction::Kvantum => steps(&th::apply_kvantum_plan(THEME, &kv), "kde"),
                     ApplyAction::Gtk => steps(&th::apply_gtk_plan_scheme(THEME, de, HOME, None, Some(flag)), de),
-                    // Сперва модуль рамки (`library`), затем та же запись темы.
+                    // First the frame module (`library`), then the same theme write.
                     ApplyAction::Aurorae => {
                         let library = if flag { "org.kde.kwin.aurorae.v2" } else { "org.kde.kwin.aurorae" };
                         let theme_argv = ai::aurorae_plan(THEME).primary.argv;
@@ -517,7 +517,7 @@ fn press_plan_is_the_golden_plan() {
                         history: None,
                         say: ai::PressSay::Plain,
                     },
-                    // Тема и сразу `Engine=KSplashQML` (как модуль KDE).
+                    // The theme and right away `Engine=KSplashQML` (like the KDE module).
                     ApplyAction::Splash => ai::PressPlan::Steps {
                         steps: vec![
                             primary(ai::lnf_component_plan("splash", THEME).argv),
@@ -532,10 +532,10 @@ fn press_plan_is_the_golden_plan() {
                         say: ai::PressSay::Plain,
                     },
                     ApplyAction::Noop => ai::PressPlan::Nothing,
-                    // Курсор: те же построители, что звал прежний
-                    // `apply_cursor` (безопасная — тема с размером;
-                    // небезопасная, но курсор окружения по умолчанию — сброс
-                    // родного ключа; иначе отказ без записи).
+                    // Cursor: the same builders the old
+                    // `apply_cursor` called (a safe one — theme with size;
+                    // an unsafe one, but the desktop's default cursor — reset of
+                    // the native key; otherwise refusal without writing).
                     ApplyAction::Cursor => {
                         let size = flag.then_some(48);
                         let plan = if flag {
@@ -553,8 +553,8 @@ fn press_plan_is_the_golden_plan() {
                             None => ai::PressPlan::Refused(None),
                         }
                     }
-                    // Цвета вне Plasma — шаги слоёв `shell_palette`, в
-                    // Plasma — своим путём (команда, затем правка по итогу).
+                    // Colors outside Plasma — `shell_palette` layer steps, in
+                    // Plasma — its own way (a command, then a fix-up based on the result).
                     ApplyAction::KdeColors => match rexon_core::shell_palette::scheme_way(de) {
                         rexon_core::shell_palette::SchemeWay::Layer { .. } if flag => ai::PressPlan::Steps {
                             steps: colors_press.steps.iter().cloned().map(Step::from).collect(),
@@ -566,10 +566,10 @@ fn press_plan_is_the_golden_plan() {
                         }
                         _ => ai::PressPlan::Own,
                     },
-                    // Звук — тот же план движка звука, что в эталоне выше:
-                    // записи (не меняют `ok`), затем прочитанное обратно имя.
-                    // Перед ними — «что было» у kdeglobals: его перепишет
-                    // `kwriteconfig6`, мимо отката.
+                    // Sound — the same sound engine plan as in the golden file above:
+                    // writes (they do not change `ok`), then the name read back.
+                    // Before them — "what was there" for kdeglobals: it will be rewritten by
+                    // `kwriteconfig6`, bypassing the rollback.
                     ApplyAction::SoundTheme if !flag => ai::PressPlan::Refused(Some(
                         rexon_core::qt_settings::sound_theme_missing_message(THEME),
                     )),
@@ -583,9 +583,9 @@ fn press_plan_is_the_golden_plan() {
                         }));
                         ai::PressPlan::Steps { steps: v, history: None, say: ai::PressSay::Plain }
                     }
-                    // Обои блокировки — тот же план, что в эталоне выше
-                    // (`x11`/`missing`): картинка решает `ok`, ключи —
-                    // вспомогательные; перед ними «что было» kscreenlockerrc.
+                    // Lock screen wallpaper — the same plan as in the golden file above
+                    // (`x11`/`missing`): the picture decides `ok`, the keys are
+                    // auxiliary; before them, "what was there" for kscreenlockerrc.
                     ApplyAction::LockWallpaper => match ai::lock_wallpaper_plan_in(de, false, &cat.install_dir, THEME, flag) {
                         Err(e) => ai::PressPlan::Refused(Some(e)),
                         Ok(p) => {
@@ -601,9 +601,9 @@ fn press_plan_is_the_golden_plan() {
                             }
                         }
                     },
-                    // Раздел окружения: тема и дополнение — шаги общего плана
-                    // (ровно шаги включения эталона, перед ними — «что было»
-                    // файлов, которые перепишут команды), Conky — своим путём.
+                    // Desktop section: theme and extension are steps of the common plan
+                    // (exactly the golden file's enable steps, preceded by "what was there" for
+                    // the files the commands will rewrite), Conky goes its own way.
                     ApplyAction::DeSection => {
                         let kind = categories::category_kind(&cat.key).unwrap_or("");
                         match facts.desktop.clone().unwrap() {
@@ -636,9 +636,9 @@ fn press_plan_is_the_golden_plan() {
     }
 }
 
-/// Звук без программ: писать нечем — отказ до первого шага; без
-/// `kreadconfig6` в Plasma — записи идут, но итог «записано, проверить
-/// нечем» (как у прежнего своего пути).
+/// Sound without programs: nothing to write with — refusal before the first step; without
+/// `kreadconfig6` in Plasma — the writes go through, but the result is "written, nothing
+/// to verify with" (as with the old own path).
 #[test]
 fn sound_press_without_tools() {
     let _lang = i18n_pin::en();
@@ -656,7 +656,7 @@ fn sound_press_without_tools() {
     assert!(!steps.iter().any(|s| matches!(s, rexon_core::install_plan::Step::Apply(th::ApplyStep::ReadBackSetsOk { .. }))));
 }
 
-/// Ходовые разделы: «Применить» на своих столах что-то делает, а не молчит.
+/// Common sections: «Применить» on their desktops does something rather than staying silent.
 #[test]
 fn common_sections_apply_something() {
     let cats = real_categories();
@@ -682,8 +682,8 @@ fn common_sections_apply_something() {
     }
 }
 
-/// Удаление по журналу снимает ровно записанные пути — для каждого раздела,
-/// чья установка удалась.
+/// Removal by the log takes away exactly the recorded paths — for every section
+/// whose installation succeeded.
 #[test]
 fn uninstall_by_record_removes_every_recorded_path() {
     let home = Path::new(HOME);
@@ -703,14 +703,14 @@ fn uninstall_by_record_removes_every_recorded_path() {
         for p in &rec.paths {
             assert!(removed.contains(&p), "{}: путь журнала не снимается: {p}", cat.key);
         }
-        // Удаление не выходит за то, что записано.
+        // Removal does not go beyond what was recorded.
         assert_eq!(removed.len(), rec.paths.len(), "{}: лишнее удаление {steps:?}", cat.key);
         }
     }
 }
 
-/// Повторная установка своей же темы (пути из журнала той же покупки)
-/// удаётся и кладёт те же пути.
+/// Reinstalling one's own theme (paths from the log of the same purchase)
+/// succeeds and puts down the same paths.
 #[test]
 fn reinstall_over_own_record_keeps_paths() {
     let home = Path::new(HOME);

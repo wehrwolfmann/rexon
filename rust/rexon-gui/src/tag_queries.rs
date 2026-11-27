@@ -1,10 +1,10 @@
-// Списки тегов и возрастных рейтингов библиотеки — диалог фильтров обоев.
+// Lists of library tags and age ratings — the wallpaper filter dialog.
 //
-// Эталон — waywallen `ui/src/query/tag_query.cpp` @e5626c1.
-// Разбор ответов уже был в ядре (`we_query::apply_tag_list`/
-// `apply_content_rating_list`), здесь только оболочка.
+// Reference: waywallen `ui/src/query/tag_query.cpp` @e5626c1.
+// Response parsing was already in the core (`we_query::apply_tag_list`/
+// `apply_content_rating_list`); here there is only the wrapper.
 
-/// Мост cxx-qt: два запроса-списка строк.
+/// cxx-qt bridge: two string-list queries.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -145,7 +145,7 @@ use rexon_core::we_query::{self, QuerySignal, QueryState, StringListData};
 use crate::impl_query_base;
 use crate::query_base::decode_failed;
 
-/// Список строк ядра → `QStringList` для QML.
+/// Core string list → `QStringList` for QML.
 fn to_qstringlist(items: &[String]) -> QStringList {
     let mut list = QStringList::default();
     for item in items {

@@ -1,7 +1,8 @@
-// AppWidgetsActions — объект раздела «Значки и панели инструментов» вкладки
-// «Настройки»: значки в меню и на кнопках, подписи панелей инструментов.
+// AppWidgetsActions — the object of the "Icons and toolbars" section of
+// the "Settings" tab: icons in menus and on buttons, toolbar labels.
 //
-// Логики здесь нет: снимок и запись — ядро (`rexon_core::app_widgets`).
+// There is no logic here: snapshot and writing come from the core
+// (`rexon_core::app_widgets`).
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -17,32 +18,32 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок раздела (JSON `app_widgets::WidgetsState`).
+        /// Section snapshot (JSON `app_widgets::WidgetsState`).
         #[qinvokable]
         fn state(self: &AppWidgetsActions) -> QString;
 
-        /// Значки в меню.
+        /// Icons in menus.
         #[qinvokable]
         #[cxx_name = "setMenuIcons"]
         fn set_menu_icons(self: &AppWidgetsActions, on: bool) -> QString;
 
-        /// Значки на кнопках.
+        /// Icons on buttons.
         #[qinvokable]
         #[cxx_name = "setButtonIcons"]
         fn set_button_icons(self: &AppWidgetsActions, on: bool) -> QString;
 
-        /// Подписи основной панели (`icons`/`text`/`beside`/`under`); вне KDE —
-        /// всех панелей.
+        /// Labels of the main toolbar (`icons`/`text`/`beside`/`under`); outside KDE
+        /// — of all toolbars.
         #[qinvokable]
         #[cxx_name = "setToolbar"]
         fn set_toolbar(self: &AppWidgetsActions, id: &QString) -> QString;
 
-        /// Подписи прочих панелей (только KDE).
+        /// Labels of the other toolbars (KDE only).
         #[qinvokable]
         #[cxx_name = "setOtherToolbars"]
         fn set_other_toolbars(self: &AppWidgetsActions, id: &QString) -> QString;
 
-        /// «По умолчанию».
+        /// "Defaults".
         #[qinvokable]
         fn defaults(self: &AppWidgetsActions) -> QString;
     }

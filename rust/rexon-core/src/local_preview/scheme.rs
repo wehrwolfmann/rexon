@@ -1,27 +1,29 @@
-//! Цветовые схемы KDE и стили Plasma: цвета схемы так, как их видит сама
-//! KDE, светлая она или тёмная, и плитка схемы — окно, нарисованное её
-//! цветами (вкладка «Оформление», разделы «Цветовые схемы» и «Стили
-//! Plasma»).
+//! KDE color schemes and Plasma styles: a scheme's colors as KDE itself sees
+//! them, whether it is light or dark, and the scheme tile — a window painted in
+//! its colors ("Appearance" tab, sections "Color schemes" and "Plasma styles").
 //!
-//! Поведение — как у Plasma 6.8 (замерено на ней самой):
-//!   * цвета схемы — фон и текст окна, поля, выделения и кнопки; чего в файле
-//!     нет — цвет KDE по умолчанию (Breeze), а не соседний цвет схемы;
-//!   * заголовок окна: есть группа `[Colors:Header]` — её фон и текст; нет —
-//!     `[WM] activeBackground` / `activeForeground`; нет и их — цвета
-//!     выделения;
-//!   * светлая или тёмная: яркость фона окна (`qGray` Qt) меньше 192 — тёмная;
-//!   * стиль Plasma без своего файла `colors` берёт цвета из текущей схемы —
-//!     Plasma подписывает его «Поддерживает цветовые схемы» и не относит ни к
-//!     светлым, ни к тёмным;
-//!   * плитка схемы — окно её цветами: заголовок, строка текста окна и
-//!     кнопка, ниже поле со строками — обычной, выделенной и недоступной.
-//!     Надписи — полосками: картинка одна на все языки.
+//! Behavior is as in Plasma 6.8 (measured on Plasma itself):
+//!   * scheme colors — window background and text, views, selections and
+//!     buttons; what is missing from the file takes the KDE default color
+//!     (Breeze), not a neighboring color of the scheme;
+//!   * window title bar: if there is a `[Colors:Header]` group — its background
+//!     and text; if not — `[WM] activeBackground` / `activeForeground`; if those
+//!     are missing too — the selection colors;
+//!   * light or dark: window background brightness (Qt's `qGray`) below 192 —
+//!     dark;
+//!   * a Plasma style without its own `colors` file takes colors from the
+//!     current scheme — Plasma labels it "Follows color scheme" and counts it as
+//!     neither light nor dark;
+//!   * the scheme tile is a window in its colors: a title bar, a line of window
+//!     text and a button, and below a view with lines — normal, selected and
+//!     disabled. Text is drawn as bars: one picture for all languages.
 //!
-//! Вне Plasma те же файлы `.colors` Rexon кладёт слоем (qt6ct, `kdeglobals`),
-//! поэтому и деление, и плитка одни во всех окружениях.
+//! Outside Plasma Rexon lays the same `.colors` files down as a layer (qt6ct,
+//! `kdeglobals`), so both the split and the tile are the same in every
+//! environment.
 //!
-//! Разбор сверен с KDE (программа на `KColorScheme`, KF6 6.31) на настоящих
-//! схемах и краевых случаях — `tests/scheme_look_parity.rs`.
+//! Parsing is checked against KDE (a program on `KColorScheme`, KF6 6.31) on real
+//! schemes and edge cases — `tests/scheme_look_parity.rs`.
 
 use std::path::Path;
 
@@ -29,7 +31,7 @@ use super::{DrawOp, Rgb};
 use crate::appearance_page::Chip;
 use crate::i18n::{tr, trc};
 
-/// Цвета схемы, из которых KDE рисует её плитку.
+/// Scheme colors from which KDE draws its tile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchemeLook {
     pub window: Rgb,
@@ -40,12 +42,12 @@ pub struct SchemeLook {
     pub selection_text: Rgb,
     pub button: Rgb,
     pub button_text: Rgb,
-    /// Заголовок активного окна.
+    /// Title bar of the active window.
     pub title: Rgb,
     pub title_text: Rgb,
 }
 
-/// Цвета KDE по умолчанию (KF6 6.31, Breeze) — для ключей, которых в файле нет.
+/// KDE default colors (KF6 6.31, Breeze) — for keys missing from the file.
 const DEFAULT_TEXT: Rgb = (35, 38, 41);
 const DEFAULT_WINDOW: Rgb = (239, 240, 241);
 const DEFAULT_VIEW: Rgb = (255, 255, 255);
@@ -54,15 +56,15 @@ const DEFAULT_SELECTION_TEXT: Rgb = (255, 255, 255);
 const DEFAULT_BUTTON: Rgb = (252, 252, 252);
 const DEFAULT_HEADER: Rgb = (222, 224, 226);
 
-/// Граница KDE: яркость фона окна (`qGray`) ниже неё — схема тёмная.
+/// KDE's threshold: if the window background brightness (`qGray`) is below it, the scheme is dark.
 pub const DARK_GRAY_BELOW: u8 = 192;
 
-/// Яркость цвета так, как её считает Qt (`qGray`): (11·r + 16·g + 5·b) / 32.
+/// Brightness of a color as Qt computes it (`qGray`): (11·r + 16·g + 5·b) / 32.
 pub fn q_gray(c: Rgb) -> u8 {
     ((c.0 as u32 * 11 + c.1 as u32 * 16 + c.2 as u32 * 5) / 32) as u8
 }
 
-/// Значение ключа в группе — ПОСЛЕДНЕЕ найденное, как читает KConfig.
+/// Value of a key in a group — the LAST one found, as KConfig reads it.
 fn last_value<'t>(text: &'t str, group: &str, key: &str) -> Option<&'t str> {
     let mut inside = false;
     let mut found = None;
@@ -84,17 +86,17 @@ fn last_value<'t>(text: &'t str, group: &str, key: &str) -> Option<&'t str> {
     found
 }
 
-/// Есть ли в файле группа `[group]` (тогда заголовок берётся из неё).
+/// Whether the file has a `[group]` group (then the title bar is taken from it).
 fn has_group(text: &str, group: &str) -> bool {
     text.lines()
         .filter_map(|l| l.trim().strip_prefix('[').and_then(|r| r.strip_suffix(']')))
         .any(|name| name == group)
 }
 
-/// Цвет так, как его читает KConfig: `r,g,b` или `r,g,b,a` (каждая часть
-/// 0..=255, пробелы допустимы), `#rgb`, `#rrggbb`, `white`, `black`. Другое
-/// (две части, часть вне 0..=255) — нет цвета, KDE берёт цвет по умолчанию.
-/// Прочие имена цветов SVG здесь не знаем — тоже по умолчанию.
+/// A color as KConfig reads it: `r,g,b` or `r,g,b,a` (each part 0..=255, spaces
+/// allowed), `#rgb`, `#rrggbb`, `white`, `black`. Anything else (two parts, a
+/// part outside 0..=255) — no color, KDE takes the default. Other SVG color
+/// names are not known here — also the default.
 fn kconfig_color(value: &str) -> Option<Rgb> {
     let v = value.trim();
     if v.starts_with('#') || v.chars().all(|c| c.is_ascii_alphabetic()) {
@@ -111,7 +113,7 @@ fn kconfig_color(value: &str) -> Option<Rgb> {
     Some((byte(parts[0])?, byte(parts[1])?, byte(parts[2])?))
 }
 
-/// Цвета схемы из текста её файла (`.colors` либо `colors` стиля Plasma).
+/// Scheme colors from the text of its file (`.colors` or a Plasma style's `colors`).
 pub fn scheme_look(text: &str) -> SchemeLook {
     let get = |group: &str, key: &str, default: Rgb| {
         last_value(text, group, key).and_then(kconfig_color).unwrap_or(default)
@@ -140,22 +142,22 @@ pub fn scheme_look(text: &str) -> SchemeLook {
     }
 }
 
-/// Тёмная ли схема — по фону окна, как KDE.
+/// Whether the scheme is dark — by the window background, as KDE does.
 pub fn is_dark(look: &SchemeLook) -> bool {
     q_gray(look.window) < DARK_GRAY_BELOW
 }
 
-/// Светлая, тёмная или (у стиля Plasma) берёт цвета текущей схемы.
+/// Light, dark, or (for a Plasma style) takes the colors of the current scheme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
     Light,
     Dark,
-    /// Стиль Plasma без своего файла `colors`.
+    /// A Plasma style without its own `colors` file.
     FollowsScheme,
 }
 
 impl Tone {
-    /// Слово для эталонов и журнала.
+    /// Word for the reference data and the log.
     pub fn key(self) -> &'static str {
         match self {
             Tone::Light => "light",
@@ -165,7 +167,7 @@ impl Tone {
     }
 }
 
-/// Тон по тексту файла цветов.
+/// Tone from the text of a colors file.
 pub fn tone_of_text(text: &str) -> Tone {
     if is_dark(&scheme_look(text)) {
         Tone::Dark
@@ -174,9 +176,9 @@ pub fn tone_of_text(text: &str) -> Tone {
     }
 }
 
-/// Тон стиля Plasma по его каталогу: нет файла `colors` — берёт цвета
-/// схемы; файл есть — по его фону окна (нечитаемый файл KDE читает как
-/// пустой, то есть светлый по умолчанию).
+/// Tone of a Plasma style by its directory: no `colors` file — it takes the
+/// scheme's colors; there is a file — by its window background (KDE reads an
+/// unreadable file as empty, i.e. light by default).
 pub fn plasma_style_tone(dir: &Path) -> Tone {
     let colors = dir.join("colors");
     if !colors.exists() {
@@ -185,19 +187,20 @@ pub fn plasma_style_tone(dir: &Path) -> Tone {
     tone_of_text(&super::read_text(&colors).unwrap_or_default())
 }
 
-/// Текст файла схемы: путь плитки бывает и с окончанием `.colors`, и без.
+/// Text of the scheme file: a tile path may come with or without the `.colors`
+/// ending.
 fn scheme_text(install_path: &str) -> Option<String> {
     super::read_text(Path::new(install_path))
         .or_else(|| super::read_text(Path::new(&format!("{install_path}.colors"))))
 }
 
-/// Вид темы по номеру плитки (`local:<вид>:<имя>`).
+/// Theme kind from the tile id (`local:<kind>:<name>`).
 fn item_kind(item_id: &str) -> &str {
     item_id.strip_prefix("local:").and_then(|r| r.split(':').next()).unwrap_or("")
 }
 
-/// Тон темы с диска; `None` — у вида темы тона нет (не схема и не стиль
-/// Plasma) или файл схемы не прочитать.
+/// Tone of a theme on disk; `None` — the theme kind has no tone (neither a
+/// scheme nor a Plasma style) or the scheme file cannot be read.
 pub fn item_tone(item_id: &str, install_path: &str) -> Option<Tone> {
     if install_path.is_empty() {
         return None;
@@ -209,26 +212,26 @@ pub fn item_tone(item_id: &str, install_path: &str) -> Option<Tone> {
     }
 }
 
-// ── фильтр «Все / Светлые / Тёмные» ──────────────────────────────────────
+// ── "All / Light / Dark" filter ──────────────────────────────────────────
 
-/// Фильтр тона: всё.
+/// Tone filter: all.
 pub const TONE_ALL: &str = "all";
-/// Фильтр тона: светлые.
+/// Tone filter: light.
 pub const TONE_LIGHT: &str = "light";
-/// Фильтр тона: тёмные.
+/// Tone filter: dark.
 pub const TONE_DARK: &str = "dark";
-/// Фильтр тона: стили Plasma, берущие цвета схемы.
+/// Tone filter: Plasma styles that take the scheme's colors.
 pub const TONE_FOLLOWS: &str = "follows";
 
-/// Есть ли фильтр тона у раздела: «Цветовые схемы» и «Стили Plasma», сетка
-/// установленного (у KDE фильтр тоже только там; в магазине тон не
-/// известен до загрузки).
+/// Whether a section has a tone filter: "Color schemes" and "Plasma styles", the
+/// installed grid (KDE also has the filter only there; in the store the tone is
+/// unknown until download).
 pub fn tone_bar_applies(category_key: &str, installed_view: bool) -> bool {
     installed_view && matches!(category_key, "colors" | "plasma")
 }
 
-/// Действующий фильтр: незнакомое значение — «Все»; «Поддерживает цветовые
-/// схемы» — только у стилей Plasma.
+/// Effective filter: an unknown value — "All"; "Follows color scheme" — only
+/// for Plasma styles.
 pub fn tone_filter(category_key: &str, chosen: &str) -> &'static str {
     match chosen {
         TONE_LIGHT => TONE_LIGHT,
@@ -238,8 +241,8 @@ pub fn tone_filter(category_key: &str, chosen: &str) -> &'static str {
     }
 }
 
-/// Чипы фильтра над сеткой раздела (как выпадающий список в «Цветах» и
-/// «Стиле Plasma» у Plasma). Пусто — у раздела фильтра нет.
+/// Filter chips above the section grid (like the drop-down list in Plasma's
+/// "Colors" and "Plasma Style"). Empty — the section has no filter.
 pub fn tone_chips(category_key: &str) -> Vec<Chip> {
     let plasma = category_key == "plasma";
     if !plasma && category_key != "colors" {
@@ -273,8 +276,8 @@ pub fn tone_chips(category_key: &str) -> Vec<Chip> {
     chips
 }
 
-/// Остаётся ли тема с диска в сетке при фильтре. Тему, тон которой не
-/// узнать, фильтр не прячет только при «Все».
+/// Whether a theme on disk stays in the grid under the filter. A theme whose
+/// tone cannot be determined is not hidden by the filter only with "All".
 pub fn tone_passes(item_id: &str, install_path: &str, filter: &str) -> bool {
     let want = match filter {
         TONE_LIGHT => Tone::Light,
@@ -285,9 +288,9 @@ pub fn tone_passes(item_id: &str, install_path: &str, filter: &str) -> bool {
     item_tone(item_id, install_path) == Some(want)
 }
 
-/// Подпись «Поддерживает цветовые схемы» под стилем Plasma (как подпись
-/// плитки в «Стиле Plasma»): у стиля без своих цветов, кроме случая, когда
-/// и так отобраны только такие.
+/// The "Follows color scheme" caption under a Plasma style (like the tile
+/// caption in "Plasma Style"): for a style without its own colors, except when
+/// only such styles are selected anyway.
 pub fn follows_scheme_badge(item_id: &str, install_path: &str, filter: &str) -> Option<String> {
     (item_kind(item_id) == "plasma"
         && filter != TONE_FOLLOWS
@@ -295,34 +298,34 @@ pub fn follows_scheme_badge(item_id: &str, install_path: &str, filter: &str) -> 
     .then(|| tr("Follows color scheme"))
 }
 
-// ── плитка схемы ─────────────────────────────────────────────────────────
+// ── scheme tile ──────────────────────────────────────────────────────────
 
-/// Плитка схемы — окно её цветами во весь кадр, как плитка в «Цветах» Plasma:
-/// заголовок с надписью посередине; строка текста окна и кнопка; поле со
-/// строками — обычной, выделенной и недоступной.
+/// Scheme tile — a window in its colors filling the whole frame, like a tile in
+/// Plasma's "Colors": a title bar with a caption in the middle; a line of
+/// window text and a button; a view with lines — normal, selected and disabled.
 pub fn scheme_window_sample(l: &SchemeLook) -> Vec<DrawOp> {
     let fill = |x: f64, y: f64, w: f64, h: f64, c: Rgb| DrawOp::Fill {
         rect: (x, y, w, h),
         color: (c.0, c.1, c.2, 255),
     };
     let (w, h) = (super::PREVIEW_WIDTH as f64, super::PREVIEW_HEIGHT as f64);
-    // Кайма поля у KDE — цвет текста с прозрачностью 0,3 поверх поля.
+    // KDE's view border is the text color at 0.3 opacity over the view.
     let frame_edge = super::mix(l.view, l.view_text, 0.3);
     let button_edge = super::mix(l.button, l.button_text, 0.3);
-    // Недоступный текст KDE выводит эффектами схемы; здесь — текст,
-    // наполовину ушедший в фон поля.
+    // KDE renders disabled text with the scheme's effects; here it is text halfway
+    // faded into the view background.
     let disabled = super::mix(l.view, l.view_text, 0.45);
     vec![
         fill(0.0, 0.0, w, h, l.window),
-        // Заголовок.
+        // Title bar.
         fill(0.0, 0.0, w, 26.0, l.title),
         fill(w / 2.0 - 45.0, 10.0, 90.0, 6.0, l.title_text),
-        // «Текст окна» и кнопка.
+        // "Window text" and a button.
         fill(12.0, 42.0, 110.0, 7.0, l.window_text),
         fill(204.0, 33.0, 84.0, 25.0, button_edge),
         fill(205.0, 34.0, 82.0, 23.0, l.button),
         fill(223.0, 42.0, 46.0, 6.0, l.button_text),
-        // Поле со строками.
+        // View with lines.
         fill(10.0, 66.0, w - 20.0, 96.0, frame_edge),
         fill(11.0, 67.0, w - 22.0, 94.0, l.view),
         fill(20.0, 78.0, 128.0, 7.0, l.view_text),
@@ -332,8 +335,8 @@ pub fn scheme_window_sample(l: &SchemeLook) -> Vec<DrawOp> {
     ]
 }
 
-/// Образец плитки схемы: окно её цветами. `None` — файла нет или в нём нет
-/// ни одной группы цветов (рисовать было бы одни цвета по умолчанию).
+/// Sample of a scheme tile: a window in its colors. `None` — there is no file
+/// or it has no color group at all (only default colors would be drawn).
 pub fn colors_sample(input: &super::SampleInput) -> Option<Vec<DrawOp>> {
     let text = scheme_text(input.install_path)?;
     if !text.lines().any(|l| l.trim().starts_with("[Colors:") || l.trim() == "[WM]") {

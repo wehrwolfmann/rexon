@@ -1,24 +1,26 @@
-// rexon-theme-shot — помощник плиток «Оформления»: снимок формы из настоящих
-// виджетов в стиле Qt (`qt`) или теме GTK 3 (`gtk`), PNG размером с плитку.
+// rexon-theme-shot — the helper for "Appearance" tiles: a snapshot of a
+// form made of real widgets in a Qt style (`qt`) or a GTK 3 theme (`gtk`),
+// a PNG the size of a tile.
 //
-// Отдельный процесс намеренно: чужой модуль стиля Qt и движок темы GTK не
-// попадают в процесс Rexon, зависший снимок убивается по сроку. Что снимать,
-// строку запуска, окружение и палитру решает ядро
-// (`rexon_core::widget_shot`), здесь — только исполнение:
+// A separate process on purpose: a foreign Qt style module and the GTK
+// theme engine do not get into the Rexon process, and a hung snapshot is
+// killed after a timeout. What to capture, the command line, the
+// environment and the palette are decided by the core
+// (`rexon_core::widget_shot`); here there is only execution:
 //
 //     rexon-theme-shot qt --style Fusion --out /tmp/x.png [--color Window=#202326]… [--text …]…
-//     rexon-theme-shot gtk --out /tmp/x.png [--text …]…   (тема — GTK_THEME, дисплей сеанса)
+//     rexon-theme-shot gtk --out /tmp/x.png [--text …]…   (theme — GTK_THEME, the session display)
 //
-// Код возврата: 0 — снимок записан; 2 — разбор аргументов; 3 — стиль/тема
-// не загрузились; 4 — снимок не записался; 5 — GTK не поднялся (нет
-// библиотеки или дисплея).
+// Exit code: 0 — the snapshot is written; 2 — argument parsing; 3 — the
+// style/theme did not load; 4 — the snapshot was not written; 5 — GTK did
+// not come up (no library or display).
 
 mod gtk;
 
 use std::ffi::{c_char, CString};
 
-// Ссылка на библиотеку крейта: статический архив шимов (здесь —
-// cpp/rexon_theme_shot.cpp) приезжает вместе с ней.
+// Link to the crate library: the static archive of shims (here —
+// cpp/rexon_theme_shot.cpp) comes along with it.
 use rexon_gui as _;
 
 extern "C" {
@@ -50,7 +52,8 @@ fn qt(args: &rexon_core::widget_shot::HelperArgs) -> i32 {
     let texts = cstrings(args.texts.iter().map(String::as_str));
     let ptrs = |v: &[CString]| v.iter().map(|c| c.as_ptr()).collect::<Vec<_>>();
     let (role_p, color_p, text_p) = (ptrs(&roles), ptrs(&colors), ptrs(&texts));
-    // SAFETY: все указатели живут до конца вызова; длины совпадают с массивами.
+    // SAFETY: all pointers live until the end of the call; the lengths match
+    // the arrays.
     unsafe {
         rexon_qt_style_shot(
             style.as_ptr(),

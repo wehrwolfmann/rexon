@@ -1,36 +1,42 @@
-//! Витрины профиля Steam — этап 1: нарезка своей картинки и расчёт макета
-//! для предпросмотра. В Steam ничего не пишется: ни запросов от имени
-//! аккаунта, ни загрузки. Итог — папка с готовыми частями и памяткой.
+//! Steam profile showcases — stage 1: slicing your own picture and computing
+//! the layout for the preview. Nothing is written to Steam: no requests on
+//! behalf of the account, no uploads. The result is a folder with ready parts
+//! and a how-to.
 //!
-//! Два вида витрины:
-//! * «Витрина иллюстраций» — основная часть 506 px и боковая 100 px через
-//!   зазор 9 px; боковая короче основной (под ней в профиле счётчики);
-//! * «Избранная иллюстрация» — одна часть 630 px.
+//! Two kinds of showcase:
+//! * «Artwork Showcase» — a main part of 506 px and a side part of 100 px with a
+//!   9 px gap; the side part is shorter than the main one (the profile has
+//!   counters below it);
+//! * «Featured Artwork Showcase» — one part of 630 px.
 //!
-//! Размеры взяты из разметки публичного профиля (`max-width: 506px` и
-//! `max-width: 100px` у картинок витрины). Место витрины на фоне 1920 px и
-//! зазор сверены 12.10.2026 по живой публичной странице профиля (снимок
-//! страницы шириной 1920 px, положение картинок найдено по точкам) и по
-//! таблице стилей Steam `profilev2.css`:
-//! * левый край картинки — x = 495: колонка 976 px по центру фона
-//!   (472) + поле колонки 12 + поле блока витрины 10 + рамка картинки 1;
-//! * зазор между картинками — 9 px: рамка 1 + отступ 7 + рамка 1;
-//! * верх картинки первой витрины — y = 256 (на проверенном профиле блок
-//!   первой витрины начинается на 240, поле блока иллюстраций 15, рамка 1).
-//!   ⚠️ Высота шапки профиля зависит от её содержимого, а каждая витрина
-//!   выше сдвигает следующие — поэтому сдвиг по высоте человек подбирает сам;
-//! * боковая короче основной на 70 px — из той же таблицы стилей: плашка
-//!   счётчика «+ N» под боковой 57 px + отступ 11 + две рамки по 1. По
-//!   точкам живьём НЕ измерено (на проверенном профиле в витрине
-//!   иллюстраций боковой картинки не было).
+//! The sizes are taken from the public profile markup (`max-width: 506px` and
+//! `max-width: 100px` of the showcase pictures). The showcase position on a
+//! 1920 px background and the gap were checked on 12.10.2026 against a live
+//! public profile page (a 1920 px wide page snapshot, the picture position found
+//! by pixels) and against the Steam stylesheet `profilev2.css`:
+//! * the left edge of the picture is x = 495: a 976 px column centered on the
+//!   background (472) + column padding 12 + showcase block padding 10 + picture
+//!   border 1;
+//! * the gap between the pictures is 9 px: border 1 + margin 7 + border 1;
+//! * the top of the first showcase's picture is y = 256 (on the checked profile
+//!   the first showcase block starts at 240, artwork block padding 15,
+//!   border 1).
+//!   ⚠️ The height of the profile header depends on its contents, and each
+//!   showcase above shifts the following ones — so the person adjusts the
+//!   vertical offset themselves;
+//! * the side part is 70 px shorter than the main one — from the same
+//!   stylesheet: the "+ N" counter plate under the side part 57 px + margin 11
+//!   + two borders of 1. NOT measured by pixels live (the checked profile had no
+//!   side picture in the artwork showcase).
 //!
-//! Модель кадрирования: «рамка» витрины — ширина макета (615 или 630 px) на
-//! высоту исходника при вписывании по ширине. Масштаб ≥ 1 приближает
-//! картинку внутри рамки, сдвиги 0…1 выбирают видимое окно. Пропорции не
-//! искажаются никогда: окно исходника всегда той же формы, что рамка.
+//! Cropping model: the showcase "frame" is the layout width (615 or 630 px) by
+//! the source height when fitted by width. A zoom ≥ 1 zooms the picture inside
+//! the frame, offsets 0…1 choose the visible window. Proportions are never
+//! distorted: the source window always has the same shape as the frame.
 //!
-//! Решения (геометрия, имена, шаги сжатия, тексты) — здесь, файлы читаются
-//! и пишутся тоже здесь: модуль ни от Qt, ни от сети не зависит.
+//! Decisions (geometry, names, compression steps, texts) are here, files are
+//! read and written here too: the module depends neither on Qt nor on the
+//! network.
 
 use std::fs;
 use std::io::{BufReader, BufWriter, Cursor, Write};
@@ -44,87 +50,87 @@ use serde::Serialize;
 use crate::i18n::{tr, trf};
 
 // ============================================================================
-// Константы Steam (часть — со звёздочкой «сверить живьём»)
+// Steam constants (some marked with an asterisk "verify live")
 // ============================================================================
 
-/// Предел веса одного файла иллюстрации. Steam пишет «5 МБ»; берём меньшее
-/// из двух прочтений (5 000 000 байт), чтобы не промахнуться на десятичных
-/// и двоичных мегабайтах.
+/// Size limit of one artwork file. Steam says "5 MB"; we take the smaller of the
+/// two readings (5,000,000 bytes) so as not to miss on decimal vs binary
+/// megabytes.
 pub const FILE_LIMIT_BYTES: u64 = 5_000_000;
 
-/// Уровень Steam, с которого открываются витрины. На этапе 1 у Steam не
-/// спрашивается — только напоминание человеку.
+/// The Steam level from which showcases are unlocked. At stage 1 Steam is not
+/// asked — it is only a reminder for the person.
 pub const MIN_STEAM_LEVEL: u32 = 10;
 
-/// Ширина основной части витрины иллюстраций (видна в разметке профиля).
+/// Width of the main part of the artwork showcase (visible in the profile markup).
 pub const ARTWORK_MAIN_WIDTH: u32 = 506;
-/// Ширина боковой части (видна в разметке профиля).
+/// Width of the side part (visible in the profile markup).
 pub const ARTWORK_SIDE_WIDTH: u32 = 100;
-/// Рамка вокруг картинки в ячейке витрины (`.screenshot_showcase_screenshot
+/// Border around the picture in a showcase cell (`.screenshot_showcase_screenshot
 /// { border: 1px }`).
 pub const SLOT_BORDER: u32 = 1;
-/// Отступ между большой ячейкой и правой колонкой
+/// Margin between the large cell and the right column
 /// (`.screenshot_showcase_primary { margin-right: 7px }`).
 pub const ARTWORK_SLOT_MARGIN: u32 = 7;
-/// Зазор между основной и боковой КАРТИНКАМИ: рамка + отступ + рамка.
-/// Сверено 12.10.2026 по живой странице: 9 px.
+/// Gap between the main and side PICTURES: border + margin + border.
+/// Checked on 12.10.2026 against the live page: 9 px.
 pub const ARTWORK_GAP: u32 = SLOT_BORDER + ARTWORK_SLOT_MARGIN + SLOT_BORDER;
-/// Плашка счётчика «+ N» под боковой картинкой
+/// The "+ N" counter plate under the side picture
 /// (`.screenshot_showcase_smallscreenshot.screenshot_count { height: 57px }`).
 pub const ARTWORK_COUNT_HEIGHT: u32 = 57;
-/// Отступ под маленькой ячейкой
+/// Margin under the small cell
 /// (`.screenshot_showcase_smallscreenshot { margin-bottom: 11px }`).
 pub const ARTWORK_SMALL_MARGIN: u32 = 11;
-/// На сколько боковая часть короче основной: под ней в профиле стоит
-/// плашка счётчика. ⚠️ Посчитано по таблице стилей Steam (57 + 11 + 2
-/// рамки), по точкам на живой странице не измерено.
+/// How much shorter the side part is than the main one: the profile has the
+/// counter plate under it. ⚠️ Computed from the Steam stylesheet (57 + 11 + 2
+/// borders), not measured by pixels on the live page.
 pub const ARTWORK_SIDE_TRIM: u32 = ARTWORK_COUNT_HEIGHT + ARTWORK_SMALL_MARGIN + 2 * SLOT_BORDER;
-/// Ширина избранной иллюстрации.
+/// Width of the featured artwork.
 pub const FEATURED_WIDTH: u32 = 630;
 
-/// Ширина фона профиля, на которую считаются координаты.
+/// Width of the profile background the coordinates are computed for.
 pub const PROFILE_BG_WIDTH: u32 = 1920;
-/// Колонка содержимого профиля: 952 px плюс поля по 12 px, по центру фона
-/// (`.profile_content { width: 952px; padding: 12px; margin: 0 auto }`).
+/// Profile content column: 952 px plus 12 px padding on each side, centered on
+/// the background (`.profile_content { width: 952px; padding: 12px; margin: 0 auto }`).
 pub const PROFILE_CONTENT_WIDTH: u32 = 952;
 pub const PROFILE_CONTENT_PADDING: u32 = 12;
-/// Поле блока витрины слева (`.profile_customization_block`).
+/// Left padding of the showcase block (`.profile_customization_block`).
 pub const SHOWCASE_BLOCK_PADDING: u32 = 10;
-/// Левый край КАРТИНКИ первой ячейки на фоне 1920 px: 472 + 12 + 10 + 1.
-/// Сверено 12.10.2026 по живой странице: 495.
+/// Left edge of the first cell's PICTURE on a 1920 px background: 472 + 12 + 10 + 1.
+/// Checked on 12.10.2026 against the live page: 495.
 pub const SHOWCASE_X: u32 = (PROFILE_BG_WIDTH - PROFILE_CONTENT_WIDTH - 2 * PROFILE_CONTENT_PADDING) / 2
     + PROFILE_CONTENT_PADDING
     + SHOWCASE_BLOCK_PADDING
     + SLOT_BORDER;
-/// Верх картинки ПЕРВОЙ витрины под шапкой профиля. Каждая витрина выше
-/// сдвигает следующие вниз — поэтому в предпросмотре есть сдвиг.
-/// Сошлось с живой страницей 12.10.2026 (блок первой витрины на 240, поле
-/// блока иллюстраций 15, рамка 1). ⚠️ Проверено на ОДНОМ профиле: высота
-/// шапки зависит от её содержимого.
+/// Top of the FIRST showcase's picture under the profile header. Each showcase
+/// above shifts the following ones down — that is why the preview has an
+/// offset. Matched the live page on 12.10.2026 (first showcase block at 240,
+/// artwork block padding 15, border 1). ⚠️ Checked on ONE profile: the header
+/// height depends on its contents.
 pub const FIRST_SHOWCASE_Y: u32 = 256;
 
-/// Колонка профиля: 960 px по центру фона 1920.
+/// Profile column: 960 px centered on a 1920 background.
 pub const PROFILE_COLUMN_X: u32 = 480;
 pub const PROFILE_COLUMN_WIDTH: u32 = 960;
-/// Окно предпросмотра по ширине фона: колонка профиля с полями по 240 px
-/// (весь фон 1920 в окне вкладки мелковат).
+/// Preview window along the background width: the profile column with 240 px
+/// margins (the whole 1920 background is too small in the tab window).
 pub const PREVIEW_VIEW_X: u32 = 240;
 pub const PREVIEW_VIEW_WIDTH: u32 = 1440;
 
-/// Краски макета профиля в предпросмотре. Это подражание странице профиля
-/// Steam (тёмная страница, полупрозрачные подложки), а не тема Rexon —
-/// поэтому от скина они не зависят.
+/// Colors of the profile layout in the preview. This imitates the Steam profile
+/// page (a dark page, semi-transparent backdrops), not the Rexon theme — so they
+/// don't depend on the skin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct PreviewLook {
-    /// Страница ниже фона.
+    /// The page below the background.
     pub page: &'static str,
-    /// Подложка витрины и шапки.
+    /// Backdrop of the showcase and the header.
     pub plate: &'static str,
-    /// Полоса заголовка витрины.
+    /// Showcase title bar.
     pub header: &'static str,
     pub text: &'static str,
     pub muted: &'static str,
-    /// Заглушка аватара и значка уровня.
+    /// Placeholder of the avatar and the level badge.
     pub placeholder: &'static str,
 }
 
@@ -137,29 +143,29 @@ pub const PREVIEW_LOOK: PreviewLook = PreviewLook {
     placeholder: "#3d4450",
 };
 
-/// Предел высоты рамки: выше — уже не витрина, а ошибка вписывания.
+/// Frame height limit: above it is no longer a showcase but a fitting error.
 pub const MAX_FRAME_HEIGHT: u32 = 10_000;
-/// Предел памяти под кадры GIF после нарезки (RGBA). Длиннее — отказ с
-/// просьбой укоротить ролик, а не падение посреди работы.
+/// Memory limit for GIF frames after slicing (RGBA). Longer — a refusal asking
+/// to shorten the clip, not a crash in the middle of the work.
 pub const MAX_GIF_WORK_BYTES: u64 = 1_200_000_000;
-/// Предел масштаба на ползунке.
+/// Zoom limit on the slider.
 pub const MAX_ZOOM: f64 = 4.0;
 
 // ============================================================================
-// Вид витрины и её части
+// Showcase kind and its parts
 // ============================================================================
 
-/// Вид витрины.
+/// Showcase kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ShowcaseKind {
-    /// «Витрина иллюстраций»: основная 506 + боковая 100.
+    /// «Artwork Showcase»: main 506 + side 100.
     Artwork,
-    /// «Избранная иллюстрация»: одна часть 630.
+    /// «Featured Artwork Showcase»: one part of 630.
     Featured,
 }
 
-/// Роль части — от неё имя файла и подпись.
+/// Role of a part — the file name and caption come from it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PartRole {
@@ -168,14 +174,14 @@ pub enum PartRole {
     Featured,
 }
 
-/// Часть витрины: где она в рамке и какой ширины.
+/// A showcase part: where it is in the frame and how wide.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct PartSpec {
     pub role: PartRole,
-    /// Левый край части в рамке витрины.
+    /// Left edge of the part in the showcase frame.
     pub x: u32,
     pub width: u32,
-    /// На сколько часть короче рамки снизу.
+    /// How much shorter than the frame the part is at the bottom.
     pub bottom_trim: u32,
 }
 
@@ -192,7 +198,7 @@ const ARTWORK_PARTS: &[PartSpec] = &[
 const FEATURED_PARTS: &[PartSpec] =
     &[PartSpec { role: PartRole::Featured, x: 0, width: FEATURED_WIDTH, bottom_trim: 0 }];
 
-/// Все виды по порядку показа.
+/// All kinds in display order.
 pub const KINDS: &[ShowcaseKind] = &[ShowcaseKind::Artwork, ShowcaseKind::Featured];
 
 impl ShowcaseKind {
@@ -207,7 +213,7 @@ impl ShowcaseKind {
         KINDS.iter().copied().find(|k| k.key() == key)
     }
 
-    /// Название вида так, как его зовёт Steam в редакторе профиля.
+    /// Name of the kind as Steam calls it in the profile editor.
     pub fn label(self) -> String {
         match self {
             ShowcaseKind::Artwork => tr("Artwork Showcase"),
@@ -215,7 +221,7 @@ impl ShowcaseKind {
         }
     }
 
-    /// Строка-пояснение под выбором вида.
+    /// Explanation line under the kind choice.
     pub fn hint(self) -> String {
         match self {
             ShowcaseKind::Artwork => tr("Two pictures side by side: a wide one (506 px) and a narrow one (100 px)."),
@@ -230,16 +236,16 @@ impl ShowcaseKind {
         }
     }
 
-    /// Ширина всей витрины (рамки), от левого края первой части до правого
-    /// края последней.
+    /// Width of the whole showcase (the frame), from the left edge of the first part
+    /// to the right edge of the last.
     pub fn layout_width(self) -> u32 {
         self.parts().iter().map(|p| p.x + p.width).max().unwrap_or(0)
     }
 }
 
 impl PartRole {
-    /// Слово в имени файла (переводится: имена понятны человеку на его
-    /// языке).
+    /// Word in the file name (translated: the names are understandable to the
+    /// person in their language).
     pub fn file_word(self) -> String {
         match self {
             // TRANSLATORS: part of a file name: the wide picture of a Steam
@@ -254,7 +260,7 @@ impl PartRole {
         }
     }
 
-    /// Подпись части для человека.
+    /// Human-readable caption of the part.
     pub fn label(self) -> String {
         match self {
             PartRole::Main => tr("Main (506 px)"),
@@ -265,17 +271,17 @@ impl PartRole {
 }
 
 // ============================================================================
-// Кадрирование
+// Cropping
 // ============================================================================
 
-/// Как человек поставил картинку: масштаб и сдвиги.
+/// How the person placed the picture: zoom and offsets.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Placement {
-    /// 1 — картинка вписана по ширине витрины; больше — приближение.
+    /// 1 — the picture is fitted to the showcase width; more — zoomed in.
     pub zoom: f64,
-    /// 0 — левый край, 1 — правый (имеет смысл при приближении).
+    /// 0 — left edge, 1 — right (makes sense when zoomed in).
     pub pan_x: f64,
-    /// 0 — верх, 1 — низ (имеет смысл при приближении).
+    /// 0 — top, 1 — bottom (makes sense when zoomed in).
     pub pan_y: f64,
 }
 
@@ -286,8 +292,8 @@ impl Default for Placement {
 }
 
 impl Placement {
-    /// Привести к допустимому: масштаб 1…[`MAX_ZOOM`], сдвиги 0…1; мусор
-    /// (NaN) — к умолчанию.
+    /// Bring into the allowed range: zoom 1…[`MAX_ZOOM`], offsets 0…1; garbage
+    /// (NaN) — to the default.
     pub fn normalized(self) -> Placement {
         let fix = |v: f64, lo: f64, hi: f64, dflt: f64| {
             if v.is_finite() {
@@ -304,7 +310,7 @@ impl Placement {
     }
 }
 
-/// Прямоугольник в пикселях исходника (дробный — для предпросмотра).
+/// A rectangle in source pixels (fractional — for the preview).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct CropRect {
     pub x: f64,
@@ -313,18 +319,18 @@ pub struct CropRect {
     pub h: f64,
 }
 
-/// Готовый расчёт: что вырезать из исходника и как ляжет витрина.
+/// The finished computation: what to cut from the source and how the showcase lies.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Layout {
     pub kind: ShowcaseKind,
-    /// Рамка витрины в пикселях Steam.
+    /// Showcase frame in Steam pixels.
     pub frame_width: u32,
     pub frame_height: u32,
-    /// Окно исходника, которое растягивается на рамку.
+    /// The source window that is stretched onto the frame.
     pub crop: CropRect,
-    /// Во сколько раз пиксель исходника растянется (>1 — растяжение).
+    /// How many times a source pixel is stretched (>1 — stretching).
     pub upscale: f64,
-    /// Масштаб после приведения (для подсказки «нужна ширина не меньше…»).
+    /// Zoom after clamping (for the "width of at least … is needed" hint).
     pub zoom: f64,
     pub parts: Vec<LayoutPart>,
 }
@@ -338,7 +344,7 @@ pub struct LayoutPart {
     pub height: u32,
 }
 
-/// Высота рамки при вписывании исходника по ширине витрины.
+/// Frame height when the source is fitted to the showcase width.
 pub fn frame_height(kind: ShowcaseKind, src_w: u32, src_h: u32) -> u32 {
     if src_w == 0 || src_h == 0 {
         return 0;
@@ -347,8 +353,8 @@ pub fn frame_height(kind: ShowcaseKind, src_w: u32, src_h: u32) -> u32 {
     ((src_h as f64) * w / (src_w as f64)).round().max(1.0) as u32
 }
 
-/// Расчёт макета. `None` — у исходника нет размеров либо рамка выходит за
-/// разумную высоту ([`MAX_FRAME_HEIGHT`]).
+/// Layout computation. `None` — the source has no dimensions or the frame
+/// exceeds a reasonable height ([`MAX_FRAME_HEIGHT`]).
 pub fn layout(kind: ShowcaseKind, src_w: u32, src_h: u32, placement: Placement) -> Option<Layout> {
     let p = placement.normalized();
     let fh = frame_height(kind, src_w, src_h);
@@ -374,11 +380,11 @@ pub fn layout(kind: ShowcaseKind, src_w: u32, src_h: u32, placement: Placement) 
     Some(Layout { kind, frame_width: fw, frame_height: fh, crop, upscale: fw as f64 / cw, zoom: p.zoom, parts })
 }
 
-/// Растяжение, начиная с которого человека предупреждаем (немного больше
-/// единицы — чтобы не пугать из-за округления).
+/// Stretching from which the person is warned (a bit more than one — so as not
+/// to scare because of rounding).
 pub const UPSCALE_WARN: f64 = 1.05;
 
-/// Предупреждения к расчёту (картинка мала и растянется).
+/// Warnings for the computation (the picture is small and will be stretched).
 pub fn layout_warnings(l: &Layout) -> Vec<String> {
     let mut out = Vec::new();
     if l.upscale > UPSCALE_WARN {
@@ -391,10 +397,10 @@ pub fn layout_warnings(l: &Layout) -> Vec<String> {
 }
 
 // ============================================================================
-// Исходник: проверка
+// Source: validation
 // ============================================================================
 
-/// Формат исходника.
+/// Source format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceFormat {
@@ -403,22 +409,22 @@ pub enum SourceFormat {
     Gif,
 }
 
-/// Что известно об исходнике.
+/// What is known about the source.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SourceInfo {
     pub format: SourceFormat,
     pub width: u32,
     pub height: u32,
-    /// Кадров (у PNG и JPG — 1).
+    /// Frames (1 for PNG and JPG).
     pub frames: u32,
-    /// Длительность одного прохода GIF, мс.
+    /// Duration of one GIF loop, ms.
     pub duration_ms: u64,
     pub bytes: u64,
     pub animated: bool,
 }
 
-/// Формат по содержимому, а не по расширению: «.jpg», который на деле PNG,
-/// в Steam не редкость.
+/// Format by content, not by extension: a ".jpg" that is actually a PNG is not
+/// rare on Steam.
 pub fn sniff_format(head: &[u8]) -> Option<SourceFormat> {
     match image::guess_format(head).ok()? {
         ImageFormat::Png => Some(SourceFormat::Png),
@@ -428,8 +434,8 @@ pub fn sniff_format(head: &[u8]) -> Option<SourceFormat> {
     }
 }
 
-/// Проверить исходник: формат, размеры, кадры. Ошибка — готовая фраза для
-/// человека.
+/// Validate the source: format, dimensions, frames. An error is a ready phrase
+/// for the person.
 pub fn inspect(path: &Path) -> Result<SourceInfo, String> {
     let bytes = fs::metadata(path).map(|m| m.len()).map_err(|_| tr("The file cannot be read."))?;
     let data = fs::read(path).map_err(|_| tr("The file cannot be read."))?;
@@ -449,8 +455,8 @@ pub fn inspect(path: &Path) -> Result<SourceInfo, String> {
                         duration_ms += u64::from(f.delay) * 10;
                     }
                     Ok(None) => break,
-                    // Обрыв в конце файла — частая болезнь GIF из сети:
-                    // кадры до обрыва читаются, их и считаем.
+                    // A truncation at the end of the file is a common illness of GIFs from the
+                    // web: the frames before the cut are readable, so we count them.
                     Err(_) if frames > 0 => break,
                     Err(_) => return Err(tr("The GIF file is damaged.")),
                 }
@@ -470,7 +476,7 @@ pub fn inspect(path: &Path) -> Result<SourceInfo, String> {
     }
 }
 
-/// Замечания к исходнику для человека (не ошибки — работать можно).
+/// Remarks about the source for the person (not errors — work can go on).
 pub fn source_notes(info: &SourceInfo) -> Vec<String> {
     let mut out = Vec::new();
     if info.animated {
@@ -486,11 +492,11 @@ pub fn source_notes(info: &SourceInfo) -> Vec<String> {
 }
 
 // ============================================================================
-// Куда сохранять
+// Where to save
 // ============================================================================
 
-/// Каталог «Изображения» по XDG: переменная `XDG_PICTURES_DIR`, затем
-/// `user-dirs.dirs`, затем `~/Pictures`.
+/// The XDG "Pictures" directory: the `XDG_PICTURES_DIR` variable, then
+/// `user-dirs.dirs`, then `~/Pictures`.
 pub fn pictures_dir(
     env_pictures: Option<&str>,
     user_dirs_text: Option<&str>,
@@ -504,7 +510,7 @@ pub fn pictures_dir(
             let line = line.trim();
             if let Some(rest) = line.strip_prefix("XDG_PICTURES_DIR=") {
                 let v = rest.trim().trim_matches('"').replace("$HOME", home);
-                // Пустое значение или сам дом — «не задано» (так пишет xdg-user-dirs).
+                // An empty value or the home itself means "not set" (this is how xdg-user-dirs writes it).
                 if !v.is_empty() && v.trim_end_matches('/') != home.trim_end_matches('/') {
                     return PathBuf::from(v);
                 }
@@ -514,13 +520,13 @@ pub fn pictures_dir(
     PathBuf::from(format!("{home}/Pictures"))
 }
 
-/// Корень наборов: `<Изображения>/Rexon/steam-showcase`.
+/// Root of the sets: `<Pictures>/Rexon/steam-showcase`.
 pub fn output_root(pictures: &Path) -> PathBuf {
     pictures.join("Rexon").join("steam-showcase")
 }
 
-/// Имя набора из имени исходника: без расширения, без «/» и управляющих
-/// символов, не длиннее 60 символов.
+/// Set name from the source name: without the extension, without "/" and
+/// control characters, no longer than 60 characters.
 pub fn set_name_from_source(path: &Path) -> String {
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let clean: String = stem
@@ -538,8 +544,8 @@ pub fn set_name_from_source(path: &Path) -> String {
     }
 }
 
-/// Свободный каталог набора: `<имя>`, затем `<имя> (2)`, `<имя> (3)`…
-/// Чужой набор с тем же именем не затирается.
+/// A free set directory: `<name>`, then `<name> (2)`, `<name> (3)`…
+/// Someone else's set with the same name is not overwritten.
 pub fn unique_set_dir(root: &Path, name: &str) -> PathBuf {
     let first = root.join(name);
     if !first.exists() {
@@ -551,12 +557,12 @@ pub fn unique_set_dir(root: &Path, name: &str) -> PathBuf {
         .unwrap_or(first)
 }
 
-/// Имя файла части: «1-основная.gif».
+/// File name of a part: "1-main.gif".
 pub fn part_file_name(index: usize, role: PartRole, ext: &str) -> String {
     format!("{}-{}.{}", index + 1, role.file_word(), ext)
 }
 
-/// Имя памятки.
+/// Name of the how-to.
 pub fn readme_file_name() -> String {
     // TRANSLATORS: file name of the instructions saved next to the showcase
     // pictures. Lowercase, words joined with "-".
@@ -564,20 +570,20 @@ pub fn readme_file_name() -> String {
 }
 
 // ============================================================================
-// Шаги сжатия GIF
+// GIF compression steps
 // ============================================================================
 
-/// Ступень сжатия GIF: число цветов и прореживание кадров.
+/// A GIF compression stage: number of colors and frame thinning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct GifStep {
-    /// Цветов в общей палитре (2…256).
+    /// Colors in the shared palette (2…256).
     pub colors: u16,
-    /// Брать каждый N-й кадр (1 — все). Задержки выброшенных кадров
-    /// прибавляются к оставшимся — длительность ролика не меняется.
+    /// Take every N-th frame (1 — all). The delays of dropped frames are added to
+    /// the remaining ones — the clip duration doesn't change.
     pub keep_every: u16,
 }
 
-/// Ступени по порядку: сначала палитра, потом кадры, потом опять палитра.
+/// Stages in order: first the palette, then the frames, then the palette again.
 pub const GIF_STEPS: &[GifStep] = &[
     GifStep { colors: 256, keep_every: 1 },
     GifStep { colors: 128, keep_every: 1 },
@@ -589,7 +595,7 @@ pub const GIF_STEPS: &[GifStep] = &[
     GifStep { colors: 16, keep_every: 6 },
 ];
 
-/// Предупреждение о потере качества для ступени (пусто у первой).
+/// Quality loss warning for a stage (empty for the first).
 pub fn gif_step_warning(step: GifStep, frames_before: usize, frames_after: usize) -> String {
     if step.colors >= 256 && step.keep_every <= 1 {
         return String::new();
@@ -604,8 +610,9 @@ pub fn gif_step_warning(step: GifStep, frames_before: usize, frames_after: usize
     trf("To fit Steam's 5 MB limit the GIF was compressed: %1. Quality is lower than the original.", &[&parts.join(", ")])
 }
 
-/// Номера кадров, остающихся после прореживания, и их задержки (сотые доли
-/// секунды; задержки выброшенных прибавлены к предыдущему оставшемуся).
+/// Indices of the frames remaining after thinning, and their delays
+/// (hundredths of a second; the delays of dropped ones are added to the previous
+/// remaining one).
 pub fn thin_frames(delays_cs: &[u16], keep_every: u16) -> Vec<(usize, u16)> {
     let k = keep_every.max(1) as usize;
     let mut out: Vec<(usize, u16)> = Vec::new();
@@ -619,8 +626,8 @@ pub fn thin_frames(delays_cs: &[u16], keep_every: u16) -> Vec<(usize, u16)> {
     out
 }
 
-/// Задержка кадра GIF в сотых долях секунды из длительности в мс. Ноль
-/// браузеры показывают как 0,1 с — так и записываем, честно.
+/// GIF frame delay in hundredths of a second from a duration in ms. Browsers
+/// show zero as 0.1 s — so that is what we write, honestly.
 pub fn delay_cs_from_ms(ms: u64) -> u16 {
     let cs = ((ms + 5) / 10).min(u16::MAX as u64) as u16;
     if cs < 2 {
@@ -631,20 +638,20 @@ pub fn delay_cs_from_ms(ms: u64) -> u16 {
 }
 
 // ============================================================================
-// Нарезка
+// Slicing
 // ============================================================================
 
-/// Запрос на нарезку.
+/// A slicing request.
 #[derive(Debug, Clone)]
 pub struct SliceRequest {
     pub source: PathBuf,
     pub kind: ShowcaseKind,
     pub placement: Placement,
-    /// Каталог набора (создаётся; должен быть свободен — см. [`unique_set_dir`]).
+    /// Set directory (created; must be free — see [`unique_set_dir`]).
     pub out_dir: PathBuf,
 }
 
-/// Готовый файл.
+/// A finished file.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OutFile {
     pub path: String,
@@ -657,7 +664,7 @@ pub struct OutFile {
     pub bytes: u64,
 }
 
-/// Итог нарезки.
+/// Slicing result.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SliceReport {
     pub dir: String,
@@ -666,7 +673,7 @@ pub struct SliceReport {
     pub warnings: Vec<String>,
 }
 
-/// Прогресс и отмена — от исполнителя (поток окна).
+/// Progress and cancellation — from the executor (the window thread).
 pub struct SliceControl<'a> {
     pub progress: &'a dyn Fn(f32),
     pub cancel: &'a AtomicBool,
@@ -676,7 +683,7 @@ fn cancelled(ctl: &SliceControl) -> bool {
     ctl.cancel.load(Ordering::Relaxed)
 }
 
-/// Окно исходника → рамка витрины (целочисленное окно, ресемплинг).
+/// Source window → showcase frame (integer window, resampling).
 fn render_frame(src: &RgbaImage, l: &Layout, filter: FilterType) -> RgbaImage {
     let x = l.crop.x.round().max(0.0) as u32;
     let y = l.crop.y.round().max(0.0) as u32;
@@ -690,14 +697,14 @@ fn render_frame(src: &RgbaImage, l: &Layout, filter: FilterType) -> RgbaImage {
     }
 }
 
-/// Часть из рамки.
+/// A part out of the frame.
 fn cut_part(frame: &RgbaImage, part: &LayoutPart) -> RgbaImage {
     image::imageops::crop_imm(frame, part.x, 0, part.width, part.height.min(frame.height())).to_image()
 }
 
-/// Нарезать исходник на части витрины, уложить каждую в 5 МБ и положить
-/// рядом памятку. Ошибка — готовая фраза для человека; недоделанный каталог
-/// набора при ошибке снимается.
+/// Slice the source into showcase parts, fit each into 5 MB and put a how-to
+/// next to them. An error is a ready phrase for the person; an unfinished set
+/// directory is removed on error.
 pub fn slice(req: &SliceRequest, ctl: &SliceControl) -> Result<SliceReport, String> {
     let info = inspect(&req.source)?;
     let l = layout(req.kind, info.width, info.height, req.placement)
@@ -729,8 +736,8 @@ pub fn slice(req: &SliceRequest, ctl: &SliceControl) -> Result<SliceReport, Stri
     }
 }
 
-/// Картинка (PNG/JPG). PNG остаётся PNG, пока влезает в 5 МБ; иначе — JPEG
-/// со ступенями качества (и предупреждение).
+/// A picture (PNG/JPG). PNG stays PNG as long as it fits into 5 MB; otherwise
+/// JPEG with quality stages (and a warning).
 fn slice_still(
     req: &SliceRequest,
     info: &SourceInfo,
@@ -773,7 +780,7 @@ fn slice_still(
     Ok((files, warnings))
 }
 
-/// Качество JPEG по ступеням, когда PNG не влез.
+/// JPEG quality by stages when the PNG didn't fit.
 pub const JPEG_QUALITIES: &[u8] = &[92, 85, 75, 60, 45];
 
 fn encode_still(piece: &RgbaImage, format: SourceFormat) -> Result<(Vec<u8>, &'static str, Option<String>), String> {
@@ -791,8 +798,8 @@ fn encode_still(piece: &RgbaImage, format: SourceFormat) -> Result<(Vec<u8>, &'s
             return Ok((buf, "png", None));
         }
     }
-    // JPEG без прозрачности: прозрачное ложится на чёрное — так же, как
-    // Steam показывает пустоту витрины.
+    // JPEG has no transparency: transparent areas go onto black — the same way
+    // Steam shows the empty space of a showcase.
     let rgb = DynamicImage::ImageRgba8(piece.clone()).to_rgb8();
     for (i, q) in JPEG_QUALITIES.iter().enumerate() {
         let mut buf = Vec::new();
@@ -814,15 +821,15 @@ fn encode_still(piece: &RgbaImage, format: SourceFormat) -> Result<(Vec<u8>, &'s
     Err(tr("Could not fit the picture into Steam's 5 MB limit."))
 }
 
-/// Кадры части и их задержки.
+/// Frames of a part and their delays.
 struct PartFrames {
     part: LayoutPart,
     frames: Vec<RgbaImage>,
 }
 
-/// GIF: все кадры через рамку, части — отдельными GIF с общей палитрой
-/// каждый. Ступень сжатия выбирается ОДНА на все части: иначе основная и
-/// боковая шли бы с разной частотой кадров.
+/// GIF: all frames through the frame, the parts as separate GIFs, each with a
+/// shared palette. ONE compression stage is chosen for all parts: otherwise the
+/// main and side parts would run at different frame rates.
 fn slice_gif(
     req: &SliceRequest,
     info: &SourceInfo,
@@ -838,8 +845,8 @@ fn slice_gif(
     let mut parts: Vec<PartFrames> =
         l.parts.iter().map(|p| PartFrames { part: p.clone(), frames: Vec::new() }).collect();
     let mut delays: Vec<u16> = Vec::new();
-    // Растяжение кадров GIF — треугольным фильтром: Ланцош на сотнях кадров
-    // в разы дольше, а разница на палитре 256 цветов не видна.
+    // Stretching GIF frames with a triangle filter: Lanczos on hundreds of frames
+    // is many times slower, and the difference is invisible on a 256-color palette.
     let filter = FilterType::Triangle;
     for (i, frame) in dec.into_frames().enumerate() {
         if cancelled(ctl) {
@@ -847,7 +854,7 @@ fn slice_gif(
         }
         let frame = match frame {
             Ok(f) => f,
-            // Обрыв в конце — берём то, что успели прочитать.
+            // Truncated at the end — take what was read.
             Err(_) if !delays.is_empty() => break,
             Err(_) => return Err(tr("The GIF file is damaged.")),
         };
@@ -868,7 +875,7 @@ fn slice_gif(
     let total_steps = GIF_STEPS.len() as f32;
     for (si, step) in GIF_STEPS.iter().enumerate() {
         let kept = thin_frames(&delays, step.keep_every);
-        // Прореживать ролик из пары кадров бессмысленно — пропускаем ступень.
+        // Thinning a clip of a couple of frames is pointless — skip the stage.
         if step.keep_every > 1 && kept.len() < 2 && delays.len() >= 2 {
             continue;
         }
@@ -917,16 +924,16 @@ fn slice_gif(
     Err(tr("Even after strong compression the GIF does not fit into Steam's 5 MB limit. Shorten it or crop a smaller area and try again."))
 }
 
-/// Закодировать кадры части в GIF с одной общей палитрой на `colors` цветов
-/// (прозрачность — отдельный цвет палитры).
+/// Encode the frames of a part into a GIF with one shared palette of `colors`
+/// colors (transparency is a separate palette color).
 fn encode_gif(frames: &[RgbaImage], kept: &[(usize, u16)], colors: u16) -> Result<Vec<u8>, String> {
     let first = frames.first().ok_or_else(|| tr("The GIF file is damaged."))?;
     let (w, h) = (first.width(), first.height());
     let has_alpha = kept.iter().any(|(i, _)| frames[*i].pixels().any(|p| p.0[3] < 128));
     let quant_colors = (colors as usize - usize::from(has_alpha)).clamp(2, 256);
 
-    // Палитра учится на выборке пикселей всех оставшихся кадров — до ~1 млн
-    // точек, чтобы длинный ролик не учился минутами.
+    // The palette is learned on a sample of pixels from all remaining frames — up
+    // to ~1 million points, so that a long clip doesn't learn for minutes.
     let total_px: usize = kept.len() * (w as usize) * (h as usize);
     let stride = (total_px / 1_000_000).max(1);
     let mut sample = Vec::with_capacity((total_px / stride + 1) * 4);
@@ -951,7 +958,7 @@ fn encode_gif(frames: &[RgbaImage], kept: &[(usize, u16)], colors: u16) -> Resul
     } else {
         None
     };
-    // Палитра GIF — степень двойки; дополняем чёрным.
+    // A GIF palette is a power of two; pad with black.
     let mut size = 2usize;
     while size < palette.len() / 3 {
         size *= 2;
@@ -975,8 +982,8 @@ fn encode_gif(frames: &[RgbaImage], kept: &[(usize, u16)], colors: u16) -> Resul
             }
             let mut f = gif::Frame::from_indexed_pixels(w as u16, h as u16, idx, transparent);
             f.delay = *delay;
-            // Каждый кадр — целиком: прежний кадр стирается до фона, иначе
-            // прозрачные места копили бы следы старых кадров.
+            // Each frame is whole: the previous frame is cleared to the background,
+            // otherwise transparent areas would accumulate traces of old frames.
             f.dispose = if transparent.is_some() { gif::DisposalMethod::Background } else { gif::DisposalMethod::Keep };
             enc.write_frame(&f).map_err(|e| trf("Cannot save the file: %1", &[&e]))?;
         }
@@ -991,15 +998,15 @@ fn write_file(path: &Path, data: &[u8]) -> Result<(), String> {
 }
 
 // ============================================================================
-// Памятка
+// How-to
 // ============================================================================
 
-/// Адрес страницы загрузки иллюстрации (открывает человек сам).
+/// Address of the artwork upload page (the person opens it themselves).
 pub const UPLOAD_PAGE_URL: &str = "https://steamcommunity.com/sharedfiles/edititem/767/3/";
 
-/// Текст памятки «что куда загружать». Без кода консоли. Те же шаги с
-/// кнопками ведёт помощник в окне ([`wizard_steps`]); памятка остаётся в
-/// папке на случай, когда набор открывают без Rexon.
+/// Text of the "what to upload where" how-to. No console code. The in-window
+/// helper walks through the same steps with buttons ([`wizard_steps`]); the
+/// how-to stays in the folder for the case when the set is opened without Rexon.
 pub fn readme_text(kind: ShowcaseKind, files: &[OutFile]) -> String {
     let mut s = String::new();
     s.push_str(&trf("Steam profile showcase: %1", &[&kind.label()]));
@@ -1046,7 +1053,7 @@ pub fn readme_text(kind: ShowcaseKind, files: &[OutFile]) -> String {
     s
 }
 
-/// «1,2 МБ» / «340 КБ» — вес файла для человека.
+/// "1.2 MB" / "340 KB" — the file size for the person.
 pub fn human_size(bytes: u64) -> String {
     if bytes >= 1_000_000 {
         trf("%1 MB", &[&crate::i18n::format_decimal(bytes as f64 / 1_000_000.0, 1)])
@@ -1056,28 +1063,29 @@ pub fn human_size(bytes: u64) -> String {
 }
 
 // ============================================================================
-// Помощник: загрузить части и выставить их в витрине
+// Helper: upload the parts and place them in the showcase
 // ============================================================================
 //
-// ⛔ Граница. Rexon ничего не делает от имени учётной записи Steam: не
-// загружает иллюстрации, не меняет профиль, не трогает cookie и токены
-// сеанса ради записи. Помощник только открывает человеку нужные страницы,
-// кладёт текст в буфер обмена, показывает папку с частями и читает
-// ПУБЛИЧНУЮ страницу профиля без входа. Всё, что нажимается на страницах
-// Steam, нажимает сам человек.
+// ⛔ Boundary. Rexon does nothing on behalf of the Steam account: it doesn't
+// upload artwork, doesn't change the profile, doesn't touch session cookies and
+// tokens in order to write. The helper only opens the needed pages for the
+// person, puts text on the clipboard, shows the folder with the parts and reads
+// the PUBLIC profile page without logging in. Everything clicked on Steam pages
+// is clicked by the person.
 
-/// Корень сообщества Steam.
+/// Root of the Steam community.
 pub const STEAM_COMMUNITY_URL: &str = "https://steamcommunity.com";
 
-/// Публичная страница профиля по SteamID64. Язык — английский: по нему
-/// страница разбирается одинаково у всех.
+/// Public profile page by SteamID64. The language is English: with it the page
+/// is parsed the same way for everyone.
 pub fn profile_page_url(sid64: &str) -> String {
     format!("{STEAM_COMMUNITY_URL}/profiles/{sid64}/?l=english")
 }
 
-/// Страница редактора профиля на разделе витрин. Без SteamID64 — адрес
-/// «мой профиль», который Steam сам переводит на вошедшего человека.
-/// ⚠️ Адрес раздела взят из памятки и руководств; под входом не сверен.
+/// Profile editor page on the showcases section. Without a SteamID64 — the
+/// "my profile" address, which Steam itself redirects to the logged-in person.
+/// ⚠️ The section address is taken from the how-to and guides; not verified
+/// while logged in.
 pub fn edit_showcases_url(sid64: &str) -> String {
     if sid64.is_empty() {
         format!("{STEAM_COMMUNITY_URL}/my/edit/showcases")
@@ -1086,21 +1094,21 @@ pub fn edit_showcases_url(sid64: &str) -> String {
     }
 }
 
-/// Тот же адрес для клиента Steam: там человек уже вошёл, а в браузере —
-/// не обязательно.
+/// The same address for the Steam client: the person is already logged in
+/// there, but not necessarily in the browser.
 pub fn steam_client_url(url: &str) -> String {
     format!("steam://openurl/{url}")
 }
 
-/// «Пустое» название иллюстрации: один невидимый знак (U+2800). С ним под
-/// картинкой в витрине не остаётся строки с названием. Вписывает его сам
-/// человек — помощник только кладёт знак в буфер обмена.
-/// ⚠️ Приём из руководств; что Steam принимает именно этот знак, живьём не
-/// сверено — поэтому рядом всегда есть обычное понятное название.
+/// An "empty" artwork title: one invisible character (U+2800). With it no title
+/// line remains under the picture in the showcase. The person types it in
+/// themselves — the helper only puts the character on the clipboard.
+/// ⚠️ A trick from guides; that Steam accepts exactly this character has not
+/// been verified live — so a regular readable title is always offered next to it.
 pub const BLANK_TITLE: &str = "\u{2800}";
 
-/// Понятное название части для поля «Название» на странице загрузки: по
-/// нему часть легко узнать в окне выбора иллюстрации.
+/// A readable title of the part for the "Title" field on the upload page: by it
+/// the part is easy to recognize in the artwork selection window.
 pub fn upload_title(set_name: &str, role: PartRole) -> String {
     let word = match role {
         // TRANSLATORS: word in the title of an uploaded Steam artwork: the
@@ -1116,11 +1124,11 @@ pub fn upload_title(set_name: &str, role: PartRole) -> String {
     format!("{set_name} — {word}")
 }
 
-/// Имя файла состояния помощника в папке набора. С точки — чтобы не
-/// мешался в окне выбора файла на странице загрузки.
+/// File name of the helper state in the set folder. With a dot — so that it
+/// doesn't get in the way in the file selection window of the upload page.
 pub const WIZARD_STATE_FILE: &str = ".rexon-showcase.json";
 
-/// Часть набора в состоянии помощника.
+/// A part of the set in the helper state.
 #[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
 pub struct WizardPart {
     pub file_name: String,
@@ -1128,24 +1136,24 @@ pub struct WizardPart {
     pub role: String,
     pub width: u32,
     pub height: u32,
-    /// Человек отметил: часть загружена в Steam.
+    /// The person marked: the part is uploaded to Steam.
     #[serde(default)]
     pub uploaded: bool,
 }
 
-/// Состояние помощника: что за набор и докуда человек дошёл. Лежит рядом
-/// с частями, поэтому к набору можно вернуться позже.
+/// Helper state: which set it is and how far the person got. It lies next to
+/// the parts, so one can return to the set later.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, serde::Deserialize)]
 pub struct WizardState {
-    /// Ключ вида витрины ([`ShowcaseKind::key`]).
+    /// Key of the showcase kind ([`ShowcaseKind::key`]).
     #[serde(default)]
     pub kind: String,
     #[serde(default)]
     pub parts: Vec<WizardPart>,
-    /// Человек отметил: части выставлены в витрине.
+    /// The person marked: the parts are placed in the showcase.
     #[serde(default)]
     pub placed: bool,
-    /// Последняя проверка публичного профиля сошлась.
+    /// The last check of the public profile matched.
     #[serde(default)]
     pub verified: bool,
 }
@@ -1168,7 +1176,7 @@ fn role_from_key(key: &str) -> Option<PartRole> {
 }
 
 impl WizardState {
-    /// Свежее состояние для только что нарезанного набора.
+    /// Fresh state for a just-sliced set.
     pub fn for_files(kind: ShowcaseKind, files: &[OutFile]) -> WizardState {
         WizardState {
             kind: kind.key().to_string(),
@@ -1195,9 +1203,8 @@ impl WizardState {
         !self.parts.is_empty() && self.parts.iter().all(|p| p.uploaded)
     }
 
-    /// Отметить часть загруженной (или снять отметку). Снятая отметка
-    /// откатывает и следующие шаги: выставить и проверить можно только
-    /// загруженное.
+    /// Mark a part as uploaded (or unmark it). Unmarking also rolls back the
+    /// following steps: only uploaded parts can be placed and checked.
     pub fn set_uploaded(&mut self, file_name: &str, on: bool) {
         for p in &mut self.parts {
             if p.file_name == file_name {
@@ -1210,7 +1217,7 @@ impl WizardState {
         }
     }
 
-    /// Отметить «выставлено в витрине». Без загруженных частей не ставится.
+    /// Mark "placed in the showcase". Not set without uploaded parts.
     pub fn set_placed(&mut self, on: bool) {
         self.placed = on && self.all_uploaded();
         if !self.placed {
@@ -1218,8 +1225,7 @@ impl WizardState {
         }
     }
 
-    /// Ключ шага, на котором человек сейчас: `upload`, `place`, `check`
-    /// либо `done`.
+    /// Key of the step the person is on now: `upload`, `place`, `check` or `done`.
     pub fn current_step(&self) -> &'static str {
         if !self.all_uploaded() {
             "upload"
@@ -1233,8 +1239,8 @@ impl WizardState {
     }
 }
 
-/// Прочитать состояние помощника из папки набора. Нет файла или он битый —
-/// `None`: помощник начнёт сначала.
+/// Read the helper state from the set folder. No file or it is broken — `None`:
+/// the helper starts over.
 pub fn load_wizard_state(dir: &Path) -> Option<WizardState> {
     let text = fs::read_to_string(dir.join(WIZARD_STATE_FILE)).ok()?;
     let state: WizardState = serde_json::from_str(&text).ok()?;
@@ -1244,7 +1250,7 @@ pub fn load_wizard_state(dir: &Path) -> Option<WizardState> {
     Some(state)
 }
 
-/// Записать состояние помощника в папку набора (через временный файл).
+/// Write the helper state into the set folder (through a temporary file).
 pub fn save_wizard_state(dir: &Path, state: &WizardState) -> Result<(), String> {
     let text = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
     let tmp = dir.join(format!("{WIZARD_STATE_FILE}.part"));
@@ -1252,20 +1258,20 @@ pub fn save_wizard_state(dir: &Path, state: &WizardState) -> Result<(), String> 
     fs::rename(&tmp, dir.join(WIZARD_STATE_FILE)).map_err(|e| trf("Cannot save the file: %1", &[&e]))
 }
 
-/// Шаг помощника для показа.
+/// A helper step for display.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WizardStep {
     /// `upload` / `place` / `check`.
     pub key: &'static str,
     pub title: String,
-    /// Короткие подписи «что нажать», по порядку.
+    /// Short "what to click" captions, in order.
     pub lines: Vec<String>,
     pub done: bool,
-    /// Шаг, на котором человек сейчас.
+    /// The step the person is on now.
     pub current: bool,
 }
 
-/// Три шага помощника с подписями под вид витрины и состояние набора.
+/// The three helper steps with captions for the showcase kind and the set state.
 pub fn wizard_steps(state: &WizardState) -> Vec<WizardStep> {
     let kind = state.showcase_kind();
     let current = state.current_step();
@@ -1325,55 +1331,55 @@ pub fn wizard_steps(state: &WizardState) -> Vec<WizardStep> {
 }
 
 // ============================================================================
-// Публичная страница профиля: что Steam показывает в витрине
+// Public profile page: what Steam shows in the showcase
 // ============================================================================
 
-/// Картинка в ячейке витрины на странице профиля.
+/// A picture in a showcase cell on the profile page.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct ProfileSlot {
-    /// Большая ячейка (иначе — маленькая справа).
+    /// The large cell (otherwise — a small one on the right).
     pub primary: bool,
-    /// Номер иллюстрации в Steam.
+    /// Artwork number in Steam.
     pub file_id: String,
-    /// Потолок ширины из разметки (`max-width`): 506, 100 или 630.
+    /// Width cap from the markup (`max-width`): 506, 100 or 630.
     pub max_width: u32,
-    /// Размер, в котором Steam отдаёт картинку (`imw`×`imh` в её адресе).
+    /// The size at which Steam serves the picture (`imw`×`imh` in its address).
     pub shown_width: u32,
     pub shown_height: u32,
     pub image_url: String,
-    /// Название под большой картинкой (у маленьких его нет).
+    /// Title under the large picture (the small ones have none).
     pub title: String,
 }
 
-/// Витрина с иллюстрациями на странице профиля.
+/// An artwork showcase on the profile page.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct ProfileArtShowcase {
-    /// Какой по счёту витриной сверху она стоит (с нуля).
+    /// Which showcase from the top it is (from zero).
     pub position: usize,
-    /// Одна картинка во всю ширину — «Избранная иллюстрация».
+    /// One full-width picture — «Featured Artwork Showcase».
     pub single: bool,
     pub slots: Vec<ProfileSlot>,
 }
 
-/// Что удалось прочитать с публичной страницы профиля.
+/// What could be read from the public profile page.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct ProfilePage {
-    /// Профиль закрыт — витрин на странице нет.
+    /// The profile is private — there are no showcases on the page.
     pub private: bool,
-    /// Заголовки всех витрин по порядку.
+    /// Titles of all showcases in order.
     pub headers: Vec<String>,
-    /// Витрины иллюстраций (обычно одна).
+    /// Artwork showcases (usually one).
     pub art: Vec<ProfileArtShowcase>,
 }
 
-/// Текст между `start` и ближайшим `end` после него.
+/// Text between `start` and the nearest `end` after it.
 fn between<'a>(text: &'a str, start: &str, end: &str) -> Option<&'a str> {
     let from = text.find(start)? + start.len();
     let len = text[from..].find(end)?;
     Some(&text[from..from + len])
 }
 
-/// Число сразу после `key` (до первого нецифрового знака).
+/// The number right after `key` (up to the first non-digit character).
 fn number_after(text: &str, key: &str) -> u32 {
     text.find(key)
         .map(|i| &text[i + key.len()..])
@@ -1385,7 +1391,7 @@ fn number_after(text: &str, key: &str) -> u32 {
         .unwrap_or(0)
 }
 
-/// Снять HTML-сущности, которые встречаются в названиях.
+/// Unescape the HTML entities that occur in titles.
 fn unescape_html(text: &str) -> String {
     text.replace("&amp;", "&")
         .replace("&quot;", "\"")
@@ -1394,7 +1400,7 @@ fn unescape_html(text: &str) -> String {
         .replace("&gt;", ">")
 }
 
-/// Одна ячейка: кусок разметки от её открывающего `div` до следующей.
+/// One cell: a piece of markup from its opening `div` to the next one.
 fn parse_slot(chunk: &str, primary: bool) -> Option<ProfileSlot> {
     let img = between(chunk, "<img", ">")?;
     let image_url = unescape_html(between(img, "src=\"", "\"")?);
@@ -1416,30 +1422,32 @@ fn parse_slot(chunk: &str, primary: bool) -> Option<ProfileSlot> {
     })
 }
 
-/// Разобрать публичную страницу профиля: закрыт ли он, какие витрины стоят
-/// и что Steam показывает в витринах иллюстраций.
+/// Parse the public profile page: whether it is private, which showcases are
+/// there and what Steam shows in the artwork showcases.
 ///
-/// Разметка снята с живой страницы 12.10.2026: витрина иллюстраций — блок
-/// `profile_customization myart`, внутри большая ячейка
-/// `screenshot_showcase_primary` и маленькие `screenshot_showcase_smallscreenshot
-/// showcase_slot`; размер показа стоит в адресе картинки (`imw`, `imh`).
-/// ⚠️ У «Избранной иллюстрации» живого образца не было: она опознаётся по
-/// классу `single` у большой ячейки (он есть в таблице стилей Steam).
+/// The markup was taken from the live page on 12.10.2026: the artwork showcase
+/// is the `profile_customization myart` block, inside it the large cell
+/// `screenshot_showcase_primary` and the small ones
+/// `screenshot_showcase_smallscreenshot showcase_slot`; the display size is in
+/// the picture address (`imw`, `imh`).
+/// ⚠️ There was no live sample of the «Featured Artwork Showcase»: it is
+/// recognized by the `single` class of the large cell (it is in the Steam
+/// stylesheet).
 pub fn parse_profile_page(html: &str) -> ProfilePage {
     let mut page = ProfilePage {
         private: html.contains("profile_private_info")
             || between(html, "<body", ">").map(|b| b.contains("private_profile")).unwrap_or(false),
         ..ProfilePage::default()
     };
-    // Витрины идут подряд блоками `<div ... class="profile_customization…">`.
+    // Showcases follow one another as `<div ... class="profile_customization…">` blocks.
     const BLOCK: &str = "class=\"profile_customization";
     let mut starts: Vec<usize> = Vec::new();
     let mut at = 0;
     while let Some(i) = html[at..].find(BLOCK) {
         let pos = at + i;
         let after = &html[pos + BLOCK.len()..];
-        // Только сам блок витрины: `profile_customization"` или с добавочным
-        // классом через пробел, а не `profile_customization_header` и т. п.
+        // Only the showcase block itself: `profile_customization"` or with an extra
+        // class after a space, not `profile_customization_header` etc.
         if after.starts_with('"') || after.starts_with(' ') {
             starts.push(pos);
         }
@@ -1466,7 +1474,7 @@ pub fn parse_profile_page(html: &str) -> ProfilePage {
             showcase.single = between(chunk, "class=\"", "\"")
                 .map(|c| c.split_whitespace().any(|w| w == "single"))
                 .unwrap_or(false);
-            // Пустая ячейка (`openslot`) картинки не несёт.
+            // An empty cell (`openslot`) carries no picture.
             if let Some(slot) = parse_slot(chunk, true) {
                 showcase.slots.push(slot);
             }
@@ -1486,44 +1494,44 @@ pub fn parse_profile_page(html: &str) -> ProfilePage {
     page
 }
 
-/// Итог сверки одной части с тем, что показывает Steam.
+/// Result of comparing one part with what Steam shows.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CheckPart {
     pub role: String,
     pub label: String,
     pub expected_width: u32,
     pub expected_height: u32,
-    /// В нужной ячейке витрины есть картинка.
+    /// There is a picture in the right showcase cell.
     pub found: bool,
     pub shown_width: u32,
     pub shown_height: u32,
-    /// Размер показа совпал с размером части.
+    /// The display size matched the part size.
     pub ok: bool,
     pub image_url: String,
     pub title: String,
 }
 
-/// Итог проверки профиля.
+/// Result of the profile check.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CheckReport {
     /// `private` / `no_showcase` / `empty` / `mismatch` / `ok`.
     pub status: &'static str,
     pub ok: bool,
-    /// Главная строка для человека.
+    /// The main line for the person.
     pub headline: String,
-    /// Что именно не так и что делать.
+    /// What exactly is wrong and what to do.
     pub lines: Vec<String>,
     pub parts: Vec<CheckPart>,
-    /// Сколько витрин стоит в профиле выше этой (от них зависит её место
-    /// на фоне); `-1` — витрина не найдена.
+    /// How many showcases are in the profile above this one (its position on the
+    /// background depends on them); `-1` — the showcase was not found.
     pub above: i32,
 }
 
-/// На сколько точек размер показа может отличаться от размера части:
-/// Steam округляет высоту при пересчёте.
+/// By how many pixels the display size may differ from the part size: Steam
+/// rounds the height when rescaling.
 pub const CHECK_TOLERANCE: u32 = 1;
 
-/// Сверить части набора с тем, что стоит в витрине на странице профиля.
+/// Compare the parts of the set with what is in the showcase on the profile page.
 pub fn check_profile(state: &WizardState, page: &ProfilePage) -> CheckReport {
     let kind = state.showcase_kind();
     let fail = |status: &'static str, headline: String, lines: Vec<String>| CheckReport {
@@ -1622,7 +1630,7 @@ pub fn check_profile(state: &WizardState, page: &ProfilePage) -> CheckReport {
 }
 
 // ============================================================================
-// Сверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
@@ -1631,8 +1639,8 @@ mod tests {
     use image::{Delay, Frame, Rgba};
     use std::sync::Mutex;
 
-    /// Язык сверок — исходный (английский): имена файлов и фразы сверяются
-    /// по `msgid`.
+    /// The language of the checks is the source one (English): file names and
+    /// phrases are checked by `msgid`.
     fn en() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
     }
@@ -1654,7 +1662,7 @@ mod tests {
         (r, seen.into_inner().unwrap())
     }
 
-    /// Пёстрая картинка (шум) — сжимается плохо, как настоящая.
+    /// A noisy picture — compresses badly, like a real one.
     fn noisy(w: u32, h: u32, seed: u32) -> RgbaImage {
         let mut s = seed.wrapping_mul(2_654_435_761).max(1);
         RgbaImage::from_fn(w, h, |x, y| {
@@ -1687,7 +1695,7 @@ mod tests {
 
     #[test]
     fn layout_keeps_proportions() {
-        // 1230×2000 → рамка 615×1000; окно исходника той же формы при любом масштабе.
+        // 1230×2000 → frame 615×1000; the source window has the same shape at any zoom.
         let l = layout(ShowcaseKind::Artwork, 1230, 2000, Placement::default()).unwrap();
         assert_eq!((l.frame_width, l.frame_height), (615, 1000));
         assert_eq!(l.parts[0].height, 1000);
@@ -1697,7 +1705,7 @@ mod tests {
         assert!((z.crop.w / z.crop.h - 615.0 / 1000.0).abs() < 1e-3);
         assert!((z.crop.x - 615.0).abs() < 1e-9 && z.crop.y.abs() < 1e-9);
         assert!((z.upscale - 1.0).abs() < 1e-9);
-        // Мусор в сдвигах — к умолчанию, масштаб — в пределы.
+        // Garbage in the offsets — to the default, the zoom — into the limits.
         let n = Placement { zoom: 99.0, pan_x: f64::NAN, pan_y: -3.0 }.normalized();
         assert_eq!((n.zoom, n.pan_x, n.pan_y), (MAX_ZOOM, 0.5, 0.0));
     }
@@ -1776,7 +1784,7 @@ mod tests {
 
     #[test]
     fn heavy_png_falls_back_to_jpeg_under_limit() {
-        // Шумная картинка 630×6000: PNG за 5 МБ, JPEG влезает.
+        // A noisy 630×6000 picture: PNG over 5 MB, JPEG fits.
         let d = tmpdir("heavy");
         let src = d.join("heavy.png");
         noisy(630, 6000, 3).save(&src).unwrap();
@@ -1825,7 +1833,7 @@ mod tests {
             assert_eq!(delays, vec![20, 5, 5, 5, 5, 5], "{}", f.file_name);
             assert!(f.bytes <= FILE_LIMIT_BYTES);
         }
-        // 400×300 → рамка 615×461: картинка растянута — предупреждение есть.
+        // 400×300 → frame 615×461: the picture is stretched — there is a warning.
         assert_eq!((r.files[0].width, r.files[0].height), (506, 461));
         assert_eq!((r.files[1].width, r.files[1].height), (100, 391));
         assert!(r.warnings.iter().any(|w| w.contains("stretched")));
@@ -1834,7 +1842,7 @@ mod tests {
 
     #[test]
     fn heavy_gif_is_compressed_under_limit_with_warning() {
-        // Шумный GIF 630×800 на 24 кадра: без сжатия ~12 МБ.
+        // A noisy 630×800 GIF of 24 frames: ~12 MB without compression.
         let d = tmpdir("heavygif");
         let src = d.join("heavy.gif");
         let frames: Vec<(RgbaImage, u32)> = (0..24).map(|i| (noisy(630, 800, i + 11), 40)).collect();
@@ -1892,24 +1900,24 @@ mod tests {
         }
     }
 
-    // ── Константы места витрины ──
+    // ── Showcase position constants ──
 
-    /// Числа, сверенные с живой страницей профиля 12.10.2026, не должны
-    /// уехать при правке составляющих.
+    /// The numbers checked against the live profile page on 12.10.2026 must not
+    /// drift when the components are edited.
     #[test]
     fn showcase_geometry_matches_the_live_page() {
         assert_eq!(ARTWORK_GAP, 9);
         assert_eq!(ARTWORK_SIDE_TRIM, 70);
         assert_eq!(SHOWCASE_X, 495);
         assert_eq!(FIRST_SHOWCASE_Y, 256);
-        // Боковая картинка начинается через зазор после основной: на живой
-        // странице 495 + 506 + 9 = 1010.
+        // The side picture starts a gap after the main one: on the live page
+        // 495 + 506 + 9 = 1010.
         let side = ShowcaseKind::Artwork.parts()[1];
         assert_eq!(SHOWCASE_X + side.x, 1010);
         assert_eq!(ShowcaseKind::Artwork.layout_width(), 615);
     }
 
-    // ── Помощник ──
+    // ── Helper ──
 
     fn out_file(name: &str, role: PartRole, w: u32, h: u32) -> OutFile {
         OutFile {
@@ -1941,7 +1949,7 @@ mod tests {
         assert_eq!(steps.iter().map(|s| s.current).collect::<Vec<_>>(), [true, false, false]);
         assert!(steps.iter().all(|s| !s.done && !s.lines.is_empty()));
 
-        // Выставить нельзя, пока не загружено всё.
+        // Can't be placed until everything is uploaded.
         st.set_placed(true);
         assert!(!st.placed);
         st.set_uploaded("1-main.png", true);
@@ -1954,7 +1962,7 @@ mod tests {
         assert_eq!(st.current_step(), "done");
         assert!(wizard_steps(&st).iter().all(|s| s.done && !s.current));
 
-        // Сняли отметку загрузки — следующие шаги откатываются.
+        // The upload mark was removed — the following steps roll back.
         st.set_uploaded("2-side.png", false);
         assert!(!st.placed && !st.verified);
         assert_eq!(st.current_step(), "upload");
@@ -1973,7 +1981,7 @@ mod tests {
         let steps = wizard_steps(&featured);
         assert!(steps[1].lines.iter().any(|l| l.contains("Featured Artwork Showcase")));
         assert!(!steps[1].lines.iter().any(|l| l.contains("side part")));
-        // Ни один шаг не предлагает вставлять код в консоль браузера.
+        // No step suggests pasting code into the browser console.
         for step in art.iter().chain(steps.iter()) {
             for line in &step.lines {
                 let low = line.to_lowercase();
@@ -1991,7 +1999,7 @@ mod tests {
         save_wizard_state(&dir, &st).unwrap();
         assert_eq!(load_wizard_state(&dir), Some(st.clone()));
         assert!(dir.join(WIZARD_STATE_FILE).is_file());
-        // Битый файл — не падение, а «начать сначала».
+        // A broken file is not a crash but "start over".
         fs::write(dir.join(WIZARD_STATE_FILE), "{не json").unwrap();
         assert_eq!(load_wizard_state(&dir), None);
         let _ = fs::remove_dir_all(&dir);
@@ -2015,12 +2023,12 @@ mod tests {
         );
         assert_eq!(upload_title("Wolf", PartRole::Main), "Wolf — main");
         assert_eq!(upload_title("Wolf", PartRole::Side), "Wolf — side");
-        // Невидимое название — один знак, и он не пробел, который Steam обрежет.
+        // The invisible title is one character, and it is not a space, which Steam would trim.
         assert_eq!(BLANK_TITLE.chars().count(), 1);
         assert!(!BLANK_TITLE.trim().is_empty());
     }
 
-    // ── Публичная страница профиля ──
+    // ── Public profile page ──
 
     const PROFILE_SAMPLE: &str = include_str!("../tests/golden/steam_profile_showcases_sample.html");
 
@@ -2032,7 +2040,7 @@ mod tests {
             page.headers,
             ["Rarest Achievement Showcase", "Screenshot Showcase", "Artwork Showcase", "Review Showcase"]
         );
-        // Витрина снимков экрана устроена так же, но иллюстрациями не считается.
+        // The screenshot showcase is built the same way, but doesn't count as artwork.
         assert_eq!(page.art.len(), 1);
         let art = &page.art[0];
         assert_eq!(art.position, 2);
@@ -2061,7 +2069,7 @@ mod tests {
         assert!(page.art.is_empty());
         let none = parse_profile_page("<html><body class=\"profile_page\"></body></html>");
         assert!(!none.private && none.headers.is_empty() && none.art.is_empty());
-        // Избранная иллюстрация: одна большая ячейка с классом `single`.
+        // Featured artwork: one large cell with the `single` class.
         let featured = "<body class=\"profile_page\"><div class=\"profile_customization myart\">\
             <div class=\"profile_customization_header\">Featured Artwork Showcase</div>\
             <div class=\"screenshot_showcase\"><div class=\"screenshot_showcase_primary single showcase_slot \" >\
@@ -2079,7 +2087,7 @@ mod tests {
     fn profile_check_verdicts() {
         en();
         let page = parse_profile_page(PROFILE_SAMPLE);
-        // Части того же размера, что показывает Steam, — сошлось.
+        // Parts of the same size that Steam shows — it matched.
         let st = artwork_state();
         let report = check_profile(&st, &page);
         assert_eq!(report.status, "ok");
@@ -2089,12 +2097,12 @@ mod tests {
         assert!(report.parts.iter().all(|p| p.found && p.ok));
         assert_eq!(report.parts[0].title, "Showcase & main");
 
-        // Высота расходится на точку — округление Steam, это не ошибка.
+        // The height differs by a pixel — Steam rounding, not an error.
         let mut near = artwork_state();
         near.parts[0].height = 901;
         assert_eq!(check_profile(&near, &page).status, "ok");
 
-        // Другая высота — расхождение с числами в подписи.
+        // A different height — a mismatch with the numbers in the caption.
         let mut other = artwork_state();
         other.parts[0].height = 1200;
         let report = check_profile(&other, &page);
@@ -2103,7 +2111,7 @@ mod tests {
         assert!(report.lines[0].contains("506×900") && report.lines[0].contains("506×1200"), "{:?}", report.lines);
         assert!(!report.parts[0].ok && report.parts[1].ok);
 
-        // Закрытый профиль, нет витрины, пустые ячейки.
+        // A private profile, no showcase, empty cells.
         let private = ProfilePage { private: true, ..ProfilePage::default() };
         assert_eq!(check_profile(&st, &private).status, "private");
         assert_eq!(check_profile(&st, &ProfilePage::default()).status, "no_showcase");
@@ -2115,7 +2123,7 @@ mod tests {
         assert_eq!(report.status, "empty");
         assert_eq!(report.above, 0);
 
-        // Боковая ячейка пуста — названа именно она.
+        // The side cell is empty — exactly that one is named.
         let mut half = page.clone();
         half.art[0].slots.truncate(1);
         let report = check_profile(&st, &half);

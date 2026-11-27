@@ -61,13 +61,16 @@
         "sorts": [
          {
           "key": "toplist",
-          "label": "Toplist"
+          "label": "Toplist",
+          "values": []
          },
          {
           "key": "date_added",
-          "label": "Date added"
+          "label": "Date added",
+          "values": []
          }
         ],
+        "badges": [],
         "tags": [
          "anime",
          "nature"
@@ -185,13 +188,16 @@
        "sorts": [
         {
          "key": "toplist",
-         "label": "Toplist"
+         "label": "Toplist",
+         "values": []
         },
         {
          "key": "date_added",
-         "label": "Date added"
+         "label": "Date added",
+         "values": []
         }
        ],
+       "badges": [],
        "tags": [
         "anime",
         "nature"
@@ -256,6 +262,7 @@
        "displayName": "Local",
        "supportsSearch": false,
        "sorts": [],
+       "badges": [],
        "tags": [],
        "contentDir": "",
        "ownerPluginId": "org.waywallen.open-wallpaper-engine",
@@ -2700,13 +2707,16 @@
         "sorts": [
          {
           "key": "toplist",
-          "label": "Toplist"
+          "label": "Toplist",
+          "values": []
          },
          {
           "key": "date_added",
-          "label": "Date added"
+          "label": "Date added",
+          "values": []
          }
         ],
+        "badges": [],
         "tags": [
          "anime",
          "nature"
@@ -2935,13 +2945,16 @@
        "sorts": [
         {
          "key": "toplist",
-         "label": "Toplist"
+         "label": "Toplist",
+         "values": []
         },
         {
          "key": "date_added",
-         "label": "Date added"
+         "label": "Date added",
+         "values": []
         }
        ],
+       "badges": [],
        "tags": [
         "anime",
         "nature"
@@ -4736,13 +4749,16 @@
         "sorts": [
          {
           "key": "toplist",
-          "label": "Toplist"
+          "label": "Toplist",
+          "values": []
          },
          {
           "key": "date_added",
-          "label": "Date added"
+          "label": "Date added",
+          "values": []
          }
         ],
+        "badges": [],
         "tags": [
          "anime",
          "nature"
@@ -4867,6 +4883,7 @@
        "displayName": "Steam Workshop",
        "supportsSearch": false,
        "sorts": [],
+       "badges": [],
        "tags": [],
        "contentDir": "",
        "ownerPluginId": "org.waywallen.open-wallpaper-engine",

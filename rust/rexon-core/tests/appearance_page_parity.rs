@@ -1,16 +1,16 @@
-//! Приёмка перенесённых чисел вкладки «Оформление».
+//! Acceptance of the moved numbers of the «Оформление» tab.
 //!
-//! Значения выписаны ДОСЛОВНО (когда-то — из виджетной вкладки на Python;
-//! с 02.10.2026 Python в Rexon — только архив, и эти записи — собственный
-//! эталон Rust): набор ловит не «код компилируется», а сдвиг того, что
-//! вкладка показывает.
+//! The values are written out VERBATIM (once — from the Python widget tab;
+//! since 02.10.2026 Python in Rexon is only an archive, and these entries are Rust's own
+//! golden reference): the suite catches not "the code compiles" but a shift in what
+//! the tab shows.
 
 use rexon_core::appearance_page as ap;
 use rexon_core::ui_base;
 
-// Подписи вкладки переводятся; сверки с прежним видом идут на русском
-// каталоге `po/ru.po` — это и есть снимок «по-русски как было». Английский
-// исходник держит `english_texts`.
+// The tab's captions are translated; checks against the former look run on the Russian
+// catalog `po/ru.po` — that is the "in Russian as it was" snapshot. The English
+// source is held by `english_texts`.
 mod i18n_pin;
 
 #[test]
@@ -34,7 +34,7 @@ fn detail_panel_matches_the_original() {
     assert_eq!(ap::OVERLAY_BTN, 44);
     assert_eq!(ap::OVERLAY_MARGIN, 10);
     assert_eq!(ap::COUNTER_H, 24);
-    // Круглая кнопка: радиус ровно половина стороны, иначе угол «срежется».
+    // A round button: the radius is exactly half the side, otherwise the corner gets "cut off".
     assert!(ap::image_overlay_qss(ap::OVERLAY_ZOOM_PT).contains("border-radius: 22px"));
     assert!(ap::gallery_counter_qss().contains("border-radius: 12px"));
 }
@@ -42,7 +42,7 @@ fn detail_panel_matches_the_original() {
 #[test]
 fn counter_width_matches_the_original() {
     let _lang = i18n_pin::ru();
-    // max(48, ширина текста + 20)
+    // max(48, text width + 20)
     for text_w in [0, 10, 27, 28, 29, 100, 500] {
         assert_eq!(ap::counter_width(text_w), 48.max(text_w + 20), "{text_w}");
     }
@@ -73,7 +73,7 @@ fn preview_loader_thresholds_match_the_original() {
         ap::PREVIEW_FATAL_HTTP,
         &[400u16, 401, 403, 404, 405, 410, 451]
     );
-    // Фон не имеет права занять все места: живой плитке всегда есть куда встать.
+    // The background may not take all the slots: a live tile always has somewhere to go.
     assert!(ap::PREVIEW_MAX_INFLIGHT_LOW < ap::PREVIEW_MAX_INFLIGHT);
 }
 
@@ -86,7 +86,7 @@ fn suggestions_geometry_matches_the_original() {
     assert_eq!(ap::SUGGEST_MAX_ROWS, 12);
     assert_eq!(ap::SUGGEST_TEXT_W, 300);
     assert_eq!(ap::SUGGEST_MIN_CHARS, 2);
-    // n * ROW_H + 2, с обрезкой по потолку строк
+    // n * ROW_H + 2, clamped to the row ceiling
     assert_eq!(ap::suggest_height(5), 5 * 54 + 2);
     assert_eq!(ap::suggest_height(30), 12 * 54 + 2);
     assert_eq!(ap::suggest_width(240), 360);
@@ -114,23 +114,23 @@ fn sorts_match_the_original() {
 #[test]
 fn steam_dark_keeps_the_historic_look() {
     let _lang = i18n_pin::ru();
-    // На скине по умолчанию токены равны исторической Steam-палитре: вид
-    // вкладки после переноса обязан остаться прежним.
+    // On the default skin the tokens equal the historical Steam palette: the look
+    // of the tab after the move must stay the same.
     let c = ui_base::skin_colors("steam_dark");
     let qss = ap::page_qss(&c);
     assert!(qss.contains("background: #1b2838;"));
     assert!(qss.contains("border-left: 3px solid #66c0f4;"));
     assert!(qss.contains("#InstallBtn, #InstallApplyBtn {"));
     assert!(qss.contains("background: #5ba32b;"));
-    // Приглушение неактивной кнопки на этом скине даёт ровно прежний белый.
+    // Dimming an inactive button on this skin gives exactly the former white.
     assert!(qss.contains("#PageBtn:disabled { color: rgba(255,255,255,0.55); }"));
 }
 
 #[test]
 fn every_skin_paints_the_page_without_holes() {
     let _lang = i18n_pin::ru();
-    // Ни одного «пустого» токена: незакрытая подстановка сделала бы правило
-    // недействительным, и участок вкладки остался бы неокрашенным.
+    // Not a single "empty" token: an unclosed substitution would make the rule
+    // invalid, and a part of the tab would stay unpainted.
     for id in ["system", "steam_dark", "light", "synthwave"] {
         for qss in [
             ap::page_qss(&ui_base::skin_colors(id)),
@@ -143,13 +143,13 @@ fn every_skin_paints_the_page_without_holes() {
     }
 }
 
-/// Подписи, которые раньше собирались HTML-ом с вшитым цветом, красятся
-/// таблицей стилей — и на КАЖДОМ скине своими токенами.
+/// Captions that used to be built as HTML with an embedded color are painted
+/// by the style sheet — and on EVERY skin with its own tokens.
 ///
-/// Пока цвет вшивался в текст при построении, смена скина не трогала уже
-/// открытую деталь: окно и вкладка вокруг перекрашивались сразу, а
-/// мета-строка, счётчики, путь установки и показанные комментарии
-/// оставались в цветах прошлого скина.
+/// While the color was embedded in the text at build time, a skin change did not touch an already
+/// open detail: the window and the tab around it were repainted at once, while
+/// the meta line, the counters, the install path and the shown comments
+/// stayed in the colors of the previous skin.
 #[test]
 fn detail_labels_are_painted_by_the_stylesheet() {
     let _lang = i18n_pin::ru();
@@ -175,8 +175,8 @@ fn detail_labels_are_painted_by_the_stylesheet() {
                 "{id}: {rule} красится не токеном {token}: {line}"
             );
         }
-        // Ник САМОГО автора товара — отдельным признаком, а не отдельной
-        // веткой в Python.
+        // The nickname of the item's author HIMSELF — as a separate flag, not as a separate
+        // branch in Python.
         assert!(
             qss.contains(&format!(
                 "#CommentAuthor[own=\"true\"] {{ color: {}; }}",
@@ -187,19 +187,19 @@ fn detail_labels_are_painted_by_the_stylesheet() {
     }
 }
 
-/// Во вкладке не осталось цвета, вшитого в текст подписи.
+/// No color embedded in caption text is left in the tab.
 ///
-/// Единственное исключение — ССЫЛКА `<a>`: цвет якоря Qt берёт один раз, при
-/// разборе текста, и ни правилом стилей, ни ролью `Link` в палитре его потом
-/// не сдвинуть (проверено замером). Такое место одно — переключатель
-/// «перевод ⇄ оригинал» (`toggle_link`), и он перекрашивается пере-разбором
-/// своей же подписи: цвет подставляется из скина в момент сборки.
+/// The only exception is a LINK `<a>`: Qt takes the anchor color once, when
+/// parsing the text, and neither a style rule nor the `Link` role in the palette can
+/// shift it afterwards (verified by measurement). There is one such place — the
+/// «перевод ⇄ оригинал» switch (`toggle_link`), and it is repainted by re-parsing
+/// its own caption: the color is substituted from the skin at build time.
 #[test]
 fn no_color_is_baked_into_label_text() {
     let _lang = i18n_pin::ru();
     const SRC: &str = include_str!("../src/appearance_page.rs");
-    // Подстановка цвета в текст подписи — `style='color:{…}`. Строки-комментарии
-    // не в счёт: там вшитый цвет описан словами, а не собран.
+    // Substituting a color into caption text is `style='color:{…}`. Comment lines
+    // do not count: there an embedded color is described in words, not built.
     let baked: Vec<&str> = SRC
         .lines()
         .filter(|l| !l.trim_start().starts_with("//"))
@@ -215,7 +215,7 @@ fn no_color_is_baked_into_label_text() {
         "вшитый цвет вне ссылки-переключателя: {}",
         baked[0]
     );
-    // То же по поведению: в собранном тексте цвет стоит ровно у ссылки.
+    // The same by behaviour: in the built text the color is exactly on the link.
     for html in [
         ap::comment_body_html("orig", "перевод", true, false, "#123456"),
         ap::description_html("orig", "перевод", true, true, "#123456"),
@@ -226,12 +226,12 @@ fn no_color_is_baked_into_label_text() {
             "цвет переключателя не из скина или не у ссылки: {html}"
         );
     }
-    // Без перевода переключателя нет — и цвета в тексте нет вовсе.
+    // Without a translation there is no switch — and no color in the text at all.
     assert!(!ap::comment_body_html("orig", "orig", false, false, "#123456").contains("color:"));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Журнал установленного: «установлена» ≠ «применена»
+//  Log of installed items: "installed" ≠ "applied"
 // ═══════════════════════════════════════════════════════════════════════
 
 use rexon_core::models::ThemeItem;
@@ -241,7 +241,7 @@ use std::path::Path;
 #[test]
 fn rexon_type_map_matches_the_original() {
     let _lang = i18n_pin::ru();
-    // Все 17 строк карты оригинала, дословно.
+    // All 17 rows of the original's map, verbatim.
     for (t, k) in [
         ("theme-kde-global", "global"),
         ("theme-kde-plasma", "plasma"),
@@ -263,8 +263,8 @@ fn rexon_type_map_matches_the_original() {
     ] {
         assert_eq!(ap::rexon_type_to_apply_kind(t), k, "{t}");
     }
-    // Обе бывшие свалки в карте отсутствуют — по ним вид определить нельзя,
-    // запись обязана уйти на второй заход (по OCS-категории).
+    // Both former catch-alls are absent from the map — the kind cannot be determined from them,
+    // the entry must go to the second pass (by OCS category).
     assert_eq!(ap::rexon_type_to_apply_kind("wallpaper-pack"), "");
     assert_eq!(ap::rexon_type_to_apply_kind("plugin"), "");
     assert_eq!(ap::rexon_type_to_apply_kind(""), "");
@@ -302,19 +302,19 @@ fn rec(rexon_type: &str, category_id: i64, paths: &[&str]) -> Map<String, Value>
 fn apply_kind_falls_back_to_the_ocs_category() {
     let _lang = i18n_pin::ru();
     let home = Path::new("/home/u");
-    // Свой тип — берётся сразу, без обращения к таблице категорий.
+    // Its own type — taken at once, without consulting the category table.
     assert_eq!(
         ap::log_apply_kind(&home, &rec("theme-kde-global", 0, &[]), 0),
         "global"
     );
-    // Бывшая свалка «plugin» + категория 722 (Global Themes) → второй заход.
+    // The former catch-all "plugin" + category 722 (Global Themes) → the second pass.
     assert_eq!(
         ap::log_apply_kind(&home, &rec("plugin", 722, &[]), 0),
         "global"
     );
-    // Категории в записи нет — берём с карточки.
+    // The entry has no category — we take it from the card.
     assert_eq!(ap::log_apply_kind(&home, &rec("plugin", 0, &[]), 722), "global");
-    // Вид без понятия «применена сейчас» — пусто.
+    // A kind without the notion of "applied now" — empty.
     assert_eq!(ap::log_apply_kind(&home, &rec("font-pack", 0, &[]), 0), "");
     assert_eq!(ap::log_apply_kind(&home, &rec("theme-plasmoid", 0, &[]), 0), "");
 }
@@ -356,25 +356,25 @@ fn stamping_marks_installed_and_applied_apart() {
         m
     });
     ap::stamp_installed_from_log(&home, &log, &mut items, &mut active);
-    // Скачана и включена.
+    // Downloaded and enabled.
     assert!(items[0].installed && items[0].applied);
-    // Скачана, но включена другая — «установлено» без «применено».
+    // Downloaded, but another one is enabled — "installed" without "applied".
     assert!(items[1].installed && !items[1].applied);
-    // У шрифтов понятия «применён» нет вовсе.
+    // Fonts have no notion of "applied" at all.
     assert!(items[2].installed && !items[2].applied);
-    // Товара в журнале нет — статус не трогаем.
+    // The item is not in the log — we do not touch the status.
     assert!(!items[3].installed && !items[3].applied);
 }
 
-/// Рамка MATE из магазина «Установить» ставит и применяет: плитка обязана
-/// показать «применена», а не «установлено» (живая проверка MATE, 17.10).
-/// Раздел окружения с темой (Marco, xfwm4, оболочки) — вид с «применена
-/// сейчас»; дополнения и Conky — нет.
+/// A MATE frame from the store: «Установить» installs and applies it: the tile must
+/// show "applied", not "installed" (live MATE check, 17.10).
+/// A desktop section with a theme (Marco, xfwm4, shells) is a kind with "applied
+/// now"; add-ons and Conky are not.
 #[test]
 fn de_section_theme_from_store_is_stamped_applied() {
     let _lang = i18n_pin::ru();
     let home = Path::new("/home/u");
-    // Товар «Metacity Themes» (125) ведёт в раздел «marco».
+    // The «Metacity Themes» item (125) leads to the «marco» section.
     assert_eq!(ap::log_apply_kind(&home, &rec("theme-marco", 125, &[]), 125), "marco");
     assert_eq!(ap::log_apply_kind(&home, &rec("theme-xfwm4", 138, &[]), 138), "xfwm4");
     let mut log = Map::new();
@@ -392,14 +392,14 @@ fn de_section_theme_from_store_is_stamped_applied() {
     assert!(items[0].installed && items[0].applied, "рамка применена, а плитка — «Установлено»");
 }
 
-/// Применима ли тема товара (по разделу) и под каким именем она стоит.
+/// Whether the item's theme is applicable (by section) and under what name it is installed.
 #[test]
 fn store_item_apply_name_comes_from_the_install_log() {
     let _lang = i18n_pin::ru();
     let home = Path::new("/home/u");
     let item = |cat: i64| ThemeItem { id: "7".into(), category_id: cat, ..Default::default() };
-    assert!(ap::store_item_can_apply(&home, &item(722))); // глобальная тема
-    assert!(ap::store_item_can_apply(&home, &item(125))); // рамка Marco
+    assert!(ap::store_item_can_apply(&home, &item(722))); // global theme
+    assert!(ap::store_item_can_apply(&home, &item(125))); // Marco frame
     assert!(!ap::store_item_can_apply(&home, &item(rexon_core::categories::CONKY_SECTION_ID)));
     let mut log = Map::new();
     log.insert(
@@ -407,14 +407,14 @@ fn store_item_apply_name_comes_from_the_install_log() {
         Value::Object(rec("theme-kde-colors", 0, &["/home/u/.local/share/color-schemes/Nord.colors"])),
     );
     assert_eq!(ap::logged_theme_name(&log, "7", |_| true).as_deref(), Some("Nord"));
-    // Файлы темы сняли руками — применять нечего.
+    // The theme files were removed by hand — nothing to apply.
     assert_eq!(ap::logged_theme_name(&log, "7", |_| false), None);
     assert_eq!(ap::logged_theme_name(&log, "8", |_| true), None);
 }
 
-/// Плитка витрин «Новые» и «Популярные» называет вид вещи той же
-/// подписью, что «Активные»: авторы пишут «for Plasma 6» в названии
-/// значков, и без вида кажется, что фильтр по окружению не работает.
+/// The tile of the «Новые» and «Популярные» storefronts names the kind of thing with the same
+/// caption as «Активные»: authors write "for Plasma 6" in the names of
+/// icons, and without the kind it seems that the desktop filter does not work.
 #[test]
 fn showcase_tiles_name_the_kind_of_item() {
     let _lang = i18n_pin::ru();
@@ -423,10 +423,10 @@ fn showcase_tiles_name_the_kind_of_item() {
     assert_eq!(ap::store_item_kind_label(&home, &item(132)).as_deref(), Some("📁 Значки"));
     assert_eq!(ap::store_item_kind_label(&home, &item(135)).as_deref(), Some("🎨 GTK-тема"));
     assert_eq!(ap::store_item_kind_label(&home, &item(107)).as_deref(), Some("🖱️ Курсор"));
-    // Вид без строки скана — подпись раздела.
+    // A kind without a scan row — the section caption.
     assert!(ap::store_item_kind_label(&home, &item(299)).is_some());
     assert_eq!(ap::store_item_kind_label(&home, &item(0)), None);
-    // Строка автора на плитке витрины: вид · автор; в разделе — как была.
+    // The author line on a storefront tile: kind · author; in a section — as it was.
     assert_eq!(ap::showcase_author(&home, &item(132), true), "📁 Значки · Автор");
     assert_eq!(ap::showcase_author(&home, &item(132), false), "Автор");
 }
@@ -436,20 +436,20 @@ fn active_map_is_pulled_at_most_once_and_only_when_needed() {
     let _lang = i18n_pin::ru();
     let home = Path::new("/home/u");
     let mut log = Map::new();
-    // Только шрифты: применения у них нет → карту дёргать НЕ за чем.
+    // Fonts only: they have no applying → there is NO reason to query the map.
     log.insert("1".into(), Value::Object(rec("font-pack", 0, &["/x/A"])));
     let mut items = vec![ThemeItem { id: "1".into(), ..Default::default() }];
     let mut active = ap::LazyActiveMap::new(Map::new);
     ap::stamp_installed_from_log(&home, &log, &mut items, &mut active);
     assert!(!active.was_fetched(), "kreadconfig6 дёрнут впустую");
 
-    // Пустой журнал — тоже ни одного вызова.
+    // An empty log — not a single call either.
     let mut items = vec![ThemeItem { id: "1".into(), ..Default::default() }];
     let mut active = ap::LazyActiveMap::new(Map::new);
     ap::stamp_installed_from_log(&home, &Map::new(), &mut items, &mut active);
     assert!(!active.was_fetched());
 
-    // Две применимые карточки — источник дёргается ровно один раз.
+    // Two applicable cards — the source is queried exactly once.
     let mut calls = 0;
     {
         let mut log = Map::new();
@@ -471,7 +471,7 @@ fn active_map_is_pulled_at_most_once_and_only_when_needed() {
     assert_eq!(calls, 1);
 }
 
-/// Приватный каталог под журнал: живой `~/.config/rexon` тест не трогает.
+/// A private directory for the log: the test does not touch the live `~/.config/rexon`.
 fn scratch_log(tag: &str, text: Option<&str>) -> (std::path::PathBuf, String) {
     let dir = std::env::temp_dir().join(format!(
         "rexon-stamp-{tag}-{}",
@@ -517,8 +517,8 @@ fn stamp_reads_the_install_log_from_disk() {
     assert!(items[1].installed && !items[1].applied, "шрифты не «применяются»");
     assert!(!items[2].installed && !items[2].applied, "нет в журнале");
 
-    // Нет файла и битый JSON — пустой журнал: карточки как пришли, карта
-    // активных тем не дёргается.
+    // No file and broken JSON — an empty log: cards as they came, the map
+    // of active themes is not queried.
     for (tag, text) in [("missing", None), ("broken", Some("{не json"))] {
         let (d, p) = scratch_log(tag, text);
         let mut items = vec![ThemeItem { id: "111".into(), ..Default::default() }];
@@ -551,19 +551,19 @@ fn install_outcome_marks_installed_and_applied_only_by_fact() {
         m
     };
 
-    // Установка не удалась — прежнее состояние остаётся.
+    // Installation failed — the former state stays.
     let mut items = vec![ThemeItem { id: "1".into(), ..Default::default() }];
     let mut active = ap::LazyActiveMap::new(active_icons);
     ap::mark_installed_from_log_file(&home, &path, &mut items, false, &mut active);
     assert!(!items[0].installed && !items[0].applied);
 
-    // Удалась и тема включена — «Применено».
+    // Succeeded and the theme is enabled — «Применено».
     let mut items = vec![ThemeItem { id: "1".into(), ..Default::default() }];
     let mut active = ap::LazyActiveMap::new(active_icons);
     ap::mark_installed_from_log_file(&home, &path, &mut items, true, &mut active);
     assert!(items[0].installed && items[0].applied);
 
-    // Удалась, но включена другая, а прежний «Применено» — ложь: сбрасываем.
+    // Succeeded, but another one is enabled, and the former «Применено» is a lie: we reset it.
     let mut items = vec![ThemeItem {
         id: "2".into(),
         installed: true,
@@ -574,7 +574,7 @@ fn install_outcome_marks_installed_and_applied_only_by_fact() {
     ap::mark_installed_from_log_file(&home, &path, &mut items, true, &mut active);
     assert!(items[0].installed && !items[0].applied);
 
-    // Журнал не записался (записи нет) — тема на диске есть: «Установлено».
+    // The log was not written (no entry) — the theme is on disk: «Установлено».
     let mut items = vec![ThemeItem { id: "9".into(), ..Default::default() }];
     let mut active = ap::LazyActiveMap::new(active_icons);
     ap::mark_installed_from_log_file(&home, &path, &mut items, true, &mut active);
@@ -583,7 +583,7 @@ fn install_outcome_marks_installed_and_applied_only_by_fact() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Загрузчик превью: очередь, приоритет, дедуп, повторы
+//  Preview loader: queue, priority, dedup, retries
 // ═══════════════════════════════════════════════════════════════════════
 
 use rexon_core::appearance_page::{PreviewQueue, PreviewRetry};
@@ -592,20 +592,20 @@ use rexon_core::appearance_page::{PreviewQueue, PreviewRetry};
 fn preview_cache_path_matches_the_original() {
     let _lang = i18n_pin::ru();
     let home = "/home/u";
-    // Обычное превью магазина: sha1 URL + расширение из ПУТИ ссылки.
+    // An ordinary store preview: sha1 of the URL + the extension from the link's PATH.
     let p = ap::preview_cache_path(home, "https://images.pling.com/img/00/1.png");
     assert!(p.starts_with("/home/u/.cache/rexon/ocs_previews/"), "{p}");
     assert!(p.ends_with(".png"), "{p}");
-    // Расширения нет либо оно неправдоподобно длинное → .jpg.
+    // No extension or an implausibly long one → .jpg.
     assert!(ap::preview_cache_path(home, "https://x/img/00/1").ends_with(".jpg"));
     assert!(ap::preview_cache_path(home, "https://x/a.verylongext").ends_with(".jpg"));
-    // Запрос в расширение не попадает.
+    // The query does not get into the extension.
     assert!(ap::preview_cache_path(home, "https://x/a.png?v=2").ends_with(".png"));
-    // OpenGraph GitHub (превью AUR) — свой каталог и всегда PNG.
+    // GitHub OpenGraph (AUR preview) — its own directory and always PNG.
     let a = ap::preview_cache_path(home, "https://opengraph.githubassets.com/1/u/repo");
     assert!(a.starts_with("/home/u/.cache/rexon/aur_previews/"), "{a}");
     assert!(a.ends_with(".png"), "{a}");
-    // Имя файла — то же, что у клиента магазина: второй схемы имён нет.
+    // The file name is the same as the store client's: there is no second naming scheme.
     assert_eq!(
         ap::preview_cache_path(home, "https://images.pling.com/img/00/1.png"),
         format!(
@@ -624,7 +624,7 @@ fn urls(jobs: &[rexon_core::appearance_page::PreviewJob]) -> Vec<String> {
 fn live_previews_go_ahead_of_the_warm_up() {
     let _lang = i18n_pin::ru();
     let mut q = PreviewQueue::new();
-    // Сперва фон, потом живые — живые обязаны встать впереди.
+    // First background, then live ones — the live ones must go to the front.
     q.want("c1", "l1", true, None, false);
     q.want("c2", "l2", true, None, false);
     q.want("c3", "a1", false, None, true);
@@ -641,15 +641,15 @@ fn warm_up_never_takes_every_slot() {
         q.want("c", &format!("low{i}"), true, None, false);
     }
     let started = q.pump();
-    // Фону отдано ровно два слота из шести — остальные ждут живых плиток.
+    // The background gets exactly two slots out of six — the rest wait for live tiles.
     assert_eq!(started.len(), 2);
     assert_eq!(q.low_inflight(), 2);
     assert_eq!(q.inflight(), 2);
-    // Живая заявка получает слот немедленно, несмотря на очередь из фона.
+    // A live request gets a slot immediately, despite the background queue.
     q.want("live", "hot", false, None, true);
     let more = q.pump();
     assert_eq!(urls(&more), vec!["hot"]);
-    // Ответ фоновой заявки освобождает фоновый слот.
+    // The answer to a background request frees a background slot.
     q.finished("low0", true);
     let after = q.pump();
     assert_eq!(after.len(), 1);
@@ -663,8 +663,8 @@ fn one_url_is_downloaded_once_but_only_for_the_warm_up() {
     q.want("c1", "same", true, None, false);
     q.want("c2", "same", true, None, false);
     assert_eq!(q.queued(), 1, "фоновый дубль обязан отсеяться");
-    // Живые заявки по одному URL НЕ схлопываются: две карточки изредка делят
-    // ссылку, и второй иначе некому послать «готово».
+    // Live requests for one URL are NOT collapsed: two cards occasionally share
+    // a link, and otherwise there would be nobody to send "done" to the second.
     let mut q = PreviewQueue::new();
     q.want("c1", "same", false, None, true);
     q.want("c2", "same", false, None, true);
@@ -678,7 +678,7 @@ fn cache_hit_skips_the_network() {
     q.want("c1", "u1", false, Some("/cache/u1.png"), true);
     assert_eq!(q.queued(), 0);
     assert_eq!(q.take_ready(), Some(("c1".into(), "/cache/u1.png".into())));
-    // Фоновая заявка кешируется молча — «готово» наверх не идёт.
+    // A background request is cached silently — "done" does not go up.
     q.want("c2", "u2", true, Some("/cache/u2.png"), false);
     assert_eq!(q.queued(), 0);
     assert!(!q.has_ready());
@@ -694,7 +694,7 @@ fn ready_previews_are_handed_out_one_at_a_time() {
     assert!(q.has_ready());
     assert_eq!(q.take_ready(), Some(("c1".into(), "/cache/u1.png".into())));
     assert_eq!(q.take_ready(), None);
-    // Фоновая удача наверх не всплывает.
+    // A background success does not surface.
     q.succeeded("c2", "u2", true, "/cache/u2.png");
     assert!(!q.has_ready());
 }
@@ -703,7 +703,7 @@ fn ready_previews_are_handed_out_one_at_a_time() {
 fn temporary_failures_retry_and_permanent_ones_do_not() {
     let _lang = i18n_pin::ru();
     let mut q = PreviewQueue::new();
-    // Обрыв соединения (кода HTTP нет) — две добавочные попытки с ростом паузы.
+    // A dropped connection (no HTTP code) — two extra attempts with a growing pause.
     assert_eq!(
         q.failed("u", None),
         PreviewRetry::Again { delay_ms: 700, attempt: 1 }
@@ -716,7 +716,7 @@ fn temporary_failures_retry_and_permanent_ones_do_not() {
         q.failed("u", None),
         PreviewRetry::GiveUp { fatal: false, attempts: 3 }
     );
-    // Файла нет — повторять бессмысленно с первого же ответа.
+    // No file — repeating is pointless from the very first answer.
     for code in [400u16, 401, 403, 404, 405, 410, 451] {
         let mut q = PreviewQueue::new();
         assert_eq!(
@@ -725,7 +725,7 @@ fn temporary_failures_retry_and_permanent_ones_do_not() {
             "HTTP {code}"
         );
     }
-    // 5xx и таймаут — временные.
+    // 5xx and a timeout are temporary.
     let mut q = PreviewQueue::new();
     assert!(matches!(q.failed("u", Some(503)), PreviewRetry::Again { .. }));
 }
@@ -748,15 +748,15 @@ fn switching_category_throws_away_delayed_retries() {
     let gen = q.generation();
     q.finished("u1", false);
     assert!(matches!(q.failed("u1", None), PreviewRetry::Again { .. }));
-    // Человек ушёл в другую категорию — отложенный повтор больше не нужен.
+    // The person went to another category — the deferred retry is no longer needed.
     q.cancel_all();
     assert!(!q.requeue(gen, "c1", "u1", false));
     assert_eq!(q.queued(), 0);
-    // Повтор своего поколения возвращается в очередь.
+    // A retry of its own generation goes back into the queue.
     let gen = q.generation();
     assert!(q.requeue(gen, "c1", "u1", false));
     assert_eq!(q.queued(), 1);
-    // Ту же картинку уже просят заново — второй заявки не плодим.
+    // The same picture is already being requested anew — we do not spawn a second request.
     assert!(!q.requeue(gen, "c1", "u1", false));
     assert_eq!(q.queued(), 1);
 }
@@ -767,17 +767,17 @@ fn deduplication_is_released_when_the_answer_arrives() {
     let mut q = PreviewQueue::new();
     q.want("c1", "u", true, None, false);
     q.pump();
-    // Пока картинка летит, повторная фоновая просьба второго запроса не даёт.
+    // While the picture is in flight, a repeated background request does not produce a second query.
     q.want("c2", "u", true, None, false);
     assert_eq!(q.queued(), 0);
     q.finished("u", true);
-    // Ответ пришёл — ключ свободен, следующая просьба снова законна.
+    // The answer came — the key is free, the next request is legitimate again.
     q.want("c3", "u", true, None, false);
     assert_eq!(q.queued(), 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Состояние каталога
+//  Catalog state
 // ═══════════════════════════════════════════════════════════════════════
 
 use rexon_core::appearance_page::CatalogView;
@@ -793,14 +793,14 @@ fn view(key: &str) -> CatalogView {
     CatalogView::new(cat(key), "kde")
 }
 
-/// Раздел с магазином: у разделов с установленным он идёт под ним на той
-/// же странице, отдельно открывать его нечем.
+/// A section with a store: in sections with installed items it goes below them on the
+/// same page, there is nothing to open it with separately.
 fn store(key: &str) -> CatalogView {
     view(key)
 }
 
-/// Источник «vsthemes» снят 04.10.2026. Кто выбрал его раньше, попадает в
-/// KDE Store молча: полка, а не пустой экран, и чип KDE Store отмечен.
+/// The «vsthemes» source was removed on 04.10.2026. Whoever chose it before lands in
+/// KDE Store silently: a shelf, not an empty screen, and the KDE Store chip is marked.
 #[test]
 fn a_removed_vsthemes_choice_falls_back_to_the_kde_store() {
     let _lang = i18n_pin::ru();
@@ -818,12 +818,12 @@ fn a_removed_vsthemes_choice_falls_back_to_the_kde_store() {
     }
 }
 
-/// Источник «Razer Axon» (14.11.2026): чип «Обоев HD» рядом с KDE Store и
-/// Wallhaven — только если Axon найден; выбран — свой экран библиотеки
-/// вместо сетки магазина, без сортировки и листалки магазина (они у
-/// библиотеки свои). Строка поиска — общая шапки, как у соседних магазинов
-/// (16.11.2026: своя уезжала влево вниз и теряла слово), и слово переживает
-/// смену магазина. Без Axon прежний выбор молча становится KDE Store.
+/// The «Razer Axon» source (14.11.2026): a chip of «Обои HD» next to KDE Store and
+/// Wallhaven — only if Axon is found; when chosen — its own library screen
+/// instead of the store grid, without the store's sorting and pager (the
+/// library has its own). The search line is the common header one, as for the neighbouring stores
+/// (16.11.2026: its own one drifted down to the left and lost the word), and the word survives
+/// a store change. Without Axon the former choice silently becomes KDE Store.
 #[test]
 fn razer_axon_is_a_wallpaper_source_only_when_axon_is_found() {
     let _lang = i18n_pin::ru();
@@ -842,7 +842,7 @@ fn razer_axon_is_a_wallpaper_source_only_when_axon_is_found() {
 
     let mut v = view("wallpapers");
     v.source = ap::SOURCE_AXON.to_string();
-    // Axon не найден — источника нет: KDE Store и его сетка.
+    // Axon not found — no source: KDE Store and its grid.
     assert!(!v.axon_mode());
     assert_eq!(v.effective_source(), "ocs");
     assert_eq!(v.screen(home), ap::SCREEN_GRID);
@@ -856,7 +856,7 @@ fn razer_axon_is_a_wallpaper_source_only_when_axon_is_found() {
     assert_eq!(c.search_placeholder, "Поиск обоев");
     assert!(!c.sort_combo && !c.pagination && !c.install_file);
     assert_ne!(v.request_key(), view("wallpapers").request_key());
-    // Слово, набранное в KDE Store, остаётся в поле и в Axon, и обратно.
+    // A word typed in KDE Store stays in the field in Axon too, and back.
     v.source = "ocs".to_string();
     assert_eq!(v.edit_query("sky"), ap::QueryEdit::Kept);
     v.source = ap::SOURCE_AXON.to_string();
@@ -865,7 +865,7 @@ fn razer_axon_is_a_wallpaper_source_only_when_axon_is_found() {
     v.source = "ocs".to_string();
     assert_eq!(v.query, "sky");
     v.source = ap::SOURCE_AXON.to_string();
-    // «⚙️ Настройки» раздела — над источником: экран настроек.
+    // The section's «⚙️ Настройки» is above the source: the settings screen.
     v.section_settings = true;
     assert_eq!(v.screen(home), ap::SCREEN_SETTINGS);
 }
@@ -884,21 +884,21 @@ fn catalog_starts_on_new_and_on_the_kde_store() {
 #[test]
 fn source_switch_hides_where_there_is_nothing_to_switch() {
     let _lang = i18n_pin::ru();
-    // Локальные обзоры диска сети не знают.
+    // Local disk overviews know no network.
     for key in ["active", "downloaded", "system", "favorites"] {
         let v = view(key);
         assert!(v.is_local(), "{key}");
         assert!(!v.source_applicable(), "{key}");
         assert!(!v.aur_mode() && !v.both_mode(), "{key}");
     }
-    // Обычная сетевая категория — переключатель на месте.
+    // An ordinary network category — the switch is in place.
     let mut v = store("global");
     assert!(v.source_applicable());
     v.source = "aur".into();
     assert!(v.aur_mode() && !v.both_mode());
     v.source = "both".into();
     assert!(v.both_mode() && !v.aur_mode());
-    // Категория-зонт: онлайн-каталог есть, AUR-источника нет.
+    // An umbrella category: there is an online catalog, no AUR source.
     let v = view("splash");
     assert!(v.category.ocs_cats().len() > 1, "у заставки должен быть зонт");
     assert!(!v.source_applicable());
@@ -908,9 +908,9 @@ fn source_switch_hides_where_there_is_nothing_to_switch() {
 fn lock_mode_picks_the_real_store_category() {
     let _lang = i18n_pin::ru();
     let mut v = view("lockscreen");
-    assert_eq!(v.query_category_id(), "299"); // обои блокировки — умолчание
+    assert_eq!(v.query_category_id(), "299"); // lock screen wallpaper — the default
     v.lock_mode = "themes".into();
-    assert_eq!(v.query_category_id(), "722"); // полные темы из Global Themes
+    assert_eq!(v.query_category_id(), "722"); // full themes from Global Themes
 }
 
 #[test]
@@ -937,12 +937,12 @@ fn virtual_categories_use_the_aggregate_and_a_fixed_sort() {
         assert_eq!(v.query_category_id(), agg, "{key}: в KDE — все ходовые");
     }
     let mut v = view("popular");
-    v.sort = "alpha".into(); // выбор человека виртуальные не перебивают
+    v.sort = "alpha".into(); // virtual ones do not override the person's choice
     assert_eq!(v.active_sort(), "high");
     let mut v = view("new");
     v.sort = "alpha".into();
     assert_eq!(v.active_sort(), "new");
-    // Обычная категория слушается выбора.
+    // An ordinary category obeys the choice.
     let mut v = view("global");
     v.sort = "alpha".into();
     assert_eq!(v.active_sort(), "alpha");
@@ -951,33 +951,33 @@ fn virtual_categories_use_the_aggregate_and_a_fixed_sort() {
 #[test]
 fn chrome_matches_the_original() {
     let _lang = i18n_pin::ru();
-    // Обычная сетевая категория.
+    // An ordinary network category.
     let c = store("global").chrome();
     assert!(c.search && c.source_bar && c.sort_combo && c.pagination);
     assert!(!c.style_bar && !c.lock_bar);
     assert_eq!(c.search_placeholder, "🔍 Поиск тем…");
-    // Чистый AUR: сортировка закреплена по голосам — комбо прячем.
+    // Pure AUR: sorting is pinned to votes — we hide the combo.
     let mut v = store("global");
     v.source = "aur".into();
     let c = v.chrome();
     assert!(!c.sort_combo && c.pagination);
     assert_eq!(c.search_placeholder, "🔍 Поиск в AUR…");
     assert_eq!(v.search_placeholder(), "🔍 Поиск в AUR…");
-    // «Все»: комбо остаётся — оно правит OCS-частью списка.
+    // «Все»: the combo stays — it controls the OCS part of the list.
     let mut v = store("global");
     v.source = "both".into();
     assert!(v.chrome().sort_combo);
-    // Локальный обзор: ни сортировки, ни страниц.
+    // A local overview: neither sorting nor pages.
     let c = view("downloaded").chrome();
     assert!(c.search && !c.sort_combo && !c.pagination && !c.source_bar);
-    // Под-чипы только в своих разделах.
+    // Sub-chips only in their own sections.
     assert!(view("widgetstyle").chrome().style_bar);
     assert!(view("lockscreen").chrome().lock_bar);
     assert!(!view("global").chrome().style_bar);
 }
 
-/// Каждый фильтр сетки установленного, под которым магазина нет: раздел и
-/// как его включить.
+/// Every filter of the installed grid under which there is no store: the section and
+/// how to enable it.
 fn installed_only_filters() -> Vec<(&'static str, fn(&mut CatalogView))> {
     vec![
         ("colors", |v| v.tone_filter = "light".into()),
@@ -993,8 +993,8 @@ fn installed_only_filters() -> Vec<(&'static str, fn(&mut CatalogView))> {
 #[test]
 fn an_installed_only_filter_drops_the_whole_store() {
     let _lang = i18n_pin::ru();
-    // Одно правило на все фильтры сетки установленного (живая проверка
-    // 01.11.2026: под «Kvantum» оставались «Найдено 337» и «1 / 17»).
+    // One rule for all filters of the installed grid (live check
+    // 01.11.2026: under «Kvantum» «Найдено 337» and «1 / 17» remained).
     for (key, set) in installed_only_filters() {
         let mut v = store(key);
         let open = v.chrome();
@@ -1012,19 +1012,19 @@ fn an_installed_only_filter_drops_the_whole_store() {
         let rk = v.request_key();
         assert!(rk.starts_with("installed:"), "{key}: {rk}");
         assert_ne!(rk, open_key, "{key}: свой ключ, не слить с запросом магазина");
-        // Страница магазина в ключ не входит — листать нечего.
+        // The store page is not part of the key — there is nothing to page through.
         v.page = 3;
         assert_eq!(v.request_key(), rk, "{key}");
     }
-    // «Все» у каждого фильтра — магазин на месте.
+    // «Все» for every filter — the store is in place.
     let mut v = store("widgetstyle");
     v.style_sub = Some("all".into());
     assert!(!v.installed_only() && v.chrome().pagination);
     let mut v = store("colors");
     v.tone_filter = "all".into();
     assert!(!v.installed_only());
-    // Фильтр чужого раздела не действует: «С поддержкой цветовых схем»
-    // есть только у стилей Plasma, «Запущенные» — только у Conky.
+    // A filter of a foreign section has no effect: «С поддержкой цветовых схем»
+    // exists only for Plasma styles, «Запущенные» — only for Conky.
     let mut v = store("colors");
     v.tone_filter = "follows".into();
     assert!(!v.installed_only());
@@ -1037,7 +1037,7 @@ fn an_installed_only_filter_drops_the_whole_store() {
 #[test]
 fn a_section_foreign_to_the_desktop_hides_the_whole_chrome() {
     let _lang = i18n_pin::ru();
-    // Плазмоиды в GNOME не работают — раздел закрыт целиком.
+    // Plasmoids do not work in GNOME — the section is closed entirely.
     let mut v = view("plasmoids");
     v.de = "gnome".into();
     assert!(v.de_blocked(), "раздел обязан быть закрыт в GNOME");
@@ -1049,26 +1049,26 @@ fn a_section_foreign_to_the_desktop_hides_the_whole_chrome() {
 #[test]
 fn pagination_counts_by_the_requested_page_size() {
     let _lang = i18n_pin::ru();
-    // Магазин листает по запрошенным двадцати, даже если прислал 18:
-    // 318 работ — 16 страниц, а не 318 / 18 = 18 (две пустые в конце).
+    // The store pages by the requested twenty even if it sent 18:
+    // 318 items — 16 pages, not 318 / 18 = 18 (two empty ones at the end).
     let p = ap::pagination(0, 318, 18, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 1 / 16");
     assert!(!p.prev_enabled && p.next_enabled);
     let p = ap::pagination(15, 318, 18, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 16 / 16");
     assert!(p.prev_enabled && !p.next_enabled);
-    // Пусто — одна страница, листать некуда.
+    // Empty — one page, nowhere to page to.
     let p = ap::pagination(0, 0, 0, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 1 / 1");
     assert!(!p.prev_enabled && !p.next_enabled);
-    // Ответ пуст, а всего работ много: «Вперёд» не должен звать в никуда.
+    // The answer is empty, but the total is large: «Вперёд» must not lead nowhere.
     assert!(!ap::pagination(0, 100, 0, ap::PAGE_SIZE).next_enabled);
 }
 
 #[test]
 fn prefetch_and_the_forward_button_agree_on_the_page_count() {
     let _lang = i18n_pin::ru();
-    // Кнопка «Вперёд» и прогрев обязаны считать страницы одинаково.
+    // The «Вперёд» button and the warm-up must count pages the same way.
     for page in 0..15 {
         assert_eq!(
             ap::has_page_to_prefetch(page, 318, ap::PAGE_SIZE),
@@ -1080,8 +1080,8 @@ fn prefetch_and_the_forward_button_agree_on_the_page_count() {
     assert!(!ap::has_page_to_prefetch(0, 0, ap::PAGE_SIZE));
 }
 
-/// Поддельный магазин: серверные страницы заданной длины, работы пронумерованы
-/// по порядку потока. Считает, какие страницы у него спросили.
+/// A fake store: server pages of a given length, items numbered
+/// in stream order. It counts which pages it was asked for.
 struct FakeStore {
     lens: Vec<usize>,
     total: i64,
@@ -1107,7 +1107,7 @@ impl FakeStore {
 
 #[test]
 fn store_pages_are_topped_up_to_twenty_without_repeats() {
-    // Живой обход Global Themes 03.10.2026: 18, 20 × 14, 18 при totalitems 318.
+    // A live walk of Global Themes 03.10.2026: 18, 20 × 14, 18 with totalitems 318.
     let mut lens = vec![18];
     lens.extend([20; 14]);
     lens.push(18);
@@ -1127,37 +1127,37 @@ fn store_pages_are_topped_up_to_twenty_without_repeats() {
         }
         page += 1;
     }
-    // Поток прочитан целиком, подряд, без повторов и пропусков.
+    // The stream was read entirely, in sequence, without repeats or gaps.
     assert_eq!(all, (0..visible).collect::<Vec<_>>());
-    // 316 видимых — 15 полных страниц и последняя из 16.
+    // 316 visible — 15 full pages and the last of 16.
     assert_eq!(page, 15);
     assert_eq!(store.page(15).items.len(), 16);
 }
 
 #[test]
 fn store_page_needs_only_the_pages_it_covers() {
-    // Дыры 18/20/20/18: первая страница Rexon добирает 2 работы со второй
-    // серверной (и одну сверху — узнать, есть ли следующая).
+    // Holes 18/20/20/18: the first Rexon page takes 2 more items from the second
+    // server page (and one more on top — to find out whether there is a next one).
     let mut store = FakeStore::new(&[18, 20, 20, 18], 80);
     let p = store.page(0);
     assert_eq!(p.items, (0..20).collect::<Vec<_>>());
     assert!(p.has_more);
     assert_eq!(store.asked, vec![0, 1]);
-    // Вторая начинается ровно там, где кончилась первая.
+    // The second starts exactly where the first ended.
     let p = store.page(1);
     assert_eq!(p.items, (20..40).collect::<Vec<_>>());
     assert!(p.has_more);
-    // Последняя: в потоке 76 работ — 16 на четвёртой странице, дальше пусто.
+    // The last: the stream has 76 items — 16 on the fourth page, then empty.
     let p = store.page(3);
     assert_eq!(p.items, (60..76).collect::<Vec<_>>());
     assert!(!p.has_more);
-    // Число страниц по факту кончившегося потока: 4, не 80 / 20 = 4 + пустая.
+    // The page count by the actual end of the stream: 4, not 80 / 20 = 4 + an empty one.
     let pg = ap::stream_pagination(3, p.total, p.has_more, ap::PAGE_SIZE);
     assert!(!pg.next_enabled && pg.prev_enabled);
 }
 
-/// Страница сетки — целые ряды, не меньше двадцати: при девяти столбцах
-/// страница из двадцати кончалась рядом из двух плиток и семью пустыми.
+/// A grid page is whole rows, no fewer than twenty: with nine columns
+/// a page of twenty ended with a row of two tiles and seven empty ones.
 #[test]
 fn grid_page_is_whole_rows_of_at_least_twenty() {
     for cols in 1..=40u32 {
@@ -1173,7 +1173,7 @@ fn grid_page_is_whole_rows_of_at_least_twenty() {
     assert_eq!(ap::grid_page_size(0), 20);
 }
 
-/// Смена ширины окна: первая работа прежней страницы остаётся на экране.
+/// Window width change: the first item of the former page stays on screen.
 #[test]
 fn page_after_resize_keeps_the_first_item_visible() {
     for (page, old, new) in [(0i64, 20u32, 27u32), (3, 20, 27), (5, 27, 24), (7, 24, 20), (2, 21, 30)] {
@@ -1184,9 +1184,9 @@ fn page_after_resize_keeps_the_first_item_visible() {
     }
 }
 
-/// Страница Rexon больше серверной (27 при девяти столбцах): набирается из
-/// серверных страниц по двадцать подряд, без повторов и пропусков, и
-/// последняя короче только в самом конце потока.
+/// A Rexon page is larger than a server page (27 with nine columns): it is assembled from
+/// server pages of twenty in sequence, without repeats or gaps, and
+/// the last one is shorter only at the very end of the stream.
 #[test]
 fn whole_row_pages_are_cut_from_fixed_server_pages() {
     let mut lens = vec![18];
@@ -1214,8 +1214,8 @@ fn whole_row_pages_are_cut_from_fixed_server_pages() {
 
 #[test]
 fn store_page_with_a_fully_hidden_server_page_keeps_going() {
-    // Целая серверная страница скрыта (пришло 0 при живом totalitems) —
-    // это не конец потока: конец считается по totalitems.
+    // A whole server page is hidden (0 came with a live totalitems) —
+    // that is not the end of the stream: the end is counted by totalitems.
     let mut store = FakeStore::new(&[20, 0, 20], 60);
     let p = store.page(1);
     assert_eq!(p.items, (20..40).collect::<Vec<_>>());
@@ -1237,8 +1237,8 @@ fn empty_store_answer_is_one_empty_page() {
 
 #[test]
 fn store_failure_mid_stream_does_not_kill_the_forward_button() {
-    // Нулевая страница пришла, первая — сеть упала: по видимым 18 «Вперёд»
-    // не гасим, судим по totalitems, как до добора.
+    // Page zero arrived, the first — the network went down: we do not disable «Вперёд»
+    // by the 18 visible ones, we judge by totalitems, as before the top-up.
     let p = ap::stream_page(0, ap::PAGE_SIZE, ap::PAGE_SIZE, |k| {
         if k == 0 {
             ((0..18).collect::<Vec<usize>>(), 318)
@@ -1253,23 +1253,23 @@ fn store_failure_mid_stream_does_not_kill_the_forward_button() {
 #[test]
 fn stream_pagination_counts_by_total_until_the_stream_ends() {
     let _lang = i18n_pin::ru();
-    // Пока поток идёт — страниц по totalitems.
+    // While the stream goes on — pages by totalitems.
     let p = ap::stream_pagination(0, 318, true, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 1 / 16");
     assert!(!p.prev_enabled && p.next_enabled);
-    // Поток кончился раньше счёта магазина — пустую последнюю не обещаем.
+    // The stream ended earlier than the store's count — we do not promise an empty last page.
     let p = ap::stream_pagination(14, 318, false, ap::PAGE_SIZE);
     assert_eq!(p.label, "Страница 15 / 15");
     assert!(p.prev_enabled && !p.next_enabled);
-    // Магазин недосчитал (новые работы сдвинули поток) — страниц не меньше
-    // той, на которой стоим, плюс следующая.
+    // The store undercounted (new items shifted the stream) — no fewer pages than
+    // the one we are on, plus the next.
     assert_eq!(ap::stream_pagination(16, 318, true, ap::PAGE_SIZE).label, "Страница 17 / 18");
 }
 
 #[test]
 fn sort_change_is_a_new_stream_from_page_zero() {
-    // Поток зависит от сортировки: смена сортировки (страница сбрасывается
-    // в 0) читает свои серверные страницы, а не хвост прежней.
+    // The stream depends on the sorting: a sorting change (the page is reset
+    // to 0) reads its own server pages, not the tail of the former one.
     let mut newest = FakeStore::new(&[18, 20], 40);
     let mut rating = FakeStore::new(&[20, 19], 40);
     assert_eq!(newest.page(0).items.len(), 20);
@@ -1281,17 +1281,17 @@ fn sort_change_is_a_new_stream_from_page_zero() {
 #[test]
 fn aur_pages_are_cut_locally() {
     let _lang = i18n_pin::ru();
-    // RPC отдаёт весь список разом — страницы режем на месте по 20.
+    // RPC returns the whole list at once — we cut pages of 20 in place.
     assert_eq!(ap::aur_page_range(50, 0), 0..20);
     assert_eq!(ap::aur_page_range(50, 1), 20..40);
     assert_eq!(ap::aur_page_range(50, 2), 40..50);
     assert_eq!(ap::aur_page_range(50, 9), 50..50);
     assert_eq!(ap::aur_page_range(0, 0), 0..0);
-    // Свежий список короче — страницу подтягиваем к последней существующей.
+    // A fresh list is shorter — we pull the page back to the last existing one.
     assert_eq!(ap::aur_clamp_page(50, 7), 2);
     assert_eq!(ap::aur_clamp_page(0, 7), 0);
     assert_eq!(ap::aur_clamp_page(21, 0), 0);
-    // Листание за конец и до нуля запрещено.
+    // Paging past the end and below zero is forbidden.
     assert!(!ap::aur_can_change_page(50, 0, -1));
     assert!(ap::aur_can_change_page(50, 0, 1));
     assert!(!ap::aur_can_change_page(50, 2, 1));
@@ -1301,9 +1301,9 @@ fn aur_pages_are_cut_locally() {
 #[test]
 fn aur_search_needs_at_least_two_characters() {
     let _lang = i18n_pin::ru();
-    assert!(!ap::aur_query_too_short(""));       // пусто — это подборка, не поиск
+    assert!(!ap::aur_query_too_short(""));       // empty — this is a selection, not a search
     assert!(ap::aur_query_too_short("a"));
-    assert!(ap::aur_query_too_short("я"));       // считаем символы, не байты
+    assert!(ap::aur_query_too_short("я"));       // we count characters, not bytes
     assert!(!ap::aur_query_too_short("ab"));
 }
 
@@ -1314,15 +1314,15 @@ fn aur_cache_key_separates_search_from_the_section() {
     assert_eq!(v.aur_cache_key(), "cat:global");
     v.query = "nord".into();
     assert_eq!(v.aur_cache_key(), "search:global:nord");
-    // Выдача поиска отобрана под раздел — у другого раздела свой ключ.
+    // Search results are selected for the section — another section has its own key.
     assert_ne!(view("icons").aur_cache_key(), "search:global:nord");
     let mut icons = view("icons");
     icons.query = "nord".into();
     assert_ne!(icons.aur_cache_key(), v.aur_cache_key());
 }
 
-/// Пометка пакета AUR, где он идёт вперемешку с одиночными товарами («Все»):
-/// набор, системный пакет, пароль. В «AUR» и в KDE Store её нет.
+/// The mark of an AUR package where it comes mixed with single items («Все»):
+/// a set, a system package, a password. In «AUR» and in KDE Store it is absent.
 #[test]
 fn aur_tiles_are_marked_only_among_store_goods() {
     let _lang = i18n_pin::ru();
@@ -1344,33 +1344,33 @@ fn aur_tiles_are_marked_only_among_store_goods() {
 #[test]
 fn typed_word_reaches_the_query() {
     let _lang = i18n_pin::ru();
-    // Живая проверка 06.09.2026: набранное слово терялось по дороге, запрос
-    // оставался пустым, и «Активные» показывали все темы подряд.
+    // Live check 06.09.2026: the typed word got lost on the way, the query
+    // stayed empty, and «Активные» showed all themes in a row.
     let mut v = view("active");
     assert_eq!(v.edit_query("  "), ap::QueryEdit::Idle);
     assert_eq!(v.query, "");
     assert_eq!(v.edit_query("bree"), ap::QueryEdit::Kept);
-    assert_eq!(v.query, "bree");                 // ← этой записи и не было
+    assert_eq!(v.query, "bree");                 // ← this entry never existed
     assert_eq!(v.edit_query(" bree "), ap::QueryEdit::Idle);
     v.page = 3;
     assert_eq!(v.edit_query(""), ap::QueryEdit::Cleared);
     assert_eq!(v.query, "");
-    assert_eq!(v.page, 0);                       // сброс поиска — с первой
+    assert_eq!(v.page, 0);                       // search reset — from the first
     assert_eq!(v.edit_query(""), ap::QueryEdit::Idle);
 }
 
-/// 19.10.2026: поиск в разделах срабатывал только по Enter, а забытое
-/// в поле слово («MishMty») оставляло в разделе одну плитку — казалось,
-/// что магазин пропал. Теперь поиск идёт по мере набора: обзор диска —
-/// сразу, магазин и раздел «установленное + магазин» — после паузы; строка
-/// состояния говорит, что действует поиск.
+/// 19.10.2026: search in sections fired only on Enter, and a word forgotten
+/// in the field («MishMty») left one tile in the section — it seemed
+/// that the store was gone. Now the search runs as you type: a disk overview —
+/// at once, the store and the "installed + store" section — after a pause; the status
+/// line says a search is active.
 #[test]
 fn search_runs_while_typing_and_says_so() {
     let _lang = i18n_pin::ru();
-    // Обзор диска сети не знает — отбор сразу.
+    // A disk overview knows no network — filtering at once.
     let local = view("active");
     assert_eq!(local.search_delay_ms(), 0);
-    // Магазин (и установленное над ним) — посимвольно не дёргаем.
+    // The store (and the installed items above it) — not queried per character.
     let store = view("global");
     assert_eq!(store.search_delay_ms(), ap::SEARCH_DEBOUNCE_MS);
     assert_eq!(ap::SEARCH_DEBOUNCE_MS, 300);
@@ -1379,8 +1379,8 @@ fn search_runs_while_typing_and_says_so() {
     assert_eq!(ap::search_status("MishMty", 0), "Поиск: «MishMty» — ничего не найдено");
     assert_eq!(ap::search_clear_tooltip(), "Очистить поиск");
 
-    // Страница: Enter применяет сразу, набор — по паузе ядра, у поля
-    // кнопка очистки.
+    // The page: Enter applies at once, typing — after the core's pause, the field has
+    // a clear button.
     let qml = include_str!("../../rexon-gui/qml/AppearancePage.qml");
     assert!(qml.contains("page.searchDelayMs"), "пауза поиска — из ядра");
     assert!(qml.contains("page.searchClearTooltip"), "у поля поиска кнопка «Очистить»");
@@ -1389,9 +1389,9 @@ fn search_runs_while_typing_and_says_so() {
 #[test]
 fn request_key_carries_the_query_in_every_section() {
     let _lang = i18n_pin::ru();
-    // Ключом сверяется ответ и по нему же отбрасывается дубль. Без запроса
-    // в ключе поиск по обзору диска выглядел для дедупа тем же самым
-    // запросом, и в сетку принимался ответ НЕотфильтрованного скана.
+    // The answer is checked by the key, and a duplicate is discarded by it too. Without the query
+    // in the key, a disk overview search looked to dedup like the same
+    // request, and the answer of an UNfiltered scan was accepted into the grid.
     let mut local = view("active");
     let plain = local.request_key();
     local.query = "bree".into();
@@ -1416,7 +1416,7 @@ fn local_matches_is_one_rule_for_every_disk_theme() {
     assert!(ap::local_matches("Breeze", "bree"));
     assert!(ap::local_matches("Breeze Dark", " BREE "));
     assert!(!ap::local_matches("Nordic", "bree"));
-    assert!(ap::local_matches("что угодно", "   "));   // пустой запрос не режет
+    assert!(ap::local_matches("что угодно", "   "));   // an empty query does not cut
 }
 
 #[test]
@@ -1433,10 +1433,10 @@ fn local_filter_matches_the_original() {
     assert_eq!(ap::local_filter(&items, "нет такого").len(), 0);
 }
 
-/// Тема с диска находится и по показанному (переведённому) имени, и по
-/// оригинальному: имени без перевода и каталогу из номера карточки.
-/// Живая проверка r1434 (16.10.2026): в «GTK-темах» «Adwaita» и
-/// «HighContrast» давали «Ничего не найдено», а «Высоко» находило.
+/// A theme from disk is found both by the shown (translated) name and by the
+/// original one: the untranslated name and the directory from the card number.
+/// Live check r1434 (16.10.2026): in «GTK-темы» «Adwaita» and
+/// «HighContrast» gave «Ничего не найдено», while «Высоко» found it.
 #[test]
 fn local_item_matches_shown_and_original_names() {
     let _lang = i18n_pin::ru();
@@ -1451,7 +1451,7 @@ fn local_item_matches_shown_and_original_names() {
         source_name: "High Contrast".into(),
         ..Default::default()
     };
-    // Карточка магазина: номер — число, каталога в нём нет.
+    // A store card: the number is a number, there is no directory in it.
     let store = ThemeItem { id: "1234567".into(), name: "Nordic".into(), ..Default::default() };
     for q in ["Adwaita", "adwaita", "  ADWAITA ", "адвайта", "Адв"] {
         assert!(ap::local_item_matches(&adwaita, q), "Adwaita по {q:?}");
@@ -1479,12 +1479,12 @@ fn scan_status_and_kind_match_the_original() {
     assert_eq!(ap::scan_status("active", 7).unwrap(), "Активных тем: 7");
     assert_eq!(ap::scan_status("downloaded", 0).unwrap(), "Загруженных тем: 0");
     assert_eq!(ap::scan_status("system", 126).unwrap(), "Системных тем: 126");
-    assert!(ap::scan_status("splash", 3).is_none()); // подпись берётся с раздела
+    assert!(ap::scan_status("splash", 3).is_none()); // the caption is taken from the section
 
     assert_eq!(ap::scan_local_kind("active", ""), "active");
     assert_eq!(ap::scan_local_kind("downloaded", ""), "downloaded");
     assert_eq!(ap::scan_local_kind("system", ""), "downloaded");
-    // Прочие сканы узнают активный элемент по подписи автора.
+    // Other scans recognize the active item by the author caption.
     assert_eq!(ap::scan_local_kind("splash", "🎨 Заставка · ✅ Активна"), "active");
     assert_eq!(ap::scan_local_kind("splash", "🎨 Заставка"), "downloaded");
 }
@@ -1494,7 +1494,7 @@ fn a_stale_scan_answer_is_dropped() {
     let _lang = i18n_pin::ru();
     assert!(ap::scan_answer_stale("system", "downloaded"));
     assert!(!ap::scan_answer_stale("system", "system"));
-    // Скан «Стиля приложений» несёт под-выбор и снимается своим счётчиком.
+    // The «Стиль приложений» scan carries a sub-choice and is captured with its own counter.
     assert!(!ap::scan_answer_stale("widgetstyle:kvantum", "widgetstyle"));
     assert!(!ap::scan_answer_stale("widgetstyle:qt", "global"));
 }
@@ -1510,7 +1510,7 @@ fn local_scan_which_carries_the_style_filter() {
     assert_eq!(v.local_scan_which(), "widgetstyle:qt");
     v.style_sub = Some("kvantum".into());
     assert_eq!(v.local_scan_which(), "widgetstyle:kvantum");
-    // Прежний под-выбор «один стиль» больше не сужает сетку до карточки.
+    // The former "one style" sub-choice no longer narrows the grid to one card.
     v.style_sub = Some("qt:Breeze".into());
     assert_eq!(v.local_scan_which(), "widgetstyle:all");
 }
@@ -1518,9 +1518,9 @@ fn local_scan_which_carries_the_style_filter() {
 #[test]
 fn local_scan_plan_reads_back_what_local_scan_which_wrote() {
     let _lang = i18n_pin::ru();
-    // Ключ собирает `local_scan_which`, разбирает — `local_scan_plan`:
-    // формат один, и знать его должен ОДИН хозяин. Прежде разбор жил у
-    // исполнителя вкладки на Python второй копией.
+    // The key is built by `local_scan_which` and parsed by `local_scan_plan`:
+    // the format is one, and ONE owner must know it. Previously the parsing lived in
+    // the Python tab executor as a second copy.
     for key in ["active", "downloaded", "system", "splash", "lockscreen"] {
         assert_eq!(ap::local_scan_plan(key), (key.to_string(), String::new()));
     }
@@ -1535,12 +1535,12 @@ fn local_scan_plan_reads_back_what_local_scan_which_wrote() {
     }
     assert_eq!(ap::local_scan_plan("widgetstyle"), ("widgetstyle".to_string(), "all".to_string()));
 
-    // Разделы KDE с сеткой установленного — скан раздела, как у окружений.
+    // KDE sections with an installed grid — a section scan, as for desktops.
     for key in ["global", "plasma", "colors", "aurorae", "icons", "cursor", "gtk", "sounds"] {
         assert_eq!(ap::local_scan_plan(key), ("section".to_string(), key.to_string()));
     }
 
-    // Раздел без скана диска — показывать нечего, и это НЕ «активные».
+    // A section without a disk scan — nothing to show, and that is NOT «активные».
     assert_eq!(ap::local_scan_plan("wallpapers"), (String::new(), String::new()));
     assert_eq!(ap::local_scan_plan(""), (String::new(), String::new()));
 }
@@ -1571,10 +1571,10 @@ fn popular_and_new_in_mate_ask_only_for_what_works_there() {
         let v = CatalogView::new(cat(key), "mate");
         let q = v.query_category_id();
         let ids: Vec<&str> = q.split(',').collect();
-        // Стили Plasma в MATE не применяются.
+        // Plasma styles do not apply in MATE.
         assert!(!ids.contains(&"104"), "{key}: {q}");
-        // Значки, курсоры, GTK-темы и обои — действуют; глобальные темы
-        // (01.11.2026) — по частям: цвета, стиль, значки, курсоры, шрифты.
+        // Icons, cursors, GTK themes and wallpapers — take effect; global themes
+        // (01.11.2026) — in parts: colors, style, icons, cursors, fonts.
         for want in ["722", "132", "107", "135", "299"] {
             assert!(ids.contains(&want), "{key}: нет {want} в {q}");
         }
@@ -1583,7 +1583,7 @@ fn popular_and_new_in_mate_ask_only_for_what_works_there() {
             assert!(categories::category_available(&c.key, "mate"), "{key}: {id} не для MATE");
         }
     }
-    // Прогрев спрашивает то же, что живой запрос, и не греет разделы KDE.
+    // The warm-up asks the same as the live query, and does not warm KDE sections.
     let home = Path::new("/home/u");
     let sidebar = categories::sidebar(home);
     let v = CatalogView::new(cat("popular"), "mate");
@@ -1607,12 +1607,12 @@ fn prefetch_skips_everything_that_has_no_store() {
             assert!(n > 0 && n <= 900, "негодная цель прогрева {cat_id}");
         }
     }
-    // Дублей нет: «Популярные» и «Global» дают одну и ту же пару.
+    // No duplicates: «Популярные» and «Global» give the same pair.
     let mut seen = std::collections::BTreeSet::new();
     for k in &targets {
         assert!(seen.insert(k.clone()), "дубль в очереди прогрева: {k:?}");
     }
-    // Ни одного локального обзора и ни одного раздела без магазина.
+    // Not a single local overview and not a single section without a store.
     let networkless: Vec<i64> = sidebar
         .iter()
         .filter(|c| c.local_only() || c.id > 900)
@@ -1633,9 +1633,9 @@ fn neighbours_of_the_open_section_go_to_the_front() {
     let done = std::collections::BTreeSet::new();
     let front = ap::prefetch_neighbours(&v, &sidebar, &done);
     assert!(!front.is_empty());
-    // Сам открытый раздел в соседи не попадает.
+    // The open section itself does not get into the neighbours.
     assert!(!front.iter().any(|(c, _)| *c == first_net.id.to_string()));
-    // Перестановка очереди: соседи впереди, остальное следом и без дублей.
+    // Queue reordering: neighbours in front, the rest after them and without duplicates.
     let queue = vec![("999".to_string(), "new".to_string()), front[0].clone()];
     let out = ap::prefetch_reorder(&front, &queue);
     assert_eq!(&out[..front.len()], &front[..]);
@@ -1646,7 +1646,7 @@ fn neighbours_of_the_open_section_go_to_the_front() {
 #[test]
 fn the_running_desktop_wins_but_a_manual_choice_survives() {
     let _lang = i18n_pin::ru();
-    // Первый запуск: ничего не знаем — берём запущенный и запоминаем его.
+    // First launch: we know nothing — we take the running one and remember it.
     assert_eq!(
         ap::initial_de("gnome", "", ""),
         ap::DeChoice {
@@ -1654,13 +1654,13 @@ fn the_running_desktop_wins_but_a_manual_choice_survives() {
             remember: Some(("gnome".into(), "gnome".into()))
         }
     );
-    // Человек сидит в том же сеансе, где выбирал руками, — его выбор в силе.
+    // The person is in the same session where they chose by hand — their choice holds.
     assert_eq!(
         ap::initial_de("kde", "gnome", "kde"),
         ap::DeChoice { de_id: "gnome".into(), remember: None }
     );
-    // Сменил рабочий стол — выбор был унаследован, а не сделан: каталог идёт
-    // за фактическим столом.
+    // Changed the desktop — the choice was inherited, not made: the catalog follows
+    // the actual desktop.
     assert_eq!(
         ap::initial_de("gnome", "kde", "kde"),
         ap::DeChoice {
@@ -1668,22 +1668,22 @@ fn the_running_desktop_wins_but_a_manual_choice_survives() {
             remember: Some(("gnome".into(), "gnome".into()))
         }
     );
-    // Стол не определяется, но выбор был — держим выбор.
+    // The desktop is not detected, but there was a choice — we keep the choice.
     assert_eq!(
         ap::initial_de("", "gnome", "kde"),
         ap::DeChoice { de_id: "gnome".into(), remember: None }
     );
-    // Не известно вообще ничего — самый широкий набор разделов.
+    // Nothing is known at all — the widest set of sections.
     assert_eq!(
         ap::initial_de("", "", ""),
         ap::DeChoice { de_id: "kde".into(), remember: None }
     );
 }
 
-/// 19.10.2026: в сеансе MATE «Текущее окружение» стояло на «KDE Plasma» —
-/// выбор, сделанный руками ночью, — и ничто на экране не говорило, что это
-/// не определённый по сеансу стол. Ручной выбор, отличный от сеанса,
-/// подписан как ручной, а первым пунктом стоит «Определять автоматически».
+/// 19.10.2026: in a MATE session «Текущее окружение» was set to «KDE Plasma» —
+/// a choice made by hand at night — and nothing on screen said that this was
+/// not the desktop detected from the session. A manual choice different from the session
+/// is labelled as manual, and the first item is «Определять автоматически».
 #[test]
 fn a_manual_desktop_choice_is_labelled_and_can_be_reset() {
     let _lang = i18n_pin::ru();
@@ -1695,25 +1695,25 @@ fn a_manual_desktop_choice_is_labelled_and_can_be_reset() {
     assert_eq!(name(&manual, "kde"), "KDE Plasma (выбрано вручную, сейчас MATE)");
     assert_eq!(name(&manual, "mate"), "MATE");
 
-    // Выбран стол сеанса — подписывать нечего, сбрасывать тоже.
+    // The session's desktop is chosen — nothing to label, nothing to reset either.
     let auto = ap::de_picker_choices("mate", "mate");
     assert!(auto.iter().all(|(id, _)| id != ap::DE_AUTO_ID));
     assert_eq!(name(&auto, "kde"), "KDE Plasma");
     assert_eq!(auto, rexon_core::categories::appearance_de_choices("mate"));
 
-    // Сеанс не опознан — сравнивать не с чем.
+    // The session is not recognized — nothing to compare with.
     assert!(ap::de_picker_choices("kde", "").iter().all(|(id, _)| id != ap::DE_AUTO_ID));
 
-    // Узнанный, но неподдержанный стол сеанса — его именем, не сырым id.
+    // A recognized but unsupported session desktop — by its name, not by a raw id.
     let ukui = ap::de_picker_choices("kde", "ukui");
     assert_eq!(ukui[0], (ap::DE_AUTO_ID.to_string(), "Определять автоматически (UKUI)".to_string()));
 
-    // Что делать по выбору пункта: (стол каталога, что запомнить как выбор).
-    // «Автоматически» — стол сеанса и пустой выбор: `initial_de` дальше
-    // сам идёт за сеансом.
+    // What to do on choosing an item: (the catalog desktop, what to remember as the choice).
+    // «Автоматически» — the session desktop and an empty choice: `initial_de` then
+    // follows the session by itself.
     assert_eq!(ap::resolve_de_pick(ap::DE_AUTO_ID, "mate"), ("mate".to_string(), String::new()));
     assert_eq!(ap::resolve_de_pick("kde", "mate"), ("kde".to_string(), "kde".to_string()));
-    // Страница узнаёт пункт «автоматически» по тому же имени.
+    // The page recognizes the "automatically" item by the same name.
     let qml = include_str!("../../rexon-gui/qml/AppearancePage.qml");
     assert!(qml.contains(&format!("picked === \"{}\"", ap::DE_AUTO_ID)));
     assert_eq!(
@@ -1723,7 +1723,7 @@ fn a_manual_desktop_choice_is_labelled_and_can_be_reset() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Панель деталей
+//  Details panel
 // ═══════════════════════════════════════════════════════════════════════
 
 use rexon_core::appearance_page::GalleryFrame;
@@ -1734,22 +1734,22 @@ fn gallery_drops_the_face_of_the_product_like_the_site_does() {
     let _lang = i18n_pin::ru();
     let full = |u: &str| rexon_core::ocs::full_preview_url(u);
     let urls: Vec<String> = ["a.png", "b.png", "c.png"].iter().map(|s| s.to_string()).collect();
-    // Первый слот — «лицо товара», в карусель он не попадает.
+    // The first slot is the "face of the item", it does not get into the carousel.
     assert_eq!(
         ap::gallery_urls(&urls, "face.png"),
         vec![full("b.png"), full("c.png")]
     );
-    // Картинка одна — показываем её.
+    // One picture — we show it.
     assert_eq!(ap::gallery_urls(&["only.png".into()], ""), vec![full("only.png")]);
-    // Списка нет вовсе — берём превью плитки.
+    // No list at all — we take the tile preview.
     assert_eq!(ap::gallery_urls(&[], "p.png"), vec![full("p.png")]);
     assert!(ap::gallery_urls(&[], "").is_empty());
 }
 
 #[test]
 fn tile_falls_back_to_the_next_picture_when_the_first_is_dead() {
-    // «Sirin Cursor» (2370501), ответ магазина 03.10.2026: previewpic1 —
-    // GIF с иероглифами, сервер отвечает 404; остальные — уменьшенные копии.
+    // «Sirin Cursor» (2370501), the store's answer of 03.10.2026: previewpic1 is
+    // a GIF with hieroglyphs, the server answers 404; the rest are downscaled copies.
     let base = "https://images.pling.com/img/00/00/86/48/60/2370501";
     let cache = "https://images.pling.com/cache/770x540-4/img/00/00/86/48/60/2370501";
     let pic1 = format!("{base}/6880de79-438b-40c4-87b5-365b8d186afb-展示图2.gif");
@@ -1760,8 +1760,8 @@ fn tile_falls_back_to_the_next_picture_when_the_first_is_dead() {
         format!("{cache}/nsa.png"),
     ];
     let c = ap::preview_candidates(&pic1, &urls);
-    // Сначала превью плитки, потом остальные по номерам, без дублей,
-    // последним запасом — оригиналы уменьшенных копий.
+    // First the tile preview, then the rest by number, without duplicates,
+    // as the last reserve — the originals of the downscaled copies.
     assert_eq!(
         c,
         vec![
@@ -1777,7 +1777,7 @@ fn tile_falls_back_to_the_next_picture_when_the_first_is_dead() {
     assert_eq!(ap::next_preview_candidate(&c, &pic1), Some(format!("{cache}/sxz.png")));
     assert_eq!(ap::next_preview_candidate(&c, &format!("{base}/nsa.png")), None);
     assert_eq!(ap::next_preview_candidate(&c, "чужая"), None);
-    // Картинка у товара одна — запаса нет.
+    // The item has one picture — no reserve.
     let one = ap::preview_candidates("only.png", &["only.png".into()]);
     assert_eq!(one, vec!["only.png".to_string()]);
     assert!(ap::preview_candidates("", &[]).is_empty());
@@ -1800,18 +1800,18 @@ fn error_page_instead_of_picture_is_not_a_picture() {
 #[test]
 fn gallery_skips_broken_frames() {
     let failed: BTreeSet<i64> = [1, 2].into_iter().collect();
-    // 0 1 2 3: битые 1 и 2 при листании пропускаются в обе стороны.
+    // 0 1 2 3: the broken 1 and 2 are skipped when paging in both directions.
     assert_eq!(ap::gallery_step_skipping(0, 4, 1, &failed), 3);
     assert_eq!(ap::gallery_step_skipping(3, 4, -1, &failed), 0);
     assert_eq!(ap::gallery_step_skipping(3, 4, 1, &failed), 0);
-    // Счётчик считает только живые: «2/2» на третьем кадре из четырёх.
+    // The counter counts only live ones: «2/2» on the third frame of four.
     assert_eq!(ap::gallery_counter_skipping(3, 4, &failed).as_deref(), Some("2/2"));
     assert_eq!(ap::gallery_counter_skipping(0, 4, &failed).as_deref(), Some("1/2"));
-    // Живой остался один — листать некуда, счётчика нет.
+    // Only one live one is left — nowhere to page to, no counter.
     let all_but_0: BTreeSet<i64> = [1, 2, 3].into_iter().collect();
     assert_eq!(ap::gallery_step_skipping(0, 4, 1, &all_but_0), 0);
     assert_eq!(ap::gallery_counter_skipping(0, 4, &all_but_0), None);
-    // Без битых — обычное закольцованное листание.
+    // Without broken ones — ordinary looped paging.
     assert_eq!(ap::gallery_step_skipping(3, 4, 1, &BTreeSet::new()), 0);
 }
 
@@ -1821,7 +1821,7 @@ fn gallery_arrows_wrap_around() {
     assert_eq!(ap::gallery_step(0, 5, 1), 1);
     assert_eq!(ap::gallery_step(4, 5, 1), 0);
     assert_eq!(ap::gallery_step(0, 5, -1), 4);
-    // Кадр один — листать нечего.
+    // One frame — nothing to page through.
     assert_eq!(ap::gallery_step(0, 1, 1), 0);
     assert_eq!(ap::gallery_step(0, 0, -1), 0);
 }
@@ -1829,8 +1829,8 @@ fn gallery_arrows_wrap_around() {
 #[test]
 fn gallery_counter_only_grows() {
     let _lang = i18n_pin::ru();
-    // Полные детали приносят больше ссылок, чем список: «2/5» не должно
-    // схлопнуться обратно в «2/1».
+    // Full details bring more links than the list: «2/5» must not
+    // collapse back into «2/1».
     assert_eq!(ap::gallery_total(5, 2, 0), 5);
     assert_eq!(ap::gallery_total(1, 5, 0), 5);
     assert_eq!(ap::gallery_total(0, 0, 3), 3);
@@ -1844,34 +1844,34 @@ fn a_frame_that_will_not_come_says_so_instead_of_spinning() {
     let mut loaded = BTreeMap::new();
     loaded.insert(0i64, "/c/0.png".to_string());
     let failed: BTreeSet<i64> = [2i64].into_iter().collect();
-    // Кадр есть.
+    // The frame is there.
     assert_eq!(
         ap::gallery_frame(0, &loaded, &failed, false, 5),
         GalleryFrame::Image("/c/0.png".into())
     );
-    // Кадра нет, обход ещё идёт — ждём.
+    // No frame, the walk is still going on — we wait.
     assert_eq!(ap::gallery_frame(1, &loaded, &failed, false, 5), GalleryFrame::Loading);
-    // Сервер отказал именно по этому кадру.
+    // The server refused exactly this frame.
     assert_eq!(ap::gallery_frame(2, &loaded, &failed, false, 5), GalleryFrame::Failed);
-    // Обход закончен — «дыра» больше не заполнится.
+    // The walk is finished — the "hole" will not be filled any more.
     assert_eq!(ap::gallery_frame(1, &loaded, &failed, true, 5), GalleryFrame::Failed);
-    // Одиночная картинка — панель остаётся как была.
+    // A single picture — the panel stays as it was.
     assert_eq!(
         ap::gallery_frame(0, &BTreeMap::new(), &failed, true, 1),
         GalleryFrame::Unchanged
     );
-    // Картинок нет вовсе и обход закончен — «нет превью», а не вечное
-    // ожидание.
+    // No pictures at all and the walk is finished — «нет превью», not an eternal
+    // wait.
     assert_eq!(
         ap::gallery_frame(0, &BTreeMap::new(), &BTreeSet::new(), true, 0),
         GalleryFrame::Unavailable
     );
-    // Обход ещё идёт — пока ждём.
+    // The walk is still going on — we wait for now.
     assert_eq!(
         ap::gallery_frame(0, &BTreeMap::new(), &BTreeSet::new(), false, 0),
         GalleryFrame::Unchanged
     );
-    // Единственный кадр не доехал.
+    // The only frame did not arrive.
     let only_failed: BTreeSet<i64> = [0i64].into_iter().collect();
     assert_eq!(
         ap::gallery_frame(0, &BTreeMap::new(), &only_failed, false, 1),
@@ -1885,11 +1885,11 @@ fn ready_frames_from_the_cache_are_picked_up_on_open() {
     let mut loaded = BTreeMap::new();
     loaded.insert(2i64, "/c/2.png".to_string());
     loaded.insert(4i64, "/c/4.png".to_string());
-    // Текущего кадра среди готовых нет — встаём на самый ранний готовый.
+    // The current frame is not among the ready ones — we move to the earliest ready one.
     assert_eq!(ap::adopt_gallery_index(&loaded, 0, false), Some(2));
-    // Человек уже листал руками — его кадр не перебиваем.
+    // The person has already paged by hand — we do not override their frame.
     assert_eq!(ap::adopt_gallery_index(&loaded, 0, true), None);
-    // Текущий кадр готов — двигать некуда.
+    // The current frame is ready — nowhere to move.
     assert_eq!(ap::adopt_gallery_index(&loaded, 2, false), None);
     assert_eq!(ap::adopt_gallery_index(&BTreeMap::new(), 0, false), None);
 }
@@ -1897,7 +1897,7 @@ fn ready_frames_from_the_cache_are_picked_up_on_open() {
 #[test]
 fn install_button_has_three_states() {
     let _lang = i18n_pin::ru();
-    // Как в KDE: «Установить» только ставит, применяет — следующее нажатие.
+    // As in KDE: «Установить» only installs, the next press applies.
     let b = ap::install_button(false, false, true);
     assert_eq!(b.text, "Установить");
     assert_eq!(b.state, "false");
@@ -1906,14 +1906,14 @@ fn install_button_has_three_states() {
     assert_eq!(b.text, "🎨 Применить");
     assert_eq!(b.state, "installed");
     assert!(!b.tooltip.is_empty());
-    // Вид без применения (шрифты, виджеты) — только «Установлено».
+    // A kind without applying (fonts, widgets) — only «Установлено».
     let b = ap::install_button(true, false, false);
     assert_eq!(b.text, "✅ Установлено");
     assert_eq!(b.state, "installed");
     let b = ap::install_button(true, true, true);
     assert_eq!(b.text, "✅ Применено");
     assert_eq!(b.state, "true");
-    // «Применена» перевешивает: тему могли применить, не отметив установленной.
+    // "Applied" wins: the theme may have been applied without being marked installed.
     assert_eq!(ap::install_button(false, true, true).state, "true");
     assert_eq!(ap::status_prefix(true), "✅ ");
     assert_eq!(ap::status_prefix(false), "❌ ");
@@ -1923,11 +1923,11 @@ fn install_button_has_three_states() {
 fn local_theme_name_comes_from_the_synthetic_id() {
     let _lang = i18n_pin::ru();
     assert_eq!(ap::local_theme_name("local:colors:Breeze Dark", "не то"), "Breeze Dark");
-    // В имени темы бывает двоеточие — оно должно уцелеть.
+    // A theme name can contain a colon — it must survive.
     assert_eq!(ap::local_theme_name("local:gtk:A:B", "x"), "A:B");
-    // Не местная карточка — обычное название.
+    // Not a local card — the ordinary name.
     assert_eq!(ap::local_theme_name("123456", "Sweet KDE"), "Sweet KDE");
-    // Номер испорчен — тоже название.
+    // The number is corrupted — also the name.
     assert_eq!(ap::local_theme_name("local:gtk", "Sweet"), "Sweet");
     assert!(ap::stale_global_msg("Nord").contains("«Nord»"));
 }
@@ -1935,7 +1935,7 @@ fn local_theme_name_comes_from_the_synthetic_id() {
 #[test]
 fn detail_size_and_copy_link_labels() {
     let _lang = i18n_pin::ru();
-    // `downloadsize1` магазина — в КиБ: живые 13 и 1419 (Discover: 13 КиБ, 1,4 МиБ).
+    // The store's `downloadsize1` is in KiB: live 13 and 1419 (Discover: 13 KiB, 1.4 MiB).
     assert_eq!(ap::human_size_kib(13), "13 КиБ");
     assert_eq!(ap::human_size_kib(1419), "1,4 МиБ");
     assert_eq!(ap::human_size_kib(3 * 1024 * 1024 / 2), "1,5 ГиБ");
@@ -1949,7 +1949,7 @@ fn detail_size_and_copy_link_labels() {
         ap::detail_meta_with_size(&ap::detail_meta_line("A", "B", "2026-01-01", "1.0"), 1419),
         "A • B • обновлено 2026-01-01 v1.0 • 1,4 МиБ"
     );
-    // Размер неизвестен — строка не меняется.
+    // The size is unknown — the line does not change.
     let plain = ap::detail_meta_line("A", "B", "2026-01-01", "1.0");
     assert_eq!(ap::detail_meta_with_size(&plain, 0), plain);
     assert_eq!(ap::store_page_url("2370521"), "https://store.kde.org/p/2370521");
@@ -1970,7 +1970,7 @@ fn animated_preview_is_told_by_its_header() {
     assert!(!ap::is_animated_image_header(b""));
     let mut webp = b"RIFF\0\0\0\0WEBPVP8X\0\0\0\0\x02\0\0\0".to_vec();
     assert!(ap::is_animated_image_header(&webp));
-    webp[20] = 0; // флага анимации нет — неподвижный WebP
+    webp[20] = 0; // no animation flag — a still WebP
     assert!(!ap::is_animated_image_header(&webp));
 }
 
@@ -1981,17 +1981,17 @@ fn detail_labels_match_the_original() {
         ap::detail_meta_line("EliverLara", "GPL-3.0", "2026-07-29 03:00:00", "5.0"),
         "EliverLara • GPL-3.0 • обновлено 2026-07-29 v5.0"
     );
-    // Магазин отдаёт версию и с буквой — второй «v» приписывать нельзя.
+    // The store also returns the version with a letter — a second "v" must not be added.
     assert_eq!(
         ap::detail_meta_line("A", "B", "2026-01-01", "v5.0"),
         "A • B • обновлено 2026-01-01 v5.0"
     );
-    // Пустые поля — прочерк, версии просто нет.
+    // Empty fields — a dash, there is simply no version.
     assert_eq!(ap::detail_meta_line("", "", "", ""), "— • — • обновлено — ");
-    assert_eq!(ap::detail_stars_label(Some(4.35)), "⭐ 4,3"); // разделитель — по языку (i18n::format_decimal)
-    assert_eq!(ap::detail_stars_label(Some(5.0)), "⭐ 5,0"); // не «⭐ 5»
+    assert_eq!(ap::detail_stars_label(Some(4.35)), "⭐ 4,3"); // the separator depends on the language (i18n::format_decimal)
+    assert_eq!(ap::detail_stars_label(Some(5.0)), "⭐ 5,0"); // not «⭐ 5»
     assert_eq!(ap::detail_stars_label(Some(0.0)), "⭐ 0,0");
-    // Голосов нет — ни звезды, ни «2,5» (стартовая оценка OCS).
+    // No votes — neither a star nor «2,5» (the OCS starting score).
     assert_eq!(ap::detail_stars_label(None), "Оценок пока нет");
     assert!(ap::detail_downloads_label(1234).contains("скачиваний: 1,2K"));
     assert_eq!(
@@ -2003,34 +2003,34 @@ fn detail_labels_match_the_original() {
 #[test]
 fn description_and_comment_toggles_match_the_original() {
     let _lang = i18n_pin::ru();
-    // Перевода нет — переключателя тоже нет.
+    // No translation — no switch either.
     assert_eq!(ap::description_html("ориг", "ориг", false, false, "#66c0f4"), "ориг");
     assert_eq!(ap::description_html("", "", false, false, "#66c0f4"), "<i>Без описания</i>");
-    // Перевод есть — показываем перевод и предлагаем оригинал.
+    // There is a translation — we show it and offer the original.
     let h = ap::description_html("ориг", "пер", true, false, "#66c0f4");
     assert!(h.starts_with("пер<br><a href='rexon:toggle'"), "{h}");
     assert!(h.contains("color:#66c0f4"), "{h}");
     assert!(h.contains("📄 показать оригинал"), "{h}");
     assert!(h.contains("font-size:9.5pt"), "{h}");
-    // Переключили — показываем оригинал и предлагаем перевод.
+    // Switched — we show the original and offer the translation.
     let h = ap::description_html("ориг", "пер", true, true, "#66c0f4");
     assert!(h.starts_with("ориг<br>"), "{h}");
     assert!(h.contains("🌐 показать перевод"), "{h}");
-    // Комментарий: тот же приём, свои подписи и кегль.
+    // A comment: the same technique, its own captions and font size.
     let h = ap::comment_body_html("o", "t", true, false, "#66c0f4");
     assert!(h.starts_with("t&nbsp;&nbsp;<a href='rexon:toggle'"), "{h}");
     assert!(h.contains("📄 оригинал") && h.contains("font-size:9pt"), "{h}");
     assert_eq!(ap::comment_body_html("o", "t", false, false, "#66c0f4"), "t");
 }
 
-/// Второй довод `description_html` — ВИДИМОЕ описание
-/// (`ThemeItem::display_description`), а не поле перевода.
+/// The second argument of `description_html` is the VISIBLE description
+/// (`ThemeItem::display_description`), not the translation field.
 ///
-/// Разница видна только когда перевода НЕТ: панель обязана показать
-/// английский текст магазина, а не «Без описания». В Rust-вкладке там стояло
-/// `description_translated`, и до появления живого перевода описания не
-/// показывались вовсе; у Python на этом месте было
-/// `_desc_trans = перевод if был_переведён else оригинал`.
+/// The difference is visible only when there is NO translation: the panel must show
+/// the store's English text, not «Без описания». The Rust tab had
+/// `description_translated` there, and until a live translation appeared descriptions were
+/// not shown at all; Python had in this place
+/// `_desc_trans = translation if was_translated else original`.
 #[test]
 fn a_description_without_a_translation_still_shows_the_original() {
     let _lang = i18n_pin::ru();
@@ -2047,18 +2047,18 @@ fn a_description_without_a_translation_still_shows_the_original() {
     };
     let mut item =
         ThemeItem { description: "The Papirus-Mace theme.".into(), ..Default::default() };
-    // Модели перевода нет — текст магазина на месте, переключателя нет.
+    // No translation model — the store text is in place, no switch.
     assert_eq!(shown(&item, false), "The Papirus-Mace theme.");
-    // Перевод доехал — показываем его и предлагаем оригинал.
+    // The translation arrived — we show it and offer the original.
     item.description_translated = "Тема Papirus-Mace.".into();
     assert!(
         shown(&item, false).starts_with("Тема Papirus-Mace.<br><a href='rexon:toggle'"),
         "{}",
         shown(&item, false)
     );
-    // Нажали «показать оригинал» — вернулся английский текст.
+    // «показать оригинал» was pressed — the English text came back.
     assert!(shown(&item, true).starts_with("The Papirus-Mace theme.<br>"));
-    // Описания нет вовсе — заглушка, и по-прежнему без переключателя.
+    // No description at all — a placeholder, and still without a switch.
     let empty = ThemeItem::default();
     assert_eq!(shown(&empty, false), ap::no_description_html());
 }
@@ -2066,12 +2066,12 @@ fn a_description_without_a_translation_still_shows_the_original() {
 #[test]
 fn comment_text_is_stripped_and_escaped_like_the_original() {
     let _lang = i18n_pin::ru();
-    // Эталон снят с самого Python (html.unescape → вырезать теги → html.escape).
+    // The golden value was captured from Python itself (html.unescape → strip tags → html.escape).
     for (raw, want) in [
         ("<b>жирный</b> текст", " жирный  текст"),
         ("a &amp; b", "a &amp; b"),
-        // Уже экранированный тег после unescape становится настоящим и
-        // вырезается — иначе разметка из комментария попала бы в подпись.
+        // An already escaped tag becomes real after unescape and
+        // is stripped — otherwise markup from a comment would get into the caption.
         ("&lt;script&gt;alert(1)&lt;/script&gt;", " alert(1) "),
         ("стр1\nстр2", "стр1<br>стр2"),
         ("<>пусто", "&lt;&gt;пусто"),
@@ -2093,14 +2093,14 @@ fn author_nicknames_are_compared_leniently() {
         ("ELIVERLARA", "eliverlara"),
         ("", ""),
         ("  ", ""),
-        // casefold оригинала приравнивает «ß» к «ss».
+        // The original's casefold equates «ß» with «ss».
         ("Straße", "strasse"),
     ] {
         assert_eq!(ap::norm_author(raw), want, "вход {raw:?}");
     }
     assert!(ap::comment_is_product_author("EliverLara", "eliverlara"));
     assert!(ap::comment_is_product_author("  John Doe ", "john  doe"));
-    // Пустой ник автором товара не считается никогда.
+    // An empty nickname is never considered the item's author.
     assert!(!ap::comment_is_product_author("", ""));
     assert!(!ap::comment_is_product_author("someone", "author"));
 }
@@ -2112,7 +2112,7 @@ fn comment_shape_matches_the_original() {
     assert_eq!(ap::comment_author_display("nick"), "nick");
     assert_eq!(ap::comment_date("2026-07-29 03:00:00"), "2026-07-29");
     assert_eq!(ap::comment_date(""), "");
-    // Глубина с потолком: глубже пятого уровня отступ съел бы всю ширину.
+    // Depth with a ceiling: deeper than the fifth level the indent would eat the whole width.
     assert_eq!(ap::comment_depth(9), 4);
     assert_eq!(ap::comment_depth(-1), 0);
     assert_eq!(ap::comment_indent(0), 0);
@@ -2125,13 +2125,13 @@ fn comment_shape_matches_the_original() {
 #[test]
 fn comments_header_and_paging_match_the_original() {
     let _lang = i18n_pin::ru();
-    // Точное число пришло с деталями товара.
+    // The exact number came with the item details.
     assert_eq!(ap::comments_header_text(Some(42), 10, true), "💬 Комментарии (42)");
-    // Из кеша число теряется — честное «показано N(+)».
+    // From the cache the number is lost — an honest "shown N(+)".
     assert_eq!(ap::comments_header_text(None, 10, true), "💬 Комментарии (10+)");
     assert_eq!(ap::comments_header_text(None, 3, false), "💬 Комментарии (3)");
     assert_eq!(ap::comments_header_text(Some(0), 3, false), "💬 Комментарии (3)");
-    // «Есть ещё» считается по КОРНЕВЫМ: ответы страницу не заполняют.
+    // "There is more" is counted by ROOT ones: replies do not fill the page.
     let roots: Vec<i64> = vec![0; 10];
     assert!(ap::comments_has_more(&roots));
     let mixed: Vec<i64> = vec![0, 1, 1, 0, 2, 0, 0, 0, 0, 0, 1, 1];
@@ -2140,7 +2140,7 @@ fn comments_header_and_paging_match_the_original() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Жизненный цикл запросов каталога
+//  Lifecycle of catalog requests
 // ═══════════════════════════════════════════════════════════════════════
 
 use rexon_core::appearance_page::{CatalogRequests, FireOutcome, SuggestAction};
@@ -2155,11 +2155,11 @@ fn a_second_request_for_the_same_page_never_leaves_for_the_network() {
         r.fire(),
         FireOutcome::Send { key: "cat=722&p=0".into(), generation: g }
     );
-    // Человек вернулся в ту же категорию, пока запрос ещё летит.
+    // The person came back to the same category while the request is still in flight.
     let g2 = r.bump();
     r.schedule(g2, "cat=722&p=0");
     assert_eq!(r.fire(), FireOutcome::Deduplicated { key: "cat=722&p=0".into() });
-    // Ответ летящего принимается как свежий: ему обновили поколение.
+    // The in-flight answer is accepted as fresh: its generation was updated.
     assert!(!r.answer("cat=722&p=0"));
 }
 
@@ -2170,9 +2170,9 @@ fn an_answer_from_a_category_already_left_is_dropped() {
     let g = r.bump();
     r.schedule(g, "a");
     assert!(matches!(r.fire(), FireOutcome::Send { .. }));
-    r.bump(); // ушёл в другую категорию
+    r.bump(); // went to another category
     assert!(r.answer("a"), "ответ прежней категории обязан быть выброшен");
-    // Ответа, которого никто не ждёт (попадание в кеш), это не касается.
+    // An answer nobody is waiting for (a cache hit) is not affected by this.
     assert!(!r.answer("никогда-не-летел"));
 }
 
@@ -2184,7 +2184,7 @@ fn a_debounced_request_dies_if_the_user_moved_on() {
     r.schedule(g, "a");
     r.bump();
     assert_eq!(r.fire(), FireOutcome::Nothing, "bump снимает отложенный запрос");
-    // И даже поданный вручную устаревшим поколением не уходит.
+    // And even one submitted by hand with a stale generation does not go away.
     r.schedule(g, "a");
     assert_eq!(r.fire(), FireOutcome::Stale);
     assert_eq!(r.fire(), FireOutcome::Nothing);
@@ -2211,12 +2211,12 @@ fn each_page_is_warmed_at_most_once() {
     let mut r = CatalogRequests::new();
     assert!(r.claim_page_prefetch("p1"));
     assert!(!r.claim_page_prefetch("p1"), "второй прогрев той же страницы");
-    // Живой запрос человека за страницу тоже считается прогревом.
+    // The person's live request for a page also counts as a warm-up.
     let g = r.bump();
     r.schedule(g, "p2");
     assert!(matches!(r.fire(), FireOutcome::Send { .. }));
     assert!(!r.claim_page_prefetch("p2"));
-    // Сброс кеша списков вручную разрешает греть заново.
+    // Resetting the list cache by hand allows warming again.
     r.forget_page_prefetches();
     assert!(r.claim_page_prefetch("p1"));
 }
@@ -2227,23 +2227,23 @@ fn the_warm_up_yields_the_channel_to_a_live_request() {
     let mut r = CatalogRequests::new();
     r.enqueue_prefetch(&[("722".into(), "new".into()), ("104".into(), "new".into())]);
     assert_eq!(r.prefetch_queue_len(), 2);
-    // Пока открытая категория ещё грузится, фон не запускаем.
+    // While the open category is still loading, we do not start the background.
     let g = r.bump();
     r.schedule(g, "live");
     assert_eq!(r.next_prefetch(), None, "отложенный запрос уже занимает канал");
     assert!(matches!(r.fire(), FireOutcome::Send { .. }));
     assert_eq!(r.next_prefetch(), None, "запрос в полёте");
-    // Ответ пришёл — очередь догоняет.
+    // The answer came — the queue catches up.
     r.answer("live");
     let first = r.next_prefetch().expect("очередь должна тронуться");
-    // По одной за раз: пока идёт этот прогрев, следующий не выдаём.
+    // One at a time: while this warm-up is going, we do not hand out the next.
     assert_eq!(r.next_prefetch(), None);
     r.prefetch_finished(first.clone());
     let second = r.next_prefetch().expect("следующая цель");
     assert_ne!(first, second);
     r.prefetch_finished(second);
     assert_eq!(r.next_prefetch(), None);
-    // Уже прогретое в очередь не возвращается.
+    // What is already warm does not come back into the queue.
     r.enqueue_prefetch(&[("722".into(), "new".into())]);
     assert_eq!(r.prefetch_queue_len(), 0);
 }
@@ -2264,7 +2264,7 @@ fn neighbours_jump_to_the_head_of_the_warm_up_queue() {
     r.enqueue_prefetch(&[("1".into(), "new".into()), ("2".into(), "new".into()), ("3".into(), "new".into())]);
     r.prioritize_prefetch(&[("3".into(), "new".into())]);
     assert_eq!(r.next_prefetch(), Some(("3".into(), "new".into())));
-    // Дубля не осталось: переставили, а не добавили.
+    // No duplicate is left: reordered, not added.
     r.prefetch_finished(("3".into(), "new".into()));
     assert_eq!(r.next_prefetch(), Some(("1".into(), "new".into())));
 }
@@ -2277,9 +2277,9 @@ fn suggestions_do_not_pester_the_store_letter_by_letter() {
     assert_eq!(ap::suggest_action("n", true, &v), SuggestAction::Hide);
     assert_eq!(ap::suggest_action("  n  ", true, &v), SuggestAction::Hide);
     assert_eq!(ap::suggest_action("no", true, &v), SuggestAction::Network);
-    // На панели деталей подсказок нет — там нет и сетки, к которой они ведут.
+    // The details panel has no suggestions — there is also no grid there for them to lead to.
     assert_eq!(ap::suggest_action("nord", false, &v), SuggestAction::Hide);
-    // Разделы без сети фильтруют уже загруженный список на месте.
+    // Sections without a network filter the already loaded list in place.
     assert_eq!(ap::suggest_action("nord", true, &view("downloaded")), SuggestAction::Local);
     let mut v = store("global");
     v.source = "aur".into();
@@ -2290,11 +2290,11 @@ fn suggestions_do_not_pester_the_store_letter_by_letter() {
 fn a_stale_suggestion_answer_is_dropped() {
     let _lang = i18n_pin::ru();
     assert!(ap::suggest_answer_fresh(5, 5, true, "nord"));
-    // Человек печатал дальше.
+    // The person typed on.
     assert!(!ap::suggest_answer_fresh(4, 5, true, "nord"));
-    // Ушёл из строки поиска.
+    // Left the search line.
     assert!(!ap::suggest_answer_fresh(5, 5, false, "nord"));
-    // Стёр введённое.
+    // Erased what was typed.
     assert!(!ap::suggest_answer_fresh(5, 5, true, "n"));
 }
 
@@ -2311,7 +2311,7 @@ fn catalog_status_texts_match_the_original() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Плитки каталога
+//  Catalog tiles
 // ═══════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -2320,19 +2320,19 @@ fn card_labels_match_the_original() {
     assert_eq!(ap::card_name(""), "—");
     assert_eq!(ap::card_name("Sweet KDE"), "Sweet KDE");
     assert_eq!(ap::card_author(""), "—");
-    // Слоты стат-строки: рейтинг · скачивания · дата (день без времени).
+    // Stat line slots: rating · downloads · date (the day without time).
     let nb = "\u{a0}";
     assert_eq!(
         ap::card_stats_line(Some(4.4), 123456, "2026-07-29 03:00:00"),
         format!("{nb}4,4{nb}{nb}⬇️ 123,5K{nb}{nb}📅 2026-07-29")
     );
-    // Даты нет — слот просто отсутствует, «—» вместо неё не рисуем.
+    // No date — the slot is simply absent, we do not draw "—" instead.
     assert_eq!(
         ap::card_stats_line(Some(5.0), 0, ""),
         format!("{nb}5,0{nb}{nb}⬇️ 0")
     );
-    // Товар без голосов (OCS отдаёт ему score 50): вместо «★ 2,5» —
-    // подпись, и звезды на плитке нет.
+    // An item without votes (OCS gives it score 50): instead of «★ 2,5» —
+    // a caption, and no star on the tile.
     assert_eq!(
         ap::card_stats_line(None, 12, "2026-11-16"),
         format!("Оценок пока нет{nb}{nb}⬇️ 12{nb}{nb}📅 2026-11-16")
@@ -2358,26 +2358,26 @@ fn card_button_has_the_same_three_states_as_the_detail_panel() {
     let _lang = i18n_pin::ru();
     let b = ap::card_install_button(false, false, true);
     assert_eq!((b.text.as_str(), b.state, b.enabled), ("Установить", "false", true));
-    // Поставлена, но не включена — та же кнопка теперь «Применить».
+    // Installed but not enabled — the same button is now «Применить».
     let b = ap::card_install_button(true, false, true);
     assert_eq!((b.text.as_str(), b.state, b.enabled), ("🎨 Применить", "true", true));
     let b = ap::card_install_button(true, false, false);
     assert_eq!((b.text.as_str(), b.state, b.enabled), ("✅ Установлено", "true", true));
     let b = ap::card_install_button(true, true, true);
     assert_eq!((b.text.as_str(), b.state, b.enabled), ("✅ Применено", "applied", true));
-    // Что делает нажатие: не стоит — только поставить; стоит и применяется —
-    // применить поставленное (не качая заново); стоит, но применять нечего —
-    // поставить заново.
+    // What a press does: not installed — only install; installed and applicable —
+    // apply what is installed (without downloading again); installed, but nothing to apply —
+    // install again.
     assert_eq!(ap::store_card_action(false, true), ap::StoreCardAction::Install);
     assert_eq!(ap::store_card_action(true, true), ap::StoreCardAction::ApplyInstalled);
     assert_eq!(ap::store_card_action(true, false), ap::StoreCardAction::Install);
-    // Местная плитка: включённая тема показывает бейдж и не нажимается.
+    // A local tile: an enabled theme shows a badge and cannot be pressed.
     let b = ap::card_local_button("active");
     assert_eq!((b.text.as_str(), b.enabled), ("✅ Активна", false));
     let b = ap::card_local_button("downloaded");
     assert_eq!((b.text.as_str(), b.enabled), ("🎨 Применить", true));
     assert_eq!(ap::card_local_button("system").text, "🎨 Применить");
-    // Избранное.
+    // Favourites.
     assert_eq!(ap::favorite_button(true).text, "⭐ Избранное");
     assert_eq!(ap::favorite_button(false).text, "☆ Избранное");
     assert_eq!(ap::favorite_button(true).state, "on");
@@ -2391,15 +2391,15 @@ fn aur_card_labels_match_the_original() {
     assert_eq!(ap::aur_meta_line("1.2.3-1", true), "🛠️ AUR · 1.2.3-1  ⚠️ устарел");
     assert_eq!(ap::aur_meta_line("", false), "🛠️ AUR · —");
     assert_eq!(ap::aur_version_tooltip(""), "Версия: —");
-    // Ширина версии: остаток от подписи, но не меньше читаемого минимума.
+    // Version width: the remainder from the caption, but not below the readable minimum.
     assert_eq!(ap::aur_version_budget(270, 100), 170);
     assert_eq!(ap::aur_version_budget(270, 500), 40);
-    // Стат-строка — те же слоты, что у плитки магазина.
+    // The stat line has the same slots as the store tile.
     assert_eq!(
         ap::aur_stats_line(1234, 3.456, "2026-07-29"),
         format!("{nb}1,2K{nb}{nb}📈 3,5{nb}{nb}📅 2026-07-29")
     );
-    // Нулевая популярность и без даты — слоты не рисуются.
+    // Zero popularity and no date — the slots are not drawn.
     assert_eq!(ap::aur_stats_line(7, 0.0, ""), format!("{nb}7"));
     assert_eq!(
         ap::aur_stats_tooltip(1234, 3.456, "2026-07-29"),
@@ -2414,15 +2414,15 @@ fn aur_button_explains_why_it_cannot_install() {
     let b = ap::aur_install_button(false, true);
     assert!(b.enabled && b.text == "Установить");
     assert!(b.tooltip.contains("Сборка из исходников"));
-    // Помощника нет — говорим почему, а не оставляем мёртвую кнопку молча.
+    // No helper — we say why instead of silently leaving a dead button.
     let b = ap::aur_install_button(false, false);
     assert!(!b.enabled);
     assert_eq!(
         b.tooltip,
         "Не найден сборщик пакетов AUR (paru или yay) — установка недоступна"
     );
-    // Покупателю — без жаргона (правило #13): «AUR-хелпер» заменён словами,
-    // которыми тот же отказ уже говорит пересборка оформления.
+    // For the buyer — without jargon (rule #13): «AUR-хелпер» is replaced with the words
+    // the decoration rebuild already uses for the same refusal.
     for tooltip in [
         ap::aur_install_button(false, false).tooltip,
         ap::aur_install_button(false, true).tooltip,
@@ -2434,17 +2434,17 @@ fn aur_button_explains_why_it_cannot_install() {
             assert!(!tooltip.contains(jargon), "в подсказке покупателю «{jargon}»: {tooltip}");
         }
     }
-    // Уже стоит.
+    // Already installed.
     let b = ap::aur_install_button(true, true);
     assert!(!b.enabled && b.text == "✅ Установлен");
-    // Сборка идёт.
+    // The build is in progress.
     assert_eq!(ap::aur_busy_button(true).text, "⏳ Сборка…");
     assert!(!ap::aur_busy_button(true).enabled);
     assert!(ap::aur_busy_button(false).enabled);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Шапка вкладки и накладные контролы
+//  The tab header and overlay controls
 // ═══════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -2453,11 +2453,11 @@ fn chrome_labels_match_the_original() {
     assert_eq!(ap::page_title(), "Оформление");
     assert_eq!(ap::sidebar_row_text("🎨", "Глобальные темы"), "  🎨  Глобальные темы");
     assert_eq!(ap::section_title("🎨", "Глобальные темы"), "🎨  Глобальные темы");
-    // Три источника, ключи совпадают с теми, что различает состояние каталога.
+    // Three sources, the keys match the ones the catalog state distinguishes.
     let keys: Vec<&str> = ap::source_chips().iter().map(|c| c.key).collect();
     assert_eq!(keys, vec!["ocs", "aur", "both"]);
     assert!(ap::source_chips().iter().all(|c| !c.label.is_empty() && !c.tooltip.is_empty()));
-    // Два режима блокировки, и оба объяснены — раздел гибридный.
+    // Two lock screen modes, and both are explained — the section is hybrid.
     let keys: Vec<&str> = ap::lock_chips().iter().map(|c| c.key).collect();
     assert_eq!(keys, vec!["themes", "wallpaper"]);
     assert!(ap::lock_chips()[0].tooltip.contains("ТОЛЬКО компонент блокировки"));
@@ -2470,12 +2470,12 @@ fn application_style_is_one_grid_with_a_filter_and_a_store() {
         .iter()
         .map(|s| s.to_string())
         .collect();
-    // Движок Kvantum — его темами, прокси qtNct — не внешний вид.
+    // The Kvantum engine — by its themes; the qtNct proxies are not a look.
     assert_eq!(ap::shown_qt_styles(&styles), vec!["Breeze", "Fusion", "Windows"]);
     let keys: Vec<&str> = ap::style_filter_chips().iter().map(|c| c.key).collect();
     assert_eq!(keys, ["all", "qt", "kvantum"]);
     assert_eq!(ap::style_filter_chips()[0].label, "Все");
-    // Сетка установленного, фильтр над ней; магазин — темы Kvantum (123) и AUR.
+    // The installed grid, the filter above it; the store — Kvantum themes (123) and AUR.
     let v = view("widgetstyle");
     assert!(v.installed_view() && v.marks_current());
     let c = v.chrome();
@@ -2483,7 +2483,7 @@ fn application_style_is_one_grid_with_a_filter_and_a_store() {
     assert_eq!(v.query_category_id(), "123");
     assert!(v.source_applicable(), "темы Kvantum и стили Qt есть в AUR");
     assert!(rexon_core::aur::has_category("widgetstyle"));
-    // Тёзки семейств стилей с другим делом в полку не попадают (снимок AUR).
+    // Namesakes of style families with a different purpose do not get on the shelf (AUR snapshot).
     let pkg = |name: &str, desc: &str| rexon_core::aur::AurPackage {
         name: name.into(),
         description: desc.into(),
@@ -2501,18 +2501,18 @@ fn application_style_is_one_grid_with_a_filter_and_a_store() {
 #[test]
 fn overlays_hug_the_edges_of_the_picture() {
     let _lang = i18n_pin::ru();
-    // Лупа — правый верхний угол, с отступом.
+    // The magnifier — the top right corner, with a margin.
     let p = ap::overlay_zoom_pos(600, 44);
     assert_eq!((p.x, p.y), (600 - 44 - 10, 10));
-    // Стрелки — по бокам, по центру вертикали.
+    // Arrows — on the sides, vertically centred.
     let p = ap::overlay_prev_pos(340, 44);
     assert_eq!((p.x, p.y), (10, (340 - 44) / 2));
     let p = ap::overlay_next_pos(600, 340, 44, 44);
     assert_eq!((p.x, p.y), (600 - 44 - 10, (340 - 44) / 2));
-    // Счётчик — низ по центру.
+    // The counter — bottom centre.
     let p = ap::overlay_counter_pos(600, 340, 48, 24);
     assert_eq!((p.x, p.y), ((600 - 48) / 2, 340 - 24 - 10));
-    // Картинка меньше контрола — за левый/верхний край не уезжаем.
+    // The picture is smaller than the control — we do not slide past the left/top edge.
     let p = ap::overlay_zoom_pos(20, 44);
     assert_eq!(p.x, 0);
     let p = ap::overlay_counter_pos(20, 20, 48, 24);
@@ -2527,51 +2527,51 @@ fn full_screen_view_shows_only_frames_that_are_really_on_disk() {
     loaded.insert(1i64, "/c/1.png".to_string());
     loaded.insert(2i64, "/c/gone.png".to_string());
     let exists = |p: &str| p != "/c/gone.png";
-    // Текущий кадр среди скачанных — листаем и в полноэкранном виде.
+    // The current frame among the downloaded ones — we page in full-screen view too.
     let (paths, idx) = ap::zoom_frames("/c/1.png", &loaded, exists).unwrap();
     assert_eq!(paths, vec!["/c/0.png", "/c/1.png"]);
     assert_eq!(idx, 1);
-    // Одиночное превью местной темы: чужих картинок в список не подставляем.
+    // A single preview of a local theme: we do not put others' pictures into the list.
     let (paths, idx) = ap::zoom_frames("/local/preview.png", &loaded, exists).unwrap();
     assert_eq!(paths, vec!["/local/preview.png"]);
     assert_eq!(idx, 0);
-    // Показывать нечего.
+    // Nothing to show.
     assert!(ap::zoom_frames("", &loaded, exists).is_none());
     assert!(ap::zoom_frames("/c/gone.png", &loaded, exists).is_none());
 }
 
-/// Сторож согласия таблицы стилей и голых цветов.
+/// Guard of agreement between the style sheet and the bare colors.
 ///
-/// QSS в QML не работает, поэтому у кнопки плитки два вида одного решения:
-/// строка для QtWidgets (`page_qss`) и голые цвета для QML
-/// (`card_button_colors`). Разъехаться они не должны — сетка и деталь
-/// рассказали бы про товар разное.
+/// QSS does not work in QML, so the tile button has two forms of one decision:
+/// a string for QtWidgets (`page_qss`) and bare colors for QML
+/// (`card_button_colors`). They must not drift apart — the grid and the detail
+/// would tell different things about the item.
 #[test]
 fn widget_qss_and_qml_button_colors_agree() {
     let _lang = i18n_pin::ru();
     let qss = ap::page_qss(&ap::colors());
 
-    // «✓ Применено» — залитая бирюзовая.
+    // «✓ Применено» — filled teal.
     let (bg, fg, border) = ap::card_button_colors("applied");
     assert_eq!((bg, fg, border), ("#2f9e94", "#ffffff", "#2f9e94"));
     assert!(qss.contains("background: #2f9e94;"));
     assert!(qss.contains("border: 1px solid #2f9e94;"));
 
-    // «✓ Установлено» — контурная бирюзовая: заливки нет вовсе.
+    // «✓ Установлено» — outlined teal: no fill at all.
     let (bg, fg, border) = ap::card_button_colors("true");
     assert_eq!((bg, fg, border), ("", "#7fe3da", "#4fd1c5"));
     assert!(qss.contains("background: transparent;"));
     assert!(qss.contains("border: 1px solid #4fd1c5;"));
     assert!(qss.contains("color: #7fe3da;"));
 
-    // «Установить» — цвет действующего скина, а не свой хардкод: имя токена
-    // обязано существовать в палитре, иначе кнопка осталась бы бесцветной.
+    // «Установить» — the color of the active skin, not its own hard-coded one: the token name
+    // must exist in the palette, otherwise the button would stay colorless.
     let (bg, fg, border) = ap::card_button_colors("false");
     assert_eq!((fg, border), ("#ffffff", ""));
     assert!(ap::colors().contains_key(bg), "нет токена {bg} в палитре");
 }
 
-/// Наименьший размер окна вкладки — тот же, что у соседних вкладок.
+/// The smallest tab window size is the same as for the neighbouring tabs.
 #[test]
 fn window_minimum_is_the_product_wide_one() {
     let _lang = i18n_pin::ru();
@@ -2579,11 +2579,11 @@ fn window_minimum_is_the_product_wide_one() {
     assert_eq!(ap::PAGE_TITLE_POINT_SIZE, 15);
 }
 
-/// Подписи панели деталей выписаны из оригинала ДОСЛОВНО.
+/// The details panel captions are written out from the original VERBATIM.
 #[test]
 fn detail_button_labels_match_the_original() {
     let _lang = i18n_pin::ru();
-    // ⚠️ Два пробела после стрелки — так в оригинале.
+    // ⚠️ Two spaces after the arrow — that is how it is in the original.
     assert_eq!(ap::detail_back_btn(), "←  Назад к каталогу");
     assert_eq!(ap::detail_uninstall_btn(), "🗑️ Удалить");
     assert_eq!(ap::detail_open_site_btn(), "🌐 Открыть на сайте");
@@ -2607,7 +2607,7 @@ fn detail_button_labels_match_the_original() {
     assert_eq!(ap::comments_more_btn(), "Показать ещё");
 }
 
-/// Сторож согласия таблицы стилей и голых цветов главной кнопки деталей.
+/// Guard of agreement between the style sheet and the bare colors of the main details button.
 #[test]
 fn widget_qss_and_qml_detail_button_colors_agree() {
     let _lang = i18n_pin::ru();
@@ -2618,7 +2618,7 @@ fn widget_qss_and_qml_detail_button_colors_agree() {
     assert!(qss.contains("background: #3a5a3f;"));
     assert!(qss.contains("color: #cfe8d2;"));
 
-    // «✓ Установлено» на деталях — тот же контурный вид, что у плитки.
+    // «✓ Установлено» on the details — the same outlined look as on the tile.
     assert_eq!(ap::detail_button_colors("installed"), ap::card_button_colors("true"));
 
     let (bg, fg, border) = ap::detail_button_colors("false");
@@ -2627,7 +2627,7 @@ fn widget_qss_and_qml_detail_button_colors_agree() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Ход установки
+//  Installation progress
 // ═══════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -2648,8 +2648,8 @@ fn install_progress_labels_match_the_original() {
     );
 }
 
-/// Долю выполненного отдаёт только загрузка из магазина: у сборки помощником
-/// AUR и у применения темы её нет, и полоса на нуле врала бы про ход.
+/// Only a download from the store reports the completed fraction: an AUR helper
+/// build and applying a theme have none, and a bar at zero would lie about progress.
 #[test]
 fn only_the_store_download_shows_a_progress_bar() {
     let _lang = i18n_pin::ru();
@@ -2658,8 +2658,8 @@ fn only_the_store_download_shows_a_progress_bar() {
     assert!(!ap::action_shows_progress(ap::ACTION_APPLY));
 }
 
-/// Полоса хода обязана оставаться полосой: установщик изредка отдаёт и
-/// больше ста, и меньше нуля.
+/// The progress bar must stay a bar: the installer occasionally reports both
+/// more than a hundred and less than zero.
 #[test]
 fn install_percent_stays_inside_the_bar() {
     let _lang = i18n_pin::ru();
@@ -2670,8 +2670,8 @@ fn install_percent_stays_inside_the_bar() {
     assert_eq!(ap::install_percent(140), 100);
 }
 
-/// Второго значка у готового итога быть не должно: установщик отдаёт
-/// сообщения со своим, и «✅ ✅ Установлено» было дефектом оригинала.
+/// A finished result must not have a second icon: the installer sends
+/// messages with its own, and «✅ ✅ Установлено» was a defect of the original.
 #[test]
 fn the_result_never_gets_a_second_check_mark() {
     let _lang = i18n_pin::ru();
@@ -2685,12 +2685,12 @@ fn the_result_never_gets_a_second_check_mark() {
         ap::action_result_status(false, "❌ Не удалось применить"),
         "❌ Не удалось применить"
     );
-    // Отступ впереди значка сообщение не портит.
+    // Leading whitespace before the icon does not spoil the message.
     assert_eq!(ap::action_result_status(true, "  ✅ Готово"), "  ✅ Готово");
 }
 
-/// Сетку пересобирает только удавшееся применение темы: бейдж «✅ Активна»
-/// обязан переехать. Установка и неудача её не трогают.
+/// Only a successful theme apply rebuilds the grid: the «✅ Активна» badge
+/// must move. Installation and failure do not touch it.
 #[test]
 fn only_a_successful_apply_rebuilds_the_grid() {
     let _lang = i18n_pin::ru();
@@ -2701,10 +2701,10 @@ fn only_a_successful_apply_rebuilds_the_grid() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Контролы, перекрытые таблицей стилей вкладки
+//  Controls overridden by the tab's style sheet
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Тело правила таблицы стилей по его селектору.
+/// The body of a style sheet rule by its selector.
 fn qss_rule<'a>(qss: &'a str, selector: &str) -> &'a str {
     let head = format!("\n{selector} {{");
     let start = qss
@@ -2718,7 +2718,7 @@ fn qss_rule<'a>(qss: &'a str, selector: &str) -> &'a str {
     &qss[start..end]
 }
 
-/// Значение свойства внутри тела правила либо `None`, если его там нет.
+/// The value of a property inside the rule body, or `None` if it is not there.
 fn qss_value_opt<'a>(body: &'a str, prop: &str) -> Option<&'a str> {
     let head = format!("{prop}:");
     let start = body.find(&head)? + head.len();
@@ -2729,17 +2729,17 @@ fn qss_value_opt<'a>(body: &'a str, prop: &str) -> Option<&'a str> {
     Some(body[start..end].trim())
 }
 
-/// То же, но свойство обязано быть.
+/// The same, but the property must be present.
 fn qss_value<'a>(body: &'a str, prop: &str) -> &'a str {
     qss_value_opt(body, prop).unwrap_or_else(|| panic!("в правиле нет свойства {prop}"))
 }
 
-/// Сторож согласия таблицы стилей и голых красок КОНТРОЛОВ вкладки.
+/// Guard of agreement between the style sheet and the bare paints of the tab's CONTROLS.
 ///
-/// ⚠️ ЗАЧЕМ. Общие поверхности `ui_base` отвечают, чем Qt красит контрол
-/// САМА по роли палитры. У этой вкладки роль не участвует: контролы красит
-/// её собственная таблица стилей. Пока обе стороны берут решение отсюда,
-/// QML не может снова выбрать «похожий на глаз» токен.
+/// ⚠️ WHY. The common `ui_base` surfaces answer with what Qt paints a control
+/// ITSELF by palette role. In this tab the role takes no part: the controls are painted by
+/// its own style sheet. As long as both sides take the decision from here,
+/// QML cannot again pick a token that "looks similar".
 #[test]
 fn widget_qss_and_qml_control_colors_agree() {
     let _lang = i18n_pin::ru();
@@ -2781,15 +2781,15 @@ fn widget_qss_and_qml_control_colors_agree() {
         assert_eq!(qss_value(body, "color"), token(s.fg), "{kind}: надпись");
 
         if hover_selector.is_empty() {
-            // Своей подсветки нет — краски под курсором обязаны совпадать
-            // с покойными, иначе QML нарисует то, чего у оригинала нет.
+            // No highlight of its own — the paints under the cursor must match
+            // the resting ones, otherwise QML would draw what the original does not have.
             assert_eq!((s.hover, s.border), (s.bg, s.hover_border), "{kind}: курсор");
             continue;
         }
         let hover = qss_rule(&qss, hover_selector);
-        // Правило под курсором перекрывает не всё: у второстепенной кнопки
-        // меняется одна рамка. Чего в нём нет — остаётся от покойного вида,
-        // и голые краски обязаны говорить то же самое.
+        // The hover rule does not override everything: for a secondary button
+        // only the border changes. Whatever is not in it stays from the resting look,
+        // and the bare paints must say the same.
         assert_eq!(
             qss_value_opt(hover, "background").unwrap_or(&token(s.bg)),
             token(s.hover),
@@ -2802,8 +2802,8 @@ fn widget_qss_and_qml_control_colors_agree() {
         );
     }
 
-    // Имена токенов обязаны существовать в палитре ЛЮБОГО скина: иначе на
-    // другом скине контрол остался бы бесцветным.
+    // Token names must exist in the palette of ANY skin: otherwise on
+    // another skin the control would stay colorless.
     for id in ui_base::available_skins() {
         let cols = ui_base::skin_colors(id.0);
         for kind in ["combo", "nav", "secondary"] {
@@ -2816,12 +2816,12 @@ fn widget_qss_and_qml_control_colors_agree() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Исходный язык
+//  Source language
 // ═══════════════════════════════════════════════════════════════════════
 
-/// По-английски подписи вкладки — исходные строки каталога. Сверки выше
-/// держат русский вид; эта — что без каталога человек видит английский, а
-/// не русские остатки и не пустоту.
+/// In English the tab's captions are the catalog's source strings. The checks above
+/// hold the Russian look; this one — that without a catalog the person sees English, not
+/// Russian leftovers and not emptiness.
 #[test]
 fn english_texts() {
     let _lang = i18n_pin::en();
@@ -2858,19 +2858,19 @@ fn english_texts() {
     assert!(ap::lock_chips()[0].tooltip.contains("Only the lock screen part is applied"));
     assert_eq!(ap::scan_busy_status("system"), "🖥️ Looking for system themes…");
     let ru = i18n_pin::ru_catalog();
-    // Каждая исходная подпись выше переведена — пустого места по-русски нет.
+    // Every source caption above is translated — there is no empty space in Russian.
     for msgid in ["Appearance", "✅ Active", "Nothing found", "Page %1 / %2"] {
         assert!(ru.get(None, msgid).is_some_and(|t| !t.is_empty()), "{msgid}");
     }
-    // Разные русские формы одного английского «✅ Installed» разведены
-    // контекстом: тема «Установлено», пакет AUR «Установлен» (без контекста —
-    // рабочий стол на вкладке столов, тоже «Установлен»).
+    // The different Russian forms of one English "✅ Installed" are separated by
+    // context: a theme «Установлено», an AUR package «Установлен» (without context —
+    // a desktop in the desktops tab, also «Установлен»).
     assert_eq!(ru.get(Some("theme"), "✅ Installed"), Some("✅ Установлено"));
     assert_eq!(ru.get(Some("AUR package"), "✅ Installed"), Some("✅ Установлен"));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Экран входа: какой экран у раздела при PLM / SDDM / SteamOS (28.09.2026)
+//  Login screen: which screen the section has with PLM / SDDM / SteamOS (28.09.2026)
 // ═══════════════════════════════════════════════════════════════════════
 
 fn plm_view() -> CatalogView {
@@ -2882,14 +2882,14 @@ fn login_section_screen_by_login_manager() {
     let _lang = i18n_pin::en();
     let home = Path::new("/home/u");
 
-    // SDDM: полка магазина, как была.
+    // SDDM: the store shelf, as it was.
     let sddm = view("sddm");
     assert_eq!(sddm.screen(home), ap::SCREEN_GRID);
     assert!(sddm.note(home).is_none());
     let c = sddm.chrome();
     assert!(c.search && c.sort_combo && c.pagination, "у SDDM-полки шапка магазина");
 
-    // Plasma Login Manager: своя панель, ни поиска, ни сортировки, ни сети.
+    // Plasma Login Manager: its own panel, no search, no sorting, no network.
     let plm = plm_view();
     assert_eq!(plm.screen(home), ap::SCREEN_PLASMA_LOGIN);
     assert!(plm.note(home).is_none());
@@ -2898,16 +2898,16 @@ fn login_section_screen_by_login_manager() {
     assert_eq!(ap::Chrome { caveat: None, ..c }, ap::Chrome::default());
     assert!(plm.is_local(), "в магазин за разделом PLM не ходят");
 
-    // Прогрев: раздел PLM магазина не имеет.
+    // Warm-up: the PLM section has no store.
     let sidebar = categories::sidebar_for(home, true);
     let targets = ap::prefetch_targets(&plm, &sidebar);
     assert!(targets.iter().all(|(id, _)| id != "101" && id != "905"), "{targets:?}");
 }
 
-/// Экран входа и заставка загрузки — как kcm sddm и kcm plymouth: своя
-/// сетка установленных тем с выделенной текущей, магазин под ней; скан —
-/// раздела целиком (системный каталог тем). У Plasma Login Manager тем нет —
-/// сетки нет; на SteamOS раздел объясняет отказ, а не показывает сетку.
+/// The login screen and the boot splash — like kcm sddm and kcm plymouth: their own
+/// grid of installed themes with the current one highlighted, the store below it; the scan is of
+/// the whole section (the system themes directory). Plasma Login Manager has no themes —
+/// no grid; on SteamOS the section explains the refusal instead of showing a grid.
 #[test]
 fn login_and_boot_sections_have_installed_grid() {
     let _lang = i18n_pin::en();
@@ -2941,17 +2941,17 @@ fn steamos_sections_explain_before_install() {
         let reason = rexon_core::categories::steamos_block(key).unwrap().reason();
         assert!(note.contains(&reason), "{key}: {note}");
     }
-    // PLM на SteamOS — тоже экран входа: причина важнее панели.
+    // PLM on SteamOS is also a login screen: the reason matters more than the panel.
     let mut plm = plm_view();
     plm.steamos = true;
     assert_eq!(plm.screen(home), ap::SCREEN_NOTE);
-    // Прочие разделы на SteamOS не задеты.
+    // Other sections on SteamOS are not affected.
     let mut global = view("global");
     global.steamos = true;
     assert!(!global.steamos_blocked());
     assert_eq!(global.screen(home), ap::SCREEN_GRID);
 
-    // Прогрев не греет закрытые на SteamOS витрины.
+    // The warm-up does not warm the storefronts closed on SteamOS.
     let sidebar = categories::sidebar(home);
     let plain = ap::prefetch_targets(&view("global"), &sidebar);
     assert!(plain.iter().any(|(id, _)| id == "101") && plain.iter().any(|(id, _)| id == "108"));
@@ -2996,7 +2996,7 @@ fn plasma_login_panel_texts_en_and_ru() {
             p.open_failed,
             "Couldn't open the login screen settings. Open “System Settings → Login Screen”."
         );
-        // Открыть нечем — кнопки нет, текст сам говорит, куда идти.
+        // Nothing to open with — no button, the text itself says where to go.
         let bare = ap::plasma_login_panel(false);
         assert_eq!(bare.body, format!("{}\nOpen “System Settings → Login Screen”.", p.body));
     }
@@ -3017,11 +3017,11 @@ fn plasma_login_panel_texts_en_and_ru() {
     );
 }
 
-/// Разделы с установленным и магазином (KDE, окружения, Conky, заставка,
-/// полные темы блокировки) показывают сверху установленное, а под ним на
-/// той же странице — магазин раздела, сразу и без кнопки «Загрузить
-/// новые…» (решение владельца 18.10.2026: кнопка сбивала с толку — в
-/// «Виджетах Conky» была видна одна карточка, а 1032 виджета прятались).
+/// Sections with installed items and a store (KDE, desktops, Conky, splash,
+/// full lock screen themes) show the installed items on top, and below them on
+/// the same page — the section's store, right away and without the «Загрузить
+/// новые…» button (owner's decision 18.10.2026: the button was confusing — in
+/// «Виджеты Conky» one card was visible, while 1032 widgets were hidden).
 #[test]
 fn sections_show_installed_and_their_store_on_one_page() {
     let _lang = i18n_pin::ru();
@@ -3032,31 +3032,31 @@ fn sections_show_installed_and_their_store_on_one_page() {
         assert!(v.marks_current(), "{key}: текущая выделяется");
         let c = v.chrome();
         assert!(c.search && c.sort_combo && c.pagination, "{key}");
-        // Ключ запроса несёт и скан, и страницу магазина.
+        // The query key carries both the scan and the store page.
         let k = v.request_key();
         assert!(k.starts_with(&format!("combined:{key}:")), "{key}: {k}");
         v.page = 1;
         assert_ne!(v.request_key(), k, "{key}: другая страница магазина — другой запрос");
         v.page = 0;
-        // Поиск — и по установленному, и по магазину.
+        // Search — over both the installed items and the store.
         v.query = "bree".into();
         assert!(v.request_key().ends_with(":bree"), "{key}");
     }
-    // Экран блокировки: установленное — только у полных тем.
+    // Lock screen: installed items — only for full themes.
     let mut v = view("lockscreen");
     assert!(!v.has_installed_view());
     v.lock_mode = "themes".into();
     assert!(v.installed_view());
     assert!(v.request_key().starts_with("combined:lockscreen:"));
-    // Обзоры диска — по-прежнему только диск; в «Активных» включённых
-    // много — рамкой там ничего не выделяется.
+    // Disk overviews — still only the disk; in «Активные» there are many
+    // enabled ones — nothing is highlighted with a frame there.
     for key in ["active", "downloaded"] {
         assert!(view(key).is_local(), "{key}");
     }
     assert!(!view("wallpapers").installed_view());
     assert!(!view("active").marks_current());
     assert_eq!(ap::installed_status(3), "Установлено: 3");
-    // Строка состояния — обе части; без установленного — только магазин.
+    // The status line — both parts; without installed items — only the store.
     assert_eq!(ap::combined_status(3, 1032, 20), "Установлено: 3 · Найдено: 1032 · показано 20");
     assert_eq!(ap::combined_status(0, 1032, 20), ap::catalog_status(1032, 20));
     assert!(ap::has_installed_grid("icons") && ap::has_installed_grid("splash"));
@@ -3071,7 +3071,7 @@ fn sounds_section_says_when_system_sounds_are_off() {
     assert!(off.visible);
     assert!(off.text.contains("выключены"), "{}", off.text);
     assert_eq!(off.button, "Включить");
-    // Включены, прочитать не вышло, другой раздел — полосы нет.
+    // Enabled, could not be read, another section — no banner.
     assert!(!ap::event_sounds_banner("sounds", "true\n").visible);
     assert!(!ap::event_sounds_banner("sounds", "").visible, "не знаем — не пугаем");
     assert!(!ap::event_sounds_banner("icons", "false").visible);
@@ -3081,7 +3081,7 @@ fn sounds_section_says_when_system_sounds_are_off() {
 fn conky_section_warns_before_start_and_on_unreliable_wayland() {
     let _lang = i18n_pin::ru();
     use rexon_core::de_apply::{conky_package, conky_section_note, conky_wayland_note};
-    // Нет программы — сказано заранее, и что Rexon поставит её сам там, где может.
+    // No program — said in advance, and that Rexon will install it itself where it can.
     let mut v = CatalogView::new(cat("conky"), "mate");
     v.conky_installed = false;
     v.conky_installable = true;
@@ -3091,7 +3091,7 @@ fn conky_section_warns_before_start_and_on_unreliable_wayland() {
     assert!(v.chrome().caveat.unwrap().contains("conky"), "SteamOS: только предупреждение");
     v.conky_installed = true;
     assert!(v.chrome().caveat.is_none(), "MATE на X11 с Conky — оговорок нет");
-    // Wayland: GNOME — ненадёжно; KDE и тайловые рисуют сами.
+    // Wayland: GNOME — unreliable; KDE and tiling ones draw by themselves.
     assert!(conky_wayland_note("gnome", true).is_some());
     assert!(conky_wayland_note("gnome", false).is_none());
     assert!(conky_wayland_note("kde", true).is_none());
@@ -3107,18 +3107,18 @@ fn conky_section_warns_before_start_and_on_unreliable_wayland() {
 fn starting_a_conky_widget_installs_conky_first_without_question() {
     let _lang = i18n_pin::ru();
     use rexon_core::de_apply::{conky_install_failed, conky_install_package, is_conky_item};
-    // Conky нет — ставится сам, без вопроса «Да/Нет» (защита — окно пароля).
+    // No Conky — it is installed by itself, without a «Да/Нет» question (the password window is the safeguard).
     assert_eq!(conky_install_package(false, Some("conky")).as_deref(), Some("conky"));
-    // Conky уже стоит — ставить нечего; поставить нечем (SteamOS) — тоже.
+    // Conky is already installed — nothing to install; nothing to install with (SteamOS) — the same.
     assert!(conky_install_package(true, Some("conky")).is_none());
     assert!(conky_install_package(false, None).is_none());
-    // Пароль не подтверждён — виджет не запущен, совет повторить.
+    // The password was not confirmed — the widget is not launched, advice to repeat.
     let text = conky_install_failed(&rexon_core::appearance_installer::password_not_confirmed());
     assert_eq!(text, "Виджет не запущен: ему нужна программа Conky. Нажмите «▶️ Запустить» ещё раз и введите пароль, чтобы её установить.");
-    // Ошибка менеджера пакетов — с причиной.
+    // A package manager error — with the reason.
     let text = conky_install_failed("x");
     assert!(text.contains("x") && text.contains("не запущен"), "{text}");
-    // Чей это виджет: карточка магазина 124, прежний номер 919, местная плитка.
+    // Whose widget this is: store card 124, former number 919, a local tile.
     let store = ThemeItem { id: "1".into(), category_id: 124, ..Default::default() };
     let old = ThemeItem { id: "2".into(), category_id: 919, ..Default::default() };
     let local = ThemeItem { id: "local:conky:clock".into(), ..Default::default() };
@@ -3127,10 +3127,10 @@ fn starting_a_conky_widget_installs_conky_first_without_question() {
     assert!(!is_conky_item(&other));
 }
 
-/// Conky Manager Rexon не предлагает (решение владельца 24.10: всё, что он
-/// умеет, есть в самом разделе «Виджеты Conky»): ни карточки, ни установки
-/// с Conky; товары магазина «Conky Manager GTK/Qt» в сетку не идут.
-/// Уже поставленную программу Rexon не трогает.
+/// Rexon does not offer Conky Manager (owner's decision 24.10: everything it
+/// can do is in the «Виджеты Conky» section itself): neither a card nor installation
+/// together with Conky; the store items «Conky Manager GTK/Qt» do not go into the grid.
+/// Rexon does not touch an already installed program.
 #[test]
 fn conky_manager_is_not_offered() {
     use rexon_core::de_apply::{conky_package, is_conky_program};
@@ -3147,10 +3147,10 @@ fn conky_manager_is_not_offered() {
     assert!(is_conky_program(&program));
 }
 
-/// Поставленный виджет Conky в каталоге раздела запускается прямо с плитки
-/// и с панели деталей (живая проверка 15.11.2026: после «Установить»
-/// плитка застывала на «✅ Установлено», а «▶️ Запустить» было только в
-/// «Загруженных»). Кнопка и номер плитки установленного — те же, что у неё.
+/// An installed Conky widget in the section catalog is launched right from the tile
+/// and from the details panel (live check 15.11.2026: after «Установить»
+/// the tile froze on «✅ Установлено», while «▶️ Запустить» was only in
+/// «Загруженные»). The button and the number are the same as those of the installed tile.
 #[test]
 fn installed_conky_widget_starts_from_the_store_tile() {
     use rexon_core::de_apply::Button;
@@ -3165,27 +3165,27 @@ fn installed_conky_widget_starts_from_the_store_tile() {
     assert_eq!((start.text.as_str(), start.state), ("▶️ Запустить", "false"));
     let stop = ap::card_store_button(true, true, false, Some(Button::Run));
     assert_eq!((stop.text.as_str(), stop.state), ("⏹️ Остановить", "true"));
-    // Те же слова, что у плитки установленного.
+    // The same words as on the installed tile.
     assert_eq!(start, ap::card_local_button_for("downloaded", "local:conky:skyrim"));
     assert_eq!(stop, ap::card_local_button_for("active", "local:conky:skyrim"));
-    // Ещё не стоит — «Установить»; тема — прежние три состояния.
+    // Not installed yet — «Установить»; a theme — the former three states.
     assert_eq!(ap::card_store_button(false, false, false, Some(Button::Run)), ap::card_install_button(false, false, false));
     assert_eq!(ap::card_store_button(true, false, true, None), ap::card_install_button(true, false, true));
     let d = ap::store_detail_button(true, false, false, Some(Button::Run));
     assert_eq!((d.text.as_str(), d.state), ("▶️ Запустить", "installed"));
     assert_eq!(ap::store_detail_button(true, true, false, Some(Button::Run)).text, "⏹️ Остановить");
-    // Нажатие поставленного — запуск тем же путём, что «Применить».
+    // Pressing an installed one — launching the same way as «Применить».
     assert_eq!(ap::store_card_action(true, ap::store_item_switch(home, &conky).is_some()), ap::StoreCardAction::ApplyInstalled);
 
-    // Номер плитки установленного: по нему «Запускать при входе» и настройки.
+    // The number of the installed tile: «Запускать при входе» and the settings go by it.
     let id = ap::store_local_id(home, &conky, "skyrim").unwrap();
     assert_eq!(id, "local:conky:skyrim");
     assert!(ap::detail_autostart_visible(&id));
     assert_eq!(ap::store_local_id(home, &icons, "Papirus"), None);
 }
 
-/// «Запущен» у поставленного виджета — по карте активных (запущенных там
-/// сколько угодно, через перевод строки), как у плитки установленного.
+/// "Running" for an installed widget — by the map of active ones (any number
+/// running there, separated by line breaks), as for the installed tile.
 #[test]
 fn stamp_marks_running_conky_widget() {
     let _lang = i18n_pin::ru();

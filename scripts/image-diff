@@ -6,7 +6,7 @@
 # Exit 2 = error
 #
 # Uses imagehash + Pillow installed in ~/.local/share/rexon-tools-venv/.
-# Both system Pillow и venv imagehash доступны через --system-site-packages.
+# Both system Pillow and venv imagehash are available via --system-site-packages.
 
 set -u
 

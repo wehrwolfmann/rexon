@@ -1,17 +1,17 @@
-//! Сверка [`rexon_core::qml_modules`] с оригиналом на Python.
+//! Check of [`rexon_core::qml_modules`] against the Python original.
 //!
-//! Оригинал — `rexon/qt_wallpaper_engine/qml_ui/__init__.py`
+//! The original is `rexon/qt_wallpaper_engine/qml_ui/__init__.py`
 //! (`_module_dirs`, `_resolve_qcm_dir`, `qcm_material_available`,
 //! `rexon_gui_candidates`, `upstream_tag`), `qml_ui/bridge.py`
 //! (`_rust_filter_model_candidates`), `qml_ui/host.py` (`NET_CACHE_*`,
-//! `_page_url`) и `rexon/qt_main/__init__.py` (`rust_gui_candidates`).
+//! `_page_url`) and `rexon/qt_main/__init__.py` (`rust_gui_candidates`).
 //!
-//! Значения выписаны из оригинала дословно. Там, где ответ намеренно
-//! ОТЛИЧАЕТСЯ, проверка названа `починка:` и говорит, чем именно.
+//! The values are copied from the original verbatim. Where the answer deliberately
+//! DIFFERS, the check is named `pochinka_` ("fix") and says how exactly.
 
 use rexon_core::qml_modules as qm;
 
-/// Подставная ФС: годными считаются ровно перечисленные пути.
+/// A fake FS: exactly the listed paths count as usable.
 struct FakeFs(Vec<String>);
 
 impl FakeFs {
@@ -30,12 +30,12 @@ const HOME: &str = "/home/wehrwolfmann";
 const REPO: &str = "/home/wehrwolfmann/Загрузки/Rexon/rexon_v5";
 
 // ============================================================================
-// Каталоги модулей
+// Module directories
 // ============================================================================
 
 #[test]
 fn module_dirs_default_layout() {
-    // Оригинал без XDG_DATA_DIRS и без мультиарх-каталогов:
+    // The original without XDG_DATA_DIRS and without multiarch directories:
     //   ~/.local/share/rexon/qml_modules, /usr/lib/..., /usr/lib64/...
     let dirs = qm::module_dirs(None, HOME, "", &[]);
     assert_eq!(
@@ -44,9 +44,9 @@ fn module_dirs_default_layout() {
             format!("{HOME}/.local/share/rexon/qml_modules"),
             "/usr/lib/rexon/qml_modules".to_string(),
             "/usr/lib64/rexon/qml_modules".to_string(),
-            // Починка 15.09.2026: установка в систему (раскладка пакета).
+            // Fix of 15.09.2026: system install (the package layout).
             "/usr/local/lib/rexon/qml_modules".to_string(),
-            // Починка 15.09.2026: установка в домашнюю папку.
+            // Fix of 15.09.2026: install into the home folder.
             format!("{HOME}/.local/lib/rexon/qml_modules"),
         ],
         "порядок каталогов оригинала"
@@ -55,7 +55,7 @@ fn module_dirs_default_layout() {
 
 #[test]
 fn module_dirs_xdg_data_dirs_inserted_between() {
-    // Оригинал: пользовательский → XDG_DATA_DIRS → /usr/lib → /usr/lib64.
+    // The original: user → XDG_DATA_DIRS → /usr/lib → /usr/lib64.
     let dirs = qm::module_dirs(None, HOME, "/opt/share:/usr/share", &[]);
     assert_eq!(
         dirs,
@@ -73,7 +73,7 @@ fn module_dirs_xdg_data_dirs_inserted_between() {
 
 #[test]
 fn module_dirs_skips_blank_entries() {
-    // Оригинал: `if base.strip()` — пустые куски "a::b" и хвост ":" мимо.
+    // The original: `if base.strip()` — empty pieces "a::b" and a trailing ":" are skipped.
     let dirs = qm::module_dirs(None, HOME, ":/opt/share:: ", &[]);
     assert_eq!(dirs[1], "/opt/share/rexon/qml_modules");
     assert_eq!(dirs.len(), 6, "пустые куски XDG_DATA_DIRS не дают каталогов");
@@ -88,7 +88,7 @@ fn module_dirs_multiarch_last() {
 
 #[test]
 fn module_dirs_deduplicates_keeping_first() {
-    // Оригинал: seen/out — повтор выбрасывается, первое вхождение остаётся.
+    // The original: seen/out — a repeat is thrown out, the first occurrence stays.
     let multi = vec!["/usr/lib/rexon/qml_modules".to_string()];
     let dirs = qm::module_dirs(None, HOME, "/usr/lib", &multi);
     assert_eq!(
@@ -101,8 +101,8 @@ fn module_dirs_deduplicates_keeping_first() {
 
 #[test]
 fn pochinka_xdg_data_home_respected() {
-    // Починка 3: в оригинале стоял литерал `~/.local/share`, и при
-    // нестандартном XDG_DATA_HOME каталог модулей не искался вовсе.
+    // Fix 3: the original had the literal `~/.local/share`, and with
+    // a non-standard XDG_DATA_HOME the module directory was not searched at all.
     let dirs = qm::module_dirs(Some("/data/xdg"), HOME, "", &[]);
     assert_eq!(dirs[0], "/data/xdg/rexon/qml_modules");
     assert_eq!(
@@ -114,7 +114,7 @@ fn pochinka_xdg_data_home_respected() {
 
 #[test]
 fn pochinka_xdg_data_home_empty_is_unset() {
-    // Пустая переменная = не задана (так же ведёт себя `utils::data_home`).
+    // An empty variable = not set (`utils::data_home` behaves the same way).
     assert_eq!(
         qm::module_dirs(Some(""), HOME, "", &[]),
         qm::module_dirs(None, HOME, "", &[])
@@ -122,7 +122,7 @@ fn pochinka_xdg_data_home_empty_is_unset() {
 }
 
 // ============================================================================
-// Выбор каталога импорта
+// Choosing the import directory
 // ============================================================================
 
 #[test]
@@ -134,7 +134,7 @@ fn resolve_import_dir_picks_dir_with_material() {
 
 #[test]
 fn resolve_import_dir_falls_back_to_first() {
-    // Оригинал: ни в одном каталоге плагина нет → _QCM_MODULES_DIRS[0].
+    // The original: no plugin in any directory → _QCM_MODULES_DIRS[0].
     let dirs = qm::module_dirs(None, HOME, "", &[]);
     let mut fs = FakeFs::new(&[]);
     assert_eq!(
@@ -159,7 +159,7 @@ fn resolve_import_dir_prefers_earlier_dir() {
 }
 
 // ============================================================================
-// Готовность плагинов
+// Plugin readiness
 // ============================================================================
 
 #[test]
@@ -183,10 +183,10 @@ fn plugins_ready_needs_both() {
 
 #[test]
 fn pochinka_split_install_now_ready() {
-    // Починка 2 со стороны готовности: у оригинала оба плагина обязаны были
-    // лежать в ОДНОМ каталоге (том, где нашёлся Qcm.Material). Сборка
-    // пользователя + пакетный control давали «QML-модули не собраны» при
-    // двух живых файлах на диске.
+    // Fix 2 on the readiness side: in the original both plugins had to
+    // lie in ONE directory (the one where Qcm.Material was found). A user
+    // build + the packaged control gave «QML modules are not built» with
+    // two live files on disk.
     let dirs = qm::module_dirs(None, HOME, "", &[]);
     let material =
         format!("{HOME}/.local/share/rexon/qml_modules/Qcm/Material/libqml_materialplugin.so");
@@ -210,14 +210,14 @@ fn import_dirs_empty_when_nothing_built() {
 }
 
 // ============================================================================
-// Кандидаты на Rust-сборки
+// Candidates for the Rust builds
 // ============================================================================
 
 #[test]
 fn pochinka_rust_lib_candidates_cover_all_module_dirs() {
-    // Починка 1: `qt_main.rust_gui_candidates` знал только ~/.local/share и
-    // /usr/lib — на Fedora (/usr/lib64) и Debian (мультиарх) пакетная сборка
-    // не находилась. Тот же список теперь у библиотеки модели фильтров.
+    // Fix 1: `qt_main.rust_gui_candidates` knew only ~/.local/share and
+    // /usr/lib — on Fedora (/usr/lib64) and Debian (multiarch) the packaged build
+    // was not found. The filter model library now has the same list.
     let multi = vec!["/usr/lib/x86_64-linux-gnu/rexon/qml_modules".to_string()];
     let dirs = qm::module_dirs(None, HOME, "", &multi);
     let got = qm::filter_lib_candidates(REPO, &dirs);
@@ -238,9 +238,9 @@ fn pochinka_rust_lib_candidates_cover_all_module_dirs() {
 
 #[test]
 fn pochinka_rust_lib_candidates_independent_of_material() {
-    // Починка 2: у оригинала каталог `.so` брался от того, где нашёлся
-    // Qcm.Material. Нет Qcm.Material — каталог схлопывался в ~/.local/share,
-    // и пакетная /usr/lib/.../*.so не проверялась ВООБЩЕ.
+    // Fix 2: in the original the `.so` directory was taken from where
+    // Qcm.Material was found. No Qcm.Material — the directory collapsed to ~/.local/share,
+    // and the packaged /usr/lib/.../*.so was not checked AT ALL.
     let dirs = qm::module_dirs(None, HOME, "", &[]);
     let packaged =
         "/usr/lib/rexon/qml_modules/waywallen/control/librexon_qt_filter.so".to_string();
@@ -251,7 +251,7 @@ fn pochinka_rust_lib_candidates_independent_of_material() {
 
 #[test]
 fn filter_candidates_order_matches_original_head() {
-    // Оригинал: release → debug → каталог(и) модулей.
+    // The original: release → debug → module directory(ies).
     let dirs = qm::module_dirs(None, HOME, "", &[]);
     let got = qm::filter_lib_candidates(REPO, &dirs);
     assert_eq!(got[0], format!("{REPO}/rust/target/release/librexon_qt_filter.so"));
@@ -275,12 +275,12 @@ fn pick_existing_takes_first_match() {
 }
 
 // ============================================================================
-// Пути вендоренного QML
+// Paths of the vendored QML
 // ============================================================================
 
 #[test]
 fn vendor_page_path_matches_original() {
-    // Оригинал `_page_url`: os.path.join(QML_IMPORT_DIR, "waywallen", "ui",
+    // The original `_page_url`: os.path.join(QML_IMPORT_DIR, "waywallen", "ui",
     // "qml", "page", page_qml).
     assert_eq!(
         qm::vendor_page_path("/пакет/qml_ui", "DiscoverPage.qml"),
@@ -290,7 +290,7 @@ fn vendor_page_path_matches_original() {
 
 #[test]
 fn vendor_page_path_empty_stays_empty() {
-    // Оригинал: пустое имя → QUrl() (пустой URL, Loader пуст).
+    // The original: an empty name → QUrl() (an empty URL, the Loader is empty).
     assert_eq!(qm::vendor_page_path("/пакет/qml_ui", ""), "");
 }
 
@@ -312,23 +312,23 @@ fn qml_path_for_host_and_prewarm() {
 
 #[test]
 fn upstream_tag_trims_and_falls_back() {
-    // Оригинал: fh.read().strip(); OSError → "?".
+    // The original: fh.read().strip(); OSError → "?".
     assert_eq!(qm::upstream_tag(Some("v0.3.5\n")), "v0.3.5");
     assert_eq!(qm::upstream_tag(None), "?");
 }
 
 #[test]
 fn pochinka_upstream_tag_blank_file() {
-    // Починка: пустой (или из одних пробелов) файл оригинал отдавал пустой
-    // строкой, и она попадала прямо в заголовок окна — «waywallen ».
+    // Fix: the original returned an empty (or whitespace-only) file as an empty
+    // string, and it went straight into the window title — «waywallen ».
     assert_eq!(qm::upstream_tag(Some("   \n")), "?");
     assert_eq!(qm::upstream_tag(Some("")), "?");
 }
 
 #[test]
 fn ui_version_from_upstream_tag() {
-    // Строка «Версия %1» на «О программе» (патч 0002): тот же вид, что у
-    // версии демона по D-Bus, иначе вторая строка видна всегда.
+    // The «Version %1» line on «About» (patch 0002): the same form as the
+    // daemon version over D-Bus, otherwise the second line is always visible.
     assert_eq!(qm::ui_version(Some("v0.5.0 (564eb02)\n")), "0.5.0");
     assert_eq!(qm::ui_version(Some("0.5.0")), "0.5.0");
     assert_eq!(qm::ui_version(Some("v")), "?");
@@ -337,12 +337,12 @@ fn ui_version_from_upstream_tag() {
 }
 
 // ============================================================================
-// Дисковый кэш миниатюр
+// Disk cache of thumbnails
 // ============================================================================
 
 #[test]
 fn net_cache_matches_original() {
-    // Оригинал host.py: os.path.expanduser("~/.cache/rexon/qml_net"),
+    // The original host.py: os.path.expanduser("~/.cache/rexon/qml_net"),
     // 200 * 1024 * 1024.
     assert_eq!(qm::net_cache_dir(None, HOME), format!("{HOME}/.cache/rexon/qml_net"));
     assert_eq!(qm::NET_CACHE_MAX_BYTES, 200 * 1024 * 1024);
@@ -350,7 +350,7 @@ fn net_cache_matches_original() {
 
 #[test]
 fn pochinka_net_cache_respects_xdg() {
-    // Тот же класс, что Починка 3: в оригинале стоял литерал `~/.cache`.
+    // The same class as Fix 3: the original had the literal `~/.cache`.
     assert_eq!(
         qm::net_cache_dir(Some("/кэш/xdg"), HOME),
         "/кэш/xdg/rexon/qml_net"
@@ -363,7 +363,7 @@ fn pochinka_net_cache_respects_xdg() {
 }
 
 // ============================================================================
-// Имена файлов — дословно из оригинала
+// File names — verbatim from the original
 // ============================================================================
 
 #[test]
@@ -389,10 +389,10 @@ fn plugin_path_normalises_trailing_slash() {
 }
 
 // ============================================================================
-// Версия Qt сборки Qcm.Material (09.10.2026)
+// Qt version of the Qcm.Material build (09.10.2026)
 // ============================================================================
 
-/// ФС с версиями: у каждого плагина своя версия Qt сборки, у процесса — своя.
+/// An FS with versions: each plugin has its own build Qt version, the process has its own.
 struct VersionedFs {
     files: Vec<(String, Option<(u32, u32)>)>,
     running: Option<(u32, u32)>,
@@ -412,14 +412,14 @@ impl qm::ModuleFs for VersionedFs {
 
 #[test]
 fn plugin_qt_version_reads_the_qt_metadata_note() {
-    // Голова заметки `.note.qt.metadata` настоящего libqml_materialplugin.so,
-    // собранного под Qt 6.11 (байты сняты readelf 09.10.2026).
+    // The head of the `.note.qt.metadata` note of a real libqml_materialplugin.so,
+    // built for Qt 6.11 (bytes taken with readelf on 09.10.2026).
     let mut bytes = vec![0x0c, 0, 0, 0, 0x5d, 0, 0, 0, 0x01, 0, b'Q', b't'];
     bytes.extend_from_slice(b"qt-project!\0");
     bytes.extend_from_slice(&[0x01, 0x06, 0x0b, 0x04, 0xbf]);
     assert_eq!(qm::plugin_qt_version(&bytes), Some((6, 11)));
     assert_eq!(qm::plugin_qt_version(b"no metadata here"), None);
-    // Обрезанная заметка — не версия.
+    // A truncated note is not a version.
     assert_eq!(qm::plugin_qt_version(b"qt-project!\0\x01\x06"), None);
 }
 
@@ -431,7 +431,7 @@ fn qcm_built_for_other_qt_minor_is_not_used() {
     let qcm = |d: &str| format!("{d}/Qcm/Material/libqml_materialplugin.so");
     let ctl = |d: &str| format!("{d}/waywallen/control/libwaywallen-controlplugin.so");
 
-    // Устаревшая сборка в каталоге пользователя, годная — в системном.
+    // An outdated build in the user directory, a usable one in the system one.
     let mut fs = VersionedFs {
         files: vec![
             (qcm(&user), Some((6, 11))),
@@ -443,22 +443,22 @@ fn qcm_built_for_other_qt_minor_is_not_used() {
     };
     assert!(qm::qml_plugins_ready(&mut fs, &dirs));
     assert_eq!(qm::resolve_import_dir(&mut fs, &dirs), sys);
-    // Каталог с негодной сборкой не отдаётся движку вовсе — иначе
-    // `import Qcm.Material` нашёл бы её раньше годной.
+    // A directory with an unusable build is not given to the engine at all — otherwise
+    // `import Qcm.Material` would find it before the usable one.
     assert_eq!(qm::import_dirs(&mut fs, &dirs), vec![sys.clone()]);
     assert_eq!(
         qm::incompatible_qcm(&mut fs, &dirs),
         Some((qcm(&user), (6, 11), (6, 12)))
     );
 
-    // Годной сборки нет нигде — вкладка не готова (заглушка вместо падения).
+    // No usable build anywhere — the tab is not ready (a placeholder instead of a crash).
     let mut fs = VersionedFs {
         files: vec![(qcm(&sys), Some((6, 11))), (ctl(&sys), None)],
         running: Some((6, 12)),
     };
     assert!(!qm::qml_plugins_ready(&mut fs, &dirs));
 
-    // Версия неизвестна с любой стороны — проверка не мешает.
+    // The version is unknown on either side — the check does not get in the way.
     let mut fs = VersionedFs {
         files: vec![(qcm(&sys), None), (ctl(&sys), None)],
         running: Some((6, 12)),
@@ -468,10 +468,10 @@ fn qcm_built_for_other_qt_minor_is_not_used() {
 }
 
 // ============================================================================
-// Протокол сборки waywallen.control (10.10.2026)
+// Build protocol of waywallen.control (10.10.2026)
 // ============================================================================
 
-/// ФС с отметками: перечисленные файлы есть, у части — текст.
+/// An FS with stamps: the listed files exist, some of them have text.
 struct StampedFs(Vec<(String, Option<String>)>);
 
 impl qm::ModuleFs for StampedFs {
@@ -485,7 +485,7 @@ impl qm::ModuleFs for StampedFs {
 
 const OLD_STAMP: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
-/// Каталог с обоими плагинами; `stamp` — отметка протокола (`None` — нет).
+/// A directory with both plugins; `stamp` is the protocol stamp (`None` — none).
 fn module_dir(dir: &str, stamp: Option<&str>) -> Vec<(String, Option<String>)> {
     let mut files = vec![
         (qm::plugin_path(dir, qm::QCM_MATERIAL_REL), None),
@@ -511,16 +511,16 @@ fn control_stamp_is_sha256_of_both_protos_as_the_build_script_writes_it() {
     assert_eq!(stamp.len(), 64);
     assert!(stamp.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
 
-    // Скрипт сборки модуля пишет ту же сумму в тот же файл: те же два
-    // файла в том же порядке. Разойдутся — любой собранный модуль станет
-    // «устаревшим» молча.
+    // The module build script writes the same sum into the same file: the same two
+    // files in the same order. If they diverge, any built module will silently
+    // become "outdated".
     let script = include_str!("../../../tools/build_qml_control.sh");
     assert!(script.contains(
         "cat \"$WORK/proto/control.proto\" \"$WORK/proto/filter.proto\" | sha256sum"
     ));
     let name = qm::CONTROL_STAMP_REL.rsplit('/').next().unwrap();
     assert!(script.contains(&format!("\"$DEST/{}\"", qm::CONTROL_STAMP_REL)));
-    // Пакет без отметки не собирается.
+    // A package without a stamp is not built.
     let pkgbuild = include_str!("../../../packaging/aur/PKGBUILD");
     assert!(pkgbuild.contains(&format!("[ -s \"$qmod/{}\" ]", qm::CONTROL_STAMP_REL)), "{name}");
 }
@@ -548,7 +548,7 @@ fn stale_user_build_does_not_shadow_fresh_package() {
         vec![(user.clone(), qm::ControlBuild::Stale)]
     );
     assert_eq!(qm::fresh_control_dir(&mut fs, &dirs), Some(sys.clone()));
-    // Rust-сборки рядом с устаревшим модулем тоже не берутся.
+    // Rust builds next to an outdated module are not taken either.
     let usable = qm::usable_dirs(&mut fs, &dirs);
     assert!(!qm::filter_lib_candidates("", &usable).iter().any(|p| p.starts_with(&user)));
 }
@@ -568,8 +568,8 @@ fn unmarked_build_yields_only_to_a_fresh_one() {
     let (dirs, user, sys) = user_and_sys();
     let fresh = qm::control_proto_stamp();
 
-    // Без отметки рядом со свежей — уступает (машина со сборкой до 10.10.2026
-    // и новым пакетом).
+    // Without a stamp next to a fresh one — it yields (a machine with a build from before 10.10.2026
+    // and a new package).
     let mut fs = StampedFs([module_dir(&user, None), module_dir(&sys, Some(fresh))].concat());
     assert_eq!(qm::import_dirs(&mut fs, &dirs), vec![sys.clone()]);
     assert_eq!(
@@ -577,22 +577,22 @@ fn unmarked_build_yields_only_to_a_fresh_one() {
         vec![(user.clone(), qm::ControlBuild::Unmarked)]
     );
 
-    // Без отметки один — остаётся.
+    // One without a stamp — it stays.
     let mut fs = StampedFs(module_dir(&user, None));
     assert_eq!(qm::import_dirs(&mut fs, &dirs), vec![user.clone()]);
     assert!(qm::qml_plugins_ready(&mut fs, &dirs));
 
-    // Без отметки оба (домашняя сборка и пакет старого образца) — порядок
-    // прежний, не отброшен никто.
+    // Both without a stamp (a home build and an old-style package) — the order
+    // is as before, nobody is discarded.
     let mut fs = StampedFs([module_dir(&user, None), module_dir(&sys, None)].concat());
     assert_eq!(qm::import_dirs(&mut fs, &dirs), vec![user.clone(), sys.clone()]);
 
-    // Без отметки рядом с устаревшей, свежей нет — тоже никто не отброшен.
+    // Without a stamp next to an outdated one, no fresh one — nobody is discarded either.
     let mut fs = StampedFs([module_dir(&user, None), module_dir(&sys, Some(OLD_STAMP))].concat());
     assert_eq!(qm::import_dirs(&mut fs, &dirs), vec![user.clone(), sys.clone()]);
 
-    // Пустой файл отметки — то же, что её отсутствие; сырой вывод sha256sum
-    // и прописные буквы читаются как свежая.
+    // An empty stamp file is the same as no stamp; the raw output of sha256sum
+    // and upper-case letters read as fresh.
     let stamp_path = qm::plugin_path(&sys, qm::CONTROL_STAMP_REL);
     let ctl = qm::plugin_path(&sys, qm::WAYWALLEN_CONTROL_REL);
     let mut fs = StampedFs(vec![(ctl.clone(), None), (stamp_path.clone(), Some(" \n".into()))]);
@@ -600,16 +600,16 @@ fn unmarked_build_yields_only_to_a_fresh_one() {
     let raw = format!("{}  -\n", fresh.to_uppercase());
     let mut fs = StampedFs(vec![(ctl, None), (stamp_path.clone(), Some(raw))]);
     assert_eq!(qm::control_build(&mut fs, &sys), qm::ControlBuild::Fresh);
-    // Отметка без модуля ничего не значит.
+    // A stamp without a module means nothing.
     let mut fs = StampedFs(vec![(stamp_path, Some(fresh.into()))]);
     assert_eq!(qm::control_build(&mut fs, &sys), qm::ControlBuild::Missing);
 }
 
 #[test]
 fn stale_dir_with_the_only_material_is_demoted_not_dropped() {
-    // Оформление собрано дома, value-типы свежие — только в пакете: домашний
-    // каталог уходит в конец, а не выбрасывается, иначе вкладка осталась бы
-    // без `Qcm.Material`.
+    // The look is built at home, fresh value types are only in the package: the home
+    // directory goes to the end rather than being thrown out, otherwise the tab would be left
+    // without `Qcm.Material`.
     let (dirs, user, sys) = user_and_sys();
     let fresh = qm::control_proto_stamp();
     let mut files = module_dir(&user, None);
@@ -626,11 +626,11 @@ fn stale_dir_with_the_only_material_is_demoted_not_dropped() {
 }
 
 // ============================================================================
-// QExtra: настоящий плагин или QML-подмена (10.10.2026)
+// QExtra: the real plugin or the QML substitute (10.10.2026)
 // ============================================================================
 
-/// ФС для выбора QExtra: файлы с текстом отметок, версии Qt у плагинов и у
-/// процесса.
+/// An FS for choosing QExtra: files with stamp texts, Qt versions of the plugins and of
+/// the process.
 struct QExtraFs {
     files: Vec<(String, Option<String>)>,
     plugin_qt: Vec<(String, (u32, u32))>,
@@ -652,7 +652,7 @@ impl qm::ModuleFs for QExtraFs {
     }
 }
 
-/// Плагин QExtra в каталоге; `stamp` — текст отметки версии Qt.
+/// The QExtra plugin in a directory; `stamp` is the text of the Qt version stamp.
 fn qextra_dir(dir: &str, stamp: Option<&str>) -> Vec<(String, Option<String>)> {
     let mut files = vec![(qm::plugin_path(dir, qm::QEXTRA_PLUGIN_REL), None)];
     if let Some(s) = stamp {
@@ -667,14 +667,14 @@ fn qextra_fs(files: Vec<(String, Option<String>)>) -> QExtraFs {
 
 #[test]
 fn qextra_names_match_the_build_script() {
-    // Те же имена пишет tools/build_qml_qextra.sh — сверка с его текстом.
+    // tools/build_qml_qextra.sh writes the same names — compared against its text.
     let script = include_str!("../../../tools/build_qml_qextra.sh");
     assert_eq!(qm::QEXTRA_PLUGIN_REL, "QExtra/libqextraplugin.so");
     assert_eq!(qm::QEXTRA_QT_STAMP_REL, "QExtra/QT_VERSION");
     assert!(script.contains("$NEW/libqextraplugin.so"));
     assert!(script.contains("> \"$NEW/QT_VERSION\""));
     assert!(script.contains("mv \"$NEW\" \"$DEST/QExtra\""));
-    // Модуль плагина зовётся так же, как подмена в каталоге вендора.
+    // The plugin's module is named the same as the substitute in the vendor directory.
     let qmldir = include_str!("../../../tools/qextra_plugin/qmldir");
     assert!(qmldir.starts_with("module QExtra\n"));
     assert!(qmldir.contains("plugin qextraplugin"));
@@ -692,12 +692,12 @@ fn qt_stamp_is_parsed_as_major_minor() {
 
 #[test]
 fn scene_graph_rhi_by_platform_and_backend() {
-    // Платформа сеанса: переменная не задана, Wayland, X11.
+    // Session platform: the variable is not set, Wayland, X11.
     assert!(qm::scene_graph_uses_rhi(None, None));
     assert!(qm::scene_graph_uses_rhi(Some("wayland"), None));
     assert!(qm::scene_graph_uses_rhi(Some("wayland;xcb"), Some("")));
     assert!(qm::scene_graph_uses_rhi(Some("xcb"), Some("rhi")));
-    // Без RHI: стенды и эталоны под offscreen, программный граф по просьбе.
+    // Without RHI: benches and goldens under offscreen, the software graph on request.
     assert!(!qm::scene_graph_uses_rhi(Some("offscreen"), None));
     assert!(!qm::scene_graph_uses_rhi(Some("offscreen:size=1280x720"), None));
     assert!(!qm::scene_graph_uses_rhi(Some("minimal"), None));
@@ -706,7 +706,7 @@ fn scene_graph_rhi_by_platform_and_backend() {
     assert!(!qm::scene_graph_uses_rhi(Some("wayland"), Some("software")));
     assert!(!qm::scene_graph_uses_rhi(None, Some("Software")));
     assert!(!qm::scene_graph_uses_rhi(None, Some("openvg")));
-    // Судим по первой платформе списка — её Qt и пробует первой.
+    // We judge by the first platform in the list — Qt tries it first.
     assert!(!qm::scene_graph_uses_rhi(Some("offscreen;wayland"), None));
 }
 
@@ -714,14 +714,14 @@ fn scene_graph_rhi_by_platform_and_backend() {
 fn qpa_platform_argument_overrides_variable() {
     let bin = "rexon-main-window";
     let none: [&str; 0] = [];
-    // Ключа нет — действует переменная (или платформа сеанса).
+    // No switch — the variable applies (or the session platform).
     assert_eq!(qm::requested_qpa_platform(&none, None), None);
     assert_eq!(qm::requested_qpa_platform(&[bin], None), None);
     assert_eq!(
         qm::requested_qpa_platform(&[bin, "--section=wallpaper_engine"], Some("wayland")),
         Some("wayland".to_owned())
     );
-    // Ключ перекрывает переменную; два дефиса — тот же ключ.
+    // The switch overrides the variable; two hyphens are the same switch.
     assert_eq!(
         qm::requested_qpa_platform(&[bin, "--section=wallpaper_engine", "-platform", "offscreen"], None),
         Some("offscreen".to_owned())
@@ -734,7 +734,7 @@ fn qpa_platform_argument_overrides_variable() {
         qm::requested_qpa_platform(&[bin, "-platform", "wayland"], Some("offscreen")),
         Some("wayland".to_owned())
     );
-    // Из нескольких ключей действует последний; ключ без значения — никакой.
+    // Of several switches the last one applies; a switch without a value — none.
     assert_eq!(
         qm::requested_qpa_platform(&[bin, "-platform", "wayland", "-platform", "minimal"], None),
         Some("minimal".to_owned())
@@ -743,10 +743,10 @@ fn qpa_platform_argument_overrides_variable() {
         qm::requested_qpa_platform(&[bin, "-platform"], Some("xcb")),
         Some("xcb".to_owned())
     );
-    // Нулевой аргумент ключом не считается, слитная запись — не ключ Qt.
+    // The zeroth argument does not count as a switch, the joined form is not a Qt switch.
     assert_eq!(qm::requested_qpa_platform(&["-platform", "offscreen"], None), None);
     assert_eq!(qm::requested_qpa_platform(&[bin, "-platform=offscreen"], None), None);
-    // Вместе с признаком RHI: запуск `-platform offscreen` без переменной.
+    // Together with the RHI flag: a `-platform offscreen` launch without the variable.
     let asked = qm::requested_qpa_platform(&[bin, "-platform", "offscreen"], None);
     assert!(!qm::scene_graph_uses_rhi(asked.as_deref(), None));
 }
@@ -755,7 +755,7 @@ fn qpa_platform_argument_overrides_variable() {
 fn qextra_real_needs_plugin_stamp_and_rhi() {
     let (dirs, user, sys) = user_and_sys();
 
-    // Всё сошлось: плагин, отметка той же младшей версии, RHI.
+    // Everything matched: the plugin, a stamp of the same minor version, RHI.
     let mut fs = qextra_fs(qextra_dir(&user, Some("6.12.0\n")));
     let choice = qm::choose_qextra(&mut fs, &dirs, true);
     assert_eq!(choice, qm::QExtraChoice::Real { dir: user.clone(), qt: (6, 12) });
@@ -763,12 +763,12 @@ fn qextra_real_needs_plugin_stamp_and_rhi() {
     assert!(line.contains("настоящий плагин") && line.contains("Qt 6.12"), "{line}");
     assert!(line.contains(&format!("{user}/QExtra/libqextraplugin.so")), "{line}");
 
-    // Тот же каталог, но граф сцены программный — подмена.
+    // The same directory, but the scene graph is software — the substitute.
     let choice = qm::choose_qextra(&mut fs, &dirs, false);
     assert_eq!(choice, qm::QExtraChoice::Shim(qm::QExtraFallback::NoRhi));
     assert!(qm::qextra_choice_line(&choice).contains("не на RHI"));
 
-    // Плагина нет нигде.
+    // No plugin anywhere.
     let mut fs = qextra_fs(module_dir(&sys, None));
     let choice = qm::choose_qextra(&mut fs, &dirs, true);
     assert_eq!(choice, qm::QExtraChoice::Shim(qm::QExtraFallback::NoPlugin));
@@ -780,7 +780,7 @@ fn qextra_with_bad_or_missing_stamp_falls_back() {
     let (dirs, user, _sys) = user_and_sys();
     let path = qm::plugin_path(&user, qm::QEXTRA_PLUGIN_REL);
 
-    // Отметка другой младшей версии.
+    // A stamp of another minor version.
     let mut fs = qextra_fs(qextra_dir(&user, Some("6.11.2\n")));
     let choice = qm::choose_qextra(&mut fs, &dirs, true);
     assert_eq!(
@@ -794,8 +794,8 @@ fn qextra_with_bad_or_missing_stamp_falls_back() {
     let line = qm::qextra_choice_line(&choice);
     assert!(line.contains("Qt 6.11") && line.contains("Qt 6.12") && line.contains(&path), "{line}");
 
-    // Отметки нет; отметка — мусор. В отличие от Qcm.Material неизвестная
-    // версия здесь — отказ: есть подмена.
+    // No stamp; the stamp is garbage. Unlike Qcm.Material, an unknown
+    // version here is a refusal: there is a substitute.
     for stamp in [None, Some("не версия\n"), Some("")] {
         let mut fs = qextra_fs(qextra_dir(&user, stamp));
         assert_eq!(
@@ -805,7 +805,7 @@ fn qextra_with_bad_or_missing_stamp_falls_back() {
         );
     }
 
-    // Версия запущенного Qt неизвестна — сверять не с чем.
+    // The version of the running Qt is unknown — nothing to compare with.
     let mut fs = qextra_fs(qextra_dir(&user, Some("6.12.0")));
     fs.running = None;
     assert_eq!(
@@ -813,7 +813,7 @@ fn qextra_with_bad_or_missing_stamp_falls_back() {
         qm::QExtraChoice::Shim(qm::QExtraFallback::RunningQtUnknown { path: path.clone() })
     );
 
-    // Отметка сошлась, а сам плагин собран под другую версию — верим плагину.
+    // The stamp matched, but the plugin itself is built for another version — we trust the plugin.
     let mut fs = qextra_fs(qextra_dir(&user, Some("6.12.0")));
     fs.plugin_qt = vec![(path.clone(), (6, 11))];
     assert_eq!(
@@ -829,7 +829,7 @@ fn qextra_with_bad_or_missing_stamp_falls_back() {
 #[test]
 fn qextra_bad_build_does_not_hide_a_good_one_further() {
     let (dirs, user, sys) = user_and_sys();
-    // У пользователя — под прежний Qt, в пакете — годный.
+    // The user's is for the previous Qt, the package's is usable.
     let mut files = qextra_dir(&user, Some("6.11.0"));
     files.extend(qextra_dir(&sys, Some("6.12.0")));
     let mut fs = qextra_fs(files);
@@ -837,7 +837,7 @@ fn qextra_bad_build_does_not_hide_a_good_one_further() {
         qm::choose_qextra(&mut fs, &dirs, true),
         qm::QExtraChoice::Real { dir: sys.clone(), qt: (6, 12) }
     );
-    // Оба годны — первым идёт каталог пользователя.
+    // Both are usable — the user directory comes first.
     let mut files = qextra_dir(&user, Some("6.12.0"));
     files.extend(qextra_dir(&sys, Some("6.12.0")));
     let mut fs = qextra_fs(files);
@@ -849,9 +849,9 @@ fn qextra_bad_build_does_not_hide_a_good_one_further() {
 
 #[test]
 fn qextra_is_not_taken_from_a_dir_with_stale_control() {
-    // Выбранный каталог встаёт в путях импорта первым. Если в нём лежит
-    // устаревший waywallen.control (каталог оставлен в хвосте ради
-    // Qcm.Material), он снова заслонил бы свежий — такой каталог не берём.
+    // The chosen directory goes first in the import paths. If it holds an
+    // outdated waywallen.control (the directory was left at the tail for the sake of
+    // Qcm.Material), it would again shadow the fresh one — we do not take such a directory.
     let (dirs, user, sys) = user_and_sys();
     let mut files = module_dir(&user, Some(OLD_STAMP));
     files.extend(qextra_dir(&user, Some("6.12.0")));
@@ -861,7 +861,7 @@ fn qextra_is_not_taken_from_a_dir_with_stale_control() {
         Some(qm::control_proto_stamp().to_string()),
     ));
     let mut fs = qextra_fs(files);
-    // Каталог пользователя в ходу остался — ушёл в хвост за свежим.
+    // The user directory stayed in use — it went to the tail behind the fresh one.
     assert_eq!(qm::import_dirs(&mut fs, &dirs), vec![sys.clone(), user.clone()]);
     assert_eq!(
         qm::choose_qextra(&mut fs, &dirs, true),
@@ -869,11 +869,11 @@ fn qextra_is_not_taken_from_a_dir_with_stale_control() {
     );
 }
 
-// ── tools/build_qml_material.sh: шрифты значков без сети ──────────────
+// ── tools/build_qml_material.sh: icon fonts without the network ──────
 
-/// Прогон сценария сборки Qcm.Material на подставном клоне: `git` настоящий,
-/// `curl` всегда без сети, `cmake` лишь создаёт каталог модуля. Возвращает
-/// код выхода и содержимое шрифта в собранном модуле (если дошло до копии).
+/// A run of the Qcm.Material build script on a fake clone: `git` is real,
+/// `curl` is always without the network, `cmake` only creates the module directory. Returns
+/// the exit code and the font content in the built module (if it got as far as copying).
 fn run_material_script(prepared_font: Option<&str>) -> (bool, Option<String>, String) {
     use std::process::Command;
     let root = std::env::temp_dir().join(format!(
@@ -902,10 +902,10 @@ fn run_material_script(prepared_font: Option<&str>) -> (bool, Option<String>, St
     git(&["add", "."]);
     git(&["commit", "-q", "-m", "pin"]);
     let pin = git(&["rev-parse", "HEAD"]).trim().to_string();
-    // Указатель origin на сам клон: `fetch origin <пин>` проходит без сети.
+    // The origin pointer to the clone itself: `fetch origin <pin>` works without the network.
     git(&["remote", "add", "origin", work.to_str().unwrap()]);
     if let Some(real) = prepared_font {
-        // Так кладёт настоящий шрифт prepare() пакета.
+        // This is how the package's prepare() puts the real font.
         std::fs::write(&font, real).unwrap();
     }
     let stub = |name: &str, body: &str| {
@@ -940,10 +940,10 @@ fn run_material_script(prepared_font: Option<&str>) -> (bool, Option<String>, St
     (out.status.success(), built, log)
 }
 
-/// Дефект 30.10.2026 (ВМ, пакет r1893): prepare() пакета клал настоящие
-/// шрифты, сценарий делал `checkout -f` на том же пине и возвращал
-/// указатели git-lfs; без сети curl молчал, и в пакет уезжали указатели —
-/// все значки вкладки обоев пустыми квадратами.
+/// Defect of 30.10.2026 (VM, package r1893): the package's prepare() put the real
+/// fonts, the script did `checkout -f` on the same pin and brought back
+/// the git-lfs pointers; without the network curl was silent, and the pointers went into the package —
+/// all icons of the wallpaper tab became empty squares.
 #[test]
 fn material_script_keeps_prepared_fonts_offline() {
     let (ok, built, log) = run_material_script(Some("REAL-FONT"));
@@ -960,10 +960,10 @@ fn material_script_fails_instead_of_shipping_lfs_pointers() {
 }
 
 // ============================================================================
-// Пользовательская сборка против пакетной (02.11.2026)
+// User build versus packaged build (02.11.2026)
 // ============================================================================
 
-/// ФС с текстами отметок и версиями Qt плагинов.
+/// An FS with stamp texts and Qt versions of the plugins.
 struct PkgFs {
     files: Vec<(String, Option<String>)>,
     qt: Vec<(String, (u32, u32))>,
@@ -984,7 +984,7 @@ impl qm::ModuleFs for PkgFs {
     }
 }
 
-/// Все три модуля с отметками в каталоге: ревизия, протокол, Qt.
+/// All three modules with stamps in a directory: revision, protocol, Qt.
 fn full_dir(fs: &mut PkgFs, dir: &str, pin: &str, qt: (u32, u32)) {
     let qt_text = format!("{}.{}.0\n", qt.0, qt.1);
     for (rel, text) in [
@@ -1014,7 +1014,7 @@ fn user_modules_first_only_in_dev_tree_without_package_flag() {
     assert!(!qm::user_modules_first(true, true));
     assert!(!qm::user_modules_first(false, false));
     assert!(!qm::user_modules_first(true, false));
-    // $XDG_DATA_HOME и ~/.local/share — оба пользовательские, без повторов.
+    // $XDG_DATA_HOME and ~/.local/share — both are user ones, without repeats.
     assert_eq!(
         qm::user_module_dirs(Some("/data/xdg"), HOME),
         vec!["/data/xdg/rexon/qml_modules".to_string(), format!("{HOME}/.local/share/rexon/qml_modules")]
@@ -1037,7 +1037,7 @@ fn package_copy_wins_over_same_user_build() {
     let (warn, line) = qm::user_copy_note_line(&order.notes[0]).unwrap();
     assert!(!warn);
     assert!(line.contains(&sys) && line.contains(&user), "{line}");
-    // Вниз по течению: QExtra и import-пути — из пакета.
+    // Downstream: QExtra and the import paths come from the package.
     let rhi = true;
     match qm::choose_qextra(&mut fs, &order.dirs, rhi) {
         qm::QExtraChoice::Real { dir, .. } => assert_eq!(dir, sys),
@@ -1080,7 +1080,7 @@ fn outdated_user_build_is_skipped_and_named_in_log() {
     let note = &order.notes[0];
     assert_eq!(note.used, qm::UserCopyUse::Skipped);
     assert_eq!(note.package_dir.as_deref(), Some(sys.as_str()));
-    // Отличие по каждому модулю, где оно есть: ревизии, отметка Qt, Qt сборки.
+    // The difference for each module where there is one: revisions, Qt stamp, build Qt.
     let has = |m: &str, w: &str| note.diffs.iter().any(|d| d.module == m && d.what == w);
     assert!(has("Qcm.Material", "ревизия") && has("Qcm.Material", "Qt сборки"));
     assert!(has("QExtra", "ревизия") && has("QExtra", "отметка Qt"));
@@ -1089,7 +1089,7 @@ fn outdated_user_build_is_skipped_and_named_in_log() {
     assert!(warn);
     assert!(line.contains("устарела") && line.contains("old0") && line.contains("new1"), "{line}");
 
-    // То же в дереве исходников: берётся своя сборка, но отличие названо.
+    // The same in the source tree: our own build is taken, but the difference is named.
     let order = qm::order_module_dirs(&mut fs, &dirs, &user_dirs, true);
     assert_eq!(order.dirs.first(), Some(&user));
     let (warn, line) = qm::user_copy_note_line(&order.notes[0]).unwrap();
@@ -1098,7 +1098,7 @@ fn outdated_user_build_is_skipped_and_named_in_log() {
 
 #[test]
 fn user_only_module_kept_behind_package() {
-    // В пакете нет QExtra, у пользователя есть — каталог остаётся, но позади.
+    // The package has no QExtra, the user has it — the directory stays, but behind.
     let (dirs, user_dirs, user, sys) = layout();
     let mut fs = PkgFs { files: vec![], qt: vec![] };
     full_dir(&mut fs, &user, "aaaa", (6, 12));

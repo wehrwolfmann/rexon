@@ -1,32 +1,36 @@
-// WallpaperSelectStorage — множественный выбор обоей на странице «Обои».
+// WallpaperSelectStorage — multiple selection of wallpapers on the
+// "Wallpapers" page.
 //
-// ⚠️ Эталон — ОРИГИНАЛ, а не наш Python. Питоновский класс
-// (bridge.py:4459) сам себя называет «упрощённая, этап 4a» и упрощён
-// настолько, что переносить его означало бы законсервировать четыре
-// расхождения (правило #16 и правило «во вкладке чужой программы мерило —
-// паритет с оригиналом»):
+// Warning: the reference is the ORIGINAL, not our Python. The Python class
+// (bridge.py:4459) calls itself "simplified, stage 4a" and is simplified so
+// much that porting it would mean preserving four divergences (rule #16
+// and the rule "in a third-party program's tab the yardstick is parity
+// with the original"):
 //
-//   1. выбор вёлся по ИНДЕКСАМ строк, а у оригинала — по ключам, и живёт он
-//      в модели (`qextra/src/select_storage.cpp` + `kstore` QMetaListModel);
-//   2. `removableSelectedCount`/`removableSelectedWallpaperIds` отдавали
-//      ВЕСЬ выбор, не глядя на `supportsItemRemove`
-//      (`ui/src/model/wallpaper_select_storage.cpp:65`), — то есть кнопка
-//      «Удалить» обещала удалить то, что удалить нельзя;
-//   3. `isEditingPlaylist` всегда возвращал false, поэтому режим правки
-//      плейлиста в интерфейсе не отмечался никак;
-//   4. `editPlaylistSelection` только запоминал плейлист, а обязан ещё и
-//      наполнить выбор его составом, включить режим выбора и сбросить якорь.
+//   1. the selection was kept by row INDICES, while in the original it is
+//      by keys and lives in the model (`qextra/src/select_storage.cpp` +
+//      `kstore` QMetaListModel);
+//   2. `removableSelectedCount`/`removableSelectedWallpaperIds` returned the
+//      WHOLE selection without looking at `supportsItemRemove`
+//      (`ui/src/model/wallpaper_select_storage.cpp:65`) — that is, the
+//      "Delete" button promised to delete what cannot be deleted;
+//   3. `isEditingPlaylist` always returned false, so playlist editing mode
+//      was not indicated in the interface at all;
+//   4. `editPlaylistSelection` only remembered the playlist, while it must
+//      also fill the selection with its contents, turn on selection mode
+//      and reset the anchor.
 //
-// Наследования у нас нет (cxx-qt не умеет Rust-QObject от Rust-QObject),
-// поэтому база `SelectStorage` перенесена СОСТАВОМ: её поля и правила лежат
-// в чистой структуре `SelectState`, а тонкости обоей — рядом. Ровно тот же
-// приём, что с базой `Query` в партии 3.
+// We have no inheritance (cxx-qt cannot make a Rust QObject inherit from a
+// Rust QObject), so the `SelectStorage` base is carried over by
+// COMPOSITION: its fields and rules lie in the plain `SelectState` struct,
+// and the wallpaper specifics next to it. Exactly the same technique as
+// with the `Query` base in batch 3.
 //
-// Само выделение хранит МОДЕЛЬ (crate::wallpaper_list_model), как у
-// оригинала. Здесь — только режим выбора, якорь, признак активности и
-// плейлист, который сейчас правят.
+// The selection itself is stored by the MODEL (crate::wallpaper_list_model),
+// as in the original. Here there is only the selection mode, the anchor,
+// the active flag and the playlist being edited.
 
-/// Мост cxx-qt: хранилище выбора страницы «Обои».
+/// cxx-qt bridge: the selection storage of the "Wallpapers" page.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -43,22 +47,23 @@ pub mod qobject {
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
     }
 
-    // ⚠️ `type QObject` здесь НЕ объявляется. У этого моста QObject без
-    // базы, и cxx-qt печатает объявление сам (cxx-qt-gen: add_qobject_import);
-    // второе даёт «the type QObject is defined multiple times». В мостах
-    // моделей всё наоборот — там база объявлена вручную, и объявление QObject
-    // приходится писать самим.
+    // Warning: `type QObject` is NOT declared here. This bridge has a QObject
+    // without a base, and cxx-qt emits the declaration by itself (cxx-qt-gen:
+    // add_qobject_import); a second one gives "the type QObject is defined
+    // multiple times". In the model bridges it is the other way round — the
+    // base is declared by hand there, and the QObject declaration has to be
+    // written ourselves.
     unsafe extern "C++" {
         include!("rexon_gui_factory.h");
-        /// Проверенное приведение к модели библиотеки обоев.
+        /// Checked cast to the wallpaper library model.
         ///
-        /// Именно `qobject_cast`, а не голое приведение указателя: свойство
-        /// `model` пишет QML, и подсунуть туда можно ЛЮБОЙ QObject. У
-        /// оригинала здесь тоже `qobject_cast` — чужая модель просто не
-        /// принимается (`select_storage.cpp:16`).
+        /// Exactly `qobject_cast`, not a bare pointer cast: the `model` property is
+        /// written by QML, and ANY QObject can be slipped in there. The original
+        /// also uses `qobject_cast` here — a foreign model is simply not accepted
+        /// (`select_storage.cpp:16`).
         ///
         /// # Safety
-        /// `object` — либо nullptr, либо живой QObject.
+        /// `object` is either nullptr or a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_as_wallpaper_list_model(object: *mut QObject) -> *mut QObject;
     }
@@ -80,16 +85,16 @@ pub mod qobject {
         #[qproperty(i32, removable_selected_count, cxx_name = "removableSelectedCount",
                     READ = removable_selected_count,
                     NOTIFY = selected_removable_count_changed)]
-        /// waywallen 0.4.4: сколько выбранных обоев скрыто — по нему
-        /// страница решает, «Скрыть» или «Вернуть» выбранное.
+        /// waywallen 0.4.4: how many of the selected wallpapers are hidden — by it
+        /// the page decides whether to "Hide" or "Restore" the selection.
         #[qproperty(i32, hidden_selected_count, cxx_name = "hiddenSelectedCount",
                     READ = hidden_selected_count,
                     NOTIFY = selected_hidden_count_changed)]
         #[qproperty(QVariant, playlist_edit_target, cxx_name = "playlistEditTarget",
                     READ = playlist_edit_target, WRITE = set_playlist_edit_target,
                     NOTIFY = playlist_edit_target_changed)]
-        /// ⚠️ `f64`, а не `i64`: 64-битное целое наружу в QML не выпускаем
-        /// (разбор — `src/qvalue.rs`). Поле внутри остаётся точным `i64`.
+        /// Warning: `f64`, not `i64`: we do not expose a 64-bit integer to QML (the
+        /// analysis is in `src/qvalue.rs`). The field inside stays an exact `i64`.
         #[qproperty(f64, playlist_edit_target_id, cxx_name = "playlistEditTargetId",
                     READ = playlist_edit_target_id,
                     NOTIFY = playlist_edit_target_changed)]
@@ -112,13 +117,13 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "activeChanged"]
         fn active_changed(self: Pin<&mut WallpaperSelectStorage>);
-        /// Отдельный сигнал оригинала: удаляемых может стать меньше без
-        /// изменения размера выбора (сменился список).
+        /// A separate signal of the original: the number of items to delete may
+        /// decrease without the selection size changing (the list changed).
         #[qsignal]
         #[cxx_name = "selectedRemovableCountChanged"]
         fn selected_removable_count_changed(self: Pin<&mut WallpaperSelectStorage>);
-        /// waywallen 0.4.4: скрытых в выборе стало другое число —
-        /// сменился выбор, модель или признак «скрыта» у строки.
+        /// waywallen 0.4.4: the number of hidden items in the selection changed —
+        /// the selection, the model or a row's "hidden" flag changed.
         #[qsignal]
         #[cxx_name = "selectedHiddenCountChanged"]
         fn selected_hidden_count_changed(self: Pin<&mut WallpaperSelectStorage>);
@@ -127,12 +132,12 @@ pub mod qobject {
         fn playlist_edit_target_changed(self: Pin<&mut WallpaperSelectStorage>);
     }
 
-    // unsafe-блок: аксессоры свойства `model` берут голый указатель, и cxx
-    // требует помечать такие функции unsafe (речь про соответствие
-    // C++-сигнатуре, а не про опасность вызова).
-    // ⚠️ `set_model` — сверх того `unsafe fn` сама по себе: она ПЕРЕДАЁТ
-    // указатель в шим `qobject_cast`, а тот его разыменовывает. Указатель
-    // приходит из QML, за его живость отвечает вызывающая сторона.
+    // unsafe block: the accessors of the `model` property take a raw pointer,
+    // and cxx requires such functions to be marked unsafe (this is about
+    // matching the C++ signature, not about the call being dangerous).
+    // Warning: `set_model` is moreover an `unsafe fn` by itself: it PASSES the
+    // pointer to the `qobject_cast` shim, which dereferences it. The pointer
+    // comes from QML; the caller is responsible for it being alive.
     unsafe extern "RustQt" {
         fn model(self: &WallpaperSelectStorage) -> *mut QObject;
         #[cxx_name = "setModel"]
@@ -160,7 +165,7 @@ pub mod qobject {
         fn playlist_edit_target_id(self: &WallpaperSelectStorage) -> f64;
     }
 
-    // ── Инвокаблы (имена — из оригинала) ─────────────────────────────────
+    // ── Invokables (names from the original) ─────────────────────────────
     extern "RustQt" {
         #[qinvokable]
         fn begin(self: Pin<&mut WallpaperSelectStorage>, row: i32) -> bool;
@@ -197,8 +202,8 @@ pub mod qobject {
         #[cxx_name = "selectedItems"]
         fn selected_items(self: &WallpaperSelectStorage) -> QList_QVariant;
 
-        /// Выбранные идентификаторы списком значений — так их принимает
-        /// плейлист-действие вендорной страницы.
+        /// The selected identifiers as a list of values — that is how the playlist
+        /// action of the vendored page accepts them.
         #[qinvokable]
         #[cxx_name = "selectedWallpaperIds"]
         fn selected_wallpaper_ids(self: &WallpaperSelectStorage) -> QList_QVariant;
@@ -219,9 +224,9 @@ pub mod qobject {
         #[cxx_name = "editPlaylistSelection"]
         fn edit_playlist_selection(self: Pin<&mut WallpaperSelectStorage>, playlist: &QVariant);
 
-        /// Пересчитать всё, что зависит от выбора в модели. Зовётся, когда
-        /// модель сообщила о смене выбора (у оригинала это лямбда в
-        /// `SelectStorage::connectModel`).
+        /// Recompute everything that depends on the selection in the model. Called
+        /// when the model reported a selection change (in the original this is a
+        /// lambda in `SelectStorage::connectModel`).
         #[qinvokable]
         #[cxx_name = "onModelSelectionChanged"]
         fn on_model_selection_changed(self: Pin<&mut WallpaperSelectStorage>);
@@ -238,16 +243,17 @@ use crate::impl_select_storage_base;
 use crate::qvalue::variant_to_json;
 
 // ============================================================================
-// Чистый слой: правила базы SelectStorage без Qt
+// Plain layer: the rules of the SelectStorage base without Qt
 // ============================================================================
 
-/// Состояние базы `SelectStorage` (qextra) плюс плейлист-правка обоей.
+/// State of the `SelectStorage` base (qextra) plus playlist editing of
+/// wallpapers.
 #[derive(Debug, Default)]
 pub struct SelectState {
     pub selection_mode: bool,
     pub anchor_index: i32,
-    /// Кэш `active`: сигнал шлётся только при РЕАЛЬНОМ перевороте, как у
-    /// оригинала (`notifyActiveChanged`).
+    /// Cache of `active`: the signal is sent only on a REAL flip, as in the
+    /// original (`notifyActiveChanged`).
     pub active: bool,
     pub playlist_target: Value,
     pub playlist_target_id: i64,
@@ -264,14 +270,14 @@ impl SelectState {
         }
     }
 
-    /// `keepActiveWithoutSelection` оригинала: пока правят плейлист, режим
-    /// выбора остаётся активным даже с пустым выбором.
+    /// The original's `keepActiveWithoutSelection`: while a playlist is being
+    /// edited, selection mode stays active even with an empty selection.
     pub fn keep_active_without_selection(&self) -> bool {
         self.playlist_target_id > 0
     }
 }
 
-/// Идентификатор плейлиста из карты, пришедшей из QML.
+/// Playlist identifier from the map that came from QML.
 pub fn playlist_id(value: &Value) -> i64 {
     match value.get("id") {
         Some(Value::Number(n)) => n.as_i64().unwrap_or(0),
@@ -280,7 +286,8 @@ pub fn playlist_id(value: &Value) -> i64 {
     }
 }
 
-/// Состав плейлиста — им наполняется выбор при входе в правку.
+/// Playlist contents — the selection is filled with them on entering
+/// editing.
 pub fn playlist_entry_ids(value: &Value) -> Vec<String> {
     match value.get("entryIds") {
         Some(Value::Array(items)) => items
@@ -292,17 +299,18 @@ pub fn playlist_entry_ids(value: &Value) -> Vec<String> {
 }
 
 // ============================================================================
-// Qt-слой
+// Qt layer
 // ============================================================================
 
-/// Rust-состояние хранилища.
+/// Rust state of the storage.
 pub struct WallpaperSelectStorageRust {
     state: SelectState,
-    /// Модель библиотеки. Голый указатель, как у оригинала QPointer:
-    /// владелец модели — запрос списка, хранилище её только читает.
+    /// The library model. A raw pointer, like the original's QPointer: the model
+    /// is owned by the list query, the storage only reads it.
     model: *mut qobject::QObject,
-    /// Подписки на модель (waywallen 0.4.4, см. `watch_model`): сторожа
-    /// рвут связь при смене модели и при уничтожении хранилища.
+    /// Model subscriptions (waywallen 0.4.4, see `watch_model`): the guards
+    /// break the connection when the model changes and when the storage is
+    /// destroyed.
     model_watch: Vec<cxx_qt::QMetaObjectConnectionGuard>,
 }
 
@@ -322,25 +330,25 @@ impl cxx_qt::Initialize for qobject::WallpaperSelectStorage {
     }
 }
 
-// База `SelectStorage` + надстройка обоей — общим движком
-// (src/select_storage_base.rs), как у оригинала двумя базовыми классами.
+// The `SelectStorage` base + the wallpaper layer — through the shared
+// engine (src/select_storage_base.rs), as two base classes in the original.
 impl_select_storage_base!(WallpaperSelectStorage, rexon_as_wallpaper_list_model);
 
 impl qobject::WallpaperSelectStorage {
-    // ── крючки общего движка ──────────────────────────────────────────────
+    // ── hooks of the shared engine ────────────────────────────────────────
 
-    /// `keepActiveWithoutSelection` этого уровня: правка плейлиста.
+    /// `keepActiveWithoutSelection` of this level: playlist editing.
     fn keep_active(&self) -> bool {
         self.state.keep_active_without_selection()
     }
 
-    /// Своего обработчика `selectedCountChanged` у этого уровня нет: оба
-    /// счётчика рассылает общий движок.
+    /// This level has no `selectedCountChanged` handler of its own: both
+    /// counters are emitted by the shared engine.
     fn after_selected_count_changed(self: Pin<&mut Self>) {
         let _ = self;
     }
 
-    // ── свойства уровня «правка плейлиста» ────────────────────────────────
+    // ── properties of the "playlist editing" level ────────────────────────
 
     fn playlist_edit_target(&self) -> QVariant {
         crate::qvalue::json_to_variant(&self.state.playlist_target)
@@ -365,10 +373,11 @@ impl qobject::WallpaperSelectStorage {
         crate::qvalue::i64_to_qml(self.state.playlist_target_id)
     }
 
-    // ── инвокаблы уровня ──────────────────────────────────────────────────
+    // ── level invokables ──────────────────────────────────────────────────
 
-    /// Порядок как у оригинала: сначала снимается плейлист-правка (иначе
-    /// `keepActiveWithoutSelection` не даст выйти из режима), потом выбор.
+    /// Order as in the original: first playlist editing is cleared (otherwise
+    /// `keepActiveWithoutSelection` would not let us leave the mode), then the
+    /// selection.
     fn clear(mut self: Pin<&mut Self>) {
         if self.state.keep_active_without_selection() {
             {

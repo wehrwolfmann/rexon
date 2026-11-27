@@ -23,6 +23,7 @@ Item {
     property MD.Shimmer shimmer: null
     property real spacing: 12
     readonly property string title: item.title
+    property var badgeTexts: []
 
     signal clicked
 
@@ -53,6 +54,7 @@ Item {
                 resourceSize: Qt.size(Number(root.item?.width ?? 0), Number(root.item?.height ?? 0))
                 shimmer: root.shimmer
                 source: root.previewUrl
+                sourceHeaders: root.item?.previewHeaders ?? ({})
                 verticalAlignment: Image.AlignVCenter
             }
             Rectangle {
@@ -92,6 +94,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
             Rectangle {
+                id: acquisitionBadge
                 color: MD.Token.color.primary
                 height: m_badge.implicitHeight + 6
                 radius: height / 2
@@ -111,6 +114,14 @@ Item {
                     text: root.remoteCapability === 2 ? qsTr("Subscribed") : qsTr("Downloaded")
                     typescale: MD.Token.typescale.label_small
                 }
+            }
+            W.CardBadges {
+                anchors.top: parent.top
+                anchors.topMargin: 5
+                anchors.right: acquisitionBadge.visible ? acquisitionBadge.left : parent.right
+                anchors.rightMargin: acquisitionBadge.visible ? 4 : 5
+                maximumWidth: Math.max(0, parent.width - (acquisitionBadge.visible ? acquisitionBadge.width + 15 : 10))
+                texts: root.badgeTexts
             }
             MouseArea {
                 anchors.fill: parent

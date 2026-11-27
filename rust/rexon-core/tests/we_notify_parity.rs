@@ -1,15 +1,16 @@
-//! Сверка порта `we_notify.rs` с оригиналом `ui/src/notify.cpp` waywallen.
+//! Check of the `we_notify.rs` port against the original waywallen
+//! `ui/src/notify.cpp`.
 //!
-//! Кадры собираются тем же prost'ом (схема демона общая), скармливаются
-//! `apply_frame` и сверяются переход состояния + список сигналов.
-//! Отдельными тестами закреплены починки: пропущенное событие
-//! `displayConnectionFailed` и `statusChanged` без изменений.
+//! Frames are built with the same prost (the daemon schema is shared), fed to
+//! `apply_frame`, and the state transition + signal list are compared.
+//! Separate tests pin the fixes: the missed `displayConnectionFailed` event
+//! and `statusChanged` without changes.
 
 use prost::Message;
 use rexon_core::proto::control as pb;
 use rexon_core::we_notify as n;
 
-/// Переводимая строка без ключа каталога — то, что демон присылал до 0.3.8.
+/// A translatable string without a catalog key — what the daemon sent before 0.3.8.
 fn plain(text: &str) -> n::PluginText {
     n::PluginText { fallback: text.to_string(), ..Default::default() }
 }
@@ -23,8 +24,8 @@ fn frame(payload: pb::event::Payload) -> Vec<u8> {
     f.encode_to_vec()
 }
 
-/// `phase` тут — значение ИЗ СХЕМЫ (Unspecified=0, Starting=1, Ready=2),
-/// а не QML-перечисление Notify.DaemonPhase (Starting=0, Ready=1).
+/// `phase` here is a value FROM THE SCHEMA (Unspecified=0, Starting=1,
+/// Ready=2), not the QML enum Notify.DaemonPhase (Starting=0, Ready=1).
 fn status(
     scan: bool,
     tasks: u32,
@@ -43,13 +44,13 @@ fn status(
 #[test]
 fn status_sync_updates_state_and_signals_ready_edge() {
     let mut st = n::NotifyState::default();
-    // старт: демон ещё не готов, но появилась задача → только statusChanged
+    // start: the daemon is not ready yet, but a task appeared → only statusChanged
     let sig = n::apply_frame(&mut st, &status(true, 2, pb::DaemonPhase::Starting as i32, None)).unwrap();
     assert_eq!(sig, vec![n::NotifySignal::StatusChanged]);
     assert!(st.scan_in_progress && st.active_task_count == 2);
     assert_eq!(st.daemon_phase, n::PHASE_STARTING);
 
-    // переход в Ready → statusChanged + daemonReady (именно в этом порядке)
+    // transition to Ready → statusChanged + daemonReady (exactly in this order)
     let sig = n::apply_frame(&mut st, &status(false, 0, pb::DaemonPhase::Ready as i32, None)).unwrap();
     assert_eq!(
         sig,
@@ -60,7 +61,7 @@ fn status_sync_updates_state_and_signals_ready_edge() {
     );
     assert_eq!(st.daemon_phase, n::PHASE_READY);
 
-    // повторный Ready тем же снимком → НИ ОДНОГО сигнала (починка №2/№3)
+    // repeated Ready with the same snapshot → NOT A SINGLE signal (fix #2/#3)
     let sig = n::apply_frame(&mut st, &status(false, 0, pb::DaemonPhase::Ready as i32, None)).unwrap();
     assert!(sig.is_empty(), "{sig:?}");
 }
@@ -80,7 +81,7 @@ fn display_backend_snapshot_reaches_state() {
     assert_eq!(sig.len(), 2);
     assert_eq!(st.display_backend.name, "kde");
     assert_eq!(st.display_backend.binary, "/usr/bin/waywallen");
-    // тот же бэкенд повторно — тишина
+    // the same backend again — silence
     let same = pb::DisplayBackendStatus {
         name: "kde".into(),
         state: "running".into(),
@@ -92,7 +93,7 @@ fn display_backend_snapshot_reaches_state() {
     assert!(n::apply_frame(&mut st, &status(false, 0, pb::DaemonPhase::Ready as i32, Some(same)))
         .unwrap()
         .is_empty());
-    // сменилось одно поле — снова statusChanged, без daemonReady
+    // one field changed — statusChanged again, without daemonReady
     let moved = pb::DisplayBackendStatus {
         name: "kde".into(),
         state: "stopped".into(),
@@ -147,8 +148,8 @@ fn transient_events_map_one_to_one() {
                 transfer: None,
             },
         ),
-        // waywallen 0.6.0: ход передачи доходит до склада; без полного
-        // размера «всего» — 0.
+        // waywallen 0.6.0: transfer progress reaches the store; without a full
+        // size, «total» is 0.
         (
             frame(pb::event::Payload::RemoteDownloadProgress(
                 pb::RemoteDownloadProgress {
@@ -193,8 +194,8 @@ fn transient_events_map_one_to_one() {
                 error: String::new(),
                 title: "Вход".into(),
                 instruction: "Отсканируйте".into(),
-                // waywallen 0.3.8: рядом с каждой строкой появилась её
-                // переводимая пара; демон её здесь не прислал.
+                // waywallen 0.3.8: each string got its translatable pair next to it;
+                // the daemon did not send it here.
                 ..Default::default()
             })),
             n::NotifySignal::QrLoginProgress {
@@ -203,13 +204,36 @@ fn transient_events_map_one_to_one() {
                 action_id: "login".into(),
                 state: 1,
                 qr_image: "data".into(),
-                // waywallen 0.3.8: четыре текста диалога переводимы. Демон
-                // прислал только строки — ключа каталога у них нет, и
-                // наружу уходит запасной текст, как раньше.
+                // waywallen 0.3.8: the four dialog texts are translatable. The daemon
+                // sent only strings — they have no catalog key, and the fallback text
+                // goes out, as before.
                 display_value: plain("код"),
                 error: plain(""),
                 title: plain("Вход"),
                 instruction: plain("Отсканируйте"),
+            },
+        ),
+        (
+            // waywallen 0.6.1: browser sign-in (Pixiv). Same texts as the QR
+            // flow, no image.
+            frame(pb::event::Payload::BrowserLoginProgress(pb::BrowserLoginProgress {
+                session_id: "b1".into(),
+                plugin_id: "org.waywallen.pixiv".into(),
+                action_id: "login".into(),
+                state: 2,
+                title: "Sign in".into(),
+                instruction: "Finish in the browser window".into(),
+                ..Default::default()
+            })),
+            n::NotifySignal::BrowserLoginProgress {
+                session_id: "b1".into(),
+                plugin_id: "org.waywallen.pixiv".into(),
+                action_id: "login".into(),
+                state: 2,
+                display_value: plain(""),
+                error: plain(""),
+                title: plain("Sign in"),
+                instruction: plain("Finish in the browser window"),
             },
         ),
         (
@@ -233,13 +257,13 @@ fn transient_events_map_one_to_one() {
         let got = n::apply_frame(&mut st, &bytes).unwrap();
         assert_eq!(got, vec![want.clone()], "событие {want:?}");
     }
-    // состояние снимка эти события не трогают
+    // these events do not touch the snapshot state
     assert_eq!(st, n::NotifyState::default());
 }
 
-/// ⚠️ Починка №1: событие было в протоколе и в сигнале нашего Python, но
-/// ветки обработки не существовало — сообщение о том, что чужой клиент не
-/// смог подключиться к дисплей-протоколу, молча терялось.
+/// ⚠️ Fix #1: the event existed in the protocol and in our Python signal, but
+/// there was no handling branch — the message that a foreign client failed to
+/// connect to the display protocol was silently lost.
 #[test]
 fn fix_display_connection_failed_is_delivered() {
     let mut st = n::NotifyState::default();
@@ -265,7 +289,7 @@ fn fix_display_connection_failed_is_delivered() {
 #[test]
 fn disconnect_resets_only_when_dirty() {
     let mut st = n::NotifyState::default();
-    // чистое состояние — сигнала нет (починка №3)
+    // clean state — no signal (fix #3)
     assert!(n::on_disconnected(&mut st).is_empty());
 
     n::apply_frame(&mut st, &status(true, 3, pb::DaemonPhase::Ready as i32, None)).unwrap();
@@ -279,7 +303,7 @@ fn disconnect_resets_only_when_dirty() {
 #[test]
 fn response_frames_and_unknown_payloads_are_silent() {
     let mut st = n::NotifyState::default();
-    // кадр с ОТВЕТОМ (их читает Python) — событий не даёт
+    // a frame with a RESPONSE (Python reads those) — yields no events
     let resp = pb::ServerFrame {
         kind: Some(pb::server_frame::Kind::Response(pb::Response {
             request_id: 7,
@@ -289,7 +313,7 @@ fn response_frames_and_unknown_payloads_are_silent() {
     .encode_to_vec();
     assert!(n::apply_frame(&mut st, &resp).unwrap().is_empty());
 
-    // событие без payload и событие чужой модели — тоже тишина
+    // an event without payload and an event of a foreign model — silence too
     let empty = pb::ServerFrame {
         kind: Some(pb::server_frame::Kind::Event(pb::Event { payload: None })),
     }

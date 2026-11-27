@@ -1,17 +1,19 @@
-// Раздел «Кнопки заголовка окна» вкладки «Оформление»: сторона кнопок
-// (справа, как в Windows, или слева, как в macOS), раскладка
-// перетаскиванием, как в окне «Кнопки заголовка» модуля KDE (макет
-// заголовка с левой и правой группой + полка всех кнопок модуля KDE; чего
-// у окружения нет — на полке недоступно с причиной), флажки заголовка KDE
-// и размер рамки — во всех окружениях.
+// The "Title bar buttons" section of the "Appearance" tab: the button side
+// (right, as in Windows, or left, as in macOS), a drag-and-drop layout as
+// in the "Titlebar Buttons" window of the KDE module (a title bar mock-up
+// with a left and a right group + a shelf with all the KDE module's
+// buttons; what the environment lacks is unavailable on the shelf with a
+// reason), the KDE title bar check boxes and the border size — in all
+// environments.
 //
-// Мышью кнопки перетаскиваются между сторонами заголовка и полкой; с
-// клавиатуры и геймпада — выбрать кнопку (Enter/щелчок) и нажать «Левее»,
-// «Правее», «Убрать на полку» или «Добавить слева/справа»; у выбранной
-// кнопки заголовка то же делают стрелки и Delete. Порядок и родные строки
-// менеджеров окон — ядро (`window_buttons::move_button`, `nudge`).
+// With the mouse, buttons are dragged between the sides of the title bar
+// and the shelf; with the keyboard and a gamepad — select a button
+// (Enter/click) and press "Move left", "Move right", "Put on shelf" or
+// "Add left/right"; for a selected title bar button the arrows and Delete
+// do the same. The order and the native window manager strings come from
+// the core (`window_buttons::move_button`, `nudge`).
 //
-// Только разметка: снимок и запись — `WindowButtonsActions`
+// Markup only: snapshot and writing — `WindowButtonsActions`
 // (rust/rexon-gui/src/window_buttons_actions.rs → rexon_core::window_buttons).
 
 pragma ComponentBehavior: Bound
@@ -31,7 +33,7 @@ Rectangle {
 
     property var st: ({})
 
-    /// Ширина подписей слева: одна на раздел, чтобы списки стояли ровно.
+    /// Width of the labels on the left: one per section, so the lists line up.
     readonly property real labelWidth: Math.max(section.sty.widths.fieldLabel, 300)
 
     function reload() {
@@ -44,13 +46,14 @@ Rectangle {
         section.reload();
     }
 
-    // ── Редактор перетаскиванием ────────────────────────────────────────
-    /// Выбранная кнопка: сторона (`left`/`right`/`shelf`), позиция, id.
+    // ── Drag-and-drop editor ────────────────────────────────────────────
+    /// Selected button: side (`left`/`right`/`shelf`), position, id.
     property string selSide: ""
     property int selIndex: -1
     property string selId: ""
 
-    /// Что сейчас тащат (id, откуда, позиция); пусто — ничего.
+    /// What is being dragged right now (id, from where, position); empty means
+    /// nothing.
     property string dragId: ""
     property string dragFrom: ""
     property int dragIndex: -1
@@ -74,13 +77,13 @@ Rectangle {
         section.select("", -1, "");
     }
 
-    /// Перенос мышью: ответ ядра — сообщение; выделение снимается.
+    /// Move by mouse: the core answers with a message; the selection is cleared.
     function move(id, from, fromIndex, to, toIndex) {
         section.clearSelection();
         section.did(actions.moveButton(id, from, fromIndex, to, toIndex));
     }
 
-    /// Шаг кнопкой/клавишей: выделение идёт за кнопкой.
+    /// Step by button/key: the selection follows the button.
     function nudge(dir) {
         if (section.selSide !== "left" && section.selSide !== "right")
             return;
@@ -99,16 +102,18 @@ Rectangle {
         const id = section.selId;
         section.did(actions.addButton(id, side));
         const list = section.st[side] || [];
-        // Новая кнопка выбрана на своём месте (промежуток — ближний к названию).
+        // A new button is selected in its place (the gap is the one nearest to
+        // the title).
         const at = id === "spacer" ? (side === "left" ? list.lastIndexOf(id) : list.indexOf(id))
                                    : list.indexOf(id);
         if (at >= 0)
             section.select(side, at, id);
     }
 
-    /// Куда в стороне встанет кнопка, брошенная в точке `x` (координаты
-    /// `item`): столько кнопок стороны, сколько их центров левее точки, —
-    /// без самой переносимой (позиция для ядра — «уже без неё»).
+    /// Where in the side a button dropped at point `x` (in `item` coordinates)
+    /// will go: as many buttons of the side as have their centres to the left
+    /// of the point — not counting the button being moved (the position for
+    /// the core is "already without it").
     function dropIndex(repeater, side, item, x) {
         let at = 0;
         for (let i = 0; i < repeater.count; i++) {
@@ -124,15 +129,15 @@ Rectangle {
         return at;
     }
 
-    /// Стороны заголовка с галочками: у окружений со стороной — обе, у
-    /// COSMIC — одна (только правая, и без подписи стороны).
+    /// Title bar sides with check boxes: both for environments with a side
+    /// setting, one for COSMIC (only the right one, and without a side label).
     readonly property var sides: section.st.has_side === true
         ? [{ id: "left", label: qsTranslate("rexon", "Left side:") },
            { id: "right", label: qsTranslate("rexon", "Right side:") }]
         : [{ id: "right", label: qsTranslate("rexon", "Buttons:") }]
 
-    // Слой перетаскивания: «призрак» кнопки идёт за указателем поверх
-    // макета и полки (сами кнопки в рядах остаются на местах).
+    // Drag layer: a "ghost" of the button follows the pointer over the mock-up
+    // and the shelf (the buttons themselves stay in place in their rows).
     Item {
         id: dragLayer
         anchors.fill: parent
@@ -181,8 +186,9 @@ Rectangle {
         ghost.y = ghost.startY + dy;
     }
 
-    /// Отпустили: бросить туда, где «призрак» (перенос — после, в
-    /// `Qt.callLater`, чтобы не пересоздавать ряды посреди обработчика).
+    /// Released: drop it where the "ghost" is (the move happens afterwards, in
+    /// `Qt.callLater`, so the rows are not recreated in the middle of the
+    /// handler).
     function endDrag() {
         if (ghost.Drag.target)
             ghost.Drag.drop();
@@ -193,12 +199,12 @@ Rectangle {
         section.dragIndex = -1;
     }
 
-    /// Кнопки стороны для ряда макета: id и сторона.
+    /// Side buttons for a mock-up row: id and side.
     function slots(side) {
         return (section.st[side] || []).map(id => ({ id: id, side: side }));
     }
 
-    /// Кнопка на полке: значок и подпись, как в сетке модуля KDE.
+    /// A button on the shelf: icon and label, as in the KDE module's grid.
     Component {
         id: shelfCell
         Item {
@@ -229,7 +235,7 @@ Rectangle {
                     font.pointSize: 15
                 }
 
-                // Уже в заголовке: перетаскивание её туда переносит.
+                // Already in the title bar: dragging it there moves it.
                 Rectangle {
                     visible: cell.modelData.placed === true
                     anchors.right: parent.right
@@ -278,8 +284,8 @@ Rectangle {
         }
     }
 
-    /// Фокус клавиатуры — за выбранной кнопкой (ряды пересоздаются после
-    /// каждого шага).
+    /// Keyboard focus follows the selected button (rows are recreated after
+    /// every step).
     function refocus() {
         Qt.callLater(() => {
             const rep = section.selSide === "left" ? leftRep : (section.selSide === "right" ? rightRep : null);
@@ -357,7 +363,7 @@ Rectangle {
             }
         }
 
-        // ── Макет заголовка: левая группа, название, правая группа ──────
+        // ── Title bar mock-up: left group, title, right group ───────────
         Rectangle {
             id: titleBar
             objectName: "windowButtonsTitleBar"
@@ -369,16 +375,16 @@ Rectangle {
             border.color: titleDrop.containsDrag ? section.pal.accent : section.pal.border
             border.width: titleDrop.containsDrag ? 2 : 1
 
-            // Физическая зона: это раскладка кнопок в заголовках окон самой
-            // системы, а не строка нашего интерфейса. «Справа, как в Windows»
-            // значит правый край окна при любом языке, поэтому при языке
-            // справа налево ряды тут НЕ зеркалятся: левая группа слева,
-            // клавиша ← и «Левее» двигают кнопку к левому краю. Подпись
-            // «Заголовок окна» — по центру, ей сторона не нужна.
+            // Physical zone: this is the button layout in the system's own window
+            // title bars, not a line of our interface. "Right, as in Windows" means
+            // the right edge of the window in any language, so for right-to-left
+            // languages the rows here are NOT mirrored: the left group is on the
+            // left, and the ← key and "Move left" move a button towards the left
+            // edge. The "Window title" label is centred and needs no side.
             LayoutMirroring.enabled: false
             LayoutMirroring.childrenInherit: true
 
-            /// Кнопка в макете заголовка.
+            /// A button in the title bar mock-up.
             Component {
                 id: titleSlot
                 Item {
@@ -472,8 +478,8 @@ Rectangle {
                 }
             }
 
-            // Брошенная кнопка встаёт в ту группу, к краю которой ближе
-            // (как в модуле KDE), на место среди её кнопок.
+            // A dropped button goes into the group whose edge it is closer to (as in
+            // the KDE module), into its place among that group's buttons.
             DropArea {
                 id: titleDrop
                 anchors.fill: parent
@@ -489,7 +495,7 @@ Rectangle {
             }
         }
 
-        // ── Полка: все кнопки модуля KDE ───────────────────────────────
+        // ── Shelf: all buttons of the KDE module ───────────────────────
         Rectangle {
             id: shelfBox
             objectName: "windowButtonsShelf"
@@ -550,7 +556,7 @@ Rectangle {
             color: section.pal.text_secondary
         }
 
-        // ── Без мыши: выбранная кнопка и шаги ────────────────────────────
+        // ── Without a mouse: the selected button and steps ───────────────
         Flow {
             id: selFlow
             Layout.fillWidth: true
@@ -568,10 +574,11 @@ Rectangle {
                 color: section.pal.text_primary
                 font.bold: true
             }
-            // Пары «Левее/Правее» и «Добавить слева/справа» — про стороны
-            // заголовка (физическая зона, как макет выше): при языке справа
-            // налево ряд действий зеркалится, а кнопка «Левее» внутри пары
-            // остаётся левой — в ту сторону, куда двигает.
+            // The "Move left/Move right" and "Add left/right" pairs are about the
+            // title bar sides (a physical zone, like the mock-up above): for
+            // right-to-left languages the row of actions is mirrored, but the "Move
+            // left" button inside a pair stays on the left — on the side it moves
+            // towards.
             Row {
                 id: moveRow
                 visible: selFlow.inTitle
@@ -630,9 +637,9 @@ Rectangle {
             }
         }
 
-        // Галочки по сторонам — там, где перетаскивания нет (COSMIC: только
-        // «свернуть» и «развернуть» вкл/выкл). Кнопка стоит на одной
-        // стороне: галочка на другой её туда переносит.
+        // Check boxes per side — where there is no drag and drop (COSMIC: only
+        // "minimize" and "maximize" on/off). A button sits on one side: the check
+        // box on the other side moves it there.
         Repeater {
             model: section.st.drag === true ? [] : section.sides
 
@@ -688,8 +695,8 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // Флажки заголовка KWin (только KDE): двойной щелчок по меню,
-        // подсказки кнопок, «скрыть от снимков» всегда.
+        // KWin title bar check boxes (KDE only): double click on the menu, button
+        // tooltips, "hide from screenshots" always.
         Repeater {
             model: section.st.flags || []
 

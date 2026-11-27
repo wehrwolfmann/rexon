@@ -1,79 +1,79 @@
-//! Апскейл обоев низкого разрешения — порт `rexon/extensions/upscaler.py`
-//! (класс `WallpaperUpscaler`).
+//! Upscaling of low-resolution wallpapers — port of `rexon/extensions/upscaler.py`
+//! (the `WallpaperUpscaler` class).
 //!
-//! Чистая логика (детерминированные вход→выход) вынесена в ядро:
-//!   * `suggest_scale` — рекомендуемый множитель по разрешению (пороги
-//!     480/800/1024/1920) и `needs_upscale`/`MIN_DESKTOP_WIDTH`;
-//!   * разбор вывода `identify` (`%w %h` → (w, h), ошибка → (0, 0));
-//!   * построение argv КАЖДОЙ стратегии байт-в-байт: Real-ESRGAN (одиночный
-//!     `-s min(scale,4)` и двухпроходный x4→x2 при scale>4), waifu2x
+//! Pure logic (deterministic input→output) is moved into the core:
+//!   * `suggest_scale` — the recommended factor by resolution (thresholds
+//!     480/800/1024/1920) and `needs_upscale`/`MIN_DESKTOP_WIDTH`;
+//!   * parsing of `identify` output (`%w %h` → (w, h), error → (0, 0));
+//!   * building the argv of EVERY strategy byte for byte: Real-ESRGAN (single
+//!     `-s min(scale,4)` and two-pass x4→x2 when scale>4), waifu2x
 //!     (`-s min(scale,4) -n 2`), center+blur (`convert (+clone …) +swap …`,
-//!     цель 1920×1080), ImageMagick Lanczos (`w*scale × h*scale`);
-//!   * ВЫБОР стратегии: порядок автопробы `realesrgan → waifu2x → center`,
-//!     резолв бинаря Real-ESRGAN (system PATH → локальная копия → скачивание),
-//!     дефолтный dest (`{base}_upscaled{ext}`), ранние выходы (identify
-//!     упал / scale ≤ 1);
-//!   * `process_wallpapers_in_dir` — обход папки, фильтр расширений, апскейл
-//!     маленьких in-place.
+//!     target 1920×1080), ImageMagick Lanczos (`w*scale × h*scale`);
+//!   * CHOOSING the strategy: the auto-probe order `realesrgan → waifu2x → center`,
+//!     resolving the Real-ESRGAN binary (system PATH → local copy → download),
+//!     the default dest (`{base}_upscaled{ext}`), early exits (identify
+//!     failed / scale ≤ 1);
+//!   * `process_wallpapers_in_dir` — walking a folder, filtering extensions, upscaling
+//!     small ones in place.
 //!
-//! СХЕМА: апскейл интерактивен — ход зависит от результатов subprocess
-//! (identify/realesrgan/waifu2x/convert) и от файлов, появившихся после них.
-//! Поэтому, как в `importers.rs`, вместо статического плана — трейт [`UpIo`]:
-//! КАЖДЫЙ побочный вызов оригинала (subprocess.run / shutil.which /
+//! DESIGN: upscaling is interactive — the flow depends on subprocess results
+//! (identify/realesrgan/waifu2x/convert) and on files that appear after them.
+//! So, as in `importers.rs`, instead of a static plan there is the [`UpIo`] trait:
+//! EVERY side-effecting call of the original (subprocess.run / shutil.which /
 //! os.path.exists|isfile / os.access / os.remove / os.listdir / os.replace /
-//! скачивание Real-ESRGAN) — один метод трейта, в том же порядке. Эталон
-//! паритета — журнал вызовов живого Python read-only (subprocess перехвачен
-//! прокси, реальный апскейл/identify/скачивание НЕ запускались;
-//! `tests/golden/upscaler_cases.json`); Rust обязан сделать те же вызовы в том
-//! же порядке (argv/timeout байт-в-байт) и прийти к тому же результату.
+//! Real-ESRGAN download) is one trait method, in the same order. The parity
+//! reference is a call log of live Python, read-only (subprocess intercepted by
+//! a proxy, real upscale/identify/download were NOT run;
+//! `tests/golden/upscaler_cases.json`); Rust must make the same calls in the same
+//! order (argv/timeout byte for byte) and reach the same result.
 //!
-//! Квирки оригинала СОХРАНЕНЫ:
-//!   * `upscale` проверяет только `w == 0` (не `h`) — при identify «100 0»
-//!     апскейл всё равно идёт (сохранено);
-//!   * `process_wallpapers_in_dir` имеет параметр `auto=True`, который нигде
-//!     не используется, — в Rust опущен как мёртвый;
-//!   * при `method="auto"` `identify` для одного файла вызывается многократно
-//!     (рекурсивный `upscale` перечитывает размер на каждый метод) — сохранено;
-//!   * center+blur игнорирует `scale` (всегда цель 1920×1080) — сохранено;
-//!   * ПОЧИНЕНО (порт, правило «баги при переводе чиним»): размер картинки
-//!     ядро сначала спрашивает у исполнителя ([`UpIo::image_size`]) и только
-//!     потом зовёт `identify`. Оригинал так и делает — Pillow-первым, потому
-//!     что на SteamOS ImageMagick нет; без этого хука Rust-путь на такой
-//!     машине всегда получал (0, 0) и апскейл молча не выполнялся. Реплей
-//!     журнала в parity-тестах не задет: `image_size` по умолчанию `None`.
-//!   * баг оригинала: `_ensure_realesrgan` в ветке скачивания использует
-//!     `zipfile`/`_safe_zip_extract`, не импортированные в модуле → любое
-//!     автоскачивание падает `NameError`, перехватывается `except` и даёт ""
-//!     (Real-ESRGAN автоскачиванием никогда не появляется). Здесь скачивание
-//!     делегировано методу [`UpIo::download_realesrgan`]; при паритете с
-//!     оригиналом исполнитель возвращает `None` (баг воспроизведён), а живой
-//!     исполнитель качает по-настоящему — это НЕ меняет ядро.
+//! Quirks of the original are KEPT:
+//!   * `upscale` checks only `w == 0` (not `h`) — with identify "100 0"
+//!     the upscale still runs (kept);
+//!   * `process_wallpapers_in_dir` has an `auto=True` parameter that is never
+//!     used — omitted in Rust as dead;
+//!   * with `method="auto"` `identify` is called many times for one file
+//!     (the recursive `upscale` re-reads the size for every method) — kept;
+//!   * center+blur ignores `scale` (always the 1920×1080 target) — kept;
+//!   * FIXED (port, rule "fix bugs while porting"): the core first asks the
+//!     executor for the picture size ([`UpIo::image_size`]) and only
+//!     then calls `identify`. The original does exactly that — Pillow first, because
+//!     SteamOS has no ImageMagick; without this hook the Rust path on such a
+//!     machine always got (0, 0) and the upscale silently did not run. The log
+//!     replay in parity tests is not affected: `image_size` defaults to `None`.
+//!   * bug of the original: `_ensure_realesrgan` in the download branch uses
+//!     `zipfile`/`_safe_zip_extract`, which are not imported in the module → any
+//!     auto-download fails with `NameError`, is caught by `except` and gives ""
+//!     (Real-ESRGAN never appears via auto-download). Here the download is
+//!     delegated to the [`UpIo::download_realesrgan`] method; for parity with
+//!     the original the executor returns `None` (the bug reproduced), while the live
+//!     executor really downloads — this does NOT change the core.
 //!
-//! ИСПОЛНИТЕЛЬ — не здесь: реальный запуск identify/апскейлеров, само
-//!   скачивание+распаковка Real-ESRGAN (тело `download_realesrgan`), файловые
-//!   операции и логи. Живой исполнитель на Rust — [`crate::imp_live::LiveUpIo`]
-//!   (им пользуется хвост импорта Windows-тем); в процессе с Python его роль
-//!   играет `_LiveUpIo` из `rexon/extensions/upscaler.py`. Оба переопределяют
-//!   [`UpIo::image_size`]: Python — через Pillow, Rust — разбором заголовка
-//!   самого файла ([`image_size_from_header`]), и ни одному из них ImageMagick
-//!   для этого не нужен. Если размер не даётся ВООБЩЕ, исполнитель обязан
-//!   сказать об этом словами ([`note_upscale_skipped`]), а не пропустить шаг
-//!   молча.
+//! The EXECUTOR is not here: actually running identify/the upscalers, the
+//!   download+unpacking of Real-ESRGAN itself (the body of `download_realesrgan`), file
+//!   operations and logs. The live Rust executor is [`crate::imp_live::LiveUpIo`]
+//!   (used by the tail of the Windows theme import); in a process with Python its role
+//!   is played by `_LiveUpIo` from `rexon/extensions/upscaler.py`. Both override
+//!   [`UpIo::image_size`]: Python via Pillow, Rust by parsing the header of
+//!   the file itself ([`image_size_from_header`]), and neither of them needs ImageMagick
+//!   for that. If the size cannot be obtained AT ALL, the executor must
+//!   say so in words ([`note_upscale_skipped`]) rather than skip the step
+//!   silently.
 
-/// Результат `subprocess.run`: `ok` = returncode == 0, плюс stdout (нужен
-/// для разбора вывода `identify`).
+/// Result of `subprocess.run`: `ok` = returncode == 0, plus stdout (needed
+/// for parsing `identify` output).
 pub struct RunResult {
     pub ok: bool,
     pub stdout: Vec<u8>,
 }
 
-/// Интерфейс исполнителя: каждый метод — ровно один побочный вызов
-/// оригинала, в порядке исполнения. В parity-тестах реализуется реплеем
-/// журнала; в живом мосте — реальным I/O.
+/// Executor interface: each method is exactly one side-effecting call of
+/// the original, in execution order. In parity tests it is implemented by a log
+/// replay; in the live bridge — by real I/O.
 pub trait UpIo {
     /// `subprocess.run(argv, capture_output=True, timeout=...)`.
     fn run(&mut self, argv: Vec<String>, timeout: u64) -> RunResult;
-    /// `shutil.which(name)` → путь или None.
+    /// `shutil.which(name)` → a path or None.
     fn which(&mut self, name: &str) -> Option<String>;
     /// `os.path.exists`.
     fn exists(&mut self, path: &str) -> bool;
@@ -81,72 +81,72 @@ pub trait UpIo {
     fn is_file(&mut self, path: &str) -> bool;
     /// `os.access(path, os.X_OK)`.
     fn access_x(&mut self, path: &str) -> bool;
-    /// `os.remove(path)` (ошибки подавлены оригиналом).
+    /// `os.remove(path)` (errors suppressed by the original).
     fn remove_file(&mut self, path: &str);
-    /// Ветка автоскачивания Real-ESRGAN (`_ensure_realesrgan`, шаг 3): путь к
-    /// бинарю или None. В оригинале всегда None (NameError, см. заголовок).
+    /// The Real-ESRGAN auto-download branch (`_ensure_realesrgan`, step 3): path to
+    /// the binary or None. In the original always None (NameError, see the header).
     fn download_realesrgan(&mut self) -> Option<String>;
     /// `os.listdir(path)`.
     fn listdir(&mut self, path: &str) -> Vec<String>;
     /// `os.replace(src, dst)`.
     fn replace(&mut self, src: &str, dst: &str);
 
-    /// Готовый ответ `get_image_size` целиком, если исполнитель умеет мерить
-    /// размер сам.
+    /// The complete `get_image_size` answer, if the executor can measure the
+    /// size itself.
     ///
-    /// Оригинал спрашивает размер СНАЧАЛА у Pillow (жёсткая зависимость
-    /// Rexon, читает только заголовок) и лишь потом запускает `identify` —
-    /// именно потому, что на SteamOS ImageMagick нет вовсе. Ядро Pillow
-    /// вызвать не может, а без этого хука Rust-путь на такой машине всегда
-    /// получал (0, 0) и апскейл молча не делался, тогда как Python-фолбэк
-    /// работал. Живой мост отвечает здесь результатом
-    /// `WallpaperUpscaler.get_image_size` (в нём и Pillow, и `identify`).
+    /// The original asks Pillow for the size FIRST (a hard dependency of
+    /// Rexon, reads only the header) and only then runs `identify` —
+    /// precisely because SteamOS has no ImageMagick at all. The core cannot
+    /// call Pillow, and without this hook the Rust path on such a machine always
+    /// got (0, 0) and the upscale silently did not happen, whereas the Python fallback
+    /// worked. The live bridge answers here with the result of
+    /// `WallpaperUpscaler.get_image_size` (which has both Pillow and `identify`).
     ///
-    /// `None` — исполнитель не умеет, ядро идёт запасным путём через
-    /// `identify` (реплей журнала в parity-тестах так и остаётся).
+    /// `None` — the executor cannot, the core takes the fallback path via
+    /// `identify` (the log replay in parity tests stays that way).
     ///
-    /// ⚠️ Ответ `Some((0, 0))` — законный и значит «померить не вышло НИЧЕМ».
-    /// Живой исполнитель отвечает так только сказав об этом человеку: тихо
-    /// пропущенный апскейл покупатель принял бы за нормальную работу.
+    /// ⚠️ The answer `Some((0, 0))` is legitimate and means "could not measure with ANYTHING".
+    /// The live executor answers so only after telling the person: a silently
+    /// skipped upscale would be taken by the customer for normal operation.
     fn image_size(&mut self, _path: &str) -> Option<(i64, i64)> {
         None
     }
 }
 
 // ============================================================================
-// Константы (порт полей класса)
+// Constants (port of the class fields)
 // ============================================================================
 
-/// `MIN_DESKTOP_WIDTH` — порог `needs_upscale` (макс. сторона меньше → апскейл).
+/// `MIN_DESKTOP_WIDTH` — the `needs_upscale` threshold (max side smaller → upscale).
 pub const MIN_DESKTOP_WIDTH: i64 = 1024;
-/// `MIN_DESKTOP_HEIGHT` (в оригинале объявлен, но в логике не используется).
+/// `MIN_DESKTOP_HEIGHT` (declared in the original but not used in the logic).
 pub const MIN_DESKTOP_HEIGHT: i64 = 768;
 
-/// URL автоскачивания Real-ESRGAN (`_ESRGAN_URL`) — для исполнителя.
+/// Real-ESRGAN auto-download URL (`_ESRGAN_URL`) — for the executor.
 pub const ESRGAN_URL: &str =
     "https://github.com/xinntao/Real-ESRGAN/releases/download/\
      v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip";
 
-/// Порядок автопробы стратегий в `method="auto"`.
+/// Auto-probe order of strategies with `method="auto"`.
 pub const AUTO_METHODS: [&str; 3] = ["realesrgan", "waifu2x", "center"];
 
-/// Модель Real-ESRGAN, передаваемая через `-n`.
+/// The Real-ESRGAN model passed via `-n`.
 const REALESRGAN_MODEL: &str = "realesrgan-x4plus";
 
-/// Путь локальной копии Real-ESRGAN (`_ESRGAN_DIR/realesrgan-ncnn-vulkan`) от
-/// домашнего каталога — исполнитель подставляет `expanduser("~")`.
+/// Path of the local Real-ESRGAN copy (`_ESRGAN_DIR/realesrgan-ncnn-vulkan`) from
+/// the home directory — the executor substitutes `expanduser("~")`.
 pub fn esrgan_local_exe(home: &str) -> String {
     format!("{home}/.local/share/rexon/bin/realesrgan/realesrgan-ncnn-vulkan")
 }
 
-/// Расширения изображений для `process_wallpapers_in_dir` (`img_exts`).
+/// Image extensions for `process_wallpapers_in_dir` (`img_exts`).
 const IMG_EXTS: [&str; 5] = [".jpg", ".jpeg", ".png", ".bmp", ".webp"];
 
 // ============================================================================
-// Хелперы семантики Python (os.path, int)
+// Helpers for Python semantics (os.path, int)
 // ============================================================================
 
-/// `os.path.splitext`: ведущие точки basename расширением не считаются.
+/// `os.path.splitext`: leading dots of the basename do not count as an extension.
 fn splitext(p: &str) -> (&str, &str) {
     let base_start = p.rfind('/').map_or(0, |i| i + 1);
     let base = &p[base_start..];
@@ -159,7 +159,7 @@ fn splitext(p: &str) -> (&str, &str) {
     (p, "")
 }
 
-/// `os.path.join` для POSIX (двух аргументов достаточно).
+/// `os.path.join` for POSIX (two arguments are enough).
 fn join(a: &str, b: &str) -> String {
     if b.starts_with('/') {
         b.to_string()
@@ -170,13 +170,13 @@ fn join(a: &str, b: &str) -> String {
     }
 }
 
-/// Дефолтный dest: `{base}_upscaled{ext}` (порт ветки `dest_path is None`).
+/// Default dest: `{base}_upscaled{ext}` (port of the `dest_path is None` branch).
 fn default_dest(src: &str) -> String {
     let (base, ext) = splitext(src);
     format!("{base}_upscaled{ext}")
 }
 
-/// `int(token)` (десятичный, знак, ASCII-цифры). None — не число.
+/// `int(token)` (decimal, sign, ASCII digits). None — not a number.
 fn py_int(s: &str) -> Option<i64> {
     let t = s.trim();
     if t.is_empty() {
@@ -192,7 +192,7 @@ fn py_int(s: &str) -> Option<i64> {
     digits.parse::<i64>().ok().map(|v| if neg { -v } else { v })
 }
 
-/// `int(parts[0]), int(parts[1])` от `stdout.strip().split()`; при
+/// `int(parts[0]), int(parts[1])` of `stdout.strip().split()`; on
 /// IndexError/ValueError → (0, 0).
 pub fn parse_identify(stdout: &[u8]) -> (i64, i64) {
     let s = String::from_utf8_lossy(stdout);
@@ -207,30 +207,30 @@ pub fn parse_identify(stdout: &[u8]) -> (i64, i64) {
 }
 
 // ============================================================================
-// Чистая логика: пороги
+// Pure logic: thresholds
 // ============================================================================
 
-/// `suggest_scale(w, h)` → множитель 2/4/8/1. Пороги по большей стороне.
-/// Намеренное расхождение (структурное, без изменения поведения): в оригинале
-/// две отдельные ветки `<800 → 4` (XP/Vista) и `<1024 → 4` (HD-ready) с
-/// одинаковым результатом; здесь объединены в `< 1024 → 4` (значения
-/// идентичны, golden покрывает 799/800/1023/1024).
+/// `suggest_scale(w, h)` → factor 2/4/8/1. Thresholds by the larger side.
+/// Intentional divergence (structural, without behaviour change): the original has
+/// two separate branches `<800 → 4` (XP/Vista) and `<1024 → 4` (HD-ready) with
+/// the same result; here they are merged into `< 1024 → 4` (the values are
+/// identical, golden covers 799/800/1023/1024).
 pub fn suggest_scale(w: i64, h: i64) -> i64 {
     let longest = w.max(h);
     if longest < 480 {
-        8 // мобильное
+        8 // mobile
     } else if longest < 1024 {
         4 // XP/Vista / HD-ready
     } else if longest < 1920 {
         2 // HD → Full HD
     } else {
-        1 // уже достаточно
+        1 // already enough
     }
 }
 
-/// `get_image_size` — сначала спрашиваем исполнителя (у живого моста там
-/// Pillow-первым, как в оригинале), иначе запуск identify + разбор. (0, 0)
-/// при ошибке.
+/// `get_image_size` — first ask the executor (the live bridge has
+/// Pillow first there, as in the original), otherwise run identify + parse. (0, 0)
+/// on error.
 fn get_image_size(io: &mut dyn UpIo, path: &str) -> (i64, i64) {
     if let Some(size) = io.image_size(path) {
         return size;
@@ -251,7 +251,7 @@ fn get_image_size(io: &mut dyn UpIo, path: &str) -> (i64, i64) {
     }
 }
 
-/// `needs_upscale` — макс. сторона меньше `MIN_DESKTOP_WIDTH`. (0,0) → false.
+/// `needs_upscale` — the max side is smaller than `MIN_DESKTOP_WIDTH`. (0,0) → false.
 pub fn needs_upscale(io: &mut dyn UpIo, path: &str) -> bool {
     let (w, h) = get_image_size(io, path);
     if w == 0 || h == 0 {
@@ -261,11 +261,11 @@ pub fn needs_upscale(io: &mut dyn UpIo, path: &str) -> bool {
 }
 
 // ============================================================================
-// Резолв Real-ESRGAN и стратегии (argv байт-в-байт)
+// Real-ESRGAN resolution and strategies (argv byte for byte)
 // ============================================================================
 
-/// `_ensure_realesrgan`: system PATH → локальная копия → скачивание.
-/// None — не найден (в оригинале скачивание всегда даёт "" из-за NameError).
+/// `_ensure_realesrgan`: system PATH → local copy → download.
+/// None — not found (in the original the download always gives "" because of NameError).
 fn ensure_realesrgan(io: &mut dyn UpIo, local_exe: &str) -> Option<String> {
     if let Some(exe) = io.which("realesrgan-ncnn-vulkan") {
         return Some(exe);
@@ -276,8 +276,8 @@ fn ensure_realesrgan(io: &mut dyn UpIo, local_exe: &str) -> Option<String> {
     io.download_realesrgan()
 }
 
-/// `_upscale_realesrgan`: одиночный `-s min(scale,4)` либо двухпроходный
-/// x4→x2 при scale>4 (Real-ESRGAN не умеет x8 за проход).
+/// `_upscale_realesrgan`: single `-s min(scale,4)` or two-pass
+/// x4→x2 when scale>4 (Real-ESRGAN cannot do x8 in one pass).
 fn upscale_realesrgan(
     io: &mut dyn UpIo,
     src: &str,
@@ -376,8 +376,8 @@ fn upscale_waifu2x(io: &mut dyn UpIo, src: &str, dest: &str, scale: i64) -> Stri
     }
 }
 
-/// `_upscale_center_blur`: центр на размытом увеличенном фоне (цель tw×th).
-/// `scale` не используется (квирк оригинала сохранён).
+/// `_upscale_center_blur`: the center on a blurred enlarged background (target tw×th).
+/// `scale` is not used (the original's quirk kept).
 fn upscale_center_blur(
     io: &mut dyn UpIo,
     src: &str,
@@ -415,8 +415,8 @@ fn upscale_center_blur(
     }
 }
 
-/// `_upscale_imagemagick`: Lanczos-resize до `w*scale × h*scale` (перечитывает
-/// размер оригинала через identify).
+/// `_upscale_imagemagick`: Lanczos resize to `w*scale × h*scale` (re-reads
+/// the original's size via identify).
 fn upscale_imagemagick(io: &mut dyn UpIo, src: &str, dest: &str, scale: i64) -> String {
     let (w, h) = get_image_size(io, src);
     let nw = w * scale;
@@ -441,9 +441,9 @@ fn upscale_imagemagick(io: &mut dyn UpIo, src: &str, dest: &str, scale: i64) -> 
 }
 
 /// `WallpaperUpscaler.upscale`. `method`: "auto" (realesrgan→waifu2x→center),
-/// "realesrgan"/"waifu2x"/"center"/"imagemagick"; иначе — возврат src.
+/// "realesrgan"/"waifu2x"/"center"/"imagemagick"; otherwise — return src.
 /// `dest_opt=None` → `{base}_upscaled{ext}`. `scale=0` → `suggest_scale`.
-/// Возвращает путь к результату (или исходный src при неуспехе/ненужности).
+/// Returns the path to the result (or the source src on failure/when not needed).
 pub fn upscale(
     io: &mut dyn UpIo,
     src: &str,
@@ -485,8 +485,8 @@ pub fn upscale(
     }
 }
 
-/// `process_wallpapers_in_dir`: апскейл маленьких обоев в папке in-place.
-/// Возвращает число обработанных. Параметр `auto` оригинала опущен (мёртв).
+/// `process_wallpapers_in_dir`: upscale small wallpapers in a folder in place.
+/// Returns the number processed. The original's `auto` parameter is omitted (dead).
 pub fn process_wallpapers_in_dir(
     io: &mut dyn UpIo,
     data_dir: &str,
@@ -517,28 +517,28 @@ pub fn process_wallpapers_in_dir(
 }
 
 // ============================================================================
-// Размер картинки по её собственному заголовку
+// Picture size from its own header
 // ============================================================================
 //
-// ЗАЧЕМ. Оригинал спрашивал размер у Pillow, а `identify` держал запасным
-// путём. В процессе без Python Pillow нет, и на машине без ImageMagick
-// исполнителю становилось нечем мерить: размер выходил (0, 0), `needs_upscale`
-// отвечал «не надо», и обои из импортированной темы Windows оставались в своём
-// 800×600 — МОЛЧА. Покупатель решал бы, что программа так и работает.
+// WHY. The original asked Pillow for the size and kept `identify` as the fallback
+// path. In a process without Python there is no Pillow, and on a machine without ImageMagick
+// the executor had nothing to measure with: the size came out (0, 0), `needs_upscale`
+// answered "not needed", and the wallpapers from an imported Windows theme stayed at their
+// 800×600 — SILENTLY. The customer would decide that this is how the program works.
 //
-// Мерить, однако, чаще всего нечего и не надо: ширина и высота лежат в первых
-// байтах самого файла, и разобрать их дешевле, чем запускать чужую программу.
-// Здесь разобраны все пять форматов, которые вообще попадают апскейлеру
-// (`IMG_EXTS`), плюс GIF — он стоит трёх строк. `identify` остаётся запасным
-// ходом для экзотики (TIFF, HEIF, битые файлы), а если и его нет — исполнитель
-// обязан сказать об этом словами, а не промолчать (см. [`note_upscale_skipped`]).
+// Most of the time, however, there is nothing to measure and no need to: width and height lie in the first
+// bytes of the file itself, and parsing them is cheaper than running a foreign program.
+// All five formats that ever reach the upscaler (`IMG_EXTS`) are parsed here,
+// plus GIF — it costs three lines. `identify` remains the fallback
+// for exotic cases (TIFF, HEIF, broken files), and if it is missing too, the executor
+// must say so in words rather than stay silent (see [`note_upscale_skipped`]).
 
-/// Сколько байт от начала файла хватает, чтобы узнать размер.
+/// How many bytes from the start of the file are enough to learn the size.
 ///
-/// У PNG/BMP/GIF/WebP размер лежит в первых трёх десятках байт, а вот JPEG
-/// кладёт кадр (маркер SOF) ПОСЛЕ метаданных, и EXIF с миниатюрой занимает
-/// десятки килобайт. Запас щедрый намеренно: читается всё равно только начало
-/// файла, а не файл целиком (обои бывают по 20 МБ).
+/// For PNG/BMP/GIF/WebP the size lies in the first three dozen bytes, but JPEG
+/// puts the frame (SOF marker) AFTER the metadata, and EXIF with a thumbnail takes
+/// tens of kilobytes. The margin is generous on purpose: only the start of the
+/// file is read anyway, not the whole file (wallpapers can be 20 MB).
 pub const HEADER_PROBE_BYTES: usize = 256 * 1024;
 
 fn be16(b: &[u8], at: usize) -> i64 {
@@ -567,12 +567,12 @@ fn le32(b: &[u8], at: usize) -> i64 {
         | ((b[at + 3] as i64) << 24)
 }
 
-/// Размер картинки по началу файла. `None` — формат не опознан либо заголовок
-/// оборван (тогда зовущая сторона идёт запасным путём через `identify`).
+/// Picture size from the start of the file. `None` — the format is not recognised or the header
+/// is truncated (then the calling side takes the fallback path via `identify`).
 ///
-/// Нулевые и отрицательные стороны считаются неопознанными: ответ «0×0» у
-/// нас уже значит «не знаю», и второго значения с тем же смыслом быть не
-/// должно.
+/// Zero and negative sides count as unrecognised: the answer "0×0" already
+/// means "don't know" here, and there must not be a second value with the same
+/// meaning.
 pub fn image_size_from_header(head: &[u8]) -> Option<(i64, i64)> {
     let size = png_size(head)
         .or_else(|| gif_size(head))
@@ -586,7 +586,7 @@ pub fn image_size_from_header(head: &[u8]) -> Option<(i64, i64)> {
     }
 }
 
-/// PNG: подпись, затем блок IHDR — ширина и высота по 4 байта со смещения 16.
+/// PNG: the signature, then the IHDR chunk — width and height 4 bytes each from offset 16.
 fn png_size(b: &[u8]) -> Option<(i64, i64)> {
     const SIGN: &[u8] = b"\x89PNG\r\n\x1a\n";
     if b.len() < 24 || &b[..8] != SIGN {
@@ -595,7 +595,7 @@ fn png_size(b: &[u8]) -> Option<(i64, i64)> {
     Some((be32(b, 16), be32(b, 20)))
 }
 
-/// GIF: «логический экран» сразу за подписью, обе стороны по 2 байта.
+/// GIF: the "logical screen" right after the signature, both sides 2 bytes each.
 fn gif_size(b: &[u8]) -> Option<(i64, i64)> {
     if b.len() < 10 || (&b[..6] != b"GIF87a" && &b[..6] != b"GIF89a") {
         return None;
@@ -603,10 +603,10 @@ fn gif_size(b: &[u8]) -> Option<(i64, i64)> {
     Some((le16(b, 6), le16(b, 8)))
 }
 
-/// BMP: за файловым заголовком идёт DIB, и его РАЗМЕР говорит, какой это
-/// вариант. У самого старого (BITMAPCOREHEADER, 12 байт) стороны по 2 байта,
-/// у всех остальных — по 4. Высота бывает отрицательной (строки сверху вниз),
-/// поэтому берётся по модулю.
+/// BMP: the file header is followed by the DIB, and its SIZE tells which
+/// variant it is. The oldest one (BITMAPCOREHEADER, 12 bytes) has 2-byte sides,
+/// all the others — 4-byte ones. The height can be negative (rows top to bottom),
+/// so its absolute value is taken.
 fn bmp_size(b: &[u8]) -> Option<(i64, i64)> {
     if b.len() < 26 || &b[..2] != b"BM" {
         return None;
@@ -619,23 +619,23 @@ fn bmp_size(b: &[u8]) -> Option<(i64, i64)> {
     Some((w.abs(), h.abs()))
 }
 
-/// WebP: контейнер RIFF, а размер лежит в первом блоке — своём для каждой из
-/// трёх разновидностей (с потерями, без потерь, расширенный).
+/// WebP: a RIFF container, and the size lies in the first chunk — different for each of
+/// the three variants (lossy, lossless, extended).
 fn webp_size(b: &[u8]) -> Option<(i64, i64)> {
     if b.len() < 30 || &b[..4] != b"RIFF" || &b[8..12] != b"WEBP" {
         return None;
     }
     match &b[12..16] {
-        // VP8 (с потерями): за трёхбайтовой меткой кадра — сигнатура и стороны
-        // по 14 бит каждая (старшие два бита — масштаб, он нам не нужен).
+        // VP8 (lossy): after the three-byte frame tag — the signature and the sides,
+        // 14 bits each (the top two bits are the scale, we do not need it).
         b"VP8 " => {
             if b[23..26] != [0x9D, 0x01, 0x2A] {
                 return None;
             }
             Some((le16(b, 26) & 0x3FFF, le16(b, 28) & 0x3FFF))
         }
-        // VP8L (без потерь): 14 бит ширины и 14 бит высоты подряд, обе на
-        // единицу меньше настоящих.
+        // VP8L (lossless): 14 bits of width and 14 bits of height in a row, both
+        // one less than the real ones.
         b"VP8L" => {
             if b[20] != 0x2F {
                 return None;
@@ -643,15 +643,15 @@ fn webp_size(b: &[u8]) -> Option<(i64, i64)> {
             let bits = le32(b, 21);
             Some(((bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1))
         }
-        // VP8X (расширенный): размер холста тремя байтами, тоже на единицу
-        // меньше настоящего.
+        // VP8X (extended): canvas size in three bytes, also one
+        // less than the real one.
         b"VP8X" => Some((le24(b, 24) + 1, le24(b, 27) + 1)),
         _ => None,
     }
 }
 
-/// JPEG: обход маркеров от начала до первого кадра (SOF). Кадр лежит ПОСЛЕ
-/// метаданных, поэтому идти приходится по цепочке длин, а не по смещению.
+/// JPEG: walking the markers from the start to the first frame (SOF). The frame lies AFTER
+/// the metadata, so we have to follow the chain of lengths, not an offset.
 fn jpeg_size(b: &[u8]) -> Option<(i64, i64)> {
     if b.len() < 4 || b[0] != 0xFF || b[1] != 0xD8 {
         return None;
@@ -659,11 +659,11 @@ fn jpeg_size(b: &[u8]) -> Option<(i64, i64)> {
     let mut i = 2usize;
     while i + 1 < b.len() {
         if b[i] != 0xFF {
-            // Мусор между сегментами: ищем следующий маркер, а не сдаёмся.
+            // Garbage between segments: look for the next marker rather than give up.
             i += 1;
             continue;
         }
-        // Подряд идущие 0xFF — заполнитель, маркер это следующий байт.
+        // Consecutive 0xFF bytes are fill, the marker is the next byte.
         let mut j = i + 1;
         while j < b.len() && b[j] == 0xFF {
             j += 1;
@@ -674,9 +674,9 @@ fn jpeg_size(b: &[u8]) -> Option<(i64, i64)> {
         let marker = b[j];
         i = j + 1;
         match marker {
-            // Маркеры без сегмента: подпись, перезапуск, «пустой».
+            // Markers without a segment: signature, restart, "empty".
             0xD8 | 0x01 | 0xD0..=0xD7 => continue,
-            // Конец картинки либо начало сжатых данных — кадра дальше нет.
+            // End of image or start of compressed data — there is no frame further on.
             0xD9 | 0xDA => return None,
             _ => {}
         }
@@ -687,15 +687,15 @@ fn jpeg_size(b: &[u8]) -> Option<(i64, i64)> {
         if seg < 2 {
             return None;
         }
-        // SOF0…SOF15, кроме таблиц Хаффмана (C4), арифметики (C8) и
-        // ограничителя (CC): у них тот же диапазон, но кадра они не несут.
+        // SOF0…SOF15, except Huffman tables (C4), arithmetic (C8) and
+        // the delimiter (CC): they share the range but carry no frame.
         let is_frame =
             (0xC0..=0xCF).contains(&marker) && marker != 0xC4 && marker != 0xC8 && marker != 0xCC;
         if is_frame {
             if i + 6 >= b.len() {
                 return None;
             }
-            // [длина][точность][высота][ширина]
+            // [length][precision][height][width]
             return Some((be16(b, i + 5), be16(b, i + 3)));
         }
         i += seg;
@@ -703,11 +703,11 @@ fn jpeg_size(b: &[u8]) -> Option<(i64, i64)> {
     None
 }
 
-/// Предупреждение «апскейл пропущен, потому что размер узнать нечем».
+/// The warning "upscale skipped because there is nothing to learn the size with".
 ///
-/// Не исключение: тема ставится, обои на месте, пропущен только необязательный
-/// шаг. Но и не молчание — человек обязан узнать, что произошло и что поставить
-/// (правило #13). Имя пакета берётся для ЭТОГО дистрибутива.
+/// Not an exception: the theme is installed, the wallpapers are in place, only an optional
+/// step is skipped. But not silence either — the person must learn what happened and what to install
+/// (rule #13). The package name is taken for THIS distribution.
 pub fn note_upscale_skipped(family: &str) -> String {
     let hint = crate::utils::tool_package_hint("identify", family);
     let tail = if hint.is_empty() {
@@ -746,7 +746,7 @@ mod header_tests {
         bmp.extend_from_slice(&[0; 12]);
         bmp.extend_from_slice(&40u32.to_le_bytes());
         bmp.extend_from_slice(&1024i32.to_le_bytes());
-        // Отрицательная высота — законный BMP «сверху вниз».
+        // A negative height is a legitimate "top-down" BMP.
         bmp.extend_from_slice(&(-768i32).to_le_bytes());
         assert_eq!(image_size_from_header(&bmp), Some((1024, 768)));
     }
@@ -754,10 +754,10 @@ mod header_tests {
     #[test]
     fn jpeg_frame_is_found_behind_metadata() {
         let mut b = vec![0xFF, 0xD8];
-        // APP0 длиной 16 байт — кадр лежит за ним, как в жизни.
+        // A 16-byte APP0 — the frame lies after it, as in real life.
         b.extend_from_slice(&[0xFF, 0xE0, 0x00, 0x10]);
         b.extend_from_slice(&[0u8; 14]);
-        // SOF0: длина, точность, высота, ширина.
+        // SOF0: length, precision, height, width.
         b.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x11, 0x08]);
         b.extend_from_slice(&480u16.to_be_bytes());
         b.extend_from_slice(&640u16.to_be_bytes());
@@ -770,8 +770,8 @@ mod header_tests {
         let mut lossy = b"RIFF".to_vec();
         lossy.extend_from_slice(&[0; 4]);
         lossy.extend_from_slice(b"WEBPVP8 ");
-        lossy.extend_from_slice(&[0; 4]); // длина блока
-        lossy.extend_from_slice(&[0, 0, 0]); // метка кадра
+        lossy.extend_from_slice(&[0; 4]); // chunk length
+        lossy.extend_from_slice(&[0, 0, 0]); // frame tag
         lossy.extend_from_slice(&[0x9D, 0x01, 0x2A]);
         lossy.extend_from_slice(&1280u16.to_le_bytes());
         lossy.extend_from_slice(&720u16.to_le_bytes());
@@ -782,22 +782,22 @@ mod header_tests {
         ll.extend_from_slice(b"WEBPVP8L");
         ll.extend_from_slice(&[0; 4]);
         ll.push(0x2F);
-        // 14 бит ширины и 14 бит высоты, обе на единицу меньше настоящих.
+        // 14 bits of width and 14 bits of height, both one less than the real ones.
         let bits: u32 = (100 - 1) | ((50 - 1) << 14);
         ll.extend_from_slice(&bits.to_le_bytes());
         ll.extend_from_slice(&[0; 8]);
         assert_eq!(image_size_from_header(&ll), Some((100, 50)));
     }
 
-    /// Чужой формат и обрывок заголовка обязаны честно ответить «не знаю», а
-    /// не выдумать размер: выдуманный увёл бы апскейл на пустое место.
+    /// A foreign format and a truncated header must honestly answer "don't know" rather
+    /// than invent a size: an invented one would lead the upscale to an empty place.
     #[test]
     fn unknown_and_truncated_headers_answer_nothing() {
         assert_eq!(image_size_from_header(b""), None);
         assert_eq!(image_size_from_header(b"II*\x00 tiff"), None);
-        // Оборванный PNG: подпись есть, блока IHDR ещё нет.
+        // A truncated PNG: the signature is there, the IHDR chunk is not yet.
         assert_eq!(image_size_from_header(b"\x89PNG\r\n\x1a\n\x00\x00"), None);
-        // PNG с нулевой стороной — тоже «не знаю», а не (0, N).
+        // A PNG with a zero side is also "don't know", not (0, N).
         let mut zero = b"\x89PNG\r\n\x1a\n".to_vec();
         zero.extend_from_slice(&[0; 8]);
         zero.extend_from_slice(&0u32.to_be_bytes());

@@ -1,42 +1,43 @@
-//! Сканер РЕАЛЬНО установленных тем оформления — порт
+//! Scanner of ACTUALLY installed appearance themes — port of
 //! `rexon/appearance/installed_scan.py`.
 //!
-//! Горячий модуль локальных категорий вкладки «Оформление» (подпереключатель
-//! «Активные | Скачанные | Системные» + под-выборы «Стиль приложений» /
-//! «Kvantum» / «Сплэш» / «Экран блокировки»). Возвращает `Vec<ThemeItem>`
-//! с category_id реальной OCS-категории — кнопка «Применить» переиспользует
-//! installer.apply() как есть.
+//! The hot module of the local categories of the «Appearance» tab (the
+//! «Active | Downloaded | System» sub-switch + the «Application Style» /
+//! «Kvantum» / «Splash» / «Lock Screen» sub-choices). Returns `Vec<ThemeItem>`
+//! with the category_id of the real OCS category — the «Apply» button reuses
+//! installer.apply() as is.
 //!
-//! Принцип порта (как system.rs): ФАЙЛОВАЯ СИСТЕМА — ЗА ИНТЕРФЕЙСОМ.
-//! Вход сканеров — `FsSnapshot`: снимок дерева каталогов (порядок имён =
-//! порядок os.scandir, который видел Python-эталон) + содержимое файлов
-//! метаданных. Разбор конфигов (metadata.json / metadata.desktop /
-//! index.theme / *.colors / gtk settings.ini / kvantum.kvconfig /
-//! sddm-Current / plymouth-Theme / вывод pacman -Qm/-Qo) — чистые функции.
+//! Port principle (as in system.rs): THE FILE SYSTEM IS BEHIND AN INTERFACE.
+//! Scanner input is `FsSnapshot`: a snapshot of the directory tree (name order
+//! = the os.scandir order the Python reference saw) + the content of metadata
+//! files. Parsing configs (metadata.json / metadata.desktop / index.theme /
+//! *.colors / gtk settings.ini / kvantum.kvconfig / sddm-Current /
+//! plymouth-Theme / pacman -Qm/-Qo output) is pure functions.
 //!
-//! Побочные зависимости Python вынесены в параметры:
-//!   * `_active_map()` (ThemeManager + kreadconfig6 + конфиги) — карта
-//!     подаётся готовой; её сборка из ГОТОВЫХ значений источников — чистая
-//!     `active_map_from_sources` (сверена с Python на замоканных источниках);
-//!   * pacman: `has_pacman` — bool, `pacman -Qm` — `foreign` (None =
-//!     недоступен → `ScanUnavailable`, как SystemScanUnavailable),
-//!     `pacman -Qo` — карта владельцев (парсер `parse_qo_output` чистый);
-//!   * кеш магазина (`appearance.cache`) — список (name, preview_url) +
-//!     замыкание `preview_file` (get_preview: url → локальный файл);
-//!   * `QStyleFactory.keys()` — список стилей параметром (фолбэк —
+//! Python's side dependencies are moved into parameters:
+//!   * `_active_map()` (ThemeManager + kreadconfig6 + configs) — the map is
+//!     passed ready-made; building it from READY source values is the pure
+//!     `active_map_from_sources` (checked against Python on mocked sources);
+//!   * pacman: `has_pacman` — a bool, `pacman -Qm` — `foreign` (None =
+//!     unavailable → `ScanUnavailable`, like SystemScanUnavailable),
+//!     `pacman -Qo` — the owner map (the `parse_qo_output` parser is pure);
+//!   * the store cache (`appearance.cache`) — a list of (name, preview_url) +
+//!     the `preview_file` closure (get_preview: url → local file);
+//!   * `QStyleFactory.keys()` — the style list as a parameter (fallback —
 //!     `WIDGET_STYLES`).
 //!
-//! НЕ портировано (исполнение — при подключении к живому Python): вызовы
-//! pacman/kreadconfig6/QStyleFactory, ThemeManager (чтение kdeglobals/kwinrc),
-//! ретраи `_foreign_pkgs` по db.lck (политика ретраев портирована чистой
-//! функцией `foreign_pkgs_from_attempts`, сам sleep/subprocess — нет),
-//! батчинг `_owner_pkgs` по 200 путей (парсер чистый, разрезание на пачки —
-//! деталь вызова), SQL-кеш превью, логгирование.
+//! NOT ported (execution — when hooked to live Python): calls to
+//! pacman/kreadconfig6/QStyleFactory, ThemeManager (reading kdeglobals/kwinrc),
+//! retries of `_foreign_pkgs` on db.lck (the retry policy is ported as the
+//! pure function `foreign_pkgs_from_attempts`, the sleep/subprocess itself is
+//! not), batching `_owner_pkgs` by 200 paths (the parser is pure, splitting
+//! into batches is a call detail), the SQL preview cache, logging.
 //!
-//! Golden-parity: `tests/installed_scan_parity.rs` — снимок реального дерева
-//! тем машины Wehrwolfmann (+синтетика: битые metadata, тема без Name,
-//! курсорная тема в icons) и эталоны с живого Python на той же песочнице,
-//! списки тем сверяются ПОЛЕ-В-ПОЛЕ включая порядок.
+//! Golden parity: `tests/installed_scan_parity.rs` — a snapshot of the real
+//! theme tree of Wehrwolfmann's machine (+synthetic cases: broken metadata, a
+//! theme without Name, a cursor theme in icons) and references from live
+//! Python on the same sandbox; theme lists are compared FIELD BY FIELD
+//! including order.
 
 use std::collections::{HashMap, HashSet};
 
@@ -47,18 +48,18 @@ use crate::i18n::{n_, tr, trc};
 use crate::models::ThemeItem;
 
 // ============================================================================
-// FsSnapshot — снимок файловой системы
+// FsSnapshot — a snapshot of the file system
 // ============================================================================
 
-/// Снимок дерева: каталог → имена элементов (в порядке os.scandir снимка),
-/// файл → текстовое содержимое (бинарные превью в фикстурах — пустышки).
+/// Tree snapshot: directory → entry names (in the snapshot's os.scandir order),
+/// file → text content (binary previews in the fixtures are dummies).
 pub struct FsSnapshot {
     dirs: HashMap<String, Vec<String>>,
     files: HashMap<String, String>,
 }
 
 impl FsSnapshot {
-    /// Из JSON-фикстуры `{"dirs": {path: [names]}, "files": {path: text}}`.
+    /// From the JSON fixture `{"dirs": {path: [names]}, "files": {path: text}}`.
     pub fn from_json(v: &Value) -> Self {
         let mut dirs = HashMap::new();
         if let Some(obj) = v["dirs"].as_object() {
@@ -95,7 +96,7 @@ impl FsSnapshot {
         self.files.get(path).map(String::as_str)
     }
 
-    /// Имена элементов каталога в порядке снимка ([] — каталога нет).
+    /// Directory entry names in snapshot order ([] — no such directory).
     pub fn scandir(&self, path: &str) -> &[String] {
         self.dirs.get(path).map(Vec::as_slice).unwrap_or(&[])
     }
@@ -106,10 +107,10 @@ fn join(dir: &str, rel: &str) -> String {
 }
 
 // ============================================================================
-// Таблица типов — порт _Type / TYPES
+// Type table — port of _Type / TYPES
 // ============================================================================
 
-/// apply_kind → (cat_id, подпапка, способ перечисления) — порт `_Type`.
+/// apply_kind → (cat_id, subfolder, enumeration method) — port of `_Type`.
 pub struct ScanType {
     pub apply_kind: &'static str,
     pub cat_id: i64,
@@ -117,31 +118,31 @@ pub struct ScanType {
     pub icon: &'static str,
     pub user_dir: String,
     pub sys_dir: String,
-    /// "dir" | "colors" | "sub" (каталог темы с подкаталогом `probe`) |
-    /// "file" (каталог темы с файлом `probe` в корне) |
-    /// "files" (файлы с окончанием `probe`) | "meta" (каталог с
-    /// метаданными) | "conky" (каталог виджета Conky).
+    /// "dir" | "colors" | "sub" (a theme directory with a `probe` subdirectory) |
+    /// "file" (a theme directory with a `probe` file at its root) |
+    /// "files" (files ending in `probe`) | "meta" (a directory with
+    /// metadata) | "conky" (a Conky widget directory).
     pub entry: &'static str,
-    /// Уточнение к `entry` (имя подкаталога, окончание файла); обычно пусто.
+    /// Refinement for `entry` (subdirectory name, file suffix); usually empty.
     pub probe: &'static str,
 }
 
-/// Имя OCS-превью, которое Rexon кладёт рядом с темой при установке из
-/// Магазина — порт `REXON_PREVIEW_NAME`.
+/// Name of the OCS preview Rexon puts next to a theme when installing from
+/// the Store — port of `REXON_PREVIEW_NAME`.
 pub const REXON_PREVIEW_NAME: &str = ".rexon-preview.png";
 
-/// Стили-движки Qt (фолбэк без QStyleFactory) — порт `_WIDGET_STYLES`.
+/// Qt style engines (fallback without QStyleFactory) — port of `_WIDGET_STYLES`.
 pub const WIDGET_STYLES: &[&str] = &[
     "Breeze", "Fusion", "kvantum", "kvantum-dark", "Windows", "Oxygen",
 ];
 
-/// Доступные стили Qt — порт `_qstyle_factory`: живой список
-/// `QStyleFactory::keys()` (встроенные стили плюс установленные плагины), а
-/// если Qt ничего не ответил — запас [`WIDGET_STYLES`].
+/// Available Qt styles — port of `_qstyle_factory`: the live list
+/// `QStyleFactory::keys()` (built-in styles plus installed plugins), and if Qt
+/// answered nothing — the fallback [`WIDGET_STYLES`].
 ///
-/// Живой список обязателен: запас показывал чипы стилей, которых в системе
-/// нет (Oxygen без плагина), и не показывал установленные (qt6ct-style и
-/// любые сторонние).
+/// The live list is mandatory: the fallback showed style chips that weren't on
+/// the system (Oxygen without its plugin) and didn't show installed ones
+/// (qt6ct-style and any third-party ones).
 pub fn available_widget_styles(live_keys: &[String]) -> Vec<String> {
     let live: Vec<String> = live_keys
         .iter()
@@ -156,7 +157,7 @@ pub fn available_widget_styles(live_keys: &[String]) -> Vec<String> {
     }
 }
 
-/// Таблица TYPES для данного home/usr-корня (live: usr_root = "/usr").
+/// The TYPES table for the given home/usr root (live: usr_root = "/usr").
 pub fn types_for(home: &str, usr_root: &str) -> Vec<ScanType> {
     let t = |apply_kind, cat_id, label, icon, user: String, sys: String, entry| {
         ScanType { apply_kind, cat_id, label, icon, user_dir: user, sys_dir: sys, entry, probe: "" }
@@ -186,8 +187,8 @@ pub fn types_for(home: &str, usr_root: &str) -> Vec<ScanType> {
         t("gtk", 135, "GTK Theme", "🎨",
           format!("{home}/.local/share/themes"),
           format!("{usr_root}/share/themes"), "dir"),
-        // Темы звуков: без этой строки они не попадали ни в «Активные», ни
-        // в «Загруженные», ни в «Системные» (живой случай 03.10.2026).
+        // Sound themes: without this line they got into neither «Active», nor
+        // «Downloaded», nor «System» (real case 03.10.2026).
         t("sounds", 316, "Sound Theme", "🔔",
           format!("{home}/.local/share/sounds"),
           format!("{usr_root}/share/sounds"), "dir"),
@@ -198,13 +199,14 @@ pub fn types_for(home: &str, usr_root: &str) -> Vec<ScanType> {
     ]
 }
 
-/// Типы разделов окружений (`categories::DE_SECTIONS`), видимых в `de`
-/// (пусто — все). Каталоги, способ перечисления и подпись — из матрицы и
-/// таблицы типов: нового списка здесь нет (правило #12).
+/// Types of the desktop environment sections (`categories::DE_SECTIONS`)
+/// visible in `de` (empty — all). Directories, enumeration method and label
+/// come from the matrix and the type table: there is no new list here (rule #12).
 ///
-/// Темы рамок и оболочек (подкаталог в каталоге темы) ищутся и в
-/// `~/.themes`, и в `~/.local/share/themes` — оба каталога читают сами
-/// окружения, а установка из «Оформления» кладёт GTK-темы во второй.
+/// Window border and shell themes (a subdirectory in the theme directory) are
+/// looked up both in `~/.themes` and in `~/.local/share/themes` — the
+/// environments themselves read both directories, and installing from
+/// «Appearance» puts GTK themes into the second.
 pub fn de_types(home: &str, usr_root: &str, de: &str) -> Vec<ScanType> {
     use crate::de_customization::Payload;
     let mut out = Vec::new();
@@ -219,9 +221,9 @@ pub fn de_types(home: &str, usr_root: &str, de: &str) -> Vec<ScanType> {
             Payload::Files { ext } => ("files", ext),
             Payload::DirUuid { .. } | Payload::KPackage { .. } => ("meta", ""),
             Payload::Dir if kind == crate::de_apply::CONKY_KIND => ("conky", ""),
-            // Тема LXQt — каталог с `lxqt-panel.qss`: без него LXQt её в
-            // своём списке не показывает. Признак — тот же, по которому
-            // установка ищет корни тем в архиве (один источник).
+            // An LXQt theme is a directory with `lxqt-panel.qss`: without it LXQt
+            // doesn't show it in its list. The sign is the same one the install
+            // uses to find theme roots in an archive (one source).
             Payload::Dir => match crate::appearance_installer::de_theme_marker(key) {
                 Some(crate::appearance_installer::DeThemeMarker::File(file)) => ("file", file),
                 _ => ("dir", ""),
@@ -254,11 +256,11 @@ pub fn de_types(home: &str, usr_root: &str, de: &str) -> Vec<ScanType> {
     out
 }
 
-/// Типы одного раздела для [`LiveScan::section`]: раздел окружения — из
-/// [`de_types`], раздел KDE — строка [`types_for`] плюс прежние каталоги,
-/// которые читают и KDE, и GTK: `~/.icons` у значков и курсоров,
-/// `~/.themes` у тем GTK (обзор «Загруженные» их не смотрит, а темы,
-/// поставленные руками или чужими установщиками, лежат часто именно там).
+/// Types of one section for [`LiveScan::section`]: a desktop environment
+/// section — from [`de_types`], a KDE section — the [`types_for`] row plus the
+/// old directories read by both KDE and GTK: `~/.icons` for icons and cursors,
+/// `~/.themes` for GTK themes (the «Downloaded» overview doesn't look there,
+/// while themes installed by hand or by other installers often lie exactly there).
 pub fn section_types(home: &str, usr_root: &str, apply_kind: &str) -> Vec<ScanType> {
     let mut types: Vec<ScanType> = types_for(home, usr_root)
         .into_iter()
@@ -277,12 +279,12 @@ pub fn section_types(home: &str, usr_root: &str, apply_kind: &str) -> Vec<ScanTy
     types
 }
 
-/// Отметка каталогов, которые читают обзоры диска: время изменения каждого
-/// корня (каталоги тем всех видов и окружений, `~/.themes`, `~/.icons`,
-/// Kvantum). Новая или снятая тема в корне меняет время самого корня —
-/// отметка другая, и кеш сканов страницы надо выбросить: иначе тема,
-/// положенная мимо Rexon при открытом окне, не появлялась при повторном
-/// заходе в раздел, только по «Обновить».
+/// A stamp of the directories the disk overviews read: the modification time
+/// of each root (theme directories of all kinds and environments, `~/.themes`,
+/// `~/.icons`, Kvantum). A new or removed theme in a root changes the root's
+/// own time — the stamp differs, and the page's scan cache must be dropped:
+/// otherwise a theme placed bypassing Rexon while the window was open didn't
+/// show up on re-entering the section, only after «Refresh».
 pub fn roots_stamp(home: &str, usr_root: &str) -> String {
     let mut roots: Vec<String> = Vec::new();
     let mut add = |d: &str| {
@@ -325,44 +327,44 @@ fn base_clone(t: &ScanType) -> ScanType {
     }
 }
 
-// ── Ссылки в `~/.themes` на темы из `~/.local/share/themes` ─────────────
+// ── Links in `~/.themes` to themes from `~/.local/share/themes` ─────────
 //
-// «Оформление» ставит темы GTK в `~/.local/share/themes` (раздел `gtk`,
-// `categories`). Его читают GTK 3 и 4, xfwm4 и окно оформления XFCE
-// (libxfce4util), Cinnamon и его настройки, Openbox, labwc, User Themes
-// GNOME и Marco 1.29 — но окно «Внешний вид» MATE (mate-control-center 1.28,
-// `capplets/common/mate-theme-info.c`) смотрит только `~/.themes` и
-// `$XDG_DATA_DIRS/themes`: такой темы в его списке нет, и выбрать её там
-// нельзя (стенд 16.10.2026). Поэтому у каждой темы оттуда в `~/.themes`
-// лежит ссылка с тем же именем. Ссылка относительная — переживает переезд
-// домашнего каталога. Занятое имя не трогаем, ссылку на пропавшую тему
-// снимаем; в списках Rexon ссылка не показывается — тема видна один раз,
-// из своего настоящего каталога.
+// «Appearance» installs GTK themes into `~/.local/share/themes` (section `gtk`,
+// `categories`). It is read by GTK 3 and 4, xfwm4 and the XFCE appearance
+// dialog (libxfce4util), Cinnamon and its settings, Openbox, labwc, GNOME
+// User Themes and Marco 1.29 — but the MATE «Appearance» dialog
+// (mate-control-center 1.28, `capplets/common/mate-theme-info.c`) looks only
+// at `~/.themes` and `$XDG_DATA_DIRS/themes`: such a theme isn't in its list,
+// and it can't be chosen there (test rig 16.10.2026). So every theme from
+// there has a link with the same name in `~/.themes`. The link is relative —
+// it survives moving the home directory. A taken name is left alone, a link
+// to a vanished theme is removed; the link isn't shown in Rexon's lists —
+// the theme is visible once, from its real directory.
 
-/// Каталог, куда «Оформление» ставит темы GTK.
+/// The directory where «Appearance» installs GTK themes.
 pub fn xdg_themes_dir(home: &str) -> String {
     format!("{}/.local/share/themes", home.trim_end_matches('/'))
 }
 
-/// Прежний каталог тем, который читают все окружения.
+/// The old theme directory that all environments read.
 pub fn legacy_themes_dir(home: &str) -> String {
     format!("{}/.themes", home.trim_end_matches('/'))
 }
 
-/// Цель нашей ссылки `~/.themes/<name>` — относительно самого `~/.themes`.
+/// Target of our link `~/.themes/<name>` — relative to `~/.themes` itself.
 fn theme_link_target(name: &str) -> std::path::PathBuf {
     std::path::Path::new("../.local/share/themes").join(name)
 }
 
-/// Наша ли ссылка `~/.themes/<name>`: ведёт ровно на
-/// `~/.local/share/themes/<name>` (см. [`sync_theme_links`]).
+/// Whether the link `~/.themes/<name>` is ours: it points exactly to
+/// `~/.local/share/themes/<name>` (see [`sync_theme_links`]).
 pub fn is_theme_link(home: &str, name: &str) -> bool {
     std::fs::read_link(join(&legacy_themes_dir(home), name))
         .is_ok_and(|t| t == theme_link_target(name))
 }
 
-/// Тема ли лежит в каталоге: `index.theme`, стили GTK 2/3/4 или подкаталог
-/// рамок и оболочек из матрицы (`metacity-1`, `xfwm4`, `cinnamon`, …).
+/// Whether a theme lies in the directory: `index.theme`, GTK 2/3/4 styles or a
+/// window border/shell subdirectory from the matrix (`metacity-1`, `xfwm4`, `cinnamon`, …).
 fn looks_like_theme(dir: &std::path::Path) -> bool {
     use crate::de_customization::{Payload, ROWS};
     let subs = ROWS.iter().filter_map(|r| match r.payload {
@@ -373,9 +375,9 @@ fn looks_like_theme(dir: &std::path::Path) -> bool {
         || ["gtk-2.0"].into_iter().chain(GTK_PARTS.iter().copied()).chain(subs).any(|s| dir.join(s).is_dir())
 }
 
-/// Привести ссылки `~/.themes` в соответствие с `~/.local/share/themes`:
-/// поставить недостающие, снять ведущие в пустоту. Возвращает строки для
-/// журнала (пусто — делать было нечего).
+/// Bring the `~/.themes` links in line with `~/.local/share/themes`: add the
+/// missing ones, remove the ones pointing into the void. Returns lines for
+/// the log (empty — there was nothing to do).
 pub fn sync_theme_links(home: &str) -> Vec<String> {
     let xdg = xdg_themes_dir(home);
     let legacy = legacy_themes_dir(home);
@@ -397,7 +399,7 @@ pub fn sync_theme_links(home: &str) -> Vec<String> {
         }
         let dst = join(&legacy, &name);
         if std::fs::symlink_metadata(&dst).is_ok() {
-            continue; // имя занято: своей темой, ссылкой или чем угодно
+            continue; // the name is taken: by an own theme, a link or anything else
         }
         let made = std::fs::create_dir_all(&legacy)
             .and_then(|()| std::os::unix::fs::symlink(theme_link_target(&name), &dst));
@@ -409,8 +411,8 @@ pub fn sync_theme_links(home: &str) -> Vec<String> {
     log
 }
 
-/// Снять нашу ссылку `~/.themes/<имя>` вслед за снятой темой `removed`
-/// (путь в `~/.local/share/themes`). Не наша ссылка или чужой путь — ничего.
+/// Remove our link `~/.themes/<name>` following the removed theme `removed`
+/// (a path in `~/.local/share/themes`). Not our link or a foreign path — nothing.
 pub fn drop_theme_link(home: &str, removed: &str) -> bool {
     let Some((dir, name)) = removed.trim_end_matches('/').rsplit_once('/') else { return false };
     dir == xdg_themes_dir(home)
@@ -418,8 +420,8 @@ pub fn drop_theme_link(home: &str, removed: &str) -> bool {
         && std::fs::remove_file(join(&legacy_themes_dir(home), name)).is_ok()
 }
 
-/// Имена объектов типа в каталоге: для "files" — файлы с нужным окончанием
-/// (имя целиком, как его знает окружение), иначе [`list_entries`].
+/// Names of objects of a type in a directory: for "files" — files with the
+/// right suffix (the full name, as the environment knows it), otherwise [`list_entries`].
 pub fn entries_of(fs: &FsSnapshot, directory: &str, t: &ScanType) -> Vec<String> {
     if t.entry != "files" {
         return list_entries(fs, directory, t.entry);
@@ -434,8 +436,8 @@ pub fn entries_of(fs: &FsSnapshot, directory: &str, t: &ScanType) -> Vec<String>
         .collect()
 }
 
-/// Имена включённого вида из карты активных: у тем одно, у дополнений и
-/// виджетов Conky — сколько угодно (в карте — через перевод строки).
+/// Names of the enabled kind from the active map: themes have one, add-ons and
+/// Conky widgets — any number (separated by newlines in the map).
 pub fn active_names<'m>(
     active_map: &'m HashMap<String, String>,
     apply_kind: &str,
@@ -450,12 +452,12 @@ fn is_active(active_map: &HashMap<String, String>, apply_kind: &str, name: &str)
     active_names(active_map, apply_kind).contains(&name)
 }
 
-/// Каталоги Kvantum-тем (user + system) — порт `_kvantum_dirs`.
+/// Kvantum theme directories (user + system) — port of `_kvantum_dirs`.
 pub fn kvantum_dirs(home: &str, usr_root: &str) -> [String; 2] {
     kvantum_dirs_xdg(None, home, usr_root)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME`.
+/// The same, honouring `$XDG_CONFIG_HOME`.
 pub fn kvantum_dirs_xdg(
     xdg_config_home: Option<&str>,
     home: &str,
@@ -467,7 +469,7 @@ pub fn kvantum_dirs_xdg(
     ]
 }
 
-/// Каталоги look-and-feel (user + system) — порт `_lnf_dirs`.
+/// look-and-feel directories (user + system) — port of `_lnf_dirs`.
 pub fn lnf_dirs(home: &str, usr_root: &str) -> [String; 2] {
     [
         format!("{home}/.local/share/plasma/look-and-feel"),
@@ -476,11 +478,11 @@ pub fn lnf_dirs(home: &str, usr_root: &str) -> [String; 2] {
 }
 
 // ============================================================================
-// Сайдкар-превью — порт _sidecar_key / sidecar_preview_path
+// Sidecar preview — port of _sidecar_key / sidecar_preview_path
 // ============================================================================
 
-/// Безопасное имя файла сайдкар-превью — порт `_sidecar_key` (юникод-буквы
-/// остаются: Python `str.isalnum`).
+/// Safe file name of a sidecar preview — port of `_sidecar_key` (Unicode
+/// letters stay: Python `str.isalnum`).
 pub fn sidecar_key(apply_kind: &str, name: &str) -> String {
     let safe: String = name
         .chars()
@@ -495,24 +497,24 @@ pub fn sidecar_key(apply_kind: &str, name: &str) -> String {
     format!("{apply_kind}__{safe}.png")
 }
 
-/// Каталог картинок магазина для тем без своего каталога (цветовые схемы) —
-/// в кеше «Оформления» ([`crate::appearance_cache::cache_dir`]).
+/// Store picture directory for themes without their own directory (color
+/// schemes) — in the «Appearance» cache ([`crate::appearance_cache::cache_dir`]).
 pub fn sidecar_preview_dir(home: &str) -> String {
     format!("{}/local_previews", crate::appearance_cache::cache_dir(home))
 }
 
-/// Абсолютный путь сайдкар-превью — порт `sidecar_preview_path`.
+/// Absolute path of a sidecar preview — port of `sidecar_preview_path`.
 pub fn sidecar_preview_path(home: &str, apply_kind: &str, name: &str) -> String {
     format!("{}/{}", sidecar_preview_dir(home), sidecar_key(apply_kind, name))
 }
 
 // ============================================================================
-// Перечисление и валидация элементов — порт _list_entries / _is_valid_lnf /
+// Enumerating and validating entries — port of _list_entries / _is_valid_lnf /
 // _entry_valid / _is_cursor_dir
 // ============================================================================
 
-/// Имена тем в каталоге — порт `_list_entries`. entry="colors" → файлы
-/// *.colors (без суффикса), иначе подпапки. Тихо к отсутствию каталога.
+/// Theme names in a directory — port of `_list_entries`. entry="colors" → the
+/// *.colors files (without suffix), otherwise subfolders. Quiet about a missing directory.
 pub fn list_entries(fs: &FsSnapshot, directory: &str, entry: &str) -> Vec<String> {
     let mut out = Vec::new();
     if directory.is_empty() || !fs.is_dir(directory) {
@@ -533,11 +535,13 @@ pub fn list_entries(fs: &FsSnapshot, directory: &str, entry: &str) -> Vec<String
     out
 }
 
-/// look-and-feel валидна только с осмысленным Name в metadata.json/.desktop —
-/// порт `_is_valid_lnf` (отсев junk-подкаталогов без metadata).
+/// A look-and-feel is valid only with a meaningful Name in
+/// metadata.json/.desktop — port of `_is_valid_lnf` (filters out junk
+/// subdirectories without metadata).
 ///
-/// Нюанс Python: metadata.json с НЕ-объектом верхнего уровня (строка/число)
-/// уронил бы скан AttributeError — здесь трактуем как «не тема» (false).
+/// Python nuance: a metadata.json with a NON-object at the top level (a
+/// string/number) would crash the scan with AttributeError — here we treat it
+/// as "not a theme" (false).
 pub fn is_valid_lnf(fs: &FsSnapshot, theme_dir: &str) -> bool {
     let mj = join(theme_dir, "metadata.json");
     if fs.is_file(&mj) {
@@ -545,7 +549,7 @@ pub fn is_valid_lnf(fs: &FsSnapshot, theme_dir: &str) -> bool {
             return false;
         };
         let Ok(data) = serde_json::from_str::<Value>(text) else {
-            return false; // битый json → не тема
+            return false; // broken json → not a theme
         };
         let name = data["KPlugin"]["Name"].as_str().unwrap_or("");
         return !name.trim().is_empty();
@@ -564,21 +568,22 @@ pub fn is_valid_lnf(fs: &FsSnapshot, theme_dir: &str) -> bool {
         }
         return false;
     }
-    false // ни metadata.json, ни metadata.desktop → не тема
+    false // neither metadata.json nor metadata.desktop → not a theme
 }
 
-/// Ключи имени по языку покупателя — от самого точного к общему:
+/// Name keys for the user's language — from the most specific to the generic:
 /// `ru_RU.UTF-8` → `["Name[ru_RU]", "Name[ru]", "Name"]`.
 ///
-/// И `metadata.json`, и `metadata.desktop` KDE помечают перевод одинаково —
-/// суффиксом в квадратных скобках с ПОДЧЁРКИВАНИЕМ (`Name[pt_BR]`), поэтому
-/// дефис в локали нормализуется в подчёркивание. Хвост `.UTF-8` и модификатор
-/// `@valencia` отбрасываются: в ключах их не пишут.
+/// Both `metadata.json` and KDE's `metadata.desktop` mark a translation the
+/// same way — with a suffix in square brackets using an UNDERSCORE
+/// (`Name[pt_BR]`), so a hyphen in the locale is normalised to an underscore.
+/// The `.UTF-8` tail and the `@valencia` modifier are dropped: keys don't
+/// carry them.
 pub fn locale_name_keys(locale: &str) -> Vec<String> {
     locale_keys("Name", locale)
 }
 
-/// То же правило для любого ключа: `Comment`, `Description`.
+/// The same rule for any key: `Comment`, `Description`.
 pub(crate) fn locale_keys(base: &str, locale: &str) -> Vec<String> {
     let cleaned = locale
         .split(['.', '@'])
@@ -599,18 +604,18 @@ pub(crate) fn locale_keys(base: &str, locale: &str) -> Vec<String> {
     keys
 }
 
-/// Имя из ini-подобного файла по УЖЕ посчитанным ключам языка — общий
-/// разбор для `metadata.desktop`, `index.theme` и `*.colors`.
+/// A name from an ini-like file by ALREADY computed language keys — the shared
+/// parser for `metadata.desktop`, `index.theme` and `*.colors`.
 ///
-/// Секция не спрашивается намеренно (обоснование — у [`theme_display_name`]).
-/// Живая проверка на этой машине: у иконок и курсоров имя стоит в
-/// `[Icon Theme]`, у GTK-тем — то в `[Desktop Entry]` (WhiteSur, Dracula,
-/// Materia), то в `[X-GNOME-Metatheme]` (Adwaita, adw-gtk3), у цветовых
-/// схем KDE — в `[General]` одиннадцатой по счёту. Привязка к группе
-/// потеряла бы каждый второй вид оформления.
+/// The section is deliberately not asked for (rationale — at
+/// [`theme_display_name`]). A live check on this machine: icons and cursors
+/// keep the name in `[Icon Theme]`, GTK themes — sometimes in `[Desktop Entry]`
+/// (WhiteSur, Dracula, Materia), sometimes in `[X-GNOME-Metatheme]` (Adwaita,
+/// adw-gtk3), KDE color schemes — in `[General]`, the eleventh group. Tying it
+/// to a group would lose every second kind of appearance.
 ///
-/// Порядок перебора — по ключам, а не по строкам файла: перевод под язык
-/// покупателя выигрывает у общего имени, даже если стоит ниже.
+/// The lookup order is by keys, not by file lines: a translation into the
+/// user's language wins over the generic name even if it comes later.
 fn name_from_ini(text: &str, keys: &[String]) -> Option<String> {
     for key in keys {
         let prefix = format!("{key}=");
@@ -625,12 +630,12 @@ fn name_from_ini(text: &str, keys: &[String]) -> Option<String> {
     None
 }
 
-/// Человеческое имя из ОДНОГО ini-файла — для видов оформления, у которых
-/// каталога темы нет вовсе: цветовая схема KDE это файл `<имя>.colors`.
+/// A human name from ONE ini file — for appearance kinds that have no theme
+/// directory at all: a KDE color scheme is a `<name>.colors` file.
 ///
-/// Правило выбора языка и откат — те же, что у [`theme_display_name`]:
-/// вторых копий логики нет, обе двери ведут в `locale_name_keys` +
-/// `name_from_ini`.
+/// The language choice rule and the fallback are the same as in
+/// [`theme_display_name`]: there are no second copies of the logic, both
+/// doors lead to `locale_name_keys` + `name_from_ini`.
 pub fn file_display_name(
     fs: &FsSnapshot,
     file_path: &str,
@@ -646,28 +651,28 @@ pub fn file_display_name(
         .unwrap_or_else(|| fallback.to_string())
 }
 
-/// Человеческое имя темы для карточки: `metadata.json` → `KPlugin.Name`,
-/// иначе `metadata.desktop` → `Name=`, иначе `index.theme` → `Name=`.
-/// Перевод под язык покупателя предпочитается общему (`Name[ru]` вперёд
-/// `Name`).
+/// A theme's human name for the card: `metadata.json` → `KPlugin.Name`,
+/// otherwise `metadata.desktop` → `Name=`, otherwise `index.theme` → `Name=`.
+/// A translation into the user's language is preferred over the generic one
+/// (`Name[ru]` before `Name`).
 ///
-/// Три источника, а не два, потому что метаданные KDE лежат далеко не у
-/// всех видов оформления: у иконок, курсоров и GTK-тем рядом с темой
-/// только `index.theme`. Порядок — от самого точного к самому общему:
-/// `metadata.*` пишет сам автор темы под KDE, `index.theme` бывает и
-/// сгенерированным.
+/// Three sources, not two, because KDE metadata is far from present for all
+/// appearance kinds: icons, cursors and GTK themes have only `index.theme`
+/// next to them. The order is from the most specific to the most generic:
+/// `metadata.*` is written by the theme author for KDE, `index.theme` is
+/// sometimes generated.
 ///
-/// `fallback` — имя каталога. Оно же и возвращается, когда метаданных нет,
-/// имя пустое или файл битый: покупателю лучше сырой идентификатор, чем
-/// карточка без подписи. Идентификатор карточки (`local:<вид>:<имя>`), пути
-/// установки и сопоставление с активной темой на это имя НЕ смотрят — оно
-/// только для показа.
+/// `fallback` is the directory name. It is also what is returned when there
+/// is no metadata, the name is empty or the file is broken: a raw identifier
+/// is better for the user than a card without a label. The card identifier
+/// (`local:<kind>:<name>`), install paths and matching against the active
+/// theme do NOT look at this name — it is only for display.
 ///
-/// Секцию файла не спрашиваем намеренно: у look-and-feel имя лежит в
-/// `[Desktop Entry]`, а у тем SDDM — в `[SddmGreeterTheme]`, и привязка к
-/// одной группе потеряла бы половину тем. Берётся первое совпадение по
-/// ключу, а ключи перебираются по языку — поэтому перевод выигрывает у
-/// общего имени, даже если стоит в файле ниже.
+/// The file section is deliberately not asked for: a look-and-feel keeps its
+/// name in `[Desktop Entry]`, SDDM themes — in `[SddmGreeterTheme]`, and tying
+/// it to one group would lose half the themes. The first key match is taken,
+/// and keys are tried by language — so a translation wins over the generic
+/// name even if it comes later in the file.
 pub fn theme_display_name(
     fs: &FsSnapshot,
     theme_dir: &str,
@@ -692,10 +697,10 @@ pub fn theme_display_name(
                     }
                 }
             }
-            // Расширения GNOME и апплеты/десклеты/расширения Cinnamon пишут
-            // имя строчной `name` (без перевода): иначе карточка выходила с
-            // uuid вместо названия (живые проверки GNOME 51.1 и Cinnamon
-            // 6.6, 16.10.2026).
+            // GNOME extensions and Cinnamon applets/desklets/extensions write the
+            // name as lowercase `name` (untranslated): otherwise the card came out
+            // with the uuid instead of the title (live checks GNOME 51.1 and
+            // Cinnamon 6.6, 16.10.2026).
             if let Some(Value::String(v)) = data.get("name") {
                 if !v.trim().is_empty() {
                     return v.trim().to_string();
@@ -714,26 +719,26 @@ pub fn theme_display_name(
     fallback.to_string()
 }
 
-/// Описание темы заставки загрузки — `<каталог>/<имя каталога>.plymouth`
-/// (группа `[Plymouth Theme]`: `Name=`, `Description=`, с переводами). Его же
-/// читает kcm plymouth для подписи плитки. У каталога другого вида такого
-/// файла нет, и проба просто промахивается.
+/// Description of a boot splash theme — `<dir>/<dir name>.plymouth` (group
+/// `[Plymouth Theme]`: `Name=`, `Description=`, with translations). The
+/// plymouth kcm reads the same file for the tile label. A directory of another
+/// kind has no such file, and the probe simply misses.
 fn plymouth_desc_path(theme_dir: &str) -> String {
     let dir = theme_dir.trim_end_matches('/');
     let name = dir.rsplit('/').next().unwrap_or("");
     join(dir, &format!("{name}.plymouth"))
 }
 
-/// Имя темы без перевода — для поиска по оригинальному названию.
+/// The theme name without translation — for searching by the original title.
 ///
-/// Те же источники и тот же порядок, что у [`theme_display_name`], только
-/// язык не спрашивается: берётся голый `Name=` (`KPlugin.Name`). Пусто,
-/// когда оно совпадает с показанным именем — искать по нему уже и так ищут.
+/// The same sources and the same order as in [`theme_display_name`], only the
+/// language isn't asked: the bare `Name=` (`KPlugin.Name`) is taken. Empty
+/// when it matches the displayed name — searching by it already happens.
 pub fn theme_source_name(fs: &FsSnapshot, theme_dir: &str, fallback: &str, shown: &str) -> String {
     unless_shown(theme_display_name(fs, theme_dir, fallback, ""), shown)
 }
 
-/// То же для темы-файла (`*.colors`) — пара к [`file_display_name`].
+/// The same for a file theme (`*.colors`) — the pair to [`file_display_name`].
 pub fn file_source_name(fs: &FsSnapshot, file_path: &str, fallback: &str, shown: &str) -> String {
     unless_shown(file_display_name(fs, file_path, fallback, ""), shown)
 }
@@ -746,11 +751,11 @@ fn unless_shown(source: String, shown: &str) -> String {
     }
 }
 
-/// Описание темы для карточки — те же три источника и то же правило языка,
-/// что у [`theme_display_name`]: `metadata.json` → `KPlugin.Description`,
-/// иначе `Comment=` из `metadata.desktop`, иначе из `index.theme` (у тем
-/// звуков, значков, курсоров и GTK описание лежит только там). Нет — пусто:
-/// карточка сама скажет «Нет описания».
+/// A theme's description for the card — the same three sources and the same
+/// language rule as in [`theme_display_name`]: `metadata.json` →
+/// `KPlugin.Description`, otherwise `Comment=` from `metadata.desktop`,
+/// otherwise from `index.theme` (sound, icon, cursor and GTK themes keep the
+/// description only there). None — empty: the card itself will say "No description".
 pub fn theme_description(fs: &FsSnapshot, theme_dir: &str, locale: &str) -> String {
     if theme_dir.is_empty() {
         return String::new();
@@ -804,10 +809,10 @@ fn entry_valid(t: &ScanType, fs: &FsSnapshot, base_dir: &str, name: &str) -> boo
                 || fs.is_file(&join(&dir, "metadata.desktop"));
         }
         "conky" => {
-            // Файл настроек сверху либо вложенная папка (конфиг глубже):
-            // окончательно его ищет кнопка (`de_apply::conky_conf`). Имя
-            // файла бывает любым (`Jhalak.conf`, `Gotham`) — тогда виджет
-            // узнаётся по содержимому (`conky_scan`).
+            // A config file at the top or a nested folder (the config is deeper):
+            // the button does the final lookup (`de_apply::conky_conf`). The file
+            // name can be anything (`Jhalak.conf`, `Gotham`) — then the widget
+            // is recognised by its content (`conky_scan`).
             let dir = join(base_dir, name);
             return fs.scandir(&dir).iter().any(|f| {
                 f == "conky.conf"
@@ -818,22 +823,22 @@ fn entry_valid(t: &ScanType, fs: &FsSnapshot, base_dir: &str, name: &str) -> boo
         }
         _ => {}
     }
-    // Тема заставки загрузки — каталог с описанием `<имя>.plymouth`: только
-    // такие видят `plymouth-set-default-theme --list` и kcm plymouth. Пустой
-    // каталог остаётся после удаления пакета темы, и включать его нечего
-    // (`system_plan::plymouth_installed_themes`).
+    // A boot splash theme is a directory with a `<name>.plymouth` description:
+    // only such ones are seen by `plymouth-set-default-theme --list` and the
+    // plymouth kcm. An empty directory remains after removing a theme package,
+    // and there is nothing to enable (`system_plan::plymouth_installed_themes`).
     if t.apply_kind == "plymouth" {
         return fs.is_file(&join(&join(base_dir, name), &format!("{name}.plymouth")));
     }
-    // Тема экрана входа — каталог с `metadata.desktop`: из него SDDM берёт
-    // главный файл темы, и kcm sddm без него тему не показывает.
+    // A login screen theme is a directory with `metadata.desktop`: SDDM takes the
+    // theme's main file from it, and the sddm kcm doesn't show the theme without it.
     if t.apply_kind == "sddm" {
         return fs.is_file(&join(&join(base_dir, name), "metadata.desktop"));
     }
     if t.apply_kind == "sounds" {
-        // Тема звуков — только каталог с `index.theme` и `[Sound Theme]`:
-        // `alsa`, `speech-dispatcher`, наборы GNOME без index.theme и обёртки
-        // архивов темами для системы не являются и применить их нельзя.
+        // A sound theme is only a directory with `index.theme` and `[Sound Theme]`:
+        // `alsa`, `speech-dispatcher`, GNOME sets without index.theme and archive
+        // wrappers are not themes for the system and can't be applied.
         return fs
             .read_text(&join(&join(base_dir, name), "index.theme"))
             .map(|t| t.lines().any(|l| l.trim() == "[Sound Theme]"))
@@ -842,18 +847,18 @@ fn entry_valid(t: &ScanType, fs: &FsSnapshot, base_dir: &str, name: &str) -> boo
     true
 }
 
-/// Курсорная тема ~ наличие cursors/ — порт `_is_cursor_dir` (разделяет
-/// общий icons/ между типами 'icons' и 'cursor').
+/// A cursor theme ~ the presence of cursors/ — port of `_is_cursor_dir`
+/// (splits the shared icons/ between the 'icons' and 'cursor' types).
 pub fn is_cursor_dir(fs: &FsSnapshot, path: &str) -> bool {
     fs.is_dir(&join(path, "cursors"))
 }
 
-/// Чисто курсорная тема: есть `cursors/`, а каталогов значков в
-/// `index.theme` нет. Набор значков со своими курсорами (Adwaita,
-/// elementary — значки XFCE по умолчанию) курсорной темой НЕ считается и
-/// виден в «Значках»: раньше любое `cursors/` уводило набор только в
-/// «Курсоры», и стандартных значков окружения в списке не было (проверки
-/// GNOME и XFCE, 16.10.2026).
+/// A pure cursor theme: has `cursors/`, but no icon directories in
+/// `index.theme`. An icon set with its own cursors (Adwaita, elementary — the
+/// default XFCE icons) is NOT considered a cursor theme and is visible in
+/// «Icons»: previously any `cursors/` sent the set only to «Cursors», and the
+/// environment's standard icons weren't in the list (GNOME and XFCE checks,
+/// 16.10.2026).
 pub fn is_cursor_only(fs: &FsSnapshot, path: &str) -> bool {
     is_cursor_dir(fs, path)
         && !fs
@@ -862,19 +867,19 @@ pub fn is_cursor_only(fs: &FsSnapshot, path: &str) -> bool {
 }
 
 // ============================================================================
-// Превью — порт _find_preview / _preview_from_metadata
+// Preview — port of _find_preview / _preview_from_metadata
 // ============================================================================
 
-/// Best-effort локальное превью темы — порт `_find_preview`.
-/// prefer="splash"/"lockscreen" — категория-зависимый приоритет
-/// contents/previews/<prefer>.png (после сайдкара .rexon-preview.png).
+/// A best-effort local theme preview — port of `_find_preview`.
+/// prefer="splash"/"lockscreen" — a category-dependent priority of
+/// contents/previews/<prefer>.png (after the .rexon-preview.png sidecar).
 pub fn find_preview(fs: &FsSnapshot, theme_dir: &str, prefer: Option<&str>) -> String {
     find_preview_in(fs, theme_dir, prefer, &[])
 }
 
-/// Подкаталоги темы, в которых её вид хранит свою миниатюру
-/// (`<подкаталог>/thumbnail.png` — так поставляют картинку темы GTK, Cinnamon,
-/// рамок Metacity и оболочки GNOME).
+/// Theme subdirectories in which its kind keeps its thumbnail
+/// (`<subdir>/thumbnail.png` — that is how GTK, Cinnamon, Metacity border and
+/// GNOME shell themes ship their picture).
 pub fn preview_subdirs(t: &ScanType) -> Vec<&'static str> {
     match (t.apply_kind, t.entry) {
         ("gtk", _) => vec!["gtk-3.0", "gtk-4.0", "gtk-3.20", "gtk-2.0"],
@@ -883,7 +888,7 @@ pub fn preview_subdirs(t: &ScanType) -> Vec<&'static str> {
     }
 }
 
-/// [`find_preview`] с миниатюрами вида в подкаталогах `subs`
+/// [`find_preview`] with the kind's thumbnails in subdirectories `subs`
 /// ([`preview_subdirs`]).
 pub fn find_preview_in(
     fs: &FsSnapshot,
@@ -925,7 +930,7 @@ pub fn find_preview_in(
     if !mp.is_empty() {
         return mp;
     }
-    // любой *.png/*.jpg в корне, похожий на превью (screen/preview/thumb/…)
+    // any *.png/*.jpg at the root that looks like a preview (screen/preview/thumb/…)
     for name in fs.scandir(theme_dir) {
         let full = join(theme_dir, name);
         if !fs.is_file(&full) {
@@ -943,8 +948,8 @@ pub fn find_preview_in(
     String::new()
 }
 
-/// Поле Preview/Image из metadata.json/.desktop KPackage-темы — порт
-/// `_preview_from_metadata` (путь относительно contents/, затем корня).
+/// The Preview/Image field from the metadata.json/.desktop of a KPackage theme —
+/// port of `_preview_from_metadata` (path relative to contents/, then the root).
 pub fn preview_from_metadata(fs: &FsSnapshot, theme_dir: &str) -> String {
     let mj = join(theme_dir, "metadata.json");
     if fs.is_file(&mj) {
@@ -973,7 +978,7 @@ pub fn preview_from_metadata(fs: &FsSnapshot, theme_dir: &str) -> String {
         if let Some(text) = fs.read_text(&md) {
             for line in text.lines() {
                 let s = line.trim();
-                // `Screenshot=` — снимок темы экрана входа SDDM.
+                // `Screenshot=` — a screenshot of an SDDM login screen theme.
                 let rel = s
                     .strip_prefix("Preview=")
                     .or_else(|| s.strip_prefix("Image="))
@@ -994,10 +999,10 @@ pub fn preview_from_metadata(fs: &FsSnapshot, theme_dir: &str) -> String {
 }
 
 // ============================================================================
-// pacman-классификация: чистые парсеры — порт _foreign_pkgs / _owner_pkgs
+// pacman classification: pure parsers — port of _foreign_pkgs / _owner_pkgs
 // ============================================================================
 
-/// Результат одной попытки `pacman -Qm` для чистой политики ретраев.
+/// Result of one `pacman -Qm` attempt for the pure retry policy.
 pub enum QmAttempt {
     /// returncode == 0: stdout.
     Ok(String),
@@ -1007,7 +1012,7 @@ pub enum QmAttempt {
     Error,
 }
 
-/// Разбор stdout `pacman -Qm`: имена foreign-пакетов.
+/// Parsing `pacman -Qm` stdout: names of foreign packages.
 pub fn parse_qm_output(stdout: &str) -> HashSet<String> {
     stdout
         .lines()
@@ -1017,16 +1022,16 @@ pub fn parse_qm_output(stdout: &str) -> HashSet<String> {
         .collect()
 }
 
-/// Политика `_foreign_pkgs` на ГОТОВЫХ попытках (subprocess/sleep — у
-/// исполнителя): до 2 попыток; Fail с "lck"/"lock" в stderr → ретрай, иная
-/// ошибка → стоп; ничего не вышло → None (→ ScanUnavailable у scan_system).
-/// Возвращает (результат, сколько попыток израсходовано).
+/// The `_foreign_pkgs` policy on READY attempts (subprocess/sleep — at the
+/// executor): up to 2 attempts; Fail with "lck"/"lock" in stderr → retry, any
+/// other error → stop; nothing worked → None (→ ScanUnavailable in scan_system).
+/// Returns (result, how many attempts were used).
 pub fn foreign_pkgs_from_attempts(
     has_pacman: bool,
     attempts: &[QmAttempt],
 ) -> (Option<HashSet<String>>, usize) {
     if !has_pacman {
-        return (Some(HashSet::new()), 0); // вне Arch foreign-понятия нет
+        return (Some(HashSet::new()), 0); // outside Arch there is no notion of foreign
     }
     let mut used = 0;
     for attempt in attempts.iter().take(2) {
@@ -1037,25 +1042,25 @@ pub fn foreign_pkgs_from_attempts(
             QmAttempt::Fail(stderr) => {
                 let low = stderr.to_lowercase();
                 if low.contains("lck") || low.contains("lock") {
-                    continue; // db.lck → подождать и повторить
+                    continue; // db.lck → wait and retry
                 }
-                break; // иная ошибка → ретрай не поможет
+                break; // another error → a retry won't help
             }
         }
     }
     (None, used)
 }
 
-/// Разбор stdout `LANG=C pacman -Qo`: «<path> is owned by <pkg> <ver>» →
-/// path.rstrip('/') → pkg — порт парсера `_owner_pkgs` (regex `_QO_LINE`).
-/// Строки без владельца/ошибки/мусор игнорируются.
+/// Parsing `LANG=C pacman -Qo` stdout: "<path> is owned by <pkg> <ver>" →
+/// path.rstrip('/') → pkg — port of the `_owner_pkgs` parser (regex `_QO_LINE`).
+/// Lines without an owner/errors/garbage are ignored.
 pub fn parse_qo_output(stdout: &str) -> HashMap<String, String> {
     let mut owners = HashMap::new();
     for raw in stdout.lines() {
         let line = raw.trim();
-        // `^(.*\S)\s+is owned by\s+(\S+)\s+\S+\s*$` — жадный path: ищем
-        // ПОСЛЕДНЕЕ вхождение "is owned by" с пробелами вокруг и ровно двумя
-        // токенами (pkg ver) после него.
+        // `^(.*\S)\s+is owned by\s+(\S+)\s+\S+\s*$` — a greedy path: we look for
+        // the LAST occurrence of "is owned by" surrounded by spaces and followed by
+        // exactly two tokens (pkg ver).
         let needle = "is owned by";
         let mut found: Option<(String, String)> = None;
         let mut idx = 0;
@@ -1089,10 +1094,10 @@ pub fn parse_qo_output(stdout: &str) -> HashMap<String, String> {
 }
 
 // ============================================================================
-// Активные темы: сборка карты из готовых источников — порт _active_map
+// Active themes: building the map from ready sources — port of _active_map
 // ============================================================================
 
-/// `_clean`: пусто/«—» → "".
+/// `_clean`: empty/"—" → "".
 fn clean(v: &str) -> &str {
     let v = v.trim();
     if v.is_empty() || v == "—" {
@@ -1102,11 +1107,11 @@ fn clean(v: &str) -> &str {
     }
 }
 
-/// Источники `_active_map` в ГОТОВОМ виде: значения ThemeManager/kreadconfig6
-/// (kreadconfig6-поля — Some(stdout) при rc==0) и содержимое конфигов
-/// (None = файла нет). `sddm_confs` — содержимое СУЩЕСТВУЮЩИХ файлов в
-/// порядке чтения SDDM (`system_plan::sddm_theme_files`); `plymouth_confs` —
-/// по возрастанию веса ([`plymouth_confs_by_weight`]).
+/// `_active_map` sources in READY form: ThemeManager/kreadconfig6 values
+/// (kreadconfig6 fields — Some(stdout) when rc==0) and config contents
+/// (None = no file). `sddm_confs` — contents of EXISTING files in SDDM's read
+/// order (`system_plan::sddm_theme_files`); `plymouth_confs` — by increasing
+/// weight ([`plymouth_confs_by_weight`]).
 #[derive(Default)]
 pub struct ActiveMapSources<'a> {
     pub kde_global: &'a str,
@@ -1121,49 +1126,49 @@ pub struct ActiveMapSources<'a> {
     pub splash: Option<&'a str>,
     pub lockscreen: Option<&'a str>,
     pub kwin_decoration_theme: Option<&'a str>,
-    /// `kwinrc [org.kde.kdecoration2] library` (None — не читали).
+    /// `kwinrc [org.kde.kdecoration2] library` (None — not read).
     pub kwin_decoration_library: Option<&'a str>,
     pub kvantum_kvconfig: Option<&'a str>,
     pub sddm_confs: Vec<&'a str>,
     pub plymouth_confs: Vec<&'a str>,
-    /// `$QT_STYLE_OVERRIDE` текущего сеанса — Qt читает её раньше всего
-    /// остального, поэтому и мы читаем.
+    /// `$QT_STYLE_OVERRIDE` of the current session — Qt reads it before anything
+    /// else, so we read it too.
     pub qt_style_override_env: &'a str,
-    /// Содержимое `~/.config/environment.d/rexon-qt-style.conf` (None — файла
-    /// нет). Переменные оттуда попадут в сеанс только после перезахода, но
-    /// выбор человек уже сделал: не показать его — значит соврать, что
-    /// «ничего не произошло».
+    /// Content of `~/.config/environment.d/rexon-qt-style.conf` (None — no file).
+    /// Variables from there reach the session only after logging in again, but
+    /// the person has already made the choice: not showing it would be lying
+    /// that "nothing happened".
     pub qt_style_env_file: Option<&'a str>,
     /// `~/.config/lxqt/lxqt.conf` — `[Qt] style` (LXQt).
     pub lxqt_conf: Option<&'a str>,
-    /// `~/.config/qt6ct/qt6ct.conf` либо qt5ct — `[Appearance] style`.
+    /// `~/.config/qt6ct/qt6ct.conf` or qt5ct — `[Appearance] style`.
     pub qtct_conf: Option<&'a str>,
-    /// Темы GTK, значков и курсора из РОДНОГО хранилища окружения
-    /// (gsettings у GNOME/Cinnamon/MATE/Budgie/Pantheon/COSMIC, xfconf у XFCE,
-    /// DConfig у Deepin — [`native_role_values`]). Это тот же ключ, в который
-    /// их пишет применение, поэтому значение отсюда побеждает kdeglobals и
-    /// `settings.ini`. None — окружение своего хранилища не имеет (KDE, LXQt,
-    /// тайловые WM) или ключ не прочитался: тогда прежняя цепочка.
+    /// GTK, icon and cursor themes from the environment's NATIVE storage
+    /// (gsettings for GNOME/Cinnamon/MATE/Budgie/Pantheon/COSMIC, xfconf for XFCE,
+    /// DConfig for Deepin — [`native_role_values`]). It is the same key applying
+    /// writes them to, so the value from here wins over kdeglobals and
+    /// `settings.ini`. None — the environment has no storage of its own (KDE,
+    /// LXQt, tiling WMs) or the key couldn't be read: then the old chain.
     pub native_gtk: Option<&'a str>,
     pub native_icons: Option<&'a str>,
     pub native_cursor: Option<&'a str>,
-    /// Ответ команды чтения звуковой темы текущего окружения
-    /// (`qt_settings::sound_read_argv_for`, None — читать нечем).
+    /// Answer of the command reading the current environment's sound theme
+    /// (`qt_settings::sound_read_argv_for`, None — nothing to read with).
     pub sound_theme: Option<&'a str>,
-    /// Текущие обои рабочего стола: путь либо `file://`-URI (None — узнать
-    /// не вышло). Из него берётся ИМЯ ПАЧКИ — см. [`wallpaper_pack_name`].
+    /// The current desktop wallpaper: a path or a `file://` URI (None — couldn't
+    /// find out). The PACK NAME is taken from it — see [`wallpaper_pack_name`].
     pub wallpaper_current: Option<&'a str>,
-    /// Домашний каталог — нужен, чтобы узнать пачку обоев по пути картинки.
+    /// Home directory — needed to recognise the wallpaper pack by the picture's path.
     pub home: &'a str,
-    /// Корень usr (live: `/usr`) — вторая половина той же задачи.
+    /// The usr root (live: `/usr`) — the other half of the same task.
     pub usr_root: &'a str,
 }
 
-/// Конфиги SDDM, из которых карта активных тем берёт `[Theme] Current=`.
+/// SDDM configs from which the active theme map takes `[Theme] Current=`.
 ///
-/// `plasma_login` — экран входа рисует Plasma Login Manager
-/// (`system_plan::is_plasma_login`): у него тем нет, и никакая SDDM-тема не
-/// активна, что бы ни осталось в `/etc/sddm.conf.d` от прежнего SDDM.
+/// `plasma_login` — the login screen is drawn by Plasma Login Manager
+/// (`system_plan::is_plasma_login`): it has no themes, and no SDDM theme is
+/// active, whatever remained in `/etc/sddm.conf.d` from the old SDDM.
 pub fn sddm_confs_for_active_map(confs: Vec<&str>, plasma_login: bool) -> Vec<&str> {
     if plasma_login {
         Vec::new()
@@ -1172,7 +1177,7 @@ pub fn sddm_confs_for_active_map(confs: Vec<&str>, plasma_login: bool) -> Vec<&s
     }
 }
 
-/// Каталоги, внутри которых лежат пачки обоев (пользовательский и системный).
+/// Directories inside which wallpaper packs lie (user and system).
 pub fn wallpaper_roots(home: &str, usr_root: &str) -> [String; 2] {
     [
         format!("{home}/.local/share/wallpapers"),
@@ -1180,8 +1185,8 @@ pub fn wallpaper_roots(home: &str, usr_root: &str) -> [String; 2] {
     ]
 }
 
-/// Раскодировать `%XX` в `file://`-URI (gsettings отдаёт обои именно так, и
-/// путь с кириллицей без раскодирования не совпадёт ни с одной пачкой).
+/// Decode `%XX` in a `file://` URI (gsettings returns the wallpaper exactly
+/// like that, and a path with Cyrillic won't match any pack without decoding).
 fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(b.len());
@@ -1201,18 +1206,19 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Имя ПАЧКИ обоев, внутри которой лежит картинка текущих обоев.
+/// Name of the wallpaper PACK in which the current wallpaper picture lies.
 ///
-/// Это и есть ответ на вопрос «применена ли пачка прямо сейчас»: карточка
-/// сверяет своё имя с этим значением ровно так же, как иконки сверяют своё с
-/// активной темой иконок — одним механизмом на все виды, без отдельного
-/// костыля для обоев.
+/// That is the answer to "is the pack applied right now": a card compares its
+/// name with this value exactly as icons compare theirs with the active icon
+/// theme — one mechanism for all kinds, without a separate crutch for
+/// wallpapers.
 ///
-/// Берётся первый сегмент пути после каталога обоев, поэтому одинаково
-/// работает и для пачки (`…/wallpapers/Пачка/contents/images/1920x1080.png`
-/// → `Пачка`), и для одиночной картинки (`…/wallpapers/Горы.png` → `Горы.png`
-/// — именно под таким именем она и лежит в журнале). Обои вне каталогов
-/// обоев (свой файл из «Изображений») пачкой не считаются — пусто.
+/// The first path segment after the wallpaper directory is taken, so it
+/// works equally for a pack (`…/wallpapers/Pack/contents/images/1920x1080.png`
+/// → `Pack`) and for a single picture (`…/wallpapers/Mountains.png` →
+/// `Mountains.png` — exactly the name it has in the journal). A wallpaper
+/// outside the wallpaper directories (one's own file from «Pictures») doesn't
+/// count as a pack — empty.
 pub fn wallpaper_pack_name(current: &str, home: &str, usr_root: &str) -> String {
     let raw = current.trim().trim_matches(|c| c == '\'' || c == '"').trim();
     let path = match raw.strip_prefix("file://") {
@@ -1231,8 +1237,8 @@ pub fn wallpaper_pack_name(current: &str, home: &str, usr_root: &str) -> String 
     String::new()
 }
 
-/// Значение переменной из файла `environment.d` (`ИМЯ=значение`, комментарии
-/// с `#` пропускаются).
+/// Value of a variable from an `environment.d` file (`NAME=value`, comments
+/// with `#` are skipped).
 fn env_file_value(content: Option<&str>, name: &str) -> Option<String> {
     let text = content?;
     let prefix = format!("{name}=");
@@ -1251,7 +1257,7 @@ fn env_file_value(content: Option<&str>, name: &str) -> Option<String> {
     None
 }
 
-/// Значение ключа ini-файла в указанной секции (`lxqt.conf`, `qt6ct.conf`).
+/// Value of an ini file key in the given section (`lxqt.conf`, `qt6ct.conf`).
 fn ini_value(content: Option<&str>, section: &str, key: &str) -> Option<String> {
     let text = content?;
     let mut here = false;
@@ -1275,13 +1281,13 @@ fn ini_value(content: Option<&str>, section: &str, key: &str) -> Option<String> 
     None
 }
 
-/// Темы GTK, значков и курсора из родного хранилища окружения `de` —
-/// `[gtk, icons, cursor]` для [`ActiveMapSources::native_gtk`] и соседей.
+/// GTK, icon and cursor themes from the native storage of environment `de` —
+/// `[gtk, icons, cursor]` for [`ActiveMapSources::native_gtk`] and neighbours.
 ///
-/// Команды — [`crate::themes::native_role_read_cmd`] (та же таблица схем,
-/// что у применения); `read` исполняет команду и отдаёт stdout при успехе
-/// (стенды подменяют его). У окружения без своего хранилища `read` не
-/// зовётся вовсе — KDE не платит ни одним лишним процессом.
+/// Commands — [`crate::themes::native_role_read_cmd`] (the same schema table
+/// as applying uses); `read` runs a command and returns stdout on success
+/// (test rigs substitute it). For an environment without its own storage
+/// `read` is not called at all — KDE doesn't pay a single extra process.
 pub fn native_role_values(
     de: &str,
     mut read: impl FnMut(&crate::themes::Cmd) -> Option<String>,
@@ -1298,8 +1304,8 @@ pub fn native_role_values(
     out
 }
 
-/// apply_kind → имя активной темы — порт `_active_map` (порядок вставки
-/// ключей повторяет Python-код; сериализуется как его dict).
+/// apply_kind → active theme name — port of `_active_map` (key insertion
+/// order follows the Python code; serialised like its dict).
 pub fn active_map_from_sources(src: &ActiveMapSources) -> Map<String, Value> {
     let mut out = Map::new();
     let put = |m: &mut Map<String, Value>, k: &str, v: &str| {
@@ -1314,10 +1320,10 @@ pub fn active_map_from_sources(src: &ActiveMapSources) -> Map<String, Value> {
     if !clean(src.kde_colors).is_empty() {
         put(&mut out, "colors", clean(src.kde_colors));
     }
-    // Значение родного хранилища окружения (см. `native_*`) — первым.
-    // Раньше вне KDE значки и курсор брались только из kdeglobals, и в MATE
-    // применённые через gsettings темы не считались активными: удаление
-    // сносило применённую тему (живая проверка MATE, 16.10.2026).
+    // The value from the environment's native storage (see `native_*`) — first.
+    // Previously outside KDE icons and cursor were taken only from kdeglobals,
+    // and in MATE themes applied via gsettings didn't count as active: removal
+    // wiped the applied theme (live MATE check, 16.10.2026).
     fn native(v: Option<&str>) -> Option<&str> {
         v.map(clean).filter(|v| !v.is_empty())
     }
@@ -1325,7 +1331,7 @@ pub fn active_map_from_sources(src: &ActiveMapSources) -> Map<String, Value> {
     if !icons.is_empty() {
         put(&mut out, "icons", icons);
     }
-    // cursor: родное хранилище → Mouse/cursorTheme → kcminput → $XCURSOR_THEME
+    // cursor: native storage → Mouse/cursorTheme → kcminput → $XCURSOR_THEME
     let cur = if let Some(v) = native(src.native_cursor) {
         v
     } else {
@@ -1344,8 +1350,8 @@ pub fn active_map_from_sources(src: &ActiveMapSources) -> Map<String, Value> {
     if !cur.is_empty() {
         put(&mut out, "cursor", cur);
     }
-    // gtk — родное хранилище, иначе gtk-3.0/settings.ini [Settings]
-    // gtk-theme-name (первая строка).
+    // gtk — native storage, otherwise gtk-3.0/settings.ini [Settings]
+    // gtk-theme-name (the first line).
     if let Some(v) = native(src.native_gtk) {
         put(&mut out, "gtk", v);
     } else if let Some(ini) = src.gtk_settings_ini {
@@ -1363,14 +1369,15 @@ pub fn active_map_from_sources(src: &ActiveMapSources) -> Map<String, Value> {
             }
         }
     }
-    // widgetstyle — «каким стилем нарисованы Qt-программы». Источник у него
-    // РАЗНЫЙ в разных столах, и порядок здесь — порядок самого Qt: сперва
-    // QT_STYLE_OVERRIDE (её Qt читает раньше платформенной темы), потом наш
-    // файл environment.d (выбор уже сделан, подхватится при следующем входе),
-    // потом kdeglobals (KDE), lxqt.conf (LXQt) и конфиг qt6ct.
+    // widgetstyle — "which style Qt programs are drawn with". Its source DIFFERS
+    // between desktops, and the order here is Qt's own: first
+    // QT_STYLE_OVERRIDE (Qt reads it before the platform theme), then our
+    // environment.d file (the choice is made, it will be picked up at the next
+    // login), then kdeglobals (KDE), lxqt.conf (LXQt) and the qt6ct config.
     //
-    // Раньше источник был один — kdeglobals: вне KDE он пуст, и бейдж
-    // «Активна» не появлялся ни у одной темы Kvantum, хотя тема применена.
+    // Previously there was one source — kdeglobals: outside KDE it is empty, and
+    // the «✅ Active» badge didn't appear on any Kvantum theme, even though the
+    // theme was applied.
     let widget_style = {
         let env = clean(src.qt_style_override_env);
         if !env.is_empty() {
@@ -1398,10 +1405,10 @@ pub fn active_map_from_sources(src: &ActiveMapSources) -> Map<String, Value> {
             put(&mut out, "lockscreen", clean(v.trim()));
         }
     }
-    // aurorae — kwinrc theme = "__aurorae__svg__Name" (суффикс БЕЗ чистки:
-    // пустой суффикс даёт пустое значение — поведение Python сохранено).
-    // Под модулем Breeze/Oxygen и др. — `kdecoration` = `library/theme`
-    // (`kdecoration::current`): плитку встроенной рамки подсвечивает раздел.
+    // aurorae — kwinrc theme = "__aurorae__svg__Name" (the suffix WITHOUT
+    // cleaning: an empty suffix gives an empty value — Python behaviour kept).
+    // Under the Breeze/Oxygen etc. module — `kdecoration` = `library/theme`
+    // (`kdecoration::current`): the section highlights the built-in border tile.
     if let Some(theme) = src.kwin_decoration_theme {
         match crate::kdecoration::current(src.kwin_decoration_library, Some(theme)) {
             crate::kdecoration::Current::Svg(dir) => put(&mut out, "aurorae", &dir),
@@ -1409,7 +1416,7 @@ pub fn active_map_from_sources(src: &ActiveMapSources) -> Map<String, Value> {
             crate::kdecoration::Current::Unknown => {}
         }
     }
-    // kvantum — kvantum.kvconfig [General] theme= (первая строка theme=).
+    // kvantum — kvantum.kvconfig [General] theme= (the first theme= line).
     if let Some(cfg) = src.kvantum_kvconfig {
         for line in cfg.lines() {
             let s = line.trim();
@@ -1422,47 +1429,47 @@ pub fn active_map_from_sources(src: &ActiveMapSources) -> Map<String, Value> {
             }
         }
     }
-    // sddm — [Theme] Current=, последний выигрывает.
+    // sddm — [Theme] Current=, the last one wins.
     //
-    // ⭐ Починка 28.09.2026. Прежде здесь читались ещё /etc/plasmalogin.conf*,
-    // а ключ ловился в любой группе. У Plasma Login Manager тем нет вовсе (и
-    // ключа `[Theme] Current` тоже), зато после перехода на него остаётся
-    // старый `/etc/sddm.conf.d/kde_settings.conf` с `Current=breeze` — и
-    // вкладка отмечала «breeze» активной темой экрана входа, который рисует
-    // вовсе не SDDM (живая машина владельца, снимок 28.09). При Plasma Login
-    // Manager активной SDDM-темы не бывает — источники гасит
-    // [`sddm_confs_for_active_map`]; `Current=` вне группы `[Theme]` темой не
-    // считается — SDDM его там и не прочтёт.
+    // ⭐ Fix of 28.09.2026. Previously /etc/plasmalogin.conf* was read here too,
+    // and the key was caught in any group. Plasma Login Manager has no themes at
+    // all (and no `[Theme] Current` key either), but after switching to it the
+    // old `/etc/sddm.conf.d/kde_settings.conf` with `Current=breeze` remains —
+    // and the tab marked "breeze" as the active theme of a login screen that is
+    // not drawn by SDDM at all (the owner's live machine, snapshot of 28.09).
+    // With Plasma Login Manager there is no active SDDM theme — the sources are
+    // blanked by [`sddm_confs_for_active_map`]; `Current=` outside the `[Theme]`
+    // group doesn't count as a theme — SDDM won't read it there either.
     if let Some(v) = sddm_current_from(&src.sddm_confs) {
         put(&mut out, "sddm", &v);
     }
-    // sounds — звуковая тема текущего окружения (kdeglobals[Sounds]Theme в
-    // KDE, org.gnome.desktop.sound в остальных). Читает её тот же движок,
-    // что и вкладка «Настройки», — второго способа спросить нет.
+    // sounds — the current environment's sound theme (kdeglobals[Sounds]Theme in
+    // KDE, org.gnome.desktop.sound elsewhere). It is read by the same engine as
+    // the «⚙️ Settings» tab — there is no second way to ask.
     if let Some(v) = src.sound_theme {
         let v = crate::qt_settings::parse_sound_theme(v);
         if !clean(&v).is_empty() {
             put(&mut out, "sounds", clean(&v));
         }
     }
-    // wallpapers — не имя темы, а имя ПАЧКИ, внутри которой лежит картинка
-    // текущих обоев: «применена» пачка ровно тогда, когда фон рабочего стола
-    // взят из неё.
+    // wallpapers — not a theme name but the name of the PACK in which the
+    // current wallpaper picture lies: a pack is "applied" exactly when the
+    // desktop background is taken from it.
     if let Some(v) = src.wallpaper_current {
         let name = wallpaper_pack_name(v, src.home, src.usr_root);
         if !name.is_empty() {
             put(&mut out, "wallpapers", &name);
         }
     }
-    // plymouth — plymouthd.conf [Daemon] Theme=, последний выигрывает.
+    // plymouth — plymouthd.conf [Daemon] Theme=, the last one wins.
     if let Some(v) = plymouth_current_from(&src.plymouth_confs) {
         put(&mut out, "plymouth", &v);
     }
     out
 }
 
-/// Тема экрана входа по файлам SDDM (в порядке чтения): `[Theme] Current=`,
-/// последний выигрывает.
+/// The login screen theme from SDDM files (in read order): `[Theme] Current=`,
+/// the last one wins.
 pub fn sddm_current_from(confs: &[&str]) -> Option<String> {
     let mut found = None;
     for conf in confs {
@@ -1487,7 +1494,7 @@ pub fn sddm_current_from(confs: &[&str]) -> Option<String> {
     found
 }
 
-/// Тема заставки загрузки по `plymouthd.conf`: `Theme=`, последний выигрывает.
+/// The boot splash theme from `plymouthd.conf`: `Theme=`, the last one wins.
 pub fn plymouth_current_from(confs: &[&str]) -> Option<String> {
     let mut found = None;
     for conf in confs {
@@ -1503,17 +1510,19 @@ pub fn plymouth_current_from(confs: &[&str]) -> Option<String> {
     found
 }
 
-/// Настройки plymouthd по возрастанию веса — вход [`plymouth_current_from`]
-/// (последний `Theme=` выигрывает): умолчание пакета `plymouthd.defaults`,
-/// затем выбор через `update-alternatives` (`default.plymouth` у семейства
-/// Debian, `alt_theme` — имя каталога, куда ведёт ссылка), затем прежний
-/// `/usr/share/plymouth/plymouthd.conf` и, сильнее всех, `/etc/plymouth/
-/// plymouthd.conf` — его пишет `plymouth-set-default-theme`.
+/// plymouthd settings by increasing weight — the input of
+/// [`plymouth_current_from`] (the last `Theme=` wins): the package default
+/// `plymouthd.defaults`, then the choice via `update-alternatives`
+/// (`default.plymouth` in the Debian family, `alt_theme` — the name of the
+/// directory the link leads to), then the old
+/// `/usr/share/plymouth/plymouthd.conf` and, strongest of all,
+/// `/etc/plymouth/plymouthd.conf` — written by `plymouth-set-default-theme`.
 ///
-/// ⭐ Починка 31.10.2026: прежде читались только два файла, и
-/// `/usr/share/…/plymouthd.conf` перекрывал `/etc`, а без `Theme=` в `/etc`
-/// (так на CachyOS, пока тему не меняли) текущей не было вовсе — сетка
-/// раздела не выделяла тему, которую plymouthd берёт из умолчания пакета.
+/// ⭐ Fix of 31.10.2026: previously only two files were read, and
+/// `/usr/share/…/plymouthd.conf` overrode `/etc`, while without `Theme=` in
+/// `/etc` (as on CachyOS until the theme is changed) there was no current one
+/// at all — the section grid didn't highlight the theme plymouthd takes from
+/// the package default.
 pub fn plymouth_confs_by_weight(
     defaults: Option<String>,
     alt_theme: Option<&str>,
@@ -1527,12 +1536,12 @@ pub fn plymouth_confs_by_weight(
     [defaults, alt, legacy_conf, etc_conf].into_iter().flatten().collect()
 }
 
-/// Выбранная сейчас системная тема вида `kind` (`sddm` | `plymouth`) — для
-/// запрета «Удалить» у активной. Те же файлы, что у карты активных тем, плюс
-/// системные умолчания (`/usr/lib/sddm/sddm.conf.d`, `plymouthd.defaults`) и
-/// выбор через `update-alternatives` (`default.plymouth`): здесь лишний
-/// отказ безопаснее, чем снятая активная тема. Помощник от root проверяет
-/// то же самое ещё раз.
+/// The currently chosen system theme of kind `kind` (`sddm` | `plymouth`) — to
+/// forbid «Remove» on the active one. The same files as the active theme map,
+/// plus system defaults (`/usr/lib/sddm/sddm.conf.d`, `plymouthd.defaults`)
+/// and the choice via `update-alternatives` (`default.plymouth`): here an extra
+/// refusal is safer than a removed active theme. The root helper checks the
+/// same thing once more.
 pub fn live_system_theme_active(kind: &str) -> Vec<String> {
     let read_dir_sorted = |dir: &str| -> Vec<String> {
         let mut v: Vec<String> = std::fs::read_dir(dir)
@@ -1555,7 +1564,7 @@ pub fn live_system_theme_active(kind: &str) -> Vec<String> {
             let mut paths = read_dir_sorted("/usr/lib/sddm/sddm.conf.d");
             paths.extend(read_dir_sorted("/etc/sddm.conf.d"));
             paths.push("/etc/sddm.conf".to_string());
-            // Каждый файл отдельно: любое упоминание — уже «выбрана».
+            // Each file separately: any mention already means "chosen".
             for text in read(&paths) {
                 out.extend(sddm_current_from(&[&text]));
             }
@@ -1589,12 +1598,12 @@ pub fn live_system_theme_active(kind: &str) -> Vec<String> {
 }
 
 // ============================================================================
-// Бэкофилл превью из кеша магазина — порт _normalize_theme_name /
+// Preview backfill from the store cache — port of _normalize_theme_name /
 // _backfill_preview
 // ============================================================================
 
-/// Нормализация имени темы для нечёткого матча папка↔магазин — порт
-/// `_normalize_theme_name` (юникод-буквы остаются: Python `str.isalnum`).
+/// Theme name normalisation for fuzzy folder↔store matching — port of
+/// `_normalize_theme_name` (Unicode letters stay: Python `str.isalnum`).
 pub fn normalize_theme_name(name: &str) -> String {
     let mut s = name.to_lowercase();
     for noise in [
@@ -1607,53 +1616,53 @@ pub fn normalize_theme_name(name: &str) -> String {
     s.chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
-/// Окружение сканеров: пути + снимок ФС + кеш магазина.
+/// Scanner environment: paths + FS snapshot + store cache.
 pub struct ScanEnv<'a> {
-    /// Домашний каталог (live: `$HOME`; в фикстурах — /sb/home).
+    /// Home directory (live: `$HOME`; in fixtures — /sb/home).
     pub home: &'a str,
-    /// Корень usr (live: "/usr"; в фикстурах — /sb/usr).
+    /// The usr root (live: "/usr"; in fixtures — /sb/usr).
     pub usr_root: &'a str,
     pub fs: &'a FsSnapshot,
-    /// (name, preview_url) закешированных OCS-тем — `cache.all_items_min()`.
+    /// (name, preview_url) of cached OCS themes — `cache.all_items_min()`.
     pub ocs_cache: &'a [(String, String)],
-    /// `cache.get_preview(url)` → путь локального файла превью (или None).
+    /// `cache.get_preview(url)` → path of the local preview file (or None).
     pub preview_file: &'a dyn Fn(&str) -> Option<String>,
-    /// Что магазин знает об установленном: раздел каждой картинки кеша и
-    /// реестр установок KNewStuff ([`StoreRecords`]).
+    /// What the store knows about what is installed: the section of each cache
+    /// picture and the KNewStuff install registry ([`StoreRecords`]).
     pub store: &'a StoreRecords,
-    /// Язык покупателя (`ru_RU.UTF-8`) — им выбирается перевод имени темы.
-    /// Параметром, а не чтением окружения внутри: иначе списки тем зависели
-    /// бы от локали машины и голдены перестали бы что-либо доказывать.
+    /// The user's language (`ru_RU.UTF-8`) — it selects the theme name translation.
+    /// A parameter rather than reading the environment inside: otherwise theme
+    /// lists would depend on the machine's locale and the goldens would prove nothing.
     pub locale: &'a str,
-    /// Стандартная тема значков окружения ([`LiveScan::with_de`]): её плитка
-    /// видна, даже если набор помечен `Hidden=true` (Adwaita) — иначе
-    /// вернуть значки окружения по умолчанию было бы нечем.
+    /// The environment's standard icon theme ([`LiveScan::with_de`]): its tile is
+    /// visible even if the set is marked `Hidden=true` (Adwaita) — otherwise there
+    /// would be no way to return to the environment's default icons.
     pub standard_icons: Option<&'a str>,
 }
 
-/// Что магазин знает об установленных темах — сырьё второго шага цепочки
-/// превью (`local_preview`): картинка из записи магазина.
+/// What the store knows about installed themes — raw material for the second
+/// step of the preview chain (`local_preview`): the picture from the store record.
 #[derive(Debug, Default, Clone)]
 pub struct StoreRecords {
-    /// Ссылка на картинку кеша магазина → ключ раздела её товара
-    /// (`categories`: `icons`, `kvantum`, …). Пусто — раздел неизвестен, и
-    /// сопоставление по имени идёт без него (прежнее поведение).
+    /// Store cache picture URL → section key of its item (`categories`: `icons`,
+    /// `kvantum`, …). Empty — the section is unknown, and name matching goes
+    /// without it (the old behaviour).
     pub sections: HashMap<String, String>,
-    /// Реестр установок KNewStuff: установленный путь → ссылка на картинку
-    /// товара ([`parse_kns_registry`]).
+    /// KNewStuff install registry: installed path → URL of the item's picture
+    /// ([`parse_kns_registry`]).
     pub installed: Vec<(String, String)>,
-    /// Пути из журнала установленных Rexon
-    /// (`appearance_installer::installed_log_paths`). `None` — журнал не
-    /// читали (сканы без магазина, эталоны): тогда каждая тема в домашнем
-    /// каталоге подписана «Скачано», как прежде.
+    /// Paths from Rexon's installed journal
+    /// (`appearance_installer::installed_log_paths`). `None` — the journal wasn't
+    /// read (scans without the store, references): then every theme in the home
+    /// directory is labelled «⬇️ Downloaded», as before.
     pub rexon_paths: Option<Vec<String>>,
 }
 
 impl StoreRecords {
-    /// Подпись происхождения темы в каталоге `path`: «Скачано» — если её
-    /// поставил Rexon (журнал) или магазин KDE (реестр KNewStuff), иначе
-    /// «Установлена вручную». Темы, положенные руками или прежним `.rxn`,
-    /// «скачанными» не были, и называть их так — неправда.
+    /// Origin label of the theme in directory `path`: «⬇️ Downloaded» — if Rexon
+    /// (journal) or the KDE store (KNewStuff registry) installed it, otherwise
+    /// «🗂️ Installed manually». Themes placed by hand or by an old `.rxn` were
+    /// never "downloaded", and calling them so would be untrue.
     fn origin_label(&self, path: &str) -> &'static str {
         let Some(journal) = &self.rexon_paths else {
             return DOWNLOADED_LABEL;
@@ -1671,10 +1680,10 @@ impl StoreRecords {
     }
 }
 
-/// Короткая пометка на плитке GTK-темы, когда значков или курсора, на
-/// которые тема рассчитана (`index.theme`: `IconTheme=`, `CursorTheme=`), в
-/// системе нет. `items` — план `themes::plan_theme_deps` (его же спрашивает
-/// «Применить»). `None` — всё на месте или тема ничего не просит.
+/// A short note on a GTK theme tile when the icons or cursor the theme is
+/// designed for (`index.theme`: `IconTheme=`, `CursorTheme=`) are not on the
+/// system. `items` — the `themes::plan_theme_deps` plan («Apply» asks it too).
+/// `None` — everything is in place or the theme asks for nothing.
 pub fn missing_deps_note(items: &[crate::themes::DepItem]) -> Option<String> {
     use crate::themes::{DepRole, DepState};
     let missing = |role: DepRole| {
@@ -1688,8 +1697,8 @@ pub fn missing_deps_note(items: &[crate::themes::DepItem]) -> Option<String> {
     }
 }
 
-/// Дописать [`missing_deps_note`] в подпись плиток GTK-тем. `plan` — план
-/// просьб темы по имени её каталога (живой — `LiveInstaller::theme_deps_plan`).
+/// Append [`missing_deps_note`] to the GTK theme tile labels. `plan` — the
+/// theme's requests by its directory name (live — `LiveInstaller::theme_deps_plan`).
 pub fn stamp_missing_deps(items: &mut [ThemeItem], plan: &dyn Fn(&str) -> Vec<crate::themes::DepItem>) {
     for it in items.iter_mut() {
         let Some(name) = it.id.strip_prefix("local:gtk:") else { continue };
@@ -1699,23 +1708,23 @@ pub fn stamp_missing_deps(items: &mut [ThemeItem], plan: &dyn Fn(&str) -> Vec<cr
     }
 }
 
-/// Подпись темы, поставленной Rexon или магазином.
+/// Label of a theme installed by Rexon or the store.
 const DOWNLOADED_LABEL: &str = n_("⬇️ Downloaded");
-/// Подпись темы в домашнем каталоге, которую ни Rexon, ни магазин не ставили.
+/// Label of a theme in the home directory installed by neither Rexon nor the store.
 const MANUAL_LABEL: &str = n_("🗂️ Installed manually");
 
 impl StoreRecords {
-    /// Пустые записи — для сканов без магазина.
+    /// Empty records — for scans without the store.
     pub fn none() -> &'static StoreRecords {
         static NONE: std::sync::OnceLock<StoreRecords> = std::sync::OnceLock::new();
         NONE.get_or_init(StoreRecords::default)
     }
 }
 
-/// Записи реестра установок KNewStuff (`~/.local/share/knewstuff3/*.knsregistry`):
-/// пары «установленный путь — ссылка на картинку товара». Реестр ведут
-/// «Загрузить…» в настройках KDE и Discover; у записи `<stuff>` пути лежат в
-/// `<installedfile>`, картинка — в `<preview>` (уменьшенная) и `<previewBig>`.
+/// KNewStuff install registry records (`~/.local/share/knewstuff3/*.knsregistry`):
+/// pairs "installed path — URL of the item's picture". The registry is kept by
+/// «Get New…» in the KDE settings and by Discover; a `<stuff>` record keeps
+/// paths in `<installedfile>`, the picture — in `<preview>` (small) and `<previewBig>`.
 pub fn parse_kns_registry(xml: &str) -> Vec<(String, String)> {
     fn tags<'t>(block: &'t str, tag: &str) -> Vec<&'t str> {
         let (open, close) = (format!("<{tag}>"), format!("</{tag}>"));
@@ -1743,7 +1752,7 @@ pub fn parse_kns_registry(xml: &str) -> Vec<(String, String)> {
             .find(|u| !u.is_empty());
         let Some(url) = url else { continue };
         for path in tags(block, "installedfile") {
-            // Каталог записан с хвостом `/*` — «всё, что внутри».
+            // A directory recorded with a `/*` tail — "everything inside".
             let path = unescape(path);
             let path = path.trim_end_matches('*').trim_end_matches('/');
             if path.starts_with('/') {
@@ -1754,8 +1763,8 @@ pub fn parse_kns_registry(xml: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Картинка товара, из которого установлен `path` (каталог темы или её файл),
-/// по реестру установок — если она уже лежит в кеше магазина.
+/// Picture of the item `path` was installed from (a theme directory or its
+/// file), via the install registry — if it is already in the store cache.
 pub fn installed_record_preview(env: &ScanEnv, path: &str) -> String {
     let path = path.trim_end_matches('/');
     if path.is_empty() {
@@ -1770,20 +1779,21 @@ pub fn installed_record_preview(env: &ScanEnv, path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Best-effort превью для установленной темы из кеша магазина — порт
-/// `_backfill_preview`: консервативный нечёткий матч (подстрока в обе
-/// стороны, стержень ≥4), неоднозначность (≠1 url) → "".
+/// A best-effort preview for an installed theme from the store cache — port of
+/// `_backfill_preview`: a conservative fuzzy match (substring both ways, stem
+/// ≥4), ambiguity (≠1 url) → "".
 pub fn backfill_preview(env: &ScanEnv, name: &str) -> String {
     backfill_preview_for(env, "", name)
 }
 
-/// [`backfill_preview`] в пределах раздела `kind`: картинка товара другого
-/// раздела теме не подходит, даже если имена похожи. Без этого тема Kvantum
-/// «Win7OS» показывала картинку набора значков «win7-icon-theme», а все
-/// апплеты `…@cinnamon.org` — картинку одной глобальной темы (12.10.2026).
-/// Раздел картинки берётся из [`StoreRecords::sections`]; пустой `kind` или
-/// пустая карта — сопоставление без раздела, прежним правилом (подстрока в
-/// обе стороны). В пределах раздела имена обязаны совпасть целиком.
+/// [`backfill_preview`] within section `kind`: a picture of an item from
+/// another section doesn't fit the theme even if the names are similar.
+/// Without this the Kvantum theme "Win7OS" showed the picture of the
+/// "win7-icon-theme" icon set, and all `…@cinnamon.org` applets — the picture
+/// of one global theme (12.10.2026). The picture's section is taken from
+/// [`StoreRecords::sections`]; an empty `kind` or an empty map — matching
+/// without a section, by the old rule (substring both ways). Within a section
+/// the names must match in full.
 pub fn backfill_preview_for(env: &ScanEnv, kind: &str, name: &str) -> String {
     let by_section = !kind.is_empty() && !env.store.sections.is_empty();
     let target = normalize_theme_name(name);
@@ -1802,16 +1812,16 @@ pub fn backfill_preview_for(env: &ScanEnv, kind: &str, name: &str) -> String {
         if norm.chars().count() < 4 {
             continue;
         }
-        // В пределах раздела — только то же самое имя: с образцом из
-        // содержимого темы картинка похожего по названию товара («Orang» и
-        // «Glassy-OS-3D-GTK - [ Orange ]») хуже нарисованной по самой теме.
+        // Within a section — only the very same name: compared with a sample from
+        // the theme's content, the picture of a similarly named item ("Orang" and
+        // "Glassy-OS-3D-GTK - [ Orange ]") is worse than one drawn from the theme itself.
         let same = if by_section { target == norm } else { target.contains(&norm) || norm.contains(&target) };
         if same {
             matched.insert(url.as_str());
         }
     }
     if matched.len() != 1 {
-        return String::new(); // 0 — не нашли; >1 — неоднозначно
+        return String::new(); // 0 — not found; >1 — ambiguous
     }
     let url = matched.into_iter().next().unwrap();
     match (env.preview_file)(url) {
@@ -1820,8 +1830,8 @@ pub fn backfill_preview_for(env: &ScanEnv, kind: &str, name: &str) -> String {
     }
 }
 
-/// Превью для локальной темы — порт `_resolve_preview`: файл в теме →
-/// сайдкар-кеш → бэкофилл из магазина → "" (UI рисует плейсхолдер).
+/// Preview for a local theme — port of `_resolve_preview`: a file in the theme →
+/// sidecar cache → backfill from the store → "" (the UI draws a placeholder).
 pub fn resolve_preview(
     env: &ScanEnv,
     apply_kind: &str,
@@ -1832,12 +1842,12 @@ pub fn resolve_preview(
     resolve_preview_in(env, apply_kind, name, theme_dir, theme_dir, prefer, &[])
 }
 
-/// Первые два шага единой цепочки превью (`local_preview`) для ЛЮБОГО вида
-/// темы: своя картинка (файл в каталоге темы, названный метаданными,
-/// миниатюра вида в подкаталоге из `subs`), затем картинка из записи
-/// магазина — положенная при установке (сайдкар), найденная по реестру
-/// установок для `install_path` и, последним, по имени в кеше магазина в
-/// пределах раздела `apply_kind`. Пусто — картинку рисует `local_preview`.
+/// The first two steps of the single preview chain (`local_preview`) for ANY
+/// theme kind: its own picture (a file in the theme directory named by the
+/// metadata, the kind's thumbnail in a subdirectory from `subs`), then the
+/// picture from the store record — placed at install time (sidecar), found via
+/// the install registry for `install_path` and, last, by name in the store
+/// cache within section `apply_kind`. Empty — `local_preview` draws the picture.
 pub fn resolve_preview_in(
     env: &ScanEnv,
     apply_kind: &str,
@@ -1864,17 +1874,17 @@ pub fn resolve_preview_in(
     backfill_preview_for(env, apply_kind, name)
 }
 
-/// Пометка на плитке темы курсоров, переведённой из Windows (решение
-/// Wehrwolfmann 03.10.2026: «🪟 из Windows»).
+/// A mark on the tile of a cursor theme converted from Windows (Wehrwolfmann's
+/// decision of 03.10.2026: «🪟 From Windows»).
 // TRANSLATORS: badge on a cursor theme tile: the theme was converted from Windows cursors.
 const FROM_WINDOWS_LABEL: &str = n_("🪟 From Windows");
 
-/// Тема курсоров переведена из Windows импортёром Rexon?
+/// Was the cursor theme converted from Windows by the Rexon importer?
 ///
-/// Признак — строка `X-Rexon-Source=windows` в `index.theme`
-/// ([`crate::importers::WINDOWS_CURSOR_ORIGIN_KEY`]). Темы, переведённые до
-/// этой строки, узнаются по `Comment`, который импортёр пишет сам и всегда
-/// одинаково (`Imported from Windows cursors (N cursors)`).
+/// The sign is the line `X-Rexon-Source=windows` in `index.theme`
+/// ([`crate::importers::WINDOWS_CURSOR_ORIGIN_KEY`]). Themes converted before
+/// this line existed are recognised by the `Comment` the importer writes
+/// itself, always the same way (`Imported from Windows cursors (N cursors)`).
 pub fn is_windows_cursor_theme(fs: &FsSnapshot, theme_dir: &str) -> bool {
     if theme_dir.is_empty() {
         return false;
@@ -1891,7 +1901,7 @@ pub fn is_windows_cursor_theme(fs: &FsSnapshot, theme_dir: &str) -> bool {
 }
 
 // ============================================================================
-// Построение ThemeItem — порт _mk_item / _mk_local_item
+// Building a ThemeItem — port of _mk_item / _mk_local_item
 // ============================================================================
 
 fn mk_item(
@@ -1912,7 +1922,7 @@ fn mk_item(
     } else {
         theme_dir.clone()
     };
-    // У цветовой схемы реестр установок помнит сам файл `<имя>.colors`.
+    // For a color scheme the install registry remembers the `<name>.colors` file itself.
     let recorded_as = if t.entry == "colors" {
         format!("{install_path}.colors")
     } else {
@@ -1922,9 +1932,9 @@ fn mk_item(
         env, t.apply_kind, name, &theme_dir, &recorded_as, None, &preview_subdirs(t),
     );
     let badge = if active { local_active_badge() } else { tr(source_label) };
-    // В номере — имя каталога (по нему тема применяется), в подписи —
-    // человеческое имя из метаданных. У цветовой схемы каталога нет вовсе:
-    // тема это один файл `<имя>.colors`, и имя лежит внутри него.
+    // The id carries the directory name (the theme is applied by it), the label —
+    // the human name from the metadata. A color scheme has no directory at all:
+    // the theme is a single `<name>.colors` file, and the name lies inside it.
     let (display, source_name) = if t.entry == "colors" {
         let file = format!("{}.colors", join(base_dir, name));
         let display = file_display_name(env.fs, &file, name, env.locale);
@@ -1938,8 +1948,8 @@ fn mk_item(
         (display, source)
     };
     let mut description = theme_description(env.fs, &theme_dir, env.locale);
-    // Курсоры из Windows: пометка источника на плитке и описание на языке
-    // интерфейса вместо английского `Comment`, записанного импортёром.
+    // Cursors from Windows: the source mark on the tile and a description in the
+    // interface language instead of the English `Comment` written by the importer.
     let mut origin = String::new();
     if t.apply_kind == "cursor" && is_windows_cursor_theme(env.fs, &theme_dir) {
         origin = format!(" · {}", tr(FROM_WINDOWS_LABEL));
@@ -1960,11 +1970,11 @@ fn mk_item(
     }
 }
 
-// Сигнатура повторяет kwargs Python `_mk_local_item` 1-в-1 (см. паритет).
+// The signature mirrors the kwargs of Python `_mk_local_item` 1-to-1 (see parity).
 //
-// `display` — то, что увидит покупатель; `name` — имя каталога, из которого
-// собран номер карточки. Считает его вызывающий: у стиля приложений каталога
-// темы нет вовсе, а у Kvantum и look-and-feel он свой.
+// `display` — what the user will see; `name` — the directory name the card id
+// is built from. The caller computes it: an application style has no theme
+// directory at all, while Kvantum and look-and-feel have their own.
 #[allow(clippy::too_many_arguments)]
 fn mk_local_item(
     kind: &str,
@@ -1977,8 +1987,8 @@ fn mk_local_item(
     install_path: &str,
     preview: &str,
 ) -> ThemeItem {
-    // label уже содержит эмодзи типа; активному бейджу префиксуем icon
-    // (иначе был баг «🎛 🎛 …» — см. Python-комментарий).
+    // label already contains the type's emoji; for the active badge we prefix icon
+    // (otherwise there was the "🎛 🎛 …" bug — see the Python comment).
     let author = if active {
         format!("{icon} {}", local_active_badge())
     } else {
@@ -1997,11 +2007,11 @@ fn mk_local_item(
     }
 }
 
-/// Вид темы в подписи карточки на языке интерфейса.
+/// The theme kind in the card label, in the interface language.
 ///
-/// Перевод — с контекстом «theme kind»: те же английские слова («GTK Theme»)
-/// в других местах программы переведены иначе, а здесь русский обязан
-/// остаться прежним. Имена собственные (Kvantum, Plymouth) — как есть.
+/// Translated with the "theme kind" context: the same English words ("GTK
+/// Theme") are translated differently elsewhere in the program, while here the
+/// Russian must stay as before. Proper names (Kvantum, Plymouth) — as is.
 pub fn type_label(t: &ScanType) -> String {
     match t.apply_kind {
         "global" => trc("theme kind", "Global Theme"),
@@ -2013,33 +2023,33 @@ pub fn type_label(t: &ScanType) -> String {
         "gtk" => trc("theme kind", "GTK Theme"),
         "sddm" => trc("theme kind", "SDDM (Login Screen)"),
         "sounds" => trc("theme kind", "Sound Theme"),
-        // Разделы окружений: подпись — `msgid` таблицы типов.
+        // Desktop environment sections: the label is the type table's `msgid`.
         _ if crate::categories::is_de_section(t.cat_id) => tr(t.label),
         _ => t.label.to_string(),
     }
 }
 
-/// Признак «тема включена сейчас» для страницы — отдельно от подписи.
+/// The "theme is enabled now" sign for the page — separate from the label.
 ///
-/// Подпись автора («… · ✅ Активна») переводится, и узнавать активную тему
-/// поиском бейджа в ней значило бы привязать поведение к языку. Неактивным
-/// признака не ставим: вид такой плитки решает раздел, в котором её показали
-/// (`appearance_page::scan_local_kind`).
+/// The author's label ("… · ✅ Active") is translated, and recognising the
+/// active theme by searching for the badge in it would tie behaviour to the
+/// language. Inactive ones get no sign: what such a tile looks like is decided
+/// by the section it is shown in (`appearance_page::scan_local_kind`).
 fn active_kind(active: bool) -> Option<String> {
     active.then(|| "active".to_string())
 }
 
 // ============================================================================
-// Публичные сканеры
+// Public scanners
 // ============================================================================
 
-/// Темы, применённые СЕЙЧАС (карта из конфига KDE) — порт `scan_active`.
+/// Themes applied NOW (the map from the KDE config) — port of `scan_active`.
 pub fn scan_active(env: &ScanEnv, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
     scan_active_in(env, &types_for(env.home, env.usr_root), active_map)
 }
 
-/// [`scan_active`] по заданному набору типов (живой скан добавляет разделы
-/// окружений — [`de_types`]).
+/// [`scan_active`] over a given set of types (the live scan adds desktop
+/// environment sections — [`de_types`]).
 pub fn scan_active_in(
     env: &ScanEnv,
     types: &[ScanType],
@@ -2048,12 +2058,12 @@ pub fn scan_active_in(
     let mut items = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     for (ti, t) in types.iter().enumerate() {
-        // Тот же вид ниже по списку (раздел смотрит ещё и `~/.icons`,
-        // `~/.themes`): не нашли тему здесь — пусть ищет он, а не плитка с
-        // путём в каталог, где темы нет.
+        // The same kind further down the list (the section also looks at `~/.icons`,
+        // `~/.themes`): if the theme wasn't found here, let that one look, rather
+        // than a tile with a path into a directory where there is no theme.
         let later_same_kind = types[ti + 1..].iter().any(|o| o.apply_kind == t.apply_kind);
         for name in active_names(active_map, t.apply_kind) {
-            // каталог, где реально лежит активная тема (user → sys)
+            // the directory where the active theme actually lies (user → sys)
             let mut base = String::new();
             for d in [&t.user_dir, &t.sys_dir] {
                 if d.is_empty() {
@@ -2094,7 +2104,7 @@ pub fn scan_active_in(
     items
 }
 
-/// Пользовательские темы в ~/.local/share/…, НЕ активные — порт
+/// User themes in ~/.local/share/…, NOT active — port of
 /// `scan_downloaded`.
 pub fn scan_downloaded(
     env: &ScanEnv,
@@ -2103,7 +2113,7 @@ pub fn scan_downloaded(
     scan_downloaded_in(env, &types_for(env.home, env.usr_root), active_map)
 }
 
-/// [`scan_downloaded`] по заданному набору типов.
+/// [`scan_downloaded`] over a given set of types.
 pub fn scan_downloaded_in(
     env: &ScanEnv,
     types: &[ScanType],
@@ -2122,7 +2132,7 @@ pub fn scan_downloaded_in(
             } else if t.apply_kind == "icons"
                 && is_cursor_only(env.fs, &join(&t.user_dir, &name))
             {
-                continue; // чисто курсорные темы в icons/ не дублируем в «Иконки»
+                continue; // pure cursor themes in icons/ are not duplicated into «Icons»
             }
             if is_active(active_map, t.apply_kind, &name) {
                 continue;
@@ -2139,20 +2149,20 @@ pub fn scan_downloaded_in(
     items
 }
 
-/// Результат `scan_system`: элементы + пути, ушедшие в `pacman -Qo`
-/// (для сверки и для самого вызова исполнителем).
+/// Result of `scan_system`: items + paths sent to `pacman -Qo`
+/// (for checks and for the executor's call itself).
 #[derive(Debug)]
 pub struct SystemScan {
     pub items: Vec<ThemeItem>,
     pub qo_paths: Vec<String>,
 }
 
-/// Темы в /usr/share/… с НАТИВНЫМ пакетом-владельцем — порт `scan_system`.
+/// Themes in /usr/share/… with a NATIVE owning package — port of `scan_system`.
 ///
-/// `foreign` = None означает «pacman -Qm недоступен» → Err с текстом
-/// `SystemScanUnavailable` (UI показывает явный статус, AUR-темы не
-/// протекают в «Системные»). Без pacman классификация невозможна → Ok(пусто).
-/// `owners` — карта path→пакет из `parse_qo_output` (ключи с rstrip('/')).
+/// `foreign` = None means "pacman -Qm unavailable" → Err with the
+/// `SystemScanUnavailable` text (the UI shows an explicit status, AUR themes
+/// don't leak into «System»). Without pacman classification is impossible → Ok(empty).
+/// `owners` — the path→package map from `parse_qo_output` (keys with rstrip('/')).
 pub fn scan_system(
     env: &ScanEnv,
     active_map: &HashMap<String, String>,
@@ -2174,8 +2184,8 @@ pub fn scan_system(
     scan_system_in(env, &types, active_map, foreign, owners)
 }
 
-/// [`scan_system`] по заданному набору типов (pacman уже есть, происхождение
-/// пакетов известно).
+/// [`scan_system`] over a given set of types (pacman is present, package
+/// origin is known).
 pub fn scan_system_in(
     env: &ScanEnv,
     types: &[ScanType],
@@ -2183,7 +2193,7 @@ pub fn scan_system_in(
     foreign: &HashSet<String>,
     owners: &HashMap<String, String>,
 ) -> Result<SystemScan, String> {
-    // 1) кандидаты (тип, имя, полный путь)
+    // 1) candidates (type, name, full path)
     let mut cands: Vec<(usize, String, String)> = Vec::new();
     for (ti, t) in types.iter().enumerate() {
         if t.sys_dir.is_empty() {
@@ -2217,14 +2227,14 @@ pub fn scan_system_in(
     }
     let qo_paths: Vec<String> = cands.iter().map(|c| c.2.clone()).collect();
 
-    // 2) фильтр по владельцам (один batch -Qo снаружи)
+    // 2) filter by owners (one -Qo batch outside)
     let mut items = Vec::new();
     for (ti, name, full) in &cands {
         let Some(pkg) = owners.get(full.trim_end_matches('/')) else {
-            continue; // вручную скопировано → не системная
+            continue; // copied by hand → not a system one
         };
         if foreign.contains(pkg) {
-            continue; // AUR (foreign) → идёт через «Магазин: AUR»
+            continue; // AUR (foreign) → goes via «Store: AUR»
         }
         let t = &types[*ti];
         items.push(mk_item(env, t, name, &t.sys_dir, false, n_("📦 System")));
@@ -2232,12 +2242,12 @@ pub fn scan_system_in(
     Ok(SystemScan { items, qo_paths })
 }
 
-/// Раздел целиком (окружения или KDE): включённые сейчас, затем свои
-/// (каталог пользователя), затем системные. Системные здесь не делятся по
-/// пакетам, как в обзоре «Системные»: раздел показывает всё, что можно
-/// включить, и происхождение файла на кнопку не влияет. Одна тема — одна
-/// плитка: имя, найденное в двух каталогах (`~/.icons` и
-/// `~/.local/share/icons`), показывается по первому.
+/// A whole section (desktop environment or KDE): the ones enabled now, then
+/// own ones (the user directory), then system ones. System ones are not split
+/// by package here as in the «System» overview: the section shows everything
+/// that can be enabled, and a file's origin doesn't affect the button. One
+/// theme — one tile: a name found in two directories (`~/.icons` and
+/// `~/.local/share/icons`) is shown by the first.
 pub fn scan_section(
     env: &ScanEnv,
     types: &[ScanType],
@@ -2259,9 +2269,9 @@ pub fn scan_section(
             if is_active(active_map, t.apply_kind, &name) || !entry_valid(t, env.fs, &t.sys_dir, &name) {
                 continue;
             }
-            // Курсоры и значки делят каталог icons/: чисто курсорная тема —
-            // только в «Курсорах»; набор значков со своими курсорами (Adwaita,
-            // elementary) — в обоих разделах (как в «Загруженных»).
+            // Cursors and icons share the icons/ directory: a pure cursor theme —
+            // only in «Cursors»; an icon set with its own cursors (Adwaita,
+            // elementary) — in both sections (as in «Downloaded»).
             let dir = join(&t.sys_dir, &name);
             if (t.apply_kind == "cursor" && !is_cursor_dir(env.fs, &dir))
                 || (t.apply_kind == "icons" && is_cursor_only(env.fs, &dir))
@@ -2274,8 +2284,8 @@ pub fn scan_section(
             }
         }
     }
-    // Включённую сейчас тему не прячем никогда — человек обязан видеть, что
-    // у него стоит; остальное — по общему правилу [`entry_listed`].
+    // The theme enabled now is never hidden — the person must see what they
+    // have; the rest — by the common rule [`entry_listed`].
     items.retain(|it| {
         let kind = crate::de_apply::apply_kind_of_local_id(&it.id).unwrap_or("");
         it.local_kind.is_some() || entry_listed(env, kind, &it.install_path)
@@ -2283,11 +2293,11 @@ pub fn scan_section(
     items
 }
 
-/// Раздел ли `key` (`categories::DE_SECTIONS`) из тех, где включено может
-/// быть сразу несколько и каждое включается и выключается само по себе:
-/// расширения GNOME и Cinnamon, апплеты и десклеты Cinnamon, скрипты и
-/// эффекты KWin (способ включения в матрице — список или модуль, а не одно
-/// имя) и виджеты Conky (запущен — не запущен).
+/// Whether `key` (`categories::DE_SECTIONS`) is one of the sections where
+/// several things can be enabled at once and each is turned on and off on its
+/// own: GNOME and Cinnamon extensions, Cinnamon applets and desklets, KWin
+/// scripts and effects (the enabling method in the matrix is a list or a
+/// module, not a single name) and Conky widgets (running — not running).
 pub fn toggle_section(key: &str) -> bool {
     use crate::de_customization::Activate;
     let Some(kind) = crate::categories::category_kind(key) else { return false };
@@ -2299,54 +2309,54 @@ pub fn toggle_section(key: &str) -> bool {
     })
 }
 
-/// Порядок сетки раздела-переключателя ([`toggle_section`]) — по имени, а не
-/// «включённое сверху». У тем включена одна, и её место первой понятно; а
-/// здесь «Выключить» перекладывало карточку из головы списка в середину, и
-/// человек терял её из-под курсора (живая проверка 15.11, расширения GNOME).
-/// Сортировка устойчивая: при равных именах — по номеру плитки.
+/// Grid order of a toggle section ([`toggle_section`]) — by name, not
+/// "enabled on top". Themes have one enabled, and its place first is clear;
+/// but here «Disable» moved the card from the head of the list into the
+/// middle, and the person lost it from under the cursor (live check 15.11,
+/// GNOME extensions). The sort is stable: for equal names — by tile id.
 pub fn order_toggle_section(key: &str, items: &mut [ThemeItem]) {
     if toggle_section(key) {
         items.sort_by_cached_key(|it| (it.name.to_lowercase(), it.id.clone()));
     }
 }
 
-/// Тема ли вида `kind` лежит в каталоге `dir` — одно правило для обзоров
-/// («Загруженные», «Системные») и для сетки раздела.
+/// Whether a theme of kind `kind` lies in directory `dir` — one rule for the
+/// overviews («Downloaded», «System») and for the section grid.
 ///
-/// Каталоги `…/share/themes` и `…/share/icons` общие для нескольких видов:
-/// в первом лежат и темы GTK, и темы, у которых есть только рамки окон
-/// (xfwm4, Metacity, Openbox) или оболочка; во втором — служебные наборы
-/// значков (`hicolor` со `Hidden=true`, `default` без своих каталогов).
-/// Такая запись темой GTK или набором значков не является: включить её
-/// нельзя, и страница KDE её в сетке не показывает. Рамки и оболочки
-/// показывают свои разделы — по своему подкаталогу ([`de_types`]).
+/// The `…/share/themes` and `…/share/icons` directories are shared by several
+/// kinds: the first holds both GTK themes and themes that have only window
+/// borders (xfwm4, Metacity, Openbox) or a shell; the second — service icon
+/// sets (`hicolor` with `Hidden=true`, `default` without its own directories).
+/// Such an entry is not a GTK theme or an icon set: it can't be enabled, and
+/// the KDE page doesn't show it in the grid. Borders and shells are shown by
+/// their own sections — by their own subdirectory ([`de_types`]).
 fn entry_listed(env: &ScanEnv, kind: &str, dir: &str) -> bool {
     let fs = env.fs;
     match kind {
         "icons" => fs.read_text(&join(dir, "index.theme")).is_some_and(|text| {
             let info = icon_theme_info(text);
-            // Стандартный набор окружения виден и со `Hidden=true` (Adwaita
-            // в GNOME): иначе вернуть значки по умолчанию было бы нечем.
+            // The environment's standard set is visible even with `Hidden=true`
+            // (Adwaita in GNOME): otherwise there'd be no way back to the default icons.
             let standard = env.standard_icons.is_some_and(|s| dir.rsplit('/').next() == Some(s));
             info.has_group && info.has_dirs && (!info.hidden || standard)
         }),
-        // Тема GTK — там, где GTK найдёт таблицу стилей `gtk.css`. Каталог
-        // с одним `gtk-keys.css` (Default и Emacs из GTK — раскладки
-        // клавиш) темой оформления не является: выбрать его — ничего не
-        // изменить. Default остаётся в «Рамках окон» XFCE — по xfwm4.
+        // A GTK theme is where GTK will find the `gtk.css` stylesheet. A
+        // directory with only `gtk-keys.css` (Default and Emacs from GTK — key
+        // bindings) is not an appearance theme: choosing it changes nothing.
+        // Default stays in XFCE «Window Borders» — by xfwm4.
         "gtk" => GTK_PARTS.iter().any(|part| fs.is_file(&join(dir, &format!("{part}/gtk.css")))),
         _ => true,
     }
 }
 
-/// Подкаталоги, по которым каталог в `…/share/themes` считается темой GTK:
-/// таблицы стилей GTK 3 и GTK 4. Тему из одного GTK 2 нынешние окружения не
-/// применяют (страница KDE её тоже не показывает).
+/// Subdirectories by which a directory in `…/share/themes` counts as a GTK
+/// theme: GTK 3 and GTK 4 stylesheets. A GTK 2-only theme isn't applied by
+/// current environments (the KDE page doesn't show it either).
 pub const GTK_PARTS: &[&str] = &["gtk-3.0", "gtk-4.0"];
 
-/// Что `index.theme` говорит о наборе значков (спецификация freedesktop
-/// Icon Theme): группа `[Icon Theme]`, непустой список каталогов значков,
-/// `Hidden=true`. Видимый набор — с группой и каталогами и не скрытый.
+/// What `index.theme` says about an icon set (the freedesktop Icon Theme
+/// spec): the `[Icon Theme]` group, a non-empty list of icon directories,
+/// `Hidden=true`. A visible set has the group and directories and isn't hidden.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct IconThemeInfo {
     has_group: bool,
@@ -2379,19 +2389,19 @@ fn icon_theme_info(text: &str) -> IconThemeInfo {
     info
 }
 
-/// Системные темы (экран входа, заставка загрузки) без пакета-владельца —
-/// в «Загруженные».
+/// System themes (login screen, boot splash) without an owning package — into
+/// «Downloaded».
 ///
-/// В «Системные» они не попадают (там только темы пакетов из репозиториев);
-/// а установка теперь только кладёт тему (выбирает её «Применить», решение
-/// 04.10.2026) — без этого скана поставленную тему негде было бы найти и
-/// применить. Сюда идут два рода тем:
-///   * поставленные самим Rexon — путь есть в журнале установленных
-///     (`journal_paths` — все пути журнала);
-///   * положенные руками или чужим установщиком — `loose`, пути каталогов,
-///     о которых пакетная база ответила «ничьё» ([`LiveScan::loose_system_themes`]).
-///     Прежде такая тема не была видна нигде, и убрать её человек не мог
-///     (приёмка 10.10.2026).
+/// They don't get into «System» (only themes from repository packages are
+/// there); and installing now only places the theme («Apply» chooses it,
+/// decision of 04.10.2026) — without this scan an installed theme would have
+/// nowhere to be found and applied. Two kinds of themes go here:
+///   * installed by Rexon itself — the path is in the installed journal
+///     (`journal_paths` — all journal paths);
+///   * placed by hand or by another installer — `loose`, paths of directories
+///     the package database answered "nobody's" about ([`LiveScan::loose_system_themes`]).
+///     Previously such a theme was visible nowhere, and the person couldn't
+///     remove it (acceptance 10.10.2026).
 pub fn scan_rexon_system(
     env: &ScanEnv,
     types: &[ScanType],
@@ -2421,8 +2431,8 @@ pub fn scan_rexon_system(
     items
 }
 
-/// Стиль приложений (Qt widget style) — порт `scan_widget_styles`.
-/// `styles` — QStyleFactory.keys() (live) или `WIDGET_STYLES`-фолбэк.
+/// Application style (Qt widget style) — port of `scan_widget_styles`.
+/// `styles` — QStyleFactory.keys() (live) or the `WIDGET_STYLES` fallback.
 pub fn scan_widget_styles(
     active_map: &HashMap<String, String>,
     styles: &[String],
@@ -2440,12 +2450,12 @@ pub fn scan_widget_styles(
             continue;
         }
         if qt_only && low.starts_with("kvantum") {
-            continue; // движок Kvantum — отдельный под-выбор
+            continue; // the Kvantum engine is a separate sub-choice
         }
         seen.insert(low.clone());
         let is_active = !active.is_empty() && low == active.to_lowercase();
-        // Стиль приложений — движок Qt, а не каталог на диске: метаданных
-        // с человеческим именем у него нет и быть не может.
+        // An application style is a Qt engine, not a directory on disk: it has no
+        // metadata with a human name and can't have any.
         items.push(mk_local_item(
             "widgetstyle", 901, name, name, is_active,
             n_("🎛️ Application Style"), "🎛️", "", "",
@@ -2454,8 +2464,8 @@ pub fn scan_widget_styles(
     items
 }
 
-/// Список Kvantum-тем (user + system) — порт `scan_kvantum_themes`.
-/// Активная — когда widgetStyle == kvantum* И тема kvconfig совпадает.
+/// List of Kvantum themes (user + system) — port of `scan_kvantum_themes`.
+/// Active — when widgetStyle == kvantum* AND the kvconfig theme matches.
 pub fn scan_kvantum_themes(
     env: &ScanEnv,
     active_map: &HashMap<String, String>,
@@ -2495,8 +2505,8 @@ pub fn scan_kvantum_themes(
     items
 }
 
-/// Заставка (splash) / экран блокировки (lockscreen) — часть look-and-feel;
-/// порт `scan_lnf_component`.
+/// Splash / lock screen (lockscreen) — part of the look-and-feel;
+/// port of `scan_lnf_component`.
 pub fn scan_lnf_component(
     env: &ScanEnv,
     kind: &str,
@@ -2539,8 +2549,8 @@ pub fn scan_lnf_component(
             items.push(item);
         }
     }
-    // Плитка «Нет» — заставка при входе не показывается (как у модуля KDE,
-    // последней в сетке). Каталога у неё нет: ни удаления, ни показа.
+    // The «None» tile — no splash is shown at login (as in the KDE module, last
+    // in the grid). It has no directory: neither removal nor display.
     if kind == "splash" {
         let none = crate::appearance_installer::SPLASH_NONE;
         let mut item = mk_local_item(
@@ -2555,44 +2565,46 @@ pub fn scan_lnf_component(
 }
 
 // ============================================================================
-// Живой обзор диска — порт исполнителя из
+// Live disk overview — port of the executor from
 // `rexon/appearance/installed_scan.py` (`_rs_snapshot`, `_rs_active_sources`,
-// `_rs_foreign_pkgs`, `_rs_owner_pkgs` и обёртки `_rs_scan_*`)
+// `_rs_foreign_pkgs`, `_rs_owner_pkgs` and the `_rs_scan_*` wrappers)
 // ============================================================================
 //
-// Всё выше в этом модуле — ПРАВИЛА над готовым сырьём. Здесь — единственное
-// место, где сырьё добывается с настоящей машины: os.scandir по дереву тем,
-// чтение конфигов, запуск kreadconfig6/gsettings/пакетного менеджера.
-// Второй копии правил тут нет и быть не должно: живой исполнитель только
-// собирает вход и зовёт те же `scan_*`, что и мост Python.
+// Everything above in this module is RULES over ready raw material. Here is
+// the only place where raw material is obtained from the real machine:
+// os.scandir over the theme tree, reading configs, running
+// kreadconfig6/gsettings/the package manager. There is no second copy of the
+// rules here and there must not be: the live executor only gathers the input
+// and calls the same `scan_*` as the Python bridge.
 //
-// Без него вкладка «Оформление» в процессе без Python показывала пустые
-// разделы: сканеры есть, а подать им снимок и карту активных тем некому.
+// Without it the «Appearance» tab in a process without Python showed empty
+// sections: the scanners exist, but nobody feeds them a snapshot and the
+// active theme map.
 
-/// `$HOME` — тот же, что подставляет Python (`os.path.expanduser("~")`).
+/// `$HOME` — the same one Python substitutes (`os.path.expanduser("~")`).
 fn live_home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
 }
 
-/// Переменная окружения строкой (нет переменной — пусто), как `os.environ.get`.
+/// An environment variable as a string (no variable — empty), like `os.environ.get`.
 fn env_str(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
-/// `shutil.which` через общий резолвер ядра (учитывает `$PATH` процесса).
+/// `shutil.which` via the core's shared resolver (honours the process `$PATH`).
 fn which_live(name: &str) -> Option<String> {
     crate::utils::which(name, std::env::var("PATH").ok().as_deref())
 }
 
-/// Текст файла для снимка: любая ошибка чтения → пусто (порт `_rs_read_text`).
-/// Ядро тогда трактует metadata как битую — ровно как ветки ошибок Python.
+/// File text for the snapshot: any read error → empty (port of `_rs_read_text`).
+/// The core then treats the metadata as broken — exactly like Python's error branches.
 fn snap_read_text(path: &std::path::Path) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
-/// Содержимое файла либо `None` — порт `_rs_read_optional` (нет файла / не
-/// читается). Пустой файл и отсутствующий — РАЗНЫЕ ответы: на них расходятся
-/// ветки `active_map_from_sources`.
+/// File content or `None` — port of `_rs_read_optional` (no file / unreadable).
+/// An empty file and a missing one are DIFFERENT answers: the
+/// `active_map_from_sources` branches diverge on them.
 fn read_optional(path: &str) -> Option<String> {
     let p = std::path::Path::new(path);
     if !p.is_file() {
@@ -2601,10 +2613,10 @@ fn read_optional(path: &str) -> Option<String> {
     std::fs::read_to_string(p).ok()
 }
 
-/// Имена элементов каталога в порядке `readdir` — тот же порядок, который
-/// видел `os.scandir` Python-эталона. Сортировки здесь НЕТ намеренно:
-/// «первое подходящее превью» выбирается по этому порядку, и сортировка
-/// увела бы живой обзор от голденов моста.
+/// Directory entry names in `readdir` order — the same order the Python
+/// reference's `os.scandir` saw. There is NO sorting here on purpose: "the
+/// first suitable preview" is chosen by this order, and sorting would move
+/// the live overview away from the bridge goldens.
 fn scandir_names(dir: &std::path::Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -2615,9 +2627,9 @@ fn scandir_names(dir: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
-/// Кандидаты превью глубже первого уровня темы — порт `_RS_PREVIEW_PROBES`.
-/// В снимок кладутся только существующие: `find_preview` спрашивает по ним
-/// `is_file`, а он отвечает ПО НАЛИЧИЮ КЛЮЧА.
+/// Preview candidates deeper than the theme's first level — port of
+/// `_RS_PREVIEW_PROBES`. Only existing ones go into the snapshot:
+/// `find_preview` asks `is_file` about them, and it answers BY KEY PRESENCE.
 const PREVIEW_PROBES: &[&str] = &[
     "contents/previews/preview.png",
     "contents/previews/fullscreenpreview.png",
@@ -2625,11 +2637,11 @@ const PREVIEW_PROBES: &[&str] = &[
     "contents/previews/lockscreen.png",
     "contents/previews/splash.png",
     "metadata/preview.png",
-    // Таблицы стилей GTK: по ним каталог считается темой GTK
+    // GTK stylesheets: by them a directory counts as a GTK theme
     // ([`entry_listed`]).
     "gtk-3.0/gtk.css",
     "gtk-4.0/gtk.css",
-    // Миниатюры видов в подкаталогах темы ([`preview_subdirs`]).
+    // The kinds' thumbnails in theme subdirectories ([`preview_subdirs`]).
     "gtk-3.0/thumbnail.png",
     "gtk-4.0/thumbnail.png",
     "gtk-3.20/thumbnail.png",
@@ -2640,12 +2652,12 @@ const PREVIEW_PROBES: &[&str] = &[
     "gnome-shell/thumbnail.png",
 ];
 
-/// Компоненты look-and-feel — порт `_RS_COMPONENT_PROBES`
-/// (`scan_lnf_component` спрашивает по ним `is_dir`).
+/// look-and-feel components — port of `_RS_COMPONENT_PROBES`
+/// (`scan_lnf_component` asks `is_dir` about them).
 const COMPONENT_PROBES: &[&str] = &["contents/splash", "contents/lockscreen"];
 
-/// Похоже ли значение JSON на «истинное» по правилам Python (`x or y`):
-/// null / false / 0 / "" — ложь, остальное истина.
+/// Whether a JSON value is "truthy" by Python rules (`x or y`):
+/// null / false / 0 / "" — false, everything else true.
 fn json_truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -2657,9 +2669,9 @@ fn json_truthy(v: &Value) -> bool {
     }
 }
 
-/// Относительные пути `Preview=`/`Image=` из metadata — порт
-/// `_rs_meta_preview_rels`. Суперсет того, что прочитает
-/// [`preview_from_metadata`]: цель — зарегистрировать файл превью в снимке.
+/// Relative `Preview=`/`Image=` paths from metadata — port of
+/// `_rs_meta_preview_rels`. A superset of what [`preview_from_metadata`] will
+/// read: the goal is to register the preview file in the snapshot.
 fn meta_preview_rels(meta_json: Option<&str>, meta_desktop: Option<&str>) -> Vec<String> {
     let mut rels: Vec<String> = Vec::new();
     if let Some(text) = meta_json.filter(|t| !t.is_empty()) {
@@ -2692,15 +2704,15 @@ fn meta_preview_rels(meta_json: Option<&str>, meta_desktop: Option<&str>) -> Vec
     rels
 }
 
-/// Части снимка до сборки в [`FsSnapshot`] (порт словарей `dirs`/`files`).
+/// Snapshot parts before being assembled into [`FsSnapshot`] (port of the `dirs`/`files` dicts).
 #[derive(Default)]
 struct SnapParts {
     dirs: HashMap<String, Vec<String>>,
     files: HashMap<String, String>,
 }
 
-/// Каталог ОДНОЙ темы в снимок — порт `_rs_snap_theme`: дети (файлы и
-/// подпапки) плюс точечные пробы превью и компонентов на глубине 2-3.
+/// The directory of ONE theme into the snapshot — port of `_rs_snap_theme`:
+/// children (files and subfolders) plus pinpoint preview and component probes at depth 2-3.
 fn snap_theme(theme_dir: &std::path::Path, parts: &mut SnapParts) {
     let key = theme_dir.to_string_lossy().into_owned();
     if parts.dirs.contains_key(&key) {
@@ -2725,13 +2737,13 @@ fn snap_theme(theme_dir: &std::path::Path, parts: &mut SnapParts) {
                 }
                 parts.files.insert(path_key, text);
             } else if name == "index.theme" || name.ends_with(".plymouth") {
-                // Иконки, курсоры и GTK-темы метаданных KDE не носят: их
-                // человеческое имя лежит только здесь. У темы заставки
-                // загрузки имя и описание — в `<имя>.plymouth`.
+                // Icons, cursors and GTK themes carry no KDE metadata: their
+                // human name lies only here. A boot splash theme has its name
+                // and description in `<name>.plymouth`.
                 parts.files.insert(path_key, snap_read_text(&path));
             } else {
-                // Текст обычных файлов не читается: сканерам от них нужен
-                // только факт существования, а темы носят мегабайтные .svg.
+                // The text of ordinary files isn't read: the scanners only need
+                // the fact they exist, and themes carry megabyte-sized .svg files.
                 parts.files.insert(path_key, String::new());
             }
         }
@@ -2750,7 +2762,7 @@ fn snap_theme(theme_dir: &std::path::Path, parts: &mut SnapParts) {
     }
     for rel in meta_preview_rels(meta_json.as_deref(), meta_desktop.as_deref()) {
         if rel.starts_with('/') {
-            continue; // абсолютный Preview= — экзотика, вне снимка (как в оригинале)
+            continue; // an absolute Preview= is exotic, outside the snapshot (as in the original)
         }
         for base in [theme_dir.join("contents"), theme_dir.to_path_buf()] {
             let p = base.join(&rel);
@@ -2761,16 +2773,16 @@ fn snap_theme(theme_dir: &std::path::Path, parts: &mut SnapParts) {
     }
 }
 
-/// Живой снимок дерева тем — порт `_rs_snapshot`.
+/// Live snapshot of the theme tree — port of `_rs_snapshot`.
 ///
-/// Глубина ровно та, к которой обращаются сканеры (см. заголовок модуля):
-/// корни, их дети-темы, метаданные текстом и точечные пробы. Обходить
-/// `~/.local/share/icons` целиком нельзя — это десятки тысяч файлов на
-/// каждое открытие вкладки.
+/// The depth is exactly what the scanners access (see the module header):
+/// roots, their theme children, metadata as text and pinpoint probes. Walking
+/// the whole `~/.local/share/icons` is not allowed — that is tens of
+/// thousands of files on every opening of the tab.
 ///
-/// `extra_files` — локальные файлы превью из кеша магазина: цель бэкофилла
-/// проверяется через `is_file`, и незарегистрированный файл молча стал бы
-/// «несуществующим».
+/// `extra_files` — local preview files from the store cache: the backfill
+/// target is checked via `is_file`, and an unregistered file would silently
+/// become "nonexistent".
 pub fn live_snapshot(roots: &[String], extra_files: &[String]) -> FsSnapshot {
     let mut parts = SnapParts::default();
     for root in roots {
@@ -2782,8 +2794,8 @@ pub fn live_snapshot(roots: &[String], extra_files: &[String]) -> FsSnapshot {
             continue;
         }
         let mut names = scandir_names(root_path);
-        // Наши ссылки `~/.themes` → `~/.local/share/themes` темой не
-        // считаются: тема та же, и в списках она была бы дважды.
+        // Our `~/.themes` → `~/.local/share/themes` links don't count as a
+        // theme: the theme is the same, and it would appear twice in the lists.
         if let Some(home) = root.trim_end_matches('/').strip_suffix("/.themes") {
             names.retain(|n| !is_theme_link(home, n));
         }
@@ -2791,9 +2803,9 @@ pub fn live_snapshot(roots: &[String], extra_files: &[String]) -> FsSnapshot {
         for name in &names {
             let path = root_path.join(name);
             if path.is_file() {
-                // Цветовая схема — файл, а не каталог: имя для человека
-                // лежит внутри него, и без текста карточка осталась бы
-                // подписанной именем файла.
+                // A color scheme is a file, not a directory: the human name
+                // lies inside it, and without the text the card would stay
+                // labelled with the file name.
                 let text = if name.ends_with(".colors") {
                     snap_read_text(&path)
                 } else {
@@ -2805,7 +2817,7 @@ pub fn live_snapshot(roots: &[String], extra_files: &[String]) -> FsSnapshot {
             }
         }
     }
-    // сайдкар-кеш превью (типы без каталога темы — цвет-схемы)
+    // sidecar preview cache (types without a theme directory — color schemes)
     let sidecar = sidecar_preview_dir(&live_home());
     let sidecar_path = std::path::Path::new(&sidecar);
     if sidecar_path.is_dir() {
@@ -2823,12 +2835,12 @@ pub fn live_snapshot(roots: &[String], extra_files: &[String]) -> FsSnapshot {
 }
 
 impl FsSnapshot {
-    /// Снимок из живых частей: каталог → имена, файл → текст.
+    /// A snapshot from live parts: directory → names, file → text.
     ///
-    /// Пара к [`FsSnapshot::from_json`] для исполнителей, которые собирают
-    /// снимок сами (живой обзор диска, установщик). Поля приватные не просто
-    /// так: `is_dir`/`is_file` отвечают ПО НАЛИЧИЮ КЛЮЧА, и класть сюда
-    /// половину дерева — значит молча получить «файла нет».
+    /// The pair to [`FsSnapshot::from_json`] for executors that assemble the
+    /// snapshot themselves (the live disk overview, the installer). The fields are
+    /// private for a reason: `is_dir`/`is_file` answer BY KEY PRESENCE, and putting
+    /// half a tree here means silently getting "no such file".
     pub fn from_parts(
         dirs: HashMap<String, Vec<String>>,
         files: HashMap<String, String>,
@@ -2837,19 +2849,20 @@ impl FsSnapshot {
     }
 }
 
-// ── Запуск внешних команд ────────────────────────────────────────────────
+// ── Running external commands ────────────────────────────────────────────
 
-/// Ответ внешней команды: код возврата, stdout, stderr.
+/// An external command's answer: exit code, stdout, stderr.
 ///
-/// `None` вместо ответа — спросить не вышло (бинаря нет, таймаут, процесс
-/// не завёлся). Это НЕ ненулевой код: у `pacman -Qm` «не спросили» и
-/// «спросили, ответил ошибкой» ведут к РАЗНЫМ решениям (порт `_run_pkg_query`).
+/// `None` instead of an answer — asking failed (no binary, timeout, the
+/// process didn't start). This is NOT a non-zero code: for `pacman -Qm` "not
+/// asked" and "asked, answered with an error" lead to DIFFERENT decisions
+/// (port of `_run_pkg_query`).
 fn run_capture(argv: &[String], timeout_secs: u64, lang_c: bool) -> Option<(i32, String, String)> {
     use std::io::Read;
     use std::process::{Command, Stdio};
     let (head, args) = argv.split_first()?;
-    // Та же ЕДИНАЯ точка подмены имени, что у `safe_run`: на Plasma 5
-    // `kreadconfig6` называется `kreadconfig5`.
+    // The same SINGLE name substitution point as in `safe_run`: on Plasma 5
+    // `kreadconfig6` is called `kreadconfig5`.
     let resolved = crate::utils::tool_cmd(head, args, std::env::var("PATH").ok().as_deref());
     let (bin, rest) = resolved.split_first()?;
     let mut command = Command::new(bin);
@@ -2859,14 +2872,14 @@ fn run_capture(argv: &[String], timeout_secs: u64, lang_c: bool) -> Option<(i32,
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if lang_c {
-        // Русская локаль переводит и ответ менеджера, и сообщение о занятой
-        // базе — разбор в ядре тогда не находит ничего.
+        // A Russian locale translates both the manager's answer and the busy
+        // database message — then the core's parsing finds nothing.
         crate::utils::parsed_output_locale(&mut command);
     }
     let mut child = command.spawn().ok()?;
-    // Обе трубы читаются ПАРАЛЛЕЛЬНО: `pacman -Qo` на две сотни путей пишет
-    // в stderr строку на каждый ничей файл, и чтение по очереди упёрлось бы
-    // в переполненный буфер трубы — процесс встал бы навсегда.
+    // Both pipes are read IN PARALLEL: `pacman -Qo` on two hundred paths writes
+    // a line to stderr for every unowned file, and reading them one after the
+    // other would hit a full pipe buffer — the process would hang forever.
     let out_pipe = child.stdout.take();
     let err_pipe = child.stderr.take();
     let out_thread = std::thread::spawn(move || {
@@ -2908,15 +2921,15 @@ fn run_capture(argv: &[String], timeout_secs: u64, lang_c: bool) -> Option<(i32,
     ))
 }
 
-/// Запуск с таймаутом по классу команды (`utils::default_timeout_secs`) —
-/// так же, как его подставляет `safe_run` без явного `timeout`.
+/// Running with a timeout by command class (`utils::default_timeout_secs`) —
+/// the same way `safe_run` applies it without an explicit `timeout`.
 fn run_default(argv: &[String]) -> Option<(i32, String, String)> {
     let t = crate::utils::default_timeout_secs(argv);
     run_capture(argv, t, false)
 }
 
-/// Запрос движка пакетов — порт `_run_pkg_query`: проверить бинарь, взять
-/// argv, окружение и таймаут из плана ядра, запустить. Решений здесь нет.
+/// A package engine query — port of `_run_pkg_query`: check the binary, take
+/// argv, environment and timeout from the core's plan, run. No decisions here.
 fn run_pkg_query(query: &crate::system_plan::InstalledPkgQuery) -> Option<(i32, String, String)> {
     which_live(&query.binary)?;
     let cmd = &query.cmd;
@@ -2926,12 +2939,12 @@ fn run_pkg_query(query: &crate::system_plan::InstalledPkgQuery) -> Option<(i32, 
     run_capture(&cmd.argv, timeout, cmd.lang_c)
 }
 
-// ── Пакетный менеджер: происхождение пакетов и владельцы файлов ──────────
+// ── Package manager: package origin and file owners ──────────────────────
 
-/// Одна попытка `pacman -Qm` в том же виде, в каком её копил Python-эталон
-/// («ok»/«fail»/«error» + полезная нагрузка). Хранится так, а не готовым
-/// [`QmAttempt`], потому что политике повторов список подаётся ДВАЖДЫ: сам
-/// по себе и с виртуальной удачной попыткой на конце.
+/// One `pacman -Qm` attempt in the same form the Python reference
+/// accumulated it ("ok"/"fail"/"error" + payload). Stored like this rather
+/// than as a ready [`QmAttempt`] because the list is given to the retry policy
+/// TWICE: by itself and with a virtual successful attempt at the end.
 type AttemptRaw = (&'static str, String);
 
 fn to_qm_attempts(raw: &[AttemptRaw]) -> Vec<QmAttempt> {
@@ -2944,11 +2957,11 @@ fn to_qm_attempts(raw: &[AttemptRaw]) -> Vec<QmAttempt> {
         .collect()
 }
 
-/// Множество пакетов не из репозиториев — порт `_rs_foreign_pkgs`.
+/// The set of packages not from repositories — port of `_rs_foreign_pkgs`.
 ///
-/// `Some` — определили (пустой набор тоже ответ). `None` — достоверно
-/// определить не удалось, и тогда «Системные» показывать нельзя: AUR-темы
-/// протекли бы в них молча.
+/// `Some` — determined (an empty set is an answer too). `None` — it couldn't
+/// be determined reliably, and then «System» must not be shown: AUR themes
+/// would leak into it silently.
 fn live_foreign_pkgs(query: &crate::system_plan::InstalledPkgQuery) -> Option<HashSet<String>> {
     let mut attempts: Vec<AttemptRaw> = Vec::new();
     for _ in 0..2 {
@@ -2961,29 +2974,30 @@ fn live_foreign_pkgs(query: &crate::system_plan::InstalledPkgQuery) -> Option<Ha
         if let Some(set) = result {
             return Some(set);
         }
-        // None: стоп-ошибка или «повторить»? Спрашиваем ту же политику
-        // виртуальной удачной попыткой: продолжила бы — значит нужен ретрай.
+        // None: a stop error or "retry"? We ask the same policy with a virtual
+        // successful attempt: if it would continue, a retry is needed.
         let mut probe = attempts.clone();
         probe.push(("ok", String::new()));
         let (probe_result, _) = foreign_pkgs_from_attempts(true, &to_qm_attempts(&probe));
         if probe_result.is_none() {
-            break; // не-lck ошибка → повтор не поможет
+            break; // a non-lck error → a retry won't help
         }
         if attempts.last().map(|a| a.0) == Some("fail") {
-            // база занята чужой транзакцией → подождать и повторить
+            // the database is busy with another transaction → wait and retry
             std::thread::sleep(std::time::Duration::from_millis(1500));
         }
     }
     None
 }
 
-/// `путь → пакет-владелец` — порт `_rs_owner_pkgs`: команды и разрезание на
-/// пачки задаёт движок, разбор ответа — [`parse_qo_output`], здесь запуск.
+/// `path → owning package` — port of `_rs_owner_pkgs`: the commands and
+/// batching are set by the engine, parsing the answer — [`parse_qo_output`],
+/// here is the run.
 ///
-/// Ненулевой код — норма: он означает лишь, что у части путей владельца нет
-/// («error: No package owns …» уходит в stderr и разбору не мешает).
-/// Пути из `paths`, у которых нет пакета-владельца. Любая неясность (нет
-/// запроса для семейства, нет программы, запрос не выполнился) — пусто.
+/// A non-zero code is normal: it only means part of the paths have no owner
+/// ("error: No package owns …" goes to stderr and doesn't hinder parsing).
+/// Paths from `paths` that have no owning package. Any uncertainty (no query
+/// for the family, no program, the query didn't run) — empty.
 fn live_loose_paths(family: crate::system::PkgFamily, paths: &[String]) -> HashSet<String> {
     let none = HashSet::new();
     if paths.is_empty() {
@@ -2992,8 +3006,8 @@ fn live_loose_paths(family: crate::system::PkgFamily, paths: &[String]) -> HashS
     let Some(queries) = crate::system_plan::file_owner_queries(family, paths) else {
         return none;
     };
-    // «Ничьё» — только то, о чём база сказала это сама (строка ошибки с
-    // путём): молчание или сбой запроса ничьим путь не делают.
+    // "Nobody's" — only what the database said so itself (an error line with
+    // the path): silence or a failed query doesn't make a path nobody's.
     let mut loose = HashSet::new();
     for query in &queries {
         let Some((_, _, err)) = run_pkg_query(query) else {
@@ -3004,7 +3018,7 @@ fn live_loose_paths(family: crate::system::PkgFamily, paths: &[String]) -> HashS
     paths.iter().filter(|p| loose.contains(p.trim_end_matches('/'))).cloned().collect()
 }
 
-/// Пути, о которых `pacman -Qo` (под `LANG=C`) ответил «No package owns …».
+/// Paths about which `pacman -Qo` (under `LANG=C`) answered "No package owns …".
 pub fn parse_qo_unowned(stderr: &str) -> HashSet<String> {
     const MARK: &str = "No package owns ";
     stderr
@@ -3030,10 +3044,10 @@ fn live_owner_pkgs(
     owners
 }
 
-// ── Источники карты активных тем ─────────────────────────────────────────
+// ── Active theme map sources ─────────────────────────────────────────────
 
-/// Прочитанные с машины источники `active_map` — владеющая пара к
-/// [`ActiveMapSources`] (та держит только ссылки).
+/// `active_map` sources read from the machine — the owning counterpart of
+/// [`ActiveMapSources`] (which only holds references).
 #[derive(Default)]
 struct LiveSources {
     kde_global: String,
@@ -3064,44 +3078,43 @@ struct LiveSources {
     wallpaper_current: Option<String>,
 }
 
-/// Живой обзор диска: снимок ФС и опрос машины на месте вызова.
+/// Live disk overview: the FS snapshot and machine queries at the call site.
 ///
-/// Объект действий вкладки «Оформление» держит его между обновлениями
-/// списка: кеш магазина берётся один раз (`LiveCache::all_items_min` /
-/// `all_previews_min`), а дерево тем и карта активных тем перечитываются на
-/// каждый скан — темы ставят и применяют прямо во время работы вкладки.
+/// The «Appearance» tab's action object keeps it between list refreshes: the
+/// store cache is taken once (`LiveCache::all_items_min` /
+/// `all_previews_min`), while the theme tree and the active theme map are
+/// reread on every scan — themes are installed and applied while the tab is open.
 pub struct LiveScan {
     pub home: String,
     pub usr_root: String,
-    /// (имя, ссылка превью) закешированных тем магазина — сырьё бэкофилла.
+    /// (name, preview URL) of cached store themes — raw material for the backfill.
     pub ocs_cache: Vec<(String, String)>,
-    /// `ссылка превью → локальный файл` (только существующие файлы).
+    /// `preview URL → local file` (existing files only).
     pub preview_files: HashMap<String, String>,
-    /// Записи магазина об установленном ([`LiveScan::with_store_records`]).
+    /// Store records about what is installed ([`LiveScan::with_store_records`]).
     pub store: StoreRecords,
-    /// Рисует ли экран входа Plasma Login Manager. `None` — спросить машину
-    /// на месте (`appearance_installer::active_login_manager`, может звать
-    /// `systemctl`); вызывающий из потока интерфейса, которому SDDM-тема не
-    /// нужна, ставит ответ заранее и в `systemctl` не ходит.
+    /// Whether the login screen is drawn by Plasma Login Manager. `None` — ask the
+    /// machine at the call site (`appearance_installer::active_login_manager`, may
+    /// call `systemctl`); a caller from the UI thread that doesn't need the SDDM
+    /// theme sets the answer up front and doesn't go to `systemctl`.
     pub plasma_login: Option<bool>,
-    /// Рабочий стол, под который смотрит вкладка (`None` — без разделов
-    /// окружений, как прежде). С ним в обзоры диска входят разделы
-    /// окружений этого стола ([`de_types`]) с правдивым «включено сейчас».
+    /// The desktop the tab is looking at (`None` — without desktop environment
+    /// sections, as before). With it the disk overviews include this desktop's
+    /// environment sections ([`de_types`]) with a truthful "enabled now".
     pub de: Option<String>,
-    /// Поднимать ли при скане темы, которые прежние установки положили на
-    /// уровень глубже (`appearance_installer::migrate_nested_themes_once`).
-    /// Стенды, которым положено только читать диск, снимают это
-    /// [`LiveScan::read_only`].
+    /// Whether to lift, during the scan, themes that older installs placed one
+    /// level deeper (`appearance_installer::migrate_nested_themes_once`). Test
+    /// rigs that should only read the disk turn this off with [`LiveScan::read_only`].
     pub migrate: bool,
-    /// Стандартная тема значков окружения `de` (умолчание схемы, см.
-    /// [`crate::appearance_installer::live_standard_theme`]); `None` — не
-    /// узнавали или у окружения её нет.
+    /// The standard icon theme of environment `de` (the schema default, see
+    /// [`crate::appearance_installer::live_standard_theme`]); `None` — not looked
+    /// up, or the environment has none.
     pub standard_icons: Option<String>,
 }
 
 impl LiveScan {
-    /// `ocs_cache`/`preview_files` — из живого кеша магазина; пустые
-    /// допустимы (тогда бэкофилл превью просто не сработает).
+    /// `ocs_cache`/`preview_files` — from the live store cache; empty ones are
+    /// allowed (then the preview backfill simply won't work).
     pub fn new(
         ocs_cache: Vec<(String, String)>,
         preview_files: HashMap<String, String>,
@@ -3119,10 +3132,10 @@ impl LiveScan {
         }
     }
 
-    /// Тот же скан с записями магазина об установленном: `sections` — пары
-    /// «ссылка на картинку кеша — номер категории её товара»
-    /// (`LiveCache::all_preview_categories`), реестр установок KNewStuff
-    /// читается с диска здесь же.
+    /// The same scan with store records about what is installed: `sections` —
+    /// pairs "cache picture URL — category number of its item"
+    /// (`LiveCache::all_preview_categories`), the KNewStuff install registry is
+    /// read from disk right here.
     pub fn with_store_records(mut self, sections: Vec<(String, i64)>) -> Self {
         let home = std::path::Path::new(&self.home);
         let cats = crate::categories::categories(home);
@@ -3148,13 +3161,13 @@ impl LiveScan {
         self
     }
 
-    /// Тот же скан, но диск только читается: вложенные темы не поднимаются.
+    /// The same scan, but the disk is only read: nested themes are not lifted.
     pub fn read_only(mut self) -> Self {
         self.migrate = false;
         self
     }
 
-    /// Подъём вложенных тем перед сканом (раз на процесс), если он не снят.
+    /// Lifting nested themes before the scan (once per process), unless turned off.
     fn migrate_nested(&self) {
         if self.migrate {
             crate::appearance_installer::migrate_nested_themes_once(&self.home);
@@ -3162,8 +3175,8 @@ impl LiveScan {
         self.link_themes();
     }
 
-    /// Ссылки `~/.themes` на темы из `~/.local/share/themes`
-    /// ([`sync_theme_links`]) — на каждом скане, если он не только читает.
+    /// `~/.themes` links to themes from `~/.local/share/themes`
+    /// ([`sync_theme_links`]) — on every scan, unless it is read-only.
     fn link_themes(&self) {
         if self.migrate {
             for line in sync_theme_links(&self.home) {
@@ -3172,14 +3185,14 @@ impl LiveScan {
         }
     }
 
-    /// Тот же скан с разделами окружения `de` (ключ рабочего стола Rexon).
+    /// The same scan with the sections of environment `de` (the Rexon desktop key).
     pub fn with_de(mut self, de: &str) -> Self {
         self.de = (!de.is_empty()).then(|| de.to_string());
         self.standard_icons = crate::appearance_installer::live_standard_theme(de, "icons");
         self
     }
 
-    /// Типы обзоров диска: прежние плюс разделы окружения, если оно задано.
+    /// Disk overview types: the old ones plus the environment's sections, if it is set.
     fn types(&self) -> Vec<ScanType> {
         let mut types = types_for(&self.home, &self.usr_root);
         if let Some(de) = &self.de {
@@ -3188,15 +3201,15 @@ impl LiveScan {
         types
     }
 
-    /// Что включено сейчас в разделах окружения — у каждого раздела свой
-    /// читатель (`de_apply::active_names`), значения через перевод строки.
+    /// What is enabled now in the environment's sections — each section has its
+    /// own reader (`de_apply::active_names`), values separated by newlines.
     fn de_active(&self) -> Vec<(String, String)> {
         let Some(de) = &self.de else { return Vec::new() };
         let ctx = crate::de_apply::Ctx {
             home: self.home.clone(),
             xdg_config_home: std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty()),
-            // Тема рамок LXQt читается из `rc.xml` того менеджера, что выбран
-            // для сеанса: `window_manager` на X11, `compositor` на Wayland.
+            // The LXQt border theme is read from the `rc.xml` of the manager chosen
+            // for the session: `window_manager` on X11, `compositor` on Wayland.
             wayland: crate::de_apply::Ctx::live().wayland,
             de: de.clone(),
         };
@@ -3214,8 +3227,8 @@ impl LiveScan {
         out
     }
 
-    /// Все каталоги типов (user + system) без повторов, в порядке TYPES —
-    /// порт `_rs_scan_roots`.
+    /// All type directories (user + system) without repeats, in TYPES order —
+    /// port of `_rs_scan_roots`.
     fn scan_roots(&self) -> Vec<String> {
         let mut roots: Vec<String> = Vec::new();
         for t in self.types() {
@@ -3228,7 +3241,7 @@ impl LiveScan {
         roots
     }
 
-    /// `expand_user` проекта: ведущий `~/.config` уходит в `$XDG_CONFIG_HOME`.
+    /// The project's `expand_user`: a leading `~/.config` goes to `$XDG_CONFIG_HOME`.
     fn expand(&self, path: &str) -> String {
         crate::utils::expand_user(
             path,
@@ -3237,10 +3250,10 @@ impl LiveScan {
         )
     }
 
-    /// Снимок + окружение сканеров — порт `_rs_env`.
+    /// Snapshot + scanner environment — port of `_rs_env`.
     ///
-    /// `with_cache = false` — скан без кеша магазина (превью только из
-    /// каталога темы).
+    /// `with_cache = false` — a scan without the store cache (previews only from
+    /// the theme directory).
     fn with_env<R>(
         &self,
         roots: &[String],
@@ -3261,8 +3274,8 @@ impl LiveScan {
                 None
             }
         };
-        // Имя темы — на языке ИНТЕРФЕЙСА Rexon, а не локали системы: человек
-        // выбрал язык программы, и `Name[<язык>]` должно ему следовать.
+        // The theme name is in Rexon's INTERFACE language, not the system locale:
+        // the person chose the program's language, and `Name[<lang>]` must follow it.
         let locale = crate::i18n::current_language();
         let env = ScanEnv {
             home: &self.home,
@@ -3277,9 +3290,9 @@ impl LiveScan {
         body(&env)
     }
 
-    /// Порт `ThemeManager._kde_get`: сперва `kreadconfig6` (он подхватывает
-    /// системные defaults и активный Look-and-Feel), затем прямой разбор
-    /// `kdeglobals`. Пусто — значения нет нигде.
+    /// Port of `ThemeManager._kde_get`: first `kreadconfig6` (it picks up system
+    /// defaults and the active Look-and-Feel), then parsing `kdeglobals` directly.
+    /// Empty — the value is nowhere.
     fn kde_get(&self, section: &str, key: &str) -> String {
         let cmd = crate::themes::kde_read_cmd(section, key);
         let timeout = cmd
@@ -3297,9 +3310,9 @@ impl LiveScan {
         crate::themes::kdeglobals_value(&content, section, key).unwrap_or_default()
     }
 
-    /// Порт `_rs_kread`: stdout `kreadconfig6` при коде 0, иначе `None`.
-    /// Файл здесь ЛЮБОЙ (ksplashrc, kwinrc), поэтому argv свой, а не
-    /// `themes::kde_read_cmd` — тот прибит к `kdeglobals` и к `--default ""`.
+    /// Port of `_rs_kread`: `kreadconfig6` stdout on code 0, otherwise `None`.
+    /// The file here is ANY (ksplashrc, kwinrc), so the argv is our own, not
+    /// `themes::kde_read_cmd` — that one is nailed to `kdeglobals` and `--default ""`.
     fn kread(&self, file: &str, group: &str, key: &str) -> Option<String> {
         let argv: Vec<String> = ["kreadconfig6", "--file", file, "--group", group, "--key", key]
             .iter()
@@ -3311,9 +3324,9 @@ impl LiveScan {
         }
     }
 
-    /// Ответ команды чтения звуковой темы — порт `_rs_sound_theme`.
-    /// Чем читать, знает движок звука вкладки «Настройки»: второго способа
-    /// спросить нет.
+    /// Answer of the sound theme read command — port of `_rs_sound_theme`.
+    /// What to read it with is known by the sound engine of the «⚙️ Settings» tab:
+    /// there is no second way to ask.
     fn sound_theme(&self, de: &str) -> Option<String> {
         let kde_tool = which_live("kreadconfig6").unwrap_or_default();
         let de = if de.is_empty() { "kde" } else { de };
@@ -3331,11 +3344,11 @@ impl LiveScan {
         }
     }
 
-    /// Текущие обои рабочего стола — порт `_rs_current_wallpaper`.
+    /// The current desktop wallpaper — port of `_rs_current_wallpaper`.
     ///
-    /// KDE: все контейнменты `plasma-org.kde.plasma.desktop-appletsrc`
-    /// (номер рабочего стола не угадывается — разбор в движке обоев).
-    /// Остальные столы: та же ветка gsettings, которой пользуется движок.
+    /// KDE: all containments of `plasma-org.kde.plasma.desktop-appletsrc` (the
+    /// desktop number isn't guessed — parsing is in the wallpaper engine).
+    /// Other desktops: the same gsettings branch the engine uses.
     fn current_wallpaper(&self, de: &str) -> Option<String> {
         if crate::wallpaper_engine::uses_plasma_config(de) {
             let text =
@@ -3353,7 +3366,7 @@ impl LiveScan {
         if plain.is_some() || schema != crate::wallpaper_engine::CINNAMON_BG_SCHEMA {
             return plain;
         }
-        // Cinnamon 6.8+: `picture-uri` пуст, картинка — в списке.
+        // Cinnamon 6.8+: `picture-uri` is empty, the picture is in the list.
         let list = crate::wallpaper_engine::gsettings_get_argv(schema, crate::wallpaper_engine::CINNAMON_BG_LIST_KEY);
         match run_default(&list) {
             Some((0, out, _)) => crate::wallpaper_engine::cinnamon_list_first_path(&out),
@@ -3361,12 +3374,12 @@ impl LiveScan {
         }
     }
 
-    /// Все источники карты активных тем — порт `_rs_active_sources`.
+    /// All sources of the active theme map — port of `_rs_active_sources`.
     ///
-    /// Порядок и ЛЕНИВОСТЬ побочных вызовов те же, что у эталона: цепочка
-    /// курсора спрашивает `kcminputrc` и `$XCURSOR_THEME` только когда
-    /// предыдущий источник пуст, иначе вкладка на каждом обновлении читала
-    /// бы файлы, ответ которых заведомо не понадобится.
+    /// The order and LAZINESS of side calls are the same as in the reference: the
+    /// cursor chain asks `kcminputrc` and `$XCURSOR_THEME` only when the previous
+    /// source is empty, otherwise the tab would read on every refresh files whose
+    /// answer is certainly not needed.
     fn active_sources(&self) -> LiveSources {
         let mut src = LiveSources::default();
         let kde_cmds = crate::themes::get_current_kde_cmds();
@@ -3377,8 +3390,8 @@ impl LiveScan {
                 .unwrap_or_else(|| crate::utils::default_timeout_secs(&cmd.argv));
             let value = match run_capture(&cmd.argv, timeout, false) {
                 Some((0, out, _)) if !out.is_empty() => out.trim().to_string(),
-                // «—» — тот же признак «не прочиталось», что у Python-эталона;
-                // `clean` выше по модулю превращает его в пусто.
+                // "—" is the same "couldn't read" sign as in the Python reference;
+                // `clean` higher up in the module turns it into empty.
                 _ => "—".to_string(),
             };
             kde_values.push(value);
@@ -3393,9 +3406,9 @@ impl LiveScan {
             !env_str("WAYLAND_DISPLAY").is_empty(),
         )
         .unwrap_or_default();
-        // Окружение со своим хранилищем оформления (gsettings, xfconf,
-        // DConfig) спрашивается первым; kdeglobals и прочие запасные
-        // источники читаются, только если оно ответа не дало.
+        // An environment with its own appearance storage (gsettings, xfconf,
+        // DConfig) is asked first; kdeglobals and other fallback sources are
+        // read only if it gave no answer.
         let [native_gtk, native_icons, native_cursor] = native_role_values(&de, |cmd| {
             let timeout = cmd
                 .timeout
@@ -3427,7 +3440,7 @@ impl LiveScan {
         src.widget_style = self.kde_get("KDE", "widgetStyle");
 
         src.gtk_settings_ini = read_optional(&self.expand("~/.config/gtk-3.0/settings.ini"));
-        // Заставка выключена (`Engine` не KSplashQML) — текущая плитка «Нет».
+        // The splash is off (`Engine` is not KSplashQML) — the current tile is «None».
         let engine = self.kread("ksplashrc", "KSplash", "Engine");
         src.splash = crate::appearance_installer::splash_active_value(
             self.kread("ksplashrc", "KSplash", "Theme"),
@@ -3445,12 +3458,12 @@ impl LiveScan {
             .iter()
             .find_map(|t| read_optional(&self.expand(&format!("~/.config/{t}/{t}.conf"))));
 
-        // Файлы Plasma Login Manager сюда больше не входят: ключа
-        // `[Theme] Current` у него нет (см. `active_map_from_sources`).
-        // Порядок чтения — как у самого SDDM (`/usr/lib/sddm/sddm.conf.d`,
-        // `/etc/sddm.conf.d`, `/etc/sddm.conf` последним): иначе `Current=`
-        // из `/etc/sddm.conf` (CachyOS ставит туда `breeze`) проигрывал
-        // файлам каталога, и выделялась не та тема, что на экране входа.
+        // Plasma Login Manager files no longer go here: it has no
+        // `[Theme] Current` key (see `active_map_from_sources`). The read order
+        // is SDDM's own (`/usr/lib/sddm/sddm.conf.d`, `/etc/sddm.conf.d`,
+        // `/etc/sddm.conf` last): otherwise `Current=` from `/etc/sddm.conf`
+        // (CachyOS puts `breeze` there) lost to the directory's files, and the
+        // wrong theme was highlighted, not the one on the login screen.
         let list = |dir: &str| scandir_names(std::path::Path::new(dir));
         let sddm_paths = crate::system_plan::sddm_theme_files(&list);
         src.sddm_confs = sddm_paths.iter().filter_map(|p| read_optional(p)).collect();
@@ -3475,7 +3488,7 @@ impl LiveScan {
         src
     }
 
-    /// Карта применённых сейчас тем (порт `_rs_active_map`).
+    /// The map of themes applied now (port of `_rs_active_map`).
     pub fn active_map(&self) -> HashMap<String, String> {
         let raw = self.active_sources();
         let sources = ActiveMapSources {
@@ -3518,14 +3531,14 @@ impl LiveScan {
         map
     }
 
-    /// Темы, применённые СЕЙЧАС (любой источник).
-    /// Контекст Conky для скана: `$XDG_CONFIG_HOME` сеанса — только для
-    /// своего дома, скан чужого дерева живые каталоги не читает.
+    /// Themes applied NOW (any source).
+    /// Conky context for the scan: the session's `$XDG_CONFIG_HOME` — only for
+    /// one's own home, a scan of a foreign tree doesn't read live directories.
     fn conky_ctx(&self) -> crate::de_apply::Ctx {
         crate::de_apply::Ctx::for_home(&self.home)
     }
 
-    /// Пакет Conky из нескольких виджетов — плитка на каждый
+    /// A Conky package of several widgets — a tile per widget
     /// ([`crate::conky_scan::split_package_items`]).
     fn split_conky(&self, items: Vec<ThemeItem>, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
         if !items.iter().any(|it| it.id.starts_with("local:conky:")) {
@@ -3540,8 +3553,8 @@ impl LiveScan {
         let types = self.types();
         let items = self.with_env(&self.scan_roots(), true, |env| scan_active_in(env, &types, active_map));
         let mut items = self.split_conky(items, active_map);
-        // Встроенная рамка KDE (Breeze по умолчанию) — только в сеансе KDE:
-        // в другом столе `kwinrc` ничего не рисует.
+        // The built-in KDE border (Breeze by default) — only in a KDE session:
+        // on another desktop `kwinrc` draws nothing.
         let kde = self.de.as_deref().and_then(crate::de_customization::de_from_id)
             == Some(crate::de_customization::De::Kde);
         if kde && active_map.contains_key("kdecoration") {
@@ -3550,10 +3563,10 @@ impl LiveScan {
         items
     }
 
-    /// Пользовательские темы в `~/.local/share/…`, НЕ активные.
+    /// User themes in `~/.local/share/…`, NOT active.
     pub fn downloaded(&self, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
-        // Темы, которые прежние установки положили на уровень глубже, видны
-        // только после подъёма (раз на процесс; см. appearance_installer).
+        // Themes that older installs placed one level deeper are visible only
+        // after lifting (once per process; see appearance_installer).
         self.migrate_nested();
         let types = self.types();
         let journal = crate::appearance_installer::installed_log_paths();
@@ -3563,19 +3576,19 @@ impl LiveScan {
             items.extend(scan_rexon_system(env, &types, active_map, &journal, &loose));
             items
         });
-        // Здесь — только не запущенные (запущенные — в «Включённых»).
+        // Only the ones not running here (running ones are in «Enabled»).
         let mut items = self.split_conky(items, active_map);
         items.retain(|it| !(it.id.starts_with("local:conky:") && it.local_kind.as_deref() == Some("active")));
         items
     }
 
-    /// Каталоги тем экрана входа и заставки загрузки, у которых нет
-    /// пакета-владельца: их положили руками или чужим установщиком.
+    /// Login screen and boot splash theme directories that have no owning
+    /// package: they were placed by hand or by another installer.
     ///
-    /// Пусто, если пакетная база на вопрос «чей это файл» не отвечает
-    /// (семейство без такого запроса, нет самой программы, запрос не
-    /// выполнился): без ответа «ничьё» от «пакетного» не отличить, а тема
-    /// пакета в «Загруженных» с кнопкой «Удалить» — обман.
+    /// Empty if the package database doesn't answer "whose file is this" (a
+    /// family without such a query, no program itself, the query didn't run):
+    /// without the answer "nobody's" can't be told from "packaged", and a package
+    /// theme in «Downloaded» with a «Remove» button would be a lie.
     pub fn loose_system_themes(&self) -> HashSet<String> {
         let mut paths: Vec<String> = Vec::new();
         for t in self.types() {
@@ -3584,7 +3597,7 @@ impl LiveScan {
             }
             let Ok(dir) = std::fs::read_dir(&t.sys_dir) else { continue };
             for entry in dir.flatten() {
-                // Ссылку не разыменовываем: помощник снимает только обычный каталог.
+                // We don't dereference a link: the helper removes only an ordinary directory.
                 if entry.file_type().map(|f| f.is_dir()).unwrap_or(false) {
                     paths.push(join(&t.sys_dir, &entry.file_name().to_string_lossy()));
                 }
@@ -3593,30 +3606,30 @@ impl LiveScan {
         live_loose_paths(crate::system::DistroDetector::detect_live().family_live(), &paths)
     }
 
-    /// Темы в `/usr/share/…` с пакетом ИЗ РЕПОЗИТОРИЕВ, НЕ активные.
+    /// Themes in `/usr/share/…` with a package FROM THE REPOSITORIES, NOT active.
     ///
-    /// `Err(текст)` — происхождение пакетов не определилось (порт
-    /// `SystemScanUnavailable`): вкладка показывает явный статус, а AUR-темы
-    /// не протекают в «Системные». Система, которая о происхождении пакета
-    /// не знает в принципе, честно отдаёт пустой список.
+    /// `Err(text)` — package origin couldn't be determined (port of
+    /// `SystemScanUnavailable`): the tab shows an explicit status, and AUR themes
+    /// don't leak into «System». A system that fundamentally knows nothing about
+    /// package origin honestly returns an empty list.
     pub fn system(
         &self,
         active_map: &HashMap<String, String>,
     ) -> Result<Vec<ThemeItem>, String> {
         let family = crate::system::DistroDetector::detect_live().family_live();
         let Some(query) = crate::system_plan::foreign_packages_query(family) else {
-            return Ok(Vec::new()); // семейство не умеет отвечать о происхождении
+            return Ok(Vec::new()); // the family can't answer about origin
         };
         if which_live(&query.binary).is_none() {
             return Ok(Vec::new());
         }
         let foreign = live_foreign_pkgs(&query);
-        // Скан двухфазный: первый вызов с пустой картой владельцев отдаёт
-        // пути для вопроса «чей это файл», второй — уже элементы.
+        // The scan has two phases: the first call with an empty owner map returns
+        // paths for the "whose file is this" question, the second — the items.
         let types = self.types();
         self.with_env(&self.scan_roots(), true, |env| {
             let Some(foreign) = foreign.as_ref() else {
-                // Тот же отказ, что у `scan_system` без ответа pacman -Qm.
+                // The same refusal as `scan_system` without a pacman -Qm answer.
                 return scan_system(env, active_map, true, None, &HashMap::new()).map(|s| s.items);
             };
             let empty: HashMap<String, String> = HashMap::new();
@@ -3627,15 +3640,15 @@ impl LiveScan {
         })
     }
 
-    /// Раздел `apply_kind` целиком ([`scan_section`]): раздел окружения
-    /// (`categories::DE_SECTIONS`) либо раздел KDE с сеткой установленного
-    /// (`categories::KDE_INSTALLED_SECTIONS`). Текущая тема — из
-    /// `active_map` (ключ — тот же `apply_kind`), с `local_kind = "active"`.
+    /// The whole section `apply_kind` ([`scan_section`]): a desktop environment
+    /// section (`categories::DE_SECTIONS`) or a KDE section with an installed grid
+    /// (`categories::KDE_INSTALLED_SECTIONS`). The current theme — from
+    /// `active_map` (the key is the same `apply_kind`), with `local_kind = "active"`.
     pub fn section(&self, apply_kind: &str, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
         let types = section_types(&self.home, &self.usr_root, apply_kind);
         if crate::categories::KDE_INSTALLED_SECTIONS.iter().any(|(_, k)| *k == apply_kind) {
-            // Как у «Загруженных»: темы, что прежние установки положили на
-            // уровень глубже, видны только после подъёма.
+            // As with «Downloaded»: themes older installs placed one level deeper
+            // are visible only after lifting.
             self.migrate_nested();
         } else {
             self.link_themes();
@@ -3650,22 +3663,22 @@ impl LiveScan {
         }
         let mut items = self.with_env(&roots, true, |env| scan_section(env, &types, active_map));
         order_toggle_section(apply_kind, &mut items);
-        // Встроенные рамки KDE (Breeze, Oxygen, темы QML Aurorae) — рядом с
-        // темами SVG, как в окне KDE; текущая — по `library` из `kwinrc`.
+        // Built-in KDE borders (Breeze, Oxygen, QML Aurorae themes) — next to the
+        // SVG themes, as in the KDE dialog; the current one — by `library` from `kwinrc`.
         if apply_kind == "aurorae" {
             let builtin = self.kdecorations(active_map);
             let (current, rest): (Vec<_>, Vec<_>) = builtin.into_iter().partition(|it| it.local_kind.is_some());
             items.splice(0..0, current);
             items.extend(rest);
         }
-        // Виджеты Conky вне каталога Rexon (`~/.conky`, `~/.conkyrc`, свои
-        // папки) — плитками «Найдено на диске» после своих.
+        // Conky widgets outside the Rexon directory (`~/.conky`, `~/.conkyrc`, own
+        // folders) — as «🔎 Found on disk» tiles after our own.
         if apply_kind == "conky" {
             let ctx = self.conky_ctx();
             items = self.split_conky(items, active_map);
             items.extend(crate::conky_scan::live_found_items(&self.home));
-            // Картинка рядом с файлом настроек и «Источник»/«Авторы» из
-            // source.txt/credits.txt — и своим, и найденным на диске.
+            // The picture next to the config file and «Source»/«Authors» from
+            // source.txt/credits.txt — both for our own and for those found on disk.
             for it in &mut items {
                 crate::conky_scan::decorate_item(&crate::animations::SystemIo, &ctx, it);
             }
@@ -3673,8 +3686,8 @@ impl LiveScan {
         items
     }
 
-    /// Плитки встроенных рамок KDE ([`crate::kdecoration`]); включённую
-    /// раздел ставит первой, перед темами SVG.
+    /// Tiles of built-in KDE borders ([`crate::kdecoration`]); the section puts
+    /// the enabled one first, before the SVG themes.
     fn kdecorations(&self, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
         use crate::kdecoration as kd;
         let roots = if self.usr_root == "/usr" {
@@ -3690,22 +3703,22 @@ impl LiveScan {
         kd::section_items(&decos, current, t.cat_id, t.icon)
     }
 
-    /// Kvantum-темы (`~/.config/Kvantum` + `/usr/share/Kvantum`).
+    /// Kvantum themes (`~/.config/Kvantum` + `/usr/share/Kvantum`).
     pub fn kvantum(&self, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
         let roots = kvantum_dirs(&self.home, &self.usr_root).to_vec();
         self.with_env(&roots, true, |env| scan_kvantum_themes(env, active_map))
     }
 
-    /// Заставка (`kind = "splash"`) либо экран блокировки
-    /// (`kind = "lockscreen"`) из look-and-feel.
+    /// Splash (`kind = "splash"`) or lock screen (`kind = "lockscreen"`) from the
+    /// look-and-feel.
     pub fn lnf(&self, kind: &str, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
         let roots = lnf_dirs(&self.home, &self.usr_root).to_vec();
         self.with_env(&roots, true, |env| scan_lnf_component(env, kind, active_map))
     }
 
-    /// Стиль приложений (Qt widget style). `styles` — имена Qt-стилей;
-    /// у процесса без QtWidgets это [`WIDGET_STYLES`]. Диска не касается:
-    /// список стилей даёт сам Qt.
+    /// Application style (Qt widget style). `styles` — Qt style names; for a
+    /// process without QtWidgets it is [`WIDGET_STYLES`]. Doesn't touch the disk:
+    /// the style list comes from Qt itself.
     pub fn widget_styles(
         &self,
         active_map: &HashMap<String, String>,
@@ -3717,18 +3730,18 @@ impl LiveScan {
 }
 
 // ============================================================================
-// Сверки живого исполнителя
+// Checks of the live executor
 // ============================================================================
 //
-// Проверяется ровно то, чего не поймает ни один голден на фикстуре: как
-// живой снимок кладёт КЛЮЧИ. `is_dir`/`is_file` у [`FsSnapshot`] отвечают по
-// наличию ключа, поэтому забытая регистрация подкаталога или файла превью —
-// это не «чуть иначе», а молчаливое «такого нет», и раздел вкладки пустеет
-// без единой ошибки.
+// What is checked is exactly what no golden on a fixture will catch: how the
+// live snapshot puts KEYS. `is_dir`/`is_file` of [`FsSnapshot`] answer by key
+// presence, so a forgotten registration of a subdirectory or a preview file
+// is not "slightly different" but a silent "there is no such thing", and the
+// tab's section goes empty without a single error.
 #[cfg(test)]
 mod tests {
-    /// Разделы-переключатели — по имени (включение карточку не двигает),
-    /// разделы тем — как были (включённая первой).
+    /// Toggle sections — by name (enabling doesn't move the card), theme
+    /// sections — as they were (the enabled one first).
     #[test]
     fn toggle_sections_keep_order_by_name() {
         for key in ["gnomeext", "kwineffects", "kwinscripts", "cinnamonapplets", "cinnamondesklets", "cinnamonext", "conky"] {
@@ -3744,24 +3757,24 @@ mod tests {
             ..Default::default()
         };
         let names = |items: &[ThemeItem]| items.iter().map(|i| i.name.clone()).collect::<Vec<_>>();
-        // Обзор кладёт включённое первым: до и после «Выключить» у Caffeine.
+        // The overview puts the enabled one first: before and after «Disable» on Caffeine.
         let mut before = vec![tile("c", "Caffeine", true), tile("a", "appindicator", false), tile("d", "Dash to Dock", false)];
         let mut after = vec![tile("a", "appindicator", false), tile("c", "Caffeine", false), tile("d", "Dash to Dock", false)];
         order_toggle_section("gnomeext", &mut before);
         order_toggle_section("gnomeext", &mut after);
         assert_eq!(names(&before), ["appindicator", "Caffeine", "Dash to Dock"]);
         assert_eq!(names(&before), names(&after), "переключение не двигает карточки");
-        // Равные имена — по номеру, устойчиво.
+        // Equal names — by id, stably.
         let mut twins = vec![tile("z", "Same", true), tile("b", "Same", false)];
         order_toggle_section("gnomeext", &mut twins);
         assert_eq!(twins[0].id, "local:gnomeext:b");
-        // Тема: порядок обзора не трогаем.
+        // Theme: the overview order is left alone.
         let mut themes = vec![tile("x", "Zeta", true), tile("y", "Alpha", false)];
         order_toggle_section("gtk", &mut themes);
         assert_eq!(names(&themes), ["Zeta", "Alpha"]);
     }
 
-    /// Новая тема в `~/.themes` меняет отметку корней.
+    /// A new theme in `~/.themes` changes the roots stamp.
     #[test]
     fn roots_stamp_sees_new_theme() {
         let home = std::env::temp_dir().join(format!("rexon-roots-stamp-{}", std::process::id()));
@@ -3776,7 +3789,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    /// Живой список Qt побеждает запас; пустой ответ — запас целиком.
+    /// The live Qt list wins over the fallback; an empty answer — the whole fallback.
     #[test]
     fn available_widget_styles_prefers_live_qt_keys() {
         let live: Vec<String> = ["Windows", "Fusion", " Breeze ", "", "qt6ct-style"]
@@ -3795,7 +3808,7 @@ mod tests {
 
     use super::*;
 
-    /// Свой каталог под сверку в `std::env::temp_dir()`.
+    /// Our own directory for the check in `std::env::temp_dir()`.
     fn tmp_dir(tag: &str) -> std::path::PathBuf {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -3820,11 +3833,11 @@ mod tests {
         p.to_string_lossy().into_owned()
     }
 
-    /// Темы из `~/.local/share/themes` получают ссылку в `~/.themes` (его
-    /// одного читает окно «Внешний вид» MATE): занятое имя не трогается,
-    /// не-тема ссылки не получает, ссылка на пропавшую тему снимается, в
-    /// снимке скана ссылки нет (тема видна один раз), а снятие темы уносит
-    /// и её ссылку.
+    /// Themes from `~/.local/share/themes` get a link in `~/.themes` (only it is
+    /// read by the MATE «Appearance» dialog): a taken name is left alone, a
+    /// non-theme gets no link, a link to a vanished theme is removed, the scan
+    /// snapshot has no link (the theme is visible once), and removing the theme
+    /// takes its link along.
     #[test]
     fn theme_links_mirror_xdg_themes_into_dot_themes() {
         let home = tmp_dir("links");
@@ -3866,14 +3879,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    /// Снимок живого дерева: подкаталог темы зарегистрирован ПУСТЫМ, текст
-    /// читается только у metadata, а цель `Preview=` попадает в снимок.
+    /// Snapshot of the live tree: a theme subdirectory is registered EMPTY, text
+    /// is read only for metadata, and the `Preview=` target gets into the snapshot.
     ///
-    /// Ловит три разных промаха разом: не зарегистрировать подкаталог
-    /// (`contents/` пропал бы, и `scan_lnf_component` не нашёл бы ни одной
-    /// темы), прочитать текстом обычный файл (темы носят мегабайтные `.svg`,
-    /// и вкладка встала бы на каждом открытии) и не зарегистрировать файл из
-    /// `Preview=` (превью тихо стало бы плейсхолдером).
+    /// Catches three different misses at once: not registering a subdirectory
+    /// (`contents/` would vanish, and `scan_lnf_component` wouldn't find a single
+    /// theme), reading an ordinary file as text (themes carry megabyte `.svg`
+    /// files, and the tab would stall on every opening) and not registering the
+    /// file from `Preview=` (the preview would quietly become a placeholder).
     #[test]
     fn live_snapshot_keys_dirs_files_and_preview_target() {
         let root = tmp_dir("snap");
@@ -3891,14 +3904,14 @@ mod tests {
         assert!(names.contains(&"Alpha".to_string()));
         assert!(names.contains(&"loose.txt".to_string()));
         assert!(snap.is_dir(&s(&theme)));
-        // подкаталог темы зарегистрирован, но вглубь не ходили
+        // the theme subdirectory is registered, but we didn't go deeper
         assert!(snap.is_dir(&s(&theme.join("contents"))));
         assert!(snap.scandir(&s(&theme.join("contents"))).is_empty());
-        // metadata — текстом, обычный файл — только фактом существования
+        // metadata — as text, an ordinary file — only as a fact of existence
         assert_eq!(snap.read_text(&s(&theme.join("metadata.desktop"))), Some(meta));
         assert!(snap.is_file(&s(&theme.join("big.svg"))));
         assert_eq!(snap.read_text(&s(&theme.join("big.svg"))), Some(""));
-        // цель `Preview=` ищется относительно contents/ — и найдена
+        // the `Preview=` target is looked up relative to contents/ — and found
         assert!(snap.is_file(&s(&theme.join("contents/shot.png"))));
         assert_eq!(
             find_preview(&snap, &s(&theme), None),
@@ -3908,12 +3921,12 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
-    /// Несуществующий корень — пустой снимок без паники, а поданные извне
-    /// файлы превью в него всё равно попадают.
+    /// A nonexistent root — an empty snapshot without a panic, while preview files
+    /// passed from outside still get into it.
     ///
-    /// Оба случая живые: каталога `/usr/share/sddm/themes` на машине без
-    /// SDDM просто нет, а файлы превью приходят из кеша магазина уже
-    /// проверенными и на диске лежат вне корней обхода.
+    /// Both cases are real: the `/usr/share/sddm/themes` directory simply doesn't
+    /// exist on a machine without SDDM, and preview files come from the store
+    /// cache already checked and lie on disk outside the walk roots.
     #[test]
     fn live_snapshot_missing_root_is_empty_but_keeps_extra_files() {
         let missing = "/rexon-нет-такого-каталога/themes".to_string();
@@ -3926,11 +3939,11 @@ mod tests {
         assert!(snap.is_file(&extra));
     }
 
-    /// `from_parts` и `from_json` на одних данных отвечают одинаково.
+    /// `from_parts` and `from_json` on the same data answer the same.
     ///
-    /// Живой обзор идёт первым конструктором, голдены моста — вторым; разойдись
-    /// они хоть в одном ответе, сверки на фикстурах остались бы зелёными, а
-    /// вкладка показывала бы другое.
+    /// The live overview goes through the first constructor, the bridge goldens
+    /// through the second; if they diverged in even one answer, the fixture checks
+    /// would stay green while the tab showed something else.
     #[test]
     fn from_parts_answers_like_from_json() {
         let dirs = HashMap::from([
@@ -3965,12 +3978,13 @@ mod tests {
         }
     }
 
-    /// Живой обзор look-and-feel: тема с `contents/splash` попадает в
-    /// «Сплэш-экран» и помечается активной, а в «Экран блокировки» — нет.
+    /// Live look-and-feel overview: a theme with `contents/splash` gets into
+    /// «Splash Screen» and is marked active, but not into «Lock Screen».
     ///
-    /// Это сквозная сверка через настоящий диск: снимок собран живым
-    /// обходом, а решения приняли те же `scan_lnf_component`, что и мост.
-    /// Пропусти исполнитель пробу `contents/splash` — раздел оказался бы пуст.
+    /// This is an end-to-end check through a real disk: the snapshot is built by
+    /// the live walk, and the decisions are made by the same `scan_lnf_component`
+    /// as the bridge. Should the executor skip the `contents/splash` probe, the
+    /// section would be empty.
     #[test]
     fn live_lnf_sees_splash_component_on_disk() {
         let base = tmp_dir("lnf");
@@ -3997,30 +4011,30 @@ mod tests {
         let active = HashMap::from([("splash".to_string(), "MyTheme".to_string())]);
 
         let splash = scan.lnf("splash", &active);
-        // Тема и плитка «Нет» (она всегда последняя).
+        // The theme and the «None» tile (always last).
         assert_eq!(splash.len(), 2, "тема со splash обязана быть в списке");
         assert_eq!(splash[1].id, "local:splash:None");
-        // В карточке — имя из метаданных, в номере — имя каталога.
+        // The card has the name from the metadata, the id — the directory name.
         assert_eq!(splash[0].name, "My Theme");
         assert_eq!(splash[0].id, "local:splash:MyTheme");
-        // Активную узнают по признаку, а не по подписи: подпись переводится.
+        // The active one is recognised by the sign, not the label: the label is translated.
         assert_eq!(splash[0].local_kind.as_deref(), Some("active"), "автор: {}", splash[0].author);
         assert_eq!(splash[0].install_path, s(&theme));
 
-        // того же каталога lockscreen у темы нет — и в списке её быть не должно
+        // the theme has no lockscreen directory — and it must not be in the list
         assert!(scan.lnf("lockscreen", &active).is_empty());
 
         std::fs::remove_dir_all(&base).ok();
     }
 
-    // ── Человеческое имя темы ──────────────────────────────────────────
+    // ── The theme's human name ────────────────────────────────────────
     //
-    // Покупатель во вкладке «Оформление» видел сырой идентификатор каталога
-    // (`org.kde.breeze.desktop`), хотя человеческое имя лежит рядом в
-    // метаданных. Ветки ниже — весь порядок разрешения имени и КАЖДЫЙ откат:
-    // пустой откат превратил бы карточку в безымянную.
+    // In the «Appearance» tab the user saw the raw directory identifier
+    // (`org.kde.breeze.desktop`), although the human name lies right next to it in
+    // the metadata. The branches below are the whole name resolution order and
+    // EVERY fallback: an empty fallback would turn the card into a nameless one.
 
-    /// Снимок из пар «путь → текст» (каталоги выводятся из путей файлов).
+    /// A snapshot from "path → text" pairs (directories are derived from file paths).
     fn snap_of(theme_dir: &str, files: &[(&str, &str)]) -> FsSnapshot {
         let mut dirs: HashMap<String, Vec<String>> = HashMap::new();
         let mut fmap: HashMap<String, String> = HashMap::new();
@@ -4074,8 +4088,8 @@ mod tests {
 
     #[test]
     fn display_name_falls_back_to_desktop_file() {
-        // У тем SDDM имя лежит в `[SddmGreeterTheme]`, а не в `[Desktop
-        // Entry]`: привязка к одной группе потеряла бы весь экран входа.
+        // SDDM themes keep the name in `[SddmGreeterTheme]`, not in `[Desktop
+        // Entry]`: tying to one group would lose the whole login screen.
         let fs = snap_of(
             "/t/breeze",
             &[("metadata.desktop", "[SddmGreeterTheme]\nName=Breeze\n")],
@@ -4092,17 +4106,17 @@ mod tests {
         let desktop = "[Desktop Entry]\nName=Elarun\nName[ru]=Эларун\n";
         let fs = snap_of("/t/a", &[("metadata.json", json)]);
         assert_eq!(theme_display_name(&fs, "/t/a", "a", "ru_RU.UTF-8"), "Бриз");
-        // язык другой → общее имя
+        // a different language → the generic name
         assert_eq!(theme_display_name(&fs, "/t/a", "a", "de_DE.UTF-8"), "Breeze");
-        // в desktop-файле перевод стоит НИЖЕ общего имени и всё равно
-        // выигрывает: ключи перебираются по языку, а не по строкам файла
+        // in the desktop file the translation comes AFTER the generic name and still
+        // wins: keys are tried by language, not by file lines
         let fs = snap_of("/t/b", &[("metadata.desktop", desktop)]);
         assert_eq!(theme_display_name(&fs, "/t/b", "b", "ru"), "Эларун");
     }
 
     #[test]
     fn display_name_reads_lowercase_name_of_shell_addons() {
-        // metadata.json расширения GNOME и апплета Cinnamon: имя — `name`.
+        // metadata.json of a GNOME extension and a Cinnamon applet: the name is `name`.
         let json = "{\"uuid\": \"rexon-wallpaper@rexon.app\", \"name\": \"Rexon Wallpaper Engine\"}";
         let fs = snap_of("/t/x", &[("metadata.json", json)]);
         assert_eq!(
@@ -4113,15 +4127,15 @@ mod tests {
 
     #[test]
     fn display_name_keeps_directory_name_when_metadata_is_useless() {
-        // битый json
+        // broken json
         let fs = snap_of("/t/x", &[("metadata.json", "{not json")]);
         assert_eq!(theme_display_name(&fs, "/t/x", "x", "ru_RU.UTF-8"), "x");
-        // имя есть, но пустое (пробелы) — и json, и desktop
+        // the name is there but empty (spaces) — both json and desktop
         let fs = snap_of("/t/y", &[("metadata.json", "{\"KPlugin\": {\"Name\": \"   \"}}")]);
         assert_eq!(theme_display_name(&fs, "/t/y", "y", "ru_RU.UTF-8"), "y");
         let fs = snap_of("/t/z", &[("metadata.desktop", "[Desktop Entry]\nName=\n")]);
         assert_eq!(theme_display_name(&fs, "/t/z", "z", "ru_RU.UTF-8"), "z");
-        // json есть, но имени в нём нет вовсе → пробуем desktop рядом
+        // json is there but has no name at all → try the desktop file next to it
         let fs = snap_of(
             "/t/w",
             &[
@@ -4130,30 +4144,30 @@ mod tests {
             ],
         );
         assert_eq!(theme_display_name(&fs, "/t/w", "w", "ru_RU.UTF-8"), "Запасное");
-        // метаданных нет вовсе — ни KDE-шных, ни index.theme
+        // no metadata at all — neither KDE nor index.theme
         let fs = snap_of("/t/v", &[("cursors", "")]);
         assert_eq!(theme_display_name(&fs, "/t/v", "v", "ru_RU.UTF-8"), "v");
-        // index.theme есть, но имени в нём нет (у GTK-тем встречается
-        // голый [X-GNOME-Metatheme] с одним GtkTheme=)
+        // index.theme is there but has no name (GTK themes sometimes have a bare
+        // [X-GNOME-Metatheme] with a single GtkTheme=)
         let fs = snap_of(
             "/t/u",
             &[("index.theme", "[X-GNOME-Metatheme]\nGtkTheme=u\n")],
         );
         assert_eq!(theme_display_name(&fs, "/t/u", "u", "ru_RU.UTF-8"), "u");
-        // каталога темы нет (цветовые схемы — файл, а не папка)
+        // there is no theme directory (color schemes are a file, not a folder)
         let fs = snap_of("/t/none", &[]);
         assert_eq!(theme_display_name(&fs, "", "BreezeDark", "ru_RU.UTF-8"), "BreezeDark");
     }
 
-    // ── Иконки, курсоры, GTK-темы: имя из index.theme ──────────────────
+    // ── Icons, cursors, GTK themes: the name from index.theme ──────────
     //
-    // Метаданных KDE у них нет вовсе, и покупатель до сих пор читал имя
-    // каталога: «breeze_cursors» вместо «Breeze Dark», «adw-gtk3» вместо
-    // «adw-gtk3». Образцы взяты с ЖИВОЙ машины Wehrwolfmann.
+    // They have no KDE metadata at all, and until now the user read the
+    // directory name: "breeze_cursors" instead of "Breeze Dark", "adw-gtk3"
+    // instead of "adw-gtk3". Samples are taken from Wehrwolfmann's LIVE machine.
 
     #[test]
     fn display_name_reads_index_theme_of_icons_and_cursors() {
-        // /usr/share/icons/Papirus — секция [Icon Theme]
+        // /usr/share/icons/Papirus — the [Icon Theme] section
         let fs = snap_of(
             "/t/Papirus",
             &[(
@@ -4165,7 +4179,7 @@ mod tests {
             theme_display_name(&fs, "/t/Papirus", "Papirus", "ru_RU.UTF-8"),
             "Papirus"
         );
-        // /usr/share/icons/breeze_cursors — имя каталога и имя темы РАЗНЫЕ
+        // /usr/share/icons/breeze_cursors — the directory name and the theme name DIFFER
         let fs = snap_of(
             "/t/breeze_cursors",
             &[(
@@ -4178,7 +4192,7 @@ mod tests {
             theme_display_name(&fs, "/t/breeze_cursors", "breeze_cursors", "en_US.UTF-8"),
             "Breeze Dark"
         );
-        // перевод под язык покупателя выигрывает, хотя стоит ниже
+        // the translation into the user's language wins although it comes later
         assert_eq!(
             theme_display_name(&fs, "/t/breeze_cursors", "breeze_cursors", "ru_RU.UTF-8"),
             "Breeze, тёмный вариант"
@@ -4187,9 +4201,9 @@ mod tests {
 
     #[test]
     fn display_name_reads_index_theme_of_gtk_themes() {
-        // GTK-темы кладут имя в РАЗНЫЕ группы — привязка к одной потеряла
-        // бы половину: adw-gtk3 в [X-GNOME-Metatheme], WhiteSur в [Desktop
-        // Entry] (проверено на /usr/share/themes этой машины).
+        // GTK themes put the name into DIFFERENT groups — tying to one would lose
+        // half: adw-gtk3 in [X-GNOME-Metatheme], WhiteSur in [Desktop
+        // Entry] (checked on this machine's /usr/share/themes).
         let fs = snap_of(
             "/t/adw-gtk3-dark",
             &[(
@@ -4217,8 +4231,8 @@ mod tests {
 
     #[test]
     fn display_name_keeps_kde_metadata_ahead_of_index_theme() {
-        // Порядок источников: metadata.* пишет автор темы под KDE,
-        // index.theme бывает сгенерированным — у KDE-метаданных приоритет.
+        // Source order: metadata.* is written by the theme author for KDE,
+        // index.theme is sometimes generated — KDE metadata has priority.
         let fs = snap_of(
             "/t/both",
             &[
@@ -4227,7 +4241,7 @@ mod tests {
             ],
         );
         assert_eq!(theme_display_name(&fs, "/t/both", "both", "ru_RU.UTF-8"), "Из KDE");
-        // metadata.desktop без имени → идём дальше, в index.theme
+        // metadata.desktop without a name → move on to index.theme
         let fs = snap_of(
             "/t/next",
             &[
@@ -4238,11 +4252,11 @@ mod tests {
         assert_eq!(theme_display_name(&fs, "/t/next", "next", "ru_RU.UTF-8"), "Из index");
     }
 
-    // ── Цветовые схемы: имя из самого файла *.colors ───────────────────
+    // ── Color schemes: the name from the *.colors file itself ─────────
     //
-    // Каталога темы у них нет вовсе — тема это один файл. Имя лежит в
-    // [General], одиннадцатой группе по счёту (проверено на
-    // /usr/share/color-schemes этой машины), поэтому группа не спрашивается.
+    // They have no theme directory at all — the theme is a single file. The name
+    // lies in [General], the eleventh group (checked on this machine's
+    // /usr/share/color-schemes), so the group is not asked for.
 
     #[test]
     fn colors_display_name_comes_from_the_file_itself() {
@@ -4261,14 +4275,14 @@ mod tests {
             file_display_name(&fs, path, "BreezeDark", "ru_RU.UTF-8"),
             "Breeze, тёмный вариант"
         );
-        // файла нет → имя файла (безымянных карточек не бывает)
+        // no file → the file name (there are no nameless cards)
         assert_eq!(
             file_display_name(&fs, "/sb/usr/share/color-schemes/Нет.colors", "Нет", "ru"),
             "Нет"
         );
-        // путь пустой → откат без обращения к диску
+        // an empty path → fallback without touching the disk
         assert_eq!(file_display_name(&fs, "", "Нет", "ru"), "Нет");
-        // файл есть, а имени в нём нет (обрезанная схема) → имя файла
+        // the file is there but has no name (a truncated scheme) → the file name
         let mut files = HashMap::new();
         files.insert("/c/Пустая.colors".to_string(), "[General]\nColorScheme=X\n".to_string());
         let fs = FsSnapshot { dirs: HashMap::new(), files };
@@ -4281,21 +4295,21 @@ mod tests {
             locale_name_keys("ru_RU.UTF-8"),
             vec!["Name[ru_RU]", "Name[ru]", "Name"]
         );
-        // дефис нормализуется в подчёркивание — в ключах KDE только оно
+        // the hyphen is normalised to an underscore — KDE keys use only that
         assert_eq!(locale_name_keys("pt-BR"), vec!["Name[pt_BR]", "Name[pt]", "Name"]);
         assert_eq!(locale_name_keys("ru"), vec!["Name[ru]", "Name"]);
-        // модификатор отбрасывается
+        // the modifier is dropped
         assert_eq!(locale_name_keys("ca@valencia"), vec!["Name[ca]", "Name"]);
-        // языка нет — остаётся одно общее имя
+        // no language — only the generic name remains
         assert_eq!(locale_name_keys(""), vec!["Name"]);
     }
 
-    /// Скан «Системных» на ЭТОЙ машине доходит до ответа.
+    /// The «System» scan on THIS machine gets as far as an answer.
     ///
-    /// Проверяется живой путь целиком: определение семейства пакетов, запрос
-    /// «что не из репозиториев», двухфазный вопрос о владельцах файлов. Ошибка
-    /// здесь означает `SystemScanUnavailable` во вкладке — то есть раздел,
-    /// закрытый статусом вместо тем.
+    /// The whole live path is checked: detecting the package family, the "what is
+    /// not from the repositories" query, the two-phase question about file owners.
+    /// An error here means `SystemScanUnavailable` in the tab — that is, a section
+    /// closed with a status instead of themes.
     #[test]
     #[cfg_attr(
         feature = "isolated-checks",
@@ -4306,8 +4320,8 @@ mod tests {
         let items = scan
             .system(&HashMap::new())
             .expect("происхождение пакетов на этой машине определяется");
-        // Всё, что вернулось, обязано лежать под системным корнем: иначе в
-        // «Системные» уехали пользовательские темы.
+        // Everything returned must lie under the system root: otherwise user
+        // themes went off into «System».
         for item in &items {
             assert!(
                 item.install_path.starts_with(&scan.usr_root),
@@ -4317,10 +4331,10 @@ mod tests {
         }
     }
 
-    /// Разделы окружений: рамки XFCE ищутся в ~/.themes и
-    /// ~/.local/share/themes по подкаталогу `xfwm4`, действия Nemo — файлами,
-    /// включённое (карта активных, у дополнений — несколько имён) — с
-    /// признаком «активна»; чужое окружение разделов не получает.
+    /// Desktop environment sections: XFCE borders are looked up in ~/.themes and
+    /// ~/.local/share/themes by the `xfwm4` subdirectory, Nemo actions — as files,
+    /// the enabled ones (the active map, add-ons have several names) — with the
+    /// "active" sign; a foreign environment gets no sections.
     #[test]
     fn de_sections_scan_by_matrix() {
         let base = tmp_dir("desect");
@@ -4363,15 +4377,15 @@ mod tests {
         );
         let nemo: Vec<String> = scan.section("nemoactions", &active).into_iter().map(|it| it.id).collect();
         assert_eq!(nemo, vec!["local:nemoactions:a.nemo_action", "local:nemoactions:b.nemo_action"]);
-        // «Загруженные» XFCE видят рамки, но не действия Nemo (они — Cinnamon).
+        // XFCE «Downloaded» sees borders but not Nemo actions (those are Cinnamon's).
         let dl: Vec<String> = scan.downloaded(&active).into_iter().map(|it| it.id).collect();
         assert!(dl.contains(&"local:xfwm4:Arc".to_string()), "{dl:?}");
         assert!(!dl.iter().any(|i| i.starts_with("local:nemoactions")), "{dl:?}");
     }
 
-    /// Тема LXQt — каталог с `lxqt-panel.qss`, как в списке тем самого
-    /// LXQt (`LXQtTheme::allThemes`): каталог без него темой не считается
-    /// ни в доме, ни в системе.
+    /// An LXQt theme is a directory with `lxqt-panel.qss`, as in LXQt's own theme
+    /// list (`LXQtTheme::allThemes`): a directory without it doesn't count as a
+    /// theme either at home or in the system.
     #[test]
     fn lxqt_themes_need_panel_stylesheet() {
         let base = tmp_dir("lxqt-themes");
@@ -4400,8 +4414,8 @@ mod tests {
         assert_eq!(ids, vec!["local:lxqttheme:Frost".to_string(), "local:lxqttheme:ambiance".to_string()]);
     }
 
-    /// Раздел «Виджеты Conky» показывает и виджеты вне каталога Rexon —
-    /// плитками «Найдено на диске» после своих, без повторов.
+    /// The «Conky Widgets» section also shows widgets outside the Rexon directory —
+    /// as «🔎 Found on disk» tiles after our own, without repeats.
     #[test]
     fn conky_section_shows_widgets_found_on_disk() {
         let base = tmp_dir("conky-found");
@@ -4424,8 +4438,8 @@ mod tests {
             migrate: false,
             standard_icons: None,
         };
-        // Картинка рядом с файлом настроек (с его именем и без окончания) и
-        // источник из source.txt — у своего и у найденного виджета.
+        // The picture next to the config file (with its name and without the suffix)
+        // and the source from source.txt — for both our own and a found widget.
         write(&home.join(".config/conky/Jhalak/Jhalak.png"), "png");
         write(&home.join(".conky/Gotham/Gotham.jpg"), "jpg");
         write(&home.join(".conky/Gotham/source.txt"), "http://psyjunta.deviantart.com/art/Gotham-Conky-config-205465419\n");
@@ -4449,8 +4463,8 @@ mod tests {
         assert!(items[1].description.is_empty());
     }
 
-    /// Темы звуков видны в «Загруженных» и «Активных»; обёртка архива и
-    /// каталог без `[Sound Theme]` темой не считаются.
+    /// Sound themes are visible in «Downloaded» and «Active»; an archive wrapper
+    /// and a directory without `[Sound Theme]` don't count as themes.
     #[test]
     fn sound_themes_are_scanned_only_on_top_level_with_index() {
         let base = tmp_dir("sounds");
@@ -4487,13 +4501,13 @@ mod tests {
     }
 
 
-    // ── Разделы KDE с сеткой установленного (Т3а) ─────────────────────
+    // ── KDE sections with an installed grid (T3a) ─────────────────────
     //
-    // Каждый раздел — во временном HOME и подставном корне `/usr`
-    // (`LiveScan::usr_root`): живой профиль и живые темы не читаются.
+    // Each section is in a temporary HOME and a substitute `/usr` root
+    // (`LiveScan::usr_root`): the live profile and live themes are not read.
 
-    /// Скан раздела в подставных HOME/`/usr`: (номер, «активна»), текущая —
-    /// первой, остальные — по алфавиту (порядок каталога зависит от ФС).
+    /// A section scan in substitute HOME/`/usr`: (id, "active"), the current one —
+    /// first, the rest — alphabetically (directory order depends on the FS).
     fn kde_section(
         tag: &str,
         key: &str,
@@ -4519,7 +4533,7 @@ mod tests {
         };
         let active = HashMap::from([(key.to_string(), current.to_string())]);
         let items = scan.section(key, &active);
-        // Раздел знает ядро: ключ разбирается в скан раздела.
+        // The core knows the section: the key resolves into a section scan.
         assert_eq!(
             crate::appearance_page::local_scan_plan(key),
             ("section".to_string(), key.to_string())
@@ -4633,9 +4647,9 @@ mod tests {
         );
     }
 
-    /// Значки: курсорные темы и служебные наборы (`hicolor`, `default`) в
-    /// сетку не идут; `~/.icons` смотрится вместе с `~/.local/share/icons`,
-    /// одно имя в двух местах — одна плитка; текущая — и из `~/.icons`.
+    /// Icons: cursor themes and service sets (`hicolor`, `default`) don't go into
+    /// the grid; `~/.icons` is looked at together with `~/.local/share/icons`, one
+    /// name in two places — one tile; the current one — from `~/.icons` too.
     #[test]
     fn kde_section_icons() {
         let got = kde_section("kde-icons", "icons", "Papirus", |home, usr| {
@@ -4660,10 +4674,10 @@ mod tests {
         );
     }
 
-    /// Значки окружения по умолчанию видны: набор со своими курсорами
-    /// (elementary в XFCE, Adwaita) — в «Значках» и в «Курсорах»; скрытый
-    /// (`Hidden=true`) — только если это стандартный набор окружения
-    /// (Adwaita в GNOME), прочие скрытые (hicolor) — нет.
+    /// The environment's default icons are visible: a set with its own cursors
+    /// (elementary in XFCE, Adwaita) — in «Icons» and in «Cursors»; a hidden one
+    /// (`Hidden=true`) — only if it is the environment's standard set (Adwaita in
+    /// GNOME), other hidden ones (hicolor) — not.
     #[test]
     fn section_icons_shows_de_standard_and_icon_sets_with_cursors() {
         let base = tmp_dir("de-std-icons");
@@ -4709,7 +4723,7 @@ mod tests {
         assert!(!is_cursor_only(&fs, &s(&sys.join("Adwaita"))));
     }
 
-    /// Курсоры: только темы с `cursors/`, свои и системные.
+    /// Cursors: only themes with `cursors/`, own and system ones.
     #[test]
     fn kde_section_cursors() {
         let got = kde_section("kde-cursor", "cursor", "breeze_cursors", |home, usr| {
@@ -4732,7 +4746,7 @@ mod tests {
         );
     }
 
-    /// GTK: `~/.themes` тоже; темы без GTK 3/4 (одни рамки) не показываются.
+    /// GTK: `~/.themes` too; themes without GTK 3/4 (borders only) are not shown.
     #[test]
     fn kde_section_gtk_themes() {
         let got = kde_section("kde-gtk", "gtk", "Breeze", |home, usr| {
@@ -4755,11 +4769,11 @@ mod tests {
         );
     }
 
-    /// Обзоры («Загруженные», «Системные») отбирают темы тем же правилом,
-    /// что сетка раздела: каталог в `share/themes` без таблиц стилей GTK 3/4
-    /// (одни рамки xfwm4/Metacity/Openbox, одно GTK 2) темой GTK не считается,
-    /// служебный набор значков — набором значков. Рамки при этом видны своим
-    /// видом — по своему подкаталогу.
+    /// The overviews («Downloaded», «System») select themes by the same rule as
+    /// the section grid: a directory in `share/themes` without GTK 3/4
+    /// stylesheets (only xfwm4/Metacity/Openbox borders, only GTK 2) doesn't count
+    /// as a GTK theme, a service icon set — as an icon set. Borders are still
+    /// visible as their own kind — by their own subdirectory.
     #[test]
     fn overviews_list_only_real_gtk_themes_and_icon_sets() {
         let base = tmp_dir("overview-gtk");
@@ -4815,7 +4829,7 @@ mod tests {
             ids(scan_downloaded_in(&env, &types, &nothing_active)),
             ["local:gtk:Arc", "local:icons:Tela", "local:xfwm4:Frames"]
         );
-        // «Системные»: владелец каждого пути — пакет из репозиториев.
+        // «System»: the owner of each path is a package from the repositories.
         let first = scan_system_in(&env, &types, &nothing_active, &HashSet::new(), &HashMap::new()).unwrap();
         let owners: HashMap<String, String> =
             first.qo_paths.iter().map(|p| (p.clone(), "pkg".to_string())).collect();
@@ -4824,7 +4838,7 @@ mod tests {
             ids(system.items),
             ["local:gtk:Adwaita", "local:gtk:Both", "local:icons:breeze", "local:xfwm4:Both"]
         );
-        // Включённая сейчас тема видна всегда, даже без таблиц стилей GTK 3/4.
+        // The theme enabled now is always visible, even without GTK 3/4 stylesheets.
         let active = HashMap::from([("gtk".to_string(), "Old".to_string())]);
         assert_eq!(ids(scan_active_in(&env, &types, &active)), ["local:gtk:Old"]);
         let _ = std::fs::remove_dir_all(&base);
@@ -4851,9 +4865,9 @@ mod tests {
         );
     }
 
-    /// Текущей нет в карте (ничего не применено) — сетка та же, без отметки;
-    /// разделы KDE без сетки установленного (обои, шрифты, виджеты) скана
-    /// раздела не получают.
+    /// The current one is not in the map (nothing applied) — the same grid without
+    /// a mark; KDE sections without an installed grid (wallpapers, fonts, widgets)
+    /// get no section scan.
     #[test]
     fn kde_section_without_current_and_other_sections() {
         let base = tmp_dir("kde-nocur");
@@ -4883,9 +4897,9 @@ mod tests {
         assert_eq!(crate::categories::KDE_INSTALLED_SECTIONS.len(), 10);
     }
 
-    /// Экран входа (как kcm sddm): все темы SDDM из системного каталога,
-    /// текущая первой и выделена; каталог без `metadata.desktop` темой не
-    /// считается.
+    /// Login screen (like the sddm kcm): all SDDM themes from the system
+    /// directory, the current one first and highlighted; a directory without
+    /// `metadata.desktop` doesn't count as a theme.
     #[test]
     fn kde_section_sddm_themes() {
         let got = kde_section("kde-sddm", "sddm", "maldives", |_home, usr| {
@@ -4905,9 +4919,9 @@ mod tests {
         );
     }
 
-    /// Заставка загрузки (как kcm plymouth): темы с `<имя>.plymouth`,
-    /// текущая первой и выделена; пустой каталог от снятого пакета не
-    /// показывается. Имя и описание — из `.plymouth` на языке интерфейса.
+    /// Boot splash (like the plymouth kcm): themes with `<name>.plymouth`, the
+    /// current one first and highlighted; an empty directory from a removed
+    /// package is not shown. Name and description — from `.plymouth` in the interface language.
     #[test]
     fn kde_section_plymouth_themes() {
         let got = kde_section("kde-ply", "plymouth", "bgrt", |_home, usr| {
@@ -4941,9 +4955,9 @@ mod tests {
         assert_eq!(theme_description(&snap, &d, "de"), "Animated logo");
     }
 
-    /// Текущая тема заставки загрузки — как у plymouthd: `/etc` сильнее
-    /// выбора через alternatives, тот сильнее умолчания пакета; прежний
-    /// `/usr/share/plymouth/plymouthd.conf` `/etc` не перекрывает.
+    /// The current boot splash theme — as plymouthd sees it: `/etc` beats the
+    /// choice via alternatives, which beats the package default; the old
+    /// `/usr/share/plymouth/plymouthd.conf` doesn't override `/etc`.
     #[test]
     fn plymouth_current_follows_plymouthd_weight() {
         let cur = |defaults: Option<&str>, alt: Option<&str>, legacy: Option<&str>, etc: Option<&str>| {
@@ -4956,7 +4970,7 @@ mod tests {
             plymouth_current_from(&confs.iter().map(String::as_str).collect::<Vec<_>>())
         };
         let defaults = Some("[Daemon]\nTheme=bgrt\nShowDelay=0\n");
-        // Тему не меняли: в `/etc` только задержка — текущая из умолчания пакета.
+        // The theme wasn't changed: `/etc` has only a delay — the current one comes from the package default.
         assert_eq!(cur(defaults, None, None, Some("[Daemon]\nShowDelay=5\n")).as_deref(), Some("bgrt"));
         assert_eq!(cur(defaults, None, None, Some("[Daemon]\nTheme=spinner\n")).as_deref(), Some("spinner"));
         assert_eq!(cur(defaults, Some("ubuntu-logo"), None, None).as_deref(), Some("ubuntu-logo"));
@@ -4966,7 +4980,7 @@ mod tests {
         assert_eq!(cur(None, None, None, None), None);
     }
 
-    /// Реестр установок KNewStuff: пути записи и ссылка на её картинку.
+    /// KNewStuff install registry: the record's paths and the URL of its picture.
     #[test]
     fn kns_registry_gives_installed_paths_with_preview() {
         let xml = r#"<?xml version="1.0"?><hotnewstuffregistry>
@@ -4987,9 +5001,9 @@ mod tests {
         assert!(parse_kns_registry("<hotnewstuffregistry/>").is_empty());
     }
 
-    /// Второй шаг цепочки превью: запись реестра установок находит картинку
-    /// по пути темы, а сопоставление по имени не выходит за свой раздел и
-    /// требует того же имени.
+    /// The second step of the preview chain: a registry record finds the picture
+    /// by the theme's path, and name matching doesn't go outside its own section
+    /// and requires the same name.
     #[test]
     fn store_picture_follows_install_record_and_section() {
         let fs = FsSnapshot::from_parts(
@@ -5028,18 +5042,18 @@ mod tests {
             standard_icons: None,
         };
         assert_eq!(resolve_preview_in(&env, "plasma", "Nordic", "/h/themes/Nordic", "/h/themes/Nordic", None, &[]), "/c/nordic.png");
-        // Тема Kvantum «Win7» картинку набора значков не берёт…
+        // The Kvantum theme "Win7" doesn't take the icon set's picture…
         assert_eq!(backfill_preview_for(&env, "kvantum", "Win7"), "");
-        // …и в своём разделе похожего имени мало: «Orang» — не «…Orange».
+        // …and within its own section a similar name isn't enough: "Orang" is not "…Orange".
         assert_eq!(backfill_preview_for(&env, "gtk", "Orang"), "");
         assert_eq!(backfill_preview_for(&env, "icons", "Win7 Icon Theme"), "/c/icons.png");
-        // Без раздела — прежнее правило подстроки.
+        // Without a section — the old substring rule.
         assert_eq!(backfill_preview(&env, "Win7"), "/c/icons.png");
     }
 
-    /// Курсоры, переведённые из Windows, несут на плитке «🪟 из Windows» и
-    /// описание на языке интерфейса — и по новой строке `X-Rexon-Source`, и
-    /// по `Comment` тем, переведённых раньше; обычная тема пометки не берёт.
+    /// Cursors converted from Windows carry «🪟 From Windows» on the tile and a
+    /// description in the interface language — both by the new `X-Rexon-Source`
+    /// line and by the `Comment` of themes converted earlier; an ordinary theme gets no mark.
     #[test]
     fn windows_cursor_theme_tile_carries_origin_badge() {
         let themes = [
@@ -5080,7 +5094,7 @@ mod tests {
             let item = mk_item(&env, &cursor, name, "/h/.icons", false, DOWNLOADED_LABEL);
             assert!(item.author.ends_with(&format!(" · {badge}")), "{name}: {}", item.author);
             assert_eq!(item.description, tr("Imported from Windows"), "{name}");
-            // Активная тема: пометка источника остаётся рядом с «✅».
+            // Active theme: the source mark stays next to "✅".
             let active = mk_item(&env, &cursor, name, "/h/.icons", true, "");
             assert!(active.author.contains(&local_active_badge()), "{}", active.author);
             assert!(active.author.ends_with(&badge), "{}", active.author);
@@ -5090,8 +5104,8 @@ mod tests {
         assert_eq!(plain.description, "Material cursors");
     }
 
-    /// Первый шаг цепочки: миниатюра вида в подкаталоге темы и снимок,
-    /// названный метаданными темы экрана входа.
+    /// The first step of the chain: the kind's thumbnail in a theme subdirectory
+    /// and the screenshot named by a login screen theme's metadata.
     #[test]
     fn own_picture_is_found_in_kind_subdir_and_sddm_metadata() {
         let home = tmp_dir("own-picture");
@@ -5111,8 +5125,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    /// «Ничьё» — только то, о чём pacman сказал это сам; принадлежащее пакету
-    /// и чужие строки ошибок ничьими не становятся.
+    /// "Nobody's" — only what pacman said so itself; what belongs to a package and
+    /// foreign error lines don't become nobody's.
     #[test]
     fn qo_unowned_takes_only_what_pacman_named() {
         let err = "error: No package owns /usr/share/sddm/themes/Apple-Sonoma-v2\n\
@@ -5125,10 +5139,10 @@ mod tests {
         assert!(parse_qo_unowned("").is_empty());
     }
 
-    /// Окружения со своим хранилищем оформления: роли gtk/icons/cursor
-    /// читаются оттуда, по той же таблице схем, что у применения (у MATE
-    /// курсор — `org.mate.peripherals-mouse`); KDE, LXQt и тайловые WM
-    /// хранилище не спрашивают вовсе.
+    /// Environments with their own appearance storage: the gtk/icons/cursor roles
+    /// are read from there, by the same schema table as applying (for MATE the
+    /// cursor is `org.mate.peripherals-mouse`); KDE, LXQt and tiling WMs don't
+    /// ask the storage at all.
     #[test]
     fn native_role_values_reads_de_store() {
         let mut asked: Vec<Vec<String>> = Vec::new();
@@ -5179,12 +5193,12 @@ mod tests {
             let got = native_role_values(de, |_| panic!("{de}: хранилище спрошено"));
             assert_eq!(got, [None, None, None], "{de}");
         }
-        // Пустой ответ и «—» значением не считаются.
+        // An empty answer and "—" don't count as a value.
         assert_eq!(native_role_values("mate", |_| Some("''\n".into())), [None, None, None]);
     }
 
-    /// Значение родного хранилища побеждает kdeglobals и `settings.ini`;
-    /// без него — прежняя цепочка.
+    /// The native storage value wins over kdeglobals and `settings.ini`;
+    /// without it — the old chain.
     #[test]
     fn active_map_prefers_native_store() {
         let ini = "[Settings]\ngtk-theme-name=Adwaita\n";
@@ -5215,8 +5229,8 @@ mod tests {
         assert_eq!(key(&blank, "cursor"), "breeze_cursors");
     }
 
-    /// «Скачано» — только то, что поставил Rexon или магазин; тема,
-    /// положенная руками (или прежним .rxn), — «Установлена вручную».
+    /// «⬇️ Downloaded» — only what Rexon or the store installed; a theme placed by
+    /// hand (or by an old .rxn) — «🗂️ Installed manually».
     #[test]
     fn origin_label_tells_downloaded_from_manual() {
         let store = StoreRecords {
@@ -5227,11 +5241,11 @@ mod tests {
         assert_eq!(store.origin_label("/h/.local/share/themes/FromRexon"), DOWNLOADED_LABEL);
         assert_eq!(store.origin_label("/h/.local/share/themes/FromKns"), DOWNLOADED_LABEL);
         assert_eq!(store.origin_label("/h/.local/share/themes/Windows XP Luna"), MANUAL_LABEL);
-        // Журнал не читали — прежняя подпись.
+        // The journal wasn't read — the old label.
         assert_eq!(StoreRecords::default().origin_label("/h/x"), DOWNLOADED_LABEL);
     }
 
-    /// Пометка «нет значков/курсора темы» — по плану просьб темы.
+    /// The "theme's icons/cursor missing" note — by the theme's request plan.
     #[test]
     fn missing_deps_note_names_what_is_missing() {
         use crate::themes::{DepItem, DepRole, DepState};

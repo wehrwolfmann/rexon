@@ -1,28 +1,33 @@
-// Вкладка «Настройки» на QML. Данные и решения — Rust-объект SettingsModel
-// (rust/rexon-gui/src/settings_page.rs), который сам ничего не решает, а
-// спрашивает ядро (`rexon_core::qt_settings`). Здесь только РАЗМЕТКА.
+// The "Settings" tab in QML. Data and decisions come from the Rust object
+// SettingsModel (rust/rexon-gui/src/settings_page.rs), which decides
+// nothing itself but asks the core (`rexon_core::qt_settings`). Only
+// MARKUP lives here.
 //
-// Оформление берётся из готового: палитра приходит свойством `palette` от
-// того же объекта и родом из `ui_base::skin_colors("steam_dark")` — скина по
-// умолчанию всего продукта (правило #17). Своих цветов страница не заводит.
+// The styling is taken ready-made: the palette arrives through the
+// `palette` property of the same object and originates from
+// `ui_base::skin_colors("steam_dark")` — the default skin of the whole
+// product (rule #17). The page defines no colours of its own.
 //
-// Побочные действия живут снаружи: хозяин страницы кладёт в `root.actions`
-// объект, который умеет спрашивать систему (`facts`, `state`) и менять её.
-// Каждый его метод возвращает ГОТОВУЮ строку для всплывающего сообщения —
-// собранную тем же ядром через `rexon_py`, а не своими словами. Долгие
-// работы (применить обои, поставить yt-dlp, размыть, импортировать тему,
-// проверить комплектность) идут в фоне и досылают ответ сигналами
-// `status`/`refreshed`: без них кнопка молчала бы до конца работы.
+// Side actions live outside: the page host puts into `root.actions` an
+// object that can query the system (`facts`, `state`) and change it. Each
+// of its methods returns a READY string for the pop-up message — composed
+// by the same core through `rexon_py`, not in its own words. Long jobs
+// (applying a wallpaper, installing yt-dlp, blurring, importing a theme,
+// checking completeness) run in the background and deliver their answer
+// through the `status`/`refreshed` signals: without them the button would
+// stay silent until the job was done.
 //
-// Состав разделов, их порядок, заголовки и описания приходят из ядра
-// (`qt_settings::SECTIONS` + `section_visible`) — своей цепочки условий
-// «показывать ли раздел» у страницы нет.
+// The set of sections, their order, titles and descriptions come from the
+// core (`qt_settings::SECTIONS` + `section_visible`) — the page has no
+// chain of "whether to show the section" conditions of its own.
 //
-// Цепочка фокуса заложена сразу: все действия — контролы QtQuick.Controls,
-// у сфокусированного видна рамка, страница подкручивается к нему.
+// The focus chain is built in from the start: all actions are
+// QtQuick.Controls controls, the focused one shows a frame, and the page
+// scrolls to it.
 
-// Делегаты обращаются к id внешних элементов (root, page).
-// (Строку «// qmllint …» здесь писать нельзя: она читается как директива.)
+// Delegates refer to ids of outer elements (root, page).
+// (A "// qmllint …" line must not be written here: it is read as a
+// directive.)
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -34,72 +39,74 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
-    /// Стрелки ← → в подписях страницы — по её зеркалированию.
+    /// The ← → arrows in the page's labels follow its mirroring.
     readonly property RexonArrows arrows: RexonArrows {
         mirrored: root.LayoutMirroring.enabled
     }
 
-    // ── Мост наружу ───────────────────────────────────────────────────────
+    // ── Bridge to the outside ─────────────────────────────────────────────
 
-    /// Объект побочных действий. По умолчанию — свой, на Rust
-    /// (`rust/rexon-gui/src/settings_actions.rs`); хозяин страницы может
-    /// подставить другой — так вкладку и держит живой Python-продукт
-    /// (`rexon/qt_settings/window.py`), пока перенос не закончен.
+    /// Side-actions object. Our own Rust one by default
+    /// (`rust/rexon-gui/src/settings_actions.rs`); the page host may substitute
+    /// another — that is how the live Python product
+    /// (`rexon/qt_settings/window.py`) keeps the tab until the port is
+    /// finished.
     property var actions: ownActions
 
-    /// Один раздел вместо всей вкладки — для «Оформления» (01.11.2026):
-    /// анимация, шрифты, кнопки заголовка и прочее, что в KDE 6.8 стоит во
-    /// «Внешнем виде и стиле», показываются там, а не здесь. Значение —
-    /// ключ раздела боковой панели «Оформления»
-    /// (`categories::SETTINGS_PANELS`) либо разделы вида «⚙️ Настройки»
-    /// раздела каталога через запятую (`categories::SECTION_SETTINGS`:
-    /// в «GTK-темах» их бывает два). Пусто — обычная вкладка.
+    /// A single section instead of the whole tab — for "Appearance"
+    /// (01.11.2026): animation, fonts, title bar buttons and the rest that KDE
+    /// 6.8 places under "Appearance & Style" are shown there, not here. The
+    /// value is the key of a section in the "Appearance" side panel
+    /// (`categories::SETTINGS_PANELS`) or comma-separated sections of the
+    /// "⚙️ Settings" view of a catalogue section (`categories::SECTION_SETTINGS`:
+    /// "GTK themes" can have two). Empty means the ordinary tab.
     property string panel: ""
-    /// Окружение, выбранное во вкладке «Оформление» (режим `panel`); пусто —
-    /// запущенное сейчас. Его получают разделы, чьё пояснение зависит от стола.
+    /// The environment selected in the "Appearance" tab (`panel` mode); empty
+    /// means the one running now. Sections whose explanation depends on the
+    /// desktop receive it.
     property string lookDe: ""
 
-    /// Переехавшие разделы: содержимое то же, что было во вкладке, их
-    /// показывает режим `panel`.
+    /// Sections that moved: the content is the same as it was in the tab; they
+    /// are shown by the `panel` mode.
     readonly property bool fullPage: root.panel === ""
-    /// Разделы режима `panel` списком.
+    /// Sections of the `panel` mode as a list.
     readonly property var panels: root.panel === "" ? [] : root.panel.split(",")
-    /// Показан ли раздел `key` в режиме `panel`.
+    /// Whether section `key` is shown in `panel` mode.
     function showsPanel(key) {
         return root.panels.indexOf(key) >= 0;
     }
-    /// Рамки самой вкладки, переехавшие в «Оформление» видом «⚙️ Настройки»
-    /// раздела каталога: ключ режима `panel` → рамка (`page.sections`). Во
-    /// вкладке их нет, в режиме `panel` — только они (шрифты — «Шрифты»,
-    /// размытие обоев — «Обои HD», фоновые звуки и звуки событий — «Звуки»,
-    /// 08.11.2026).
+    /// Frames of the tab itself that moved to "Appearance" as the "⚙️ Settings"
+    /// view of a catalogue section: `panel` mode key → frame (`page.sections`).
+    /// They are absent from the tab, and in `panel` mode only they are present
+    /// (fonts — "Fonts", wallpaper blur — "HD Wallpapers", background sounds
+    /// and event sounds — "Sounds", 08.11.2026).
     readonly property var panelGroups: ({
         "fontsettings": "fontsGroup",
         "wallpaperblur": "blurGroup",
         "ambientsounds": "ambientGroup",
         "eventsounds": "soundThemeGroup"
     })
-    /// Рамка `id` переехала в «Оформление».
+    /// Frame `id` moved to "Appearance".
     function movedGroup(id) {
         return Object.keys(root.panelGroups).some(k => root.panelGroups[k] === id);
     }
-    /// Рамка `id` показана в этом режиме `panel`.
+    /// Frame `id` is shown in this `panel` mode.
     function shownGroup(id) {
         return Object.keys(root.panelGroups).some(k => root.panelGroups[k] === id && root.showsPanel(k));
     }
 
     SettingsActions {
         id: ownActions
-        // Имя нужно проверкам — тем же приёмом, что у модели ниже.
+        // The name is needed by checks — the same approach as for the model below.
         objectName: "settingsActions"
     }
 
-    /// Снимок состояния машины (JSON от `actions.state()`), разобранный.
+    /// Snapshot of the machine state (JSON from `actions.state()`), parsed.
     property var st: ({})
 
-    /// Пароль уже введён: Rexon может изменять систему до закрытия окна
-    /// (Б13). Опрашивается таймером, пока страница видна; у объекта действий
-    /// без этого метода (Python-продукт) полосы нет.
+    /// The password has already been entered: Rexon may change the system until
+    /// the window is closed (B13). Polled by a timer while the page is visible;
+    /// an actions object without this method (the Python product) has no banner.
     property bool adminSession: false
 
     function reloadAdmin() {
@@ -107,9 +114,10 @@ Item {
                                && root.actions.adminSession());
     }
 
-    /// Подпись и пояснение кнопки «Установить Rexon в систему…»
-    /// (`{label, hint}` от ядра). Пусто — хозяин страницы подставил объект
-    /// действий без мастера установки (Python-продукт), и кнопки не будет.
+    /// Label and explanation of the "Install Rexon into the system…" button
+    /// (`{label, hint}` from the core). Empty means the page host substituted an
+    /// actions object without the installation wizard (the Python product), and
+    /// there will be no button.
     readonly property var installTexts: (root.actions
                                          && root.actions.installTexts !== undefined)
                                         ? root.actions.installTexts : ({})
@@ -121,20 +129,21 @@ Item {
     implicitWidth: page.windowMinWidth
     implicitHeight: page.windowMinHeight
 
-    // ── Ядро вкладки ──────────────────────────────────────────────────────
+    // ── Tab core ──────────────────────────────────────────────────────────
 
     SettingsModel {
         id: page
-        // Имя нужно проверкам: из хозяина страницы модель достают
-        // `root.findChild(QObject, "settingsModel")`.
+        // The name is needed by checks: from the page host the model is fetched
+        // with `root.findChild(QObject, "settingsModel")`.
         objectName: "settingsModel"
     }
 
-    // ── Палитра стандартного скина ────────────────────────────────────────
+    // ── Standard skin palette ─────────────────────────────────────────────
 
     readonly property var pal: page.palette
     readonly property var txt: page.texts
-    /// Раскладка и краски, которых нет в палитре: из ядра, своих чисел нет.
+    /// Layout and colours that are not in the palette: from the core, no
+    /// numbers of our own.
     readonly property var sty: page.styles
     readonly property color colBg: root.pal.bg_primary
     readonly property color colBorder: root.pal.border
@@ -144,33 +153,33 @@ Item {
     readonly property color colWarn: root.pal.state_warn
     readonly property color colBad: root.pal.state_bad
 
-    // ── Шов с побочными действиями ────────────────────────────────────────
+    // ── Seam with the side actions ────────────────────────────────────────
 
-    /// Спросить машину заново и перерисовать всё, что от неё зависит.
+    /// Query the machine again and redraw everything that depends on it.
     function reload() {
         if (!root.actions)
             return;
-        // Снимок машины нужен только рамкам самой вкладки (и переехавшим
-        // рамкам — шрифтам, размытию); у прочих переехавших разделов — свои
-        // объекты действий.
+        // The machine snapshot is needed only by the tab's own frames (and by the
+        // frames that moved — fonts, blur); the other moved sections have their
+        // own actions objects.
         if (!root.fullPage && !Object.keys(root.panelGroups).some(k => root.showsPanel(k)))
             return;
         root.st = JSON.parse(root.actions.state());
     }
 
-    /// Выполнить действие и показать его ответ. Пустой ответ — сказать
-    /// нечего (действие только сохранило значение).
+    /// Run an action and show its answer. An empty answer means there is
+    /// nothing to say (the action only saved a value).
     function say(message) {
         if (message)
             toast.show(message);
     }
 
-    /// Перечитать ТОЛЬКО список играющих фоновых звуков.
+    /// Re-read ONLY the list of playing background sounds.
     ///
-    /// Отдельно от `reload`, потому что зовётся по таймеру: полный снимок
-    /// состояния ходит в систему за шрифтами, звуковыми темами и списком
-    /// установленных обоев, и делать это каждые три секунды значило бы
-    /// держать вкладку в постоянной работе на ровном месте.
+    /// Separate from `reload` because it is called by a timer: the full state
+    /// snapshot queries the system for fonts, sound themes and the list of
+    /// installed wallpapers, and doing that every three seconds would keep the
+    /// tab permanently busy for no reason.
     function reloadAmbient() {
         if (!root.actions)
             return;
@@ -178,8 +187,8 @@ Item {
                                 { amb: JSON.parse(root.actions.ambientState()) });
     }
 
-    /// Действие изменило что-то, что видно на странице: ответ показать,
-    /// состояние перечитать.
+    /// The action changed something visible on the page: show the answer,
+    /// re-read the state.
     function did(message) {
         root.say(message);
         root.reload();
@@ -188,26 +197,26 @@ Item {
     Connections {
         target: root.actions
 
-        // Долгая работа закончилась — её ответ приходит сюда.
+        // A long job has finished — its answer arrives here.
         function onStatus(message) {
             root.say(message);
         }
 
-        // Долгая работа изменила состояние машины.
+        // A long job changed the state of the machine.
         function onRefreshed() {
             root.reload();
         }
     }
 
-    /// Подкрутить страницу к элементу, который получил фокус: без этого Tab
-    /// уводит фокус за нижний край, и вкладка выглядит зависшей.
+    /// Scroll the page to the element that received focus: without this Tab
+    /// takes focus past the bottom edge, and the tab looks frozen.
     function ensureVisible(item) {
         if (!item || !flick.contentItem)
             return;
-        // Окно снова стало активным (закрыт диалог снимка экрана по Print,
-        // вернулись из другой программы) — Qt возвращает фокус тому же
-        // элементу. Это не переход по Tab: крутить страницу к нему нельзя,
-        // иначе прокрученная вниз вкладка прыгает наверх.
+        // The window became active again (the screenshot dialog from Print was
+        // closed, the user returned from another program) — Qt gives focus back
+        // to the same element. This is not a Tab move: the page must not scroll
+        // to it, otherwise a tab scrolled down jumps to the top.
         if (item.focusReason === Qt.ActiveWindowFocusReason)
             return;
         const pos = item.mapToItem(flick.contentItem, 0, 0);
@@ -225,7 +234,7 @@ Item {
         color: root.colBg
     }
 
-    // ── Страница ──────────────────────────────────────────────────────────
+    // ── Page ──────────────────────────────────────────────────────────────
 
     Flickable {
         id: flick
@@ -237,8 +246,8 @@ Item {
 
         ScrollBar.vertical: ScrollBar {}
 
-        // ⚠️ Раскладка внутри ОБЫЧНОГО Item обязана получить высоту руками:
-        // сама она остаётся нулевой, и страница схлопывается в полоску.
+        // Warning: a layout inside an ORDINARY Item must get its height by hand:
+        // by itself it stays at zero, and the page collapses into a strip.
         ColumnLayout {
             id: pageColumn
             anchors.left: parent.left
@@ -256,9 +265,9 @@ Item {
                 font.bold: true
             }
 
-            // ── Полоса-предупреждение: в системе нет polkit ────────────────
-            // Без него молча не работает ВСЁ, что требует прав администратора.
-            // Причина одна и общая — говорим о ней один раз и вверху.
+            // ── Warning banner: there is no polkit on the system ───────────
+            // Without it EVERYTHING that needs administrator rights silently fails.
+            // The cause is single and shared — we mention it once, at the top.
             Rectangle {
                 Layout.fillWidth: true
                 visible: (root.st.polkit || "") !== ""
@@ -282,10 +291,10 @@ Item {
                 }
             }
 
-            // ── Полоса «Rexon может изменять систему» (Б13) ────────────────
-            // Видна, пока пароль введён и право живо; кнопка снимает его,
-            // не закрывая окна. Та же подпись и то же действие, что в меню
-            // значка в лотке.
+            // ── "Rexon may change the system" banner (B13) ─────────────────
+            // Visible while the password has been entered and the right is alive; the
+            // button revokes it without closing the window. The same label and the
+            // same action as in the tray icon menu.
             Rectangle {
                 id: adminBanner
                 objectName: "adminBanner"
@@ -326,14 +335,13 @@ Item {
                 }
             }
 
-            // ── Разделы ───────────────────────────────────────────────────
+            // ── Sections ──────────────────────────────────────────────────
             Repeater {
                 id: sectionRepeater
-                // Шрифты, размытие обоев и звуки переехали в «Оформление»
-                // (вид «⚙️ Настройки» разделов «Шрифты», «Обои HD» и
-                // «Звуки»): во вкладке
-                // их рамок нет, в режиме `panel` есть только они
-                // (`panelGroups`).
+                // Fonts, wallpaper blur and sounds moved to "Appearance" (the "⚙️
+                // Settings" view of the "Fonts", "HD Wallpapers" and "Sounds" sections):
+                // their frames are absent from the tab, and in `panel` mode only they are
+                // present (`panelGroups`).
                 model: (page.sections || []).filter(
                            s => root.fullPage ? !root.movedGroup(s.id) : root.shownGroup(s.id))
 
@@ -346,13 +354,13 @@ Item {
                     border.color: root.sty.group.border
                     border.width: 1
                     radius: root.sty.group.radius
-                    // Поля раздела отсчитываются ОТ РАМКИ, а не от края:
-                    // у оригинала рамка нарисована таблицей стилей, и поля
-                    // раскладки (16 и 14) Qt откладывает внутри неё. Пока
-                    // толщина рамки здесь не учитывалась, содержимое каждого
-                    // раздела выходило на точку левее и шире оригинала
-                    // (x 40 против 41, ширина 1320 против 1318), а сам
-                    // раздел — на две точки ниже (замер 05.09).
+                    // Section padding is counted FROM THE BORDER, not from the edge: in the
+                    // original the border is drawn by a style sheet, and Qt places the layout
+                    // margins (16 and 14) inside it. While the border thickness was not taken
+                    // into account here, the content of every section came out one pixel
+                    // further left and wider than the original (x 40 versus 41, width 1320
+                    // versus 1318), and the section itself two pixels lower (measurement
+                    // 05.09).
                     implicitHeight: sectionColumn.implicitHeight
                                     + 2 * (root.sty.group.marginV + border.width)
 
@@ -394,9 +402,10 @@ Item {
                 }
             }
 
-            // ── Разделы, которые показывает «Оформление» (режим `panel`) ──
-            // Те же компоненты, что стояли здесь до переезда; строятся только
-            // в своём разделе, чтобы вкладка не опрашивала машину зря.
+            // ── Sections shown by "Appearance" (`panel` mode) ──
+            // The same components that stood here before the move; they are built
+            // only in their own section, so the tab does not query the machine for
+            // nothing.
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
@@ -411,7 +420,7 @@ Item {
                 }
             }
 
-            // «Эффекты экрана» — только в «Оформлении» (во вкладке их не было).
+            // "Screen effects" — only in "Appearance" (the tab never had them).
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
@@ -427,7 +436,7 @@ Item {
                 }
             }
 
-            // Все эффекты KWin — только в KDE (раздел сам прячется в других).
+            // All KWin effects — only in KDE (the section hides itself elsewhere).
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
@@ -456,8 +465,8 @@ Item {
                 }
             }
 
-            // Отклик при запуске (как в модуле «Курсоры» KDE; вне KDE —
-            // честная подпись, почему настройки нет).
+            // Launch feedback (as in the KDE "Cursors" module; outside KDE — an honest
+            // label explaining why there is no setting).
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
@@ -472,7 +481,8 @@ Item {
                 }
             }
 
-            // Плейлист обоев Rexon — первым в «⚙️ Настройках» «Обоев HD».
+            // The Rexon wallpaper playlist — first in the "⚙️ Settings" of "HD
+            // Wallpapers".
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
@@ -487,8 +497,8 @@ Item {
                 }
             }
 
-            // Блок «Razer Axon» в «⚙️ Настройках» «Обоев HD» — только если
-            // Axon найден (ключ раздела ставит «Оформление»).
+            // The "Razer Axon" block in the "⚙️ Settings" of "HD Wallpapers" — only if
+            // Axon is found (the section key is set by "Appearance").
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
@@ -503,7 +513,7 @@ Item {
                 }
             }
 
-            // Значки в меню и на кнопках, подписи панелей инструментов.
+            // Icons in menus and on buttons, toolbar labels.
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
@@ -518,7 +528,7 @@ Item {
                 }
             }
 
-            // Только в сеансе Deepin (раздел сам прячется в других).
+            // Only in a Deepin session (the section hides itself elsewhere).
             DdeLookSection {
                 id: ddeLook
                 Layout.fillWidth: true
@@ -529,11 +539,11 @@ Item {
         }
     }
 
-    /// Содержимое раздела по его имени из ядра.
+    /// Section content by its name from the core.
     ///
-    /// Незнакомое имя — не «пустая рамка молча»: ядро знает раздел, а
-    /// страница нет, и об этом надо сказать вслух (так же поступает
-    /// виджетная вкладка).
+    /// An unknown name is not "an empty frame in silence": the core knows the
+    /// section but the page does not, and that must be said out loud (the
+    /// widget tab does the same).
     function sectionComponent(id) {
         switch (id) {
         case "langGroup": return cLanguage;
@@ -560,14 +570,14 @@ Item {
         return null;
     }
 
-    // ══ 🌐 Язык интерфейса ═══════════════════════════════════════════════
+    // ══ 🌐 Interface language ════════════════════════════════════════════
     //
-    // Список — из ядра (`qt_settings::language_choices`: po/LINGUAS и
-    // найденные каталоги, подписи самоназванием). Язык меняется после
-    // перезапуска: снимок говорит, нужен ли он (`st.lang.restart`), и тогда
-    // под списком появляются пояснение и кнопка «Перезапустить Rexon».
-    // У объекта действий Python-продукта `setLanguage` нет — список там
-    // только показывает выбор.
+    // The list comes from the core (`qt_settings::language_choices`:
+    // po/LINGUAS and the catalogues found, labels in their own language). The
+    // language changes after a restart: the snapshot says whether one is
+    // needed (`st.lang.restart`), and then an explanation and a "Restart
+    // Rexon" button appear under the list. The Python product's actions object
+    // has no `setLanguage` — there the list only shows the choice.
 
     Component {
         id: cLanguage
@@ -629,7 +639,7 @@ Item {
         }
     }
 
-    // ══ 🎨 Скин интерфейса ════════════════════════════════════════════════
+    // ══ 🎨 Interface skin ═════════════════════════════════════════════════
 
     Component {
         id: cSkin
@@ -658,9 +668,9 @@ Item {
                     model: page.skins
                     textRole: "label"
                     valueRole: "id"
-                    // Значение ставится ДО подписки на изменения: стартовая
-                    // установка не должна выглядеть как выбор человека
-                    // (скин уже применён при запуске приложения).
+                    // The value is set BEFORE subscribing to changes: the initial setting must
+                    // not look like the user's choice (the skin was already applied when the
+                    // application started).
                     selectedValue: root.st.skin || ""
                     onActivated: root.did(root.actions.setSkin(skinCombo.currentValue))
                     onActiveFocusChanged: if (activeFocus) root.ensureVisible(skinCombo)
@@ -685,7 +695,7 @@ Item {
         }
     }
 
-    // ══ 🎓 Обучение при первом запуске ════════════════════════════════════
+    // ══ 🎓 First-run tutorial ═════════════════════════════════════════════
 
     Component {
         id: cOnboarding
@@ -706,10 +716,9 @@ Item {
 
             RexonButton {
                 id: obReplay
-                // Полоса во всю ширину карточки, как в виджетной вкладке:
-                // кнопка по содержимому терялась под галочкой и читалась
-                // как второстепенная приписка, а это единственный способ
-                // вернуть обучение.
+                // A strip across the full card width, as in the widget tab: a button sized
+                // to its content got lost under the check box and read as a minor
+                // footnote, while it is the only way to bring the tutorial back.
                 Layout.fillWidth: true
                 pal: root.pal
                 text: root.txt["ob.replay"]
@@ -717,12 +726,12 @@ Item {
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(obReplay)
             }
 
-            // «Установить Rexon в систему…» — решение Wehrwolfmann
-            // 15.09.2026: кнопка стоит рядом с «Пройти обучение заново».
-            // Показывать ли её, решает ядро (`installOffered`): у
-            // установленного Rexon — пакет, Steam, установка для всех или
-            // для себя — нажимать её не на что, и кнопки нет вовсе. Подпись
-            // и пояснение — оттуда же, своих букв здесь нет.
+            // "Install Rexon into the system…" — Wehrwolfmann's decision 15.09.2026:
+            // the button sits next to "Take the tutorial again". Whether to show it is
+            // decided by the core (`installOffered`): for an installed Rexon — a
+            // package, Steam, an installation for everyone or for yourself — there is
+            // nothing to press it for, and there is no button at all. The label and
+            // the explanation come from there too; there are no texts of our own here.
             RexonButton {
                 id: obInstall
                 Layout.fillWidth: true
@@ -746,11 +755,11 @@ Item {
         }
     }
 
-    // ══ 🔗 Ссылки на сайты ═════════════════════════════════════════════════
+    // ══ 🔗 Links to sites ══════════════════════════════════════════════════
     //
-    // Сайты, для которых человек выбрал «Больше не спрашивать» в окне
-    // вопроса перед внешней ссылкой (`RexonLinkDialog`). Список и сброс —
-    // ядро (`link_policy`) через синглтон `LinkGuard`.
+    // Sites for which the user chose "Don't ask again" in the question window
+    // before an external link (`RexonLinkDialog`). The list and the reset come
+    // from the core (`link_policy`) through the `LinkGuard` singleton.
 
     Component {
         id: cLinks
@@ -785,12 +794,12 @@ Item {
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(linksReset)
             }
 
-            // Список мог пополниться в другой вкладке, пока эта была скрыта.
+            // The list may have grown in another tab while this one was hidden.
             onVisibleChanged: if (visible) linksBody.summary = LinkGuard.trustedSummary()
         }
     }
 
-    // ══ 🔔 Значок в системном лотке ═══════════════════════════════════════
+    // ══ 🔔 System tray icon ═══════════════════════════════════════════════
 
     Component {
         id: cTray
@@ -819,9 +828,9 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // Лотка в сессии может не быть вовсе — тогда и значка нет, и
-            // крестик окна закрывает Rexon как раньше. Молчать об этом
-            // нельзя: настройка выше в такой сессии ничего не даст.
+            // The session may have no tray at all — then there is no icon either, and
+            // the window's close button quits Rexon as before. This must not be kept
+            // quiet: the setting above will do nothing in such a session.
             RexonText {
                 Layout.fillWidth: true
                 visible: root.st.tray !== undefined
@@ -832,8 +841,8 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // Докачка значков и курсора к теме: пока Rexon запущен, он
-            // следит за темой окружения (`rexon_core::theme_watch`).
+            // Fetching missing icons and cursor for the theme: while Rexon is running,
+            // it watches the environment theme (`rexon_core::theme_watch`).
             RexonCheckBox {
                 id: trayThemeDeps
                 pal: root.pal
@@ -855,7 +864,7 @@ Item {
         }
     }
 
-    // ══ 📁 Файловый менеджер ══════════════════════════════════════════════
+    // ══ 📁 File manager ═══════════════════════════════════════════════════
 
     Component {
         id: cFileManager
@@ -879,8 +888,8 @@ Item {
 
                     Layout.fillWidth: true
                     radius: root.sty.fmRow.radius
-                    // Подсветка строки под фокусом — та же «полоса фокуса»,
-                    // что у радиокнопок виджетной вкладки; краска из ядра.
+                    // Highlight of the focused row — the same "focus strip" as for the radio
+                    // buttons of the widget tab; the colour comes from the core.
                     color: fmButton.activeFocus ? root.sty.fmRow.focus
                                                 : "transparent"
                     implicitHeight: fmRowLayout.implicitHeight
@@ -910,8 +919,8 @@ Item {
                             indicator: Rectangle {
                                 implicitWidth: 18
                                 implicitHeight: 18
-                                // Кружок — в начале строки: при языке справа
-                                // налево справа (как у `RexonCheckBox`).
+                                // The circle goes at the start of the line: on the right for right-to-left
+                                // languages (as in `RexonCheckBox`).
                                 x: fmButton.mirrored
                                    ? fmButton.width - width - fmButton.rightPadding
                                    : fmButton.leftPadding
@@ -953,7 +962,7 @@ Item {
 
                         RexonText {
                             visible: fmRow.isAuto
-                            // Стрелка смотрит на выбор слева (`RexonArrows.keyHint`).
+                            // The arrow points at the choice on the left (`RexonArrows.keyHint`).
                             text: root.arrows.keyHint(root.txt["fm.auto_hint"])
                             color: root.colTextSecondary
                             font.weight: root.pal.text_secondary_weight
@@ -998,7 +1007,7 @@ Item {
         }
     }
 
-    // ══ 🔧 Быстрое восстановление приложений ══════════════════════════════
+    // ══ 🔧 Quick application recovery ═════════════════════════════════════
 
     Component {
         id: cQuickFix
@@ -1011,14 +1020,14 @@ Item {
 
             readonly property var qf: root.st.quickfix || ({})
 
-            // ⚠️ Имя окружения тут приходит из снимка (`qf.de`), а НЕ из
-            // `page.deDisplay`. Заголовки разделов называют сессию («KDE»),
-            // а этот раздел возвращает приложения конкретного стола и зовёт
-            // его полным именем из базы столов («KDE Plasma») — так же, как
-            // виджетная вкладка.
+            // Warning: the environment name here comes from the snapshot (`qf.de`),
+            // NOT from `page.deDisplay`. Section titles name the session ("KDE"),
+            // while this section restores the applications of a particular desktop
+            // and calls it by its full name from the desktop database ("KDE Plasma")
+            // — just like the widget tab.
 
-            // Окружение ядру неизвестно — восстанавливать нечего, и об этом
-            // говорится прямо, а не пустой кнопкой.
+            // The environment is unknown to the core — there is nothing to restore,
+            // and this is said plainly rather than with an empty button.
             RexonText {
                 Layout.fillWidth: true
                 visible: qfBody.qf.known !== true
@@ -1054,7 +1063,7 @@ Item {
         }
     }
 
-    // ══ 🧩 Комплектность рабочего стола ═══════════════════════════════════
+    // ══ 🧩 Desktop completeness ═══════════════════════════════════════════
 
     Component {
         id: cCompleteness
@@ -1085,7 +1094,7 @@ Item {
         }
     }
 
-    // ══ 🎬 Обои ═══════════════════════════════════════════════════════════
+    // ══ 🎬 Wallpapers ═════════════════════════════════════════════════════
 
     Component {
         id: cWallpaper
@@ -1095,8 +1104,8 @@ Item {
             height: implicitHeight
             spacing: root.sty.group.spacing
 
-            // Движок обоев не поднялся — раздела как такового нет, есть
-            // объяснение почему.
+            // The wallpaper engine did not come up — there is no section as such,
+            // only an explanation why.
             RexonText {
                 Layout.fillWidth: true
                 visible: !(root.st.wp && root.st.wp.engine === true)
@@ -1115,8 +1124,8 @@ Item {
                 readonly property var wp: root.st.wp || ({})
                 readonly property var audio: wpBody.wp.audio || ({})
 
-                /// Записать все галочки звука и паузы обоев разом. Хост
-                /// следит за файлом настроек сам — обои не перезапускаются.
+                /// Write all wallpaper sound and pause check boxes at once. The host
+                /// watches the settings file by itself — wallpapers are not restarted.
                 function saveAudio() {
                     root.did(root.actions.setWallpaperAudio(
                                  wpAudio.checked, Math.round(wpVolume.value),
@@ -1135,10 +1144,10 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
 
-                    // Красная кнопка необратимого действия — общий тип
-                    // (`RexonDangerButton`), а не подкрашенная обычная: цвет
-                    // «опасного действия» один на продукт и приезжает из
-                    // ядра палитрой (правило #12).
+                    // The red button of an irreversible action is a shared type
+                    // (`RexonDangerButton`), not a tinted ordinary one: the "dangerous action"
+                    // colour is one for the whole product and arrives from the core with the
+                    // palette (rule #12).
                     RexonDangerButton {
                         id: wpStop
                         pal: root.pal
@@ -1166,10 +1175,10 @@ Item {
                     font.weight: root.pal.text_secondary_weight
                 }
 
-                // ── Звук обоев ────────────────────────────────────────────
-                // Все четыре контрола пишут в те же ключи настроек, за
-                // которыми следит хост обоев: правка применяется НА ХОДУ,
-                // перезапускать обои не нужно.
+                // ── Wallpaper sound ───────────────────────────────────────
+                // All four controls write to the same settings keys that the wallpaper
+                // host watches: an edit is applied ON THE FLY, there is no need to
+                // restart the wallpaper.
                 RexonCheckBox {
                     id: wpAudio
                     pal: root.pal
@@ -1227,8 +1236,8 @@ Item {
                         root.ensureVisible(wpHideCovered)
                 }
 
-                // Батарея и игра — те же условия общей модели паузы, что и
-                // «когда их не видно»: действуют на видео, веб и Flash.
+                // Battery and game are the same conditions of the shared pause model as
+                // "when they are not visible": they apply to video, web and Flash.
                 RexonCheckBox {
                     id: wpPauseBattery
                     pal: root.pal
@@ -1362,8 +1371,8 @@ Item {
                     }
                 }
 
-                // Отдельная галочка звука для YouTube — защита от дурака: она
-                // не зависит от галочки видео-обоев.
+                // A separate sound check box for YouTube is foolproofing: it does not
+                // depend on the video wallpaper check box.
                 RexonCheckBox {
                     id: ytAudio
                     pal: root.pal
@@ -1388,9 +1397,9 @@ Item {
                         id: ytdlpButton
                         pal: root.pal
                         tone: root.sty.primary
-                        // Пока идёт установка — кнопка выключена и говорит об
-                        // этом: иначе человек жмёт второй раз и вводит пароль
-                        // ради повторной установки.
+                        // While the installation is running, the button is disabled and says so:
+                        // otherwise the user presses a second time and enters the password for a
+                        // repeated installation.
                         enabled: !(wpBody.wp.ytdlpBusy === true)
                         text: wpBody.wp.ytdlpBusy === true
                               ? root.txt["wp.working"]
@@ -1402,7 +1411,7 @@ Item {
                     }
                 }
 
-                // ── Веб-обои ──────────────────────────────────────────────
+                // ── Web wallpapers ────────────────────────────────────────
                 RexonText {
                     Layout.fillWidth: true
                     text: root.txt["web.header"]
@@ -1450,7 +1459,7 @@ Item {
         }
     }
 
-    // ══ 📚 Библиотека обоев ═══════════════════════════════════════════════
+    // ══ 📚 Wallpaper library ══════════════════════════════════════════════
 
     Component {
         id: cLibrary
@@ -1463,8 +1472,8 @@ Item {
 
             readonly property var lib: root.st.lib || ({})
             readonly property var items: libBody.lib.items || []
-            // Столбцы считает ядро тем же движком сеток, что и виджетные
-            // вкладки, — своих ступеней по ширине у страницы нет.
+            // Columns are computed by the core with the same grid engine as the widget
+            // tabs — the page has no width steps of its own.
             readonly property int cols: Math.max(
                 1, page.libraryColumns(libBody.width))
             readonly property int shown: Math.min(
@@ -1483,7 +1492,7 @@ Item {
                 Layout.fillWidth: true
                 visible: libBody.lib.engine === true
                          && libBody.items.length === 0
-                // Надпись «пусто» у виджетов лежит с полем 8 со всех сторон.
+                // In the widgets the "empty" label sits with an 8 margin on all sides.
                 Layout.topMargin: root.sty.lib.gridTopMargin
                 padding: root.sty.lib.emptyPadding
                 text: root.txt["lib.empty"]
@@ -1525,8 +1534,8 @@ Item {
                             height: implicitHeight
                             spacing: 0
 
-                            // Полоска предпросмотра. Картинки нет — рисуем
-                            // ту же заглушку, что и виджетная плитка.
+                            // Preview strip. Without a picture we draw the same placeholder as the
+                            // widget tile.
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: page.libraryPreviewHeight
@@ -1578,9 +1587,8 @@ Item {
                                     Layout.fillWidth: true
                                     text: libCard.wp.name || root.txt["lib.unnamed"]
                                     font.bold: true
-                                    // Имя обрезается многоточием, полное — в
-                                    // подсказке: перенос спасает от длинной
-                                    // фразы, но не от одного длинного слова.
+                                    // The name is elided, the full one is in the tooltip: wrapping saves from
+                                    // a long phrase, but not from one long word.
                                     elide: Text.ElideRight
                                     maximumLineCount: 2
                                     wrapMode: Text.WordWrap
@@ -1594,9 +1602,8 @@ Item {
 
                                 RexonText {
                                     Layout.fillWidth: true
-                                    // Подпись формата для человека приходит из
-                                    // ядра (`formatLabel`); служебное `format`
-                                    // — только для логики кнопок ниже.
+                                    // The human-readable format label comes from the core (`formatLabel`);
+                                    // the internal `format` is only for the button logic below.
                                     text: libCard.wp.formatLabel || libCard.wp.format || ""
                                     elide: Text.ElideRight
                                     color: root.colTextSecondary
@@ -1646,7 +1653,7 @@ Item {
         }
     }
 
-    // ══ 🪟 Импорт тем Windows ═════════════════════════════════════════════
+    // ══ 🪟 Windows theme import ═══════════════════════════════════════════
 
     Component {
         id: cImport
@@ -1705,7 +1712,7 @@ Item {
         }
     }
 
-    // ══ 🌫 Размытие обоев ═════════════════════════════════════════════════
+    // ══ 🌫 Wallpaper blur ═════════════════════════════════════════════════
 
     Component {
         id: cBlur
@@ -1809,7 +1816,7 @@ Item {
         }
     }
 
-    // ══ 🔊 Фоновые звуки ══════════════════════════════════════════════════
+    // ══ 🔊 Background sounds ══════════════════════════════════════════════
 
     Component {
         id: cAmbient
@@ -1907,8 +1914,8 @@ Item {
                     font.weight: root.pal.text_secondary_weight
                 }
 
-                // Список играющих звуков: у виджетов это отдельная колонка с
-                // отступом сверху 4 и шагом строк 4, а не строки группы.
+                // List of playing sounds: in the widgets this is a separate column with a
+                // top margin of 4 and a row spacing of 4, not rows of the group.
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.topMargin: root.sty.ambient.listTopMargin
@@ -1962,8 +1969,8 @@ Item {
                                 RexonButton {
                                     id: ambSetVol
                                     Layout.preferredWidth: root.sty.widths.ambientButton
-                                    // Узкая кнопка-значок: боковые поля базовой
-                                    // кнопки не влезают в её ширину.
+                                    // A narrow icon button: the base button's side paddings do not fit into
+                                    // its width.
                                     leftPadding: 0
                                     pal: root.pal
                                     text: root.txt["amb.setvol"]
@@ -1997,7 +2004,7 @@ Item {
         }
     }
 
-    // ══ 🔔 Звуки событий ══════════════════════════════════════════════════
+    // ══ 🔔 Event sounds ═══════════════════════════════════════════════════
 
     Component {
         id: cSound
@@ -2011,25 +2018,24 @@ Item {
             readonly property var snd: root.st.snd || ({})
             readonly property var showcase: sndBody.snd.showcase || []
 
-            // Тема, которую ДЕЙСТВИТЕЛЬНО можно показать выбранной: пустая
-            // строка, если системная тема не задана вовсе или названа так,
-            // что среди установленных её нет.
+            // The theme that can REALLY be shown as selected: an empty string if the
+            // system theme is not set at all or is named so that it is not among the
+            // installed ones.
             readonly property string themeValue: {
                 var themes = sndBody.snd.themes || [];
                 var current = sndBody.snd.current || "";
                 return themes.indexOf(current) >= 0 ? current : "";
             }
 
-            // Строки списка тем: подпись = имя темы, значение = оно же.
-            // Когда показывать нечего, первой строкой идёт «— не задана —»
-            // с пустым значением. Без неё список показывал ПЕРВУЮ
-            // установленную тему, и покупатель читал чужое значение как
-            // своё.
+            // Rows of the theme list: label = theme name, value = the same. When there
+            // is nothing to show, the first row is "— not set —" with an empty value.
+            // Without it the list showed the FIRST installed theme, and the customer
+            // read someone else's value as their own.
             readonly property var themeChoices: {
                 var out = [];
                 if (sndBody.themeValue === "") {
-                    // Имя есть, а темы нет — так и сказать: «не задана»
-                    // здесь было бы неправдой.
+                    // There is a name but no theme — say exactly that: "not set" would be
+                    // untrue here.
                     var named = sndBody.snd.current || "";
                     out.push({
                         "label": named !== ""
@@ -2056,7 +2062,7 @@ Item {
 
                 RexonComboBox {
                     id: sndTheme
-                    // Имя нужно проверкам: стенд достаёт список
+                    // The name is needed by checks: the test bench fetches the list with
                     // `root.findChild(QObject, "soundThemeCombo")`.
                     objectName: "soundThemeCombo"
                     Layout.fillWidth: true
@@ -2064,11 +2070,11 @@ Item {
                     model: sndBody.themeChoices
                     textRole: "label"
                     valueRole: "value"
-                    // Выбор ставится ЗНАЧЕНИЕМ, а не номером строки: договор
-                    // самого списка (см. шапку RexonComboBox.qml).
+                    // The selection is set by VALUE, not by row number: the contract of the
+                    // combo box itself (see the header of RexonComboBox.qml).
                     selectedValue: sndBody.themeValue
-                    // Пустое значение — это строка «— не задана —»: она
-                    // ничего не применяет, системная тема остаётся своей.
+                    // An empty value is the "— not set —" row: it applies nothing, and the
+                    // system theme stays as it is.
                     onActivated: if (sndTheme.currentValue)
                                      root.did(root.actions.setSoundTheme(
                                                   sndTheme.currentValue))
@@ -2099,9 +2105,9 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // Кнопки «послушать» переносятся на вторую строку, а не уезжают
-            // за край: RowLayout переносить не умеет, и на минимальной ширине
-            // окна последняя кнопка обрезалась бы.
+            // The "listen" buttons wrap onto a second line instead of sliding past the
+            // edge: RowLayout cannot wrap, and at the minimum window width the last
+            // button would be cut.
             Flow {
                 Layout.fillWidth: true
                 spacing: root.sty.spacing.soundPreview
@@ -2138,7 +2144,7 @@ Item {
         }
     }
 
-    // ══ 🔤 Системные шрифты ═══════════════════════════════════════════════
+    // ══ 🔤 System fonts ═══════════════════════════════════════════════════
 
     Component {
         id: cFonts
@@ -2153,11 +2159,12 @@ Item {
             readonly property var render: (root.st.font && root.st.font.render) || ({})
             readonly property var all: (root.st.font && root.st.font.all) || ({})
             readonly property var dpi: (root.st.font && root.st.font.dpi) || ({})
-            // Выбор «что менять» переживает обновление снимка после действия.
+            // The "what to change" choice survives the snapshot refresh after an
+            // action.
             property string allMode: "both"
 
-            // Записать отрисовку целиком: каждое изменение отдаёт ядру все
-            // значения разом — так в файле не остаётся половины настройки.
+            // Write the rendering as a whole: every change hands all values to the
+            // core at once — that way no half of a setting remains in the file.
             function applyRender(aa, exclude, from, to, subpixel, hinting) {
                 root.did(root.actions.setFontRendering(aa, exclude, from, to,
                                                        subpixel, hinting));
@@ -2169,7 +2176,7 @@ Item {
                             subpixelCombo.currentValue, hintingCombo.currentValue);
             }
 
-            // Восемь кнопок в ряд не помещаются на узком окне: переносятся.
+            // Eight buttons in a row do not fit into a narrow window: they wrap.
             Flow {
                 Layout.fillWidth: true
                 spacing: root.sty.spacing.fontRow
@@ -2180,12 +2187,11 @@ Item {
                     delegate: ColumnLayout {
                         id: fontCol
                         required property var modelData
-                        // Столбец по содержимому, не шире кнопки: подпись
-                        // под ней переносится, а не распирает столбец.
-                        // С запасом: ровно по `implicitWidth` подпись
-                        // кнопки теряла последние буквы («Системны…»,
-                        // «Панель инструменто…») — значок-эмодзи шире, чем
-                        // его считает раскладка.
+                        // A column sized to its content, no wider than the button: the label under
+                        // it wraps rather than stretching the column.
+                        // With a margin: at exactly `implicitWidth` the button label lost its last
+                        // letters ("System…", "Toolba…") — the emoji icon is wider than the layout
+                        // thinks.
                         width: Math.ceil(fontButton.implicitWidth) + 18
                         spacing: root.sty.spacing.fontCol
 
@@ -2205,8 +2211,8 @@ Item {
                         }
 
                         RexonText {
-                            // Ширину столбца задаёт кнопка; подпись под ней
-                            // переносится, а не распирает столбец.
+                            // The column width is set by the button; the label under it wraps rather
+                            // than stretching the column.
                             Layout.fillWidth: true
                             Layout.preferredWidth: 0
                             text: fontBody.values[fontCol.modelData.id]
@@ -2219,8 +2225,8 @@ Item {
                 }
             }
 
-            // Стол LXQt: вернуть шрифт подписей значков, как было до Rexon
-            // (кнопка есть, только если Rexon его менял).
+            // LXQt desktop: restore the icon label font as it was before Rexon (the
+            // button exists only if Rexon changed it).
             RexonButton {
                 id: desktopRestoreButton
                 readonly property var info: (root.st.font && root.st.font.desktop_restore) || ({})
@@ -2242,8 +2248,8 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // На что действуют «маленький», «панели инструментов» и «меню»
-            // там, где у окружения своих таких шрифтов нет.
+            // What "small", "toolbar" and "menu" affect where the environment has no
+            // such fonts of its own.
             RexonText {
                 Layout.fillWidth: true
                 visible: text.length > 0
@@ -2253,7 +2259,7 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // ── Изменить все шрифты ──────────────────────────────────────
+            // ── Change all fonts ─────────────────────────────────────────
             RowLayout {
                 Layout.fillWidth: true
                 spacing: root.sty.spacing.fontRow
@@ -2287,7 +2293,7 @@ Item {
                 Item { Layout.fillWidth: true }
             }
 
-            // ── Сглаживание, субпиксели, хинтинг ─────────────────────────
+            // ── Antialiasing, subpixels, hinting ─────────────────────────
             RexonText {
                 Layout.fillWidth: true
                 Layout.topMargin: root.sty.group.spacing
@@ -2297,9 +2303,9 @@ Item {
                 color: root.colText
             }
 
-            // Готовые наборы, как в MATE: сглаживание, субпиксели и хинтинг
-            // одним нажатием. Выбранный — тот, которому отвечает нынешняя
-            // отрисовка; своя настройка не подсвечивает ни один.
+            // Ready presets, as in MATE: antialiasing, subpixels and hinting with one
+            // press. The selected one is the one the current rendering matches; a
+            // custom setting highlights none.
             Flow {
                 Layout.fillWidth: true
                 spacing: root.sty.spacing.fontRow
@@ -2317,8 +2323,8 @@ Item {
                         id: presetButton
                         required property var modelData
                         pal: root.pal
-                        // Не `checkable`: нажатие не должно рвать привязку,
-                        // подсветку задаёт снимок после записи.
+                        // Not `checkable`: a press must not break the binding; the highlight is
+                        // set by the snapshot after writing.
                         checked: fontBody.render.preset === presetButton.modelData.id
                         checkedTone: root.sty.primary
                         text: presetButton.modelData.label
@@ -2448,7 +2454,7 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // ── Принудительное DPI шрифтов ───────────────────────────────
+            // ── Forced font DPI ──────────────────────────────────────────
             RowLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: root.sty.group.spacing
@@ -2492,7 +2498,7 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // ── Управление шрифтами (свой компонент) ─────────────────────
+            // ── Font management (its own component) ──────────────────────
             FontManagerSection {
                 Layout.fillWidth: true
                 Layout.topMargin: root.sty.group.spacing
@@ -2505,7 +2511,7 @@ Item {
         }
     }
 
-    // ══ 🔒 Защита приложений по умолчанию ═════════════════════════════════
+    // ══ 🔒 Default application protection ═════════════════════════════════
 
     Component {
         id: cProtection
@@ -2552,8 +2558,8 @@ Item {
                 }
             }
 
-            // Смена темы не должна оставить терминал нечитаемым
-            // (`terminal_guard`): выключатель свой, по умолчанию включён.
+            // A theme change must not leave the terminal unreadable
+            // (`terminal_guard`): its own switch, on by default.
             RexonCheckBox {
                 id: protTermColors
                 objectName: "terminalColorsGuard"
@@ -2568,8 +2574,8 @@ Item {
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(protTermColors)
             }
 
-            // Без утилиты xdg-terminal-exec выбор терминала записан, но часть
-            // программ откроет свой — говорим об этом прямо.
+            // Without the xdg-terminal-exec utility the terminal choice is written,
+            // but some programs will open their own — we say so plainly.
             RexonText {
                 Layout.fillWidth: true
                 visible: (protBody.prot.note || "") !== ""
@@ -2642,7 +2648,7 @@ Item {
         }
     }
 
-    // ══ 🛡 Защита панели KDE Plasma ═══════════════════════════════════════
+    // ══ 🛡 KDE Plasma panel protection ════════════════════════════════════
 
     Component {
         id: cPlasma
@@ -2741,7 +2747,7 @@ Item {
         }
     }
 
-    // ══ 🪟 Оформление рабочего стола ══════════════════════════════════════
+    // ══ 🪟 Desktop look ═══════════════════════════════════════════════════
 
     Component {
         id: cAero
@@ -2765,10 +2771,10 @@ Item {
 
             RexonButton {
                 id: aeroNow
-                // Кнопка тянется во всю ширину раздела: у оригинала она
-                // добавлена в вертикальную раскладку группы (`gl.addWidget`),
-                // а та растягивает виджет по ширине. Без этого QML рисовал
-                // её по содержимому — 167 точек вместо 1318 (замер 05.09).
+                // The button stretches across the full width of the section: in the
+                // original it is added to the group's vertical layout (`gl.addWidget`),
+                // which stretches the widget horizontally. Without this QML drew it sized
+                // to its content — 167 pixels instead of 1318 (measurement 05.09).
                 Layout.fillWidth: true
                 pal: root.pal
                 tone: root.sty.primary
@@ -2779,7 +2785,7 @@ Item {
         }
     }
 
-    // ── Подтверждение возврата копии панели ───────────────────────────────
+    // ── Confirming the restore of a panel copy ────────────────────────────
 
     function askPlasmaRestore(ts) {
         if (!root.actions || !ts)
@@ -2813,10 +2819,11 @@ Item {
             radius: 8
         }
 
-        // Затемнение под модальным окном — общее решение продукта
-        // (`ui_base::MODAL_DIM_RGBA`, ключ `modal_dim`): тем же цветом гасит
-        // окно обучение и «Сравнение DE». Стиль по умолчанию фон не гасит, и
-        // окно выходило модальным на деле, но не на вид.
+        // Dimming under a modal window is a product-wide decision
+        // (`ui_base::MODAL_DIM_RGBA`, key `modal_dim`): the tutorial and "DE
+        // comparison" dim the window with the same colour. The default style does
+        // not dim the background, and the window was modal in fact but not in
+        // looks.
         Overlay.modal: Rectangle {
             color: root.pal.modal_dim
         }
@@ -2868,20 +2875,20 @@ Item {
             }
         }
 
-        // Фокус при открытии — на безопасном ответе: случайный Enter не
-        // должен возвращать копию панели (защита от дурака).
+        // Focus on opening is on the safe answer: an accidental Enter must not
+        // restore a panel copy (foolproofing).
         onOpened: confirmNo.forceActiveFocus()
     }
 
-    // ── Всплывающее сообщение ─────────────────────────────────────────────
+    // ── Pop-up message ────────────────────────────────────────────────────
     //
-    // Плашка общая на весь продукт (`RexonToast.qml`): там же и таймер
-    // гашения — вкладке остаётся только позвать `show`.
+    // The banner is shared across the whole product (`RexonToast.qml`): the
+    // hide timer is there too — all the tab has to do is call `show`.
 
-    // ── Крупный просмотр картинки обоев ───────────────────────────────────
+    // ── Large view of a wallpaper picture ─────────────────────────────────
     //
-    // Слой общий на весь продукт (`RexonImageViewer.qml`). Листание — по
-    // обоям библиотеки, у которых есть картинка.
+    // The layer is shared across the whole product (`RexonImageViewer.qml`).
+    // Paging goes over the library wallpapers that have a picture.
     function openLibraryViewer(all, index) {
         const items = [];
         let at = 0;
@@ -2916,24 +2923,25 @@ Item {
         availableWidth: root.width
     }
 
-    // ── Перечитывание списка играющих фоновых звуков ──────────────────────
-    // Список меняется и без нас (звук доиграл, его остановили снаружи).
+    // ── Re-reading the list of playing background sounds ──────────────────
+    // The list changes without us too (a sound finished playing, it was
+    // stopped from outside).
 
     Timer {
         interval: page.ambientRefreshMs
-        // Фоновые звуки живут в «Оформлении → Звуки → ⚙️ Настройки»
-        // (08.11.2026): опрос — пока их рамка на экране. Играют они и без
-        // неё: процессы держит исполнитель ядра на весь процесс
-        // (`wallpaper_exec::live_slot`), а не эта страница.
+        // Background sounds live in "Appearance → Sounds → ⚙️ Settings"
+        // (08.11.2026): polling happens while their frame is on screen. They play
+        // without it too: the processes are held by the core executor for the
+        // whole process (`wallpaper_exec::live_slot`), not by this page.
         running: root.visible && root.actions !== null && root.showsPanel("ambientsounds")
         repeat: true
         onTriggered: root.reloadAmbient()
     }
 
-    // ── Опрос права изменять систему (Б13) ────────────────────────────────
-    // Право гаснет и без нас (простой, блокировка экрана, сон), а
-    // появляется после пароля в любой вкладке — раз в две секунды, только
-    // пока страница видна. Опрос дешёвый: флаг в памяти процесса.
+    // ── Polling the right to change the system (B13) ──────────────────────
+    // The right expires without us (idle, screen lock, sleep), and appears
+    // after a password in any tab — every two seconds, only while the page is
+    // visible. The poll is cheap: a flag in the process memory.
 
     Timer {
         interval: 2000
@@ -2943,12 +2951,13 @@ Item {
         onTriggered: root.reloadAdmin()
     }
 
-    // ── Окно доустановки недостающего ─────────────────────────────────────
+    // ── Window for installing what is missing ─────────────────────────────
     //
-    // «Проверить и доустановить»: вопрос со списком недостающего → ход дела
-    // → итог. То же окно, что у «Рабочих столов» (`DeOperationDialog.qml`),
-    // и тот же исполнитель ядра (`system_de_exec`). У Python-объекта
-    // действий свойства `operation` нет — окно тогда просто не показывается.
+    // "Check and install missing": a question with the list of what is
+    // missing → progress → result. The same window as in "Desktops"
+    // (`DeOperationDialog.qml`) and the same core executor (`system_de_exec`).
+    // The Python actions object has no `operation` property — then the window
+    // is simply not shown.
 
     DeOperationDialog {
         anchors.fill: parent
@@ -2956,16 +2965,17 @@ Item {
         pal: root.pal
     }
 
-    // ── Фокус с первого кадра ─────────────────────────────────────────────
+    // ── Focus from the first frame ────────────────────────────────────────
 
-    // ⚠️ Фокус берёт ПЕРВЫЙ КОНТРОЛ, а не корень страницы: `forceActiveFocus`
-    // на корне делает `activeFocusItem` безымянным Item'ом, и страница
-    // мертва и с клавиатуры, и с геймпада.
+    // Warning: focus goes to the FIRST CONTROL, not to the page root:
+    // `forceActiveFocus` on the root makes `activeFocusItem` a nameless Item,
+    // and the page is dead both from the keyboard and from a gamepad.
     property int focusAttempts: 0
 
     function focusFirstControl() {
-        // Раздел внутри «Оформления» фокус себе не забирает: он остаётся в
-        // боковой панели, откуда человек раздел выбрал (геймпад и Tab).
+        // A section inside "Appearance" does not take focus for itself: it stays
+        // in the side panel from which the user chose the section (gamepad and
+        // Tab).
         if (!root.fullPage)
             return;
         if (sectionRepeater.count > 0) {
@@ -2977,9 +2987,9 @@ Item {
                 return;
             }
         }
-        // Разделы наполняются не мгновенно. Пробуем ещё раз, но не
-        // бесконечно: пустой список разделов — это поломка ядра, и вечный
-        // самовызов её только спрячет.
+        // Sections do not fill instantly. We try again, but not forever: an empty
+        // list of sections is a core breakage, and endless self-calls would only
+        // hide it.
         if (root.focusAttempts < 40) {
             root.focusAttempts += 1;
             focusRetry.restart();
@@ -2988,24 +2998,25 @@ Item {
         }
     }
 
-    // ⚠️ Починка при переносе: повтор идёт ПО ВРЕМЕНИ, а не через
-    // `Qt.callLater`. `callLater` сворачивает вызовы в тот же проход цикла
-    // событий, поэтому все сорок попыток сгорали ДО того, как Repeater успевал
-    // построить хоть один раздел, — и страница с шестнадцатью разделами честно
-    // писала в журнал «разделов нет, фокус взять не с чего», а фокус так и не
-    // брала. Под Python это оставалось незаметным: там объект действий
-    // подставлялся позже, и цепочка вовсе не запускалась.
-    // 40 × 50 мс = 2 с на построение — замер на этой машине: 1 проход.
+    // Warning: a fix made during the port: the retry goes BY TIME, not through
+    // `Qt.callLater`. `callLater` folds calls into the same event loop pass,
+    // so all forty attempts burned out BEFORE the Repeater managed to build a
+    // single section — and a page with sixteen sections honestly wrote "no
+    // sections, nothing to take focus from" into the log and never took
+    // focus. Under Python this went unnoticed: there the actions object was
+    // substituted later, and the chain did not start at all.
+    // 40 × 50 ms = 2 s for building — measured on this machine: 1 pass.
     Timer {
         id: focusRetry
         interval: 50
         onTriggered: root.focusFirstControl()
     }
 
-    /// Спросить машину и построить по её ответу страницу.
+    /// Query the machine and build the page from its answer.
     ///
-    /// Сначала факты (от них зависит сам СОСТАВ разделов), потом состояние,
-    /// потом фокус: до фактов разделов нет, и брать фокус не с чего.
+    /// First the facts (the very SET of sections depends on them), then the
+    /// state, then focus: before the facts there are no sections, and there is
+    /// nothing to take focus from.
     function start() {
         if (!root.actions)
             return;
@@ -3014,21 +3025,21 @@ Item {
         root.focusFirstControl();
     }
 
-    /// Объект действий появился — только теперь можно спросить машину.
+    /// The actions object has appeared — only now can the machine be queried.
     ///
-    /// Срабатывает и на СВОЁМ объекте (его создаёт сама страница), и на
-    /// подставленном снаружи: так вкладку держит живой Python-продукт — он
-    /// кладёт в `actions` свой объект уже после создания страницы.
+    /// Fires both for OUR OWN object (the page creates it itself) and for one
+    /// substituted from outside: that is how the live Python product keeps the
+    /// tab — it puts its own object into `actions` after the page is created.
     onActionsChanged: root.start()
 
-    // Во встроенной вкладке страница создаётся заранее и оживает при
-    // переключении на неё: состояние могло измениться в других вкладках.
+    // In the embedded tab the page is created in advance and comes alive when
+    // switched to: the state may have changed in other tabs.
     onVisibleChanged: if (root.visible) {
         root.reload();
         root.focusFirstControl();
     }
 
-    // В «Оформлении» один экземпляр показывает разные разделы: шрифтам
-    // нужен свежий снимок, когда на них перешли.
+    // In "Appearance" one instance shows different sections: fonts need a
+    // fresh snapshot when switched to.
     onPanelChanged: root.reload()
 }

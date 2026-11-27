@@ -1,23 +1,25 @@
-// Текст QML-вкладок Rexon с выравниванием, верным и для языка справа налево.
+// Text for Rexon QML tabs with alignment that is also correct for
+// right-to-left languages.
 //
-// Зачем свой тип: у `Text` без явного выравнивания оно берётся из САМОЙ
-// строки, а не из раскладки окна. При арабском интерфейсе строка без
-// арабских букв («Rexon», «KDE Plasma», число) у обычного `Text` встаёт
-// влево, соседняя арабская — вправо, и колонка выходит рваной.
-// Зеркалирование (`LayoutMirroring`, включается на корне окна) переворачивает
-// только ЯВНО заданное выравнивание: явное `AlignLeft` при языке справа
-// налево становится `AlignRight` для любой строки, а при языке слева направо
-// остаётся левым. Проверено запуском с `-reverse` на offscreen, 06.11.2026:
-// `effectiveHorizontalAlignment` у `Text` с латиницей — влево, у этого типа —
-// вправо; `AlignHCenter` и прочие явные значения работают как у `Text`.
+// Why a type of our own: a `Text` without explicit alignment takes it from
+// the string ITSELF, not from the window layout. With an Arabic interface,
+// a string without Arabic letters ("Rexon", "KDE Plasma", a number) aligns
+// left in a plain `Text`, while its Arabic neighbour aligns right, and the
+// column comes out ragged. Mirroring (`LayoutMirroring`, enabled on the
+// window root) flips only EXPLICITLY set alignment: an explicit `AlignLeft`
+// becomes `AlignRight` for any string in a right-to-left language and stays
+// left in a left-to-right one. Verified by running with `-reverse` on
+// offscreen, 06.11.2026: `effectiveHorizontalAlignment` of a `Text` with
+// Latin text is left, of this type it is right; `AlignHCenter` and other
+// explicit values work as in `Text`.
 //
-// Без заданной ширины однострочный текст занимает ровно свою строку, и
-// выравнивание ни на что не влияет — место ему дают якоря и раскладки,
-// которые зеркалятся сами.
+// Without a set width, single-line text takes exactly its own line, and
+// alignment has no effect — its space is given by anchors and layouts,
+// which mirror themselves.
 //
-// Где раскладка физическая (кнопки окна, макет экрана), зеркалирование
-// снимается местным `LayoutMirroring.enabled: false` — тогда и `AlignLeft`
-// здесь остаётся левым.
+// Where the layout is physical (window buttons, screen layout), mirroring
+// is switched off with a local `LayoutMirroring.enabled: false` — then
+// `AlignLeft` here stays left too.
 
 import QtQuick
 

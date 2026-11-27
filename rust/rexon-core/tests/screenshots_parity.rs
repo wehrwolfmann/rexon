@@ -1,12 +1,12 @@
-//! Golden-сверка порта `screenshots.rs` с оригиналом `rexon/screenshots.py`.
+//! Golden check of the `screenshots.rs` port against the original `rexon/screenshots.py`.
 //!
-//! Эталон `golden/screenshots_cases.json` снят с самого Python:
-//! `_generate_svg`, выбор argv `take_screenshot`, имена файлов и кандидаты
-//! путей, `_save_screenshot_data`, `_filename_for_de`, `SCREENSHOT_URLS` и
-//! производные (`OFFICIAL_SCREENSHOT_URLS`, `get_online_screenshot_url(s)`)
-//! прогнаны на батарее входов (все DE из `DE_COLORS` + неизвестные для
-//! fallback). Проверяются только детерминированные (чистые) части — эффекты
-//! ФС/подпроцессов/сети в порт не входят.
+//! The reference `golden/screenshots_cases.json` was captured from Python itself:
+//! `_generate_svg`, the `take_screenshot` argv choice, file names and path
+//! candidates, `_save_screenshot_data`, `_filename_for_de`, `SCREENSHOT_URLS`
+//! and derivatives (`OFFICIAL_SCREENSHOT_URLS`, `get_online_screenshot_url(s)`)
+//! were run on a battery of inputs (all DEs from `DE_COLORS` + unknown ones for
+//! the fallback). Only the deterministic (pure) parts are checked — FS /
+//! subprocess / network effects are not part of the port.
 
 mod i18n_pin;
 
@@ -17,7 +17,7 @@ fn fixture() -> Value {
     serde_json::from_str(include_str!("golden/screenshots_cases.json")).unwrap()
 }
 
-/// Каталог скриншотов из эталона (реальный `~/.config/rexon/screenshots`).
+/// The screenshots directory from the reference (the real `~/.config/rexon/screenshots`).
 fn dir(fx: &Value) -> String {
     fx["screenshot_dir"].as_str().unwrap().to_string()
 }
@@ -26,7 +26,7 @@ fn dir(fx: &Value) -> String {
 fn screenshot_dir_composition() {
     let fx = fixture();
     let d = dir(&fx);
-    // Восстанавливаем HOME из эталонного пути и проверяем сборку.
+    // Restore HOME from the reference path and check the build-up.
     let suffix = format!("/{}", sc::SCREENSHOT_SUBDIR);
     let home = d.strip_suffix(&suffix).unwrap();
     assert_eq!(sc::screenshot_dir(home), d);
@@ -35,14 +35,14 @@ fn screenshot_dir_composition() {
 #[test]
 fn de_tables_match_python() {
     let fx = fixture();
-    // DE_COLORS (порядок + значения).
+    // DE_COLORS (order + values).
     let colors: Vec<Value> = sc::DE_COLORS
         .iter()
         .map(|(_, a, b)| json!([a, b]))
         .collect();
     let keys: Vec<&str> = sc::DE_COLORS.iter().map(|(k, _, _)| *k).collect();
     let want_colors = fx["de_colors"].as_object().unwrap();
-    // порядок ключей
+    // key order
     let want_keys: Vec<&str> = want_colors.keys().map(String::as_str).collect();
     assert_eq!(keys, want_keys, "DE_COLORS порядок ключей");
     for (i, k) in keys.iter().enumerate() {
@@ -64,11 +64,11 @@ fn generate_svg_byte_for_byte() {
     let _lang = i18n_pin::ru();
     let fx = fixture();
     let svgs = fx["svgs"].as_object().unwrap();
-    // Покрываем ВСЕ DE из эталона (известные + неизвестные fallback + пустой).
+    // Cover ALL DEs from the reference (known + unknown fallback + empty).
     for (de, want) in svgs {
         assert_eq!(json!(sc::generate_svg(de)), *want, "generate_svg({de:?})");
     }
-    // Явная проверка, что все DE из DE_COLORS присутствуют.
+    // Explicit check that all DEs from DE_COLORS are present.
     for (k, _, _) in sc::DE_COLORS {
         assert!(svgs.contains_key(*k), "нет golden-SVG для {k}");
     }
@@ -103,23 +103,23 @@ fn screenshot_tools_argv_match_python() {
             "screenshot_tools({de})"
         );
     }
-    // select_screenshot_tool: порядок приоритета grim → … → import
-    // (Wayland-инструменты первыми: на sway/Hyprland/niri grim
-    // единственный рабочий, X11-утилиты там снимают чёрный кадр).
-    // Ничего недоступно → None.
+    // select_screenshot_tool: priority order grim → … → import
+    // (Wayland tools first: on sway/Hyprland/niri grim is the only working one,
+    // X11 utilities capture a black frame there).
+    // Nothing available → None.
     assert_eq!(sc::select_screenshot_tool(&d, "kde", |_| false), None);
-    // Доступен только maim (5-й) — он и выбирается.
+    // Only maim (5th) is available — it is chosen.
     let sel = sc::select_screenshot_tool(&d, "kde", |c| c == "maim").unwrap();
     assert_eq!(sel[0], "maim");
     assert_eq!(sel, want["kde"][4].as_array().unwrap().iter()
         .map(|v| v.as_str().unwrap().to_string()).collect::<Vec<_>>());
-    // Доступны scrot и spectacle → берётся первый по порядку (spectacle).
+    // scrot and spectacle are available → the first in order is taken (spectacle).
     let sel2 = sc::select_screenshot_tool(&d, "kde", |c| c == "scrot" || c == "spectacle").unwrap();
     assert_eq!(sel2[0], "spectacle");
-    // На голом Wayland-композиторе доступен только grim — он и выбирается.
+    // On a bare Wayland compositor only grim is available — it is chosen.
     let sel3 = sc::select_screenshot_tool(&d, "kde", |c| c == "grim").unwrap();
     assert_eq!(sel3[0], "grim");
-    // Сообщение об отсутствии инструментов.
+    // The message about missing tools.
     assert_eq!(json!(sc::no_tools_msg()), fx["no_tools_msg"]);
 }
 
@@ -141,7 +141,7 @@ fn path_candidates_match_python() {
             "extra_candidates({de})"
         );
     }
-    // delete_screenshot использует тот же список кандидатов.
+    // delete_screenshot uses the same candidate list.
     for (de, want) in fx["delete_candidates"].as_object().unwrap() {
         assert_eq!(
             serde_json::to_value(sc::screenshot_path_candidates(&d, de)).unwrap(),
@@ -157,7 +157,7 @@ fn save_ext_and_dest_match_python() {
     let fx = fixture();
     let d = dir(&fx);
     for (ct_key, want) in fx["save_cases"].as_object().unwrap() {
-        // Ключ "None" в эталоне = Python None.
+        // The "None" key in the reference = Python None.
         let ct: Option<&str> = if ct_key == "None" { None } else { Some(ct_key.as_str()) };
         assert_eq!(json!(sc::save_ext(ct)), want["ext"], "save_ext({ct_key})");
         assert_eq!(
@@ -183,7 +183,7 @@ fn filename_for_de_match_python() {
 #[test]
 fn screenshot_urls_and_derivatives_match_python() {
     let fx = fixture();
-    // SCREENSHOT_URLS целиком.
+    // SCREENSHOT_URLS in full.
     let want_urls = fx["screenshot_urls"].as_object().unwrap();
     let keys: Vec<&str> = sc::SCREENSHOT_URLS.iter().map(|(k, _)| *k).collect();
     let want_keys: Vec<&str> = want_urls.keys().map(String::as_str).collect();
@@ -191,7 +191,7 @@ fn screenshot_urls_and_derivatives_match_python() {
     for (k, v) in sc::SCREENSHOT_URLS {
         assert_eq!(json!(v), want_urls[*k], "SCREENSHOT_URLS[{k}]");
     }
-    // OFFICIAL_SCREENSHOT_URLS (dict в Python).
+    // OFFICIAL_SCREENSHOT_URLS (a dict in Python).
     let official: serde_json::Map<String, Value> = sc::official_screenshot_urls()
         .into_iter()
         .map(|(k, v)| (k.to_string(), json!(v)))
@@ -207,14 +207,15 @@ fn screenshot_urls_and_derivatives_match_python() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Закрытие дыр паритета: разбор ответа Wikimedia API, приёмка скачанного
-//  ответа и план автоскачивания. Эталоны сняты с живого screenshots.py при
-//  Python-путь до его удаления; ответы Wikimedia — ЖИВЫЕ, снятые одним запросом
+//  Closing parity holes: parsing the Wikimedia API response, accepting the
+//  downloaded response and the auto-download plan. References were captured
+//  from the live screenshots.py on the Python path before its removal; the
+//  Wikimedia responses are LIVE, captured with one request
 //  (`golden/screenshots_wikimedia_*_raw.json`).
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// URL запроса imageinfo совпадает с f-string оригинала, включая percent-encode
-/// имени файла (пробелы, `!`, `#`, кириллица).
+/// The imageinfo request URL matches the original's f-string, including
+/// percent-encoding of the file name (spaces, `!`, `#`, Cyrillic).
 #[test]
 fn wikimedia_api_url_matches_python() {
     for (name, want) in fixture()["wikimedia_api_url"].as_object().unwrap() {
@@ -226,8 +227,8 @@ fn wikimedia_api_url_matches_python() {
     }
 }
 
-/// Разбор ЖИВОГО ответа imageinfo даёт тот же CDN-URL, что Python: миниатюра
-/// `thumburl` приоритетнее оригинала `url`.
+/// Parsing a LIVE imageinfo response gives the same CDN URL as Python: the
+/// `thumburl` thumbnail beats the original `url`.
 #[test]
 fn wikimedia_live_response_matches_python() {
     let live: Value =
@@ -247,10 +248,11 @@ fn wikimedia_live_response_matches_python() {
     assert!(url.contains("KDE_neon_6_Breeze_Desktop_English"), "{url}");
 }
 
-/// Кривые входы разбора imageinfo — включая ЖИВОЙ ответ про отсутствующий файл
-/// (`missing: true`), пустой `imageinfo` (оригинал ронял IndexError), схему
-/// formatversion=1 (`pages` — объект, оригинал ронял KeyError), не-объект
-/// вместо ответа. Ни одного расхождения с починенным Python, ни одной паники.
+/// Malformed imageinfo inputs — including a LIVE response about a missing file
+/// (`missing: true`), an empty `imageinfo` (the original crashed with
+/// IndexError), the formatversion=1 schema (`pages` is an object, the original
+/// crashed with KeyError), a non-object instead of a response. Not a single
+/// divergence from the fixed Python, not a single panic.
 #[test]
 fn wikimedia_broken_responses_match_python() {
     let cases = fixture();
@@ -264,8 +266,8 @@ fn wikimedia_broken_responses_match_python() {
     }
 }
 
-/// HTML вместо JSON: до ядра доходит уже разобранный JSON, поэтому проверяем
-/// вторую линию — JSON-не-объект (и что настоящий HTML в JSON не превращается).
+/// HTML instead of JSON: the core receives already parsed JSON, so we check
+/// the second line — a JSON non-object (and that real HTML does not turn into JSON).
 #[test]
 fn wikimedia_html_instead_of_json() {
     let html = include_str!("golden/screenshots_wikimedia_html_raw.html");
@@ -280,9 +282,9 @@ fn wikimedia_html_instead_of_json() {
     }
 }
 
-/// Приёмка скачанного ответа: `Content-Type` и минимальный размер — те же
-/// решения и ТЕ ЖЕ ТЕКСТЫ причин, что у Python (они видны пользователю).
-/// В батарее есть живой случай «HTML-страница вместо картинки».
+/// Accepting the downloaded response: `Content-Type` and minimal size — the
+/// same decisions and THE SAME reason TEXTS as in Python (the user sees them).
+/// The battery has a live case «an HTML page instead of an image».
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn validate_image_response_matches_python() {
@@ -296,14 +298,14 @@ fn validate_image_response_matches_python() {
             None => assert_eq!(got, Ok(()), "ct={ct} len={len}"),
         }
     }
-    // None трактуется как пустая строка (Python: `content_type or ""`).
+    // None is treated as an empty string (Python: `content_type or ""`).
     assert_eq!(
         sc::validate_image_response(None, 4096),
         Err("Не изображение: ".to_string())
     );
 }
 
-/// Пауза перед повтором при HTTP 429.
+/// Pause before a retry on HTTP 429.
 #[test]
 fn retry_wait_matches_python() {
     for (attempt, want) in fixture()["retry_wait"].as_object().unwrap() {
@@ -312,7 +314,7 @@ fn retry_wait_matches_python() {
     }
 }
 
-/// Тег файла автоскачивания: первый URL — без суффикса, дальше `_1`, `_2`…
+/// Auto-download file tag: the first URL has no suffix, then `_1`, `_2`…
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn auto_download_tag_matches_python() {
@@ -327,13 +329,13 @@ fn auto_download_tag_matches_python() {
     }
 }
 
-/// План автоскачивания совпадает с тем, что реально поставил в очередь живой
-/// `auto_download_all` на подготовленном каталоге (часть DE закрыта полностью,
-/// часть частично, у одного файл меньше 100 байт и не считается).
+/// The auto-download plan matches what the live `auto_download_all` actually
+/// queued on a prepared directory (some DEs fully covered, some partially, one
+/// has a file below 100 bytes that does not count).
 ///
-/// Порядок задач в оригинале определяет пул потоков (недетерминирован), поэтому
-/// сверяется как множество; отдельно проверяется, что план ядра идёт в порядке
-/// `SCREENSHOT_URLS`.
+/// The task order in the original is defined by the thread pool
+/// (non-deterministic), so it is compared as a set; separately we check that
+/// the core plan follows the `SCREENSHOT_URLS` order.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn auto_download_plan_matches_python() {
@@ -369,7 +371,7 @@ fn auto_download_plan_matches_python() {
     assert_eq!(got, want, "набор задач автоскачивания");
     assert!(!want.is_empty(), "план не должен быть пустым");
 
-    // «Уже есть (N шт.)» — те же DE и те же числа.
+    // «Already present (N pcs.)» — the same DEs and the same numbers.
     let mut got_done: Vec<String> = plan
         .already_complete
         .iter()
@@ -385,7 +387,7 @@ fn auto_download_plan_matches_python() {
     want_done.sort();
     assert_eq!(got_done, want_done, "DE, у которых всё скачано");
 
-    // Порядок плана ядра — порядок SCREENSHOT_URLS (стабильный вывод).
+    // The core plan order is the SCREENSHOT_URLS order (stable output).
     let de_order: Vec<&str> = sc::SCREENSHOT_URLS.iter().map(|(k, _)| *k).collect();
     let mut last = 0usize;
     for t in &plan.tasks {
@@ -395,7 +397,7 @@ fn auto_download_plan_matches_python() {
     }
 }
 
-/// Кандидаты путей тега — 3 расширения в том же порядке, что у поиска снимка.
+/// Tag path candidates — 3 extensions in the same order as the screenshot lookup.
 #[test]
 fn tag_candidates_cover_all_exts() {
     assert_eq!(
@@ -406,23 +408,24 @@ fn tag_candidates_cover_all_exts() {
 }
 
 // ============================================================================
-// Скачивание снимка целиком (`download_screenshot_from_url`)
+// Downloading a screenshot in full (`download_screenshot_from_url`)
 // ============================================================================
 //
-// Раньше эти пять сценариев жили в roundtrip-тесте моста, где сеть подменялась
-// монипатчем `urllib.request.urlopen` — потому что сам HTTP делал Python. Ход
-// скачивания переехал в ядро (общие повторы, `net.rs`), значит и сверка ходит
-// здесь: тот же набор случаев, те же ЖИВЫЕ ответы Wikimedia из `golden/`.
+// These five scenarios used to live in the bridge roundtrip test, where the
+// network was replaced by monkeypatching `urllib.request.urlopen` — because
+// Python itself did the HTTP. The download flow moved into the core (shared
+// retries, `net.rs`), so the check lives here too: the same set of cases, the
+// same LIVE Wikimedia responses from `golden/`.
 
 use rexon_core::net::{LogLevel, NetError, NetIo};
 
-/// Заготовленный ответ на URL: тип содержимого и тело, либо код отказа.
+/// A prepared response for a URL: content type and body, or a refusal code.
 enum Answer {
     Body(&'static str, Vec<u8>),
     Status(u16),
 }
 
-/// Сеть по сценарию: отвечает по URL, считает запросы, паузы не выжидает.
+/// A scripted network: answers by URL, counts requests, does not wait out pauses.
 struct ScriptedNet {
     urls: Vec<String>,
     open: Option<(Vec<u8>, usize)>,
@@ -441,9 +444,9 @@ fn html() -> Vec<u8> {
     b"<!DOCTYPE html><html><body>oops</body></html>".repeat(20)
 }
 
-/// Ровно то же дерево решений, что у подменённого `urlopen` в прежнем
-/// roundtrip-тесте: прямой адрес по имени сценария, API Commons по имени
-/// файла, CDN-адрес из живого ответа.
+/// Exactly the same decision tree as the replaced `urlopen` in the former
+/// roundtrip test: the direct address by scenario name, the Commons API by
+/// file name, the CDN address from the live response.
 fn answer(url: &str) -> Answer {
     if let Some(de) = url.strip_prefix("direct://") {
         return match de {
@@ -542,15 +545,15 @@ impl NetIo for ScriptedNet {
     }
 }
 
-/// Итог сценария в том же виде, в каком его записывал прежний roundtrip:
-/// либо `Ok(Content-Type)`, либо текст причины отказа.
+/// The scenario outcome in the same form the former roundtrip recorded it:
+/// either `Ok(Content-Type)` or the refusal reason text.
 fn run(de: &str) -> (Result<String, String>, ScriptedNet) {
     let mut io = ScriptedNet::new();
     let got = sc::download_screenshot(&mut io, de, &format!("direct://{de}"));
     (got.map(|(_, ct)| ct), io)
 }
 
-/// Прямой адрес сразу отдаёт картинку — API не трогаем вовсе.
+/// The direct address returns the image right away — the API is not touched at all.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn download_direct_image() {
@@ -561,8 +564,8 @@ fn download_direct_image() {
     assert!(io.slept.is_empty(), "успех с первой попытки не ждёт");
 }
 
-/// Прямой адрес отдаёт HTML-страницу → разрешаем настоящий адрес через API
-/// Commons (ЖИВОЙ ответ) → картинка приезжает с CDN.
+/// The direct address returns an HTML page → we resolve the real address via
+/// the Commons API (LIVE response) → the image arrives from the CDN.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn download_falls_back_to_commons_api() {
@@ -572,12 +575,12 @@ fn download_falls_back_to_commons_api() {
     assert_eq!(io.urls.len(), 3, "прямой, API, CDN");
     assert!(io.urls[1].contains("api.php"));
     assert!(io.urls[2].starts_with("https://upload.wikimedia.org/"));
-    // «Не изображение» — не сетевой сбой: повторять его нечего.
+    // «Not an image» is not a network failure: there is nothing to retry.
     assert!(io.slept.is_empty(), "HTML вместо картинки повторять незачем");
 }
 
-/// API отвечает «файла на Commons нет» — до покупателя доезжает причина
-/// ПЕРВОЙ неудачи, а не подробности про API.
+/// The API answers «no such file on Commons» — the buyer gets the reason of
+/// the FIRST failure, not details about the API.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn download_reports_first_failure_when_commons_has_no_file() {
@@ -591,7 +594,7 @@ fn download_reports_first_failure_when_commons_has_no_file() {
     assert_eq!(io.urls.len(), 2, "прямой и API, CDN-адреса нет");
 }
 
-/// Картинка пришла, но слишком мелкая — тот же текст, что у оригинала.
+/// The image arrived, but is too small — the same text as in the original.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn download_rejects_too_small_image() {
@@ -600,8 +603,9 @@ fn download_rejects_too_small_image() {
     assert_eq!(got, Err("Не удалось загрузить скриншот: Файл слишком мал".to_string()));
 }
 
-/// 403 на прямом адресе не повторяется (доступ закрыт — второй раз будет то
-/// же), а ответ API оказался не объектом → отказ с причиной первой неудачи.
+/// 403 on the direct address is not retried (access denied — the second time
+/// will be the same), and the API response turned out not to be an object →
+/// refusal with the reason of the first failure.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn download_forbidden_is_not_retried() {
@@ -613,15 +617,16 @@ fn download_forbidden_is_not_retried() {
 }
 
 // ============================================================================
-// Язык интерфейса
+// Interface language
 // ============================================================================
 
 fn has_cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Подписи снимков и неопознанный стол по-английски — без русских букв;
-/// после английского предлога неопознанный стол — «your desktop».
+/// Screenshot labels and the unrecognised desktop in English — without
+/// Russian letters; after an English preposition the unrecognised desktop is
+/// «your desktop».
 #[test]
 fn english_screenshots_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -657,8 +662,8 @@ fn english_screenshots_have_no_russian() {
     assert_eq!(sc::place_de_name("Apps for %1", "%1", "KDE Plasma"), "Apps for KDE Plasma");
 }
 
-/// Те же подписи по-русски — дословно как до перевода на каталог (снимок
-/// `ca42e74^`), падежи неопознанного стола — прежние.
+/// The same labels in Russian — word for word as before moving to the catalog
+/// (snapshot `ca42e74^`), the cases of the unrecognised desktop are the former ones.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_screenshot_texts_as_before() {

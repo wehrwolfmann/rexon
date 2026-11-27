@@ -1,28 +1,28 @@
-//! Стенд живой проводки сверки и пересборки оформления AeroShell на подменах.
+//! Stand for the live wiring of the AeroShell decoration survey and rebuild on fakes.
 //!
-//! Сверки в `system_de_exec` гоняют исполнитель на подставном исполнителе в
-//! памяти. Здесь — ЖИВЫЕ `aeroshell_survey_live` и `rebuild_aeroshell_live`:
-//! настоящий запуск процессов ядра, настоящий читатель журнала сборки,
-//! настоящее чтение модуля эффекта с диска. Подменены только программы:
-//! фальшивые `pacman`, `yay` и `pkexec` лежат в каталоге стенда и пишут свои
-//! аргументы в журнал.
+//! The checks in `system_de_exec` run the executor on a fake in-memory
+//! executor. Here it is the LIVE `aeroshell_survey_live` and `rebuild_aeroshell_live`:
+//! real process launching by the core, the real build log reader, the real
+//! read of the effect module from disk. Only the programs are faked:
+//! fake `pacman`, `yay` and `pkexec` sit in the stand directory and write their
+//! arguments to a log.
 //!
-//! ⛔ На машине стоят настоящие paru и yay. Поэтому `PATH` стенда — ТОЛЬКО
-//! каталог подмен (плюс ссылка на безвредный `env`), и до первого запуска
-//! стенд сверяет: `pacman`, `yay`, `pkexec` и `env` находятся в нём, а `paru`,
-//! `makepkg`, `mkarchroot` и `sudo` не находятся вовсе. Не так — падает,
-//! ничего не запустив. `HOME` — приватный, во временном каталоге сборки.
+//! ⛔ The machine has real paru and yay. So the stand's `PATH` is ONLY the
+//! fakes directory (plus a link to the harmless `env`), and before the first run
+//! the stand verifies that `pacman`, `yay`, `pkexec` and `env` are found in it, while `paru`,
+//! `makepkg`, `mkarchroot` and `sudo` are not found at all. Otherwise it fails
+//! without launching anything. `HOME` is private, in the build's temporary directory.
 //!
-//! Файл отдельный намеренно: стенд меняет окружение процесса, а у каждого
-//! файла `tests/` свой процесс.
+//! The file is separate on purpose: the stand changes the process environment, and each
+//! `tests/` file gets its own process.
 //!
-//! Замок пакетного менеджера подменён: исполнитель ждёт lock-файл во
-//! временном каталоге стенда (`LiveDeOpsIo::with_pkg_lock_paths`), а не
-//! настоящий замок pacman. Раньше занятый живым `pacman -Syu` замок
-//! выключал стенд целиком.
+//! The package manager lock is faked: the executor waits for a lock file in the
+//! stand's temporary directory (`LiveDeOpsIo::with_pkg_lock_paths`), not the
+//! real pacman lock. Previously a lock held by a live `pacman -Syu`
+//! disabled the whole stand.
 //!
-//! Граница: семейство дистрибутива читается из настоящего `/etc/os-release`.
-//! Не Arch — стенд говорит «НЕ ПРОВЕРЕНО» и выходит.
+//! Boundary: the distro family is read from the real `/etc/os-release`.
+//! Not Arch — the stand says «НЕ ПРОВЕРЕНО» and exits.
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -69,7 +69,7 @@ fn write_script(path: &Path, body: &str) {
 }
 
 fn set_env(key: &str, value: &str) {
-    // Процесс стенда однопоточный на время подготовки: тест в файле один.
+    // The stand process is single-threaded during setup: there is one test in the file.
     #[allow(unused_unsafe)]
     unsafe {
         std::env::set_var(key, value);
@@ -112,11 +112,11 @@ fn live_aeroshell_on_fake_pacman_and_yay() {
     let yay_log = root.join("yay.log");
     let pkexec_log = root.join("pkexec.log");
     let scenario = root.join("yay.scenario");
-    // Подставной замок пакетного менеджера — вместо настоящего замка pacman.
+    // Fake package manager lock — instead of the real pacman lock.
     let io = dx::LiveDeOpsIo::with_pkg_lock_paths(vec![root.join("db.lck").display().to_string()]);
 
-    // Фальшивый pacman: стоит один пакет оформления, собранный под KWin
-    // 6.7.4, а KWin уже 6.7.5.
+    // Fake pacman: one decoration package is installed, built against KWin
+    // 6.7.4, while KWin is already 6.7.5.
     write_script(
         &bin.join("pacman"),
         &format!(
@@ -130,8 +130,8 @@ fn live_aeroshell_on_fake_pacman_and_yay() {
             so = effect.display()
         ),
     );
-    // Фальшивый yay: записать аргументы, сказать пару строк сборки и выйти
-    // по сценарию (`rc=…` в файле; 126 — окно пароля закрыли).
+    // Fake yay: record the arguments, print a couple of build lines and exit
+    // per the scenario (`rc=…` in a file; 126 — the password window was closed).
     write_script(
         &bin.join("yay"),
         &format!(
@@ -146,7 +146,7 @@ fn live_aeroshell_on_fake_pacman_and_yay() {
             scenario = scenario.display()
         ),
     );
-    // Фальшивый pkexec: нужен только как «есть чем спросить пароль».
+    // Fake pkexec: needed only as "something to ask for the password with".
     write_script(
         &bin.join("pkexec"),
         &format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 0\n", pkexec_log.display()),
@@ -159,7 +159,7 @@ fn live_aeroshell_on_fake_pacman_and_yay() {
     set_env("XDG_CONFIG_HOME", &home.join(".config").display().to_string());
     set_env("LANG", "ru_RU.UTF-8");
 
-    // ⛔ Защита: подмены — в каталоге стенда, настоящих сборщиков не видно.
+    // ⛔ Guard: the fakes are in the stand directory, the real builders are not visible.
     for prog in ["pacman", "yay", "pkexec", "env"] {
         let found = utils::which(prog, Some(&path)).unwrap_or_default();
         assert!(
@@ -175,7 +175,7 @@ fn live_aeroshell_on_fake_pacman_and_yay() {
         );
     }
 
-    // ── Сверка без пароля ──────────────────────────────────────────────
+    // ── Survey without a password ──────────────────────────────────────
     let report = dx::aeroshell_survey_live();
     assert!(report.needs_rebuild, "{report:?}");
     assert_eq!(report.stale, [PACKAGE]);
@@ -184,7 +184,7 @@ fn live_aeroshell_on_fake_pacman_and_yay() {
     assert!(read_log(&yay_log).is_empty(), "сверка запустила сборщик");
     assert!(read_log(&pkexec_log).is_empty(), "сверка спросила пароль");
 
-    // ── Пересборка удалась ─────────────────────────────────────────────
+    // ── Rebuild succeeded ──────────────────────────────────────────────
     std::fs::write(&scenario, "rc=0\n").unwrap();
     let (done, rec) = rebuild(&io, &report.rebuild);
     assert!(done.ok, "{done:?}");
@@ -196,17 +196,17 @@ fn live_aeroshell_on_fake_pacman_and_yay() {
             "-S --rebuild --diffmenu=false --noconfirm --sudo pkexec --sudoflags  {PACKAGE}"
         )]
     );
-    // Ход сборки пришёл живым читателем журнала, сборщик говорил по-английски.
+    // Build progress came through the live log reader; the builder spoke English.
     let lines = rec.messages(aeroshell::REBUILD_LINE_STAGE);
     assert_eq!(
         lines,
         [format!("==> Making package: {PACKAGE}"), "locale=C".to_string()]
     );
     assert_eq!(rec.messages("done"), [aeroshell::rebuild_done_message()]);
-    // Подставной замок свободен — ожидания чужой транзакции не было.
+    // The fake lock is free — there was no waiting on someone else's transaction.
     assert!(rec.messages(plan::PKG_LOCK_WAIT_STAGE).is_empty(), "стенд ждал замок");
 
-    // ── Отказ пароля ───────────────────────────────────────────────────
+    // ── Password refused ───────────────────────────────────────────────
     std::fs::write(&yay_log, "").unwrap();
     std::fs::write(&scenario, "rc=126\n").unwrap();
     let (denied, _) = rebuild(&io, &report.rebuild);
@@ -214,7 +214,7 @@ fn live_aeroshell_on_fake_pacman_and_yay() {
     assert_eq!(denied.message, aeroshell::rebuild_denied_message());
     assert_eq!(read_log(&yay_log).len(), 1);
 
-    // ── Сбой сборки ────────────────────────────────────────────────────
+    // ── Build failure ──────────────────────────────────────────────────
     std::fs::write(&scenario, "rc=1\n").unwrap();
     let (failed, _) = rebuild(&io, &report.rebuild);
     assert!(!failed.ok);

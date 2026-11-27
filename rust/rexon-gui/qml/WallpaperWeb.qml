@@ -1,36 +1,41 @@
-// Веб-обои Rexon: ПО ОКНУ НА КАЖДЫЙ ЭКРАН, один процесс на обоину.
+// Rexon web wallpapers: ONE WINDOW PER SCREEN, one process per wallpaper.
 //
-// Замена удалённого `rexon/web_wallpaper.py` (791 строка, три почти
-// одинаковых QML-файла: WebWallpaper.qml, WebWallpaperX11.qml,
-// OffscreenWebWallpaper.qml). Разница между ними была ровно в том, как окно
-// попадает на задний план; как только слой ставит Rust, а не присоединённое
-// свойство QML, эта разница из разметки уходит целиком — так же, как уже
-// сделано для видео (WallpaperVideo.qml). Правило #12: общий механизм
-// вместо копии на сценарий.
+// Replacement for the removed `rexon/web_wallpaper.py` (791 lines, three
+// nearly identical QML files: WebWallpaper.qml, WebWallpaperX11.qml,
+// OffscreenWebWallpaper.qml). The difference between them was exactly in
+// how the window gets into the background; once the layer is set by Rust
+// rather than by an attached QML property, that difference leaves the
+// markup entirely — just as already done for video (WallpaperVideo.qml).
+// Rule #12: a shared mechanism instead of a copy per scenario.
 //
-// ⚠️ Второй монитор (16.09.2026). До этого корнем файла было ОДНО окно
-// размером с тот экран, на который его положил композитор: при двух
-// мониторах обои получал ровно один. Теперь корень — держатель окон:
-// `Instantiator` заводит по окну на каждый подключённый экран и убирает
-// окна ушедших мониторов; появление и исчезновение монитора на ходу ловится
-// сигналом `Qt.application.onScreensChanged`. Устройство ровно то же, что у
-// видео-обоев, — и оно намеренно одно на оба режима.
+// Warning: second monitor (16.09.2026). Before this, the file root was ONE
+// window the size of the screen the compositor put it on: with two
+// monitors only one got a wallpaper. Now the root is a window holder: an
+// `Instantiator` creates a window for every connected screen and removes
+// the windows of monitors that went away; a monitor appearing and
+// disappearing on the fly is caught with the
+// `Qt.application.onScreensChanged` signal. The arrangement is exactly the
+// same as for video wallpapers — and it is deliberately one for both
+// modes.
 //
-// Сценарии (свойство `placement`, решает ядро `wallpaper::video_qml_file` —
-// решение одно на оба хоста):
-//   layer     — Wayland с wlr-layer-shell: слой BACKGROUND ставит Rust
-//               (WallpaperLayer из org.rexon.gui) ДО первого показа окна,
-//               выход поверхности называется явно (`pinScreen`);
-//   x11       — обычные окна по числу экранов, каждое встаёт в угол своего
-//               экрана, хост вешает им _NET_WM_WINDOW_TYPE_DESKTOP;
-//   offscreen — GNOME/Cinnamon на Wayland: layer-shell там нет, кадры окна
-//               уходят расширению оболочки через общий mmap-файл. Окно ОДНО
-//               и экранов не знает: раскладывает кадр по мониторам сама
-//               оболочка.
+// Scenarios (the `placement` property, decided by the core
+// `wallpaper::video_qml_file` — one decision for both hosts):
+//   layer     — Wayland with wlr-layer-shell: the BACKGROUND layer is set
+//               by Rust (WallpaperLayer from org.rexon.gui) BEFORE the
+//               window is first shown, and the surface output is named
+//               explicitly (`pinScreen`);
+//   x11       — ordinary windows, one per screen, each placed in the corner
+//               of its own screen; the host gives them
+//               _NET_WM_WINDOW_TYPE_DESKTOP;
+//   offscreen — GNOME/Cinnamon on Wayland: there is no layer-shell there,
+//               the window's frames go to the shell extension through a
+//               shared mmap file. There is ONE window and it knows nothing
+//               about screens: the shell itself lays the frame out over
+//               the monitors.
 //
-// Свойства приходят из Rust начальными свойствами корня
-// (QQmlApplicationEngine::setInitialProperties), имена, умолчания и весь
-// подмешиваемый JS считает ядро (`rexon-core::wallpaper`).
+// Properties arrive from Rust as initial properties of the root
+// (QQmlApplicationEngine::setInitialProperties); names, defaults and all
+// injected JS are computed by the core (`rexon-core::wallpaper`).
 pragma ComponentBehavior: Bound
 
 import QtQml
@@ -42,53 +47,53 @@ import org.rexon.gui 1.0
 QtObject {
     id: root
 
-    // ── Начальные свойства из хоста ───────────────────────────────────
-    /// Что показывать: file:// на локальный HTML либо http(s)-ссылка.
+    // ── Initial properties from the host ──────────────────────────────
+    /// What to show: a file:// to a local HTML file or an http(s) link.
     property url targetUrl
     property bool isWindowed: false
-    /// Размер кадра для офскрин-режима: окна на экране нет, и размер экрана
-    /// там брать неоткуда.
+    /// Frame size for offscreen mode: there is no window on screen, so there is
+    /// nowhere to take the screen size from.
     property int renderWidth: 1920
     property int renderHeight: 1080
     /// «layer» | «x11» | «offscreen».
     property string placement: "layer"
-    /// Общий файл кадров для расширения оболочки (офскрин-режим).
+    /// Shared frame file for the shell extension (offscreen mode).
     property string mmapPath: ""
-    /// Частота кадров потока — её задаёт расширение оболочки.
+    /// Stream frame rate — set by the shell extension.
     property int mmapFps: 30
-    /// Прогон самопроверки: окна закрываются сами, отчитавшись.
+    /// Self-test run: the windows close by themselves after reporting.
     property int selftestMs: 0
-    /// Заглушки глобальных функций Wallpaper Engine. Подмешиваются точкой
-    /// DocumentCreation — ДО первого скрипта самой страницы.
+    /// Stubs of the Wallpaper Engine global functions. Injected at the
+    /// DocumentCreation point — BEFORE the page's first script.
     property string polyfillJs: ""
-    /// Свойства обоев из project.json + первый тик звука. Точка Deferred —
-    /// после загрузки документа, когда обоина уже завела свой слушатель.
+    /// Wallpaper properties from project.json + the first audio tick. The
+    /// Deferred point — after the document has loaded, when the wallpaper has
+    /// already set up its listener.
     property string afterLoadJs: ""
 
-    // ── Экраны ────────────────────────────────────────────────────────
-    //
-    /// Экраны, на которых сейчас лежат обои. Пересобирается целиком, а не
-    /// правится по одному: обёртки `Qt.application.screens` живут по
-    /// НОМЕРУ и при смене конфигурации переназначаются на другие мониторы
-    /// — держать их по одной значило бы держать ссылку, которая молча
-    /// начала означать другое.
+    // ── Screens ───────────────────────────────────────────────────────
+    /// Screens the wallpaper currently lies on. Rebuilt as a whole rather than
+    /// edited one by one: the `Qt.application.screens` wrappers live by INDEX
+    /// and are reassigned to other monitors when the configuration changes —
+    /// holding them one by one would mean holding a reference that silently
+    /// started to mean something else.
     property var screenList: []
 
-    /// Кладём ли по окну на экран. Офскрин-режим и отладочное окно — нет:
-    /// там окно одно и экранам не принадлежит.
+    /// Whether we place one window per screen. Not in offscreen mode or for the
+    /// debug window: there is one window there and it belongs to no screen.
     readonly property bool perScreen: root.placement !== "offscreen" && !root.isWindowed
 
-    /// Модель окон. Непустая строка вместо экрана — «одно окно, экран ему
-    /// не назначается».
+    /// Window model. A non-empty string instead of a screen means "one window,
+    /// no screen is assigned to it".
     readonly property var surfaceModel: root.perScreen ? root.screenList : ["single"]
 
-    /// Окно основного экрана: поток кадров и отчёт самопроверки — его.
-    /// Основной экран в Qt идёт первым в `screens()`.
+    /// The primary screen's window: the frame stream and the self-test report
+    /// belong to it. The primary screen comes first in Qt's `screens()`.
     readonly property var primarySurface: root.surfaces.count > 0
                                           ? root.surfaces.objectAt(0)
                                           : null
 
-    // Сводные признаки для самопроверки — с окна основного экрана.
+    // Summary indicators for the self-test — from the primary screen's window.
     readonly property bool layerApplied: root.primarySurface
                                          ? root.primarySurface.layerApplied : false
     readonly property bool x11Applied: root.primarySurface
@@ -102,27 +107,29 @@ QtObject {
     readonly property string loadError: root.primarySurface
                                         ? root.primarySurface.loadError : ""
 
-    // Настройщик слоя на Rust — тот же объект, что у видео-обоев, и ОДИН на
-    // все окна.
+    // The Rust layer configurator — the same object as for video wallpapers,
+    // and ONE for all windows.
     property WallpaperLayer layerShell: WallpaperLayer {
         scope: "rexon-web-wallpaper"
     }
 
-    // Остальные два способа пристроить окно (xprop на X11 и поток кадров в
-    // общий файл) — тоже общие с видео-режимом.
+    // The other two ways to place the window (xprop on X11 and the frame
+    // stream into a shared file) are also shared with the video mode.
     property WallpaperPlacement placer: WallpaperPlacement {}
 
-    // Живое состояние звука и паузы — тот же надзиратель, что у видео и
-    // Flash: настройки «Обоев», окна поверх, батарея, игра, замок и чужой
-    // сеанс. Решение целиком считает Rust (src/wallpaper_audio.rs и
-    // rexon-core::wallpaper_audio); здесь только доставка его в страницу.
-    // ⚠️ Объект ОДИН на процесс, а не на окно: иначе каждый монитор завёл бы
-    // свой поток опроса.
+    // Live audio and pause state — the same supervisor as for video and
+    // Flash: the "Wallpapers" settings, windows on top, battery, a game, the
+    // lock screen and a foreign session. Rust computes the whole decision
+    // (src/wallpaper_audio.rs and rexon-core::wallpaper_audio); here we only
+    // deliver it to the page.
+    // Warning: there is ONE object per process, not per window: otherwise
+    // every monitor would start its own polling thread.
     property WallpaperAudio audio: WallpaperAudio {}
     property bool audioStarted: false
 
-    // Сердцебиение для сторожа живых обоев Rexon — то же, что у видео-обоев:
-    // попросить кадр у каждого окна и отметиться (`rexon-core::renderer_watch`).
+    // Heartbeat for the Rexon live wallpaper watchdog — the same as for video
+    // wallpapers: request a frame from every window and check in
+    // (`rexon-core::renderer_watch`).
     property Timer heartbeat: Timer {
         interval: root.placer.heartbeatIntervalMs()
         running: true
@@ -138,7 +145,7 @@ QtObject {
         }
     }
 
-    // ── Окна обоев ────────────────────────────────────────────────────
+    // ── Wallpaper windows ─────────────────────────────────────────────
     property Instantiator surfaces: Instantiator {
         id: surfaces
         model: root.surfaceModel
@@ -149,38 +156,36 @@ QtObject {
             required property int index
             required property var modelData
 
-            /// Экран этого окна; null — окно экрану не принадлежит
-            /// (офскрин-режим, отладочное окно).
+            /// This window's screen; null means the window belongs to no screen
+            /// (offscreen mode, the debug window).
             readonly property var info: root.perScreen ? surface.modelData : null
             readonly property bool primary: surface.index === 0
 
             property bool layerApplied: false
             property bool x11Applied: false
             property bool mmapStarted: false
-            /// Chromium уже знает размер окна просмотра — можно грузить
-            /// страницу.
+            /// Chromium already knows the viewport size — the page can be loaded.
             ///
-            /// ⚠️ В режиме потока кадров сцену рисует QQuickRenderControl без
-            /// окна, и размер доходит до Chromium не сразу. Замер: страница,
-            /// которая один раз при разборе ставит холсту
-            /// `canvas.width = innerWidth` (так делает большинство
-            /// WebGL-обоев), видела `innerWidth=0` — холст 0×0, кадр чёрный,
-            /// хотя через секунду вид был 1920×1080. Поэтому сначала
-            /// `about:blank`, и настоящий адрес — когда сама
-            /// страница-заглушка видит ненулевой `innerWidth × innerHeight`
-            /// (обход из QTBUG-132776: дождаться компоновщика Chromium, а не
-            /// только загрузки).
+            /// Warning: in frame stream mode the scene is drawn by QQuickRenderControl
+            /// without a window, and the size does not reach Chromium at once.
+            /// Measurement: a page that sets `canvas.width = innerWidth` once while
+            /// parsing (most WebGL wallpapers do this) saw `innerWidth=0` — a 0×0
+            /// canvas and a black frame, although a second later the view was
+            /// 1920×1080. So `about:blank` comes first, and the real address only when
+            /// the stub page itself sees a non-zero `innerWidth × innerHeight` (the
+            /// workaround from QTBUG-132776: wait for the Chromium compositor, not just
+            /// for loading).
             property bool viewportReady: root.placement !== "offscreen"
-            /// Итог загрузки страницы: 0 — ещё не пришёл.
+            /// Page load result: 0 means it has not arrived yet.
             property int loadStatus: 0
             property string loadError: ""
             property alias view: view
 
-            /// Довести решение надзирателя (пауза, громкость) до страницы.
-            /// Глушение — не здесь, а свойством `audioMuted` ниже: оно
-            /// накрывает и Web Audio, до которого громкость не дотягивается.
-            /// Пока на месте страницы заглушка `about:blank`, звать некого —
-            /// решение уедет, когда страница загрузится.
+            /// Deliver the supervisor's decision (pause, volume) to the page. Muting is
+            /// not done here but by the `audioMuted` property below: it also covers Web
+            /// Audio, which the volume does not reach. While the `about:blank` stub is
+            /// in place of the page there is nobody to call — the decision goes out
+            /// when the page loads.
             function syncPage() {
                 if (surface.viewportReady)
                     view.runJavaScript(root.audio.webStateScript());
@@ -192,17 +197,17 @@ QtObject {
                 function onVolumeChanged() { surface.syncPage(); }
             }
 
-            // ⚠️ Порядок обязателен: окно создаётся НЕВИДИМЫМ, слой ставится
-            // в Component.onCompleted, и только потом visible = true.
-            // Показанное окно уже стало обычным xdg_toplevel и в слой не
-            // переселится.
+            // Warning: the order is mandatory: the window is created INVISIBLE, the
+            // layer is set in Component.onCompleted, and only then visible = true. A
+            // shown window has already become an ordinary xdg_toplevel and will not
+            // move into the layer.
             visible: false
             color: "black"
             flags: root.isWindowed ? Qt.Window : Qt.FramelessWindowHint
             title: root.isWindowed ? qsTranslate("rexon", "Rexon — web wallpaper") : ""
 
-            // ⚠️ Экран назначается ДО показа: и слой (LayerShellQt читает
-            // QWindow::screen()), и X11 берут его именно там.
+            // Warning: the screen is assigned BEFORE showing: both the layer
+            // (LayerShellQt reads QWindow::screen()) and X11 take it from there.
             screen: surface.info ? surface.info : null
 
             width: surface.info
@@ -219,8 +224,9 @@ QtObject {
             Component.onCompleted: {
                 if (root.placement === "layer") {
                     if (root.isWindowed) {
-                        // Отладочное окно: поверх остальных, без якорей и без
-                        // резервирования места — иначе его не видно за обоями.
+                        // Debug window: on top of the others, without anchors and without
+                        // reserving space — otherwise it would not be visible behind the
+                        // wallpaper.
                         root.layerShell.layer = 2;                  // LayerTop
                         root.layerShell.anchors = 0;                // AnchorNone
                         root.layerShell.exclusionZone = 0;
@@ -229,38 +235,38 @@ QtObject {
                     } else {
                         surface.layerApplied =
                             root.layerShell.applyWallpaperLayer(surface);
-                        // ⚠️ Выход поверхности называется ЯВНО. Без этого
-                        // композитор вправе положить все окна обоев на один
-                        // монитор, и второй остался бы пустым.
+                        // Warning: the surface output is named EXPLICITLY. Without this the
+                        // compositor is free to put all wallpaper windows on one monitor, and the
+                        // second would stay empty.
                         if (surface.layerApplied && !root.layerShell.pinScreen(surface))
                             console.warn("REXON-WEB-WARN обои не прицелились на экран "
                                          + (surface.info ? surface.info.name : "?"));
                     }
                 } else if (root.placement === "x11" && surface.info) {
-                    // На X11 окно надо поставить в угол своего экрана руками:
-                    // без этого все окна обоев легли бы на основной монитор.
+                    // On X11 the window has to be placed in the corner of its screen by hand:
+                    // without this all wallpaper windows would land on the primary monitor.
                     surface.x = surface.info.virtualX;
                     surface.y = surface.info.virtualY;
                 }
-                // ⚠️ Тип «рабочий стол» и состояние — ДО показа: тип оконный
-                // менеджер читает при показе, а состояние показанного окна
-                // свойством уже не меняют (EWMH). После показа — просьбы
-                // корневому окну (x11Settle).
+                // Warning: the "desktop" type and the state are set BEFORE showing: the
+                // window manager reads the type when the window is shown, and the state of
+                // a shown window is no longer changed through the property (EWMH). After
+                // showing — requests to the root window (x11Settle).
                 if (root.placement === "x11" && !root.isWindowed
                         && !root.placer.prepareX11Desktop(surface))
                     console.warn("REXON-WEB-WARN окно X11 не подготовлено к роли рабочего стола");
-                // ⚠️ В режиме потока кадров окно НЕ показывается никогда: хост
-                // живёт на настоящей платформе сеанса (ради видеокарты), и
-                // показанное окно на Mutter вышло бы поверх рабочего стола.
-                // Сцену рисует QQuickRenderControl, которому шим отдаёт
-                // содержимое этого окна.
+                // Warning: in frame stream mode the window is NEVER shown: the host lives
+                // on the session's real platform (for the sake of the GPU), and a shown
+                // window on Mutter would appear on top of the desktop. The scene is drawn
+                // by QQuickRenderControl, to which the shim hands the content of this
+                // window.
                 if (root.placement !== "offscreen")
                     surface.visible = true;
 
                 if (root.placement === "offscreen") {
-                    // Кадры уходят расширению оболочки (GNOME/Cinnamon на
-                    // Wayland — layer-shell там нет). null вместо VideoOutput
-                    // — кадр рисует сцена Qt Quick без окна, на видеокарте.
+                    // Frames go to the shell extension (GNOME/Cinnamon on Wayland — there is
+                    // no layer-shell there). null instead of a VideoOutput — the frame is
+                    // drawn by a windowless Qt Quick scene, on the GPU.
                     surface.mmapStarted = root.placer.startMmapStream(
                         surface, null, root.mmapPath, root.renderWidth,
                         root.renderHeight, root.mmapFps);
@@ -268,16 +274,17 @@ QtObject {
                         console.warn("REXON-WEB-ERROR поток кадров не запустился: "
                                      + root.mmapPath);
                 } else if (root.placement === "x11" && !root.isWindowed) {
-                    // После показа — просьбы EWMH корневому окну: так
-                    // меняют состояние уже показанного окна.
+                    // After showing — EWMH requests to the root window: that is how the state
+                    // of an already shown window is changed.
                     x11Settle.start();
                 }
             }
 
-            // Первый кадр загруженной страницы на экране: замер ожидания и,
-            // на Cinnamon с layer-shell, перестановка службы фона под нас —
-            // по событию, а не выдержкой (до загрузки окно чёрное). Итог
-            // загрузки — любой: и у неудачной страницы окно уже наверху.
+            // First frame of the loaded page on screen: wait measurement and, on
+            // Cinnamon with layer-shell, moving the background service under us — on
+            // the event rather than after a delay (before loading the window is
+            // black). Any load result counts: even with a failed page the window is
+            // already on top.
             property bool firstFrameReported: false
             Connections {
                 target: surface
@@ -294,34 +301,33 @@ QtObject {
                 id: view
                 anchors.fill: parent
                 url: surface.viewportReady ? root.targetUrl : "about:blank"
-                // Чёрный, а не прозрачный: у обоины может не быть своего фона,
-                // и прозрачное окно на слое показало бы то, что под ним, — то
-                // есть прежние обои. Совпадает с `color` окна, поэтому шва не
-                // видно.
+                // Black, not transparent: a wallpaper may have no background of its own,
+                // and a transparent window on the layer would show what is underneath —
+                // that is, the previous wallpaper. It matches the window's `color`, so no
+                // seam is visible.
                 backgroundColor: "black"
-                // Звучит только окно основного экрана — как у видео: окно на
-                // каждом мониторе держит свою копию страницы, и без этого
-                // обои зазвучали бы столько раз, сколько мониторов. Звук
-                // гасится и по решению надзирателя (настройка «Звук обоев»,
-                // чужой звук, пауза).
+                // Only the primary screen's window plays sound — as with video: the
+                // window on each monitor holds its own copy of the page, and without this
+                // the wallpaper would sound as many times as there are monitors. Sound is
+                // also muted by the supervisor's decision (the "Wallpaper sound" setting,
+                // foreign audio, pause).
                 audioMuted: !(surface.primary && root.audio.audioOn)
 
-                // ⚠️ Заглушки WE ставятся сценарием, а не вызовом
-                // runJavaScript после загрузки, и это не придирка. Обои
-                // Мастерской проверяют
+                // Warning: the WE stubs are installed as a script, not with a
+                // runJavaScript call after loading, and this is not nitpicking. Workshop
+                // wallpapers check
                 // `typeof window.wallpaperRegisterAudioListener === 'function'`
-                // СИНХРОННО при разборе HTML: к моменту, когда страница
-                // загрузилась и можно звать runJavaScript, их скрипт уже
-                // оборвался. Точка DocumentCreation — единственная, которая
-                // успевает.
+                // SYNCHRONOUSLY while the HTML is parsed: by the time the page has loaded
+                // and runJavaScript can be called, their script has already aborted. The
+                // DocumentCreation point is the only one that is in time.
                 //
-                // Тип сценария передаётся объектом, а не элементом
-                // `WebEngineScript`: в Qt 6 `QWebEngineScript` — значимый тип,
-                // и в QML он объявлен строчной буквой (`webEngineScript`),
-                // элементом его не создать. Числа точек внедрения оттуда же:
-                // Deferred=0, DocumentReady=1, DocumentCreation=2; мир 0 —
-                // главный, тот же, в котором живёт сама страница (в
-                // изолированном мире `window` был бы чужой).
+                // The script type is passed as an object, not as a `WebEngineScript`
+                // element: in Qt 6 `QWebEngineScript` is a value type, and in QML it is
+                // declared with a lowercase letter (`webEngineScript`), so it cannot be
+                // created as an element. The injection point numbers come from there too:
+                // Deferred=0, DocumentReady=1, DocumentCreation=2; world 0 is the main
+                // world, the same one the page itself lives in (in an isolated world
+                // `window` would be a different one).
                 Component.onCompleted: {
                     var scripts = [];
                     if (root.polyfillJs !== "")
@@ -345,9 +351,8 @@ QtObject {
                 }
 
                 onLoadingChanged: (info) => {
-                    // Итог заглушки `about:blank` — не итог обоев:
-                    // самопроверка иначе приняла бы пустую страницу за
-                    // загруженную.
+                    // The result of the `about:blank` stub is not the wallpaper's result:
+                    // otherwise the self-test would take an empty page for a loaded one.
                     if (!surface.viewportReady)
                         return;
                     surface.loadStatus = info.status;
@@ -355,44 +360,43 @@ QtObject {
                         surface.syncPage();
                     if (info.status === WebEngineView.LoadFailedStatus) {
                         surface.loadError = info.errorString;
-                        // Молчаливый чёрный экран человеку ничего не объясняет
-                        // (правило #13): что именно не загрузилось — в журнал.
+                        // A silent black screen explains nothing to the user (rule #13): what
+                        // exactly failed to load goes to the log.
                         console.warn("REXON-WEB-ERROR страница не загрузилась: "
                                      + info.url + " — " + info.errorString);
                     }
                 }
 
                 onJavaScriptConsoleMessage: (level, message, lineNumber, sourceID) => {
-                    // Жалобы самой обоины видны только так: своего окна
-                    // разработчика у обоев нет, а без них «обои чёрные»
-                    // неотличимо от «обои упали на второй строке своего
-                    // скрипта». Печатает только окно основного экрана: окон
-                    // столько, сколько мониторов, и одна и та же жалоба в
-                    // журнале несколько раз читается как несколько разных бед.
+                    // This is the only way to see the wallpaper's own complaints: wallpapers
+                    // have no developer window of their own, and without them "the wallpaper
+                    // is black" is indistinguishable from "the wallpaper crashed on the
+                    // second line of its script". Only the primary screen's window prints:
+                    // there are as many windows as monitors, and the same complaint appearing
+                    // several times in the log reads as several different problems.
                     if (surface.primary && level >= WebEngineView.WarningMessageLevel)
                         console.warn("REXON-WEB-JS " + sourceID + ":" + lineNumber
                                      + " " + message);
                 }
             }
 
-            // Esc / Q — выход. Полезно в отладочном окне; на слое обоев
-            // клавиатуры у окна нет вовсе, так что здесь это ни на что не
-            // влияет.
+            // Esc / Q — exit. Useful in the debug window; on the wallpaper layer the
+            // window has no keyboard at all, so here it has no effect.
             Shortcut {
                 sequences: ["Escape", "Q"]
                 onActivated: Qt.quit()
             }
 
-            // Отладочное окно закрывают крестиком — и это должно значить
-            // «выйти». Приложение переживает закрытие последнего окна
-            // намеренно (отключённый монитор не должен убивать обои), потому
-            // выход здесь называется вслух.
+            // The debug window is closed with the cross — and that must mean "quit".
+            // The application survives closing its last window on purpose (a
+            // disconnected monitor must not kill the wallpaper), so quitting is
+            // stated explicitly here.
             onClosing: {
                 if (root.isWindowed)
                     Qt.quit();
             }
 
-            // Опрос заглушки: знает ли Chromium размер окна просмотра.
+            // Polling the stub: does Chromium know the viewport size.
             Timer {
                 interval: 50
                 running: !surface.viewportReady
@@ -403,8 +407,8 @@ QtObject {
                 })
             }
 
-            // Размер от Chromium не пришёл — грузим всё равно: пустые обои
-            // хуже, чем обои, у которых холст мог встать по старому размеру.
+            // The size did not arrive from Chromium — load anyway: an empty wallpaper
+            // is worse than one whose canvas may have taken the old size.
             Timer {
                 interval: 3000
                 running: !surface.viewportReady
@@ -423,10 +427,11 @@ QtObject {
                 onTriggered: surface.x11Applied = root.placer.applyX11Desktop(surface)
             }
 
-            // Порядок относительно окна значков стола: окно значков
-            // пересоздаётся (перезапуск Caja, смена её настроек) и встаёт
-            // сверху — сверка ставит обои обратно (над непрозрачными
-            // значками, под сквозными). Стоит где надо — ничего не делает.
+            // Order relative to the desktop icons window: the icons window gets
+            // recreated (Caja restart, a change of its settings) and goes on top —
+            // the reconciliation puts the wallpaper back (above opaque icons, below
+            // see-through ones). If it already stands where it should, nothing is
+            // done.
             Timer {
                 interval: 2000
                 repeat: true
@@ -436,20 +441,21 @@ QtObject {
         }
     }
 
-    // ── Смена конфигурации мониторов ──────────────────────────────────
+    // ── Monitor configuration change ──────────────────────────────────
     property Connections screenWatch: Connections {
         target: Qt.application
         function onScreensChanged() { settle.restart(); }
     }
 
-    /// Пауза перед пересборкой окон.
+    /// Pause before rebuilding the windows.
     ///
-    /// ⚠️ Не украшение: перенастройка мониторов приходит НЕ одним событием
-    /// — композитор гасит выход, меняет режим и зажигает снова, и каждый шаг
-    /// шлёт свой `screensChanged`. Без выдержки хост пересоздавал бы все
-    /// окна обоев по нескольку раз подряд — а здесь каждое окно стоит
-    /// поднятого Chromium, то есть жёг бы процессор ровно тогда, когда
-    /// человеку и так не до того (правило #13).
+    /// Warning: not decoration: a monitor reconfiguration does NOT arrive as
+    /// one event — the compositor turns an output off, changes the mode and
+    /// turns it on again, and each step sends its own `screensChanged`. Without
+    /// the delay the host would recreate all wallpaper windows several times
+    /// in a row — and here each window costs a running Chromium, i.e. it would
+    /// burn the CPU exactly when the user has other things on their mind
+    /// (rule #13).
     property Timer settle: Timer {
         id: settle
         interval: 400
@@ -457,7 +463,7 @@ QtObject {
         onTriggered: root.rebuildScreens()
     }
 
-    /// Перечитать экраны заново. Целиком, а не по одному: см. `screenList`.
+    /// Re-read the screens. As a whole, not one by one: see `screenList`.
     function rebuildScreens() {
         var all = Qt.application.screens;
         var list = [];
@@ -467,8 +473,8 @@ QtObject {
         console.log("REXON-WEB-SCREENS экранов=" + list.length
                     + " имена=" + root.screenNames());
 
-        // Наблюдение поднимается один раз и только когда есть с чем
-        // сравнивать размер чужого окна.
+        // Watching is started once and only when there is something to compare a
+        // foreign window's size against.
         if (!root.audioStarted) {
             var size = root.audioProbeSize();
             if (size[0] > 0 && size[1] > 0) {
@@ -478,10 +484,10 @@ QtObject {
         }
     }
 
-    /// Размер экрана, с которым надзиратель сравнивает чужие окна: САМЫЙ
-    /// МАЛЕНЬКИЙ из экранов — то же правило и та же причина, что у видео
-    /// (`WallpaperVideo.qml`, `audioProbeSize`): приглушиться зря — мелочь,
-    /// играть поверх кино — беда.
+    /// Screen size the supervisor compares foreign windows against: the
+    /// SMALLEST of the screens — the same rule for the same reason as for video
+    /// (`WallpaperVideo.qml`, `audioProbeSize`): muting needlessly is a trifle,
+    /// playing over a film is a disaster.
     function audioProbeSize() {
         if (root.placement === "offscreen")
             return [root.renderWidth, root.renderHeight];
@@ -497,7 +503,7 @@ QtObject {
         return [Math.max(w, 0), Math.max(h, 0)];
     }
 
-    /// Имена экранов через запятую — для журнала.
+    /// Comma-separated screen names — for the log.
     function screenNames() {
         var names = [];
         for (var i = 0; i < root.screenList.length; ++i)
@@ -505,11 +511,11 @@ QtObject {
         return names.length > 0 ? names.join(",") : "нет";
     }
 
-    /// Имена экранов, на которые РЕАЛЬНО легли окна, — по одному на окно.
+    /// Names of the screens the windows ACTUALLY landed on — one per window.
     ///
-    /// Спрашивается у самой поверхности слоя, а не у списка экранов: «экранов
-    /// два» и «обои легли на оба» — разные утверждения, и первое годами
-    /// выглядело как второе.
+    /// Asked from the layer surface itself, not from the screen list: "there
+    /// are two screens" and "the wallpaper landed on both" are different
+    /// statements, and for years the first looked like the second.
     function surfaceScreens() {
         var out = [];
         for (var i = 0; i < root.surfaces.count; ++i) {
@@ -526,7 +532,8 @@ QtObject {
 
     Component.onCompleted: {
         root.rebuildScreens();
-        // Офскрин-режим экранов не знает, и ждать их появления ему незачем.
+        // Offscreen mode knows nothing about screens and has no reason to wait
+        // for them to appear.
         if (!root.audioStarted) {
             var size = root.audioProbeSize();
             root.audioStarted = true;
@@ -536,21 +543,22 @@ QtObject {
             selftest.start();
     }
 
-    // ── Самопроверка ──────────────────────────────────────────────────
+    // ── Self-test ─────────────────────────────────────────────────────
     //
-    // Отчёт печатается ОДНОЙ строкой и разбирается родительской половиной
-    // стенда: «окно поднялось» и «страница загрузилась» — разные
-    // утверждения, и молчание не должно выглядеть успехом.
+    // The report is printed as ONE line and parsed by the parent half of the
+    // test bench: "the window came up" and "the page loaded" are different
+    // statements, and silence must not look like success.
     //
-    // ⚠️ Проверяется то, что решает исход, а не то, что удобно спросить:
-    // `loadStatus` у страницы с битой ссылкой и у чёрной, но целой страницы
-    // разный, а вот `loadProgress` у обеих доходит до 100. И отдельно —
-    // прижилась ли заглушка WE: без неё обоина Мастерской обрывается на
-    // первой же проверке, и внешне это тот же чёрный экран.
+    // Warning: what is checked is what decides the outcome, not what is
+    // convenient to ask: `loadStatus` differs between a page with a broken
+    // link and a black but intact page, while `loadProgress` reaches 100 for
+    // both. And separately — whether the WE stub took hold: without it a
+    // Workshop wallpaper aborts at its very first check, and outwardly this
+    // is the same black screen.
     //
-    // ⚠️ `screens` и `windows` — тоже не украшение: «обои поднялись» и
-    // «обои легли на ВСЕ мониторы» — разные утверждения, и первое годами
-    // выглядело как второе.
+    // Warning: `screens` and `windows` are not decoration either: "the
+    // wallpaper came up" and "the wallpaper landed on ALL monitors" are
+    // different statements, and for years the first looked like the second.
     property Timer selftest: Timer {
         id: selftest
         interval: root.selftestMs
@@ -598,17 +606,17 @@ QtObject {
                                 + " audioMuted=" + top.view.audioMuted
                                 + " probe=" + probe);
                     top.visible = false;
-                    // Код 5 — «страница не загрузилась». Приговор по итогу
-                    // загрузки, а не по проценту: у битой ссылки процент
-                    // тоже доходит до ста.
+                    // Code 5 — "the page did not load". The verdict is based on the load
+                    // result, not on the percentage: for a broken link the percentage reaches
+                    // a hundred too.
                     if (root.loadStatus !== WebEngineView.LoadSucceededStatus) {
                         Qt.exit(5);
                         return;
                     }
-                    // Код 3 — «поток кадров не пошёл». Чёрные кадры прежде
-                    // считались успехом (WebGL-обои на offscreen), поэтому
-                    // кадр во всю площадь чёрный — тоже провал: расширение
-                    // показало бы человеку чёрный экран.
+                    // Code 3 — "the frame stream did not start". Black frames used to count
+                    // as success (WebGL wallpapers on offscreen), so a frame that is black over
+                    // its whole area is also a failure: the extension would show the user a
+                    // black screen.
                     if (root.placement === "offscreen" && (frames <= 0 || lit <= 0)) {
                         console.warn("REXON-WEB-ERROR кадры потока чёрные или их нет: кадров="
                                      + frames + " не-чёрных=" + lit + "‰");

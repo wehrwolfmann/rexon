@@ -1,20 +1,20 @@
-//! Стенд разделов «Анимация» и «Кнопки заголовка окна»: применить настройку
-//! тем же вызовом ядра, что кнопка (`animations::apply_change`,
+//! Bench of the «Animation» and «Window title bar buttons» sections: apply a setting
+//! with the same core call as the button (`animations::apply_change`,
 //! `window_buttons::apply_preset` / `apply_choice` / `apply_border` /
-//! `apply_defaults`), и больше ничего. Читать результат — родным читателем окружения снаружи
-//! (`tools/de_matrix_stand/inner_look.sh` через `run_de.sh`).
+//! `apply_defaults`), and nothing else. The result is read with the environment's native reader from outside
+//! (`tools/de_matrix_stand/inner_look.sh` via `run_de.sh`).
 //!
-//! ⛔ Запускать ТОЛЬКО с приватными HOME / XDG_CONFIG_HOME / XDG_RUNTIME_DIR
-//! и своей шиной — как `de_matrix_stand` (см. `tools/de_matrix_stand/run_de.sh`).
+//! ⛔ Run ONLY with private HOME / XDG_CONFIG_HOME / XDG_RUNTIME_DIR
+//! and its own bus — like `de_matrix_stand` (see `tools/de_matrix_stand/run_de.sh`).
 //!
-//!   anim-state | anim-enabled true|false | anim-speed <множитель> |
-//!   anim-row <строка>=<значение> | anim-defaults
-//!   buttons-state | buttons <right|left>:<кнопки,через,запятую> |
-//!   buttons-sides <левые,кнопки>:<правые,кнопки> |
-//!   border <вариант> | buttons-defaults
+//!   anim-state | anim-enabled true|false | anim-speed <multiplier> |
+//!   anim-row <row>=<value> | anim-defaults
+//!   buttons-state | buttons <right|left>:<buttons,comma,separated> |
+//!   buttons-sides <left,buttons>:<right,buttons> |
+//!   border <variant> | buttons-defaults
 //!   widgets-state | widgets-menu true|false | widgets-buttons true|false |
-//!   widgets-toolbar icons|text|beside|under | widgets-other <то же> |
-//!   widgets-defaults («Значки и панели инструментов», `app_widgets`)
+//!   widgets-toolbar icons|text|beside|under | widgets-other <same> |
+//!   widgets-defaults («Icons and toolbars», `app_widgets`)
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -24,7 +24,7 @@ fn main() {
     println!("ИТОГ ok={ok} {message}");
 }
 
-// ── «Анимация» и «Кнопки заголовка окна»: те же вызовы ядра, что у кнопок ──
+// ── «Animation» and «Window title bar buttons»: the same core calls as the buttons ──
 
 fn look(action: &str, value: &str) -> (bool, String) {
     use rexon_core::animations::{self as anim, AnimChange, LookCtx, SystemIo};
@@ -66,7 +66,7 @@ fn look(action: &str, value: &str) -> (bool, String) {
         "widgets-defaults" => aw::apply_defaults(&io, &ctx),
         other => return (false, format!("незнакомое действие {other}")),
     };
-    // Пустой ответ — изменять было нечего (повтор того же значения).
+    // An empty answer — there was nothing to change (the same value repeated).
     let applied = [
         rexon_core::i18n::tr("Animation settings applied."),
         rexon_core::i18n::tr("Title bar settings applied."),

@@ -1,14 +1,16 @@
-// Выбор файла у товара магазина, когда файлов несколько.
+// Choosing a file of a store item when there are several files.
 //
-// Какой файл берётся автоматически, решает ядро (`ocs::file_choices`, то же
-// правило, что у кнопки плитки); строки приходят готовыми JSON-массивом
-// `[{name, meta, chosen}]` из `detailFiles`. Здесь только показ и выбор:
-// по умолчанию выбран автоматический, щелчок по строке выбирает другой, и
-// главная кнопка панели ставит выбранный (`differs` — выбран не
-// автоматический). Файл один — блока нет.
+// Which file is taken automatically is decided by the core
+// (`ocs::file_choices`, the same rule as for the tile button); rows arrive
+// ready as a JSON array `[{name, meta, chosen}]` from `detailFiles`. Here
+// we only show and choose: by default the automatic one is selected, a
+// click on a row selects another one, and the panel's main button installs
+// the selected one (`differs` means a non-automatic one is selected). With
+// one file there is no block.
 //
-// Отдельным компонентом — ради стенда `LiveModelsProbe.qml` (сценарий
-// «storefiles»): панель деталей целиком без живого магазина не поднять.
+// A separate component for the sake of the `LiveModelsProbe.qml` test bench
+// (scenario "storefiles"): the whole details panel cannot be brought up
+// without a live store.
 
 pragma ComponentBehavior: Bound
 
@@ -18,9 +20,9 @@ import QtQuick.Layouts
 ColumnLayout {
     id: block
 
-    /// Палитра скина; без неё — безопасные цвета steam_dark.
+    /// Skin palette; without it — safe steam_dark colours.
     property var pal: null
-    /// Строки ядра (JSON-массив).
+    /// Core rows (a JSON array).
     property string filesJson: "[]"
     property string title: ""
     property string hint: ""
@@ -28,7 +30,7 @@ ColumnLayout {
 
     readonly property var files: block.parse(block.filesJson)
     readonly property string autoName: block.autoOf(block.files)
-    /// Имя выбранного файла — его страница отдаёт в `installById`.
+    /// Name of the selected file — the page passes it to `installById`.
     property string selectedName: ""
     readonly property bool differs: block.selectedName !== ""
                                     && block.selectedName !== block.autoName
@@ -63,9 +65,9 @@ ColumnLayout {
         block.selectedName = name;
     }
 
-    // Другой товар (другой список) — выбор снова автоматический. Список
-    // считается прямо из строки: привязка `files` к этому моменту может
-    // ещё не пересчитаться.
+    // A different item (a different list) — the choice is automatic again.
+    // The list is computed straight from the string: the `files` binding may
+    // not have been re-evaluated yet at this moment.
     onFilesJsonChanged: block.selectedName = block.autoOf(block.parse(block.filesJson))
     Component.onCompleted: block.selectedName = block.autoOf(block.parse(block.filesJson))
 
@@ -95,7 +97,7 @@ ColumnLayout {
 
             objectName: "storeFile" + row.index
             Layout.fillWidth: true
-            // Минимум контрола из канона (Big Picture / Steam Deck).
+            // Control minimum from the canon (Big Picture / Steam Deck).
             implicitHeight: Math.max(40, rowLine.implicitHeight + 12)
             radius: 3
             color: rowMouse.containsMouse ? block.colHover : "transparent"

@@ -1,61 +1,64 @@
-// Фоновые задачи вкладки «Steam» — порт пяти `QThread` из
-// `rexon/qt_steam/window.py` на async (tokio).
+// Background tasks of the "Steam" tab — a port of five `QThread`s from
+// `rexon/qt_steam/window.py` to async (tokio).
 //
-// Оригинал держал пять наследников QThread, и каждый жил сам по себе:
+// The original kept five QThread subclasses, and each lived on its own:
 //
-//   1. `_SplashMetaWorker`  — весь публичный инвентарь → метки видеозаставок
-//                             → дисковый кэш → сигнал `done(meta)`;
-//   2. `_SplashPosterWorker`— кадры-превью роликов (ffprobe + ffmpeg) →
-//                             сигнал `ready(id, png)` на каждый готовый;
-//   3. `_InventoryWorker`   — владеемые фоны через WebAPI, иначе весь
-//                             публичный инвентарь → сигнал `done(items, err)`;
-//   4. `_ApplyBgWorker`     — скачать фон и применить обоями →
-//                             сигнал `done(ok, msg)`;
-//   5. `_ThumbLoader`       — миниатюры карточек текущей страницы →
-//                             сигнал `loaded(id, path)` на каждую.
+//   1. `_SplashMetaWorker`  — the whole public inventory → video splash
+//                             markers → disk cache → the `done(meta)` signal;
+//   2. `_SplashPosterWorker`— clip preview frames (ffprobe + ffmpeg) →
+//                             the `ready(id, png)` signal for each one ready;
+//   3. `_InventoryWorker`   — owned backgrounds through WebAPI, otherwise the
+//                             whole public inventory → `done(items, err)`;
+//   4. `_ApplyBgWorker`     — download a background and apply it as a
+//                             wallpaper → the `done(ok, msg)` signal;
+//   5. `_ThumbLoader`       — card thumbnails of the current page →
+//                             the `loaded(id, path)` signal for each one.
 //
-// Здесь это пять задач одного рантайма, а сигналы Qt заменены одной очередью
-// событий ([`SteamEvent`]): владелец страницы забирает их из своего потока
-// ([`SteamTasks::poll_event`]) и раскладывает по модели. Очередь, а не
-// колбэки, — чтобы данные пересекали границу потоков ровно в одном месте.
+// Here these are five tasks of one runtime, and the Qt signals are replaced
+// with one event queue ([`SteamEvent`]): the page owner takes them from its
+// own thread ([`SteamTasks::poll_event`]) and lays them out into the model.
+// A queue rather than callbacks — so that data crosses the thread boundary
+// in exactly one place.
 //
-// ⚠️ ОТМЕНА. В Qt поток можно было бросить; в async нужен явный токен, и он
-// здесь ДЕРЕВОМ: корень вкладки → узел витрины → задача. Закрытие вкладки
-// гасит корень, смена страницы фонов — только узел миниатюр, пересборка
-// витрины — только узел постеров. Токен доходит и до самого запроса:
-// синхронный ureq ядра умеет рвать уже отправленный запрос
-// (`rexon_core::net::CancelToken`), и наш узел взводит его.
+// Warning: CANCELLATION. In Qt a thread could be abandoned; async needs an
+// explicit token, and here it is a TREE: the tab root → the showcase node →
+// the task. Closing the tab cancels the root, changing the background page
+// only the thumbnails node, rebuilding the showcase only the posters node.
+// The token reaches the request itself too: the core's synchronous ureq can
+// abort an already sent request (`rexon_core::net::CancelToken`), and our
+// node triggers it.
 //
-// ⚠️ Починки оригинала (правило #16), каждая помечена `Починка:` по месту:
-//   1. ДВОЙНАЯ ВЫГРУЗКА ИНВЕНТАРЯ. `_InventoryWorker` и `_SplashMetaWorker`
-//      тянули один и тот же публичный инвентарь каждый сам (до 20 страниц по
-//      2000 предметов — дважды на каждое открытие вкладки; у владельца это
-//      2029 предметов). Теперь страницы качаются ОДИН раз и кормят обе
-//      витрины;
-//   2. ОСИРОТЕВШИЕ ПОТОКИ. `_render_bg_page` звал `stop()` у прежнего
-//      `_ThumbLoader` и тут же ЗАМЕЩАЛ ссылку на него новым — прежний поток
-//      никто больше не ждал. При быстром листании оставалась пачка живых
-//      потоков, а `closeEvent` ждал только последний: отсюда падение
-//      «QThread: Destroyed while thread is still running». Здесь все задачи
-//      считает `TaskTracker`, и закрытие ждёт каждую;
-//   3. ЗАКРЫТИЕ ВИСЛО ДО 30 СЕКУНД. `stop()` оригинала — флажок, который
-//      проверялся МЕЖДУ запросами, поэтому `th.wait(30000)` в `closeEvent`
-//      честно ждал конца сетевого таймаута. Токен рвёт запрос на месте;
-//   4. У `_ApplyBgWorker` отмены не было ВОВСЕ: `done` летел в закрывающееся
-//      окно. Теперь применение сидит на общем токене вкладки, и результат в
-//      закрытую вкладку не доставляется;
-//   5. МИНИАТЮРЫ КАЧАЛИСЬ ПО ОДНОЙ. 25 файлов страницы шли строго
-//      последовательно. Теперь до `THUMB_CONCURRENCY` разом — порядок
-//      появления перестал быть порядком списка, но карточки и раньше
-//      наполнялись по мере готовности, а не рядами;
-//   6. НЕДОКАЧАННЫЙ `.part` оставался в кэше на любой неудаче
-//      (`_download_community` заводил его и не убирал). Теперь временный
-//      файл снимается на любом исходе.
+// Warning: fixes of the original (rule #16), each marked `Fix:` in place:
+//   1. DOUBLE INVENTORY DOWNLOAD. `_InventoryWorker` and `_SplashMetaWorker`
+//      each pulled the same public inventory on their own (up to 20 pages of
+//      2000 items — twice on every tab opening; the owner has 2029 items).
+//      Now the pages are downloaded ONCE and feed both showcases;
+//   2. ORPHANED THREADS. `_render_bg_page` called `stop()` on the previous
+//      `_ThumbLoader` and immediately REPLACED the reference to it with a new
+//      one — nobody waited for the previous thread any more. With fast paging
+//      a bunch of live threads remained, while `closeEvent` waited only for
+//      the last one: hence the "QThread: Destroyed while thread is still
+//      running" crash. Here all tasks are counted by a `TaskTracker`, and
+//      closing waits for each one;
+//   3. CLOSING HUNG FOR UP TO 30 SECONDS. The original's `stop()` was a flag
+//      checked BETWEEN requests, so `th.wait(30000)` in `closeEvent` honestly
+//      waited for the end of the network timeout. The token aborts the
+//      request on the spot;
+//   4. `_ApplyBgWorker` had no cancellation AT ALL: `done` flew into a
+//      closing window. Now applying sits on the tab's shared token, and the
+//      result is not delivered into a closed tab;
+//   5. THUMBNAILS WERE DOWNLOADED ONE AT A TIME. The page's 25 files went
+//      strictly sequentially. Now up to `THUMB_CONCURRENCY` at once — the
+//      order of appearance is no longer the list order, but the cards filled
+//      in as they became ready before too, not in rows;
+//   6. A PARTIALLY DOWNLOADED `.part` stayed in the cache on any failure
+//      (`_download_community` created it and did not remove it). Now the
+//      temporary file is removed on any outcome.
 //
-// Чего здесь НЕТ: решений. Что показать, в каком порядке и какими словами,
-// отвечает `rexon_core::qt_steam`; побочные действия, которых на Rust ещё
-// нет (движок обоев, добыча токена WebAPI из cookie Steam), приходят
-// объектами снаружи.
+// What is NOT here: decisions. What to show, in what order and with what
+// words is answered by `rexon_core::qt_steam`; side actions that do not
+// exist in Rust yet (the wallpaper engine, extracting the WebAPI token from
+// the Steam cookie) come as objects from outside.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -75,99 +78,106 @@ use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-/// Сколько миниатюр качаем разом. Починка №5: оригинал качал по одной, и
-/// страница из 25 карточек наполнялась ровно 25 последовательными
-/// запросами. Шесть — компромисс: заметно быстрее и при этом не похоже на
-/// налёт на CDN Steam.
+/// How many thumbnails we download at once. Fix #5: the original downloaded
+/// one at a time, and a page of 25 cards filled with exactly 25 sequential
+/// requests. Six is a compromise: noticeably faster and still not looking
+/// like a raid on Steam's CDN.
 pub const THUMB_CONCURRENCY: usize = 6;
 
-/// Сколько ждём завершения задач при закрытии вкладки. Это ПОТОЛОК, а не
-/// плановое ожидание: токен уже взведён, задачи рвут запросы сами, и в норме
-/// ожидание занимает миллисекунды. Оригинал ждал до 30 секунд И БЕЗ отмены.
+/// How long we wait for the tasks to finish when the tab closes. This is a
+/// CEILING, not a planned wait: the token is already triggered, the tasks
+/// abort their requests themselves, and normally the wait takes
+/// milliseconds. The original waited up to 30 seconds AND WITHOUT
+/// cancellation.
 pub const SHUTDOWN_GRACE_MS: u64 = 2000;
 
-/// Рабочих потоков рантайма. Задач немного и все они ждут сеть либо ffmpeg,
-/// поэтому пары потоков хватает: тяжёлое всё равно уходит в блокирующий пул.
+/// Worker threads of the runtime. There are few tasks and all of them wait
+/// for the network or ffmpeg, so a couple of threads is enough: the heavy
+/// work goes to the blocking pool anyway.
 const WORKER_THREADS: usize = 2;
 
 // ============================================================================
-// События наружу
+// Events out
 // ============================================================================
 
-/// То, что задачи отдают владельцу страницы. Замена сигналов пяти QThread.
+/// What the tasks hand to the page owner. A replacement for the signals of
+/// the five QThreads.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SteamEvent {
-    /// `_InventoryWorker.done(items, error)`. Пустая ошибка = всё хорошо.
+    /// `_InventoryWorker.done(items, error)`. An empty error = all is well.
     InventoryDone {
         items: Vec<ProfileBackgroundItem>,
         error: String,
     },
-    /// Чем кончился запрос владеемых предметов — единственный источник
-    /// анимированных фонов. Приходит ДО `InventoryDone` при каждой загрузке
-    /// списка; `AnimatedGap::None` снимает прежнюю причину.
+    /// How the request for owned items ended — the only source of animated
+    /// backgrounds. Arrives BEFORE `InventoryDone` on every list load;
+    /// `AnimatedGap::None` clears the previous reason.
     OwnedAnswer(qs::AnimatedGap),
-    /// `_SplashMetaWorker.done(meta)` — метки видеозаставок из инвентаря.
+    /// `_SplashMetaWorker.done(meta)` — video splash markers from the inventory.
     SplashMeta(qs::MetaMap),
-    /// `_SplashPosterWorker.ready(id, png)` — кадр-превью ролика.
+    /// `_SplashPosterWorker.ready(id, png)` — a clip's preview frame.
     Poster { id: String, png: String },
-    /// `_ThumbLoader.loaded(id, path)` — миниатюра карточки фона.
+    /// `_ThumbLoader.loaded(id, path)` — a background card's thumbnail.
     Thumb { id: String, path: String },
     /// `_ApplyBgWorker.done(ok, msg)`.
     ApplyDone { ok: bool, message: String },
-    /// Полноразмерный фон для крупного просмотра добыт (или нет): `still` —
-    /// картинка, `movie` — ролик анимированного фона; пустая строка — этой
-    /// части нет либо она не скачалась.
+    /// The full-size background for the large viewer was obtained (or not):
+    /// `still` is the picture, `movie` the clip of an animated background; an
+    /// empty string means this part is missing or did not download.
     Full { id: String, still: String, movie: String },
 }
 
 // ============================================================================
-// Побочные действия, которых на Rust ещё нет
+// Side actions that do not exist in Rust yet
 // ============================================================================
 
-/// Движок обоев. Живая реализация — [`ExecApplier`] (исполнитель ядра),
-/// подменные — в сверках.
+/// The wallpaper engine. The live implementation is [`ExecApplier`] (the
+/// core's executor), substitutes are in the reconciliation tests.
 ///
-/// Метод синхронный и возвращает «получилось ли» вместе с текстом для
-/// строки состояния — ровно то, что оригинал доставал из `res.message`.
+/// The method is synchronous and returns "whether it worked" together with
+/// the text for the status line — exactly what the original took from
+/// `res.message`.
 pub trait WallpaperApply: Send + Sync {
     fn apply(&self, path: &str, format: &str, audio: bool, name: &str) -> (bool, String);
 }
 
-/// Живой движок обоев вкладки: общий исполнитель ядра, без своих правил.
+/// The tab's live wallpaper engine: the core's shared executor, with no
+/// rules of its own.
 ///
-/// Что и как применять, решает ядро ([`qs::apply_background_with`] →
-/// `WallpaperExec::apply_with_audio`); слот исполнителя — один на процесс
-/// и общий с «Настройками» (`wallpaper_exec::live_slot`); применение и
-/// надзор за нагрузкой — общая дверь ядра (`wallpaper_exec::run_in_slot`).
+/// What and how to apply is decided by the core
+/// ([`qs::apply_background_with`] → `WallpaperExec::apply_with_audio`); the
+/// executor slot is one per process and shared with "Settings"
+/// (`wallpaper_exec::live_slot`); applying and supervising the load go
+/// through the core's shared door (`wallpaper_exec::run_in_slot`).
 ///
-/// ПОЧЕМУ ОДИН НА ПРОЦЕСС, а не на страницу: страница «Steam» живёт в
-/// `Loader` главного окна и пересоздаётся, а исполнитель помнит, какой
-/// процесс рисует обои и что вернуть после остановки. Свой исполнитель у
-/// страницы не знал бы о видео, запущенном прежней её копией или
-/// «Настройками», и «Остановить» там не сняло бы поставленное здесь.
+/// WHY ONE PER PROCESS and not per page: the "Steam" page lives in the main
+/// window's `Loader` and is recreated, while the executor remembers which
+/// process draws the wallpaper and what to restore after stopping. A page's
+/// own executor would not know about a video started by its previous copy
+/// or by "Settings", and "Stop" there would not remove what was set here.
 pub struct ExecApplier<S: WpSys = LiveSys> {
     slot: ExecSlot<S>,
 }
 
 impl ExecApplier {
-    /// Движок на исполнителе процесса.
+    /// The engine on the process executor.
     pub fn live() -> ExecApplier {
         ExecApplier { slot: wallpaper_exec::live_slot() }
     }
 }
 
 impl<S: WpSys> ExecApplier<S> {
-    /// Движок на явно данном слоте — так сверки подставляют исполнитель с
-    /// подменным швом.
+    /// The engine on an explicitly given slot — this is how the reconciliation
+    /// tests substitute an executor with a fake seam.
     pub fn on(slot: ExecSlot<S>) -> ExecApplier<S> {
         ExecApplier { slot }
     }
 }
 
 impl<S: WpSys + Default + Send + 'static> WallpaperApply for ExecApplier<S> {
-    // `format` не нужен: ядро выводит его из пути той же функцией
-    // (`qs::apply_format`), что посчитала его и здесь. `audio` — галочка
-    // «🔊 Звук видео-обоев», уходит исполнителю как есть.
+    // `format` is not needed: the core derives it from the path with the same
+    // function (`qs::apply_format`) that computed it here too. `audio` is the
+    // "🔊 Video wallpaper sound" checkbox, passed to the executor as is.
     fn apply(&self, path: &str, _format: &str, audio: bool, name: &str) -> (bool, String) {
         wallpaper_exec::run_in_slot(&self.slot, |exec| {
             qs::apply_background_with(exec, path, audio, name)
@@ -176,11 +186,12 @@ impl<S: WpSys + Default + Send + 'static> WallpaperApply for ExecApplier<S> {
 }
 
 // ============================================================================
-// Окружение
+// Environment
 // ============================================================================
 
-/// Пути, от которых зависят кэши. Снимаются один раз при постройке: читать
-/// `$HOME` из рабочей задачи незачем, а тесты подставляют своё.
+/// Paths the caches depend on. Taken once on construction: there is no
+/// reason to read `$HOME` from a worker task, and the tests substitute their
+/// own.
 #[derive(Debug, Clone, Default)]
 pub struct SteamEnv {
     pub home: String,
@@ -189,7 +200,7 @@ pub struct SteamEnv {
 }
 
 impl SteamEnv {
-    /// Живое окружение процесса.
+    /// The live process environment.
     pub fn from_process() -> SteamEnv {
         let nonempty = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         SteamEnv {
@@ -208,76 +219,82 @@ impl SteamEnv {
     }
 }
 
-/// Заказ на загрузку инвентаря.
+/// An order to load the inventory.
 #[derive(Debug, Clone, Default)]
 pub struct InventoryRequest {
-    /// SteamID64 аккаунта.
+    /// SteamID64 of the account.
     pub sid: String,
-    /// Надетый в профиле фон (разобран из `localconfig.vdf` заранее).
+    /// The background equipped in the profile (parsed from `localconfig.vdf` in
+    /// advance).
     pub equipped: Option<ProfileBackgroundItem>,
-    /// Токен WebAPI для владеемых фонов, если хозяин страницы принёс его
-    /// сам (сверки). Пустой — задача добывает его сама, в блокирующем пуле:
-    /// `rexon_core::steam_token::access_token` ходит в сеть, и в потоке
-    /// интерфейса ему не место.
+    /// WebAPI token for owned backgrounds, if the page host brought it itself
+    /// (reconciliation tests). Empty — the task obtains it itself, in the
+    /// blocking pool: `rexon_core::steam_token::access_token` goes to the
+    /// network, and it has no place in the interface thread.
     ///
-    /// ⚠️ До 13.10.2026 токен обязан был ПРИЕХАТЬ со страницы
-    /// (`actions.webapiToken()`), а метод с 08.09.2026 не был виден из QML
-    /// (потерян `#[qinvokable]`): страница всегда стартовала с пустым
-    /// токеном, владеемые фоны не запрашивались, и анимированных в списке
-    /// не было ни одного. Теперь страница токен не носит вовсе.
+    /// Warning: until 13.10.2026 the token had to COME from the page
+    /// (`actions.webapiToken()`), and since 08.09.2026 the method was not
+    /// visible from QML (`#[qinvokable]` was lost): the page always started with
+    /// an empty token, owned backgrounds were not requested, and there was not a
+    /// single animated one in the list. Now the page does not carry the token at
+    /// all.
     pub webapi_token: String,
 }
 
 // ============================================================================
-// Рантайм вкладки
+// Tab runtime
 // ============================================================================
 
-/// Все фоновые задачи вкладки «Steam» и их отмена.
+/// All background tasks of the "Steam" tab and their cancellation.
 pub struct SteamTasks {
-    /// ⚠️ `Option`, а не просто `Runtime`, и это не украшение. Обычный
-    /// `Drop` рантайма tokio ждёт блокирующие задачи БЕЗ СРОКА: одна
-    /// застрявшая — и процесс не выходит никогда. Здесь рантайм забирают из
-    /// поля и роняют [`Runtime::shutdown_timeout`] — с потолком.
+    /// Warning: `Option` rather than just `Runtime`, and it is not decoration.
+    /// The ordinary `Drop` of a tokio runtime waits for blocking tasks WITHOUT A
+    /// LIMIT: one stuck task and the process never exits. Here the runtime is
+    /// taken out of the field and dropped with [`Runtime::shutdown_timeout`] —
+    /// with a ceiling.
     rt: Option<Runtime>,
-    /// Корень дерева отмены: закрытие вкладки гасит ВСЁ.
+    /// Root of the cancellation tree: closing the tab cancels EVERYTHING.
     root: CancellationToken,
-    /// Учёт живых задач — чтобы закрытие дождалось каждой (починка №2).
+    /// Accounting of live tasks — so that closing waits for each one (fix #2).
     tracker: TaskTracker,
     tx: UnboundedSender<SteamEvent>,
     rx: Mutex<UnboundedReceiver<SteamEvent>>,
-    /// Узел отмены миниатюр: живёт ровно до следующей страницы.
+    /// Cancellation node of the thumbnails: lives exactly until the next page.
     thumbs: Mutex<Option<CancellationToken>>,
-    /// Узел отмены кадров-превью: живёт ровно до следующей пересборки витрины.
+    /// Cancellation node of the preview frames: lives exactly until the next
+    /// showcase rebuild.
     posters: Mutex<Option<CancellationToken>>,
-    /// Идёт ли применение обоев (оригинальный `_wp_worker.isRunning()`).
+    /// Whether applying a wallpaper is in progress (the original's
+    /// `_wp_worker.isRunning()`).
     applying: Arc<AtomicBool>,
     env: SteamEnv,
 }
 
 impl SteamTasks {
-    /// Поднять рантайм вкладки. `None` — рантайм не создался (в живом Rexon
-    /// это значит «фоновых задач не будет», а не падение).
+    /// Bring up the tab runtime. `None` means the runtime was not created (in
+    /// the live Rexon this means "there will be no background tasks", not a
+    /// crash).
     pub fn new(env: SteamEnv) -> Option<SteamTasks> {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(WORKER_THREADS)
             .thread_name("rexon-steam")
-            // ⚠️ Починка: без enable_io `tokio::process` ПАНИКУЕТ в рабочем
-            // потоке («A Tokio 1.x context was found, but IO is disabled»), а
-            // через него идут ffprobe и ffmpeg задачи кадров-превью. Поймано
-            // живым прогоном соседней вкладки, где тот же рантайм запускает
-            // подпроцессы.
+            // Warning: fix: without enable_io `tokio::process` PANICS in a worker
+            // thread ("A Tokio 1.x context was found, but IO is disabled"), and the
+            // ffprobe and ffmpeg of the preview frame tasks go through it. Caught by a
+            // live run of the neighbouring tab, where the same runtime launches
+            // subprocesses.
             .enable_io()
             .enable_time()
             .build()
             .ok()?;
         let (tx, rx) = unbounded_channel();
         let root = CancellationToken::new();
-        // ⭐ ОБЩАЯ ДВЕРЬ ВЫХОДА (правило #12). Сток фоновых задач
-        // (`exit_guard`) считает только то, что ему показали: рабочие потоки
-        // рантайма он не видит и без этой записи честно отвечал «не
-        // осталось никого» при работающей выгрузке инвентаря. Просьбу
-        // дёргают ДО разбора окна — значит сеть рвётся раньше, чем начнут
-        // сноситься объекты, которых задача могла бы коснуться.
+        // ⭐ THE SHARED EXIT DOOR (rule #12). The background task drain
+        // (`exit_guard`) counts only what it was shown: it does not see the
+        // runtime's worker threads and without this entry honestly answered
+        // "nobody is left" while the inventory download was running. The request
+        // is triggered BEFORE the window is torn down — so the network is aborted
+        // before objects the task could touch start being destroyed.
         {
             let root = root.clone();
             rexon_core::exit_guard::register_stopper(move || root.cancel());
@@ -295,43 +312,44 @@ impl SteamTasks {
         })
     }
 
-    /// Забрать очередное событие; `None` — очередь пуста. Зовётся из потока
-    /// интерфейса (таймером страницы), никогда не блокирует.
+    /// Take the next event; `None` means the queue is empty. Called from the
+    /// interface thread (by the page's timer), never blocks.
     pub fn poll_event(&self) -> Option<SteamEvent> {
         self.rx.lock().ok()?.try_recv().ok()
     }
 
-    /// Идёт ли применение обоев прямо сейчас.
+    /// Whether applying a wallpaper is in progress right now.
     pub fn is_applying(&self) -> bool {
         self.applying.load(Ordering::SeqCst)
     }
 
-    /// Отменена ли вкладка целиком (закрытие уже началось).
+    /// Whether the whole tab is cancelled (closing has already started).
     pub fn is_cancelled(&self) -> bool {
         self.root.is_cancelled()
     }
 
-    // ── Задача 1+3: инвентарь и метки заставок ─────────────────────────
+    // ── Task 1+3: the inventory and the splash markers ─────────────────
 
-    /// Порт `_InventoryWorker` И `_SplashMetaWorker` одной задачей.
+    /// A port of `_InventoryWorker` AND `_SplashMetaWorker` as one task.
     ///
-    /// Починка №1: страницы публичного инвентаря качаются ОДИН раз. Дальше
-    /// один и тот же ответ разбирается дважды — на фоны профиля
-    /// ([`spi::parse_inventory_backgrounds`]) и на метки видеозаставок
-    /// ([`qs::splash_item_meta`]), и оба события уходят наружу по
-    /// готовности, как и раньше двумя сигналами.
+    /// Fix #1: the public inventory pages are downloaded ONCE. Then the same
+    /// answer is parsed twice — into profile backgrounds
+    /// ([`spi::parse_inventory_backgrounds`]) and into video splash markers
+    /// ([`qs::splash_item_meta`]), and both events go out as they become ready,
+    /// as before with two signals.
     ///
-    /// Путь владеемых фонов (WebAPI) сохранён: только он отдаёт ссылки на
-    /// АНИМАЦИЮ. Но метки заставок он не отдаёт, поэтому публичный инвентарь
-    /// тянется и в этом случае — как в оригинале, просто уже не дважды.
+    /// The owned backgrounds path (WebAPI) is kept: only it gives links to
+    /// ANIMATION. But it does not give the splash markers, so the public
+    /// inventory is pulled in this case too — as in the original, just no
+    /// longer twice.
     pub fn start_inventory(&self, req: InventoryRequest) {
         let token = self.root.child_token();
         let tx = self.tx.clone();
         let env = self.env.clone();
         self.spawn(async move {
-            // Владеемые фоны: единственный источник ссылок на анимацию.
-            // Порядок шагов и приговор — ядро (`owned_backgrounds_with`),
-            // отсюда только ключ и сеть.
+            // Owned backgrounds: the only source of animation links.
+            // The order of steps and the verdict are the core's
+            // (`owned_backgrounds_with`), from here only the key and the network.
             let mut answered = false;
             let given = req.webapi_token.clone();
             let home = env.home.clone();
@@ -361,8 +379,8 @@ impl SteamTasks {
                 answered = true;
             }
 
-            // Публичный инвентарь: и фоны (если владеемые не вышли), и
-            // метки заставок — с ОДНОЙ выгрузки.
+            // The public inventory: both backgrounds (if the owned ones did not work
+            // out) and splash markers — from ONE download.
             let sid = req.sid.clone();
             let pages = blocking_cancellable(&token, move |cancel| {
                 fetch_inventory_pages(&sid, cancel)
@@ -396,7 +414,7 @@ impl SteamTasks {
                 });
             }
 
-            // Метки заставок + их дисковый кэш.
+            // Splash markers + their disk cache.
             let descs = data
                 .get("descriptions")
                 .and_then(Value::as_array)
@@ -415,12 +433,12 @@ impl SteamTasks {
         });
     }
 
-    // ── Задача 2: кадры-превью роликов ─────────────────────────────────
+    // ── Task 2: clip preview frames ────────────────────────────────────
 
-    /// Порт `_SplashPosterWorker`. `jobs` — пути роликов, у которых кадра
-    /// ещё нет. Прежняя пачка отменяется: витрина пересобралась, старые
-    /// кадры уже никому не нужны (починка №2 — прежняя задача не сиротеет,
-    /// а гасится).
+    /// A port of `_SplashPosterWorker`. `jobs` are the paths of clips that have
+    /// no frame yet. The previous batch is cancelled: the showcase was rebuilt,
+    /// nobody needs the old frames any more (fix #2 — the previous task is not
+    /// orphaned but cancelled).
     pub fn start_posters(&self, jobs: Vec<String>) {
         let token = self.swap_node(&self.posters);
         if jobs.is_empty() {
@@ -450,10 +468,11 @@ impl SteamTasks {
         });
     }
 
-    // ── Задача 5: миниатюры карточек фонов ─────────────────────────────
+    // ── Task 5: background card thumbnails ─────────────────────────────
 
-    /// Порт `_ThumbLoader`. `jobs` — пары «id фона → адрес превью» ТОЛЬКО
-    /// текущей страницы. Прежняя пачка гасится вместе со своим узлом.
+    /// A port of `_ThumbLoader`. `jobs` are "background id → preview address"
+    /// pairs of ONLY the current page. The previous batch is cancelled together
+    /// with its node.
     pub fn start_thumbs(&self, jobs: Vec<(String, String)>) {
         let token = self.swap_node(&self.thumbs);
         let jobs: Vec<(String, String)> = jobs.into_iter().filter(|(_, u)| !u.is_empty()).collect();
@@ -464,7 +483,8 @@ impl SteamTasks {
         let dir = qs::thumb_cache_dir(self.env.cache(), &self.env.home);
         self.spawn(async move {
             let _ = tokio::fs::create_dir_all(&dir).await;
-            // Починка №5: до THUMB_CONCURRENCY разом вместо строго по одной.
+            // Fix #5: up to THUMB_CONCURRENCY at once instead of strictly one at a
+            // time.
             let gate = Arc::new(Semaphore::new(THUMB_CONCURRENCY));
             let mut set = tokio::task::JoinSet::new();
             for (id, url) in jobs {
@@ -484,7 +504,7 @@ impl SteamTasks {
                         download_cached(&url, &dest, qs::THUMB_DOWNLOAD_TIMEOUT_S, cancel)
                     })
                     .await;
-                    // Одна осечка не рвёт список — как в оригинале.
+                    // One misfire does not break the list — as in the original.
                     if let Some(Ok(path)) = out {
                         if !token.is_cancelled() {
                             let _ = tx.send(SteamEvent::Thumb { id, path });
@@ -492,8 +512,8 @@ impl SteamTasks {
                     }
                 });
             }
-            // Ждём свои подзадачи здесь: иначе `TaskTracker` считал бы
-            // законченной родительскую, а внучки продолжали бы качать.
+            // We wait for our subtasks here: otherwise the `TaskTracker` would
+            // consider the parent finished while the grandchildren kept downloading.
             while set.join_next().await.is_some() {
                 if token.is_cancelled() {
                     set.abort_all();
@@ -502,20 +522,22 @@ impl SteamTasks {
         });
     }
 
-    // ── Задача 6: полноразмерный фон для крупного просмотра ────────────
+    // ── Task 6: the full-size background for the large viewer ──────────
 
-    /// Добыть фон целиком для крупного просмотра: картинку (`still_url`) и,
-    /// у анимированного, ролик (`movie_url`; пусто — ролика нет).
+    /// Obtain the whole background for the large viewer: the picture
+    /// (`still_url`) and, for an animated one, the clip (`movie_url`; empty
+    /// means there is no clip).
     ///
-    /// Слой загрузки и кэши — те же, что у миниатюр и у «Применить»:
-    /// картинка ложится в кэш миниатюр (Steam отдаёт её сразу в полном
-    /// размере, отдельного уменьшенного файла у фона нет), ролик — в кэш
-    /// фонов, откуда его потом возьмёт и «Применить», не качая второй раз.
+    /// The download layer and the caches are the same as for thumbnails and
+    /// "Apply": the picture lands in the thumbnail cache (Steam gives it in full
+    /// size right away, the background has no separate reduced file), the clip
+    /// in the backgrounds cache, from where "Apply" will later take it without
+    /// downloading a second time.
     ///
-    /// Задача сидит на корневом токене, а не на узле страницы: листание
-    /// просмотра не должно рваться оттого, что сетка перешла на другую
-    /// страницу. Ответ приходит ВСЕГДА — и при неудаче тоже, иначе просмотр
-    /// вечно показывал бы «загружается».
+    /// The task sits on the root token, not on the page node: paging the viewer
+    /// must not be aborted because the grid moved to another page. The answer
+    /// ALWAYS comes — on failure too, otherwise the viewer would show "loading"
+    /// forever.
     pub fn start_full(&self, id: String, still_url: String, movie_url: String) {
         let token = self.root.child_token();
         let tx = self.tx.clone();
@@ -550,14 +572,14 @@ impl SteamTasks {
         });
     }
 
-    // ── Задача 4: скачать фон и применить обоями ───────────────────────
+    // ── Task 4: download a background and apply it as a wallpaper ──────
 
-    /// Порт `_ApplyBgWorker`. `false` — уже применяем (оригинальный ответ
-    /// «⏳ Уже применяю обои — подожди»).
+    /// A port of `_ApplyBgWorker`. `false` means we are already applying (the
+    /// original's answer "⏳ Already applying the wallpaper — please wait").
     ///
-    /// Починка №4: у задачи есть отмена. Она сидит на корневом токене
-    /// вкладки — применение обоев нельзя рвать сменой страницы, но при
-    /// закрытии вкладки результат уже никому не нужен.
+    /// Fix #4: the task has cancellation. It sits on the tab's root token —
+    /// applying a wallpaper must not be aborted by a page change, but when the
+    /// tab closes nobody needs the result any more.
     pub fn apply_background(
         &self,
         item: ProfileBackgroundItem,
@@ -583,7 +605,7 @@ impl SteamTasks {
 
             let (ok, message) = match downloaded {
                 None => {
-                    // Вкладку закрыли — молча уходим, никого не тревожа.
+                    // The tab was closed — leave silently without bothering anyone.
                     busy.store(false, Ordering::SeqCst);
                     return;
                 }
@@ -609,13 +631,14 @@ impl SteamTasks {
     true
     }
 
-    // ── Закрытие ───────────────────────────────────────────────────────
+    // ── Closing ────────────────────────────────────────────────────────
 
-    /// Погасить ВСЕ задачи и дождаться их — порт `closeEvent`.
+    /// Cancel ALL tasks and wait for them — a port of `closeEvent`.
     ///
-    /// Оригинал ждал до 30 секунд, потому что отмены у него не было. Здесь
-    /// токен взводится первым, задачи рвут свои запросы сами, а ожидание —
-    /// страховка с потолком [`SHUTDOWN_GRACE_MS`].
+    /// The original waited up to 30 seconds because it had no cancellation.
+    /// Here the token is triggered first, the tasks abort their requests
+    /// themselves, and the wait is a safety net with the ceiling
+    /// [`SHUTDOWN_GRACE_MS`].
     pub fn shutdown(&self) {
         self.root.cancel();
         self.tracker.close();
@@ -632,9 +655,9 @@ impl SteamTasks {
         });
     }
 
-    // ── Внутреннее ─────────────────────────────────────────────────────
+    // ── Internals ──────────────────────────────────────────────────────
 
-    /// Завести задачу под учётом трекера.
+    /// Start a task under the tracker's accounting.
     fn spawn<F>(&self, fut: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
@@ -649,7 +672,8 @@ impl SteamTasks {
         self.tracker.spawn(fut);
     }
 
-    /// Сменить узел отмены витрины: прежнюю пачку гасим, новую заводим.
+    /// Replace the showcase's cancellation node: cancel the previous batch,
+    /// start a new one.
     fn swap_node(&self, slot: &Mutex<Option<CancellationToken>>) -> CancellationToken {
         let fresh = self.root.child_token();
         if let Ok(mut cur) = slot.lock() {
@@ -662,21 +686,21 @@ impl SteamTasks {
 }
 
 impl Drop for SteamTasks {
-    /// ⚠️ ПОТОЛОК ЗДЕСЬ ОБЯЗАТЕЛЕН, иначе Rexon не закрывается.
+    /// Warning: THE CEILING HERE IS MANDATORY, otherwise Rexon does not close.
     ///
-    /// Обычный `Drop` рантайма tokio ждёт блокирующие задачи БЕЗ СРОКА —
-    /// ровно поэтому 19.09.2026 самопроверка главного окна не завершалась
-    /// сама в 9 прогонах из 12: выгрузка инвентаря Steam застревала в
-    /// сетевом чтении, разбор окна упирался в неё, и процесс добивал
-    /// сторож. Первопричина того застревания вылечена в ядре
-    /// (`rexon_core::net`), но зависимость «одна застрявшая задача = живой
-    /// навсегда процесс» на этом никуда не делась, и закрывать её надо
-    /// здесь: человек, закрывший окно, обязан получить закрытое окно, чем
-    /// бы ни была занята фоновая задача.
+    /// The ordinary `Drop` of a tokio runtime waits for blocking tasks WITHOUT A
+    /// LIMIT — that is exactly why on 19.09.2026 the main window self-test did
+    /// not finish on its own in 9 runs out of 12: the Steam inventory download
+    /// got stuck in a network read, the window teardown ran into it, and the
+    /// watchdog finished the process off. The root cause of that hang was cured
+    /// in the core (`rexon_core::net`), but the dependency "one stuck task = a
+    /// process alive forever" did not go anywhere, and it has to be closed
+    /// here: a user who closed the window must get a closed window, whatever
+    /// the background task is busy with.
     ///
-    /// Оставшуюся задачу это бросает как есть — она ничего не портит:
-    /// наружу задачи ходят только очередью событий, и отправка в закрытую
-    /// очередь просто не доходит.
+    /// This abandons the remaining task as is — it spoils nothing: tasks reach
+    /// the outside only through the event queue, and sending into a closed
+    /// queue simply does not arrive.
     fn drop(&mut self) {
         self.root.cancel();
         self.tracker.close();
@@ -687,19 +711,21 @@ impl Drop for SteamTasks {
 }
 
 // ============================================================================
-// Отмена: мост из токена tokio в токен сетевого слоя ядра
+// Cancellation: a bridge from the tokio token to the core network layer token
 // ============================================================================
 
-/// Выполнить синхронную работу в блокирующем пуле так, чтобы её МОЖНО было
-/// оборвать: наружу отдаётся [`net::CancelToken`], который взводится, как
-/// только погас `token`.
+/// Run synchronous work in the blocking pool so that it CAN be aborted: a
+/// [`net::CancelToken`] is handed out, triggered as soon as `token` is
+/// cancelled.
 ///
-/// `None` — вкладка отменена (результат никому не нужен) либо задача упала.
+/// `None` means the tab is cancelled (nobody needs the result) or the task
+/// crashed.
 ///
-/// Ничего «стимовского» здесь нет: тем же мостом пользуются фоновые задачи
-/// страницы «Разработчик» вкладки обоев (`we_update_workers.rs`). Второй
-/// копии этой связки в крейте быть не должно (правило #12), поэтому она
-/// открыта на весь крейт, а не приватна модулю.
+/// There is nothing Steam-specific here: the same bridge is used by the
+/// background tasks of the wallpaper tab's "Developer" page
+/// (`we_update_workers.rs`). There must not be a second copy of this
+/// linkage in the crate (rule #12), so it is open to the whole crate rather
+/// than private to the module.
 pub(crate) async fn blocking_cancellable<T, F>(token: &CancellationToken, f: F) -> Option<T>
 where
     F: FnOnce(net::CancelToken) -> T + Send + 'static,
@@ -709,9 +735,9 @@ where
         return None;
     }
     let net_cancel = net::CancelToken::new();
-    // Сторож живёт ровно столько, сколько сама работа: как только она
-    // закончилась, `done_tx` роняется и сторож уходит. Без этого сторожа
-    // копились бы по одному на каждый запрос.
+    // The watcher lives exactly as long as the work itself: as soon as it
+    // finishes, `done_tx` is dropped and the watcher leaves. Without this
+    // watchers would pile up, one per request.
     let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
     {
         let nc = net_cancel.clone();
@@ -732,19 +758,20 @@ where
     }
 }
 
-/// Сетевой транспорт ядра с уже подключённой отменой.
+/// The core's network transport with cancellation already attached.
 fn net_with(cancel: net::CancelToken) -> UreqNet {
     UreqNet::new().with_cancel(cancel)
 }
 
 // ============================================================================
-// Сеть: инвентарь, владеемые фоны, скачивание ассетов
+// Network: the inventory, owned backgrounds, downloading assets
 // ============================================================================
 
-/// Порт `_fetch_inventory_pages`: ВЕСЬ публичный инвентарь одним ответом.
+/// A port of `_fetch_inventory_pages`: the WHOLE public inventory as one
+/// answer.
 ///
-/// Страницы идут, пока Steam говорит `more_items` (починка оригинала от
-/// 2026-07-28 — прежний код брал одну страницу и терял всё свежее).
+/// Pages go on while Steam says `more_items` (a fix of the original of
+/// 2026-07-28 — the former code took one page and lost everything recent).
 fn fetch_inventory_pages(sid: &str, cancel: net::CancelToken) -> Result<Value, String> {
     let mut net = net_with(cancel.clone());
     let mut pages: Vec<Value> = Vec::new();
@@ -768,12 +795,13 @@ fn fetch_inventory_pages(sid: &str, cancel: net::CancelToken) -> Result<Value, S
     Ok(qs::merge_inventory_pages(&pages))
 }
 
-/// Порт `_fetch_owned` из `rexon/steam_profile_items.py`: владеемые фоны со
-/// ссылками на анимацию.
+/// A port of `_fetch_owned` from `rexon/steam_profile_items.py`: owned
+/// backgrounds with links to the animation.
 ///
-/// Отказ различается по роду: «ключ не принят» (ядро перечитает ключ и
-/// повторит) и «не ответил». Текст ошибки сети наружу НЕ идёт: в нём адрес
-/// запроса, а в адресе — ключ.
+/// The refusal is distinguished by kind: "key not accepted" (the core will
+/// re-read the key and retry) and "did not answer". The network error text
+/// does NOT go out: it contains the request address, and the address
+/// contains the key.
 fn fetch_owned(
     token: &str,
     cancel: net::CancelToken,
@@ -782,7 +810,8 @@ fn fetch_owned(
         "https://api.steampowered.com/IPlayerService/GetProfileItemsOwned/v1/\
 ?access_token={}&language={}",
         percent_encode(token),
-        // Язык названий — язык интерфейса (прежде был прибит `russian`).
+        // The language of names is the interface language (previously it was
+        // hard-wired to `russian`).
         qs::steam_language()
     );
     let mut net = net_with(cancel);
@@ -809,13 +838,14 @@ fn fetch_owned(
         .collect())
 }
 
-/// Порт `_download_community` + проверки кэша из `_fetch`/`_download`.
+/// A port of `_download_community` + the cache checks from
+/// `_fetch`/`_download`.
 ///
-/// Файл уже на месте и непустой — возвращаем его, не трогая сеть. Иначе
-/// качаем, перебирая варианты CDN-хостов (Steam-гниль: один и тот же путь
-/// может существовать только на одном из двух).
+/// The file is already in place and non-empty — return it without touching
+/// the network. Otherwise download, trying the CDN host variants (Steam rot:
+/// the same path may exist on only one of the two).
 ///
-/// Починка №6: временный `.part` снимается на ЛЮБОМ исходе.
+/// Fix #6: the temporary `.part` is removed on ANY outcome.
 pub(crate) fn download_cached(
     url: &str,
     dest: &str,
@@ -857,7 +887,7 @@ pub(crate) fn download_cached(
     Err(last)
 }
 
-/// `urllib.parse.quote` для токена в адресе.
+/// `urllib.parse.quote` for the token in the address.
 fn percent_encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for b in value.bytes() {
@@ -872,14 +902,15 @@ fn percent_encode(value: &str) -> String {
 }
 
 // ============================================================================
-// Кадр-превью ролика (ffprobe + ffmpeg)
+// Clip preview frame (ffprobe + ffmpeg)
 // ============================================================================
 
-/// Порт `session_splash.preview_frame` для async-задачи.
+/// A port of `session_splash.preview_frame` for an async task.
 ///
-/// Решения — из ядра целиком: каталог кэша, имя файла по «путь + время
-/// правки», момент кадра, обе строки запуска и повторная попытка «первый
-/// кадр» для коротких/битых роликов. Здесь только запуск процессов.
+/// The decisions come entirely from the core: the cache directory, the file
+/// name by "path + modification time", the frame moment, both command lines
+/// and the "first frame" retry for short/broken clips. Here there is only
+/// launching the processes.
 async fn preview_frame(env: SteamEnv, video: String) -> Option<String> {
     if video.is_empty() || !tokio::fs::try_exists(&video).await.unwrap_or(false) {
         return None;
@@ -918,7 +949,7 @@ async fn preview_frame(env: SteamEnv, video: String) -> Option<String> {
     .unwrap_or(false)
         && tokio::fs::try_exists(&tmp).await.unwrap_or(false);
     if !ok {
-        // Ролик короче ожидаемого либо битый — берём самый первый кадр.
+        // The clip is shorter than expected or broken — take the very first frame.
         let second = run_argv(
             &ss::preview_ffmpeg_argv(&ffmpeg, &video, &tmp, 0.0),
             ss::FFMPEG_TIMEOUT_SEC,
@@ -936,8 +967,8 @@ async fn preview_frame(env: SteamEnv, video: String) -> Option<String> {
     Some(out)
 }
 
-/// Длительность ролика через ffprobe; нет ffprobe — 0 (кадр возьмётся с
-/// начала, как и в оригинале).
+/// Clip duration via ffprobe; without ffprobe it is 0 (the frame is taken
+/// from the start, as in the original).
 async fn video_duration(path: &str) -> f64 {
     let Some(exe) = which("ffprobe") else {
         return 0.0;
@@ -953,13 +984,15 @@ async fn video_duration(path: &str) -> f64 {
     }
 }
 
-/// `subprocess.run(argv, capture_output=True, timeout=…)` — код возврата и
-/// стандартный вывод. `None` — не запустилось либо не уложилось в таймаут.
+/// `subprocess.run(argv, capture_output=True, timeout=…)` — the exit code
+/// and standard output. `None` means it did not start or did not fit into
+/// the timeout.
 async fn run_argv(argv: &[String], timeout: f64) -> Option<(i32, String)> {
     let (exe, args) = argv.split_first()?;
-    // `kill_on_drop`: заказ кадров гасится при каждом обновлении витрины, а
-    // таймаут бросает будущее — без этого ffmpeg оставался жить сиротой и
-    // писал во ВРЕМЕННЫЙ файл, который уже пишет следующий заказ.
+    // `kill_on_drop`: the frame order is cancelled on every showcase update,
+    // and the timeout drops the future — without this ffmpeg stayed alive as an
+    // orphan and wrote into a TEMPORARY file that the next order is already
+    // writing.
     let fut = tokio::process::Command::new(exe)
         .args(args)
         .stdin(std::process::Stdio::null())
@@ -975,7 +1008,7 @@ async fn run_argv(argv: &[String], timeout: f64) -> Option<(i32, String)> {
     ))
 }
 
-/// `shutil.which` — первый исполняемый файл с таким именем в `$PATH`.
+/// `shutil.which` — the first executable file with this name in `$PATH`.
 fn which(name: &str) -> Option<String> {
     let path = std::env::var("PATH").ok()?;
     for dir in path.split(':').filter(|d| !d.is_empty()) {
@@ -988,10 +1021,11 @@ fn which(name: &str) -> Option<String> {
 }
 
 // ============================================================================
-// Живые чтения файловой системы (сторона исполнителя)
+// Live file system reads (the executor side)
 // ============================================================================
 
-/// Порт `_steam_id64`: SteamID64 аккаунта, чей `localconfig.vdf` свежее.
+/// A port of `_steam_id64`: SteamID64 of the account whose
+/// `localconfig.vdf` is newer.
 pub fn detect_account(steam_root: &str) -> Option<String> {
     let userdata = format!("{steam_root}/userdata");
     let mut entries: Vec<(String, f64)> = Vec::new();
@@ -1012,8 +1046,8 @@ pub fn detect_account(steam_root: &str) -> Option<String> {
     qs::pick_account(&entries)
 }
 
-/// Порт `_equipped_profile_background`: надетый в профиле фон из
-/// `localconfig.vdf` (может быть анимированным).
+/// A port of `_equipped_profile_background`: the background equipped in the
+/// profile from `localconfig.vdf` (may be animated).
 pub fn read_equipped_background(steam_root: &str) -> Option<ProfileBackgroundItem> {
     let userdata = format!("{steam_root}/userdata");
     for e in std::fs::read_dir(&userdata).ok()?.flatten() {
@@ -1036,8 +1070,9 @@ pub fn read_equipped_background(steam_root: &str) -> Option<ProfileBackgroundIte
     None
 }
 
-/// Дисковый кэш СПИСКА инвентаря: показать витрину МГНОВЕННО, пока сеть
-/// тихо обновляет её в фоне (stale-while-revalidate оригинала).
+/// Disk cache of the inventory LIST: show the showcase INSTANTLY while the
+/// network quietly updates it in the background (the original's
+/// stale-while-revalidate).
 pub fn read_inventory_cache(env: &SteamEnv, sid: &str) -> Option<Vec<ProfileBackgroundItem>> {
     let path = qs::inventory_cache_path(env.cache(), &env.home, sid);
     let text = std::fs::read_to_string(path).ok()?;
@@ -1045,7 +1080,7 @@ pub fn read_inventory_cache(env: &SteamEnv, sid: &str) -> Option<Vec<ProfileBack
     qs::parse_inventory_cache(&data, sid)
 }
 
-/// Атомарная запись кэша списка инвентаря (`.tmp` + `rename`).
+/// Atomic write of the inventory list cache (`.tmp` + `rename`).
 pub fn write_inventory_cache(env: &SteamEnv, sid: &str, items: &[ProfileBackgroundItem]) {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1055,7 +1090,8 @@ pub fn write_inventory_cache(env: &SteamEnv, sid: &str, items: &[ProfileBackgrou
     write_atomic(&path, qs::inventory_cache_json(sid, items, ts).as_bytes());
 }
 
-/// Метки видеозаставок из дискового кэша — мгновенно, без сети.
+/// Video splash markers from the disk cache — instantly, without the
+/// network.
 pub fn read_meta_cache(env: &SteamEnv, sid: &str) -> qs::MetaMap {
     let path = qs::splash_meta_cache_path(env.cache(), &env.home, sid);
     std::fs::read_to_string(path)
@@ -1065,7 +1101,8 @@ pub fn read_meta_cache(env: &SteamEnv, sid: &str) -> qs::MetaMap {
         .unwrap_or_default()
 }
 
-/// id фона, применённого обоями сейчас (пустая строка — нет такого).
+/// id of the background currently applied as a wallpaper (an empty string
+/// means there is none).
 pub fn read_applied_id(env: &SteamEnv) -> String {
     let path = qs::applied_config_path(env.config(), &env.home);
     std::fs::read_to_string(path)
@@ -1075,19 +1112,20 @@ pub fn read_applied_id(env: &SteamEnv) -> String {
         .unwrap_or_default()
 }
 
-/// Запомнить, какой фон применён обоями (движок обоев Steam-предмета не знает).
+/// Remember which background is applied as a wallpaper (the wallpaper engine does not know the Steam item).
 pub fn write_applied(env: &SteamEnv, id: &str, name: &str) {
     let path = qs::applied_config_path(env.config(), &env.home);
     write_atomic(&path, qs::applied_config_json(id, name).as_bytes());
 }
 
-/// Запись через ЕДИНСТВЕННУЮ атомарную дверь профиля
+/// Writing through the profile's SINGLE atomic door
 /// ([`rexon_core::utils::atomic_write_bytes`]).
 ///
-/// Своей пары «временный файл + переименование» здесь больше нет: без
-/// `fsync` подмена имени может лечь на диск раньше содержимого, и после
-/// сбоя питания на месте целой прежней записи оказывается целая новая — из
-/// нулей. Сторож общей двери — `rexon-core/tests/profile_writes_atomic.rs`.
+/// There is no longer a "temporary file + rename" pair of our own here:
+/// without `fsync` the name swap may reach the disk before the contents,
+/// and after a power failure an intact new record of zeros ends up in place
+/// of the intact previous one. The guard of the shared door is
+/// `rexon-core/tests/profile_writes_atomic.rs`.
 fn write_atomic(path: &str, data: &[u8]) {
     if let Some((dir, _)) = path.rsplit_once('/') {
         if std::fs::create_dir_all(dir).is_err() {
@@ -1119,8 +1157,8 @@ mod tests {
         d
     }
 
-    /// Закрытие вкладки не должно висеть: токен взводится первым, ожидание
-    /// упирается в потолок. Оригинал ждал до 30 секунд.
+    /// Closing the tab must not hang: the token is triggered first, and the
+    /// wait hits the ceiling. The original waited up to 30 seconds.
     #[test]
     fn shutdown_is_prompt_and_idempotent() {
         let tasks = SteamTasks::new(SteamEnv::default()).expect("рантайм");
@@ -1128,11 +1166,11 @@ mod tests {
         tasks.shutdown();
         assert!(tasks.is_cancelled());
         assert!(started.elapsed().as_millis() < SHUTDOWN_GRACE_MS as u128 + 500);
-        // Повторный вызов безопасен (закрытие вкладки может прийти дважды).
+        // A repeated call is safe (closing the tab may come twice).
         tasks.shutdown();
     }
 
-    /// После закрытия новые задачи не заводятся: результат некому получать.
+    /// After closing no new tasks are started: nobody would receive the result.
     #[test]
     fn no_tasks_after_shutdown() {
         let tasks = SteamTasks::new(SteamEnv::default()).expect("рантайм");
@@ -1142,8 +1180,8 @@ mod tests {
         assert_eq!(tasks.poll_event(), None);
     }
 
-    /// Смена страницы гасит прежний узел миниатюр, а не сиротит его
-    /// (починка №2).
+    /// A page change cancels the previous thumbnails node rather than orphaning
+    /// it (fix #2).
     #[test]
     fn thumb_node_is_swapped_and_cancelled() {
         let tasks = SteamTasks::new(SteamEnv::default()).expect("рантайм");
@@ -1157,9 +1195,9 @@ mod tests {
         assert!(second.is_cancelled(), "закрытие гасит и текущий узел");
     }
 
-    /// Исполнитель обоев один на процесс: пересозданная страница получает
-    /// тот же слот, а не свой пустой. Живую машину тест не трогает —
-    /// исполнитель в слоте заводится только применением.
+    /// The wallpaper executor is one per process: a recreated page gets the
+    /// same slot rather than an empty one of its own. The test does not touch
+    /// the live machine — the executor in the slot is started only by applying.
     #[test]
     fn wallpaper_slot_is_shared_by_the_process() {
         let a = wallpaper_exec::live_slot();
@@ -1168,7 +1206,8 @@ mod tests {
         assert!(Arc::ptr_eq(&a, &ExecApplier::live().slot));
     }
 
-    /// Применение обоев не запускается вторым разом, пока идёт первое.
+    /// Applying a wallpaper does not start a second time while the first is in
+    /// progress.
     #[test]
     fn apply_is_single_flight() {
         struct Slow;
@@ -1199,10 +1238,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// ⭐ Самое вероятное место дефектов: работа УЖЕ идёт, а вкладку
-    /// закрывают. Проверяем сам механизм: блокирующая работа получает
-    /// сетевой токен, гашение узла взводит его на месте, а результат
-    /// наружу не выходит — даже если работа успела досчитать.
+    /// ⭐ The most likely place for defects: the work is ALREADY running, and
+    /// the tab is being closed. We check the mechanism itself: the blocking work
+    /// gets a network token, cancelling the node triggers it on the spot, and
+    /// the result does not get out — even if the work managed to finish
+    /// computing.
     #[test]
     fn inflight_work_is_cut_by_token() {
         let tasks = SteamTasks::new(SteamEnv::default()).expect("рантайм");
@@ -1213,8 +1253,8 @@ mod tests {
         let out = tasks.rt.as_ref().expect("рантайм жив").block_on(async move {
             let handle = tokio::spawn(async move {
                 blocking_cancellable(&node2, move |cancel| {
-                    // Ждём, пока сторож взведёт сетевой токен: это ровно
-                    // то, что рвёт уже отправленный запрос ureq.
+                    // Wait until the watcher triggers the network token: that is exactly what
+                    // aborts an already sent ureq request.
                     for _ in 0..500 {
                         if cancel.is_cancelled() {
                             seen.store(true, Ordering::SeqCst);
@@ -1238,8 +1278,8 @@ mod tests {
         tasks.shutdown();
     }
 
-    /// Пересборка витрины гасит прежнюю пачку кадров-превью — тот же
-    /// класс, что у миниатюр (починка №2).
+    /// Rebuilding the showcase cancels the previous batch of preview frames —
+    /// the same class as for thumbnails (fix #2).
     #[test]
     fn poster_node_is_swapped_and_cancelled() {
         let tasks = SteamTasks::new(SteamEnv::default()).expect("рантайм");
@@ -1250,9 +1290,9 @@ mod tests {
         tasks.shutdown();
     }
 
-    /// Закрытие вкладки не должно оставлять в очереди события, которые
-    /// некому получать: у оригинала именно здесь `done` летел в
-    /// разрушаемое окно (починка №4).
+    /// Closing the tab must not leave events in the queue that nobody will
+    /// receive: it was exactly here that the original's `done` flew into a
+    /// window being destroyed (fix #4).
     #[test]
     fn no_events_after_shutdown() {
         let tasks = SteamTasks::new(SteamEnv::default()).expect("рантайм");
@@ -1261,14 +1301,14 @@ mod tests {
             ("2".into(), "https://invalid.invalid/b.jpg".into()),
         ]);
         tasks.shutdown();
-        // Пока задачи не отменены, они могли успеть положить событие;
-        // после закрытия новых не появляется ни одного.
+        // Until the tasks are cancelled, they may have managed to put an event;
+        // after closing not a single new one appears.
         while tasks.poll_event().is_some() {}
         std::thread::sleep(std::time::Duration::from_millis(120));
         assert_eq!(tasks.poll_event(), None);
     }
 
-    /// Круг «записали кэш → прочитали» на живой файловой системе.
+    /// A "wrote the cache → read it" round trip on a live file system.
     #[test]
     fn caches_roundtrip_on_disk() {
         let dir = tmpdir("cache");
@@ -1293,7 +1333,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Уже скачанный непустой файл сеть не трогает.
+    /// An already downloaded non-empty file does not touch the network.
     #[test]
     fn cached_file_short_circuits_download() {
         let dir = tmpdir("dl");
@@ -1304,13 +1344,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Починка №6: недокачанный `.part` не остаётся в кэше.
+    /// Fix #6: a partially downloaded `.part` does not stay in the cache.
     #[test]
     fn failed_download_leaves_no_part_file() {
         let dir = tmpdir("part");
         let dest = format!("{}/b.jpg", dir.to_string_lossy());
         let cancel = net::CancelToken::new();
-        cancel.cancel(); // обрываем ещё до первого обращения
+        cancel.cancel(); // abort even before the first access
         let out = download_cached("https://invalid.invalid/b.jpg", &dest, 1, cancel);
         assert!(out.is_err());
         assert!(!std::path::Path::new(&qs::part_path(&dest)).exists());

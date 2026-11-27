@@ -1,27 +1,28 @@
-//! Вкладка «Рабочие столы»: содержимое и решения.
+//! The «Desktops» tab: its content and decisions.
 //!
-//! Вторая вкладка, перенесённая на QML (после «Сравнения DE»). Здесь живёт ВСЁ, что вкладка
-//! показывает и решает: секции списка, подписи и подсказки пунктов, шапка
-//! карточки, ТТХ-полоса, строка пакетов, состав кнопок по состоянию стола,
-//! тексты подтверждений и — главное — обе защиты удаления. Разметка (QML
-//! либо виджеты) только раскладывает это по экрану.
+//! The second tab ported to QML (after «Compare Desktops»). EVERYTHING the
+//! tab shows and decides lives here: list sections, item captions and
+//! tooltips, the card header, the spec strip, the packages line, the set of
+//! buttons by desktop state, confirmation texts and, most importantly, both
+//! removal guards. The markup (QML or widgets) only lays this out on screen.
 //!
-//! ⚠️ Продуктовых чисел и строк во вкладке быть не должно. Вторая копия
-//! разъезжается молча, а замечает её покупатель: у него на витрине окажется
-//! стол в чужой секции или кнопка удаления там, где её быть не может.
+//! ⚠️ There must be no product numbers or strings in the tab. A second copy
+//! drifts apart silently, and it is the customer who notices: their showcase
+//! ends up with a desktop in the wrong section or a remove button where
+//! there can be none.
 //!
-//! Что взято у соседей, а не переписано:
-//!   * значки столов — [`crate::qt_compare::de_icon`] (таблица одна на
-//!     продукт);
-//!   * ТТХ столов — [`crate::system::DE_META`];
-//!   * тексты переключения — [`crate::qt_compare::switch_texts`]: у обеих
-//!     вкладок они совпадают дословно, и разводить их незачем;
-//!   * можно ли ставить стол на этом дистрибутиве —
-//!     [`crate::distro_compat`] через общее окно подтверждения.
+//! What is taken from the neighbours instead of rewritten:
+//!   * desktop icons: [`crate::qt_compare::de_icon`] (one table for the
+//!     product);
+//!   * desktop specs: [`crate::system::DE_META`];
+//!   * switching texts: [`crate::qt_compare::switch_texts`]: they match word
+//!     for word in both tabs, and there is no point splitting them;
+//!   * whether the desktop may be installed on this distribution:
+//!     [`crate::distro_compat`] through the shared confirmation dialog.
 //!
-//! Подписи идут через каталог перевода (`crate::i18n`): исходный язык —
-//! английский, русский живёт в `po/ru.po`. Признаки (`kind`, `style`,
-//! идентификаторы столов) от подписей отделены и не переводятся.
+//! Captions go through the translation catalog (`crate::i18n`): the source
+//! language is English, Russian lives in `po/ru.po`. Attributes (`kind`,
+//! `style`, desktop identifiers) are separate from captions and are not translated.
 
 use serde::Serialize;
 
@@ -32,7 +33,7 @@ use crate::shell_bundle::{self, ShellState, Warning};
 use crate::system::{is_available, DeMeta, DesktopShell, PkgFamily, DE_META};
 
 // ============================================================================
-// Окно
+// Window
 // ============================================================================
 
 pub fn window_title() -> String {
@@ -41,61 +42,61 @@ pub fn window_title() -> String {
 pub const WINDOW_MIN_SIZE: (u32, u32) = (960, 720);
 
 // ============================================================================
-// Левая панель: список столов
+// Left panel: the desktop list
 // ============================================================================
 
 pub fn list_header() -> String {
     tr("🖥️ Desktops")
 }
 pub const LIST_HEADER_POINT_SIZE: i32 = 13;
-/// Кегль пункта списка (QSS виджетной вкладки: `font-size: 12pt`).
+/// Font size of a list item (QSS of the widget tab: `font-size: 12pt`).
 pub const LIST_ITEM_POINT_SIZE: i32 = 12;
-/// Кегль строки-заголовка секции.
+/// Font size of a section heading row.
 pub const SECTION_POINT_SIZE: i32 = 9;
 
-/// Заголовок секции полноценных рабочих столов.
+/// Heading of the full desktops section.
 ///
-/// Не «Рабочие столы»: так называется сама панель, и дублировать заголовок
-/// нельзя. «Классические» ↔ «Тайловые» — пара прилагательных; третья
-/// секция — «Композиторы с эффектами» ([`section_effects`]).
+/// Not «Desktops»: that is the name of the panel itself, and the heading
+/// must not be duplicated. «Classic» ↔ «Tiling» are a pair of adjectives;
+/// the third section is «Compositors with effects» ([`section_effects`]).
 pub fn section_classic() -> String {
     // TRANSLATORS: list section heading: full desktop environments, as
     // opposed to tiling window managers.
     tr("Classic")
 }
-/// Заголовок секции тайловых оконных менеджеров.
+/// Heading of the tiling window managers section.
 pub fn section_tiling() -> String {
     // TRANSLATORS: list section heading: tiling window managers.
     tr("Tiling")
 }
-/// Заголовок секции композиторов с эффектами (Wayfire): окна плавающие, как
-/// у классических, но это не полный рабочий стол со своими программами.
+/// Heading of the compositors with effects section (Wayfire): windows float as
+/// in classic ones, but it is not a full desktop with its own programs.
 pub fn section_effects() -> String {
     // TRANSLATORS: list section heading: Wayland compositors with 3D effects
     // (Wayfire) — floating windows, but not full desktop environments.
     tr("Compositors with effects")
 }
 
-/// Состав и ПОРЯДОК секции «Тайловые»: Hyprland первым как самый
-/// популярный, дальше niri, sway и River.
+/// Set and ORDER of the «Tiling» section: Hyprland first as the most
+/// popular, then niri, sway and River.
 ///
-/// Wayfire сюда НЕ входит: окна у него плавающие (как в Compiz), это не
-/// тайловый композитор — он в своей секции [`EFFECTS_IDS`].
+/// Wayfire is NOT here: its windows float (as in Compiz), it is not a
+/// tiling compositor; it is in its own section [`EFFECTS_IDS`].
 ///
-/// COSMIC сюда НЕ входит — это полноценный гибрид (DE с опциональным
-/// тайлингом) и остаётся в «Классических» с подсказкой. Сам вопрос
-/// «тайловый ли это композитор» ядро умеет решать
-/// ([`crate::appdefaults::is_tiling_wm`]), а вот выбор «кого вынести в
-/// отдельную секцию и в каком порядке» — продуктовый, и живёт здесь.
-/// Сторож их согласия — `qt_desktops_parity::tiling_section_matches_core`.
+/// COSMIC is NOT here: it is a full hybrid (a DE with optional tiling) and
+/// stays in «Classic» with a tooltip. The question "is this a tiling
+/// compositor" itself is answered by the core
+/// ([`crate::appdefaults::is_tiling_wm`]), but the choice "whom to move to a
+/// separate section and in what order" is a product one, and lives here.
+/// Their agreement is guarded by `qt_desktops_parity::tiling_section_matches_core`.
 pub const TILING_IDS: &[&str] = &["hyprland", "niri", "sway", "river"];
 
-/// Состав и порядок секции «Композиторы с эффектами» (после «Тайловых»):
-/// окна плавающие, эффекты в духе Compiz, но своих программ и общих
-/// настроек системы нет — в «Классических» он обещал бы больше, чем даёт.
+/// Set and order of the «Compositors with effects» section (after «Tiling»):
+/// windows float, Compiz-style effects, but no own programs and no shared
+/// system settings; in «Classic» it would promise more than it gives.
 pub const EFFECTS_IDS: &[&str] = &["wayfire"];
 
-/// Подсказка гибрида — единственная привязанная к конкретному столу.
+/// The hybrid tooltip: the only one tied to a specific desktop.
 pub fn cosmic_hint() -> String {
     tr("Hybrid: a desktop with optional tiling")
 }
@@ -105,32 +106,32 @@ pub fn tip_installed() -> String {
 pub fn tip_unavailable() -> String {
     tr("Not available on this distribution")
 }
-/// Разделитель кусков подсказки пункта списка.
+/// Separator between the parts of a list item tooltip.
 pub const TIP_SEPARATOR: &str = " · ";
 
-/// Строка списка: либо заголовок секции, либо стол.
+/// A list row: either a section heading or a desktop.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ListRow {
-    /// `section` — невыбираемый заголовок, `de` — рабочий стол.
+    /// `section` is a non-selectable heading, `de` is a desktop.
     pub kind: &'static str,
-    /// Идентификатор стола (у заголовка секции пусто).
+    /// Desktop identifier (empty for a section heading).
     pub de_id: String,
-    /// Текст строки.
+    /// Row text.
     pub text: String,
-    /// Подсказка строки (пустая — подсказки нет).
+    /// Row tooltip (empty means no tooltip).
     pub tooltip: String,
-    /// Стоит ли стол — делегату для отметки.
+    /// Whether the desktop is installed, for the delegate's mark.
     pub installed: bool,
-    /// Доступен ли стол на этом дистрибутиве.
+    /// Whether the desktop is available on this distribution.
     pub available: bool,
 }
 
-/// Подпись пункта: значок стола и его имя через два пробела.
+/// Item caption: the desktop icon and its name separated by two spaces.
 pub fn item_text(de_id: &str) -> String {
     format!("{}  {}", de_icon(de_id), display_name(de_id))
 }
 
-/// Подсказка пункта списка; пустая строка — подсказки нет.
+/// Tooltip of a list item; an empty string means no tooltip.
 pub fn item_tooltip(de_id: &str, installed: bool, available: bool) -> String {
     let mut tips: Vec<String> = Vec::new();
     if installed {
@@ -145,11 +146,11 @@ pub fn item_tooltip(de_id: &str, installed: bool, available: bool) -> String {
     tips.join(TIP_SEPARATOR)
 }
 
-/// Весь список левой панели: «Классические» в порядке базы, затем
-/// «Тайловые» и «Композиторы с эффектами» в своём фиксированном порядке.
+/// The whole left panel list: «Classic» in database order, then «Tiling»
+/// and «Compositors with effects» in their fixed order.
 ///
-/// Заголовок секции появляется только если в ней есть хоть один стол:
-/// пустая секция — это подпись без содержимого, покупателю она ни о чём.
+/// A section heading appears only if the section has at least one desktop:
+/// an empty section is a caption without content, it tells the customer nothing.
 pub fn list_rows(family: PkgFamily, installed: &dyn Fn(&str) -> bool) -> Vec<ListRow> {
     let mut out = Vec::new();
     let classic: Vec<&DeMeta> = DE_META
@@ -195,30 +196,30 @@ pub fn list_rows(family: PkgFamily, installed: &dyn Fn(&str) -> bool) -> Vec<Lis
 }
 
 // ============================================================================
-// Панель «Инструменты»
+// The «Tools» panel
 // ============================================================================
 
 pub fn tools_header() -> String {
     tr("🧰 Tools")
 }
-/// Минимальная высота контрола — канон Big Picture / Steam Deck.
+/// Minimum control height: the Big Picture / Steam Deck canon.
 pub const TOOL_BUTTON_MIN_HEIGHT: i32 = 40;
 
-/// Кнопка панели инструментов.
+/// A tools panel button.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ToolButton {
-    /// Что делать: `compare`, `repair_current`, `panel_backup`,
+    /// What to do: `compare`, `repair_current`, `panel_backup`,
     /// `panel_restore`.
     pub kind: &'static str,
     pub text: String,
     pub tooltip: String,
 }
 
-/// Умеет ли Rexon снять копию панели ТЕКУЩЕГО стола: KDE — своим снимком
-/// конфигов Plasma; MATE — `dconf dump /org/mate/panel/` (тот же файл, что
-/// у «Вернуть прежнюю панель» в «Раскладке панели», `mate_panel`); XFCE —
-/// `xfce4-panel-profiles save/load` (пакет в Arch extra, Debian, Fedora,
-/// openSUSE). `have(программа)` — есть ли она в системе.
+/// Whether Rexon can take a copy of the panel of the CURRENT desktop: KDE with
+/// its own snapshot of Plasma configs; MATE with `dconf dump /org/mate/panel/`
+/// (the same file as «Restore previous panel» in «Panel Layout», `mate_panel`);
+/// XFCE with `xfce4-panel-profiles save/load` (package in Arch extra, Debian,
+/// Fedora, openSUSE). `have(program)` is whether it is in the system.
 pub fn panel_backup_supported(current_de: &str, have: &dyn Fn(&str) -> bool) -> bool {
     match current_de {
         "kde" => true,
@@ -228,9 +229,9 @@ pub fn panel_backup_supported(current_de: &str, have: &dyn Fn(&str) -> bool) -> 
     }
 }
 
-/// Кнопки панели по ТЕКУЩЕМУ столу. `panel_backup` —
-/// [`panel_backup_supported`]: где копию снимать нечем, кнопки вели бы в
-/// ошибку, и их нет.
+/// Panel buttons for the CURRENT desktop. `panel_backup` is
+/// [`panel_backup_supported`]: where there is nothing to take a copy with, the
+/// buttons would lead to an error, so they are absent.
 pub fn tool_buttons(_current_de: &str, panel_backup: bool) -> Vec<ToolButton> {
     let mut out = vec![
         ToolButton {
@@ -261,24 +262,24 @@ pub fn tool_buttons(_current_de: &str, panel_backup: bool) -> Vec<ToolButton> {
     out
 }
 
-/// Подпись кнопки возврата из встроенного «Сравнения DE».
+/// Caption of the button returning from the embedded «Compare Desktops».
 pub fn compare_back_text() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("← Desktops")
 }
 
 // ============================================================================
-// Блок «Как в дистрибутиве»
+// The «Distro Looks» block
 // ============================================================================
 //
-// Средняя панель вкладки (решение владельца 25.10.2026: «Инструменты» ушли
-// вниз правой панели, на их место встал этот блок). Плитка на каждый
-// встроенный образ (`distro_looks::builtin_ids`), у применённого — пометка
-// и «Вернуть как было». Поток «Применить»: предложение
-// ([`crate::distro_looks::offer`]) → окно вопроса ([`look_confirm`], для
-// игрового режима SteamOS — галочка «по желанию») → применение в рабочем
-// потоке → итог. Исполняет ядро (`distro_looks::apply_live`), окно —
-// общее окно операции вкладки.
+// The middle panel of the tab (owner's decision 25.10.2026: «Tools» moved
+// to the bottom of the right panel, and this block took their place). One
+// tile per built-in look (`distro_looks::builtin_ids`), the applied one has
+// a mark and «Put Back as It Was». The «Apply» flow: an offer
+// ([`crate::distro_looks::offer`]) → a question dialog ([`look_confirm`],
+// with an "optional" checkbox for the SteamOS game mode) → applying in a
+// worker thread → the result. The core executes (`distro_looks::apply_live`),
+// the dialog is the tab's shared operation dialog.
 
 use crate::distro_looks as dl;
 
@@ -286,29 +287,29 @@ pub fn looks_header() -> String {
     tr("🎨 Distro Looks")
 }
 
-/// Пояснение под заголовком блока.
+/// The explanation under the block heading.
 pub fn looks_hint() -> String {
     tr("The whole look of a well-known distribution in one go. You can always put everything back.")
 }
 
-/// Плитка образа.
+/// A look tile.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LookTile {
     pub id: String,
-    /// Имя из манифеста на языке интерфейса.
+    /// Name from the manifest in the interface language.
     pub name: String,
-    /// Описание из манифеста — подсказкой под курсором.
+    /// Description from the manifest, as a hover tooltip.
     pub description: String,
     pub applied: bool,
-    /// Пометка применённого; пусто — не применён.
+    /// Mark of the applied one; empty means not applied.
     pub badge: String,
-    /// Кнопки: `look_apply` у неприменённого, `look_revert` у применённого.
+    /// Buttons: `look_apply` for one not applied, `look_revert` for the applied one.
     pub buttons: Vec<CardButton>,
 }
 
-/// Плитки встроенных образов по порядку. `applied(id)` — применён ли.
-/// Образ, который не разобрался, плитки не получает (сторожит это
-/// `distro_looks_manifests`, а покупателю мёртвая плитка ни к чему).
+/// Tiles of the built-in looks in order. `applied(id)` is whether it is applied.
+/// A look that failed to parse gets no tile (guarded by
+/// `distro_looks_manifests`, and a dead tile is of no use to the customer).
 pub fn look_tiles(lang: &str, applied: &dyn Fn(&str) -> bool) -> Vec<LookTile> {
     let mut out = Vec::new();
     for id in dl::builtin_ids() {
@@ -341,7 +342,7 @@ pub fn look_tiles(lang: &str, applied: &dyn Fn(&str) -> bool) -> Vec<LookTile> {
     out
 }
 
-/// Имя образа `id` из манифеста на языке интерфейса (нет такого — сам id).
+/// Name of the look `id` from the manifest in the interface language (if there is none, the id itself).
 pub fn look_name(id: &str) -> String {
     match dl::builtin(id) {
         Some(Ok(look)) => look.pkg.name.get(&crate::i18n::current_language()).to_string(),
@@ -349,23 +350,23 @@ pub fn look_name(id: &str) -> String {
     }
 }
 
-/// Применять нечего: план не собрался (окно вопроса такого не пускает —
-/// это страховка, а не путь человека).
+/// Nothing to apply: the plan did not come together (the question dialog does
+/// not let such a case through; this is a safety net, not a path a person takes).
 pub fn look_nothing_to_apply() -> String {
     tr("There is nothing to apply.")
 }
 
-/// Заголовок хода дела «Применить».
+/// Heading of the «Apply» progress.
 pub fn look_apply_title(name: &str) -> String {
     trf("Applying “%1”", &[&name])
 }
 
-/// Строка хода, пока собирается план (пробы пакетов — секунды).
+/// Progress line while the plan is being built (package probes take seconds).
 pub fn look_checking() -> String {
     tr("Checking what is needed…")
 }
 
-/// Стол сеанса не опознан — образ применять не к чему.
+/// The session's desktop is not recognized: there is nothing to apply the look to.
 pub fn look_unknown_desktop() -> (String, String) {
     (
         tr("Can't apply the look"),
@@ -373,26 +374,26 @@ pub fn look_unknown_desktop() -> (String, String) {
     )
 }
 
-/// Галочка «по желанию» в окне вопроса.
+/// The "optional" checkbox in the question dialog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LookOption {
     pub text: String,
-    /// Предупреждение образа к этому виду (простой HTML); пусто — нет.
+    /// The look's warning for this part (simple HTML); empty means none.
     pub hint: String,
 }
 
-/// Вариант переключателя окна вопроса.
+/// An option of the question dialog switcher.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LookSelectOption {
     pub value: String,
-    /// Подпись из манифеста на языке интерфейса.
+    /// Caption from the manifest in the interface language.
     pub label: String,
-    /// Пояснение под подписью (простой HTML); пусто — без него, вариант —
-    /// простой кнопкой. Пустое в эталоны образов не пишется.
+    /// The explanation under the caption (simple HTML); empty means without it, the
+    /// option as a plain button. An empty one is not written into look references.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub description: String,
-    /// `false` — вариант виден, но выбрать его нельзя (почему — в
-    /// пояснении). Доступный в эталоны образов не пишется.
+    /// `false` means the option is visible but cannot be chosen (why is in the
+    /// explanation). An available one is not written into look references.
     #[serde(skip_serializing_if = "is_true")]
     pub enabled: bool,
 }
@@ -401,26 +402,26 @@ fn is_true(v: &bool) -> bool {
     *v
 }
 
-/// Переключатель окна вопроса — свойство-список образа (стиль SteamOS:
-/// Vapor или VGUI2). Подписи — из манифеста.
+/// A question dialog switcher: a list property of the look (the SteamOS style:
+/// Vapor or VGUI2). Captions come from the manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LookSelect {
-    /// Имя свойства (`variant`).
+    /// Property name (`variant`).
     pub name: String,
     pub label: String,
-    /// Только варианты, с которыми образ применяется: вариант с отказом
-    /// человеку не предлагается вовсе.
+    /// Only options with which the look applies: an option with a refusal is not
+    /// offered to the person at all.
     pub options: Vec<LookSelectOption>,
     pub current: String,
 }
 
-/// Что показать в окне вопроса «Применить».
+/// What to show in the «Apply» question dialog.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum LookConfirm {
-    /// Образ не применяется: окно с одной кнопкой «Понятно».
+    /// The look does not apply: a dialog with a single «Got It» button.
     Blocked { title: String, text: String },
-    /// Вопрос: текст (простой HTML), подписи «Да»/«Нет», переключатели
-    /// вариантов и галочка «по желанию».
+    /// A question: text (simple HTML), «Yes»/«No» captions, option switchers
+    /// and the "optional" checkbox.
     Ask {
         title: String,
         text: String,
@@ -435,16 +436,17 @@ fn esc(s: &str) -> String {
     crate::qt_extensions::escape_html(s)
 }
 
-/// Предложена ли галочка «по желанию»: план с ней собрался, и вид «по
-/// желанию» в нём упомянут — встаёт либо пропущен по делу (например, нужен
-/// пакет из AUR). Если стол такой вид не понимает вовсе, галочки нет.
+/// Whether the "optional" checkbox is offered: the plan with it came together,
+/// and the optional part is mentioned in it, either installed or skipped for
+/// a reason (for example, an AUR package is needed). If the desktop does not
+/// understand such a part at all, there is no checkbox.
 fn opt_in_offered(variant: &dl::OfferVariant) -> bool {
     let Some(dl::Prepared::Ready(p)) = &variant.opt_in else { return false };
     let opt = |k: &str| dl::OPT_IN_KINDS.contains(&k);
     p.items.iter().any(|i| opt(&i.kind)) || p.skipped.iter().any(|s| opt(&s.kind) && s.reason != dl::not_chosen_reason())
 }
 
-/// Переключатели вариантов при выбранных значениях `values`.
+/// Option switchers with the chosen values `values`.
 fn look_choices(offer: &dl::Offer, values: &dl::OfferVariant, lang: &str) -> Vec<LookSelect> {
     let mut out = Vec::new();
     for (name, prop) in dl::choice_properties(&offer.look) {
@@ -479,13 +481,13 @@ fn look_choices(offer: &dl::Offer, values: &dl::OfferVariant, lang: &str) -> Vec
     out
 }
 
-/// Окно вопроса по предложению `offer`: `values` — выбранные варианты
-/// (пусто — по умолчанию), `opt_in` — стоит ли галочка.
+/// Question dialog for the offer `offer`: `values` are the chosen options
+/// (empty means defaults), `opt_in` is whether the checkbox is checked.
 ///
-/// Решения (правило владельца 24.10): программы из официальных
-/// репозиториев ставятся сразу (защита — окно пароля системы), AUR —
-/// никогда: такие пакеты называются человеку списком. Не встаёт
-/// обязательное — окно отказа, ничего не применяется.
+/// Decisions (owner's rule 24.10): programs from the official repositories
+/// are installed right away (the system password dialog is the protection),
+/// AUR ones never: such packages are listed to the person. If something
+/// mandatory cannot be installed, a refusal dialog, nothing is applied.
 pub fn look_confirm(offer: &dl::Offer, values: &crate::rxn_manifest::PropValues, opt_in: bool) -> LookConfirm {
     let lang = crate::i18n::current_language();
     let name = offer.look.pkg.name.get(&lang).to_string();
@@ -523,8 +525,8 @@ pub fn look_confirm(offer: &dl::Offer, values: &crate::rxn_manifest::PropValues,
     if !kinds.is_empty() {
         lines.push(trf("What will change: %1.", &[&esc(&kinds.join(", "))]));
     }
-    // Что Rexon собирает сам из частей этого стола (а не берёт файлами
-    // автора) — сказать прямо: это близко к задуманному, но не то же самое.
+    // Say plainly what Rexon assembles itself from parts of this desktop (instead
+    // of taking the author's files): it is close to the intent, but not the same.
     let mut built: Vec<String> = Vec::new();
     for it in plan.items.iter().filter(|i| matches!(i.choice, crate::rxn_manifest::Choice::Generate { .. })) {
         let label = dl::kind_label(&it.kind);
@@ -538,8 +540,8 @@ pub fn look_confirm(offer: &dl::Offer, values: &crate::rxn_manifest::PropValues,
             &[&esc(&built.join(", "))],
         ));
     }
-    // Замена оконного менеджера — заметное действие: сказать прямо и
-    // отдельной строкой (решение владельца 31.10.2026 — по умолчанию да).
+    // Replacing the window manager is a noticeable action: say it plainly and
+    // on a separate line (owner's decision 31.10.2026: yes by default).
     if let Some(wm) = dl::compiz_replaced_wm(plan) {
         lines.push(trf(
             "Window effects of this look (wobbly windows, magic lamp, cover switch): Rexon will replace the %1 window manager with Compiz. If Compiz does not start, %1 comes back by itself.",
@@ -577,8 +579,8 @@ pub fn look_confirm(offer: &dl::Offer, values: &crate::rxn_manifest::PropValues,
         ));
     }
     for s in &plan.skipped {
-        // Вид «по желанию», который человек не выбрал, — это галочка ниже,
-        // а не «не будет применено».
+        // An optional part the person did not choose is the checkbox below,
+        // not "will not be applied".
         if offered && opt(&s.kind) && !opt_in {
             continue;
         }
@@ -617,8 +619,8 @@ pub fn look_confirm(offer: &dl::Offer, values: &crate::rxn_manifest::PropValues,
     }
 }
 
-/// План, который пойдёт в применение при этом выборе галочки; `None` —
-/// применять нечего (отказ).
+/// The plan that will be applied with this checkbox choice; `None` means
+/// nothing to apply (refusal).
 pub fn look_chosen_plan<'a>(offer: &'a dl::Offer, values: &crate::rxn_manifest::PropValues, opt_in: bool) -> Option<&'a dl::LookPlan> {
     let variant = offer.variant(values);
     let prepared = match (&variant.opt_in, opt_in && opt_in_offered(variant)) {
@@ -631,7 +633,7 @@ pub fn look_chosen_plan<'a>(offer: &'a dl::Offer, values: &crate::rxn_manifest::
     }
 }
 
-/// Вопрос «Вернуть как было»: заголовок, текст (простой HTML), «Да».
+/// The «Put Back as It Was» question: heading, text (simple HTML), «Yes».
 pub fn look_revert_confirm(name: &str) -> (String, String, String) {
     (
         trf("Put “%1” back as it was?", &[&name]),
@@ -640,53 +642,53 @@ pub fn look_revert_confirm(name: &str) -> (String, String, String) {
     )
 }
 
-/// Заголовок хода дела «Вернуть как было».
+/// Heading of the «Put Back as It Was» progress.
 pub fn look_revert_title(name: &str) -> String {
     trf("Putting “%1” back", &[&name])
 }
 
-/// Итог под журналом (простой HTML) из итога ядра.
+/// The result under the log (simple HTML) from the core's result.
 pub fn look_result_html(message: &str) -> String {
     esc(message).replace('\n', "<br>")
 }
 
 // ============================================================================
-// Правая панель: карточка стола
+// Right panel: the desktop card
 // ============================================================================
 
 pub fn placeholder_text() -> String {
-    // Список столов стоит в начале строки: при языке справа налево он
-    // справа, и перевод обязан это сказать (подпись не физическая).
+    // The desktop list is at the start of the line: in right-to-left languages it
+    // is on the right, and the translation must say so (the caption is not physical).
     // TRANSLATORS: in right-to-left languages the list is on the right: say "on the right" and use the arrow →.
     // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("← Choose a desktop from the list on the left")
 }
 pub const CARD_TITLE_POINT_SIZE: i32 = 22;
 pub const CARD_STATUS_POINT_SIZE: i32 = 11;
-/// Потолок ширины карточки и гарантированный зазор слева.
+/// Card width ceiling and the guaranteed gap on the left.
 pub const CARD_MAX_WIDTH: i32 = 1340;
 pub const CARD_GAP_LEFT: i32 = 12;
 
-/// Зелёный «стоит» в шапке карточки (виджетная вкладка: `#4ade80`).
+/// Green "installed" in the card header (widget tab: `#4ade80`).
 pub const STATUS_INSTALLED_COLOR: &str = "#4ade80";
-/// Янтарный «недоступен» (виджетная вкладка: `rgba(245,158,11,1)`).
+/// Amber "unavailable" (widget tab: `rgba(245,158,11,1)`).
 pub const STATUS_UNAVAILABLE_COLOR: &str = "#f59e0b";
-/// Зелёный «это твой текущий стол» (виджетная вкладка: `rgba(34,197,94,1)`).
+/// Green "this is your current desktop" (widget tab: `rgba(34,197,94,1)`).
 pub const CURRENT_BADGE_COLOR: &str = "#22c55e";
-// Красную кнопку удаления рисует общий элемент `RexonDangerButton`, а её
-// цвет и обе прозрачности живут в `qt_extensions::DANGER_*`: своего оттенка
-// вкладка не заводит (правило #12).
+// The red remove button is drawn by the shared `RexonDangerButton` element,
+// and its color and both opacities live in `qt_extensions::DANGER_*`: the
+// tab does not introduce its own shade (rule #12).
 
 pub fn status_installed() -> String {
     tr("✅ Installed")
 }
-/// Шапка карточки, когда от набора стола стоит меньше половины.
+/// Card header when less than half of the desktop's set is installed.
 pub fn status_partial() -> String {
     tr("⚠️ Partially installed")
 }
-/// «Частично»: не хватает больше половины пакетов самого стола. Один-два
-/// новых пакета группы (pluma-plugins у MATE) — это «Установлен» с
-/// подсказкой «Проверить / Восстановить», а не «частично».
+/// "Partially": more than half of the desktop's own packages are missing. One
+/// or two new group packages (pluma-plugins for MATE) mean «Installed» with
+/// the hint «Check / Repair», not "partially".
 pub fn is_partial_install(p: &crate::system_plan::InstallPreview) -> bool {
     let total = p.members.len();
     total > 0 && p.missing_members().len() * 2 > total
@@ -707,26 +709,26 @@ pub fn current_badge_tooltip() -> String {
     tr("You're using this desktop right now")
 }
 
-/// Одна колонка ТТХ-полосы под скриншотом.
+/// One column of the spec strip under the screenshot.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StatCell {
-    /// Верхняя строка: значок либо повторённые звёзды.
+    /// Top line: an icon or repeated stars.
     pub icon: String,
-    /// Средняя строка; пустая — место занято прозрачной точкой.
+    /// Middle line; empty means the space is held by a transparent dot.
     pub value: String,
-    /// Нижняя подпись.
+    /// Bottom caption.
     pub label: String,
 }
 
-/// Заполнитель пустого значения ТТХ: место под ним держится, текст невидим.
+/// Placeholder for an empty spec value: the space under it is kept, the text is invisible.
 pub const STAT_EMPTY_VALUE: &str = "·";
 
-/// ТТХ-полоса стола: память, нагрузка, настраиваемость, дружелюбие к играм.
+/// The desktop spec strip: memory, load, customization, gaming friendliness.
 ///
-/// Значки настраиваемости и игр повторяются по оценке (не дополняются
-/// пустыми звёздами до пяти, как в «Сравнении DE», — там своя разметка), но
-/// не меньше одного: нулевая оценка иначе давала бы пустую колонку без
-/// намёка на то, что она вообще значит.
+/// The customization and gaming icons are repeated by rating (not padded with
+/// empty stars up to five as in «Compare Desktops», which has its own
+/// markup), but at least one: otherwise a zero rating would give an empty
+/// column with no hint of what it even means.
 pub fn stats(de_id: &str) -> Vec<StatCell> {
     let Some(meta) = meta(de_id) else {
         return Vec::new();
@@ -736,8 +738,8 @@ pub fn stats(de_id: &str) -> Vec<StatCell> {
             icon: "💾".to_string(),
             // TRANSLATORS: memory use of a desktop, %1 is a number of megabytes.
             value: trf("%1 MB", &[&meta.ram_mb]),
-            // «Память» и «Процессор», а не RAM и CPU: покупателю с Windows
-            // сокращения ничего не говорят (правило #13).
+            // «Memory» and «Processor», not RAM and CPU: abbreviations mean nothing to
+            // a customer coming from Windows (rule #13).
             label: trc("desktop spec", "Memory"),
         },
         StatCell {
@@ -746,10 +748,10 @@ pub fn stats(de_id: &str) -> Vec<StatCell> {
             label: trc("desktop spec", "Processor"),
         },
         StatCell {
-            // Оценка — одной функцией с «Сравнением» (`qt_compare::stars`):
-            // заполненные значки плюс «☆» до пяти. Раньше здесь были одни
-            // заполненные, и «Игры 4» от «Игр 5» отличались только длиной
-            // строки (01.11.2026, правило #12).
+            // The rating comes from one function shared with «Compare» (`qt_compare::stars`):
+            // filled icons plus «☆» up to five. Previously there were only filled ones
+            // here, and «Gaming 4» differed from «Gaming 5» only in the length of the
+            // line (01.11.2026, rule #12).
             icon: crate::qt_compare::stars(meta.customizable, "⭐"),
             value: String::new(),
             // TRANSLATORS: stat label under stars: how customizable a desktop is.
@@ -764,17 +766,17 @@ pub fn stats(de_id: &str) -> Vec<StatCell> {
     ]
 }
 
-/// Описание стола без ведущего значка.
+/// The desktop description without the leading icon.
 ///
-/// Заголовок карточки значок уже несёт, второй раз он не нужен. Стрипается
-/// ЛЮБОЙ первый токен без букв и цифр, а не список известных: захардкоженный
-/// список разъезжался с базой (у LXQt перо `🪶` в него не попало и
-/// дублировалось).
+/// The card heading already carries the icon, it is not needed a second time.
+/// ANY first token without letters and digits is stripped, not a list of known
+/// ones: a hard-coded list drifted away from the database (LXQt's feather `🪶`
+/// was not in it and got duplicated).
 pub fn description(de_id: &str) -> String {
     let Some(meta) = meta(de_id) else {
         return String::new();
     };
-    // Описание — через каталог перевода (`DeMeta::description_text`).
+    // The description goes through the translation catalog (`DeMeta::description_text`).
     let description = meta.description_text();
     let text = description.trim_start();
     let (first, rest) = match text.split_once(' ') {
@@ -787,9 +789,9 @@ pub fn description(de_id: &str) -> String {
     text.to_string()
 }
 
-/// Строка «сколько пакетов поставится и откуда».
+/// The line "how many packages will be installed and from where".
 ///
-/// Источник называется ВСЕГДА: без приписки строка выглядела как недоделка.
+/// The source is ALWAYS named: without the note the line looked unfinished.
 pub fn packages_text(main_count: usize, aur_count: usize) -> String {
     let total = (main_count + aur_count) as u64;
     if aur_count > 0 {
@@ -810,45 +812,45 @@ pub fn packages_text(main_count: usize, aur_count: usize) -> String {
     }
 }
 
-/// Блок «пакеты» карточки: строка про состав и, если есть, предупреждение.
+/// The card's "packages" block: a line about the contents and, if any, a warning.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct PackagesView {
-    /// Сколько поставится / что на месте; может быть в две строки.
+    /// How many will be installed / what is in place; may span two lines.
     pub text: String,
-    /// Что сейчас не ставится и что из этого следует; пусто — всё в порядке.
+    /// What cannot be installed right now and what follows from it; empty means all is well.
     pub notice: String,
-    /// Набор не встанет из-за конфликта с установленным: кнопки, которые его
-    /// ставят ([`installs_desktop_set`]), видны, но неактивны, а причина —
-    /// в [`Self::notice`] прямо над ними.
+    /// The set will not install because of a conflict with what is installed: the
+    /// buttons that install it ([`installs_desktop_set`]) are visible but disabled,
+    /// and the reason is in [`Self::notice`] right above them.
     pub install_blocked: bool,
-    /// Стоит лишь меньшая часть набора стола (живой случай 08.11.2026: после
-    /// удаления GNOME вручную доставлен один gnome-shell, а 45 программ стола
-    /// нет) — шапка карточки говорит «Установлен частично» вместо
-    /// «Установлен». Пусто — шапка остаётся как есть.
+    /// Only the smaller part of the desktop's set is installed (a live case on
+    /// 08.11.2026: after GNOME was removed, only gnome-shell was installed back by
+    /// hand, while 45 programs of the desktop were missing): the card header says
+    /// «Partially installed» instead of «Installed». Empty means the header stays as is.
     pub status_override: String,
 }
 
-/// Ставит ли действие набор пакетов стола («Установить», «Проверить /
-/// Восстановить»). Такие кнопки неактивны, пока набор конфликтует с
-/// установленным ([`PackagesView::install_blocked`]).
+/// Whether the action installs the desktop's package set («Install», «Check /
+/// Repair»). Such buttons are disabled while the set conflicts with what is
+/// installed ([`PackagesView::install_blocked`]).
 pub fn installs_desktop_set(kind: &str) -> bool {
     matches!(kind, "install" | "repair")
 }
 
-/// Поможет ли «Собрать заново из исходников Arch»: при конфликте с
-/// установленным — нет. Пересборка чинит пакет, ждущий новой библиотеки, а
-/// конфликт (mutter49 против mutter) остаётся, и кнопка только зря
-/// гоняла бы сборку.
+/// Whether «Rebuild from Arch sources» helps: with a conflict with what is
+/// installed, it does not. A rebuild fixes a package waiting for a new
+/// library, while the conflict (mutter49 against mutter) remains, and the
+/// button would only run the build in vain.
 pub fn rebuild_can_help(p: &crate::system_plan::InstallPreview) -> bool {
     p.conflicts.is_empty()
 }
 
-/// Пока идёт пробная транзакция (`pacman -Sp`, доли секунды — секунды).
+/// While the trial transaction runs (`pacman -Sp`, fractions of a second to seconds).
 pub fn packages_counting() -> String {
     tr("📦 Counting packages…")
 }
 
-/// Сколько имён показывать в перечне недостающих, дальше — «…».
+/// How many names to show in the list of missing ones; after that, "…".
 const PACKAGES_LIST_MAX: usize = 5;
 
 fn short_list(names: &[String]) -> String {
@@ -864,16 +866,16 @@ fn short_list(names: &[String]) -> String {
     out
 }
 
-/// Блок «пакеты» карточки — ЧЕСТНО, по состоянию стола.
+/// The card's "packages" block: HONEST, by the desktop state.
 ///
-/// ⚠️ Было: у установленного COSMIC стояло «📦 К установке 29 пакетов»,
-/// а у Pantheon «К установке 3 пакета» — считались ИМЕНА из базы ядра, а
-/// группа `pantheon` из 63 пакетов шла за одно. Теперь, где пробная
-/// транзакция ответила (`preview`, Arch), число — то, что РЕАЛЬНО
-/// поставится, с раскрытыми группами и зависимостями; у установленного
-/// стола — «всё на месте» либо какие пакеты пропали. Без ответа (другие
-/// семейства, pacman молчит) остаётся счёт имён, но установленному столу
-/// «к установке» не пишется и тогда.
+/// ⚠️ Before: an installed COSMIC showed "📦 29 packages to install", and
+/// Pantheon "3 packages to install": the NAMES from the core database were
+/// counted, and the `pantheon` group of 63 packages counted as one. Now,
+/// where the trial transaction answered (`preview`, Arch), the number is what
+/// will ACTUALLY be installed, with groups and dependencies expanded; an
+/// installed desktop gets "everything is in place" or which packages went
+/// missing. Without an answer (other families, pacman is silent) the name
+/// count remains, but an installed desktop is never told "to install" even then.
 pub fn packages_view(
     installed: bool,
     preview: Option<&crate::system_plan::InstallPreview>,
@@ -896,9 +898,9 @@ pub fn packages_view(
     let notice = packages_notice(p);
     let missing = p.new_packages.len();
     let text = if installed {
-        // Называются пропавшие пакеты САМОГО стола; их зависимости
-        // доедут сами и в перечне только мешали бы (у Budgie без
-        // budgie-extras первыми шли granite и python-cairocffi).
+        // Missing packages of the desktop ITSELF are named; their dependencies
+        // will come along by themselves and would only clutter the list (for
+        // Budgie without budgie-extras, granite and python-cairocffi came first).
         let mut gone = p.missing_members();
         if gone.is_empty() {
             gone = p.new_packages.clone();
@@ -930,10 +932,10 @@ pub fn packages_view(
                 ),
             )
         };
-        // Установленные пакеты, для которых вышла новая сборка, — не
-        // пропажа (19.10.2026: у MATE писалось «Не хватает 2 пакетов» про
-        // стоящие mate-applets и mate-netbook). Называются пакеты самого
-        // стола; обновления зависимостей перечислять незачем.
+        // Installed packages for which a new build came out are not missing
+        // (19.10.2026: MATE said "2 packages missing" about the installed
+        // mate-applets and mate-netbook). The desktop's own packages are named;
+        // there is no point listing dependency updates.
         let mut updates: Vec<String> =
             p.updates.iter().filter(|u| p.members.contains(u)).cloned().collect();
         if updates.is_empty() {
@@ -950,8 +952,8 @@ pub fn packages_view(
                 &[&short_list(&updates)],
             ));
         }
-        // Своя сборка новее репозитория — не обновление и не пропажа:
-        // «Проверить / Восстановить» её не трогает (`InstallPreview::kept_local`).
+        // An own build newer than the repository is neither an update nor missing:
+        // «Check / Repair» does not touch it (`InstallPreview::kept_local`).
         if !p.kept_local.is_empty() {
             text.push('\n');
             text.push_str(&fill(
@@ -1001,7 +1003,7 @@ pub fn packages_view(
     PackagesView { text, notice, install_blocked: !p.conflicts.is_empty(), status_override }
 }
 
-/// Предупреждение блока «пакеты»: что из набора сейчас не ставится.
+/// Warning of the "packages" block: what from the set cannot be installed right now.
 pub fn packages_notice(p: &crate::system_plan::InstallPreview) -> String {
     if !p.conflicts.is_empty() {
         return crate::system_plan::conflict_explanation(&p.conflicts);
@@ -1041,24 +1043,24 @@ pub fn packages_notice(p: &crate::system_plan::InstallPreview) -> String {
     lines.join("\n")
 }
 
-/// Кнопка карточки.
+/// A card button.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CardButton {
     /// `install`, `switch`, `repair`, `remove`.
     pub kind: &'static str,
     pub text: String,
-    /// Подсказка; пустая — подсказки нет.
+    /// Tooltip; empty means no tooltip.
     pub tooltip: String,
-    /// `primary` — выделенная, `neutral` — обычная, `destructive` — красная.
+    /// `primary` is highlighted, `neutral` is regular, `destructive` is red.
     pub style: &'static str,
 }
 
-/// Состав кнопок карточки по состоянию стола.
+/// The set of card buttons by desktop state.
 ///
-/// ⛔ Ключевое место защиты от дурака (правило #13): у ТЕКУЩЕГО стола нет ни
-/// «Переключиться» (мы уже в нём), ни «Удалить» — после выхода из сессии
-/// человек остался бы без графики. Второй рубеж той же защиты —
-/// [`remove_plan`], третий — `system::remove_de(force=false)` в ядре.
+/// ⛔ The key place of the foolproofing (rule #13): the CURRENT desktop has
+/// neither «Switch» (we are already in it) nor «Remove»: after logging out
+/// the person would be left without graphics. The second line of the same
+/// protection is [`remove_plan`], the third is `system::remove_de(force=false)` in the core.
 pub fn card_buttons(installed: bool, available: bool, is_current: bool) -> Vec<CardButton> {
     if !available {
         return Vec::new();
@@ -1097,24 +1099,24 @@ pub fn card_buttons(installed: bool, available: bool, is_current: bool) -> Vec<C
     out
 }
 
-/// Трогает ли действие пакеты системы (ставит, доустанавливает, удаляет).
+/// Whether the action touches system packages (installs, completes, removes).
 ///
-/// Такие кнопки на SteamOS (Steam Deck и Steam Machine) решает
-/// [`steamos_button_block`]. «Переключиться» пакетов не трогает и остаётся
-/// как есть; «Сравнение» и копии панели — тоже.
+/// Such buttons on SteamOS (Steam Deck and Steam Machine) are decided by
+/// [`steamos_button_block`]. «Switch» does not touch packages and stays as
+/// is; so do «Compare» and the panel copies.
 pub fn is_package_action(kind: &str) -> bool {
     matches!(kind, "install" | "repair" | "remove" | "repair_current")
 }
 
-/// Причина неактивной кнопки `kind` карточки стола `de_id` на SteamOS;
-/// `None` — кнопка работает (или это не SteamOS).
+/// Reason for a disabled button `kind` on the card of desktop `de_id` on SteamOS;
+/// `None` means the button works (or it is not SteamOS).
 ///
-/// Проверенные столы (`steamos_sysext::DESKTOPS`) ставятся, пересобираются
-/// и удаляются образом systemd-sysext — их кнопки живые; прочим — причина
-/// из [`crate::distro_compat::steamos_desktop_card_block`]. Пересборку
-/// образа стола, в котором человек СЕЙЧАС работает («Проверить /
-/// Восстановить» на его карточке и «Проверить мой стол»), не предлагаем:
-/// подмена образа под живым сеансом в ВМ не проверена.
+/// Tested desktops (`steamos_sysext::DESKTOPS`) are installed, rebuilt and
+/// removed as a systemd-sysext image, so their buttons are live; the others
+/// get a reason from [`crate::distro_compat::steamos_desktop_card_block`].
+/// Rebuilding the image of the desktop the person is working in RIGHT NOW
+/// («Check / Repair» on its card and «Check My Desktop») is not offered:
+/// swapping the image under a live session has not been tested in the VM.
 pub fn steamos_button_block(kind: &str, de_id: &str, is_current: bool, steamos: bool) -> Option<String> {
     use crate::distro_compat::{steamos_desktop_card_block, SteamOsBlock};
     if !steamos || !is_package_action(kind) {
@@ -1126,14 +1128,15 @@ pub fn steamos_button_block(kind: &str, de_id: &str, is_current: bool, steamos: 
     steamos_desktop_card_block(de_id, true)
 }
 
-/// SteamOS: тексты окна установки (и «Проверить / Восстановить») стола,
-/// который ставится образом systemd-sysext. `steamos_version` — `VERSION_ID`
-/// SteamOS (`None` — не SteamOS); для прочих столов и не на SteamOS —
-/// `base` как есть. Вопрос — из `steamos_sysext`: пакетный текст
-/// («пакеты», «выберите на экране входа») там неправда. Итог пишет в журнал
-/// сам исполнитель (`steamos_sysext::install_done_text` или предупреждение,
-/// что сессией стол не стал), поэтому приписки под журналом нет (пустые
-/// `done_text*`): иначе под предупреждением стояло бы «всё готово».
+/// SteamOS: texts of the install dialog (and «Check / Repair») of a desktop
+/// installed as a systemd-sysext image. `steamos_version` is SteamOS's
+/// `VERSION_ID` (`None` means not SteamOS); for other desktops and outside
+/// SteamOS, `base` as is. The question comes from `steamos_sysext`: the
+/// package text ("packages", "choose on the login screen") is untrue there.
+/// The executor writes the result to the log itself
+/// (`steamos_sysext::install_done_text` or a warning that the desktop did not
+/// become a session), so there is no note under the log (empty `done_text*`):
+/// otherwise "all done" would stand under the warning.
 pub fn steamos_op_texts(base: OpTexts, de_id: &str, steamos_version: Option<&str>) -> OpTexts {
     use crate::steamos_sysext::{install_confirm_text, support, Support};
     let (Some(version), Support::Supported(spec)) = (steamos_version, support(de_id)) else {
@@ -1147,8 +1150,8 @@ pub fn steamos_op_texts(base: OpTexts, de_id: &str, steamos_version: Option<&str
     }
 }
 
-/// SteamOS: вопрос перед удалением стола-образа; `None` — обычный текст
-/// `remove_plan` (не SteamOS или стол не из `steamos_sysext::DESKTOPS`).
+/// SteamOS: the question before removing an image desktop; `None` means the
+/// regular `remove_plan` text (not SteamOS, or the desktop is not in `steamos_sysext::DESKTOPS`).
 pub fn steamos_remove_text(de_id: &str, steamos: bool) -> Option<String> {
     use crate::steamos_sysext::{remove_confirm_text, support, Support};
     match support(de_id) {
@@ -1157,11 +1160,11 @@ pub fn steamos_remove_text(de_id: &str, steamos: bool) -> Option<String> {
     }
 }
 
-/// Шапка карточки: текст статуса, его цвет и жирность.
+/// Card header: the status text, its color and boldness.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct StatusView {
     pub text: String,
-    /// Пустая строка — красить не надо, это обычный вторичный текст.
+    /// An empty string means no coloring, it is regular secondary text.
     pub color: &'static str,
     pub bold: bool,
 }
@@ -1189,18 +1192,18 @@ pub fn status_view(installed: bool, available: bool) -> StatusView {
     }
 }
 
-// ── Версия из репозиториев дистрибутива ─────────────────────────────────
+// ── Version from the distribution repositories ──────────────────────────
 
-/// Пока пакетный менеджер отвечает.
+/// While the package manager answers.
 pub fn version_checking() -> String {
     tr("Checking version…")
 }
 
-/// Строка «что реально скачается»; пустая — строку скрыть.
+/// The line "what will actually be downloaded"; empty means hide the line.
 ///
-/// Это версия из репозиториев ТЕКУЩЕГО дистрибутива, а не «последняя в
-/// мире»: репозиторий может отставать от разработчиков, и честнее показать
-/// то, что придёт на машину.
+/// This is the version from the repositories of the CURRENT distribution, not
+/// "the latest in the world": the repository may lag behind the developers,
+/// and it is more honest to show what will arrive on the machine.
 pub fn version_line(version: &str) -> String {
     if version.is_empty() {
         String::new()
@@ -1209,13 +1212,14 @@ pub fn version_line(version: &str) -> String {
     }
 }
 
-/// Строка версии у УСТАНОВЛЕННОГО стола; пустая — строку скрыть.
+/// The version line of an INSTALLED desktop; empty means hide the line.
 ///
-/// Версия — того же ключевого пакета стола (`check_package` базы ядра), что
-/// и «Доступно в вашем дистрибутиве» у неустановленного: иначе две строки
-/// говорили бы о разных пакетах. `repo_newer` — в репозитории версия новее
-/// установленной (`Some(true)`), не новее (`Some(false)`) или сравнить
-/// нечем (`None`: тогда при расхождении просто называется вторая версия).
+/// The version is of the same key package of the desktop (`check_package` of
+/// the core database) as «Available in your distribution» of one not
+/// installed: otherwise the two lines would talk about different packages.
+/// `repo_newer` means the repository version is newer than the installed one
+/// (`Some(true)`), not newer (`Some(false)`) or there is nothing to compare
+/// with (`None`: then on a mismatch the second version is simply named).
 pub fn installed_version_line(installed: &str, available: &str, repo_newer: Option<bool>) -> String {
     if installed.is_empty() {
         return String::new();
@@ -1231,7 +1235,7 @@ pub fn installed_version_line(installed: &str, available: &str, repo_newer: Opti
 }
 
 // ============================================================================
-// Карусель скриншотов
+// Screenshot carousel
 // ============================================================================
 
 pub fn no_screenshots_text() -> String {
@@ -1264,17 +1268,17 @@ pub fn zoom_title() -> String {
     trc("screenshot viewer title", "Screenshot")
 }
 
-/// Минимальная высота рамки скриншота.
+/// Minimum height of the screenshot frame.
 pub const CAROUSEL_MIN_HEIGHT: i32 = 320;
-/// Потолок высоты рамки в пикселях и в долях окна.
+/// Frame height ceiling in pixels and as a fraction of the window.
 pub const CAROUSEL_MAX_HEIGHT: i32 = 720;
 pub const CAROUSEL_WINDOW_SHARE: f64 = 0.55;
 
-/// Высота рамки скриншота: 16:9 от доступной ширины, но не ниже 320 и не
-/// выше 55% окна либо 720 пикселей.
+/// Screenshot frame height: 16:9 of the available width, but no lower than 320
+/// and no higher than 55% of the window or 720 pixels.
 ///
-/// На развёрнутом Full HD скриншот был прибит к 320 и терялся в растянутой
-/// рамке — читать его было нельзя.
+/// On a maximized Full HD window the screenshot was pinned to 320 and got lost
+/// in a stretched frame: it could not be read.
 pub fn carousel_height(window_height: i32, available_width: i32) -> i32 {
     let cap = CAROUSEL_MIN_HEIGHT
         .max((window_height as f64 * CAROUSEL_WINDOW_SHARE) as i32)
@@ -1283,77 +1287,78 @@ pub fn carousel_height(window_height: i32, available_width: i32) -> i32 {
     CAROUSEL_MIN_HEIGHT.max(ideal.min(cap))
 }
 
-/// Насколько рамка снимка готова ужаться, когда карточке не хватает высоты.
+/// How much the screenshot frame is ready to shrink when the card lacks height.
 ///
-/// ⚠️ ЧИСЛО СНЯТО, А НЕ ВЫВЕДЕНО. Замер 19.09.2026 на штатном окне 1100×750
-/// (скин steam_dark, панель «Инструментов» после `41075f1`, карточка шириной
-/// 569 точек), по всем одиннадцати рабочим столам вкладки:
+/// ⚠️ THE NUMBER IS MEASURED, NOT DERIVED. Measured 19.09.2026 on the standard
+/// 1100×750 window (steam_dark skin, the «Tools» panel after `41075f1`, card
+/// 569 points wide), over all eleven desktops of the tab:
 ///
 /// ```text
-/// вьюпорт карточки             676 (без подвала)   642 (с подвалом)
-/// нужно карточке: девять DE    666                 666
-/// нужно карточке: hyprland,    687                 687
-///                 niri
+/// card viewport                676 (no footer)     642 (with footer)
+/// card needs: nine DEs         666                 666
+/// card needs: hyprland,        687                 687
+///             niri
 /// ```
 ///
-/// То есть с подвалом состояния карточке не хватает 24 точек, а у hyprland и
-/// niri — 45, и ровно на столько нижний ряд кнопок и уезжал под подвал. У
-/// этих двух карточка не помещалась и БЕЗ подвала: на 11 точек.
+/// So with the status footer the card lacks 24 points, and for hyprland and
+/// niri 45, and exactly that much the bottom row of buttons slid under the
+/// footer. For these two the card did not fit even WITHOUT the footer: by 11 points.
 ///
-/// Потолок взят с запасом на строку «Проверяю версию…», которой на стенде не
-/// было (пакетный менеджер там молчит), а на живой машине она добавляет
-/// карточке ещё около 20 точек: 45 + 20 = 65, округлено вверх до 72 —
-/// кратного восьми, шагу отступов вкладки. Это предохранитель, а не цель:
-/// рамка отдаёт ровно столько, сколько не хватает, и ниже наименьшего окна
-/// продукта (750 точек) вьюпорт не опускается.
+/// The ceiling has a margin for the «Checking version…» line, which was not
+/// on the bench (the package manager is silent there), while on a live
+/// machine it adds about 20 more points to the card: 45 + 20 = 65, rounded up
+/// to 72, a multiple of eight, the tab's spacing step. This is a safety
+/// limit, not a target: the frame gives up exactly as much as is missing,
+/// and the viewport never goes below the product's smallest window (750 points).
 pub const CAROUSEL_MAX_SQUEEZE: i32 = 72;
 
-/// Высота рамки снимка, ужатой под вьюпорт карточки.
+/// Height of the screenshot frame shrunk to fit the card viewport.
 ///
-/// `full` — высота из [`carousel_height`], `room` — сколько высоты остаётся
-/// рамке после всего остального в карточке (поля, текстовая колонка,
-/// точки-индикаторы). Рамка отдаёт карточке не больше
-/// [`CAROUSEL_MAX_SQUEEZE`]: снимок — главное на карточке, и растворить его
-/// совсем ради кнопок нельзя, а прокрутка у карточки есть.
+/// `full` is the height from [`carousel_height`], `room` is how much height is
+/// left for the frame after everything else in the card (margins, the text
+/// column, indicator dots). The frame gives the card no more than
+/// [`CAROUSEL_MAX_SQUEEZE`]: the screenshot is the main thing on the card, and
+/// it must not be dissolved entirely for the sake of buttons, while the card can scroll.
 ///
-/// ⚠️ ШИРИНУ рамки эта высота менять НЕ должна, и это не придирка к стилю.
-/// Ширина считается от НЕужатой высоты; посчитай её отсюда — и выйдет
-/// «храповик»: уже рамка → уже текстовая колонка → описание переносится на
-/// новую строку → карточке нужно ещё больше высоты → рамка ужимается снова.
-/// В ужатом виде рамка просто сильнее кадрирует снимок по вертикали.
+/// ⚠️ This height must NOT change the frame WIDTH, and this is not a style nitpick.
+/// The width is computed from the UNshrunk height; compute it from here and
+/// you get a "ratchet": narrower frame → narrower text column → the
+/// description wraps to a new line → the card needs even more height → the
+/// frame shrinks again. Shrunk, the frame simply crops the screenshot more vertically.
 pub fn carousel_height_fitted(full: i32, room: i32) -> i32 {
     full.min(room.max(full - CAROUSEL_MAX_SQUEEZE))
 }
 
 // ============================================================================
-// Краски и размеры разметки
+// Markup colors and sizes
 // ============================================================================
 //
-// Таблица стилей виджетной вкладки, выписанная в ядро числами. QML своих
-// красок и размеров не заводит: они приходят картами `palette` и `metrics`
-// от DesktopsModel (rust/rexon-gui/src/desktops_page.rs). Цвета записаны
-// так, как их понимает QSS (`rgba(...)`), а в `#AARRGGBB` для QML их
-// переводит `ui_base::css_color_to_qml` — один переводчик на продукт.
-// Сторож согласия с оригиналом — `qt_desktops_parity::layout_numbers_match_python`.
+// The widget tab's stylesheet written out into the core as numbers. QML
+// introduces no colors and sizes of its own: they come as the `palette` and
+// `metrics` maps from DesktopsModel (rust/rexon-gui/src/desktops_page.rs).
+// Colors are written the way QSS understands them (`rgba(...)`), and
+// `ui_base::css_color_to_qml` converts them into `#AARRGGBB` for QML, one
+// converter for the product. Agreement with the original is guarded by
+// `qt_desktops_parity::layout_numbers_match_python`.
 
-// ── Список слева ────────────────────────────────────────────────────────
+// ── Left list ───────────────────────────────────────────────────────────
 
-/// Поля панели списка: слева, сверху, справа, снизу.
+/// Margins of the list panel: left, top, right, bottom.
 pub const LIST_MARGINS: (i32, i32, i32, i32) = (12, 16, 8, 12);
 pub const LIST_SPACING: i32 = 8;
 pub const LIST_MIN_WIDTH: i32 = 200;
 pub const LIST_MAX_WIDTH: i32 = 280;
-/// Стартовая ширина панели у сплиттера.
+/// Initial width of the panel in the splitter.
 pub const LIST_INITIAL_WIDTH: i32 = 240;
-/// Поля пункта списка (QSS: `padding: 8px 12px`) и его скругление.
+/// Padding of a list item (QSS: `padding: 8px 12px`) and its corner radius.
 pub const LIST_ITEM_PADDING_V: i32 = 8;
 pub const LIST_ITEM_PADDING_H: i32 = 12;
 pub const LIST_ITEM_RADIUS: i32 = 4;
-/// Подложка выбранного пункта и его текст (QSS: `color: white`).
+/// Background of the selected item and its text (QSS: `color: white`).
 pub const LIST_SELECTED_QSS: &str = "rgba(59,130,246,0.4)";
 pub const LIST_SELECTED_TEXT_COLOR: &str = "#ffffff";
 
-/// Подложка пункта под курсором: на тёмной теме белая, на светлой чёрная.
+/// Background of the hovered item: white on a dark theme, black on a light one.
 pub fn list_hover_qss(dark: bool) -> &'static str {
     if dark {
         "rgba(255,255,255,0.05)"
@@ -1362,42 +1367,43 @@ pub fn list_hover_qss(dark: bool) -> &'static str {
     }
 }
 
-// ── Панель инструментов ─────────────────────────────────────────────────
+// ── Tools panel ─────────────────────────────────────────────────────────
 
 pub const TOOLS_MARGINS: (i32, i32, i32, i32) = (8, 16, 8, 12);
 pub const TOOLS_SPACING: i32 = 8;
 pub const TOOLS_MIN_WIDTH: i32 = 160;
 pub const TOOLS_INITIAL_WIDTH: i32 = 170;
-/// Потолок ширины колонки кнопок: кнопки не растягиваются на всю панель.
+/// Width ceiling of the button column: buttons do not stretch across the whole panel.
 pub const TOOL_BUTTON_MAX_WIDTH: i32 = 240;
 
-/// Потолок ширины колонки плиток средней панели («Как в дистрибутиве»):
-/// плитки не растягиваются на всю панель. Тот же, что у колонки кнопок
-/// прежних «Инструментов» на этом месте ([`TOOL_BUTTON_MAX_WIDTH`]).
+/// Width ceiling of the middle panel's tile column («Distro Looks»): tiles
+/// do not stretch across the whole panel. The same as for the button column
+/// of the former «Tools» in this place ([`TOOL_BUTTON_MAX_WIDTH`]).
 pub const LOOKS_COLUMN_MAX_WIDTH: i32 = TOOL_BUTTON_MAX_WIDTH;
 
-/// Наименьшая ширина СРЕДНЕЙ панели (с 25.10.2026 — блок «Как в
-/// дистрибутиве»; прежде там жили «Инструменты»), при которой её подписи
-/// видны целиком. `header_width` — сколько просит заголовок блока,
-/// `column_width` — сколько просит колонка плиток под самую длинную
-/// надпись; обе величины меряет по шрифту сам Qt.
+/// The smallest width of the MIDDLE panel (since 25.10.2026 the «Distro
+/// Looks» block; before that «Tools» lived there) at which its captions are
+/// fully visible. `header_width` is how much the block heading asks for,
+/// `column_width` is how much the tile column asks for under the longest
+/// label; Qt itself measures both by the font.
 ///
-/// ⚠️ ЗАЧЕМ ОТДЕЛЬНОЕ ЧИСЛО, А НЕ [`TOOLS_MIN_WIDTH`]. 160 — это
-/// `tools.setMinimumWidth(160)` виджетного оригинала, и оно подходило ЕГО
-/// подписям. Сам Qt считал минимум панели иначе — по содержимому: замер
-/// 18.09 на виджетной вкладке дал `tools.minimumSizeHint().width() == 165`,
-/// то есть 149 кнопки плюс поля 8+8. Ровно этот механизм здесь и повторён:
-/// на штатном минимуме окна 1100×750 сплиттер даёт панели ровно 160
-/// ([`split_widths`]), а заголовок блока просит больше — без этого подпись
-/// рвалась бы посреди слова краем соседней карточки.
+/// ⚠️ WHY A SEPARATE NUMBER, NOT [`TOOLS_MIN_WIDTH`]. 160 is
+/// `tools.setMinimumWidth(160)` of the widget original, and it suited ITS
+/// captions. Qt itself computed the panel minimum differently, from the
+/// content: a measurement on 18.09 on the widget tab gave
+/// `tools.minimumSizeHint().width() == 165`, that is 149 for the buttons plus
+/// 8+8 margins. Exactly this mechanism is repeated here: at the standard
+/// minimum window of 1100×750 the splitter gives the panel exactly 160
+/// ([`split_widths`]), while the block heading asks for more; without this
+/// the caption would break mid-word at the edge of the neighbouring card.
 ///
-/// С 28.10.2026 в средней панели снова живут и «Инструменты» — справа от
-/// «Как в дистрибутиве» или под ним ([`looks_tools_side_by_side`]). Пол
-/// панели — по более широкому из двух блоков: страница передаёт сюда
-/// наибольший заголовок и наибольшую колонку, ведь на узкой панели блоки
-/// встают друг под другом и каждый получает всю её ширину.
+/// Since 28.10.2026 «Tools» live in the middle panel again, to the right of
+/// «Distro Looks» or below it ([`looks_tools_side_by_side`]). The panel's
+/// floor follows the wider of the two blocks: the page passes here the
+/// largest heading and the largest column, because on a narrow panel the
+/// blocks stack and each gets its full width.
 ///
-/// Делёж места между панелями — по-прежнему от оригинала ([`split_widths`]).
+/// Splitting space between panels still follows the original ([`split_widths`]).
 pub fn looks_panel_min_width(header_width: i32, column_width: i32) -> i32 {
     let content = column_width
         .clamp(0, LOOKS_COLUMN_MAX_WIDTH)
@@ -1405,19 +1411,19 @@ pub fn looks_panel_min_width(header_width: i32, column_width: i32) -> i32 {
     TOOLS_MIN_WIDTH.max(content + TOOLS_MARGINS.0 + TOOLS_MARGINS.2)
 }
 
-/// Промежуток между блоками средней панели («Как в дистрибутиве» и
-/// «Инструменты»): поле панели слева плюс справа, посередине — тонкая
-/// граница цвета рамки панели.
+/// The gap between the middle panel blocks («Distro Looks» and «Tools»): the
+/// panel margin on the left plus on the right, with a thin line in the panel
+/// border color in the middle.
 pub const LOOKS_TOOLS_GAP: i32 = TOOLS_MARGINS.0 + TOOLS_MARGINS.2;
 
-/// Встают ли «Как в дистрибутиве» и «Инструменты» рядом (решение владельца
-/// 28.10.2026: «Инструменты» — справа, столбиком кнопок). `inner_width` —
-/// ширина панели без полей; `looks_width` и `tools_width` — сколько просит
-/// каждый блок (наибольшее из заголовка и колонки, меряет Qt).
+/// Whether «Distro Looks» and «Tools» stand side by side (owner's decision
+/// 28.10.2026: «Tools» on the right, as a column of buttons). `inner_width` is
+/// the panel width without margins; `looks_width` and `tools_width` are how
+/// much each block asks for (the largest of the heading and the column, measured by Qt).
 ///
-/// Рядом — только если ОБА блока в половине панели читаются целиком: иначе
-/// «Инструменты» уходят под «Как в дистрибутиве» тем же столбиком. Колонки
-/// шире своего потолка в расчёт не берутся — потолок их и так зажмёт.
+/// Side by side only if BOTH blocks are fully readable in half of the panel:
+/// otherwise «Tools» go under «Distro Looks» as the same column. Columns
+/// wider than their ceiling are not taken into account: the ceiling clamps them anyway.
 pub fn looks_tools_side_by_side(inner_width: i32, looks_width: i32, tools_width: i32) -> bool {
     let half = looks_tools_block_width(inner_width, true);
     let looks = looks_width.clamp(0, LOOKS_COLUMN_MAX_WIDTH);
@@ -1425,8 +1431,8 @@ pub fn looks_tools_side_by_side(inner_width: i32, looks_width: i32, tools_width:
     half >= looks.max(tools)
 }
 
-/// Ширина одного блока средней панели: половина за вычетом промежутка,
-/// когда блоки рядом, иначе вся ширина панели без полей.
+/// Width of one middle panel block: half minus the gap when the blocks are
+/// side by side, otherwise the whole panel width without margins.
 pub fn looks_tools_block_width(inner_width: i32, side_by_side: bool) -> i32 {
     let inner = inner_width.max(0);
     if side_by_side {
@@ -1435,58 +1441,59 @@ pub fn looks_tools_block_width(inner_width: i32, side_by_side: bool) -> i32 {
         inner
     }
 }
-/// Лёгкий фон панели и её правая граница — доли нейтрального серого
+/// The light panel background and its right border: fractions of neutral gray
 /// (`ui_base::neutral_rgba`).
 pub const TOOLS_PANEL_BG_ALPHA: f64 = 0.05;
 pub const TOOLS_PANEL_BORDER_ALPHA: f64 = 0.18;
 
-// ── Карточка ────────────────────────────────────────────────────────────
+// ── Card ────────────────────────────────────────────────────────────────
 
-/// Поля карточки сверху, справа и снизу (слева — [`CARD_GAP_LEFT`]).
+/// Card margins at the top, right and bottom (left is [`CARD_GAP_LEFT`]).
 pub const CARD_MARGIN_TOP: i32 = 20;
 pub const CARD_MARGIN_RIGHT: i32 = 24;
 pub const CARD_MARGIN_BOTTOM: i32 = 24;
 pub const CARD_SPACING: i32 = 14;
 pub const HEADER_ROW_SPACING: i32 = 12;
-/// Запас под вертикальную полосу прокрутки в потолке ширины панели.
+/// Allowance for the vertical scroll bar in the panel width ceiling.
 pub const DETAIL_SCROLLBAR_RESERVE: i32 = 20;
-/// Растяжка карточки против левой распорки в её обёртке. У оригинала
-/// карточка прибита к ПРАВОМУ краю панели просьбой владельца: обёртка —
-/// горизонтальная раскладка из распорки с растяжкой 1 и карточки с
-/// растяжкой 100, поэтому лишняя ширина делится 100:1 и слева всегда
-/// остаётся сотая доля вьюпорта.
+/// Stretch of the card against the left spacer in its wrapper. In the
+/// original the card is pinned to the RIGHT edge of the panel at the owner's
+/// request: the wrapper is a horizontal layout of a spacer with stretch 1 and
+/// the card with stretch 100, so extra width is split 100:1 and a hundredth
+/// of the viewport always remains on the left.
 pub const CARD_WRAP_STRETCH: i32 = 100;
-/// Наименьшая ширина карточки: ниже неё оригинал не сжимается вовсе (даёт
-/// горизонтальную прокрутку), и распорки слева тогда нет. ⚠️ Число СНЯТО с
-/// живой вкладки, а не выведено: на окнах 960–1300 карточка держалась на
-/// 924 точках при вьюпорте от 537 до 852 (замер 05.09, скин steam_dark).
+/// The smallest card width: below it the original does not shrink at all
+/// (it gives horizontal scrolling), and then there is no spacer on the left.
+/// ⚠️ The number is MEASURED from the live tab, not derived: on windows of
+/// 960–1300 the card stayed at 924 points with a viewport from 537 to 852
+/// (measured 05.09, steam_dark skin).
 pub const CARD_MIN_WIDTH: i32 = 924;
 
-/// Левая распорка обёртки карточки при ширине вьюпорта `viewport`.
+/// The left spacer of the card wrapper at viewport width `viewport`.
 ///
-/// ⚠️ ЧИСЛА СНЯТЫ, А НЕ ВЫВЕДЕНЫ. Замер 05.09: виджетная вкладка строилась
-/// на одиннадцати ширинах окна (высота 6000, скин steam_dark), и после
-/// показа читалась геометрия обоих элементов обёртки правой панели:
+/// ⚠️ THE NUMBERS ARE MEASURED, NOT DERIVED. Measured 05.09: the widget tab
+/// was built at eleven window widths (height 6000, steam_dark skin), and
+/// after showing, the geometry of both elements of the right panel wrapper was read:
 ///
 /// ```text
-/// вьюпорт   537 577 677 769 852 934 1017 1099 1181 1264 1331
-/// распорка    0   0   0   0   0   9   10   11   12   13   13
+/// viewport  537 577 677 769 852 934 1017 1099 1181 1264 1331
+/// spacer      0   0   0   0   0   9   10   11   12   13   13
 /// ```
 ///
-/// Пока распорки в разметке QML не было вовсе, карточка прижималась к
-/// ЛЕВОМУ краю панели: на окне стенда её содержимое начиналось на 10 точек
-/// левее оригинала (457 против 467).
+/// While the QML markup had no spacer at all, the card was pressed to the
+/// LEFT edge of the panel: on the bench window its content started 10 points
+/// further left than the original (457 against 467).
 pub fn card_left_spacer(viewport: i32) -> i32 {
     if viewport <= 0 {
         return 0;
     }
-    // Деление с округлением к ближайшему: раскладка Qt раздаёт точки
-    // целыми, и отбрасывание дробной части ошибалось бы на точку начиная
-    // с вьюпорта 1099.
+    // Division rounded to the nearest: the Qt layout hands out points as whole
+    // numbers, and dropping the fractional part would be off by a point starting
+    // from viewport 1099.
     let share = (viewport + CARD_WRAP_STRETCH / 2) / (CARD_WRAP_STRETCH + 1);
     share.clamp(0, (viewport - CARD_MIN_WIDTH).max(0))
 }
-/// Разделитель между блоками карточки — доля нейтрального серого.
+/// Separator between card blocks: a fraction of neutral gray.
 pub const SEPARATOR_ALPHA: f64 = 0.25;
 pub const PLACEHOLDER_POINT_SIZE: i32 = 14;
 pub const CARD_DESC_POINT_SIZE: i32 = 11;
@@ -1497,31 +1504,31 @@ pub const VERSION_POINT_SIZE: i32 = 10;
 pub const BUTTON_ROW_TOP_MARGIN: i32 = 8;
 pub const BUTTON_ROW_SPACING: i32 = 8;
 
-/// Кнопки действий карточки: скругление и поля, краски по виду. Боковое поле
-/// 12 вместо прежних 18 (QSS оригинала: `padding: 8px 18px`): при трёх
-/// кнопках в ряд широкие поля раздували их от края до края, а подписи
-/// становилось тесно (замечание Wehrwolfmann 10.10.2026).
+/// Card action buttons: corner radius and padding, colors by kind. Side
+/// padding 12 instead of the former 18 (QSS of the original: `padding: 8px 18px`):
+/// with three buttons in a row the wide padding inflated them edge to edge,
+/// and the captions got cramped (Wehrwolfmann's remark 10.10.2026).
 pub const CARD_BUTTON_RADIUS: i32 = 6;
 pub const CARD_BUTTON_PADDING_V: i32 = 8;
 pub const CARD_BUTTON_PADDING_H: i32 = 12;
-/// Главная (синяя): «Установить», «Переключиться».
+/// Main (blue): «Install», «Switch».
 pub const PRIMARY_BUTTON_QSS: &str = "rgba(59,130,246,0.85)";
 pub const PRIMARY_BUTTON_HOVER_QSS: &str = "rgba(59,130,246,1.0)";
-/// Красная: «Удалить». Своя, а не общая `RexonDangerButton`: у оригинала
-/// подложка 0.75 против 0.2 у «Расширений», скругление 6 и жирная подпись.
+/// Red: «Remove». Its own, not the shared `RexonDangerButton`: the original
+/// has background 0.75 against 0.2 in «Extensions», radius 6 and a bold caption.
 pub const DESTRUCTIVE_BUTTON_QSS: &str = "rgba(220,80,80,0.75)";
 pub const DESTRUCTIVE_BUTTON_HOVER_QSS: &str = "rgba(220,80,80,1.0)";
-/// Текст главной и красной кнопок (QSS: `color: white`).
+/// Text of the main and red buttons (QSS: `color: white`).
 pub const ACCENT_BUTTON_TEXT_COLOR: &str = "#ffffff";
-/// Нейтральная: «Проверить / Восстановить» — операция безопасная и не
-/// основная, поэтому без заливки-акцента: тонкая рамка и лёгкий hover.
+/// Neutral: «Check / Repair» is a safe and secondary operation, so it has no
+/// accent fill: a thin border and a light hover.
 pub const NEUTRAL_BUTTON_BG_ALPHA: f64 = 0.10;
 pub const NEUTRAL_BUTTON_BORDER_ALPHA: f64 = 0.30;
 pub const NEUTRAL_BUTTON_HOVER_ALPHA: f64 = 0.20;
 
-/// Краски «особой» кнопки с заливкой-акцентом — то, что QML-страница
-/// отдаёт в `RexonButton.tone` (подложка и подложка под курсором в записи
-/// QSS, цвет надписи, скругление, жирность).
+/// Colors of a "special" button with an accent fill: what the QML page passes
+/// into `RexonButton.tone` (background and hover background in QSS notation,
+/// caption color, corner radius, boldness).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AccentTone {
     pub background: &'static str,
@@ -1531,7 +1538,7 @@ pub struct AccentTone {
     pub bold: bool,
 }
 
-/// Синяя: «Установить», «Переключиться», «Да» безопасной операции.
+/// Blue: «Install», «Switch», «Yes» of a safe operation.
 pub const PRIMARY_TONE: AccentTone = AccentTone {
     background: PRIMARY_BUTTON_QSS,
     hover: PRIMARY_BUTTON_HOVER_QSS,
@@ -1540,7 +1547,7 @@ pub const PRIMARY_TONE: AccentTone = AccentTone {
     bold: true,
 };
 
-/// Красная: «Удалить», «Да» необратимой операции, «Прервать».
+/// Red: «Remove», «Yes» of an irreversible operation, «Abort».
 pub const DESTRUCTIVE_TONE: AccentTone = AccentTone {
     background: DESTRUCTIVE_BUTTON_QSS,
     hover: DESTRUCTIVE_BUTTON_HOVER_QSS,
@@ -1549,22 +1556,22 @@ pub const DESTRUCTIVE_TONE: AccentTone = AccentTone {
     bold: true,
 };
 
-/// Тоны, которые общее окно операции над столом (`DeOperationDialog.qml`)
-/// ищет в палитре страницы, — ключ палитры и краски. Таблица ОДНА на все
-/// страницы с этим окном («Рабочие столы» и «Сравнение DE»): страница без
-/// этих ключей получала бы «Да» обычной кнопкой скина вместо синей или
-/// красной.
+/// Tones that the shared desktop operation dialog (`DeOperationDialog.qml`)
+/// looks up in the page palette: the palette key and the colors. ONE table for
+/// all pages with this dialog («Desktops» and «Compare Desktops»): a page
+/// without these keys would get «Yes» as a regular skin button instead of a
+/// blue or red one.
 pub const OPERATION_DIALOG_TONES: [(&str, AccentTone); 2] = [
     ("primary_tone", PRIMARY_TONE),
     ("destructive_tone", DESTRUCTIVE_TONE),
 ];
 
-/// Потолок ширины правой панели по высоте окна: левый зазор + идеальная
-/// ширина 16:9-рамки карусели + правое поле + полоса прокрутки. Считается
-/// ТОЛЬКО от высоты окна, никогда от фактической ширины рамки: обратная
-/// связь давала «храповик» по 3–4 точки за проход раскладки. В узком окне
-/// потолок не достигается; в широком лишняя ширина уходит панели
-/// «Инструменты».
+/// Width ceiling of the right panel by window height: the left gap + the ideal
+/// width of the 16:9 carousel frame + the right margin + the scroll bar. It is
+/// computed ONLY from the window height, never from the actual frame width:
+/// the feedback produced a "ratchet" of 3–4 points per layout pass. In a
+/// narrow window the ceiling is not reached; in a wide one the extra width
+/// goes to the «Tools» panel.
 pub fn detail_panel_max_width(window_height: i32) -> i32 {
     let h = CAROUSEL_MIN_HEIGHT
         .max((window_height as f64 * CAROUSEL_WINDOW_SHARE) as i32)
@@ -1573,29 +1580,29 @@ pub fn detail_panel_max_width(window_height: i32) -> i32 {
     CARD_GAP_LEFT + ideal_w + CARD_MARGIN_RIGHT + DETAIL_SCROLLBAR_RESERVE
 }
 
-/// Стартовая ширина правой панели у сплиттера и растяжка трёх панелей
-/// (список : инструменты : карточка). Лишняя ширина окна делится между
-/// инструментами и карточкой 1:4, список не растёт; когда карточка упёрлась
-/// в свой потолок ([`detail_panel_max_width`]), весь остаток забирает
-/// панель «Инструменты».
+/// Initial width of the right panel in the splitter and the stretch of the
+/// three panels (list : tools : card). The extra window width is split between
+/// tools and card 1:4, the list does not grow; once the card hits its ceiling
+/// ([`detail_panel_max_width`]), the «Tools» panel takes the whole remainder.
 pub const DETAIL_INITIAL_WIDTH: i32 = 800;
 pub const SPLIT_STRETCH_TOOLS: i32 = 1;
 pub const SPLIT_STRETCH_DETAIL: i32 = 4;
 
-/// Ширина рукоятки сплиттера: `splitter.setHandleWidth(1)` у оригинала.
-/// Их две, и место они забирают ДО дележа между панелями.
+/// Width of the splitter handle: `splitter.setHandleWidth(1)` of the original.
+/// There are two, and they take their space BEFORE the split between panels.
 pub const SPLIT_HANDLE_WIDTH: i32 = 1;
 pub const SPLIT_HANDLE_COUNT: i32 = 2;
 
-/// Краска рукоятки сплиттера — накладка на фон страницы, как у подсветки
-/// строки списка ([`list_hover_qss`]).
+/// Color of the splitter handle: an overlay on the page background, like the
+/// list row highlight ([`list_hover_qss`]).
 ///
-/// Замер 05.09 на живой Qt (стиль breeze, скин steam_dark): рукоятка шириной
-/// в точку выходит (73,83,96) на фоне страницы (27,40,56) — это ровно белый
-/// 0.20. Ни одна роль палитры такого цвета не даёт (Mid (28,31,33),
-/// Midlight (46,51,55), Light (57,62,67)): её рисует сам стиль. Разметка QML
-/// рукоятку не красила вовсе и получала светло-серую (198,200,201) от стиля
-/// Basic — на тёмном скине это чужая яркая полоса во всю высоту вкладки.
+/// Measured 05.09 on live Qt (breeze style, steam_dark skin): a one-point-wide
+/// handle comes out as (73,83,96) on the page background (27,40,56), which is
+/// exactly white at 0.20. No palette role gives such a color (Mid (28,31,33),
+/// Midlight (46,51,55), Light (57,62,67)): the style draws it itself. The QML
+/// markup did not paint the handle at all and got a light gray (198,200,201)
+/// from the Basic style: on a dark skin that is a foreign bright stripe the
+/// full height of the tab.
 pub fn split_handle_qss(dark: bool) -> &'static str {
     if dark {
         "rgba(255,255,255,0.20)"
@@ -1604,28 +1611,28 @@ pub fn split_handle_qss(dark: bool) -> &'static str {
     }
 }
 
-/// Ширины трёх панелей при ширине окна `total` — так делит место QSplitter
-/// оригинала.
+/// Widths of the three panels at window width `total`: the way the original's
+/// QSplitter divides space.
 ///
-/// ⚠️ ДВЕ ПОПРАВКИ ПРОТИВ ОЧЕВИДНОГО (замер 05.09, семнадцать ширин окна от
-/// 960 до 3000, снято прямо с `QSplitter.sizes()` виджетной вкладки):
+/// ⚠️ TWO CORRECTIONS AGAINST THE OBVIOUS (measured 05.09, seventeen window
+/// widths from 960 to 3000, taken straight from `QSplitter.sizes()` of the widget tab):
 ///
-///   * делится не вся ширина окна, а ширина МИНУС рукоятки: их две по одной
-///     точке, и панелям достаётся `total - 2`;
-///   * лишнее место делится НЕ по растяжке 0:1:4, как можно подумать по
-///     `setStretchFactor`, а пропорционально СТАРТОВЫМ ширинам панелей
-///     (170 к 800). Растяжка у QSplitter решает только, кто вообще растёт;
-///     сам делёж идёт от текущих размеров. Прежняя формула по растяжке
-///     давала на окне 1500 панель «Инструменты» 228 точек вместо 220, и
-///     разделитель вместе со всей панелью уезжал на 8 точек вправо: замер
-///     стенда — 44 159 точек фона против фона панели плюс 6 373 точки
-///     самого разделителя.
+///   * not the whole window width is divided, but the width MINUS the handles:
+///     there are two of one point each, and the panels get `total - 2`;
+///   * the extra space is divided NOT by the stretch 0:1:4, as one might
+///     think from `setStretchFactor`, but in proportion to the INITIAL panel
+///     widths (170 to 800). In QSplitter the stretch only decides who grows
+///     at all; the split itself goes from the current sizes. The former
+///     stretch-based formula gave the «Tools» panel 228 points instead of 220
+///     on a 1500 window, and the separator together with the whole panel
+///     moved 8 points to the right: the bench measured 44,159 background
+///     points against the panel background plus 6,373 points of the separator itself.
 ///
-/// Проверено на всех семнадцати замерах, включая упор в наименьшую ширину
-/// панели (окна 960–1100) и упор карточки в свой потолок (окна 1900–3000).
+/// Verified on all seventeen measurements, including hitting the smallest
+/// panel width (windows 960–1100) and the card hitting its ceiling (windows 1900–3000).
 pub fn split_widths(total: i32, window_height: i32) -> (i32, i32, i32) {
     let panes = (total - SPLIT_HANDLE_WIDTH * SPLIT_HANDLE_COUNT).max(0);
-    // Список растяжки не имеет и остаётся стартовой ширины.
+    // The list has no stretch and keeps its initial width.
     let rest = (panes - LIST_INITIAL_WIDTH).max(0);
     let share = TOOLS_INITIAL_WIDTH + DETAIL_INITIAL_WIDTH;
     let mut tools =
@@ -1640,16 +1647,16 @@ pub fn split_widths(total: i32, window_height: i32) -> (i32, i32, i32) {
     (LIST_INITIAL_WIDTH, tools, detail)
 }
 
-// ── Карусель и просмотр ─────────────────────────────────────────────────
+// ── Carousel and viewer ─────────────────────────────────────────────────
 
-/// Рамка скриншота: доля нейтрального серого, скругление, боковые поля
-/// картинки (сверху и снизу полей нет).
+/// Screenshot frame: a fraction of neutral gray, corner radius, side padding
+/// of the picture (no padding at the top and bottom).
 pub const CAROUSEL_FRAME_ALPHA: f64 = 0.10;
 pub const CAROUSEL_FRAME_RADIUS: i32 = 8;
 pub const CAROUSEL_FRAME_PADDING_H: i32 = 8;
 pub const CAROUSEL_DOTS_SPACING: i32 = 6;
 pub const NO_SCREENSHOTS_POINT_SIZE: i32 = 20;
-/// Стрелки и лупа — круглые тёмные кнопки поверх картинки.
+/// Arrows and magnifier: round dark buttons on top of the picture.
 pub const OVERLAY_BUTTON_QSS: &str = "rgba(0,0,0,0.55)";
 pub const ARROW_HOVER_QSS: &str = "rgba(0,0,0,0.75)";
 pub const ZOOM_BUTTON_HOVER_QSS: &str = "rgba(0,0,0,0.85)";
@@ -1659,7 +1666,7 @@ pub const ARROW_SIZE: i32 = 40;
 pub const ARROW_POINT_SIZE: i32 = 16;
 pub const ZOOM_BUTTON_SIZE: i32 = 44;
 pub const ZOOM_BUTTON_POINT_SIZE: i32 = 20;
-/// Полноэкранный просмотр: фон, поля, кнопки, подсказка.
+/// Full-screen viewer: background, margins, buttons, hint.
 pub const ZOOM_BG_QSS: &str = "rgba(0,0,0,0.95)";
 pub const ZOOM_MARGIN: i32 = 16;
 pub const ZOOM_ARROW_SIZE: i32 = 48;
@@ -1668,13 +1675,13 @@ pub const ZOOM_CLOSE_POINT_SIZE: i32 = 26;
 pub const ZOOM_HINT_QSS: &str = "rgba(255,255,255,0.6)";
 pub const ZOOM_HINT_PADDING: i32 = 8;
 
-/// Скругление круглой кнопки — половина её стороны.
+/// Corner radius of a round button: half its side.
 pub fn round_radius(size: i32) -> i32 {
     size / 2
 }
 
-/// Точки-индикаторы карусели: `●` у текущего слайда, `○` у остальных.
-/// Пустая строка при одном слайде — листать нечего.
+/// Carousel indicator dots: `●` for the current slide, `○` for the others.
+/// An empty string with one slide: nothing to page through.
 pub fn carousel_dots(index: usize, count: usize) -> String {
     if count <= 1 {
         return String::new();
@@ -1685,7 +1692,7 @@ pub fn carousel_dots(index: usize, count: usize) -> String {
         .join("  ")
 }
 
-/// Подсказка полноэкранного просмотра.
+/// Hint of the full-screen viewer.
 pub fn zoom_hint(index: usize, count: usize) -> String {
     if count == 0 {
         return tr("× in the corner, click or Esc to close");
@@ -1701,26 +1708,26 @@ pub fn zoom_hint(index: usize, count: usize) -> String {
 }
 
 // ============================================================================
-// Установка, восстановление, переключение
+// Install, repair, switch
 // ============================================================================
 
-/// Тексты операции со столом: подтверждение, заголовок хода дела и итог.
+/// Texts of a desktop operation: confirmation, progress heading and result.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OpTexts {
     pub confirm_title: String,
-    /// Простой HTML (`<b>`, `<br>`) — так его ждёт общее окно подтверждения.
+    /// Simple HTML (`<b>`, `<br>`): that is what the shared confirmation dialog expects.
     pub confirm_html: String,
     pub operation_title: String,
     pub done_title: String,
     pub done_text: String,
-    /// Итог, когда сделанное заработает только после перезагрузки
-    /// (`DeOpOutcome::restart_needed`); пусто — тот же [`Self::done_text`].
+    /// The result when what was done will work only after a reboot
+    /// (`DeOpOutcome::restart_needed`); empty means the same [`Self::done_text`].
     pub done_text_restart: String,
 }
 
-/// Установка стола. Подтверждение показывает ОБЩЕЕ окно
-/// (`de_progress::confirm_de_install`): оно же откажет, если дистрибутив
-/// установку не пустит, — по вкладке на такую проверку заводить нельзя.
+/// Installing a desktop. The confirmation is shown by the SHARED dialog
+/// (`de_progress::confirm_de_install`): it also refuses if the distribution
+/// does not allow the install; such a check must not be set up per tab.
 pub fn install_texts(display_name: &str) -> OpTexts {
     OpTexts {
         confirm_title: tr("Install?"),
@@ -1732,10 +1739,10 @@ pub fn install_texts(display_name: &str) -> OpTexts {
         ),
         operation_title: trf("Installing %1", &[&display_name]),
         done_title: tr("Installation Complete"),
-        // Почти всем столам хватает нового входа: пакеты, службы и группы
-        // подхватывает сеанс. Перезагрузку требуют только ядро, модуль ядра
-        // и впервые включённый экран входа — это решает исполнитель по плану
-        // установки (`system_plan::restart_packages`), а не список столов.
+        // For almost all desktops a new login is enough: the session picks up
+        // packages, services and groups. Only the kernel, a kernel module and a
+        // newly enabled login screen require a reboot; the executor decides that by
+        // the install plan (`system_plan::restart_packages`), not by a list of desktops.
         done_text: trf(
             // TRANSLATORS: %1 is the name of a desktop (KDE Plasma, River…).
             "<b>%1</b> is installed.\n\
@@ -1750,25 +1757,25 @@ pub fn install_texts(display_name: &str) -> OpTexts {
     }
 }
 
-// ── Сеанс X11 или Wayland ────────────────────────────────────────────────
+// ── X11 or Wayland session ───────────────────────────────────────────────
 //
-// У трёх столов есть оба сеанса (`system::SESSION_VARIANTS`). Выбор —
-// тремя карточками в том же окне «Установить?»: X11, Wayland или оба.
-// Рекомендованный — по зрелости Wayland (`SessionVariants::default_pick`).
-// Сеанс X11 лежит в основных пакетах стола, поэтому «Wayland» и «Оба»
-// ставят одно и то же и разнятся советом, что выбрать на экране входа.
+// Three desktops have both sessions (`system::SESSION_VARIANTS`). The choice is
+// made with three cards in the same «Install?» dialog: X11, Wayland or both.
+// The recommended one follows Wayland maturity (`SessionVariants::default_pick`).
+// The X11 session is in the desktop's main packages, so «Wayland» and «Both»
+// install the same thing and differ in the advice on what to pick on the login screen.
 
-/// Имя переключателя сеанса в окне вопроса (`setOperationChoice`).
+/// Name of the session switcher in the question dialog (`setOperationChoice`).
 pub const SESSION_CHOICE_NAME: &str = "session";
 
-/// Можно ли предложить Wayland: если он только в AUR, то без помощника AUR
-/// (yay, paru) поставить его нечем.
+/// Whether Wayland can be offered: if it is only in the AUR, there is nothing
+/// to install it with without an AUR helper (yay, paru).
 fn wayland_offerable(v: &crate::system::SessionVariants, aur_helper: bool) -> bool {
     v.wayland_aur.is_empty() || aur_helper
 }
 
-/// Что на самом деле ставится: без помощника AUR Wayland из AUR не
-/// поставить — остаётся X11, что бы ни пришло из окна.
+/// What actually gets installed: without an AUR helper Wayland from the AUR
+/// cannot be installed, so X11 remains, whatever came from the dialog.
 pub fn session_pick_effective(
     de_id: &str,
     family: PkgFamily,
@@ -1781,8 +1788,8 @@ pub fn session_pick_effective(
     }
 }
 
-/// Пояснение под карточкой «Wayland»: чем он лучше, экспериментальный ли
-/// он у стола и кто управляет окнами (простой HTML).
+/// The explanation under the «Wayland» card: why it is better, whether it is
+/// experimental for the desktop and who manages windows (simple HTML).
 fn wayland_card_text(v: &crate::system::SessionVariants, name: &str) -> String {
     let mut out = tr("The picture is smoother, without tearing, and sharper on high-resolution screens.");
     if v.wayland_experimental() {
@@ -1805,10 +1812,10 @@ fn wayland_card_text(v: &crate::system::SessionVariants, name: &str) -> String {
     out
 }
 
-/// Три карточки «Как будет работать стол» для окна установки. `None` —
-/// выбора нет (у стола один сеанс или другое семейство). У Wayland из AUR без
-/// помощника AUR карточки «Wayland» и «Оба» видны, но недоступны — с
-/// объяснением.
+/// The three «How the desktop will run» cards for the install dialog. `None`
+/// means no choice (the desktop has one session, or another family). For
+/// Wayland from the AUR without an AUR helper the «Wayland» and «Both» cards
+/// are visible but unavailable, with an explanation.
 pub fn session_choice(
     de_id: &str,
     family: PkgFamily,
@@ -1827,7 +1834,7 @@ pub fn session_choice(
             SessionPick::Both => tr("Both (choose on the login screen)"),
         };
         if pick.needs_wayland() && aur {
-            // Из AUR — честно на самой карточке, а не только в тексте выше.
+            // From the AUR: said honestly on the card itself, not only in the text above.
             // TRANSLATORS: %1 is a session option such as "Wayland — newer".
             label = trf("%1 ⚠️ from the AUR", &[&label]);
         }
@@ -1863,14 +1870,14 @@ pub fn session_choice(
     })
 }
 
-/// Рекомендованный вариант для окна установки (`None` — выбора нет).
+/// The recommended option for the install dialog (`None` means no choice).
 pub fn session_default(de_id: &str, family: PkgFamily) -> Option<crate::system::SessionPick> {
     crate::system::session_variants(de_id, family).map(|v| v.default_pick())
 }
 
-/// Пояснение к сеансу `kind` — окно «Добавить вариант …» к установленному
-/// столу, где карточек нет (простой HTML). `aur_risk` — признаки риска
-/// пакетов AUR (как на плитке AUR в «Оформлении»), пусто — нечего сказать.
+/// Explanation of session `kind`: the «Add the … version» dialog for an
+/// installed desktop, where there are no cards (simple HTML). `aur_risk` are
+/// the AUR package risk signs (as on the AUR tile in «Appearance»), empty means nothing to say.
 pub fn session_choice_html(
     de_id: &str,
     family: PkgFamily,
@@ -1922,7 +1929,7 @@ pub fn session_choice_html(
     }
 }
 
-/// Wayland только из AUR, а помощника AUR нет: ставится X11.
+/// Wayland only from the AUR, and there is no AUR helper: X11 gets installed.
 fn session_x11_only_text(name: &str) -> String {
     trf(
         "%1 can also run on Wayland, but that version exists only in the AUR, \
@@ -1932,8 +1939,8 @@ fn session_x11_only_text(name: &str) -> String {
     )
 }
 
-/// Предупреждение «Wayland — только из AUR» с признаками риска (пусто, если
-/// у стола Wayland из репозиториев). Начинается с разрыва строки.
+/// The warning "Wayland only from the AUR" with risk signs (empty if the
+/// desktop has Wayland from the repositories). Starts with a line break.
 fn session_aur_warning(de_id: &str, family: PkgFamily, aur_risk: &str) -> String {
     let Some(v) = crate::system::session_variants(de_id, family) else {
         return String::new();
@@ -1955,7 +1962,7 @@ fn session_aur_warning(de_id: &str, family: PkgFamily, aur_risk: &str) -> String
     out
 }
 
-/// Строка итога: какой сеанс выбрать на экране входа.
+/// Result line: which session to pick on the login screen.
 pub fn session_done_line(de_id: &str, family: PkgFamily, kind: crate::system::SessionKind) -> String {
     use crate::system::SessionKind;
     let Some(v) = crate::system::session_variants(de_id, family) else {
@@ -1969,8 +1976,8 @@ pub fn session_done_line(de_id: &str, family: PkgFamily, kind: crate::system::Se
     trf("On the login screen, choose the “%1” session.", &[&session])
 }
 
-/// Строка итога по варианту окна: у «Оба» — оба имени, как их пишет экран
-/// входа.
+/// Result line by the dialog option: for «Both», both names, as the login
+/// screen writes them.
 pub fn session_pick_done_line(de_id: &str, family: PkgFamily, pick: crate::system::SessionPick) -> String {
     use crate::system::SessionPick;
     match (pick, crate::system::session_variants(de_id, family)) {
@@ -1983,9 +1990,9 @@ pub fn session_pick_done_line(de_id: &str, family: PkgFamily, pick: crate::syste
     }
 }
 
-/// Вопрос установки с выбранным вариантом сеанса: пояснения — на самих
-/// карточках ([`session_choice`]), к вопросу дописываются только
-/// предупреждение про AUR (если Wayland из AUR) и строка итога.
+/// The install question with the chosen session option: the explanations are
+/// on the cards themselves ([`session_choice`]), only the AUR warning (if
+/// Wayland is from the AUR) and the result line are appended to the question.
 pub fn install_texts_with_session(
     de_id: &str,
     family: PkgFamily,
@@ -2006,7 +2013,7 @@ pub fn install_texts_with_session(
         String::new()
     };
     if !explain.is_empty() {
-        // Пояснение — сразу под вопросом, строка про пароль — последней.
+        // The explanation right under the question, the password line last.
         t.confirm_html = match t.confirm_html.split_once("<br><br>") {
             Some((question, rest)) => format!("{question}<br><br>{explain}<br><br>{rest}"),
             None => format!("{}<br><br>{explain}", t.confirm_html),
@@ -2020,9 +2027,9 @@ pub fn install_texts_with_session(
     t
 }
 
-/// Строка карточки установленного стола: какие сеансы уже работают
-/// (`system::installed_sessions`). Пусто — выбора сеанса у стола нет или не
-/// работает ни один.
+/// A line of an installed desktop's card: which sessions already work
+/// (`system::installed_sessions`). Empty means the desktop has no session
+/// choice, or none works.
 pub fn session_status_line(de_id: &str, family: PkgFamily, sessions: (bool, bool)) -> String {
     let Some(v) = crate::system::session_variants(de_id, family) else {
         return String::new();
@@ -2044,7 +2051,7 @@ pub fn session_status_line(de_id: &str, family: PkgFamily, sessions: (bool, bool
     }
 }
 
-/// Кнопка на карточке установленного стола, у которого нет сеанса `kind`.
+/// A button on the card of an installed desktop that lacks session `kind`.
 pub fn session_offer_button(kind: crate::system::SessionKind) -> String {
     match kind {
         crate::system::SessionKind::Wayland => tr("➕ Add the Wayland version"),
@@ -2052,7 +2059,7 @@ pub fn session_offer_button(kind: crate::system::SessionKind) -> String {
     }
 }
 
-/// Пояснение под этой кнопкой.
+/// The explanation under this button.
 pub fn session_offer_hint(de_id: &str, kind: crate::system::SessionKind) -> String {
     if kind == crate::system::SessionKind::X11 {
         return trf(
@@ -2061,8 +2068,8 @@ pub fn session_offer_hint(de_id: &str, kind: crate::system::SessionKind) -> Stri
             &[&display_name(de_id)],
         );
     }
-    // Зрелость Wayland — свойство стола, а не семейства: выбор сеанса есть
-    // только в Arch, оттуда и берём.
+    // Wayland maturity is a property of the desktop, not of the family: the
+    // session choice exists only in Arch, so it is taken from there.
     let experimental = crate::system::session_variants(de_id, PkgFamily::Arch)
         .map_or(true, |v| v.wayland_experimental());
     if experimental {
@@ -2080,7 +2087,7 @@ pub fn session_offer_hint(de_id: &str, kind: crate::system::SessionKind) -> Stri
     }
 }
 
-/// Вопрос, ход и итог «добавить сеанс `kind`» к установленному столу.
+/// Question, progress and result of "add session `kind`" to an installed desktop.
 pub fn session_add_texts(
     de_id: &str,
     family: PkgFamily,
@@ -2116,7 +2123,7 @@ pub fn session_add_texts(
     }
 }
 
-/// Отказ исполнителя: сеанс Wayland только из AUR, а помощника AUR нет.
+/// The executor's refusal: the Wayland session is only in the AUR, and there is no AUR helper.
 pub fn session_no_aur_helper_text(display_name: &str) -> String {
     trf(
         "The Wayland version of %1 comes only from the AUR, and Rexon needs yay \
@@ -2126,9 +2133,9 @@ pub fn session_no_aur_helper_text(display_name: &str) -> String {
     )
 }
 
-/// Окно установки для стола с Wayland только из AUR. Такого стола в таблице
-/// сейчас нет (MATE на Wayfire снят 16.11.2026), поэтому — на образце
-/// `system::test_session_variants::AUR_SAMPLE`: механизм ждёт MATE (Polo).
+/// The install dialog for a desktop with Wayland only from the AUR. There is no
+/// such desktop in the table now (MATE on Wayfire was dropped 16.11.2026), so it
+/// uses the sample `system::test_session_variants::AUR_SAMPLE`: the mechanism waits for MATE (Polo).
 #[cfg(test)]
 mod aur_session_tests {
     use super::*;
@@ -2141,9 +2148,9 @@ mod aur_session_tests {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
     }
 
-    /// Без помощника AUR карточки Wayland и «Оба» видны, но недоступны, а
-    /// выбранным остаётся X11, что бы ни пришло из окна. Добавка из AUR —
-    /// в пакетах стола и снимается вместе с ним.
+    /// Without an AUR helper the Wayland and «Both» cards are visible but
+    /// unavailable, and X11 stays chosen whatever came from the dialog. The AUR
+    /// addition is among the desktop's packages and is removed together with it.
     #[test]
     fn without_aur_helper_only_x11() {
         en();
@@ -2169,13 +2176,13 @@ mod aur_session_tests {
             assert!(all.iter().any(|p| p == "mate-wayland-session"), "{all:?}");
             assert_eq!(crate::system::session_removal_packages(SAMPLE, arch), ["mate-wayland-session"]);
         });
-        // Вне образца у MATE выбора сеанса нет.
+        // Outside the sample MATE has no session choice.
         assert!(crate::system::session_variants(SAMPLE, arch).is_none());
     }
 
-    /// Карточки Wayland и «Оба» сами говорят «из AUR»; вопрос несёт
-    /// предупреждение и признаки риска; без помощника — объяснение и итог
-    /// про X11.
+    /// The Wayland and «Both» cards say "from the AUR" themselves; the question
+    /// carries the warning and the risk signs; without a helper, an explanation
+    /// and a result about X11.
     #[test]
     fn aur_texts_on_cards_and_question() {
         en();
@@ -2190,7 +2197,7 @@ mod aur_session_tests {
             for pick in [SessionPick::Wayland, SessionPick::Both] {
                 let t = install_texts_with_session(SAMPLE, arch, pick, true, "RISK-LINE");
                 assert!(t.confirm_html.contains("AUR") && t.confirm_html.contains("RISK-LINE"), "{}", t.confirm_html);
-                // Начало вопроса — прежнее «Установить …?», строка про пароль — последней.
+                // The question starts with the former «Install …?», the password line last.
                 assert!(t.confirm_html.starts_with(question), "{}", t.confirm_html);
                 assert!(t.confirm_html.ends_with(password), "{}", t.confirm_html);
             }
@@ -2206,12 +2213,12 @@ mod aur_session_tests {
     }
 }
 
-/// Проверка и восстановление стола.
+/// Checking and repairing a desktop.
 ///
-/// «Восстановление» — это повторный запуск штатной установки на уже
-/// установленном столе: `pacman -S --needed` сам пропускает то, что стоит, и
-/// доставляет только недостающее. Отдельной разностной логики не нужно, а
-/// значит и ограничения дистрибутива те же — спрашиваем тем же окном.
+/// "Repair" is a rerun of the regular install on an already installed
+/// desktop: `pacman -S --needed` itself skips what is installed and brings
+/// only what is missing. No separate diff logic is needed, which means the
+/// distribution restrictions are the same too, so the same dialog asks.
 pub fn repair_texts(display_name: &str) -> OpTexts {
     OpTexts {
         confirm_title: tr("Check and Repair?"),
@@ -2239,12 +2246,12 @@ pub fn repair_texts(display_name: &str) -> OpTexts {
     }
 }
 
-/// Окно «текущий стол не опознан» для кнопки «Проверить мой стол».
+/// The "current desktop not detected" dialog for the «Check My Desktop» button.
 pub fn repair_current_unknown_title() -> String {
     tr("Desktop Not Detected")
 }
 pub fn repair_current_unknown_text() -> String {
-    // Имя кнопки берётся с самой кнопки — без значка, как его видит человек.
+    // The button name is taken from the button itself, without the icon, as the person sees it.
     let button = tr("🔧 Check / Repair");
     let button = button.trim_start_matches(|c: char| !c.is_alphanumeric());
     trf(
@@ -2257,42 +2264,42 @@ pub fn repair_current_unknown_text() -> String {
 }
 
 // ============================================================================
-// Удаление стола: обе защиты
+// Removing a desktop: both guards
 // ============================================================================
 
-/// Что делать по нажатию «Удалить».
+/// What to do when «Remove» is pressed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RemovePlan {
-    /// `blocked_current` — это текущий стол; `blocked_last` — он последний
-    /// установленный; `confirm` — можно спрашивать подтверждение.
+    /// `blocked_current` means this is the current desktop; `blocked_last` means
+    /// it is the last installed one; `confirm` means a confirmation may be asked.
     pub kind: &'static str,
     pub title: String,
-    /// Текст окна (простой HTML).
+    /// Dialog text (simple HTML).
     pub text: String,
 }
 
 impl RemovePlan {
-    /// Разрешено ли вообще запускать удаление после этого окна.
+    /// Whether starting the removal after this dialog is allowed at all.
     pub fn allowed(&self) -> bool {
         self.kind == "confirm"
     }
 }
 
-/// Решение об удалении стола.
+/// The decision about removing a desktop.
 ///
-/// ⛔ Обе защиты живут ЗДЕСЬ, а не в разметке: вкладок, которые умеют
-/// удалять стол, может стать больше одной, и защита, забытая во второй,
-/// стоит человеку графической сессии.
+/// ⛔ Both guards live HERE, not in the markup: there may come to be more than
+/// one tab that can remove a desktop, and a guard forgotten in the second one
+/// costs the person their graphical session.
 ///
-/// * `blocked_current` — удаляют тот стол, в котором сейчас работают. После
-///   следующего входа он остался бы с чёрным экраном.
-/// * `blocked_last` — он единственный установленный. Тот же чёрный экран,
-///   только после ближайшей перезагрузки.
-/// * `confirm` — можно, но с явным подтверждением и напоминанием, что
-///   текущий стол не пострадает.
+/// * `blocked_current`: removing the desktop currently in use. After the next
+///   login the person would be left with a black screen.
+/// * `blocked_last`: it is the only installed one. The same black screen,
+///   only after the next reboot.
+/// * `confirm`: allowed, but with explicit confirmation and a reminder that
+///   the current desktop will not be affected.
 ///
-/// `other_installed` — сколько ДРУГИХ столов установлено (сам удаляемый не
-/// считается).
+/// `other_installed` is how many OTHER desktops are installed (the one being
+/// removed does not count).
 pub fn remove_plan(
     de_id: &str,
     display_name: &str,
@@ -2328,8 +2335,8 @@ pub fn remove_plan(
             ),
         };
     }
-    // ⭐ Починка: здесь печатался идентификатор («kde»), а не имя стола.
-    // Полным путём: параметр `display_name` перекрывает функцию модуля.
+    // ⭐ Fix: the identifier ("kde") was printed here instead of the desktop name.
+    // By the full path: the `display_name` parameter shadows the module function.
     let current_name = crate::qt_desktops::display_name(current_de);
     RemovePlan {
         kind: "confirm",
@@ -2345,27 +2352,27 @@ pub fn remove_plan(
     }
 }
 
-/// Заголовок хода дела при удалении.
+/// Progress heading during removal.
 pub fn remove_operation_title(display_name: &str) -> String {
     trf("Removing %1", &[&display_name])
 }
 
 // ============================================================================
-// Защита панели KDE
+// KDE panel protection
 // ============================================================================
 
-/// Окно с итогом действия над панелью: заголовок и текст.
+/// Dialog with the result of a panel action: heading and text.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PanelTexts {
     pub title: String,
     pub text: String,
 }
 
-/// Вопрос перед «Сохранить панель», когда копия у этого стола одна и уже
-/// есть (MATE, XFCE): новая её заменит. (заголовок, текст)
+/// The question before «Save Panel» when this desktop has a single copy and
+/// it already exists (MATE, XFCE): the new one will replace it. (heading, text)
 ///
-/// `mate` — у MATE это ещё и копия «Вернуть прежнюю панель» раздела
-/// «Раскладка панели»: сказать об этом.
+/// `mate`: for MATE this is also the «Restore previous panel» copy of the
+/// «Panel Layout» section: say so.
 pub fn panel_backup_replace_confirm(mate: bool) -> (String, String) {
     let text = if mate {
         tr("A saved copy of the panel already exists — the same one “Restore previous panel” \
@@ -2384,7 +2391,7 @@ pub fn panel_restore_confirm_text() -> String {
         Your current panel settings will be replaced with the saved ones.")
 }
 
-/// Итог снятия копии панели.
+/// Result of taking a panel copy.
 pub fn panel_backup_result(ok: bool, message: &str) -> PanelTexts {
     if ok {
         PanelTexts {
@@ -2399,7 +2406,7 @@ pub fn panel_backup_result(ok: bool, message: &str) -> PanelTexts {
     }
 }
 
-/// Итог возврата панели из копии.
+/// Result of restoring the panel from the copy.
 pub fn panel_restore_result(ok: bool, message: &str) -> PanelTexts {
     if ok {
         PanelTexts {
@@ -2415,44 +2422,45 @@ pub fn panel_restore_result(ok: bool, message: &str) -> PanelTexts {
 }
 
 // ============================================================================
-// Блок «Оболочки» в карточке тайлового композитора
+// The «Shells» block in a tiling compositor's card
 // ============================================================================
 //
-// Решение владельца 01.10.2026: оболочка — надстройка над столом и живёт в
-// его карточке справа; левая часть карточки не меняется. Что ставить, куда
-// вписать строку и как её снять — `crate::shell_bundle`; здесь подписи и
-// состав кнопок.
+// Owner's decision 01.10.2026: a shell is an add-on to the desktop and lives
+// in its card on the right; the left part of the card does not change. What
+// to install, where to write the line and how to remove it is
+// `crate::shell_bundle`; here are the captions and the set of buttons.
 
-/// Ширина блока «Оболочки» справа от текста карточки, его поля, промежуток
-/// между строками оболочек и кегль заголовка. Блок — надстройка, текст
-/// карточки слева остаётся главным, поэтому ширина постоянная и узкая.
+/// Width of the «Shells» block to the right of the card text, its padding, the
+/// gap between shell rows and the heading font size. The block is an add-on,
+/// the card text on the left stays the main thing, so the width is constant and narrow.
 pub const SHELLS_PANEL_WIDTH: i32 = 300;
 pub const SHELLS_PANEL_PADDING: i32 = 12;
 pub const SHELLS_ROW_SPACING: i32 = 10;
 pub const SHELLS_HEADER_POINT_SIZE: i32 = 12;
-/// С какой ширины текста карточки блок «Оболочки» встаёт СПРАВА от него.
-/// Уже — блок уходит под текст: иначе ряд кнопок стола (его наименьшая
-/// ширина около 380 точек) налезал бы на блок. Число — ширина блока, зазор
-/// и 546 точек на текст. Замер стенда 03.10.2026 (ru и de): на штатном окне
-/// 1100×750 карточке достаётся около 590 точек — блок уходит вниз; на окне
-/// 1400×1000 — около 880, и блок встаёт справа без наложений.
+/// From which card text width the «Shells» block stands to the RIGHT of it.
+/// Narrower, and the block goes under the text: otherwise the desktop's button
+/// row (its smallest width is about 380 points) would overlap the block. The
+/// number is the block width, the gap and 546 points for the text. Bench
+/// measurement 03.10.2026 (ru and de): on the standard 1100×750 window the card
+/// gets about 590 points, so the block goes down; on a 1400×1000 window about
+/// 880, and the block stands on the right without overlaps.
 pub const SHELLS_SIDE_BY_SIDE_MIN_WIDTH: i32 =
     SHELLS_PANEL_WIDTH + CARD_SPACING + 546;
 
-/// Заголовок блока.
+/// Block heading.
 pub fn shells_header() -> String {
     // TRANSLATORS: heading of the card block with desktop shells (Noctalia…)
     // that run on top of a tiling compositor.
     tr("Shells")
 }
 
-/// Подсказка заголовка: что такое оболочка, без жаргона.
+/// Heading tooltip: what a shell is, without jargon.
 pub fn shells_header_tooltip() -> String {
     tr("A shell adds a panel, an app launcher and notifications on top of the desktop. \
         The desktop itself stays as it is: you can log in with the shell or without it.")
 }
 
-/// Одна строка о том, что даёт оболочка.
+/// One line about what the shell gives.
 pub fn shell_description(shell: DesktopShell) -> String {
     match shell {
         DesktopShell::Noctalia => tr("A ready-made panel, launcher and notification center"),
@@ -2462,41 +2470,41 @@ pub fn shell_description(shell: DesktopShell) -> String {
     }
 }
 
-/// Статус оболочки, которая работает прямо сейчас.
+/// Status of a shell that is running right now.
 pub fn shell_running_text() -> String {
     tr("✅ Running now")
 }
 
-/// Кнопка в строке оболочки.
+/// A button in a shell row.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ShellButton {
     /// `shell_install`, `shell_switch`, `shell_remove`.
     pub kind: &'static str,
     pub text: String,
     pub tooltip: String,
-    /// Тот же смысл, что у [`CardButton::style`].
+    /// The same meaning as [`CardButton::style`].
     pub style: &'static str,
     pub enabled: bool,
 }
 
-/// Строка оболочки в блоке.
+/// A shell row in the block.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ShellRow {
-    /// Идентификатор оболочки (`DesktopShell::as_str`) — признак, не подпись.
+    /// Shell identifier (`DesktopShell::as_str`): an attribute, not a caption.
     pub shell: &'static str,
     pub name: &'static str,
     pub description: String,
-    /// Пусто — не установлена.
+    /// Empty means not installed.
     pub status_text: String,
     pub running: bool,
-    /// Почему кнопки неактивны; пусто — объяснять нечего.
+    /// Why the buttons are disabled; empty means nothing to explain.
     pub hint: String,
     pub buttons: Vec<ShellButton>,
 }
 
-/// Строки блока «Оболочки» для карточки `wm`. Пусто — блока нет (Plasma и
-/// все не тайловые столы). `state` — состояние оболочки на этой машине,
-/// `steamos_block` — причина SteamOS (пакеты не трогаем).
+/// Rows of the «Shells» block for the card `wm`. Empty means no block (Plasma
+/// and all non-tiling desktops). `state` is the shell state on this machine,
+/// `steamos_block` is the SteamOS reason (packages are not touched).
 pub fn shell_rows(
     wm: &str,
     family: PkgFamily,
@@ -2577,7 +2585,7 @@ pub fn shell_rows(
         .collect()
 }
 
-/// Предупреждение перед установкой — одной фразой для человека.
+/// The warning before installing, in one phrase for a person.
 pub fn shell_warning_text(warning: Warning) -> String {
     match warning {
         Warning::OwnWallpaper => tr("The shell draws its own wallpaper, on top of the wallpaper set in Rexon."),
@@ -2591,8 +2599,8 @@ pub fn shell_warning_text(warning: Warning) -> String {
     }
 }
 
-/// Тексты установки оболочки. `packages` — что реально поставится (пусто —
-/// всё уже стоит, пароль не нужен).
+/// Shell install texts. `packages` is what will actually be installed (empty
+/// means everything is already installed, no password is needed).
 pub fn shell_install_texts(
     shell: DesktopShell,
     wm: &str,
@@ -2649,8 +2657,8 @@ pub fn shell_install_texts(
     }
 }
 
-/// Тексты «Убрать» у оболочки. `packages` — что снимется (пусто — пакеты
-/// остаются: ими пользуется другой стол либо их уже нет).
+/// Texts of «Remove» for a shell. `packages` is what will be removed (empty
+/// means the packages stay: another desktop uses them, or they are already gone).
 pub fn shell_remove_texts(shell: DesktopShell, wm: &str, packages: &[&str]) -> OpTexts {
     let wm_name = display_name(wm);
     let name = shell.label();
@@ -2687,7 +2695,7 @@ pub fn shell_remove_texts(shell: DesktopShell, wm: &str, packages: &[&str]) -> O
     }
 }
 
-/// Тексты «Переключиться» у оболочки: вопрос и заголовок хода.
+/// Texts of «Switch» for a shell: the question and the progress heading.
 pub fn shell_switch_texts(shell: DesktopShell, wm: &str) -> OpTexts {
     let wm_name = display_name(wm);
     let name = shell.label();
@@ -2711,15 +2719,15 @@ pub fn shell_switch_texts(shell: DesktopShell, wm: &str) -> OpTexts {
 }
 
 // ============================================================================
-// Мелочи
+// Odds and ends
 // ============================================================================
 
 fn meta(de_id: &str) -> Option<&'static DeMeta> {
     DE_META.iter().find(|m| m.id == de_id)
 }
 
-/// Отображаемое имя стола; сам идентификатор, если стола в базе нет — в
-/// интерфейсе это лучше пустой строки.
+/// Display name of the desktop; the identifier itself if the desktop is not in
+/// the database, which is better in the interface than an empty string.
 pub fn display_name(de_id: &str) -> &str {
     DE_META
         .iter()

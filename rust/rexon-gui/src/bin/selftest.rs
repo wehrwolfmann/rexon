@@ -1,57 +1,61 @@
-// Стенды самопроверки крейта rexon-gui: живые QObject'ы и QML без окна
-// продукта и без Python. Один бинарь на все сценарии — каждый выбирается
-// своим аргументом, разбор сценария живёт в модуле крейта.
+// Self-test benches of the rexon-gui crate: live QObjects and QML without
+// the product window and without Python. One binary for all scenarios —
+// each is chosen by its own argument, and the scenario's analysis lives in
+// the crate's module.
 //
-// Выдача Discover (модель и поздние колбэки на удалённую модель):
+// Discover results (the model and late callbacks to a removed model):
 //     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --remote-selftest
-// Запросы Discover (поиск, страницы, фильтры, сортировки):
+// Discover queries (search, pages, filters, sorting):
 //     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --discover-selftest
-// Страница «Обои» (список, семь запросов-действий и модель библиотеки):
+// The "Wallpapers" page (the list, seven action queries and the library model):
 //     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --wallpaper-selftest
-// Снятие живых обоев против подставного демона waywallen:
+// Removing the live wallpaper against a fake waywallen daemon:
 //     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --we-stop-selftest
-// 64-битное целое в QML против мостов:
+// A 64-bit integer in QML against the bridges:
 //     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --qml-int64-probe
-// Живые модели в настоящем QML (qml/LiveModelsProbe.qml) — сетка Discover
-// (modelReset/rowsInserted при подаче и догрузке страниц, перепривязка
-// карточки), редактор свойств обоев и гашение плашки состояния:
+// Live models in real QML (qml/LiveModelsProbe.qml) — the Discover grid
+// (modelReset/rowsInserted on delivering and loading more pages, card
+// rebinding), the wallpaper property editor and the status banner fading:
 //     cargo run -p rexon-gui --bin rexon-gui-selftest -- --remote-model-signals-selftest
 //     cargo run -p rexon-gui --bin rexon-gui-selftest -- --user-property-selftest
 //     cargo run -p rexon-gui --bin rexon-gui-selftest -- --toast-selftest
-// Крупный просмотр картинки (настоящие щелчки и клавиши; нужен QML-модуль
-// QtTest из qt6-declarative):
+// Large picture view (real clicks and keys; needs the QtTest QML module from
+// qt6-declarative):
 //     cargo run -p rexon-gui --bin rexon-gui-selftest -- --image-viewer-selftest
-// Вкладка Steam, «Steam-фоны»: фильтр «все / статичные / анимированные»,
-// отметка на миниатюре и в просмотре, строка «анимированные не показаны» с
-// кнопкой «Повторить». Steam подставной (свой HOME), сеть заглушена:
+// The Steam tab, "Steam backgrounds": the "all / static / animated" filter,
+// the badge on the thumbnail and in the viewer, the "animated ones are not
+// shown" line with the "Retry" button. Steam is fake (own HOME), the
+// network is stubbed:
 //     cargo run -p rexon-gui --bin rexon-gui-selftest -- --steam-backgrounds-selftest
-// Вкладка Steam, «Витрины профиля»: помощник загрузки — возврат к набору,
-// «Скопировать название», отметки шагов, проверка профиля при глухой сети:
+// The Steam tab, "Profile showcases": the upload helper — returning to a
+// set, "Copy name", step marks, checking the profile with a dead network:
 //     cargo run -p rexon-gui --bin rexon-gui-selftest -- --steam-showcase-wizard-selftest
-// Все безоконные сценарии подряд гоняет `cargo test -p rexon-gui`
+// All windowless scenarios in a row are run by `cargo test -p rexon-gui`
 // (tests/selftest_scenarios.rs).
 //
-// Отдельный сценарий — стенд слоя обоев (нужна ЖИВАЯ сессия Wayland, под
-// offscreen смысла не имеет):
+// A separate scenario is the wallpaper layer test bench (it needs a LIVE
+// Wayland session; under offscreen it makes no sense):
 //     cargo run -p rexon-gui --bin rexon-gui-selftest -- --layer-shell-selftest
-// Он запускает этот же бинарь с --layer-shell-probe под WAYLAND_DEBUG=1 и
-// выносит приговор по протокольному следу. Разбор — src/layer_shell_selftest.rs.
-// Проверка стенда на укус (стенд, который зеленеет всегда, ничего не
-// проверяет): `--layer-shell-bite` (все виды подряд) либо
-// `--layer-shell-bite=<вид>` — прогон с испорченным слоем ОБЯЗАН покраснеть.
+// It starts this same binary with --layer-shell-probe under WAYLAND_DEBUG=1
+// and gives the verdict from the protocol trace. Analysis —
+// src/layer_shell_selftest.rs. Checking the bench with a bite (a bench that
+// is always green checks nothing): `--layer-shell-bite` (all kinds in a
+// row) or `--layer-shell-bite=<kind>` — a run with a spoiled layer MUST go
+// red.
 
 use cxx_qt_lib::{
     QGuiApplication, QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString, QUrl,
     QVariant,
 };
 
-// Ссылка на библиотеку крейта обязательна, а не декоративна: без неё rustc
-// не подтягивает rlib, а вместе с ним и статические архивы cxx-qt (модели,
-// moc, QML-плагин с ресурсами) — бинарь собирается, но QML пуст.
+// The link to the crate library is mandatory, not decorative: without it
+// rustc does not pull in the rlib, and with it the cxx-qt static archives
+// (models, moc, the QML plugin with resources) — the binary builds, but the
+// QML is empty.
 use rexon_gui::layer_shell_selftest::{BITE_ARG, BITE_ENV, PROBE_ARG, SELFTEST_ARG};
 
-/// Сценарии `qml/LiveModelsProbe.qml`: ключ командной строки → значение
-/// свойства `scenario` корня документа.
+/// `qml/LiveModelsProbe.qml` scenarios: command line option → value of the
+/// document root's `scenario` property.
 const LIVE_MODEL_SCENARIOS: &[(&str, &str)] = &[
     ("--remote-model-signals-selftest", "remote"),
     ("--user-property-selftest", "userprop"),
@@ -62,46 +66,48 @@ const LIVE_MODEL_SCENARIOS: &[(&str, &str)] = &[
     (STEAM_WIZARD_ARG, "steamwiz"),
 ];
 
-/// Сценарий помощника загрузки витрин на том же подставном Steam.
+/// Scenario of the showcase upload helper on the same fake Steam.
 const STEAM_WIZARD_ARG: &str = "--steam-showcase-wizard-selftest";
 
-/// Сценарий сетки фонов вкладки Steam на подставном Steam.
+/// Scenario of the Steam tab's background grid on a fake Steam.
 const STEAM_BG_ARG: &str = "--steam-backgrounds-selftest";
 
 fn main() {
     let has = |arg: &str| std::env::args().any(|a| a == arg);
-    // Стенд выдачи Discover: живой QObject без окна и без QML. Прогоняет
-    // все случаи голдена и отдельно — поздние колбэки на удалённую модель.
-    // Разбор — src/remote_list_model.rs.
+    // Discover results bench: a live QObject without a window and without QML.
+    // Runs all golden cases and, separately, late callbacks to a removed model.
+    // Analysis — src/remote_list_model.rs.
     if has(rexon_gui::remote_list_model::selftest::ARG) {
         std::env::set_var("QT_FORCE_STDERR_LOGGING", "1");
         std::process::exit(rexon_gui::remote_list_model::selftest::run());
     }
-    // Стенд запросов Discover: живые объекты-владельцы против голдена.
-    // Разбор — src/discover_queries.rs.
+    // Discover queries bench: live owner objects against the golden file.
+    // Analysis — src/discover_queries.rs.
     if has(rexon_gui::discover_queries::selftest::ARG) {
         std::env::set_var("QT_FORCE_STDERR_LOGGING", "1");
         std::process::exit(rexon_gui::discover_queries::selftest::run());
     }
-    // Стенд страницы «Обои»: восемь живых запросов (список + семь действий)
-    // и модель библиотеки против голдена. Разбор — src/wallpaper_page_selftest.rs.
+    // "Wallpapers" page bench: eight live queries (the list + seven actions)
+    // and the library model against the golden file. Analysis —
+    // src/wallpaper_page_selftest.rs.
     if has(rexon_gui::wallpaper_page_selftest::ARG) {
         std::env::set_var("QT_FORCE_STDERR_LOGGING", "1");
         std::process::exit(rexon_gui::wallpaper_page_selftest::run());
     }
-    // Снятие живых обоев против подставного демона: гонка рукопожатия
-    // WebSocket в рабочем потоке. Разбор — src/we_stop_selftest.rs.
+    // Removing the live wallpaper against a fake daemon: the WebSocket
+    // handshake race in a worker thread. Analysis — src/we_stop_selftest.rs.
     if has(rexon_gui::we_stop_selftest::ARG) {
         std::env::set_var("QT_FORCE_STDERR_LOGGING", "1");
         std::process::exit(rexon_gui::we_stop_selftest::run());
     }
-    // Проба «64-битное целое в QML»: живой движок QML против мостов.
-    // Разбор — src/qml_int64_probe.rs. Проба сама зовёт `std::process::exit`.
+    // The "64-bit integer in QML" probe: a live QML engine against the
+    // bridges. Analysis — src/qml_int64_probe.rs. The probe calls
+    // `std::process::exit` itself.
     if has(rexon_gui::qml_int64_probe::ARG) {
         rexon_gui::qml_int64_probe::run();
     }
-    // Живые модели в настоящем QML: то, чего безоконные стенды выше не
-    // видят (структурные сигналы модели и перепривязка живых делегатов).
+    // Live models in real QML: what the windowless benches above cannot see
+    // (structural model signals and rebinding of live delegates).
     if has(STEAM_BG_ARG) || has(STEAM_WIZARD_ARG) {
         if let Err(why) = prepare_fake_steam() {
             eprintln!("подставной Steam не собран: {why}");
@@ -111,9 +117,9 @@ fn main() {
     if let Some((_, scenario)) = LIVE_MODEL_SCENARIOS.iter().find(|(arg, _)| has(arg)) {
         std::process::exit(run_live_models_probe(scenario));
     }
-    // Стенд слоя обоев: разбор до создания QGuiApplication, чтобы
-    // родительская половина стенда вообще не трогала Qt (ей нужен только
-    // процесс-ребёнок и его протокольный след).
+    // Wallpaper layer bench: parsing happens before QGuiApplication is
+    // created, so that the parent half of the bench does not touch Qt at all
+    // (it needs only the child process and its protocol trace).
     if has(SELFTEST_ARG) {
         std::process::exit(rexon_gui::layer_shell_selftest::run());
     }
@@ -139,20 +145,21 @@ fn main() {
     std::process::exit(2);
 }
 
-/// Подставной Steam для сценария сетки фонов: каталог Steam с одной учётной
-/// записью и дисковый кэш списка из пяти фонов (два анимированных — один
-/// роликом от Steam, второй по адресу самого фона).
+/// Fake Steam for the background grid scenario: a Steam directory with one
+/// account and a disk cache of a list of five backgrounds (two animated —
+/// one with a clip from Steam, the other by the background's own address).
 ///
-/// ⚠️ Только в СВОЁМ домашнем каталоге: сценарий пишет в `$HOME`, и на
-/// настоящем он лёг бы поверх живого Steam и кэша продукта. Бегун
-/// (`tests/selftest_scenarios.rs`) даёт каталог `rexon-selftest-…`; без него
-/// — отказ.
+/// Warning: only in OUR OWN home directory: the scenario writes to `$HOME`,
+/// and on the real one it would land on top of the live Steam and the
+/// product cache. The runner (`tests/selftest_scenarios.rs`) provides a
+/// `rexon-selftest-…` directory; without it — a refusal.
 ///
-/// Сеть заглушена прокси на закрытый порт: вкладка честно пойдёт за списком
-/// и миниатюрами, получит мгновенный отказ и оставит список из кэша — а
-/// прогон не зависит ни от связи, ни от ответа Steam. Входа в Steam у
-/// подставного каталога нет, и это тоже часть сценария: строка «анимированные
-/// не показаны» обязана назвать причину.
+/// The network is stubbed with a proxy on a closed port: the tab will
+/// honestly go for the list and thumbnails, get an instant refusal and keep
+/// the list from the cache — and the run depends neither on connectivity
+/// nor on Steam's answer. The fake directory has no Steam login, and that is
+/// part of the scenario too: the "animated ones are not shown" line must
+/// name the reason.
 fn prepare_fake_steam() -> Result<(), String> {
     use rexon_core::qt_steam as qs;
     use rexon_core::steam_profile_items::ProfileBackgroundItem;
@@ -204,8 +211,8 @@ fn prepare_fake_steam() -> Result<(), String> {
     }
     std::fs::write(&cache, qs::inventory_cache_json(&sid, &items, 0)).map_err(|e| e.to_string())?;
 
-    // Набор для помощника загрузки витрин: две части, ни одна не загружена.
-    // Самих картинок нет — помощнику для шагов они не нужны.
+    // A set for the showcase upload helper: two parts, none uploaded. There are
+    // no pictures themselves — the helper does not need them for the steps.
     use rexon_core::steam_showcase as sc;
     let set = sc::output_root(&sc::pictures_dir(None, None, &home)).join("probe-set");
     std::fs::create_dir_all(&set).map_err(|e| e.to_string())?;
@@ -227,24 +234,25 @@ fn prepare_fake_steam() -> Result<(), String> {
     )
 }
 
-/// Сценарий живых моделей: `qml/LiveModelsProbe.qml` с выбранным
-/// `scenario`. Приговор выносит сам QML (`Qt.exit(0|1)`), код цикла событий
-/// становится кодом процесса; 2 — документ не отчитался вовсе.
+/// Live models scenario: `qml/LiveModelsProbe.qml` with the chosen
+/// `scenario`. The verdict is given by the QML itself (`Qt.exit(0|1)`), the
+/// event loop code becomes the process code; 2 means the document did not
+/// report at all.
 fn run_live_models_probe(scenario: &str) -> i32 {
-    // Без этого прогон из скрипта немой: когда stderr не терминал, Qt на
-    // Arch/CachyOS уводит console.log в journald.
+    // Without this a run from a script is mute: when stderr is not a terminal,
+    // Qt on Arch/CachyOS sends console.log to journald.
     std::env::set_var("QT_FORCE_STDERR_LOGGING", "1");
-    // Окну нужен цикл отрисовки (делегаты ListView/GridView создаются в
-    // нём), но на живой стол ему незачем: платформу, если её не задали,
-    // ставим offscreen сами.
+    // The window needs a render loop (ListView/GridView delegates are created
+    // in it), but it has no business on the live desktop: if no platform was
+    // given, we set offscreen ourselves.
     if std::env::var_os("QT_QPA_PLATFORM").is_none() {
         std::env::set_var("QT_QPA_PLATFORM", "offscreen");
     }
     cxx_qt::init_qml_module!("org.rexon.gui");
 
-    // Страховка на случай, когда QML не загрузился и некому сказать
-    // Qt.exit: молчание обязано стать провалом, а не тихим нулём. У самого
-    // документа свой сторож на 20 с — этот длиннее.
+    // A safeguard for when the QML did not load and there is nobody to call
+    // Qt.exit: silence must become a failure, not a quiet zero. The document
+    // has its own 20 s guard — this one is longer.
     std::thread::spawn(|| {
         std::thread::sleep(std::time::Duration::from_secs(40));
         eprintln!("сценарий живых моделей не отчитался за 40 с — самопроверка провалена");
@@ -256,8 +264,8 @@ fn run_live_models_probe(scenario: &str) -> i32 {
     if let Some(mut engine) = engine.as_mut() {
         let mut props = QMap::<QMapPair_QString_QVariant>::default();
         props.insert(QString::from("scenario"), QVariant::from(&QString::from(scenario)));
-        // Строки блока выбора файла — настоящий ответ ядра, а не слепок в
-        // QML: стенд сверяет разметку с тем, что ядро отдаёт на самом деле.
+        // Rows of the file choice block are the core's real answer, not a copy in
+        // QML: the bench compares the markup with what the core actually returns.
         props.insert(
             QString::from("storeFilesJson"),
             QVariant::from(&QString::from(&store_files_fixture(true))),
@@ -275,9 +283,10 @@ fn run_live_models_probe(scenario: &str) -> i32 {
     }
 }
 
-/// Товар магазина для сценария «storefiles» (живой случай McOS 17.10.2026:
-/// архив дополнений идёт первым по алфавиту, ставиться должна тема). `two` —
-/// два файла; иначе один, и блока выбора быть не должно.
+/// A store item for the "storefiles" scenario (a live case, McOS 17.10.2026:
+/// the add-ons archive comes first alphabetically, while the theme is what
+/// should be installed). `two` means two files; otherwise one, and there
+/// must be no choice block.
 fn store_files_fixture(two: bool) -> String {
     use serde_json::json;
     let mut links = vec![json!({
@@ -297,11 +306,13 @@ fn store_files_fixture(two: bool) -> String {
     rexon_core::appearance_page::store_file_choices_json(&item)
 }
 
-/// Подопытное окно стенда слоя обоев: QML-окно, которому слой ставит Rust.
+/// Test subject window of the wallpaper layer bench: a QML window whose
+/// layer is set by Rust.
 ///
-/// Окно живёт на ЖИВОМ рабочем столе, поэтому у прогона два независимых
-/// ограничителя: этот сторож и убийца процесса на стороне родителя. Даже
-/// если QML зависнет насмерть, окно исчезнет — вместе с процессом.
+/// The window lives on the LIVE desktop, so the run has two independent
+/// limiters: this guard and the process killer on the parent's side. Even if
+/// the QML hangs dead, the window will disappear — together with the
+/// process.
 fn run_layer_shell_probe() -> i32 {
     cxx_qt::init_qml_module!("org.rexon.gui");
 
@@ -318,9 +329,9 @@ fn run_layer_shell_probe() -> i32 {
 
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
-        // Вид укуса едет в QML начальным свойством корня, а не переменной
-        // контекста: контекстные свойства в cxx-qt-lib 0.9 не обёрнуты, а
-        // setInitialProperties есть и работает ДО первой привязки.
+        // The bite kind goes into QML as an initial property of the root, not as a
+        // context variable: context properties are not wrapped in cxx-qt-lib 0.9,
+        // while setInitialProperties exists and works BEFORE the first binding.
         let bite = std::env::var(BITE_ENV).unwrap_or_default();
         let mut props = QMap::<QMapPair_QString_QVariant>::default();
         props.insert(QString::from("bite"), QVariant::from(&QString::from(&bite)));

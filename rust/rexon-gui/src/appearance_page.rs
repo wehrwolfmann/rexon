@@ -1,38 +1,43 @@
-// AppearanceModel — вкладка «Оформление» на Rust + cxx-qt + QML.
+// AppearanceModel — the «Appearance» tab in Rust + cxx-qt + QML.
 //
-// Последняя из вкладок, перенесённых на QML по общей схеме: решения и
-// подписи — ядро, здесь оболочка QObject, в QML только разметка.
+// The last of the tabs ported to QML following the common scheme:
+// decisions and labels are the core's, here is the QObject shell, and QML
+// holds only the markup.
 //
-// Что здесь есть и чего нет:
-//   * ЕСТЬ оболочка QObject: боковая панель разделов, шапка (чипы источника,
-//     под-чипы «вида» и режима блокировки, поиск, выбор рабочего стола,
-//     сортировка), строка состояния, полоса страниц и модель плиток
-//     каталога с ролями делегата;
-//   * НЕТ ни одной строки продуктовых решений. Что показать, в каком
-//     порядке, какими словами и с какой кнопкой — отвечает
-//     `rexon_core::appearance_page` (2 690 строк перенесённой логики).
+// What is here and what is not:
+//   * there IS the QObject shell: the section sidebar, the header (source
+//     chips, the "kind" and lock mode sub-chips, the search, the desktop
+//     choice, the sort), the status line, the page strip and the catalogue
+//     tile model with the delegate's roles;
+//   * there is NOT a single line of product decisions. What to show, in
+//     what order, with what words and with which button is answered by
+//     `rexon_core::appearance_page` (2,690 lines of ported logic).
 //
-// ⚠️ Сеть и диск остаются снаружи. У ядра есть и разбор ответов магазина
-// (`ocs`), и AUR (`aur`), и обход диска (`installed_scan`), но ЖИВОГО
-// исполнителя `OcsCacheIo` в продукте пока нет — SQLite-кеш и HTTP живут в
-// `rexon/appearance/ocs_client.py`. Поэтому страница спрашивает у хозяина
-// (`root.actions`) ровно то, что ядро само велело спросить: состав запроса
-// собирает `catalogRequest()`, ответ принимает `catalogAnswer()`. Когда
-// исполнитель приедет на Rust, на место хозяина встанет он — ни страница,
-// ни этот мост не изменятся.
+// Warning: the network and the disk stay outside. The core has parsing of
+// the store answers (`ocs`), AUR (`aur`) and the disk walk
+// (`installed_scan`), but there is no LIVE `OcsCacheIo` executor in the
+// product yet — the SQLite cache and HTTP live in
+// `rexon/appearance/ocs_client.py`. So the page asks the host
+// (`root.actions`) exactly what the core itself told it to ask: the
+// request contents are assembled by `catalogRequest()`, the answer is
+// accepted by `catalogAnswer()`. When the executor arrives in Rust, it
+// will take the host's place — neither the page nor this bridge will
+// change.
 
-/// Мост cxx-qt: содержимое вкладки «Оформление». Оно же — модель плиток.
+/// cxx-qt bridge: the content of the «Appearance» tab. It is also the tile
+/// model.
 ///
-/// ⚠️ Тип зовётся `AppearanceModel`, а не `AppearancePage`: .qml-файлы
-/// модуля сами становятся QML-типами по имени файла, и `AppearancePage`
-/// занят `qml/AppearancePage.qml` (грабля 1 схемы переноса).
+/// Warning: the type is called `AppearanceModel`, not `AppearancePage`: the
+/// module's .qml files themselves become QML types by file name, and
+/// `AppearancePage` is taken by `qml/AppearancePage.qml` (pitfall 1 of the
+/// porting scheme).
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        /// Базовый Qt-тип. БЕЗ `#[qobject]`: на каждый `#[qobject]`-тип в
-        /// `extern "C++Qt"` cxx-qt печатает шимы приведения с именем по
-        /// ТИПУ, и второй мост крейта с той же базой даёт `duplicate symbol`.
+        /// The base Qt type. WITHOUT `#[qobject]`: for every `#[qobject]` type in
+        /// `extern "C++Qt"` cxx-qt emits cast shims named by TYPE, and a second
+        /// bridge of the crate with the same base gives a `duplicate symbol`.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -51,7 +56,7 @@ pub mod qobject {
         type QModelIndex = cxx_qt_lib::QModelIndex;
 
         include!("cxx-qt-lib/qvector.h");
-        /// Набор ролей для dataChanged (в Qt6 QVector<int> == QList<int>).
+        /// Set of roles for dataChanged (in Qt6 QVector<int> == QList<int>).
         type QVector_i32 = cxx_qt_lib::QVector<i32>;
 
         include!("cxx-qt-lib/qlist.h");
@@ -65,7 +70,7 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        // ── Окно и шапка: константы ядра ────────────────────────────────
+        // ── Window and header: constants of the core ────────────────────
         #[qproperty(QString, window_title, cxx_name = "windowTitle",
                     READ = window_title, CONSTANT)]
         #[qproperty(i32, window_min_width, cxx_name = "windowMinWidth",
@@ -76,7 +81,7 @@ pub mod qobject {
                     READ = header_title, CONSTANT)]
         #[qproperty(i32, header_title_point_size, cxx_name = "headerTitlePointSize",
                     READ = header_title_point_size, CONSTANT)]
-        // Геометрия каталога: боковая панель, строка поиска, плитка.
+        // Catalogue geometry: the sidebar, the search line, the tile.
         #[qproperty(i32, sidebar_width, cxx_name = "sidebarWidth",
                     READ = sidebar_width, CONSTANT)]
         #[qproperty(i32, sidebar_row_height, cxx_name = "sidebarRowHeight",
@@ -119,7 +124,7 @@ pub mod qobject {
                     READ = header_margin_v, CONSTANT)]
         #[qproperty(i32, catalog_debounce_ms, cxx_name = "catalogDebounceMs",
                     READ = catalog_debounce_ms, CONSTANT)]
-        // ── Подсказки поиска ────────────────────────────────────────────
+        // ── Search suggestions ──────────────────────────────────────────
         #[qproperty(i32, suggest_debounce_ms, cxx_name = "suggestDebounceMs",
                     READ = suggest_debounce_ms, CONSTANT)]
         #[qproperty(i32, suggest_row_height, cxx_name = "suggestRowHeight",
@@ -136,7 +141,7 @@ pub mod qobject {
                     READ = suggest_index, NOTIFY = suggest_changed)]
         #[qproperty(i32, first_load_ms, cxx_name = "firstLoadMs",
                     READ = first_load_ms, CONSTANT)]
-        // Неизменные подписи шапки.
+        // Fixed labels of the header.
         #[qproperty(QString, source_label, cxx_name = "sourceLabel",
                     READ = source_label, CONSTANT)]
         #[qproperty(QString, submode_label, cxx_name = "submodeLabel",
@@ -155,25 +160,25 @@ pub mod qobject {
                     READ = page_prev_text, CONSTANT)]
         #[qproperty(QString, page_next_text, cxx_name = "pageNextText",
                     READ = page_next_text, CONSTANT)]
-        // Сортировки: [{label, key}, …] — таблица ядра, за время жизни
-        // вкладки не меняется.
+        // Sorts: [{label, key}, …] — the core's table, it does not change during
+        // the tab's lifetime.
         #[qproperty(QList_QVariant, sorts, READ = sorts, NOTIFY = chrome_changed)]
 
-        // ── Палитра действующего скина (правило #17) ────────────────────
+        // ── Palette of the active skin (rule #17) ───────────────────────
         #[qproperty(QMap_QString_QVariant, palette, READ = palette,
                     NOTIFY = palette_changed)]
-        // Раскладка разделов-групп (`sty` у раздела «Панель MATE»).
+        // Layout of the group sections (`sty` for the "MATE panel" section).
         #[qproperty(QMap_QString_QVariant, section_styles, cxx_name = "sectionStyles",
                     READ = section_styles, NOTIFY = palette_changed)]
 
-        // ── Боковая панель разделов ─────────────────────────────────────
+        // ── Section sidebar ─────────────────────────────────────────────
         // [{key, icon, name, text, available, current}, …]
         #[qproperty(QList_QVariant, sidebar_rows, cxx_name = "sidebarRows",
                     READ = sidebar_rows, NOTIFY = sidebar_changed)]
         #[qproperty(QString, section_title, cxx_name = "sectionTitle",
                     READ = section_title, NOTIFY = sidebar_changed)]
 
-        // ── Шапка: что видно при текущем разделе ────────────────────────
+        // ── Header: what is visible for the current section ─────────────
         #[qproperty(bool, search_visible, cxx_name = "searchVisible",
                     READ = search_visible, NOTIFY = chrome_changed)]
         #[qproperty(QString, search_placeholder, cxx_name = "searchPlaceholder",
@@ -190,7 +195,7 @@ pub mod qobject {
                     READ = style_bar_visible, NOTIFY = chrome_changed)]
         #[qproperty(bool, lock_bar_visible, cxx_name = "lockBarVisible",
                     READ = lock_bar_visible, NOTIFY = chrome_changed)]
-        // Фильтр «Все / Светлые / Тёмные» у цветовых схем и стилей Plasma.
+        // The "All / Light / Dark" filter for colour schemes and Plasma styles.
         #[qproperty(bool, tone_bar_visible, cxx_name = "toneBarVisible",
                     READ = tone_bar_visible, NOTIFY = chrome_changed)]
         #[qproperty(bool, cursor_size_bar_visible, cxx_name = "cursorSizeBarVisible",
@@ -199,9 +204,9 @@ pub mod qobject {
                     READ = sort_visible, NOTIFY = chrome_changed)]
         #[qproperty(bool, pagination_visible, cxx_name = "paginationVisible",
                     READ = pagination_visible, NOTIFY = chrome_changed)]
-        // «Установить из файла…» в шапке раздела: видимость, подписи кнопки
-        // и меню, заголовок и фильтры окна выбора, ключ раздела — всё ядро
-        // (`appearance_page`, `local_install`).
+        // "Install from file…" in the section header: visibility, the labels of
+        // the button and the menu, the title and filters of the choice window, the
+        // section key — all the core's (`appearance_page`, `local_install`).
         #[qproperty(bool, install_file_visible, cxx_name = "installFileVisible",
                     READ = install_file_visible, NOTIFY = chrome_changed)]
         #[qproperty(QString, install_file_text, cxx_name = "installFileText",
@@ -218,17 +223,17 @@ pub mod qobject {
                     READ = install_file_filters, NOTIFY = chrome_changed)]
         #[qproperty(QString, install_file_section, cxx_name = "installFileSection",
                     READ = install_file_section, NOTIFY = chrome_changed)]
-        // Положение «Только для вашей версии GNOME» витрины
-        // extensions.gnome.org — правда модели (`setEgoCompatibleOnly`).
+        // The state of "Only for your GNOME version" of the extensions.gnome.org
+        // showcase — the model's truth (`setEgoCompatibleOnly`).
         #[qproperty(bool, ego_compatible_only, cxx_name = "egoCompatibleOnly",
                     READ = ego_compatible_only, NOTIFY = chrome_changed)]
-        // Раздел вкладки «Настройки» на экране `settings` (ядро:
+        // The section of the "Settings" tab on the `settings` screen (the core:
         // `CatalogView::settings_panel_key`).
         #[qproperty(QString, settings_panel, cxx_name = "settingsPanel",
                     READ = settings_panel, NOTIFY = chrome_changed)]
-        // Кнопка «⚙️ Настройки» / «← К каталогу» в шапке «Шрифтов», «Значков»,
-        // «Курсоров», рамок окон и «GTK-тем» (ядро: `CatalogView::section_settings_panels`,
-        // `section_settings_open`).
+        // The «⚙️ Settings» / "← Back to catalogue" button in the header of
+        // "Fonts", "Icons", "Cursors", window borders and "GTK themes" (the core:
+        // `CatalogView::section_settings_panels`, `section_settings_open`).
         #[qproperty(bool, section_settings_visible, cxx_name = "sectionSettingsVisible",
                     READ = section_settings_visible, NOTIFY = chrome_changed)]
         #[qproperty(bool, section_settings_open, cxx_name = "sectionSettingsOpen",
@@ -237,13 +242,14 @@ pub mod qobject {
                     READ = section_settings_text, NOTIFY = chrome_changed)]
         #[qproperty(QString, section_settings_tooltip, cxx_name = "sectionSettingsTooltip",
                     READ = section_settings_tooltip, NOTIFY = chrome_changed)]
-        // Установленное сверху над магазином раздела, выделять ли текущую
-        // тему (ядро: `CatalogView::installed_view`, `marks_current`).
+        // Installed items on top above the section's store, whether to highlight
+        // the current theme (the core: `CatalogView::installed_view`,
+        // `marks_current`).
         #[qproperty(bool, installed_view, cxx_name = "installedView",
                     READ = installed_view, NOTIFY = chrome_changed)]
         #[qproperty(bool, mark_current, cxx_name = "markCurrent",
                     READ = mark_current, NOTIFY = chrome_changed)]
-        // Чипы: [{key, label, tooltip, checked}, …].
+        // Chips: [{key, label, tooltip, checked}, …].
         #[qproperty(QList_QVariant, source_chips, cxx_name = "sourceChips",
                     READ = source_chips, NOTIFY = chrome_changed)]
         #[qproperty(QList_QVariant, style_chips, cxx_name = "styleChips",
@@ -252,24 +258,25 @@ pub mod qobject {
                     READ = lock_chips, NOTIFY = chrome_changed)]
         #[qproperty(QList_QVariant, tone_chips, cxx_name = "toneChips",
                     READ = tone_chips, NOTIFY = chrome_changed)]
-        // Чипы размера курсора: [{key, label, tooltip}, …]; какой отмечен,
-        // решает страница по ответу `actions.cursorSize()`.
+        // Cursor size chips: [{key, label, tooltip}, …]; which one is checked is
+        // decided by the page by the answer of `actions.cursorSize()`.
         #[qproperty(QList_QVariant, cursor_size_chips, cxx_name = "cursorSizeChips",
                     READ = cursor_size_chips, CONSTANT)]
         #[qproperty(QString, sort_key, cxx_name = "sortKey",
                     READ = sort_key, NOTIFY = chrome_changed)]
         #[qproperty(QString, query, READ = query, NOTIFY = chrome_changed)]
-        // Выбор рабочего стола: [{id, name}, …] и текущий.
+        // The desktop choice: [{id, name}, …] and the current one.
         #[qproperty(QList_QVariant, de_choices, cxx_name = "deChoices",
                     READ = de_choices, NOTIFY = de_changed)]
         #[qproperty(QString, de, READ = de, NOTIFY = de_changed)]
 
-        // ── Что показано: сетка, деталь или объяснение ──────────────────
+        // ── What is shown: the grid, a detail or an explanation ─────────
         #[qproperty(QString, screen, READ = screen, NOTIFY = screen_changed)]
         #[qproperty(QString, note_text, cxx_name = "noteText",
                     READ = note_text, NOTIFY = screen_changed)]
-        // Панель экрана входа при Plasma Login Manager (`screen ==
-        // "plasmalogin"`): подписи ядра и видна ли кнопка настроек.
+        // The login screen panel with Plasma Login Manager
+        // (`screen == "plasmalogin"`): the core's labels and whether the settings
+        // button is visible.
         #[qproperty(QString, plm_title, cxx_name = "plmTitle",
                     READ = plm_title, NOTIFY = screen_changed)]
         #[qproperty(QString, plm_body, cxx_name = "plmBody",
@@ -280,16 +287,16 @@ pub mod qobject {
                     READ = plm_open_visible, NOTIFY = screen_changed)]
         #[qproperty(QString, plm_store_hint, cxx_name = "plmStoreHint",
                     READ = plm_store_hint, NOTIFY = screen_changed)]
-        // Раздел экрана входа: над полкой и панелью — блок «Менеджер
-        // входа» (данные — проба `loginScreenReady`).
+        // The login screen section: above the shelf and the panel — the "Login
+        // manager" block (the data is the `loginScreenReady` probe).
         #[qproperty(bool, login_section, cxx_name = "loginSection",
                     READ = login_section, NOTIFY = screen_changed)]
 
-        // ── Строка состояния и полоса страниц ───────────────────────────
+        // ── Status line and page strip ──────────────────────────────────
         #[qproperty(QString, status_text, cxx_name = "statusText",
                     READ = status_text, NOTIFY = status_changed)]
-        // Строка состояния предупреждает (⚠: обои встали с оговоркой или
-        // ошибка) — QML красит её цветом предупреждения `state_warn`.
+        // The status line warns (⚠: the wallpaper was set with a caveat, or an
+        // error) — QML paints it with the `state_warn` warning colour.
         #[qproperty(bool, status_warn, cxx_name = "statusWarn",
                     READ = status_warn, NOTIFY = status_changed)]
         #[qproperty(QString, page_label, cxx_name = "pageLabel",
@@ -298,7 +305,7 @@ pub mod qobject {
                     READ = prev_enabled, NOTIFY = page_changed)]
         #[qproperty(bool, next_enabled, cxx_name = "nextEnabled",
                     READ = next_enabled, NOTIFY = page_changed)]
-        // ── Панель деталей ──────────────────────────────────────────────
+        // ── Details panel ───────────────────────────────────────────────
         #[qproperty(QString, detail_back_text, cxx_name = "detailBackText",
                     READ = detail_back_text, CONSTANT)]
         #[qproperty(QString, detail_uninstall_text, cxx_name = "detailUninstallText",
@@ -315,8 +322,9 @@ pub mod qobject {
                     READ = detail_apply_local_text, NOTIFY = detail_changed)]
         #[qproperty(QString, detail_preview_tooltip, cxx_name = "detailPreviewTooltip",
                     READ = detail_preview_tooltip, CONSTANT)]
-        // Выбор файла у товара магазина с несколькими файлами: строки —
-        // решение ядра (`ap::store_file_choices_json`), подписи — его же.
+        // File choice for a store item with several files: the rows are the
+        // core's decision (`ap::store_file_choices_json`), and the labels are its
+        // too.
         #[qproperty(QString, detail_files, cxx_name = "detailFiles",
                     READ = detail_files, NOTIFY = detail_changed)]
         #[qproperty(QString, detail_files_title, cxx_name = "detailFilesTitle",
@@ -331,7 +339,7 @@ pub mod qobject {
                     READ = aur_open_text, CONSTANT)]
         #[qproperty(QString, aur_open_tooltip, cxx_name = "aurOpenTooltip",
                     READ = aur_open_tooltip, CONSTANT)]
-        // ── Прослушивание тем звуков (паритет с KDE «Системные звуки») ──
+        // ── Listening to sound themes (parity with KDE "System sounds") ─
         #[qproperty(QString, sound_preview_label, cxx_name = "soundPreviewLabel",
                     READ = sound_preview_label, CONSTANT)]
         #[qproperty(QString, sound_play_all_tooltip, cxx_name = "soundPlayAllTooltip",
@@ -342,17 +350,17 @@ pub mod qobject {
                     READ = sound_store_preview_text, CONSTANT)]
         #[qproperty(QString, sound_store_preview_tooltip, cxx_name = "soundStorePreviewTooltip",
                     READ = sound_store_preview_tooltip, CONSTANT)]
-        // ── «Продемонстрировать» у заставки KDE (паритет с модулем KDE) ──
+        // ── "Demonstrate" for a KDE splash (parity with the KDE module) ─
         #[qproperty(QString, splash_demo_label, cxx_name = "splashDemoLabel",
                     READ = splash_demo_label, CONSTANT)]
         #[qproperty(QString, splash_demo_tooltip, cxx_name = "splashDemoTooltip",
                     READ = splash_demo_tooltip, CONSTANT)]
-        /// Тема звуков на диске, которую показывает панель деталей (пусто —
-        /// не тема звуков).
+        /// The sound theme on disk shown by the details panel (empty — not a sound
+        /// theme).
         #[qproperty(QString, detail_sound_theme, cxx_name = "detailSoundTheme",
                     READ = detail_sound_theme, NOTIFY = detail_changed)]
-        /// Открыт товар Магазина из раздела «Звуки» — его можно послушать
-        /// до установки.
+        /// A Store item from the "Sounds" section is open — it can be listened to
+        /// before installation.
         #[qproperty(bool, detail_sound_store, cxx_name = "detailSoundStore",
                     READ = detail_sound_store, NOTIFY = detail_changed)]
         #[qproperty(i32, detail_preview_width, cxx_name = "detailPreviewWidth",
@@ -381,14 +389,13 @@ pub mod qobject {
                     READ = detail_install_state, NOTIFY = detail_changed)]
         #[qproperty(bool, detail_uninstall_visible, cxx_name = "detailUninstallVisible",
                     READ = detail_uninstall_visible, NOTIFY = detail_changed)]
-        // «Удалить» у темы с диска: недоступна у включённой и системной,
-        // причина — подсказкой (`theme_removal`).
+        // "Remove" for a theme from disk: unavailable for an enabled and a system
+        // one, the reason in a tooltip (`theme_removal`).
         #[qproperty(bool, detail_uninstall_enabled, cxx_name = "detailUninstallEnabled",
                     READ = detail_uninstall_enabled, NOTIFY = detail_changed)]
         #[qproperty(QString, detail_uninstall_tooltip, cxx_name = "detailUninstallTooltip",
                     READ = detail_uninstall_tooltip, NOTIFY = detail_changed)]
-        // Всплывающая строка отложенного удаления: «Вернуть» и сколько
-        // она висит.
+        // The pop-up line of a deferred removal: "Undo" and how long it hangs.
         #[qproperty(QString, removal_undo_text, cxx_name = "removalUndoText",
                     READ = removal_undo_text, CONSTANT)]
         #[qproperty(i32, removal_undo_ms, cxx_name = "removalUndoMs",
@@ -397,28 +404,28 @@ pub mod qobject {
                     READ = detail_favorite_text, NOTIFY = detail_changed)]
         #[qproperty(bool, detail_apply_local_enabled, cxx_name = "detailApplyLocalEnabled",
                     READ = detail_apply_local_enabled, NOTIFY = detail_changed)]
-        // «Настроить…» у стиля приложений и темы Kvantum (JSON
-        // `themes::StyleConfigButton`, без `argv`).
+        // "Configure…" for an application style and a Kvantum theme (JSON
+        // `themes::StyleConfigButton`, without `argv`).
         #[qproperty(QString, detail_style_config, cxx_name = "detailStyleConfig",
                     READ = detail_style_config, NOTIFY = detail_changed)]
-        // Кнопки расширения GNOME в подробностях (JSON: `visible`, `toggle`
+        // Buttons of a GNOME extension in the details (JSON: `visible`, `toggle`
         // {text, state, enabled}, `tooltip`, `prefs`, `folder`, `remove`,
         // `error`, `url`, `name`; `GnomeExtra`).
         #[qproperty(QString, detail_gnome, cxx_name = "detailGnome",
                     READ = detail_gnome, NOTIFY = detail_changed)]
-        // «Применять к программам GTK 4/libadwaita» у темы GTK (JSON
+        // "Apply to GTK 4/libadwaita programs" for a GTK theme (JSON
         // `gtk4_theme::Toggle`).
         #[qproperty(QString, detail_gtk4, cxx_name = "detailGtk4",
                     READ = detail_gtk4, NOTIFY = detail_changed)]
-        // «Настроить…» у рамки окна KDE (JSON `kdecoration::ConfigButton`,
-        // без `argv`).
+        // "Configure…" for a KDE window border (JSON `kdecoration::ConfigButton`,
+        // without `argv`).
         #[qproperty(QString, detail_deco_config, cxx_name = "detailDecoConfig",
                     READ = detail_deco_config, NOTIFY = detail_changed)]
-        // «Изменить…» / «Создать на основе…» у цветовой схемы (JSON:
-        // `visible` + подписи `color_scheme_edit::EditorTexts`).
+        // "Edit…" / "Create based on…" for a colour scheme (JSON: `visible` +
+        // the `color_scheme_edit::EditorTexts` labels).
         #[qproperty(QString, detail_scheme_edit, cxx_name = "detailSchemeEdit",
                     READ = detail_scheme_edit, NOTIFY = detail_changed)]
-        // Переключатель «Запускать при входе» — только у виджетов Conky.
+        // The «Start at login» toggle — only for Conky widgets.
         #[qproperty(bool, detail_autostart_visible, cxx_name = "detailAutostartVisible",
                     READ = detail_autostart_visible, NOTIFY = detail_changed)]
         #[qproperty(QString, detail_conky_id, cxx_name = "detailConkyId",
@@ -431,7 +438,7 @@ pub mod qobject {
                     READ = detail_preview_text, NOTIFY = detail_frame_changed)]
         #[qproperty(QString, detail_item_id, cxx_name = "detailItemId",
                     READ = detail_item_id, NOTIFY = detail_changed)]
-        // ── Галерея скриншотов ──────────────────────────────────────────
+        // ── Screenshot gallery ──────────────────────────────────────────
         #[qproperty(QString, gallery_counter, cxx_name = "galleryCounter",
                     READ = gallery_counter, NOTIFY = detail_frame_changed)]
         #[qproperty(bool, gallery_nav_visible, cxx_name = "galleryNavVisible",
@@ -452,7 +459,7 @@ pub mod qobject {
                     READ = overlay_button_size, CONSTANT)]
         #[qproperty(i32, overlay_margin, cxx_name = "overlayMargin",
                     READ = overlay_margin, CONSTANT)]
-        // ── Комментарии ─────────────────────────────────────────────────
+        // ── Comments ────────────────────────────────────────────────────
         #[qproperty(QString, comments_header, cxx_name = "commentsHeader",
                     READ = comments_header, NOTIFY = comments_changed)]
         #[qproperty(QList_QVariant, comment_rows, cxx_name = "commentRows",
@@ -467,63 +474,64 @@ pub mod qobject {
                     READ = comments_more_text, CONSTANT)]
         #[qproperty(QString, detail_status, cxx_name = "detailStatus",
                     READ = detail_status, NOTIFY = detail_status_changed)]
-        /// Идёт долгое действие (установка, сборка, применение): кнопки
-        /// запуска заперты.
+        /// A long action is in progress (installation, building, applying): the
+        /// start buttons are locked.
         #[qproperty(bool, action_busy, cxx_name = "actionBusy",
                     READ = action_busy, NOTIFY = install_changed)]
-        /// Видна ли полоса хода: у сборки помощником AUR и у применения темы
-        /// доли выполненного нет вовсе (решение ядра).
+        /// Whether the progress bar is visible: building with the AUR helper and
+        /// applying a theme have no progress share at all (the core's decision).
         #[qproperty(bool, progress_visible, cxx_name = "progressVisible",
                     READ = progress_visible, NOTIFY = install_changed)]
-        /// Доля выполненного, 0–100 (значение обрезает ядро).
+        /// The progress share, 0–100 (the core clamps the value).
         #[qproperty(i32, install_percent, cxx_name = "installPercent",
                     READ = install_percent, NOTIFY = install_changed)]
-        // ── Загрузчик превью ────────────────────────────────────────────
-        /// Есть ли готовое превью, которое ещё не поставлено на плитку.
-        /// Пока `true`, страница крутит таймер выдачи: шесть JPEG,
-        /// раскодированных за один проход цикла событий, дают заметный рывок.
+        // ── Preview loader ──────────────────────────────────────────────
+        /// Whether there is a ready preview not yet put on a tile. While `true`,
+        /// the page spins the delivery timer: six JPEGs decoded in one pass of the
+        /// event loop give a noticeable jerk.
         #[qproperty(bool, preview_ready_pending, cxx_name = "previewReadyPending",
                     READ = preview_ready_pending, NOTIFY = preview_changed)]
-        /// Пауза перед фоновым прогревом галереи показанной сетки.
+        /// The pause before the background warm-up of the shown grid's gallery.
         #[qproperty(i32, gallery_warm_delay_ms, cxx_name = "galleryWarmDelayMs",
                     READ = gallery_warm_delay_ms, CONSTANT)]
-        /// Через сколько после показа вкладки начинается фоновый прогрев
-        /// остальных разделов: спорить за сеть с открытым он не должен.
+        /// How long after the tab is shown the background warm-up of the other
+        /// sections begins: it must not compete with the open one for the network.
         #[qproperty(i32, prefetch_start_ms, cxx_name = "prefetchStartMs",
                     READ = prefetch_start_ms, CONSTANT)]
-        /// Пауза между фоновыми прогревами — не долбить магазин.
+        /// The pause between background warm-ups — do not hammer the store.
         #[qproperty(i32, prefetch_pause_ms, cxx_name = "prefetchPauseMs",
                     READ = prefetch_pause_ms, CONSTANT)]
-        /// Через сколько после показа вкладки разово чистятся протухшие
-        /// переводы: работа не горячая и ждать её незачем.
+        /// How long after the tab is shown the stale translations are cleaned up
+        /// once: the work is not urgent and there is no reason to wait for it.
         #[qproperty(i32, purge_translations_ms, cxx_name = "purgeTranslationsMs",
                     READ = purge_translations_ms, CONSTANT)]
-        /// Сколько ждать, пока осядет смена стиля Qt после применения темы.
+        /// How long to wait for the Qt style change to settle after a theme is
+        /// applied.
         #[qproperty(i32, style_storm_ms, cxx_name = "styleStormMs",
                     READ = style_storm_ms, CONSTANT)]
-        /// Сетку пора пересобрать — но только когда шторм стиля осядет.
+        /// It is time to rebuild the grid — but only once the style storm settles.
         #[qproperty(bool, reload_pending, cxx_name = "reloadPending",
                     READ = reload_pending, NOTIFY = install_changed)]
         #[qproperty(i32, count, READ = count, NOTIFY = count_changed)]
-        // ── Карточка пакета AUR ──
-        // Откуда открытый товар: `store` | `local` | `aur`.
+        // ── AUR package card ──
+        // Where the opened item comes from: `store` | `local` | `aur`.
         #[qproperty(QString, detail_source, cxx_name = "detailSource",
                     READ = detail_source, NOTIFY = detail_changed)]
-        // Сведения о пакете: [{label, value, html, warn}].
+        // Package information: [{label, value, html, warn}].
         #[qproperty(QList_QVariant, aur_facts, cxx_name = "aurFacts",
                     READ = aur_facts, NOTIFY = detail_changed)]
-        // Страницу пакета не дали — комментарии только на сайте.
+        // The package page was not given — the comments are only on the site.
         #[qproperty(bool, comments_blocked, cxx_name = "commentsBlocked",
                     READ = comments_blocked, NOTIFY = comments_changed)]
         #[qproperty(QString, comments_blocked_text, cxx_name = "commentsBlockedText",
                     READ = comments_blocked_text, CONSTANT)]
-        // «📄 Подробнее» на плитке пакета.
+        // "📄 More" on the package tile.
         #[qproperty(QString, aur_details_text, cxx_name = "aurDetailsText",
                     READ = aur_details_text, CONSTANT)]
         #[qproperty(QString, aur_details_tooltip, cxx_name = "aurDetailsTooltip",
                     READ = aur_details_tooltip, CONSTANT)]
-        // Проверка источника пакета AUR (`aur_trust`): признаки риска
-        // [{text, why, danger}], итог словами, значок у «Установить».
+        // The AUR package source check (`aur_trust`): risk signals
+        // [{text, why, danger}], the outcome in words, the badge at «Install».
         #[qproperty(QList_QVariant, aur_trust_rows, cxx_name = "aurTrustRows",
                     READ = aur_trust_rows, NOTIFY = detail_changed)]
         #[qproperty(QString, aur_trust_status, cxx_name = "aurTrustStatus",
@@ -553,10 +561,10 @@ pub mod qobject {
         type AppearanceModel = super::AppearanceModelRust;
     }
 
-    // ── Сигналы ─────────────────────────────────────────────────────────
+    // ── Signals ─────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
-        /// Скин сменили на лету — палитру пересчитать. Толчок приходит из
-        /// общего реестра (`crate::skin`), а не отсюда.
+        /// The skin was changed on the fly — recompute the palette. The push comes
+        /// from the shared registry (`crate::skin`), not from here.
         #[qsignal]
         #[cxx_name = "paletteChanged"]
         fn palette_changed(self: Pin<&mut AppearanceModel>);
@@ -589,45 +597,46 @@ pub mod qobject {
         #[cxx_name = "countChanged"]
         fn count_changed(self: Pin<&mut AppearanceModel>);
 
-        /// Состав запроса изменился — странице пора спросить хозяина.
-        /// Отдельный сигнал, а не «сходи сам»: решение о том, ЧТО просить,
-        /// принимает ядро, а ходить в сеть умеет только хозяин.
+        /// The request contents changed — it is time for the page to ask the host.
+        /// A separate signal rather than "go yourself": the decision about WHAT to
+        /// ask is made by the core, and only the host can go to the network.
         #[qsignal]
         #[cxx_name = "catalogWanted"]
         fn catalog_wanted(self: Pin<&mut AppearanceModel>);
 
-        /// Панель деталей показывает другой товар.
+        /// The details panel shows another item.
         #[qsignal]
         #[cxx_name = "detailChanged"]
         fn detail_changed(self: Pin<&mut AppearanceModel>);
 
-        /// Сменился кадр на месте картинки деталей.
+        /// The frame in place of the details picture changed.
         #[qsignal]
         #[cxx_name = "detailFrameChanged"]
         fn detail_frame_changed(self: Pin<&mut AppearanceModel>);
 
-        /// Итог установки/применения под кнопками деталей.
+        /// The outcome of installing/applying under the details buttons.
         #[qsignal]
         #[cxx_name = "detailStatusChanged"]
         fn detail_status_changed(self: Pin<&mut AppearanceModel>);
 
-        /// Ход долгого действия изменился (началось, подвинулось, кончилось).
+        /// The progress of a long action changed (started, moved, ended).
         #[qsignal]
         #[cxx_name = "installChanged"]
         fn install_changed(self: Pin<&mut AppearanceModel>);
 
-        /// Товару нужны полные детали (описание, все скриншоты).
+        /// The item needs its full details (description, all screenshots).
         #[qsignal]
         #[cxx_name = "detailWanted"]
         fn detail_wanted(self: Pin<&mut AppearanceModel>, item_id: QString);
 
-        /// Нужен кадр галереи: номер и адрес картинки (обе строкой —
-        /// число в подписи метаобъекта cxx-qt снаружи не разбирается).
+        /// A gallery frame is needed: the number and the picture address (both as
+        /// strings — a number in a cxx-qt metaobject signature is not parsed from
+        /// outside).
         #[qsignal]
         #[cxx_name = "galleryWanted"]
         fn gallery_wanted(self: Pin<&mut AppearanceModel>, index: QString, url: QString);
 
-        /// Нужна страница комментариев товара.
+        /// A page of item comments is needed.
         #[qsignal]
         #[cxx_name = "commentsWanted"]
         fn comments_wanted(self: Pin<&mut AppearanceModel>, item_id: QString, page: QString);
@@ -640,18 +649,19 @@ pub mod qobject {
         #[cxx_name = "suggestChanged"]
         fn suggest_changed(self: Pin<&mut AppearanceModel>);
 
-        /// Подсказкам нужен свежий ответ магазина (JSON-строка запроса).
+        /// The suggestions need a fresh store answer (the request as a JSON
+        /// string).
         #[qsignal]
         #[cxx_name = "suggestWanted"]
         fn suggest_wanted(self: Pin<&mut AppearanceModel>, request: QString);
 
-        /// Нужна картинка плитки либо фоновый прогрев кадра галереи.
+        /// A tile picture or a background warm-up of a gallery frame is needed.
         ///
-        /// `job` — номер заявки: его хозяин ничего не разбирает, а лишь
-        /// возвращает обратно вместе с ответом. Иначе две плитки, делящие
-        /// один адрес, и живая заявка поверх фоновой были бы неразличимы.
-        /// `low` — фоновая заявка: показывать её нечему, она лишь наполняет
-        /// кеш и уступает живым плиткам.
+        /// `job` is the request number: the host parses nothing in it but only
+        /// returns it back together with the answer. Otherwise two tiles sharing one
+        /// address, and a live request over a background one, would be
+        /// indistinguishable. `low` is a background request: there is nothing to
+        /// show it on, it only fills the cache and yields to live tiles.
         #[qsignal]
         #[cxx_name = "previewWanted"]
         fn preview_wanted(
@@ -662,9 +672,9 @@ pub mod qobject {
             low: bool,
         );
 
-        /// Сбой был временным — повторить заявку через `delay_ms`.
-        /// `generation` несёт поколение очереди: смена раздела его меняет, и
-        /// повтор прошлого раздела молча выбрасывается.
+        /// The failure was temporary — repeat the request after `delay_ms`.
+        /// `generation` carries the queue generation: a section change changes it,
+        /// and a repeat of the previous section is silently thrown away.
         #[qsignal]
         #[cxx_name = "previewRetryWanted"]
         fn preview_retry_wanted(
@@ -674,24 +684,24 @@ pub mod qobject {
             delay_ms: QString,
         );
 
-        /// Нужен фоновый прогрев: состав запроса строкой JSON. Прогрев не
-        /// показывается никому — он лишь наполняет кеш, чтобы соседний
-        /// раздел и следующая страница открылись без сети.
+        /// A background warm-up is needed: the request contents as a JSON string.
+        /// The warm-up is shown to nobody — it only fills the cache so that the
+        /// neighbouring section and the next page open without the network.
         #[qsignal]
         #[cxx_name = "prefetchWanted"]
         fn prefetch_wanted(self: Pin<&mut AppearanceModel>, request: QString);
 
-        /// Раздел сменили — всё летящее за превью можно обрывать.
+        /// The section changed — everything flying for previews can be aborted.
         #[qsignal]
         #[cxx_name = "previewsCanceled"]
         fn previews_canceled(self: Pin<&mut AppearanceModel>);
 
-        /// Состав готовых превью изменился (таймер выдачи держат по нему).
+        /// The set of ready previews changed (the delivery timer is kept by it).
         #[qsignal]
         #[cxx_name = "previewChanged"]
         fn preview_changed(self: Pin<&mut AppearanceModel>);
 
-        /// dataChanged базового класса — точечное обновление строки.
+        /// dataChanged of the base class — a targeted row update.
         #[inherit]
         #[qsignal]
         #[cxx_name = "dataChanged"]
@@ -703,8 +713,9 @@ pub mod qobject {
         );
     }
 
-    // index() безопасен, но cxx-qt требует держать #[inherit] в unsafe-блоке
-    // (unsafe тут про соответствие сигнатуре C++, а не про опасность).
+    // index() is safe, but cxx-qt requires keeping #[inherit] in an unsafe
+    // block (unsafe here is about matching the C++ signature, not about
+    // danger).
     unsafe extern "RustQt" {
         #[inherit]
         fn index(
@@ -715,23 +726,24 @@ pub mod qobject {
         ) -> QModelIndex;
     }
 
-    // ── Наследуемые методы базового класса ──────────────────────────────
+    // ── Inherited methods of the base class ─────────────────────────────
     extern "RustQt" {
         /// # Safety
-        /// Требует парного end_reset_model.
+        /// Requires a paired end_reset_model.
         #[inherit]
         #[cxx_name = "beginResetModel"]
         unsafe fn begin_reset_model(self: Pin<&mut AppearanceModel>);
         /// # Safety
-        /// Парный к begin_reset_model.
+        /// Paired with begin_reset_model.
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut AppearanceModel>);
     }
 
-    // ── Переопределения QAbstractListModel ──────────────────────────────
-    // Без #[qinvokable]: инвокабл в наследнике затеняет укороченные клоны
-    // сигнатур базы, и rowCount() без аргументов из JS падает.
+    // ── QAbstractListModel overrides ────────────────────────────────────
+    // Without #[qinvokable]: an invokable in a subclass shadows the shortened
+    // clones of the base's signatures, and rowCount() without arguments from
+    // JS fails.
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -745,7 +757,7 @@ pub mod qobject {
         fn data(self: &AppearanceModel, index: &QModelIndex, role: i32) -> QVariant;
     }
 
-    // ── Чтение свойств ──────────────────────────────────────────────────
+    // ── Property reading ────────────────────────────────────────────────
     extern "RustQt" {
         #[cxx_name = "windowTitle"]
         fn window_title(self: &AppearanceModel) -> QString;
@@ -1141,154 +1153,157 @@ pub mod qobject {
         fn aur_pkgbuild_loading(self: &AppearanceModel) -> QString;
     }
 
-    // ── API для QML и хозяина страницы ──────────────────────────────────
+    // ── API for QML and the page host ───────────────────────────────────
     //
-    // ⚠️ Ни одного инвокабла с числом в подписи: cxx-qt пишет в метаобъект
-    // тип как `::std::int32_t`, метатипа с таким именем нет, и вызов через
-    // `QMetaObject.invokeMethod` молча возвращает False (грабля 12 схемы).
-    // Там, где нужно число, оно едет строкой.
+    // Warning: not a single invokable with a number in its signature: cxx-qt
+    // writes the type into the metaobject as `::std::int32_t`, there is no
+    // metatype with that name, and a call through `QMetaObject.invokeMethod`
+    // silently returns False (pitfall 12 of the scheme). Where a number is
+    // needed, it travels as a string.
     extern "RustQt" {
-        /// Столбцы сетки плиток при ширине `usable` (`ap::grid_columns`).
+        /// Columns of the tile grid at width `usable` (`ap::grid_columns`).
         #[qinvokable]
         #[cxx_name = "gridColumns"]
         fn grid_columns(self: &AppearanceModel, usable: i32) -> i32;
 
-        /// Ширина ячейки сетки при ширине `usable` (`ap::grid_cell_width`).
+        /// Width of a grid cell at width `usable` (`ap::grid_cell_width`).
         #[qinvokable]
         #[cxx_name = "gridCellWidth"]
         fn grid_cell_width(self: &AppearanceModel, usable: i32) -> i32;
 
-        /// Факты о машине, которых ядро само не добудет: список Qt-стилей,
-        /// действующий стиль виджетов, запомненный выбор рабочего стола.
-        /// Зовёт хозяин страницы один раз при старте (JSON-строка).
+        /// Facts about the machine that the core will not get by itself: the list of
+        /// Qt styles, the active widget style, the remembered desktop choice. The
+        /// page host calls it once at start-up (a JSON string).
         #[qinvokable]
         #[cxx_name = "setEnvironment"]
         fn set_environment(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Что рисует экран входа и не SteamOS ли это — ответ фоновой пробы
-        /// объекта действий (`loginScreenReady`, JSON `{plasmaLogin, steamos,
-        /// canOpen}`). Пересобирает боковую панель: при Plasma Login Manager
-        /// на месте SDDM-полки встаёт его раздел.
+        /// What draws the login screen and whether this is SteamOS — the answer of
+        /// the action object's background probe (`loginScreenReady`, JSON
+        /// `{plasmaLogin, steamos, canOpen}`). Rebuilds the sidebar: with Plasma
+        /// Login Manager its section takes the place of the SDDM shelf.
         #[qinvokable]
         #[cxx_name = "setLoginScreen"]
         fn set_login_screen(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Открыть настройки экрана входа не вышло — сказать это строкой
-        /// состояния и назвать, куда идти руками.
+        /// Opening the login screen settings failed — say so in the status line and
+        /// name where to go by hand.
         #[qinvokable]
         #[cxx_name = "loginSettingsFailed"]
         fn login_settings_failed(self: Pin<&mut AppearanceModel>);
 
-        /// Полоса «Системные звуки выключены» раздела «Звуки»: JSON
-        /// `ap::EventSoundsBanner`. Читает выключатель запущенного
-        /// окружения; выбран в каталоге другой рабочий стол — полосы нет
-        /// (его ключ отсюда не включить). Синхронно: одна короткая команда.
+        /// The "System sounds are off" strip of the "Sounds" section: JSON
+        /// `ap::EventSoundsBanner`. Reads the running environment's toggle; if
+        /// another desktop is chosen in the catalogue, there is no strip (its key
+        /// cannot be enabled from here). Synchronous: one short command.
         #[qinvokable]
         #[cxx_name = "eventSoundsBanner"]
         fn event_sounds_banner(self: &AppearanceModel) -> QString;
 
-        /// «Включить» на полосе: тот же путь записи, что у выключателя во
-        /// вкладке «Настройки». Итог — строкой для человека.
+        /// "Enable" on the strip: the same write path as the toggle in the
+        /// "Settings" tab. The outcome is a line for the user.
         #[qinvokable]
         #[cxx_name = "enableEventSounds"]
         fn enable_event_sounds(self: &AppearanceModel) -> QString;
 
-        /// Полоса «Вернуть как было» открытого раздела: JSON
-        /// `ap::AppliedRevertBanner` (запись «Применить» общего журнала, у
-        /// цветов — ещё памятка слоя и кнопка полосы шелла). Синхронно: два
-        /// файла и проба шелла, как у `shellPalette`.
+        /// The "Revert to what it was" strip of the open section: JSON
+        /// `ap::AppliedRevertBanner` (the "Apply" record of the shared journal, for
+        /// colours also the layer's memo and the shell strip button). Synchronous:
+        /// two files and a shell probe, like `shellPalette`.
         #[qinvokable]
         #[cxx_name = "appliedRevertBanner"]
         fn applied_revert_banner(self: &AppearanceModel) -> QString;
 
-        /// Открыть раздел боковой панели.
+        /// Open a sidebar section.
         #[qinvokable]
         #[cxx_name = "selectCategory"]
         fn select_category(self: Pin<&mut AppearanceModel>, key: &QString);
 
-        /// Разделы с видом «⚙️ Настройки»: переключить вид «каталог ↔ ⚙️ Настройки».
+        /// Sections with a «⚙️ Settings» view: toggle the "catalogue ↔ ⚙️ Settings"
+        /// view.
         #[qinvokable]
         #[cxx_name = "toggleSectionSettings"]
         fn toggle_section_settings(self: Pin<&mut AppearanceModel>);
 
-        /// Магазин: `ocs` | `aur` | `both`.
+        /// The store: `ocs` | `aur` | `both`.
         #[qinvokable]
         #[cxx_name = "setSource"]
         fn set_source(self: Pin<&mut AppearanceModel>, key: &QString);
 
-        /// Режим раздела «Экран блокировки».
+        /// The mode of the "Lock screen" section.
         #[qinvokable]
         #[cxx_name = "setLockMode"]
         fn set_lock_mode(self: Pin<&mut AppearanceModel>, key: &QString);
 
-        /// Под-выбор раздела «Стиль приложений» (`kvantum` либо `qt:<Имя>`).
+        /// Sub-choice of the "Application style" section (`kvantum` or
+        /// `qt:<Name>`).
         #[qinvokable]
         #[cxx_name = "setStyleSub"]
         fn set_style_sub(self: Pin<&mut AppearanceModel>, key: &QString);
 
-        /// Фильтр тона у цветовых схем и стилей Plasma (`lp::TONE_*`).
+        /// The tone filter for colour schemes and Plasma styles (`lp::TONE_*`).
         #[qinvokable]
         #[cxx_name = "setToneFilter"]
         fn set_tone_filter(self: Pin<&mut AppearanceModel>, key: &QString);
 
-        /// Сортировка каталога.
+        /// The catalogue sort.
         #[qinvokable]
         #[cxx_name = "setSort"]
         fn set_sort(self: Pin<&mut AppearanceModel>, key: &QString);
 
-        /// Рабочий стол, под который отфильтрован каталог.
+        /// The desktop the catalogue is filtered for.
         #[qinvokable]
         #[cxx_name = "setDe"]
         fn set_de(self: Pin<&mut AppearanceModel>, de_id: &QString);
 
-        /// Текст строки поиска. Пустая строка СРАЗУ сбрасывает запрос —
-        /// починка оригинала жила в `_on_search_text_changed`.
+        /// The search line text. An empty string resets the query AT ONCE — the
+        /// original's fix lived in `_on_search_text_changed`.
         #[qinvokable]
         #[cxx_name = "setQuery"]
         fn set_query(self: Pin<&mut AppearanceModel>, text: &QString);
 
-        /// Применить набранный запрос (Enter в строке поиска).
+        /// Apply the typed query (Enter in the search line).
         #[qinvokable]
         #[cxx_name = "submitQuery"]
         fn submit_query(self: Pin<&mut AppearanceModel>);
 
-        /// Перечитать каталог заново.
+        /// Re-read the catalogue anew.
         #[qinvokable]
         fn refresh(self: Pin<&mut AppearanceModel>);
 
-        /// Чип «Запущенные» раздела «Виджеты Conky»: в сетке только
-        /// запущенные виджеты (магазин под ними прячется).
+        /// The "Running" chip of the "Conky widgets" section: only running widgets
+        /// in the grid (the store under them is hidden).
         #[qinvokable]
         #[cxx_name = "setRunningOnly"]
         fn set_running_only(self: Pin<&mut AppearanceModel>, on: bool);
 
-        /// Переключатель «Только для вашей версии GNOME» витрины
-        /// extensions.gnome.org: выключен — видны все расширения, а
-        /// несовместимые помечены.
+        /// The "Only for your GNOME version" switch of the extensions.gnome.org
+        /// showcase: when off, all extensions are visible, and incompatible ones
+        /// are marked.
         #[qinvokable]
         #[cxx_name = "setEgoCompatibleOnly"]
         fn set_ego_compatible_only(self: Pin<&mut AppearanceModel>, on: bool);
 
-        /// После «Установить из файла…»: перечитать установленное мимо кеша.
+        /// After "Install from file…": re-read the installed items bypassing the
+        /// cache.
         #[qinvokable]
         #[cxx_name = "showInstalledFresh"]
         fn show_installed_fresh(self: Pin<&mut AppearanceModel>);
 
-        /// Подпись обратного отсчёта строки «Вернуть»: через сколько секунд
-        /// помеченное будет удалено (`theme_removal`).
+        /// The countdown label of the "Undo" line: in how many seconds what is
+        /// marked will be removed (`theme_removal`).
         #[qinvokable]
         #[cxx_name = "removalCountdownText"]
         fn removal_countdown_text(self: &AppearanceModel, seconds: i32) -> QString;
 
-        /// Сетка разложилась на `cols` столбцов: страница каталога —
-        /// целые ряды (`ap::grid_page_size`). Размер сменился — страница
-        /// пересчитывается так, чтобы первая плитка осталась на экране, и
-        /// витрина перезапрашивается.
+        /// The grid laid out into `cols` columns: a catalogue page is whole rows
+        /// (`ap::grid_page_size`). If the size changed, the page is recomputed so
+        /// that the first tile stays on screen, and the showcase is re-requested.
         #[qinvokable]
         #[cxx_name = "setGridColumns"]
         fn set_grid_columns(self: Pin<&mut AppearanceModel>, cols: i32);
 
-        /// Листание страниц.
+        /// Paging.
         #[qinvokable]
         #[cxx_name = "prevPage"]
         fn prev_page(self: Pin<&mut AppearanceModel>);
@@ -1296,215 +1311,220 @@ pub mod qobject {
         #[cxx_name = "nextPage"]
         fn next_page(self: Pin<&mut AppearanceModel>);
 
-        /// Что именно надо принести хозяину: JSON-строка запроса. Пустая
-        /// строка — просить нечего (раздел не для этого стола либо запрос
-        /// уже летит).
+        /// What exactly to bring to the host: the request as a JSON string. An
+        /// empty string means there is nothing to ask (the section is not for this
+        /// desktop or a request is already in flight).
         #[qinvokable]
         #[cxx_name = "catalogRequest"]
         fn catalog_request(self: Pin<&mut AppearanceModel>) -> QString;
 
-        /// Ответ на запрос каталога (JSON-строка). Ответ с чужим поколением
-        /// молча отбрасывается — человек уже ушёл в другой раздел.
+        /// The answer to the catalogue request (a JSON string). An answer with
+        /// another generation is silently discarded — the user has already gone to
+        /// another section.
         #[qinvokable]
         #[cxx_name = "catalogAnswer"]
         fn catalog_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Готовое превью плитки: `id` товара и путь на диске.
+        /// A ready tile preview: the item `id` and the path on disk.
         #[qinvokable]
         #[cxx_name = "setPreview"]
         fn set_preview(self: Pin<&mut AppearanceModel>, item_id: &QString, path: &QString);
 
-        /// Картинка заявки `job` записана хозяином в кеш по пути `path`.
+        /// The picture of request `job` was written by the host into the cache at
+        /// path `path`.
         #[qinvokable]
         #[cxx_name = "previewDone"]
         fn preview_done(self: Pin<&mut AppearanceModel>, job: &QString, path: &QString);
 
-        /// Заявка `job` не удалась. `status` — ответ сервера числом строкой
-        /// (пусто, если ответа не было вовсе; `canceled` — заявку оборвали мы
-        /// сами, такую не повторяют). Решение «повторить или сдаться»
-        /// принимает ядро.
+        /// Request `job` failed. `status` is the server's answer as a numeric string
+        /// (empty if there was no answer at all; `canceled` — we aborted the request
+        /// ourselves, such ones are not repeated). The decision "repeat or give up"
+        /// is made by the core.
         #[qinvokable]
         #[cxx_name = "previewFailed"]
         fn preview_failed(self: Pin<&mut AppearanceModel>, job: &QString, status: &QString);
 
-        /// Пауза перед повтором вышла — вернуть заявку в очередь, если
-        /// раздел с тех пор не сменили.
+        /// The pause before a repeat is over — return the request to the queue if
+        /// the section has not changed since.
         #[qinvokable]
         #[cxx_name = "previewRetry"]
         fn preview_retry(self: Pin<&mut AppearanceModel>, generation: &QString, job: &QString);
 
-        /// Поставить на плитку ОДНО готовое превью. По одному за проход
-        /// цикла событий: раскодировать шесть JPEG разом — заметный рывок.
+        /// Put ONE ready preview on a tile. One per pass of the event loop: decoding
+        /// six JPEGs at once gives a noticeable jerk.
         #[qinvokable]
         #[cxx_name = "drainPreview"]
         fn drain_preview(self: Pin<&mut AppearanceModel>);
 
-        /// Фоновый прогрев первого кадра галереи показанных плиток. Ушли с
-        /// раздела (поколение сменилось) — прогрев просто не начинается.
+        /// A background warm-up of the first gallery frame of the shown tiles. If
+        /// we left the section (the generation changed), the warm-up simply does not
+        /// start.
         #[qinvokable]
         #[cxx_name = "warmGallery"]
         fn warm_gallery(self: Pin<&mut AppearanceModel>, generation: &QString);
 
-        /// Завести очередь фонового прогрева: первые страницы всех сетевых
-        /// разделов сверху вниз (состав выбирает ядро).
+        /// Set up the background warm-up queue: the first pages of all network
+        /// sections from top to bottom (the core chooses the set).
         #[qinvokable]
         #[cxx_name = "startCategoryPrefetch"]
         fn start_category_prefetch(self: Pin<&mut AppearanceModel>);
 
-        /// Запустить следующий прогрев очереди — по одному за раз.
+        /// Start the next warm-up of the queue — one at a time.
         #[qinvokable]
         #[cxx_name = "pumpPrefetch"]
         fn pump_prefetch(self: Pin<&mut AppearanceModel>);
 
-        /// Ответ на фоновый прогрев (JSON-строка): отметить цель сделанной и
-        /// низким приоритетом дотянуть картинки её карточек.
+        /// The answer to a background warm-up (a JSON string): mark the target as
+        /// done and pull the pictures of its cards with a low priority.
         #[qinvokable]
         #[cxx_name = "prefetchAnswer"]
         fn prefetch_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Шторм стиля осел — пересобрать сетку. Обход кеша сканов диска
-        /// уходит вместе со следующим запросом: тема применена только что, и
-        /// старый скан показал бы «✅ Активна» на прежней.
+        /// The style storm settled — rebuild the grid. Bypassing the disk scan
+        /// cache goes with the next request: the theme was just applied, and an old
+        /// scan would show «✅ Active» on the previous one.
         #[qinvokable]
         #[cxx_name = "reloadAfterStyleStorm"]
         fn reload_after_style_storm(self: Pin<&mut AppearanceModel>);
 
-        /// Вкладку закрывают: новых прогревов больше не выдаём.
+        /// The tab is being closed: we no longer hand out new warm-ups.
         #[qinvokable]
         #[cxx_name = "closePage"]
         fn close_page(self: Pin<&mut AppearanceModel>);
 
-        /// Поколение показанного каталога — им страница метит отложенные
-        /// работы, чтобы не разбудить их уже в чужом разделе.
+        /// The generation of the shown catalogue — the page marks deferred work with
+        /// it so as not to wake it up in another section.
         #[qinvokable]
         #[cxx_name = "catalogGeneration"]
         fn catalog_generation(self: &AppearanceModel) -> QString;
 
-        /// Состав избранного (список идентификаторов) — приходит от хозяина.
+        /// The set of favourites (a list of identifiers) — comes from the host.
         #[qinvokable]
         #[cxx_name = "setFavorites"]
         fn set_favorites(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Строка состояния (сообщения побочных действий).
+        /// The status line (messages of side actions).
         #[qinvokable]
         #[cxx_name = "setStatus"]
         fn set_status_text(self: Pin<&mut AppearanceModel>, text: &QString);
 
-        /// Открыть панель деталей товара сетки.
+        /// Open the details panel of a grid item.
         #[qinvokable]
         #[cxx_name = "openDetail"]
         fn open_detail(self: Pin<&mut AppearanceModel>, item_id: &QString);
 
-        /// Открыть панель деталей товара, которого в сетке нет: ссылка на
-        /// товар магазина из чужого текста (ответ `linkedCardReady`:
-        /// `{item}` или `{aur}`).
+        /// Open the details panel of an item that is not in the grid: a link to a
+        /// store item from third-party text (the `linkedCardReady` answer: `{item}`
+        /// or `{aur}`).
         #[qinvokable]
         #[cxx_name = "openLinkedItem"]
         fn open_linked_item(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Открыта карточка виджета Conky — взять его картинку заново
-        /// (пересняли снимок после смены цветов или настроек).
+        /// A Conky widget card is open — take its picture anew (the snapshot was
+        /// re-taken after a change of colours or settings).
         #[qinvokable]
         #[cxx_name = "refreshConkyDetailPicture"]
         fn refresh_conky_detail_picture(self: Pin<&mut AppearanceModel>);
 
-        /// Вернуться к сетке.
+        /// Go back to the grid.
         #[qinvokable]
         #[cxx_name = "closeDetail"]
         fn close_detail(self: Pin<&mut AppearanceModel>);
 
-        /// Полные детали товара (JSON-строка): описание, все скриншоты.
+        /// Full item details (a JSON string): the description, all screenshots.
         #[qinvokable]
         #[cxx_name = "detailAnswer"]
         fn detail_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Переведённое описание вдогонку уже показанной карточке (JSON-строка:
-        /// `itemId` и `translated`). Второй проход `loadDetail`: карточка к
-        /// этому времени на экране, страница только дополняет её и ставит
-        /// ссылку «показать оригинал».
+        /// The translated description following the card already shown (a JSON
+        /// string: `itemId` and `translated`). The second pass of `loadDetail`: the
+        /// card is on screen by this time, and the page only complements it and
+        /// sets the "show original" link.
         #[qinvokable]
         #[cxx_name = "descriptionAnswer"]
         fn description_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Переключить «перевод ⇄ оригинал» под описанием.
+        /// Toggle "translation ⇄ original" under the description.
         #[qinvokable]
         #[cxx_name = "toggleDescription"]
         fn toggle_description(self: Pin<&mut AppearanceModel>);
 
-        /// Долгое действие над товаром началось: запереть кнопки запуска,
-        /// написать первую строку журнала и — если у этого вида действия
-        /// есть доля выполненного — показать полосу хода. `kind` берётся из
-        /// ядра: `install` | `aur` | `apply`.
+        /// A long action on an item started: lock the start buttons, write the first
+        /// line of the log and — if this kind of action has a progress share — show
+        /// the progress bar. `kind` comes from the core: `install` | `aur` |
+        /// `apply`.
         #[qinvokable]
         #[cxx_name = "actionBegin"]
         fn action_begin(self: Pin<&mut AppearanceModel>, item_id: &QString, kind: &QString);
 
-        /// «Установить из файла…» началась: то же, что [`action_begin`],
-        /// но имя — выбранного (`paths_json` — массив адресов окна выбора),
-        /// плитки у него нет.
+        /// "Install from file…" started: the same as [`action_begin`], but the name
+        /// is that of what was chosen (`paths_json` is an array of addresses of the
+        /// choice window), and it has no tile.
         #[qinvokable]
         #[cxx_name = "installFileBegin"]
         fn install_file_begin(self: Pin<&mut AppearanceModel>, paths_json: &QString);
 
-        /// Очередь установок AUR изменилась (строка JSON
-        /// `aur_install::AurQueue::snapshot_json`): стадии на плитках AUR
-        /// всех разделов и строка состояния с именем пакета.
+        /// The AUR installation queue changed (a JSON string
+        /// `aur_install::AurQueue::snapshot_json`): the stages on the AUR tiles of
+        /// all sections and the status line with the package name.
         #[qinvokable]
         #[cxx_name = "setAurJobs"]
         fn set_aur_jobs(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Ход действия подвинулся: доля выполненного, 0–100.
+        /// The action progress moved: the progress share, 0–100.
         #[qinvokable]
         #[cxx_name = "setInstallPercent"]
         fn set_install_percent(self: Pin<&mut AppearanceModel>, pct: i32);
 
-        /// Очередная строка журнала действия: что установщик делает прямо
-        /// сейчас. Видна и на панели деталей, и в строке состояния.
+        /// The next line of the action log: what the installer is doing right now.
+        /// Visible both on the details panel and in the status line.
         #[qinvokable]
         #[cxx_name = "installLog"]
         fn install_log(self: Pin<&mut AppearanceModel>, text: &QString);
 
-        /// Итог установки/применения под кнопками деталей: `ok` решает,
-        /// каким значком начнётся строка (решение ядра). Он же гасит полосу
-        /// хода и отпирает кнопки — действие кончилось.
+        /// The outcome of installing/applying under the details buttons: `ok`
+        /// decides which icon the line starts with (the core's decision). It also
+        /// hides the progress bar and unlocks the buttons — the action is over.
         #[qinvokable]
         #[cxx_name = "setDetailStatus"]
         fn set_detail_status(self: Pin<&mut AppearanceModel>, text: &QString, ok: bool);
 
-        /// Ввод в строке поиска изменился: решить, нужны ли подсказки и
-        /// откуда их брать (решение ядра — `suggest_action`).
+        /// The input in the search line changed: decide whether suggestions are
+        /// needed and where to take them from (the core's decision —
+        /// `suggest_action`).
         #[qinvokable]
         #[cxx_name = "updateSuggestions"]
         fn update_suggestions(self: Pin<&mut AppearanceModel>, text: &QString);
 
-        /// Фокус ушёл из строки поиска — выпадашку убрать.
+        /// The focus left the search line — remove the drop-down.
         #[qinvokable]
         #[cxx_name = "setSearchFocused"]
         fn set_search_focused(self: Pin<&mut AppearanceModel>, on: bool);
 
-        /// Ответ магазина для подсказок (JSON-строка).
+        /// The store answer for the suggestions (a JSON string).
         #[qinvokable]
         #[cxx_name = "suggestAnswer"]
         fn suggest_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Ходьба по выпадашке с клавиатуры: `up` либо `down`.
+        /// Walking the drop-down with the keyboard: `up` or `down`.
         #[qinvokable]
         #[cxx_name = "suggestMove"]
         fn suggest_move(self: Pin<&mut AppearanceModel>, direction: &QString);
 
-        /// Открыть выбранную подсказку. `false` — выбирать нечего, и тогда
-        /// Enter означает обычный поиск.
+        /// Open the selected suggestion. `false` means there is nothing to select,
+        /// and then Enter means an ordinary search.
         #[qinvokable]
         #[cxx_name = "suggestActivate"]
         fn suggest_activate(self: Pin<&mut AppearanceModel>) -> bool;
 
-        /// Открыть подсказку под этим номером (клик мышью).
+        /// Open the suggestion with this number (a mouse click).
         #[qinvokable]
         #[cxx_name = "suggestPick"]
         fn suggest_pick(self: Pin<&mut AppearanceModel>, index: &QString);
 
-        /// Размер и место выпадашки под строкой поиска: `{x, width, height}`.
-        /// Числа считает ядро (`suggest_box`).
+        /// The size and place of the drop-down under the search line:
+        /// `{x, width, height}`. The numbers are computed by the core
+        /// (`suggest_box`).
         #[qinvokable]
         #[cxx_name = "suggestGeometry"]
         fn suggest_geometry(
@@ -1514,7 +1534,7 @@ pub mod qobject {
             page_width: &QString,
         ) -> QMap_QString_QVariant;
 
-        /// Листание галереи.
+        /// Paging the gallery.
         #[qinvokable]
         #[cxx_name = "galleryPrev"]
         fn gallery_prev(self: Pin<&mut AppearanceModel>);
@@ -1522,159 +1542,162 @@ pub mod qobject {
         #[cxx_name = "galleryNext"]
         fn gallery_next(self: Pin<&mut AppearanceModel>);
 
-        /// Готовый кадр галереи: номер строкой и путь на диске.
+        /// A ready gallery frame: the number as a string and the path on disk.
         #[qinvokable]
         #[cxx_name = "setGalleryImage"]
         fn set_gallery_image(self: Pin<&mut AppearanceModel>, index: &QString, path: &QString);
 
-        /// Кадр не доехал.
+        /// The frame did not arrive.
         #[qinvokable]
         #[cxx_name = "setGalleryFailed"]
         fn set_gallery_failed(self: Pin<&mut AppearanceModel>, index: &QString);
 
-        /// Обход ссылок закончен: сколько кадров есть на самом деле.
+        /// Walking the links is finished: how many frames there really are.
         #[qinvokable]
         #[cxx_name = "setGalleryFinished"]
         fn set_gallery_finished(self: Pin<&mut AppearanceModel>, count: &QString);
 
-        /// Кадры для полноэкранного просмотра: только те, что реально
-        /// лежат на диске. Пустой список — показывать нечего.
+        /// Frames for the full-screen viewer: only those that really lie on disk.
+        /// An empty list means there is nothing to show.
         #[qinvokable]
         #[cxx_name = "zoomFrames"]
         fn zoom_frames(self: &AppearanceModel) -> QList_QVariant;
 
-        /// Дочитать ветку комментариев.
+        /// Read the comments thread further.
         #[qinvokable]
         #[cxx_name = "loadMoreComments"]
         fn load_more_comments(self: Pin<&mut AppearanceModel>);
 
-        /// Страница комментариев (JSON-строка).
+        /// A page of comments (a JSON string).
         #[qinvokable]
         #[cxx_name = "commentsAnswer"]
         fn comments_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Переводы комментариев вдогонку уже показанному списку (JSON-строка:
-        /// `itemId`, `page` и `rows` — пары «оригинал → перевод»). Второй
-        /// проход `loadComments`: список к этому времени на экране, страница
-        /// только правит его строки и зажигает у них «показать оригинал».
-        /// Комментариев, которых в `rows` нет (русские, пустые), правка не
-        /// касается вовсе.
+        /// Comment translations following the already shown list (a JSON string:
+        /// `itemId`, `page` and `rows` — "original → translation" pairs). The second
+        /// pass of `loadComments`: the list is on screen by this time, and the page
+        /// only fixes its rows and lights "show original" on them. The edit does not
+        /// touch the comments that are not in `rows` (Russian, empty) at all.
         #[qinvokable]
         #[cxx_name = "commentTranslationsAnswer"]
         fn comment_translations_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Переключить «перевод ⇄ оригинал» у одного комментария.
+        /// Toggle "translation ⇄ original" for one comment.
         #[qinvokable]
         #[cxx_name = "toggleComment"]
         fn toggle_comment(self: Pin<&mut AppearanceModel>, index: &QString);
 
-        /// Паспорт пакета AUR для открытой карточки (JSON-строка
+        /// The AUR package passport for the open card (a JSON string
         /// `{itemId, info}` | `{itemId, missing}` | `{itemId, error}`).
         #[qinvokable]
         #[cxx_name = "aurDetailAnswer"]
         fn aur_detail_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Итог проверки источника пакета AUR (JSON-строка
-        /// `{itemId, entry}` | `{itemId, failed}`): запись кеша
-        /// `aur_trust::CacheEntry`, признаки собирает ядро.
+        /// The outcome of the AUR package source check (a JSON string
+        /// `{itemId, entry}` | `{itemId, failed}`): an `aur_trust::CacheEntry` cache
+        /// record, the signals are assembled by the core.
         #[qinvokable]
         #[cxx_name = "aurTrustAnswer"]
         fn aur_trust_answer(self: Pin<&mut AppearanceModel>, payload: &QString);
 
-        /// Кнопка установки в карточке пакета AUR — ровно та, что на его
-        /// плитке (с очередью установок): `{text, enabled, tooltip, state}`.
+        /// The install button in the AUR package card — exactly the one on its tile
+        /// (with the installation queue): `{text, enabled, tooltip, state}`.
         #[qinvokable]
         #[cxx_name = "detailAurButton"]
         fn detail_aur_button(self: &AppearanceModel) -> QMap_QString_QVariant;
 
-        /// Адрес страницы плитки: у товара магазина — pling, у пакета —
-        /// aur.archlinux.org. Адрес пакета собирает ядро (`AurPackage`),
-        /// своей копии правил в разметке быть не должно.
+        /// The tile's page address: for a store item — pling, for a package —
+        /// aur.archlinux.org. The package address is assembled by the core
+        /// (`AurPackage`), there must not be a copy of the rules in the markup.
         #[qinvokable]
         #[cxx_name = "siteUrlOf"]
         fn site_url_of(self: &AppearanceModel, item_id: &QString) -> QString;
 
-        /// Адрес страницы товара в магазине (пусто — открывать нечего).
+        /// The address of the item page in the store (empty — there is nothing to
+        /// open).
         #[qinvokable]
         #[cxx_name = "detailSiteUrl"]
         fn detail_site_url(self: &AppearanceModel) -> QString;
 
-        /// «Копировать ссылку»: адрес страницы товара в магазине — в буфер
-        /// обмена, подтверждение — в строку состояния.
+        /// "Copy link": the address of the item page in the store goes to the
+        /// clipboard, the confirmation to the status line.
         #[qinvokable]
         #[cxx_name = "copyDetailLink"]
         fn copy_detail_link(self: Pin<&mut AppearanceModel>);
 
-        /// Картинка по этому адресу (`file://…` из кеша) с движением? Тогда
-        /// разметка показывает её `AnimatedImage`, иначе — обычным `Image`.
+        /// Is the picture at this address (`file://…` from the cache) animated?
+        /// Then the markup shows it with `AnimatedImage`, otherwise with an
+        /// ordinary `Image`.
         #[qinvokable]
         #[cxx_name = "isAnimatedPreview"]
         fn is_animated_preview(self: &AppearanceModel, url: &QString) -> bool;
 
-        /// Номер открытого товара — хозяину для установки и применения.
+        /// The number of the opened item — for the host, for installing and
+        /// applying.
         #[qinvokable]
         #[cxx_name = "detailItemJson"]
         fn detail_item_json(self: &AppearanceModel) -> QString;
 
-        /// Ссылка на архив открытого товара (прослушивание до установки).
+        /// The archive link of the opened item (listening before installation).
         #[qinvokable]
         #[cxx_name = "detailDownloadUrl"]
         fn detail_download_url(self: &AppearanceModel) -> QString;
 
-        /// Подсказка кнопки одного звука («Прослушать звук «battery-caution»»).
+        /// The tooltip of a single sound's button ("Listen to the
+        /// "battery-caution" sound").
         #[qinvokable]
         #[cxx_name = "soundTooltip"]
         fn sound_tooltip(self: &AppearanceModel, event: &QString) -> QString;
 
-        /// Ход скачивания темы для прослушивания — подпись из ядра.
-        /// Числа — `f64`: 64-битное целое QML не принимает (сторож
-        /// `qml_int64` в `src/lib.rs`).
+        /// The download progress of a theme for listening — the label from the
+        /// core. The numbers are `f64`: QML does not accept a 64-bit integer (the
+        /// `qml_int64` guard in `src/lib.rs`).
         #[qinvokable]
         #[cxx_name = "soundStoreProgress"]
         fn sound_store_progress(self: &AppearanceModel, done: f64, total: f64) -> QString;
 
-        /// Перечитать открытый раздел с диска, обойдя кеш сканов: активная
-        /// тема сменилась не через плитку (полоса «Палитра оболочки»).
-        /// Только для разделов с диска и только на сетке — магазин и
-        /// открытую панель деталей не трогает.
+        /// Re-read the open section from disk bypassing the scan cache: the active
+        /// theme changed not through a tile (the "Shell palette" strip). Only for
+        /// disk sections and only on the grid — it does not touch the store or an
+        /// open details panel.
         #[qinvokable]
         #[cxx_name = "reloadLocalFresh"]
         fn reload_local_fresh(self: Pin<&mut AppearanceModel>);
 
-        /// «Настроить…» стиля открытой панели деталей: запустить его
-        /// программу настроек (`themes::style_config_button_live`). Отдаёт
-        /// ошибку для человека (пусто — запущено).
+        /// "Configure…" of the style of the open details panel: launch its settings
+        /// program (`themes::style_config_button_live`). Returns an error for the
+        /// user (empty — launched).
         #[qinvokable]
         #[cxx_name = "configureDetailStyle"]
         fn configure_detail_style(self: Pin<&mut AppearanceModel>) -> QString;
 
-        /// Переключатель «Применять к программам GTK 4/libadwaita»:
-        /// записать в настройки (`gtk4_theme::set_enabled_live`). Отдаёт
-        /// ошибку для человека (пусто — записано).
+        /// The "Apply to GTK 4/libadwaita programs" toggle: write it into the
+        /// settings (`gtk4_theme::set_enabled_live`). Returns an error for the user
+        /// (empty — written).
         #[qinvokable]
         #[cxx_name = "setGtk4Apply"]
         fn set_gtk4_apply(self: Pin<&mut AppearanceModel>, on: bool) -> QString;
 
-        /// «Настроить…» рамки окна KDE открытой панели деталей: окно
-        /// настроек её модуля (`kdecoration::config_button_live`). Окно
-        /// закрыли — снимок рамки переснимается. Отдаёт ошибку для человека
-        /// (пусто — запущено).
+        /// "Configure…" of the KDE window border of the open details panel: the
+        /// settings window of its module (`kdecoration::config_button_live`). When
+        /// the window is closed, the border snapshot is re-taken. Returns an error
+        /// for the user (empty — launched).
         #[qinvokable]
         #[cxx_name = "configureDetailDecoration"]
         fn configure_detail_decoration(self: Pin<&mut AppearanceModel>) -> QString;
 
-        /// «Изменить…» (`mode` = `edit`) или «Создать на основе…» (`new`)
-        /// у цветовой схемы панели деталей. Есть редактор KDE — он
-        /// запускается; нет — отдаёт состояние своего окна (JSON
-        /// `color_scheme_edit::EditOpen`; `error` — не вышло).
+        /// "Edit…" (`mode` = `edit`) or "Create based on…" (`new`) for the colour
+        /// scheme of the details panel. If there is a KDE editor, it is launched; if
+        /// not, returns the state of our own window (JSON
+        /// `color_scheme_edit::EditOpen`; `error` — it failed).
         #[qinvokable]
         #[cxx_name = "editDetailScheme"]
         fn edit_detail_scheme(self: Pin<&mut AppearanceModel>, mode: &QString) -> QString;
 
-        /// Сохранить схему своего окна: имя, роли (JSON-массив
-        /// `SchemeRole`), файл-основа и имя своей схемы, которую можно
-        /// переписать. Ответ — JSON `color_scheme_edit::SaveResult`; при
-        /// успехе сетка перечитает диск.
+        /// Save the scheme of our own window: the name, the roles (a JSON array of
+        /// `SchemeRole`), the base file and the name of our own scheme that may be
+        /// overwritten. The answer is JSON `color_scheme_edit::SaveResult`; on
+        /// success the grid re-reads the disk.
         #[qinvokable]
         #[cxx_name = "saveSchemeCopy"]
         fn save_scheme_copy(
@@ -1685,55 +1708,57 @@ pub mod qobject {
             overwrite: &QString,
         ) -> QString;
 
-        /// Цвета главной кнопки деталей: `{bg, fg, border}`.
+        /// Colours of the main details button: `{bg, fg, border}`.
         #[qinvokable]
         #[cxx_name = "detailButtonColors"]
         fn detail_button_colors(self: &AppearanceModel, state: &QString)
             -> QMap_QString_QVariant;
 
-        /// Цвета кнопки плитки по её состоянию: `{bg, fg, border}`.
-        /// Пустая строка — цвета нет вовсе (прозрачная заливка / без рамки).
-        /// Решение принимает ядро, здесь только подстановка токена скина.
+        /// Colours of a tile button by its state: `{bg, fg, border}`. An empty
+        /// string means no colour at all (a transparent fill / no border). The
+        /// decision is made by the core, here there is only substituting the skin
+        /// token.
         #[qinvokable]
         #[cxx_name = "buttonColors"]
         fn button_colors(self: &AppearanceModel, state: &QString) -> QMap_QString_QVariant;
 
-        /// Краски контрола, перекрытого таблицей стилей вкладки:
-        /// `{background, hover, border, hoverBorder, color, radius,
-        /// paddingH, paddingV}` — готовый набор для `tone` кнопки и списка.
-        /// Виды: `combo`, `nav`, `secondary` (см. `control_colors` ядра).
+        /// Colours of a control overridden by the tab's style sheet:
+        /// `{background, hover, border, hoverBorder, color, radius, paddingH,
+        /// paddingV}` — a ready set for the `tone` of a button and a list. Kinds:
+        /// `combo`, `nav`, `secondary` (see the core's `control_colors`).
         #[qinvokable]
         #[cxx_name = "controlColors"]
         fn control_colors(self: &AppearanceModel, kind: &QString)
             -> QMap_QString_QVariant;
 
-        /// Номер роли по имени (-1, если роли нет) — проверки без делегата.
+        /// Role number by name (-1 if there is no such role) — checks without a
+        /// delegate.
         #[qinvokable]
         #[cxx_name = "roleNumber"]
         fn role_number(self: &AppearanceModel, name: &QString) -> i32;
 
-        /// Значение роли строки по идентификатору товара — проверки без
-        /// делегата.
+        /// A row's role value by the item identifier — checks without a delegate.
         #[qinvokable]
         #[cxx_name = "roleValueOf"]
         fn role_value_of(self: &AppearanceModel, item_id: &QString, name: &QString) -> QVariant;
 
-        /// Режим обхода (`--tour`): каталог видимого раздела ещё грузится.
+        /// Tour mode (`--tour`): the catalogue of the visible section is still
+        /// loading.
         #[qinvokable]
         #[cxx_name = "tourBusy"]
         fn tour_busy(self: &AppearanceModel) -> bool;
 
-        /// Режим обхода: {total, noPreview, pending} — плиток, плиток без
-        /// картинки и картинок в очереди загрузки.
+        /// Tour mode: {total, noPreview, pending} — tiles, tiles without a picture
+        /// and pictures in the load queue.
         #[qinvokable]
         #[cxx_name = "tourTiles"]
         fn tour_tiles(self: &AppearanceModel) -> QMap_QString_QVariant;
     }
 
-    // Объявление трейта обязано быть В МОСТЕ, иначе `impl cxx_qt::Initialize`
-    // снаружи не находит конструктора.
+    // The trait declaration must be IN THE BRIDGE, otherwise
+    // `impl cxx_qt::Initialize` outside does not find the constructor.
     impl cxx_qt::Initialize for AppearanceModel {}
-    // Подписка на смену скина идёт через `CxxQtThread::queue`.
+    // The skin change subscription goes through `CxxQtThread::queue`.
     impl cxx_qt::Threading for AppearanceModel {}
 }
 
@@ -1760,16 +1785,17 @@ use rexon_core::ocs;
 use rexon_core::ui_base;
 
 // ============================================================================
-// Роли модели плиток
+// Roles of the tile model
 // ============================================================================
 
-/// Роли начинаются с Qt::UserRole + 1 (Qt::UserRole == 256).
+/// Roles start at Qt::UserRole + 1 (Qt::UserRole == 256).
 const ROLE_BASE: i32 = 256 + 1;
 
-/// Имена ролей в порядке номеров — единственный источник истины и для
-/// roleNames, и для data(), и для roleNumber().
+/// Role names in number order — the single source of truth for roleNames,
+/// data() and roleNumber().
 const ROLE_NAMES: [&str; 36] = [
-    // Откуда плитка: `ocs` (магазин), `aur` (пакет), `local` (диск).
+    // Where the tile comes from: `ocs` (the store), `aur` (a package), `local`
+    // (the disk).
     "kind",
     "itemId",
     "name",
@@ -1787,49 +1813,53 @@ const ROLE_NAMES: [&str; 36] = [
     "buttonTooltip",
     "favoriteText",
     "favoriteState",
-    // Чем занять место картинки, когда её нет вовсе. У пакета AUR это его
-    // значок: без ссылки на GitHub OpenGraph-карточки не существует, и
-    // оригинал в этом случае показывал ровно значок, а не пустоту.
+    // What to put in place of the picture when there is none at all. For an
+    // AUR package it is its icon: without a GitHub link there is no OpenGraph
+    // card, and in this case the original showed exactly the icon, not
+    // emptiness.
     "previewText",
-    // Тема звуков на диске, которую показывает плитка (пусто — не тема
-    // звуков): по ней плитка рисует ряд «Прослушать:».
+    // The sound theme on disk shown by the tile (empty — not a sound theme):
+    // by it the tile draws the "Listen:" row.
     "soundTheme",
-    // Заставка KDE на диске, которую можно показать (`ksplashqml --test`);
-    // пусто — кнопки «Продемонстрировать» на плитке нет.
+    // A KDE splash on disk that can be shown (`ksplashqml --test`); empty
+    // means there is no "Demonstrate" button on the tile.
     "splashDemo",
-    // Установка пакета AUR из очереди этой сессии: строка под кнопками
-    // (причина отказа), её подсказка (полный итог) и подпись ссылки
-    // «Журнал» (пусто — ссылки нет). У прочих плиток пусто.
+    // An AUR package installation from this session's queue: the line under
+    // the buttons (the refusal reason), its tooltip (the full outcome) and the
+    // label of the "Log" link (empty — no link). Empty for other tiles.
     "aurNote",
     "aurNoteTooltip",
     "aurLog",
-    // Признаки риска пакета AUR на плитке: `` | `warn` | `danger`
-    // (`aur_trust`; только данные RPC и уже проверенное раньше).
+    // Risk signals of an AUR package on the tile: `` | `warn` | `danger`
+    // (`aur_trust`; only RPC data and what was already checked before).
     "riskLevel",
-    // «Удалить» на плитке темы с диска (`theme_removal`): видна ли кнопка,
-    // можно ли нажать, подсказка (у недоступной — причина). У товаров
-    // магазина и пакетов кнопки нет.
+    // "Remove" on a theme-from-disk tile (`theme_removal`): whether the button
+    // is visible, whether it can be pressed, the tooltip (for an unavailable
+    // one — the reason). Store items and packages have no button.
     "removeVisible",
     "removeEnabled",
     "removeTooltip",
-    // Текущая тема раздела (`local_kind = "active"`): рамка и жирная
-    // подпись, как у KDE, — там, где ядро велит выделять (`markCurrent`).
+    // The section's current theme (`local_kind = "active"`): a frame and a bold
+    // label, as in KDE — where the core tells to highlight (`markCurrent`).
     "current",
-    // Расширение GNOME, которое знает запущенная оболочка: его uuid (пусто —
-    // не оно; тогда кнопки плитки — общие), есть ли у него свои настройки
-    // и ошибка, о которой можно спросить подробности (`gnome_ext_section`).
+    // A GNOME extension known to the running shell: its uuid (empty — not
+    // one; then the tile buttons are the shared ones), whether it has its own
+    // settings and an error whose details can be asked about
+    // (`gnome_ext_section`).
     "gnomeUuid",
     "gnomePrefs",
     "gnomeErrorInfo",
-    // Картинка плитки — файл шрифта (пакет шрифта AUR): адрес файла, им
-    // плитка рисует образец текста `previewSample`. Пусто — не шрифт.
+    // The tile picture is a font file (an AUR font package): the file
+    // address, with which the tile draws the `previewSample` text sample.
+    // Empty means not a font.
     "previewFont",
     "previewSample",
-    // Подпись на месте картинки, когда её нет (`aur::no_preview_note`):
-    // честно, что это за товар и почему без снимка.
+    // The label in place of the picture when there is none
+    // (`aur::no_preview_note`): honestly what the item is and why there is no
+    // screenshot.
     "previewNote",
-    // Пометка пакета AUR в смешанной выдаче («Все»): набор, системный
-    // пакет, пароль (`ap::aur_mix_badge`), и её подсказка.
+    // The AUR package mark in mixed results ("All"): a set, a system package,
+    // a password (`ap::aur_mix_badge`), and its tooltip.
     "mixBadge",
     "mixBadgeTooltip",
 ];
@@ -1843,11 +1873,11 @@ const ROLE_FAVORITE_TEXT: usize = 15;
 const ROLE_FAVORITE_STATE: usize = 16;
 
 // ============================================================================
-// Чистый слой: строка сетки
+// Pure layer: a grid row
 // ============================================================================
 
-/// «Удалить» у плитки темы с диска — как его прислал хозяин (поля строки
-/// `removeVisible`, `removeEnabled`, `removeTooltip`; решение —
+/// "Remove" of a theme-from-disk tile — as the host sent it (the row fields
+/// `removeVisible`, `removeEnabled`, `removeTooltip`; the decision is
 /// `theme_removal::Verdict`).
 #[derive(Debug, Clone, Default)]
 pub struct RemovalUi {
@@ -1857,7 +1887,8 @@ pub struct RemovalUi {
 }
 
 impl RemovalUi {
-    /// Из строки ответа хозяина; `None` — полей нет (товар магазина).
+    /// From the host's answer row; `None` means there are no fields (a store
+    /// item).
     fn from_row(raw: &Value) -> Option<Self> {
         let visible = raw.get("removeVisible")?.as_bool()?;
         Some(RemovalUi {
@@ -1868,9 +1899,9 @@ impl RemovalUi {
     }
 }
 
-/// Сведения сайта Cinnamon Spices у плитки, которым в `ThemeItem` места
-/// нет: «лайки», дата правки, есть ли обновление, страница на сайте и
-/// пометка «может подвешивать оболочку» (у установленного).
+/// Cinnamon Spices site information of a tile that has no place in
+/// `ThemeItem`: "likes", the edit date, whether there is an update, the page
+/// on the site and the "may freeze the shell" mark (for an installed one).
 #[derive(Debug, Clone, Default)]
 pub struct SpiceExtra {
     pub score: i64,
@@ -1878,14 +1909,15 @@ pub struct SpiceExtra {
     pub update: bool,
     pub page: String,
     pub danger: bool,
-    /// Поставленную тему включает сама карточка («Применить») — так в
-    /// разделах GTK и рамок окон (`cinnamon_spices::PART_SECTIONS`).
+    /// The card itself enables an installed theme ("Apply") — so in the GTK and
+    /// window borders sections (`cinnamon_spices::PART_SECTIONS`).
     pub apply: bool,
 }
 
-/// То, что знает о плитке сторонний магазин со своим сайтом (сейчас —
-/// Wallhaven): страница товара на сайте и своя строка оценки вместо
-/// «★ оценка ⬇ скачивания» KDE Store. Ключи строки ответа — `site*`.
+/// What a third-party store with its own website (currently Wallhaven)
+/// knows about a tile: the item page on the site and its own rating line
+/// instead of the KDE Store's "★ rating ⬇ downloads". The answer row keys
+/// are `site*`.
 #[derive(Debug, Clone, Default)]
 pub struct SiteExtra {
     pub page: String,
@@ -1904,13 +1936,13 @@ impl SiteExtra {
     }
 }
 
-/// Расширение GNOME со слов оболочки — поля `gnome*` строки ответа
-/// (`gnome_ext_section::shell_fields`, `unseen_fields`): пометки плитки и
-/// что с ним можно сделать.
+/// A GNOME extension according to the shell — the `gnome*` fields of the
+/// answer row (`gnome_ext_section::shell_fields`, `unseen_fields`): the
+/// tile's marks and what can be done with it.
 #[derive(Debug, Clone, Default)]
 pub struct GnomeExtra {
-    /// Оболочка его знает (иначе — лежит на диске и заработает после
-    /// перезахода: только пометка, кнопки общие).
+    /// The shell knows it (otherwise it lies on disk and will work after
+    /// re-login: only a mark, the buttons are the shared ones).
     pub shell_known: bool,
     pub uuid: String,
     pub enabled: bool,
@@ -1920,17 +1952,18 @@ pub struct GnomeExtra {
     pub can_remove: bool,
     pub error: bool,
     pub unsupported: bool,
-    /// Подсказка пометок: текст ошибки или «Не поддерживает GNOME N».
+    /// The tooltip of the marks: the error text or "Does not support GNOME N".
     pub tooltip: String,
-    /// `open` (своё) | `copy` (системное) | пусто.
+    /// `open` (our own) | `copy` (a system one) | empty.
     pub folder: String,
     pub url: String,
-    /// Подписи пометок по порядку.
+    /// Labels of the marks in order.
     pub marks: Vec<String>,
 }
 
 impl GnomeExtra {
-    /// Из строки ответа хозяина; `None` — плитка не расширение GNOME.
+    /// From the host's answer row; `None` means the tile is not a GNOME
+    /// extension.
     fn from_row(raw: &Value) -> Option<Self> {
         let uuid = raw.get("gnomeUuid").and_then(Value::as_str)?.to_string();
         let flag = |k: &str| raw.get(k).and_then(Value::as_bool).unwrap_or(false);
@@ -1959,15 +1992,15 @@ impl GnomeExtra {
         })
     }
 
-    /// Строка пометок плитки: «Ошибка · Обновление — после перезахода».
+    /// The tile's marks line: "Error · Update — after re-login".
     fn marks_line(&self) -> String {
         self.marks.join(" · ")
     }
 }
 
 impl SpiceExtra {
-    /// Из строки ответа хозяина; `None` — плитка не из Cinnamon Spices и
-    /// без пометки.
+    /// From the host's answer row; `None` means the tile is not from Cinnamon
+    /// Spices and without a mark.
     fn from_row(raw: &Value) -> Option<Self> {
         if raw.get("spicesScore").is_none() && raw.get("spicesDanger").is_none() {
             return None;
@@ -1983,22 +2016,24 @@ impl SpiceExtra {
     }
 }
 
-/// Одна плитка каталога. Держит ровно то, что пришло с ответом; подписи и
-/// кнопки считает ядро на лету — это дешёвые строковые операции, и вторая
-/// копия решений в состоянии разошлась бы с первой молча.
+/// One catalogue tile. It holds exactly what came with the answer; the
+/// labels and buttons are computed by the core on the fly — these are cheap
+/// string operations, and a second copy of the decisions in the state would
+/// silently diverge from the first.
 #[derive(Debug, Clone)]
 pub enum Card {
-    /// Товар магазина либо местная тема с диска (`local_kind` заполнен).
+    /// A store item or a local theme from disk (`local_kind` filled in).
     Theme(Box<ThemeItem>),
-    /// Пакет AUR.
+    /// An AUR package.
     Aur(Box<AurPackage>),
 }
 
-/// Установка AUR из снимка очереди (`aur_install::AurQueue::snapshot_json`).
+/// An AUR installation from the queue snapshot
+/// (`aur_install::AurQueue::snapshot_json`).
 #[derive(Debug, Clone)]
 pub struct AurJobView {
     pub name: String,
-    /// Весь состав (у комплекта — все его пакеты).
+    /// The whole composition (for a set — all its packages).
     pub packages: Vec<String>,
     pub stage: aur_install::AurStage,
     pub message: String,
@@ -2030,7 +2065,7 @@ impl Card {
         }
     }
 
-    /// Адрес картинки плитки.
+    /// The tile picture address.
     fn preview_url(&self) -> String {
         match self {
             Card::Theme(it) => it.preview_url.clone(),
@@ -2038,8 +2073,8 @@ impl Card {
         }
     }
 
-    /// Картинки плитки по очереди: не загрузилась одна — берём следующую
-    /// (решение ядра, `preview_candidates`).
+    /// The tile pictures in turn: if one did not load, take the next one (the
+    /// core's decision, `preview_candidates`).
     fn preview_candidates(&self) -> Vec<String> {
         match self {
             Card::Theme(it) => ap::preview_candidates(&it.preview_url, &it.preview_urls),
@@ -2047,18 +2082,19 @@ impl Card {
         }
     }
 
-    /// Адреса кадров карусели — их греют фоном после самих плиток.
+    /// Addresses of the carousel frames — they are warmed up in the background
+    /// after the tiles themselves.
     fn gallery_urls(&self) -> Vec<String> {
         match self {
             Card::Theme(it) => ap::gallery_urls(&it.preview_urls, &it.preview_url),
-            // У пакета AUR карусели нет вовсе: одна карточка OpenGraph.
+            // An AUR package has no carousel at all: one OpenGraph card.
             Card::Aur(_) => Vec::new(),
         }
     }
 }
 
 // ============================================================================
-// Мелочи перевода в Qt
+// Small conversions into Qt
 // ============================================================================
 
 fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
@@ -2073,10 +2109,10 @@ fn qstr(value: &str) -> QVariant {
     QVariant::from(&QString::from(value))
 }
 
-/// Путь на диске → адрес для `Image.source`. Пустой путь остаётся пустым.
-/// Спецсимволы кодируются процентами: имена файлов кеша пишет магазин, и
-/// решётка в имени обрубила бы путь на месте (тот же приём во вкладке
-/// «Steam»).
+/// A path on disk → an address for `Image.source`. An empty path stays
+/// empty. Special characters are percent-encoded: the cache file names are
+/// written by the store, and a hash in a name would cut the path off at
+/// that place (the same technique in the "Steam" tab).
 fn file_url(path: &str) -> String {
     if path.is_empty() {
         return String::new();
@@ -2093,10 +2129,11 @@ fn file_url(path: &str) -> String {
     out
 }
 
-/// Адрес `file://…` → путь на диске (обратное к [`file_url`]). Не файл — `None`.
+/// A `file://…` address → a path on disk (the inverse of [`file_url`]). Not
+/// a file — `None`.
 fn path_of_file_url(url: &str) -> Option<String> {
     let encoded = url.strip_prefix("file://")?;
-    // Обратное к `file_url`: разворачиваем %XX.
+    // The inverse of `file_url`: we expand %XX.
     let bytes = encoded.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -2115,11 +2152,12 @@ fn path_of_file_url(url: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-/// Календарный день отметки времени AUR в поясе машины.
+/// The calendar day of an AUR timestamp in the machine's time zone.
 ///
-/// Пояс берётся у Qt (`QDateTime`), а не считается руками: перевод отметки
-/// в день зависит от базы часовых поясов, и своей копии этой базы в ядре
-/// быть не должно (потому ядро и просит готовую строку).
+/// The zone is taken from Qt (`QDateTime`), not computed by hand:
+/// converting a timestamp into a day depends on the time zone database, and
+/// there must not be a copy of this database in the core (that is why the
+/// core asks for a ready string).
 fn aur_updated_day(last_modified: i64) -> String {
     if last_modified <= 0 {
         return String::new();
@@ -2136,46 +2174,48 @@ fn home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// Строковое поле записи.
+/// A string field of a record.
 fn s<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
 // ============================================================================
-// Rust-состояние страницы
+// Rust state of the page
 // ============================================================================
 
-/// Ответ хозяина о том, что заявку оборвали мы сами. Такой «сбой» не
-/// повторяют: он значит лишь, что человек ушёл из раздела.
+/// The host's answer saying that we aborted the request ourselves. Such a
+/// "failure" is not repeated: it only means the user left the section.
 const PREVIEW_CANCELED: &str = "canceled";
 
-/// Вид фонового прогрева: первая страница ЧУЖОГО раздела.
+/// Kind of background warm-up: the first page of ANOTHER section.
 const PREFETCH_CATEGORY: &str = "category";
-/// Вид фонового прогрева: следующая страница ОТКРЫТОГО раздела.
+/// Kind of background warm-up: the next page of the OPEN section.
 const PREFETCH_PAGE: &str = "page";
 
-/// Одна заявка на картинку в том виде, в каком она ушла хозяину.
+/// One picture request in the form it went to the host.
 #[derive(Debug, Clone)]
 pub struct PreviewReq {
-    /// Чья карточка.
+    /// Whose card it is.
     cid: String,
-    /// Адрес картинки — он же ключ дедупа и ключ дискового кеша.
+    /// The picture address — it is also the dedup key and the disk cache key.
     url: String,
-    /// Фоновая заявка: показывать нечего, только наполняет кеш.
+    /// A background request: there is nothing to show, it only fills the cache.
     low: bool,
 }
 
-/// Заказ фоновому потоку на картинку плитки местной темы.
-/// Ключ нарисованной картинки местной плитки в `previews`: номер плитки И
-/// каталог темы. По одному номеру картинка, нарисованная для плитки в другом
-/// обзоре (тот же `local:gtk:<имя>`, но без своей картинки — например, пока
-/// тема была активной), подменяла потом настоящую миниатюру темы.
+/// An order to a background thread for a local theme tile picture.
+/// The key of a drawn local tile picture in `previews`: the tile number AND
+/// the theme directory. By the number alone, a picture drawn for a tile in
+/// another overview (the same `local:gtk:<name>`, but without its own
+/// picture — for example, while the theme was active) later replaced the
+/// real thumbnail of the theme.
 fn drawn_key(id: &str, install_path: &str) -> String {
     format!("{id}\u{0}{install_path}")
 }
 
-/// Картинка плитки темы: своя картинка темы (скан) важнее нарисованной;
-/// нарисованная — только у темы без своей; картинка магазина — по номеру.
+/// A theme tile picture: the theme's own picture (the scan) matters more
+/// than a drawn one; a drawn one — only for a theme without its own; a store
+/// picture — by number.
 fn tile_picture(previews: &BTreeMap<String, String>, item: &ThemeItem) -> String {
     if !item.preview_local.is_empty() {
         return item.preview_local.clone();
@@ -2188,200 +2228,216 @@ fn tile_picture(previews: &BTreeMap<String, String>, item: &ThemeItem) -> String
 }
 
 struct PictureJob {
-    /// Номер плитки (`local:<вид>:<имя>`).
+    /// The tile number (`local:<kind>:<name>`).
     id: String,
-    /// Вид применения темы.
+    /// The theme applying kind.
     kind: String,
-    /// Каталог темы (у цветовой схемы — её файл).
+    /// The theme directory (for a colour scheme — its file).
     install_path: String,
-    /// Знак вида для заглушки.
+    /// The kind sign for the placeholder.
     glyph: String,
-    /// Куда положить готовый кадр.
+    /// Where to put the ready frame.
     dest: String,
-    /// Рамка окна KDE: снять её модулем (`kdecoration::take_shot`).
+    /// A KDE window border: take it with its module (`kdecoration::take_shot`).
     shot: Option<rexon_core::kdecoration::ShotRequest>,
-    /// Стиль Qt, тема Kvantum или GTK 3: снять форму из настоящих виджетов
+    /// A Qt style, a Kvantum or GTK 3 theme: take a form from real widgets
     /// (`widget_shot::take_shot`).
     widget_shot: Option<rexon_core::widget_shot::ShotRequest>,
 }
 
 pub struct AppearanceModelRust {
-    /// Номер записи в общем реестре смены скина (`crate::skin`).
+    /// Entry number in the shared skin change registry (`crate::skin`).
     skin_watch: u64,
     home: PathBuf,
 
-    /// Разделы боковой панели — порядок и состав задаёт ядро.
+    /// Sidebar sections — the order and composition are set by the core.
     sidebar: Vec<ThemeCategory>,
-    /// Состояние каталога целиком: раздел, страница, сортировка, источник.
+    /// The whole catalogue state: section, page, sort, source.
     view: ap::CatalogView,
-    /// Учёт летящих запросов и прогрева — конечный автомат ядра.
+    /// Accounting of requests in flight and of the warm-up — the core's finite
+    /// state machine.
     requests: ap::CatalogRequests,
 
-    /// Плитки текущей страницы.
+    /// Tiles of the current page.
     cards: Vec<Card>,
-    /// Идентификатор товара → путь к готовому превью.
+    /// Item identifier → path to the ready preview.
     previews: BTreeMap<String, String>,
-    /// Плитки местных тем, чья картинка сейчас рисуется в фоне (номер
-    /// плитки): повторный заход в раздел не заказывает их второй раз.
+    /// Local theme tiles whose picture is being drawn in the background right
+    /// now (the tile number): re-entering the section does not order them a
+    /// second time.
     drawing: std::collections::HashSet<String>,
-    /// Сколько раз закрывали окно настроек рамки KDE (номер плитки): номер
-    /// входит в ключ кеша снимка, чтобы плитка показала новый кадр, а не
-    /// тот же файл из кеша картинок Qt.
+    /// How many times the KDE border settings window was closed (the tile
+    /// number): the number is part of the snapshot cache key, so that the tile
+    /// shows a new frame rather than the same file from Qt's image cache.
     deco_config_gen: BTreeMap<String, u32>,
-    /// Очередь загрузчика превью: сколько картинок тянуть разом, кого
-    /// пропускать вперёд, что считать дублем и когда повторять — решает она.
+    /// The preview loader queue: how many pictures to pull at once, whom to let
+    /// ahead, what to count as a duplicate and when to repeat — it decides.
     preview: ap::PreviewQueue,
-    /// Номер заявки → что именно по ней просили. Номер живёт до ответа и
-    /// возвращается хозяином обратно: две плитки изредка делят один адрес, и
-    /// по одному адресу их было бы не различить.
+    /// Request number → what exactly was asked for with it. The number lives
+    /// until the answer and is returned back by the host: two tiles
+    /// occasionally share one address, and by the address alone they could not
+    /// be told apart.
     preview_jobs: BTreeMap<u64, PreviewReq>,
-    /// Счётчик номеров заявок.
+    /// The request number counter.
     preview_seq: u64,
-    /// Идентификаторы избранного.
+    /// Identifiers of favourites.
     favorites: BTreeSet<String>,
-    /// «Удалить» у тем с диска: номер плитки → решение, присланное
-    /// хозяином вместе со сканом (`theme_removal::Verdict`).
+    /// "Remove" for themes from disk: tile number → the decision sent by the
+    /// host together with the scan (`theme_removal::Verdict`).
     removal: BTreeMap<String, RemovalUi>,
-    /// Плитки Cinnamon Spices: номер плитки → сведения сайта ([`SpiceExtra`]).
+    /// Cinnamon Spices tiles: tile number → site information ([`SpiceExtra`]).
     spices: BTreeMap<String, SpiceExtra>,
-    /// Плитки сторонних магазинов со своим сайтом (Wallhaven) → [`SiteExtra`].
+    /// Tiles of third-party stores with their own site (Wallhaven) →
+    /// [`SiteExtra`].
     site: BTreeMap<String, SiteExtra>,
-    /// Плитки расширений GNOME: номер плитки → сведения оболочки ([`GnomeExtra`]).
+    /// GNOME extension tiles: tile number → shell information
+    /// ([`GnomeExtra`]).
     gnome: BTreeMap<String, GnomeExtra>,
-    /// Всего работ у раздела по ответу магазина.
+    /// How many works the section has in total by the store's answer.
     total: i64,
-    /// Есть ли что за страницей — у потока магазина с добором
-    /// (`ap::stream_page`) это знает сам ответ; `None` — ответ без потока
-    /// (AUR, диск): страницы там режутся на месте и считаются по `total`.
+    /// Whether there is anything after the page — for a topped-up store stream
+    /// (`ap::stream_page`) the answer itself knows it; `None` means an answer
+    /// without a stream (AUR, the disk): pages there are cut on the spot and
+    /// counted by `total`.
     has_more: Option<bool>,
-    /// Столбцов в сетке сейчас (0 — сетка ещё не разложилась).
+    /// Columns in the grid right now (0 — the grid has not been laid out yet).
     grid_cols: u32,
 
-    /// Есть ли помощник AUR (yay/paru).
+    /// Whether there is an AUR helper (yay/paru).
     aur_helper: bool,
-    /// Выбор рабочего стола: [(id, имя)].
+    /// The desktop choice: [(id, name)].
     de_choices: Vec<(String, String)>,
-    /// Рабочий стол запущенного сеанса (пусто — не опознан): по нему ручной
-    /// выбор подписывается как ручной (`ap::de_picker_choices`).
+    /// The desktop of the running session (empty — not recognized): by it a
+    /// manual choice is labelled as manual (`ap::de_picker_choices`).
     detected_de: String,
 
     status: String,
-    /// Итог фонового перевода заново курсоров из Windows: заменит строку
-    /// состояния ответа перечитанного раздела (иначе тот её затёр бы).
+    /// The outcome of the background re-conversion of cursors from Windows: it
+    /// will replace the status line of the re-read section's answer (otherwise
+    /// that would overwrite it).
     pending_notice: Option<String>,
-    /// Что показано: `grid` | `detail` | `note` | `plasmalogin`.
+    /// What is shown: `grid` | `detail` | `note` | `plasmalogin`.
     screen: String,
-    /// Экран входа рисует Plasma Login Manager (ответ фоновой пробы; до
-    /// ответа — нет, и панель стоит как при SDDM).
+    /// The login screen is drawn by Plasma Login Manager (the background
+    /// probe's answer; before the answer — no, and the panel stands as with
+    /// SDDM).
     plasma_login: bool,
-    /// Есть чем открыть настройки экрана входа Plasma Login Manager.
+    /// There is something to open the Plasma Login Manager login screen
+    /// settings with.
     plm_can_open: bool,
 
-    /// Установки AUR этой сессии (очередь живёт в объекте действий и
-    /// переживает страницу; здесь — последний её снимок).
+    /// AUR installations of this session (the queue lives in the action object
+    /// and outlives the page; here is its last snapshot).
     aur_jobs: Vec<AurJobView>,
-    /// Последняя строка о ходе установки AUR, которую мы поставили в строку
-    /// состояния: чужие сообщения ею не перебиваются по второму разу.
+    /// The last line about the AUR installation progress that we put into the
+    /// status line: other messages are not overridden by it a second time.
     aur_status: String,
 
-    // ── Панель деталей ──
-    /// Открытый товар (местная тема отличается заполненным `local_kind`).
+    // ── Details panel ──
+    /// The opened item (a local theme is distinguished by a filled
+    /// `local_kind`).
     detail: Option<Box<ThemeItem>>,
-    /// Показывать оригинал описания вместо перевода.
+    /// Show the original of the description instead of the translation.
     detail_show_original: bool,
-    /// Перевод описания идёт дольше порога — под текстом «Перевожу
-    /// описание…». Ставит и снимает сигнал `descriptionReady` (поле
-    /// `pending`), сбрасывает открытие другого товара.
+    /// The description translation takes longer than the threshold — under the
+    /// text «Translating the description…». Set and removed by the
+    /// `descriptionReady` signal (the `pending` field), reset by opening another
+    /// item.
     detail_translating: bool,
-    /// Итог последнего действия под кнопками.
+    /// The outcome of the last action under the buttons.
     detail_status: String,
-    /// Идёт долгое действие над товаром.
+    /// A long action on an item is in progress.
     action_busy: bool,
-    /// Вид идущего действия — от него зависит, есть ли полоса хода.
+    /// The kind of the running action — whether there is a progress bar depends
+    /// on it.
     action_kind: String,
-    /// Номер товара, над которым идёт действие: по итогу установки его
-    /// плитке и панели деталей ставится «✓ Установлено»/«✓ Применено».
+    /// The number of the item the action is on: by the installation outcome its
+    /// tile and the details panel get "✓ Installed"/"✓ Applied".
     action_item: String,
-    /// Сетку надо пересобрать, как только осядет смена стиля Qt.
+    /// The grid has to be rebuilt as soon as the Qt style change settles.
     reload_pending: bool,
-    /// Следующий запрос каталога обязан обойти кеш сканов диска.
+    /// The next catalogue request must bypass the disk scan cache.
     catalog_fresh: bool,
-    /// Следующий запрос Cinnamon Spices — мимо кеша («Обновить»).
+    /// The next Cinnamon Spices request — bypassing the cache ("Refresh").
     site_force: bool,
-    /// Доля выполненного для полосы хода, 0–100.
+    /// The progress share for the progress bar, 0–100.
     install_percent: i64,
-    /// Путь к картинке, показываемой сейчас.
+    /// The path of the picture shown right now.
     detail_frame: String,
-    /// Надпись вместо картинки, когда показывать нечего.
+    /// The label instead of the picture when there is nothing to show.
     detail_frame_text: String,
 
-    // ── Галерея скриншотов ──
-    /// Адреса кадров карусели (первый слот — «лицо товара», его в карусели
-    /// нет: решение ядра, `gallery_urls`).
+    // ── Screenshot gallery ──
+    /// Addresses of the carousel frames (the first slot is "the face of the
+    /// item", it is not in the carousel: the core's decision, `gallery_urls`).
     gallery_src: Vec<String>,
-    /// Номер кадра → путь на диске.
+    /// Frame number → path on disk.
     gallery_loaded: BTreeMap<i64, String>,
-    /// Кадры, которые не доедут.
+    /// Frames that will not arrive.
     gallery_failed: BTreeSet<i64>,
-    /// Показываемый кадр.
+    /// The shown frame.
     gallery_index: i64,
-    /// Сколько кадров у товара по ответу магазина.
+    /// How many frames the item has by the store's answer.
     gallery_known: i64,
-    /// Обход ссылок закончен.
+    /// Walking the links is finished.
     gallery_finished: bool,
-    /// Человек листал руками — тогда кадр из кеша его не сдвинет.
+    /// The user paged by hand — then a frame from the cache will not move them.
     gallery_user_nav: bool,
 
-    // ── Комментарии ──
+    // ── Comments ──
     comments: Vec<CommentRow>,
-    /// Следующая страница комментариев.
+    /// The next comments page.
     comments_page: i64,
-    /// Сколько комментариев у товара всего (`None` — магазин не сказал).
+    /// How many comments the item has in total (`None` — the store did not
+    /// say).
     comments_total: Option<i64>,
 
-    // ── Подсказки поиска ──
-    /// Что набрано в строке поиска прямо сейчас.
+    // ── Search suggestions ──
+    /// What is typed in the search line right now.
     suggest_query: String,
-    /// Поколение запроса подсказок: ответ на прошлый ввод отбрасывается.
+    /// Generation of the suggestions request: an answer to the previous input
+    /// is discarded.
     suggest_generation: u64,
-    /// Показываемые подсказки.
+    /// The shown suggestions.
     suggest_items: Vec<ThemeItem>,
-    /// Фокус в строке поиска.
+    /// The focus is in the search line.
     suggest_focused: bool,
-    /// Выбранная строка выпадашки (-1 — ни одной).
+    /// The selected row of the drop-down (-1 — none).
     suggest_index: i64,
 
-    // ── Карточка пакета AUR ──
-    /// Открытый пакет AUR (у товара магазина и темы с диска — `None`).
+    // ── AUR package card ──
+    /// The open AUR package (`None` for a store item and a theme from disk).
     aur_detail: Option<Box<AurDetail>>,
 }
 
-/// Открытая карточка пакета AUR.
+/// The open AUR package card.
 #[derive(Debug, Clone, Default)]
 pub struct AurDetail {
-    /// Плитка, с которой открыли (до ответа RPC — всё, что известно).
+    /// The tile it was opened from (before the RPC answer — everything that is
+    /// known).
     pkg: AurPackage,
-    /// Паспорт RPC `info`.
+    /// The RPC `info` passport.
     info: Option<rexon_core::aur::AurInfo>,
-    /// Соисполнители со страницы пакета.
+    /// Co-maintainers from the package page.
     comaintainers: Vec<String>,
-    /// Почему паспорта нет (сеть, пакет удалён) — строкой для показа.
+    /// Why there is no passport (network, the package was removed) — as a line
+    /// for display.
     note: String,
-    /// Страницу пакета не дали — комментарии только на сайте.
+    /// The package page was not given — the comments are only on the site.
     comments_blocked: bool,
-    /// У сайта есть следующая страница комментариев.
+    /// The site has a next page of comments.
     comments_more: bool,
-    /// Проверка источника: запись кеша `aur_trust` (глубокая проверка и
-    /// снимки сопровождающего).
+    /// The source check: the `aur_trust` cache record (the deep check and the
+    /// maintainer's snapshots).
     trust: Option<rexon_core::aur_trust::CacheEntry>,
-    /// Проверка кончилась (с ответом или без).
+    /// The check finished (with an answer or without).
     trust_done: bool,
 }
 
 impl Default for AppearanceModelRust {
-    /// Стартовое состояние собирается здесь, а не в `initialize`, потому что
-    /// `rowCount` зовётся из QML раньше любого нашего кода. Раздел по
-    /// умолчанию — «Популярные» (первый в боковой панели ядра).
+    /// The initial state is assembled here, not in `initialize`, because
+    /// `rowCount` is called from QML before any of our code. The default section
+    /// is "Popular" (the first in the core's sidebar).
     fn default() -> Self {
         let home = home_dir();
         let sidebar = categories::sidebar(&home);
@@ -2453,8 +2509,8 @@ impl Default for AppearanceModelRust {
     }
 }
 
-/// Снять подписку на смену скина: реестр иначе держал бы запись закрытой
-/// вкладки до первой рассылки.
+/// Remove the skin change subscription: otherwise the registry would keep
+/// the entry of a closed tab until the first broadcast.
 impl Drop for AppearanceModelRust {
     fn drop(&mut self) {
         crate::skin::unwatch(self.skin_watch);
@@ -2462,8 +2518,8 @@ impl Drop for AppearanceModelRust {
 }
 
 impl AppearanceModelRust {
-    /// Размер страницы каталога: целые ряды сетки (`ap::grid_page_size`);
-    /// пока сетка не разложилась — серверные двадцать.
+    /// Catalogue page size: whole grid rows (`ap::grid_page_size`); until the
+    /// grid is laid out — the server's twenty.
     fn page_size(&self) -> u32 {
         if self.grid_cols == 0 {
             ap::PAGE_SIZE
@@ -2472,14 +2528,14 @@ impl AppearanceModelRust {
         }
     }
 
-    /// Раздел по ключу.
+    /// Section by key.
     fn category(&self, key: &str) -> Option<ThemeCategory> {
         self.sidebar.iter().find(|c| c.key == key).cloned()
     }
 }
 
 impl qobject::AppearanceModel {
-    // ── Неизменные подписи и числа ──────────────────────────────────────
+    // ── Fixed labels and numbers ────────────────────────────────────────
     fn window_title(&self) -> QString {
         QString::from(&ap::page_title())
     }
@@ -2627,27 +2683,27 @@ impl qobject::AppearanceModel {
         out
     }
 
-    /// `sty` раздела-группы — те же метрики и краски, что у разделов
-    /// «Настроек» (`settings_page::group_style`).
+    /// `sty` of a group section — the same metrics and colours as the
+    /// "Settings" sections (`settings_page::group_style`).
     fn section_styles(&self) -> QMap<QMapPair_QString_QVariant> {
         vmap(vec![("group", QVariant::from(&crate::settings_page::group_style()))])
     }
 
-    // ── Палитра ─────────────────────────────────────────────────────────
+    // ── Palette ─────────────────────────────────────────────────────────
     fn palette(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut out = QMap::<QMapPair_QString_QVariant>::default();
         for (key, value) in &ui_base::active_qml_palette() {
             out.insert(QString::from(key), qstr(value));
         }
-        // Цвет необратимого действия («🗑 Удалить») — одно решение на
-        // продукт, живёт в ядре вкладки «Расширения». Своей копии красного
-        // здесь не заводим (правило #12).
+        // The colour of an irreversible action ("🗑 Remove") — one decision for
+        // the product, it lives in the core of the "Extensions" tab. We do not
+        // create our own copy of the red here (rule #12).
         out.insert(
             QString::from("danger"),
             qstr(rexon_core::qt_extensions::DANGER_COLOR),
         );
-        // Цвет предупреждения — тот же, что во вкладке «Настройки»: им
-        // раздел «Панель MATE» помечает недостающие апплеты раскладки.
+        // The warning colour — the same as in the "Settings" tab: the "MATE panel"
+        // section marks the layout's missing applets with it.
         out.insert(QString::from("state_warn"), qstr(rexon_core::qt_settings::COLOR_WARN));
         out.insert(
             QString::from("danger_fill_alpha"),
@@ -2657,7 +2713,7 @@ impl qobject::AppearanceModel {
             QString::from("danger_fill_hover_alpha"),
             QVariant::from(&rexon_core::qt_extensions::DANGER_FILL_HOVER_ALPHA),
         );
-        // Затемнение фона под модальным окном — одно на продукт.
+        // Background dimming under a modal window — one for the product.
         out.insert(
             QString::from("modal_dim"),
             qstr(&ui_base::modal_dim_argb_hex()),
@@ -2665,26 +2721,26 @@ impl qobject::AppearanceModel {
         out
     }
 
-    // ── Боковая панель ──────────────────────────────────────────────────
+    // ── Sidebar ─────────────────────────────────────────────────────────
     fn sidebar_rows(&self) -> QList<QVariant> {
         let me = self.rust();
         let de = me.view.de.as_str();
         let mut out = QList::<QVariant>::default();
-        // Заголовок группы — у первой ВИДИМОЙ строки группы: скрытые в
-        // окружении разделы заголовка не уносят, а пустая группа не
-        // показывает его вовсе.
+        // A group header goes with the first VISIBLE row of the group: sections
+        // hidden in the environment do not take the header away, and an empty
+        // group does not show it at all.
         let mut last_group: Option<categories::SidebarGroup> = None;
-        // Раскладки mate-panel — только там, где панель на самом деле есть
-        // (сеанс MATE и сама программа).
+        // mate-panel layouts — only where the panel actually exists (a MATE
+        // session and the program itself).
         let mate_panel = rexon_core::mate_panel::is_available(
             &rexon_core::animations::SystemIo,
             &rexon_core::mate_panel::PanelCtx::for_look(),
         );
         for cat in categories::grouped_sidebar(&me.sidebar, de) {
-            // Разделы настроек действуют на стол, ВЫБРАННЫЙ в шапке
-            // (`animations::LookCtx::for_look`), — и видны по нему же, а не
-            // по запущенному: раньше они писали в сеанс, и при выборе
-            // другого стола говорили про чужой (08.11.2026).
+            // The settings sections act on the desktop CHOSEN in the header
+            // (`animations::LookCtx::for_look`) — and are visible by it too, not by the
+            // running one: previously they wrote into the session, and with another
+            // desktop chosen they talked about someone else's (08.11.2026).
             let available = categories::category_available_in(&cat.key, de, me.view.session)
                 && (cat.key != categories::MATE_PANEL_KEY || mate_panel);
             let group = categories::category_group(&cat.key, de);
@@ -2723,7 +2779,7 @@ impl qobject::AppearanceModel {
         QString::from(&ap::section_title(&cat.icon, &categories::display_name(cat, &view.de)))
     }
 
-    // ── Шапка ───────────────────────────────────────────────────────────
+    // ── Header ──────────────────────────────────────────────────────────
     fn chrome(&self) -> ap::Chrome {
         let me = self.rust();
         me.view.chrome()
@@ -2775,7 +2831,7 @@ impl qobject::AppearanceModel {
         QString::from(&serde_json::to_string(&banner).unwrap_or_default())
     }
     fn caveat_text(&self) -> QString {
-        // «ℹ️ …» — тот же вид подписи, что в оригинале (`_sync_de_caveat`).
+        // "ℹ️ …" — the same label form as in the original (`_sync_de_caveat`).
         match self.chrome().caveat {
             Some(note) => QString::from(&format!("ℹ️ {note}")),
             None => QString::default(),
@@ -2862,8 +2918,8 @@ impl qobject::AppearanceModel {
 
     fn source_chips(&self) -> QList<QVariant> {
         let view = &self.rust().view;
-        // «VSThemes» есть только в «Курсорах»; вне их выбранным рисуется
-        // источник, который действует на самом деле.
+        // "VSThemes" exists only in "Cursors"; outside them the source that
+        // actually applies is drawn as selected.
         let active = view.effective_source().to_string();
         let mut out = QList::<QVariant>::default();
         for chip in ap::source_chips_in(&view.category.key, view.axon) {
@@ -2904,7 +2960,7 @@ impl qobject::AppearanceModel {
         out
     }
 
-    /// Действующий фильтр тона раздела (`CatalogView::active_tone_filter`).
+    /// The section's active tone filter (`CatalogView::active_tone_filter`).
     fn active_tone_filter(&self) -> &'static str {
         self.rust().view.active_tone_filter()
     }
@@ -2913,15 +2969,16 @@ impl qobject::AppearanceModel {
         self.rust().view.tone_bar()
     }
 
-    /// Сужает ли выбранный фильтр сетку до установленного (тон, «Qt-стили /
-    /// Kvantum», «Запущенные» — правило одно, `CatalogView::installed_only`).
-    /// Под ним витрины магазина нет вовсе: ни плиток (магазина и AUR), ни
-    /// запроса за ней, ни её листалки, сортировки и выбора магазина.
+    /// Whether the chosen filter narrows the grid down to the installed items
+    /// (the tone, "Qt styles / Kvantum", "Running" — the rule is one,
+    /// `CatalogView::installed_only`). Under it there is no store showcase at
+    /// all: neither tiles (of the store and AUR), nor a request for it, nor its
+    /// pager, sort and store choice.
     fn installed_only(&self) -> bool {
         self.rust().view.installed_only()
     }
 
-    /// Чипы фильтра тона (`lp::tone_chips`).
+    /// Tone filter chips (`lp::tone_chips`).
     fn tone_chips(&self) -> QList<QVariant> {
         let active = self.active_tone_filter();
         let mut out = QList::<QVariant>::default();
@@ -2936,7 +2993,7 @@ impl qobject::AppearanceModel {
         out
     }
 
-    /// Чипы фильтра сетки «Стиля приложений» (`ap::style_filter_chips`).
+    /// Grid filter chips of "Application style" (`ap::style_filter_chips`).
     fn style_chips(&self) -> QList<QVariant> {
         let active = self.rust().view.style_filter();
         let mut out = QList::<QVariant>::default();
@@ -2974,7 +3031,7 @@ impl qobject::AppearanceModel {
         QString::from(&self.rust().view.de)
     }
 
-    // ── Экран, состояние, страницы ──────────────────────────────────────
+    // ── Screen, state, pages ────────────────────────────────────────────
     fn screen(&self) -> QString {
         QString::from(&self.rust().screen)
     }
@@ -3041,7 +3098,7 @@ impl qobject::AppearanceModel {
 }
 
 // ============================================================================
-// Модель плиток
+// Tile model
 // ============================================================================
 
 impl qobject::AppearanceModel {
@@ -3069,9 +3126,9 @@ impl qobject::AppearanceModel {
         self.role_of(&card, ROLE_NAMES.get(slot).copied())
     }
 
-    /// Значение одной роли плитки. Отдельно от `data`, чтобы тем же путём
-    /// отвечал `roleValueOf` — иначе проверки смотрели бы не туда, куда
-    /// смотрит делегат.
+    /// The value of one tile role. Separate from `data` so that `roleValueOf`
+    /// answers by the same path — otherwise the checks would look somewhere
+    /// other than the delegate does.
     fn role_of(&self, card: &Card, name: Option<&str>) -> QVariant {
         let Some(name) = name else {
             return QVariant::default();
@@ -3105,17 +3162,17 @@ impl qobject::AppearanceModel {
             "kind" => qstr(if local { "local" } else { "ocs" }),
             "itemId" => qstr(&item.id),
             "name" => qstr(ap::card_name(&item.name)),
-            // В витринах «Новые»/«Популярные» — ещё и вид вещи.
+            // In the "New"/"Popular" showcases — also the kind of thing.
             "author" => {
                 let showcase = !local
                     && matches!(self.rust().view.category.store, rexon_core::models::CatalogSource::OcsShowcase);
                 qstr(&ap::showcase_author(&self.rust().home, item, showcase))
             }
-            // Оценка и число загрузок бывают только у товара магазина: у темы
-            // с диска «★ 0.0 ⬇ 0» — бессмыслица, строку не показываем.
-            // У темы с диска строка оценки свободна: в ней отметка глобальной
-            // темы со своей раскладкой виджетов (как подпись плитки в KDE).
-            // У стиля Plasma без своих цветов — «Поддерживает цветовые схемы».
+            // A rating and a download count exist only for a store item: for a theme
+            // from disk "★ 0.0 ⬇ 0" is nonsense, and the line is not shown.
+            // For a theme from disk the rating line is free: it holds the mark of a
+            // global theme with its own widget layout (like the tile label in KDE).
+            // For a Plasma style without its own colours — "Supports colour schemes".
             "stats" if local => qstr(
                 &lp::follows_scheme_badge(&item.id, &item.install_path, self.active_tone_filter())
                     .unwrap_or_else(|| rexon_core::themes::lnf_tile_badge(&item.id, &item.install_path)),
@@ -3129,16 +3186,16 @@ impl qobject::AppearanceModel {
                 Some(tip) => qstr(&tip),
                 None => qstr(""),
             },
-            // Значок оценки — единственное цветное пятно стат-строки
-            // (#CardStar таблицы стилей); цвет берётся из палитры ключом
-            // `rating_star`, здесь только сам знак.
+            // The rating icon is the only coloured spot of the stats line (#CardStar of
+            // the style sheet); the colour is taken from the palette by the
+            // `rating_star` key, here there is only the sign itself.
             "starGlyph" if local => qstr(""),
             "starGlyph" => qstr(ap::card_star_glyph(item.rated_stars())),
             "preview" => qstr(&file_url(&tile_picture(&self.rust().previews, item))),
-            // У темы запасного знака нет: оригинал оставлял место картинки
-            // пустым, и выдумывать сюда своё — отсебятина.
+            // A theme has no fallback sign: the original left the picture place empty,
+            // and inventing something of our own here would be making things up.
             "previewText" => qstr(""),
-            // Местная тема источника не имеет — строка пустая.
+            // A local theme has no source — the line is empty.
             "metaLine" | "metaTooltip" => qstr(""),
             "soundTheme" => qstr(&ap::local_sound_theme(&item.id).unwrap_or_default()),
             "splashDemo" => qstr(&ap::local_splash_demo(&item.id).unwrap_or_default()),
@@ -3178,8 +3235,8 @@ impl qobject::AppearanceModel {
             }
             "current" => QVariant::from(&(local_kind == "active")),
             "favoriteText" | "favoriteState" => {
-                // «★ Избранное» есть и у местной темы: её тоже можно
-                // отложить (так в оригинале).
+                // "★ Favourites" exists for a local theme too: it can also be set aside
+                // (as in the original).
                 let btn = ap::favorite_button(self.rust().favorites.contains(&item.id));
                 if name == "favoriteText" {
                     qstr(&btn.text)
@@ -3191,10 +3248,10 @@ impl qobject::AppearanceModel {
         }
     }
 
-    /// Роли, в которых плитка Cinnamon Spices отличается от товара KDE
-    /// Store: «лайки» и дата правки вместо оценки и скачиваний, «Обновить»
-    /// при новой версии на сайте, предупреждение «может подвешивать
-    /// оболочку» (и у плитки установленного). `None` — как у всех.
+    /// Roles in which a Cinnamon Spices tile differs from a KDE Store item:
+    /// "likes" and the edit date instead of the rating and downloads, "Update"
+    /// on a new version on the site, the "may freeze the shell" warning (for an
+    /// installed tile too). `None` — as for everyone.
     fn spice_role(&self, item: &ThemeItem, local: bool, name: &str) -> Option<QVariant> {
         let x = self.rust().spices.get(&item.id)?;
         Some(match name {
@@ -3215,11 +3272,12 @@ impl qobject::AppearanceModel {
         })
     }
 
-    /// Роли плитки расширения GNOME (и с диска, и с витрины): пометки
-    /// оболочки вместо строки автора, «Включить/Выключить» по её правде,
-    /// «🗑» только у своего, «⚙️» и «⚠️» — у кого есть настройки и ошибка.
-    /// Расширение, которого оболочка не знает, — только пометка «после
-    /// перезахода», кнопки общие. `None` — как у всех.
+    /// Roles of a GNOME extension tile (both from disk and from the showcase):
+    /// the shell's marks instead of the author line, "Enable/Disable" by its
+    /// truth, "🗑" only for our own, "⚙️" and "⚠️" — for those with settings
+    /// and an error. An extension the shell does not know gets only the "after
+    /// re-login" mark, the buttons are the shared ones. `None` — as for
+    /// everyone.
     fn gnome_role(&self, item: &ThemeItem, name: &str) -> Option<QVariant> {
         let x = self.rust().gnome.get(&item.id)?;
         let known = x.shell_known;
@@ -3246,25 +3304,27 @@ impl qobject::AppearanceModel {
         })
     }
 
-    /// Страница плитки на сайте её магазина — Cinnamon Spices или
-    /// Wallhaven (пусто — плитка не оттуда, у KDE Store адрес свой).
+    /// The tile's page on its store's site — Cinnamon Spices or Wallhaven
+    /// (empty — the tile is not from there, the KDE Store has its own address).
     fn spice_page(&self, item_id: &str) -> Option<String> {
         let me = self.rust();
         me.spices
             .get(item_id)
             .map(|x| x.page.clone())
             .or_else(|| me.site.get(item_id).map(|x| x.page.clone()))
-            // Карточка Wallhaven из избранного приходит без строки ответа —
-            // адрес собирается из самого id.
+            // A Wallhaven card from favourites arrives without an answer row — the
+            // address is assembled from the id itself.
             .or_else(|| wh::parse_item_id(item_id).map(wh::page_url))
             .filter(|p| !p.is_empty())
     }
 
-    /// Что показать на плитке пакета `name` по очереди установок AUR.
+    /// What to show on the tile of package `name` by the AUR installation
+    /// queue.
     ///
-    /// Своя установка — по её стадии; пакет, который ставится в составе
-    /// идущего комплекта, — стадией комплекта (пока тот идёт). Установка,
-    /// удавшаяся до этой сессии, очередь не трогает: плитка как раньше.
+    /// Its own installation — by its stage; a package installed as part of a
+    /// running set — by the set's stage (while it runs). An installation that
+    /// succeeded before this session does not touch the queue: the tile is as
+    /// before.
     fn aur_job_state(&self, name: &str) -> Option<aur_install::CardJobState> {
         let jobs = &self.rust().aur_jobs;
         let job = jobs
@@ -3275,8 +3335,8 @@ impl qobject::AppearanceModel {
     }
 
     fn aur_role(&self, pkg: &AurPackage, name: &str) -> QVariant {
-        // Установка из очереди этой сессии перекрывает обычную кнопку:
-        // «В очереди», «Сборка…», «Повторить» (решение ядра).
+        // An installation from this session's queue overrides the ordinary button:
+        // "Queued", "Building…", "Retry" (the core's decision).
         const JOB_ROLES: &[&str] = &[
             "buttonText",
             "buttonEnabled",
@@ -3307,10 +3367,10 @@ impl qobject::AppearanceModel {
             "author" => qstr(ap::card_author(&pkg.maintainer)),
             "stats" => qstr(&ap::aur_stats_line(pkg.votes, pkg.popularity, &day)),
             "statsTooltip" => qstr(&ap::aur_stats_tooltip(pkg.votes, pkg.popularity, &day)),
-            // У пакета AUR оценка — голоса, и знак у неё свой.
+            // For an AUR package the rating is votes, and it has its own sign.
             "starGlyph" => qstr("👍"),
-            // Картинка плитки; файл шрифта картинкой не показывается — им
-            // рисуется образец текста (`previewFont`).
+            // The tile picture; a font file is not shown as a picture — a text sample
+            // is drawn with it (`previewFont`).
             "preview" | "previewFont" => {
                 let path = self
                     .rust()
@@ -3327,9 +3387,9 @@ impl qobject::AppearanceModel {
             "mixBadge" => qstr(&ap::aur_mix_badge(&self.rust().view, &pkg.category)),
             "mixBadgeTooltip" => qstr(&ap::aur_mix_badge_tooltip()),
             "previewText" => qstr(pkg.icon()),
-            // Признаки риска: значок перед строкой источника, список — в
-            // подсказке. «Устарел» строка уже говорит словами — значком
-            // его не дублируем.
+            // Risk signals: an icon before the source line, the list in the tooltip.
+            // The line already says "Outdated" in words — we do not duplicate it with
+            // an icon.
             "metaLine" => {
                 let risks = aur_tile_signals(pkg);
                 let mark = if risks.iter().any(|s| s.key != "out_of_date") {
@@ -3360,8 +3420,8 @@ impl qobject::AppearanceModel {
             }
             "buttonState" => qstr(if pkg.installed { "true" } else { "false" }),
             "aurNote" | "aurNoteTooltip" | "aurLog" => qstr(""),
-            // Пакет AUR в избранное не откладывается: избранное — это
-            // товары магазина и темы с диска.
+            // An AUR package is not set aside into favourites: favourites are store
+            // items and themes from disk.
             "favoriteText" | "favoriteState" => qstr(""),
             "soundTheme" | "splashDemo" => qstr(""),
             "removeVisible" | "removeEnabled" | "current" => QVariant::from(&false),
@@ -3374,8 +3434,8 @@ impl qobject::AppearanceModel {
     fn button_colors(&self, state: &QString) -> QMap<QMapPair_QString_QVariant> {
         let (bg, fg, border) = ap::card_button_colors(&state.to_string());
         let skin = ui_base::active_skin_colors();
-        // Значение с решёткой — готовый цвет; без решётки — имя токена
-        // действующего скина (контракт `card_button_colors`).
+        // A value with a hash is a ready colour; without a hash — the name of a
+        // token of the active skin (the `card_button_colors` contract).
         let resolve = |v: &str| -> String {
             if v.is_empty() || v.starts_with('#') {
                 v.to_string()
@@ -3393,8 +3453,8 @@ impl qobject::AppearanceModel {
     fn control_colors(&self, kind: &QString) -> QMap<QMapPair_QString_QVariant> {
         let skin = ui_base::active_skin_colors();
         let c = ap::control_colors(&kind.to_string());
-        // Значения таблицы — ИМЕНА токенов действующего скина: своих красок
-        // ни ядро отсюда, ни разметка не заводят.
+        // The table values are NAMES of tokens of the active skin: neither the
+        // core from here nor the markup creates colours of their own.
         let token = |name: &str| -> String {
             if name.is_empty() {
                 String::new()
@@ -3435,9 +3495,10 @@ impl qobject::AppearanceModel {
         self.rust().requests.busy()
     }
 
-    /// Плитка «без превью» — та, чьи роли `preview` и `previewFont` пусты:
-    /// ровно её делегат и рисует без снимка (знак и честная подпись).
-    /// Образец шрифта (`previewFont`) — превью.
+    /// A tile "without a preview" is one whose `preview` and `previewFont`
+    /// roles are empty: exactly that one the delegate draws without a
+    /// screenshot (a sign and an honest label). A font sample (`previewFont`)
+    /// is a preview.
     fn tour_tiles(&self) -> QMap<QMapPair_QString_QVariant> {
         let me = self.rust();
         let empty = |c: &Card, role: &str| self.role_of(c, Some(role)).value::<QString>().is_none_or(|v| v.is_empty());
@@ -3452,47 +3513,49 @@ impl qobject::AppearanceModel {
 }
 
 // ============================================================================
-// Действия страницы
+// Page actions
 // ============================================================================
 
 impl qobject::AppearanceModel {
-    /// Пересобрать всё, что зависит от состояния каталога, и позвать за
-    /// данными. Один вход — чтобы ни один переключатель не забыл про
-    /// половину страницы (это и был `_update_chrome` + `_reload` оригинала).
+    /// Rebuild everything that depends on the catalogue state, and call for
+    /// data. One entry — so that no switch forgets half of the page (this was
+    /// the original's `_update_chrome` + `_reload`).
     fn resync(mut self: Pin<&mut Self>) {
-        // Род сеанса выбранного стола — для разделов, возможных только на
-        // X11 или только на Wayland: стол сеанса — как есть, выбранный
-        // вручную — его род (`LookCtx::for_chosen`).
+        // The session kind of the chosen desktop — for sections possible only on
+        // X11 or only on Wayland: the session desktop as is, a manually chosen one
+        // — its kind (`LookCtx::for_chosen`).
         {
             let de = self.rust().view.de.clone();
             let wayland = rexon_core::animations::LookCtx::from_env().for_chosen(&de).wayland;
             self.as_mut().rust_mut().view.session = categories::Session::from_wayland(wayland);
         }
-        // Найден ли Razer Axon — для его чипа и блока настроек в разделе
-        // обоев: Axon могли поставить (или указать папку) при открытом окне.
-        // Проба — обход известных префиксов Wine, только в разделе с
-        // источником.
+        // Whether Razer Axon is found — for its chip and the settings block in the
+        // wallpaper section: Axon may have been installed (or its folder
+        // specified) with the window open. The probe walks the known Wine
+        // prefixes, only in the section with the source.
         if rexon_core::axon_window::has_section(&self.rust().view.category.key) {
             let axon = rexon_core::axon_window::show_source_live();
             self.as_mut().rust_mut().view.axon = axon;
         }
-        // Есть ли программа Conky — для подписи её раздела: после установки
-        // виджета (и программы вместе с ним) подпись обязана смениться.
+        // Whether the Conky program is present — for its section's label: after
+        // installing a widget (and the program with it) the label must change.
         if self.rust().view.category.key == "conky" {
             let installed = rexon_core::de_apply::have_conky();
             let installable = rexon_core::de_apply::live_conky_package().is_some();
             let mut me = self.as_mut().rust_mut();
             me.view.conky_installed = installed;
             me.view.conky_installable = installable;
-            // Сеанс глазами conky: через XWayland оговорка про Wayland не нужна.
+            // The session through conky's eyes: through XWayland the caveat about
+            // Wayland is not needed.
             me.view.wayland = rexon_core::conky_overlay::conky_ctx(
                 &rexon_core::animations::SystemIo,
                 &rexon_core::de_apply::Ctx::live(),
             )
             .wayland;
         }
-        // Витрины нет у объяснения («раздела нет в этом столе», «закрыто на
-        // SteamOS») и у панели Plasma Login Manager: в магазин не ходим.
+        // An explanation ("this section is not in this desktop", "closed on
+        // SteamOS") and the Plasma Login Manager panel have no showcase: we do not
+        // go to the store.
         let screen = {
             let me = self.rust();
             me.view.screen(&me.home)
@@ -3521,11 +3584,11 @@ impl qobject::AppearanceModel {
         }
     }
 
-    /// Раздел «Курсоры» открыт: в фоне перевести заново установленные темы
-    /// «из Windows», которых касается исправление переводчика
-    /// (`ext_exec::refresh_windows_cursors_live`; решение Wehrwolfmann
-    /// 14.11.2026). Один раз за жизнь окна: переведённые получают текущую
-    /// версию, повторный проход ничего бы не нашёл.
+    /// The "Cursors" section is open: in the background re-convert the
+    /// installed themes "from Windows" affected by the converter fix
+    /// (`ext_exec::refresh_windows_cursors_live`; Wehrwolfmann's decision of
+    /// 14.11.2026). Once per window life: the converted ones get the current
+    /// version, and a repeated pass would find nothing.
     fn refresh_windows_cursors_once(self: Pin<&mut Self>) {
         use std::sync::atomic::{AtomicBool, Ordering};
         static STARTED: AtomicBool = AtomicBool::new(false);
@@ -3546,8 +3609,8 @@ impl qobject::AppearanceModel {
         }
     }
 
-    /// Итог перевода заново: раздел с установленным перечитать с диска,
-    /// строку итога показать поверх ответа.
+    /// The outcome of the re-conversion: re-read the section with installed
+    /// items from disk, show the outcome line over the answer.
     fn windows_cursors_refreshed(mut self: Pin<&mut Self>, text: &str) {
         let reload = {
             let me = self.rust();
@@ -3562,7 +3625,7 @@ impl qobject::AppearanceModel {
         }
     }
 
-    /// Опустошить сетку.
+    /// Empty the grid.
     fn clear_cards(mut self: Pin<&mut Self>) {
         unsafe {
             self.as_mut().begin_reset_model();
@@ -3572,8 +3635,8 @@ impl qobject::AppearanceModel {
         self.as_mut().count_changed();
     }
 
-    /// Завести новый запрос каталога и сказать странице, что пора идти к
-    /// хозяину. Ключ и поколение считает ядро.
+    /// Start a new catalogue request and tell the page it is time to go to the
+    /// host. The key and the generation are computed by the core.
     fn start_request(mut self: Pin<&mut Self>) {
         let (key, busy_status) = {
             let me = self.rust();
@@ -3594,8 +3657,9 @@ impl qobject::AppearanceModel {
             me.status = busy_status;
         }
         self.as_mut().status_changed();
-        // Картинки прежнего раздела человеку больше не нужны, а канал нужен
-        // новому: очередь меняет поколение, хозяин обрывает летящее.
+        // The user no longer needs the previous section's pictures, while the new
+        // one needs the channel: the queue changes the generation, and the host
+        // aborts what is in flight.
         self.as_mut().cancel_previews();
         self.as_mut().catalog_wanted();
     }
@@ -3606,16 +3670,16 @@ impl qobject::AppearanceModel {
         };
         {
             let mut me = self.as_mut().rust_mut();
-            // Стили Qt и действующий стиль страница больше не держит: сетку
-            // «Стиля приложений» собирает скан хозяина (`scan_disk`), а
-            // текущий стиль отмечает сам скан.
+            // The page no longer keeps the Qt styles and the active style: the
+            // "Application style" grid is assembled by the host's scan (`scan_disk`),
+            // and the scan itself marks the current style.
             me.aur_helper = v
                 .get("aurHelper")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
         }
-        // Рабочий стол: фактически запущенный побеждает запомненный выбор —
-        // решение принимает ядро (`initial_de`).
+        // The desktop: the actually running one wins over the remembered choice —
+        // the decision is made by the core (`initial_de`).
         let choice = ap::initial_de(s(&v, "detectedDe"), s(&v, "savedDe"), s(&v, "seenDe"));
         {
             let mut me = self.as_mut().rust_mut();
@@ -3635,9 +3699,10 @@ impl qobject::AppearanceModel {
         let flag = |k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
         let (plasma_login, steamos, can_open) =
             (flag("plasmaLogin"), flag("steamos"), flag("canOpen"));
-        // Задет ли открытый раздел: он сменил вид (SDDM ↔ Plasma Login
-        // Manager) или закрылся/открылся на SteamOS. Незадетый раздел не
-        // перечитываем — витрина осталась бы та же, а запрос ушёл бы зря.
+        // Whether the open section is affected: it changed its kind (SDDM ↔ Plasma
+        // Login Manager) or closed/opened on SteamOS. An unaffected section is not
+        // re-read — the showcase would stay the same, and the request would go out
+        // for nothing.
         let touched = {
             let mut me = self.as_mut().rust_mut();
             let key = me.view.category.key.clone();
@@ -3652,12 +3717,12 @@ impl qobject::AppearanceModel {
             me.view.steamos = steamos;
             me.sidebar = categories::sidebar_for(&me.home, plasma_login);
             let mut touched = me.view.steamos_blocked() != was_blocked;
-            // Открытую деталь товара не выдёргиваем из-под человека: раздел
-            // пересоберётся, когда он из неё выйдет в другой.
+            // We do not pull the open item detail out from under the user: the section
+            // will be rebuilt when they leave it for another one.
             let in_detail = me.screen == "detail";
             if !in_detail && !me.sidebar.iter().any(|c| c.key == key) {
-                // Открыт был раздел экрана входа прежнего вида — встаём в
-                // новый на том же месте панели.
+                // The login screen section of the previous kind was open — we move into
+                // the new one at the same place of the panel.
                 let login = [categories::PLASMA_LOGIN_KEY, "sddm"];
                 if let Some(cat) = me
                     .sidebar
@@ -3676,14 +3741,14 @@ impl qobject::AppearanceModel {
             touched && !in_detail
         };
         if touched {
-            // Раздел сменил вид — плитки прежнего вида уходят сразу, как и
-            // при выборе раздела (`select_category`).
+            // The section changed its kind — the tiles of the previous kind go away at
+            // once, as when choosing a section (`select_category`).
             self.as_mut().clear_cards();
             self.as_mut().resync();
         } else {
             self.as_mut().sidebar_changed();
             self.as_mut().screen_changed();
-            // Пояснение «сейчас его показывает …» у открытого раздела входа.
+            // The note "it is now shown by …" for the open login section.
             self.as_mut().chrome_changed();
         }
     }
@@ -3711,43 +3776,46 @@ impl qobject::AppearanceModel {
             me.view.page = 0;
             me.view.total = 0;
             me.total = 0;
-            // «Есть ли следующая страница» — ответ ПРЕЖНЕГО раздела. Без
-            // сброса листалка нового раздела, пока его каталог не пришёл,
-            // считала страницы по чужому ответу: «Страница 1 / 2» над пустой
-            // сеткой (живая проверка 15.11.2026, «GTK-темы» после «Обоев HD»).
+            // "Whether there is a next page" is the answer of the PREVIOUS section.
+            // Without a reset the new section's pager, until its catalogue arrived,
+            // counted pages by someone else's answer: "Page 1 / 2" over an empty grid
+            // (live check of 15.11.2026, "GTK themes" after "HD Wallpapers").
             me.has_more = None;
-            // Запрос принадлежит разделу, из которого ушли: тащить его
-            // дальше значит открыть соседний раздел уже отфильтрованным по
-            // забытому слову. Оригинал на виджетах чистит и поле, и запрос
-            // (`_select_category`); строку поиска подтягивает разметка по
+            // The query belongs to the section that was left: carrying it further
+            // means opening the neighbouring section already filtered by a forgotten
+            // word. The original on widgets clears both the field and the query
+            // (`_select_category`); the markup pulls in the search line by
             // `chromeChanged`.
             me.view.query.clear();
-            // Под-выбор «вида» принадлежит разделу «Стиль приложений»:
-            // уходя из него, забываем, чтобы он не тянулся в чужой раздел.
+            // The "kind" sub-choice belongs to the "Application style" section:
+            // leaving it, we forget it so that it does not drag into another section.
             me.view.style_sub = None;
-            // Чип «Запущенные» принадлежит разделу Conky.
+            // The "Running" chip belongs to the Conky section.
             me.view.running_only = false;
-            // Фильтр тона — своему разделу (у Plasma он тоже не помнится).
+            // The tone filter belongs to its section (Plasma does not remember it
+            // either).
             me.view.tone_filter.clear();
-            // Вид «⚙️ Настройки» принадлежит разделу («Шрифты», «Значки», «Курсоры»):
-            // вернувшись, человек видит каталог, как при первом заходе.
+            // The «⚙️ Settings» view belongs to the section ("Fonts", "Icons",
+            // "Cursors"): coming back, the user sees the catalogue, as on the first
+            // visit.
             me.view.section_settings = false;
             me.requests.forget_page_prefetches();
         }
-        // Открытая карточка темы принадлежит разделу, из которого ушли: под
-        // шапкой нового раздела она оставалась на экране (приёмка
-        // 10.10.2026: шапка «Обои-плагины», внутри — тема экрана входа).
+        // The open theme card belongs to the section that was left: under the new
+        // section's header it stayed on screen (acceptance of 10.10.2026: the
+        // header "Plugin wallpapers", inside — a login screen theme).
         if self.rust().screen == "detail" {
             self.as_mut().close_detail();
         }
-        // Плитки тоже принадлежат разделу, из которого ушли: пока едет
-        // каталог нового («⏳ Загрузка каталога…»), под его шапкой стояли
-        // значки и курсоры «Активных» (приёмка 24.10.2026, «GTK-темы»).
-        // Сетку опустошаем сразу; из кеша новый раздел заполнит её мгновенно.
+        // The tiles also belong to the section that was left: while the new one's
+        // catalogue is on its way ("⏳ Loading the catalogue…"), the icons and
+        // cursors of "Active" stood under its header (acceptance of 24.10.2026,
+        // "GTK themes"). We empty the grid at once; the new section will fill it
+        // instantly from the cache.
         self.as_mut().clear_cards();
         self.as_mut().resync();
-        // Открыл раздел — сразу греем следующий: при переключении он
-        // откроется из кеша мгновенно (прогрессивность оригинала).
+        // A section was opened — we immediately warm up the next one: on switching
+        // it will open instantly from the cache (the original's progressiveness).
         self.prioritize_prefetch();
     }
 
@@ -3758,14 +3826,15 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.view.section_settings = !me.view.section_settings;
-            // Поиск принадлежит каталогу: в настройках его строки нет, и
-            // забытое слово не должно встретить человека по возвращении.
+            // The search belongs to the catalogue: the settings have no search line,
+            // and a forgotten word must not greet the user on coming back.
             me.view.query.clear();
         }
         if self.rust().screen == "detail" {
             self.as_mut().close_detail();
         }
-        // Плитки уходят сразу (экран настроек), обратно — из кеша.
+        // The tiles go away at once (the settings screen), and come back from the
+        // cache.
         self.as_mut().clear_cards();
         self.as_mut().resync();
     }
@@ -3817,8 +3886,8 @@ impl qobject::AppearanceModel {
                 return;
             }
             me.view.tone_filter = key;
-            // Установленное приходит только с первой страницей магазина:
-            // под фильтром со второй страницы сетка осталась бы пустой.
+            // The installed items come only with the first store page: under a filter
+            // from the second page on the grid would stay empty.
             me.view.page = 0;
         }
         self.resync();
@@ -3841,8 +3910,8 @@ impl qobject::AppearanceModel {
         let picked = de_id.to_string();
         {
             let mut me = self.as_mut().rust_mut();
-            // «Определять автоматически» — стол сеанса; подпись ручного
-            // выбора снимается и тогда, когда стол каталога тот же.
+            // "Detect automatically" is the session desktop; the manual choice label
+            // is removed even when the catalogue desktop is the same.
             let (de_id, _) = ap::resolve_de_pick(&picked, &me.detected_de);
             let choices = ap::de_picker_choices(&de_id, &me.detected_de);
             if me.view.de == de_id && me.de_choices == choices {
@@ -3859,25 +3928,26 @@ impl qobject::AppearanceModel {
 
     fn set_query(mut self: Pin<&mut Self>, text: &QString) {
         let text = text.to_string();
-        // Что делать с набранным, решает ядро (`CatalogView::edit_query`):
-        // поиск применяется по Enter, а ОЧИСТКА поля сбрасывает запрос
-        // сразу — иначе запрос залипал на прошлом слове при визуально
-        // пустом поле, и каталог оставался пустым навсегда.
+        // What to do with what was typed is decided by the core
+        // (`CatalogView::edit_query`): the search is applied on Enter, while
+        // CLEARING the field resets the query at once — otherwise the query stuck
+        // on the previous word with a visually empty field, and the catalogue
+        // stayed empty forever.
         let outcome = self.as_mut().rust_mut().view.edit_query(&text);
         match outcome {
-            // Набранное записано, ждём Enter. Шапку НЕ трогаем: свойство
-            // `query` держит текст самого поля, и перезапись его на ходу
-            // прыгала бы кареткой.
+            // What was typed is recorded, we wait for Enter. We do NOT touch the
+            // header: the `query` property holds the text of the field itself, and
+            // overwriting it on the go would make the caret jump.
             ap::QueryEdit::Idle => {}
-            // Обзоры диска ищут по уже прочитанному списку — без сети и
-            // мгновенно, поэтому отбирают сразу при наборе, как страницы
-            // KDE. Магазин посимвольно не дёргаем: страница применит слово
-            // `submitQuery` после паузы ядра (`searchDelayMs`) или по Enter.
+            // Disk overviews search over the already read list — without the network
+            // and instantly, so they filter right while typing, like the KDE pages. We
+            // do not poke the store per character: the page will apply the word with
+            // `submitQuery` after the core's pause (`searchDelayMs`) or on Enter.
             //
-            // Шапка оповещается и тогда: свойство `query` обязано идти за
-            // ядром, иначе после смены раздела (там запрос сбрасывается)
-            // поле не замечало сброса — для него запрос и раньше был пуст,
-            // — и забытое слово оставалось в поле (19.10.2026, «MishMty»).
+            // The header is notified then too: the `query` property must follow the
+            // core, otherwise after a section change (where the query is reset) the
+            // field did not notice the reset — for it the query was empty before as
+            // well — and the forgotten word stayed in the field (19.10.2026, "MishMty").
             ap::QueryEdit::Kept => {
                 if self.rust().view.search_delay_ms() == 0 {
                     self.as_mut().rust_mut().view.page = 0;
@@ -3906,12 +3976,12 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.requests.forget_page_prefetches();
-            // «Обновить» у Cinnamon Spices и Wallhaven — заново спросить
-            // сайт, а не кеш.
+            // "Refresh" for Cinnamon Spices and Wallhaven — ask the site again, not
+            // the cache.
             me.site_force = me.view.own_site_store();
-            // «Обновить» у сетки установленного — заново прочитать диск и
-            // журнал установленных, а не отдать прежний скан из кеша: иначе
-            // тема, положенная мимо Rexon, появлялась только после перезапуска.
+            // "Refresh" for the installed grid — read the disk and the installed
+            // journal again rather than giving the previous scan from the cache:
+            // otherwise a theme put bypassing Rexon appeared only after a restart.
             if me.view.is_local() || me.view.installed_view() {
                 me.catalog_fresh = true;
             }
@@ -3930,8 +4000,8 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.view.running_only = on;
-            // Под «Запущенными» магазина нет (`installed_only`), а
-            // установленное приходит с первой страницей.
+            // Under "Running" there is no store (`installed_only`), and the installed
+            // items come with the first page.
             me.view.page = 0;
         }
         self.refresh();
@@ -3944,7 +4014,7 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.view.ego_compatible_only = on;
-            // Другой фильтр — другая выдача: листать её с начала.
+            // A different filter means different results: page them from the start.
             me.view.page = 0;
         }
         self.as_mut().chrome_changed();
@@ -3966,8 +4036,8 @@ impl qobject::AppearanceModel {
             let mut me = self.as_mut().rust_mut();
             me.view.page = ap::page_after_resize(me.view.page, old, new);
         }
-        // Листается только витрина магазина; местным разделам размер
-        // страницы не нужен, и перезапрос там был бы лишним сканом диска.
+        // Only the store showcase is paged; local sections do not need the page
+        // size, and a re-request there would be a needless disk scan.
         if self.pagination_visible() {
             self.resync();
         }
@@ -3991,9 +4061,9 @@ impl qobject::AppearanceModel {
 
     fn catalog_request(mut self: Pin<&mut Self>) -> QString {
         let outcome = self.as_mut().rust_mut().requests.fire();
-        // Запрос, который НЕ ушёл в сеть, — в журнал: «⏳ Загрузка каталога…»
-        // навсегда при молчащей сети (15.11.2026) иначе не отличить от
-        // запроса, который и не просили.
+        // A request that did NOT go to the network goes into the log: otherwise
+        // "⏳ Loading the catalogue…" forever with a silent network (15.11.2026)
+        // is indistinguishable from a request that was never asked for.
         match &outcome {
             ap::FireOutcome::Deduplicated { key } => {
                 rexon_core::log_info!("appearance", "каталог {key}: уже летит, второй запрос не шлю");
@@ -4023,7 +4093,7 @@ impl qobject::AppearanceModel {
             "lockMode": me.view.lock_mode_effective(),
             "egoCompatibleOnly": me.view.ego_compatible_only,
             "de": me.view.de,
-            // Обойти кеш сканов диска: тему только что применили.
+            // Bypass the disk scan cache: a theme was just applied.
             "fresh": me.catalog_fresh,
             "force": me.site_force,
         });
@@ -4037,18 +4107,19 @@ impl qobject::AppearanceModel {
             return;
         };
         let key = s(&v, "key").to_string();
-        // Ответ раздела, с которого человек уже ушёл, молча отбрасывается —
-        // ключ и поколение сверяет ядро. ⚠️ `answer` отвечает «УСТАРЕЛ ЛИ»,
-        // а не «принять ли»: с отрицанием сюда не проходил ни один свежий
-        // ответ, и витрина оставалась пустой при живом хозяине.
+        // An answer of a section the user has already left is silently discarded
+        // — the key and the generation are compared by the core. Warning: `answer`
+        // answers "IS IT STALE", not "should it be accepted": with the negation not
+        // a single fresh answer got through here, and the showcase stayed empty
+        // with a live host.
         if self.as_mut().rust_mut().requests.answer(&key) {
             rexon_core::log_info!("appearance", "каталог {key}: ответ устарел, отброшен");
             return;
         }
-        // У раздела без витрины (объяснение, панели экрана входа и MATE,
-        // разделы настроек) сетки нет: запоздавший ответ прежнего раздела
-        // (из кеша он приходит без отправителя и считается свежим) писал
-        // над разделом «Кнопки заголовка окна: 0».
+        // A section without a showcase (an explanation, the login screen and MATE
+        // panels, settings sections) has no grid: a late answer of the previous
+        // section (from the cache it comes without a sender and counts as fresh)
+        // wrote "Window title buttons: 0" over the section.
         if !matches!(self.rust().screen.as_str(), ap::SCREEN_GRID | "detail") {
             return;
         }
@@ -4058,14 +4129,14 @@ impl qobject::AppearanceModel {
             for raw in list {
                 if let Ok(item) = serde_json::from_value::<ThemeItem>(raw.clone()) {
                     let mut item = item;
-                    // Местные темы приезжают со своим видом (`localKind`):
-                    // у них другая кнопка и другой бейдж.
+                    // Local themes arrive with their own kind (`localKind`): they have a
+                    // different button and a different badge.
                     if let Some(kind) = raw.get("localKind").and_then(Value::as_str) {
                         if !kind.is_empty() {
                             item.local_kind = Some(kind.to_string());
                         }
                     }
-                    // Имя без перевода — для поиска по оригинальному названию.
+                    // The name without translation — for searching by the original name.
                     if let Some(src) = raw.get("sourceName").and_then(Value::as_str) {
                         item.source_name = src.to_string();
                     }
@@ -4100,8 +4171,8 @@ impl qobject::AppearanceModel {
                 }
             }
         }
-        // Открытое расширение GNOME включили, выключили или оно упало:
-        // кнопки подробностей — по свежему слову оболочки.
+        // The open GNOME extension was enabled, disabled or crashed: the details
+        // buttons follow the shell's fresh word.
         let gnome_detail = {
             let me = self.rust();
             me.detail.as_ref().is_some_and(|d| me.gnome.contains_key(&d.id))
@@ -4116,13 +4187,13 @@ impl qobject::AppearanceModel {
                 }
             }
         }
-        // Действующий запрос обязателен ДЛЯ ВСЕХ тем с диска, откуда бы они
-        // в сетку ни пришли: и для раздела-обзора целиком, и для
-        // установленных тем, доклеенных сверху магазина в «Сплэш-экране» и
-        // «Экране блокировки». Раньше поиск замечал только витрину магазина,
-        // и рядом с одной найденной темой стояли все установленные.
-        // Карточки магазина этой меркой не трогаем: там отбор сделан на
-        // стороне магазина и по своим полям (описание, метки).
+        // The active query is mandatory FOR ALL themes from disk, wherever they
+        // came into the grid from: both for a whole overview section and for the
+        // installed themes glued on top of the store in "Splash screen" and "Lock
+        // screen". Previously the search noticed only the store showcase, and next
+        // to one found theme stood all the installed ones.
+        // We do not touch the store cards with this yardstick: there the selection
+        // is done on the store's side and by its own fields (description, tags).
         {
             let query = self.rust().view.query.clone();
             if !query.is_empty() {
@@ -4133,10 +4204,10 @@ impl qobject::AppearanceModel {
                     _ => true,
                 });
             }
-            // Фильтр тона цветовых схем и стилей Plasma (решение —
-            // `lp::tone_passes`). Тон знаем только у тем с диска: витрина
-            // магазина под сеткой при выбранном фильтре уходит, иначе под
-            // «Тёмными» стояли бы светлые схемы магазина.
+            // The tone filter of colour schemes and Plasma styles (the decision is
+            // `lp::tone_passes`). We know the tone only for themes from disk: the store
+            // showcase under the grid goes away with a filter chosen, otherwise light
+            // store schemes would stand under "Dark".
             if self.tone_bar_visible() {
                 let filter = self.active_tone_filter();
                 if filter != lp::TONE_ALL {
@@ -4146,13 +4217,13 @@ impl qobject::AppearanceModel {
                     });
                 }
             }
-            // «Запущенные»: виджеты Conky с процессом сейчас (у них вид
-            // плитки «active»), без магазина.
+            // "Running": Conky widgets with a process right now (they have the
+            // "active" tile kind), without the store.
             if self.rust().view.running_only {
                 cards.retain(|c| matches!(c, Card::Theme(it) if it.local_kind.as_deref() == Some("active")));
             }
-            // Любой фильтр «только установленное» (`installed_only`):
-            // плиток магазина в сетке нет, даже если ответ их принёс.
+            // Any "installed only" filter (`installed_only`): there are no store tiles
+            // in the grid, even if the answer brought them.
             if self.installed_only() {
                 cards.retain(|c| matches!(c, Card::Theme(it) if it.local_kind.is_some()));
             }
@@ -4162,9 +4233,9 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.has_more = has_more;
-            // Карточки экрана блокировки приезжают из чужих каталогов —
-            // ядро переписывает им категорию, чтобы установщик тронул
-            // именно компонент блокировки, а не всю тему.
+            // Lock screen cards arrive from other catalogues — the core rewrites their
+            // category so that the installer touches exactly the lock component, not
+            // the whole theme.
             let lock_mode = me.view.lock_mode_effective().to_string();
             if me.view.category.key == "lockscreen" {
                 let mut items: Vec<ThemeItem> = cards
@@ -4193,22 +4264,23 @@ impl qobject::AppearanceModel {
             self.as_mut().rust_mut().cards = cards;
             self.as_mut().end_reset_model();
         }
-        // Подпись состояния зависит от вида раздела — решение у ядра.
+        // The state label depends on the section kind — the decision is the
+        // core's.
         let status = {
             let me = self.rust();
             let query = me.view.query.trim();
             if !error.is_empty() {
                 error
             } else if !query.is_empty() {
-                // Действует поиск — так и сказать: обычное «Найдено» над
-                // одной плиткой выглядело как пропавший магазин.
+                // A search is active — say so: an ordinary "Found" over one tile looked
+                // like a missing store.
                 let installed = me
                     .cards
                     .iter()
                     .filter(|c| matches!(c, Card::Theme(it) if it.local_kind.is_some()))
                     .count() as i64;
-                // Под фильтром «только установленное» магазина нет —
-                // нашлось ровно показанное.
+                // Under the "installed only" filter there is no store — exactly what is
+                // shown was found.
                 let found = if me.view.is_local() || me.view.installed_only() {
                     shown as i64
                 } else if me.view.installed_view() {
@@ -4218,19 +4290,18 @@ impl qobject::AppearanceModel {
                 };
                 ap::search_status(query, found)
             } else if shown == 0 && me.view.is_local() && !me.view.query.trim().is_empty() {
-                // Поиск по установленному ничего не нашёл — сказать это
-                // словами, а не «Установлено: 0» над пустой сеткой.
+                // The search over the installed ones found nothing — say so in words, not
+                // "Installed: 0" over an empty grid.
                 ap::catalog_status(0, 0)
             } else if me.view.installed_view() {
-                // Установленное сверху, магазин под ним: обе части.
+                // Installed ones on top, the store under them: both parts.
                 let installed = me
                     .cards
                     .iter()
                     .filter(|c| matches!(c, Card::Theme(it) if it.local_kind.is_some()))
                     .count();
-                // Под фильтром «только установленное» витрины магазина нет
-                // (`installed_only`) — «Ничего не найдено» про неё было бы
-                // неправдой.
+                // Under the "installed only" filter there is no store showcase
+                // (`installed_only`) — "Nothing found" about it would be untrue.
                 if me.view.installed_only() {
                     ap::installed_status(installed)
                 } else {
@@ -4254,14 +4325,16 @@ impl qobject::AppearanceModel {
         self.as_mut().count_changed();
         self.as_mut().status_changed();
         self.as_mut().page_changed();
-        // Местным темам без своей картинки рисуем кадр — до сети, а не после:
-        // сети им и не нужно, а плитка не должна секунду стоять пустой.
+        // For local themes without their own picture we draw a frame — before the
+        // network, not after: they do not need the network, and a tile must not
+        // stand empty for a second.
         self.as_mut().draw_local_placeholders();
-        // Картинки показанной страницы — все разом, а не по одной на плитку:
-        // сколько их лететь одновременно и в каком порядке, решает очередь
-        // ядра, и живая плитка всегда обгоняет фоновый прогрев.
+        // Pictures of the shown page — all at once, not one per tile: how many fly
+        // at once and in what order is decided by the core's queue, and a live tile
+        // always overtakes the background warm-up.
         self.as_mut().enqueue_page_previews();
-        // …и следом кеш следующей страницы, чтобы «Вперёд» открылось без сети.
+        // …and then the cache of the next page, so that "Forward" opens without
+        // the network.
         self.as_mut().prefetch_next_page();
     }
 
@@ -4273,8 +4346,8 @@ impl qobject::AppearanceModel {
             me.previews.insert(id.clone(), path);
             me.cards.iter().position(|c| c.id() == id)
         };
-        // Тот же файл — картинка открытой панели деталей: качать её вторично
-        // незачем, а показать надо сразу.
+        // The same file is the picture of the open details panel: there is no
+        // reason to download it a second time, and it has to be shown at once.
         let for_detail = {
             let me = self.rust();
             me.detail.as_ref().is_some_and(|it| it.id == id) && me.detail_frame.is_empty()
@@ -4308,8 +4381,8 @@ impl qobject::AppearanceModel {
             .collect();
         self.as_mut().rust_mut().favorites = ids;
         self.as_mut().detail_changed();
-        // Отметка «в избранном» живёт и на плитках: перерисовываем их
-        // ровно по двум ролям, а не сбросом всей модели.
+        // The "in favourites" mark lives on the tiles too: we repaint them by
+        // exactly two roles, not by resetting the whole model.
         let rows = self.rust().cards.len();
         if rows > 0 {
             let first = self.as_ref().index(0, 0, &QModelIndex::default());
@@ -4329,19 +4402,22 @@ impl qobject::AppearanceModel {
     }
 }
 
-/// Ключ запроса: тем же ключом ядро сверяет ответ и отбрасывает чужой.
+/// The request key: with the same key the core checks the answer and
+/// discards someone else's.
 ///
-/// Своего правила здесь нет — ключ собирает ядро (`CatalogView::request_key`),
-/// одинаково для магазина, AUR и обзоров диска.
+/// There is no rule of our own here — the key is assembled by the core
+/// (`CatalogView::request_key`), the same way for the store, AUR and the
+/// disk overviews.
 fn request_key(view: &ap::CatalogView) -> String {
     view.request_key()
 }
 
-/// Откуда брать данные раздела.
-/// Отметка времени файла темы в секундах эпохи. `0` — файла нет.
+/// Where to take the section's data from.
+/// The theme file's timestamp in epoch seconds. `0` means there is no file.
 ///
-/// Ею ключ кеша плейсхолдера отличает «ту же тему» от «той же темы после
-/// правки»: у цветовой схемы кадр рисуется по её содержимому.
+/// By it the placeholder cache key tells "the same theme" from "the same
+/// theme after an edit": for a colour scheme the frame is drawn from its
+/// contents.
 fn file_stamp(path: &str) -> i64 {
     std::fs::metadata(path)
         .and_then(|m| m.modified())
@@ -4352,13 +4428,13 @@ fn file_stamp(path: &str) -> i64 {
 }
 
 fn request_kind(view: &ap::CatalogView) -> &'static str {
-    // Под фильтром «только установленное» магазин не спрашиваем — только
-    // диск (`CatalogView::installed_only`).
+    // Under the "installed only" filter we do not ask the store — only the
+    // disk (`CatalogView::installed_only`).
     if view.installed_only() {
         return "local";
     }
-    // Установленное и страница магазина одним запросом; магазин — тот же,
-    // что без установленного (`store_kind`).
+    // The installed items and a store page in one request; the store is the
+    // same as without the installed ones (`store_kind`).
     if view.installed_view() {
         "combined"
     } else {
@@ -4366,7 +4442,7 @@ fn request_kind(view: &ap::CatalogView) -> &'static str {
     }
 }
 
-/// Источник магазина раздела (или обзор диска).
+/// The section's store source (or the disk overview).
 fn store_kind(view: &ap::CatalogView) -> &'static str {
     if view.is_local() {
         "local"
@@ -4387,8 +4463,8 @@ fn store_kind(view: &ap::CatalogView) -> &'static str {
 
 impl cxx_qt::Initialize for qobject::AppearanceModel {
     fn initialize(mut self: Pin<&mut Self>) {
-        // Подписка на смену скина: одна строка на страницу, рассылка общая
-        // (`crate::skin`). Снимается в `Drop` состояния.
+        // The skin change subscription: one line per page, the broadcast is shared
+        // (`crate::skin`). Removed in `Drop` of the state.
         let watch = crate::skin::watch(
             self.as_ref().get_ref().qt_thread(),
             qobject::AppearanceModel::palette_changed,
@@ -4401,11 +4477,11 @@ impl cxx_qt::Initialize for qobject::AppearanceModel {
 }
 
 // ============================================================================
-// Панель деталей
+// Details panel
 // ============================================================================
 
 impl qobject::AppearanceModel {
-    // ── Неизменные подписи ──────────────────────────────────────────────
+    // ── Fixed labels ────────────────────────────────────────────────────
     fn detail_back_text(&self) -> QString {
         QString::from(&ap::detail_back_btn())
     }
@@ -4424,8 +4500,8 @@ impl qobject::AppearanceModel {
     fn detail_files(&self) -> QString {
         let me = self.rust();
         match me.detail.as_ref() {
-            // Блок выбора — только у товара магазина: у темы с диска и пакета
-            // AUR файлов магазина нет.
+            // The choice block — only for a store item: a theme from disk and an AUR
+            // package have no store files.
             Some(it) if it.local_kind.is_none() && me.aur_detail.is_none() => {
                 QString::from(&ap::store_file_choices_json(it))
             }
@@ -4448,12 +4524,14 @@ impl qobject::AppearanceModel {
         QString::from(&ap::detail_copy_link_tooltip())
     }
     fn detail_apply_local_text(&self) -> QString {
-        // Активную тему применять повторно незачем — тогда на кнопке бейдж;
-        // у дополнения и виджета — обратное действие (решение ядра).
+        // There is no reason to re-apply the active theme — then the button has a
+        // badge; an add-on and a widget get the reverse action (the core's
+        // decision).
         QString::from(&self.detail_local_button().0)
     }
 
-    /// Кнопка действия местной темы на панели деталей: (подпись, можно ли).
+    /// The action button of a local theme on the details panel: (label,
+    /// whether it can be pressed).
     fn detail_local_button(&self) -> (String, bool) {
         let detail = self.rust().detail.as_ref();
         let kind = detail.and_then(|it| it.local_kind.clone()).unwrap_or_default();
@@ -4463,8 +4541,8 @@ impl qobject::AppearanceModel {
     fn detail_preview_tooltip(&self) -> QString {
         QString::from(&ap::detail_preview_tooltip())
     }
-    /// Кнопка плитки пакета AUR рядом с «Установить»: страница пакета на
-    /// сайте (так в оригинале; щелчок по самой плитке ведёт туда же).
+    /// The AUR package tile button next to «Install»: the package page on the
+    /// site (as in the original; a click on the tile itself leads there too).
     fn aur_open_text(&self) -> QString {
         QString::from(&ap::aur_open_btn())
     }
@@ -4521,7 +4599,7 @@ impl qobject::AppearanceModel {
         ap::DETAIL_PREVIEW_H
     }
 
-    // ── Содержимое открытого товара ─────────────────────────────────────
+    // ── Contents of the opened item ─────────────────────────────────────
     fn detail_is_local(&self) -> bool {
         self.rust()
             .detail
@@ -4541,13 +4619,13 @@ impl qobject::AppearanceModel {
         let Some(item) = self.rust().detail.as_ref() else {
             return QString::default();
         };
-        // У местной темы поле автора уже несёт «<значок> <Тип> · <бейдж>»:
-        // лицензии, даты и версии у неё нет вовсе.
+        // For a local theme the author field already carries
+        // "<icon> <Type> · <badge>": it has no licence, date or version at all.
         if item.local_kind.is_some() {
             return QString::from(ap::card_author(&item.author));
         }
-        // У пакета AUR — сопровождающий, лицензия, дата и версия из паспорта
-        // (до ответа RPC — с плитки).
+        // For an AUR package — the maintainer, the licence, the date and the
+        // version from the passport (before the RPC answer — from the tile).
         if let Some(d) = self.rust().aur_detail.as_ref() {
             let (license, updated) = match d.info.as_ref() {
                 Some(i) => (i.license.join(", "), rexon_core::aur::epoch_day(i.last_modified)),
@@ -4561,7 +4639,8 @@ impl qobject::AppearanceModel {
     }
 
     fn detail_stars(&self) -> QString {
-        // У пакета AUR звёзд нет: голоса и популярность — в его сведениях.
+        // An AUR package has no stars: the votes and popularity are in its
+        // information.
         if self.rust().aur_detail.is_some() {
             return QString::default();
         }
@@ -4570,7 +4649,7 @@ impl qobject::AppearanceModel {
                 let score = self.rust().spices.get(&it.id).map_or(0, |x| x.score);
                 QString::from(&cs::detail_stars(score))
             }
-            // Оценки у Wallhaven нет — только «избранное» и просмотры.
+            // Wallhaven has no rating — only "favourites" and views.
             Some(it) if wh::is_item_id(&it.id) => QString::default(),
             Some(it) if it.local_kind.is_none() => {
                 QString::from(&ap::detail_stars_label(it.rated_stars()))
@@ -4584,8 +4663,8 @@ impl qobject::AppearanceModel {
             return QString::default();
         }
         match self.rust().detail.as_ref() {
-            // Чисел скачиваний у Cinnamon Spices и Wallhaven нет — строку
-            // не показываем.
+            // Cinnamon Spices and Wallhaven have no download counts — we do not show
+            // the line.
             Some(it) if it.id.starts_with(cs::ID_PREFIX) || wh::is_item_id(&it.id) => QString::default(),
             Some(it) if it.local_kind.is_none() => {
                 QString::from(&ap::detail_downloads_label(it.downloads))
@@ -4599,7 +4678,8 @@ impl qobject::AppearanceModel {
         let Some(item) = me.detail.as_ref() else {
             return QString::default();
         };
-        // Пакет ставит менеджер пакетов — каталога установки у раздела нет.
+        // A package is installed by the package manager — the section has no
+        // installation directory.
         if me.aur_detail.is_some() {
             return QString::default();
         }
@@ -4608,8 +4688,9 @@ impl qobject::AppearanceModel {
             .as_ref()
             .map(|c| c.name.clone())
             .unwrap_or_else(|| format!("cat {}", item.category_id));
-        // У местной темы путь известен с диска; таблица категорий его не
-        // знает (виртуальные разделы своего каталога установки не имеют).
+        // For a local theme the path is known from the disk; the category table
+        // does not know it (virtual sections have no installation directory of
+        // their own).
         let path = if item.local_kind.is_some() && !item.install_path.is_empty() {
             item.install_path.clone()
         } else {
@@ -4628,9 +4709,10 @@ impl qobject::AppearanceModel {
             .get("accent")
             .cloned()
             .unwrap_or_default();
-        // Пока перевод в пути (и дольше порога), под оригиналом — пометка
-        // «Перевожу описание…»: иначе английский текст выглядел так, будто
-        // переводить его никто не собирается (06.11, тема 2380824).
+        // While the translation is on its way (and longer than the threshold),
+        // under the original there is a «Translating the description…» note:
+        // otherwise the English text looked as if nobody was going to translate
+        // it (06.11, theme 2380824).
         let note = if me.detail_translating && !was_translated {
             ap::description_translating_html()
         } else {
@@ -4638,15 +4720,15 @@ impl qobject::AppearanceModel {
         };
         QString::from(&(ap::description_html(
             &item.description,
-            // ⚠️ ВИДИМОЕ описание (`display_description` — перевод если есть,
-            // иначе оригинал), а не поле перевода. Здесь стояло
-            // `description_translated`, и товар без перевода показывал «Без
-            // описания» вместо своего английского текста: «показать перевод»
-            // это ВТОРОЕ положение переключателя, а первое — просто «что есть».
-            // У Python ровно так и было (`_desc_trans = ... if was_translated
-            // else _desc_orig`), и живой прогон 21.09 нашёл расхождение сразу,
-            // как только перевод стало можно выключить (нет модели — нет
-            // перевода, а описание есть).
+            // Warning: the VISIBLE description (`display_description` — the
+            // translation if there is one, otherwise the original), not the
+            // translation field. `description_translated` stood here, and an item
+            // without a translation showed «No description» instead of its English
+            // text: "show translation" is the SECOND position of the toggle, and the
+            // first is simply "what there is". Python had exactly this
+            // (`_desc_trans = ... if was_translated else _desc_orig`), and the live run
+            // of 21.09 found the divergence as soon as the translation could be turned
+            // off (no model — no translation, but there is a description).
             item.display_description(),
             was_translated,
             me.detail_show_original,
@@ -4673,8 +4755,9 @@ impl qobject::AppearanceModel {
         QString::from(&self.detail_button().text)
     }
     fn detail_install_tooltip(&self) -> QString {
-        // Расширение GNOME ставит оболочка, и подтверждение спрашивает она
-        // сама своим окном — чтобы оно не застало врасплох.
+        // A GNOME extension is installed by the shell, and it asks for the
+        // confirmation itself with its own window — so that it does not catch the
+        // user unawares.
         if let Some(it) = self.rust().detail.as_ref() {
             if !it.installed && rexon_core::gnome_ego::is_item_id(&it.id) {
                 return QString::from(&gext::install_tooltip());
@@ -4687,9 +4770,9 @@ impl qobject::AppearanceModel {
     }
 
     fn detail_uninstall_visible(&self) -> bool {
-        // Пакет AUR — нет: удаление товара магазина его не снимет, а пакет
-        // снимает менеджер пакетов. Тема с диска — по решению ядра
-        // (`theme_removal`): у плитки без пути кнопки нет.
+        // An AUR package — no: removing a store item will not remove it, a package
+        // is removed by the package manager. A theme from disk — by the core's
+        // decision (`theme_removal`): a tile without a path has no button.
         if self.rust().aur_detail.is_some() {
             return false;
         }
@@ -4703,9 +4786,9 @@ impl qobject::AppearanceModel {
     fn detail_uninstall_enabled(&self) -> bool {
         match self.rust().detail.as_ref() {
             Some(it) if it.local_kind.is_some() => self.detail_removal().enabled,
-            // Товар магазина: решение хозяина пришло с деталями (включённую
-            // тему снять нельзя); пока не пришло — можно, хозяин проверит
-            // ещё раз при снятии.
+            // A store item: the host's decision came with the details (an enabled
+            // theme cannot be removed); until it came — allowed, the host will check
+            // once more on removal.
             Some(it) => self.rust().removal.get(&it.id).is_none_or(|r| r.enabled),
             None => false,
         }
@@ -4719,7 +4802,7 @@ impl qobject::AppearanceModel {
         }
     }
 
-    /// Решение «Удалить» для открытой темы с диска.
+    /// The "Remove" decision for the open theme from disk.
     fn detail_removal(&self) -> RemovalUi {
         let me = self.rust();
         me.detail
@@ -4762,10 +4845,11 @@ impl qobject::AppearanceModel {
             .is_some_and(|it| ap::detail_autostart_visible(&it.id))
     }
 
-    /// Номер виджета Conky для «Запускать при входе», частей и настроек на
-    /// панели деталей: у плитки установленного — её номер, у поставленного
-    /// товара магазина — номер его плитки установленного (те же действия,
-    /// что в «Загруженных»); пусто — не виджет Conky или ещё не поставлен.
+    /// The Conky widget number for «Start at login», the parts and the settings
+    /// on the details panel: for an installed tile — its number, for an
+    /// installed store item — the number of its installed tile (the same
+    /// actions as in "Downloaded"); empty means not a Conky widget or not
+    /// installed yet.
     fn detail_conky_id(&self) -> QString {
         let Some(it) = self.rust().detail.as_ref() else { return QString::default() };
         if it.local_kind.is_some() {
@@ -4781,7 +4865,8 @@ impl qobject::AppearanceModel {
         local.map(|id| QString::from(&id)).unwrap_or_default()
     }
 
-    /// Вид местной плитки и её имя по номеру `local:<вид>:<имя>`.
+    /// The kind of a local tile and its name by the number
+    /// `local:<kind>:<name>`.
     fn detail_local_parts(&self) -> Option<(String, String)> {
         let it = self.rust().detail.as_ref()?;
         let rest = it.id.strip_prefix("local:")?;
@@ -4918,8 +5003,9 @@ impl qobject::AppearanceModel {
         if url.is_empty() {
             return;
         }
-        // Функция шима зовётся через мост синглтона `Action` (второе
-        // объявление дало бы дубль символа на линковке, см. `we_dev_page`).
+        // The shim function is called through the bridge of the `Action` singleton
+        // (a second declaration would give a duplicate symbol at link time, see
+        // `we_dev_page`).
         crate::we_action::qobject::rexon_we_copy_to_clipboard(&QString::from(&url));
         self.as_mut().rust_mut().status = ap::link_copied_status(&url);
         self.as_mut().status_changed();
@@ -4977,7 +5063,7 @@ impl qobject::AppearanceModel {
         ])
     }
 
-    // ── Действия ────────────────────────────────────────────────────────
+    // ── Actions ─────────────────────────────────────────────────────────
     fn open_detail(self: Pin<&mut Self>, item_id: &QString) {
         let id = item_id.to_string();
         let found = self
@@ -4987,10 +5073,10 @@ impl qobject::AppearanceModel {
             .find(|c| c.id() == id)
             .and_then(|c| match c {
                 Card::Theme(it) => Some(((**it).clone(), None)),
-                // Пакет AUR — своя карточка внутри программы, как у товара
-                // магазина: паспорт RPC, зависимости, комментарии со страницы
-                // пакета. Общая часть панели (имя, описание, картинка,
-                // комментарии) берёт товар, собранный из плитки.
+                // An AUR package has its own card inside the program, like a store item:
+                // the RPC passport, dependencies, comments from the package page. The
+                // shared part of the panel (name, description, picture, comments) takes
+                // the item assembled from the tile.
                 Card::Aur(pkg) => Some((aur_detail_item(pkg), Some((**pkg).clone()))),
             });
         let Some((item, aur_pkg)) = found else { return };
@@ -5002,8 +5088,8 @@ impl qobject::AppearanceModel {
             return;
         };
         if let Some(name) = v.get("aur").and_then(Value::as_str).filter(|n| !n.is_empty()) {
-            // Пакет по имени: паспорт, картинки и комментарии карточка
-            // запросит сама — тем же путём, что у плитки.
+            // A package by name: the card will request the passport, pictures and
+            // comments itself — by the same path as for a tile.
             let pkg = AurPackage { name: name.to_string(), ..AurPackage::default() };
             self.open_detail_with(aur_detail_item(&pkg), Some(pkg));
             return;
@@ -5017,16 +5103,16 @@ impl qobject::AppearanceModel {
         self.open_detail_with(item, None);
     }
 
-    /// Панель деталей товара: из сетки или по ссылке.
+    /// The item details panel: from the grid or by a link.
     fn open_detail_with(mut self: Pin<&mut Self>, mut item: ThemeItem, aur_pkg: Option<AurPackage>) {
-        // Готовое превью плитки становится первым кадром — иначе панель
-        // деталей на мгновение показывала бы пустоту там, где картинка уже
-        // есть на диске.
+        // The tile's ready preview becomes the first frame — otherwise the details
+        // panel would for a moment show emptiness where the picture is already on
+        // disk.
         if item.preview_local.is_empty() {
             item.preview_local = tile_picture(&self.rust().previews, &item);
         }
-        // У плитки шрифта «картинка» — файл шрифта (образец рисуется им):
-        // кадром карточки он не годится.
+        // For a font tile the "picture" is the font file (the sample is drawn with
+        // it): it is not fit as a card frame.
         if ap::is_font_file(&item.preview_local) {
             item.preview_local.clear();
         }
@@ -5036,12 +5122,13 @@ impl qobject::AppearanceModel {
         let is_aur = aur_pkg.is_some();
         {
             let mut me = self.as_mut().rust_mut();
-            // Карточка пакета: картинка с плитки — нулевой кадр; если взять
-            // картинку негде (проект не на GitHub/GitLab/Codeberg), на её
-            // месте тот же значок, что на плитке.
+            // A package card: the picture from the tile is frame zero; if there is
+            // nowhere to take a picture from (the project is not on
+            // GitHub/GitLab/Codeberg), the same icon as on the tile stands in its
+            // place.
             me.aur_detail = aur_pkg.map(|pkg| {
-                // Проверка источника, сделанная раньше, видна сразу; свежая
-                // придёт вслед за паспортом.
+                // A source check done earlier is visible at once; a fresh one will come
+                // after the passport.
                 let trust = aur_trust_entry(&pkg.name);
                 Box::new(AurDetail {
                     pkg,
@@ -5051,9 +5138,9 @@ impl qobject::AppearanceModel {
             });
             me.detail_show_original = false;
             me.detail_translating = false;
-            // Итог прошлого товара к новому не относится — гасим (дефект
-            // оригинала: сообщение висело на чужой панели). Полоса хода и
-            // запертые кнопки — оттуда же.
+            // The outcome of the previous item does not belong to the new one — we
+            // clear it (a defect of the original: the message hung on someone else's
+            // panel). The progress bar and the locked buttons — likewise.
             me.detail_status.clear();
             me.action_busy = false;
             me.action_kind.clear();
@@ -5064,8 +5151,9 @@ impl qobject::AppearanceModel {
                 .as_ref()
                 .filter(|d| rexon_core::aur::detail_image_sources(&d.pkg.upstream_url).is_empty())
                 .map(|d| d.pkg.icon().to_string());
-            // Местная тема в магазин за картинкой не ходит: нет файла на
-            // диске — значит, превью не будет вовсе, и ждать его незачем.
+            // A local theme does not go to the store for a picture: if there is no
+            // file on disk, there will be no preview at all, and there is no reason to
+            // wait for it.
             me.detail_frame_text = if !frame.is_empty() {
                 String::new()
             } else if let Some(icon) = aur_icon {
@@ -5075,8 +5163,8 @@ impl qobject::AppearanceModel {
             } else {
                 ap::detail_preview_loading()
             };
-            // Галерея и комментарии ПРЕДЫДУЩЕГО товара — чужие; их номер,
-            // кадры и счётчик к новому не относятся.
+            // The gallery and comments of the PREVIOUS item belong to someone else;
+            // their number, frames and counter do not apply to the new one.
             me.gallery_src.clear();
             me.gallery_loaded.clear();
             me.gallery_failed.clear();
@@ -5087,8 +5175,8 @@ impl qobject::AppearanceModel {
             me.comments.clear();
             me.comments_page = 0;
             me.comments_total = None;
-            // Картинка плитки пакета — сразу нулевой кадр: карточка
-            // досылает остальные (README) кадрами по номерам.
+            // The package tile's picture is frame zero at once: the card sends the
+            // rest (README) as frames by number.
             if is_aur && !frame.is_empty() {
                 me.gallery_loaded.insert(0, frame.clone());
             }
@@ -5101,7 +5189,7 @@ impl qobject::AppearanceModel {
         self.as_mut().detail_status_changed();
         self.as_mut().install_changed();
         self.as_mut().screen_changed();
-        // Местная тема лежит на диске целиком — в магазин за ней не ходим.
+        // A local theme lies on disk whole — we do not go to the store for it.
         if !local {
             self.as_mut().detail_wanted(QString::from(&id));
         }
@@ -5149,7 +5237,8 @@ impl qobject::AppearanceModel {
         let Ok(item) = serde_json::from_value::<ThemeItem>(v.clone()) else {
             return;
         };
-        // Ответ про товар, который уже закрыли, молча отбрасываем.
+        // An answer about an item that has already been closed is silently
+        // discarded.
         {
             let me = self.rust();
             match me.detail.as_ref() {
@@ -5157,7 +5246,8 @@ impl qobject::AppearanceModel {
                 _ => return,
             }
         }
-        // «Удалить» поставленного товара: можно ли (включённую тему — нет).
+        // "Remove" of an installed item: whether it is allowed (an enabled theme —
+        // no).
         if item.local_kind.is_none() {
             match RemovalUi::from_row(&v) {
                 Some(ui) => {
@@ -5170,17 +5260,17 @@ impl qobject::AppearanceModel {
         }
         let frame = {
             let mut me = self.as_mut().rust_mut();
-            // Картинку, которая уже показана, не теряем: полные детали её
-            // не несут (там только ссылки).
+            // We do not lose a picture already shown: the full details do not carry it
+            // (there are only links there).
             let shown = me.detail_frame.clone();
             let mut item = item;
             if item.preview_local.is_empty() {
                 item.preview_local = shown.clone();
             }
-            // Перевод описания с плитки мог прийти РАНЬШЕ деталей (он идёт
-            // своим потоком, не дожидаясь магазина). Описание то же — перевод
-            // сохраняется, иначе текст мигнул бы английским до второго
-            // (кешированного) ответа.
+            // The tile's description translation may have come BEFORE the details (it
+            // runs in its own thread, without waiting for the store). If the
+            // description is the same, the translation is kept, otherwise the text
+            // would flash English until the second (cached) answer.
             if let Some(old) = me.detail.as_ref() {
                 if item.description_translated.is_empty() && old.description == item.description {
                     item.description_translated = old.description_translated.clone();
@@ -5189,9 +5279,9 @@ impl qobject::AppearanceModel {
             me.detail = Some(Box::new(item));
             shown
         };
-        // Карусель — РОВНО как на сайте: без первого слота (он «лицо
-        // товара» и остаётся превью плитки). Список собирает ядро, оно же
-        // гонит уменьшенные копии в полное разрешение.
+        // The carousel — EXACTLY as on the site: without the first slot (it is the
+        // "face of the item" and stays the tile preview). The list is assembled by
+        // the core, and it also upgrades reduced copies to full resolution.
         let (id, local) = {
             let me = self.rust();
             match me.detail.as_ref() {
@@ -5210,17 +5300,17 @@ impl qobject::AppearanceModel {
             };
             me.gallery_known = known;
             me.gallery_src = urls;
-            // Готовое превью плитки — нулевой кадр карусели: качать его
-            // второй раз незачем.
+            // The tile's ready preview is the carousel's frame zero: there is no
+            // reason to download it a second time.
             if !frame.is_empty() {
                 me.gallery_loaded.insert(0, frame.clone());
             }
         }
         self.as_mut().detail_changed();
         self.as_mut().sync_frame();
-        // У Cinnamon Spices комментариев для программ нет, у Wallhaven —
-        // своего API для них, у extensions.gnome.org — тоже (комментарии
-        // KDE Store спрашивать по номеру `ego:` бессмысленно).
+        // Cinnamon Spices has no comments for programs, Wallhaven has no API of
+        // its own for them, extensions.gnome.org neither (asking the KDE Store for
+        // comments by an `ego:` number is pointless).
         if !local
             && !id.is_empty()
             && !id.starts_with(cs::ID_PREFIX)
@@ -5238,23 +5328,23 @@ impl qobject::AppearanceModel {
         };
         let id = v.get("itemId").and_then(Value::as_str).unwrap_or_default();
         let translated = v.get("translated").and_then(Value::as_str).unwrap_or_default();
-        // Исходник, с которого считался перевод: панель могла за это время
-        // получить другое описание (свежие детали, паспорт AUR), и перевод
-        // чужого текста ей не нужен.
+        // The source the translation was computed from: the panel may have got
+        // another description in the meantime (fresh details, the AUR passport),
+        // and it does not need a translation of someone else's text.
         let source = v.get("source").and_then(Value::as_str);
-        // `pending` — только пометка «перевожу»: `true` — перевод идёт дольше
-        // порога, `false` — работа кончилась без перевода (ядро решило «не
-        // переводить» или модели нет).
+        // `pending` is only the "translating" note: `true` — the translation is
+        // taking longer than the threshold, `false` — the work ended without a
+        // translation (the core decided "do not translate" or there is no model).
         let pending = v.get("pending").and_then(Value::as_bool);
         if id.is_empty() {
             return;
         }
         {
             let mut me = self.as_mut().rust_mut();
-            // Ответ про товар, который уже закрыли или сменили, молча
-            // отбрасываем — ровно как в `detail_answer`. Сторож у ядра свой, но
-            // между его проверкой и этой строкой очередь окна успевает
-            // повернуться, и последнее слово о том, что открыто, — за страницей.
+            // An answer about an item that has already been closed or changed is
+            // silently discarded — exactly as in `detail_answer`. The core has its own
+            // watcher, but between its check and this line the window's queue manages
+            // to turn, and the last word about what is open belongs to the page.
             let me = &mut *me;
             let Some(open) = me.detail.as_mut().filter(|o| o.id == id) else {
                 return;
@@ -5268,19 +5358,18 @@ impl qobject::AppearanceModel {
                 }
                 me.detail_translating = pending;
             } else {
-                // Пустой перевод — не перевод: он бы только зажёг ссылку
-                // «показать оригинал» над пустым местом (`description_html`
-                // держится за `was_translated`).
+                // An empty translation is not a translation: it would only light the
+                // "show original" link over an empty place (`description_html` holds on to
+                // `was_translated`).
                 if translated.trim().is_empty() {
                     return;
                 }
                 open.description_translated = translated.to_string();
                 me.detail_translating = false;
             }
-            // Переключатель «перевод ⇄ оригинал» остаётся в том положении, в
-            // каком его оставил человек: он мог нажать «показать оригинал» до
-            // прихода перевода — сбросить его значило бы дёрнуть текст под
-            // рукой.
+            // The "translation ⇄ original" toggle stays in the position the user left
+            // it in: they may have pressed "show original" before the translation
+            // arrived — resetting it would jerk the text under their hand.
         }
         self.as_mut().detail_changed();
     }
@@ -5300,8 +5389,8 @@ impl qobject::AppearanceModel {
                 .iter()
                 .find(|c| c.id() == id)
                 .map(|c| match c {
-                    // У местной темы имя зашито в номер (`local:<вид>:<имя>`)
-                    // — берём его оттуда, как это делает оригинал.
+                    // For a local theme the name is baked into the number
+                    // (`local:<kind>:<name>`) — we take it from there, as the original does.
                     Card::Theme(it) => ap::local_theme_name(&it.id, &it.name),
                     Card::Aur(p) => p.name.clone(),
                 })
@@ -5311,7 +5400,7 @@ impl qobject::AppearanceModel {
                         .filter(|it| it.id == id)
                         .map(|it| ap::local_theme_name(&it.id, &it.name))
                 })
-                // Действие без плитки называется своим номером.
+                // An action without a tile is named by its own number.
                 .unwrap_or_else(|| id.clone())
         };
         self.begin_action(&id, &kind, &name);
@@ -5323,7 +5412,8 @@ impl qobject::AppearanceModel {
         self.begin_action("", ap::ACTION_LOCAL, &label);
     }
 
-    /// Общее начало долгого действия: кнопки заперты, первая строка хода.
+    /// The shared start of a long action: the buttons are locked, the first
+    /// progress line.
     fn begin_action(mut self: Pin<&mut Self>, id: &str, kind: &str, name: &str) {
         let (id, kind) = (id.to_string(), kind.to_string());
         {
@@ -5332,10 +5422,10 @@ impl qobject::AppearanceModel {
             me.action_kind = kind.clone();
             me.action_item = id.clone();
             me.install_percent = 0;
-            // Ход виден в двух местах сразу: в строке состояния сетки и на
-            // панели деталей. На деталях строка состояния сетки СКРЫТА, и
-            // без своей подписи установка там выглядела как «кнопка не
-            // реагирует».
+            // The progress is visible in two places at once: in the grid's status line
+            // and on the details panel. On the details the grid's status line is
+            // HIDDEN, and without its own label the installation there looked like
+            // "the button does not respond".
             me.detail_status = ap::install_preparing();
             me.status = ap::action_busy_status(&kind, &name);
         }
@@ -5353,8 +5443,8 @@ impl qobject::AppearanceModel {
             .and_then(Value::as_array)
             .map(|a| a.iter().filter_map(AurJobView::from_json).collect())
             .unwrap_or_default();
-        // Только что кончившиеся: их итог — в строку состояния, а удавшиеся
-        // пакеты (с составом комплекта) плитки отмечают «установлен».
+        // Just finished ones: their outcome goes to the status line, and the tiles
+        // mark the succeeded packages (with the set's composition) as "installed".
         let finished: Vec<AurJobView> = {
             let me = self.rust();
             jobs.iter()
@@ -5379,9 +5469,9 @@ impl qobject::AppearanceModel {
                     }
                 }
             }
-            // Строка сверху: идущая установка с именем пакета; кончилась —
-            // её итог. Одна и та же строка второй раз не ставится, чтобы не
-            // перебивать сообщения, пришедшие после неё.
+            // The line on top: the running installation with the package name; when it
+            // ends — its outcome. The same line is not set a second time, so as not to
+            // override messages that came after it.
             let line = match finished.last() {
                 Some(job) if !job.message.is_empty() => {
                     ap::action_result_status(job.stage == aur_install::AurStage::Done, &job.message)
@@ -5409,8 +5499,8 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.install_percent = ap::install_percent(pct as i64);
-            // Ход пришёл — значит, действие ещё идёт: полосу держим даже
-            // если о начале нам сказать забыли.
+            // Progress arrived — so the action is still running: we keep the bar even
+            // if we were not told about the start.
             me.action_busy = true;
             if me.action_kind.is_empty() {
                 me.action_kind = ap::ACTION_INSTALL.to_string();
@@ -5435,14 +5525,14 @@ impl qobject::AppearanceModel {
         let message = if text.is_empty() {
             String::new()
         } else {
-            // Значок ставит ядро и только если его ещё нет: установщик
-            // отдаёт готовые «✅ Установлено: …».
+            // The core sets the icon, and only if there is none yet: the installer
+            // gives ready "✅ Installed: …".
             ap::action_result_status(ok, &text)
         };
-        // Итог установки из магазина — на плитку и панель деталей этого
-        // товара: «установлен» сразу, «применён» — по факту из журнала и
-        // карты активных тем (решение ядра). Без этого кнопка оставалась на
-        // «Установить» до перезахода в раздел.
+        // The outcome of an installation from the store goes to this item's tile
+        // and details panel: "installed" at once, "applied" — by the fact from the
+        // journal and the map of active themes (the core's decision). Without this
+        // the button stayed at «Install» until the section was re-entered.
         let (kind, item_id) = {
             let me = self.rust();
             (me.action_kind.clone(), me.action_item.clone())
@@ -5454,9 +5544,9 @@ impl qobject::AppearanceModel {
             let mut me = self.as_mut().rust_mut();
             me.action_item.clear();
             me.detail_status = message.clone();
-            // Действие кончилось: полоса хода уходит, кнопки отпираются.
-            // Удавшееся применение темы просит пересобрать сетку — но не
-            // сейчас, а когда осядет смена стиля Qt (решение ядра).
+            // The action ended: the progress bar goes away, the buttons are unlocked.
+            // A successful theme apply asks to rebuild the grid — but not now, rather
+            // when the Qt style change settles (the core's decision).
             if ap::reload_after_action(&me.action_kind, ok) {
                 me.reload_pending = true;
             }
@@ -5472,10 +5562,11 @@ impl qobject::AppearanceModel {
         self.as_mut().detail_status_changed();
     }
 
-    /// Поставить итог удачной установки плитке и панели деталей товара.
+    /// Put the outcome of a successful installation onto the item's tile and
+    /// details panel.
     ///
-    /// Состояние считает ядро (`mark_installed_live`): журнал читается один
-    /// раз, карта активных тем — только если у вида есть «применена».
+    /// The state is computed by the core (`mark_installed_live`): the journal is
+    /// read once, the map of active themes — only if the kind has "applied".
     fn mark_action_item_installed(mut self: Pin<&mut Self>, item_id: &str) {
         let home = self.rust().home.to_string_lossy().to_string();
         let (row, mut items) = {
@@ -5538,20 +5629,22 @@ impl qobject::AppearanceModel {
 }
 
 // ============================================================================
-// Загрузчик превью
+// Preview loader
 // ============================================================================
 //
-// Сеть живёт у хозяина, правила — у ядра (`ap::PreviewQueue`). Мост между
-// ними ровно один: очередь говорит, ЧТО запускать, хозяин приносит ответ,
-// очередь решает, повторить ли сбой и когда отдать готовое наверх.
+// The network lives at the host, the rules at the core (`ap::PreviewQueue`).
+// There is exactly one bridge between them: the queue says WHAT to launch,
+// the host brings the answer, and the queue decides whether to repeat a
+// failure and when to hand the ready result up.
 //
-// Один запрос на адрес, шесть картинок разом, из них не больше двух под
-// фоновый прогрев, две добавочные попытки на временный сбой и своё поколение
-// у каждого раздела — всё это цифры и правила ядра, здесь их нет.
+// One request per address, six pictures at once, of them no more than two
+// for the background warm-up, two extra attempts for a temporary failure
+// and a generation of its own for each section — all of these are numbers
+// and rules of the core, there are none of them here.
 
 impl qobject::AppearanceModel {
-    /// Картинка уже лежит в кеше? Путь считает ядро — тот же, по которому её
-    /// пишет хозяин.
+    /// Is the picture already in the cache? The path is computed by the core —
+    /// the same one by which the host writes it.
     fn cached_preview(&self, url: &str) -> Option<String> {
         let home = self.rust().home.to_string_lossy().to_string();
         let path = ap::preview_cache_path(&home, url);
@@ -5562,11 +5655,12 @@ impl qobject::AppearanceModel {
         }
     }
 
-    /// Заказать картинки всех плиток показанной страницы.
+    /// Order the pictures of all tiles of the shown page.
     ///
-    /// Оригинал заказывал их так же — всей страницей сразу (`_start_preview_load`),
-    /// а не по одной на появившуюся плитку: очередь и так держит канал в
-    /// шести запросах, а порядок в ней важнее ленивости.
+    /// The original ordered them the same way — the whole page at once
+    /// (`_start_preview_load`), not one per appearing tile: the queue keeps the
+    /// channel at six requests anyway, and the order in it matters more than
+    /// laziness.
     fn enqueue_page_previews(mut self: Pin<&mut Self>) {
         let wants: Vec<(String, String)> = self
             .rust()
@@ -5584,21 +5678,23 @@ impl qobject::AppearanceModel {
         self.as_mut().pump_previews();
     }
 
-    /// Нарисовать плитки местных тем, у которых нет ни своей картинки, ни
-    /// картинки из записи магазина.
+    /// Draw the tiles of local themes that have neither their own picture nor a
+    /// picture from the store record.
     ///
-    /// Третий и четвёртый шаги единой цепочки превью
-    /// (`rexon_core::local_preview`): образец из содержимого темы, а если
-    /// взять из неё нечего — заглушка вида. Что рисовать, решает ядро по
-    /// таблице видов; здесь нет ни одной развилки по виду темы — только кеш
-    /// кадров и исполнение (`crate::local_preview_render`).
+    /// The third and fourth steps of the single preview chain
+    /// (`rexon_core::local_preview`): a sample from the theme's contents, and if
+    /// there is nothing to take from it — a kind placeholder. What to draw is
+    /// decided by the core by the kinds table; there is not a single branching
+    /// by theme kind here — only the frame cache and execution
+    /// (`crate::local_preview_render`).
     ///
-    /// Кадр кладётся файлом и берётся из кеша при следующем заходе: плитке
-    /// нужен АДРЕС картинки, отдать ей байты в память не через что. Готовые
-    /// кадры ставятся сразу; недостающие рисует фоновый поток по порядку
-    /// плиток и отдаёт по одному ([`Self::local_picture_ready`]). В потоке
-    /// интерфейса их рисовать нельзя: первый показ «Системных» — около двух
-    /// сотен кадров с чтением файлов тем, и окно на это время замирало.
+    /// The frame is put as a file and taken from the cache on the next visit:
+    /// the tile needs a picture ADDRESS, and there is no way to give it bytes in
+    /// memory. Ready frames are set at once; the missing ones are drawn by a
+    /// background thread in tile order and handed over one by one
+    /// ([`Self::local_picture_ready`]). They must not be drawn in the interface
+    /// thread: the first showing of "System" is about two hundred frames with
+    /// reading theme files, and the window froze for that time.
     fn draw_local_placeholders(mut self: Pin<&mut Self>) {
         use rexon_core::local_preview as lp;
         let home = self.rust().home.to_string_lossy().to_string();
@@ -5630,13 +5726,13 @@ impl qobject::AppearanceModel {
         }
         let mut ready: Vec<(String, String)> = Vec::new();
         let mut todo: Vec<PictureJob> = Vec::new();
-        // Рамки окон KDE снимаются их модулями; что есть на машине — один раз
-        // на пачку плиток.
+        // KDE window borders are captured by their modules; what is on the machine
+        // — once per batch of tiles.
         let shots = wants
             .iter()
             .any(|w| w.0.starts_with("local:aurorae:"))
             .then(|| rexon_core::kdecoration::ShotSetup::live(&home));
-        // Стили Qt, темы Kvantum и GTK снимаются настоящими виджетами.
+        // Qt styles, Kvantum and GTK themes are captured with real widgets.
         let widget_shots = wants
             .iter()
             .any(|w| ["local:widgetstyle:", "local:kvantum:", "local:gtk:"].iter().any(|p| w.0.starts_with(p)))
@@ -5645,12 +5741,13 @@ impl qobject::AppearanceModel {
             let kind = rexon_core::de_apply::apply_kind_of_local_id(&id).unwrap_or("").to_string();
             let glyph = lp::type_emoji(&author);
             let shot = shots.as_ref().and_then(|s| s.request(&id, &name));
-            // Снимок рамки зависит ещё от размера рамки и цветов KDE.
+            // A border snapshot also depends on the border size and the KDE colours.
             let shot_tag = match (&shots, kind.as_str()) {
                 (Some(s), "aurorae") => s.tag.clone(),
                 _ => String::new(),
             };
-            // …и от настроек самой рамки: после окна «Настроить…» — новый ключ.
+            // …and on the border's own settings: after the "Configure…" window — a new
+            // key.
             let shot_tag = match self.rust().deco_config_gen.get(&id) {
                 Some(n) if !shot_tag.is_empty() => format!("{shot_tag}\u{0}cfg{n}"),
                 _ => shot_tag,
@@ -5660,8 +5757,9 @@ impl qobject::AppearanceModel {
                 Some(tag) if !tag.is_empty() => format!("{shot_tag}\u{0}{tag}"),
                 _ => shot_tag,
             };
-            // У цветовой схемы скан отдаёт путь без окончания; отметка
-            // времени нужна её файла — кадр рисуется по его содержимому.
+            // For a colour scheme the scan gives the path without the extension; the
+            // timestamp needed is that of its file — the frame is drawn from its
+            // contents.
             let colors_file = format!("{install_path}.colors");
             let stamped = if !std::path::Path::new(&install_path).exists()
                 && std::path::Path::new(&colors_file).is_file()
@@ -5670,8 +5768,8 @@ impl qobject::AppearanceModel {
             } else {
                 install_path.clone()
             };
-            // В ключе — всё, от чего зависит кадр: вид, путь, знак вида,
-            // отметка времени и отметка правил отрисовки.
+            // The key holds everything the frame depends on: the kind, the path, the
+            // kind sign, the timestamp and the rendering rules stamp.
             let dest = ap::placeholder_cache_path(
                 &home,
                 category_id,
@@ -5693,8 +5791,8 @@ impl qobject::AppearanceModel {
                     me.previews.insert(key.clone(), path.clone());
                 }
             }
-            // Кадры появились после сброса модели — перерисовываем одну
-            // роль, а не всю витрину.
+            // The frames appeared after a model reset — we repaint one role, not the
+            // whole showcase.
             let rows = self.rust().cards.len();
             if rows > 0 {
                 let first = self.as_ref().index(0, 0, &QModelIndex::default());
@@ -5722,8 +5820,8 @@ impl qobject::AppearanceModel {
         let spawned = std::thread::Builder::new().name("rexon-tile-pictures".into()).spawn(move || {
             let icon_themes = lp::icon_theme_dirs(&home, "/usr");
             for job in todo {
-                // Рамку KDE рисует её модуль в отдельном процессе; не вышло —
-                // прежняя картинка (образец из SVG либо заглушка).
+                // A KDE border is drawn by its module in a separate process; if it failed
+                // — the previous picture (a sample from SVG or a placeholder).
                 let shot_png = format!("{}.shot.png", job.dest);
                 let shot_dir = std::path::Path::new(&job.dest)
                     .parent()
@@ -5734,8 +5832,8 @@ impl qobject::AppearanceModel {
                     (Some(req), Some(runner)) => rexon_core::kdecoration::take_shot(runner, &shot_dir, req, &shot_png),
                     _ => false,
                 };
-                // Стиль Qt и тему GTK снимает помощник настоящими виджетами;
-                // не вышло — нарисованный образец по цветам темы.
+                // A Qt style and a GTK theme are captured by the helper with real widgets;
+                // if it failed — a drawn sample by the theme's colours.
                 let widget_taken = !shot_taken
                     && match (&job.widget_shot, widget_helper.as_deref()) {
                         (Some(req), Some(helper)) => rexon_core::widget_shot::take_shot(helper, &shot_dir, req, &shot_png),
@@ -5761,7 +5859,8 @@ impl qobject::AppearanceModel {
                 }
                 let key = drawn_key(&job.id, &job.install_path);
                 let (id, dest) = (job.id, job.dest);
-                // Окно закрыли — очередь не принимает: дорисовывать некому.
+                // The window was closed — the queue does not accept: there is nobody to
+                // finish drawing for.
                 if handle
                     .queue(move |object| object.local_picture_ready(&id, &key, drawn.then_some(dest)))
                     .is_err()
@@ -5771,21 +5870,22 @@ impl qobject::AppearanceModel {
             }
         });
         if spawned.is_err() {
-            // Поток не завёлся — плитки остаются без картинки до следующего
-            // захода в раздел, но заказ не считается висящим.
+            // The thread did not start — the tiles stay without a picture until the
+            // next visit to the section, but the order is not considered hanging.
             self.as_mut().rust_mut().drawing.clear();
         }
     }
 
-    /// Фоновый поток нарисовал картинку плитки `id` (`None` — не вышло).
+    /// The background thread drew the picture of tile `id` (`None` — it
+    /// failed).
     fn local_picture_ready(mut self: Pin<&mut Self>, id: &str, key: &str, path: Option<String>) {
         let row = {
             let mut me = self.as_mut().rust_mut();
             me.drawing.remove(id);
             let Some(path) = path else { return };
             me.previews.insert(key.to_string(), path.clone());
-            // Открытая панель деталей ждёт этот кадр (снимок рамки после
-            // окна «Настроить…»).
+            // The open details panel is waiting for this frame (the border snapshot
+            // after the "Configure…" window).
             let for_detail = me.detail.as_ref().is_some_and(|it| it.id == id) && me.detail_frame.is_empty();
             if for_detail {
                 me.detail_frame = path;
@@ -5798,8 +5898,8 @@ impl qobject::AppearanceModel {
         if for_detail {
             self.as_mut().detail_frame_changed();
         }
-        // Раздел с тех пор сменили — картинка осталась в кеше и встанет при
-        // следующем заходе; перерисовывать нечего.
+        // The section has changed since — the picture stayed in the cache and will
+        // be set on the next visit; there is nothing to repaint.
         let Some(row) = row else { return };
         let index = self.as_ref().index(row as i32, 0, &QModelIndex::default());
         let mut roles = cxx_qt_lib::QVector::<i32>::default();
@@ -5808,15 +5908,16 @@ impl qobject::AppearanceModel {
         self.as_mut().data_changed(&index, &index, &roles);
     }
 
-    /// Фоновый прогрев первого кадра карусели показанных плиток.
+    /// A background warm-up of the first carousel frame of the shown tiles.
     ///
-    /// Плитка и карусель — РАЗНЫЕ картинки: в плитке миниатюра, в карусели
-    /// полный размер со второго скриншота. Годами грелась только плитка,
-    /// поэтому щелчок по уже показанной карточке всё равно упирался в сеть.
+    /// A tile and the carousel are DIFFERENT pictures: the tile has a
+    /// thumbnail, the carousel the full size from the second screenshot. For
+    /// years only the tile was warmed up, so a click on an already shown card
+    /// still ran into the network.
     fn warm_gallery(mut self: Pin<&mut Self>, generation: &QString) {
         let asked: u64 = generation.to_string().parse().unwrap_or(u64::MAX);
         if asked != self.rust().requests.generation() {
-            return; // раздел с тех пор сменили — греть уже нечего
+            return; // the section has changed since — there is nothing left to warm up
         }
         let wants: Vec<(String, String)> = self
             .rust()
@@ -5839,8 +5940,8 @@ impl qobject::AppearanceModel {
         self.as_mut().pump_previews();
     }
 
-    /// Фоновый прогрев картинок ЧУЖОЙ страницы (её плиток на экране нет —
-    /// наверх ничего не отдаётся, кеш просто наполняется).
+    /// A background warm-up of the pictures of ANOTHER page (its tiles are not
+    /// on screen — nothing is handed up, the cache simply fills).
     fn enqueue_prefetched_previews(mut self: Pin<&mut Self>, urls: Vec<(String, String)>) {
         for (cid, url) in urls {
             let cached = self.cached_preview(&url);
@@ -5852,8 +5953,8 @@ impl qobject::AppearanceModel {
         self.as_mut().pump_previews();
     }
 
-    /// Раздать хозяину то, что очередь разрешила запустить, и разбудить
-    /// выдачу готовых.
+    /// Hand the host what the queue allowed to launch, and wake up the delivery
+    /// of the ready ones.
     fn pump_previews(mut self: Pin<&mut Self>) {
         let jobs = self.as_mut().rust_mut().preview.pump();
         for job in jobs {
@@ -5881,7 +5982,8 @@ impl qobject::AppearanceModel {
         self.as_mut().preview_changed();
     }
 
-    /// Ответ по заявке пришёл — снять её с учёта и вернуть, о чём просили.
+    /// An answer for the request arrived — remove it from accounting and return
+    /// what was asked for.
     fn take_preview_job(mut self: Pin<&mut Self>, job: &QString) -> Option<PreviewReq> {
         let id: u64 = job.to_string().parse().ok()?;
         self.as_mut().rust_mut().preview_jobs.remove(&id)
@@ -5906,15 +6008,15 @@ impl qobject::AppearanceModel {
         };
         self.as_mut().rust_mut().preview.finished(&req.url, req.low);
         let status = status.to_string();
-        // Заявку оборвали мы сами (ушли из раздела) — это не сбой сети, и
-        // повторять её незачем.
+        // We aborted the request ourselves (left the section) — this is not a
+        // network failure, and there is no reason to repeat it.
         if status == PREVIEW_CANCELED {
             self.as_mut().pump_previews();
             return;
         }
-        // У живой плитки есть запасные картинки товара: первая не
-        // загрузилась — сразу следующая. Повтор той же ссылки здесь лишний:
-        // временные сбои сети скачивание уже повторило само.
+        // A live tile has spare pictures of the item: if the first did not load —
+        // the next one at once. Repeating the same link is superfluous here: the
+        // download has already repeated temporary network failures itself.
         if !req.low {
             let next = {
                 let me = self.rust();
@@ -5977,7 +6079,7 @@ impl qobject::AppearanceModel {
         self.as_mut().preview_changed();
     }
 
-    /// Бросить всё, что летит и стоит за превью: раздел сменили.
+    /// Drop everything flying and queued for previews: the section changed.
     fn cancel_previews(mut self: Pin<&mut Self>) {
         {
             let mut me = self.as_mut().rust_mut();
@@ -5994,18 +6096,20 @@ impl qobject::AppearanceModel {
 }
 
 // ============================================================================
-// Фоновый прогрев
+// Background warm-up
 // ============================================================================
 //
-// Две разные бесшовности одним механизмом (правило #12):
-//   * СОСЕДНИЙ РАЗДЕЛ — открыл N, фоном греется N+1, N+2…: переключение
-//     открывается из кеша мгновенно;
-//   * СЛЕДУЮЩАЯ СТРАНИЦА открытого раздела — «Вперёд» тоже без сети.
+// Two different kinds of seamlessness with one mechanism (rule #12):
+//   * THE NEIGHBOURING SECTION — N was opened, N+1, N+2… are warmed up in
+//     the background: a switch opens instantly from the cache;
+//   * THE NEXT PAGE of the open section — "Forward" also without the
+//     network.
 //
-// Очередь, порядок, дедуп и «по одной за раз» держит ядро
-// (`ap::CatalogRequests`), сеть — хозяин. Живой запрос человека всегда
-// важнее: пока раздел, на который он смотрит, грузится, канал ему не
-// занимаем, а очередь догонит после ответа.
+// The queue, the order, dedup and "one at a time" are held by the core
+// (`ap::CatalogRequests`), the network by the host. The user's live request
+// always matters more: while the section they are looking at is loading,
+// we do not occupy the channel, and the queue will catch up after the
+// answer.
 
 impl qobject::AppearanceModel {
     fn start_category_prefetch(mut self: Pin<&mut Self>) {
@@ -6017,7 +6121,7 @@ impl qobject::AppearanceModel {
         self.as_mut().pump_prefetch();
     }
 
-    /// Поставить соседей открытого раздела в начало очереди.
+    /// Put the neighbours of the open section at the front of the queue.
     fn prioritize_prefetch(mut self: Pin<&mut Self>) {
         let front = {
             let me = self.rust();
@@ -6043,16 +6147,16 @@ impl qobject::AppearanceModel {
             .prefetch_wanted(QString::from(&body.to_string()));
     }
 
-    /// Прогреть кеш СЛЕДУЮЩЕЙ страницы открытого раздела.
+    /// Warm up the cache of the NEXT page of the open section.
     ///
-    /// Один прогрев на страницу за сессию: без этого каждый повторный заход в
-    /// раздел слал тот же запрос заново и топил канал. Живой запрос человека
-    /// за ту же страницу тоже считается прогревом.
+    /// One warm-up per page per session: without this every repeated visit to
+    /// the section sent the same request again and flooded the channel. The
+    /// user's live request for the same page also counts as a warm-up.
     fn prefetch_next_page(mut self: Pin<&mut Self>) {
         let request = {
             let me = self.rust();
-            // Местные разделы и AUR лежат на диске, Cinnamon Spices
-            // листается по своему индексу — греть у них нечего.
+            // Local sections and AUR lie on disk, Cinnamon Spices is paged by its own
+            // index — there is nothing to warm up for them.
             if me.view.is_local()
                 || me.view.aur_mode()
                 || me.view.own_site_store()
@@ -6061,16 +6165,16 @@ impl qobject::AppearanceModel {
             {
                 None
             } else {
-                // Есть ли следующая — по факту потока, если ответ его знает.
+                // Whether there is a next one — by the fact of the stream, if the answer
+                // knows it.
                 let more = me.has_more.unwrap_or_else(|| {
                     ap::has_page_to_prefetch(me.view.page, me.total, me.page_size())
                 });
                 if !more {
                     None
                 } else {
-                    // Сортировка обязана совпасть с той, по которой пойдёт
-                    // живой запрос, иначе ключ кеша страницы N+1 не сойдётся
-                    // при нажатии «Вперёд».
+                    // The sort must match the one the live request will go by, otherwise the
+                    // cache key of page N+1 will not match when "Forward" is pressed.
                     Some(json!({
                         "kind": PREFETCH_PAGE,
                         "categoryId": me.view.query_category_id(),
@@ -6083,8 +6187,8 @@ impl qobject::AppearanceModel {
             }
         };
         let Some(body) = request else { return };
-        // Размер страницы — в ключе: при другой ширине окна страница N —
-        // другие работы, и прежний прогрев её не покрывает.
+        // The page size is in the key: at another window width page N holds other
+        // works, and the previous warm-up does not cover it.
         let key = format!(
             "{}:n{}",
             ocs::list_key(
@@ -6106,8 +6210,9 @@ impl qobject::AppearanceModel {
         let Ok(v) = serde_json::from_str::<Value>(&payload.to_string()) else {
             return;
         };
-        // Цель раздела отмечается сделанной независимо от улова: кеш просто
-        // не наполнится, а второй раз ту же цель тянуть незачем.
+        // The section's target is marked done regardless of the catch: the cache
+        // simply will not fill, and there is no reason to pull the same target a
+        // second time.
         if s(&v, "kind") == PREFETCH_CATEGORY {
             let cat_id = s(&v, "categoryId").to_string();
             let sort = s(&v, "sort").to_string();
@@ -6116,8 +6221,8 @@ impl qobject::AppearanceModel {
                 .requests
                 .prefetch_finished((cat_id, sort));
         }
-        // Картинки чужой страницы — низким приоритетом: показывать их
-        // некуда, они лишь наполняют кеш к моменту, когда её откроют.
+        // Pictures of another page — with a low priority: there is nowhere to show
+        // them, they only fill the cache by the time it is opened.
         let mut urls: Vec<(String, String)> = Vec::new();
         if let Some(list) = v.get("items").and_then(Value::as_array) {
             for raw in list {
@@ -6140,8 +6245,8 @@ impl qobject::AppearanceModel {
                 return;
             }
             me.reload_pending = false;
-            // Тема применена только что: кешированный скан диска показал бы
-            // «✅ Активна» на прежней.
+            // A theme was just applied: a cached disk scan would show «✅ Active» on
+            // the previous one.
             me.catalog_fresh = true;
         }
         self.as_mut().install_changed();
@@ -6154,8 +6259,8 @@ impl qobject::AppearanceModel {
             if !(me.view.is_local() || me.view.installed_view()) || me.screen != ap::SCREEN_GRID {
                 return;
             }
-            // Кеш сканов хозяин уже сбросил, но запрос без обхода мог бы
-            // встретить заново заполненный соседним прогревом.
+            // The host has already reset the scan cache, but a request without
+            // bypassing could meet it refilled by a neighbouring warm-up.
             me.catalog_fresh = true;
         }
         self.resync();
@@ -6183,7 +6288,7 @@ impl qobject::AppearanceModel {
         }
         match spawn_detached(&b.argv) {
             Ok(mut child) => {
-                // Дождаться в стороне — иначе закрытое окно висело бы зомби.
+                // Wait on the side — otherwise a closed window would hang as a zombie.
                 std::thread::spawn(move || child.wait());
                 QString::default()
             }
@@ -6208,8 +6313,8 @@ impl qobject::AppearanceModel {
         }
         match spawn_detached(&b.argv) {
             Ok(mut child) => {
-                // Как у KDE: окно настроек закрыли — образец рамки рисуется
-                // заново (настройки могли поменять её вид).
+                // As in KDE: the settings window was closed — the border sample is drawn
+                // anew (the settings may have changed its look).
                 let handle = self.as_ref().get_ref().qt_thread();
                 let id = it.id.clone();
                 std::thread::spawn(move || {
@@ -6225,9 +6330,9 @@ impl qobject::AppearanceModel {
         }
     }
 
-    /// Окно настроек рамки `id` закрыли: прежний снимок — вон из кеша, новый
-    /// кладётся под другим ключом (`deco_config_gen`) и встаёт в плитку и в
-    /// открытую панель деталей.
+    /// The settings window of border `id` was closed: the previous snapshot goes
+    /// out of the cache, a new one is put under another key (`deco_config_gen`)
+    /// and lands on the tile and in the open details panel.
     fn decoration_settings_closed(mut self: Pin<&mut Self>, id: &str) {
         {
             let mut me = self.as_mut().rust_mut();
@@ -6272,8 +6377,8 @@ impl qobject::AppearanceModel {
         if open.mode == "kde" {
             match spawn_detached(&open.argv) {
                 Ok(child) => {
-                    // Как у модуля KDE: редактор закрыли — список схем
-                    // перечитывается (новая схема, правка своей).
+                    // As in the KDE module: the editor was closed — the list of schemes is
+                    // re-read (a new scheme, an edit of our own).
                     let handle = self.as_ref().get_ref().qt_thread();
                     std::thread::spawn(move || {
                         let mut child = child;
@@ -6316,9 +6421,9 @@ impl qobject::AppearanceModel {
         QString::from(&serde_json::to_string(&result).unwrap_or_else(|_| "{}".into()))
     }
 
-    /// Схемы на диске поменялись (свой редактор или редактор KDE): сетка
-    /// перечитывает диск мимо кеша — сразу, если открыта, иначе при
-    /// следующем запросе.
+    /// The schemes on disk changed (our own editor or the KDE editor): the grid
+    /// re-reads the disk bypassing the cache — at once if it is open, otherwise
+    /// on the next request.
     fn schemes_changed_on_disk(mut self: Pin<&mut Self>) {
         let on_grid = {
             let mut me = self.as_mut().rust_mut();
@@ -6337,13 +6442,13 @@ impl qobject::AppearanceModel {
 }
 
 // ============================================================================
-// Галерея скриншотов и комментарии
+// Screenshot gallery and comments
 // ============================================================================
 
-/// Один комментарий в том виде, в каком его показывает панель деталей.
+/// One comment in the form the details panel shows it.
 #[derive(Debug, Clone, Default)]
 pub struct CommentRow {
-    /// Закреплён сопровождающим пакета AUR (значок перед ником).
+    /// Pinned by the AUR package maintainer (an icon before the nickname).
     pinned: bool,
     author: String,
     date: String,
@@ -6355,7 +6460,7 @@ pub struct CommentRow {
 }
 
 impl qobject::AppearanceModel {
-    // ── Неизменные подписи накладных контролов ──────────────────────────
+    // ── Fixed labels of the overlay controls ────────────────────────────
     fn overlay_zoom_text(&self) -> QString {
         QString::from(ap::OVERLAY_ZOOM_BTN)
     }
@@ -6387,7 +6492,7 @@ impl qobject::AppearanceModel {
         QString::from(&ap::comments_more_btn())
     }
 
-    // ── Галерея ─────────────────────────────────────────────────────────
+    // ── Gallery ─────────────────────────────────────────────────────────
     fn gallery_total(&self) -> i64 {
         let me = self.rust();
         ap::gallery_total(
@@ -6397,7 +6502,8 @@ impl qobject::AppearanceModel {
         )
     }
 
-    /// Сколько кадров галереи ещё живы (битые при листании пропускаются).
+    /// How many gallery frames are still alive (broken ones are skipped when
+    /// paging).
     fn gallery_alive(&self) -> i64 {
         let total = self.gallery_total();
         let dead = self
@@ -6421,14 +6527,16 @@ impl qobject::AppearanceModel {
         self.gallery_alive() > 1
     }
 
-    /// Пересчитать кадр на месте картинки и попросить у хозяина недостающее.
+    /// Recompute the frame in place of the picture and ask the host for what is
+    /// missing.
     fn sync_frame(mut self: Pin<&mut Self>) {
         let total = self.gallery_total();
         let alive = self.gallery_alive();
         let frame = {
             let me = self.rust();
             if total > 0 && alive == 0 && !me.gallery_loaded.contains_key(&me.gallery_index) {
-                // Битые все кадры — картинки не будет, а не «листайте стрелками».
+                // All frames are broken — there will be no picture, rather than "page with
+                // the arrows".
                 ap::GalleryFrame::Unavailable
             } else {
                 ap::gallery_frame(
@@ -6455,11 +6563,11 @@ impl qobject::AppearanceModel {
                     me.detail_frame = String::new();
                     me.detail_frame_text = ap::gallery_loading_msg();
                 }
-                // Одиночная картинка, которой пока нет: панель остаётся
-                // как была — мигать пустотой на ровном месте незачем.
+                // A single picture that is not there yet: the panel stays as it was —
+                // there is no reason to flash emptiness for nothing.
                 ap::GalleryFrame::Unchanged => {}
-                // Картинки не будет. Превью плитки, если оно уже стоит на
-                // месте кадра, остаётся — заглушка только вместо пустоты.
+                // There will be no picture. The tile preview, if it already stands in the
+                // frame's place, stays — the placeholder is only instead of emptiness.
                 ap::GalleryFrame::Unavailable => {
                     if me.detail_frame.is_empty() {
                         me.detail_frame_text = ap::detail_preview_unavailable();
@@ -6471,7 +6579,7 @@ impl qobject::AppearanceModel {
         self.request_frame();
     }
 
-    /// Попросить кадр, который показан сейчас, если его ещё нет.
+    /// Ask for the frame shown right now if it is not there yet.
     fn request_frame(mut self: Pin<&mut Self>) {
         let want = {
             let me = self.rust();
@@ -6502,7 +6610,8 @@ impl qobject::AppearanceModel {
                 return;
             }
             me.gallery_index = next;
-            // Дальше кадр из кеша человека уже не сдвинет: он выбрал сам.
+            // From now on a frame from the cache will not move the user: they chose
+            // themselves.
             me.gallery_user_nav = true;
         }
         self.sync_frame();
@@ -6525,8 +6634,8 @@ impl qobject::AppearanceModel {
             me.gallery_loaded.insert(index, path.to_string());
             me.gallery_failed.remove(&index);
         }
-        // Кадр подхватился из кеша, а человек ещё не листал — встаём на
-        // самый ранний готовый (решение ядра).
+        // A frame was picked up from the cache, and the user has not paged yet —
+        // we move to the earliest ready one (the core's decision).
         let adopt = {
             let me = self.rust();
             ap::adopt_gallery_index(&me.gallery_loaded, me.gallery_index, me.gallery_user_nav)
@@ -6545,8 +6654,8 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.gallery_failed.insert(index);
-            // Не загрузился кадр, на котором стоим, — уходим на следующий
-            // живой: битый кадр в галерее не показываем.
+            // The frame we stand on did not load — we move to the next live one: a
+            // broken frame is not shown in the gallery.
             if me.gallery_index == index {
                 me.gallery_index =
                     ap::gallery_step_skipping(index, total, 1, &me.gallery_failed);
@@ -6570,9 +6679,9 @@ impl qobject::AppearanceModel {
     fn zoom_frames(&self) -> QList<QVariant> {
         let me = self.rust();
         let mut out = QList::<QVariant>::default();
-        // Показываем ТОЛЬКО то, что действительно лежит на диске: решение
-        // и проверку файла делает ядро, здесь лишь доступ к файловой
-        // системе, которого у ядра нет.
+        // We show ONLY what really lies on disk: the decision and the file check
+        // are done by the core, here there is only file system access, which the
+        // core does not have.
         let exists = |p: &str| std::path::Path::new(p).is_file();
         let current = me.detail_frame.clone();
         let Some((paths, index)) = ap::zoom_frames(&current, &me.gallery_loaded, exists) else {
@@ -6581,12 +6690,12 @@ impl qobject::AppearanceModel {
         for path in paths {
             out.append(qstr(&file_url(&path)));
         }
-        // Последним слотом — номер кадра, с которого открывать просмотр.
+        // The last slot is the number of the frame to open the viewer from.
         out.append(QVariant::from(&QString::from(&index.to_string())));
         out
     }
 
-    // ── Комментарии ─────────────────────────────────────────────────────
+    // ── Comments ────────────────────────────────────────────────────────
     fn comments_header(&self) -> QString {
         let me = self.rust();
         if me.comments.is_empty() && me.comments_total.unwrap_or(0) == 0 {
@@ -6643,7 +6752,7 @@ impl qobject::AppearanceModel {
                 ),
                 (
                     "isProductAuthor",
-                    // У пакета AUR «свои» — и соисполнители тоже.
+                    // For an AUR package "our own" includes the co-maintainers too.
                     QVariant::from(
                         &(ap::comment_is_product_author(&row.author, &product_author)
                             || me.aur_detail.as_ref().is_some_and(|d| {
@@ -6660,12 +6769,12 @@ impl qobject::AppearanceModel {
 
     fn comments_more_visible(&self) -> bool {
         let me = self.rust();
-        // У пакета AUR «есть ли ещё» знает сам сайт (ссылка «Next»): страница
-        // бывает неполной из-за удалённых комментариев.
+        // For an AUR package the site itself knows "whether there are more" (the
+        // "Next" link): a page may be incomplete because of deleted comments.
         if let Some(d) = me.aur_detail.as_ref() {
             return d.comments_more && !me.comments.is_empty();
         }
-        // Кнопка «Показать ещё» имеет смысл, пока страница пришла полной.
+        // The "Show more" button makes sense while the page arrived full.
         me.detail.as_ref().is_some_and(|it| it.local_kind.is_none())
             && !me.comments.is_empty()
             && me.comments.len() % ap::COMMENTS_PAGESIZE == 0
@@ -6691,7 +6800,7 @@ impl qobject::AppearanceModel {
         let Ok(v) = serde_json::from_str::<Value>(&payload.to_string()) else {
             return;
         };
-        // Ответ про закрытый товар молча отбрасываем.
+        // An answer about a closed item is silently discarded.
         {
             let me = self.rust();
             let open = me.detail.as_ref().map(|it| it.id.clone()).unwrap_or_default();
@@ -6730,7 +6839,7 @@ impl qobject::AppearanceModel {
         }
         {
             let mut me = self.as_mut().rust_mut();
-            // Первая страница заменяет список, следующие дописываются.
+            // The first page replaces the list, the following ones are appended.
             if page == 0 {
                 me.comments.clear();
             }
@@ -6740,8 +6849,9 @@ impl qobject::AppearanceModel {
                 me.comments_total = total;
             }
         }
-        // Страница пакета AUR несёт и то, чего нет у магазина: есть ли ещё
-        // страница, не закрыли ли нам сайт, соисполнители.
+        // An AUR package page also carries what the store does not have: whether
+        // there is one more page, whether the site closed itself to us, the
+        // co-maintainers.
         let comaintainers: Option<Vec<String>> = v.get("comaintainers").and_then(Value::as_array).map(|a| {
             a.iter().filter_map(Value::as_str).map(str::to_string).collect()
         });
@@ -6775,33 +6885,32 @@ impl qobject::AppearanceModel {
         let page = v.get("page").and_then(Value::as_i64).unwrap_or(-1);
         {
             let me = self.rust();
-            // Ответ про закрытый или уже сменившийся товар молча отбрасываем —
-            // как в `comments_answer`. Сторож у ядра свой, но между его
-            // проверкой и этой строкой очередь окна успевает повернуться, и
-            // последнее слово о том, что открыто, — за страницей.
+            // An answer about a closed or already changed item is silently discarded —
+            // as in `comments_answer`. The core has its own watcher, but between its
+            // check and this line the window's queue manages to turn, and the last word
+            // about what is open belongs to the page.
             let open = me.detail.as_ref().map(|it| it.id.clone()).unwrap_or_default();
             if open.is_empty() || open != s(&v, "itemId") {
                 return;
             }
-            // Страница комментариев обязана быть ПОКАЗАННОЙ: показаны страницы
-            // с нулевой по `comments_page - 1`. Перевод страницы, которую
-            // список успел выбросить (человек закрыл и открыл комментарии
-            // заново), не про эти строки.
+            // The comments page must be a SHOWN one: pages from zero to
+            // `comments_page - 1` are shown. A translation of a page the list has
+            // already thrown away (the user closed and reopened the comments) is not
+            // about these rows.
             if page < 0 || page >= me.comments_page {
                 return;
             }
         }
-        // Пара «оригинал → перевод». Чистка та же, что у самого списка:
-        // сравнивать надо с тем, что в строке лежит, а не с сырым ответом
-        // магазина.
+        // An "original → translation" pair. The cleanup is the same as for the
+        // list itself: the comparison must be with what lies in the row, not with
+        // the store's raw answer.
         let mut done: Vec<(String, String)> = Vec::new();
         if let Some(list) = v.get("rows").and_then(Value::as_array) {
             for raw in list {
                 let source = ap::clean_comment_text(s(raw, "text"));
                 let translated = ap::clean_comment_text(s(raw, "translated"));
-                // Перевод, равный оригиналу, переводом не считается: он бы
-                // только зажёг ссылку «показать оригинал» над той же самой
-                // строкой.
+                // A translation equal to the original does not count as a translation: it
+                // would only light the "show original" link over the very same line.
                 if source.is_empty() || translated.is_empty() || translated == source {
                     continue;
                 }
@@ -6823,10 +6932,9 @@ impl qobject::AppearanceModel {
                 };
                 row.translated = translated.clone();
                 row.was_translated = true;
-                // Переключатель «перевод ⇄ оригинал» остаётся в том положении,
-                // в каком его оставил человек: он мог нажать «показать
-                // оригинал» до прихода перевода — сбросить его значило бы
-                // дёрнуть текст под рукой.
+                // The "translation ⇄ original" toggle stays in the position the user left
+                // it in: they may have pressed "show original" before the translation
+                // arrived — resetting it would jerk the text under their hand.
                 changed = true;
             }
         }
@@ -6851,7 +6959,7 @@ impl qobject::AppearanceModel {
 }
 
 // ============================================================================
-// Подсказки поиска
+// Search suggestions
 // ============================================================================
 
 impl qobject::AppearanceModel {
@@ -6871,7 +6979,8 @@ impl qobject::AppearanceModel {
     fn suggest_rows(&self) -> QList<QVariant> {
         let me = self.rust();
         let mut out = QList::<QVariant>::default();
-        // Строк не больше, чем помещается в выпадашку: число из ядра.
+        // No more rows than fit into the drop-down: the number comes from the
+        // core.
         for (i, item) in me
             .suggest_items
             .iter()
@@ -6945,8 +7054,8 @@ impl qobject::AppearanceModel {
                 }
                 self.as_mut().suggest_changed();
             }
-            // Местный раздел и AUR сети не знают: фильтруем то, что уже
-            // показано, — мгновенно и без запроса (решение ядра).
+            // A local section and AUR do not know the network: we filter what is
+            // already shown — instantly and without a request (the core's decision).
             ap::SuggestAction::Local => {
                 let items: Vec<ThemeItem> = {
                     let me = self.rust();
@@ -7005,8 +7114,8 @@ impl qobject::AppearanceModel {
             return;
         };
         let generation = v.get("generation").and_then(Value::as_u64).unwrap_or(0);
-        // Человек печатал дальше, ушёл из строки или стёр введённое — ответ
-        // уже не про то, что он видит (решение ядра).
+        // The user typed further, left the line or erased what was typed — the
+        // answer is no longer about what they see (the core's decision).
         let fresh = {
             let me = self.rust();
             ap::suggest_answer_fresh(
@@ -7043,7 +7152,7 @@ impl qobject::AppearanceModel {
             if shown == 0 {
                 return;
             }
-            // По кругу: с последней строки вниз — снова на первую.
+            // In a loop: from the last row down — back to the first.
             let next = me.suggest_index + delta;
             me.suggest_index = if next < 0 {
                 shown - 1
@@ -7071,7 +7180,7 @@ impl qobject::AppearanceModel {
         self.suggest_open(index);
     }
 
-    /// Открыть подсказку под этим номером — как клик по плитке.
+    /// Open the suggestion with this number — like a click on a tile.
     fn suggest_open(mut self: Pin<&mut Self>, index: i64) -> bool {
         let item = self
             .rust()
@@ -7086,14 +7195,14 @@ impl qobject::AppearanceModel {
             me.suggest_focused = false;
         }
         self.as_mut().suggest_changed();
-        // Подсказка ведёт прямо в панель деталей: товар уже найден, второй
-        // раз просить его в сетке незачем.
+        // A suggestion leads straight into the details panel: the item is already
+        // found, there is no reason to ask for it in the grid a second time.
         let id = item.id.clone();
         let known = self.rust().cards.iter().any(|c| c.id() == id);
         if !known {
-            // Товар из выпадашки может не значиться в открытой сетке —
-            // кладём его туда, иначе панели деталей неоткуда его взять.
-            // Через сброс модели: менять состав строк молча нельзя.
+            // An item from the drop-down may not be listed in the open grid — we put
+            // it there, otherwise the details panel has nowhere to take it from.
+            // Through a model reset: the row composition must not be changed silently.
             unsafe {
                 self.as_mut().begin_reset_model();
                 self.as_mut().rust_mut().cards.push(Card::Theme(Box::new(item)));
@@ -7107,24 +7216,26 @@ impl qobject::AppearanceModel {
 }
 
 // ============================================================================
-// Карточка пакета AUR
+// AUR package card
 // ============================================================================
 //
-// Общая часть панели деталей (имя, описание, картинка, комментарии, полоса
-// хода) работает над товаром, собранным из плитки пакета; своё у пакета —
-// сведения из паспорта RPC `info` и кнопка установки, та же, что на плитке
-// (с очередью установок). Что показывать — решает ядро (`aur::info_facts`).
+// The shared part of the details panel (name, description, picture,
+// comments, progress bar) works over the item assembled from the package
+// tile; the package's own parts are the information from the RPC `info`
+// passport and the install button, the same as on the tile (with the
+// installation queue). What to show is decided by the core
+// (`aur::info_facts`).
 
-/// Запись проверки источника пакета из кеша (память процесса, при первом
-/// обращении — `~/.cache/rexon/aur-trust.json`). Сети не касается.
+/// The package source check record from the cache (process memory, on first
+/// access — `~/.cache/rexon/aur-trust.json`). Does not touch the network.
 fn aur_trust_entry(name: &str) -> Option<rexon_core::aur_trust::CacheEntry> {
     static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     let path = PATH.get_or_init(rexon_core::aur_trust::live_cache_path);
     rexon_core::aur_trust::cached_entry(path, name)
 }
 
-/// Признаки риска для плитки: данные RPC плитки и проверка, сделанная
-/// раньше (если карточку уже открывали).
+/// Risk signals for the tile: the tile's RPC data and a check done earlier
+/// (if the card was already opened).
 fn aur_tile_signals(pkg: &AurPackage) -> Vec<rexon_core::aur_trust::Signal> {
     let entry = aur_trust_entry(&pkg.name);
     rexon_core::aur_trust::signals(
@@ -7134,7 +7245,7 @@ fn aur_tile_signals(pkg: &AurPackage) -> Vec<rexon_core::aur_trust::Signal> {
     )
 }
 
-/// Товар панели деталей из плитки пакета.
+/// The details panel item from a package tile.
 fn aur_detail_item(pkg: &AurPackage) -> ThemeItem {
     ThemeItem {
         id: pkg.name.clone(),
@@ -7172,8 +7283,8 @@ impl qobject::AppearanceModel {
         let Some(d) = self.rust().aur_detail.as_ref() else {
             return out;
         };
-        // До ответа RPC — то, что известно с плитки; ответа не будет —
-        // причина первой строкой.
+        // Before the RPC answer — what is known from the tile; if there will be no
+        // answer — the reason as the first line.
         let info = d.info.clone().unwrap_or_else(|| rexon_core::aur::AurInfo {
             name: d.pkg.name.clone(),
             version: d.pkg.version.clone(),
@@ -7196,8 +7307,8 @@ impl qobject::AppearanceModel {
         for f in rexon_core::aur::info_facts(&info, &d.comaintainers) {
             let html = if f.link {
                 let url = rexon_core::translator::html_escape(&f.value);
-                // Цвет ссылки — в самом тексте: таблица стилей фрагмент
-                // внутри подписи не красит (как у переключателя перевода).
+                // The link colour is in the text itself: the style sheet does not paint a
+                // fragment inside a label (like the translation toggle).
                 let accent = ui_base::active_skin_colors()
                     .get("accent")
                     .cloned()
@@ -7242,15 +7353,15 @@ impl qobject::AppearanceModel {
             .and_then(|i| serde_json::from_value::<rexon_core::aur::AurInfo>(i.clone()).ok());
         {
             let mut me = self.as_mut().rust_mut();
-            // Ответ про закрытую или сменившуюся карточку молча отбрасываем.
+            // An answer about a closed or changed card is silently discarded.
             let me = &mut *me;
             let Some(d) = me.aur_detail.as_mut().filter(|d| d.pkg.name == id) else {
                 return;
             };
             match info {
                 Some(info) => {
-                    // Описание и версия — свежие из паспорта (плитка могла
-                    // прийти из кеша раздела).
+                    // The description and the version are fresh from the passport (the tile
+                    // may have come from the section's cache).
                     if let Some(item) = me.detail.as_mut() {
                         if item.description != info.description {
                             item.description = info.description.clone();
@@ -7273,14 +7384,14 @@ impl qobject::AppearanceModel {
             }
         }
         self.as_mut().detail_changed();
-        // Комментарии — со страницы пакета, после паспорта: два обращения к
-        // сайту подряд не уходят разом.
+        // The comments come from the package page, after the passport: two
+        // requests to the site in a row do not go out at once.
         self.as_mut()
             .comments_wanted(QString::from(&id), QString::from("0"));
     }
 
-    /// Признаки риска открытой карточки: глубокая проверка (если есть) и
-    /// паспорт RPC (до ответа — данные плитки).
+    /// Risk signals of the open card: the deep check (if any) and the RPC
+    /// passport (before the answer — the tile's data).
     fn aur_trust_signals(&self) -> Vec<rexon_core::aur_trust::Signal> {
         let Some(d) = self.rust().aur_detail.as_ref() else {
             return Vec::new();
@@ -7334,8 +7445,8 @@ impl qobject::AppearanceModel {
         QString::from(&rexon_core::aur_trust::pkgbuild_title(&name))
     }
 
-    /// Ветка git пакета в AUR (PKGBUILD лежит под ней, а не под именем
-    /// пакета, если база общая).
+    /// The package's git branch in AUR (the PKGBUILD lies under it, not under
+    /// the package name, if the base is shared).
     fn aur_package_base(&self) -> QString {
         let Some(d) = self.rust().aur_detail.as_ref() else {
             return QString::default();
@@ -7392,7 +7503,7 @@ impl qobject::AppearanceModel {
             }
         }
         self.as_mut().detail_changed();
-        // Плитка того же пакета теперь знает больше — перерисовать её.
+        // The tile of the same package now knows more — repaint it.
         let row = self
             .rust()
             .cards
@@ -7409,8 +7520,9 @@ impl qobject::AppearanceModel {
         let Some(d) = me.aur_detail.as_ref() else {
             return vmap(Vec::new());
         };
-        // Плитка в сетке — первоисточник состояния (её отмечает очередь
-        // установок); нет её там (сетку пересобрали) — пакет карточки.
+        // The tile in the grid is the primary source of the state (the
+        // installation queue marks it); if it is not there (the grid was rebuilt)
+        // — the card's package.
         let pkg = me
             .cards
             .iter()
@@ -7429,15 +7541,15 @@ impl qobject::AppearanceModel {
     }
 }
 
-/// Есть ли редактор цветовых схем KDE (`kcolorschemeeditor`) в PATH.
+/// Whether the KDE colour scheme editor (`kcolorschemeeditor`) is in PATH.
 fn kde_scheme_editor_present() -> bool {
     let path = std::env::var("PATH").ok();
     rexon_core::utils::which(rexon_core::color_scheme_edit::KDE_EDITOR, path.as_deref()).is_some()
 }
 
-/// Запустить окно сторонней программы (настройки стиля, редактор схем):
-/// без ввода и вывода, своей группой процессов — закрытие Rexon его не
-/// гасит. Ошибка — для человека.
+/// Launch a window of a third-party program (style settings, the scheme
+/// editor): without input and output, in its own process group — closing
+/// Rexon does not stop it. The error is for the user.
 fn spawn_detached(argv: &[String]) -> Result<std::process::Child, String> {
     use std::os::unix::process::CommandExt;
     let Some((program, args)) = argv.split_first() else {

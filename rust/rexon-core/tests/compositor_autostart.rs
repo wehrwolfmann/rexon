@@ -1,7 +1,7 @@
-//! Сверки автозапуска через конфиги композиторов на подставных домашних
-//! каталогах: вставка, повтор без изменений, снятие бит-в-бит, конфиги с
-//! include/source, отсутствующий конфиг. Живых конфигов не касается: HOME
-//! каждой сверки — свой каталог под `CARGO_TARGET_TMPDIR`.
+//! Checks of autostart through compositor configs on fake home
+//! directories: insertion, a repeat without changes, bit-exact removal, configs with
+//! include/source, a missing config. Live configs are not touched: the HOME of
+//! each check is its own directory under `CARGO_TARGET_TMPDIR`.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -17,7 +17,7 @@ fn argv(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
 
-/// Свежий подставной дом.
+/// A fresh fake home.
 fn sandbox(name: &str) -> SessionEnv {
     let root = format!("{}/compositor_autostart/{name}", env!("CARGO_TARGET_TMPDIR"));
     let _ = fs::remove_dir_all(&root);
@@ -43,8 +43,8 @@ fn read(path: &str) -> String {
 
 const TRAY: &[&str] = &["/opt/Rexon Apps/rexon-main-window", "--tray"];
 
-/// Полный цикл на одном файле: вставка → повтор (без изменений) → снятие
-/// бит-в-бит. Возвращает текст после вставки.
+/// A full cycle on one file: insertion → repeat (no changes) → bit-exact
+/// removal. Returns the text after insertion.
 fn cycle(env: &SessionEnv, c: Compositor, path: &str, before: Option<&str>) -> String {
     let mut env = env.clone();
     env.installed = vec![c];
@@ -55,13 +55,13 @@ fn cycle(env: &SessionEnv, c: Compositor, path: &str, before: Option<&str>) -> S
     let after = read(path);
     assert_ne!(Some(after.as_str()), before, "{c:?}: блок не лёг");
 
-    // Повтор — файл не меняется ни на байт.
+    // Repeat — the file does not change by a single byte.
     let r2 = ca::sync_command(&env, "tray", Some(&argv(TRAY)));
     let o2 = r2.outcomes.iter().find(|o| o.compositor == c).unwrap();
     assert_eq!(o2.result, Ok(Change::Unchanged), "{c:?}: повтор что-то менял");
     assert_eq!(read(path), after);
 
-    // Снятие — байт-в-байт прежний файл (или файла снова нет).
+    // Removal — byte for byte the former file (or no file again).
     ca::sync_command(&env, "tray", None);
     match before {
         Some(b) => assert_eq!(read(path), b, "{c:?}: снятие не вернуло прежний файл"),
@@ -159,11 +159,11 @@ fn hyprland_conf_refuses_hash_in_command() {
     assert!(ca::launch_line(Syntax::HyprLua, "t", &argv(&["/a#b/x"])).is_ok());
 }
 
-/// sway делит строку `exec` на команды по `,` и `;` вне кавычек, а у
-/// команды из ОДНОГО слова в кавычках снимает кавычки до `sh -c`. Сверено
-/// на sway 1.12 без экрана: `exec touch /x/a,b` создавал `/x/a` и ругался
-/// «Unknown/invalid command 'b'», `exec '/x/my dir/prog'` не запускал
-/// ничего — оболочка получала `/x/my` и `dir/prog`.
+/// sway splits an `exec` line into commands by `,` and `;` outside quotes, and for
+/// a command of ONE quoted word it strips the quotes before `sh -c`. Verified
+/// on headless sway 1.12: `exec touch /x/a,b` created `/x/a` and complained
+/// «Unknown/invalid command 'b'», `exec '/x/my dir/prog'` launched
+/// nothing — the shell got `/x/my` and `dir/prog`.
 #[test]
 fn sway_line_survives_comma_and_single_spaced_word() {
     assert_eq!(
@@ -174,12 +174,12 @@ fn sway_line_survives_comma_and_single_spaced_word() {
         ca::launch_line(Syntax::Sway, "t", &argv(&["/x/my dir/prog"])),
         Ok(vec!["exec \"'/x/my dir/prog'\"".to_string()])
     );
-    // Одно слово без кавычек и несколько слов — как прежде.
+    // One word without quotes and several words — as before.
     assert_eq!(
         ca::launch_line(Syntax::Sway, "t", &argv(&["/usr/bin/rexon"])),
         Ok(vec!["exec /usr/bin/rexon".to_string()])
     );
-    // Двойная кавычка внутри единственного слова обёртку бы разорвала.
+    // A double quote inside the single word would break the wrapping.
     assert_eq!(
         ca::launch_line(Syntax::Sway, "t", &argv(&["/x/a \"b\""])),
         Err(Refusal::BadCharacters)
@@ -370,18 +370,18 @@ fn status_is_truthful_in_compositor_session() {
     env.vars.insert("NIRI_SOCKET".into(), "/run/niri".into());
     env.installed = vec![Compositor::Niri];
     let desktop = "[Desktop Entry]\nType=Application\nExec=x\n";
-    // Конфига нет, XDG-цель не поднята — не сработает.
+    // No config, the XDG target is not raised — it will not work.
     assert!(!ca::works_in_current_session(&env, "tray", Some(desktop), || false));
-    // niri-session поднимает xdg-desktop-autostart.target — сработает.
+    // niri-session raises xdg-desktop-autostart.target — it will work.
     assert!(ca::works_in_current_session(&env, "tray", Some(desktop), || true));
-    // Запись скрыта от niri, а строки нет — не сработает даже с целью.
+    // The entry is hidden from niri and there is no line — it will not work even with the target.
     let hidden = ca::with_not_show_in(desktop, &["niri"]);
     assert!(!ca::works_in_current_session(&env, "tray", Some(&hidden), || true));
-    // Строка на месте — сработает.
+    // The line is in place — it will work.
     put(&format!("{}/niri/config.kdl", env.config_home), "layout {}\n");
     ca::sync_command(&env, "tray", Some(&argv(&["x"])));
     assert!(ca::works_in_current_session(&env, "tray", Some(&hidden), || false));
-    // Полное окружение — как прежде.
+    // A full desktop — as before.
     env.vars.clear();
     env.current_desktop = vec!["KDE".into()];
     assert!(ca::works_in_current_session(&env, "nothing", None, || false));
@@ -389,7 +389,7 @@ fn status_is_truthful_in_compositor_session() {
 
 #[test]
 fn foreign_block_helper_roundtrip() {
-    // Общий помощник для чужих строк (оболочка рабочего стола и т.п.).
+    // A common helper for foreign lines (desktop shell, etc.).
     let env = sandbox("helper");
     let path = format!("{}/hypr/hyprland.conf", env.config_home);
     let before = "monitor=,preferred,auto,1\n";
@@ -404,8 +404,8 @@ fn foreign_block_helper_roundtrip() {
     assert_eq!(ca::remove_block(&missing, Syntax::HyprConf, "shell"), Ok(Change::Unchanged));
 }
 
-/// Строки отказа есть в каталоге и переведены на русский и немецкий
-/// (русский — источник смысла). Каталог собирается настоящим `msgfmt`.
+/// The refusal strings are in the catalog and translated into Russian and German
+/// (Russian is the source of meaning). The catalog is built by a real `msgfmt`.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po настоящим msgfmt")]
 fn refusal_texts_are_translated() {
@@ -419,15 +419,15 @@ fn refusal_texts_are_translated() {
         "%1 doesn't start programs from the common startup list, and Rexon couldn't add itself to its settings: %2.",
         "Add this line to %1 yourself: %2",
     ];
-    // Ключи каталога — ровно те строки, что отдаёт модуль. Язык закреплён:
-    // иначе `text()` отдаёт перевод по локали машины (на русской или
-    // немецкой сверка одна краснела), а в общем прогоне зеленела лишь
-    // потому, что соседняя сверка успевала переключить язык процесса.
+    // The catalog keys are exactly the strings the module returns. The language is pinned:
+    // otherwise `text()` returns the translation for the machine's locale (on a Russian or
+    // German machine this one check went red), and in the full run it was green only
+    // because a neighbouring check managed to switch the process language.
     let _lang = i18n_pin::en();
     assert_eq!(Refusal::ConfigMissing.text(), msgids[0]);
     assert_eq!(Refusal::Io("x".into()).text(), "its settings file couldn't be changed (x)");
-    // Русский оригинал сверяется через собранный каталог: msgmerge переносит
-    // длинный msgstr на несколько строк po, и поиск по тексту файла ломается.
+    // The Russian original is checked through the built catalog: msgmerge wraps
+    // a long msgstr over several po lines, and searching the file text breaks.
     let ru_not_covered = "%1 не запускает программы из общего списка автозапуска, а вписать Rexon в его настройки не удалось: %2.";
     for lang in rexon_core::i18n::parse_linguas(rexon_core::i18n::LINGUAS) {
         let po = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../po/{lang}.po"));
@@ -454,9 +454,9 @@ fn refusal_texts_are_translated() {
     }
 }
 
-/// Два блока в файле без `\n` в конце: снятие в порядке установки не
-/// склеивает метку второго блока с последней строкой человека, и после
-/// снятия обоих файл байт-в-байт прежний. В обратном порядке — тоже.
+/// Two blocks in a file without a trailing `\n`: removal in install order does not
+/// glue the second block's marker to the person's last line, and after
+/// removing both the file is byte for byte the former one. In reverse order too.
 #[test]
 fn two_blocks_removed_in_install_order_keep_bytes() {
     let write = |e: TextEdit| match e {
@@ -474,21 +474,21 @@ fn two_blocks_removed_in_install_order_keep_bytes() {
         let one = write(ca::upsert_text(Some(before), syntax, "tray", &body("a"), &[]).unwrap());
         let two = write(ca::upsert_text(Some(&one), syntax, "session-env", &body("b"), &[]).unwrap());
 
-        // В порядке установки.
+        // In install order.
         let mid = write(ca::remove_text(&two, syntax, "tray"));
         assert!(mid.starts_with(&format!("{before}\n")), "{syntax:?}: метка прилипла к строке человека:\n{mid}");
         assert!(ca::has_block(&mid, syntax, "session-env"), "{syntax:?}:\n{mid}");
         assert_eq!(write(ca::remove_text(&mid, syntax, "session-env")), before, "{syntax:?}");
 
-        // В обратном порядке.
+        // In reverse order.
         let mid = write(ca::remove_text(&two, syntax, "session-env"));
         assert_eq!(mid, one, "{syntax:?}");
         assert_eq!(write(ca::remove_text(&mid, syntax, "tray")), before, "{syntax:?}");
     }
 }
 
-/// Заведённый нами файл с двумя блоками: снятие первого передаёт второму и
-/// «файл наш» — после снятия обоих файл удаляется, а не остаётся пустым.
+/// A file created by us with two blocks: removing the first hands "the file is ours" over
+/// to the second — after removing both the file is deleted rather than left empty.
 #[test]
 fn two_blocks_in_our_new_file_delete_it_in_the_end() {
     let syntax = Syntax::Shell;
@@ -507,8 +507,8 @@ fn two_blocks_in_our_new_file_delete_it_in_the_end() {
     assert_eq!(ca::remove_text(&mid, syntax, "session-env"), TextEdit::Delete, "{mid}");
 }
 
-/// Человек дописал строки после нашего блока: перевод строки перед ними
-/// остаётся, иначе его строка склеилась бы с последней строкой до блока.
+/// The person appended lines after our block: the line break before them
+/// stays, otherwise their line would be glued to the last line before the block.
 #[test]
 fn foreign_lines_after_block_keep_their_newline() {
     let syntax = Syntax::Sway;
@@ -523,9 +523,9 @@ fn foreign_lines_after_block_keep_their_newline() {
     );
 }
 
-/// Удаление Rexon снимает и блок переменных сеанса — в том числе из
-/// `~/.xprofile` и `labwc/environment`, которых нет среди конфигов
-/// композиторов, — и файлы возвращаются к прежним байтам.
+/// Uninstalling Rexon also removes the session variables block — including from
+/// `~/.xprofile` and `labwc/environment`, which are not among the compositor
+/// configs — and the files return to their former bytes.
 #[test]
 fn remove_all_rexon_takes_session_env_too() {
     assert!(ca::REXON_IDS.contains(&ca::ID_SESSION_ENV));
@@ -556,10 +556,10 @@ fn written(e: TextEdit) -> String {
     }
 }
 
-/// Файл sway завёл Rexon (блок с `+new` и `include` системного), за ним
-/// встал второй наш блок. Снятие первого не уносит `include`: пока в файле
-/// есть наши строки, без него sway остался бы без системного конфига и
-/// клавиш. После снятия обоих файл удаляется.
+/// The sway file was created by Rexon (a block with `+new` and an `include` of the system one), and
+/// a second block of ours came after it. Removing the first does not take the `include` away: while the file
+/// has our lines, without it sway would be left without the system config and
+/// keys. After removing both the file is deleted.
 #[test]
 fn sway_include_stays_while_our_blocks_remain() {
     let syntax = Syntax::Sway;
@@ -575,19 +575,19 @@ fn sway_include_stays_while_our_blocks_remain() {
         mid.find("include").unwrap() < mid.find("exec b").unwrap(),
         "include должен идти до строк запуска:\n{mid}"
     );
-    // Повтор установки второго блока не дублирует include и ничего не меняет.
+    // Repeating the install of the second block does not duplicate the include and changes nothing.
     assert_eq!(
         ca::upsert_text(Some(&mid), syntax, "session-splash", &["exec b".into()], &include).unwrap(),
         TextEdit::Unchanged
     );
     assert_eq!(ca::remove_text(&mid, syntax, "session-splash"), TextEdit::Delete, "{mid}");
 
-    // Обратный порядок — как раньше: файл удаляется.
+    // Reverse order — as before: the file is deleted.
     let mid = written(ca::remove_text(&two, syntax, "session-splash"));
     assert_eq!(mid, one);
     assert_eq!(ca::remove_text(&mid, syntax, "tray"), TextEdit::Delete);
 
-    // Человек дописал свои строки в наш файл: include остаётся перед ними.
+    // The person appended their own lines to our file: the include stays before them.
     let edited = format!("{one}bindsym Mod4+Return exec foot\n");
     assert_eq!(
         written(ca::remove_text(&edited, syntax, "tray")),
@@ -595,8 +595,8 @@ fn sway_include_stays_while_our_blocks_remain() {
     );
 }
 
-/// То же на диске через `sync_command`: заведённый `~/.config/sway/config`
-/// с двумя нашими строками, снятие первой оставляет `include`.
+/// The same on disk through `sync_command`: a created `~/.config/sway/config`
+/// with two of our lines; removing the first keeps the `include`.
 #[test]
 fn sway_created_config_keeps_include_on_disk() {
     let env = sandbox("sway_two_blocks");
@@ -614,9 +614,9 @@ fn sway_created_config_keeps_include_on_disk() {
     assert!(!Path::new(&path).exists(), "заведённый файл не удалён");
 }
 
-/// labwc (свой `autostart` исполняет системный) и Wayfire (заголовок
-/// `[autostart]` завёл первый блок): второй блок не прячется внутрь первого,
-/// и преамбула переходит ко второму. Оба порядка снятия возвращают файл.
+/// labwc (its own `autostart` is executed by the system one) and Wayfire (the
+/// `[autostart]` header was created by the first block): the second block does not hide inside the first,
+/// and the preamble moves to the second. Both removal orders restore the file.
 #[test]
 fn preamble_moves_to_next_block_labwc_and_wayfire() {
     let cases: [(Syntax, Vec<String>, [&str; 2]); 2] = [
@@ -626,14 +626,14 @@ fn preamble_moves_to_next_block_labwc_and_wayfire() {
     for (syntax, pre, [a, b]) in cases {
         let one = written(ca::upsert_text(None, syntax, "tray", &[a.into()], &pre).unwrap());
         let two = written(ca::upsert_text(Some(&one), syntax, "session-splash", &[b.into()], &pre).unwrap());
-        // Второй блок — целиком за первым, не внутри него.
+        // The second block is entirely after the first, not inside it.
         assert!(two.starts_with(&one), "{syntax:?}: второй блок лёг внутрь первого:\n{two}");
         let mid = written(ca::remove_text(&two, syntax, "tray"));
         let head = if syntax == Syntax::Shell { ". /etc/xdg/labwc/autostart" } else { "[autostart]" };
         assert!(mid.contains(head) && mid.find(head).unwrap() < mid.find(b).unwrap(), "{syntax:?}:\n{mid}");
         assert_eq!(ca::remove_text(&mid, syntax, "session-splash"), TextEdit::Delete, "{syntax:?}: {mid}");
     }
-    // Wayfire, чужой файл без раздела: после снятия обоих — прежние байты.
+    // Wayfire, a foreign file without a section: after removing both — the former bytes.
     let before = "[core]\nplugins = autostart\n";
     let one = written(ca::upsert_text(Some(before), Syntax::WayfireIni, "tray", &["rexon_a = a".into()], &[]).unwrap());
     let two = written(ca::upsert_text(Some(&one), Syntax::WayfireIni, "session-splash", &["rexon_b = b".into()], &[]).unwrap());

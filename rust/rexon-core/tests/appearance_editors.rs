@@ -1,6 +1,6 @@
-//! «Настроить…» у стиля приложений и «Изменить…» / «Создать на основе…» у
-//! цветовой схемы — как в модулях KDE «Стиль приложений» и «Цвета».
-//! Эталон — `golden/appearance_editors_cases.json`.
+//! «Настроить…» for the application style and «Изменить…» / «Создать на основе…» for
+//! the color scheme — as in the KDE modules «Стиль приложений» and «Цвета».
+//! Golden file — `golden/appearance_editors_cases.json`.
 
 use rexon_core::color_scheme_edit as cse;
 use rexon_core::themes;
@@ -34,7 +34,7 @@ fn style_configure_button_follows_config_page() {
         assert_eq!(b.argv, strings(&case["argv"]), "{tag}");
         if b.visible {
             assert_eq!(b.text, "Настроить…", "{tag}");
-            // Нажать нельзя — причина обязана быть сказана.
+            // Cannot be pressed — the reason must be stated.
             assert!(!b.tooltip.is_empty(), "{tag}: нет подсказки");
         }
     }
@@ -120,13 +120,13 @@ fn own_editor_saves_a_new_scheme_and_refuses_clashes() {
     assert!(r.path.ends_with("/.local/share/color-schemes/Тёмнаямоя.colors"), "{}", r.path);
     let text = std::fs::read_to_string(&r.path).unwrap();
     assert!(text.contains("Name=Тёмная моя\n") && !text.contains("Name[ru]"));
-    // Второй раз то же имя — отказ, не перезапись.
+    // The same name a second time — refusal, not an overwrite.
     let again = cse::save_scheme(&home_s, &base_s, "Тёмная моя", &roles, None, &sys_dirs);
     assert!(!again.ok && again.message.contains("уже есть"), "{}", again.message);
-    // «Изменить…» своей схемы под тем же именем — можно.
+    // «Изменить…» on one's own scheme under the same name — allowed.
     let own = cse::save_scheme(&home_s, &r.path, "Тёмная моя", &roles, Some("Тёмнаямоя"), &sys_dirs);
     assert!(own.ok, "{}", own.message);
-    // Имя системной схемы — отказ: своя ушла бы в тень системной.
+    // A system scheme's name — refusal: one's own would be shadowed by the system one.
     let clash = cse::save_scheme(&home_s, &base_s, "Breeze Dark", &roles, None, &sys_dirs);
     assert!(!clash.ok);
     let empty = cse::save_scheme(&home_s, &base_s, "  ", &roles, None, &sys_dirs);
@@ -148,12 +148,12 @@ fn tile_decides_between_kde_editor_and_own_window() {
                              cse::EditMode::Edit, true, base).unwrap();
     assert_eq!(kde.mode, "kde");
     assert_eq!(kde.argv, ["kcolorschemeeditor", "Mine", "--overwrite"]);
-    // Редактора KDE нет: своё окно; своя схема правится поверх…
+    // No KDE editor: our own window; one's own scheme is edited in place…
     let own = cse::edit_open("local:colors:Mine", "/home/u/.local/share/color-schemes/Mine", "Моя", "/home/u",
                              cse::EditMode::Edit, false, base).unwrap();
     assert_eq!((own.mode.as_str(), own.name.as_str(), own.overwrite.as_str()), ("own", "Моя", "Mine"));
     assert_eq!(own.roles.len(), 6);
-    // …а системная и «Создать на основе…» — только новой схемой.
+    // …while a system one and «Создать на основе…» — only as a new scheme.
     let sys = cse::edit_open("local:colors:BreezeDark", "/usr/share/color-schemes/BreezeDark", "Breeze, тёмный вариант",
                              "/home/u", cse::EditMode::Edit, false, base).unwrap();
     assert_eq!((sys.name.as_str(), sys.overwrite.as_str()), ("Breeze, тёмный вариант (копия)", ""));

@@ -1,42 +1,42 @@
-//! ExtensionManager — порт `rexon/extensions/manager.py` (чистая часть).
+//! ExtensionManager — port of `rexon/extensions/manager.py` (the pure part).
 //!
-//! Портируется ЛОГИКА менеджера расширений без исполнения:
-//!   * `is_safe_sys_name` — allowlist имён для системных путей под root;
-//!   * `find_manifest_root` + `install_rxn_check` — весь валидационный
-//!     конвейер `_install_rxn` ДО копирования (v4-манифест с выводом id из
-//!     title, path-traversal-проверки id, миграция v2, VALID_TYPES,
-//!     обязательность install.sh/uninstall.sh, `_check_rexon_compat`,
-//!     «уже установлено») — тексты ошибок байт-в-байт с Python;
-//!   * `safe_install_plan` / `safe_uninstall_plan` — установка/удаление
-//!     типов оформления как ЧИСТЫЙ ПЛАН шагов (`ExtStep`) по образцу
-//!     `system_plan.rs`: копирования, симлинки, записи файлов (тексты
-//!     сгенерированных конфигов 1-в-1), команды с таймаутами, pkexec-скрипты
-//!     (тексты 1-в-1), staging под /tmp. Эталон паритета — ЗАПИСАННЫЕ
-//!     побочные вызовы (shutil/os/subprocess) живого Python на тех же
-//!     входах (см. `ext_manager_parity.rs`);
-//!   * `detect_display_manager_plan` — политика выбора DM (сами probes —
-//!     шаги плана, их результат подаётся замыканием);
-//!   * `find_background` — поиск фона в data/ (по снимку с размерами);
-//!   * `discover` — скан каталога расширений (дерево установленного);
-//!   * `stats` / `save_state_text` / `load_state` — каталожные структуры и
-//!     состояние вкл/выкл (текст JSON байт-в-байт с `json.dump(indent=2)`).
+//! What is ported is the extension manager's LOGIC without execution:
+//!   * `is_safe_sys_name` — an allowlist of names for system paths under root;
+//!   * `find_manifest_root` + `install_rxn_check` — the whole validation
+//!     pipeline of `_install_rxn` BEFORE copying (a v4 manifest with the id derived from
+//!     the title, path-traversal checks of the id, v2 migration, VALID_TYPES,
+//!     install.sh/uninstall.sh being mandatory, `_check_rexon_compat`,
+//!     "already installed") — error texts byte for byte with Python;
+//!   * `safe_install_plan` / `safe_uninstall_plan` — installing/uninstalling
+//!     appearance types as a PURE PLAN of steps (`ExtStep`) modeled on
+//!     `system_plan.rs`: copies, symlinks, file writes (the texts of
+//!     generated configs one to one), commands with timeouts, pkexec scripts
+//!     (texts one to one), staging under /tmp. The parity reference is the RECORDED
+//!     side calls (shutil/os/subprocess) of live Python on the same
+//!     inputs (see `ext_manager_parity.rs`);
+//!   * `detect_display_manager_plan` — the DM choice policy (the probes themselves are
+//!     plan steps, their result is passed as a closure);
+//!   * `find_background` — finding the background in data/ (from a snapshot with sizes);
+//!   * `discover` — scanning the extensions directory (the installed tree);
+//!   * `stats` / `save_state_text` / `load_state` — catalog structures and
+//!     the on/off state (the JSON text byte for byte with `json.dump(indent=2)`).
 //!
-//! ФАЙЛОВАЯ СИСТЕМА — ЗА ИНТЕРФЕЙСОМ (как installed_scan.rs): вход —
-//! `FsSnap`, снимок дерева «как его видел Python-эталон» (порядок имён =
-//! порядок os.scandir/os.listdir, включая каталоги, которые Python читал
-//! ПОСЛЕ собственных копирований — снимок хранит то, что видел оригинал).
-//! Поверх снимка — `PlanFs`: оверлей путей, СОЗДАВАЕМЫХ самим планом
-//! (copytree/makedirs/write), чтобы проверки exists/isdir внутри плана
-//! видели свои же шаги.
+//! The FILE SYSTEM is BEHIND AN INTERFACE (as in installed_scan.rs): the input is
+//! `FsSnap`, a tree snapshot "as the Python reference saw it" (name order =
+//! os.scandir/os.listdir order, including directories Python read
+//! AFTER its own copying — the snapshot keeps what the original saw).
+//! On top of the snapshot — `PlanFs`: an overlay of paths CREATED by the plan itself
+//! (copytree/makedirs/write), so that the exists/isdir checks inside the plan
+//! see its own steps.
 //!
-//! НЕ портировано (исполнение — остаётся Python): threading.Lock, реальные
-//! копирования/удаления, subprocess/pkexec/notify-send/pkill и чтение их
-//! вывода, tempfile (пути staged/tmp детерминированно выдаёт `TmpAlloc` —
-//! исполнитель подставляет реальные), импортёры Windows-форматов
-//! (`importers.py`), запуск install.sh/uninstall.sh и `.desktop`-установка
-//! (`extension.py`, исполнение), load/unload плагинов (importlib),
-//! `_detect_display_manager` как процесс (systemctl/which — probes в плане,
-//! ответы инъекцией), `_staged_under_tmp` как копирование (шаг `Stage`).
+//! NOT ported (execution — stays in Python): threading.Lock, the actual
+//! copying/deleting, subprocess/pkexec/notify-send/pkill and reading their
+//! output, tempfile (staged/tmp paths are issued deterministically by `TmpAlloc` —
+//! the executor substitutes real ones), importers of Windows formats
+//! (`importers.py`), running install.sh/uninstall.sh and `.desktop` installation
+//! (`extension.py`, execution), loading/unloading plugins (importlib),
+//! `_detect_display_manager` as a process (systemctl/which — probes in the plan,
+//! answers injected), `_staged_under_tmp` as copying (the `Stage` step).
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -52,43 +52,43 @@ use crate::manifest_v4::validate_v4_manifest;
 use crate::system_plan::privileged_stage_cmd;
 
 // ============================================================================
-// FsSnap — снимок файловой системы (с размерами файлов и симлинками)
+// FsSnap — a file system snapshot (with file sizes and symlinks)
 // ============================================================================
 
-/// Файл снимка: размер (для `_find_background`) и текст (None — бинарный).
+/// A snapshot file: the size (for `_find_background`) and the text (None — binary).
 struct FileEntry {
     size: u64,
     text: Option<String>,
 }
 
-/// Снимок дерева в ДВУХ слоях:
-///   * pre — состояние ДО прогона (по нему принимаются решения плана:
-///     exists/isdir «существовало ли до нас»);
-///   * observed (dirs/files целиком) — плюс то, что Python прочитал ПОСЛЕ
-///     собственных копирований (листинги dest-каталогов, распакованные
-///     .plasmoid) — по нему план читает содержимое своих же шагов.
+/// A tree snapshot in TWO layers:
+///   * pre — the state BEFORE the run (the plan's decisions are made by it:
+///     exists/isdir "did it exist before us");
+///   * observed (whole dirs/files) — plus what Python read AFTER
+///     its own copying (listings of dest directories, unpacked
+///     .plasmoid) — the plan reads the contents of its own steps from it.
 ///
-/// Каталог → имена в порядке os.scandir эталона; файл → (размер, текст);
-/// links — пути-симлинки пре-состояния (для lexists/islink).
+/// A directory → names in the reference's os.scandir order; a file → (size, text);
+/// links — the pre-state's symlink paths (for lexists/islink).
 pub struct FsSnap {
     dirs: HashMap<String, Vec<String>>,
     files: HashMap<String, FileEntry>,
     links: HashSet<String>,
     pre_dirs: HashSet<String>,
     pre_files: HashSet<String>,
-    /// Одиночные файлы, которые общий журнал записал за ЭТИМ пакетом
-    /// (`owned_files` снимка): их установка заменяет, удаление снимает.
+    /// Single files the shared log recorded for THIS package
+    /// (the snapshot's `owned_files`): installing them replaces, removal takes them away.
     owned_files: HashSet<String>,
-    /// Пары `(файл пакета, файл на месте)`, совпадающие байт в байт
-    /// (`same_files` снимка): такой файл на месте считается своим.
+    /// `(package file, file in place)` pairs that match byte for byte
+    /// (the snapshot's `same_files`): such a file in place counts as our own.
     same_files: HashSet<(String, String)>,
 }
 
 impl FsSnap {
-    /// Из JSON-фикстуры `{"dirs": {p: [names]}, "files": {p: {"size": n,
+    /// From a JSON fixture `{"dirs": {p: [names]}, "files": {p: {"size": n,
     /// "text": str|null}}, "links": [p], "pre_dirs": [p], "pre_files": [p],
     /// "owned_files": [p], "same_files": [[src, dest]]}`.
-    /// Без pre-списков весь снимок считается пре-состоянием.
+    /// Without the pre lists the whole snapshot counts as the pre-state.
     pub fn from_json(v: &Value) -> Self {
         let mut dirs = HashMap::new();
         if let Some(obj) = v["dirs"].as_object() {
@@ -142,13 +142,13 @@ impl FsSnap {
         FsSnap { dirs, files, links, pre_dirs, pre_files, owned_files, same_files }
     }
 
-    /// Файл `dest` записан общим журналом за этим пакетом.
+    /// The file `dest` was recorded by the shared log for this package.
     pub fn owns_file(&self, dest: &str) -> bool {
         self.owned_files.contains(dest)
     }
 
-    /// Файл на месте `dest` — байт в байт файл пакета `src`: пара из снимка
-    /// либо (в фикстурах с текстами) одинаковые тексты одного размера.
+    /// The file in place `dest` is byte for byte the package file `src`: a pair from the snapshot
+    /// or (in fixtures with texts) identical texts of the same size.
     pub fn same_bytes(&self, src: &str, dest: &str) -> bool {
         if self.same_files.contains(&(src.to_string(), dest.to_string())) {
             return true;
@@ -159,12 +159,12 @@ impl FsSnap {
         }
     }
 
-    /// Каталог существовал ДО прогона (`os.path.isdir` в решениях плана).
+    /// The directory existed BEFORE the run (`os.path.isdir` in the plan's decisions).
     pub fn is_dir(&self, path: &str) -> bool {
         self.pre_dirs.contains(path)
     }
 
-    /// Файл существовал ДО прогона (`os.path.isfile` в решениях плана).
+    /// The file existed BEFORE the run (`os.path.isfile` in the plan's decisions).
     pub fn is_file(&self, path: &str) -> bool {
         self.pre_files.contains(path)
     }
@@ -173,18 +173,18 @@ impl FsSnap {
         self.is_dir(path) || self.is_file(path)
     }
 
-    /// `os.path.lexists` — существует сам путь, включая битые симлинки.
+    /// `os.path.lexists` — the path itself exists, including broken symlinks.
     pub fn lexists(&self, path: &str) -> bool {
         self.exists(path) || self.links.contains(path)
     }
 
-    /// Каталог есть в наблюдениях (включая созданные самим прогоном —
-    /// например, dest после copytree).
+    /// The directory is in the observations (including those created by the run itself —
+    /// for example, dest after copytree).
     pub fn obs_is_dir(&self, path: &str) -> bool {
         self.dirs.contains_key(path)
     }
 
-    /// Файл есть в наблюдениях.
+    /// The file is in the observations.
     pub fn obs_is_file(&self, path: &str) -> bool {
         self.files.contains_key(path)
     }
@@ -201,13 +201,13 @@ impl FsSnap {
         self.files.get(path).map(|f| f.size).unwrap_or(0)
     }
 
-    /// Имена элементов каталога в порядке снимка ([] — каталога нет).
+    /// Directory entry names in snapshot order ([] — no directory).
     pub fn scandir(&self, path: &str) -> &[String] {
         self.dirs.get(path).map(Vec::as_slice).unwrap_or(&[])
     }
 
-    /// Эмуляция `os.walk` (topdown): (root, подкаталоги, файлы), классы —
-    /// в порядке листинга снимка.
+    /// An emulation of `os.walk` (topdown): (root, subdirectories, files), classes —
+    /// in the snapshot's listing order.
     pub fn walk(&self, root: &str) -> Vec<(String, Vec<String>, Vec<String>)> {
         let mut out = Vec::new();
         self.walk_into(root, &mut out);
@@ -238,16 +238,16 @@ fn join(dir: &str, rel: &str) -> String {
     format!("{dir}/{rel}")
 }
 
-/// Оверлей поверх снимка: пути, которые СОЗДАЁТ сам план (copytree/makedirs/
-/// write), видны последующим проверкам exists/isdir — как их видел Python,
-/// реально исполнявший копирования по ходу `_safe_install`.
+/// An overlay on top of the snapshot: paths the plan itself CREATES (copytree/makedirs/
+/// write) are visible to later exists/isdir checks — as Python saw them,
+/// actually performing the copies during `_safe_install`.
 struct PlanFs<'a> {
     snap: &'a FsSnap,
     made_dirs: HashSet<String>,
     made_files: HashSet<String>,
-    /// Сколько основных частей план пропустил: на месте чужое (заметки
-    /// [`taken_by_other_notice`]/[`taken_file_notice`]). Пропущено всё —
-    /// установка отказывает целиком ([`ExtStep::Refuse`]).
+    /// How many main parts the plan skipped: something foreign is in place (the notes
+    /// [`taken_by_other_notice`]/[`taken_file_notice`]). Everything skipped —
+    /// the installation refuses entirely ([`ExtStep::Refuse`]).
     skipped: usize,
 }
 
@@ -276,12 +276,12 @@ impl<'a> PlanFs<'a> {
 }
 
 // ============================================================================
-// Шаги плана
+// Plan steps
 // ============================================================================
 
-/// Шаг плана установки/удаления расширения — побочный вызов, который сделал
-/// бы Python (`shutil`/`os`/`subprocess`). Исполнение — при подключении к
-/// живому Python.
+/// A step of an extension install/uninstall plan — a side call Python
+/// would make (`shutil`/`os`/`subprocess`). Execution — when hooked up to
+/// live Python.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "op")]
 pub enum ExtStep {
@@ -289,38 +289,38 @@ pub enum ExtStep {
     MakeDirs { path: String },
     /// `shutil.copytree(src, dest)`.
     CopyTree { src: String, dest: String },
-    /// `shutil.copy2(src, dest)` (dest может быть каталогом — как в Python).
+    /// `shutil.copy2(src, dest)` (dest may be a directory — as in Python).
     CopyFile { src: String, dest: String },
-    /// Удаление дерева: `safe` — через `_safe_rmtree` (проверки границ $HOME),
-    /// иначе `shutil.rmtree` (`ignore_errors` — как в вызове оригинала).
+    /// Deleting a tree: `safe` — via `_safe_rmtree` ($HOME boundary checks),
+    /// otherwise `shutil.rmtree` (`ignore_errors` — as in the original's call).
     RemoveTree { path: String, safe: bool, ignore_errors: bool },
     /// `os.remove(path)`.
     RemoveFile { path: String },
     /// `os.symlink(target, link)`.
     Symlink { target: String, link: String },
-    /// Запись файла с указанным содержимым (тексты 1-в-1 с Python).
+    /// Writing a file with the given contents (texts one to one with Python).
     WriteFile { path: String, content: String },
-    /// Распаковка ZIP через `_safe_zip_extract` (напр. `.plasmoid`).
+    /// Unpacking a ZIP via `_safe_zip_extract` (e.g. `.plasmoid`).
     ExtractZip { archive: String, dest: String },
-    /// `_staged_under_tmp`: скопировать `sources` в staged-каталог под /tmp
-    /// (каталоги — содержимым, файлы — как есть).
+    /// `_staged_under_tmp`: copy `sources` into a staged directory under /tmp
+    /// (directories — by contents, files — as is).
     Stage { staged: String, sources: Vec<String> },
-    /// `_run_pkexec_script`: записать скрипт во временный файл
-    /// `rexon_{prefix}_*.sh` и выполнить `pkexec bash <файл>` (timeout 60).
+    /// `_run_pkexec_script`: write the script into a temporary file
+    /// `rexon_{prefix}_*.sh` and run `pkexec bash <file>` (timeout 60).
     PkexecScript { prefix: String, script: String },
     /// `subprocess.run(argv, capture_output=True, timeout=…)`.
     Run { argv: Vec<String>, timeout_secs: Option<u64> },
-    /// `subprocess.Popen(argv, …)` — запуск без ожидания.
+    /// `subprocess.Popen(argv, …)` — a launch without waiting.
     Spawn { argv: Vec<String> },
-    /// Команда, чей отказ человеку надо сказать: не удалась — `failed` идёт
-    /// в заметки установки (`Installed::notes`), установка продолжается.
+    /// A command whose refusal must be told to the person: if it failed, `failed` goes
+    /// into the install notes (`Installed::notes`), the installation continues.
     RunNoted { argv: Vec<String>, timeout_secs: Option<u64>, failed: String },
-    /// Сказать человеку после установки, что часть сделана не была и
-    /// почему (`Installed::notes`); ничего не исполняет.
+    /// Tell the person after installation that a part was not done and
+    /// why (`Installed::notes`); executes nothing.
     Notice { text: String },
-    /// Отказ установки целиком, ещё до первого шага: всё основное пакета
-    /// пропущено (на месте чужое, см. [`put_owned_copy`]/[`put_owned_file`]).
-    /// `text` — причина для человека; исполнитель отвечает ею ошибкой.
+    /// Refusing the installation entirely, even before the first step: all the package's main parts were
+    /// skipped (something foreign is in place, see [`put_owned_copy`]/[`put_owned_file`]).
+    /// `text` — the reason for the person; the executor answers with it as an error.
     Refuse { text: String },
 }
 
@@ -332,12 +332,12 @@ fn run(argv: Vec<&str>, timeout: u64) -> ExtStep {
 }
 
 // ============================================================================
-// Окружение плана
+// The plan environment
 // ============================================================================
 
-/// Детерминированный поставщик tmp-путей (замена tempfile.mkdtemp): пути
-/// вида `{base}/{prefix}{N}` — исполнитель на живой системе подставляет
-/// реальные mkdtemp-каталоги в том же порядке.
+/// A deterministic tmp path provider (a replacement for tempfile.mkdtemp): paths
+/// of the form `{base}/{prefix}{N}` — the executor on a live system substitutes
+/// real mkdtemp directories in the same order.
 pub struct TmpAlloc {
     base: String,
     n: Cell<u64>,
@@ -354,60 +354,60 @@ impl TmpAlloc {
         format!("{}/{}{}", self.base, prefix, n)
     }
 
-    /// Постоянный путь `{base}/{name}` под каталогом плана — без счётчика
-    /// (пробы, которые снимок готовит заранее: [`PLASMOID_PROBE_DIR`]).
+    /// A permanent path `{base}/{name}` under the plan directory — without a counter
+    /// (probes the snapshot prepares in advance: [`PLASMOID_PROBE_DIR`]).
     pub fn path(&self, name: &str) -> String {
         format!("{}/{}", self.base, name)
     }
 }
 
-/// Каталог под каталогом плана, куда снимок (`ext_exec::plan_snapshot`)
-/// заранее распаковывает архив `.plasmoid` пакета — в подкаталог с именем
-/// файла архива. По нему план узнаёт `KPlugin.Id` ДО запуска `kpackagetool`
-/// (тот при обновлении заменил бы чужой плазмоид с тем же id).
+/// The directory under the plan directory into which the snapshot (`ext_exec::plan_snapshot`)
+/// unpacks the package's `.plasmoid` archive in advance — into a subdirectory named after
+/// the archive file. By it the plan learns `KPlugin.Id` BEFORE starting `kpackagetool`
+/// (which on update would replace a foreign plasmoid with the same id).
 pub const PLASMOID_PROBE_DIR: &str = "rexon_plasmoid_probe";
 
-/// Окружение `_safe_install`/`_safe_uninstall` — всё внешнее инъекцией.
+/// The environment of `_safe_install`/`_safe_uninstall` — everything external is injected.
 pub struct ExtEnv<'a> {
-    /// $HOME (как его видел эталон; INSTALL_PATHS строятся от него).
+    /// $HOME (as the reference saw it; INSTALL_PATHS are built from it).
     pub home: &'a str,
     pub fs: &'a FsSnap,
-    /// `shutil.which(name)` → путь или None.
+    /// `shutil.which(name)` → a path or None.
     pub which: &'a dyn Fn(&str) -> Option<String>,
-    /// Успешен ли (returncode == 0) записанный прогон argv — для веток,
-    /// зависящих от результата команды (kpackagetool -i, systemctl is-active).
+    /// Whether a recorded run of argv succeeded (returncode == 0) — for branches
+    /// depending on a command's result (kpackagetool -i, systemctl is-active).
     pub run_ok: &'a dyn Fn(&[String]) -> bool,
-    /// `$XDG_CURRENT_DESKTOP` (сырой, lower() делает сама логика).
+    /// `$XDG_CURRENT_DESKTOP` (raw, the logic itself does lower()).
     pub xdg_current_desktop: &'a str,
     /// `$XDG_SESSION_TYPE`.
     pub xdg_session_type: &'a str,
-    /// Задан ли `$WAYLAND_DISPLAY`.
+    /// Whether `$WAYLAND_DISPLAY` is set.
     pub wayland_display: bool,
-    /// Задеплоен ли rexon-stage-helper (org.rexon.stage).
+    /// Whether rexon-stage-helper (org.rexon.stage) is deployed.
     pub stage_helper_available: bool,
-    /// Путь SYSTEM_HELPER (org.rexon.system-install) и есть ли он на диске.
+    /// The SYSTEM_HELPER path (org.rexon.system-install) and whether it is on disk.
     pub system_helper_path: &'a str,
     pub system_helper_exists: bool,
-    /// Семейство для argv системного helper'а: "debian" либо "arch"
-    /// (Python: DEBIAN → "debian", всё остальное → "arch").
+    /// The family for the system helper's argv: "debian" or "arch"
+    /// (Python: DEBIAN → "debian", everything else → "arch").
     pub helper_family: &'a str,
     pub tmp: &'a TmpAlloc,
 }
 
 impl ExtEnv<'_> {
-    /// INSTALL_PATHS[t] от инъектированного $HOME. Таблица суффиксов одна —
-    /// `constants::INSTALL_PATH_SUFFIXES` (второй копии здесь больше нет).
+    /// INSTALL_PATHS[t] from the injected $HOME. The suffix table is one —
+    /// `constants::INSTALL_PATH_SUFFIXES` (there is no second copy here anymore).
     fn install_path(&self, t: &str) -> Option<String> {
         constants::install_path_suffix(t).map(|s| format!("{}/{}", self.home, s))
     }
 
-    /// Доступен ли системный helper (`shutil.which("pkexec")` + файл).
+    /// Whether the system helper is available (`shutil.which("pkexec")` + the file).
     fn system_helper_ok(&self) -> bool {
         (self.which)("pkexec").is_some() && self.system_helper_exists
     }
 }
 
-/// Расширение как вход плана: каталог + разобранный манифест.
+/// An extension as a plan input: the directory + the parsed manifest.
 pub struct ExtInfo<'a> {
     pub dir: &'a str,
     pub manifest: &'a Map<String, Value>,
@@ -443,11 +443,11 @@ impl ExtInfo<'_> {
 }
 
 // ============================================================================
-// is_safe_sys_name — allowlist имён для системных путей под root
+// is_safe_sys_name — an allowlist of names for system paths under root
 // ============================================================================
 
-/// Порт `_is_safe_sys_name`: только `[A-Za-z0-9._-]+`, без ведущего
-/// `-`/`.`/`/` и без `..` (anti path-traversal / flag-инъекция).
+/// Port of `_is_safe_sys_name`: only `[A-Za-z0-9._-]+`, without a leading
+/// `-`/`.`/`/` and without `..` (anti path-traversal / flag injection).
 pub fn is_safe_sys_name(name: &str) -> bool {
     if name.is_empty()
         || name.starts_with('-')
@@ -462,13 +462,13 @@ pub fn is_safe_sys_name(name: &str) -> bool {
 }
 
 // ============================================================================
-// Валидационный конвейер установки (_install_rxn до копирования)
+// The install validation pipeline (_install_rxn before copying)
 // ============================================================================
 
-/// Корень с manifest.json: сам tmp_dir либо его подкаталог первого уровня —
-/// порт `_find_manifest_root`.
+/// The root with manifest.json: tmp_dir itself or its first-level subdirectory —
+/// port of `_find_manifest_root`.
 pub fn find_manifest_root(fs: &FsSnap, tmp_dir: &str) -> Option<String> {
-    // Распакованное дерево .rxn — «наблюдения» (создано в ходе прогона).
+    // The unpacked .rxn tree is "observations" (created during the run).
     if fs.obs_is_file(&join(tmp_dir, "manifest.json")) {
         return Some(tmp_dir.to_string());
     }
@@ -481,8 +481,8 @@ pub fn find_manifest_root(fs: &FsSnap, tmp_dir: &str) -> Option<String> {
     None
 }
 
-/// Ошибка установки: тип Python-исключения + текст (байт-в-байт, кроме
-/// BadJson — деталь JSONDecodeError у serde другая, сверяется префикс).
+/// An install error: the Python exception type + the text (byte for byte, except
+/// BadJson — serde's JSONDecodeError detail is different, the prefix is checked).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstallError {
     /// "FileNotFoundError" | "ValueError" | "RuntimeError" | "FileExistsError"
@@ -494,33 +494,33 @@ fn verr(message: String) -> InstallError {
     InstallError { kind: "ValueError", message }
 }
 
-/// Результат успешной проверки.
+/// The result of a successful check.
 pub struct InstallCheck {
     pub ext_id: String,
     pub ext_type: String,
-    /// Требует install.sh/uninstall.sh (типы со скриптами).
+    /// Requires install.sh/uninstall.sh (types with scripts).
     pub is_scripted: bool,
-    /// Манифест после возможных правок (v4: выведенные id/name; v2: тип).
+    /// The manifest after possible edits (v4: derived id/name; v2: the type).
     pub manifest: Value,
-    /// Текст manifest.json, если Python его переписал (json.dump indent=2,
-    /// ensure_ascii=False — байт-в-байт), иначе None.
+    /// The manifest.json text if Python rewrote it (json.dump indent=2,
+    /// ensure_ascii=False — byte for byte), otherwise None.
     pub rewritten_manifest_text: Option<String>,
 }
 
-/// Миграция типов v2 → v3 — порт `V2_TYPE_MIGRATION` (пуст с 2026-06-12,
-/// оставлен на случай будущих миграций — как в Python).
+/// Type migration v2 → v3 — port of `V2_TYPE_MIGRATION` (empty since 2026-06-12,
+/// kept in case of future migrations — as in Python).
 pub const V2_TYPE_MIGRATION: &[(&str, &str)] = &[];
 
-/// Порт валидации `_install_rxn` (от разбора манифеста до `shutil.copytree`,
-/// не включая её). `manifest` — уже разобранный JSON из `src_dir`
-/// (ошибку разбора вызывающий оборачивает в текст
-/// `manifest.json повреждён: …` через [`bad_manifest_json_error`]).
+/// Port of the `_install_rxn` validation (from parsing the manifest to `shutil.copytree`,
+/// not including it). `manifest` — the already parsed JSON from `src_dir`
+/// (the caller wraps a parse error into the text
+/// `manifest.json is damaged: …` via [`bad_manifest_json_error`]).
 ///
-/// Инъекции:
-///   * `realpath` — `os.path.realpath` (символические ссылки — за
-///     исполнителем; для несуществующих путей достаточно лексической
-///     нормализации);
-///   * `dest_exists` — существует ли `extensions_dir/<ext_id>`.
+/// Injections:
+///   * `realpath` — `os.path.realpath` (symbolic links are up to
+///     the executor; for nonexistent paths lexical normalization
+///     is enough);
+///   * `dest_exists` — whether `extensions_dir/<ext_id>` exists.
 pub fn install_rxn_check(
     fs: &FsSnap,
     src_dir: &str,
@@ -531,18 +531,18 @@ pub fn install_rxn_check(
 ) -> Result<InstallCheck, InstallError> {
     let mut meta = match manifest {
         Value::Object(m) => m,
-        // Патологический не-dict манифест: Python упал бы на meta.get —
-        // реальные .rxn всегда объект (как в extension.rs).
+        // A pathological non-dict manifest: Python would crash on meta.get —
+        // real .rxn files are always an object (as in extension.rs).
         _ => return Err(verr(missing_id())),
     };
     let mut rewritten = false;
 
-    // ── v4 adaptive wallpaper: schema-валидация + вывод id из title ──
+    // ── v4 adaptive wallpaper: schema validation + deriving the id from the title ──
     if v4_fill_id_and_name(&mut meta)? {
         rewritten = true;
     }
 
-    // ── id: наличие + анти-traversal ──
+    // ── id: presence + anti-traversal ──
     let ext_id = manifest_ext_id(&meta)?;
     let dest_dir = join(extensions_dir, &ext_id);
     let real_dest = realpath(&dest_dir);
@@ -554,7 +554,7 @@ pub fn install_rxn_check(
         )));
     }
 
-    // ── тип: миграция v2 → v3 + допустимость ──
+    // ── type: v2 → v3 migration + validity ──
     let mut ext_type = meta
         .get("type")
         .map(py_str)
@@ -568,10 +568,10 @@ pub fn install_rxn_check(
         return Err(verr(trf("Unknown extension type: '%1'", &[&ext_type])));
     }
 
-    // ── скриптовые типы: install.sh / uninstall.sh обязательны ──
+    // ── script types: install.sh / uninstall.sh are mandatory ──
     let is_scripted = constants::is_scripted(&ext_type);
     if is_scripted {
-        // src_dir — распакованное дерево (наблюдения).
+        // src_dir is the unpacked tree (observations).
         if !fs.obs_is_file(&join(src_dir, "install.sh")) {
             return Err(InstallError {
                 kind: "FileNotFoundError",
@@ -586,13 +586,13 @@ pub fn install_rxn_check(
         }
     }
 
-    // ── совместимость с версией Rexon ──
+    // ── compatibility with the Rexon version ──
     check_rexon_compat(&meta).map_err(|message| InstallError {
         kind: "RuntimeError",
         message,
     })?;
 
-    // ── дубликат ──
+    // ── duplicate ──
     if dest_exists(&dest_dir) {
         return Err(InstallError {
             kind: "FileExistsError",
@@ -618,10 +618,10 @@ pub fn install_rxn_check(
     })
 }
 
-/// Манифест v4 (`wallpaper-video-adaptive`): проверка схемы и вывод `id`
-/// из `title` (`v4-<slug>`) и `name`, если их нет. `Ok(true)` — манифест
-/// v4 и в нём что-то дописано; `Ok(false)` — это не v4. Общая часть
-/// [`install_rxn_check`] и `rxn_manifest` (перевод v4 → v5 в памяти).
+/// A v4 manifest (`wallpaper-video-adaptive`): schema check and deriving `id`
+/// from `title` (`v4-<slug>`) and `name` if they are missing. `Ok(true)` — the manifest
+/// is v4 and something was added to it; `Ok(false)` — it is not v4. The shared part of
+/// [`install_rxn_check`] and `rxn_manifest` (the in-memory v4 → v5 conversion).
 pub fn v4_fill_id_and_name(meta: &mut Map<String, Value>) -> Result<bool, InstallError> {
     if meta.get("type").and_then(Value::as_str) != Some("wallpaper-video-adaptive") {
         return Ok(false);
@@ -645,7 +645,7 @@ pub fn v4_fill_id_and_name(meta: &mut Map<String, Value>) -> Result<bool, Instal
         meta.insert("id".to_string(), Value::String(id));
     }
     if !meta.contains_key("name") {
-        // setdefault(name, title or id): пустой/ложный title → id.
+        // setdefault(name, title or id): an empty/falsy title → id.
         let name = match meta.get("title") {
             Some(t) if is_truthy(Some(t)) => t.clone(),
             _ => meta.get("id").cloned().unwrap_or(Value::Null),
@@ -655,7 +655,7 @@ pub fn v4_fill_id_and_name(meta: &mut Map<String, Value>) -> Result<bool, Instal
     Ok(true)
 }
 
-/// `id` манифеста v3/v4: есть, непустая строка, без `/` и `..`.
+/// The `id` of a v3/v4 manifest: present, a non-empty string, without `/` and `..`.
 pub fn manifest_ext_id(meta: &Map<String, Value>) -> Result<String, InstallError> {
     let ext_id = match meta.get("id") {
         Some(Value::String(s)) if !s.is_empty() => s.clone(),
@@ -670,21 +670,21 @@ pub fn manifest_ext_id(meta: &Map<String, Value>) -> Result<String, InstallError
     Ok(ext_id)
 }
 
-/// «Нет поля id» — одна подпись на обе ветки проверки.
+/// "No id field" — one message for both check branches.
 fn missing_id() -> String {
     tr("manifest.json: the 'id' field is missing")
 }
 
-/// Текст ошибки для повреждённого manifest.json (`ValueError` Python:
-/// `manifest.json повреждён: {JSONDecodeError}`; деталь после двоеточия у
-/// serde своя — parity сверяет префикс).
+/// The error text for a damaged manifest.json (Python `ValueError`:
+/// `manifest.json is damaged: {JSONDecodeError}`; the detail after the colon is
+/// serde's own — parity checks the prefix).
 pub fn bad_manifest_json_error(detail: &str) -> InstallError {
     verr(trf("manifest.json is damaged: %1", &[&detail]))
 }
 
-/// Порт `_check_rexon_compat`: разбор `rexon_version` (`re.match` — только
-/// с начала строки) и сравнение с REXON_VERSION. Неизвестный оператор или
-/// нераспознанная строка — пропуск (как `checks.get(op, True)`).
+/// Port of `_check_rexon_compat`: parsing `rexon_version` (`re.match` — only
+/// from the start of the string) and comparing with REXON_VERSION. An unknown operator or
+/// an unrecognized string — skipped (like `checks.get(op, True)`).
 pub fn check_rexon_compat(meta: &Map<String, Value>) -> Result<(), String> {
     let req_str = meta
         .get("rexon_version")
@@ -693,15 +693,15 @@ pub fn check_rexon_compat(meta: &Map<String, Value>) -> Result<(), String> {
     if req_str.is_empty() {
         return Ok(());
     }
-    // r"([><=!]+)\s*(\d+)\.(\d+)\.(\d+)" с семантикой re.match (якорь только
-    // в начале строки; хвост после третьей группы допустим).
+    // r"([><=!]+)\s*(\d+)\.(\d+)\.(\d+)" with re.match semantics (anchored only
+    // at the start of the string; a tail after the third group is allowed).
     let cs: Vec<char> = req_str.chars().collect();
     let mut i = 0;
     while i < cs.len() && matches!(cs[i], '>' | '<' | '=' | '!') {
         i += 1;
     }
     if i == 0 {
-        return Ok(()); // нет матча — как `if not m: return`
+        return Ok(()); // no match — like `if not m: return`
     }
     let op: String = cs[..i].iter().collect();
     while i < cs.len() && cs[i].is_whitespace() {
@@ -755,7 +755,7 @@ pub fn check_rexon_compat(meta: &Map<String, Value>) -> Result<(), String> {
     }
 }
 
-/// `re.sub(r"[^a-z0-9]+", "-", s).strip("-")` (вход уже lower()).
+/// `re.sub(r"[^a-z0-9]+", "-", s).strip("-")` (the input is already lower()).
 fn slugify(s: &str) -> String {
     let mut out = String::new();
     let mut dash = false;
@@ -772,17 +772,17 @@ fn slugify(s: &str) -> String {
 }
 
 // ============================================================================
-// _safe_install как план
+// _safe_install as a plan
 // ============================================================================
 
-/// Порт `_safe_install`: установка типов оформления как чистый план.
+/// Port of `_safe_install`: installing appearance types as a pure plan.
 pub fn safe_install_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
     let mut steps = Vec::new();
     let mut pfs = PlanFs::new(env.fs);
     safe_install_into(env, ext, &mut pfs, &mut steps);
-    // Всё основное пропущено (на месте чужое) — ставить нечего: не «успех с
-    // заметками», а понятный отказ целиком, до первого шага. Частичный
-    // пропуск — установка с заметками.
+    // All main parts were skipped (something foreign is in place) — nothing to install: not "success with
+    // notes" but a clear refusal entirely, before the first step. A partial
+    // skip — an installation with notes.
     if pfs.skipped > 0 && !steps.iter().any(places_something) {
         let mut lines = vec![trf(
             "“%1” was not installed: everything in it would replace something that this package \
@@ -798,9 +798,9 @@ pub fn safe_install_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
     steps
 }
 
-/// Кладёт ли шаг что-то из пакета: копия, распаковка, ссылка, раскладка для
-/// системной части, системный шаг или инструмент KDE. Каталоги-основы
-/// (`MakeDirs`), метки и заметки — не в счёт.
+/// Whether a step puts something from the package: a copy, unpacking, a link, staging for
+/// the system part, a system step or a KDE tool. Base directories
+/// (`MakeDirs`), marks and notes do not count.
 fn places_something(step: &ExtStep) -> bool {
     match step {
         ExtStep::CopyTree { .. }
@@ -825,19 +825,19 @@ fn safe_install_into(
 ) {
     let ext_type = ext.ext_type();
     let Some(target_base) = env.install_path(&ext_type) else {
-        // wallpaper-pack не копируется — обои применяются напрямую.
+        // wallpaper-pack is not copied — wallpapers are applied directly.
         return;
     };
 
     let data_dir = join(ext.dir, "data");
     if !env.fs.is_dir(&data_dir) {
-        return; // предупреждение в логе — шагов нет
+        return; // a warning in the log — no steps
     }
 
     steps.push(ExtStep::MakeDirs { path: target_base.clone() });
     pfs.mk_dir(&target_base);
 
-    // v4 adaptive: симлинк на каталог расширения (медиа не дублируем).
+    // v4 adaptive: a symlink to the extension directory (we do not duplicate media).
     if ext_type == "wallpaper-video-adaptive" {
         let link = join(&target_base, &ext.ext_id());
         if !env.fs.lexists(&link) {
@@ -854,16 +854,16 @@ fn safe_install_into(
         return;
     }
 
-    // KDE color schemes: файлы .colors (не папки).
+    // KDE color schemes: .colors files (not folders).
     if ext_type == "theme-kde-colors" {
         for f in env.fs.scandir(&data_dir) {
             let src = join(&data_dir, f);
             if env.fs.is_file(&src) && f.ends_with(".colors") {
                 let dest = join(&target_base, f);
-                // Только файл: схему выбирает «Применить» вкладки «Оформление»
-                // (см. [`crate::appearance_installer::applied_by_button`]).
-                // Схема человека или другого пакета с тем же именем файла (и
-                // другим содержимым) не перезаписывается.
+                // Only the file: the scheme is chosen by «Apply» of the «Appearance» tab
+                // (see [`crate::appearance_installer::applied_by_button`]).
+                // A scheme of the person or another package with the same file name (and
+                // different contents) is not overwritten.
                 if !put_owned_file(env, pfs, &src, &dest, steps) {
                     steps.push(taken_file_notice(f, &dest));
                     pfs.skipped += 1;
@@ -873,16 +873,16 @@ fn safe_install_into(
         return;
     }
 
-    // Кастомизация конкретных окружений (KWin, GNOME, Cinnamon, XFCE, MATE,
-    // LXQt) — ОДИН generic-путь по матрице `de_customization`, а не новая
-    // ветка на каждый тип (правило #12).
+    // Customization of specific desktops (KWin, GNOME, Cinnamon, XFCE, MATE,
+    // LXQt) — ONE generic path by the `de_customization` matrix, not a new
+    // branch per type (rule #12).
     if let Some(row) = de_customization::de_managed_row(&ext_type) {
         install_de_custom_plan(env, ext, row, &data_dir, pfs, steps);
         return;
     }
 
-    // Остальные темы: каждая подпапка data/ — тема/набор. login-screen и
-    // plymouth ставятся через pkexec — user-копия пропускается.
+    // Other themes: each data/ subfolder is a theme/set. login-screen and
+    // plymouth are installed via pkexec — the user copy is skipped.
     let skip_user_copy = matches!(
         ext_type.as_str(),
         "theme-login-screen" | "theme-plymouth"
@@ -897,9 +897,9 @@ fn safe_install_into(
             installed_names.push(name.clone());
             continue;
         }
-        // Общий набор значков (`hicolor`, `locolor`) темой не ставится: его
-        // каталог делят все программы, а `index.theme` пакета перекрыл бы
-        // системный (дефект 09.11.2026, [`crate::icon_hygiene`]).
+        // The shared icon set (`hicolor`, `locolor`) is not installed as a theme: all programs
+        // share its directory, and the package's `index.theme` would shadow the
+        // system one (defect of 09.11.2026, [`crate::icon_hygiene`]).
         if matches!(ext_type.as_str(), "theme-icons" | "theme-cursors")
             && crate::icon_hygiene::is_reserved_icon_set(name)
         {
@@ -908,40 +908,40 @@ fn safe_install_into(
             continue;
         }
         let dest = join(&target_base, name);
-        // Копии подпапок комплекта (`~/.local/share/rexon/bundles/<подпапка>`)
-        // и Conky (`~/.config/conky/<подпапка>`) лежат под ОБЩИМИ именами —
-        // такая же папка может быть чужой. Кладутся с меткой владельца, чтобы
-        // удаление снимало ровно своё (дефекты Д2/Д3, 25.10.2026).
+        // Copies of bundle subfolders (`~/.local/share/rexon/bundles/<subfolder>`)
+        // and Conky ones (`~/.config/conky/<subfolder>`) lie under SHARED names —
+        // the same folder may be someone else's. They are put with an owner mark, so that
+        // removal takes away exactly our own (defects D2/D3, 25.10.2026).
         if ext_type == "theme-bundle" || ext_type == "theme-conky" {
             installed_names.push(name.clone());
-            // Обычный виджет Conky: вся `data/` — ОДИН каталог
-            // `~/.config/conky/<id>` (`install_conky_plan`), подпапки
-            // отдельно не кладутся. Прежняя копия `data/<подпапка>` в
-            // `~/.config/conky/<подпапка>` была вторым виджетом с тем же
-            // файлом настроек — он показывался и запускался дважды (дефект
-            // 14.11.2026; уже лежащие копии убирает
-            // `ext_exec::heal_conky_duplicates`). Несколько виджетов в
-            // одном пакете — по-прежнему отдельные плитки `<id>/<подпапка>`
+            // A regular Conky widget: the whole `data/` is ONE directory
+            // `~/.config/conky/<id>` (`install_conky_plan`), subfolders
+            // are not put separately. The old copy of `data/<subfolder>` in
+            // `~/.config/conky/<subfolder>` was a second widget with the same
+            // settings file — it was shown and started twice (defect of
+            // 14.11.2026; copies already in place are removed by
+            // `ext_exec::heal_conky_duplicates`). Several widgets in
+            // one package — still separate tiles `<id>/<subfolder>`
             // (`de_apply::conky_nested_widgets`).
             if ext_type == "theme-conky" && !is_conky_set(ext) {
                 continue;
             }
-            // Подпапка с именем самого набора — это его каталог
-            // `~/.config/conky/<id>`: его кладёт `install_conky_plan`.
+            // A subfolder named after the set itself is its directory
+            // `~/.config/conky/<id>`: `install_conky_plan` puts it.
             if !(ext_type == "theme-conky" && *name == ext.ext_id())
                 && !put_owned_copy(env, ext, pfs, &entry, &dest, steps)
                 && is_conky_set(ext)
             {
-                // Набор виджетов из файла: папку занял чужой виджет с тем же
-                // именем — сказать, что набор возьмёт его.
+                // A widget set from a file: the folder is taken by someone else's widget with the same
+                // name — say that the set will use it.
                 steps.push(taken_by_other_notice(name, &dest));
                 pfs.skipped += 1;
             }
             continue;
         }
-        // Основная копия темы — по тому же правилу владельца: на месте
-        // каталог чужой темы (поставленной руками, другим пакетом или
-        // прежним Rexon без метки) — не трогать, а сказать человеку.
+        // The theme's main copy — by the same owner rule: if in place is
+        // a directory of someone else's theme (installed by hand, by another package or
+        // by the old Rexon without a mark) — do not touch it, but tell the person.
         if !put_owned_copy(env, ext, pfs, &entry, &dest, steps) {
             steps.push(taken_by_other_notice(name, &dest));
             pfs.skipped += 1;
@@ -950,13 +950,13 @@ fn safe_install_into(
         installed_names.push(name.clone());
     }
 
-    // ⛔ Установка темы НЕ применяет её. Прежде здесь шли
+    // ⛔ Installing a theme does NOT apply it. Previously
     // plasma-apply-lookandfeel/-colorscheme/-desktoptheme, kvantummanager --set
-    // и запись ~/.icons/default (курсор у X11-программ менялся сразу при
-    // установке, до «Применить» — дефект 03.10.2026). Все эти типы включает
-    // кнопка «Применить» вкладки «Оформление» общим планом каждого вида
-    // (курсор — `themes::apply_cursor_plan_sized` во всех окружениях); сторож —
-    // `rxn_install_never_applies_what_the_button_applies` в тестах.
+    // and writing ~/.icons/default ran here (the cursor of X11 programs changed right at
+    // installation, before «Apply» — defect of 03.10.2026). All these types are enabled by
+    // the «Apply» button of the «Appearance» tab with each kind's shared plan
+    // (the cursor — `themes::apply_cursor_plan_sized` on all desktops); the guard is
+    // `rxn_install_never_applies_what_the_button_applies` in the tests.
 
     match ext_type.as_str() {
         "theme-window-decoration" => {
@@ -976,18 +976,18 @@ fn safe_install_into(
 }
 
 // ============================================================================
-// Кастомизация окружений: один путь на все типы матрицы
+// Desktop customization: one path for all matrix types
 // ============================================================================
 
-/// Объект установки: что копируем и под каким именем он будет включаться.
+/// An install object: what we copy and under what name it will be enabled.
 struct DeObject {
     src: String,
-    /// Имя каталога назначения; оно же — идентификатор для активации
-    /// (uuid у GNOME/Cinnamon, KPlugin.Id у KDE, имя темы у ~/.themes).
+    /// The destination directory name; it is also the identifier for activation
+    /// (uuid for GNOME/Cinnamon, KPlugin.Id for KDE, the theme name for ~/.themes).
     name: String,
 }
 
-/// Прочитать поле из JSON-файла снимка (`meta`), поддерживая точечный путь
+/// Read a field from a snapshot JSON file (`meta`), supporting a dotted path
 /// (`KPlugin.Id`).
 fn json_field(fs: &FsSnap, path: &str, field: &str) -> Option<String> {
     let text = fs.read_text(path)?;
@@ -999,12 +999,12 @@ fn json_field(fs: &FsSnap, path: &str, field: &str) -> Option<String> {
     cur.as_str().map(String::from)
 }
 
-/// Разобрать `data/` на объекты по форме полезной нагрузки строки матрицы.
+/// Split `data/` into objects by the payload shape of the matrix row.
 ///
-/// Единая грабля всех окружений: имя каталога назначения не всегда равно имени
-/// папки в архиве — GNOME и Cinnamon требуют каталог ровно с именем `uuid`,
-/// KDE — с именем `KPlugin.Id`. Ошибёшься именем — объект установится и молча
-/// не заработает.
+/// A single pitfall of all desktops: the destination directory name is not always equal to the
+/// folder name in the archive — GNOME and Cinnamon require the directory to be named exactly `uuid`,
+/// KDE — `KPlugin.Id`. Get the name wrong — the object installs and silently
+/// does not work.
 fn de_objects(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -1015,7 +1015,7 @@ fn de_objects(
 
     let mut out: Vec<DeObject> = Vec::new();
 
-    // Имя объекта по каталогу-кандидату.
+    // The object name by the candidate directory.
     let resolve = |src: &str, fallback: &str| -> String {
         match row.payload {
             Payload::DirUuid { meta, field } => {
@@ -1037,7 +1037,7 @@ fn de_objects(
         }
     };
 
-    // Признак «этот каталог и есть объект» (а не контейнер с объектами).
+    // The sign "this directory is the object itself" (rather than a container of objects).
     let is_object = |dir: &str| -> bool {
         match row.payload {
             Payload::DirUuid { meta, .. } => env.fs.is_file(&join(dir, meta)),
@@ -1071,8 +1071,8 @@ fn de_objects(
         }
     }
 
-    // Пакет положили без обёртки — сам data/ и есть объект (частый случай:
-    // архив с gnome-shell-расширением распакован «как есть»).
+    // The package was put without a wrapper — data/ itself is the object (a common case:
+    // an archive with a gnome-shell extension unpacked "as is").
     if out.is_empty() && is_object(data_dir) {
         let fallback = ext.ext_id();
         out.push(DeObject {
@@ -1083,8 +1083,8 @@ fn de_objects(
     out
 }
 
-/// Шаг «выполнить сценарий оболочки» (изменение списков gsettings и правка
-/// ini-файлов одной командой не делаются — см. `de_customization`).
+/// The "run a shell script" step (changing gsettings lists and editing
+/// ini files cannot be done with one command — see `de_customization`).
 fn sh(script: String) -> ExtStep {
     ExtStep::Run {
         argv: vec!["bash".into(), "-c".into(), script],
@@ -1092,8 +1092,8 @@ fn sh(script: String) -> ExtStep {
     }
 }
 
-/// Шаги активации объекта. Пусто — значит включать нечего либо включение
-/// сознательно оставлено пользователю (плагин обоев Plasma).
+/// An object's activation steps. Empty means there is nothing to enable or enabling
+/// is deliberately left to the user (a Plasma wallpaper plugin).
 fn de_activate_steps(
     env: &ExtEnv,
     row: &de_customization::Row,
@@ -1105,8 +1105,8 @@ fn de_activate_steps(
     let kw = |args: Vec<String>| ExtStep::Run { argv: args, timeout_secs: Some(10) };
 
     match row.activate {
-        // Rexon — типы общего установщика оформления: сюда они не приходят
-        // (`de_managed_row` их отсекает), включение делает установщик тем.
+        // Rexon — types of the shared appearance installer: they do not come here
+        // (`de_managed_row` cuts them off), the theme installer enables them.
         Activate::Auto | Activate::Rexon | Activate::Manual(_) => Vec::new(),
         Activate::KdeConfig { file, group, key, extra } => {
             let mut v = vec![kw(vec![
@@ -1164,8 +1164,8 @@ fn de_activate_steps(
         Activate::GnomeExtension => {
             vec![sh(de_customization::gnome_extension_enable_script(obj_name, dest))]
         }
-        // `-n -t string`: на свежем профиле свойства ещё нет, и голое `-s`
-        // отказывает («does not exist on channel») — стенд 04.10.2026.
+        // `-n -t string`: on a fresh profile the property does not exist yet, and a bare `-s`
+        // refuses ("does not exist on channel") — test bench of 04.10.2026.
         Activate::Xfconf { channel, prop } => vec![kw(vec![
             "xfconf-query".into(),
             "-c".into(),
@@ -1184,20 +1184,20 @@ fn de_activate_steps(
             key,
             obj_name,
         ))],
-        // Узел `rc.xml` правится по его тексту, а читать файлы этот план не
-        // умеет: тему рамок Openbox и labwc включает кнопка раздела
-        // (`crate::de_apply::rc_theme_steps`), установка её не включает.
+        // An `rc.xml` node is edited by its text, and this plan cannot read
+        // files: the Openbox and labwc frame theme is enabled by the section's button
+        // (`crate::de_apply::rc_theme_steps`), installation does not enable it.
         Activate::RcXmlTheme => Vec::new(),
     }
 }
 
-/// Шаг обновления окружения — только там, где перезапуск безопасен.
+/// A desktop refresh step — only where a restart is safe.
 ///
-/// Осознанно НЕ перезапускаем оболочку GNOME (на Wayland это невозможно, а на
-/// X11 требует прав, которых у нас нет), панель LXQt (упавшую панель некому
-/// поднять — пользователь останется без панели) и plasmashell (перерисовка
-/// стола не стоит риска потерять раскладку). Там применение — по подсказке
-/// [`Refresh::hint`] в интерфейсе.
+/// We deliberately do NOT restart the GNOME shell (on Wayland it is impossible, and on
+/// X11 it requires rights we do not have), the LXQt panel (there is nobody to bring up a crashed panel
+/// — the user would be left without a panel) and plasmashell (redrawing
+/// the desktop is not worth the risk of losing the layout). There the change is applied following the hint
+/// [`Refresh::hint`] in the interface.
 fn qdbus_tool(env: &ExtEnv) -> Option<String> {
     (env.which)("qdbus6")
         .or_else(|| (env.which)("qdbus"))
@@ -1220,12 +1220,12 @@ fn de_refresh_step(env: &ExtEnv, row: &de_customization::Row) -> Option<ExtStep>
             })
         }
         Refresh::CinnamonReplace => {
-            // На Wayland Cinnamon перезапустить нельзя — только перезаход.
+            // On Wayland Cinnamon cannot be restarted — only logging in again.
             if env.wayland_display || env.xdg_session_type.eq_ignore_ascii_case("wayland") {
                 return None;
             }
-            // `cinnamon --replace` в чужом сеансе (MATE, XFCE…) сменил бы
-            // там оконный менеджер на Cinnamon: только в запущенном Cinnamon.
+            // `cinnamon --replace` in someone else's session (MATE, XFCE…) would replace
+            // the window manager there with Cinnamon: only in a running Cinnamon.
             if !env.xdg_current_desktop.to_lowercase().contains("cinnamon") {
                 return None;
             }
@@ -1236,13 +1236,13 @@ fn de_refresh_step(env: &ExtEnv, row: &de_customization::Row) -> Option<ExtStep>
     }
 }
 
-/// Включить уже установленный объект типа матрицы — кнопка «Применить» /
-/// «Включить» вкладки «Оформление» (`crate::de_apply`).
+/// Enable an already installed object of a matrix type — the «Apply» /
+/// «Enable» button of the «Appearance» tab (`crate::de_apply`).
 ///
-/// Те же шаги, что прежде делала установка ([`de_activate_steps`] плюс
-/// безопасное обновление окружения): установка теперь только кладёт файлы,
-/// а включает человек кнопкой (решение 04.10.2026). Второго списка команд
-/// нет — правило #12. Пусто — тип не из матрицы либо включать нечего.
+/// The same steps installation used to do ([`de_activate_steps`] plus
+/// a safe desktop refresh): installation now only puts the files,
+/// and the person enables with a button (decision of 04.10.2026). There is no second list of commands
+/// — rule #12. Empty — the type is not from the matrix or there is nothing to enable.
 pub fn de_enable_steps(env: &ExtEnv, kind: &str, obj_name: &str) -> Vec<ExtStep> {
     let Some(row) = de_customization::de_managed_row(kind) else {
         return Vec::new();
@@ -1255,10 +1255,10 @@ pub fn de_enable_steps(env: &ExtEnv, kind: &str, obj_name: &str) -> Vec<ExtStep>
     steps
 }
 
-/// Имена объектов типа матрицы внутри пакета `.rxn` — так, как они лежат
-/// на диске после установки (uuid для GNOME/Cinnamon, `KPlugin.Id` для
-/// KDE, имя файла для Nemo). По ним вкладка «Расширения» включает и
-/// выключает дополнение тем же путём, что кнопка «Оформления».
+/// Names of the objects of a matrix type inside a `.rxn` package — as they lie
+/// on disk after installation (uuid for GNOME/Cinnamon, `KPlugin.Id` for
+/// KDE, the file name for Nemo). By them the «Extensions» tab enables and
+/// disables the add-on the same way as the «Appearance» button.
 pub fn de_object_names(env: &ExtEnv, ext: &ExtInfo) -> Vec<String> {
     let Some(row) = de_customization::de_managed_row(&ext.ext_type()) else {
         return Vec::new();
@@ -1267,8 +1267,8 @@ pub fn de_object_names(env: &ExtEnv, ext: &ExtInfo) -> Vec<String> {
     de_objects(env, ext, row, &data_dir).into_iter().map(|o| o.name).collect()
 }
 
-/// Выключить объект типа матрицы — кнопка «Выключить» (те же шаги, что
-/// удаление делает перед сносом каталога).
+/// Disable an object of a matrix type — the «Disable» button (the same steps
+/// uninstalling does before removing the directory).
 pub fn de_disable_steps(env: &ExtEnv, kind: &str, obj_name: &str) -> Vec<ExtStep> {
     let Some(row) = de_customization::de_managed_row(kind) else {
         return Vec::new();
@@ -1280,7 +1280,7 @@ pub fn de_disable_steps(env: &ExtEnv, kind: &str, obj_name: &str) -> Vec<ExtStep
     steps
 }
 
-/// Установка типа кастомизации окружения: копирование + включение + обновление.
+/// Installing a desktop customization type: copying + enabling + refreshing.
 fn install_de_custom_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -1293,7 +1293,7 @@ fn install_de_custom_plan(
 
     let objects = de_objects(env, ext, row, data_dir);
     if objects.is_empty() {
-        return; // предупреждение в логе — шагов нет
+        return; // a warning in the log — no steps
     }
 
     let base = row.dest_path(env.home);
@@ -1301,8 +1301,8 @@ fn install_de_custom_plan(
 
     for obj in &objects {
         if let Payload::Files { .. } = row.payload {
-            // Одиночный файл — по правилу владельца файлов: на месте чужой
-            // файл с другим содержимым — пропуск с заметкой.
+            // A single file — by the owner rule for files: a foreign file with
+            // different contents in place — skipped with a note.
             let dest = join(&base, &obj.name);
             if !put_owned_file(env, pfs, &obj.src, &dest, steps) {
                 steps.push(taken_file_notice(&obj.name, &dest));
@@ -1313,11 +1313,11 @@ fn install_de_custom_plan(
             continue;
         }
 
-        // Каталог с тем же именем уже стоит и положен не этим пакетом
-        // (тема человека, другой пакет, копия прежнего Rexon без метки) —
-        // объект пропускается целиком: ни копии, ни инструмента KDE, ни
-        // включения чужой темы. Свою прежнюю копию (метка этого пакета)
-        // ниже снимает и кладёт заново `put_owned_copy`.
+        // A directory with the same name is already installed and was not put by this package
+        // (the person's theme, another package, a copy of the old Rexon without a mark) —
+        // the object is skipped entirely: no copy, no KDE tool, no
+        // enabling someone else's theme. Our own earlier copy (this package's mark)
+        // is removed and put again below by `put_owned_copy`.
         let dest = join(&base, &obj.name);
         if (pfs.exists(&dest) || env.fs.lexists(&dest)) && !owned_by(env.fs, &dest, &ext.ext_id()) {
             steps.push(taken_by_other_notice(&obj.name, &dest));
@@ -1325,9 +1325,9 @@ fn install_de_custom_plan(
             continue;
         }
 
-        // KDE-пакеты ставит их собственный инструмент — он кладёт файлы в
-        // правильный каталог и обновляет реестр; копирование остаётся
-        // запасным путём (как уже сделано для плазмоидов).
+        // KDE packages are installed by their own tool — it puts the files into the
+        // right directory and updates the registry; copying remains
+        // the fallback path (as already done for plasmoids).
         if let Payload::KPackage { ptype, .. } = row.payload {
             if let Some(tool) =
                 (env.which)("kpackagetool6").or_else(|| (env.which)("kpackagetool5"))
@@ -1355,9 +1355,9 @@ fn install_de_custom_plan(
                 });
                 installed.push(obj.name.clone());
                 if (env.run_ok)(&install_argv) {
-                    // Метка владельца и у пакета, поставленного инструментом
-                    // KDE: по ней удаление узнаёт своё (чужое с тем же
-                    // именем не снимается).
+                    // An owner mark for a package installed by the KDE tool
+                    // too: by it removal recognizes our own (someone else's with the same
+                    // name is not removed).
                     steps.push(ExtStep::WriteFile {
                         path: join(&dest, OWNER_MARK),
                         content: format!("{}\n", ext.ext_id()),
@@ -1380,9 +1380,9 @@ fn install_de_custom_plan(
         return;
     }
 
-    // Скалярные ключи (имя темы, раскладка Alt+Tab) принимают ОДНО значение:
-    // берём apply_name из манифеста, иначе первый объект. Списочные включения
-    // (апплеты, расширения) применяются ко всем объектам пакета.
+    // Scalar keys (a theme name, the Alt+Tab layout) take ONE value:
+    // we take apply_name from the manifest, otherwise the first object. List enablings
+    // (applets, extensions) apply to all objects of the package.
     let scalar_target = ext
         .manifest
         .get("apply_name")
@@ -1399,10 +1399,10 @@ fn install_de_custom_plan(
         vec![scalar_target]
     };
 
-    // ⛔ Тип, который включает «Применить» вкладки «Оформление» (заставка и
-    // экран блокировки KDE), установка только кладёт: выбор — за человеком
-    // (дефект 03.10.2026). Ключ в `activate` при этом остаётся — по нему
-    // удаление сбрасывает настройку, если она указывала на снимаемую тему.
+    // ⛔ A type enabled by «Apply» of the «Appearance» tab (the KDE splash and
+    // lock screen) is only put in place by installation: the choice is the person's
+    // (defect of 03.10.2026). The key in `activate` still stays — by it
+    // removal resets the setting if it pointed at the theme being removed.
     if crate::appearance_installer::applied_by_button(row.kind) {
         return;
     }
@@ -1423,11 +1423,11 @@ fn install_de_custom_plan(
     }
 }
 
-/// Шаги выключения объекта — обратное к [`de_activate_steps`].
+/// An object's disabling steps — the reverse of [`de_activate_steps`].
 ///
-/// Общие для удаления (сначала выключить, потом снести) и для кнопки
-/// «Выключить» вкладки «Оформление» ([`de_disable_steps`]): второго способа
-/// выключить то же самое нет (правило #12). Пусто — выключать нечего.
+/// Shared by removal (disable first, then remove) and by the
+/// «Disable» button of the «Appearance» tab ([`de_disable_steps`]): there is no second way
+/// to disable the same thing (rule #12). Empty — nothing to disable.
 fn de_deactivate_steps(env: &ExtEnv, row: &de_customization::Row, obj_name: &str) -> Vec<ExtStep> {
     use de_customization::{Activate, EntryFmt, Payload};
     let mut v: Vec<ExtStep> = Vec::new();
@@ -1452,11 +1452,11 @@ fn de_deactivate_steps(env: &ExtEnv, row: &de_customization::Row, obj_name: &str
                 ],
                 timeout_secs: Some(10),
             });
-            // Проверено живьём на Plasma 6: снятого скрипта `reconfigure`
-            // НЕ выгружает — он продолжает работать до конца сеанса, хотя
-            // файлы уже удалены. Выгружаем явно, для этого у KWin есть
-            // отдельный метод (у эффектов такой проблемы нет — им хватает
-            // ключа в kwinrc).
+            // Checked live on Plasma 6: `reconfigure` does NOT unload a removed
+            // script — it keeps working until the end of the session, even though
+            // the files are already deleted. We unload explicitly, KWin has
+            // a separate method for that (effects do not have this problem — the
+            // key in kwinrc is enough for them).
             if matches!(
                 row.payload,
                 Payload::KPackage { ptype: "KWin/Script", .. }
@@ -1508,22 +1508,22 @@ fn de_deactivate_steps(env: &ExtEnv, row: &de_customization::Row, obj_name: &str
             });
         }
         Activate::IniKey { .. } => {
-            // Тема LXQt: чужой конфиг не правим, панель просто вернётся к
-            // системной теме при следующем входе.
+            // An LXQt theme: we do not edit someone else's config, the panel will simply go back to
+            // the system theme at the next login.
         }
         Activate::RcXmlTheme => {
-            // Тема рамок Openbox и labwc: при удалении `rc.xml` не трогаем —
-            // менеджер окон, не найдя тему, рисует рамки своей встроенной.
+            // An Openbox and labwc frame theme: on removal we do not touch `rc.xml` —
+            // the window manager, not finding the theme, draws frames with its built-in one.
         }
     }
     v
 }
 
-/// Удаление типа кастомизации окружения: сначала выключить, потом снести.
+/// Uninstalling a desktop customization type: disable first, then remove.
 ///
-/// Порядок важен: если сначала удалить каталог, а ключ оставит указывать на
-/// него, окружение получит ссылку в никуда (у экрана блокировки KDE это
-/// означает нерабочую блокировку).
+/// The order matters: if the directory is deleted first while the key keeps pointing at
+/// it, the desktop gets a link to nowhere (for the KDE lock screen this
+/// means a broken lock).
 fn uninstall_de_custom_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -1548,9 +1548,9 @@ fn uninstall_de_custom_plan(
         steps.extend(off);
 
         let dest = join(&base, &obj.name);
-        // Каталог с этим именем стоит, но положен не этим пакетом (тема
-        // человека, которую установка пропустила, или копия прежнего Rexon
-        // без метки) — не снимать ни инструментом KDE, ни удалением.
+        // A directory with this name is installed but was not put by this package (the person's
+        // theme that installation skipped, or a copy of the old Rexon
+        // without a mark) — remove it neither with the KDE tool nor by deletion.
         let foreign = !matches!(row.payload, Payload::Files { .. })
             && env.fs.lexists(&dest)
             && !owned_by(env.fs, &dest, &ext.ext_id());
@@ -1558,7 +1558,7 @@ fn uninstall_de_custom_plan(
             continue;
         }
 
-        // KDE-пакеты снимает их инструмент — иначе останется запись в реестре.
+        // KDE packages are removed by their tool — otherwise a registry entry stays.
         if let Payload::KPackage { ptype, .. } = row.payload {
             if let Some(tool) =
                 (env.which)("kpackagetool6").or_else(|| (env.which)("kpackagetool5"))
@@ -1577,9 +1577,9 @@ fn uninstall_de_custom_plan(
         }
 
         if let Payload::Files { .. } = row.payload {
-            // Только свой файл (журнал этого пакета или байт в байт его):
-            // одноимённый файл человека установка пропустила — удаление его
-            // тоже не трогает.
+            // Only our own file (this package's log or byte for byte its own):
+            // installation skipped the person's file with the same name — removal
+            // does not touch it either.
             if file_is_ours(env.fs, &obj.src, &dest) {
                 steps.push(ExtStep::RemoveFile { path: dest });
             }
@@ -1599,26 +1599,26 @@ fn uninstall_de_custom_plan(
     }
 }
 
-/// Порт `Extension.install_fonts` (шрифты в ~/.local/share/fonts/rexon-<id>).
+/// Port of `Extension.install_fonts` (fonts into ~/.local/share/fonts/rexon-<id>).
 fn install_fonts_plan(env: &ExtEnv, ext: &ExtInfo, steps: &mut Vec<ExtStep>) {
     let fonts = font_files(env.fs, ext);
     if fonts.is_empty() {
-        return; // warning в логе
+        return; // a warning in the log
     }
     let dest_dir = format!("{}/.local/share/fonts/rexon-{}", env.home, ext.ext_id());
     steps.push(ExtStep::MakeDirs { path: dest_dir.clone() });
     for font in &fonts {
-        // Файл в файл под своим именем: копия «в каталог» у общего
-        // исполнителя не бывает (шаг 2 слияния установщиков).
+        // File to file under its own name: the shared executor has no copy "into a
+        // directory" (step 2 of merging the installers).
         let name = font.rsplit('/').next().unwrap_or(font);
         steps.push(ExtStep::CopyFile { src: font.clone(), dest: join(&dest_dir, name) });
     }
     steps.push(run(vec!["fc-cache", "-f", &dest_dir], 30));
 }
 
-/// Порт `Extension.font_files` по снимку: data/ (или корень) рекурсивно,
-/// сопоставление формата — по суффиксу целиком (`is_supported_font`), так что
-/// составной `.pcf.gz` тоже матчится.
+/// Port of `Extension.font_files` from the snapshot: data/ (or the root) recursively,
+/// format matching — by the whole suffix (`is_supported_font`), so that
+/// a compound `.pcf.gz` matches too.
 fn font_files(fs: &FsSnap, ext: &ExtInfo) -> Vec<String> {
     let data_dir = join(ext.dir, "data");
     let root = if fs.is_dir(&data_dir) { data_dir } else { ext.dir.to_string() };
@@ -1633,29 +1633,29 @@ fn font_files(fs: &FsSnap, ext: &ExtInfo) -> Vec<String> {
     out
 }
 
-/// Метка владельца копии: файл в корне каталога, положенного пакетом под
-/// ОБЩИМ именем (`~/.themes/<тема>` у рамок вне KDE, подпапки комплекта в
-/// `~/.local/share/rexon/bundles`, подпапки Conky в `~/.config/conky`).
-/// Текст — id пакета. Удаление и обновление трогают каталог, только если
-/// метка его — тема человека или другого пакета с тем же именем остаётся
-/// как была (дефекты Д1–Д3, найдены страховкой 25.10.2026).
+/// The owner mark of a copy: a file in the root of a directory put by the package under
+/// a SHARED name (`~/.themes/<theme>` for frames outside KDE, bundle subfolders in
+/// `~/.local/share/rexon/bundles`, Conky subfolders in `~/.config/conky`).
+/// The text is the package id. Removal and update touch the directory only if
+/// the mark is theirs — a theme of the person or another package with the same name stays
+/// as it was (defects D1–D3, found by the safety net on 25.10.2026).
 pub const OWNER_MARK: &str = ".rexon-owner";
 
-/// Каталог `dir` положил пакет `ext_id`: обычный каталог (не ссылка) с
-/// нашей меткой.
+/// The directory `dir` was put by the package `ext_id`: a regular directory (not a link) with
+/// our mark.
 fn owned_by(fs: &FsSnap, dir: &str, ext_id: &str) -> bool {
     fs.is_dir(dir)
         && !fs.is_link(dir)
         && fs.read_text(&join(dir, OWNER_MARK)).is_some_and(|t| t.trim() == ext_id)
 }
 
-/// Положить копию `src` в `dest` от имени пакета: места нет — копия и
-/// метка; место наше — снять и положить заново (обновление пакета); место
-/// чужое — не трогать (`false`: копия не положена).
+/// Put a copy of `src` into `dest` on behalf of the package: no place — a copy and
+/// a mark; the place is ours — remove and put again (a package update); the place is
+/// someone else's — do not touch (`false`: the copy was not put).
 ///
-/// Совместимость: копии, положенные Rexon до метки (25.10.2026), метки не
-/// имеют и от чужих неотличимы — они тоже не трогаются. Поставить поверх
-/// такой копии — удалить её каталог и установить пакет снова.
+/// Compatibility: copies Rexon put before the mark (25.10.2026) have no mark
+/// and are indistinguishable from foreign ones — they are not touched either. To install over
+/// such a copy — delete its directory and install the package again.
 fn put_owned_copy(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -1684,10 +1684,10 @@ fn put_owned_copy(
     true
 }
 
-/// Заметка установки: тема `name` не поставлена — на её месте `dest` стоит
-/// каталог, положенный не этим пакетом (как пропуск у магазина).
-/// Заметка установки: подпапка пакета названа как общий набор значков
-/// (`hicolor`, `locolor`) и не ставится.
+/// An install note: the theme `name` was not installed — in its place `dest` there is
+/// a directory not put by this package (like a skip in the store).
+/// An install note: a package subfolder is named like a shared icon set
+/// (`hicolor`, `locolor`) and is not installed.
 fn shared_icon_set_notice(name: &str) -> ExtStep {
     ExtStep::Notice {
         text: trf("“%1” skipped: this is the shared icon set of all programs, a theme must not replace it", &[&name]),
@@ -1704,12 +1704,12 @@ fn taken_by_other_notice(name: &str, dest: &str) -> ExtStep {
     }
 }
 
-/// Положить одиночный файл `src` в `dest` от имени пакета (правило
-/// владельца для файлов: метку в имя файла не положить, владелец — общий
-/// журнал). Места нет — копия. На месте файл, который общий журнал записал
-/// за этим пакетом, либо байт в байт тот же (тогда он считается своим и
-/// попадает в журнал этой установки) — копия поверх. Иначе — чужой файл
-/// (человека, другого пакета, ссылка, каталог): не трогать (`false`).
+/// Put a single file `src` into `dest` on behalf of the package (the owner rule
+/// for files: a mark cannot be put into a file name, the owner is the shared
+/// log). No place — a copy. In place is a file the shared log recorded
+/// for this package, or the same byte for byte (then it counts as our own and
+/// goes into this installation's log) — a copy over it. Otherwise — a foreign file
+/// (the person's, another package's, a link, a directory): do not touch (`false`).
 fn put_owned_file(env: &ExtEnv, pfs: &mut PlanFs, src: &str, dest: &str, steps: &mut Vec<ExtStep>) -> bool {
     if !pfs.made_files.contains(dest) && (pfs.exists(dest) || env.fs.lexists(dest)) && !file_is_ours(env.fs, src, dest) {
         return false;
@@ -1719,14 +1719,14 @@ fn put_owned_file(env: &ExtEnv, pfs: &mut PlanFs, src: &str, dest: &str, steps: 
     true
 }
 
-/// Файл на месте `dest` — свой для пакета с файлом `src`: обычный файл (не
-/// ссылка), записанный за пакетом общим журналом или байт в байт тот же.
+/// The file in place `dest` is our own for the package with the file `src`: a regular file (not
+/// a link), recorded for the package by the shared log or the same byte for byte.
 fn file_is_ours(fs: &FsSnap, src: &str, dest: &str) -> bool {
     fs.is_file(dest) && !fs.is_link(dest) && (fs.owns_file(dest) || fs.same_bytes(src, dest))
 }
 
-/// Заметка установки: файл `name` не положен — на его месте `dest` лежит
-/// другой файл, положенный не этим пакетом.
+/// An install note: the file `name` was not put — in its place `dest` lies
+/// another file, not put by this package.
 fn taken_file_notice(name: &str, dest: &str) -> ExtStep {
     ExtStep::Notice {
         text: trf(
@@ -1737,7 +1737,7 @@ fn taken_file_notice(name: &str, dest: &str) -> ExtStep {
     }
 }
 
-/// Снять копию `dest`, если её положил этот пакет ([`put_owned_copy`]).
+/// Remove the copy `dest` if this package put it ([`put_owned_copy`]).
 fn remove_owned_copy(env: &ExtEnv, ext: &ExtInfo, dest: &str, steps: &mut Vec<ExtStep>) {
     if owned_by(env.fs, dest, &ext.ext_id()) {
         steps.push(ExtStep::RemoveTree {
@@ -1748,8 +1748,8 @@ fn remove_owned_copy(env: &ExtEnv, ext: &ExtInfo, dest: &str, steps: &mut Vec<Ex
     }
 }
 
-/// Рамки вне KDE: тема из каталога Aurorae — ещё и в `~/.themes/<тема>`
-/// (там её ищут GNOME, Cinnamon, Budgie, Pantheon и XFCE).
+/// Frames outside KDE: a theme from the Aurorae directory also goes into `~/.themes/<theme>`
+/// (GNOME, Cinnamon, Budgie, Pantheon and XFCE look for it there).
 fn copy_decoration_to_gtk_themes(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -1767,7 +1767,7 @@ fn copy_decoration_to_gtk_themes(
     }
 }
 
-/// Порт `_install_window_decoration` (DE-зависимая установка декораций).
+/// Port of `_install_window_decoration` (DE-dependent decoration installation).
 fn install_window_decoration_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -1781,10 +1781,10 @@ fn install_window_decoration_plan(
         .expect("theme-window-decoration в INSTALL_PATHS");
 
     if xdg.contains("kde") || xdg.contains("plasma") {
-        // Рамки (Aurorae) включает «Применить» вкладки «Оформление»
-        // (`aurorae_plan`), установка только кладёт тему в каталог Aurorae.
-        // Прежде здесь писались kwinrc org.kde.kdecoration2 и посылался
-        // reloadConfig — рамки менялись при установке (дефект 03.10.2026).
+        // Frames (Aurorae) are enabled by «Apply» of the «Appearance» tab
+        // (`aurorae_plan`), installation only puts the theme into the Aurorae directory.
+        // Previously kwinrc org.kde.kdecoration2 was written here and
+        // reloadConfig was sent — frames changed at installation (defect of 03.10.2026).
     } else if xdg.contains("gnome")
         || xdg.contains("budgie")
         || xdg.contains("pantheon")
@@ -1793,10 +1793,10 @@ fn install_window_decoration_plan(
         copy_decoration_to_gtk_themes(env, ext, &twd_base, installed_names, pfs, steps);
     } else if xdg.contains("xfce") {
         copy_decoration_to_gtk_themes(env, ext, &twd_base, installed_names, pfs, steps);
-        // Рамки XFCE включает «Применить» раздела «Рамки окон (XFCE)» (тип
-        // `theme-xfwm4`, решение 04.10.2026): установка только кладёт тему в
-        // ~/.themes. Ветка с записью xfconf осталась на случай, если у типа
-        // кнопки не станет, — иначе тему было бы нечем включить.
+        // XFCE frames are enabled by «Apply» of the «Window frames (XFCE)» section (the
+        // `theme-xfwm4` type, decision of 04.10.2026): installation only puts the theme into
+        // ~/.themes. The branch writing xfconf remains in case the type loses its
+        // button — otherwise there would be nothing to enable the theme with.
         if crate::appearance_installer::applied_by_button("theme-xfwm4") {
             return;
         }
@@ -1807,11 +1807,11 @@ fn install_window_decoration_plan(
             ));
         }
     }
-    // прочие DE — только лог
+    // other DEs — only the log
 }
 
-/// Порт `_detect_display_manager` как план: probes systemctl — шаги, их
-/// результат — через `env.run_ok`; фолбэк по `shutil.which` — без шагов.
+/// Port of `_detect_display_manager` as a plan: systemctl probes are steps, their
+/// result comes through `env.run_ok`; the `shutil.which` fallback — without steps.
 pub fn detect_display_manager_plan(env: &ExtEnv, steps: &mut Vec<ExtStep>) -> String {
     const DM_SERVICES: &[(&str, &str)] = &[
         ("sddm", "sddm"),
@@ -1846,8 +1846,8 @@ pub fn detect_display_manager_plan(env: &ExtEnv, steps: &mut Vec<ExtStep>) -> St
     String::new()
 }
 
-/// Порт `_find_background`: `background*`/`bg*` в корне, иначе самый большой
-/// файл-изображение > 10 000 байт (по снимку с размерами).
+/// Port of `_find_background`: `background*`/`bg*` in the root, otherwise the largest
+/// image file > 10 000 bytes (from the snapshot with sizes).
 pub fn find_background(fs: &FsSnap, data_dir: &str) -> String {
     const BG_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".webp", ".bmp"];
     let ext_of = |f: &str| -> String {
@@ -1880,7 +1880,7 @@ pub fn find_background(fs: &FsSnap, data_dir: &str) -> String {
     }
 }
 
-/// Порт `_install_login_screen` (SDDM/GDM/LightDM/COSMIC).
+/// Port of `_install_login_screen` (SDDM/GDM/LightDM/COSMIC).
 fn install_login_screen_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -1897,14 +1897,14 @@ fn install_login_screen_plan(
         let mut theme_name = installed_names[0].clone();
         let mut src = join(data_dir, &theme_name);
         if !env.fs.is_dir(&src) {
-            // нет подпапки — data/ сама является темой
+            // no subfolder — data/ itself is the theme
             src = data_dir.to_string();
             theme_name = ext.ext_id();
         }
         if is_safe_sys_name(&theme_name) {
             stage_sddm_plan(env, &theme_name, &src, steps);
         }
-        // небезопасное имя — только лог
+        // an unsafe name — only the log
     } else if dm == "gdm" {
         let bg = find_background(env.fs, data_dir);
         if !bg.is_empty() {
@@ -1917,8 +1917,8 @@ fn install_login_screen_plan(
             match lightdm_background_way(&greeter) {
                 LightdmBackground::GreeterConfig => stage_login_bg_plan(env, "lightdm-bg", &bg, steps),
                 LightdmBackground::DeepinAccount => {
-                    // Картинку — в общий каталог (экран входа читает её от
-                    // своего пользователя), затем — в учётную запись.
+                    // The picture — into the shared directory (the login screen reads it as
+                    // its own user), then — into the account.
                     stage_login_bg_plan(env, "login-bg", &bg, steps);
                     steps.push(deepin_greeter_background_step());
                 }
@@ -1952,7 +1952,7 @@ fn install_login_screen_plan(
                         steps,
                     );
                 }
-                break; // и при небезопасном имени — break, как в Python
+                break; // and on an unsafe name — break, as in Python
             }
         }
     } else if dm == "cosmic-greeter" {
@@ -1961,38 +1961,38 @@ fn install_login_screen_plan(
             stage_login_bg_plan(env, "cosmic-greeter", &bg, steps);
         }
     }
-    // прочие DM — только лог
+    // other DMs — only the log
 }
 
-/// Где LightDM-приветствие берёт фон.
+/// Where the LightDM greeter takes the background from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LightdmBackground {
-    /// `background=` в своём файле настроек: slick-greeter
+    /// `background=` in its own settings file: slick-greeter
     /// (`/etc/lightdm/slick-greeter.conf`), lightdm-gtk-greeter
-    /// (`/etc/lightdm/lightdm-gtk-greeter.conf`). Так же — когда приветствие
-    /// узнать не удалось: прежнее поведение.
+    /// (`/etc/lightdm/lightdm-gtk-greeter.conf`). The same — when the greeter
+    /// could not be found out: the old behavior.
     GreeterConfig,
-    /// lightdm-deepin-greeter: фон учётной записи — `GreeterBackground`
-    /// службы `org.deepin.dde.Accounts1` (пользователь меняет свой без пароля).
+    /// lightdm-deepin-greeter: the account background is `GreeterBackground` of the
+    /// `org.deepin.dde.Accounts1` service (the user changes their own without a password).
     DeepinAccount,
-    /// io.elementary.greeter: своего фона нет — каждому пользователю он
-    /// показывает его обои рабочего стола (копию кладёт
-    /// io.elementary.settings-daemon при смене обоев).
+    /// io.elementary.greeter: it has no background of its own — it shows each user
+    /// their desktop wallpaper (a copy is put by
+    /// io.elementary.settings-daemon when the wallpaper changes).
     UserWallpaper,
-    /// Другое приветствие: куда оно смотрит, Rexon не знает.
+    /// Another greeter: Rexon does not know where it looks.
     Unknown,
 }
 
-/// Файлы настроек LightDM в порядке чтения самим LightDM: каталоги
-/// `lightdm.conf.d` (системный, затем свой), затем `lightdm.conf`; поздний
-/// перекрывает ранний.
+/// LightDM settings files in the order LightDM itself reads them: the
+/// `lightdm.conf.d` directories (the system one, then our own), then `lightdm.conf`; a later one
+/// overrides an earlier one.
 pub const LIGHTDM_CONF_DIRS: &[&str] = &["/usr/share/lightdm/lightdm.conf.d", "/etc/lightdm/lightdm.conf.d"];
 pub const LIGHTDM_CONF: &str = "/etc/lightdm/lightdm.conf";
-/// Описания приветствий: `<greeter-session>.desktop`, строка `Exec=`.
+/// Greeter descriptions: `<greeter-session>.desktop`, the `Exec=` line.
 pub const XGREETERS_DIR: &str = "/usr/share/xgreeters";
 
-/// `greeter-session` из текста настроек LightDM (секции `[Seat:*]` и
-/// прежняя `[SeatDefaults]`).
+/// `greeter-session` from the LightDM settings text (the `[Seat:*]` sections and
+/// the old `[SeatDefaults]`).
 fn lightdm_greeter_session_in(text: &str) -> Option<String> {
     let mut in_seat = false;
     let mut found = None;
@@ -2014,10 +2014,10 @@ fn lightdm_greeter_session_in(text: &str) -> Option<String> {
     found
 }
 
-/// Какое приветствие покажет LightDM: имя программы из `Exec=` описания
-/// `/usr/share/xgreeters/<greeter-session>.desktop` (у Debian имя —
-/// общий `lightdm-greeter`, а описание — ссылка на настоящее), иначе само
-/// имя сеанса. Пусто — не задано нигде.
+/// Which greeter LightDM will show: the program name from `Exec=` of the description
+/// `/usr/share/xgreeters/<greeter-session>.desktop` (on Debian the name is
+/// the generic `lightdm-greeter`, and the description is a link to the real one), otherwise the
+/// session name itself. Empty — set nowhere.
 pub fn lightdm_greeter(fs: &FsSnap) -> String {
     let mut files: Vec<String> = Vec::new();
     for dir in LIGHTDM_CONF_DIRS {
@@ -2043,7 +2043,7 @@ pub fn lightdm_greeter(fs: &FsSnap) -> String {
     exec.filter(|e| !e.is_empty()).unwrap_or(session)
 }
 
-/// Куда писать фон для приветствия `greeter` ([`lightdm_greeter`]).
+/// Where to write the background for the greeter `greeter` ([`lightdm_greeter`]).
 pub fn lightdm_background_way(greeter: &str) -> LightdmBackground {
     match greeter {
         "" | "slick-greeter" | "lightdm-slick-greeter" | "lightdm-gtk-greeter" => LightdmBackground::GreeterConfig,
@@ -2053,11 +2053,11 @@ pub fn lightdm_background_way(greeter: &str) -> LightdmBackground {
     }
 }
 
-/// Фон экрана входа Deepin для своей учётной записи: `SetGreeterBackground`
-/// службы `org.deepin.dde.Accounts1` (системная шина; свою запись служба
-/// меняет без пароля). Картинка — та, что помощник только что положил в
-/// `/usr/share/backgrounds/rexon-login.*` (прежние он убирает, так что она
-/// там одна; расширение решает он). Путь объекта — `User<uid>`.
+/// The Deepin login screen background for our own account: `SetGreeterBackground`
+/// of the `org.deepin.dde.Accounts1` service (the system bus; the service changes our own
+/// record without a password). The picture is the one the helper has just put into
+/// `/usr/share/backgrounds/rexon-login.*` (it removes previous ones, so it is
+/// the only one there; it decides the extension). The object path is `User<uid>`.
 pub fn deepin_greeter_background_step() -> ExtStep {
     ExtStep::RunNoted {
         argv: vec![
@@ -2076,7 +2076,7 @@ const DEEPIN_GREETER_BG_SCRIPT: &str = "set -- /usr/share/backgrounds/rexon-logi
      exec busctl --system call org.deepin.dde.Accounts1 \"/org/deepin/dde/Accounts1/User$(id -u)\" \
      org.deepin.dde.Accounts1.User SetGreeterBackground s \"file://$1\"";
 
-/// Порт `_stage_login_bg`: staging фона + named helper либо legacy pkexec.
+/// Port of `_stage_login_bg`: staging the background + the named helper or legacy pkexec.
 fn stage_login_bg_plan(env: &ExtEnv, category: &str, bg: &str, steps: &mut Vec<ExtStep>) {
     if !env.fs.is_file(bg) {
         return;
@@ -2109,17 +2109,17 @@ fn stage_login_bg_plan(env: &ExtEnv, category: &str, bg: &str, steps: &mut Vec<E
     });
 }
 
-/// Текст legacy-скрипта `_stage_login_bg_legacy` (байт-в-байт).
+/// The text of the legacy script `_stage_login_bg_legacy` (byte for byte).
 pub fn login_bg_legacy_script(category: &str, bg: &str) -> String {
-    // os.path.splitext(bg)[1].lstrip(".").lower(): расширение basename;
-    // ведущие точки имени не считаются разделителем (как в CPython).
+    // os.path.splitext(bg)[1].lstrip(".").lower(): the basename's extension;
+    // leading dots of the name do not count as a separator (as in CPython).
     let base = bg.rsplit('/').next().unwrap_or(bg);
     let raw_ext = match base.rfind('.') {
         Some(i) if base[..i].chars().any(|c| c != '.') => &base[i..],
         _ => "",
     };
     let ext = raw_ext.trim_start_matches('.').to_lowercase();
-    // ^[a-z0-9]+$ иначе png (как в Python).
+    // ^[a-z0-9]+$ otherwise png (as in Python).
     let ext = if !ext.is_empty()
         && ext.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
     {
@@ -2173,7 +2173,7 @@ pub fn login_bg_legacy_script(category: &str, bg: &str) -> String {
     lines.join("\n") + "\n"
 }
 
-/// Порт `_stage_dir`: каталог-тема → <dest_root>/<name> под root.
+/// Port of `_stage_dir`: a theme directory → <dest_root>/<name> under root.
 #[allow(clippy::too_many_arguments)]
 fn stage_dir_plan(
     env: &ExtEnv,
@@ -2215,7 +2215,7 @@ fn stage_dir_plan(
     });
 }
 
-/// Текст fallback-скрипта `_stage_dir` (байт-в-байт).
+/// The text of the `_stage_dir` fallback script (byte for byte).
 pub fn stage_dir_fallback_script(name: &str, src_dir: &str, dest_root: &str) -> String {
     let dest = format!("{dest_root}/{name}");
     let qsrc = shlex_quote(src_dir);
@@ -2232,8 +2232,8 @@ pub fn stage_dir_fallback_script(name: &str, src_dir: &str, dest_root: &str) -> 
         + "\n"
 }
 
-/// Порт `_stage_sddm`: системный helper org.rexon.system-install либо
-/// hardened сырой pkexec.
+/// Port of `_stage_sddm`: the system helper org.rexon.system-install or
+/// the hardened raw pkexec.
 fn stage_sddm_plan(env: &ExtEnv, theme_name: &str, src: &str, steps: &mut Vec<ExtStep>) {
     if !is_safe_sys_name(theme_name) || !env.fs.is_dir(src) {
         return;
@@ -2247,7 +2247,7 @@ fn stage_sddm_plan(env: &ExtEnv, theme_name: &str, src: &str, steps: &mut Vec<Ex
         steps.push(ExtStep::Run {
             argv: [
                 vec!["pkexec".to_string(), env.system_helper_path.to_string()],
-                // Язык сообщений помощника (решение 30.09.2026).
+                // The language of the helper's messages (decision of 30.09.2026).
                 crate::system_l10n::lang_args(env.system_helper_path),
                 vec![
                     "sddm".to_string(),
@@ -2272,7 +2272,7 @@ fn stage_sddm_plan(env: &ExtEnv, theme_name: &str, src: &str, steps: &mut Vec<Ex
     });
 }
 
-/// Текст fallback-скрипта `_stage_sddm`: только копия темы, без выбора.
+/// The text of the `_stage_sddm` fallback script: only copying the theme, without the choice.
 pub fn sddm_fallback_script(theme_name: &str, src: &str) -> String {
     let dest = format!("/usr/share/sddm/themes/{theme_name}");
     let qsrc = shlex_quote(src);
@@ -2285,15 +2285,15 @@ pub fn sddm_fallback_script(theme_name: &str, src: &str) -> String {
         format!("install -d {qdest}"),
         format!("cp -rT {qsrc} {qdest}"),
         format!("chmod -R a+rX {qdest}"),
-        // Выбор темы (`zz-rexon-theme.conf`) — кнопка «Применить» раздела
-        // экрана входа (решение 04.10.2026), установка только кладёт файлы.
+        // Choosing the theme (`zz-rexon-theme.conf`) is the «Apply» button of the login
+        // screen section (decision of 04.10.2026), installation only puts the files.
         format!("echo \"SDDM theme installed: \"{qtheme}"),
     ]
     .join("\n")
         + "\n"
 }
 
-/// Порт `_install_plymouth` + `_stage_plymouth`.
+/// Port of `_install_plymouth` + `_stage_plymouth`.
 fn install_plymouth_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -2317,7 +2317,7 @@ fn install_plymouth_plan(
     });
 
     if !has_plymouth_conf {
-        // Автогенерация .plymouth (+ простой .script при наличии картинки).
+        // Auto-generating .plymouth (+ a simple .script when there is a picture).
         let logo = env
             .fs
             .scandir(&src)
@@ -2340,13 +2340,13 @@ fn install_plymouth_plan(
         }
     }
 
-    // initramfs здесь не пересобирается: тема только кладётся, а выбирает её
-    // (и пересобирает образ) кнопка «Применить» (решение 04.10.2026).
+    // The initramfs is not rebuilt here: the theme is only put in place, and it is chosen
+    // (and the image rebuilt) by the «Apply» button (decision of 04.10.2026).
 
     if !is_safe_sys_name(&theme_name) {
-        return; // error в логе
+        return; // an error in the log
     }
-    // _stage_plymouth (guard уже пройден; src — каталог по построению).
+    // _stage_plymouth (the guard is already passed; src is a directory by construction).
     let staged = env.tmp.mkdtemp("rexon_stage_");
     steps.push(ExtStep::Stage {
         staged: staged.clone(),
@@ -2356,7 +2356,7 @@ fn install_plymouth_plan(
         steps.push(ExtStep::Run {
             argv: [
                 vec!["pkexec".to_string(), env.system_helper_path.to_string()],
-                // Язык сообщений помощника (решение 30.09.2026).
+                // The language of the helper's messages (decision of 30.09.2026).
                 crate::system_l10n::lang_args(env.system_helper_path),
                 vec![
                     "plymouth".to_string(),
@@ -2381,7 +2381,7 @@ fn install_plymouth_plan(
     });
 }
 
-/// Автогенерированный `.plymouth`-конфиг (байт-в-байт с Python).
+/// An auto-generated `.plymouth` config (byte for byte with Python).
 pub fn plymouth_autogen_conf(name: &str, description: &str, theme_name: &str) -> String {
     let desc = if description.is_empty() {
         "Rexon Plymouth Theme"
@@ -2399,7 +2399,7 @@ pub fn plymouth_autogen_conf(name: &str, description: &str, theme_name: &str) ->
     )
 }
 
-/// Автогенерированный Plymouth-скрипт (центрированный логотип, байт-в-байт).
+/// An auto-generated Plymouth script (a centered logo, byte for byte).
 pub fn plymouth_autogen_script(logo: &str) -> String {
     format!(
         "logo = Image(\"{logo}\");\n\
@@ -2414,11 +2414,11 @@ pub fn plymouth_autogen_script(logo: &str) -> String {
     )
 }
 
-/// Текст fallback-скрипта `_stage_plymouth`: только копия темы.
+/// The text of the `_stage_plymouth` fallback script: only copying the theme.
 ///
-/// Выбор темы (`plymouth-set-default-theme`) и пересборка образа ядра —
-/// кнопка «Применить» раздела заставки загрузки через системный помощник
-/// (решение 04.10.2026); прежде установка делала их сразу.
+/// Choosing the theme (`plymouth-set-default-theme`) and rebuilding the kernel image are
+/// the «Apply» button of the boot splash section via the system helper
+/// (decision of 04.10.2026); previously installation did them right away.
 pub fn plymouth_fallback_script(theme_name: &str, src: &str) -> String {
     let dest = format!("/usr/share/plymouth/themes/{theme_name}");
     let qsrc = shlex_quote(src);
@@ -2435,23 +2435,23 @@ pub fn plymouth_fallback_script(theme_name: &str, src: &str) -> String {
         + "\n"
 }
 
-/// Пакет — набор виджетов Conky, сохранённый Rexon в файл
+/// The package is a Conky widget set saved by Rexon to a file
 /// ([`crate::conky_sets::SET_MANIFEST_KEY`]).
 fn is_conky_set(ext: &ExtInfo) -> bool {
     ext.manifest.get(crate::conky_sets::SET_MANIFEST_KEY).is_some_and(Value::is_object)
 }
 
-/// Каталог шрифтов набора виджетов `id`.
+/// The fonts directory of the widget set `id`.
 fn conky_set_fonts_dir(home: &str, id: &str) -> String {
     format!("{home}/.local/share/fonts/rexon-conky-{id}")
 }
 
-/// Набор виджетов из файла: подпапки `data/` уже легли своими виджетами
-/// (`~/.config/conky/<папка>`, с меткой владельца); здесь — папка самого
-/// набора `data/<id>` (`.cmtheme` и обои) и шрифты из папок виджетов — в
-/// один свой каталог, как у пакета тем. Прежний путь копировал ВЕСЬ
-/// `data/` ещё и в `~/.config/conky/<id>`, и каждый виджет набора
-/// показывался дважды.
+/// A widget set from a file: the `data/` subfolders have already gone in as their own widgets
+/// (`~/.config/conky/<folder>`, with an owner mark); here — the folder of the set
+/// itself `data/<id>` (`.cmtheme` and the wallpaper) and fonts from the widget folders — into
+/// one directory of its own, as for a theme pack. The old path copied the WHOLE
+/// `data/` also into `~/.config/conky/<id>`, and each widget of the set
+/// was shown twice.
 fn install_conky_set_plan(env: &ExtEnv, ext: &ExtInfo, data_dir: &str, pfs: &mut PlanFs, steps: &mut Vec<ExtStep>) {
     let id = ext.ext_id();
     let dest_dir = format!("{}/.config/conky/{id}", env.home);
@@ -2484,7 +2484,7 @@ fn install_conky_set_plan(env: &ExtEnv, ext: &ExtInfo, data_dir: &str, pfs: &mut
     }
 }
 
-/// Порт `_install_conky` (без запуска — Popen как шаг Spawn).
+/// Port of `_install_conky` (without launching — Popen as a Spawn step).
 fn install_conky_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -2511,8 +2511,8 @@ fn install_conky_plan(
     });
     pfs.mk_dir(&dest_dir);
 
-    // Найти конфиг Conky. Листинг dest_dir — из снимка: там записано то,
-    // что Python видел ПОСЛЕ своего copytree.
+    // Find the Conky config. The dest_dir listing comes from the snapshot: it records what
+    // Python saw AFTER its copytree.
     let mut conky_conf = String::new();
     for f in env.fs.scandir(&dest_dir) {
         if f == "conky.conf" || f == ".conkyrc" || f.ends_with(".conkyrc") {
@@ -2536,9 +2536,9 @@ fn install_conky_plan(
         return; // warning
     }
 
-    // Проверка опасных директив — только лог, шагов нет.
+    // The dangerous directives check — only the log, no steps.
 
-    // Шрифты (fonts/ внутри dest — скопирован нашим же шагом → наблюдения).
+    // Fonts (fonts/ inside dest — copied by our own step → observations).
     let fonts_dir = join(&dest_dir, "fonts");
     if env.fs.obs_is_dir(&fonts_dir) {
         let user_fonts = format!("{}/.local/share/fonts", env.home);
@@ -2559,46 +2559,46 @@ fn install_conky_plan(
         steps.push(run(vec!["fc-cache", "-f"], 30));
     }
 
-    // ⛔ Запуск и автозапуск — кнопкой «▶ Запустить» и переключателем
-    // «Запускать при входе» вкладки «Оформление» (`crate::de_apply`, решение
-    // 04.10.2026): установка только кладёт виджет и его шрифты. Прежняя
-    // ветка (автозапуск при установке, `pkill -f conky` по ВСЕМ conky, в том
-    // числе чужим, и запуск сразу) после того решения стала недостижимой и
-    // снята; оговорка про Wayland приходит в итоге кнопки «Запустить».
+    // ⛔ Starting and autostart are the «▶ Start» button and the
+    // «Start at login» switch of the «Appearance» tab (`crate::de_apply`, decision
+    // of 04.10.2026): installation only puts the widget and its fonts. The old
+    // branch (autostart at installation, `pkill -f conky` against ALL conky, including
+    // foreign ones, and an immediate start) became unreachable after that decision and
+    // was removed; the Wayland caveat comes in the result of the «Start» button.
 }
 
-/// Текст autostart-`.desktop` для Conky.
+/// The autostart `.desktop` text for Conky.
 ///
-/// Виджет запускается из папки своего файла настроек — так же, как кнопкой
-/// «Запустить» ([`crate::de_apply::conky_work_dir`]). Ключ `Path=` знают не
-/// все запускальщики автозапуска, поэтому переход в папку делает сама
-/// строка запуска: `sh -c` с постоянным сценарием
-/// ([`crate::de_apply::CONKY_AUTOSTART_SCRIPT`]), путь — отдельным
-/// аргументом по правилам `Exec=` ([`crate::installer::desktop_exec_arg`]).
-/// `Path=` остаётся подсказкой для тех, кто его читает. Прежняя строка
-/// `Exec=conky -c '<путь>'` запускала виджет из домашней папки (его
-/// относительные пути уходили мимо), а апостроф в имени папки ломал её.
+/// The widget is started from its settings file's folder — the same as with the
+/// «Start» button ([`crate::de_apply::conky_work_dir`]). Not all autostart launchers
+/// know the `Path=` key, so changing to the folder is done by the
+/// launch line itself: `sh -c` with a permanent script
+/// ([`crate::de_apply::CONKY_AUTOSTART_SCRIPT`]), the path as a separate
+/// argument by the `Exec=` rules ([`crate::installer::desktop_exec_arg`]).
+/// `Path=` stays as a hint for those who read it. The old line
+/// `Exec=conky -c '<path>'` started the widget from the home folder (its
+/// relative paths went astray), and an apostrophe in the folder name broke it.
 pub fn conky_desktop_entry(name: &str, conky_conf: &str) -> String {
     conky_desktop_entry_via(name, conky_conf, None)
 }
 
-/// [`conky_desktop_entry`] с запуском через накладку Rexon `launch`
-/// ([`crate::conky_overlay`]): conky получает накладку, а рабочий каталог —
-/// по-прежнему папка файла автора
+/// [`conky_desktop_entry`] launching through the Rexon overlay `launch`
+/// ([`crate::conky_overlay`]): conky gets the overlay, and the working directory is
+/// still the folder of the author's file
 /// ([`crate::de_apply::CONKY_OVERLAY_AUTOSTART_SCRIPT`]).
 pub fn conky_desktop_entry_via(name: &str, conky_conf: &str, launch: Option<&str>) -> String {
     conky_desktop_entry_with(name, conky_conf, launch, None, 0, &[])
 }
 
-/// [`conky_desktop_entry_via`] с задержкой при входе и окружениями.
+/// [`conky_desktop_entry_via`] with a delay at login and environments.
 ///
-/// Задержка — `sleep` в самой строке запуска, а не `X-GNOME-Autostart-Delay`:
-/// тот ключ исполняют только GNOME, Cinnamon, MATE и Budgie, а KDE, XFCE,
-/// LXQt и `systemd-xdg-autostart-generator` его молча пропускают. Число —
-/// ещё и в ключе [`crate::conky_autostart::DELAY_KEY`], чтобы перезапись
-/// записи его не теряла. `only_in` — `OnlyShowIn=` («только в этом
-/// окружении»). `X-KDE-autostart-after=panel` — Plasma запускает виджет
-/// после панели, и он не встаёт под неё.
+/// The delay is a `sleep` in the launch line itself, not `X-GNOME-Autostart-Delay`:
+/// that key is executed only by GNOME, Cinnamon, MATE and Budgie, while KDE, XFCE,
+/// LXQt and `systemd-xdg-autostart-generator` silently skip it. The number is
+/// also in the key [`crate::conky_autostart::DELAY_KEY`], so that rewriting
+/// the record does not lose it. `only_in` — `OnlyShowIn=` ("only on this
+/// desktop"). `X-KDE-autostart-after=panel` — Plasma starts the widget
+/// after the panel, and it does not end up under it.
 pub fn conky_desktop_entry_with(
     name: &str,
     conky_conf: &str,
@@ -2608,10 +2608,10 @@ pub fn conky_desktop_entry_with(
     only_in: &[String],
 ) -> String {
     use crate::installer::desktop_exec_arg;
-    // В сеансе Wayland — через XWayland, где вывод Wayland не годится
-    // (`conky_overlay::xwayland_shell`; сеанс и версия conky узнаются при входе),
-    // с файлом `xwayland`, где окно виджета под окнами. Путь с `%` в сценарий
-    // не кладётся (`%%` в кавычках `Exec=` запускальщики разбирают по-разному).
+    // In a Wayland session — via XWayland, where the Wayland output is no good
+    // (`conky_overlay::xwayland_shell`; the session and the conky version are found out at login),
+    // with the `xwayland` file where the widget window is below windows. A path with `%` is not put
+    // into the script (launchers parse `%%` in `Exec=` quotes differently).
     let xwayland = xwayland.filter(|f| !f.contains('%'));
     let session = crate::conky_overlay::xwayland_shell(crate::conky_overlay::widget_needs_x11(conky_conf), xwayland);
     let (base, args) = match launch {
@@ -2631,10 +2631,10 @@ pub fn conky_desktop_entry_with(
     )
 }
 
-/// Запись автозапуска виджета Conky: сценарий `sh -c` `body` с уже
-/// закавыченными для `Exec=` аргументами `args`, `dir` — `Path=`. Задержка
-/// — `sleep N &&` в начале сценария (см. [`conky_desktop_entry_with`]; ею
-/// же пишется запуск темы её `start.sh`, `conky_theme`).
+/// A Conky widget autostart record: an `sh -c` script `body` with arguments `args`
+/// already quoted for `Exec=`, `dir` — `Path=`. The delay is
+/// `sleep N &&` at the start of the script (see [`conky_desktop_entry_with`]; the same
+/// is used to write launching a theme with its `start.sh`, `conky_theme`).
 pub fn conky_desktop_entry_exec(name: &str, dir: &str, body: &str, args: &[String], delay: u32, only_in: &[String]) -> String {
     use crate::installer::desktop_exec_arg;
     let script = if delay > 0 { format!("sleep {delay} && {body}") } else { body.to_string() };
@@ -2643,7 +2643,7 @@ pub fn conky_desktop_entry_exec(name: &str, dir: &str, body: &str, args: &[Strin
         exec.push(' ');
         exec.push_str(a);
     }
-    // Значение-строка ключа: обратная косая удваивается, перевод строки — `\n`.
+    // A string key value: a backslash is doubled, a newline is `\n`.
     let dir = dir.replace('\\', "\\\\").replace('\n', "\\n");
     let mut extra = String::new();
     if !only_in.is_empty() {
@@ -2667,9 +2667,9 @@ pub fn conky_desktop_entry_exec(name: &str, dir: &str, body: &str, args: &[Strin
     )
 }
 
-/// Что ставить из каталога `dir` пакета: (архив `.plasmoid`, каталог
-/// плазмоида) — первое по порядку имён; пустая строка — нет такого. Сам
-/// `dir` с описанием — тоже каталог плазмоида.
+/// What to install from the package directory `dir`: (a `.plasmoid` archive, a plasmoid
+/// directory) — the first by name order; an empty string — none. `dir` itself
+/// with a description is also a plasmoid directory.
 fn plasmoid_source(env: &ExtEnv, dir: &str) -> (String, String) {
     let has_meta = |d: &str| env.fs.is_file(&join(d, "metadata.json")) || env.fs.is_file(&join(d, "metadata.desktop"));
     for f in env.fs.scandir(dir) {
@@ -2687,8 +2687,8 @@ fn plasmoid_source(env: &ExtEnv, dir: &str) -> (String, String) {
     (String::new(), String::new())
 }
 
-/// Id плазмоида-каталога `dir`: `KPlugin.Id` из metadata.json, иначе
-/// `X-KDE-PluginInfo-Name` из metadata.desktop.
+/// The id of the plasmoid directory `dir`: `KPlugin.Id` from metadata.json, otherwise
+/// `X-KDE-PluginInfo-Name` from metadata.desktop.
 fn plasmoid_dir_id(env: &ExtEnv, dir: &str) -> Option<String> {
     let meta_json = join(dir, "metadata.json");
     if env.fs.is_file(&meta_json) {
@@ -2703,13 +2703,13 @@ fn plasmoid_dir_id(env: &ExtEnv, dir: &str) -> Option<String> {
         .and_then(|t| ini_get(t, "Desktop Entry", "X-KDE-PluginInfo-Name"))
 }
 
-/// Каталог плазмоида `id` в профиле.
+/// The directory of the plasmoid `id` in the profile.
 fn plasmoid_dest(env: &ExtEnv, id: &str) -> String {
     format!("{}/.local/share/plasma/plasmoids/{}", env.home, id)
 }
 
-/// `KPlugin.Id` (у старых — `X-KDE-PluginInfo-Name`) первого описания в
-/// дереве `root` снимка.
+/// `KPlugin.Id` (for old ones — `X-KDE-PluginInfo-Name`) of the first description in
+/// the snapshot tree `root`.
 fn plasmoid_tree_id(fs: &FsSnap, root: &str) -> Option<String> {
     for (dir, _dirs, files) in fs.walk(root) {
         if files.iter().any(|f| f == "metadata.json") {
@@ -2724,26 +2724,26 @@ fn plasmoid_tree_id(fs: &FsSnap, root: &str) -> Option<String> {
     None
 }
 
-/// Id плазмоида в архиве `plasmoid_file` — по распаковке, которую снимок
-/// сделал заранее ([`PLASMOID_PROBE_DIR`]). `None` — пробы нет (архив
-/// битый) либо описания в нём нет.
+/// The plasmoid id in the archive `plasmoid_file` — from the unpacking the snapshot
+/// did in advance ([`PLASMOID_PROBE_DIR`]). `None` — there is no probe (the archive
+/// is broken) or there is no description in it.
 fn plasmoid_archive_id(env: &ExtEnv, plasmoid_file: &str) -> Option<String> {
     let name = plasmoid_file.rsplit('/').next().unwrap_or(plasmoid_file);
     plasmoid_tree_id(env.fs, &env.tmp.path(&format!("{PLASMOID_PROBE_DIR}/{name}")))
 }
 
-/// На месте `dest` стоит плазмоид, положенный не этим пакетом (руками,
-/// магазином, другим пакетом, прежним Rexon без метки). Каталог, который
-/// положил этот же план (общая копия подпапки `data/` с именем, равным
-/// id), — свой.
+/// In place of `dest` there is a plasmoid not put by this package (by hand,
+/// by the store, by another package, by the old Rexon without a mark). A directory
+/// put by this same plan (a shared copy of a `data/` subfolder with a name equal to the
+/// id) is our own.
 fn plasmoid_taken(env: &ExtEnv, ext: &ExtInfo, pfs: &PlanFs, dest: &str) -> bool {
     !pfs.made_dirs.contains(dest) && env.fs.lexists(dest) && !owned_by(env.fs, dest, &ext.ext_id())
 }
 
-/// Пропуск плазмоида `id`: заметка с причиной.
+/// Skipping the plasmoid `id`: a note with the reason.
 fn skip_plasmoid(id: &str, dest: &str, pfs: &mut PlanFs, steps: &mut Vec<ExtStep>) {
-    // Подпапка `data/` с именем, равным id, уже пропущена общим циклом с
-    // той же причиной — второй раз её не повторять.
+    // A `data/` subfolder with a name equal to the id has already been skipped by the shared loop with
+    // the same reason — do not repeat it a second time.
     let notice = taken_by_other_notice(id, dest);
     if !steps.contains(&notice) {
         steps.push(notice);
@@ -2751,20 +2751,20 @@ fn skip_plasmoid(id: &str, dest: &str, pfs: &mut PlanFs, steps: &mut Vec<ExtStep
     pfs.skipped += 1;
 }
 
-/// Метка владельца в каталоге плазмоида `dest`.
+/// The owner mark in the plasmoid directory `dest`.
 fn plasmoid_mark(ext: &ExtInfo, dest: &str) -> ExtStep {
     ExtStep::WriteFile { path: join(dest, OWNER_MARK), content: format!("{}\n", ext.ext_id()) }
 }
 
-/// Порт `_install_plasmoid` (+ `_install_plasmoid_manual`).
+/// Port of `_install_plasmoid` (+ `_install_plasmoid_manual`).
 ///
-/// Правило владельца (как у основной копии темы): каталог
-/// `~/.local/share/plasma/plasmoids/<KPlugin.Id>` чужого плазмоида с тем же
-/// id не снимается и не обновляется `kpackagetool -u` — плазмоид
-/// пропускается с заметкой. У архива `.plasmoid` id известен только после
-/// распаковки: его заранее распаковывает снимок плана, так что решение
-/// принимается ДО первого запуска `kpackagetool` (пробы `run_ok` исполняют
-/// его уже при сборке плана).
+/// The owner rule (as for a theme's main copy): the directory
+/// `~/.local/share/plasma/plasmoids/<KPlugin.Id>` of someone else's plasmoid with the same
+/// id is neither removed nor updated by `kpackagetool -u` — the plasmoid
+/// is skipped with a note. For a `.plasmoid` archive the id is known only after
+/// unpacking: the plan's snapshot unpacks it in advance, so the decision
+/// is made BEFORE the first launch of `kpackagetool` (the `run_ok` probes run
+/// it already while building the plan).
 fn install_plasmoid_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -2785,7 +2785,7 @@ fn install_plasmoid_plan(
         }
         let tool = (env.which)("kpackagetool6").or_else(|| (env.which)("kpackagetool5"));
         if let Some(tool) = tool {
-            // Сначала обновить, потом установить.
+            // First update, then install.
             steps.push(ExtStep::Run {
                 argv: vec![tool.clone(), "-u".into(), plasmoid_file.clone()],
                 timeout_secs: Some(30),
@@ -2796,8 +2796,8 @@ fn install_plasmoid_plan(
                 timeout_secs: Some(30),
             });
             if (env.run_ok)(&install_argv) {
-                // Метка и у плазмоида, поставленного инструментом: по ней
-                // удаление и повтор узнают своё.
+                // A mark for a plasmoid installed by the tool too: by it
+                // removal and a repeat recognize our own.
                 if let Some(id) = &probe_id {
                     steps.push(plasmoid_mark(ext, &plasmoid_dest(env, id)));
                 }
@@ -2825,12 +2825,12 @@ fn install_plasmoid_plan(
         pfs.mk_dir(&dest);
         steps.push(plasmoid_mark(ext, &dest));
     }
-    // ничего не найдено — warning
+    // nothing found — a warning
 }
 
-/// Порт `_install_plasmoid_manual`: распаковать .plasmoid и скопировать.
-/// Листинги распакованного дерева — из снимка (Python реально распаковывал).
-/// Чужой плазмоид с тем же id — пропуск с заметкой (ничего не распаковано).
+/// Port of `_install_plasmoid_manual`: unpack the .plasmoid and copy.
+/// Listings of the unpacked tree come from the snapshot (Python really unpacked).
+/// Someone else's plasmoid with the same id — skipped with a note (nothing is unpacked).
 fn install_plasmoid_manual_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -2890,8 +2890,8 @@ fn install_plasmoid_manual_plan(
     });
 }
 
-/// Порт `_install_bundle`: полный тематический пакет — по типам из manifest
-/// `bundle` (порядок ключей манифеста).
+/// Port of `_install_bundle`: a full theme pack — by the types from the manifest's
+/// `bundle` (the manifest's key order).
 fn install_bundle_plan(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -2899,7 +2899,7 @@ fn install_bundle_plan(
     steps: &mut Vec<ExtStep>,
 ) {
     let Some(bundle_map) = ext.manifest.get("bundle").and_then(Value::as_object) else {
-        return; // warning: поле 'bundle' отсутствует
+        return; // warning: the 'bundle' field is missing
     };
 
     for (sub_type, sub_dir_rel) in bundle_map {
@@ -2911,7 +2911,7 @@ fn install_bundle_plan(
             continue;
         }
         let Some(target_base) = env.install_path(sub_type) else {
-            continue; // нет пути установки (wallpaper-pack)
+            continue; // no install path (wallpaper-pack)
         };
         steps.push(ExtStep::MakeDirs { path: target_base.clone() });
         pfs.mk_dir(&target_base);
@@ -2928,18 +2928,18 @@ fn install_bundle_plan(
             }
             "theme-window-decoration" => {
                 let names = subdir_names(env.fs, &sub_dir);
-                // Грабля оригинала сохранена: bundle НЕ копирует декорации в
-                // INSTALL_PATHS перед вызовом — ветки GNOME/XFCE не найдут
-                // src и ничего не скопируют (KDE-ветка всё равно пишет
-                // kwinrc).
+                // The original's pitfall is kept: bundle does NOT copy decorations into
+                // INSTALL_PATHS before the call — the GNOME/XFCE branches will not find
+                // src and will copy nothing (the KDE branch writes
+                // kwinrc anyway).
                 install_window_decoration_plan(env, ext, &names, pfs, steps);
             }
             "theme-plasmoid" => install_plasmoid_plan(env, ext, &sub_dir, pfs, steps),
             "font-pack" => {
                 for f in env.fs.scandir(&sub_dir) {
                     if is_supported_font(f) {
-                        // Общий каталог шрифтов: одноимённый шрифт человека
-                        // с другим содержимым не перезаписывается.
+                        // The shared fonts directory: the person's font with the same name
+                        // and different contents is not overwritten.
                         let dest = join(&target_base, f);
                         if !put_owned_file(env, pfs, &join(&sub_dir, f), &dest, steps) {
                             steps.push(taken_file_notice(f, &dest));
@@ -2950,11 +2950,11 @@ fn install_bundle_plan(
                 steps.push(run(vec!["fc-cache", "-f"], 30));
             }
             _ => {
-                // Стандартная установка: подпапки и файлы → целевой путь.
-                // Тема части комплекта ложится под своим именем в общий
-                // каталог вида — по правилу владельца, как основная копия
-                // отдельной установки: чужая тема (файл) с тем же именем не
-                // снимается и не перезаписывается, причина — заметкой.
+                // The standard installation: subfolders and files → the target path.
+                // A bundle part's theme goes under its own name into the shared
+                // directory of its kind — by the owner rule, like the main copy of
+                // a standalone installation: someone else's theme (file) with the same name is neither
+                // removed nor overwritten, the reason goes into a note.
                 for name in env.fs.scandir(&sub_dir) {
                     let entry = join(&sub_dir, name);
                     let dest = join(&target_base, name);
@@ -2968,8 +2968,8 @@ fn install_bundle_plan(
                         pfs.skipped += 1;
                     }
                 }
-                // Тему из комплекта тоже не применяем: её выбирает
-                // «Применить» своего раздела, как у отдельной установки.
+                // We do not apply a theme from a bundle either: it is chosen by
+                // «Apply» of its section, as with a standalone installation.
             }
         }
     }
@@ -2993,13 +2993,13 @@ fn subdir_names_or_id(fs: &FsSnap, dir: &str, ext_id: &str) -> Vec<String> {
 }
 
 // ============================================================================
-// _safe_uninstall как план
+// _safe_uninstall as a plan
 // ============================================================================
 
-/// Шаг снятия системной темы (`theme-plymouth` / `theme-login-screen`),
-/// поставленной из `.rxn`: имя — то же, что выбрала установка (первая
-/// подпапка данных либо id расширения). Только если помощник есть, а тема
-/// лежит в `/usr/share/<вид>/themes` обычным каталогом.
+/// The step removing a system theme (`theme-plymouth` / `theme-login-screen`)
+/// installed from a `.rxn`: the name is the same the installation chose (the first
+/// data subfolder or the extension id). Only if the helper exists and the theme
+/// lies in `/usr/share/<kind>/themes` as a regular directory.
 fn system_theme_remove_steps(
     env: &ExtEnv,
     ext: &ExtInfo,
@@ -3030,14 +3030,14 @@ fn system_theme_remove_steps(
     });
 }
 
-/// Порт `_safe_uninstall`: удаление файлов оформления из системных путей.
-/// (Финальный `_safe_rmtree(ext.dir)` делает `uninstall()` — вне этого плана.)
+/// Port of `_safe_uninstall`: removing appearance files from system paths.
+/// (The final `_safe_rmtree(ext.dir)` is done by `uninstall()` — outside this plan.)
 pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
     let mut steps = Vec::new();
     let ext_type = ext.ext_type();
     let target_base = env.install_path(&ext_type);
 
-    // v4 adaptive: убрать симлинк из галереи.
+    // v4 adaptive: remove the symlink from the gallery.
     if ext_type == "wallpaper-video-adaptive" {
         if let Some(base) = target_base {
             let link = join(&base, &ext.ext_id());
@@ -3083,16 +3083,16 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
         if env.fs.is_file(&autostart) {
             steps.push(ExtStep::RemoveFile { path: autostart });
         }
-        // Шрифты набора виджетов из файла — свой каталог целиком.
-        // (снимок плана общий каталог шрифтов не раскрывает — шаг идёт
-        // всегда, отсутствующий каталог исполнитель пропускает).
+        // The fonts of a widget set from a file — its own directory entirely.
+        // (the plan's snapshot does not expand the shared fonts directory — the step always
+        // runs, the executor skips a missing directory).
         if is_conky_set(ext) {
             let set_fonts = conky_set_fonts_dir(&env.home, &ext.ext_id());
             steps.push(ExtStep::RemoveTree { path: set_fonts, safe: true, ignore_errors: true });
             steps.push(run(vec!["fc-cache", "-f"], 30));
         }
-        // Копии подпапок `data/` в `~/.config/conky/<подпапка>` — только
-        // свои, по метке (общая `fonts` бывает у другого виджета).
+        // Copies of `data/` subfolders in `~/.config/conky/<subfolder>` — only
+        // our own, by the mark (a shared `fonts` may belong to another widget).
         if let Some(base) = &target_base {
             for name in subdir_names(env.fs, &join(ext.dir, "data")) {
                 if name != ext.ext_id() {
@@ -3100,22 +3100,22 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
                 }
             }
         }
-        // Процессы виджета гасит исполнитель ДО плана — по номерам, найденным
-        // по файлу настроек (`de_apply::conky_forget_widget`). Прежний
-        // `pkill -f conky.*<id>` бил по образцу командной строки и задевал
-        // любой процесс, где рядом стоят «conky» и имя виджета.
+        // The widget's processes are stopped by the executor BEFORE the plan — by the ids found
+        // by the settings file (`de_apply::conky_forget_widget`). The old
+        // `pkill -f conky.*<id>` matched a command line pattern and hit
+        // any process where "conky" and the widget name stand next to each other.
         return steps;
     }
 
     if ext_type == "theme-plasmoid" {
         let data_dir = join(ext.dir, "data");
-        // Определить plugin id из metadata. Порядок оригинала сохранён:
-        // внешний цикл по (data/, корень) НЕ прерывается после первой
-        // находки — второй кандидат может перезаписать plugin_id (в т.ч.
-        // на None при metadata.json без KPlugin.Id). Но None больше не
-        // означает «id пакета»: тогда id берётся тем же выбором, что у
-        // установки (ниже), — удаление снимает тот каталог, который она
-        // положила, а не одноимённый пакету (25.10.2026).
+        // Determine the plugin id from metadata. The original's order is kept:
+        // the outer loop over (data/, root) is NOT interrupted after the first
+        // find — the second candidate may overwrite plugin_id (including
+        // with None for a metadata.json without KPlugin.Id). But None no longer
+        // means "the package id": then the id is taken by the same choice as in
+        // installation (below) — removal takes away the directory installation
+        // put, not the one named after the package (25.10.2026).
         let mut plugin_id: Option<String> = None;
         for candidate in [data_dir, ext.dir.to_string()] {
             for meta_name in ["metadata.json", "metadata.desktop"] {
@@ -3130,15 +3130,15 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
                                 v["KPlugin"]["Id"].as_str().map(String::from)
                             });
                     }
-                    // metadata.desktop — fallback на ext_id (не парсится).
+                    // metadata.desktop — a fallback to ext_id (not parsed).
                     break;
                 }
             }
         }
-        // Id не нашёлся — тот же выбор, что у установки: подпапка data/ с
-        // описанием либо архив `.plasmoid` (id — из распаковки, которую
-        // снимок сделал заранее). Иначе снимался бы каталог с именем id
-        // пакета, а не плазмоида.
+        // The id was not found — the same choice as in installation: a data/ subfolder with
+        // a description or a `.plasmoid` archive (the id — from the unpacking the
+        // snapshot did in advance). Otherwise a directory named after the
+        // package id would be removed, not the plasmoid's.
         let plugin_id = plugin_id
             .or_else(|| {
                 let (file, dir) = plasmoid_source(env, &join(ext.dir, "data"));
@@ -3152,10 +3152,10 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
             })
             .unwrap_or_else(|| ext.ext_id());
         let plasmoid_dir = plasmoid_dest(env, &plugin_id);
-        // Плазмоид с этим id стоит, но положен не этим пакетом (установка
-        // его пропустила; либо копия прежнего Rexon без метки — её снимает
-        // общий журнал, если путь в нём записан): ни `kpackagetool -r`, ни
-        // удаления.
+        // A plasmoid with this id is installed but was not put by this package (installation
+        // skipped it; or a copy of the old Rexon without a mark — the shared log
+        // removes it if the path is recorded there): neither `kpackagetool -r` nor
+        // deletion.
         if env.fs.lexists(&plasmoid_dir) && !owned_by(env.fs, &plasmoid_dir, &ext.ext_id()) {
             return steps;
         }
@@ -3177,15 +3177,15 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
         return steps;
     }
 
-    // Plymouth / экран входа: каталог в /usr/share снимает системный
-    // помощник (режим remove-<вид>). Выбранную сейчас тему и файлы пакета
-    // системы он не трогает и отвечает причиной.
+    // Plymouth / the login screen: the directory in /usr/share is removed by the system
+    // helper (the remove-<kind> mode). It does not touch the currently selected theme and the
+    // system package's files and answers with a reason.
     if ext_type == "theme-plymouth" || ext_type == "theme-login-screen" {
         system_theme_remove_steps(env, ext, &ext_type, &join(ext.dir, "data"), &mut steps);
         return steps;
     }
 
-    // Кастомизация окружений — тот же generic-путь, что и при установке.
+    // Desktop customization — the same generic path as for installation.
     if let Some(row) = de_customization::de_managed_row(&ext_type) {
         uninstall_de_custom_plan(env, ext, row, &mut steps);
         return steps;
@@ -3201,7 +3201,7 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
         let data_dir = join(ext.dir, "data");
         for (sub_type, sub_folder) in &bundle {
             if sub_type == "theme-plymouth" || sub_type == "theme-login-screen" {
-                // Тот же каталог, что берёт установка комплекта.
+                // The same directory the bundle installation takes.
                 let sub_dir = join(ext.dir, &py_str(sub_folder));
                 if env.fs.is_dir(&sub_dir) {
                     system_theme_remove_steps(env, ext, sub_type, &sub_dir, &mut steps);
@@ -3216,8 +3216,8 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
             if !env.fs.is_dir(&sub_data) {
                 continue;
             }
-            // Только своё: каталог с меткой этого пакета, файл из его
-            // журнала или байт в байт его (чужое установка пропустила).
+            // Only our own: a directory with this package's mark, a file from its
+            // log or byte for byte its own (installation skipped foreign ones).
             for name in env.fs.scandir(&sub_data) {
                 let entry = join(&sub_data, name);
                 let dest = join(&sub_path, name);
@@ -3228,7 +3228,7 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
                 }
             }
         }
-        // Копии подпапок `data/` в `~/.local/share/rexon/bundles` — свои.
+        // Copies of `data/` subfolders in `~/.local/share/rexon/bundles` — our own.
         if let Some(base) = &target_base {
             for name in subdir_names(env.fs, &data_dir) {
                 remove_owned_copy(env, ext, &join(base, &name), &mut steps);
@@ -3248,10 +3248,10 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
         let entry = join(&data_dir, name);
         let dest = join(&target_base, name);
         if env.fs.is_dir(&entry) {
-            // Только свою копию (метка этого пакета): тему человека с тем же
-            // именем установка пропустила — удаление её тоже не трогает.
-            // Копия прежнего Rexon без метки остаётся на месте, если путь не
-            // записан в общем журнале (тогда её снимает журнал).
+            // Only our own copy (this package's mark): installation skipped the person's theme
+            // with the same name — removal does not touch it either.
+            // A copy of the old Rexon without a mark stays in place if the path is not
+            // recorded in the shared log (then the log removes it).
             if owned_by(env.fs, &dest, &ext.ext_id()) {
                 steps.push(ExtStep::RemoveTree {
                     path: dest,
@@ -3259,15 +3259,15 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
                     ignore_errors: true,
                 });
             }
-            // Рамки вне KDE: копия в `~/.themes/<тема>` — если она наша
-            // (стол мог смениться после установки, поэтому без оглядки на
-            // нынешний).
+            // Frames outside KDE: the copy in `~/.themes/<theme>` — if it is ours
+            // (the desktop might have changed after installation, so without regard to
+            // the current one).
             if ext_type == "theme-window-decoration" {
                 remove_owned_copy(env, ext, &format!("{}/.themes/{name}", env.home), &mut steps);
             }
         } else if env.fs.is_file(&entry) && file_is_ours(env.fs, &entry, &dest) {
-            // KDE color schemes (.colors files) — только свой файл: схему
-            // человека с тем же именем установка пропустила.
+            // KDE color schemes (.colors files) — only our own file: installation skipped
+            // the person's scheme with the same name.
             steps.push(ExtStep::RemoveFile { path: dest });
         }
     }
@@ -3275,13 +3275,13 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
 }
 
 // ============================================================================
-// Обнаружение, каталог, состояние
+// Discovery, catalog, state
 // ============================================================================
 
-/// Порт `_discover`: скан каталога расширений. Возвращает список в порядке
-/// вставки Python-dict; каталог с дублирующимся id ПЕРЕЗАПИСЫВАЕТ более
-/// ранний на месте (семантика dict[ext_id] = ext — грабля сохранена).
-/// Битые расширения пропускаются (как `except Exception`).
+/// Port of `_discover`: scanning the extensions directory. Returns a list in the
+/// insertion order of a Python dict; a directory with a duplicate id OVERWRITES an
+/// earlier one in place (the semantics of dict[ext_id] = ext — the pitfall is kept).
+/// Broken extensions are skipped (like `except Exception`).
 pub fn discover(
     fs: &FsSnap,
     extensions_dir: &str,
@@ -3319,9 +3319,9 @@ pub fn discover(
         .collect()
 }
 
-/// Порт `get_stats`: количество по типам и категориям.
-/// Порядок ключей by_type — порядок `VALID_TYPES` (в Python — set, порядок
-/// его итерации; сверка JSON-объектов нечувствительна к порядку).
+/// Port of `get_stats`: counts by types and categories.
+/// The by_type key order is the order of `VALID_TYPES` (in Python it is a set, the order
+/// of its iteration; comparing JSON objects is order-insensitive).
 pub fn stats(exts: &[(String, bool)]) -> Map<String, Value> {
     let total = exts.len();
     let enabled = exts.iter().filter(|(_, e)| *e).count();
@@ -3350,9 +3350,9 @@ pub fn stats(exts: &[(String, bool)]) -> Map<String, Value> {
     out
 }
 
-/// Порт `_save_state` (текстовая часть): `json.dump(state, indent=2,
-/// ensure_ascii=False)` — байт-в-байт. Порядок пар — порядок словаря
-/// `self.extensions`.
+/// Port of `_save_state` (the text part): `json.dump(state, indent=2,
+/// ensure_ascii=False)` — byte for byte. The order of pairs is the order of the
+/// `self.extensions` dictionary.
 pub fn save_state_text(state: &[(String, bool)]) -> String {
     let mut m = Map::new();
     for (id, enabled) in state {
@@ -3361,7 +3361,7 @@ pub fn save_state_text(state: &[(String, bool)]) -> String {
     dumps_indent2(&Value::Object(m))
 }
 
-/// Порт `_load_state`: разбор JSON-состояния; любые проблемы → пустой dict.
+/// Port of `_load_state`: parsing the JSON state; any problems → an empty dict.
 pub fn load_state(text: Option<&str>) -> Map<String, Value> {
     let Some(text) = text else {
         return Map::new();
@@ -3373,18 +3373,18 @@ pub fn load_state(text: Option<&str>) -> Map<String, Value> {
 }
 
 // ============================================================================
-// Хелперы
+// Helpers
 // ============================================================================
 
 /// `json.dumps(v, indent=2, ensure_ascii=False)` — serde `to_string_pretty`
-/// с `preserve_order` совпадает побайтово (как в ext_utils::write_manifest).
+/// with `preserve_order` matches byte for byte (as in ext_utils::write_manifest).
 fn dumps_indent2(v: &Value) -> String {
     serde_json::to_string_pretty(v).expect("Value сериализуется")
 }
 
-/// Python `str(value)` для строковых значений манифеста: строки как есть
-/// (нестроковые в реальных манифестах не встречаются — берём как JSON-строку
-/// либо Display).
+/// Python `str(value)` for manifest string values: strings as is
+/// (non-strings do not occur in real manifests — we take them as a JSON string
+/// or Display).
 fn py_str(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -3392,7 +3392,7 @@ fn py_str(v: &Value) -> String {
     }
 }
 
-/// Python-истинность Option<&Value> (для `meta.get("id")` и т.п.).
+/// Python truthiness of Option<&Value> (for `meta.get("id")` and the like).
 fn is_truthy(v: Option<&Value>) -> bool {
     match v {
         None | Some(Value::Null) => false,
@@ -3404,8 +3404,8 @@ fn is_truthy(v: Option<&Value>) -> bool {
     }
 }
 
-/// Порт `shlex.quote`: пусто → `''`; безопасные символы — как есть; иначе
-/// одинарные кавычки с заменой `'` → `'"'"'`.
+/// Port of `shlex.quote`: empty → `''`; safe characters — as is; otherwise
+/// single quotes with `'` replaced by `'"'"'`.
 pub fn shlex_quote(s: &str) -> String {
     if s.is_empty() {
         return "''".to_string();
@@ -3421,8 +3421,8 @@ pub fn shlex_quote(s: &str) -> String {
     }
 }
 
-/// Минимальный разбор `.desktop`/INI для `configparser.get(section, key)`
-/// (strict=False, ключи регистронезависимы — optionxform=str.lower).
+/// A minimal `.desktop`/INI parse for `configparser.get(section, key)`
+/// (strict=False, keys case-insensitive — optionxform=str.lower).
 fn ini_get(text: &str, section: &str, key: &str) -> Option<String> {
     let want_key = key.to_lowercase();
     let mut in_section = false;

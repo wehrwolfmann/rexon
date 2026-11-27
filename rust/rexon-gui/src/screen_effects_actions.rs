@@ -1,18 +1,21 @@
-// ScreenEffectsActions — объект раздела «Эффекты экрана» вкладки «Оформление».
+// ScreenEffectsActions — the object of the "Screen effects" section of the
+// "Appearance" tab.
 //
-// Логики здесь нет: снимок, таблицу поддержки и запись делает ядро
-// (`rexon_core::screen_effects`). Объект только переводит вызовы QML в
-// вызовы ядра и отдаёт готовые строки (JSON снимка, фраза итога).
+// There is no logic here: the snapshot, the support table and writing are
+// done by the core (`rexon_core::screen_effects`). The object only
+// translates QML calls into core calls and hands back ready strings (the
+// snapshot JSON, the result phrase).
 //
-// ⚠️ Запись — В РАБОЧЕМ ПОТОКЕ. 15.11.2026 (Cinnamon 6.8 Wayland) окно
-// зависло, пока человек быстро жал «Применить»/«Вернуть как было» и
-// переключал эффекты: каждое действие синхронно запускало несколько
-// `gsettings`/`gdbus` прямо в главном потоке, а теперь к ним добавилось
-// ожидание ответа расширения оболочки (до `CONFIRM_WAIT`). Поэтому
-// `request` только кладёт действие в очередь «последний выигрывает»
-// (`LatestQueue`: ждущее действие заменяется новым, хвоста не копится) и
-// сразу возвращается; итог приходит сигналом `finished`, пока идёт
-// действие — `busy` (кнопки раздела неактивны).
+// Warning: writing happens IN A WORKER THREAD. On 15.11.2026 (Cinnamon 6.8
+// Wayland) the window froze while the user rapidly pressed "Apply"/"Restore
+// as it was" and switched effects: every action synchronously started
+// several `gsettings`/`gdbus` right in the main thread, and now waiting for
+// the shell extension's answer (up to `CONFIRM_WAIT`) has been added on
+// top. So `request` only puts the action into a "last one wins" queue
+// (`LatestQueue`: a waiting action is replaced by the new one, no backlog
+// builds up) and returns immediately; the result arrives with the
+// `finished` signal, and while the action is running — `busy` (the
+// section's buttons are disabled).
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -29,21 +32,22 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок раздела (JSON `screen_effects::ScreenEffectsState`) для
-        /// окружения `de` (выбор «Текущее окружение»; пусто — запущенное).
+        /// Section snapshot (JSON `screen_effects::ScreenEffectsState`) for
+        /// environment `de` (the "Current environment" choice; empty means the
+        /// running one).
         #[qinvokable]
         fn state(self: &ScreenEffectsActions, de: &QString) -> QString;
 
-        /// Действие раздела для окружения `de`: пресет по имени (пусто —
-        /// выключить), сила 0…1, скорость 0…`max_speed`. `tag` — что это
-        /// («apply», «restore», «revert»), возвращается в `finished`.
-        /// Не ждёт: итог — сигналом `finished`.
+        /// A section action for environment `de`: a preset by name (empty — turn
+        /// off), strength 0…1, speed 0…`max_speed`. `tag` says what it is
+        /// ("apply", "restore", "revert") and comes back in `finished`.
+        /// Does not wait: the result comes with the `finished` signal.
         #[qinvokable]
         fn request(self: Pin<&mut ScreenEffectsActions>, tag: &QString, de: &QString, preset: &QString, strength: f64, speed: f64);
 
-        /// Итог действия: `tag` запроса, фраза для плашки, записано ли
-        /// что-то, включён ли эффект (подтверждён расширением), новый
-        /// снимок раздела (JSON, как у `state`).
+        /// Action result: the request's `tag`, the phrase for the banner, whether
+        /// anything was written, whether the effect is on (confirmed by the
+        /// extension), the new section snapshot (JSON, as for `state`).
         #[qsignal]
         fn finished(self: Pin<&mut ScreenEffectsActions>, tag: QString, text: QString, changed: bool, shown: bool, state: QString);
     }
@@ -59,7 +63,7 @@ use cxx_qt_lib::QString;
 use rexon_core::animations::{LookCtx, SystemIo};
 use rexon_core::screen_effects as se;
 
-/// Одно действие раздела.
+/// One section action.
 struct Request {
     tag: String,
     de: String,
@@ -99,11 +103,11 @@ impl qobject::ScreenEffectsActions {
                 let new = se::settings_from_ui(&req.preset, req.strength, req.speed);
                 let out = se::apply_confirmed(&SystemIo, &ctx, &new, &std::thread::sleep);
                 let state = snapshot(&req.de);
-                // Окно закрыто — сообщать некому, но действие (например,
-                // откат пробного показа) всё равно доделано.
+                // The window is closed — there is nobody to report to, but the action
+                // (for example, rolling back a trial) is still finished.
                 let _ = handle.queue(move |mut obj| {
-                    // Занято, пока в очереди что-то есть: новое нажатие могло
-                    // прийти между концом этого действия и этой строкой.
+                    // Busy while there is something in the queue: a new press may have come
+                    // between the end of this action and this line.
                     let busy = obj.rust().queue.busy();
                     obj.as_mut().set_busy(busy);
                     obj.as_mut().finished(
@@ -115,8 +119,8 @@ impl qobject::ScreenEffectsActions {
                     );
                 });
             }
-            // Последнее «занято» могло уйти до того, как поток освободил
-            // очередь — снимем его ещё раз.
+            // The last "busy" may have gone out before the thread released the queue —
+            // clear it once more.
             let _ = handle.queue(|mut obj| {
                 let busy = obj.rust().queue.busy();
                 obj.as_mut().set_busy(busy);

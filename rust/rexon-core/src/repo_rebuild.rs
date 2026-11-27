@@ -1,44 +1,46 @@
-//! Пакет из репозитория Arch, который не ставится, потому что ждёт
-//! пересборки, — и его сборка заново из официальных исходников Arch.
+//! An Arch repository package that won't install because it is waiting for a
+//! rebuild — and building it again from the official Arch sources.
 //!
-//! ЗАЧЕМ. В Arch библиотека выходит новой версией раньше, чем пересобраны
-//! все пакеты, которые с ней связаны. На это время такой пакет в
-//! репозитории требует прежнюю версию библиотеки (`libcamel-1.2.so=67-64`),
-//! а в репозитории уже только новая (`=68-64`), и pacman отказывает:
-//! «unable to satisfy dependency». Живой случай 19.10.2026 — Pantheon:
-//! `switchboard-plug-online-accounts` 8.0.2-3 ждал `evolution-data-server`
-//! 3.62 (libcamel 67 → 68, libedataserver 27 → 28). Человек может ждать
-//! неделями; а официальный рецепт Arch собирается против новой библиотеки
-//! за минуты на его же машине.
+//! WHY. In Arch a library ships a new version before every package linked
+//! against it has been rebuilt. For that window such a package in the
+//! repository requires the previous library version (`libcamel-1.2.so=67-64`),
+//! while the repository already has only the new one (`=68-64`), and pacman
+//! refuses: "unable to satisfy dependency". Real case 19.10.2026 — Pantheon:
+//! `switchboard-plug-online-accounts` 8.0.2-3 was waiting for
+//! `evolution-data-server` 3.62 (libcamel 67 → 68, libedataserver 27 → 28).
+//! A person may wait for weeks, while the official Arch recipe builds against
+//! the new library in minutes on their own machine.
 //!
-//! Здесь два решения:
+//! Two decisions live here:
 //!
-//! 1. **Признак** ([`classify`], [`find_candidates`]). Пересборку
-//!    предлагаем ТОЛЬКО когда КАЖДАЯ неразрешимая зависимость пакета — версия
-//!    библиотеки (`libX.so=N-64`), а в репозитории есть та же библиотека
-//!    другой версии с той же разрядностью. Зависимость, которой в
-//!    репозитории нет вовсе, пересборкой не лечится: сборка упадёт на ней же,
-//!    и предлагать кнопку было бы обманом.
-//! 2. **План и исполнение** (ниже, раздел «Пересборка»).
+//! 1. **The sign** ([`classify`], [`find_candidates`]). A rebuild is offered
+//!    ONLY when EVERY unsatisfiable dependency of the package is a library
+//!    version (`libX.so=N-64`) and the repository has the same library at a
+//!    different version with the same bitness. A dependency missing from the
+//!    repository altogether is not cured by a rebuild: the build would fail on
+//!    it too, and offering the button would be a lie.
+//! 2. **Plan and execution** (below, the "Rebuild" section).
 //!
-//! ⛔ `pacman -d`/`-dd`/`--nodeps` не предлагаются и не звучат НИГДЕ: пакет,
-//! поставленный мимо зависимостей, ломается молча, при первом же запуске.
+//! ⛔ `pacman -d`/`-dd`/`--nodeps` are never offered and never mentioned
+//! ANYWHERE: a package installed past its dependencies breaks silently, on
+//! the very first launch.
 //!
-//! Только семейство Arch и только изменяемая система: на SteamOS и других
-//! неизменяемых системах поставленное поверх стирается обновлением.
+//! Arch family only, and only a mutable system: on SteamOS and other
+//! immutable systems whatever is installed on top is wiped by an update.
 
 use crate::system::PkgFamily;
 use crate::system_plan::{valid_pkg_name, Cmd, PreviewAnswer};
 
 // ============================================================================
-// Признак «ждёт пересборки против новой библиотеки»
+// The sign "waiting for a rebuild against a new library"
 // ============================================================================
 
-/// Зависимость от версии библиотеки: `libcamel-1.2.so=67-64` → библиотека
-/// `libcamel-1.2.so`, версия `67`, разрядность `64`.
+/// A dependency on a library version: `libcamel-1.2.so=67-64` → library
+/// `libcamel-1.2.so`, version `67`, bitness `64`.
 ///
-/// Такие зависимости makepkg дописывает сам, по библиотекам, с которыми
-/// пакет связан при сборке, — поэтому они и «застревают» на прежней версии.
+/// makepkg adds such dependencies by itself, from the libraries the package
+/// is linked against at build time — which is why they "get stuck" on the
+/// previous version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SonameDep {
     pub lib: String,
@@ -46,8 +48,8 @@ pub struct SonameDep {
     pub bits: String,
 }
 
-/// Разобрать зависимость вида `libX.so=N-64`. Всё прочее (обычные имена,
-/// ограничения `>=`, `<`) — `None`.
+/// Parse a dependency of the form `libX.so=N-64`. Anything else (plain names,
+/// `>=`, `<` constraints) is `None`.
 pub fn parse_soname_dep(dep: &str) -> Option<SonameDep> {
     let (lib, value) = dep.trim().split_once('=')?;
     if lib.is_empty()
@@ -68,9 +70,9 @@ pub fn parse_soname_dep(dep: &str) -> Option<SonameDep> {
     })
 }
 
-/// Неразрешимые зависимости из вывода pacman (под LANG=C):
-/// `:: unable to satisfy dependency 'ЗАВИСИМОСТЬ' required by ПАКЕТ` →
-/// (зависимость, пакет). Без повторов, порядок появления.
+/// Unsatisfiable dependencies from pacman output (under LANG=C):
+/// `:: unable to satisfy dependency 'DEPENDENCY' required by PACKAGE` →
+/// (dependency, package). No repeats, in order of appearance.
 pub fn parse_unsatisfied(output: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for line in output.lines() {
@@ -95,10 +97,10 @@ pub fn parse_unsatisfied(output: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Значения поля вывода `pacman -Si` (под LANG=C) КАК ЕСТЬ, с версиями:
-/// `Provides : libcamel-1.2.so=68-64  libebook-1.2.so=21-64`. «None» —
-/// пусто. Строки-продолжения (с отступом, без двоеточия) тоже читаются:
-/// на узком терминале pacman переносит длинные списки.
+/// Values of a `pacman -Si` output field (under LANG=C) AS IS, with versions:
+/// `Provides : libcamel-1.2.so=68-64  libebook-1.2.so=21-64`. "None" means
+/// empty. Continuation lines (indented, no colon) are read too: on a narrow
+/// terminal pacman wraps long lists.
 pub fn si_field(stdout: &str, field: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut inside = false;
@@ -113,7 +115,7 @@ pub fn si_field(stdout: &str, field: &str) -> Vec<String> {
             }
         }
         if inside {
-            // Продолжение: строка с отступом и без «Имя :» впереди.
+            // Continuation: an indented line with no "Name :" in front.
             let continued = line.starts_with(' ')
                 && line.split_once(" : ").map(|(head, _)| head.trim().is_empty()).unwrap_or(true);
             if continued {
@@ -127,32 +129,32 @@ pub fn si_field(stdout: &str, field: &str) -> Vec<String> {
     out
 }
 
-/// Одна библиотека, ради которой пакет ждёт пересборки.
+/// One library the package is waiting to be rebuilt against.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibGap {
     /// `libcamel-1.2.so`.
     pub lib: String,
-    /// Что требует пакет из репозитория: `67`.
+    /// What the repository package requires: `67`.
     pub wanted: String,
-    /// Что есть в репозитории: `68`.
+    /// What the repository has: `68`.
     pub available: String,
-    /// Чей это пакет: `evolution-data-server`.
+    /// Whose package it is: `evolution-data-server`.
     pub provider: String,
 }
 
-/// Пакет, который можно собрать заново против новых библиотек.
+/// A package that can be rebuilt against the new libraries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
     pub package: String,
     pub gaps: Vec<LibGap>,
 }
 
-/// Признак «ждёт пересборки»: КАЖДАЯ неразрешимая зависимость `package`
-/// (`unsatisfied`) — версия библиотеки, и та же библиотека с той же
-/// разрядностью в репозитории есть другой версии.
+/// The "waiting for a rebuild" sign: EVERY unsatisfiable dependency of
+/// `package` (`unsatisfied`) is a library version, and the repository has the
+/// same library with the same bitness at a different version.
 ///
-/// `provider_of(lib)` — кто в репозиториях даёт эту библиотеку и его поле
-/// Provides целиком; `None` — никто (или спросить не вышло).
+/// `provider_of(lib)` — who in the repositories provides this library, plus
+/// its whole Provides field; `None` — nobody (or the query failed).
 pub fn classify(
     package: &str,
     unsatisfied: &[String],
@@ -169,8 +171,8 @@ pub fn classify(
             p.lib == want.lib && p.bits == want.bits
         })?;
         if have.version == want.version {
-            // Та же версия есть, а pacman всё равно отказал — дело не в
-            // пересборке; угадывать не будем.
+            // The same version exists and pacman still refused — this is not about
+            // a rebuild; we won't guess.
             return None;
         }
         gaps.push(LibGap {
@@ -194,9 +196,9 @@ fn query(argv: Vec<String>) -> Cmd {
     }
 }
 
-/// Пробная транзакция одного имени без прав root: что поставится, а при
-/// отказе — неразрешимые зависимости. Без `--needed`: стоящий поставщик
-/// библиотеки тоже должен попасть в ответ.
+/// A dry-run transaction for one name without root: what would be installed,
+/// and on refusal — the unsatisfiable dependencies. No `--needed`: an
+/// installed library provider must also show up in the answer.
 pub fn probe_cmd(name: &str) -> Cmd {
     query(vec![
         "pacman".into(),
@@ -208,16 +210,17 @@ pub fn probe_cmd(name: &str) -> Cmd {
     ])
 }
 
-/// `pacman -Si ИМЯ` под LANG=C.
+/// `pacman -Si NAME` under LANG=C.
 pub fn info_cmd(name: &str) -> Cmd {
     query(vec!["pacman".into(), "-Si".into(), name.to_string()])
 }
 
-/// Кто в репозиториях даёт библиотеку `lib`: pacman сам разрешает имя
-/// библиотеки в пакет (`pacman -Sp libcamel-1.2.so` → evolution-data-server
-/// и, на чистой системе, его зависимости). Поставщик — тот из ответа, у кого
-/// библиотека есть в Provides; ищем с конца — цель транзакции печатается
-/// после своих зависимостей.
+/// Who in the repositories provides library `lib`: pacman resolves the
+/// library name to a package by itself (`pacman -Sp libcamel-1.2.so` →
+/// evolution-data-server and, on a clean system, its dependencies). The
+/// provider is the one in the answer that has the library in Provides; we
+/// search from the end — the transaction target is printed after its
+/// dependencies.
 fn provider_of(lib: &str, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<(String, Vec<String>)> {
     let (rc, stdout, _) = run(&probe_cmd(lib))?;
     if rc != 0 {
@@ -240,13 +243,14 @@ fn provider_of(lib: &str, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<(String
     None
 }
 
-/// Какие из `packages` (обычно — то, что предпросмотр установки назвал
-/// неустановимым) ждут пересборки. Пусто — предлагать нечего.
+/// Which of `packages` (usually what the install preview called
+/// uninstallable) are waiting for a rebuild. Empty — nothing to offer.
 ///
-/// Поломка может сидеть глубже: пакет набора ставится, а его зависимость —
-/// нет. Тогда кандидат — та зависимость (на неё и указывает «required by»).
-/// Кнопка предлагается, только если пересборка лечит ВСЕ найденные поломки:
-/// иначе после сборки установка всё равно упала бы.
+/// The breakage may sit deeper: a package of the set installs, but its
+/// dependency does not. Then the candidate is that dependency (the one
+/// "required by" points at). The button is offered only if the rebuild cures
+/// ALL breakages found: otherwise the install would fail after the build
+/// anyway.
 pub fn find_candidates(
     family: PkgFamily,
     immutable: bool,
@@ -267,11 +271,11 @@ pub fn find_candidates(
         if rc == 0 {
             continue;
         }
-        // Как у предпросмотра: «error:» — в stderr, «:: unable to satisfy» —
-        // в stdout; читаем оба.
+        // Same as the preview: "error:" goes to stderr, ":: unable to satisfy" —
+        // to stdout; we read both.
         let pairs = parse_unsatisfied(&format!("{stdout}\n{stderr}"));
         if pairs.is_empty() {
-            // «target not found» и прочее: не наш случай.
+            // "target not found" and the like: not our case.
             return Vec::new();
         }
         let mut owners: Vec<String> = Vec::new();
@@ -295,7 +299,7 @@ pub fn find_candidates(
     out
 }
 
-/// [`find_candidates`] на живой машине (команды — через `utils::run`).
+/// [`find_candidates`] on a live machine (commands via `utils::run`).
 pub fn find_candidates_live(packages: &[String]) -> Vec<Candidate> {
     if packages.is_empty() || crate::utils::which("pacman", None).is_none() {
         return Vec::new();
@@ -324,49 +328,52 @@ pub fn find_candidates_live(packages: &[String]) -> Vec<Candidate> {
 }
 
 // ============================================================================
-// Пересборка: рецепт Arch → сборка от пользователя → установка
+// Rebuild: Arch recipe → build as the user → install
 // ============================================================================
 //
-// Порядок и почему так:
+// The order, and why:
 //
-// * **Рецепт** — официальный репозиторий упаковки Arch
-//   (`gitlab.archlinux.org/archlinux/packaging/packages/<pkgbase>`), метка
-//   ровно той версии, что лежит в репозитории (`8.0.2-3`; двоеточие эпохи
-//   метка пишет дефисом). Метки нет — берётся последнее состояние, и журнал
-//   говорит об этом вслух. Клон неглубокий, в кеш Rexon
-//   (`~/.cache/rexon/rebuild/<pkgbase>`), каждый раз заново.
-// * **Проверка исходников** — дело makepkg: суммы и подписи из рецепта он
-//   сверяет сам. Ключи подписи (`validpgpkeys`), которых у человека нет,
-//   берутся из самого рецепта (`keys/pgp/<отпечаток>.asc`), иначе с сервера
-//   ключей; не получилось — честный отказ, а не сборка без проверки.
-// * **Пароль** — один на всё: оба root-шага идут через помощник пакетов
-//   (`rexon-pkg-helper`, операции `build-deps` и `install-built`) под
-//   действием polkit `org.rexon.pkg` (`auth_admin_keep`) — тем же, что
-//   ставит остальное (Deepin); пока держится подтверждение (около пяти
-//   минут), второго окна нет. Сборка дольше — перед установкой пароль
-//   спросят ещё раз. Помощника нет (запуск из дерева без пакета) — прежний
-//   `pkexec /bin/bash`, по паролю на шаг.
-// * **Зависимости сборки** — одним вопросом пароля, `pacman -S --needed
-//   --asdeps`: только то, чего нет, и с пометкой «зависимость», чтобы оно
-//   не числилось поставленным руками. Проверки (`check()`) пропускаются
-//   (`--nocheck`): это работа Arch, а человеку они добавили бы и время, и
-//   лишние пакеты.
-// * **Сборка** — от пользователя, без root (makepkg от root не работает и
-//   правильно делает), в срезе `rexon-build.slice`, nice 19 и ionice idle:
-//   рабочий стол не должен заметить сборку.
-// * **Версия** — `pkgrel` НЕ трогаем. Собранный пакет той же версии, что в
-//   репозитории: pacman считает его «тем же», `--needed` его не трогает,
-//   `-Syu` не пытается ни обновить, ни откатить, и не печатает «local is
-//   newer». Своя пересборка Arch всегда повышает `pkgrel` (`8.0.2-4`), и она
-//   придёт обычным обновлением, заменив нашу. Метка вида `pkgrel+0.1` дала
-//   бы то же самое, но ценой правки рецепта (и его сумм), вечного «local is
-//   newer than extra» и отката на сломанный пакет при любом `pacman -S` без
+// * **Recipe** — the official Arch packaging repository
+//   (`gitlab.archlinux.org/archlinux/packaging/packages/<pkgbase>`), the tag
+//   of exactly the version in the repository (`8.0.2-3`; the tag writes the
+//   epoch colon as a dash). No tag — the latest state is taken, and the log
+//   says so out loud. A shallow clone into the Rexon cache
+//   (`~/.cache/rexon/rebuild/<pkgbase>`), fresh every time.
+// * **Source verification** is makepkg's job: it checks the sums and
+//   signatures from the recipe itself. Signing keys (`validpgpkeys`) the
+//   person doesn't have are taken from the recipe itself
+//   (`keys/pgp/<fingerprint>.asc`), otherwise from a key server; if that
+//   fails — an honest refusal, not a build without verification.
+// * **Password** — one for everything: both root steps go through the
+//   package helper (`rexon-pkg-helper`, operations `build-deps` and
+//   `install-built`) under the polkit action `org.rexon.pkg`
+//   (`auth_admin_keep`) — the same one that installs everything else
+//   (Deepin); while the authorization holds (about five minutes) there is no
+//   second dialog. If the build takes longer, the password is asked again
+//   before installing. No helper (running from the tree without the package)
+//   — the old `pkexec /bin/bash`, one password per step.
+// * **Build dependencies** — one password prompt, `pacman -S --needed
+//   --asdeps`: only what is missing, and marked "dependency" so it does not
+//   count as installed by hand. Checks (`check()`) are skipped
+//   (`--nocheck`): that is Arch's job, and for the person they would add
+//   both time and extra packages.
+// * **Build** — as the user, without root (makepkg refuses to run as root,
+//   and rightly so), in the `rexon-build.slice` slice, nice 19 and ionice
+//   idle: the desktop must not notice the build.
+// * **Version** — `pkgrel` is NOT touched. The built package has the same
+//   version as the repository: pacman considers it "the same", `--needed`
+//   leaves it alone, `-Syu` tries neither to upgrade nor to downgrade it, and
+//   does not print "local is newer". Arch's own rebuild always bumps
+//   `pkgrel` (`8.0.2-4`), and it will arrive as a normal update, replacing
+//   ours. A tag like `pkgrel+0.1` would do the same, but at the cost of
+//   editing the recipe (and its sums), an eternal "local is newer than extra"
+//   and a downgrade to the broken package on any `pacman -S` without
 //   `--needed`.
-// * **Установка** — `pacman -U` собранного файла (без `-debug`), вторым и
-//   последним root-шагом; в том же вызове снимаются сборочные пакеты,
-//   которые поставили мы (как `--removemake` у помощников AUR).
+// * **Install** — `pacman -U` of the built file (without `-debug`), as the
+//   second and last root step; the same call removes the build packages we
+//   installed (like `--removemake` in AUR helpers).
 //
-// ⛔ Ни в одной команде здесь нет `-d`/`-dd`/`--nodeps` — сверка
+// ⛔ No command here contains `-d`/`-dd`/`--nodeps` — checked by
 // `no_command_skips_dependency_checks`.
 
 use std::sync::Arc;
@@ -377,18 +384,18 @@ use crate::system_de_exec::{cancelled_message, CancelToken, DeOpOutcome, DeOpSin
 use crate::privilege::op::{LocalFile, PrivOp};
 use crate::system_exec::RunOut;
 
-/// Адрес официального репозитория упаковки Arch для `pkgbase`.
+/// URL of the official Arch packaging repository for `pkgbase`.
 pub fn packaging_url(pkgbase: &str) -> String {
     format!("https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git")
 }
 
-/// Метка версии в репозитории упаковки: `1:2.0-1` → `1-2.0-1`.
+/// Version tag in the packaging repository: `1:2.0-1` → `1-2.0-1`.
 pub fn version_tag(version: &str) -> String {
     version.replace(':', "-")
 }
 
-/// `pkgbase` из записи базы синхронизации (`<имя>-<версия>/desc`):
-/// строка после `%BASE%`.
+/// `pkgbase` from a sync database entry (`<name>-<version>/desc`): the line
+/// after `%BASE%`.
 pub fn parse_db_base(desc: &str) -> Option<String> {
     let mut lines = desc.lines();
     while let Some(line) = lines.next() {
@@ -399,7 +406,7 @@ pub fn parse_db_base(desc: &str) -> Option<String> {
     None
 }
 
-/// Нужное из `.SRCINFO` рецепта.
+/// What we need from the recipe's `.SRCINFO`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SrcInfo {
     pub pkgbase: String,
@@ -407,15 +414,15 @@ pub struct SrcInfo {
     pub epoch: String,
     pub pkgver: String,
     pub pkgrel: String,
-    /// `depends` всех пакетов рецепта (+ под архитектуру машины).
+    /// `depends` of all packages in the recipe (+ those for the machine's architecture).
     pub depends: Vec<String>,
-    /// `makedepends` (+ под архитектуру машины).
+    /// `makedepends` (+ those for the machine's architecture).
     pub makedepends: Vec<String>,
     pub validpgpkeys: Vec<String>,
 }
 
 impl SrcInfo {
-    /// Полная версия: `[эпоха:]версия-выпуск`.
+    /// Full version: `[epoch:]version-release`.
     pub fn version(&self) -> String {
         if self.epoch.is_empty() {
             format!("{}-{}", self.pkgver, self.pkgrel)
@@ -425,8 +432,8 @@ impl SrcInfo {
     }
 }
 
-/// Разобрать `.SRCINFO`. `carch` — архитектура машины (`x86_64`): поля
-/// `depends_x86_64` берутся, чужие — нет.
+/// Parse `.SRCINFO`. `carch` is the machine's architecture (`x86_64`):
+/// `depends_x86_64` fields are taken, foreign ones are not.
 pub fn parse_srcinfo(text: &str, carch: &str) -> Option<SrcInfo> {
     let mut info = SrcInfo::default();
     let push = |list: &mut Vec<String>, value: &str| {
@@ -460,8 +467,8 @@ pub fn parse_srcinfo(text: &str, carch: &str) -> Option<SrcInfo> {
         .then_some(info)
 }
 
-/// Строка зависимости, которую можно отдать pacman аргументом: имя и,
-/// возможно, ограничение версии. Ни ведущего `-`, ни пробелов, ни путей.
+/// A dependency string that can be passed to pacman as an argument: a name
+/// and possibly a version constraint. No leading `-`, no spaces, no paths.
 fn valid_dep(dep: &str) -> bool {
     dep.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
         && dep
@@ -469,8 +476,8 @@ fn valid_dep(dep: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "@._+:<>=-".contains(c))
 }
 
-/// Что нужно для сборки: зависимости рецепта и `base-devel` (компилятор,
-/// fakeroot — makepkg без них не соберёт ничего).
+/// What the build needs: the recipe's dependencies and `base-devel`
+/// (compiler, fakeroot — makepkg builds nothing without them).
 pub fn build_requirements(info: &SrcInfo) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for dep in info.depends.iter().chain(&info.makedepends).map(String::as_str).chain(["base-devel"]) {
@@ -481,8 +488,8 @@ pub fn build_requirements(info: &SrcInfo) -> Vec<String> {
     out
 }
 
-/// Из недостающего — то, что нужно ТОЛЬКО для сборки: его снимаем после
-/// установки. Зависимости самого пакета остаются — без них он не работает.
+/// Of what is missing — what is needed ONLY for the build: it is removed after
+/// the install. The package's own dependencies stay — it doesn't work without them.
 pub fn build_only(missing: &[String], info: &SrcInfo) -> Vec<String> {
     missing
         .iter()
@@ -492,14 +499,14 @@ pub fn build_only(missing: &[String], info: &SrcInfo) -> Vec<String> {
         .collect()
 }
 
-/// `pacman -T`: чего из списка нет (код 127 и имена в stdout; 0 — всё есть).
+/// `pacman -T`: which of the list are missing (code 127 and names on stdout; 0 — all present).
 pub fn deptest_argv(deps: &[String]) -> Vec<String> {
     let mut argv = vec!["pacman".to_string(), "-T".to_string(), "--".to_string()];
     argv.extend(deps.iter().cloned());
     argv
 }
 
-/// Разбор ответа [`deptest_argv`]: `None` — ответ непонятный.
+/// Parse the [`deptest_argv`] answer: `None` — the answer is unclear.
 pub fn parse_deptest(rc: i32, stdout: &str) -> Option<Vec<String>> {
     match rc {
         0 => Some(Vec::new()),
@@ -515,8 +522,8 @@ pub fn parse_deptest(rc: i32, stdout: &str) -> Option<Vec<String>> {
     }
 }
 
-/// Неглубокий клон рецепта: метка версии либо (`tag = None`) последнее
-/// состояние.
+/// Shallow clone of the recipe: the version tag or (`tag = None`) the latest
+/// state.
 pub fn clone_argv(url: &str, dir: &str, tag: Option<&str>) -> Vec<String> {
     let mut argv: Vec<String> = ["git", "clone", "--quiet", "--depth", "1"].map(String::from).to_vec();
     if let Some(tag) = tag {
@@ -526,22 +533,22 @@ pub fn clone_argv(url: &str, dir: &str, tag: Option<&str>) -> Vec<String> {
     argv
 }
 
-/// Скрипт root-шагов: язык вывода — C (его разбирает журнал), аргументы
-/// приходят позиционно, не через текст скрипта.
+/// Script for the root steps: output language is C (the log parses it),
+/// arguments come positionally, not through the script text.
 const ROOT_DEPS_SCRIPT: &str = "export LC_ALL=C; exec pacman -S --needed --noconfirm --asdeps -- \"$@\"";
 const ROOT_INSTALL_SCRIPT: &str = "export LC_ALL=C; f=\"$1\"; shift; \
 pacman -U --noconfirm -- \"$f\" || exit $?; \
 if [ $# -gt 0 ]; then pacman -Rns --noconfirm -- \"$@\" || echo \"rexon: build-only packages kept\"; fi";
-/// То же с заменой конфликтующего установленного (`--ask=4`, см.
+/// The same, replacing the conflicting installed package (`--ask=4`, see
 /// [`RecipeEdit::replace_conflicts`]).
 const ROOT_INSTALL_REPLACING_SCRIPT: &str = "export LC_ALL=C; f=\"$1\"; shift; \
 pacman -U --noconfirm --ask=4 -- \"$f\" || exit $?; \
 if [ $# -gt 0 ]; then pacman -Rns --noconfirm -- \"$@\" || echo \"rexon: build-only packages kept\"; fi";
-/// Имя «нулевого» аргумента `bash -c` — видно в списке процессов.
+/// Name of the "zeroth" argument of `bash -c` — visible in the process list.
 const ROOT_SCRIPT_NAME: &str = "rexon-rebuild";
 
-/// Поставить недостающее для сборки — одним вопросом пароля (без
-/// помощника пакетов; с ним — [`helper_deps_argv`]).
+/// Install what the build is missing — with one password prompt (without the
+/// package helper; with it — [`helper_deps_argv`]).
 pub fn deps_install_argv(missing: &[String]) -> Vec<String> {
     let mut argv: Vec<String> = ["pkexec", "/bin/bash", "-c", ROOT_DEPS_SCRIPT, ROOT_SCRIPT_NAME]
         .map(String::from)
@@ -550,9 +557,9 @@ pub fn deps_install_argv(missing: &[String]) -> Vec<String> {
     argv
 }
 
-/// Поставить собранный файл и снять сборочные пакеты — вторым вопросом
-/// (без помощника пакетов; с ним — [`helper_install_argv`]).
-/// `replace` — заменить конфликтующий установленный пакет.
+/// Install the built file and remove the build packages — the second prompt
+/// (without the package helper; with it — [`helper_install_argv`]).
+/// `replace` — replace the conflicting installed package.
 pub fn install_argv(file: &str, build_only: &[String], replace: bool) -> Vec<String> {
     let script = if replace { ROOT_INSTALL_REPLACING_SCRIPT } else { ROOT_INSTALL_SCRIPT };
     let mut argv: Vec<String> = ["pkexec", "/bin/bash", "-c", script, ROOT_SCRIPT_NAME]
@@ -563,10 +570,10 @@ pub fn install_argv(file: &str, build_only: &[String], replace: bool) -> Vec<Str
     argv
 }
 
-/// Начало команды помощника пакетов на живой машине: `pkexec <путь>
-/// [--lang=…]`. `None` — помощника нет или он не годится этой пересборке
-/// (каталог пересборок не `~/.cache/rexon/rebuild`: помощник ищет его по
-/// домашнему каталогу из passwd, `$XDG_CACHE_HOME` ему не виден).
+/// Start of the package helper command on a live machine: `pkexec <path>
+/// [--lang=…]`. `None` — there is no helper, or it doesn't fit this rebuild
+/// (the rebuild directory is not `~/.cache/rexon/rebuild`: the helper finds it
+/// by the home directory from passwd, it can't see `$XDG_CACHE_HOME`).
 pub fn pkg_helper_prefix_live(cache_dir: &str) -> Option<Vec<String>> {
     let home = std::env::var("HOME").unwrap_or_default();
     if home.is_empty() || cache_dir != crate::appearance_cache::cache_dir_in(None, &home) {
@@ -578,8 +585,8 @@ pub fn pkg_helper_prefix_live(cache_dir: &str) -> Option<Vec<String>> {
     Some(pkg_helper_prefix())
 }
 
-/// Начало команды помощника пакетов: `pkexec <путь> [--lang=…]` — без
-/// проверки, что он есть (её делает вызывающий).
+/// Start of the package helper command: `pkexec <path> [--lang=…]` — without
+/// checking that it exists (the caller does that).
 pub fn pkg_helper_prefix() -> Vec<String> {
     let path = crate::system_plan::pkg_helper_path();
     let mut argv = vec!["pkexec".to_string(), path.to_string()];
@@ -587,8 +594,8 @@ pub fn pkg_helper_prefix() -> Vec<String> {
     argv
 }
 
-/// Недостающее для сборки — через помощник пакетов (`build-deps`).
-/// `helper` — начало команды ([`RebuildCtx::pkg_helper`]).
+/// What the build is missing — through the package helper (`build-deps`).
+/// `helper` — start of the command ([`RebuildCtx::pkg_helper`]).
 pub fn helper_deps_argv(helper: &[String], missing: &[String]) -> Vec<String> {
     let mut argv = helper.to_vec();
     argv.extend(["arch".to_string(), "build-deps".to_string()]);
@@ -596,9 +603,9 @@ pub fn helper_deps_argv(helper: &[String], missing: &[String]) -> Vec<String> {
     argv
 }
 
-/// Собранный файл и снятие сборочных — через помощник пакетов
-/// (`install-built`). Файл помощник примет только из каталога пересборок
-/// вызвавшего ([`rebuild_root`]).
+/// The built file and removal of build packages — through the package helper
+/// (`install-built`). The helper accepts the file only from the caller's
+/// rebuild directory ([`rebuild_root`]).
 pub fn helper_install_argv(helper: &[String], file: &str, build_only: &[String], replace: bool) -> Vec<String> {
     let mut argv = helper.to_vec();
     argv.extend(
@@ -608,10 +615,10 @@ pub fn helper_install_argv(helper: &[String], file: &str, build_only: &[String],
     argv
 }
 
-/// Снять установленные пакеты через помощник пакетов (`remove`, тот же
-/// вечный список): пакеты правки рецепта ([`RecipeEdit::remove_after`]) —
-/// `install-built` их не снимает, он снимает только поставленное своим
-/// `build-deps`.
+/// Remove installed packages through the package helper (`remove`, the same
+/// permanent list): packages of the recipe edit ([`RecipeEdit::remove_after`])
+/// — `install-built` does not remove them, it removes only what its own
+/// `build-deps` installed.
 pub fn helper_remove_argv(helper: &[String], packages: &[String]) -> Vec<String> {
     let mut argv = helper.to_vec();
     argv.extend(["arch".to_string(), "remove".to_string()]);
@@ -619,9 +626,9 @@ pub fn helper_remove_argv(helper: &[String], packages: &[String]) -> Vec<String>
     argv
 }
 
-/// Имена пакетов для `install-built` из строк зависимостей: без
-/// ограничения версии (`cmake>=3.20` → `cmake`), без повторов. Снимет
-/// помощник только то, что сам поставил в `build-deps`.
+/// Package names for `install-built` from dependency strings: without the
+/// version constraint (`cmake>=3.20` → `cmake`), no repeats. The helper will
+/// remove only what it installed itself in `build-deps`.
 pub fn helper_build_only_names(deps: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for dep in deps {
@@ -633,22 +640,22 @@ pub fn helper_build_only_names(deps: &[String]) -> Vec<String> {
     out
 }
 
-/// Каталог пересборок в кеше Rexon: рецепты, журналы и собранные файлы.
+/// Rebuild directory in the Rexon cache: recipes, logs and built files.
 pub fn rebuild_root(cache_dir: &str) -> String {
     format!("{cache_dir}/rebuild")
 }
 
-/// Срез, в котором идут сборки (`scripts/build-queue` и пересборки).
+/// The slice builds run in (`scripts/build-queue` and rebuilds).
 pub const BUILD_SLICE: &str = "rexon-build.slice";
 
-/// Строка вывода root-шага (pacman под `LC_ALL=C`) для журнала человека.
-/// Разбор — общий с установкой рабочих столов
-/// ([`crate::system_plan::parse_pacman_line`]): вопрос, на который pacman при
-/// `--noconfirm` отвечает себе сам, либо заменяется объяснением выбора
-/// («поставщиков 2 — берём из первого репозитория…»), либо не показывается
-/// вовсе (меню, «Enter a number», «Proceed with installation? [Y/n]»).
-/// Прочие строки — как есть. `None` — не показывать. Полный вывод остаётся в
-/// файловом журнале шага.
+/// A root step output line (pacman under `LC_ALL=C`) for the person's log.
+/// Parsing is shared with desktop installation
+/// ([`crate::system_plan::parse_pacman_line`]): a question pacman answers by
+/// itself under `--noconfirm` is either replaced with an explanation of the
+/// choice ("2 providers — taking the one from the first repository…") or not
+/// shown at all (menus, "Enter a number", "Proceed with installation? [Y/n]").
+/// Other lines — as is. `None` — don't show. The full output stays in the
+/// step's file log.
 pub fn pacman_log_line(raw: &str) -> Option<String> {
     match crate::system_plan::parse_pacman_line(raw) {
         Some(p) if p.stage == "prompt" => (!p.message.is_empty()).then_some(p.message),
@@ -656,31 +663,32 @@ pub fn pacman_log_line(raw: &str) -> Option<String> {
     }
 }
 
-/// Куда makepkg отображает каталог исходников в собранном (`__FILE__`,
-/// отладочные сведения) — то же место, что даёт сам makepkg при
-/// `options=(debug)` (`/usr/share/makepkg/buildenv/debugflags.sh`).
+/// Where makepkg maps the source directory in the built output (`__FILE__`,
+/// debug info) — the same place makepkg itself uses with `options=(debug)`
+/// (`/usr/share/makepkg/buildenv/debugflags.sh`).
 const DEBUG_SRC_ROOT: &str = "/usr/src/debug";
 
-/// Сборка от пользователя. `slice` — обернуть в `systemd-run --user
-/// --scope` среза [`BUILD_SLICE`] (нужен пользовательский systemd).
-/// `-C` — чистая сборка даже поверх прошлой неудачной. `PKGDEST` — каталог
-/// рецепта (makepkg берёт его из окружения поверх `makepkg.conf`): файл
-/// ложится в каталог пересборок, откуда его примет помощник пакетов, даже
-/// если у человека в `makepkg.conf` свой `PKGDEST`.
+/// Build as the user. `slice` — wrap in `systemd-run --user --scope` of the
+/// [`BUILD_SLICE`] slice (needs the user systemd). `-C` — a clean build even
+/// over a previous failed one. `PKGDEST` — the recipe directory (makepkg takes
+/// it from the environment over `makepkg.conf`): the file lands in the rebuild
+/// directory, where the package helper will accept it, even if the person has
+/// their own `PKGDEST` in `makepkg.conf`.
 ///
-/// Локаль `C.UTF-8`, а не `C`: вывод остаётся английским (его разбирает
-/// [`build_failure`]), но инструменты Qt (`moc`, `qdbusxml2cpp`) при `C`
-/// жалуются на кодировку ANSI_X3.4-1968 на каждый вызов. `C.UTF-8` в glibc
-/// встроена и есть всегда.
+/// Locale `C.UTF-8`, not `C`: the output stays English (parsed by
+/// [`build_failure`]), but Qt tools (`moc`, `qdbusxml2cpp`) under `C`
+/// complain about the ANSI_X3.4-1968 encoding on every call. `C.UTF-8` is
+/// built into glibc and always present.
 ///
-/// `BUILDDIR` — тоже каталог рецепта: так `$srcdir` makepkg — ровно
-/// `<dir>/src`, и его можно назвать флагом. `-ffile-prefix-map=<dir>/src=
-/// /usr/src/debug/<pkgbase>` в `CFLAGS`/`CXXFLAGS` (дописывается аргументом
-/// makepkg после `makepkg.conf`) убирает из бинарей пути сборки (`__FILE__`
-/// в журналах Qt и т. п.) — иначе makepkg предупреждает «Package contains
-/// reference to $srcdir». Arch собирает с `options=(debug)`, и makepkg
-/// добавляет этот флаг сам; у CachyOS в `makepkg.conf` `!debug`. Путь с
-/// пробелом флагом не передать (CFLAGS режется по пробелам) — тогда без него.
+/// `BUILDDIR` is the recipe directory too: that way makepkg's `$srcdir` is
+/// exactly `<dir>/src`, and it can be named in a flag. `-ffile-prefix-map=
+/// <dir>/src=/usr/src/debug/<pkgbase>` in `CFLAGS`/`CXXFLAGS` (appended as a
+/// makepkg argument after `makepkg.conf`) strips build paths from binaries
+/// (`__FILE__` in Qt logs etc.) — otherwise makepkg warns "Package contains
+/// reference to $srcdir". Arch builds with `options=(debug)`, and makepkg
+/// adds this flag itself; CachyOS has `!debug` in `makepkg.conf`. A path with
+/// a space can't be passed in a flag (CFLAGS is split on spaces) — then we go
+/// without it.
 pub fn build_argv(dir: &str, pkgbase: &str, slice: bool) -> Vec<String> {
     let mut argv: Vec<String> = Vec::new();
     if slice {
@@ -702,8 +710,8 @@ pub fn build_argv(dir: &str, pkgbase: &str, slice: bool) -> Vec<String> {
         ]
         .map(String::from),
     );
-    // Имя pkgbase по правилам pacman: не с дефиса/точки (иначе флаг
-    // компилятора из имени не собрать).
+    // pkgbase name by pacman rules: not starting with a dash/dot (otherwise
+    // a compiler flag can't be built from the name).
     let base_ok = valid_pkg_name(pkgbase) && pkgbase.starts_with(|c: char| c.is_ascii_alphanumeric());
     if !dir.contains(char::is_whitespace) && base_ok {
         let map = format!("-ffile-prefix-map={dir}/src={DEBUG_SRC_ROOT}/{pkgbase}");
@@ -713,7 +721,7 @@ pub fn build_argv(dir: &str, pkgbase: &str, slice: bool) -> Vec<String> {
     argv
 }
 
-/// Какие файлы makepkg собрал (`PKGDEST` — тот же, что у [`build_argv`]).
+/// Which files makepkg built (`PKGDEST` is the same as in [`build_argv`]).
 pub fn packagelist_argv(dir: &str) -> Vec<String> {
     vec![
         "env".to_string(),
@@ -725,9 +733,9 @@ pub fn packagelist_argv(dir: &str) -> Vec<String> {
     ]
 }
 
-/// Файл пакета `pkgname` из ответа [`packagelist_argv`]: имя вида
-/// `<pkgname>-<версия>-<выпуск>-<архитектура>.pkg.tar.*`. Отладочные
-/// (`<pkgname>-debug-…`) и соседи по рецепту не берутся.
+/// The `pkgname` package file from the [`packagelist_argv`] answer: a name of
+/// the form `<pkgname>-<version>-<release>-<arch>.pkg.tar.*`. Debug ones
+/// (`<pkgname>-debug-…`) and recipe siblings are not taken.
 pub fn pick_package_file(list: &str, pkgname: &str) -> Option<String> {
     list.lines().map(str::trim).find(|path| {
         let base = path.rsplit('/').next().unwrap_or(path);
@@ -742,16 +750,16 @@ pub fn pick_package_file(list: &str, pkgname: &str) -> Option<String> {
     .map(str::to_string)
 }
 
-/// Почему не собралось — по журналу makepkg (LC_ALL=C.UTF-8, английский).
+/// Why the build failed — from the makepkg log (LC_ALL=C.UTF-8, English).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildFailure {
-    /// Суммы исходников не сошлись.
+    /// Source checksums didn't match.
     Checksum,
-    /// Подпись исходников не подтвердилась.
+    /// Source signature didn't verify.
     Signature,
-    /// Исходник не скачался.
+    /// A source failed to download.
     Download,
-    /// Прочее (ошибка компиляции и т. п.).
+    /// Anything else (compile error and the like).
     Other,
 }
 
@@ -767,58 +775,58 @@ pub fn build_failure(log: &str) -> BuildFailure {
     }
 }
 
-/// Сколько последних строк журнала сборки показать в отказе.
+/// How many last lines of the build log to show in a refusal.
 pub const FAILURE_TAIL_LINES: usize = 8;
 
-// ── Правка рецепта: свой пакет под другим именем ────────────────────────
+// ── Recipe edit: our own package under a different name ────────────────
 //
-// Обычная пересборка ставит пакет Arch как есть. Правка нужна, когда сам
-// рецепт Arch не годится этой машине (живой случай — Deepin рядом с KDE
-// Plasma: `deepin-session` жёстко тянет `deepin-kwin`, а тот конфликтует с
-// KWin; см. `crate::deepin_treeland`). Тогда пакет собирается под СВОИМ
-// именем, объявляет `provides`/`conflicts` прежнего и ничего больше в
-// рецепте не меняет: исходники, суммы и подписи — те же, что у Arch.
+// A plain rebuild installs the Arch package as is. An edit is needed when the
+// Arch recipe itself doesn't suit this machine (real case — Deepin next to
+// KDE Plasma: `deepin-session` hard-requires `deepin-kwin`, which conflicts
+// with KWin; see `crate::deepin_treeland`). Then the package is built under
+// ITS OWN name, declares `provides`/`conflicts` of the original and changes
+// nothing else in the recipe: sources, sums and signatures are Arch's own.
 //
-// ⚠️ Почему своё имя, а не то же самое. Пакет с именем Arch первое же
-// обновление Arch (`-Syu`) «обновил» бы обратно на рецепт Arch — и вернул бы
-// ту самую зависимость: у Deepin это вопрос pacman «удалить kwin?», а
-// `pacman -Syu --noconfirm` и вовсе обрывался бы целиком. Под своим именем
-// `-Syu` наш пакет не трогает (обновлять нечего: такого имени в
-// репозиториях нет), а то, что требует прежнее имя, довольствуется
-// `provides`. Плата — сборка не обновляется сама; об этом говорит хук
-// pacman в самом пакете и карточка Rexon.
+// ⚠️ Why our own name rather than the same one. A package with the Arch name
+// would be "upgraded" back to the Arch recipe by the very first Arch update
+// (`-Syu`) — bringing back that very dependency: for Deepin that is pacman's
+// question "remove kwin?", and `pacman -Syu --noconfirm` would abort
+// entirely. Under our own name `-Syu` leaves our package alone (nothing to
+// upgrade: no such name in the repositories), and whatever requires the old
+// name is satisfied by `provides`. The price — the build doesn't update by
+// itself; a pacman hook in the package itself and the Rexon card say so.
 
-/// Что поменять в рецепте перед сборкой.
+/// What to change in the recipe before building.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RecipeEdit {
-    /// Имя собранного пакета.
+    /// Name of the built package.
     pub pkgname: String,
-    /// Приписка к описанию пакета (`pkgdesc`): кто и зачем собрал.
+    /// Note appended to the package description (`pkgdesc`): who built it and why.
     pub pkgdesc_note: String,
-    /// Зависимости, переносимые в необязательные: (имя, пояснение).
+    /// Dependencies moved to optional: (name, explanation).
     pub to_optdepends: Vec<(String, String)>,
-    /// Файлы пакета (путь без ведущего `/`), которые не ставить.
+    /// Package files (path without the leading `/`) not to install.
     pub drop_files: Vec<String>,
-    /// Свои файлы: (путь без ведущего `/`, права `0644`/`0755`, содержимое).
+    /// Our own files: (path without the leading `/`, mode `0644`/`0755`, content).
     pub add_files: Vec<(String, String, String)>,
-    /// Собранный пакет заменяет установленный, с которым конфликтует
-    /// (`conflicts` рецепта): `pacman -U --ask=4` — ответ «да» на вопрос
-    /// «удалить конфликтующий?». Только после явного согласия человека.
+    /// The built package replaces the installed one it conflicts with (the
+    /// recipe's `conflicts`): `pacman -U --ask=4` — answering "yes" to "remove
+    /// the conflicting one?". Only after the person's explicit consent.
     pub replace_conflicts: bool,
-    /// Установленные пакеты, которые снять той же root-командой после
-    /// установки собранного (`pacman -Rns`, вместе со сборочными).
+    /// Installed packages to remove with the same root command after installing
+    /// the built one (`pacman -Rns`, together with the build packages).
     pub remove_after: Vec<String>,
 }
 
-/// Граница вставленного содержимого файла в тексте рецепта.
+/// Delimiter of inserted file content in the recipe text.
 const HEREDOC_END: &str = "REXON_EOF";
 
-/// Слово для bash в одинарных кавычках.
+/// A word for bash in single quotes.
 fn sh_word(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
 
-/// Путь внутри пакета: относительный, без `..`, без пробелов и кавычек.
+/// A path inside the package: relative, no `..`, no spaces or quotes.
 fn valid_pkg_path(path: &str) -> bool {
     !path.is_empty()
         && !path.starts_with('/')
@@ -826,11 +834,11 @@ fn valid_pkg_path(path: &str) -> bool {
         && path.chars().all(|c| c.is_ascii_alphanumeric() || "._+-/@".contains(c))
 }
 
-/// `pkgrel` из версии репозитория, если рецепт той же версии: собранный
-/// пакет обязан называть ровно ту версию, что лежит в репозитории
-/// (CachyOS пересобирает пакеты Arch с `pkgrel` вида `1.1`, а рецепт Arch
-/// говорит `1`, — без этого своя сборка с первой минуты числилась бы
-/// устаревшей). Другая версия — `None`: тогда остаётся `pkgrel` рецепта.
+/// `pkgrel` from the repository version, if the recipe is the same version:
+/// the built package must state exactly the version in the repository
+/// (CachyOS rebuilds Arch packages with a `pkgrel` like `1.1`, while the Arch
+/// recipe says `1` — without this our build would count as outdated from the
+/// first minute). A different version — `None`: then the recipe's `pkgrel` stays.
 pub fn matching_pkgrel(info: &SrcInfo, repo_version: &str) -> Option<String> {
     let (epoch, rest) = match repo_version.split_once(':') {
         Some((e, r)) => (e, r),
@@ -844,21 +852,22 @@ pub fn matching_pkgrel(info: &SrcInfo, repo_version: &str) -> Option<String> {
     .then(|| rel.to_string())
 }
 
-/// Текст, дописываемый в конец PKGBUILD: bash читает рецепт сверху вниз,
-/// и наши присваивания перекрывают присваивания Arch, не трогая их строк.
-/// `None` — рецепт такой правке не поддаётся (несколько пакетов в одном
-/// рецепте, неверное имя или путь) — собирать не берёмся.
+/// Text appended to the end of PKGBUILD: bash reads the recipe top to bottom,
+/// and our assignments override Arch's without touching its lines. `None` —
+/// the recipe doesn't lend itself to such an edit (several packages in one
+/// recipe, a bad name or path) — we don't attempt the build.
 ///
-/// `deferred` — зависимости пакета, которые сами (через свои зависимости)
-/// тянут снятое (`deepin-shell` → … → `deepin-session` → `deepin-kwin`).
-/// Поставить их ДО сборки нельзя — упрёмся в тот же конфликт, а с
-/// `--assume-installed` система осталась бы с незакрытой зависимостью, если
-/// сборка не удастся. Для сборки они не нужны (это не библиотеки, с
-/// которыми связывается пакет), поэтому проверку makepkg перед сборкой они
-/// не проходят, а в сам пакет записываются: `depends` переопределяется в
-/// `package()` (как у пакетов, собранных из одного рецепта по нескольку), и
-/// `pacman -U` ставит их вместе с пакетом одной транзакцией, где
-/// снятое уже закрыто нашим `provides`.
+/// `deferred` — package dependencies that themselves (through their own
+/// dependencies) pull in what was removed (`deepin-shell` → … →
+/// `deepin-session` → `deepin-kwin`). They can't be installed BEFORE the
+/// build — we'd hit the same conflict, and with `--assume-installed` the
+/// system would be left with an unsatisfied dependency if the build failed.
+/// The build doesn't need them (they are not libraries the package links
+/// against), so they skip makepkg's pre-build check but are recorded in the
+/// package itself: `depends` is overridden in `package()` (as with split
+/// packages built from one recipe), and `pacman -U` installs them together
+/// with the package in one transaction, where the removed one is already
+/// covered by our `provides`.
 pub fn recipe_appendix(edit: &RecipeEdit, info: &SrcInfo, repo_version: &str, deferred: &[String]) -> Option<String> {
     let [orig] = info.pkgnames.as_slice() else {
         return None;
@@ -886,7 +895,7 @@ pub fn recipe_appendix(edit: &RecipeEdit, info: &SrcInfo, repo_version: &str, de
     }
     if !edit.to_optdepends.is_empty() {
         let names: Vec<&str> = edit.to_optdepends.iter().map(|(d, _)| d.as_str()).collect();
-        // Имя и имя с ограничением версии (`deepin-kwin>=6`).
+        // The name and the name with a version constraint (`deepin-kwin>=6`).
         let pattern: Vec<String> = names.iter().map(|n| format!("{n}|{n}[\\<\\>=]*")).collect();
         s.push_str("_rexon_keep=()\n");
         s.push_str("for _rexon_dep in \"${depends[@]}\"; do\n");
@@ -910,8 +919,8 @@ pub fn recipe_appendix(edit: &RecipeEdit, info: &SrcInfo, repo_version: &str, de
     s.push_str(&format!("provides+=(\"{orig}=${{epoch:+$epoch:}}$pkgver-$pkgrel\")\n"));
     s.push_str(&format!("conflicts+=({})\n", sh_word(orig)));
     if !edit.drop_files.is_empty() || !edit.add_files.is_empty() || !deferred.is_empty() {
-        // Своя package() поверх рецептной: сначала рецепт ставит всё как
-        // у Arch, затем — наши снятия и добавления.
+        // Our package() on top of the recipe's: first the recipe installs everything
+        // as Arch does, then come our removals and additions.
         s.push_str("eval \"_rexon_package_recipe() $(declare -f package | tail -n +2)\"\n");
         s.push_str("package() {\n");
         if !deferred.is_empty() {
@@ -920,7 +929,7 @@ pub fn recipe_appendix(edit: &RecipeEdit, info: &SrcInfo, repo_version: &str, de
         s.push_str("  _rexon_package_recipe\n");
         for path in &edit.drop_files {
             s.push_str(&format!("  rm -f -- \"$pkgdir/{path}\"\n"));
-            // Опустевший каталог тоже не нужен (`usr/share/xsessions/`).
+            // An emptied directory isn't needed either (`usr/share/xsessions/`).
             if let Some((parent, _)) = path.rsplit_once('/') {
                 s.push_str(&format!("  rmdir --ignore-fail-on-non-empty -- \"$pkgdir/{parent}\" 2>/dev/null || true\n"));
             }
@@ -939,8 +948,8 @@ pub fn recipe_appendix(edit: &RecipeEdit, info: &SrcInfo, repo_version: &str, de
     Some(s)
 }
 
-/// `.SRCINFO` после правки: перенесённые в необязательные зависимости
-/// больше не нужны ни для сборки, ни после неё.
+/// `.SRCINFO` after the edit: dependencies moved to optional are no longer
+/// needed either for the build or after it.
 fn apply_edit_to_srcinfo(info: &mut SrcInfo, edit: &RecipeEdit) {
     let dropped = |dep: &String| {
         edit.to_optdepends.iter().any(|(d, _)| {
@@ -950,10 +959,11 @@ fn apply_edit_to_srcinfo(info: &mut SrcInfo, edit: &RecipeEdit) {
     info.depends.retain(|d| !dropped(d));
 }
 
-/// Отложенные зависимости ([`recipe_appendix`]): из недостающих — те, чья
-/// пробная установка (`pacman -Sp`, ответ `probes`) тянет снятое правкой.
-/// Не ответила проба — зависимость не откладывается (тогда честно упрёмся
-/// в конфликт на вопросе пароля, а не поставим что-то мимо проверки).
+/// Deferred dependencies ([`recipe_appendix`]): of the missing ones — those
+/// whose dry-run install (`pacman -Sp`, answer `probes`) pulls in what the
+/// edit removed. If the probe didn't answer, the dependency is not deferred
+/// (then we honestly hit the conflict at the password prompt rather than
+/// install something past the check).
 pub fn deferred_depends(missing: &[String], info: &SrcInfo, edit: &RecipeEdit, probes: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
     missing
         .iter()
@@ -965,30 +975,30 @@ pub fn deferred_depends(missing: &[String], info: &SrcInfo, edit: &RecipeEdit, p
         .collect()
 }
 
-// ── Тексты для человека ─────────────────────────────────────────────────
+// ── Texts for the person ───────────────────────────────────────────────
 
-/// Кнопка в предупреждении про пакет, ждущий пересборки.
+/// Button in the warning about a package waiting for a rebuild.
 pub fn offer_button() -> String {
     tr("🛠 Rebuild from Arch sources")
 }
 
-/// Пояснение под кнопкой.
+/// Explanation under the button.
 pub fn offer_hint() -> String {
     tr("The official Arch recipe, built on your computer in a few minutes. \
         When Arch releases its own rebuild, it will come with the regular update.")
 }
 
-/// Кнопку нажали, а собирать уже нечего (состав системы сменился).
+/// The button was pressed, but there is nothing left to build (the system changed).
 pub fn offer_gone() -> String {
     tr("Nothing needs rebuilding any more: the packages have changed since the card was opened.")
 }
 
-/// Заголовок окна хода и вопроса.
+/// Title of the progress and question window.
 pub fn operation_title(packages: &[String]) -> String {
     trf("Rebuilding %1 from Arch sources", &[&packages.join(", ")])
 }
 
-/// Вопрос перед пересборкой.
+/// Question before the rebuild.
 pub fn confirm_text(candidates: &[Candidate]) -> String {
     let mut libs: Vec<String> = Vec::new();
     for c in candidates {
@@ -1044,7 +1054,7 @@ fn msg_install(pkg: &str) -> String {
 }
 fn msg_done(pkgs: &[String]) -> String {
     trf(
-        // Без «✅» впереди: значок ставит окно хода (`de_progress::on_done`).
+        // No "✅" in front: the progress window adds the icon (`de_progress::on_done`).
         "%1 was rebuilt from Arch sources and installed. When Arch releases \
          its own rebuild, it will come with the regular update.",
         &[&pkgs.join(", ")],
@@ -1127,14 +1137,14 @@ fn err_lock(timeout: u64) -> String {
     crate::system_plan::pkg_lock_timeout_message(timeout)
 }
 
-// ── Исполнение ──────────────────────────────────────────────────────────
+// ── Execution ──────────────────────────────────────────────────────────
 
-/// Походы наружу пересборки. Ни одного решения: решает [`rebuild_with`].
+/// The rebuild's trips to the outside world. No decisions: [`rebuild_with`] decides.
 pub trait RebuildIo {
-    /// Короткая команда с выводом в память.
+    /// A short command with output captured in memory.
     fn run(&self, argv: &[String], timeout_secs: Option<u64>, lang_c: bool) -> RunOut;
-    /// Долгая команда: вывод (stdout и stderr) — в журнал `log_path`,
-    /// строки на лету — в `line`.
+    /// A long command: output (stdout and stderr) goes to the `log_path` log,
+    /// lines on the fly go to `line`.
     fn run_logged(
         &self,
         argv: &[String],
@@ -1143,20 +1153,21 @@ pub trait RebuildIo {
         line: Arc<dyn Fn(&str) + Send + Sync>,
     ) -> RunOut;
     fn read_text(&self, path: &str) -> Option<String>;
-    /// Дописать текст в конец файла (правка рецепта, [`RecipeEdit`]).
+    /// Append text to the end of a file (recipe edit, [`RecipeEdit`]).
     fn append_text(&self, path: &str, text: &str) -> Result<(), String>;
     fn exists(&self, path: &str) -> bool;
     fn which(&self, name: &str) -> bool;
     fn make_dirs(&self, path: &str) -> Result<(), String>;
     fn remove_tree(&self, path: &str);
-    /// Замки пакетного менеджера.
+    /// Package manager locks.
     fn lock_paths(&self) -> Vec<String>;
     fn sleep_secs(&self, secs: u64);
-    /// Root-шаг через сеанс прав окна ([`crate::privilege::run`]): `files` —
-    /// пути файлов операции в порядке [`PrivOp::local_files`], ход — в
-    /// журнал `log_path` и в `line`. `None` — сеанса прав нет или помощник
-    /// этот шаг не исполняет: идти прежней командой ([`RebuildIo::run_logged`]).
-    /// По умолчанию `None` — исполнители без сеанса прав (тесты, стенды).
+    /// A root step through the window's privilege session ([`crate::privilege::run`]):
+    /// `files` — file paths of the operation in [`PrivOp::local_files`] order,
+    /// progress goes to the `log_path` log and to `line`. `None` — there is no
+    /// privilege session or the helper doesn't execute this step: take the old
+    /// command ([`RebuildIo::run_logged`]). Default `None` — executors without a
+    /// privilege session (tests, test rigs).
     fn run_priv(
         &self,
         op: &PrivOp,
@@ -1169,21 +1180,21 @@ pub trait RebuildIo {
     }
 }
 
-/// Где и как собирать.
+/// Where and how to build.
 #[derive(Debug, Clone)]
 pub struct RebuildCtx {
-    /// Кеш Rexon (`~/.cache/rexon`).
+    /// Rexon cache (`~/.cache/rexon`).
     pub cache_dir: String,
-    /// Архитектура машины (`x86_64`).
+    /// Machine architecture (`x86_64`).
     pub carch: String,
-    /// Каталог базы pacman (`/var/lib/pacman`).
+    /// pacman database directory (`/var/lib/pacman`).
     pub db_path: String,
-    /// Можно ли завернуть сборку в пользовательский срез systemd.
+    /// Whether the build can be wrapped in a user systemd slice.
     pub slice: bool,
-    /// Начало команды помощника пакетов (`pkexec <путь> [--lang=…]`,
-    /// [`pkg_helper_prefix_live`]): оба root-шага идут через него, и пароль
-    /// спрашивают один раз на всю установку. `None` — прежний `pkexec
-    /// /bin/bash`, по паролю на шаг.
+    /// Start of the package helper command (`pkexec <path> [--lang=…]`,
+    /// [`pkg_helper_prefix_live`]): both root steps go through it, and the
+    /// password is asked once for the whole install. `None` — the old `pkexec
+    /// /bin/bash`, one password per step.
     pub pkg_helper: Option<Vec<String>>,
 }
 
@@ -1197,14 +1208,14 @@ struct Run<'a> {
     sink: Arc<dyn DeOpSink>,
     cancel: &'a CancelToken,
     ctx: &'a RebuildCtx,
-    /// Система уже тронута — отмена больше не честна.
+    /// The system has already been touched — cancelling is no longer honest.
     touched: bool,
 }
 
-/// Таймаут клона и ключей: сеть, а не машина.
+/// Timeout for the clone and keys: network-bound, not machine-bound.
 const NET_TIMEOUT_SECS: u64 = 600;
-/// Таймаут установки (`pkexec bash` и `pkexec rexon-pkg-helper arch
-/// build-deps|install-built` по argv в класс не попадают).
+/// Install timeout (`pkexec bash` and `pkexec rexon-pkg-helper arch
+/// build-deps|install-built` don't fall into the class by argv).
 const INSTALL_TIMEOUT_SECS: u64 = 1800;
 
 fn denied(rc: Option<i32>) -> bool {
@@ -1228,9 +1239,9 @@ impl Run<'_> {
         Arc::new(move |line: &str| sink.progress(STAGE_RAW, line, None))
     }
 
-    /// Строки root-шагов (pacman): то же, что [`Run::line_sink`], но через
-    /// [`pacman_log_line`] — вопросы, на которые pacman отвечает себе сам,
-    /// человеку не показываются. Файловый журнал шага остаётся полным.
+    /// Root step lines (pacman): the same as [`Run::line_sink`], but through
+    /// [`pacman_log_line`] — questions pacman answers by itself are not shown to
+    /// the person. The step's file log stays complete.
     fn pacman_line_sink(&self) -> Arc<dyn Fn(&str) + Send + Sync> {
         let sink = self.sink.clone();
         Arc::new(move |line: &str| {
@@ -1266,16 +1277,16 @@ impl Run<'_> {
         crate::system_plan::pkexec_denied_message(manual)
     }
 
-    /// Собрать и поставить один пакет; `edit` — собрать его под своим
-    /// именем по правке рецепта ([`RecipeEdit`]).
+    /// Build and install one package; `edit` — build it under its own name per
+    /// the recipe edit ([`RecipeEdit`]).
     fn one(&mut self, pkg: &str, edit: Option<&RecipeEdit>, share: (f64, f64)) -> Result<(), Stop> {
         let at = |f: f64| Some(share.0 + (share.1 - share.0) * f);
-        // Имя того, что соберётся и встанет.
+        // Name of what will be built and installed.
         let built_name = edit.map(|e| e.pkgname.as_str()).unwrap_or(pkg);
         self.checkpoint()?;
         self.emit("rebuild", &msg_fetch(pkg), at(0.0));
 
-        // Что лежит в репозитории: имя репозитория, версия.
+        // What is in the repository: repository name, version.
         let info = self.io.run(&info_cmd(pkg).argv, None, true);
         if info.rc() != Some(0) {
             return Err(Stop::Failed(err_not_in_repo(pkg)));
@@ -1285,8 +1296,8 @@ impl Run<'_> {
         if !valid_pkg_name(&repo) || version.is_empty() {
             return Err(Stop::Failed(err_not_in_repo(pkg)));
         }
-        // pkgbase — из записи базы синхронизации; не прочли — имя пакета
-        // (у большинства пакетов они совпадают).
+        // pkgbase — from the sync database entry; if unreadable — the package name
+        // (for most packages they match).
         let desc = self.io.run(
             &[
                 "tar".to_string(),
@@ -1302,7 +1313,7 @@ impl Run<'_> {
             .flatten()
             .unwrap_or_else(|| pkg.to_string());
 
-        // Рецепт.
+        // Recipe.
         let root = rebuild_root(&self.ctx.cache_dir);
         let dir = format!("{root}/{base}");
         self.io.make_dirs(&root).map_err(|_| Stop::Failed(err_fetch(pkg)))?;
@@ -1332,7 +1343,7 @@ impl Run<'_> {
         }
         self.checkpoint()?;
 
-        // Что нужно для сборки и чего нет.
+        // What the build needs and what is missing.
         let wanted = build_requirements(&srcinfo);
         let test = self.io.run(&deptest_argv(&wanted), None, true);
         let mut missing = test
@@ -1340,8 +1351,8 @@ impl Run<'_> {
             .and_then(|rc| parse_deptest(rc, &test.stdout))
             .ok_or_else(|| Stop::Failed(err_deptest()))?;
         if let Some(edit) = edit {
-            // Правка — дописанным в конец PKGBUILD текстом: строки Arch не
-            // трогаются, суммы и подписи исходников остаются его.
+            // The edit is text appended to the end of PKGBUILD: Arch's lines are not
+            // touched, the source sums and signatures stay its own.
             let probes = |dep: &str| {
                 let r = self.io.run(&probe_cmd(dep).argv, None, true);
                 (r.rc() == Some(0)).then(|| r.stdout.clone())
@@ -1370,11 +1381,12 @@ impl Run<'_> {
             self.touched = true;
             self.sink.cancellable(false);
             let log = format!("{root}/{base}-deps.log");
-            // ⚠️ Таймаут свой: `pkexec bash …` по argv в класс установки не
-            // попадает, и по умолчанию его ждали бы 30 с — замер в контейнере
-            // 20.10.2026: отказ «не поставилось» при pacman, который ещё качал.
-            // Сеанс прав окна (один пароль на всё время окна); его нет —
-            // прежний путь: помощник пакетов, иначе `pkexec /bin/bash`.
+            // ⚠️ Our own timeout: `pkexec bash …` doesn't fall into the install class by
+            // argv, and by default it would be waited on for 30 s — measured in a
+            // container 20.10.2026: a "not installed" refusal while pacman was still
+            // downloading. The window's privilege session (one password for the whole
+            // time the window is open); without it — the old path: the package helper,
+            // otherwise `pkexec /bin/bash`.
             let op = PrivOp::BuildDeps { names: missing.clone() };
             let r = match self.io.run_priv(&op, &[], &log, self.pacman_line_sink()) {
                 Some(r) => r,
@@ -1398,7 +1410,7 @@ impl Run<'_> {
         }
         self.checkpoint()?;
 
-        // Ключи подписи исходников.
+        // Source signing keys.
         for fpr in &srcinfo.validpgpkeys {
             if !fpr.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Err(Stop::Failed(err_key(fpr)));
@@ -1422,7 +1434,7 @@ impl Run<'_> {
             }
         }
 
-        // Сборка.
+        // Build.
         self.emit("rebuild", &msg_build(built_name), at(0.3));
         let log = format!("{root}/{base}.log");
         let built = self.io.run_logged(
@@ -1444,16 +1456,16 @@ impl Run<'_> {
             .ok_or_else(|| Stop::Failed(err_no_file(built_name)))?;
         self.checkpoint()?;
 
-        // Установка.
+        // Install.
         self.emit("install", &msg_install(built_name), at(0.85));
         self.wait_lock()?;
         self.touched = true;
         self.sink.cancellable(false);
         let install_log = format!("{root}/{base}-install.log");
-        // Помощник примет файл только из каталога пересборок; файл вне его
-        // (так не бывает: `PKGDEST` задан явно) — прежний путь, а не отказ.
-        // Через помощник снятие пакетов правки — отдельным `remove` после
-        // установки: `install-built` снимает только поставленное `build-deps`.
+        // The helper accepts the file only from the rebuild directory; a file outside
+        // it (doesn't happen: `PKGDEST` is set explicitly) takes the old path, not a
+        // refusal. Through the helper, removing the edit's packages is a separate
+        // `remove` after the install: `install-built` removes only what `build-deps` installed.
         let (argv, then_remove) = match &self.ctx.pkg_helper {
             Some(helper) if file.starts_with(&format!("{root}/")) => (
                 helper_install_argv(helper, &file, &helper_build_only_names(&build_only_list), replace),
@@ -1461,10 +1473,10 @@ impl Run<'_> {
             ),
             _ => (install_argv(&file, &remove_after, replace), None),
         };
-        // Сеанс прав: файл уходит дескриптором, снимаются только сборочные,
-        // поставленные его же `build-deps` (как у помощника пакетов). Файл
-        // вне каталога пересборок помощник не примет — такой идёт прежним
-        // путём, как и выше.
+        // Privilege session: the file goes as a descriptor, only build packages
+        // installed by its own `build-deps` are removed (as with the package
+        // helper). A file outside the rebuild directory won't be accepted by the
+        // helper — it takes the old path, as above.
         let via_session = if file.starts_with(&format!("{root}/")) {
             let op = PrivOp::InstallBuilt {
                 package: LocalFile { slot: 0, label: file.clone() },
@@ -1486,7 +1498,7 @@ impl Run<'_> {
         if r.rc() != Some(0) {
             return Err(Stop::Failed(err_install(built_name)));
         }
-        // Не снялось — как и у прежнего пути, не ошибка: собранное стоит.
+        // Not removed — as with the old path, not an error: the built package is installed.
         let remove_log = format!("{root}/{base}-remove.log");
         if session_used && !edit_remove.is_empty() {
             let op = PrivOp::PkgRemove { family: PkgFamily::Arch, packages: edit_remove.clone() };
@@ -1501,7 +1513,7 @@ impl Run<'_> {
     }
 }
 
-/// Собрать заново и поставить `packages` (по одному, по порядку).
+/// Rebuild and install `packages` (one by one, in order).
 pub fn rebuild_with(
     io: &dyn RebuildIo,
     sink: Arc<dyn DeOpSink>,
@@ -1513,8 +1525,8 @@ pub fn rebuild_with(
     rebuild_jobs(io, sink, cancel, ctx, &jobs, msg_done(packages))
 }
 
-/// Собрать `pkg` по рецепту Arch с правкой `edit` и поставить под именем
-/// `edit.pkgname`. `done` — итог для человека.
+/// Build `pkg` from the Arch recipe with edit `edit` and install it under the
+/// name `edit.pkgname`. `done` — the result for the person.
 pub fn rebuild_edited_with(
     io: &dyn RebuildIo,
     sink: Arc<dyn DeOpSink>,
@@ -1562,8 +1574,8 @@ fn rebuild_jobs(
     sink.cancellable(false);
     match result {
         Ok(()) => {
-            // Итог в журнал пишет окно хода по `DeOpOutcome` — второй строкой
-            // «done» здесь он бы задвоился.
+            // The progress window writes the result to the log from `DeOpOutcome` — a
+            // second "done" line here would duplicate it.
             DeOpOutcome {
                 ok: true,
                 message: done,
@@ -1589,7 +1601,7 @@ fn rebuild_jobs(
     }
 }
 
-/// Исполнитель на живой машине.
+/// Executor on a live machine.
 pub struct LiveRebuildIo {
     io: crate::system_de_exec::LiveDeOpsIo,
 }
@@ -1676,14 +1688,14 @@ impl RebuildIo for LiveRebuildIo {
         log_path: &str,
         line: Arc<dyn Fn(&str) + Send + Sync>,
     ) -> Option<RunOut> {
-        // Журнал шага начинается заново, как у `run_logged`.
+        // The step log starts afresh, as in `run_logged`.
         let _ = std::fs::write(log_path, b"");
         crate::privilege::run::run_live(op, files, Some(log_path), &mut |l: &str| line(l))
     }
 }
 
-/// Где собирать на живой машине. `Err` — текст отказа: не Arch или
-/// неизменяемая система (поставленное поверх сотрёт обновление).
+/// Where to build on a live machine. `Err` — refusal text: not Arch, or an
+/// immutable system (an update would wipe whatever is installed on top).
 pub fn rebuild_ctx_live() -> Result<RebuildCtx, String> {
     let distro = crate::system::DistroDetector::detect_live();
     if distro.family_live() != PkgFamily::Arch
@@ -1719,7 +1731,7 @@ pub fn rebuild_ctx_live() -> Result<RebuildCtx, String> {
     })
 }
 
-/// Отказ до первого побочного действия — в журнал окна и итогом.
+/// Refusal before the first side effect — to the window log and as the result.
 pub fn refuse(sink: &Arc<dyn DeOpSink>, message: String) -> DeOpOutcome {
     sink.progress(STAGE_ERROR, &message, None);
     DeOpOutcome {
@@ -1730,8 +1742,8 @@ pub fn refuse(sink: &Arc<dyn DeOpSink>, message: String) -> DeOpOutcome {
     }
 }
 
-/// Пересборка на живой машине: отказ на не-Arch и неизменяемых системах
-/// — до первого побочного действия.
+/// Rebuild on a live machine: refusal on non-Arch and immutable systems
+/// — before the first side effect.
 pub fn rebuild_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken, packages: &[String]) -> DeOpOutcome {
     match rebuild_ctx_live() {
         Ok(ctx) => rebuild_with(&LiveRebuildIo::new(), sink, &cancel, &ctx, packages),
@@ -1743,14 +1755,14 @@ pub fn rebuild_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken, packages: &[St
 mod tests {
     use super::*;
 
-    // ── Записанные ответы pacman, 19.10.2026 (CachyOS, extra) ───────────
+    // ── Recorded pacman answers, 19.10.2026 (CachyOS, extra) ───────────
 
     /// `LC_ALL=C pacman -Sp switchboard-plug-online-accounts` (stdout+stderr).
     const PROBE_SWITCHBOARD: &str = "error: failed to prepare transaction (could not satisfy dependencies)\n\
 :: unable to satisfy dependency 'libcamel-1.2.so=67-64' required by switchboard-plug-online-accounts\n\
 :: unable to satisfy dependency 'libedataserver-1.2.so=27-64' required by switchboard-plug-online-accounts\n";
 
-    /// `LC_ALL=C pacman -Si evolution-data-server` (начало).
+    /// `LC_ALL=C pacman -Si evolution-data-server` (beginning).
     const SI_EDS: &str = "Repository      : extra\n\
 Name            : evolution-data-server\n\
 Version         : 3.62.1-1\n\
@@ -1861,7 +1873,7 @@ Conflicts With  : None\n";
 
     #[test]
     fn missing_dependency_is_not_offered_a_rebuild() {
-        // Библиотеки нет в репозитории вовсе: пересборка упала бы на ней же.
+        // The library is not in the repository at all: a rebuild would fail on it too.
         let out = ":: unable to satisfy dependency 'libgone.so=3-64' required by foo\n";
         let run = answers(vec![
             ("pacman -Sp --noconfirm --print-format %n foo".to_string(), (1, out, "")),
@@ -1869,12 +1881,12 @@ Conflicts With  : None\n";
         ]);
         assert!(find_candidates(PkgFamily::Arch, false, &["foo".to_string()], &run).is_empty());
 
-        // Обычная (не библиотечная) зависимость, которой нет.
+        // An ordinary (non-library) dependency that is missing.
         let out = ":: unable to satisfy dependency 'python-gone' required by foo\n";
         let run = answers(vec![("pacman -Sp --noconfirm --print-format %n foo".to_string(), (1, out, ""))]);
         assert!(find_candidates(PkgFamily::Arch, false, &["foo".to_string()], &run).is_empty());
 
-        // Одна зависимость лечится, другая нет — кнопки нет.
+        // One dependency is curable, the other isn't — no button.
         let out = ":: unable to satisfy dependency 'libcamel-1.2.so=67-64' required by foo\n\
                    :: unable to satisfy dependency 'python-gone' required by foo\n";
         let run = answers(vec![
@@ -1930,7 +1942,7 @@ mod rebuild_tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    /// `.SRCINFO` из gitlab.archlinux.org, метка 8.0.2-3 (снято 19.10.2026).
+    /// `.SRCINFO` from gitlab.archlinux.org, tag 8.0.2-3 (taken 19.10.2026).
     const SRCINFO: &str = "pkgbase = switchboard-plug-online-accounts\n\
 \tpkgdesc = Switchboard Online Accounts Plug\n\
 \tpkgver = 8.0.2\n\
@@ -1957,7 +1969,7 @@ mod rebuild_tests {
 \n\
 pkgname = switchboard-plug-online-accounts\n";
 
-    /// `makepkg --packagelist` в контейнере archlinux:latest (OPTIONS с debug).
+    /// `makepkg --packagelist` in an archlinux:latest container (OPTIONS with debug).
     const PACKAGELIST: &str = "/home/u/.cache/rexon/rebuild/switchboard-plug-online-accounts/switchboard-plug-online-accounts-8.0.2-3-x86_64.pkg.tar.zst\n\
 /home/u/.cache/rexon/rebuild/switchboard-plug-online-accounts/switchboard-plug-online-accounts-debug-8.0.2-3-x86_64.pkg.tar.zst\n";
 
@@ -1975,17 +1987,17 @@ pkgname = switchboard-plug-online-accounts\n";
 
     #[derive(Default)]
     struct Fake {
-        /// (начало командной строки, ответ) — берётся первый подходящий.
+        /// (command line prefix, answer) — the first match is taken.
         answers: Vec<(String, RunOut)>,
         files: HashMap<String, String>,
         calls: RefCell<Vec<Vec<String>>>,
-        /// Дописанное в файлы: (путь, текст).
+        /// Text appended to files: (path, text).
         appended: RefCell<Vec<(String, String)>>,
-        /// Таймауты долгих команд: (командная строка, таймаут).
+        /// Timeouts of long commands: (command line, timeout).
         timeouts: RefCell<Vec<(String, Option<u64>)>>,
-        /// Сеанс прав окна есть: root-шаги уходят в `run_priv`.
+        /// A window privilege session exists: root steps go to `run_priv`.
         session: bool,
-        /// Операции сеанса прав: (операция, файлы).
+        /// Privilege session operations: (operation, files).
         priv_ops: RefCell<Vec<(PrivOp, Vec<String>)>>,
     }
 
@@ -2052,7 +2064,7 @@ pkgname = switchboard-plug-online-accounts\n";
         }
     }
 
-    /// Вопрос pacman, который стенд печатает в каждом шаге.
+    /// A pacman question the test rig prints in every step.
     const FAKE_PROMPT: &str = ":: Proceed with installation? [Y/n]";
 
     #[derive(Default)]
@@ -2075,7 +2087,7 @@ pkgname = switchboard-plug-online-accounts\n";
         }
     }
 
-    /// Помощник пакетов установлен (пакет Rexon): тот же стенд.
+    /// The package helper is installed (Rexon package): the same test rig.
     const HELPER: &str = "/usr/lib/rexon-pkg-helper";
 
     fn helper_ctx() -> RebuildCtx {
@@ -2085,8 +2097,8 @@ pkgname = switchboard-plug-online-accounts\n";
         }
     }
 
-    /// Живой случай: в репозитории 8.0.2-3, рецепт той же метки, на машине
-    /// нет granite и switchboard (зависимости самого пакета).
+    /// Real case: the repository has 8.0.2-3, the recipe has the same tag, the
+    /// machine lacks granite and switchboard (the package's own dependencies).
     fn pantheon_fake() -> Fake {
         let mut f = Fake::default();
         f.answer(
@@ -2177,8 +2189,8 @@ pkgname = switchboard-plug-online-accounts\n";
         assert!(!build_argv(DIR, PKG, false).iter().any(|a| a == "systemd-run"));
     }
 
-    /// Локаль сборки — UTF-8 (инструменты Qt молчат о кодировке), но не
-    /// переведённая: [`build_failure`] разбирает английский вывод makepkg.
+    /// Build locale is UTF-8 (Qt tools stay quiet about the encoding), but not
+    /// translated: [`build_failure`] parses makepkg's English output.
     #[test]
     fn build_locale_is_utf8_but_untranslated() {
         let argv = build_argv(DIR, PKG, false);
@@ -2186,9 +2198,9 @@ pkgname = switchboard-plug-online-accounts\n";
         assert!(!argv.iter().any(|a| a == "LC_ALL=C" || a.starts_with("LANG=")), "{argv:?}");
     }
 
-    /// Пути сборки отображаются туда же, куда их отображает makepkg при
-    /// `options=(debug)`, и только если `$srcdir` известен точно
-    /// (`BUILDDIR` = каталог рецепта) и путь без пробелов.
+    /// Build paths are mapped to the same place makepkg maps them with
+    /// `options=(debug)`, and only if `$srcdir` is known exactly
+    /// (`BUILDDIR` = recipe directory) and the path has no spaces.
     #[test]
     fn build_maps_srcdir_like_makepkg_debug() {
         let argv = build_argv(DIR, PKG, false);
@@ -2197,7 +2209,7 @@ pkgname = switchboard-plug-online-accounts\n";
         assert_eq!(argv[n - 2], format!("CFLAGS+= {map}"));
         assert_eq!(argv[n - 1], format!("CXXFLAGS+= {map}"));
         assert!(argv.contains(&format!("BUILDDIR={DIR}")));
-        // Присваивания — после всех ключей makepkg: он берёт их хвостом.
+        // Assignments come after all makepkg switches: it takes them from the tail.
         let pos = argv.iter().position(|a| a == "--noprogressbar").unwrap();
         assert_eq!(pos, n - 3);
         let spaced = build_argv("/home/a b/.cache/rexon/rebuild/x", "x", false);
@@ -2205,9 +2217,9 @@ pkgname = switchboard-plug-online-accounts\n";
         assert!(!build_argv(DIR, "-bad", false).iter().any(|a| a.contains("file-prefix-map")));
     }
 
-    /// Вопросы, на которые pacman отвечает себе сам, в журнал человека не
-    /// идут; выбор поставщика объяснён; прочее — как есть. Строки — с живой
-    /// установки Deepin (`deepin-session-deps.log`, 02.11.2026).
+    /// Questions pacman answers by itself don't go to the person's log; the
+    /// provider choice is explained; the rest is as is. Lines are from a live
+    /// Deepin install (`deepin-session-deps.log`, 02.11.2026).
     #[test]
     fn pacman_self_answered_questions_are_not_shown() {
         for hidden in [
@@ -2233,9 +2245,9 @@ pkgname = switchboard-plug-online-accounts\n";
         }
     }
 
-    /// Фильтр стоит только на root-шагах (pacman): у сборки (makepkg)
-    /// строки идут как есть. Стенд печатает вопрос pacman в каждом шаге —
-    /// в журнал человека он попадает ровно раз, от сборки.
+    /// The filter applies only to root steps (pacman): build (makepkg) lines go
+    /// as is. The test rig prints a pacman question in every step — it reaches
+    /// the person's log exactly once, from the build.
     #[test]
     fn only_root_steps_are_filtered() {
         let f = pantheon_fake();
@@ -2248,8 +2260,8 @@ pkgname = switchboard-plug-online-accounts\n";
         assert_eq!(count(FAKE_PROMPT), 1, "{log:?}");
     }
 
-    /// Замена конфликтующего — только `--ask=4` у `pacman -U` собранного
-    /// файла, снимаемое — тем же скриптом после установки.
+    /// Replacing the conflicting package is only `--ask=4` on `pacman -U` of the
+    /// built file; what's removed goes through the same script after the install.
     #[test]
     fn replacing_install_answers_only_the_conflict_question() {
         let plain = install_argv("/x/f.pkg.tar.zst", &["deepin-kwin".to_string()], false);
@@ -2300,12 +2312,12 @@ pkgname = switchboard-plug-online-accounts\n";
         let deps = &calls[pos("pkexec /bin/bash -c export LC_ALL=C; exec pacman -S")];
         assert!(deps.ends_with("rexon-rebuild libgranite-7.so libswitchboard-3.so"), "{deps}");
         assert!(deps.contains("--asdeps"));
-        // Зависимости — до сборки, сборка — до установки.
+        // Dependencies before the build, the build before the install.
         assert!(pos("pkexec /bin/bash -c export LC_ALL=C; exec") < pos("systemd-run"));
         assert!(pos("systemd-run") < pos("pkexec /bin/bash -c export LC_ALL=C; f="));
         let install = &calls[pos("pkexec /bin/bash -c export LC_ALL=C; f=")];
-        // Ставится сам пакет, не -debug; снимать нечего — недоставало
-        // зависимостей самого пакета.
+        // The package itself is installed, not -debug; nothing to remove — what was
+        // missing were the package's own dependencies.
         assert!(install.ends_with(&format!(
             "rexon-rebuild {DIR}/switchboard-plug-online-accounts-8.0.2-3-x86_64.pkg.tar.zst"
         )), "{install}");
@@ -2313,8 +2325,8 @@ pkgname = switchboard-plug-online-accounts\n";
         assert!(outcome.message.contains(PKG));
     }
 
-    /// `pkexec bash …` таймаута по классу команды не получает (30 с опроса):
-    /// оба шага root — со своим, длинным.
+    /// `pkexec bash …` gets no timeout from the command class (30 s of polling):
+    /// both root steps get their own, long one.
     #[test]
     fn root_steps_wait_as_long_as_an_install() {
         let f = pantheon_fake();
@@ -2325,9 +2337,9 @@ pkgname = switchboard-plug-online-accounts\n";
         assert_eq!(root, vec![&Some(INSTALL_TIMEOUT_SECS), &Some(INSTALL_TIMEOUT_SECS)]);
     }
 
-    /// Помощник пакетов есть — оба root-шага идут через него (одно действие
-    /// polkit с `auth_admin_keep`: пароль один на всю установку), `pkexec
-    /// /bin/bash` не зовётся вовсе; таймауты те же.
+    /// The package helper exists — both root steps go through it (one polkit
+    /// action with `auth_admin_keep`: one password for the whole install),
+    /// `pkexec /bin/bash` is not called at all; timeouts are the same.
     #[test]
     fn root_steps_go_through_pkg_helper_when_installed() {
         let mut f = pantheon_fake();
@@ -2358,9 +2370,10 @@ pkgname = switchboard-plug-online-accounts\n";
         assert_eq!(root_t, vec![Some(INSTALL_TIMEOUT_SECS), Some(INSTALL_TIMEOUT_SECS)]);
     }
 
-    /// Сеанс прав окна есть: оба root-шага уходят помощнику сеанса —
-    /// операциями, а не командами; ни `pkexec`, ни помощника пакетов. Файл —
-    /// дескриптором (путь в списке файлов), снимаемое — только сборочное.
+    /// A window privilege session exists: both root steps go to the session
+    /// helper — as operations, not commands; neither `pkexec` nor the package
+    /// helper. The file goes as a descriptor (path in the file list), only build
+    /// packages are removed.
     #[test]
     fn root_steps_go_through_privilege_session() {
         for ctx in [ctx(), helper_ctx()] {
@@ -2391,8 +2404,8 @@ pkgname = switchboard-plug-online-accounts\n";
         }
     }
 
-    /// Замена конфликтующего через помощник — режим `replace`, файл и
-    /// снимаемое — позиционно после него.
+    /// Replacing the conflicting package through the helper — `replace` mode, the
+    /// file and what's removed go positionally after it.
     #[test]
     fn helper_install_argv_modes() {
         let h = ["pkexec".to_string(), HELPER.to_string(), "--lang=ru".to_string()];
@@ -2406,9 +2419,9 @@ pkgname = switchboard-plug-online-accounts\n";
         );
     }
 
-    /// Файл вне каталога пересборок помощник не примет — такой случай идёт
-    /// прежним путём, а не отказом; зависимости при этом всё равно через
-    /// помощник.
+    /// The helper won't accept a file outside the rebuild directory — such a case
+    /// takes the old path rather than a refusal; dependencies still go through
+    /// the helper.
     #[test]
     fn package_outside_rebuild_root_falls_back_to_bash() {
         let mut f = pantheon_fake();
@@ -2424,8 +2437,8 @@ pkgname = switchboard-plug-online-accounts\n";
         assert!(calls.iter().any(|c| c.starts_with("pkexec /bin/bash -c export LC_ALL=C; f=")));
     }
 
-    /// Окно пароля помощника закрыли — тот же честный отказ с ручной
-    /// командой, сборка не начинается.
+    /// The helper's password dialog was closed — the same honest refusal with a
+    /// manual command, the build doesn't start.
     #[test]
     fn closed_password_window_of_helper_says_so() {
         let mut f = pantheon_fake();
@@ -2506,7 +2519,7 @@ pkgname = switchboard-plug-online-accounts\n";
         f.files.insert(format!("{DIR}/keys/pgp/{fpr}.asc"), String::new());
         f.answers.insert(0, (format!("gpg --list-keys {fpr}"), out(2, "")));
         let (outcome, _) = rebuild(&f, &CancelToken::new());
-        // Ключ так и не появился — сборки без проверки нет.
+        // The key never showed up — no build without verification.
         assert!(!outcome.ok);
         assert!(f.calls().contains(&format!("gpg --import {DIR}/keys/pgp/{fpr}.asc")));
         assert!(!f.calls().iter().any(|c| c.starts_with("systemd-run")));
@@ -2530,9 +2543,9 @@ pkgname = switchboard-plug-online-accounts\n";
         assert_eq!(parse_deptest(1, "error"), None);
     }
 
-    // ── Правка рецепта (Deepin на Treeland) ─────────────────────────────
+    // ── Recipe edit (Deepin on Treeland) ───────────────────────────────
 
-    /// `PKGBUILD` из gitlab.archlinux.org, метка 2.0.33-1 (снято 20.10.2026).
+    /// `PKGBUILD` from gitlab.archlinux.org, tag 2.0.33-1 (taken 20.10.2026).
     const DEEPIN_SESSION_PKGBUILD: &str = r#"# Maintainer: Felix Yan <felixonmars@archlinux.org>
 
 pkgname=deepin-session
@@ -2557,7 +2570,7 @@ package() {
 }
 "#;
 
-    /// `.SRCINFO` той же метки (сокращено до полей, которые читает разбор).
+    /// `.SRCINFO` of the same tag (trimmed to the fields the parser reads).
     const DEEPIN_SESSION_SRCINFO: &str = "pkgbase = deepin-session\n\
 \tpkgver = 2.0.33\n\tpkgrel = 1\n\tarch = x86_64\n\tgroups = deepin\n\
 \tmakedepends = git\n\tmakedepends = cmake\n\tmakedepends = ninja\n\
@@ -2603,8 +2616,8 @@ pkgname = deepin-session\n";
         assert!(recipe_appendix(&eof, &info, "2.0.33-1", &[]).is_none());
     }
 
-    /// Дописанный рецепт читает настоящий bash — так же, как makepkg:
-    /// имя, версия, зависимости, provides/conflicts и обёрнутая package().
+    /// The appended recipe is read by real bash — just as makepkg does:
+    /// name, version, dependencies, provides/conflicts and the wrapped package().
     #[test]
     fn edited_recipe_is_read_by_bash_as_intended() {
         let info = parse_srcinfo(DEEPIN_SESSION_SRCINFO, "x86_64").unwrap();
@@ -2628,8 +2641,8 @@ declare -f package"#;
         assert!(lines.contains(&"rel=1.1"));
         assert!(lines.contains(&"desc=New deepin session, based on systemd and existing projects (Rexon build without deepin-kwin)"));
         assert!(!lines.contains(&"dep=deepin-kwin"), "{text}");
-        // Отложенная зависимость не проверяется перед сборкой, но
-        // записывается в пакет: package() возвращает полный список.
+        // A deferred dependency isn't checked before the build but is recorded
+        // in the package: package() returns the full list.
         assert!(!lines.contains(&"dep=deepin-shell") && lines.contains(&"dep=bash"), "{text}");
         assert_eq!(lines.iter().filter(|l| l.starts_with("dep=")).count(), 19);
         assert!(lines.contains(&"pkgdep=deepin-shell") && !lines.contains(&"pkgdep=deepin-kwin"));
@@ -2639,14 +2652,14 @@ declare -f package"#;
         assert!(lines.contains(&"prov=deepin-session=2.0.33-1.1"));
         assert!(lines.contains(&"conf=deepin-session"));
         assert!(lines.contains(&"grp=deepin"), "группа остаётся — по ней снимается стол");
-        // package(): сначала рецепт Arch, затем снятие и свои файлы.
+        // package(): first the Arch recipe, then removals and our own files.
         assert!(text.contains("_rexon_package_recipe"));
         assert!(text.contains("rm -f -- \"$pkgdir/usr/share/xsessions/deepin.desktop\""));
         assert!(text.contains("install -Dm0755 /dev/stdin \"$pkgdir/usr/share/libalpm/scripts/check\""));
     }
 
-    /// Пересборка с правкой: рецепт дописан, `deepin-kwin` не просится ни
-    /// в сборку, ни в установку, ставится файл под своим именем.
+    /// Rebuild with an edit: the recipe is appended, `deepin-kwin` is requested
+    /// neither for the build nor for the install, the file is installed under our own name.
     const DEEPIN_DIR: &str = "/home/u/.cache/rexon/rebuild/deepin-session";
 
     fn deepin_fake() -> Fake {
@@ -2659,8 +2672,8 @@ declare -f package"#;
         );
         f.answer("tar -xOf", 0, "%BASE%\ndeepin-session\n");
         f.answer("pacman -T", 127, "deepin-shell\ncmake\n");
-        // deepin-shell тянет deepin-session, а тот — deepin-kwin (живой ответ
-        // в контейнере 20.10.2026, сокращён): ставить его до сборки нельзя.
+        // deepin-shell pulls deepin-session, which pulls deepin-kwin (live answer
+        // in a container 20.10.2026, trimmed): it can't be installed before the build.
         f.answer("pacman -Sp --noconfirm --print-format %n deepin-shell", 0, "deepin-session-shell\ndeepin-session\ndeepin-kwin\ndeepin-shell\n");
         f.answer(
             "env PKGDEST=",
@@ -2673,9 +2686,9 @@ declare -f package"#;
         f
     }
 
-    /// Переход с обычного Deepin через помощник: `install-built` снимает
-    /// только сборочное (то, что поставил `build-deps`), а `deepin-kwin`
-    /// правки — отдельным `remove` помощника после установки; пароль тот же.
+    /// Switching from regular Deepin through the helper: `install-built` removes
+    /// only build packages (what `build-deps` installed), and the edit's
+    /// `deepin-kwin` goes via a separate helper `remove` after the install; same password.
     #[test]
     fn migration_via_helper_removes_x11_wm_with_remove_op() {
         let f = deepin_fake();
@@ -2738,10 +2751,10 @@ declare -f package"#;
         assert_eq!(build_failure("error: meson failed"), BuildFailure::Other);
     }
 
-    /// Живая машина до первого пароля: настоящие `pacman -Si`, база
-    /// синхронизации, клон с gitlab.archlinux.org, `.SRCINFO`, `pacman -T`;
-    /// окно пароля «закрывается» (126) — в систему ничего не ставится.
-    /// Сеть и Arch нужны, поэтому только вручную:
+    /// A live machine up to the first password: real `pacman -Si`, the sync
+    /// database, a clone from gitlab.archlinux.org, `.SRCINFO`, `pacman -T`;
+    /// the password dialog is "closed" (126) — nothing gets installed into the
+    /// system. Needs network and Arch, so manual only:
     /// `cargo test -p rexon-core --lib live_host_flow_stops_at_password -- --ignored`.
     #[test]
     #[ignore]

@@ -1,23 +1,23 @@
-//! Раздел «Расширения GNOME»: установленное — со слов самой оболочки,
-//! действия плитки и обновления.
+//! The "GNOME Extensions" section: what is installed — according to the shell
+//! itself, tile actions and updates.
 //!
-//! Шина и запасной путь — в [`crate::gnome_shell_ext`] (типаж
-//! [`ShellExtIo`]); здесь — решения раздела поверх них:
+//! The bus and the fallback path are in [`crate::gnome_shell_ext`] (the
+//! [`ShellExtIo`] trait); here are the section's decisions on top of them:
 //!
-//! * список установленного: в сеансе GNOME — `ListExtensions` (диск —
-//!   запасной путь, когда оболочки нет), пометки плитки («Ошибка», «Не
-//!   поддерживает GNOME N», «Обновление — после перезахода»). Системное
-//!   расширение пометки не получает: пометки встают на место подписи
-//!   состояния, и «Системное» прятало «⏸️ Выключено» (живая проверка 15.11).
-//!   Что его не удалить и не править, говорят отсутствие «🗑» и подсказка
-//!   кнопки папки («скопируйте путь»);
-//! * действия: установить (окно оболочки, без неё — zip выпуска),
-//!   включить/выключить, настройки, удалить (только своё), открыть папку
-//!   или скопировать путь, подробности ошибки;
-//! * журнал установленного (`provider_id = ego`);
-//! * обновления: `CheckForUpdates()` и строка «Скачано обновлений: N».
+//! * the list of installed extensions: in a GNOME session — `ListExtensions`
+//!   (the disk is the fallback when there is no shell), tile marks ("Error",
+//!   "Does not support GNOME N", "Update — after logging in again"). A
+//!   system-wide extension gets no mark: marks take the place of the state
+//!   label, and "System" hid "⏸️ Off" (live check 15.11). That it cannot be
+//!   removed or edited is said by the absence of "🗑" and by the tooltip of the
+//!   folder button ("copy the path");
+//! * actions: install (the shell's dialog, without it — the release zip),
+//!   enable/disable, settings, remove (only the user's own), open the folder or
+//!   copy the path, error details;
+//! * the installed-items journal (`provider_id = ego`);
+//! * updates: `CheckForUpdates()` and the line "Updates downloaded: N".
 //!
-//! Всё проверяется на подделке [`ShellExtIo`], живая оболочка не нужна.
+//! Everything is tested on a fake [`ShellExtIo`], no live shell is needed.
 
 use std::path::{Path, PathBuf};
 
@@ -27,29 +27,29 @@ use crate::gnome_shell_ext::{self as gse, ExtInfo, ExtState, InstallOutcome, She
 use crate::i18n::{tr, trf};
 use crate::models::ThemeItem;
 
-/// Ключ раздела.
+/// Section key.
 pub const SECTION_KEY: &str = "gnomeext";
-/// Вид применения раздела (матрица `de_customization`).
+/// How the section applies (the `de_customization` matrix).
 pub const KIND: &str = "gnome-shell-extension";
-/// Выход из сеанса GNOME: подтверждение показывает сам GNOME.
+/// Logging out of the GNOME session: GNOME itself shows the confirmation.
 pub const LOGOUT_ARGV: &[&str] = &["gnome-session-quit", "--logout"];
-/// Сколько раз пересчитать скачанные обновления после `CheckForUpdates()`:
-/// оболочка отвечает сразу, а качает в фоне.
+/// How many times to recount downloaded updates after `CheckForUpdates()`: the
+/// shell answers immediately but downloads in the background.
 pub const UPDATE_RECOUNTS: usize = 6;
-/// Пауза между пересчётами, секунды.
+/// Pause between recounts, seconds.
 pub const UPDATE_RECOUNT_SECS: u64 = 5;
 
-/// Префикс номера плитки с диска этого раздела.
+/// Prefix of the tile id from this section's disk.
 fn local_prefix() -> String {
     format!("local:{SECTION_KEY}:")
 }
 
-/// Номер плитки установленного расширения (тот же, что даёт обзор диска).
+/// Tile id of an installed extension (the same as the disk scan gives).
 pub fn local_id(uuid: &str) -> String {
     format!("{}{uuid}", local_prefix())
 }
 
-/// uuid из номера плитки: `local:gnomeext:<uuid>` или `ego:<uuid>`.
+/// uuid from a tile id: `local:gnomeext:<uuid>` or `ego:<uuid>`.
 pub fn uuid_of_id(id: &str) -> Option<&str> {
     if let Some(u) = id.strip_prefix(&local_prefix()) {
         return crate::rxn_manifest::is_extension_uuid(u).then_some(u);
@@ -57,8 +57,8 @@ pub fn uuid_of_id(id: &str) -> Option<&str> {
     crate::gnome_ego::parse_item_id(id)
 }
 
-/// Снимок оболочки: `None` — оболочки нет или она не ответила (тогда
-/// раздел живёт по диску, как прежде).
+/// Shell snapshot: `None` — there is no shell or it did not answer (then the
+/// section lives by the disk, as before).
 pub fn shell_snapshot(io: &mut dyn ShellExtIo) -> Option<Vec<ExtInfo>> {
     if !io.shell_running() {
         return None;
@@ -72,43 +72,43 @@ pub fn shell_snapshot(io: &mut dyn ShellExtIo) -> Option<Vec<ExtInfo>> {
     }
 }
 
-/// Живой снимок (сеансовая шина).
+/// Live snapshot (session bus).
 pub fn live_snapshot() -> Option<Vec<ExtInfo>> {
     shell_snapshot(&mut gse::LiveShell::new())
 }
 
-/// uuid расширений, которые оболочка запустила (`state` = включено), —
-/// «Активно» на плитке.
+/// uuids of extensions the shell has started (`state` = enabled) — "Active" on
+/// the tile.
 pub fn active_uuids(list: &[ExtInfo]) -> Vec<String> {
     list.iter().filter(|e| e.state == ExtState::Active).map(|e| e.uuid.clone()).collect()
 }
 
-/// uuid расширений, включённых в настройке оболочки (даже если запуститься
-/// они не смогли) — по ним решается, «Включить» или «Выключить».
+/// uuids of extensions enabled in the shell's settings (even if they failed to
+/// start) — they decide whether it is "Enable" or "Disable".
 pub fn enabled_uuids(list: &[ExtInfo]) -> Vec<String> {
     list.iter().filter(|e| e.enabled || e.state == ExtState::Active).map(|e| e.uuid.clone()).collect()
 }
 
-// ── Пометки плитки ───────────────────────────────────────────────────────
+// ── Tile marks ───────────────────────────────────────────────────────────
 
-/// Пометка «Ошибка».
+/// The "Error" mark.
 pub fn error_label() -> String {
     tr("Error")
 }
 
-/// Пометка «Обновление — после перезахода».
+/// The "Update — after logging in again" mark.
 pub fn update_label() -> String {
     tr("Update — after you log in again")
 }
 
-/// Пометка расширения, которое лежит на диске, но оболочка его ещё не
-/// видела (поставлено мимо неё, без перезахода).
+/// Mark of an extension that is on disk but the shell has not seen yet
+/// (installed bypassing it, without logging in again).
 pub fn next_login_label() -> String {
     tr("Starts after you log in again")
 }
 
-/// Пометка устаревшего: «Не поддерживает GNOME 51». `shell` пусто —
-/// общая фраза.
+/// Mark of an outdated one: "Does not support GNOME 51". `shell` empty — a
+/// general phrase.
 pub fn out_of_date_label(shell: &str) -> String {
     if shell.is_empty() {
         tr("Doesn't support this GNOME version")
@@ -121,8 +121,8 @@ fn mark(key: &str, text: String) -> Value {
     serde_json::json!({ "key": key, "text": text })
 }
 
-/// Что делать с папкой расширения: своё — открыть в файловом менеджере,
-/// системное — скопировать путь (менять там нечего).
+/// What to do with the extension folder: the user's own — open it in the file
+/// manager; a system-wide one — copy the path (there is nothing to change there).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FolderAction {
     Open(String),
@@ -143,7 +143,7 @@ impl FolderAction {
     }
 }
 
-/// Действие с папкой у расширения из оболочки.
+/// Folder action for an extension from the shell.
 pub fn folder_action(info: &ExtInfo) -> Option<FolderAction> {
     if info.path.is_empty() {
         return None;
@@ -151,14 +151,14 @@ pub fn folder_action(info: &ExtInfo) -> Option<FolderAction> {
     Some(if info.is_system { FolderAction::Copy(info.path.clone()) } else { FolderAction::Open(info.path.clone()) })
 }
 
-/// Поля плитки по сведениям оболочки. `shell` — подпись версии GNOME
-/// («51») для пометки устаревшего. Ключи читает страница (шаг QML):
+/// Tile fields from the shell's information. `shell` — the GNOME version label
+/// ("51") for the outdated mark. The page reads the keys (the QML step):
 /// `gnomeShellKnown`, `gnomeUuid`, `gnomeState`, `gnomeEnabled`,
 /// `gnomeActive`, `gnomeCanChange`, `gnomeHasPrefs`, `gnomeSystem`,
 /// `gnomeCanRemove`, `gnomeHasUpdate`, `gnomeError`, `gnomeErrorText`,
 /// `gnomeUnsupported`, `gnomeUnsupportedText`, `gnomeFolderAction`,
-/// `gnomePath`, `gnomeVersion`, `gnomeUrl` (домашняя страница автора),
-/// `gnomeMarks` (`[{key, text}]` по порядку).
+/// `gnomePath`, `gnomeVersion`, `gnomeUrl` (the author's home page),
+/// `gnomeMarks` (`[{key, text}]` in order).
 pub fn shell_fields(info: &ExtInfo, shell: &str) -> Map<String, Value> {
     let mut m = Map::new();
     let error = info.state == ExtState::Error || (!info.error.is_empty() && info.state != ExtState::Active);
@@ -199,8 +199,8 @@ pub fn shell_fields(info: &ExtInfo, shell: &str) -> Map<String, Value> {
     m
 }
 
-/// Поля плитки расширения, которое лежит на диске, а запущенная оболочка
-/// его не знает: заработает после перезахода.
+/// Tile fields of an extension that is on disk while the running shell does not
+/// know it: it will work after logging in again.
 pub fn unseen_fields(uuid: &str) -> Map<String, Value> {
     let mut m = Map::new();
     m.insert("gnomeShellKnown".into(), Value::from(false));
@@ -209,11 +209,11 @@ pub fn unseen_fields(uuid: &str) -> Map<String, Value> {
     m
 }
 
-/// Плитка расширения, которое знает оболочка, а обзор диска не нашёл
-/// (каталог вне `~/.local/share` и `/usr/share`).
+/// Tile of an extension the shell knows but the disk scan did not find (a
+/// directory outside `~/.local/share` and `/usr/share`).
 pub fn item_from_info(info: &ExtInfo) -> ThemeItem {
-    // Тот же вид, что у плитки с диска («значок вид · состояние»): подпись
-    // состояния дописывает [`stamp_rows`] через [`author_with_state`].
+    // The same look as a tile from disk ("icon kind · state"): the state label is
+    // appended by [`stamp_rows`] via [`author_with_state`].
     let head = format!("🧩 {}", tr("GNOME Shell extension"));
     let author = match state_badge(info) {
         Some(badge) => format!("{head} · {badge}"),
@@ -233,14 +233,14 @@ pub fn item_from_info(info: &ExtInfo) -> ThemeItem {
     }
 }
 
-/// Подпись состояния установленного расширения — те же слова, что у
-/// переключаемого во вкладке «Расширения» (`qt_extensions`): «✅ Активно» /
-/// «⏸️ Выключено». `None` — включено, но не работает (ошибка, не та версия
-/// GNOME): это скажут пометки плитки, а подпись остаётся прежней.
+/// State label of an installed extension — the same words as for a toggleable
+/// one in the "Extensions" tab (`qt_extensions`): "✅ Active" / "⏸️ Off".
+/// `None` — enabled but not working (an error, the wrong GNOME version): the
+/// tile marks will say that, and the label stays as it was.
 ///
-/// Прежде у выключенного здесь стояло происхождение («🗂️ Установлена
-/// вручную») — то же место, где у включённого «✅ Активна», и человек не
-/// видел, что расширение выключено (живая проверка 15.11).
+/// Previously a disabled one showed its origin here ("🗂️ Installed manually") —
+/// the same place where an enabled one shows "✅ Active", and the person did not
+/// see that the extension was off (live check 15.11).
 pub fn state_badge(info: &ExtInfo) -> Option<String> {
     if info.state == ExtState::Active {
         Some(crate::qt_extensions::state_enabled_text())
@@ -251,17 +251,17 @@ pub fn state_badge(info: &ExtInfo) -> Option<String> {
     }
 }
 
-/// Подпись автора плитки с состоянием со слов оболочки: вид плитки (всё до
-/// первого « · ») и [`state_badge`] вместо подписи скана. `None` — менять
-/// нечего.
+/// The tile's author label with the state according to the shell: the tile kind
+/// (everything up to the first " · ") and [`state_badge`] instead of the scan's
+/// label. `None` — nothing to change.
 pub fn author_with_state(author: &str, info: &ExtInfo) -> Option<String> {
     let badge = state_badge(info)?;
     let head = author.split(" · ").next().unwrap_or(author).trim_end();
     Some(if head.is_empty() { badge } else { format!("{head} · {badge}") })
 }
 
-/// Список раздела в сеансе GNOME: плитки с диска плюс то, что знает только
-/// оболочка (по порядку её списка). Номера плиток с диска — `local:gnomeext:<uuid>`.
+/// The section list in a GNOME session: tiles from disk plus what only the shell
+/// knows (in the order of its list). Disk tile ids are `local:gnomeext:<uuid>`.
 pub fn merge_installed(mut items: Vec<ThemeItem>, list: &[ExtInfo]) -> Vec<ThemeItem> {
     for info in list {
         let id = local_id(&info.uuid);
@@ -272,9 +272,9 @@ pub fn merge_installed(mut items: Vec<ThemeItem>, list: &[ExtInfo]) -> Vec<Theme
     items
 }
 
-/// Дописать поля оболочки в строки раздела (`local:gnomeext:*` и `ego:*`).
-/// Плитка с диска, которой оболочка не знает, получает «после перезахода»;
-/// карточке витрины, которая уже стоит, — `installed`.
+/// Append the shell's fields to the section rows (`local:gnomeext:*` and
+/// `ego:*`). A disk tile the shell does not know gets "after logging in again";
+/// a storefront card that is already installed gets `installed`.
 pub fn stamp_rows(rows: &mut [Value], list: &[ExtInfo], shell: &str) {
     for row in rows.iter_mut() {
         let id = row.get("id").and_then(Value::as_str).unwrap_or("").to_string();
@@ -299,11 +299,12 @@ pub fn stamp_rows(rows: &mut [Value], list: &[ExtInfo], shell: &str) {
     }
 }
 
-/// Картинка установленных плиток (`local:gnomeext:<uuid>`) без своей — та
-/// же, что у карточки этого расширения в витрине. `picture_file` по uuid
-/// отдаёт уже лежащий на диске файл картинки витрины (память страниц EGO
-/// `gnome_ego::live_pictures` + кеш превью) или `None` — тогда плитке, как
-/// прежде, рисуется заглушка. Своих запросов на сайт здесь нет.
+/// Picture of installed tiles (`local:gnomeext:<uuid>`) without one of their
+/// own — the same as the card of this extension in the storefront.
+/// `picture_file` by uuid returns the storefront picture file already on disk
+/// (the EGO page memory `gnome_ego::live_pictures` + the preview cache) or
+/// `None` — then the tile gets a placeholder, as before. No requests to the
+/// site are made here.
 pub fn stamp_ego_pictures(rows: &mut [Value], picture_file: &dyn Fn(&str) -> Option<String>) {
     for row in rows.iter_mut() {
         let Some(m) = row.as_object_mut() else { continue };
@@ -318,9 +319,9 @@ pub fn stamp_ego_pictures(rows: &mut [Value], picture_file: &dyn Fn(&str) -> Opt
     }
 }
 
-// ── Действия ─────────────────────────────────────────────────────────────
+// ── Actions ──────────────────────────────────────────────────────────────
 
-/// Действие плитки (имя приходит из страницы).
+/// A tile action (the name comes from the page).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Toggle,
@@ -347,8 +348,8 @@ impl Action {
     }
 }
 
-/// Итог установки для строки состояния: `(удалось, текст)`. «Отмена» в окне
-/// оболочки — не ошибка.
+/// Installation result for the status line: `(succeeded, text)`. "Cancel" in
+/// the shell's dialog is not an error.
 pub fn install_message(name: &str, outcome: InstallOutcome) -> (bool, String) {
     match outcome {
         InstallOutcome::Installed => (true, trf("✅ Installed and turned on: %1", &[&name])),
@@ -359,9 +360,10 @@ pub fn install_message(name: &str, outcome: InstallOutcome) -> (bool, String) {
     }
 }
 
-/// Установить расширение: при запущенной оболочке — через неё (её окно
-/// подтверждения, запуск сразу); без неё — `fetch_zip` скачивает zip
-/// выпуска и он ставится запасным путём (заработает при следующем входе).
+/// Install an extension: with a running shell — through it (its confirmation
+/// dialog, starting immediately); without it — `fetch_zip` downloads the release
+/// zip and it is installed by the fallback path (it will work on the next
+/// login).
 pub fn install(
     io: &mut dyn ShellExtIo,
     uuid: &str,
@@ -380,8 +382,8 @@ pub fn install(
     r
 }
 
-/// Выпуск для запасного пути: под версию GNOME этой машины, иначе самый
-/// новый активный. `None` — ставить нечего.
+/// Release for the fallback path: for this machine's GNOME version, otherwise
+/// the newest active one. `None` — there is nothing to install.
 pub fn offline_release(
     releases: &[crate::gnome_ego::Release],
     shell: Option<&crate::gnome_ego::ShellVersion>,
@@ -396,7 +398,7 @@ pub fn offline_release(
         .map(|r| r.version)
 }
 
-/// Скачать zip выпуска (живая сеть) в `work`.
+/// Download the release zip (live network) into `work`.
 pub fn live_fetch_zip(
     uuid: &str,
     shell: Option<&crate::gnome_ego::ShellVersion>,
@@ -417,24 +419,25 @@ pub fn live_fetch_zip(
     }
 }
 
-// ── Расширения-зависимости пакетов оформления ────────────────────────────
+// ── Extensions required by appearance packages ───────────────────────────
 
-/// Итог установки расширения, которого требует пакет оформления
-/// (`.rxn`, образ «Как в дистрибутиве»: `"source": "gnome-extensions"`).
+/// Result of installing an extension that an appearance package requires
+/// (`.rxn`, a "Like in a distribution" look: `"source": "gnome-extensions"`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DepOutcome {
-    /// Уже стоит — ничего не делали.
+    /// Already installed — nothing was done.
     AlreadyInstalled,
     Done(InstallOutcome),
 }
 
-/// Поставить расширение-зависимость сразу, без вопроса Rexon «Да/Нет»
-/// (правило 24.10: зависимости ставятся сами, защита — окно подтверждения
-/// оболочки). Уже стоит (каталог у пользователя или в системе — `on_disk`,
-/// либо оболочка его знает) — пропуск. `unsupported` — сверка с сайтом до
-/// установки: `Some(причина)` — под эту версию GNOME выпуска нет, и окно
-/// оболочки человеку даже не показывается. Дальше — общий [`install`]:
-/// при оболочке — через неё, без неё — zip выпуска запасным путём.
+/// Install a dependency extension right away, without a Rexon "Yes/No" question
+/// (the rule of 24.10: dependencies install themselves, the protection is the
+/// shell's confirmation dialog). Already installed (a directory for the user or
+/// in the system — `on_disk`, or the shell knows it) — skip. `unsupported` — a
+/// check against the site before installing: `Some(reason)` — there is no
+/// release for this GNOME version, and the shell's dialog is not even shown to
+/// the person. Then the shared [`install`]: with a shell — through it, without
+/// it — the release zip via the fallback path.
 pub fn install_dependency(
     io: &mut dyn ShellExtIo,
     uuid: &str,
@@ -458,9 +461,9 @@ pub fn install_dependency(
     install(io, uuid, data_home, fetch_zip).map(DepOutcome::Done)
 }
 
-/// Причина «нет выпуска под эту версию GNOME» по списку выпусков сайта;
-/// `None` — выпуск есть или версию GNOME не узнать (тогда решает сама
-/// оболочка или запасной путь берёт самый новый выпуск).
+/// The reason "no release for this GNOME version" from the site's release list;
+/// `None` — there is a release or the GNOME version cannot be determined (then
+/// the shell itself decides, or the fallback path takes the newest release).
 pub fn unsupported_reason(
     releases: &[crate::gnome_ego::Release],
     shell: Option<&crate::gnome_ego::ShellVersion>,
@@ -471,8 +474,9 @@ pub fn unsupported_reason(
         .then(|| tr("extensions.gnome.org has no release of this extension for your GNOME version"))
 }
 
-/// Строка итога для человека; `None` — говорить нечего (уже стояло).
-/// `without` — что без расширения не заработает (виды оформления).
+/// The result line for the person; `None` — nothing to say (it was already
+/// installed). `without` — what will not work without the extension
+/// (appearance kinds).
 pub fn dependency_note(uuid: &str, without: &str, r: &Result<DepOutcome, ShellExtError>) -> Option<String> {
     let lost = |why: String| {
         let why = why.trim();
@@ -497,25 +501,27 @@ pub fn dependency_note(uuid: &str, without: &str, r: &Result<DepOutcome, ShellEx
         Ok(DepOutcome::Done(InstallOutcome::Cancelled)) => {
             Some(lost(tr("you cancelled it in the GNOME Shell window.")))
         }
-        // Причина запасного пути (сеть, нет выпуска) — своими словами, без
-        // второго «не удалось установить».
+        // Reason for the fallback path (network, no release) — in its own words,
+        // without a second "could not install".
         Err(ShellExtError::Offline(why)) => Some(lost(why.clone())),
         Err(e) => Some(lost(e.message())),
     }
 }
 
-/// [`install_dependency`] на живой машине: оболочка с шины, версия GNOME,
-/// выпуски сайта, zip во временный каталог; поставленное — в журнал
-/// установленного раздела «Расширения GNOME» (как ручная установка).
-/// Звать из рабочего потока: окно оболочки ждёт человека.
+/// [`install_dependency`] on the live machine: the shell from the bus, the GNOME
+/// version, the site's releases, the zip into a temporary directory; what was
+/// installed goes into the installed-items journal of the "GNOME Extensions"
+/// section (like a manual installation). Call from a worker thread: the shell's
+/// dialog waits for the person.
 pub fn live_install_dependency(uuid: &str) -> Result<DepOutcome, ShellExtError> {
     let home = std::env::var("HOME").unwrap_or_default();
     let data_home = crate::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &home);
     let mut io = gse::LiveShell::new();
     let shell = gse::detect_shell_version(&mut io).as_deref().and_then(crate::gnome_ego::parse_shell_version);
     let token = crate::net::CancelToken::new();
-    // Список выпусков один на сверку и выбор zip; сайт не ответил —
-    // сверка не мешает (решит оболочка или запасной путь скажет сам).
+    // One release list serves both the check and the zip choice; if the site
+    // did not answer, the check does not get in the way (the shell will decide,
+    // or the fallback path will say so itself).
     let releases = crate::gnome_ego::live_releases(uuid, &token).ok();
     let mut unsupported = || releases.as_deref().and_then(|r| unsupported_reason(r, shell.as_ref()));
     let work = std::env::temp_dir().join(format!("rexon-gext-dep-{}", std::process::id()));
@@ -539,9 +545,9 @@ pub fn live_install_dependency(uuid: &str) -> Result<DepOutcome, ShellExtError> 
     r
 }
 
-/// Включить или выключить: при оболочке — D-Bus; без неё — сценарий
-/// (`gnome-extensions` или ключи `enabled-extensions`/`disabled-extensions`),
-/// заработает при входе.
+/// Enable or disable: with a shell — D-Bus; without it — a script
+/// (`gnome-extensions` or the `enabled-extensions`/`disabled-extensions` keys),
+/// effective on login.
 pub fn set_enabled(
     io: &mut dyn ShellExtIo,
     uuid: &str,
@@ -571,15 +577,15 @@ pub fn set_enabled(
     }
 }
 
-/// «Включить/Выключить» по правде оболочки: включено — выключить.
+/// "Enable/Disable" by the shell's truth: enabled — disable.
 pub fn toggle(io: &mut dyn ShellExtIo, uuid: &str, data_home: &str) -> Result<String, ShellExtError> {
     if io.shell_running() {
         let info = gse::extension_info(io, uuid)?.ok_or(ShellExtError::NotInstalled)?;
         let on = !(info.enabled || info.state == ExtState::Active);
         return set_enabled(io, uuid, on, data_home);
     }
-    // Без оболочки правда — ключи: включено, если uuid есть в
-    // `enabled-extensions` и нет в `disabled-extensions` (он сильнее).
+    // Without a shell the truth is the keys: enabled if the uuid is in
+    // `enabled-extensions` and not in `disabled-extensions` (which is stronger).
     let mut listed = |key: &str| match io.run(&["gsettings".into(), "get".into(), "org.gnome.shell".into(), key.into()]) {
         Ok(out) if out.success => crate::de_apply::parse_gsettings_list(&out.text).iter().any(|u| u == uuid),
         _ => false,
@@ -588,9 +594,9 @@ pub fn toggle(io: &mut dyn ShellExtIo, uuid: &str, data_home: &str) -> Result<St
     set_enabled(io, uuid, !enabled, data_home)
 }
 
-/// Удалить своё: при оболочке — `UninstallExtension` (системное она не
-/// удаляет — отказ словами); без неё — каталог в `~/.local/share` и только
-/// он. `Ok(true)` — удалено.
+/// Remove the user's own: with a shell — `UninstallExtension` (it does not
+/// remove system-wide ones — a refusal in words); without it — the directory in
+/// `~/.local/share` and only that. `Ok(true)` — removed.
 pub fn uninstall_own(io: &mut dyn ShellExtIo, uuid: &str, data_home: &str) -> Result<(), ShellExtError> {
     if io.shell_running() {
         return gse::uninstall(io, uuid);
@@ -610,7 +616,7 @@ pub fn uninstall_own(io: &mut dyn ShellExtIo, uuid: &str, data_home: &str) -> Re
     }
 }
 
-/// Что делать с папкой: по оболочке, без неё — по месту на диске.
+/// What to do with the folder: per the shell, without it — per the location on disk.
 pub fn folder_for(io: &mut dyn ShellExtIo, uuid: &str, data_home: &str, disk_path: &str) -> Option<FolderAction> {
     if io.shell_running() {
         if let Ok(Some(info)) = gse::extension_info(io, uuid) {
@@ -624,8 +630,8 @@ pub fn folder_for(io: &mut dyn ShellExtIo, uuid: &str, data_home: &str, disk_pat
     Some(if own { FolderAction::Open(disk_path.to_string()) } else { FolderAction::Copy(disk_path.to_string()) })
 }
 
-/// Текст окна «Подробнее об ошибке»: последняя ошибка из сведений и журнал
-/// ошибок оболочки без повторов. Пусто — ошибок нет.
+/// Text of the "Error details" window: the last error from the information and
+/// the shell's error log without repeats. Empty — no errors.
 pub fn error_details(io: &mut dyn ShellExtIo, uuid: &str) -> Result<String, ShellExtError> {
     let info = gse::extension_info(io, uuid)?.ok_or(ShellExtError::NotInstalled)?;
     let mut lines: Vec<String> = Vec::new();
@@ -642,7 +648,7 @@ pub fn error_details(io: &mut dyn ShellExtIo, uuid: &str) -> Result<String, Shel
     Ok(lines.join("\n"))
 }
 
-/// Строка ответа действия для страницы: `{ok, message, action, uuid,
+/// The action answer line for the page: `{ok, message, action, uuid,
 /// folder?, path?, details?}`.
 pub fn action_answer(action: Action, uuid: &str, r: Result<Value, ShellExtError>) -> Value {
     let name = match action {
@@ -674,9 +680,10 @@ pub fn action_answer(action: Action, uuid: &str, r: Result<Value, ShellExtError>
     Value::Object(m)
 }
 
-/// Исполнить действие плитки. `disk_path` — путь плитки с диска (для папки
-/// без оболочки). Окно настроек и папку открывает живой слой — здесь только
-/// решение (`folder`, `path`) и вызов настроек через оболочку.
+/// Execute a tile action. `disk_path` — the disk path of the tile (for the
+/// folder without a shell). The settings window and the folder are opened by the
+/// live layer — here there is only the decision (`folder`, `path`) and the
+/// settings call through the shell.
 pub fn run_action(io: &mut dyn ShellExtIo, action: Action, uuid: &str, data_home: &str, disk_path: &str) -> Value {
     let r: Result<Value, ShellExtError> = match action {
         Action::Toggle => toggle(io, uuid, data_home).map(Value::from),
@@ -696,8 +703,8 @@ pub fn run_action(io: &mut dyn ShellExtIo, action: Action, uuid: &str, data_home
         },
         Action::ErrorDetails => error_details(io, uuid).map(|d| {
             let text = if d.is_empty() { tr("GNOME Shell reported no errors for this extension.") } else { d };
-            // Имя для заголовка окна и домашняя страница для «Написать
-            // автору» — окно открывают и с плитки, где их нет.
+            // The name for the window title and the home page for "Write to the
+            // author" — the window is also opened from a tile that lacks them.
             let info = gse::extension_info(io, uuid).ok().flatten();
             let name = info.as_ref().map(|i| i.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| uuid.to_string());
             let url = info.map(|i| i.url).unwrap_or_default();
@@ -707,10 +714,10 @@ pub fn run_action(io: &mut dyn ShellExtIo, action: Action, uuid: &str, data_home
     action_answer(action, uuid, r)
 }
 
-// ── Журнал установленного ────────────────────────────────────────────────
+// ── Installed-items journal ──────────────────────────────────────────────
 
-/// Запись журнала установленного: `content_id = ego:<uuid>`,
-/// `provider_id = ego`, версия выпуска и каталог расширения пользователя.
+/// Installed-items journal entry: `content_id = ego:<uuid>`, `provider_id =
+/// ego`, the release version and the user's extension directory.
 pub fn journal_item(uuid: &str, name: &str, version: &str, author: &str) -> crate::ocs_store::InstalledItem {
     crate::ocs_store::InstalledItem {
         content_id: crate::gnome_ego::item_id(uuid),
@@ -725,19 +732,20 @@ pub fn journal_item(uuid: &str, name: &str, version: &str, author: &str) -> crat
     }
 }
 
-/// Записать установку в журнал (`log` — содержимое `ocs_installed.json`).
+/// Record the installation in the journal (`log` — the contents of
+/// `ocs_installed.json`).
 pub fn journal_record(log: &mut Map<String, Value>, item: &crate::ocs_store::InstalledItem, data_home: &str, uuid: &str, now: &str) {
     let path = gse::user_extension_dir(data_home, uuid).to_string_lossy().into_owned();
     crate::ocs_store::record_installed(log, item, &[path], now);
 }
 
-/// Забыть установку (после удаления).
+/// Forget the installation (after removal).
 pub fn journal_forget(log: &mut Map<String, Value>, uuid: &str) -> bool {
     crate::ocs_store::forget_installed(log, &crate::gnome_ego::item_id(uuid))
 }
 
-/// Живая правка журнала (`~/.config/rexon/ocs_installed.json` через общий
-/// журнал установки).
+/// Live journal edit (`~/.config/rexon/ocs_installed.json` through the shared
+/// install journal).
 pub fn live_journal_edit(home: &str, edit: impl FnOnce(&mut Map<String, Value>)) -> Result<(), String> {
     let cfg = std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty());
     let path = crate::ocs_store::install_log_path_xdg(cfg.as_deref(), home);
@@ -746,11 +754,12 @@ pub fn live_journal_edit(home: &str, edit: impl FnOnce(&mut Map<String, Value>))
     crate::install_journal::put_store_log(&path, &data).map_err(|e| e.to_string())
 }
 
-// ── Удаление с «Вернуть» ─────────────────────────────────────────────────
+// ── Removal with "Undo" ──────────────────────────────────────────────────
 
-/// Вопрос перед удалением своего расширения: `(заголовок, текст)`. После
-/// «Да» расширение, как тема в соседних разделах, помечается к удалению и
-/// висит строкой «Вернуть»; снимает его оболочка, когда строка закрылась.
+/// The question before removing the user's own extension: `(title, text)`.
+/// After "Yes" the extension, like a theme in the neighboring sections, is
+/// marked for removal and hangs as an "Undo" row; the shell removes it once the
+/// row has closed.
 pub fn removal_question(name: &str) -> (String, String) {
     (
         tr("Remove the extension?"),
@@ -759,8 +768,9 @@ pub fn removal_question(name: &str) -> (String, String) {
     )
 }
 
-/// Помеченное к удалению — на расширения GNOME (их снимает оболочка, по
-/// uuid из номера плитки) и прочее (папки тем — `theme_removal::live_commit`).
+/// What is marked for removal is split into GNOME extensions (the shell removes
+/// them, by the uuid from the tile id) and the rest (theme folders —
+/// `theme_removal::live_commit`).
 pub fn split_pending(
     pending: Vec<crate::theme_removal::PendingRemoval>,
 ) -> (Vec<(String, crate::theme_removal::PendingRemoval)>, Vec<crate::theme_removal::PendingRemoval>) {
@@ -775,12 +785,12 @@ pub fn split_pending(
     (gnome, rest)
 }
 
-// ── Подписи страницы ─────────────────────────────────────────────────────
+// ── Page labels ──────────────────────────────────────────────────────────
 
-/// Кнопка «Включить/Выключить» плитки и подробностей — по той же правде,
-/// что [`toggle`]: включено в настройке или запущено — «Выключить». Слова —
-/// те же, что у плитки дополнения (`appearance_page::card_local_button_for`).
-/// `can_change = false` (администратор, режим сеанса) — кнопка выключена.
+/// The "Enable/Disable" button of the tile and the details — by the same truth
+/// as [`toggle`]: enabled in the settings or running — "Disable". The words are
+/// the same as on an add-on tile (`appearance_page::card_local_button_for`).
+/// `can_change = false` (administrator, session mode) — the button is disabled.
 pub fn toggle_button(enabled: bool, active: bool, can_change: bool) -> crate::appearance_page::CardButton {
     let on = enabled || active;
     crate::appearance_page::CardButton {
@@ -790,21 +800,21 @@ pub fn toggle_button(enabled: bool, active: bool, can_change: bool) -> crate::ap
     }
 }
 
-/// Подсказка на выключенной кнопке переключения.
+/// Tooltip on the disabled toggle button.
 pub fn locked_tooltip() -> String {
-    // Те же слова, что у отказа оболочки (`gnome_shell_ext`).
+    // The same words as the shell's refusal (`gnome_shell_ext`).
     tr("This extension can't be changed: it is locked by the administrator or the session.")
 }
 
-/// Подсказка «Установить»: подтверждение спросит сама оболочка.
+/// Tooltip of "Install": the shell itself will ask for confirmation.
 pub fn install_tooltip() -> String {
     tr("GNOME Shell will ask you to confirm the installation in its own window")
 }
 
-/// Подписи раздела «Расширения GNOME» для страницы (JSON по образцу
-/// `conky_procs::section_texts`). `error_title` — с `%1` (имя расширения).
+/// Labels of the "GNOME Extensions" section for the page (JSON modeled on
+/// `conky_procs::section_texts`). `error_title` — with `%1` (the extension name).
 pub fn page_texts() -> Value {
-    // Пары, а не `json!`: строки внутри макроса извлечение перевода не видит.
+    // Pairs rather than `json!`: translation extraction does not see strings inside the macro.
     let pairs: Vec<(&str, String)> = vec![
         ("prefs", tr("⚙️ Settings")),
         ("prefs_tooltip", tr("Open the extension's own settings window")),
@@ -829,10 +839,10 @@ pub fn page_texts() -> Value {
     Value::Object(pairs.into_iter().map(|(k, v)| (k.to_string(), Value::from(v))).collect())
 }
 
-// ── Обновления ───────────────────────────────────────────────────────────
+// ── Updates ──────────────────────────────────────────────────────────────
 
-/// Строка состояния раздела: «Скачано обновлений: N. Применятся после
-/// выхода из сеанса». Пусто — обновлений нет.
+/// The section's status line: "Updates downloaded: N. They will apply after
+/// logging out of the session". Empty — there are no updates.
 pub fn updates_status(count: usize) -> String {
     if count == 0 {
         return String::new();
@@ -841,19 +851,19 @@ pub fn updates_status(count: usize) -> String {
     trf("Updates downloaded: %1. They will apply after you log out.", &[&count])
 }
 
-/// Подпись кнопки «Выйти из сеанса».
+/// Label of the "Log out" button.
 pub fn logout_label() -> String {
     tr("Log Out")
 }
 
-/// Ответ о скачанных обновлениях для страницы: `{count, text, logoutLabel}`.
+/// Answer about downloaded updates for the page: `{count, text, logoutLabel}`.
 pub fn updates_answer(count: usize) -> Value {
     serde_json::json!({ "count": count, "text": updates_status(count), "logoutLabel": logout_label() })
 }
 
-/// Попросить оболочку проверить обновления и пересчитать скачанные:
-/// `wait` спит между пересчётами (`false` — хватит, страница закрылась);
-/// `report` получает каждое новое число. Возвращает последнее.
+/// Ask the shell to check for updates and recount the downloaded ones: `wait`
+/// sleeps between recounts (`false` — enough, the page has closed); `report`
+/// receives every new number. Returns the last one.
 pub fn check_updates(
     io: &mut dyn ShellExtIo,
     rounds: usize,
@@ -879,7 +889,7 @@ pub fn check_updates(
     Ok(last)
 }
 
-// ── Тесты ────────────────────────────────────────────────────────────────
+// ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -891,7 +901,7 @@ mod tests {
     const U: &str = "sample@example.org";
     const SYS: &str = "system@example.org";
 
-    /// Подделка оболочки с состоянием: включение и удаление меняют словарь.
+    /// A fake shell with state: enabling and removing change the dictionary.
     #[derive(Default)]
     struct Shell {
         running: bool,
@@ -900,7 +910,7 @@ mod tests {
         updates_after_check: Vec<String>,
         calls: Vec<String>,
         runs: Vec<String>,
-        /// Ответ `gsettings get … disabled-extensions` без оболочки.
+        /// Answer of `gsettings get … disabled-extensions` without a shell.
         disabled: Vec<String>,
     }
 
@@ -1032,9 +1042,9 @@ mod tests {
         assert_eq!(uuid_of_id("local:gnomeext:../x"), None);
     }
 
-    /// Кнопка переключения — по той же правде, что `toggle`: включено или
-    /// запущено — «Выключить»; запертое администратором не нажимается. В
-    /// подписях страницы — все ключи, которые читает QML.
+    /// The toggle button follows the same truth as `toggle`: enabled or running —
+    /// "Disable"; one locked by the administrator cannot be pressed. The page
+    /// labels contain all the keys QML reads.
     #[test]
     fn toggle_button_and_page_texts() {
         assert_eq!(toggle_button(true, false, true).text, tr("⏸️ Disable"));
@@ -1054,9 +1064,9 @@ mod tests {
         assert!(f.contains_key("gnomeUrl"));
     }
 
-    /// Помеченное к удалению делится по номеру плитки: расширение (и с
-    /// диска, и с витрины) — оболочке, тема — общему снятию папок; в вопросе
-    /// перед удалением — имя расширения.
+    /// What is marked for removal is split by the tile id: an extension (both from
+    /// disk and from the storefront) goes to the shell, a theme to the shared
+    /// folder removal; the question before removal names the extension.
     #[test]
     fn pending_removals_split_by_tile_id() {
         use crate::theme_removal::PendingRemoval;
@@ -1075,8 +1085,8 @@ mod tests {
         let list = shell_snapshot(&mut Shell::up()).unwrap();
         assert_eq!(list.len(), 2);
         assert_eq!(active_uuids(&list), vec![SYS.to_string()]);
-        // Включено, но упало — «Выключить» остаётся правдой кнопки, а
-        // «Активно» на плитке — нет.
+        // Enabled but crashed — "Disable" stays the button's truth, while "Active" on
+        // the tile does not.
         let broken = vec![info(U, 3.0, false)];
         assert!(active_uuids(&broken).is_empty());
         assert_eq!(enabled_uuids(&broken), vec![U.to_string()]);
@@ -1106,7 +1116,7 @@ mod tests {
         assert_eq!(sys["gnomeCanRemove"], false);
         assert_eq!(sys["gnomeFolderAction"], "copy");
         assert_eq!(sys["gnomeActive"], true);
-        // Системное — не пометка: пометки встают на место «⏸️ Выключено».
+        // System-wide is not a mark: marks take the place of "⏸️ Off".
         assert_eq!(sys["gnomeMarks"].as_array().map(Vec::len), Some(0));
         let sys_off = info(SYS, 2.0, true);
         assert_eq!(shell_fields(&sys_off, "51")["gnomeMarks"].as_array().map(Vec::len), Some(0));
@@ -1147,8 +1157,8 @@ mod tests {
         assert!(rows[4].get("gnomeShellKnown").is_none());
     }
 
-    /// Выключенное расширение подписано «Выключено», а не происхождением;
-    /// включённое — «Активно»; вид плитки остаётся.
+    /// A disabled extension is labeled "Off" rather than with its origin; an
+    /// enabled one — "Active"; the tile kind stays.
     #[test]
     fn installed_tile_says_disabled() {
         let off = info(U, 2.0, false);
@@ -1157,11 +1167,11 @@ mod tests {
         let enabled = crate::qt_extensions::state_enabled_text();
         assert_eq!(state_badge(&off), Some(disabled.clone()));
         assert_eq!(state_badge(&on), Some(enabled.clone()));
-        // Включено, но с ошибкой — подпись не трогаем (скажут пометки).
+        // Enabled but with an error — the label is not touched (the marks will say it).
         let broken = info("broken@example.org", 3.0, false);
         assert_eq!(state_badge(&broken), None);
-        // Подпись скана у плитки с диска (происхождение) — любая, её место
-        // занимает состояние.
+        // The scan's label of a disk tile (the origin) — any; its place is taken by
+        // the state.
         let manual = format!("🧩 {} · 🗂️ manual", tr("GNOME Shell extension"));
         assert_eq!(
             author_with_state(&manual, &off).unwrap(),
@@ -1175,13 +1185,14 @@ mod tests {
         stamp_rows(&mut rows, &[off.clone()], "51");
         assert!(rows[0]["author"].as_str().unwrap().ends_with(&disabled), "{}", rows[0]["author"]);
         assert_eq!(rows[1]["author"], "Автор витрины", "у карточки витрины подпись — автор");
-        // Плитка только со слов оболочки — тот же вид.
+        // A tile known only from the shell — the same look.
         assert_eq!(item_from_info(&off).author, format!("🧩 {} · {disabled}", tr("GNOME Shell extension")));
         assert_eq!(item_from_info(&on).author, format!("🧩 {} · {enabled}", tr("GNOME Shell extension")));
     }
 
-    /// Установленному — картинка витрины, если она уже есть; своя и чужие
-    /// плитки не трогаются; нет картинки — остаётся заглушка.
+    /// An installed one gets the storefront picture if it is already there; tiles
+    /// with their own or foreign pictures are not touched; no picture — the
+    /// placeholder stays.
     #[test]
     fn installed_tile_takes_showcase_picture() {
         let mut rows = vec![
@@ -1265,10 +1276,10 @@ mod tests {
         assert_eq!(offline_release(&list, Some(&v40)), None);
     }
 
-    /// Зависимость пакета оформления: стоит — пропуск без единого вызова;
-    /// нет — сразу через оболочку; отказ в окне — итог, а не ошибка; нет
-    /// выпуска под версию GNOME — окна нет, причина названа; без оболочки —
-    /// запасной путь.
+    /// Dependency of an appearance package: installed — skip without a single call;
+    /// not installed — right away through the shell; a refusal in the dialog is a
+    /// result, not an error; no release for the GNOME version — no dialog, the
+    /// reason is named; without a shell — the fallback path.
     #[test]
     fn dependency_install_paths() {
         const NEW: &str = "dash-to-panel@jderose9.github.com";
@@ -1345,7 +1356,7 @@ mod tests {
         assert!(io.runs.is_empty(), "при оболочке сценарий не нужен");
         assert_eq!(toggle(&mut io, "missing@example.org", "/h"), Err(ShellExtError::NotInstalled));
 
-        // Без оболочки — сценарий; в `enabled-extensions` уже есть U → выключить.
+        // Without a shell — a script; `enabled-extensions` already has U → disable.
         let mut down = Shell::down();
         let msg = toggle(&mut down, U, "/h").unwrap();
         assert!(msg.contains(&tr("takes effect the next time you log in to GNOME")));
@@ -1356,8 +1367,8 @@ mod tests {
         set_enabled(&mut down, "b@example.org", true, "/h").unwrap();
         assert!(down.runs.last().unwrap().contains("b@example.org"));
 
-        // Есть и в `disabled-extensions` (он сильнее) — значит выключено:
-        // переключатель включает.
+        // It is also in `disabled-extensions` (which is stronger) — so it is off: the
+        // toggle enables it.
         let mut down = Shell { disabled: vec![U.to_string()], ..Shell::down() };
         toggle(&mut down, U, "/h").unwrap();
         assert!(down.runs.last().unwrap().contains("gnome-extensions enable"), "{:?}", down.runs);
@@ -1372,7 +1383,8 @@ mod tests {
         assert_eq!(io.calls, [format!("uninstall {U}")]);
         assert_eq!(uninstall_own(&mut io, U, "/h"), Err(ShellExtError::NotInstalled));
 
-        // Без оболочки: своё — каталог в data_home, чужого там нет.
+        // Without a shell: the user's own is a directory in data_home, nothing foreign
+        // there.
         let data = std::env::temp_dir().join(format!("rexon-gext-{}", std::process::id()));
         let dir = gse::user_extension_dir(&data.to_string_lossy(), U);
         std::fs::create_dir_all(&dir).unwrap();

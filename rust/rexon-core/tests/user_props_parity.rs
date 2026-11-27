@@ -1,27 +1,28 @@
-//! Golden-сверка порта `user_props.rs` с оригиналом
-//! `rexon/wallpapers/user_props.py`. ⚠️ Сам модуль снят с дерева
-//! 2026-08-23 вместе с Python-хостом обоев: записанные ниже наблюдения —
-//! единственная оставшаяся запись его поведения.
+//! Golden check of the `user_props.rs` port against the original
+//! `rexon/wallpapers/user_props.py`. ⚠️ The module itself was removed from the
+//! tree on 2026-08-23 together with the Python wallpaper host: the
+//! observations recorded below are the only remaining record of its behaviour.
 //!
-//! Эталон снят прогоном ЖИВОГО Python: каждый `project.json` из набора
-//! записывался во временный файл, скармливался `parse_project_json`, а в
-//! `golden/user_props_cases.json` сложены сам текст файла, результат
-//! (`dataclasses.asdict` целиком, включая каждое свойство) и `defaults_for_js`
-//! — либо ТИП И ТЕКСТ исключения, если оригинал падал. ⛔ Обои не
-//! запускались, читались только временные файлы.
+//! The reference was captured by running LIVE Python: each `project.json` from
+//! the set was written to a temporary file, fed to `parse_project_json`, and
+//! `golden/user_props_cases.json` holds the file text itself, the result
+//! (`dataclasses.asdict` in full, including every property) and
+//! `defaults_for_js` — or the exception TYPE AND TEXT if the original crashed.
+//! ⛔ No wallpapers were launched, only temporary files were read.
 //!
-//! Набор бьёт по реальным углам Мастерской WE: заглавный `type`, числовой
-//! `workshopid`, property без `type`, `color.value` из трёх float, CJK в
-//! заголовке, `options` вперемешку с мусором, а также по всем местам, где
-//! «терпимый» парсер оригинала на самом деле падал или выдавал мусор.
+//! The set hits real corners of the WE Workshop: a capitalised `type`, a
+//! numeric `workshopid`, a property without `type`, `color.value` of three
+//! floats, CJK in the title, `options` mixed with garbage, and also all places
+//! where the «tolerant» parser of the original actually crashed or produced
+//! garbage.
 //!
-//! Сценарии делятся на две группы:
-//!   * [`MATCHING`] — порт обязан совпасть с Python до последнего поля;
-//!   * остальные — расхождения ПО ПРАВИЛУ #16: тест проверяет и то, что
-//!     оригинал в эталоне действительно ломался, и то, что порт даёт
-//!     осмысленный результат. Такой эталон нельзя пройти «любой»
-//!     реализацией: он одновременно фиксирует старое поведение и требует
-//!     нового.
+//! Scenarios fall into two groups:
+//!   * [`MATCHING`] — the port must match Python down to the last field;
+//!   * the rest — divergences BY RULE #16: the test checks both that the
+//!     original really broke in the reference and that the port gives a
+//!     meaningful result. Such a reference cannot be passed by «any»
+//!     implementation: it simultaneously pins the old behaviour and demands
+//!     the new one.
 
 use rexon_core::user_props as up;
 use serde_json::{json, Map, Value};
@@ -30,7 +31,7 @@ fn fx() -> Value {
     serde_json::from_str(include_str!("golden/user_props_cases.json")).unwrap()
 }
 
-/// Сценарии, где порт совпадает с оригиналом побайтово.
+/// Scenarios where the port matches the original byte for byte.
 const MATCHING: &[&str] = &[
     "full_web",
     "missing_type",
@@ -47,7 +48,7 @@ const MATCHING: &[&str] = &[
     "upper_types",
 ];
 
-/// Свойство в той же форме, что `dataclasses.asdict` в генераторе эталона.
+/// A property in the same form as `dataclasses.asdict` in the reference generator.
 fn prop_json(p: &up::UserProperty) -> Value {
     json!({
         "name": p.name,
@@ -72,7 +73,7 @@ fn prop_json(p: &up::UserProperty) -> Value {
     })
 }
 
-/// Проект в форме `dataclasses.asdict`.
+/// A project in `dataclasses.asdict` form.
 fn project_json(p: &up::Project) -> Value {
     let mut props = Map::new();
     for (name, prop) in &p.properties {
@@ -133,8 +134,8 @@ fn matching_cases_are_identical_to_python() {
     }
 }
 
-/// Эталон обязан фиксировать исходное поведение — иначе сверка расхождений
-/// ниже ничего не доказывает.
+/// The reference must pin the original behaviour — otherwise the divergence
+/// check below proves nothing.
 fn assert_python_raised(g: &Value, name: &str, exc: &str) {
     assert_eq!(
         g["cases"][name]["exception"]["type"].as_str(),
@@ -145,8 +146,8 @@ fn assert_python_raised(g: &Value, name: &str, exc: &str) {
 
 #[test]
 fn null_no_longer_becomes_the_word_none() {
-    // ⚠ правило #16 (1): str(None) давал строку «None» в имени файла превью,
-    // типе обоев и идентификаторе Мастерской.
+    // ⚠ rule #16 (1): str(None) gave the string «None» in the preview file name,
+    // the wallpaper type and the Workshop id.
     let g = fx();
     let py = &g["cases"]["nulls_everywhere"]["project"];
     assert_eq!(py["preview"].as_str(), Some("None"));
@@ -175,8 +176,8 @@ fn null_no_longer_becomes_the_word_none() {
 
 #[test]
 fn broken_order_no_longer_kills_the_whole_file() {
-    // ⚠ правило #16 (2): из-за int() на одном кривом свойстве обои
-    // оставались вообще без пользовательских настроек.
+    // ⚠ rule #16 (2): because of int() on one malformed property the wallpaper
+    // was left without any user settings at all.
     let g = fx();
     assert_python_raised(&g, "order_garbage", "ValueError");
     assert_python_raised(&g, "index_garbage", "ValueError");
@@ -190,7 +191,7 @@ fn broken_order_no_longer_kills_the_whole_file() {
 
 #[test]
 fn non_dict_containers_no_longer_crash() {
-    // ⚠ правило #16 (3): AttributeError на не-словаре.
+    // ⚠ rule #16 (3): AttributeError on a non-dict.
     let g = fx();
     for (name, exc) in [
         ("general_not_dict", "AttributeError"),
@@ -201,7 +202,7 @@ fn non_dict_containers_no_longer_crash() {
         assert_python_raised(&g, name, exc);
     }
 
-    // general / properties не-объект — просто пусто, остальное читается.
+    // general / properties not an object — just empty, the rest is read.
     let p = parse(&g["cases"]["general_not_dict"]).unwrap();
     assert_eq!(p.r#type, "web");
     assert!(p.properties.is_empty());
@@ -209,7 +210,7 @@ fn non_dict_containers_no_longer_crash() {
     let p = parse(&g["cases"]["properties_not_dict"]).unwrap();
     assert!(p.properties.is_empty());
 
-    // Верхний уровень не-объект — честная типизированная ошибка, не паника.
+    // Top level not an object — an honest typed error, not a panic.
     assert_eq!(
         parse(&g["cases"]["top_level_list"]),
         Err(up::ParseError::NotObject("массив"))
@@ -222,7 +223,7 @@ fn non_dict_containers_no_longer_crash() {
 
 #[test]
 fn tags_are_taken_only_from_arrays() {
-    // ⚠ правило #16 (4): строка перебиралась посимвольно, словарь — по ключам.
+    // ⚠ rule #16 (4): a string was iterated by characters, a dict by keys.
     let g = fx();
     assert_eq!(
         g["cases"]["tags_string"]["project"]["tags"],
@@ -232,14 +233,14 @@ fn tags_are_taken_only_from_arrays() {
 
     assert!(parse(&g["cases"]["tags_string"]).unwrap().tags.is_empty());
     assert!(parse(&g["cases"]["tags_dict"]).unwrap().tags.is_empty());
-    // Массив по-прежнему разбирается, числа переводятся в строки.
+    // An array is still parsed, numbers are turned into strings.
     let p = parse(&g["cases"]["full_web"]).unwrap();
     assert_eq!(p.tags, vec!["Nature".to_string(), "42".to_string()]);
 }
 
 #[test]
 fn string_false_no_longer_enables_audio() {
-    // ⚠ правило #16 (5): bool("false") в Python — истина.
+    // ⚠ rule #16 (5): bool("false") in Python is true.
     let g = fx();
     assert_eq!(
         g["cases"]["audio_string_false"]["project"]["supports_audio"],
@@ -247,7 +248,7 @@ fn string_false_no_longer_enables_audio() {
         "эталон обязан фиксировать ошибку оригинала"
     );
     assert!(!parse(&g["cases"]["audio_string_false"]).unwrap().supports_audio);
-    // Значения, где оригинал и так был прав, не сломались.
+    // Values where the original was right anyway did not break.
     assert!(!parse(&g["cases"]["audio_string_empty"]).unwrap().supports_audio);
     assert!(!parse(&g["cases"]["audio_zero"]).unwrap().supports_audio);
     assert!(parse(&g["cases"]["full_web"]).unwrap().supports_audio);
@@ -255,7 +256,7 @@ fn string_false_no_longer_enables_audio() {
 
 #[test]
 fn version_and_localization_match_their_declared_types() {
-    // ⚠ правило #16 (6) и (7): поля уезжали в вызывающий код «как есть».
+    // ⚠ rule #16 (6) and (7): fields went to the calling code «as is».
     let g = fx();
     assert_eq!(g["cases"]["version_string"]["project"]["version"], json!("3"));
     assert_eq!(g["cases"]["version_float"]["project"]["version"], json!(3.9));
@@ -270,7 +271,7 @@ fn version_and_localization_match_their_declared_types() {
         .unwrap()
         .localization
         .is_empty());
-    // Нормальная локализация читается.
+    // A normal localisation is read.
     let p = parse(&g["cases"]["full_web"]).unwrap();
     assert_eq!(p.localization.len(), 1);
     assert_eq!(p.localization[0].0, "ru-ru");
@@ -282,7 +283,7 @@ fn version_and_localization_match_their_declared_types() {
 
 #[test]
 fn combo_option_label_is_empty_not_none() {
-    // ⚠ правило #16 (1) в списке вариантов: подпись «None» попадала в UI.
+    // ⚠ rule #16 (1) in the option list: the label «None» reached the UI.
     let g = fx();
     assert_eq!(
         g["cases"]["options_shapes"]["project"]["properties"]["r"]["options"][0]["label"],
@@ -293,7 +294,7 @@ fn combo_option_label_is_empty_not_none() {
     assert_eq!(r.options.len(), 1);
     assert_eq!(r.options[0].label, "");
     assert_eq!(r.options[0].value, Value::Null);
-    // options не массивом — вариантов нет (как и у оригинала).
+    // options not an array — no options (as in the original).
     assert!(p.property("p").unwrap().options.is_empty());
     assert!(p.property("q").unwrap().options.is_empty());
 }
@@ -301,13 +302,13 @@ fn combo_option_label_is_empty_not_none() {
 #[test]
 fn errors_are_typed_not_thrown() {
     let g = fx();
-    // Битый JSON: у обоих ошибка, но у порта — типизированная.
+    // Broken JSON: both error out, but the port's error is typed.
     assert_python_raised(&g, "broken_json", "JSONDecodeError");
     assert!(matches!(
         parse(&g["cases"]["broken_json"]),
         Err(up::ParseError::NotJson(_))
     ));
-    // Файла нет.
+    // No file.
     assert_python_raised(&g, "missing_file", "FileNotFoundError");
     let missing = std::path::Path::new("/такого/каталога/нет/project.json");
     assert!(matches!(
@@ -315,7 +316,7 @@ fn errors_are_typed_not_thrown() {
         Err(up::ParseError::Io(_))
     ));
 
-    // ⚠ правило #16 (8): файл не в UTF-8 больше не теряется целиком.
+    // ⚠ rule #16 (8): a non-UTF-8 file is no longer lost entirely.
     assert_python_raised(&g, "invalid_utf8", "UnicodeDecodeError");
     let (p, _) = up::parse_project_bytes(b"{\"type\": \"w\xffeb\", \"file\": \"i.html\"}")
         .expect("битый байт не должен ронять разбор");
@@ -326,13 +327,13 @@ fn errors_are_typed_not_thrown() {
 #[test]
 fn warning_on_missing_type_like_original() {
     let g = fx();
-    // Оригинал писал log.warning и продолжал; порт возвращает то же
-    // предупреждение вызывающему.
+    // The original wrote log.warning and went on; the port returns the same
+    // warning to the caller.
     let (_, warns) = up::parse_project_text(g["cases"]["missing_type"]["json"].as_str().unwrap())
         .unwrap();
     assert_eq!(warns.len(), 1);
     assert!(warns[0].contains("type"), "предупреждение: {}", warns[0]);
-    // Тип есть — предупреждения нет.
+    // Type present — no warning.
     let (_, warns) =
         up::parse_project_text(g["cases"]["full_web"]["json"].as_str().unwrap()).unwrap();
     assert!(warns.is_empty());
@@ -340,9 +341,9 @@ fn warning_on_missing_type_like_original() {
 
 #[test]
 fn typed_accessors_read_raw_schema_values() {
-    // Сырые значения WE бывают и числом, и строкой — оригинал хранил их как
-    // есть вопреки сигнатуре; порт хранит так же, но даёт типизированный
-    // доступ.
+    // Raw WE values can be both a number and a string — the original stored them
+    // as is despite the signature; the port stores them the same way but gives
+    // typed access.
     let (p, _) = up::parse_project_text(
         r#"{"type":"scene","file":"s.json","general":{"properties":{
              "a":{"type":"slider","min":0,"max":"200","step":"0.5",

@@ -1,67 +1,68 @@
-//! Журнал сеанса — точный источник «какой модуль KWin или Plasma не загрузился».
+//! The session journal — the exact source of "which KWin or Plasma module
+//! failed to load".
 //!
-//! Сверка по версиям в файлах ([`crate::aeroshell`]) угадывает поломку по
-//! косвенным признакам: опознаватель внутри модуля эффекта, имя библиотеки
-//! форка, `ldd`. Сами KWin и plasmashell знают точно — и говорят об этом в
-//! журнал пользовательского сеанса (`journalctl --user`, без root): в Plasma 6
-//! оба запущены пользовательскими юнитами systemd, и их вывод уходит туда
-//! вместе с полем `_COMM` (проверено 05.10.2026 на этой машине, systemd 262).
+//! Checking versions in files ([`crate::aeroshell`]) guesses a breakage from
+//! indirect signs: the identifier inside an effect module, the name of a fork's
+//! library, `ldd`. KWin and plasmashell themselves know for sure — and say so in
+//! the user session journal (`journalctl --user`, no root needed): in Plasma 6
+//! both run as systemd user units, and their output goes there together with
+//! the `_COMM` field (checked on 05.10.2026 on this machine, systemd 262).
 //!
-//! Что ищем (сообщения журнала НЕ переводятся у `qCWarning`, но переводятся
-//! у строк, собранных через i18n, — поэтому опираемся на непереводимые
-//! части: служебные фразы предупреждений, идентификаторы в кавычках, пути):
+//! What we look for (journal messages are NOT translated for `qCWarning`, but
+//! strings built through i18n are — so we rely on the untranslatable parts: the
+//! fixed phrases of warnings, quoted identifiers, paths):
 //!
-//! * KWin, эффект собран под другую версию KWin. Начиная с KWin 6.8 это
-//!   предупреждение: `Effect "<id>" was built for a different version of
-//!   KWin and needs to be rebuilt, expected "<IID><версия>" got "<IID><версия>"`.
-//!   До 6.8 — отладочная строка `"<id>"  has not matching plugin version, …`,
-//!   её в журнале нет без включённой отладки: тогда журнал просто молчит, и
-//!   остаётся сверка по версиям.
-//! * KWin, модуль эффекта не загрузился: `Did not get KPluginFactory for "<id>":…`.
-//! * KWin, плагин (не эффект): `"<id>" has mismatching plugin version`,
+//! * KWin, an effect built for a different KWin version. Since KWin 6.8 this is
+//!   a warning: `Effect "<id>" was built for a different version of
+//!   KWin and needs to be rebuilt, expected "<IID><version>" got "<IID><version>"`.
+//!   Before 6.8 it is a debug line `"<id>"  has not matching plugin version, …`,
+//!   which is not in the journal unless debugging is enabled: then the journal
+//!   is simply silent, and the version check remains.
+//! * KWin, an effect module failed to load: `Did not get KPluginFactory for "<id>":…`.
+//! * KWin, a plugin (not an effect): `"<id>" has mismatching plugin version`,
 //!   `Failed to get plugin factory for "<id>" …`.
-//! * Любой процесс, библиотека модуля не загрузилась (KCoreAddons):
-//!   `Could not load plugin from <путь>.so: <причина>` — по пути видно, что
-//!   это: эффект KWin, апплет Plasma, оформление окон.
-//! * plasmashell, апплет не поднялся: `error when loading applet "<id>"
-//!   QList("…", "…")`. Внутри — переведённые строки, поэтому вид поломки
-//!   узнаётся по путям: `.so` в тексте — не загрузилась библиотека (в том
-//!   числе QML-модуля виджета), `file://…qml:строка:` — сломан QML виджета,
-//!   ни того ни другого — «пакет не найден». Последнее в Plasma до правки
-//!   libplasma говорится и тогда, когда пакет на месте, а не грузится его
-//!   `.so`; это различается по диску в [`resolve`].
+//! * Any process, a module library failed to load (KCoreAddons):
+//!   `Could not load plugin from <path>.so: <reason>` — the path shows what it
+//!   is: a KWin effect, a Plasma applet, a window decoration.
+//! * plasmashell, an applet did not come up: `error when loading applet "<id>"
+//!   QList("…", "…")`. Inside are translated strings, so the kind of breakage
+//!   is recognized by paths: a `.so` in the text — a library failed to load
+//!   (including the QML module of a widget), `file://…qml:line:` — the widget's
+//!   QML is broken, neither — "package not found". In Plasma before the libplasma
+//!   fix the latter is also said when the package is in place but its `.so`
+//!   fails to load; this is told apart by the disk in [`resolve`].
 //!
-//! Здесь — чистый разбор и решение; чтение журнала, `pacman -Qo` и диск —
-//! у исполнителя (`system_de_exec`).
+//! This module holds pure parsing and decisions; reading the journal,
+//! `pacman -Qo` and the disk are the executor's (`system_de_exec`).
 
 use crate::i18n::{tr, trf};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
-/// Процессы, чьи сообщения читаем (поле `_COMM`).
+/// Processes whose messages we read (the `_COMM` field).
 pub const JOURNAL_PROCESSES: &[&str] = &["kwin_wayland", "kwin_x11", "plasmashell"];
 
-/// Отбор на стороне journalctl (`--grep`, PCRE2): только нужные строки.
+/// Filtering on the journalctl side (`--grep`, PCRE2): only the needed lines.
 pub const JOURNAL_PATTERN: &str = "was built for a different version of KWin|has not matching plugin version|\
 Did not get KPluginFactory for|has mismatching plugin version|Failed to get plugin factory for|\
 Could not load plugin from|error when loading applet";
 
-/// Таймаут чтения журнала, секунды.
+/// Journal read timeout, seconds.
 pub const JOURNAL_TIMEOUT_SECS: u64 = 10;
 
-/// Сколько последних строк брать, если journalctl не умеет `--grep`.
+/// How many last lines to take if journalctl does not support `--grep`.
 pub const JOURNAL_FALLBACK_LINES: usize = 50_000;
 
-/// Сколько байт ответа разбирать (хвост — свежее).
+/// How many bytes of the answer to parse (the tail is the freshest).
 pub const JOURNAL_MAX_BYTES: usize = 32 << 20;
 
-/// Сколько находок показывать человеку.
+/// How many findings to show to the person.
 pub const SHOWN_FINDINGS: usize = 6;
 
-/// Команда чтения журнала текущей загрузки. `grep` — с отбором на стороне
-/// journalctl; без него — последние [`JOURNAL_FALLBACK_LINES`] строк и без
-/// `--output-fields` (его нет у старых systemd).
+/// Command reading the journal of the current boot. `grep` — with filtering on
+/// the journalctl side; without it — the last [`JOURNAL_FALLBACK_LINES`] lines
+/// and without `--output-fields` (old systemd does not have it).
 pub fn journal_argv(grep: bool) -> Vec<String> {
     let mut argv: Vec<String> = ["journalctl", "--user", "-b", "--no-pager", "-q", "-o", "json"]
         .iter()
@@ -79,21 +80,21 @@ pub fn journal_argv(grep: bool) -> Vec<String> {
     argv
 }
 
-/// Что делать с ответом journalctl.
+/// What to do with the journalctl answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalAnswer {
-    /// Разбирать stdout.
+    /// Parse stdout.
     Text,
-    /// Ничего не нашлось.
+    /// Nothing was found.
     Empty,
-    /// `--grep` не понят (journalctl без PCRE2 или старый) — повторить без него.
+    /// `--grep` was not understood (journalctl without PCRE2 or an old one) — retry without it.
     RetryWithoutGrep,
-    /// Журнала нет или читать нельзя — молча пропустить.
+    /// There is no journal or it cannot be read — skip silently.
     Unavailable,
 }
 
-/// Разбор кода возврата journalctl. С `--grep` код 1 и пустой вывод —
-/// «совпадений нет» (проверено: systemd 262).
+/// Interpreting the journalctl exit code. With `--grep`, code 1 and empty output
+/// mean "no matches" (checked: systemd 262).
 pub fn journal_answer(grep: bool, rc: Option<i32>, stdout: &str, stderr: &str) -> JournalAnswer {
     match rc {
         Some(0) if stdout.trim().is_empty() => JournalAnswer::Empty,
@@ -104,16 +105,16 @@ pub fn journal_answer(grep: bool, rc: Option<i32>, stdout: &str, stderr: &str) -
     }
 }
 
-/// Одна строка журнала: текст и время записи (микросекунды эпохи).
+/// One journal line: the text and the record time (microseconds since the epoch).
 #[derive(Debug, Clone, PartialEq)]
 pub struct JournalLine {
     pub message: String,
     pub time_us: u64,
 }
 
-/// Разбор `journalctl -o json`: по объекту на строку. `MESSAGE` бывает
-/// массивом байт (не UTF-8) — тогда читается с заменой. Разбирается только
-/// хвост длиной [`JOURNAL_MAX_BYTES`].
+/// Parsing `journalctl -o json`: one object per line. `MESSAGE` may be an array
+/// of bytes (not UTF-8) — then it is read with replacement. Only a tail of
+/// [`JOURNAL_MAX_BYTES`] is parsed.
 pub fn parse_journal_json(text: &str) -> Vec<JournalLine> {
     let text = if text.len() > JOURNAL_MAX_BYTES {
         let mut from = text.len() - JOURNAL_MAX_BYTES;
@@ -145,37 +146,38 @@ pub fn parse_journal_json(text: &str) -> Vec<JournalLine> {
         .collect()
 }
 
-/// Что за модуль.
+/// What kind of module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginKind {
-    /// Эффект KWin.
+    /// A KWin effect.
     Effect,
-    /// Апплет (виджет) Plasma.
+    /// A Plasma applet (widget).
     Applet,
-    /// Оформление окон (KDecoration).
+    /// A window decoration (KDecoration).
     Decoration,
-    /// Плагин KWin (не эффект).
+    /// A KWin plugin (not an effect).
     KwinPlugin,
 }
 
-/// Почему не загрузился.
+/// Why it did not load.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Cause {
-    /// Собран под другую версию KWin: `built_for` — версия сборки,
-    /// `expected` — версия KWin сейчас (None — сообщение версий не назвало).
+    /// Built for a different KWin version: `built_for` — the build version,
+    /// `expected` — the current KWin version (None — the message did not name the
+    /// versions).
     KwinVersion { built_for: Option<String>, expected: Option<String> },
-    /// Библиотека модуля не загрузилась (символ, soname, Qt): пересборка.
+    /// The module library failed to load (a symbol, soname, Qt): rebuild.
     LoadFailed { detail: String },
-    /// Сломан QML виджета (тип недоступен, свойства нет и т. п.).
+    /// The widget's QML is broken (a type unavailable, a property missing, etc.).
     QmlBroken { detail: String },
-    /// Пакета виджета нет вовсе.
+    /// The widget package does not exist at all.
     NotFound,
 }
 
 impl Cause {
-    /// Насколько точно сказано: при слиянии остаётся самое точное.
+    /// How precisely it is stated: on merging, the most precise one is kept.
     fn rank(&self) -> u8 {
         match self {
             Cause::KwinVersion { .. } => 4,
@@ -185,7 +187,7 @@ impl Cause {
         }
     }
 
-    /// Короткая техническая строка для журнала Rexon и подробностей.
+    /// A short technical line for the Rexon log and the details.
     pub fn technical(&self) -> String {
         match self {
             Cause::KwinVersion { built_for, expected } => format!(
@@ -201,22 +203,22 @@ impl Cause {
     }
 }
 
-/// Одна поломка из журнала.
+/// One breakage from the journal.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Failure {
     pub kind: PluginKind,
-    /// Идентификатор модуля (`pluginId`).
+    /// Module identifier (`pluginId`).
     pub id: String,
     pub cause: Cause,
-    /// Файлы, названные в сообщении (`.so`, `.qml`).
+    /// Files named in the message (`.so`, `.qml`).
     pub paths: Vec<String>,
-    /// Время последнего сообщения, микросекунды эпохи.
+    /// Time of the last message, microseconds since the epoch.
     pub time_us: u64,
 }
 
 const EFFECT_IID: &str = "org.kde.kwin.EffectPluginFactory";
 
-/// Строки в двойных кавычках подряд (с разбором `\"`, `\\`, `\n`).
+/// Consecutive double-quoted strings (with `\"`, `\\`, `\n` handled).
 fn quoted_strings(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut chars = text.chars();
@@ -248,7 +250,7 @@ fn quoted_strings(text: &str) -> Vec<String> {
     out
 }
 
-/// Версии после опознавателя фабрики эффектов, по порядку вхождения.
+/// Versions after the effect factory identifier, in order of occurrence.
 fn iid_versions(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut rest = text;
@@ -263,7 +265,7 @@ fn iid_versions(text: &str) -> Vec<String> {
     out
 }
 
-/// Пути к `.so` и `.qml`, названные в тексте.
+/// Paths to `.so` and `.qml` named in the text.
 pub fn extract_paths(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut push = |p: String| {
@@ -281,7 +283,7 @@ pub fn extract_paths(text: &str) -> Vec<String> {
             push(format!("{path}.qml"));
         }
     }
-    // Библиотеки: путь начинается с «/» после пробела, кавычки, скобки.
+    // Libraries: the path starts with "/" after a space, a quote or a bracket.
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
     while i < chars.len() {
@@ -305,7 +307,7 @@ pub fn extract_paths(text: &str) -> Vec<String> {
     out
 }
 
-/// Вид модуля по пути его библиотеки.
+/// Module kind by the path of its library.
 fn kind_by_path(path: &str) -> Option<PluginKind> {
     if path.contains("/kwin/effects/plugins/") {
         Some(PluginKind::Effect)
@@ -325,7 +327,7 @@ fn file_stem(path: &str) -> String {
     name.split(".so").next().unwrap_or(name).to_string()
 }
 
-/// Обрезать подробность до читаемой длины.
+/// Trim a detail to a readable length.
 fn short(text: &str) -> String {
     let t = text.trim().replace('\n', " ");
     if t.chars().count() > 300 {
@@ -335,7 +337,7 @@ fn short(text: &str) -> String {
     }
 }
 
-/// Хвост после пути библиотеки: «libprocesscore.so.10: cannot open …».
+/// The tail after the library path: "libprocesscore.so.10: cannot open …".
 fn after_path(text: &str, path: &str) -> String {
     match text.rfind(path) {
         Some(pos) => short(text[pos + path.len()..].trim_start_matches([':', '»', ' '])),
@@ -343,7 +345,7 @@ fn after_path(text: &str, path: &str) -> String {
     }
 }
 
-/// Разобрать одно сообщение. None — не про загрузку модулей.
+/// Parse one message. None — not about module loading.
 pub fn parse_message(message: &str, time_us: u64) -> Option<Failure> {
     let quoted = quoted_strings(message);
     let make = |kind, id: &str, cause, paths| Failure {
@@ -354,7 +356,7 @@ pub fn parse_message(message: &str, time_us: u64) -> Option<Failure> {
         time_us,
     };
 
-    // KWin ≥ 6.8 (предупреждение) и KWin < 6.8 (отладка).
+    // KWin ≥ 6.8 (a warning) and KWin < 6.8 (debug).
     if message.contains("was built for a different version of KWin")
         || message.contains("has not matching plugin version")
     {
@@ -428,8 +430,8 @@ pub fn parse_message(message: &str, time_us: u64) -> Option<Failure> {
         let cause = match (library, qml) {
             (Some(detail), _) => Cause::LoadFailed { detail },
             (None, Some(detail)) => Cause::QmlBroken { detail },
-            // Правка libplasma (MR !1597) говорит это прямо; путь в такой
-            // строке есть всегда, но фраза — запасной признак.
+            // The libplasma fix (MR !1597) says this directly; such a line always has a
+            // path, but the phrase is a fallback sign.
             _ if strings.iter().any(|s| s.contains("built for a different version of Plasma")) => {
                 Cause::LoadFailed { detail: String::new() }
             }
@@ -440,8 +442,8 @@ pub fn parse_message(message: &str, time_us: u64) -> Option<Failure> {
     None
 }
 
-/// Все поломки из ответа journalctl: по одной на модуль, самая точная
-/// причина, время — последнего сообщения.
+/// All breakages from the journalctl answer: one per module, the most precise
+/// reason, the time of the last message.
 pub fn failures_from_journal(text: &str) -> Vec<Failure> {
     let mut merged: BTreeMap<(PluginKind, String), Failure> = BTreeMap::new();
     for line in parse_journal_json(text) {
@@ -468,11 +470,11 @@ pub fn failures_from_journal(text: &str) -> Vec<Failure> {
     merged.into_values().collect()
 }
 
-// ── Метаданные внутри модуля Qt (CBOR) ────────────────────────────────────
+// ── Metadata inside a Qt module (CBOR) ────────────────────────────────────
 //
-// Qt 6 кладёт метаданные плагина (`metadata.json`, вшитый при сборке) в
-// модуль в виде CBOR. Имя эффекта для человека («SMOD Glow») есть только
-// там. Разбираем минимально: от ключа `KPlugin` — одно значение.
+// Qt 6 puts plugin metadata (`metadata.json`, embedded at build time) into the
+// module as CBOR. The human-readable effect name ("SMOD Glow") exists only
+// there. We parse minimally: from the `KPlugin` key — a single value.
 
 fn cbor_arg(data: &[u8], pos: &mut usize, info: u8) -> Option<Option<u64>> {
     let take = |pos: &mut usize, n: usize| -> Option<u64> {
@@ -603,15 +605,15 @@ fn cbor_item(data: &[u8], pos: &mut usize, depth: u32) -> Option<Value> {
     }
 }
 
-/// Раздел `KPlugin` метаданных, вшитых в модуль Qt. None — не нашли.
+/// The `KPlugin` section of the metadata embedded in a Qt module. None — not found.
 pub fn embedded_kplugin(data: &[u8]) -> Option<Value> {
     embedded_value(data, "KPlugin", |v| v.is_object())
 }
 
-/// Значение ключа верхнего уровня метаданных, вшитых в модуль Qt
-/// (`X-KDE-ConfigModule`, `org.kde.kwin.effect`). Ищется строка-ключ CBOR, за
-/// ней — значение; `accept` отсекает случайные совпадения в строковой
-/// таблице модуля. None — не нашли.
+/// Value of a top-level key of the metadata embedded in a Qt module
+/// (`X-KDE-ConfigModule`, `org.kde.kwin.effect`). A CBOR key string is searched
+/// for, followed by its value; `accept` cuts off accidental matches in the
+/// module's string table. None — not found.
 pub fn embedded_value(data: &[u8], key: &str, accept: impl Fn(&Value) -> bool) -> Option<Value> {
     let mut needle = match key.len() {
         n @ 0..=23 => vec![0x60 | n as u8],
@@ -630,7 +632,7 @@ pub fn embedded_value(data: &[u8], key: &str, accept: impl Fn(&Value) -> bool) -
     None
 }
 
-/// Имя по языку из раздела `KPlugin` (`keys` — от точного к общему).
+/// Name by language from the `KPlugin` section (`keys` — from exact to general).
 fn kplugin_name(kplugin: &Value, keys: &[String]) -> Option<String> {
     keys.iter().find_map(|k| {
         kplugin
@@ -642,38 +644,38 @@ fn kplugin_name(kplugin: &Value, keys: &[String]) -> Option<String> {
     })
 }
 
-/// Идентификатор из раздела `KPlugin`.
+/// Identifier from the `KPlugin` section.
 fn kplugin_id(kplugin: &Value) -> Option<String> {
     kplugin.get("Id").and_then(Value::as_str).map(str::to_string)
 }
 
-// ── Сопоставление с диском и пакетами ─────────────────────────────────────
+// ── Matching against the disk and packages ────────────────────────────────
 
-/// Откуда модуль.
+/// Where the module comes from.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Origin {
-    /// Из пакета; `foreign` — не из репозиториев (AUR, собран на машине).
+    /// From a package; `foreign` — not from the repositories (AUR, built on the machine).
     Package { name: String, foreign: bool },
-    /// Из домашнего каталога (магазин KDE, ручная установка).
+    /// From the home directory (KDE store, manual installation).
     UserDir,
-    /// Владельца не нашли.
+    /// No owner was found.
     Unknown,
 }
 
-/// Поломка, сопоставленная с файлом и пакетом.
+/// A breakage matched with a file and a package.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Finding {
     pub failure: Failure,
-    /// Имя для человека (из метаданных; иначе идентификатор).
+    /// Name for the person (from the metadata; otherwise the identifier).
     pub name: String,
     pub origin: Origin,
-    /// Главный файл модуля на диске.
+    /// The module's main file on disk.
     pub file: Option<String>,
 }
 
 impl Finding {
-    /// Пакет-владелец.
+    /// The owning package.
     pub fn package(&self) -> Option<&str> {
         match &self.origin {
             Origin::Package { name, .. } => Some(name),
@@ -682,32 +684,32 @@ impl Finding {
     }
 }
 
-/// Всё, что нужно для сопоставления, — снаружи.
+/// Everything needed for matching — from the outside.
 pub struct ResolveEnv<'a> {
     pub home: &'a str,
     /// `~/.local/share` (XDG_DATA_HOME).
     pub data_home: &'a str,
     /// `~/.config` (XDG_CONFIG_HOME).
     pub config_home: &'a str,
-    /// Системные каталоги данных (XDG_DATA_DIRS).
+    /// System data directories (XDG_DATA_DIRS).
     pub data_dirs: &'a [String],
-    /// Корни плагинов Qt 6 (`/usr/lib/qt6/plugins` и QT_PLUGIN_PATH).
+    /// Qt 6 plugin roots (`/usr/lib/qt6/plugins` and QT_PLUGIN_PATH).
     pub plugin_dirs: &'a [String],
-    /// Язык имён (`ru`, `de_DE`).
+    /// Language of names (`ru`, `de_DE`).
     pub locale: &'a str,
-    /// Время изменения файла, микросекунды эпохи; None — файла нет.
+    /// File modification time, microseconds since the epoch; None — no file.
     pub mtime_us: &'a dyn Fn(&str) -> Option<u64>,
-    /// Содержимое файла.
+    /// File contents.
     pub read: &'a dyn Fn(&str) -> Option<Vec<u8>>,
-    /// Файлы каталога (полные пути).
+    /// Files of a directory (full paths).
     pub list: &'a dyn Fn(&str) -> Vec<String>,
-    /// Владельцы файлов: путь → пакет (`pacman -Qo`).
+    /// File owners: path → package (`pacman -Qo`).
     pub owners: &'a dyn Fn(&[String]) -> HashMap<String, String>,
-    /// Пакет не из репозиториев (`pacman -Qm`).
+    /// A package not from the repositories (`pacman -Qm`).
     pub foreign: &'a dyn Fn(&str) -> bool,
 }
 
-/// Корни плагинов Qt 6: из QT_PLUGIN_PATH и обычные места дистрибутивов.
+/// Qt 6 plugin roots: from QT_PLUGIN_PATH and the usual distribution locations.
 pub fn qt_plugin_dirs(qt_plugin_path: &str) -> Vec<String> {
     let mut dirs: Vec<String> = qt_plugin_path
         .split(':')
@@ -727,7 +729,7 @@ pub fn qt_plugin_dirs(qt_plugin_path: &str) -> Vec<String> {
     dirs
 }
 
-/// Системные каталоги данных из XDG_DATA_DIRS (по умолчанию — по спецификации).
+/// System data directories from XDG_DATA_DIRS (by default — per the specification).
 pub fn data_dirs(xdg_data_dirs: &str) -> Vec<String> {
     let raw = if xdg_data_dirs.trim().is_empty() { "/usr/local/share:/usr/share" } else { xdg_data_dirs };
     raw.split(':')
@@ -736,7 +738,7 @@ pub fn data_dirs(xdg_data_dirs: &str) -> Vec<String> {
         .collect()
 }
 
-/// Где может лежать модуль: (файлы библиотеки, файлы metadata.json).
+/// Where a module may lie: (library files, metadata.json files).
 fn candidates(f: &Failure, env: &ResolveEnv) -> (Vec<String>, Vec<String>) {
     let mut libs: Vec<String> = f.paths.iter().filter(|p| !p.ends_with(".qml")).cloned().collect();
     let mut meta = Vec::new();
@@ -756,7 +758,7 @@ fn candidates(f: &Failure, env: &ResolveEnv) -> (Vec<String>, Vec<String>) {
             meta.push(format!("{dir}/{sub}/{}/metadata.json", f.id));
         }
     }
-    // Путь QML виджета внутри пакета → его metadata.json.
+    // Path of a widget's QML inside the package → its metadata.json.
     for p in f.paths.iter().filter(|p| p.ends_with(".qml")) {
         if let Some(pos) = p.find("/contents/") {
             meta.push(format!("{}/metadata.json", &p[..pos]));
@@ -765,8 +767,8 @@ fn candidates(f: &Failure, env: &ResolveEnv) -> (Vec<String>, Vec<String>) {
     (libs, meta)
 }
 
-/// Модуль эффекта, чей вшитый `KPlugin.Id` равен `id` (имя файла с id не
-/// совпадает: `libkwin_effect_x.so`).
+/// The effect module whose embedded `KPlugin.Id` equals `id` (the file name does
+/// not match the id: `libkwin_effect_x.so`).
 fn effect_by_embedded_id(id: &str, env: &ResolveEnv) -> Option<String> {
     for dir in env.plugin_dirs {
         for path in (env.list)(&format!("{dir}/kwin/effects/plugins")) {
@@ -785,8 +787,8 @@ fn effect_by_embedded_id(id: &str, env: &ResolveEnv) -> Option<String> {
     None
 }
 
-/// Виджет всё ещё стоит на панели или столе: `plugin=<id>` в раскладке.
-/// Раскладки нет или не читается — считаем, что стоит.
+/// The widget is still on a panel or the desktop: `plugin=<id>` in the layout.
+/// If there is no layout or it cannot be read, we assume it is there.
 fn applet_placed(id: &str, env: &ResolveEnv) -> bool {
     let path = format!("{}/plasma-org.kde.plasma.desktop-appletsrc", env.config_home);
     match (env.read)(&path) {
@@ -797,7 +799,7 @@ fn applet_placed(id: &str, env: &ResolveEnv) -> bool {
     }
 }
 
-/// Эффект выключен человеком сам (`<id>Enabled=false` в kwinrc).
+/// The effect was disabled by the person themselves (`<id>Enabled=false` in kwinrc).
 fn effect_disabled(id: &str, env: &ResolveEnv) -> bool {
     let path = format!("{}/kwinrc", env.config_home);
     let Some(raw) = (env.read)(&path) else { return false };
@@ -814,13 +816,13 @@ fn effect_disabled(id: &str, env: &ResolveEnv) -> bool {
     false
 }
 
-/// Сопоставить поломки с диском и пакетами.
+/// Match breakages with the disk and packages.
 ///
-/// Отбрасывается то, что журнал помнит, но уже неправда: файл модуля
-/// заменён ПОСЛЕ сообщения (пересобран — осталось перезайти), виджет снят
-/// с панели, эффект выключен человеком. «Пакет не найден» при пакете на
-/// диске — это не загрузившаяся библиотека (так говорит libplasma до
-/// правки MR !1597).
+/// What the journal remembers but is no longer true is dropped: the module file
+/// was replaced AFTER the message (rebuilt — only a re-login is left), the
+/// widget was removed from the panel, the effect was disabled by the person.
+/// "Package not found" while the package is on disk is a library that failed to
+/// load (that is what libplasma says before the MR !1597 fix).
 pub fn resolve(failures: &[Failure], env: &ResolveEnv) -> Vec<Finding> {
     struct Pending {
         failure: Failure,
@@ -840,7 +842,7 @@ pub fn resolve(failures: &[Failure], env: &ResolveEnv) -> Vec<Finding> {
         if libs.is_empty() && f.kind == PluginKind::Effect {
             libs.extend(effect_by_embedded_id(&f.id, env));
         }
-        // Заменён после сообщения: журнал устарел.
+        // Replaced after the message: the journal is outdated.
         let replaced = libs
             .iter()
             .chain(metas.iter())
@@ -907,7 +909,7 @@ fn dedup(v: Vec<String>) -> Vec<String> {
     out
 }
 
-/// AUR-пакеты, пересборка которых чинит найденное.
+/// AUR packages whose rebuild fixes what was found.
 pub fn rebuild_packages(findings: &[Finding]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for f in findings {
@@ -923,9 +925,9 @@ pub fn rebuild_packages(findings: &[Finding]) -> Vec<String> {
     out
 }
 
-// ── Слова для человека ────────────────────────────────────────────────────
+// ── Words for the person ──────────────────────────────────────────────────
 
-/// Что сломано — одной фразой.
+/// What is broken — in one phrase.
 pub fn finding_problem(f: &Finding) -> String {
     let name = &f.name;
     match (&f.failure.kind, &f.failure.cause) {
@@ -962,7 +964,7 @@ pub fn finding_problem(f: &Finding) -> String {
     }
 }
 
-/// Что с этим делать.
+/// What to do about it.
 pub fn finding_action(f: &Finding) -> String {
     if f.failure.cause == Cause::NotFound {
         return tr("Remove it from the panel or install it again.");
@@ -983,12 +985,12 @@ pub fn finding_action(f: &Finding) -> String {
     }
 }
 
-/// Строка для окна и уведомления: что сломано и что делать.
+/// A line for the window and the notification: what is broken and what to do.
 pub fn finding_line(f: &Finding) -> String {
     format!("{} {}", finding_problem(f), finding_action(f))
 }
 
-/// Строки для показа (не больше [`SHOWN_FINDINGS`], остаток — числом).
+/// Lines for display (no more than [`SHOWN_FINDINGS`], the rest as a number).
 pub fn finding_lines(findings: &[Finding]) -> Vec<String> {
     let mut lines: Vec<String> = findings.iter().take(SHOWN_FINDINGS).map(finding_line).collect();
     if findings.len() > SHOWN_FINDINGS {
@@ -1001,7 +1003,7 @@ pub fn finding_lines(findings: &[Finding]) -> Vec<String> {
     lines
 }
 
-/// Техническая строка для журнала Rexon.
+/// A technical line for the Rexon log.
 pub fn finding_technical(f: &Finding) -> String {
     let origin = match &f.origin {
         Origin::Package { name, foreign } => format!("{name}{}", if *foreign { " (AUR)" } else { "" }),
@@ -1016,17 +1018,17 @@ pub fn finding_technical(f: &Finding) -> String {
     )
 }
 
-/// Заголовок окна и уведомления о сломанных дополнениях.
+/// Title of the window and notification about broken add-ons.
 pub fn plugins_title() -> String {
     tr("Some Desktop Add-ons Stopped Working")
 }
 
-/// Вступление перед списком.
+/// Introduction before the list.
 pub fn plugins_intro() -> String {
     tr("KWin and Plasma reported in this session that these add-ons didn't load:")
 }
 
-/// Приписка, когда Rexon может пересобрать сам.
+/// A note when Rexon can rebuild by itself.
 pub fn plugins_rebuild_note() -> String {
     tr("Rexon can rebuild the AUR packages now. This takes a few minutes; at the end you'll need to \
         log out and log back in.")
@@ -1036,9 +1038,9 @@ pub fn plugins_rebuild_note() -> String {
 mod tests {
     use super::*;
 
-    // Строки — записанные запуском 05.10.2026 (см. отчёт коммита): KWin из
-    // ветки правки и штатный 6.7.5 с отладкой, plasmawindowed со штатной и
-    // исправленной libplasma; строки seventasks — из заявок ATP.
+    // Lines recorded by a run on 05.10.2026 (see the commit message): KWin from the
+    // fix branch and the stock 6.7.5 with debugging, plasmawindowed with the stock
+    // and the fixed libplasma; the seventasks lines come from ATP issue reports.
     const KWIN_NEW: &str = "Effect \"brokenversiontest\" was built for a different version of KWin and needs to be \
 rebuilt, expected \"org.kde.kwin.EffectPluginFactory6.7.5\" got \"org.kde.kwin.EffectPluginFactory6.7.4\"";
     const KWIN_OLD: &str = "\"brokenversiontest\"  has not matching plugin version, expected  \
@@ -1068,8 +1070,8 @@ object file: No such file or directory\")";
 \"file:///home/antonio/.local/share/plasma/plasmoids/io.gitgud.wackyideas.seventasks/contents/ui/main.qml:516:23: \
 Type Task unavailable\", \"file:///home/antonio/.local/share/plasma/plasmoids/io.gitgud.wackyideas.seventasks/\
 contents/ui/Task.qml:35:5: Cannot assign to non-existent property \\\"windowTitle\\\"\")";
-    // Живой журнал этой машины, 03.10.2026: виджеты сняты с диска, но
-    // остались в раскладке.
+    // The live journal of this machine, 03.10.2026: widgets removed from disk but
+    // left in the layout.
     const LIVE_MISSING: &str = "error when loading applet \"Nori.Weather\" QList(\"Ошибка загрузки виджета: пакет \
 «Nori.Weather» не существует.\", \"Невозможно найти компонент Nori.Weather\")";
 
@@ -1117,7 +1119,7 @@ contents/ui/Task.qml:35:5: Cannot assign to non-existent property \\\"windowTitl
         )
         .unwrap();
         assert_eq!((deco.kind, deco.id.as_str()), (PluginKind::Decoration, "org.smod.smod"));
-        // Чужой плагин (не эффект, не апплет, не оформление) — не наш вопрос.
+        // A foreign plugin (not an effect, an applet or a decoration) — not our concern.
         assert!(parse_message("\"Could not load plugin from /usr/lib/qt6/plugins/kf6/kio/x.so: y\"", 1).is_none());
     }
 
@@ -1141,8 +1143,8 @@ contents/ui/Task.qml:35:5: Cannot assign to non-existent property \\\"windowTitl
 
     #[test]
     fn merge_keeps_most_precise_cause() {
-        // Штатная libplasma: сначала строка KCoreAddons с путём, затем
-        // «пакет не найден» — итог «библиотека не загрузилась».
+        // Stock libplasma: first a KCoreAddons line with a path, then "package not
+        // found" — the result is "the library failed to load".
         let text = [json_line(COREADDONS, 10), json_line(APPLET_STOCK_RU, 11), json_line(KWIN_NEW, 12), json_line(KWIN_NEW, 20)]
             .join("\n");
         let all = failures_from_journal(&text);
@@ -1166,8 +1168,8 @@ contents/ui/Task.qml:35:5: Cannot assign to non-existent property \\\"windowTitl
         assert!(!journal_argv(false).iter().any(|a| a.starts_with("--grep")));
     }
 
-    /// Вшитые метаданные как у SMOD Glow: неопределённой длины карта,
-    /// автор с полем Name раньше имени модуля.
+    /// Embedded metadata as in SMOD Glow: an indefinite-length map, the author with
+    /// a Name field before the module name.
     fn cbor_blob() -> Vec<u8> {
         let mut d = b"junk\x00".to_vec();
         d.extend_from_slice(b"\x67KPlugin\xbf");
@@ -1259,10 +1261,10 @@ contents/ui/Task.qml:35:5: Cannot assign to non-existent property \\\"windowTitl
         assert!(finding_line(&found[1]).contains("isn't installed anymore"));
         assert_eq!(rebuild_packages(&found), ["aeroshell-smod-git"]);
 
-        // Пересобран после сообщения — журнал устарел, молчим.
+        // Rebuilt after the message — the journal is outdated, we stay silent.
         disk.files.get_mut(glow).unwrap().0 = 300;
         assert!(with_env(&disk, |env| resolve(&[effect.clone()], env)).is_empty());
-        // Выключен человеком — тоже молчим.
+        // Disabled by the person — also silent.
         disk.files.get_mut(glow).unwrap().0 = 100;
         disk.files.insert("/home/t/.config/kwinrc".into(), (1, b"[Plugins]\nsmodglowEnabled=false\n".to_vec()));
         assert!(with_env(&disk, |env| resolve(&[effect.clone()], env)).is_empty());

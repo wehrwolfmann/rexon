@@ -1,106 +1,106 @@
-//! Порт `rexon/waywallen_kde_plugin.py` — управление Plasma-плагином обоев
-//! `org.waywallen.kde` для KDE Plasma 6 (установка/апгрейд/детект/авто-выбор).
+//! Port of `rexon/waywallen_kde_plugin.py` — managing the Plasma wallpaper plugin
+//! `org.waywallen.kde` for KDE Plasma 6 (install/upgrade/detect/auto-select).
 //!
-//! Здесь — ЧИСТАЯ логика (детерминированный вход→выход), исполнение НЕ здесь:
-//!   * пути пакета (`bundle_dir` / `install_dir` / `version_marker`);
-//!   * `is_kde` (разбор `XDG_CURRENT_DESKTOP`);
-//!   * `file_sha` — версия рантайм-`.so` (sha256 → первые 16 hex), исполнитель
-//!     читает файл, хэширует ЗДЕСЬ (`hashlib.sha256(...).hexdigest()[:16]`);
-//!   * `resolve_installed_version` — marker-текст либо хэш установленного `.so`;
-//!   * `install_or_upgrade` — весь идемпотентный конвейер kpackagetool6
-//!     (no-op / `-i` / `-u` / fallback `-r`+`-i`) как ДРАЙВЕР по замыканию-`run`
-//!     (rc/stderr каждого запуска подаётся исполнителем — сам subprocess здесь
-//!     не крутится), с той же логикой решений, теми же argv/таймаутами и
-//!     текстами сообщений байт-в-байт;
-//!   * JS-скрипты Plasma scripting (`select_plugin` / `current_plugins`) и argv
-//!     их доставки (`dbus-send` / `qdbus6`), парсер вывода `current_plugins`,
+//! Here is the PURE logic (deterministic input→output), execution is NOT here:
+//!   * package paths (`bundle_dir` / `install_dir` / `version_marker`);
+//!   * `is_kde` (parsing `XDG_CURRENT_DESKTOP`);
+//!   * `file_sha` — version of the runtime `.so` (sha256 → first 16 hex), the executor
+//!     reads the file, the hashing happens HERE (`hashlib.sha256(...).hexdigest()[:16]`);
+//!   * `resolve_installed_version` — the marker text or the hash of the installed `.so`;
+//!   * `install_or_upgrade` — the whole idempotent kpackagetool6 pipeline
+//!     (no-op / `-i` / `-u` / fallback `-r`+`-i`) as a DRIVER over a `run` closure
+//!     (the rc/stderr of every run is supplied by the executor — no subprocess
+//!     runs here), with the same decision logic, the same argv/timeouts and
+//!     message texts byte for byte;
+//!   * the Plasma scripting JS scripts (`select_plugin` / `current_plugins`) and the argv
+//!     for delivering them (`dbus-send` / `qdbus6`), the parser of the `current_plugins` output,
 //!     `all_selected`;
-//!   * argv рестарта plasmashell (`systemctl --user`).
+//!   * argv of the plasmashell restart (`systemctl --user`).
 //!
-//! НЕ портировано (исполнение — остаётся за исполнителем/мостом): реальный
-//! запуск kpackagetool6/dbus-send/qdbus6/systemctl и чтение их вывода, `which`
-//! (наличие тула подаётся параметром), чтение/запись ФС (marker, `.so`,
-//! metadata.json — их СОДЕРЖИМОЕ/НАЛИЧИЕ подаётся параметром), catch OSError
-//! запуска subprocess (исполнитель формирует «ошибка запуска» сам),
-//! оркестрация `ensure_waywallen_plugin` вокруг живых side-effect'ов —
-//! соответствующие ЧИСТЫЕ решения (`should_reselect`, сборка финального
-//! сообщения) вынесены сюда, сами вызовы — нет.
+//! NOT ported (execution stays with the executor/bridge): actually
+//! running kpackagetool6/dbus-send/qdbus6/systemctl and reading their output, `which`
+//! (the presence of the tool is passed as a parameter), reading/writing the FS (marker, `.so`,
+//! metadata.json — their CONTENTS/PRESENCE are passed as parameters), catching the OSError
+//! of a subprocess launch (the executor forms the "launch error" itself),
+//! the orchestration of `ensure_waywallen_plugin` around live side effects —
+//! the corresponding PURE decisions (`should_reselect`, building the final
+//! message) are moved here, the calls themselves are not.
 
 use sha2::{Digest, Sha256};
 
 pub const PLUGIN_ID: &str = "org.waywallen.kde";
 pub const PLUGIN_TYPE: &str = "Plasma/Wallpaper";
 
-/// Имя рантайм-библиотеки QML-модуля внутри пакета; её хэш = версия пакета.
+/// Name of the runtime library of the QML module inside the package; its hash = the package version.
 ///
-/// ⚠️ Устойчиво именно ИМЯ, а не путь: апстрим уже переносил файл внутри
-/// пакета (0.3.3 — из `contents/ui/WaywallenDisplayEmbed/` в
-/// `contents/ui/Plugin/WaywallenDisplayEmbed/`). Прибитый путь тогда молча
-/// сломал бы детект версии — «установленной» версии не видно, обновление не
-/// срабатывает, у пользователя старый плагин. Поэтому рантайм ИЩЕТСЯ по
-/// имени (`pick_runtime_so_rel` ниже), а путь ниже — только запасной.
+/// ⚠️ What is stable is the NAME, not the path: upstream has already moved the file inside
+/// the package (0.3.3 — from `contents/ui/WaywallenDisplayEmbed/` to
+/// `contents/ui/Plugin/WaywallenDisplayEmbed/`). A hard-coded path would then silently
+/// break version detection — the "installed" version is not visible, the update does not
+/// trigger, the user keeps the old plugin. So the runtime is SEARCHED for by
+/// name (`pick_runtime_so_rel` below), and the path below is only a fallback.
 pub const RUNTIME_SO_NAME: &str = "libwaywallen-display-qml.so";
 
-/// Раскладка рантайма в текущем забандленном пакете. Используется как
-/// запасной ответ, когда поиск по имени ничего не нашёл (пакета нет, каталог
-/// нечитаем) — чтобы путь в сообщениях/логах оставался определённым.
+/// Runtime layout in the current bundled package. Used as the
+/// fallback answer when the name search found nothing (no package, the directory
+/// is unreadable) — so that the path in messages/logs stays defined.
 pub const RUNTIME_SO_REL: &str =
     "contents/ui/Plugin/WaywallenDisplayEmbed/libwaywallen-display-qml.so";
 
-/// Имя marker-файла с версией установленного нами пакета.
+/// Name of the marker file with the version of the package we installed.
 pub const VERSION_MARKER_NAME: &str = ".rexon-installed-version";
 
-/// Кандидаты kpackagetool в порядке приоритета — порт `_kpackagetool`
+/// kpackagetool candidates in priority order — port of `_kpackagetool`
 /// (`shutil.which("kpackagetool6") or shutil.which("kpackagetool5")`).
-/// Исполнитель делает `which` по порядку и подаёт первый найденный.
+/// The executor runs `which` in order and passes the first one found.
 pub const KPACKAGETOOL_CANDIDATES: &[&str] = &["kpackagetool6", "kpackagetool5"];
 
-/// Таймаут запусков kpackagetool6 (секунды) — как `timeout=30` в Python.
+/// Timeout of kpackagetool6 runs (seconds) — like `timeout=30` in Python.
 pub const KPACKAGETOOL_TIMEOUT: u64 = 30;
 
-// ── пути ────────────────────────────────────────────────────────────────
+// ── paths ───────────────────────────────────────────────────────────────
 
 fn join(parts: &[&str]) -> String {
     parts.join("/")
 }
 
-/// Забандленный kpackage внутри Rexon — порт `_BUNDLE_DIR`
-/// (`join(dirname(__file__), "kpackage", PLUGIN_ID)`). `module_dir` — каталог
-/// пакета `rexon` (родитель `waywallen_kde_plugin.py`).
+/// The kpackage bundled inside Rexon — port of `_BUNDLE_DIR`
+/// (`join(dirname(__file__), "kpackage", PLUGIN_ID)`). `module_dir` — the directory
+/// of the `rexon` package (the parent of `waywallen_kde_plugin.py`).
 pub fn bundle_dir(module_dir: &str) -> String {
     join(&[module_dir, "kpackage", PLUGIN_ID])
 }
 
-/// Куда kpackagetool6 ставит Plasma/Wallpaper плагины (per-user) — порт
+/// Where kpackagetool6 installs Plasma/Wallpaper plugins (per user) — port of
 /// `_INSTALL_DIR` (`~/.local/share/plasma/wallpapers/{PLUGIN_ID}`).
 pub fn install_dir(home: &str) -> String {
     join(&[home, ".local/share/plasma/wallpapers", PLUGIN_ID])
 }
 
-/// Marker с версией установленного пакета — порт `_VERSION_MARKER`.
+/// Marker with the version of the installed package — port of `_VERSION_MARKER`.
 pub fn version_marker(home: &str) -> String {
     join(&[&install_dir(home), VERSION_MARKER_NAME])
 }
 
-/// Запасной путь рантайм-`.so` относительно базы пакета — `join(base,
-/// RUNTIME_SO_REL)`. Основной способ — поиск по имени, см.
+/// Fallback path of the runtime `.so` relative to the package base — `join(base,
+/// RUNTIME_SO_REL)`. The main way is the search by name, see
 /// `pick_runtime_so_rel`.
 pub fn runtime_so_path(base: &str) -> String {
     join(&[base, RUNTIME_SO_REL])
 }
 
-/// Выбрать один рантайм-`.so` среди путей, которые исполнитель нашёл по имени
-/// `RUNTIME_SO_NAME` внутри пакета (пути — ОТНОСИТЕЛЬНО базы пакета, разделены
-/// `/`). Правило выбора детерминированное, чтобы оба движка на одном дереве
-/// всегда сходились в одном файле:
+/// Pick one runtime `.so` among the paths the executor found by the name
+/// `RUNTIME_SO_NAME` inside the package (paths are RELATIVE to the package base, separated by
+/// `/`). The choice rule is deterministic, so that both engines on one tree
+/// always agree on one file:
 ///
-/// 1. точное совпадение с `preferred_rel` (раскладка нашего забандленного
-///    пакета) — так установленный экземпляр сверяется с бандлом «как с
-///    собой», а не со случайно уцелевшей копией от прошлой версии;
-/// 2. иначе — самый неглубокий путь;
-/// 3. при равной глубине — лексикографически меньший.
+/// 1. an exact match with `preferred_rel` (the layout of our bundled
+///    package) — so the installed instance is compared with the bundle "as with
+///    itself", not with an accidentally surviving copy from a previous version;
+/// 2. otherwise — the shallowest path;
+/// 3. at equal depth — the lexicographically smaller one.
 ///
-/// Пустой список → `None` (пакета/рантайма нет).
+/// An empty list → `None` (no package/runtime).
 pub fn pick_runtime_so_rel(found_rel: &[String], preferred_rel: Option<&str>) -> Option<String> {
     if let Some(pref) = preferred_rel {
         if found_rel.iter().any(|p| p == pref) {
@@ -116,14 +116,14 @@ pub fn pick_runtime_so_rel(found_rel: &[String], preferred_rel: Option<&str>) ->
         .cloned()
 }
 
-/// Найти рантайм-`.so` внутри пакета `base` ПО ИМЕНИ и выбрать один
-/// правилом [`pick_runtime_so_rel`]. Полный путь либо `None`.
+/// Find the runtime `.so` inside package `base` BY NAME and pick one
+/// by the [`pick_runtime_so_rel`] rule. The full path or `None`.
 ///
-/// Обход живёт здесь, а не у каждого исполнителя: его зовёт Rust-вкладка
-/// обоев (`rexon-gui::we_socket`) и мост `rexon-py` (`wkp_find_runtime_so`)
-/// — своей копии обхода у моста больше нет.
-/// Симлинки на каталоги не разворачиваются: петля в чужом пакете иначе
-/// увела бы обход в бесконечность.
+/// The walk lives here, not in each executor: it is called by the Rust wallpaper
+/// tab (`rexon-gui::we_socket`) and the `rexon-py` bridge (`wkp_find_runtime_so`)
+/// — the bridge no longer has its own copy of the walk.
+/// Symlinks to directories are not followed: a loop in a foreign package would otherwise
+/// lead the walk into infinity.
 pub fn find_runtime_so(base: &str, preferred_rel: Option<&str>) -> Option<String> {
     let root = std::path::Path::new(base);
     let mut found: Vec<String> = Vec::new();
@@ -146,24 +146,24 @@ pub fn find_runtime_so(base: &str, preferred_rel: Option<&str>) -> Option<String
         .map(|rel| root.join(rel).to_string_lossy().into_owned())
 }
 
-/// Имя QML-обёртки элемента вывода внутри пакета: она лежит рядом с
-/// каталогом модуля (`…/Plugin/PluginDisplay.qml` и
-/// `…/Plugin/WaywallenDisplayEmbed/`) и импортирует его по относительному
-/// пути. Модуль `Waywallen.DisplayEmbed` лежит в каталоге с другим именем,
-/// поэтому по имени модуля он не импортируется — только через эту обёртку.
+/// Name of the QML wrapper of the output element inside the package: it lies next to
+/// the module directory (`…/Plugin/PluginDisplay.qml` and
+/// `…/Plugin/WaywallenDisplayEmbed/`) and imports it by a relative
+/// path. The `Waywallen.DisplayEmbed` module lies in a directory with a different name,
+/// so it is not imported by the module name — only through this wrapper.
 pub const DISPLAY_ITEM_QML_NAME: &str = "PluginDisplay.qml";
 
-/// Обёртка элемента вывода для найденной рантайм-библиотеки
-/// ([`find_runtime_so`]): каталог выше каталога модуля.
+/// The output element wrapper for the found runtime library
+/// ([`find_runtime_so`]): the directory above the module directory.
 pub fn display_item_qml_of(runtime_so: &str) -> Option<String> {
     let module_dir = std::path::Path::new(runtime_so).parent()?;
     let ui_dir = module_dir.parent()?;
     Some(ui_dir.join(DISPLAY_ITEM_QML_NAME).to_string_lossy().into_owned())
 }
 
-/// Где искать пакет с элементом вывода для хоста-клиента вывода на X11:
-/// сначала вшитый в Rexon (`<данные>/kpackage/…`, версия, проверенная с
-/// нашим демоном), затем установленный Plasma-плагин (`~/.local/share/…`).
+/// Where to look for the package with the output element for the output host client on X11:
+/// first the one bundled in Rexon (`<data>/kpackage/…`, a version tested with
+/// our daemon), then the installed Plasma plugin (`~/.local/share/…`).
 pub fn display_package_candidates(data_dir: Option<&str>, home: &str) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(dir) = data_dir.filter(|d| !d.is_empty()) {
@@ -175,23 +175,23 @@ pub fn display_package_candidates(data_dir: Option<&str>, home: &str) -> Vec<Str
     out
 }
 
-/// metadata.json пакета — по нему определяется наличие (bundle/installed).
+/// The package's metadata.json — presence is determined by it (bundle/installed).
 pub fn metadata_json_path(base: &str) -> String {
     join(&[base, "metadata.json"])
 }
 
-// ── окружение ───────────────────────────────────────────────────────────
+// ── environment ─────────────────────────────────────────────────────────
 
-/// Порт `_is_kde` — "kde"/"plasma" в `XDG_CURRENT_DESKTOP` (без регистра).
+/// Port of `_is_kde` — "kde"/"plasma" in `XDG_CURRENT_DESKTOP` (case-insensitive).
 pub fn is_kde(xdg_current_desktop: &str) -> bool {
     let d = xdg_current_desktop.to_lowercase();
     d.contains("kde") || d.contains("plasma")
 }
 
-// ── версия пакета (хэш рантайм-.so) ─────────────────────────────────────
+// ── package version (hash of the runtime .so) ───────────────────────────
 
-/// Порт `_file_sha` — sha256 содержимого файла, первые 16 hex-символов.
-/// Исполнитель читает файл (в Python — чанками по 64 КиБ, результат тот же).
+/// Port of `_file_sha` — sha256 of the file contents, the first 16 hex characters.
+/// The executor reads the file (in Python — in 64 KiB chunks, the result is the same).
 pub fn file_sha(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut hex = String::with_capacity(16);
@@ -205,8 +205,8 @@ pub fn file_sha(bytes: &[u8]) -> String {
     hex
 }
 
-/// Порт `_installed_version`: если marker непустой — его текст (после strip),
-/// иначе хэш установленного `.so` (`installed_so_sha`, `None` если файла нет).
+/// Port of `_installed_version`: if the marker is non-empty — its text (after strip),
+/// otherwise the hash of the installed `.so` (`installed_so_sha`, `None` if there is no file).
 pub fn resolve_installed_version(
     marker_text: Option<&str>,
     installed_so_sha: Option<&str>,
@@ -220,9 +220,9 @@ pub fn resolve_installed_version(
     installed_so_sha.map(str::to_string)
 }
 
-// ── установка / апгрейд kpackage ────────────────────────────────────────
+// ── kpackage install / upgrade ──────────────────────────────────────────
 
-/// Результат одного запуска kpackagetool6, поданный исполнителем.
+/// Result of one kpackagetool6 run, supplied by the executor.
 #[derive(Debug, Clone)]
 pub struct RunOutput {
     pub rc: i32,
@@ -230,24 +230,24 @@ pub struct RunOutput {
     pub stdout: String,
 }
 
-/// Одна команда kpackagetool6, которую исполнитель обязан запустить.
+/// One kpackagetool6 command the executor must run.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KpCall {
     pub argv: Vec<String>,
     pub timeout_secs: u64,
 }
 
-/// Итог `_install_or_upgrade` — план фактически выполненных вызовов + решение.
+/// Result of `_install_or_upgrade` — the plan of the calls actually made + the decision.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InstallOutcome {
-    /// Запуски kpackagetool6 в порядке исполнения (argv + timeout).
+    /// kpackagetool6 runs in execution order (argv + timeout).
     pub calls: Vec<KpCall>,
     pub ok: bool,
     pub message: String,
-    /// Был ли (пере)установлен пакет в этот раз.
+    /// Whether the package was (re)installed this time.
     pub installed_now: bool,
-    /// Версия для записи в marker (только при успешной установке и наличии
-    /// `bundle_ver`); `None` — marker не трогаем.
+    /// Version to write into the marker (only on a successful install and when
+    /// `bundle_ver` is present); `None` — the marker is not touched.
     pub marker_to_write: Option<String>,
 }
 
@@ -261,16 +261,16 @@ fn kp_argv(tool: &str, op: &str, target: &str) -> Vec<String> {
     ]
 }
 
-/// Порт `_install_or_upgrade`. Драйвер: сам subprocess здесь не крутится —
-/// исполнитель через `run` запускает поданную argv и возвращает rc/вывод.
+/// Port of `_install_or_upgrade`. A driver: no subprocess runs here —
+/// the executor runs the given argv via `run` and returns rc/output.
 ///
-/// `tool` — путь kpackagetool (`None` = не найден); `bundle_valid` = каталог
-/// пакета существует и содержит metadata.json; `installed` / `installed_ver` /
-/// `bundle_ver` — состояние, посчитанное исполнителем из ФС.
+/// `tool` — the kpackagetool path (`None` = not found); `bundle_valid` = the package
+/// directory exists and contains metadata.json; `installed` / `installed_ver` /
+/// `bundle_ver` — the state computed by the executor from the FS.
 ///
-/// Ветку catch-OSError запуска subprocess Python-оригинала здесь НЕ моделируем
-/// (это про сам процесс, не про логику) — исполнитель при провале запуска сам
-/// формирует «kpackagetool6 ошибка запуска: …».
+/// The catch-OSError branch of the Python original's subprocess launch is NOT modelled here
+/// (it is about the process itself, not about the logic) — on a launch failure the executor itself
+/// forms «kpackagetool6 ошибка запуска: …» (the literal of `rexon-gui/src/we_socket.rs`).
 pub fn install_or_upgrade(
     tool: Option<&str>,
     bundle_dir: &str,
@@ -290,13 +290,13 @@ pub fn install_or_upgrade(
     };
 
     let Some(tool) = tool else {
-        return fail(calls, "kpackagetool6 не найден — нужен KDE Plasma 6".to_string());
+        return fail(calls, crate::i18n::tr("kpackagetool6 was not found — KDE Plasma 6 is required"));
     };
     if !bundle_valid {
-        return fail(calls, format!("забандленный пакет не найден: {bundle_dir}"));
+        return fail(calls, crate::i18n::trf("the bundled plugin package was not found: %1", &[&bundle_dir]));
     }
 
-    // No-op: тот же плагин той же версии уже установлен.
+    // No-op: the same plugin of the same version is already installed.
     if installed && bundle_ver.is_some() && installed_ver == bundle_ver {
         return InstallOutcome {
             calls,
@@ -317,18 +317,18 @@ pub fn install_or_upgrade(
     };
 
     if r.rc != 0 {
-        // -u мог упасть (у waywallen нет версии в metadata) → remove + install.
+        // -u could have failed (waywallen has no version in metadata) → remove + install.
         if installed {
             let rm = kp_argv(tool, "-r", PLUGIN_ID);
-            run(&rm); // результат -r игнорируется (как в Python)
+            run(&rm); // the result of -r is ignored (as in Python)
             calls.push(KpCall { argv: rm, timeout_secs: KPACKAGETOOL_TIMEOUT });
             let ins = kp_argv(tool, "-i", bundle_dir);
             r = run(&ins);
             calls.push(KpCall { argv: ins, timeout_secs: KPACKAGETOOL_TIMEOUT });
         }
         if r.rc != 0 {
-            // Как в Python: op здесь остаётся исходным ("-u" при fallback);
-            // (stderr если непустой, иначе stdout).strip().
+            // As in Python: op stays the original one here ("-u" on fallback);
+            // (stderr if non-empty, otherwise stdout).strip().
             let detail = if r.stderr.is_empty() { &r.stdout } else { &r.stderr };
             return fail(
                 calls,
@@ -347,25 +347,25 @@ pub fn install_or_upgrade(
     }
 }
 
-// ── авто-выбор плагина на десктоп-контейнментах ─────────────────────────
+// ── auto-selecting the plugin on desktop containments ───────────────────
 
-/// JS для назначения плагина обоями всех десктопов — порт `select_plugin`.
-/// Пробелы значимы (два пробела перед `ds[i]`) — сверено golden-эталоном;
-/// НЕ использовать `\`-перенос строки (он съедает ведущие пробелы).
+/// JS for assigning the plugin as the wallpaper of all desktops — port of `select_plugin`.
+/// Spaces matter (two spaces before `ds[i]`) — checked by the golden reference;
+/// do NOT use a `\` line continuation (it eats leading spaces).
 pub fn select_plugin_js() -> String {
     format!(
         "var ds = desktops();for (var i = 0; i < ds.length; i++) {{  ds[i].wallpaperPlugin = '{PLUGIN_ID}';}}"
     )
 }
 
-/// JS для чтения wallpaperPlugin каждого десктопа — порт `current_plugins`.
-/// Пробел перед `out.push` значим — сверено golden-эталоном.
+/// JS for reading the wallpaperPlugin of each desktop — port of `current_plugins`.
+/// The space before `out.push` matters — checked by the golden reference.
 pub fn current_plugins_js() -> String {
     "var ds = desktops(); var out = [];for (var i = 0; i < ds.length; i++) out.push(ds[i].wallpaperPlugin);print(out.join(','));".to_string()
 }
 
-/// argv доставки JS в plasmashell через D-Bus — порт `_plasma_evaluate_script`
-/// (`dbus-send`, timeout 15). Строка аргумента — `string:{js}`.
+/// argv for delivering JS to plasmashell via D-Bus — port of `_plasma_evaluate_script`
+/// (`dbus-send`, timeout 15). The argument string is `string:{js}`.
 pub fn evaluate_script_argv(js: &str) -> Vec<String> {
     vec![
         "dbus-send".to_string(),
@@ -379,7 +379,7 @@ pub fn evaluate_script_argv(js: &str) -> Vec<String> {
     ]
 }
 
-/// argv чтения текущих плагинов — порт `current_plugins` (`qdbus6`, timeout 10).
+/// argv for reading the current plugins — port of `current_plugins` (`qdbus6`, timeout 10).
 pub fn current_plugins_argv() -> Vec<String> {
     vec![
         "qdbus6".to_string(),
@@ -390,9 +390,9 @@ pub fn current_plugins_argv() -> Vec<String> {
     ]
 }
 
-/// Разбор stdout `current_plugins` — порт `[p for p in
-/// out.strip().split(",") if p]` (элементы НЕ триммятся по отдельности).
-/// Вызывается только при rc==0; при rc!=0 исполнитель отдаёт пустой список.
+/// Parsing the stdout of `current_plugins` — port of `[p for p in
+/// out.strip().split(",") if p]` (elements are NOT trimmed individually).
+/// Called only when rc==0; when rc!=0 the executor returns an empty list.
 pub fn parse_current_plugins(stdout: &str) -> Vec<String> {
     stdout
         .trim()
@@ -402,15 +402,15 @@ pub fn parse_current_plugins(stdout: &str) -> Vec<String> {
         .collect()
 }
 
-/// Порт `_all_selected` — непусто И все равны PLUGIN_ID.
+/// Port of `_all_selected` — non-empty AND all equal to PLUGIN_ID.
 pub fn all_selected(plugins: &[String]) -> bool {
     !plugins.is_empty() && plugins.iter().all(|p| p == PLUGIN_ID)
 }
 
-// ── рестарт plasmashell (только при обновлении выбранного плагина) ──────
+// ── plasmashell restart (only when the selected plugin is updated) ──────
 
-/// argv рестарта plasmashell — порт `_restart_plasmashell`: reset-failed
-/// (timeout 5), затем restart (timeout 15). Исполнитель прогоняет по порядку.
+/// argv of the plasmashell restart — port of `_restart_plasmashell`: reset-failed
+/// (timeout 5), then restart (timeout 15). The executor runs them in order.
 pub fn restart_plasmashell_cmds() -> Vec<KpCall> {
     vec![
         KpCall {
@@ -434,17 +434,17 @@ pub fn restart_plasmashell_cmds() -> Vec<KpCall> {
     ]
 }
 
-// ── оркестрация ensure (чистые решения) ─────────────────────────────────
+// ── ensure orchestration (pure decisions) ───────────────────────────────
 
-/// Нужно ли (пере)выбирать плагин на десктопах — порт условия в
-/// `ensure_waywallen_plugin`: если только что (пере)установили ИЛИ ещё не на
-/// всех десктопах выбран (`not _all_selected()`), делаем select; иначе no-op.
+/// Whether to (re)select the plugin on the desktops — port of the condition in
+/// `ensure_waywallen_plugin`: if we just (re)installed it OR it is not yet selected on
+/// all desktops (`not _all_selected()`), do select; otherwise no-op.
 pub fn should_reselect(installed_now: bool, all_selected_now: bool) -> bool {
     installed_now || !all_selected_now
 }
 
-/// Финальное сообщение `ensure_waywallen_plugin` — конкатенация через "; "
-/// базового сообщения и опциональных пометок (порядок как в Python).
+/// The final message of `ensure_waywallen_plugin` — a "; "-joined concatenation of
+/// the base message and optional notes (order as in Python).
 pub fn ensure_message(base: &str, selected: bool, restarted: bool) -> String {
     let mut parts = vec![base.to_string()];
     if selected {
@@ -456,121 +456,121 @@ pub fn ensure_message(base: &str, selected: bool, restarted: bool) -> String {
     parts.join("; ")
 }
 
-// ── когда назначать плагин обоями: только по применению ────────────────
+// ── when to assign the plugin as wallpaper: only on apply ──────────────
 //
-// ⛔ Дефект 30.10.2026 (приёмка в ВМ, Plasma 6.8.2, новый пользователь):
-// ПЕРВОЕ открытие вкладки Wallpaper Engine ставило плагин, назначало его
-// обоями ВСЕХ рабочих столов и перезапускало plasmashell. Библиотека была
-// пуста — плагин до первого кадра рисует чёрное (`main.qml` апстрима), и
-// человек, просто заглянувший во вкладку, остался с чёрным столом вместо
-// своих обоев (правило #13).
+// ⛔ Defect of 30.10.2026 (acceptance in a VM, Plasma 6.8.2, new user):
+// the FIRST opening of the Wallpaper Engine tab installed the plugin, assigned it as
+// the wallpaper of ALL desktops and restarted plasmashell. The library was
+// empty — before the first frame the plugin draws black (upstream `main.qml`), and
+// a person who merely looked into the tab was left with a black desktop instead of
+// their wallpaper (rule #13).
 //
-// Как устроено у апстрима: на KDE демон показ не запускает сам
-// (`display_registry.rs`: `spawn = External`, «plasmashell грузит
-// kpackage»), а выбирает плагин человек в настройках Plasma — сам waywallen
-// `wallpaperPlugin` не трогает никогда. При этом `wallpaper_apply` с нулём
-// дисплеев демон отклоняет (`apply.rs`: `require_display` →
-// `NoDisplayRegistered`). Значит, плагин нужен ВЫБРАННЫМ к моменту
-// применения — но не раньше.
+// How upstream does it: on KDE the daemon does not start showing by itself
+// (`display_registry.rs`: `spawn = External`, "plasmashell loads the
+// kpackage"), and the person chooses the plugin in the Plasma settings — waywallen itself
+// never touches `wallpaperPlugin`. At the same time the daemon rejects `wallpaper_apply` with zero
+// displays (`apply.rs`: `require_display` →
+// `NoDisplayRegistered`). So the plugin must be SELECTED by the time of
+// the apply — but not earlier.
 //
-// Отсюда порядок:
-//   * открытие вкладки: плагин можно поставить (kpackagetool6, без root) —
-//     на рабочий стол это не влияет; назначать его обоями нельзя;
-//     plasmashell перезапускается, только если ОБНОВЛЁН плагин, который уже
-//     стоит обоями (иначе новый `.so` не попадёт в память оболочки);
-//   * применение (`wallpaper_apply`, запуск плейлиста, переход по нему):
-//     дисплеев нет — кадр придерживается, плагин назначается, кадр уходит,
-//     как только plasmashell зарегистрирует дисплей (или по сроку — тогда
-//     демон честно ответит ошибкой, а не тишиной).
+// Hence the order:
+//   * opening the tab: the plugin may be installed (kpackagetool6, without root) —
+//     this does not affect the desktop; it must not be assigned as wallpaper;
+//     plasmashell is restarted only if a plugin that is already set as wallpaper
+//     was UPDATED (otherwise the new `.so` will not get into the shell's memory);
+//   * applying (`wallpaper_apply`, starting a playlist, moving through it):
+//     no displays — the frame is held back, the plugin is assigned, the frame goes out
+//     as soon as plasmashell registers a display (or on timeout — then
+//     the daemon honestly answers with an error rather than silence).
 
-/// Зачем идёт подготовка плагина.
+/// Why the plugin preparation is running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnsurePurpose {
-    /// Открыта вкладка (или нажата «Поставить версию Rexon»): только
-    /// установка, рабочий стол не трогается.
+    /// The tab was opened (or «Install Rexon's Version» was pressed): only
+    /// installation, the desktop is not touched.
     Prepare,
-    /// Человек применил обои из библиотеки — плагин назначается обоями.
+    /// The person applied a wallpaper from the library — the plugin is assigned as wallpaper.
     Apply,
 }
 
 impl EnsurePurpose {
-    /// Назначать ли плагин обоями рабочих столов.
+    /// Whether to assign the plugin as the desktops' wallpaper.
     pub fn selects(self) -> bool {
         self == EnsurePurpose::Apply
     }
 }
 
-/// Поля запросов, после которых демон показывает обои на дисплеях.
+/// Request fields after which the daemon shows wallpaper on the displays.
 ///
-/// `wallpaper_apply_via_portal` сюда НЕ входит: он ставит картинку через
-/// портал рабочего стола, а не через дисплей waywallen.
+/// `wallpaper_apply_via_portal` is NOT included: it sets a picture through
+/// the desktop portal, not through a waywallen display.
 pub const SHOWS_WALLPAPER_FIELDS: &[&str] =
     &["wallpaper_apply", "playlist_activate", "playlist_jump_to"];
 
-/// Показывает ли запрос с этим полем обои на дисплеях.
+/// Whether a request with this field shows wallpaper on the displays.
 pub fn request_shows_wallpaper(field: &str) -> bool {
     SHOWS_WALLPAPER_FIELDS.contains(&field)
 }
 
-/// Порт обратной стороны `_all_selected`: стоит ли плагин обоями хоть на
-/// одном рабочем столе (то есть его `.so` уже в памяти оболочки).
+/// Port of the reverse side of `_all_selected`: whether the plugin is set as wallpaper on at least
+/// one desktop (that is, its `.so` is already in the shell's memory).
 pub fn any_selected(plugins: &[String]) -> bool {
     plugins.iter().any(|p| p == PLUGIN_ID)
 }
 
-/// Перезапускать ли plasmashell после установки.
+/// Whether to restart plasmashell after installation.
 ///
-/// Только когда ОБНОВИЛИ плагин, который сейчас стоит обоями: старый `.so`
-/// уже загружен, и без перезапуска оболочка продолжит рисовать им. Свежая
-/// установка и обновление невыбранного плагина оболочку не трогают — она
-/// загрузит новый пакет сама, когда его назначат.
+/// Only when a plugin that is currently set as wallpaper was UPDATED: the old `.so`
+/// is already loaded, and without a restart the shell keeps drawing with it. A fresh
+/// install and an update of a non-selected plugin do not touch the shell — it
+/// will load the new package by itself when it is assigned.
 pub fn restart_after_install(installed_now: bool, was_present: bool, in_use: bool) -> bool {
     installed_now && was_present && in_use
 }
 
-// ── тихое освежение уже установленного плагина ──────────────────────────
+// ── quiet refresh of an already installed plugin ────────────────────────
 //
-// Дефект 12.11.2026: Rexon обновил вшитый движок до waywallen 0.6.0 и
-// плагин в бандле до 0.4.5, а у человека в `~/.local/share/plasma/…`
-// остался плагин от 06.10. Плагин освежался только при применении обоев в
-// KDE; человек работал в GNOME/MATE, и при входе в Plasma старый плагин с
-// новым демоном повесил plasmashell (окна есть, ни панели, ни стола).
-// Поэтому уже УСТАНОВЛЕННЫЙ плагин освежается и при старте Rexon, и после
-// обновления движка — на любом рабочем столе (kpackagetool6 работает и вне
-// Plasma). НЕ установленный не ставится: это дело применения обоев в KDE.
+// Defect of 12.11.2026: Rexon updated the bundled engine to waywallen 0.6.0 and
+// the bundle plugin to 0.4.5, but the person's `~/.local/share/plasma/…` still
+// had the plugin from 06.10. The plugin was refreshed only when applying a wallpaper in
+// KDE; the person worked in GNOME/MATE, and on logging into Plasma the old plugin with
+// the new daemon hung plasmashell (windows exist, but no panel and no desktop).
+// So an already INSTALLED plugin is refreshed both at Rexon startup and after
+// an engine update — on any desktop (kpackagetool6 also works outside
+// Plasma). One NOT installed is not installed: that is the job of applying a wallpaper in KDE.
 
-/// Что делать с установленным плагином при старте и после обновления движка.
+/// What to do with the installed plugin at startup and after an engine update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshDecision {
-    /// Плагина у человека нет — не ставим (его ставит применение обоев в KDE).
+    /// The person has no plugin — we do not install it (applying a wallpaper in KDE installs it).
     NotInstalled,
-    /// Рантайм совпадает с бандлом (или сторож версии считает их одним) — ничего.
+    /// The runtime matches the bundle (or the version guard considers them the same) — nothing.
     UpToDate,
-    /// Нет kpackagetool6 — пропускаем, пишем в журнал.
+    /// No kpackagetool6 — skip, write to the log.
     NoTool,
-    /// Бандла нет или он без metadata.json — обновлять нечем.
+    /// No bundle or it lacks metadata.json — nothing to update with.
     NoBundle,
-    /// Обновить: `kpackagetool6 -u` тем же конвейером [`install_or_upgrade`].
+    /// Update: `kpackagetool6 -u` with the same [`install_or_upgrade`] pipeline.
     Upgrade,
-    /// Сторож версии против (установленный новее, чужой неизвестной версии,
-    /// бандл не подходит к демону) — не трогаем молча.
+    /// The version guard is against it (the installed one is newer, a foreign one of unknown version,
+    /// the bundle does not suit the daemon) — we do not touch it silently.
     Skip(PluginAction),
 }
 
 impl RefreshDecision {
-    /// Нужен ли запуск kpackagetool6.
+    /// Whether running kpackagetool6 is needed.
     pub fn upgrades(self) -> bool {
         self == RefreshDecision::Upgrade
     }
 }
 
-/// Решить, освежать ли установленный плагин. Чистая функция: состояние ФС
-/// (`check`), наличие инструмента и годность бандла подаёт исполнитель.
+/// Decide whether to refresh the installed plugin. A pure function: the FS state
+/// (`check`), the presence of the tool and the fitness of the bundle are passed in by the executor.
 ///
-/// Порядок дешёвый: сначала «есть ли плагин» и сверка хэшей рантайма —
-/// при старте Rexon в обычном случае дальше дело не идёт. Решение «новее /
-/// старее / чужой» — за общим сторожем версии [`plan_plugin`] (без согласия
-/// человека: молча ставим только то, что поставили бы и при применении).
+/// The order is cheap: first "is there a plugin" and comparing the runtime hashes —
+/// at a normal Rexon startup it goes no further. The "newer /
+/// older / foreign" decision belongs to the shared version guard [`plan_plugin`] (without the person's
+/// consent: we silently install only what would also be installed on apply).
 pub fn refresh_decision(check: &PluginCheck, tool_found: bool, bundle_valid: bool) -> RefreshDecision {
     if !check.installed.present {
         return RefreshDecision::NotInstalled;
@@ -592,31 +592,31 @@ pub fn refresh_decision(check: &PluginCheck, tool_found: bool, bundle_valid: boo
     }
 }
 
-/// Перезапускать ли plasmashell после тихого освежения: только на KDE и
-/// только по общему правилу [`restart_after_install`] (обновили плагин,
-/// который сейчас стоит обоями). Вне Plasma оболочки нет — нечего и трогать.
+/// Whether to restart plasmashell after a quiet refresh: only on KDE and
+/// only by the shared rule [`restart_after_install`] (a plugin that is currently
+/// set as wallpaper was updated). Outside Plasma there is no shell — nothing to touch.
 pub fn refresh_restarts(is_kde_now: bool, installed_now: bool, in_use: bool) -> bool {
     is_kde_now && restart_after_install(installed_now, true, in_use)
 }
 
-/// Как отправить кадр запроса.
+/// How to send a request frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplyGate {
-    /// Сразу, как обычно.
+    /// Right away, as usual.
     Send,
-    /// Придержать до появления дисплея, а дисплей тем временем поднять
-    /// (KDE — назначить плагин, X11 — запустить хост-клиент вывода).
+    /// Hold it back until a display appears, and meanwhile bring up the display
+    /// (KDE — assign the plugin, X11 — start the output host client).
     HoldAndSelect,
 }
 
-/// Решение для кадра запроса: придерживать ли его, пока Rexon поднимает
-/// дисплей демона.
+/// The decision for a request frame: whether to hold it back while Rexon brings up
+/// the daemon's display.
 ///
-/// Придерживается только запрос, показывающий обои, только там, где дисплей
-/// поднимает сам Rexon (`rexon_brings_display`: KDE — назначением плагина,
-/// X11 — хостом-клиентом вывода, `wallpaper_backend::DisplaySetup`), и
-/// только когда дисплеев у демона нет: есть дисплей — вывод уже работает, и
-/// решать за человека, где ещё показывать обои, незачем.
+/// Only a request that shows wallpaper is held back, only where Rexon itself
+/// brings up the display (`rexon_brings_display`: KDE — by assigning the plugin,
+/// X11 — by the output host client, `wallpaper_backend::DisplaySetup`), and
+/// only when the daemon has no displays: if there is a display, output already works, and
+/// there is no reason to decide for the person where else to show the wallpaper.
 pub fn apply_gate(rexon_brings_display: bool, field: &str, displays: usize) -> ApplyGate {
     if rexon_brings_display && displays == 0 && request_shows_wallpaper(field) {
         ApplyGate::HoldAndSelect
@@ -625,54 +625,54 @@ pub fn apply_gate(rexon_brings_display: bool, field: &str, displays: usize) -> A
     }
 }
 
-/// Сколько ждать дисплея после назначения плагина, мс. Дольше — кадр
-/// уходит как есть, и демон отвечает своей ошибкой «нет дисплея».
+/// How long to wait for a display after assigning the plugin, ms. Longer — the frame
+/// goes out as is, and the daemon answers with its own "no display" error.
 pub const HOLD_TIMEOUT_MS: u64 = 15_000;
 
-// ── «Применить» при нуле дисплеев: цель «все рабочие столы» ────────────
+// ── «Apply» with zero displays: the target "all desktops" ──────────────
 //
-// ⛔ Дефект 30.10.2026 (ВМ, Plasma 6.8.2, свежий пользователь, r1887):
-// после того как назначение плагина перенесли на момент применения,
-// вендорная карточка обоев держала «Применить» серой — она включается по
-// `PresentationTargetState.hasSelection`, а для этого нужен хоть один
-// дисплей. Дисплей же появляется, только когда плагин УЖЕ назначен:
-// замкнутый круг, применить обои на свежей системе было нечем. Страница
-// «Мониторы» при этом отправляла ставить расширение руками из GitHub/KDE
-// Store и выбирать его в настройках Plasma (правило #13).
+// ⛔ Defect of 30.10.2026 (VM, Plasma 6.8.2, fresh user, r1887):
+// after assigning the plugin was moved to the moment of applying,
+// the vendored wallpaper card kept «Apply» grey — it is enabled by
+// `PresentationTargetState.hasSelection`, and that needs at least one
+// display. And a display appears only when the plugin is ALREADY assigned:
+// a vicious circle, there was no way to apply a wallpaper on a fresh system. Meanwhile the
+// «Displays» page sent the person to install the extension by hand from GitHub/the KDE
+// Store and select it in the Plasma settings (rule #13).
 //
-// Выход: пока дисплеев нет, но кадр применения будет придержан и плагин
-// назначен (`apply_gate` → `HoldAndSelect`), у кнопки есть цель — «все
-// рабочие столы» (пустой список целей в запросе, как у вендорного «все»).
-// Решение берётся из того же `apply_gate`, чтобы кнопка не разошлась с
-// тем, что транспорт сделает с кадром.
+// The way out: while there are no displays but the apply frame will be held back and the plugin
+// assigned (`apply_gate` → `HoldAndSelect`), the button has a target — "all
+// desktops" (an empty target list in the request, like the vendored "all").
+// The decision is taken from the same `apply_gate`, so that the button does not diverge from
+// what the transport will do with the frame.
 
-/// Можно ли нажать «Применить», пока у демона нет ни одного дисплея.
+/// Whether «Apply» can be pressed while the daemon has not a single display.
 ///
-/// Да ровно тогда, когда транспорт придержит такой кадр и сам поднимет
-/// дисплей: тогда обои применятся на все столы.
+/// Yes exactly when the transport will hold back such a frame and bring up the
+/// display itself: then the wallpaper is applied to all desktops.
 pub fn apply_without_displays(rexon_brings_display: bool) -> bool {
     apply_gate(rexon_brings_display, "wallpaper_apply", 0) == ApplyGate::HoldAndSelect
 }
 
-/// Можно ли запустить плейлист, пока у демона нет ни одного дисплея.
+/// Whether a playlist can be started while the daemon has not a single display.
 ///
-/// ⛔ Тот же круг, что у «Применить» (дефект 30.10.2026, после 66a2dd5b):
-/// вендорный список плейлистов выбирает цели по одной и без дисплея
-/// кнопку запуска не включал, а при пустом списке целей проверка «уже
-/// играет» (`every()` по пустому набору) отвечала «да» и превращала
-/// запуск в паузу. Решение — тот же `apply_gate` для `playlist_activate`:
-/// кадр придержится, плагин назначится, цель — все рабочие столы с
-/// подключением новых дисплеев (`auto_attach`), как у вендорного «все».
+/// ⛔ The same circle as with «Apply» (defect of 30.10.2026, after 66a2dd5b):
+/// the vendored playlist list selects targets one by one and without a display did not
+/// enable the start button, and with an empty target list the "already
+/// playing" check (`every()` over an empty set) answered "yes" and turned
+/// the start into a pause. The solution is the same `apply_gate` for `playlist_activate`:
+/// the frame is held back, the plugin is assigned, the target is all desktops with
+/// new displays attached (`auto_attach`), like the vendored "all".
 pub fn play_without_displays(rexon_brings_display: bool) -> bool {
     apply_gate(rexon_brings_display, "playlist_activate", 0) == ApplyGate::HoldAndSelect
 }
 
-/// Подсказка страницы «Мониторы» при нуле дисплеев вместо вендорной
-/// «поставьте расширение руками» (KDE) или голого «Мониторы не
-/// зарегистрированы» (X11: MATE, XFCE, Cinnamon X11 — дефект 30.10.2026).
-/// Пустая строка — подсказки нет (дисплей поднимает не Rexon), страница
-/// показывает своё. Называет оба пути, что работают без дисплеев:
-/// «Применить» у обоев и «Воспроизвести плейлист» ([`play_without_displays`]).
+/// Hint of the «Displays» page with zero displays instead of the vendored
+/// "install the extension by hand" (KDE) or a bare «No displays
+/// registered» (X11: MATE, XFCE, Cinnamon X11 — defect of 30.10.2026).
+/// An empty string — no hint (the display is not brought up by Rexon), the page
+/// shows its own. Names both paths that work without displays:
+/// «Apply» on a wallpaper and «Play Playlist» ([`play_without_displays`]).
 pub fn no_displays_hint(setup: crate::wallpaper_backend::DisplaySetup) -> String {
     use crate::wallpaper_backend::DisplaySetup;
     if !apply_without_displays(setup.rexon_brings_display()) {
@@ -684,7 +684,7 @@ pub fn no_displays_hint(setup: crate::wallpaper_backend::DisplaySetup) -> String
              and press “Apply” or “Play playlist” — Rexon will put them on the Plasma desktop by \
              itself.",
         ),
-        // GNOME: расширение waywallen Rexon включает сам — те же слова.
+        // GNOME: Rexon enables the waywallen extension itself — the same words.
         DisplaySetup::RexonHost | DisplaySetup::GnomeExtension => crate::i18n::tr(
             "Wallpaper Engine wallpapers are not on the desktop yet. Pick a wallpaper or a playlist \
              and press “Apply” or “Play playlist” — Rexon will put them on the desktop by itself.",
@@ -693,11 +693,11 @@ pub fn no_displays_hint(setup: crate::wallpaper_backend::DisplaySetup) -> String
     }
 }
 
-/// Подсказка страницы «Мониторы» с учётом бэкенда сеанса: там, где дисплей
-/// поднимает Rexon, — [`no_displays_hint`]; где вывода для сцен нет вовсе и
-/// «Применить» поэтому серая — объяснение почему, а не голое «Мониторы не
-/// зарегистрированы» (правило #13). Где дисплей поднимает сам движок
-/// (wlr-композиторы) — пусто: страница показывает своё.
+/// Hint of the «Displays» page taking the session backend into account: where Rexon
+/// brings up the display — [`no_displays_hint`]; where there is no output for scenes at all and
+/// «Apply» is therefore grey — an explanation why, not a bare «No displays
+/// registered» (rule #13). Where the engine itself brings up the display
+/// (wlr compositors) — empty: the page shows its own.
 pub fn no_displays_hint_in(
     setup: crate::wallpaper_backend::DisplaySetup,
     backend: crate::wallpaper_backend::WallpaperBackend,
@@ -720,17 +720,17 @@ pub fn no_displays_hint_in(
     }
 }
 
-/// Отпускать ли придержанные кадры.
+/// Whether to release the held-back frames.
 ///
-/// `select_done` — подготовка закончилась; `select_ok` — плагин назначен.
-/// Назначить не вышло — ждать нечего, ответ демона скажет человеку правду.
+/// `select_done` — the preparation has finished; `select_ok` — the plugin is assigned.
+/// Assigning failed — there is nothing to wait for, the daemon's answer will tell the person the truth.
 pub fn release_held(select_done: bool, select_ok: bool, displays: usize, waited_ms: u64) -> bool {
     displays > 0 || (select_done && !select_ok) || waited_ms >= HOLD_TIMEOUT_MS
 }
 
-/// Обновить набор дисплеев демона по его событию.
+/// Update the daemon's set of displays from its event.
 ///
-/// Возвращает `true`, если набор изменился. Чужие события не трогают набор.
+/// Returns `true` if the set changed. Other events do not touch the set.
 pub fn track_displays(
     ids: &mut std::collections::BTreeSet<u64>,
     event: &crate::proto::control::Event,
@@ -752,52 +752,52 @@ pub fn track_displays(
     }
 }
 
-/// Что писать в журнал о назначении плагина в момент, когда отпускаются
-/// придержанные кадры. Прежняя строка «плагин назначен: false» вводила в
-/// заблуждение: кадры чаще всего отпускаются по появлению дисплея, пока
-/// поток назначения ещё не отчитался, хотя плагин уже назначен.
+/// What to write to the log about assigning the plugin at the moment the
+/// held-back frames are released. The former line "plugin assigned: false" was
+/// misleading: frames are most often released when a display appears, while
+/// the assigning thread has not yet reported, although the plugin is already assigned.
 pub fn select_state_for_log(select_done: bool, select_ok: bool) -> &'static str {
     match (select_done, select_ok) {
-        // Общие слова для обоих путей подъёма вывода: на KDE это назначение
-        // плагина, на X11 — запуск хоста-клиента вывода.
+        // Shared words for both ways of bringing up output: on KDE it is assigning the
+        // plugin, on X11 — starting the output host client.
         (false, _) => "подъём вывода ещё не отчитался",
         (true, true) => "вывод поднят только что",
         (true, false) => "не поднимался (уже был) или поднять не вышло",
     }
 }
 
-// ── откат: живые обои не запустились — вернуть прежние обои стола ───────
+// ── rollback: the live wallpaper did not start — bring back the desktop's previous wallpaper ─
 //
-// ⛔ Риск, найденный при приёмке 66a2dd5b (ВМ, llvmpipe): плагин назначен
-// ради применения, а рендерер waywallen не стартовал
-// (`ww_bridge_pool_create failed: -22`) — человек остаётся с ЧЁРНЫМ столом
-// вместо своих обоев (правило #13). То же будет на любой машине, где
-// рендерер не поднимается (нет Vulkan с DMA-BUF, старая видеокарта).
+// ⛔ A risk found during the acceptance of 66a2dd5b (VM, llvmpipe): the plugin was assigned
+// for the sake of an apply, but the waywallen renderer did not start
+// (`ww_bridge_pool_create failed: -22`) — the person is left with a BLACK desktop
+// instead of their wallpaper (rule #13). The same will happen on any machine where
+// the renderer does not come up (no Vulkan with DMA-BUF, an old graphics card).
 //
-// Правило: если придержанное применение не удалось — демон ответил ошибкой
-// или рендерер этого применения пропал в первые секунды, — и плагин
-// назначался ИМЕННО ради него, столам возвращается плагин, стоявший до
-// назначения (обычно `org.kde.image`; его настройки Plasma хранит, так что
-// возвращается и сама картинка). Стоял плагин до «Применить» — не трогаем.
+// Rule: if the held-back apply failed — the daemon answered with an error
+// or the renderer of this apply vanished in the first seconds — and the plugin
+// was assigned PRECISELY for it, the desktops get back the plugin that stood before
+// the assignment (usually `org.kde.image`; Plasma keeps its settings, so
+// the picture itself comes back too). If the plugin stood there before «Apply» — we do not touch it.
 
-/// Плагин обоев одного рабочего стола Plasma (контейнера `desktops()`).
+/// The wallpaper plugin of one Plasma desktop (a `desktops()` container).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopPlugin {
-    /// `id` контейнера — по нему откат находит тот же стол.
+    /// Container `id` — by it the rollback finds the same desktop.
     pub desktop_id: i64,
     pub plugin: String,
 }
 
-/// JS: плагин обоев каждого стола вместе с номером контейнера —
-/// `id=плагин` через `;`. Снимается перед назначением, чтобы было что
-/// вернуть.
+/// JS: the wallpaper plugin of each desktop together with the container number —
+/// `id=plugin` separated by `;`. Taken before the assignment, so that there is something to
+/// bring back.
 pub fn plugins_by_desktop_js() -> String {
     "var ds = desktops(); var res = '';for (var i = 0; i < ds.length; i++) \
      res += (i ? ';' : '') + ds[i].id + '=' + ds[i].wallpaperPlugin;print(res);"
         .to_string()
 }
 
-/// Разбор ответа `plugins_by_desktop_js`. Мусор пропускается.
+/// Parsing the answer of `plugins_by_desktop_js`. Garbage is skipped.
 pub fn parse_plugins_by_desktop(stdout: &str) -> Vec<DesktopPlugin> {
     stdout
         .trim()
@@ -811,19 +811,19 @@ pub fn parse_plugins_by_desktop(stdout: &str) -> Vec<DesktopPlugin> {
         .collect()
 }
 
-/// Имя плагина, которое безопасно вставить в JS (id KPackage: латиница,
-/// цифры, `.`, `_`, `-`). Иное в откат не попадает.
+/// A plugin name that is safe to insert into JS (KPackage id: Latin letters,
+/// digits, `.`, `_`, `-`). Anything else does not get into the rollback.
 fn plugin_id_is_safe(plugin: &str) -> bool {
     !plugin.is_empty()
         && plugin.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
-/// JS отката: столам, где сейчас стоит наш плагин, вернуть прежний.
+/// Rollback JS: for desktops where our plugin currently stands, bring back the previous one.
 ///
-/// `None` — откатывать нечего: плагин был назначен не нами (`selected_now`
-/// ложно), снимка прежнего нет или все столы и до того стояли на нашем
-/// плагине. Столы, появившиеся после снимка, и столы, где человек уже
-/// выбрал другое, не трогаются.
+/// `None` — nothing to roll back: the plugin was not assigned by us (`selected_now`
+/// is false), there is no snapshot of the previous one, or all desktops already stood on our
+/// plugin before. Desktops that appeared after the snapshot, and desktops where the person has already
+/// chosen something else, are not touched.
 pub fn revert_plugins_js(selected_now: bool, previous: Option<&[DesktopPlugin]>) -> Option<String> {
     if !selected_now {
         return None;
@@ -844,50 +844,50 @@ pub fn revert_plugins_js(selected_now: bool, previous: Option<&[DesktopPlugin]>)
     ))
 }
 
-/// Сколько после отправки придержанного применения следить, не пропал ли
-/// его рендерер (упал на старте, на первом кадре), мс.
+/// How long after sending the held-back apply to watch whether
+/// its renderer vanished (crashed at startup, on the first frame), ms.
 pub const FIRST_FRAME_WATCH_MS: u64 = 10_000;
 
-/// Что делать по очередному событию сторожа применения.
+/// What to do on the next event of the apply guard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WatchVerdict {
-    /// Следить дальше.
+    /// Keep watching.
     Keep,
-    /// Применение состоялось (или за ним больше незачем следить).
+    /// The apply happened (or there is no longer any point in watching it).
     Done,
-    /// Применение не удалось — вернуть прежние обои.
+    /// The apply failed — bring back the previous wallpaper.
     Revert,
 }
 
-/// Сторож придержанного применения: следит за ответом демона на ПОСЛЕДНИЙ
-/// отпущенный кадр (он и определяет, что окажется на столе) и за его
-/// рендерером в первые `FIRST_FRAME_WATCH_MS`.
+/// Guard of a held-back apply: watches the daemon's answer to the LAST
+/// released frame (it is what determines what ends up on the desktop) and its
+/// renderer during the first `FIRST_FRAME_WATCH_MS`.
 ///
-/// ⛔ Плейлист (`playlist_activate`) и отложенное применение рендерер в
-/// ответе не называют — раньше сторож на таком ответе сдавался, и падение
-/// рендерера после успешного ответа (ВМ, llvmpipe:
-/// `ww_bridge_pool_create failed: -22`) оставляло стол чёрным. Теперь
-/// рендерер узнаётся по событиям демона: какие рендереры показаны на
-/// дисплеях (`DisplayInfo.links`) с момента отправки кадра. До придержки
-/// дисплеев не было вовсе, так что всё, что появилось на них после, — от
-/// этого применения. Демон, снимая упавший рендерер, шлёт
-/// `RendererRemoved` раньше обновлённого списка дисплеев
-/// (`on_renderer_process_exit`), но порядок не важен: сторож помнит всех,
-/// кто хоть раз был показан.
+/// ⛔ A playlist (`playlist_activate`) and a deferred apply do not name the renderer in
+/// the answer — previously the guard gave up on such an answer, and a renderer
+/// crash after a successful answer (VM, llvmpipe:
+/// `ww_bridge_pool_create failed: -22`) left the desktop black. Now the
+/// renderer is recognised by the daemon's events: which renderers are shown on
+/// the displays (`DisplayInfo.links`) since the frame was sent. Before the hold there were
+/// no displays at all, so everything that appeared on them afterwards comes from
+/// this apply. The daemon, removing a crashed renderer, sends
+/// `RendererRemoved` before the updated display list
+/// (`on_renderer_process_exit`), but the order does not matter: the guard remembers everyone
+/// who was ever shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyWatch {
     request_id: u64,
     answered: bool,
-    /// Рендерер из ответа `wallpaper_apply` — следим ровно за ним.
+    /// The renderer from the `wallpaper_apply` answer — we watch exactly it.
     renderer_id: Option<String>,
-    /// Текущие связи «дисплей → рендереры» по событиям демона.
+    /// Current "display → renderers" links from the daemon's events.
     links: std::collections::BTreeMap<u64, std::collections::BTreeSet<String>>,
-    /// Рендереры, хоть раз показанные на дисплеях с отправки кадра.
+    /// Renderers ever shown on the displays since the frame was sent.
     shown: std::collections::BTreeSet<String>,
-    /// Рендереры, о которых демон сообщил (`RendererChanged`) с отправки:
-    /// живые кандидаты, например следующий рендерер плейлиста.
+    /// Renderers the daemon reported (`RendererChanged`) since sending:
+    /// live candidates, for example the next renderer of a playlist.
     announced: std::collections::BTreeSet<String>,
-    /// Показанные рендереры, которых демон снял.
+    /// Shown renderers that the daemon removed.
     lost: std::collections::BTreeSet<String>,
 }
 
@@ -904,14 +904,14 @@ impl ApplyWatch {
         }
     }
 
-    /// Ответ ли это на наблюдаемый кадр.
+    /// Whether this is an answer to the watched frame.
     pub fn watches(&self, request_id: u64) -> bool {
         request_id != 0 && request_id == self.request_id
     }
 
-    /// Ответ демона. `ok` — статус `OK`; `renderer_id` — из ответа
-    /// `wallpaper_apply` (пусто у плейлистов и отложенного применения —
-    /// тогда рендерер узнаётся по событиям дисплеев, `on_event`).
+    /// The daemon's answer. `ok` — status `OK`; `renderer_id` — from the
+    /// `wallpaper_apply` answer (empty for playlists and a deferred apply —
+    /// then the renderer is recognised by display events, `on_event`).
     pub fn on_response(&mut self, request_id: u64, ok: bool, renderer_id: &str) -> WatchVerdict {
         if !self.watches(request_id) {
             return WatchVerdict::Keep;
@@ -924,11 +924,11 @@ impl ApplyWatch {
             self.renderer_id = Some(renderer_id.to_string());
             return WatchVerdict::Keep;
         }
-        // Рендерер мог упасть ещё до ответа — события уже пришли.
+        // The renderer could have crashed even before the answer — the events have already arrived.
         self.verdict_by_displays()
     }
 
-    /// Событие демона: связи дисплеев, появление и снятие рендереров.
+    /// A daemon event: display links, renderers appearing and being removed.
     pub fn on_event(&mut self, event: &crate::proto::control::Event) -> WatchVerdict {
         use crate::proto::control::event::Payload;
         match event.payload.as_ref() {
@@ -972,28 +972,28 @@ impl ApplyWatch {
         self.links.insert(display.display_id, ids);
     }
 
-    /// Демон снял рендерер. Наш — значит, он упал, не начав показ.
+    /// The daemon removed a renderer. If it is ours, it crashed without starting to show.
     pub fn on_renderer_removed(&mut self, renderer_id: &str) -> WatchVerdict {
         if let Some(ours) = &self.renderer_id {
             return if ours == renderer_id { WatchVerdict::Revert } else { WatchVerdict::Keep };
         }
         self.announced.remove(renderer_id);
         if !self.shown.contains(renderer_id) {
-            // Не показывался на дисплеях после отправки — не наш.
+            // It was not shown on the displays after sending — not ours.
             return WatchVerdict::Keep;
         }
         self.lost.insert(renderer_id.to_string());
         if self.answered {
             self.verdict_by_displays()
         } else {
-            // Ответа ещё нет: ошибку скажет он, а успех — с учётом потери.
+            // No answer yet: it will report an error, and success — taking the loss into account.
             WatchVerdict::Keep
         }
     }
 
-    /// Рендерер не назван: применение не удалось, если показанный рендерер
-    /// снят и на смену ему не пришёл ни один живой (смена обоев плейлистом
-    /// снимает прежний, но новый к тому времени уже объявлен).
+    /// The renderer is not named: the apply failed if the shown renderer
+    /// was removed and no live one came to replace it (a wallpaper change by a playlist
+    /// removes the previous one, but the new one has already been announced by then).
     fn verdict_by_displays(&self) -> WatchVerdict {
         if self.lost.is_empty() {
             return WatchVerdict::Keep;
@@ -1011,12 +1011,12 @@ impl ApplyWatch {
         }
     }
 
-    /// Человек сам применил что-то ещё — его новое действие главнее.
+    /// The person applied something else themselves — their new action takes precedence.
     pub fn on_new_apply(&self) -> WatchVerdict {
         WatchVerdict::Done
     }
 
-    /// Ход часов: `elapsed_ms` — с отправки кадра.
+    /// Clock tick: `elapsed_ms` — since the frame was sent.
     pub fn on_tick(&self, elapsed_ms: u64) -> WatchVerdict {
         let limit = if self.answered { FIRST_FRAME_WATCH_MS } else { HOLD_TIMEOUT_MS + FIRST_FRAME_WATCH_MS };
         if elapsed_ms >= limit {
@@ -1027,7 +1027,7 @@ impl ApplyWatch {
     }
 }
 
-/// Сообщение человеку: живые обои не запустились, прежние обои вернули.
+/// Message to the person: the live wallpaper did not start, the previous wallpaper was brought back.
 pub fn revert_done_text() -> String {
     crate::i18n::tr(
         "The live wallpaper could not start on this computer, so Rexon put your previous \
@@ -1035,8 +1035,8 @@ pub fn revert_done_text() -> String {
     )
 }
 
-/// Сообщение человеку: живые обои не запустились, а вернуть прежние не
-/// вышло — что сделать самому.
+/// Message to the person: the live wallpaper did not start, and bringing back the previous one
+/// failed — what to do themselves.
 pub fn revert_failed_text() -> String {
     crate::i18n::tr(
         "The live wallpaper could not start, and Rexon could not put your previous wallpaper \
@@ -1045,106 +1045,106 @@ pub fn revert_failed_text() -> String {
     )
 }
 
-// ── сторож версии: не ставить старое поверх нового ─────────────────────
+// ── version guard: do not install old over new ─────────────────────────
 //
-// ⛔ Дефект 02.10.2026 (живьём у Wehrwolfmann). Прежнее правило было «версия
-// = хэш `.so`, при ЛЮБОМ несовпадении с бандлом — `kpackagetool6 -u`».
-// Направления оно не знало: Rexon r1062 с вложенным плагином 0.3.3
-// (протокол вывода v8) при открытии вкладки обоев переставил его ПОВЕРХ
-// более нового 0.4.0, а демон waywallen 0.4.3 принимает только v9 —
-// «client protocol v8 not supported; daemon accepts [9..=9]», мониторов нет,
-// обои пропали. Теперь сравниваются НАСТОЯЩИЕ версии, старое поверх нового не
-// ставится никогда, чужой плагин неизвестной версии без согласия человека не
-// трогается, а несовместимость с демоном называется вслух.
+// ⛔ Defect of 02.10.2026 (live at Wehrwolfmann's). The former rule was "version
+// = hash of the `.so`, on ANY mismatch with the bundle — `kpackagetool6 -u`".
+// It did not know direction: Rexon r1062 with the bundled plugin 0.3.3
+// (display protocol v8), when the wallpaper tab was opened, reinstalled it ON TOP of
+// the newer 0.4.0, while the waywallen 0.4.3 daemon accepts only v9 —
+// "client protocol v8 not supported; daemon accepts [9..=9]", no monitors,
+// the wallpaper vanished. Now REAL versions are compared, old is never installed
+// over new, a foreign plugin of unknown version is not touched without the person's
+// consent, and incompatibility with the daemon is stated out loud.
 //
-// Откуда версии:
-//   * у плагина — `vendor.toml` (`version`), он едет ВНУТРИ нашего пакета и
-//     kpackagetool6 копирует его в установленный каталог: есть он — плагин
-//     ставили мы, и версия точная;
-//   * чужой установленный (релиз апстрима) `vendor.toml` не несёт,
-//     `metadata.json` апстрима без `Version`, а строки версии в `.so` нет
-//     (`waywallen_display_version()` — функция, а не текст: узнать её можно
-//     только загрузив библиотеку в процесс, чего мы не делаем). Поэтому для
-//     чужого — таблица известных хэшей рантайма [`KNOWN_RUNTIME_SHA`];
-//   * маркер `.rexon-installed-version` — запасной признак «ставили мы»
-//     (так помечали установки до того, как `vendor.toml` поехал в пакете).
+// Where the versions come from:
+//   * for the plugin — `vendor.toml` (`version`), it travels INSIDE our package and
+//     kpackagetool6 copies it into the installed directory: if it is present, we installed
+//     the plugin, and the version is exact;
+//   * a foreign installed one (an upstream release) does not carry `vendor.toml`,
+//     the upstream `metadata.json` has no `Version`, and there is no version string in the `.so`
+//     (`waywallen_display_version()` is a function, not text: it can be learned
+//     only by loading the library into the process, which we do not do). So for
+//     a foreign one — the table of known runtime hashes [`KNOWN_RUNTIME_SHA`];
+//   * the `.rexon-installed-version` marker — a fallback sign of "we installed it"
+//     (installs were marked this way before `vendor.toml` travelled in the package).
 //
-// Протокол вывода и демон. Демон спросить о протоколе можно только через
-// сокет вывода (`display.sock`, запрос `hello`): при отказе он рассылает всем
-// клиентам управления событие `DisplayConnectionFailed`, у человека в окне
-// waywallen всплывает предупреждение. Это вмешательство в живой демон, и
-// поэтому протокол берётся по ВЕРСИИ демона (свойство `Version` на шине, либо
-// `--version` бинаря) из таблицы [`DAEMON_DISPLAY_PROTOCOLS`], снятой с тегов
-// апстрима. Версия вне таблицы — вердикта нет, остаётся правило «не старее».
+// Display protocol and the daemon. The daemon can be asked about the protocol only through
+// the display socket (`display.sock`, the `hello` request): on refusal it sends all
+// control clients a `DisplayConnectionFailed` event, and a warning pops up for the person
+// in the waywallen window. That is interfering with a live daemon, and
+// so the protocol is taken by the daemon VERSION (the `Version` property on the bus, or
+// the binary's `--version`) from the [`DAEMON_DISPLAY_PROTOCOLS`] table, taken from the
+// upstream tags. A version outside the table — no verdict, the "not older" rule remains.
 
-/// Имя файла с описанием вендорного куска (внутри пакета плагина).
+/// Name of the file describing the vendored piece (inside the plugin package).
 pub const VENDOR_TOML_NAME: &str = "vendor.toml";
 
-/// `vendor.toml` пакета `base` (бандл или установленный экземпляр).
+/// `vendor.toml` of package `base` (the bundle or an installed instance).
 pub fn vendor_toml_path(base: &str) -> String {
     join(&[base, VENDOR_TOML_NAME])
 }
 
-/// Версия из текста `vendor.toml` (поле `version`); нет поля, пусто или файл
-/// не разбирается — `None`.
+/// Version from the `vendor.toml` text (the `version` field); no field, empty or the file
+/// does not parse — `None`.
 pub fn parse_vendor_version(text: &str) -> Option<String> {
     let table: toml::Table = toml::from_str(text).ok()?;
     let v = table.get("version")?.as_str()?.trim();
     (!v.is_empty()).then(|| v.to_string())
 }
 
-/// Известные рантаймы `libwaywallen-display-qml.so` → версия плагина (по
-/// [`file_sha`]). Нужна для ЧУЖОЙ установки, у которой нет `vendor.toml`.
+/// Known runtimes of `libwaywallen-display-qml.so` → plugin version (by
+/// [`file_sha`]). Needed for a FOREIGN install that has no `vendor.toml`.
 ///
-/// ⚠️ Хэш меняется не только с версией: пакеты Rexon до r1278 включительно
-/// снимали с `.so` отладочные символы, и у установленного из них другой хэш,
-/// чем в выпуске. С 09.10.2026 плазмоид едет из архива выпуска бит в бит
-/// (PKGBUILD исключает его из `_strip_own_binaries`), но стрипнутые формы
-/// остаются у тех, кто ставил прежние пакеты. Незнакомый хэш — версия
-/// неизвестна, а не «старая».
+/// ⚠️ The hash changes not only with the version: Rexon packages up to and including r1278
+/// stripped debug symbols from the `.so`, and one installed from them has a different hash
+/// than the release. Since 09.10.2026 the plasmoid travels from the release archive bit for bit
+/// (PKGBUILD excludes it from `_strip_own_binaries`), but the stripped forms
+/// remain for those who installed the earlier packages. An unknown hash means the version is
+/// unknown, not "old".
 pub const KNOWN_RUNTIME_SHA: &[(&str, &str)] = &[
-    // 0.4.5 — релиз апстрима `waywallen-kde-0.4.5-x86_64.zip` (с 08.11.2026
-    // едет в пакете; с этого выпуска у архива нет суффикса «-embed»).
+    // 0.4.5 — the upstream release `waywallen-kde-0.4.5-x86_64.zip` (travels in the package
+    // since 08.11.2026; from this release on the archive has no "-embed" suffix).
     ("4d90629e44055113", "0.4.5"),
-    // 0.4.3 — релиз апстрима `waywallen-kde-0.4.3-x86_64-embed.zip` (с
-    // 23.10.2026 едет в пакете; посчитано по архиву выпуска).
+    // 0.4.3 — the upstream release `waywallen-kde-0.4.3-x86_64-embed.zip` (travels in the
+    // package since 23.10.2026; computed from the release archive).
     ("5981949590228ee7", "0.4.3"),
-    // 0.4.2 — релиз апстрима `waywallen-kde-0.4.2-x86_64-embed.zip` (с
-    // 19.10.2026 именно он и едет в пакете; та же сборка стоит у тех, кто
-    // ставил релиз сам). Стрипнутой формы нет: с 09.10.2026 пакет плазмоид
-    // не стрипает.
+    // 0.4.2 — the upstream release `waywallen-kde-0.4.2-x86_64-embed.zip` (since
+    // 19.10.2026 it is exactly what travels in the package; the same build is installed by those who
+    // installed the release themselves). There is no stripped form: since 09.10.2026 the package does not
+    // strip the plasmoid.
     ("19c1613463252bae", "0.4.2"),
-    // 0.4.1 — релиз апстрима `waywallen-kde-0.4.1-x86_64-embed.zip` (ехал в
-    // пакете с 09.10 по 19.10.2026; та же сборка стоит у тех, кто ставил
-    // релиз сам).
+    // 0.4.1 — the upstream release `waywallen-kde-0.4.1-x86_64-embed.zip` (travelled in the
+    // package from 09.10 to 19.10.2026; the same build is installed by those who installed the
+    // release themselves).
     ("684c8ff280549b10", "0.4.1"),
-    // 0.4.1 — тот же рантайм после `strip --strip-unneeded` (посчитано тем
-    // же strip; на случай пакета, собранного до 09.10.2026).
+    // 0.4.1 — the same runtime after `strip --strip-unneeded` (computed with the same
+    // strip; in case of a package built before 09.10.2026).
     ("b70e45b8c5d7dbe3", "0.4.1"),
-    // 0.4.0 — релиз апстрима `waywallen-kde-0.4.0-x86_64-embed.zip` (дерево).
+    // 0.4.0 — the upstream release `waywallen-kde-0.4.0-x86_64-embed.zip` (the tree).
     ("bc9e0fbd268e448a", "0.4.0"),
-    // 0.4.0 — тот же рантайм после strip в пакете Rexon r1278.
+    // 0.4.0 — the same runtime after strip in the Rexon r1278 package.
     ("cbfc755c8c3ad9fd", "0.4.0"),
-    // 0.3.3 — релиз апстрима (дерево до 26.09.2026).
+    // 0.3.3 — the upstream release (the tree before 26.09.2026).
     ("e9c240a1da4c9327", "0.3.3"),
-    // 0.3.3 — тот же рантайм после strip в пакете Rexon r1062.
+    // 0.3.3 — the same runtime after strip in the Rexon r1062 package.
     ("da1b8e3007238009", "0.3.3"),
 ];
 
-/// Версия плагина по хэшу его рантайма (см. [`KNOWN_RUNTIME_SHA`]).
+/// Plugin version by the hash of its runtime (see [`KNOWN_RUNTIME_SHA`]).
 pub fn version_from_runtime_sha(sha: &str) -> Option<&'static str> {
     KNOWN_RUNTIME_SHA.iter().find(|(s, _)| *s == sha).map(|(_, v)| *v)
 }
 
-/// Протокол вывода, на котором говорит плагин данной версии: строки «с этой
-/// версии — этот протокол», по убыванию. Снято с тегов апстрима
+/// The display protocol spoken by a plugin of a given version: lines "from this
+/// version — this protocol", in descending order. Taken from the upstream tags of
 /// `waywallen-display` (`WAYWALLEN_DISPLAY_PROTOCOL_VERSION`, 02.10.2026;
-/// v0.4.1 сверен 09.10.2026 — тот же v9, добавлены только необязательные
-/// «tagged»-расширения, строка «с 0.4.0 — v9» его покрывает; v0.4.2 сверен
-/// 19.10.2026 — константа та же, провод не менялся, правки только внутри
-/// библиотеки: синхронизация кадров EGL, #76; v0.4.3 сверен 23.10.2026 —
-/// константа та же, добавлено только необязательное «tagged»-поле роли
-/// дисплея; v0.4.4 и v0.4.5 сверены 08.11.2026 — константа та же, v9).
+/// v0.4.1 checked 09.10.2026 — the same v9, only optional
+/// "tagged" extensions added, the line "from 0.4.0 — v9" covers it; v0.4.2 checked
+/// 19.10.2026 — the same constant, the wire did not change, changes only inside the
+/// library: EGL frame synchronisation, #76; v0.4.3 checked 23.10.2026 —
+/// the same constant, only an optional "tagged" display role field
+/// added; v0.4.4 and v0.4.5 checked 08.11.2026 — the same constant, v9).
 pub const PLUGIN_DISPLAY_PROTOCOLS: &[(&str, u32)] = &[
     ("0.4.0", 9),
     ("0.3.0", 8),
@@ -1155,19 +1155,20 @@ pub const PLUGIN_DISPLAY_PROTOCOLS: &[(&str, u32)] = &[
     ("0.1.1", 3),
 ];
 
-/// До какой версии плагина таблица выше проверена. Новее — протокол не
-/// угадываем (у нового выпуска он мог смениться).
+/// Up to which plugin version the table above is verified. For newer ones we do not
+/// guess the protocol (a new release could have changed it).
 pub const PLUGIN_PROTOCOLS_CHECKED_UP_TO: &str = "0.4.5";
 
-/// Какие протоколы вывода принимает демон waywallen данной версии
-/// (`MIN/MAX_SUPPORTED_CLIENT_VERSION`), по убыванию версий. Снято с тегов
-/// апстрима `waywallen` 02.10.2026, v0.4.4 сверен 09.10.2026, v0.5.0 —
-/// 23.10.2026, v0.6.0 — 08.11.2026 (по-прежнему `[9..=9]`). Ниже 0.3.0 не записано (там диапазон шире и для нас
-/// неинтересен) — вердикта нет.
+/// Which display protocols a waywallen daemon of a given version accepts
+/// (`MIN/MAX_SUPPORTED_CLIENT_VERSION`), in descending version order. Taken from the
+/// upstream `waywallen` tags on 02.10.2026, v0.4.4 checked 09.10.2026, v0.5.0 —
+/// 23.10.2026, v0.6.0 — 08.11.2026 (still `[9..=9]`); v0.6.1 checked 2026-11-23,
+/// still `[9..=9]`. Below 0.3.0 nothing is recorded (the range is wider there and of no
+/// interest to us) — no verdict.
 pub const DAEMON_DISPLAY_PROTOCOLS: &[(&str, u32, u32)] = &[("0.4.0", 9, 9), ("0.3.0", 8, 8)];
 
-/// До какой версии демона таблица выше проверена.
-pub const DAEMON_PROTOCOLS_CHECKED_UP_TO: &str = "0.6.0";
+/// Up to which daemon version the table above is verified.
+pub const DAEMON_PROTOCOLS_CHECKED_UP_TO: &str = "0.6.1";
 
 fn version_key(v: &str) -> Vec<u128> {
     let mut t = crate::engine_update::ver_tuple(v);
@@ -1177,7 +1178,7 @@ fn version_key(v: &str) -> Vec<u128> {
     t
 }
 
-/// Сравнить версии по числам (`0.4.0` = `v0.4`). Пустая — `None`.
+/// Compare versions numerically (`0.4.0` = `v0.4`). Empty — `None`.
 pub fn compare_versions(a: &str, b: &str) -> Option<std::cmp::Ordering> {
     let (ka, kb) = (version_key(a), version_key(b));
     if ka.is_empty() || kb.is_empty() {
@@ -1190,7 +1191,7 @@ fn within_checked(version: &str, checked_up_to: &str) -> bool {
     compare_versions(version, checked_up_to).is_some_and(|o| o != std::cmp::Ordering::Greater)
 }
 
-/// Протокол вывода плагина данной версии; вне проверенной таблицы — `None`.
+/// Display protocol of a plugin of a given version; outside the verified table — `None`.
 pub fn plugin_protocol(version: &str) -> Option<u32> {
     if !within_checked(version, PLUGIN_PROTOCOLS_CHECKED_UP_TO) {
         return None;
@@ -1201,8 +1202,8 @@ pub fn plugin_protocol(version: &str) -> Option<u32> {
         .map(|(_, p)| *p)
 }
 
-/// Диапазон протоколов, который принимает демон данной версии; вне
-/// проверенной таблицы — `None`.
+/// The range of protocols a daemon of a given version accepts; outside the
+/// verified table — `None`.
 pub fn daemon_protocols(version: &str) -> Option<(u32, u32)> {
     if !within_checked(version, DAEMON_PROTOCOLS_CHECKED_UP_TO) {
         return None;
@@ -1213,65 +1214,65 @@ pub fn daemon_protocols(version: &str) -> Option<(u32, u32)> {
         .map(|(_, lo, hi)| (*lo, *hi))
 }
 
-/// Подходит ли плагин версии `plugin` к демону версии `daemon`: `None` —
-/// не знаем (одной из версий нет либо она вне таблиц).
+/// Whether plugin version `plugin` suits daemon version `daemon`: `None` —
+/// we do not know (one of the versions is missing or outside the tables).
 pub fn compatible_with_daemon(plugin: Option<&str>, daemon: Option<&str>) -> Option<bool> {
     let p = plugin_protocol(plugin?)?;
     let (lo, hi) = daemon_protocols(daemon?)?;
     Some((lo..=hi).contains(&p))
 }
 
-/// Что видно об установленном экземпляре (всё читает исполнитель).
+/// What is visible about the installed instance (the executor reads everything).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct InstalledPlugin {
-    /// В `~/.local/share/plasma/wallpapers/` есть `metadata.json`.
+    /// `~/.local/share/plasma/wallpapers/` has a `metadata.json`.
     pub present: bool,
-    /// `version` из его `vendor.toml` (есть только у поставленного нами).
+    /// `version` from its `vendor.toml` (only one installed by us has it).
     pub vendor_version: Option<String>,
-    /// Непустой маркер `.rexon-installed-version` — ставили мы.
+    /// A non-empty `.rexon-installed-version` marker — we installed it.
     pub marker: bool,
-    /// [`file_sha`] его рантайма.
+    /// [`file_sha`] of its runtime.
     pub runtime_sha: Option<String>,
 }
 
-/// Вход решения «ставить ли плагин».
+/// Input of the "whether to install the plugin" decision.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PluginCheck {
-    /// `version` из `vendor.toml` нашего бандла.
+    /// `version` from the `vendor.toml` of our bundle.
     pub bundle_version: Option<String>,
-    /// [`file_sha`] рантайма бандла.
+    /// [`file_sha`] of the bundle runtime.
     pub bundle_sha: Option<String>,
     pub installed: InstalledPlugin,
-    /// Версия демона waywallen (шина или `--version`); `None` — не узнать.
+    /// Version of the waywallen daemon (bus or `--version`); `None` — cannot be learned.
     pub daemon_version: Option<String>,
-    /// Человек сам нажал «Поставить версию Rexon».
+    /// The person pressed «Install Rexon's Version» themselves.
     pub consent: bool,
 }
 
-/// Что делать с плагином.
+/// What to do with the plugin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PluginAction {
-    /// Плагина нет — `kpackagetool6 -i`.
+    /// No plugin — `kpackagetool6 -i`.
     Install,
-    /// Установленный старее (или наш без версии, или согласие) — `-u`.
+    /// The installed one is older (or ours without a version, or consent) — `-u`.
     Upgrade,
-    /// Тот же — ничего не делать.
+    /// The same one — do nothing.
     Keep,
-    /// Установленный НОВЕЕ бандла — не трогать.
+    /// The installed one is NEWER than the bundle — do not touch.
     KeepNewer,
-    /// Чужой, версию не определить — не трогать, спросить человека.
+    /// A foreign one, the version cannot be determined — do not touch, ask the person.
     AskForeign,
-    /// Бандл не подходит к демону — не ставить (не испортить рабочее).
+    /// The bundle does not suit the daemon — do not install (do not break what works).
     Blocked,
 }
 
 impl PluginAction {
-    /// Нужен ли запуск kpackagetool6.
+    /// Whether running kpackagetool6 is needed.
     pub fn installs(self) -> bool {
         matches!(self, PluginAction::Install | PluginAction::Upgrade)
     }
 
-    /// Имя для журнала и сверок.
+    /// Name for the log and checks.
     pub fn as_str(self) -> &'static str {
         match self {
             PluginAction::Install => "install",
@@ -1284,31 +1285,31 @@ impl PluginAction {
     }
 }
 
-/// Сообщение человеку о плагине обоев (решение — здесь, показ — вкладка).
+/// Message to the person about the wallpaper plugin (the decision is here, showing it is the tab's job).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PluginNotice {
-    /// Плагин стоит не от Rexon, версия неизвестна — предложить нашу.
+    /// The plugin is not from Rexon, the version is unknown — offer ours.
     ForeignUnknown,
-    /// Установленный (оставленный) плагин не подходит к демону.
+    /// The installed (kept) plugin does not suit the daemon.
     InstalledIncompatible {
         plugin_version: String,
         daemon_version: String,
-        /// Наш бандл к демону подходит — можно предложить его поставить.
+        /// Our bundle suits the daemon — we can offer to install it.
         offer_install: bool,
-        /// Протокол плагина старее того, что принимает демон.
+        /// The plugin's protocol is older than what the daemon accepts.
         plugin_older: bool,
     },
-    /// Наш бандл не подходит к демону, а рабочего плагина нет.
+    /// Our bundle does not suit the daemon, and there is no working plugin.
     BundleIncompatible {
         bundle_version: String,
         daemon_version: String,
-        /// Бандл старее демона — обновить Rexon; иначе — обновить waywallen.
+        /// The bundle is older than the daemon — update Rexon; otherwise — update waywallen.
         bundle_older: bool,
     },
 }
 
 impl PluginNotice {
-    /// Предлагать ли кнопку «Поставить версию Rexon».
+    /// Whether to offer the «Install Rexon's Version» button.
     pub fn offers_install(&self) -> bool {
         match self {
             PluginNotice::ForeignUnknown => true,
@@ -1317,7 +1318,7 @@ impl PluginNotice {
         }
     }
 
-    /// Признак для журнала и сверок.
+    /// A sign for the log and checks.
     pub fn kind(&self) -> &'static str {
         match self {
             PluginNotice::ForeignUnknown => "foreign_unknown",
@@ -1326,7 +1327,7 @@ impl PluginNotice {
         }
     }
 
-    /// Текст для человека (через каталог перевода).
+    /// Text for the person (through the translation catalog).
     pub fn text(&self) -> String {
         use crate::i18n::{tr, trf};
         match self {
@@ -1376,41 +1377,41 @@ impl PluginNotice {
     }
 }
 
-/// Подпись кнопки согласия.
+/// Label of the consent button.
 pub fn install_rexon_version_label() -> String {
     crate::i18n::tr("Install Rexon's Version")
 }
 
-/// Установка по согласию не удалась; `reason` — сырой ответ kpackagetool6.
+/// Installing by consent failed; `reason` — the raw answer of kpackagetool6.
 pub fn install_failed_text(reason: &str) -> String {
     crate::i18n::trf("Could not install the Plasma wallpaper plugin: %1", &[&reason])
 }
 
-/// Решение о плагине.
+/// The decision about the plugin.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PluginPlan {
     pub action: PluginAction,
-    /// Распознанная версия установленного (`vendor.toml` либо хэш).
+    /// The recognised version of the installed one (`vendor.toml` or the hash).
     pub installed_version: Option<String>,
     pub notice: Option<PluginNotice>,
-    /// Назначать ли плагин обоями десктопов. Нет, если оставленный плагин
-    /// заведомо не подходит к демону (иначе вместо обоев человека — чёрный
-    /// экран) или ставить нечего.
+    /// Whether to assign the plugin as the desktops' wallpaper. No, if the kept plugin
+    /// certainly does not suit the daemon (otherwise a black screen instead of the person's
+    /// wallpaper) or there is nothing to install.
     pub select: bool,
-    /// Почему так — для журнала (не для человека, не переводится).
+    /// Why so — for the log (not for the person, not translated).
     pub reason: String,
 }
 
-/// Решить, что делать с плагином. Чистая функция: всё состояние подано.
+/// Decide what to do with the plugin. A pure function: all the state is passed in.
 ///
-/// Правила:
-///   * установленный НОВЕЕ бандла не трогается никогда (даже по согласию —
-///     кнопку в этом случае предлагают только ради совместимости с демоном);
-///   * тот же рантайм — ничего не делать; та же версия у нашего с другим
-///     содержимым — освежить (наши правки поверх апстрима могли смениться);
-///   * чужой неизвестной версии — только по согласию;
-///   * бандл, который демон заведомо не примет, не ставится: рабочий
-///     плагин не портим, а если его нет — называем, что обновить.
+/// Rules:
+///   * one installed that is NEWER than the bundle is never touched (even with consent —
+///     in that case the button is offered only for compatibility with the daemon);
+///   * the same runtime — do nothing; the same version of ours with different
+///     contents — refresh (our patches on top of upstream could have changed);
+///   * a foreign one of unknown version — only with consent;
+///   * a bundle the daemon certainly will not accept is not installed: we do not break a working
+///     plugin, and if there is none — we name what to update.
 pub fn plan_plugin(c: &PluginCheck) -> PluginPlan {
     use std::cmp::Ordering;
 
@@ -1434,7 +1435,7 @@ pub fn plan_plugin(c: &PluginCheck) -> PluginPlan {
         },
         reason: reason.to_string(),
     };
-    // Бандл демону не подходит: если ставить нечего лучше — объяснить.
+    // The bundle does not suit the daemon: if there is nothing better to install — explain.
     let blocked = |reason: &str| {
         let notice = (installed_ok != Some(true)).then(|| PluginNotice::BundleIncompatible {
             bundle_version: c.bundle_version.clone().unwrap_or_default(),
@@ -1443,7 +1444,7 @@ pub fn plan_plugin(c: &PluginCheck) -> PluginPlan {
         });
         plan(PluginAction::Blocked, notice, reason)
     };
-    // Оставляем установленный: не подходит к демону — сказать.
+    // Keep the installed one: if it does not suit the daemon — say so.
     let keep = |action, reason: &str| {
         let notice = (installed_ok == Some(false)).then(|| {
             let iv = installed_version.clone().unwrap_or_default();
@@ -1524,8 +1525,8 @@ fn bundle_protocol_older(c: &PluginCheck) -> bool {
 mod tests {
     use super::*;
 
-    /// Обход находит рантайм по имени на любой глубине и отдаёт ПОЛНЫЙ путь;
-    /// из двух находок без предпочтения выигрывает самая неглубокая.
+    /// The walk finds the runtime by name at any depth and returns the FULL path;
+    /// of two finds without a preference the shallowest one wins.
     #[test]
     fn find_runtime_so_walks_package_by_name() {
         let base = std::env::temp_dir().join(format!("rexon-wkp-find-{}", std::process::id()));

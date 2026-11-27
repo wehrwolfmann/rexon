@@ -1,28 +1,28 @@
-//! Порт `rexon/qt_main/de_progress.py` — показа хода операций с рабочими
-//! столами (установка, переключение, удаление).
+//! A port of `rexon/qt_main/de_progress.py`: showing the progress of desktop
+//! environment operations (installing, switching, removing).
 //!
-//! Сам диалог остаётся за Qt: полоса, заголовок, строка текущего пакета,
-//! журнал и кнопка закрытия. Здесь — всё, что решает, ЧТО в них положить:
-//! названия этапов, разбор доли выполнения, куда попадает сообщение и с
-//! какой пометкой, каким становится диалог по завершении. Ровно это
-//! понадобится и виджетной вкладке, и будущей QML — движок решений один
-//! (правило #12).
+//! The dialog itself stays in Qt: the bar, the title, the current package
+//! line, the log and the close button. Here lives everything that decides
+//! WHAT to put in them: stage names, parsing the completed fraction, where a
+//! message goes and with which mark, and what the dialog becomes on
+//! completion. Exactly this will also be needed by the widget tab and the
+//! future QML, so there is a single decision engine (rule #12).
 //!
-//! Подписи идут через каталог перевода (`crate::i18n`): исходный язык —
-//! английский, русский живёт в `po/ru.po`.
+//! Labels go through the translation catalog (`crate::i18n`): the source
+//! language is English, Russian lives in `po/ru.po`.
 
 use crate::i18n::{n_, tr, trf};
 
-/// Заголовки этапов. Этап, которого здесь нет, заголовок НЕ меняет —
-/// так ведёт себя и `warning`, и любой незнакомый этап.
+/// Stage titles. A stage that is not listed here does NOT change the title —
+/// that is how `warning` and any unknown stage behave.
 ///
-/// Это первая строка окна хода — её читает покупатель, поэтому она простым
-/// русским, без служебных слов («defaults», «lock», «MIME», «Display
-/// manager», «бэкап»). Названия технологий (KDE Plasma, AUR) — латиницей,
-/// как везде в продукте. Прежние заголовки переписаны 13.09.2026; Python-путь
-/// берёт их отсюда же, через мост.
+/// This is the first line of the progress window and the customer reads it,
+/// so it is plain language without jargon ("defaults", "lock", "MIME",
+/// "Display manager", "backup"). Technology names (KDE Plasma, AUR) stay in
+/// Latin script, as everywhere in the product. The old titles were rewritten
+/// on 13.09.2026; the Python path takes them from here too, through the bridge.
 ///
-/// Вторая колонка — `msgid` каталога; переводится в [`stage_title`].
+/// The second column is the catalog `msgid`; it is translated in [`stage_title`].
 pub const STAGE_TITLES: &[(&str, &str)] = &[
     ("snapshot", n_("Remembering your default apps…")),
     ("plasma_backup", n_("Saving a copy of the KDE Plasma panel…")),
@@ -43,7 +43,7 @@ pub const STAGE_TITLES: &[(&str, &str)] = &[
     ("error", n_("Error")),
 ];
 
-/// Заголовок этапа на языке интерфейса, если он у этапа есть.
+/// The stage title in the interface language, if the stage has one.
 pub fn stage_title(stage: &str) -> Option<String> {
     STAGE_TITLES
         .iter()
@@ -51,87 +51,88 @@ pub fn stage_title(stage: &str) -> Option<String> {
         .map(|(_, v)| tr(v))
 }
 
-/// Наибольшее значение полосы: доля выполнения раскладывается на 0..1000.
+/// The largest bar value: the completed fraction is spread over 0..1000.
 pub const BAR_MAX: i32 = 1000;
 
-/// Состояние диалога до первого сообщения.
+/// The dialog state before the first message.
 pub fn initial_status() -> String {
     tr("Preparing…")
 }
-/// Надпись на кнопке закрытия, пока операция идёт.
+/// The close button label while the operation is running.
 pub fn close_text_busy() -> String {
     tr("Please wait…")
 }
-/// Надпись на кнопке закрытия, когда всё кончилось.
+/// The close button label when everything is over.
 pub fn close_text_done() -> String {
     tr("Close")
 }
-/// Заголовок при удачном завершении.
+/// The title on successful completion.
 pub fn status_done() -> String {
     tr("Finished ✅")
 }
-/// Заголовок при неудаче.
+/// The title on failure.
 pub fn status_failed() -> String {
     tr("Failed ❌")
 }
-/// Итог в журнале, когда сказать по существу нечего.
+/// The summary in the log when there is nothing substantial to say.
 pub fn log_done_plain() -> String {
     format!("\n{}", tr("✅ Done"))
 }
-/// Сообщение об удаче, которое считается пустым.
+/// A success message that counts as empty.
 pub const MSG_OK: &str = "ok";
 
-/// Этап, сообщение которого идёт в журнал БЕЗ пометки и без обрезки пробелов
-/// с краёв — сырой вывод пакетного менеджера.
+/// The stage whose message goes to the log WITHOUT a mark and without trimming
+/// whitespace at the ends: raw package manager output.
 pub const STAGE_RAW: &str = "raw";
-/// Этап, сообщение которого показывается строкой текущего пакета.
+/// The stage whose message is shown as the current package line.
 pub const STAGE_PKG_INSTALL: &str = "pkg_install";
-/// Этапы, сообщение которых тоже идёт в строку текущего пакета, но только
-/// когда оно непустое.
+/// Stages whose message also goes to the current package line, but only when
+/// it is non-empty.
 pub const STAGES_CURRENT_IF_SET: &[&str] = &["download", "check"];
-/// Этап, сообщение которого помечается в журнале как ошибка.
+/// The stage whose message is marked as an error in the log.
 pub const STAGE_ERROR: &str = "error";
-/// Этап, сообщение которого помечается в журнале как предупреждение.
+/// The stage whose message is marked as a warning in the log.
 pub const STAGE_WARNING: &str = "warning";
 
-/// Пометка перед сообщением об ошибке в журнале.
+/// The mark before an error message in the log.
 pub const PREFIX_ERROR: &str = "❌ ";
-/// Пометка перед предупреждением в журнале.
+/// The mark before a warning in the log.
 pub const PREFIX_WARNING: &str = "⚠️ ";
 
-/// Что изменить в диалоге по одному сообщению о ходе дела.
+/// What to change in the dialog for a single progress message.
 ///
-/// `None` означает «не трогать»: у полосы это доля, которую показывать
-/// нельзя, у остальных — что этот этап их не касается.
+/// `None` means "leave alone": for the bar it is a fraction that cannot be
+/// shown, for the others it means this stage does not concern them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProgressUpdate {
-    /// Новое значение полосы, 0..=[`BAR_MAX`].
+    /// The new bar value, 0..=[`BAR_MAX`].
     pub bar: Option<i32>,
-    /// Новый заголовок.
+    /// The new title.
     pub status: Option<String>,
-    /// Новая строка текущего пакета; пустая строка означает «очистить».
+    /// The new current package line; an empty string means "clear".
     pub current: Option<String>,
-    /// Строка, дописываемая в журнал отдельным абзацем.
+    /// A line appended to the log as a separate paragraph.
     pub log_line: Option<String>,
 }
 
-/// Значение полосы по доле выполнения.
+/// The bar value for a completed fraction.
 ///
-/// Доля усекается к нулю, как это делает приведение к целому в оригинале.
-/// Значение вне 0..=[`BAR_MAX`] полосу не двигает — так его и молча
-/// отбрасывал Qt, поэтому отдаём `None`.
+/// The fraction is truncated toward zero, as the integer conversion in the
+/// original does. A value outside 0..=[`BAR_MAX`] does not move the bar — Qt
+/// silently discarded it too — so we return `None`.
 ///
-/// ⚠️ ПОЧИНЕНО (правило #16). Бесконечная доля роняла диалог: оригинал ловил
-/// только `TypeError`/`ValueError`, а приведение бесконечности к целому даёт
-/// `OverflowError`. Прилетело бы такое из подсчёта «сделано/всего» при нуле
-/// в знаменателе — и показ установки обрывался бы посреди работы. Теперь
-/// бесконечность и «не число» ведут себя одинаково: полоса не двигается.
+/// Warning — FIXED (rule #16). An infinite fraction crashed the dialog: the
+/// original caught only `TypeError`/`ValueError`, while converting infinity
+/// to an integer raises `OverflowError`. Had such a value come from a
+/// "done/total" computation with a zero denominator, the installation display
+/// would have been cut off in the middle of the work. Now infinity and "not a
+/// number" behave the same: the bar does not move.
 ///
-/// Проверка на конечность оставлена явной, хотя сама по себе она на итог не
-/// влияет: приведение к целому в Rust не переполняется, а упирается в предел
-/// типа, и такое значение всё равно не попадает в полосу. Мутацией эту
-/// строку не поймать именно поэтому — здесь она стоит как объяснение, а не
-/// как защита.
+/// The finiteness check is kept explicit, even though by itself it does not
+/// affect the result: integer conversion in Rust does not overflow but
+/// saturates at the type's limit, and such a value does not get into the bar
+/// anyway. That is exactly why mutation testing cannot catch this line — it
+/// is here as an explanation, not as protection.
 pub fn bar_value(fraction: Option<f64>) -> Option<i32> {
     let f = fraction?;
     if !f.is_finite() {
@@ -141,12 +142,12 @@ pub fn bar_value(fraction: Option<f64>) -> Option<i32> {
     (0..=BAR_MAX).contains(&value).then_some(value)
 }
 
-/// Сообщение, у которого пометка уже стоит, идёт в журнал как есть.
+/// A message that already carries a mark goes to the log as is.
 fn return_log(message: &str) -> Option<String> {
     Some(message.to_string())
 }
 
-/// Разобрать сообщение о ходе дела.
+/// Parses a progress message.
 pub fn on_progress(stage: &str, message: &str, fraction: Option<f64>) -> ProgressUpdate {
     let mut update = ProgressUpdate {
         bar: bar_value(fraction),
@@ -155,8 +156,8 @@ pub fn on_progress(stage: &str, message: &str, fraction: Option<f64>) -> Progres
     };
 
     if stage == STAGE_PKG_INSTALL {
-        // Пустое сообщение здесь ЗАТИРАЕТ строку текущего пакета — оригинал
-        // ставил её без проверки.
+        // An empty message here WIPES the current package line — the original set it
+        // without checking.
         update.current = Some(message.to_string());
     } else if STAGES_CURRENT_IF_SET.contains(&stage) && !message.is_empty() {
         update.current = Some(message.to_string());
@@ -173,12 +174,12 @@ pub fn on_progress(stage: &str, message: &str, fraction: Option<f64>) -> Progres
             STAGE_WARNING => PREFIX_WARNING,
             _ => "",
         };
-        // ⚠️ Пометку ставим ОДИН раз. Разбор вывода пакетного менеджера
-        // (`system_plan::parse_pacman_line`) собирает сообщение уже с
-        // крестом/восклицанием, и слепое склеивание давало в журнале
-        // «❌ ❌ failed to commit transaction» — двойной крест там, где беда
-        // всего одна. Поймано показом журнала целиком при разборе установки
-        // Budgie и LXQt.
+        // Warning: the mark is added ONCE. Parsing the package manager output
+        // (`system_plan::parse_pacman_line`) already builds the message with a
+        // cross/exclamation mark, and blind concatenation produced
+        // "❌ ❌ failed to commit transaction" in the log — a double cross where
+        // there is only one problem. Caught by showing the whole log while
+        // analyzing the Budgie and LXQt installations.
         if !prefix.is_empty() && message.starts_with(prefix.trim_end()) {
             return_log(message)
         } else {
@@ -189,23 +190,23 @@ pub fn on_progress(stage: &str, message: &str, fraction: Option<f64>) -> Progres
     update
 }
 
-/// Каким становится диалог, когда операция кончилась.
+/// What the dialog becomes when the operation has finished.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoneUpdate {
-    /// Новое значение полосы; при неудаче она остаётся как была.
+    /// The new bar value; on failure it stays as it was.
     pub bar: Option<i32>,
     pub status: String,
-    /// Новая строка текущего пакета; по завершении она очищается всегда.
+    /// The new current package line; on completion it is always cleared.
     pub current: Option<String>,
-    /// Строка в журнал; при неудаче ничего не дописывается — текст ошибки
-    /// уже показан этапом `error`, воркер это обеспечивает
-    /// (см. [`worker_error_emit`]).
+    /// A line for the log; on failure nothing is appended — the error text has
+    /// already been shown by the `error` stage, which the worker ensures
+    /// (see [`worker_error_emit`]).
     pub log_line: Option<String>,
     pub close_text: String,
     pub close_enabled: bool,
 }
 
-/// Разобрать завершение операции.
+/// Parses the completion of an operation.
 pub fn on_done(ok: bool, msg: &str) -> DoneUpdate {
     if ok {
         let log_line = if !msg.is_empty() && msg != MSG_OK {
@@ -216,10 +217,10 @@ pub fn on_done(ok: bool, msg: &str) -> DoneUpdate {
         DoneUpdate {
             bar: Some(BAR_MAX),
             status: status_done(),
-            // Строка текущего шага под итогом гаснет и при удаче: иначе под
-            // «Завершено ✅» оставалась висеть последняя сырая строка
-            // пакетного менеджера («looking for conflicting packages...»,
-            // живая установка River 24.10.2026). Итог говорит статус.
+            // The current step line under the summary is cleared on success too:
+            // otherwise the last raw package manager line ("looking for conflicting
+            // packages...", live River installation 24.10.2026) kept hanging under
+            // "Finished ✅". The summary tells the status.
             current: Some(String::new()),
             log_line: Some(log_line),
             close_text: close_text_done(),
@@ -237,84 +238,85 @@ pub fn on_done(ok: bool, msg: &str) -> DoneUpdate {
     }
 }
 
-/// Должен ли исполнитель сам объявить об ошибке, когда операция кончилась.
+/// Whether the executor should announce the error itself when the operation
+/// has finished.
 ///
-/// Правило оригинала: если операция не удалась, ошибку по ходу дела никто не
-/// объявлял, а сказать есть что — объявить её самим, чтобы текст непременно
-/// попал в журнал единым путём. Возвращается сообщение для этапа
-/// [`STAGE_ERROR`].
+/// The original's rule: if the operation failed, nobody announced an error
+/// along the way, and there is something to say, announce it ourselves so
+/// that the text is sure to reach the log through the single path. Returns
+/// the message for the [`STAGE_ERROR`] stage.
 pub fn worker_error_emit(ok: bool, error_seen: bool, msg: &str) -> Option<String> {
     (!ok && !error_seen && !msg.is_empty()).then(|| msg.to_string())
 }
 
-// ── Подтверждение установки рабочего стола ─────────────────────────────────
+// ── Confirming a desktop environment installation ──────────────────────────
 //
-// `confirm_de_install` — ЕДИНСТВЕННОЕ место, где вкладки спрашивают
-// «ставим?». Само решение «можно ли ставить» живёт в
-// [`crate::distro_compat`]; сюда портировано то, что делалось с этим
-// решением дальше и лежало второй копией в Qt-шиме: какое из трёх окон
-// показать и что в нём написать.
+// `confirm_de_install` is the ONLY place where the tabs ask "shall we
+// install?". The decision "may it be installed" itself lives in
+// [`crate::distro_compat`]; what has been ported here is what was done with
+// that decision afterwards and lay as a second copy in the Qt shim: which of
+// the three dialogs to show and what to write in it.
 
-/// Заголовок окна, которым отказывают в установке.
+/// The title of the dialog that refuses the installation.
 pub fn confirm_blocked_title() -> String {
     tr("Can't Install")
 }
-/// Подпись единственной кнопки в окне отказа. Не «OK»: человеку сообщают
-/// новость, а не спрашивают согласия (правило #13).
+/// The label of the only button in the refusal dialog. Not "OK": the person
+/// is being told news, not asked for consent (rule #13).
 pub fn confirm_blocked_button() -> String {
     tr("Got It")
 }
-/// Приписка, когда проверить совместимость не удалось вовсе.
+/// The note added when compatibility could not be checked at all.
 ///
-/// Молчать тут нельзя: «неизвестно» — это не «разрешено». Установку не
-/// запрещаем (иначе на неизвестном дистрибутиве Rexon бесполезен), но
-/// честно предупреждаем, что предупреждений не будет.
+/// Staying silent is not allowed here: "unknown" is not "allowed". We do not
+/// forbid the installation (otherwise Rexon would be useless on an unknown
+/// distribution), but we honestly warn that there will be no warnings.
 pub fn confirm_unknown_note() -> String {
     tr("Couldn't check whether your distribution is compatible: the Rexon core \
         isn't available. You can still install, but you won't be warned about \
         your distribution's quirks.")
 }
 
-/// Исход проверки, как его отдаёт `distro_compat.explain_de_install`.
+/// The check outcome, as returned by `distro_compat.explain_de_install`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallVerdict {
-    /// Разрешена ли установка.
+    /// Whether the installation is allowed.
     pub allowed: bool,
     /// `"ok"` / `"warning"` / `"blocked"`.
     pub outcome: String,
-    /// Заголовок причины на языке человека.
+    /// The reason title in the person's language.
     pub title: String,
-    /// Объяснение: что мешает и что с этим делать. Переносы строк — `\n`.
+    /// The explanation: what is in the way and what to do about it. Line breaks are `\n`.
     pub explanation: String,
 }
 
-/// Какое окно показать перед установкой рабочего стола.
+/// Which dialog to show before installing a desktop environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmPlan {
-    /// Отказ: окно БЕЗ кнопки «установить». Предлагать нажать кнопку, за
-    /// которой заведомо ошибка, — то же самое, что не предупредить вовсе.
+    /// A refusal: a dialog WITHOUT an "install" button. Offering to press a button
+    /// that is known to lead to an error is the same as not warning at all.
     Blocked {
         window_title: String,
-        /// Текст-заголовок окна (простой HTML).
+        /// The dialog's heading text (simple HTML).
         text: String,
-        /// Развёрнутое объяснение (обычный текст, переносы `\n`).
+        /// The detailed explanation (plain text, `\n` line breaks).
         informative: String,
         button: String,
     },
-    /// Вопрос «ставим?». Предупреждение (если есть) вошло В ЭТО ЖЕ окно, а
-    /// не вторым диалогом подряд: цепочки диалогов неудобны в режиме
-    /// Big Picture (архитектурное правило #16).
+    /// The question "shall we install?". The warning (if any) is included IN THE
+    /// SAME dialog rather than in a second dialog right after it: chains of
+    /// dialogs are inconvenient in Big Picture mode (architectural rule #16).
     Ask {
-        /// Тело вопроса, простой HTML (`<b>`, `<br>`).
+        /// The question body, simple HTML (`<b>`, `<br>`).
         body: String,
     },
 }
 
-/// Что показать перед установкой — порт развилки `confirm_de_install`.
+/// What to show before installation: a port of the `confirm_de_install` branching.
 ///
-/// `verdict` = `None` означает «проверить не удалось»: вопрос задаётся, но с
-/// припиской [`confirm_unknown_note`]. `question` — текст вопроса вкладки
-/// (простой HTML).
+/// `verdict` = `None` means "the check failed": the question is asked, but
+/// with the note [`confirm_unknown_note`]. `question` is the tab's question
+/// text (simple HTML).
 pub fn confirm_install_plan(verdict: Option<&InstallVerdict>, question: &str) -> ConfirmPlan {
     match verdict {
         Some(v) if !v.allowed => ConfirmPlan::Blocked {
@@ -339,38 +341,39 @@ pub fn confirm_install_plan(verdict: Option<&InstallVerdict>, question: &str) ->
     }
 }
 
-// ── Оформление AeroShell отстало от обновлённой системы ────────────────────
+// ── AeroShell appearance has fallen behind the updated system ──────────────
 //
-// Пакеты оформления собраны под ту версию рабочего стола, что стояла в
-// момент сборки. Система обновилась — оформление перестаёт работать МОЛЧА:
-// пропадает панель задач, меню, подсветка кнопок и прозрачность, а в тяжёлом
-// случае не открывается экран блокировки и человек видит чёрный экран.
+// Appearance packages are built for the desktop version that was installed
+// at build time. When the system is updated, the appearance stops working
+// SILENTLY: the taskbar, the menu, button highlighting and transparency
+// disappear, and in a severe case the lock screen does not open and the
+// person sees a black screen.
 //
-// Предложение восстановить показывают двое — главное окно при запуске и
-// кнопка в настройках, — поэтому тексты и разбор состояния живут в одном
-// месте (правило #12).
+// The offer to repair is shown by two places — the main window at startup
+// and a button in the settings — so the texts and the state parsing live in
+// one place (rule #12).
 
-/// Заголовок окна с предложением восстановить оформление.
+/// The title of the dialog offering to repair the appearance.
 pub fn aeroshell_title() -> String {
     tr("Desktop Appearance Stopped Working")
 }
-/// Главный текст предложения (простой HTML).
+/// The main text of the offer (simple HTML).
 pub fn aeroshell_text() -> String {
     tr("<b>After a system update, your desktop appearance no longer fits the \
         new version of the desktop.</b>")
 }
-/// Заголовок того же окна, когда оформление ещё работает, но собрано под
-/// прежнюю версию системы (`aeroshell::Report::at_risk_only`).
+/// The title of the same dialog when the appearance still works but was built
+/// for the previous system version (`aeroshell::Report::at_risk_only`).
 pub fn aeroshell_risk_title() -> String {
     tr("Desktop Appearance Needs Rebuilding")
 }
-/// Главный текст окна при одном только риске (простой HTML).
+/// The main text of the dialog when there is only a risk (simple HTML).
 pub fn aeroshell_risk_text() -> String {
     tr("<b>After a system update, your desktop appearance is still built for \
         the previous version of the system. It works for now, but it can fail \
         at any moment.</b>")
 }
-/// Развёрнутое объяснение: чем это грозит и что сделает Rexon.
+/// The detailed explanation: what the danger is and what Rexon will do.
 pub fn aeroshell_informative() -> String {
     tr("Because of this, the taskbar, the Start menu, button highlights and \
         window transparency may disappear, and the lock screen may stop \
@@ -378,60 +381,61 @@ pub fn aeroshell_informative() -> String {
         This takes a few minutes; you'll see the progress in a window, and at \
         the end you'll need to log out and log back in.")
 }
-/// Подпись кнопки согласия.
+/// The label of the consent button.
 pub fn aeroshell_fix_button() -> String {
     tr("🛠️ Repair")
 }
-/// Подпись той же кнопки при одном только риске: окно говорит «нужно
-/// пересобрать», и кнопка называет то же действие теми же словами.
+/// The label of the same button when there is only a risk: the dialog says
+/// "needs rebuilding", and the button names the same action in the same words.
 pub fn aeroshell_rebuild_button() -> String {
     tr("🛠️ Rebuild")
 }
-/// Подпись кнопки отказа. ⛔ Восстановление НЕ запускается само: сборка
-/// занимает минуты и грузит машину, посреди работы это недопустимо.
+/// The label of the decline button. Never start the repair automatically:
+/// the build takes minutes and loads the machine, which is unacceptable in
+/// the middle of work.
 pub fn aeroshell_skip_button() -> String {
     tr("Not Now")
 }
-/// Заголовок окна хода восстановления.
+/// The title of the repair progress dialog.
 pub fn aeroshell_run_title() -> String {
     tr("Repairing Desktop Appearance")
 }
-/// Заголовок окна удачи.
+/// The title of the success dialog.
 pub fn aeroshell_ok_title() -> String {
     tr("Desktop Appearance Repaired")
 }
-/// Текст окна удачи.
+/// The text of the success dialog.
 pub fn aeroshell_ok_text() -> String {
     tr("The appearance has been rebuilt for the current system version.\
         <br><br><b>Log out and log back in</b> to get the panel, menu and \
         effects back.")
 }
-/// Заголовок окна неудачи.
+/// The title of the failure dialog.
 pub fn aeroshell_fail_title() -> String {
     tr("Couldn't Repair")
 }
-/// Приписка к выводу сборщика при неудаче: главное — что система цела.
+/// The note added to the builder output on failure: the main thing is that the system is intact.
 pub fn aeroshell_fail_note() -> String {
     tr("Your appearance was left as it was — your system is fine. Try again later.")
 }
 
-/// Состояние одного пакета оформления в сверке.
+/// The state of a single appearance package in the comparison.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AeroshellPackage {
     pub package: String,
-    /// Версия рабочего стола, под которую пакет собран (пусто — не указана).
+    /// The desktop version the package was built for (empty means not specified).
     pub built_for: String,
-    /// Версия, установленная сейчас (пусто — не определилась).
+    /// The version installed now (empty means it could not be determined).
     pub installed: String,
-    /// Отстал ли пакет.
+    /// Whether the package has fallen behind.
     pub stale: bool,
 }
 
-/// Подробности сверки для раскрывающегося блока диалога — порт
+/// Comparison details for the dialog's expandable block: a port of
 /// `_aeroshell_details`.
 ///
-/// Имена пакетов и версии покупателю ни о чём не говорят, поэтому они не в
-/// главном тексте, а в «Подробнее».
+/// Package names and versions mean nothing to a customer, so they are not in
+/// the main text but under "Details".
 pub fn aeroshell_details(packages: &[AeroshellPackage]) -> String {
     packages
         .iter()
@@ -452,10 +456,11 @@ pub fn aeroshell_details(packages: &[AeroshellPackage]) -> String {
         .join("\n")
 }
 
-/// Итог восстановления оформления: заголовок окна и текст (простой HTML).
+/// The result of repairing the appearance: the dialog title and text (simple HTML).
 ///
-/// `escaped_output` — вывод сборщика, УЖЕ экранированный шимом: это сырой
-/// текст чужой программы, и без экранирования он ломает разметку окна.
+/// `escaped_output` is the builder output ALREADY escaped by the shim: it is
+/// the raw text of a foreign program, and without escaping it breaks the
+/// dialog markup.
 pub fn aeroshell_result(ok: bool, escaped_output: &str) -> (String, String) {
     if ok {
         (aeroshell_ok_title(), aeroshell_ok_text())

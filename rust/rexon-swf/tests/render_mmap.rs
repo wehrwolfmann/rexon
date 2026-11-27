@@ -1,12 +1,12 @@
-//! Рендер ролика в mmap-кадр без окна (нужен Vulkan-адаптер; без него тест пропускается с пометкой).
+//! Rendering a movie into an mmap frame without a window (needs a Vulkan adapter; without one the test is skipped with a note).
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use rexon_swf::{Error, GpuContext, MmapSpec, OutputTarget, Settings, Wallpaper};
 
-/// Ролик из тестов Ruffle (`tests/tests/swfs/avm2/morph_shape`, MIT OR Apache-2.0):
-/// таймлайн из 24 кадров без кода — анимация видна на любом снимке.
+/// A movie from the Ruffle tests (`tests/tests/swfs/avm2/morph_shape`, MIT OR Apache-2.0):
+/// a 24-frame timeline without code — the animation is visible in any snapshot.
 fn swf() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/morph_shape.swf")
 }
@@ -46,18 +46,18 @@ fn renders_animation_into_mmap_with_generation() {
             shots.push(read_frame(&spec.frame_path, spec.generation_path.as_ref().unwrap(), len).expect("целый кадр"));
         }
     }
-    // Разрыв как после SIGSTOP/SIGCONT: ролик двигается не больше dt_cap.
+    // A gap as after SIGSTOP/SIGCONT: the movie moves no more than dt_cap.
     let before = wp.stats().movie_time;
     let r = wp.tick(t0 + Duration::from_secs(10)).unwrap();
     assert_eq!(r.gap.map(|g| g > Duration::from_secs(7)), Some(true));
     assert_eq!(wp.stats().movie_time - before, Duration::from_millis(100));
-    // Пауза внутри процесса.
+    // Pause inside the process.
     wp.set_paused(true);
     let frames = wp.stats().frames;
     assert!(!wp.tick(t0 + Duration::from_secs(20)).unwrap().rendered);
     assert_eq!(wp.stats().frames, frames);
     wp.set_paused(false);
-    // resize mmap-вывода пересоздаёт файлы под новый размер
+    // resize of an mmap output recreates the files for the new size
     wp.resize(0, 160, 90).unwrap();
     assert!(wp.resize(3, 10, 10).is_err());
     let gen_after_resize = std::fs::read(spec.generation_path.as_ref().unwrap()).unwrap();

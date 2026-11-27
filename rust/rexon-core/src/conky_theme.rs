@@ -1,57 +1,57 @@
-//! Тема Conky «папкой с описанием»: `theme.json` и `preview.png`.
+//! A Conky theme as a "folder with a description": `theme.json` and `preview.png`.
 //!
-//! ЗАЧЕМ. Темы, собранные визуальным редактором Conky Studio (и
-//! написанные под его менеджер руками), лежат папкой, где кроме файла
-//! настроек есть описание `theme.json`: имя для показа, автор, версия,
-//! описание, нужные программы (`requires`), экран (`monitor`). Формат —
-//! по документации редактора (страница вики «Theme layout»). Rexon читает
-//! его ТОЛЬКО на чтение и показывает человеку как свою карточку: имя,
-//! автора и описание — в карточке, `preview.png` — на плитке, `requires` —
-//! в общей проверке недостающих программ (`conky_safety::health`: что есть
-//! в репозиториях, ставится само, защита — окно пароля), `monitor` —
-//! начальный экран виджета в его настройках.
+//! WHY. Themes built with the Conky Studio visual editor (and those written by
+//! hand for its manager) are folders that, besides the settings file, contain
+//! a `theme.json` description: a display name, author, version, description,
+//! required programs (`requires`) and screen (`monitor`). The format follows
+//! the editor's documentation (the "Theme layout" wiki page). Rexon reads it
+//! ONLY for reading and shows it to the person as its own card: the name,
+//! author and description in the card, `preview.png` on the tile, `requires`
+//! in the common check for missing programs (`conky_safety::health`: what is
+//! in the repositories gets installed automatically, protected by the
+//! password dialog), `monitor` as the widget's initial screen in its settings.
 //!
-//! Разбор прощающий: неизвестные поля и поля не того типа молча
-//! пропускаются, битый файл — как будто его нет. Своего `theme.json` Rexon
-//! не пишет.
+//! Parsing is forgiving: unknown fields and fields of the wrong type are
+//! silently skipped, a broken file is treated as if it did not exist. Rexon
+//! does not write its own `theme.json`.
 
 use crate::animations::LookIo;
 use crate::de_apply::Ctx;
 
-/// Имя файла описания в корне папки темы.
+/// The name of the description file at the root of the theme folder.
 pub const META_FILE: &str = "theme.json";
 
-/// Картинка темы для плитки.
+/// The theme picture for the tile.
 pub const PREVIEW_FILE: &str = "preview.png";
 
-/// Больше — не описание, а что-то чужое: не читаем.
+/// Anything larger is not a description but something else: not read.
 const META_MAX_BYTES: usize = 64 * 1024;
 
-/// Длиннее — обрезается (описание в карточке, не книга).
+/// Anything longer is truncated (a description in a card, not a book).
 const TEXT_MAX_CHARS: usize = 2000;
 
-/// Описание темы. Все поля необязательны.
+/// The theme description. All fields are optional.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ThemeMeta {
     pub name: Option<String>,
     pub author: Option<String>,
     pub version: Option<String>,
     pub description: Option<String>,
-    /// Разрешение, под которое тема рисовалась (`1920x1080`).
+    /// The resolution the theme was drawn for (`1920x1080`).
     pub resolution: Option<String>,
-    /// Что нужно теме: программы и возможности conky (`lua-cairo`).
+    /// What the theme needs: programs and conky features (`lua-cairo`).
     pub requires: Vec<String>,
     pub tags: Vec<String>,
-    /// Чем сделана (`conky-studio`).
+    /// What it was made with (`conky-studio`).
     pub created_with: Option<String>,
     pub store_id: Option<String>,
     pub sha256: Option<String>,
-    /// Экран: `auto`, `primary` или имя выхода (`DP-1`).
+    /// The screen: `auto`, `primary` or an output name (`DP-1`).
     pub monitor: Option<String>,
 }
 
-/// Строковое поле: строка (или число — `"version": 1.2`), без пробелов по
-/// краям, не пустая. Иной тип — `None`.
+/// A string field: a string (or a number — `"version": 1.2`), trimmed, not
+/// empty. Any other type gives `None`.
 fn text_field(v: &serde_json::Value) -> Option<String> {
     let s = match v {
         serde_json::Value::String(s) => s.trim().to_string(),
@@ -64,7 +64,7 @@ fn text_field(v: &serde_json::Value) -> Option<String> {
     Some(s.chars().take(TEXT_MAX_CHARS).collect())
 }
 
-/// Список строк: массив (не-строки пропускаются) или одна строка.
+/// A list of strings: an array (non-strings are skipped) or a single string.
 fn list_field(v: &serde_json::Value) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut push = |s: &str| {
@@ -87,7 +87,7 @@ fn list_field(v: &serde_json::Value) -> Vec<String> {
     out
 }
 
-/// Разобрать текст `theme.json`. `None` — это не объект JSON.
+/// Parses the text of `theme.json`. `None` means it is not a JSON object.
 pub fn parse_meta(text: &str) -> Option<ThemeMeta> {
     let v: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()?;
     let map = v.as_object()?;
@@ -108,7 +108,7 @@ pub fn parse_meta(text: &str) -> Option<ThemeMeta> {
     })
 }
 
-/// Описание темы в папке `dir`; нет файла, слишком большой или битый —
+/// The theme description in folder `dir`; no file, too large or broken gives
 /// `None`.
 pub fn meta(io: &dyn LookIo, dir: &str) -> Option<ThemeMeta> {
     let text = io.read(&format!("{}/{META_FILE}", dir.trim_end_matches('/')))?;
@@ -118,19 +118,19 @@ pub fn meta(io: &dyn LookIo, dir: &str) -> Option<ThemeMeta> {
     parse_meta(&text)
 }
 
-/// Папка виджета `name` (имя плитки), если виджет — папка, а не один файл.
+/// The folder of widget `name` (the tile name), if the widget is a folder rather than a single file.
 pub fn widget_dir(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
     let path = crate::conky_scan::widget_path(ctx, name);
     (!io.list_dir(&path).is_empty()).then_some(path)
 }
 
-/// Описание темы виджета `name`.
+/// The theme description of widget `name`.
 pub fn widget_meta(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<ThemeMeta> {
     meta(io, &widget_dir(io, ctx, name)?)
 }
 
-/// `preview.png` в папке темы с описанием: картинка автора, она главнее
-/// прочих снимков рядом.
+/// `preview.png` in a theme folder with a description: the author's picture,
+/// which takes precedence over other snapshots next to it.
 pub fn preview(io: &dyn LookIo, dir: &str) -> Option<String> {
     let dir = dir.trim_end_matches('/');
     let names = io.list_dir(dir);
@@ -140,20 +140,22 @@ pub fn preview(io: &dyn LookIo, dir: &str) -> Option<String> {
     names.iter().any(|n| n == PREVIEW_FILE).then(|| format!("{dir}/{PREVIEW_FILE}"))
 }
 
-/// Виджет, которому принадлежит файл настроек `conf`: свой (под каталогом
-/// Rexon) или найденный на диске. `None` — файл ничей.
+/// The widget that the settings file `conf` belongs to: our own (under the
+/// Rexon directory) or one found on disk. `None` means the file belongs to
+/// nobody.
 pub fn widget_of_conf(io: &dyn LookIo, ctx: &Ctx, conf: &str) -> Option<String> {
     crate::de_apply::conky_widget_of_conf(io, ctx, conf)
         .or_else(|| crate::conky_scan::owner_of_conf(ctx, &crate::conky_scan::extra_dirs_for(ctx), conf))
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  requires[] — в проверку недостающих программ
+//  requires[]: into the missing programs check
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Возможность самого conky, а не отдельная программа: `lua-cairo` (так
-/// пишет редактор по умолчанию), `cairo`, `lua`, `imlib2`, `conky`, сборки
-/// `conky-*`. Её ставит пакет conky, проверять в PATH нечего.
+/// A feature of conky itself rather than a separate program: `lua-cairo`
+/// (what the editor writes by default), `cairo`, `lua`, `imlib2`, `conky`,
+/// `conky-*` builds. It comes with the conky package, there is nothing to look
+/// for in the PATH.
 fn conky_feature(token: &str) -> bool {
     let t = token.to_ascii_lowercase();
     t == "conky"
@@ -166,7 +168,7 @@ fn conky_feature(token: &str) -> bool {
         || matches!(t.as_str(), "x11" | "xorg" | "wayland" | "xwayland")
 }
 
-/// Похоже ли на имя программы или пакета: латиница, цифры, `._+-`.
+/// Whether it looks like a program or package name: Latin letters, digits, `._+-`.
 fn plain_token(token: &str) -> bool {
     !token.is_empty()
         && token.len() <= 64
@@ -174,11 +176,11 @@ fn plain_token(token: &str) -> bool {
         && !token.starts_with(['-', '.'])
 }
 
-/// Программы из `requires`, которые надо искать в PATH. Возможности conky
-/// и записи не в виде имени («Nerd Font», «internet») пропускаются. Имя
-/// пакета (`lm_sensors`) переводится в имя программы по таблице
-/// `utils::TOOL_PACKAGES` (`sensors`), чтобы проверка искала то, что
-/// реально лежит в PATH.
+/// The programs from `requires` to look for in the PATH. Conky features and
+/// entries that are not names ("Nerd Font", "internet") are skipped. A
+/// package name (`lm_sensors`) is mapped to a program name via the
+/// `utils::TOOL_PACKAGES` table (`sensors`), so that the check looks for what
+/// actually lies in the PATH.
 pub fn required_programs(meta: &ThemeMeta) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for raw in &meta.requires {
@@ -204,12 +206,12 @@ pub fn required_programs(meta: &ThemeMeta) -> Vec<String> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  monitor — начальный экран
+//  monitor: the initial screen
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Номер экрана (`xinerama_head`) для поля `monitor` при списке экранов
-/// `monitors`. `None` — выбирать нечего: экран один, `auto`, или выхода с
-/// таким именем нет (монитор отключили).
+/// The screen number (`xinerama_head`) for the `monitor` field given the
+/// screen list `monitors`. `None` means there is nothing to choose: a single
+/// screen, `auto`, or no output with that name (the monitor was unplugged).
 pub fn monitor_head(meta: &ThemeMeta, monitors: &[crate::conky_overlay::Monitor]) -> Option<u32> {
     let want = meta.monitor.as_deref()?.trim();
     if monitors.len() < 2 || want.is_empty() || want.eq_ignore_ascii_case("auto") {
@@ -221,12 +223,13 @@ pub fn monitor_head(meta: &ThemeMeta, monitors: &[crate::conky_overlay::Monitor]
     monitors.iter().find(|m| m.name == want).map(|m| m.index)
 }
 
-/// Перед запуском файла `conf`: если человек экран виджета ещё не
-/// выбирал (у файла нет своих настроек Rexon), а тема называет экран, —
-/// записать его начальным выбором. Дальше это обычная настройка «Экран»:
-/// человек меняет её в карточке, а «Как у автора» снимает её вместе с
-/// прочими (и при следующем запуске экран темы ставится снова — это и есть
-/// выбор автора). На Wayland conky экран не выбирает — ничего не делается.
+/// Before starting file `conf`: if the person has not chosen the widget's
+/// screen yet (the file has no Rexon settings of its own) and the theme names
+/// a screen, record it as the initial choice. From then on it is an ordinary
+/// "Screen" setting: the person changes it in the card, and "As the author
+/// made it" removes it along with the others (and on the next start the
+/// theme's screen is set again — that is the author's choice). On Wayland
+/// conky does not choose the screen, so nothing is done.
 pub fn seed_monitor(io: &dyn LookIo, ctx: &Ctx, conf: &str) {
     if ctx.wayland {
         return;
@@ -249,12 +252,13 @@ pub fn seed_monitor(io: &dyn LookIo, ctx: &Ctx, conf: &str) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Карточка
+//  The card
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Дополнить плитку виджета описанием темы: имя для показа (если плитка
-/// зовётся просто именем папки), автор, версия, описание — где своих нет.
-/// Имя папки остаётся для поиска (`source_name`).
+/// Supplements the widget tile with the theme description: the display name
+/// (if the tile is called just by the folder name), author, version and
+/// description — where the tile has none of its own. The folder name stays
+/// for search (`source_name`).
 pub fn decorate(meta: &ThemeMeta, folder_title: &str, item: &mut crate::models::ThemeItem) {
     if let Some(name) = &meta.name {
         if (item.name.is_empty() || item.name == folder_title) && name != folder_title {
@@ -282,36 +286,37 @@ pub fn decorate(meta: &ThemeMeta, folder_title: &str, item: &mut crate::models::
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  start.sh — запуск темы её сценарием
+//  start.sh: starting a theme with its script
 // ════════════════════════════════════════════════════════════════════════════
 //
-// У тем такого вида данные (датчики, погода, обложка плеера) собирают
-// фоновые циклы из `start.sh`, которые пишут файлы кэша, а сценарий Lua
-// темы их читает. Запущенная как `conky -c conky.conf`, такая тема
-// рисуется с пустыми полями. Поэтому тема со `start.sh` запускается им:
-// рабочий каталог — папка темы, своя группа процессов, метка
-// [`MARKER_ENV`] в окружении (её наследуют все процессы темы, и после
-// `setsid` внутри сценария тоже). Остановка гасит по учёту — группу из
-// файла запуска и процессы с меткой этой темы, — а не по имени программы.
-// Сценарий — код: до запуска его и `scripts/*.sh` показывает проверка
-// команд (`conky_safety`), и без «Да» он не запускается.
+// In themes of this kind the data (sensors, weather, the player's cover art)
+// is collected by background loops from `start.sh` that write cache files,
+// and the theme's Lua script reads them. Started as `conky -c conky.conf`,
+// such a theme is drawn with empty fields. So a theme with `start.sh` is
+// started by it: the working directory is the theme folder, with its own
+// process group and the [`MARKER_ENV`] tag in the environment (all theme
+// processes inherit it, also after a `setsid` inside the script). Stopping
+// works by bookkeeping — the group from the start file and the processes
+// tagged with this theme — not by program name. The script is code: before
+// starting, it and `scripts/*.sh` are shown by the command check
+// (`conky_safety`), and without "Yes" it is not started.
 
-/// Сценарий запуска в корне папки темы.
+/// The launch script at the root of the theme folder.
 pub const START_SCRIPT: &str = "start.sh";
 
-/// Папка вспомогательных сценариев темы.
+/// The folder of the theme's helper scripts.
 pub const SCRIPTS_DIR: &str = "scripts";
 
-/// Метка в окружении процессов темы, запущенной сценарием: путь папки
-/// виджета. По ней «Остановить» находит циклы сценария, а «Запущенные» —
-/// все окна conky темы.
+/// The tag in the environment of the processes of a theme started by its
+/// script: the widget folder path. "Stop" uses it to find the script's loops,
+/// and "Running" to find all conky windows of the theme.
 pub const MARKER_ENV: &str = "REXON_CONKY_WIDGET";
 
-/// Больше — не сценарий запуска.
+/// Anything larger is not a launch script.
 const SCRIPT_MAX_BYTES: usize = 256 * 1024;
 
-/// Сценарий запуска виджета `name`: `<папка>/start.sh`, не пустой. У
-/// виджета одним файлом сценария нет.
+/// The launch script of widget `name`: `<folder>/start.sh`, not empty. A
+/// single-file widget has no script.
 pub fn start_script(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
     let dir = widget_dir(io, ctx, name)?;
     let path = format!("{dir}/{START_SCRIPT}");
@@ -319,9 +324,9 @@ pub fn start_script(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
     Some(path)
 }
 
-/// Сценарии оболочки, которые исполняет запуск темы из папки `dir`:
-/// `start.sh` первым, затем `scripts/*.sh` по имени. Пусто — у темы нет
-/// `start.sh`.
+/// The shell scripts executed by starting the theme from folder `dir`:
+/// `start.sh` first, then `scripts/*.sh` by name. Empty means the theme has
+/// no `start.sh`.
 pub fn shell_scripts(io: &dyn LookIo, dir: &str) -> Vec<String> {
     let dir = dir.trim_end_matches('/');
     let start = format!("{dir}/{START_SCRIPT}");
@@ -341,12 +346,12 @@ pub fn shell_scripts(io: &dyn LookIo, dir: &str) -> Vec<String> {
     out
 }
 
-/// Оболочки, которыми можно исполнить сценарий.
+/// The shells a script may be executed with.
 const SHELLS: &[&str] = &["sh", "bash", "dash", "zsh", "ksh", "mksh"];
 
-/// Чем исполнять сценарий: оболочка из строки `#!` (`#!/bin/bash`,
-/// `#!/usr/bin/env bash`), иначе `sh`. Сценарий запускается через неё, а
-/// не сам, — распаковщики архивов теряют бит исполнения.
+/// What to execute the script with: the shell from the `#!` line
+/// (`#!/bin/bash`, `#!/usr/bin/env bash`), otherwise `sh`. The script is run
+/// through it rather than by itself — archive extractors lose the execute bit.
 pub fn interpreter(text: &str) -> String {
     let Some(line) = text.lines().next().and_then(|l| l.strip_prefix("#!")) else {
         return "sh".to_string();
@@ -359,18 +364,18 @@ pub fn interpreter(text: &str) -> String {
     if SHELLS.contains(&prog) { prog.to_string() } else { "sh".to_string() }
 }
 
-/// Как запустить тему сценарием.
+/// How to start a theme with its script.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptLaunch {
-    /// Папка виджета — рабочий каталог и значение метки [`MARKER_ENV`].
+    /// The widget folder: the working directory and the value of the [`MARKER_ENV`] tag.
     pub dir: String,
     pub script: String,
-    /// `[оболочка, сценарий]`.
+    /// `[shell, script]`.
     pub argv: Vec<String>,
 }
 
-/// План запуска виджета `name` сценарием; `None` — у виджета нет
-/// `start.sh`, он идёт прежним путём `conky -c`.
+/// The plan for starting widget `name` with its script; `None` means the
+/// widget has no `start.sh` and goes the old way, `conky -c`.
 pub fn script_launch(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<ScriptLaunch> {
     let script = start_script(io, ctx, name)?;
     let text = io.read(&script)?;
@@ -378,13 +383,13 @@ pub fn script_launch(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<ScriptLau
     Some(ScriptLaunch { argv: vec![interpreter(&text), script.clone()], dir, script })
 }
 
-/// Виджет со сценарием, которому принадлежит файл настроек `conf`.
+/// The widget with a script that the settings file `conf` belongs to.
 pub fn script_widget_of_conf(io: &dyn LookIo, ctx: &Ctx, conf: &str) -> Option<String> {
     widget_of_conf(io, ctx, conf).filter(|n| start_script(io, ctx, n).is_some())
 }
 
-/// Метка темы в окружении процесса (`/proc/<pid>/environ`: строки
-/// `КЛЮЧ=значение` через NUL).
+/// The theme tag in a process environment (`/proc/<pid>/environ`: lines
+/// `KEY=value` separated by NUL).
 pub fn marker_of_environ(environ: &[u8]) -> Option<String> {
     let key = format!("{MARKER_ENV}=");
     environ
@@ -394,12 +399,12 @@ pub fn marker_of_environ(environ: &[u8]) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// Метка процесса `pid`; `None` — процесса нет или он без метки.
+/// The tag of process `pid`; `None` means there is no such process or it has no tag.
 pub fn marker_of_pid(io: &dyn LookIo, pid: &str) -> Option<String> {
     marker_of_environ(&io.read_bytes(&format!("/proc/{pid}/environ"))?)
 }
 
-/// Все процессы с меткой темы `widget` (путь папки), по возрастанию номера.
+/// All processes tagged with theme `widget` (the folder path), in ascending PID order.
 pub fn marked_pids(io: &dyn LookIo, widget: &str) -> Vec<String> {
     let widget = widget.trim_end_matches('/');
     let mut pids: Vec<u64> = io.list_dir("/proc").iter().filter_map(|p| p.parse().ok()).collect();
@@ -410,21 +415,21 @@ pub fn marked_pids(io: &dyn LookIo, widget: &str) -> Vec<String> {
         .collect()
 }
 
-/// Каталог файлов запуска тем: `$XDG_RUNTIME_DIR/rexon/conky-start`.
+/// The directory of theme start files: `$XDG_RUNTIME_DIR/rexon/conky-start`.
 fn run_dir() -> Option<String> {
     let rt = std::env::var("XDG_RUNTIME_DIR").ok().filter(|d| !d.is_empty())?;
     Some(format!("{}/rexon/conky-start", rt.trim_end_matches('/')))
 }
 
-/// Файл запуска темы (номер группы процессов): по ключу автозапуска
-/// виджета — у него нет косых черт.
+/// The theme start file (the process group number): named by the widget's
+/// autostart key, which contains no slashes.
 fn group_file(widget: &str) -> Option<String> {
     let key = crate::conky_scan::autostart_key(widget);
     Some(format!("{}/{key}.pgid", run_dir()?))
 }
 
-/// Номер группы темы из файла запуска — только если её глава жив и
-/// несёт метку этой темы (номер мог достаться другой программе).
+/// The theme's group number from the start file, only if its leader is alive
+/// and carries this theme's tag (the number may have gone to another program).
 pub fn recorded_group(io: &dyn LookIo, widget: &str) -> Option<String> {
     let text = io.read(&group_file(widget)?)?;
     let pgid = text.trim().to_string();
@@ -434,9 +439,9 @@ pub fn recorded_group(io: &dyn LookIo, widget: &str) -> Option<String> {
     marker_of_pid(io, &pgid).is_some_and(|m| m.trim_end_matches('/') == widget.trim_end_matches('/')).then_some(pgid)
 }
 
-/// Что погасить вместе с процессами `pids`: у процесса с меткой темы — все
-/// процессы этой темы (циклы сценария, остальные окна conky) и её группа
-/// (`-<номер>` для `kill`). Без меток — `pids` как есть.
+/// What to stop together with the processes `pids`: for a process tagged with
+/// a theme, all processes of that theme (the script's loops, the other conky
+/// windows) and its group (`-<number>` for `kill`). Without tags, `pids` as is.
 pub fn with_companions(io: &dyn LookIo, pids: Vec<String>) -> Vec<String> {
     let mut widgets: Vec<String> = Vec::new();
     for p in &pids {
@@ -463,8 +468,9 @@ pub fn with_companions(io: &dyn LookIo, pids: Vec<String>) -> Vec<String> {
     out
 }
 
-/// Всё, что гасить у темы `widget` (путь папки): процессы с её меткой и
-/// её группа. Пусто — тема сценарием не запущена.
+/// Everything to stop for theme `widget` (the folder path): processes with
+/// its tag and its group. Empty means the theme has not been started by its
+/// script.
 pub fn widget_companions(io: &dyn LookIo, widget: &str) -> Vec<String> {
     let mut out = marked_pids(io, widget);
     if let Some(g) = recorded_group(io, widget) {
@@ -473,8 +479,8 @@ pub fn widget_companions(io: &dyn LookIo, widget: &str) -> Vec<String> {
     out
 }
 
-/// Номера процессов conky виджета `name` сейчас: по метке темы или по
-/// файлу настроек в его папке.
+/// The PIDs of widget `name`'s conky processes right now: by the theme tag or
+/// by a settings file in its folder.
 pub fn widget_conky_pids(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Vec<String> {
     let path = crate::conky_scan::widget_path(ctx, name);
     crate::conky_procs::all(io)
@@ -487,16 +493,16 @@ pub fn widget_conky_pids(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Vec<String> 
         .collect()
 }
 
-/// Сколько тема должна продержаться с живым conky, чтобы считаться
-/// запущенной (как у `conky_procs`: вывод Wayland падает не сразу).
+/// How long the theme must last with a live conky to count as started (as in
+/// `conky_procs`: the Wayland output does not crash immediately).
 const SURVIVE_MS: u64 = 3000;
 
-/// Сколько ждать первого conky от сценария: перед ним сценарий запускает
-/// свои опросчики.
+/// How long to wait for the first conky from the script: before it, the
+/// script starts its pollers.
 const APPEAR_MS: u64 = 6000;
 
-/// Запустить виджет `name` его `start.sh`. Прежний запуск темы сначала
-/// гасится (тема одна на столе). `(получилось, сообщение)`.
+/// Starts widget `name` with its `start.sh`. A previous start of the theme is
+/// stopped first (one theme per desktop). Returns `(succeeded, message)`.
 pub fn start_widget_script(io: &dyn LookIo, ctx: &Ctx, name: &str) -> (bool, String) {
     let title = crate::conky_scan::widget_title(name);
     if !io.have("conky") {
@@ -505,7 +511,7 @@ pub fn start_widget_script(io: &dyn LookIo, ctx: &Ctx, name: &str) -> (bool, Str
     let Some(plan) = script_launch(io, ctx, name) else {
         return (false, crate::i18n::trf("Couldn't start “%1”: its start script is gone.", &[&title]));
     };
-    // Тема уже стоит (кнопкой, при входе, руками) — погасить её целиком.
+    // The theme is already running (via the button, at login, by hand): stop it entirely.
     let mut old = widget_conky_pids(io, ctx, name);
     old.extend(widget_companions(io, &plan.dir));
     if !old.is_empty() {
@@ -535,10 +541,10 @@ pub fn start_widget_script(io: &dyn LookIo, ctx: &Ctx, name: &str) -> (bool, Str
     (true, msg)
 }
 
-/// `kill -- <targets>` (номера и `-группы`). `kill` отвечает ошибкой, если
-/// хоть один номер уже вышел сам (короткий `sleep` цикла сценария), — это
-/// не неудача: `(true, _)`, если из названных номеров никого не осталось.
-/// `(получилось, вывод kill)`.
+/// `kill -- <targets>` (PIDs and `-groups`). `kill` returns an error if even
+/// one PID has already exited by itself (a short `sleep` in the script's
+/// loop) — that is not a failure: `(true, _)` if none of the named PIDs are
+/// left. Returns `(succeeded, kill output)`.
 pub fn kill_targets(io: &dyn LookIo, targets: &[String]) -> (bool, String) {
     let mut cmd = vec!["kill".to_string(), "--".to_string()];
     cmd.extend(targets.iter().cloned());
@@ -553,8 +559,8 @@ pub fn kill_targets(io: &dyn LookIo, targets: &[String]) -> (bool, String) {
     (!alive, out)
 }
 
-/// Погасить `targets` (номера и `-группы`) и дождаться выхода — иначе
-/// новый запуск принял бы старый conky за свой.
+/// Stops `targets` (PIDs and `-groups`) and waits for them to exit, otherwise
+/// a new start would take the old conky for its own.
 fn stop_and_wait(io: &dyn LookIo, targets: Vec<String>) {
     let _ = kill_targets(io, &targets);
     let pids: Vec<&String> = targets.iter().filter(|t| !t.starts_with('-')).collect();
@@ -566,9 +572,9 @@ fn stop_and_wait(io: &dyn LookIo, targets: Vec<String>) {
     }
 }
 
-/// Один запуск сценария: `Ok` — conky темы появился и продержался
-/// [`SURVIVE_MS`]; иначе всё, что сценарий успел поднять, гасится, а
-/// причина — из журнала.
+/// A single script run: `Ok` means the theme's conky appeared and lasted
+/// [`SURVIVE_MS`]; otherwise everything the script managed to bring up is
+/// stopped, and the cause comes from the log.
 fn run_script(io: &dyn LookIo, ctx: &Ctx, name: &str, plan: &ScriptLaunch, log: &str, xwayland: bool) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
     let title = crate::conky_scan::widget_title(name);
@@ -593,8 +599,8 @@ fn run_script(io: &dyn LookIo, ctx: &Ctx, name: &str, plan: &ScriptLaunch, log: 
     if let Some(file) = group_file(&plan.dir) {
         io.write(&file, &format!("{leader}\n"));
     }
-    // Сценарий может выйти сразу (`exec setsid "$0"`) или стать conky —
-    // ждать его конца в отдельном потоке, чтобы не осталось зомби.
+    // The script may exit immediately (`exec setsid "$0"`) or become conky — its
+    // end is awaited in a separate thread so that no zombie is left behind.
     std::thread::spawn(move || {
         let _ = child.wait();
     });
@@ -605,7 +611,7 @@ fn run_script(io: &dyn LookIo, ctx: &Ctx, name: &str, plan: &ScriptLaunch, log: 
         std::thread::sleep(step);
         waited += 100;
         if widget_conky_pids(io, ctx, name).is_empty() {
-            // Появился и пропал — упал при старте.
+            // Appeared and vanished: crashed at startup.
             if seen_ms > 0 || waited >= APPEAR_MS {
                 break false;
             }
@@ -619,7 +625,7 @@ fn run_script(io: &dyn LookIo, ctx: &Ctx, name: &str, plan: &ScriptLaunch, log: 
     if ok {
         return Ok(());
     }
-    // Не поднялся — циклы сценария на столе не оставлять.
+    // It did not come up: do not leave the script's loops on the desktop.
     let mut rest = widget_companions(io, &plan.dir);
     rest.push(format!("-{leader}"));
     let _ = kill_targets(io, &rest);
@@ -631,14 +637,14 @@ fn run_script(io: &dyn LookIo, ctx: &Ctx, name: &str, plan: &ScriptLaunch, log: 
     Err(crate::i18n::trf("Couldn't start “%1”: %2", &[&title, &why]))
 }
 
-/// Строка автозапуска темы сценарием: `sh -c` с телом и аргументами
-/// (`$0` — сценарий, `$1` — папка-метка, `$2` — оболочка). Пути в тело не
-/// подставляются.
+/// The autostart line for a theme with a script: `sh -c` with a body and
+/// arguments (`$0` is the script, `$1` the tag folder, `$2` the shell). Paths
+/// are not substituted into the body.
 pub const AUTOSTART_SCRIPT: &str = r#"cd "$(dirname "$0")" && export REXON_CONKY_WIDGET="$1" && exec "$2" "$0""#;
 
-/// Строка запуска для конфига композитора (там `$` разворачивает сам
-/// композитор — пути вписаны в кавычках; путь с `"`, `$`, `` ` ``, `\` —
-/// `None`).
+/// The launch line for a compositor config (there the compositor expands `$`
+/// itself, so the paths are written in quotes; a path with `"`, `$`, `` ` ``
+/// or `\` gives `None`).
 pub fn compositor_argv(plan: &ScriptLaunch, delay: u32) -> Option<Vec<String>> {
     let bad = |s: &str| s.contains(['"', '$', '`', '\\', '\n']);
     if bad(&plan.dir) || bad(&plan.script) {
@@ -658,18 +664,19 @@ pub fn compositor_argv(plan: &ScriptLaunch, delay: u32) -> Option<Vec<String>> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Многооконная тема — один виджет
+//  A multi-window theme is one widget
 // ════════════════════════════════════════════════════════════════════════════
 //
-// Сценарий запуска темы бывает поднимает несколько conky — по окну на
-// экран или на часть рисунка (`conky_window_*.conf`, копии с
-// `xinerama_head`). Для человека это ОДИН виджет: в «Запущенных», в ленте,
-// в наборах и в вопросе «Остановить все» он один, а остановка гасит всю
-// группу процессов темы ([`with_companions`]).
+// A theme's launch script sometimes brings up several conky instances — one
+// window per screen or per part of the drawing (`conky_window_*.conf`,
+// copies with `xinerama_head`). For the person it is ONE widget: it is a
+// single entry in "Running", in the strip, in sets and in the "Stop all"
+// question, and stopping it stops the theme's whole process group
+// ([`with_companions`]).
 
-/// Имя виджета (как у плитки) по папке темы `dir` — значению метки
-/// [`MARKER_ENV`]: под каталогом Rexon — путь от него, иначе найденный на
-/// диске (путь), иначе сама папка.
+/// The widget name (as on the tile) from theme folder `dir`, the value of the
+/// [`MARKER_ENV`] tag: under the Rexon directory, the path relative to it;
+/// otherwise the one found on disk (the path); otherwise the folder itself.
 pub fn widget_of_dir(ctx: &Ctx, extra: &[String], dir: &str) -> String {
     let dir = dir.trim_end_matches('/');
     let root = format!("{}/", crate::de_apply::conky_root(ctx).trim_end_matches('/'));
@@ -681,15 +688,15 @@ pub fn widget_of_dir(ctx: &Ctx, extra: &[String], dir: &str) -> String {
         .unwrap_or_else(|| dir.to_string())
 }
 
-/// Главный файл настроек виджета `name`: им тема со сценарием значится в
-/// наборах и в списке запущенных.
+/// The main settings file of widget `name`: a theme with a script is listed
+/// under it in sets and in the list of running widgets.
 pub fn main_conf(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
     crate::conky_scan::widget_confs(io, ctx, name, crate::de_apply::conky_conf(io, ctx, name)).into_iter().next()
 }
 
-/// Каким файлом значится запущенный conky с файлом `conf` и меткой
-/// `marker`: окно темы со сценарием — главным файлом темы (все окна темы —
-/// одна строка), прочие — своим файлом.
+/// Which file a running conky with file `conf` and tag `marker` is listed
+/// under: a window of a theme with a script under the theme's main file (all
+/// theme windows are one line), others under their own file.
 pub fn unit_conf(io: &dyn LookIo, ctx: &Ctx, extra: &[String], conf: &str, marker: Option<&str>) -> String {
     let name = match marker {
         Some(dir) => Some(widget_of_dir(ctx, extra, dir)),
@@ -698,9 +705,9 @@ pub fn unit_conf(io: &dyn LookIo, ctx: &Ctx, extra: &[String], conf: &str, marke
     name.and_then(|n| main_conf(io, ctx, &n)).unwrap_or_else(|| conf.to_string())
 }
 
-/// Файлы виджетов `confs` (из набора) без повторов одной темы: окна темы
-/// со сценарием сводятся к её главному файлу — иначе набор поднимал бы
-/// тему столько раз, сколько у неё окон.
+/// Widget files `confs` (from a set) without repeats of the same theme: the
+/// windows of a theme with a script collapse into its main file — otherwise a
+/// set would bring the theme up as many times as it has windows.
 pub fn unit_confs(io: &dyn LookIo, ctx: &Ctx, extra: &[String], confs: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for c in confs {
@@ -713,30 +720,30 @@ pub fn unit_confs(io: &dyn LookIo, ctx: &Ctx, extra: &[String], confs: &[String]
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Conky Studio — редактор, которым тема сделана
+//  Conky Studio: the editor the theme was made with
 // ════════════════════════════════════════════════════════════════════════════
 //
-// Rexon сам редактор не пишет: тему, сделанную в Conky Studio (отметка
-// `created_with` в `theme.json` или файл проекта `.cstudio`), карточка
-// предлагает открыть в нём — только если он есть на этой машине. Ставится
-// Conky Studio одним файлом AppImage, поэтому ищется и в PATH, и в
-// обычных местах, куда такие файлы кладут.
+// Rexon does not write an editor itself: for a theme made in Conky Studio
+// (the `created_with` mark in `theme.json` or a `.cstudio` project file) the
+// card offers to open it there — only if it exists on this machine. Conky
+// Studio is installed as a single AppImage file, so it is looked for both
+// in the PATH and in the usual places where such files are put.
 
-/// Расширение файла проекта Conky Studio.
+/// The Conky Studio project file extension.
 pub const STUDIO_PROJECT_EXT: &str = "cstudio";
 
-/// Имена программы в PATH (обёртки, ссылки на AppImage).
+/// Program names in the PATH (wrappers, links to the AppImage).
 const STUDIO_PROGRAMS: &[&str] = &["conky-studio", "conkystudio", "ConkyStudio", "conky_studio"];
 
-/// Отметка `created_with` — Conky Studio (`conky-studio`, `Conky Studio`,
+/// The `created_with` mark is Conky Studio (`conky-studio`, `Conky Studio`,
 /// `conkystudio 1.1`).
 fn studio_mark(created_with: &str) -> bool {
     let s: String = created_with.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
     s.starts_with("conkystudio")
 }
 
-/// Файл проекта Conky Studio темы в папке `dir`: внутри папки (первый по
-/// имени) или рядом с ней (`<папка>.cstudio`).
+/// The Conky Studio project file of the theme in folder `dir`: inside the
+/// folder (the first by name) or next to it (`<folder>.cstudio`).
 pub fn studio_project(io: &dyn LookIo, dir: &str) -> Option<String> {
     let dir = dir.trim_end_matches('/');
     let ext = format!(".{STUDIO_PROJECT_EXT}");
@@ -752,19 +759,19 @@ pub fn studio_project(io: &dyn LookIo, dir: &str) -> Option<String> {
         .map(|n| format!("{parent}/{n}"))
 }
 
-/// Тема в папке `dir` сделана в Conky Studio.
+/// The theme in folder `dir` was made in Conky Studio.
 pub fn is_studio_theme(io: &dyn LookIo, dir: &str) -> bool {
     meta(io, dir).and_then(|m| m.created_with).is_some_and(|c| studio_mark(&c)) || studio_project(io, dir).is_some()
 }
 
-/// Можно ли файл запустить: бит исполнения. Файла нет на настоящем диске
-/// (подделка в тестах) — можно.
+/// Whether the file can be executed: the execute bit. If the file is not on a
+/// real disk (a fake in tests), it can.
 fn executable(path: &str) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(true)
 }
 
-/// Похоже ли имя файла на AppImage Conky Studio
+/// Whether a file name looks like a Conky Studio AppImage
 /// (`ConkyStudio-1.1.1-x86_64.AppImage`, `conky-studio.appimage`).
 fn studio_appimage_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
@@ -772,8 +779,8 @@ fn studio_appimage_name(name: &str) -> bool {
     flat.starts_with("conkystudio") && lower.ends_with(".appimage")
 }
 
-/// Каталог «Загрузки» из `user-dirs.dirs` (у русского стола —
-/// `~/Загрузки`); `None` — не задан.
+/// The "Downloads" directory from `user-dirs.dirs` (on a Russian desktop,
+/// `~/Загрузки`); `None` means it is not set.
 fn download_dir(io: &dyn LookIo, ctx: &Ctx) -> Option<String> {
     let home = ctx.home.trim_end_matches('/');
     let cfg = ctx.xdg_config_home.clone().unwrap_or_else(|| format!("{home}/.config"));
@@ -784,7 +791,7 @@ fn download_dir(io: &dyn LookIo, ctx: &Ctx) -> Option<String> {
     })
 }
 
-/// Где ищется AppImage Conky Studio.
+/// Where the Conky Studio AppImage is looked for.
 fn studio_dirs(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     let home = ctx.home.trim_end_matches('/');
     let mut dirs: Vec<String> = ["Applications", "applications", "AppImages", "Appimages", ".local/bin", "bin", "Downloads"]
@@ -801,9 +808,9 @@ fn studio_dirs(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     dirs
 }
 
-/// Как запустить Conky Studio на этой машине: программа из PATH или путь
-/// к AppImage (последний по имени — обычно самый новый выпуск). `None` —
-/// Conky Studio не найден.
+/// How to start Conky Studio on this machine: a program from the PATH or the
+/// path to the AppImage (the last one by name, usually the newest release).
+/// `None` means Conky Studio was not found.
 pub fn find_studio(io: &dyn LookIo, ctx: &Ctx) -> Option<String> {
     if let Some(p) = STUDIO_PROGRAMS.iter().find(|p| io.have(p)) {
         return Some(p.to_string());
@@ -818,9 +825,9 @@ pub fn find_studio(io: &dyn LookIo, ctx: &Ctx) -> Option<String> {
     None
 }
 
-/// Чем открыть виджет `name` в Conky Studio: строка запуска (с файлом
-/// проекта, если он есть). `None` — тема не из Conky Studio или его нет
-/// на машине: кнопки в карточке нет.
+/// What to open widget `name` with in Conky Studio: the launch line (with the
+/// project file, if there is one). `None` means the theme is not from Conky
+/// Studio or Conky Studio is not on the machine: there is no button in the card.
 pub fn studio_edit_argv(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<Vec<String>> {
     let dir = widget_dir(io, ctx, name)?;
     if !is_studio_theme(io, &dir) {
@@ -833,8 +840,7 @@ pub fn studio_edit_argv(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<Vec<St
     Some(argv)
 }
 
-/// «Редактировать в Conky Studio»: запустить редактор. `(получилось,
-/// сообщение)`.
+/// "Edit in Conky Studio": starts the editor. Returns `(succeeded, message)`.
 pub fn edit_in_studio(io: &dyn LookIo, ctx: &Ctx, name: &str) -> (bool, String) {
     let title = crate::conky_scan::widget_title(name);
     let Some(argv) = studio_edit_argv(io, ctx, name) else {
@@ -876,8 +882,8 @@ mod tests {
         assert_eq!(m.monitor.as_deref(), Some("DP-1"));
     }
 
-    /// Неизвестные поля и поля не того типа молча пропускаются; битый файл
-    /// и не-объект — как будто описания нет.
+    /// Unknown fields and fields of the wrong type are silently skipped; a broken
+    /// file and a non-object are treated as if there were no description.
     #[test]
     fn meta_skips_unknown_and_broken() {
         let m = parse_meta(
@@ -935,14 +941,14 @@ mod tests {
         assert_eq!(it.author, "you");
         assert_eq!(it.version, "2");
         assert_eq!(it.description, "a &lt;b&gt;<br>b");
-        // Своё имя (из магазина) и своё описание не перебиваются.
+        // Our own name (from the store) and our own description are not overridden.
         let mut own = crate::models::ThemeItem { name: "Store title".into(), description: "x".into(), ..Default::default() };
         decorate(&m, "night-ops", &mut own);
         assert_eq!(own.name, "Store title");
         assert_eq!(own.description, "x");
     }
 
-    /// `requires` темы входит в общую проверку недостающих программ.
+    /// The theme's `requires` is part of the common missing programs check.
     #[test]
     fn requires_join_health_check() {
         let d = std::env::temp_dir().join(format!("rexon-conky-theme-req-{}", std::process::id()));
@@ -982,12 +988,13 @@ mod tests {
         assert_eq!(interpreter("#!/usr/bin/env -S zsh -f\n"), "zsh");
         assert_eq!(interpreter("#!/usr/bin/python3\n"), "sh", "не оболочка — sh");
         assert_eq!(interpreter("echo hi\n"), "sh");
-        // Метка в сценарии автозапуска — та же, что ищет остановка.
+        // The tag in the autostart script is the same one the stop looks for.
         assert!(AUTOSTART_SCRIPT.contains(&format!("export {MARKER_ENV}=")));
     }
 
-    /// План запуска: тема со `start.sh` — им, из папки темы, оболочкой из
-    /// `#!`; без него (или виджет одним файлом) — прежний путь.
+    /// The launch plan: a theme with `start.sh` is started by it, from the theme
+    /// folder, with the shell from `#!`; without it (or a single-file widget),
+    /// the old way.
     #[test]
     fn launch_plan_goes_through_start_script() {
         let d = tmp("plan");
@@ -1010,10 +1017,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Сканер опасных команд видит `start.sh` и `scripts/*.sh`: без
-    /// разрешения тема не запускается; разрешение помнится, пока файлы не
-    /// изменились. Свои функции сценария недостающими программами не
-    /// считаются.
+    /// The dangerous command scanner sees `start.sh` and `scripts/*.sh`: without
+    /// permission the theme is not started; the permission is remembered as long
+    /// as the files do not change. The script's own functions do not count as
+    /// missing programs.
     #[test]
     fn safety_scanner_sees_start_script() {
         crate::i18n::set_language(Some("en"));
@@ -1043,7 +1050,7 @@ mod tests {
         assert_eq!(title, "Allow the widget to run commands?");
         assert!(text.contains("• start.sh\n"), "{text}");
         assert!(crate::conky_safety::start_refusal(&io, &ctx, &name).is_some());
-        // Функции сценария и программы его строк — не «нет программы».
+        // The script's functions and the programs in its lines are not "program missing".
         let h = crate::conky_safety::health(&io, &ctx, &name, "arch");
         assert!(h.missing_programs.is_empty(), "{:?}", h.missing_programs);
         assert!(crate::conky_safety::remember(&io, &ctx, &name));
@@ -1054,7 +1061,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Подделка `/proc`: окружение процессов с меткой темы.
+    /// A fake `/proc`: the environment of processes tagged with a theme.
     struct FakeProcs {
         files: std::collections::HashMap<String, String>,
         ran: std::cell::RefCell<Vec<Vec<String>>>,
@@ -1096,8 +1103,8 @@ mod tests {
         f.insert(format!("/proc/{pid}/environ"), env);
     }
 
-    /// Остановка темы со сценарием: вместе с её conky гаснут циклы
-    /// сценария (по метке), чужие процессы — нет.
+    /// Stopping a theme with a script: together with its conky the script's loops
+    /// are stopped (by tag), other processes are not.
     #[test]
     fn stop_takes_the_whole_theme() {
         let mut f = std::collections::HashMap::new();
@@ -1123,9 +1130,10 @@ mod tests {
         let _ = ctx;
     }
 
-    /// Живой запуск сценарием на подставном «conky» (копия `tail` под этим
-    /// именем — настоящий conky не запускается): метка в окружении, рабочий
-    /// каталог — папка темы, своя группа; остановка гасит всю группу.
+    /// A live run with a script on a fake "conky" (a copy of `tail` under that
+    /// name — the real conky is not started): the tag is in the environment, the
+    /// working directory is the theme folder, there is its own group; stopping
+    /// stops the whole group.
     #[test]
     fn start_script_runs_and_stops_as_group() {
         struct Io;
@@ -1196,9 +1204,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Тема из Conky Studio: отметка `created_with` или файл `.cstudio`;
-    /// кнопка — только если Conky Studio найден (AppImage с битом
-    /// исполнения в обычных местах или программа в PATH).
+    /// A theme from Conky Studio: the `created_with` mark or a `.cstudio` file;
+    /// the button appears only if Conky Studio is found (an AppImage with the
+    /// execute bit in the usual places, or a program in the PATH).
     #[test]
     fn studio_theme_and_editor_lookup() {
         use std::os::unix::fs::PermissionsExt;
@@ -1255,7 +1263,7 @@ mod tests {
         assert!(is_studio_theme(&NoPath, &s(".config/conky/Side")), ".cstudio рядом с папкой");
         assert!(!is_studio_theme(&NoPath, &s(".config/conky/Plain")));
         assert_eq!(studio_edit_argv(&NoPath, &ctx, "Night"), None, "Conky Studio не найден — кнопки нет");
-        // AppImage без бита исполнения не годится; с битом — последний по имени.
+        // An AppImage without the execute bit does not qualify; with it, the last one by name.
         put(&d, "Applications/ConkyStudio-1.0.0-x86_64.AppImage", "x");
         assert_eq!(find_studio(&NoPath, &ctx), None);
         put(&d, "Загрузки/ConkyStudio-1.1.0-x86_64.AppImage", "x");
@@ -1272,15 +1280,15 @@ mod tests {
         assert_eq!(studio_edit_argv(&NoPath, &ctx, "Side"), Some(vec![app, s(".config/conky/Side.cstudio")]));
         assert_eq!(studio_edit_argv(&NoPath, &ctx, "Plain"), None, "тема не из Conky Studio — кнопки нет");
         assert_eq!(studio_edit_argv(&InPath, &ctx, "Night"), Some(vec!["conky-studio".to_string()]), "PATH — первым");
-        // Подделка ничего не запускает — честный отказ.
+        // The fake starts nothing: an honest refusal.
         assert!(!edit_in_studio(&NoPath, &ctx, "Night").0);
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Многооконная тема (сценарий поднял несколько conky, одно окно — из
-    /// копии файла вне папки темы): в ленте, в наборах, в вопросе и в
-    /// счёте «Остановить все» — один виджет; ленточный крестик и набор
-    /// гасят все окна темы.
+    /// A multi-window theme (the script brought up several conky instances, one
+    /// window from a copy of the file outside the theme folder): in the strip, in
+    /// sets, in the question and in the "Stop all" count it is one widget; the
+    /// strip's cross and a set stop all of the theme's windows.
     #[test]
     fn multi_window_theme_is_one_widget() {
         crate::i18n::set_language(Some("en"));
@@ -1348,7 +1356,7 @@ mod tests {
         let procs = crate::conky_procs::all(&io);
         let (_, text) = crate::conky_procs::stop_all_question(&ctx, &[], &procs).unwrap();
         assert_eq!(text.matches("• Night").count(), 1, "{text}");
-        // Набор гасит тему по главному файлу — со всеми окнами.
+        // A set stops the theme by its main file, with all its windows.
         let pids = crate::conky_procs::pids_of_units(&io, &ctx, std::slice::from_ref(&main));
         assert_eq!(pids, ["201", "202", "203"]);
         let pids: Vec<String> = procs.iter().map(|p| p.pid.clone()).collect();

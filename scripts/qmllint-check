@@ -5,8 +5,8 @@
 # Exit 1 = errors found
 # Exit 2 = qmllint not available
 #
-# Wraps /usr/lib/qt6/bin/qmllint так как qmllint6 alias не существует.
-# Использовать ПОСЛЕ edit .qml файла, ДО kpackage rebuild + plasmashell restart.
+# Wraps /usr/lib/qt6/bin/qmllint because a qmllint6 alias does not exist.
+# Use AFTER editing a .qml file, BEFORE kpackage rebuild + plasmashell restart.
 
 set -u
 

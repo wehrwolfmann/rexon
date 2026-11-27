@@ -1,51 +1,51 @@
-//! Рабочие столы на SteamOS (Steam Deck и Steam Machine) через образы-
-//! расширения `systemd-sysext`.
+//! Desktops on SteamOS (Steam Deck and Steam Machine) via `systemd-sysext`
+//! extension images.
 //!
-//! ЗАЧЕМ. На SteamOS системный раздел `/usr` закрыт на запись, а обновление
-//! ОС заменяет его целиком и стирает всё, что поставлено поверх. Поэтому стол
-//! не ставится пакетным менеджером, а собирается ОБРАЗОМ: недостающие пакеты
-//! из репозиториев Valve той же версии ОС распаковываются в squashfs-образ в
-//! `/home/.rexon/sysext`, ссылка на него кладётся в `/var/lib/extensions`, и
-//! `systemd-sysext` накладывает его поверх `/usr`. Образ подключается только
-//! при ТОЧНОМ совпадении `VERSION_ID`, поэтому после каждого обновления ОС его
-//! пересобирает служба; до конца пересборки работает Plasma, а страховка перед
-//! экраном входа не даёт автовходу упереться в исчезнувшую сессию.
-//! Механика проверена в ВМ SteamOS на настоящих обновлениях 3.8.14 → 3.9.5.
+//! WHY. On SteamOS the system partition `/usr` is read-only, and an OS update
+//! replaces it whole and wipes everything installed on top. So a desktop is not
+//! installed by the package manager but built as an IMAGE: the missing packages
+//! from Valve's repositories of the same OS version are unpacked into a squashfs
+//! image in `/home/.rexon/sysext`, a link to it goes into `/var/lib/extensions`,
+//! and `systemd-sysext` overlays it on top of `/usr`. The image is attached only
+//! on an EXACT `VERSION_ID` match, so after each OS update a service rebuilds
+//! it; until the rebuild finishes Plasma works, and a guard before the login
+//! screen keeps autologin from running into a vanished session.
+//! The mechanics were verified in a SteamOS VM on real updates 3.8.14 → 3.9.5.
 //!
-//! РАЗДЕЛЕНИЕ — как у соседей (`system_plan` → `system_de_exec`): **ядро
-//! решает, исполнитель делает**.
-//!   * чистые функции: разбор os-release и `passwd -S`, таблица столов,
-//!     список установленных, планы установки/удаления/переключения, тексты;
-//!   * тексты сценариев и юнитов, которые работают ВНУТРИ SteamOS от root;
-//!   * тонкий исполнитель (`*_live`) — запуск помощника через `pkexec`, ход
-//!     дела в окно операции, `steamosctl` от имени пользователя.
+//! THE SPLIT is as with the neighbours (`system_plan` → `system_de_exec`): **the
+//! core decides, the executor does**.
+//!   * pure functions: parsing os-release and `passwd -S`, the desktops table,
+//!     the list of installed ones, install/remove/switch plans, texts;
+//!   * texts of scripts and units that run INSIDE SteamOS as root;
+//!   * a thin executor (`*_live`) — running the helper via `pkexec`, progress
+//!     into the operation window, `steamosctl` as the user.
 //!
-//! ⚠️ ПОЧЕМУ ЗАГРУЗОЧНАЯ ЧАСТЬ — СЦЕНАРИИ bash, А НЕ RUST (правило #16).
-//! После обновления ОС сам Rexon на SteamOS тоже живёт в образе-расширении,
-//! и его образ так же не подключён до пересборки — то есть ровно тогда, когда
-//! служба пересборки нужна, бинаря Rexon в системе нет. Своя программа в
-//! `/var/lib/rexon` зависела бы от glibc новой ОС (сборка на свежем Arch не
-//! гарантирует запуск на образе Valve). Сценарии зовут только то, что есть в
-//! образе SteamOS (`pacman`, `bsdtar`, `readelf`, `mksquashfs`), и переживают
-//! любое обновление. Поэтому их ТЕКСТ генерирует Rust (этот модуль, со
-//! сверками на текст и на поведение под заглушками), а лежат они в
-//! `/var/lib/rexon/bin` и `/etc/systemd/system` — оба места переживают
-//! обновление (белый список `*.service`, `*.wants/**`).
+//! ⚠️ WHY THE BOOT PART IS bash SCRIPTS AND NOT RUST (rule #16).
+//! After an OS update Rexon itself on SteamOS also lives in an extension image,
+//! and its image is likewise not attached until the rebuild — i.e. exactly when
+//! the rebuild service is needed, there is no Rexon binary on the system. Our
+//! own program in `/var/lib/rexon` would depend on the glibc of the new OS (a
+//! build on a fresh Arch doesn't guarantee running on Valve's image). The
+//! scripts call only what is in the SteamOS image (`pacman`, `bsdtar`,
+//! `readelf`, `mksquashfs`), and survive any update. So their TEXT is generated
+//! by Rust (this module, with checks on the text and on the behaviour under
+//! stubs), and they live in `/var/lib/rexon/bin` and `/etc/systemd/system` —
+//! both places survive an update (the whitelist `*.service`, `*.wants/**`).
 //!
-//! ⛔ БЕЗОПАСНОСТЬ. Помощник с правами root (`rexon-sysext-helper`) принимает
-//! только операцию из списка и имя стола из таблицы; пакеты берёт только из
-//! подписанных репозиториев ОС (своя связка ключей `archlinux` + `holo`);
-//! путей и списков пакетов от интерфейса не принимает. Первый запуск (или
-//! после обновления Rexon) идёт `pkexec /bin/bash -c <текст>`: текст лежит в
-//! argv, и подменить его после запроса пароля нечем. Дальше — файл помощника
-//! в `/var/lib/rexon/bin` (root:root) со своей политикой polkit.
+//! ⛔ SECURITY. The root helper (`rexon-sysext-helper`) accepts only an
+//! operation from a list and a desktop name from the table; it takes packages
+//! only from the signed OS repositories (its own keyring `archlinux` + `holo`);
+//! it accepts no paths or package lists from the UI. The first run (or after a
+//! Rexon update) goes as `pkexec /bin/bash -c <text>`: the text is in argv, and
+//! there is nothing to swap it with after the password prompt. After that — the
+//! helper file in `/var/lib/rexon/bin` (root:root) with its own polkit policy.
 //!
-//! Помощник сеанса прав (`rexon-priv-helper`, «один пароль на запуск»)
-//! на SteamOS тоже живёт в `/var/lib/rexon/bin`, политика
-//! `org.rexon.session` — рядом с политикой этого помощника в `/etc` (и в
-//! белом списке обновления). Кладёт его ТОЛЬКО путь `bash -c`: окно отдаёт
-//! путь бинаря поставки и его sha256, корень копирует файл к себе, сверяет
-//! сумму и переименовывает ([`SessionHelperCopy`]).
+//! The privilege session helper (`rexon-priv-helper`, "one password per run")
+//! on SteamOS also lives in `/var/lib/rexon/bin`, the policy
+//! `org.rexon.session` is next to this helper's policy in `/etc` (and in the
+//! update whitelist). ONLY the `bash -c` path puts it there: the window passes
+//! the path of the delivery binary and its sha256, root copies the file to
+//! itself, checks the sum and renames it ([`SessionHelperCopy`]).
 
 use std::sync::Arc;
 
@@ -55,72 +55,72 @@ use crate::system_de_exec::{CancelToken, DeOpOutcome, DeOpSink};
 use crate::system_l10n::bash_quote;
 
 // ============================================================================
-// Пути (одна правда для сценариев, помощника и интерфейса)
+// Paths (one truth for the scripts, the helper and the UI)
 // ============================================================================
 
-/// Каталог состояния Rexon на SteamOS — переживает обновления ОС.
+/// Rexon state directory on SteamOS — survives OS updates.
 pub const STATE_DIR: &str = "/var/lib/rexon";
-/// Сценарии и помощник.
+/// Scripts and the helper.
 pub const BIN_DIR: &str = "/var/lib/rexon/bin";
-/// Список столов к сборке — по одному идентификатору в строке.
+/// List of desktops to build — one identifier per line.
 pub const DESKTOPS_LIST: &str = "/var/lib/rexon/sysext/desktops";
-/// Язык сообщений сценариев (код из `po/LINGUAS`), записывает помощник.
+/// Language of the script messages (a code from `po/LINGUAS`), written by the helper.
 pub const LANG_FILE: &str = "/var/lib/rexon/sysext/lang";
-/// Сессия, которую страховка заменила на Plasma и которую надо вернуть.
+/// The session the guard replaced with Plasma and that has to be restored.
 pub const WANTED_SESSION: &str = "/var/lib/rexon/session-guard/wanted-session";
-/// Образы (в `/var` у SteamOS всего ~230 МБ — образы живут в `/home`).
+/// Images (SteamOS has only ~230 MB in `/var` — the images live in `/home`).
 pub const IMAGE_DIR: &str = "/home/.rexon/sysext";
-/// Каталоги сборки образов (`<стол>-<версия>`).
+/// Image build directories (`<desktop>-<version>`).
 pub const BUILD_DIR: &str = "/home/.rexon/build";
-/// Ссылки на образы, которые видит `systemd-sysext`.
+/// Links to the images that `systemd-sysext` sees.
 pub const EXTENSIONS_DIR: &str = "/var/lib/extensions";
-/// Помощник с правами root.
+/// The root helper.
 pub const HELPER_PATH: &str = "/var/lib/rexon/bin/rexon-sysext-helper";
-/// Имя помощника — для сообщений и `$0` при запуске через `bash -c`.
+/// Helper name — for messages and `$0` when run via `bash -c`.
 pub const HELPER_NAME: &str = "rexon-sysext-helper";
-/// Политика polkit помощника (polkit ≥ 126 читает `/etc/polkit-1/actions`;
-/// проверено на SteamOS 3.9.5, polkit 127).
+/// The helper's polkit policy (polkit ≥ 126 reads `/etc/polkit-1/actions`;
+/// verified on SteamOS 3.9.5, polkit 127).
 pub const HELPER_POLICY_PATH: &str = "/etc/polkit-1/actions/org.rexon.sysext.policy";
-/// Действие polkit помощника.
+/// The helper's polkit action.
 pub const HELPER_ACTION: &str = "org.rexon.sysext";
-/// Помощник сеанса прав («один пароль на запуск») на SteamOS: `/usr`
-/// закрыт, а `/var` переживает обновление ОС. Бинарь поставки Rexon —
-/// кладёт его `rexon-sysext-helper` при запуске через `bash -c`
-/// ([`SessionHelperCopy`]); клиент ищет его здесь же
+/// The privilege session helper ("one password per run") on SteamOS: `/usr` is
+/// closed, and `/var` survives an OS update. The Rexon delivery binary —
+/// `rexon-sysext-helper` puts it there when run via `bash -c`
+/// ([`SessionHelperCopy`]); the client looks for it right here
 /// (`privilege::client::STEAMOS_HELPER_DIR`).
 pub const SESSION_HELPER_PATH: &str = "/var/lib/rexon/bin/rexon-priv-helper";
-/// Политика `org.rexon.session` для помощника в `/var` — там же, где
-/// политика `rexon-sysext-helper` (polkit ≥ 126 читает `/etc`).
+/// The `org.rexon.session` policy for the helper in `/var` — in the same place
+/// as the `rexon-sysext-helper` policy (polkit ≥ 126 reads `/etc`).
 pub const SESSION_POLICY_PATH: &str = "/etc/polkit-1/actions/org.rexon.session.policy";
-/// Дополнение белого списка `/etc`, который обновление ОС сохраняет.
+/// Addition to the `/etc` whitelist that an OS update preserves.
 pub const KEEP_CONF_PATH: &str = "/etc/atomic-update.conf.d/rexon.conf";
-/// Юнит страховки сессии (перед экраном входа).
+/// Session guard unit (before the login screen).
 pub const GUARD_UNIT: &str = "rexon-session-guard.service";
-/// Юнит пересборки (после сети).
+/// Rebuild unit (after the network).
 pub const SYNC_UNIT: &str = "rexon-sysext-sync.service";
-/// Сессия Plasma — то, что есть в любом образе SteamOS.
+/// The Plasma session — what any SteamOS image has.
 pub const PLASMA_SESSION: &str = "plasma.desktop";
-/// Имя общего образа кэшей. ⚠️ `systemd-sysext` кладёт слои по имени:
-/// большее имя — верхний слой, отсюда `zz`.
+/// Name of the shared caches image. ⚠️ `systemd-sysext` stacks layers by name:
+/// a greater name is the upper layer, hence `zz`.
 pub const CACHES_NAME: &str = "rexon-zz-caches";
-/// Файлы автовхода, которые пишет `steamos-manager` (3.8 — `steamos`,
-/// после обновления до 3.9 файл переименован в `holo`).
+/// Autologin files written by `steamos-manager` (3.8 — `steamos`, after the
+/// update to 3.9 the file is renamed to `holo`).
 pub const AUTOLOGIN_CONFS: [&str; 2] = [
     "/etc/sddm.conf.d/zz-holo-autologin.conf",
     "/etc/sddm.conf.d/zz-steamos-autologin.conf",
 ];
-/// Код возврата «нет сети, повторить позже» (EX_TEMPFAIL).
+/// Exit code "no network, retry later" (EX_TEMPFAIL).
 pub const EXIT_NO_NETWORK: i32 = 75;
-/// Сколько ждать `steamosctl`: он виснет, когда сеанс пользователя закрыт
-/// или в цикле перезапуска (проверено в ВМ).
+/// How long to wait for `steamosctl`: it hangs when the user session is closed
+/// or in a restart loop (verified in a VM).
 pub const STEAMOSCTL_TIMEOUT_SECS: u64 = 15;
 
 // ============================================================================
-// os-release и устройство
+// os-release and the device
 // ============================================================================
 
-/// Разбор os-release: пары «ключ, значение» без кавычек, комментарии и
-/// пустые строки пропускаются.
+/// Parsing os-release: "key, value" pairs without quotes, comments and empty
+/// lines are skipped.
 pub fn parse_os_release(text: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for line in text.lines() {
@@ -140,24 +140,24 @@ pub fn parse_os_release(text: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Что Rexon знает о SteamOS под собой.
+/// What Rexon knows about the SteamOS under it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SteamOsRelease {
-    /// `VERSION_ID` — по нему `systemd-sysext` сверяет образ (3.9.5).
+    /// `VERSION_ID` — `systemd-sysext` matches the image by it (3.9.5).
     pub version_id: String,
-    /// `VARIANT_ID`: `steamdeck`, `steamdeck-oobe` (образ восстановления) и
-    /// пр. Решения на него не опираются: у Steam Machine он не подтверждён
-    /// на устройстве, а ОС у обеих машин одна.
+    /// `VARIANT_ID`: `steamdeck`, `steamdeck-oobe` (the recovery image) etc.
+    /// Decisions don't rely on it: on the Steam Machine it is not confirmed on the
+    /// device, and both machines have the same OS.
     pub variant_id: String,
-    /// `BUILD_ID` — для журнала.
+    /// `BUILD_ID` — for the log.
     pub build_id: String,
 }
 
-/// SteamOS ли это (Steam Deck или Steam Machine) — по `/etc/os-release`.
+/// Whether this is SteamOS (Steam Deck or Steam Machine) — by `/etc/os-release`.
 ///
-/// ⚠️ Именно `/etc/os-release`: в `/usr/lib/os-release` SteamOS нет
-/// `VERSION_ID` (проверено в ВМ), а `systemd-sysext` читает `/etc`.
-/// Без `VERSION_ID` образ собрать не под что — тогда `None`.
+/// ⚠️ Exactly `/etc/os-release`: the SteamOS `/usr/lib/os-release` has no
+/// `VERSION_ID` (verified in a VM), and `systemd-sysext` reads `/etc`.
+/// Without `VERSION_ID` there is nothing to build the image for — then `None`.
 pub fn steamos_release(etc_os_release: &str) -> Option<SteamOsRelease> {
     let kv = parse_os_release(etc_os_release);
     let get = |key: &str| {
@@ -173,23 +173,23 @@ pub fn steamos_release(etc_os_release: &str) -> Option<SteamOsRelease> {
     Some(SteamOsRelease { version_id, variant_id: get("VARIANT_ID"), build_id: get("BUILD_ID") })
 }
 
-/// Версия годится в имя файла и в сценарий: буквы, цифры, `.`, `_`, `-`.
+/// The version is fit for a file name and a script: letters, digits, `.`, `_`, `-`.
 pub fn is_safe_version(v: &str) -> bool {
     !v.is_empty() && v.len() <= 32 && v.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
-/// Машина под SteamOS — только ради слов в окне (механизм у обеих один).
+/// The machine under SteamOS — only for the words in the window (the mechanism is the same for both).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Device {
     SteamDeck,
     SteamMachine,
-    /// Иное железо или не опознано (ВМ, ПК с образом SteamOS).
+    /// Other hardware or not recognized (a VM, a PC with a SteamOS image).
     Unknown,
 }
 
-/// Машина по DMI (`/sys/class/dmi/id/board_name`, `product_name`):
+/// The machine by DMI (`/sys/class/dmi/id/board_name`, `product_name`):
 /// Jupiter — Steam Deck LCD, Galileo — Steam Deck OLED, Fremont — Steam
-/// Machine (список устройств `steamos-manager` 3.9).
+/// Machine (the device list of `steamos-manager` 3.9).
 pub fn device_from_dmi(board_name: &str, product_name: &str) -> Device {
     for v in [board_name.trim(), product_name.trim()] {
         match v.to_ascii_lowercase().as_str() {
@@ -201,7 +201,7 @@ pub fn device_from_dmi(board_name: &str, product_name: &str) -> Device {
     Device::Unknown
 }
 
-/// Имя машины для текстов окна.
+/// Machine name for the window texts.
 pub fn device_label(device: Device) -> String {
     match device {
         Device::SteamDeck => "Steam Deck".to_string(),
@@ -212,24 +212,24 @@ pub fn device_label(device: Device) -> String {
 }
 
 // ============================================================================
-// Пароль пользователя deck
+// Password of the deck user
 // ============================================================================
 
-/// Состояние пароля по `passwd -S` (работает без root для своего
-/// пользователя: `deck P …`, `deck NP …`, `deck L …`).
+/// Password state by `passwd -S` (works without root for one's own user:
+/// `deck P …`, `deck NP …`, `deck L …`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PasswordState {
-    /// Пароль задан — `pkexec` его спросит.
+    /// A password is set — `pkexec` will ask for it.
     Set,
-    /// Пароля нет (так SteamOS выходит с завода) — `pkexec` пройти нельзя.
+    /// No password (this is how SteamOS ships from the factory) — `pkexec` can't be passed.
     Missing,
-    /// Учётная запись заблокирована.
+    /// The account is locked.
     Locked,
-    /// Не удалось узнать — не мешаем, `pkexec` сам скажет.
+    /// Couldn't find out — don't get in the way, `pkexec` will say so itself.
     Unknown,
 }
 
-/// Разбор вывода `passwd -S`.
+/// Parsing the `passwd -S` output.
 pub fn parse_passwd_status(stdout: &str) -> PasswordState {
     let Some(line) = stdout.lines().find(|l| !l.trim().is_empty()) else {
         return PasswordState::Unknown;
@@ -242,8 +242,9 @@ pub fn parse_passwd_status(stdout: &str) -> PasswordState {
     }
 }
 
-/// Годится ли пароль: два поля совпали, не пустой, без управляющих символов
-/// (перевод строки разрезал бы ввод `passwd`). `Err` — текст для окна.
+/// Whether the password is fine: the two fields match, not empty, no control
+/// characters (a newline would cut the `passwd` input). `Err` — text for the
+/// window.
 pub fn check_new_password(first: &str, second: &str) -> Result<(), String> {
     if first.is_empty() {
         return Err(tr("Enter a password."));
@@ -257,18 +258,18 @@ pub fn check_new_password(first: &str, second: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Что подать `passwd` на вход, когда пароля ещё нет: новый пароль и
-/// повтор (текущего у пользователя без пароля SteamOS не спрашивает —
-/// проверено в ВМ на 3.9.5).
+/// What to feed to `passwd` when there is no password yet: the new password and
+/// its repetition (SteamOS doesn't ask a user without a password for the current
+/// one — verified in a VM on 3.9.5).
 pub fn passwd_input(password: &str) -> String {
     format!("{password}\n{password}\n")
 }
 
 // ============================================================================
-// Столы, которые можно собрать
+// Desktops that can be built
 // ============================================================================
 
-/// Тип сессии — в какой каталог ложится её `.desktop`.
+/// Session type — which directory its `.desktop` goes into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionKind {
     X11,
@@ -284,53 +285,54 @@ impl SessionKind {
     }
 }
 
-/// Стол, который Rexon умеет собрать образом.
+/// A desktop that Rexon can build as an image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DesktopSpec {
-    /// Идентификатор ядра (`system::DE_META`).
+    /// Core identifier (`system::DE_META`).
     pub id: &'static str,
-    /// Имя в уведомлениях и в сессии.
+    /// Name in notifications and in the session.
     pub name: &'static str,
-    /// Что ставить (группы и пакеты Arch; `--needed` отбросит стоящее в ОС).
+    /// What to install (Arch groups and packages; `--needed` drops what is in the OS).
     pub packages: &'static [&'static str],
     pub session: SessionKind,
-    /// Чем запускать сессию.
+    /// What starts the session.
     pub exec: &'static str,
-    /// Переменные сессии (пары имя, значение).
+    /// Session variables (name, value pairs).
     pub env: &'static [(&'static str, &'static str)],
-    /// Команда оболочки до запуска и после выхода (пусто — нет).
+    /// Shell command before start and after exit (empty — none).
     pub prestart: &'static str,
-    /// Доводка каталога XDG стола (`$X`) после переноса `/etc/xdg`.
+    /// Finishing touches for the desktop's XDG directory (`$X`) after moving `/etc/xdg`.
     pub xdg_fixup: &'static str,
 }
 
-/// Столы, проверенные в ВМ SteamOS (пакеты лежат в `extra` Valve).
+/// Desktops verified in a SteamOS VM (the packages are in Valve's `extra`).
 ///
-/// ⚠️ Добавляя стол, проверь его сборку в ВМ: пакеты Valve одной серии не
-/// всегда сходятся с образом (`libdisplay-info.so.2` у XFCE на 3.8.14).
+/// ⚠️ When adding a desktop, verify its build in a VM: Valve packages of one
+/// series don't always match the image (`libdisplay-info.so.2` for XFCE on
+/// 3.8.14).
 pub const DESKTOPS: &[DesktopSpec] = &[
     DesktopSpec {
         id: "xfce",
         name: "Xfce",
-        // xfce4-screensaver — экранный замок; в группе xfce4 его нет.
+        // xfce4-screensaver is the screen locker; it is not in the xfce4 group.
         packages: &[
             "xfce4", "xfce4-screensaver", "xfce4-whiskermenu-plugin", "xfce4-pulseaudio-plugin",
             "xfce4-screenshooter", "mousepad", "ristretto",
         ],
         session: SessionKind::X11,
-        // ⛔ Не startxfce4: он жёстко ищет /etc/xdg/xfce4/xinitrc.
+        // ⛔ Not startxfce4: it hard-codes looking for /etc/xdg/xfce4/xinitrc.
         exec: "xfce4-session",
         env: &[("XDG_CURRENT_DESKTOP", "XFCE"), ("XDG_MENU_PREFIX", "xfce-"), ("DESKTOP_SESSION", "xfce")],
-        // xfconfd запускается D-Bus-активацией со средой прежнего сеанса:
-        // без перезапуска — «Unable to load a failsafe session».
+        // xfconfd is started by D-Bus activation with the previous session's
+        // environment: without a restart — "Unable to load a failsafe session".
         prestart: "pkill -u \"$(id -u)\" -x xfconfd || true",
         xdg_fixup: "",
     },
     DesktopSpec {
         id: "lxqt",
         name: "LXQt",
-        // openbox назван явно: lxqt-session без оконного менеджера спрашивает
-        // его при первом входе.
+        // openbox is named explicitly: lxqt-session without a window manager asks for
+        // one on the first login.
         packages: &["lxqt", "openbox"],
         session: SessionKind::X11,
         exec: "startlxqt",
@@ -352,27 +354,27 @@ pub const DESKTOPS: &[DesktopSpec] = &[
     },
 ];
 
-/// Переменные, которые обёртка сессии кладёт в user-менеджер и снимает по
-/// выходу — объединение `env` всех столов плюс XDG_CONFIG_DIRS.
+/// Variables that the session wrapper puts into the user manager and removes on
+/// exit — the union of `env` of all desktops plus XDG_CONFIG_DIRS.
 const SESSION_VARS: &str = "XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP XDG_MENU_PREFIX DESKTOP_SESSION XDG_SESSION_DESKTOP";
 
-/// Пакеты ОС, которые образ НИКОГДА не должен нести (заслонил бы ядро
-/// SteamOS: драйверы, загрузку, экран входа, Plasma, Steam).
+/// OS packages the image must NEVER carry (it would shadow the SteamOS core:
+/// drivers, boot, the login screen, Plasma, Steam).
 const CORE_PACKAGES_RE: &str =
     "^(glibc|mesa|lib32-mesa|vulkan-radeon|linux[^ ]*|systemd[^ ]*|sddm|plasma-[^ ]*|kwin|qt6-base|gamescope|steam[^ ]*) ";
 
-/// Описание стола по идентификатору.
+/// Desktop description by identifier.
 pub fn desktop(de_id: &str) -> Option<&'static DesktopSpec> {
     DESKTOPS.iter().find(|d| d.id == de_id)
 }
 
-/// Имя файла сессии стола (`rexon-xfce.desktop`).
+/// File name of the desktop's session (`rexon-xfce.desktop`).
 pub fn session_file(de_id: &str) -> String {
     format!("rexon-{de_id}.desktop")
 }
 
-/// Какую сессию выбрать по умолчанию для стола ядра: Plasma — штатная,
-/// собранные — наши; прочие — `None`.
+/// Which session to choose by default for a core desktop: Plasma — the stock
+/// one, built ones — ours; others — `None`.
 pub fn session_for(de_id: &str) -> Option<String> {
     if de_id == "kde" {
         return Some(PLASMA_SESSION.to_string());
@@ -380,17 +382,17 @@ pub fn session_for(de_id: &str) -> Option<String> {
     desktop(de_id).map(|d| session_file(d.id))
 }
 
-/// Можно ли поставить стол на SteamOS.
+/// Whether the desktop can be installed on SteamOS.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Support {
     Supported(&'static DesktopSpec),
-    /// Plasma — сам стол SteamOS: ставить нечего.
+    /// Plasma is the SteamOS desktop itself: nothing to install.
     Builtin,
-    /// Пока нельзя; текст — почему, для окна.
+    /// Not possible yet; the text says why, for the window.
     NotYet(String),
 }
 
-/// Решение «можно ли этот стол на SteamOS» — одно на продукт.
+/// The decision "is this desktop possible on SteamOS" — one for the product.
 pub fn support(de_id: &str) -> Support {
     if let Some(d) = desktop(de_id) {
         return Support::Supported(d);
@@ -410,10 +412,10 @@ pub fn support(de_id: &str) -> Support {
 }
 
 // ============================================================================
-// Список столов (`/var/lib/rexon/sysext/desktops`)
+// Desktops list (`/var/lib/rexon/sysext/desktops`)
 // ============================================================================
 
-/// Разбор списка: известные идентификаторы по порядку, без повторов.
+/// Parsing the list: known identifiers in order, without repeats.
 pub fn parse_desktop_list(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in text.lines() {
@@ -426,11 +428,12 @@ pub fn parse_desktop_list(text: &str) -> Vec<String> {
 }
 
 // ============================================================================
-// Сценарии, работающие внутри SteamOS
+// Scripts running inside SteamOS
 // ============================================================================
 
-/// Перед блоком языка: язык из файла, если `--lang` не передан (юнит
-/// systemd языка не знает — его при установке записал помощник).
+/// Before the language block: the language from the file if `--lang` is not
+/// passed (the systemd unit doesn't know the language — the helper wrote it at
+/// install time).
 const LANG_FROM_FILE: &str = r#"case "${1:-}" in
     --lang=*) ;;
     *) rx_file_lang=$(head -c 16 "$R/var/lib/rexon/sysext/lang" 2>/dev/null | tr -cd 'a-zA-Z0-9_@') || true
@@ -482,27 +485,27 @@ fn fill(name: &str, template: &str) -> String {
     crate::system_l10n::localize_script(name, &text)
 }
 
-/// Сборщик образа стола — `rexon-sysext-build <стол>`.
+/// Desktop image builder — `rexon-sysext-build <desktop>`.
 pub fn build_script() -> String {
     fill("rexon-sysext-build", BUILD_TMPL)
 }
 
-/// Сборщик общего образа кэшей — `rexon-sysext-caches [--force]`.
+/// Shared caches image builder — `rexon-sysext-caches [--force]`.
 pub fn caches_script() -> String {
     fill("rexon-sysext-caches", CACHES_TMPL)
 }
 
-/// Пересборка после обновления ОС — `rexon-sysext-sync`.
+/// Rebuild after an OS update — `rexon-sysext-sync`.
 pub fn sync_script() -> String {
     fill("rexon-sysext-sync", SYNC_TMPL)
 }
 
-/// Страховка сессии перед экраном входа — `session-guard.sh`.
+/// Session guard before the login screen — `session-guard.sh`.
 pub fn guard_script() -> String {
     fill("rexon-session-guard", GUARD_TMPL)
 }
 
-/// Юнит страховки: до SDDM, после подключения расширений.
+/// Guard unit: before SDDM, after the extensions are attached.
 pub fn guard_unit() -> String {
     format!(
         "[Unit]\n\
@@ -521,9 +524,9 @@ pub fn guard_unit() -> String {
     )
 }
 
-/// Юнит пересборки: после сети, НЕ перед экраном входа (вход не ждёт
-/// сборки). Код 75 — нет сети: юнит перезапускает себя каждые 2 минуты.
-/// Таймер не нужен (и `*.timer` нет в белом списке `/etc`).
+/// Rebuild unit: after the network, NOT before the login screen (login doesn't
+/// wait for the build). Code 75 — no network: the unit restarts itself every 2
+/// minutes. No timer is needed (and `*.timer` is not in the `/etc` whitelist).
 pub fn sync_unit() -> String {
     format!(
         "[Unit]\n\
@@ -546,8 +549,8 @@ pub fn sync_unit() -> String {
     )
 }
 
-/// Дополнение белого списка: политика помощника в `/etc` переживает
-/// обновление ОС (юниты и `*.wants` в списке Valve уже есть).
+/// Whitelist addition: the helper policy in `/etc` survives an OS update (units
+/// and `*.wants` are already in Valve's list).
 pub fn keep_conf() -> String {
     format!(
         "# Rexon: files under /etc that SteamOS must keep across system updates.\n\
@@ -557,8 +560,8 @@ pub fn keep_conf() -> String {
     )
 }
 
-/// Политика polkit помощника: пароль администратора, подтверждённый
-/// держится несколько минут (как у прочих помощников Rexon).
+/// The helper's polkit policy: administrator password, once confirmed it is
+/// kept for a few minutes (as with the other Rexon helpers).
 pub fn helper_policy_xml() -> String {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -589,28 +592,28 @@ const HELPER_POLICY_DESCRIPTION: &str = crate::i18n::n_("Install or remove a des
 const HELPER_POLICY_MESSAGE: &str =
     crate::i18n::n_("Rexon needs the administrator password to install or remove a desktop environment on SteamOS.");
 
-/// Записать файл из here-doc помощника. Ограничитель уникален и
-/// проверяется сверкой: в тексте вложенного файла его нет.
+/// Write a file from the helper's here-doc. The delimiter is unique and is
+/// checked by a test: it is not in the text of the embedded file.
 fn heredoc(path: &str, mode: &str, tag: &str, body: &str) -> String {
     assert!(!body.contains(tag), "ограничитель {tag} встречается в тексте");
     let body = if body.ends_with('\n') { body.to_string() } else { format!("{body}\n") };
     format!("    put \"$R{path}\" {mode} <<'{tag}'\n{body}{tag}\n")
 }
 
-/// Файл раскладки: куда, с какими правами и что.
+/// A layout file: where, with which permissions and what.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LayoutFile {
     pub path: String,
     pub mode: u32,
-    /// Ограничитель here-doc в тексте `rexon-sysext-helper`.
+    /// Here-doc delimiter in the `rexon-sysext-helper` text.
     pub tag: &'static str,
     pub text: String,
 }
 
-/// Всё, что помощник раскладывает перед операцией: сценарии, юниты,
-/// политика polkit и дополнение белого списка `/etc`. Одна правда для
-/// `rexon-sysext-helper` ([`helper_script`]) и помощника сеанса прав
-/// (`privilege::helper`, операция `Sysext`).
+/// Everything the helper lays out before an operation: scripts, units, the
+/// polkit policy and the `/etc` whitelist addition. One truth for
+/// `rexon-sysext-helper` ([`helper_script`]) and the privilege session helper
+/// (`privilege::helper`, operation `Sysext`).
 pub fn layout_files() -> Vec<LayoutFile> {
     let f = |path: String, mode: u32, tag: &'static str, text: String| LayoutFile { path, mode, tag, text };
     vec![
@@ -621,9 +624,9 @@ pub fn layout_files() -> Vec<LayoutFile> {
         f(format!("/etc/systemd/system/{GUARD_UNIT}"), 0o644, "REXON_EOF_GUARD_UNIT", guard_unit()),
         f(format!("/etc/systemd/system/{SYNC_UNIT}"), 0o644, "REXON_EOF_SYNC_UNIT", sync_unit()),
         f(HELPER_POLICY_PATH.to_string(), 0o644, "REXON_EOF_POLICY", helper_policy_xml()),
-        // Политика помощника сеанса — тот же текст, что у пакета, только
-        // путь свой (`/var`). Без бинаря она безвредна: действие поднимает
-        // лишь файл по `exec.path`.
+        // The session helper policy — the same text as the package's, only its own
+        // path (`/var`). Without the binary it is harmless: the action launches only
+        // the file at `exec.path`.
         f(
             SESSION_POLICY_PATH.to_string(),
             0o644,
@@ -634,10 +637,10 @@ pub fn layout_files() -> Vec<LayoutFile> {
     ]
 }
 
-/// Помощник с правами root — `rexon-sysext-helper [--lang=код] install|remove <стол>`.
+/// The root helper — `rexon-sysext-helper [--lang=code] install|remove <desktop>`.
 ///
-/// Несёт в себе тексты всех сценариев и юнитов (вшиты при генерации): от
-/// интерфейса принимает только операцию и имя стола из таблицы.
+/// Carries the texts of all scripts and units (embedded at generation time):
+/// from the UI it accepts only the operation and a desktop name from the table.
 pub fn helper_script() -> String {
     let layout: String = layout_files()
         .iter()
@@ -650,10 +653,11 @@ pub fn helper_script() -> String {
     fill(HELPER_NAME, &text)
 }
 
-// ── Тексты шаблонов ─────────────────────────────────────────────────────────
+// ── Template texts ──────────────────────────────────────────────────────────
 //
-// `$R` — корень для сверок (переменная REXON_SYSEXT_ROOT; pkexec и systemd
-// окружение чистят, снаружи её не подставить). В продукте пусто.
+// `$R` is the root for tests (the REXON_SYSEXT_ROOT variable; pkexec and
+// systemd clear the environment, it can't be injected from outside). Empty in
+// the product.
 
 const BUILD_TMPL: &str = r###"#!/bin/bash
 # rexon-sysext-build <desktop> — builds the systemd-sysext image of a desktop
@@ -1216,10 +1220,10 @@ esac
 "###;
 
 // ============================================================================
-// Вызов помощника
+// Calling the helper
 // ============================================================================
 
-/// Операция помощника.
+/// Helper operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelperOp {
     Install,
@@ -1235,22 +1239,22 @@ impl HelperOp {
     }
 }
 
-/// argv запуска помощника. `installed` — текст файла помощника в системе:
-/// совпал с нашим — зовём файл (своё действие polkit, пароль держится
-/// несколько минут); нет или другой (первый раз, новый Rexon) — тот же
-/// текст через `bash -c`: он лежит в argv и после запроса пароля не
-/// подменяется, а помощник сам сохранит его файлом.
-/// `lang` — код языка интерфейса (`ru`); английский и незнакомые — без
-/// аргумента.
+/// argv to run the helper. `installed` is the text of the helper file on the
+/// system: matches ours — call the file (its own polkit action, the password is
+/// kept for a few minutes); missing or different (the first time, a new Rexon)
+/// — the same text via `bash -c`: it is in argv and can't be swapped after the
+/// password prompt, and the helper saves it as a file itself.
+/// `lang` is the UI language code (`ru`); English and unknown ones — without
+/// the argument.
 pub fn helper_argv(op: HelperOp, de_id: &str, installed: Option<&str>, lang: &str) -> Vec<String> {
     helper_argv_with(op, de_id, installed, lang, None)
 }
 
-/// Тот же argv, но с копией помощника сеанса ([`session_helper_copy`]).
-/// Копия есть — помощник идёт только через `bash -c`, даже если файл
-/// `rexon-sysext-helper` совпал: путь к бинарю он принимает лишь там (у
-/// файла пароль держится минуты, и путь от вызывающего был бы root для
-/// любого процесса).
+/// The same argv, but with a copy of the session helper ([`session_helper_copy`]).
+/// With a copy the helper goes only via `bash -c`, even if the
+/// `rexon-sysext-helper` file matched: it accepts the binary path only there
+/// (the file keeps the password for minutes, and a path from the caller would
+/// be root for any process).
 pub fn helper_argv_with(
     op: HelperOp,
     de_id: &str,
@@ -1275,21 +1279,24 @@ pub fn helper_argv_with(
     argv
 }
 
-/// Что положить в [`SESSION_HELPER_PATH`]: бинарь поставки и его sha256.
-/// Корень копирует файл к себе и сверяет сумму с этой (в argv, после окна
-/// пароля не подменить) — подмена файла между расчётом и копией не пройдёт.
+/// What to put into [`SESSION_HELPER_PATH`]: the delivery binary and its
+/// sha256. Root copies the file to itself and checks the sum against this one
+/// (in argv, can't be swapped after the password window) — swapping the file
+/// between computing and copying won't pass.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionHelperCopy {
     pub source: String,
     pub sha256: String,
 }
 
-/// Нужно ли класть помощника сеанса. `delivery` — путь бинаря поставки и
-/// его sha256 (`None` — в поставке его нет: класть нечего, прежний файл
-/// окно отвергнет по сборке); `installed_sha256` — сумма файла в `/var`;
-/// `installed_ok` — владельцы и права всей цепочки годны
-/// (`privilege::client::check_ownership`). Тот же бинарь с годными правами
-/// — копии нет, иначе (нет, другой сборки, права испорчены) — есть.
+/// Whether the session helper needs to be put in place. `delivery` is the
+/// delivery binary path and its sha256 (`None` — it's not in the delivery:
+/// nothing to put, the window rejects the old file by build);
+/// `installed_sha256` is the sum of the file in `/var`; `installed_ok` — owners
+/// and permissions of the whole chain are fine
+/// (`privilege::client::check_ownership`). The same binary with fine
+/// permissions — no copy; otherwise (missing, another build, broken
+/// permissions) — there is one.
 pub fn session_helper_copy(
     delivery: Option<(&str, &str)>,
     installed_sha256: Option<&str>,
@@ -1305,16 +1312,16 @@ pub fn session_helper_copy(
     Some(SessionHelperCopy { source: source.to_string(), sha256: sha256.to_string() })
 }
 
-/// sha256 файла строчными шестнадцатеричными цифрами.
+/// sha256 of a file in lowercase hex digits.
 fn file_sha256(path: &str) -> Option<String> {
     use sha2::{Digest, Sha256};
     let bytes = std::fs::read(path).ok()?;
     Some(Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// Живая копия помощника сеанса: бинарь поставки запущенного Rexon
-/// (`installer_exec::PayloadSource::for_running` — та же правда, что у
-/// установки), без ссылок в пути, против файла в `/var`.
+/// Live copy of the session helper: the delivery binary of the running Rexon
+/// (`installer_exec::PayloadSource::for_running` — the same truth as the
+/// install), without symlinks in the path, against the file in `/var`.
 fn session_helper_copy_live() -> Option<SessionHelperCopy> {
     let own_exe = std::env::current_exe().ok()?.to_string_lossy().into_owned();
     let home = std::env::var("HOME").unwrap_or_default();
@@ -1334,7 +1341,7 @@ fn session_helper_copy_live() -> Option<SessionHelperCopy> {
     session_helper_copy(Some((&source, &sha256)), installed.as_deref(), ok)
 }
 
-/// Строка вывода помощника: доля хода или строка журнала.
+/// A helper output line: a progress fraction or a log line.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HelperLine {
     Progress(f64),
@@ -1342,7 +1349,7 @@ pub enum HelperLine {
     Skip,
 }
 
-/// Разбор строки вывода помощника (`@progress 40` — доля в процентах).
+/// Parsing a helper output line (`@progress 40` — a fraction in percent).
 pub fn parse_helper_line(line: &str) -> HelperLine {
     let t = line.trim_end();
     if let Some(p) = t.strip_prefix("@progress ") {
@@ -1359,46 +1366,46 @@ pub fn parse_helper_line(line: &str) -> HelperLine {
 }
 
 // ============================================================================
-// Планы для окна
+// Plans for the window
 // ============================================================================
 
-/// Что известно о машине для решения.
+/// What is known about the machine for the decision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SteamOsState {
     pub release: Option<SteamOsRelease>,
     pub device: Device,
     pub password: PasswordState,
-    /// Столы из списка сборки.
+    /// Desktops from the build list.
     pub desktops: Vec<String>,
-    /// Сессия по умолчанию (`steamosctl get-default-desktop-session`).
+    /// Default session (`steamosctl get-default-desktop-session`).
     pub default_session: Option<String>,
 }
 
-/// Шаг плана.
+/// A plan step.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
-    /// Помощник с паролем администратора.
+    /// The helper with the administrator password.
     Helper(HelperOp, String),
-    /// `steamosctl set-default-desktop-session` от имени пользователя.
+    /// `steamosctl set-default-desktop-session` as the user.
     DefaultSession(String),
 }
 
-/// Почему нельзя.
+/// Why it is not possible.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     NotSteamOs,
     Builtin,
     NotYet(String),
-    /// Пароля у пользователя нет — сначала задать (окно умеет).
+    /// The user has no password — set one first (the window can do it).
     NeedPassword,
-    /// Учётная запись заблокирована.
+    /// The account is locked.
     Locked,
-    /// Удалять стол, в котором человек сейчас работает, нельзя.
+    /// The desktop the person is working in now can't be removed.
     Current,
 }
 
 impl Refusal {
-    /// Текст для окна.
+    /// Text for the window.
     pub fn text(&self, device: Device) -> String {
         match self {
             Refusal::NotSteamOs => tr("This is not SteamOS."),
@@ -1425,21 +1432,21 @@ fn need_admin(state: &SteamOsState) -> Result<(), Refusal> {
     }
 }
 
-/// Что окну операции сделать перед помощником: у пользователя без пароля
-/// `pkexec` пройти нельзя, поэтому окно сначала даёт его задать (шаг
-/// пароля), а уже потом запускает операцию — `pkexec` спросит только что
-/// заданный пароль штатным окном.
+/// What the operation window should do before the helper: a user without a
+/// password can't pass `pkexec`, so the window first lets them set one (the
+/// password step), and only then starts the operation — `pkexec` will ask for
+/// the just-set password in the stock window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdminGate {
-    /// Пароль есть (или узнать не вышло — `pkexec` сам скажет).
+    /// There is a password (or couldn't find out — `pkexec` will say so itself).
     Ready,
-    /// Пароля нет — шаг «задать пароль».
+    /// No password — the "set a password" step.
     AskPassword,
-    /// Дальше нельзя (учётная запись заблокирована) — текст для окна.
+    /// Can't go further (the account is locked) — text for the window.
     Refused(String),
 }
 
-/// Решение для окна по состоянию пароля.
+/// Decision for the window by the password state.
 pub fn admin_gate(password: PasswordState, device: Device) -> AdminGate {
     match need_admin(&SteamOsState {
         release: None,
@@ -1454,8 +1461,8 @@ pub fn admin_gate(password: PasswordState, device: Device) -> AdminGate {
     }
 }
 
-/// План установки (она же «Проверить / Восстановить»): помощник собирает
-/// образ, затем стол становится сессией режима рабочего стола.
+/// Install plan (also «Check / Repair»): the helper builds the image, then the
+/// desktop becomes the desktop mode session.
 pub fn install_plan(de_id: &str, state: &SteamOsState) -> Result<Vec<Step>, Refusal> {
     if state.release.is_none() {
         return Err(Refusal::NotSteamOs);
@@ -1469,9 +1476,10 @@ pub fn install_plan(de_id: &str, state: &SteamOsState) -> Result<Vec<Step>, Refu
     Ok(vec![Step::Helper(HelperOp::Install, spec.id.to_string()), Step::DefaultSession(session_file(spec.id))])
 }
 
-/// План удаления: если стол — сессия по умолчанию, сначала вернуть Plasma
-/// (иначе автовход упрётся в исчезнувшую сессию — экран пароля), затем
-/// помощник снимает образ. `current_de` — стол, в котором человек сейчас.
+/// Removal plan: if the desktop is the default session, first restore Plasma
+/// (otherwise autologin runs into a vanished session — the password screen),
+/// then the helper removes the image. `current_de` is the desktop the person is
+/// in now.
 pub fn remove_plan(de_id: &str, current_de: &str, state: &SteamOsState) -> Result<Vec<Step>, Refusal> {
     if state.release.is_none() {
         return Err(Refusal::NotSteamOs);
@@ -1494,10 +1502,10 @@ pub fn remove_plan(de_id: &str, current_de: &str, state: &SteamOsState) -> Resul
 }
 
 // ============================================================================
-// Тексты окна
+// Window texts
 // ============================================================================
 
-/// Вопрос перед установкой.
+/// Question before installing.
 pub fn install_confirm_text(de_name: &str, version: &str) -> String {
     trf(
         // TRANSLATORS: %1 is a desktop name (Xfce), %2 the SteamOS version (3.9.5).
@@ -1510,7 +1518,7 @@ pub fn install_confirm_text(de_name: &str, version: &str) -> String {
     )
 }
 
-/// Вопрос перед удалением.
+/// Question before removing.
 pub fn remove_confirm_text(de_name: &str) -> String {
     trf(
         // TRANSLATORS: %1 is a desktop name.
@@ -1520,12 +1528,12 @@ pub fn remove_confirm_text(de_name: &str) -> String {
     )
 }
 
-/// Заголовок шага пароля.
+/// Title of the password step.
 pub fn password_title() -> String {
     tr("Set the administrator password")
 }
 
-/// Объяснение шага пароля.
+/// Explanation of the password step.
 pub fn password_text(device: Device) -> String {
     trf(
         // TRANSLATORS: %1 is "Steam Deck", "Steam Machine" or "this SteamOS device".
@@ -1546,16 +1554,16 @@ pub fn password_field_repeat() -> String {
 pub fn password_button() -> String {
     tr("Set password")
 }
-/// Пароль задан — первая строка журнала операции, что идёт следом.
+/// The password is set — the first log line of the operation that follows.
 pub fn password_set_text() -> String {
     tr("The administrator password is set. SteamOS now asks for it once more to confirm the change.")
 }
-/// `passwd` отказал — его слова идут следом.
+/// `passwd` refused — its words follow.
 pub fn password_failed(detail: &str) -> String {
     trf("SteamOS didn't accept the password: %1", &[&detail])
 }
 
-/// Итог установки.
+/// Install result.
 pub fn install_done_text(de_name: &str) -> String {
     trf(
         // TRANSLATORS: %1 is a desktop name.
@@ -1565,7 +1573,7 @@ pub fn install_done_text(de_name: &str) -> String {
     )
 }
 
-/// Стол поставлен, но сделать его сессией не вышло.
+/// The desktop is installed, but making it the session failed.
 pub fn default_session_failed(de_name: &str) -> String {
     trf(
         // TRANSLATORS: %1 is a desktop name.
@@ -1575,7 +1583,7 @@ pub fn default_session_failed(de_name: &str) -> String {
     )
 }
 
-/// Итог по коду помощника.
+/// Result by the helper's code.
 pub fn helper_failure_text(rc: Option<i32>, de_name: &str) -> String {
     match rc {
         Some(EXIT_NO_NETWORK) => trf(
@@ -1603,7 +1611,7 @@ pub fn helper_failure_text(rc: Option<i32>, de_name: &str) -> String {
 }
 
 // ============================================================================
-// Исполнитель
+// Executor
 // ============================================================================
 
 fn read(path: &str) -> Option<String> {
@@ -1646,18 +1654,18 @@ fn run_capture(argv: &[&str], timeout: u64, stdin: Option<&str>) -> Option<(i32,
     ))
 }
 
-/// SteamOS под Rexon (`/etc/os-release`); `None` — не SteamOS.
+/// The SteamOS under Rexon (`/etc/os-release`); `None` — not SteamOS.
 pub fn live_release() -> Option<SteamOsRelease> {
     read("/etc/os-release").and_then(|t| steamos_release(&t))
 }
 
-/// Какая это машина (по DMI).
+/// Which machine this is (by DMI).
 pub fn live_device() -> Device {
     let dmi = |f: &str| read(&format!("/sys/class/dmi/id/{f}")).unwrap_or_default();
     device_from_dmi(&dmi("board_name"), &dmi("product_name"))
 }
 
-/// Пароль своего пользователя по `passwd -S` (без root, доли секунды).
+/// Own user's password by `passwd -S` (without root, fractions of a second).
 pub fn live_password_state() -> PasswordState {
     let user = std::env::var("USER").unwrap_or_default();
     let mut argv = vec!["passwd", "-S"];
@@ -1667,7 +1675,7 @@ pub fn live_password_state() -> PasswordState {
     run_capture(&argv, 10, None).map(|(_, out, _)| parse_passwd_status(&out)).unwrap_or(PasswordState::Unknown)
 }
 
-/// Состояние живой машины. Только чтение, без root.
+/// State of the live machine. Read-only, without root.
 pub fn live_state() -> SteamOsState {
     let release = live_release();
     let device = live_device();
@@ -1684,7 +1692,7 @@ pub fn live_state() -> SteamOsState {
     SteamOsState { release, device, password, desktops, default_session }
 }
 
-/// Сделать сессию сессией режима рабочего стола (от имени пользователя).
+/// Make a session the desktop mode session (as the user).
 pub fn set_default_session_live(session: &str) -> Result<(), String> {
     match run_capture(&["steamosctl", "set-default-desktop-session", session], STEAMOSCTL_TIMEOUT_SECS, None) {
         Some((0, _, _)) => Ok(()),
@@ -1693,7 +1701,7 @@ pub fn set_default_session_live(session: &str) -> Result<(), String> {
     }
 }
 
-/// Задать пароль пользователю без пароля (`passwd` читает его со stdin).
+/// Set a password for a user without one (`passwd` reads it from stdin).
 pub fn set_password_live(password: &str) -> Result<(), String> {
     match run_capture(&["passwd"], 30, Some(&passwd_input(password))) {
         Some((0, _, _)) => Ok(()),
@@ -1704,7 +1712,7 @@ pub fn set_password_live(password: &str) -> Result<(), String> {
     }
 }
 
-/// Выполнить план; ход — в окно операции.
+/// Carry out the plan; progress goes to the operation window.
 fn run_plan(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -1731,8 +1739,8 @@ fn run_plan(
                 if let Err(e) = set_default_session_live(session) {
                     crate::log_warn!("steamos", "steamosctl set-default-desktop-session {session}: {e}");
                     if session == PLASMA_SESSION {
-                        // Перед удалением: без этого не идём дальше — иначе
-                        // автовход упрётся в исчезнувшую сессию.
+                        // Before removal: without this we don't go further — otherwise
+                        // autologin runs into a vanished session.
                         let text = format!("{}: {e}", tr("SteamOS didn't switch Desktop Mode back to KDE Plasma"));
                         sink.progress(de_progress::STAGE_ERROR, &text, None);
                         return outcome(false, text);
@@ -1744,8 +1752,8 @@ fn run_plan(
                 sink.progress("install", "", Some(0.02));
                 let rc = helper_step_rc(*op, de, &sink, &session_run_live, &|| {
                     let installed = read(HELPER_PATH);
-                    // Прежний путь — тот же миг, когда кладётся и помощник
-                    // сеанса: со следующего запуска окна пароль один.
+                    // The former path — the same moment the session helper is put in
+                    // place too: from the next window run there is one password.
                     let copy = session_helper_copy_live();
                     let lang = crate::i18n::current_language();
                     let argv = helper_argv_with(*op, de, installed.as_deref(), &lang, copy.as_ref());
@@ -1766,7 +1774,7 @@ fn run_plan(
     outcome(true, warning.unwrap_or(done_text))
 }
 
-/// Операция сеанса прав для шага помощника.
+/// Privilege session operation for the helper step.
 pub fn priv_op(op: HelperOp, de_id: &str) -> crate::privilege::op::PrivOp {
     use crate::privilege::op::{PrivOp, SysextOp};
     let op = match op {
@@ -1776,8 +1784,8 @@ pub fn priv_op(op: HelperOp, de_id: &str) -> crate::privilege::op::PrivOp {
     PrivOp::Sysext { op, de_id: de_id.to_string() }
 }
 
-/// Живой сеанс прав окна (`privilege::run`); `None` — его нет или помощник
-/// операцию не исполняет: тогда прежний путь.
+/// The window's live privilege session (`privilege::run`); `None` — there is
+/// none or the helper doesn't carry out the operation: then the former path.
 fn session_run_live(
     op: &crate::privilege::op::PrivOp,
     line: &mut dyn FnMut(&str),
@@ -1785,11 +1793,11 @@ fn session_run_live(
     crate::privilege::run::run_live(op, &[], None, line)
 }
 
-/// Код шага помощника: сначала сеанс прав окна (один пароль на весь
-/// запуск; на SteamOS помощник сеанса живёт в `/var/lib/rexon/bin`),
-/// строки хода — те же `@progress`/журнал, что у `rexon-sysext-helper`.
-/// Сеанса нет — `legacy` (прежний `pkexec` помощника); отказ сеанса
-/// прежним путём не повторяется (З5).
+/// Code of the helper step: first the window's privilege session (one password
+/// for the whole run; on SteamOS the session helper lives in
+/// `/var/lib/rexon/bin`), the progress lines are the same `@progress`/log as
+/// with `rexon-sysext-helper`. No session — `legacy` (the helper's former
+/// `pkexec`); a session refusal is not repeated by the former path (Z5).
 pub fn helper_step_rc(
     op: HelperOp,
     de_id: &str,
@@ -1808,7 +1816,7 @@ pub fn helper_step_rc(
     }
 }
 
-/// Запустить помощника, показывая его вывод; код возврата.
+/// Run the helper, showing its output; the exit code.
 fn run_helper(argv: &[String], sink: Arc<dyn DeOpSink>) -> Option<i32> {
     let dir = std::env::temp_dir();
     let log = dir.join(format!("rexon-sysext-{}.log", std::process::id()));
@@ -1843,7 +1851,7 @@ fn refused(sink: &Arc<dyn DeOpSink>, text: String) -> DeOpOutcome {
     DeOpOutcome { ok: false, message: text, cancelled: false, restart_needed: false }
 }
 
-/// Установка стола на SteamOS — из окна «Рабочих столов».
+/// Installing a desktop on SteamOS — from the «Desktops» window.
 pub fn install_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken, de_id: &str) -> DeOpOutcome {
     let state = live_state();
     match install_plan(de_id, &state) {
@@ -1852,7 +1860,7 @@ pub fn install_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken, de_id: &str) -
     }
 }
 
-/// Удаление стола на SteamOS.
+/// Removing a desktop on SteamOS.
 pub fn remove_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken, de_id: &str, current_de: &str) -> DeOpOutcome {
     let state = live_state();
     match remove_plan(de_id, current_de, &state) {
@@ -1861,9 +1869,9 @@ pub fn remove_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken, de_id: &str, cu
     }
 }
 
-/// Суть отказа `passwd` одной строкой: подсказки ввода («New password:»)
-/// и имя программы отброшены («BAD PASSWORD: The password is shorter than
-/// 8 characters» → «The password is shorter than 8 characters»).
+/// The gist of a `passwd` refusal in one line: input prompts ("New password:")
+/// and the program name are dropped ("BAD PASSWORD: The password is shorter than
+/// 8 characters" → "The password is shorter than 8 characters").
 pub fn passwd_complaint(output: &str) -> String {
     let parts: Vec<String> = output
         .split(['\n', '\r'])
@@ -1888,7 +1896,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    // ── шаг помощника через сеанс прав окна ─────────────────────────────
+    // ── helper step via the window's privilege session ─────────────────
 
     #[test]
     fn helper_step_goes_through_session_then_legacy_only_without_it() {
@@ -1902,7 +1910,7 @@ mod tests {
             legacy_calls.set(legacy_calls.get() + 1);
             Some(0)
         };
-        // Сеанс есть: операция Sysext, ход помощника — в окно, прежнего пути нет.
+        // There is a session: operation Sysext, the helper's progress goes to the window, no former path.
         let seen = std::sync::Mutex::new(Vec::new());
         let session = |op: &PrivOp, line: &mut dyn FnMut(&str)| {
             seen.lock().unwrap().push(op.clone());
@@ -1916,7 +1924,7 @@ mod tests {
         let events = rec.events.lock().unwrap().clone();
         assert!(events.iter().any(|(st, _, f)| st == "install" && (f.unwrap_or(0.0) - 0.485).abs() < 1e-9), "{events:?}");
         assert!(events.iter().any(|(st, m, _)| st == de_progress::STAGE_RAW && m == "sx_built"), "{events:?}");
-        // Сеанса нет — прежний pkexec помощника.
+        // No session — the helper's former pkexec.
         let none = |_: &PrivOp, _: &mut dyn FnMut(&str)| None;
         assert_eq!(helper_step_rc(HelperOp::Install, "xfce", &sink, &none, &legacy), Some(0));
         assert_eq!(legacy_calls.get(), 1);
@@ -1935,7 +1943,7 @@ mod tests {
         }
     }
 
-    // ── Разбор ─────────────────────────────────────────────────────────
+    // ── Parsing ────────────────────────────────────────────────────────
 
     #[test]
     fn os_release_of_steam_deck_and_recovery_image() {
@@ -1943,14 +1951,14 @@ mod tests {
         assert_eq!(r.version_id, "3.9.5");
         assert_eq!(r.variant_id, "steamdeck");
         assert_eq!(r.build_id, "20261023.100");
-        // Образ восстановления 3.8.14 — VARIANT_ID другой, решение то же.
+        // The 3.8.14 recovery image — a different VARIANT_ID, the same decision.
         let oobe = "ID=steamos\nVARIANT_ID=steamdeck-oobe\nVERSION_ID='3.8.14'\n";
         assert_eq!(steamos_release(oobe).unwrap().version_id, "3.8.14");
     }
 
     #[test]
     fn no_steamos_without_version_or_with_other_id() {
-        // /usr/lib/os-release SteamOS — без VERSION_ID.
+        // The SteamOS /usr/lib/os-release — without VERSION_ID.
         assert_eq!(steamos_release("ID=steamos\nVARIANT_ID=steamdeck\n"), None);
         assert_eq!(steamos_release("ID=arch\nVERSION_ID=3.9.5\n"), None);
         assert_eq!(steamos_release("ID=steamos\nVERSION_ID=3.9;rm -rf /\n"), None);
@@ -2001,7 +2009,7 @@ mod tests {
     fn support_per_desktop() {
         for id in ["xfce", "lxqt", "hyprland"] {
             assert!(matches!(support(id), Support::Supported(d) if d.id == id));
-            // Каждый собираемый стол известен ядру.
+            // Every buildable desktop is known to the core.
             assert!(crate::system::DE_META.iter().any(|m| m.id == id), "{id}");
         }
         assert_eq!(support("kde"), Support::Builtin);
@@ -2016,7 +2024,7 @@ mod tests {
         assert_eq!(session_for("gnome"), None);
     }
 
-    // ── Планы ──────────────────────────────────────────────────────────
+    // ── Plans ──────────────────────────────────────────────────────────
 
     #[test]
     fn install_plan_by_state() {
@@ -2025,7 +2033,7 @@ mod tests {
             ok,
             vec![Step::Helper(HelperOp::Install, "xfce".into()), Step::DefaultSession("rexon-xfce.desktop".into())]
         );
-        // Пароль «не узнали» — не мешаем, pkexec скажет сам.
+        // Password "unknown" — don't get in the way, pkexec will say so itself.
         assert!(install_plan("xfce", &state(PasswordState::Unknown, None)).is_ok());
         assert_eq!(install_plan("xfce", &state(PasswordState::Missing, None)), Err(Refusal::NeedPassword));
         assert_eq!(install_plan("xfce", &state(PasswordState::Locked, None)), Err(Refusal::Locked));
@@ -2043,7 +2051,7 @@ mod tests {
             remove_plan("xfce", "kde", &s).unwrap(),
             vec![Step::DefaultSession("plasma.desktop".into()), Step::Helper(HelperOp::Remove, "xfce".into())]
         );
-        // Другой стол по умолчанию — сессию не трогаем.
+        // Another default desktop — the session is not touched.
         assert_eq!(
             remove_plan("hyprland", "kde", &s).unwrap(),
             vec![Step::Helper(HelperOp::Remove, "hyprland".into())]
@@ -2059,15 +2067,15 @@ mod tests {
         assert_eq!(&boot[..3], &["pkexec", "/bin/bash", "-c"]);
         assert_eq!(boot[3], text);
         assert_eq!(&boot[4..], &[HELPER_NAME, "install", "xfce"]);
-        // Устаревший файл помощника — снова через текст.
+        // An outdated helper file — via the text again.
         assert_eq!(helper_argv(HelperOp::Install, "xfce", Some("old"), "en")[1], "/bin/bash");
         let file = helper_argv(HelperOp::Remove, "lxqt", Some(&text), "en");
         assert_eq!(file, vec!["pkexec", HELPER_PATH, "remove", "lxqt"]);
-        // Язык — сразу за помощником.
+        // The language comes right after the helper.
         if crate::system_l10n::languages().contains(&"ru") {
             assert_eq!(helper_argv(HelperOp::Remove, "lxqt", Some(&text), "ru")[2], "--lang=ru");
         }
-        // Текст помещается в один аргумент (MAX_ARG_STRLEN = 128 КиБ).
+        // The text fits into one argument (MAX_ARG_STRLEN = 128 KiB).
         assert!(text.len() < 120_000, "{}", text.len());
     }
 
@@ -2087,7 +2095,7 @@ mod tests {
         assert_ne!(net, helper_failure_text(Some(1), "Xfce"));
     }
 
-    // ── Тексты сценариев и юнитов ──────────────────────────────────────
+    // ── Texts of scripts and units ─────────────────────────────────────
 
     fn all_scripts() -> Vec<(&'static str, String)> {
         vec![
@@ -2150,7 +2158,7 @@ mod tests {
         assert!(caches_script().contains("NAME=rexon-zz-caches"));
     }
 
-    // ── Поведение сценариев на подставном корне ────────────────────────
+    // ── Behaviour of the scripts on a fake root ────────────────────────
 
     struct Stand {
         dir: PathBuf,
@@ -2211,7 +2219,7 @@ mod tests {
             let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
             (out.status.code().unwrap_or(-1), text)
         }
-        /// Подставной сборщик: образ под текущую версию или код `rc`.
+        /// A fake builder: an image for the current version or code `rc`.
         fn fake_build(&self, rc: i32) {
             self.exec(
                 "root/var/lib/rexon/bin/rexon-sysext-build",
@@ -2306,7 +2314,7 @@ mod tests {
         s.write("root/var/lib/rexon/sysext/desktops", "xfce\nhyprland\n");
         s.image_for("xfce", "3.8.14");
         s.image_for("hyprland", "3.8.14");
-        // Страховка уже вернула Plasma; никого в сеансе — правка файлов.
+        // The guard has already restored Plasma; nobody in the session — the files are edited.
         s.write("root/var/lib/rexon/session-guard/wanted-session", "rexon-xfce.desktop\n");
         s.write("root/etc/sddm.conf.d/zz-holo-autologin.conf", "[Autologin]\nSession=plasma.desktop\n");
         s.write("root/usr/share/xsessions/rexon-xfce.desktop", "[Desktop Entry]\n");
@@ -2354,7 +2362,7 @@ mod tests {
         assert!(out.contains("no network, or Valve's package server is unreachable"), "{out}");
         assert!(out.contains("removing it from the list again"), "{out}");
         assert_eq!(s.read("root/var/lib/rexon/sysext/desktops"), "");
-        // Раскладка легла: сценарии, юниты, политика, белый список.
+        // The layout is in place: scripts, units, policy, whitelist.
         for f in [
             "var/lib/rexon/bin/rexon-sysext-build",
             "var/lib/rexon/bin/rexon-sysext-sync",
@@ -2368,7 +2376,7 @@ mod tests {
             assert!(s.root().join(f).is_file(), "{f}");
         }
         assert_eq!(s.read("root/var/lib/rexon/bin/rexon-sysext-sync"), sync_script());
-        // Запуск через bash -c — помощник сохранил себя файлом.
+        // Run via bash -c — the helper saved itself as a file.
         assert_eq!(s.read(&format!("root{HELPER_PATH}")), helper_script());
         assert!(s.calls().contains("systemctl enable systemd-sysext.service rexon-session-guard.service rexon-sysext-sync.service"));
     }
@@ -2389,15 +2397,15 @@ mod tests {
         assert!(!s.root().join("home/.rexon/sysext/rexon-xfce-3.9.5.raw").exists());
         assert!(s.calls().contains("systemd-sysext refresh"), "{}", s.calls());
         assert_eq!(s.read("root/etc/sddm.conf.d/zz-holo-autologin.conf"), "[Autologin]\nSession=plasma.desktop\n");
-        // Удалённую сессию страховка «возвращать» не должна.
+        // The guard must not "restore" a removed session.
         assert!(!s.root().join("var/lib/rexon/session-guard/wanted-session").exists());
     }
 
-    // ── помощник сеанса прав на SteamOS (Б14′) ─────────────────────────
+    // ── privilege session helper on SteamOS (B14′) ─────────────────────
 
-    /// Путь помощника — тот, где его ищет клиент; политика — та же, что у
-    /// пакета, со своим `exec.path`; `/etc` переживает обновление по белому
-    /// списку, `/var` — сам.
+    /// The helper path is where the client looks for it; the policy is the same as
+    /// the package's, with its own `exec.path`; `/etc` survives an update via the
+    /// whitelist, `/var` by itself.
     #[test]
     fn session_helper_lives_where_the_client_looks_and_its_policy_is_kept() {
         use crate::privilege::client;
@@ -2414,7 +2422,7 @@ mod tests {
         )));
         assert!(keep_conf().lines().any(|l| l == SESSION_POLICY_PATH));
         assert!(SESSION_HELPER_PATH.starts_with("/var/"), "не в /usr и не в /etc");
-        // Сам бинарь в раскладку не входит: его кладёт только путь bash -c.
+        // The binary itself is not part of the layout: only the bash -c path puts it there.
         assert!(layout_files().iter().all(|f| f.path != SESSION_HELPER_PATH));
     }
 
@@ -2430,7 +2438,7 @@ mod tests {
         assert_eq!(session_helper_copy(d, None, false), want, "нет файла");
         assert_eq!(session_helper_copy(d, Some(SUM_B), true), want, "другая сборка");
         assert_eq!(session_helper_copy(d, Some(SUM_A), false), want, "права испорчены");
-        // Негодные путь или сумма в argv корня не уходят.
+        // Invalid path or sum doesn't go into root's argv.
         assert_eq!(session_helper_copy(Some(("rel/helper", SUM_A)), None, false), None);
         assert_eq!(session_helper_copy(Some(("/x", &SUM_A.to_uppercase())), None, false), None);
         assert_eq!(session_helper_copy(Some(("/x", "abc")), None, false), None);
@@ -2453,12 +2461,12 @@ mod tests {
                 "xfce"
             ]
         );
-        // Без копии — как прежде: совпавший файл зовётся сам.
+        // Without a copy — as before: a matching file is called by itself.
         assert_eq!(helper_argv_with(HelperOp::Install, "xfce", Some(&text), "en", None), helper_argv(HelperOp::Install, "xfce", Some(&text), "en"));
         assert_eq!(helper_argv(HelperOp::Remove, "xfce", Some(&text), "en"), ["pkexec", HELPER_PATH, "remove", "xfce"]);
     }
 
-    /// Стенд для копии: бинарь поставки в «домашнем» каталоге и его сумма.
+    /// Bench for the copy: the delivery binary in the "home" directory and its sum.
     fn delivery(s: &Stand, body: &str) -> (String, String) {
         s.exec("home/deck/rexon/bin/rexon-priv-helper", body);
         let src = s.dir.join("home/deck/rexon/bin/rexon-priv-helper").to_string_lossy().into_owned();
@@ -2479,7 +2487,7 @@ mod tests {
         let s = Stand::new("priv-copy");
         std::fs::create_dir_all(s.root().join("usr/lib/holo/pacmandb/local")).unwrap();
         s.stub("pacman", "exit 1");
-        // Прежний помощник другой сборки и недописанный хвост прошлой копии.
+        // A former helper of another build and an unfinished tail of a previous copy.
         s.exec(&format!("root{SESSION_HELPER_PATH}"), "old build\n");
         s.write(&format!("root{SESSION_HELPER_PATH}.rexon-new"), "junk\n");
         let old_ino = std::fs::metadata(s.root().join(&SESSION_HELPER_PATH[1..])).unwrap().ino();
@@ -2492,7 +2500,7 @@ mod tests {
         assert_eq!(mode(&dst), 0o755);
         assert_ne!(std::fs::metadata(&dst).unwrap().ino(), old_ino, "замена переименованием, не записью поверх");
         assert!(!s.root().join(format!("{}.rexon-new", &SESSION_HELPER_PATH[1..])).exists());
-        // Каталоги без записи для группы и всех — иначе клиент откажет.
+        // Directories without write access for group and others — otherwise the client refuses.
         for d in ["var/lib/rexon", "var/lib/rexon/bin"] {
             assert_eq!(mode(&s.root().join(d)), 0o755, "{d}");
         }
@@ -2511,12 +2519,12 @@ mod tests {
         s.exec(&format!("root{SESSION_HELPER_PATH}"), "old build\n");
         let (src, _) = delivery(&s, "#!/bin/sh\necho swapped\n");
         let dst = s.root().join(&SESSION_HELPER_PATH[1..]);
-        // Сумма не та (файл подменили после расчёта окном).
+        // The sum is wrong (the file was swapped after the window computed it).
         let (rc, out) = s.run(&helper_script(), &[&format!("--priv-helper={src}"), &format!("--priv-sha256={SUM_A}"), "install", "xfce"]);
         assert_eq!(rc, EXIT_NO_NETWORK, "{out}");
         assert_eq!(std::fs::read_to_string(&dst).unwrap(), "old build\n", "прежний не тронут");
         assert!(!s.root().join(format!("{}.rexon-new", &SESSION_HELPER_PATH[1..])).exists());
-        // Ссылка вместо файла и относительный путь — отказ.
+        // A symlink instead of a file and a relative path — refusal.
         let link = s.dir.join("home/deck/link");
         std::os::unix::fs::symlink(&src, &link).unwrap();
         let sum = file_sha256(&src).unwrap();
@@ -2526,8 +2534,8 @@ mod tests {
         }
     }
 
-    /// Запуск ФАЙЛОМ (как `pkexec /var/lib/rexon/bin/rexon-sysext-helper`):
-    /// пароль у файла держится минуты, и путь к бинарю он не принимает.
+    /// Run as a FILE (like `pkexec /var/lib/rexon/bin/rexon-sysext-helper`): the
+    /// file keeps the password for minutes, and it doesn't accept the binary path.
     #[test]
     fn helper_file_never_takes_a_session_helper_from_its_caller() {
         if !bash() {
@@ -2550,7 +2558,7 @@ mod tests {
             .unwrap();
         assert_eq!(out.status.code(), Some(EXIT_NO_NETWORK), "{}", String::from_utf8_lossy(&out.stderr));
         assert!(!s.root().join(&SESSION_HELPER_PATH[1..]).exists());
-        // Политика при этом ложится (текст из самого помощника).
+        // The policy gets laid out meanwhile (the text from the helper itself).
         assert!(s.root().join(&SESSION_POLICY_PATH[1..]).is_file());
     }
 

@@ -1,18 +1,18 @@
-//! rexon-swf — SWF-режим хоста обоев Rexon: Ruffle + wgpu (Vulkan), без Qt.
+//! rexon-swf — the SWF mode of the Rexon wallpaper host: Ruffle + wgpu (Vulkan), without Qt.
 //!
-//! Хост сам размещает окна (LayerShellQt, X11 `_NET_WM_WINDOW_TYPE_DESKTOP`) и отдаёт сюда только
-//! raw-handle и размер ([`OutputTarget::Window`]); на GNOME/Cinnamon окна нет — [`OutputTarget::Mmap`].
+//! The host places the windows itself (LayerShellQt, X11 `_NET_WM_WINDOW_TYPE_DESKTOP`) and passes here only
+//! the raw handle and size ([`OutputTarget::Window`]); on GNOME/Cinnamon there is no window — [`OutputTarget::Mmap`].
 //!
 //! ```ignore
-//! let gpu = rexon_swf::GpuContext::new();            // ДО окон: VkInstance нужен QVulkanInstance
-//! let vk = gpu.vk_instance_handle();                 // Option<u64> для QWindow VulkanSurface
-//! /* хост создаёт и размещает окна */
+//! let gpu = rexon_swf::GpuContext::new();            // BEFORE the windows: QVulkanInstance needs the VkInstance
+//! let vk = gpu.vk_instance_handle();                 // Option<u64> for the QWindow VulkanSurface
+//! /* the host creates and places the windows */
 //! let mut wp = unsafe { rexon_swf::Wallpaper::new(gpu, &settings, targets)? };
 //! wp.run(None, |wp| { host_pump_events(); /* wp.resize(i, w, h)?; wp.set_paused(p);
 //!                                            wp.set_audio(on, volume01); */ true })?;
 //! ```
-//! Всё, что может отказать из-за окружения, возвращает [`Error`] (с [`Error::exit_code`]), а не паникует.
-//! Пауза надзора Rexon (SIGSTOP/SIGCONT) безопасна: шаг ролика ограничен [`Settings::dt_cap`].
+//! Everything that can fail because of the environment returns an [`Error`] (with [`Error::exit_code`]) instead of panicking.
+//! A Rexon supervision pause (SIGSTOP/SIGCONT) is safe: the movie step is capped by [`Settings::dt_cap`].
 
 mod error;
 mod mmap;
@@ -39,62 +39,62 @@ pub use mmap::{MmapSpec, MmapWriter};
 pub use pacer::{Pacer, Step};
 pub use raw_window_handle;
 
-/// Наибольшая сторона вывода.
+/// The largest output side.
 pub const MAX_SIDE: u32 = 16384;
 
-/// Масштаб ролика во весь вывод.
+/// Scaling of the movie to the whole output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Scale {
-    /// Заполнить вывод с обрезкой краёв (как `cover` у видео-обоев).
+    /// Fill the output, cropping the edges (like `cover` for video wallpapers).
     #[default]
     NoBorder,
-    /// Вписать целиком с полями.
+    /// Fit entirely with margins.
     ShowAll,
-    /// Растянуть без сохранения пропорций.
+    /// Stretch without keeping the aspect ratio.
     ExactFit,
 }
 
-/// Настройки показа.
+/// Display settings.
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub swf: PathBuf,
     pub scale: Scale,
-    /// Потолок частоты рендера, к/с; 0 — рисовать по готовности кадров ролика.
+    /// Render rate cap, fps; 0 — draw whenever the movie frames are ready.
     pub max_fps: f64,
-    /// Наибольший шаг времени ролика за один tick (разрыв после SIGSTOP/SIGCONT не проматывает ролик).
+    /// The largest movie time step per tick (a gap after SIGSTOP/SIGCONT does not fast-forward the movie).
     pub dt_cap: Duration,
-    /// `None` — звукового выхода нет вовсе (по умолчанию). `Some(громкость)` — звук у первого
-    /// вывода (фича `sound`).
+    /// `None` — no audio output at all (the default). `Some(volume)` — sound on the first
+    /// output (feature `sound`).
     ///
-    /// ⚠️ Громкость здесь ЛИНЕЙНАЯ, 0..1 — ровно та же величина, что у видео-обоев
-    /// (`AudioOutput.volume` в QML). Нелинейность Ruffle библиотека прячет в [`ruffle_volume`],
-    /// наружу она не выходит: одно и то же положение ползунка обязано звучать одинаково громко у
-    /// обоих видов обоев.
+    /// ⚠️ The volume here is LINEAR, 0..1 — exactly the same quantity as for video wallpapers
+    /// (`AudioOutput.volume` in QML). The library hides Ruffle's nonlinearity in [`ruffle_volume`],
+    /// it does not leak outside: the same slider position must sound equally loud for
+    /// both kinds of wallpaper.
     pub audio_volume: Option<f32>,
 }
 
-/// Перевод ЛИНЕЙНОЙ громкости 0..1 в ту, которую ждёт `Player::set_volume` Ruffle.
+/// Conversion of a LINEAR volume 0..1 into the one Ruffle's `Player::set_volume` expects.
 ///
-/// Ruffle считает, что ему дают не усиление, а положение ползунка «для логарифмического слуха», и
-/// сам переводит его в усиление (`core/src/backend/audio/mixer.rs`):
+/// Ruffle assumes it is given not a gain but a slider position "for logarithmic hearing", and
+/// converts it into a gain itself (`core/src/backend/audio/mixer.rs`):
 ///
 /// ```text
-/// усиление = (10^(log10(81) · v) − 1) / 80 = (81^v − 1) / 80
+/// gain = (10^(log10(81) · v) − 1) / 80 = (81^v − 1) / 80
 /// ```
 ///
-/// То есть `v = 0,5` даёт усиление 0,1 — в десять раз тише единицы (−20 дБ), тогда как у видео-обоев
-/// та же половина ползунка даёт ровно 0,5 (−6 дБ). Разница слышна как «у Flash звука почти нет».
-/// Здесь считается точное обращение этой формулы:
+/// So `v = 0.5` gives a gain of 0.1 — ten times quieter than one (−20 dB), whereas for video wallpapers
+/// the same half of the slider gives exactly 0.5 (−6 dB). The difference is heard as "Flash has almost no sound".
+/// Here the exact inverse of that formula is computed:
 ///
 /// ```text
 /// v = ln(80·a + 1) / ln(81)
 /// ```
 ///
-/// Обращение именно точное, а не подогнанное на слух: на выходе микшера получается ровно то
-/// усиление `a`, которое просили, — значит, одно и то же положение ползунка даёт у Flash и у видео
-/// один и тот же уровень сигнала. Края сходятся сами: 0 → 0, 1 → 1.
-/// ⚠️ `NaN` здесь не «не бывает»: громкость приходит из файла настроек человека, а `clamp` NaN не
-/// зажимает — он его пропускает насквозь, и дальше ролик замолкает целиком без единой жалобы.
+/// The inverse is exact, not tuned by ear: the mixer output gets exactly the
+/// gain `a` that was asked for — so the same slider position gives Flash and video
+/// the same signal level. The ends match by themselves: 0 → 0, 1 → 1.
+/// ⚠️ `NaN` here is not "impossible": the volume comes from the person's settings file, and `clamp` does not
+/// clamp NaN — it passes it straight through, and then the movie goes silent entirely without a single complaint.
 pub fn ruffle_volume(linear01: f64) -> f32 {
     if !linear01.is_finite() {
         return 0.0;
@@ -109,16 +109,16 @@ impl Settings {
     }
 }
 
-/// Куда выводить.
+/// Where to output.
 #[derive(Debug, Clone)]
 pub enum OutputTarget {
-    /// Окно хоста: native-хэндлы (Wayland wl_display+wl_surface или X11 xcb) и размер в физических пикселях.
+    /// Host window: native handles (Wayland wl_display+wl_surface or X11 xcb) and size in physical pixels.
     Window { display: raw_window_handle::RawDisplayHandle, window: raw_window_handle::RawWindowHandle, width: u32, height: u32 },
-    /// Файл кадра для расширения оболочки.
+    /// Frame file for the shell extension.
     Mmap(MmapSpec),
 }
 
-/// wgpu-инстанс. Создаётся до окон, чтобы хост мог отдать тот же VkInstance в QVulkanInstance.
+/// wgpu instance. Created before the windows so that the host can hand the same VkInstance to QVulkanInstance.
 pub struct GpuContext {
     instance: wgpu::Instance,
 }
@@ -128,7 +128,7 @@ impl GpuContext {
         Self { instance: create_wgpu_instance(wgpu::Backends::VULKAN, wgpu::BackendOptions::default(), None) }
     }
 
-    /// Сырой `VkInstance` (для `QVulkanInstance::setVkInstance`), если бэкенд — Vulkan.
+    /// The raw `VkInstance` (for `QVulkanInstance::setVkInstance`), if the backend is Vulkan.
     pub fn vk_instance_handle(&self) -> Option<u64> {
         unsafe { self.instance.as_hal::<wgpu::hal::api::Vulkan>().map(|i| i.shared_instance().raw_instance().handle().as_raw()) }
     }
@@ -140,24 +140,24 @@ impl Default for GpuContext {
     }
 }
 
-/// Итог одного `tick`.
+/// Result of one `tick`.
 #[derive(Debug, Clone, Copy)]
 pub struct TickReport {
     pub rendered: bool,
-    /// Разрыв реального времени больше `dt_cap` (например, после SIGCONT).
+    /// The real-time gap is larger than `dt_cap` (for example, after SIGCONT).
     pub gap: Option<Duration>,
-    /// Когда звать `tick` снова.
+    /// When to call `tick` again.
     pub next_wake: Instant,
 }
 
-/// Счётчики и времена (миллисекунды, по кадрам).
+/// Counters and timings (milliseconds, per frame).
 #[derive(Debug, Clone, Default)]
 pub struct Stats {
     pub ticks: u64,
     pub frames: u64,
     pub gaps: u64,
     pub movie_time: Duration,
-    /// Номер кадра главной временной шкалы первого вывода.
+    /// Frame number of the main timeline of the first output.
     pub current_frame: Option<u16>,
     pub render_ms: Vec<f32>,
     pub mmap_ms: Vec<f32>,
@@ -176,42 +176,42 @@ struct Output {
     mmap: Option<MmapOut>,
 }
 
-/// Что сейчас со звуком обоев — то же разделение, что у видео: «поток есть / потока нет» отдельно
-/// от громкости.
+/// What is happening with the wallpaper sound right now — the same split as for video: "there is a stream / there is no stream" separately
+/// from the volume.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AudioState {
-    /// Звуковой выход у обоев вообще предусмотрен (сборка со звуком, ключ не запретил, устройство
-    /// нашлось). `false` — звука не будет никогда, и спрашивать про уровень бессмысленно.
+    /// An audio output is provided for the wallpaper at all (a build with sound, the key did not forbid it, a device
+    /// was found). `false` — there will never be sound, and asking about the level is pointless.
     pub available: bool,
-    /// Поток открыт прямо сейчас.
+    /// The stream is open right now.
     pub on: bool,
-    /// Линейная громкость 0..1, как её задал ползунок.
+    /// Linear volume 0..1, as the slider set it.
     pub volume01: f64,
-    /// Наибольший уровень, который устройство забрало с начала показа. Ровно 0 при `on` и
-    /// непустом `callbacks` — ролик молчит сам, а не приглушён.
+    /// The highest level the device has taken since the start of display. Exactly 0 with `on` and
+    /// non-empty `callbacks` — the movie itself is silent, not muted.
     pub peak: f64,
-    /// Сколько раз устройство приходило за сэмплами.
+    /// How many times the device came for samples.
     pub callbacks: u64,
 }
 
 pub struct Wallpaper {
     descriptors: Arc<Descriptors>,
     outputs: Vec<Output>,
-    /// Номера выводов из исходного `targets`, в которые видеокарта рисовать
-    /// отказалась. Хост убирает по ним свои окна, иначе на этих экранах
-    /// осталась бы чёрная заслонка вместо обоев.
+    /// Indices of outputs from the original `targets` that the GPU refused
+    /// to draw into. The host removes its windows by them, otherwise a black
+    /// shutter would remain on those screens instead of the wallpaper.
     refused_targets: Vec<usize>,
     pacer: Pacer,
     paused: bool,
     stats: Stats,
     warnings: Vec<String>,
-    /// Желаемое состояние звука. Держится отдельно от игрока намеренно: Ruffle сам зовёт
-    /// `play`/`pause` звукового бэкенда при каждой смене состояния показа
-    /// (`Player::set_is_playing`), и без своей памяти снятие паузы возвращало бы звук, который
-    /// человек выключил.
+    /// Desired sound state. Kept separately from the player on purpose: Ruffle itself calls
+    /// `play`/`pause` of the audio backend on every display state change
+    /// (`Player::set_is_playing`), and without our own memory unpausing would bring back sound the
+    /// person turned off.
     audio_on: bool,
     audio_volume01: f64,
-    /// Уровень сигнала у устройства — `None`, когда звукового выхода нет.
+    /// Signal level at the device — `None` when there is no audio output.
     #[cfg(feature = "sound")]
     level: Option<Arc<sound::Level>>,
 }
@@ -243,10 +243,10 @@ fn readback_buffer(device: &wgpu::Device, w: u32, h: u32) -> (wgpu::Buffer, u32)
 }
 
 impl Wallpaper {
-    /// Загрузить ролик и поднять вывод(ы). Звук — только у первого вывода.
+    /// Load the movie and bring up the output(s). Sound — only on the first output.
     ///
     /// # Safety
-    /// Хэндлы в [`OutputTarget::Window`] должны быть валидны до уничтожения `Wallpaper`.
+    /// The handles in [`OutputTarget::Window`] must stay valid until the `Wallpaper` is destroyed.
     pub unsafe fn new(gpu: GpuContext, settings: &Settings, targets: Vec<OutputTarget>) -> Result<Self, Error> {
         if targets.is_empty() {
             return Err(Error::NoOutputs);
@@ -258,15 +258,15 @@ impl Wallpaper {
             };
             check_size(w, h)?;
         }
-        // Ролик проверяется до GPU: битый файл не должен стоить инициализации Vulkan.
+        // The movie is checked before the GPU: a broken file must not cost a Vulkan initialization.
         let load = || movie_from_path(&settings.swf, None).map_err(|e| Error::MovieLoad(format!("{}: {e}", settings.swf.display())));
         let first_movie = load()?;
 
         let instance = gpu.instance;
         let mut surfaces = Vec::new();
-        // Какому выводу отвечает поверхность: `targets` могут мешать окна и
-        // файл кадров, а отказ одного окна не имеет права сдвинуть нумерацию
-        // остальных — по этим номерам хост убирает свои окна.
+        // Which output the surface belongs to: `targets` may mix windows and
+        // a frame file, and the failure of one window has no right to shift the numbering
+        // of the others — the host removes its windows by these numbers.
         let surface_target = {
             let mut map = Vec::new();
             for (index, t) in targets.iter().enumerate() {
@@ -288,19 +288,19 @@ impl Wallpaper {
             wgpu::PowerPreference::LowPower,
         ))
         .map_err(|e| Error::NoAdapter(e.to_string()))?;
-        // ⚠️ Проверяются ВСЕ окна, включая первое, и отказ одного не отменяет
-        // остальные. Прежде первое окно считалось пригодным «по построению»
-        // (его отдавали в `request_adapter` как образец), а любой отказ
-        // второго и дальше уносил обои целиком.
+        // ⚠️ ALL windows are checked, including the first, and the failure of one does not cancel
+        // the others. Previously the first window was considered usable "by construction"
+        // (it was passed to `request_adapter` as the sample), and any failure
+        // of the second and further ones took down the whole wallpaper.
         //
-        // Оба допущения оказались неверны. Замер 16.09.2026, X11 с двумя
-        // экранами, сведёнными через `+xinerama`: `request_adapter` берёт
-        // видеокарту, ГОВОРЯ, что поверхность ей годится, а `Surface::configure`
-        // мгновением позже отвечает «поверхность не годится этой очереди» —
-        // и ошибка проверки wgpu по умолчанию ПАНИКУЕТ (разбор — в хосте,
-        // `wallpaper_host::install_panic_guard`). А «всё или ничего» для
-        // человека с двумя мониторами хуже, чем обои на одном: пустой
-        // рабочий стол вместо половины.
+        // Both assumptions turned out wrong. Measured on 16.09.2026, X11 with two
+        // screens joined via `+xinerama`: `request_adapter` picks a
+        // GPU, SAYING the surface suits it, and `Surface::configure`
+        // a moment later answers "the surface is not suitable for this queue" —
+        // and the wgpu validation error PANICS by default (analysis — in the host,
+        // `wallpaper_host::install_panic_guard`). And "all or nothing" for
+        // a person with two monitors is worse than a wallpaper on one: an empty
+        // desktop instead of half of it.
         let adapter_name = adapter.get_info().name;
         let mut refused = Vec::new();
         let mut warnings = Vec::new();
@@ -314,12 +314,12 @@ impl Wallpaper {
                 refused.push(surface_target[n]);
             }
         }
-        // ⚠️ Ошибку проверки wgpu по умолчанию встречает паникой, а паника у
-        // хоста обоев — это не «упал и поднялся»: раскрутка стека идёт через разбор
-        // Qt, на котором процесс однажды завис навсегда (разбор — у
-        // `rexon_gui::wallpaper_host::verdict`). Поэтому ошибки собираются
-        // сюда, и по ним же выносится приговор выводу: «поверхность не
-        // настроилась» — это чёрный монитор, и молчать о нём нельзя.
+        // ⚠️ wgpu meets a validation error with a panic by default, and a panic in the
+        // wallpaper host is not "crashed and came back": stack unwinding goes through Qt
+        // teardown, on which the process once hung forever (analysis — at
+        // `rexon_gui::wallpaper_host::verdict`). So errors are collected
+        // here, and the verdict on the output is made from them: "the surface did not
+        // configure" is a black monitor, and it must not be kept silent.
         let gpu_errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = gpu_errors.clone();
         device.on_uncaptured_error(Arc::new(move |e: wgpu::Error| {
@@ -335,7 +335,7 @@ impl Wallpaper {
         for (i, t) in targets.into_iter().enumerate() {
             let is_window = matches!(t, OutputTarget::Window { .. });
             if refused.contains(&i) {
-                // Отказ пойман до показа — отпускаем и поверхность.
+                // The failure is caught before display — release the surface too.
                 if is_window {
                     drop(surfaces.next());
                 }
@@ -350,8 +350,8 @@ impl Wallpaper {
                 .with_movie(movie)
                 .with_scale_mode(scale_mode(settings.scale), true)
                 .with_autoplay(true);
-            // Жалобы видеокарты считаем от этого места: всё, что придёт
-            // дальше, сказано про ЭТОТ вывод.
+            // GPU complaints are counted from this point: everything that comes
+            // next is said about THIS output.
             let complaints_before = gpu_errors.lock().unwrap().len();
             let (builder, mmap, (w, h)) = match t {
                 OutputTarget::Window { width, height, .. } => {
@@ -371,9 +371,9 @@ impl Wallpaper {
             };
             #[allow(unused_mut)]
             let mut builder = builder.with_viewport_dimensions(w, h, 1.0);
-            // Звук — только первому ЖИВОМУ выводу: сколько бы мониторов ни
-            // было, обои звучат один раз. Именно живому: вывод, от которого
-            // видеокарта отказалась, забрал бы звук с собой в тишину.
+            // Sound — only to the first LIVE output: however many monitors there
+            // are, the wallpaper sounds once. Live specifically: an output the
+            // GPU refused would take the sound with it into silence.
             let mut sound_note: Option<String> = None;
             #[cfg(feature = "sound")]
             let mut sound_level = None;
@@ -394,14 +394,14 @@ impl Wallpaper {
                 }
             }
             let player = builder.build();
-            // ⚠️ Приговор выводу выносится ЗДЕСЬ, и он не украшение. Замер
-            // 16.09.2026 (X11, два экрана через `+xinerama`): поверхность
-            // настраивается с первого раза, а со второго — того же окна и с
-            // теми же числами — видеокарта отвечает «поверхность не годится
-            // этой очереди». Кадры после этого «рисуются» исправно, до экрана
-            // не доходит ни один, и самопроверка рапортовала 60 к/с о чёрном
-            // мониторе. Молчаливо зелёный отчёт при пустом экране — ровно тот
-            // класс поломок, который в проекте уже чинили.
+            // ⚠️ The verdict on the output is made HERE, and it is not decoration. Measured on
+            // 16.09.2026 (X11, two screens via `+xinerama`): the surface
+            // configures on the first try, and on the second — the same window with
+            // the same numbers — the GPU answers "the surface is not suitable for
+            // this queue". Frames after that are "drawn" fine, not a single one reaches
+            // the screen, and the self-check reported 60 fps about a black
+            // monitor. A silently green report on an empty screen is exactly the
+            // class of breakage the project has already fixed.
             let complaint = gpu_errors.lock().unwrap().get(complaints_before).cloned();
             if let (true, Some(why)) = (is_window, complaint) {
                 warnings.push(format!(
@@ -425,7 +425,7 @@ impl Wallpaper {
             }
             outputs.push(Output { player, mmap });
         }
-        // Показывать нечем НИГДЕ — это отказ, а не «обои идут на нуле окон».
+        // Nothing to display ANYWHERE — this is a failure, not "the wallpaper runs on zero windows".
         if outputs.is_empty() {
             return Err(Error::Surface(format!(
                 "видеокарта {adapter_name} не взялась показывать обои ни в одно окно ({} шт.)",
@@ -448,14 +448,14 @@ impl Wallpaper {
         })
     }
 
-    /// Живое состояние звука: держать ли поток открытым и с какой ЛИНЕЙНОЙ громкостью 0..1
-    /// (та же величина, что у видео-обоев).
+    /// Live sound state: whether to keep the stream open and at what LINEAR volume 0..1
+    /// (the same quantity as for video wallpapers).
     ///
-    /// Зовётся на ходу — из решения `rexon-core::wallpaper_audio`, за которым следит хост. Тишина
-    /// закрывает поток, а не выкручивает громкость в ноль: см. `sound.rs`.
+    /// Called on the go — from the `rexon-core::wallpaper_audio` decision the host follows. Silence
+    /// closes the stream rather than turning the volume down to zero: see `sound.rs`.
     pub fn set_audio(&mut self, on: bool, volume01: f64) {
-        // Чепуха из настроек превращается в 0, а не в NaN: иначе сравнение ниже никогда не
-        // совпадёт и звук переоткрывался бы на каждом кадре.
+        // Garbage from the settings turns into 0, not NaN: otherwise the comparison below would never
+        // match and the sound would be reopened on every frame.
         let volume01 = if volume01.is_finite() { volume01.clamp(0.0, 1.0) } else { 0.0 };
         if (on, volume01) == (self.audio_on, self.audio_volume01) {
             return;
@@ -465,15 +465,15 @@ impl Wallpaper {
         self.apply_audio();
     }
 
-    /// Разложить желаемое состояние звука по игроку первого вывода.
+    /// Apply the desired sound state to the player of the first output.
     fn apply_audio(&mut self) {
         let Some(out) = self.outputs.first() else {
             return;
         };
         let want = self.audio_on && !self.paused;
         let mut player = out.player.lock().unwrap();
-        // Громкость выставляется и при тишине: если поток потом откроется по чужой причине
-        // (Ruffle зовёт `play` сам при снятии паузы показа), он не обязан начать с прежнего уровня.
+        // The volume is set even when silent: if the stream later opens for someone else's reason
+        // (Ruffle calls `play` itself when display is unpaused), it must not start at the old level.
         player.set_volume(if want { ruffle_volume(self.audio_volume01) } else { 0.0 });
         if want {
             player.audio_mut().play();
@@ -482,7 +482,7 @@ impl Wallpaper {
         }
     }
 
-    /// Что сейчас со звуком — для отчёта хоста и для честного «ролик молчит».
+    /// What is happening with the sound right now — for the host report and for an honest "the movie is silent".
     pub fn audio_state(&self) -> AudioState {
         #[cfg(feature = "sound")]
         let (available, peak, callbacks) = match &self.level {
@@ -507,16 +507,16 @@ impl Wallpaper {
         self.outputs.len()
     }
 
-    /// Предупреждения запуска (например, звук недоступен).
+    /// Startup warnings (for example, sound is unavailable).
     pub fn warnings(&self) -> &[String] {
         &self.warnings
     }
 
-    /// Выводы из исходного `targets`, которые пришлось бросить: видеокарта
-    /// отказалась в них рисовать. Пустой список — взяты все.
+    /// Outputs from the original `targets` that had to be dropped: the GPU
+    /// refused to draw into them. An empty list — all were taken.
     ///
-    /// Нумерация — исходная, ДО отсева: по ней хост находит свои окна.
-    /// Остальные выводы (`resize`, `run`) нумеруются уже без брошенных.
+    /// The numbering is the original one, BEFORE filtering: the host finds its windows by it.
+    /// The remaining outputs (`resize`, `run`) are numbered without the dropped ones.
     pub fn refused_targets(&self) -> &[usize] {
         &self.refused_targets
     }
@@ -525,7 +525,7 @@ impl Wallpaper {
         self.paused
     }
 
-    /// Пауза внутри процесса (ролик, звук и рендер стоят; после снятия время паузы в ролик не идёт).
+    /// Pause inside the process (movie, sound and render stop; after unpausing the paused time does not go into the movie).
     pub fn set_paused(&mut self, paused: bool) {
         if paused == self.paused {
             return;
@@ -534,16 +534,16 @@ impl Wallpaper {
         for o in &self.outputs {
             o.player.lock().unwrap().set_is_playing(!paused);
         }
-        // ⚠️ ПОСЛЕ `set_is_playing`, и это не перестраховка: Ruffle сам зовёт `play()` звукового
-        // бэкенда при снятии паузы (`Player::set_run_state`). Без этой строки обои, заглушённые
-        // человеком или чужим звуком, начинали бы звучать при каждом возврате из паузы.
+        // ⚠️ AFTER `set_is_playing`, and this is not overcaution: Ruffle itself calls `play()` of the audio
+        // backend when unpausing (`Player::set_run_state`). Without this line a wallpaper muted
+        // by the person or by someone else's sound would start playing on every return from pause.
         self.apply_audio();
         if !paused {
             self.pacer.resume(Instant::now());
         }
     }
 
-    /// Новый размер вывода в физических пикселях. Для mmap-вывода файлы кадра и счётчика пересоздаются.
+    /// New output size in physical pixels. For an mmap output the frame and counter files are recreated.
     pub fn resize(&mut self, index: usize, width: u32, height: u32) -> Result<(), Error> {
         check_size(width, height)?;
         let device = self.descriptors.device.clone();
@@ -561,7 +561,7 @@ impl Wallpaper {
         Ok(())
     }
 
-    /// Шаг часов, рендер при необходимости, запись mmap-кадров.
+    /// Clock step, render if needed, writing of mmap frames.
     pub fn tick(&mut self, now: Instant) -> Result<TickReport, Error> {
         if self.paused {
             return Ok(TickReport { rendered: false, gap: None, next_wake: now + Duration::from_millis(100) });
@@ -637,7 +637,7 @@ impl Wallpaper {
         result.map_err(Error::Output)
     }
 
-    /// Счётчики (времена кадров копятся с начала или с прошлого `take_stats`).
+    /// Counters (frame times accumulate since the start or since the last `take_stats`).
     pub fn stats(&self) -> Stats {
         let mut s = self.stats.clone();
         s.current_frame = self.outputs[0].player.lock().unwrap().current_frame();
@@ -651,8 +651,8 @@ impl Wallpaper {
         s
     }
 
-    /// Простой цикл: `between` зовётся на каждой итерации (хост крутит свои события, может звать
-    /// `resize`/`set_paused`; `false` — выйти), затем `tick` и сон до `next_wake` (не дольше 16 мс).
+    /// A simple loop: `between` is called on every iteration (the host pumps its events, may call
+    /// `resize`/`set_paused`; `false` — exit), then `tick` and sleep until `next_wake` (no longer than 16 ms).
     pub fn run(&mut self, duration: Option<Duration>, mut between: impl FnMut(&mut Self) -> bool) -> Result<Stats, Error> {
         let start = Instant::now();
         while duration.is_none_or(|d| start.elapsed() < d) {
@@ -667,11 +667,11 @@ impl Wallpaper {
     }
 }
 
-/// Проба звука без устройства (фича `sound`): тики ролика, сэмплы из микшера вручную. Возвращает (RMS, пик).
-/// GPU не нужен (рендер-заглушка Ruffle).
+/// Sound probe without a device (feature `sound`): movie ticks, samples pulled from the mixer by hand. Returns (RMS, peak).
+/// No GPU needed (Ruffle's stub renderer).
 ///
-/// `volume` — ЛИНЕЙНАЯ громкость 0..1, как у ползунка и у видео-обоев: проба меряет ровно то, что
-/// услышит человек, а не то, что записано у Ruffle внутри.
+/// `volume` — a LINEAR volume 0..1, as for the slider and video wallpapers: the probe measures exactly what
+/// the person will hear, not what is stored inside Ruffle.
 #[cfg(feature = "sound")]
 pub fn probe_audio(swf: &std::path::Path, seconds: f64, volume: f32) -> Result<(f64, f32), Error> {
     const RATE: u32 = 44100;
@@ -700,17 +700,17 @@ pub fn probe_audio(swf: &std::path::Path, seconds: f64, volume: f32) -> Result<(
 mod tests {
     use super::ruffle_volume;
 
-    /// Усиление, которое микшер Ruffle применит к сэмплам, — формула из
-    /// `core/src/backend/audio/mixer.rs`, повторённая здесь ради сверки.
+    /// The gain the Ruffle mixer will apply to the samples — the formula from
+    /// `core/src/backend/audio/mixer.rs`, repeated here for cross-checking.
     fn ruffle_gain(v: f64) -> f64 {
         (81.0_f64.powf(v) - 1.0) / 80.0
     }
 
     #[test]
     fn положение_ползунка_даёт_ту_же_громкость_что_у_видео() {
-        // У видео `AudioOutput.volume` — прямое усиление: половина ползунка это половина уровня.
-        // После перевода Flash обязан давать ровно столько же, иначе один и тот же ползунок
-        // звучит у двух видов обоев по-разному.
+        // For video `AudioOutput.volume` is a direct gain: half the slider is half the level.
+        // After conversion Flash must give exactly the same, otherwise the same slider
+        // sounds different for the two kinds of wallpaper.
         for pct in 0..=100 {
             let linear = f64::from(pct) / 100.0;
             let gain = ruffle_gain(f64::from(ruffle_volume(linear)));
@@ -723,9 +723,9 @@ mod tests {
 
     #[test]
     fn без_перевода_половина_ползунка_тише_в_десять_раз() {
-        // Ради чего перевод и написан: своя шкала Ruffle на середине даёт −20 дБ, а не −6 дБ.
+        // What the conversion was written for: Ruffle's own scale gives −20 dB in the middle, not −6 dB.
         assert!((ruffle_gain(0.5) - 0.1).abs() < 1e-6);
-        // А с переводом середина ползунка — это середина уровня.
+        // And with the conversion the middle of the slider is the middle of the level.
         assert!((f64::from(ruffle_volume(0.5)) - 0.8451).abs() < 1e-3);
     }
 
@@ -733,7 +733,7 @@ mod tests {
     fn края_и_чепуха_не_роняют_перевод() {
         assert_eq!(ruffle_volume(0.0), 0.0);
         assert!((ruffle_volume(1.0) - 1.0).abs() < 1e-6);
-        // Громкость вне 0..1 и NaN приходить не должны, но приходить могут: из настроек человека.
+        // Volume outside 0..1 and NaN should not arrive, but they can: from the person's settings.
         assert_eq!(ruffle_volume(-5.0), 0.0);
         assert!((ruffle_volume(17.0) - 1.0).abs() < 1e-6);
         assert_eq!(ruffle_volume(f64::NAN), 0.0);

@@ -1,23 +1,23 @@
-//! Магазин Cinnamon Spices — ядро источника `spices` для пяти разделов
-//! Cinnamon вкладки «Оформление» (апплеты, десклеты, расширения, темы,
-//! действия Nemo).
+//! The Cinnamon Spices store — the core of the `spices` source for the five Cinnamon
+//! sections of the "Appearance" tab (applets, desklets, extensions, themes,
+//! Nemo actions).
 //!
-//! Устройство сайта (замер 17.10.2026, `https://cinnamon-spices.linuxmint.com`):
-//! * **Индекс** — пять статических JSON (`/json/<тип>s.json`), словарь
-//!   «ключ → запись». Ключ — uuid, у тем — имя каталога темы (у части тем
-//!   оно расходится с `name`: `Adara-Dark` ↔ «Adara Dark»). Ставить и
-//!   включать надо по КЛЮЧУ. Версии Cinnamon в индексе нет — она только в
-//!   `metadata.json` внутри архива.
-//! * **Архив** — `/files/<тип>s/<ключ>.zip`, внутри каталог `<ключ>/` (у
-//!   действий рядом ещё `<ключ>.nemo_action`).
-//! * **Нагрузка.** Условий использования нет, перед сайтом стоит WAF. Индекс
-//!   берётся не чаще раза в сутки условным запросом (`If-None-Match` /
-//!   `If-Modified-Since` → 304), без «ломающего кэш» параметра времени;
-//!   картинки — лениво; архив — только по кнопке.
+//! How the site works (measured 17.10.2026, `https://cinnamon-spices.linuxmint.com`):
+//! * **Index** — five static JSON files (`/json/<type>s.json`), a dictionary
+//!   "key → record". The key is the uuid, for themes — the theme directory name (for some themes
+//!   it differs from `name`: `Adara-Dark` ↔ "Adara Dark"). Installing and
+//!   enabling must go by the KEY. The index has no Cinnamon version — it is only in
+//!   `metadata.json` inside the archive.
+//! * **Archive** — `/files/<type>s/<key>.zip`, inside it the directory `<key>/` (for
+//!   actions there is also `<key>.nemo_action` next to it).
+//! * **Load.** There are no terms of use, the site is behind a WAF. The index
+//!   is fetched no more than once a day with a conditional request (`If-None-Match` /
+//!   `If-Modified-Since` → 304), without a cache-busting time parameter;
+//!   pictures — lazily; the archive — only on a button press.
 //!
-//! Здесь только решения: разбор индекса, витрина, кэш, совместимость с
-//! версией Cinnamon, сборка `.mo` из `.po` и ПЛАН установки. Исполнение
-//! плана (скачивание, распаковка, копирование, gsettings) — отдельным шагом.
+//! Here are only decisions: parsing the index, the storefront, the cache, compatibility with
+//! the Cinnamon version, building `.mo` from `.po` and the install PLAN. Executing
+//! the plan (downloading, unpacking, copying, gsettings) is a separate step.
 
 use std::path::Path;
 
@@ -27,55 +27,55 @@ use serde_json::{Map, Value};
 use crate::i18n::{tr, trf};
 use crate::models::ThemeItem;
 
-/// Адрес сайта.
+/// The site address.
 pub const HOME_URL: &str = "https://cinnamon-spices.linuxmint.com";
-/// Ключ источника в переключателе «Магазин:».
+/// The source key in the "Store:" switcher.
 pub const SOURCE_KEY: &str = "spices";
-/// Префикс id карточки и записи журнала установленного:
-/// `spices:<тип>:<ключ>`.
+/// The prefix of the card id and the installed log record:
+/// `spices:<type>:<key>`.
 pub const ID_PREFIX: &str = "spices:";
-/// `provider_id` журнала установленного.
+/// `provider_id` of the installed log.
 pub const PROVIDER_ID: &str = "cinnamon-spices";
-/// Срок жизни индекса: не чаще раза в сутки на тип.
+/// Index lifetime: no more than once a day per type.
 pub const CACHE_TTL_SECS: i64 = 24 * 3600;
-/// После неудачного похода за индексом (сеть, 5xx, мусор) — не стучаться
-/// снова раньше этого срока (кроме кнопки «Обновить»): иначе каждое
-/// открытие раздела без сети било бы в сайт заново.
+/// After a failed attempt to get the index (network, 5xx, garbage) — do not knock
+/// again before this period (except for the "Refresh" button): otherwise every
+/// opening of the section without network would hit the site anew.
 pub const FAIL_BACKOFF_SECS: i64 = 15 * 60;
-/// Версия формата файла кэша: выросла — старый файл читается как протухший.
+/// Cache file format version: if it grew, an old file is read as stale.
 pub const CACHE_VERSION: u32 = 1;
-/// Таймаут запроса индекса, секунды (на соединение и на каждое чтение).
+/// Index request timeout, seconds (for connecting and for each read).
 pub const INDEX_TIMEOUT_SECS: u64 = 15;
-/// Больше этого индекс не читаем: самый крупный (апплеты) весит ~0,7 МБ.
+/// We do not read an index larger than this: the biggest one (applets) weighs ~0.7 MB.
 pub const MAX_INDEX_BYTES: u64 = 16 << 20;
 
-/// `User-Agent` запросов — тот же, что у клиента KDE Store.
+/// The request `User-Agent` — the same as the KDE Store client's.
 pub fn user_agent() -> &'static str {
     crate::ocs::USER_AGENT
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Типы спайсов
+//  Spice types
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Тип спайса. Каталоги установки и способ включения НЕ дублируются здесь:
-/// они в матрице `de_customization` (строка по [`SpiceType::kind`]), номер
-/// раздела — в `categories::DE_SECTIONS`.
+/// A spice type. Install directories and the enabling method are NOT duplicated here:
+/// they are in the `de_customization` matrix (the row by [`SpiceType::kind`]), the section
+/// number — in `categories::DE_SECTIONS`.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SpiceType {
     /// `applet`, `desklet`, `extension`, `theme`, `action`.
     pub key: &'static str,
-    /// Ключ раздела «Оформления».
+    /// The "Appearance" section key.
     pub section: &'static str,
-    /// Имя индекса и каталога на сайте: `/json/<json>.json`, `/files/<json>/`.
+    /// The index and directory name on the site: `/json/<json>.json`, `/files/<json>/`.
     pub json: &'static str,
-    /// Главный файл кода, без которого Cinnamon спайс не грузит.
+    /// The main code file without which Cinnamon does not load the spice.
     pub main_js: Option<&'static str>,
-    /// Тип для DBus-вызова `org.Cinnamon.ReloadXlet` (только xlet'ы).
+    /// The type for the DBus call `org.Cinnamon.ReloadXlet` (xlets only).
     pub xlet: Option<&'static str>,
 }
 
-/// Пять типов — по одной строке на раздел.
+/// Five types — one row per section.
 pub const TYPES: &[SpiceType] = &[
     SpiceType { key: "applet", section: "cinnamonapplets", json: "applets", main_js: Some("applet.js"), xlet: Some("APPLET") },
     SpiceType { key: "desklet", section: "cinnamondesklets", json: "desklets", main_js: Some("desklet.js"), xlet: Some("DESKLET") },
@@ -85,13 +85,13 @@ pub const TYPES: &[SpiceType] = &[
 ];
 
 impl SpiceType {
-    /// Тип оформления раздела (`cinnamon-applet`, `theme-cinnamon`…) —
-    /// из `categories::category_kind`.
+    /// The section's appearance type (`cinnamon-applet`, `theme-cinnamon`…) —
+    /// from `categories::category_kind`.
     pub fn kind(&self) -> &'static str {
         crate::categories::category_kind(self.section).unwrap_or("")
     }
 
-    /// Номер раздела (909, 915–918) — из `categories::DE_SECTIONS`.
+    /// The section number (909, 915–918) — from `categories::DE_SECTIONS`.
     pub fn cat_id(&self) -> i64 {
         crate::categories::DE_SECTIONS
             .iter()
@@ -100,7 +100,7 @@ impl SpiceType {
             .unwrap_or(0)
     }
 
-    /// Строка матрицы кастомизации этого типа.
+    /// The customization matrix row of this type.
     pub fn row(&self) -> Option<&'static crate::de_customization::Row> {
         crate::de_customization::row(self.kind())
     }
@@ -114,24 +114,24 @@ impl SpiceType {
     }
 }
 
-/// Тип по ключу раздела «Оформления».
+/// The type by the "Appearance" section key.
 pub fn type_for_section(section: &str) -> Option<&'static SpiceType> {
     TYPES.iter().find(|t| t.section == section)
 }
 
-/// Тип по собственному ключу (`applet`…).
+/// The type by its own key (`applet`…).
 pub fn type_for_key(key: &str) -> Option<&'static SpiceType> {
     TYPES.iter().find(|t| t.key == key)
 }
 
-/// Адрес индекса. Без параметра времени: он делает каждый запрос
-/// уникальным и ломает кэш сервера.
+/// The index address. Without a time parameter: it makes every request
+/// unique and breaks the server cache.
 pub fn index_url(t: &SpiceType) -> String {
     format!("{HOME_URL}/json/{}.json", t.json)
 }
 
-/// Страница спайса на сайте («Открыть страницу»). `spices-id` у тем —
-/// строка, у остальных — число.
+/// The spice's page on the site ("Open page"). `spices-id` for themes is
+/// a string, for the others — a number.
 pub fn page_url(t: &SpiceType, spices_id: &Value) -> String {
     let id = match spices_id {
         Value::String(s) => s.clone(),
@@ -142,43 +142,43 @@ pub fn page_url(t: &SpiceType, spices_id: &Value) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Индекс
+//  Index
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Запись индекса.
+/// An index record.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Spice {
-    /// Ключ словаря индекса: uuid, у тем — имя каталога.
+    /// The index dictionary key: the uuid, for themes — the directory name.
     pub key: String,
-    /// Номер (у тем — строка) для ссылки на страницу сайта.
+    /// The number (for themes — a string) for the link to the site page.
     pub spices_id: Value,
     pub name: String,
     pub description: String,
-    /// `name_<яз>` / `description_<яз>`; у тем поля нет.
+    /// `name_<lang>` / `description_<lang>`; themes have no such field.
     pub translations: Map<String, Value>,
-    /// Число «лайков» на сайте (не шкала 0–100).
+    /// The number of "likes" on the site (not a 0–100 scale).
     pub score: i64,
-    /// Unix-секунды.
+    /// Unix seconds.
     pub created: i64,
-    /// Unix-секунды; это и есть версия для проверки обновлений.
+    /// Unix seconds; this is the version for update checks.
     pub last_edited: i64,
     pub last_commit: String,
     pub last_commit_subject: String,
-    /// Путь архива от корня сайта.
+    /// The archive path from the site root.
     pub file: String,
-    /// Размер архива, байты.
+    /// Archive size, bytes.
     pub file_size: i64,
-    /// Путь значка от корня сайта (у тем пусто).
+    /// The icon path from the site root (empty for themes).
     pub icon: String,
-    /// Путь снимка от корня сайта (у действий пусто).
+    /// The screenshot path from the site root (empty for actions).
     pub screenshot: String,
-    /// Ник автора; `none`/`unknown` сайта здесь уже пусты.
+    /// The author's nickname; the site's `none`/`unknown` are already empty here.
     pub author: String,
 }
 
-/// Годится ли ключ в имя каталога: `[A-Za-z0-9@._+-]+`, не `.` и не `..`.
-/// Замер 17.10.2026: этому правилу отвечают все 572 ключа сайта.
+/// Whether a key is fit to be a directory name: `[A-Za-z0-9@._+-]+`, not `.` and not `..`.
+/// Measured 17.10.2026: all 572 keys of the site satisfy this rule.
 pub fn valid_key(key: &str) -> bool {
     !key.is_empty()
         && key != "."
@@ -187,9 +187,9 @@ pub fn valid_key(key: &str) -> bool {
         && key.bytes().all(|b| b.is_ascii_alphanumeric() || b"@._+-".contains(&b))
 }
 
-/// Путь от корня сайта, который безопасно приклеить к [`HOME_URL`]:
-/// начинается с `/` (иначе `HOME_URL` + `@evil/…` увёл бы на чужой
-/// адрес), без `..`, `//`, `?`, `#` и пробелов.
+/// A path from the site root that is safe to append to [`HOME_URL`]:
+/// starts with `/` (otherwise `HOME_URL` + `@evil/…` would lead to someone else's
+/// address), without `..`, `//`, `?`, `#` and spaces.
 fn site_path_ok(p: &str) -> bool {
     p.starts_with('/')
         && !p.starts_with("//")
@@ -218,10 +218,10 @@ fn site_path_field(v: &Value, key: &str) -> String {
     if site_path_ok(&p) { p } else { String::new() }
 }
 
-/// Разобрать индекс. Терпим к пустому `{}`, к отсутствию полей и к записям
-/// чужого вида; записи с негодным ключом или путём архива отбрасываются
-/// (ключ станет именем каталога, путь — адресом скачивания). Порядок —
-/// как в файле.
+/// Parse the index. Tolerant of an empty `{}`, of missing fields and of records
+/// of a foreign shape; records with an unfit key or archive path are dropped
+/// (the key becomes a directory name, the path — a download address). The order is
+/// as in the file.
 pub fn parse_index(body: &str) -> Result<Vec<Spice>, String> {
     let root: Value = serde_json::from_str(body).map_err(|e| format!("индекс не разобран: {e}"))?;
     let obj = root.as_object().ok_or_else(|| "индекс — не словарь".to_string())?;
@@ -257,7 +257,7 @@ pub fn parse_index(body: &str) -> Result<Vec<Spice>, String> {
     Ok(out)
 }
 
-/// Язык интерфейса без кодировки и модификатора: `ru_RU.UTF-8@x` → `ru_RU`.
+/// The interface language without encoding and modifier: `ru_RU.UTF-8@x` → `ru_RU`.
 fn bare_lang(lang: &str) -> &str {
     let end = lang.find(['.', '@']).unwrap_or(lang.len());
     &lang[..end]
@@ -276,8 +276,8 @@ fn translated(s: &Spice, field: &str, lang_long: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Имя и описание на языке интерфейса: сначала `<поле>_<яз_СТРАНА>`
-/// (`name_zh_TW`), потом `<поле>_<яз>` (`name_ru`), иначе исходное.
+/// Name and description in the interface language: first `<field>_<lang_COUNTRY>`
+/// (`name_zh_TW`), then `<field>_<lang>` (`name_ru`), otherwise the original.
 pub fn localized(s: &Spice, lang_long: &str) -> (String, String) {
     (
         translated(s, "name", lang_long).unwrap_or_else(|| s.name.clone()),
@@ -285,14 +285,14 @@ pub fn localized(s: &Spice, lang_long: &str) -> (String, String) {
     )
 }
 
-/// Страница витрины: поиск (подстрока без учёта регистра в имени,
-/// описании — исходных и переведённых, — ключе и авторе), сортировка,
-/// срез. `(страница, сколько всего подошло)`.
+/// A storefront page: search (a case-insensitive substring in the name,
+/// the description — original and translated — the key and the author), sorting,
+/// slicing. `(page, how many matched in total)`.
 ///
-/// Сортировки Rexon → данные сайта: `new` — `last_edited` по убыванию,
-/// `high` и `down` — `score` по убыванию (чисел скачиваний у сайта нет),
-/// `alpha` — показанное имя. Неизвестная — как `new`. Равные — в порядке
-/// индекса.
+/// Rexon sortings → site data: `new` — `last_edited` descending,
+/// `high` and `down` — `score` descending (the site has no download counts),
+/// `alpha` — the displayed name. An unknown one — like `new`. Equal ones — in index
+/// order.
 pub fn filter_sort_page(
     list: &[Spice],
     query: &str,
@@ -324,8 +324,8 @@ pub fn filter_sort_page(
     (page, total)
 }
 
-/// Дата `YYYY.MM.DD` из unix-секунд — так сайт и Cinnamon показывают
-/// версию спайса.
+/// A `YYYY.MM.DD` date from unix seconds — this is how the site and Cinnamon show
+/// a spice's version.
 pub fn version_label(unix: i64) -> String {
     if unix <= 0 {
         return String::new();
@@ -341,12 +341,12 @@ fn site_url(path: &str) -> String {
     if path.is_empty() { String::new() } else { format!("{HOME_URL}{path}") }
 }
 
-/// id карточки: `spices:<тип>:<ключ>`.
+/// Card id: `spices:<type>:<key>`.
 pub fn item_id(t: &SpiceType, key: &str) -> String {
     format!("{ID_PREFIX}{}:{key}", t.key)
 }
 
-/// Разобрать id карточки обратно: `(тип, ключ)`.
+/// Parse a card id back: `(type, key)`.
 pub fn parse_item_id(id: &str) -> Option<(&'static SpiceType, &str)> {
     let rest = id.strip_prefix(ID_PREFIX)?;
     let (tk, key) = rest.split_once(':')?;
@@ -354,15 +354,15 @@ pub fn parse_item_id(id: &str) -> Option<(&'static SpiceType, &str)> {
     valid_key(key).then_some((t, key))
 }
 
-/// Лицензия для карточки: у сайта её поля нет, код спайсов лежит в
-/// репозиториях Cinnamon Spices под GPL.
+/// The license for the card: the site has no such field, the spices code lives in
+/// the Cinnamon Spices repositories under the GPL.
 pub fn license_label() -> String {
     tr("GPL (Cinnamon Spices repository)")
 }
 
-/// Маленькая картинка карточки: у тем — миниатюра сайта (около 7 КБ, а не
-/// снимок в 700 КБ), у действий — значок (снимков нет), у остальных —
-/// снимок.
+/// The card's small picture: for themes — the site thumbnail (about 7 KB rather than
+/// a 700 KB screenshot), for actions — the icon (no screenshots), for the others —
+/// the screenshot.
 pub fn thumb_url(t: &SpiceType, s: &Spice) -> String {
     if t.is_theme() {
         return format!("{HOME_URL}/uploads/themes/thumbs/{}.png", s.key);
@@ -373,9 +373,9 @@ pub fn thumb_url(t: &SpiceType, s: &Spice) -> String {
     site_url(&s.screenshot)
 }
 
-/// Карточка витрины. `rating` и `downloads` нулевые: «лайки» сайта не по
-/// шкале 0–100 (их показывают отдельной строкой «★ N»), чисел скачиваний
-/// нет.
+/// A storefront card. `rating` and `downloads` are zero: the site's "likes" are not on
+/// a 0–100 scale (they are shown as a separate "★ N" line), there are no download
+/// counts.
 pub fn theme_item(t: &SpiceType, s: &Spice, lang: &str) -> ThemeItem {
     let (name, description) = localized(s, lang);
     let mut gallery = Vec::new();
@@ -483,7 +483,7 @@ mod index_tests {
         let empty = applets.iter().find(|s| s.key == "1440@jvlianodorneles").unwrap();
         assert!(empty.translations.is_empty());
         assert_eq!(empty.author, "jvlianodorneles");
-        // Порядок — как в файле.
+        // The order is as in the file.
         assert_eq!(applets[0].key, "1440@jvlianodorneles");
     }
 
@@ -546,7 +546,7 @@ mod index_tests {
         assert_eq!(localized(&s, "de").0, "Weather");
         assert_eq!(localized(&s, "").0, "Weather");
 
-        // Настоящая запись: zh_CN и zh_TW рядом.
+        // A real record: zh_CN and zh_TW side by side.
         let applets = load(type_for_key("applet").unwrap());
         let a = applets.iter().find(|s| s.key == "AutostartPrograms@spacy01").unwrap();
         let tw = a.translations["name_zh_TW"].as_str().unwrap();
@@ -578,7 +578,7 @@ mod index_tests {
         sorted.sort();
         assert_eq!(names, sorted);
 
-        // Поиск: по исходному имени, по переводу, по ключу, по автору.
+        // Search: by the original name, by the translation, by the key, by the author.
         assert_eq!(keys(&filter_sort_page(&applets, "WEATHER", "new", 0, 10, "ru").0), ["weather@mockturtl"]);
         let w = applets.iter().find(|s| s.key == "weather@mockturtl").unwrap();
         let ru = localized(w, "ru").0;
@@ -587,7 +587,7 @@ mod index_tests {
         assert_eq!(filter_sort_page(&applets, "jvlianodorneles", "new", 0, 10, "en").1, 1);
         assert_eq!(filter_sort_page(&applets, "no-such-thing", "new", 0, 10, "en").1, 0);
 
-        // Срез страниц.
+        // Page slicing.
         let (p1, t) = filter_sort_page(&applets, "", "new", 1, 4, "en");
         assert_eq!((p1.len(), t), (2, 6));
         assert!(filter_sort_page(&applets, "", "new", 9, 4, "en").0.is_empty());
@@ -628,7 +628,7 @@ mod index_tests {
         assert_eq!(version_label(1_784_985_259), "2026.07.25");
         assert_eq!(version_label(0), "");
 
-        // Действие: картинка — значок, снимка нет.
+        // An action: the picture is the icon, there is no screenshot.
         let act = type_for_key("action").unwrap();
         let b = load(act).into_iter().find(|s| s.key == "backup-this-file@h3nr1ke").unwrap();
         let item = theme_item(act, &b, "en");
@@ -640,12 +640,12 @@ mod index_tests {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Совместимость с версией Cinnamon
+//  Compatibility with the Cinnamon version
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Версия `major.minor[.patch]`; недостающая часть — 0. `6.6.9` →
-/// `(6, 6, 9)`, `6.6` → `(6, 6, 0)`. Хвост после чисел (`6.6.9-1.1`,
-/// `6.6.9+mint`) отбрасывается.
+/// A `major.minor[.patch]` version; a missing part is 0. `6.6.9` →
+/// `(6, 6, 9)`, `6.6` → `(6, 6, 0)`. A tail after the numbers (`6.6.9-1.1`,
+/// `6.6.9+mint`) is dropped.
 pub fn parse_version(s: &str) -> Option<(u32, u32, u32)> {
     let s = s.trim();
     let core = s.split(|c: char| !(c.is_ascii_digit() || c == '.')).next().unwrap_or("");
@@ -656,9 +656,9 @@ pub fn parse_version(s: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
-/// Версия установленного Cinnamon: `cinnamon --version` («Cinnamon 6.6.9»,
-/// второе слово), иначе версия пакета (pacman, dpkg, rpm). `run` —
-/// запуск команды, отдаёт stdout при успехе.
+/// The installed Cinnamon version: `cinnamon --version` ("Cinnamon 6.6.9",
+/// the second word), otherwise the package version (pacman, dpkg, rpm). `run` —
+/// running a command, returns stdout on success.
 pub fn running_cinnamon_version(run: &dyn Fn(&[&str]) -> Option<String>) -> Option<(u32, u32, u32)> {
     if let Some(v) = run(&["cinnamon", "--version"]).and_then(|o| o.split_whitespace().nth(1).and_then(parse_version)) {
         return Some(v);
@@ -676,7 +676,7 @@ pub fn running_cinnamon_version(run: &dyn Fn(&[&str]) -> Option<String>) -> Opti
     None
 }
 
-/// [`running_cinnamon_version`] на живой машине.
+/// [`running_cinnamon_version`] on the live machine.
 pub fn live_cinnamon_version() -> Option<(u32, u32, u32)> {
     running_cinnamon_version(&|argv: &[&str]| {
         let out = std::process::Command::new(argv[0]).args(&argv[1..]).stdin(std::process::Stdio::null()).output().ok()?;
@@ -684,18 +684,18 @@ pub fn live_cinnamon_version() -> Option<(u32, u32, u32)> {
     })
 }
 
-/// Начальные цифры строки как число (`"6abc"` → 6, `"x"` → нет) — так
-/// Cinnamon читает части версий из `metadata.json`.
+/// The leading digits of a string as a number (`"6abc"` → 6, `"x"` → none) — this is how
+/// Cinnamon reads version parts from `metadata.json`.
 fn leading_int(s: &str) -> Option<u32> {
     let s = s.trim_start();
     let digits: String = s.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
 }
 
-/// `cinnamon-version` — список МИНИМАЛЬНЫХ версий: совместимо, если хоть
-/// одна запись `major.minor` не новее текущей. Пустой список — несовместимо
-/// (так его понимает и сама оболочка, и её окно настроек); неразборная
-/// запись не подходит.
+/// `cinnamon-version` is a list of MINIMUM versions: compatible if at least
+/// one `major.minor` entry is not newer than the current one. An empty list — incompatible
+/// (that is how both the shell itself and its settings window read it); an unparsable
+/// entry does not match.
 pub fn version_check(required: &[String], current: (u32, u32, u32)) -> bool {
     required.iter().any(|r| {
         let mut it = r.split('.');
@@ -706,9 +706,9 @@ pub fn version_check(required: &[String], current: (u32, u32, u32)) -> bool {
     })
 }
 
-/// Список `cinnamon-version` из `metadata.json`: `None` — поля нет.
-/// Числа и одиночная строка тоже принимаются (встречаются у старых
-/// спайсов).
+/// The `cinnamon-version` list from `metadata.json`: `None` — no field.
+/// Numbers and a single string are accepted too (they occur in old
+/// spices).
 pub fn cinnamon_versions(meta: &Value) -> Option<Vec<String>> {
     let v = meta.get("cinnamon-version")?;
     let one = |x: &Value| match x {
@@ -734,19 +734,19 @@ fn version_dir(name: &str) -> Option<(u32, u32, u32)> {
     parse_version(name)
 }
 
-/// Подкаталог мультиверсионного спайса, который возьмёт Cinnamon: среди
-/// имён вида `3.8` / `4.0.1` — наибольшее, не новее текущей версии
-/// (`3.8` = `3.8.0`). `None` — код лежит в корне.
+/// The subdirectory of a multiversion spice that Cinnamon will take: among
+/// names like `3.8` / `4.0.1` — the largest one not newer than the current version
+/// (`3.8` = `3.8.0`). `None` — the code lies in the root.
 ///
-/// Части сравниваются как ЧИСЛА. Сама оболочка 6.6.9 при выборе сравнивает
-/// их как строки (`"10" < "8"`), окно настроек — как числа; расходятся они
-/// только на частях от 10 и выше, которых в каталоге сегодня нет.
+/// Parts are compared as NUMBERS. The 6.6.9 shell itself compares them
+/// as strings when choosing (`"10" < "8"`), the settings window — as numbers; they diverge
+/// only on parts of 10 and above, which the catalog does not have today.
 pub fn pick_version_subdir(subdirs: &[String], current: (u32, u32, u32)) -> Option<String> {
     subdirs
         .iter()
         .filter_map(|n| version_dir(n).map(|v| (v, n)))
         .filter(|(v, _)| *v <= current)
-        // Равные (`6.6` и `6.6.0`) — более подробное имя, как у окна настроек.
+        // Equal ones (`6.6` and `6.6.0`) — the more detailed name, as in the settings window.
         .max_by_key(|(v, n)| (*v, n.len()))
         .map(|(_, n)| n.clone())
 }
@@ -796,7 +796,7 @@ mod version_tests {
         assert_eq!(running_cinnamon_version(&|_: &[&str]| None), None);
     }
 
-    /// Таблица случаев с поведением оболочки 6.6.9.
+    /// A table of cases with the behavior of the 6.6.9 shell.
     #[test]
     fn version_check_table() {
         let cur = (6, 6, 9);
@@ -825,7 +825,7 @@ mod version_tests {
     #[test]
     fn subdir_table() {
         let cur = (6, 6, 9);
-        // weather@mockturtl на 6.6.9 берёт 3.8.
+        // weather@mockturtl on 6.6.9 takes 3.8.
         assert_eq!(pick_version_subdir(&s(&["3.0", "po", "icons", "3.8", "arrow-icons"]), cur).as_deref(), Some("3.8"));
         assert_eq!(pick_version_subdir(&s(&["po", "icons"]), cur), None);
         assert_eq!(pick_version_subdir(&s(&["6.8", "7.0"]), cur), None, "все новее — корень");
@@ -844,22 +844,22 @@ mod version_tests {
 //  .po → .mo
 // ═══════════════════════════════════════════════════════════════════════
 //
-// Переводы спайсов приходят исходниками `po/<яз>.po`, а gettext читает
-// только собранный `.mo`. Собираем сами, без внешнего `msgfmt` (его может
-// не быть в системе). Раскладка файла — по описанию формата в руководстве
-// GNU gettext («The Format of GNU MO Files»): шапка, две таблицы
-// (длина, смещение), таблица хэшей, строки с завершающим нулём. Совпадение
-// с `msgfmt` 1.0 побайтовое (сверка в тестах на настоящих .po спайсов).
+// Spice translations arrive as `po/<lang>.po` sources, while gettext reads
+// only a compiled `.mo`. We build it ourselves, without an external `msgfmt` (it may
+// not be on the system). The file layout follows the format description in the
+// GNU gettext manual ("The Format of GNU MO Files"): a header, two tables
+// (length, offset), a hash table, NUL-terminated strings. The result matches
+// `msgfmt` 1.0 byte for byte (checked in tests on real spice .po files).
 
-/// Одна запись каталога: ключ (`контекст\x04msgid[\0msgid_plural]`) и
-/// перевод (формы через `\0`).
+/// One catalog entry: the key (`context\x04msgid[\0msgid_plural]`) and
+/// the translation (forms separated by `\0`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PoEntry {
     key: Vec<u8>,
     value: Vec<u8>,
 }
 
-/// Строка в кавычках: `"…"` с C-экранированием.
+/// A quoted string: `"…"` with C escaping.
 fn po_unquote(s: &str, line_no: usize) -> Result<Vec<u8>, String> {
     let s = s.trim();
     let inner = s
@@ -941,9 +941,9 @@ enum PoField {
     Str(usize),
 }
 
-/// Разобрать `.po` в записи, которые попадут в `.mo`: без устаревших
-/// (`#~`), без неточных (`#, fuzzy`, кроме шапки) и без непереведённых
-/// (пустая первая форма). Порядок — как в файле.
+/// Parse a `.po` into the entries that go into the `.mo`: without obsolete ones
+/// (`#~`), without fuzzy ones (`#, fuzzy`, except the header) and without untranslated ones
+/// (an empty first form). The order is as in the file.
 fn parse_po(po: &str) -> Result<Vec<PoEntry>, String> {
     let mut out = Vec::new();
     let mut d = PoDraft::default();
@@ -991,8 +991,8 @@ fn parse_po(po: &str) -> Result<Vec<PoEntry>, String> {
             value.extend_from_slice(f);
         }
         if is_header {
-            // Как у msgfmt: дата создания шаблона в собранный каталог не идёт
-            // (иначе одна и та же сборка давала бы разные файлы).
+            // As in msgfmt: the template creation date does not go into the compiled catalog
+            // (otherwise one and the same build would give different files).
             let text = String::from_utf8_lossy(&value).into_owned();
             let kept: String = text.split_inclusive('\n').filter(|l| !l.starts_with("POT-Creation-Date:")).collect();
             value = kept.into_bytes();
@@ -1093,7 +1093,7 @@ fn parse_po(po: &str) -> Result<Vec<PoEntry>, String> {
     Ok(out)
 }
 
-/// Хэш строки для таблицы `.mo` (из описания формата GNU gettext).
+/// A string hash for the `.mo` table (from the GNU gettext format description).
 fn mo_hash(s: &[u8]) -> u32 {
     let mut h: u32 = 0;
     for &c in s {
@@ -1116,12 +1116,12 @@ fn next_prime(mut n: u32) -> u32 {
     n
 }
 
-/// Собрать `.mo` (порядок байтов — младший первым) из текста `.po`.
-/// Ошибка — файл испорчен (повтор msgid, мусорная строка, обрыв
-/// экранирования): такой язык пропускается, остальные ставятся.
+/// Build a `.mo` (byte order — little-endian) from `.po` text.
+/// An error — the file is corrupted (a repeated msgid, a garbage line, broken
+/// escaping): such a language is skipped, the others are installed.
 pub fn po_to_mo(po: &str) -> Result<Vec<u8>, String> {
     let mut entries = parse_po(po)?;
-    // Ключ поиска — до первого нуля (без msgid_plural).
+    // The lookup key — up to the first NUL (without msgid_plural).
     let lookup = |e: &PoEntry| -> Vec<u8> { e.key.split(|b| *b == 0).next().unwrap_or(&[]).to_vec() };
     entries.sort_by_key(lookup);
     if let Some(w) = entries.windows(2).find(|w| lookup(&w[0]) == lookup(&w[1])) {
@@ -1181,8 +1181,8 @@ pub fn po_to_mo(po: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// Код языка из имени `.po`: всё до первой точки (`pt_BR.po` → `pt_BR`).
-/// `None` — имя не годится в каталог (`../x.po`, пустое, не `.po`).
+/// The language code from a `.po` name: everything before the first dot (`pt_BR.po` → `pt_BR`).
+/// `None` — the name is unfit for a directory (`../x.po`, empty, not `.po`).
 pub fn po_language(file_name: &str) -> Option<&str> {
     if !file_name.ends_with(".po") {
         return None;
@@ -1278,7 +1278,7 @@ msgstr ""
         for name in FIXTURES {
             let po = fixture(name);
             let cat = Catalog::parse_mo(&po_to_mo(&po).unwrap()).unwrap_or_else(|e| panic!("{name}: {e}"));
-            // Каждая непустая нефаззи-запись нашлась.
+            // Every non-empty non-fuzzy entry was found.
             let entries = parse_po(&po).unwrap();
             assert!(entries.len() > 1, "{name}");
             for e in entries.iter().filter(|e| !e.key.is_empty()) {
@@ -1297,7 +1297,7 @@ msgstr ""
         assert_eq!(cs.plural_lookup("hour", 3).as_deref(), Some("hodiny"));
         assert_eq!(cs.plural_lookup("hour", 5).as_deref(), Some("hodin"));
         assert_eq!(cs.get(Some("time of battery remaining"), "%d:%02d"), Some("%d:%02d"));
-        // Неточные выкинуты: в tr_TR их четыре, шапка — сохранена.
+        // Fuzzy ones are dropped: tr_TR has four, the header is kept.
         let tr_po = fixture("albumart-tr_TR.po");
         let kept = parse_po(&tr_po).unwrap();
         assert!(kept.iter().any(|e| e.key.is_empty()));
@@ -1305,7 +1305,7 @@ msgstr ""
         assert!(!String::from_utf8_lossy(&headers.value).contains("POT-Creation-Date"));
     }
 
-    /// Побайтовая сверка с `msgfmt` (если он есть в системе).
+    /// A byte-for-byte check against `msgfmt` (if it is on the system).
     #[test]
     fn byte_identical_with_msgfmt() {
         let Ok(probe) = std::process::Command::new("msgfmt").arg("--version").output() else {
@@ -1333,8 +1333,8 @@ msgstr ""
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Ручной прогон: каждый `.po` под `REXON_SPICES_PO_DIR` (например
-    /// распакованные архивы спайсов) против `msgfmt`, побайтово.
+    /// A manual run: every `.po` under `REXON_SPICES_PO_DIR` (for example
+    /// unpacked spice archives) against `msgfmt`, byte for byte.
     #[test]
     #[ignore]
     fn msgfmt_on_directory() {
@@ -1400,39 +1400,39 @@ msgstr ""
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Кэш индекса
+//  Index cache
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Файл кэша одного индекса: тело как пришло плюс то, что нужно условному
-/// запросу.
+/// The cache file of one index: the body as it arrived plus what the conditional
+/// request needs.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CachedIndex {
     pub version: u32,
-    /// Когда индекс последний раз подтверждён сервером (200 или 304),
-    /// unix-секунды. 0 — ни разу.
+    /// When the index was last confirmed by the server (200 or 304),
+    /// unix seconds. 0 — never.
     pub fetched: i64,
-    /// Когда последний поход за индексом не удался (0 — не было).
+    /// When the last attempt to get the index failed (0 — never).
     pub failed: i64,
     pub etag: String,
     pub last_modified: String,
-    /// Тело индекса (JSON сайта) как есть.
+    /// The index body (the site's JSON) as is.
     pub body: String,
 }
 
-/// Путь кэша: `$XDG_CACHE_HOME/rexon/cinnamon-spices/<json>.json`.
+/// The cache path: `$XDG_CACHE_HOME/rexon/cinnamon-spices/<json>.json`.
 pub fn cache_path(xdg_cache_home: Option<&str>, home: &str, t: &SpiceType) -> String {
     format!("{}/rexon/cinnamon-spices/{}.json", crate::utils::cache_home(xdg_cache_home, home), t.json)
 }
 
-/// [`cache_path`] этого процесса.
+/// [`cache_path`] of this process.
 pub fn live_cache_path(t: &SpiceType) -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
     cache_path(std::env::var("XDG_CACHE_HOME").ok().as_deref(), &home, t)
 }
 
-/// Прочитать кэш. Чужая версия, битый файл и тело, которое не
-/// разбирается, — как будто кэша нет (то есть он протух).
+/// Read the cache. A foreign version, a broken file and a body that does not
+/// parse — as if there is no cache (i.e. it is stale).
 pub fn load_cache(path: &Path) -> Option<(CachedIndex, Vec<Spice>)> {
     let text = std::fs::read_to_string(path).ok()?;
     let c: CachedIndex = serde_json::from_str(&text).ok()?;
@@ -1442,12 +1442,12 @@ pub fn load_cache(path: &Path) -> Option<(CachedIndex, Vec<Spice>)> {
     let list = if c.body.is_empty() { None } else { parse_index(&c.body).ok() };
     match list {
         Some(list) => Some((c, list)),
-        // Тела нет (только отметка неудачи) — валидаторы не годятся.
+        // No body (only a failure mark) — the validators are no good.
         None => Some((CachedIndex { etag: String::new(), last_modified: String::new(), body: String::new(), fetched: 0, ..c }, Vec::new())),
     }
 }
 
-/// Записать кэш (через временный файл — половинчатого не бывает).
+/// Write the cache (via a temporary file — there are no half-written ones).
 pub fn save_cache(path: &Path, c: &CachedIndex) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -1458,22 +1458,22 @@ pub fn save_cache(path: &Path, c: &CachedIndex) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
-/// Ответ на условный запрос.
+/// The answer to a conditional request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CondReply {
-    /// 304: у нас последняя версия.
+    /// 304: we have the latest version.
     NotModified,
-    /// 200 с телом и новыми валидаторами (пустые — сервер их не дал).
+    /// 200 with a body and new validators (empty — the server did not give them).
     Body { body: Vec<u8>, etag: String, last_modified: String },
 }
 
-/// Транспорт условного GET. В общем [`crate::net::NetIo`] нет ни заголовков
-/// ответа, ни заголовков запроса на вызов, а без них `ETag`/`304` не
-/// сделать — поэтому здесь свой узкий трейт: в сверках он отвечает
-/// записанными ответами, в бою — [`UreqConditional`].
+/// The conditional GET transport. The shared [`crate::net::NetIo`] has neither response
+/// headers nor per-call request headers, and without them `ETag`/`304` cannot be
+/// done — so here is our own narrow trait: in checks it answers with
+/// recorded responses, in production — [`UreqConditional`].
 pub trait ConditionalNet {
-    /// `GET url` с `If-None-Match`/`If-Modified-Since` (пустые не
-    /// посылаются). Ответ вне 2xx и не 304 — `NetError::Status`.
+    /// `GET url` with `If-None-Match`/`If-Modified-Since` (empty ones are not
+    /// sent). A response outside 2xx and not 304 — `NetError::Status`.
     fn conditional_get(
         &mut self,
         url: &str,
@@ -1484,31 +1484,31 @@ pub trait ConditionalNet {
     ) -> Result<CondReply, crate::net::NetError>;
 }
 
-/// Чем кончилось обновление индекса.
+/// How the index refresh ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshSource {
-    /// Кэш свежий, в сеть не ходили.
+    /// The cache is fresh, the network was not used.
     Cache,
-    /// Сервер ответил 304 — кэш продлён.
+    /// The server answered 304 — the cache was extended.
     NotModified,
-    /// Пришёл новый индекс.
+    /// A new index arrived.
     Downloaded,
-    /// Сеть/сервер подвели — показан прежний кэш (возможно, пустой).
+    /// The network/server let us down — the previous cache is shown (possibly empty).
     Stale,
 }
 
-/// Итог [`refresh`].
+/// The result of [`refresh`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Refresh {
     pub spices: Vec<Spice>,
     pub source: RefreshSource,
-    /// Когда список последний раз подтверждён сервером (0 — ни разу).
+    /// When the list was last confirmed by the server (0 — never).
     pub fetched: i64,
-    /// Что сказать человеку; пусто — всё в порядке.
+    /// What to tell the person; empty — all is well.
     pub note: String,
 }
 
-/// Сети нет / сервер не ответил.
+/// No network / the server did not answer.
 pub fn offline_message(have_saved: bool) -> String {
     if have_saved {
         tr("Couldn't reach the Cinnamon Spices website — the saved list is shown.")
@@ -1517,11 +1517,11 @@ pub fn offline_message(have_saved: bool) -> String {
     }
 }
 
-/// Индекс для показа. Свежий кэш (моложе суток) — без сети. Иначе (или по
-/// `force` — кнопка «Обновить») — условный запрос с валидаторами кэша:
-/// 304 продлевает кэш, 200 заменяет его. Сбой сети, ответ сервера с
-/// ошибкой или мусор вместо JSON — прежний кэш с пометкой, а повтор не
-/// раньше [`FAIL_BACKOFF_SECS`] (кроме `force`).
+/// The index for display. A fresh cache (younger than a day) — without network. Otherwise (or with
+/// `force` — the "Refresh" button) — a conditional request with the cache validators:
+/// 304 extends the cache, 200 replaces it. A network failure, a server error response
+/// or garbage instead of JSON — the previous cache with a mark, and no retry
+/// before [`FAIL_BACKOFF_SECS`] (except with `force`).
 pub fn refresh(net: &mut dyn ConditionalNet, path: &Path, t: &SpiceType, force: bool, now: i64) -> Refresh {
     let cached = load_cache(path);
     let (meta, saved) = cached.unwrap_or_else(|| (CachedIndex { version: CACHE_VERSION, ..Default::default() }, Vec::new()));
@@ -1555,25 +1555,25 @@ pub fn refresh(net: &mut dyn ConditionalNet, path: &Path, t: &SpiceType, force: 
                     let _ = save_cache(path, &c);
                     Refresh { spices: list, source: RefreshSource::Downloaded, fetched: now, note: String::new() }
                 }
-                // Мусор (страница ошибки вместо JSON) кэш не затирает.
+                // Garbage (an error page instead of JSON) does not overwrite the cache.
                 Err(_) => fail(meta, saved),
             }
         }
-        // 304 без кэша (мы валидаторов не посылали) — ответ странный.
+        // 304 without a cache (we sent no validators) — a strange answer.
         Ok(CondReply::NotModified) | Err(_) => fail(meta, saved),
     }
 }
 
-/// Боевой транспорт условного запроса: `ureq` с теми же настройками, что
-/// у общего сетевого слоя (`crate::net::UreqNet`): системное хранилище
-/// корней через native-tls, таймаут на соединение и каждое чтение, до 10
-/// переадресаций. Без `Accept-Encoding` — сервер отдаёт как есть.
+/// The production conditional request transport: `ureq` with the same settings as
+/// the shared network layer (`crate::net::UreqNet`): the system root store
+/// via native-tls, a timeout on connecting and on every read, up to 10
+/// redirects. Without `Accept-Encoding` — the server sends as is.
 pub struct UreqConditional {
     agent: Option<(u64, ureq::Agent)>,
-    /// Больше этого тело не читается (после распаковки).
+    /// A body larger than this is not read (after decompression).
     limit: u64,
-    /// Просить сжатый ответ (`Accept-Encoding: gzip`) и распаковывать его:
-    /// дерево репозитория тем у GitHub весит ~9 МБ, сжатое — ~1,2 МБ.
+    /// Ask for a compressed response (`Accept-Encoding: gzip`) and decompress it:
+    /// GitHub's theme repository tree weighs ~9 MB, compressed — ~1.2 MB.
     gzip: bool,
 }
 
@@ -1588,7 +1588,7 @@ impl UreqConditional {
         UreqConditional { agent: None, limit: MAX_INDEX_BYTES, gzip: false }
     }
 
-    /// Сжатый ответ и свой потолок размера (для [`THEME_TREE_URL`]).
+    /// A compressed response and its own size ceiling (for [`THEME_TREE_URL`]).
     pub fn gzip_up_to(limit: u64) -> Self {
         UreqConditional { agent: None, limit, gzip: true }
     }
@@ -1665,7 +1665,7 @@ impl ConditionalNet for UreqConditional {
     }
 }
 
-/// [`refresh`] на живой машине (сеть, кэш этого процесса).
+/// [`refresh`] on the live machine (network, this process's cache).
 pub fn live_refresh(t: &SpiceType, force: bool) -> Refresh {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1679,7 +1679,7 @@ mod cache_tests {
     use super::*;
     use crate::net::NetError;
 
-    /// Записанные ответы по порядку; запросы складываются для сверки.
+    /// Recorded responses in order; the requests are collected for the check.
     struct Replay {
         answers: Vec<Result<CondReply, NetError>>,
         asked: Vec<(String, String, String, String)>,
@@ -1732,13 +1732,13 @@ mod cache_tests {
         assert!(r.note.is_empty());
         assert_eq!(net.asked[0], ("https://cinnamon-spices.linuxmint.com/json/applets.json".into(), "Rexon/5.0".into(), String::new(), String::new()));
 
-        // Моложе суток — ни одного запроса.
+        // Younger than a day — not a single request.
         let mut quiet = replay(vec![]);
         let r = refresh(&mut quiet, &p, applets(), false, T0 + CACHE_TTL_SECS - 1);
         assert_eq!((r.source, r.spices.len()), (RefreshSource::Cache, 6));
         assert!(quiet.asked.is_empty());
 
-        // Сутки прошли — условный запрос с валидаторами; 304 продлевает.
+        // A day passed — a conditional request with validators; 304 extends.
         let mut net = replay(vec![Ok(CondReply::NotModified)]);
         let r = refresh(&mut net, &p, applets(), false, T0 + CACHE_TTL_SECS);
         assert_eq!((r.source, r.spices.len(), r.fetched), (RefreshSource::NotModified, 6, T0 + CACHE_TTL_SECS));
@@ -1748,7 +1748,7 @@ mod cache_tests {
         let (c, _) = load_cache(&p).unwrap();
         assert_eq!(c.fetched, T0 + CACHE_TTL_SECS);
 
-        // «Обновить» — в сеть даже при свежем кэше; новое тело заменяет.
+        // "Refresh" — to the network even with a fresh cache; a new body replaces it.
         let mut net = replay(vec![ok200("W/\"ddfd-2\"")]);
         let r = refresh(&mut net, &p, applets(), true, T0 + CACHE_TTL_SECS + 5);
         assert_eq!(r.source, RefreshSource::Downloaded);
@@ -1769,12 +1769,12 @@ mod cache_tests {
             let r = refresh(&mut net, &p, applets(), false, later);
             assert_eq!((r.source, r.spices.len(), r.fetched), (RefreshSource::Stale, 6, T0), "{name}");
             assert_eq!(r.note, offline_message(true));
-            // Сразу снова — не стучимся (пауза после неудачи).
+            // Right away again — we do not knock (the pause after a failure).
             let mut quiet = replay(vec![]);
             let r = refresh(&mut quiet, &p, applets(), false, later + 60);
             assert_eq!((r.source, r.spices.len()), (RefreshSource::Stale, 6));
             assert!(quiet.asked.is_empty());
-            // «Обновить» пробует сразу; после паузы — тоже.
+            // "Refresh" tries right away; after the pause — too.
             let mut net = replay(vec![Ok(CondReply::NotModified)]);
             assert_eq!(refresh(&mut net, &p, applets(), true, later + 61).source, RefreshSource::NotModified);
             let _ = std::fs::remove_dir_all(p.parent().unwrap().parent().unwrap().parent().unwrap());
@@ -1801,7 +1801,7 @@ mod cache_tests {
         let r = refresh(&mut net, &p, applets(), false, T0);
         assert_eq!((r.source, r.spices.len(), r.fetched), (RefreshSource::Stale, 0, 0));
         assert_eq!(r.note, offline_message(false));
-        // Отметка неудачи не мешает потом скачать начисто, без валидаторов.
+        // A failure mark does not prevent a clean download later, without validators.
         let mut net = replay(vec![ok200("e")]);
         let r = refresh(&mut net, &p, applets(), false, T0 + FAIL_BACKOFF_SECS);
         assert_eq!(r.source, RefreshSource::Downloaded);
@@ -1823,7 +1823,7 @@ mod cache_tests {
         }
     }
 
-    /// Боевой транспорт на местном сервере: заголовки запроса и разбор
+    /// The production transport against a local server: request headers and parsing
     /// 200 / 304 / 500.
     #[test]
     fn live_transport_sends_validators_and_reads_them_back() {
@@ -1869,43 +1869,43 @@ mod cache_tests {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Проверка архива и план установки
+//  Archive check and install plan
 // ═══════════════════════════════════════════════════════════════════════
 
 use crate::installed_scan::FsSnapshot;
 
-/// Почему спайс не ставится. Текст для человека — [`SpiceRefusal::message`].
+/// Why a spice will not install. The text for the person — [`SpiceRefusal::message`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpiceRefusal {
-    /// Ключ из индекса не годится в имя каталога.
+    /// The key from the index is unfit for a directory name.
     InvalidKey,
-    /// Запись архива уводит за каталог распаковки (`../`, абсолютный путь).
+    /// An archive entry leads outside the unpack directory (`../`, an absolute path).
     UnsafePath { entry: String },
-    /// Внутри нет каталога `<ключ>/`.
+    /// There is no `<key>/` directory inside.
     NotZipLayout,
-    /// Нет `metadata.json` (xlet'ы и действия).
+    /// No `metadata.json` (xlets and actions).
     NoMetadata,
-    /// `metadata.json` не разбирается как объект JSON.
+    /// `metadata.json` does not parse as a JSON object.
     BadMetadata,
-    /// `uuid` в `metadata.json` не совпадает с каталогом: Cinnamon такой не грузит.
+    /// The `uuid` in `metadata.json` does not match the directory: Cinnamon does not load such a spice.
     UuidMismatch { found: String },
-    /// Нет обязательного поля `metadata.json` (`name`, `description`).
+    /// A required `metadata.json` field is missing (`name`, `description`).
     MissingProperty { name: String },
-    /// Ни одна из версий `cinnamon-version` не подходит.
+    /// None of the `cinnamon-version` versions fits.
     Incompatible { need: Vec<String>, current: (u32, u32, u32) },
-    /// У расширения нет `cinnamon-version`: Cinnamon такое не грузит.
+    /// The extension has no `cinnamon-version`: Cinnamon does not load such a thing.
     MissingCinnamonVersion,
-    /// Нет главного файла (`applet.js`…) в каталоге, который возьмёт Cinnamon.
+    /// No main file (`applet.js`…) in the directory Cinnamon will take.
     NoMainJs { file: String },
-    /// У темы нет `cinnamon/cinnamon.css`.
+    /// The theme has no `cinnamon/cinnamon.css`.
     NoCinnamonCss,
-    /// У действия нет `<uuid>.nemo_action`.
+    /// The action has no `<uuid>.nemo_action`.
     NoActionFile,
 }
 
-/// «Нужен Cinnamon N или новее, а здесь M» — отказ на установке
-/// несовместимого спайса (решение Wehrwolfmann 17.10.2026: в витрине
-/// показываются все, проверка — при установке).
+/// "Cinnamon N or newer is needed, but here it is M" — the refusal when installing
+/// an incompatible spice (Wehrwolfmann's decision of 17.10.2026: the storefront
+/// shows all of them, the check happens at install time).
 pub fn incompatible_message(name: &str, need: &[String], current: (u32, u32, u32)) -> String {
     let lowest = need
         .iter()
@@ -1926,7 +1926,7 @@ pub fn incompatible_message(name: &str, need: &[String], current: (u32, u32, u32
 }
 
 impl SpiceRefusal {
-    /// Объяснение для человека; `name` — имя спайса на карточке.
+    /// The explanation for the person; `name` — the spice name on the card.
     pub fn message(&self, name: &str) -> String {
         match self {
             SpiceRefusal::InvalidKey => trf("%1 has a name that can't be used as a folder name, so it can't be installed.", &[&name]),
@@ -1956,8 +1956,8 @@ impl SpiceRefusal {
     }
 }
 
-/// Все записи архива остаются внутри каталога распаковки. Проверять ДО
-/// распаковки (та же проверка, что у общего распаковщика оформления).
+/// All archive entries stay inside the unpack directory. Check BEFORE
+/// unpacking (the same check as the shared appearance unpacker's).
 pub fn check_entry_names(names: &[String]) -> Result<(), SpiceRefusal> {
     const PROBE: &str = "/rexon-spice-extract";
     match names.iter().find(|n| n.contains('\\') || !crate::appearance_installer::safe_extract_entry(PROBE, n)) {
@@ -1966,14 +1966,14 @@ pub fn check_entry_names(names: &[String]) -> Result<(), SpiceRefusal> {
     }
 }
 
-/// Что в архиве нашлось — для плана.
+/// What was found in the archive — for the plan.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
-    /// `metadata.json` (у темы без него — пустой объект).
+    /// `metadata.json` (for a theme without it — an empty object).
     pub meta: Value,
-    /// Подкаталог версии, который возьмёт Cinnamon (`3.8`), либо корень.
+    /// The version subdirectory Cinnamon will take (`3.8`), or the root.
     pub version_subdir: Option<String>,
-    /// Имена `po/<яз>.po` в корне спайса, по алфавиту (у тем — пусто).
+    /// Names of `po/<lang>.po` in the spice root, alphabetically (empty for themes).
     pub po_files: Vec<String>,
 }
 
@@ -1981,10 +1981,10 @@ fn snap_join(a: &str, b: &str) -> String {
     format!("{}/{b}", a.trim_end_matches('/'))
 }
 
-/// Проверить распакованный архив (`root` — каталог распаковки, в нём
-/// `<ключ>/`). `current` — версия Cinnamon на машине; `None` (Cinnamon не
-/// найден) — версия не проверяется, главный файл ищется в корне и в
-/// подкаталогах версий.
+/// Check an unpacked archive (`root` — the unpack directory, with
+/// `<key>/` in it). `current` — the Cinnamon version on the machine; `None` (Cinnamon not
+/// found) — the version is not checked, the main file is searched for in the root and in
+/// the version subdirectories.
 pub fn check_layout(
     fs: &FsSnapshot,
     root: &str,
@@ -2041,7 +2041,7 @@ pub fn check_layout(
         let subdirs: Vec<String> = fs.scandir(&dir).iter().filter(|n| fs.is_dir(&snap_join(&dir, n))).cloned().collect();
         let candidates: Vec<Option<String>> = match current {
             Some(cur) => vec![pick_version_subdir(&subdirs, cur)],
-            // Версия неизвестна: годится любой подкаталог версии или корень.
+            // The version is unknown: any version subdirectory or the root will do.
             None => {
                 let mut c: Vec<Option<String>> = subdirs.iter().filter(|n| version_dir(n).is_some()).cloned().map(Some).collect();
                 c.sort_by_key(|n| std::cmp::Reverse(n.as_deref().and_then(version_dir)));
@@ -2073,26 +2073,26 @@ pub fn check_layout(
     Ok(Layout { meta, version_subdir, po_files })
 }
 
-/// Где живёт человек: всё ставится под `home` (как и ищет Cinnamon:
+/// Where the person lives: everything is installed under `home` (as Cinnamon looks for it:
 /// `~/.local/share/cinnamon/…`, `~/.themes`, `~/.local/share/nemo/actions`,
-/// переводы — `~/.local/share/locale`). Настройки спайсов Cinnamon держит
-/// в каталоге настроек XDG (`$XDG_CONFIG_HOME`, обычно `~/.config`).
+/// translations — `~/.local/share/locale`). Cinnamon keeps spice settings
+/// in the XDG config directory (`$XDG_CONFIG_HOME`, usually `~/.config`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpiceEnv {
     pub home: String,
-    /// Каталог настроек XDG: `$XDG_CONFIG_HOME` либо `~/.config`.
+    /// The XDG config directory: `$XDG_CONFIG_HOME` or `~/.config`.
     pub config: String,
 }
 
 impl SpiceEnv {
-    /// Под домашним каталогом `home`, настройки — в `~/.config`.
+    /// Under the home directory `home`, settings — in `~/.config`.
     pub fn at_home(home: &str) -> Self {
         let home = home.trim_end_matches('/').to_string();
         SpiceEnv { config: format!("{home}/.config"), home }
     }
 
-    /// Под `home`: живой каталог настроек, если это домашний каталог
-    /// процесса, иначе `home/.config`.
+    /// Under `home`: the live config directory if this is the process's home
+    /// directory, otherwise `home/.config`.
     pub fn for_home(home: &str) -> Self {
         let live = Self::live();
         if live.home == home.trim_end_matches('/') {
@@ -2102,7 +2102,7 @@ impl SpiceEnv {
         }
     }
 
-    /// Живая машина: `$HOME` и `$XDG_CONFIG_HOME` (пустой — как не заданный).
+    /// The live machine: `$HOME` and `$XDG_CONFIG_HOME` (empty — as if not set).
     pub fn live() -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
         let mut env = Self::at_home(&home);
@@ -2113,71 +2113,71 @@ impl SpiceEnv {
     }
 }
 
-/// Обстоятельства установки.
+/// The install circumstances.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct InstallContext {
-    /// Спайс уже стоит (каталог есть) — это обновление.
+    /// The spice is already installed (the directory exists) — this is an update.
     pub is_update: bool,
-    /// Спайс сейчас включён (есть в списке включённых).
+    /// The spice is currently enabled (it is in the enabled list).
     pub enabled: bool,
-    /// Версия Cinnamon на машине.
+    /// The Cinnamon version on the machine.
     pub cinnamon: Option<(u32, u32, u32)>,
 }
 
-/// Шаг плана установки — один побочный эффект для исполнителя.
+/// An install plan step — one side effect for the executor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum SpiceStep {
     /// `mkdir -p`.
     MakeDirs { path: String },
-    /// Удалить каталог, если есть.
+    /// Delete a directory if it exists.
     RemoveTree { path: String },
-    /// Удалить файл, если есть.
+    /// Delete a file if it exists.
     RemoveFile { path: String },
-    /// Скопировать дерево (права файлов — как в архиве).
+    /// Copy a tree (file permissions as in the archive).
     CopyTree { from: String, to: String },
-    /// Скопировать файл.
+    /// Copy a file.
     CopyFile { from: String, to: String },
-    /// Собрать `.mo` из `.po` ([`po_to_mo`]); неудача — строка в журнал и
-    /// пропуск языка, установка продолжается.
+    /// Build a `.mo` from a `.po` ([`po_to_mo`]); a failure is a line in the log and
+    /// the language is skipped, the installation continues.
     CompilePo { po: String, mo: String },
-    /// Дописать `"last-edited": ts` в `metadata.json` (порядок прочих
-    /// ключей сохранить, отступ 4). `create` — файла может не быть (тема):
-    /// тогда создать из одного этого поля.
+    /// Append `"last-edited": ts` to `metadata.json` (keep the order of the other
+    /// keys, indent 4). `create` — the file may not exist (a theme):
+    /// then create it from this single field.
     WriteLastEdited { meta: String, ts: i64, create: bool },
-    /// Добавить строку в список gsettings, если её там нет.
+    /// Add a string to a gsettings list if it is not there.
     GsettingsListAdd { schema: String, key: String, item: String },
-    /// Убрать из списка gsettings все записи спайса ([`list_without`]):
-    /// `field` — номер поля записи через `:` (у апплетов 3, у десклетов 0),
-    /// `None` — запись целиком (расширения, действия Nemo).
+    /// Remove all of the spice's entries from a gsettings list ([`list_without`]):
+    /// `field` — the number of the `:`-separated field of an entry (3 for applets, 0 for desklets),
+    /// `None` — the whole entry (extensions, Nemo actions).
     GsettingsListDrop { schema: String, key: String, item: String, field: Option<u32> },
-    /// Сбросить ключ gsettings к умолчанию, если он сейчас равен `value`
-    /// (снимаемая тема оболочки выбрана сейчас).
+    /// Reset a gsettings key to the default if it currently equals `value`
+    /// (the shell theme being removed is selected now).
     GsettingsResetIf { schema: String, key: String, value: String },
-    /// Удалить каталог, только если он пуст (каталоги языков переводов).
+    /// Delete a directory only if it is empty (translation language directories).
     RemoveDirIfEmpty { path: String },
-    /// Забыть запись журнала установленного.
+    /// Forget the installed log record.
     Forget { content_id: String },
-    /// `org.Cinnamon.ReloadXlet(uuid, тип)` — включённый xlet подхватывает
-    /// новый код без перезапуска оболочки.
+    /// `org.Cinnamon.ReloadXlet(uuid, type)` — an enabled xlet picks up
+    /// the new code without restarting the shell.
     ReloadXlet { uuid: String, xlet: String },
-    /// Запись в журнал установленного.
+    /// A record in the installed log.
     Record { content_id: String, provider: String, web_url: String },
 }
 
-/// Каталог установки типа (`~/.themes`, `~/.local/share/cinnamon/applets`…).
+/// The type's install directory (`~/.themes`, `~/.local/share/cinnamon/applets`…).
 pub fn install_root(env: &SpiceEnv, t: &SpiceType) -> String {
     let dest = t.row().map_or("", |r| r.dest);
     snap_join(&env.home, dest)
 }
 
-/// Каталог переводов: `~/.local/share/locale/<яз>/LC_MESSAGES`.
+/// The translations directory: `~/.local/share/locale/<lang>/LC_MESSAGES`.
 pub fn locale_dir(env: &SpiceEnv, lang: &str) -> String {
     format!("{}/.local/share/locale/{lang}/LC_MESSAGES", env.home.trim_end_matches('/'))
 }
 
-/// План установки распакованного архива `extracted` (в нём `<ключ>/`, у
-/// действий ещё `<ключ>.nemo_action`). Отказ — до первого побочного
-/// эффекта.
+/// The install plan of an unpacked archive `extracted` (with `<key>/` in it, for
+/// actions also `<key>.nemo_action`). A refusal comes before the first side
+/// effect.
 pub fn plan_install(
     env: &SpiceEnv,
     t: &SpiceType,
@@ -2209,8 +2209,8 @@ pub fn plan_install(
         });
     }
     if t.is_action() && !ctx.is_update {
-        // Свежее действие кладётся ВЫКЛЮЧЕННЫМ: Nemo показывает в меню всё,
-        // чего нет в этом списке, а включает его человек сам.
+        // A fresh action is put in DISABLED: Nemo shows in the menu everything
+        // that is not in this list, and the person enables it themselves.
         let (schema, list_key) = crate::de_apply::NEMO_DISABLED;
         steps.push(SpiceStep::GsettingsListAdd { schema: schema.into(), key: list_key.into(), item: action_file.clone() });
     }
@@ -2221,9 +2221,9 @@ pub fn plan_install(
     Ok(steps)
 }
 
-/// Снимок дерева из списка записей zip (`каталог/` — каталоги) с текстами
-/// нужных файлов (`metadata.json`, `.nemo_action`); остальные файлы —
-/// пустые. Родительские каталоги появляются сами.
+/// A tree snapshot from the list of zip entries (`dir/` — directories) with the texts
+/// of the needed files (`metadata.json`, `.nemo_action`); other files are
+/// empty. Parent directories appear by themselves.
 pub fn snapshot_from_entries(root: &str, entries: &[String], texts: &Map<String, Value>) -> FsSnapshot {
     let root = root.trim_end_matches('/').to_string();
     let mut dirs: Map<String, Value> = Map::new();
@@ -2256,9 +2256,9 @@ pub fn snapshot_from_entries(root: &str, entries: &[String], texts: &Map<String,
     FsSnapshot::from_json(&serde_json::json!({ "dirs": dirs, "files": files }))
 }
 
-/// Снимок настоящего каталога (распакованный архив): все каталоги и
-/// файлы, тексты — только у `metadata.json` и `*.nemo_action` (не больше
-/// 1 МБ). Ссылки не разворачиваются и считаются файлами.
+/// A snapshot of a real directory (an unpacked archive): all directories and
+/// files, texts — only for `metadata.json` and `*.nemo_action` (no more than
+/// 1 MB). Links are not followed and count as files.
 pub fn live_snapshot(root: &Path) -> FsSnapshot {
     fn walk(dir: &Path, dirs: &mut Map<String, Value>, files: &mut Map<String, Value>) {
         let mut names = Vec::new();
@@ -2289,16 +2289,16 @@ pub fn live_snapshot(root: &Path) -> FsSnapshot {
     FsSnapshot::from_json(&serde_json::json!({ "dirs": dirs, "files": files }))
 }
 
-// ── Включение апплета (для вкладки; решение Wehrwolfmann 17.10.2026) ────
+// ── Enabling an applet (for the tab; Wehrwolfmann's decision of 17.10.2026) ──
 
-/// Добавить апплет в НАЧАЛО правой зоны первой панели, как это делает
-/// окно настроек Cinnamon: записи той же панели и зоны с порядком ≥ 0
-/// сдвигаются на один, новая — `panel1:right:0:<uuid>:<номер>`.
-/// Возвращает новый список и новое значение `next-applet-id`.
+/// Add an applet at the START of the right zone of the first panel, as the
+/// Cinnamon settings window does: entries of the same panel and zone with order ≥ 0
+/// are shifted by one, the new one is `panel1:right:0:<uuid>:<number>`.
+/// Returns the new list and the new value of `next-applet-id`.
 ///
-/// Номер экземпляра берётся не меньше, чем на единицу больше уже занятых:
-/// у штатных записей счётчик бывает 0 при занятых номерах, и тогда два
-/// апплета получили бы один номер и общие настройки.
+/// The instance number is taken at least one greater than the numbers already taken:
+/// for stock entries the counter can be 0 while numbers are taken, and then two
+/// applets would get one number and shared settings.
 pub fn applet_enable_front(entries: &[String], uuid: &str, next_id: i64) -> (Vec<String>, i64) {
     let mut max_used = -1i64;
     let mut out: Vec<String> = entries
@@ -2324,12 +2324,12 @@ pub fn applet_enable_front(entries: &[String], uuid: &str, next_id: i64) -> (Vec
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Обновления и удаление
+//  Updates and uninstalling
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Отметка установленной версии — поле `last-edited` в `metadata.json`
-/// (его дописывает установка, и Rexon, и окно настроек Cinnamon). Число
-/// либо строка с числом; нет поля — версия неизвестна.
+/// The installed version mark — the `last-edited` field in `metadata.json`
+/// (installation appends it, both Rexon's and the Cinnamon settings window's). A number
+/// or a string with a number; no field — the version is unknown.
 pub fn installed_last_edited(meta: &Value) -> Option<i64> {
     match meta.get("last-edited")? {
         Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
@@ -2338,18 +2338,18 @@ pub fn installed_last_edited(meta: &Value) -> Option<i64> {
     }
 }
 
-/// Есть ли обновление: отметка установленного старше правки в индексе.
-/// Отметки нет (спайс положен руками) — обновления не предлагаем, как и
-/// окно настроек Cinnamon: сравнивать не с чем.
+/// Whether there is an update: the installed mark is older than the edit in the index.
+/// No mark (the spice was put in by hand) — we do not offer an update, just like
+/// the Cinnamon settings window: there is nothing to compare with.
 pub fn has_update(installed: Option<i64>, index_last_edited: i64) -> bool {
     installed.is_some_and(|i| i < index_last_edited)
 }
 
-/// Записи списка включённых без экземпляров спайса `item`. `field` — номер
-/// поля записи через `:` (апплет `panel1:right:0:<uuid>:<номер>` — 3,
-/// десклет `<uuid>:<номер>:<x>:<y>` — 0), `None` — запись целиком. Ведущий
-/// `!` (выключенный экземпляр) при сравнении не учитывается. Сравнение
-/// точное: `a@b` не задевает `xa@b`.
+/// The entries of the enabled list without instances of the spice `item`. `field` — the number of
+/// the `:`-separated field of an entry (an applet `panel1:right:0:<uuid>:<number>` — 3,
+/// a desklet `<uuid>:<number>:<x>:<y>` — 0), `None` — the whole entry. A leading
+/// `!` (a disabled instance) is ignored in the comparison. The comparison is
+/// exact: `a@b` does not touch `xa@b`.
 pub fn list_without(entries: &[String], item: &str, field: Option<u32>) -> Vec<String> {
     entries
         .iter()
@@ -2364,21 +2364,21 @@ pub fn list_without(entries: &[String], item: &str, field: Option<u32>) -> Vec<S
         .collect()
 }
 
-/// Каталог переводов всех языков: `~/.local/share/locale`.
+/// The translations directory of all languages: `~/.local/share/locale`.
 pub fn locale_root(env: &SpiceEnv) -> String {
     format!("{}/.local/share/locale", env.home.trim_end_matches('/'))
 }
 
-/// План удаления спайса `key`. `fs` — снимок `~/.local/share/locale` (по
-/// нему находятся `.mo` спайса во всех языках). Сначала спайс выключается
-/// (запись уходит из списка включённых, выбранная тема сбрасывается к
-/// умолчанию), потом снимаются его файлы: каталог, у действия ещё
-/// `.nemo_action`, переводы (опустевшие каталоги языков — тоже), настройки
-/// `~/.config/cinnamon/spices/<uuid>` и прежние `~/.cinnamon/configs/<uuid>`;
-/// в конце — запись журнала установленного.
+/// The uninstall plan of the spice `key`. `fs` — a snapshot of `~/.local/share/locale` (it
+/// is used to find the spice's `.mo` in all languages). First the spice is disabled
+/// (the entry leaves the enabled list, a selected theme is reset to
+/// the default), then its files are removed: the directory, for an action also
+/// `.nemo_action`, translations (emptied language directories too), the settings
+/// `~/.config/cinnamon/spices/<uuid>` and the old `~/.cinnamon/configs/<uuid>`;
+/// at the end — the installed log record.
 ///
-/// Действие Nemo «выключено» — это его строка в `disabled-actions`; после
-/// удаления файла она не нужна и тоже убирается.
+/// A Nemo action being "disabled" is its line in `disabled-actions`; after
+/// the file is removed it is not needed and is removed too.
 pub fn plan_uninstall(env: &SpiceEnv, t: &SpiceType, key: &str, fs: &FsSnapshot) -> Result<Vec<SpiceStep>, SpiceRefusal> {
     use crate::de_customization::{Activate, EntryFmt};
     if !valid_key(key) {
@@ -2438,8 +2438,8 @@ mod plan_tests {
         names: Vec<String>,
     }
 
-    /// Деревья шести настоящих архивов (снято 17.10.2026): имена записей
-    /// zip, их права и тексты `metadata.json` / `.nemo_action`.
+    /// The trees of six real archives (taken 17.10.2026): the names of zip
+    /// entries, their permissions and the texts of `metadata.json` / `.nemo_action`.
     fn tree(archive: &str) -> Tree {
         let all: Value = serde_json::from_str(
             &std::fs::read_to_string(format!("{}/tests/data/cinnamon_spices/trees.json", env!("CARGO_MANIFEST_DIR"))).unwrap(),
@@ -2529,7 +2529,7 @@ mod plan_tests {
             "/home/u/.local/share/locale/da/LC_MESSAGES/1440@jvlianodorneles.mo".into()
         )));
         assert!(po.iter().all(|(p, _)| !p.ends_with(".pot")));
-        // Без cinnamon-version у апплета — совместим; версии нет вовсе — тоже.
+        // An applet without cinnamon-version is compatible; no version at all — too.
         let unknown = InstallContext { cinnamon: None, ..ctx(false, false) };
         assert!(plan_install(&env(), a, &s, &tr.snap, X, &unknown).is_ok());
     }
@@ -2542,13 +2542,13 @@ mod plan_tests {
         assert_eq!(lay.version_subdir.as_deref(), Some("3.8"));
         assert!(lay.po_files.iter().any(|p| p == "ru.po"));
         assert!(lay.po_files.windows(2).all(|w| w[0] < w[1]));
-        // На старом Cinnamon — 3.0; ниже 3.0 — корня без applet.js не хватит.
+        // On an old Cinnamon — 3.0; below 3.0 a root without applet.js will not do.
         assert_eq!(check_layout(&tr.snap, X, a, "weather@mockturtl", Some((3, 6, 0))).unwrap().version_subdir.as_deref(), Some("3.0"));
         assert_eq!(
             check_layout(&tr.snap, X, a, "weather@mockturtl", Some((2, 8, 0))),
             Err(SpiceRefusal::NoMainJs { file: "applet.js".into() })
         );
-        // Версия неизвестна — годится любой подкаталог.
+        // The version is unknown — any subdirectory will do.
         assert_eq!(check_layout(&tr.snap, X, a, "weather@mockturtl", None).unwrap().version_subdir.as_deref(), Some("3.8"));
 
         let s = spice("weather@mockturtl", Value::from(17));
@@ -2564,7 +2564,7 @@ mod plan_tests {
 
     #[test]
     fn multiversion_flag_without_subdirs() {
-        // powerman: "multiversion": true, но подкаталогов нет; версии 6.4/6.6.
+        // powerman: "multiversion": true, but there are no subdirectories; versions 6.4/6.6.
         let a = type_for_key("applet").unwrap();
         let tr = tree("powerman@dr.drummie");
         let lay = check_layout(&tr.snap, X, a, "powerman@dr.drummie", CUR).unwrap();
@@ -2591,7 +2591,7 @@ mod plan_tests {
         assert_eq!(steps[2], SpiceStep::CopyTree { from: "/tmp/x/AlbumArt3.0@claudiux".into(), to: format!("{root}/AlbumArt3.0@claudiux") });
         assert!(steps.contains(&SpiceStep::ReloadXlet { uuid: "AlbumArt3.0@claudiux".into(), xlet: "DESKLET".into() }));
         assert!(!po_steps(&steps).is_empty());
-        // Без desklet.js — отказ.
+        // Without desklet.js — a refusal.
         let mut names = tr.names.clone();
         names.retain(|n| n != "AlbumArt3.0@claudiux/desklet.js");
         let all: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/data/cinnamon_spices/trees.json", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap();
@@ -2612,9 +2612,9 @@ mod plan_tests {
             provider: PROVIDER_ID.into(),
             web_url: "https://cinnamon-spices.linuxmint.com/extensions/view/107".into(),
         });
-        // На Cinnamon 3.4 (до 3.6) — несовместимо.
+        // On Cinnamon 3.4 (before 3.6) — incompatible.
         assert!(matches!(check_layout(&tr.snap, X, e, key, Some((3, 4, 0))), Err(SpiceRefusal::Incompatible { .. })));
-        // Расширение без cinnamon-version — отказ; апплет без него — можно.
+        // An extension without cinnamon-version — a refusal; an applet without it — allowed.
         let meta = format!("{{\"uuid\": \"{key}\", \"name\": \"n\", \"description\": \"d\"}}");
         let mut texts = Map::new();
         texts.insert(format!("{key}/metadata.json"), Value::from(meta));
@@ -2642,7 +2642,7 @@ mod plan_tests {
                 },
             ]
         );
-        // Без cinnamon/cinnamon.css — не тема Cinnamon.
+        // Without cinnamon/cinnamon.css — not a Cinnamon theme.
         let mut names = tr.names.clone();
         names.retain(|n| n != "Adara-Dark/cinnamon/cinnamon.css");
         let snap = snapshot_from_entries(X, &names, &Map::new());
@@ -2679,10 +2679,10 @@ mod plan_tests {
             ]
         );
         assert!(po_steps(&fresh).iter().any(|(_, mo)| mo == &format!("/home/u/.local/share/locale/pt_BR/LC_MESSAGES/{key}.mo")));
-        // Обновление: список выключенных не трогаем; включённость не важна.
+        // An update: we do not touch the disabled list; being enabled does not matter.
         let update = plan_install(&env(), act, &s, &tr.snap, X, &ctx(true, true)).unwrap();
         assert!(!update.iter().any(|s| matches!(s, SpiceStep::GsettingsListAdd { .. } | SpiceStep::ReloadXlet { .. })));
-        // Без .nemo_action — отказ.
+        // Without .nemo_action — a refusal.
         let names: Vec<String> = tr.names.iter().filter(|n| !n.ends_with(".nemo_action")).cloned().collect();
         let all: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/data/cinnamon_spices/trees.json", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap();
         let snap = snapshot_from_entries(X, &names, all[key]["texts"].as_object().unwrap());
@@ -2692,23 +2692,23 @@ mod plan_tests {
     #[test]
     fn refusals() {
         let a = type_for_key("applet").unwrap();
-        // ../ и абсолютные пути.
+        // ../ and absolute paths.
         for bad in ["../evil", "x/../../evil", "/etc/passwd", "a\\..\\b"] {
             assert_eq!(check_entry_names(&[bad.to_string()]), Err(SpiceRefusal::UnsafePath { entry: bad.into() }), "{bad}");
         }
         assert!(check_entry_names(&["a/./b".into(), "a/b/../c".into()]).is_ok());
 
-        // Каталог в архиве назван не по ключу.
+        // The directory in the archive is not named after the key.
         let tr = tree("1440@jvlianodorneles");
         assert_eq!(check_layout(&tr.snap, X, a, "other@x", CUR), Err(SpiceRefusal::NotZipLayout));
         assert_eq!(check_layout(&tr.snap, X, a, "../x", CUR), Err(SpiceRefusal::InvalidKey));
 
-        // uuid в metadata.json ≠ каталог.
+        // uuid in metadata.json ≠ the directory.
         let mut texts = Map::new();
         texts.insert("1440@jvlianodorneles/metadata.json".into(), Value::from(r#"{"uuid": "1440@someone", "name": "n", "description": "d"}"#));
         let snap = snapshot_from_entries(X, &tr.names, &texts);
         assert_eq!(check_layout(&snap, X, a, "1440@jvlianodorneles", CUR), Err(SpiceRefusal::UuidMismatch { found: "1440@someone".into() }));
-        // Нет metadata.json, битый, без name.
+        // No metadata.json, broken, without name.
         let snap = snapshot_from_entries(X, &tr.names, &Map::new());
         assert_eq!(check_layout(&snap, X, a, "1440@jvlianodorneles", CUR), Err(SpiceRefusal::BadMetadata), "пустой текст не JSON");
         let names: Vec<String> = tr.names.iter().filter(|n| !n.ends_with("metadata.json")).cloned().collect();
@@ -2717,7 +2717,7 @@ mod plan_tests {
         texts.insert("1440@jvlianodorneles/metadata.json".into(), Value::from(r#"{"uuid": "1440@jvlianodorneles", "description": "d"}"#));
         let snap = snapshot_from_entries(X, &tr.names, &texts);
         assert_eq!(check_layout(&snap, X, a, "1440@jvlianodorneles", CUR), Err(SpiceRefusal::MissingProperty { name: "name".into() }));
-        // Несовместимая версия — понятный текст.
+        // An incompatible version — a clear text.
         texts.insert(
             "1440@jvlianodorneles/metadata.json".into(),
             Value::from(r#"{"uuid": "1440@jvlianodorneles", "name": "n", "description": "d", "cinnamon-version": ["6.8"]}"#),
@@ -2727,7 +2727,7 @@ mod plan_tests {
         assert_eq!(err, SpiceRefusal::Incompatible { need: vec!["6.8".into()], current: (6, 6, 9) });
         let msg = err.message("1440");
         assert!(msg.contains("6.8") && msg.contains("6.6.9") && msg.contains("1440"), "{msg}");
-        // Каждый отказ даёт непустой текст с именем.
+        // Every refusal gives a non-empty text with the name.
         for r in [
             SpiceRefusal::InvalidKey,
             SpiceRefusal::UnsafePath { entry: "../x".into() },
@@ -2793,29 +2793,29 @@ mod plan_tests {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Исполнитель: скачивание, распаковка, шаги плана
+//  Executor: downloading, unpacking, plan steps
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Потолок архива спайса: самый крупный на сайте (замер 17.10.2026) —
-/// расширение около 83 МБ.
+/// The spice archive ceiling: the biggest on the site (measured 17.10.2026) is
+/// an extension of about 83 MB.
 pub const MAX_ARCHIVE_BYTES: i64 = 120 << 20;
-/// Таймаут скачивания архива, секунды (на соединение и каждое чтение).
+/// The archive download timeout, seconds (for connecting and each read).
 pub const DOWNLOAD_TIMEOUT_SECS: u64 = 120;
 
-/// Не файловые побочные эффекты исполнителя: настройки gsettings и вызов
-/// оболочки по DBus. В бою — [`LiveSys`], в тестах — запись в память.
+/// The executor's non-file side effects: gsettings settings and calling
+/// the shell over DBus. In production — [`LiveSys`], in tests — recording to memory.
 pub trait SpiceSys {
-    /// Список строк ключа; `None` — прочитать не удалось (нет схемы).
+    /// A key's string list; `None` — could not read (no schema).
     fn list_get(&mut self, schema: &str, key: &str) -> Option<Vec<String>>;
     fn list_set(&mut self, schema: &str, key: &str, items: &[String]) -> Result<(), String>;
-    /// Строковый ключ; `None` — прочитать не удалось.
+    /// A string key; `None` — could not read.
     fn string_get(&mut self, schema: &str, key: &str) -> Option<String>;
     fn reset(&mut self, schema: &str, key: &str) -> Result<(), String>;
-    /// `org.Cinnamon.ReloadXlet(uuid, тип)`.
+    /// `org.Cinnamon.ReloadXlet(uuid, type)`.
     fn reload_xlet(&mut self, uuid: &str, xlet: &str) -> Result<(), String>;
 }
 
-/// Настоящие `gsettings` и `gdbus`.
+/// The real `gsettings` and `gdbus`.
 pub struct LiveSys;
 
 fn run_out(argv: &[&str], timeout: f64) -> Result<String, String> {
@@ -2850,7 +2850,7 @@ impl SpiceSys for LiveSys {
     }
 }
 
-/// Исполнитель без gsettings и DBus — для чисто файловых планов.
+/// An executor without gsettings and DBus — for purely file-based plans.
 struct NoSys;
 
 impl SpiceSys for NoSys {
@@ -2871,17 +2871,17 @@ impl SpiceSys for NoSys {
     }
 }
 
-/// Итог исполнения плана: что не встало, но установку не отменило.
+/// The result of executing a plan: what did not get installed but did not cancel the installation.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExecReport {
-    /// Языки, чей `.po` не собрался.
+    /// Languages whose `.po` did not build.
     pub bad_po: Vec<String>,
-    /// Не удалось перезагрузить включённый xlet (оболочка не запущена…).
+    /// Could not reload the enabled xlet (the shell is not running…).
     pub reload_failed: bool,
 }
 
-/// Путь под одним из корней (`home`, каталог настроек, каталог работы):
-/// исполнитель ничего не удаляет и не пишет вне них.
+/// A path under one of the roots (`home`, the config directory, the work directory):
+/// the executor deletes and writes nothing outside them.
 fn under(path: &str, roots: &[&str]) -> bool {
     !path.contains("/../")
         && !path.ends_with("/..")
@@ -2900,9 +2900,9 @@ fn remove_tree(path: &str) -> std::io::Result<()> {
     }
 }
 
-/// Скопировать дерево с правами файлов. Ссылки внутри архива не
-/// переносятся: спайсу они не нужны, а ссылка наружу из каталога —
-/// лазейка.
+/// Copy a tree with file permissions. Links inside the archive are not
+/// carried over: the spice does not need them, and a link pointing out of the directory is
+/// a loophole.
 fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for e in std::fs::read_dir(from)? {
@@ -2919,8 +2919,8 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// `metadata.json` с полем `last-edited` (прочие ключи — в прежнем порядке,
-/// отступ 4, как у окна настроек Cinnamon).
+/// `metadata.json` with the `last-edited` field (other keys in the previous order,
+/// indent 4, as in the Cinnamon settings window).
 pub fn with_last_edited(meta_text: Option<&str>, ts: i64) -> Result<String, String> {
     let mut obj: Map<String, Value> = match meta_text {
         Some(t) => match serde_json::from_str::<Value>(t) {
@@ -2937,10 +2937,10 @@ pub fn with_last_edited(meta_text: Option<&str>, ts: i64) -> Result<String, Stri
     Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
-/// Исполнить план. `roots` — где разрешено писать и удалять; `journal` —
-/// шаги `Record`/`Forget`. Первая неудача файлового шага останавливает
-/// исполнение (`Err` — текст причины); неудачный перевод и перезагрузка
-/// xlet — примечания отчёта.
+/// Execute the plan. `roots` — where writing and deleting are allowed; `journal` —
+/// the `Record`/`Forget` steps. The first failure of a file step stops
+/// execution (`Err` — the reason text); a failed translation and xlet reload
+/// are report notes.
 pub fn execute(
     steps: &[SpiceStep],
     roots: &[&str],
@@ -2976,7 +2976,7 @@ pub fn execute(
             }
             SpiceStep::RemoveDirIfEmpty { path } => {
                 guard(path)?;
-                let _ = std::fs::remove_dir(path); // не пуст — остаётся
+                let _ = std::fs::remove_dir(path); // not empty — stays
             }
             SpiceStep::CopyTree { from, to } => {
                 guard(to)?;
@@ -3018,7 +3018,7 @@ pub fn execute(
                 }
             }
             SpiceStep::GsettingsListDrop { schema, key, item, field } => {
-                // Схемы нет (Cinnamon/Nemo не стоят) — и выключать нечего.
+                // No schema (Cinnamon/Nemo are not installed) — nothing to disable either.
                 if let Some(list) = sys.list_get(schema, key) {
                     let kept = list_without(&list, item, *field);
                     if kept.len() != list.len() {
@@ -3043,9 +3043,9 @@ pub fn execute(
     Ok(report)
 }
 
-/// Состояние спайса на диске: `None` — не стоит; `Some(отметка)` — стоит,
-/// отметка `last-edited` из `metadata.json` (её нет у положенного руками).
-/// Действие Nemo стоит, если есть его `.nemo_action`.
+/// The spice state on disk: `None` — not installed; `Some(mark)` — installed,
+/// the `last-edited` mark from `metadata.json` (absent for one put in by hand).
+/// A Nemo action is installed if its `.nemo_action` exists.
 pub fn installed_state(env: &SpiceEnv, t: &SpiceType, key: &str) -> Option<Option<i64>> {
     if !valid_key(key) {
         return None;
@@ -3064,8 +3064,8 @@ pub fn installed_state(env: &SpiceEnv, t: &SpiceType, key: &str) -> Option<Optio
     Some(meta.as_ref().and_then(installed_last_edited))
 }
 
-/// Включён ли xlet (есть в своём списке включённых). Темы и действия — нет:
-/// им после обновления перезагружать нечего.
+/// Whether an xlet is enabled (it is in its enabled list). Themes and actions — no:
+/// there is nothing to reload for them after an update.
 pub fn is_enabled(sys: &mut dyn SpiceSys, t: &SpiceType, key: &str) -> bool {
     use crate::de_customization::{Activate, EntryFmt};
     let Some(Activate::GsettingsList { schema, key: list, entry, .. }) = t.row().map(|r| &r.activate) else {
@@ -3079,13 +3079,13 @@ pub fn is_enabled(sys: &mut dyn SpiceSys, t: &SpiceType, key: &str) -> bool {
     sys.list_get(schema, list).is_some_and(|l| list_without(&l, key, field).len() != l.len())
 }
 
-/// Имена записей zip; `None` — это не zip.
+/// Names of zip entries; `None` — this is not a zip.
 fn zip_names(archive: &Path) -> Option<Vec<String>> {
     let mut zf = zip::ZipArchive::new(std::fs::File::open(archive).ok()?).ok()?;
     (0..zf.len()).map(|i| zf.by_index(i).ok().map(|f| f.name().to_string())).collect()
 }
 
-/// Что поставил план (для журнала): каталог спайса и у действия — файл.
+/// What the plan installed (for the log): the spice directory and, for an action, the file.
 fn planned_paths(steps: &[SpiceStep]) -> Vec<String> {
     steps
         .iter()
@@ -3096,7 +3096,7 @@ fn planned_paths(steps: &[SpiceStep]) -> Vec<String> {
         .collect()
 }
 
-/// Фраза итога установки.
+/// The install result sentence.
 pub fn installed_message(t: &SpiceType, name: &str, is_update: bool, report: &ExecReport, reloaded: bool) -> String {
     let mut text = if is_update {
         trf("%1 is updated.", &[&name])
@@ -3120,10 +3120,10 @@ pub fn installed_message(t: &SpiceType, name: &str, is_update: bool, report: &Ex
     text
 }
 
-/// Поставить уже скачанный архив `archive`: проверка записей, распаковка в
-/// `work`, проверка дерева, план, исполнение. `journal` — запись журнала
-/// установленного (`Record`, с путями, которые поставил план). Каталог
-/// `work` остаётся вызывающему.
+/// Install an already downloaded archive `archive`: checking entries, unpacking into
+/// `work`, checking the tree, the plan, execution. `journal` — the installed log
+/// record (`Record`, with the paths the plan installed). The `work` directory
+/// is left to the caller.
 #[allow(clippy::too_many_arguments)]
 pub fn install_archive(
     env: &SpiceEnv,
@@ -3140,11 +3140,11 @@ pub fn install_archive(
     install_archive_in(env, t, s, name, archive, work, cinnamon, None, sys, journal, log)
 }
 
-/// [`install_archive`] из раздела GTK или рамок окон (`section`, см.
-/// [`PART_SECTIONS`]): тема ставится, только если в самом архиве есть то,
-/// что этот раздел применит ([`fits_section`]). Витрина раздела уже
-/// отобрана по дереву репозитория, но ставится архив сайта — и проверяется
-/// он, а не наш прогноз.
+/// [`install_archive`] from the GTK or window frames section (`section`, see
+/// [`PART_SECTIONS`]): the theme is installed only if the archive itself has what
+/// this section will apply ([`fits_section`]). The section storefront is already
+/// filtered by the repository tree, but it is the site archive that gets installed — and it is
+/// the archive that is checked, not our forecast.
 #[allow(clippy::too_many_arguments)]
 pub fn install_archive_in(
     env: &SpiceEnv,
@@ -3202,8 +3202,8 @@ fn now_secs() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
-/// Правка журнала установленного: пишется общий журнал установки,
-/// `ocs_installed.json` — его зеркало (шаг 5б слияния установщиков).
+/// Editing the installed log: the shared install log is written,
+/// `ocs_installed.json` is its mirror (step 5b of merging the installers).
 fn journal_edit(env: &SpiceEnv, edit: impl FnOnce(&mut Map<String, Value>)) -> Result<(), String> {
     let path = crate::ocs_store::install_log_path_xdg(Some(&env.config), &env.home);
     let mut data = crate::install_journal::store_log_view(&path);
@@ -3211,8 +3211,8 @@ fn journal_edit(env: &SpiceEnv, edit: impl FnOnce(&mut Map<String, Value>)) -> R
     crate::install_journal::put_store_log(&path, &data).map_err(|e| e.to_string())
 }
 
-/// Записать спайс в журнал установленного (`provider_id` —
-/// [`PROVIDER_ID`], адрес — страница сайта).
+/// Record the spice in the installed log (`provider_id` —
+/// [`PROVIDER_ID`], the address — the site page).
 pub fn journal_record(env: &SpiceEnv, item: &ThemeItem, t: &SpiceType, web_url: &str, paths: &[String]) -> Result<(), String> {
     let entry = crate::ocs_store::InstalledItem {
         content_id: item.id.clone(),
@@ -3233,8 +3233,8 @@ pub fn journal_record(env: &SpiceEnv, item: &ThemeItem, t: &SpiceType, web_url: 
     })
 }
 
-/// Каталог работы под кэшем Rexon (а не во `/tmp`: там память, а архив
-/// бывает под сотню мегабайт).
+/// The work directory under Rexon's cache (not in `/tmp`: that is memory, and an archive
+/// can be close to a hundred megabytes).
 fn make_work_dir() -> Result<std::path::PathBuf, String> {
     let cache = live_cache_path(&TYPES[0]);
     let base = Path::new(&cache).parent().map(Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
@@ -3248,8 +3248,8 @@ fn make_work_dir() -> Result<std::path::PathBuf, String> {
     Err(trf("couldn't create a temporary folder in %1", &[&base.display()]))
 }
 
-/// Установить (или обновить) спайс карточки витрины: запись индекса — из
-/// кэша, архив — с сайта (только по кнопке), дальше [`install_archive`].
+/// Install (or update) the spice of a storefront card: the index record — from
+/// the cache, the archive — from the site (only on a button press), then [`install_archive`].
 pub fn live_install(item: &ThemeItem, mut log: Box<dyn FnMut(&str) + Send>, progress: Option<Box<dyn FnMut(i64, i64) + Send>>) -> (bool, String) {
     let Some((t, key)) = parse_item_id(&item.id) else {
         return (false, trf("%1 isn't from Cinnamon Spices.", &[&item.name]));
@@ -3286,7 +3286,7 @@ pub fn live_install(item: &ThemeItem, mut log: Box<dyn FnMut(&str) + Send>, prog
     result
 }
 
-/// Снять спайс по плану [`plan_uninstall`] через `sys`.
+/// Remove a spice by the [`plan_uninstall`] plan through `sys`.
 pub fn uninstall_with(env: &SpiceEnv, t: &SpiceType, key: &str, name: &str, sys: &mut dyn SpiceSys, log: &mut dyn FnMut(&str)) -> (bool, String) {
     let locales = live_snapshot(Path::new(&locale_root(env)));
     let plan = match plan_uninstall(env, t, key, &locales) {
@@ -3309,12 +3309,12 @@ pub fn uninstall_with(env: &SpiceEnv, t: &SpiceType, key: &str, name: &str, sys:
     }
 }
 
-/// План снятия спайса `plan`, в котором файлы, записанные покупкой
-/// `content_id` в общем журнале установки (рядом с журналом магазина
-/// `log_path`), снимает журнал — только своё (шаг 3г слияния установщиков).
-/// Выключение (списки gsettings, сброс темы) и уборка переводов и настроек —
-/// шаги плана как были: в журнал они не пишутся. Покупки в журнале нет —
-/// план как есть.
+/// The removal plan `plan` of a spice, in which the files recorded by the purchase
+/// `content_id` in the shared install log (next to the store log
+/// `log_path`) are removed by the log — only its own (step 3d of merging the installers).
+/// Disabling (gsettings lists, theme reset) and cleaning up translations and settings are
+/// plan steps as before: they are not written to the log. If the purchase is not in the log, the
+/// plan stays as is.
 fn with_journal_removal(plan: &[SpiceStep], log_path: &str, content_id: &str) -> Vec<SpiceStep> {
     use crate::ext_manager::ExtStep;
     use crate::install_journal as journal;
@@ -3340,7 +3340,7 @@ fn with_journal_removal(plan: &[SpiceStep], log_path: &str, content_id: &str) ->
     journal::merge_into_plan(plan, &path_of, entry, ours)
 }
 
-/// «Удалить» спайса из журнала установленного (`spices:<тип>:<ключ>`).
+/// "Remove" of a spice from the installed log (`spices:<type>:<key>`).
 pub fn live_uninstall(content_id: &str, mut log: Box<dyn FnMut(&str) + Send>) -> (bool, String) {
     let Some((t, key)) = parse_item_id(content_id) else {
         return (false, trf("%1 isn't from Cinnamon Spices.", &[&content_id]));
@@ -3352,12 +3352,12 @@ pub fn live_uninstall(content_id: &str, mut log: Box<dyn FnMut(&str) + Send>) ->
     uninstall_with(&env, t, key, &name, &mut LiveSys, &mut |l| log(l))
 }
 
-/// После «Удалить» на плитке с диска (`theme_removal::commit` снял каталог
-/// или `.nemo_action`) — убрать остальное, что спайс оставил: переводы,
-/// настройки, у действия — его каталог. Только файлы под `env.home` и
-/// каталогом настроек; списки gsettings не трогаются (включённое удалить
-/// нельзя, журнал правит сам `commit`). Темы и пути не из каталогов
-/// спайсов — ничего не делает.
+/// After "Remove" on a disk tile (`theme_removal::commit` removed the directory
+/// or the `.nemo_action`) — clean up whatever else the spice left: translations,
+/// settings, for an action — its directory. Only files under `env.home` and
+/// the config directory; gsettings lists are not touched (an enabled one cannot be
+/// removed, `commit` edits the log itself). Themes and paths not from spice
+/// directories — does nothing.
 pub fn cleanup_after_removal(env: &SpiceEnv, path: &str) {
     let p = path.trim_end_matches('/');
     let Some((parent, name)) = p.rsplit_once('/') else { return };
@@ -3387,17 +3387,17 @@ pub fn cleanup_after_removal(env: &SpiceEnv, path: &str) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Карточка витрины: строки, кнопка, предупреждение
+//  The storefront card: lines, button, warning
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Вызовы, которые Cinnamon выполняет, остановившись до ответа: спайс с
-/// ними может подвешивать оболочку (то же правило, что у окна настроек
-/// Cinnamon). Установку это не запрещает — предупреждает.
+/// Calls that Cinnamon executes while stopping until the answer: a spice with
+/// them can hang the shell (the same rule as in the Cinnamon settings
+/// window). This does not forbid installation — it warns.
 pub const BLOCKING_CALLS: [&str; 4] = ["spawn_sync", "spawn_command_line_sync", "GTop", "get_file_contents_utf8_sync"];
 
-/// Есть ли в `.js` установленного спайса блокирующие вызовы
-/// ([`BLOCKING_CALLS`]). Читается не больше 4 МБ на файл и 2000 файлов;
-/// ссылки не разворачиваются.
+/// Whether the `.js` of an installed spice has blocking calls
+/// ([`BLOCKING_CALLS`]). No more than 4 MB per file and 2000 files are read;
+/// links are not followed.
 pub fn scan_for_danger(dir: &Path) -> bool {
     fn walk(dir: &Path, budget: &mut u32) -> bool {
         let Ok(rd) = std::fs::read_dir(dir) else { return false };
@@ -3426,24 +3426,24 @@ pub fn scan_for_danger(dir: &Path) -> bool {
     walk(dir, &mut budget)
 }
 
-/// Каталог установленного спайса для проверки [`scan_for_danger`]; у тем
-/// кода нет — `None`.
+/// The installed spice directory for the [`scan_for_danger`] check; themes
+/// have no code — `None`.
 pub fn code_dir(env: &SpiceEnv, t: &SpiceType, key: &str) -> Option<String> {
     (!t.is_theme() && valid_key(key)).then(|| snap_join(&install_root(env, t), key))
 }
 
-/// Строка-предупреждение на карточке.
+/// The warning line on the card.
 pub fn danger_line() -> String {
     tr("⚠ May freeze Cinnamon for a moment")
 }
 
-/// Подсказка к предупреждению.
+/// The warning tooltip.
 pub fn danger_tooltip() -> String {
     tr("This item runs commands and waits for them to finish. While it waits, the whole Cinnamon desktop stops responding — usually for a moment, but a slow command can freeze it for longer.")
 }
 
-/// Стат-строка карточки после значка-звезды плитки: «N · обновлено
-/// ГГГГ.ММ.ДД» (N — «лайки» сайта; чисел скачиваний у сайта нет).
+/// The card's stat line after the tile's star icon: "N · updated
+/// YYYY.MM.DD" (N — the site's "likes"; the site has no download counts).
 pub fn stats_line(score: i64, last_edited: i64) -> String {
     let date = version_label(last_edited);
     let n = format!("\u{a0}{}", score.max(0));
@@ -3454,27 +3454,27 @@ pub fn stats_line(score: i64, last_edited: i64) -> String {
     }
 }
 
-/// Подсказка к стат-строке.
+/// The stat line tooltip.
 pub fn stats_tooltip() -> String {
     tr("How many people liked it on the Cinnamon Spices website, and when it was last changed")
 }
 
-/// «Лайки» в деталях: «⭐ N».
+/// "Likes" in the details: "⭐ N".
 pub fn detail_stars(score: i64) -> String {
     format!("⭐ {}", score.max(0))
 }
 
-/// Кнопка карточки: стоит и на сайте новее — «Обновить», иначе как у
-/// любого товара магазина (у спайсов «Применить» на карточке витрины нет:
-/// включают его плитка установленного выше и её кнопка).
+/// The card button: installed and newer on the site — "Update", otherwise as for
+/// any store item (spices have no "Apply" on the storefront card:
+/// the installed tile above and its button enable them).
 pub fn card_button(installed: bool, has_update: bool) -> crate::appearance_page::CardButton {
     card_button_for(installed, has_update, false)
 }
 
-/// [`card_button`] с «Применить» у поставленного (`can_apply`): так у темы
-/// Spices в разделах GTK и рамок окон ([`PART_SECTIONS`]) — сетки
-/// установленного со своей кнопкой там может не быть (тема без GTK 3/4 в
-/// «Темах GTK» не видна), и включает её сама карточка.
+/// [`card_button`] with "Apply" for an installed one (`can_apply`): this is how a Spices
+/// theme behaves in the GTK and window frames sections ([`PART_SECTIONS`]) — an installed
+/// grid with its own button may not be there (a theme without GTK 3/4 is not visible in
+/// "GTK themes"), and the card itself enables it.
 pub fn card_button_for(installed: bool, has_update: bool, can_apply: bool) -> crate::appearance_page::CardButton {
     if installed && has_update {
         return crate::appearance_page::CardButton { text: tr("⬆ Update"), state: "false", enabled: true };
@@ -3482,12 +3482,12 @@ pub fn card_button_for(installed: bool, has_update: bool, can_apply: bool) -> cr
     crate::appearance_page::card_install_button(installed, false, can_apply)
 }
 
-/// Главная кнопка деталей — те же состояния, что у [`card_button`].
+/// The main details button — the same states as [`card_button`].
 pub fn detail_button(installed: bool, has_update: bool) -> crate::appearance_page::InstallButton {
     detail_button_for(installed, has_update, false)
 }
 
-/// [`detail_button`] с «Применить» у поставленного (см. [`card_button_for`]).
+/// [`detail_button`] with "Apply" for an installed one (see [`card_button_for`]).
 pub fn detail_button_for(installed: bool, has_update: bool, can_apply: bool) -> crate::appearance_page::InstallButton {
     if installed && has_update {
         return crate::appearance_page::InstallButton {
@@ -3511,7 +3511,7 @@ mod uninstall_tests {
         FsSnapshot::from_json(&serde_json::json!({}))
     }
 
-    /// Снимок каталога переводов: `ru` и `pt_BR` с `.mo` спайса, `de` — без.
+    /// A snapshot of the translations directory: `ru` and `pt_BR` with the spice's `.mo`, `de` — without.
     fn locales(key: &str) -> FsSnapshot {
         let entries = vec![
             format!("ru/LC_MESSAGES/{key}.mo"),
@@ -3549,7 +3549,7 @@ mod uninstall_tests {
             list_without(&applets, "weather@mockturtl", Some(3)),
             vec!["panel1:left:0:menu@cinnamon.org".to_string(), "panel1:right:2:xweather@mockturtl:10".to_string()]
         );
-        // Штатная запись без номера экземпляра тоже находится.
+        // A stock entry without an instance number is found too.
         assert_eq!(list_without(&applets, "menu@cinnamon.org", Some(3)).len(), 3);
         let desklets = vec!["a@b:0:100:100".to_string(), "xa@b:1:10:10".to_string()];
         assert_eq!(list_without(&desklets, "a@b", Some(0)), vec!["xa@b:1:10:10".to_string()]);
@@ -3640,7 +3640,7 @@ mod exec_tests {
     use std::collections::HashMap;
     use std::io::Write;
 
-    /// gsettings в памяти: `(схема, ключ)` → список или строка.
+    /// gsettings in memory: `(schema, key)` → a list or a string.
     #[derive(Default)]
     struct MemSys {
         lists: HashMap<(String, String), Vec<String>>,
@@ -3671,7 +3671,7 @@ mod exec_tests {
         }
     }
 
-    /// Временный HOME (файлы мелкие).
+    /// A temporary HOME (the files are small).
     struct Home {
         root: std::path::PathBuf,
         env: SpiceEnv,
@@ -3690,7 +3690,7 @@ mod exec_tests {
             std::fs::create_dir_all(&w).unwrap();
             w
         }
-        /// Дерево под HOME: «путь права» по алфавиту (как `find -printf '%P %m'`).
+        /// The tree under HOME: "path permissions" alphabetically (like `find -printf '%P %m'`).
         fn tree(&self) -> Vec<String> {
             fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
                 use std::os::unix::fs::PermissionsExt;
@@ -3721,8 +3721,8 @@ mod exec_tests {
         serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/data/cinnamon_spices/trees.json", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap()
     }
 
-    /// Собрать zip из фикстуры: имена, права, тексты `metadata.json` и
-    /// `.nemo_action`; у `da.po` апплета 1440 — настоящий перевод.
+    /// Build a zip from a fixture: names, permissions, the texts of `metadata.json` and
+    /// `.nemo_action`; the `da.po` of applet 1440 is a real translation.
     fn make_zip(archive: &str, dest: &Path) {
         let all = trees();
         let t = &all[archive];
@@ -3774,7 +3774,7 @@ mod exec_tests {
         let key = "1440@jvlianodorneles";
         let (ok, msg) = install(&h, 0, key, "applet", &spice(key, Value::from(427), 1_700_000_000), &mut sys, &mut journal);
         assert!(ok, "{msg}");
-        // Дерево: каждая запись архива — с его правами.
+        // The tree: every archive entry — with its permissions.
         let tree = h.tree();
         let all = trees();
         for e in all[key]["entries"].as_array().unwrap() {
@@ -3783,7 +3783,7 @@ mod exec_tests {
             assert!(tree.contains(&want), "нет {want}: {tree:#?}");
         }
         assert!(tree.iter().any(|l| l.starts_with(&format!(".local/share/locale/da/LC_MESSAGES/{key}.mo "))), "{tree:#?}");
-        // last-edited дописан в конец, прежние ключи — в прежнем порядке, отступ 4.
+        // last-edited is appended at the end, previous keys in the previous order, indent 4.
         let dir = format!(".local/share/cinnamon/applets/{key}");
         let meta = std::fs::read_to_string(format!("{}/{dir}/metadata.json", h.env.home)).unwrap();
         let v: Value = serde_json::from_str(&meta).unwrap();
@@ -3798,7 +3798,7 @@ mod exec_tests {
         assert_eq!(installed_state(&h.env, type_for_key("applet").unwrap(), key), Some(Some(1_700_000_000)));
         assert!(sys.reloads.is_empty(), "свежий апплет не включён — перезагружать нечего");
 
-        // Обновление включённого: настройки целы, ReloadXlet позван.
+        // Updating an enabled one: the settings are intact, ReloadXlet was called.
         let cfg = format!("{}/cinnamon/spices/{key}", h.env.config);
         std::fs::create_dir_all(&cfg).unwrap();
         std::fs::write(format!("{cfg}/1.json"), "{}").unwrap();
@@ -3809,7 +3809,7 @@ mod exec_tests {
         assert!(Path::new(&format!("{cfg}/1.json")).is_file(), "настройки пережили обновление");
         assert_eq!(installed_state(&h.env, type_for_key("applet").unwrap(), key), Some(Some(1_800_000_000)));
 
-        // Удаление: выключен, каталог, перевод и настройки сняты.
+        // Removal: disabled, the directory, translation and settings removed.
         let (ok, msg) = uninstall_with(&h.env, type_for_key("applet").unwrap(), key, key, &mut sys, &mut |_| {});
         assert!(ok, "{msg}");
         assert!(sys.lists[&("org.cinnamon".to_string(), "enabled-applets".to_string())].is_empty());
@@ -3834,7 +3834,7 @@ mod exec_tests {
         let disabled = ("org.nemo.plugins".to_string(), "disabled-actions".to_string());
         assert_eq!(sys.lists[&disabled], vec![format!("{key}.nemo_action")], "свежее действие выключено");
         assert_eq!(journal[0].1.len(), 2, "журнал помнит каталог и файл: {journal:?}");
-        // Человек включил; обновление список не трогает.
+        // The person enabled it; an update does not touch the list.
         sys.lists.insert(disabled.clone(), Vec::new());
         let (ok, _) = install(&h, 1, key, "action", &spice(key, Value::from(37), 1_800_000_000), &mut sys, &mut journal);
         assert!(ok);
@@ -3844,11 +3844,11 @@ mod exec_tests {
         assert!(!h.tree().iter().any(|l| l.contains(key)), "{:#?}", h.tree());
     }
 
-    /// Шаг 3г: покупка записана в журнале магазина — каталог и файл действия
-    /// снимает общий журнал установки, выключение и уборка переводов и
-    /// настроек — план, как прежде; общий журнал сверен и записи нет.
-    /// На месте каталога спайса — ссылка человека: снимается сама ссылка,
-    /// то, на что она ведёт, цело (как и прежде).
+    /// Step 3d: the purchase is recorded in the store log — the directory and the action file
+    /// are removed by the shared install log, disabling and cleaning up translations and
+    /// settings — by the plan, as before; the shared log is checked and the record is gone.
+    /// In place of the spice directory there is a link of the person's: the link itself is removed,
+    /// what it points to stays intact (as before).
     #[test]
     fn uninstall_goes_by_install_journal_when_recorded() {
         let h = Home::new("by-journal");
@@ -3877,8 +3877,8 @@ mod exec_tests {
             .expect("общий журнал сверен");
         assert!(general.items.is_empty(), "{general:#?}");
 
-        // Чужое на месте каталога: человек поставил туда ссылку на своё.
-        // Журнал магазина вида путей не хранит, сверка смотрит по диску.
+        // Something foreign in place of the directory: the person put a link to their own thing there.
+        // The store log does not store path kinds, the check looks at the disk.
         let (ok, msg) = install(&h, 1, key, "action", &spice(key, Value::from(37), 1_700_000_000), &mut sys, &mut journal);
         assert!(ok, "{msg}");
         let dir = format!("{}/{key}", install_root(&h.env, t));
@@ -3887,8 +3887,8 @@ mod exec_tests {
         let mine = h.root.join("mine");
         std::fs::create_dir_all(&mine).unwrap();
         std::os::unix::fs::symlink(&mine, &dir).unwrap();
-        // Сверка видит ссылку: в журнале теперь ссылка — и снимается сама
-        // ссылка, а не то, на что она ведёт.
+        // The check sees the link: the log now has a link — and the link itself
+        // is removed, not what it points to.
         let (ok, msg) = uninstall_with(&h.env, t, key, key, &mut sys, &mut |_| {});
         assert!(ok, "{msg}");
         assert!(mine.is_dir(), "снято то, на что ведёт ссылка");
@@ -3914,10 +3914,10 @@ mod exec_tests {
             let meta: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/{dir}/metadata.json", h.env.home)).unwrap()).unwrap();
             assert_eq!(installed_last_edited(&meta), Some(1_700_000_000), "{archive}");
         }
-        // Права скриптов десклета сохранились (0755 в архиве).
+        // The desklet scripts' permissions were preserved (0755 in the archive).
         let tree = h.tree();
         assert!(tree.iter().any(|l| l.contains("AlbumArt3.0@claudiux/scripts/") && l.ends_with(" 755")), "{tree:#?}");
-        // Тема выбрана — удаление сбрасывает её к умолчанию.
+        // The theme is selected — removal resets it to the default.
         sys.strings.insert(("org.cinnamon.theme".into(), "name".into()), "Adara-Dark".into());
         let (ok, _) = uninstall_with(&h.env, type_for_key("theme").unwrap(), "Adara-Dark", "Adara Dark", &mut sys, &mut |_| {});
         assert!(ok);
@@ -3930,10 +3930,10 @@ mod exec_tests {
         let h = Home::new("refuse");
         let mut sys = MemSys::default();
         let mut journal = Vec::new();
-        // Ключ индекса не совпадает с каталогом в архиве.
+        // The index key does not match the directory in the archive.
         let (ok, msg) = install(&h, 0, "1440@jvlianodorneles", "applet", &spice("other@x", Value::from(1), 1), &mut sys, &mut journal);
         assert!(!ok && msg.contains("other@x"), "{msg}");
-        // Не zip (страница WAF вместо архива).
+        // Not a zip (a WAF page instead of the archive).
         let work = h.work(1);
         std::fs::write(work.join("a.zip"), "<html>WAF</html>").unwrap();
         let (ok, _) = install_archive(
@@ -3985,12 +3985,12 @@ mod exec_tests {
             std::fs::create_dir_all(Path::new(&p).parent().unwrap()).unwrap();
             std::fs::write(&p, "").unwrap();
         }
-        // Плитка снята: `.nemo_action` уже нет.
+        // The tile was removed: the `.nemo_action` is already gone.
         cleanup_after_removal(&h.env, &format!("{home}/.local/share/nemo/actions/{key}.nemo_action"));
         let tree = h.tree();
         assert!(!tree.iter().any(|l| l.contains(key)), "{tree:#?}");
         assert!(tree.iter().any(|l| l.contains("keep.mo")), "чужой перевод на месте: {tree:#?}");
-        // Путь не из каталога спайсов — ничего.
+        // A path not from the spices directory — nothing.
         cleanup_after_removal(&h.env, &format!("{home}/.local/share/locale"));
         assert!(h.tree().iter().any(|l| l.contains("keep.mo")));
     }
@@ -4037,44 +4037,44 @@ mod card_tests {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Темы Spices в других окружениях: разделы GTK и рамок окон
+//  Spices themes on other desktops: the GTK and window frames sections
 // ═══════════════════════════════════════════════════════════════════════
 //
-// Тема Spices — это тема оболочки Cinnamon (`cinnamon/cinnamon.css`), но
-// почти половина из них несёт в том же каталоге и тему приложений
-// (`gtk-3.0`, `gtk-4.0`, `gtk-2.0`), и рамки окон (`metacity-1` — Marco и
-// Metacity, `xfwm4`). Замер дерева репозитория тем 24.10.2026: из 108 тем
-// 50 с таблицей GTK 3/4, 45 с рамками Metacity (ещё у одной каталог есть,
-// а файла темы в нём нет), 16 с рамками xfwm4; 56 — только Cinnamon.
+// A Spices theme is a Cinnamon shell theme (`cinnamon/cinnamon.css`), but
+// almost half of them carry in the same directory an application theme too
+// (`gtk-3.0`, `gtk-4.0`, `gtk-2.0`), and window frames (`metacity-1` — Marco and
+// Metacity, `xfwm4`). Measurement of the theme repository tree on 24.10.2026: of 108 themes
+// 50 have a GTK 3/4 stylesheet, 45 have Metacity frames (one more has the directory
+// but no theme file in it), 16 have xfwm4 frames; 56 are Cinnamon only.
 //
-// Вне Cinnamon такая тема показывается в разделах «Темы GTK», «Рамки окон
-// (XFCE)», «Рамки окон (MATE)» и «Тема GNOME Shell» (у четырёх тем есть и
-// `gnome-shell`) — и только та, у которой есть часть этого раздела: показать тему без неё значило бы поставить то, что здесь не
-// применится. Состав темы в индексе сайта не указан; его даёт дерево
-// репозитория тем на GitHub — ОДИН запрос на все темы, раз в сутки,
-// условный (`ETag` → 304). Ставится всё равно архив сайта, и при установке
-// проверяется он сам ([`install_archive_in`]).
+// Outside Cinnamon such a theme is shown in the sections "GTK themes", "Window frames
+// (XFCE)", "Window frames (MATE)" and "GNOME Shell theme" (four themes also have
+// `gnome-shell`) — and only one that has this section's part: showing a theme without it would mean installing something that will not
+// apply here. The theme contents are not listed in the site index; they come from the
+// theme repository tree on GitHub — ONE request for all themes, once a day,
+// conditional (`ETag` → 304). It is still the site archive that gets installed, and at install time
+// it is the archive itself that is checked ([`install_archive_in`]).
 
-/// Разделы, где темы Spices показываются по своему составу: ключи разделов
-/// «Оформления» (таблица — `categories`).
+/// Sections where Spices themes are shown by their contents: "Appearance"
+/// section keys (the table is in `categories`).
 pub const PART_SECTIONS: &[&str] = &["gtk", "xfwm4", "marco", "gnomeshell"];
 
-/// Дерево репозитория тем (все пути одним ответом). Внутри
-/// `<ключ>/files/<ключ>/…` — ровно то, что сайт кладёт в архив `<ключ>/…`.
+/// The theme repository tree (all paths in one response). Inside
+/// `<key>/files/<key>/…` is exactly what the site puts into the archive `<key>/…`.
 pub const THEME_TREE_URL: &str =
     "https://api.github.com/repos/linuxmint/cinnamon-spices-themes/git/trees/master?recursive=1";
-/// Потолок дерева после распаковки (сейчас ~9 МБ).
+/// The tree ceiling after decompression (currently ~9 MB).
 pub const MAX_TREE_BYTES: u64 = 64 << 20;
-/// Версия файла кэша состава тем.
+/// The version of the theme contents cache file.
 pub const PARTS_CACHE_VERSION: u32 = 1;
 
-/// Раздел ли это, где темы Spices показываются по составу.
+/// Whether this is a section where Spices themes are shown by contents.
 pub fn is_part_section(section: &str) -> bool {
     PART_SECTIONS.contains(&section)
 }
 
-/// Раздел карточки, если она в разделе GTK или рамок окон
-/// ([`PART_SECTIONS`]) — по номеру раздела в `category_id` (его ставит
+/// The card's section if it is in the GTK or window frames section
+/// ([`PART_SECTIONS`]) — by the section number in `category_id` (set by
 /// [`section_theme_item`]).
 pub fn part_section_of(item: &ThemeItem) -> Option<&'static str> {
     if !parse_item_id(&item.id).is_some_and(|(t, _)| t.is_theme()) {
@@ -4084,8 +4084,8 @@ pub fn part_section_of(item: &ThemeItem) -> Option<&'static str> {
     PART_SECTIONS.iter().copied().find(|s| *s == key)
 }
 
-/// Подкаталог части раздела — из матрицы (`Payload::ThemeSubdir`), не
-/// второй копией: `xfwm4` у XFCE, `metacity-1` у MATE, `gnome-shell` у GNOME.
+/// The section part's subdirectory — from the matrix (`Payload::ThemeSubdir`), not
+/// as a second copy: `xfwm4` for XFCE, `metacity-1` for MATE, `gnome-shell` for GNOME.
 fn part_subdir(section: &str) -> Option<&'static str> {
     let kind = crate::categories::category_kind(section)?;
     match crate::de_customization::row(kind)?.payload {
@@ -4094,9 +4094,9 @@ fn part_subdir(section: &str) -> Option<&'static str> {
     }
 }
 
-/// Файлы, без которых часть не прочтут: xfwm4 читает `themerc`, Marco и
-/// Metacity — `metacity-theme-<N>.xml` (Marco знает форматы 1–3), оболочка
-/// GNOME — `gnome-shell.css`.
+/// Files without which the part will not be read: xfwm4 reads `themerc`, Marco and
+/// Metacity — `metacity-theme-<N>.xml` (Marco knows formats 1–3), the GNOME
+/// shell — `gnome-shell.css`.
 fn part_markers(sub: &str) -> &'static [&'static str] {
     match sub {
         "xfwm4" => &["themerc"],
@@ -4106,14 +4106,14 @@ fn part_markers(sub: &str) -> &'static [&'static str] {
     }
 }
 
-/// Есть ли в теме то, что применит раздел `section`. `has(путь)` — есть ли
-/// файл или каталог по пути от корня темы (`gtk-3.0/gtk.css`).
+/// Whether the theme has what the section `section` will apply. `has(path)` — whether there is
+/// a file or directory at the path from the theme root (`gtk-3.0/gtk.css`).
 ///
-/// Тема приложений — то же правило, что у сетки «Тем GTK»
-/// (`installed_scan::GTK_PARTS` с `gtk.css`): что витрина показала, то после
-/// установки сетка и увидит. Рамки и оболочка GNOME — подкаталог раздела из
-/// матрицы с файлом темы внутри: пустой `metacity-1` (бывает, замер выше)
-/// Marco не прочтёт.
+/// An application theme — the same rule as for the "GTK themes" grid
+/// (`installed_scan::GTK_PARTS` with `gtk.css`): what the storefront showed, the grid
+/// will see after installation. Frames and the GNOME shell — the section's subdirectory from
+/// the matrix with a theme file inside: an empty `metacity-1` (it happens, see the measurement above)
+/// will not be read by Marco.
 pub fn fits_section(section: &str, has: &dyn Fn(&str) -> bool) -> bool {
     if section == "gtk" {
         return crate::installed_scan::GTK_PARTS.iter().any(|p| has(&format!("{p}/gtk.css")));
@@ -4124,8 +4124,8 @@ pub fn fits_section(section: &str, has: &dyn Fn(&str) -> bool) -> bool {
     part_subdir(section).is_some_and(|sub| part_markers(sub).iter().any(|m| has(&format!("{sub}/{m}"))))
 }
 
-/// Состав темы для карточки: какие части в ней есть. Имена — названия
-/// технологий, без перевода.
+/// The theme contents for the card: which parts it has. The names are technology
+/// names, untranslated.
 pub fn parts_summary(has: &dyn Fn(&str) -> bool) -> Vec<&'static str> {
     let any = |paths: &[&str]| paths.iter().any(|p| has(p));
     let mut out = Vec::new();
@@ -4159,18 +4159,18 @@ pub fn parts_summary(has: &dyn Fn(&str) -> bool) -> Vec<&'static str> {
     out
 }
 
-/// Состав всех тем: ключ темы → пути от корня темы на глубину до двух
-/// (`gtk-3.0`, `gtk-3.0/gtk.css`), по алфавиту.
+/// The contents of all themes: theme key → paths from the theme root up to two levels deep
+/// (`gtk-3.0`, `gtk-3.0/gtk.css`), alphabetically.
 pub type ThemeParts = std::collections::BTreeMap<String, Vec<String>>;
 
-/// `has` для [`fits_section`] по составу одной темы.
+/// `has` for [`fits_section`] by the contents of one theme.
 pub fn has_in(paths: &[String]) -> impl Fn(&str) -> bool + '_ {
     move |p: &str| paths.binary_search_by(|x| x.as_str().cmp(p)).is_ok()
 }
 
-/// Разобрать дерево репозитория тем ([`THEME_TREE_URL`]). Берутся только
-/// пути `<ключ>/files/<ключ>/…` с годным ключом; обрезанное дерево
-/// (`truncated`) — ошибка: половинный состав спрятал бы темы молча.
+/// Parse the theme repository tree ([`THEME_TREE_URL`]). Only
+/// paths `<key>/files/<key>/…` with a valid key are taken; a truncated tree
+/// (`truncated`) is an error: half the contents would silently hide themes.
 pub fn parse_theme_tree(body: &str) -> Result<ThemeParts, String> {
     #[derive(Deserialize)]
     struct Entry {
@@ -4204,8 +4204,8 @@ pub fn parse_theme_tree(body: &str) -> Result<ThemeParts, String> {
     Ok(out)
 }
 
-/// Файл кэша состава тем: сам состав (не дерево — оно в десятки раз
-/// больше) и валидаторы условного запроса.
+/// The theme contents cache file: the contents themselves (not the tree — it is dozens of times
+/// larger) and the conditional request validators.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PartsCache {
@@ -4217,21 +4217,21 @@ pub struct PartsCache {
     pub parts: ThemeParts,
 }
 
-/// Путь кэша состава: `$XDG_CACHE_HOME/rexon/cinnamon-spices/theme-parts.json`.
+/// The contents cache path: `$XDG_CACHE_HOME/rexon/cinnamon-spices/theme-parts.json`.
 pub fn parts_cache_path(xdg_cache_home: Option<&str>, home: &str) -> String {
     format!("{}/rexon/cinnamon-spices/theme-parts.json", crate::utils::cache_home(xdg_cache_home, home))
 }
 
-/// Итог [`refresh_parts`].
+/// The result of [`refresh_parts`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartsRefresh {
     pub parts: ThemeParts,
     pub source: RefreshSource,
-    /// Что сказать человеку; пусто — всё в порядке.
+    /// What to tell the person; empty — all is well.
     pub note: String,
 }
 
-/// Состав тем узнать не удалось.
+/// Could not find out the theme contents.
 pub fn parts_offline_message(have_saved: bool) -> String {
     if have_saved {
         tr("Couldn't check which Cinnamon Spices themes fit this section — the saved list is shown.")
@@ -4240,10 +4240,10 @@ pub fn parts_offline_message(have_saved: bool) -> String {
     }
 }
 
-/// Состав тем для витрины — тем же порядком, что индекс ([`refresh`]):
-/// свежий кэш (моложе суток) без сети; иначе (или по `force`) условный
-/// запрос; 304 продлевает, 200 заменяет; сбой — прежний кэш с пометкой и
-/// повтор не раньше [`FAIL_BACKOFF_SECS`].
+/// The theme contents for the storefront — in the same way as the index ([`refresh`]):
+/// a fresh cache (younger than a day) without network; otherwise (or with `force`) a conditional
+/// request; 304 extends, 200 replaces; a failure — the previous cache with a mark and
+/// no retry before [`FAIL_BACKOFF_SECS`].
 pub fn refresh_parts(net: &mut dyn ConditionalNet, path: &Path, force: bool, now: i64) -> PartsRefresh {
     let saved: PartsCache = std::fs::read_to_string(path)
         .ok()
@@ -4283,24 +4283,24 @@ pub fn refresh_parts(net: &mut dyn ConditionalNet, path: &Path, force: bool, now
                 let _ = write(&c);
                 PartsRefresh { parts: c.parts, source: RefreshSource::Downloaded, note: String::new() }
             }
-            // Мусор, обрезанное или пустое дерево кэш не затирают.
+            // Garbage, a truncated or empty tree do not overwrite the cache.
             _ => fail(saved),
         },
         Ok(CondReply::NotModified) | Err(_) => fail(saved),
     }
 }
 
-/// [`refresh_parts`] на живой машине: сжатый ответ GitHub, кэш этого
-/// процесса.
+/// [`refresh_parts`] on the live machine: a compressed GitHub response, this
+/// process's cache.
 pub fn live_refresh_parts(force: bool) -> PartsRefresh {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
     let path = parts_cache_path(std::env::var("XDG_CACHE_HOME").ok().as_deref(), &home);
     refresh_parts(&mut UreqConditional::gzip_up_to(MAX_TREE_BYTES), Path::new(&path), force, now_secs())
 }
 
-/// Темы индекса, которые раздел `section` применит: по составу `parts`.
-/// Темы, чей состав неизвестен (нет в дереве), не показываются — показать
-/// и не суметь применить хуже, чем не показать.
+/// Index themes the section `section` will apply: by the contents `parts`.
+/// Themes whose contents are unknown (not in the tree) are not shown — showing
+/// and failing to apply is worse than not showing.
 pub fn themes_for_section(list: &[Spice], parts: &ThemeParts, section: &str) -> Vec<Spice> {
     list.iter()
         .filter(|s| parts.get(&s.key).is_some_and(|p| fits_section(section, &has_in(p))))
@@ -4308,15 +4308,15 @@ pub fn themes_for_section(list: &[Spice], parts: &ThemeParts, section: &str) -> 
         .collect()
 }
 
-/// Окружения, где рамки окон рисуются по теме GTK (Mutter и его потомки:
-/// GNOME, Budgie, Pantheon), — там тема из «Тем GTK» меняет и рамки.
+/// Desktops where window frames are drawn by the GTK theme (Mutter and its descendants:
+/// GNOME, Budgie, Pantheon) — there a theme from "GTK themes" changes the frames too.
 fn borders_follow_gtk(de: &str) -> bool {
     use crate::de_customization::{de_from_id, De};
     matches!(de_from_id(de), Some(De::Gnome | De::Budgie | De::Pantheon))
 }
 
-/// Честная оговорка карточки: что из темы применится здесь. В Cinnamon —
-/// ничего не оговаривается (там тема включается целиком в своём разделе).
+/// The card's honest caveat: what of the theme will apply here. In Cinnamon
+/// nothing is caveated (there the theme is enabled entirely in its own section).
 pub fn part_note(section: &str, de: &str) -> Option<String> {
     use crate::de_customization::{de_from_id, De};
     if de_from_id(de) == Some(De::Cinnamon) || !is_part_section(section) {
@@ -4333,8 +4333,8 @@ pub fn part_note(section: &str, de: &str) -> Option<String> {
     })
 }
 
-/// Отказ установки: в архиве нет части раздела (витрина ошиблась —
-/// репозиторий и архив сайта разошлись).
+/// An install refusal: the archive lacks the section's part (the storefront was wrong —
+/// the repository and the site archive diverged).
 pub fn part_missing_message(name: &str, section: &str) -> String {
     let part = match section {
         "gtk" => "GTK 3/GTK 4",
@@ -4345,11 +4345,11 @@ pub fn part_missing_message(name: &str, section: &str) -> String {
     trf("%1 has no %2 part, so there's nothing to apply here — it wasn't installed.", &[&name, &part])
 }
 
-/// Карточка темы Spices в разделе `section` ([`PART_SECTIONS`]) окружения
-/// `de`: номер раздела в `category_id` — им «Применить» найдёт свой путь
-/// (тема GTK, рамки xfwm4, рамки Marco, оболочка GNOME — общий механизм
-/// применения), в
-/// описании сверху — оговорка [`part_note`] и состав темы.
+/// The card of a Spices theme in the section `section` ([`PART_SECTIONS`]) of the desktop
+/// `de`: the section number in `category_id` — "Apply" will find its path by it
+/// (a GTK theme, xfwm4 frames, Marco frames, the GNOME shell — the shared
+/// apply mechanism), in
+/// the description at the top — the [`part_note`] caveat and the theme contents.
 pub fn section_theme_item(s: &Spice, lang: &str, section: &str, de: &str, parts: &[String]) -> ThemeItem {
     let t = type_for_key("theme").expect("тип тем есть в таблице");
     let mut it = theme_item(t, s, lang);
@@ -4368,9 +4368,9 @@ pub fn section_theme_item(s: &Spice, lang: &str, section: &str, de: &str, parts:
     it
 }
 
-/// Нажатие карточки темы Spices в разделе GTK или рамок: тема стоит и на
-/// сайте не новее — применить её (имя каталога темы); `None` — поставить
-/// (или обновить). Решение по диску и сохранённому индексу.
+/// A click on a Spices theme card in the GTK or frames section: the theme is installed and
+/// not newer on the site — apply it (the theme directory name); `None` — install
+/// (or update). Decided by the disk and the saved index.
 pub fn part_apply_name(env: &SpiceEnv, item: &ThemeItem, index: &[Spice]) -> Option<String> {
     part_section_of(item)?;
     let (t, key) = parse_item_id(&item.id)?;
@@ -4379,7 +4379,7 @@ pub fn part_apply_name(env: &SpiceEnv, item: &ThemeItem, index: &[Spice]) -> Opt
     (!newer).then(|| key.to_string())
 }
 
-/// [`part_apply_name`] на живой машине.
+/// [`part_apply_name`] on the live machine.
 pub fn live_part_apply_name(item: &ThemeItem) -> Option<String> {
     part_section_of(item)?;
     let t = type_for_key("theme")?;
@@ -4387,7 +4387,7 @@ pub fn live_part_apply_name(item: &ThemeItem) -> Option<String> {
     part_apply_name(&SpiceEnv::live(), item, &index)
 }
 
-/// Подсказка чипа «Cinnamon Spices» в разделе GTK или рамок окон.
+/// The "Cinnamon Spices" chip tooltip in the GTK or window frames section.
 pub fn parts_chip_tooltip(section: &str) -> String {
     if section == "gtk" {
         tr("Themes from the Cinnamon Spices website that include a theme for applications (GTK 3 or GTK 4)")
@@ -4404,11 +4404,11 @@ mod part_tests {
     use crate::net::NetError;
     use std::io::Write;
 
-    /// Урезанный настоящий ответ GitHub (дерево репозитория тем, 24.10.2026):
+    /// A trimmed real GitHub response (the theme repository tree, 24.10.2026):
     /// Winterbloom — Cinnamon + GTK 3; Orchidea — Cinnamon + Metacity;
-    /// Aune — GTK 3/4, xfwm4 и `metacity-1` без файла темы; Adara-Dark —
-    /// только Cinnamon; CBlack — GTK 2/3, Metacity, xfwm4. Плюс чужие пути:
-    /// `.github`, каталог с другим ключом внутри, ключ с пробелом.
+    /// Aune — GTK 3/4, xfwm4 and `metacity-1` without a theme file; Adara-Dark —
+    /// Cinnamon only; CBlack — GTK 2/3, Metacity, xfwm4. Plus foreign paths:
+    /// `.github`, a directory with another key inside, a key with a space.
     fn tree_body() -> String {
         std::fs::read_to_string(format!("{}/tests/data/cinnamon_spices/theme_tree.json", env!("CARGO_MANIFEST_DIR"))).unwrap()
     }
@@ -4433,7 +4433,7 @@ mod part_tests {
         assert!(w.contains(&"gtk-3.0".to_string()) && w.contains(&"gtk-3.0/gtk.css".to_string()), "{w:?}");
         assert!(w.windows(2).all(|x| x[0] < x[1]), "по алфавиту, без повторов");
         assert!(!p["CBlack"].iter().any(|x| x.split('/').count() > 2), "глубже двух уровней не берётся");
-        // Обрезанное дерево — ошибка, а не половина тем; мусор — тоже.
+        // A truncated tree is an error, not half the themes; garbage — too.
         let cut = tree_body().replacen("\"truncated\": false", "\"truncated\": true", 1);
         assert!(cut.contains("\"truncated\": true"));
         assert!(parse_theme_tree(&cut).is_err());
@@ -4446,18 +4446,18 @@ mod part_tests {
         let index: Vec<Spice> = ["Adara-Dark", "Aune", "CBlack", "Orchidea", "Winterbloom", "NotInTree"].iter().map(|k| spice(k, 1)).collect();
         assert_eq!(keys(&themes_for_section(&index, &p, "gtk")), ["Aune", "CBlack", "Winterbloom"]);
         assert_eq!(keys(&themes_for_section(&index, &p, "xfwm4")), ["Aune", "CBlack"]);
-        // У Aune каталог metacity-1 есть, а файла темы в нём нет: Marco его
-        // не прочтёт — в «Рамках окон (MATE)» её нет.
+        // Aune has a metacity-1 directory but no theme file in it: Marco will
+        // not read it — it is not in "Window frames (MATE)".
         assert_eq!(keys(&themes_for_section(&index, &p, "marco")), ["CBlack", "Orchidea"]);
-        // Чужие разделы и сам раздел Cinnamon — не по составу.
+        // Foreign sections and the Cinnamon section itself — not by contents.
         assert!(themes_for_section(&index, &p, "cinnamontheme").is_empty());
         assert!(themes_for_section(&index, &p, "icons").is_empty());
-        // Оболочки GNOME ни у одной из пяти нет; у темы с ней — есть.
+        // None of the five has a GNOME shell; a theme with one does.
         assert!(themes_for_section(&index, &p, "gnomeshell").is_empty());
         let shell = vec!["gnome-shell".to_string(), "gnome-shell/gnome-shell.css".to_string()];
         assert!(fits_section("gnomeshell", &has_in(&shell)) && !fits_section("gtk", &has_in(&shell)));
         assert!(!fits_section("gnomeshell", &has_in(&shell[..1])), "пустой каталог — не тема оболочки");
-        // Подкаталоги частей — из матрицы, а не второй копией.
+        // Part subdirectories — from the matrix, not as a second copy.
         assert_eq!(part_subdir("xfwm4"), Some("xfwm4"));
         assert_eq!(part_subdir("marco"), Some("metacity-1"));
         assert_eq!(part_subdir("gnomeshell"), Some("gnome-shell"));
@@ -4500,10 +4500,10 @@ mod part_tests {
             assert!(it.description.starts_with(&note), "{}", it.description);
             assert!(it.description.contains("GTK 3, Metacity/Marco") && it.description.ends_with("\n\nDesc"), "{}", it.description);
         }
-        // В Cinnamon оговорки нет, состав остаётся.
+        // In Cinnamon there is no caveat, the contents stay.
         let it = section_theme_item(&s, "ru_RU", "gtk", "cinnamon", &p["CBlack"]);
         assert!(it.description.contains("Cinnamon, GTK 2") && !it.description.contains(&part_note("gtk", "kde").unwrap()));
-        // Карточка раздела Cinnamon по составу не ходит.
+        // The Cinnamon section card does not go by contents.
         let t = type_for_key("theme").unwrap();
         assert_eq!(part_section_of(&theme_item(t, &s, "ru_RU")), None);
         assert_eq!(part_section_of(&theme_item(type_for_key("applet").unwrap(), &spice("a@b", 1), "ru_RU")), None);
@@ -4520,7 +4520,7 @@ mod part_tests {
         assert_eq!(detail_button_for(true, true, true).text, detail_button(true, true).text);
     }
 
-    /// Записанные ответы по порядку.
+    /// Recorded responses in order.
     struct Replay(Vec<Result<CondReply, NetError>>, Vec<(String, String)>);
 
     impl ConditionalNet for Replay {
@@ -4553,16 +4553,16 @@ mod part_tests {
         assert_eq!(net.1, [(THEME_TREE_URL.to_string(), String::new())]);
         let saved = std::fs::read_to_string(&p).unwrap();
         assert!(saved.len() < 20_000 && !saved.contains("\"tree\""), "в кэше состав, а не дерево");
-        // Сутки — без сети.
+        // A day — without network.
         let mut quiet = Replay(Vec::new(), Vec::new());
         assert_eq!(refresh_parts(&mut quiet, &p, false, T0 + 3600).source, RefreshSource::Cache);
-        // Прошли сутки — условный запрос с ETag, 304 продлевает.
+        // A day passed — a conditional request with ETag, 304 extends.
         let mut net = Replay(vec![Ok(CondReply::NotModified)], Vec::new());
         let r = refresh_parts(&mut net, &p, false, T0 + CACHE_TTL_SECS + 1);
         assert_eq!((r.source, r.parts.len()), (RefreshSource::NotModified, 5));
         assert_eq!(net.1[0].1, "W/\"a\"");
-        // «Обновить»: ответ — мусор (страница лимита) и обрезанное дерево —
-        // прежний состав остаётся, с пометкой; повтор — не сразу.
+        // "Refresh": the answer is garbage (a rate limit page) and a truncated tree —
+        // the previous contents stay, with a mark; no immediate retry.
         let cut = tree_body().replacen("\"truncated\": false", "\"truncated\": true", 1).into_bytes();
         for answer in [
             Ok(CondReply::Body { body: b"{\"message\":\"API rate limit exceeded\"}".to_vec(), etag: String::new(), last_modified: String::new() }),
@@ -4577,7 +4577,7 @@ mod part_tests {
         let mut quiet = Replay(Vec::new(), Vec::new());
         let r = refresh_parts(&mut quiet, &p, false, T0 + 2 * CACHE_TTL_SECS + 60);
         assert_eq!((r.source, r.parts.len()), (RefreshSource::Stale, 5), "после сбоя не стучаться сразу");
-        // Совсем без кэша и без сети — пусто и объяснение.
+        // No cache at all and no network — empty and an explanation.
         let q = tmp("offline");
         let mut net = Replay(vec![Err(NetError::Transport { detail: "dns".into() })], Vec::new());
         let r = refresh_parts(&mut net, &q, false, T0);
@@ -4586,7 +4586,7 @@ mod part_tests {
         let _ = std::fs::remove_dir_all(q.parent().unwrap());
     }
 
-    /// Временный HOME.
+    /// A temporary HOME.
     struct Home(std::path::PathBuf, SpiceEnv);
 
     impl Home {
@@ -4625,7 +4625,7 @@ mod part_tests {
         }
     }
 
-    /// Архив темы: `<ключ>/` с Cinnamon и перечисленными файлами.
+    /// A theme archive: `<key>/` with Cinnamon and the listed files.
     fn theme_zip(dest: &Path, key: &str, extra: &[&str]) {
         let mut zw = zip::ZipWriter::new(std::fs::File::create(dest).unwrap());
         let opts = zip::write::SimpleFileOptions::default().unix_permissions(0o644);
@@ -4650,25 +4650,25 @@ mod part_tests {
     fn install_from_gtk_or_borders_checks_the_archive_itself() {
         let h = Home::new("inst");
         let themes = format!("{}/.themes", h.1.home);
-        // Тема с GTK 3 из «Тем GTK» — ставится в ~/.themes целиком.
+        // A theme with GTK 3 from "GTK themes" — installed into ~/.themes whole.
         let (ok, msg) = install_in(&h, 0, "Winter", &["gtk-3.0/gtk.css", "index.theme"], Some("gtk"));
         assert!(ok, "{msg}");
         assert!(Path::new(&format!("{themes}/Winter/gtk-3.0/gtk.css")).is_file());
         assert!(Path::new(&format!("{themes}/Winter/cinnamon/cinnamon.css")).is_file(), "тема ставится целиком");
-        // Архив разошёлся с деревом: GTK нет — отказ, на диске ничего.
+        // The archive diverged from the tree: no GTK — a refusal, nothing on disk.
         let (ok, msg) = install_in(&h, 1, "OnlyShell", &["metacity-1/metacity-theme-3.xml"], Some("gtk"));
         assert!(!ok && msg == part_missing_message("OnlyShell", "gtk"), "{msg}");
         assert!(!Path::new(&format!("{themes}/OnlyShell")).exists());
-        // Та же тема в «Рамках окон (MATE)» ставится, в XFCE — нет.
+        // The same theme installs in "Window frames (MATE)", but not in XFCE.
         assert!(install_in(&h, 2, "OnlyShell", &["metacity-1/metacity-theme-3.xml"], Some("marco")).0);
         let (ok, msg) = install_in(&h, 3, "Borderless", &["metacity-1/thumbnail.png", "gtk-2.0/gtkrc"], Some("xfwm4"));
         assert!(!ok && msg == part_missing_message("Borderless", "xfwm4"), "{msg}");
-        // Из раздела Cinnamon состав не проверяется — как прежде.
+        // From the Cinnamon section the contents are not checked — as before.
         assert!(install_in(&h, 4, "Borderless", &[], None).0);
     }
 
-    /// Живой запрос к GitHub сжатым ответом (сеть; запускать руками:
-    /// `--ignored live_tree_from_github`). Второй запрос — условный, 304.
+    /// A live request to GitHub with a compressed response (network; run by hand:
+    /// `--ignored live_tree_from_github`). The second request is conditional, 304.
     #[test]
     #[ignore]
     fn live_tree_from_github() {
@@ -4696,8 +4696,8 @@ mod part_tests {
         assert_eq!(part_apply_name(&h.1, &card, &[s.clone()]).as_deref(), Some("Winter"), "стоит — применить");
         let newer = Spice { last_edited: s.last_edited + 10, ..s.clone() };
         assert_eq!(part_apply_name(&h.1, &card, &[newer]), None, "на сайте новее — обновить");
-        // Карточка раздела Cinnamon так не применяется: там включает плитка
-        // установленного.
+        // The Cinnamon section card is not applied this way: there the installed tile
+        // enables it.
         let cin = theme_item(type_for_key("theme").unwrap(), &s, "ru_RU");
         assert_eq!(part_apply_name(&h.1, &cin, &[s]), None);
     }

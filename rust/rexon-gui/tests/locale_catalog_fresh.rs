@@ -1,15 +1,17 @@
-//! Сторож устаревших каталогов перевода рядом с бинарями.
+//! Guard against stale translation catalogues next to the binaries.
 //!
-//! Окно ищет `.mo` в `<каталог бинаря>/locale` раньше системного
-//! (`i18n::locale_dirs`), а собирает его build.rs этого крейта. 15.11.2026
-//! на cargo 1.100 build.rs клал свежие `.mo` в `target/<профиль>/build/locale`
-//! (OUT_DIR стал на уровень глубже), а рядом с бинарями оставались каталоги
-//! прошлой сборки — с ними в пакет и в окно уехали старые строки, и
-//! подсказки с новыми msgid показывались по-английски.
+//! The window looks for `.mo` in `<binary directory>/locale` before the
+//! system one (`i18n::locale_dirs`), and it is built by this crate's
+//! build.rs. On 15.11.2026, with cargo 1.100, build.rs put fresh `.mo`
+//! files into `target/<profile>/build/locale` (OUT_DIR moved one level
+//! deeper), while the directories from the previous build stayed next to
+//! the binaries — old strings went into the package and the window with
+//! them, and tooltips with new msgids were shown in English.
 //!
-//! Тест сверяет каталог рядом с `rexon-main-window` с нынешними `po/*.po`
-//! (`scripts/i18n-update.sh --verify`): упадёт, если build.rs снова положит
-//! `.mo` не туда или не пересоберёт их после правки po.
+//! The test compares the catalogue next to `rexon-main-window` with the
+//! current `po/*.po` (`scripts/i18n-update.sh --verify`): it fails if
+//! build.rs again puts the `.mo` files in the wrong place or does not
+//! rebuild them after a po edit.
 
 use std::path::Path;
 use std::process::Command;

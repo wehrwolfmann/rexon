@@ -1,58 +1,58 @@
 #!/usr/bin/env bash
-# Очередь сборок для параллельной работы в одном дереве.
+# Build queue for parallel work in one tree.
 #
-# ЗАЧЕМ. Когда несколько человек (или фоновых помощников) правят одно дерево
-# и каждый собирает в свой каталог target, одна и та же программа собирается
-# несколько раз одновременно. 09.10.2026 шесть таких сборок заняли всю память
-# и сжатую подкачку (zram 30,2 из 30,6 ГБ): видео в браузере и звук
-# захлёбывались, каждая сборка шла 20 минут вместо трёх.
+# WHY. When several people (or background helpers) edit one tree
+# and each builds into its own target directory, the same program is built
+# several times at once. On 09.10.2026 six such builds took all the memory
+# and compressed swap (zram 30.2 of 30.6 GB): video in the browser and sound
+# choked, each build took 20 minutes instead of three.
 #
-# Что делает:
-#   * один общий каталог сборки (target-shared) — повторная сборка после
-#     чужой берёт готовое, а не начинает с нуля;
-#   * четыре места (с 10.10.2026, решение Wehrwolfmann): одновременно идут
-#     до ЧЕТЫРЁХ команд cargo, пятая ждёт, пока освободится место. У места 0
-#     каталог target-shared, у мест 1–3 — свои target-slotN: в одном каталоге
-#     cargo всё равно пускает по одному. Новый target-slotN — копия
-#     target-shared через reflink (Btrfs делит блоки, места почти не берёт);
-#   * честная очередь (с 01.11.2026): кто встал раньше, тот раньше и получает
-#     место. Раньше место доставалось тому, кто первым успел его схватить, и
-#     короткий прогон тестов подолгу ждал, пока вперёд влезали новые сборки;
-#   * все сборки — в одном срезе systemd rexon-build.slice с общим потолком
-#     памяти, чтобы четыре разом не задавили рабочий стол;
-#   * низший приоритет по процессору и диску (nice 19, ionice idle) и
-#     отдельная группа systemd с потолком памяти — рабочему столу всегда
-#     достаётся первым;
-#   * 4 потока на сборку (4 × 4 = 16), общий потолок памяти среза;
-#   * git worktree (14.11.2026, решение Wehrwolfmann): очередь ОДНА на все
-#     копии — замки и билеты лежат в основном дереве, а не в корне копии
-#     (раньше у каждой копии была своя очередь, и 14.11 шло до десяти
-#     сборок разом, давление ввода-вывода 90 %). Каталог сборки у копии
-#     СВОЙ — <копия>/target-wt: общий target-shared на несколько копий давал
-#     чужие бинари (cargo судит о свежести по времени файлов, и тесты одной
-#     копии запускали сборку другой). Новый target-wt — reflink-копия
-#     target-shared без отметок свежести наших крейтов: чужие пакеты берутся
-#     готовыми, наши пересобираются из своих исходников. Удаляется вместе с
-#     копией (`git worktree remove --force`), брошенные — rexon-build-clean.
+# What it does:
+#   * one shared build directory (target-shared) — a rebuild after
+#     someone else's takes what is ready instead of starting from scratch;
+#   * four slots (since 10.10.2026, Wehrwolfmann's decision): up to FOUR
+#     cargo commands run at once, the fifth waits until a slot frees up. Slot 0
+#     has the target-shared directory, slots 1–3 their own target-slotN: in one directory
+#     cargo lets only one through anyway. A new target-slotN is a copy of
+#     target-shared via reflink (Btrfs shares blocks, it takes almost no space);
+#   * a fair queue (since 01.11.2026): whoever got in line first gets
+#     a slot first. Previously the slot went to whoever grabbed it first, and
+#     a short test run waited for a long time while new builds cut in;
+#   * all builds are in one systemd slice rexon-build.slice with a shared
+#     memory cap, so that four at once do not choke the desktop;
+#   * lowest CPU and disk priority (nice 19, ionice idle) and
+#     a separate systemd group with a memory cap — the desktop always
+#     gets served first;
+#   * 4 threads per build (4 × 4 = 16), a shared memory cap for the slice;
+#   * git worktree (14.11.2026, Wehrwolfmann's decision): there is ONE queue for all
+#     copies — locks and tickets live in the main tree, not in the copy root
+#     (previously each copy had its own queue, and on 14.11 up to ten
+#     builds ran at once, I/O pressure 90 %). The build directory of a copy
+#     is ITS OWN — <copy>/target-wt: a shared target-shared for several copies gave
+#     foreign binaries (cargo judges freshness by file times, and tests of one
+#     copy ran another copy's build). A new target-wt is a reflink copy of
+#     target-shared without the freshness marks of our crates: foreign packages are taken
+#     ready-made, ours are rebuilt from their own sources. It is removed together with
+#     the copy (`git worktree remove --force`), abandoned ones — by rexon-build-clean.
 #
-# Использование (из любого каталога, аргументы — как у cargo в rust/):
-#   scripts/build-queue check -p rexon-core       # быстрая проверка без сборки
-#   scripts/build-queue build-app                 # приложение целиком
+# Usage (from any directory, arguments as for cargo in rust/):
+#   scripts/build-queue check -p rexon-core       # quick check without building
+#   scripts/build-queue build-app                 # the whole application
 #   scripts/build-queue test-core --no-fail-fast
 #   scripts/build-queue test -p rexon-gui
-# Пока идёт работа, хватает `check`; build/test — когда нужно запустить или
-# снять снимок.
+# While work is in progress, `check` is enough; build/test — when you need to run it or
+# take a snapshot.
 #
-# Переменные (необязательно): BUILD_QUEUE_SLOTS (1), BUILD_QUEUE_JOBS (2),
-# BUILD_QUEUE_MEM_HIGH (8G) и BUILD_QUEUE_MEM_MAX (12G) на одну сборку,
-# BUILD_QUEUE_SLICE_HIGH (18G) и BUILD_QUEUE_SLICE_MAX (22G) на все разом,
-# BUILD_QUEUE_TARGET (свой каталог сборки; место всё равно занимается;
-# в git worktree общий target-shared подменяется на target-wt копии).
+# Variables (optional): BUILD_QUEUE_SLOTS (4), BUILD_QUEUE_JOBS (2),
+# BUILD_QUEUE_MEM_HIGH (8G) and BUILD_QUEUE_MEM_MAX (12G) per build,
+# BUILD_QUEUE_SLICE_HIGH (18G) and BUILD_QUEUE_SLICE_MAX (22G) for all at once,
+# BUILD_QUEUE_TARGET (own build directory; a slot is taken anyway;
+# in a git worktree the shared target-shared is replaced by the copy's target-wt).
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Основное дерево: у git worktree общий каталог git — <основное>/.git.
+# Main tree: a git worktree has a shared git directory — <main>/.git.
 QROOT="$ROOT"
 common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 if [ -n "$common" ] && [ "${common##*/}" = ".git" ] && [ -d "${common%/.git}" ]; then
@@ -61,23 +61,24 @@ fi
 SHARED="$QROOT/target-shared"
 if [ -z "${SLOTS:-}" ]; then
     SLOTS="$(tr -dc '0-9' < "$QROOT/.build-queue.slots" 2>/dev/null || true)"
-    [ -n "$SLOTS" ] && [ "$SLOTS" -ge 1 ] || SLOTS=1
+    [ -n "$SLOTS" ] && [ "$SLOTS" -ge 1 ] || SLOTS=4
 fi
-# Второе и следующие места берутся, только пока диск не захлёбывается: при
-# давлении ввода-вывода выше 80 % за минуту (avg60) очередь работает как с
-# одним местом (14.11.2026, решение Wehrwolfmann; Crucial P2 — см. выше).
+# The second and further slots are taken only while the disk is not choking: with
+# I/O pressure above 80 % over a minute (avg60) the queue works as with
+# one slot (14.11.2026, Wehrwolfmann's decision; kept as a safety net after the
+# move to the fast disk).
 io_busy() {
     awk '/^some/ { for (i = 1; i <= NF; i++) if ($i ~ /^avg60=/) { split($i, a, "="); exit !(a[2] + 0 > 80) } exit 1 }' \
         /proc/pressure/io 2>/dev/null
 }
-# Одно место, пока стоит Crucial P2: 24–25.10 четыре сборки разом доводили
-# давление ввода-вывода до 82 % (24.10 — жёсткие сбросы). После замены диска
-# можно вернуть 4.
-# Число мест можно задать и файлом .build-queue.slots в основном дереве (одно
-# число): его читают все копии дерева, в том числе уже запущенные агенты.
+# Four slots (24.11.2026, Wehrwolfmann's decision): the system moved off the slow
+# Crucial P2, on which four builds at once drove I/O pressure up to 82 %
+# (24.10 — hard resets) and the queue had to run with one or two slots.
+# The number of slots can also be set with the .build-queue.slots file in the main tree (one
+# number): it is read by all copies of the tree, including agents already running.
 SLOTS="${BUILD_QUEUE_SLOTS:-$SLOTS}"
-# Две задачи: 25.10 даже одна сборка с -j4 линковала тесты тремя mold разом
-# (~30 МБ/с) и держала давление ввода-вывода на 82 %.
+# Two jobs: on 25.10 even a single build with -j4 linked tests with three mold at once
+# (~30 MB/s) and kept I/O pressure at 82 %.
 JOBS="${BUILD_QUEUE_JOBS:-2}"
 MEM_HIGH="${BUILD_QUEUE_MEM_HIGH:-8G}"
 MEM_MAX="${BUILD_QUEUE_MEM_MAX:-12G}"
@@ -86,35 +87,35 @@ SLICE_MAX="${BUILD_QUEUE_SLICE_MAX:-22G}"
 
 [ $# -gt 0 ] || { awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
-# `--exec <команда…>` — не cargo, а любая тяжёлая работа вне дерева (make,
-# cmake, ninja, ctest, wine…): та же честная очередь и то же место, но без
-# каталогов сборки Rexon и с DISPLAY вызывающего. Так её зовёт
-# ~/.local/bin/heavy-run, чтобы не обгонять очередь своим flock.
+# `--exec <command…>` — not cargo but any heavy work outside the tree (make,
+# cmake, ninja, ctest, wine…): the same fair queue and the same slot, but without
+# the Rexon build directories and with the caller's DISPLAY. That is how
+# ~/.local/bin/heavy-run calls it, so as not to jump the queue with its own flock.
 RAW=0
 if [ "$1" = "--exec" ]; then
     RAW=1; shift
-    [ $# -gt 0 ] || { echo "использование: build-queue --exec <команда…>" >&2; exit 2; }
+    [ $# -gt 0 ] || { echo "usage: build-queue --exec <command…>" >&2; exit 2; }
 fi
 
-# Место 0 — прежний замок .build-queue.lock: старые запуски и чужие flock
-# на него (~/.local/bin/heavy-run) по-прежнему считаются занятым местом.
-# Само место держит замок flock на дескрипторе 9; он переходит к cargo и
-# снимается ядром, когда сборка кончилась или умерла.
+# Slot 0 is the former .build-queue.lock lock: old runs and foreign flocks
+# on it (~/.local/bin/heavy-run) still count as an occupied slot.
+# The slot itself is held by a flock on descriptor 9; it passes to cargo and
+# is released by the kernel when the build has finished or died.
 lock_of() { if [ "$1" -eq 0 ]; then echo "$QROOT/.build-queue.lock"; else echo "$QROOT/.build-queue.lock.$1"; fi; }
 
-# Очередь — билеты в .build-queue.d: номер берётся под замком из счётчика,
-# каждый ждущий держит flock на своём билете (дескриптор 8). Билет живого
-# ждущего занят; билет умершего (kill -9, обрыв) свободен — его пропускают и
-# стирают. Пробовать места может только первый живой билет, поэтому места
-# раздаются строго по порядку прихода; при нескольких местах первый, получив
-# место, уходит из очереди, и следующий сразу пробует свободное.
+# The queue is tickets in .build-queue.d: the number is taken under a lock from a counter,
+# each waiter holds a flock on its ticket (descriptor 8). A live
+# waiter's ticket is locked; a dead one's (kill -9, disconnect) is free — it is skipped and
+# erased. Only the first live ticket may try the slots, so slots
+# are handed out strictly in order of arrival; with several slots the first, having got
+# a slot, leaves the queue, and the next one immediately tries a free one.
 QDIR="$QROOT/.build-queue.d"
 mkdir -p "$QDIR"
 ticket_file=""
 drop_ticket() { if [ -n "$ticket_file" ]; then rm -f "$ticket_file"; ticket_file=""; fi; }
 trap drop_ticket EXIT
 for sig in INT TERM HUP; do
-    # Убрать билет и умереть тем же сигналом — код возврата как у прежней версии.
+    # Remove the ticket and die with the same signal — the exit code as in the old version.
     trap "drop_ticket; trap - $sig EXIT; kill -$sig \$\$" "$sig"
 done
 
@@ -125,14 +126,14 @@ ticket=0
 [[ "$ticket" =~ ^[0-9]+$ ]] || ticket=0
 echo $((ticket + 1)) >"$QDIR/next.tmp"
 mv -f "$QDIR/next.tmp" "$QDIR/next"
-# Сначала замок, потом имя: в очереди не бывает билета без хозяина.
+# First the lock, then the name: the queue never has a ticket without an owner.
 exec 8>"$QDIR/new.$$"
 flock -n 8
 mv -f "$QDIR/new.$$" "$QDIR/t$ticket"
 ticket_file="$QDIR/t$ticket"
 exec 7>&-
 
-# Сколько живых билетов впереди и сколько всего; мёртвые стираются.
+# How many live tickets are ahead and how many in total; dead ones are erased.
 ahead=0
 total=0
 scan_queue() {
@@ -143,9 +144,9 @@ scan_queue() {
         n="${f##*/t}"
         [[ "$n" =~ ^[0-9]+$ ]] || continue
         if [ "$n" -ne "$ticket" ]; then
-            { exec {fd}<"$f"; } 2>/dev/null || continue    # уже ушёл
+            { exec {fd}<"$f"; } 2>/dev/null || continue    # already gone
             if flock -n -x "$fd"; then
-                rm -f "$f"                                 # хозяин умер
+                rm -f "$f"                                 # the owner died
                 exec {fd}<&-
                 continue
             fi
@@ -163,8 +164,8 @@ while :; do
     scan_queue
     if [ "$ahead" -eq 0 ]; then
         if [ "$SLOTS" -eq 1 ]; then
-            # Одно место: ждём замок до секунды — освободившееся место
-            # достаётся сразу, а сигналы (Ctrl+C, timeout) не застревают.
+            # One slot: wait for the lock up to a second — a freed slot
+            # is taken right away, and signals (Ctrl+C, timeout) do not get stuck.
             exec 9>"$(lock_of 0)"
             if flock -w 1 9 8>&-; then slot=0; break; fi
             exec 9>&-
@@ -178,22 +179,22 @@ while :; do
             [ -z "$slot" ] || break
         fi
     fi
-    pos="$((ahead + 1)) из $total"
+    pos="$((ahead + 1)) of $total"
     if [ "$waited" -eq 0 ]; then
-        echo "build-queue: все $SLOTS места заняты, жду… (в очереди: $pos)" >&2
+        echo "build-queue: all $SLOTS slots are busy, waiting… (in queue: $pos)" >&2
         waited=1
     elif [ "$pos" != "$shown" ]; then
-        echo "build-queue: в очереди: $pos" >&2
+        echo "build-queue: in queue: $pos" >&2
     fi
     shown="$pos"
     if [ "$ahead" -eq 0 ] && [ "$SLOTS" -eq 1 ]; then continue; fi
     if [ "$ahead" -eq 0 ]; then sleep 0.5 8>&-; else sleep 1 8>&-; fi
 done
-# Место взято: билет больше не нужен, следующий в очереди может пробовать.
+# Slot taken: the ticket is no longer needed, the next in the queue may try.
 drop_ticket
 exec 8>&-
 trap - EXIT INT TERM HUP
-[ "$waited" -eq 0 ] || echo "build-queue: место $slot освободилось" >&2
+[ "$waited" -eq 0 ] || echo "build-queue: slot $slot is free" >&2
 
 if [ "$RAW" -eq 1 ]; then
     if command -v systemd-run >/dev/null && systemd-run --user --scope --quiet true 2>/dev/null; then
@@ -202,13 +203,13 @@ if [ "$RAW" -eq 1 ]; then
     exec nice -n 15 ionice -c 3 "$@"
 fi
 
-# Новый каталог сборки — reflink-копия target-shared (Btrfs делит блоки,
-# места почти не берёт). cxx-qt кладёт в out/ АБСОЛЮТНЫЕ ссылки на свой
-# каталог сборки: в копии они смотрели бы в target-shared, и build-app падал
-# бы с «Conflicting include_prefixes for cxx-qt» (10.10.2026, места 2 и 3),
-# поэтому ссылки перенаправляются в новый каталог. Для копии дерева ещё и
-# стираются отметки свежести наших крейтов (`.fingerprint/rexon*`): иначе
-# cargo сверял бы время с исходниками ОСНОВНОГО дерева и брал его бинари.
+# A new build directory is a reflink copy of target-shared (Btrfs shares blocks,
+# it takes almost no space). cxx-qt puts ABSOLUTE links to its own
+# build directory into out/: in the copy they would point into target-shared, and build-app would fail
+# with "Conflicting include_prefixes for cxx-qt" (10.10.2026, slots 2 and 3),
+# so the links are redirected into the new directory. For a tree copy the
+# freshness marks of our crates (`.fingerprint/rexon*`) are also erased: otherwise
+# cargo would compare times with the sources of the MAIN tree and take its binaries.
 seed_target() {
     local t="$1" forget_ours="$2"
     [ ! -d "$t" ] && [ -d "$SHARED" ] || return 0
@@ -229,11 +230,11 @@ seed_target() {
 }
 
 if [ "$ROOT" != "$QROOT" ]; then
-    # Копия дерева (git worktree): свой каталог сборки, общий — никогда.
+    # Tree copy (git worktree): its own build directory, never the shared one.
     TARGET="$ROOT/target-wt"
     if [ -n "${BUILD_QUEUE_TARGET:-}" ]; then
         if [ "$(realpath -m "$BUILD_QUEUE_TARGET")" = "$(realpath -m "$SHARED")" ]; then
-            echo "build-queue: копия дерева собирает в свой $TARGET, а не в общий target-shared" >&2
+            echo "build-queue: the tree copy builds into its own $TARGET, not into the shared target-shared" >&2
         else
             TARGET="$BUILD_QUEUE_TARGET"
         fi
@@ -250,9 +251,9 @@ fi
 mkdir -p "$TARGET"
 
 export CARGO_TARGET_DIR="$TARGET" CARGO_BUILD_JOBS="$JOBS"
-# Сборкам и тестам живой экран не нужен (окна для снимков — xvfb-run со своим
-# DISPLAY). 25.10.2026 тест запустил `cinnamon --replace` на живом экране MATE
-# и уронил машину — без DISPLAY такая программа до стола не дотянется.
+# Builds and tests do not need the live screen (windows for snapshots — xvfb-run with its own
+# DISPLAY). On 25.10.2026 a test started `cinnamon --replace` on the live MATE screen
+# and brought the machine down — without DISPLAY such a program cannot reach the desktop.
 unset DISPLAY WAYLAND_DISPLAY
 cd "$ROOT/rust"
 

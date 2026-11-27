@@ -1,45 +1,48 @@
-//! Палитра цветов виджета Conky: все цвета, найденные в файлах виджета,
-//! одним списком — с заменой во всех местах сразу и возвратом.
+//! The color palette of a Conky widget: all colors found in the widget files,
+//! in a single list, with replacement in all places at once and a way back.
 //!
-//! ЗАЧЕМ. Цвета у виджетов задаются тремя разными способами, и человеку
-//! незачем знать, каким: именованные цвета настроек (`default_color`,
-//! `color0`…`color9`), цвета прямо в тексте (`${color #ff8800}`, цвета
-//! графиков `${cpugraph 30,200 000000 ff0000}`) и цвета сценариев Lua (кольца,
-//! стрелки часов: `fg_colour = 0xFF8800`, `cairo_set_source_rgba(cr, 1, 0.53,
-//! 0, 1)`, таблицы долей `{0.2, 0.2, 0.2, 0.8}`). Решение Wehrwolfmann
-//! 14.11.2026: один способ для всех видов — палитра найденных цветов.
-//! Одинаковые цвета собраны в один кружок («#ff8800 — 12 мест»).
+//! WHY. Widgets set colors in three different ways, and the person has no
+//! need to know which: named settings colors (`default_color`,
+//! `color0`…`color9`), colors right in the text (`${color #ff8800}`, graph
+//! colors `${cpugraph 30,200 000000 ff0000}`) and Lua script colors (rings,
+//! clock hands: `fg_colour = 0xFF8800`, `cairo_set_source_rgba(cr, 1, 0.53,
+//! 0, 1)`, tables of fractions `{0.2, 0.2, 0.2, 0.8}`). Wehrwolfmann's decision
+//! of 14.11.2026: one way for all kinds — a palette of the colors found.
+//! Identical colors are gathered into one swatch ("#ff8800 — 12 places").
 //!
-//! КАК МЕНЯЕТСЯ. В отличие от накладки ([`crate::conky_overlay`]) палитра
-//! правит САМИ файлы виджета: цвет в сценарии Lua накладкой не достать.
-//! Поэтому:
-//! * каждое место хранится точно — файл и байтовые промежутки; заменяются
-//!   только они, остальное — байт в байт (переводы строк, отступы, регистр,
-//!   комментарии);
-//! * место пишется в своём виде: hex остаётся hex (с `#` или без, в том же
-//!   регистре), `0x…` — `0x…`, доли Lua — долями (точность — как у автора,
-//!   но не грубее трёх знаков: иначе выбранный цвет не возвращался бы из
-//!   долей тем же и кружок распадался бы на два); имя цвета X11 (`white`)
-//!   становится hex без `#` — его conky понимает везде;
-//! * перед ПЕРВОЙ правкой файла его копия ложится в
-//!   `~/.local/share/rexon/conky-colour-originals/<ключ виджета>/` (рядом
-//!   `origin.json` — откуда какой файл), как копии описаний обоев Axon
-//!   (`axon_prepare`). «Вернуть цвета» кладёт копии на место и убирает их;
-//! * файл, который не принадлежит человеку, лежит вне его дома или
-//!   только для чтения, не меняется вовсе — честный отказ ДО первой записи
-//!   (все или ничего).
+//! HOW IT CHANGES. Unlike the overlay ([`crate::conky_overlay`]), the palette
+//! edits the widget files THEMSELVES: an overlay cannot reach a color in a Lua
+//! script. Therefore:
+//! * every place is stored precisely — the file and byte ranges; only they are
+//!   replaced, everything else stays byte for byte (line endings, indentation,
+//!   case, comments);
+//! * a place is written in its own form: hex stays hex (with or without `#`,
+//!   in the same case), `0x…` stays `0x…`, Lua fractions stay fractions (with
+//!   the author's precision, but not coarser than three digits: otherwise the
+//!   chosen color would not come back from the fractions as the same one and
+//!   the swatch would split in two); an X11 color name (`white`) becomes hex
+//!   without `#`, which conky understands everywhere;
+//! * before the FIRST edit of a file, a copy of it goes to
+//!   `~/.local/share/rexon/conky-colour-originals/<widget key>/` (next to it
+//!   `origin.json`, which file came from where), like the copies of Axon
+//!   wallpaper descriptions (`axon_prepare`). "Restore colors" puts the copies
+//!   back and removes them;
+//! * a file that does not belong to the person, lies outside their home or is
+//!   read-only is not changed at all — an honest refusal BEFORE the first
+//!   write (all or nothing).
 //!
-//! ЧТО НЕ ТРОГАЕТСЯ. Цвета-выражения (`r * 0.5`, цвет по значению,
-//! `${color ${exec …}}`), неизвестные имена цветов и цвета в картинках.
-//! О них палитра говорит одной строкой: менять их — через «Открыть файл
-//! настроек». Поле `own_window_colour` — фон окна — меняется в блоке «Фон»
-//! настроек (накладкой), в палитру не входит.
+//! WHAT IS NOT TOUCHED. Color expressions (`r * 0.5`, a color by value,
+//! `${color ${exec …}}`), unknown color names and colors in images. The
+//! palette mentions them in one line: they are changed via "Open settings
+//! file". The `own_window_colour` field — the window background — is changed
+//! in the "Background" block of the settings (via the overlay) and is not
+//! part of the palette.
 //!
-//! После правки: виджет, разрешённый человеком в прежнем виде
-//! ([`crate::conky_safety::trusted_as_is`]), разрешается заново — правка
-//! цвета команд не добавляет; накладки файлов переписываются (копия 1.9 →
-//! 1.10 берётся заново), запущенные процессы получают `SIGUSR1` (conky
-//! перечитывает настройки и сценарии), снимок для плитки переснимается
+//! After an edit: a widget the person allowed in its previous form
+//! ([`crate::conky_safety::trusted_as_is`]) is allowed again — a color edit
+//! adds no commands; the file overlays are rewritten (the 1.9 → 1.10 copy is
+//! taken anew), running processes get `SIGUSR1` (conky rereads its settings
+//! and scripts), and the tile snapshot is retaken
 //! ([`crate::conky_preview::want`]).
 
 use std::collections::BTreeMap;
@@ -48,78 +51,78 @@ use std::path::{Path, PathBuf};
 use crate::de_apply::Ctx;
 use crate::i18n::{ntr, tr, trf};
 
-/// Подкаталог данных Rexon с копиями файлов до первой смены цвета.
+/// The Rexon data subdirectory with copies of files before the first color change.
 pub const BACKUP_SUBDIR: &str = "rexon/conky-colour-originals";
-/// Опись копий в каталоге виджета.
+/// The inventory of copies in the widget directory.
 pub const ORIGIN_FILE: &str = "origin.json";
-/// Файлы больше этого не разбираются (не код виджета).
+/// Files larger than this are not parsed (not widget code).
 const MAX_FILE: usize = 2 * 1024 * 1024;
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Что найдено
+//  What was found
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Где задан цвет.
+/// Where a color is set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
-    /// Именованный цвет настроек (`default_color`, `color1`…).
+    /// A named settings color (`default_color`, `color1`…).
     Setting,
-    /// Цвет в тексте виджета (`${color …}`).
+    /// A color in the widget text (`${color …}`).
     Text,
-    /// Цвет графика (`${cpugraph … 000000 ff0000}`).
+    /// A graph color (`${cpugraph … 000000 ff0000}`).
     Graph,
-    /// Цвет в сценарии Lua.
+    /// A color in a Lua script.
     Script,
 }
 
-/// В каком виде цвет записан — в нём же пишется новый.
+/// The form in which the color is written; the new one is written in the same form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Form {
     /// `ff8800`, `#FF8800`, `#f80`.
     Hex { hash: bool, upper: bool },
-    /// Имя цвета X11 (`white`, `Tan1`).
+    /// An X11 color name (`white`, `Tan1`).
     Name,
-    /// Число Lua `0xFF8800`.
+    /// A Lua number `0xFF8800`.
     Lua { upper: bool },
-    /// Три доли 0..1; `decimals` — сколько знаков писать.
+    /// Three fractions 0..1; `decimals` is how many digits to write.
     Fractions { decimals: usize },
 }
 
-/// Одно место цвета.
+/// A single color place.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Place {
     pub file: String,
-    /// Байтовые промежутки `[начало, конец)`: один у hex и имени, три у
-    /// долей (красный, зелёный, синий).
+    /// Byte ranges `[start, end)`: one for hex and names, three for fractions
+    /// (red, green, blue).
     pub spans: Vec<(usize, usize)>,
     form: Form,
     pub kind: Kind,
     pub rgb: [u8; 3],
 }
 
-/// Всё найденное в файлах виджета.
+/// Everything found in the widget files.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Found {
     pub places: Vec<Place>,
-    /// Мест, которые Rexon менять не берётся: выражения, неизвестные имена.
+    /// Places Rexon does not undertake to change: expressions, unknown names.
     pub computed: usize,
-    /// У виджета есть картинки (`${image}`, PNG в сценариях).
+    /// The widget has images (`${image}`, PNG in scripts).
     pub pictures: bool,
 }
 
-/// Как читать файл.
+/// How to read a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
-    /// Настройки 1.10 (`conky.config = {…}`, `conky.text = [[…]]`).
+    /// 1.10 settings (`conky.config = {…}`, `conky.text = [[…]]`).
     Config,
-    /// Настройки до 1.10 (`имя значение`, `TEXT`).
+    /// Pre-1.10 settings (`name value`, `TEXT`).
     OldConfig,
-    /// Сценарий Lua (`lua_load`).
+    /// A Lua script (`lua_load`).
     Script,
 }
 
-/// Вид файла по имени и содержимому.
+/// The file kind by name and contents.
 pub fn role_of(path: &str, text: &str) -> Role {
     if crate::conky_scan::looks_like_config(text) {
         return match crate::conky_overlay::syntax(text) {
@@ -135,13 +138,13 @@ pub fn role_of(path: &str, text: &str) -> Role {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Значения цветов
+//  Color values
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Имена цветов, которые понимает conky (база X11). Где X11 расходится с
-/// CSS (`gray`, `green`, `maroon`, `purple`), взято значение X11 — conky
-/// читает имена по ней. Номерных вариантов X11 (`Tan1`, `gray50`) здесь
-/// нет, кроме серых (считаются) и самых частых в виджетах.
+/// The color names conky understands (the X11 database). Where X11 differs
+/// from CSS (`gray`, `green`, `maroon`, `purple`), the X11 value is taken —
+/// conky reads names by it. Numbered X11 variants (`Tan1`, `gray50`) are not
+/// here, except the grays (computed) and the ones most common in widgets.
 const NAMES: &[(&str, u32)] = &[
     ("aliceblue", 0xf0f8ff), ("antiquewhite", 0xfaebd7), ("aqua", 0x00ffff), ("aquamarine", 0x7fffd4),
     ("azure", 0xf0ffff), ("beige", 0xf5f5dc), ("bisque", 0xffe4c4), ("black", 0x000000),
@@ -187,7 +190,7 @@ fn rgb_of(v: u32) -> [u8; 3] {
     [(v >> 16) as u8, (v >> 8) as u8, v as u8]
 }
 
-/// Цвет по имени X11 (без учёта регистра); `gray0`…`gray100` считаются.
+/// A color by X11 name (case-insensitive); `gray0`…`gray100` are computed.
 pub fn named(name: &str) -> Option<[u8; 3]> {
     let n = name.to_ascii_lowercase();
     if let Some(&(_, v)) = NAMES.iter().find(|(k, _)| *k == n) {
@@ -213,8 +216,8 @@ fn has_upper(b: &[u8]) -> bool {
     b.iter().any(u8::is_ascii_uppercase)
 }
 
-/// Значение цвета настроек или текста: hex (6 или 3 знака, с `#` или без)
-/// или имя X11. `None` — не цвет либо имя неизвестно.
+/// A settings or text color value: hex (6 or 3 digits, with or without `#`)
+/// or an X11 name. `None` means not a color, or the name is unknown.
 fn parse_value(s: &[u8]) -> Option<([u8; 3], Form)> {
     let (hash, body) = match s.first() {
         Some(b'#') => (true, &s[1..]),
@@ -234,13 +237,13 @@ fn parse_value(s: &[u8]) -> Option<([u8; 3], Form)> {
     None
 }
 
-/// Похоже ли значение на попытку задать цвет (чтобы неизвестное имя
-/// попало в «вычисляется», а не пропало молча).
+/// Whether a value looks like an attempt to set a color (so that an unknown
+/// name ends up as "computed" rather than vanishing silently).
 fn looks_like_colour(s: &[u8]) -> bool {
     !s.is_empty() && s.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'#')
 }
 
-/// Строка цвета `rgb` в виде места (`i` — номер промежутка у долей).
+/// The color `rgb` as a string in the place's form (`i` is the range index for fractions).
 fn render(form: Form, rgb: [u8; 3], i: usize) -> String {
     let hex = format!("{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
     match form {
@@ -258,30 +261,30 @@ fn render(form: Form, rgb: [u8; 3], i: usize) -> String {
     }
 }
 
-/// `#rrggbb` для показа.
+/// `#rrggbb` for display.
 pub fn hex_label(rgb: [u8; 3]) -> String {
     format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
 }
 
-/// `#rrggbb` / `rrggbb` → цвет.
+/// `#rrggbb` / `rrggbb` → a color.
 pub fn parse_hex(s: &str) -> Option<[u8; 3]> {
     let b = s.trim().trim_start_matches('#').as_bytes();
     (b.len() == 6 && is_hex(b)).then(|| hex_rgb(b)).flatten()
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Разбор Lua: код, строки, комментарии
+//  Parsing Lua: code, strings, comments
 // ════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Seg {
-    /// Код `[начало, конец)`.
+    /// Code `[start, end)`.
     Code(usize, usize),
-    /// Содержимое строки (без кавычек и скобок) `[начало, конец)`.
+    /// String contents (without quotes and brackets) `[start, end)`.
     Str(usize, usize),
 }
 
-/// Длинная скобка `[==[` в позиции `i`: `(уровень, длина открытия)`.
+/// A long bracket `[==[` at position `i`: `(level, opening length)`.
 fn long_open(b: &[u8], i: usize) -> Option<(usize, usize)> {
     if b.get(i) != Some(&b'[') {
         return None;
@@ -293,7 +296,7 @@ fn long_open(b: &[u8], i: usize) -> Option<(usize, usize)> {
     (b.get(j) == Some(&b'[')).then_some((j - i - 1, j - i + 1))
 }
 
-/// Начало закрытия `]==]` уровня `level` от позиции `from`.
+/// The start of the closing `]==]` of level `level`, searching from position `from`.
 fn long_close(b: &[u8], from: usize, level: usize) -> Option<usize> {
     let mut i = from;
     while i < b.len() {
@@ -311,7 +314,7 @@ fn long_close(b: &[u8], from: usize, level: usize) -> Option<usize> {
     None
 }
 
-/// Текст Lua — кусками кода и строк; комментарии выброшены.
+/// Lua text as pieces of code and strings; comments are thrown away.
 fn lua_segments(b: &[u8]) -> Vec<Seg> {
     let mut out = Vec::new();
     let mut code = 0;
@@ -370,7 +373,7 @@ fn is_ident(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
 }
 
-/// Позиции слова `word` целиком в `[s, e)`.
+/// Positions of the whole word `word` in `[s, e)`.
 fn words(b: &[u8], s: usize, e: usize, word: &[u8]) -> Vec<usize> {
     let mut out = Vec::new();
     let mut i = s;
@@ -406,11 +409,12 @@ fn trim_span(b: &[u8], mut s: usize, mut e: usize) -> (usize, usize) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Поиск мест
+//  Finding places
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Имя поля-цвета настроек (оба написания, `colour` и `color`); фон окна
-/// (`own_window_colour`) — не здесь, он у блока «Фон».
+/// The name of a color settings field (both spellings, `colour` and `color`);
+/// the window background (`own_window_colour`) is not here, it belongs to the
+/// "Background" block.
 fn is_setting(name: &str) -> bool {
     let n = name.to_ascii_lowercase().replace("colour", "color");
     matches!(n.as_str(), "default_color" | "default_outline_color" | "default_shade_color")
@@ -428,8 +432,8 @@ impl Scanner<'_> {
         self.found.places.push(Place { file: self.file.to_string(), spans, form, kind, rgb });
     }
 
-    /// Значение настройки/текста в `[s, e)`: цвет — место, неизвестное
-    /// имя — «вычисляется».
+    /// A settings/text value in `[s, e)`: a color becomes a place, an unknown name
+    /// becomes "computed".
     fn value(&mut self, s: usize, e: usize, kind: Kind) {
         let (s, e) = trim_span(self.b, s, e);
         match parse_value(&self.b[s..e]) {
@@ -439,7 +443,7 @@ impl Scanner<'_> {
         }
     }
 
-    /// Текст виджета `[s, e)`: `${color …}`, цвета графиков, картинки.
+    /// Widget text `[s, e)`: `${color …}`, graph colors, images.
     fn text(&mut self, s: usize, e: usize) {
         let b = self.b;
         let mut i = s;
@@ -461,7 +465,7 @@ impl Scanner<'_> {
             while j < e && is_ident(b[j]) {
                 j += 1;
             }
-            // Закрывающая скобка с учётом вложенных `${…}`.
+            // The closing brace, taking nested `${…}` into account.
             let mut depth = 1usize;
             let mut k = i + 2;
             while k < e {
@@ -500,8 +504,8 @@ impl Scanner<'_> {
         }
     }
 
-    /// Цвета графика: пара hex сразу после размера `высота,ширина`, а без
-    /// размера — первая пара hex подряд.
+    /// Graph colors: a hex pair right after the `height,width` size, and without
+    /// a size, the first consecutive hex pair.
     fn graph(&mut self, s: usize, e: usize) {
         let b = self.b;
         let mut toks: Vec<(usize, usize)> = Vec::new();
@@ -549,7 +553,7 @@ impl Scanner<'_> {
         }
     }
 
-    /// Файл настроек 1.10.
+    /// A 1.10 settings file.
     fn config(&mut self) {
         let b = self.b;
         let segs = lua_segments(b);
@@ -571,7 +575,7 @@ impl Scanner<'_> {
                         if is_setting(&name) {
                             let at = skip_ws(b, j, e);
                             if at < e && b[at] == b'=' && b.get(at + 1) != Some(&b'=') && skip_ws(b, at + 1, e) == e {
-                                // Значение — строка сразу за `=`.
+                                // The value is the string right after `=`.
                                 if let Some(Seg::Str(vs, ve)) = segs.get(n + 1) {
                                     self.value(*vs, *ve, Kind::Setting);
                                 }
@@ -584,7 +588,7 @@ impl Scanner<'_> {
         }
     }
 
-    /// Файл настроек до 1.10.
+    /// A pre-1.10 settings file.
     fn old_config(&mut self) {
         let b = self.b;
         let mut i = 0;
@@ -595,7 +599,7 @@ impl Scanner<'_> {
                 self.text(end, b.len());
                 return;
             }
-            // `#` — комментарий до конца строки (`\#` — знак).
+            // `#` starts a comment until the end of the line (`\#` is the character itself).
             let mut cut = le;
             let mut k = ls;
             while k < le {
@@ -624,7 +628,7 @@ impl Scanner<'_> {
         }
     }
 
-    /// Сценарий Lua.
+    /// A Lua script.
     fn script(&mut self) {
         let b = self.b;
         for seg in lua_segments(b) {
@@ -647,8 +651,8 @@ impl Scanner<'_> {
         }
     }
 
-    /// `0xRRGGBB` там, где он похож на цвет: значение поля, элемент таблицы
-    /// или довод вызова — но не маска битовой операции и не слагаемое.
+    /// `0xRRGGBB` where it looks like a color: a field value, a table element or
+    /// a call argument — but not a bitwise operation mask or an addend.
     fn lua_hex(&mut self, s: usize, e: usize) {
         let b = self.b;
         let mut i = s;
@@ -694,8 +698,8 @@ impl Scanner<'_> {
         }
     }
 
-    /// Вызов cairo с цветом: `(` сразу за именем, `skip` первых доводов —
-    /// не цвет (поверхность, смещение остановки).
+    /// A cairo call with a color: `(` right after the name; the first `skip`
+    /// arguments are not the color (the surface, the stop offset).
     fn cairo(&mut self, from: usize, e: usize, skip: usize) {
         let b = self.b;
         let open = skip_ws(b, from, e);
@@ -709,15 +713,14 @@ impl Scanner<'_> {
             self.fractions(&lits.into_iter().flatten().collect::<Vec<_>>());
             return;
         }
-        // Не числа: ссылка на найденные цвета (`rgb_to_r_g_b(c, a)`,
-        // `col[1]`) или выражение (`r * 0.5`) — второе не трогаем, но
-        // говорим о нём.
+        // Not numbers: a reference to found colors (`rgb_to_r_g_b(c, a)`, `col[1]`)
+        // or an expression (`r * 0.5`) — the latter is left alone, but we mention it.
         if colour.iter().take(3).any(|&(a, z)| is_expression(&b[a..z])) {
             self.found.computed += 1;
         }
     }
 
-    /// Таблица долей с цветовым именем: `bg_colour = {0.2, 0.2, 0.2, 0.8}`.
+    /// A table of fractions with a color name: `bg_colour = {0.2, 0.2, 0.2, 0.8}`.
     fn tables(&mut self, s: usize, e: usize) {
         let b = self.b;
         let mut i = s;
@@ -726,7 +729,7 @@ impl Scanner<'_> {
                 i += 1;
                 continue;
             }
-            // Имя слева от `= {`.
+            // The name to the left of `= {`.
             let mut p = i;
             while p > s && b[p - 1].is_ascii_whitespace() {
                 p -= 1;
@@ -763,7 +766,7 @@ impl Scanner<'_> {
     }
 }
 
-/// Вызовы cairo с цветом и сколько доводов перед ним.
+/// Cairo calls with a color, and how many arguments precede it.
 const CAIRO_CALLS: &[(&str, usize)] = &[
     ("cairo_set_source_rgb", 1),
     ("cairo_set_source_rgba", 1),
@@ -777,9 +780,9 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
 
-/// Следующее слово начинает новый оператор Lua (поле в таблице без запятой
-/// не бывает, а `local x = 0xffffff` и следом `local y` — бывает на
-/// одной строке через пробел).
+/// The next word starts a new Lua statement (a table field without a comma
+/// does not occur, but `local x = 0xffffff` followed by `local y` on the same
+/// line separated by a space does).
 fn starts_new_statement(b: &[u8], q: usize, e: usize) -> bool {
     let mut j = q;
     while j < e && is_ident(b[j]) {
@@ -788,7 +791,7 @@ fn starts_new_statement(b: &[u8], q: usize, e: usize) -> bool {
     matches!(&b[q..j], b"local" | b"end" | b"return" | b"if" | b"for" | b"while" | b"function")
 }
 
-/// Имя таблицы-цвета: `…col…`, `bg`, `fg`, `bg_…`, `…_fg`.
+/// The name of a color table: `…col…`, `bg`, `fg`, `bg_…`, `…_fg`.
 fn colour_name(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     !n.is_empty()
@@ -801,12 +804,12 @@ fn colour_name(name: &str) -> bool {
             || n.ends_with("_fg"))
 }
 
-/// Выражение (арифметика), а не ссылка на имя или вызов.
+/// An expression (arithmetic), not a reference to a name or a call.
 fn is_expression(t: &[u8]) -> bool {
     t.iter().any(|c| matches!(c, b'*' | b'/' | b'+' | b'%' | b'^')) || contains(t, b"math.")
 }
 
-/// Доводы скобки с позиции `open` до парной: промежутки без пробелов.
+/// The arguments of a bracket from position `open` to its pair: ranges without spaces.
 fn call_args(b: &[u8], open: usize, e: usize) -> Option<Vec<(usize, usize)>> {
     call_args_with(b, open, e, b'(', b')')
 }
@@ -844,7 +847,7 @@ fn call_args_with(b: &[u8], open: usize, e: usize, lp: u8, rp: u8) -> Option<Vec
     None
 }
 
-/// Число Lua целиком в `[a, z)`: `(значение, знаков после точки, промежуток)`.
+/// A whole Lua number in `[a, z)`: `(value, digits after the point, range)`.
 fn number(b: &[u8], a: usize, z: usize) -> Option<(f64, usize, (usize, usize))> {
     let t = &b[a..z];
     if t.is_empty() || !t.iter().all(|c| c.is_ascii_digit() || *c == b'.') || t.iter().filter(|c| **c == b'.').count() > 1 {
@@ -856,7 +859,7 @@ fn number(b: &[u8], a: usize, z: usize) -> Option<(f64, usize, (usize, usize))> 
     Some((v, decimals, (a, z)))
 }
 
-/// Найти цвета в одном файле.
+/// Finds the colors in a single file.
 pub fn scan_bytes(file: &str, bytes: &[u8], role: Role, found: &mut Found) {
     let mut sc = Scanner { b: bytes, file, found };
     match role {
@@ -866,8 +869,8 @@ pub fn scan_bytes(file: &str, bytes: &[u8], role: Role, found: &mut Found) {
     }
 }
 
-/// Прочитать и разобрать файлы; нечитаемые и слишком большие пропускаются.
-/// Второе — содержимое прочитанных (для замены).
+/// Reads and parses the files; unreadable and too large ones are skipped. The
+/// second value is the contents of the files read (for replacement).
 pub fn scan_files(files: &[String]) -> (Found, BTreeMap<String, Vec<u8>>) {
     let mut found = Found::default();
     let mut texts = BTreeMap::new();
@@ -884,22 +887,22 @@ pub fn scan_files(files: &[String]) -> (Found, BTreeMap<String, Vec<u8>>) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Палитра и замена
+//  The palette and replacement
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Кружок палитры: один цвет и все его места.
+/// A palette swatch: one color and all its places.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Group {
     /// `#rrggbb`.
     pub hex: String,
     pub count: usize,
-    /// Подпись счётчика («12 мест»).
+    /// The counter label ("12 places").
     pub count_label: String,
-    /// Подсказка: где именно.
+    /// The tooltip: where exactly.
     pub tip: String,
 }
 
-/// Кружки палитры: частые цвета первыми.
+/// Palette swatches: the most frequent colors first.
 pub fn groups(found: &Found) -> Vec<Group> {
     let mut by: BTreeMap<[u8; 3], BTreeMap<Kind, usize>> = BTreeMap::new();
     for p in &found.places {
@@ -933,8 +936,8 @@ pub fn groups(found: &Found) -> Vec<Group> {
     out
 }
 
-/// Содержимое файлов после замены цвета `from` на `to` во всех его местах;
-/// в ответе — только изменившиеся файлы.
+/// The file contents after replacing color `from` with `to` in all its
+/// places; only the changed files are in the answer.
 pub fn replaced(texts: &BTreeMap<String, Vec<u8>>, found: &Found, from: [u8; 3], to: [u8; 3]) -> BTreeMap<String, Vec<u8>> {
     let mut edits: BTreeMap<&str, Vec<((usize, usize), String)>> = BTreeMap::new();
     for p in found.places.iter().filter(|p| p.rgb == from) {
@@ -959,25 +962,25 @@ pub fn replaced(texts: &BTreeMap<String, Vec<u8>>, found: &Found, from: [u8; 3],
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Резервная копия и запись
+//  Backup and writing
 // ════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Origin {
     version: u32,
-    /// Путь виджета.
+    /// The widget path.
     widget: String,
     files: Vec<OriginFile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct OriginFile {
-    /// Файл виджета.
+    /// A widget file.
     path: String,
-    /// Имя копии в каталоге.
+    /// The copy's name in the directory.
     copy: String,
-    /// SHA-256 того, что Rexon записал последним: не совпало — файл с тех
-    /// пор правили руками.
+    /// SHA-256 of what Rexon wrote last: a mismatch means the file has been
+    /// edited by hand since.
     written: String,
 }
 
@@ -985,7 +988,7 @@ fn sha(bytes: &[u8]) -> String {
     <sha2::Sha256 as sha2::Digest>::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Каталог копий виджета `widget_path` под корнем `root`.
+/// The copy directory of widget `widget_path` under root `root`.
 pub fn backup_dir(root: &Path, widget_path: &str) -> PathBuf {
     root.join(crate::conky_overlay::key(widget_path))
 }
@@ -999,12 +1002,12 @@ fn save_origin(dir: &Path, o: &Origin) -> Result<(), String> {
     crate::utils::atomic_write(&dir.join(ORIGIN_FILE).to_string_lossy(), &text).map_err(|e| e.to_string())
 }
 
-/// Есть ли копия (цвета менялись).
+/// Whether there is a copy (the colors were changed).
 pub fn has_backup(dir: &Path) -> bool {
     load_origin(dir).is_some_and(|o| !o.files.is_empty())
 }
 
-/// Файлы, которые правили после последней смены цвета (не Rexon).
+/// Files edited after the last color change (not by Rexon).
 pub fn changed_outside(dir: &Path) -> Vec<String> {
     let Some(o) = load_origin(dir) else { return Vec::new() };
     o.files
@@ -1014,9 +1017,9 @@ pub fn changed_outside(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-/// Можно ли Rexon менять файл: обычный файл (ссылка — по цели) в доме
-/// человека, его владелец — сам человек, запись разрешена. `Err` — отказ
-/// для человека.
+/// Whether Rexon may change a file: a regular file (a link is judged by its
+/// target) in the person's home, owned by the person, with write permission.
+/// `Err` is a refusal for the person.
 pub fn check_writable(path: &str, home: &str) -> Result<(), String> {
     use std::os::unix::fs::MetadataExt;
     let refuse = || {
@@ -1031,20 +1034,20 @@ pub fn check_writable(path: &str, home: &str) -> Result<(), String> {
         return Err(refuse());
     }
     let meta = std::fs::metadata(&real).map_err(|_| refuse())?;
-    // SAFETY: geteuid без доводов, ошибок не бывает.
+    // SAFETY: geteuid takes no arguments and cannot fail.
     let uid = unsafe { libc::geteuid() };
     if !meta.is_file() || meta.uid() != uid {
         return Err(refuse());
     }
-    // Открыть на запись, не обрезая: так видны и права, и том только для
-    // чтения.
+    // Open for writing without truncating: this reveals both the permissions and
+    // a read-only volume.
     std::fs::OpenOptions::new().write(true).open(&real).map_err(|_| refuse())?;
     Ok(())
 }
 
-/// Заменить цвет `from` на `to` во всех местах файлов `files` виджета
-/// `widget_path`. Перед первой правкой файла — его копия в `dir`. Все или
-/// ничего: отказ одного файла — не меняется ни один. `Ok(мест)`.
+/// Replaces color `from` with `to` in all places of files `files` of widget
+/// `widget_path`. Before the first edit of a file, a copy of it goes to `dir`.
+/// All or nothing: if one file is refused, none is changed. Returns `Ok(places)`.
 pub fn apply_change(files: &[String], home: &str, dir: &Path, widget_path: &str, from: [u8; 3], to: [u8; 3]) -> Result<usize, String> {
     let (found, texts) = scan_files(files);
     let count = found.places.iter().filter(|p| p.rgb == from).count();
@@ -1061,7 +1064,7 @@ pub fn apply_change(files: &[String], home: &str, dir: &Path, widget_path: &str,
     let save_failed = || tr("Rexon couldn't save the widget's files.");
     std::fs::create_dir_all(dir).map_err(|_| save_failed())?;
     let mut origin = load_origin(dir).unwrap_or_else(|| Origin { version: 1, widget: widget_path.to_string(), files: Vec::new() });
-    // 1. Копии — до первой записи файла; опись — до записи самих файлов.
+    // 1. Copies before the first write of a file; the inventory before writing the files themselves.
     for file in new.keys() {
         if origin.files.iter().any(|f| &f.path == file) {
             continue;
@@ -1071,7 +1074,7 @@ pub fn apply_change(files: &[String], home: &str, dir: &Path, widget_path: &str,
         origin.files.push(OriginFile { path: file.clone(), copy, written: sha(&texts[file]) });
     }
     save_origin(dir, &origin).map_err(|_| save_failed())?;
-    // 2. Файлы.
+    // 2. The files.
     for (file, bytes) in &new {
         crate::utils::atomic_write_bytes(file, bytes).map_err(|_| save_failed())?;
         if let Some(f) = origin.files.iter_mut().find(|f| &f.path == file) {
@@ -1082,7 +1085,7 @@ pub fn apply_change(files: &[String], home: &str, dir: &Path, widget_path: &str,
     Ok(count)
 }
 
-/// «Вернуть цвета»: положить копии на место и убрать их. `Ok(файлов)`.
+/// "Restore colors": puts the copies back and removes them. Returns `Ok(files)`.
 pub fn revert(dir: &Path, home: &str) -> Result<usize, String> {
     let Some(origin) = load_origin(dir) else {
         return Err(tr("There is no copy of the widget's files, so Rexon can't restore the colours."));
@@ -1097,7 +1100,7 @@ pub fn revert(dir: &Path, home: &str) -> Result<usize, String> {
         copies.push((f.path.clone(), bytes));
     }
     for (path, bytes) in &copies {
-        // Файл удалили вместе с виджетом — возвращать некуда.
+        // The file was deleted together with the widget: there is nowhere to restore it to.
         if !std::path::Path::new(path).exists() {
             continue;
         }
@@ -1108,10 +1111,10 @@ pub fn revert(dir: &Path, home: &str) -> Result<usize, String> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Для карточки
+//  For the card
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Подписи блока палитры.
+/// Labels of the palette block.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Texts {
     pub title: String,
@@ -1133,20 +1136,20 @@ pub fn texts() -> Texts {
     }
 }
 
-/// Блок палитры для страницы (JSON).
+/// The palette block for the page (JSON).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct View {
     pub available: bool,
     pub colours: Vec<Group>,
-    /// «Часть цветов задана картинками или вычисляется».
+    /// "Some colors are set by images or computed".
     pub note: Option<String>,
-    /// Своя картинка автора: плитка новых цветов не покажет.
+    /// The author's own picture: the tile will not show the new colors.
     pub picture_note: Option<String>,
     pub can_revert: bool,
     pub t: Texts,
 }
 
-/// Блок палитры по найденному.
+/// The palette block from what was found.
 pub fn view(found: &Found, any_file: bool, own_picture: bool, can_revert: bool) -> View {
     let note = (found.computed > 0 || found.pictures).then(|| {
         tr("Some colours are drawn by pictures or computed by the widget's scripts — change them with “📝 Open settings file”.")
@@ -1157,14 +1160,14 @@ pub fn view(found: &Found, any_file: bool, own_picture: bool, can_revert: bool) 
     View { available: any_file, colours: groups(found), note, picture_note, can_revert, t: texts() }
 }
 
-/// Корень копий на этой машине.
+/// The root of the copies on this machine.
 pub fn live_backup_root(ctx: &Ctx) -> PathBuf {
     let data = crate::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &ctx.home);
     Path::new(&data).join(BACKUP_SUBDIR)
 }
 
-/// Убрать копии виджета, лежавшего в `dir` (виджет удалён — возвращать
-/// некуда).
+/// Removes the copies of the widget that lived in `dir` (the widget has been
+/// deleted, there is nowhere to restore to).
 pub fn forget(ctx: &Ctx, dir: &str) {
     let _ = std::fs::remove_dir_all(backup_dir(&live_backup_root(ctx), dir.trim_end_matches('/')));
 }
@@ -1186,7 +1189,7 @@ fn live(name: &str) -> Live {
     Live { io, ctx, path, files, dir }
 }
 
-/// Живой блок палитры виджета `name`.
+/// The live palette block of widget `name`.
 pub fn live_view(name: &str) -> View {
     let l = live(name);
     let (found, texts) = scan_files(&l.files);
@@ -1195,7 +1198,7 @@ pub fn live_view(name: &str) -> View {
     view(&found, !texts.is_empty(), own, has_backup(&l.dir))
 }
 
-/// После записи файлов: разрешение, накладки, запущенные процессы, снимок.
+/// After writing the files: permission, overlays, running processes, snapshot.
 fn after_change(l: &Live, name: &str, trusted: bool) {
     if trusted {
         crate::conky_safety::remember(&l.io, &l.ctx, name);
@@ -1209,9 +1212,9 @@ fn after_change(l: &Live, name: &str, trusted: bool) {
         }
         for (pid, _) in crate::conky_overlay::processes_of(&l.io, &conf) {
             if let Ok(pid) = pid.parse::<i32>() {
-                // SAFETY: номер — процесс conky этого файла (сверено по
-                // командной строке в `processes_of`); SIGUSR1 у conky —
-                // «перечитать настройки».
+                // SAFETY: the PID is the conky process of this file (checked against the
+                // command line in `processes_of`); for conky SIGUSR1 means "reread the
+                // settings".
                 unsafe {
                     libc::kill(pid, libc::SIGUSR1);
                 }
@@ -1221,7 +1224,7 @@ fn after_change(l: &Live, name: &str, trusted: bool) {
     crate::conky_preview::want(&l.ctx, name);
 }
 
-/// Поменять цвет `from` (`#rrggbb`) на `to` во всём виджете `name`.
+/// Changes color `from` (`#rrggbb`) to `to` in the whole widget `name`.
 pub fn live_set(name: &str, from: &str, to: &str) -> (bool, String) {
     let (Some(f), Some(t)) = (parse_hex(from), parse_hex(to)) else {
         return (false, tr("This colour is no longer in the widget's files — the palette has been refreshed."));
@@ -1239,8 +1242,8 @@ pub fn live_set(name: &str, from: &str, to: &str) -> (bool, String) {
     }
 }
 
-/// Вопрос перед «Вернуть цвета», если файлы правили и после Rexon:
-/// `(заголовок, текст)`.
+/// The question before "Restore colors" if the files were edited after Rexon
+/// as well: `(title, text)`.
 pub fn live_revert_question(name: &str) -> Option<(String, String)> {
     let l = live(name);
     if changed_outside(&l.dir).is_empty() {
@@ -1252,7 +1255,7 @@ pub fn live_revert_question(name: &str) -> Option<(String, String)> {
     ))
 }
 
-/// «Вернуть цвета» виджета `name`.
+/// "Restore colors" for widget `name`.
 pub fn live_revert(name: &str) -> (bool, String) {
     let l = live(name);
     let trusted = crate::conky_safety::trusted_as_is(&l.io, &l.ctx, name);
@@ -1309,7 +1312,7 @@ ${image ./bg.png -p 0,0}
         assert_eq!(hexes(&f, Kind::Setting), ["#ffffff", "#ff8800", "#ff8800", "#ff8800"]);
         assert_eq!(hexes(&f, Kind::Text), ["#ff8800", "#ffa54f", "#ffd700"]);
         assert_eq!(hexes(&f, Kind::Graph), ["#ff8800", "#1e90ff"]);
-        // `${color ${exec}}` и неизвестное имя — «вычисляется».
+        // `${color ${exec}}` and an unknown name are "computed".
         assert_eq!(f.computed, 2);
         assert!(f.pictures);
         let g = groups(&f);
@@ -1327,7 +1330,7 @@ ${image ./bg.png -p 0,0}
             .replace("${color #ff8800}", "${color #123abc}")
             .replace("25,200 FF8800", "25,200 123ABC");
         assert_eq!(out, want);
-        // Имя X11 становится hex без `#`; комментарий не тронут.
+        // An X11 name becomes hex without `#`; the comment is not touched.
         let out = change("/w/conky.conf", LUA_CONF, "#ffffff", "#000001");
         assert!(out.starts_with("-- default_color = 'red'\n"));
         assert!(out.contains("default_color = '000001',"));
@@ -1354,7 +1357,7 @@ ${downspeedgraph eth0 30,100 000000 ff8800 100000}\n";
             .replace("${color #ff8800}", "${color #00aa00}")
             .replace("000000 ff8800 100000", "000000 00aa00 100000");
         assert_eq!(out, want);
-        // Короткий hex становится полным, комментарий остаётся.
+        // A short hex becomes a full one, the comment stays.
         let out = change("/w/.conkyrc", OLD_CONF, "#777777", "#102030");
         assert!(out.contains("default_color 102030 # серый\n"));
     }
@@ -1389,11 +1392,11 @@ end
         let s = hexes(&f, Kind::Script);
         assert_eq!(s.iter().filter(|h| *h == "#ffffff").count(), 2);
         assert_eq!(s.iter().filter(|h| *h == "#1e90ff").count(), 1);
-        // 0xFF8800, {1, 0.5333, 0}, (1, 0.533, 0) — все #ff8800.
+        // 0xFF8800, {1, 0.5333, 0}, (1, 0.533, 0) are all #ff8800.
         assert_eq!(s.iter().filter(|h| *h == "#ff8800").count(), 3);
-        // {0.2…} и остановка градиента — #333333.
+        // {0.2…} and the gradient stop are #333333.
         assert_eq!(s.iter().filter(|h| *h == "#333333").count(), 2);
-        // Ни комментарий, ни маска, ни слагаемое.
+        // Neither the comment, nor the mask, nor the addend.
         assert!(!s.iter().any(|h| h == "#123456" || h == "#ff0000" || h == "#100000"));
         assert_eq!(hexes(&f, Kind::Text), ["#ff8800"]);
         assert_eq!(f.computed, 1);
@@ -1409,7 +1412,7 @@ end
             .replace("(cr, 1, 0.533, 0, 1)", "(cr, 0.200, 0.400, 0.600, 1)")
             .replace("'${color #FF8800}'", "'${color #336699}'");
         assert_eq!(out, want);
-        // Доли возвращаются тем же цветом: кружок не распадается.
+        // Fractions come back as the same color: the swatch does not split.
         let again = scan_one("/w/rings.lua", &out);
         assert_eq!(hexes(&again, Kind::Script).iter().filter(|h| *h == "#336699").count(), 3);
     }
@@ -1440,9 +1443,9 @@ end
         assert!(changed_outside(&backup).is_empty());
         let after = std::fs::read_to_string(&conf).unwrap();
         assert!(after.contains("color1 = '010203',\r\n"));
-        // Вторая правка — копия остаётся первой.
+        // A second edit: the copy stays the first one.
         apply_change(&files, &home, &backup, &widget, [1, 2, 3], [9, 9, 9]).unwrap();
-        // Ручная правка после Rexon — видна.
+        // A manual edit after Rexon is detected.
         std::fs::write(&lua, format!("{RINGS}-- руками\n")).unwrap();
         assert_eq!(changed_outside(&backup), [lua.clone()]);
 
@@ -1467,16 +1470,16 @@ end
         let files = vec![conf.clone(), lua.clone()];
         let err = apply_change(&files, &home, &backup, &home, [0xff, 0x88, 0], [1, 2, 3]).unwrap_err();
         assert!(err.contains("rings.lua"), "{err}");
-        // Не тронут ни один файл, копий нет.
+        // No file was touched, there are no copies.
         assert_eq!(std::fs::read_to_string(&conf).unwrap(), LUA_CONF);
         assert!(!has_backup(&backup));
-        // Файл вне дома — тоже отказ.
+        // A file outside the home is refused too.
         std::fs::set_permissions(&lua, std::fs::Permissions::from_mode(0o644)).unwrap();
         let outside = d.join("outside.conf");
         std::fs::write(&outside, LUA_CONF).unwrap();
         let o = outside.to_string_lossy().to_string();
         assert!(apply_change(&[o], &home, &backup, &home, [0xff, 0x88, 0], [1, 2, 3]).is_err());
-        // Цвета больше нет — понятный отказ.
+        // The color is gone: an understandable refusal.
         assert!(apply_change(&files, &home, &backup, &home, [7, 7, 7], [1, 2, 3]).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }

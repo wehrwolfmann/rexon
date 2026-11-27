@@ -1,46 +1,50 @@
-//! Источник «Razer Axon» раздела «Оформление → Обои HD»: что показывает
-//! библиотека и что в ней называется.
+//! The "Razer Axon" source of the "Appearance → HD Wallpapers" section: what
+//! the library shows and what things in it are called.
 //!
-//! Своей вкладки у Axon нет (решение Wehrwolfmann 14.11.2026): это чип
-//! «Razer Axon» рядом с KDE Store и Wallhaven ([`SOURCE_KEY`], [`SECTIONS`]),
-//! а наши настройки — блок «Razer Axon» в виде «⚙️ Настройки» раздела обоев.
+//! Axon has no tab of its own (Wehrwolfmann's decision, 14.11.2026): it is a
+//! "Razer Axon" chip next to KDE Store and Wallhaven ([`SOURCE_KEY`],
+//! [`SECTIONS`]), and our settings are the "Razer Axon" block in the
+//! "⚙️ Settings" view of the wallpaper section.
 //!
-//! Модель источника (Qt-сторона, `AxonActions`) ничего не решает сама: какие обои попадают в
-//! сетку, в каком порядке, сколько фильтров включено, какой экран показать,
-//! когда показывать нечего, и все подписи — здесь. Читает библиотеку
-//! [`crate::axon_library`]; файлы Axon этот модуль не трогает вовсе.
+//! The source model (the Qt side, `AxonActions`) decides nothing by itself:
+//! which wallpapers get into the grid, in which order, how many filters are
+//! on, which screen to show, when there is nothing to show, and all the
+//! labels — all of that is here. The library is read by
+//! [`crate::axon_library`]; this module does not touch Axon's files at all.
 //!
-//! Мерило — раздел «Библиотека» самого Razer Axon (2.11.1.0): вкладка чужой
-//! программы повторяет оригинал, ничего сверх. Как он устроен (по коду его
-//! интерфейса):
+//! The yardstick is the "Library" section of Razer Axon itself (2.11.1.0): a
+//! tab for someone else's program reproduces the original and nothing more.
+//! How it works (from the code of its interface):
 //!
-//! * обои идут двумя разделами: скачанные (заголовок «Недавно добавленные»)
-//!   и «Можно синхронизировать» — те, что в облачной библиотеке учётки, но
-//!   не скачаны (`WallPaperStatus` = `Uninstalled`);
-//! * сортировка — «по имени» (название без учёта регистра) или «по дате
-//!   добавления», и она же по умолчанию. Отдельного поля даты у записи нет
-//!   (`FinishedTime` у скачанных — 0): «по дате» Axon оставляет список в том
-//!   порядке, в каком его отдаёт библиотека (`WallPaperData`), а новые
-//!   скачанные обои он ставит в её начало. Значит, «по дате» = порядок
-//!   записей, свежие первыми; так и здесь — порядок [`AxonLibrary`] уже
-//!   такой (`read_roots` сохраняет порядок самой свежей учётной записи);
-//! * фильтры библиотеки: «Только избранное», «Премиальное», «Награды», «Со
-//!   звуком», «ИИ-обои» и группа «Тип» (динамические / статичные /
-//!   интерактивные), кнопка «Очистить» и число включённых на кнопке фильтра.
-//!   Группы «Разрешение» в библиотеке у Axon нет — она есть только у
-//!   каталога магазина, и в отбор библиотеки разрешение не входит;
-//! * пусто: при включённом поиске или фильтре — «Обои не найдены.» и ссылка
-//!   «Очистить фильтр», иначе — «Нет элементов».
+//! * wallpapers come in two sections: downloaded ones (heading "Recently
+//!   added") and "Available to sync" — those in the account's cloud library
+//!   that are not downloaded (`WallPaperStatus` = `Uninstalled`);
+//! * sorting is "by name" (the title, case-insensitive) or "by date added",
+//!   which is also the default. A record has no separate date field
+//!   (`FinishedTime` of downloaded ones is 0): "by date" Axon leaves the list
+//!   in the order the library returns it (`WallPaperData`), and it puts newly
+//!   downloaded wallpapers at its start. So "by date" = record order, newest
+//!   first; the same here — the order of [`AxonLibrary`] is already like that
+//!   (`read_roots` keeps the order of the most recent account);
+//! * library filters: "Favorites only", "Premium", "Rewards", "With sound",
+//!   "AI wallpapers" and the "Type" group (dynamic / static / interactive), a
+//!   "Clear" button and the number of enabled filters on the filter button.
+//!   Axon's library has no "Resolution" group — only the store catalog has
+//!   one, and resolution is not part of the library selection;
+//! * empty: with a search or filter active — "No wallpapers found." and a
+//!   "Clear filter" link, otherwise "No items".
 //!
-//! ⚠️ Починки оригинала (правило: баги при переносе чиним, не консервируем):
-//!   1. поиск: Axon делит строку по пробелам, и двойной пробел даёт пустое
-//!      слово, которое совпадает с ЛЮБЫМИ обоями. Пустые слова пропускаем;
-//!   2. переключатель поиска «Названия обоев | Теги» в библиотеке Axon ни на
-//!      что не влиял: и так и так искало по названию, автору и тегам. Здесь
-//!      режим работает: «Названия обоев» — название и автор, «Теги» — теги;
-//!   3. фильтр «Тип»: у обоев без `EffectType` (пустая строка) Axon находил
-//!      пустую строку в списке выбранных типов и пропускал их при любом
-//!      выборе. Без типа обои под фильтр типа не подходят.
+//! Warning — fixes to the original (rule: bugs are fixed when porting, not
+//! preserved):
+//!   1. search: Axon splits the string at spaces, and a double space yields an
+//!      empty word that matches ANY wallpaper. Empty words are skipped;
+//!   2. the "Wallpaper names | Tags" search toggle in Axon's library had no
+//!      effect: either way it searched the title, author and tags. Here the
+//!      mode works: "Wallpaper names" means title and author, "Tags" means tags;
+//!   3. the "Type" filter: for wallpapers without `EffectType` (an empty
+//!      string) Axon found the empty string in the list of selected types and
+//!      let them through for any selection. Wallpapers without a type do not
+//!      match a type filter.
 
 use crate::axon_library::{self as ax, display_title, find_roots, AxonEnv, AxonLibrary, AxonWallpaper};
 use crate::i18n::{tr, trc, trf};
@@ -48,66 +52,67 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 // ============================================================================
-// Есть ли источник
+// Whether the source exists
 // ============================================================================
 
-/// Ключ источника в «Оформлении» (`appearance_page::SOURCE_AXON`).
+/// The source key in "Appearance" (`appearance_page::SOURCE_AXON`).
 pub const SOURCE_KEY: &str = "axon";
 
-/// Разделы «Оформления», где есть источник «Razer Axon»: только обои.
+/// The "Appearance" sections that have the "Razer Axon" source: wallpapers only.
 pub const SECTIONS: &[&str] = &["wallpapers"];
 
-/// Есть ли источник в разделе `section` (если Axon найден — [`show_source`]).
+/// Whether section `section` has the source (if Axon is found — [`show_source`]).
 pub fn has_section(section: &str) -> bool {
     SECTIONS.contains(&section)
 }
 
-/// Показывать ли источник «Razer Axon» (чип раздела обоев и блок в его
-/// «⚙️ Настройках»): да, если в известных местах найден Razer Axon с
-/// библиотекой либо человек сам указал папку с его обоями
-/// (`env.source_dirs` — из настроек Rexon). Иначе источника нет вовсе: тому,
-/// у кого Axon не стоит, он ни к чему. Указанная папка держит источник,
-/// даже если пропала, — тогда он говорит, что папка недоступна, а не
-/// исчезает молча.
+/// Whether to show the "Razer Axon" source (the wallpaper section chip and
+/// the block in its "⚙️ Settings"): yes if Razer Axon with a library is found
+/// in the known places, or the person has specified a folder with its
+/// wallpapers (`env.source_dirs`, from Rexon's settings). Otherwise the source
+/// does not exist at all: someone without Axon has no use for it. A specified
+/// folder keeps the source even if it has vanished — then the source says the
+/// folder is unavailable rather than disappearing silently.
 pub fn show_source(env: &AxonEnv) -> bool {
     !env.source_dirs.is_empty() || !find_roots(env).is_empty()
 }
 
-/// [`show_source`] для живого процесса: окружение и папки из настроек Rexon.
+/// [`show_source`] for the live process: the environment and the folders from Rexon's settings.
 pub fn show_source_live() -> bool {
     show_source(&crate::axon_prepare::live_env().0)
 }
 
-/// Подпись чипа «Магазин:» — имя программы, не переводится.
+/// The label of the "Store:" chip: the program name, not translated.
 pub fn chip_label() -> String {
     "Razer Axon".to_string()
 }
 
-/// Подсказка чипа.
+/// The chip tooltip.
 pub fn chip_tooltip() -> String {
     tr("Wallpapers you downloaded in Razer Axon on this computer. Rexon shows them \
         itself: Razer Axon doesn't have to be running.")
 }
 
-// Подписи переводятся в контексте «Razer Axon»: строки дословно как у Axon,
-// и общий с другими вкладками перевод («Тип», «Статичные»…) их не перебивает.
+// Labels are translated in the "Razer Axon" context: the strings are
+// verbatim as in Axon, and translations shared with other tabs ("Type",
+// "Static"…) do not override them.
 
 // ============================================================================
-// Запрос
+// The query
 // ============================================================================
 
-/// Порядок сетки.
+/// The grid order.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SortOrder {
-    /// «Сортировать по дате добавления» — как у Axon по умолчанию.
+    /// "Sort by date added", Axon's default.
     #[default]
     DateAdded,
-    /// «Сортировать по имени».
+    /// "Sort by name".
     Name,
 }
 
 impl SortOrder {
-    /// Все пункты меню сортировки — в порядке оригинала.
+    /// All sort menu items, in the original's order.
     pub const ALL: [SortOrder; 2] = [SortOrder::Name, SortOrder::DateAdded];
 
     pub fn label(self) -> String {
@@ -117,7 +122,7 @@ impl SortOrder {
         }
     }
 
-    /// Ключ для модели и настроек.
+    /// The key for the model and the settings.
     pub fn key(self) -> &'static str {
         match self {
             SortOrder::Name => "name",
@@ -130,13 +135,13 @@ impl SortOrder {
     }
 }
 
-/// Где искать строку поиска.
+/// Where to look for the search string.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SearchMode {
-    /// «Названия обоев»: название и автор.
+    /// "Wallpaper names": title and author.
     #[default]
     Titles,
-    /// «Теги».
+    /// "Tags".
     Tags,
 }
 
@@ -162,7 +167,7 @@ impl SearchMode {
     }
 }
 
-/// Пункт группы «Тип» — значение `EffectType` у Axon.
+/// An item of the "Type" group: Axon's `EffectType` value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectKind {
     Dynamic,
@@ -173,7 +178,7 @@ pub enum EffectKind {
 impl EffectKind {
     pub const ALL: [EffectKind; 3] = [EffectKind::Dynamic, EffectKind::Static, EffectKind::Interactive];
 
-    /// Как Axon пишет тип в записи (`EffectType`).
+    /// How Axon writes the type in a record (`EffectType`).
     pub fn axon_value(self) -> &'static str {
         match self {
             EffectKind::Dynamic => "Dynamic",
@@ -182,7 +187,7 @@ impl EffectKind {
         }
     }
 
-    /// Ключ для модели — значение Axon.
+    /// The key for the model: Axon's value.
     pub fn key(self) -> &'static str {
         self.axon_value()
     }
@@ -200,23 +205,23 @@ impl EffectKind {
     }
 }
 
-/// Флажок панели фильтров библиотеки.
+/// A checkbox of the library filter panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterFlag {
-    /// «Только избранное».
+    /// "Favorites only".
     Favorites,
-    /// «Премиальное»: обои за серебро.
+    /// "Premium": wallpapers for silver.
     Premiums,
-    /// «Награды»: обои с наградой за скачивание.
+    /// "Rewards": wallpapers with a download reward.
     Rewards,
-    /// «Со звуком».
+    /// "With sound".
     AudioEnabled,
-    /// «ИИ-обои».
+    /// "AI wallpapers".
     AiWallpaper,
 }
 
 impl FilterFlag {
-    /// Флажки в порядке панели оригинала (за ними — группа «Тип»).
+    /// The checkboxes in the order of the original's panel (followed by the "Type" group).
     pub const ALL: [FilterFlag; 5] = [
         FilterFlag::Favorites,
         FilterFlag::Premiums,
@@ -225,7 +230,7 @@ impl FilterFlag {
         FilterFlag::AiWallpaper,
     ];
 
-    /// Ключ для модели.
+    /// The key for the model.
     pub fn key(self) -> &'static str {
         match self {
             FilterFlag::Favorites => "favorites",
@@ -250,9 +255,9 @@ impl FilterFlag {
         }
     }
 
-    /// Подходят ли обои под флажок — признаки как у Axon: избранное
-    /// (`IsFavorite`), серебро больше нуля (`Silver`), награда за скачивание
-    /// больше нуля, звук (`Audible` = 1), номер ИИ-творения (`DetailId`).
+    /// Whether a wallpaper matches a checkbox, with the same attributes as Axon:
+    /// favorite (`IsFavorite`), silver above zero (`Silver`), a download reward
+    /// above zero, sound (`Audible` = 1), an AI creation number (`DetailId`).
     pub fn accepts(self, w: &AxonWallpaper) -> bool {
         let d = &w.details;
         match self {
@@ -265,12 +270,12 @@ impl FilterFlag {
     }
 }
 
-/// Состояние панели фильтров.
+/// The state of the filter panel.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Filters {
-    /// Включённые флажки (без повторов).
+    /// Enabled checkboxes (without duplicates).
     pub flags: Vec<FilterFlag>,
-    /// Отмеченные пункты «Тип»: подходят обои любого из них.
+    /// Checked "Type" items: wallpapers of any of them match.
     pub kinds: Vec<EffectKind>,
 }
 
@@ -297,33 +302,33 @@ impl Filters {
         }
     }
 
-    /// Число на кнопке фильтра: каждый флажок и каждый пункт «Тип» — по
-    /// одному, как считает Axon.
+    /// The number on the filter button: each checkbox and each "Type" item counts
+    /// as one, as Axon counts.
     pub fn active_count(&self) -> usize {
         self.flags.len() + self.kinds.len()
     }
 
-    /// Включено ли хоть что-то (кнопка «Очистить» тогда доступна).
+    /// Whether anything is enabled (then the "Clear" button is available).
     pub fn any(&self) -> bool {
         self.active_count() > 0
     }
 
-    /// «Очистить».
+    /// "Clear".
     pub fn clear(&mut self) {
         *self = Filters::default();
     }
 
-    /// Подходят ли обои под все включённые фильтры.
+    /// Whether a wallpaper matches all enabled filters.
     pub fn accepts(&self, w: &AxonWallpaper) -> bool {
         if !self.flags.iter().all(|f| f.accepts(w)) {
             return false;
         }
-        // Починка 3: без `EffectType` под фильтр типа обои не подходят.
+        // Fix 3: without `EffectType` a wallpaper does not match a type filter.
         self.kinds.is_empty() || EffectKind::from_axon(&w.effect).is_some_and(|k| self.kinds.contains(&k))
     }
 }
 
-/// Всё, что задаёт сетку: строка поиска, её режим, сортировка, фильтры.
+/// Everything that defines the grid: the search string, its mode, the sorting, the filters.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Query {
     pub text: String,
@@ -333,29 +338,30 @@ pub struct Query {
 }
 
 impl Query {
-    /// Сужает ли запрос список (поиск или фильтр): тогда пустой итог —
-    /// «Обои не найдены.», а не «Нет элементов».
+    /// Whether the query narrows the list (search or filter): then an empty result
+    /// is "No wallpapers found." rather than "No items".
     pub fn narrows(&self) -> bool {
         !self.text.trim().is_empty() || self.filters.any()
     }
 
-    /// Ссылка «Очистить фильтр»: снимает фильтры и поиск, сортировку и
-    /// режим поиска оставляет.
+    /// The "Clear filter" link: removes the filters and the search, keeps the
+    /// sorting and the search mode.
     pub fn clear_filter(&mut self) {
         self.text.clear();
         self.filters.clear();
     }
 }
 
-/// Подходит ли текст поиска: любое из слов строки — часть названия или
-/// автора («Названия обоев») либо тегов («Теги»), без учёта регистра.
+/// Whether the search text matches: any word of the string is part of the
+/// title or author ("Wallpaper names") or of the tags ("Tags"),
+/// case-insensitively.
 pub fn matches_text(w: &AxonWallpaper, text: &str, mode: SearchMode) -> bool {
-    // Починка 1: пустые слова (двойной пробел) не совпадают со всем подряд.
+    // Fix 1: empty words (a double space) do not match everything.
     let words: Vec<String> = text.split_whitespace().map(str::to_lowercase).collect();
     if words.is_empty() {
         return true;
     }
-    // Починка 2: режим поиска действует.
+    // Fix 2: the search mode takes effect.
     let hay = match mode {
         SearchMode::Titles => format!("{}\n{}", w.title, w.author),
         SearchMode::Tags => w.tags.clone(),
@@ -364,18 +370,18 @@ pub fn matches_text(w: &AxonWallpaper, text: &str, mode: SearchMode) -> bool {
     words.iter().any(|word| hay.contains(word.as_str()))
 }
 
-/// Ушли ли обои в раздел «Можно синхронизировать»: Axon ставит туда записи
-/// облачной библиотеки, которых нет на диске (`Uninstalled`).
+/// Whether a wallpaper goes into the "Available to sync" section: Axon puts
+/// cloud library records that are not on disk (`Uninstalled`) there.
 pub fn is_available_for_sync(w: &AxonWallpaper) -> bool {
     w.status.trim().eq_ignore_ascii_case("uninstalled")
 }
 
-/// Сетка по запросу: номера обоев в `list` по разделам.
+/// The grid for a query: wallpaper indices in `list`, by section.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LibraryView {
-    /// Скачанные (раздел «Недавно добавленные»).
+    /// Downloaded ones (the "Recently added" section).
     pub downloaded: Vec<usize>,
-    /// «Можно синхронизировать».
+    /// "Available to sync".
     pub available: Vec<usize>,
 }
 
@@ -385,34 +391,32 @@ impl LibraryView {
     }
 }
 
-/// Ключ сортировки «по имени»: название, как его видит человек, без
-/// учёта регистра.
+/// The "by name" sort key: the title as the person sees it, case-insensitive.
 fn name_key(w: &AxonWallpaper) -> String {
     display_title(w).to_lowercase()
 }
 
-/// Отобрать и упорядочить обои библиотеки по запросу.
+/// Selects and orders the library wallpapers according to the query.
 pub fn query(list: &[AxonWallpaper], q: &Query) -> LibraryView {
     let mut order: Vec<usize> = (0..list.len())
         .filter(|&i| matches_text(&list[i], &q.text, q.mode) && q.filters.accepts(&list[i]))
         .collect();
     if q.sort == SortOrder::Name {
-        // Устойчивая: одинаковые названия остаются в порядке добавления.
+        // Stable: identical titles stay in the order they were added.
         order.sort_by_cached_key(|&i| name_key(&list[i]));
     }
     let (available, downloaded) = order.into_iter().partition(|&i| is_available_for_sync(&list[i]));
     LibraryView { downloaded, available }
 }
 
-/// Что показать на месте сетки.
+/// What to show in place of the grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
-    /// Сетка: есть что показать.
+    /// The grid: there is something to show.
     Grid,
-    /// Поиск или фильтр ничего не нашли: «Обои не найдены.» + «Очистить
-    /// фильтр».
+    /// The search or filter found nothing: "No wallpapers found." + "Clear filter".
     NotFound,
-    /// Показывать нечего и ничего не отобрано: «Нет элементов».
+    /// Nothing to show and nothing filtered: "No items".
     NoItems,
 }
 
@@ -427,62 +431,63 @@ pub fn screen(view: &LibraryView, q: &Query) -> Screen {
 }
 
 // ============================================================================
-// Подписи — дословно как у Axon
+// Labels: verbatim as in Axon
 // ============================================================================
 
-/// Подсказка строки поиска.
+/// The search field placeholder.
 pub fn search_placeholder() -> String {
     trc("Razer Axon", "Search wallpapers")
 }
 
-/// Подпись выбора «где искать» (названия или теги) в «Фильтре»: сама
-/// строка поиска — общая строка шапки страницы, как у соседних магазинов.
+/// The label of the "where to search" choice (names or tags) in the
+/// "Filter": the search field itself is the shared field in the page header,
+/// as with the neighboring stores.
 pub fn search_in_label() -> String {
     trc("Razer Axon", "Search in")
 }
 
-/// Подсказка кнопки сортировки.
+/// The sort button tooltip.
 pub fn sort_tooltip() -> String {
     trc("Razer Axon", "Sort")
 }
 
-/// Подсказка и заголовок группы «Тип».
+/// The tooltip and heading of the "Type" group.
 pub fn type_label() -> String {
     trc("Razer Axon", "Type")
 }
 
-/// Кнопка «Очистить» панели фильтров — заглавными, как у Axon.
+/// The filter panel's "Clear" button, in capitals as in Axon.
 pub fn clear_text() -> String {
     trc("Razer Axon", "Clear").to_uppercase()
 }
 
-/// Заголовок раздела скачанных обоев — заглавными, как у Axon.
+/// The heading of the downloaded wallpapers section, in capitals as in Axon.
 pub fn downloaded_section_title() -> String {
     trc("Razer Axon", "Recently added").to_uppercase()
 }
 
-/// Заголовок раздела облачных, ещё не скачанных обоев.
+/// The heading of the section of cloud wallpapers not downloaded yet.
 pub fn available_section_title() -> String {
     trc("Razer Axon", "AVAILABLE FOR SYNC")
 }
 
-/// Пусто, ничего не отобрано.
+/// Empty, nothing filtered.
 pub fn no_items_text() -> String {
     trc("Razer Axon", "No items")
 }
 
-/// Поиск или фильтр ничего не нашли.
+/// The search or filter found nothing.
 pub fn not_found_text() -> String {
     trc("Razer Axon", "No wallpapers found.")
 }
 
-/// Ссылка рядом с «Обои не найдены.».
+/// The link next to "No wallpapers found.".
 pub fn clear_filter_text() -> String {
     trc("Razer Axon", "Clear filter")
 }
 
-/// Кнопка панели фильтров: «ФИЛЬТР», с числом включённых — «ФИЛЬТР (2)» (у
-/// Axon — заглавными).
+/// The filter panel button: "FILTER", and with the number of enabled filters
+/// "FILTER (2)" (in capitals in Axon).
 pub fn filter_button_text(active: usize) -> String {
     let label = trc("Razer Axon", "FILTER");
     if active == 0 {
@@ -492,68 +497,68 @@ pub fn filter_button_text(active: usize) -> String {
     }
 }
 
-/// Пункт меню плитки «Применить» (у Axon — Apply).
+/// The tile menu item "Apply" (Apply in Axon).
 pub fn apply_text() -> String {
     trc("Razer Axon", "Apply")
 }
 
-/// Пункт меню плитки «Перейти к расположению файла» (у Axon — Open file
-/// location).
+/// The tile menu item "Go to file location" (Open file location in Axon).
 pub fn open_location_text() -> String {
     trc("Razer Axon", "Open file location")
 }
 
-/// Пункт меню плитки и заголовок окна подробностей. У Axon подробности
-/// открываются щелчком по плитке; пункт меню — наш, ради клавиатуры.
+/// The tile menu item and the title of the details window. In Axon the
+/// details open with a click on the tile; the menu item is ours, for the
+/// keyboard.
 pub fn details_text() -> String {
     tr("Details")
 }
 
-/// Подсказка плитки: что делают щелчки.
+/// The tile tooltip: what the clicks do.
 pub fn tile_tooltip() -> String {
     tr("Double-click — details; right click — menu")
 }
 
-/// Подсказка пункта «Применить», пока выбора монитора нет.
+/// The tooltip of the "Apply" item while no monitor has been chosen.
 pub fn apply_tooltip() -> String {
     tr("On all screens")
 }
 
-/// Заголовок блока «Razer Axon» в «⚙️ Настройках» раздела обоев.
+/// The heading of the "Razer Axon" block in the "⚙️ Settings" of the wallpaper section.
 pub fn settings_title() -> String {
     chip_label()
 }
 
-/// Пояснение блока: это настройки Rexon, не самого Axon.
+/// The block's explanation: these are Rexon's settings, not Axon's own.
 pub fn settings_description() -> String {
     tr("How Rexon shows wallpapers from Razer Axon. The settings of Razer Axon itself \
         are not changed here.")
 }
 
 // ============================================================================
-// Ответ модели: экран, сетка, подробности
+// The model's answer: screen, grid, details
 // ============================================================================
 
-/// Откуда плитке взять обложку.
+/// Where a tile gets its cover from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CoverPlan {
-    /// Картинка уже на диске.
+    /// The picture is already on disk.
     Ready(PathBuf),
-    /// Скачать по адресу в общий кэш превью «Оформления».
+    /// Download from the address into the shared "Appearance" preview cache.
     Download(String),
-    /// Взять неоткуда — заглушка.
+    /// Nowhere to get it from: a placeholder.
     Missing,
 }
 
-/// Адрес в сети (`http(s)://`).
+/// A network address (`http(s)://`).
 pub fn is_web_url(s: &str) -> bool {
     let s = s.trim().to_ascii_lowercase();
     s.starts_with("https://") || s.starts_with("http://")
 }
 
-/// Файл — обычная картинка, которую читает `Image` (JPEG, PNG, GIF, WebP,
-/// BMP). Контейнер Axon (ZIP, `PK…`) и ролик (`ftyp`) — нет: из них кадр
-/// без подготовки не взять.
+/// The file is an ordinary picture that `Image` reads (JPEG, PNG, GIF, WebP,
+/// BMP). An Axon container (ZIP, `PK…`) and a video (`ftyp`) are not: a frame
+/// cannot be taken from them without preparation.
 pub fn is_plain_image(path: &Path) -> bool {
     use std::io::Read;
     let mut head = [0u8; 16];
@@ -567,16 +572,17 @@ pub fn is_plain_image(path: &Path) -> bool {
         || (h.starts_with(b"RIFF") && h.get(8..12) == Some(b"WEBP"))
 }
 
-/// Откуда взять обложку обоев.
+/// Where to get the wallpaper cover from.
 ///
-/// Свою обложку Axon на диск не кладёт (`WallpaperCovers` пуст): в записи
-/// библиотеки она — адрес CDN (`ThumbnailSource`, JPEG 500×280, иначе
-/// `PreviewSource`, WebP 960×540). Порядок:
-/// 1. обложка на диске ([`AxonWallpaper::cover_local`]);
-/// 2. адрес в сети — уже скачанная копия из кэша (`cached`), иначе скачать.
-///    Тот же кэш и та же загрузка, что у плиток KDE Store и Wallhaven;
-/// 3. без адреса (обои только из папки) — сам файл обоев, если это обычная
-///    картинка, а не контейнер Axon.
+/// Axon does not put its own cover on disk (`WallpaperCovers` is empty): in a
+/// library record it is a CDN address (`ThumbnailSource`, JPEG 500×280,
+/// otherwise `PreviewSource`, WebP 960×540). The order:
+/// 1. a cover on disk ([`AxonWallpaper::cover_local`]);
+/// 2. a network address: an already downloaded copy from the cache (`cached`),
+///    otherwise download it. The same cache and the same download as for the
+///    KDE Store and Wallhaven tiles;
+/// 3. without an address (wallpapers only from a folder): the wallpaper file
+///    itself, if it is an ordinary picture rather than an Axon container.
 pub fn cover_plan(w: &AxonWallpaper, cached: &dyn Fn(&str) -> Option<PathBuf>) -> CoverPlan {
     if let Some(p) = w.cover_local.as_ref().filter(|p| p.is_file()) {
         return CoverPlan::Ready(p.clone());
@@ -594,8 +600,8 @@ pub fn cover_plan(w: &AxonWallpaper, cached: &dyn Fn(&str) -> Option<PathBuf>) -
     }
 }
 
-/// `file://` для пути: байты вне «безопасных» — процентами, иначе пробел,
-/// `#` или `%` в пути ломают адрес для `Image`.
+/// `file://` for a path: bytes outside the "safe" set are percent-encoded,
+/// otherwise a space, `#` or `%` in the path break the address for `Image`.
 pub fn file_url(path: &Path) -> String {
     use std::os::unix::ffi::OsStrExt;
     let mut out = String::from("file://");
@@ -609,9 +615,9 @@ pub fn file_url(path: &Path) -> String {
     out
 }
 
-/// Адрес обложки для QML: `file://` картинки на диске, иначе пусто
-/// (заглушка). Что положить в [`AxonWallpaper::cover_local`], решает
-/// [`cover_plan`] на стороне модели.
+/// The cover address for QML: `file://` of a picture on disk, otherwise empty
+/// (a placeholder). What to put into [`AxonWallpaper::cover_local`] is
+/// decided by [`cover_plan`] on the model side.
 fn cover_url(w: &AxonWallpaper) -> String {
     w.cover_local.as_ref().filter(|p| p.is_file()).map(|p| file_url(p)).unwrap_or_default()
 }
@@ -620,7 +626,7 @@ fn folder_of(w: &AxonWallpaper) -> String {
     w.resource_dir.as_ref().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
-/// Плитка сетки.
+/// A grid tile.
 pub fn tile(w: &AxonWallpaper) -> Value {
     json!({
         "id": w.id,
@@ -634,9 +640,9 @@ pub fn tile(w: &AxonWallpaper) -> Value {
     })
 }
 
-/// Что сказать вместо сетки, когда библиотеку не прочитать: указанная
-/// папка пропала — что её нет; иначе — что Axon не найден и папку можно
-/// указать. `None` — библиотека прочитана.
+/// What to say instead of the grid when the library cannot be read: if the
+/// specified folder has vanished, that it is gone; otherwise that Axon was not
+/// found and a folder can be specified. `None` means the library was read.
 pub fn library_note(lib: &AxonLibrary) -> Option<String> {
     if lib.found {
         return None;
@@ -647,7 +653,7 @@ pub fn library_note(lib: &AxonLibrary) -> Option<String> {
     Some(ax::not_found_text())
 }
 
-/// Ключ экрана для модели.
+/// The screen key for the model.
 pub fn screen_key(screen: Screen) -> &'static str {
     match screen {
         Screen::Grid => "grid",
@@ -656,9 +662,9 @@ pub fn screen_key(screen: Screen) -> &'static str {
     }
 }
 
-/// Ответ модели по запросу: экран (`note` — библиотеки нет, `grid`,
-/// `notfound`, `noitems`), его подпись, разделы сетки с плитками и кнопка
-/// фильтра с числом включённых.
+/// The model's answer to a query: the screen (`note` — no library, `grid`,
+/// `notfound`, `noitems`), its label, the grid sections with tiles and the
+/// filter button with the number of enabled filters.
 pub fn view_json(lib: &AxonLibrary, q: &Query) -> Value {
     let filter = json!({
         "text": filter_button_text(q.filters.active_count()),
@@ -688,8 +694,8 @@ pub fn view_json(lib: &AxonLibrary, q: &Query) -> Value {
     json!({"screen": screen_key(scr), "note": note, "sections": sections, "filter": filter, "query": base})
 }
 
-/// Подробности обоев: обложка, название, автор, строка плитки и строки
-/// «подпись — значение» (тип и теги — подписями Axon, разрешение).
+/// Wallpaper details: cover, title, author, the tile line and "label — value"
+/// lines (type and tags with Axon's labels, resolution).
 pub fn details_json(w: &AxonWallpaper) -> Value {
     let mut rows: Vec<Value> = Vec::new();
     let mut row = |label: String, value: String| {
@@ -747,7 +753,7 @@ mod tests {
         }
     }
 
-    /// Библиотека в порядке Axon: свежие первыми.
+    /// The library in Axon's order: newest first.
     fn library() -> Vec<AxonWallpaper> {
         let mut a = w("1", "skyline");
         a.tags = " City,Night".into();
@@ -876,14 +882,14 @@ mod tests {
         assert_eq!(v["filter"]["kinds"][0], "Static");
         let empty = AxonLibrary { found: true, ..AxonLibrary::default() };
         assert_eq!(view_json(&empty, &Query::default())["screen"], "noitems");
-        // Библиотеки нет — экран с подсказкой указать папку; указанная
-        // папка пропала — что её нет.
+        // No library: a screen suggesting to specify a folder; a specified folder
+        // has vanished: that it is gone.
         let none = AxonLibrary::default();
         assert_eq!(view_json(&none, &Query::default())["screen"], "note");
         assert_eq!(library_note(&none), Some(ax::not_found_text()));
         let gone = AxonLibrary { source_dirs: vec![PathBuf::from("/нет/такой/папки")], ..AxonLibrary::default() };
         assert_eq!(library_note(&gone), Some(ax::folder_missing_text()));
-        // Ключи фильтров туда и обратно.
+        // Filter keys there and back.
         for f in FilterFlag::ALL {
             assert_eq!(FilterFlag::from_key(f.key()), Some(f));
         }
@@ -917,7 +923,7 @@ mod tests {
         );
     }
 
-    /// Временный каталог сверки, удаляется по выходе.
+    /// A temporary check directory, removed on exit.
     struct Tmp(PathBuf);
     impl Drop for Tmp {
         fn drop(&mut self) {
@@ -931,9 +937,9 @@ mod tests {
         Tmp(d)
     }
 
-    /// Раскладка как у записей Axon на живой машине: `ThumbnailSource` —
-    /// JPEG на CDN, `WallpaperCovers` пуст, `Resource/` — ZIP-контейнер
-    /// (`PK…`) или уже подготовленный ролик (`ftyp`), картинка из папки
+    /// A layout like Axon's records on a live machine: `ThumbnailSource` is a
+    /// JPEG on the CDN, `WallpaperCovers` is empty, `Resource/` is a ZIP container
+    /// (`PK…`) or an already prepared video (`ftyp`), a picture from a folder
     /// (`FF D8 FF`).
     #[test]
     fn cover_plan_follows_axon_data() {
@@ -950,23 +956,23 @@ mod tests {
         let cdn = "https://axon-assets-cdn.razerzone.com/thumbnail/x/1.0.0/Sky_Thumb_500x280.jpg";
         let none = |_: &str| None;
 
-        // Только адрес CDN, контейнер — ZIP: скачать.
+        // Only a CDN address, the container is a ZIP: download.
         let mut a = w("1", "a");
         a.cover_url = cdn.into();
         a.container = Some(zip.clone());
         assert_eq!(cover_plan(&a, &none), CoverPlan::Download(cdn.into()));
-        // Уже в кэше превью — готово, без сети.
+        // Already in the preview cache: ready, without the network.
         let cached = jpg.clone();
         let hit = move |u: &str| (u == cdn).then(|| cached.clone());
         assert_eq!(cover_plan(&a, &hit), CoverPlan::Ready(jpg.clone()));
-        // Своя обложка на диске важнее адреса.
+        // Our own cover on disk takes precedence over the address.
         a.cover_local = Some(webp.clone());
         assert_eq!(cover_plan(&a, &none), CoverPlan::Ready(webp.clone()));
-        // Пропавший файл обложки — снова адрес.
+        // A vanished cover file: the address again.
         a.cover_local = Some(t.0.join("нет.jpg"));
         assert_eq!(cover_plan(&a, &none), CoverPlan::Download(cdn.into()));
 
-        // Без адреса: картинка из папки годится, контейнер и ролик — нет.
+        // Without an address: a picture from the folder will do, a container and a video will not.
         let mut b = w("2", "b");
         b.container = Some(jpg.clone());
         assert_eq!(cover_plan(&b, &none), CoverPlan::Ready(jpg.clone()));
@@ -974,7 +980,7 @@ mod tests {
         assert_eq!(cover_plan(&b, &none), CoverPlan::Missing);
         b.container = Some(mp4);
         assert_eq!(cover_plan(&b, &none), CoverPlan::Missing);
-        // Не сетевой адрес (относительный путь) за адрес не считается.
+        // A non-network address (a relative path) does not count as an address.
         b.cover_url = "Resource\\cover.jpg".into();
         assert_eq!(cover_plan(&b, &none), CoverPlan::Missing);
     }

@@ -1,12 +1,15 @@
-// Отправка кадров запросов вкладки WE и возврат ответов демона адресату.
+// Sending the WE tab's request frames and returning the daemon's answers to
+// the addressee.
 //
-// Пара к cpp/rexon_we_transport.cpp: там карта «номер запроса → QPointer на
-// сам запрос» и вызов его инвокабла `deliverResponse` по имени через
-// метаобъект — почему это C++, расписано в шапке заголовка. Здесь только
-// тонкие безопасные обёртки: срез в указатель+длину.
+// A pair to cpp/rexon_we_transport.cpp: there lie the "request number →
+// QPointer to the request itself" map and calling its `deliverResponse`
+// invokable by name through the metaobject — why this is C++ is laid out in
+// the header's preamble. Here there are only thin safe wrappers: a slice
+// into a pointer+length.
 //
-// ⚠️ Решений этот модуль не принимает: что отправлять — считает запрос,
-// провод держит сокет (src/we_socket.rs), кому вернуть ответ — помнит шим.
+// Warning: this module makes no decisions: what to send is computed by the
+// query, the wire is held by the socket (src/we_socket.rs), whom to return
+// the answer to is remembered by the shim.
 
 use std::ffi::{c_char, c_void};
 
@@ -17,25 +20,28 @@ unsafe extern "C" {
     fn rexon_we_do_fail_pending(data: *const c_char, len: i32) -> i32;
 }
 
-/// Запомнить владельца номера перед отправкой кадра.
+/// Remember the owner of the number before sending the frame.
 ///
 /// # Safety
-/// `query` — живой QObject-запрос (указатель на самого себя).
+/// `query` is a live QObject query (a pointer to itself).
 pub unsafe fn remember(token: i64, query: *mut c_void) {
     unsafe { rexon_we_remember(token, query) }
 }
 
-/// Отдать кадр запроса в сокет демона. Сокета нет (стенд моделей, демон не
-/// запущен) — тишина: запрос дождётся ответа об обрыве или переподключения.
+/// Hand the request frame to the daemon socket. If there is no socket (the
+/// model bench, the daemon is not running) — silence: the query will wait for
+/// a disconnection answer or a reconnection.
 ///
-/// `token` не нужен: номер уже лежит в кадре (`request_id`). `field`
-/// нужен сокету: применение обоев на KDE он придерживает, пока не назначен
-/// плагин обоев (`we_socket::send_request_frame`).
+/// `token` is not needed: the number already lies in the frame
+/// (`request_id`). `field` is needed by the socket: on KDE it holds back
+/// applying a wallpaper until the wallpaper plugin is assigned
+/// (`we_socket::send_request_frame`).
 pub fn send(_token: i64, field: &str, request: &[u8]) {
     crate::we_socket::send_request_frame(field, request);
 }
 
-/// Отдать ответ демона запросу с этим номером. `false` — ждущего нет.
+/// Give the daemon's answer to the query with this number. `false` means
+/// nobody is waiting.
 pub fn deliver_response_bytes(request_id: i64, frame: &[u8]) -> bool {
     let Ok(len) = i32::try_from(frame.len()) else {
         return false;
@@ -43,10 +49,10 @@ pub fn deliver_response_bytes(request_id: i64, frame: &[u8]) -> bool {
     unsafe { rexon_we_do_deliver_response(request_id, frame.as_ptr().cast::<c_char>(), len) != 0 }
 }
 
-/// Раздать снимок прогресса длинной задачи ждущим запросам.
+/// Hand a long task's progress snapshot to the waiting queries.
 ///
-/// Нужен ровно одному потребителю — прогрессу длинных задач
-/// (`task_progress`), на который подписан каждый `ProgressQuery`.
+/// Needed by exactly one consumer — the progress of long tasks
+/// (`task_progress`), to which every `ProgressQuery` is subscribed.
 pub fn deliver_event_bytes(frame: &[u8]) -> usize {
     let Some((query_id, snapshot)) = rexon_core::we_manage::take_task_progress(frame) else {
         return 0;
@@ -54,9 +60,9 @@ pub fn deliver_event_bytes(frame: &[u8]) -> usize {
     crate::query_base::progress::dispatch(&query_id, &snapshot)
 }
 
-/// Закрыть ВСЕ ожидающие запросы этим кадром (обрыв соединения).
+/// Close ALL pending queries with this frame (a disconnection).
 ///
-/// Возвращает число запросов, до которых кадр доехал.
+/// Returns the number of queries the frame reached.
 pub fn fail_pending(frame: &[u8]) -> i32 {
     let Ok(len) = i32::try_from(frame.len()) else {
         return 0;
@@ -64,8 +70,8 @@ pub fn fail_pending(frame: &[u8]) -> i32 {
     unsafe { rexon_we_do_fail_pending(frame.as_ptr().cast::<c_char>(), len) }
 }
 
-/// Сколько запросов ждут ответа. Нужно проверкам: незакрытый счёт после
-/// прогона означает потерянный ответ.
+/// How many queries are waiting for an answer. Needed by checks: an unclosed
+/// count after a run means a lost answer.
 pub fn pending_count() -> i32 {
     unsafe { rexon_we_do_pending_count() }
 }

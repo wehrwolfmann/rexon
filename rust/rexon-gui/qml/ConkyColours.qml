@@ -1,14 +1,16 @@
-// Палитра цветов виджета Conky в карточке раздела «Виджеты Conky»: все
-// цвета, найденные в файлах виджета (настройки, текст, графики, сценарии
-// Lua), кружками со счётчиком мест. Нажатие — стандартный выбор цвета, и
-// цвет меняется во всех его местах сразу; «Вернуть цвета» — файлы как до
-// первой смены.
+// Colour palette of a Conky widget in the card of the "Conky widgets"
+// section: all colours found in the widget's files (settings, text,
+// graphs, Lua scripts) as circles with a count of places. A click opens
+// the standard colour picker, and the colour changes in all its places at
+// once; "Restore colours" puts the files back as they were before the
+// first change.
 //
-// Только разметка: найденное, подписи и запись — ядро
-// (rexon_core::conky_colors) через объект действий страницы
-// (`conkyColours`, `setConkyColour`, `revertConkyColours` в
-// rust/rexon-gui/src/appearance_actions.rs). Снимок для плитки ядро
-// переснимает само — карточка узнаёт о нём сигналом `conkyPreviewsReady`.
+// Markup only: what was found, labels and writing — the core
+// (rexon_core::conky_colors) through the page's actions object
+// (`conkyColours`, `setConkyColour`, `revertConkyColours` in
+// rust/rexon-gui/src/appearance_actions.rs). The core re-takes the tile
+// snapshot by itself — the card learns about it from the
+// `conkyPreviewsReady` signal.
 
 pragma ComponentBehavior: Bound
 
@@ -27,7 +29,7 @@ ColumnLayout {
 
     property var view: ({})
     readonly property var t: box.view.t || ({})
-    /// Цвет, который сейчас меняется (`#rrggbb`).
+    /// The colour being changed right now (`#rrggbb`).
     property string picking: ""
 
     readonly property color colText: box.pal ? box.pal.text_primary : "#ffffff"

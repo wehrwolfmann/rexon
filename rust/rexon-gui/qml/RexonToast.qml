@@ -1,23 +1,25 @@
-// Всплывающая плашка состояния — одна на все вкладки продукта.
+// Pop-up status banner — one for all tabs of the product.
 //
-// ⭐ Почему отдельный тип, а не плашка внутри каждой вкладки (правило #12).
-// Один и тот же дефект — «сообщение не гаснет никогда» — заводился ТРИЖДЫ:
-// в виджетных «Настройках» (28.06), в виджетном «Steam» (08.07) и в третий
-// раз в QML-вкладке «Steam», где живая проверка 18.09 застала плашку висящей
-// 29 минут подряд. Чинить его в четвёртый раз в четвёртом файле смысла нет:
-// пока таймер, гашение и краски живут ЗДЕСЬ, новой копии дефекта завестись
-// негде, а новая вкладка получает правильную плашку одной строкой разметки.
+// Why a separate type instead of a banner inside every tab (rule #12).
+// The same defect — "the message never goes away" — was introduced THREE
+// times: in the widget "Settings" (28.06), in the widget "Steam" (08.07)
+// and a third time in the QML "Steam" tab, where the live check on 18.09
+// caught the banner hanging for 29 minutes straight. There is no point
+// fixing it a fourth time in a fourth file: while the timer, dismissal and
+// colours live HERE, there is nowhere for a new copy of the defect to
+// appear, and a new tab gets a correct banner with one line of markup.
 //
-// Своих чисел и красок у плашки НЕТ вовсе:
-//   * краски и поля приезжают картой `styles.toast` — из ядра
-//     (`ui_base::toast_colors` и константы `TOAST_*` рядом с ней), теми же,
-//     которыми красится виджетная плашка;
-//   * ширина считается ядром (`ui_base::toast_width`) через метод модели
-//     вкладки — плашка ложится ПОВЕРХ содержимого и обязана помещаться в
-//     окно на любом размере;
-//   * срок жизни — `ui_base::TOAST_TIMEOUT_MS`.
+// The banner has NO numbers or colours of its own at all:
+//   * colours and paddings arrive as the `styles.toast` map — from the core
+//     (`ui_base::toast_colors` and the `TOAST_*` constants next to it), the
+//     same ones that paint the widget banner;
+//   * the width is computed by the core (`ui_base::toast_width`) through a
+//     method of the tab model — the banner lies ON TOP of the content and
+//     must fit into the window at any size;
+//   * the lifetime is `ui_base::TOAST_TIMEOUT_MS`.
 //
-// Место — низ СЛЕВА с отступом ядра: там же, где стоит виджетная плашка.
+// Placement: bottom LEFT with the core's margin — the same place as the
+// widget banner.
 
 pragma ComponentBehavior: Bound
 
@@ -26,41 +28,42 @@ import QtQuick
 Rectangle {
     id: plate
 
-    // ── Договор с вкладкой ────────────────────────────────────────────────
+    // ── Contract with the tab ─────────────────────────────────────────────
 
-    /// Краски и метрики от ядра: карта `styles.toast` модели вкладки.
+    /// Colours and metrics from the core: the `styles.toast` map of the tab model.
     required property var skin
 
-    /// Через сколько плашка гаснет сама, мс (`ui_base::TOAST_TIMEOUT_MS`).
-    /// Ноль и меньше — не гаснуть; так плашку можно оставить висеть
-    /// осознанно, а не по забытому таймеру.
+    /// After how many ms the banner hides itself (`ui_base::TOAST_TIMEOUT_MS`).
+    /// Zero or less means never hide; that way the banner can be left hanging
+    /// on purpose rather than because of a forgotten timer.
     required property int timeoutMs
 
-    /// Модель вкладки — у неё спрашивается ширина плашки методом
-    /// `toastWidth(ширинаСтраницы, ширинаТекста)`. Считает всё равно ядро.
+    /// Tab model — the banner width is requested from it through the method
+    /// `toastWidth(pageWidth, textWidth)`. The core does the computing anyway.
     required property var metrics
 
-    /// Ширина, в которую плашке нельзя не поместиться. По умолчанию —
-    /// ширина родителя, то есть самой страницы.
+    /// The width the banner must fit into. Defaults to the parent's width,
+    /// that is, the page itself.
     property int availableWidth: plate.parent ? plate.parent.width : 0
 
-    /// Как разбирать текст. По умолчанию разметка — так плашку «Настроек»
-    /// показывают с `<b>` и `<br>` из ядра. Вкладке, чьи сообщения несут
-    /// имена файлов и пути, честнее поставить `Text.PlainText`.
+    /// How to parse the text. Markup by default — that is how the "Settings"
+    /// banner is shown with `<b>` and `<br>` from the core. A tab whose messages
+    /// carry file names and paths is better off with `Text.PlainText`.
     property int textFormat: Text.RichText
 
-    /// Текст на плашке. Наружу — чтобы проверки читали его у самой плашки,
-    /// а не угадывали по свойству страницы.
+    /// Text on the banner. Exposed so that checks read it from the banner
+    /// itself rather than guessing from a page property.
     property string message: ""
 
-    /// Видна ли плашка человеку прямо сейчас. Отдельно от `visible`:
-    /// в середине гашения `visible` ещё истинно, а сообщение уже уходит.
+    /// Whether the banner is visible to the user right now. Separate from
+    /// `visible`: in the middle of fading out `visible` is still true, while
+    /// the message is already leaving.
     readonly property bool shown: plate.opacity > 0
 
-    // ── Показать и погасить ───────────────────────────────────────────────
+    // ── Show and hide ─────────────────────────────────────────────────────
 
-    /// Показать сообщение и завести таймер гашения заново. Пустой текст —
-    /// не «показать пустоту», а «сказать нечего»: плашка уходит.
+    /// Show a message and restart the hide timer. An empty text does not mean
+    /// "show emptiness" but "nothing to say": the banner goes away.
     function show(text) {
         if (!text) {
             plate.dismiss();
@@ -73,18 +76,18 @@ Rectangle {
             hideTimer.restart();
     }
 
-    /// Погасить немедленно.
-    // Имя не `hide`: у Item уже есть `visible`, и глагол-двойник в разметке
-    // читался бы как его переключатель.
+    /// Hide immediately.
+    // The name is not `hide`: Item already has `visible`, and a twin verb in
+    // markup would read as its toggle.
     function dismiss() {
         hideTimer.stop();
         plate.opacity = 0;
     }
 
-    // ── Вид ───────────────────────────────────────────────────────────────
+    // ── Look ──────────────────────────────────────────────────────────────
 
-    /// Поле от края плашки до текста: внутреннее поле плюс рамка — ровно то,
-    /// что у виджетной метки приходит таблицей стилей.
+    /// Padding from the banner edge to the text: inner padding plus border —
+    /// exactly what the widget label gets from its style sheet.
     readonly property int inset: plate.skin.paddingH + plate.skin.borderWidth
 
     anchors.left: parent ? parent.left : undefined
@@ -101,7 +104,7 @@ Rectangle {
     border.width: plate.skin.borderWidth
 
     opacity: 0
-    // Погасшая плашка не должна перехватывать ни щелчки, ни проверку вида.
+    // A hidden banner must intercept neither clicks nor view checks.
     visible: opacity > 0
 
     Behavior on opacity {

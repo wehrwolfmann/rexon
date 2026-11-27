@@ -130,8 +130,7 @@ MD.Page {
         target: W.Notify
         function onDaemonReady() {
             getQ.reload();
-            if (W.Util.isFlatpak)
-                autostartGetQ.reload();
+            autostartGetQ.reload();
         }
         function onSettingsChanged() {
             getQ.reload();
@@ -142,17 +141,15 @@ MD.Page {
         W.App.refreshNetworkCacheSize();
         if (W.Notify.daemonPhase === W.Notify.DaemonPhase.Ready) {
             getQ.reload();
+            autostartGetQ.reload();
         }
-        // ПРАВКА REXON (починка дефекта, не доработка): автозапуск читается
-        // ВСЕГДА, а не только при готовом демоне. У вендора он идёт RPC
-        // демону, поэтому чтение и стояло за этим условием; у нас он
-        // локальный (systemd user unit / XDG autostart) и демона не
-        // касается. Без правки при лежачем демоне переключатель показывал
-        // ВЫКЛ на включённом автозапуске — и выключить его было нечем.
-        autostartGetQ.reload();
     }
 
-    onVisibleChanged: if (visible) W.App.refreshNetworkCacheSize()
+    onVisibleChanged: if (visible) {
+        W.App.refreshNetworkCacheSize();
+        if (W.Notify.daemonPhase === W.Notify.DaemonPhase.Ready)
+            autostartGetQ.reload();
+    }
 
     // Same pattern as WallpaperPage._persistGlobalChange but routed
     // through a 200ms debounce — slider drags would otherwise flood
@@ -881,8 +878,6 @@ MD.Page {
             SettingItem {
                 first: false
                 last: false
-                visible: W.Util.isFlatpak
-
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
@@ -890,11 +885,14 @@ MD.Page {
                     FieldLabel {
                         Layout.fillWidth: true
                         text: qsTr("Start at login")
+                        MD.ToolTip.text: autostartGetQ.unavailableReason
+                        MD.ToolTip.visible: autostartGetQ.unavailableReason.length > 0 && labelHover.hovered
+                        HoverHandler { id: labelHover }
                     }
 
                     MD.Switch {
                         id: m_autostart
-                        enabled: !autostartGetQ.querying && !autostartSetQ.querying
+                        enabled: autostartGetQ.supported && !autostartGetQ.querying && !autostartSetQ.querying
                         onCheckedChangeRequested: checked => {
                             autostartSetQ.enabled = checked;
                             autostartSetQ.reload();

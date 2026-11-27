@@ -1,83 +1,83 @@
-//! Меню главного окна Rexon: состав пунктов, их подписи, доступность и все
-//! тексты диалогов, которые за этими пунктами стоят.
+//! The menu of the main Rexon window: its items, their labels, availability and all
+//! the texts of the dialogs behind those items.
 //!
-//! ЗАЧЕМ ОТДЕЛЬНЫЙ МОДУЛЬ. Каркас окна ядро уже знает — порядок разделов,
-//! заголовок и размер лежат в [`crate::qt_main`]. А вот меню под кнопкой
-//! «☰» знал ТОЛЬКО Python: `RexonMainWindow._build_menubar` собирал четыре
-//! пункта, `_on_recover_kde`, `_on_about` и `_on_uninstall` держали при себе
-//! весь человеческий текст — вопрос перед сбросом темы KDE, справку о
-//! программе с атрибуцией лицензий, перечень удаляемых файлов и подписи трёх
-//! кнопок удаления. В Rust-каркасе меню не было ни строки: покупатель им
-//! пользуется, а хозяин на Rust его не показывал вовсе.
+//! WHY A SEPARATE MODULE. The core already knows the window skeleton — the section order,
+//! title and size live in [`crate::qt_main`]. But the menu under the
+//! «☰» button was known ONLY to Python: `RexonMainWindow._build_menubar` built four
+//! items, `_on_recover_kde`, `_on_about` and `_on_uninstall` kept to themselves
+//! all the human text — the question before resetting the KDE theme, the about box
+//! with the license attribution, the list of files to be removed and the labels of the three
+//! uninstall buttons. The Rust skeleton had not a single line of the menu: the customer uses it,
+//! and the Rust owner did not show it at all.
 //!
-//! Здесь живут РЕШЕНИЯ: какие пункты есть, в каком порядке, где разделитель,
-//! что доступно и какими словами разговаривать. Разметка (`qml/WindowMenu.qml`,
-//! `qml/WindowMenuDialogs.qml`) только рисует то, что сказано отсюда, а
-//! исполнитель (`rexon-gui/src/window_menu.rs`) только запускает.
+//! DECISIONS live here: which items exist, in what order, where the separator is,
+//! what is available and in which words to speak. The markup (`qml/WindowMenu.qml`,
+//! `qml/WindowMenuDialogs.qml`) only draws what it is told from here, and
+//! the executor (`rexon-gui/src/window_menu.rs`) only runs things.
 //!
-//! ⚠️ ВТОРОЙ КОПИИ «ВЫХОДА» ЗДЕСЬ НЕТ. Пункт «🚪 Выход» стоит и в меню значка
-//! в лотке, и его подпись со значком собирает [`crate::tray::titled`] по
-//! ключу `quit`. Именно этот разъезд поймала сверка каркаса 07.09.2026
-//! (окно знало «🚪 Выход», ядро — «Выход»/«Quit»), и заводить копию снова
-//! запрещает правило #12.
+//! ⚠️ THERE IS NO SECOND COPY OF «QUIT» HERE. The «🚪 Quit» item is also in the
+//! tray icon menu, and its label with the icon is built by [`crate::tray::titled`] from
+//! the `quit` key. Exactly this drift was caught by the skeleton check on 07.09.2026
+//! (the window knew «🚪 Quit», the core — «Quit» untitled), and rule #12 forbids
+//! creating a copy again.
 //!
-//! ЯЗЫК. Все подписи и тексты диалогов идут через каталог перевода
-//! (`crate::i18n`): исходный язык — английский, русский живёт в `po/ru.po`
-//! дословно таким, каким его показывало Python-окно (сверка
-//! `tests/window_menu_parity.rs`). Прежние константы стали функциями:
-//! константу можно забыть перевести, функцию — нет. Разбор выбора идёт по
-//! идентификаторам (`ID_*`, `FORKS_BUTTON_*`), подписи код не сравнивает.
+//! LANGUAGE. All labels and dialog texts go through the translation catalog
+//! (`crate::i18n`): the source language is English, Russian lives in `po/ru.po`
+//! verbatim as the Python window showed it (checked by
+//! `tests/window_menu_parity.rs`). The former constants became functions:
+//! a constant can be forgotten to be translated, a function cannot. The choice is parsed by
+//! identifiers (`ID_*`, `FORKS_BUTTON_*`), the code does not compare labels.
 
 use crate::i18n::{n_, ntr, tr, trc, trf};
 use crate::installer::UserDataKind;
 use crate::tray;
 
 // ============================================================================
-// Кнопка и идентификаторы пунктов
+// Button and item identifiers
 // ============================================================================
 
-/// Подпись самой кнопки меню — «гамбургер» в полосе меню окна.
-/// Источник: `bar.addMenu("☰")` в `_build_menubar`.
+/// Label of the menu button itself — the "hamburger" in the window's menu bar.
+/// Source: `bar.addMenu("☰")` in `_build_menubar`.
 pub const MENU_BUTTON: &str = "☰";
 
-/// Восстановить тему KDE из резервной копии.
+/// Restore the KDE theme from a backup.
 pub const ID_RECOVER_KDE: &str = "recover_kde";
-/// Справка о программе.
+/// About the program.
 pub const ID_ABOUT: &str = "about";
-/// Удалить Rexon из системы. Кнопка удаления уместна: Rexon — ПРОГРАММА, а
-/// не игра (в играх её не делают).
+/// Remove Rexon from the system. An uninstall button is appropriate: Rexon is a PROGRAM, not
+/// a game (games do not get one).
 pub const ID_UNINSTALL: &str = "uninstall";
-/// Выход из приложения.
+/// Quit the application.
 pub const ID_QUIT: &str = "quit";
 
 // ============================================================================
-// Состав меню
+// Menu contents
 // ============================================================================
 
-/// Один пункт меню окна.
+/// One item of the window menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MenuItem {
-    /// Идентификатор — по нему хозяин окна понимает, что нажали. Ни разметка,
-    /// ни исполнитель не сравнивают подписи: подпись переводится, а решение —
-    /// нет.
+    /// Identifier — by it the window owner understands what was clicked. Neither the markup
+    /// nor the executor compare labels: the label is translated, the decision is
+    /// not.
     pub id: &'static str,
-    /// Ровно та строка, которую видит покупатель.
+    /// Exactly the string the customer sees.
     pub label: String,
-    /// Горячая клавиша в записи Qt («Ctrl+Q»); пусто — клавиши нет.
+    /// Keyboard shortcut in Qt notation («Ctrl+Q»); empty — no shortcut.
     pub shortcut: &'static str,
-    /// Перед этим пунктом стоит разделитель.
+    /// A separator stands before this item.
     ///
-    /// Отдельным «пунктом-разделителем» список не засоряется намеренно:
-    /// разметке пришлось бы иметь два вида делегата на один список, а
-    /// разделитель — свойство соседства, не самостоятельный пункт.
+    /// The list is deliberately not cluttered with a separate "separator item":
+    /// the markup would need two kinds of delegate for one list, and
+    /// a separator is a property of adjacency, not an item of its own.
     pub separator_before: bool,
 }
 
-/// Пункты меню В ПОРЯДКЕ МЕНЮ — единственный источник правды о составе.
+/// Menu items IN MENU ORDER — the single source of truth about the contents.
 ///
-/// Порядок и разделитель — как в `_build_menubar`: сброс темы, справка,
-/// удаление, разделитель, выход. «Выход» отделён чертой потому, что он
-/// единственный необратим мгновенно и без вопросов.
+/// Order and separator — as in `_build_menubar`: theme reset, about,
+/// uninstall, separator, quit. «Quit» is set apart by a line because it is
+/// the only one that is irreversible instantly and without questions.
 pub fn menu_items() -> Vec<MenuItem> {
     vec![
         MenuItem {
@@ -101,7 +101,7 @@ pub fn menu_items() -> Vec<MenuItem> {
             separator_before: false,
         },
         MenuItem {
-            // Подпись со значком берётся у лотка — второй копии нет.
+            // The label with its icon is taken from the tray — there is no second copy.
             id: ID_QUIT,
             label: tray::titled("quit"),
             shortcut: "Ctrl+Q",
@@ -110,14 +110,14 @@ pub fn menu_items() -> Vec<MenuItem> {
     ]
 }
 
-/// Пункты меню для ЭТОГО сеанса: на чужом рабочем столе без «Восстановить
-/// тему KDE».
+/// Menu items for THIS session: on a foreign desktop without «Restore
+/// KDE Theme».
 ///
-/// Живая проверка в MATE: пункт стоял в меню, а нажатие на него вело только
-/// к отказу «работает лишь в KDE Plasma». Обещать в меню то, чего маршрут
-/// заведомо не сделает, — лишняя строка и лишний вопрос у покупателя.
-/// Решение то же, что у самого маршрута ([`recover_allowed`]), поэтому
-/// меню и отказ не разойдутся. Полный состав по-прежнему у [`menu_items`].
+/// Live check in MATE: the item was in the menu, and clicking it led only
+/// to the refusal "works only in KDE Plasma". Promising in the menu what the route
+/// certainly will not do is an extra line and an extra question for the customer.
+/// The decision is the same as that of the route itself ([`recover_allowed`]), so the
+/// menu and the refusal will not diverge. The full contents are still in [`menu_items`].
 pub fn menu_items_for(xdg_current_desktop: &str) -> Vec<MenuItem> {
     let recover = recover_allowed(xdg_current_desktop);
     menu_items()
@@ -126,83 +126,83 @@ pub fn menu_items_for(xdg_current_desktop: &str) -> Vec<MenuItem> {
         .collect()
 }
 
-/// Доступен ли пункт меню.
+/// Whether a menu item is available.
 ///
-/// В продукте недоступных пунктов нет: ни один из четырёх не заводит
-/// `setEnabled(False)`, и «Удалить Rexon» открывается даже когда Rexon не
-/// установлен вовсе — тогда о этом говорит сам диалог удаления
-/// («Rexon не установлен»), а не серая строка меню. Вопрос всё равно
-/// задаётся ядру, а не решается в разметке: как только у пункта появится
-/// условие, править придётся одно место.
+/// The product has no unavailable items: none of the four sets
+/// `setEnabled(False)`, and «Uninstall Rexon» opens even when Rexon is not
+/// installed at all — then the uninstall dialog itself says so
+/// («Rexon is not installed»), not a grey menu line. The question is still
+/// asked of the core, not decided in the markup: as soon as an item gets a
+/// condition, only one place will need editing.
 ///
-/// Незнакомый идентификатор недоступен: показать пункт, за которым ничего не
-/// стоит, — это обещание, которого никто не выполнит.
+/// An unknown identifier is unavailable: showing an item with nothing
+/// behind it is a promise nobody will keep.
 pub fn is_enabled(id: &str) -> bool {
     matches!(id, ID_RECOVER_KDE | ID_ABOUT | ID_UNINSTALL | ID_QUIT)
 }
 
-/// Опасен ли пункт: за ним стоит необратимое — удаление программы.
+/// Whether the item is dangerous: behind it is something irreversible — uninstalling the program.
 ///
-/// Разметка красит такой пункт при наведении и фокусе краской опасной кнопки
-/// (`destructive_tone`), а не обычной подсветкой: человек, дошедший до него
-/// стрелками или геймпадом, должен видеть, что это не «О программе». Решает
-/// ядро, а не разметка: сравнивать подписи нельзя (они переводятся), а
-/// идентификатор в разметке — второе место, которое забудут поправить.
+/// The markup paints such an item on hover and focus with the danger button color
+/// (`destructive_tone`), not the usual highlight: a person who reached it with
+/// the arrows or a gamepad must see that it is not «About». The core decides,
+/// not the markup: labels must not be compared (they are translated), and an
+/// identifier in the markup is a second place that will be forgotten to be fixed.
 ///
-/// «Выход» сюда не входит: он закрывает окно, но ничего не стирает.
+/// «Quit» is not included: it closes the window but erases nothing.
 pub fn is_destructive(id: &str) -> bool {
     id == ID_UNINSTALL
 }
 
 // ============================================================================
-// «О программе» (порт `_on_about`)
+// «About» (port of `_on_about`)
 // ============================================================================
 
-/// Заголовок окна справки.
+/// Title of the about window.
 pub fn about_title() -> String {
     tr("About Rexon")
 }
 
-/// Кнопка справки: открыть файл журнала.
+/// About box button: open the log file.
 pub fn log_open_label() -> String {
     // TRANSLATORS: button in the "About Rexon" dialog; opens the Rexon log file.
     tr("Open log")
 }
 
-/// Кнопка справки: скопировать конец журнала в буфер обмена.
+/// About box button: copy the end of the log to the clipboard.
 pub fn log_copy_label() -> String {
     // TRANSLATORS: button in the "About Rexon" dialog; copies the end of the log to the clipboard.
     tr("Copy log")
 }
 
-/// Строка справки после копирования.
+/// About box line after copying.
 pub fn log_copied_text() -> String {
     tr("The log is copied — paste it into a message to the developer.")
 }
 
-/// Где лежит журнал и как включить подробный.
+/// Where the log lies and how to enable the verbose one.
 pub fn log_location_text(path: &str) -> String {
     // TRANSLATORS: %1 is the path of the log file; REXON_LOG=debug is an environment variable, keep it as is.
     trf("Log: %1 (detailed: start Rexon with REXON_LOG=debug)", &[&path])
 }
 
-/// Сколько конца журнала копировать: столько читается в сообщении глазами
-/// и умещается в письмо, а последних запусков хватает для разбора.
+/// How much of the log tail to copy: this much can be read by eye in a message
+/// and fits into an email, and the last runs are enough for an analysis.
 pub const LOG_COPY_BYTES: u64 = 200 * 1024;
 
-/// Версия продукта человеку — «0.1.1». Собирается из [`crate::constants`], а
-/// не переписывается строкой: `rexon.__version__` и ядро обязаны совпадать.
+/// Product version for a human — «0.1.1». Built from [`crate::constants`], not
+/// rewritten as a string: `rexon.__version__` and the core must match.
 pub fn version_string() -> String {
     let (major, minor, patch) = crate::constants::REXON_VERSION;
     format!("{major}.{minor}.{patch}")
 }
 
-/// Тело справки, rich text — ровно то, что показывает `QMessageBox.about`.
+/// The about box body, rich text — exactly what `QMessageBox.about` shows.
 ///
-/// ⚠️ Абзац про Qt и KDE Frameworks — АТРИБУЦИЯ ЛИЦЕНЗИЙ, а не
-/// украшение: обе библиотеки LGPL, и указание динамической линковки — условие
-/// их использования при распространении Rexon. Правка этого абзаца — правка
-/// юридического текста, не текста интерфейса.
+/// ⚠️ The paragraph about Qt and KDE Frameworks is a LICENSE ATTRIBUTION, not
+/// decoration: both libraries are LGPL, and stating dynamic linking is a condition
+/// of using them when distributing Rexon. Editing this paragraph is editing
+/// legal text, not interface text.
 pub fn about_html() -> String {
     format!(
         "<h2>Rexon {version}</h2>\
@@ -228,35 +228,35 @@ pub fn about_html() -> String {
 }
 
 // ============================================================================
-// «О программе»: благодарности — сторонние программы, на которых стоит Rexon
+// «About»: credits — the third-party programs Rexon stands on
 // ============================================================================
 
-/// Сторонняя программа, без которой не было бы части Rexon, — одна строка
-/// раздела благодарностей в справке.
+/// A third-party program without which part of Rexon would not exist — one line
+/// of the credits section in the about box.
 ///
-/// ЗАЧЕМ НА ВИДУ. Живые обои Rexon работают на чужом движке (waywallen,
-/// Open Wallpaper Engine и др.). Файл NOTICE это фиксирует юридически, но его
-/// не читает никто, кроме юристов; авторы должны быть видны покупателю там,
-/// где он ищет «кто это сделал», — в «О программе».
+/// WHY IN PLAIN SIGHT. Rexon's live wallpapers run on someone else's engine (waywallen,
+/// Open Wallpaper Engine and others). The NOTICE file records this legally, but
+/// nobody except lawyers reads it; the authors must be visible to the customer where
+/// they look for "who made this" — in «About».
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThirdPartyComponent {
-    /// Имя так, как его пишет автор. Не переводится.
+    /// The name as the author writes it. Not translated.
     pub name: &'static str,
-    /// Что эта программа делает в Rexon — словами покупателя. Переводится в
-    /// месте показа (`tr(c.purpose)`), здесь только помечена для `xgettext`.
+    /// What this program does in Rexon — in the customer's words. Translated
+    /// where it is shown (`tr(c.purpose)`), here only marked for `xgettext`.
     pub purpose: &'static str,
-    /// Лицензия идентификатором SPDX. Юридическая запись — не переводится.
+    /// License as an SPDX identifier. A legal record — not translated.
     pub license: &'static str,
-    /// Страница проекта; в справке — ссылка, открывается в браузере.
+    /// Project page; in the about box — a link that opens in the browser.
     pub url: &'static str,
-    /// Начало заголовка раздела этой программы в файле NOTICE. По нему
-    /// сторож (`tests/window_menu_parity.rs`) сверяет таблицу с NOTICE:
-    /// раздел есть, ссылка и лицензия в нём те же.
+    /// Beginning of the section header of this program in the NOTICE file. By it
+    /// the guard (`tests/window_menu_parity.rs`) checks the table against NOTICE:
+    /// the section exists, the link and license in it are the same.
     pub notice_heading: &'static str,
 }
 
-/// Благодарности — ЕДИНСТВЕННЫЙ список в коде. Порядок — как в разделе
-/// «Credits» README. Разметка своего списка не держит: справку собирает
+/// The credits are the ONLY list in the code. The order is as in the
+/// «Credits» section of the README. The markup keeps no list of its own: the about box is built by
 /// [`about_credits_html`].
 pub const THIRD_PARTY: &[ThirdPartyComponent] = &[
     ThirdPartyComponent {
@@ -280,8 +280,8 @@ pub const THIRD_PARTY: &[ThirdPartyComponent] = &[
         name: "waywallen-display",
         // TRANSLATORS: what this third-party program does in Rexon ("About Rexon" → credits).
         purpose: n_("Shows live wallpapers on the KDE Plasma desktop."),
-        // У апстрима лицензия записана двояко (waywallen-display#70), пакет
-        // везёт оба текста — и справка называет обе.
+        // Upstream records the license in two ways (waywallen-display#70), the package
+        // ships both texts — and the about box names both.
         license: "MIT / GPL-2.0-or-later",
         url: "https://github.com/waywallen/waywallen-display",
         notice_heading: "waywallen-display ",
@@ -337,10 +337,10 @@ pub const THIRD_PARTY: &[ThirdPartyComponent] = &[
     },
 ];
 
-/// Раздел благодарностей справки, rich text: заголовок, пара слов зачем, по
-/// строке на программу (имя — ссылка, что делает, лицензия) и куда смотреть
-/// за полным списком. Ссылки открывает разметка (`onLinkActivated` →
-/// `Qt.openUrlExternally`), как и все ссылки в окнах меню.
+/// The credits section of the about box, rich text: a header, a couple of words on why, one
+/// line per program (the name is a link, what it does, the license) and where to look
+/// for the full list. Links are opened by the markup (`onLinkActivated` →
+/// `Qt.openUrlExternally`), like all links in the menu windows.
 pub fn about_credits_html() -> String {
     let items: String = THIRD_PARTY.iter().map(credit_html).collect();
     format!(
@@ -357,10 +357,10 @@ pub fn about_credits_html() -> String {
     )
 }
 
-/// Отказ от связи с Wallpaper Engine и Valve. Юридическая строка, а не
-/// украшение: марка «Wallpaper Engine» стоит в интерфейсе Rexon (вкладка
-/// обоев), и без этой оговорки её можно принять за знак партнёрства. Текст
-/// дословно тот же, что в README (раздел Credits) — сверку держит
+/// Disclaimer of affiliation with Wallpaper Engine and Valve. A legal line, not
+/// decoration: the «Wallpaper Engine» mark appears in the Rexon interface (the wallpaper
+/// tab), and without this disclaimer it could be taken as a sign of partnership. The text
+/// is verbatim the same as in the README (the Credits section) — the check is held by
 /// `tests/window_menu_parity.rs`.
 pub fn not_affiliated_text() -> String {
     // TRANSLATORS: legal notice under the credits in "About Rexon"; keep the names Rexon, Wallpaper Engine and Valve as they are.
@@ -368,7 +368,7 @@ pub fn not_affiliated_text() -> String {
         its developers, or Valve.")
 }
 
-/// Одна строка благодарностей, rich text: имя ссылкой, что делает, лицензия.
+/// One credits line, rich text: the name as a link, what it does, the license.
 pub fn credit_html(c: &ThirdPartyComponent) -> String {
     format!(
         "<p><b><a href='{url}'>{name}</a></b> — {purpose}<br>\
@@ -381,35 +381,35 @@ pub fn credit_html(c: &ThirdPartyComponent) -> String {
     )
 }
 
-/// Куда смотреть за полным списком и текстами лицензий.
+/// Where to look for the full list and the license texts.
 pub fn credits_full_list_text() -> String {
     // TRANSLATORS: last line of the credits in "About Rexon"; NOTICE is a file name, keep it as is.
     tr("The full list of components and the license texts are in the NOTICE \
         file that comes with Rexon.")
 }
 
-/// Всё тело окна «О программе»: справка и под ней благодарности. Справку
-/// [`about_html`] сверка паритета держит дословно — раздел благодарностей
-/// к ней приписывается, а не вписывается внутрь.
+/// The whole body of the «About» window: the about text and the credits under it. The about text
+/// [`about_html`] is held verbatim by the parity check — the credits section
+/// is appended to it, not inserted inside.
 pub fn about_dialog_html() -> String {
     format!("{}{}", about_html(), about_credits_html())
 }
 
 // ============================================================================
-// «Восстановить тему KDE» (порт `_on_recover_kde`)
+// «Restore KDE Theme» (port of `_on_recover_kde`)
 // ============================================================================
 
-/// Путь резервной копии темы относительно домашней папки.
+/// Path of the theme backup relative to the home folder.
 pub const RECOVER_BACKUP_REL: &str = ".config/rexon/last_kde_lookandfeel.txt";
 
-/// Что применится, если резервной копии нет.
+/// What is applied if there is no backup.
 pub const RECOVER_FALLBACK_TARGET: &str = "Breeze Dark (fallback)";
 
-/// Полный путь резервной копии.
+/// Full path of the backup.
 ///
-/// Считается тем же расширителем, что и все пользовательские пути проекта
-/// ([`crate::utils::expand_user`]): при нестандартном `$XDG_CONFIG_HOME`
-/// вшитый `~/.config` читал бы не тот файл, и диалог называл бы не ту тему.
+/// Computed by the same expander as all user paths of the project
+/// ([`crate::utils::expand_user`]): with a non-standard `$XDG_CONFIG_HOME`
+/// a hard-coded `~/.config` would read the wrong file, and the dialog would name the wrong theme.
 pub fn recover_backup_path(home: &str, xdg_config_home: Option<&str>) -> String {
     crate::utils::expand_user(
         &format!("~/{RECOVER_BACKUP_REL}"),
@@ -418,10 +418,10 @@ pub fn recover_backup_path(home: &str, xdg_config_home: Option<&str>) -> String 
     )
 }
 
-/// Какая тема будет применена: сохранённая либо запасная.
+/// Which theme will be applied: the saved one or the fallback.
 ///
-/// Пустая или отсутствующая копия — это запасная тема, а не пустое имя:
-/// диалог обязан назвать цель, иначе человек нажимает «да» вслепую.
+/// An empty or missing backup means the fallback theme, not an empty name:
+/// the dialog must name the target, otherwise the person clicks "yes" blindly.
 pub fn recover_target(saved: Option<&str>) -> String {
     match saved.map(str::trim) {
         Some(s) if !s.is_empty() => s.to_string(),
@@ -429,16 +429,16 @@ pub fn recover_target(saved: Option<&str>) -> String {
     }
 }
 
-/// Заголовок вопроса перед сбросом; он же подпись пункта меню без значка.
+/// Title of the question before the reset; also the menu item label without the icon.
 pub fn recover_title() -> String {
     tr("Restore KDE Theme")
 }
 
-/// Вопрос перед сбросом, rich text.
+/// The question before the reset, rich text.
 ///
-/// ⚠️ Про обои сказано НАМЕРЕННО и жирным: сброс темы останавливает живые и
-/// видео-обои, и человек, который об этом не предупреждён, примет пропавшие
-/// обои за поломку Rexon (правило #13).
+/// ⚠️ The wallpaper is mentioned DELIBERATELY and in bold: a theme reset stops live and
+/// video wallpapers, and a person who is not warned about it will take the vanished
+/// wallpaper for a Rexon breakage (rule #13).
 pub fn recover_question(target: &str) -> String {
     // TRANSLATORS: rich text; %1 is the name of the theme to apply.
     trf(
@@ -452,28 +452,28 @@ pub fn recover_question(target: &str) -> String {
     )
 }
 
-/// Имя Rust-бинаря главного окна.
+/// Name of the Rust binary of the main window.
 pub const MAIN_WINDOW_BIN: &str = "rexon-main-window";
 
-/// Кого звать, если свой бинарь не опознан: общий вход продукта.
+/// Whom to call if our own binary is not recognised: the product's shared entry point.
 pub const RECOVER_FALLBACK_BIN: &str = "rexon";
 
-/// Хвост, который ядро Linux дописывает к `/proc/self/exe`, когда файл
-/// бинаря заменили на диске после запуска (обычная пересборка).
+/// The tail the Linux kernel appends to `/proc/self/exe` when the binary file
+/// was replaced on disk after launch (an ordinary rebuild).
 const DELETED_EXE_SUFFIX: &str = " (deleted)";
 
-/// Команда сброса: СВОЙ бинарь окна с флагом `--recover-kde`.
+/// Reset command: OUR OWN window binary with the `--recover-kde` flag.
 ///
-/// ⭐ Починка при переносе. Раньше здесь стояло `rexon --recover-kde`, то
-/// есть Rust-окно отдавало аварийный откат Python-входу — хотя тот же
-/// маршрут целиком живёт в ядре ([`crate::cli::run_headless`] →
-/// [`crate::system_exec::SystemExec::recover_kde`]) и бинарь окна отрабатывает
-/// его до подъёма Qt. Общий вход берётся, только если свой бинарь не
-/// опознан (окно встроено в чужой процесс).
+/// ⭐ Fix during the port. Here used to be `rexon --recover-kde`, that
+/// is, the Rust window handed the emergency rollback to the Python entry — although the same
+/// route lives entirely in the core ([`crate::cli::run_headless`] →
+/// [`crate::system_exec::SystemExec::recover_kde`]) and the window binary handles
+/// it before Qt comes up. The shared entry is taken only if our own binary is not
+/// recognised (the window is embedded in a foreign process).
 ///
-/// `own_exe` — путь своего исполняемого файла (`std::env::current_exe`).
-/// Хвост « (deleted)» снимается: после пересборки по тому же пути лежит
-/// уже новый бинарь, и звать надо его, а не несуществующее имя с хвостом.
+/// `own_exe` — the path of our own executable (`std::env::current_exe`).
+/// The « (deleted)» tail is stripped: after a rebuild the same path already holds
+/// the new binary, and that is what must be called, not a non-existent name with the tail.
 pub fn recover_argv(own_exe: Option<&str>) -> Vec<String> {
     let own = own_exe
         .map(|p| p.strip_suffix(DELETED_EXE_SUFFIX).unwrap_or(p))
@@ -487,18 +487,18 @@ pub fn recover_argv(own_exe: Option<&str>) -> Vec<String> {
     ]
 }
 
-/// Можно ли сбрасывать тему в этом сеансе. Решение то же, что у самого
-/// маршрута ([`crate::app::is_plasma_desktop`]): окно не имеет права обещать
-/// «восстановление запущено» там, где маршрут откажет.
+/// Whether the theme may be reset in this session. The decision is the same as that of the
+/// route itself ([`crate::app::is_plasma_desktop`]): the window has no right to promise
+/// "recovery started" where the route will refuse.
 pub fn recover_allowed(xdg_current_desktop: &str) -> bool {
     crate::app::is_plasma_desktop(xdg_current_desktop)
 }
 
-/// Что сказать в окне на чужом рабочем столе.
+/// What to say in the window on a foreign desktop.
 ///
-/// ⭐ Починка при переносе: Python запускал откат вслепую и докладывал
-/// «Восстановление запущено», а маршрут на не-Plasma молча выходил с
-/// кодом 1 — отказ уходил в поток вывода, которого человек не видит.
+/// ⭐ Fix during the port: Python ran the rollback blindly and reported
+/// «Recovery Started», while the route on non-Plasma silently exited with
+/// code 1 — the refusal went to an output stream the person does not see.
 pub fn recover_not_plasma_text(xdg_current_desktop: &str) -> String {
     // TRANSLATORS: %1 is the name of the running desktop (e.g. GNOME).
     trf(
@@ -510,23 +510,23 @@ pub fn recover_not_plasma_text(xdg_current_desktop: &str) -> String {
     )
 }
 
-// ── Пакеты, подменяющие части Plasma (AeroThemePlasma / AeroShell) ─────────
+// ── Packages that replace parts of Plasma (AeroThemePlasma / AeroShell) ────
 //
-// Порт `_maybe_handle_plasma_forks`. Такие пакеты — не тема: они заменяют
-// сами программы Plasma, и сброс темы их не уберёт. Прежде чем сбрасывать,
-// окно говорит об этом и предлагает вернуть обычную Plasma.
+// Port of `_maybe_handle_plasma_forks`. Such packages are not a theme: they replace
+// the Plasma programs themselves, and a theme reset will not remove them. Before resetting,
+// the window says so and offers to bring back standard Plasma.
 //
-// Тексты сказаны проще, чем в Python: слова «форк», «сток», «pacman» и
-// имена библиотек покупателю ничего не говорят (правило #13). Смысл и
-// порядок шагов те же.
+// The texts are put more simply than in Python: the words "fork", "stock", "pacman" and
+// library names mean nothing to the customer (rule #13). The meaning and
+// order of the steps are the same.
 
-/// Заголовок предупреждения о пакетах-заменах.
+/// Title of the warning about replacement packages.
 pub fn forks_title() -> String {
     tr("Replacement Plasma Components Installed")
 }
 
-/// Текст предупреждения, rich text. Имена пакетов экранируются: они
-/// приходят из пакетного менеджера, а не из этого файла.
+/// Warning text, rich text. Package names are escaped: they
+/// come from the package manager, not from this file.
 pub fn forks_text(forks: &[String]) -> String {
     let list = forks
         .iter()
@@ -546,35 +546,35 @@ pub fn forks_text(forks: &[String]) -> String {
     )
 }
 
-/// Кнопка «удалить и вернуть обычную Plasma». Кнопка по умолчанию, как в
-/// продукте: за ней стоит ещё один вопрос с «Нет» по умолчанию.
+/// The "remove and bring back standard Plasma" button. The default button, as in
+/// the product: behind it there is one more question with «No» as the default.
 pub fn forks_remove_label() -> String {
     format!("🧹 {}", tr("Remove Them and Restore Standard Plasma"))
 }
-/// Кнопка «только сбросить тему» — сознательная косметика поверх замен.
+/// The "only reset the theme" button — deliberate cosmetics on top of the replacements.
 pub fn forks_theme_label() -> String {
     tr("Reset Theme Only")
 }
-/// Кнопка отмены — та же подпись, что у окна удаления.
+/// The cancel button — the same label as in the uninstall window.
 pub fn forks_cancel_label() -> String {
     uninstall_cancel_label()
 }
 
-/// Заголовок отказа: вернуть стандартные пакеты нечем.
+/// Refusal title: there is nothing to restore the standard packages with.
 pub fn forks_blocked_title() -> String {
     tr("Standard Plasma Cannot Be Restored Right Now")
 }
 
-/// Заголовок последнего вопроса перед удалением.
+/// Title of the last question before removal.
 pub fn forks_confirm_title() -> String {
     tr("Remove Replacement Plasma Components?")
 }
 
-/// Последний вопрос перед удалением, rich text: ровно та команда, что
-/// выполнится (её собирает ядро), и что будет после.
+/// The last question before removal, rich text: exactly the command that
+/// will be executed (the core builds it), and what will happen afterwards.
 ///
-/// Команда экранируется: в ней есть `&&`. Слова «окно может подвиснуть»
-/// из Python здесь нет намеренно: удаление идёт в фоне, окно не встаёт.
+/// The command is escaped: it contains `&&`. The words "the window may freeze"
+/// from Python are deliberately absent here: removal runs in the background, the window does not stall.
 pub fn forks_confirm_text(command: &str) -> String {
     let command = crate::ui_base::escape_dialog_text(command);
     // TRANSLATORS: rich text; %1 is the command that will be run.
@@ -588,22 +588,22 @@ pub fn forks_confirm_text(command: &str) -> String {
     )
 }
 
-/// Заголовок сообщения «удаление идёт».
+/// Title of the "removal in progress" message.
 pub fn forks_running_title() -> String {
     tr("Removal in Progress")
 }
-/// Текст сообщения «удаление идёт» (обычный текст).
+/// Text of the "removal in progress" message (plain text).
 pub fn forks_running_text() -> String {
     tr("A password prompt will appear in a moment. \
         When the removal is finished, the result will be shown here.")
 }
 
-/// Заголовок итога: получилось.
+/// Result title: it worked.
 pub fn forks_done_title() -> String {
     tr("Replacements Removed")
 }
-/// Итог «получилось» (обычный текст). Пункт меню назван дословно — его
-/// подпись подставляется, а не переписывается второй копией.
+/// The "it worked" result (plain text). The menu item is named verbatim — its
+/// label is substituted, not rewritten as a second copy.
 pub fn forks_done_text() -> String {
     // TRANSLATORS: %1 is the name of the "Restore KDE Theme" menu item.
     trf(
@@ -614,20 +614,20 @@ pub fn forks_done_text() -> String {
         &[&recover_title()],
     )
 }
-/// Заголовок итога: не получилось. Текст — объяснение ядра
+/// Result title: it did not work. The text is the core's explanation
 /// ([`crate::system_plan::plasma_fork_reset_outcome`]).
 pub fn forks_failed_title() -> String {
     tr("Could Not Remove the Replacements")
 }
 
-/// Идентификаторы трёх кнопок окна про пакеты-замены. Разбор выбора идёт по
-/// ним, а не по подписи: подпись меняется, идентификатор — нет.
+/// Identifiers of the three buttons of the replacement packages window. The choice is parsed by
+/// them, not by the label: the label changes, the identifier does not.
 pub const FORKS_BUTTON_REMOVE: &str = "remove";
 pub const FORKS_BUTTON_THEME: &str = "theme";
 pub const FORKS_BUTTON_CANCEL: &str = "cancel";
 
-/// Кнопка окна про пакеты-замены: что написать, какую роль дать в ряду
-/// кнопок (`accept` / `action` / `reject`) и стоит ли она по умолчанию.
+/// A button of the replacement packages window: what to write, which role to give it in the row
+/// of buttons (`accept` / `action` / `reject`) and whether it is the default.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ForksButton {
     pub id: &'static str,
@@ -636,8 +636,8 @@ pub struct ForksButton {
     pub default: bool,
 }
 
-/// Окно про пакеты-замены целиком — одно на оба окна продукта (Python и
-/// Rust): своих слов и своего порядка кнопок ни у одного из них нет.
+/// The whole replacement packages window — one for both product windows (Python and
+/// Rust): neither of them has its own words or its own button order.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ForksPrompt {
     pub title: String,
@@ -646,10 +646,10 @@ pub struct ForksPrompt {
     pub buttons: Vec<ForksButton>,
 }
 
-/// Окно про пакеты-замены. `None` — замен нет, сразу вопрос о сбросе темы.
+/// The replacement packages window. `None` — no replacements, straight to the theme reset question.
 ///
-/// Кнопка по умолчанию — снятие замен, как в продукте: за ней стоит ещё
-/// один вопрос, и там по умолчанию «Нет».
+/// The default button is removing the replacements, as in the product: behind it there is one more
+/// question, and there the default is «No».
 pub fn forks_prompt(forks: &[String]) -> Option<ForksPrompt> {
     if forks.is_empty() {
         return None;
@@ -666,20 +666,20 @@ pub fn forks_prompt(forks: &[String]) -> Option<ForksPrompt> {
     })
 }
 
-/// Что делать после выбора в окне про пакеты-замены.
+/// What to do after the choice in the replacement packages window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForksNext {
-    /// Спросить ещё раз, показав команду, и только потом снимать.
+    /// Ask once more, showing the command, and only then remove.
     ConfirmRemoval,
-    /// Сознательно только косметика: дальше обычный вопрос о сбросе темы.
+    /// Deliberately only cosmetics: then the usual theme reset question.
     ThemeQuestion,
-    /// Ничего не делать.
+    /// Do nothing.
     Stop,
 }
 
 impl ForksNext {
-    /// Имя шага для окон: `confirm_removal` / `theme_question` / `stop`.
+    /// Step name for the windows: `confirm_removal` / `theme_question` / `stop`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::ConfirmRemoval => "confirm_removal",
@@ -689,9 +689,9 @@ impl ForksNext {
     }
 }
 
-/// Следующий шаг по нажатой кнопке. Незнакомая или пустая (окно закрыли
-/// Esc либо крестиком) — ничего не делать: снимать системные пакеты без
-/// прямого «да» нельзя.
+/// The next step by the clicked button. Unknown or empty (the window was closed with
+/// Esc or the close button) — do nothing: system packages must not be removed without
+/// an explicit "yes".
 pub fn forks_next(button_id: &str) -> ForksNext {
     match button_id {
         FORKS_BUTTON_REMOVE => ForksNext::ConfirmRemoval,
@@ -700,23 +700,23 @@ pub fn forks_next(button_id: &str) -> ForksNext {
     }
 }
 
-/// Шаг после «удалить»: либо последний вопрос, либо отказ с объяснением.
+/// The step after "remove": either the last question or a refusal with an explanation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ForksPreviewStep {
-    /// `true` — задать вопрос (`text` — rich text с командой); `false` —
-    /// вернуть стандартные пакеты нечем, показать `text` обычным текстом и
-    /// ничего не запускать.
+    /// `true` — ask the question (`text` — rich text with the command); `false` —
+    /// there is nothing to restore the standard packages with, show `text` as plain text and
+    /// run nothing.
     pub ok: bool,
     pub title: String,
     pub text: String,
-    /// Что сказать, пока идёт снятие (пусто при отказе).
+    /// What to say while the removal is running (empty on refusal).
     pub running_title: String,
     pub running_text: String,
 }
 
-/// Шаг после «удалить» по ответу предпросмотра ядра
+/// The step after "remove" by the answer of the core's preview
 /// ([`crate::system_exec::SystemExec::plasma_fork_reset_preview`]):
-/// `message` — команда при `ok`, объяснение при отказе.
+/// `message` — the command when `ok`, an explanation on refusal.
 pub fn forks_preview_step(ok: bool, message: &str) -> ForksPreviewStep {
     if ok {
         ForksPreviewStep {
@@ -737,7 +737,7 @@ pub fn forks_preview_step(ok: bool, message: &str) -> ForksPreviewStep {
     }
 }
 
-/// Заголовок и текст итога удаления.
+/// Title and text of the removal result.
 pub fn forks_finished(ok: bool, message: &str) -> (String, String) {
     if ok {
         (forks_done_title(), forks_done_text())
@@ -746,12 +746,12 @@ pub fn forks_finished(ok: bool, message: &str) -> (String, String) {
     }
 }
 
-/// Заголовок сообщения «пошло».
+/// Title of the "it started" message.
 pub fn recover_started_title() -> String {
     tr("Recovery Started")
 }
 
-/// Текст сообщения «пошло».
+/// Text of the "it started" message.
 pub fn recover_started_text(target: &str) -> String {
     // TRANSLATORS: %1 is the name of the theme being applied.
     trf(
@@ -762,39 +762,39 @@ pub fn recover_started_text(target: &str) -> String {
     )
 }
 
-/// Заголовок сообщения о неудаче запуска.
+/// Title of the launch failure message.
 pub fn error_title() -> String {
     tr("Error")
 }
 
-/// Текст сообщения о неудаче запуска.
+/// Text of the launch failure message.
 pub fn recover_failed_text(error: &str) -> String {
     // TRANSLATORS: %1 is the system error message.
     trf("Could not start rexon: %1", &[&error])
 }
 
 // ============================================================================
-// «Удалить Rexon» (порт `_on_uninstall` + текстов `RexonUninstaller`)
+// «Uninstall Rexon» (port of `_on_uninstall` + the `RexonUninstaller` texts)
 // ============================================================================
 
-/// Заголовок окна удаления; он же подпись пункта меню без значка.
+/// Title of the uninstall window; also the menu item label without the icon.
 pub fn uninstall_title() -> String {
     tr("Uninstall Rexon")
 }
 
-/// Первая строка окна удаления.
+/// First line of the uninstall window.
 pub fn uninstall_text() -> String {
     tr("Rexon's files and folders will be removed")
 }
 
-/// Сколько путей показывается списком, прежде чем остаток свернётся в счёт.
+/// How many paths are shown as a list before the rest collapses into a count.
 ///
-/// Пятнадцать — не круглое число: полный список system-установки это больше
-/// сорока путей вместе с polkit-политиками хелперов, и окно вопроса уехало бы
-/// за край экрана, то есть кнопки «Отмена» человек бы не увидел.
+/// Fifteen is not a round number: the full list of a system install is more than
+/// forty paths together with the polkit policies of the helpers, and the question window would go
+/// past the edge of the screen, i.e. the person would not see the «Cancel» button.
 pub const UNINSTALL_FILES_SHOWN: usize = 15;
 
-/// Перечень удаляемого списком, как его печатает окно удаления.
+/// The list of what is removed, as the uninstall window prints it.
 pub fn uninstall_files_text(files: &[String]) -> String {
     let mut out: String = files
         .iter()
@@ -810,14 +810,14 @@ pub fn uninstall_files_text(files: &[String]) -> String {
     out
 }
 
-/// Что удаляется при любом выборе — первая строка под перечнем.
+/// What is removed with either choice — the first line under the list.
 pub fn uninstall_always_line() -> String {
     tr("Whichever you choose, the program itself (listed above) and Rexon's \
         temporary files are removed.")
 }
 
-/// Что добавляет «Удалить всё». Кнопка названа дословно — её подпись
-/// подставляется, а не переписывается второй копией.
+/// What «Remove Everything» adds. The button is named verbatim — its label
+/// is substituted, not rewritten as a second copy.
 pub fn uninstall_delete_all_line() -> String {
     // TRANSLATORS: %1 is the "Remove Everything" button.
     trf(
@@ -827,10 +827,10 @@ pub fn uninstall_delete_all_line() -> String {
     )
 }
 
-/// Предупреждение под строкой «Удалить всё»: обои и тема экрана входа,
-/// которые стоят на столе прямо сейчас, лежат в папке Rexon и уходят вместе
-/// с ней. Без этой фразы человек нажимает «Удалить всё» и получает
-/// неожиданно голый рабочий стол (решение Wehrwolfmann 16.09.2026).
+/// The warning under the «Remove Everything» line: the wallpaper and the login screen theme
+/// that are on the desktop right now lie in the Rexon folder and go away together
+/// with it. Without this phrase a person clicks «Remove Everything» and gets
+/// an unexpectedly bare desktop (Wehrwolfmann's decision of 16.09.2026).
 pub fn uninstall_delete_all_active_line() -> String {
     // TRANSLATORS: %1 is the "Remove Everything" button.
     trf(
@@ -840,10 +840,10 @@ pub fn uninstall_delete_all_active_line() -> String {
     )
 }
 
-/// Что остаётся при «сохранить» — строка под перечнем окна удаления.
-/// Прежде здесь стоял вопрос «Сохранить резервные копии DE?»: жаргон, и
-/// молчание о настройках (решение Wehrwolfmann 15.09.2026 — «сохранить»
-/// оставляет и их, и установленные обои и темы; кэш уходит всегда).
+/// What stays with "keep" — the line under the list of the uninstall window.
+/// Previously the question «Keep DE backups?» stood here: jargon, and
+/// silence about the settings (Wehrwolfmann's decision of 15.09.2026 — "keep"
+/// leaves both them and the installed wallpapers and themes; the cache always goes).
 pub fn uninstall_keep_hint() -> String {
     // TRANSLATORS: %1 is the "Uninstall but Keep Settings and Backups" button.
     trf(
@@ -854,22 +854,22 @@ pub fn uninstall_keep_hint() -> String {
     )
 }
 
-/// Заголовок подробностей: где лежат данные человека.
+/// Title of the details: where the person's data lies.
 pub fn uninstall_data_paths_title() -> String {
     tr("Where it is stored:")
 }
-/// Пометка категории в подробностях: удаляется при любом выборе.
+/// Category mark in the details: removed with either choice.
 pub fn uninstall_data_always_mark() -> String {
     tr("removed with either choice")
 }
-/// Пометка категории в подробностях: только при «Удалить всё».
+/// Category mark in the details: only with «Remove Everything».
 pub fn uninstall_data_full_mark() -> String {
     // TRANSLATORS: %1 is the "Remove Everything" button.
     trf("only with “%1”", &[&uninstall_delete_label()])
 }
 
-/// Подробности: пути данных человека по категориям, в порядке
-/// [`UserDataKind::ALL`]. Пустых категорий нет.
+/// Details: paths of the person's data by category, in
+/// [`UserDataKind::ALL`] order. There are no empty categories.
 pub fn uninstall_data_paths_text(data: &[(UserDataKind, String)]) -> String {
     let mut lines = Vec::new();
     for kind in UserDataKind::ALL {
@@ -888,15 +888,15 @@ pub fn uninstall_data_paths_text(data: &[(UserDataKind, String)]) -> String {
     lines.join("\n")
 }
 
-/// Пояснение под первой строкой: перечень программы, что удаляет каждый
-/// выбор словами для человека, и пути данных — подробностями в конце.
+/// The explanation under the first line: the program's list, what each
+/// choice removes in words for a human, and the data paths — as details at the end.
 pub fn uninstall_informative(files: &[String], data: &[(UserDataKind, String)]) -> String {
-    // Внутри <pre> перевод строки остаётся переводом строки: общий
-    // экранировщик превращает его в <br>, а буквальный «<br>» из пути он
-    // уже превратил в &lt;br&gt;, так что обратная замена трогает только наши.
+    // Inside <pre> a line break stays a line break: the shared
+    // escaper turns it into <br>, and a literal «<br>» from a path it has
+    // already turned into &lt;br&gt;, so the reverse replacement touches only ours.
     let esc = |s: &str| crate::ui_base::escape_dialog_text(s).replace("<br>", "\n");
-    // Блоки путей — переносимые (`dialog_pre`): длинный путь в голом <pre>
-    // уходил за правый край окна, и хвост того, что удалится, был не виден.
+    // The path blocks are wrapping (`dialog_pre`): a long path in a bare <pre>
+    // went past the right edge of the window, and the tail of what will be removed was not visible.
     let pre = |s: &str| crate::ui_base::dialog_pre(&esc(s));
     let mut out = format!(
         "{}<p>{}</p><p>{}</p><p>{}</p><p>{}</p>",
@@ -916,40 +916,40 @@ pub fn uninstall_informative(files: &[String], data: &[(UserDataKind, String)]) 
     out
 }
 
-/// «Удалить программу, а настройки и резервные копии рабочих столов
-/// оставить» — кнопка по смыслу безопасная. Подпись длинная намеренно:
-/// человек должен видеть на самой кнопке, что сохранится (прежде —
-/// «Удалить (сохранить бэкапы)», и настройки при этом сносились).
+/// "Uninstall the program but keep the settings and desktop backups" —
+/// a button that is safe by meaning. The label is long on purpose:
+/// the person must see on the button itself what will be kept (previously —
+/// «Uninstall (keep backups)», and the settings were wiped all the same).
 pub fn uninstall_keep_label() -> String {
     tr("Uninstall but Keep Settings and Backups")
 }
-/// «Снести всё, включая настройки и резервные копии» — необратимо.
+/// "Wipe everything, including settings and backups" — irreversible.
 pub fn uninstall_delete_label() -> String {
     tr("Remove Everything")
 }
-/// Отказ. В продукте он же кнопка по умолчанию: защита от дурака —
-/// случайный Enter не должен снести программу.
+/// Refusal. In the product it is also the default button: foolproofing —
+/// an accidental Enter must not wipe the program.
 pub fn uninstall_cancel_label() -> String {
     // TRANSLATORS: the button that closes a dialog without doing anything.
     trc("dialog button", "Cancel")
 }
 
-/// Кнопка по умолчанию окна удаления — «Отмена».
+/// The default button of the uninstall window — «Cancel».
 pub const UNINSTALL_DEFAULT_ID: &str = "cancel";
 
-/// Заголовок сообщения об успешном удалении.
+/// Title of the successful uninstall message.
 pub fn uninstall_done_title() -> String {
     tr("Uninstall Complete")
 }
 
-/// Текст сообщения об успешном удалении: итог ядра плюс предупреждение о
-/// закрытии окна.
+/// Text of the successful uninstall message: the core's result plus a warning about
+/// the window closing.
 pub fn uninstall_done_text(message: &str) -> String {
     // TRANSLATORS: %1 is the uninstall summary.
     trf("%1\n\nRexon will now close.", &[&message])
 }
 
-/// Заголовок сообщения о неудаче удаления.
+/// Title of the uninstall failure message.
 pub fn uninstall_failed_title() -> String {
     tr("Uninstall Failed")
 }
@@ -958,9 +958,9 @@ pub fn uninstall_failed_title() -> String {
 mod tests {
     use super::*;
 
-    /// Сверки модуля — на исходном языке: тексты идут через каталог, а язык
-    /// — состояние всего процесса. Русский «как было» сверяет
-    /// `tests/window_menu_parity.rs` на настоящем `po/ru.po`.
+    /// Module checks are in the source language: texts go through the catalog, and the language
+    /// is the state of the whole process. Russian "as it was" is checked by
+    /// `tests/window_menu_parity.rs` against the real `po/ru.po`.
     fn english() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
     }
@@ -993,7 +993,7 @@ mod tests {
         assert_eq!(seps, vec![ID_QUIT]);
     }
 
-    /// Подпись «Выхода» обязана приходить из лотка, а не из копии здесь.
+    /// The «Quit» label must come from the tray, not from a copy here.
     #[test]
     fn quit_label_comes_from_tray() {
         english();
@@ -1041,17 +1041,17 @@ mod tests {
             recover_argv(Some("/usr/lib/rexon/rexon-main-window")),
             vec!["/usr/lib/rexon/rexon-main-window", flag]
         );
-        // После пересборки ядро Linux дописывает хвост — звать надо файл,
-        // который лежит по этому пути сейчас.
+        // After a rebuild the Linux kernel appends a tail — the file to call is the one
+        // that lies at this path now.
         assert_eq!(
             recover_argv(Some("/t/rust/target/release/rexon-main-window (deleted)")),
             vec!["/t/rust/target/release/rexon-main-window", flag]
         );
-        // Окно в чужом процессе (python3) — только общий вход продукта.
+        // A window in a foreign process (python3) — only the product's shared entry point.
         assert_eq!(recover_argv(Some("/usr/bin/python3.14")), vec!["rexon", flag]);
         assert_eq!(recover_argv(None), vec!["rexon", flag]);
-        // Флаг один с разбором маршрута: иначе пункт меню звал бы маршрут,
-        // которого бинарь не знает.
+        // The flag is the same as in the route parser: otherwise the menu item would call a route
+        // the binary does not know.
         assert_eq!(
             crate::app::route(&[flag.to_string()]),
             crate::app::Route::RecoverKde
@@ -1078,8 +1078,8 @@ mod tests {
         let c = forks_confirm_text("sudo pacman -Rns x && sudo pacman -S y");
         assert!(c.contains("&amp;&amp;") && !c.contains(" && "), "{c}");
         assert!(c.contains("log out and log back in"), "{c}");
-        // Жаргон, который покупателю ничего не говорит, в свои слова окна
-        // не попадает (команда в <code> — не слова окна, а то, что выполнится).
+        // Jargon that means nothing to the customer does not get into the window's own words
+        // (the command in <code> is not the window's words but what will be executed).
         for own in [forks_title(), forks_remove_label(), forks_blocked_title(),
                     forks_confirm_title(), forks_done_text(), forks_running_text()] {
             for jargon in ["fork", "stock", "pacman", "logout"] {
@@ -1105,7 +1105,7 @@ mod tests {
         assert_eq!(forks_next(FORKS_BUTTON_REMOVE), ForksNext::ConfirmRemoval);
         assert_eq!(forks_next(FORKS_BUTTON_THEME), ForksNext::ThemeQuestion);
         assert_eq!(forks_next(FORKS_BUTTON_CANCEL), ForksNext::Stop);
-        // Esc / крестик: снимать системные пакеты без прямого «да» нельзя.
+        // Esc / close button: system packages must not be removed without an explicit "yes".
         assert_eq!(forks_next(""), ForksNext::Stop);
         assert_eq!(
             serde_json::to_value(ForksNext::ThemeQuestion).unwrap(),
@@ -1126,8 +1126,8 @@ mod tests {
         assert_eq!(recover_target(Some(" Breeze \n")), "Breeze");
     }
 
-    /// Остаток обязан быть посчитан, а не отброшен: молча урезанный список
-    /// соврал бы о том, что удаляется.
+    /// The rest must be counted, not dropped: a silently truncated list
+    /// would lie about what is removed.
     #[test]
     fn long_file_list_is_cut_and_the_rest_is_counted() {
         english();
@@ -1135,13 +1135,13 @@ mod tests {
         let text = uninstall_files_text(&files);
         assert_eq!(text.lines().count(), UNINSTALL_FILES_SHOWN + 1);
         assert!(text.ends_with("  • … 5 more"), "{text}");
-        // Короткий список счёта остатка не получает.
+        // A short list does not get a count of the rest.
         let short = uninstall_files_text(&files[..3]);
         assert!(!short.contains("more"), "{short}");
     }
 
-    /// Решение 15.09.2026: окно говорит словами, что удаляет каждый выбор, а
-    /// пути данных — подробностями, с пометкой, при каком выборе они уходят.
+    /// Decision of 15.09.2026: the window says in words what each choice removes, and
+    /// the data paths go as details, marked with the choice under which they go away.
     #[test]
     fn uninstall_prompt_says_what_each_choice_removes() {
         english();
@@ -1163,11 +1163,11 @@ mod tests {
         ] {
             assert!(text.contains(&must), "нет «{must}»: {text}");
         }
-        // Строка «сохранить» называет кнопку дословно — человек узнаёт её.
+        // The "keep" line names the button verbatim — the person recognises it.
         assert!(uninstall_keep_hint().contains(&uninstall_keep_label()));
         assert!(uninstall_delete_all_line().contains(&uninstall_delete_label()));
-        // Слова для человека — без путей и без «кэш».
-        // Предупреждение называет кнопку дословно и говорит, что будет со столом.
+        // Words for a human — without paths and without "cache".
+        // The warning names the button verbatim and says what will happen to the desktop.
         assert!(uninstall_delete_all_active_line().contains(&uninstall_delete_label()));
         assert!(uninstall_delete_all_active_line().contains("login screen"));
         for words in [
@@ -1191,7 +1191,7 @@ mod tests {
              Installed wallpapers, themes and add-ons — only with “Remove Everything”\n  • /h/.local/share/rexon/wallpapers\n  • /h/.local/share/rexon/a&b"
         );
         assert!(text.contains("a&amp;b") && !text.contains("a&b"), "пути экранированы: {text}");
-        // Данных нет — подробностей нет.
+        // No data — no details.
         assert!(!uninstall_informative(&[], &[]).contains(&uninstall_data_paths_title()));
     }
 

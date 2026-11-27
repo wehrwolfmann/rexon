@@ -1,51 +1,54 @@
-//! Переводы того, что Rexon кладёт в систему: сообщения root-помощников,
-//! ярлыки и записи автозапуска (`.desktop`), политики polkit, описание темы
-//! заставки. Всё — из тех же `po/<код>.po`, вшитых при сборке (`build.rs`).
+//! Translations of what Rexon puts into the system: root helper messages,
+//! shortcuts and autostart entries (`.desktop`), polkit policies, the splash
+//! theme description. All from the same `po/<code>.po`, embedded at build
+//! time (`build.rs`).
 //!
-//! ## Сообщения root-помощников
+//! ## Root helper messages
 //!
-//! Решение Wehrwolfmann 30.09.2026: то, что помощники (`rexon-de-helper`,
-//! `rexon-pkg-helper`, `rexon-stage-helper`, `rexon-system-helper`) печатают
-//! в журнал операции, покупатель читает — значит, это переводится.
+//! Wehrwolfmann's decision of 30.09.2026: what the helpers (`rexon-de-helper`,
+//! `rexon-pkg-helper`, `rexon-stage-helper`, `rexon-system-helper`) print
+//! into the operation log is read by the user, so it gets translated.
 //!
-//! ⛔ Помощник работает от root, поэтому перевод не должен стать каналом
-//! внедрения в него. Правила, которые нельзя ослаблять:
-//!   1. язык приходит ОДНИМ аргументом `--lang=<код>` (первым, необязательно);
-//!      код сверяется с белым списком, построенным из `po/LINGUAS` при
-//!      генерации текста; неизвестное, пустое, с посторонними символами —
-//!      английский, без ошибки;
-//!   2. все тексты — из ТАБЛИЦЫ, вшитой в скрипт при его генерации: русский
-//!      из `po/ru.po` (любой язык — из своего `.po`), английский — msgid.
-//!      Ничего из пользовательских файлов и окружения во время работы;
-//!   3. текст в скрипте — строка в одинарных кавычках (кавычка внутри
-//!      экранирована), вставки `%1`..`%9` подставляются как ДАННЫЕ собственным
-//!      циклом, не форматом `printf` и не оболочкой; перевод с управляющими
-//!      символами или с другим набором вставок отбрасывается (английский).
+//! ⛔ The helper runs as root, so translation must not become a channel for
+//! injecting into it. Rules that must not be relaxed:
+//!   1. the language arrives as ONE argument `--lang=<code>` (first, optional);
+//!      the code is checked against a whitelist built from `po/LINGUAS` when
+//!      the text is generated; unknown, empty, or with stray characters means
+//!      English, with no error;
+//!   2. all texts come from a TABLE embedded in the script when it is
+//!      generated: Russian from `po/ru.po` (any language from its own `.po`),
+//!      English is the msgid. Nothing from user files or the environment at
+//!      run time;
+//!   3. a text in the script is a single-quoted string (a quote inside is
+//!      escaped), the `%1`..`%9` placeholders are substituted as DATA by our
+//!      own loop, not by a `printf` format and not by the shell; a translation
+//!      with control characters or with a different set of placeholders is
+//!      dropped (English).
 //!
-//! Rexon передаёт `--lang` только помощнику, в чьём тексте есть отметка
-//! [`LANG_MARKER`]: помощник прежней версии (без неё) отказал бы на лишнем
-//! аргументе, а так он просто продолжит говорить по-своему.
+//! Rexon passes `--lang` only to a helper whose text carries the
+//! [`LANG_MARKER`] mark: an older helper (without it) would refuse the extra
+//! argument, and this way it simply keeps speaking its own language.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::i18n::n_;
 
-/// Отметка в тексте помощника: «понимаю `--lang=<код>`».
+/// Mark in the helper text: "I understand `--lang=<code>`".
 pub const LANG_MARKER: &str = "# REXON_HELPER_LANG_ARG=1";
 
-/// Каталоги перевода на момент сборки: (код из `po/LINGUAS`, текст `.po`).
-/// Файл печатает `build.rs`.
+/// Translation catalogs at build time: (code from `po/LINGUAS`, `.po` text).
+/// The file is printed by `build.rs`.
 mod embedded {
     include!(concat!(env!("OUT_DIR"), "/helper_catalogs.rs"));
 }
 
-/// Все сообщения помощников: (ключ в скрипте, английский текст = msgid).
+/// All helper messages: (key in the script, English text = msgid).
 ///
-/// Ключ — то, что пишет скрипт (`die bad_de_id "$de_id"`); `%1`, `%2` —
-/// вставки, подставляемые по порядку аргументов после ключа.
+/// The key is what the script writes (`die bad_de_id "$de_id"`); `%1`, `%2`
+/// are placeholders filled in order from the arguments after the key.
 pub const MESSAGES: &[(&str, &str)] = &[
-    // ── общие ───────────────────────────────────────────────────────────
+    // ── common ──────────────────────────────────────────────────────────
     // TRANSLATORS: Printed by Rexon's root helper into the operation log (all helper messages are). "pkexec" is a program name.
     ("not_via_pkexec", n_("not started through pkexec")),
     // TRANSLATORS: Root helper message. "staged" is the name of the helper's argument (the prepared folder); %1 is a path.
@@ -264,7 +267,7 @@ pub const MESSAGES: &[(&str, &str)] = &[
     ("initramfs_failed", n_("couldn't rebuild the boot image, so the new boot splash can't be shown — the previous theme is kept")),
     // TRANSLATORS: Root helper message: the login screen theme is set in a file Rexon must not change (for example a link). %1 is the theme name.
     ("theme_set_elsewhere", n_("the login screen theme is set in a file Rexon doesn't change — %1 can't be selected here")),
-    // ── SteamOS: рабочие столы образами systemd-sysext (steamos_sysext) ──
+    // ── SteamOS: desktops as systemd-sysext images (steamos_sysext) ─────
     // TRANSLATORS: Printed by Rexon's SteamOS scripts (desktops built as system extensions). %1 is the rejected value.
     ("sx_bad_desktop", n_("unknown desktop: %1")),
     // TRANSLATORS: SteamOS script message. VERSION_ID and /etc/os-release stay as they are.
@@ -365,13 +368,13 @@ pub const MESSAGES: &[(&str, &str)] = &[
     ("sx_n_failed_body", n_("KDE Plasma stays the desktop. Open Rexon for details.")),
 ];
 
-/// Английский текст сообщения по ключу.
+/// English text of a message by key.
 pub fn message(key: &str) -> Option<&'static str> {
     MESSAGES.iter().find(|(k, _)| *k == key).map(|(_, m)| *m)
 }
 
-/// Годится ли код языка в белый список помощника: буквы, цифры, `_`, `@`
-/// (`ru`, `pt_BR`, `sr@latin`). Всё прочее в скрипт не попадает.
+/// Whether a language code fits the helper whitelist: letters, digits, `_`,
+/// `@` (`ru`, `pt_BR`, `sr@latin`). Nothing else gets into the script.
 pub fn is_valid_code(code: &str) -> bool {
     !code.is_empty()
         && code.len() <= 16
@@ -379,8 +382,8 @@ pub fn is_valid_code(code: &str) -> bool {
         && code.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '@'))
 }
 
-/// Языки помощника: коды из вшитого `po/LINGUAS`, прошедшие проверку.
-/// Английский (исходный) в список не входит — он действует по умолчанию.
+/// Helper languages: codes from the embedded `po/LINGUAS` that pass the check.
+/// English (the source) is not in the list: it is the default.
 pub fn languages() -> Vec<&'static str> {
     languages_in(embedded::HELPER_CATALOGS)
 }
@@ -394,7 +397,7 @@ fn languages_in<'a>(catalogs: &[(&'a str, &str)]) -> Vec<&'a str> {
 }
 
 // ============================================================================
-// Разбор .po (только то, что нужно таблице: msgid → msgstr без контекста)
+// .po parsing (only what the table needs: msgid → msgstr without context)
 // ============================================================================
 
 fn unquote(s: &str) -> Option<String> {
@@ -413,15 +416,15 @@ fn unquote(s: &str) -> Option<String> {
             'r' => out.push('\r'),
             '\\' => out.push('\\'),
             '"' => out.push('"'),
-            // Незнакомое экранирование — запись битая, перевод не берём.
+            // Unknown escape: the entry is broken, the translation is not taken.
             _ => return None,
         }
     }
     Some(out)
 }
 
-/// Перевод `msgid` из текста `.po`: только запись без `msgctxt`, без
-/// `fuzzy`, с непустым `msgstr`. `None` — перевода нет.
+/// Translation of `msgid` from the `.po` text: only an entry without
+/// `msgctxt`, without `fuzzy`, with a non-empty `msgstr`. `None`: no translation.
 pub fn po_lookup(po: &str, msgid: &str) -> Option<String> {
     let mut found = None;
     po_scan(po, |id, msg| {
@@ -433,15 +436,16 @@ pub fn po_lookup(po: &str, msgid: &str) -> Option<String> {
     found
 }
 
-/// Все годные записи `.po` (те же правила, что у [`po_lookup`]) словарём
-/// `msgid → msgstr`; при повторе `msgid` остаётся первая запись — её же
-/// вернул бы и `po_lookup`.
+/// All valid `.po` entries (same rules as [`po_lookup`]) as a
+/// `msgid → msgstr` map; on a repeated `msgid` the first entry stays, the
+/// same one `po_lookup` would return.
 ///
-/// ЗАЧЕМ. Блок языка помощника спрашивает перевод каждого своего ключа на
-/// каждом языке. Поиском по тексту это полный разбор каталога (~1 МБ) на
-/// КАЖДЫЙ вопрос: `steamos_sysext::helper_script()` выходил в сотни разборов,
-/// и в отладочной сборке под нагрузкой сеанс помощника не укладывался в
-/// тайм-аут сверки (14.11.2026, `steamos_*` в `privilege::helper`).
+/// WHY. The helper language block asks for the translation of each of its
+/// keys in each language. With a text search that is a full parse of the
+/// catalog (~1 MB) for EVERY question: `steamos_sysext::helper_script()` came
+/// to hundreds of parses, and in a debug build under load the helper session
+/// did not fit into the check timeout (14.11.2026, `steamos_*` in
+/// `privilege::helper`).
 fn po_index(po: &str) -> HashMap<String, String> {
     let mut index = HashMap::new();
     po_scan(po, |id, msg| {
@@ -451,7 +455,7 @@ fn po_index(po: &str) -> HashMap<String, String> {
     index
 }
 
-/// Словари вшитых каталогов — разбираются один раз на процесс.
+/// Maps of the embedded catalogs, parsed once per process.
 fn embedded_index(code: &str) -> Option<&'static HashMap<String, String>> {
     static INDEX: OnceLock<Vec<(&'static str, HashMap<String, String>)>> = OnceLock::new();
     INDEX
@@ -461,9 +465,9 @@ fn embedded_index(code: &str) -> Option<&'static HashMap<String, String>> {
         .map(|(_, index)| index)
 }
 
-/// Разбор `.po` по записям: `found(msgid, msgstr)` для каждой годной записи
-/// (без `msgctxt`, без `fuzzy`, не множественной, не битой, с непустым
-/// `msgstr`). `found` вернул `true` — разбор останавливается.
+/// Parse a `.po` entry by entry: `found(msgid, msgstr)` for each valid entry
+/// (no `msgctxt`, no `fuzzy`, not plural, not broken, with a non-empty
+/// `msgstr`). If `found` returns `true`, parsing stops.
 fn po_scan(po: &str, mut found: impl FnMut(&str, &str) -> bool) {
     #[derive(PartialEq)]
     enum F {
@@ -546,7 +550,7 @@ fn po_scan(po: &str, mut found: impl FnMut(&str, &str) -> bool) {
     }
 }
 
-/// Вставки `%1`..`%9` текста — отсортированный набор цифр.
+/// The `%1`..`%9` placeholders of a text, as a sorted set of digits.
 fn placeholders(s: &str) -> Vec<char> {
     let mut v: Vec<char> = s
         .as_bytes()
@@ -559,16 +563,16 @@ fn placeholders(s: &str) -> Vec<char> {
     v
 }
 
-/// Годится ли перевод в скрипт от root: не пустой, без управляющих
-/// символов (перевод строки сломал бы журнал, остальное — терминал) и с
-/// тем же набором вставок, что у msgid.
+/// Whether a translation fits a root script: not empty, no control
+/// characters (a newline would break the log, the rest the terminal) and the
+/// same set of placeholders as the msgid.
 pub fn translation_ok(msgid: &str, msgstr: &str) -> bool {
     !msgstr.is_empty()
         && !msgstr.chars().any(|c| c.is_control())
         && placeholders(msgid) == placeholders(msgstr)
 }
 
-/// Перевод сообщения на язык `code` из вшитого каталога (или `None`).
+/// Translation of a message into language `code` from the embedded catalog (or `None`).
 pub fn translated(code: &str, msgid: &str) -> Option<String> {
     translated_from(embedded_index(code)?, msgid)
 }
@@ -578,16 +582,16 @@ fn translated_from(index: &HashMap<String, String>, msgid: &str) -> Option<Strin
 }
 
 // ============================================================================
-// Текст для скрипта
+// Text for the script
 // ============================================================================
 
-/// Строка bash в одинарных кавычках: внутри них не раскрывается ничего
-/// (`$`, обратная кавычка, `\`), а сама кавычка — `'\''`.
+/// A single-quoted bash string: nothing expands inside it (`$`, backquote,
+/// `\`), and the quote itself is `'\''`.
 pub fn bash_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-/// Ключи сообщений, которые зовёт текст скрипта (`die ключ`, `rx_say ключ`).
+/// Message keys the script text calls (`die key`, `rx_say key`).
 pub fn keys_used(script: &str) -> Vec<&str> {
     let mut keys: Vec<&str> = Vec::new();
     for word in ["die ", "rx_say "] {
@@ -611,18 +615,18 @@ pub fn keys_used(script: &str) -> Vec<&str> {
     keys
 }
 
-/// Блок «язык + таблица + вывод» для помощника `name` — встаёт в шаблон на
-/// место определения `die`. `script` — текст шаблона: в таблицу идут только
-/// сообщения, которые он зовёт.
+/// The "language + table + output" block for helper `name`; it goes into the
+/// template in place of the `die` definition. `script` is the template text:
+/// only the messages it calls go into the table.
 ///
-/// Паникует на ключе без текста в [`MESSAGES`]: это ошибка программиста,
-/// и сверки ловят её раньше, чем текст уйдёт в систему.
+/// Panics on a key without text in [`MESSAGES`]: that is a programmer error,
+/// and the parity checks catch it before the text reaches the system.
 pub fn bash_block(name: &str, script: &str) -> String {
-    // Вшитые каталоги разобраны один раз на процесс.
+    // The embedded catalogs are parsed once per process.
     bash_block_with(&languages(), &|code, en| translated(code, en), name, script)
 }
 
-/// То же на своих каталогах (сверки): каждый разбирается один раз на блок.
+/// Same with given catalogs (checks): each one is parsed once per block.
 #[cfg(test)]
 fn bash_block_in(catalogs: &[(&str, &str)], name: &str, script: &str) -> String {
     let langs = languages_in(catalogs);
@@ -634,8 +638,8 @@ fn bash_block_in(catalogs: &[(&str, &str)], name: &str, script: &str) -> String 
     bash_block_with(&langs, &lookup, name, script)
 }
 
-/// Блок языка: `langs` — коды белого списка, `lookup(код, msgid)` — годный
-/// перевод или `None`.
+/// Language block: `langs` are the whitelist codes, `lookup(code, msgid)` is a
+/// valid translation or `None`.
 fn bash_block_with(
     langs: &[&str],
     lookup: &dyn Fn(&str, &str) -> Option<String>,
@@ -703,19 +707,19 @@ fn bash_block_with(
     out
 }
 
-/// Подставить блок языка в шаблон помощника (метка `__L10N__`).
+/// Put the language block into the helper template (the `__L10N__` mark).
 pub fn localize_script(name: &str, script: &str) -> String {
     assert_eq!(script.matches("__L10N__").count(), 1, "в шаблоне {name} нет места для блока языка");
     script.replace("__L10N__", &bash_block(name, script))
 }
 
 // ============================================================================
-// Вызов: аргумент языка
+// Call: the language argument
 // ============================================================================
 
-/// Аргумент языка для помощника с текстом `helper_text` при языке `lang`.
-/// `None` — английский (он и так по умолчанию), язык вне белого списка или
-/// помощник прежней версии, который `--lang` не понимает.
+/// Language argument for a helper with text `helper_text` in language `lang`.
+/// `None`: English (the default anyway), a language outside the whitelist, or
+/// an older helper that does not understand `--lang`.
 pub fn lang_arg_for(lang: &str, helper_text: Option<&str>) -> Option<String> {
     if !is_valid_code(lang) || lang == crate::i18n::SOURCE_LANGUAGE {
         return None;
@@ -729,14 +733,14 @@ pub fn lang_arg_for(lang: &str, helper_text: Option<&str>) -> Option<String> {
     Some(format!("--lang={lang}"))
 }
 
-/// То же для живой машины: язык интерфейса Rexon и файл помощника по пути.
-/// Возвращает 0 или 1 аргумент — вставлять сразу после пути помощника.
+/// Same for the live machine: the Rexon UI language and the helper file by
+/// path. Returns 0 or 1 argument, to be inserted right after the helper path.
 pub fn lang_args(helper_path: &str) -> Vec<String> {
     let lang = crate::i18n::current_language();
     if lang == crate::i18n::SOURCE_LANGUAGE {
         return Vec::new();
     }
-    // Помощник — короткий скрипт; больше 1 МиБ — не наш, не читаем.
+    // A helper is a short script; over 1 MiB is not ours, we do not read it.
     let text = std::fs::metadata(helper_path)
         .ok()
         .filter(|m| m.is_file() && m.len() <= 1 << 20)
@@ -745,17 +749,17 @@ pub fn lang_args(helper_path: &str) -> Vec<String> {
 }
 
 // ============================================================================
-// Файлы в системе: ярлыки, автозапуск, polkit, метаданные тем
+// Files in the system: shortcuts, autostart, polkit, theme metadata
 // ============================================================================
 //
-// Их читает не окно Rexon, а рабочий стол и polkit — и язык они выбирают
-// САМИ по локали сеанса. Поэтому в файл ложатся сразу все языки каталога
-// (`Name[ru]=`, `xml:lang="ru"`), а не язык интерфейса Rexon. Переводы берутся
-// из тех же вшитых `.po`: новый язык в `po/LINGUAS` попадает в ярлыки и
-// политики без правки кода.
+// These are read not by the Rexon window but by the desktop and polkit, and
+// they pick the language THEMSELVES from the session locale. So all catalog
+// languages go into the file at once (`Name[ru]=`, `xml:lang="ru"`), not the
+// Rexon UI language. Translations come from the same embedded `.po`: a new
+// language in `po/LINGUAS` reaches shortcuts and policies without code changes.
 
-/// Переводы `msgid` на все языки каталога: (код, текст). Перевод с
-/// управляющими символами или с другим набором вставок пропускается.
+/// Translations of `msgid` into all catalog languages: (code, text). A
+/// translation with control characters or other placeholders is skipped.
 pub fn translations(msgid: &str) -> Vec<(&'static str, String)> {
     languages()
         .into_iter()
@@ -763,12 +767,12 @@ pub fn translations(msgid: &str) -> Vec<(&'static str, String)> {
         .collect()
 }
 
-/// Значение ключа `.desktop`: `\` — начало экранирования по спецификации.
+/// A `.desktop` key value: `\` starts an escape per the specification.
 fn desktop_value(s: &str) -> String {
     s.replace('\\', "\\\\")
 }
 
-/// Строки `Key=<msgid>` и `Key[код]=<перевод>` для `.desktop`, каждая с `\n`.
+/// `Key=<msgid>` and `Key[code]=<translation>` lines for `.desktop`, each with `\n`.
 pub fn desktop_key(key: &str, msgid: &str) -> String {
     let mut out = format!("{key}={}\n", desktop_value(msgid));
     for (code, text) in translations(msgid) {
@@ -777,7 +781,7 @@ pub fn desktop_key(key: &str, msgid: &str) -> String {
     out
 }
 
-/// Текст для XML: пять служебных символов — сущностями.
+/// Text for XML: the five special characters as entities.
 pub fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -786,8 +790,8 @@ pub fn xml_escape(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-/// Элемент политики polkit на всех языках: `<tag>msgid</tag>` и
-/// `<tag xml:lang="код">перевод</tag>`, каждый с отступом `indent` и `\n`.
+/// A polkit policy element in all languages: `<tag>msgid</tag>` and
+/// `<tag xml:lang="code">translation</tag>`, each with indent `indent` and `\n`.
 pub fn polkit_elem(indent: &str, tag: &str, msgid: &str) -> String {
     let mut out = format!("{indent}<{tag}>{}</{tag}>\n", xml_escape(msgid));
     for (code, text) in translations(msgid) {
@@ -827,8 +831,8 @@ mod tests {
         }
     }
 
-    /// Словарь каталога отвечает ровно то же, что поиск по тексту, — на
-    /// каждом сообщении помощников и на каждом вшитом каталоге.
+    /// The catalog map answers exactly the same as a text search, for every
+    /// helper message and every embedded catalog.
     #[test]
     fn po_index_answers_like_po_lookup() {
         assert!(!embedded::HELPER_CATALOGS.is_empty());
@@ -891,7 +895,7 @@ mod tests {
         assert_eq!(keys_used(s), vec!["bad_x", "ok_y"]);
     }
 
-    /// Помощник из блока языка и строки вызова — прогон системным bash.
+    /// A helper from the language block and a call line, run by the system bash.
     fn run_block(catalogs: &[(&str, &str)], call: &str, args: &[&str]) -> (String, String) {
         let script = format!("#!/bin/bash\nset -euo pipefail\nexport LC_ALL=C LANG=C\n__L10N__\n{call}\n");
         let block = bash_block_in(catalogs, "rexon-test-helper", &script);
@@ -909,10 +913,10 @@ mod tests {
         )
     }
 
-    /// ⛔ Перевод — данные, а не код: кавычка, `$(…)`, обратная кавычка,
-    /// `\`, `%s` в переводе и во вставке печатаются как есть и ничего не
-    /// исполняют. Сломанный перевод (другие вставки, перевод строки) не
-    /// попадает в скрипт вовсе — вместо него английский.
+    /// ⛔ A translation is data, not code: a quote, `$(…)`, a backquote, `\`,
+    /// `%s` in the translation and in a placeholder are printed as is and execute
+    /// nothing. A broken translation (other placeholders, a newline) does not get
+    /// into the script at all; English is used instead.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
     fn translation_never_becomes_code() {
@@ -938,12 +942,12 @@ mod tests {
             ],
             "{err}"
         );
-        // Код языка с кавычкой в белый список не попал.
+        // A language code with a quote did not get into the whitelist.
         let block = bash_block_in(cats, "rexon-test-helper", "__L10N__ die bad_de_id");
         assert!(!block.contains("de'x"), "{block}");
     }
 
-    /// Язык: из белого списка — перевод; всё прочее — английский, без ошибки.
+    /// Language: from the whitelist, a translation; anything else, English, with no error.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
     fn unknown_language_falls_back_to_english() {
@@ -955,12 +959,12 @@ mod tests {
             let (out, err) = run_block(cats, call, &[lang, "x"]);
             assert_eq!(out, "rexon-test-helper: bad de_id: x\n", "{lang}: {err}");
         }
-        // Без --lang первый аргумент — данные, как раньше.
+        // Without --lang the first argument is data, as before.
         let (out, _) = run_block(cats, call, &["x"]);
         assert_eq!(out, "rexon-test-helper: bad de_id: x\n");
     }
 
-    /// Вставка, похожая на вставку, второй раз не раскрывается.
+    /// Something that looks like a placeholder inside a placeholder is not expanded a second time.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
     fn placeholders_single_pass() {
@@ -982,9 +986,9 @@ mod tests {
         ]
     }
 
-    /// Все четыре помощника: разбираются bash, несут отметку, и язык
-    /// читается раньше первой проверки аргументов: неверный вызов отвечает
-    /// на выбранном языке (русский — дословно прежний текст).
+    /// All four helpers: parsed by bash, carry the mark, and the language is
+    /// read before the first argument check: a wrong call answers in the chosen
+    /// language (Russian: word for word the old text).
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
     fn all_helpers_speak_the_requested_language() {
@@ -994,7 +998,7 @@ mod tests {
             assert!(!text.contains("__L10N__"), "{name}");
             let syntax = std::process::Command::new("bash").arg("-n").arg("-c").arg(&text).output().unwrap();
             assert!(syntax.status.success(), "{name}: bash -n: {}", String::from_utf8_lossy(&syntax.stderr));
-            // Ни одного голого echo с текстом для человека: всё через таблицу.
+            // Not a single bare echo with human-facing text: everything goes through the table.
             for line in text.lines().map(str::trim_start).filter(|l| !l.starts_with('#')) {
                 assert!(!line.contains(&format!("echo \"{name}:")), "{name}: {line}");
             }
@@ -1027,7 +1031,7 @@ mod tests {
     fn desktop_and_polkit_escaping() {
         assert_eq!(desktop_value("a\\b"), "a\\\\b");
         assert_eq!(xml_escape("<a href=\"x\">&'"), "&lt;a href=&quot;x&quot;&gt;&amp;&apos;");
-        // Английский всегда первым и без ключа языка.
+        // English always first and without a language key.
         let d = desktop_key("Comment", "Some text that has no translation 42");
         assert_eq!(d, "Comment=Some text that has no translation 42\n");
         let p = polkit_elem("    ", "message", "Some text that has no translation 42");
@@ -1042,12 +1046,12 @@ mod tests {
         if has_ru {
             assert_eq!(lang_arg_for("ru", Some(&new)).as_deref(), Some("--lang=ru"));
         }
-        // Английский — по умолчанию, аргумент не нужен.
+        // English is the default, no argument needed.
         assert_eq!(lang_arg_for("en", Some(&new)), None);
-        // Помощник прежней версии отказал бы на лишнем аргументе.
+        // An older helper would refuse the extra argument.
         assert_eq!(lang_arg_for("ru", Some("#!/bin/bash\n")), None);
         assert_eq!(lang_arg_for("ru", None), None);
-        // Не из белого списка и мусор — ничего.
+        // Not in the whitelist, and garbage: nothing.
         for bad in ["xx", "ru;id", "", "$(id)"] {
             assert_eq!(lang_arg_for(bad, Some(&new)), None, "{bad:?}");
         }

@@ -1,16 +1,16 @@
-//! Golden-сверка порта `appdefaults.rs` с оригиналом `rexon/appdefaults.py`.
+//! Golden check of the `appdefaults.rs` port against the original `rexon/appdefaults.py`.
 //!
-//! Эталоны сняты с ЖИВОГО Python (генератор импортирует `rexon.appdefaults`,
-//! подменяет `_desktop_exists`/`shutil.which`/`safe_run` на фикстуры и
-//! ЗАПИСЫВАЕТ вход→выход: текст mimeapps.list, argv команд DE-настройки,
-//! содержимое helpers.rc, тексты autostart/apply-скрипта, resolve-таблицы,
-//! детект DE по окружению). Реальный HOME не тронут (генератор работает во
-//! временном HOME, файлы читаются/удаляются в песочнице). Rust обязан выдать
-//! те же результаты байт-в-байт.
+//! The golden files were captured from LIVE Python (the generator imports `rexon.appdefaults`,
+//! replaces `_desktop_exists`/`shutil.which`/`safe_run` with fixtures and
+//! RECORDS input→output: the mimeapps.list text, argv of the DE setup commands,
+//! the helpers.rc contents, the autostart/apply script texts, resolve tables,
+//! DE detection from the environment). The real HOME was not touched (the generator works in a
+//! temporary HOME, files are read/removed in a sandbox). Rust must produce
+//! the same results byte for byte.
 //!
-//! Множества «существующих .desktop» и «доступных бинарей» кодируются в
-//! фикстуре режимами (all/none/only/all_except) и превращаются в замыкания
-//! `exists`/`which` — те же, что видел Python.
+//! The sets of "existing .desktop files" and "available binaries" are encoded in the
+//! fixture as modes (all/none/only/all_except) and turned into the closures
+//! `exists`/`which` — the same ones Python saw.
 
 mod i18n_pin;
 
@@ -30,7 +30,7 @@ fn sv(v: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Замыкание exists/which из спецификации режима фикстуры.
+/// exists/which closure from the fixture's mode spec.
 fn spec_set(spec: &Value) -> (String, HashSet<String>) {
     let mode = spec["mode"].as_str().unwrap().to_string();
     let items: HashSet<String> = spec
@@ -127,7 +127,7 @@ fn default_file_manager_parity() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn generate_profile_parity() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();
     let d = fx();
     for c in d["generate"].as_array().unwrap() {
@@ -163,7 +163,7 @@ fn generate_profile_parity() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn apply_de_specific_parity() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();
     let d = fx();
     for c in d["apply"].as_array().unwrap() {
@@ -188,9 +188,9 @@ fn apply_de_specific_parity() {
     }
 }
 
-/// LXQt: терминал из общей таблицы — `lxqt-qtxdg.conf` (libqtxdg), путь
-/// раскрывает исполнитель. Намеренные расхождения с Python в эталоне:
-/// GNOME/Budgie получают и `exec-arg`, LXQt — запись и строку журнала.
+/// LXQt: the terminal from the common table — `lxqt-qtxdg.conf` (libqtxdg), the path
+/// is expanded by the executor. Deliberate divergences from Python in the golden file:
+/// GNOME/Budgie also get `exec-arg`, LXQt gets a write and a log line.
 #[test]
 fn apply_de_specific_lxqt_and_shared_terminal_table() {
     let all = |_: &str| true;
@@ -205,7 +205,7 @@ fn apply_de_specific_lxqt_and_shared_terminal_table() {
             value: "qterminal.desktop".into(),
         }]
     );
-    // Команды Cinnamon/MATE/KDE/GNOME — ровно Run-шаги общей таблицы.
+    // Cinnamon/MATE/KDE/GNOME commands — exactly the Run steps of the common table.
     for (de, home) in [
         ("cinnamon-mint", rexon_core::defaults::TerminalHome::Cinnamon),
         ("mate", rexon_core::defaults::TerminalHome::Mate),
@@ -259,8 +259,8 @@ fn de_apps_info_parity() {
 #[test]
 fn autostart_parity() {
     let d = fx();
-    // Переснято 01.10.2026: `Comment` — английский + `Comment[<код>]` из
-    // каталога (прежде был только русский, без ключа языка).
+    // Recaptured 01.10.2026: `Comment` is English + `Comment[<code>]` from the
+    // catalog (before, there was only Russian, without a language key).
     for c in d["autostart"].as_array().unwrap() {
         let got = i18n_pin::ru_only(&ad::autostart_desktop_content(c["exec_path"].as_str().unwrap()));
         assert_eq!(got, c["content"].as_str().unwrap(), "autostart");
@@ -299,18 +299,18 @@ fn fm_default_and_fm1_parity() {
 }
 
 // ============================================================================
-// Слот `org.freedesktop.FileManager1`
+// The `org.freedesktop.FileManager1` slot
 // ============================================================================
 //
-// Эталона на Python тут нет и быть не может: в оригинале этого решения не
-// существовало вовсе — он умел только «PID владельца + SIGTERM, если его
-// `comm` нашёлся в списке», и на Thunar не срабатывал никогда (`comm` =
-// `Thunar`, список — строчный). Поэтому сверки ниже — не golden, а разбор
-// веток: владелец совпал с умолчанием / чужой демон / имени никто не держит /
-// у чужого открыты окна.
+// There is no Python golden file here and there cannot be: this solution did not
+// exist in the original at all — it could only do "owner PID + SIGTERM if its
+// `comm` is found in the list", and it never worked on Thunar (`comm` =
+// `Thunar`, the list is lowercase). So the checks below are not golden but a walk of the
+// branches: the owner matches the default / a foreign daemon / nobody holds the name /
+// the foreign one has open windows.
 
-/// Живой вывод `busctl --user --no-pager status org.freedesktop.FileManager1`
-/// (сокращён до строк, которые читает разбор).
+/// Live output of `busctl --user --no-pager status org.freedesktop.FileManager1`
+/// (cut down to the lines the parser reads).
 const BUSCTL_THUNAR: &str = "PID=2583\nPIDFD=yes\nPPID=1231\nUID=1000\n\
 Comm=Thunar\nExe=/usr/bin/Thunar\n\
 CommandLine=/usr/bin/Thunar --sm-client-id 10188108 --daemon\n\
@@ -331,16 +331,16 @@ fn busctl_owner_reads_pid_comm_exe_and_cmdline() {
     assert_eq!(facts.exe, "/usr/bin/Thunar");
     assert!(facts.cmdline.contains("--daemon"), "{}", facts.cmdline);
     assert_eq!(facts.display(), "Thunar");
-    // Имя никто не держит — шина не печатает PID.
+    // Nobody holds the name — the bus prints no PID.
     assert_eq!(ad::busctl_owner("Failed to get bus name: no such name\n"), None);
 }
 
-/// ⚠️ Тот самый дефект: `/proc/<pid>/comm` у Thunar — с большой буквы.
+/// ⚠️ That very defect: Thunar's `/proc/<pid>/comm` is capitalized.
 #[test]
 fn process_name_is_matched_regardless_of_case() {
     assert_eq!(ad::fm_short_from_process("Thunar", "/usr/bin/Thunar").as_deref(), Some("thunar"));
     assert_eq!(ad::fm_short_from_process("nautilus", "").as_deref(), Some("nautilus"));
-    // Comm обрезан ядром до 15 символов — выручает Exe.
+    // Comm is cut by the kernel to 15 characters — Exe comes to the rescue.
     assert_eq!(
         ad::fm_short_from_process("cosmic-files-a", "/usr/bin/cosmic-files").as_deref(),
         Some("cosmic-files")
@@ -348,9 +348,9 @@ fn process_name_is_matched_regardless_of_case() {
     assert_eq!(ad::fm_short_from_process("kwin_wayland", "/usr/bin/kwin_wayland"), None);
 }
 
-/// СТОРОЖ полноты (правило #12): у каждого известного продукту файлового
-/// менеджера обязана быть запись «как гасится / чем выдаёт режим службы».
-/// Иначе новый менеджер молча попадёт в ветку «не трогаем» навсегда.
+/// Completeness GUARD (rule #12): every file manager known to the product
+/// must have an entry "how it is stopped / how it shows service mode".
+/// Otherwise a new manager silently lands in the "leave alone" branch forever.
 #[test]
 fn guard_every_known_file_manager_has_daemon_row() {
     for short in ad::FM_SHORT_NAMES {
@@ -393,23 +393,23 @@ fn verdict_evicts_foreign_daemon() {
         ad::Fm1Verdict::Evict {
             short: "thunar".into(),
             pid: 2583,
-            // Гасим ИМЕННО бинарь владельца, а не одноимённый из PATH.
+            // We stop EXACTLY the owner's binary, not a same-named one from PATH.
             quit: vec!["/usr/bin/Thunar".into(), "--quit".into()],
         }
     );
 }
 
-/// ⛔ У чужого менеджера открыты окна — там работа человека, не гасим.
+/// ⛔ The foreign manager has open windows — that is the person's work, we do not stop it.
 #[test]
 fn verdict_keeps_foreign_owner_that_has_windows() {
-    // Даже с флагом службы в командной строке: наблюдение сильнее.
+    // Even with the service flag on the command line: observation wins.
     let o = owner(BUSCTL_THUNAR, Some(true));
     assert_eq!(
         ad::fm1_verdict(Some(&o), "dolphin"),
         ad::Fm1Verdict::Busy { short: "thunar".into(), pid: 2583 }
     );
 
-    // Окон нет — гасим, даже если флага службы в строке запуска не видно.
+    // No windows — we stop it, even if the service flag is not visible in the launch line.
     let windowless = owner(
         "PID=11\nComm=nemo\nExe=/usr/bin/nemo\nCommandLine=/usr/bin/nemo\n",
         Some(false),
@@ -419,7 +419,7 @@ fn verdict_keeps_foreign_owner_that_has_windows() {
         ad::Fm1Verdict::Evict { .. }
     ));
 
-    // Наблюдения нет (Wayland) и флага службы нет — считаем, что окно есть.
+    // No observation (Wayland) and no service flag — assume there is a window.
     let unknown_windows = owner(
         "PID=11\nComm=nemo\nExe=/usr/bin/nemo\nCommandLine=/usr/bin/nemo\n",
         None,
@@ -430,17 +430,17 @@ fn verdict_keeps_foreign_owner_that_has_windows() {
     );
 }
 
-/// У менеджера без своей команды выхода argv пустой — исполнитель гасит
-/// процесс по PID.
+/// For a manager without its own quit command argv is empty — the executor stops
+/// the process by PID.
 #[test]
 fn quit_argv_is_empty_when_manager_has_no_quit_option() {
     assert!(ad::fm_quit_argv("dolphin", "/usr/bin/dolphin").is_empty());
     assert_eq!(ad::fm_quit_argv("thunar", ""), vec!["thunar", "--quit"]);
 }
 
-// ── Сохранённая сессия KDE ───────────────────────────────────────────────
+// ── Saved KDE session ────────────────────────────────────────────────────
 
-/// Живой `~/.config/ksmserverrc` с восстанавливаемым демоном Thunar.
+/// A live `~/.config/ksmserverrc` with a restorable Thunar daemon.
 const KSM: &str = "[General]\n\
 excludeApps=\n\
 \n\
@@ -463,16 +463,16 @@ userId2=user\n";
 fn ksmserver_forget_drops_entry_and_excludes_app() {
     let out = ad::ksmserver_forget(KSM, "thunar").expect("файл обязан измениться");
     assert!(out.contains("excludeApps=thunar"), "{out}");
-    // Запись Thunar снята целиком — все ключи с её номером.
+    // The Thunar entry is removed entirely — all keys with its number.
     assert!(!out.contains("Thunar"), "{out}");
     assert!(!out.contains("clientId2"), "{out}");
     assert!(!out.contains("restartStyleHint2"), "{out}");
-    // Чужая запись не тронута, номера не сдвинуты.
+    // The foreign entry is untouched, numbers are not shifted.
     assert!(out.contains("program1=firefox"), "{out}");
     assert!(out.contains("restartCommand1=/usr/lib/firefox/firefox,--sm-client-id,10188108"), "{out}");
-    // count оставлен как был — KDE пропускает запись с пустым program.
+    // count is left as it was — KDE skips an entry with an empty program.
     assert!(out.contains("count=2"), "{out}");
-    // Повторный прогон менять уже нечего.
+    // A repeated run has nothing left to change.
     assert_eq!(ad::ksmserver_forget(&out, "thunar"), None);
 }
 
@@ -501,8 +501,8 @@ fn has_cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Те же случаи по-английски: исходы те же, в сообщениях и журнале — ни
-/// одной русской буквы.
+/// The same cases in English: the outcomes are the same, and the messages and the log have
+/// not a single Russian letter.
 #[test]
 fn english_appdefaults_have_no_russian() {
     let _lang = i18n_pin::en();

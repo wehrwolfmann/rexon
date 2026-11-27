@@ -1,70 +1,75 @@
-// Направленные значки и клавиши-стрелки — ОДНО место на весь наш QML.
+// Directional icons and arrow keys — ONE place for all of our QML.
 //
-// Зеркалирование (`LayoutMirroring`) переставляет якоря и ряды, но не
-// трогает ни сам значок, ни клавиши: кнопка «назад» при языке справа
-// налево уезжает вправо, а «❮» на ней смотрит по-прежнему влево — в рамку,
-// а не наружу. Qt тут не поможет: «❮» в Unicode зеркальный, но надпись из
-// одного значка без букв Qt рисует слева направо и не переворачивает (замер
-// на снимке при `-reverse`). Поэтому значок, сторону клавиш ← → и стрелку в
-// подсказке берут отсюда, по ОДНОМУ признаку — зеркалирован ли тот, кто
-// кнопки раскладывает:
+// Mirroring (`LayoutMirroring`) rearranges anchors and rows but does not
+// touch the icon itself or the keys: for right-to-left languages the
+// "back" button moves to the right, while the "❮" on it still points
+// left — into the frame rather than outwards. Qt does not help here: "❮"
+// is mirrored in Unicode, but Qt draws a label made of a single icon
+// without letters left to right and does not flip it (checked on a
+// screenshot with `-reverse`). So the icon, the side of the ← → keys and
+// the arrow in the tooltip are taken from here, by ONE criterion — whether
+// the item that lays out the buttons is mirrored:
 //
 //     RexonArrows { id: arrows; mirrored: viewer.mirrored }
 //     text: arrows.previous
 //     case Qt.Key_Left: viewer.step(arrows.leftStep)
 //
-// `mirrored` — именно действующее зеркалирование места (`Control.mirrored`,
-// `Popup.mirrored`, `LayoutMirroring.enabled` у элемента), а не язык
-// приложения: где раскладка местно оставлена слева направо (физические
-// зоны, вендорная вкладка), значки и клавиши обязаны остаться как есть
-// вместе с ней.
+// `mirrored` is the effective mirroring of the place (`Control.mirrored`,
+// `Popup.mirrored`, `LayoutMirroring.enabled` on the item), not the
+// application language: where the layout is locally kept left to right
+// (physical zones, the vendored tab), icons and keys must stay as they are
+// along with it.
 //
-// Чего здесь нет сознательно: значки воспроизведения (▶ ■) по соглашению
-// справа налево не переворачивают — они про время, а не про сторону; «▾» и
-// «▼» (развёрнуто) смотрят вниз и от направления не зависят. Тот же «▶» как
-// треугольник свёрнутой строки — сторона, он здесь (`collapsedRow`).
+// Deliberately not here: playback icons (▶ ■) are by convention not
+// flipped for right to left — they are about time, not direction; "▾" and
+// "▼" (expanded) point down and do not depend on direction. The same "▶"
+// as the triangle of a collapsed row is a direction, so it is here
+// (`collapsedRow`).
 //
-// Сторож — `rust/rexon-core/tests/rtl_parity.rs`: направленные значки в
-// нашем QML пишутся только в этом файле.
+// The guard is `rust/rexon-core/tests/rtl_parity.rs`: directional icons in
+// our QML are written only in this file.
 
 import QtQml
 
 QtObject {
     id: arrows
 
-    /// Зеркалирована ли раскладка того, кто ставит кнопки.
+    /// Whether the layout of the item placing the buttons is mirrored.
     property bool mirrored: false
 
-    /// «Назад» смотрит к началу строки: влево, а справа налево — вправо.
+    /// "Back" points to the start of the line: left, and right for right to left.
     readonly property string previous: arrows.mirrored ? "❯" : "❮"
-    /// «Вперёд» смотрит к концу строки.
+    /// "Forward" points to the end of the line.
     readonly property string next: arrows.mirrored ? "❮" : "❯"
-    /// Свёрнутый раздел: шеврон к концу строки.
+    /// Collapsed section: chevron towards the end of the line.
     readonly property string collapsed: arrows.mirrored ? "◂" : "▸"
-    /// Свёрнутая строка списка (крупный треугольник «▶», раскрытая — «▼»):
-    /// тоже к концу строки.
+    /// Collapsed list row (large triangle "▶", expanded — "▼"): also towards
+    /// the end of the line.
     readonly property string collapsedRow: arrows.mirrored ? "◀" : "▶"
 
-    /// Шаг по списку от клавиши ← (и её пары A): к началу строки — назад
-    /// слева направо, вперёд справа налево. Как в галереях арабского
-    /// интерфейса: клавиша ведёт в ту сторону, где стоит кнопка.
+    /// List step from the ← key (and its pair A): towards the start of the
+    /// line — back for left to right, forward for right to left. As in the
+    /// galleries of an Arabic interface: the key leads to the side where the
+    /// button is.
     readonly property int leftStep: arrows.mirrored ? 1 : -1
-    /// Шаг от клавиши → (и её пары D).
+    /// Step from the → key (and its pair D).
     readonly property int rightStep: -arrows.leftStep
 
-    /// Строка со стрелкой ← → (подпись, подсказка с клавишей), показанная в
-    /// этом месте. Стрелки ← → в Unicode не зеркальные, сам Qt их не
-    /// перевернёт.
+    /// A string with a ← → arrow (a label, a tooltip with a key) shown in this
+    /// place. The ← → arrows are not mirrored in Unicode; Qt itself will not
+    /// flip them.
     ///
-    /// Правило для переводчиков ОДНО на весь продукт: стрелку пишут так, как
-    /// она должна выглядеть на их языке (справа налево «назад» — →, «вперёд»
-    /// и «затем» — ←). Значит, строка уже верна там, где раскладка места
-    /// совпадает с направлением письма строки, и переворачивать её надо
-    /// только при расхождении: английский исходник (перевода нет или запуск
-    /// с `-reverse`) в зеркалированном месте и перевод справа налево в
-    /// месте, оставленном слева направо. Направление строки — по её буквам
-    /// (иврит, арабское письмо), а не по языку приложения: недопереведённый
-    /// каталог отдаёт английский исходник, и он тоже должен встать верно.
+    /// There is ONE rule for translators across the whole product: they write
+    /// the arrow the way it should look in their language (right to left,
+    /// "back" is →, "forward" and "then" are ←). So the string is already
+    /// correct where the layout of the place matches the writing direction of
+    /// the string, and it only needs flipping when they differ: the English
+    /// source (no translation, or a run with `-reverse`) in a mirrored place,
+    /// and a right-to-left translation in a place kept left to right. The
+    /// direction of the string is determined by its letters (Hebrew, Arabic
+    /// script), not by the application language: an incompletely translated
+    /// catalogue returns the English source, and it must be placed correctly
+    /// too.
     function keyHint(text) {
         const s = String(text);
         const writtenRtl = /[֐-ࣿיִ-﷿ﹰ-﻿]/.test(s);
@@ -73,13 +78,14 @@ QtObject {
         return s.replace(/[←→]/g, c => c === "←" ? "→" : "←");
     }
 
-    /// Левый край полосы шириной `width`, отложенной на `start` от начала
-    /// строки внутри полосы шириной `outer`: справа налево отсчёт идёт от
-    /// правого края. Нужна только там, где якорь не годится — координату
-    /// ставят руками (всплывающее меню, расчёт ядра в координатах окна).
-    /// Обычный отступ от края пишется якорем (`anchors.left` + `leftMargin`):
-    /// его зеркалирование переворачивает само. Функция обратна себе, так что
-    /// ею же переводят и настоящую координату в отсчёт от начала строки.
+    /// Left edge of a strip of width `width` placed at `start` from the start
+    /// of the line inside a strip of width `outer`: for right to left it is
+    /// counted from the right edge. Needed only where an anchor will not do and
+    /// the coordinate is set by hand (a popup menu, a core calculation in
+    /// window coordinates). An ordinary margin from an edge is written with an
+    /// anchor (`anchors.left` + `leftMargin`): mirroring flips it by itself.
+    /// The function is its own inverse, so the same function converts a real
+    /// coordinate back into an offset from the start of the line.
     function placeX(start, width, outer) {
         return arrows.mirrored ? outer - start - width : start;
     }

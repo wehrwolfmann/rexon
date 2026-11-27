@@ -33,16 +33,16 @@
 
 namespace {
 
-// Имена шины взяты из оригинала (ui/src/daemon_dbus.cpp) — они же в
-// rexon/qt_wallpaper_engine/client.py.
+// The bus names are taken from the original (ui/src/daemon_dbus.cpp) — the
+// same ones as in rexon/qt_wallpaper_engine/client.py.
 constexpr const char* kBusName = "org.waywallen.waywallen.Daemon";
 constexpr const char* kObjectPath = "/org/waywallen/waywallen/Daemon";
 constexpr const char* kInterface = "org.waywallen.waywallen.Daemon1";
 constexpr const char* kPropsIface = "org.freedesktop.DBus.Properties";
 
-/// Синглтоны-получатели событий демона. QPointer, а не голый указатель:
-/// синглтон переживает движок QML, но не переживает конец программы, и
-/// раздавать событие мёртвому объекту нельзя.
+/// Singletons receiving daemon events. A QPointer rather than a bare
+/// pointer: the singleton outlives the QML engine but not the end of the
+/// program, and handing an event to a dead object is not allowed.
 QPointer<QObject>& notify_sink()
 {
     static QPointer<QObject> sink;
@@ -55,35 +55,36 @@ QPointer<QObject>& app_sink()
     return sink;
 }
 
-// ── кэш повтора стартового пакета ─────────────────────────────────────────
+// ── replay cache of the initial package ───────────────────────────────────
 //
-// Демон шлёт снимок состояния РОВНО ОДИН РАЗ на подключение WebSocket
+// The daemon sends the state snapshot EXACTLY ONCE per WebSocket connection
 // (display_snapshot, renderer_snapshot, library_snapshot, status_sync,
-// playlist_changed — шесть кадров на ~490 байт) и дальше молчит, пока
-// состояние не изменится. Получатель, родившийся позже этого пакета,
-// остался бы пустым НАВСЕГДА: вкладка показывала «Нет подключённых
-// дисплеев», а кнопка «Применить» — серой.
+// playlist_changed — six frames of ~490 bytes) and then stays silent until
+// the state changes. A receiver born after this package would stay empty
+// FOREVER: the tab showed «No connected displays», and the «Apply» button
+// was grey.
 //
-// Родиться позже — норма, а не авария: `#[qml_singleton]` строит движок
-// QML, а движок вкладка заводит лениво, при первом заходе на QML-страницу
-// (`window._ensure_qml_host`), тогда как сокет открывается сразу по
-// готовности демона. Ранняя постройка в `rexon_do_register_we_types`
-// закрывает этот порядок, но держится на одной строке и на том, что
-// `set_client` зовут раньше `client.open()`. Кэш убирает саму зависимость
-// от порядка: кадры, пришедшие до первой регистрации, ждут её здесь и
-// проигрываются получателю в исходном порядке.
+// Being born later is normal, not an accident: `#[qml_singleton]` is built
+// by the QML engine, and the tab sets up the engine lazily, on the first
+// visit to a QML page (`window._ensure_qml_host`), while the socket opens
+// right when the daemon is ready. Early construction in
+// `rexon_do_register_we_types` covers this order, but it rests on one line
+// and on `set_client` being called before `client.open()`. The cache
+// removes the order dependency itself: frames that arrived before the first
+// registration wait for it here and are replayed to the receiver in the
+// original order.
 //
-// Очередь СВОЯ У КАЖДОГО получателя: Notify и App регистрируются разными
-// конструкторами, и общая очередь при повторе задвоила бы кадры тому, кто
-// успел раньше.
+// EACH receiver has ITS OWN queue: Notify and App are registered by
+// different constructors, and a shared queue would double the frames for
+// whoever came first on replay.
 constexpr int kReplayMaxFrames = 256;
-constexpr ::std::int64_t kReplayMaxBytes = 1 << 20;  // 1 МиБ
+constexpr ::std::int64_t kReplayMaxBytes = 1 << 20;  // 1 MiB
 
-/// Кольцевой буфер с потолком: стартовый пакет — шесть кадров на полкило-
-/// байта, поэтому потолок здесь не рабочий режим, а страховка от роста без
-/// границ, если получатель не появится никогда (вкладку так и не открыли).
-/// Переполнение выбрасывает САМЫЕ СТАРЫЕ кадры: свежие ближе к текущему
-/// состоянию демона.
+/// A ring buffer with a ceiling: the initial package is six frames of half a
+/// kilobyte, so the ceiling here is not the working mode but insurance
+/// against unbounded growth if the receiver never appears (the tab was never
+/// opened). An overflow throws out the OLDEST frames: fresh ones are closer to
+/// the daemon's current state.
 struct ReplayQueue {
     QList<QByteArray> frames;
     ::std::int64_t bytes = 0;
@@ -117,10 +118,10 @@ ReplayQueue& app_pending()
     return queue;
 }
 
-/// Раздать кадр одному получателю либо отложить его до регистрации.
+/// Hand a frame to one receiver or defer it until registration.
 ///
-/// DirectConnection: кадр приходит на главном потоке, там же живут
-/// синглтоны. Очередь только отложила бы то же самое.
+/// DirectConnection: the frame arrives on the main thread, and the singletons
+/// live there too. A queue would only defer the same thing.
 bool deliver_or_queue(const QPointer<QObject>& sink, ReplayQueue& pending,
                       const QByteArray& frame)
 {
@@ -133,9 +134,9 @@ bool deliver_or_queue(const QPointer<QObject>& sink, ReplayQueue& pending,
                                      Q_ARG(QByteArray, frame));
 }
 
-/// Проиграть накопленное новому получателю. Очередь опустошается ДО раздачи:
-/// обработчик кадра может дойти до нового `deliver`, и повтор не должен
-/// увидеть свою же очередь второй раз.
+/// Replay what was accumulated to a new receiver. The queue is emptied
+/// BEFORE handing out: the frame handler may get to a new `deliver`, and the
+/// replay must not see its own queue a second time.
 int replay_pending(QObject* target, ReplayQueue& pending)
 {
     if (target == nullptr || pending.frames.isEmpty())
@@ -155,8 +156,8 @@ RexonWeLaunchHook g_launch_hook = nullptr;
 
 QVariant unwrap_variant(QVariant v)
 {
-    // Свойство приезжает завёрнутым в QDBusVariant — как и у оригинала,
-    // разворачиваем, иначе toUInt() отдаст ноль на живом демоне.
+    // The property arrives wrapped in a QDBusVariant — as in the original, we
+    // unwrap it, otherwise toUInt() gives zero on a live daemon.
     if (v.canConvert<QDBusVariant>())
         v = v.value<QDBusVariant>().variant();
     return v;
@@ -164,8 +165,8 @@ QVariant unwrap_variant(QVariant v)
 
 bool is_unknown_property_error(const QString& name)
 {
-    // Разные реализации шины называют «нет такого свойства» по-разному —
-    // принимаем оба имени (ветка оригинала).
+    // Different bus implementations name "no such property" differently — we
+    // accept both names (the original's branch).
     return name == QLatin1String("org.freedesktop.DBus.Error.UnknownProperty")
         || name == QLatin1String("org.freedesktop.DBus.Error.InvalidArgs");
 }
@@ -179,7 +180,7 @@ QDBusMessage call_get(QDBusConnection& bus, const QString& prop)
     return bus.call(msg, QDBus::Block, 2000);
 }
 
-// ── сетевой кэш QML ───────────────────────────────────────────────────────
+// ── QML network cache ─────────────────────────────────────────────────────
 
 QString& cache_dir()
 {
@@ -189,8 +190,8 @@ QString& cache_dir()
 
 ::std::int64_t& cache_max()
 {
-    // Дефолт оригинала (app.cpp: 1 ГиБ). Всё равно перекрывается первым же
-    // вызовом setNetworkCacheMaximumSize из Global.qml.
+    // The original's default (app.cpp: 1 GiB). It is overridden anyway by the
+    // very first setNetworkCacheMaximumSize call from Global.qml.
     static ::std::int64_t max_bytes = 1024LL * 1024LL * 1024LL;
     return max_bytes;
 }
@@ -212,8 +213,9 @@ public:
         cache->setCacheDirectory(cache_dir());
         cache->setMaximumCacheSize(cache_max());
         manager->setCache(cache);
-        // Держим слабую ссылку: размер и очистку QML спрашивает у App, а
-        // считает их именно живой кэш — обход каталога дал бы другую цифру.
+        // We keep a weak reference: QML asks App for the size and the cleanup,
+        // and it is precisely the live cache that computes them — walking the
+        // directory would give a different figure.
         caches().append(QPointer<QNetworkDiskCache>(cache));
         return manager;
     }
@@ -232,8 +234,8 @@ QNetworkDiskCache* live_cache()
     return nullptr;
 }
 
-/// Размер каталога кэша, когда живого QNetworkDiskCache ещё нет (страница
-/// настроек открывается раньше первой сетевой картинки).
+/// The size of the cache directory when there is no live QNetworkDiskCache
+/// yet (the settings page opens before the first network picture).
 ::std::int64_t dir_size(const QString& path)
 {
     if (path.isEmpty())
@@ -249,7 +251,7 @@ QNetworkDiskCache* live_cache()
 
 }  // namespace
 
-// ── события демона ────────────────────────────────────────────────────────
+// ── daemon events ─────────────────────────────────────────────────────────
 
 void rexon_we_register_notify(QObject* notify)
 {
@@ -363,9 +365,9 @@ int rexon_we_dbus_watch(QObject* receiver)
 
     int ok = 0;
 
-    // Сторож имени: демон появился на шине или ушёл с неё. Соединение
-    // указателем на метод + лямбда с объектом-контекстом — moc здесь не
-    // нужен, а он у cpp_files крейта и не запускается.
+    // Name watcher: the daemon appeared on the bus or left it. A connection by
+    // a method pointer + a lambda with a context object — moc is not needed
+    // here, and it is not run for the crate's cpp_files anyway.
     auto* watcher = new QDBusServiceWatcher(
         QLatin1String(kBusName), bus,
         QDBusServiceWatcher::WatchForRegistration
@@ -383,11 +385,11 @@ int rexon_we_dbus_watch(QObject* receiver)
                      });
     ok += 2;
 
-    // Сигналы самого демона. Слот берётся из метаобъекта по имени, а
-    // метаобъект Rust-синглтону печатает moc (его cxx-qt-build прогоняет),
-    // поэтому инвокабл `onDaemonBusChanged()` тут виден. QtDBus разрешает
-    // слоту принимать МЕНЬШЕ аргументов, чем несёт сигнал, — поэтому один
-    // безаргументный обработчик подходит всем трём.
+    // Signals of the daemon itself. The slot is taken from the metaobject by
+    // name, and the Rust singleton's metaobject is emitted by moc (cxx-qt-build
+    // runs it), so the `onDaemonBusChanged()` invokable is visible here. QtDBus
+    // allows a slot to take FEWER arguments than the signal carries — so one
+    // argument-less handler suits all three.
     for (const char* signal : {"Ready", "ShuttingDown"}) {
         if (bus.connect(QLatin1String(kBusName), QLatin1String(kObjectPath),
                         QLatin1String(kInterface), QLatin1String(signal), receiver,
@@ -409,9 +411,9 @@ void rexon_we_do_set_launch_hook(RexonWeLaunchHook hook)
 
 bool rexon_we_launch_daemon()
 {
-    // Пускатель Rexon (если поставлен) знает больше оригинала: он ищет
-    // бинарь там, куда его ставит сама вкладка, и на KDE доводит плагин
-    // показа. Без него остаётся ветка оригинала.
+    // The Rexon launcher (if set) knows more than the original: it looks for
+    // the binary where the tab itself installs it, and on KDE it finishes the
+    // display plugin. Without it the original's branch remains.
     if (g_launch_hook != nullptr)
         return g_launch_hook();
     return QProcess::startDetached(QStringLiteral("waywallen"), {});
@@ -424,8 +426,8 @@ bool rexon_we_kill_process(int pid)
     return ::kill(static_cast<pid_t>(pid), SIGTERM) == 0;
 }
 
-// Вызов метода демона без аргументов и без ответа. Возвращает, принят ли
-// вызов; отказ уходит в журнал предупреждением.
+// Calling a daemon method without arguments and without an answer. Returns
+// whether the call was accepted; a refusal goes into the log as a warning.
 static bool call_daemon_method(const QString& method)
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
@@ -464,7 +466,7 @@ void rexon_we_set_settings_bool(const QString& key, bool value)
     settings.setValue(key, value);
 }
 
-// ── сетевой кэш QML ───────────────────────────────────────────────────────
+// ── QML network cache ─────────────────────────────────────────────────────
 
 void rexon_we_do_set_network_cache(const char* dir, ::std::int64_t max_bytes)
 {
@@ -478,8 +480,8 @@ void rexon_we_install_network_cache(QObject* engine)
     auto* qml_engine = qobject_cast<QQmlEngine*>(engine);
     if (qml_engine == nullptr)
         return;
-    // Фабрика переживает движок: движков вкладки может быть несколько
-    // (страница на QQuickWidget), а каталог кэша у них один.
+    // The factory outlives the engine: the tab may have several engines (a page
+    // on a QQuickWidget), while their cache directory is one.
     static RexonNamFactory factory;
     qml_engine->setNetworkAccessManagerFactory(&factory);
 }
@@ -527,40 +529,45 @@ void rexon_we_clear_network_cache()
         cleared = true;
         ++it;
     }
-    // Живого кэша может не быть (сетевых картинок ещё не грузили) — тогда
-    // чистим каталог сами, иначе кнопка «Очистить» врала бы.
+    // There may be no live cache (no network pictures have been loaded yet) —
+    // then we clean the directory ourselves, otherwise the «Clear» button
+    // would lie.
     if (!cleared && !cache_dir().isEmpty())
         QDir(cache_dir()).removeRecursively();
 }
 
-// ── язык интерфейса вендорных страниц ─────────────────────────────────────
+// ── interface language of the vendored pages ──────────────────────────────
 //
-// Порт `ui/src/ui_language.cpp` waywallen. Что чем занято:
-//   * ЯДРО (`rexon_core::remote_l10n`) решает, какие языки доступны, к
-//     какому коду привести выбор и какой каталог грузить;
-//   * МОСТ (`src/we_app.rs`) держит выбор и отдаёт его вендорному QML;
-//   * ЗДЕСЬ — только Qt: самоназвание локали, сам QTranslator и пересборка
-//     привязок движка.
+// A port of waywallen's `ui/src/ui_language.cpp`. Who does what:
+//   * THE CORE (`rexon_core::remote_l10n`) decides which languages are
+//     available, what code to bring the choice to and which catalogue to
+//     load;
+//   * THE BRIDGE (`src/we_app.rs`) holds the choice and gives it to the
+//     vendored QML;
+//   * HERE — only Qt: the locale's own name, the QTranslator itself and
+//     re-evaluating the engine's bindings.
 //
-// ⚠️ Осознанное расхождение с оригиналом: зонтичный каталог самого Qt
-// (`qt`/`qtbase`) НЕ ставится. У waywallen процесс свой, и переводить в нём
-// нечего, кроме его собственных окон; у нас в том же процессе живёт всё
-// остальное окно Rexon, и вендорная страница не вправе менять язык
-// стандартных кнопок Qt всей программы. Свои строки Rexon берёт из ядра,
-// вендорные — из вендорного каталога, и оба слоя от этого не зависят.
+// Warning: a deliberate divergence from the original: the umbrella catalogue
+// of Qt itself (`qt`/`qtbase`) is NOT installed. waywallen has its own
+// process, and there is nothing to translate in it except its own windows;
+// in our process lives the whole rest of the Rexon window, and a vendored
+// page has no right to change the language of Qt's standard buttons for the
+// whole program. Rexon takes its own strings from the core, the vendored
+// ones from the vendor catalogue, and neither layer depends on this.
 
 namespace {
 
-/// Движки QML вкладки. Их может быть несколько (общий хост страниц и
-/// прогревочный движок), а язык у них один.
+/// The tab's QML engines. There may be several of them (the shared page host
+/// and the warm-up engine), while their language is one.
 QList<QPointer<QQmlEngine>>& qml_engines()
 {
     static QList<QPointer<QQmlEngine>> engines;
     return engines;
 }
 
-/// Живой переводчик вендорных страниц. Ровно один: смена языка снимает
-/// прежний и ставит новый, иначе два каталога наложились бы друг на друга.
+/// The live translator of the vendored pages. Exactly one: a language change
+/// removes the previous one and installs a new one, otherwise two catalogues
+/// would overlap.
 QTranslator*& ui_translator()
 {
     static QTranslator* translator = nullptr;
@@ -602,8 +609,8 @@ QString rexon_we_apply_ui_language(const QString& locale_name, const QString& qm
         if (!next->load(qm_path)) {
             delete next;
             next = nullptr;
-            // Каталог обязателен только для явно выбранного языка: у
-            // «Системного» и английского его отсутствие — нормальный ход.
+            // The catalogue is mandatory only for an explicitly chosen language: for
+            // «System» and English its absence is a normal course.
             if (required)
                 return {};
         }
@@ -626,8 +633,9 @@ QString rexon_we_apply_ui_language(const QString& locale_name, const QString& qm
         }
     }
 
-    // Пересобрать привязки `qsTr()` уже показанной страницы. Без этого
-    // выбор язык бы поменял, а страница осталась бы прежней до перезапуска.
+    // Re-evaluate the `qsTr()` bindings of an already shown page. Without this
+    // the choice would change the language, but the page would stay as before
+    // until a restart.
     auto& list = qml_engines();
     for (auto it = list.begin(); it != list.end();) {
         if (it->isNull()) {
@@ -641,7 +649,7 @@ QString rexon_we_apply_ui_language(const QString& locale_name, const QString& qm
     return locale.bcp47Name();
 }
 
-// ── синглтон Action ───────────────────────────────────────────────────────
+// ── the Action singleton ──────────────────────────────────────────────────
 
 namespace {
 QPointer<QObject>& action_storage()

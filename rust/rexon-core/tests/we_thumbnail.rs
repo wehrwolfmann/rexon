@@ -1,12 +1,12 @@
-//! Миниатюры карточек обоев без готового превью (`we_thumbnail`): выбор
-//! источника, место в общем кэше миниатюр, свежесть, команда `ffmpeg`,
-//! подписи внутри PNG и полный путь «нет в кэше → сделали → есть в кэше».
+//! Thumbnails for wallpaper cards without a ready preview (`we_thumbnail`):
+//! source choice, place in the shared thumbnail cache, freshness, the `ffmpeg`
+//! command, labels inside the PNG and the full path «not cached → made → cached».
 
 use std::path::PathBuf;
 
 use rexon_core::we_thumbnail as th;
 
-/// Свой каталог на тест — тесты идут параллельно.
+/// A directory of its own per test — tests run in parallel.
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("rexon-we-thumbnail-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -18,7 +18,7 @@ fn s(path: &std::path::Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// Подписи PNG: (ключ, значение) из `tEXt` и `iTXt`.
+/// PNG labels: (key, value) from `tEXt` and `iTXt`.
 fn png_texts(path: &str) -> Vec<(String, String)> {
     let file = std::io::BufReader::new(std::fs::File::open(path).unwrap());
     let mut reader = png::Decoder::new(file).read_info().unwrap();
@@ -43,7 +43,7 @@ fn write_test_image(path: &std::path::Path, width: u32, height: u32) {
 
 #[test]
 fn states_follow_the_page_enum_order() {
-    // Страница читает `W.ThumbnailRequest.Ready` числом из перечисления
+    // The page reads `W.ThumbnailRequest.Ready` as a number from the enum
     // Idle, Loading, Ready, Failed.
     assert_eq!(
         [th::STATE_IDLE, th::STATE_LOADING, th::STATE_READY, th::STATE_FAILED],
@@ -53,7 +53,7 @@ fn states_follow_the_page_enum_order() {
 
 #[test]
 fn job_is_taken_from_preview_then_from_the_wallpaper_file() {
-    // Готовое превью главнее файла обоев и всегда картинка.
+    // A ready preview beats the wallpaper file and is always an image.
     assert_eq!(
         th::resolve_job("/p/preview.gif", "/p/clip.mp4", "video"),
         Ok(th::Job { path: "/p/preview.gif".into(), is_video: false })
@@ -66,7 +66,7 @@ fn job_is_taken_from_preview_then_from_the_wallpaper_file() {
         th::resolve_job("", "/p/photo.jpg", "image"),
         Ok(th::Job { path: "/p/photo.jpg".into(), is_video: false })
     );
-    // Сцену и веб-страницу в картинку без рисовальщика не превратить.
+    // A scene or a web page cannot become an image without a renderer.
     for wp_type in ["scene", "web", "application", ""] {
         assert_eq!(th::resolve_job("", "/p/scene.pkg", wp_type), Err(th::ERR_NO_SOURCE), "{wp_type}");
     }
@@ -79,12 +79,12 @@ fn cache_lives_in_the_shared_thumbnail_directory() {
     assert_eq!(th::thumb_root(None, None, "/home/u"), "/home/u/.cache/thumbnails");
     assert_eq!(th::thumb_root(Some(""), None, "/home/u"), "/home/u/.cache/thumbnails");
     assert_eq!(th::thumb_root(Some("/own/thumbs/"), Some("/x/cache"), "/home/u"), "/own/thumbs");
-    // Пример из стандарта миниатюр freedesktop.org.
+    // The example from the freedesktop.org thumbnail spec.
     assert_eq!(
         th::cache_file("/home/jens/.cache/thumbnails", "/home/jens/photos/me.png"),
         "/home/jens/.cache/thumbnails/x-large/c6ee772d9e49320e97ec29a7eb5b1697.png"
     );
-    // Ключ считается от адреса как есть, без процентного кодирования.
+    // The key is computed from the address as is, without percent-encoding.
     assert_eq!(th::thumb_uri("/видео/мой ролик.mp4"), "file:///видео/мой ролик.mp4");
 }
 
@@ -111,7 +111,7 @@ fn stale_thumbnail_is_not_reused() {
 fn frame_command_pipes_one_png_frame() {
     let video = th::frame_argv("/p/мой ролик.mp4", true);
     assert_eq!(video[0], "ffmpeg");
-    // Путь — отдельным аргументом сразу за `-i`: пробелы и не-латиница целы.
+    // The path is a separate argument right after `-i`: spaces and non-Latin stay intact.
     let i = video.iter().position(|a| a == "-i").unwrap();
     assert_eq!(video[i + 1], "/p/мой ролик.mp4");
     let vf = &video[video.iter().position(|a| a == "-vf").unwrap() + 1];
@@ -154,13 +154,13 @@ fn lookup_reports_missing_source_and_missing_type() {
         th::lookup_in(&root, "", &s(&dir.join("nope.mp4")), "video"),
         th::Lookup::Failed(th::ERR_NOT_FOUND.into())
     );
-    // Каталог — не файл обоев.
+    // A directory is not a wallpaper file.
     assert_eq!(th::lookup_in(&root, "", &s(&dir), "video"), th::Lookup::Failed(th::ERR_NOT_FOUND.into()));
     assert_eq!(
         th::lookup_in(&root, "", &s(&dir.join("nope.pkg")), "scene"),
         th::Lookup::Failed(th::ERR_NO_SOURCE.into())
     );
-    // Проверка ничего не создаёт: каталог кэша появляется только при записи.
+    // The check creates nothing: the cache directory appears only on write.
     assert!(!dir.join("thumbs").exists());
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -188,17 +188,17 @@ fn image_goes_miss_then_generated_then_ready() {
     let texts = png_texts(&made);
     assert!(texts.contains(&("Thumb::URI".into(), th::thumb_uri(&s(&photo)))), "{texts:?}");
     assert!(texts.contains(&("Thumb::MTime".into(), job.source_mtime.to_string())), "{texts:?}");
-    // Стандарт: каталог 700, файл 600; временных файлов не осталось.
+    // Spec: directory 700, file 600; no temporary files left.
     let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode(&dir.join("thumbs/x-large")), 0o700);
     assert_eq!(mode(std::path::Path::new(&made)), 0o600);
     assert_eq!(std::fs::read_dir(dir.join("thumbs/x-large")).unwrap().count(), 1);
 
     assert_eq!(th::lookup_in(&root, "", &s(&photo), "image"), th::Lookup::Ready(made.clone()));
-    // То же превью, заданное как `source`, попадает в ту же миниатюру.
+    // The same preview given as `source` lands in the same thumbnail.
     assert_eq!(th::lookup_in(&root, &s(&photo), "", ""), th::Lookup::Ready(made.clone()));
 
-    // Источник заменили позже — старая миниатюра больше не годится.
+    // The source was replaced later — the old thumbnail is no longer valid.
     let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
     std::fs::File::options().write(true).open(&photo).unwrap().set_modified(later).unwrap();
     assert!(matches!(th::lookup_in(&root, "", &s(&photo), "image"), th::Lookup::Miss(_)));
@@ -220,8 +220,8 @@ fn broken_image_fails_with_a_reason() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// Живая проверка: кадр из настоящего ролика. Нужен `ffmpeg`; без него
-/// тест говорит «НЕ ПРОВЕРЕНО», а не зеленеет молча.
+/// Live check: a frame from a real clip. Needs `ffmpeg`; without it the test
+/// reports that it was not checked instead of silently going green.
 #[test]
 fn video_frame_is_extracted_by_ffmpeg() {
     let has_ffmpeg = std::process::Command::new("ffmpeg")
@@ -254,12 +254,12 @@ fn video_frame_is_extracted_by_ffmpeg() {
     let png = th::live_generate(&job).unwrap();
     let thumb = image::open(&png).unwrap().to_rgba8();
     assert_eq!((thumb.width(), thumb.height()), (512, 288));
-    // Кадр не пустой: на пробной картинке много разных цветов.
+    // The frame is not blank: the test picture has many different colours.
     let distinct: std::collections::HashSet<[u8; 4]> = thumb.pixels().map(|p| p.0).collect();
     assert!(distinct.len() > 50, "цветов: {}", distinct.len());
     assert_eq!(th::lookup_in(&root, "", &s(&clip), "video"), th::Lookup::Ready(png));
 
-    // Не ролик под видом ролика — отказ с причиной, в кэше пусто.
+    // Not a clip disguised as a clip — refusal with a reason, the cache is empty.
     let fake = dir.join("fake.mp4");
     std::fs::write(&fake, b"definitely not a video").unwrap();
     let th::Lookup::Miss(job) = th::lookup_in(&root, "", &s(&fake), "video") else {
@@ -271,16 +271,16 @@ fn video_frame_is_extracted_by_ffmpeg() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-// ── waywallen 0.6.0: решение `ThumbnailRequest::submit` ─────────────────
+// ── waywallen 0.6.0: the `ThumbnailRequest::submit` decision ─────────────────
 
 #[test]
 fn plan_follows_vendor_0_6_0() {
     use th::Plan;
     let cwd = "/home/u";
-    // Выключен или пуст — покой.
+    // Disabled or empty — idle.
     assert_eq!(th::plan("/p.gif", "", "scene", false, false, cwd), Plan::Idle);
     assert_eq!(th::plan("", "", "video", false, true, cwd), Plan::Idle);
-    // Готовое превью — адресом как есть (анимация сохраняется).
+    // A ready preview — by address as is (animation is kept).
     assert_eq!(
         th::plan("/w/preview.gif", "/w/scene.pkg", "scene", false, true, cwd),
         Plan::Direct("file:///w/preview.gif".into())
@@ -289,12 +289,12 @@ fn plan_follows_vendor_0_6_0() {
         th::plan("https://x.invalid/p.jpg", "", "scene", false, true, cwd),
         Plan::Direct("https://x.invalid/p.jpg".into())
     );
-    // Картинка без превью — сама картинка.
+    // An image without a preview — the image itself.
     assert_eq!(
         th::plan("", "img/a.png", "image", false, true, cwd),
         Plan::Direct("file:///home/u/img/a.png".into())
     );
-    // Сцена без превью — отказ; ролик без превью — кадр из файла.
+    // A scene without a preview — refusal; a clip without a preview — a frame from the file.
     assert_eq!(
         th::plan("", "/w/s.pkg", "scene", false, true, cwd),
         Plan::Failed(th::ERR_NO_PREVIEW.into())
@@ -304,7 +304,7 @@ fn plan_follows_vendor_0_6_0() {
         th::plan("", "https://x.invalid/a.mp4", "video", false, true, cwd),
         Plan::Failed(th::ERR_NOT_LOCAL.into())
     );
-    // Таймлайн: превью есть — оно, нет — честный отказ.
+    // Timeline: preview present — use it, absent — an honest refusal.
     assert_eq!(
         th::plan("/t/day.jpg", "/t/meta.json", "image", true, true, cwd),
         Plan::Direct("file:///t/day.jpg".into())
@@ -313,7 +313,7 @@ fn plan_follows_vendor_0_6_0() {
         th::plan("", "/t/meta.json", "image", true, true, cwd),
         Plan::Failed(th::ERR_TIMELINE.into())
     );
-    // Ресурс Qt и чистка пути.
+    // Qt resource and path cleanup.
     assert_eq!(th::input_url(":/img/x.png", cwd), "qrc:/img/x.png");
     assert_eq!(th::input_url("/a/./b/../c//d.png", cwd), "file:///a/c/d.png");
 }

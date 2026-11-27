@@ -26,8 +26,8 @@
 
 namespace {
 
-// Стиль и палитра — каждому виджету формы: виджет без своего стиля взял бы
-// стиль процесса, а не образца.
+// Style and palette go to every widget of the form: a widget without its
+// own style would take the process style, not the sample's.
 void applyRecursively(QWidget *widget, QStyle *style, const QPalette &palette)
 {
     widget->setPalette(palette);
@@ -83,10 +83,10 @@ extern "C" int rexon_qt_style_shot(const char *style, const char *const *roles,
             palette.setColor(QPalette::ColorRole(role), color);
         }
     }
-    // Тему (Kvantum) стиль кладёт в палитру сам.
+    // The style puts the theme (Kvantum) into the palette by itself.
     st->polish(palette);
-    // Форма без родительского окна считается неактивной и тусклой: цвета
-    // неактивной группы — как у активной.
+    // A form without a parent window counts as inactive and dull: the colours
+    // of the inactive group are set as for the active one.
     for (int i = 0; i < QPalette::NColorRoles; ++i) {
         const auto role = QPalette::ColorRole(i);
         palette.setColor(QPalette::Inactive, role, palette.color(QPalette::Active, role));
@@ -144,8 +144,8 @@ extern "C" int rexon_qt_style_shot(const char *style, const char *const *roles,
     root.show();
     QApplication::processEvents();
 
-    // Форма рисуется в `scale` раз крупнее (как на экране с таким
-    // масштабом) и потом только сжимается: растянутый кадр выходил мыльным.
+    // The form is drawn `scale` times larger (as on a screen with that scale)
+    // and then only shrunk: a stretched frame came out blurry.
     const int k = scale < 1 ? 1 : scale;
     QImage shot(form_w * k, form_h * k, QImage::Format_ARGB32_Premultiplied);
     shot.setDevicePixelRatio(k);
@@ -155,15 +155,15 @@ extern "C" int rexon_qt_style_shot(const char *style, const char *const *roles,
     frame.fill(Qt::transparent);
     {
         QImage scaled = shot.scaled(out_w, out_h, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        // Сжатый кадр — в точках кадра, а не формы.
+        // The shrunk frame is in frame pixels, not form pixels.
         scaled.setDevicePixelRatio(1);
         QPainter p(&frame);
         p.drawImage((out_w - scaled.width()) / 2, (out_h - scaled.height()) / 2, scaled);
     }
     root.hide();
     const bool saved = frame.save(QString::fromUtf8(out), "PNG");
-    // Стиль закрыть до QApplication: часть сторонних стилей при разрушении
-    // фабрики стилей на выходе обращается к шине и зависает.
+    // Close the style before QApplication: some third-party styles reach for
+    // the bus and hang when the style factory is destroyed at exit.
     applyRecursively(&root, QApplication::style(), palette);
     st.reset();
     return saved ? REXON_SHOT_OK : REXON_SHOT_SAVE_FAILED;

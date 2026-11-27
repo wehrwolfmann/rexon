@@ -1,28 +1,28 @@
-//! Golden-сверка порта `system_plan.rs` («планы команд» исполняющего слоя)
-//! с оригиналом `rexon/system.py`.
+//! Golden check of the `system_plan.rs` port (the executing layer's "command plans")
+//! against the original `rexon/system.py`.
 //!
-//! Эталоны сняты с самого Python (генератор импортирует живой `rexon.system`,
-//! подменяет safe_run/subprocess.run/tempfile.mkstemp/os.remove/
-//! `_wait_for_pkg_lock`/`ensure_gentoo_overlay`/наличие helper'ов на фикстуры
-//! и ЗАПИСЫВАЕТ реальные вызовы — argv, timeout, env LANG=C):
-//!   * `golden/system_plan_texts.json` — тексты helper-скриптов
+//! The golden data was taken from Python itself (the generator imports the live `rexon.system`,
+//! replaces safe_run/subprocess.run/tempfile.mkstemp/os.remove/
+//! `_wait_for_pkg_lock`/`ensure_gentoo_overlay`/helper presence with fixtures
+//! and RECORDS the real calls — argv, timeout, env LANG=C):
+//!   * `golden/system_plan_texts.json` — helper script texts
 //!     (rexon-de-helper / rexon-pkg-helper / rexon-stage-helper), policy XML,
-//!     polkit rules, таблицы команд per family (+ тексты RuntimeError),
+//!     polkit rules, command tables per family (+ RuntimeError texts),
 //!     LOCK_PATHS, privileged_pkg_cmd / privileged_stage_cmd,
-//!     de_helper_supports, NixOS-сниппеты, Gentoo overlays, DM-константы —
-//!     сверка текст-в-текст.
-//!   * `golden/system_plan_batch_cases.json` — трейсы update_db / install /
-//!     remove / install_batch (+ тексты wrapper-скриптов с chown-граблей
-//!     fs.protected_regular, прочитанные из записанных Python tmp-файлов) и
-//!     DE-оркестрация: dm-enable (через install_de с моками), remove_de
-//!     (2-уровневая защита), switch_de guard, logout_session по окружениям.
+//!     de_helper_supports, NixOS snippets, Gentoo overlays, DM constants —
+//!     compared text to text.
+//!   * `golden/system_plan_batch_cases.json` — traces of update_db / install /
+//!     remove / install_batch (+ texts of wrapper scripts with the chown pitfall of
+//!     fs.protected_regular, read from the recorded Python tmp files) and
+//!     DE orchestration: dm-enable (via install_de with mocks), remove_de
+//!     (2-level protection), the switch_de guard, logout_session per desktop.
 //!
-//! План Rust обязан совпасть с записанным трейсом Python 1-в-1 по argv/
-//! timeout/env. ЕДИНСТВЕННОЕ исключение — фаза транзитивного замыкания в
-//! remove: порядок -Qi там в Python недетерминирован (итерация set при
-//! рандомизированных hash), поэтому генератор отсортировал этот сегмент, и
-//! тест сортирует такой же сегмент плана (множество вызовов на каждом проходе
-//! замыкания детерминировано — см. комментарий в remove_plan).
+//! The Rust plan must match the recorded Python trace 1-to-1 in argv/
+//! timeout/env. The ONLY exception is the transitive closure phase in
+//! remove: the -Qi order there is nondeterministic in Python (set iteration with
+//! randomized hashes), so the generator sorted that segment, and the
+//! test sorts the same segment of the plan (the set of calls on each pass of the
+//! closure is deterministic — see the comment in remove_plan).
 
 mod i18n_pin;
 
@@ -47,22 +47,22 @@ fn texts_fx() -> Value {
     serde_json::from_str(include_str!("golden/system_plan_texts.json")).unwrap()
 }
 
-/// Тот же эталон, но с путём помощника ЭТОЙ машины — для сверок КОМАНД.
+/// The same golden data, but with THIS machine's helper path — for COMMAND checks.
 ///
-/// Каталога у помощников два, и оба законны: голден снят с машины без
-/// пакета и держит `/usr/local/lib`, а там, где пакет установлен, движок
-/// зовёт помощника из `/usr/lib`. Пин при этом продолжает ловить и сырой
-/// `pkexec` вместо помощника, и любую правку аргументов — подробности в
+/// There are two helper directories, and both are legitimate: the golden data was taken on a machine without the
+/// package and holds `/usr/local/lib`, while where the package is installed the engine
+/// calls the helper from `/usr/lib`. The pin still catches both a raw
+/// `pkexec` instead of the helper and any edit of the arguments — details in
 /// `system_plan::retarget_helper_paths`.
 ///
-/// ⚠️ НЕ для `constants_match_python` и `scripts_match_python_verbatim`:
-/// там пин про константы `*_HELPER_PATH` и про XML политики, которые
-/// установщик пишет ровно в `/usr/local/lib`, — им замена вредна.
+/// ⚠️ NOT for `constants_match_python` and `scripts_match_python_verbatim`:
+/// there the pin is about the `*_HELPER_PATH` constants and the policy XML, which
+/// the installer writes exactly into `/usr/local/lib` — a replacement harms them.
 fn texts_fx_live_helpers() -> Value {
     fx_retargeted(include_str!("golden/system_plan_texts.json"))
 }
 
-/// Разобрать эталон, подставив в него путь помощника ЭТОЙ машины.
+/// Parse the golden data, substituting THIS machine's helper path into it.
 fn fx_retargeted(raw: &str) -> Value {
     serde_json::from_str(&rexon_core::system_plan::retarget_helper_paths(raw)).unwrap()
 }
@@ -90,9 +90,9 @@ fn opt_argv(v: Option<Vec<String>>) -> Value {
     }
 }
 
-/// План → трейс в формате эталона ({kind:"run",argv,timeout,lang_c} /
-/// {kind:"wait_lock"} / {kind:"ensure_overlay",overlay}); файловые шаги
-/// (WriteFile/RemoveFiles) в safe_run-трейс Python не попадают.
+/// Plan → trace in the golden format ({kind:"run",argv,timeout,lang_c} /
+/// {kind:"wait_lock"} / {kind:"ensure_overlay",overlay}); file steps
+/// (WriteFile/RemoveFiles) do not get into the Python safe_run trace.
 fn plan_trace(steps: &[PlanStep]) -> Vec<Value> {
     let mut out = Vec::new();
     for st in steps {
@@ -113,7 +113,7 @@ fn plan_trace(steps: &[PlanStep]) -> Vec<Value> {
     out
 }
 
-/// Эталонный трейс без служебных полей (phase/overlay у wait/run).
+/// The golden trace without service fields (phase/overlay of wait/run).
 fn fixture_trace(v: &Value) -> Vec<Value> {
     v.as_array()
         .unwrap()
@@ -142,7 +142,7 @@ fn output_map(fixture: &Value) -> impl Fn(&str) -> Option<String> + '_ {
 }
 
 // ============================================================================
-// Тексты и таблицы
+// Texts and tables
 // ============================================================================
 
 #[test]
@@ -186,55 +186,59 @@ fn constants_match_python() {
 fn scripts_match_python_verbatim() {
     let fx = texts_fx();
     let s = &fx["scripts"];
-    // ⛔ ОСОЗНАННОЕ РАСХОЖДЕНИЕ С ЖИВЫМ PYTHON (25.09.2026): эталоны
-    // `pkg_helper_script` и `de_helper_script` пересняты после починки дыры
-    // в `org.rexon.pkg` (имя пакета вместо пути, семейство по машине,
-    // команда массивом вместо `eval`). Байт-паритет с прежним Python здесь
-    // означал бы «верни дыру», поэтому пин теперь стоит на ИСПРАВЛЕННОМ
-    // тексте: он по-прежнему ловит любую правку помощника, но не тянет
-    // назад. Генератор правила «YES на всё org.rexon.*» удалён совсем —
-    // ключа `rexon_polkit_rules_js` в эталоне больше нет.
-    // Переснято 30.09.2026 (де-, pkg- и stage-помощник): сообщения
-    // помощников переведены (решение Wehrwolfmann) — текст для человека
-    // идёт ключом из таблицы, вшитой из каталога (`system_l10n`), язык —
-    // аргументом `--lang` из белого списка po/LINGUAS. Проверки, белые
-    // списки и пути не менялись.
-    // Переснято 28.10.2026 (pkg-помощник): операции пересборки build-deps и
-    // install-built — один пароль на установку «Deepin на Treeland».
-    // Переснято 28.10.2026 (pkg-помощник): вечное по семействам (ядра,
-    // драйверы, прошивки), отказ снять пакеты текущего стола и активного
-    // экрана входа (помощник узнаёт их сам: ссылка display-manager.service,
-    // сеансы logind), установка только из белого списка таблиц ядра.
-    // Переснято 31.10.2026 (pkg-помощник): в белом списке Arch — compiz,
-    // пакет образа «Как в Garuda» (эффекты окон на MATE); список пакетов
-    // образов вливается туда сам (`distro_looks::builtin_package_names`).
-    // Переснято 02.11.2026 (pkg-помощник): в пакеты Xfce, LXQt и MATE (Arch)
-    // вошла добавка сеанса Wayland (`system::SESSION_VARIANTS`) — в белом
-    // списке и в защите текущего стола.
-    // Переснято 02.11.2026 (de- и pkg-помощник): в наборы столов вошёл их
-    // терминал там, где его не тянул сам стол: Budgie — xfce4-terminal во
-    // всех семействах, Deepin (Arch) — deepin-terminal, GNOME (Alpine, Solus,
+    // ⛔ A CONSCIOUS DIVERGENCE FROM LIVE PYTHON (25.09.2026): the golden values
+    // `pkg_helper_script` and `de_helper_script` were retaken after fixing the hole
+    // in `org.rexon.pkg` (a package name instead of a path, the family from the machine,
+    // the command as an array instead of `eval`). Byte parity with the old Python here
+    // would mean "bring the hole back", so the pin now stands on the FIXED
+    // text: it still catches any edit of the helper but does not pull
+    // back. The generator of the rule "YES to all of org.rexon.*" was removed entirely —
+    // the golden data no longer has the `rexon_polkit_rules_js` key.
+    // Retaken 30.09.2026 (de, pkg and stage helper): the helpers' messages
+    // were translated (Wehrwolfmann's decision) — the text for the person
+    // goes as a key from a table embedded from the catalog (`system_l10n`), the language
+    // as the `--lang` argument from the po/LINGUAS allowlist. Checks, allowlists
+    // and paths did not change.
+    // Retaken 28.10.2026 (pkg helper): the build-deps rebuild and
+    // install-built operations — one password for installing «Deepin on Treeland».
+    // Retaken 28.10.2026 (pkg helper): the permanent packages per family (kernels,
+    // drivers, firmware), refusing to remove the packages of the current desktop and of the active
+    // login screen (the helper finds them itself: the display-manager.service link,
+    // logind sessions), installing only from the allowlist of the core's tables.
+    // Retaken 31.10.2026 (pkg helper): the Arch allowlist includes compiz,
+    // the package of the «Like Garuda» look (window effects on MATE); the list of look
+    // packages merges in there by itself (`distro_looks::builtin_package_names`).
+    // Retaken 02.11.2026 (pkg helper): the Xfce, LXQt and MATE (Arch) packages
+    // gained the Wayland session add-on (`system::SESSION_VARIANTS`) — in the
+    // allowlist and in the current desktop protection.
+    // Retaken 02.11.2026 (de and pkg helper): desktop sets gained their
+    // terminal where the desktop itself did not pull it in: Budgie — xfce4-terminal in
+    // all families, Deepin (Arch) — deepin-terminal, GNOME (Alpine, Solus,
     // ALT) — gnome-console, Cinnamon (Gentoo, Solus) — gnome-terminal,
     // Plasma (Solus) — konsole.
-    // Переснято 03.11.2026 (de- и pkg-помощник): набор Budgie приведён к
-    // Ubuntu Budgie 26.04 во всех семействах — Nemo с nemo-fileroller вместо
+    // Retaken 03.11.2026 (de and pkg helper): the Budgie set was aligned with
+    // Ubuntu Budgie 26.04 in all families — Nemo with nemo-fileroller instead of
     // Nautilus, gedit, gThumb, VLC, Lollypop, Atril (ALT —
-    // mate-document-viewer), mate-calc, mate-system-monitor, GNOME Disks; в
-    // белом списке и в защите текущего стола.
-    // Переснято 13.11.2026 (pkg-помощник): стол сеанса по `Desktop=` logind
-    // узнаёт UKUI (`ukui`, `kylin-wlcom`) — общая таблица
-    // `system::XDG_TOKEN_TO_DE`. Пакетов у UKUI в каталоге нет, защищать
-    // помощнику пока нечего.
-    // Переснято 16.11.2026 (de- и pkg-помощник): блокировка экрана в наборах
-    // столов — swaylock и swayidle у Wayfire и River (все семейства) и у
-    // sway на Gentoo, xscreensaver у LXQt (все семейства), swaylock в
-    // добавке сеанса Wayland LXQt; в белом списке и в защите текущего стола.
-    // Переправлено 16.11.2026 (pkg-помощник): MATE (Arch) ставится только
-    // сеансом X11 (решение Wehrwolfmann) — из его набора в защите текущего
-    // стола ушли wayfire, xorg-xwayland и mate-wayland-session; в белом
-    // списке Arch нет mate-wayland-session, а wayfire встал на место
-    // своего стола (Wayfire). Механизма пересъёмки у эталона нет — правка
-    // руками ровно этих пяти мест, сверка подтверждает совпадение.
+    // mate-document-viewer), mate-calc, mate-system-monitor, GNOME Disks; in the
+    // allowlist and in the current desktop protection.
+    // Retaken 13.11.2026 (pkg helper): the session desktop by logind's `Desktop=`
+    // recognizes UKUI (`ukui`, `kylin-wlcom`) — the shared table
+    // `system::XDG_TOKEN_TO_DE`. UKUI has no packages in the catalog, the helper
+    // has nothing to protect yet.
+    // Retaken 16.11.2026 (de and pkg helper): the screen lock in desktop
+    // sets — swaylock and swayidle for Wayfire and River (all families) and for
+    // sway on Gentoo, xscreensaver for LXQt (all families), swaylock in the
+    // LXQt Wayland session add-on; in the allowlist and in the current desktop protection.
+    // Updated 2026-11-23 (de helper, by hand): Hyprland on openSUSE got
+    // hyprlock and hypridle for the screen lock — in its package table (both
+    // helpers) and in the openSUSE install allowlist; other non-Arch families
+    // don't have these packages in their stable repositories.
+    // Corrected 16.11.2026 (pkg helper): MATE (Arch) is installed only
+    // as an X11 session (Wehrwolfmann's decision) — wayfire, xorg-xwayland and mate-wayland-session
+    // left its set in the current desktop protection; the Arch
+    // allowlist has no mate-wayland-session, and wayfire took its place under
+    // its own desktop (Wayfire). The golden data has no retake mechanism — exactly these five places
+    // were edited by hand, the check confirms the match.
     assert_eq!(
         json!(de_helper_pkg_table()),
         s["de_helper_pkg_table"],
@@ -255,7 +259,7 @@ fn scripts_match_python_verbatim() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn cmd_tables_match_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     let fx = texts_fx();
     let t = &fx["cmd_tables"];
@@ -304,10 +308,10 @@ fn cmd_tables_match_python() {
         assert!(lock_paths(f).is_empty(), "{}: лока нет", f.as_str());
     }
 
-    // Таблицы install_batch.
+    // install_batch tables.
     let mut m = Map::new();
-    // Приписка «# + …» к сниппету — подсказка человеку, она из каталога
-    // перевода; эталон русский, язык закреплён в начале сверки.
+    // The "# + …" note to the snippet is a hint for the person, it comes from the translation
+    // catalog; the golden value is Russian, the language is pinned at the start of the check.
     for (k, _) in NIXOS_DE_SNIPPETS {
         m.insert((*k).to_string(), Value::from(nixos_de_snippet(k).unwrap()));
     }
@@ -334,7 +338,7 @@ fn de_helper_supports_matches_python() {
 
 #[test]
 fn privileged_pkg_cmd_matches_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // The language is set before parsing the golden data: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = texts_fx_live_helpers();
@@ -358,11 +362,11 @@ fn privileged_pkg_cmd_matches_python() {
 
 #[test]
 fn privileged_stage_cmd_matches_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // The language is set before parsing the golden data: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = texts_fx_live_helpers();
-    // __STAGED__ — плейсхолдер реального mkdtemp-каталога из генератора.
+    // __STAGED__ is a placeholder for the generator's real mkdtemp directory.
     let staged_real = "/tmp/rexon_stage_golden_x";
     for case in fx["privileged_stage_cmd"].as_array().unwrap() {
         let label = case["label"].as_str().unwrap();
@@ -393,12 +397,12 @@ fn privileged_stage_cmd_matches_python() {
 }
 
 // ============================================================================
-// Планы update_db / install / remove
+// update_db / install / remove plans
 // ============================================================================
 
 #[test]
 fn update_db_plan_matches_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // The language is set before parsing the golden data: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = batch_fx();
@@ -420,7 +424,7 @@ fn update_db_plan_matches_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn install_plan_matches_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     let fx = batch_fx();
     for case in fx["install"].as_array().unwrap() {
@@ -444,7 +448,7 @@ fn install_plan_matches_python() {
         if let Some((eok, emsg)) = &plan.early_result {
             assert_eq!((*eok, emsg.as_str()), (ok, message), "{label}: early");
         } else if !ok {
-            // Отказ pkexec: Python строит подсказку sudo — она же в плане.
+            // pkexec refusal: Python builds a sudo hint — it is in the plan too.
             assert_eq!(plan.sudo_hint, message, "{label}: sudo hint");
         }
     }
@@ -452,8 +456,8 @@ fn install_plan_matches_python() {
 
 #[test]
 fn remove_plan_matches_python() {
-    // Эталон — русские тексты оригинала: язык закреплён (без замка сверка
-    // краснела или зеленела в зависимости от соседних потоков).
+    // The golden values are the original's Russian texts: the language is pinned (without the lock the check
+    // went red or green depending on neighboring threads).
     let _lang = i18n_pin::ru();
     let fx = batch_fx();
     for case in fx["remove"].as_array().unwrap() {
@@ -473,8 +477,8 @@ fn remove_plan_matches_python() {
         )
         .unwrap_or_else(|e| panic!("{label}: {e}"));
 
-        // Пофазная сверка: closure-сегмент сортируется с обеих сторон
-        // (недетерминизм итерации set в Python — см. заголовок).
+        // A phase-by-phase check: the closure segment is sorted on both sides
+        // (nondeterministic set iteration in Python — see the header).
         let mut got: Vec<(String, Value)> = Vec::new();
         for st in &plan.steps {
             match st {
@@ -529,7 +533,7 @@ fn remove_plan_matches_python() {
         if let Some((eok, emsg)) = &plan.result_without_exec {
             assert_eq!((*eok, emsg.as_str()), (ok, message), "{label}: результат");
         } else if ok {
-            // Успех: message = stdout мока ("ok") + success_note.
+            // Success: message = the mock's stdout ("ok") + success_note.
             assert_eq!(
                 format!("ok{}", plan.success_note),
                 message,
@@ -548,10 +552,10 @@ fn remove_plan_matches_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn install_batch_plan_matches_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
-    // Переснято 01.10.2026 (оба SteamOS-случая): скрипт установки на SteamOS
-    // получил `export LC_ALL=C LANG=C`, как у обычного пути, — его вывод
-    // pacman разбирает парсер хода установки.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
+    // Retaken 01.10.2026 (both SteamOS cases): the install script on SteamOS
+    // got `export LC_ALL=C LANG=C`, like the normal path — its pacman output
+    // is parsed by the install progress parser.
     let _lang = i18n_pin::ru();
     let fx = batch_fx();
     for case in fx["install_batch"].as_array().unwrap() {
@@ -606,7 +610,7 @@ fn install_batch_plan_matches_python() {
             }
         }
 
-        // Тексты записанных файлов (wrapper с chown-граблей) и удаление.
+        // Texts of the written files (the wrapper with the chown pitfall) and removal.
         let files = case["files"].as_object().unwrap();
         let mut planned_files: Map<String, Value> = Map::new();
         let mut planned_removed: Vec<String> = Vec::new();
@@ -636,12 +640,12 @@ fn install_batch_plan_matches_python() {
 }
 
 // ============================================================================
-// DE-оркестрация
+// DE orchestration
 // ============================================================================
 
 #[test]
 fn dm_enable_matches_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // The language is set before parsing the golden data: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = batch_fx();
@@ -653,8 +657,8 @@ fn dm_enable_matches_python() {
             &installed,
             case["used_de_helper"].as_bool().unwrap(),
             case["pkg_helper_available"].as_bool().unwrap(),
-            // Голдены сняты до появления правила «чужой DM не трогаем»:
-            // в них экрана входа нет, поэтому dm_present по умолчанию false.
+            // The golden data was taken before the "do not touch someone else's DM" rule appeared:
+            // it has no login screen, so dm_present defaults to false.
             case["dm_present"].as_bool().unwrap_or(false),
         );
         let want = case["dm_calls"].as_array().unwrap();
@@ -671,8 +675,8 @@ fn dm_enable_matches_python() {
 
 #[test]
 fn remove_de_guard_matches_python() {
-    // Эталон — русские тексты оригинала: язык закреплён (без замка сверка
-    // краснела или зеленела в зависимости от соседних потоков).
+    // The golden values are the original's Russian texts: the language is pinned (without the lock the check
+    // went red or green depending on neighboring threads).
     let _lang = i18n_pin::ru();
     let fx = batch_fx();
     for case in fx["remove_de"].as_array().unwrap() {
@@ -711,8 +715,8 @@ fn remove_de_guard_matches_python() {
 
 #[test]
 fn switch_de_guard_matches_python() {
-    // Эталон — русские тексты оригинала: язык закреплён (без замка сверка
-    // краснела или зеленела в зависимости от соседних потоков).
+    // The golden values are the original's Russian texts: the language is pinned (without the lock the check
+    // went red or green depending on neighboring threads).
     let _lang = i18n_pin::ru();
     let fx = batch_fx();
     for case in fx["switch_de_guard"].as_array().unwrap() {
@@ -733,7 +737,7 @@ fn switch_de_guard_matches_python() {
 
 #[test]
 fn logout_cmds_match_python() {
-    // Язык — до разбора эталона: от него зависит `--lang` помощника
+    // The language is set before parsing the golden data: the helper's `--lang` depends on it
     // (`system_plan::retarget_helper_paths`).
     let _lang = i18n_pin::ru();
     let fx = batch_fx();
@@ -754,22 +758,22 @@ fn logout_cmds_match_python() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Recovery-часть порта: версия пакета в репозиториях, откат форков Plasma,
+// The recovery part of the port: the package version in the repositories, rolling back Plasma forks,
 // Plymouth, SDDM.
 //
-// Эталоны — `golden/system_recovery_cases.json`, снятые с ЖИВОГО
-// `rexon.system` при выключенном мосте (Python-путь до его удаления, оракул —
-// Python-эталоны `_py_*`). Сырьё живое, с этой машины (CachyOS/KDE):
+// The golden data is `golden/system_recovery_cases.json`, taken from the LIVE
+// `rexon.system` with the bridge turned off (the Python path before its removal, the oracle being
+// the Python golden functions `_py_*`). The raw material is live, from this machine (CachyOS/KDE):
 //   * `pacman -Si plasma-desktop` / `gnome-shell` (epoch `1:50.3-1.1`) /
-//     несуществующий пакет; `pacman -Qi plasma-desktop`; `pacman -Qq`;
-//   * реальный список /usr/share/plymouth/themes (13 тем, включая брендинг
-//     cachyos-bootanimation) и реальный /usr/share/plymouth/plymouthd.defaults;
-//   * реальные /etc/sddm.conf.d (kde_settings.conf) и
+//     a nonexistent package; `pacman -Qi plasma-desktop`; `pacman -Qq`;
+//   * the real list of /usr/share/plymouth/themes (13 themes, including the
+//     cachyos-bootanimation branding) and the real /usr/share/plymouth/plymouthd.defaults;
+//   * the real /etc/sddm.conf.d (kde_settings.conf) and
 //     /usr/lib/sddm/sddm.conf.d (default/general/zz-wayland.conf).
-// Выводы apt-cache/dnf/zypper — синтетика (этих менеджеров на машине нет),
-// помечена в поле `note` каждого кейса.
+// The apt-cache/dnf/zypper outputs are synthetic (these managers are not on the machine),
+// marked in each case's `note` field.
 //
-// ⛔ Тесты только читают фикстуры: ни pacman, ни pkexec, ни запись в систему.
+// ⛔ The tests only read fixtures: no pacman, no pkexec, no writes to the system.
 // ══════════════════════════════════════════════════════════════════════════
 
 use rexon_core::system_plan::{
@@ -802,7 +806,7 @@ fn recovery_fx() -> Value {
     serde_json::from_str(include_str!("golden/system_recovery_cases.json")).unwrap()
 }
 
-/// Пары (имя, содержимое) из JSON-массива `[[name, content], …]`.
+/// (name, contents) pairs from a JSON array `[[name, content], …]`.
 fn pairs(v: &Value) -> Vec<(String, String)> {
     v.as_array()
         .unwrap()
@@ -821,7 +825,7 @@ fn opt_str(v: &Value) -> Option<&str> {
     v.as_str()
 }
 
-// ── версия пакета в репозиториях ──────────────────────────────────────────
+// ── package version in the repositories ──────────────────────────────────────────
 
 #[test]
 fn clean_pkg_version_matches_python() {
@@ -844,7 +848,7 @@ fn repo_version_query_and_parse_match_python() {
         let which = c["which"].as_object().unwrap();
 
         let query = repo_version_query(family, package);
-        // Записанные Python-вызовы safe_run: пусто = команда не запускалась.
+        // Recorded Python safe_run calls: empty = the command was not started.
         let calls = c["calls"].as_array().unwrap();
 
         let Some(q) = query else {
@@ -853,7 +857,7 @@ fn repo_version_query_and_parse_match_python() {
             continue;
         };
 
-        // Бинаря нет → исполнитель не запускает команду (и Python не запускал).
+        // No binary → the executor does not start the command (and Python did not either).
         if !which.get(&q.binary).and_then(Value::as_bool).unwrap_or(false) {
             assert!(calls.is_empty(), "{note}: команда без бинаря");
             assert!(c["result"].is_null(), "{note}: без бинаря результат None");
@@ -865,7 +869,7 @@ fn repo_version_query_and_parse_match_python() {
         assert_eq!(json!(q.cmd.timeout_secs), calls[0]["timeout"], "{note}: timeout");
         assert_eq!(json!(q.cmd.lang_c), calls[0]["lang_c"], "{note}: LANG=C");
 
-        // Гейты, которые в Python стоят до разбора.
+        // Gates that in Python come before parsing.
         let rc = c["rc"].as_i64().unwrap();
         let stdout = c["stdout"].as_str().unwrap();
         let got = if stdout.is_empty() || (q.check_returncode && rc != 0) {
@@ -877,17 +881,17 @@ fn repo_version_query_and_parse_match_python() {
     }
 }
 
-// ── форки Plasma ──────────────────────────────────────────────────────────
+// ── Plasma forks ──────────────────────────────────────────────────────────
 
-/// Колбэк «stdout pacman -Qi по пакету» из фикстуры (нет ключа = rc != 0).
+/// The callback "pacman -Qi stdout per package" from the fixture (no key = rc != 0).
 fn qi_from(fx: &Value) -> impl Fn(&str) -> Option<String> + '_ {
     let map = fx["plasma_forks"]["qi_fixtures"].as_object().unwrap();
     move |pkg: &str| map.get(pkg).and_then(Value::as_str).map(String::from)
 }
 
-/// Колбэк «есть ли цель в репозиториях» из фикстуры `repo_targets` (снята
-/// `pacman -Si` на живой машине). Нет ключа — цели в репозиториях нет
-/// (`Some(false)`), как и отвечает pacman: сам пакет он знает поимённо.
+/// The callback "is the target in the repositories" from the `repo_targets` fixture (taken
+/// with `pacman -Si` on a live machine). No key — the target is not in the repositories
+/// (`Some(false)`), just as pacman answers: it knows the package itself by name.
 fn exists_from(fx: &Value) -> impl Fn(&str) -> Option<bool> + '_ {
     let map = fx["plasma_forks"]["repo_targets"].as_object().unwrap();
     move |pkg: &str| Some(map.get(pkg).and_then(Value::as_bool).unwrap_or(false))
@@ -951,9 +955,9 @@ fn fork_stock_target_checks_repo_existence() {
     }
 }
 
-/// Живой `pacman -Qi` форка владельца: `replaces` тянет `plasma-framework`
-/// со времён Plasma 5, `provides` уже `libplasma`. До проверки существования
-/// откат собирал `pacman -S plasma-framework` и падал «не найдена цель».
+/// The live `pacman -Qi` of the owner's fork: `replaces` drags `plasma-framework`
+/// since the days of Plasma 5, `provides` is already `libplasma`. Before the existence check
+/// the rollback assembled `pacman -S plasma-framework` and failed with "target not found".
 #[test]
 fn stale_replaces_never_reaches_the_command() {
     let fx = recovery_fx();
@@ -965,20 +969,20 @@ fn stale_replaces_never_reaches_the_command() {
         live.contains("Replaces        : plasma-framework"),
         "фикстура должна остаться живым выводом с протухшим replaces"
     );
-    // Без проверки имя-покойник стоит в кандидатах…
+    // Without the check the dead name stands among the candidates…
     assert_eq!(
         fork_stock_candidates("aeroshell-libplasma-git", &qi),
         vec!["libplasma".to_string(), "plasma-framework".to_string()]
     );
-    // …но в команду не попадает ни при какой проверке репозиториев.
+    // …but does not get into the command under any repository check.
     let forks = vec!["aeroshell-libplasma-git".to_string()];
     let live_repos = exists_from(&fx);
     assert_eq!(
         plasma_fork_recovery_command(&forks, &qi, &live_repos).unwrap(),
         "sudo pacman -S libplasma"
     );
-    // Даже когда спросить репозитории нечем (pacman недоступен) — берётся
-    // первый кандидат, а первый теперь provides, а не replaces.
+    // Even when there is nothing to ask the repositories with (pacman unavailable), the
+    // first candidate is taken, and the first one is now provides, not replaces.
     let cannot_ask = |_: &str| None;
     assert_eq!(
         plasma_fork_recovery_command(&forks, &qi, &cannot_ask).unwrap(),
@@ -986,12 +990,12 @@ fn stale_replaces_never_reaches_the_command() {
     );
 }
 
-/// Форк, у которого живого имени не осталось: откат обязан отказать ЦЕЛИКОМ,
-/// не сняв ни одного пакета, — иначе система остаётся без стока.
+/// A fork with no live name left: the rollback must refuse ENTIRELY,
+/// without removing a single package — otherwise the system is left without the stock.
 #[test]
 fn unresolved_fork_blocks_the_whole_reset() {
-    // Эталон — русские тексты оригинала: язык закреплён (без замка сверка
-    // краснела или зеленела в зависимости от соседних потоков).
+    // The golden values are the original's Russian texts: the language is pinned (without the lock the check
+    // went red or green depending on neighboring threads).
     let _lang = i18n_pin::ru();
     let fx = recovery_fx();
     let qi = qi_from(&fx);
@@ -1042,7 +1046,7 @@ fn plasma_fork_split_and_recovery_match_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn plasma_fork_reset_plan_matches_python_trace() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     let fx = recovery_fx();
     let qi = qi_from(&fx);
@@ -1075,7 +1079,7 @@ fn plasma_fork_reset_plan_matches_python_trace() {
                     json!(cmd.timeout_secs), calls[0]["timeout"],
                     "{forks:?}: timeout"
                 );
-                // shell — то же тело, что в argv[2] записанного вызова.
+                // shell is the same body as in argv[2] of the recorded call.
                 assert_eq!(
                     format!("set -e; {shell}"),
                     calls[0]["argv"][3].as_str().unwrap(),
@@ -1092,7 +1096,7 @@ fn plasma_fork_reset_plan_matches_python_trace() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn plasma_fork_preview_matches_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     let fx = recovery_fx();
     let qi = qi_from(&fx);
@@ -1105,9 +1109,9 @@ fn plasma_fork_preview_matches_python() {
     }
 }
 
-/// Предпросмотр проходит по форкам ДВАЖДЫ (план + человекочитаемая команда),
-/// а `pacman -Si` спрашивается по одному разу на имя — за это отвечает
-/// память пробы. Без неё каждый повтор стоил бы отдельного запуска.
+/// The preview walks the forks TWICE (the plan + the human-readable command),
+/// while `pacman -Si` is asked once per name — that is the job of the
+/// probe memory. Without it every repeat would cost a separate launch.
 #[test]
 fn plasma_fork_preview_asks_repositories_once_per_name() {
     let fx = recovery_fx();
@@ -1124,11 +1128,11 @@ fn plasma_fork_preview_asks_repositories_once_per_name() {
     ];
     let answer = plasma_fork_preview(&forks, &qi, &counted);
     assert!(answer.ok, "откат по этой паре возможен");
-    // Оба форка объявляют один и тот же сток libplasma — цель ОДНА.
+    // Both forks declare the same libplasma stock — ONE target.
     let with_memo = calls.get();
     assert_eq!(with_memo, 1, "спрошено больше имён, чем разных целей");
 
-    // Без памяти те же два прохода спросили бы про libplasma каждый раз.
+    // Without memory the same two passes would ask about libplasma every time.
     let raw = std::cell::Cell::new(0usize);
     let uncounted = |pkg: &str| {
         raw.set(raw.get() + 1);
@@ -1154,8 +1158,8 @@ fn target_exists_memo_asks_each_name_once() {
     for _ in 0..3 {
         assert_eq!(memo.answer("libplasma", &probe), None);
     }
-    // Даже «спросить не удалось» запоминается: ответ не изменится, а каждый
-    // повтор стоил бы запуска pacman.
+    // Even "could not ask" is remembered: the answer will not change, and every
+    // repeat would cost a pacman launch.
     assert_eq!(asked.get(), 1, "None не запомнился");
     assert_eq!(memo.asked(), 1);
 }
@@ -1163,7 +1167,7 @@ fn target_exists_memo_asks_each_name_once() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn plasma_fork_reset_outcome_matches_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     for c in recovery_fx()["plasma_forks"]["outcome"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
@@ -1182,8 +1186,8 @@ fn plasma_fork_reset_outcome_matches_python() {
     }
 }
 
-/// ⭐ Починка при переносе: подсказка «выполни вручную» больше не может
-/// содержать строку «None». Прежний Python подставлял `str(None)`.
+/// ⭐ Fixed during the port: the "run it by hand" hint can no longer
+/// contain the string "None". The old Python substituted `str(None)`.
 #[test]
 fn denied_hint_never_says_none() {
     for c in recovery_fx()["plasma_forks"]["outcome"].as_array().unwrap() {
@@ -1198,15 +1202,15 @@ fn denied_hint_never_says_none() {
     }
 }
 
-/// ⭐ Сторож языка отказа пароля в операциях восстановления (форки Plasma,
-/// Plymouth, SDDM). Прежний текст «Авторизация pkexec отклонена.» говорил
-/// покупателю служебные слова и приписывал отказ, когда человек просто
-/// закрыл окно пароля. Первая строка обязана совпадать с отказами установки
-/// и удаления, команда для терминала — доезжать как есть.
+/// ⭐ A watchdog for the language of the password refusal in recovery operations (Plasma forks,
+/// Plymouth, SDDM). The old text «pkexec authorization denied.» told
+/// the customer service words and claimed a refusal when the person simply
+/// closed the password window. The first line must match the install and
+/// removal refusals, the terminal command must arrive as is.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn denied_message_speaks_plain_russian() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     let cmd = "sudo rm -f /etc/sddm.conf.d/zz-rexon-theme.conf";
     let msg = rexon_core::system_plan::pkexec_denied_message(cmd);
@@ -1217,10 +1221,10 @@ fn denied_message_speaks_plain_russian() {
     assert!(msg.starts_with("Пароль администратора не подтверждён.\n"), "{msg}");
 }
 
-/// ⭐ Тот же сторож для случая, когда запросить пароль нечем. Прежний текст
-/// «pkexec не найден» говорил служебное слово и не говорил, что делать.
-/// Имена пакетов допустимы только в строке-инструкции: это то, что надо
-/// поставить, а не объяснение.
+/// ⭐ The same watchdog for the case when there is nothing to ask for the password with. The old text
+/// «pkexec not found» said a service word and did not say what to do.
+/// Package names are allowed only in the instruction line: that is what has to be
+/// installed, not an explanation.
 #[test]
 fn missing_password_prompt_message_speaks_plain_russian() {
     let _lang = i18n_pin::ru();
@@ -1233,16 +1237,16 @@ fn missing_password_prompt_message_speaks_plain_russian() {
     assert!(instruction.starts_with("Установите пакет "), "что делать — на «вы»: {msg}");
 }
 
-/// ⭐ Тот же сторож для установки системных тем (экран входа, заставка
-/// загрузки) во «Оформлении». Прежде там говорили «pkexec не найден»,
-/// «Системный helper Rexon не установлен (<путь>)» и «(pkexec/polkit)».
-/// Отказ «нечем запросить пароль» обязан быть тем же текстом, что в
-/// восстановлении, — не второй копией фразы.
+/// ⭐ The same watchdog for installing system themes (login screen, boot
+/// splash) in «Appearance». It used to say «pkexec not found»,
+/// «Rexon system helper is not installed (<path>)» and «(pkexec/polkit)».
+/// The "nothing to ask for the password with" refusal must be the same text as in
+/// recovery — not a second copy of the phrase.
 #[test]
 fn appearance_root_install_texts_speak_plain_russian() {
     use rexon_core::appearance_installer::{self as ai, RootEnv};
-    // Текст и ожидание берутся из каталога по отдельности: без закрепления
-    // соседняя сверка успевает сменить язык между ними.
+    // The text and the expectation are taken from the catalog separately: without pinning
+    // a neighboring check manages to change the language between them.
     let _lang = i18n_pin::en();
     let sddm = rexon_core::categories::category_by_id(std::path::Path::new("/sb/home"), 101).unwrap();
     let env = RootEnv {
@@ -1255,7 +1259,7 @@ fn appearance_root_install_texts_speak_plain_russian() {
         family_is_debian: false,
     };
     let no_prompt = ai::root_preflight(&env, &sddm).unwrap().message;
-    // Та же фраза, что в восстановлении: одна функция каталога перевода.
+    // The same phrase as in recovery: one function of the translation catalog.
     assert_eq!(no_prompt, rexon_core::system_plan::pkexec_missing_message());
 
     let env = RootEnv { has_pkexec: true, system_helper_exists: false, ..env };
@@ -1268,11 +1272,11 @@ fn appearance_root_install_texts_speak_plain_russian() {
             assert!(!msg.contains(jargon), "в тексте для покупателя «{jargon}»: {msg}");
         }
     }
-    // Сами слова отказа (по-русски и по-английски) держат сверки установщика
-    // тем — `appearance_installer_parity`: там язык закреплён.
+    // The refusal words themselves (in Russian and in English) are held by the theme installer
+    // checks — `appearance_installer_parity`: the language is pinned there.
 }
 
-// ── движок пакетов: «перечислить всё установленное» ───────────────────────
+// ── package engine: "list everything installed" ───────────────────────
 
 #[test]
 fn parse_installed_packages_matches_python() {
@@ -1287,8 +1291,8 @@ fn parse_installed_packages_matches_python() {
     }
 }
 
-/// Живой `pacman -Qq` этой машины проходит через движок и фильтр так же, как
-/// проходил через зашитый `r.stdout.split()`.
+/// This machine's live `pacman -Qq` goes through the engine and the filter the same way as
+/// it went through the hardcoded `r.stdout.split()`.
 #[test]
 fn installed_packages_feed_the_fork_filter() {
     let fx = recovery_fx();
@@ -1312,7 +1316,7 @@ fn installed_packages_query_only_where_format_is_known() {
     assert!(arch.cmd.lang_c, "разбор без LANG=C ломается на русской локали");
     assert!(installed_packages_query(PkgFamily::Debian).is_some());
     assert!(installed_packages_query(PkgFamily::Fedora).is_some());
-    // Формат ответа руками не проверен — честное «не знаю» вместо выдумки.
+    // The answer format was not checked by hand — an honest "do not know" instead of making things up.
     for f in [PkgFamily::Gentoo, PkgFamily::Void, PkgFamily::Nix,
               PkgFamily::Alpine, PkgFamily::Solus, PkgFamily::Clear,
               PkgFamily::Unknown] {
@@ -1325,8 +1329,8 @@ fn installed_meta_query_is_arch_only_and_validates_name() {
     let q = installed_meta_query(PkgFamily::Arch, "aeroshell-libplasma-git").unwrap();
     assert_eq!(q.cmd.argv, vec!["pacman", "-Qi", "aeroshell-libplasma-git"]);
     assert!(q.cmd.lang_c);
-    // Поля `pacman -Qi` разбирает `parse_qi_field`; у dpkg/rpm они зовутся
-    // иначе, и молча отдавать их тому же разбору нельзя.
+    // The `pacman -Qi` fields are parsed by `parse_qi_field`; in dpkg/rpm they are named
+    // differently, and silently handing them to the same parser is not allowed.
     assert!(installed_meta_query(PkgFamily::Debian, "libplasma").is_none());
     assert!(installed_meta_query(PkgFamily::Arch, "плохое имя").is_none());
     assert!(installed_meta_query(PkgFamily::Arch, "").is_none());
@@ -1346,14 +1350,14 @@ fn repo_target_exists_matches_live_pacman() {
     }
 }
 
-// ── склонение «пакет(ов)» ─────────────────────────────────────────────────
+// ── declension of «пакет(ов)» ─────────────────────────────────────────────────
 
-/// Покупателю показывали скобки вместо русского слова. Держится отдельным
-/// тестом, чтобы не выпасть при пересъёмке голденов.
+/// The customer was shown parentheses instead of a Russian word. Kept as a separate
+/// test so it does not drop out when the golden data is retaken.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn package_counts_are_declined_not_bracketed() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     for (n, install, timeout) in [
         (1usize, "📦 Установка 1 пакета…", "(1 пакет)"),
@@ -1409,7 +1413,7 @@ fn target_plymouth_theme_matches_python_including_laziness() {
         let installed = str_vec(&c["installed_pkgs"]);
         let defaults = c["defaults"].as_str().map(String::from);
 
-        // Записываем обращения к pacman -Qq, чтобы сверить ленивость 1-в-1.
+        // Record the calls to pacman -Qq to check laziness 1-to-1.
         let queried = std::cell::RefCell::new(Vec::<String>::new());
         let pkg_installed = |p: &str| {
             queried.borrow_mut().push(p.to_string());
@@ -1427,8 +1431,8 @@ fn target_plymouth_theme_matches_python_including_laziness() {
             json!(queried.into_inner()), c["pkg_queries"],
             "target_plymouth_theme: {note} — набор и порядок проб pacman"
         );
-        // plymouthd.defaults читается максимум один раз и только после
-        // отпавшего брендинга (в Python — та же ленивость).
+        // plymouthd.defaults is read at most once and only after
+        // the branding fell through (in Python the same laziness).
         assert!(default_calls.get() <= 1, "{note}: лишнее чтение plymouthd.defaults");
     }
 }
@@ -1449,7 +1453,7 @@ fn plymouth_reset_command_matches_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn plymouth_reset_plan_matches_python_trace() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     for c in recovery_fx()["plymouth"]["reset_plan"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
@@ -1468,8 +1472,8 @@ fn plymouth_reset_plan_matches_python_trace() {
         );
         let msg = c["msg"].as_str().unwrap();
 
-        // Тексты ответов держит ядро: у исходов без pkexec решение приходит
-        // готовым, у Run — после нулевого кода возврата.
+        // The answer texts are held by the core: for outcomes without pkexec the decision arrives
+        // ready, for Run — after a zero exit code.
         let decision = plymouth_reset_decision(
             target,
             current,
@@ -1532,15 +1536,15 @@ fn plymouth_reset_plan_matches_python_trace() {
     }
 }
 
-/// Что считать установленной темой: отбор подкаталогов и проба
-/// `<тема>.plymouth`. Каталог здесь не читается — вход подан списком.
+/// What counts as an installed theme: selecting subdirectories and probing
+/// `<theme>.plymouth`. The directory is not read here — the input is given as a list.
 #[test]
 fn plymouth_theme_list_matches_golden() {
     for c in recovery_fx()["plymouth"]["theme_list"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
         if c["entries"].is_null() {
-            // Каталога тем нет вовсе: перечислять нечего, ядро не зовётся —
-            // Python отдаёт пустой список сразу после OSError.
+            // There is no themes directory at all: nothing to list, the core is not called —
+            // Python returns an empty list right after OSError.
             assert!(
                 c["result"].as_array().unwrap().is_empty(),
                 "{note}: у отсутствующего каталога тем быть не может"
@@ -1559,7 +1563,7 @@ fn plymouth_theme_list_matches_golden() {
         let with_file = str_vec(&c["themes_with_file"]);
 
         let candidates = plymouth_theme_candidates(&entries);
-        // Файл темы пробуется ТОЛЬКО у отобранных записей.
+        // The theme file is probed ONLY for the selected entries.
         let probes: Vec<(String, bool)> = candidates
             .iter()
             .map(|t| (t.clone(), with_file.iter().any(|x| x == t)))
@@ -1570,7 +1574,7 @@ fn plymouth_theme_list_matches_golden() {
             "список тем: {note}"
         );
 
-        // Порядок обхода каталога произволен, ответ от него не зависит.
+        // The directory walk order is arbitrary, the answer does not depend on it.
         let mut shuffled = entries.clone();
         shuffled.reverse();
         let probes_rev: Vec<(String, bool)> = plymouth_theme_candidates(&shuffled)
@@ -1585,9 +1589,9 @@ fn plymouth_theme_list_matches_golden() {
     }
 }
 
-/// ⚠️ Починка при порте, держится отдельно от голдена: темой подкаталог
-/// делает файл `<тема>.plymouth`. Оригинал отдавал ВСЕ подкаталоги, и пустой
-/// каталог от удалённого пакета мог стать «родным дефолтом дистрибутива».
+/// ⚠️ Fixed during the port, kept separately from the golden data: what makes a subdirectory a theme
+/// is the `<theme>.plymouth` file. The original returned ALL subdirectories, and an empty
+/// directory left by a removed package could become "the distribution's native default".
 #[test]
 fn plymouth_theme_without_its_file_is_not_a_theme() {
     let entries = vec![("bgrt".to_string(), true), ("spinner".to_string(), true)];
@@ -1599,7 +1603,7 @@ fn plymouth_theme_without_its_file_is_not_a_theme() {
         vec!["spinner".to_string()],
         "каталог без своего .plymouth темой не считается"
     );
-    // На живой машине ответ прежний: у всех 13 тем файл на месте.
+    // On the live machine the answer is the same: all 13 themes have the file in place.
     let live = str_vec(&recovery_fx()["plymouth"]["live_themes"]);
     let all: Vec<(String, bool)> = live.iter().map(|t| (t.clone(), true)).collect();
     assert_eq!(plymouth_installed_themes(&all), live, "живой список не изменился");
@@ -1608,8 +1612,8 @@ fn plymouth_theme_without_its_file_is_not_a_theme() {
         "/usr/share/plymouth/themes/bgrt/bgrt.plymouth",
         "путь описания темы"
     );
-    // Каталог тем задаётся аргументом: проба файла идёт в ТОТ ЖЕ каталог,
-    // который перечислили, а не в зашитый /usr/share.
+    // The themes directory is given as an argument: the file probe goes into THE SAME directory
+    // that was listed, not into the hardcoded /usr/share.
     assert_eq!(
         plymouth_theme_file_in(PLYMOUTH_THEMES_DIR, "bgrt"),
         plymouth_theme_file("bgrt"),
@@ -1622,7 +1626,7 @@ fn plymouth_theme_without_its_file_is_not_a_theme() {
     );
 }
 
-/// Разбор вывода `plymouth-set-default-theme` (без аргументов он печатает имя).
+/// Parsing the output of `plymouth-set-default-theme` (without arguments it prints the name).
 #[test]
 fn plymouth_theme_from_output_matches_golden() {
     for c in recovery_fx()["plymouth"]["detect_output"].as_array().unwrap() {
@@ -1638,7 +1642,7 @@ fn plymouth_theme_from_output_matches_golden() {
     }
 }
 
-/// Установлен ли пакет — по коду возврата команды проверки.
+/// Whether the package is installed — by the exit code of the check command.
 #[test]
 fn pkg_installed_from_rc_matches_golden() {
     for c in recovery_fx()["plymouth"]["pkg_installed"].as_array().unwrap() {
@@ -1651,11 +1655,11 @@ fn pkg_installed_from_rc_matches_golden() {
     }
 }
 
-/// Итог pkexec для Plymouth: код возврата и оба потока → (ok, сообщение).
+/// The pkexec result for Plymouth: exit code and both streams → (ok, message).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn plymouth_reset_outcome_matches_golden() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     for c in recovery_fx()["plymouth"]["reset_outcome"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
@@ -1709,8 +1713,8 @@ fn sddm_distro_default_matches_python() {
     }
 }
 
-/// Живая машина целиком: план сброса на реальных /etc/sddm.conf.d и
-/// /usr/lib/sddm/sddm.conf.d должен быть «нечего удалять, дефолт breeze».
+/// The whole live machine: the reset plan on the real /etc/sddm.conf.d and
+/// /usr/lib/sddm/sddm.conf.d must be "nothing to delete, default breeze".
 #[test]
 fn sddm_reset_plan_on_live_machine() {
     let fx = recovery_fx();
@@ -1723,7 +1727,7 @@ fn sddm_reset_plan_on_live_machine() {
         "на живой машине Rexon-оверрайдов нет — удалять нечего, получили {:?}",
         plan.to_remove
     );
-    // Тот же ответ, что у Python-эталона на этих же данных.
+    // The same answer as the Python golden data gives on the same data.
     let want = fx["sddm"]["distro_default"][0]["result"].as_str();
     assert_eq!(plan.default_theme.as_deref(), want, "дистро-дефолт живой машины");
     assert!(matches!(sddm_reset_command(&plan, "/etc/sddm.conf.d"), SddmReset::AlreadyStock));
@@ -1731,8 +1735,8 @@ fn sddm_reset_plan_on_live_machine() {
 
 #[test]
 fn sddm_reset_command_matches_python_trace() {
-    // Эталон — русские тексты оригинала: язык закреплён (без замка сверка
-    // краснела или зеленела в зависимости от соседних потоков).
+    // The golden values are the original's Russian texts: the language is pinned (without the lock the check
+    // went red or green depending on neighboring threads).
     let _lang = i18n_pin::ru();
     for c in recovery_fx()["sddm"]["reset_command"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
@@ -1759,7 +1763,7 @@ fn sddm_reset_command_matches_python_trace() {
                     calls[0]["argv"][3].as_str().unwrap(),
                     "{note}: тело скрипта"
                 );
-                // Текст успеха — байт-в-байт с Python.
+                // The success text is byte-for-byte with Python.
                 assert_eq!(
                     sddm_reset_success_message(&removed, default_theme.as_deref()),
                     c["msg"].as_str().unwrap(),
@@ -1770,15 +1774,15 @@ fn sddm_reset_command_matches_python_trace() {
     }
 }
 
-/// Чистая часть `_sddm_conf_entries`: отбор `.conf`, порядок мёрджа и пустой
-/// текст нечитаемому файлу. Каталог здесь не читается — вход подан списком.
+/// The pure part of `_sddm_conf_entries`: selecting `.conf`, the merge order and an empty
+/// text for an unreadable file. The directory is not read here — the input is given as a list.
 #[test]
 fn sddm_conf_entries_matches_golden() {
     for c in recovery_fx()["sddm"]["conf_entries"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
         if c["names"].is_null() {
-            // Каталога нет вовсе: перечислять нечего, ядро не зовётся —
-            // Python отдаёт пустой список сразу после OSError.
+            // There is no directory at all: nothing to list, the core is not called —
+            // Python returns an empty list right after OSError.
             assert!(
                 c["result"].as_array().unwrap().is_empty(),
                 "{note}: у отсутствующего каталога записей быть не может"
@@ -1794,8 +1798,8 @@ fn sddm_conf_entries_matches_golden() {
         let reads: Vec<(String, Option<String>)> = order.iter().map(read).collect();
         assert_eq!(json!(sddm_conf_entries(&reads)), c["result"], "сборка пар: {note}");
 
-        // Порядок мёрджа задаёт ядро, а не порядок обхода каталога: те же
-        // файлы, поданные как их отдал listdir, дают тот же ответ.
+        // The merge order is set by the core, not by the directory walk order: the same
+        // files, given as listdir returned them, give the same answer.
         let raw: Vec<(String, Option<String>)> = names
             .iter()
             .filter(|n| n.ends_with(".conf"))
@@ -1821,10 +1825,10 @@ fn sddm_kde_settings_path_matches_golden() {
     }
 }
 
-/// ⚠️ Починка при порте, держится отдельно от голдена: `kde_settings.conf`
-/// ищется в ТОМ ЖЕ каталоге, который сканируют, а не в зашитом /etc. Оригинал
-/// склеивал путь с `_SDDM_CONF_D` и на подставленном каталоге читал настоящий
-/// файл живой машины.
+/// ⚠️ Fixed during the port, kept separately from the golden data: `kde_settings.conf`
+/// is looked for in THE SAME directory that is scanned, not in the hardcoded /etc. The original
+/// joined the path with `_SDDM_CONF_D` and on a supplied directory read the real
+/// file of the live machine.
 #[test]
 fn sddm_kde_settings_path_follows_conf_d() {
     assert_eq!(
@@ -1839,11 +1843,11 @@ fn sddm_kde_settings_path_follows_conf_d() {
     );
 }
 
-/// Итог pkexec: код возврата и оба потока → (ok, сообщение, удалённые).
+/// The pkexec result: exit code and both streams → (ok, message, removed).
 #[test]
 fn sddm_reset_outcome_matches_golden() {
-    // Эталон — русские тексты оригинала: язык закреплён (без замка сверка
-    // краснела или зеленела в зависимости от соседних потоков).
+    // The golden values are the original's Russian texts: the language is pinned (without the lock the check
+    // went red or green depending on neighboring threads).
     let _lang = i18n_pin::ru();
     for c in recovery_fx()["sddm"]["reset_outcome"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
@@ -1861,12 +1865,12 @@ fn sddm_reset_outcome_matches_golden() {
     }
 }
 
-// ── детект экрана входа ───────────────────────────────────────────────────
+// ── login screen detection ───────────────────────────────────────────────────
 //
-// Живая машина (CachyOS/KDE) сидит на Plasma Login Manager: симлинк
+// The live machine (CachyOS/KDE) runs Plasma Login Manager: the symlink
 // display-manager.service → plasmalogin.service, `is-enabled plasmalogin` =
-// enabled, sddm/lightdm = disabled, gdm/cosmic-greeter = not-found. Эти
-// состояния зафиксированы в голдене, поэтому тест не зовёт systemctl.
+// enabled, sddm/lightdm = disabled, gdm/cosmic-greeter = not-found. These
+// states are pinned in the golden data, so the test does not call systemctl.
 
 #[test]
 fn login_manager_tables_match_python() {
@@ -1896,14 +1900,14 @@ fn active_login_manager_and_presence_match_python() {
         let states = c["states"].as_object().unwrap();
         let systemctl = c["systemctl"].as_bool().unwrap();
 
-        // Пробы записываем, чтобы сверить ленивость (порядок и число).
+        // Record the probes to check laziness (order and count).
         let probes = std::cell::RefCell::new(Vec::<String>::new());
         let is_enabled = |u: &str| {
             probes.borrow_mut().push(u.to_string());
             states.get(u).and_then(Value::as_str).map(String::from)
         };
-        // Отсутствие поля = цель симлинка жива (старые случаи сняты с живого
-        // Python, у которого такого различия не было).
+        // A missing field = the symlink target is alive (old cases were taken from live
+        // Python, which had no such distinction).
         let target_exists = c["target_exists"].as_bool().unwrap_or(!c["symlink"].is_null());
         let got = active_login_manager_from(
             opt_str(&c["symlink"]), target_exists, systemctl, &is_enabled,
@@ -1930,10 +1934,10 @@ fn active_login_manager_and_presence_match_python() {
     }
 }
 
-/// Висячий симлинк display-manager.service (после `pacman -R sddm`, в том
-/// числе нашим `remove_de` для KDE/LXQt) — НЕ экран входа: идиот-защита
-/// обязана ставить SDDM, иначе после перезагрузки входа в графику нет. Голден
-/// держит этот случай отдельно, чтобы он не выпал при пересъёмке.
+/// A dangling display-manager.service symlink (after `pacman -R sddm`, including
+/// by our `remove_de` for KDE/LXQt) is NOT a login screen: the foolproofing
+/// must install SDDM, otherwise after a reboot there is no graphical login. The golden data
+/// keeps this case separately so it does not drop out when retaken.
 #[test]
 fn dangling_display_manager_symlink_is_not_a_login_manager() {
     use rexon_core::system_plan::{
@@ -1953,13 +1957,13 @@ fn dangling_display_manager_symlink_is_not_a_login_manager() {
     let nothing = |_: &str| None;
     assert!(!display_manager_present_from(Some(target), false, true, &nothing));
     assert_eq!(active_login_manager_from(Some(target), false, true, &nothing), "sddm");
-    // Был бы висячий симлинк живым — защита промолчала бы:
+    // If the dangling symlink were alive, the protection would stay silent:
     assert!(display_manager_present_from(Some(target), true, true, &nothing));
 }
 
-/// Живая машина: активный экран входа — plasmalogin (симлинк на его юнит), и
-/// DM в системе ЕСТЬ (значит идиот-защита ensure_display_manager ничего
-/// доустанавливать не станет).
+/// The live machine: the active login screen is plasmalogin (a symlink to its unit), and
+/// the system DOES have a DM (so the ensure_display_manager foolproofing will not install
+/// anything extra).
 #[test]
 fn live_machine_is_on_plasma_login_manager() {
     use rexon_core::system_plan::dm_symlink_unit;
@@ -1976,30 +1980,30 @@ fn live_machine_is_on_plasma_login_manager() {
     assert_eq!(lm["cases"][0]["present"], json!(true), "DM на живой машине есть");
 }
 
-/// Разбор строк вывода pacman: 50 записанных ответов живого Python (все ветки
-/// парсера плюс краевые случаи — многоточие внутри имени, регистр, пустой
-/// хвост, счётчик с пробелами) обязаны совпасть с ядром поле в поле.
+/// Parsing pacman output lines: 50 recorded answers of live Python (all branches
+/// of the parser plus edge cases — an ellipsis inside a name, case, an empty
+/// tail, a counter with spaces) must match the core field by field.
 ///
-/// Эталон снят ДО удаления Python-копии: `golden/system_plan_texts.json`,
-/// ключ `pacman_progress`.
+/// The golden data was taken BEFORE removing the Python copy: `golden/system_plan_texts.json`,
+/// key `pacman_progress`.
 ///
-/// ⚠️ Хвост списка (12 случаев) с живого Python НЕ снимался — его там и не
-/// было: это новые ветки, заведённые после разбора установки Budgie и LXQt
-/// у Wehrwolfmann. Три класса, и каждый закреплён нарочно:
-///   * переживаемый сбой зеркала («failed retrieving file … from <host>»,
-///     «too many errors from <host>») — этап `mirror`, БЕЗ красного креста;
-///   * настоящий отказ загрузки («failed to retrieve some files», «failed to
-///     commit transaction») — по-прежнему `error` с крестом. Мерило простое:
-///     транзакция кончилась удачей → крестов в журнале нет вовсе;
-///   * два интерактивных вопроса pacman (члены группы и выбор поставщика) —
-///     этап `prompt` с ответом, который pacman даёт себе сам, и глухота к
-///     строке «Enter a …», у которой смысла для человека нет. С 02.11.2026
-///     так же глухи «:: Repository <имя>» (шапка меню) и «:: Proceed with
-///     installation? [Y/n]» — эталон этих двух строк поправлен намеренно.
-/// Живьём 08.11.2026 (установка lxqt-wayland-session, r2101): английский
-/// ход транзакции без счётчика, список необязательных зависимостей,
-/// сообщения скриптов пакетов и болтовня хуков snapper/limine в окно не
-/// идут; «installing x...» — по-русски; хук — счётчиком без своего имени.
+/// ⚠️ The tail of the list (12 cases) was NOT taken from live Python — it was not
+/// there: these are new branches added after analyzing the Budgie and LXQt installs
+/// on Wehrwolfmann's machine. Three classes, and each is pinned on purpose:
+///   * a survivable mirror failure ("failed retrieving file … from <host>",
+///     "too many errors from <host>") — the `mirror` stage, WITHOUT a red cross;
+///   * a real download refusal ("failed to retrieve some files", "failed to
+///     commit transaction") — still `error` with a cross. The yardstick is simple:
+///     the transaction ended in success → there are no crosses in the log at all;
+///   * two interactive pacman questions (group members and provider choice) —
+///     the `prompt` stage with the answer pacman gives itself, and deafness to
+///     the "Enter a …" line, which means nothing to a person. Since 02.11.2026
+///     ":: Repository <name>" (the menu header) and ":: Proceed with
+///     installation? [Y/n]" are ignored the same way — the golden data of these two lines was corrected on purpose.
+/// Live 08.11.2026 (installing lxqt-wayland-session, r2101): the English
+/// transaction progress without a counter, the list of optional dependencies,
+/// package script messages and snapper/limine hook chatter do not go into the window;
+/// "installing x..." — in Russian; a hook — as a counter without its own name.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn pacman_transaction_chatter_stays_out_of_the_window() {
@@ -2027,7 +2031,7 @@ fn pacman_transaction_chatter_stays_out_of_the_window() {
     assert_eq!(shown("installing lxqt-wayland-session..."), "📦 Установка: lxqt-wayland-session");
     let hook = shown("(2/4) Checking the local deepin-session-treeland build against deepin-session...");
     assert_eq!(hook, "🔧 (2/4) Завершение установки…");
-    // Стадии makepkg и чужой текст — как раньше.
+    // makepkg stages and foreign text — as before.
     assert_eq!(shown("==> Making package: mate-tweak"), "RAW:==> Making package: mate-tweak");
     assert_eq!(shown("какая-то русская строка"), "RAW:какая-то русская строка");
 }
@@ -2035,7 +2039,7 @@ fn pacman_transaction_chatter_stays_out_of_the_window() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn pacman_progress_lines_match_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     use rexon_core::system_plan::parse_pacman_line;
     let fx = texts_fx();
@@ -2051,18 +2055,18 @@ fn pacman_progress_lines_match_python() {
     }
 }
 
-/// Идиот-защита экрана входа: 29 записанных прогонов живого Python (все 12
-/// семейств × helper есть/нет, плюс «DM уже есть», «не systemd» и обе ветки
-/// отказа) обязаны совпасть с планом ядра — те же команды, те же таймауты,
-/// те же сообщения.
+/// The login screen foolproofing: 29 recorded runs of live Python (all 12
+/// families × helper present/absent, plus "a DM already exists", "not systemd" and both refusal
+/// branches) must match the core's plan — the same commands, the same timeouts,
+/// the same messages.
 ///
-/// ⚠️ Ничего не устанавливается: эталон снят с подменённым subprocess.run,
-/// pkexec не вызывался ни разу (правило «system-install пути не трогаем на
-/// живой машине»).
+/// ⚠️ Nothing is installed: the golden data was taken with a substituted subprocess.run,
+/// pkexec was never called (the rule "system-install paths are not touched on
+/// a live machine").
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn ensure_dm_plan_matches_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     use rexon_core::system_plan::{ensure_dm_plan, EnsureDmPlan};
     let fx = texts_fx_live_helpers();
@@ -2109,7 +2113,7 @@ fn ensure_dm_plan_matches_python() {
                 assert_eq!(json!(message), emits[0][1], "{note}: вступление");
                 assert_eq!(fraction, 0.90, "{note}");
                 assert_eq!(json!(install.argv), calls[0]["argv"], "{note}: установка");
-                // Установка SDDM — скачивание из репозиториев, а не опрос.
+                // Installing SDDM is a download from the repositories, not a query.
                 assert_eq!(
                     json!(rexon_core::utils::DOWNLOAD_TIMEOUT_SECS),
                     calls[0]["timeout"],
@@ -2129,18 +2133,18 @@ fn ensure_dm_plan_matches_python() {
     }
 }
 
-/// Итог главного шага пакетной установки: 38 записанных прогонов живого
-/// Python (5 семейств × коды возврата, SteamOS, отсутствие polkit-агента,
-/// пустой список пакетов) — тексты и строки журнала обязаны совпасть.
+/// The result of the main step of a batch install: 38 recorded runs of live
+/// Python (5 families × exit codes, SteamOS, a missing polkit agent,
+/// an empty package list) — the texts and the log lines must match.
 ///
-/// ⭐ Пять прогонов сверяются НЕ на совпадение, а на починку: на неизвестном
-/// семействе оригинал падал RuntimeError, потому что готовил подсказку
-/// «поставьте руками» ДО ветвления — даже там, где команда не нужна вовсе.
-/// Ядро вместо падения объясняет человеку, что произошло.
+/// ⭐ Five runs are checked NOT for a match but for the fix: on an unknown
+/// family the original crashed with RuntimeError, because it prepared the
+/// "install by hand" hint BEFORE branching — even where no command is needed at all.
+/// Instead of crashing, the core explains to the person what happened.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn batch_main_result_matches_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     use rexon_core::system_plan::batch_main_result;
     let fx = texts_fx();
@@ -2186,12 +2190,12 @@ fn batch_main_result_matches_python() {
     assert_eq!(fixed, 5, "починенных прогонов ровно столько, сколько падало");
 }
 
-/// AUR-хвост установки: 10 записанных прогонов (SteamOS и обычный путь,
-/// успех, полный и частичный провал, «команда не найдена»).
+/// The AUR tail of the install: 10 recorded runs (SteamOS and the normal path,
+/// success, full and partial failure, "command not found").
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn batch_aur_messages_match_python() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     use rexon_core::system_plan::{batch_aur_intro, batch_aur_result};
     let fx = texts_fx();
@@ -2222,9 +2226,9 @@ fn batch_aur_messages_match_python() {
     }
 }
 
-/// Доли прогресса установки рабочего стола — порт замыкания `_pkg_cb`.
-/// Формулы сверены с исходным выражением Python, счётчик берётся из готового
-/// сообщения парсера.
+/// Desktop install progress shares — a port of the `_pkg_cb` closure.
+/// The formulas were checked against the original Python expression, the counter is taken from the parser's
+/// ready message.
 #[test]
 fn install_de_fraction_matches_python_formula() {
     use rexon_core::system_plan::install_de_fraction;
@@ -2241,8 +2245,8 @@ fn install_de_fraction_matches_python_formula() {
     assert_eq!(f("download", "⬇️  Скачивание: core.db"), None);
 }
 
-/// Исполняемые файлы рабочих столов: у КАЖДОГО стола из базы ядра он должен
-/// быть — иначе установленный стол вечно показывается отсутствующим.
+/// Desktop executables: EVERY desktop from the core's database must have one
+/// — otherwise an installed desktop is forever shown as missing.
 #[test]
 fn every_de_has_an_executable_to_probe() {
     use rexon_core::system::{de_installed_binaries, list_de_ids};
@@ -2261,7 +2265,7 @@ fn every_de_has_an_executable_to_probe() {
     assert!(de_installed_binaries("такого-стола-нет").is_empty());
 }
 
-/// Помощник AUR ищется только на Arch и в порядке предпочтения.
+/// An AUR helper is looked for only on Arch and in order of preference.
 #[test]
 fn aur_helper_pick_matches_python() {
     use rexon_core::system_plan::pick_aur_helper;
@@ -2278,9 +2282,9 @@ fn aur_helper_pick_matches_python() {
     assert_eq!(pick_aur_helper(PkgFamily::Debian, &have(&["yay"])), None);
 }
 
-/// Пост-установка MATE: подписи «Общих задач», карта snap-путей, содержимое
-/// gschema-оверрайда и тексты обоих привилегированных скриптов сняты с
-/// прежнего Python и обязаны совпасть с ядром байт в байт.
+/// MATE post-install: the «Common Tasks» captions, the snap path map, the contents of
+/// the gschema override and the texts of both privileged scripts were taken from
+/// the old Python and must match the core byte for byte.
 #[test]
 fn mate_post_install_texts_match_python() {
     use rexon_core::system_plan::{
@@ -2326,10 +2330,10 @@ fn mate_post_install_texts_match_python() {
     assert_eq!(mate_layout_fix_snap_paths(&text), want, "snap-пути");
 
     assert_eq!(json!(MATE_GSCHEMA_PATH), m["gschema_path"]);
-    // Оформление пишется В СЛОЙ ПОЛЬЗОВАТЕЛЯ и только ПОДТВЕРЖДЁННОЕ.
-    // Когда подтверждено всё, чего хотел прежний общесистемный оверрайд,
-    // набор значений обязан совпасть с его содержимым ключ-в-ключ: переезд
-    // из системы к пользователю не имеет права молча поменять вид стола.
+    // The appearance is written INTO THE USER LAYER and only what is CONFIRMED.
+    // When everything the old system-wide override wanted is confirmed,
+    // the set of values must match its contents key for key: moving
+    // from the system to the user has no right to silently change how the desktop looks.
     let full = MateLook {
         gtk_theme: Some("Yaru-MATE-dark".into()),
         marco_theme: Some("Yaru-MATE-dark".into()),
@@ -2353,7 +2357,7 @@ fn mate_post_install_texts_match_python() {
         .map(|a| (a[3].clone(), a[4].clone()))
         .collect();
     assert_eq!(got_pairs, want_pairs, "ключи оформления MATE не растеряны");
-    // Скрипт уборки общесистемного следа прошлых версий.
+    // The script that cleans up the system-wide trace of past versions.
     let cleanup = mate_gschema_cleanup_script();
     assert!(cleanup.contains(MATE_GSCHEMA_PATH), "уборка бьёт по оверрайду");
     assert!(cleanup.contains("glib-compile-schemas"), "схемы пересобираются");
@@ -2370,24 +2374,24 @@ fn mate_post_install_texts_match_python() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Оформление AeroShell: два новых вопроса к движку пакетов (версия
-// установленного пакета и список его файлов), ожидание замка и пересборка.
+// AeroShell appearance: two new questions to the package engine (the version
+// of the installed package and its file list), waiting for the lock, and a rebuild.
 //
-// Сырьё для Arch — с ЖИВОЙ машины (`pacman -Q` / `pacman -Ql`, только
-// чтение), оракул для версии и списка файлов — ПРЕЖНИЙ Python
-// (`_pacman_version` / `_pacman_file_list` до переноса), воспроизведённый
-// генератором дословно. Вывод dpkg/rpm синтетический — этих менеджеров на
-// машине нет, помечено в `note` каждого случая.
+// The Arch raw material is from a LIVE machine (`pacman -Q` / `pacman -Ql`, read
+// only), the oracle for the version and the file list is the OLD Python
+// (`_pacman_version` / `_pacman_file_list` before the port), reproduced
+// verbatim by the generator. The dpkg/rpm output is synthetic — these managers are not on the
+// machine, marked in each case's `note`.
 //
-// ⛔ Тесты только читают фикстуры: ни pacman, ни paru, ни pkexec.
+// ⛔ The tests only read fixtures: no pacman, no paru, no pkexec.
 // ══════════════════════════════════════════════════════════════════════════
 
 fn aeroshell_fx() -> Value {
     recovery_fx()["aeroshell"].clone()
 }
 
-/// Команда за версией УСТАНОВЛЕННОГО пакета (не «установлен ли» и не версия
-/// в репозиториях — третий, самостоятельный вопрос к движку).
+/// The command for the version of an INSTALLED package (not "is it installed" and not the version
+/// in the repositories — a third, independent question to the engine).
 #[test]
 fn installed_version_query_matches_golden() {
     for c in aeroshell_fx()["installed_version_query"].as_array().unwrap() {
@@ -2397,8 +2401,8 @@ fn installed_version_query_matches_golden() {
     }
 }
 
-/// Разбор вывода: две формы ответа (`имя версия` у pacman, голая версия у
-/// dpkg-query/rpm) и «не знаю» на всём, что версией не является.
+/// Parsing the output: two answer forms (`name version` for pacman, a bare version for
+/// dpkg-query/rpm) and "do not know" for everything that is not a version.
 #[test]
 fn parse_installed_version_matches_golden() {
     for c in aeroshell_fx()["installed_version"].as_array().unwrap() {
@@ -2412,7 +2416,7 @@ fn parse_installed_version_matches_golden() {
     }
 }
 
-/// Команда за списком файлов пакета.
+/// The command for a package's file list.
 #[test]
 fn package_files_query_matches_golden() {
     for c in aeroshell_fx()["package_files_query"].as_array().unwrap() {
@@ -2422,8 +2426,8 @@ fn package_files_query_matches_golden() {
     }
 }
 
-/// Пустой список файлов при нулевом коде — законный ответ метапакета, а не
-/// ошибка: `pacman -Ql base` печатает ноль байт (проверено на живой машине).
+/// An empty file list with a zero code is a legitimate answer for a metapackage, not
+/// an error: `pacman -Ql base` prints zero bytes (checked on a live machine).
 #[test]
 fn package_files_output_matches_golden() {
     for c in aeroshell_fx()["package_files_output"].as_array().unwrap() {
@@ -2436,7 +2440,7 @@ fn package_files_output_matches_golden() {
     }
 }
 
-/// Разбор путей — общий на весь проект, две формы вывода.
+/// Path parsing is shared by the whole project, two output forms.
 #[test]
 fn package_file_paths_matches_golden() {
     for c in aeroshell_fx()["package_file_paths"].as_array().unwrap() {
@@ -2446,11 +2450,11 @@ fn package_file_paths_matches_golden() {
     }
 }
 
-/// Шаг ожидания замка: тот же цикл, что у установки пакетов.
+/// The lock wait step: the same loop as for installing packages.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn lock_wait_step_matches_golden() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     for c in aeroshell_fx()["lock_wait"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
@@ -2464,17 +2468,17 @@ fn lock_wait_step_matches_golden() {
     }
 }
 
-/// Цикл ожидания замка: он крутится в ядре, а не в шиме.
+/// The lock wait loop: it spins in the core, not in the shim.
 ///
-/// ⚠️ Ни одной настоящей секунды сна: побочные действия подставлены, поэтому
-/// проверяется именно ПОРЯДОК (сколько раз спросили ФС, сколько раз поспали,
-/// сказали ли человеку РОВНО один раз), а не длительность.
+/// ⚠️ Not a single real second of sleep: side actions are substituted, so
+/// what is checked is the ORDER (how many times the FS was asked, how many times we slept,
+/// whether the person was told EXACTLY once), not the duration.
 #[test]
 fn wait_for_pkg_lock_turns_the_loop_in_the_core() {
     struct Fake {
-        /// Ответы `any_locked` по порядку оборотов.
+        /// `any_locked` answers in the order of turns.
         locked: Vec<bool>,
-        /// Показания часов по порядку опросов.
+        /// Clock readings in the order of polls.
         clock: Vec<f64>,
         turn: usize,
         tick: usize,
@@ -2502,15 +2506,15 @@ fn wait_for_pkg_lock_turns_the_loop_in_the_core() {
     }
     let paths = vec!["/var/lib/pacman/db.lck".to_string()];
 
-    // Замок свободен сразу: ни сна, ни слов человеку.
+    // The lock is free right away: no sleep, no words to the person.
     let mut io = Fake { locked: vec![false], clock: vec![0.0], turn: 0, tick: 0,
                         slept: vec![], said: vec![] };
     assert_eq!(wait_for_pkg_lock(&mut io, &paths, 300),
                (true, rexon_core::system_plan::PKG_LOCK_OK.to_string()));
     assert!(io.slept.is_empty() && io.said.is_empty());
 
-    // Занят три оборота, потом освободился: спали трижды по два, сказали ОДИН
-    // раз (иначе окно прогресса залило бы одной и той же строкой).
+    // Busy for three turns, then free: slept three times by two, told ONCE
+    // (otherwise the progress window would be flooded with the same line).
     let mut io = Fake { locked: vec![true, true, true, false],
                         clock: vec![0.0, 2.0, 4.0, 6.0], turn: 0, tick: 0,
                         slept: vec![], said: vec![] };
@@ -2520,13 +2524,13 @@ fn wait_for_pkg_lock_turns_the_loop_in_the_core() {
     assert_eq!(io.said.len(), 1, "{:?}", io.said);
     assert_eq!(io.said[0].0, rexon_core::system_plan::PKG_LOCK_WAIT_STAGE);
 
-    // Не дождались: отказ с текстом ядра, и он НЕ равен «свободен».
+    // Did not wait long enough: a refusal with the core's text, and it is NOT equal to "free".
     let mut io = Fake { locked: vec![true], clock: vec![0.0, 300.0], turn: 0,
                         tick: 0, slept: vec![], said: vec![] };
     let (ok, msg) = wait_for_pkg_lock(&mut io, &paths, 300);
     assert!(!ok && msg != rexon_core::system_plan::PKG_LOCK_OK, "{msg}");
 
-    // Семейство без замка (`paths` пуст): ФС не спрашиваем вовсе.
+    // A family without a lock (`paths` empty): the FS is not asked at all.
     struct NoFs;
     impl LockWaitIo for NoFs {
         fn any_locked(&mut self, _p: &[String]) -> bool {
@@ -2539,15 +2543,15 @@ fn wait_for_pkg_lock_turns_the_loop_in_the_core() {
     assert_eq!(wait_for_pkg_lock(&mut NoFs, &[], 300).0, true);
 }
 
-/// Строка растущего журнала: что показать человеку, а что проглотить.
+/// A line of a growing log: what to show the person and what to swallow.
 ///
-/// Читателей было два — установка из репозиториев и сборка из AUR, — и
-/// различались они ровно этим. Движок один, различие здесь.
+/// There used to be two readers — installing from the repositories and building from AUR — and
+/// they differed in exactly this. The engine is one, the difference is here.
 #[test]
 fn log_tail_line_splits_progress_from_noise() {
     use LogTailKind::{Aur, Pacman};
-    // Установка: разобранная строка отдаёт стадию, неразобранная — «raw»
-    // (иначе человек не увидел бы предупреждений менеджера вовсе).
+    // Install: a parsed line gives a stage, an unparsed one gives "raw"
+    // (otherwise the person would never see the manager's warnings).
     let (stage, msg) = log_tail_line(Pacman, "(3/9) installing mate-panel...").unwrap();
     assert_ne!(stage, "raw", "{stage}/{msg}");
     assert_eq!(
@@ -2556,15 +2560,15 @@ fn log_tail_line_splits_progress_from_noise() {
         "неразобранную строку обязаны показать как есть — иначе человек не \
          увидит того, чего движок ещё не знает"
     );
-    // Служебная метка кода возврата — для скрипта, не для человека.
+    // The exit code service marker is for the script, not for the person.
     assert_eq!(log_tail_line(Pacman, "__REXON_EXIT__=0"), None);
     assert_eq!(log_tail_line(Pacman, "   "), None);
-    // Хвостовые пробелы срезаются, ведущие — нет: отступ вывода менеджера
-    // несёт смысл.
+    // Trailing spaces are trimmed, leading ones are not: the indentation of the manager's output
+    // carries meaning.
     assert_eq!(log_tail_line(Pacman, "  x  ").unwrap().1, "  x");
 
-    // Сборка: показываем только стадии, иначе десятки тысяч строк компилятора
-    // зальют окно прогресса.
+    // Build: we show only stages, otherwise tens of thousands of compiler lines
+    // would flood the progress window.
     assert_eq!(
         log_tail_line(Aur, "==> Making package: mate-tweak"),
         Some(("aur".to_string(), "    ==> Making package: mate-tweak".to_string()))
@@ -2576,8 +2580,8 @@ fn log_tail_line_splits_progress_from_noise() {
     }
 }
 
-/// Живое чтение растущего файла: строки доходят по ходу дела, а хвост без
-/// перевода строки — в самом конце.
+/// Live reading of a growing file: lines arrive as things progress, and the tail without
+/// a newline at the very end.
 #[test]
 fn tail_log_reads_a_growing_file() {
     use std::io::Write;
@@ -2596,11 +2600,11 @@ fn tail_log_reads_a_growing_file() {
     writeln!(f, "==> Making package: раз").unwrap();
     writeln!(f, "gcc шум").unwrap();
     f.flush().unwrap();
-    // Ждём оборот читателя — но исход проверяем ФАКТОМ, а не сном: строка
-    // должна дойти ДО остановки, иначе «живой ход дела» им не является.
-    // Бюджет считаем от периода опроса читателя (Aur — 300 мс), а не на глаз:
-    // когда весь набор идёт разом, поток-читатель просыпается с задержкой и
-    // одного оборота ему не хватает. Зелёный прогон всё равно уходит по факту.
+    // We wait for the reader's turn — but check the outcome by FACT, not by sleeping: the line
+    // must arrive BEFORE the stop, otherwise it is not "live progress".
+    // The budget is computed from the reader's poll period (Aur — 300 ms), not by eye:
+    // when the whole suite runs at once, the reader thread wakes up late and
+    // one turn is not enough for it. A green run still leaves by fact.
     let mut waited = 0;
     while seen.lock().unwrap().is_empty() && waited < 300 {
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -2612,8 +2616,8 @@ fn tail_log_reads_a_growing_file() {
         "строка не дошла до человека, пока установка ещё идёт"
     );
 
-    // Хвост без перевода строки: он существует всегда — процесс убивают или
-    // он падает на полуслове.
+    // A tail without a newline always exists — the process is killed or
+    // it crashes mid-word.
     write!(f, "==> Хвост без перевода").unwrap();
     f.flush().unwrap();
     let shown = tail.stop();
@@ -2621,16 +2625,16 @@ fn tail_log_reads_a_growing_file() {
     assert_eq!(got.len(), 2, "{got:?}");
     assert!(got[1].1.contains("Хвост без перевода"), "{got:?}");
     assert_eq!(shown.len(), 2, "{shown:?}");
-    // Повторная остановка безопасна (шим зовёт её из finally).
+    // A repeated stop is safe (the shim calls it from finally).
     assert!(tail.stop().is_empty());
     let _ = std::fs::remove_file(&path);
 }
 
-/// План пересборки: порядок отказов и команда сборщика.
+/// The rebuild plan: the order of refusals and the builder command.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn rebuild_plan_matches_golden() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     for c in aeroshell_fx()["rebuild_plan"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
@@ -2645,7 +2649,7 @@ fn rebuild_plan_matches_golden() {
     }
 }
 
-/// Строка вывода сборщика: что показывать и что пропускать.
+/// A builder output line: what to show and what to skip.
 #[test]
 fn rebuild_line_matches_golden() {
     for c in aeroshell_fx()["rebuild_line"].as_array().unwrap() {
@@ -2658,11 +2662,11 @@ fn rebuild_line_matches_golden() {
     }
 }
 
-/// Итог пересборки по коду возврата и хвосту вывода.
+/// The rebuild result by exit code and the output tail.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn rebuild_outcome_matches_golden() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     for c in aeroshell_fx()["rebuild_outcome"].as_array().unwrap() {
         let note = c["note"].as_str().unwrap();
@@ -2671,12 +2675,12 @@ fn rebuild_outcome_matches_golden() {
     }
 }
 
-/// Отдельным тестом — починка, которую нельзя потерять при пересъёмке
-/// голдена: человеку больше не показывают «1 пакет(ов)».
+/// As a separate test — a fix that must not be lost when retaking the
+/// golden data: the person is no longer shown «1 пакет(ов)».
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn rebuild_start_message_declines_package_word() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     let one = rebuild_plan(&["a".to_string()], Some("paru"), false, true, "");
     let two = rebuild_plan(
@@ -2696,8 +2700,8 @@ fn rebuild_start_message_declines_package_word() {
     }
 }
 
-/// Тексты пересборки AeroShell по-русски — дословно как до перевода на
-/// каталог (снимок `ca42e74^`: константы `REBUILD_*` и `format!`).
+/// The AeroShell rebuild texts in Russian — verbatim as before moving to the
+/// catalog (snapshot `ca42e74^`: the `REBUILD_*` constants and `format!`).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn aeroshell_russian_texts_as_before() {
@@ -2738,7 +2742,7 @@ fn aeroshell_russian_texts_as_before() {
     assert!(denied.ends_with("» в настройках Rexon, когда будете готовы ввести пароль."), "{denied}");
 }
 
-/// Те же тексты по-английски — без русских букв, фразами.
+/// The same texts in English — without Russian letters, as phrases.
 #[test]
 fn aeroshell_english_texts_have_no_russian() {
     use rexon_core::aeroshell as a;
@@ -2770,9 +2774,9 @@ fn aeroshell_english_texts_have_no_russian() {
     assert!(!denied.contains("“ "), "кнопка без значка впереди: {denied}");
 }
 
-/// И вторая починка: у метапакета `pacman -Ql` печатает ноль байт с кодом 0,
-/// и это «файлов нет», а не «спросить не вышло». Различие держит вся сверка
-/// оформления: пакет без файлов не должен объявляться собранным.
+/// And the second fix: for a metapackage `pacman -Ql` prints zero bytes with code 0,
+/// and that means "no files", not "could not ask". The whole appearance check relies on this
+/// distinction: a package without files must not be declared built.
 #[test]
 fn empty_file_list_is_an_answer_not_a_failure() {
     assert_eq!(package_files_output(true, ""), Some(String::new()));
@@ -2780,7 +2784,7 @@ fn empty_file_list_is_an_answer_not_a_failure() {
     assert!(package_file_paths(PkgFamily::Arch, "").is_empty());
 }
 
-/// Одно решение «экран входа рисует Plasma Login Manager» на продукт.
+/// One decision "the login screen is drawn by Plasma Login Manager" per product.
 #[test]
 fn plasma_login_is_recognised_by_unit_name() {
     use rexon_core::system_plan::{is_plasma_login, PLASMA_LOGIN_UNIT};
@@ -2792,19 +2796,19 @@ fn plasma_login_is_recognised_by_unit_name() {
     }
 }
 
-// ── Английский интерфейс ────────────────────────────────────────────────
+// ── English interface ────────────────────────────────────────────────
 
 fn cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Всё, что движок установки говорит человеку (отказы, журнал хода,
-/// итоги, ожидание замка, откат форков, сброс Plymouth и SDDM, доводка
-/// MATE), при английском языке — без единой русской буквы.
+/// Everything the install engine says to the person (refusals, the progress log,
+/// results, waiting for the lock, rolling back forks, resetting Plymouth and SDDM, finishing
+/// MATE) has not a single Russian letter when the language is English.
 ///
-/// Не собираются намеренно: тексты привилегированных помощников и polkit
-/// (их ведёт заход «один пароль») и подписи шагов плана (служебные метки
-/// для сверки с Python, человеку не показываются).
+/// Deliberately not collected: the texts of the privileged helpers and polkit
+/// (they are handled by the "one password" track) and plan step captions (service labels
+/// for comparing with Python, not shown to the person).
 #[test]
 fn english_system_plan_has_no_russian() {
     use rexon_core::system_plan as sp;
@@ -2938,7 +2942,7 @@ fn english_system_plan_has_no_russian() {
     }
 }
 
-/// Английские фразы, собранные из частей, читаются как фразы.
+/// English phrases assembled from parts read as phrases.
 #[test]
 fn english_system_plan_reads_naturally() {
     use rexon_core::system_plan as sp;
@@ -2968,13 +2972,13 @@ default “breeze”."
     );
 }
 
-/// Живой случай 08.11.2026: «Проверить / Восстановить» Budgie при обрыве
-/// сети — ни одно зеркало не отдало файлы. Человек видит понятное
-/// объяснение, а не весь вывод pacman со строками «up to date -- skipping».
+/// A live case of 08.11.2026: Budgie «Check / Repair» with the network
+/// down — not a single mirror returned the files. The person sees a clear
+/// explanation, not the whole pacman output with "up to date -- skipping" lines.
 #[test]
 fn download_failure_is_explained_not_dumped() {
-    // Текст и ожидание берутся из каталога по отдельности: без закрепления
-    // соседняя сверка (`i18n_pin::ru()`) успевает сменить язык между ними.
+    // The text and the expectation are taken from the catalog separately: without pinning
+    // a neighboring check (`i18n_pin::ru()`) manages to change the language between them.
     let _lang = i18n_pin::en();
     let stderr = "warning: budgie-desktop-10.10.2-3.1 is up to date -- skipping\n\
         error: failed retrieving file 'lollypop-1.4.48-1-any.pkg.tar.zst' from mirror.zyner.org : Connection timed out after 10000 milliseconds\n\
@@ -2995,8 +2999,8 @@ fn download_failure_is_explained_not_dumped() {
     assert!(!out.message.contains("up to date"));
 }
 
-/// Отказ без разобранной причины: остаются только строки `error:`, и
-/// отказ одного зеркала среди них не считается.
+/// A refusal without a parsed reason: only the `error:` lines remain, and
+/// a single mirror's refusal among them does not count.
 #[test]
 fn manager_error_keeps_only_error_lines() {
     let raw = "warning: nemo-6.6.4-1.1 is up to date -- skipping\n\
@@ -3004,7 +3008,7 @@ fn manager_error_keeps_only_error_lines() {
         error: failed retrieving file 'a.pkg.tar.zst' from m.example : timed out\n\
         error: something unexpected happened";
     assert_eq!(rexon_core::system_plan::manager_error_lines(raw), "error: something unexpected happened");
-    // Строк `error:` нет — текст не теряется.
+    // No `error:` lines — the text is not lost.
     assert_eq!(rexon_core::system_plan::manager_error_lines("  just text  "), "just text");
     assert!(rexon_core::system_plan::download_failed("error: failed to commit transaction (failed to retrieve some files)"));
     assert!(!rexon_core::system_plan::download_failed("error: failed to commit transaction (conflicting files)"));

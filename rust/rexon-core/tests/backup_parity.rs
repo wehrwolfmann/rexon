@@ -1,10 +1,10 @@
-//! Golden-сверка порта `backup.rs` с оригиналом `rexon/backup.py`.
+//! Golden check of the `backup.rs` port against the original `rexon/backup.py`.
 //!
-//! Эталон `golden/backup_cases.json` снят с самого Python: `os.path.relpath` +
-//! логика `create_backup`, `is_plasma_running`, `_expand`, `get_backups_for_de`
-//! и list-выборки `PlasmaProtector` прогнаны на батарее входов. Проверяются
-//! только детерминированные (чистые) части — эффекты ФС/подпроцессов в порт не
-//! входят.
+//! The golden file `golden/backup_cases.json` was captured from Python itself: `os.path.relpath` +
+//! the logic of `create_backup`, `is_plasma_running`, `_expand`, `get_backups_for_de`
+//! and the list selections of `PlasmaProtector` were run over a battery of inputs. Only
+//! the deterministic (pure) parts are checked — FS/subprocess effects are not part of
+//! the port.
 
 use rexon_core::backup::{
     backup_name, de_backups_for, expand_tilde, is_plasma_desktop, plasma_backups,
@@ -27,7 +27,7 @@ fn constants_match_python() {
     assert_eq!(json!(ROLLBACK_SUFFIX), c["ROLLBACK_SUFFIX"]);
     assert_eq!(json!(PANEL_CONFIGS), c["PANEL_CONFIGS"], "PANEL_CONFIGS");
     assert_eq!(json!(FULL_CONFIGS), c["FULL_CONFIGS"], "FULL_CONFIGS");
-    // FULL начинается с PANEL (инвариант оригинала).
+    // FULL starts with PANEL (an invariant of the original).
     assert_eq!(&FULL_CONFIGS[..PANEL_CONFIGS.len()], PANEL_CONFIGS);
 }
 
@@ -74,7 +74,7 @@ fn backup_name_matches_python() {
 #[test]
 fn de_backups_for_matches_python() {
     let fx = fixture();
-    // Метаданные из того же набора, что в оракуле (порядок вставки сохранён).
+    // Metadata from the same set as in the oracle (insertion order preserved).
     let entries = vec![
         DeMetaEntry {
             name: "kde_20260101_100000".into(),
@@ -144,7 +144,7 @@ fn plasma_list_selectors_match_python() {
     );
     assert_eq!(json!(plasma_has_backups(&backups)), pl["has_backups"]);
 
-    // Пустой набор.
+    // An empty set.
     let empty: Vec<PlasmaBackup> = Vec::new();
     let pe = &fx["plasma_empty"];
     assert_eq!(serde_json::to_value(plasma_backups(&empty)).unwrap(), pe["get_backups"]);
@@ -156,7 +156,7 @@ fn plasma_list_selectors_match_python() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Раскладки/выборки/сообщения второй волны порта (секция `pure_v2`)
+//  Layouts/selections/messages of the port's second wave (section `pure_v2`)
 // ══════════════════════════════════════════════════════════════════════════
 
 use rexon_core::backup as bk;
@@ -205,7 +205,7 @@ fn snapshot_and_restore_layout_match_python() {
         pairs(&s["want"])
     );
 
-    // restore_items: наличие файла в снапшоте берём из списка `present`
+    // restore_items: whether a file is in the snapshot is taken from the `present` list
     let r = &p["restore_items"];
     let backup_path = r["backup_path"].as_str().unwrap();
     let present: Vec<String> = strs(&r["present"])
@@ -236,7 +236,7 @@ fn plasma_decisions_match_python() {
     let fx = fixture();
     let p = &fx["pure_v2"];
 
-    // раскладка снимка панели: существование конфигов — из списка `present`
+    // panel snapshot layout: existence of configs — from the `present` list
     let s = &p["plasma_snapshot_items"];
     let present = strs(&s["present"]);
     assert_eq!(
@@ -246,7 +246,7 @@ fn plasma_decisions_match_python() {
         pairs(&s["want"])
     );
 
-    // запись о новом снимке
+    // the record of a new snapshot
     let want_entry = &p["plasma_entry"];
     let got = bk::plasma_entry(
         want_entry["timestamp"].as_str().unwrap(),
@@ -257,7 +257,7 @@ fn plasma_decisions_match_python() {
     );
     assert_eq!(serde_json::to_value(&got).unwrap(), *want_entry);
 
-    // ротация: что осталось и что удалять
+    // rotation: what is kept and what to delete
     let rot = &p["plasma_rotate"];
     let mut list = plasma_vec(&rot["input"]);
     let dropped = bk::plasma_rotate(&mut list);
@@ -265,13 +265,13 @@ fn plasma_decisions_match_python() {
     assert_eq!(dropped, strs(&rot["dropped"]));
     assert_eq!(list.len(), bk::MAX_PLASMA_SNAPSHOTS);
 
-    // Выбор снимка (по метке / последний / ошибки).
+    // Choosing a snapshot (by label / the latest / errors).
     //
-    // ⭐Буквы обоих отказов с 18.09 сознательно разошлись с оригиналом
-    // (жаргон «бэкап» в лицо покупателю, правило #13) и проверяются в
-    // `texts_and_restart_cmds_match_python`. Здесь сверяется РЕШЕНИЕ: тот
-    // же ли отказ выбран, что у оригинала, — именно это и есть предмет
-    // сверки, а не формулировка.
+    // ⭐The wording of both refusals deliberately diverged from the original since 18.09
+    // (the jargon «бэкап» in the buyer's face, rule #13) and is checked in
+    // `texts_and_restart_cmds_match_python`. Here the DECISION is checked: whether
+    // the same refusal is chosen as in the original — that is exactly the subject of
+    // the check, not the wording.
     for case in p["plasma_pick"].as_array().unwrap() {
         let list = plasma_vec(&case["backups"]);
         let ts = case["timestamp"].as_str();
@@ -293,7 +293,7 @@ fn plasma_decisions_match_python() {
         }
     }
 
-    // источники восстановления панели
+    // panel restore sources
     let ri = &p["plasma_restore_items"];
     let entry = plasma(&ri["entry"]);
     let snap_dir = entry.path.clone();
@@ -305,7 +305,7 @@ fn plasma_decisions_match_python() {
         pairs(&ri["want"])
     );
 
-    // индекс для удаления
+    // index for deletion
     let list = plasma_vec(&p["plasma_delete_backups"]);
     for case in p["plasma_delete_index"].as_array().unwrap() {
         let got = bk::plasma_delete_index(&list, case["timestamp"].as_str().unwrap());
@@ -313,14 +313,14 @@ fn plasma_decisions_match_python() {
     }
 }
 
-/// ⭐СОЗНАТЕЛЬНОЕ расхождение с оригиналом, а не подгонка эталона.
+/// ⭐A DELIBERATE divergence from the original, not a fudge of the golden file.
 ///
-/// Эталон `golden/backup_cases.json` описывает Python КАК ЕСТЬ и таким и
-/// остаётся: его не переписывают под новый текст. Здесь проверяется пара
-/// условий сразу — эталон обязан помнить ПРЕЖНЮЮ формулировку (иначе мы
-/// чиним не то, что было), а нынешняя обязана от неё отличаться (иначе
-/// починка осталась в комментарии и не доехала до кода). Тот же приём, что
-/// у `TEXT_FIXES` в `qt_settings_parity.rs`.
+/// The golden file `golden/backup_cases.json` describes Python AS IT IS and stays
+/// that way: it is not rewritten for the new text. Here a pair of
+/// conditions is checked at once — the golden file must remember the FORMER wording (otherwise we
+/// are fixing something that was not there), and the current one must differ from it (otherwise
+/// the fix stayed in a comment and never reached the code). The same technique as
+/// `TEXT_FIXES` in `qt_settings_parity.rs`.
 fn diverged(got: &str, golden: &Value, was: &str, what: &str) {
     assert_eq!(
         golden,
@@ -333,7 +333,7 @@ fn diverged(got: &str, golden: &Value, was: &str, what: &str) {
 
 #[test]
 fn texts_and_restart_cmds_match_python() {
-    // Эталон — русский текст, сверка через po/ru.po.
+    // The golden value is Russian text, checked through po/ru.po.
     let _lang = i18n_pin::ru();
     let fx = fixture();
     let p = &fx["pure_v2"];
@@ -342,14 +342,14 @@ fn texts_and_restart_cmds_match_python() {
     assert_eq!(json!(bk::msg_backup_not_found()), t["BACKUP_NOT_FOUND"]);
     assert_eq!(json!(bk::msg_none_restored()), t["NONE_RESTORED"]);
 
-    // ── Проход 18.09: жаргон в том, что читает покупатель (правило #13) ──
+    // ── Pass of 18.09: jargon in what the buyer reads (rule #13) ──
     //
-    // Секция «Защита панели KDE Plasma» подписана словом «копия»
-    // («Сохранить копию», «Сохранённые копии», «Папка копии»), а сообщения
-    // из ядра отвечали на неё «бэкапом» и «снапшотом» — два имени одной
-    // вещи в одном окне. Плюс «Plasmashell» вместо того, что человек видит
-    // на экране: соседняя строка на неудачу с самого начала говорила
-    // «панель».
+    // The «Защита панели KDE Plasma» section is labelled with the word «копия»
+    // («Сохранить копию», «Сохранённые копии», «Папка копии»), while the messages
+    // from the core answered it with «бэкап» and «снапшот» — two names for one
+    // thing in one window. Plus «Plasmashell» instead of what the person sees
+    // on screen: the neighbouring failure line said «панель»
+    // from the very beginning.
     diverged(
         &bk::msg_nothing_to_backup(),
         &t["NOTHING_TO_BACKUP"],
@@ -376,10 +376,10 @@ fn texts_and_restart_cmds_match_python() {
     );
     assert_eq!(json!(bk::msg_restored_items(0)), m["restored_items_0"]);
 
-    // Та же статья: счёт стоял с одним окончанием на все числа
-    // («Восстановлено 1 элементов», «Бэкап создан (1 файлов)»), а метка
-    // времени копии показывалась машинной — при том что строка списка,
-    // на которую человек нажал, подписана датой.
+    // The same item: the count had one ending for all numbers
+    // («Восстановлено 1 элементов», «Бэкап создан (1 файлов)»), and the copy's
+    // timestamp was shown in machine form — even though the list row
+    // the person clicked is labelled with a date.
     diverged(
         &bk::msg_restored_items(3),
         &m["restored_items_3"],
@@ -424,20 +424,20 @@ fn texts_and_restart_cmds_match_python() {
     assert_eq!(json!(bk::PLASMASHELL_SETTLE_SECS), c["settle_secs"]);
 }
 
-/// Сторож на будущее: сообщения раздела «Защита панели KDE Plasma» читает
-/// покупатель, а не разработчик.
+/// A guard for the future: the messages of the «Защита панели KDE Plasma» section are read by
+/// the buyer, not the developer.
 ///
-/// Проверяются свойства текста, а не его буквы: вторая копия подписи в
-/// сверке ровно тем и плоха, что переименование подписи молча перестаёт
-/// что-либо значить. Здесь сторож краснеет, если жаргон вернётся любым
-/// словом или если счёт снова встанет с одним окончанием.
+/// Properties of the text are checked, not its letters: a second copy of a caption in
+/// a check is bad precisely because renaming the caption silently stops
+/// meaning anything. Here the guard turns red if the jargon comes back in any
+/// word or if the count again gets a single ending.
 #[test]
 fn panel_messages_speak_to_the_buyer() {
     let _lang = i18n_pin::ru();
     let samples = panel_message_samples();
-    // «Plasmashell» — имя служебной программы: на экране человек видит
-    // панель. Имена технологий (KDE, Plasma) при этом остаются латиницей —
-    // это отдельное правило владельца, и под запрет они не попадают.
+    // «Plasmashell» is the name of a service program: on screen the person sees
+    // the panel. Technology names (KDE, Plasma) stay in Latin script —
+    // that is a separate rule of the owner, and they are not banned.
     for (what, text) in &samples {
         let low = text.to_lowercase();
         for jargon in ["бэкап", "снапшот", "plasmashell", "path", "null"] {
@@ -454,7 +454,7 @@ fn panel_messages_speak_to_the_buyer() {
     panel_messages_russian_tail();
 }
 
-/// Все сообщения раздела «Защита панели KDE Plasma» на действующем языке.
+/// All messages of the «Защита панели KDE Plasma» section in the active language.
 fn panel_message_samples() -> Vec<(&'static str, String)> {
     vec![
         ("NOTHING_TO_BACKUP", bk::msg_nothing_to_backup()),
@@ -479,14 +479,14 @@ fn panel_message_samples() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// Русские счёт и даты — продолжение сверки выше (язык уже закреплён).
+/// Russian counts and dates — a continuation of the check above (the language is already pinned).
 fn panel_messages_russian_tail() {
-    // Склонение счёта: 1 — «файл», 4 — «файла», 5 — «файлов». Без этого
-    // покупатель читал «создана копия (1 файлов)».
+    // Count declension: 1 — «файл», 4 — «файла», 5 — «файлов». Without it
+    // the buyer read «создана копия (1 файлов)».
     assert!(bk::msg_backup_created(1).ends_with("(1 файл)"));
     assert!(bk::msg_backup_created(4).ends_with("(4 файла)"));
     assert!(bk::msg_backup_created(5).ends_with("(5 файлов)"));
-    // Ловушка второго десятка: 11 и 14 — «файлов», а не «файл»/«файла».
+    // The second-ten trap: 11 and 14 — «файлов», not «файл»/«файла».
     assert!(bk::msg_backup_created(11).ends_with("(11 файлов)"));
     assert!(bk::msg_backup_created(14).ends_with("(14 файлов)"));
     assert!(bk::msg_restored_items(1).ends_with("1 элемент"));
@@ -494,18 +494,18 @@ fn panel_messages_russian_tail() {
     assert!(bk::msg_restored_items(11).ends_with("11 элементов"));
     assert!(bk::msg_restored_files(1, "20260730_010203").contains("1 файл из"));
 
-    // Метка времени приводится к тому же виду, каким подписана строка
-    // списка копий в окне; неразобранная остаётся как есть, а не
-    // превращается в пустое место.
-    // Вид даты — из каталога перевода (`qt_settings::pretty_backup_ts`).
+    // The timestamp is brought to the same form the row of the
+    // copies list in the window is labelled with; an unparsed one stays as is rather than
+    // turning into an empty space.
+    // The date form comes from the translation catalog (`qt_settings::pretty_backup_ts`).
     let restored = bk::msg_restored_files(4, "20260730_010203");
     assert!(restored.contains(&rexon_core::qt_settings::pretty_backup_ts("20260730_010203")));
     assert!(restored.contains("30.07.2026") && !restored.contains("20260730_010203"));
     assert!(bk::msg_snapshot_not_found("мусор").contains("мусор"));
 }
 
-/// Та же секция по-английски: ни одной русской буквы, счёт по-английски,
-/// хвост о перезапуске панели — со своим переводом строки.
+/// The same section in English: not a single Russian letter, the count in English,
+/// the tail about restarting the panel — with its own line break.
 #[test]
 fn english_panel_messages_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -527,7 +527,7 @@ fn english_panel_messages_have_no_russian() {
     assert_eq!(bk::msg_snapshot_not_found("мусор"), "Copy not found: мусор");
 }
 
-/// Всё прежнее по-русски — дословно как было до перевода.
+/// Everything old in Russian — word for word as it was before the translation.
 #[test]
 fn russian_panel_messages_read_as_before() {
     let _lang = i18n_pin::ru();
@@ -557,16 +557,16 @@ fn russian_panel_messages_read_as_before() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Транзакционное восстановление на РЕАЛЬНЫХ конфигах (секция `tx`)
+//  Transactional restore on REAL configs (section `tx`)
 // ══════════════════════════════════════════════════════════════════════════
 //
-// Golden снят прогоном Python-эталона `_py_transactional_restore` в tempdir на
-// настоящих `~/.config/{kdeglobals,plasmarc,kcminputrc}` этой машины (снимок
-// «до» и «после» лежит в JSON). Здесь то же дерево разворачивается заново,
-// прогоняется Rust-порт и сверяется побайтово дерево «после» + (ok, message,
-// restored). Всё строго внутри временного каталога — в систему тест не пишет.
+// The golden file was captured by running the Python reference `_py_transactional_restore` in a tempdir on
+// this machine's real `~/.config/{kdeglobals,plasmarc,kcminputrc}` (the "before"
+// and "after" snapshot is in the JSON). Here the same tree is unfolded again,
+// the Rust port is run and the "after" tree + (ok, message,
+// restored) is compared byte for byte. Everything stays strictly inside a temporary directory — the test does not write to the system.
 
-/// Развернуть описание дерева из golden.
+/// Unfold a tree description from the golden file.
 fn make_tree(root: &Path, spec: &Value) {
     for (rel, node) in spec.as_object().unwrap() {
         let p = root.join(rel);
@@ -581,7 +581,7 @@ fn make_tree(root: &Path, spec: &Value) {
     }
 }
 
-/// Снять описание дерева в том же формате, что генератор golden.
+/// Capture a tree description in the same format as the golden generator.
 fn snap_tree(root: &Path) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
     let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
@@ -627,8 +627,8 @@ fn transactional_restore_matches_python_on_real_configs() {
         fs::create_dir_all(&root).unwrap();
         make_tree(&root, &case["before"]);
 
-        // Форсировать сбой atomic swap: rollback-путь — непустой каталог 0555
-        // (удалить нельзя → rename(dest → rollback) даёт ENOTEMPTY).
+        // Force an atomic swap failure: the rollback path is a non-empty 0555 directory
+        // (cannot be deleted → rename(dest → rollback) gives ENOTEMPTY).
         if case["mutate"].as_str() == Some("lock_rollback") {
             let p = root.join(case["mutate_path"].as_str().unwrap());
             fs::create_dir_all(&p).unwrap();
@@ -656,18 +656,18 @@ fn transactional_restore_matches_python_on_real_configs() {
         );
         let want_msg = case["want_message"].as_str().unwrap();
         if out.ok {
-            // ⭐Успешный итог считает восстановленные элементы, и с 18.09 он
-            // их СКЛОНЯЕТ (оригинал писал «1 элементов» при любом числе —
-            // правило #16). Поэтому сверяется само число, а не буквы: их
-            // держит `panel_messages_speak_to_the_buyer`.
+            // ⭐The success result counts the restored items, and since 18.09 it
+            // DECLINES them (the original wrote «1 элементов» for any number —
+            // rule #16). So the number itself is checked, not the letters: they are
+            // held by `panel_messages_speak_to_the_buyer`.
             assert_eq!(
                 out.message,
                 bk::msg_transaction_restored(out.restored),
                 "{name}: message (оригинал говорил {want_msg:?})"
             );
         } else {
-            // хвост сообщения — системная строка ошибки (у Rust и Python своя),
-            // сверяем стабильный префикс до двоеточия.
+            // the message tail is the system error string (Rust and Python have their own),
+            // we compare the stable prefix up to the colon.
             assert!(
                 out.message.starts_with(want_msg),
                 "{name}: message {:?} не начинается с {:?}",
@@ -676,7 +676,7 @@ fn transactional_restore_matches_python_on_real_configs() {
             );
         }
 
-        // вернуть права, иначе снять дерево и удалить каталог не получится
+        // restore the permissions, otherwise the tree cannot be captured and the directory cannot be removed
         if case["mutate"].as_str() == Some("lock_rollback") {
             let p = root.join(case["mutate_path"].as_str().unwrap());
             let _ = fs::set_permissions(

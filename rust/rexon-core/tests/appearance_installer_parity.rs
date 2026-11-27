@@ -1,21 +1,21 @@
-//! Golden-сверка порта `appearance_installer.rs` с оригиналом
+//! Golden check of the `appearance_installer.rs` port against the original
 //! `rexon/appearance/installer.py` (+ `ocs_store._detect_actual_kde_type`).
 //!
-//! Эталоны сняты с ЖИВОГО Python read-only (`gen_golden.py`): синтетические
-//! раскладки распакованного архива материализованы в песочницу, по ним
-//! гонялись чистые функции определения типа/имён/маппингов. Реальную
-//! установку/apply/скачивание НЕ исполняли — план/mock (правило задачи).
-//! Пути нормализованы в стабильный префикс `/sb`; снимок хранит порядок имён
-//! так, как их вернул `os.scandir` эталону → Rust итерирует так же.
+//! The golden files were captured from LIVE Python read-only (`gen_golden.py`): synthetic
+//! layouts of an unpacked archive were materialized into a sandbox, and the
+//! pure functions of type/name/mapping detection were run on them. Real
+//! installation/apply/download was NOT executed — plan/mock (a rule of the task).
+//! Paths are normalized to a stable prefix `/sb`; the snapshot keeps the name order
+//! as `os.scandir` returned it to the reference → Rust iterates the same way.
 //!
-//! `golden/appearance_installer_cases.json` — все кейсы (detect, разбор дерева,
-//! file_ext, looks_like_image с реальными magic-байтами, имя одиночной
-//! картинки, решение переклассификации, маппинги).
+//! `golden/appearance_installer_cases.json` — all cases (detect, tree parsing,
+//! file_ext, looks_like_image with real magic bytes, the name of a single
+//! picture, the reclassification decision, mappings).
 
 use std::path::Path;
 
-// Сообщения установщика переводятся; сверки с прежним текстом идут на
-// русском каталоге `po/ru.po` («по-русски как было»), английский исходник —
+// Installer messages are translated; checks against the former text run on
+// the Russian catalog `po/ru.po` ("in Russian as it was"), the English source —
 // `english_messages`.
 mod i18n_pin;
 
@@ -127,7 +127,7 @@ fn looks_like_image_parity() {
 fn single_file_fname_image_parity() {
     let _lang = i18n_pin::ru();
     let g = fx();
-    let wp = category_by_id(Path::new("/sb/home"), 299).unwrap(); // Обои HD
+    let wp = category_by_id(Path::new("/sb/home"), 299).unwrap(); // HD wallpapers
     for case in g["single_image_fname"].as_array().unwrap() {
         let item = ThemeItem {
             id: case["id"].as_str().unwrap().to_string(),
@@ -158,7 +158,7 @@ fn reclassify_decision_parity() {
         let cat = category_by_id(home, cid).expect("категория есть");
         let out = ai::plan_install(home, &fs, &cat, cr);
 
-        // dest_base — путь первого шага MakeDirs.
+        // dest_base — the path of the first MakeDirs step.
         let dest_base = match &out.steps[0] {
             ExtStep::MakeDirs { path } => path.clone(),
             other => panic!("ожидался MakeDirs первым, было {other:?}"),
@@ -175,7 +175,7 @@ fn reclassify_decision_parity() {
             "reclassified: {}",
             case["name"]
         );
-        // apply_kind виден в записи журнала (когда установка успешна).
+        // apply_kind is visible in the log entry (when installation succeeds).
         if let Some(rec) = &out.record {
             assert_eq!(
                 rec.apply_kind,
@@ -196,7 +196,7 @@ fn maps_parity() {
     for (k, v) in m["kind_to_rexon_type"].as_object().unwrap() {
         assert_eq!(ai::kind_to_rexon_type(k), v.as_str().unwrap(), "k2rt: {k}");
     }
-    // дефолт .get(kind, "plugin")
+    // default .get(kind, "plugin")
     assert_eq!(ai::kind_to_rexon_type("something-unknown"), "plugin");
 
     for (k, v) in m["actual_to_kind"].as_object().unwrap() {
@@ -211,7 +211,7 @@ fn maps_parity() {
             "atd: {k}"
         );
     }
-    // тип вне таблицы → None
+    // a type outside the table → None
     assert_eq!(ai::actual_type_dir(home, "bundle"), None);
 
     let mut exts: Vec<&str> = ai::IMAGE_EXTS.to_vec();
@@ -237,12 +237,12 @@ fn maps_parity() {
     assert_eq!(magic_hex, want_magic);
 }
 
-// ── детерминированные проверки композиции плана (mock, без исполнения) ──────
+// ── deterministic checks of plan composition (mock, no execution) ──────────
 
 #[test]
 fn plan_install_icons_gtk_cache() {
     let _lang = i18n_pin::ru();
-    // Иконочная тема (реклассификации нет — категория icons и реально icons):
+    // Icon theme (no reclassification — category icons and really icons):
     // makedirs → (rmtree?) → copytree → gtk-update-icon-cache.
     let g = fx();
     let case = g["reclassify"]
@@ -256,7 +256,7 @@ fn plan_install_icons_gtk_cache() {
     let cat = category_by_id(home, 132).unwrap();
     let out = ai::plan_install(home, &fs, &cat, case["content_root"].as_str().unwrap());
     assert!(out.ok);
-    // последний шаг — gtk-update-icon-cache -f -t <dest>
+    // the last step — gtk-update-icon-cache -f -t <dest>
     let last = out.steps.last().unwrap();
     match last {
         ExtStep::Run { argv, timeout_secs } => {
@@ -277,7 +277,7 @@ fn plan_install_icons_gtk_cache() {
 fn plan_single_file_message_and_steps() {
     let _lang = i18n_pin::ru();
     let home = Path::new("/sb/home");
-    let cat = category_by_id(home, 299).unwrap(); // Обои HD
+    let cat = category_by_id(home, 299).unwrap(); // HD wallpapers
     let item = ThemeItem {
         id: "42".into(),
         download_name: "Sunset NO LOGO.png".into(),
@@ -290,9 +290,9 @@ fn plan_single_file_message_and_steps() {
     assert!(matches!(out.steps[0], ExtStep::MakeDirs { .. }));
     assert!(matches!(out.steps[1], ExtStep::CopyFile { .. }));
     let rec = out.record.unwrap();
-    // Вид берётся из категории, а не жёстким "none" (починен баг оригинала):
-    // одиночная картинка для фона блокировки писалась тем же видом, что
-    // обычная обоя.
+    // The kind is taken from the category, not a hard-coded "none" (a bug of the original was fixed):
+    // a single picture for the lock screen background was written with the same kind as
+    // an ordinary wallpaper.
     assert_eq!(rec.apply_kind, "wallpapers");
     assert_eq!(rec.rexon_type, "wallpaper-pack");
     let lock = category_by_id(home, 904).unwrap();
@@ -306,7 +306,7 @@ fn root_preflight_gates() {
     let home = Path::new("/sb/home");
     let sddm = category_by_id(home, 101).unwrap();
 
-    // plasmalogin блокирует SDDM.
+    // plasmalogin blocks SDDM.
     let env = ai::RootEnv {
         is_plasmalogin: true,
         has_pkexec: true,
@@ -320,14 +320,14 @@ fn root_preflight_gates() {
     assert!(!out.ok);
     assert!(out.message.contains("Plasma Login Manager"));
 
-    // нет pkexec.
+    // no pkexec.
     let env2 = ai::RootEnv { is_plasmalogin: false, has_pkexec: false, ..env };
     let out2 = ai::root_preflight(&env2, &sddm).unwrap();
-    // Один текст на продукт — тот же, что у восстановления форков и тем.
+    // One text per product — the same as for restoring forks and themes.
     assert_eq!(out2.message, rexon_core::system_plan::pkexec_missing_message());
     assert!(out2.message.contains("polkit"), "{}", out2.message);
 
-    // всё ок → None.
+    // all ok → None.
     let env_ok = ai::RootEnv {
         is_plasmalogin: false,
         has_pkexec: true,
@@ -339,9 +339,9 @@ fn root_preflight_gates() {
     };
     assert!(ai::root_preflight(&env_ok, &sddm).is_none());
 
-    // SteamOS (Steam Deck и Steam Machine): отказ ПЕРВЫМ и своей причиной —
-    // даже когда системной части Rexon нет (версия для Steam), совет
-    // «переустановите Rexon в систему» там невыполним.
+    // SteamOS (Steam Deck and Steam Machine): refusal FIRST and with its own reason —
+    // even when Rexon has no system part (the Steam version), the advice
+    // «переустановите Rexon в систему» cannot be followed there.
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
     use rexon_core::distro_compat::SteamOsBlock;
     let deck = ai::RootEnv {
@@ -371,7 +371,7 @@ fn root_plan_sddm_and_plymouth() {
         family_is_debian: false,
     };
 
-    // SDDM: theme_id из папки, pkexec argv.
+    // SDDM: theme_id from the folder, pkexec argv.
     let sddm = category_by_id(home, 101).unwrap();
     let fs = FsSnapshot::from_json(&serde_json::json!({
         "dirs": {"/x/MyTheme": ["metadata.desktop", "Main.qml"]},
@@ -391,7 +391,7 @@ fn root_plan_sddm_and_plymouth() {
     );
     assert!(plan.success_message.contains("экран SDDM"));
 
-    // Plymouth без <name>.plymouth → ошибка.
+    // Plymouth without <name>.plymouth → error.
     let ply = category_by_id(home, 108).unwrap();
     let fs2 = FsSnapshot::from_json(&serde_json::json!({
         "dirs": {"/x/P": ["logo.png"]}, "files": {"/x/P/logo.png": ""}
@@ -399,7 +399,7 @@ fn root_plan_sddm_and_plymouth() {
     let err = ai::plan_root_install(&env, &fs2, &ply, "/x/P").unwrap_err();
     assert!(err.message.contains("<name>.plymouth"));
 
-    // Plymouth с <name>.plymouth → theme_id из имени файла, debian-argv.
+    // Plymouth with <name>.plymouth → theme_id from the file name, debian argv.
     let env_deb = ai::RootEnv { family_is_debian: true, ..env };
     let fs3 = FsSnapshot::from_json(&serde_json::json!({
         "dirs": {"/x/P": ["cool.plymouth"]}, "files": {"/x/P/cool.plymouth": ""}
@@ -443,18 +443,18 @@ fn apply_action_and_messages() {
         "Установлено (применение не требуется для этого типа)"
     );
 
-    // Обои HD с одиночной картинкой → фон рабочего стола.
+    // HD wallpapers with a single picture → the desktop background.
     let wp = category_by_id(home, 299).unwrap();
     assert_eq!(
         ai::apply_action_for(Some(&wp), "pic.png"),
         ai::ApplyAction::WallpaperBackground
     );
-    // Обои каталогом (пачка) — своё действие: картинку из неё выбираем сами.
+    // Wallpapers as a directory (a pack) — their own action: we pick the picture from it ourselves.
     assert_eq!(
         ai::apply_action_for(Some(&wp), "Пейзажи"),
         ai::ApplyAction::WallpaperPack
     );
-    // Звуковая тема — полноценный вид, а не «применение не требуется».
+    // A sound theme is a full kind, not "no applying needed".
     let sounds = category_by_id(home, 316).unwrap();
     assert_eq!(
         ai::apply_action_for(Some(&sounds), "zorinos2"),
@@ -468,7 +468,7 @@ fn apply_action_and_messages() {
         ai::apply_message(&ai::ApplyAction::SoundTheme, false),
         "Не удалось применить звуковую тему"
     );
-    // Шрифты и виджеты применять по-прежнему нечем.
+    // Fonts and widgets still have nothing to apply with.
     let fonts = category_by_id(home, 103).unwrap();
     assert_eq!(ai::apply_action_for(Some(&fonts), "x.png"), ai::ApplyAction::Noop);
     let plasmoids = category_by_id(home, 706).unwrap();
@@ -476,8 +476,8 @@ fn apply_action_and_messages() {
         ai::apply_action_for(Some(&plasmoids), "Widget"),
         ai::ApplyAction::Noop
     );
-    // Плагин обоев каталогом (kpackage) — применять нечего, а вот
-    // одиночная картинка из того же раздела ставится фоном.
+    // A wallpaper plugin as a directory (kpackage) — nothing to apply, but
+    // a single picture from the same section is set as the background.
     let wpp = category_by_id(home, 715).unwrap();
     assert_eq!(ai::apply_action_for(Some(&wpp), "some-plugin"), ai::ApplyAction::Noop);
     assert_eq!(
@@ -486,8 +486,8 @@ fn apply_action_and_messages() {
     );
 }
 
-/// Виды, у которых есть «применена сейчас», и виды, принимающие одиночную
-/// картинку, — списки не должны разъезжаться с картой активных тем.
+/// Kinds that have "applied now" and kinds that accept a single
+/// picture — the lists must not drift apart from the map of active themes.
 #[test]
 fn kind_flags() {
     let _lang = i18n_pin::ru();
@@ -514,45 +514,45 @@ fn kind_flags() {
     }
 }
 
-/// Голый файл вместо архива: развилка срабатывает по расширению, которого
-/// ждёт КАТЕГОРИЯ, и молчит на всём остальном.
+/// A bare file instead of an archive: the branch fires on the extension the
+/// CATEGORY expects, and stays silent on everything else.
 #[test]
 fn single_file_accepted_by_category_extension() {
     let _lang = i18n_pin::ru();
-    // Товар 2369054 «Breeze High Contrast»: Магазин отдаёт сам .colors.
+    // Item 2369054 «Breeze High Contrast»: the Store serves the .colors itself.
     assert!(ai::single_file_accepted(
         "colors",
         false,
         b"[ColorEffects:D",
         &["BreezeHighContrast.colors", ""]
     ));
-    // Тот же файл в категории иконок — не наш случай.
+    // The same file in the icons category — not our case.
     assert!(!ai::single_file_accepted(
         "icons",
         false,
         b"[ColorEffects:D",
         &["BreezeHighContrast.colors", ""]
     ));
-    // Настоящий архив идёт распаковщиком, как бы он ни назывался.
+    // A real archive goes to the unpacker, whatever its name.
     assert!(!ai::single_file_accepted(
         "colors",
         true,
         b"PK\x03\x04",
         &["scheme.colors", ""]
     ));
-    // Картинка без имени опознаётся подписью содержимого (прежнее поведение).
+    // A picture without a name is recognized by the content signature (the former behaviour).
     assert!(ai::single_file_accepted(
         "wallpapers",
         false,
         b"\x89PNG\r\n\x1a\n",
         &["", ""]
     ));
-    // А цветовая схема без имени — нет: подписи у неё не бывает.
+    // But a color scheme without a name is not: it never has a signature.
     assert!(!ai::single_file_accepted("colors", false, b"[General]", &["", ""]));
 }
 
-/// Цветовая схема одним файлом: имя темы — основа (её ждёт
-/// `plasma-apply-colorscheme`), файл ложится прямо в каталог схем.
+/// A color scheme as a single file: the theme name is the stem (expected by
+/// `plasma-apply-colorscheme`), the file goes straight into the schemes directory.
 #[test]
 fn plan_single_file_color_scheme() {
     let _lang = i18n_pin::ru();
@@ -581,12 +581,12 @@ fn plan_single_file_color_scheme() {
     );
     let rec = out.record.unwrap();
     assert_eq!(rec.apply_kind, "colors");
-    // Путь в журнале — сам файл: удаление снимает ровно его.
+    // The path in the log is the file itself: removal takes away exactly it.
     assert_eq!(rec.paths, vec![dest.to_string()]);
 }
 
-/// Kvantum ищет тему как `<имя>/<имя>.kvconfig` — голый файл кладётся в
-/// собственную папку, и она же уходит в журнал.
+/// Kvantum looks for a theme as `<name>/<name>.kvconfig` — a bare file is put into
+/// its own folder, and that folder goes to the log.
 #[test]
 fn plan_single_file_kvantum_gets_own_dir() {
     let _lang = i18n_pin::ru();
@@ -614,7 +614,7 @@ fn plan_single_file_kvantum_gets_own_dir() {
     assert_eq!(out.record.unwrap().paths, vec![dir.to_string()]);
 }
 
-/// Выбор картинки из пачки обоев: правило детерминированное и объяснимое.
+/// Picking a picture from a wallpaper pack: the rule is deterministic and explainable.
 #[test]
 fn pack_image_choice_is_deterministic() {
     let _lang = i18n_pin::ru();
@@ -640,12 +640,12 @@ fn pack_image_choice_is_deterministic() {
     });
     let fs = FsSnapshot::from_json(&snap);
     let files = ai::pack_images(&fs, pack);
-    // Штатная подпапка есть → снаружи ничего не берём (ни скриншот, ни наше
-    // превью).
+    // There is a standard subfolder → we take nothing from outside (neither a screenshot nor our
+    // preview).
     assert_eq!(files.len(), 5, "{files:?}");
     assert!(files.iter().all(|f| f.contains("/contents/images/")));
 
-    // 16:9 экран → из двух 16:9 берём тот, что ближе по размеру.
+    // A 16:9 screen → of two 16:9 ones we take the one closer in size.
     assert_eq!(
         ai::pick_pack_image(&files, 1920, 1080).as_deref(),
         Some(format!("{pack}/contents/images/1920x1080.png").as_str())
@@ -654,19 +654,19 @@ fn pack_image_choice_is_deterministic() {
         ai::pick_pack_image(&files, 3840, 2160).as_deref(),
         Some(format!("{pack}/contents/images/3840x2160.png").as_str())
     );
-    // Ультраширокий экран → 21:9.
+    // An ultra-wide screen → 21:9.
     assert_eq!(
         ai::pick_pack_image(&files, 2560, 1080).as_deref(),
         Some(format!("{pack}/contents/images/2560x1080.png").as_str())
     );
-    // Экран неизвестен → первое имя по естественной сортировке; файл без
-    // разрешения в имени уступает файлам с разрешением.
+    // The screen is unknown → the first name in natural sort order; a file without
+    // a resolution in the name yields to files with a resolution.
     assert_eq!(
         ai::pick_pack_image(&files, 0, 0).as_deref(),
         Some(format!("{pack}/contents/images/1280x1024.png").as_str())
     );
 
-    // Пачка без штатной подпапки: собираем всё дерево, кроме своего превью.
+    // A pack without a standard subfolder: we collect the whole tree except our own preview.
     let flat = "/sb/home/.local/share/wallpapers/Плоская";
     let snap = serde_json::json!({
         "dirs": {
@@ -682,13 +682,13 @@ fn pack_image_choice_is_deterministic() {
     let fs = FsSnapshot::from_json(&snap);
     let files = ai::pack_images(&fs, flat);
     assert_eq!(files.len(), 2, "{files:?}");
-    // Естественная сортировка: 9 раньше 10.
+    // Natural sort: 9 before 10.
     assert_eq!(
         ai::pick_pack_image(&files, 1920, 1080).as_deref(),
         Some(format!("{flat}/9.jpg").as_str())
     );
 
-    // Пачка без картинок вовсе — применять нечего, и это НЕ ошибка.
+    // A pack with no pictures at all — nothing to apply, and that is NOT an error.
     let empty = "/sb/home/.local/share/sounds/zorin";
     let snap = serde_json::json!({
         "dirs": { empty: ["index.theme"] },
@@ -719,8 +719,8 @@ fn apply_config_plans() {
     // splash / lockscreen
     let sp = ai::lnf_component_plan("splash", "MySplash");
     assert_eq!(sp.argv[2], "ksplashrc");
-    // Заставка: «Нет» — как модуль KDE (Theme=None, Engine=none), любая
-    // другая тема возвращает Engine=KSplashQML.
+    // Splash screen: «Нет» — like the KDE module (Theme=None, Engine=none), any
+    // other theme restores Engine=KSplashQML.
     assert_eq!(*ai::splash_engine_plan("MySplash").argv.last().unwrap(), "KSplashQML");
     assert_eq!(*ai::splash_engine_plan("None").argv.last().unwrap(), "none");
     assert_eq!(ai::splash_engine_plan("None").argv[6], "Engine");
@@ -733,7 +733,7 @@ fn apply_config_plans() {
         }
         other => panic!("{other:?}"),
     }
-    // Текущая плитка: Engine не KSplashQML — «Нет», что бы ни стояло в Theme.
+    // The current tile: Engine is not KSplashQML — «Нет», whatever is in Theme.
     let t = || Some("Breeze".to_string());
     assert_eq!(ai::splash_active_value(t(), Some("none")).as_deref(), Some("None"));
     assert_eq!(ai::splash_active_value(t(), Some("None\n")).as_deref(), Some("None"));
@@ -741,7 +741,7 @@ fn apply_config_plans() {
     assert_eq!(ai::splash_active_value(t(), Some("")).as_deref(), Some("Breeze"));
     assert_eq!(ai::splash_active_value(t(), None).as_deref(), Some("Breeze"));
     assert_eq!(ai::splash_active_value(None, None), None);
-    // «Продемонстрировать» — `ksplashqml <тема> --test`, у «Нет» кнопки нет.
+    // «Продемонстрировать» — `ksplashqml <theme> --test`, «Нет» has no button.
     assert_eq!(
         ai::splash_demo_argv("org.kde.breeze.desktop").unwrap(),
         ["ksplashqml", "org.kde.breeze.desktop", "--test"]
@@ -766,7 +766,7 @@ fn apply_config_plans() {
 #[test]
 fn lock_wallpaper_uri_encoding() {
     let _lang = i18n_pin::ru();
-    // percent-кодирование не-ASCII (кириллица) как Path.as_uri().
+    // percent-encoding of non-ASCII (Cyrillic) like Path.as_uri().
     let plan = ai::lock_wallpaper_plan(
         "kde",
         "/sb/home/.local/share/wallpapers",
@@ -783,22 +783,22 @@ fn lock_wallpaper_uri_encoding() {
     assert_eq!(plan.extra[0].argv[12], "PreviewImage");
     assert_eq!(plan.extra[1].argv.last().unwrap(), "org.kde.image");
 
-    // нет файла → мягкий отказ.
+    // no file → a soft refusal.
     let err = ai::lock_wallpaper_plan("kde", "/d", "x.png", false).unwrap_err();
     assert!(err.contains("Файл обои не найден"));
 }
 
-/// Deepin: обои блокировки — только в сеансе Treeland, через Центр
-/// управления (`appearance_installer.rs`); вне Treeland — отказ «Rexon
-/// поддерживает Deepin только на Treeland», без kscreenlockerrc. Раздел
-/// «Экран блокировки» в Deepin есть, но только с режимом обоев.
+/// Deepin: lock screen wallpaper — only in a Treeland session, through the Control
+/// Center (`appearance_installer.rs`); outside Treeland — the refusal «Rexon
+/// поддерживает Deepin только на Treeland», without kscreenlockerrc. The
+/// «Экран блокировки» section exists in Deepin, but only with the wallpaper mode.
 #[test]
 fn lock_wallpaper_deepin_outside_treeland_is_refused() {
     let _lang = i18n_pin::ru();
     let err = ai::lock_wallpaper_plan("deepin", "/h/.local/share/wallpapers", "a.png", true).unwrap_err();
     assert_eq!(err, rexon_core::dde::not_treeland_message());
     assert!(err.starts_with("Rexon поддерживает Deepin только на Treeland"), "{err}");
-    // Остальные окружения — прежний путь KDE.
+    // Other desktops — the former KDE path.
     let kde = ai::lock_wallpaper_plan("", "/d", "a.png", true).unwrap();
     assert_eq!(kde.image.argv[0], "kwriteconfig6");
 
@@ -807,7 +807,7 @@ fn lock_wallpaper_deepin_outside_treeland_is_refused() {
     assert!(c::category_available("lockscreen", "deepin"));
     assert!(c::category_available("lockscreen", "kde"));
     assert!(!c::category_available("lockscreen", "gnome"));
-    // Полных тем блокировки в Deepin нет — только чип обоев.
+    // Deepin has no full lock screen themes — only the wallpaper chip.
     let keys = |de: &str| ap::lock_chips_for(de).iter().map(|ch| ch.key).collect::<Vec<_>>();
     assert_eq!(keys("deepin"), vec![ap::LOCK_MODE_WALLPAPER]);
     assert_eq!(keys("kde"), vec![ap::LOCK_MODE_THEMES, ap::LOCK_MODE_WALLPAPER]);
@@ -839,7 +839,7 @@ fn safe_extract_entry_traversal() {
 #[test]
 fn global_stale_and_uninstall_plan() {
     let _lang = i18n_pin::ru();
-    // Global Theme без metadata.json (Plasma 5) → устаревшая.
+    // Global Theme without metadata.json (Plasma 5) → outdated.
     let fs = FsSnapshot::from_json(&serde_json::json!({
         "dirs": {"/sb/home/.local/share/plasma/look-and-feel/old": ["metadata.desktop"]},
         "files": {"/sb/home/.local/share/plasma/look-and-feel/old/metadata.desktop": "x"}
@@ -852,7 +852,7 @@ fn global_stale_and_uninstall_plan() {
     }));
     assert!(!ai::global_theme_missing_metadata_json(&fs2, "/sb/home", "new"));
 
-    // uninstall: каталог → RemoveTree, файл → RemoveFile, нет → пропуск.
+    // uninstall: directory → RemoveTree, file → RemoveFile, none → skip.
     let paths = vec![
         "/d/theme".to_string(),
         "/d/scheme.colors".to_string(),
@@ -871,13 +871,13 @@ fn global_stale_and_uninstall_plan() {
     assert_eq!(ai::uninstall_message(2, "Моя тема"), "Удалено (путей: 2): Моя тема");
 }
 
-/// Куда ложится скачанный из Магазина скриншот (`_save_ocs_preview`, «Вариант
-/// 1»): РЕАЛЬНЫЕ установленные каталоги этой машины (иконки/GTK/plasma-темы/
-/// шрифты, user+system) — в них `<dir>/.rexon-preview.png`; цвет-схемы и
-/// несуществующие пути — в сайдкар-кеш с безопасным именем; пустое имя и
-/// пустой путь — `None` (копировать некуда).
+/// Where a screenshot downloaded from the Store goes (`_save_ocs_preview`, «Вариант
+/// 1»): the REAL installed directories of this machine (icons/GTK/plasma themes/
+/// fonts, user+system) get `<dir>/.rexon-preview.png`; color schemes and
+/// non-existent paths go to the sidecar cache with a safe name; an empty name and
+/// an empty path give `None` (nowhere to copy).
 ///
-/// Эталон снят с ЖИВОГО `installer.py` read-only (файлы НЕ копировались).
+/// The golden file was captured from the LIVE `installer.py` read-only (files were NOT copied).
 #[test]
 fn ocs_preview_dest_matches_python() {
     let _lang = i18n_pin::ru();
@@ -902,17 +902,17 @@ fn ocs_preview_dest_matches_python() {
             Some(_) => sidecar += 1,
             None => {}
         }
-        // ПРАВИЛО, а не состав машины. Прежде здесь стояло
-        // `assert!(Path::new(theme_dir).is_dir())` — требование, чтобы девять
-        // записанных каталогов (`~/.local/share/icons/Bibata-Modern-Ice`,
-        // `/usr/share/themes/Atlanta`, …) существовали и СЕГОДНЯ. Такая
-        // проверка меряет не порт, а набор установленных тем: удалил тему —
-        // сверка красная, а сломай `ocs_preview_dest` — зелёная, если темы на
-        // месте. Тот же класс, что вычищен из сверок моста (`c7d5687`).
-        // Само `ocs_preview_dest` файловой системы не касается вовсе:
-        // `theme_dir_is_dir` — уже готовое наблюдение. Значит и сверять надо
-        // ответ на это наблюдение: переверни его — и назначение обязано
-        // перейти из каталога темы в сайдкар-кеш.
+        // The RULE, not the machine's contents. Previously this was
+        // `assert!(Path::new(theme_dir).is_dir())` — a requirement that the nine
+        // recorded directories (`~/.local/share/icons/Bibata-Modern-Ice`,
+        // `/usr/share/themes/Atlanta`, …) also exist TODAY. Such a
+        // check measures not the port but the set of installed themes: remove a theme —
+        // the check is red, while break `ocs_preview_dest` — and it is green if the themes are
+        // in place. The same class that was cleaned out of the bridge checks (`c7d5687`).
+        // `ocs_preview_dest` itself does not touch the file system at all:
+        // `theme_dir_is_dir` is a ready observation. So what must be checked is
+        // the answer to that observation: flip it — and the destination must
+        // move from the theme directory to the sidecar cache.
         let flipped = ai::ocs_preview_dest(
             home,
             c["apply_kind"].as_str().unwrap(),
@@ -935,7 +935,7 @@ fn ocs_preview_dest_matches_python() {
     assert!(sidecar >= 4, "мало сайдкар-кейсов");
 }
 
-/// Сообщения установщика на исходном языке.
+/// Installer messages in the source language.
 #[test]
 fn english_messages() {
     let _lang = i18n_pin::en();

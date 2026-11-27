@@ -1,9 +1,9 @@
-// Блок «Цвет акцента» над сеткой «Цветовых схем» — как в KDE «Цвета»: из
-// цветовой схемы, из обоев или свой (десять готовых цветов и выбор любого),
-// «Вернуть как было».
+// The "Accent colour" block above the "Colour schemes" grid — as in KDE
+// "Colours": from the colour scheme, from the wallpaper or a custom one
+// (ten ready colours and a picker for any), "Restore as it was".
 //
-// Только разметка: снимок, подписи, запись и объяснение, где цвет действует
-// в этом окружении, — `AccentActions`
+// Markup only: the snapshot, labels, writing and the explanation of where
+// the colour applies in this environment — `AccentActions`
 // (rust/rexon-gui/src/accent_actions.rs → rexon_core::accent).
 
 pragma ComponentBehavior: Bound
@@ -56,10 +56,11 @@ Rectangle {
     }
 
     Component.onCompleted: section.reload()
-    // Схему могли применить в сетке ниже — подпись «где действует» зависит
-    // от неё, поэтому снимок свежий при каждом показе. Перечитывать — после
-    // обработчика: `visible` раздела на странице сам зависит от `st`, и новый
-    // `st` посреди смены `visible` замыкал привязку в петлю.
+    // A scheme may have been applied in the grid below — the "where it
+    // applies" label depends on it, so the snapshot is fresh on every show.
+    // Re-read after the handler: the section's `visible` on the page itself
+    // depends on `st`, and a new `st` in the middle of a `visible` change
+    // turned the binding into a loop.
     onVisibleChanged: if (section.visible) Qt.callLater(section.reload)
 
     color: section.sty.group.background
@@ -86,7 +87,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // Способ: из схемы / из обоев / свой.
+        // Mode: from the scheme / from the wallpaper / custom.
         Flow {
             Layout.fillWidth: true
             spacing: 8
@@ -114,7 +115,7 @@ Rectangle {
             }
         }
 
-        // Готовые цвета и «Выбрать цвет…».
+        // Ready colours and "Choose colour…".
         Flow {
             Layout.fillWidth: true
             spacing: 8
@@ -154,7 +155,8 @@ Rectangle {
             }
         }
 
-        // Цвет из обоев либо свой, которого нет среди готовых, — показать.
+        // A colour from the wallpaper or a custom one that is not among the ready
+        // ones — show it.
         RowLayout {
             Layout.fillWidth: true
             visible: (section.st.color || "") !== ""

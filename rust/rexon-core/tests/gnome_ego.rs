@@ -1,10 +1,10 @@
-//! Сторож клиента extensions.gnome.org на СИНТЕТИЧЕСКИХ образцах.
+//! Guard of the extensions.gnome.org client on SYNTHETIC samples.
 //!
-//! Образцы повторяют форму ответов API v1, снятых с сайта 09.11.2026
-//! (набор и типы полей, `null` там, где сайт его отдаёт), но имена,
-//! описания и адреса придуманы: чужие тексты и картинки в репозиторий не
-//! кладутся. Поменяет сайт форму ответа — краснеть должно здесь, а не на
-//! витрине у покупателя.
+//! The samples repeat the shape of API v1 responses taken from the site on 09.11.2026
+//! (set and types of fields, `null` where the site returns it), but the names,
+//! descriptions and addresses are made up: other people's texts and pictures are not
+//! put in the repository. If the site changes the response shape, it must go red here, not on
+//! the buyer's storefront.
 
 mod i18n_pin;
 
@@ -12,7 +12,7 @@ use std::collections::HashSet;
 
 use rexon_core::gnome_ego::*;
 
-/// Листинг: две записи, у второй — все поля, что сайт отдаёт `null`.
+/// Listing: two entries, the second has all the fields the site returns as `null`.
 const LISTING: &str = r#"{
   "count": 620,
   "next": "https://extensions.gnome.org/api/v1/extensions/?ordering=-popularity&page=2&page_size=2&shell_version=51&status=3",
@@ -57,7 +57,7 @@ const LISTING: &str = r#"{
   ]
 }"#;
 
-/// Страница выпусков — от старых к новым, как отдаёт сайт.
+/// Releases page — from old to new, as the site returns it.
 const VERSIONS: &str = r#"{
   "count": 3,
   "next": null,
@@ -82,7 +82,7 @@ fn shell(raw: &str) -> ShellVersion {
 
 #[test]
 fn listing_sample_parses_into_cards() {
-    // Подписи строки каталога — на английском, а не на языке машины.
+    // Catalog row labels are in English, not in the machine's language.
     let _lang = i18n_pin::en();
     let page = parse_listing(LISTING.as_bytes()).expect("листинг разбирается");
     assert_eq!((page.total, page.has_more, page.items.len()), (620, true, 2));
@@ -114,11 +114,11 @@ fn listing_sample_parses_into_cards() {
         assert!(row.get(key).is_some(), "в строке каталога нет {key}");
     }
     assert_eq!(row["egoPage"], "https://extensions.gnome.org/extension/101/sample-dock/");
-    // Десятичный разделитель — по языку (`human_count`), здесь английскому.
+    // The decimal separator follows the language (`human_count`), English here.
     let dl = rexon_core::appearance_page::human_count(1_234_567);
     assert_eq!(row["siteStats"], format!("★ {} (40) · ⬇ {dl}", rexon_core::i18n::format_decimal(4.3, 1)).as_str());
 
-    // Запись с null: значок вместо скриншота нет — и галерея пустая.
+    // An entry with null: no icon instead of a screenshot — and the gallery is empty.
     let bare = theme_item(&page.items[1]);
     assert_eq!(bare.author, "bare.user");
     assert_eq!(bare.updated, "2026-03-01T00:00:00");
@@ -128,7 +128,7 @@ fn listing_sample_parses_into_cards() {
 
 #[test]
 fn detail_sample_is_a_listing_record() {
-    // Карточка сайта — та же запись, что в листинге, без обёртки.
+    // The site's card is the same entry as in the listing, without the wrapper.
     let page: serde_json::Value = serde_json::from_str(LISTING).unwrap();
     let body = serde_json::to_vec(&page["results"][0]).unwrap();
     let e = parse_detail(&body).expect("карточка разбирается");
@@ -138,8 +138,8 @@ fn detail_sample_is_a_listing_record() {
 
 #[test]
 fn versions_sample_gives_release_for_you() {
-    // Ожидание «Supports GNOME 47–51» — английская подпись: язык закреплён,
-    // иначе при `LANG=ru_RU` и каталоге в /usr/share/locale сверка получала
+    // The expectation «Supports GNOME 47–51» is the English label: the language is pinned,
+    // otherwise with `LANG=ru_RU` and a catalog in /usr/share/locale the check got
     // «Поддерживает GNOME 47–51».
     let _lang = i18n_pin::en();
     let vs = parse_versions(VERSIONS.as_bytes()).expect("выпуски разбираются");
@@ -175,7 +175,7 @@ fn urls_follow_the_published_schema() {
     assert!(u.ends_with("&shell_version=51"));
     let u = listing_url("blur", "down", 1, PAGE_SIZE, None);
     assert!(u.starts_with("https://extensions.gnome.org/api/v1/extensions/search/blur/?ordering=-downloads&page=2"));
-    // Сортировки — только из списка схемы для маршрута поиска.
+    // Sort orders come only from the schema's list for the search route.
     let allowed = ["-created", "-downloads", "-popularity", "-updated"];
     for (_, key) in SORTS {
         assert!(allowed.contains(&api_ordering(key)), "{key}");

@@ -1,10 +1,11 @@
-// Окно вопроса перед внешней ссылкой: «Открыть внешний сайт <домен> в
-// браузере?» с флажком «Больше не спрашивать для этого сайта».
+// Question window before an external link: "Open external site <domain>
+// in the browser?" with the check box "Don't ask again for this site".
 //
-// Одно на все вкладки. Обычно его создаёт сам `RexonLinkText` на время
-// вопроса (`destroyOnClose`); страница, которой нужно спросить без текста
-// (карточку товара по ссылке открыть не удалось), держит свой экземпляр.
-// Тексты, домен и решение — ядро (`link_policy`) через синглтон `LinkGuard`.
+// One for all tabs. Usually `RexonLinkText` creates it itself for the
+// duration of the question (`destroyOnClose`); a page that needs to ask
+// without text (opening the item card from a link failed) keeps its own
+// instance. Texts, domain and decision come from the core (`link_policy`)
+// through the `LinkGuard` singleton.
 
 pragma ComponentBehavior: Bound
 
@@ -18,9 +19,9 @@ Popup {
     objectName: "rexonLinkDialog"
 
     property var pal: null
-    /// Ответ `LinkGuard.decide` про спрашиваемую ссылку.
+    /// The `LinkGuard.decide` answer about the link being asked about.
     property var info: ({})
-    /// Создано на один вопрос — после закрытия убрать себя.
+    /// Created for a single question — remove itself after closing.
     property bool destroyOnClose: false
 
     readonly property color colBg: dlg.pal ? dlg.pal.bg_primary : "#1b2838"
@@ -35,7 +36,7 @@ Popup {
     padding: 16
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-    /// Спросить про `url`; `decided` — уже полученный ответ ядра.
+    /// Ask about `url`; `decided` is the answer already received from the core.
     function ask(url, decided) {
         dlg.info = decided ? decided : JSON.parse(LinkGuard.decide(url));
         remember.checked = false;
@@ -71,7 +72,7 @@ Popup {
             wrapMode: Text.WordWrap
         }
 
-        // Адрес целиком: куда именно ведёт ссылка, видно до нажатия.
+        // The full address: where exactly the link leads is visible before clicking.
         RexonText {
             Layout.fillWidth: true
             text: dlg.info.url || ""
@@ -92,7 +93,7 @@ Popup {
         RexonCheckBox {
             id: remember
             objectName: "linkRemember"
-            // Файл и почта — не сайт: запоминать нечего.
+            // A file or an e-mail address is not a site: there is nothing to remember.
             visible: (dlg.info.site || "") !== ""
             pal: dlg.pal
             text: dlg.info.remember || ""

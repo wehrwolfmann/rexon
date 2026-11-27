@@ -1,18 +1,18 @@
-//! `rexon-login-rescue` — понятный текст на консоли, когда экран входа
-//! окончательно упал, и отчёт `rexon doctor`. Без Qt намеренно: нужен
-//! именно тогда, когда Qt мог сломаться. Решения — в
-//! [`rexon_core::login_rescue`].
+//! `rexon-login-rescue` shows understandable text on the console when the login
+//! screen has failed for good, and provides the `rexon doctor` report. It is
+//! intentionally free of Qt: it is needed precisely when Qt may be broken. The
+//! decisions live in [`rexon_core::login_rescue`].
 //!
 //! ```text
-//! rexon-login-rescue --boot          # из службы rexon-login-rescue (root)
-//! rexon-login-rescue --watch-greeter # из службы rexon-greeter-watch (root)
-//! rexon-login-rescue --doctor        # отчёт для человека, ничего не меняет
-//! rexon-login-rescue doctor          # то же (так зовёт лаунчер `rexon doctor`)
-//! rexon-login-rescue --list-files    # файлы юнитов пакета (по пути в строке)
-//! rexon-login-rescue --file <путь>   # текст одного из них
+//! rexon-login-rescue --boot          # from the rexon-login-rescue service (root)
+//! rexon-login-rescue --watch-greeter # from the rexon-greeter-watch service (root)
+//! rexon-login-rescue --doctor        # report for a human, changes nothing
+//! rexon-login-rescue doctor          # the same (this is how the `rexon doctor` launcher calls it)
+//! rexon-login-rescue --list-files    # the package's unit files (one path per line)
+//! rexon-login-rescue --file <path>   # the text of one of them
 //! ```
-//! Коды возврата: 0 — сделано; 1 — не записался текст на консоль; 2 —
-//! неверные аргументы.
+//! Exit codes: 0 — done; 1 — the text could not be written to the console;
+//! 2 — invalid arguments.
 
 use rexon_core::login_rescue as lr;
 

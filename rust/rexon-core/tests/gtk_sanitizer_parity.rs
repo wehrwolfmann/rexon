@@ -1,21 +1,21 @@
-//! Сверка порта `rexon/qt_appearance/gtk_sanitizer.py` с живым Python.
+//! Check of the `rexon/qt_appearance/gtk_sanitizer.py` port against live Python.
 //!
-//! Эталон `golden/gtk_sanitizer_cases.json` снят с ЭТОЙ машины эталонными
-//! `_py_*`-ветками модуля, ТОЛЬКО ЧТЕНИЕМ:
-//! * `live` — настоящие `~/.config/gtk-{3,4}.0/settings.ini`, `kdeglobals` и
-//!   `kcminputrc` вместе со снимком настоящих каталогов тем
+//! The golden `golden/gtk_sanitizer_cases.json` was captured on THIS machine by the reference
+//! `_py_*` branches of the module, READ-ONLY:
+//! * `live` — the real `~/.config/gtk-{3,4}.0/settings.ini`, `kdeglobals` and
+//!   `kcminputrc` together with a snapshot of the real theme directories
 //!   (`/usr/share/icons`, `/usr/share/themes`, `/usr/share/sounds`,
-//!   `~/.local/share/*`). Ни один файл пользователя не менялся — эталон
-//!   содержит лишь то, что записал бы санитайзер.
-//! * `broken` — те же конфиги, но с нарочно битыми ссылками, в отдельном
-//!   временном `HOME`; `XDG_DATA_HOME` НАРОЧНО вынесен за пределы
-//!   `$HOME/.local/share`, поэтому случай ловит починку XDG-путей (старый код
-//!   искал темы от `Path.home()` и живой темы из `XDG_DATA_HOME` не видел).
-//! * `empty` — конфигов нет вовсе.
+//!   `~/.local/share/*`). Not a single user file was changed — the golden
+//!   contains only what the sanitizer would have written.
+//! * `broken` — the same configs, but with deliberately broken references, in a separate
+//!   temporary `HOME`; `XDG_DATA_HOME` is DELIBERATELY moved outside
+//!   `$HOME/.local/share`, so the case catches the XDG path fix (the old code
+//!   looked for themes from `Path.home()` and did not see a live theme in `XDG_DATA_HOME`).
+//! * `empty` — no configs at all.
 //!
-//! Машинно-зависимые пути токенизированы: `{HOME}` — домашний каталог,
-//! `{DATA}` — корень пользовательских данных. Ядро получает ровно эти токены
-//! как `home`/`data_home`, поэтому сверка литеральная.
+//! Machine-dependent paths are tokenized: `{HOME}` is the home directory,
+//! `{DATA}` is the root of user data. The core receives exactly these tokens
+//! as `home`/`data_home`, so the comparison is literal.
 
 use std::collections::HashMap;
 
@@ -33,7 +33,7 @@ fn snapshot(case: &Value) -> FsSnapshot {
     FsSnapshot::from_json(&case["snapshot"])
 }
 
-/// `None` для JSON `null` — так эталон различает «файла нет» и «пустой файл».
+/// `None` for JSON `null` — this is how the golden tells "no file" from "empty file".
 fn opt_str(v: &Value) -> Option<&str> {
     if v.is_null() {
         None
@@ -65,7 +65,7 @@ fn scenarios() -> Vec<&'static str> {
     vec!["live", "broken", "empty"]
 }
 
-// ── таблицы и каталоги ───────────────────────────────────────────────────
+// ── tables and directories ───────────────────────────────────────────────
 
 #[test]
 fn таблицы_дефолтов_совпадают_с_python() {
@@ -137,8 +137,8 @@ fn каталоги_поиска_совпадают_с_python() {
 fn путь_settings_ini_как_у_python() {
     for case in golden()["live"]["gtk"].as_array().unwrap() {
         let ver = case["version"].as_str().unwrap();
-        // Эталон записал абсолютный путь с токеном {HOME}; корень конфигов
-        // на этой машине — {HOME}/.config (XDG_CONFIG_HOME не задан).
+        // The golden recorded an absolute path with the {HOME} token; the config root
+        // on this machine is {HOME}/.config (XDG_CONFIG_HOME is not set).
         assert_eq!(
             g::gtk_ini_path(&format!("{HOME}/.config"), ver),
             case["ini_path"].as_str().unwrap()
@@ -146,7 +146,7 @@ fn путь_settings_ini_как_у_python() {
     }
 }
 
-// ── разбор конфигов ──────────────────────────────────────────────────────
+// ── config parsing ───────────────────────────────────────────────────────
 
 #[test]
 fn разбор_settings_ini_как_у_python() {
@@ -184,7 +184,7 @@ fn чтение_курсора_kcminputrc_как_у_python() {
     }
 }
 
-// ── формирование нового текста settings.ini ──────────────────────────────
+// ── building the new settings.ini text ───────────────────────────────────
 
 #[test]
 fn новый_текст_settings_ini_байт_в_байт() {
@@ -212,8 +212,8 @@ fn метка_ini_в_журнале_как_у_python() {
 
 #[test]
 fn отчёт_verbose_байт_в_байт() {
-    // Эталон снят с оригинала, а он печатал по-русски — сверяем русский
-    // из `po/ru.po`: для русского интерфейса ничего не поменялось.
+    // The golden was captured from the original, and it printed in Russian — we compare the Russian
+    // from `po/ru.po`: nothing changed for the Russian interface.
     let _lang = i18n_pin::ru();
     for c in golden()["verbose"].as_array().unwrap() {
         let changes: Vec<String> = c["changes"]
@@ -236,7 +236,7 @@ fn english_verbose_report_has_no_russian() {
     );
 }
 
-// ── решения на РЕАЛЬНЫХ данных машины ────────────────────────────────────
+// ── decisions on the machine's REAL data ─────────────────────────────────
 
 #[test]
 fn план_правок_settings_ini_как_у_python() {
@@ -259,8 +259,8 @@ fn план_правок_settings_ini_как_у_python() {
     }
 }
 
-/// Последовательное применение плана — как это делает исполнитель (файл
-/// перечитывается на каждый ключ) — даёт тот же файл, что и Python.
+/// Applying the plan step by step — as the executor does it (the file
+/// is reread for every key) — gives the same file as Python.
 #[test]
 fn результат_применения_плана_совпадает_с_python() {
     let gold = golden();
@@ -309,8 +309,8 @@ fn план_правок_kde_как_у_python() {
     }
 }
 
-/// На живой машине санитайзеру НЕЧЕГО чинить — эталон это фиксирует, и это
-/// же гарантия, что тест ничего не «исправляет» в конфигах пользователя.
+/// On the live machine the sanitizer has NOTHING to fix — the golden records this, and it is
+/// also a guarantee that the test does not "fix" anything in the user's configs.
 #[test]
 fn на_живой_машине_правок_нет() {
     let gold = golden();
@@ -325,12 +325,12 @@ fn на_живой_машине_правок_нет() {
     assert!(live["kde_plan"].as_array().unwrap().is_empty());
 }
 
-// ── согласие с pre-flight курсоров в themes.rs ───────────────────────────
+// ── agreement with the cursor pre-flight in themes.rs ────────────────────
 
-/// Правило «безопасна ли Inherits-цепочка» портировано дважды: здесь и как
-/// [`rexon_core::themes::is_cursor_theme_chain_safe`] (pre-flight применения
-/// курсорной темы, поверх `FsSnapshot`). Разъехаться они не должны — гоняем
-/// обе реализации по всем курсорным темам из снимка.
+/// The rule "is the Inherits chain safe" is ported twice: here and as
+/// [`rexon_core::themes::is_cursor_theme_chain_safe`] (pre-flight of applying
+/// a cursor theme, over `FsSnapshot`). They must not diverge — we run
+/// both implementations over all cursor themes from the snapshot.
 #[test]
 fn цепочка_курсоров_согласна_с_themes() {
     let gold = golden();
@@ -363,8 +363,8 @@ fn цепочка_курсоров_согласна_с_themes() {
     }
 }
 
-/// Курсорные темы из `UNSAFE_CURSOR_THEMES` считаются битыми даже когда
-/// физически стоят в системе (на этой машине `Adwaita` установлена).
+/// Cursor themes from `UNSAFE_CURSOR_THEMES` count as broken even when
+/// they are physically installed (on this machine `Adwaita` is installed).
 #[test]
 fn unsafe_курсоры_отвергаются_на_живых_данных() {
     let gold = golden();

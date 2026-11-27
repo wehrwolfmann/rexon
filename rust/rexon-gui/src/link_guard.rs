@@ -1,11 +1,13 @@
-// LinkGuard — QML-синглтон ссылок из чужого текста.
+// LinkGuard — the QML singleton for links from third-party text.
 //
-// Описания и комментарии товаров, сведения о пакете AUR, описания
-// расширений: всё, что пишут чужие люди, показывается общим компонентом
-// `RexonLinkText.qml`, а он спрашивает этот синглтон, что делать с нажатой
-// ссылкой. Решение (своя карточка / вопрос / сразу), пометка ↗, тексты окна
-// и список доверенных сайтов — ядро (`rexon_core::link_policy`, там же
-// причина и тесты). Здесь только оболочка QObject и открытие в браузере.
+// Item descriptions and comments, AUR package details, extension
+// descriptions: everything written by other people is shown by the shared
+// `RexonLinkText.qml` component, and it asks this singleton what to do
+// with a clicked link. The decision (our own card / a question / right
+// away), the ↗ mark, the window texts and the list of trusted sites
+// belong to the core (`rexon_core::link_policy`, where the reasoning and
+// the tests are too). Here there is only the QObject wrapper and opening
+// in the browser.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -20,27 +22,27 @@ pub mod qobject {
         #[qml_singleton]
         type LinkGuard = super::LinkGuardRust;
 
-        /// Что делать со ссылкой: строка JSON `{action, site, url, card,
+        /// What to do with a link: a JSON string `{action, site, url, card,
         /// title, text, hint, remember, open, cancel, refused, cardFailed}`;
-        /// `action` — `page`, `card`, `open`, `ask` или `refuse`.
+        /// `action` is `page`, `card`, `open`, `ask` or `refuse`.
         #[qinvokable]
         fn decide(self: &LinkGuard, url: &QString) -> QString;
 
-        /// Открыть в браузере (после вопроса или для доверенного сайта).
-        /// `remember` — «Больше не спрашивать для этого сайта».
+        /// Open in the browser (after the question or for a trusted site).
+        /// `remember` means "Don't ask again for this site".
         #[qinvokable]
         fn open(self: &LinkGuard, url: &QString, remember: bool) -> bool;
 
-        /// Разметка с ↗ у внешних ссылок.
+        /// Markup with ↗ on external links.
         #[qinvokable]
         fn mark(self: &LinkGuard, html: &QString) -> QString;
 
-        /// Строка «какие сайты открываются без вопроса» для «Настроек».
+        /// The "which sites open without a question" line for "Settings".
         #[qinvokable]
         #[cxx_name = "trustedSummary"]
         fn trusted_summary(self: &LinkGuard) -> QString;
 
-        /// Снова спрашивать для всех сайтов. → итог для строки состояния.
+        /// Ask again for all sites. → the result for the status line.
         #[qinvokable]
         #[cxx_name = "forgetAll"]
         fn forget_all(self: &LinkGuard) -> QString;
@@ -71,8 +73,9 @@ impl qobject::LinkGuard {
             LinkAction::Ask { .. } => rexon_core::log_info!("link", "вопрос перед внешней ссылкой: {url}"),
             _ => {}
         }
-        // Вопрос всегда о сайте; для карточки — тоже: если открыть её не
-        // выйдет, страница спросит о том же адресе, не заводя второго окна.
+        // The question is always about the site; for a card too: if it cannot be
+        // opened, the page asks about the same address without creating a second
+        // window.
         let ask_site = if matches!(action, LinkAction::Card(_)) {
             lp::site_of(&url).unwrap_or_default()
         } else {
@@ -99,7 +102,8 @@ impl qobject::LinkGuard {
 
     fn open(&self, url: &QString, remember: bool) -> bool {
         let url = url.to_string();
-        // Решение ещё раз: окну могли подсунуть то, что открывать нельзя.
+        // Decide once more: the window may have been handed something that must
+        // not be opened.
         if matches!(lp::decide(&url, &[]), LinkAction::Refuse | LinkAction::Page) {
             rexon_core::log_warn!("link", "открытие отклонено: {url}");
             return false;

@@ -1,17 +1,22 @@
-// Режим «клиент вывода waywallen» хоста обоев (`--mode waywallen`).
+// "waywallen output client" mode of the wallpaper host
+// (`--mode waywallen`).
 //
-// Сцены Wallpaper Engine рисует демон waywallen; на X11 вне KDE у него нет
-// своего клиента вывода, и этим клиентом становится хост: окна-рабочие
-// столы с элементом вывода waywallen (разбор — qml/WallpaperWaywallen.qml и
-// `rexon-core::wallpaper_backend`, раздел «дисплей для демона»).
+// Wallpaper Engine scenes are drawn by the waywallen daemon; on X11 outside
+// KDE it has no output client of its own, and the host becomes that client:
+// desktop windows with a waywallen output element (analysed in
+// qml/WallpaperWaywallen.qml and `rexon-core::wallpaper_backend`, the
+// "display for the daemon" section).
 //
-// Запускают его двое, строкой одного вида (`--socket <путь> --mode
-// waywallen`): демон — по определению вывода при своём старте, Rexon — по
-// «Применить», когда дисплеев нет. Поэтому до Qt здесь две вещи:
-//   * на Wayland и без `DISPLAY` хост только ждёт — окна X11 там легли бы
-//     поверх стола, а выход демон счёл бы падением и перезапускал бы по кругу;
-//   * один экземпляр на сеанс: второй ждёт блокировку и подхватывает вывод,
-//     если первый умрёт. Двух окон на монитор не бывает.
+// It is started by two parties with a command line of the same form
+// (`--socket <path> --mode waywallen`): the daemon — by its output
+// detection at start-up, Rexon — on "Apply" when there are no displays.
+// So two things happen here before Qt:
+//   * on Wayland and without `DISPLAY` the host only waits — X11 windows
+//     would lie on top of the desktop there, and the daemon would treat
+//     the exit as a crash and restart it in a loop;
+//   * one instance per session: a second one waits for the lock and takes
+//     over the output if the first one dies. There are never two windows
+//     per monitor.
 
 use std::path::Path;
 
@@ -23,13 +28,13 @@ use rexon_gui::wallpaper_host::{PLACEMENT_X11, USAGE};
 
 use crate::{variant_str, QmlPlan};
 
-/// Имя модуля в таблице точек входа ядра (`rexon-core::qt_app`): окна этого
-/// режима показывают сцены.
+/// Module name in the core's entry point table (`rexon-core::qt_app`): the
+/// windows of this mode show scenes.
 const ENTRY_MODULE: &str = "rexon.scene_wallpaper";
 
 const QML_URL: &str = "qrc:/qt/qml/org/rexon/gui/qml/WallpaperWaywallen.qml";
 
-/// Метка строк журнала режима.
+/// Log line tag of the mode.
 const TAG: &str = "REXON-WWD";
 
 struct Args {
@@ -53,8 +58,8 @@ fn parse(argv: &[String]) -> Result<Args, String> {
     Ok(args)
 }
 
-/// Обёртка элемента вывода из пакета `org.waywallen.kde`: вшитый в Rexon
-/// первым, установленный Plasma-плагин — запасным.
+/// Wrapper of the output element from the `org.waywallen.kde` package: the
+/// one bundled into Rexon first, the installed Plasma plugin as a fallback.
 fn find_display_item() -> Option<String> {
     let is_file = |p: &str| Path::new(p).is_file();
     let data_dir = rexon_core::installer::pick_package_data_dir(&rexon_core::cli::repo_root(), &is_file);
@@ -66,8 +71,8 @@ fn find_display_item() -> Option<String> {
         .find(|qml| is_file(qml))
 }
 
-/// Ждать вечно, ничего не показывая (Wayland, нет `DISPLAY`, вывод уже
-/// показывает другой экземпляр). Процесс уходит по сигналу демона.
+/// Wait forever, showing nothing (Wayland, no `DISPLAY`, another instance
+/// already shows the output). The process leaves on the daemon's signal.
 fn idle_forever() -> ! {
     loop {
         std::thread::park();
@@ -102,8 +107,9 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
     plan_display(&args, item)
 }
 
-/// Один экземпляр на сеанс: блокировка держится до конца процесса. Занята
-/// — ждать, пока прежний экземпляр уйдёт, и подхватить вывод.
+/// One instance per session: the lock is held until the end of the process.
+/// If it is taken — wait until the previous instance leaves, and take over
+/// the output.
 fn take_display_lock() {
     let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
     if !runtime.is_empty() {
@@ -124,7 +130,7 @@ fn take_display_lock() {
     }
 }
 
-/// План окна X11 с элементом вывода `item`.
+/// Plan of an X11 window with the output element `item`.
 fn plan_display(args: &Args, item: String) -> Result<QmlPlan, String> {
     let mut properties = QMap::<QMapPair_QString_QVariant>::default();
     properties.insert(
@@ -150,8 +156,9 @@ fn plan_display(args: &Args, item: String) -> Result<QmlPlan, String> {
     })
 }
 
-/// Что делать хосту на Wayland: глобалы композитора и штатный клиент вывода
-/// (рядом с демоном, который нас запустил, рядом с демоном пакета, в `PATH`).
+/// What the host does on Wayland: the compositor globals and the stock
+/// output client (next to the daemon that started us, next to the
+/// package's daemon, in `PATH`).
 fn wayland_role(socket: &str) -> wb::WaylandHostRole {
     let globals = rexon_gui::screensaver_bridge::wayland_idle::probe().map(|f| f.globals).unwrap_or_default();
     let parent = std::fs::read_link(format!("/proc/{}/exe", std::os::unix::process::parent_id()))
@@ -164,7 +171,7 @@ fn wayland_role(socket: &str) -> wb::WaylandHostRole {
     wb::wayland_host_role(&globals, bin.as_deref(), socket)
 }
 
-/// Исполняемый файл по `PATH`.
+/// An executable from `PATH`.
 fn which(name: &str) -> Option<String> {
     std::env::var("PATH")
         .ok()?
@@ -174,11 +181,13 @@ fn which(name: &str) -> Option<String> {
         .find(|p| Path::new(p).is_file())
 }
 
-/// Поднимать и сторожить штатный клиент вывода, пока жив сам хост. Метка
-/// «вывод отпущен» (`wallpaper_backend::display_off_marker_path`: человек
-/// поставил свои обои) — клиент снят и не поднимается, пока Rexon её не
-/// уберёт (применение сцены). Клиент умирает вместе с хостом
-/// (`PR_SET_PDEATHSIG`): демон, останавливая хост, снимает и его.
+/// Bring up and watch the stock output client while the host itself is
+/// alive. The "output released" marker
+/// (`wallpaper_backend::display_off_marker_path`: the user set their own
+/// wallpaper) — the client is stopped and not brought up until Rexon
+/// removes it (applying a scene). The client dies together with the host
+/// (`PR_SET_PDEATHSIG`): when the daemon stops the host, it also stops the
+/// client.
 fn supervise_layer_shell_client(client: Vec<String>) -> ! {
     use std::time::{Duration, Instant};
     take_display_lock();
@@ -222,8 +231,8 @@ fn supervise_layer_shell_client(client: Vec<String>) -> ! {
                     Ok(c) => {
                         rexon_core::log_info!("wallpaper-host", "{TAG}-LAYER клиент вывода поднят: pid {}", c.id());
                         child = Some((c, Instant::now()));
-                        // Поверхность клиента новее службы фона Cinnamon и
-                        // легла под неё — уложить службу под нас.
+                        // The client surface is newer than the Cinnamon background service and
+                        // went under it — put the service under us.
                         rexon_gui::wallpaper_host::cinnamon_layer::surface_up("вывод сцен Wallpaper Engine");
                     }
                     Err(e) => {
@@ -239,12 +248,13 @@ fn supervise_layer_shell_client(client: Vec<String>) -> ! {
     }
 }
 
-/// Запустить процесс, который получит SIGTERM, когда хост умрёт.
+/// Start a process that will get SIGTERM when the host dies.
 fn spawn_tied_to_us(argv: &[String]) -> std::io::Result<std::process::Child> {
     use std::os::unix::process::CommandExt;
     let mut cmd = std::process::Command::new(&argv[0]);
     cmd.args(&argv[1..]).stdin(std::process::Stdio::null());
-    // SAFETY: в дочернем процессе до exec — только prctl (async-signal-safe).
+    // SAFETY: in the child process before exec — only prctl
+    // (async-signal-safe).
     unsafe {
         cmd.pre_exec(|| {
             libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
@@ -254,15 +264,16 @@ fn spawn_tied_to_us(argv: &[String]) -> std::io::Result<std::process::Child> {
     cmd.spawn()
 }
 
-/// Элементу вывода нужен EGL: кадры демона приходят буферами DMA-BUF, а их
-/// импорт в Qt на X11 идёт только через EGL (README waywallen-display о
-/// plasmashell на X11). По умолчанию Qt на xcb берёт GLX. Платформу Qt
-/// здесь не трогаем — её выставляет общий `prepare_qpa_platform` в main.rs.
+/// The output element needs EGL: the daemon's frames arrive as DMA-BUF
+/// buffers, and importing them into Qt on X11 works only through EGL (the
+/// waywallen-display README about plasmashell on X11). By default Qt on
+/// xcb picks GLX. The Qt platform is not touched here — it is set by the
+/// shared `prepare_qpa_platform` in main.rs.
 fn before_app(_plan: &QmlPlan) -> Result<(), String> {
     const GL_INTEGRATION: &str = "QT_XCB_GL_INTEGRATION";
     if std::env::var_os(GL_INTEGRATION).is_none_or(|v| v.is_empty()) {
-        // SAFETY: зовётся из main до создания приложения Qt и до любых
-        // потоков — читателей окружения ещё нет.
+        // SAFETY: called from main before the Qt application is created and before
+        // any threads — there are no environment readers yet.
         unsafe { std::env::set_var(GL_INTEGRATION, "xcb_egl") };
     }
     Ok(())

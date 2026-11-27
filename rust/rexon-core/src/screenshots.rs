@@ -1,73 +1,73 @@
-//! Скриншоты DE — порт детерминированных частей `rexon/screenshots.py`
+//! DE screenshots — port of the deterministic parts of `rexon/screenshots.py`
 //! (`DEScreenshotManager`).
 //!
-//! Портированы ТОЛЬКО чистые вход→выход куски (сверяются golden-тестом
-//! `screenshots_parity.rs` с самим Python):
-//!   * таблицы `DE_COLORS`, `DE_DISPLAY_NAMES`, `SCREENSHOT_URLS`, карта
-//!     файлов Wikimedia (`filename_for_de`);
-//!   * генерация встроенного SVG-плейсхолдера (`generate_svg`) — чистый текст,
-//!     сверяется байт-в-байт для каждого DE;
-//!   * выбор argv инструмента снятия по наличию (`screenshot_tools`,
-//!     `select_screenshot_tool`) — наличие подаётся замыканием, сам subprocess
-//!     НЕ исполняется;
-//!   * имена файлов и кандидаты путей (`auto_name`, `custom_name`,
+//! ONLY pure input→output pieces are ported (checked by the golden test
+//! `screenshots_parity.rs` against Python itself):
+//!   * the tables `DE_COLORS`, `DE_DISPLAY_NAMES`, `SCREENSHOT_URLS`, the map of
+//!     Wikimedia files (`filename_for_de`);
+//!   * generation of the built-in SVG placeholder (`generate_svg`) — pure text,
+//!     checked byte for byte for every DE;
+//!   * choosing the argv of a capture tool by availability (`screenshot_tools`,
+//!     `select_screenshot_tool`) — availability is supplied by a closure, the subprocess itself
+//!     is NOT executed;
+//!   * file names and path candidates (`auto_name`, `custom_name`,
 //!     `placeholder_name`, `screenshot_path_candidates`, `extra_candidates`,
 //!     `save_ext`/`save_dest`);
-//!   * URL-хелперы (`official_screenshot_urls`, `online_url`, `online_urls`);
-//!   * разрешение реального CDN-URL через API Wikimedia (`wikimedia_api_url`,
-//!     `parse_wikimedia_imageinfo` — порт `_resolve_via_api`);
-//!   * приёмка скачанного ответа (`validate_image_response`, `retry_wait_secs`);
-//!   * план автоскачивания (`auto_download_plan` — порт сборки `tasks` в
-//!     `auto_download_all`, ФС-наблюдения подаются замыканиями).
+//!   * URL helpers (`official_screenshot_urls`, `online_url`, `online_urls`);
+//!   * resolving the real CDN URL via the Wikimedia API (`wikimedia_api_url`,
+//!     `parse_wikimedia_imageinfo` — port of `_resolve_via_api`);
+//!   * accepting a downloaded response (`validate_image_response`, `retry_wait_secs`);
+//!   * the auto-download plan (`auto_download_plan` — port of building `tasks` in
+//!     `auto_download_all`, FS observations are supplied by closures).
 //!
-//! Побочные эффекты НЕ портированы (тонкая обёртка над ФС/подпроцессами/сетью
-//! поверх этих чистых функций — как в `backup.rs`/`distro_compat.rs`):
-//!   * реальное снятие скриншота (`subprocess.run`) — ядро отдаёт argv/план,
-//!     исполнение при подключении к живому Python;
-//!   * чтение/запись каталога скриншотов, `shutil.copy2`, `os.remove`;
-//!   * скачивание по HTTP/Wikimedia API, параллельный `auto_download_all`.
+//! Side effects are NOT ported (a thin wrapper over the FS/subprocesses/network
+//! on top of these pure functions — as in `backup.rs`/`distro_compat.rs`):
+//!   * actually taking a screenshot (`subprocess.run`) — the core hands out argv/plan,
+//!     execution happens when connected to live Python;
+//!   * reading/writing the screenshot directory, `shutil.copy2`, `os.remove`;
+//!   * downloading over HTTP/Wikimedia API, the parallel `auto_download_all`.
 //!
-//! Квирки оригинала сохранены для паритета (помечены ниже).
+//! Quirks of the original are kept for parity (marked below).
 
 use serde_json::Value;
 
 use crate::i18n::{n_, tr, trc, trf};
 use crate::net::{self, LogLevel, NetError, NetIo};
 
-/// Подкаталог скриншотов под `$HOME` при СТАНДАРТНОМ корне конфигов
-/// (`~/.config/rexon/screenshots`). Для построения пути не годится — только
-/// для сверки с эталоном Python, снятым без `$XDG_CONFIG_HOME`; настоящий
-/// путь даёт [`screenshot_dir_xdg`].
+/// Screenshot subdirectory under `$HOME` with the STANDARD config root
+/// (`~/.config/rexon/screenshots`). Not suitable for building a path — only
+/// for comparison with the Python reference recorded without `$XDG_CONFIG_HOME`; the real
+/// path is given by [`screenshot_dir_xdg`].
 pub const SCREENSHOT_SUBDIR: &str = ".config/rexon/screenshots";
 
-/// Абсолютный путь каталога скриншотов при стандартном корне конфигов.
+/// Absolute path of the screenshot directory with the standard config root.
 ///
-/// ⚠️ Оставлена ради сигнатуры PyO3-моста. Зовущим в продукте нужна
-/// [`screenshot_dir_xdg`]: без `$XDG_CONFIG_HOME` путь уезжает мимо того,
-/// что читает Python (`DEScreenshotManager.SCREENSHOT_DIR` строится
-/// `expand_user("~/.config/rexon/screenshots")`, то есть XDG-осведомлённо).
+/// ⚠️ Kept for the sake of the PyO3 bridge signature. Product callers need
+/// [`screenshot_dir_xdg`]: without `$XDG_CONFIG_HOME` the path drifts away from
+/// what Python reads (`DEScreenshotManager.SCREENSHOT_DIR` is built with
+/// `expand_user("~/.config/rexon/screenshots")`, i.e. XDG-aware).
 pub fn screenshot_dir(home: &str) -> String {
     screenshot_dir_xdg(None, home)
 }
 
-/// Каталог скриншотов с учётом `$XDG_CONFIG_HOME` — порт
+/// Screenshot directory honoring `$XDG_CONFIG_HOME` — port of
 /// `expand_user("~/.config/rexon/screenshots")`.
 ///
-/// ⚠️ Починка: раньше путь склеивался литералом от голого `$HOME`. Python
-/// при этом раскрывал его через `expand_user`, и на машине с нестандартным
-/// `XDG_CONFIG_HOME` карусель вкладки «Рабочие столы» смотрела в ОДНУ
-/// папку, а снятые скриншоты ложились в ДРУГУЮ: снимок сделан, а на
-/// карточке по-прежнему рисованный плейсхолдер. Строится единой точкой
-/// [`crate::utils::rexon_config_dir_at`] — как и все хранилища Rexon.
+/// ⚠️ Fix: the path used to be glued as a literal from a bare `$HOME`. Python
+/// meanwhile expanded it via `expand_user`, and on a machine with a non-standard
+/// `XDG_CONFIG_HOME` the carousel of the «Desktops» tab looked into ONE
+/// folder while taken screenshots landed in ANOTHER: the shot was taken, yet the
+/// card still showed the drawn placeholder. Built through a single point,
+/// [`crate::utils::rexon_config_dir_at`] — like all Rexon stores.
 pub fn screenshot_dir_xdg(xdg_config_home: Option<&str>, home: &str) -> String {
     format!("{}/screenshots", crate::utils::rexon_config_dir_at(xdg_config_home, home))
 }
 
-/// Цвета градиента по умолчанию для неизвестного DE (`DE_COLORS.get` fallback).
+/// Default gradient colors for an unknown DE (the `DE_COLORS.get` fallback).
 pub const FALLBACK_COLORS: (&str, &str) = ("#607D8B", "#37474F");
 
-/// Таблица цветов градиента SVG-плейсхолдера (`DEScreenshotManager.DE_COLORS`).
-/// Порядок = порядок объявления в оригинале (важен для генераторов/сверки).
+/// Gradient color table of the SVG placeholder (`DEScreenshotManager.DE_COLORS`).
+/// Order = declaration order in the original (matters for generators/comparison).
 pub const DE_COLORS: &[(&str, &str, &str)] = &[
     ("cinnamon-mint", "#4CAF50", "#2E7D32"),
     ("cinnamon", "#8BC34A", "#558B2F"),
@@ -87,7 +87,7 @@ pub const DE_COLORS: &[(&str, &str, &str)] = &[
     ("wayfire", "#FF7043", "#BF360C"),
 ];
 
-/// Человекочитаемые имена DE (`DEScreenshotManager.DE_DISPLAY_NAMES`).
+/// Human-readable DE names (`DEScreenshotManager.DE_DISPLAY_NAMES`).
 pub const DE_DISPLAY_NAMES: &[(&str, &str)] = &[
     ("cinnamon-mint", "Cinnamon Mint"),
     ("cinnamon", "Cinnamon"),
@@ -107,18 +107,18 @@ pub const DE_DISPLAY_NAMES: &[(&str, &str)] = &[
     ("wayfire", "Wayfire"),
 ];
 
-/// Как Rexon называет рабочий стол, которого не опознал. Одно имя на весь
-/// продукт: его отдают и [`display_name`], и `qt_settings::de_display`.
+/// What Rexon calls a desktop it did not recognize. One name for the whole
+/// product: it is returned by both [`display_name`] and `qt_settings::de_display`.
 ///
-/// ⚠️ В фразу его подставлять ТОЛЬКО через [`place_de_name`]: имена столов
-/// («KDE», «Sway») не склоняются, а это — склоняется, и прямая подстановка
-/// давала «для ВАШ РАБОЧИЙ СТОЛ».
+/// ⚠️ Put it into a phrase ONLY via [`place_de_name`]: desktop names
+/// («KDE», «Sway») do not decline, but this one does (in Russian), and plain substitution
+/// produced the ungrammatical «for YOUR DESKTOP» in the nominative case.
 ///
-/// Это `msgid`; показывается перевод — [`unknown_de_name`].
+/// This is the `msgid`; the translation is shown — [`unknown_de_name`].
 pub const UNKNOWN_DE_NAME: &str = n_("YOUR DESKTOP");
 
-/// [`UNKNOWN_DE_NAME`] на языке интерфейса — само имя, без предлога
-/// («Текущее окружение: <b>ВАШ РАБОЧИЙ СТОЛ</b>»).
+/// [`UNKNOWN_DE_NAME`] in the interface language — the name itself, without a preposition
+/// («Current environment: <b>YOUR DESKTOP</b>»).
 pub fn unknown_de_name() -> String {
     // TRANSLATORS: name shown for a desktop environment Rexon couldn't
     // recognize, e.g. “Current desktop: YOUR DESKTOP”. Capitals match how
@@ -126,42 +126,42 @@ pub fn unknown_de_name() -> String {
     tr(UNKNOWN_DE_NAME)
 }
 
-/// Неопознанный стол внутри фразы, после предлога («for your desktop»).
+/// The unrecognized desktop inside a phrase, after a preposition («for your desktop»).
 ///
-/// Для языков, где имя не склоняется: одна форма на все предлоги. Русский
-/// склоняет его сам — по таблице падежей в [`place_de_name`].
+/// For languages where the name does not decline: one form for all prepositions. Russian
+/// declines it itself — by the case table in [`place_de_name`].
 fn unknown_de_in_sentence() -> String {
     // TRANSLATORS: the unrecognized desktop inside a sentence, after a
     // preposition: “Restored 2 apps for your desktop”.
     trc("unknown desktop in a sentence", "your desktop")
 }
 
-/// Имя — неопознанный стол (на любом языке интерфейса)?
+/// Is the name the unrecognized desktop (in any interface language)?
 fn is_unknown_de_name(name: &str) -> bool {
     name == UNKNOWN_DE_NAME || name == unknown_de_name()
 }
 
-/// Показанное имя стола — заглушка неопознанного (`msgid` или перевод)?
-/// Зовущим, у которых для неопознанного стола своя целая фраза.
+/// Is the shown desktop name the placeholder for an unrecognized one (`msgid` or translation)?
+/// For callers that have a whole phrase of their own for an unrecognized desktop.
 pub fn is_unknown_de_display(name: &str) -> bool {
     is_unknown_de_name(name)
 }
 
-/// Не опознан ли стол: пусто, `unknown` (опознание окружения) или `generic`
-/// (опознание движка обоев).
+/// Whether the desktop is unrecognized: empty, `unknown` (environment detection) or `generic`
+/// (wallpaper engine detection).
 pub fn is_unknown_de(de: &str) -> bool {
     let de = de.trim();
     de.is_empty() || de.eq_ignore_ascii_case("unknown") || de.eq_ignore_ascii_case("generic")
 }
 
-/// Форма [`UNKNOWN_DE_NAME`] после слова, которое требует падежа, либо
-/// `None` — слово падежа не требует (двоеточие, тег, существительное).
+/// The form of [`UNKNOWN_DE_NAME`] after a word that requires a case, or
+/// `None` — the word requires no case (a colon, a tag, a noun).
 ///
-/// Русские падежи — только после русского слова (в русском шаблоне). После
-/// английского предлога («for %1», «on %1») — одна форма «внутри фразы» из
-/// каталога: английскому таблица падежей ни к чему. Прочие места
-/// («Restore %1 Apps») предлога не несут — там нужна целая фраза у
-/// зовущего, а не склейка.
+/// Russian cases — only after a Russian word (in a Russian template). After
+/// an English preposition («for %1», «on %1») — the single «inside a phrase» form from
+/// the catalog: English has no use for a case table. Other places
+/// («Restore %1 Apps») carry no preposition — they need a whole phrase at the
+/// caller, not gluing.
 fn unknown_de_form(word: &str) -> Option<String> {
     const EN_PREPOSITIONS: &[&str] = &[
         "for", "on", "in", "at", "of", "with", "to", "from", "by", "under", "about", "into",
@@ -173,30 +173,30 @@ fn unknown_de_form(word: &str) -> Option<String> {
     russian_unknown_de_form(word).map(str::to_string)
 }
 
-/// Русская форма «вашего рабочего стола» по предшествующему слову.
+/// The Russian form of «your desktop» by the preceding word.
 fn russian_unknown_de_form(word: &str) -> Option<&'static str> {
     match word {
-        // родительный
+        // genitive
         "для" | "у" | "из" | "от" | "без" | "до" | "около" | "после" | "кроме" | "среди"
         | "окружения" | "приложения" => Some("вашего рабочего стола"),
-        // предложный
+        // prepositional
         "на" | "в" | "во" | "о" | "об" | "при" => Some("вашем рабочем столе"),
-        // дательный
+        // dative
         "к" | "ко" | "по" => Some("вашему рабочему столу"),
-        // творительный
+        // instrumental
         "с" | "со" | "под" | "над" | "перед" | "за" | "между" => Some("вашим рабочим столом"),
         _ => None,
     }
 }
 
-/// Подставить имя стола на место `slot` в шаблоне — грамотно.
+/// Put the desktop name in place of `slot` in the template — grammatically.
 ///
-/// Известное имя подставляется как есть. [`UNKNOWN_DE_NAME`] после слова,
-/// требующего падежа, заменяется формой в этом падеже: «для {0}» → «для
-/// вашего рабочего стола», «на {de}» → «на вашем рабочем столе». Имя в
-/// кавычках после «окружения» уходит вместе с этим словом: «Для окружения
-/// «{0}»» → «Для вашего рабочего стола». В остальных местах («Текущее
-/// окружение: <b>{0}</b>») остаётся именительный падеж.
+/// A known name is substituted as is. [`UNKNOWN_DE_NAME`] after a word
+/// requiring a case is replaced by its form in that case: Russian «for {0}» → «for
+/// your desktop» in the genitive, «on {de}» → «on your desktop» in the prepositional. A quoted name
+/// after the word «environment» goes away together with that word: «For the environment
+/// «{0}»» → «For your desktop». Elsewhere («Current
+/// environment: <b>{0}</b>») the nominative case stays.
 pub fn place_de_name(template: &str, slot: &str, name: &str) -> String {
     if slot.is_empty() || !is_unknown_de_name(name) {
         return template.replace(slot, name);
@@ -208,7 +208,7 @@ pub fn place_de_name(template: &str, slot: &str, name: &str) -> String {
     while let Some(pos) = rest.find(slot) {
         let head = &rest[..pos];
         let mut after = &rest[pos + slot.len()..];
-        // Кавычки у русского шаблона — «», у английского — “”.
+        // Quotes in a Russian template are «», in an English one “”.
         let quote = ['«', '“'].into_iter().find(|q| head.ends_with(*q));
         let quoted = quote.is_some();
         let bare = quote.and_then(|q| head.strip_suffix(q)).unwrap_or(head);
@@ -226,11 +226,11 @@ pub fn place_de_name(template: &str, slot: &str, name: &str) -> String {
         match form {
             Some((before, word, form)) => {
                 if word.to_lowercase() == "окружения" && quoted {
-                    // «Для окружения «X»» — слово уходит вместе с кавычками.
+                    // «For the environment «X»» — the word goes away together with the quotes.
                     out.push_str(&before[..before.len() - word.len()]);
                 } else {
-                    // «for “%1”» → «for your desktop»: предлог остаётся,
-                    // кавычки (если были) уходят.
+                    // «for “%1”» → «for your desktop»: the preposition stays,
+                    // the quotes (if any) go away.
                     out.push_str(before);
                     out.push(' ');
                 }
@@ -250,7 +250,7 @@ pub fn place_de_name(template: &str, slot: &str, name: &str) -> String {
     out
 }
 
-/// Цвета градиента для DE — `DE_COLORS.get(de, FALLBACK)`.
+/// Gradient colors for a DE — `DE_COLORS.get(de, FALLBACK)`.
 pub fn de_colors(de: &str) -> (&'static str, &'static str) {
     DE_COLORS
         .iter()
@@ -259,23 +259,23 @@ pub fn de_colors(de: &str) -> (&'static str, &'static str) {
         .unwrap_or(FALLBACK_COLORS)
 }
 
-/// Отображаемое имя DE — `DE_DISPLAY_NAMES.get(de, de.upper())`.
+/// Display name of a DE — `DE_DISPLAY_NAMES.get(de, de.upper())`.
 ///
-/// Квирк сохранён: для неизвестного DE fallback = `de.upper()` (Python
-/// `str.upper()`), в Rust `to_uppercase()` — эквивалент для ASCII-id
-/// (намеренное расхождение сохранено для паритета: id всех DE — ASCII).
+/// Quirk kept: for an unknown DE the fallback = `de.upper()` (Python
+/// `str.upper()`), in Rust `to_uppercase()` — equivalent for ASCII ids
+/// (the intentional difference is kept for parity: all DE ids are ASCII).
 pub fn display_name(de: &str) -> String {
-    // ⭐ Починка (правило #13): неопознанный стол назывался «UNKNOWN» или
-    // пустой строкой — и в подписи вкладки стояло «Для окружения «»».
+    // ⭐ Fix (rule #13): an unrecognized desktop was called «UNKNOWN» or
+    // an empty string — and the tab label read «For the environment «»».
     if is_unknown_de(de) {
         return unknown_de_name();
     }
     table_display_name(de)
 }
 
-/// Имя по таблице без подмены неопознанного стола — для картинки-заглушки
-/// [`generate_svg`]: она сверяется с оригиналом байт в байт, и у пустого id
-/// подпись на ней пустая. В тексты для человека идёт [`display_name`].
+/// The table name without substituting the unrecognized desktop — for the placeholder picture
+/// [`generate_svg`]: it is compared with the original byte for byte, and for an empty id
+/// its caption is empty. Texts for people use [`display_name`].
 fn table_display_name(de: &str) -> String {
     DE_DISPLAY_NAMES
         .iter()
@@ -284,15 +284,15 @@ fn table_display_name(de: &str) -> String {
         .unwrap_or_else(|| de.to_uppercase())
 }
 
-/// Встроенный SVG-плейсхолдер для DE (`_generate_svg`) — чистый текст,
-/// байт-в-байт как оригинал. Без завершающего перевода строки.
+/// Built-in SVG placeholder for a DE (`_generate_svg`) — pure text,
+/// byte for byte like the original. No trailing newline.
 pub fn generate_svg(de: &str) -> String {
     generate_svg_for(de, PlaceholderState::Loading)
 }
 
-/// Заглушка с подписью под состояние закачки. Отличается от [`generate_svg`]
-/// только нижней строкой: у [`PlaceholderState::Loading`] байты те же, что
-/// у оригинала.
+/// A placeholder with a caption matching the download state. Differs from [`generate_svg`]
+/// only in the bottom line: for [`PlaceholderState::Loading`] the bytes are the same as
+/// the original's.
 pub fn generate_svg_for(de: &str, state: PlaceholderState) -> String {
     let caption = state.caption();
     let (bg1, bg2) = de_colors(de);
@@ -318,49 +318,49 @@ pub fn generate_svg_for(de: &str, state: PlaceholderState) -> String {
     )
 }
 
-// ── Имена файлов ───────────────────────────────────────────────────────────
+// ── File names ─────────────────────────────────────────────────────────────
 
-/// Имя авто-снятого скриншота — `{de}_auto.png`.
+/// Name of an auto-taken screenshot — `{de}_auto.png`.
 pub fn auto_name(de: &str) -> String {
     format!("{de}_auto.png")
 }
 
-/// Имя пользовательского скриншота — `{de}.png` (`set_custom_screenshot`).
+/// Name of a user screenshot — `{de}.png` (`set_custom_screenshot`).
 pub fn custom_name(de: &str) -> String {
     format!("{de}.png")
 }
 
-/// Имя файла SVG-плейсхолдера — `{de}_placeholder.svg`.
+/// File name of the SVG placeholder — `{de}_placeholder.svg`.
 pub fn placeholder_name(de: &str) -> String {
     format!("{de}_placeholder.svg")
 }
 
-// ── Состояние заглушки ─────────────────────────────────────────────────────
+// ── Placeholder state ──────────────────────────────────────────────────────
 //
-// Раньше заглушка всегда обещала «Скриншот загружается…» — и без сети
-// обещала вечно: покупатель ждал того, что не придёт (правило #13). Теперь
-// подпись честная и зависит от того, что знает ядро о закачке.
+// The placeholder used to always promise «Screenshot is loading…» — and without a network
+// it promised forever: the user waited for something that would never come (rule #13). Now
+// the caption is honest and depends on what the core knows about the download.
 
-/// Что говорит заглушка вместо снимка.
+/// What the placeholder says instead of a screenshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaceholderState {
-    /// Закачка снимков этого стола идёт.
+    /// Screenshots of this desktop are being downloaded.
     Loading,
-    /// Закачка кончилась ничем: сети нет либо источник не ответил.
+    /// The download came to nothing: no network or the source did not answer.
     NoInternet,
-    /// Скачивать неоткуда — у стола нет ни одного адреса снимка.
+    /// Nowhere to download from — the desktop has no screenshot address at all.
     NoScreenshot,
 }
 
-/// Подпись заглушки на время закачки — текст оригинала.
+/// Placeholder caption while downloading — the original's text.
 pub const CAPTION_LOADING: &str = n_("Loading screenshot…");
-/// Подпись заглушки, когда закачка не удалась.
+/// Placeholder caption when the download failed.
 pub const CAPTION_NO_INTERNET: &str = n_("The screenshot will appear once you're online");
-/// Подпись заглушки стола без источника снимков.
+/// Placeholder caption of a desktop without a screenshot source.
 pub const CAPTION_NO_SCREENSHOT: &str = n_("No screenshot of this desktop yet");
 
 impl PlaceholderState {
-    /// Нижняя строка заглушки на языке интерфейса (`CAPTION_*` — `msgid`).
+    /// The placeholder's bottom line in the interface language (`CAPTION_*` are `msgid`s).
     pub fn caption(self) -> String {
         tr(match self {
             PlaceholderState::Loading => CAPTION_LOADING,
@@ -370,10 +370,10 @@ impl PlaceholderState {
     }
 }
 
-/// Имя файла заглушки в данном состоянии. Своё имя на каждое состояние —
-/// потому что QML кэширует картинку по адресу: перепиши один файл, и окно
-/// показывало бы старую подпись. У `Loading` имя прежнее
-/// ([`placeholder_name`]), общее с Python.
+/// Placeholder file name in the given state. A separate name for each state —
+/// because QML caches the picture by address: rewrite one file, and the window
+/// would show the old caption. `Loading` keeps the old name
+/// ([`placeholder_name`]), shared with Python.
 pub fn placeholder_name_for(de: &str, state: PlaceholderState) -> String {
     match state {
         PlaceholderState::Loading => placeholder_name(de),
@@ -382,13 +382,13 @@ pub fn placeholder_name_for(de: &str, state: PlaceholderState) -> String {
     }
 }
 
-/// Есть ли у стола откуда скачать снимки — список [`SCREENSHOT_URLS`], по
-/// которому идёт автоскачивание.
+/// Whether the desktop has somewhere to download screenshots from — the [`SCREENSHOT_URLS`] list
+/// used by auto-download.
 pub fn has_download_source(de: &str) -> bool {
     SCREENSHOT_URLS.iter().any(|(d, urls)| *d == de && !urls.is_empty())
 }
 
-/// Состояние заглушки: `pending` — ждёт ли стол своей пачки закачки.
+/// Placeholder state: `pending` — whether the desktop is waiting for its download batch.
 pub fn placeholder_state(de: &str, pending: bool) -> PlaceholderState {
     if !has_download_source(de) {
         PlaceholderState::NoScreenshot
@@ -399,20 +399,20 @@ pub fn placeholder_state(de: &str, pending: bool) -> PlaceholderState {
     }
 }
 
-// ── Кандидаты путей (без ФС-проверок; проверки — эффект в обёртке) ──────────
+// ── Path candidates (no FS checks; checks are an effect in the wrapper) ─────
 
-/// Порядок суффиксов при поиске скриншота (`get_screenshot_path`).
+/// Suffix order when looking for a screenshot (`get_screenshot_path`).
 pub const PATH_SUFFIXES: &[&str] = &["", "_auto"];
-/// Порядок расширений при поиске скриншота.
+/// Extension order when looking for a screenshot.
 pub const PATH_EXTS: &[&str] = &[".png", ".jpg", ".webp"];
-/// Минимальный размер файла-кандидата в байтах — принимается при `size > 100`.
+/// Minimum size of a candidate file in bytes — accepted when `size > 100`.
 pub const MIN_SIZE: u64 = 100;
 
-/// Кандидаты путей основного скриншота в порядке перебора
-/// (`get_screenshot_path`): `(suffix, ext)` для `suffix ∈ {"", "_auto"}` и
-/// `ext ∈ {.png, .jpg, .webp}`. Живой перебор берёт первый существующий с
-/// `size > MIN_SIZE`. Тот же список кандидатов использует `delete_screenshot`
-/// (но без фильтра размера — удаляет любой существующий).
+/// Path candidates of the main screenshot in search order
+/// (`get_screenshot_path`): `(suffix, ext)` for `suffix ∈ {"", "_auto"}` and
+/// `ext ∈ {.png, .jpg, .webp}`. The live search takes the first existing one with
+/// `size > MIN_SIZE`. `delete_screenshot` uses the same candidate list
+/// (but without the size filter — it deletes any existing one).
 pub fn screenshot_path_candidates(dir: &str, de: &str) -> Vec<String> {
     let mut out = Vec::with_capacity(PATH_SUFFIXES.len() * PATH_EXTS.len());
     for suffix in PATH_SUFFIXES {
@@ -423,10 +423,10 @@ pub fn screenshot_path_candidates(dir: &str, de: &str) -> Vec<String> {
     out
 }
 
-/// Кандидаты дополнительных скриншотов карусели (`get_screenshot_paths`):
-/// `{de}_1..{de}_5` × `{.png, .jpg, .webp}`, плоским списком в порядке
-/// перебора. Живой перебор для каждого индекса берёт ПЕРВОЕ существующее
-/// расширение (`break`) — эта ФС-семантика в обёртке, здесь только кандидаты.
+/// Candidates of extra carousel screenshots (`get_screenshot_paths`):
+/// `{de}_1..{de}_5` × `{.png, .jpg, .webp}`, as a flat list in search
+/// order. The live search takes the FIRST existing extension for each index
+/// (`break`) — this FS semantics lives in the wrapper, here only the candidates.
 pub fn extra_candidates(dir: &str, de: &str) -> Vec<String> {
     let mut out = Vec::with_capacity(5 * PATH_EXTS.len());
     for i in 1..=5 {
@@ -437,22 +437,22 @@ pub fn extra_candidates(dir: &str, de: &str) -> Vec<String> {
     out
 }
 
-// ── Снятие скриншота (план argv; subprocess — эффект в обёртке) ─────────────
+// ── Taking a screenshot (argv plan; subprocess is an effect in the wrapper) ──
 
-/// Сообщение об отсутствии инструментов снятия (`take_screenshot`).
+/// Message about missing capture tools (`take_screenshot`).
 pub fn no_tools_msg() -> String {
     tr("No screenshot program found (grim, spectacle, gnome-screenshot, scrot, maim)")
 }
 
-/// Кандидаты инструментов снятия скриншота в порядке приоритета
-/// (`take_screenshot`): каждый — полный argv, пишущий в `{dir}/{de}_auto.png`.
-/// Порядок сохранён: scrot → gnome-screenshot → maim → spectacle → import.
+/// Screenshot tool candidates in priority order
+/// (`take_screenshot`): each is a full argv writing to `{dir}/{de}_auto.png`.
+/// Order kept: scrot → gnome-screenshot → maim → spectacle → import.
 pub fn screenshot_tools(dir: &str, de: &str) -> Vec<Vec<String>> {
     let out = format!("{dir}/{de}_auto.png");
     vec![
-        // Wayland-первыми: на sway/Hyprland/niri (цель №4 списка платформ)
-        // grim — единственный работающий вариант, а X11-утилиты там либо
-        // отсутствуют, либо снимают чёрный кадр через XWayland.
+        // Wayland first: on sway/Hyprland/niri (goal #4 of the platform list)
+        // grim is the only working option, while the X11 tools there are either
+        // missing or capture a black frame through XWayland.
         vec!["grim".into(), out.clone()],
         vec!["spectacle".into(), "--nonotify".into(), "-b".into(),
              "-o".into(), out.clone()],
@@ -463,11 +463,11 @@ pub fn screenshot_tools(dir: &str, de: &str) -> Vec<Vec<String>> {
     ]
 }
 
-/// Выбор argv первого доступного инструмента снятия (`take_screenshot` без
-/// исполнения subprocess): наличие команды `cmd[0]` подаётся замыканием
-/// `is_available` (порт `safe_check_command` = `shutil.which(cmd) is not None`).
-/// Возвращает argv выбранного инструмента, либо None если ни один недоступен —
-/// вызывающему (Python) остаётся исполнить subprocess и проверить результат.
+/// Choose the argv of the first available capture tool (`take_screenshot` without
+/// running the subprocess): availability of the command `cmd[0]` is supplied by the closure
+/// `is_available` (port of `safe_check_command` = `shutil.which(cmd) is not None`).
+/// Returns the argv of the chosen tool, or None if none is available —
+/// the caller (Python) then runs the subprocess and checks the result.
 pub fn select_screenshot_tool<F>(dir: &str, de: &str, is_available: F) -> Option<Vec<String>>
 where
     F: Fn(&str) -> bool,
@@ -477,10 +477,10 @@ where
         .find(|cmd| is_available(&cmd[0]))
 }
 
-// ── Сохранение скачанных данных (`_save_screenshot_data`) ───────────────────
+// ── Saving downloaded data (`_save_screenshot_data`) ───────────────────────
 
-/// Расширение файла по Content-Type (`_save_screenshot_data`): webp → `.webp`,
-/// jpeg/jpg → `.jpg`, иначе `.png`. `None` трактуется как пустая строка.
+/// File extension by Content-Type (`_save_screenshot_data`): webp → `.webp`,
+/// jpeg/jpg → `.jpg`, otherwise `.png`. `None` is treated as an empty string.
 pub fn save_ext(content_type: Option<&str>) -> &'static str {
     let ct = content_type.unwrap_or("");
     if ct.contains("webp") {
@@ -492,17 +492,17 @@ pub fn save_ext(content_type: Option<&str>) -> &'static str {
     }
 }
 
-/// Путь сохранения скачанного скриншота — `{dir}/{de}{ext}` по Content-Type.
+/// Save path of a downloaded screenshot — `{dir}/{de}{ext}` by Content-Type.
 pub fn save_dest(dir: &str, de: &str, content_type: Option<&str>) -> String {
     format!("{dir}/{de}{}", save_ext(content_type))
 }
 
-// ── Wikimedia-имена и URL скриншотов ───────────────────────────────────────
+// ── Wikimedia names and screenshot URLs ────────────────────────────────────
 
-/// Имя файла на Wikimedia Commons для DE (`_filename_for_de`), None если нет.
-/// Квирк: для `cinnamon` (в отличие от `cinnamon-mint`) записи нет.
-/// У `niri` записи нет намеренно: на Commons единственный его снимок — с
-/// немецким интерфейсом, и запасной путь подменял бы им основной снимок.
+/// File name on Wikimedia Commons for a DE (`_filename_for_de`), None if none.
+/// Quirk: there is no entry for `cinnamon` (unlike `cinnamon-mint`).
+/// `niri` has no entry on purpose: its only screenshot on Commons has a
+/// German interface, and the fallback path would replace the main screenshot with it.
 pub fn filename_for_de(de: &str) -> Option<&'static str> {
     let m: &[(&str, &str)] = &[
         ("kde", "KDE_neon_6_Breeze_Desktop_English.png"),
@@ -530,7 +530,7 @@ pub fn filename_for_de(de: &str) -> Option<&'static str> {
     m.iter().find(|(k, _)| *k == de).map(|(_, v)| *v)
 }
 
-/// Прямые URL скриншотов по DE (`SCREENSHOT_URLS`), порядок сохранён.
+/// Direct screenshot URLs by DE (`SCREENSHOT_URLS`), order kept.
 pub const SCREENSHOT_URLS: &[(&str, &[&str])] = &[
     (
         "cinnamon-mint",
@@ -603,9 +603,9 @@ pub const SCREENSHOT_URLS: &[(&str, &[&str])] = &[
             "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/themingr5.png",
         ],
     ),
-    // Hyprland: первый снимок — тема Tokyo Night из Omarchy (Commons, GPLv2+,
-    // автор David Heinemeier Hansson). Прежний `Hyprland_screen.png` показывал
-    // русскую Википедию на пол-экрана.
+    // Hyprland: the first screenshot is the Tokyo Night theme from Omarchy (Commons, GPLv2+,
+    // author David Heinemeier Hansson). The former `Hyprland_screen.png` showed
+    // the Russian Wikipedia across half the screen.
     (
         "hyprland",
         &[
@@ -622,8 +622,8 @@ pub const SCREENSHOT_URLS: &[(&str, &[&str])] = &[
             "https://lxqt-project.org/images/screenshots/pcmanfm-qt.png",
         ],
     ),
-    // niri: второй снимок — из вики проекта (GPL-3.0); снимок с Commons был
-    // с немецким интерфейсом.
+    // niri: the second screenshot is from the project wiki (GPL-3.0); the Commons screenshot had
+    // a German interface.
     (
         "niri",
         &[
@@ -638,12 +638,12 @@ pub const SCREENSHOT_URLS: &[(&str, &[&str])] = &[
             "https://commons.wikimedia.org/wiki/Special:FilePath/Sway_window_manager_on_two_displays.jpg?width=1200",
         ],
     ),
-    // River: ни у river-classic, ни на Wikimedia Commons снимка экрана нет
-    // (на Commons — только логотип), поэтому строки нет: снимки River —
-    // свои, поставляются в пакете (`BUNDLED_SUBDIR`), а не скачиваются.
-    // Wayfire: галерея wf-shell (MIT; панель и фон по умолчанию — ровно тот
-    // вид, что ставит Rexon) и снимки эффектов из официальной вики Wayfire
-    // (куб рабочих столов, переключатель окон). На Commons — только логотип.
+    // River: neither river-classic nor Wikimedia Commons has a screenshot
+    // (Commons has only the logo), so there is no line: River screenshots are
+    // our own, shipped in the package (`BUNDLED_SUBDIR`), not downloaded.
+    // Wayfire: the wf-shell gallery (MIT; the default panel and background are exactly the
+    // look Rexon installs) and effect screenshots from the official Wayfire wiki
+    // (desktop cube, window switcher). Commons has only the logo.
     (
         "wayfire",
         &[
@@ -655,7 +655,7 @@ pub const SCREENSHOT_URLS: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// Все URL скриншотов DE (`get_online_screenshot_urls` = `list(...)`).
+/// All screenshot URLs of a DE (`get_online_screenshot_urls` = `list(...)`).
 pub fn online_urls(de: &str) -> Vec<&'static str> {
     SCREENSHOT_URLS
         .iter()
@@ -664,7 +664,7 @@ pub fn online_urls(de: &str) -> Vec<&'static str> {
         .unwrap_or_default()
 }
 
-/// Первый URL каждого DE с непустым списком (`OFFICIAL_SCREENSHOT_URLS`).
+/// The first URL of each DE with a non-empty list (`OFFICIAL_SCREENSHOT_URLS`).
 pub fn official_screenshot_urls() -> Vec<(&'static str, &'static str)> {
     SCREENSHOT_URLS
         .iter()
@@ -673,15 +673,15 @@ pub fn official_screenshot_urls() -> Vec<(&'static str, &'static str)> {
         .collect()
 }
 
-// ── Wikimedia API: разрешение реального CDN-URL (`_resolve_via_api`) ────────
+// ── Wikimedia API: resolving the real CDN URL (`_resolve_via_api`) ─────────
 
-/// User-Agent запросов к Wikimedia (`ua_bot` в `download_screenshot_from_url`).
-/// Wikimedia требует информативный UA и режет анонимные загрузки.
+/// User-Agent of requests to Wikimedia (`ua_bot` in `download_screenshot_from_url`).
+/// Wikimedia requires an informative UA and cuts anonymous downloads.
 pub const WIKIMEDIA_USER_AGENT: &str = "Rexon/5.0 (Linux DE Manager; \
 https://github.com/rexon-app/rexon; rexon@proton.me) Python/urllib";
 
-/// URL запроса `imageinfo` к API Commons — порт `api_url` из `_resolve_via_api`.
-/// `iiurlwidth=800` просит миниатюру нужной ширины (`thumburl` в ответе).
+/// URL of the `imageinfo` request to the Commons API — port of `api_url` from `_resolve_via_api`.
+/// `iiurlwidth=800` asks for a thumbnail of the needed width (`thumburl` in the reply).
 pub fn wikimedia_api_url(filename: &str) -> String {
     format!(
         "https://commons.wikimedia.org/w/api.php?action=query&titles=File:{}\
@@ -690,29 +690,29 @@ pub fn wikimedia_api_url(filename: &str) -> String {
     )
 }
 
-/// Реальный CDN-URL картинки из ответа `imageinfo` — порт разбора в
-/// `_resolve_via_api`: `thumburl` (миниатюра 800px), иначе `url` (оригинал),
-/// иначе `None`.
+/// The real CDN URL of the picture from the `imageinfo` reply — port of the parsing in
+/// `_resolve_via_api`: `thumburl` (800px thumbnail), otherwise `url` (the original),
+/// otherwise `None`.
 ///
-/// `None` также на любом «не том» ответе: нет `query.pages`, страница помечена
-/// `missing` (файла на Commons нет), `imageinfo` отсутствует или пуст.
+/// Also `None` on any «wrong» reply: no `query.pages`, the page is marked
+/// `missing` (the file is not on Commons), `imageinfo` is absent or empty.
 ///
-/// ⚠️ Починены хрупкие места оригинала (`pages[0].get("imageinfo", [{}])[0]`):
-/// пустой список `imageinfo` давал `IndexError`, а ответ старого
-/// `formatversion=1` (там `pages` — объект, а не список) — `KeyError`. Оба
-/// исключения глушились внешним `except`, то есть отличить «файла нет» от
-/// «разбор сломался» было нельзя. Здесь оба случая — честный `None`.
+/// ⚠️ Fragile spots of the original are fixed (`pages[0].get("imageinfo", [{}])[0]`):
+/// an empty `imageinfo` list gave `IndexError`, and a reply in the old
+/// `formatversion=1` (where `pages` is an object, not a list) gave `KeyError`. Both
+/// exceptions were swallowed by an outer `except`, so «no file» could not be told apart from
+/// «parsing broke». Here both cases are an honest `None`.
 pub fn parse_wikimedia_imageinfo(data: &Value) -> Option<String> {
     let pages = data.get("query")?.get("pages")?;
-    // formatversion=2 → массив; formatversion=1 → объект {pageid: page}.
+    // formatversion=2 → array; formatversion=1 → object {pageid: page}.
     let page = match pages {
         Value::Array(a) => a.first()?,
         Value::Object(o) => o.values().next()?,
         _ => return None,
     };
-    // `missing` проверяется на ИСТИННОСТЬ, как в Python: formatversion=2 ставит
-    // его только у отсутствующих файлов, но явный `"missing": false` тоже
-    // должен читаться как «файл есть».
+    // `missing` is checked for TRUTHINESS, as in Python: formatversion=2 sets
+    // it only on missing files, but an explicit `"missing": false` must also
+    // read as «the file exists».
     if json_truthy(page.get("missing")) {
         return None;
     }
@@ -727,24 +727,24 @@ pub fn parse_wikimedia_imageinfo(data: &Value) -> Option<String> {
     None
 }
 
-// ── Проверка скачанного ответа (`_download_url`) ────────────────────────────
+// ── Checking the downloaded reply (`_download_url`) ────────────────────────
 
-/// Минимальный размер принимаемой картинки в байтах (`len(data) < 512`).
+/// Minimum size of an accepted picture in bytes (`len(data) < 512`).
 pub const MIN_DOWNLOAD_BYTES: usize = 512;
-/// Число попыток скачивания при HTTP 429 (`retries=3`).
+/// Number of download attempts on HTTP 429 (`retries=3`).
 pub const DOWNLOAD_RETRIES: u32 = 3;
-/// Сообщение после исчерпания попыток при 429.
+/// Message after attempts are exhausted on 429.
 pub fn rate_limit_msg() -> String {
     tr("Too many requests (429)")
 }
 
-/// Годен ли ответ как картинка — порт проверок `_download_url`:
-/// `Content-Type` обязан начинаться с `image/`, тело — быть не меньше
-/// [`MIN_DOWNLOAD_BYTES`]. `Err` — текст причины ровно как в оригинале (он
-/// уходит в UI и в лог).
+/// Whether the reply is fit as a picture — port of the checks of `_download_url`:
+/// `Content-Type` must start with `image/`, and the body must be no smaller than
+/// [`MIN_DOWNLOAD_BYTES`]. `Err` — the reason text exactly as in the original (it
+/// goes to the UI and the log).
 ///
-/// Отсекает главный практический случай «не тот ответ»: HTML-страница ошибки
-/// (403/404/капча) вместо картинки — у неё `Content-Type: text/html`.
+/// Cuts off the main practical «wrong reply» case: an HTML error page
+/// (403/404/captcha) instead of a picture — it has `Content-Type: text/html`.
 pub fn validate_image_response(content_type: Option<&str>, body_len: usize) -> Result<(), String> {
     let ct = content_type.unwrap_or("");
     if !ct.starts_with("image/") {
@@ -757,66 +757,66 @@ pub fn validate_image_response(content_type: Option<&str>, body_len: usize) -> R
     Ok(())
 }
 
-/// Пауза перед повтором при HTTP 429 — порт `wait = (attempt + 1) * 3`
-/// (`attempt` считается с нуля).
+/// Pause before a retry on HTTP 429 — port of `wait = (attempt + 1) * 3`
+/// (`attempt` counts from zero).
 ///
-/// Значение больше не своё: оно берётся из ОБЩЕГО механизма повторов
-/// ([`crate::net::retry_delay_ms`]), где та же пара 3 с / 6 с закреплена
-/// константой [`crate::net::RATE_LIMIT_DELAY_MS`]. Функция оставлена ради
-/// сверки с оригиналом — правило одно, копий больше нет.
+/// The value is no longer local: it comes from the SHARED retry mechanism
+/// ([`crate::net::retry_delay_ms`]), where the same 3 s / 6 s pair is pinned by
+/// the constant [`crate::net::RATE_LIMIT_DELAY_MS`]. The function is kept for
+/// comparison with the original — one rule, no more copies.
 pub fn retry_wait_secs(attempt: u32) -> u64 {
     let rate_limited = NetError::Status { code: 429, reason: String::new() };
     net::retry_delay_ms(attempt + 1, &rate_limited) / 1000
 }
 
-// ── Скачивание снимка (`download_screenshot_from_url`) ─────────────────────
+// ── Downloading a screenshot (`download_screenshot_from_url`) ──────────────
 //
-// Раньше здесь заканчивалась портированная часть: сам HTTP делал Python
-// (`urllib`) со своим циклом повторов на один только HTTP 429. Обрыв
-// соединения — тот же класс отказа, из-за которого гибли превью каталога, —
-// не повторялся вовсе. Теперь запрос идёт через общий сетевой слой ядра
-// (`net.rs`), значит и повторы у снимков ровно те же, что у каталога тем
-// (правило #12), а Python-копии urllib-логики не остаётся.
+// The ported part used to end here: Python did the HTTP itself
+// (`urllib`) with its own retry loop for HTTP 429 alone. A dropped
+// connection — the same class of failure that killed catalog previews —
+// was not retried at all. Now the request goes through the core's shared network layer
+// (`net.rs`), so screenshot retries are exactly the same as for the theme catalog
+// (rule #12), and no Python copy of the urllib logic remains.
 
-/// Таймаут скачивания самой картинки — порт `urlopen(req, timeout=20)`.
+/// Timeout for downloading the picture itself — port of `urlopen(req, timeout=20)`.
 pub const DOWNLOAD_TIMEOUT_SECS: u64 = 20;
-/// Таймаут запроса к API Commons — порт `urlopen(req, timeout=15)`.
+/// Timeout of the Commons API request — port of `urlopen(req, timeout=15)`.
 pub const API_TIMEOUT_SECS: u64 = 15;
 
-/// Причина отказа человеческим текстом — то, что оригинал отдаёт вторым
-/// элементом кортежа и показывает в строке прогресса.
+/// The failure reason in human text — what the original returns as the second
+/// tuple element and shows in the progress line.
 fn why(e: &NetError) -> String {
     match e {
-        // Код ответа печатается как у оригинала (`f"HTTP {e.code}"`), кроме
-        // 429: после исчерпания повторов он значит именно «лимит запросов».
+        // The response code is printed as in the original (`f"HTTP {e.code}"`), except
+        // 429: after retries are exhausted it means exactly «rate limit».
         NetError::Status { code: 429, .. } => rate_limit_msg(),
         NetError::Status { code, .. } => format!("HTTP {code}"),
-        // Сырой `str(e.reason)` оригинала («[Errno -2] Name or service not
-        // known») покупателю ничего не говорит — правило #13.
+        // The original's raw `str(e.reason)` («[Errno -2] Name or service not
+        // known») tells the user nothing — rule #13.
         NetError::Transport { .. } => e.human(),
     }
 }
 
-/// Скачать картинку по одному URL — порт `_download_url`.
+/// Download a picture from one URL — port of `_download_url`.
 ///
-/// `Ok((байты, Content-Type))` либо причина отказа. Тип ответа проверяется ДО
-/// чтения тела, как в оригинале: HTML-страница ошибки бывает в мегабайты.
-/// Повторы — общие ([`net::with_retry`]): обрыв, таймаут, 5xx и 429; «файла
-/// нет» (4xx) и «не изображение» не повторяются.
+/// `Ok((bytes, Content-Type))` or the failure reason. The reply type is checked BEFORE
+/// reading the body, as in the original: an HTML error page can be megabytes.
+/// Retries are shared ([`net::with_retry`]): dropped connection, timeout, 5xx and 429; «no
+/// file» (4xx) and «not an image» are not retried.
 pub fn download_image<IO: NetIo + ?Sized>(
     io: &mut IO,
     url: &str,
     user_agent: &str,
 ) -> Result<(Vec<u8>, String), String> {
     let what = format!("Снимок рабочего стола {url}");
-    // Внешний слой — сетевой сбой (его решает повторять `with_retry`),
-    // внутренний — «ответ пришёл, но он не тот»: это НЕ сбой сети, второй
-    // запрос вернёт ту же страницу, поэтому такой отказ окончателен.
+    // The outer layer is a network failure (`with_retry` decides to retry it),
+    // the inner one is «the reply arrived but it is the wrong one»: that is NOT a network failure, a second
+    // request returns the same page, so such a refusal is final.
     let res = net::with_retry(io, net::Retry::IDEMPOTENT, &what, |io| {
         io.open(url, user_agent, DOWNLOAD_TIMEOUT_SECS)?;
         let ctype = io.content_type();
-        // Длину подставляем заведомо достаточную: на этом шаге проверяется
-        // ТОЛЬКО тип — тела ещё нет и качать его незачем.
+        // We pass a length that is surely large enough: this step checks
+        // ONLY the type — there is no body yet and no reason to download it.
         if let Err(msg) = validate_image_response(Some(&ctype), MIN_DOWNLOAD_BYTES) {
             io.close();
             return Ok(Err(msg));
@@ -841,15 +841,15 @@ pub fn download_image<IO: NetIo + ?Sized>(
     }
 }
 
-/// Кусок чтения тела снимка. Тот же размер, что у каталога тем.
+/// Read chunk of a screenshot body. The same size as in the theme catalog.
 const DOWNLOAD_CHUNK: usize = 64 * 1024;
 
-/// Скачать снимок рабочего стола `de` — порт `download_screenshot_from_url`
-/// целиком: прямой URL, при неудаче — разрешение реального CDN-адреса через
-/// API Commons и вторая попытка по нему.
+/// Download a screenshot of desktop `de` — port of `download_screenshot_from_url`
+/// in full: the direct URL, on failure — resolving the real CDN address via
+/// the Commons API and a second attempt with it.
 ///
-/// `Ok((байты, Content-Type))` — что писать на диск (путь считает
-/// [`save_dest`]); `Err` — готовая строка для покупателя.
+/// `Ok((bytes, Content-Type))` — what to write to disk (the path is computed by
+/// [`save_dest`]); `Err` — a ready string for the user.
 pub fn download_screenshot<IO: NetIo + ?Sized>(
     io: &mut IO,
     de: &str,
@@ -875,17 +875,17 @@ pub fn download_screenshot<IO: NetIo + ?Sized>(
     .as_ref()
     .and_then(parse_wikimedia_imageinfo);
     let Some(cdn) = cdn else {
-        // Оригинал в этой ветке докладывает причину ПЕРВОЙ неудачи, а не
-        // сбоя API: для покупателя важно, что снимок взять неоткуда.
+        // In this branch the original reports the reason of the FIRST failure, not of
+        // the API failure: what matters to the user is that there is nowhere to take the screenshot from.
         return Err(trf("Couldn't download the screenshot: %1", &[&direct]));
     };
     download_image(io, &cdn, WIKIMEDIA_USER_AGENT).map_err(|info| format!("CDN: {info}"))
 }
 
-// ── План автоскачивания (`auto_download_all`) ──────────────────────────────
+// ── Auto-download plan (`auto_download_all`) ───────────────────────────────
 
-/// Одна задача автоскачивания: какому DE принадлежит, под каким тегом
-/// сохранять (`{de}` для первого URL, `{de}_{idx}` для остальных) и что качать.
+/// One auto-download task: which DE it belongs to, under which tag to
+/// save (`{de}` for the first URL, `{de}_{idx}` for the rest) and what to download.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoDownloadTask {
     pub de: String,
@@ -893,17 +893,17 @@ pub struct AutoDownloadTask {
     pub url: String,
 }
 
-/// План автоскачивания: что качать и у каких DE всё уже на месте.
+/// Auto-download plan: what to download and which DEs already have everything in place.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AutoDownloadPlan {
     pub tasks: Vec<AutoDownloadTask>,
-    /// `(de, сколько файлов уже есть)` — по ним оригинал сразу пишет
-    /// «уже есть (N шт.)» и ставит результат `True`, не качая ничего.
+    /// `(de, how many files already exist)` — for these the original immediately writes
+    /// «already present (N items)» and sets the result to `True` without downloading anything.
     pub already_complete: Vec<(String, usize)>,
 }
 
-/// Тег файла для i-го URL списка DE — порт `f"{de_name}{suffix}"`,
-/// где `suffix = "" if idx == 0 else f"_{idx}"`.
+/// File tag for the i-th URL of a DE's list — port of `f"{de_name}{suffix}"`,
+/// where `suffix = "" if idx == 0 else f"_{idx}"`.
 pub fn auto_download_tag(de: &str, idx: usize) -> String {
     if idx == 0 {
         de.to_string()
@@ -912,18 +912,18 @@ pub fn auto_download_tag(de: &str, idx: usize) -> String {
     }
 }
 
-/// Кандидаты путей для тега автоскачивания — `{dir}/{tag}{.png,.jpg,.webp}`.
-/// Исполнитель проверяет их существование и размер (`> MIN_SIZE`).
+/// Path candidates for an auto-download tag — `{dir}/{tag}{.png,.jpg,.webp}`.
+/// The executor checks their existence and size (`> MIN_SIZE`).
 pub fn tag_candidates(dir: &str, tag: &str) -> Vec<String> {
     PATH_EXTS.iter().map(|ext| format!("{dir}/{tag}{ext}")).collect()
 }
 
-/// План автоскачивания — порт сборки `tasks` в `auto_download_all`.
+/// Auto-download plan — port of building `tasks` in `auto_download_all`.
 ///
-/// ФС не трогается: `existing_count(de)` отдаёт число уже найденных снимков DE
-/// (порт `len(get_screenshot_paths(de))`), `tag_exists(tag)` — есть ли годный
-/// файл под этим тегом (порт перебора [`tag_candidates`] с фильтром размера).
-/// Обход DE идёт в порядке [`SCREENSHOT_URLS`], как в Python по dict.
+/// The FS is not touched: `existing_count(de)` gives the number of the DE's screenshots already found
+/// (port of `len(get_screenshot_paths(de))`), `tag_exists(tag)` — whether a fit
+/// file exists under this tag (port of iterating [`tag_candidates`] with the size filter).
+/// DEs are traversed in [`SCREENSHOT_URLS`] order, as Python does over the dict.
 pub fn auto_download_plan<C, E>(existing_count: C, tag_exists: E) -> AutoDownloadPlan
 where
     C: Fn(&str) -> usize,
@@ -932,7 +932,7 @@ where
     let mut plan = AutoDownloadPlan::default();
     for (de, urls) in SCREENSHOT_URLS {
         let have = existing_count(de);
-        // Снимков не меньше, чем URL-ов → у этого DE всё скачано.
+        // No fewer screenshots than URLs → everything is downloaded for this DE.
         if have >= urls.len() {
             plan.already_complete.push(((*de).to_string(), have));
             continue;
@@ -952,16 +952,16 @@ where
     plan
 }
 
-// ── Живой исполнитель автоскачивания (`auto_download_all`) ─────────────────
+// ── Live auto-download executor (`auto_download_all`) ──────────────────────
 //
-// До сих пор ядро держало только ПЛАН закачки, а исполнял его Python-хозяин
-// (`DEScreenshotManager.auto_download_all`, воркер QThread вкладки). Rust-окно
-// Python не зовёт, и на свежей машине покупатель видел бы в карточках одни
-// заглушки — навсегда. Исполнитель переехал сюда целиком: одна копия на оба
-// окна (правило #12), каталог, теги и имена файлов — ровно те же, что у
-// Python, так что кэш у двух окон общий.
+// Until now the core held only the download PLAN, and the Python host executed it
+// (`DEScreenshotManager.auto_download_all`, the tab's QThread worker). The Rust window
+// does not call Python, and on a fresh machine the user would see only
+// placeholders in the cards — forever. The executor moved here in full: one copy for both
+// windows (rule #12), the directory, tags and file names are exactly the same as
+// Python's, so the two windows share the cache.
 
-/// Годный ли файл снимка: существует и крупнее [`MIN_SIZE`] — порт
+/// Whether a screenshot file is fit: it exists and is larger than [`MIN_SIZE`] — port of
 /// `os.path.exists(p) and os.path.getsize(p) > 100`.
 pub fn usable_file(path: &str) -> bool {
     std::fs::metadata(path)
@@ -969,9 +969,9 @@ pub fn usable_file(path: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Снимки стола на диске в порядке карусели — порт `get_screenshot_paths`:
-/// основной (первый годный кандидат), затем `_1`…`_5`, по первому годному
-/// расширению на индекс.
+/// The desktop's screenshots on disk in carousel order — port of `get_screenshot_paths`:
+/// the main one (the first fit candidate), then `_1`…`_5`, by the first fit
+/// extension per index.
 pub fn screenshot_paths_on_disk(dir: &str, de: &str) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(main) = screenshot_path_candidates(dir, de)
@@ -989,20 +989,20 @@ pub fn screenshot_paths_on_disk(dir: &str, de: &str) -> Vec<String> {
     out
 }
 
-// ── Поставляемые снимки ────────────────────────────────────────────────────
+// ── Shipped screenshots ────────────────────────────────────────────────────
 //
-// Где снимка стола нет ни у проекта, ни на Wikimedia Commons (River), Rexon
-// везёт свои снимки в пакете — в каталоге данных продукта
-// (`data/assets/screenshots/` в дереве, `/usr/lib/rexon/rexon/assets/
-// screenshots/` у пакета). Имена — те же, что у скачанных: `{de}.png`,
-// `{de}_1.png`…, поэтому перебор общий ([`screenshot_paths_on_disk`]).
+// Where neither the project nor Wikimedia Commons has a desktop screenshot (River), Rexon
+// ships its own screenshots in the package — in the product data directory
+// (`data/assets/screenshots/` in the tree, `/usr/lib/rexon/rexon/assets/
+// screenshots/` in the package). The names are the same as for downloaded ones: `{de}.png`,
+// `{de}_1.png`…, so the search is shared ([`screenshot_paths_on_disk`]).
 
-/// Подкаталог поставляемых снимков внутри каталога данных Rexon.
+/// Subdirectory of shipped screenshots inside the Rexon data directory.
 pub const BUNDLED_SUBDIR: &str = "assets/screenshots";
 
-/// Каталоги поставляемых снимков по убыванию точности — те же раскладки, что
-/// у данных продукта (`installer::package_data_dir_candidates`: дерево
-/// разработчика, пакет, установка в систему и в домашнюю папку).
+/// Directories of shipped screenshots in decreasing precision — the same layouts as
+/// for the product data (`installer::package_data_dir_candidates`: the developer
+/// tree, the package, a system install and a home-folder install).
 pub fn bundled_screenshot_dirs(repo_root: &str, home: &str) -> Vec<String> {
     crate::installer::package_data_dir_candidates(repo_root, home)
         .into_iter()
@@ -1010,9 +1010,9 @@ pub fn bundled_screenshot_dirs(repo_root: &str, home: &str) -> Vec<String> {
         .collect()
 }
 
-/// Снимки стола для карусели: поставляемые (из первого каталога, где у стола
-/// они есть) идут первыми, за ними — скачанные в `dir`. Пусто — показывать
-/// заглушку ([`placeholder_on_disk`]).
+/// Desktop screenshots for the carousel: shipped ones (from the first directory where the desktop
+/// has them) come first, followed by those downloaded into `dir`. Empty — show
+/// the placeholder ([`placeholder_on_disk`]).
 pub fn carousel_paths_on_disk(dir: &str, bundled_dirs: &[String], de: &str) -> Vec<String> {
     let mut out = bundled_dirs
         .iter()
@@ -1023,27 +1023,27 @@ pub fn carousel_paths_on_disk(dir: &str, bundled_dirs: &[String], de: &str) -> V
     out
 }
 
-// ── Смена источника снимка ─────────────────────────────────────────────────
+// ── Changing a screenshot source ───────────────────────────────────────────
 //
-// Кэш раскладывает снимки по тегу (`hyprland.png`, `xfce_2.png`), а не по
-// адресу, и тёплый кэш больше не качается. Поэтому заменённый в
-// [`SCREENSHOT_URLS`] снимок без особой меры остался бы у покупателя навсегда.
-// Мера — опись рядом со снимками: тег → адрес, с которого файл скачан. Тег, чей
-// адрес в таблице сменился, считается устаревшим: его файлы удаляются, и
-// закачка берёт снимок заново.
+// The cache lays out screenshots by tag (`hyprland.png`, `xfce_2.png`), not by
+// address, and a warm cache is not downloaded again. So a screenshot replaced in
+// [`SCREENSHOT_URLS`] would stay with the user forever without a special measure.
+// The measure is an inventory next to the screenshots: tag → the address the file was downloaded from. A tag whose
+// address in the table changed counts as outdated: its files are deleted, and
+// the download fetches the screenshot again.
 
-/// Опись источников скачанных снимков: строки `тег<TAB>адрес`.
+/// Inventory of downloaded screenshot sources: lines `tag<TAB>address`.
 pub const SOURCES_FILE: &str = ".sources";
 
-/// Теги, чей источник сменился ДО появления описи: файлы с этими тегами,
-/// которых нет в описи, скачаны со старого адреса. Остальные файлы без описи
-/// принимаются как скачанные с нынешнего адреса.
+/// Tags whose source changed BEFORE the inventory appeared: files with these tags
+/// that are not in the inventory were downloaded from the old address. Other files without an inventory entry
+/// are accepted as downloaded from the current address.
 ///
-/// 08.11.2026: `hyprland` — на снимке была открыта русская Википедия;
-/// `xfce_2` — интерфейс Xfce по-испански; `niri_1` — по-немецки.
+/// 08.11.2026: `hyprland` — the screenshot had the Russian Wikipedia open;
+/// `xfce_2` — the Xfce interface in Spanish; `niri_1` — in German.
 pub const REPLACED_BEFORE_SOURCES: &[&str] = &["hyprland", "xfce_2", "niri_1"];
 
-/// Разобрать опись: `(тег, адрес)` в порядке строк; кривые строки пропускаются.
+/// Parse the inventory: `(tag, address)` in line order; malformed lines are skipped.
 pub fn parse_sources(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|line| line.split_once('\t'))
@@ -1052,14 +1052,14 @@ pub fn parse_sources(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Текст описи из пар `(тег, адрес)`.
+/// Inventory text from `(tag, address)` pairs.
 pub fn render_sources(entries: &[(String, String)]) -> String {
     entries.iter().map(|(tag, url)| format!("{tag}\t{url}\n")).collect()
 }
 
-/// Какие теги устарели — решение без ФС. `have_file(tag)` — лежит ли годный
-/// файл под тегом; `recorded` — опись. Возвращает устаревшие теги и опись,
-/// дополненную принятыми файлами без записи.
+/// Which tags are outdated — a decision without the FS. `have_file(tag)` — whether a fit
+/// file lies under the tag; `recorded` — the inventory. Returns the outdated tags and the inventory
+/// supplemented with accepted files that had no record.
 pub fn retired_tags<H>(recorded: &[(String, String)], have_file: H) -> (Vec<String>, Vec<(String, String)>)
 where
     H: Fn(&str) -> bool,
@@ -1086,8 +1086,8 @@ where
     (retired, sources)
 }
 
-/// Убрать из кэша `dir` снимки, чей источник в таблице сменился, и
-/// переписать опись. Возвращает удалённые теги.
+/// Remove from the `dir` cache the screenshots whose source changed in the table, and
+/// rewrite the inventory. Returns the removed tags.
 pub fn drop_retired_on_disk(dir: &str) -> Vec<String> {
     let path = format!("{dir}/{SOURCES_FILE}");
     let text = std::fs::read_to_string(&path).unwrap_or_default();
@@ -1106,7 +1106,7 @@ pub fn drop_retired_on_disk(dir: &str) -> Vec<String> {
     retired
 }
 
-/// Записать в опись `dir` адреса только что скачанных снимков.
+/// Write the addresses of just downloaded screenshots into the `dir` inventory.
 fn record_sources(dir: &str, saved: &[(String, String)]) {
     if saved.is_empty() {
         return;
@@ -1120,9 +1120,9 @@ fn record_sources(dir: &str, saved: &[(String, String)]) {
     let _ = crate::utils::atomic_write(&path, &render_sources(&entries));
 }
 
-/// План автоскачивания над настоящим каталогом `dir` — те же наблюдения, что
-/// собирает `auto_download_all` оригинала. Снимки со сменившимся источником
-/// перед этим убираются ([`drop_retired_on_disk`]) и попадают в план заново.
+/// Auto-download plan over the real `dir` directory — the same observations that
+/// the original's `auto_download_all` gathers. Screenshots with a changed source
+/// are removed beforehand ([`drop_retired_on_disk`]) and enter the plan again.
 pub fn auto_download_plan_on_disk(dir: &str) -> AutoDownloadPlan {
     drop_retired_on_disk(dir);
     auto_download_plan(
@@ -1131,31 +1131,31 @@ pub fn auto_download_plan_on_disk(dir: &str) -> AutoDownloadPlan {
     )
 }
 
-/// Сколько снимков качается одновременно — `ThreadPoolExecutor(max_workers=4)`.
+/// How many screenshots are downloaded at once — `ThreadPoolExecutor(max_workers=4)`.
 pub const AUTO_DOWNLOAD_WORKERS: usize = 4;
 
-/// Итог одной задачи автоскачивания.
+/// Result of one auto-download task.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoDownloadOutcome {
     pub de: String,
     pub tag: String,
-    /// Путь записанного файла либо причина отказа человеческим текстом.
+    /// Path of the written file or the failure reason in human text.
     pub result: Result<String, String>,
-    /// Это последняя задача своего стола: вся его пачка отработала.
+    /// This is the last task of its desktop: its whole batch has finished.
     pub de_finished: bool,
-    /// Сколько файлов стола скачано к этому моменту (включая эту задачу).
+    /// How many of the desktop's files have been downloaded by now (including this task).
     pub de_downloaded: usize,
 }
 
-/// Записать скачанные байты — порт `_save_screenshot_data`: путь по
-/// Content-Type считает [`save_dest`].
+/// Write the downloaded bytes — port of `_save_screenshot_data`: the path by
+/// Content-Type is computed by [`save_dest`].
 ///
-/// ⚠️ Починка оригинала (правило #16): Python писал прямо в итоговый файл, и
-/// оборванная запись (закрыли окно посреди закачки) оставляла огрызок крупнее
-/// 100 байт — его принимали за снимок и больше не докачивали, а карусель
-/// показывала битую картинку. Здесь байты уходят общей дверью
-/// [`crate::utils::atomic_write_bytes`]: рядом во временный файл и одним
-/// шагом на место.
+/// ⚠️ Fix of the original (rule #16): Python wrote straight into the final file, and
+/// an interrupted write (the window closed mid-download) left a stub larger than
+/// 100 bytes — it was taken for a screenshot and never downloaded again, while the carousel
+/// showed a broken picture. Here the bytes go through the shared door
+/// [`crate::utils::atomic_write_bytes`]: into a temporary file next to it and into place in one
+/// step.
 pub fn save_screenshot(dir: &str, tag: &str, data: &[u8], content_type: &str) -> Result<String, String> {
     std::fs::create_dir_all(dir).map_err(|e| trf("Write error: %1", &[&e]))?;
     let dest = save_dest(dir, tag, Some(content_type));
@@ -1163,14 +1163,14 @@ pub fn save_screenshot(dir: &str, tag: &str, data: &[u8], content_type: &str) ->
     Ok(dest)
 }
 
-/// Исполнить план автоскачивания — порт `auto_download_all` целиком.
+/// Execute the auto-download plan — port of `auto_download_all` in full.
 ///
-/// Транспорт даёт `make_io` (по одному на рабочий поток: соединения
-/// переиспользуются внутри пачки); `on_task` зовётся по каждой завершённой
-/// задаче В ПОТОКЕ ВЫЗЫВАЮЩЕГО — ему не нужно быть `Sync`, и окно может сразу
-/// перерисовать карточку. Возвращает `(de, есть ли снимки)` в порядке
-/// [`SCREENSHOT_URLS`] — словарь `results` оригинала. Сети нет — задачи просто
-/// заканчиваются отказом; паники и ошибки наружу не выходят.
+/// The transport is provided by `make_io` (one per worker thread: connections
+/// are reused within a batch); `on_task` is called for every finished
+/// task IN THE CALLER'S THREAD — it does not need to be `Sync`, and the window can
+/// redraw the card right away. Returns `(de, whether it has screenshots)` in
+/// [`SCREENSHOT_URLS`] order — the original's `results` dict. No network — tasks simply
+/// end with a refusal; panics and errors do not leak out.
 pub fn run_auto_download<IO, F, R>(dir: &str, make_io: F, on_task: R) -> Vec<(String, bool)>
 where
     IO: NetIo,
@@ -1180,15 +1180,15 @@ where
     run_plan(dir, auto_download_plan_on_disk(dir), make_io, on_task)
 }
 
-/// Исполнить уже построенный план — тело [`run_auto_download`].
+/// Execute an already built plan — the body of [`run_auto_download`].
 fn run_plan<IO, F, R>(dir: &str, plan: AutoDownloadPlan, make_io: F, mut on_task: R) -> Vec<(String, bool)>
 where
     IO: NetIo,
     F: Fn() -> IO + Sync,
     R: FnMut(&AutoDownloadOutcome),
 {
-    // `(de, скачано, отработало, всего)` — `de_counts` оригинала плюс счёт
-    // завершённых, чтобы окно знало, когда пачка стола кончилась.
+    // `(de, downloaded, finished, total)` — the original's `de_counts` plus a count of
+    // finished ones, so the window knows when the desktop's batch is over.
     let mut downloaded: Vec<(String, usize, usize, usize)> = Vec::new();
     for task in &plan.tasks {
         match downloaded.iter_mut().find(|(de, ..)| *de == task.de) {
@@ -1226,8 +1226,8 @@ where
             }
             drop(tx);
             for mut outcome in rx {
-                // Опись пишется сразу: закроют окно посреди пачки — уже
-                // скачанное не сочтётся устаревшим.
+                // The inventory is written right away: if the window is closed mid-batch, what is already
+                // downloaded will not be considered outdated.
                 if outcome.result.is_ok() {
                     if let Some(task) = plan.tasks.iter().find(|t| t.tag == outcome.tag) {
                         record_sources(dir, &[(task.tag.clone(), task.url.clone())]);
@@ -1254,7 +1254,7 @@ where
     results
 }
 
-/// [`run_auto_download`] на боевом транспорте ядра (`net::UreqNet`).
+/// [`run_auto_download`] on the core's production transport (`net::UreqNet`).
 pub fn auto_download_all_live<R>(dir: &str, on_task: R) -> Vec<(String, bool)>
 where
     R: FnMut(&AutoDownloadOutcome),
@@ -1262,11 +1262,11 @@ where
     run_auto_download(dir, net::UreqNet::new, on_task)
 }
 
-/// Живая закачка этого процесса: `Some(столы, ждущие своей пачки)`, пока она
-/// идёт. По ней заглушка решает, обещать ли «загружается».
+/// This process's live download: `Some(desktops waiting for their batch)` while it
+/// runs. The placeholder uses it to decide whether to promise «loading».
 static LIVE_RUN: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
 
-/// Состояние заглушки стола по живой закачке процесса.
+/// Placeholder state of a desktop according to the process's live download.
 pub fn live_placeholder_state(de: &str) -> PlaceholderState {
     let pending = LIVE_RUN
         .lock()
@@ -1275,16 +1275,16 @@ pub fn live_placeholder_state(de: &str) -> PlaceholderState {
     placeholder_state(de, pending)
 }
 
-/// Заглушка стола на диске под текущее состояние: файл пишется, если его нет
-/// или подпись в нём устарела. `None` — каталог не пишется.
+/// The desktop's placeholder on disk for the current state: the file is written if it is missing
+/// or its caption is outdated. `None` — the directory is not writable.
 pub fn placeholder_on_disk(dir: &str, de: &str) -> Option<String> {
     placeholder_on_disk_for(dir, de, live_placeholder_state(de))
 }
 
-/// Заглушка стола на диске под ЗАДАННОЕ состояние. Для исполнителя, который
-/// ведёт закачку сам и знает, ждёт ли стол своей пачки (виджетная вкладка
-/// Python через мост): состояние он получает из [`placeholder_state`], а
-/// имя файла, подпись и запись — отсюда же, что и у Rust-страницы.
+/// The desktop's placeholder on disk for a GIVEN state. For an executor that
+/// runs the download itself and knows whether the desktop is waiting for its batch (the Python
+/// widget tab via the bridge): it gets the state from [`placeholder_state`], while the
+/// file name, caption and writing come from here, the same as for the Rust page.
 pub fn placeholder_on_disk_for(dir: &str, de: &str, state: PlaceholderState) -> Option<String> {
     let path = format!("{dir}/{}", placeholder_name_for(de, state));
     let svg = generate_svg_for(de, state);
@@ -1295,14 +1295,14 @@ pub fn placeholder_on_disk_for(dir: &str, de: &str, state: PlaceholderState) -> 
     Some(path)
 }
 
-/// Запустить автоскачивание в своём потоке и вести по нему состояние
-/// заглушек. Столы, которым есть что качать, помечаются «ждущими» ДО возврата
-/// — первая же карточка честно скажет «загружается». Стол снимается с
-/// ожидания раньше, чем зовётся `on_task` с `de_finished`, так что окно,
-/// перерисовавшись по нему, уже увидит итоговую подпись.
+/// Start auto-download in its own thread and track placeholder state with it.
+/// Desktops that have something to download are marked «waiting» BEFORE returning
+/// — the very first card will honestly say «loading». A desktop is taken off
+/// waiting before `on_task` is called with `de_finished`, so a window
+/// that redraws on it already sees the final caption.
 ///
-/// Одна закачка на процесс: пока идёт первая, вторая не стартует (`None`) —
-/// иначе две страницы писали бы в одни файлы. Кончилась — можно снова.
+/// One download per process: while the first is running, a second does not start (`None`) —
+/// otherwise two pages would write into the same files. Once it is over — it can run again.
 pub fn start_auto_download<IO, F, R>(
     dir: String,
     make_io: F,
@@ -1356,8 +1356,8 @@ where
     }
 }
 
-/// [`start_auto_download`] на боевом транспорте ядра. `false` — закачка уже
-/// идёт либо поток не поднялся.
+/// [`start_auto_download`] on the core's production transport. `false` — a download is already
+/// running or the thread did not come up.
 pub fn start_auto_download_live<R>(dir: &str, on_task: R) -> bool
 where
     R: FnMut(&AutoDownloadOutcome) + Send + 'static,
@@ -1365,8 +1365,8 @@ where
     start_auto_download(dir.to_string(), net::UreqNet::new, on_task).is_some()
 }
 
-/// Python-истинность JSON-значения: null/отсутствие/`false`/0/""/пустой
-/// список/пустой объект → `false`.
+/// Python truthiness of a JSON value: null/missing/`false`/0/""/empty
+/// list/empty object → `false`.
 fn json_truthy(v: Option<&Value>) -> bool {
     match v {
         None | Some(Value::Null) => false,
@@ -1378,9 +1378,9 @@ fn json_truthy(v: Option<&Value>) -> bool {
     }
 }
 
-/// Percent-encode как `urllib.parse.quote(s)` — safe = ALPHA/DIGIT/`_.-~/`.
-/// Локальная копия по образцу соседних модулей ядра (`aur.rs`, `ocs.rs`):
-/// общего url-хелпера в `utils` пока нет.
+/// Percent-encode like `urllib.parse.quote(s)` — safe = ALPHA/DIGIT/`_.-~/`.
+/// A local copy following the neighbouring core modules (`aur.rs`, `ocs.rs`):
+/// there is no shared url helper in `utils` yet.
 fn url_quote(s: &str) -> String {
     fn safe(b: u8) -> bool {
         b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-' | b'~' | b'/')
@@ -1397,9 +1397,9 @@ fn url_quote(s: &str) -> String {
     out
 }
 
-/// URL первого скриншота DE (`get_online_screenshot_url`): сначала прямой
-/// `SCREENSHOT_URLS[0]`, иначе Wikimedia `Special:FilePath/{fname}?width=800`,
-/// иначе пустая строка. Квирк сохранён: возвращает `""` (не None) при отсутствии.
+/// URL of the first DE screenshot (`get_online_screenshot_url`): first the direct
+/// `SCREENSHOT_URLS[0]`, otherwise Wikimedia `Special:FilePath/{fname}?width=800`,
+/// otherwise an empty string. Quirk kept: returns `""` (not None) when missing.
 pub fn online_url(de: &str) -> String {
     let urls = online_urls(de);
     if let Some(first) = urls.first() {
@@ -1417,8 +1417,8 @@ pub fn online_url(de: &str) -> String {
 mod live_download_tests {
     use super::*;
 
-    /// Подставная сеть: снимки xfce отдаются PNG-картинкой, всё остальное —
-    /// «сети нет» (обрыв соединения на каждом запросе, API Commons тоже).
+    /// Fake network: xfce screenshots are served as a PNG picture, everything else is
+    /// «no network» (a dropped connection on every request, the Commons API too).
     #[derive(Default)]
     struct FakeNet {
         body: Vec<u8>,
@@ -1434,8 +1434,8 @@ mod live_download_tests {
             Err(offline())
         }
         fn open(&mut self, url: &str, _: &str, _: u64) -> Result<i64, NetError> {
-            // Адреса xfce — по таблице: третий (Xubuntu с Commons) слова
-            // «xfce» в себе не несёт.
+            // xfce addresses come from the table: the third one (Xubuntu from Commons) does not
+            // contain the word «xfce».
             if !online_urls("xfce").contains(&url) {
                 return Err(offline());
             }
@@ -1479,15 +1479,15 @@ mod live_download_tests {
         let mut outcomes = Vec::new();
         let results = run_auto_download(&dir, FakeNet::default, |o| outcomes.push(o.clone()));
 
-        // Имена — те же, что пишет Python: тег `{de}`/`{de}_{idx}` плюс
-        // расширение по Content-Type. Временных `.part` не остаётся.
+        // The names are the same as Python writes: the tag `{de}`/`{de}_{idx}` plus
+        // the extension by Content-Type. No temporary `.part` files remain.
         let mut files: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         files.sort();
         assert_eq!(files, [SOURCES_FILE, "xfce.png", "xfce_1.png", "xfce_2.png"]);
-        // Опись помнит, откуда взят каждый файл.
+        // The inventory remembers where every file came from.
         let recorded = parse_sources(&std::fs::read_to_string(format!("{dir}/{SOURCES_FILE}")).unwrap());
         assert_eq!(recorded.len(), 3);
         for (idx, url) in online_urls("xfce").iter().enumerate() {
@@ -1495,13 +1495,13 @@ mod live_download_tests {
         }
         assert_eq!(screenshot_paths_on_disk(&dir, "xfce").len(), 3);
 
-        // Итог — словарь `results` оригинала: у xfce есть снимки, у
-        // остальных нет, и никакой паники без сети.
+        // The result is the original's `results` dict: xfce has screenshots, the
+        // others do not, and no panic without a network.
         assert!(results.contains(&("xfce".to_string(), true)));
         assert!(results.contains(&("kde".to_string(), false)));
         assert_eq!(results.len(), SCREENSHOT_URLS.len());
 
-        // Каждый стол сообщает об окончании своей пачки ровно один раз.
+        // Each desktop reports the end of its batch exactly once.
         for (de, urls) in SCREENSHOT_URLS {
             let mine: Vec<_> = outcomes.iter().filter(|o| o.de == *de).collect();
             assert_eq!(mine.len(), urls.len(), "{de}");
@@ -1512,7 +1512,7 @@ mod live_download_tests {
         let kde_last = outcomes.iter().find(|o| o.de == "kde" && o.de_finished).unwrap();
         assert_eq!(kde_last.de_downloaded, 0);
 
-        // Тёплый кэш: xfce больше не качается.
+        // Warm cache: xfce is not downloaded again.
         let plan = auto_download_plan_on_disk(&dir);
         assert!(plan.tasks.iter().all(|t| t.de != "xfce"));
         assert!(plan.already_complete.contains(&("xfce".to_string(), 3)));
@@ -1524,10 +1524,10 @@ mod live_download_tests {
         let dir = scratch("retire");
         std::fs::create_dir_all(&dir).unwrap();
         let big = vec![0x89u8; 2048];
-        // Кэш до описи: снимок Hyprland со старого адреса, kde — годный.
+        // Cache before the inventory: a Hyprland screenshot from the old address, kde is fit.
         std::fs::write(format!("{dir}/hyprland.png"), &big).unwrap();
         std::fs::write(format!("{dir}/kde.png"), &big).unwrap();
-        // Снимок, чей адрес в описи не совпадает с таблицей.
+        // A screenshot whose address in the inventory does not match the table.
         std::fs::write(format!("{dir}/gnome.png"), &big).unwrap();
         std::fs::write(format!("{dir}/{SOURCES_FILE}"), "gnome\thttps://example.org/old.png\n").unwrap();
 
@@ -1539,8 +1539,8 @@ mod live_download_tests {
         assert!(plan.tasks.iter().any(|t| t.tag == "gnome"));
         assert!(!plan.tasks.iter().any(|t| t.tag == "kde"));
 
-        // Принятый файл записан в опись с нынешним адресом — повторный
-        // проход его не трогает.
+        // The accepted file is recorded in the inventory with the current address — a repeated
+        // pass does not touch it.
         let recorded = parse_sources(&std::fs::read_to_string(format!("{dir}/{SOURCES_FILE}")).unwrap());
         assert_eq!(recorded, [("kde".to_string(), online_urls("kde")[0].to_string())]);
         assert!(drop_retired_on_disk(&dir).is_empty());
@@ -1550,8 +1550,8 @@ mod live_download_tests {
 
     #[test]
     fn placeholder_caption_follows_download_state() {
-        // Подпись «загружается» — байты оригинала, остальные отличаются
-        // только нижней строкой.
+        // The «loading» caption is the original's bytes, the others differ
+        // only in the bottom line.
         let loading = generate_svg_for("kde", PlaceholderState::Loading);
         assert_eq!(loading, generate_svg("kde"));
         let offline = generate_svg_for("kde", PlaceholderState::NoInternet);
@@ -1559,8 +1559,8 @@ mod live_download_tests {
         assert!(placeholder_state("нет-такого", true) == PlaceholderState::NoScreenshot);
 
         let dir = scratch("live");
-        // Транспорт не отдаёт ни байта, пока тест не отпустит: так видно
-        // состояние «идёт закачка».
+        // The transport gives out not a single byte until the test releases it: that way the
+        // «download in progress» state is visible.
         static GO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         let make_io = || {
             while !GO.load(std::sync::atomic::Ordering::Acquire) {
@@ -1572,7 +1572,7 @@ mod live_download_tests {
         let seen = finished.clone();
         let handle = start_auto_download(dir.clone(), make_io, move |o| {
             if o.de_finished {
-                // Стол уже снят с ожидания, когда окну приходит весть.
+                // The desktop is already off waiting when the window gets the news.
                 seen.lock().unwrap().push((o.de.clone(), live_placeholder_state(&o.de)));
             }
         })
@@ -1600,8 +1600,8 @@ mod live_download_tests {
             .contains(&("kde".to_string(), PlaceholderState::NoInternet)));
         assert_eq!(screenshot_paths_on_disk(&dir, "xfce").len(), 3);
 
-        // Заданное состояние (закачку ведёт вызывающий — виджетная вкладка
-        // через мост): стол без источника получает свою подпись и свой файл.
+        // A given state (the caller runs the download — the widget tab
+        // via the bridge): a desktop without a source gets its own caption and its own file.
         let state = placeholder_state("нет-такого", false);
         let path = placeholder_on_disk_for(&dir, "нет-такого", state).unwrap();
         assert!(path.ends_with("/нет-такого_placeholder_none.svg"));
@@ -1622,7 +1622,7 @@ mod live_download_tests {
             std::fs::write(format!("{bundled}/{name}"), &big).unwrap();
         }
         std::fs::write(format!("{cache}/river_1.webp"), &big).unwrap();
-        // Пустышка не в счёт — тот же фильтр размера, что у скачанных.
+        // A dummy does not count — the same size filter as for downloaded ones.
         std::fs::write(format!("{bundled}/river_3.png"), b"x").unwrap();
         let dirs = vec![missing, bundled.clone()];
         assert_eq!(
@@ -1634,7 +1634,7 @@ mod live_download_tests {
                 format!("{cache}/river_1.webp"),
             ]
         );
-        // Стол без поставляемых — ровно скачанные.
+        // A desktop without shipped ones — exactly the downloaded ones.
         assert!(carousel_paths_on_disk(&cache, &dirs, "kde").is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1646,9 +1646,9 @@ mod live_download_tests {
         assert!(dirs.contains(&"/usr/lib/rexon/rexon/assets/screenshots".to_string()));
     }
 
-    /// У River снимков нет ни у проекта, ни на Commons — дерево обязано везти
-    /// свои (иначе карточка снова покажет «снимка пока нет»), а Wayfire —
-    /// иметь несколько адресов, как остальные столы.
+    /// River has no screenshots from the project or on Commons — the tree must ship
+    /// its own (otherwise the card will again show «no screenshot yet»), and Wayfire must
+    /// have several addresses, like the other desktops.
     #[test]
     fn river_ships_own_screenshots_and_wayfire_has_several() {
         let data = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/assets/screenshots");

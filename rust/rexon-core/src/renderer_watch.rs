@@ -1,113 +1,124 @@
-//! Сторож живых обоев — ОДИН на оба вида процессов, которые их рисуют:
-//! рисовальщики waywallen (сцены и веб Wallpaper Engine) и собственный хост
-//! Rexon `rexon-wallpaper-host` (видео, веб, Flash). Упал — поднять обои
-//! заново; падает подряд — перестать и сказать человеку.
+//! Live wallpaper watchdog — ONE for both kinds of processes that draw them:
+//! waywallen renderers (Wallpaper Engine scenes and web) and Rexon's own host
+//! `rexon-wallpaper-host` (video, web, Flash). If one crashes — bring the
+//! wallpaper up again; if it crashes repeatedly — stop and tell the person.
 //!
-//! Общее у двух видов — решение «поднимать ли ещё раз» ([`CrashBudget`]:
-//! сколько подъёмов тех же обоев за окно времени) и поток сторожа
-//! ([`run_forever`]). Разное — как узнать, что процесс лёг, и чем его
-//! поднимать: у рисовальщика waywallen процесс чужой (ребёнок демона), и
-//! падение видно по записи `systemd-coredump`, а поднимает демон; хост —
-//! наш ребёнок (исполнитель `wallpaper_exec`) либо ребёнок расширения
-//! оболочки GNOME/Cinnamon, и поднимается он тем же применением, что по
-//! кнопке. Этому посвящена вторая половина модуля ([`HostWatch`]).
+//! What the two kinds share is the decision "whether to bring it up once more"
+//! ([`CrashBudget`]: how many restarts of the same wallpaper within a time
+//! window) and the watchdog thread ([`run_forever`]). What differs is how to
+//! learn that the process died and what to restart it with: a waywallen
+//! renderer's process is foreign (a child of the daemon), its crash is visible
+//! from a `systemd-coredump` record, and the daemon restarts it; the host is our
+//! child (the `wallpaper_exec` executor) or a child of the GNOME/Cinnamon shell
+//! extension, and it is restarted by the same apply as on the button. The
+//! second half of the module is devoted to this ([`HostWatch`]).
 //!
-//! РИСОВАЛЬЩИКИ WAYWALLEN. ЗАЧЕМ. Сцены и веб-обои рисует отдельный процесс waywallen
-//! (`waywallen-<вид>-renderer`). Если он аварийно завершается — сбой
-//! драйвера видеокарты, ошибка в самой сцене, — демон только убирает его из
-//! своих списков: выбранные обои за ним остаются (`CurrentWallpaperId`), а на
-//! рабочем столе пусто, и человеку никто ничего не говорит (живой случай
-//! 10.10.2026: сброс видеокарты → рисовальщик упал → стол без обоев).
+//! WAYWALLEN RENDERERS. WHY. Scenes and web wallpapers are drawn by a separate
+//! waywallen process (`waywallen-<kind>-renderer`). If it terminates abnormally
+//! — a graphics driver failure, an error in the scene itself — the daemon only
+//! removes it from its lists: the chosen wallpaper stays assigned
+//! (`CurrentWallpaperId`), but the desktop is empty and nobody tells the person
+//! anything (a live case on 10.10.2026: GPU reset → renderer crashed → desktop
+//! without a wallpaper).
 //!
-//! ЧТО ДЕЛАЕТ. Пока Rexon работает (значок в лотке), сторож раз в
-//! [`POLL_SECS`] смотрит на процессы рисовальщиков. Пропал процесс —
-//! спрашивает журнал системы, был ли это аварийный выход (запись
-//! `systemd-coredump` с номером процесса). Был — просит демона применить те
-//! же обои ещё раз и говорит об этом уведомлением.
+//! WHAT IT DOES. While Rexon is running (the tray icon), the watchdog looks at
+//! the renderer processes once every [`POLL_SECS`]. If a process has vanished,
+//! it asks the system journal whether that was an abnormal exit (a
+//! `systemd-coredump` record with the process number). If it was, it asks the
+//! daemon to apply the same wallpaper again and says so in a notification.
 //!
-//! ЧЕГО НЕ ДЕЛАЕТ.
-//! * Не трогает обои, остановленные намеренно: правила автопаузы демона
-//!   («сеанс заблокирован — стоп») и смена обоев человеком тоже убирают
-//!   процесс, но записи об аварии при этом нет — и сторож молчит.
-//! * Не перезапускает по кругу: после [`MAX_RECOVERIES`] подъёмов тех же
-//!   обоев за [`RECOVERY_WINDOW_SECS`] останавливается и говорит, что обои
-//!   падают сами. Каждое такое падение может стоить сброса видеокарты.
-//! * Не видит падений без записи об аварии (процесс убит по нехватке памяти,
-//!   вышел с кодом ошибки) и не работает там, где нет `journalctl`/`busctl`.
+//! WHAT IT DOES NOT DO.
+//! * It does not touch wallpapers stopped on purpose: the daemon's auto-pause
+//!   rules ("session locked — stop") and the person changing the wallpaper also
+//!   remove the process, but there is no crash record then — and the watchdog
+//!   stays silent.
+//! * It does not restart in a loop: after [`MAX_RECOVERIES`] restarts of the
+//!   same wallpaper within [`RECOVERY_WINDOW_SECS`] it stops and says that the
+//!   wallpaper crashes by itself. Each such crash may cost a GPU reset.
+//! * It does not see crashes without a crash record (the process was killed for
+//!   lack of memory, exited with an error code) and does not work where there is
+//!   no `journalctl`/`busctl`.
 //!
-//! Решение — чистая функция [`Watch::tick`]; всё, что ходит наружу, — в
-//! «живой» части внизу.
+//! The decision is the pure function [`Watch::tick`]; everything that goes
+//! outside is in the "live" part below.
 //!
-//! СОБСТВЕННЫЙ ХОСТ ОБОЕВ. Хост запускается один раз при «Применить»; лёг
-//! (сброс видеокарты, сон, ошибка драйвера) — стол пустел, и поднять его
-//! было некому. Теперь [`HostWatch::tick`] решает по трём признакам:
-//! * процесс завершился сам (не по «Остановить» и не под замену);
-//! * процесс жив, но не рисует: хост раз в [`HEARTBEAT_INTERVAL_MS`] пишет
-//!   метку сердцебиения ([`heartbeat_path`]) из потока интерфейса и при этом
-//!   просит кадр у каждого окна. Зависни отрисовка — встанет и поток
-//!   интерфейса, метка перестанет обновляться. Проверка — после выхода из
-//!   сна (сигнал logind `PrepareForSleep(false)`) и, мягче, всё время;
-//! * сброс видеокарты (новая запись `devcoredump` у устройства DRM либо
-//!   событие ядра `WEDGED=`): показ пересоздаётся, даже если процесс жив —
-//!   после сброса картинка бывает чёрной при живом процессе.
-//! Подъёмы те же, что у рисовальщика, но мягче по числу: после
-//! [`HOST_MAX_RESTARTS`] подъёмов за окно следующее падение уже не
-//! поднимается — на стол ставится неподвижный кадр этих же обоев (у видео —
-//! кадр из ролика, у веба и Flash — превью рядом, если есть; иначе прежняя
-//! картинка стола) и показывается ОДНО уведомление. Сами подъёмы молчат —
-//! только журнал: человеку нечего с ними делать.
+//! OUR OWN WALLPAPER HOST. The host is started once on "Apply"; when it died
+//! (GPU reset, sleep, a driver error) the desktop went empty, and there was
+//! nobody to bring it back. Now [`HostWatch::tick`] decides by three signs:
+//! * the process exited by itself (not on "Stop" and not for a replacement);
+//! * the process is alive but does not draw: once every
+//!   [`HEARTBEAT_INTERVAL_MS`] the host writes a heartbeat mark
+//!   ([`heartbeat_path`]) from the interface thread and at the same time
+//!   requests a frame from every window. If rendering hangs, the interface
+//!   thread stops too, and the mark stops being updated. The check runs after
+//!   resuming from sleep (the logind signal `PrepareForSleep(false)`) and, more
+//!   leniently, all the time;
+//! * a GPU reset (a new `devcoredump` record of a DRM device or the kernel event
+//!   `WEDGED=`): the display is recreated even if the process is alive — after a
+//!   reset the picture is sometimes black with a live process.
+//! Restarts are the same as for the renderer, but more lenient in number: after
+//! [`HOST_MAX_RESTARTS`] restarts within the window, the next crash is no longer
+//! restarted — a still frame of the same wallpaper is put on the desktop (for
+//! video — a frame from the clip, for web and Flash — the preview next to it if
+//! there is one; otherwise the previous desktop picture) and ONE notification is
+//! shown. The restarts themselves are silent — only the log: the person has
+//! nothing to do with them.
 //!
-//! ПОЧЕМУ НЕ СЛУЖБА systemd с `Restart=on-failure` (как у движка
-//! waywallen). Хостом целиком владеет исполнитель обоев: заморозка по
-//! нагрузке (SIGSTOP своему ребёнку), спутники на других мониторах, запасные
-//! шаги плана, возврат стола по «Остановить». Под службой всё это пришлось
-//! бы делать вторым путём через `systemctl`, а кадр после падений, одно
-//! уведомление и проверку после сна служба не умеет — сторож всё равно был
-//! бы нужен, и механизмов стало бы два. На GNOME и Cinnamon-Wayland хост
-//! вообще ребёнок оболочки, службе его не отдать. И без systemd (Void,
-//! Alpine, Gentoo с OpenRC) сторож работает так же.
+//! WHY NOT A systemd SERVICE with `Restart=on-failure` (like the waywallen
+//! engine). The host is fully owned by the wallpaper executor: freezing under
+//! load (SIGSTOP to its child), companions on other monitors, fallback steps of
+//! the plan, restoring the desktop on "Stop". Under a service all of this would
+//! have to be done a second way through `systemctl`, and a service cannot do the
+//! frame after crashes, the single notification and the check after sleep — the
+//! watchdog would be needed anyway, and there would be two mechanisms. On GNOME
+//! and Cinnamon-Wayland the host is a child of the shell altogether, it cannot
+//! be handed to a service. And without systemd (Void, Alpine, Gentoo with
+//! OpenRC) the watchdog works the same way.
 
 use std::collections::HashMap;
 
 use crate::i18n::tr;
 
-/// Как часто смотреть на процессы, секунды.
+/// How often to look at the processes, seconds.
 pub const POLL_SECS: u64 = 10;
-/// Сколько проходов ждать записи об аварии после пропажи процесса:
-/// `systemd-coredump` пишет её не мгновенно (большой образ памяти — секунды).
+/// How many passes to wait for a crash record after a process vanished:
+/// `systemd-coredump` does not write it instantly (a large memory image takes
+/// seconds).
 pub const CRASH_WAIT_TICKS: u32 = 3;
-/// Окно, в котором считаются подъёмы одних и тех же обоев, секунды.
+/// The window in which restarts of the same wallpaper are counted, seconds.
 pub const RECOVERY_WINDOW_SECS: u64 = 600;
-/// Сколько раз за окно поднимать одни и те же обои. Одного раза хватает на
-/// случайный сбой; второй подряд — значит, обои падают сами.
+/// How many times per window to restart the same wallpaper. Once is enough for
+/// a random failure; a second time in a row means the wallpaper crashes by
+/// itself.
 pub const MAX_RECOVERIES: usize = 1;
 
-/// Сколько раз подряд поднимать одни и те же обои: подъёмы за окно
-/// `window` секунд, по обоям. Общий для рисовальщиков waywallen и хоста —
-/// отличаются только пределом.
+/// How many times in a row to restart the same wallpaper: restarts within a
+/// `window` of seconds, per wallpaper. Shared by waywallen renderers and the
+/// host — they differ only in the limit.
 #[derive(Debug, Default)]
 pub struct CrashBudget {
-    /// Сделанные подъёмы: (время, обои).
+    /// Restarts done: (time, wallpaper).
     recoveries: Vec<(u64, String)>,
-    /// Обои, которые решено больше не поднимать (пока человек их не сменит).
+    /// Wallpapers it was decided not to restart any more (until the person changes them).
     given_up: Option<String>,
 }
 
 impl CrashBudget {
-    /// Человек выбрал другие обои — прежний отказ к ним не относится.
+    /// The person chose another wallpaper — the previous refusal does not apply to it.
     pub fn forget_if_changed(&mut self, current: &str) {
         if self.given_up.as_deref().is_some_and(|id| id != current) {
             self.given_up = None;
         }
     }
 
-    /// От этих обоев уже отказались.
+    /// This wallpaper has already been given up on.
     pub fn is_given_up(&self, id: &str) -> bool {
         self.given_up.as_deref() == Some(id)
     }
 
-    /// Ещё одно падение обоев `id`: истина — поднимать (подъём записан),
-    /// ложь — предел за окно исчерпан, обои помечены «больше не поднимать».
+    /// One more crash of wallpaper `id`: true — restart (the restart is recorded),
+    /// false — the limit for the window is exhausted, the wallpaper is marked
+    /// "do not restart any more".
     pub fn spend(&mut self, now: u64, id: &str, max: usize, window: u64) -> bool {
         self.recoveries.retain(|(at, _)| now.saturating_sub(*at) <= window);
         let recent = self.recoveries.iter().filter(|(_, was)| was == id).count();
@@ -120,36 +131,36 @@ impl CrashBudget {
     }
 }
 
-/// Что делать после очередного прохода.
+/// What to do after the next pass.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
-    /// Ничего: всё работает либо вмешиваться не нужно.
+    /// Nothing: everything works or there is no need to intervene.
     Nothing,
-    /// Рисовальщик упал — применить обои `id` заново.
+    /// A renderer crashed — apply wallpaper `id` again.
     Recover { id: String },
-    /// Обои `id` падают повторно — больше не поднимать, сказать человеку.
+    /// Wallpaper `id` crashes repeatedly — do not restart any more, tell the person.
     GiveUp { id: String },
 }
 
-/// Память сторожа между проходами.
+/// The watchdog's memory between passes.
 #[derive(Debug, Default)]
 pub struct Watch {
-    /// Живые рисовальщики: номер процесса → обои, выбранные при нём.
+    /// Live renderers: process number → the wallpaper chosen while it ran.
     seen: HashMap<u32, String>,
-    /// Пропавшие процессы, по которым ещё ждём записи об аварии:
-    /// (номер процесса, обои, сколько проходов осталось ждать).
+    /// Vanished processes for which we are still waiting for a crash record:
+    /// (process number, wallpaper, how many passes are left to wait).
     pending: Vec<(u32, String, u32)>,
-    /// Сколько ещё можно поднимать.
+    /// How much restarting is still allowed.
     budget: CrashBudget,
 }
 
 impl Watch {
-    /// Один проход.
+    /// One pass.
     ///
-    /// `now` — время, секунды; `alive` — номера живых процессов
-    /// рисовальщиков; `current_id` — обои, выбранные у демона (пусто — демон
-    /// молчит либо обоев нет); `crashed(pid)` — есть ли в журнале системы
-    /// запись об аварийном выходе этого процесса.
+    /// `now` — time, seconds; `alive` — numbers of the live renderer processes;
+    /// `current_id` — the wallpaper chosen in the daemon (empty — the daemon is
+    /// silent or there is no wallpaper); `crashed(pid)` — whether the system journal
+    /// has a record of an abnormal exit of this process.
     pub fn tick(
         &mut self,
         now: u64,
@@ -159,19 +170,19 @@ impl Watch {
     ) -> Step {
         self.budget.forget_if_changed(current_id);
 
-        // Пропавшие процессы — в ожидание записи об аварии.
+        // Vanished processes go into waiting for a crash record.
         let gone: Vec<u32> = self.seen.keys().copied().filter(|pid| !alive.contains(pid)).collect();
         for pid in gone {
             if let Some(id) = self.seen.remove(&pid) {
                 self.pending.push((pid, id, CRASH_WAIT_TICKS));
             }
         }
-        // Новые процессы запоминаем с обоями, выбранными сейчас.
+        // New processes are remembered with the wallpaper chosen now.
         for pid in alive {
             self.seen.entry(*pid).or_insert_with(|| current_id.to_string());
         }
 
-        // Кто из пропавших упал на самом деле.
+        // Which of the vanished ones actually crashed.
         let mut crashed_id: Option<String> = None;
         let mut still_waiting = Vec::new();
         for (pid, id, left) in std::mem::take(&mut self.pending) {
@@ -184,9 +195,10 @@ impl Watch {
         self.pending = still_waiting;
 
         let Some(id) = crashed_id else { return Step::Nothing };
-        // Поднимаем только то, что человек всё ещё хочет видеть: обои те же,
-        // рисовальщика нет (демон не поднял его сам, человек не выбрал
-        // другое), и мы от этих обоев ещё не отказались.
+        // We restart only what the person still wants to see: the same
+        // wallpaper, no renderer (the daemon did not restart it by itself, the
+        // person did not choose another one), and we have not given up on this
+        // wallpaper yet.
         if id.is_empty() || id != current_id || !alive.is_empty() {
             return Step::Nothing;
         }
@@ -200,97 +212,97 @@ impl Watch {
     }
 }
 
-// ── Собственный хост обоев: решение ───────────────────────────────────
+// ── Our own wallpaper host: the decision ───────────────────────────────
 
-/// Сколько раз подряд поднимать хост с теми же обоями за
-/// [`RECOVERY_WINDOW_SECS`]. Следующее падение (третье подряд) — уже кадр
-/// вместо обоев: у хоста сбой бывает и не по его вине (сон, сброс
-/// видеокарты), поэтому предел мягче, чем у рисовальщика waywallen, но
-/// круга падений всё равно нет.
+/// How many times in a row to restart the host with the same wallpaper within
+/// [`RECOVERY_WINDOW_SECS`]. The next crash (the third in a row) gets a frame
+/// instead of the wallpaper: the host can fail through no fault of its own
+/// (sleep, GPU reset), so the limit is more lenient than for a waywallen
+/// renderer, but there is still no crash loop.
 pub const HOST_MAX_RESTARTS: usize = 2;
-/// Как часто хост пишет метку сердцебиения, миллисекунды.
+/// How often the host writes the heartbeat mark, milliseconds.
 pub const HEARTBEAT_INTERVAL_MS: u64 = 2000;
-/// Метка старше этого при живом процессе — хост завис, секунды. Срок
-/// намеренно большой: ложный перезапуск исправных обоев хуже, чем минута
-/// застывшего кадра.
+/// A mark older than this with a live process — the host has hung, seconds. The
+/// period is deliberately long: a false restart of a working wallpaper is worse
+/// than a minute of a frozen frame.
 pub const HEARTBEAT_STALE_SECS: u64 = 60;
-/// Сколько ждать после выхода из сна, прежде чем требовать свежую метку,
-/// секунды: композитору и драйверу нужно время, чтобы вернуть экраны.
+/// How long to wait after resuming from sleep before demanding a fresh mark,
+/// seconds: the compositor and the driver need time to bring the screens back.
 pub const RESUME_GRACE_SECS: u64 = 15;
-/// Начало имени файла метки сердцебиения в `$XDG_RUNTIME_DIR`.
+/// Beginning of the heartbeat mark file name in `$XDG_RUNTIME_DIR`.
 pub const HEARTBEAT_PREFIX: &str = "rexon-wp-heartbeat-";
 
-/// Что случилось с хостом.
+/// What happened to the host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostTrouble {
-    /// Процесс завершился сам.
+    /// The process exited by itself.
     Crashed,
-    /// Процесс жив, но не рисует (метка сердцебиения не обновляется).
+    /// The process is alive but does not draw (the heartbeat mark is not updated).
     Hung,
-    /// Видеокарту сбросили — показ надо пересоздать.
+    /// The GPU was reset — the display has to be recreated.
     GpuReset,
 }
 
-/// Что делать с хостом после прохода.
+/// What to do with the host after a pass.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostStep {
-    /// Ничего.
+    /// Nothing.
     Nothing,
-    /// Поднять те же обои заново.
+    /// Bring the same wallpaper up again.
     Restart { subject: String, why: HostTrouble },
-    /// Обои падают подряд — поставить их неподвижный кадр и сказать человеку.
+    /// The wallpaper crashes repeatedly — put its still frame and tell the person.
     StillFrame { subject: String },
 }
 
-/// Наблюдение за хостом на один проход.
+/// Observation of the host for one pass.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostTick {
-    /// Что сейчас должно показываться своим хостом (формат и путь); `None`
-    /// — своих живых обоев нет, сторожить нечего.
+    /// What our host should be showing now (format and path); `None` — we have no
+    /// live wallpaper, there is nothing to watch.
     pub subject: Option<String>,
-    /// Наш процесс хоста завершился сам (у исполнителя есть его статус).
+    /// Our host process exited by itself (the executor has its status).
     pub exited: bool,
-    /// Метки живых процессов хоста: время последней (секунды
-    /// [`boottime_secs`]) либо `None` — метки нет (хост прежней сборки).
+    /// Marks of live host processes: the time of the last one (seconds of
+    /// [`boottime_secs`]) or `None` — no mark (a host of an older build).
     pub beats: Vec<Option<u64>>,
-    /// Хост заморожен надзором за нагрузкой — молчание метки законно.
+    /// The host is frozen by the load supervisor — the mark's silence is legitimate.
     pub paused: bool,
-    /// Хост — ребёнок расширения оболочки: его статуса у нас нет, и о
-    /// смерти говорит только пропажа процесса с меткой.
+    /// The host is a child of the shell extension: we do not have its status, and
+    /// only the disappearance of a process with a mark tells of its death.
     pub by_heartbeat_only: bool,
 }
 
-/// Память сторожа хоста между проходами.
+/// The host watchdog's memory between passes.
 #[derive(Debug, Default)]
 pub struct HostWatch {
     budget: CrashBudget,
-    /// Обои, за которыми следим сейчас.
+    /// The wallpaper we are watching now.
     subject: Option<String>,
-    /// У этих обоев уже была живая метка (до неё о смерти по пропаже
-    /// процесса судить нельзя: расширение могло ещё не подняться).
+    /// This wallpaper already had a live mark (before that, death cannot be judged
+    /// by the process vanishing: the extension may not have started yet).
     seen_beat: bool,
-    /// Когда вышли из сна — проверка «рисует ли» назначена на потом.
+    /// When we resumed from sleep — the "does it draw" check is scheduled for later.
     woke_at: Option<u64>,
-    /// Был сброс видеокарты.
+    /// There was a GPU reset.
     gpu_reset: bool,
 }
 
 impl HostWatch {
-    /// Система вышла из сна в момент `at` (секунды [`boottime_secs`]).
+    /// The system resumed from sleep at moment `at` (seconds of [`boottime_secs`]).
     pub fn woke(&mut self, at: u64) {
         self.woke_at = Some(at);
     }
 
-    /// Ядро сообщило о сбросе видеокарты.
+    /// The kernel reported a GPU reset.
     pub fn gpu_reset(&mut self) {
         self.gpu_reset = true;
     }
 
-    /// Один проход. `now` — секунды [`boottime_secs`].
+    /// One pass. `now` — seconds of [`boottime_secs`].
     pub fn tick(&mut self, now: u64, t: &HostTick) -> HostStep {
         let Some(subject) = t.subject.clone() else {
-            // Своих обоев нет: события, пришедшие без них, к будущим обоям
-            // не относятся.
+            // We have no wallpaper of our own: events that arrived without it do
+            // not apply to a future wallpaper.
             self.subject = None;
             self.seen_beat = false;
             self.woke_at = None;
@@ -316,7 +328,7 @@ impl HostWatch {
         } else if std::mem::take(&mut self.gpu_reset) {
             Some(HostTrouble::GpuReset)
         } else if t.paused {
-            // Заморожен — молчит законно; проверку после сна не копим.
+            // Frozen — silent legitimately; we do not accumulate the post-sleep check.
             self.woke_at = None;
             None
         } else {
@@ -328,45 +340,46 @@ impl HostWatch {
         if !self.budget.spend(now, &subject, HOST_MAX_RESTARTS, RECOVERY_WINDOW_SECS) {
             return HostStep::StillFrame { subject };
         }
-        // Новый процесс сначала обязан отметиться сам.
+        // A new process must first check in by itself.
         self.seen_beat = false;
         HostStep::Restart { subject, why }
     }
 
-    /// Завис ли хост по меткам. Процессы без метки (прежняя сборка) не
-    /// судятся вовсе.
+    /// Whether the host has hung according to the marks. Processes without a mark
+    /// (an older build) are not judged at all.
     fn hung(&mut self, now: u64, beats: &[Option<u64>]) -> bool {
         if let Some(woke) = self.woke_at {
             if now < woke + RESUME_GRACE_SECS {
-                return false; // после сна ещё рано судить
+                return false; // too early to judge after sleep
             }
             self.woke_at = None;
             if beats.iter().flatten().any(|beat| *beat < woke) {
-                return true; // со сна так и не отметился
+                return true; // never checked in after sleep
             }
         }
         beats.iter().flatten().any(|beat| now.saturating_sub(*beat) > HEARTBEAT_STALE_SECS)
     }
 }
 
-/// Файл метки сердцебиения процесса хоста `pid` в каталоге сеанса.
+/// Heartbeat mark file of host process `pid` in the session directory.
 pub fn heartbeat_path(runtime_dir: &str, pid: i64) -> String {
     format!("{}/{HEARTBEAT_PREFIX}{pid}", runtime_dir.trim_end_matches('/'))
 }
 
-/// Номер процесса по имени файла метки; не метка — `None`.
+/// Process number from a mark file name; not a mark — `None`.
 pub fn heartbeat_pid(file_name: &str) -> Option<i64> {
     file_name.strip_prefix(HEARTBEAT_PREFIX)?.parse().ok().filter(|pid| *pid > 0)
 }
 
-/// Время из файла метки; недописан или пуст — `None`.
+/// Time from a mark file; half-written or empty — `None`.
 pub fn parse_heartbeat(text: &str) -> Option<u64> {
     text.trim().parse().ok()
 }
 
-/// Секунды часов `CLOCK_BOOTTIME`: идут и во сне и не прыгают от смены
-/// системного времени (часы машины с Windows рядом живут в местном времени
-/// и переводятся). Одни часы на хост и сторож — метки сравнимы.
+/// Seconds of the `CLOCK_BOOTTIME` clock: it runs during sleep too and does not
+/// jump when the system time changes (the clock of a machine with Windows next
+/// to it runs in local time and gets adjusted). One clock for the host and the
+/// watchdog — the marks are comparable.
 pub fn boottime_secs() -> u64 {
     let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
     if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut ts) } != 0 {
@@ -375,9 +388,9 @@ pub fn boottime_secs() -> u64 {
     ts.tv_sec.max(0) as u64
 }
 
-/// Записать метку сердцебиения этого процесса. Каталога сеанса нет —
-/// ничего: без него сторожу метку и не найти. Звать хосту из потока
-/// интерфейса.
+/// Write this process's heartbeat mark. If there is no session directory —
+/// nothing: without it the watchdog could not find the mark anyway. The host
+/// calls this from the interface thread.
 pub fn write_heartbeat_live() {
     let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") else { return };
     if dir.is_empty() {
@@ -387,8 +400,8 @@ pub fn write_heartbeat_live() {
     let _ = std::fs::write(path, boottime_secs().to_string());
 }
 
-/// Строка `gdbus monitor` о сне: `Some(true)` — уходим в сон,
-/// `Some(false)` — вышли из него; другое — `None`. Вид строки:
+/// A `gdbus monitor` line about sleep: `Some(true)` — going to sleep,
+/// `Some(false)` — resumed from it; anything else — `None`. The line looks like:
 /// `/org/freedesktop/login1: org.freedesktop.login1.Manager.PrepareForSleep (false,)`.
 pub fn parse_prepare_for_sleep(line: &str) -> Option<bool> {
     let (_, args) = line.split_once("org.freedesktop.login1.Manager.PrepareForSleep")?;
@@ -402,15 +415,16 @@ pub fn parse_prepare_for_sleep(line: &str) -> Option<bool> {
     }
 }
 
-/// Строка `udevadm monitor --kernel --property` о том, что устройство DRM
-/// «заклинило» и было сброшено (событие ядра `WEDGED=<способ>`, ядра 6.14+).
+/// A `udevadm monitor --kernel --property` line saying that a DRM device
+/// "wedged" and was reset (the kernel event `WEDGED=<method>`, kernels 6.14+).
 pub fn parse_drm_wedged(line: &str) -> bool {
     line.trim_start().starts_with("WEDGED=")
 }
 
-/// Появилась ли новая запись `devcoredump` от видеокарты. `known` — имена,
-/// виденные прошлым проходом (`None` — проход первый: то, что лежало до
-/// запуска сторожа, событием не считается); `now` — (имя, это видеокарта).
+/// Whether a new `devcoredump` record from the GPU has appeared. `known` — the
+/// names seen by the previous pass (`None` — the first pass: what was there
+/// before the watchdog started does not count as an event); `now` — (name, is it
+/// a GPU).
 pub fn new_gpu_dump(known: &mut Option<Vec<String>>, now: &[(String, bool)]) -> bool {
     let fresh = match known.as_ref() {
         None => false,
@@ -420,10 +434,10 @@ pub fn new_gpu_dump(known: &mut Option<Vec<String>>, now: &[(String, bool)]) -> 
     fresh
 }
 
-/// Кандидаты в неподвижный кадр веб- и Flash-обоев: превью рядом с обоями.
-/// `path` — путь обоев (каталог либо файл, адрес `file://` тоже);
-/// `project_json` — текст `project.json` их каталога, если есть. Адрес
-/// сайта — пусто: кадра сайта у нас нет.
+/// Candidates for the still frame of web and Flash wallpapers: the preview next
+/// to the wallpaper. `path` — the wallpaper path (a directory or a file, a
+/// `file://` address too); `project_json` — the text of the `project.json` in its
+/// directory, if any. A site address — empty: we have no frame of a site.
 pub fn still_frame_candidates(path: &str, project_json: Option<&str>) -> Vec<String> {
     let local = path.strip_prefix("file://").unwrap_or(path);
     if !local.starts_with('/') {
@@ -453,69 +467,71 @@ pub fn still_frame_candidates(path: &str, project_json: Option<&str>) -> Vec<Str
     out
 }
 
-/// Каталог обоев, где искать `project.json` для [`still_frame_candidates`].
+/// The wallpaper directory in which to look for `project.json` for
+/// [`still_frame_candidates`].
 pub fn still_frame_dir(path: &str) -> Option<String> {
     still_frame_candidates(path, None)
         .first()
         .and_then(|c| c.rsplit_once('/').map(|(d, _)| d.to_string()))
 }
 
-// ── Подписи ────────────────────────────────────────────────────────────
+// ── Labels ─────────────────────────────────────────────────────────────
 
-/// Заголовок уведомлений сторожа.
+/// Title of the watchdog's notifications.
 pub fn notice_title() -> String {
     tr("Live wallpaper")
 }
 
-/// Обои подняты после падения рисовальщика.
+/// The wallpaper was brought back after a renderer crash.
 pub fn recovered_text() -> String {
     tr("The program that draws your wallpaper stopped unexpectedly. Rexon has started the wallpaper again.")
 }
 
-/// Обои упали повторно — больше не поднимаем.
+/// The wallpaper crashed again — we no longer restart it.
 pub fn gave_up_text() -> String {
     tr("Your wallpaper keeps stopping unexpectedly, so Rexon no longer restarts it. \
         Choose another wallpaper in the Wallpaper Engine tab.")
 }
 
-/// Поднять обои не получилось (демон отказал).
+/// Bringing the wallpaper back failed (the daemon refused).
 pub fn recover_failed_text() -> String {
     tr("The program that draws your wallpaper stopped unexpectedly, and Rexon couldn't start it again. \
         Apply the wallpaper again in the Wallpaper Engine tab.")
 }
 
-/// Свои живые обои падали подряд — вместо них стоит их неподвижный кадр.
+/// Our own live wallpaper crashed repeatedly — its still frame stands in its place.
 pub fn host_still_frame_text() -> String {
     tr("Your live wallpaper stopped unexpectedly several times in a row, so Rexon has put a still picture of it on the desktop instead. \
         To try the live wallpaper again, apply it once more.")
 }
 
-/// Свои живые обои падали подряд, кадра нет — вернулась прежняя картинка.
+/// Our own live wallpaper crashed repeatedly, there is no frame — the previous
+/// picture came back.
 pub fn host_previous_picture_text() -> String {
     tr("Your live wallpaper stopped unexpectedly several times in a row, so Rexon has put back your previous desktop picture. \
         To try the live wallpaper again, apply it once more.")
 }
 
-// ── Разбор ответов системы ─────────────────────────────────────────────
+// ── Parsing system answers ─────────────────────────────────────────────
 
-/// Процесс рисовальщика waywallen по первому слову его командной строки:
-/// файл `waywallen-<вид>-renderer`.
+/// A waywallen renderer process by the first word of its command line: the file
+/// `waywallen-<kind>-renderer`.
 pub fn is_renderer_exe(argv0: &str) -> bool {
     let name = argv0.rsplit('/').next().unwrap_or(argv0);
     name.starts_with("waywallen-") && name.ends_with("-renderer")
 }
 
-/// Значение строкового свойства из ответа `busctl get-property`:
-/// `s "16352"` → `16352`. Не строка либо пусто — пустая строка.
+/// Value of a string property from a `busctl get-property` answer:
+/// `s "16352"` → `16352`. Not a string or empty — an empty string.
 pub fn busctl_string(output: &str) -> String {
     let line = output.trim();
     let Some(rest) = line.strip_prefix("s ") else { return String::new() };
     rest.trim().trim_matches('"').to_string()
 }
 
-/// Говорит ли ответ журнала (`journalctl -o json`, записи об авариях по
-/// номеру процесса), что упал именно рисовальщик: в записи есть путь
-/// программы `COREDUMP_EXE`, и это рисовальщик.
+/// Whether the journal answer (`journalctl -o json`, crash records by process
+/// number) says that it was the renderer that crashed: the record has the
+/// program path `COREDUMP_EXE`, and it is a renderer.
 pub fn journal_names_renderer_crash(journal_json: &str) -> bool {
     journal_json.lines().any(|line| {
         serde_json::from_str::<serde_json::Value>(line)
@@ -525,10 +541,10 @@ pub fn journal_names_renderer_crash(journal_json: &str) -> bool {
     })
 }
 
-// ── Живая часть ────────────────────────────────────────────────────────
+// ── Live part ──────────────────────────────────────────────────────────
 
-/// Номер сообщения `systemd-coredump` в журнале («процесс сбросил образ
-/// памяти») — постоянный идентификатор из каталога сообщений systemd.
+/// The `systemd-coredump` message id in the journal ("process dumped core") — a
+/// permanent identifier from the systemd message catalog.
 const COREDUMP_MESSAGE_ID: &str = "fc2e22bc6ee647b6b90729ab34a250b1";
 const DAEMON_BUS: &str = "org.waywallen.waywallen.Daemon";
 const DAEMON_PATH: &str = "/org/waywallen/waywallen/Daemon";
@@ -546,7 +562,7 @@ fn run_capture(argv: &[&str]) -> Option<(i32, String)> {
     Some((code, String::from_utf8_lossy(&report.stdout).into_owned()))
 }
 
-/// Номера живых процессов рисовальщиков этого пользователя.
+/// Numbers of this user's live renderer processes.
 fn live_renderer_pids() -> Vec<u32> {
     let Ok(dir) = std::fs::read_dir("/proc") else { return Vec::new() };
     let mut pids = Vec::new();
@@ -561,13 +577,14 @@ fn live_renderer_pids() -> Vec<u32> {
     pids
 }
 
-/// Живут ли рисовальщики WE-обоев этого пользователя (плейлист Rexon по
-/// этому узнаёт, что экран заняли обои Wallpaper Engine).
+/// Whether this user's WE wallpaper renderers are alive (Rexon's playlist learns
+/// from this that the screen is taken by Wallpaper Engine wallpapers).
 pub fn renderers_running() -> bool {
     !live_renderer_pids().is_empty()
 }
 
-/// Обои, выбранные у демона; пусто — демон не отвечает либо обоев нет.
+/// The wallpaper chosen in the daemon; empty — the daemon does not answer or
+/// there is no wallpaper.
 fn live_current_id() -> String {
     run_capture(&["busctl", "--user", "get-property", DAEMON_BUS, DAEMON_PATH, DAEMON_IFACE, "CurrentWallpaperId"])
         .filter(|(code, _)| *code == 0)
@@ -575,7 +592,7 @@ fn live_current_id() -> String {
         .unwrap_or_default()
 }
 
-/// Есть ли в журнале запись об аварийном выходе процесса `pid`.
+/// Whether the journal has a record of an abnormal exit of process `pid`.
 fn live_crashed(pid: u32) -> bool {
     let by_id = format!("MESSAGE_ID={COREDUMP_MESSAGE_ID}");
     let by_pid = format!("COREDUMP_PID={pid}");
@@ -584,7 +601,7 @@ fn live_crashed(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
-/// Попросить демона применить обои `id` заново.
+/// Ask the daemon to apply wallpaper `id` again.
 fn live_apply(id: &str) -> bool {
     run_capture(&["busctl", "--user", "call", DAEMON_BUS, DAEMON_PATH, DAEMON_IFACE, "ApplyById", "s", id])
         .is_some_and(|(code, _)| code == 0)
@@ -597,17 +614,18 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// Кнопка уведомления «Открыть Wallpaper Engine».
+/// The notification button "Open Wallpaper Engine".
 pub const ACTION_OPEN: &str = "open";
 
-/// Кнопки уведомления, которое просит выбрать или применить обои заново.
+/// Buttons of the notification that asks to choose or apply the wallpaper again.
 pub fn open_actions() -> Vec<(String, String)> {
     vec![(ACTION_OPEN.to_string(), tr("Open Wallpaper Engine"))]
 }
 
-/// Уведомление `text` с кнопкой «Открыть Wallpaper Engine»: текст просит
-/// человека выбрать или применить обои во вкладке — кнопка ведёт прямо туда.
-/// Ответа ждём отдельным потоком: сторож тем временем сторожит дальше.
+/// Notification `text` with the "Open Wallpaper Engine" button: the text asks
+/// the person to choose or apply the wallpaper in the tab — the button leads
+/// right there. The answer is awaited in a separate thread: meanwhile the
+/// watchdog keeps watching.
 fn ask_open_wallpaper_engine(text: String) {
     std::thread::spawn(move || {
         let answer = crate::utils::notify_ask_live(&notice_title(), &text, &open_actions(), "", 24 * 3600);
@@ -620,9 +638,9 @@ fn ask_open_wallpaper_engine(text: String) {
     });
 }
 
-/// Поднять сторожа в этом процессе, если он ещё не поднят. Зовут значок в
-/// лотке и каждое применение живых обоев (`wallpaper_exec::run_in_slot`):
-/// без значка (лотка в сеансе нет) свой хост тоже должен быть под присмотром.
+/// Start the watchdog in this process if it is not started yet. It is called by
+/// the tray icon and by every live wallpaper apply (`wallpaper_exec::run_in_slot`):
+/// without the icon (no tray in the session) our own host must also be watched.
 pub fn ensure_running() {
     static STARTED: std::sync::Once = std::sync::Once::new();
     STARTED.call_once(|| {
@@ -635,17 +653,18 @@ pub fn ensure_running() {
     });
 }
 
-/// События системы, на которые сторож отвечает сразу, не дожидаясь прохода.
+/// System events the watchdog responds to immediately, without waiting for a pass.
 enum SystemEvent {
-    /// Вышли из сна.
+    /// Resumed from sleep.
     Woke,
-    /// Ядро сообщило о сбросе видеокарты.
+    /// The kernel reported a GPU reset.
     GpuReset,
 }
 
-/// Читать строки долгоживущей команды и отдавать события сторожу. Команда
-/// умирает вместе с процессом Rexon (`PR_SET_PDEATHSIG`). Нет команды или
-/// она вышла — одна строка в журнал; сторож живёт и без неё.
+/// Read the lines of a long-lived command and hand the events to the watchdog.
+/// The command dies together with the Rexon process (`PR_SET_PDEATHSIG`). If
+/// there is no command or it exited — one line in the log; the watchdog lives on
+/// without it.
 fn spawn_line_monitor(
     argv: &'static [&'static str],
     parse: fn(&str) -> Option<SystemEvent>,
@@ -690,19 +709,19 @@ fn spawn_line_monitor(
         });
 }
 
-/// Сигнал logind о выходе из сна — системная шина, без root.
+/// logind's signal about resuming from sleep — the system bus, without root.
 const SLEEP_MONITOR: &[&str] = &[
     "gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1",
 ];
-/// События ядра от устройств DRM (`WEDGED=` после сброса) — сокет netlink
-/// читается без root.
+/// Kernel events from DRM devices (`WEDGED=` after a reset) — the netlink socket
+/// is read without root.
 const DRM_MONITOR: &[&str] = &["udevadm", "monitor", "--kernel", "--property", "--subsystem-match=drm"];
-/// Записи образов памяти устройств: у видеокарты после сброса здесь
-/// появляется `devcdN` (живёт ~5 минут, читается без root).
+/// Memory image records of devices: after a reset a GPU gets `devcdN` here (it
+/// lives for ~5 minutes, readable without root).
 const DEVCOREDUMP_DIR: &str = "/sys/class/devcoredump";
 
-/// Записи `devcoredump` сейчас: (имя, это видеокарта — у устройства есть
-/// каталог `drm`).
+/// `devcoredump` records now: (name, is it a GPU — the device has a `drm`
+/// directory).
 fn live_devcoredumps() -> Vec<(String, bool)> {
     let Ok(dir) = std::fs::read_dir(DEVCOREDUMP_DIR) else { return Vec::new() };
     dir.flatten()
@@ -716,21 +735,22 @@ fn live_devcoredumps() -> Vec<(String, bool)> {
         .collect()
 }
 
-/// Совпадает ли исполняемый файл процесса с нашим хостом (сверка по пути,
-/// никогда по имени).
+/// Whether the process's executable matches our host (checked by path, never by
+/// name).
 fn pid_runs(pid: i64, binary: &str) -> bool {
     let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) else { return false };
     let want = std::fs::canonicalize(binary).unwrap_or_else(|_| binary.into());
     exe == want
 }
 
-/// Метка процесса из каталога сеанса.
+/// A process mark from the session directory.
 fn live_beat(runtime: &str, pid: i64) -> Option<u64> {
     std::fs::read_to_string(heartbeat_path(runtime, pid)).ok().and_then(|t| parse_heartbeat(&t))
 }
 
-/// Процессы хоста, поднятые расширением оболочки: метка в каталоге сеанса,
-/// процесс жив и это наш бинарь. Метки умерших процессов убираются.
+/// Host processes started by the shell extension: a mark in the session
+/// directory, the process is alive and it is our binary. Marks of dead processes
+/// are removed.
 fn live_extension_hosts(runtime: &str, binary: &str) -> Vec<i64> {
     let Ok(dir) = std::fs::read_dir(runtime) else { return Vec::new() };
     let mut pids = Vec::new();
@@ -745,16 +765,18 @@ fn live_extension_hosts(runtime: &str, binary: &str) -> Vec<i64> {
     pids
 }
 
-/// Проход по своему хосту: наблюдение у исполнителя, решение у
-/// [`HostWatch`], исполнение — снова у исполнителя.
+/// A pass over our own host: the observation is with the executor, the decision
+/// with [`HostWatch`], the execution again with the executor.
 fn live_host_pass(watch: &mut HostWatch) {
     use crate::wallpaper_exec as exec;
     let slot = exec::live_slot();
-    // Исполнитель занят (идёт применение или замер надзора) — в следующий раз.
+    // The executor is busy (an apply or a supervisor measurement is in progress) —
+    // next time.
     let Some(snap) = exec::try_with_slot(&slot, |e| e.host_snapshot()) else { return };
     let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
-    // Обход меток идёт на каждом проходе: заодно убираются метки умерших
-    // процессов (и наших детей тоже — они сами за собой не убирают).
+    // The marks are walked on every pass: along the way marks of dead
+    // processes are removed (our children's too — they do not clean up after
+    // themselves).
     let marked = if runtime.is_empty() {
         Vec::new()
     } else {
@@ -773,8 +795,9 @@ fn live_host_pass(watch: &mut HostWatch) {
         HostStep::Restart { subject, why } => {
             crate::log_warn!("wallpaper", "хост обоев {subject}: {why:?} — поднимаю обои заново");
             if snap.via_extension {
-                // Зависший ребёнок оболочки: снять его самим — сверено, что
-                // это наш бинарь, по пути. Своих детей снимает применение.
+                // A hung child of the shell: we take it down ourselves — verified by
+                // path that it is our binary. Our own children are taken down by the
+                // apply.
                 if let Some(bin) = &snap.host_binary {
                     for pid in pids.iter().filter(|pid| pid_runs(**pid, bin)) {
                         unsafe { libc::kill(*pid as libc::pid_t, libc::SIGTERM) };
@@ -784,8 +807,8 @@ fn live_host_pass(watch: &mut HostWatch) {
             let res = exec::run_in_slot(&slot, |e| e.restart_host());
             crate::log_info!("wallpaper", "хост обоев {subject}: подъём {}", if res.ok { "удался" } else { "не удался" });
             if !res.ok {
-                // Подняться не вышло (файла нет, хост отказал) — дальше
-                // так же, как после падений подряд.
+                // Bringing it back failed (no file, the host refused) — from here on
+                // the same as after repeated crashes.
                 give_up_host(&slot, &subject);
             }
         }
@@ -793,7 +816,7 @@ fn live_host_pass(watch: &mut HostWatch) {
     }
 }
 
-/// Перестать поднимать свои обои: кадр вместо них и ОДНО уведомление.
+/// Stop restarting our own wallpaper: a frame in its place and ONE notification.
 fn give_up_host(slot: &crate::wallpaper_exec::LiveSlot, subject: &str) {
     let still = crate::wallpaper_exec::with_slot(slot, |e| e.show_still_frame());
     crate::log_warn!(
@@ -805,11 +828,11 @@ fn give_up_host(slot: &crate::wallpaper_exec::LiveSlot, subject: &str) {
     crate::utils::notify_live(&notice_title(), &text);
 }
 
-/// Сторожить, пока жив процесс. Звать в отдельном потоке (через
+/// Watch while the process is alive. Call it in a separate thread (via
 /// [`ensure_running`]).
 ///
-/// Рисовальщикам waywallen нужны `journalctl` и `busctl`: без них эта
-/// половина молчит (одна строка в журнал), а свой хост сторожится всё равно.
+/// The waywallen renderers need `journalctl` and `busctl`: without them this
+/// half is silent (one line in the log), while our own host is watched anyway.
 pub fn run_forever() {
     let path = std::env::var("PATH").ok();
     let renderers = ["journalctl", "busctl"].iter().all(|tool| {
@@ -831,14 +854,14 @@ pub fn run_forever() {
             Ok(SystemEvent::Woke) => {
                 crate::log_info!("wallpaper", "система вышла из сна — проверю, рисуют ли обои");
                 host.woke(boottime_secs());
-                continue; // проверка — через RESUME_GRACE_SECS, обычным проходом
+                continue; // the check — after RESUME_GRACE_SECS, in an ordinary pass
             }
             Ok(SystemEvent::GpuReset) => {
                 crate::log_warn!("wallpaper", "ядро сообщило о сбросе видеокарты");
                 host.gpu_reset();
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-            // Оба наблюдателя ушли — дальше только обычные проходы.
+            // Both observers are gone — from now on only ordinary passes.
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 std::thread::sleep(std::time::Duration::from_secs(POLL_SECS));
             }
@@ -852,8 +875,8 @@ pub fn run_forever() {
             continue;
         }
         let alive = live_renderer_pids();
-        // Демона спрашиваем, только когда есть о чём: рисовальщики живы
-        // либо недавно пропали. В простое сторож не будит никого.
+        // We ask the daemon only when there is something to ask about: renderers
+        // are alive or recently vanished. When idle, the watchdog wakes nobody.
         if alive.is_empty() && watch.seen.is_empty() && watch.pending.is_empty() {
             continue;
         }
@@ -891,25 +914,25 @@ mod tests {
         let mut w = Watch::default();
         let none = crashed_set(&[]);
         assert_eq!(w.tick(0, &[100], "16352", &none), Step::Nothing);
-        // Процесс пропал, записи об аварии ещё нет — ждём.
+        // The process vanished, there is no crash record yet — we wait.
         assert_eq!(w.tick(10, &[], "16352", &none), Step::Nothing);
-        // Запись появилась на следующем проходе — поднимаем.
+        // The record appeared on the next pass — we restart.
         assert_eq!(w.tick(20, &[], "16352", &crashed_set(&[100])), Step::Recover { id: "16352".into() });
-        // Демон поднял новый процесс; он упал снова в том же окне — отказ.
+        // The daemon started a new process; it crashed again in the same window — refusal.
         assert_eq!(w.tick(30, &[200], "16352", &none), Step::Nothing);
         assert_eq!(w.tick(40, &[], "16352", &crashed_set(&[200])), Step::GiveUp { id: "16352".into() });
-        // После отказа те же обои больше не трогаем, даже если их применили
-        // руками и они упали ещё раз.
+        // After a refusal we no longer touch the same wallpaper, even if it was applied
+        // by hand and crashed once more.
         assert_eq!(w.tick(50, &[300], "16352", &none), Step::Nothing);
         assert_eq!(w.tick(60, &[], "16352", &crashed_set(&[300])), Step::Nothing);
-        // Другие обои — счёт заново.
+        // Another wallpaper — the count starts over.
         assert_eq!(w.tick(70, &[400], "777", &none), Step::Nothing);
         assert_eq!(w.tick(80, &[], "777", &crashed_set(&[400])), Step::Recover { id: "777".into() });
     }
 
     #[test]
     fn deliberate_stop_and_wallpaper_change_are_left_alone() {
-        // Процесс пропал без записи об аварии (автопауза, выход демона).
+        // The process vanished without a crash record (auto-pause, the daemon exiting).
         let mut w = Watch::default();
         let none = crashed_set(&[]);
         w.tick(0, &[100], "1", &none);
@@ -918,17 +941,18 @@ mod tests {
         }
         assert!(w.pending.is_empty(), "ожидание записи об аварии не кончилось");
 
-        // Упал, но человек уже выбрал другие обои — не возвращаем старые.
+        // Crashed, but the person has already chosen another wallpaper — we do not
+        // bring the old one back.
         let mut w = Watch::default();
         w.tick(0, &[100], "1", &none);
         assert_eq!(w.tick(10, &[], "2", &crashed_set(&[100])), Step::Nothing);
 
-        // Упал, но другой рисовальщик уже работает — демон справился сам.
+        // Crashed, but another renderer is already working — the daemon managed by itself.
         let mut w = Watch::default();
         w.tick(0, &[100], "1", &none);
         assert_eq!(w.tick(10, &[101], "1", &crashed_set(&[100])), Step::Nothing);
 
-        // Демон молчит (обои неизвестны) — применять нечего.
+        // The daemon is silent (the wallpaper is unknown) — there is nothing to apply.
         let mut w = Watch::default();
         w.tick(0, &[100], "", &none);
         assert_eq!(w.tick(10, &[], "", &crashed_set(&[100])), Step::Nothing);
@@ -940,7 +964,7 @@ mod tests {
         let none = crashed_set(&[]);
         w.tick(0, &[1], "9", &none);
         assert_eq!(w.tick(10, &[], "9", &crashed_set(&[1])), Step::Recover { id: "9".into() });
-        // Следующее падение — через час: это уже не «подряд».
+        // The next crash — an hour later: this is no longer "in a row".
         let later = 10 + RECOVERY_WINDOW_SECS + 3000;
         w.tick(later, &[2], "9", &none);
         assert_eq!(w.tick(later + 10, &[], "9", &crashed_set(&[2])), Step::Recover { id: "9".into() });
@@ -962,11 +986,12 @@ mod tests {
         assert_eq!(w.tick(110, &exited(s)), HostStep::Restart { subject: s.into(), why: HostTrouble::Crashed });
         assert_eq!(w.tick(120, &alive(s, &[Some(119)])), HostStep::Nothing);
         assert_eq!(w.tick(130, &exited(s)), HostStep::Restart { subject: s.into(), why: HostTrouble::Crashed });
-        // Третье падение подряд — кадр, а не круг падений.
+        // The third crash in a row — a frame, not a crash loop.
         assert_eq!(w.tick(140, &exited(s)), HostStep::StillFrame { subject: s.into() });
-        // От этих обоев отказались: дальше молчим, пока человек не сменит их.
+        // This wallpaper was given up on: from now on we stay silent until the person
+        // changes it.
         assert_eq!(w.tick(150, &exited(s)), HostStep::Nothing);
-        // Другие обои — счёт заново.
+        // Another wallpaper — the count starts over.
         let other = "web:/page/index.html";
         assert_eq!(w.tick(160, &exited(other)), HostStep::Restart { subject: other.into(), why: HostTrouble::Crashed });
     }
@@ -987,7 +1012,7 @@ mod tests {
         w.gpu_reset();
         w.woke(10);
         assert_eq!(w.tick(100, &HostTick::default()), HostStep::Nothing);
-        // События без своих обоев к следующим обоям не относятся.
+        // Events without our own wallpaper do not apply to the next wallpaper.
         assert_eq!(w.tick(110, &alive("video:/v.mp4", &[Some(109)])), HostStep::Nothing);
     }
 
@@ -997,15 +1022,15 @@ mod tests {
         let s = "video:/v.mp4";
         assert_eq!(w.tick(100, &alive(s, &[Some(100)])), HostStep::Nothing);
         w.woke(1000);
-        // Рано судить: экраны ещё возвращаются.
+        // Too early to judge: the screens are still coming back.
         assert_eq!(w.tick(1005, &alive(s, &[Some(100)])), HostStep::Nothing);
-        // Срок вышел, метка всё ещё со времён до сна — завис.
+        // The period is over, the mark is still from before sleep — hung.
         assert_eq!(
             w.tick(1000 + RESUME_GRACE_SECS, &alive(s, &[Some(100)])),
             HostStep::Restart { subject: s.into(), why: HostTrouble::Hung }
         );
 
-        // Отметился после сна — жив, ничего не делаем.
+        // Checked in after sleep — alive, we do nothing.
         let mut w = HostWatch::default();
         w.tick(100, &alive(s, &[Some(100)]));
         w.woke(1000);
@@ -1015,16 +1040,16 @@ mod tests {
     #[test]
     fn hang_is_not_judged_without_a_beat_or_while_paused() {
         let s = "video:/v.mp4";
-        // Хост прежней сборки (метки нет) — не судим вовсе.
+        // A host of an older build (no mark) — not judged at all.
         let mut w = HostWatch::default();
         w.woke(10);
         assert_eq!(w.tick(10_000, &alive(s, &[None])), HostStep::Nothing);
-        // Заморожен надзором за нагрузкой — молчание законно.
+        // Frozen by the load supervisor — the silence is legitimate.
         let mut w = HostWatch::default();
         let mut t = alive(s, &[Some(1)]);
         t.paused = true;
         assert_eq!(w.tick(10_000, &t), HostStep::Nothing);
-        // Без сна метка устаревает только после большого срока.
+        // Without sleep the mark becomes stale only after a long period.
         let mut w = HostWatch::default();
         assert_eq!(w.tick(100 + HEARTBEAT_STALE_SECS, &alive(s, &[Some(100)])), HostStep::Nothing);
         assert_eq!(
@@ -1040,7 +1065,7 @@ mod tests {
         w.tick(100, &alive(s, &[Some(100)]));
         w.gpu_reset();
         assert_eq!(w.tick(101, &alive(s, &[Some(101)])), HostStep::Restart { subject: s.into(), why: HostTrouble::GpuReset });
-        // Сброс отработан один раз.
+        // The reset is handled once.
         assert_eq!(w.tick(102, &alive(s, &[Some(102)])), HostStep::Nothing);
     }
 
@@ -1054,13 +1079,15 @@ mod tests {
             ..HostTick::default()
         };
         let mut w = HostWatch::default();
-        // Расширение ещё не подняло хост (или нужен перезаход) — это не падение.
+        // The extension has not started the host yet (or a re-login is needed) — this
+        // is not a crash.
         assert_eq!(w.tick(100, &ext(&[])), HostStep::Nothing);
         assert_eq!(w.tick(110, &ext(&[])), HostStep::Nothing);
         assert_eq!(w.tick(120, &ext(&[Some(120)])), HostStep::Nothing);
-        // Был живой — пропал.
+        // It was alive — it vanished.
         assert_eq!(w.tick(130, &ext(&[])), HostStep::Restart { subject: s.into(), why: HostTrouble::Crashed });
-        // Новый хост ещё не отметился — снова ждём, а не поднимаем по кругу.
+        // The new host has not checked in yet — we wait again rather than restart in
+        // a loop.
         assert_eq!(w.tick(140, &ext(&[])), HostStep::Nothing);
     }
 
@@ -1096,10 +1123,10 @@ mod tests {
         assert_eq!(parse_heartbeat(""), None);
 
         let mut known = None;
-        // Что лежало до запуска сторожа — не событие.
+        // What was there before the watchdog started is not an event.
         assert!(!new_gpu_dump(&mut known, &[("devcd1".into(), true)]));
         assert!(!new_gpu_dump(&mut known, &[("devcd1".into(), true)]));
-        // Новая запись не от видеокарты — не наш случай.
+        // A new record not from the GPU — not our case.
         assert!(!new_gpu_dump(&mut known, &[("devcd1".into(), true), ("devcd2".into(), false)]));
         assert!(new_gpu_dump(&mut known, &[("devcd3".into(), true)]));
     }
@@ -1114,7 +1141,7 @@ mod tests {
         assert_eq!(still_frame_candidates("/flash/a.swf", None)[0], "/flash/preview.jpg");
         assert_eq!(still_frame_candidates("/lib/123/", None)[0], "/lib/123/preview.jpg");
         assert!(still_frame_candidates("https://example.com", None).is_empty());
-        // Чужой путь в превью (выход из каталога) не берём.
+        // We do not take a foreign path into the preview (escaping the directory).
         let evil = r#"{"preview":"../../etc/x.png"}"#;
         assert_eq!(still_frame_candidates("/lib/1/index.html", Some(evil))[0], "/lib/1/preview.jpg");
         assert_eq!(still_frame_dir("/lib/1/index.html").as_deref(), Some("/lib/1"));

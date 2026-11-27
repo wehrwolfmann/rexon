@@ -1,36 +1,38 @@
-//! Журнал Rexon — ОДИН механизм на весь продукт.
+//! The Rexon log: ONE mechanism for the whole product.
 //!
-//! ЗАЧЕМ. Живой случай 08.10.2026: владелец переключил язык, нажал
-//! «Перезапустить» — и Rexon не вернулся. В журнале systemd не было ничего,
-//! а в файле `~/.config/rexon/rexon.log` нашлась единственная строка без
-//! времени («symbol lookup error» новой копии) посреди суток чужих
-//! сообщений Qt. Ни времени, ни номера процесса, ни шага перезапуска — по
-//! такому журналу причину не восстановить. До этой правки «журнал» был
-//! россыпью `eprintln!` с разными приставками, а файлом служил дескриптор 2,
-//! перенаправленный в `~/.config/rexon/rexon.log` без предела роста.
+//! WHY. A real case on 08.10.2026: the owner switched the language, pressed
+//! "Restart", and Rexon did not come back. The systemd journal had nothing,
+//! and the file `~/.config/rexon/rexon.log` contained a single line without a
+//! timestamp (a "symbol lookup error" from the new copy) in the middle of a
+//! day's worth of other Qt messages. No time, no process ID, no restart step —
+//! the cause cannot be reconstructed from such a log. Before this change the
+//! "log" was a scattering of `eprintln!` calls with various prefixes, and the
+//! file was descriptor 2 redirected into `~/.config/rexon/rexon.log` with no
+//! size limit.
 //!
-//! ЧТО ЗДЕСЬ:
-//!   * файл `$XDG_STATE_HOME/rexon/rexon.log` (по умолчанию
-//!     `~/.local/state/rexon/rexon.log`) с ротацией по размеру:
-//!     [`MAX_BYTES`] на файл, [`KEEP`] прежних (`rexon.log.1` … `.3`);
-//!   * каждая запись — одна строка: время до миллисекунд, номер процесса,
-//!     уровень, область и текст;
-//!   * та же строка — в исходный поток ошибок процесса: терминал при запуске
-//!     из консоли, журнал systemd при запуске из меню (дескриптор 2 при этом
-//!     уходит в файл ради сообщений Qt, но исходный поток сохраняется);
-//!   * уровни `debug`/`info`/`warn`/`error`; по умолчанию пишется `info` и
-//!     выше, `REXON_LOG=debug` включает подробный журнал;
-//!   * строка о смертельном сигнале (SIGSEGV и родня) — прежде процесс
-//!     исчезал вовсе без следа.
+//! WHAT IS HERE:
+//!   * the file `$XDG_STATE_HOME/rexon/rexon.log` (by default
+//!     `~/.local/state/rexon/rexon.log`) with size-based rotation:
+//!     [`MAX_BYTES`] per file, [`KEEP`] previous ones (`rexon.log.1` … `.3`);
+//!   * every record is one line: time to the millisecond, process ID, level,
+//!     area and text;
+//!   * the same line goes to the process's original error stream: the
+//!     terminal when started from a console, the systemd journal when started
+//!     from the menu (descriptor 2 then goes to the file for the Qt messages,
+//!     but the original stream is preserved);
+//!   * levels `debug`/`info`/`warn`/`error`; by default `info` and above are
+//!     written, `REXON_LOG=debug` enables the detailed log;
+//!   * a line about a fatal signal (SIGSEGV and its kin) — previously the
+//!     process vanished without a trace.
 //!
-//! ПРАВИЛО. Событие продукта (запуск, язык, перезапуск, замок одного
-//! экземпляра, выход, привилегированная команда, очередь AUR, установка
-//! темы) пишется ТОЛЬКО сюда, макросами [`crate::log_info!`] и соседями.
-//! Новый `eprintln!` для события — это второй журнал, которого быть не
-//! должно (правило #12).
+//! THE RULE. A product event (startup, language, restart, the single-instance
+//! lock, exit, a privileged command, the AUR queue, a theme installation) is
+//! written ONLY here, with the [`crate::log_info!`] macro and its siblings. A
+//! new `eprintln!` for an event is a second log, which must not exist
+//! (rule #12).
 //!
-//! До [`init`] (тесты, служебные бинари) записи идут только в поток ошибок
-//! — так же, как шли `eprintln!`, и ни один тест не пишет в профиль.
+//! Before [`init`] (tests, service binaries) records go only to the error
+//! stream — just as `eprintln!` did — and no test writes into the profile.
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -39,14 +41,14 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 use std::sync::Mutex;
 
-/// Предел одного файла журнала, байт.
+/// The size limit of a single log file, in bytes.
 pub const MAX_BYTES: u64 = 2 * 1024 * 1024;
-/// Сколько прежних файлов хранить (`rexon.log.1` — самый свежий).
+/// How many previous files to keep (`rexon.log.1` is the most recent).
 pub const KEEP: usize = 3;
-/// Переменная уровня: `debug`, `info` (по умолчанию), `warn`, `error`.
+/// The level variable: `debug`, `info` (the default), `warn`, `error`.
 pub const LEVEL_ENV: &str = "REXON_LOG";
 
-/// Уровень записи.
+/// The record level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
     Debug = 10,
@@ -56,7 +58,7 @@ pub enum Level {
 }
 
 impl Level {
-    /// Метка уровня в строке журнала — ровно пять знаков, столбцы ровные.
+    /// The level tag in a log line: exactly five characters, so the columns line up.
     pub fn tag(self) -> &'static str {
         match self {
             Level::Debug => "DEBUG",
@@ -76,8 +78,8 @@ impl Level {
     }
 }
 
-/// Значение [`LEVEL_ENV`] → наименьший пишущийся уровень. Незнакомое и
-/// пустое — `info`: опечатка в переменной не должна глушить журнал.
+/// The value of [`LEVEL_ENV`] → the lowest level that is written. Unknown and
+/// empty mean `info`: a typo in the variable must not silence the log.
 pub fn parse_level(value: Option<&str>) -> Level {
     match value.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
         Some("debug" | "trace" | "all" | "1" | "verbose") => Level::Debug,
@@ -87,11 +89,11 @@ pub fn parse_level(value: Option<&str>) -> Level {
     }
 }
 
-/// Имя уровня в духе `logging` Python (`debug`, `info`, `warning`, `error`,
-/// `critical`) → уровень журнала. Так говорят прежние приёмники ядра
-/// (`wallpaper_exec`, `splash_exec`): их строки уходят сюда же, а не в
-/// свой `eprintln!`. Незнакомое — `debug`: неизвестный шум не повод
-/// засорять журнал по умолчанию.
+/// A level name in the style of Python's `logging` (`debug`, `info`,
+/// `warning`, `error`, `critical`) → a log level. This is how the older core
+/// receivers (`wallpaper_exec`, `splash_exec`) speak: their lines go here as
+/// well rather than into their own `eprintln!`. Unknown means `debug`: unknown
+/// noise is no reason to clutter the default log.
 pub fn level_from_name(name: &str) -> Level {
     match name.trim().to_ascii_lowercase().as_str() {
         "info" => Level::Info,
@@ -101,10 +103,10 @@ pub fn level_from_name(name: &str) -> Level {
     }
 }
 
-/// 0 — ещё не прочитан из окружения.
+/// 0 means not yet read from the environment.
 static MIN_LEVEL: AtomicU8 = AtomicU8::new(0);
 
-/// Наименьший пишущийся уровень (читается из [`LEVEL_ENV`] один раз).
+/// The lowest level that is written (read from [`LEVEL_ENV`] once).
 pub fn min_level() -> Level {
     let v = MIN_LEVEL.load(Ordering::Relaxed);
     if v != 0 {
@@ -115,18 +117,18 @@ pub fn min_level() -> Level {
     level
 }
 
-/// Пишется ли `level` — для дорогих сообщений (`if enabled(Debug) {…}`).
+/// Whether `level` is written, for expensive messages (`if enabled(Debug) {…}`).
 pub fn enabled(level: Level) -> bool {
     level >= min_level()
 }
 
 // ============================================================================
-// Строка журнала
+// The log line
 // ============================================================================
 
-/// Отметка времени записи: местное время до миллисекунд. Часы — те же, что
-/// у отчётов о крахе (`qt_app::Timestamp`): второго `localtime_r` в
-/// продукте нет.
+/// The record timestamp: local time to the millisecond. The clock is the same
+/// as for crash reports (`qt_app::Timestamp`): there is no second
+/// `localtime_r` in the product.
 fn timestamp() -> String {
     match crate::qt_app::Timestamp::now_local() {
         Some(t) => format!(
@@ -143,8 +145,8 @@ fn timestamp() -> String {
     }
 }
 
-/// Собрать строку журнала. Многострочный текст не рвёт столбцы: со второй
-/// строки — отступ, и `grep` по началу строки находит только записи.
+/// Builds a log line. Multi-line text does not break the columns: from the
+/// second line on it is indented, so `grep` at the line start finds only records.
 pub fn format_line(stamp: &str, pid: u32, level: Level, area: &str, msg: &str) -> String {
     let mut out = format!("{stamp} [{pid}] {} {area}: ", level.tag());
     let mut lines = msg.trim_end_matches('\n').split('\n');
@@ -158,38 +160,39 @@ pub fn format_line(stamp: &str, pid: u32, level: Level, area: &str, msg: &str) -
 }
 
 // ============================================================================
-// Файл и ротация
+// The file and rotation
 // ============================================================================
 
 struct Sink {
     path: PathBuf,
     file: File,
     size: u64,
-    /// Дескриптор 2 заведён в этот файл ([`redirect_stderr`]): после
-    /// ротации его надо перевести на новый файл.
+    /// Descriptor 2 has been redirected into this file ([`redirect_stderr`]):
+    /// after rotation it must be moved to the new file.
     stderr_in_file: bool,
 }
 
 static SINK: Mutex<Option<Sink>> = Mutex::new(None);
 
-/// Куда дублировать строку: исходный поток ошибок. `-1` — никуда (поток
-/// ошибок и есть файл журнала — иначе каждая строка легла бы дважды).
+/// Where to duplicate the line: the original error stream. `-1` means nowhere
+/// (the error stream is the log file itself, otherwise every line would land
+/// twice).
 static ECHO_FD: AtomicI32 = AtomicI32::new(2);
-/// Сохранённая копия исходного потока ошибок после [`redirect_stderr`].
+/// The saved copy of the original error stream after [`redirect_stderr`].
 static ORIGINAL_STDERR: AtomicI32 = AtomicI32::new(-1);
-/// Сырой дескриптор файла журнала — для строки о смертельном сигнале, где
-/// ни замки, ни выделение памяти недопустимы.
+/// The raw descriptor of the log file, for the fatal signal line, where
+/// neither locks nor memory allocation are allowed.
 static RAW_LOG_FD: AtomicI32 = AtomicI32::new(-1);
 
-/// Имя прежнего файла номер `n` (`rexon.log.1`).
+/// The name of previous file number `n` (`rexon.log.1`).
 pub fn rotated_path(path: &Path, n: usize) -> PathBuf {
     let mut s = path.as_os_str().to_owned();
     s.push(format!(".{n}"));
     PathBuf::from(s)
 }
 
-/// Сдвинуть прежние файлы: `.2→.3`, `.1→.2`, текущий → `.1`. Самый старый
-/// пропадает. Ошибки молча: журнал не повод ронять программу.
+/// Shifts the previous files: `.2→.3`, `.1→.2`, current → `.1`. The oldest is
+/// dropped. Errors are silent: the log is no reason to crash the program.
 pub fn rotate_files(path: &Path, keep: usize) {
     if keep == 0 {
         let _ = std::fs::remove_file(path);
@@ -207,7 +210,7 @@ fn open_append(path: &Path) -> std::io::Result<File> {
     OpenOptions::new().create(true).append(true).mode(0o600).open(path)
 }
 
-/// Тот же ли файл за дескриптором `fd`, что и `file` (по устройству и inode).
+/// Whether descriptor `fd` refers to the same file as `file` (by device and inode).
 fn same_file(fd: i32, file: &File) -> bool {
     let mut a: libc::stat = unsafe { std::mem::zeroed() };
     let mut b: libc::stat = unsafe { std::mem::zeroed() };
@@ -219,14 +222,14 @@ fn same_file(fd: i32, file: &File) -> bool {
     }
 }
 
-/// Завести журнал процесса. Повторный вызов ничего не делает. Отвечает
-/// путём файла; `None` — файл не открылся (тогда записи идут только в поток
-/// ошибок, программа работает дальше).
+/// Sets up the process log. A repeated call does nothing. Returns the file
+/// path; `None` means the file could not be opened (then records go only to
+/// the error stream, and the program keeps running).
 pub fn init() -> Option<PathBuf> {
     init_at(PathBuf::from(crate::utils::log_file_env()))
 }
 
-/// [`init`] с явным путём — для стендов.
+/// [`init`] with an explicit path, for test stands.
 pub fn init_at(path: PathBuf) -> Option<PathBuf> {
     let mut guard = SINK.lock().ok()?;
     if let Some(sink) = guard.as_ref() {
@@ -240,8 +243,8 @@ pub fn init_at(path: PathBuf) -> Option<PathBuf> {
     }
     let file = open_append(&path).ok()?;
     let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-    // Процесс, запущенный перезапуском прежней версии, мог унаследовать
-    // дескриптор 2, уже заведённый в этот файл: дублировать туда же нельзя.
+    // A process started by a restart of the previous version may have inherited
+    // descriptor 2 already redirected into this file: duplicating there is not allowed.
     if same_file(2, &file) {
         ECHO_FD.store(-1, Ordering::SeqCst);
     }
@@ -250,7 +253,7 @@ pub fn init_at(path: PathBuf) -> Option<PathBuf> {
     Some(path)
 }
 
-/// Путь журнала этого процесса (или тот, куда он лёг бы после [`init`]).
+/// The log path of this process (or where it would go after [`init`]).
 pub fn log_path() -> PathBuf {
     SINK.lock()
         .ok()
@@ -258,19 +261,20 @@ pub fn log_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(crate::utils::log_file_env()))
 }
 
-/// Заведён ли файл журнала ([`init`]). Нет — процесс служебный или стенд
-/// (самопроверка окна), и строки для человека ему не нужны.
+/// Whether the log file has been set up ([`init`]). If not, the process is a
+/// service process or a test stand (the window's self-check) and does not
+/// need lines for humans.
 pub fn is_active() -> bool {
     SINK.lock().map(|g| g.is_some()).unwrap_or(false)
 }
 
-/// Записать строку уровня `level` в области `area`.
+/// Writes a line of level `level` in area `area`.
 pub fn write(level: Level, area: &str, msg: &str) {
     write_opts(level, area, msg, true);
 }
 
-/// То же, но без копии в поток ошибок (`echo = false`): для строк, которые
-/// вызывающий уже напечатал человеку в stdout сам.
+/// The same, but without a copy to the error stream (`echo = false`): for
+/// lines the caller has already printed to stdout for the person itself.
 pub fn write_opts(level: Level, area: &str, msg: &str, echo: bool) {
     if !enabled(level) {
         return;
@@ -297,11 +301,12 @@ pub fn write_opts(level: Level, area: &str, msg: &str, echo: bool) {
     }
 }
 
-/// Сменить файл, когда текущий дорос до предела.
+/// Switches the file when the current one has reached the limit.
 ///
-/// Соседний процесс Rexon (перезапуск, хост обоев) пишет в тот же файл и
-/// мог уже сдвинуть его сам: тогда файл по пути маленький, и сдвигать ещё
-/// раз — значит выбросить свежую историю. Такой файл просто открываем.
+/// A neighboring Rexon process (a restart, the wallpaper host) writes to the
+/// same file and may have already rotated it itself: then the file at the path
+/// is small, and rotating once more would throw away fresh history. Such a
+/// file is simply opened.
 fn rotate_sink(sink: &mut Sink) {
     let fresh = std::fs::metadata(&sink.path).map(|m| m.len()).unwrap_or(0);
     if fresh >= MAX_BYTES || same_inode(&sink.path, &sink.file) {
@@ -336,13 +341,14 @@ fn raw_write(fd: i32, mut bytes: &[u8]) {
     }
 }
 
-/// Завести дескриптор 2 в файл журнала, сохранив исходный поток ошибок для
-/// копий строк (журнал systemd при запуске из меню).
+/// Redirects descriptor 2 into the log file, keeping the original error
+/// stream for line copies (the systemd journal when started from the menu).
 ///
-/// Зачем дескриптор 2 вообще уводить в файл: Qt, QML, FFmpeg и любая
-/// библиотека процесса пишут туда сами, и без этого их сообщения при
-/// запуске из меню терялись бы в журнале systemd среди чужих строк. Решение
-/// «уводить или нет» — у вызывающего (`cli::install_qt_message_logger`).
+/// Why move descriptor 2 into the file at all: Qt, QML, FFmpeg and any library
+/// in the process write there themselves, and without this their messages
+/// would be lost among other lines in the systemd journal when started from
+/// the menu. The decision "redirect or not" belongs to the caller
+/// (`cli::install_qt_message_logger`).
 pub fn redirect_stderr() -> bool {
     let Ok(mut guard) = SINK.lock() else {
         return false;
@@ -367,12 +373,13 @@ pub fn redirect_stderr() -> bool {
     true
 }
 
-/// Исходный поток ошибок для дочернего процесса — копией дескриптора.
+/// The original error stream for a child process, as a copy of the descriptor.
 ///
-/// Нужен перезапуску: новый Rexon иначе унаследовал бы дескриптор 2,
-/// заведённый в файл, и решил бы, что его запустили с выводом в файл, — а
-/// копии строк в журнал systemd пропали бы у всех последующих запусков.
-/// `None` — поток не уводился (запуск из терминала), наследуется как есть.
+/// Needed by the restart: otherwise the new Rexon would inherit descriptor 2
+/// redirected into the file and decide it had been started with output to a
+/// file — and the line copies to the systemd journal would disappear for all
+/// subsequent starts. `None` means the stream was not redirected (started
+/// from a terminal) and is inherited as is.
 pub fn original_stderr_for_child() -> Option<std::process::Stdio> {
     let fd = ORIGINAL_STDERR.load(Ordering::SeqCst);
     if fd < 0 {
@@ -386,8 +393,8 @@ pub fn original_stderr_for_child() -> Option<std::process::Stdio> {
     Some(std::process::Stdio::from(unsafe { std::os::fd::OwnedFd::from_raw_fd(dup) }))
 }
 
-/// Последние `max_bytes` журнала (с хвостом прежнего файла, если текущий
-/// короче) — для кнопки «Скопировать журнал». Обрезка — по началу строки.
+/// The last `max_bytes` of the log (with the tail of the previous file if the
+/// current one is shorter), for the "Copy log" button. Trimmed at a line start.
 pub fn tail(max_bytes: u64) -> String {
     let path = log_path();
     let mut text = read_tail(&path, max_bytes);
@@ -419,7 +426,7 @@ fn read_tail(path: &Path, max_bytes: u64) -> String {
 }
 
 // ============================================================================
-// Смертельный сигнал
+// Fatal signal
 // ============================================================================
 
 const FATAL_SIGNALS: [libc::c_int; 5] =
@@ -427,9 +434,9 @@ const FATAL_SIGNALS: [libc::c_int; 5] =
 
 static mut OLD_ACTIONS: [Option<libc::sigaction>; 5] = [None; 5];
 
-/// Ставить строку журнала на смертельный сигнал. Прежний обработчик
-/// (у Rust — распознавание переполнения стека) не теряется: наш пишет
-/// строку, возвращает прежний и выходит, сигнал повторяется уже для него.
+/// Installs the log line on a fatal signal. The previous handler (in Rust,
+/// stack overflow detection) is not lost: ours writes the line, restores the
+/// previous one and returns, and the signal recurs for it.
 pub fn install_fatal_signal_logger() {
     for (i, sig) in FATAL_SIGNALS.iter().enumerate() {
         unsafe {
@@ -456,7 +463,7 @@ fn signal_name(sig: libc::c_int) -> &'static [u8] {
     }
 }
 
-/// Десятичная запись числа в буфер без выделения памяти.
+/// The decimal representation of a number into a buffer without memory allocation.
 fn push_num(buf: &mut [u8], at: &mut usize, mut v: u64) {
     let mut tmp = [0u8; 20];
     let mut n = 0;
@@ -485,9 +492,9 @@ fn push_bytes(buf: &mut [u8], at: &mut usize, s: &[u8]) {
     }
 }
 
-/// Обработчик: только безопасные для сигнала вызовы (`write`, `getpid`,
-/// `clock_gettime`, `sigaction`). Время — секунды эпохи: местное время
-/// внутри обработчика не посчитать безопасно.
+/// The handler: only async-signal-safe calls (`write`, `getpid`,
+/// `clock_gettime`, `sigaction`). The time is in epoch seconds: local time
+/// cannot be computed safely inside the handler.
 extern "C" fn on_fatal_signal(sig: libc::c_int) {
     let mut buf = [0u8; 160];
     let mut at = 0;
@@ -523,30 +530,31 @@ extern "C" fn on_fatal_signal(sig: libc::c_int) {
             }
         }
     }
-    // Возврат из обработчика повторяет ошибку, и сигнал получает уже прежний
-    // обработчик (или действие по умолчанию — снимок памяти и смерть).
-    // SIGABRT от `abort()` glibc повторяет сама.
+    // Returning from the handler repeats the fault, and the signal then goes to
+    // the previous handler (or the default action: a core dump and death).
+    // glibc repeats SIGABRT from `abort()` by itself.
 }
 
 // ============================================================================
-// Сигнал завершения (SIGTERM, SIGINT, SIGHUP)
+// Termination signal (SIGTERM, SIGINT, SIGHUP)
 // ============================================================================
 //
-// ЗАЧЕМ. Процесс, которому стол или человек прислал «заверши работу»,
-// прежде уходил молча: в журнале обрыв, и не понять, упал Rexon, завис или
-// его закрыли. Теперь — строка «завершение по сигналу X от процесса N
-// (имя)», и дальше всё как было: действие по умолчанию (выход) либо
-// прежний обработчик. SIGKILL не перехватить — для него улики оставляют
-// журнал действий и сторож окна (`ui_watch`).
+// WHY. A process that the desktop or a person told to "terminate" used to
+// leave silently: the log just broke off, and it was impossible to tell
+// whether Rexon crashed, hung or was closed. Now there is a line "terminated
+// by signal X from process N (name)", and then everything is as before: the
+// default action (exit) or the previous handler. SIGKILL cannot be caught —
+// for it the action log and the window watchdog (`ui_watch`) leave the
+// evidence.
 
 const EXIT_SIGNALS: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
 static mut OLD_EXIT_ACTIONS: [Option<libc::sigaction>; 3] = [None; 3];
-/// Сдвиг местного времени от UTC, секунд, — считается при установке:
-/// внутри обработчика `localtime_r` звать нельзя.
+/// The local time offset from UTC, in seconds, computed at installation:
+/// `localtime_r` must not be called inside the handler.
 static UTC_OFFSET: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 
-/// Ставить строку журнала на сигналы завершения. Сигнал, который процессу
-/// велено пропускать (`nohup` → SIGHUP), так и остаётся пропущенным.
+/// Installs the log line on termination signals. A signal the process was
+/// told to ignore (`nohup` → SIGHUP) stays ignored.
 pub fn install_exit_signal_logger() {
     unsafe {
         let now = libc::time(std::ptr::null_mut());
@@ -582,7 +590,7 @@ fn exit_signal_name(sig: libc::c_int) -> &'static [u8] {
     }
 }
 
-/// Число с ведущими нулями до `width` знаков.
+/// A number zero-padded to `width` characters.
 fn push_pad(buf: &mut [u8], at: &mut usize, v: u64, width: usize) {
     let mut digits = 1;
     let mut t = v;
@@ -596,7 +604,7 @@ fn push_pad(buf: &mut [u8], at: &mut usize, v: u64, width: usize) {
     push_num(buf, at, v);
 }
 
-/// Дни от 1970-01-01 → (год, месяц, день) по григорианскому календарю.
+/// Days since 1970-01-01 → (year, month, day) in the Gregorian calendar.
 fn civil_from_days(z: i64) -> (i64, u64, u64) {
     let z = z + 719_468;
     let era = z.div_euclid(146_097);
@@ -610,9 +618,9 @@ fn civil_from_days(z: i64) -> (i64, u64, u64) {
     (y, m, d)
 }
 
-/// Строка о сигнале завершения — того же вида, что все строки журнала.
-/// Без выделения памяти: собирается в обработчике сигнала. `sender` 0 —
-/// отправитель неизвестен (ядро, терминал); `comm` — имя отправителя.
+/// The termination signal line, in the same form as all log lines. Without
+/// memory allocation: it is built in the signal handler. `sender` 0 means the
+/// sender is unknown (the kernel, a terminal); `comm` is the sender's name.
 pub fn exit_signal_line(
     buf: &mut [u8],
     local_secs: i64,
@@ -659,7 +667,7 @@ pub fn exit_signal_line(
     at
 }
 
-/// Имя процесса `pid` из `/proc/<pid>/comm` — только `open`/`read`/`close`.
+/// The name of process `pid` from `/proc/<pid>/comm`, using only `open`/`read`/`close`.
 fn read_comm(pid: u64, out: &mut [u8; 32]) -> usize {
     let mut path = [0u8; 40];
     let mut at = 0;
@@ -704,9 +712,10 @@ extern "C" fn on_exit_signal(sig: libc::c_int, info: *mut libc::siginfo_t, _ctx:
     if echo >= 0 && echo != log {
         raw_write(echo, line);
     }
-    // Дальше — как без нас: вернуть прежнее действие и повторить сигнал.
-    // Пока обработчик идёт, сигнал заблокирован: повтор доставится сразу
-    // после возврата — уже прежнему обработчику либо действию по умолчанию.
+    // From here on, as if we were not there: restore the previous action and
+    // re-raise the signal. While the handler runs the signal is blocked: the
+    // repeat is delivered right after returning — to the previous handler or the
+    // default action.
     let idx = EXIT_SIGNALS.iter().position(|s| *s == sig);
     unsafe {
         match idx.and_then(|i| (*std::ptr::addr_of!(OLD_EXIT_ACTIONS))[i]) {
@@ -722,10 +731,10 @@ extern "C" fn on_exit_signal(sig: libc::c_int, info: *mut libc::siginfo_t, _ctx:
 }
 
 // ============================================================================
-// Макросы
+// Macros
 // ============================================================================
 
-/// Строка журнала уровня `debug`: `log_debug!("область", "текст {}", x)`.
+/// A log line of level `debug`: `log_debug!("area", "text {}", x)`.
 #[macro_export]
 macro_rules! log_debug {
     ($area:expr, $($arg:tt)+) => {
@@ -735,7 +744,7 @@ macro_rules! log_debug {
     };
 }
 
-/// Строка журнала уровня `info`.
+/// A log line of level `info`.
 #[macro_export]
 macro_rules! log_info {
     ($area:expr, $($arg:tt)+) => {
@@ -743,7 +752,7 @@ macro_rules! log_info {
     };
 }
 
-/// Строка журнала уровня `warn`.
+/// A log line of level `warn`.
 #[macro_export]
 macro_rules! log_warn {
     ($area:expr, $($arg:tt)+) => {
@@ -751,7 +760,7 @@ macro_rules! log_warn {
     };
 }
 
-/// Строка журнала уровня `error`.
+/// A log line of level `error`.
 #[macro_export]
 macro_rules! log_error {
     ($area:expr, $($arg:tt)+) => {
@@ -760,10 +769,10 @@ macro_rules! log_error {
 }
 
 // ============================================================================
-// Строка запуска
+// The startup line
 // ============================================================================
 
-/// Версия Rexon с коммитом сборки: `0.5.0 (git 1a2b3c4d5e)`.
+/// The Rexon version with the build commit: `0.5.0 (git 1a2b3c4d5e)`.
 pub fn version_line() -> String {
     let v = crate::window_menu::version_string();
     match option_env!("REXON_GIT_REV") {
@@ -772,7 +781,7 @@ pub fn version_line() -> String {
     }
 }
 
-/// Окружение рабочего стола одной строкой — что важно для разбора сбоев.
+/// The desktop environment in a single line: what matters for analyzing failures.
 pub fn desktop_env_line() -> String {
     let keys = [
         "XDG_CURRENT_DESKTOP",
@@ -790,14 +799,14 @@ pub fn desktop_env_line() -> String {
 }
 
 // ============================================================================
-// Привилегированные команды: что показывать в журнале
+// Privileged commands: what to show in the log
 // ============================================================================
 
-/// Обёртки, после которых команда выполняется от root.
+/// Wrappers after which a command runs as root.
 const PRIVILEGE_WORDS: &[&str] = &["pkexec", "sudo", "doas", "run0"];
 
-/// Есть ли в argv повышение прав (обёрткой впереди или флагом помощника
-/// AUR `--sudo pkexec`).
+/// Whether argv contains a privilege elevation (a wrapper in front or the AUR
+/// helper flag `--sudo pkexec`).
 pub fn is_privileged(argv: &[String]) -> bool {
     argv.iter().any(|a| {
         let base = a.rsplit('/').next().unwrap_or(a);
@@ -805,10 +814,11 @@ pub fn is_privileged(argv: &[String]) -> bool {
     })
 }
 
-/// argv для журнала: длинные аргументы обрезаны, а значения, похожие на
-/// секрет (`--password=…`, `token=…`, аргумент после `--password`),
-/// заменены звёздочками. Паролей в argv у Rexon нет (pkexec спрашивает
-/// через агент polkit), но журнал копируют в чужие руки — страховка.
+/// argv for the log: long arguments are truncated, and values that look like
+/// secrets (`--password=…`, `token=…`, the argument after `--password`) are
+/// replaced with asterisks. Rexon has no passwords in argv (pkexec asks
+/// through the polkit agent), but logs get copied into other hands — this is
+/// a safeguard.
 pub fn redact_argv(argv: &[String]) -> String {
     const SECRET: &[&str] = &["pass", "token", "secret", "apikey", "api_key", "auth"];
     let looks_secret = |s: &str| {
@@ -906,7 +916,7 @@ mod tests {
     #[test]
     fn строка_сигнала_завершения_как_у_журнала() {
         let mut buf = [0u8; 256];
-        // 2026-11-15 13:05:09 местного времени.
+        // 2026-11-15 13:05:09 local time.
         let secs = 1_763_211_909 + 365 * 86_400;
         let n = exit_signal_line(&mut buf, secs, 7, 4242, libc::SIGTERM, 1234, b"cinnamon");
         assert_eq!(
@@ -922,9 +932,9 @@ mod tests {
         assert_eq!(civil_from_days(19_782), (2024, 2, 29));
     }
 
-    /// Живой прогон: тот же тестовый бинарь, запущенный ребёнком, заводит
-    /// журнал, ставит обработчик и получает SIGTERM. Строка обязана лечь в
-    /// файл, а процесс — умереть от того же сигнала, как без обработчика.
+    /// A live run: the same test binary, started as a child, sets up the log,
+    /// installs the handler and receives SIGTERM. The line must land in the file,
+    /// and the process must die from the same signal, as without the handler.
     #[test]
     fn sigterm_оставляет_строку_и_убивает_как_раньше() {
         const CHILD: &str = "REXON_APPLOG_SIGTERM_CHILD";
@@ -932,7 +942,7 @@ mod tests {
             init_at(PathBuf::from(path));
             install_exit_signal_logger();
             unsafe { libc::raise(libc::SIGTERM) };
-            // Сюда дойти нельзя: SIGTERM обязан завершить процесс.
+            // This point must not be reached: SIGTERM must terminate the process.
             std::process::exit(0);
         }
         let dir = std::env::temp_dir().join(format!("rexon-applog-sigterm-{}", std::process::id()));

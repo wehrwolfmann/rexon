@@ -1,25 +1,26 @@
-// Блок «Менеджер входа» в разделе экрана входа (над полкой тем SDDM и над
-// панелью Plasma Login Manager): какие экраны входа установлены, какой
-// основной и какой работает сейчас, «Сделать основным» с выбором
-// приветствия LightDM, окно подтверждения и «Как вернуть».
+// The "Login manager" block in the login screen section (above the SDDM
+// theme shelf and above the Plasma Login Manager panel): which login
+// screens are installed, which is the default and which is running now,
+// "Make default" with a choice of LightDM greeter, a confirmation window
+// and "How to revert".
 //
-// Только разметка. Данные, решения и тексты — ядро
-// (`rexon_core::system_exec::login_screen_view`), приходят пробой
-// `loginScreenReady`; переключение — `makeDefaultLoginManager` объекта
-// действий вкладки, ответ — `loginManagerSwitched`. Полоса «экран входа
-// сам открывает уходящий X11-сеанс» (`waylandDefault` пробы) — кнопка
-// `makeWaylandDefaultSession`, ответ тот же.
+// Markup only. Data, decisions and texts — the core
+// (`rexon_core::system_exec::login_screen_view`), delivered by the
+// `loginScreenReady` probe; switching — `makeDefaultLoginManager` of the
+// tab's actions object, the answer — `loginManagerSwitched`. The strip
+// "the login screen itself opens a deprecated X11 session" (the probe's
+// `waylandDefault`) — the `makeWaylandDefaultSession` button, same answer.
 //
-// Защита от дурака (правило #13): кнопка заперта там, где нажатие не
-// сработает, а причина видна серым сразу, до пароля; ядро всё равно
-// проверяет заново и отказывает само.
+// Foolproofing (rule #13): the button is locked where pressing it would
+// not work, and the reason is shown in grey right away, before the
+// password; the core checks again anyway and refuses by itself.
 //
-// При SDDM и Plasma Login Manager ниже — блок «Фон и оформление экрана
-// входа» (как «Изменить фон» и «Применить параметры Plasma» модулей KDE):
-// данные — `sddmGreeter` или `plmGreeter` той же пробы (один вид,
-// `system_plan::SddmGreeterView`), действия — `setLoginBackground` и
-// `applyLoginLook` (ядро само выбирает путь по экрану входа), ответ —
-// `loginLookDone`.
+// With SDDM and Plasma Login Manager there is a "Login screen background
+// and look" block below (like "Change background" and "Apply Plasma
+// settings" of the KDE modules): data — `sddmGreeter` or `plmGreeter` of
+// the same probe (one view, `system_plan::SddmGreeterView`), actions —
+// `setLoginBackground` and `applyLoginLook` (the core picks the path by
+// the login screen itself), the answer — `loginLookDone`.
 
 pragma ComponentBehavior: Bound
 
@@ -33,23 +34,23 @@ Rectangle {
 
     property var pal: ({})
     property var sty: ({})
-    /// Объект действий вкладки (`AppearanceActions`).
+    /// The tab's actions object (`AppearanceActions`).
     property var actions: null
 
-    /// Последний ответ пробы.
+    /// Last answer of the probe.
     property var st: ({})
-    /// Выбранное приветствие по юниту (предвыбор — от ядра).
+    /// Selected greeter per unit (preselection comes from the core).
     property var greeterFor: ({})
-    /// Идёт переключение — кнопки заперты.
+    /// Switching in progress — the buttons are locked.
     property bool busy: false
-    /// Итог последнего переключения.
+    /// Result of the last switch.
     property string message: ""
     property bool failed: false
-    /// Блок фона и оформления экрана входа: идёт действие, итог.
+    /// Login screen background and look block: action in progress, result.
     property bool lookBusy: false
     property string lookMessage: ""
     property bool lookFailed: false
-    /// Открыто живое превью экрана входа.
+    /// Live preview of the login screen is open.
     property bool previewRunning: false
 
     function take(payload) {
@@ -60,8 +61,8 @@ Rectangle {
         } catch (e) {
             section.st = ({});
         }
-        // Галочка после щелчка теряет привязку — состояние берётся из пробы
-        // заново (не вышло — она возвращается как было).
+        // After a click the check box loses its binding — the state is taken from
+        // the probe again (if it did not work out, it goes back to how it was).
         if (section.greeter)
             clockBox.checked = section.greeter.clock.checked === true;
     }
@@ -85,9 +86,9 @@ Rectangle {
         return g !== undefined ? g : (row.greeter || "");
     }
 
-    /// Итог переключения без повторов: после успеха «вступит после
-    /// перезагрузки» уже говорит строка `pending`, а «как вернуть» — блок
-    /// ниже; тогда итог не дублируется.
+    /// Switch result without repetition: after success, "takes effect after a
+    /// reboot" is already said by the `pending` line, and "how to revert" by
+    /// the block below; in that case the result is not duplicated.
     function shownMessage() {
         if (section.failed || section.busy || section.message === "")
             return section.message;
@@ -194,16 +195,16 @@ Rectangle {
     }
 
     Component.onCompleted: {
-        // Ответ пробы мог прийти раньше, чем блок подключился.
+        // The probe answer may have arrived before the block was connected.
         if (section.actions && section.actions.loginScreen)
             section.take(section.actions.loginScreen());
     }
 
     readonly property var managers: section.st.managers || []
-    /// Экран входа сам открывает уходящий X11-сеанс (`null` — нет).
+    /// The login screen itself opens a deprecated X11 session (`null` — no).
     readonly property var sessionOffer: section.st.waylandDefault || null
-    /// Блок фона и оформления экрана входа (SDDM или Plasma Login Manager;
-    /// `null` — нет).
+    /// Login screen background and look block (SDDM or Plasma Login Manager;
+    /// `null` — none).
     readonly property var greeter: section.st.sddmGreeter && section.st.sddmGreeter.visible
                                    ? section.st.sddmGreeter
                                    : (section.st.plmGreeter && section.st.plmGreeter.visible
@@ -248,9 +249,9 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // Совместимость основного экрана входа с установленными столами
-        // (GNOME без GDM — без блокировки, Deepin без DDM — не запустится).
-        // Тексты — ядро (`system_plan::dm_compat_issues`).
+        // Compatibility of the default login screen with the installed desktops
+        // (GNOME without GDM — no lock screen, Deepin without DDM — will not
+        // start). Texts come from the core (`system_plan::dm_compat_issues`).
         Repeater {
             model: section.st.compat || []
 
@@ -264,7 +265,7 @@ Rectangle {
             }
         }
 
-        // Уходящий X11-сеанс по умолчанию — предупреждение и кнопка.
+        // A deprecated X11 session as the default — a warning and a button.
         RowLayout {
             Layout.fillWidth: true
             visible: section.sessionOffer !== null
@@ -323,7 +324,7 @@ Rectangle {
                                 font.bold: true
                             }
 
-                            // «Основной» — метка, а не кнопка.
+                            // "Default" is a label, not a button.
                             RexonText {
                                 visible: row.modelData.active === true
                                 text: qsTranslate("rexon", "Default", "login manager")
@@ -414,8 +415,8 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // «Как вернуть» — текст, который помощник оставил для консоли
-        // (`/etc/rexon/previous-display-manager`). Выделяется и копируется.
+        // "How to revert" — the text the helper left for the console
+        // (`/etc/rexon/previous-display-manager`). Selectable and copyable.
         RexonText {
             Layout.fillWidth: true
             Layout.topMargin: 4
@@ -436,12 +437,12 @@ Rectangle {
             color: section.pal.text_secondary
             selectionColor: section.pal.accent
             wrapMode: TextEdit.Wrap
-            // Начало строки: без явного выравнивания поле берёт его из самого
-            // текста, а явное `AlignLeft` зеркалирование переворачивает.
+            // Start of the line: without explicit alignment the field takes it from
+            // the text itself, and mirroring flips an explicit `AlignLeft`.
             horizontalAlignment: TextEdit.AlignLeft
         }
 
-        // ── Фон и оформление экрана входа (SDDM, Plasma Login Manager) ───
+        // ── Login screen background and look (SDDM, Plasma Login Manager) ─
         ColumnLayout {
             id: greeterBlock
             objectName: "sddmGreeterBlock"
@@ -465,7 +466,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            // Тема — только у SDDM: у Plasma Login Manager тем нет.
+            // Theme — only for SDDM: Plasma Login Manager has no themes.
             RexonText {
                 Layout.fillWidth: true
                 visible: text !== ""
@@ -486,7 +487,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 12
 
-                // Превью фона: картинка темы или своя.
+                // Background preview: the theme's picture or a custom one.
                 Rectangle {
                     Layout.preferredWidth: 192
                     Layout.preferredHeight: 108
@@ -552,8 +553,8 @@ Rectangle {
                         }
                     }
 
-                    // «Показывать часы» — как у модулей KDE: у SDDM ключ
-                    // темы, у Plasma Login Manager — свой.
+                    // "Show clock" — as in the KDE modules: for SDDM it is a theme key, for
+                    // Plasma Login Manager its own one.
                     RexonCheckBox {
                         id: clockBox
                         objectName: "loginShowClock"
@@ -593,8 +594,8 @@ Rectangle {
                     onClicked: section.askLook("lookReset")
                 }
 
-                // Живое превью: приветствие в тестовом режиме, без выхода
-                // из сеанса. Пока открыто — та же кнопка его закрывает.
+                // Live preview: the greeter in test mode, without leaving the session.
+                // While it is open, the same button closes it.
                 RexonButton {
                     id: previewButton
                     objectName: "loginPreview"
@@ -614,7 +615,7 @@ Rectangle {
                 }
             }
 
-            // Почему превью нет (запертая кнопка подсказку не покажет).
+            // Why there is no preview (a locked button will not show a tooltip).
             RexonText {
                 Layout.fillWidth: true
                 visible: text !== "" && !section.previewRunning
@@ -647,23 +648,25 @@ Rectangle {
         }
     }
 
-    // ── Подтверждение ─────────────────────────────────────────────────────
+    // ── Confirmation ──────────────────────────────────────────────────────
     //
-    // Внутри окна (канон Big Picture); фокус при открытии — на «Отмена»:
-    // случайный Enter экран входа не сменит.
+    // Inside the window (the Big Picture canon); focus on opening is on
+    // "Cancel": an accidental Enter will not change the login screen.
 
     Popup {
         id: confirmDialog
 
         property string unit: ""
         property string greeter: ""
-        /// Не пусто — вопрос о сеансе по умолчанию (X11-сеанс из пробы).
+        /// Not empty — a question about the default session (the X11 session from
+        /// the probe).
         property string session: ""
-        /// Своя подпись «Да» (пусто — «Сделать основным»).
+        /// Custom "Yes" label (empty means "Make default").
         property string yesText: ""
         property string heading: ""
         property string question: ""
-        /// Не пусто — вопрос блока оформления экрана входа (`look`, `lookReset`).
+        /// Not empty — a question of the login screen look block (`look`,
+        /// `lookReset`).
         property string lookAction: ""
 
         parent: Overlay.overlay
@@ -705,8 +708,8 @@ Rectangle {
                 color: section.pal.text_primary
                 selectionColor: section.pal.accent
                 wrapMode: TextEdit.Wrap
-                // Начало строки: без явного выравнивания поле берёт его из самого
-                // текста, а явное `AlignLeft` зеркалирование переворачивает.
+                // Start of the line: without explicit alignment the field takes it from
+                // the text itself, and mirroring flips an explicit `AlignLeft`.
                 horizontalAlignment: TextEdit.AlignLeft
             }
 

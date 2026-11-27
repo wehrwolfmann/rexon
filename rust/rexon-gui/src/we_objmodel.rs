@@ -1,45 +1,47 @@
-// Живые модели App: рендереры, дисплеи, библиотеки и видеокарты.
+// App's live models: renderers, displays, libraries and GPUs.
 //
-// Порт
-// `ui/src/objmodel/{renderer,display,library}.cpp` waywallen (MIT,
-// (c) hypengw; атрибуция в NOTICE).
+// A port of waywallen's `ui/src/objmodel/{renderer,display,library}.cpp`
+// (MIT, (c) hypengw; attribution in NOTICE).
 //
-// Все пять классов в ОДНОМ мосте намеренно: cxx печатает шим-обёртку на
-// каждое объявление `extern "C++"`, собранную по имени C++-функции, и
-// фабрика дочерних объектов (`rexon_new_renderer`/`rexon_new_display`),
-// объявленная в двух мостах крейта, дала бы `duplicate symbol` на линковке.
-// Одного `#[qobject]` на файл cxx-qt не требует — теряется только шорткат
-// `Self`, которым здесь всё равно не пользуемся.
+// All five classes are in ONE bridge on purpose: cxx emits a shim wrapper
+// for every `extern "C++"` declaration, named after the C++ function, and
+// the child object factory (`rexon_new_renderer`/`rexon_new_display`)
+// declared in two bridges of the crate would give a `duplicate symbol` at
+// link time. cxx-qt does not require one `#[qobject]` per file — only the
+// `Self` shortcut is lost, which we do not use here anyway.
 //
-// Кто кормит модели: события демона (`*_snapshot`/`*_changed`/`*_removed`)
-// приходят сюда сырым кадром через App, плюс ответ `renderer_list` от
-// `status_queries::RendererListQuery` — тем же сырым кадром через шов
-// `renderers_replace_frame`.
+// Who feeds the models: daemon events (`*_snapshot`/`*_changed`/`*_removed`)
+// come here as a raw frame through App, plus the `renderer_list` answer
+// from `status_queries::RendererListQuery` — as the same raw frame through
+// the `renderers_replace_frame` seam.
 //
-// Что приехало со схемой v0.3.5 и живёт здесь: состояние рендерера
-// (`RendererState` вместо строки `status`), его условия и метки
-// (`runtimeConditions`/`runtimeTags`), а у дисплея — принадлежность холсту
-// (`canvasId`/`canvasRect`/`canvasOverlapCount`), ключ настроек и свои
-// условия. Строку `status` и `running` собирает ядро
-// (`we_query::renderer_status`) — один движок на оба пути прихода.
+// What came with the v0.3.5 schema and lives here: the renderer state
+// (`RendererState` instead of the `status` string), its conditions and tags
+// (`runtimeConditions`/`runtimeTags`), and for a display — its canvas
+// membership (`canvasId`/`canvasRect`/`canvasOverlapCount`), the settings
+// key and its own conditions. The `status` string and `running` are
+// assembled by the core (`we_query::renderer_status`) — one engine for
+// both arrival paths.
 //
-// Холсты (`Canvas`) — тоже здесь: демон шлёт `canvas_snapshot` и при
-// подключении, и на каждое изменение, поэтому отдельного запроса списка нет.
-// Данные холста (члены, охват, раскладка) приходят снимком; связи, плейлист
-// и условия холста собираются из его дисплеев и пересчитываются после
-// каждой смены дисплеев или плейлистов (`refresh_canvas_runtime`).
+// Canvases (`Canvas`) are here too: the daemon sends `canvas_snapshot` both
+// on connection and on every change, so there is no separate list request.
+// The canvas data (members, extent, layout) come as a snapshot; the links,
+// the playlist and the conditions of a canvas are assembled from its
+// displays and recomputed after every change of displays or playlists
+// (`refresh_canvas_runtime`).
 //
-// Видеокарты (`Gpu`/`GpuManager`) — единственная модель без событий: демон
-// перечисляет карты один раз при старте, и список приходит ответом
-// `gpu_list`, который App запрашивает на каждом подключении (`we_app.rs`).
+// GPUs (`Gpu`/`GpuManager`) are the only model without events: the daemon
+// lists the cards once at start-up, and the list comes as the `gpu_list`
+// answer, which App requests on every connection (`we_app.rs`).
 //
-// Текущие показы обоев (`PresentationManager` и его модель строк
-// `NowPlayingModel`) — карточка «Текущие обои» в рейке вкладки. Снимок
-// показов демон шлёт при подключении и на каждую смену; обрыв связи список
-// чистит сразу. К строке прикладываются обоина (её App дозапрашивает
-// `wallpaper_lookup`) и подпись целей — имена дисплеев и холстов.
+// Current wallpaper displays (`PresentationManager` and its row model
+// `NowPlayingModel`) — the "Current wallpapers" card in the tab rail. The
+// daemon sends the display snapshot on connection and on every change; a
+// disconnection clears the list at once. The wallpaper (which App
+// additionally requests with `wallpaper_lookup`) and the target label —
+// the names of displays and canvases — are attached to a row.
 
-/// Мост cxx-qt: Renderer, RendererManager, Display, Canvas, DisplayManager,
+/// cxx-qt bridge: Renderer, RendererManager, Display, Canvas, DisplayManager,
 /// LibraryManager, Gpu, GpuManager, NowPlayingModel, PresentationManager.
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -60,9 +62,9 @@ pub mod qobject {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
         include!(<QtCore/QAbstractListModel>);
-        /// База модели строк карточки. Без `#[qobject]` — как в остальных
-        /// мостах крейта с моделями (`remote_list_model.rs`): иначе шимы
-        /// приведения типа напечатаются второй раз и не слинкуются.
+        /// Base of the card's row model. Without `#[qobject]` — as in the crate's
+        /// other bridges with models (`remote_list_model.rs`): otherwise the type
+        /// cast shims would be emitted a second time and would not link.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -78,11 +80,11 @@ pub mod qobject {
     unsafe extern "C++" {
         include!("rexon_we_objmodel.h");
 
-        /// Создать дочерний `Renderer`/`Display`/`Canvas`/`Gpu` — `new` живёт
-        /// только в C++.
+        /// Create a child `Renderer`/`Display`/`Canvas`/`Gpu` — `new` lives only in
+        /// C++.
         ///
         /// # Safety
-        /// `parent` — живой QObject-менеджер (владение уходит Qt).
+        /// `parent` is a live QObject manager (ownership goes to Qt).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_renderer(parent: *mut QObject) -> *mut QObject;
         #[allow(clippy::missing_safety_doc)]
@@ -91,63 +93,64 @@ pub mod qobject {
         unsafe fn rexon_new_canvas(parent: *mut QObject) -> *mut QObject;
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_gpu(parent: *mut QObject) -> *mut QObject;
-        /// Модель строк карточки «Текущие обои» — ребёнок своего менеджера.
+        /// Row model of the "Current wallpapers" card — a child of its manager.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_new_now_playing_model(parent: *mut QObject) -> *mut QObject;
 
-        /// Строка вендорного каталога перевода по её контексту — подписи
-        /// «Дисплей №…» и «Холст …» для целей, которых нет в списках.
+        /// A string of the vendor translation catalogue by its context — the
+        /// "Display #…" and "Canvas …" labels for targets that are not in the
+        /// lists.
         fn rexon_we_vendor_tr(context: &QString, source: &QString) -> QString;
 
-        /// Снести дочерний объект отложенно (`deleteLater`), как в
-        /// оригинале: удалять прямо сейчас нельзя — на объект могут быть
-        /// живые привязки QML в текущем кадре.
+        /// Destroy a child object deferred (`deleteLater`), as in the original: it
+        /// must not be deleted right now — there may be live QML bindings to the
+        /// object in the current frame.
         ///
         /// # Safety
-        /// `object` — живой QObject.
+        /// `object` is a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_delete_child_later(object: *mut QObject);
 
-        /// Указатель на QObject значением QVariant: так вендорный QML
-        /// получает списки `renderers`/`displays`/`gpus`.
+        /// A pointer to a QObject as a QVariant value: this is how the vendored QML
+        /// gets the `renderers`/`displays`/`gpus` lists.
         ///
         /// # Safety
-        /// `object` — живой QObject либо nullptr.
+        /// `object` is a live QObject or nullptr.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_object_to_variant(object: *mut QObject) -> QVariant;
-        // (объявление живёт в rexon_we_objmodel.h — рядом с фабрикой)
+        // (the declaration lives in rexon_we_objmodel.h — next to the factory)
     }
 
     // ── Renderer ──────────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Один рендерер как QObject (зеркало `proto::RendererInstance`).
-        /// Создаётся и умирает только вместе с менеджером — из QML
-        /// экземпляр не собрать, как и у оригинала (`QML_UNCREATABLE`).
+        /// One renderer as a QObject (a mirror of `proto::RendererInstance`).
+        /// Created and destroyed only together with the manager — an instance cannot
+        /// be assembled from QML, as in the original (`QML_UNCREATABLE`).
         #[qobject]
         #[qml_element]
         #[qml_uncreatable]
         #[qproperty(QString, id, READ = id, CONSTANT)]
         #[qproperty(u32, fps, READ = fps, NOTIFY = fps_changed)]
         #[qproperty(QString, status, READ = status, NOTIFY = status_changed)]
-        /// Живой процесс: играет, на паузе или без звука. Порт
-        /// `Renderer::running` вендора — `StatusPage.qml:347` красит им
-        /// значок, а `:331` прячет придержанные процессы.
+        /// A live process: playing, paused or muted. A port of the vendor's
+        /// `Renderer::running` — `StatusPage.qml:347` colours the icon with it, and
+        /// `:331` hides held-back processes.
         #[qproperty(bool, running, READ = running, NOTIFY = status_changed)]
-        /// Процесс придержан после остановки (`Renderer::keep`).
+        /// The process is held back after stopping (`Renderer::keep`).
         #[qproperty(bool, keep, READ = keep, NOTIFY = status_changed)]
-        /// Причина последнего выхода (`Renderer::lastExitReason`).
+        /// Reason of the last exit (`Renderer::lastExitReason`).
         #[qproperty(QString, last_exit_reason, cxx_name = "lastExitReason",
                     READ = last_exit_reason, NOTIFY = status_changed)]
-        /// Поколение процесса (`Renderer::processGeneration`).
-        /// ⚠️ `f64`, а не `u64`: 64-битное целое наружу в QML не выпускаем
-        /// (разбор — `src/qvalue.rs`). Поле внутри остаётся `u64`.
+        /// Process generation (`Renderer::processGeneration`).
+        /// Warning: `f64`, not `u64`: we do not expose a 64-bit integer to QML (the
+        /// analysis is in `src/qvalue.rs`). The field inside stays `u64`.
         #[qproperty(f64, process_generation, cxx_name = "processGeneration",
                     READ = process_generation, NOTIFY = status_changed)]
-        /// Что с рендерером прямо сейчас: загрузка, ожидание, зависание
-        /// (`StatusPage.qml:281`). Порт `Renderer::runtimeConditions`.
+        /// What is going on with the renderer right now: loading, waiting, hanging
+        /// (`StatusPage.qml:281`). A port of `Renderer::runtimeConditions`.
         #[qproperty(QList_QVariant, runtime_conditions, cxx_name = "runtimeConditions",
                     READ = runtime_conditions, NOTIFY = runtime_conditions_changed)]
-        /// Пары ключ-значение от рендерера (`StatusPage.qml`, плашки).
+        /// Key-value pairs from the renderer (`StatusPage.qml`, badges).
         #[qproperty(QList_QVariant, runtime_tags, cxx_name = "runtimeTags",
                     READ = runtime_tags, NOTIFY = runtime_tags_changed)]
         #[qproperty(QString, name, READ = name, NOTIFY = name_changed)]
@@ -156,10 +159,10 @@ pub mod qobject {
                     READ = texture_width, NOTIFY = texture_size_changed)]
         #[qproperty(u32, texture_height, cxx_name = "textureHeight",
                     READ = texture_height, NOTIFY = texture_size_changed)]
-        /// Карта рисовальщика (номер узла DRM). ⚠️ НЕ постоянное свойство:
-        /// рисовальщик рождается с нулями и называет свою карту позже,
-        /// обновлением, — значок на открытой странице «Состояние» ждёт
-        /// именно этого сигнала (`drmRenderChanged` оригинала).
+        /// The renderer's card (DRM node number). Warning: NOT a constant property:
+        /// the renderer is born with zeros and names its card later, with an
+        /// update — the icon on an open "Status" page waits for exactly this signal
+        /// (the original's `drmRenderChanged`).
         #[qproperty(u32, drm_render_major, cxx_name = "drmRenderMajor",
                     READ = drm_render_major, NOTIFY = drm_render_changed)]
         #[qproperty(u32, drm_render_minor, cxx_name = "drmRenderMinor",
@@ -236,20 +239,20 @@ pub mod qobject {
         #[cxx_name = "renderersChanged"]
         fn renderers_changed(self: Pin<&mut RendererManager>);
 
-        /// Рендерер по идентификатору или nullptr.
+        /// Renderer by identifier or nullptr.
         #[qinvokable]
         fn get(self: &RendererManager, id: &QString) -> *mut QObject;
     }
 
     // ── Display ───────────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Один дисплей как QObject (зеркало `proto::DisplayInfo`).
+        /// One display as a QObject (a mirror of `proto::DisplayInfo`).
         #[qobject]
         #[qml_element]
         #[qml_uncreatable]
-        /// ⚠️ `f64`, а не `u64`: 64-битное целое наружу в QML не выпускаем
-        /// (разбор — `src/qvalue.rs`). Номера дисплеев у демона мелкие,
-        /// потери точности нет.
+        /// Warning: `f64`, not `u64`: we do not expose a 64-bit integer to QML (the
+        /// analysis is in `src/qvalue.rs`). The daemon's display numbers are small,
+        /// there is no loss of precision.
         #[qproperty(f64, id, cxx_name = "id", READ = display_id, CONSTANT)]
         #[qproperty(QString, name, READ = display_name, NOTIFY = name_changed)]
         #[qproperty(QString, alias, READ = alias, NOTIFY = alias_changed)]
@@ -260,12 +263,12 @@ pub mod qobject {
         #[qproperty(u32, refresh_mhz, cxx_name = "refreshMhz",
                     READ = refresh_mhz, NOTIFY = refresh_mhz_changed)]
         #[qproperty(QList_QVariant, links, READ = links, NOTIFY = links_changed)]
-        /// waywallen 0.4.2: дисплей поставлен на паузу вручную (кнопкой
-        /// страницы «Дисплеи», `DisplayPauseSetQuery`).
+        /// waywallen 0.4.2: the display was paused by hand (with the button of the
+        /// "Displays" page, `DisplayPauseSetQuery`).
         #[qproperty(bool, manual_paused, cxx_name = "manualPaused",
                     READ = manual_paused, NOTIFY = pause_changed)]
-        /// waywallen 0.4.2: дисплей стоит на паузе по любой причине —
-        /// вручную или по правилам автопаузы.
+        /// waywallen 0.4.2: the display is paused for any reason — by hand or by the
+        /// auto-pause rules.
         #[qproperty(bool, effective_paused, cxx_name = "effectivePaused",
                     READ = effective_paused, NOTIFY = pause_changed)]
         #[qproperty(QMap_QString_QVariant, effective_layout, cxx_name = "effectiveLayout",
@@ -281,41 +284,42 @@ pub mod qobject {
                     READ = drm_render_major, CONSTANT)]
         #[qproperty(u32, drm_render_minor, cxx_name = "drmRenderMinor",
                     READ = drm_render_minor, CONSTANT)]
-        /// ⚠️ `f64`, а не `i64`: 64-битное целое наружу в QML не выпускаем
-        /// (разбор — `src/qvalue.rs`).
+        /// Warning: `f64`, not `i64`: we do not expose a 64-bit integer to QML (the
+        /// analysis is in `src/qvalue.rs`).
         #[qproperty(f64, active_playlist_id, cxx_name = "activePlaylistId",
                     READ = active_playlist_id, NOTIFY = playlist_status_changed)]
         #[qproperty(QMap_QString_QVariant, playlist_status, cxx_name = "playlistStatus",
                     READ = playlist_status, NOTIFY = playlist_status_changed)]
-        /// Годится ли дисплей в отдельную цель применения. У демона это
-        /// `selectable_target = canvas_id.is_none()` (router/mod.rs:2666):
-        /// дисплей, отданный холсту, целью не предлагают — цель тогда
-        /// холст. Формулу повторяем, читая `canvas_id` (см. `DisplayInfo`).
+        /// Whether the display is fit to be a separate apply target. In the daemon
+        /// this is `selectable_target = canvas_id.is_none()` (router/mod.rs:2666):
+        /// a display given to a canvas is not offered as a target — the target is
+        /// then the canvas. We repeat the formula by reading `canvas_id` (see
+        /// `DisplayInfo`).
         #[qproperty(bool, selectable_target, cxx_name = "selectableTarget",
                     READ = selectable_target, NOTIFY = canvas_changed)]
-        /// Холст, которому отдан дисплей («» — дисплей сам по себе).
+        /// The canvas the display is given to ("" — the display is on its own).
         #[qproperty(QString, canvas_id, cxx_name = "canvasId",
                     READ = canvas_id, NOTIFY = canvas_changed)]
-        /// Место дисплея внутри холста (`x`/`y`/`width`/`height`).
+        /// The display's place inside the canvas (`x`/`y`/`width`/`height`).
         #[qproperty(QMap_QString_QVariant, canvas_rect, cxx_name = "canvasRect",
                     READ = canvas_rect, NOTIFY = canvas_changed)]
-        /// Сколько соседей по холсту перекрывают этот дисплей.
+        /// How many canvas neighbours overlap this display.
         #[qproperty(u32, canvas_overlap_count, cxx_name = "canvasOverlapCount",
                     READ = canvas_overlap_count, NOTIFY = canvas_changed)]
-        /// Ключ дисплея в настройках демона — им подписан кусок
-        /// `config.toml` и им же холст перечисляет своих членов.
+        /// The display's key in the daemon settings — the `config.toml` section is
+        /// labelled with it, and the canvas lists its members by it too.
         #[qproperty(QString, settings_key, cxx_name = "settingsKey",
                     READ = settings_key, NOTIFY = settings_key_changed)]
-        /// Что с дисплеем прямо сейчас (`DisplaysPage.qml:302`).
+        /// What is going on with the display right now (`DisplaysPage.qml:302`).
         #[qproperty(QList_QVariant, runtime_conditions, cxx_name = "runtimeConditions",
                     READ = runtime_conditions, NOTIFY = runtime_conditions_changed)]
-        /// waywallen 0.4.4: умеет ли клиент дисплея исключения окон
+        /// waywallen 0.4.4: whether the display client supports window exclusions
         /// (`WindowExclusionSupport`).
         #[qproperty(i32, window_exclusion_support, cxx_name = "windowExclusionSupport",
                     READ = window_exclusion_support,
                     NOTIFY = window_exclusion_support_changed)]
-        /// waywallen 0.4.4: сколько правил исключения дисплей не применит —
-        /// по нему страница «Исключённые окна» предупреждает человека.
+        /// waywallen 0.4.4: how many exclusion rules the display will not apply —
+        /// by it the "Excluded windows" page warns the user.
         #[qproperty(u32, unsupported_window_exclusions,
                     cxx_name = "unsupportedWindowExclusions",
                     READ = unsupported_window_exclusions,
@@ -400,8 +404,9 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "playlistStatusChanged"]
         fn playlist_status_changed(self: Pin<&mut Display>);
-        /// Смена принадлежности холсту: у оригинала на этом сигнале висят
-        /// `canvasId`/`canvasRect`/`canvasOverlapCount`/`selectableTarget`.
+        /// A change of canvas membership: in the original
+        /// `canvasId`/`canvasRect`/`canvasOverlapCount`/`selectableTarget` hang on
+        /// this signal.
         #[qsignal]
         #[cxx_name = "canvasChanged"]
         fn canvas_changed(self: Pin<&mut Display>);
@@ -418,22 +423,22 @@ pub mod qobject {
 
     // ── Canvas ────────────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Один холст как QObject (зеркало `proto::CanvasInfo`): несколько
-        /// дисплеев, на которые обоя ложится одним полотном. Из QML не
-        /// создаётся — холстами владеет `DisplayManager`.
+        /// One canvas as a QObject (a mirror of `proto::CanvasInfo`): several
+        /// displays onto which a wallpaper lies as one sheet. Not created from QML —
+        /// the canvases are owned by `DisplayManager`.
         #[qobject]
         #[qml_element]
         #[qml_uncreatable]
         #[qproperty(QString, id, cxx_name = "id", READ = canvas_object_id, CONSTANT)]
         #[qproperty(QString, name, READ = canvas_name, NOTIFY = changed)]
-        /// То же имя: у холста, в отличие от дисплея, псевдонима нет.
+        /// The same name: a canvas, unlike a display, has no alias.
         #[qproperty(QString, display_label, cxx_name = "displayLabel",
                     READ = canvas_name, NOTIFY = changed)]
-        /// Члены холста: `settingsKey`, `rect`, `minimumScaleTo`,
-        /// `aspectLocked`, `displayIds`, `onlineCount`, `overlap`.
+        /// Canvas members: `settingsKey`, `rect`, `minimumScaleTo`, `aspectLocked`,
+        /// `displayIds`, `onlineCount`, `overlap`.
         #[qproperty(QList_QVariant, members, READ = members, NOTIFY = changed)]
-        /// Охват холста (`x`/`y`/`width`/`height`); демон его не прислал —
-        /// карта пустая.
+        /// Canvas extent (`x`/`y`/`width`/`height`); if the daemon did not send it,
+        /// the map is empty.
         #[qproperty(QMap_QString_QVariant, extent, READ = extent, NOTIFY = changed)]
         #[qproperty(u32, width, READ = extent_width, NOTIFY = changed)]
         #[qproperty(u32, height, READ = extent_height, NOTIFY = changed)]
@@ -441,10 +446,10 @@ pub mod qobject {
                     READ = canvas_layout_override, NOTIFY = changed)]
         #[qproperty(QMap_QString_QVariant, effective_layout, cxx_name = "effectiveLayout",
                     READ = canvas_effective_layout, NOTIFY = changed)]
-        /// Связи с рендерерами, слитые по всем дисплеям холста.
+        /// Links to renderers, merged over all displays of the canvas.
         #[qproperty(QList_QVariant, links, READ = canvas_links, NOTIFY = runtime_changed)]
-        /// ⚠️ `f64`, а не `i64`: 64-битное целое наружу в QML не выпускаем
-        /// (разбор — `src/qvalue.rs`).
+        /// Warning: `f64`, not `i64`: we do not expose a 64-bit integer to QML (the
+        /// analysis is in `src/qvalue.rs`).
         #[qproperty(f64, active_playlist_id, cxx_name = "activePlaylistId",
                     READ = canvas_active_playlist_id, NOTIFY = runtime_changed)]
         #[qproperty(QMap_QString_QVariant, playlist_status, cxx_name = "playlistStatus",
@@ -453,9 +458,9 @@ pub mod qobject {
                     READ = canvas_runtime_conditions, NOTIFY = runtime_changed)]
         #[qproperty(QString, wallpaper_id, cxx_name = "wallpaperId",
                     READ = wallpaper_id, NOTIFY = changed)]
-        /// Номер правки холста: с ним уходят изменение и удаление, демон
-        /// отказывает, если холст успели поменять. ⚠️ `f64`, а не `u64` —
-        /// по той же причине, что и выше.
+        /// Canvas revision number: a change and a removal go out with it, and the
+        /// daemon refuses if the canvas has been changed meanwhile. Warning: `f64`,
+        /// not `u64` — for the same reason as above.
         #[qproperty(f64, revision, READ = revision, NOTIFY = changed)]
         #[qproperty(i32, member_count, cxx_name = "memberCount",
                     READ = member_count, NOTIFY = changed)]
@@ -501,10 +506,11 @@ pub mod qobject {
     }
 
     unsafe extern "RustQt" {
-        /// Сменилось то, что прислал демон о самом холсте.
+        /// What the daemon sent about the canvas itself changed.
         #[qsignal]
         fn changed(self: Pin<&mut Canvas>);
-        /// Сменилось собранное из дисплеев холста: связи, плейлист, условия.
+        /// What is assembled from the canvas displays changed: links, playlist,
+        /// conditions.
         #[qsignal]
         #[cxx_name = "runtimeChanged"]
         fn runtime_changed(self: Pin<&mut Canvas>);
@@ -516,11 +522,11 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(QList_QVariant, displays, READ = displays,
                     NOTIFY = displays_changed)]
-        /// Холсты по имени, затем по идентификатору (объекты `Canvas`).
+        /// Canvases by name, then by identifier (`Canvas` objects).
         #[qproperty(QList_QVariant, canvases, READ = canvases,
                     NOTIFY = canvases_changed)]
-        /// Номер правки всего набора холстов из последнего снимка демона.
-        /// ⚠️ `f64`, а не `u64` (разбор — `src/qvalue.rs`).
+        /// Revision number of the whole set of canvases from the daemon's last
+        /// snapshot. Warning: `f64`, not `u64` (the analysis is in `src/qvalue.rs`).
         #[qproperty(f64, canvas_revision, cxx_name = "canvasRevision",
                     READ = canvas_revision, NOTIFY = canvases_changed)]
         #[qproperty(i32, count, READ = count, NOTIFY = displays_changed)]
@@ -550,15 +556,16 @@ pub mod qobject {
         #[cxx_name = "playlistStatusChanged"]
         fn playlist_status_changed(self: Pin<&mut DisplayManager>);
 
-        /// Дисплей по идентификатору или nullptr.
+        /// Display by identifier or nullptr.
         ///
-        /// ⚠️ `id` принимаем `f64`: 64-битное целое в подписи, видимой QML,
-        /// не выпускаем (разбор — `src/qvalue.rs`). Вендорный QML зовёт
-        /// `W.App.displayManager.get(displayId)` обычным числом JS.
+        /// Warning: we take `id` as `f64`: we do not expose a 64-bit integer in a
+        /// signature visible to QML (the analysis is in `src/qvalue.rs`). The
+        /// vendored QML calls `W.App.displayManager.get(displayId)` with an ordinary
+        /// JS number.
         #[qinvokable]
         fn get(self: &DisplayManager, id: f64) -> *mut QObject;
 
-        /// Холст по идентификатору или nullptr на незнакомый id.
+        /// Canvas by identifier, or nullptr for an unknown id.
         #[qinvokable]
         #[cxx_name = "getCanvas"]
         fn get_canvas(self: &DisplayManager, id: &QString) -> *mut QObject;
@@ -566,9 +573,9 @@ pub mod qobject {
 
     // ── Gpu ───────────────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Одна видеокарта (зеркало `proto::GpuInfo`). Демон перечисляет
-        /// карты один раз при старте и больше о них не сообщает, поэтому
-        /// все свойства постоянны — как у оригинала.
+        /// One GPU (a mirror of `proto::GpuInfo`). The daemon lists the cards once
+        /// at start-up and reports nothing more about them, so all properties are
+        /// constant — as in the original.
         #[qobject]
         #[qml_element]
         #[qml_uncreatable]
@@ -618,8 +625,8 @@ pub mod qobject {
 
     // ── GpuManager ────────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Видеокарты машины в порядке демона (объекты `Gpu`): значок карты
-        /// у рисовальщика и у дисплея, выбор карты в настройках.
+        /// The machine's GPUs in the daemon's order (`Gpu` objects): the card icon
+        /// at the renderer and at the display, choosing a card in the settings.
         #[qobject]
         #[qml_element]
         #[qproperty(QList_QVariant, gpus, READ = gpus, NOTIFY = gpus_changed)]
@@ -635,18 +642,17 @@ pub mod qobject {
         #[cxx_name = "gpusChanged"]
         fn gpus_changed(self: Pin<&mut GpuManager>);
 
-        /// Карта по номеру узла DRM (узла отрисовки или основного) либо
-        /// nullptr: узел неизвестен (`major == 0`) или такой карты нет.
+        /// Card by DRM node number (the render node or the primary one) or nullptr:
+        /// the node is unknown (`major == 0`) or there is no such card.
         #[qinvokable]
         fn find(self: &GpuManager, major: u32, minor: u32) -> *mut QObject;
     }
 
     // ── NowPlayingModel ───────────────────────────────────────────────────
     extern "RustQt" {
-        /// Строки карточки «Текущие обои»: роли `wallpaper`, `wallpaperId`,
-        /// `targetSummary`, `state` — их читает
-        /// `component/SidebarNowPlaying.qml`. Живёт только у своего
-        /// менеджера.
+        /// Rows of the "Current wallpapers" card: the `wallpaper`, `wallpaperId`,
+        /// `targetSummary`, `state` roles — read by
+        /// `component/SidebarNowPlaying.qml`. Lives only at its manager.
         #[qobject]
         #[qml_element]
         #[qml_uncreatable]
@@ -667,17 +673,17 @@ pub mod qobject {
         #[cxx_override]
         fn data(self: &NowPlayingModel, index: &QModelIndex, role: i32) -> QVariant;
 
-        /// Строка целиком — так карточка узнаёт, какую обоину открыть.
+        /// The whole row — this is how the card learns which wallpaper to open.
         #[qinvokable]
         fn item(self: &NowPlayingModel, row: i32) -> QMap_QString_QVariant;
 
         /// # Safety
-        /// Требует парного `end_reset_model`.
+        /// Requires a paired `end_reset_model`.
         #[inherit]
         #[cxx_name = "beginResetModel"]
         unsafe fn begin_reset_model(self: Pin<&mut NowPlayingModel>);
         /// # Safety
-        /// Парный к `begin_reset_model`.
+        /// Paired with `begin_reset_model`.
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut NowPlayingModel>);
@@ -709,8 +715,8 @@ pub mod qobject {
 
     // ── PresentationManager ───────────────────────────────────────────────
     extern "RustQt" {
-        /// Текущие показы обоев: `count` и `model` — ровно то, что читает
-        /// рейка (`W.App.presentationManager`).
+        /// Current wallpaper displays: `count` and `model` — exactly what the rail
+        /// reads (`W.App.presentationManager`).
         #[qobject]
         #[qml_element]
         #[qml_uncreatable]
@@ -731,20 +737,19 @@ pub mod qobject {
 
     // ── LibraryManager ────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Список библиотек обоей (SourceManagePage).
+        /// List of wallpaper libraries (SourceManagePage).
         ///
-        /// ⚠️ У оригинала строка списка — QObject `Library` с четырьмя
-        /// свойствами; здесь она остаётся картой. Наблюдаемого различия
-        /// нет: вендорный QML читает у строки только `id`/`name`/`path`/
-        /// `pluginName` точкой, а карта отвечает на это ровно так же.
-        /// Заводить QObject на строку без единого сигнала — лишний узел
-        /// жизненного цикла ради одинакового результата. Смена имени
-        /// (`LibraryChanged`) всё равно приходит `librariesChanged` — список
-        /// пересобирается целиком.
+        /// Warning: in the original a list row is a `Library` QObject with four
+        /// properties; here it stays a map. There is no observable difference: the
+        /// vendored QML reads only `id`/`name`/`path`/`pluginName` of a row with a
+        /// dot, and a map answers that exactly the same way. Creating a QObject per
+        /// row without a single signal would be an extra lifecycle node for the same
+        /// result. A name change (`LibraryChanged`) still arrives as
+        /// `librariesChanged` — the list is rebuilt entirely.
         ///
-        /// `initialized` (waywallen 0.5.0) — пришёл ли уже первый полный
-        /// список: до него «библиотек нет» значит «ещё не знаем», и
-        /// SourceManagePage не показывает пустое состояние.
+        /// `initialized` (waywallen 0.5.0) — whether the first full list has
+        /// already arrived: before it "no libraries" means "we do not know yet", and
+        /// SourceManagePage does not show the empty state.
         #[qobject]
         #[qml_element]
         #[qproperty(QList_QVariant, libraries, READ = libraries,
@@ -762,8 +767,8 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "librariesChanged"]
         fn libraries_changed(self: Pin<&mut LibraryManager>);
-        /// Отдельный сигнал нашего моста, оставленный ради привязок,
-        /// которые слушали именно его.
+        /// A separate signal of our bridge, kept for the bindings that listened to
+        /// exactly it.
         #[qsignal]
         #[cxx_name = "countChanged"]
         fn count_changed(self: Pin<&mut LibraryManager>);
@@ -783,16 +788,16 @@ use rexon_core::we_query as core_weq;
 // Renderer
 // ============================================================================
 
-/// Поля `RendererInstance`, приходящие двумя путями: событием демона
-/// (протобуф) и ответом `renderer_list` (карта от Python-запроса). Один
-/// нормализатор на оба — правило #12.
+/// `RendererInstance` fields that arrive by two paths: a daemon event
+/// (protobuf) and the `renderer_list` answer (a map from the Python query).
+/// One normalizer for both — rule #12.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RendererInfo {
     pub id: String,
     pub fps: u32,
-    /// Строка состояния. С v0.3.5 демон её не шлёт — она собирается из
-    /// дерева `RendererState` общим движком ядра (`we_query::renderer_status`),
-    /// одним на все пути прихода рендерера.
+    /// The status string. Since v0.3.5 the daemon does not send it — it is
+    /// assembled from the `RendererState` tree by the core's shared engine
+    /// (`we_query::renderer_status`), one for all renderer arrival paths.
     pub status: String,
     pub running: bool,
     pub keep: bool,
@@ -831,7 +836,7 @@ impl RendererInfo {
     }
 }
 
-/// `RuntimeCondition` → карта для QML (ключи вендора).
+/// `RuntimeCondition` → a map for QML (the vendor's keys).
 fn conditions_list(list: &[core_weq::RuntimeCondition]) -> qobject::QList_QVariant {
     let mut out = QList::<QVariant>::default();
     for c in list {
@@ -858,7 +863,7 @@ fn conditions_list(list: &[core_weq::RuntimeCondition]) -> qobject::QList_QVaria
     out
 }
 
-/// `RendererRuntimeTag` → карта для QML.
+/// `RendererRuntimeTag` → a map for QML.
 fn tags_list(list: &[core_weq::RuntimeTag]) -> qobject::QList_QVariant {
     let mut out = QList::<QVariant>::default();
     for t in list {
@@ -925,13 +930,14 @@ impl qobject::Renderer {
         self.rust().info.drm_render_minor
     }
 
-    /// Первичное заполнение: сигналов не шлём, объект ещё никому не отдан.
+    /// Initial filling: we send no signals, the object has not been handed to
+    /// anyone yet.
     fn install(mut self: Pin<&mut Self>, info: RendererInfo) {
         self.as_mut().rust_mut().info = info;
     }
 
-    /// Порт `Renderer::updateFrom`: сигнал шлётся ТОЛЬКО по изменившемуся
-    /// свойству, а не общим «что-то поменялось».
+    /// A port of `Renderer::updateFrom`: a signal is sent ONLY for the property
+    /// that changed, not as a general "something changed".
     fn update_from(mut self: Pin<&mut Self>, info: RendererInfo) {
         let old = self.rust().info.clone();
         self.as_mut().rust_mut().info = info;
@@ -939,9 +945,9 @@ impl qobject::Renderer {
         if old.fps != new.fps {
             self.as_mut().fps_changed();
         }
-        // Один сигнал на всё состояние — как `stateChanged` вендора: строка
-        // `status` может не измениться (два раза «stopped»), а придержанность
-        // процесса или причина выхода — измениться.
+        // One signal for the whole state — like the vendor's `stateChanged`: the
+        // `status` string may not change (two "stopped" in a row), while the
+        // process hold-back or the exit reason may.
         if old.status != new.status
             || old.running != new.running
             || old.keep != new.keep
@@ -977,23 +983,24 @@ impl qobject::Renderer {
 // RendererManager
 // ============================================================================
 
-/// Указатели сырые: владеет объектами Qt (они дети менеджера), а порядок и
-/// поиск держим здесь — как `m_ordered`/`m_by_id` оригинала.
+/// The pointers are raw: Qt owns the objects (they are children of the
+/// manager), and the order and lookup are kept here — like the original's
+/// `m_ordered`/`m_by_id`.
 #[derive(Default)]
 pub struct RendererManagerRust {
     by_id: BTreeMap<String, *mut qobject::QObject>,
 }
 
 /// # Safety
-/// `ptr` — живой `Renderer`, созданный фабрикой этого моста.
+/// `ptr` is a live `Renderer` created by this bridge's factory.
 unsafe fn renderer_pin<'a>(ptr: *mut qobject::QObject) -> Pin<&'a mut qobject::Renderer> {
     unsafe { Pin::new_unchecked(&mut *ptr.cast::<qobject::Renderer>()) }
 }
 
 impl qobject::RendererManager {
     fn renderers(&self) -> qobject::QList_QVariant {
-        // BTreeMap уже упорядочен по идентификатору — тот самый
-        // `std::sort` по `id`, который делает оригинал.
+        // The BTreeMap is already ordered by identifier — the very `std::sort` by
+        // `id` that the original does.
         let mut out = QList::<QVariant>::default();
         for ptr in self.rust().by_id.values() {
             out.append(unsafe { qobject::rexon_object_to_variant(*ptr) });
@@ -1013,8 +1020,8 @@ impl qobject::RendererManager {
             .unwrap_or(std::ptr::null_mut())
     }
 
-    /// Порт `RendererManager::replaceAll`: чего нет в снимке — снести,
-    /// остальное обновить, ровно один `renderersChanged` на пачку.
+    /// A port of `RendererManager::replaceAll`: what is not in the snapshot is
+    /// removed, the rest is updated, exactly one `renderersChanged` per batch.
     pub(crate) fn replace_all(mut self: Pin<&mut Self>, infos: Vec<RendererInfo>) {
         let parent: *mut qobject::QObject = {
             let this: &mut qobject::RendererManager = unsafe { self.as_mut().get_unchecked_mut() };
@@ -1055,7 +1062,7 @@ impl qobject::RendererManager {
         }
     }
 
-    /// Порт `RendererManager::upsert`.
+    /// A port of `RendererManager::upsert`.
     fn upsert(mut self: Pin<&mut Self>, info: RendererInfo) {
         if let Some(ptr) = self.rust().by_id.get(&info.id).copied() {
             unsafe { renderer_pin(ptr) }.update_from(info);
@@ -1072,7 +1079,7 @@ impl qobject::RendererManager {
         self.as_mut().renderers_changed();
     }
 
-    /// Порт `RendererManager::remove`.
+    /// A port of `RendererManager::remove`.
     fn remove(mut self: Pin<&mut Self>, id: &str) {
         let Some(ptr) = self.as_mut().rust_mut().by_id.remove(id) else {
             return;
@@ -1081,7 +1088,7 @@ impl qobject::RendererManager {
         self.as_mut().renderers_changed();
     }
 
-    /// Разбор события демона (`handleEvent` оригинала).
+    /// Parsing a daemon event (the original's `handleEvent`).
     pub(crate) fn handle_event(self: Pin<&mut Self>, event: &pb::Event) {
         use pb::event::Payload;
         match event.payload.as_ref() {
@@ -1101,13 +1108,13 @@ impl qobject::RendererManager {
         }
     }
 
-    /// Ответ `renderer_list` — полная замена списка.
+    /// The `renderer_list` answer — a full replacement of the list.
     ///
-    /// На вход тот же СЫРОЙ кадр демона, что разбирает сам запрос: путь
-    /// один и тот же протобуф, что и у событий, поэтому нормализатор тоже
-    /// один — `RendererInfo::from_pb` (правило #12). Прежний шов возил
-    /// сюда JSON-карты питоновского моста и требовал второго,
-    /// «обратного» разборщика; он удалён вместе с мостом.
+    /// The input is the same RAW daemon frame that the query itself parses: the
+    /// path is the same protobuf as for events, so the normalizer is also one —
+    /// `RendererInfo::from_pb` (rule #12). The former seam carried the Python
+    /// bridge's JSON maps here and required a second, "reverse" parser; it was
+    /// removed together with the bridge.
     pub(crate) fn replace_all_frame(self: Pin<&mut Self>, frame: &[u8]) {
         let Ok(server_frame) = pb::ServerFrame::decode(frame) else {
             return;
@@ -1133,7 +1140,7 @@ pub struct LayoutInfo {
     pub location_x: u32,
     pub location_y: u32,
     pub rotation: i32,
-    /// waywallen 0.4.4: отражение (`Flip`).
+    /// waywallen 0.4.4: mirroring (`Flip`).
     pub flip: i32,
 }
 
@@ -1148,7 +1155,8 @@ pub struct LayoutOverrideInfo {
     pub location_y: u32,
     pub rotation_set: bool,
     pub rotation: i32,
-    /// waywallen 0.4.4: отражение задано у дисплея и само отражение.
+    /// waywallen 0.4.4: whether mirroring is set for the display, and the
+    /// mirroring itself.
     pub flip_set: bool,
     pub flip: i32,
 }
@@ -1157,8 +1165,8 @@ pub struct LayoutOverrideInfo {
 pub struct LinkInfo {
     pub renderer_id: String,
     pub z_order: i32,
-    /// Связь сейчас показывается (поле 3 `DisplayLinkInfo`). Холст по нему
-    /// сливает связи своих дисплеев.
+    /// The link is being shown right now (field 3 of `DisplayLinkInfo`). The
+    /// canvas merges the links of its displays by it.
     pub active: bool,
 }
 
@@ -1171,16 +1179,17 @@ pub struct PlaylistStatusInfo {
     pub position: u32,
     pub count: u32,
     pub remaining_secs: u32,
-    /// waywallen 0.5.0: умный плейлист ждёт подходящих обоев (выборка пока
-    /// пуста) — `PlaylistDisplayStatus.waiting`.
+    /// waywallen 0.5.0: a smart playlist is waiting for suitable wallpapers
+    /// (the selection is empty for now) — `PlaylistDisplayStatus.waiting`.
     pub waiting: bool,
-    /// waywallen 0.5.0: текст ошибки плейлиста на этом дисплее; пусто —
-    /// ошибки нет.
+    /// waywallen 0.5.0: the playlist error text on this display; empty means no
+    /// error.
     pub error: String,
 }
 
 impl PlaylistStatusInfo {
-    /// Порт `Display::playlistStatusFromPb`: `activeId <= 0` — статуса нет.
+    /// A port of `Display::playlistStatusFromPb`: `activeId <= 0` means there
+    /// is no status.
     pub fn from_pb(s: &pb::PlaylistDisplayStatus) -> Option<Self> {
         (s.active_id > 0).then(|| PlaylistStatusInfo {
             active_id: s.active_id,
@@ -1211,31 +1220,32 @@ pub struct DisplayInfo {
     pub layout_overridden_by_wallpaper: bool,
     pub drm_render_major: u32,
     pub drm_render_minor: u32,
-    /// Холст, которому отдан дисплей («» — дисплей сам по себе).
-    /// Поле 17 `DisplayInfo` схемы v0.3.5.
+    /// The canvas the display is given to ("" — the display is on its own).
+    /// Field 17 of `DisplayInfo` in the v0.3.5 schema.
     pub canvas_id: String,
-    /// Место дисплея внутри холста (поле 18).
+    /// The display's place inside the canvas (field 18).
     pub canvas_rect: CanvasRect,
-    /// Сколько соседей по холсту его перекрывают (поле 19).
+    /// How many canvas neighbours overlap it (field 19).
     pub canvas_overlap_count: u32,
-    /// Ключ дисплея в настройках демона (поле 16).
+    /// The display's key in the daemon settings (field 16).
     pub settings_key: String,
-    /// Что с дисплеем прямо сейчас (поле 14).
+    /// What is going on with the display right now (field 14).
     pub conditions: Vec<core_weq::RuntimeCondition>,
-    /// Ручная пауза дисплея (поле 21, waywallen 0.4.2).
+    /// Manual pause of the display (field 21, waywallen 0.4.2).
     pub manual_paused: bool,
-    /// Пауза по любой причине (поле 22, waywallen 0.4.2).
+    /// Pause for any reason (field 22, waywallen 0.4.2).
     pub effective_paused: bool,
-    /// Умеет ли клиент дисплея исключения окон (поле 23, waywallen 0.4.4):
-    /// `WindowExclusionSupport` — 0 по-старому, 1 умеет, 2 частично.
+    /// Whether the display client supports window exclusions (field 23,
+    /// waywallen 0.4.4): `WindowExclusionSupport` — 0 the old way, 1 supports,
+    /// 2 partially.
     pub window_exclusion_support: i32,
-    /// Сколько правил исключения этот дисплей применить не может
-    /// (поле 24, waywallen 0.4.4).
+    /// How many exclusion rules this display cannot apply (field 24, waywallen
+    /// 0.4.4).
     pub unsupported_window_exclusions: u32,
 }
 
-/// Прямоугольник холста. Своя копия `pb::CanvasRect`, потому что
-/// prost-структуры не выводят `Eq`, а весь диффер моделей стоит на нём.
+/// Canvas rectangle. Our own copy of `pb::CanvasRect`, because prost
+/// structs do not derive `Eq`, and the whole model differ rests on it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CanvasRect {
     pub x: i32,
@@ -1347,13 +1357,14 @@ fn layout_map(layout: &LayoutInfo) -> qobject::QMap_QString_QVariant {
         QVariant::from(&(layout.location_y as i32)),
     );
     map.insert(QString::from("rotation"), QVariant::from(&layout.rotation));
-    // waywallen 0.4.4: `flip` в действующей раскладке и раскладке дисплея.
+    // waywallen 0.4.4: `flip` in the effective layout and in the display
+    // layout.
     map.insert(QString::from("flip"), QVariant::from(&layout.flip));
     map
 }
 
-/// Связи с рендерерами списком карт (`rendererId`/`zOrder`/`active`) — один
-/// вид и для дисплея, и для холста.
+/// Links to renderers as a list of maps (`rendererId`/`zOrder`/`active`) —
+/// one form for both a display and a canvas.
 fn links_list(links: &[LinkInfo]) -> qobject::QList_QVariant {
     let mut out = QList::<QVariant>::default();
     for link in links {
@@ -1369,8 +1380,8 @@ fn links_list(links: &[LinkInfo]) -> qobject::QList_QVariant {
     out
 }
 
-/// Статус плейлиста картой; плейлиста нет — карта пустая. Один вид и для
-/// дисплея, и для холста.
+/// Playlist status as a map; without a playlist the map is empty. One form
+/// for both a display and a canvas.
 fn playlist_status_map(status: Option<&PlaylistStatusInfo>) -> qobject::QMap_QString_QVariant {
     let mut map = QMap::<QMapPair_QString_QVariant>::default();
     let Some(status) = status else {
@@ -1398,8 +1409,9 @@ fn playlist_status_map(status: Option<&PlaylistStatusInfo>) -> qobject::QMap_QSt
         QString::from("remainingSecs"),
         QVariant::from(&(status.remaining_secs as i32)),
     );
-    // waywallen 0.5.0 (`display.cpp`): ключи есть всегда, пока есть статус —
-    // `PlaylistListSheetState.qml` читает `status.error` и `status.waiting`.
+    // waywallen 0.5.0 (`display.cpp`): the keys are always there while there
+    // is a status — `PlaylistListSheetState.qml` reads `status.error` and
+    // `status.waiting`.
     map.insert(QString::from("waiting"), QVariant::from(&status.waiting));
     map.insert(
         QString::from("error"),
@@ -1408,7 +1420,7 @@ fn playlist_status_map(status: Option<&PlaylistStatusInfo>) -> qobject::QMap_QSt
     map
 }
 
-/// Прямоугольник холста картой (`x`/`y`/`width`/`height`).
+/// Canvas rectangle as a map (`x`/`y`/`width`/`height`).
 fn rect_map(r: CanvasRect) -> qobject::QMap_QString_QVariant {
     let mut map = QMap::<QMapPair_QString_QVariant>::default();
     map.insert(QString::from("x"), QVariant::from(&r.x));
@@ -1481,7 +1493,7 @@ impl qobject::Display {
             QVariant::from(&over.rotation_set),
         );
         map.insert(QString::from("rotation"), QVariant::from(&over.rotation));
-        // waywallen 0.4.4: отражение в оверрайде дисплея.
+        // waywallen 0.4.4: mirroring in the display override.
         map.insert(QString::from("flipSet"), QVariant::from(&over.flip_set));
         map.insert(QString::from("flip"), QVariant::from(&over.flip));
         map
@@ -1497,9 +1509,10 @@ impl qobject::Display {
         self.rust().info.drm_render_minor
     }
 
-    /// Формула демона один в один: цель выбираема, пока дисплей не отдан
-    /// холсту (`selectable_target = canvas_id.is_none()`,
-    /// `src/wallframe/routing/router/mod.rs:2666` вендора на v0.3.5).
+    /// The daemon's formula one to one: the target is selectable while the
+    /// display is not given to a canvas
+    /// (`selectable_target = canvas_id.is_none()`,
+    /// `src/wallframe/routing/router/mod.rs:2666` of the vendor at v0.3.5).
     fn selectable_target(&self) -> bool {
         self.rust().info.canvas_id.is_empty()
     }
@@ -1508,9 +1521,10 @@ impl qobject::Display {
         QString::from(&self.rust().info.canvas_id)
     }
 
-    /// Прямоугольник холста картой — форма как у `scenePosition` вендора
-    /// (`DisplaysPage.qml` читает `x`/`y`/`width`/`height`). Холста нет —
-    /// карта нулевая, а не отсутствующая: QML читает поля безусловно.
+    /// Canvas rectangle as a map — the same shape as the vendor's
+    /// `scenePosition` (`DisplaysPage.qml` reads `x`/`y`/`width`/`height`).
+    /// Without a canvas the map is zero rather than missing: QML reads the
+    /// fields unconditionally.
     fn canvas_rect(&self) -> qobject::QMap_QString_QVariant {
         rect_map(self.rust().info.canvas_rect)
     }
@@ -1555,19 +1569,19 @@ impl qobject::Display {
         self.as_mut().rust_mut().info = info;
     }
 
-    /// Порт `Display::updateFrom` — по сигналу на каждое изменившееся поле.
+    /// A port of `Display::updateFrom` — one signal per changed field.
     fn update_from(mut self: Pin<&mut Self>, info: DisplayInfo) {
         let old = self.rust().info.clone();
         self.as_mut().rust_mut().info = info;
         let new = self.rust().info.clone();
-        // waywallen 0.4.4: один `windowExclusionSupportChanged` на оба поля,
-        // и первым — как у `Display::updateFrom` оригинала.
+        // waywallen 0.4.4: one `windowExclusionSupportChanged` for both fields,
+        // and first — as in the original's `Display::updateFrom`.
         if old.window_exclusion_support != new.window_exclusion_support
             || old.unsupported_window_exclusions != new.unsupported_window_exclusions
         {
             self.as_mut().window_exclusion_support_changed();
         }
-        // Оригинал (v0.4.2) шлёт один `pauseChanged` на оба флага.
+        // The original (v0.4.2) sends one `pauseChanged` for both flags.
         if old.manual_paused != new.manual_paused || old.effective_paused != new.effective_paused {
             self.as_mut().pause_changed();
         }
@@ -1610,7 +1624,8 @@ impl qobject::Display {
         }
     }
 
-    /// Порт `Display::updatePlaylistStatus`: `activeId <= 0` — статус пуст.
+    /// A port of `Display::updatePlaylistStatus`: `activeId <= 0` means the
+    /// status is empty.
     fn update_playlist_status(mut self: Pin<&mut Self>, status: Option<&pb::PlaylistDisplayStatus>) {
         let (active, snapshot) = match status {
             Some(s) => (s.active_id, PlaylistStatusInfo::from_pb(s)),
@@ -1629,22 +1644,23 @@ impl qobject::Display {
 // Canvas
 // ============================================================================
 
-/// Один член холста — зеркало `proto::CanvasMemberInfo`.
+/// One canvas member — a mirror of `proto::CanvasMemberInfo`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CanvasMemberInfo {
-    /// Ключ дисплея в настройках демона: член холста — это место под
-    /// дисплей, а не сам дисплей, и живёт он и без подключённого экрана.
+    /// The display's key in the daemon settings: a canvas member is a place for
+    /// a display, not the display itself, and it lives even without a connected
+    /// screen.
     pub settings_key: String,
     pub rect: Option<CanvasRect>,
-    /// Наибольший живой размер поверхности члена (ширина, высота); члена
-    /// нет в сети — демон поле не шлёт.
+    /// The largest live surface size of the member (width, height); if the
+    /// member is offline, the daemon does not send the field.
     pub minimum_scale_to: Option<(u32, u32)>,
     pub aspect_locked: bool,
-    /// Подключённые сейчас дисплеи этого члена.
+    /// The displays of this member connected right now.
     pub display_ids: Vec<u64>,
 }
 
-/// То, что демон шлёт о холсте (`proto::CanvasInfo`).
+/// What the daemon sends about the canvas (`proto::CanvasInfo`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CanvasInfo {
     pub id: String,
@@ -1687,13 +1703,15 @@ impl CanvasInfo {
         }
     }
 
-    /// Сколько дисплеев холста сейчас подключено (по всем членам).
+    /// How many displays of the canvas are connected right now (over all
+    /// members).
     fn online_count(&self) -> usize {
         self.members.iter().map(|m| m.display_ids.len()).sum()
     }
 }
 
-/// Собранное из дисплеев холста: демон этого о холсте не шлёт.
+/// Assembled from the canvas displays: the daemon does not send this about
+/// the canvas.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CanvasRuntime {
     pub links: Vec<LinkInfo>,
@@ -1702,7 +1720,7 @@ pub struct CanvasRuntime {
     pub conditions: Vec<core_weq::RuntimeCondition>,
 }
 
-/// То, что холсту нужно знать о дисплее.
+/// What the canvas needs to know about a display.
 pub struct CanvasDisplayView<'a> {
     pub canvas_id: &'a str,
     pub links: &'a [LinkInfo],
@@ -1711,13 +1729,14 @@ pub struct CanvasDisplayView<'a> {
     pub playlist_status: Option<&'a PlaylistStatusInfo>,
 }
 
-/// Порт `Canvas::updateRuntime`. Дисплеи идут по возрастанию id.
+/// A port of `Canvas::updateRuntime`. The displays go in ascending id
+/// order.
 ///
-/// * связи сливаются по рендереру: остаётся первая встреченная, а `active`
-///   поднимается, если связь показывается хоть на одном дисплее холста;
-///   порядок итога — по идентификатору рендерера;
-/// * условия — без повторов, в порядке появления;
-/// * плейлист — первого дисплея холста, у которого он есть.
+/// * links are merged by renderer: the first one met stays, and `active` is
+///   raised if the link is shown on at least one display of the canvas;
+///   the result is ordered by renderer identifier;
+/// * conditions — without repeats, in order of appearance;
+/// * the playlist — of the first canvas display that has one.
 pub fn canvas_runtime(canvas_id: &str, displays: &[CanvasDisplayView<'_>]) -> CanvasRuntime {
     let mut links: BTreeMap<&str, LinkInfo> = BTreeMap::new();
     let mut runtime = CanvasRuntime::default();
@@ -1766,8 +1785,8 @@ impl qobject::Canvas {
                 QString::from("settingsKey"),
                 QVariant::from(&QString::from(&member.settings_key)),
             );
-            // Прямоугольника или размера нет — карта пустая, а не
-            // отсутствующая: разметка читает поля строки безусловно.
+            // If there is no rectangle or size, the map is empty rather than missing:
+            // the markup reads the row's fields unconditionally.
             let rect = member.rect.map(rect_map).unwrap_or_default();
             row.insert(QString::from("rect"), QVariant::from(&rect));
             let mut minimum = QMap::<QMapPair_QString_QVariant>::default();
@@ -1780,8 +1799,8 @@ impl qobject::Canvas {
                 QString::from("aspectLocked"),
                 QVariant::from(&member.aspect_locked),
             );
-            // ⚠️ Номера дисплеев — `f64`, как `Display::id`: 64-битное целое
-            // в QML не выпускаем, а разметка сравнивает их с `display.id`.
+            // Warning: display numbers are `f64`, like `Display::id`: we do not expose
+            // a 64-bit integer to QML, and the markup compares them with `display.id`.
             let mut ids = QList::<QVariant>::default();
             for id in &member.display_ids {
                 ids.append(QVariant::from(&crate::qvalue::u64_to_qml(*id)));
@@ -1789,7 +1808,7 @@ impl qobject::Canvas {
             row.insert(QString::from("displayIds"), QVariant::from(&ids));
             let online = member.display_ids.len();
             row.insert(QString::from("onlineCount"), QVariant::from(&(online as i32)));
-            // Два живых дисплея на одном месте холста.
+            // Two live displays in the same place of the canvas.
             row.insert(QString::from("overlap"), QVariant::from(&(online > 1)));
             out.append(QVariant::from(&row));
         }
@@ -1806,8 +1825,8 @@ impl qobject::Canvas {
         self.rust().info.extent.map(|r| r.height).unwrap_or(0)
     }
 
-    /// Оверрайд раскладки холста. Выравнивания (`align`) у холста нет —
-    /// ключи только те, что задаёт `CanvasLayoutSetQuery`.
+    /// Canvas layout override. A canvas has no alignment (`align`) — only the
+    /// keys that `CanvasLayoutSetQuery` sets.
     fn canvas_layout_override(&self) -> qobject::QMap_QString_QVariant {
         let mut map = QMap::<QMapPair_QString_QVariant>::default();
         let Some(over) = self.rust().info.layout_override.as_ref() else {
@@ -1890,12 +1909,14 @@ impl qobject::Canvas {
         self.rust().info.members.is_empty()
     }
 
-    /// Первичное заполнение: сигналов не шлём, объект ещё никому не отдан.
+    /// Initial filling: we send no signals, the object has not been handed to
+    /// anyone yet.
     fn install(mut self: Pin<&mut Self>, info: CanvasInfo) {
         self.as_mut().rust_mut().info = info;
     }
 
-    /// Порт `Canvas::updateFrom`: один `changed` на любое отличие снимка.
+    /// A port of `Canvas::updateFrom`: one `changed` for any difference in the
+    /// snapshot.
     fn update_from(mut self: Pin<&mut Self>, info: CanvasInfo) {
         if self.rust().info == info {
             return;
@@ -1904,7 +1925,8 @@ impl qobject::Canvas {
         self.as_mut().changed();
     }
 
-    /// Принять пересчитанное по дисплеям; сигнал — только при отличии.
+    /// Accept what was recomputed from the displays; the signal only on a
+    /// difference.
     fn set_runtime(mut self: Pin<&mut Self>, runtime: CanvasRuntime) {
         if self.rust().runtime == runtime {
             return;
@@ -1922,19 +1944,19 @@ impl qobject::Canvas {
 pub struct DisplayManagerRust {
     by_id: BTreeMap<u64, *mut qobject::QObject>,
     canvas_by_id: BTreeMap<String, *mut qobject::QObject>,
-    /// Холсты в порядке показа: по имени, затем по идентификатору.
+    /// Canvases in display order: by name, then by identifier.
     canvas_order: Vec<*mut qobject::QObject>,
     canvas_revision: u64,
 }
 
 /// # Safety
-/// `ptr` — живой `Display`, созданный фабрикой этого моста.
+/// `ptr` is a live `Display` created by this bridge's factory.
 unsafe fn display_pin<'a>(ptr: *mut qobject::QObject) -> Pin<&'a mut qobject::Display> {
     unsafe { Pin::new_unchecked(&mut *ptr.cast::<qobject::Display>()) }
 }
 
 /// # Safety
-/// `ptr` — живой `Canvas`, созданный фабрикой этого моста.
+/// `ptr` is a live `Canvas` created by this bridge's factory.
 unsafe fn canvas_pin<'a>(ptr: *mut qobject::QObject) -> Pin<&'a mut qobject::Canvas> {
     unsafe { Pin::new_unchecked(&mut *ptr.cast::<qobject::Canvas>()) }
 }
@@ -1971,7 +1993,7 @@ impl qobject::DisplayManager {
         })
     }
 
-    /// Подпись дисплея по идентификатору — та же, что в `displayLabel`.
+    /// Display label by identifier — the same as in `displayLabel`.
     pub(crate) fn display_label_of(&self, id: u64) -> Option<String> {
         self.rust().by_id.get(&id).map(|ptr| {
             let display: &qobject::Display = unsafe { &*ptr.cast::<qobject::Display>() };
@@ -1980,7 +2002,7 @@ impl qobject::DisplayManager {
         })
     }
 
-    /// Имя холста по идентификатору.
+    /// Canvas name by identifier.
     pub(crate) fn canvas_name_of(&self, id: &str) -> Option<String> {
         self.rust().canvas_by_id.get(id).map(|ptr| {
             let canvas: &qobject::Canvas = unsafe { &*ptr.cast::<qobject::Canvas>() };
@@ -2005,10 +2027,10 @@ impl qobject::DisplayManager {
             .unwrap_or(std::ptr::null_mut())
     }
 
-    /// Порт `DisplayManager::replaceCanvases`: снимок — полная замена.
-    /// Знакомые холсты обновляются на месте (объект тот же — на нём висят
-    /// привязки страницы), пропавшие сносятся, `canvasesChanged` шлётся на
-    /// каждый снимок.
+    /// A port of `DisplayManager::replaceCanvases`: a snapshot is a full
+    /// replacement. Known canvases are updated in place (the same object — the
+    /// page's bindings hang on it), vanished ones are removed, and
+    /// `canvasesChanged` is sent for every snapshot.
     fn replace_canvases(mut self: Pin<&mut Self>, infos: Vec<CanvasInfo>, revision: u64) {
         let parent: *mut qobject::QObject = {
             let this: &mut qobject::DisplayManager = unsafe { self.as_mut().get_unchecked_mut() };
@@ -2016,11 +2038,11 @@ impl qobject::DisplayManager {
         };
         let mut old = std::mem::take(&mut self.as_mut().rust_mut().canvas_by_id);
         let mut next: BTreeMap<String, *mut qobject::QObject> = BTreeMap::new();
-        // Ключ порядка: (имя, идентификатор).
+        // Order key: (name, identifier).
         let mut order: Vec<((String, String), *mut qobject::QObject)> = Vec::new();
         for info in infos {
             let key = (info.name.clone(), info.id.clone());
-            // Повтор идентификатора в одном снимке: объект уже в `next`.
+            // A repeated identifier in one snapshot: the object is already in `next`.
             let ptr = match old.remove(&info.id).or_else(|| next.get(&info.id).copied()) {
                 Some(ptr) => {
                     unsafe { canvas_pin(ptr) }.update_from(info);
@@ -2051,9 +2073,9 @@ impl qobject::DisplayManager {
         self.as_mut().canvases_changed();
     }
 
-    /// Порт `DisplayManager::refreshCanvasRuntime`: связи, плейлист и
-    /// условия каждого холста собрать заново из его дисплеев. Звать после
-    /// ЛЮБОЙ смены дисплеев, плейлистов или самих холстов.
+    /// A port of `DisplayManager::refreshCanvasRuntime`: reassemble the links,
+    /// playlist and conditions of every canvas from its displays. Call after
+    /// ANY change of displays, playlists or the canvases themselves.
     fn refresh_canvas_runtime(self: Pin<&mut Self>) {
         if self.rust().canvas_order.is_empty() {
             return;
@@ -2119,7 +2141,8 @@ impl qobject::DisplayManager {
         }
 
         self.as_mut().refresh_canvas_runtime();
-        // Ушёл дисплей с плейлистом — признак «есть активные» мог смениться.
+        // A display with a playlist left — the "there are active ones" flag may
+        // have changed.
         if had_active != self.has_active_playlist_displays() {
             self.as_mut().playlist_status_changed();
         }
@@ -2159,8 +2182,9 @@ impl qobject::DisplayManager {
         self.as_mut().displays_changed();
     }
 
-    /// Порт `DisplayManager::replacePlaylistStatuses`: дисплеи вне списка
-    /// получают пустой статус (иначе на экране висел бы мёртвый плейлист).
+    /// A port of `DisplayManager::replacePlaylistStatuses`: displays outside
+    /// the list get an empty status (otherwise a dead playlist would hang on
+    /// the screen).
     fn replace_playlist_statuses(mut self: Pin<&mut Self>, list: &[pb::PlaylistDisplayStatus]) {
         let had_active = self.has_active_playlist_displays();
         let by_id: BTreeMap<u64, &pb::PlaylistDisplayStatus> =
@@ -2251,16 +2275,16 @@ impl qobject::Gpu {
         QString::from(&self.rust().info.description)
     }
 
-    /// Заполнить до того, как объект кому-либо отдан: свойства постоянны,
-    /// сигналов у них нет.
+    /// Fill in before the object is handed to anyone: the properties are
+    /// constant, they have no signals.
     fn install(mut self: Pin<&mut Self>, info: pb::GpuInfo) {
         self.as_mut().rust_mut().info = info;
     }
 }
 
-/// Порядок — как прислал демон. `infos` и `objects` идут строка в строку:
-/// первые — данные для поиска и сравнения, вторые — объекты, которыми
-/// владеет Qt (они дети менеджера).
+/// The order is as the daemon sent it. `infos` and `objects` go row for
+/// row: the former are data for lookup and comparison, the latter are the
+/// objects Qt owns (they are children of the manager).
 #[derive(Default)]
 pub struct GpuManagerRust {
     infos: Vec<pb::GpuInfo>,
@@ -2287,16 +2311,16 @@ impl qobject::GpuManager {
             .unwrap_or(std::ptr::null_mut())
     }
 
-    /// Полная замена списка ответом `gpu_list`.
+    /// A full replacement of the list with the `gpu_list` answer.
     ///
-    /// ⚠️ Тот же список второй раз (переподключение к тому же демону)
-    /// объекты НЕ пересоздаёт. Значок карты находит свой объект один раз,
-    /// вызовом `find`, и за `gpusChanged` не следит: снеси мы объекты —
-    /// значки у рисовальщиков и дисплеев пропали бы до пересоздания
-    /// страницы, хотя карты те же.
+    /// Warning: the same list a second time (reconnecting to the same daemon)
+    /// does NOT recreate the objects. The card icon finds its object once, with
+    /// a `find` call, and does not watch `gpusChanged`: if we removed the
+    /// objects, the icons at renderers and displays would disappear until the
+    /// page is recreated, although the cards are the same.
     ///
-    /// Возвращает, сменился ли список: App по этому признаку велит значкам
-    /// найти свои карты заново (`gpuManagerChanged`).
+    /// Returns whether the list changed: by this flag App tells the icons to
+    /// find their cards anew (`gpuManagerChanged`).
     pub(crate) fn replace_all(mut self: Pin<&mut Self>, infos: Vec<pb::GpuInfo>) -> bool {
         if self.rust().infos == infos {
             return false;
@@ -2329,17 +2353,18 @@ impl qobject::GpuManager {
 // NowPlayingModel / PresentationManager
 // ============================================================================
 
-/// Строка карточки «Текущие обои».
+/// A row of the "Current wallpapers" card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NowPlayingRow {
     pub wallpaper_id: String,
-    /// Обоина в терминах QML (`we_wallpaper::entry_to_map`).
+    /// The wallpaper in QML terms (`we_wallpaper::entry_to_map`).
     pub wallpaper: serde_json::Map<String, serde_json::Value>,
     pub target_summary: String,
     pub state: i32,
 }
 
-/// Имена ролей — посимвольно те, что читает `SidebarNowPlaying.qml`.
+/// Role names — character for character the ones `SidebarNowPlaying.qml`
+/// reads.
 const NOW_PLAYING_ROLES: [&str; 4] = ["wallpaper", "wallpaperId", "targetSummary", "state"];
 /// `Qt::UserRole`.
 const NOW_PLAYING_ROLE_BASE: i32 = 0x0100;
@@ -2367,7 +2392,7 @@ impl qobject::NowPlayingModel {
     }
 
     fn row_count(&self, parent: &qobject::QModelIndex) -> i32 {
-        // У плоского списка дети есть только у корня.
+        // In a flat list only the root has children.
         if parent.is_valid() {
             0
         } else {
@@ -2411,9 +2436,10 @@ impl qobject::NowPlayingModel {
         out
     }
 
-    /// Заменить строки. Те же обои в том же порядке (приехали данные обоины
-    /// или сменилась подпись цели) обновляются на месте — карточка не
-    /// перестраивается и не теряет положение; иной состав — сброс модели.
+    /// Replace the rows. The same wallpapers in the same order (the wallpaper
+    /// data arrived or the target label changed) are updated in place — the
+    /// card is not rebuilt and does not lose its position; a different
+    /// composition means a model reset.
     fn replace(mut self: Pin<&mut Self>, rows: Vec<NowPlayingRow>) {
         if self.rust().rows == rows {
             return;
@@ -2447,12 +2473,12 @@ impl qobject::NowPlayingModel {
     }
 }
 
-/// Снимок показов демона и обоины, которые к нему уже известны.
+/// The daemon's display snapshot and the wallpapers already known for it.
 pub struct PresentationManagerRust {
     presentations: Vec<pb::WallpaperPresentationInfo>,
-    /// Обоины по идентификатору. Переживают обрыв связи: после
-    /// переподключения карточка сразу показывает имя и превью, а свежий
-    /// ответ демона их обновляет.
+    /// Wallpapers by identifier. They survive a disconnection: after
+    /// reconnecting the card immediately shows the name and preview, and the
+    /// daemon's fresh answer updates them.
     wallpapers: BTreeMap<String, serde_json::Map<String, serde_json::Value>>,
     model: *mut qobject::QObject,
 }
@@ -2467,7 +2493,8 @@ impl Default for PresentationManagerRust {
     }
 }
 
-/// Строка вендорного перевода из контекста менеджера показов с подстановкой.
+/// A vendor translation string from the display manager's context with a
+/// substitution.
 fn presentation_fallback_label(source: &str, id: &str) -> String {
     let template = qobject::rexon_we_vendor_tr(
         &QString::from("waywallen::PresentationManager"),
@@ -2486,8 +2513,8 @@ impl qobject::PresentationManager {
         self.rust().model
     }
 
-    /// Завести модель строк. Зовёт App сразу после создания менеджера —
-    /// раньше, чем свойство `model` прочтёт разметка.
+    /// Create the row model. App calls it right after creating the manager —
+    /// before the markup reads the `model` property.
     pub(crate) fn attach(mut self: Pin<&mut Self>) {
         if !self.rust().model.is_null() {
             return;
@@ -2505,8 +2532,8 @@ impl qobject::PresentationManager {
         !self.rust().presentations.is_empty()
     }
 
-    /// Новый снимок показов. Возвращает идентификаторы обоев, которые надо
-    /// спросить у демона (все из снимка: известные могли измениться).
+    /// A new display snapshot. Returns the identifiers of the wallpapers to ask
+    /// the daemon about (all from the snapshot: known ones may have changed).
     pub(crate) fn replace_snapshot(
         mut self: Pin<&mut Self>,
         presentations: Vec<pb::WallpaperPresentationInfo>,
@@ -2517,12 +2544,13 @@ impl qobject::PresentationManager {
         ids
     }
 
-    /// Связь с демоном оборвана — показов нет, пока не придёт новый снимок.
+    /// The connection to the daemon is lost — there are no displays until a
+    /// new snapshot arrives.
     pub(crate) fn clear(self: Pin<&mut Self>) {
         self.set_presentations(Vec::new(), None);
     }
 
-    /// Ответ `wallpaper_lookup`.
+    /// The `wallpaper_lookup` answer.
     pub(crate) fn wallpapers_arrived(
         mut self: Pin<&mut Self>,
         entries: &[pb::WallpaperEntry],
@@ -2575,9 +2603,9 @@ impl qobject::PresentationManager {
         core_weq::presentation_target_summary(&labels)
     }
 
-    /// Пересобрать строки: по снимку, известным обоинам и нынешним именам
-    /// дисплеев и холстов. Зовётся и на смену дисплеев/холстов — подписи
-    /// целей зависят от них.
+    /// Rebuild the rows: from the snapshot, the known wallpapers and the
+    /// current names of displays and canvases. Called on a change of
+    /// displays/canvases too — the target labels depend on them.
     pub(crate) fn rebuild_rows(self: Pin<&mut Self>, displays: Option<&qobject::DisplayManager>) {
         let rows: Vec<NowPlayingRow> = {
             let rust = self.rust();
@@ -2585,7 +2613,7 @@ impl qobject::PresentationManager {
                 .iter()
                 .map(|presentation| {
                     let id = &presentation.wallpaper_id;
-                    // Пока демон не ответил — именем служит идентификатор.
+                    // Until the daemon answers, the identifier serves as the name.
                     let wallpaper = rust.wallpapers.get(id).cloned().unwrap_or_else(|| {
                         let mut stub = serde_json::Map::new();
                         stub.insert("id_proto".into(), serde_json::Value::String(id.clone()));
@@ -2616,12 +2644,12 @@ impl qobject::PresentationManager {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LibraryInfo {
     pub id: i64,
-    /// waywallen 0.5.0: имя библиотеки (`LibraryInstance.name`).
+    /// waywallen 0.5.0: the library name (`LibraryInstance.name`).
     pub name: String,
     pub path: String,
     pub plugin_name: String,
-    /// waywallen 0.6.0: значения настроек библиотеки
-    /// (`LibraryInstance.settings`; правит их `EditLibraryPage`).
+    /// waywallen 0.6.0: the library's setting values
+    /// (`LibraryInstance.settings`; edited by `EditLibraryPage`).
     pub settings: BTreeMap<String, String>,
 }
 
@@ -2640,15 +2668,15 @@ impl From<&pb::LibraryInstance> for LibraryInfo {
 #[derive(Default)]
 pub struct LibraryManagerRust {
     by_id: BTreeMap<i64, LibraryInfo>,
-    /// Пришёл ли первый полный список (`LibrarySnapshot`). Как у оригинала,
-    /// назад в `false` не возвращается.
+    /// Whether the first full list (`LibrarySnapshot`) has arrived. As in the
+    /// original, it never goes back to `false`.
     initialized: bool,
 }
 
 impl LibraryManagerRust {
-    /// Применить событие демона. `true` — список (или `initialized`)
-    /// изменился и надо оповестить QML. Полный список всегда оповещает:
-    /// у оригинала `replaceAll` шлёт `librariesChanged` безусловно.
+    /// Apply a daemon event. `true` means the list (or `initialized`) changed
+    /// and QML must be notified. A full list always notifies: in the original
+    /// `replaceAll` sends `librariesChanged` unconditionally.
     fn apply_event(&mut self, event: &pb::Event) -> bool {
         use pb::event::Payload;
         match event.payload.as_ref() {
@@ -2741,9 +2769,10 @@ mod tests {
         }
     }
 
-    /// waywallen 0.5.0: статус плейлиста несёт `waiting` (умный плейлист
-    /// ждёт подходящих обоев) и `error`; без активного плейлиста статуса нет
-    /// вовсе — как `Display::playlistStatusFromPb`.
+    /// waywallen 0.5.0: the playlist status carries `waiting` (a smart playlist
+    /// is waiting for suitable wallpapers) and `error`; without an active
+    /// playlist there is no status at all — like
+    /// `Display::playlistStatusFromPb`.
     #[test]
     fn playlist_status_carries_waiting_and_error() {
         let pb_status = pb::PlaylistDisplayStatus {
@@ -2765,9 +2794,10 @@ mod tests {
         assert_eq!(PlaylistStatusInfo::from_pb(&idle), None);
     }
 
-    /// Холст собирает связи, условия и плейлист только со СВОИХ дисплеев:
-    /// связи сливаются по рендереру (показ хоть на одном — `active`),
-    /// условия не повторяются, плейлист берётся у первого, у кого он есть.
+    /// A canvas collects links, conditions and the playlist only from ITS OWN
+    /// displays: links are merged by renderer (shown on at least one — `active`),
+    /// conditions do not repeat, the playlist is taken from the first one that
+    /// has it.
     #[test]
     fn canvas_runtime_merges_its_displays_only() {
         let links_a = [link("r2", false), link("r1", false)];
@@ -2811,7 +2841,7 @@ mod tests {
         assert_eq!(runtime.active_playlist_id, 7);
         assert_eq!(runtime.playlist_status, Some(status.clone()));
 
-        // Холст без дисплеев — пусто, а не чужое.
+        // A canvas without displays — empty, not someone else's.
         assert_eq!(canvas_runtime("none", &views), CanvasRuntime::default());
     }
 
@@ -2831,10 +2861,10 @@ mod tests {
         }
     }
 
-    /// waywallen 0.5.0, `ui/src/objmodel/library.cpp`: `initialized`
-    /// поднимается первым полным списком и больше не опускается; имя
-    /// библиотеки приходит со снимком и с `LibraryChanged`; изменения до
-    /// снимка `initialized` не поднимают.
+    /// waywallen 0.5.0, `ui/src/objmodel/library.cpp`: `initialized` is raised
+    /// by the first full list and is never lowered again; the library name comes
+    /// with the snapshot and with `LibraryChanged`; changes before the snapshot
+    /// do not raise `initialized`.
     #[test]
     fn library_manager_initialized_and_name() {
         use pb::event::Payload;
@@ -2872,13 +2902,14 @@ mod tests {
             "снимок заменяет список целиком, порядок по номеру"
         );
 
-        // Переименование демона приходит как LibraryChanged.
+        // A rename by the daemon arrives as LibraryChanged.
         assert!(lm.apply_event(&event(Payload::LibraryChanged(pb::LibraryChanged {
             library: Some(library(3, "Steam", "/w")),
         }))));
         assert_eq!(lm.by_id[&3].name, "Steam");
 
-        // Пустой снимок: библиотек нет, но список уже известен.
+        // An empty snapshot: there are no libraries, but the list is already
+        // known.
         assert!(lm.apply_event(&event(Payload::LibrarySnapshot(pb::LibrarySnapshot {
             libraries: vec![],
         }))));

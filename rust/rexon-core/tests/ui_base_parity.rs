@@ -1,17 +1,18 @@
-//! Golden-сверка порта `ui_base.rs` с оригиналом `rexon/ui_base.py`.
+//! Golden check of the `ui_base.rs` port against the original `rexon/ui_base.py`.
 //!
-//! Эталон снят read-only с ЖИВОГО `rexon.ui_base` одноразовым генератором:
-//! Qt не поднимался (без QApplication `is_dark_theme` уходит в свою
-//! except-ветку), тёмный и светлый режимы сняты подменой этой функции.
-//! Запись SVG-галочки в `~/.cache` подменена заглушкой — сверяется ТЕКСТ
-//! файла и путь, но не сам файл (I/O остаётся исполнителю).
+//! The reference was captured read-only from the LIVE `rexon.ui_base` by a
+//! one-off generator: Qt was not started (without a QApplication
+//! `is_dark_theme` goes into its except branch), dark and light modes were
+//! captured by replacing that function. Writing the SVG checkmark into
+//! `~/.cache` was replaced by a stub — the file TEXT and path are checked, not
+//! the file itself (I/O stays with the executor).
 //!
-//! Покрыто: цвета текста обеих тем, QSS-фрагменты текста, `neutral_rgba`,
-//! детект и экранирование rich-text, QSS скроллбара обеих тем, токены
-//! Synthwave и вкладки «Оформление», таблица скинов (метки, описания,
-//! палитры, токены), QSS-оверлей Synthwave целиком и обводка заголовка.
+//! Covered: text colours of both themes, text QSS fragments, `neutral_rgba`,
+//! rich-text detection and escaping, scrollbar QSS of both themes, Synthwave
+//! and «Appearance» tab tokens, the skin table (labels, descriptions,
+//! palettes, tokens), the whole Synthwave QSS overlay and the title outline.
 //!
-//! `golden/ui_base_cases.json` — снятые значения.
+//! `golden/ui_base_cases.json` — the captured values.
 
 use rexon_core::ui_base as ui;
 use serde_json::Value;
@@ -38,7 +39,7 @@ fn text_colors() {
     assert_eq!(ui::LIGHT_SECONDARY, s(&l["secondary"]));
     assert_eq!(ui::LIGHT_MUTED, s(&l["muted"]));
 
-    // Значения, отданные самими функциями оригинала на обеих темах.
+    // Values returned by the original's functions themselves on both themes.
     let dark = g["dark_text_colors_fn"].as_array().unwrap();
     assert_eq!(ui::primary_text_color(true), s(&dark[0]));
     assert_eq!(ui::secondary_text_color(true), s(&dark[1]));
@@ -96,14 +97,14 @@ fn escape_dialog() {
     }
 }
 
-/// Оригинал принимает ЛЮБОЙ объект и зовёт `str()` перед экранированием.
-/// В порте коэрция закреплена типом аргумента — приводит вызывающий, а
-/// экранирование уже строки обязано совпадать с эталоном.
+/// The original accepts ANY object and calls `str()` before escaping. In the
+/// port the coercion is pinned by the argument type — the caller converts, and
+/// the escaping of the string itself must match the reference.
 #[test]
 fn escape_dialog_after_python_str() {
     let g = fx();
     let want = g["escape_nonstr"].as_array().unwrap();
-    // Ровно то, что даёт `str()` Python на None / 42 / 3.5 / списке.
+    // Exactly what Python's `str()` gives on None / 42 / 3.5 / a list.
     for (stringified, expect) in
         ["None", "42", "3.5", "['a', '<b>']"].iter().zip(want)
     {
@@ -135,7 +136,7 @@ fn indicator_check() {
     for (color, want) in g["indicator_svg"].as_object().unwrap() {
         assert_eq!(ui::indicator_check_svg(color), s(want), "цвет {color}");
     }
-    // Имя файла: решётка отбрасывается (как `color.lstrip('#')` оригинала).
+    // File name: the hash is dropped (like the original's `color.lstrip('#')`).
     assert_eq!(
         ui::indicator_check_filename("#0d1b2a"),
         "indicator-check-0d1b2a.svg"
@@ -169,7 +170,7 @@ fn tokens() {
 
 #[test]
 fn skins_table() {
-    // Эталон — русские подписи оригинала, сверка через po/ru.po.
+    // The reference is the original's Russian labels, checked via po/ru.po.
     let _lang = i18n_pin::ru();
     let g = fx();
     assert_eq!(ui::DEFAULT_SKIN, s(&g["default_skin"]));
@@ -221,7 +222,7 @@ fn skins_table() {
 #[test]
 fn synthwave_overlay() {
     let g = fx();
-    // Эталон снят с заглушкой пути галочки — подставляем тот же токен.
+    // The reference was captured with a stub for the checkmark path — we substitute the same token.
     assert_eq!(ui::synthwave_qss("<CHECK>"), s(&g["synthwave_qss"]));
     for (id, qss) in g["skin_qss"].as_object().unwrap() {
         assert_eq!(ui::skin_qss(id, "<CHECK>"), s(qss), "QSS скина {id}");
@@ -251,11 +252,11 @@ fn toast_qss_both_themes() {
     assert_eq!(ui::toast_qss(false), s(&g["light"]));
 }
 
-/// Действующий скин: развилка «незнакомое имя → скин по умолчанию» одна на
-/// продукт. До этого её держали ДВЕ копии — `ui_base.py::_current_skin_id`
-/// для окна на виджетах и запечённое `DEFAULT_SKIN` в четырёх страницах на
-/// QML; вторая копия отвечала «steam_dark» всегда, и перенесённые вкладки
-/// оставались тёмно-синими у покупателя, выбравшего «Светлый».
+/// The active skin: the «unknown name → default skin» fork is one for the
+/// product. Before this TWO copies held it — `ui_base.py::_current_skin_id`
+/// for the widget window and a baked-in `DEFAULT_SKIN` in four QML pages; the
+/// second copy always answered «steam_dark», and the migrated tabs stayed dark
+/// blue for a buyer who had chosen «Light».
 #[test]
 fn active_skin_falls_back_and_follows_choice() {
     assert_eq!(ui::active_skin_id_from(None), ui::DEFAULT_SKIN, "нет настройки");
@@ -270,9 +271,9 @@ fn active_skin_falls_back_and_follows_choice() {
     }
 }
 
-/// Скины действительно РАЗНЫЕ: если бы токены совпадали, замена
-/// `skin_colors(DEFAULT_SKIN)` на действующий скин ничего бы не меняла, и
-/// проверка выше сторожила бы пустоту.
+/// The skins really ARE DIFFERENT: if the tokens matched, replacing
+/// `skin_colors(DEFAULT_SKIN)` with the active skin would change nothing, and
+/// the check above would be guarding emptiness.
 #[test]
 fn skins_differ_in_colors() {
     let base = ui::skin_colors(ui::DEFAULT_SKIN);
@@ -281,16 +282,16 @@ fn skins_differ_in_colors() {
         assert_ne!(other, base, "скин {id} обязан отличаться от стандартного");
         assert_eq!(other.len(), base.len(), "набор ключей скина {id}");
     }
-    // «Системный» ничего не навязывает поверх системной палитры — его
-    // токены намеренно совпадают со стандартными.
+    // «System» imposes nothing over the system palette — its tokens deliberately
+    // match the standard ones.
     assert_eq!(ui::skin_colors("system"), base, "системный скин");
 }
 
-/// Сторож проводки: НИ ОДНА страница на QML не красится запечённым именем
-/// стандартного скина. Проверка общая — по всем `*_page.rs` крейта, а не по
-/// четырём известным именам: следующая перенесённая вкладка попадает под
-/// неё сама (правило #12), а разъехаться с окном на виджетах она молча уже
-/// не сможет.
+/// Wiring guard: NOT A SINGLE QML page is painted with the baked-in name of
+/// the standard skin. The check is general — over all `*_page.rs` of the
+/// crate, not over four known names: the next migrated tab falls under it by
+/// itself (rule #12), and it can no longer silently drift away from the
+/// widget window.
 #[test]
 fn qml_pages_take_the_active_skin() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../rexon-gui/src");
@@ -310,12 +311,12 @@ fn qml_pages_take_the_active_skin() {
             !src.contains("skin_colors(ui_base::DEFAULT_SKIN)"),
             "{name}: палитра берётся у стандартного скина вместо выбранного"
         );
-        // ⚠️Именно `active_qml_palette`, а не `active_skin_colors`: кроме
-        // токенов скина страница обязана получить ГОТОВЫЕ краски
-        // поверхностей (`surface_field`, `surface_card`). Пока страницы
-        // брали одни токены, каждая выбирала для поверхности похожий на
-        // глаз токен и разъезжалась с виджетным оригиналом на ступень
-        // краски.
+        // ⚠️Exactly `active_qml_palette`, not `active_skin_colors`: besides
+        // the skin tokens the page must get READY surface paints
+        // (`surface_field`, `surface_card`). While the pages took only
+        // tokens, each one picked a token that looked similar to the eye
+        // for the surface and drifted from the widget original by one
+        // paint step.
         assert!(
             src.contains("ui_base::active_qml_palette()"),
             "{name}: палитра собрана мимо общего ответа active_qml_palette"
@@ -324,34 +325,36 @@ fn qml_pages_take_the_active_skin() {
     assert!(checked >= 4, "проверено страниц: {checked} — сторож смотрит мимо");
 }
 
-/// Осветление акцента — общий приём наведения: своего оттенка «наведено» у
-/// скинов нет, и четырьмя ручными значениями пятый скин снова обошли бы.
+/// Lightening the accent is the shared hover technique: skins have no «hovered»
+/// shade of their own, and with four hand-written values a fifth skin would be
+/// bypassed again.
 #[test]
 fn lighten_mixes_with_white() {
     assert_eq!(ui::lighten_hex("#000000", 0.0), "#000000", "нулевая доля");
     assert_eq!(ui::lighten_hex("#000000", 1.0), "#ffffff", "полная доля");
     assert_eq!(ui::lighten_hex("#66c0f4", 0.25), "#8cd0f7", "акцент steam_dark");
     assert_eq!(ui::lighten_hex("#ffffff", 0.5), "#ffffff", "белее белого нет");
-    // Доля вне 0..1 не выводит цвет за границы каналов.
+    // A fraction outside 0..1 does not push the colour beyond the channel bounds.
     assert_eq!(ui::lighten_hex("#66c0f4", 5.0), "#ffffff", "доля выше единицы");
     assert_eq!(ui::lighten_hex("#66c0f4", -1.0), "#66c0f4", "доля ниже нуля");
-    // Неразобранный цвет возвращается как есть — наведение не гасит кнопку.
+    // An unparsed colour is returned as is — hover does not kill the button.
     assert_eq!(ui::lighten_hex("transparent", 0.25), "transparent");
 }
 
-/// Сторож проводки №2: КАЖДАЯ страница на QML перекрашивается на лету.
+/// Wiring guard #2: EVERY QML page is repainted on the fly.
 ///
-/// Прошлая починка (3ee6011) научила страницы брать цвета выбранного скина,
-/// но свойство `palette` осталось `CONSTANT` — сигнала об изменении не было
-/// вовсе, привязки не пересчитывались, и открытая вкладка держала цвета
-/// прошлого скина, пока окно на виджетах уже перекрашено. Половина окна в
-/// новом скине, половина в старом — покупатель считает это поломкой (#13).
+/// The previous fix (3ee6011) taught the pages to take the colours of the
+/// chosen skin, but the `palette` property stayed `CONSTANT` — there was no
+/// change signal at all, bindings were not re-evaluated, and an open tab kept
+/// the colours of the previous skin while the widget window was already
+/// repainted. Half the window in the new skin, half in the old — the buyer
+/// considers it a breakage (#13).
 ///
-/// Проверка общая, по всем `*_page.rs` крейта: механизм рассылки ОДИН
-/// (`rexon_gui::skin`), и следующая перенесённая вкладка обязана подписаться
-/// теми же двумя строками, а не завести пятую копию рассылки (правило #12).
-/// Что перекраска доходит до ЖИВОГО объекта, доказывает замер
-/// `scripts/test_qml_skin_live.py` — здесь сторожится только проводка.
+/// The check is general, over all `*_page.rs` of the crate: the broadcast
+/// mechanism is ONE (`rexon_gui::skin`), and the next migrated tab must
+/// subscribe with the same two lines rather than start a fifth copy of the
+/// broadcast (rule #12). That the repaint reaches the LIVE object is proved by
+/// the measurement `scripts/test_qml_skin_live.py` — only the wiring is guarded here.
 #[test]
 fn qml_pages_repaint_on_skin_change() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../rexon-gui/src");
@@ -387,39 +390,39 @@ fn qml_pages_repaint_on_skin_change() {
     assert!(checked >= 4, "проверено страниц: {checked} — сторож смотрит мимо");
 }
 
-/// Перевод краски из записи QSS в ту, что понимает QML.
+/// Translating a paint from QSS notation into one QML understands.
 ///
-/// ⛔ЗАЧЕМ СТОРОЖ. `rgba(...)` — законная запись для QSS виджетов и
-/// НЕДОПУСТИМАЯ для QML: страница рисует таким свойством чёрное, не сказав
-/// ни слова. Так на вкладке «Steam» вышли чёрными бейджи карточек, крупный
-/// чип состояния и звёздочки — дефект жил до попиксельной сверки с
-/// оригиналом 01.09.2026.
+/// ⛔WHY THE GUARD. `rgba(...)` is a legitimate notation for widget QSS and
+/// an INVALID one for QML: a page paints black with such a property without
+/// saying a word. That is how card badges, the large status chip and the
+/// stars on the «Steam» tab came out black — the defect lived until the
+/// pixel-by-pixel comparison with the original on 01.09.2026.
 #[test]
 fn css_color_to_qml_переводит_rgba() {
     use rexon_core::ui_base::css_color_to_qml;
 
-    // ⚠️Альфа 0.85 → 0xd8, а НЕ 0xd9: долю разбор таблиц стилей Qt
-    // усекает (0.85 * 255 = 216,75 → 216). Пока здесь стояло округление,
-    // краска приезжала в QML на ступень гуще виджетной — см. сторож
+    // ⚠️Alpha 0.85 → 0xd8, NOT 0xd9: Qt's style sheet parser truncates the
+    // fraction (0.85 * 255 = 216.75 → 216). While rounding stood here, the paint
+    // arrived in QML one step denser than the widget one — see the guard
     // `доля_прозрачности_усекается_как_у_разбора_qss`.
     assert_eq!(css_color_to_qml("rgba(59,130,246,0.85)"), "#d83b82f6");
     assert_eq!(css_color_to_qml("rgba(127,127,127,0.14)"), "#237f7f7f");
-    // Полностью непрозрачный — альфа ff.
+    // Fully opaque — alpha ff.
     assert_eq!(css_color_to_qml("rgba(234,179,8,1.0)"), "#ffeab308");
-    // Без альфы.
+    // Without alpha.
     assert_eq!(css_color_to_qml("rgb(34,197,94)"), "#ff22c55e");
-    // Пробелы в записи законны.
+    // Spaces in the notation are legitimate.
     assert_eq!(css_color_to_qml("rgba( 0, 0, 0, 0.45 )"), "#72000000");
-    // Что QML понимает сам — не трогаем.
+    // What QML understands by itself — we leave alone.
     for as_is in ["#1a1a1a", "white", "transparent", ""] {
         assert_eq!(css_color_to_qml(as_is), as_is);
     }
-    // Мусор возвращается как есть: выдумывать цвет вместо ошибки нельзя.
+    // Garbage is returned as is: inventing a colour instead of an error is not allowed.
     assert_eq!(css_color_to_qml("rgba(1,2)"), "rgba(1,2)");
     assert_eq!(css_color_to_qml("rgba(1,2,300,0.5)"), "rgba(1,2,300,0.5)");
 }
 
-/// Все краски вкладки «Steam», уходящие в QML, обязаны переводиться.
+/// All paints of the «Steam» tab that go into QML must be translated.
 #[test]
 fn краски_steam_переводятся_для_qml() {
     use rexon_core::qt_steam as qs;
@@ -469,19 +472,20 @@ fn краски_steam_переводятся_для_qml() {
 }
 
 // ============================================================================
-// Поверхности скина для QML: краска приходит ГОТОВОЙ, а не долей
+// Skin surfaces for QML: the paint arrives READY, not as a fraction
 // ============================================================================
 
-/// Разбор доли прозрачности УСЕКАЕТ, как это делает разбор таблиц стилей Qt.
+/// Parsing the opacity fraction TRUNCATES, as Qt's style sheet parser does.
 ///
-/// ⛔ЗАЧЕМ СТОРОЖ. Виджетная часть — эталон, а её краски Qt получает из
-/// таблицы стилей, где долю усекает: опыт 04.09 на фоне `#1b2838` (доля
-/// против целой альфы «вниз» и «вверх») дал для 0.85 краску альфы 216, для
-/// 0.45 — 114, для 0.14 — 35, для 0.25 — 63, для 0.03 — 7, для 0.12 — 30.
-/// Пока переводчик округлял, КАЖДАЯ полупрозрачная краска приезжала в QML
-/// на ступень гуще виджетной, то есть на тёмном фоне — на ступень светлее.
-/// Порог стенда (24 уровня) такое расхождение не показывал: класс ловили
-/// поимённо дважды (2916fcc, 5ac5d42), не видя общего корня.
+/// ⛔WHY THE GUARD. The widget part is the reference, and Qt gets its paints
+/// from a style sheet, where the fraction is truncated: the experiment of
+/// 04.09 on a `#1b2838` background (a fraction against an integer alpha
+/// «down» and «up») gave for 0.85 a paint of alpha 216, for 0.45 — 114, for
+/// 0.14 — 35, for 0.25 — 63, for 0.03 — 7, for 0.12 — 30. While the
+/// translator rounded, EVERY semi-transparent paint arrived in QML one step
+/// denser than the widget one, i.e. on a dark background one step lighter.
+/// The stand threshold (24 levels) did not show such a divergence: the class
+/// was caught by name twice (2916fcc, 5ac5d42) without seeing the common root.
 #[test]
 fn доля_прозрачности_усекается_как_у_разбора_qss() {
     use rexon_core::ui_base::{css_color_to_qml, parse_css_rgba};
@@ -507,32 +511,33 @@ fn доля_прозрачности_усекается_как_у_разбора
     }
 }
 
-/// Накладка, положенная на краску, даёт то же, что рисует Qt на экране.
+/// An overlay laid on a paint gives the same as Qt draws on screen.
 #[test]
 fn накладка_смешивается_как_на_экране() {
     use rexon_core::ui_base::{blend_css_over, CARD_FILL_DARK};
 
-    // Замер 04.09: белая накладка на `#1b2838` даёт у виджетов (36,48,64)
-    // при доле 0.04, (54,65,79) при 0.12 и (58,70,83) при 0.14.
+    // Measurement of 04.09: a white overlay on `#1b2838` gives for widgets
+    // (36,48,64) at fraction 0.04, (54,65,79) at 0.12 and (58,70,83) at 0.14.
     assert_eq!(blend_css_over("#1b2838", CARD_FILL_DARK), "#243040");
     assert_eq!(blend_css_over("#1b2838", "rgba(255,255,255,0.12)"), "#36414f");
     assert_eq!(blend_css_over("#1b2838", "rgba(255,255,255,0.14)"), "#3a4653");
-    // Непрозрачная накладка перекрывает основание целиком.
+    // An opaque overlay covers the base entirely.
     assert_eq!(blend_css_over("#1b2838", "rgba(102,192,244,1.0)"), "#66c0f4");
-    // Разобрать нечего — запись возвращается как есть.
+    // Nothing to parse — the notation is returned as is.
     assert_eq!(blend_css_over("#1b2838", "white"), "white");
 }
 
-/// ⛔СТОРОЖ КЛАССА. Любая ПОВЕРХНОСТЬ скина, отдаваемая в QML, обязана
-/// приходить ГОТОВОЙ КРАСКОЙ, а не долей и не записью QSS.
+/// ⛔CLASS GUARD. Any skin SURFACE given to QML must arrive as a READY PAINT,
+/// not as a fraction and not as QSS notation.
 ///
-/// ЗАЧЕМ. Разметка QML не умеет ни ролей палитры Qt, ни каскада таблиц
-/// стилей, и страницы выбирали похожий на глаз токен: поле ввода красилось
-/// `bg_card` (30,45,61) там, где Qt красит роль `Base` (22,32,45), а
-/// карточка — тем же `bg_card` там, где таблица стилей виджетов кладёт
-/// накладку 0.04 на фон страницы (36,48,64). Обе краски теперь собирает
-/// ядро целиком. Сторож следит, чтобы поверхность не вернулась долей или
-/// записью `rgba(...)`: и то и другое QML читает по-своему.
+/// WHY. QML markup knows neither Qt palette roles nor the style sheet cascade,
+/// and the pages picked a token that looked similar to the eye: the input
+/// field was painted `bg_card` (30,45,61) where Qt paints the `Base` role
+/// (22,32,45), and the card — with the same `bg_card` where the widget style
+/// sheet lays a 0.04 overlay on the page background (36,48,64). Both paints
+/// are now built entirely by the core. The guard makes sure the surface does
+/// not come back as a fraction or as `rgba(...)` notation: QML reads both in
+/// its own way.
 #[test]
 fn поверхности_скина_приходят_в_qml_готовой_краской() {
     use rexon_core::ui_base::{parse_hex, qml_palette, skin_surface_colors, SKINS};
@@ -551,7 +556,7 @@ fn поверхности_скина_приходят_в_qml_готовой_кр
                 skin.id
             );
         }
-        // Палитра страницы обязана нести поверхности рядом с токенами.
+        // The page palette must carry the surfaces next to the tokens.
         let pal = qml_palette(skin.id);
         for (key, value) in &surfaces {
             assert_eq!(pal.get(key), Some(value), "{key} потерян в палитре QML");
@@ -559,20 +564,21 @@ fn поверхности_скина_приходят_в_qml_готовой_кр
     }
 }
 
-/// Поверхность поля — это РОЛЬ `Base` скина, та же, которой Qt красит
-/// `QLineEdit` и `QComboBox` у виджетной части.
+/// The field surface is the skin's `Base` ROLE, the same one Qt paints
+/// `QLineEdit` and `QComboBox` with in the widget part.
 ///
-/// Замер 04.09 (опыт на живой Qt): `QLineEdit` с ролью `Base` `#16202d`
-/// рисует (22,32,45) — ровно то, что снял стенд с виджетной вкладки
-/// «Расширения»; заливка `bg_card` `#1e2d3d` в сцене QML — (30,45,61),
-/// ровно то, что стенд снял с QML-вкладки на 37 585 точках поля поиска.
+/// Measurement of 04.09 (experiment on live Qt): a `QLineEdit` with the
+/// `Base` role `#16202d` draws (22,32,45) — exactly what the stand captured
+/// from the widget «Extensions» tab; a `bg_card` `#1e2d3d` fill in a QML scene
+/// gives (30,45,61), exactly what the stand captured from the QML tab on
+/// 37 585 points of the search field.
 #[test]
 fn поверхность_поля_равна_роли_base() {
     use rexon_core::ui_base::{skin_role_color, skin_surface_colors, SKINS};
 
     for skin in SKINS {
         let Some(base) = skin_role_color(skin.id, "Base") else {
-            continue; // системный скин: роли остаются системными
+            continue; // system skin: roles stay system ones
         };
         assert_eq!(
             skin_surface_colors(skin.id).get("surface_field").map(String::as_str),
@@ -585,7 +591,7 @@ fn поверхность_поля_равна_роли_base() {
         skin_surface_colors("steam_dark").get("surface_field").map(String::as_str),
         Some("#16202d")
     );
-    // Кнопка и нередактируемый выпадающий список — другая роль, `Button`.
+    // A button and a non-editable drop-down list — another role, `Button`.
     for skin in SKINS {
         let Some(button) = skin_role_color(skin.id, "Button") else {
             continue;
@@ -603,15 +609,16 @@ fn поверхность_поля_равна_роли_base() {
     );
 }
 
-/// Обводка кнопки и поля — накладка стиля Qt, а не роль палитры.
+/// The outline of a button and a field is a Qt style overlay, not a palette role.
 ///
-/// ⚠️ ЧИСЛА СНЯТЫ С ЖИВОЙ Qt, а не выведены (замер 05.09, скин steam_dark):
-/// кнопка «Быстрых пар» «Сравнения» залита (42,64,85) ролью `Button` и
-/// обведена (85,102,119); поле поиска «Расширений» залито (22,32,45) ролью
-/// `Base`, а обведено (73,83,96) — накладкой поверх ФОНА страницы
-/// (27,40,56), куда заливка поля не заходит. Пока разметка QML брала на обе
-/// рамки токен `border` (42,64,85), поле расходилось с оригиналом на 31
-/// уровень, а у кнопки рамки не было вовсе.
+/// ⚠️ THE NUMBERS WERE TAKEN FROM LIVE Qt, not derived (measurement of 05.09,
+/// skin steam_dark): the «Quick pairs» button of «Compare» is filled
+/// (42,64,85) by the `Button` role and outlined (85,102,119); the
+/// «Extensions» search field is filled (22,32,45) by the `Base` role and
+/// outlined (73,83,96) — with an overlay over the page BACKGROUND (27,40,56),
+/// where the field fill does not reach. While the QML markup took the
+/// `border` token (42,64,85) for both frames, the field diverged from the
+/// original by 31 levels, and the button had no frame at all.
 #[test]
 fn control_outline_is_style_overlay() {
     use rexon_core::ui_base::{
@@ -630,9 +637,9 @@ fn control_outline_is_style_overlay() {
         "обводка поля steam_dark разошлась с замером (73,83,96)"
     );
 
-    // У каждого скина обводка собрана ТОЙ ЖЕ накладкой: кнопка — поверх
-    // своей заливки, поле — поверх фона страницы. Какая из двух накладок
-    // (светлая или тёмная) — решает светлота фона, поэтому годится любая.
+    // For every skin the outline is built with THE SAME overlay: the button —
+    // over its fill, the field — over the page background. Which of the two
+    // overlays (light or dark) is decided by the background lightness, so any works.
     for skin in SKINS {
         let surfaces = skin_surface_colors(skin.id);
         let page = surfaces.get("surface_page").cloned().unwrap_or_default();
@@ -660,8 +667,8 @@ fn control_outline_is_style_overlay() {
     }
 }
 
-/// Поверхность карточки собрана ТОЙ ЖЕ накладкой, что стоит в таблице
-/// стилей виджетной карточки, — иначе две краски разойдутся молча.
+/// The card surface is built with THE SAME overlay as in the widget card's
+/// style sheet — otherwise the two paints would silently diverge.
 #[test]
 fn поверхность_карточки_равна_накладке_виджетов() {
     use rexon_core::qt_compare;
@@ -670,21 +677,21 @@ fn поверхность_карточки_равна_накладке_видж�
         blend_css_over, skin_colors, skin_surface_colors, CARD_FILL_DARK, CARD_FILL_LIGHT,
     };
 
-    // Литерал накладки у витрины Steam (а через неё и у «Расширений») —
-    // тот же, что в поверхности.
+    // The overlay literal of the Steam showcase (and through it of «Extensions»)
+    // is the same as in the surface.
     assert_eq!(qt_steam::card_colors(false, true).0, CARD_FILL_DARK);
     assert_eq!(qt_steam::card_colors(false, false).0, CARD_FILL_LIGHT);
-    // И у «Сравнения»: его таблица стилей карточки набрана тем же.
+    // And for «Compare»: its card style sheet is written with the same one.
     assert!(qt_compare::card_qss("deCard", true).contains(CARD_FILL_DARK));
     assert!(qt_compare::card_qss("deCard", false).contains(CARD_FILL_LIGHT));
 
-    // Стандартный скин: накладка 0.04 на `#1b2838` — это (36,48,64), то
-    // самое, что стенд снял с виджетной карточки «Сравнения».
+    // Standard skin: a 0.04 overlay on `#1b2838` is (36,48,64), exactly what the
+    // stand captured from the widget card of «Compare».
     assert_eq!(
         skin_surface_colors("steam_dark").get("surface_card").map(String::as_str),
         Some("#243040")
     );
-    // Светлый скин берёт светлую накладку — иначе карточка «светлее белого».
+    // The light skin takes the light overlay — otherwise the card is «lighter than white».
     let light_page = skin_colors("light")["bg_primary"].clone();
     assert_eq!(
         skin_surface_colors("light").get("surface_card").map(String::as_str),
@@ -692,13 +699,13 @@ fn поверхность_карточки_равна_накладке_видж�
     );
 }
 
-/// Неактивный текст QML красится ТОЙ ЖЕ краской, что пишет в палитру Qt
-/// план скина, — иначе выключенная кнопка на двух версиях гаснет по-разному.
+/// Disabled QML text is painted with THE SAME paint the skin plan writes into
+/// the Qt palette — otherwise a disabled button fades differently in the two versions.
 ///
-/// ЗАЧЕМ. Разметка гасила выключенную кнопку прозрачностью 0.45 на всю
-/// кнопку: у виджетов заливка и рамка остаются прежними, а приглушается одна
-/// надпись. Замер 05.09 на «Расширениях» (кнопка «Steam Workshop» блока
-/// «Установить»): 10 108 точек, (36,48,64) против (31,43,59).
+/// WHY. The markup faded a disabled button with 0.45 opacity on the whole
+/// button: for widgets the fill and frame stay the same, and only the label
+/// is dimmed. Measurement of 05.09 on «Extensions» (the «Steam Workshop»
+/// button of the «Install» block): 10 108 points, (36,48,64) versus (31,43,59).
 #[test]
 fn неактивный_текст_qml_равен_группе_disabled_палитры() {
     use rexon_core::ui_base::{
@@ -709,7 +716,7 @@ fn неактивный_текст_qml_равен_группе_disabled_пали
         let value = disabled_text_color(skin.id);
         assert_eq!(value.len(), 9, "скин {}: {value} не #aarrggbb", skin.id);
 
-        // Ровно то присваивание, которое исполнитель кладёт в QPalette.
+        // Exactly the assignment the executor puts into QPalette.
         let plan = palette_plan(skin.id, true);
         let assign = plan
             .iter()
@@ -725,7 +732,7 @@ fn неактивный_текст_qml_равен_группе_disabled_пали
         );
         assert_eq!(a, DISABLED_TEXT_ALPHA, "скин {}", skin.id);
 
-        // Палитра страницы обязана её нести: разметке брать больше неоткуда.
+        // The page palette must carry it: the markup has nowhere else to take it from.
         assert_eq!(
             qml_palette(skin.id).get("text_disabled"),
             Some(&value),
@@ -734,8 +741,8 @@ fn неактивный_текст_qml_равен_группе_disabled_пали
         );
     }
 
-    // Стандартный скин: белый с прозрачностью 140 — та же ступень, что даёт
-    // усечение доли 0.55 в таблицах стилей вкладок.
+    // Standard skin: white with opacity 140 — the same step that truncating the
+    // 0.55 fraction gives in the tab style sheets.
     assert_eq!(disabled_text_color("steam_dark"), "#8cffffff");
 }
 
@@ -743,7 +750,7 @@ fn has_cyrillic(text: &str) -> bool {
     text.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
 }
 
-/// Сырые ошибки сети на все шесть причин — с именем каталога и без.
+/// Raw network errors for all six reasons — with and without a directory name.
 const NETWORK_SAMPLES: &[&str] = &[
     "<urlopen error timed out>",
     "Name or service not known",
@@ -753,9 +760,9 @@ const NETWORK_SAMPLES: &[&str] = &[
     "нечто непонятное",
 ];
 
-/// Скины в «Настройках» по-английски: подписи и описания переведены,
-/// признаки (`id`) — те же, что пишет настройка `ui_skin`, так что выбор,
-/// сохранённый на русском интерфейсе, узнаётся и на английском.
+/// Skins in «Settings» in English: labels and descriptions are translated, the
+/// identifiers (`id`) are the same as the `ui_skin` setting writes, so a choice
+/// saved with the Russian interface is recognised with the English one too.
 #[test]
 fn english_skins_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -792,8 +799,8 @@ fn english_skins_have_no_russian() {
     );
 }
 
-/// Подписи скинов и сетевые ошибки по-русски — дословно как было до
-/// перевода (падежи слова «каталог» — целыми фразами).
+/// Skin labels and network errors in Russian — word for word as before the
+/// translation (the grammatical cases of the word «directory» as whole phrases).
 #[test]
 fn russian_skins_and_network_errors_read_as_before() {
     let _lang = i18n_pin::ru();
@@ -853,11 +860,11 @@ fn russian_skins_and_network_errors_read_as_before() {
     }
 }
 
-/// Ключи палитры, которые читает общий ползунок `RexonSlider`, обязаны быть
-/// в ОБЩЕЙ палитре каждого скина: ползунок стоит и в разделах «Оформления»
-/// (Conky, «Эффекты экрана», «Анимация»), чья страница дописывает в палитру
-/// только своё. 08.11.2026 ключа `track` там не было — «Unable to assign
-/// [undefined] to QColor» при открытии вкладки.
+/// Palette keys read by the shared `RexonSlider` must be in the SHARED palette
+/// of every skin: the slider also sits in «Appearance» sections (Conky,
+/// «Screen Effects», «Animation») whose page adds only its own entries to the
+/// palette. On 08.11.2026 the `track` key was missing there — «Unable to
+/// assign [undefined] to QColor» when opening the tab.
 #[test]
 fn slider_keys_are_in_every_skin_palette() {
     let slider = include_str!("../../rexon-gui/qml/RexonSlider.qml");
@@ -879,16 +886,17 @@ fn slider_keys_are_in_every_skin_palette() {
     }
 }
 
-/// Подкрутка к элементу с фокусом не срабатывает на возврат активности окна.
+/// Scrolling to the focused element does not fire on the window regaining activity.
 ///
-/// ⛔ЗАЧЕМ СТОРОЖ. Дефект 08.11.2026 (MATE X11, вкладка «Настройки»):
-/// прокрутил страницу колесом вниз, нажал Print — mate-screenshot открыл
-/// свой диалог, окно Rexon потеряло активность, а по закрытии диалога Qt
-/// вернул фокус тому же элементу («Язык» наверху). Его
-/// `onActiveFocusChanged` звал `ensureVisible`, и страница прыгала наверх.
-/// Возврат фокуса окном приходит с причиной `Qt.ActiveWindowFocusReason` —
-/// её каждая `ensureVisible` обязана пропускать. Проверка общая, по всем
-/// страницам: следующая вкладка с той же подкруткой попадёт сюда сама.
+/// ⛔WHY THE GUARD. Defect of 08.11.2026 (MATE X11, «Settings» tab): scrolled
+/// the page down with the wheel, pressed Print — mate-screenshot opened its
+/// dialog, the Rexon window lost activity, and when the dialog closed Qt
+/// returned focus to the same element («Language» at the top). Its
+/// `onActiveFocusChanged` called `ensureVisible`, and the page jumped to the
+/// top. Focus returned by the window comes with the reason
+/// `Qt.ActiveWindowFocusReason` — every `ensureVisible` must skip it. The
+/// check is general, over all pages: the next tab with the same scrolling
+/// will fall under it by itself.
 #[test]
 fn qml_ensure_visible_ignores_window_activation() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../rexon-gui/qml");
@@ -902,7 +910,7 @@ fn qml_ensure_visible_ignores_window_activation() {
         let src = std::fs::read_to_string(&path).expect("QML не читается");
         for (at, _) in src.match_indices("function ensureVisible(") {
             checked += 1;
-            // Тело функции — до первой закрывающей скобки на уровне функции.
+            // The function body — up to the first closing brace at the function level.
             let body = &src[at..];
             let end = body.find("\n    }\n").unwrap_or(body.len());
             assert!(

@@ -1,35 +1,37 @@
-//! Порт `rexon/qt_compare/window.py` — вкладка «Сравнение рабочих столов».
+//! Port of `rexon/qt_compare/window.py` — the "Desktop comparison" tab.
 //!
-//! Вкладка целиком состоит из ДАННЫХ И РЕШЕНИЙ: какие пары предложить в
-//! шапке, как прочитать таблицу, что показать в раскрытой карточке стола,
-//! какого цвета полоса памяти, кому что порекомендовать, что написано в
-//! таблице «X против Y». Ни один из этих вопросов не требует виджета, поэтому
-//! отвечает на них ядро, а Qt-сторона осталась постройкой карточек.
+//! The tab consists entirely of DATA AND DECISIONS: which pairs to offer in the
+//! header, how to read the table, what to show in an expanded desktop card,
+//! what color the memory bar is, what to recommend to whom, what the "X vs Y"
+//! table says. None of these questions needs a widget, so the core answers
+//! them, and the Qt side is left with building the cards.
 //!
-//! Сами ТТХ рабочих столов НЕ живут здесь: они уже есть в
-//! [`crate::system::DE_META`] (память, нагрузка, тулкит, композитор, панель,
-//! файловый менеджер, терминал, звёзды) — модуль их только читает и
-//! оформляет. Второй копии таблицы сравнения в проекте нет и заводить её
-//! нельзя: расхождение чисел на витрине покупатель заметит раньше нас.
+//! The desktops' specifications themselves do NOT live here: they already exist
+//! in [`crate::system::DE_META`] (memory, load, toolkit, compositor, panel, file
+//! manager, terminal, stars) — the module only reads and formats them. There is
+//! no second copy of the comparison table in the project, and none may be
+//! created: the buyer would notice diverging numbers in the storefront before
+//! we did.
 //!
-//! Значки рабочих столов ([`DE_ICONS`]) — тоже единый источник: до переноса
-//! одна и та же таблица лежала ДВУМЯ копиями, в `qt_compare/window.py` и в
-//! `qt_desktops/window.py` (правило #12). Теперь оба окна спрашивают ядро.
+//! Desktop icons ([`DE_ICONS`]) are also a single source: before the port the
+//! same table existed in TWO copies, in `qt_compare/window.py` and in
+//! `qt_desktops/window.py` (rule #12). Now both windows ask the core.
 //!
-//! ⚠️ Починки оригинала (правило #16 — баги при порте чиним, не
-//! консервируем), каждая помечена `Починка:` по месту:
-//!   1. значение «X11 (Wayland WIP)» красилось зелёным, как настоящий
-//!      Wayland: проверка была на подстроку «Wayland» без оглядки на «WIP».
-//!      Покупателю Budgie и LXQt показывались готовыми к Wayland;
-//!   2. подсветка строки под курсором и подложка полосы памяти были
-//!      прибиты к `rgba(0,0,0,…)` при любой теме — на тёмной (штатной для
-//!      Rexon) это ход в неверную сторону, правило #9 требует пары цветов;
-//!   3. в диалоге «X против Y» кнопка установки ПЕРВОГО стола была
-//!      выделенной, а второго — обычной: одинаковые по смыслу кнопки
-//!      выглядели по-разному.
+//! Warning — fixes to the original (rule #16 — bugs are fixed during the port,
+//! not preserved), each marked `Fix:` in place:
+//!   1. the value "X11 (Wayland WIP)" was colored green like real Wayland: the
+//!      check looked for the substring "Wayland" without regard for "WIP". The
+//!      buyer was shown Budgie and LXQt as ready for Wayland;
+//!   2. the highlight of the row under the cursor and the memory bar's
+//!      background were hard-wired to `rgba(0,0,0,…)` in any theme — on a dark
+//!      one (Rexon's default) this goes the wrong way; rule #9 requires a pair
+//!      of colors;
+//!   3. in the "X vs Y" dialog the install button of the FIRST desktop was
+//!      highlighted while the second one was ordinary: buttons with the same
+//!      meaning looked different.
 //!
-//! Сверка — `rust/rexon-core/tests/qt_compare_parity.rs` по снимку живого
-//! Python-пути (`tests/golden/qt_compare_cases.json`).
+//! The check is `rust/rexon-core/tests/qt_compare_parity.rs` against a snapshot
+//! of the live Python path (`tests/golden/qt_compare_cases.json`).
 
 use serde::Serialize;
 
@@ -37,14 +39,15 @@ use crate::i18n::{n_, tr, trc, trf};
 use crate::system::{CpuLoad, DeMeta, DE_META};
 
 // ============================================================================
-// Значки рабочих столов
+// Desktop icons
 // ============================================================================
 
-/// Значок-эмодзи каждого рабочего стола: список слева во «Рабочих столах»,
-/// шапка карточки в «Сравнении».
+/// The emoji icon of each desktop: the list on the left in "Desktops", the card
+/// header in "Comparison".
 ///
-/// `cinnamon` — псевдоним `cinnamon-mint`: под этим именем стол приходит из
-/// переменных сессии, тогда как в базе пакетов он зовётся полным именем.
+/// `cinnamon` is an alias of `cinnamon-mint`: under this name the desktop
+/// arrives from the session variables, while in the package database it is
+/// called by its full name.
 pub const DE_ICONS: &[(&str, &str)] = &[
     ("cinnamon-mint", "🍃"),
     ("cinnamon", "🍃"),
@@ -64,10 +67,10 @@ pub const DE_ICONS: &[(&str, &str)] = &[
     ("wayfire", "🔥"),
 ];
 
-/// Значок неизвестного рабочего стола.
+/// Icon of an unknown desktop.
 pub const DE_ICON_FALLBACK: &str = "🖥️";
 
-/// Значок стола по идентификатору.
+/// Icon of a desktop by its identifier.
 pub fn de_icon(de_id: &str) -> &'static str {
     DE_ICONS
         .iter()
@@ -81,11 +84,12 @@ fn meta(de_id: &str) -> Option<&'static DeMeta> {
 }
 
 // ============================================================================
-// Неизменные подписи и размеры вкладки
+// Fixed labels and sizes of the tab
 // ============================================================================
 
-// Подписи — функции, а не константы: язык интерфейса выбирается при запуске,
-// и функцию, в отличие от константы, нельзя забыть перевести.
+// Labels are functions rather than constants: the interface language is chosen
+// at start-up, and a function, unlike a constant, cannot be forgotten when
+// translating.
 
 pub fn window_title() -> String {
     tr("Rexon — Desktop Comparison")
@@ -119,11 +123,12 @@ pub fn rec_header() -> String {
 }
 pub const SECTION_POINT_SIZE: i32 = 14;
 
-/// Быстрые пары в шапке: `(подпись кнопки, слева, справа)`.
+/// Quick pairs in the header: `(button label, left, right)`.
 ///
-/// Набор продуктовый: самые частые вопросы покупателя, пришедшего с Windows
-/// («что легче», «что привычнее», «что из тайлового»). Что идентификаторы
-/// существуют в базе столов — проверяет `qt_compare_parity.rs`.
+/// The set is a product decision: the most frequent questions of a buyer coming
+/// from Windows ("which is lighter", "which is more familiar", "which tiling
+/// one"). That the identifiers exist in the desktop database is checked by
+/// `qt_compare_parity.rs`.
 pub const QUICK_PAIRS: &[(&str, &str, &str)] = &[
     ("XFCE ↔ KDE", "xfce", "kde"),
     ("GNOME ↔ Cinnamon", "gnome", "cinnamon-mint"),
@@ -131,9 +136,10 @@ pub const QUICK_PAIRS: &[(&str, &str, &str)] = &[
     ("Hyprland ↔ Sway", "hyprland", "sway"),
 ];
 
-/// Быстрые рекомендации: `(кому, чем обосновано, какой стол предложить)`.
+/// Quick recommendations: `(for whom, the reasoning, which desktop to suggest)`.
 ///
-/// Тексты — `msgid` каталога; переводит их место показа ([`rec_rows`]).
+/// The texts are catalog `msgid`s; the place that shows them translates them
+/// ([`rec_rows`]).
 pub const RECOMMENDATIONS: &[(&str, &str, &str)] = &[
     (
         n_("🎮 For gamers"),
@@ -198,17 +204,16 @@ pub const RECOMMENDATIONS: &[(&str, &str, &str)] = &[
 ];
 
 // ============================================================================
-// Оформление карточек
+// Card styling
 // ============================================================================
 
-/// Стиль карточки-рамки по её `objectName`, с оглядкой на тему.
+/// Style of a frame card by its `objectName`, taking the theme into account.
 ///
-/// Сброс рамки и подложки нужен и `QLabel`, и вложенным `QWidget`: тема Qt
-/// иначе рисует серые рамки внутри карточки.
+/// Resetting the frame and background is needed for both `QLabel` and nested
+/// `QWidget`s: otherwise the Qt theme draws gray frames inside the card.
 pub fn card_qss(object_name: &str, dark: bool) -> String {
-    // Заливка — общая поверхность продукта (`ui_base::CARD_FILL_*`), см.
-    // `qt_steam::card_colors`: QML кладёт ту же краску готовой
-    // (`surface_card`).
+    // The fill is the product's shared surface (`ui_base::CARD_FILL_*`), see
+    // `qt_steam::card_colors`: QML gets the same paint ready-made (`surface_card`).
     let (bg, border) = if dark {
         (crate::ui_base::CARD_FILL_DARK, "rgba(255,255,255,0.12)")
     } else {
@@ -223,11 +228,11 @@ QFrame#{name} QWidget {{ border: none; background: transparent; }}",
     )
 }
 
-/// Стиль кликабельной шапки карточки.
+/// Style of the clickable card header.
 ///
-/// Починка: подсветка под курсором была `rgba(0,0,0,0.04)` при ЛЮБОЙ теме —
-/// на тёмной строка под курсором темнела вместо того, чтобы подсвечиваться
-/// (правило #9: цвет выбирается парой).
+/// Fix: the hover highlight was `rgba(0,0,0,0.04)` in ANY theme — on a dark one
+/// the row under the cursor got darker instead of lighting up (rule #9: a color
+/// is chosen as a pair).
 pub fn card_header_qss(dark: bool) -> String {
     let hover = if dark {
         "rgba(255,255,255,0.06)"
@@ -241,35 +246,36 @@ QPushButton:hover {{ background-color: {hover}; }}"
     )
 }
 
-/// Стиль выделенной кнопки установки (синяя, с подсветкой под курсором).
+/// Style of the highlighted install button (blue, with a hover highlight).
 pub const INSTALL_BUTTON_QSS: &str = "QPushButton { background-color: rgba(59,130,246,0.3); \
 padding: 6px 14px; border-radius: 4px; font-weight: bold; }\
 QPushButton:hover { background-color: rgba(59,130,246,0.45); }";
 
-/// Те же краски кнопки установки голым цветом `#AARRGGBB` — для QML, где
-/// QSS не работает: подложка и подложка под курсором. Второе число в
-/// разметке развело бы две вкладки на одних данных; согласие с QSS выше
-/// сторожит `qt_compare_parity::widget_qss_and_qml_colors_agree`.
+/// The same install button paints as a bare `#AARRGGBB` color — for QML, where
+/// QSS does not work: the background and the hover background. A second number
+/// in the markup would split two tabs on the same data; agreement with the QSS
+/// above is guarded by `qt_compare_parity::widget_qss_and_qml_colors_agree`.
 pub const INSTALL_BUTTON_COLOR: &str = "#4d3b82f6";
 pub const INSTALL_BUTTON_HOVER_COLOR: &str = "#733b82f6";
-/// Скругление той же кнопки (`border-radius: 4px` в QSS).
+/// Corner radius of the same button (`border-radius: 4px` in QSS).
 pub const INSTALL_BUTTON_RADIUS: i32 = 4;
 
 // ============================================================================
-// Полоса памяти
+// Memory bar
 // ============================================================================
 
-/// Верх шкалы памяти: столов тяжелее гигабайта с небольшим у нас нет, а
-/// фиксированный верх позволяет сравнивать полосы разных карточек на глаз.
+/// Top of the memory scale: we have no desktops heavier than a gigabyte and a
+/// bit, and a fixed top makes it possible to compare bars of different cards by
+/// eye.
 pub const RAM_SCALE_MAX: u32 = 1200;
-/// Высота полосы в точках.
+/// Bar height in points.
 pub const RAM_BAR_HEIGHT: u32 = 8;
 
-/// Порог «зелёная → жёлтая» и «жёлтая → красная» в долях шкалы.
+/// The "green → yellow" and "yellow → red" thresholds as fractions of the scale.
 const RAM_GREEN_UPTO: f64 = 0.35;
 const RAM_YELLOW_UPTO: f64 = 0.65;
 
-/// Полоса потребления памяти: что выставить в виджет.
+/// Memory consumption bar: what to set on the widget.
 #[derive(Debug, Clone, Serialize)]
 pub struct RamBar {
     pub max: u32,
@@ -280,8 +286,7 @@ pub struct RamBar {
     pub qss: String,
 }
 
-/// Цвет полосы по потреблению памяти: зелёный — легко, жёлтый — средне,
-/// красный — тяжело.
+/// Bar color by memory consumption: green — light, yellow — medium, red — heavy.
 pub fn ram_color(ram_mb: u32) -> &'static str {
     let frac = (ram_mb as f64 / RAM_SCALE_MAX as f64).min(1.0);
     if frac < RAM_GREEN_UPTO {
@@ -293,21 +298,22 @@ pub fn ram_color(ram_mb: u32) -> &'static str {
     }
 }
 
-/// Канавка полосы памяти строкой QSS — для виджетной вкладки.
+/// The memory bar groove as a QSS string — for the widget tab.
 const RAM_TRACK_QSS_DARK: &str = "rgba(255,255,255,0.10)";
 const RAM_TRACK_QSS_LIGHT: &str = "rgba(0,0,0,0.1)";
 
-/// Та же канавка голым цветом `#AARRGGBB` — для QML: QSS там не работает,
-/// а второе число в разметке развело бы две вкладки на одних данных.
-/// Согласие обёрток сторожит `qt_compare_parity::widget_qss_and_qml_colors_agree`.
+/// The same groove as a bare `#AARRGGBB` color — for QML: QSS does not work
+/// there, and a second number in the markup would split two tabs on the same
+/// data. Agreement of the wrappers is guarded by
+/// `qt_compare_parity::widget_qss_and_qml_colors_agree`.
 pub fn ram_track_color(dark: bool) -> &'static str {
     if dark { "#1affffff" } else { "#1a000000" }
 }
 
-/// Полоса памяти целиком.
+/// The whole memory bar.
 ///
-/// Починка: подложка полосы была `rgba(0,0,0,0.1)` при любой теме (правило
-/// #9) — на тёмной канавка сливалась с фоном карточки.
+/// Fix: the bar background was `rgba(0,0,0,0.1)` in any theme (rule #9) — on a
+/// dark one the groove merged with the card background.
 pub fn ram_bar(ram_mb: u32, dark: bool) -> RamBar {
     let color = ram_color(ram_mb);
     let track = if dark {
@@ -329,10 +335,10 @@ QProgressBar::chunk {{ background: {color}; border-radius: 4px; }}"
 }
 
 // ============================================================================
-// Звёзды и цвет значения ТТХ
+// Stars and the color of a specification value
 // ============================================================================
 
-/// Оценка из пяти: `n` заполненных значков плюс пустые звёзды до пяти.
+/// A rating out of five: `n` filled icons plus empty stars up to five.
 pub fn stars(n: u8, emoji: &str) -> String {
     let filled = n.min(5) as usize;
     let mut s = emoji.repeat(filled);
@@ -340,18 +346,19 @@ pub fn stars(n: u8, emoji: &str) -> String {
     s
 }
 
-/// «Хорошие» значения ТТХ — их подсвечиваем зелёным.
+/// "Good" specification values — we highlight them in green.
 ///
-/// Здесь только имена технологий: они не переводятся, поэтому сравнивать
-/// их текст безопасно. Нагрузка на процессор — переводимая подпись, и её
-/// цвет решается по признаку ([`cpu_load_color`]), а не по тексту: раньше
-/// в этом списке стояло «Низкое», и английская подпись осталась бы без цвета.
+/// Only technology names are here: they are not translated, so comparing their
+/// text is safe. CPU load is a translatable label, and its color is decided by
+/// a flag ([`cpu_load_color`]), not by the text: this list used to contain
+/// «Низкое» ("Low"), and the English label would have been left without a
+/// color.
 const GOOD_VALUES: &[&str] = &["Qt6", "GTK4", "iced (Rust)"];
 
 pub const GOOD_COLOR: &str = "#22c55e";
 pub const BAD_COLOR: &str = "#ef4444";
 
-/// Цвет нагрузки на процессор: низкая — зелёная, высокая — красная.
+/// CPU load color: low — green, high — red.
 pub fn cpu_load_color(load: CpuLoad) -> &'static str {
     match load {
         CpuLoad::Low => GOOD_COLOR,
@@ -360,17 +367,17 @@ pub fn cpu_load_color(load: CpuLoad) -> &'static str {
     }
 }
 
-/// Цвет значения-имени (тулкит, сессия, композитор…) в строке ТТХ; пустая
-/// строка — цвет не менять. Нагрузку сюда не подавать — у неё
+/// Color of a name value (toolkit, session, compositor…) in a specification row;
+/// an empty string — do not change the color. Do not pass the load here — it has
 /// [`cpu_load_color`].
 ///
-/// Решение о цвете отделено от способа его нанести: QSS понимает только
-/// QtWidgets, а QML-вкладка (`rexon-gui::compare_page`) красит значение
-/// свойством `color`. Правило #12 — движок один, обёртки разные.
+/// The color decision is separate from the way it is applied: QSS is understood
+/// only by QtWidgets, while the QML tab (`rexon-gui::compare_page`) paints the
+/// value with the `color` property. Rule #12 — one engine, different wrappers.
 ///
-/// Починка: зелёным красилось любое значение со словом «Wayland», включая
-/// «X11 (Wayland WIP)» у Budgie и LXQt — покупателю они выглядели готовыми к
-/// Wayland, хотя сессия там X11, а Wayland в работе.
+/// Fix: any value containing the word "Wayland" was colored green, including
+/// "X11 (Wayland WIP)" for Budgie and LXQt — to the buyer they looked ready for
+/// Wayland, although the session there is X11 and Wayland is in progress.
 pub fn spec_value_color(value: &str) -> &'static str {
     let wayland_ready = value.contains("Wayland") && !value.contains("WIP");
     if GOOD_VALUES.contains(&value) || wayland_ready {
@@ -379,7 +386,7 @@ pub fn spec_value_color(value: &str) -> &'static str {
     ""
 }
 
-/// Стиль по цвету значения для QtWidgets; пустая строка — не менять.
+/// Style by value color for QtWidgets; an empty string — do not change.
 pub fn color_qss(color: &str) -> String {
     match color {
         "" => String::new(),
@@ -387,16 +394,17 @@ pub fn color_qss(color: &str) -> String {
     }
 }
 
-/// Стиль значения-имени в строке ТТХ для QtWidgets; пустая строка — не менять.
+/// Style of a name value in a specification row for QtWidgets; an empty string
+/// — do not change.
 pub fn spec_value_qss(value: &str) -> String {
     color_qss(spec_value_color(value))
 }
 
 // ============================================================================
-// Карточка одного стола
+// Card of one desktop
 // ============================================================================
 
-/// Подписи строк ТТХ — в том порядке, в котором их видит покупатель.
+/// Labels of the specification rows — in the order the buyer sees them.
 const SPEC_LABELS: [&str; 7] = [
     n_("🧰 Toolkit"),
     n_("🖥️ Session"),
@@ -407,49 +415,50 @@ const SPEC_LABELS: [&str; 7] = [
     n_("⚡ CPU load"),
 ];
 
-/// Строка ТТХ: подпись, готовое значение, его цвет и стиль.
+/// A specification row: the label, the ready value, its color and style.
 #[derive(Debug, Clone, Serialize)]
 pub struct SpecRow {
     pub label: String,
     pub value: String,
     pub value_html: String,
-    /// Цвет значения голым `#RRGGBB` (для QML); пусто — не менять.
+    /// Value color as a bare `#RRGGBB` (for QML); empty — do not change.
     pub color: &'static str,
     pub qss: String,
 }
 
-/// Кнопка действия в карточке: установить или переключиться.
+/// The action button in a card: install or switch.
 #[derive(Debug, Clone, Serialize)]
 pub struct CardAction {
     pub de_id: String,
-    /// `"install"` либо `"switch"` — какой сигнал послать.
+    /// `"install"` or `"switch"` — which signal to send.
     pub kind: &'static str,
     pub text: String,
     pub qss: &'static str,
 }
 
-/// Раскрытое тело карточки: всё, что в нём написано и нарисовано.
+/// The expanded card body: everything written and drawn in it.
 #[derive(Debug, Clone, Serialize)]
 pub struct CardBody {
     pub ram_label: String,
     pub ram_bar: RamBar,
-    /// Подписи «Настройка: ⭐…» и «Игры: 🎮…».
+    /// The «Настройка: ⭐…» ("Customization: ⭐…") and «Игры: 🎮…» ("Games: 🎮…")
+    /// labels.
     pub stars_labels: Vec<String>,
     pub specs: Vec<SpecRow>,
     pub description: String,
     pub action: CardAction,
 }
 
-/// Строка-шапка карточки: стрелка, значок, имя, отметка установки и краткие
-/// ТТХ одной строкой.
+/// The card header line: the arrow, the icon, the name, the installed mark and
+/// the short specifications on one line.
 pub fn card_header(de_id: &str, expanded: bool, installed: bool) -> Option<String> {
     let arrow = if expanded { "▼" } else { "▶" };
     Some(format!("{arrow}  {}", card_header_tail(de_id, installed)?))
 }
 
-/// Шапка карточки без стрелки раскрытия. Стрелку ставит страница: свёрнутая
-/// смотрит к концу строки, и при языке справа налево это «◀», а знать о
-/// зеркалировании раскладки ядру неоткуда.
+/// Card header without the expand arrow. The page puts the arrow: a collapsed
+/// one points to the end of the line, and in a right-to-left language that is
+/// "◀", and the core has no way to know about layout mirroring.
 pub fn card_header_tail(de_id: &str, installed: bool) -> Option<String> {
     let m = meta(de_id)?;
     let mark = if installed { "  ✅" } else { "" };
@@ -466,22 +475,22 @@ pub fn card_header_tail(de_id: &str, installed: bool) -> Option<String> {
     ))
 }
 
-/// Объём памяти с единицей: «700 MB» / «700 МБ».
+/// Memory amount with a unit: «700 MB» / «700 МБ».
 fn megabytes(mb: u32) -> String {
     trf("%1 MB", &[&mb])
 }
 
-/// Строки ТТХ одного стола.
+/// Specification rows of one desktop.
 pub fn specs(de_id: &str) -> Vec<SpecRow> {
     let Some(m) = meta(de_id) else {
         return Vec::new();
     };
-    // Имена программ сравниваются как текст, нагрузка — по признаку.
+    // Program names are compared as text, the load by a flag.
     let values: [(String, &'static str); 7] = [
         (m.toolkit.to_string(), spec_value_color(m.toolkit)),
-        // Подпись сеанса — из таблицы вариантов, цвет — по сеансу по
-        // умолчанию: экспериментальный Wayland рядом с X11 — ещё не готовый
-        // Wayland, зелёным не красим (та же мысль, что в починке 1).
+        // The session label comes from the table of variants, the color from the
+        // default session: experimental Wayland next to X11 is not yet ready Wayland,
+        // so it is not colored green (the same idea as in fix 1).
         (m.session_text(), spec_value_color(m.session_type)),
         (m.compositor_text(), spec_value_color(m.compositor)),
         (m.panel_type.to_string(), spec_value_color(m.panel_type)),
@@ -502,8 +511,8 @@ pub fn specs(de_id: &str) -> Vec<SpecRow> {
         .collect()
 }
 
-/// Кнопка действия карточки: стол не стоит — предлагаем установить,
-/// стоит — переключиться.
+/// The card's action button: the desktop is not installed — we offer to install
+/// it; it is installed — to switch to it.
 pub fn card_action(de_id: &str, installed: bool) -> CardAction {
     if installed {
         CardAction {
@@ -522,7 +531,7 @@ pub fn card_action(de_id: &str, installed: bool) -> CardAction {
     }
 }
 
-/// Тело карточки целиком.
+/// The whole card body.
 pub fn card_body(de_id: &str, installed: bool, dark: bool) -> Option<CardBody> {
     let m = meta(de_id)?;
     Some(CardBody {
@@ -539,32 +548,34 @@ pub fn card_body(de_id: &str, installed: bool, dark: bool) -> Option<CardBody> {
 }
 
 // ============================================================================
-// Быстрые рекомендации
+// Quick recommendations
 // ============================================================================
 
-/// Отметка справа в строке рекомендации.
+/// The mark on the right of a recommendation row.
 #[derive(Debug, Clone, Serialize)]
 pub struct RecRow {
     pub label: String,
-    /// Готовая подпись строки — полужирная, как её видит покупатель.
+    /// The ready row label — bold, as the buyer sees it.
     pub label_html: String,
     pub sub: String,
     pub de_id: &'static str,
-    /// `"badge"` — стол уже стоит, `"install"` — предложить установку,
-    /// `"none"` — стол ядру неизвестен (строка остаётся без действия).
+    /// `"badge"` — the desktop is already installed, `"install"` — offer the
+    /// installation, `"none"` — the desktop is unknown to the core (the row stays
+    /// without an action).
     pub mark: &'static str,
     pub text: String,
     pub qss: &'static str,
 }
 
 pub const REC_BADGE_TEXT: &str = "✅";
-/// Цвет отметки «стол уже стоит». Отдельно от QSS по той же причине, что и
-/// [`spec_value_color`]: QML красит свойством, а не таблицей стилей. Что обе
-/// записи не разъехались — сторожит `qt_compare_parity.rs`.
+/// Color of the "desktop already installed" mark. Kept separate from the QSS
+/// for the same reason as [`spec_value_color`]: QML paints with a property, not
+/// a stylesheet. That the two notations have not drifted apart is guarded by
+/// `qt_compare_parity.rs`.
 pub const REC_BADGE_COLOR: &str = "#4ade80";
 pub const REC_BADGE_QSS: &str = "color: #4ade80;";
 
-/// Все строки блока рекомендаций для данного состава установленных столов.
+/// All rows of the recommendations block for the given set of installed desktops.
 pub fn rec_rows(installed: &[String]) -> Vec<RecRow> {
     RECOMMENDATIONS
         .iter()
@@ -591,7 +602,7 @@ pub fn rec_rows(installed: &[String]) -> Vec<RecRow> {
 }
 
 // ============================================================================
-// Диалог «X против Y»
+// The "X vs Y" dialog
 // ============================================================================
 
 pub const PAIR_MIN_SIZE: (u32, u32) = (720, 520);
@@ -600,7 +611,7 @@ pub fn pair_close_text() -> String {
     tr("Close")
 }
 
-/// Кнопка установки в диалоге сравнения.
+/// The install button in the comparison dialog.
 #[derive(Debug, Clone, Serialize)]
 pub struct PairButton {
     pub de_id: String,
@@ -608,12 +619,12 @@ pub struct PairButton {
     pub qss: &'static str,
 }
 
-/// Диалог попарного сравнения целиком.
+/// The whole pairwise comparison dialog.
 #[derive(Debug, Clone, Serialize)]
 pub struct PairView {
-    /// Заголовок окна.
+    /// Window title.
     pub window_title: String,
-    /// Крупная надпись внутри окна.
+    /// The large caption inside the window.
     pub heading: String,
     pub html: String,
     pub buttons: Vec<PairButton>,
@@ -623,15 +634,15 @@ pub struct PairView {
 }
 
 fn pair_table(a: &DeMeta, b: &DeMeta) -> String {
-    // Короткие слова строк таблицы — с контекстом: «Session» или «Panel»
-    // в другом месте продукта могут значить другое.
+    // Short words of the table rows — with context: "Session" or "Panel" may mean
+    // something else elsewhere in the product.
     let rows: [(String, String, String); 10] = [
         (trc("desktop spec", "Memory"), megabytes(a.ram_mb), megabytes(b.ram_mb)),
         (trc("desktop spec", "CPU load"), a.cpu_usage.label(), b.cpu_usage.label()),
-        // Оценки — теми же значками, что в легенде над таблицей и в
-        // карточках (`card_body`). Прежняя полоска из «█» и «░» шла в
-        // запасном шрифте: клетки со щелями, пустая часть — штриховкой, и
-        // с легендой «⭐ от 1 до 5» она не сходилась (01.11.2026).
+        // Ratings use the same icons as in the legend above the table and in the
+        // cards (`card_body`). The former bar of "█" and "░" was drawn in a fallback
+        // font: cells with gaps, the empty part hatched, and it did not match the
+        // legend "⭐ from 1 to 5" (01.11.2026).
         (
             trc("desktop spec", "Customization"),
             stars(a.customizable, "⭐"),
@@ -684,10 +695,10 @@ fn pair_table(a: &DeMeta, b: &DeMeta) -> String {
     html
 }
 
-/// Диалог сравнения двух столов; `None` — хотя бы один ядру неизвестен.
+/// Dialog comparing two desktops; `None` — at least one is unknown to the core.
 ///
-/// Починка: кнопки установки обоих столов теперь выглядят одинаково — в
-/// оригинале выделенной была только первая.
+/// Fix: the install buttons of both desktops now look the same — in the original
+/// only the first was highlighted.
 pub fn pair_view(
     a_id: &str,
     b_id: &str,
@@ -721,10 +732,10 @@ pub fn pair_view(
 }
 
 // ============================================================================
-// Установка и переключение: тексты потока
+// Installing and switching: texts of the flow
 // ============================================================================
 
-/// Тексты установки стола: подтверждение, заголовок хода дела и итог.
+/// Desktop installation texts: the confirmation, the progress title and the result.
 #[derive(Debug, Clone, Serialize)]
 pub struct InstallTexts {
     pub confirm_title: String,
@@ -734,10 +745,11 @@ pub struct InstallTexts {
     pub done_text: String,
 }
 
-/// Тексты установки у обеих вкладок ОДНИ: берутся у
-/// `qt_desktops::install_texts`. Прежняя копия здесь отличалась словом
-/// («Установить KDE Plasma?» против «Установить рабочий стол KDE Plasma?»),
-/// то есть уже начала разъезжаться (правило #12).
+/// The installation texts of both tabs are THE SAME: they are taken from
+/// `qt_desktops::install_texts`. The former copy here differed by a word
+/// («Установить KDE Plasma?» versus «Установить рабочий стол KDE Plasma?» —
+/// "Install KDE Plasma?" versus "Install the KDE Plasma desktop?"), i.e. it had
+/// already started drifting apart (rule #12).
 pub fn install_texts(display_name: &str) -> InstallTexts {
     let t = crate::qt_desktops::install_texts(display_name);
     InstallTexts {
@@ -749,7 +761,7 @@ pub fn install_texts(display_name: &str) -> InstallTexts {
     }
 }
 
-/// Тексты переключения на стол.
+/// Texts for switching to a desktop.
 #[derive(Debug, Clone, Serialize)]
 pub struct SwitchTexts {
     pub confirm_title: String,

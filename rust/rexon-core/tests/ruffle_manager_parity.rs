@@ -1,15 +1,15 @@
-//! Golden-сверка порта `ruffle_manager.rs` с оригиналом
+//! Golden check of the `ruffle_manager.rs` port against the original
 //! `rexon/ruffle_manager.py`.
 //!
-//! Эталон снят read-only с ЖИВОГО `rexon.ruffle_manager` одноразовым
-//! генератором (`Popen`/`subprocess.run` замоканы, реальное скачивание/запуск
-//! НЕ исполнялись; пути под временный HOME нормализованы в `/HOME`,
-//! `sys.executable` → `/PY`). Покрыто: выбор ассета релиза по архитектуре и
-//! его URL, web-URL, пути хранения, выбор бинаря (`get_ruffle_path`), argv
-//! прямого запуска SWF и запуска как обои (+ скрипт-обёртка, basename/splitext),
-//! выбор источника версии, решение `ensure_installed`, арифметика прогресса.
+//! The golden was captured read-only from LIVE `rexon.ruffle_manager` by a one-off
+//! generator (`Popen`/`subprocess.run` were mocked, the real download/launch
+//! was NOT executed; paths under the temporary HOME are normalized to `/HOME`,
+//! `sys.executable` → `/PY`). Covered: choosing the release asset by architecture and
+//! its URL, the web URL, storage paths, choosing the binary (`get_ruffle_path`), the argv
+//! of launching an SWF directly and as a wallpaper (+ the wrapper script, basename/splitext),
+//! choosing the version source, the `ensure_installed` decision, the progress arithmetic.
 //!
-//! `golden/ruffle_manager_cases.json` — снятые значения.
+//! `golden/ruffle_manager_cases.json` — the captured values.
 
 use rexon_core::ruffle_manager as rm;
 use serde_json::Value;
@@ -50,7 +50,7 @@ fn download_urls_and_web() {
     let urls = g["download_urls"].as_object().unwrap();
     assert_eq!(rm::download_url("x86_64").as_deref(), Some(s(&urls["x86_64"])));
     assert_eq!(rm::download_url("aarch64").as_deref(), Some(s(&urls["aarch64"])));
-    // Неподдержанная архитектура — как в оригинале (нет в DOWNLOAD_URLS).
+    // An unsupported architecture — as in the original (not in DOWNLOAD_URLS).
     assert_eq!(rm::download_url("armv7l"), None);
     assert_eq!(rm::download_url("i686"), None);
 
@@ -82,14 +82,14 @@ fn ruffle_path_selection() {
     let bin = rm::ruffle_paths(HOME).bin;
     // neither
     assert_eq!(rm::ruffle_path(false, false, &bin), opt_s(&rp["neither"]));
-    // только системный → буквально "ruffle"
+    // only the system one → literally "ruffle"
     assert_eq!(
         rm::ruffle_path(false, true, &bin),
         opt_s(&rp["system_only"])
     );
-    // локальный бинарь
+    // the local binary
     assert_eq!(rm::ruffle_path(true, false, &bin), opt_s(&rp["installed"]));
-    // есть и пакет, и наша копия → берём пакет дистрибутива
+    // there is both a package and our copy → we take the distro package
     assert_eq!(rm::ruffle_path(true, true, &bin), opt_s(&rp["both"]));
     // is_installed = isfile && x_ok
     assert!(rm::is_installed(true, true));
@@ -128,28 +128,28 @@ fn run_swf_as_wallpaper_parity() {
 
     assert_eq!(rm::wrapper_script(bin, &swf), s(&w["wrapper_content"]));
 
-    // ⛔ЗДЕСЬ ЭТАЛОН НЕ ПОВТОРЯЕМ, И ЭТО НЕ НЕБРЕЖНОСТЬ. Оригинал звал
-    // `<python> -m rexon.app_wallpaper <обёртка> --mode subprocess`
-    // (`w["cmd"]`), а модуль `rexon.app_wallpaper` снят с дерева коммитом
-    // `2091eac`: SWF-обои не работали с 23.08.2026 — процесс падал сразу, а
-    // окно рапортовало «обои применены». Flash теперь играет НАТИВНО, своим
-    // хостом (Ruffle библиотекой, крейт `rexon-swf`).
+    // ⛔WE DO NOT REPEAT THE GOLDEN HERE, AND THIS IS NOT CARELESSNESS. The original called
+    // `<python> -m rexon.app_wallpaper <wrapper> --mode subprocess`
+    // (`w["cmd"]`), and the `rexon.app_wallpaper` module was removed from the tree by commit
+    // `2091eac`: SWF wallpapers had not worked since 23.08.2026 — the process crashed at once, while
+    // the window reported «wallpaper applied». Flash now plays NATIVELY, with its own
+    // host (Ruffle as a library, the `rexon-swf` crate).
     let host = "/usr/lib/rexon/rexon-wallpaper-host";
     assert_eq!(
         rm::wallpaper_argv(host, &swf),
         vec![host, "--mode", "swf", swf.as_str()]
     );
-    // Одна правда строки запуска: то же самое, что кладёт в план исполнитель.
+    // One truth for the launch line: the same as what the executor puts into the plan.
     assert_eq!(
         rm::wallpaper_argv(host, &swf),
         rexon_core::wallpaper_engine::swf_host_plan(host, &swf)[0].argv
     );
-    // Ни интерпретатора, ни модуля, ни bash-обёртки вокруг внешнего Ruffle.
+    // No interpreter, no module, no bash wrapper around an external Ruffle.
     let cmd = rm::wallpaper_argv(host, &swf).join(" ");
     for mark in ["python", "-m rexon", "app_wallpaper", "subprocess", &wp] {
         assert!(!cmd.contains(mark), "в запуске SWF-обоев осталось «{mark}»: {cmd}");
     }
-    // Эталон остаётся описанным — расхождение намеренное и названное вслух.
+    // The golden stays described — the deviation is deliberate and named out loud.
     assert!(
         str_vec(&w["cmd"]).iter().any(|a| a == "rexon.app_wallpaper"),
         "эталон Python перестал звать снятый модуль — сверку пора убирать целиком"
@@ -168,22 +168,22 @@ fn swf_stem_edge_cases() {
 fn version_resolution() {
     let g = fx();
     let v = &g["version"];
-    // cmd_ok: путь есть, rc==0 → stdout.trim()
+    // cmd_ok: the path exists, rc==0 → stdout.trim()
     assert_eq!(
         rm::resolve_version(Some("/bin/ruffle"), Some("ruffle nightly-2026-07-20\n"), None),
         opt_s(&v["cmd_ok"])
     );
-    // file_fallback: путь есть, rc!=0 (cmd None) → содержимое .version, trim
+    // file_fallback: the path exists, rc!=0 (cmd None) → the content of .version, trimmed
     assert_eq!(
         rm::resolve_version(Some("/bin/ruffle"), None, Some("nightly-2026-07-19\n")),
         opt_s(&v["file_fallback"])
     );
-    // none: путь есть, ни cmd, ни файла → None
+    // none: the path exists, neither cmd nor a file → None
     assert_eq!(
         rm::resolve_version(Some("/bin/ruffle"), None, None),
         opt_s(&v["none"])
     );
-    // no_path_ignores_file: пути нет → None (файл НЕ читается)
+    // no_path_ignores_file: no path → None (the file is NOT read)
     assert_eq!(
         rm::resolve_version(None, None, Some("nightly-2026-07-18\n")),
         opt_s(&v["no_path_ignores_file"])
@@ -206,7 +206,7 @@ fn ensure_decision_truth_table() {
                    "need_bin {inst},{sysi},{web}");
         assert_eq!(d.need_web, case["need_web"].as_bool().unwrap(),
                    "need_web {inst},{sysi},{web}");
-        // already_ok = ранний return True (Python result всегда True в стабах)
+        // already_ok = an early return True (the Python result is always True in the stubs)
         assert!(case["result"].as_bool().unwrap());
     }
 }
@@ -235,21 +235,21 @@ fn progress_bar_parity() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Закрытие дыр паритета: выбор системного бинаря (имена пакетов разных
-//  дистрибутивов) и предикат «копировать рядом с бинарём». Эталоны сняты с
-//  живого `RuffleManager.system_bin` при Python-путь до его удаления с подменённым
-//  `shutil.which` (в PATH ничего не искалось).
+//  Closing parity holes: choosing the system binary (package names of different
+//  distributions) and the "copy next to the binary" predicate. The goldens were captured from
+//  the live `RuffleManager.system_bin` on the Python path before its removal, with
+//  `shutil.which` replaced (nothing was searched in PATH).
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Список имён бинаря Ruffle по дистрибутивам и его ПОРЯДОК — как в оригинале
-/// (`SYSTEM_BINS`): порядок определяет, какой пакет выиграет.
+/// The list of Ruffle binary names per distribution and its ORDER — as in the original
+/// (`SYSTEM_BINS`): the order decides which package wins.
 #[test]
 fn system_bin_names_match_python() {
     assert_eq!(str_vec(&fx()["system_bin_names"]), rm::SYSTEM_BINS.to_vec());
 }
 
-/// `system_bin`: первое найденное имя из `SYSTEM_BINS`, иначе None. Возвращается
-/// РЕАЛЬНЫЙ путь пакета (в разных системах бинарь называется по-разному).
+/// `system_bin`: the first name found from `SYSTEM_BINS`, otherwise None. The REAL
+/// path of the package is returned (in different systems the binary is named differently).
 #[test]
 fn system_bin_selection_matches_python() {
     for c in fx()["system_bin"].as_array().unwrap() {
@@ -265,7 +265,7 @@ fn system_bin_selection_matches_python() {
     }
 }
 
-/// Предикат копирования лицензий/README рядом с бинарём (регистр значим).
+/// The predicate for copying licenses/README next to the binary (case matters).
 #[test]
 fn extra_asset_predicate_matches_python() {
     for (name, want) in fx()["extra_asset"].as_object().unwrap() {

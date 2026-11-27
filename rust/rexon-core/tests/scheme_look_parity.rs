@@ -1,16 +1,17 @@
-//! Сверка цветов схемы KDE, деления на светлые и тёмные и тона стилей Plasma
-//! (`rexon_core::local_preview::scheme_look` и соседи) с замером на самой KDE.
+//! Check of KDE scheme colours, the light/dark split and Plasma style tones
+//! (`rexon_core::local_preview::scheme_look` and neighbours) against a
+//! measurement on KDE itself.
 //!
-//! `golden/scheme_look_cases.json` снят программой на `KColorScheme`
-//! (KF6ColorScheme 6.31): палитра схемы, цвет и текст заголовка, яркость фона
-//! окна (`qGray`) и признак «тёмная» (меньше 192).
-//!   * `synthetic` — краевые случаи: пустой файл, `#hex`, четыре части,
-//!     пробелы, часть вне 0..=255, две части, повтор ключа, заголовок из
-//!     `[Colors:Header]` / `[WM]` / выделения, граница 191/192;
-//!   * `real` — 51 настоящая схема; тексты берутся из
-//!     `local_preview_cases.json` (`parse_colors_real`) по имени файла;
-//!   * `plasma_styles` — стили Plasma машины, где снимали: у стиля без файла
-//!     `colors` тон «берёт цвета схемы».
+//! `golden/scheme_look_cases.json` was captured by a program on `KColorScheme`
+//! (KF6ColorScheme 6.31): scheme palette, header colour and text, window
+//! background brightness (`qGray`) and the «dark» flag (below 192).
+//!   * `synthetic` — edge cases: empty file, `#hex`, four parts,
+//!     spaces, a part outside 0..=255, two parts, repeated key, header from
+//!     `[Colors:Header]` / `[WM]` / selection, the 191/192 boundary;
+//!   * `real` — 51 real schemes; texts are taken from
+//!     `local_preview_cases.json` (`parse_colors_real`) by file name;
+//!   * `plasma_styles` — Plasma styles of the capture machine: a style without
+//!     a `colors` file has the tone «takes the scheme colours».
 
 use rexon_core::local_preview as lp;
 use serde_json::Value;
@@ -99,8 +100,8 @@ fn plasma_style_tones_match_kde() {
         let id = format!("local:plasma:{name}");
         let path = dir.to_string_lossy();
         assert_eq!(lp::item_tone(&id, &path).map(|t| t.key()), Some(want), "стиль {name}");
-        // Подпись «Поддерживает цветовые схемы» — ровно у стилей без своих
-        // цветов, и не тогда, когда отобраны только они.
+        // The «Supports color schemes» label — exactly on styles without their own
+        // colours, and not when only those are filtered.
         assert_eq!(lp::follows_scheme_badge(&id, &path, lp::TONE_ALL).is_some(), want == "follows", "{name}");
         assert!(lp::follows_scheme_badge(&id, &path, lp::TONE_FOLLOWS).is_none(), "{name}");
         for filter in [lp::TONE_LIGHT, lp::TONE_DARK, lp::TONE_FOLLOWS] {
@@ -120,7 +121,7 @@ fn scheme_files_filter_by_tone() {
     for case in g["synthetic"].as_array().unwrap() {
         let label = case["label"].as_str().unwrap();
         std::fs::write(root.join(format!("{label}.colors")), case["text"].as_str().unwrap()).unwrap();
-        // Скан отдаёт путь схемы без окончания `.colors`.
+        // The scan returns the scheme path without the `.colors` suffix.
         let path = root.join(label).to_string_lossy().into_owned();
         let id = format!("local:colors:{label}");
         let dark = case["dark"].as_bool().unwrap();
@@ -129,8 +130,8 @@ fn scheme_files_filter_by_tone() {
         assert!(!lp::tone_passes(&id, &path, lp::TONE_FOLLOWS), "{label}");
         assert!(lp::follows_scheme_badge(&id, &path, lp::TONE_ALL).is_none());
     }
-    // Тема другого вида тона не имеет: при выбранном фильтре её не видно, при
-    // «Все» — видно.
+    // A theme of another kind has no tone: hidden with a filter selected,
+    // visible with «All».
     assert!(lp::tone_passes("local:gtk:Adwaita", "/nowhere", lp::TONE_ALL));
     assert!(!lp::tone_passes("local:gtk:Adwaita", "/nowhere", lp::TONE_DARK));
     let _ = std::fs::remove_dir_all(&root);

@@ -1,9 +1,9 @@
-// Наборы виджетов Conky в разделе «Виджеты Conky»: несколько виджетов и
-// обои — одной кнопкой «Применить»; «Сохранить запущенные как набор».
+// Conky widget sets in the "Conky widgets" section: several widgets and a
+// wallpaper with one "Apply" button; "Save running ones as a set".
 //
-// Только разметка: список, подписи и действия — объект действий страницы
-// (`conkySets`, `saveConkySet`, `applyConkySet`, `exportConkySet`, `removeConkySet` в
-// rust/rexon-gui/src/appearance_actions.rs; решения — rexon_core::conky_sets).
+// Markup only: the list, labels and actions — the page's actions object
+// (`conkySets`, `saveConkySet`, `applyConkySet`, `exportConkySet`, `removeConkySet` in
+// rust/rexon-gui/src/appearance_actions.rs; decisions — rexon_core::conky_sets).
 
 pragma ComponentBehavior: Bound
 
@@ -19,7 +19,8 @@ ColumnLayout {
     property bool busy: false
 
     property var view: ({})
-    /// Нажато «Применить» — итог придёт сигналом `actionDone` из фона.
+    /// "Apply" was pressed — the result will arrive from the background via
+    /// the `actionDone` signal.
     property bool applying: false
     readonly property var t: box.view.texts || ({})
     readonly property var rows: box.view.rows || []
@@ -28,7 +29,8 @@ ColumnLayout {
     readonly property color colHint: box.pal ? box.pal.text_secondary : "#8f98a0"
     readonly property color colCard: box.pal ? box.pal.bg_card : "#1b2838"
 
-    /// Что-то применили или сохранили — сетке пора перечитать запущенные.
+    /// Something was applied or saved — time for the grid to re-read the
+    /// running widgets.
     signal changed()
 
     spacing: 6

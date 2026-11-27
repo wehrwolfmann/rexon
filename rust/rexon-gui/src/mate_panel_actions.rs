@@ -1,9 +1,9 @@
-// MatePanelActions — объект раздела «Панель MATE» (готовые раскладки
-// панели). Раздел самостоятельный: его можно вставить в любую вкладку
-// («Настройки» сейчас, «Оформление» потом) без переделки.
+// MatePanelActions — the object of the "MATE panel" section (ready panel
+// layouts). The section is self-contained: it can be put into any tab
+// ("Settings" now, "Appearance" later) without rework.
 //
-// Логики здесь нет: снимок, подписи, применение и возврат — ядро
-// (`rexon_core::mate_panel`).
+// There is no logic here: snapshot, labels, applying and restoring come
+// from the core (`rexon_core::mate_panel`).
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -21,47 +21,47 @@ pub mod qobject {
     impl cxx_qt::Threading for MatePanelActions {}
 
     extern "RustQt" {
-        /// Снимок раздела (JSON `mate_panel::PanelState`).
+        /// Section snapshot (JSON `mate_panel::PanelState`).
         #[qinvokable]
         fn state(self: &MatePanelActions) -> QString;
 
-        /// Текст подтверждения перед применением раскладки `id`, а при
-        /// пустом `id` — перед возвратом прежней панели
-        /// (JSON `{title, question}`).
+        /// Confirmation text before applying layout `id`, and with an empty `id` —
+        /// before restoring the previous panel (JSON `{title, question}`).
         #[qinvokable]
         fn confirm(self: &MatePanelActions, id: &QString) -> QString;
 
-        /// Применить раскладку `id` → сообщение для человека.
+        /// Apply layout `id` → a message for the user.
         #[qinvokable]
         fn apply(self: &MatePanelActions, id: &QString) -> QString;
 
-        /// Вопрос «собрать недостающие части раскладки из AUR?» (JSON
-        /// `{title, question}`; `{}` — спрашивать не о чем: пакеты из
-        /// репозиториев ставятся без вопроса).
+        /// The question "build the missing parts of the layout from AUR?" (JSON
+        /// `{title, question}`; `{}` means there is nothing to ask: packages from
+        /// the repositories are installed without a question).
         #[qinvokable]
         #[cxx_name = "partsQuestion"]
         fn parts_question(self: &MatePanelActions, id: &QString) -> QString;
 
-        /// Применить раскладку в фоне. Недостающие части из репозиториев
-        /// ставятся всегда (окно пароля); `install` — ещё и собрать части из
-        /// AUR (общая очередь сборок; человек согласился в вопросе). Не
-        /// встало — раскладка не применяется. Итог — сигналом `applied`.
+        /// Apply the layout in the background. Missing parts from the repositories
+        /// are always installed (the password window); `install` also builds parts
+        /// from AUR (the shared build queue; the user agreed in the question). If
+        /// something did not install, the layout is not applied. The result comes
+        /// with the `applied` signal.
         #[qinvokable]
         #[cxx_name = "applyAsync"]
         fn apply_async(self: Pin<&mut MatePanelActions>, id: &QString, install: bool);
 
-        /// Применение кончилось: сообщение для человека.
+        /// Applying has finished: a message for the user.
         #[qsignal]
         fn applied(self: Pin<&mut MatePanelActions>, text: QString);
 
-        /// Вернуть исходную панель в фоне: возврат ждёт, пока панель снимет
-        /// апплеты (до 3 с), и интерфейс на это время не замирает. Итог —
-        /// сигналом `restored`.
+        /// Restore the original panel in the background: restoring waits until the
+        /// panel removes its applets (up to 3 s), and the interface does not freeze
+        /// meanwhile. The result comes with the `restored` signal.
         #[qinvokable]
         #[cxx_name = "restoreAsync"]
         fn restore_async(self: Pin<&mut MatePanelActions>);
 
-        /// Возврат кончился: сообщение для человека.
+        /// Restoring has finished: a message for the user.
         #[qsignal]
         fn restored(self: Pin<&mut MatePanelActions>, text: QString);
     }

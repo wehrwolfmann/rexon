@@ -1,35 +1,38 @@
-// Менеджер плагинов: список, установка из zip, инспекция zip, удаление,
-// проверка и установка обновлений, действия плагина с формой значений.
+// Plugin manager: list, installing from a zip, inspecting a zip, removal,
+// checking for and installing updates, plugin actions with a value form.
 //
-// Эталон — waywallen `ui/src/query/{plugin,plugin_action,
-// progress}_query.cpp` @e5626c1 (вендорный коммит v0.2.6+9), а не наш
-// Python-мост. Порт чинит три расхождения (правило #16):
+// Reference: waywallen `ui/src/query/{plugin,plugin_action,
+// progress}_query.cpp` @e5626c1 (vendor commit v0.2.6+9), not our Python
+// bridge. The port fixes three divergences (rule #16):
 //
-//   1. `PluginDeleteQuery.reload()` не был переопределён вовсе — свойство
-//      `pluginId` этого запроса было мёртвым. У оригинала
+//   1. `PluginDeleteQuery.reload()` was not overridden at all — the
+//      `pluginId` property of this query was dead. In the original
 //      `reload() == remove(pluginId)`.
-//   2. Проверка и установка обновлений у оригинала наследуются от
-//      `ProgressQuery`: RPC лишь ПРИНИМАЕТ задачу и отдаёт `query_id`, а
-//      идёт она событиями `task_progress` демона. У нас этого класса не
-//      было совсем: свойств `queryId`/`progress`/`progressing` не
-//      существовало (а вендорный QML их читает —
-//      `PluginManagePage.qml:499,501`, привязки индикатора были мёртвыми),
-//      сигналы `checked`/`installed` летели по ПРИЁМУ задачи, и тост
-//      «Обновлён "X"» появлялся раньше, чем обновление вставало.
-//   3. `PluginActionQuery`: у оригинала при ответе-отказе демона
-//      `completed` не летит ВООБЩЕ (лямбду `inspect_set` на не-OK не
-//      зовёт), и диалог формы действия остаётся открытым навсегда. Наш
-//      Python это чинил; починка сохранена и перенесена в ядро.
+//   2. In the original, checking for and installing updates inherit from
+//      `ProgressQuery`: the RPC only ACCEPTS the task and returns a
+//      `query_id`, and the task proceeds through the daemon's
+//      `task_progress` events. We did not have this class at all: the
+//      `queryId`/`progress`/`progressing` properties did not exist (while
+//      the vendored QML reads them — `PluginManagePage.qml:499,501`, the
+//      indicator bindings were dead), the `checked`/`installed` signals
+//      fired on ACCEPTING the task, and the "Updated "X"" toast appeared
+//      before the update was in place.
+//   3. `PluginActionQuery`: in the original, on a refusal answer from the
+//      daemon `completed` does NOT fire AT ALL (it does not call the
+//      `inspect_set` lambda on non-OK), and the action form dialog stays
+//      open forever. Our Python fixed this; the fix is kept and moved into
+//      the core.
 //
-// ⚠️ Вынужденное отличие сигнатуры: у оригинала `check(const QString&
-// pluginId = {})` — moc печатает обе арности. cxx-qt значений по умолчанию
-// не умеет, а вендорный QML зовёт РОВНО `updateCheckQuery.check()`
-// (PluginManagePage.qml:95). Поэтому `check()` объявлен без аргументов и
-// означает то же, что `check({})` у оригинала: очистить `pluginId` и
-// проверить ВСЕ плагины. Проверка одного — `pluginId = id; reload()`,
-// как и у оригинала (`reload() { check(m_plugin_id); }`).
+// Warning: a forced signature difference: the original has
+// `check(const QString& pluginId = {})` — moc emits both arities. cxx-qt
+// cannot do default values, and the vendored QML calls EXACTLY
+// `updateCheckQuery.check()` (PluginManagePage.qml:95). So `check()` is
+// declared without arguments and means the same as the original's
+// `check({})`: clear `pluginId` and check ALL plugins. Checking one is
+// `pluginId = id; reload()`, as in the original
+// (`reload() { check(m_plugin_id); }`).
 
-/// Мост cxx-qt: семь запросов менеджера плагинов.
+/// cxx-qt bridge: seven plugin manager queries.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -561,8 +564,8 @@ pub mod qobject {
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut PluginInspectQuery>, token: i64, frame: &QByteArray);
 
-        /// ⚠️ Починка: у оригинала `reload() == remove(pluginId)`, а у нас
-        /// его не было вовсе — свойство `pluginId` было мёртвым.
+        /// Warning: a fix: in the original `reload() == remove(pluginId)`, while we
+        /// did not have it at all — the `pluginId` property was dead.
         #[qinvokable]
         fn reload(self: Pin<&mut PluginDeleteQuery>);
         #[qinvokable]
@@ -571,11 +574,11 @@ pub mod qobject {
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut PluginDeleteQuery>, token: i64, frame: &QByteArray);
 
-        /// Проверить обновление ТЕКУЩЕГО `pluginId` (оригинал:
+        /// Check for an update of the CURRENT `pluginId` (original:
         /// `reload() { check(m_plugin_id); }`).
         #[qinvokable]
         fn reload(self: Pin<&mut PluginUpdateCheckQuery>);
-        /// Проверить ВСЕ плагины — то же, что `check({})` у оригинала.
+        /// Check ALL plugins — the same as the original's `check({})`.
         #[qinvokable]
         fn check(self: Pin<&mut PluginUpdateCheckQuery>);
         #[qinvokable]
@@ -629,7 +632,7 @@ fn to_qstringlist(items: &[String]) -> QStringList {
     list
 }
 
-/// Разослать сигналы «кадр не разобрался».
+/// Emit the "frame did not parse" signals.
 macro_rules! on_decode_error {
     ($self:ident) => {{
         let signals = decode_failed(&mut $self.as_mut().rust_mut().base);
@@ -638,7 +641,7 @@ macro_rules! on_decode_error {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// PluginListQuery — установленные плагины-пакеты
+// PluginListQuery — installed plugin packages
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -687,7 +690,7 @@ impl qobject::PluginListQuery {
 
     pub fn emit_property(mut self: Pin<&mut Self>, name: &str) {
         match name {
-            // Один сигнал на три свойства — так у оригинала.
+            // One signal for three properties — as in the original.
             "plugins" => self.as_mut().plugins_changed(),
             other => debug_assert!(false, "нет сигнала для свойства {other}"),
         }
@@ -699,7 +702,7 @@ impl qobject::PluginListQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// PluginInstallQuery — установка плагина из zip
+// PluginInstallQuery — installing a plugin from a zip
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -780,7 +783,7 @@ impl qobject::PluginInstallQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// PluginInspectQuery — что внутри zip ДО установки
+// PluginInspectQuery — what is inside a zip BEFORE installation
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -880,7 +883,7 @@ impl qobject::PluginInspectQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// PluginDeleteQuery — удаление пользовательского плагина
+// PluginDeleteQuery — removing a user plugin
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -901,7 +904,7 @@ impl qobject::PluginDeleteQuery {
         self.result.needs_restart
     }
 
-    /// ⚠️ Починка: у оригинала `reload()` — это `remove(pluginId)`.
+    /// Warning: a fix: in the original `reload()` is `remove(pluginId)`.
     pub fn reload(mut self: Pin<&mut Self>) {
         let id = QString::from(&self.result.plugin_id);
         self.as_mut().remove(id);
@@ -954,14 +957,16 @@ impl qobject::PluginDeleteQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Запросы с прогрессом длинной задачи (ProgressQuery оригинала)
+// Queries with the progress of a long task (the original's ProgressQuery)
 // ════════════════════════════════════════════════════════════════════════
 //
-// RPC только ПРИНИМАЕТ задачу и отдаёт `query_id`; дальше её ведут события
-// `task_progress` демона. Событие приходит сырым кадром в транспортный шов,
-// разбирается ядром и рассылается реестром `query_base::progress`.
+// The RPC only ACCEPTS the task and returns a `query_id`; after that it is
+// driven by the daemon's `task_progress` events. The event arrives as a raw
+// frame in the transport seam, is parsed by the core and dispatched by the
+// `query_base::progress` registry.
 
-/// Общая часть обеих: свойства ProgressQuery и подписка на прогресс.
+/// The part shared by both: the ProgressQuery properties and the progress
+/// subscription.
 macro_rules! impl_progress_query {
     ($query:ident) => {
         impl qobject::$query {
@@ -977,13 +982,12 @@ macro_rules! impl_progress_query {
                 self.progress.progressing
             }
 
-            /// Подписаться на события прогресса.
+            /// Subscribe to progress events.
             ///
-            /// ⚠️ `queue(...)` без `unwrap()` и без предварительного
-            /// `is_destroyed()`: между проверкой и постановкой объект
-            /// успевает умереть — так прямо предписывает doc-комментарий
-            /// cxx-qt. Мёртвый объект даёт `ObjectDestroyed`, и запись
-            /// снимается прямо в рассылке.
+            /// Warning: `queue(...)` without `unwrap()` and without a preceding
+            /// `is_destroyed()`: between the check and the queueing the object may die
+            /// — this is exactly what the cxx-qt doc comment prescribes. A dead object
+            /// gives `ObjectDestroyed`, and the entry is removed right in the dispatch.
             fn subscribe_progress(mut self: Pin<&mut Self>) {
                 let handle = self.as_ref().get_ref().qt_thread();
                 let id = progress::register(Box::new(move |query_id, snapshot| {
@@ -994,14 +998,14 @@ macro_rules! impl_progress_query {
                     }) {
                         Ok(()) => Ok(()),
                         Err(ThreadingQueueError::ObjectDestroyed) => Err(()),
-                        // Объект ещё жив, следующая рассылка может пройти.
+                        // The object is still alive; the next dispatch may go through.
                         Err(_) => Ok(()),
                     }
                 }));
                 self.as_mut().rust_mut().progress_id = id;
             }
 
-            /// Снимок прогресса приехал — наш ли он.
+            /// A progress snapshot arrived — is it ours.
             pub fn on_task_progress(
                 mut self: Pin<&mut Self>,
                 query_id: &str,
@@ -1018,8 +1022,8 @@ macro_rules! impl_progress_query {
                 self.dispatch(signals);
             }
 
-            /// Сигналы, общие для обеих: три свойства прогресса и конец.
-            /// `false` — имя не про прогресс, разбирает вызывающий.
+            /// Signals shared by both: three progress properties and the end.
+            /// `false` means the name is not about progress, the caller handles it.
             fn emit_progress_property(mut self: Pin<&mut Self>, name: &str) -> bool {
                 match name {
                     "queryId" => self.as_mut().query_id_changed(),
@@ -1042,7 +1046,7 @@ pub struct PluginUpdateCheckQueryRust {
     plugin_id: String,
     data: we_manage::PluginUpdateCheckData,
     pending: std::collections::BTreeSet<i64>,
-    /// Номер записи в реестре прогресса; 0 — не подписан.
+    /// Entry number in the progress registry; 0 means not subscribed.
     progress_id: u64,
 }
 
@@ -1081,20 +1085,20 @@ impl qobject::PluginUpdateCheckQuery {
         json_to_variant(&Value::Array(self.data.updates.clone()))
     }
 
-    /// Проверить обновление текущего `pluginId`.
+    /// Check for an update of the current `pluginId`.
     pub fn reload(self: Pin<&mut Self>) {
         self.send_check();
     }
 
-    /// Проверить ВСЕ плагины: `check({})` оригинала очищает `pluginId`.
+    /// Check ALL plugins: the original's `check({})` clears `pluginId`.
     pub fn check(mut self: Pin<&mut Self>) {
         self.as_mut().set_plugin_id(QString::default());
         self.send_check();
     }
 
     fn send_check(mut self: Pin<&mut Self>) {
-        // Оригинал: `if (querying() || progressing()) return;` — второй
-        // заход не затирает идущую задачу.
+        // Original: `if (querying() || progressing()) return;` — a second entry
+        // does not overwrite a running task.
         if self.as_ref().querying() || self.progress.progressing {
             return;
         }
@@ -1112,13 +1116,13 @@ impl qobject::PluginUpdateCheckQuery {
             self.rust_mut().pending.insert(token);
             return;
         }
-        // Кадр не ушёл (нет соединения) — у оригинала это ветка
-        // `failProgressQuery`: снять «идёт» и сообщить о конце, иначе
-        // индикатор крутился бы вечно.
+        // The frame did not go out (no connection) — in the original this is the
+        // `failProgressQuery` branch: clear "in progress" and report the end,
+        // otherwise the indicator would spin forever.
         self.fail_progress_now();
     }
 
-    /// Закрыть прогресс отказом с уже выставленным текстом ошибки.
+    /// Close the progress with a refusal, with the error text already set.
     fn fail_progress_now(mut self: Pin<&mut Self>) {
         let message = self.base.error.clone();
         let signals = {
@@ -1159,8 +1163,8 @@ impl qobject::PluginUpdateCheckQuery {
                 let error = self.base.status == STATUS_ERROR;
                 let message = QString::from(&self.progress.last_message);
                 self.as_mut().progress_ended(error, message);
-                // Оригинал вешает это лямбдой в конструкторе: `checked()`
-                // только когда задача доиграла БЕЗ ошибки.
+                // The original attaches this with a lambda in the constructor: `checked()`
+                // only when the task finished WITHOUT an error.
                 if !error {
                     self.as_mut().checked();
                 }
@@ -1238,7 +1242,7 @@ impl qobject::PluginUpdateInstallQuery {
         self.fail_progress_now();
     }
 
-    /// Закрыть прогресс отказом с уже выставленным текстом ошибки.
+    /// Close the progress with a refusal, with the error text already set.
     fn fail_progress_now(mut self: Pin<&mut Self>) {
         let message = self.base.error.clone();
         let signals = {
@@ -1292,7 +1296,7 @@ impl qobject::PluginUpdateInstallQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// PluginActionQuery — действие плагина с формой значений
+// PluginActionQuery — a plugin action with a value form
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
@@ -1348,7 +1352,7 @@ impl qobject::PluginActionQuery {
             self.as_mut().rust_mut().pending.insert(token);
             return;
         }
-        // Соединения нет: диалог формы ждёт `completed`, иначе он висит.
+        // No connection: the form dialog waits for `completed`, otherwise it hangs.
         let error = self.base.error.clone();
         {
             let mut rust = self.as_mut().rust_mut();

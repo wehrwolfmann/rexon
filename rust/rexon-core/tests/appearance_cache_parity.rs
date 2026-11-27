@@ -1,21 +1,21 @@
-//! Golden-сверка порта `rexon/appearance/cache.py` (модуль
+//! Golden check of the port of `rexon/appearance/cache.py` (module
 //! `rexon_core::appearance_cache`).
 //!
-//! Эталон снят с ЖИВОГО `cache.py` read-only (одноразовым
-//! генератором), БЕЗ инстанцирования `OCSCache` (SQLite/ФС
-//! не трогаются):
-//!   * `sql_literals` — все SQL-строки, извлечённые AST-обходом исходника;
-//!   * `list_ttl`/`translation_ttl` — константы модуля;
-//!   * `ttl_list`/`ttl_translation` — предикаты `get_list`/`get_translation`;
-//!   * `purge_threshold` — порог `purge_stale_translations`;
-//!   * `preview_urls_serialize` — реальный `json.dumps(list or [])`;
-//!   * `preview_urls_parse`/`row_to_item` — реальные `_row_to_item`-выражения
-//!     (последнее — вызовом самого `_row_to_item(dict)`);
-//!   * `ids_join`/`ids_split` — CSV-поле `lists.ids`;
-//!   * `item_insert_values` — порядок/типы плейсхолдеров `_insert_item`.
+//! The golden file was captured from the LIVE `cache.py` read-only (with a one-off
+//! generator), WITHOUT instantiating `OCSCache` (SQLite/FS
+//! are not touched):
+//!   * `sql_literals` — all SQL strings extracted by an AST walk of the source;
+//!   * `list_ttl`/`translation_ttl` — module constants;
+//!   * `ttl_list`/`ttl_translation` — the `get_list`/`get_translation` predicates;
+//!   * `purge_threshold` — the `purge_stale_translations` threshold;
+//!   * `preview_urls_serialize` — the real `json.dumps(list or [])`;
+//!   * `preview_urls_parse`/`row_to_item` — the real `_row_to_item` expressions
+//!     (the latter by calling `_row_to_item(dict)` itself);
+//!   * `ids_join`/`ids_split` — the CSV field `lists.ids`;
+//!   * `item_insert_values` — order/types of the `_insert_item` placeholders.
 //!
-//! ⚠️ Сам sqlite3, `os.makedirs`, `os.path.isfile`, `time.time()` — side effect,
-//! НЕ портированы; проверяется ЧИСТАЯ логика.
+//! ⚠️ sqlite3 itself, `os.makedirs`, `os.path.isfile`, `time.time()` are side effects,
+//! NOT ported; only the PURE logic is checked.
 
 use rexon_core::appearance_cache as ac;
 use rexon_core::appearance_cache::CacheValue;
@@ -26,8 +26,8 @@ fn golden() -> Value {
     serde_json::from_str(include_str!("golden/appearance_cache_cases.json")).unwrap()
 }
 
-/// Все SQL-строки Rust-констант совпадают ПО МНОЖЕСТВУ с литералами из
-/// живого исходника cache.py (байт-в-байт, включая отступы DDL).
+/// All SQL strings of the Rust constants match AS A SET the literals from
+/// the live cache.py source (byte for byte, including DDL indentation).
 #[test]
 fn sql_literals_match_python() {
     let g = golden();
@@ -65,7 +65,7 @@ fn sql_literals_match_python() {
     assert_eq!(got, want, "набор SQL-строк должен совпадать с cache.py");
 }
 
-/// TTL-константы совпадают с Python (в секундах).
+/// TTL constants match Python (in seconds).
 #[test]
 fn ttl_constants_match_python() {
     let g = golden();
@@ -73,7 +73,7 @@ fn ttl_constants_match_python() {
     assert_eq!(ac::TRANSLATION_TTL, g["translation_ttl"].as_f64().unwrap());
 }
 
-/// Предикат протухания списков — `(now - cached_at) > LIST_TTL`.
+/// List staleness predicate — `(now - cached_at) > LIST_TTL`.
 #[test]
 fn list_staleness_matches_python() {
     let g = golden();
@@ -85,7 +85,7 @@ fn list_staleness_matches_python() {
     }
 }
 
-/// Предикат протухания переводов — `(now - (cached_at or 0)) > TRANSLATION_TTL`.
+/// Translation staleness predicate — `(now - (cached_at or 0)) > TRANSLATION_TTL`.
 #[test]
 fn translation_staleness_matches_python() {
     let g = golden();
@@ -101,7 +101,7 @@ fn translation_staleness_matches_python() {
     }
 }
 
-/// Порог чистки протухших переводов — `now - TRANSLATION_TTL`.
+/// Threshold for purging stale translations — `now - TRANSLATION_TTL`.
 #[test]
 fn purge_threshold_matches_python() {
     let g = golden();
@@ -112,7 +112,7 @@ fn purge_threshold_matches_python() {
     }
 }
 
-/// Сериализация preview_urls байт-в-байт как `json.dumps(list or [])`.
+/// preview_urls serialization byte for byte as `json.dumps(list or [])`.
 #[test]
 fn preview_urls_serialize_matches_python() {
     let g = golden();
@@ -128,7 +128,7 @@ fn preview_urls_serialize_matches_python() {
     }
 }
 
-/// Разбор preview_urls совпадает с выражением из `_row_to_item`.
+/// preview_urls parsing matches the expression from `_row_to_item`.
 #[test]
 fn preview_urls_parse_matches_python() {
     let g = golden();
@@ -144,7 +144,7 @@ fn preview_urls_parse_matches_python() {
     }
 }
 
-/// CSV `lists.ids`: join и split совпадают с Python.
+/// CSV `lists.ids`: join and split match Python.
 #[test]
 fn ids_csv_matches_python() {
     let g = golden();
@@ -169,7 +169,7 @@ fn ids_csv_matches_python() {
     }
 }
 
-/// Значения `INSERT OR REPLACE INTO items`: порядок + типы + сериализация.
+/// `INSERT OR REPLACE INTO items` values: order + types + serialization.
 #[test]
 fn item_insert_values_match_python() {
     let g = golden();
@@ -187,8 +187,8 @@ fn item_insert_values_match_python() {
     assert_eq!(ac::item_insert_values(&item, now), want);
 }
 
-/// row_to_item совпадает с реальным `_row_to_item` (нормализация NULL + разбор
-/// preview_urls); сравнение через `asdict`-эквивалент (serde Value).
+/// row_to_item matches the real `_row_to_item` (NULL normalization + preview_urls
+/// parsing); compared through an `asdict` equivalent (serde Value).
 #[test]
 fn row_to_item_matches_python() {
     let g = golden();
@@ -199,7 +199,7 @@ fn row_to_item_matches_python() {
     }
 }
 
-// ── хелперы разбора golden ──────────────────────────────────────────────────
+// ── golden parsing helpers ──────────────────────────────────────────────────
 
 /// `["text"|"int"|"real"|"null", value]` → [`CacheValue`].
 fn cache_value_from_golden(v: &Value) -> CacheValue {
@@ -243,8 +243,8 @@ fn item_row_from_golden(v: &Value) -> ac::ItemRow {
     }
 }
 
-/// Расположение кеша каталога на диске (`CACHE_DIR`/`DB_PATH`/`PREVIEW_DIR`):
-/// эталон — значения ЖИВОГО `cache.py` на этой машине.
+/// On-disk location of the catalog cache (`CACHE_DIR`/`DB_PATH`/`PREVIEW_DIR`):
+/// the golden values are those of the LIVE `cache.py` on this machine.
 #[test]
 fn cache_paths_match_python() {
     let g: Value =
@@ -254,6 +254,6 @@ fn cache_paths_match_python() {
     assert_eq!(ac::cache_dir(home), p["cache_dir"].as_str().unwrap(), "CACHE_DIR");
     assert_eq!(ac::db_path(home), p["db_path"].as_str().unwrap(), "DB_PATH");
     assert_eq!(ac::preview_dir(home), p["preview_dir"].as_str().unwrap(), "PREVIEW_DIR");
-    // Смена HOME не должна ничего «прибивать» к домашке разработчика.
+    // Changing HOME must not "nail" anything to the developer's home.
     assert_eq!(ac::db_path("/tmp/x"), "/tmp/x/.cache/rexon/ocs_cache.db");
 }

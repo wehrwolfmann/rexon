@@ -1,134 +1,144 @@
-// Qt-примитивы значка Rexon в системном лотке.
+// Qt primitives of the Rexon system tray icon.
 //
-// Здесь НЕТ ни одного решения и ни одной подписи: что за пункты, как они
-// названы, включены ли они и что делает щелчок — знает ядро
-// (rexon-core::tray), передаёт исполнитель (rust/rexon-gui/src/tray.rs), а
-// этот файл только строит QSystemTrayIcon с QMenu и дёргает окно.
+// There is NOT A SINGLE decision or label here: what the items are, what
+// they are called, whether they are enabled and what a click does is known
+// to the core (rexon-core::tray) and passed on by the executor
+// (rust/rexon-gui/src/tray.rs), while this file only builds the
+// QSystemTrayIcon with a QMenu and pokes the window.
 //
-// Почему шим, а не чистый Rust: QSystemTrayIcon, QMenu, QAction и перехват
-// закрытия окна живут в QtWidgets/QtGui, и биндингов к ним в cxx-qt-lib нет
-// ни в 0.9, ни в 0.10. Тот же приём и та же граница, что у плейсхолдера
-// превью (rexon_local_preview.h). А вот САМ QApplication на Rust есть — в
-// соседнем крейте того же выпуска (cxx-qt-lib-extras), и без него значка у
-// процесса с окном на QML быть не могло: виджеты (QMenu) Qt без QApplication
-// не создаёт вовсе.
+// Why a shim and not pure Rust: QSystemTrayIcon, QMenu, QAction and
+// intercepting the window close live in QtWidgets/QtGui, and cxx-qt-lib has
+// no bindings for them, neither in 0.9 nor in 0.10. The same technique and
+// the same boundary as for the preview placeholder (rexon_local_preview.h).
+// QApplication ITSELF, however, does exist in Rust — in a neighbouring crate
+// of the same release (cxx-qt-lib-extras), and without it a process with a
+// QML window could not have an icon: Qt does not create widgets (QMenu)
+// without a QApplication at all.
 //
-// ⚠️ Окно шим ищет ДВУМЯ путями и держит оба: виджетное QMainWindow продукта
-// на PySide6 и QQuickWindow бинаря главного окна на Rust, где виджетов в
-// процессе нет ни одного.
+// Warning: the shim looks for the window in TWO ways and keeps both: the
+// product's widget QMainWindow on PySide6 and the QQuickWindow of the Rust
+// main window binary, where there is not a single widget in the process.
 #pragma once
 
 #include <cstdint>
 
 extern "C" {
 
-// ── обратные вызовы в Rust ────────────────────────────────────────────────
+// ── callbacks into Rust ───────────────────────────────────────────────────
 //
-// Ставятся один раз до создания значка. Установщиком, а не прямым `extern`
-// на Rust-символ, — как у запуска демона вкладки обоев
-// (rexon_we_do_set_launch_hook в rexon_we_singletons.h):
-// шим остаётся собираемым сам по себе.
+// They are set once before the icon is created. With a setter rather than
+// a direct `extern` on a Rust symbol — as for launching the wallpaper tab's
+// daemon (rexon_we_do_set_launch_hook in rexon_we_singletons.h): the shim
+// stays buildable on its own.
 
-// Нажат пункт меню с этим номером.
+// The menu item with this number was pressed.
 typedef void (*RexonTrayClick)(int32_t id);
-// Меню вот-вот раскроется — самое время пересобрать его состав.
+// The menu is about to open — the right moment to rebuild its contents.
 typedef void (*RexonTrayVoid)();
-// Закрывается главное окно. true — закрытие проглотить и окно спрятать.
+// The main window is closing. true means swallow the close and hide the
+// window.
 typedef bool (*RexonTrayAsk)();
 
 void rexon_tray_set_hooks(RexonTrayClick on_click, RexonTrayVoid on_menu_show,
                           RexonTrayVoid on_activate, RexonTrayAsk on_close);
 
-// ── значок ────────────────────────────────────────────────────────────────
+// ── icon ──────────────────────────────────────────────────────────────────
 
-// Есть ли в сессии лоток, куда становиться.
+// Whether the session has a tray to sit in.
 bool rexon_tray_available();
 
-// Создать значок. `icon_file` — путь к картинке («» — брать из темы),
-// `icon_theme` — имя значка в теме. Повторный вызов ничего не делает.
-// false — значок создать не вышло (в том числе когда в процессе нет
-// QApplication: QMenu без него не создаётся, и попытка гасила бы процесс).
+// Create the icon. `icon_file` is the path to a picture ("" — take it from
+// the theme), `icon_theme` is the icon name in the theme. A repeated call
+// does nothing. false means the icon could not be created (including when
+// the process has no QApplication: a QMenu is not created without it, and
+// the attempt would kill the process).
 bool rexon_tray_create(const char *icon_file, const char *icon_theme,
                        const char *tip_title, const char *tip_body);
 
-// Значок всех окон процесса (`QGuiApplication::setWindowIcon`) — та же
-// картинка, что у значка в лотке: из темы, иначе из файла. На X11 без него у
-// окна нет `_NET_WM_ICON`, и панель задач рисует общий значок вместо нашего.
-// false — ни тема, ни файл картинку не дали. Звать после создания
-// приложения и до первого окна.
+// Icon of all windows of the process (`QGuiApplication::setWindowIcon`) —
+// the same picture as the tray icon: from the theme, otherwise from the
+// file. On X11 without it the window has no `_NET_WM_ICON`, and the task
+// bar draws a generic icon instead of ours. false means neither the theme
+// nor the file gave a picture. Call after the application is created and
+// before the first window.
 bool rexon_set_app_window_icon(const char *icon_file, const char *icon_theme);
 
-// Пересобрать меню целиком: begin → add… → end.
+// Rebuild the whole menu: begin → add… → end.
 //
-// `kind`: 0 — действие, 1 — разделитель, 2 — флажок, 3 — кружок в группе,
-// 4 — начало вложенного меню, 5 — его конец. Значения задаёт ядро
-// (rexon_core::tray::ItemKind), здесь они только числа.
+// `kind`: 0 — an action, 1 — a separator, 2 — a check box, 3 — a radio
+// item in a group, 4 — start of a submenu, 5 — its end. The values are set
+// by the core (rexon_core::tray::ItemKind); here they are just numbers.
 void rexon_tray_menu_begin();
 void rexon_tray_menu_add(int32_t id, int32_t kind, const char *label,
                          bool checked, bool enabled, bool is_default);
 void rexon_tray_menu_end();
 
-// Всплывающее сообщение от значка.
+// A pop-up message from the icon.
 void rexon_tray_notify(const char *title, const char *body);
 
-// ── главное окно ──────────────────────────────────────────────────────────
+// ── main window ───────────────────────────────────────────────────────────
 //
-// ⭐ Все четыре двери можно звать ИЗ ЛЮБОГО ПОТОКА: работу с окном шим сам
-// переносит в поток GUI и ждёт настоящего ответа. Это нужно слушателю
-// второго запуска (rexon_core::single_instance) — он живёт в своём потоке, и
-// без переноса подъём окна был невозможен в принципе.
+// All four doors can be called FROM ANY THREAD: the shim itself moves the
+// work with the window into the GUI thread and waits for the real answer.
+// This is needed by the second-launch listener (rexon_core::single_instance)
+// — it lives in its own thread, and without the move raising the window
+// was impossible in principle.
 
-// Запомнить главное окно приложения и перехватить его закрытие. false —
-// окна не нашли (значит и прятать нечего).
+// Remember the application's main window and intercept its close. false
+// means no window was found (so there is nothing to hide either).
 bool rexon_tray_guard_window();
 
-// Поднять окно и отдать ему фокус. false — окна нет.
+// Raise the window and give it focus. false means there is no window.
 bool rexon_tray_raise_window();
 
-/// Снять главное окно (`QQuickWindow::grabWindow`) в PNG `path`. Только из
-/// потока GUI. Режим обхода `--tour`; false — окна нет или файл не записан.
+/// Capture the main window (`QQuickWindow::grabWindow`) into the PNG
+/// `path`. Only from the GUI thread. Tour mode `--tour`; false means there
+/// is no window or the file was not written.
 bool rexon_tray_grab_window(const char *path);
 
-// Главное окно на QML — корень движка `engine` (`QQmlApplicationEngine *`).
-// Запоминается ДО того, как окно покажут: спрятанных окон верхнего уровня в
-// процессе несколько, и угадывать среди них нельзя. false — корня-окна нет.
-// Звать из потока GUI.
+// The QML main window is the root of the engine `engine`
+// (`QQmlApplicationEngine *`). It is remembered BEFORE the window is
+// shown: there are several hidden top-level windows in the process, and
+// guessing among them is not allowed. false means there is no root window.
+// Call from the GUI thread.
 bool rexon_tray_adopt_qml_window(void *engine);
 
-// Создать платформенное окно главного окна, не показывая его. Возвращает его
-// номер (0 — окна нет) и в `rgb` — цвет фона окна 0xRRGGBB. Звать из потока
-// GUI.
+// Create the platform window of the main window without showing it.
+// Returns its number (0 — no window) and in `rgb` the window background
+// colour 0xRRGGBB. Call from the GUI thread.
 uint64_t rexon_tray_window_native(uint32_t *rgb);
 
-// Спрятать окно.
+// Hide the window.
 bool rexon_tray_hide_window();
 
-// Переключить главное окно на раздел с этим номером. false — полосы
-// разделов не нашли либо номера такого нет.
+// Switch the main window to the section with this number. false means the
+// section strip was not found or there is no such number.
 bool rexon_tray_select_tab(int32_t index);
 
-// Выйти из приложения по-настоящему (сторож закрытия снимается).
+// Quit the application for real (the close guard is removed).
 void rexon_tray_quit();
 
-// Открыть раздел (и подраздел) главного окна на QML. false — окна нет,
-// раздела такого нет либо окно на виджетах.
+// Open a section (and a sub-page) of the QML main window. false means
+// there is no window, no such section, or the window is widget-based.
 bool rexon_tray_open_section(const char *id, const char *subpage);
 
-// Запланировать выход через delay_ms и вернуться СРАЗУ (передача хозяина:
-// ответ «ухожу» обязан уйти до выхода).
+// Schedule quitting in delay_ms and return AT ONCE (handing over to the
+// owner: the answer "leaving" must go out before quitting).
 void rexon_tray_request_quit(int32_t delay_ms);
 
-// ── демон обоев на шине ───────────────────────────────────────────────────
+// ── wallpaper daemon on the bus ───────────────────────────────────────────
 
-// Виден ли демон на session-bus.
+// Whether the daemon is visible on the session bus.
 bool rexon_tray_daemon_alive();
 
-// Метод демона без аргументов / с одним аргументом. false — вызов не удался.
+// Daemon method without arguments / with one argument. false means the
+// call failed.
 bool rexon_tray_daemon_call(const char *method);
 bool rexon_tray_daemon_call_u32(const char *method, uint32_t arg);
 bool rexon_tray_daemon_call_bool(const char *method, bool arg);
 
-// Свойство демона: строка копируется в `buf` (с завершающим нулём).
-// Возвращает число записанных байт без нуля; -1 — свойство недоступно.
+// Daemon property: the string is copied into `buf` (NUL-terminated).
+// Returns the number of bytes written without the NUL; -1 means the
+// property is unavailable.
 int32_t rexon_tray_daemon_prop(const char *name, char *buf, int32_t buf_len);
 }
