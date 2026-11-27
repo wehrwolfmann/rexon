@@ -34,6 +34,11 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
+    /// Стрелки ← → в подписях страницы — по её зеркалированию.
+    readonly property RexonArrows arrows: RexonArrows {
+        mirrored: root.LayoutMirroring.enabled
+    }
+
     // ── Мост наружу ───────────────────────────────────────────────────────
 
     /// Объект побочных действий. По умолчанию — свой, на Rust
@@ -200,13 +205,14 @@ Item {
         // сама она остаётся нулевой, и страница схлопывается в полоску.
         ColumnLayout {
             id: pageColumn
-            x: root.sty.page.margin
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: root.sty.page.margin
             y: root.sty.page.margin
-            width: flick.width - 2 * root.sty.page.margin
             height: implicitHeight
             spacing: root.sty.page.spacing
 
-            Text {
+            RexonText {
                 visible: root.fullPage
                 text: page.pageTitle
                 color: root.colText
@@ -227,11 +233,12 @@ Item {
                 implicitHeight: polkitText.implicitHeight
                                 + 2 * root.sty.banner.padding
 
-                Text {
+                RexonText {
                     id: polkitText
-                    x: root.sty.banner.padding
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: root.sty.banner.padding
                     y: root.sty.banner.padding
-                    width: parent.width - 2 * root.sty.banner.padding
                     text: root.st.polkit || ""
                     wrapMode: Text.WordWrap
                     textFormat: Text.RichText
@@ -256,12 +263,13 @@ Item {
 
                 RowLayout {
                     id: adminRow
-                    x: root.sty.banner.padding
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: root.sty.banner.padding
                     y: root.sty.banner.padding
-                    width: parent.width - 2 * root.sty.banner.padding
                     spacing: root.sty.banner.padding
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: "🔓 " + root.txt["admin.info"]
                         wrapMode: Text.WordWrap
@@ -313,14 +321,14 @@ Item {
 
                     ColumnLayout {
                         id: sectionColumn
-                        x: root.sty.group.marginH + sectionFrame.border.width
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: root.sty.group.marginH + sectionFrame.border.width
                         y: root.sty.group.marginV + sectionFrame.border.width
-                        width: parent.width - 2 * (root.sty.group.marginH
-                                                   + sectionFrame.border.width)
                         height: implicitHeight
                         spacing: root.sty.group.spacing
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             text: sectionFrame.modelData.title
                             color: root.colText
@@ -329,7 +337,7 @@ Item {
                             wrapMode: Text.WordWrap
                         }
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             visible: sectionFrame.modelData.description !== ""
                             text: sectionFrame.modelData.description
@@ -368,13 +376,14 @@ Item {
 
                 ColumnLayout {
                     id: movedColumn
-                    x: root.sty.group.marginH + movedFrame.border.width
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: root.sty.group.marginH + movedFrame.border.width
                     y: root.sty.group.marginV + movedFrame.border.width
-                    width: parent.width - 2 * (root.sty.group.marginH + movedFrame.border.width)
                     height: implicitHeight
                     spacing: root.sty.group.spacing
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: page.movedHeading
                         color: root.colTextSecondary
@@ -570,7 +579,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.minimumWidth: root.sty.widths.fieldLabel
                     text: root.txt["lang.row"]
                     textFormat: Text.RichText
@@ -592,7 +601,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: langBody.lang.restart === true
                 text: root.txt["lang.restart_hint"]
@@ -628,7 +637,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.minimumWidth: root.sty.widths.fieldLabel
                     text: root.txt["skin.row"]
                     textFormat: Text.RichText
@@ -651,7 +660,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: page.skinDescription(root.st.skin || "")
                 wrapMode: Text.WordWrap
@@ -659,7 +668,7 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt["skin.hint"]
                 wrapMode: Text.WordWrap
@@ -718,7 +727,7 @@ Item {
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(obInstall)
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: obInstall.visible
                 text: root.installTexts.hint !== undefined
@@ -751,7 +760,7 @@ Item {
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(trayAutostart)
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt["tray.autostart_hint"]
                 wrapMode: Text.WordWrap
@@ -762,7 +771,7 @@ Item {
             // Лотка в сессии может не быть вовсе — тогда и значка нет, и
             // крестик окна закрывает Rexon как раньше. Молчать об этом
             // нельзя: настройка выше в такой сессии ничего не даст.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: root.st.tray !== undefined
                          && root.st.tray.available === false
@@ -785,7 +794,7 @@ Item {
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(trayThemeDeps)
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt["tray.theme_deps_hint"]
                 wrapMode: Text.WordWrap
@@ -828,9 +837,10 @@ Item {
 
                     RowLayout {
                         id: fmRowLayout
-                        x: root.sty.fmRow.marginH
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: root.sty.fmRow.marginH
                         y: root.sty.fmRow.marginV
-                        width: parent.width - 2 * root.sty.fmRow.marginH
                         height: implicitHeight
                         spacing: root.sty.fmRow.spacing
 
@@ -849,7 +859,11 @@ Item {
                             indicator: Rectangle {
                                 implicitWidth: 18
                                 implicitHeight: 18
-                                x: fmButton.leftPadding
+                                // Кружок — в начале строки: при языке справа
+                                // налево справа (как у `RexonCheckBox`).
+                                x: fmButton.mirrored
+                                   ? fmButton.width - width - fmButton.rightPadding
+                                   : fmButton.leftPadding
                                 y: fmButton.topPadding
                                    + (fmButton.availableHeight - height) / 2
                                 radius: 9
@@ -869,24 +883,27 @@ Item {
                                 }
                             }
 
-                            contentItem: Text {
-                                leftPadding: fmButton.indicator.width
-                                             + fmButton.spacing
+                            contentItem: RexonText {
+                                leftPadding: fmButton.mirrored ? 0
+                                             : fmButton.indicator.width + fmButton.spacing
+                                rightPadding: fmButton.mirrored
+                                              ? fmButton.indicator.width + fmButton.spacing : 0
                                 text: fmButton.text
                                 color: root.colText
                                 verticalAlignment: Text.AlignVCenter
                             }
                         }
 
-                        Text {
+                        RexonText {
                             visible: !fmRow.isAuto
                             text: fmRow.badge.text
                             color: fmRow.badge.color
                         }
 
-                        Text {
+                        RexonText {
                             visible: fmRow.isAuto
-                            text: root.txt["fm.auto_hint"]
+                            // Стрелка смотрит на выбор слева (`RexonArrows.keyHint`).
+                            text: root.arrows.keyHint(root.txt["fm.auto_hint"])
                             color: root.colTextSecondary
                             font.weight: root.pal.text_secondary_weight
                         }
@@ -894,7 +911,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt["fm.wm_note"]
                 wrapMode: Text.WordWrap
@@ -917,7 +934,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: page.t1("fm.current",
                               (root.st.fm && root.st.fm.currentName)
@@ -951,7 +968,7 @@ Item {
 
             // Окружение ядру неизвестно — восстанавливать нечего, и об этом
             // говорится прямо, а не пустой кнопкой.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: qfBody.qf.known !== true
                 text: page.t1("quickfix.unknown_de", qfBody.qf.de || "")
@@ -965,7 +982,7 @@ Item {
                 visible: qfBody.qf.known === true
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: page.t1("quickfix.current", qfBody.qf.de || "")
                     textFormat: Text.RichText
@@ -996,7 +1013,7 @@ Item {
             height: implicitHeight
             spacing: root.sty.group.spacing
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: (root.st.compl && root.st.compl.text)
                       || root.txt["compl.idle"]
@@ -1029,7 +1046,7 @@ Item {
 
             // Движок обоев не поднялся — раздела как такового нет, есть
             // объяснение почему.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: !(root.st.wp && root.st.wp.engine === true)
                 text: root.txt["wp.no_engine"]
@@ -1047,7 +1064,7 @@ Item {
                 readonly property var wp: root.st.wp || ({})
                 readonly property var audio: wpBody.wp.audio || ({})
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: wpBody.wp.status || ""
                     wrapMode: Text.WordWrap
@@ -1075,13 +1092,13 @@ Item {
                     Item { Layout.fillWidth: true }
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt["wp.from_file"]
                     color: root.colText
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt["wp.file_hint"]
                     wrapMode: Text.WordWrap
@@ -1109,7 +1126,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         Layout.minimumWidth: root.sty.widths.volumeLabel
                         text: page.volumeLabel(wpVolume.value)
                         color: root.colText
@@ -1162,7 +1179,7 @@ Item {
                         root.ensureVisible(wpHideCovered)
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt["wp.audio_hint"]
                     wrapMode: Text.WordWrap
@@ -1198,7 +1215,7 @@ Item {
                 }
 
                 // ── YouTube / Vimeo ───────────────────────────────────────
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt["yt.header"]
                     color: root.colText
@@ -1208,7 +1225,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         Layout.minimumWidth: root.sty.widths.url
                         text: root.txt["yt.url_label"]
                         color: root.colText
@@ -1227,7 +1244,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         text: root.txt["yt.quality_label"]
                         color: root.colText
                     }
@@ -1243,7 +1260,7 @@ Item {
                             root.ensureVisible(ytQuality)
                     }
 
-                    Text {
+                    RexonText {
                         text: root.txt["yt.mode_label"]
                         color: root.colText
                     }
@@ -1290,7 +1307,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: wpBody.wp.ytdlpLabel || ""
                         wrapMode: Text.WordWrap
@@ -1316,13 +1333,13 @@ Item {
                 }
 
                 // ── Веб-обои ──────────────────────────────────────────────
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt["web.header"]
                     color: root.colText
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt["web.hint"]
                     wrapMode: Text.WordWrap
@@ -1334,7 +1351,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         Layout.minimumWidth: root.sty.widths.url
                         text: root.txt["yt.url_label"]
                         color: root.colText
@@ -1383,7 +1400,7 @@ Item {
             readonly property int shown: Math.min(
                 libBody.items.length, page.libraryPageSize(libBody.cols))
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: libBody.lib.engine !== true
                 text: root.txt["lib.no_engine"]
@@ -1392,7 +1409,7 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: libBody.lib.engine === true
                          && libBody.items.length === 0
@@ -1459,7 +1476,7 @@ Item {
                                     visible: status === Image.Ready
                                 }
 
-                                Text {
+                                RexonText {
                                     anchors.centerIn: parent
                                     visible: libPreview.status !== Image.Ready
                                     text: "🖼️"
@@ -1487,7 +1504,7 @@ Item {
                                 Layout.bottomMargin: root.sty.lib.infoMarginV
                                 spacing: root.sty.lib.infoSpacing
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     text: libCard.wp.name || root.txt["lib.unnamed"]
                                     font.bold: true
@@ -1505,7 +1522,7 @@ Item {
                                     HoverHandler { id: nameHover }
                                 }
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     // Подпись формата для человека приходит из
                                     // ядра (`formatLabel`); служебное `format`
@@ -1572,7 +1589,7 @@ Item {
 
             readonly property var imp: root.st.imp || ({})
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt["imp.formats"]
                 wrapMode: Text.WordWrap
@@ -1580,7 +1597,7 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: (impBody.imp.note || "") !== ""
                 text: impBody.imp.note || ""
@@ -1607,7 +1624,7 @@ Item {
                 Item { Layout.fillWidth: true }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: impBody.imp.available !== true
                 text: root.txt["imp.unavailable_note"]
@@ -1631,7 +1648,7 @@ Item {
 
             readonly property var blur: root.st.blur || ({})
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: blurBody.blur.engine !== true
                 text: root.txt["wp.no_engine"]
@@ -1645,7 +1662,7 @@ Item {
                 visible: blurBody.blur.engine === true
                 spacing: root.sty.group.spacing
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     visible: blurBody.blur.pillow !== true
                     text: root.txt["blur.no_pillow"]
@@ -1658,7 +1675,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         Layout.minimumWidth: root.sty.widths.blurLabel
                         text: root.txt["blur.strength"]
                         color: root.colText
@@ -1680,7 +1697,7 @@ Item {
                             root.ensureVisible(blurSlider)
                     }
 
-                    Text {
+                    RexonText {
                         Layout.minimumWidth: root.sty.widths.blurValue
                         text: page.t1("blur.px", String(Math.round(blurSlider.value)))
                         color: root.colText
@@ -1736,7 +1753,7 @@ Item {
             readonly property var amb: root.st.amb || ({})
             readonly property var active: ambBody.amb.active || []
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: ambBody.amb.manager !== true
                 text: root.txt["amb.no_manager"]
@@ -1750,7 +1767,7 @@ Item {
                 visible: ambBody.amb.manager === true
                 spacing: root.sty.group.spacing
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     visible: ambBody.amb.mpv !== true
                     text: root.txt["amb.no_mpv"]
@@ -1774,7 +1791,7 @@ Item {
                         onActiveFocusChanged: if (activeFocus) root.ensureVisible(ambAdd)
                     }
 
-                    Text {
+                    RexonText {
                         text: root.txt["amb.volume"]
                         color: root.colText
                     }
@@ -1792,7 +1809,7 @@ Item {
                             root.ensureVisible(ambVolume)
                     }
 
-                    Text {
+                    RexonText {
                         Layout.minimumWidth: root.sty.widths.ambientPercent
                         text: page.t1("amb.percent",
                                       String(Math.round(ambVolume.value)))
@@ -1812,7 +1829,7 @@ Item {
                     }
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt["amb.volume_hint"]
                     wrapMode: Text.WordWrap
@@ -1827,7 +1844,7 @@ Item {
                     Layout.topMargin: root.sty.ambient.listTopMargin
                     spacing: root.sty.ambient.listSpacing
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         visible: ambBody.active.length === 0
                         text: root.txt["amb.empty"]
@@ -1851,13 +1868,14 @@ Item {
 
                             RowLayout {
                                 id: ambRowLayout
-                                x: root.sty.ambient.rowMarginH
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: root.sty.ambient.rowMarginH
                                 y: root.sty.ambient.rowMarginV
-                                width: parent.width - 2 * root.sty.ambient.rowMarginH
                                 height: implicitHeight
                                 spacing: root.sty.ambient.rowSpacing
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     text: ambRow.modelData.name || ""
                                     textFormat: Text.RichText
@@ -1865,7 +1883,7 @@ Item {
                                     color: root.colText
                                 }
 
-                                Text {
+                                RexonText {
                                     text: ambRow.modelData.volume || ""
                                     color: root.colTextSecondary
                                     font.weight: root.pal.text_secondary_weight
@@ -1960,7 +1978,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.minimumWidth: root.sty.widths.fieldLabel
                     text: root.txt["snd.theme_label"]
                     color: root.colText
@@ -1997,13 +2015,13 @@ Item {
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(sndEvents)
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt["snd.test_label"]
                 color: root.colText
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: sndBody.showcase.length === 0
                 text: root.txt["snd.no_events"]
@@ -2039,7 +2057,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt["snd.themes_hint"]
                 textFormat: Text.RichText
@@ -2144,7 +2162,7 @@ Item {
                                 root.ensureVisible(fontButton)
                         }
 
-                        Text {
+                        RexonText {
                             // Ширину столбца задаёт кнопка; подпись под ней
                             // переносится, а не распирает столбец.
                             Layout.fillWidth: true
@@ -2159,7 +2177,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: page.t1("font.de_hint", page.deDisplay)
                 wrapMode: Text.WordWrap
@@ -2169,7 +2187,7 @@ Item {
 
             // На что действуют «маленький», «панели инструментов» и «меню»
             // там, где у окружения своих таких шрифтов нет.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: text.length > 0
                 text: (root.st.font && root.st.font.scope) || ""
@@ -2193,7 +2211,7 @@ Item {
                     onClicked: root.did(root.actions.changeAllFonts(allModeCombo.currentValue))
                     onActiveFocusChanged: if (activeFocus) root.ensureVisible(allFontsButton)
                 }
-                Text {
+                RexonText {
                     Layout.leftMargin: root.sty.group.spacing
                     text: root.txt["font.all_mode"]
                     color: root.colText
@@ -2213,7 +2231,7 @@ Item {
             }
 
             // ── Сглаживание, субпиксели, хинтинг ─────────────────────────
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 Layout.topMargin: root.sty.group.spacing
                 text: root.txt["font.render_title"]
@@ -2259,7 +2277,7 @@ Item {
                         fontBody.applyCurrent()
                     onActiveFocusChanged: if (activeFocus) root.ensureVisible(aaFrom)
                 }
-                Text {
+                RexonText {
                     text: root.txt["font.aa_to"]
                     color: root.colTextSecondary
                     font.weight: root.pal.text_secondary_weight
@@ -2279,7 +2297,7 @@ Item {
                         fontBody.applyCurrent()
                     onActiveFocusChanged: if (activeFocus) root.ensureVisible(aaTo)
                 }
-                Text {
+                RexonText {
                     text: root.txt["font.pt"]
                     color: root.colTextSecondary
                     font.weight: root.pal.text_secondary_weight
@@ -2291,7 +2309,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: root.sty.spacing.fontRow
 
-                Text {
+                RexonText {
                     text: root.txt["font.subpixel"]
                     color: root.colText
                 }
@@ -2307,7 +2325,7 @@ Item {
                     onActivated: fontBody.applyCurrent()
                     onActiveFocusChanged: if (activeFocus) root.ensureVisible(subpixelCombo)
                 }
-                Text {
+                RexonText {
                     Layout.leftMargin: root.sty.group.spacing
                     text: root.txt["font.hinting"]
                     color: root.colText
@@ -2326,7 +2344,7 @@ Item {
                 Item { Layout.fillWidth: true }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt["font.render_hint"]
                 wrapMode: Text.WordWrap
@@ -2369,7 +2387,7 @@ Item {
                 Item { Layout.fillWidth: true }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: text.length > 0
                 text: fontBody.dpi.note || ""
@@ -2438,9 +2456,25 @@ Item {
                 }
             }
 
+            // Смена темы не должна оставить терминал нечитаемым
+            // (`terminal_guard`): выключатель свой, по умолчанию включён.
+            RexonCheckBox {
+                id: protTermColors
+                objectName: "terminalColorsGuard"
+                Layout.fillWidth: true
+                pal: root.pal
+                text: root.txt["prot.terminal_colors"]
+                ToolTip.visible: hovered
+                ToolTip.text: root.txt["prot.terminal_colors_tip"]
+                checked: protBody.prot.terminalColors !== false
+                enabled: root.actions && root.actions.setTerminalColorsGuard !== undefined
+                onToggled: root.did(root.actions.setTerminalColorsGuard(protTermColors.checked))
+                onActiveFocusChanged: if (activeFocus) root.ensureVisible(protTermColors)
+            }
+
             // Без утилиты xdg-terminal-exec выбор терминала записан, но часть
             // программ откроет свой — говорим об этом прямо.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: (protBody.prot.note || "") !== ""
                 text: protBody.prot.note || ""
@@ -2461,13 +2495,13 @@ Item {
                     Layout.fillWidth: true
                     spacing: root.sty.spacing.infoBox
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: root.txt["prot.snapshot_title"]
                         color: root.colText
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: root.txt["prot.snapshot_sub"]
                         wrapMode: Text.WordWrap
@@ -2491,7 +2525,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: protBody.prot.status || ""
                     wrapMode: Text.WordWrap
@@ -2534,13 +2568,13 @@ Item {
                     Layout.fillWidth: true
                     spacing: root.sty.spacing.infoBox
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: root.txt["plasma.backup_title"]
                         color: root.colText
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: root.txt["plasma.backup_sub"]
                         wrapMode: Text.WordWrap
@@ -2563,14 +2597,14 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: plasmaBody.backups.length > 0
                 text: plasmaBody.plasma.header || ""
                 color: root.colText
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: plasmaBody.backups.length === 0
                 text: root.txt["plasma.no_backups"]
@@ -2587,7 +2621,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: root.sty.spacing.plasmaRow
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: backupRow.modelData.label || ""
                         elide: Text.ElideRight
@@ -2694,7 +2728,7 @@ Item {
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: confirmDialog.heading
                 color: root.colText
@@ -2703,7 +2737,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: confirmDialog.question
                 textFormat: Text.RichText

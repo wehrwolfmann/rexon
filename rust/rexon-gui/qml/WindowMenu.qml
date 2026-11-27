@@ -271,7 +271,7 @@ MenuBar {
 
                     spacing: 24
 
-                    Text {
+                    RexonText {
                         id: entryLabel
 
                         text: entry.text
@@ -282,7 +282,7 @@ MenuBar {
                         Layout.fillWidth: true
                     }
 
-                    Text {
+                    RexonText {
                         id: entryKeys
 
                         visible: entry.keys !== ""
@@ -406,7 +406,7 @@ MenuBar {
     delegate: MenuBarItem {
         id: barItem
 
-        contentItem: Text {
+        contentItem: RexonText {
             text: barItem.text
             font: barItem.font
             // Краски — из палитры окна. В продукте на этом месте стоит QSS,
@@ -448,6 +448,13 @@ MenuBar {
     // ними зеркально встало бы и само подменю. Подменю остаётся слева
     // направо (`menu.setLayoutDirection(LeftToRight)` в продукте): оно —
     // отдельное окно и раскладки полосы не наследует.
+    //
+    // Язык справа налево: окно зеркалится от корня (MainWindow.qml), и эта
+    // строка вместе со всем окном переворачивается — «☰» встаёт слева, то
+    // есть в конце полосы для такого читателя, а подменю читается справа
+    // налево, как и положено. Своего `LayoutMirroring` здесь
+    // по-прежнему нет: местное включение развернуло бы подменю и при языке
+    // слева направо.
     contentItem: Row {
         spacing: root.spacing
         layoutDirection: Qt.RightToLeft

@@ -162,7 +162,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "лес",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -491,7 +493,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -851,7 +855,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "лес",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -911,7 +917,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -1351,7 +1359,9 @@
        }
       ],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -1416,7 +1426,9 @@
        }
       ],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -1834,7 +1846,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -1927,7 +1941,9 @@
       ],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -2357,7 +2373,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -2425,7 +2443,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -2932,7 +2952,9 @@
       ],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -3037,7 +3059,9 @@
       ],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -3494,7 +3518,9 @@
       ],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -3572,7 +3598,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -4345,7 +4373,8 @@
       "sorts": [],
       "search_text": "",
       "skip_types": [
-       "web"
+       "web",
+       "gltf"
       ],
       "filter_tags": [],
       "skip_content_ratings": []
@@ -4410,7 +4439,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -4458,7 +4489,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [
        "аниме",
        "город"
@@ -4525,7 +4558,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -4589,7 +4624,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": [
        "Mature"
@@ -4639,7 +4676,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -5005,7 +5044,8 @@
       "sorts": [],
       "search_text": "",
       "skip_types": [
-       "web"
+       "web",
+       "gltf"
       ],
       "filter_tags": [],
       "skip_content_ratings": []
@@ -5067,7 +5107,8 @@
       "sorts": [],
       "search_text": "",
       "skip_types": [
-       "web"
+       "web",
+       "gltf"
       ],
       "filter_tags": [
        "аниме"
@@ -5282,7 +5323,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -5663,7 +5706,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -5719,7 +5764,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -5759,7 +5806,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -6019,7 +6068,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -6075,7 +6126,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -6302,7 +6355,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -6358,7 +6413,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -6582,7 +6639,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -6720,7 +6779,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }
@@ -6965,7 +7026,9 @@
       "filter_logics": [],
       "sorts": [],
       "search_text": "",
-      "skip_types": [],
+      "skip_types": [
+       "gltf"
+      ],
       "filter_tags": [],
       "skip_content_ratings": []
      }

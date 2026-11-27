@@ -384,7 +384,7 @@ pub fn layout_warnings(l: &Layout) -> Vec<String> {
     if l.upscale > UPSCALE_WARN {
         out.push(trf(
             "The picture is smaller than the showcase and will be stretched %1 times — it may look blurry. A picture at least %2 px wide looks sharp.",
-            &[&format!("{:.1}", l.upscale), &((l.frame_width as f64 * l.zoom).ceil() as u32)],
+            &[&crate::i18n::format_decimal(l.upscale, 1), &((l.frame_width as f64 * l.zoom).ceil() as u32)],
         ));
     }
     out
@@ -476,7 +476,7 @@ pub fn source_notes(info: &SourceInfo) -> Vec<String> {
     if info.animated {
         out.push(trf(
             "Animated GIF: %1 frames, %2 s per loop.",
-            &[&info.frames, &format!("{:.1}", info.duration_ms as f64 / 1000.0)],
+            &[&info.frames, &crate::i18n::format_decimal(info.duration_ms as f64 / 1000.0, 1)],
         ));
     }
     if info.bytes > FILE_LIMIT_BYTES {
@@ -1020,6 +1020,7 @@ pub fn readme_text(kind: ShowcaseKind, files: &[OutFile]) -> String {
     let steps: Vec<String> = match kind {
         ShowcaseKind::Artwork => vec![
             trf("Showcases open at Steam level %1. Check your level on your profile page.", &[&MIN_STEAM_LEVEL]),
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             trf("Open the artwork upload page in Steam: %1 (Profile → Artwork → Upload).", &[&UPLOAD_PAGE_URL]),
             tr("Upload the files one by one, starting with number 1. Give each a clear title, for example \"Showcase — main\" and \"Showcase — side\": in Steam's picker the long pictures are hard to recognise by thumbnail."),
             tr("Tick \"I certify that I created this piece of art\" only if the picture is really yours. For someone else's art Steam may remove the upload when the author complains."),
@@ -1045,9 +1046,9 @@ pub fn readme_text(kind: ShowcaseKind, files: &[OutFile]) -> String {
 /// «1,2 МБ» / «340 КБ» — вес файла для человека.
 pub fn human_size(bytes: u64) -> String {
     if bytes >= 1_000_000 {
-        trf("%1 MB", &[&format!("{:.1}", bytes as f64 / 1_000_000.0)])
+        trf("%1 MB", &[&crate::i18n::format_decimal(bytes as f64 / 1_000_000.0, 1)])
     } else {
-        trf("%1 KB", &[&((bytes + 999) / 1000)])
+        trf("%1 KB", &[&crate::i18n::format_decimal(((bytes + 999) / 1000) as f64, 0)])
     }
 }
 

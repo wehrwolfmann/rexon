@@ -39,7 +39,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine_update::ver_tuple;
-use crate::i18n::{fill, n_, tr, trc, trf};
+use crate::i18n::{fill, fill_plain, n_, tr, trc, trf};
 use crate::system::PkgFamily;
 use crate::system_de_exec::DeOpsIo;
 use crate::system_exec::SystemIo;
@@ -775,6 +775,20 @@ pub fn orphan_remove_command(f: &Finding) -> Option<String> {
 /// Что с сиротой: «ушёл из репозиториев, остался от прежней версии» и,
 /// если причина известна, — пояснение. `t` — переводчик (msgid → текст).
 pub fn orphan_cause(f: &Finding, t: &dyn Fn(&str) -> String) -> String {
+    orphan_cause_with(f, t, fill)
+}
+
+/// [`orphan_cause`] для текстовой консоли: без изолятов письма справа налево
+/// (консоль ядра их не понимает, см. [`crate::i18n::fill_plain`]).
+pub fn orphan_cause_plain(f: &Finding, t: &dyn Fn(&str) -> String) -> String {
+    orphan_cause_with(f, t, fill_plain)
+}
+
+fn orphan_cause_with(
+    f: &Finding,
+    t: &dyn Fn(&str) -> String,
+    fill: fn(&str, &[&dyn std::fmt::Display]) -> String,
+) -> String {
     let (name, version, _) = f.odd.first().cloned().unwrap_or_default();
     let pair = fill(&t(T_ORPHAN_PAIR), &[&format!("{name} {version}"), &format!("{} {}", f.lead.0, f.lead.1)]);
     let mut text = fill(&t(T_ORPHAN), &[&name, &pair]);
@@ -789,7 +803,7 @@ pub fn orphan_cause(f: &Finding, t: &dyn Fn(&str) -> String) -> String {
 /// Человек за консолью спасения команду набирает сам — она здесь к месту.
 /// Окну Rexon и уведомлению — [`finding_text_for`]: там команды нет.
 pub fn orphan_advice(f: &Finding, t: &dyn Fn(&str) -> String) -> Option<String> {
-    orphan_remove_command(f).map(|cmd| fill(&t(T_ORPHAN_REMOVE), &[&cmd]))
+    orphan_remove_command(f).map(|cmd| fill_plain(&t(T_ORPHAN_REMOVE), &[&cmd]))
 }
 
 /// Кому текст находки. Консоль спасения сюда не ходит — у неё свой текст с

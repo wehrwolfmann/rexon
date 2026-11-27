@@ -1134,10 +1134,11 @@ pub fn create_body_html() -> String {
     // TRANSLATORS: help page in HTML. Keep the tags, the file names, the
     // JSON keys and the type names (theme-gtk, plugin…) as they are;
     // translate the prose and the sample values of "name", "author" and
-    // "description".
+    // "description". The <pre> blocks stay left-to-right in every language,
+    // so keep their arrows ← as they are.
     // Без ведущего перевода строки: xgettext срезает его у msgid, и
     // строка в коде разошлась бы с ключом каталога.
-    tr(r#"<p>A Rexon extension is a plain <b>ZIP archive</b> with the <code>.rxn</code> extension.
+    let body = tr(r#"<p>A Rexon extension is a plain <b>ZIP archive</b> with the <code>.rxn</code> extension.
 Every type has the same layout:</p>
 
 <pre>
@@ -1199,7 +1200,9 @@ zip -r ../my-extension.rxn .
 <h3>🔗 Full documentation</h3>
 <p>In the Rexon sources: <code>extensions/constants.py</code> has the full list
 of types and install paths.</p>
-"#)
+"#);
+    // Дерево архива, JSON и команды — слева направо при любом языке.
+    crate::ui_base::pre_left_to_right(&body)
 }
 
 // ============================================================================

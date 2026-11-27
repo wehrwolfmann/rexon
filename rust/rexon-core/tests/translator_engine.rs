@@ -1395,3 +1395,283 @@ fn live_term_fixes_survive_the_real_engine() {
     println!("«распак…» в {unpacked} из {asked_unpack} фраз про архив");
     assert!(unpacked * 4 >= asked_unpack * 3, "«распаковать» меньше чем в трёх четвертях");
 }
+
+// ============================================================================
+// Описание темы 2380824 (KDE Store, 06.11): правила качества на живых кусках
+// ============================================================================
+//
+// Карточка «Windows XP Professional - Luna Blue and Classic Suite» показала
+// разом весь класс дефектов: «и и», «Базцитовый Linux», «разногласия» вместо
+// Discord, «исследователь», «Лофон», «Лоток системы», ✨ → 👍 и абзац,
+// оставшийся английским целиком. Ниже — по сверке на каждое правило; ответы
+// движка — ДОСЛОВНО те, что дала живая модель Firefox en→ru 06.11.
+
+/// Название товара и автор — как их передаёт окно.
+const XP_NAME: &str = "Windows XP Professional - Luna Blue and Classic Suite";
+const XP_AUTHOR: &str = "ruissoftware";
+
+/// Движок «по сценарию»: на известное предложение отвечает записанным живым
+/// ответом, остальное — как [`FakeEngine`] («перевод: …»).
+struct ScriptedEngine {
+    answer: Box<dyn Fn(&str) -> Option<String>>,
+    seen: Mutex<Vec<String>>,
+}
+
+impl ScriptedEngine {
+    fn new(answer: impl Fn(&str) -> Option<String> + 'static) -> Self {
+        ScriptedEngine { answer: Box::new(answer), seen: Mutex::default() }
+    }
+
+    fn seen(&self) -> Vec<String> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+impl TranslateEngine for ScriptedEngine {
+    fn available(&self, src: &str, tgt: &str) -> bool {
+        (src, tgt) == ("en", "ru")
+    }
+
+    fn translate_block(&self, _src: &str, _tgt: &str, block: &[&str]) -> Vec<String> {
+        self.seen.lock().unwrap().extend(block.iter().map(|s| s.to_string()));
+        block
+            .iter()
+            .map(|s| (self.answer)(s).unwrap_or_else(|| format!("перевод: {s}")))
+            .collect()
+    }
+}
+
+/// Прогон куска описания с охраной названия и автора, на свежей базе.
+fn xp_translate(source: &str, engine: &ScriptedEngine) -> te::LiveTranslation {
+    let home = TempHome::new("xp");
+    let mut cache = LiveCache::open(&home.0);
+    te::translate_live_guarded(source, "ru_RU.UTF-8", engine, &mut cache, &[XP_NAME, XP_AUTHOR])
+}
+
+/// (а) Имена из таблиц ядра (дистрибутивы, программы) — латиницей. Узел
+/// «Bazzite Linux» целиком из имён, движку он не достаётся вовсе; «Discord»
+/// внутри фразы движок перевёл («раздор»), и фраза переспрошена под
+/// заполнителем.
+#[test]
+fn xp_product_names_from_core_tables_stay_latin() {
+    let engine = ScriptedEngine::new(|s| {
+        if s.contains("Discord") {
+            // Голый проход: живой ответ модели.
+            return Some(
+                "светло-голубая область уведомлений Luna, показывающая живые фоновые приложения \
+                 (раздор, Steam и т. Д.), контроль громкости."
+                    .to_string(),
+            );
+        }
+        s.contains("@0@").then(|| {
+            "светло-голубая область уведомлений Luna, показывающая живые фоновые приложения \
+             (@0@ и т. Д.), контроль громкости."
+                .to_string()
+        })
+    });
+    let out = xp_translate(
+        "<p>for <strong>KDE Plasma 6</strong> and <strong>Bazzite Linux</strong></p>\
+         <p>Light-blue Luna notification area showing live background apps (Discord, Steam, etc.), \
+         volume control.</p>",
+        &engine,
+    );
+    assert!(out.text.contains("<strong>Bazzite Linux</strong>"), "{}", out.text);
+    assert!(out.text.contains("(Discord, Steam и т. Д.)"), "{}", out.text);
+    assert!(!out.text.contains("раздор"), "{}", out.text);
+    assert!(
+        !engine.seen().iter().any(|s| s == "Bazzite Linux"),
+        "узел из одних имён ушёл движку: {:?}",
+        engine.seen()
+    );
+    // Строчные обычные слова — по-прежнему проза: «a steam cloud» не имя.
+    assert!(rexon_core::translator::is_prose_segment("a steam cloud over windows"));
+}
+
+/// (б) Знаки-картинки движку не показываются: ✨ на краю отрезается и
+/// возвращается, ✨ внутри фразы уходит под заполнитель.
+#[test]
+fn xp_pictographs_survive_byte_for_byte() {
+    let engine = ScriptedEngine::new(|s| match s {
+        // Ровно то, что модель делала с целой строкой: «### 👍 Особенности:».
+        "### ✨ Features:" => Some("### 👍 Особенности:".to_string()),
+        "Features:" => Some("особенности:".to_string()),
+        _ if s.contains('✨') => Some(s.replace('✨', "👍").replace("Enjoy the", "наслаждайтесь")),
+        _ if s.contains("@0@") => Some(s.replace("Enjoy the", "наслаждайтесь").replace(" look", " видом")),
+        _ => None,
+    });
+    let out = xp_translate("<p>### ✨ Features:<br />Enjoy the ✨ look</p>", &engine);
+    assert!(out.text.contains("### ✨ Особенности:"), "{}", out.text);
+    assert!(out.text.contains("Наслаждайтесь ✨ видом"), "{}", out.text);
+    assert!(!out.text.contains('👍'), "знак подменён: {}", out.text);
+    assert!(
+        !engine.seen().iter().any(|s| s.contains("### ")),
+        "край строки ушёл движку: {:?}",
+        engine.seen()
+    );
+}
+
+/// Двоеточие после жирной подписи — край: модель меняла его на тире.
+#[test]
+fn xp_leading_colon_after_bold_label_is_kept() {
+    let engine = ScriptedEngine::new(|s| {
+        (s == "Choose between the authentic welcome screen and the classic dialog.")
+            .then(|| "выбор между аутентичным экраном приветствия и классическим диалогом.".to_string())
+    });
+    let out = xp_translate(
+        "<p><strong>Screen</strong>: Choose between the authentic welcome screen and the classic dialog.</p>",
+        &engine,
+    );
+    assert!(
+        out.text.contains("</strong>: Выбор между"),
+        "двоеточие потерялось: {}",
+        out.text
+    );
+}
+
+/// (в) Выдуманное движком сверх источника: «и и» на одинокое «and», союз «и»
+/// в начале фразы, тире в начале. Авторский повтор остаётся.
+#[test]
+fn xp_invented_repeats_and_leading_marks_are_dropped() {
+    let engine = ScriptedEngine::new(|s| match s {
+        "and" => Some("и и".to_string()),
+        "Full documentation and source code available on GitHub:" => {
+            Some("и полная документация и исходный код доступны на GitHub:".to_string())
+        }
+        "Lock Screen" => Some("- экран замка".to_string()),
+        "This is very very nice." => Some("это очень очень мило.".to_string()),
+        _ => None,
+    });
+    let out = xp_translate(
+        "<p>for <strong>KDE Plasma 6</strong> and <strong>Bazzite Linux</strong></p>\
+         <p>Full documentation and source code available on GitHub: <a href=\"https://x.invalid\">https://x.invalid</a></p>\
+         <p><strong>Lock Screen</strong></p><p>This is very very nice.</p>",
+        &engine,
+    );
+    assert!(out.text.contains("</strong> и <strong>"), "«и и» осталось: {}", out.text);
+    assert!(out.text.contains("<p>Полная документация и исходный код"), "{}", out.text);
+    assert!(out.text.contains("<strong>Экран блокировки</strong>"), "{}", out.text);
+    assert!(out.text.contains("Это очень очень мило."), "авторский повтор съеден: {}", out.text);
+}
+
+/// Поправки терминов на одиноких подписях: «Explorer», «Logon», «Windows XP
+/// System Tray (», «Classic Start Menu (» — живые ответы модели.
+#[test]
+fn xp_windows_terms_are_fixed() {
+    let engine = ScriptedEngine::new(|s| match s {
+        "Explorer" => Some("исследователь".to_string()),
+        "Logon" => Some("Лофон".to_string()),
+        "Windows XP System Tray (" => Some("лоток системы Windows XP (".to_string()),
+        "Classic Start Menu (" => Some("Classic Начало Меню (".to_string()),
+        _ => None,
+    });
+    let out = xp_translate(
+        "<p><strong>Explorer</strong></p><p><strong>Logon</strong></p>\
+         <p><strong>Windows XP System Tray (</strong></p><p><strong>Classic Start Menu (</strong></p>",
+        &engine,
+    );
+    for want in ["Проводник", "Вход в систему", "Системный лоток Windows XP (", "Classic Меню «Пуск» ("] {
+        assert!(out.text.contains(want), "нет «{want}»: {}", out.text);
+    }
+}
+
+/// (г) Абзац «: Full Windows XP Explorer replica … Classic View …» оставался
+/// английским ЦЕЛИКОМ: голый перевод был хорош, но потерял `Classic` (слово
+/// из названия товара), второй проход прятал все четыре имени и движок
+/// размножил `@0@`. Теперь второй проход прячет только потерянное, а если и
+/// он не удался — берётся голый перевод: потерянное имя «мягкое».
+#[test]
+fn xp_paragraph_with_a_lost_title_word_is_not_left_in_english() {
+    const CORE: &str = "Full Windows XP Explorer replica with Category View, Classic View, System \
+                        Properties, Display Properties, Run dialog, and Windows Task Manager with \
+                        green CPU/PF performance graphs.";
+    let engine = ScriptedEngine::new(|s| {
+        if s == CORE {
+            return Some(
+                "полная копия проводника Windows XP с видом категории, классическим \
+                 представлением, системными свойствами, свойствами отображения, диалогом запуска \
+                 и диспетчером задач Windows с зелеными графиками производительности CPU/PF."
+                    .to_string(),
+            );
+        }
+        // Второй проход: живая порча — заполнитель размножен.
+        s.contains("@0@").then(|| "полная @0@ реплика @0@ с видом категории.".to_string())
+    });
+    let out = xp_translate(&format!("<p><strong>Explorer</strong>: {CORE}</p>"), &engine);
+    assert!(out.was_translated);
+    assert!(out.text.contains(": Полная копия проводника Windows XP"), "{}", out.text);
+    assert!(!out.text.contains("Full Windows"), "абзац остался английским: {}", out.text);
+    // Второй проход прятал ОДНО имя — потерянное `Classic`, а не все четыре.
+    let masked: Vec<String> = engine.seen().into_iter().filter(|s| s.contains('@')).collect();
+    assert_eq!(masked.len(), 1, "{masked:?}");
+    assert!(masked[0].contains("@0@ View") && !masked[0].contains("@1@"), "{masked:?}");
+}
+
+/// Строгость прежняя для «твёрдых» имён: имя из списков ядра, не удержанное
+/// ни голым, ни под заполнителем, по-прежнему отменяет сегмент.
+#[test]
+fn xp_a_lost_core_name_still_returns_the_original() {
+    let engine = ScriptedEngine::new(|s| {
+        if s.contains('@') {
+            Some("приложения (и т. Д.).".to_string())
+        } else {
+            Some("приложения (раздор, Steam и т. Д.).".to_string())
+        }
+    });
+    let source = "<p>Background apps (Discord, Steam, etc.).</p>";
+    let out = xp_translate(source, &engine);
+    assert_eq!(out.text, source);
+    assert!(!out.was_translated);
+}
+
+/// Кеш со старыми правилами не читается: запись прежней версии (`6`) с плохим
+/// переводом лежит под другим ключом, и человек сразу видит новый перевод —
+/// без ручной чистки базы.
+#[test]
+fn xp_translations_cached_under_old_rules_are_not_shown() {
+    use rexon_core::translator::{translation_cache_key, translation_cache_key_versioned};
+    let home = TempHome::new("xp-old-cache");
+    let mut cache = LiveCache::open(&home.0);
+    let segment = "Explorer";
+    cache.put_translation(&translation_cache_key_versioned(6, "en", "ru", segment), "Исследователь");
+    assert_ne!(
+        translation_cache_key_versioned(6, "en", "ru", segment),
+        translation_cache_key("en", "ru", segment),
+        "версия правил не поднята — старые переводы читались бы как свои"
+    );
+    let engine = ScriptedEngine::new(|s| (s == "Explorer").then(|| "исследователь".to_string()));
+    let out = te::translate_live_guarded(
+        "<p><strong>Explorer</strong></p>",
+        "ru_RU.UTF-8",
+        &engine,
+        &mut cache,
+        &[XP_NAME],
+    );
+    assert!(out.text.contains("Проводник"), "{}", out.text);
+}
+
+/// Чистые части правил: края фразы, повторно спрятанные имена, «мягкость».
+#[test]
+fn xp_rule_helpers() {
+    use rexon_core::translator as tr;
+    assert_eq!(tr::split_sentence_edges("### ✨ Features:"), ("### ✨ ", "Features:", ""));
+    assert_eq!(tr::split_sentence_edges(": Full text."), (": ", "Full text.", ""));
+    assert_eq!(tr::split_sentence_edges("Enjoy! 🎉"), ("", "Enjoy!", " 🎉"));
+    // Ключ команды и скобка — не край.
+    assert_eq!(tr::split_sentence_edges("-r flag"), ("", "-r flag", ""));
+    assert_eq!(tr::split_sentence_edges("(Discord)"), ("", "(Discord)", ""));
+
+    let masked = tr::mask_names("Windows XP with Classic View and CPU/PF", &[XP_NAME]);
+    assert_eq!(masked.names, ["Windows", "Classic", "CPU/PF"]);
+    let only = tr::mask_only(&masked, &[false, true, false]);
+    assert_eq!(only.text, "Windows XP with @0@ View and CPU/PF");
+    assert_eq!(only.names, ["Classic"]);
+
+    assert!(tr::is_soft_guarded_name("Classic", &[XP_NAME]));
+    assert!(!tr::is_soft_guarded_name("Windows", &[XP_NAME]), "имя из списка ядра");
+    assert!(!tr::is_soft_guarded_name("Nordic", &["Nordic"]), "название целиком");
+    assert!(!tr::is_soft_guarded_name("CPU/PF", &[XP_NAME]), "техника");
+
+    assert_eq!(tr::drop_invented_repeats("en", "ru", "and", "и и"), "и");
+    assert_eq!(tr::drop_invented_repeats("en", "ru", "Both A and B", "и A, и B"), "и A, и B");
+    assert!(tr::is_pictograph('✨') && tr::is_pictograph('🚀') && !tr::is_pictograph('ё'));
+}

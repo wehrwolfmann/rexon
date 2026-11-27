@@ -1762,7 +1762,7 @@ pub fn info_facts(info: &AurInfo, comaintainers: &[String]) -> Vec<AurFact> {
     );
     push(tr("Co-maintainers"), list(comaintainers));
     push(tr("Votes"), info.votes.to_string());
-    push(tr("Popularity"), format!("{:.2}", info.popularity));
+    push(tr("Popularity"), crate::i18n::format_decimal(info.popularity, 2));
     push(tr("First submitted"), epoch_day(info.first_submitted));
     push(tr("Last updated"), epoch_day(info.last_modified));
     push(tr("License"), list(&info.license));

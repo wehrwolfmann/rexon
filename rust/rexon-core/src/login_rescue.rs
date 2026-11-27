@@ -67,7 +67,7 @@
 //! ничего исправного. Шрифт консоли по умолчанию кириллицы и прочего не-
 //! латинского не рисует — поэтому под переводом всегда идёт английский.
 
-use crate::i18n::{fill, n_};
+use crate::i18n::{fill_plain, n_};
 use crate::system::PkgFamily;
 use crate::system_exec::SystemIo;
 use crate::update_guard::{self, Effect, Finding, Survey};
@@ -1314,7 +1314,7 @@ fn mix_versions(f: &Finding, t: Translate) -> String {
     if f.odd.len() > SHOWN {
         odd.push_str(", …");
     }
-    fill(&t(T_PAIR), &[&format!("{} {}", f.lead.0, f.lead.1), &odd])
+    fill_plain(&t(T_PAIR), &[&format!("{} {}", f.lead.0, f.lead.1), &odd])
 }
 
 fn cause_lines(d: &Diagnosis, t: Translate) -> Vec<String> {
@@ -1323,9 +1323,9 @@ fn cause_lines(d: &Diagnosis, t: Translate) -> Vec<String> {
         .map(|c| match c {
             Cause::Library { program, problem } => format!("  - {program}: {problem}"),
             Cause::PackageMix(f) if f.stage == update_guard::Stage::Orphaned => {
-                format!("  - {}", update_guard::orphan_cause(f, t))
+                format!("  - {}", update_guard::orphan_cause_plain(f, t))
             }
-            Cause::PackageMix(f) => format!("  - {}", fill(&t(T_CAUSE_MIX), &[&f.set.name, &mix_versions(f, t)])),
+            Cause::PackageMix(f) => format!("  - {}", fill_plain(&t(T_CAUSE_MIX), &[&f.set.name, &mix_versions(f, t)])),
         })
         .collect()
 }
@@ -1334,10 +1334,10 @@ fn cause_lines(d: &Diagnosis, t: Translate) -> Vec<String> {
 pub fn console_text(d: &Diagnosis, t: Translate) -> String {
     let label = d.dm.label();
     let headline = if d.greeter_gone { T_HEADLINE_GREETER } else { T_HEADLINE };
-    let mut lines = vec![fill(&t(headline), &[&label])];
+    let mut lines = vec![fill_plain(&t(headline), &[&label])];
     if let Some(from) = &d.fallback_from {
         let from = crate::system_plan::login_manager_spec(from).map(|s| s.label).unwrap_or(from.as_str());
-        lines.push(fill(&t(T_FALLBACK), &[&from]));
+        lines.push(fill_plain(&t(T_FALLBACK), &[&from]));
     }
     lines.push(String::new());
     if d.causes.is_empty() {
@@ -1352,7 +1352,7 @@ pub fn console_text(d: &Diagnosis, t: Translate) -> String {
         lines.extend(d.log.iter().map(|l| format!("  {l}")));
     }
     lines.push(String::new());
-    lines.push(fill(&t(T_ACTION), &[&DOCTOR_COMMAND]));
+    lines.push(fill_plain(&t(T_ACTION), &[&DOCTOR_COMMAND]));
     lines.push(t(T_UNCHANGED));
     lines.join("\n") + "\n"
 }
@@ -1452,15 +1452,15 @@ pub fn doctor_report(d: &Diagnosis, host: DoctorHost, rollback: &[Vec<String>], 
     if d.dm.load != "loaded" || d.dm.id.is_empty() || d.dm.id == DM_ALIAS {
         lines.push(t(T_DOCTOR_NONE));
     } else if d.dm.active == "failed" {
-        lines.push(fill(&t(T_DOCTOR_FAILED), &[&label, &state]));
+        lines.push(fill_plain(&t(T_DOCTOR_FAILED), &[&label, &state]));
     } else if d.greeter_gone {
-        lines.push(fill(&t(T_DOCTOR_GREETER), &[&label, &state]));
+        lines.push(fill_plain(&t(T_DOCTOR_GREETER), &[&label, &state]));
     } else {
-        lines.push(fill(&t(T_DOCTOR_OK), &[&label, &state]));
+        lines.push(fill_plain(&t(T_DOCTOR_OK), &[&label, &state]));
     }
     if let Some(from) = &d.fallback_from {
         let from = crate::system_plan::login_manager_spec(from).map(|s| s.label).unwrap_or(from.as_str());
-        lines.push(fill(&t(T_FALLBACK), &[&from]));
+        lines.push(fill_plain(&t(T_FALLBACK), &[&from]));
     }
     // Окна входа нет — для советов это та же поломка, что и упавший экран входа.
     let failed = d.dm.active == "failed" || d.greeter_gone;
@@ -1489,38 +1489,38 @@ pub fn doctor_report(d: &Diagnosis, host: DoctorHost, rollback: &[Vec<String>], 
         // `pacman -S/-Syu/-U/-Rns` на SteamOS не сработают: /usr только для
         // чтения, а части системы ставит только обновление образа.
         if failed || !d.causes.is_empty() {
-            advice.push(fill(&t(T_ADVICE_STEAMOS_UPDATE), &[&"sudo steamos-update"]));
+            advice.push(fill_plain(&t(T_ADVICE_STEAMOS_UPDATE), &[&"sudo steamos-update"]));
             advice.push(t(T_ADVICE_STEAMOS_RECOVERY));
         }
     } else if family == PkgFamily::Arch {
         advice.extend(orphans.iter().cloned());
     }
     if !host.steamos && !mixes.is_empty() && family == PkgFamily::Arch {
-        advice.push(fill(&t(T_ADVICE_UPDATE), &[&"sudo pacman -Syu"]));
+        advice.push(fill_plain(&t(T_ADVICE_UPDATE), &[&"sudo pacman -Syu"]));
         let paths: Vec<String> = mixes.iter().flat_map(|(i, _)| rollback.get(*i).cloned().unwrap_or_default()).collect();
         if !paths.is_empty() {
-            advice.push(fill(&t(T_ADVICE_ROLLBACK), &[&format!("sudo pacman -U {}", paths.join(" "))]));
+            advice.push(fill_plain(&t(T_ADVICE_ROLLBACK), &[&format!("sudo pacman -U {}", paths.join(" "))]));
         }
     }
     if !host.steamos && libs && mixes.is_empty() && orphans.is_empty() {
         if let Some(cmd) = d.package.as_deref().and_then(|p| reinstall_command(family, p)) {
-            advice.push(fill(&t(T_ADVICE_REINSTALL), &[&cmd]));
+            advice.push(fill_plain(&t(T_ADVICE_REINSTALL), &[&cmd]));
         }
     }
     if failed && !d.dm.id.is_empty() {
-        advice.push(fill(&t(T_ADVICE_LOG), &[&format!("journalctl -b -u {}", d.dm.id)]));
+        advice.push(fill_plain(&t(T_ADVICE_LOG), &[&format!("journalctl -b -u {}", d.dm.id)]));
     }
     if failed {
         if let Some(from) = &d.fallback_from {
             // Откат уже вернул прежний экран входа, и упал и он: совет
             // «вернуть прежний» вёл бы ровно на тот, что сейчас не стартует.
             let from = crate::system_plan::login_manager_spec(from).map(|s| s.label).unwrap_or(from.as_str());
-            advice.push(fill(&t(T_ADVICE_BOTH_FAILED), &[&from, &label]));
+            advice.push(fill_plain(&t(T_ADVICE_BOTH_FAILED), &[&from, &label]));
         } else if let Some(prev) = previous_dm.map(str::trim).filter(|p| !p.is_empty()) {
             advice.push(format!("{}\n{}", t(T_ADVICE_PREVIOUS), prev.lines().map(|l| format!("    {l}")).collect::<Vec<_>>().join("\n")));
         }
         if !advice.is_empty() {
-            advice.push(fill(&t(T_ADVICE_REBOOT), &[&"sudo reboot"]));
+            advice.push(fill_plain(&t(T_ADVICE_REBOOT), &[&"sudo reboot"]));
         }
     }
     if !advice.is_empty() {

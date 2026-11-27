@@ -70,13 +70,14 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: section.st.title || ""
             color: section.pal.text_primary
@@ -170,14 +171,14 @@ Rectangle {
                 border.color: section.sty.group.border
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: section.st.color || ""
                 color: section.pal.text_secondary
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.note || "") !== ""
             text: section.st.note || ""
@@ -185,7 +186,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: section.message !== ""
             text: section.message

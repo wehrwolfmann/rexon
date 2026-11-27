@@ -102,7 +102,7 @@ pub fn ntr(singular: &str, plural: &str, n: u64) -> String {
     let form = catalog()
         .and_then(|c| c.plural_lookup(singular, n))
         .unwrap_or_else(|| if n == 1 { singular } else { plural }.to_string());
-    form.replace("%n", &n.to_string())
+    form.replace("%n", &isolate(&n.to_string()))
 }
 
 /// Подставить `%1`…`%99` в уже переведённый шаблон.
@@ -110,7 +110,22 @@ pub fn ntr(singular: &str, plural: &str, n: u64) -> String {
 /// Номер берётся целиком (`%12` — двенадцатый, а не первый с «2»), чужой
 /// номер и одинокий `%` остаются как есть: лучше видимый заполнитель, чем
 /// молча пропавшее слово.
+///
+/// При языке интерфейса справа налево каждая подстановка обёрнута в
+/// изолят ([`isolate`]). Текст для консоли, файла или команды — через
+/// [`fill_plain`].
 pub fn fill(template: &str, args: &[&dyn Display]) -> String {
+    fill_with(template, args, ui_is_rtl())
+}
+
+/// [`fill`] без изолятов — для того, что читает не окно Qt: текстовая
+/// консоль ядра (у неё нет двунаправленного письма, и U+2068 она рисует
+/// мусором), файлы, команды, которые человек копирует в терминал.
+pub fn fill_plain(template: &str, args: &[&dyn Display]) -> String {
+    fill_with(template, args, false)
+}
+
+fn fill_with(template: &str, args: &[&dyn Display], isolated: bool) -> String {
     let mut out = String::with_capacity(template.len() + 16);
     let bytes = template.as_bytes();
     let mut i = 0;
@@ -124,7 +139,14 @@ pub fn fill(template: &str, args: &[&dyn Display]) -> String {
             if digits > 0 {
                 let index: usize = template[i + 1..i + 1 + digits].parse().unwrap_or(0);
                 if index >= 1 && index <= args.len() {
-                    out.push_str(&args[index - 1].to_string());
+                    let value = args[index - 1].to_string();
+                    if isolated && !value.is_empty() {
+                        out.push(FSI);
+                        out.push_str(&value);
+                        out.push(PDI);
+                    } else {
+                        out.push_str(&value);
+                    }
                     i += 1 + digits;
                     continue;
                 }
@@ -138,6 +160,102 @@ pub fn fill(template: &str, args: &[&dyn Display]) -> String {
         i = next;
     }
     out
+}
+
+// ============================================================================
+// Письмо справа налево
+// ============================================================================
+//
+// В арабском, иврите и фарси строка интерфейса — предложение справа налево,
+// а подставляемое в него (имя программы, путь, версия, число) часто пишется
+// латиницей. Без разметки алгоритм двунаправленного текста (Unicode UAX #9)
+// склеивает подстановку с соседними знаками препинания и цифрами и
+// переставляет их: «Firefox 2.0» с точкой в конце фразы уезжает не туда, а
+// направление всего абзаца берётся по первой сильной букве — латинской.
+// Изолят FIRST STRONG ISOLATE … POP DIRECTIONAL ISOLATE (U+2068 … U+2069)
+// делает подстановку отдельным куском со своим направлением, а для
+// окружающей фразы — одним нейтральным знаком.
+//
+// Qt 6.12 изоляты понимает (проверено сборкой против системного Qt
+// 06.11.2026): `QString::isRightToLeft` пропускает содержимое изолята —
+// фраза «FSI Firefox PDI + арабский» считается справа налево, без изолята — слева
+// направо; раскладка `QTextLayout` ставит изолят одним куском. Выравнивание
+// `RexonText` от содержимого не зависит вовсе (явный `AlignLeft`,
+// переворачивается зеркалированием), так что изолят на него не влияет.
+//
+// При письме слева направо ничего не добавляется: строки ru/en/de/zh_CN
+// побайтно прежние.
+
+/// FIRST STRONG ISOLATE: начало подстановки со своим направлением.
+pub const FSI: char = '\u{2068}';
+/// POP DIRECTIONAL ISOLATE: конец изолята.
+pub const PDI: char = '\u{2069}';
+
+/// Языки, которые пишутся справа налево (базовый код, без региона).
+const RTL_LANGUAGES: &[&str] = &["ar", "fa", "he", "iw", "ckb", "ps", "ur", "yi", "dv", "ug"];
+
+/// Пишется ли язык `code` справа налево: `"ar"`, `"fa_IR"`, `"he-IL"`,
+/// `"ar_EG.UTF-8"`, `"ur@latin"` (латиница — нет).
+pub fn is_rtl_language(code: &str) -> bool {
+    if code.contains("@latin") {
+        return false;
+    }
+    let base = code.split(['_', '-', '.', '@']).next().unwrap_or("");
+    RTL_LANGUAGES.iter().any(|l| l.eq_ignore_ascii_case(base))
+}
+
+/// Действующий язык интерфейса пишется справа налево.
+pub fn ui_is_rtl() -> bool {
+    is_rtl_language(&current_language())
+}
+
+/// Обернуть подстановку в изолят, если интерфейс справа налево; иначе —
+/// как есть. Для мест, где подставляет не [`fill`] (`{метка}` в чужом
+/// шаблоне, `%n` у [`ntr`]).
+pub fn isolate(text: &str) -> String {
+    isolate_if(text, ui_is_rtl())
+}
+
+// ============================================================================
+// Числа для человека
+// ============================================================================
+
+/// Число с `decimals` знаками после запятой так, как его пишут на языке
+/// интерфейса: «1.4» по-английски, «1,4» по-русски и по-немецки. Один путь
+/// на весь продукт — размеры файлов, секунды, популярность, рейтинг.
+///
+/// Разделитель дробной части — строка каталога «decimal separator» (её
+/// переводчик и решает). Цифры: у фарси — персидские «۰–۹», у остальных
+/// языков, и у арабского тоже (решение Wehrwolfmann 06.11.2026), —
+/// обычные 0–9. `decimals == 0` — целое без разделителя.
+pub fn format_decimal(value: f64, decimals: usize) -> String {
+    // TRANSLATORS: decimal separator in numbers like "1.4 MiB".
+    let sep = trc("decimal separator", ".");
+    format_decimal_in(value, decimals, &current_language(), &sep)
+}
+
+fn format_decimal_in(value: f64, decimals: usize, language: &str, sep: &str) -> String {
+    let plain = format!("{value:.decimals$}");
+    let persian = language.split(['_', '-', '.', '@']).next() == Some("fa");
+    let mut out = String::with_capacity(plain.len() + 8);
+    for c in plain.chars() {
+        match c {
+            '.' => out.push_str(sep),
+            '0'..='9' if persian => {
+                out.push(char::from_u32('\u{06F0}' as u32 + (c as u32 - '0' as u32)).unwrap_or(c))
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn isolate_if(text: &str, rtl: bool) -> String {
+    if rtl && !text.is_empty() {
+        format!("{FSI}{text}{PDI}")
+    } else {
+        text.to_string()
+    }
 }
 
 // ============================================================================
@@ -1151,6 +1269,50 @@ mod tests {
         assert_eq!(fill("100% done, %3 left", &[&1]), "100% done, %3 left");
         assert_eq!(fill("%12", &(1..=12).map(|_| &0 as &dyn Display).collect::<Vec<_>>()), "0");
         assert_eq!(fill("", &[]), "");
+    }
+
+    #[test]
+    fn rtl_languages_by_code() {
+        for code in ["ar", "fa", "he", "ar_EG", "fa_IR.UTF-8", "he-IL", "AR", "ur", "iw"] {
+            assert!(is_rtl_language(code), "{code}");
+        }
+        for code in ["", "en", "ru", "de", "zh_CN", "pt_BR", "ur@latin", "arn", "hr", "fr_CA"] {
+            assert!(!is_rtl_language(code), "{code}");
+        }
+    }
+
+    #[test]
+    fn decimals_follow_the_language() {
+        assert_eq!(format_decimal_in(1.44, 1, "en", "."), "1.4");
+        assert_eq!(format_decimal_in(1.45, 1, "ru", ","), "1,4"); // как `{:.1}`: 1.45 в double чуть меньше
+        assert_eq!(format_decimal_in(12.0, 2, "de", ","), "12,00");
+        assert_eq!(format_decimal_in(3.6, 0, "ru", ","), "4");
+        assert_eq!(format_decimal_in(1.4, 1, "zh_CN", "."), "1.4");
+        assert_eq!(format_decimal_in(1.4, 1, "ar", "٫"), "1٫4");
+        assert_eq!(format_decimal_in(10.25, 2, "fa_IR", "٫"), "۱۰٫۲۵");
+        assert_eq!(format_decimal_in(-0.5, 1, "fa", "٫"), "-۰٫۵");
+        // Без каталога (сверки библиотеки — на исходном языке) — точка.
+        assert_eq!(format_decimal(2.25, 1), format!("{:.1}", 2.25));
+    }
+
+    #[test]
+    fn fill_isolates_substitutions_only_for_rtl() {
+        // Слева направо — побайтно как раньше, ни одного невидимого знака.
+        let ltr = fill_with("Installed %1 (%2).", &[&"Firefox", &"2.0"], false);
+        assert_eq!(ltr, "Installed Firefox (2.0).");
+        assert_eq!(fill_plain("%1 — %2", &[&"a", &"b"]), "a — b");
+        // Справа налево — каждая подстановка своим изолятом, шаблон не тронут.
+        let rtl = fill_with("تم تثبيت %1 (%2).", &[&"Firefox", &"2.0"], true);
+        assert_eq!(rtl, "تم تثبيت \u{2068}Firefox\u{2069} (\u{2068}2.0\u{2069}).");
+        // Пустая подстановка и чужой номер — без изолята.
+        assert_eq!(fill_with("%1|%3", &[&""], true), "|%3");
+        assert_eq!(isolate_if("x", true), "\u{2068}x\u{2069}");
+        assert_eq!(isolate_if("x", false), "x");
+        assert_eq!(isolate_if("", true), "");
+        // Сверки библиотеки идут на исходном языке: обычный `fill` — без
+        // изолятов (`ntr` здесь не зовём: xgettext унёс бы строку сверки в
+        // каталог).
+        assert_eq!(fill("%1", &[&"a"]), "a");
     }
 
     #[test]

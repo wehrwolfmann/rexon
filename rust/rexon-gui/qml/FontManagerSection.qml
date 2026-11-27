@@ -283,7 +283,7 @@ ColumnLayout {
         Item { Layout.fillWidth: true }
     }
 
-    Text {
+    RexonText {
         Layout.fillWidth: true
         visible: section.expanded && section.lib.available !== true
         text: section.texts.no_fclist || ""
@@ -531,7 +531,7 @@ ColumnLayout {
         }
     }
 
-    Text {
+    RexonText {
         Layout.fillWidth: true
         visible: section.expanded && section.lib.available === true && !section.showDuplicates
         text: section.lib.summary || ""
@@ -571,7 +571,7 @@ ColumnLayout {
                 Drag.hotSpot.x: 8
                 Drag.hotSpot.y: dragGhost.height / 2
 
-                Text {
+                RexonText {
                     id: ghostText
                     anchors.centerIn: parent
                     text: section.dragFamily
@@ -600,7 +600,7 @@ ColumnLayout {
                            ? (section.pal.bg_card_hover || "#2a475e")
                            : (famMouse.containsMouse ? (section.pal.surface_button || "#32363d") : "transparent")
 
-                    Text {
+                    RexonText {
                         id: famText
                         anchors.left: parent.left
                         anchors.right: famBadge.left
@@ -615,7 +615,7 @@ ColumnLayout {
                         font.italic: famRow.modelData.disabled === true
                     }
 
-                    Text {
+                    RexonText {
                         id: famBadge
                         anchors.right: parent.right
                         anchors.rightMargin: 8
@@ -670,7 +670,7 @@ ColumnLayout {
                         section.selected = section.shown[currentIndex].family;
                 }
 
-                Text {
+                RexonText {
                     anchors.centerIn: parent
                     width: familyList.width - 24
                     horizontalAlignment: Text.AlignHCenter
@@ -691,7 +691,7 @@ ColumnLayout {
             border.width: 1
             radius: 4
 
-            Text {
+            RexonText {
                 anchors.centerIn: parent
                 width: parent.width - 24
                 horizontalAlignment: Text.AlignHCenter
@@ -711,7 +711,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: section.current ? section.current.family : ""
                         font.bold: true
@@ -791,7 +791,7 @@ ColumnLayout {
                     }
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     // Честно: шрифт пакета из окна настроек не удаляется,
                     // поставленный для всех — удаляется с паролем.
@@ -841,7 +841,7 @@ ColumnLayout {
                     visible: section.view === "sample"
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         text: (section.texts.sample_size || "%1").replace("%1", section.sampleSize)
                         color: section.colTextSecondary
                     }
@@ -931,7 +931,11 @@ ColumnLayout {
                         required property var modelData
                         // Запас под полосу прокрутки: при 12 точках кнопки
                         // начертаний уходили под неё правым краем.
-                        width: ListView.view.width - 22
+                        // С края полосы прокрутки: при языке справа налево она слева,
+                        // и якорь с отступом зеркалится вместе с ней.
+                        anchors.left: parent ? parent.left : undefined
+                        anchors.right: parent ? parent.right : undefined
+                        anchors.rightMargin: 22
                         spacing: 2
 
                         // Образец рисуется самим файлом шрифта: только что
@@ -945,7 +949,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 6
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: styleRow.modelData.style
                                       + (styleRow.modelData.disabled === true ? " · " + (section.texts.off || "") : "")
@@ -991,7 +995,7 @@ ColumnLayout {
                             }
                         }
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             text: section.sampleText
                             wrapMode: Text.WordWrap
@@ -1054,7 +1058,7 @@ ColumnLayout {
                         }
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         visible: section.chars.blocks !== undefined && section.chars.blocks.length === 0
                         text: section.texts.chars_none || ""
@@ -1093,7 +1097,7 @@ ColumnLayout {
                             border.color: section.colBorder
                             border.width: 1
 
-                            Text {
+                            RexonText {
                                 anchors.centerIn: parent
                                 text: String.fromCodePoint(charCell.modelData)
                                 color: section.colText
@@ -1121,7 +1125,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: section.pickedChar < 0
                             visible: section.pickedChar < 0
                             text: section.texts.char_pick || ""
@@ -1129,7 +1133,7 @@ ColumnLayout {
                             color: section.colTextSecondary
                         }
 
-                        Text {
+                        RexonText {
                             visible: section.pickedChar >= 0
                             text: section.pickedChar >= 0 ? String.fromCodePoint(section.pickedChar) : ""
                             color: section.colText
@@ -1163,7 +1167,7 @@ ColumnLayout {
         visible: section.expanded && section.lib.available === true && section.showDuplicates
         spacing: 6
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: section.dups.summary || ""
             wrapMode: Text.WordWrap
@@ -1171,7 +1175,7 @@ ColumnLayout {
             color: section.colText
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.dups.groups || []).length > 0
             text: section.texts.duplicates_note || ""
@@ -1203,10 +1207,14 @@ ColumnLayout {
                 delegate: ColumnLayout {
                     id: dupGroup
                     required property var modelData
-                    width: ListView.view.width - 12
+                    // С края полосы прокрутки: при языке справа налево она слева,
+                    // и якорь с отступом зеркалится вместе с ней.
+                    anchors.left: parent ? parent.left : undefined
+                    anchors.right: parent ? parent.right : undefined
+                    anchors.rightMargin: 12
                     spacing: 4
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: dupGroup.modelData.family + " — " + dupGroup.modelData.style
                         font.bold: true
@@ -1223,7 +1231,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 8
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: copyRow.modelData.file
                                 elide: Text.ElideMiddle
@@ -1233,7 +1241,7 @@ ColumnLayout {
                                 HoverHandler { id: copyHover }
                             }
 
-                            Text {
+                            RexonText {
                                 text: copyRow.modelData.user === true ? (section.texts.user || "")
                                       : copyRow.modelData.shared === true ? (section.texts.copy_shared || "")
                                       : (section.texts.copy_system || "")

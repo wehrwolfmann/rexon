@@ -1168,13 +1168,23 @@ fn asks_about_output(text: &str) -> bool {
 }
 
 fn fill<S: WpSys>(sys: &mut S, text: &str, seen: &mut Seen) -> String {
+    fill_marks(sys, text, seen, &|v| v.to_string())
+}
+
+/// [`fill`] для сообщения человеку: при языке справа налево каждая
+/// подстановка — изолят ([`crate::i18n::isolate`]). Командам — [`fill`].
+fn fill_message<S: WpSys>(sys: &mut S, text: &str, seen: &mut Seen) -> String {
+    fill_marks(sys, text, seen, &crate::i18n::isolate)
+}
+
+fn fill_marks<S: WpSys>(sys: &mut S, text: &str, seen: &mut Seen, wrap: &dyn Fn(&str) -> String) -> String {
     if !asks_about_output(text) {
         return text.to_string();
     }
     let one = seen.marks(sys);
-    text.replace("{monitor}", &one.name)
-        .replace(wpe::GEOMETRY_MARK, &one.geometry())
-        .replace("{resolution}", &one.resolution)
+    text.replace("{monitor}", &wrap(&one.name))
+        .replace(wpe::GEOMETRY_MARK, &wrap(&one.geometry()))
+        .replace("{resolution}", &wrap(&one.resolution))
 }
 
 fn fill_argv<S: WpSys>(sys: &mut S, argv: &[String], seen: &mut Seen) -> Vec<String> {
@@ -1789,7 +1799,7 @@ impl<S: WpSys> WallpaperExec<S> {
         seen: &mut Seen,
     ) -> Option<WallpaperResult> {
         if step.kind == wpe::step_kind::FAIL {
-            let msg = fill(&mut self.sys, &step.err_message, seen);
+            let msg = fill_message(&mut self.sys, &step.err_message, seen);
             return Some(WallpaperResult::fail(msg));
         }
 
@@ -2187,9 +2197,9 @@ impl<S: WpSys> WallpaperExec<S> {
             &format!("обои поставлены: путь {}, формат {fmt}", step.backend),
         );
         self.notify_live_wallpaper(Some(&fmt), true);
-        let mut message = fill(&mut self.sys, &step.ok_message, seen);
+        let mut message = fill_message(&mut self.sys, &step.ok_message, seen);
         if let Some(pid) = pid {
-            message = message.replace("{pid}", &pid.to_string());
+            message = message.replace("{pid}", &crate::i18n::isolate(&pid.to_string()));
         }
         WallpaperResult { ok: true, message, pid }
     }
@@ -2203,8 +2213,8 @@ impl<S: WpSys> WallpaperExec<S> {
         if !step.terminal {
             return None;
         }
-        let message = fill(&mut self.sys, &step.err_message, seen);
-        Some(WallpaperResult::fail(message.replace("{stderr}", stderr)))
+        let message = fill_message(&mut self.sys, &step.err_message, seen);
+        Some(WallpaperResult::fail(message.replace("{stderr}", &crate::i18n::isolate(stderr))))
     }
 
     // ── общие мелочи прогона ──────────────────────────────────────────────

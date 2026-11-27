@@ -248,7 +248,47 @@ pub fn looks_like_rich_text(text: &str) -> bool {
 ///
 /// `inner` — уже экранированная разметка: функция её не трогает.
 pub fn dialog_pre(inner: &str) -> String {
-    format!("<pre style=\"white-space: pre-wrap\">{inner}</pre>")
+    format!("<pre {PRE_LTR_ATTRS} style=\"white-space: pre-wrap\">{inner}</pre>")
+}
+
+/// Атрибуты моноширинного блока: код, пути, деревья файлов и JSON читаются
+/// слева направо и стоят у левого края при ЛЮБОМ языке интерфейса.
+///
+/// Rich text Qt («Supported HTML Subset») понимает у блочных элементов, и
+/// у `<pre>` тоже, `dir="ltr|rtl"` и `align`. Проверено сборкой против
+/// Qt 6.12 (06.11.2026): `dir="ltr"` даёт блоку направление слева направо
+/// (порядок знаков), но место блока в документе, выровненном под письмо
+/// справа налево, остаётся у правого края; `align="left"` Qt ставит как
+/// `AlignLeft | AlignAbsolute` — физически слева. Нужны оба.
+pub const PRE_LTR_ATTRS: &str = "dir=\"ltr\" align=\"left\"";
+
+/// Дописать [`PRE_LTR_ATTRS`] каждому `<pre>` готовой разметки, где
+/// направление не задано: в переведённой справке (`<pre>` стоит в строке
+/// каталога, и переводчику помнить про атрибуты незачем), в описаниях из
+/// магазинов. `<pre>` с уже заданным `dir` не трогается.
+pub fn pre_left_to_right(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    let mut out = String::with_capacity(html.len() + 64);
+    let mut from = 0;
+    let mut search = 0;
+    while let Some(pos) = lower[search..].find("<pre").map(|p| search + p) {
+        let after = pos + 4;
+        let next = lower.as_bytes().get(after).copied();
+        let Some(end) = lower[after..].find('>').map(|p| after + p) else { break };
+        search = end;
+        if !matches!(next, Some(b'>' | b' ' | b'\t' | b'\n' | b'\r' | b'/')) {
+            continue; // `<prefix>` и прочие теги на «pre…»
+        }
+        if lower[after..end].contains("dir=") {
+            continue;
+        }
+        out.push_str(&html[from..after]);
+        out.push(' ');
+        out.push_str(PRE_LTR_ATTRS);
+        from = after;
+    }
+    out.push_str(&html[from..]);
+    out
 }
 
 /// Экранировать динамический текст для вставки в rich-text диалог.
@@ -2025,5 +2065,26 @@ mod skin_extras_tests {
             Some("502")
         );
         assert_eq!(http_status_code("ошибка без кода").as_deref(), None);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pre_blocks_read_left_to_right() {
+        assert_eq!(pre_left_to_right("<p>a</p><pre>\n{ }\n</pre>"), "<p>a</p><pre dir=\"ltr\" align=\"left\">\n{ }\n</pre>");
+        assert_eq!(pre_left_to_right("<PRE class=\"cmd\">x</PRE>"), "<PRE dir=\"ltr\" align=\"left\" class=\"cmd\">x</PRE>");
+        // Уже с направлением, чужие теги на «pre» и текст без тегов — как есть.
+        for same in ["<pre dir=\"rtl\">x</pre>", "<prefix>x</prefix>", "<preview/>", "текст", "", "<pre"] {
+            assert_eq!(pre_left_to_right(same), same);
+        }
+        // Повторный проход ничего не добавляет.
+        let once = pre_left_to_right("<pre>a</pre><pre>b</pre>");
+        assert_eq!(once.matches("dir=").count(), 2);
+        assert_eq!(pre_left_to_right(&once), once);
+        assert_eq!(dialog_pre("x"), "<pre dir=\"ltr\" align=\"left\" style=\"white-space: pre-wrap\">x</pre>");
+        assert_eq!(pre_left_to_right(&dialog_pre("x")), dialog_pre("x"));
     }
 }

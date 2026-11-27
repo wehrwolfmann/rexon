@@ -168,7 +168,8 @@
     "gsettings get org.mate.peripherals-mouse cursor-theme",
     "env GSETTINGS_BACKEND=memory gsettings get org.mate.peripherals-mouse cursor-theme",
     "gsettings get org.mate.peripherals-mouse cursor-theme",
-    "gsettings set org.mate.peripherals-mouse cursor-theme breeze_cursors"
+    "gsettings set org.mate.peripherals-mouse cursor-theme breeze_cursors",
+    "gsettings get org.mate.interface gtk-theme"
   ],
   "missing": [],
   "message": "“Like SteamOS” applied.\nSkipped: desktop behaviour — it changes only things Plasma has: the Plasma splash screen after login — MATE has none of them\nSkipped: game mode — not chosen",

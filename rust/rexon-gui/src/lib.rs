@@ -162,6 +162,27 @@ pub mod skin {
 
 /// Одна дверь к всплывающей плашке состояния для всех вкладок.
 ///
+/// Запасные шрифты письменностей справа налево на всё приложение. Какие
+/// семейства — решает ядро (`qt_app::RTL_FALLBACK_FONTS`); здесь только вызов
+/// Qt через `cpp/rexon_gui_factory.cpp` (почему не мостом cxx — там же).
+pub mod fonts {
+    use rexon_core::qt_app::RTL_FALLBACK_FONTS;
+
+    unsafe extern "C" {
+        /// `cpp/rexon_gui_factory.cpp`.
+        fn rexon_add_script_fallback_font(script: u8, family: *const u8, len: usize);
+    }
+
+    /// Поставить запасные шрифты. Звать из главного потока ПОСЛЕ создания
+    /// приложения Qt и ДО загрузки QML: базе шрифтов нужна платформа, а уже
+    /// разложенный текст Qt по новому запасному шрифту не перекладывает.
+    pub fn install_rtl_fallbacks() {
+        for (script, family) in RTL_FALLBACK_FONTS {
+            unsafe { rexon_add_script_fallback_font(script as u8, family.as_ptr(), family.len()) }
+        }
+    }
+}
+
 /// ⭐ Почему здесь, а не по копии в каждой странице (правило #12). Дефект
 /// «сообщение не гаснет никогда» заводился ТРИЖДЫ — в виджетных «Настройках»
 /// (28.06), в виджетном «Steam» (08.07) и в третий раз в QML-вкладке «Steam»,

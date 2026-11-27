@@ -49,13 +49,14 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Launch feedback")
             color: section.pal.text_primary
@@ -64,7 +65,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: section.st.supported === true
                   ? qsTranslate("rexon", "How the pointer and the task bar show that an application is starting.")
@@ -78,7 +79,7 @@ Rectangle {
             visible: section.st.supported === true
             spacing: 8
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Pointer:")
@@ -112,7 +113,7 @@ Rectangle {
             visible: section.st.supported === true
             spacing: 8
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Stop the animation after:")

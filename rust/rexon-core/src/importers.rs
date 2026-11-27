@@ -3778,7 +3778,7 @@ pub fn packages_phrase(variants: &[&[&str]], family: &str) -> String {
         let listed: Vec<String> = names
             .iter()
             // TRANSLATORS: a package name in quotes inside a sentence.
-            .map(|n| trc("quoted package name", "“%1”").replace("%1", n))
+            .map(|n| crate::i18n::fill(&trc("quoted package name", "“%1”"), &[n]))
             .collect();
         parts.push(if listed.len() == 1 {
             // TRANSLATORS: %1 is a quoted package name: “the “icoutils” package”.

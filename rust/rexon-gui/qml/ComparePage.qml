@@ -137,9 +137,10 @@ Item {
         // страница схлопывается в полоску.
         ColumnLayout {
             id: pageColumn
-            x: 24
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 24
             y: 24
-            width: flick.width - 48
             height: implicitHeight
             spacing: 14
 
@@ -148,7 +149,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     text: page.headerTitle
                     color: root.colText
                     font.pointSize: page.headerTitlePointSize
@@ -163,7 +164,7 @@ Item {
                     Layout.preferredWidth: 0
                 }
 
-                Text {
+                RexonText {
                     Layout.leftMargin: 16
                     text: page.pairsLabel
                     color: root.colTextSecondary
@@ -250,7 +251,7 @@ Item {
             // отдельной строкой под шапкой, во всю ширину (в строке шапки
             // фраза налезала на быстрые пары). Почему неактивна кнопка
             // остальных — строкой в их карточке.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: page.installNoteText !== ""
                 text: page.installNoteText
@@ -274,23 +275,24 @@ Item {
 
                 ColumnLayout {
                     id: legendColumn
-                    x: 13
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 13
                     y: 11
-                    width: parent.width - 26
                     height: implicitHeight
                     // Зазор между подписью и телом легенды у виджетной
                     // вкладки задаёт не код, а стиль (Breeze отдаёт 6):
                     // там `QVBoxLayout` оставлен со своим умолчанием.
                     spacing: 6
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: page.legendTitle
                         textFormat: Text.RichText
                         color: root.colText
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: page.legendBody
                         textFormat: Text.RichText
@@ -302,7 +304,7 @@ Item {
             }
 
             // ── Заголовок таблицы столов ──────────────────────────────────
-            Text {
+            RexonText {
                 text: page.tableHeader
                 color: root.colText
                 font.pointSize: page.sectionPointSize
@@ -347,9 +349,10 @@ Item {
 
                     ColumnLayout {
                         id: cardColumn
-                        x: 1
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: 1
                         y: 1
-                        width: parent.width - 2
                         height: implicitHeight
                         spacing: 0
 
@@ -365,7 +368,17 @@ Item {
                             objectName: "cardHeader"
                             Layout.fillWidth: true
                             flat: true
-                            text: card.headerText
+                            // Стрелку раскрытия ставит страница, а не ядро:
+                            // свёрнутая смотрит к концу строки. Справа налево
+                            // шапка начинается со знака RLM: имя стола
+                            // латиницей иначе сделало бы строку левой, и «◀»
+                            // встал бы посреди карточки, а не у её начала.
+                            readonly property RexonArrows arrows: RexonArrows {
+                                mirrored: cardHeader.mirrored
+                            }
+                            text: (cardHeader.mirrored ? "\u200f" : "")
+                                  + (card.expanded ? "▼" : arrows.collapsedRow)
+                                  + "  " + card.headerText
                             // Подсветка под курсором и рамка фокуса — пара
                             // цветов из скина, а не жёстко прибитый чёрный:
                             // на тёмной теме тот темнил строку вместо
@@ -378,10 +391,9 @@ Item {
                                               ? root.colAccent : "transparent"
                                 border.width: 1
                             }
-                            contentItem: Text {
+                            contentItem: RexonText {
                                 text: cardHeader.text
                                 color: root.colText
-                                horizontalAlignment: Text.AlignLeft
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                                 leftPadding: 14
@@ -407,7 +419,7 @@ Item {
                             visible: card.expanded
 
                             // Память: подпись и полоса
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: card.ramLabel
                                 textFormat: Text.RichText
@@ -442,7 +454,7 @@ Item {
                                 Repeater {
                                     model: card.starsLabels
 
-                                    delegate: Text {
+                                    delegate: RexonText {
                                         id: starsText
                                         required property string modelData
                                         text: starsText.modelData
@@ -466,13 +478,13 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: 10
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: specRow.modelData.label
                                         color: root.colText
                                     }
 
-                                    Text {
+                                    RexonText {
                                         text: specRow.modelData.valueHtml
                                         textFormat: Text.RichText
                                         // Пустой цвет из ядра = «не красить»,
@@ -485,7 +497,7 @@ Item {
                             }
 
                             // Описание
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 6
                                 text: card.description
@@ -539,7 +551,7 @@ Item {
                                 }
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 visible: card.actionKind === "install"
                                          && card.installBlocked !== ""
@@ -553,7 +565,7 @@ Item {
             }
 
             // ── Быстрые рекомендации ──────────────────────────────────────
-            Text {
+            RexonText {
                 text: page.recHeader
                 color: root.colText
                 font.pointSize: page.sectionPointSize
@@ -577,9 +589,10 @@ Item {
 
                     RowLayout {
                         id: recLayout
-                        x: 13
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: 13
                         y: 9
-                        width: parent.width - 26
                         height: implicitHeight
                         spacing: 10
 
@@ -587,14 +600,14 @@ Item {
                             Layout.fillWidth: true
                             spacing: 0
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: recRow.modelData.labelHtml
                                 textFormat: Text.RichText
                                 color: root.colText
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: recRow.modelData.sub
                                 color: root.colTextSecondary
@@ -604,7 +617,7 @@ Item {
 
                         // Стол уже стоит — отметка; не стоит — кнопка;
                         // «none» (стол ядру неизвестен) — строка без действия.
-                        Text {
+                        RexonText {
                             visible: recRow.modelData.mark === "badge"
                             text: recRow.modelData.text
                             color: recRow.modelData.color === ""
@@ -694,7 +707,7 @@ Item {
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: pairDialog.view ? pairDialog.view.heading : ""
                 textFormat: Text.RichText
@@ -706,7 +719,7 @@ Item {
 
             // SteamOS: почему кнопки установки внизу окна неактивны — те же
             // причины, что в карточках этих столов.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: pairDialog.blockedText !== ""
                 text: pairDialog.blockedText
@@ -735,7 +748,7 @@ Item {
                             ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
                 }
 
-                Text {
+                RexonText {
                     id: pairBody
                     width: pairFlick.width
                     text: pairDialog.view ? pairDialog.view.html : ""

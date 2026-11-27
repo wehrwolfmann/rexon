@@ -106,9 +106,10 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
@@ -134,13 +135,17 @@ Rectangle {
                 width: parent.width
                 spacing: 8
 
-                Text {
-                    text: section.expanded ? "▾" : "▸"
+                RexonText {
+                    // Свёрнуто — шеврон к концу строки: справа налево «◂».
+                    readonly property RexonArrows arrows: RexonArrows {
+                        mirrored: headerRow.LayoutMirroring.enabled
+                    }
+                    text: section.expanded ? "▾" : arrows.collapsed
                     color: section.pal.text_primary
                     font.pointSize: 13
                 }
 
-                Text {
+                RexonText {
                     id: headerText
                     Layout.fillWidth: true
                     text: section.expanded ? (section.st.title || "") : (section.st.summary || section.st.title || "")
@@ -225,7 +230,7 @@ Rectangle {
                     visible: section.cfg.schedule === "times"
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         text: section.st.light_from_label || ""
                         color: section.pal.text_primary
                     }
@@ -238,7 +243,7 @@ Rectangle {
                         inputMask: "99:99"
                         onEditingFinished: section.edit(c => { c.light_at = lightAt.text; })
                     }
-                    Text {
+                    RexonText {
                         text: section.st.dark_from_label || ""
                         color: section.pal.text_primary
                     }
@@ -266,7 +271,7 @@ Rectangle {
                         onToggled: section.edit(c => { c.auto_location = autoLocation.checked; })
                     }
 
-                    Text {
+                    RexonText {
                         visible: section.cfg.auto_location === true && (section.st.place || "") !== ""
                         text: section.st.place || ""
                         color: section.pal.text_secondary
@@ -276,7 +281,7 @@ Rectangle {
                         visible: section.cfg.auto_location !== true
                         spacing: 8
 
-                        Text {
+                        RexonText {
                             text: section.st.lat_label || ""
                             color: section.pal.text_primary
                         }
@@ -291,7 +296,7 @@ Rectangle {
                                 c.lat = isNaN(v) ? null : v;
                             })
                         }
-                        Text {
+                        RexonText {
                             text: section.st.lon_label || ""
                             color: section.pal.text_primary
                         }
@@ -341,7 +346,7 @@ Rectangle {
                             enabled: partRow.pair.on === true
                             spacing: 4
 
-                            Text {
+                            RexonText {
                                 text: side.modelData === "light" ? (section.st.light_label || "") : (section.st.dark_label || "")
                                 color: section.pal.text_secondary
                             }
@@ -388,7 +393,7 @@ Rectangle {
                 onToggled: section.edit(c => { c.portal = portalOn.checked; })
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: section.cfg.mode === "auto" && (section.st.native_note || "") !== ""
                 text: section.st.native_note || ""
@@ -396,7 +401,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: (section.st.status || "") !== ""
                 text: section.st.status || ""
@@ -404,7 +409,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: section.message !== ""
                 text: section.message

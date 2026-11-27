@@ -11,7 +11,8 @@
 //   * «на весь экран» — кнопкой и клавишей F (окно приложения уходит в
 //     полноэкранный режим и возвращается, как было, при выходе);
 //   * закрытие — Esc, кнопка, щелчок мимо картинки;
-//   * листание по списку — стрелки на экране и клавиши ← →;
+//   * листание по списку — стрелки на экране и клавиши ← → (справа налево
+//     «вперёд» — влево, см. `RexonArrows`);
 //   * масштаб — колесо мыши и клавиши + − 0, сдвиг — перетаскиванием;
 //     двойной щелчок переключает «вписать / 1:1»;
 //   * подпись: название, вторая строка (игра, источник), отметка
@@ -65,6 +66,13 @@ Popup {
     signal wanted(string key)
 
     readonly property int count: viewer.items ? viewer.items.length : 0
+
+    /// Значки «назад/вперёд» и клавиши ← → по зеркалированию самого
+    /// просмотра: справа налево «вперёд» — влево. Кнопки переставляют якоря,
+    /// а «⛶ ❌» уходят в левый верхний угол тем же зеркалированием ряда.
+    readonly property RexonArrows arrows: RexonArrows {
+        mirrored: viewer.mirrored
+    }
     readonly property var current: viewer.count > 0
         ? viewer.items[Math.max(0, Math.min(viewer.index, viewer.count - 1))]
         : null
@@ -300,10 +308,10 @@ Popup {
         Keys.onPressed: (event) => {
             switch (event.key) {
             case Qt.Key_Left:
-                viewer.step(-1);
+                viewer.step(viewer.arrows.leftStep);
                 break;
             case Qt.Key_Right:
-                viewer.step(1);
+                viewer.step(viewer.arrows.rightStep);
                 break;
             case Qt.Key_F:
             case Qt.Key_F11:
@@ -498,9 +506,9 @@ Popup {
             pal: viewer.pal
             tone: viewer.chromeTone
             font.pointSize: 16
-            text: "❮"
+            text: viewer.arrows.previous
             ToolTip.visible: prevButton.hovered
-            ToolTip.text: qsTranslate("rexon", "Previous (←)")
+            ToolTip.text: viewer.arrows.keyHint(qsTranslate("rexon", "Previous (←)"))
             onClicked: {
                 viewer.step(-1);
                 stage.forceActiveFocus();
@@ -519,9 +527,9 @@ Popup {
             pal: viewer.pal
             tone: viewer.chromeTone
             font.pointSize: 16
-            text: "❯"
+            text: viewer.arrows.next
             ToolTip.visible: nextButton.hovered
-            ToolTip.text: qsTranslate("rexon", "Next (→)")
+            ToolTip.text: viewer.arrows.keyHint(qsTranslate("rexon", "Next (→)"))
             onClicked: {
                 viewer.step(1);
                 stage.forceActiveFocus();
@@ -588,7 +596,7 @@ Popup {
                 anchors.centerIn: parent
                 spacing: 2
 
-                Text {
+                RexonText {
                     objectName: "imageViewerTitle"
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: Math.min(implicitWidth, stage.width - 2 * viewer.chromeMargin - 32)
@@ -600,7 +608,7 @@ Popup {
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                 }
-                Text {
+                RexonText {
                     objectName: "imageViewerSubtitle"
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: Math.min(implicitWidth, stage.width - 2 * viewer.chromeMargin - 32)
@@ -623,19 +631,19 @@ Popup {
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         objectName: "imageViewerCounter"
                         visible: viewer.count > 1
                         text: (viewer.index + 1) + " / " + viewer.count
                         color: "#99ffffff"
                     }
-                    Text {
+                    RexonText {
                         objectName: "imageViewerLoading"
                         visible: viewer.loading
                         text: qsTranslate("rexon", "⏳ Loading full size…")
                         color: "#99ffffff"
                     }
-                    Text {
+                    RexonText {
                         visible: viewer.zoomed
                         text: Math.round(stage.fitScale * viewer.zoom * 100) + "%"
                         color: "#99ffffff"

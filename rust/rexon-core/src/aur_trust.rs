@@ -1620,7 +1620,7 @@ pub fn rpc_signals(v: &RpcView) -> Vec<Signal> {
                     "Few people use it: %n votes, popularity %1",
                     v.votes.max(0) as u64,
                 ),
-                &[&format!("{:.2}", v.popularity)],
+                &[&crate::i18n::format_decimal(v.popularity, 2)],
             ),
             why: tr("Votes show how many people tried the package. With few of them, maybe nobody besides the author has looked at what it does."),
         });

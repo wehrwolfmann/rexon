@@ -54,13 +54,14 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Animation")
             color: section.pal.text_primary
@@ -69,7 +70,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.note || "") !== ""
             text: section.st.note || ""
@@ -91,14 +92,14 @@ Rectangle {
             visible: section.st.has_speed === true
             spacing: 8
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Animation speed:")
                 color: section.pal.text_primary
             }
 
-            Text {
+            RexonText {
                 text: qsTranslate("rexon", "Slow")
                 color: section.pal.text_secondary
             }
@@ -118,13 +119,13 @@ Rectangle {
                 onMoved: section.did(actions.setSpeedIndex(Math.round(speed.value)))
             }
 
-            Text {
+            RexonText {
                 text: qsTranslate("rexon", "Fast")
                 color: section.pal.text_secondary
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.rows || []).length > 0
             text: qsTranslate("rexon", "Effects:")
@@ -142,7 +143,7 @@ Rectangle {
                 spacing: 8
                 enabled: section.st.enabled === true
 
-                Text {
+                RexonText {
                     Layout.preferredWidth: section.labelWidth
                     text: row.modelData.label + ":"
                     color: section.pal.text_primary

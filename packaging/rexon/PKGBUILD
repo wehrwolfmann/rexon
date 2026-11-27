@@ -94,6 +94,9 @@ depends=(
   noto-fonts-emoji     # значки вкладок, категорий и кнопок — эмодзи в тексте;
                        # без цветного шрифта эмодзи на чистой системе квадраты
                        # (проверка в контейнере с GNOME 51.1, 16.10.2026)
+  noto-fonts           # запасные шрифты арабского письма и иврита (Noto Sans
+                       # Arabic UI, Noto Sans Hebrew; `qt_app::RTL_FALLBACK_FONTS`),
+                       # а не транзитом от qt6-webengine
   qt6-grpc             # waywallen.control: Qt Protobuf + ProtobufQuick
   libarchive           # bsdtar: распаковка .rar/.7z при импорте курсоров Windows
                        # (`importers::extract_other_archive`); на Arch уже есть у pacman

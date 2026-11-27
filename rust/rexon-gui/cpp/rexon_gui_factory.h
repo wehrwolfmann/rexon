@@ -10,6 +10,8 @@
 // добавляет сюда одну функцию — это дешевле, чем тащить шаблоны через cxx.
 #pragma once
 
+#include <cstddef>
+
 class QObject;
 
 /// Создать RemoteListModel. parent может быть nullptr — тогда владение
@@ -208,6 +210,14 @@ bool rexon_install_app_translator(const char* context, RexonAppTranslate lookup)
 /// ⚠️ Уже разобранный текст Qt не перекрашивает: цвет кладётся в документ при
 /// разборе HTML, поэтому звать ДО загрузки QML и на смене скина.
 void rexon_set_app_link_color(bool set, unsigned char r, unsigned char g, unsigned char b);
+
+/// Запасной шрифт письменности для всего приложения
+/// (`QFontDatabase::addApplicationFallbackFontFamily`). `script` — номер из
+/// перечня ядра `qt_app::FallbackScript` (0 — арабское письмо, 1 — еврейское),
+/// `family` — UTF-8 длиной `len`. Какие семейства — решает ядро
+/// (`qt_app::RTL_FALLBACK_FONTS`). Неизвестный номер — ничего не делать.
+/// Звать из главного потока после создания приложения.
+void rexon_add_script_fallback_font(unsigned char script, const char* family, std::size_t len);
 
 /// Осушить ОБЩИЙ пул потоков Qt, не дольше ms миллисекунд.
 /// → сколько задач НЕ дождались (0 — пул пуст).

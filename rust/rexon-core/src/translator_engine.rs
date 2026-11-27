@@ -55,8 +55,9 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::appearance_cache::LiveCache;
 use crate::translator::{
-    detect_lang_heuristic, invented_latin_word, is_prose_segment, mask_names, plan_translate_text,
-    probe_text, render_segments_with_flags, segment_html, translatable_flags_by_sentence,
+    detect_lang_heuristic, drop_invented_repeats, invented_latin_word, is_prose_segment,
+    is_soft_guarded_name, mask_names, mask_only, plan_translate_text, probe_text,
+    render_segments_with_flags, segment_html, split_sentence_edges, translatable_flags_by_sentence,
     translation_cache_key, unmask_tech_names, user_lang_from_locale, MaskedNames, Segment,
     TranslatePlan,
 };
@@ -625,6 +626,22 @@ pub fn translate_live_batch_guarded(
     out
 }
 
+/// Может ли за этим текстом последовать перевод — то же решение
+/// [`plan_translate_text`], но БЕЗ движка (пара считается доступной).
+///
+/// Нужно окну, чтобы решить, показывать ли пометку «Перевожу описание…»:
+/// русский текст для русского покупателя, пустое описание — сразу «нет», и
+/// пометка не мигнёт даже на мгновение. Модель здесь не грузится (у живого
+/// движка вопрос о доступности — это поиск и загрузка 43 МБ).
+pub fn translation_may_follow(text: &str, locale: &str) -> bool {
+    let target = user_lang_from_locale(locale);
+    let detected = detect_lang_heuristic(&probe_text(text));
+    matches!(
+        plan_translate_text(text, &target, detected.as_deref(), true, true),
+        TranslatePlan::Translate { .. }
+    )
+}
+
 /// Текст, которому решение сказало «переводить»: его сегменты, признаки «звать
 /// ли движок» и номер пары языков в общем списке пакета.
 ///
@@ -679,7 +696,11 @@ fn pair_available(
 ///     если каждое охраняемое имя стоит в нём ДОСЛОВНО;
 ///   * **проход 2** — только те предложения, где движок имя перевёл или
 ///     склонил («Nordic» → «скандинавская»): они уходят под заполнителями, и
-///     дальше работают прежние сита [`unmask_tech_names`].
+///     дальше работают прежние сита [`unmask_tech_names`]. С 06.11 под
+///     заполнитель уходят ТОЛЬКО потерянные в первом проходе имена;
+///   * **проход 3** (без движка) — если имя не удержалось и под заполнителем,
+///     но все потерянные имена «мягкие» (слово из названия товара), берётся
+///     голый ответ первого прохода, а не выбрасывается весь абзац.
 /// Второй поход к движку платится только за испорченные предложения, а
 /// большинство фраз описания вообще перестало видеть заполнители.
 fn translate_misses(
@@ -714,54 +735,85 @@ fn translate_misses(
     // именами, и ниже они сверяются и возвращаются тем же путём.
     let prose: Vec<bool> = flat.iter().map(|s| is_prose_segment(s)).collect();
 
+    // Края предложения (маркер списка, «### ✨ », двоеточие после жирной
+    // подписи, эмодзи в конце) движку не показываются вовсе и возвращаются
+    // байт в байт ([`split_sentence_edges`]). Дальше всё — про середину.
+    let edges: Vec<(&str, &str, &str)> = flat.iter().map(|s| split_sentence_edges(s)).collect();
+    let core = |i: usize| edges[i].1;
+    let wrap = |i: usize, t: String| format!("{}{t}{}", edges[i].0, edges[i].2);
+
     let mut done: Vec<String> = vec![String::new(); flat.len()];
     // Пометка «заполнители не сошлись»: перевод этого предложения испорчен.
     let mut spoiled: Vec<bool> = vec![false; flat.len()];
 
     // ── проход 1: голые предложения, без заполнителей.
-    let bare: Vec<usize> = (0..flat.len()).filter(|i| prose[*i]).collect();
-    let asked: Vec<&str> = bare.iter().map(|i| flat[*i]).collect();
+    let bare: Vec<usize> =
+        (0..flat.len()).filter(|i| prose[*i] && core(*i).chars().any(char::is_alphabetic)).collect();
+    let asked: Vec<&str> = bare.iter().map(|i| core(*i)).collect();
     // ⚠️ Имена (технологий — по списку ядра, товара и автора — от вызывающего)
     // прячутся ЗДЕСЬ, то есть ПОСЛЕ разбиения на предложения, а не до него.
     // Порядок важен: границы предложений считает сам крейт по исходному тексту,
     // и подмена, сделанная раньше, сдвинула бы их (а `reassemble` ниже
     // восстанавливает пробелы по ОРИГИНАЛУ и требует спанов именно от него).
-    let mut retry: Vec<usize> = Vec::new();
-    for (i, answer) in bare.iter().zip(translate_blocks(engine, src, tgt, &asked).iter()) {
-        let source = flat[*i];
+    let mut retry: Vec<(usize, MaskedNames, Vec<bool>, String)> = Vec::new();
+    for (i, answer) in bare.iter().zip(translate_blocks(engine, src, tgt, &asked)) {
+        let source = core(*i);
         if answer.is_empty() {
             // Движок не справился — в выводе останется оригинал предложения.
             continue;
         }
-        let names = mask_names(source, guarded).names;
-        if !names.iter().all(|n| name_stands_verbatim(answer, n)) {
-            retry.push(*i);
+        let masked = mask_names(source, guarded);
+        let lost: Vec<bool> =
+            masked.names.iter().map(|n| !name_stands_verbatim(&answer, n)).collect();
+        if lost.iter().any(|l| *l) {
+            retry.push((*i, masked, lost, answer));
             continue;
         }
-        if let Some(text) = take_if_clean(src, tgt, source, answer) {
-            done[*i] = text;
+        if let Some(text) = take_if_clean(src, tgt, source, &answer) {
+            done[*i] = wrap(*i, text);
         }
     }
 
-    // ── проход 2: те же предложения, но имена под заполнителями.
-    let hidden: Vec<MaskedNames> = retry.iter().map(|i| mask_names(flat[*i], guarded)).collect();
+    // ── проход 2: те же предложения, но под заполнителями — ТОЛЬКО те имена,
+    // что движок потерял в первом проходе ([`mask_only`]). Заполнитель сам
+    // сбивает декодировщик, и на четырёх сразу он ломается; на одном — нет.
+    let hidden: Vec<MaskedNames> =
+        retry.iter().map(|(_, masked, lost, _)| mask_only(masked, lost)).collect();
     let asked: Vec<&str> = hidden.iter().map(|m| m.text.as_str()).collect();
-    for ((i, masked), answer) in
-        retry.iter().zip(hidden.iter()).zip(translate_blocks(engine, src, tgt, &asked).iter())
-    {
-        if answer.is_empty() {
+    let second = translate_blocks(engine, src, tgt, &asked);
+    for (((i, masked, lost, first), only), answer) in retry.iter().zip(hidden.iter()).zip(second) {
+        let source = core(*i);
+        // Имена, оставленные голыми, обязаны уцелеть и во втором ответе.
+        let restored = (!answer.is_empty())
+            .then(|| unmask_tech_names(&answer, &only.names))
+            .flatten()
+            .filter(|r| masked.names.iter().all(|n| name_stands_verbatim(r, n)));
+        if let Some(restored) = restored {
+            if let Some(text) = take_if_clean(src, tgt, source, &restored) {
+                done[*i] = wrap(*i, text);
+            }
             continue;
         }
-        match unmask_tech_names(answer, &masked.names) {
-            Some(restored) => {
-                if let Some(text) = take_if_clean(src, tgt, flat[*i], &restored) {
-                    done[*i] = text;
-                }
+        // ── проход 3: имя не удержалось и под заполнителем. Если все
+        // потерянные имена — «мягкие» (слово из названия товара, а не само
+        // название, не имя из списков ядра и не техника,
+        // [`is_soft_guarded_name`]), берём голый перевод: переведённое слово
+        // из названия лучше английского абзаца целиком. Иначе — порча.
+        let soft = masked
+            .names
+            .iter()
+            .zip(lost.iter())
+            .filter(|(_, l)| **l)
+            .all(|(n, _)| is_soft_guarded_name(n, guarded));
+        if soft {
+            if let Some(text) = take_if_clean(src, tgt, source, first) {
+                done[*i] = wrap(*i, text);
+                continue;
             }
-            // Заполнители не сошлись — предложение пустое, а сегмент целиком
-            // помечен испорченным (ниже).
-            None => spoiled[*i] = true,
         }
+        // Заполнители не сошлись — предложение пустое, а сегмент целиком
+        // помечен испорченным (ниже).
+        spoiled[*i] = true;
     }
 
     let mut out: Vec<Option<String>> = Vec::with_capacity(misses.len());
@@ -854,6 +906,10 @@ fn take_if_clean(src: &str, tgt: &str, source: &str, translated: &str) -> Option
         return None;
     }
     let fixed = crate::translator::apply_term_fixes(src, tgt, source, translated);
+    // Выдуманное движком сверх источника — повтор «и и», союз «и» в начале
+    // ([`drop_invented_repeats`]): после поправок терминов (у словаря есть
+    // свои свёртки) и до подъёма буквы (союз мог стоять первым словом).
+    let fixed = drop_invented_repeats(src, tgt, source, &fixed);
     Some(lift_first_letter(source, &fixed))
 }
 

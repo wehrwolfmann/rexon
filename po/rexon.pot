@@ -722,6 +722,7 @@ msgstr ""
 msgid "🪟 KWin effects left by the Plasma replacements removed."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/app.rs
 msgid "🎨 Kvantum theme “%1” (Aero) → Breeze style."
 msgstr ""
@@ -1522,6 +1523,7 @@ msgstr ""
 msgid "Couldn't unpack the archive: %1"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Store category %1, actually %2 → %3"
 msgstr ""
@@ -1654,7 +1656,7 @@ msgid ""
 "list until the next successful write."
 msgstr ""
 
-#: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/wallhaven.rs
 msgid "🆕 Newest"
 msgstr ""
 
@@ -1668,12 +1670,6 @@ msgstr ""
 
 #: rust/rexon-core/src/appearance_page.rs
 msgid "🔤 Alphabetical"
-msgstr ""
-
-#. TRANSLATORS: decimal separator in numbers like "1.4 MiB".
-#: rust/rexon-core/src/appearance_page.rs
-msgctxt "decimal separator"
-msgid "."
 msgstr ""
 
 #. TRANSLATORS: file size in kibibytes, %1 is the number.
@@ -1718,6 +1714,7 @@ msgid ""
 "to it — that's done in System Settings."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Open “System Settings → Login Screen”."
 msgstr ""
@@ -1964,6 +1961,13 @@ msgstr ""
 msgid "📄 original"
 msgstr ""
 
+#. TRANSLATORS: shown under an item description in the store panel while
+#. the description is being machine-translated into the interface
+#. language (it disappears when the translation arrives).
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Translating the description…"
+msgstr ""
+
 #: rust/rexon-core/src/appearance_page.rs
 msgid "🌐 show translation"
 msgstr ""
@@ -2114,6 +2118,7 @@ msgstr ""
 msgid "⏳ Building…"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_page.rs
 msgid "←  Back to Catalog"
 msgstr ""
@@ -2251,10 +2256,12 @@ msgstr ""
 msgid "Install into “%1”"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_page.rs
 msgid "← Previous"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Next →"
 msgstr ""
@@ -3524,6 +3531,7 @@ msgid "Screen effects"
 msgstr ""
 
 #. TRANSLATORS: link in the Settings tab to a section that moved; %1 is the section name.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/categories.rs
 msgid "Appearance → %1"
 msgstr ""
@@ -4292,6 +4300,7 @@ msgstr ""
 msgid "✅ Terminal: %1"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/compliance.rs
 msgid "✅ Fixed: %1 → %2"
 msgstr ""
@@ -4304,6 +4313,7 @@ msgstr ""
 msgid "📐 Checking all 8 Ubuntu MATE panel layouts..."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/compliance.rs
 msgid "✅ All 8 layouts are present (Familiar → Traditional)"
 msgstr ""
@@ -4427,6 +4437,7 @@ msgstr ""
 msgid "🖥️ Checking the %1 terminal..."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/compliance.rs
 msgid "✅ Fixed: terminal → %1"
 msgstr ""
@@ -4559,18 +4570,25 @@ msgstr ""
 msgid "🔍 Checking desktop %1..."
 msgstr ""
 
+#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed.
 #: rust/rexon-core/src/compliance.rs
-msgid ", %1 skipped"
+msgid "✅ Check finished: %1 OK, %2 fixed, %3 failed"
 msgstr ""
 
+#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 skipped.
 #: rust/rexon-core/src/compliance.rs
-msgid ", %1 to install"
+msgid "✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 skipped"
 msgstr ""
 
-#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed; %4 is an
-#. optional tail such as “, 2 skipped, 1 to install”.
+#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 need a program installed first.
 #: rust/rexon-core/src/compliance.rs
-msgid "✅ Check finished: %1 OK, %2 fixed, %3 failed%4"
+msgid "✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 to install"
+msgstr ""
+
+#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 skipped, %5 need a program installed first.
+#: rust/rexon-core/src/compliance.rs
+msgid ""
+"✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 skipped, %5 to install"
 msgstr ""
 
 #. TRANSLATORS: Reason Rexon couldn't add its startup line to a window manager's config: the config file doesn't exist yet.
@@ -7555,6 +7573,12 @@ msgstr ""
 msgid "✅ Fixed broken links:"
 msgstr ""
 
+#. TRANSLATORS: decimal separator in numbers like "1.4 MiB".
+#: rust/rexon-core/src/i18n.rs
+msgctxt "decimal separator"
+msgid "."
+msgstr ""
+
 #. TRANSLATORS: file type group in the “Import Windows theme” file dialog.
 #: rust/rexon-core/src/importers.rs
 msgid "Themes and Styles"
@@ -7772,6 +7796,7 @@ msgstr ""
 msgid "couldn't create the folder %1: %2"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/install_plan.rs
 msgid "couldn't copy %1 → %2: %3"
 msgstr ""
@@ -8633,6 +8658,7 @@ msgstr ""
 msgid "Links pointing outside the theme were left out: %1."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/local_install.rs
 msgid "Added to the 📚 Wallpaper Library (Settings → Wallpapers): %1"
 msgstr ""
@@ -10067,6 +10093,7 @@ msgstr ""
 msgid "🎯 Quick Recommendations"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🎮 For gamers"
 msgstr ""
@@ -10075,6 +10102,7 @@ msgstr ""
 msgid "Minimal overhead → XFCE or KDE"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "💻 Low-end hardware"
 msgstr ""
@@ -10083,6 +10111,7 @@ msgstr ""
 msgid "Under 2 GB of RAM → MATE or XFCE"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🎨 For eye candy fans"
 msgstr ""
@@ -10095,10 +10124,12 @@ msgstr ""
 msgid "🟢 For newcomers"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Simple out of the box → Cinnamon or GNOME"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🔧 For power users"
 msgstr ""
@@ -10107,6 +10138,7 @@ msgstr ""
 msgid "Full customization → KDE Plasma"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "⚡ Maximum speed"
 msgstr ""
@@ -10119,6 +10151,7 @@ msgstr ""
 msgid "⌨️ For keyboard lovers"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Keyboard-driven window management → Hyprland"
 msgstr ""
@@ -10127,6 +10160,7 @@ msgstr ""
 msgid "🧩 Tiling out of the box"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Automatic window layout → Sway, niri or River"
 msgstr ""
@@ -10135,6 +10169,7 @@ msgstr ""
 msgid "🎞️ Scrollable tiling"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Windows on an endless strip → niri"
 msgstr ""
@@ -10143,6 +10178,7 @@ msgstr ""
 msgid "✨ Effects like in Compiz"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Wobbly windows and the desktop cube → Wayfire"
 msgstr ""
@@ -10354,6 +10390,7 @@ msgstr ""
 msgid "Restore the panel from the last saved copy"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "← Desktops"
 msgstr ""
@@ -10484,6 +10521,8 @@ msgstr ""
 msgid "Putting “%1” back"
 msgstr ""
 
+#. TRANSLATORS: in right-to-left languages the list is on the right: say "on the right" and use the arrow →.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "← Choose a desktop from the list on the left"
 msgstr ""
@@ -10654,10 +10693,12 @@ msgstr ""
 msgid "📷  No screenshots"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs rust/rexon-gui/qml/RexonImageViewer.qml
 msgid "Previous (←)"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs rust/rexon-gui/qml/RexonImageViewer.qml
 msgid "Next (→)"
 msgstr ""
@@ -10672,6 +10713,7 @@ msgid "× in the corner, click or Esc to close"
 msgstr ""
 
 #. TRANSLATORS: %1 is the number of the shown screenshot, %2 how many there are.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "←/→ to browse  ·  %1/%2"
 msgstr ""
@@ -10792,6 +10834,12 @@ msgstr ""
 msgid ""
 "%1 can also run on Wayland — newer and smoother, but still experimental. "
 "Rexon can add it, and the X11 version will stay."
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"%1 can also run on Wayland — newer and smoother. Rexon can add it, and the "
+"X11 version will stay."
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
@@ -11303,7 +11351,8 @@ msgstr ""
 #. TRANSLATORS: help page in HTML. Keep the tags, the file names, the
 #. JSON keys and the type names (theme-gtk, plugin…) as they are;
 #. translate the prose and the sample values of "name", "author" and
-#. "description".
+#. "description". The <pre> blocks stay left-to-right in every language,
+#. so keep their arrows ← as they are.
 #. Без ведущего перевода строки: xgettext срезает его у msgid, и
 #. строка в коде разошлась бы с ключом каталога.
 #: rust/rexon-core/src/qt_extensions.rs
@@ -13036,6 +13085,7 @@ msgid "ZIP archive"
 msgstr ""
 
 #. TRANSLATORS: %n is the number of font files, %1 the name of a font group, %2 the archive path.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "📦 Group %1 exported: %n font file → %2"
 msgid_plural "📦 Group %1 exported: %n font files → %2"
@@ -13529,6 +13579,7 @@ msgstr ""
 msgid "❌ not installed"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "← follows the desktop"
 msgstr ""
@@ -13994,6 +14045,7 @@ msgid "⚠️ Error starting the sound: %1"
 msgstr ""
 
 #. TRANSLATORS: %1 is a sound name, %2 is the volume in percent.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "🔊 Volume of “%1” → %2%"
 msgstr ""
@@ -14026,6 +14078,7 @@ msgstr ""
 msgid "<b>Sound test:</b>"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "💡 Not many themes? There are more in Appearance → Sounds."
 msgstr ""
@@ -14217,6 +14270,19 @@ msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "✅ Default apps restored"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Don't let themes spoil terminal colors  (recommended)"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"Some terminals take their text and background colors from the theme, and a "
+"dark theme can leave them dark gray on black. After a theme, color scheme or "
+"accent changes, Rexon gives such terminals readable colors of their own. "
+"Colors you picked yourself are left alone, and “Return as It Was” brings the "
+"old ones back."
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
@@ -14559,7 +14625,7 @@ msgstr ""
 
 #. TRANSLATORS: %1 is a comma-separated list of Steam item tags
 #. (rarity, game, item type…).
-#: rust/rexon-core/src/qt_steam.rs
+#: rust/rexon-core/src/qt_steam.rs rust/rexon-core/src/wallhaven.rs
 msgid "Tags: %1"
 msgstr ""
 
@@ -16802,6 +16868,7 @@ msgid ""
 "Showcases open at Steam level %1. Check your level on your profile page."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/steam_showcase.rs
 msgid "Open the artwork upload page in Steam: %1 (Profile → Artwork → Upload)."
 msgstr ""
@@ -17575,6 +17642,7 @@ msgid "⏭️ %1: no installed apps"
 msgstr ""
 
 #. TRANSLATORS: %1 desktop id, %2 “created”/“updated”, %3 entry count, %4 file path.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/system_de_exec.rs
 msgid "✅ %1: %2 (%3 entries) → %4"
 msgstr ""
@@ -19543,6 +19611,7 @@ msgstr[1] ""
 msgid "✅ MATE post-install complete — the full Ubuntu MATE!"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/system_plan.rs
 msgid "8 layouts: mate-tweak → Panel"
 msgstr ""
@@ -19605,6 +19674,12 @@ msgstr ""
 msgid ""
 "⏳ The build ran out of time — this is NOT an installation failure. To "
 "finish it yourself: yay -S --needed %1"
+msgstr ""
+
+#. TRANSLATORS: %1 is a list of terminal apps (MATE Terminal, GNOME Terminal…).
+#: rust/rexon-core/src/terminal_guard.rs
+msgid ""
+"Terminal colors were set so the text stays readable with the new theme: %1."
 msgstr ""
 
 #: rust/rexon-core/src/theme_removal.rs
@@ -20632,6 +20707,75 @@ msgid ""
 "Neither dbus-send nor qdbus (%1) is installed, so Rexon can't talk to the D-"
 "Bus session bus. Install the dbus package (dbus-bin on Debian/Ubuntu, dbus-"
 "tools on Fedora)."
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid ""
+"Wallpapers from wallhaven.cc, safe-for-work only. The pictures belong to "
+"their authors: Rexon downloads the one you pick for you and links to its "
+"page on the site."
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "🔍 Search Wallhaven…"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "🔥 Most Viewed"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "🏆 Top of the Month"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgctxt "wallpaper category"
+msgid "General"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgctxt "wallpaper category"
+msgid "Anime"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgctxt "wallpaper category"
+msgid "People"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Belongs to its author — see the page on wallhaven.cc"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Category: %1"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Original source: %1"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Page on Wallhaven: %1"
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Favorites and views on wallhaven.cc"
+msgstr ""
+
+#. TRANSLATORS: %1 is a number of seconds.
+#: rust/rexon-core/src/wallhaven.rs
+msgid ""
+"Wallhaven allows only 45 requests per minute, and the limit is used up. Try "
+"again in %1 s."
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Wallhaven refused access to this picture (it is not safe-for-work)."
+msgstr ""
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Wallhaven sent an answer Rexon can't read. Try again later."
 msgstr ""
 
 #. TRANSLATORS: name of the wallpaper's audio stream in the system volume mixer

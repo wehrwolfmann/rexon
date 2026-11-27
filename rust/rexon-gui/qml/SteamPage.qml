@@ -449,9 +449,12 @@ Item {
 
         ColumnLayout {
             id: pageColumn
-            x: root.pageMargin
+            // Ширина содержимого полосы — `contentWidth`: ему равна ширина
+            // `contentItem`, к которому и прижаты края.
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: root.pageMargin
             y: root.pageMargin
-            width: pageScroll.contentWidth - root.pageMargin * 2
             height: pageScroll.contentHeight - root.pageMargin * 2
             spacing: 14
 
@@ -461,7 +464,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 12
 
-                Text {
+                RexonText {
                     text: page.headerTitle
                     color: root.colText
                     font.pointSize: page.headerTitlePointSize
@@ -489,11 +492,11 @@ Item {
                     Layout.minimumWidth: 0
                     Layout.maximumWidth: implicitWidth
 
-                    Text {
+                    RexonText {
                         text: page.headerFoundText
                         color: root.colTextSecondary
                     }
-                    Text {
+                    RexonText {
                         id: headerPath
                         objectName: "headerFoundPath"
                         visible: page.headerFoundPath !== ""
@@ -578,7 +581,7 @@ Item {
                             anchors.bottomMargin: root.st.group.marginV
                             spacing: root.st.group.spacing
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: page.splashGroupTitle
                                 color: root.colText
@@ -599,7 +602,7 @@ Item {
                                     height: parent.height
                                     color: root.st.pitch.bar
                                 }
-                                Text {
+                                RexonText {
                                     id: pitch
                                     anchors.fill: parent
                                     anchors.margins: root.st.pitch.marginV
@@ -652,7 +655,7 @@ Item {
                                             asynchronous: true
                                             visible: source !== ""
                                         }
-                                        Text {
+                                        RexonText {
                                             anchors.centerIn: parent
                                             visible: page.hero.poster === ""
                                             text: page.svThumbPlaceholder
@@ -753,7 +756,7 @@ Item {
                                         Layout.fillWidth: true
                                         spacing: 7
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             text: page.hero.title
                                             color: root.colText
@@ -761,21 +764,21 @@ Item {
                                             font.bold: true
                                             wrapMode: Text.WordWrap
                                         }
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             visible: page.hero.present
                                             text: page.hero.source
                                             color: root.colTextSecondary
                                             wrapMode: Text.WordWrap
                                         }
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             visible: page.hero.labels !== ""
                                             text: page.hero.labels
                                             color: root.colTextSecondary
                                             wrapMode: Text.WordWrap
                                         }
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             visible: page.hero.event !== ""
                                             text: page.hero.event
@@ -805,7 +808,7 @@ Item {
                                             Item { Layout.fillWidth: true }
                                         }
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             visible: page.hero.status !== ""
                                             text: page.hero.status
@@ -824,7 +827,7 @@ Item {
                                 color: page.stateChip.background
                                 border.color: page.stateChip.border
                                 border.width: 1
-                                Text {
+                                RexonText {
                                     id: chipText
                                     anchors.centerIn: parent
                                     text: page.stateChip.text
@@ -925,7 +928,7 @@ Item {
                                 }
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: page.svCountText
                                 color: root.colTextSecondary
@@ -1013,7 +1016,7 @@ Item {
                                                     asynchronous: true
                                                     visible: source !== ""
                                                 }
-                                                Text {
+                                                RexonText {
                                                     anchors.centerIn: parent
                                                     visible: card.poster === ""
                                                     text: page.svThumbPlaceholder
@@ -1034,7 +1037,7 @@ Item {
                                             RowLayout {
                                                 Layout.fillWidth: true
                                                 spacing: 4
-                                                Text {
+                                                RexonText {
                                                     // Ширину обрезки задаёт ядро
                                                     // (у оригинала — по метрике
                                                     // шрифта, а не по остатку
@@ -1049,7 +1052,7 @@ Item {
                                                     ToolTip.visible: nameHover.hovered
                                                     HoverHandler { id: nameHover }
                                                 }
-                                                Text {
+                                                RexonText {
                                                     text: card.starGlyph
                                                     color: card.starColor
                                                     font.pixelSize: 15
@@ -1070,7 +1073,7 @@ Item {
                                                 implicitHeight: badgeText.implicitHeight + 2
                                                 radius: 7
                                                 color: card.badgeBackground
-                                                Text {
+                                                RexonText {
                                                     id: badgeText
                                                     anchors.centerIn: parent
                                                     width: parent.width - 14
@@ -1130,14 +1133,14 @@ Item {
                             anchors.bottomMargin: root.st.group.marginV
                             spacing: root.st.group.spacing
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: page.bgGroupTitle
                                 color: root.colText
                                 font.pointSize: page.groupTitlePointSize
                                 font.bold: true
                             }
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: page.bgGroupDesc
                                 color: root.colTextSecondary
@@ -1188,7 +1191,7 @@ Item {
                                 spacing: 12
                                 visible: page.bgAnimatedNote !== ""
 
-                                Text {
+                                RexonText {
                                     objectName: "bgAnimatedNote"
                                     Layout.fillWidth: true
                                     text: page.bgAnimatedNote
@@ -1203,7 +1206,7 @@ Item {
                                 }
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: page.bgStatusText
                                 color: root.colTextSecondary
@@ -1287,7 +1290,7 @@ Item {
                                                         asynchronous: true
                                                         visible: source !== ""
                                                     }
-                                                    Text {
+                                                    RexonText {
                                                         anchors.centerIn: parent
                                                         visible: bgCard.modelData.thumb === ""
                                                         text: bgCard.modelData.icon
@@ -1305,7 +1308,7 @@ Item {
                                                         height: bgMarkText.implicitHeight + 4
                                                         radius: 4
                                                         color: "#cc000000"
-                                                        Text {
+                                                        RexonText {
                                                             id: bgMarkText
                                                             anchors.centerIn: parent
                                                             text: bgCard.modelData.mark
@@ -1332,11 +1335,11 @@ Item {
                                                 RowLayout {
                                                     Layout.fillWidth: true
                                                     spacing: 0
-                                                    Text {
+                                                    RexonText {
                                                         text: bgCard.modelData.icon + " "
                                                         color: root.colText
                                                     }
-                                                    Text {
+                                                    RexonText {
                                                         Layout.fillWidth: true
                                                         Layout.maximumWidth: page.bgThumbWidth
                                                         text: bgCard.modelData.name
@@ -1350,7 +1353,7 @@ Item {
 
                                                 // Пустую строку всё равно рисуем: иначе
                                                 // карточки ряда разъезжаются по высоте.
-                                                Text {
+                                                RexonText {
                                                     Layout.fillWidth: true
                                                     Layout.maximumWidth: page.bgThumbWidth
                                                     text: bgCard.modelData.sub
@@ -1385,20 +1388,31 @@ Item {
                                 spacing: 10
 
                                 Item { Layout.fillWidth: true }
+                                // «‹ Prev» и «Next ›»: значок в Unicode зеркальный,
+                                // и строку справа налево Qt рисует с ним
+                                // перевёрнутым сам — переводу на арабский или
+                                // иврит ничего не нужно. Не переведённой
+                                // (латиница) строка осталась бы слева направо и
+                                // «‹» на кнопке, ушедшей вправо, смотрел бы
+                                // внутрь; знак RLM в начале делает её строкой
+                                // справа налево — значок встаёт к началу строки
+                                // и смотрит наружу. Менять «‹» на «›» руками
+                                // нельзя: в переведённой строке Qt перевернул бы
+                                // его второй раз.
                                 RexonButton {
                                     pal: root.pal
-                                    text: page.bgPrevText
+                                    text: (root.LayoutMirroring.enabled ? "\u200f" : "") + page.bgPrevText
                                     enabled: page.pager.prevEnabled
                                     onClicked: page.bgPrevPage()
                                 }
-                                Text {
+                                RexonText {
                                     text: page.pager.text
                                     color: root.colText
                                     horizontalAlignment: Text.AlignHCenter
                                 }
                                 RexonButton {
                                     pal: root.pal
-                                    text: page.bgNextText
+                                    text: (root.LayoutMirroring.enabled ? "\u200f" : "") + page.bgNextText
                                     enabled: page.pager.nextEnabled
                                     onClicked: page.bgNextPage()
                                 }

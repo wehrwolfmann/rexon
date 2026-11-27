@@ -991,6 +991,7 @@ pub const KVANTUM_THEME_KEY: &str = "theme";
 
 /// Итог возврата стиля виджетов со Kvantum-Aero на Breeze.
 pub fn kvantum_breeze_line(theme: &str) -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     trf("🎨 Kvantum theme “%1” (Aero) → Breeze style.", &[&theme])
 }
 

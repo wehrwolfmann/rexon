@@ -62,11 +62,15 @@
 // и сигналами
 //   catalogReady(payload)     — ответ на запрос каталога (строка JSON)
 //   detailReady(payload)      — полные детали товара (строка JSON)
-//   descriptionReady(payload) — переведённое описание ВДОГОНКУ уже показанной
-//                               карточке (строка JSON: `itemId`,
-//                               `translated`). Приходит только когда перевод
-//                               случился: модели нет — сигнала нет, на панели
-//                               остаётся оригинал
+//   descriptionReady(payload) — перевод описания ВДОГОНКУ уже показанной
+//                               карточке (строка JSON: `itemId`, `source` —
+//                               исходник перевода, и либо `translated`, либо
+//                               `pending`). `pending: true` зажигает пометку
+//                               «Перевожу описание…» (перевод идёт дольше
+//                               порога), `false` гасит её без перевода
+//                               (не переводим или модели нет — на панели
+//                               остаётся оригинал); `translated` кладёт
+//                               перевод и тоже гасит пометку
 //   previewDone(job, path)    — картинка заявки записана в кеш
 //   previewFailed(job, status)— заявка не удалась: `status` это ответ
 //                               сервера числом строкой, пусто (ответа не
@@ -143,6 +147,12 @@ Item {
     }
 
     readonly property string windowTitle: page.windowTitle
+
+    /// Ручные координаты по горизонтали (выпадашка поиска, меню кнопки) —
+    /// по зеркалированию страницы: справа налево отсчёт от правого края.
+    readonly property RexonArrows arrows: RexonArrows {
+        mirrored: root.LayoutMirroring.enabled
+    }
     readonly property int windowMinWidth: page.windowMinWidth
     readonly property int windowMinHeight: page.windowMinHeight
 
@@ -399,7 +409,7 @@ Item {
             border.width: chip.activeFocus ? 2 : 1
         }
 
-        contentItem: Text {
+        contentItem: RexonText {
             text: chip.text
             color: chip.checked ? chip.colChipAccent
                  : (chip.hovered ? chip.colChipText : chip.colChipTextOff)
@@ -633,7 +643,7 @@ Item {
     // Пункт меню выбора: подсветка и рамка фокуса — как у меню окна.
     component PickItem: MenuItem {
         id: pickEntry
-        contentItem: Text {
+        contentItem: RexonText {
             text: pickEntry.text
             color: root.colText
             verticalAlignment: Text.AlignVCenter
@@ -1070,12 +1080,16 @@ Item {
         border.width: 1
         radius: 4
 
+        // Ядро считает в отсчёте от начала строки: справа налево край
+        // строки поиска и сама выпадашка переводятся `placeX` туда и обратно,
+        // и выпадашка тянется от правого края поиска влево.
         readonly property var box: page.suggestGeometry(
-            String(Math.round(root.mapFromItem(searchBox, 0, 0).x)),
+            String(Math.round(root.arrows.placeX(root.mapFromItem(searchBox, 0, 0).x,
+                                                 searchBox.width, root.width))),
             String(Math.round(searchBox.width)),
             String(Math.round(root.width)))
 
-        x: suggestBox.box.x
+        x: root.arrows.placeX(suggestBox.box.x, suggestBox.box.width, root.width)
         y: root.mapFromItem(searchBox, 0, searchBox.height).y + 2
         width: suggestBox.box.width
         height: suggestBox.box.height
@@ -1120,7 +1134,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 0
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             text: suggestRow.modelData.name
                             color: root.colText
@@ -1128,7 +1142,7 @@ Item {
                             elide: Text.ElideRight
                         }
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             text: suggestRow.modelData.author
                             color: root.colTextSecondary
@@ -1264,7 +1278,7 @@ Item {
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: globalApplyDialog.q.title || ""
                 color: root.colText
@@ -1273,7 +1287,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: (globalApplyDialog.q.outsideNote || "") !== ""
                 text: globalApplyDialog.q.outsideNote || ""
@@ -1282,7 +1296,7 @@ Item {
             }
 
             // ── Простой вид ──
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: !globalApplyDialog.detailed && (globalApplyDialog.q.emptyText || "") === ""
                 text: globalApplyDialog.q.heading || ""
@@ -1299,7 +1313,7 @@ Item {
                 onToggled: globalApplyDialog.appearance = checked
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: !globalApplyDialog.detailed && globalApplyDialog.q.appearanceRow === "bullet"
                 text: "• " + (globalApplyDialog.q.appearanceText || "")
@@ -1319,7 +1333,7 @@ Item {
                 onToggled: globalApplyDialog.layout = checked
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: !globalApplyDialog.detailed && globalApplyDialog.q.layoutRow === "bullet"
                 text: "• " + (globalApplyDialog.q.layoutText || "")
@@ -1344,7 +1358,7 @@ Item {
                     width: globalApplyPartsScroll.availableWidth
                     spacing: 10
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         visible: globalApplyDialog.detailed && globalApplyDialog.layoutParts.length > 0
                         text: globalApplyDialog.q.layoutHeading || ""
@@ -1358,7 +1372,7 @@ Item {
                         delegate: globalApplyPartRow
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         visible: globalApplyDialog.detailed && globalApplyDialog.appearanceParts.length > 0
                         text: globalApplyDialog.q.appearanceHeading || ""
@@ -1376,7 +1390,7 @@ Item {
 
             // Предупреждение — пока отмечено расположение: оно сносит
             // нынешние панели и виджеты.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: globalApplyDialog.detailed
                          ? globalApplyDialog.desktopLayoutOn
@@ -1386,7 +1400,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: (globalApplyDialog.q.emptyText || "") !== ""
                 text: globalApplyDialog.q.emptyText || ""
@@ -1470,7 +1484,7 @@ Item {
                 onToggled: globalApplyDialog.setPart(partRow.modelData, checked)
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 Layout.leftMargin: 28
                 visible: partRow.modelData.reason !== ""
@@ -1561,7 +1575,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 10
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: page.aurPkgbuildTitle
                     color: root.colText
@@ -1589,7 +1603,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: pkgbuildPopup.text === "" || pkgbuildPopup.error !== ""
                 text: pkgbuildPopup.error !== "" ? pkgbuildPopup.error : page.aurPkgbuildLoading
@@ -1610,6 +1624,15 @@ Item {
                     text: pkgbuildPopup.text
                     textFormat: TextEdit.PlainText
                     wrapMode: TextEdit.NoWrap
+                    // Начало строки при языке справа налево. Без явного
+                    // выравнивания поле берёт его из самого текста, а не из
+                    // зеркалирования окна. PKGBUILD — код оболочки, он
+                    // читается слева направо при любом языке интерфейса,
+                    // поэтому выравнивание задано явно и физически слева:
+                    // явное `AlignLeft` зеркалирование перевернуло бы вправо,
+                    // а `AlignRight` при зеркалировании даёт левый край.
+                    horizontalAlignment: LayoutMirroring.enabled ? TextEdit.AlignRight
+                                                                 : TextEdit.AlignLeft
                     color: root.colText
                     font.family: "monospace"
                     font.pointSize: 10
@@ -1698,7 +1721,7 @@ Item {
                         rightPadding: 6
                         spacing: 1
 
-                        Text {
+                        RexonText {
                             width: parent.width - parent.leftPadding - parent.rightPadding
                             text: sidebarBox.modelData.groupTitle || ""
                             color: root.colTextSecondary
@@ -1707,7 +1730,7 @@ Item {
                             font.capitalization: Font.AllUppercase
                             wrapMode: Text.Wrap
                         }
-                        Text {
+                        RexonText {
                             width: parent.width - parent.leftPadding - parent.rightPadding
                             visible: text !== ""
                             text: sidebarBox.modelData.groupNote || ""
@@ -1784,11 +1807,12 @@ Item {
                             : (sidebarRow.hovered ? root.colText
                                                   : root.colTextSecondary)
 
-                        Text {
+                        RexonText {
                             id: sidebarIcon
                             visible: sidebarContent.hasIcon
                             // Отступ ядра (два пробела перед значком) — полем.
-                            x: 7
+                            anchors.left: parent.left
+                            anchors.leftMargin: 7
                             // Значок стоит на одной линии шрифта с ПЕРВОЙ
                             // строкой подписи, как стоял, пока был с ней
                             // одним текстом.
@@ -1799,11 +1823,12 @@ Item {
                             font.weight: Font.DemiBold
                         }
 
-                        Text {
+                        RexonText {
                             id: sidebarLabel
-                            x: sidebarContent.hasIcon
-                               ? sidebarIcon.x + sidebarIcon.implicitWidth + 5 : 7
-                            width: parent.width - x - 6
+                            anchors.left: sidebarContent.hasIcon ? sidebarIcon.right : parent.left
+                            anchors.leftMargin: sidebarContent.hasIcon ? 5 : 7
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6
                             anchors.verticalCenter: parent.verticalCenter
                             text: sidebarContent.hasIcon
                                   ? sidebarContent.full.substring(sidebarContent.gap + 1).trim()
@@ -1875,7 +1900,7 @@ Item {
                 columnSpacing: 8
                 rowSpacing: 8
 
-                Text {
+                RexonText {
                     id: headerTitle
                     // ⚠️ Именно `sectionTitle`, а не `headerTitle`. Второе —
                     // название вкладки, оно неизменно; оригинал же с первого
@@ -1906,7 +1931,7 @@ Item {
                         visible: page.sourceBarVisible
                         height: headerRow.rowHeight
 
-                        Text {
+                        RexonText {
                             text: page.sourceLabel
                             color: root.colTextSecondary
                             // Оригинал: `#SrcLabel { font-weight: 600 }` —
@@ -2078,6 +2103,10 @@ Item {
                     Layout.minimumWidth: 0
                     Layout.preferredWidth: fullWidth
                     Layout.preferredHeight: implicitHeight
+                    // Кнопки прижаты к концу строки. При языке справа налево
+                    // корневое зеркалирование переворачивает и это
+                    // направление — кнопки встают у левого края, то есть
+                    // опять в конце строки для такого читателя.
                     layoutDirection: Qt.RightToLeft
                     spacing: 8
 
@@ -2109,7 +2138,9 @@ Item {
                         ToolTip.delay: 600
                         onClicked: {
                             installFileMenu.parent = installFileButton;
-                            installFileMenu.x = 0;
+                            // Меню — от начала строки кнопки.
+                            installFileMenu.x = root.arrows.placeX(
+                                0, installFileMenu.width, installFileButton.width);
                             installFileMenu.y = installFileButton.height;
                             installFileMenu.open();
                         }
@@ -2133,7 +2164,7 @@ Item {
                         height: headerRow.rowHeight
                         visible: deCombo.count > 0
 
-                        Text {
+                        RexonText {
                             text: page.deLabel
                             color: root.colTextSecondary
                             font.weight: Font.DemiBold   // `#SrcLabel`, вес 600
@@ -2185,7 +2216,7 @@ Item {
                     spacing: 4
                     visible: page.styleBarVisible || page.lockBarVisible || page.toneBarVisible
 
-                    Text {
+                    RexonText {
                         text: page.submodeLabel
                         color: root.colTextSecondary
                         font.weight: Font.DemiBold   // `#SrcLabel`, вес 600
@@ -2254,7 +2285,7 @@ Item {
                             current = root.actions.cursorSize();
                     }
 
-                    Text {
+                    RexonText {
                         text: page.cursorSizeLabel
                         color: root.colTextSecondary
                         font.weight: Font.DemiBold   // `#SrcLabel`, вес 600
@@ -2282,7 +2313,7 @@ Item {
                     }
                 }
 
-                Text {
+                RexonText {
                     text: page.statusText
                     color: root.colTextSecondary
                     // Оригинал: `#StatusBar { font-size: 10pt;
@@ -2330,7 +2361,7 @@ Item {
             //
             // Раздел при этом остаётся на месте: прятать работающее вместо
             // того, чтобы назвать условие, — не наш способ (правило #13).
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
@@ -2452,7 +2483,7 @@ Item {
                 onVisibleChanged: if (conkyToolsRow.visible) conkyRibbon.reload()
                 Component.onCompleted: conkyRibbon.reload()
 
-                Text {
+                RexonText {
                     text: conkyToolsRow.texts.ribbon_title || ""
                     color: root.colText
                     font.bold: true
@@ -2486,13 +2517,13 @@ Item {
                                 source: gadget.modelData.picture !== ""
                                         ? "file://" + encodeURI(gadget.modelData.picture) : ""
                             }
-                            Text {
+                            RexonText {
                                 anchors.centerIn: gadgetPicture
                                 visible: gadgetPicture.status !== Image.Ready
                                 text: "📊"
                                 font.pixelSize: 32
                             }
-                            Text {
+                            RexonText {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
@@ -2594,7 +2625,7 @@ Item {
                     anchors.margins: 10
                     spacing: 10
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: eventSoundsBar.info.visible === true
                               ? "🔇 " + (eventSoundsBar.info.text || "")
@@ -2686,7 +2717,7 @@ Item {
                     anchors.margins: 10
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: "🎨 " + (shellPaletteBar.info.text || "")
                         color: root.colText
@@ -2698,7 +2729,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 6
 
-                        Text {
+                        RexonText {
                             text: shellPaletteBar.info.lead_caption || ""
                             color: root.colTextSecondary
                             font.weight: Font.DemiBold
@@ -2749,7 +2780,7 @@ Item {
                         }
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         visible: text !== ""
                         text: shellPaletteBar.message
@@ -2834,7 +2865,7 @@ Item {
                         visible: appliedRevertBar.info.visible === true
                         spacing: 10
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             text: "↩️ " + (appliedRevertBar.info.text || "")
                             color: root.colText
@@ -2851,7 +2882,7 @@ Item {
                         }
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         visible: appliedRevertBar.showMessage
                         text: appliedRevertBar.message
@@ -2964,7 +2995,7 @@ Item {
                                 width: Math.min(parent.width - 64, 720)
                                 spacing: 14
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     text: page.plmTitle
                                     color: root.colText
@@ -2974,7 +3005,7 @@ Item {
                                     wrapMode: Text.WordWrap
                                 }
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     text: page.plmBody
                                     color: root.colTextSecondary
@@ -3000,7 +3031,7 @@ Item {
                                     }
                                 }
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     Layout.topMargin: 6
                                     text: page.plmStoreHint
@@ -3037,7 +3068,7 @@ Item {
                             onMessage: text => matePanelMessage.text = text
                         }
 
-                        Text {
+                        RexonText {
                             id: matePanelMessage
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
@@ -3090,7 +3121,7 @@ Item {
                 // Пустой экран без объяснения — худшее, что можно показать
                 // человеку (правило #13). Текст собирает ядро по матрице
                 // кастомизации.
-                Text {
+                RexonText {
                     anchors.centerIn: parent
                     width: parent.width - 64
                     visible: page.screen === "note"
@@ -3125,7 +3156,9 @@ Item {
                             Layout.margins: 16
                             pal: root.pal
                             tone: root.toneNav
-                            text: page.detailBackText
+                            // Стрелка «←» смотрит к началу строки: справа
+                            // налево кнопка стоит справа, и стрелка — вправо.
+                            text: root.arrows.keyHint(page.detailBackText)
                             onClicked: page.closeDetail()
                         }
 
@@ -3170,7 +3203,7 @@ Item {
                                     && !zoomPopup.opened
                             }
 
-                            Text {
+                            RexonText {
                                 anchors.centerIn: parent
                                 width: parent.width - 32
                                 visible: page.detailPreview === ""
@@ -3205,7 +3238,12 @@ Item {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 anchors.margins: page.overlayMargin
-                                text: page.overlayPrevText
+                                // Значки «◀️ ▶️» — от ядра и сами не
+                                // переворачиваются, а зеркалирование
+                                // переставляет кнопки: справа налево «назад»
+                                // стоит справа и смотрит вправо.
+                                text: root.arrows.mirrored ? page.overlayNextText
+                                                           : page.overlayPrevText
                                 ToolTip.text: page.overlayPrevTooltip
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 600
@@ -3220,7 +3258,8 @@ Item {
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
                                 anchors.margins: page.overlayMargin
-                                text: page.overlayNextText
+                                text: root.arrows.mirrored ? page.overlayPrevText
+                                                           : page.overlayNextText
                                 ToolTip.text: page.overlayNextTooltip
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 600
@@ -3240,7 +3279,7 @@ Item {
                                 color: root.colSecondary
                                 opacity: 0.85
 
-                                Text {
+                                RexonText {
                                     id: counterText
                                     anchors.centerIn: parent
                                     text: page.galleryCounter
@@ -3250,7 +3289,7 @@ Item {
                             }
                         }
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
@@ -3261,7 +3300,7 @@ Item {
                             wrapMode: Text.WordWrap
                         }
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
@@ -3277,14 +3316,14 @@ Item {
                             spacing: 0
                             visible: page.detailStars !== ""
 
-                            Text {
+                            RexonText {
                                 text: page.detailStars
                                 color: root.colStar
                                 font.bold: true
                                 textFormat: Text.PlainText
                             }
 
-                            Text {
+                            RexonText {
                                 text: page.detailDownloads
                                 color: root.colText
                                 font.bold: true
@@ -3369,7 +3408,7 @@ Item {
                                     border.width: installBtn.activeFocus ? 2 : 1
                                 }
 
-                                contentItem: Text {
+                                contentItem: RexonText {
                                     text: installBtn.text
                                     color: installBtn.colors.fg
                                     font.bold: true
@@ -3381,7 +3420,7 @@ Item {
                             // Признаки риска пакета AUR — рядом с «Установить»,
                             // не вместо неё: установку это не запрещает.
                             // Список — в подсказке и в «Проверке источника».
-                            Text {
+                            RexonText {
                                 objectName: "aurTrustBadge"
                                 visible: page.detailSource === "aur" && page.aurTrustBadge !== ""
                                 height: 40
@@ -3647,7 +3686,7 @@ Item {
                                 }
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 visible: detailGtk4.st.enabled !== true
                                 text: detailGtk4.st.note || ""
@@ -3701,7 +3740,7 @@ Item {
                                 function onActionDone(text, ok) { detailConky.reload(); }
                             }
 
-                            Text {
+                            RexonText {
                                 visible: detailConky.parts.length > 1
                                 text: detailConky.texts.parts_title || ""
                                 color: root.colTextSecondary
@@ -3716,7 +3755,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: 8
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: partRow.modelData.label
                                         color: root.colText
@@ -3791,7 +3830,7 @@ Item {
                                 }
                                 visible: conkyAutostartRow.v.on === true
                                 spacing: 8
-                                Text {
+                                RexonText {
                                     text: (conkyAutostartRow.v.t || {}).delay || ""
                                     color: root.colText
                                     ToolTip.text: (conkyAutostartRow.v.t || {}).delay_tooltip || ""
@@ -3850,7 +3889,7 @@ Item {
                                 conf: detailConky.settingsConf
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.topMargin: 4
                                 visible: detailConky.log !== ""
                                 text: detailConky.texts.log_title || ""
@@ -3858,7 +3897,7 @@ Item {
                                 font.bold: true
                             }
 
-                            Text {
+                            RexonText {
                                 objectName: "conkyLogText"
                                 Layout.fillWidth: true
                                 visible: detailConky.log !== ""
@@ -3891,7 +3930,7 @@ Item {
                                 visible: page.detailSoundTheme !== ""
                                 spacing: 8
 
-                                Text {
+                                RexonText {
                                     text: page.soundPreviewLabel
                                     color: root.colTextSecondary
                                     font.weight: Font.DemiBold
@@ -3934,7 +3973,7 @@ Item {
                                 value: root.storePreviewDone
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 visible: page.detailSoundStore && text !== ""
                                 text: root.storePreviewStatus
@@ -3954,7 +3993,7 @@ Item {
                                     required property var modelData
                                     spacing: 4
 
-                                    Text {
+                                    RexonText {
                                         visible: root.storePreviewThemes.length > 1
                                         text: storeTheme.modelData.theme
                                         color: root.colText
@@ -3964,7 +4003,7 @@ Item {
                                     Row {
                                         spacing: 8
 
-                                        Text {
+                                        RexonText {
                                             text: page.soundPreviewLabel
                                             color: root.colTextSecondary
                                             font.weight: Font.DemiBold
@@ -3984,7 +4023,7 @@ Item {
                                 }
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 visible: text !== ""
                                 text: detailSounds.playError
@@ -4012,7 +4051,7 @@ Item {
                         // работы: установщик пишет сюда каждый свой шаг.
                         // Значок «✅»/«❌» ставит ядро — своей развилки у
                         // разметки нет.
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
@@ -4025,7 +4064,7 @@ Item {
                         // Описание с переключателем «перевод ⇄ оригинал».
                         // Переключатель — ссылка внутри самого текста: его
                         // собирает ядро, здесь только обработка нажатия.
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
@@ -4064,7 +4103,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: 14
 
-                                    Text {
+                                    RexonText {
                                         Layout.preferredWidth: 190
                                         Layout.alignment: Qt.AlignTop
                                         visible: factRow.modelData.label !== ""
@@ -4075,7 +4114,7 @@ Item {
                                         wrapMode: Text.WordWrap
                                     }
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: factRow.modelData.html !== ""
                                               ? factRow.modelData.html
@@ -4110,14 +4149,14 @@ Item {
                             visible: page.detailSource === "aur"
                             spacing: 6
 
-                            Text {
+                            RexonText {
                                 text: page.aurTrustTitle
                                 color: root.colText
                                 font.bold: true
                                 font.pointSize: 12
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: page.aurTrustNote
                                 color: root.colTextSecondary
@@ -4137,7 +4176,7 @@ Item {
                                                                   ? page.aurTrustDangerColor
                                                                   : root.colStar
 
-                                    Text {
+                                    RexonText {
                                         Layout.alignment: Qt.AlignTop
                                         text: trustRow.modelData.danger ? "⛔" : "⚠️"
                                         color: trustRow.tone
@@ -4148,7 +4187,7 @@ Item {
                                         Layout.fillWidth: true
                                         spacing: 2
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             text: trustRow.modelData.text
                                             color: trustRow.tone
@@ -4157,7 +4196,7 @@ Item {
                                             wrapMode: Text.WordWrap
                                         }
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             text: trustRow.modelData.why
                                             color: root.colTextSecondary
@@ -4168,7 +4207,7 @@ Item {
                                 }
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: page.aurTrustStatus
                                 color: root.colTextSecondary
@@ -4193,21 +4232,23 @@ Item {
                         // У местной темы их нет вовсе: тема лежит на диске,
                         // страницы магазина у неё не бывает. У Cinnamon
                         // Spices комментариев для программ нет.
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
                             Layout.topMargin: 10
                             visible: !page.detailIsLocal && page.detailSource !== "spices"
+                                     && page.detailSource !== "wallhaven"
                             text: page.commentsHeader
                             color: root.colText
                             font.bold: true
                             font.pointSize: 12
                         }
 
-                        Text {
+                        RexonText {
                             Layout.leftMargin: 16
                             visible: !page.detailIsLocal && page.detailSource !== "spices"
+                                     && page.detailSource !== "wallhaven"
                                      && page.commentsEmpty
                                      && !page.commentsBlocked
                             text: page.commentsEmptyText
@@ -4224,7 +4265,7 @@ Item {
                             visible: page.commentsBlocked
                             spacing: 6
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: page.commentsBlockedText
                                 color: root.colTextSecondary
@@ -4256,7 +4297,7 @@ Item {
                                 Layout.topMargin: 6
                                 spacing: 2
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     text: commentRow.modelData.replyPrefix
                                           + commentRow.modelData.author
@@ -4270,7 +4311,7 @@ Item {
                                     elide: Text.ElideRight
                                 }
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     text: commentRow.modelData.body
                                     color: root.colText
@@ -4296,7 +4337,7 @@ Item {
                             onClicked: page.loadMoreComments()
                         }
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
@@ -4640,7 +4681,7 @@ Item {
                                     // AUR без ссылки на GitHub взять картинку
                                     // неоткуда, и пустой прямоугольник читался
                                     // как «плитка не догрузилась».
-                                    Text {
+                                    RexonText {
                                         anchors.centerIn: parent
                                         visible: previewBox.bare
                                         text: cell.previewText
@@ -4658,13 +4699,13 @@ Item {
                                         visible: cell.soundTheme !== ""
                                         spacing: 8
 
-                                        Text {
+                                        RexonText {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: "🔔"
                                             font.pointSize: 24
                                         }
 
-                                        Text {
+                                        RexonText {
                                             anchors.horizontalCenter: parent.horizontalCenter
                                             text: page.soundPreviewLabel
                                             color: root.colTextSecondary
@@ -4696,7 +4737,7 @@ Item {
                                     Layout.bottomMargin: page.cardBodyBottomMargin
                                     spacing: page.cardBodySpacing
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: cell.name
                                         color: root.colText
@@ -4716,7 +4757,7 @@ Item {
                                     // влезала в плитку постоянной высоты, и
                                     // кнопка «Установить» обрезалась снизу
                                     // (снимки 01.10.2026).
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         visible: cell.metaLine === ""
                                         text: cell.author
@@ -4733,7 +4774,7 @@ Item {
                                     // в режиме «Все» они идут вперемешку с
                                     // магазинными, и откуда возьмётся пакет,
                                     // человек обязан видеть.
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         visible: cell.metaLine !== ""
                                         text: cell.metaLine
@@ -4759,7 +4800,7 @@ Item {
                                         visible: cell.aurNote !== ""
                                         spacing: 6
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             text: cell.aurNote
                                             color: root.colStar
@@ -4773,7 +4814,7 @@ Item {
                                             HoverHandler { id: noteHover }
                                         }
 
-                                        Text {
+                                        RexonText {
                                             visible: cell.aurLog !== ""
                                             text: cell.aurLog
                                             color: root.colAccent
@@ -4800,14 +4841,14 @@ Item {
                                         // Значок оценки — единственное
                                         // цветное пятно стат-строки; цвет
                                         // приходит токеном скина.
-                                        Text {
+                                        RexonText {
                                             text: cell.starGlyph
                                             color: root.colStar
                                             font.pointSize: page.cardMetaPointSize
                                             font.bold: true
                                         }
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             text: cell.stats
                                             color: root.colText
@@ -4879,7 +4920,7 @@ Item {
                                                 border.width: cardButton.activeFocus ? 2 : 1
                                             }
 
-                                            contentItem: Text {
+                                            contentItem: RexonText {
                                                 text: cardButton.text
                                                 color: cardButton.colors.fg
                                                 font.bold: true
@@ -4972,12 +5013,14 @@ Item {
                 RexonButton {
                     pal: root.pal
                     tone: root.toneNav
-                    text: page.pagePrevText
+                    // Стрелки «← →» в подписях — по зеркалированию, как у
+                    // «Назад к каталогу».
+                    text: root.arrows.keyHint(page.pagePrevText)
                     enabled: page.prevEnabled
                     onClicked: page.prevPage()
                 }
 
-                Text {
+                RexonText {
                     text: page.pageLabel
                     color: root.colTextSecondary
                     font.bold: true
@@ -4990,7 +5033,7 @@ Item {
                 RexonButton {
                     pal: root.pal
                     tone: root.toneNav
-                    text: page.pageNextText
+                    text: root.arrows.keyHint(page.pageNextText)
                     enabled: page.nextEnabled
                     onClicked: page.nextPage()
                 }
@@ -5074,7 +5117,7 @@ Item {
             spacing: 10
             onImplicitWidthChanged: removalBar.widest = Math.max(removalBar.widest, implicitWidth)
 
-            Text {
+            RexonText {
                 objectName: "removalBarText"
                 Layout.fillWidth: true
                 // «Тема «X» будет удалена. Через 8 секунд, если не нажать

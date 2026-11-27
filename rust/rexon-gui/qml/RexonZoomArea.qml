@@ -80,7 +80,7 @@ Item {
         border.color: badgeArea.containsMouse || area.activeFocus ? area.colAccent
                                                                   : "#40ffffff"
 
-        Text {
+        RexonText {
             anchors.centerIn: parent
             text: "🔍"
             font.pixelSize: 14

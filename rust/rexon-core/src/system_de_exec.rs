@@ -302,7 +302,7 @@ fn config_backup_message(display: &str) -> String {
 
 fn config_backup_done(name: &str, count: usize) -> String {
     // TRANSLATORS: %1 is the backup name, %n the number of files in it.
-    ntr("✅ Copy saved: %1 (%n file)", "✅ Copy saved: %1 (%n files)", count as u64).replace("%1", name)
+    crate::i18n::fill(&ntr("✅ Copy saved: %1 (%n file)", "✅ Copy saved: %1 (%n files)", count as u64), &[&name])
 }
 
 fn config_backup_failed(e: &str) -> String {
@@ -2397,6 +2397,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                         lines.push(format!(
                             "  {}",
                             // TRANSLATORS: %1 desktop id, %2 “created”/“updated”, %3 entry count, %4 file path.
+                            // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
                             trf("✅ %1: %2 (%3 entries) → %4", &[&de_id, &action, &count, &path])
                         ));
                     }

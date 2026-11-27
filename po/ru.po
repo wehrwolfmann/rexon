@@ -816,6 +816,7 @@ msgstr "🔤 Шрифты KDE сброшены на стандартные."
 msgid "🪟 KWin effects left by the Plasma replacements removed."
 msgstr "🪟 Эффекты KWin, оставленные заменами Plasma, сняты."
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/app.rs
 msgid "🎨 Kvantum theme “%1” (Aero) → Breeze style."
 msgstr "🎨 Тема Kvantum «%1» (Aero) → стиль Breeze."
@@ -1404,11 +1405,11 @@ msgstr "Не удалось применить глобальную тему"
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Plasma Style applied"
-msgstr "Plasma Style применён"
+msgstr "Стиль Plasma применён"
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Couldn't apply the Plasma Style"
-msgstr "Не удалось применить Plasma Style"
+msgstr "Не удалось применить стиль Plasma"
 
 #: rust/rexon-core/src/appearance_installer.rs
 #: rust/rexon-core/src/shell_palette.rs
@@ -1430,11 +1431,11 @@ msgstr "Курсор не применён (возможно небезопас�
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Icons applied"
-msgstr "Иконки применены"
+msgstr "Значки применены"
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Icons not applied (invalid theme)"
-msgstr "Иконки не применены (невалидная тема)"
+msgstr "Значки не применены (невалидная тема)"
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Kvantum applied"
@@ -1703,6 +1704,7 @@ msgstr "Ошибка установки: %1"
 msgid "Couldn't unpack the archive: %1"
 msgstr "Не удалось распаковать архив: %1"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Store category %1, actually %2 → %3"
 msgstr "OCS-категория %1, реально %2 → %3"
@@ -1847,7 +1849,7 @@ msgstr ""
 "⚠️ Журнал установленных не обновлён (%1) — тема останется в списке до "
 "следующей удачной записи."
 
-#: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/wallhaven.rs
 msgid "🆕 Newest"
 msgstr "🆕 Новые"
 
@@ -1862,12 +1864,6 @@ msgstr "⭐ Рейтинг"
 #: rust/rexon-core/src/appearance_page.rs
 msgid "🔤 Alphabetical"
 msgstr "🔤 Алфавит"
-
-#. TRANSLATORS: decimal separator in numbers like "1.4 MiB".
-#: rust/rexon-core/src/appearance_page.rs
-msgctxt "decimal separator"
-msgid "."
-msgstr ","
 
 #. TRANSLATORS: file size in kibibytes, %1 is the number.
 #: rust/rexon-core/src/appearance_page.rs
@@ -1915,6 +1911,7 @@ msgstr ""
 "входа цвета, курсор и шрифты вашего рабочего стола — это делается в "
 "настройках системы."
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Open “System Settings → Login Screen”."
 msgstr "Откройте «Параметры системы → Экран входа»."
@@ -2190,6 +2187,13 @@ msgstr "🌐 перевод"
 msgid "📄 original"
 msgstr "📄 оригинал"
 
+#. TRANSLATORS: shown under an item description in the store panel while
+#. the description is being machine-translated into the interface
+#. language (it disappears when the translation arrives).
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Translating the description…"
+msgstr "Перевожу описание…"
+
 #: rust/rexon-core/src/appearance_page.rs
 msgid "🌐 show translation"
 msgstr "🌐 показать перевод"
@@ -2342,6 +2346,7 @@ msgstr "✅ Установлен"
 msgid "⏳ Building…"
 msgstr "⏳ Сборка…"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_page.rs
 msgid "←  Back to Catalog"
 msgstr "←  Назад к каталогу"
@@ -2486,10 +2491,12 @@ msgstr "Выбрать папку…"
 msgid "Install into “%1”"
 msgstr "Установка в раздел «%1»"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_page.rs
 msgid "← Previous"
 msgstr "← Назад"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Next →"
 msgstr "Вперёд →"
@@ -3665,7 +3672,7 @@ msgstr "Глобальные темы"
 #: rust/rexon-core/src/categories.rs
 msgctxt "appearance section"
 msgid "Plasma Styles"
-msgstr "Plasma Styles"
+msgstr "Стили Plasma"
 
 #: rust/rexon-core/src/categories.rs
 msgctxt "appearance section"
@@ -3680,7 +3687,7 @@ msgstr "Окна (Aurorae)"
 #: rust/rexon-core/src/categories.rs rust/rexon-core/src/themes.rs
 msgctxt "appearance section"
 msgid "Icons"
-msgstr "Иконки"
+msgstr "Значки"
 
 #: rust/rexon-core/src/categories.rs rust/rexon-core/src/themes.rs
 msgctxt "appearance section"
@@ -3889,6 +3896,7 @@ msgid "Screen effects"
 msgstr "Эффекты экрана"
 
 #. TRANSLATORS: link in the Settings tab to a section that moved; %1 is the section name.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/categories.rs
 msgid "Appearance → %1"
 msgstr "Оформление → %1"
@@ -4685,11 +4693,11 @@ msgstr "⚠️ Не удалось установить (попробуйте в
 
 #: rust/rexon-core/src/compliance.rs
 msgid "🖼️ Checking the icon theme..."
-msgstr "🖼️ Проверка темы иконок..."
+msgstr "🖼️ Проверка темы значков..."
 
 #: rust/rexon-core/src/compliance.rs
 msgid "ℹ️ %1: no icon theme set"
-msgstr "ℹ️ %1: тема иконок не задана"
+msgstr "ℹ️ %1: тема значков не задана"
 
 #: rust/rexon-core/src/compliance.rs
 msgid "✅ %1: %2 — valid"
@@ -4702,7 +4710,7 @@ msgstr "⚠️ %1: «%2» невалидна (нет Directories= или тем�
 
 #: rust/rexon-core/src/compliance.rs
 msgid "❌ Couldn't find any valid icon theme"
-msgstr "❌ Не найдено ни одной рабочей темы иконок"
+msgstr "❌ Не найдено ни одной рабочей темы значков"
 
 #: rust/rexon-core/src/compliance.rs
 msgid "❌ %1: couldn't write %2"
@@ -4732,6 +4740,7 @@ msgstr "🖥️ Проверка терминала по умолчанию..."
 msgid "✅ Terminal: %1"
 msgstr "✅ Терминал: %1"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/compliance.rs
 msgid "✅ Fixed: %1 → %2"
 msgstr "✅ Исправлено: %1 → %2"
@@ -4744,6 +4753,7 @@ msgstr "ℹ️ Терминал: %1 (%2 не установлен)"
 msgid "📐 Checking all 8 Ubuntu MATE panel layouts..."
 msgstr "📐 Проверка всех 8 макетов панели Ubuntu MATE..."
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/compliance.rs
 msgid "✅ All 8 layouts are present (Familiar → Traditional)"
 msgstr "✅ Все 8 макетов панели на месте (Familiar → Traditional)"
@@ -4871,6 +4881,7 @@ msgstr "⚠️ pkexec отклонён или ошибка копировани�
 msgid "🖥️ Checking the %1 terminal..."
 msgstr "🖥️ Проверка терминала %1..."
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/compliance.rs
 msgid "✅ Fixed: terminal → %1"
 msgstr "✅ Исправлено: терминал → %1"
@@ -4921,7 +4932,7 @@ msgstr "⚠️ %1 не установлен — устанавливаю..."
 
 #: rust/rexon-core/src/compliance.rs
 msgid "🎨 Checking COSMIC icons..."
-msgstr "🎨 Проверка иконок COSMIC..."
+msgstr "🎨 Проверка значков COSMIC..."
 
 #: rust/rexon-core/src/compliance.rs
 msgid "🔐 Checking %1..."
@@ -5003,19 +5014,32 @@ msgstr "ℹ️ Нет проверок для рабочего стола: %1"
 msgid "🔍 Checking desktop %1..."
 msgstr "🔍 Проверка рабочего стола %1..."
 
+#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed.
 #: rust/rexon-core/src/compliance.rs
-msgid ", %1 skipped"
-msgstr ", пропущено: %1"
+msgid "✅ Check finished: %1 OK, %2 fixed, %3 failed"
+msgstr "✅ Проверка завершена — в порядке: %1, исправлено: %2, с ошибкой: %3"
 
+#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 skipped.
 #: rust/rexon-core/src/compliance.rs
-msgid ", %1 to install"
-msgstr ", нужно доустановить: %1"
+msgid "✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 skipped"
+msgstr ""
+"✅ Проверка завершена — в порядке: %1, исправлено: %2, с ошибкой: %3, "
+"пропущено: %4"
 
-#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed; %4 is an
-#. optional tail such as “, 2 skipped, 1 to install”.
+#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 need a program installed first.
 #: rust/rexon-core/src/compliance.rs
-msgid "✅ Check finished: %1 OK, %2 fixed, %3 failed%4"
-msgstr "✅ Проверка завершена — в порядке: %1, исправлено: %2, с ошибкой: %3%4"
+msgid "✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 to install"
+msgstr ""
+"✅ Проверка завершена — в порядке: %1, исправлено: %2, с ошибкой: %3, нужно "
+"доустановить: %4"
+
+#. TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 skipped, %5 need a program installed first.
+#: rust/rexon-core/src/compliance.rs
+msgid ""
+"✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 skipped, %5 to install"
+msgstr ""
+"✅ Проверка завершена — в порядке: %1, исправлено: %2, с ошибкой: %3, "
+"пропущено: %4, нужно доустановить: %5"
 
 #. TRANSLATORS: Reason Rexon couldn't add its startup line to a window manager's config: the config file doesn't exist yet.
 #: rust/rexon-core/src/compositor_autostart.rs
@@ -5757,7 +5781,7 @@ msgstr "Тема GTK"
 
 #: rust/rexon-core/src/constants.rs rust/rexon-core/src/importers.rs
 msgid "Icons"
-msgstr "Иконки"
+msgstr "Значки"
 
 #: rust/rexon-core/src/constants.rs rust/rexon-core/src/importers.rs
 msgid "Cursors"
@@ -8412,6 +8436,12 @@ msgstr "✅ Все файлы настроек GTK/KDE в порядке, нич
 msgid "✅ Fixed broken links:"
 msgstr "✅ Исправлены битые ссылки:"
 
+#. TRANSLATORS: decimal separator in numbers like "1.4 MiB".
+#: rust/rexon-core/src/i18n.rs
+msgctxt "decimal separator"
+msgid "."
+msgstr ","
+
 #. TRANSLATORS: file type group in the “Import Windows theme” file dialog.
 #: rust/rexon-core/src/importers.rs
 msgid "Themes and Styles"
@@ -8449,7 +8479,7 @@ msgstr "Не удалось распаковать .themepack. %1"
 
 #: rust/rexon-core/src/importers.rs
 msgid "No wallpapers or icons found in the .themepack"
-msgstr "Ни обои, ни иконки не найдены в .themepack"
+msgstr "Ни обои, ни значки не найдены в .themepack"
 
 #: rust/rexon-core/src/importers.rs
 msgid "Imported from a Windows .themepack"
@@ -8465,9 +8495,9 @@ msgstr[2] "%n картинок обоев"
 #: rust/rexon-core/src/importers.rs
 msgid "%n icon"
 msgid_plural "%n icons"
-msgstr[0] "%n иконка"
-msgstr[1] "%n иконки"
-msgstr[2] "%n иконок"
+msgstr[0] "%n значок"
+msgstr[1] "%n значка"
+msgstr[2] "%n значков"
 
 #. TRANSLATORS: part of a theme description; %1 is a color like #3366cc.
 #: rust/rexon-core/src/importers.rs
@@ -8529,7 +8559,7 @@ msgstr "wrestool не найден. %1"
 
 #: rust/rexon-core/src/importers.rs
 msgid "No .ico icons found"
-msgstr "Иконки .ico не найдены"
+msgstr "Значки .ico не найдены"
 
 #: rust/rexon-core/src/importers.rs
 msgid "No bitmap resources found in the .msstyles. %1"
@@ -8565,11 +8595,11 @@ msgstr "распаковки архива"
 
 #: rust/rexon-core/src/importers.rs
 msgid "converting Windows icons"
-msgstr "преобразования иконок Windows"
+msgstr "преобразования значков Windows"
 
 #: rust/rexon-core/src/importers.rs
 msgid "extracting icons from a Windows file"
-msgstr "извлечения иконок из файла Windows"
+msgstr "извлечения значков из файла Windows"
 
 #: rust/rexon-core/src/importers.rs
 msgid "extracting images from the visual style"
@@ -8634,6 +8664,7 @@ msgstr "Нужной программы нет"
 msgid "couldn't create the folder %1: %2"
 msgstr "не создать каталог %1: %2"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/install_plan.rs
 msgid "couldn't copy %1 → %2: %3"
 msgstr "не скопировать %1 → %2: %3"
@@ -8682,7 +8713,7 @@ msgstr "Глобальная тема"
 #: rust/rexon-core/src/installed_scan.rs
 msgctxt "theme kind"
 msgid "Plasma Style"
-msgstr "Plasma Style"
+msgstr "Стиль Plasma"
 
 #: rust/rexon-core/src/installed_scan.rs
 msgctxt "theme kind"
@@ -8697,7 +8728,7 @@ msgstr "Окна (Aurorae)"
 #: rust/rexon-core/src/installed_scan.rs
 msgctxt "theme kind"
 msgid "Icons"
-msgstr "Иконки"
+msgstr "Значки"
 
 #: rust/rexon-core/src/installed_scan.rs
 msgctxt "theme kind"
@@ -9616,6 +9647,7 @@ msgstr ""
 msgid "Links pointing outside the theme were left out: %1."
 msgstr "Ссылки, ведущие за пределы темы, не перенесены: %1."
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/local_install.rs
 msgid "Added to the 📚 Wallpaper Library (Settings → Wallpapers): %1"
 msgstr "Добавлено в 📚 Библиотеку обоев (Настройки → Обои): %1"
@@ -11235,6 +11267,7 @@ msgstr "Все рабочие столы"
 msgid "🎯 Quick Recommendations"
 msgstr "🎯 Быстрые рекомендации"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🎮 For gamers"
 msgstr "🎮 Геймерам"
@@ -11243,6 +11276,7 @@ msgstr "🎮 Геймерам"
 msgid "Minimal overhead → XFCE or KDE"
 msgstr "Меньше всего нагружает компьютер → XFCE или KDE"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "💻 Low-end hardware"
 msgstr "💻 Слабое железо"
@@ -11251,6 +11285,7 @@ msgstr "💻 Слабое железо"
 msgid "Under 2 GB of RAM → MATE or XFCE"
 msgstr "Меньше 2 ГБ памяти → MATE или XFCE"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🎨 For eye candy fans"
 msgstr "🎨 Любителям красоты"
@@ -11263,10 +11298,12 @@ msgstr "Анимации и виджеты → KDE Plasma"
 msgid "🟢 For newcomers"
 msgstr "🟢 Новичкам"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Simple out of the box → Cinnamon or GNOME"
 msgstr "Простота из коробки → Cinnamon или GNOME"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🔧 For power users"
 msgstr "🔧 Опытным"
@@ -11275,6 +11312,7 @@ msgstr "🔧 Опытным"
 msgid "Full customization → KDE Plasma"
 msgstr "Полная настройка → KDE Plasma"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "⚡ Maximum speed"
 msgstr "⚡ Максимальная скорость"
@@ -11287,6 +11325,7 @@ msgstr "Самый быстрый → XFCE"
 msgid "⌨️ For keyboard lovers"
 msgstr "⌨️ Клавиатурщикам"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Keyboard-driven window management → Hyprland"
 msgstr "Управление окнами с клавиатуры → Hyprland"
@@ -11295,6 +11334,7 @@ msgstr "Управление окнами с клавиатуры → Hyprland"
 msgid "🧩 Tiling out of the box"
 msgstr "🧩 Тайлинг из коробки"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Automatic window layout → Sway, niri or River"
 msgstr "Автораскладка окон → Sway, niri или River"
@@ -11303,6 +11343,7 @@ msgstr "Автораскладка окон → Sway, niri или River"
 msgid "🎞️ Scrollable tiling"
 msgstr "🎞️ Скроллируемый тайлинг"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Windows on an endless strip → niri"
 msgstr "Окна в бесконечной ленте → niri"
@@ -11311,6 +11352,7 @@ msgstr "Окна в бесконечной ленте → niri"
 msgid "✨ Effects like in Compiz"
 msgstr "✨ Эффекты как в Compiz"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Wobbly windows and the desktop cube → Wayfire"
 msgstr "Желейные окна и куб рабочих столов → Wayfire"
@@ -11529,6 +11571,7 @@ msgstr "↩️ Вернуть панель"
 msgid "Restore the panel from the last saved copy"
 msgstr "Вернуть панель из последней сохранённой копии"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "← Desktops"
 msgstr "← Рабочие столы"
@@ -11673,6 +11716,8 @@ msgstr "Вернуть"
 msgid "Putting “%1” back"
 msgstr "Возвращаю как было: «%1»"
 
+#. TRANSLATORS: in right-to-left languages the list is on the right: say "on the right" and use the arrow →.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "← Choose a desktop from the list on the left"
 msgstr "← Выберите рабочий стол из списка слева"
@@ -11875,10 +11920,12 @@ msgstr "Установлена версия %1, в репозитории %2"
 msgid "📷  No screenshots"
 msgstr "📷  Нет скриншотов"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs rust/rexon-gui/qml/RexonImageViewer.qml
 msgid "Previous (←)"
 msgstr "Предыдущий (←)"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs rust/rexon-gui/qml/RexonImageViewer.qml
 msgid "Next (→)"
 msgstr "Следующий (→)"
@@ -11893,6 +11940,7 @@ msgid "× in the corner, click or Esc to close"
 msgstr "× в углу, клик или Esc — закрыть"
 
 #. TRANSLATORS: %1 is the number of the shown screenshot, %2 how many there are.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "←/→ to browse  ·  %1/%2"
 msgstr "←/→ листать  ·  %1/%2"
@@ -12039,6 +12087,14 @@ msgid ""
 msgstr ""
 "%1 умеет работать и на Wayland — это новее и плавнее, но пока "
 "экспериментально. Rexon может его добавить, а вариант X11 останется."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"%1 can also run on Wayland — newer and smoother. Rexon can add it, and the "
+"X11 version will stay."
+msgstr ""
+"%1 умеет работать и на Wayland — это новее и плавнее. Rexon может его "
+"добавить, а вариант X11 останется."
 
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "Add the Wayland version?"
@@ -12612,7 +12668,8 @@ msgstr "<b>📦 Структура .rxn v3</b>"
 #. TRANSLATORS: help page in HTML. Keep the tags, the file names, the
 #. JSON keys and the type names (theme-gtk, plugin…) as they are;
 #. translate the prose and the sample values of "name", "author" and
-#. "description".
+#. "description". The <pre> blocks stay left-to-right in every language,
+#. so keep their arrows ← as they are.
 #. Без ведущего перевода строки: xgettext срезает его у msgid, и
 #. строка в коде разошлась бы с ключом каталога.
 #: rust/rexon-core/src/qt_extensions.rs
@@ -14498,6 +14555,7 @@ msgid "ZIP archive"
 msgstr "Архив ZIP"
 
 #. TRANSLATORS: %n is the number of font files, %1 the name of a font group, %2 the archive path.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "📦 Group %1 exported: %n font file → %2"
 msgid_plural "📦 Group %1 exported: %n font files → %2"
@@ -14828,7 +14886,7 @@ msgid ""
 "Bring over the look of your old Windows PC: wallpapers, icons, cursors and "
 "visual styles. Rexon converts them to its own format and installs them."
 msgstr ""
-"Перенесите оформление со старого компьютера с Windows: обои, иконки, курсоры "
+"Перенесите оформление со старого компьютера с Windows: обои, значки, курсоры "
 "и визуальные стили. Rexon сам преобразует их в свой формат и установит."
 
 #: rust/rexon-core/src/qt_settings.rs
@@ -14870,15 +14928,15 @@ msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "🌽 MATE: Desktop Icons"
-msgstr "🌽 MATE: иконки рабочего стола"
+msgstr "🌽 MATE: значки рабочего стола"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
 "Manage icons on the MATE desktop (Caja). Handy when Rexon wallpaper is on "
 "and the icons get in the way"
 msgstr ""
-"Управление иконками на рабочем столе MATE (Caja). Полезно, когда поверх "
-"стоят обои Rexon и иконки мешают"
+"Управление значками на рабочем столе MATE (Caja). Полезно, когда поверх "
+"стоят обои Rexon и значки мешают"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "🔤 System Fonts"
@@ -15041,6 +15099,7 @@ msgstr "✅ установлен"
 msgid "❌ not installed"
 msgstr "❌ не установлен"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "← follows the desktop"
 msgstr "← по рабочему столу"
@@ -15347,7 +15406,7 @@ msgid ""
 "(.dream, .wmv)."
 msgstr ""
 "Поддерживаются: темы (.themepack, .theme), визуальные стили (.msstyles), "
-"иконки (.ico, .icl), курсоры (.cur, .ani), видеообои DreamScene "
+"значки (.ico, .icl), курсоры (.cur, .ani), видеообои DreamScene "
 "(.dream, .wmv)."
 
 #: rust/rexon-core/src/qt_settings.rs
@@ -15526,6 +15585,7 @@ msgid "⚠️ Error starting the sound: %1"
 msgstr "⚠️ Ошибка запуска звука: %1"
 
 #. TRANSLATORS: %1 is a sound name, %2 is the volume in percent.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "🔊 Volume of “%1” → %2%"
 msgstr "🔊 Громкость «%1» → %2%"
@@ -15558,6 +15618,7 @@ msgstr "Включить звуки событий (клики, уведомле
 msgid "<b>Sound test:</b>"
 msgstr "<b>Тест звука:</b>"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "💡 Not many themes? There are more in Appearance → Sounds."
 msgstr "💡 Мало тем? Больше — в разделе «Оформление → Звуки»."
@@ -15599,11 +15660,11 @@ msgstr "⚠️ Не удалось переключить звуки событ�
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "✅ Show Icons"
-msgstr "✅ Показать иконки"
+msgstr "✅ Показать значки"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "⏹️ Hide Icons"
-msgstr "⏹️ Скрыть иконки"
+msgstr "⏹️ Скрыть значки"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "🔄 Restart Caja"
@@ -15616,7 +15677,7 @@ msgstr "⚠️ Настройки MATE недоступны"
 #. TRANSLATORS: %1 is “turned on” or “turned off”.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "✅ Desktop icons %1"
-msgstr "✅ Иконки рабочего стола %1"
+msgstr "✅ Значки рабочего стола %1"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "🔄 Caja restarted"
@@ -15624,7 +15685,7 @@ msgstr "🔄 Caja перезапущена"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "⚠️ Could not switch MATE desktop icons"
-msgstr "⚠️ Не удалось переключить иконки рабочего стола MATE"
+msgstr "⚠️ Не удалось переключить значки рабочего стола MATE"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "⚠️ Could not restart the Caja desktop"
@@ -15760,6 +15821,23 @@ msgstr "⚠️ Не удалось запомнить выбор: %1"
 #: rust/rexon-core/src/qt_settings.rs
 msgid "✅ Default apps restored"
 msgstr "✅ Приложения по умолчанию восстановлены"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Don't let themes spoil terminal colors  (recommended)"
+msgstr "Не давать темам портить цвета терминала  (рекомендуется)"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"Some terminals take their text and background colors from the theme, and a "
+"dark theme can leave them dark gray on black. After a theme, color scheme or "
+"accent changes, Rexon gives such terminals readable colors of their own. "
+"Colors you picked yourself are left alone, and “Return as It Was” brings the "
+"old ones back."
+msgstr ""
+"Некоторые терминалы берут цвета текста и фона из темы, и с тёмной темой "
+"текст может стать тёмно-серым на чёрном. После смены темы, цветовой схемы "
+"или акцента Rexon даёт таким терминалам свои читаемые цвета. Цвета, которые "
+"вы выбрали сами, не трогаются, а «Вернуть как было» возвращает прежние."
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "<b>Save the current panel layout</b>"
@@ -16127,7 +16205,7 @@ msgstr "Показано %1 из %2"
 
 #. TRANSLATORS: %1 is a comma-separated list of Steam item tags
 #. (rarity, game, item type…).
-#: rust/rexon-core/src/qt_steam.rs
+#: rust/rexon-core/src/qt_steam.rs rust/rexon-core/src/wallhaven.rs
 msgid "Tags: %1"
 msgstr "Метки: %1"
 
@@ -18595,6 +18673,7 @@ msgstr ""
 "Витрины открываются с %1-го уровня Steam. Свой уровень видно на странице "
 "профиля."
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/steam_showcase.rs
 msgid "Open the artwork upload page in Steam: %1 (Profile → Artwork → Upload)."
 msgstr ""
@@ -19473,6 +19552,7 @@ msgid "⏭️ %1: no installed apps"
 msgstr "⏭️ %1: нет установленных приложений"
 
 #. TRANSLATORS: %1 desktop id, %2 “created”/“updated”, %3 entry count, %4 file path.
+#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/system_de_exec.rs
 msgid "✅ %1: %2 (%3 entries) → %4"
 msgstr "✅ %1: %2 (записей: %3) → %4"
@@ -21601,7 +21681,7 @@ msgstr "✅ Оформление MATE записано в настройки п�
 #: rust/rexon-core/src/system_plan.rs
 msgctxt "MATE look summary"
 msgid "Icons"
-msgstr "Иконки"
+msgstr "Значки"
 
 #: rust/rexon-core/src/system_plan.rs
 msgid "Cursor: %1 (24px)"
@@ -21641,6 +21721,7 @@ msgstr[2] "Частично выполнено (%n предупреждений)
 msgid "✅ MATE post-install complete — the full Ubuntu MATE!"
 msgstr "✅ Пост-установка MATE завершена — полный Ubuntu MATE!"
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/system_plan.rs
 msgid "8 layouts: mate-tweak → Panel"
 msgstr "8 макетов панели: mate-tweak → Панель"
@@ -21712,6 +21793,14 @@ msgid ""
 msgstr ""
 "⏳ Сборка не уложилась в отведённое время — это НЕ отказ установки. "
 "Доставить вручную: yay -S --needed %1"
+
+#. TRANSLATORS: %1 is a list of terminal apps (MATE Terminal, GNOME Terminal…).
+#: rust/rexon-core/src/terminal_guard.rs
+msgid ""
+"Terminal colors were set so the text stays readable with the new theme: %1."
+msgstr ""
+"Цвета терминала настроены так, чтобы текст оставался читаемым с новой темой: "
+"%1."
 
 #: rust/rexon-core/src/theme_removal.rs
 msgid "You can't remove the active theme. Switch to another theme first."
@@ -21967,7 +22056,7 @@ msgstr "Значки"
 #: rust/rexon-core/src/themes.rs
 msgctxt "global theme part"
 msgid "Plasma Style"
-msgstr "Оформление рабочего стола"
+msgstr "Стиль Plasma"
 
 #: rust/rexon-core/src/themes.rs
 msgctxt "global theme part"
@@ -22027,8 +22116,7 @@ msgid ""
 "a Plasma Style draws Plasma's own panels and widgets, and this desktop has "
 "none of them"
 msgstr ""
-"оформление рабочего стола рисует панели и виджеты самой Plasma, а их на этом "
-"столе нет"
+"стиль Plasma рисует панели и виджеты самой Plasma, а их на этом столе нет"
 
 #: rust/rexon-core/src/themes.rs
 msgid "this splash screen is shown only when Plasma starts"
@@ -22131,7 +22219,7 @@ msgstr "тема не называет шрифтов, годных для эт�
 #. TRANSLATORS: part of a sentence, %1 is an icon set name.
 #: rust/rexon-core/src/themes.rs
 msgid "the icon set “%1”"
-msgstr "набор иконок «%1»"
+msgstr "набор значков «%1»"
 
 #. TRANSLATORS: part of a sentence, %1 is a cursor theme name.
 #: rust/rexon-core/src/themes.rs
@@ -22202,7 +22290,7 @@ msgstr "Вместе с темой применён %1 (в теме он наз�
 
 #: rust/rexon-core/src/themes.rs
 msgid "Your current icons stay."
-msgstr "Текущие иконки остаются."
+msgstr "Текущие значки остаются."
 
 #: rust/rexon-core/src/themes.rs
 msgid "Your current cursor stays."
@@ -22855,6 +22943,82 @@ msgstr ""
 "Нет ни dbus-send, ни qdbus (%1) — обращения к сессионной шине D-Bus "
 "невозможны. Поставьте пакет dbus (в Debian/Ubuntu — dbus-bin, в Fedora — "
 "dbus-tools)."
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid ""
+"Wallpapers from wallhaven.cc, safe-for-work only. The pictures belong to "
+"their authors: Rexon downloads the one you pick for you and links to its "
+"page on the site."
+msgstr ""
+"Обои с wallhaven.cc, только безопасные (SFW). Картинки принадлежат их "
+"авторам: Rexon скачивает выбранную для вас и даёт ссылку на её страницу на "
+"сайте."
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "🔍 Search Wallhaven…"
+msgstr "🔍 Поиск в Wallhaven…"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "🔥 Most Viewed"
+msgstr "🔥 Самые просматриваемые"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "🏆 Top of the Month"
+msgstr "🏆 Лучшие за месяц"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgctxt "wallpaper category"
+msgid "General"
+msgstr "Общее"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgctxt "wallpaper category"
+msgid "Anime"
+msgstr "Аниме"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgctxt "wallpaper category"
+msgid "People"
+msgstr "Люди"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Belongs to its author — see the page on wallhaven.cc"
+msgstr "Принадлежит автору — см. страницу на wallhaven.cc"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Category: %1"
+msgstr "Категория: %1"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Original source: %1"
+msgstr "Первоисточник: %1"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Page on Wallhaven: %1"
+msgstr "Страница на Wallhaven: %1"
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Favorites and views on wallhaven.cc"
+msgstr "Избранное и просмотры на wallhaven.cc"
+
+#. TRANSLATORS: %1 is a number of seconds.
+#: rust/rexon-core/src/wallhaven.rs
+msgid ""
+"Wallhaven allows only 45 requests per minute, and the limit is used up. Try "
+"again in %1 s."
+msgstr ""
+"Wallhaven разрешает только 45 запросов в минуту, и лимит исчерпан. "
+"Попробуйте снова через %1 с."
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Wallhaven refused access to this picture (it is not safe-for-work)."
+msgstr ""
+"Wallhaven отказал в доступе к этой картинке: она не из безопасных (не SFW)."
+
+#: rust/rexon-core/src/wallhaven.rs
+msgid "Wallhaven sent an answer Rexon can't read. Try again later."
+msgstr ""
+"Wallhaven прислал ответ, который Rexon не может прочитать. Попробуйте позже."
 
 #. TRANSLATORS: name of the wallpaper's audio stream in the system volume mixer
 #: rust/rexon-core/src/wallpaper_audio.rs
@@ -24358,7 +24522,7 @@ msgid ""
 "fonts, wallpapers (including Wallpaper&nbsp;Engine), the login screen and "
 "boot splash (SDDM/Plymouth), widgets and extensions — all in one place."
 msgstr ""
-"Установка, удаление и настройка рабочих столов, тем, иконок, курсоров, "
+"Установка, удаление и настройка рабочих столов, тем, значков, курсоров, "
 "шрифтов, обоев (включая Wallpaper&nbsp;Engine), экрана входа и загрузочной "
 "заставки (SDDM/Plymouth), виджетов и расширений — всё в одном окне."
 
@@ -25421,6 +25585,12 @@ msgstr ""
 #: rust/rexon-gui/qml/WindowButtonsSection.qml
 msgid "Window border size:"
 msgstr "Размер рамки окна:"
+
+#~ msgid ", %1 skipped"
+#~ msgstr ", пропущено: %1"
+
+#~ msgid ", %1 to install"
+#~ msgstr ", нужно доустановить: %1"
 
 #~ msgid "The name cannot contain “/” or start with a dot."
 #~ msgstr "Имя не может содержать «/» или начинаться с точки."

@@ -694,6 +694,7 @@ pub fn links_dropped_note(n: usize) -> String {
 
 /// Обои легли в библиотеку.
 pub fn library_added_message(names: &str) -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     trf("Added to the 📚 Wallpaper Library (Settings → Wallpapers): %1", &[&names])
 }
 

@@ -58,13 +58,14 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Desktop effects")
             color: section.pal.text_primary
@@ -73,7 +74,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Effects of the KWin window manager. Window and desktop animations are in the Animation section.")
             color: section.pal.text_secondary
@@ -88,7 +89,7 @@ Rectangle {
             placeholderText: qsTranslate("rexon", "Search effects…")
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: section.shown.length === 0
             text: qsTranslate("rexon", "No effects found.")
@@ -107,7 +108,7 @@ Rectangle {
                 spacing: 4
 
                 // Заголовок категории — над первым эффектом категории.
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     Layout.topMargin: item.index === 0 ? 0 : 8
                     visible: item.index === 0
@@ -134,14 +135,14 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 0
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             text: item.modelData.name
                             color: section.pal.text_primary
                             wrapMode: Text.WordWrap
                         }
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             visible: item.modelData.description !== ""
                             text: item.modelData.description

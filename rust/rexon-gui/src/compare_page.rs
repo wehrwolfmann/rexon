@@ -708,7 +708,7 @@ impl qobject::CompareModel {
             Some("installed") => QVariant::from(&entry.installed),
             Some("expanded") => QVariant::from(&entry.expanded),
             Some("headerText") => {
-                let text = qc::card_header(&entry.de_id, entry.expanded, entry.installed)
+                let text = qc::card_header_tail(&entry.de_id, entry.installed)
                     .unwrap_or_else(|| self.display_name_of(&entry.de_id).to_string());
                 qstr(&text)
             }

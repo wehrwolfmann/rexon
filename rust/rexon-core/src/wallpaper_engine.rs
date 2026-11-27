@@ -2664,7 +2664,7 @@ pub fn validate_video(
         return (
             false,
             // TRANSLATORS: %1 is the file size, %2 the limit, both in megabytes.
-            trf("The file is too large: %1 MB (max. %2 MB)", &[&format!("{size_mb:.1}"), &max_mb]),
+            trf("The file is too large: %1 MB (max. %2 MB)", &[&crate::i18n::format_decimal(size_mb, 1), &crate::i18n::format_decimal(max_mb as f64, 0)]),
         );
     }
     (true, "OK".to_string())

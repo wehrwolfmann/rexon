@@ -77,6 +77,29 @@ pub const ORGANIZATION_NAME: &str = "OpenAxon";
 /// логотип Wayland.
 pub const DESKTOP_FILE_NAME: &str = "rexon";
 
+/// Письменность, для которой приложение ставит свой запасной шрифт.
+/// Перечень наш, а не `QChar::Script`: число за письменностью Qt знает
+/// прослойка (`cpp/rexon_gui_factory.cpp`), ядро говорит только «какая».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FallbackScript {
+    /// Арабское письмо — арабский и персидский.
+    Arabic = 0,
+    /// Еврейское письмо — иврит.
+    Hebrew = 1,
+}
+
+/// Запасные шрифты письменностей справа налево. Без них fontconfig отдаёт
+/// первым DejaVu Sans: арабский у него без вариантов UI-высоты, иврит —
+/// неполный, и строка выходит разнобойной. Семейства — из `noto-fonts`
+/// (зависимость пакета задана явно, а не транзитом от `qt6-webengine`).
+/// `Noto Sans Arabic UI`, а не `Noto Sans Arabic`: у UI-варианта высота
+/// строки подогнана под интерфейс и не раздвигает списки.
+pub const RTL_FALLBACK_FONTS: [(FallbackScript, &str); 2] = [
+    (FallbackScript::Arabic, "Noto Sans Arabic UI"),
+    (FallbackScript::Hebrew, "Noto Sans Hebrew"),
+];
+
 /// Что точка входа сообщает о себе `QApplication`. `None` — сеттер в
 /// оригинале не вызывается вовсе (это НЕ то же самое, что пустая строка).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

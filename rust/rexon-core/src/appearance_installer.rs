@@ -5075,6 +5075,7 @@ impl LiveInstaller {
                 .map(|p| rstrip_slashes(p).rsplit_once('/').map(|(d, _)| d.to_string()))
                 .unwrap_or_default()
                 .unwrap_or_default();
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             let line = trf("Store category %1, actually %2 → %3", &[&cat.key, &actual, &dir]);
             self.say(&line);
         }
@@ -5909,7 +5910,19 @@ impl LiveInstaller {
         let plan = self.press_plan(cat.as_ref(), &action, theme_name);
         let (ok, msg) = self.run_press(&item.id, cat.as_ref(), theme_name, &action, plan);
 
-        let message = msg.unwrap_or_else(|| apply_message(&action, ok).to_string());
+        let mut message = msg.unwrap_or_else(|| apply_message(&action, ok).to_string());
+
+        // Смена цветов (тема GTK, глобальная тема, цветовая схема) не должна
+        // оставить терминал, берущий цвета темы, нечитаемым: закрепить пару
+        // под запись того же раздела — «Вернуть как было» вернёт и её.
+        if ok && matches!(action, ApplyAction::Gtk | ApplyAction::KdeColors | ApplyAction::KdeGlobal) {
+            if let Some(cat) = cat.as_ref() {
+                if let Some(line) = crate::terminal_guard::guard_live(&self.de, &cat.key, theme_name, None) {
+                    message.push('\n');
+                    message.push_str(&line);
+                }
+            }
+        }
 
         // КРИТИЧНО: чиним gtk-конфиги после ЛЮБОГО применения.
         let changes = live_gtk_sanitize(&home_s);

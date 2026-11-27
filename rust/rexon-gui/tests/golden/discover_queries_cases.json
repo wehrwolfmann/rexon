@@ -29,6 +29,13 @@
    ],
    "daemonDefault": "",
    "expected": ""
+  },
+  {
+   "sources": [
+    "wallpaper_engine"
+   ],
+   "daemonDefault": "wallhaven",
+   "expected": ""
   }
  ],
  "cases": [
@@ -47,9 +54,9 @@
       "kind": "remote_availability",
       "sources": [
        {
-        "id": "wallhaven",
-        "name": "Wallhaven",
-        "displayName": "Wallhaven",
+        "id": "wallpaper_engine",
+        "name": "Steam Workshop",
+        "displayName": "Steam Workshop",
         "supportsSearch": true,
         "sorts": [
          {
@@ -65,8 +72,8 @@
          "anime",
          "nature"
         ],
-        "contentDir": "/tmp/wallhaven",
-        "ownerPluginId": "org.waywallen.wallhaven",
+        "contentDir": "/tmp/workshop",
+        "ownerPluginId": "org.waywallen.open-wallpaper-engine",
         "remoteCapability": 1,
         "remoteHint": "Download",
         "avatarUrl": "https://example.invalid/avatar.png",
@@ -121,7 +128,8 @@
        },
        {
         "id": "local",
-        "name": "Local"
+        "name": "Local",
+        "ownerPluginId": "org.waywallen.open-wallpaper-engine"
        }
       ],
       "defaultSourceId": "local"
@@ -170,9 +178,9 @@
      "forwardError": true,
      "sources": [
       {
-       "id": "wallhaven",
-       "name": "Wallhaven",
-       "displayName": "Wallhaven",
+       "id": "wallpaper_engine",
+       "name": "Steam Workshop",
+       "displayName": "Steam Workshop",
        "supportsSearch": true,
        "sorts": [
         {
@@ -188,8 +196,8 @@
         "anime",
         "nature"
        ],
-       "contentDir": "/tmp/wallhaven",
-       "ownerPluginId": "org.waywallen.wallhaven",
+       "contentDir": "/tmp/workshop",
+       "ownerPluginId": "org.waywallen.open-wallpaper-engine",
        "remoteCapability": 1,
        "remoteHint": "Download",
        "avatarUrl": "https://example.invalid/avatar.png",
@@ -250,7 +258,7 @@
        "sorts": [],
        "tags": [],
        "contentDir": "",
-       "ownerPluginId": "",
+       "ownerPluginId": "org.waywallen.open-wallpaper-engine",
        "remoteCapability": 0,
        "remoteHint": "",
        "avatarUrl": "",
@@ -2685,9 +2693,9 @@
       "kind": "remote_availability",
       "sources": [
        {
-        "id": "wallhaven",
-        "name": "Wallhaven",
-        "displayName": "Wallhaven",
+        "id": "wallpaper_engine",
+        "name": "Steam Workshop",
+        "displayName": "Steam Workshop",
         "supportsSearch": true,
         "sorts": [
          {
@@ -2703,8 +2711,8 @@
          "anime",
          "nature"
         ],
-        "contentDir": "/tmp/wallhaven",
-        "ownerPluginId": "org.waywallen.wallhaven",
+        "contentDir": "/tmp/workshop",
+        "ownerPluginId": "org.waywallen.open-wallpaper-engine",
         "remoteCapability": 1,
         "remoteHint": "Download",
         "avatarUrl": "https://example.invalid/avatar.png",
@@ -2758,14 +2766,14 @@
         ]
        }
       ],
-      "defaultSourceId": "wallhaven"
+      "defaultSourceId": "wallpaper_engine"
      }
     },
     {
      "op": "set",
      "q": "search",
      "name": "sourceId",
-     "value": "wallhaven"
+     "value": "wallpaper_engine"
     },
     {
      "op": "set",
@@ -2792,7 +2800,7 @@
         "previewUrl": "https://example.invalid/a1.jpg",
         "author": "",
         "downloaded": false,
-        "sourceId": "wallhaven",
+        "sourceId": "wallpaper_engine",
         "wpType": "scene"
        },
        {
@@ -2801,7 +2809,7 @@
         "previewUrl": "https://example.invalid/a2.jpg",
         "author": "",
         "downloaded": true,
-        "sourceId": "wallhaven",
+        "sourceId": "wallpaper_engine",
         "wpType": "scene"
        },
        {
@@ -2810,7 +2818,7 @@
         "previewUrl": "https://example.invalid/a3.jpg",
         "author": "",
         "downloaded": false,
-        "sourceId": "wallhaven",
+        "sourceId": "wallpaper_engine",
         "wpType": "web"
        }
       ],
@@ -2876,7 +2884,7 @@
      "token": 2,
      "field": "remote_search",
      "request": {
-      "source_id": "wallhaven",
+      "source_id": "wallpaper_engine",
       "query": "",
       "sort_key": "",
       "page": 1,
@@ -2920,9 +2928,9 @@
      "forwardError": true,
      "sources": [
       {
-       "id": "wallhaven",
-       "name": "Wallhaven",
-       "displayName": "Wallhaven",
+       "id": "wallpaper_engine",
+       "name": "Steam Workshop",
+       "displayName": "Steam Workshop",
        "supportsSearch": true,
        "sorts": [
         {
@@ -2938,8 +2946,8 @@
         "anime",
         "nature"
        ],
-       "contentDir": "/tmp/wallhaven",
-       "ownerPluginId": "org.waywallen.wallhaven",
+       "contentDir": "/tmp/workshop",
+       "ownerPluginId": "org.waywallen.open-wallpaper-engine",
        "remoteCapability": 1,
        "remoteHint": "Download",
        "avatarUrl": "https://example.invalid/avatar.png",
@@ -2993,12 +3001,12 @@
        ]
       }
      ],
-     "defaultSourceId": "wallhaven"
+     "defaultSourceId": "wallpaper_engine"
     },
     "search": {
      "status": 2,
      "error": "",
-     "sourceId": "wallhaven",
+     "sourceId": "wallpaper_engine",
      "query": "",
      "sortKey": "",
      "tags": [
@@ -3018,7 +3026,7 @@
      "rows": [
       {
        "itemId": "a1",
-       "sourceId": "wallhaven",
+       "sourceId": "wallpaper_engine",
        "title": "Первая",
        "previewUrl": "https://example.invalid/a1.jpg",
        "author": "",
@@ -3029,7 +3037,7 @@
       },
       {
        "itemId": "a2",
-       "sourceId": "wallhaven",
+       "sourceId": "wallpaper_engine",
        "title": "Вторая",
        "previewUrl": "https://example.invalid/a2.jpg",
        "author": "",
@@ -3040,7 +3048,7 @@
       },
       {
        "itemId": "a3",
-       "sourceId": "wallhaven",
+       "sourceId": "wallpaper_engine",
        "title": "Третья",
        "previewUrl": "https://example.invalid/a3.jpg",
        "author": "",
@@ -4705,6 +4713,207 @@
      "error": ""
     }
    }
+  },
+  {
+   "name": "доступность: во вкладку WE попадают только каталоги OWE",
+   "steps": [
+    {
+     "op": "call",
+     "q": "availability",
+     "method": "reload"
+    },
+    {
+     "op": "respond",
+     "token": 1,
+     "payload": {
+      "kind": "remote_availability",
+      "sources": [
+       {
+        "id": "wallhaven",
+        "name": "Wallhaven",
+        "displayName": "Wallhaven",
+        "supportsSearch": true,
+        "sorts": [
+         {
+          "key": "toplist",
+          "label": "Toplist"
+         },
+         {
+          "key": "date_added",
+          "label": "Date added"
+         }
+        ],
+        "tags": [
+         "anime",
+         "nature"
+        ],
+        "contentDir": "/tmp/wallhaven",
+        "ownerPluginId": "org.waywallen.wallhaven",
+        "remoteCapability": 1,
+        "remoteHint": "Download",
+        "avatarUrl": "https://example.invalid/avatar.png",
+        "filters": [
+         {
+          "id": "categories",
+          "title": "Categories",
+          "type": 1,
+          "values": [
+           "anime",
+           "nature",
+           "CG"
+          ],
+          "description": "Pick categories",
+          "confirmation": ""
+         }
+        ],
+        "actions": [
+         {
+          "id": "sign_in",
+          "label": "Sign in",
+          "group": "account",
+          "order": 1,
+          "kind": 2,
+          "visible": true,
+          "enabled": true,
+          "description": "Sign in to browse",
+          "requiredForBrowsing": false,
+          "browseDescription": "Sign in required",
+          "browseButtonLabel": "Sign in",
+          "fields": [
+           {
+            "key": "token",
+            "label": "Token",
+            "description": "Personal token",
+            "placeholder": "abc",
+            "secret": true,
+            "required": true
+           }
+          ]
+         }
+        ],
+        "status": [
+         {
+          "id": "account",
+          "label": "Account",
+          "group": "a",
+          "order": 1,
+          "value": "Not signed in"
+         }
+        ]
+       },
+       {
+        "id": "sketchfab",
+        "name": "Sketchfab",
+        "ownerPluginId": "org.waywallen.sketchfab"
+       },
+       {
+        "id": "local",
+        "name": "Local"
+       },
+       {
+        "id": "wallpaper_engine",
+        "name": "Steam Workshop",
+        "ownerPluginId": "org.waywallen.open-wallpaper-engine"
+       }
+      ],
+      "defaultSourceId": "wallhaven"
+     }
+    }
+   ],
+   "events": [
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 1
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "sent",
+     "token": 1,
+     "field": "remote_availability",
+     "request": {}
+    },
+    {
+     "q": "availability",
+     "sig": "sourcesChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "statusChanged",
+     "status": 2
+    },
+    {
+     "q": "availability",
+     "sig": "queryingChanged"
+    },
+    {
+     "q": "availability",
+     "sig": "finished"
+    }
+   ],
+   "final": {
+    "availability": {
+     "status": 2,
+     "error": "",
+     "forwardError": true,
+     "sources": [
+      {
+       "id": "wallpaper_engine",
+       "name": "Steam Workshop",
+       "displayName": "Steam Workshop",
+       "supportsSearch": false,
+       "sorts": [],
+       "tags": [],
+       "contentDir": "",
+       "ownerPluginId": "org.waywallen.open-wallpaper-engine",
+       "remoteCapability": 0,
+       "remoteHint": "",
+       "avatarUrl": "",
+       "filters": [],
+       "actions": [],
+       "status": []
+      }
+     ],
+     "defaultSourceId": ""
+    },
+    "search": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "query": "",
+     "sortKey": "",
+     "tags": [],
+     "browsingEnabled": true,
+     "hasMore": false,
+     "errorText": "",
+     "errorTextTrace": [],
+     "errorTrace": [],
+     "offset": 0,
+     "noMore": false,
+     "rows": []
+    },
+    "details": {
+     "status": 0,
+     "error": "",
+     "sourceId": "",
+     "itemId": "",
+     "description": "",
+     "size": "",
+     "width": 0,
+     "height": 0,
+     "tags": [],
+     "webUrl": ""
+    },
+    "download": {
+     "status": 0,
+     "error": ""
+    }
+   }
   }
- ]
+ ],
+ "правка_руками_2026_11_06": "Вкладка WE — копия оригинала: «Обзор» показывает только каталоги плагина OWE (we_query::WE_TAB_REMOTE_OWNERS). Образец полного источника в случаях 0 и 14 переведён с Wallhaven на Мастерскую Steam (те же поля), добавлен случай отсева чужих каталогов и строка pickDefault «умолчание демона отсеяно → пусто»."
 }

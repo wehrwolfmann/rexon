@@ -49,13 +49,14 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Icons and toolbars in applications")
             color: section.pal.text_primary
@@ -64,7 +65,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.note || "") !== ""
             text: section.st.note || ""
@@ -99,7 +100,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 8
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 // Главная панель — различие KDE; вне Plasma первый выбор
@@ -128,7 +129,7 @@ Rectangle {
             visible: section.st.has_other_toolbars === true
             spacing: 8
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Secondary toolbar labels:")
@@ -149,7 +150,7 @@ Rectangle {
         }
 
         // Вне Plasma прочие панели различают только программы KDE.
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: section.st.has_other_toolbars === true && (section.st.other_toolbars_note || "") !== ""
             text: section.st.other_toolbars_note || ""

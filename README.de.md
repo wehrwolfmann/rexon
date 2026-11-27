@@ -1,4 +1,4 @@
-[English](README.md) | [Русский](README.ru.md) | Deutsch
+[English](README.md) | [Русский](README.ru.md) | Deutsch | [简体中文](README.zh-CN.md)
 
 # Rexon
 
@@ -26,6 +26,12 @@ Plattform für Entwicklung und Tests ist Arch Linux / CachyOS.
     <td><img src=".github/screenshots/compare.png" alt="Vergleich von Desktop-Umgebungen nebeneinander"></td>
   </tr>
 </table>
+
+## Handbuch
+
+Eine Schritt-für-Schritt-Anleitung zu allen Reitern — Desktops,
+Erscheinungsbild, Erweiterungen, Wallpaper Engine, Steam und Einstellungen —
+auf Deutsch, Englisch und Russisch: [guide/](guide/README.md).
 
 ## Funktionen
 
@@ -76,8 +82,15 @@ Plattform für Entwicklung und Tests ist Arch Linux / CachyOS.
 - Sicherungen der Desktop-Einstellungen und ein Notfall-Menüeintrag
   „Erscheinungsbild des Desktops wiederherstellen“ (KDE) für den Fall, dass ein
   Design den Desktop beschädigt.
-- Erweiterungen: Erweiterungen für GNOME Shell und Cinnamon sowie Rexons eigene
-  `.rxn`-Pakete.
+- Erweiterungen für GNOME Shell und Cinnamon.
+
+**Erweiterungen**
+
+- Rexons eigene `.rxn`-Pakete (Designs, Hintergrundsammlungen, Schriften,
+  Desktop-Werkzeuge und Plugins): aus einer Datei oder per Ziehen ins Fenster
+  installieren, aktivieren und deaktivieren, entfernen.
+- Windows-Designs (`.themepack`, `.msstyles`), Zeiger und Symbolpakete werden
+  bei der Installation für Linux umgewandelt.
 
 **Live-Hintergründe**
 
@@ -96,6 +109,14 @@ Plattform für Entwicklung und Tests ist Arch Linux / CachyOS.
 - Ein Startvideo nach der Anmeldung wie auf dem Steam Deck, ausgewählt aus den
   Videos Ihrer Steam-Bibliothek.
 - Ihre Steam-Profilhintergründe als Hintergrundbilder.
+
+**Einstellungen**
+
+- Sprache und Aussehen des Rexon-Fensters, Symbol im Systembereich, eine
+  Hintergrund-Bibliothek mit Unschärfe und Umgebungsklängen, Ereignisklänge und
+  Systemschriften.
+- Gesicherte Kopien der KDE-Plasma-Leiste, der Schalter für den Schutz der
+  Standardanwendungen und der Import von Windows-Designs.
 
 **Systemsicherheit**
 
@@ -329,8 +350,9 @@ unter Ihrem Benutzer.
 - **Ausfall des Anmeldebildschirms:** Solange Rexon installiert ist, hat jeder
   Anmeldemanager eine systemd-Ergänzung `OnFailure=` (`rexon-login-rescue`), die statt
   eines schwarzen Bildschirms eine Erklärung im Klartext auf der Konsole anzeigt.
-- **Erscheinungsbild:** Vor Änderungen werden die Desktop-Einstellungen gesichert
-  (Einstellungen → Desktop-Sicherungen). KDE hat einen Notfall-Menüeintrag
+- **Erscheinungsbild:** Was Rexon geändert hat, lässt sich mit „Zurücksetzen“ rückgängig
+  machen, und das Layout der KDE-Leiste kann unter Desktops → Werkzeuge
+  gesichert und zurückgeholt werden („Leiste sichern“ / „Leiste zurückholen“). KDE hat einen Notfall-Menüeintrag
   „Erscheinungsbild des Desktops wiederherstellen“, der auch dann funktioniert, wenn
   das Rexon-Fenster nicht startet.
 - **„Wie in einer Distribution“** merkt sich, was geändert wurde, und lässt sich

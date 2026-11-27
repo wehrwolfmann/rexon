@@ -305,7 +305,8 @@
     "gsettings get org.cinnamon workspace-osd-visible",
     "env GSETTINGS_BACKEND=memory gsettings get org.cinnamon workspace-osd-visible",
     "gsettings get org.cinnamon workspace-osd-visible",
-    "gsettings set org.cinnamon workspace-osd-visible true"
+    "gsettings set org.cinnamon workspace-osd-visible true",
+    "gsettings get org.cinnamon.desktop.interface gtk-theme"
   ],
   "missing": [],
   "message": "“Like Garuda Linux (Dr460nized)” applied.",

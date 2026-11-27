@@ -50,6 +50,7 @@ pkgbase = rexon-git
 	depends = qt6ct
 	depends = hicolor-icon-theme
 	depends = noto-fonts-emoji
+	depends = noto-fonts
 	depends = qt6-grpc
 	depends = libarchive
 	depends = xorg-server-xvfb

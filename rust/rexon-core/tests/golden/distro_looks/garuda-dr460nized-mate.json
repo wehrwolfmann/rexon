@@ -326,7 +326,8 @@
     "gsettings get org.mate.session.required-components windowmanager",
     "env GSETTINGS_BACKEND=memory gsettings get org.mate.session.required-components windowmanager",
     "gsettings get org.mate.session.required-components windowmanager",
-    "gsettings set org.mate.session.required-components windowmanager rexon-compiz"
+    "gsettings set org.mate.session.required-components windowmanager rexon-compiz",
+    "gsettings get org.mate.interface gtk-theme"
   ],
   "missing": [],
   "message": "“Like Garuda Linux (Dr460nized)” applied.",

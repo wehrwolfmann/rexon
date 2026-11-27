@@ -595,7 +595,10 @@ fn list_request(d: &WallpaperListData, page: u32, page_size: u32) -> pb::Wallpap
         filter_logics: s.filter_logics,
         sorts: s.sorts,
         search_text: s.search_text,
-        skip_types: s.skip_types,
+        // Границы вкладки WE: скрытые типы (gltf) отбирает сам демон, так
+        // что `count` и страницы честные. Добавляются только в кадр, не в
+        // выборку: свойство `skipTypes` и умный плейлист — выбор человека.
+        skip_types: q::we_tab_skip_types(&s.skip_types),
         filter_tags: s.filter_tags,
         skip_content_ratings: s.skip_content_ratings,
         // waywallen 0.4.4: какие обои показывать по признаку «скрыта».
@@ -899,4 +902,26 @@ pub fn encode_hide_request(ids: &[String], hidden: bool) -> Option<Vec<u8>> {
         },
     };
     Some(request.encode_to_vec())
+}
+
+#[cfg(test)]
+mod we_tab_scope_tests {
+    use super::*;
+
+    /// Границы вкладки WE: glTF отсекает демон по `skip_types` кадра, а
+    /// выбор человека (`skipTypes`, выборка умного плейлиста) не меняется.
+    #[test]
+    fn list_request_skips_hidden_types_on_the_wire_only() {
+        let mut d = WallpaperListData::default();
+        d.skip_types = vec!["web".into()];
+        let req = pb::WallpaperListRequest::decode(encode_list_request(&d).as_slice())
+            .expect("кадр разобран");
+        assert_eq!(req.skip_types, ["web", "gltf"]);
+        d.limit = 10;
+        let page = encode_fetch_more_request(&d, q::STATUS_FINISHED).expect("страница");
+        let req = pb::WallpaperListRequest::decode(page.as_slice()).expect("кадр разобран");
+        assert_eq!(req.skip_types, ["web", "gltf"]);
+        assert_eq!(d.skip_types, ["web"]);
+        assert_eq!(selection_of(&d).skip_types, ["web"]);
+    }
 }

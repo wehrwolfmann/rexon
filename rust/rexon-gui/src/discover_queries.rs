@@ -1173,8 +1173,19 @@ fn source_info(s: &pb::RemoteSourceInfo) -> Value {
 /// сюда Мастерскую Steam, потому что каталог отдавали сами и вход не
 /// требовался; теперь каталог снова вендорский, и своего значения по
 /// умолчанию у нас нет (см. `WORKSHOP_SERVED_LOCALLY` в шиме).
-pub fn pick_default(_sources: &[Value], daemon_default: &str) -> String {
-    daemon_default.to_string()
+///
+/// `sources` — уже отобранные границами вкладки. Если демон предлагает
+/// каталог, которого во вкладке нет (Wallhaven), значения по умолчанию нет
+/// вовсе: страница тогда сама берёт первый источник списка.
+pub fn pick_default(sources: &[Value], daemon_default: &str) -> String {
+    let present = sources
+        .iter()
+        .any(|s| s.get("id").and_then(Value::as_str) == Some(daemon_default));
+    if present {
+        daemon_default.to_string()
+    } else {
+        String::new()
+    }
 }
 
 /// Состояние запроса доступности.
@@ -1221,9 +1232,14 @@ impl AvailabilityState {
             _ => pb::RemoteAvailabilityResponse::default(),
         };
         let mut l10n = localizer().lock().expect("переводчик не отравлен");
+        // Границы вкладки WE: только каталоги из белого списка владельцев
+        // (Мастерская Steam плагина OWE). Wallhaven, Sketchfab и любой
+        // будущий каталог апстрима сюда не попадают; Wallhaven живёт в
+        // «Оформление → Обои HD». Список — `we_query::WE_TAB_REMOTE_OWNERS`.
         self.sources = av
             .sources
             .iter()
+            .filter(|s| we_query::we_tab_shows_remote_owner(&s.owner_plugin_id))
             .map(|s| {
                 let info = source_info(s);
                 l10n.translate_source(&info).unwrap_or(info)

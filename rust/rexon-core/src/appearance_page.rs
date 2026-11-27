@@ -19,7 +19,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::appearance_cache;
-use crate::i18n::{fill, n_, tr, trc, trf};
+use crate::i18n::{fill, format_decimal, n_, tr, trc, trf};
 use crate::appearance_installer;
 use crate::categories;
 use crate::installed_scan;
@@ -284,9 +284,9 @@ pub fn default_sort_index() -> usize {
 /// Счётчик скачиваний/голосов в короткой записи: 1234 → «1.2K».
 pub fn human_count(n: i64) -> String {
     if n >= 1_000_000 {
-        format!("{:.1}M", n as f64 / 1_000_000.0)
+        format!("{}M", format_decimal(n as f64 / 1_000_000.0, 1))
     } else if n >= 1000 {
-        format!("{:.1}K", n as f64 / 1000.0)
+        format!("{}K", format_decimal(n as f64 / 1000.0, 1))
     } else {
         n.to_string()
     }
@@ -302,14 +302,13 @@ pub fn human_size_kib(kib: i64) -> String {
     if kib <= 0 {
         return String::new();
     }
-    // Десятичный разделитель — из перевода: у русского и немецкого он запятая.
-    // TRANSLATORS: decimal separator in numbers like "1.4 MiB".
-    let sep = trc("decimal separator", ".");
-    let one_decimal = |v: f64| format!("{v:.1}").replace('.', &sep);
+    // Разделитель и цифры — по языку интерфейса: у русского и немецкого
+    // запятая ([`crate::i18n::format_decimal`]).
+    let one_decimal = |v: f64| format_decimal(v, 1);
     let kib_f = kib as f64;
     if kib < 1024 {
         // TRANSLATORS: file size in kibibytes, %1 is the number.
-        fill(&trc("file size", "%1 KiB"), &[&kib])
+        fill(&trc("file size", "%1 KiB"), &[&format_decimal(kib_f, 0)])
     } else if kib_f < 1024.0 * 1024.0 {
         // TRANSLATORS: file size in mebibytes, %1 is the number.
         fill(&trc("file size", "%1 MiB"), &[&one_decimal(kib_f / 1024.0)])
@@ -1282,6 +1281,9 @@ pub const SOURCE_BOTH: &str = "both";
 /// Cinnamon Spices — единственный магазин пяти разделов Cinnamon
 /// (`crate::cinnamon_spices`).
 pub const SOURCE_SPICES: &str = crate::cinnamon_spices::SOURCE_KEY;
+/// Wallhaven — второй магазин «Обоев HD» рядом с KDE Store
+/// (`crate::wallhaven`).
+pub const SOURCE_WALLHAVEN: &str = crate::wallhaven::SOURCE_KEY;
 
 /// Ключи источников, которые есть в разделе `category_key` (порядок чипов).
 /// Чего здесь нет, того в разделе нет: выбор помнится при переходе между
@@ -1306,6 +1308,9 @@ pub fn source_keys_for(category_key: &str) -> Vec<&'static str> {
     // (`cinnamon_spices::PART_SECTIONS`).
     if crate::cinnamon_spices::is_part_section(category_key) {
         keys.push(SOURCE_SPICES);
+    }
+    if crate::wallhaven::has_section(category_key) {
+        keys.push(SOURCE_WALLHAVEN);
     }
     keys
 }
@@ -1599,6 +1604,28 @@ impl CatalogView {
         self.spices_json().is_some()
     }
 
+    /// Открыт ли магазин Wallhaven («Обои HD», чип рядом с KDE Store).
+    pub fn wallhaven_mode(&self) -> bool {
+        self.source_applicable()
+            && self.source == SOURCE_WALLHAVEN
+            && crate::wallhaven::has_section(&self.category.key)
+    }
+
+    /// Открыт ли магазин со своим листингом (Cinnamon Spices, Wallhaven):
+    /// подсказок и фонового прогрева KDE Store у него нет.
+    pub fn own_site_store(&self) -> bool {
+        self.spices_mode() || self.wallhaven_mode()
+    }
+
+    /// Сортировки выпадающего списка у открытого магазина: `(подпись, ключ)`.
+    pub fn sorts(&self) -> &'static [(&'static str, &'static str)] {
+        if self.wallhaven_mode() {
+            crate::wallhaven::SORTS
+        } else {
+            SORTS
+        }
+    }
+
     /// Раздела нет в выбранном рабочем столе.
     pub fn de_blocked(&self) -> bool {
         !categories::category_available(&self.category.key, &self.de)
@@ -1632,9 +1659,14 @@ impl CatalogView {
         }
     }
 
-    /// Сортировка для открытого раздела.
+    /// Сортировка для открытого раздела. У Wallhaven своих сортировок три:
+    /// выбор, которого у него нет («По алфавиту»), действует как «Новые».
     pub fn active_sort(&self) -> String {
-        self.sort_for(&self.category)
+        let sort = self.sort_for(&self.category);
+        if self.wallhaven_mode() {
+            return crate::wallhaven::effective_sort(&sort).to_string();
+        }
+        sort
     }
 
     /// Ключ сессионного кеша AUR: список категории — по её ключу, поиск — по
@@ -1699,6 +1731,8 @@ impl CatalogView {
             tr("🔍 Search AUR…")
         } else if self.spices_mode() {
             tr("🔍 Search Cinnamon Spices…")
+        } else if self.wallhaven_mode() {
+            crate::wallhaven::search_placeholder()
         } else {
             tr("🔍 Search themes…")
         }
@@ -1840,6 +1874,9 @@ impl CatalogView {
             let json = if self.spices_parts_mode() { format!("{json}@{}", self.category.key) } else { json.to_string() };
             return format!("spices:{json}:{}:{}:{}", self.page, self.active_sort(), self.query);
         }
+        if self.wallhaven_mode() {
+            return format!("wallhaven:{}:{}:{}", self.page, self.active_sort(), self.query);
+        }
         format!(
             "ocs:{}:{}:{}:{}",
             self.query_category_id(),
@@ -1943,6 +1980,7 @@ pub fn plasma_login_panel(can_open: bool) -> PlasmaLoginPanel {
          clock and bring your desktop's colors, cursor and fonts over to it — that's done \
          in System Settings.",
     );
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     let where_to_go = tr("Open “System Settings → Login Screen”.");
     if !can_open {
         body = format!("{body}\n{where_to_go}");
@@ -3260,7 +3298,7 @@ pub fn link_copied_status(url: &str) -> String {
 
 /// Подпись со звёздами рейтинга.
 pub fn detail_stars_label(rating_stars: f64) -> String {
-    format!("⭐ {rating_stars:.1}")
+    format!("⭐ {}", format_decimal(rating_stars, 1))
 }
 
 /// Подпись со счётчиком скачиваний.
@@ -3371,6 +3409,16 @@ fn emoticon_char(name: &str) -> &'static str {
     }
 }
 
+/// Пометка «перевод идёт» под ещё не переведённым описанием. Приклеивается к
+/// [`description_html`] ВМЕСТО переключателя, пока перевода нет, и
+/// пропадает, когда перевод пришёл или ядро решило «не переводить».
+pub fn description_translating_html() -> String {
+    // TRANSLATORS: shown under an item description in the store panel while
+    // the description is being machine-translated into the interface
+    // language (it disappears when the translation arrives).
+    format!("<br><br><i>{}</i>", tr("Translating the description…"))
+}
+
 /// Описание товара вместе с переключателем перевода.
 pub fn description_html(
     original: &str,
@@ -3382,7 +3430,8 @@ pub fn description_html(
     let body = if show_original { original } else { translated };
     let empty = no_description_html();
     let body = if body.is_empty() { empty.as_str() } else { body };
-    let body = inline_emoticons(body);
+    // Код и команды в описании магазина — слева направо при любом языке.
+    let body = crate::ui_base::pre_left_to_right(&inline_emoticons(body));
     if !was_translated {
         return body;
     }
@@ -3736,7 +3785,7 @@ pub fn suggest_action(query: &str, on_grid: bool, view: &CatalogView) -> Suggest
     }
     // Cinnamon Spices подсказок не даёт, а подсказки KDE Store вели бы не
     // в тот магазин — ищется по своей витрине.
-    if view.is_local() || view.aur_mode() || view.spices_mode() {
+    if view.is_local() || view.aur_mode() || view.own_site_store() {
         SuggestAction::Local
     } else {
         SuggestAction::Network
@@ -3985,7 +4034,8 @@ pub fn card_stats_line(rating_stars: f64, downloads: i64, updated: &str) -> Stri
         format!("{NBSP}{NBSP}📅 {day}")
     };
     format!(
-        "{NBSP}{rating_stars:.1}{NBSP}{NBSP}⬇️ {}{upd}",
+        "{NBSP}{}{NBSP}{NBSP}⬇️ {}{upd}",
+        format_decimal(rating_stars, 1),
         human_count(downloads)
     )
 }
@@ -4313,7 +4363,7 @@ pub fn aur_version_tooltip(version: &str) -> String {
 /// заводить в ядре свою таблицу поясов.
 pub fn aur_stats_line(votes: i64, popularity: f64, updated_day: &str) -> String {
     let pop = if popularity != 0.0 {
-        format!("{NBSP}{NBSP}📈 {popularity:.1}")
+        format!("{NBSP}{NBSP}📈 {}", format_decimal(popularity, 1))
     } else {
         String::new()
     };
@@ -4330,7 +4380,7 @@ pub fn aur_stats_tooltip(votes: i64, popularity: f64, updated_day: &str) -> Stri
     let upd = if updated_day.is_empty() { "—" } else { updated_day };
     trf(
         "👍 %1 votes · 📈 AUR popularity %2 · updated %3",
-        &[&votes, &format!("{popularity:.2}"), &upd],
+        &[&votes, &format_decimal(popularity, 2), &upd],
     )
 }
 
@@ -4401,6 +4451,7 @@ pub fn aur_busy_button(busy: bool) -> AurButton {
 
 /// Возврат из панели деталей к сетке. Двойной пробел — как в оригинале.
 pub fn detail_back_btn() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("←  Back to Catalog")
 }
 /// Снять установленную тему.
@@ -4536,7 +4587,7 @@ pub fn sound_store_progress(done: i64, total: i64) -> String {
         let pct = (done.max(0) * 100 / total).min(100);
         trf("Downloading the theme to preview it: %1 %", &[&pct])
     } else if done > 0 {
-        let mb = format!("{:.1}", done as f64 / (1024.0 * 1024.0));
+        let mb = format_decimal(done as f64 / (1024.0 * 1024.0), 1);
         trf("Downloading the theme to preview it: %1 MB", &[&mb])
     } else {
         tr("Downloading the theme to preview it…")
@@ -4619,9 +4670,11 @@ pub fn install_file_dialog_title(section: &str) -> String {
 
 /// Кнопки листания страниц.
 pub fn page_prev_btn() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("← Previous")
 }
 pub fn page_next_btn() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Next →")
 }
 
@@ -4665,6 +4718,13 @@ pub fn source_chips_for(category_key: &str) -> Vec<Chip> {
             key: SOURCE_SPICES,
             label: "Cinnamon Spices".to_string(),
             tooltip: crate::cinnamon_spices::parts_chip_tooltip(category_key),
+        });
+    }
+    if keys.contains(&SOURCE_WALLHAVEN) {
+        chips.push(Chip {
+            key: SOURCE_WALLHAVEN,
+            label: crate::wallhaven::chip_label(),
+            tooltip: crate::wallhaven::chip_tooltip(),
         });
     }
     chips

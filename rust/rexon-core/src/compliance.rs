@@ -1122,6 +1122,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                         "mate-terminal",
                     );
                     self.gsettings_set("org.mate.applications-terminal", "exec-arg", "-x");
+                    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
                     log.push(l4(trf("✅ Fixed: %1 → %2", &[&ct, &"mate-terminal"])));
                     put(&mut results, "mate_terminal", "fixed");
                 } else {
@@ -1150,6 +1151,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                 })
                 .collect();
             if missing_layouts.is_empty() {
+                // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
                 log.push(l4(tr("✅ All 8 layouts are present (Familiar → Traditional)")));
                 put(&mut results, "mate_layouts", "ok");
             } else {
@@ -1472,6 +1474,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                         ],
                         None,
                     );
+                    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
                     log.push(l4(trf("✅ Fixed: terminal → %1", &[&"konsole"])));
                     put(&mut results, "kde_terminal", "fixed");
                 } else {
@@ -1887,19 +1890,32 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         let ok = results.iter().filter(|(_, v)| v == "ok").count();
         let skipped = results.iter().filter(|(_, v)| v == SKIPPED).count();
         let needs = results.iter().filter(|(_, v)| v == NEEDS_ACTION).count();
-        let mut tail = String::new();
-        if skipped > 0 {
-            tail.push_str(&trf(", %1 skipped", &[&skipped]));
-        }
-        if needs > 0 {
-            tail.push_str(&trf(", %1 to install", &[&needs]));
-        }
-        log.push(trf(
-            // TRANSLATORS: %1 checks passed, %2 fixed, %3 failed; %4 is an
-            // optional tail such as “, 2 skipped, 1 to install”.
-            "✅ Check finished: %1 OK, %2 fixed, %3 failed%4",
-            &[&ok, &fixed, &failed, &tail],
-        ));
+        // Одна строка на каждый вариант, а не фраза из кусков: порядок частей
+        // и знаки между ними решает переводчик (в языках справа налево и с
+        // другим порядком слов склейка «, %1 skipped» в конце не работает).
+        let summary = match (skipped > 0, needs > 0) {
+            (false, false) => trf(
+                // TRANSLATORS: %1 checks passed, %2 fixed, %3 failed.
+                "✅ Check finished: %1 OK, %2 fixed, %3 failed",
+                &[&ok, &fixed, &failed],
+            ),
+            (true, false) => trf(
+                // TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 skipped.
+                "✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 skipped",
+                &[&ok, &fixed, &failed, &skipped],
+            ),
+            (false, true) => trf(
+                // TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 need a program installed first.
+                "✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 to install",
+                &[&ok, &fixed, &failed, &needs],
+            ),
+            (true, true) => trf(
+                // TRANSLATORS: %1 checks passed, %2 fixed, %3 failed, %4 skipped, %5 need a program installed first.
+                "✅ Check finished: %1 OK, %2 fixed, %3 failed, %4 skipped, %5 to install",
+                &[&ok, &fixed, &failed, &skipped, &needs],
+            ),
+        };
+        log.push(summary);
         results
     }
 

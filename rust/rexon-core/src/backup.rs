@@ -597,13 +597,15 @@ pub fn msg_restore_failed(detail: &str) -> String {
 /// [`msg_snapshot_not_found`]: склонение счёта и человеческая метка времени
 /// вместо машинной.
 pub fn msg_restored_files(n: usize, timestamp: &str) -> String {
-    ntr(
-        // TRANSLATORS: %n is the number of files, %1 the date and time the copy was made.
-        "Restored %n file from the copy of %1",
-        "Restored %n files from the copy of %1",
-        n as u64,
+    crate::i18n::fill(
+        &ntr(
+            // TRANSLATORS: %n is the number of files, %1 the date and time the copy was made.
+            "Restored %n file from the copy of %1",
+            "Restored %n files from the copy of %1",
+            n as u64,
+        ),
+        &[&crate::qt_settings::pretty_backup_ts(timestamp)],
     )
-    .replace("%1", &crate::qt_settings::pretty_backup_ts(timestamp))
 }
 
 /// Раскладка снимка панели (`backup_panel`): имя в снимке — basename, потому

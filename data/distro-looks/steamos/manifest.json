@@ -5,12 +5,14 @@
   "name": {
     "en": "Like SteamOS",
     "ru": "Как в SteamOS",
-    "de": "Wie SteamOS"
+    "de": "Wie SteamOS",
+    "zh_CN": "SteamOS 风格"
   },
   "description": {
     "en": "The Vapor look of the Steam Deck desktop (or the classic VGUI2 style of the old Steam client) and, if you want it, a game mode: a “Steam Big Picture” session on the login screen, as on the Steam Deck. Rexon does not turn on automatic login and does not start Steam by itself. Steam Deck logos and wallpapers are not included.",
     "ru": "Вид Vapor с рабочего стола Steam Deck (или классический стиль VGUI2 старого клиента Steam) и, по желанию, игровой режим: сеанс «Steam Big Picture» на экране входа, как на Steam Deck. Rexon не включает автоматический вход и сам Steam не запускает. Логотипы и обои Steam Deck не входят.",
-    "de": "Der Vapor-Look des Steam-Deck-Desktops (oder der klassische VGUI2-Stil des alten Steam-Clients) und auf Wunsch ein Spielmodus: eine „Steam Big Picture“-Sitzung auf dem Anmeldebildschirm wie auf dem Steam Deck. Rexon schaltet keine automatische Anmeldung ein und startet Steam nicht von selbst. Logos und Hintergrundbilder des Steam Deck sind nicht enthalten."
+    "de": "Der Vapor-Look des Steam-Deck-Desktops (oder der klassische VGUI2-Stil des alten Steam-Clients) und auf Wunsch ein Spielmodus: eine „Steam Big Picture“-Sitzung auf dem Anmeldebildschirm wie auf dem Steam Deck. Rexon schaltet keine automatische Anmeldung ein und startet Steam nicht von selbst. Logos und Hintergrundbilder des Steam Deck sind nicht enthalten.",
+    "zh_CN": "Steam Deck 桌面的 Vapor 外观（或旧版 Steam 客户端的经典 VGUI2 风格），并可选择添加游戏模式：在登录界面提供“Steam Big Picture”会话，与 Steam Deck 上一样。Rexon 不会开启自动登录，也不会自行启动 Steam。不包含 Steam Deck 的标志和壁纸。"
   },
   "authors": [{"name": "Wehrwolfmann"}],
   "license": "Apache-2.0",
@@ -19,11 +21,11 @@
     "variant": {
       "type": "combo",
       "options": [
-        {"value": "vapor", "label": {"en": "Vapor (Steam Deck)", "ru": "Vapor (как на Steam Deck)", "de": "Vapor (wie auf dem Steam Deck)"}},
-        {"value": "vgui", "label": {"en": "VGUI2 (classic Steam)", "ru": "VGUI2 (классический Steam)", "de": "VGUI2 (klassisches Steam)"}}
+        {"value": "vapor", "label": {"en": "Vapor (Steam Deck)", "ru": "Vapor (как на Steam Deck)", "de": "Vapor (wie auf dem Steam Deck)", "zh_CN": "Vapor（Steam Deck）"}},
+        {"value": "vgui", "label": {"en": "VGUI2 (classic Steam)", "ru": "VGUI2 (классический Steam)", "de": "VGUI2 (klassisches Steam)", "zh_CN": "VGUI2（经典 Steam）"}}
       ],
       "default": "vapor",
-      "label": {"en": "Style", "ru": "Стиль", "de": "Stil"}
+      "label": {"en": "Style", "ru": "Стиль", "de": "Stil", "zh_CN": "风格"}
     }
   },
   "sources": [
@@ -103,7 +105,8 @@
       "note": {
         "en": "Game mode adds a “Steam Big Picture” session to the login screen; choose it there yourself. On a laptop with two graphics cards the screen may stay black if Steam starts on the card the screen is not connected to. If that happens, restart the computer and choose your usual session on the login screen.",
         "ru": "Игровой режим добавляет сеанс «Steam Big Picture» на экран входа — выберите его там сами. На ноутбуке с двумя видеокартами экран может остаться чёрным, если Steam запустится не на той видеокарте, к которой подключён экран. Если так случилось, перезагрузите компьютер и выберите обычный сеанс на экране входа.",
-        "de": "Der Spielmodus fügt dem Anmeldebildschirm eine „Steam Big Picture“-Sitzung hinzu; wählen Sie sie dort selbst aus. Auf einem Laptop mit zwei Grafikkarten kann der Bildschirm schwarz bleiben, wenn Steam auf der Karte startet, an der der Bildschirm nicht hängt. Starten Sie in diesem Fall den Computer neu und wählen Sie auf dem Anmeldebildschirm Ihre gewohnte Sitzung."
+        "de": "Der Spielmodus fügt dem Anmeldebildschirm eine „Steam Big Picture“-Sitzung hinzu; wählen Sie sie dort selbst aus. Auf einem Laptop mit zwei Grafikkarten kann der Bildschirm schwarz bleiben, wenn Steam auf der Karte startet, an der der Bildschirm nicht hängt. Starten Sie in diesem Fall den Computer neu und wählen Sie auf dem Anmeldebildschirm Ihre gewohnte Sitzung.",
+        "zh_CN": "游戏模式会在登录界面添加“Steam Big Picture”会话，需要你自己在那里选择它。在配有两块显卡的笔记本电脑上，如果 Steam 在未连接屏幕的那块显卡上启动，屏幕可能一直黑屏。遇到这种情况，请重启电脑，并在登录界面选择你平常使用的会话。"
       }
     }
   ],
@@ -128,7 +131,8 @@
        "message": {
          "en": "Plasma's libplasma has been replaced here by another build (a fork such as AeroShell). Plasma looks do not apply on top of it: put the regular libplasma back first.",
          "ru": "Здесь libplasma из Plasma заменена другой сборкой (форком вроде AeroShell). Оформление Plasma поверх неё не применяется: сначала верните обычную libplasma.",
-         "de": "Die libplasma von Plasma wurde hier durch einen anderen Build ersetzt (einen Fork wie AeroShell). Plasma-Designs greifen darauf nicht: Stellen Sie zuerst die normale libplasma wieder her."
+         "de": "Die libplasma von Plasma wurde hier durch einen anderen Build ersetzt (einen Fork wie AeroShell). Plasma-Designs greifen darauf nicht: Stellen Sie zuerst die normale libplasma wieder her.",
+         "zh_CN": "此处 Plasma 的 libplasma 已被其他构建（例如 AeroShell 这类分支版本）替换。Plasma 外观无法在其上应用：请先恢复常规的 libplasma。"
        }}]
   }
 }

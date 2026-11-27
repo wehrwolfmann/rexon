@@ -479,6 +479,9 @@ fn main() {
     // сама Qt, и никакой наш перевод до них не достаёт.
     install_qt_translations(&language);
     install_app_translation(&language);
+    // Арабский, персидский и иврит — своими шрифтами, а не DejaVu, который
+    // fontconfig отдаёт первым (семейства — ядро, `qt_app::RTL_FALLBACK_FONTS`).
+    rexon_gui::fonts::install_rtl_fallbacks();
 
     // Вкладка обоев: каталог пакета, типы `waywallen.ui` (с синглтоном
     // `App`, он же ставит переводчик вендорных страниц), модель фильтров,

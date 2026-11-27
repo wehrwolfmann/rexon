@@ -108,7 +108,7 @@ Rectangle {
         NumberAnimation { duration: 150 }
     }
 
-    Text {
+    RexonText {
         id: label
         anchors.left: parent.left
         anchors.right: parent.right

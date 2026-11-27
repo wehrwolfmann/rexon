@@ -799,7 +799,7 @@
    {
     "op": "write_file",
     "path": "/sb/tmp/rexon_themepack_0/rxn_content/manifest.json",
-    "content": "{\n  \"format_version\": 3,\n  \"id\": \"themepack-my-theme-xp\",\n  \"name\": \"My Theme XP!\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme\",\n  \"description\": \"Импортировано из Windows .themepack | 2 картинки обоев | 3 иконки | цвет: 58 110 165\",\n  \"type\": \"wallpaper-pack\",\n  \"tags\": [\n    \"windows\",\n    \"themepack\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"wallpapers\": [\n    {\n      \"file\": \"data/wallpaper_1.jpg\",\n      \"format\": \"static\"\n    },\n    {\n      \"file\": \"data/wallpaper_2.png\",\n      \"format\": \"static\"\n    }\n  ],\n  \"icons\": [\n    \"data/my-theme-xp-icons/48x48/places/mypc.png\"\n  ],\n  \"icon_theme_dir\": \"data/my-theme-xp-icons\",\n  \"accent_color\": \"58 110 165\"\n}"
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"themepack-my-theme-xp\",\n  \"name\": \"My Theme XP!\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Theme\",\n  \"description\": \"Импортировано из Windows .themepack | 2 картинки обоев | 3 значка | цвет: 58 110 165\",\n  \"type\": \"wallpaper-pack\",\n  \"tags\": [\n    \"windows\",\n    \"themepack\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ],\n  \"wallpapers\": [\n    {\n      \"file\": \"data/wallpaper_1.jpg\",\n      \"format\": \"static\"\n    },\n    {\n      \"file\": \"data/wallpaper_2.png\",\n      \"format\": \"static\"\n    }\n  ],\n  \"icons\": [\n    \"data/my-theme-xp-icons/48x48/places/mypc.png\"\n  ],\n  \"icon_theme_dir\": \"data/my-theme-xp-icons\",\n  \"accent_color\": \"58 110 165\"\n}"
    },
    {
     "op": "pack_rxn",
@@ -1051,7 +1051,7 @@
   "result": {
    "error": {
     "kind": "ValueError",
-    "message": "Ни обои, ни иконки не найдены в .themepack"
+    "message": "Ни обои, ни значки не найдены в .themepack"
    }
   }
  },
@@ -2485,7 +2485,7 @@
    {
     "op": "write_file",
     "path": "/sb/tmp/rexon_winico_0/rxn/manifest.json",
-    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-my-computer\",\n  \"name\": \"my computer\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 иконка\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-my-computer\",\n  \"name\": \"my computer\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 значок\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
    },
    {
     "op": "isfile",
@@ -2569,7 +2569,7 @@
   "result": {
    "error": {
     "kind": "ValueError",
-    "message": "Иконки .ico не найдены"
+    "message": "Значки .ico не найдены"
    }
   }
  },
@@ -3181,7 +3181,7 @@
    {
     "op": "write_file",
     "path": "/sb/tmp/rexon_winico_0/rxn/manifest.json",
-    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-pack\",\n  \"name\": \"pack\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 иконка\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-pack\",\n  \"name\": \"pack\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 значок\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
    },
    {
     "op": "isfile",
@@ -3755,7 +3755,7 @@
    {
     "op": "write_file",
     "path": "/sb/tmp/rexon_winico_0/rxn/manifest.json",
-    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-shell32\",\n  \"name\": \"shell32\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 иконка\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
+    "content": "{\n  \"format_version\": 3,\n  \"id\": \"winico-shell32\",\n  \"name\": \"shell32\",\n  \"version\": \"1.0\",\n  \"author\": \"Windows Icons\",\n  \"description\": \"Импорт из Windows | 1 значок\",\n  \"type\": \"theme-icons\",\n  \"tags\": [\n    \"windows\",\n    \"icons\",\n    \"imported\"\n  ],\n  \"de_support\": [\n    \"any\"\n  ]\n}"
    },
    {
     "op": "isfile",

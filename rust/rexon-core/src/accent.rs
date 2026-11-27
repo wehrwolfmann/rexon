@@ -1570,7 +1570,17 @@ pub fn live_apply(change: &str) -> (bool, String) {
     let Some(change) = Change::parse(change) else {
         return (false, tr("Couldn't apply the accent color: unknown color."));
     };
-    apply(&crate::animations::SystemIo, &AccentCtx::live(), change, &live_wallpaper)
+    let ctx = AccentCtx::live();
+    let (ok, mut msg) = apply(&crate::animations::SystemIo, &ctx, change, &live_wallpaper);
+    // Акцент меняет цвета темы: терминалы, берущие их, — на читаемую пару
+    // (под запись раздела цветов: её «Вернуть как было» вернёт и терминал).
+    if ok {
+        if let Some(line) = crate::terminal_guard::guard_live(&ctx.de, "colors", &tr("Accent color"), None) {
+            msg.push('\n');
+            msg.push_str(&line);
+        }
+    }
+    (ok, msg)
 }
 
 pub fn live_revert() -> (bool, String) {
