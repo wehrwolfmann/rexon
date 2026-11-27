@@ -754,8 +754,8 @@ fn mate_panel_lives_in_the_mate_desktop_group() {
 /// В каждом окружении есть группа «Виджеты рабочего стола»: родные виджеты
 /// стола первыми (Plasma, десклеты Cinnamon), виджеты Conky — рядом, а где
 /// своих нет — одни они. Пояснение группы говорит без жаргона, что это
-/// такое, а где на Wayland у стола нет слоёв (GNOME, Cinnamon, Pantheon) —
-/// честно, что там виджет Conky — обычное окно.
+/// такое; на столах без слоёв Wayland (GNOME, Cinnamon, Pantheon) conky идёт
+/// через XWayland, поэтому оговорки «обычное окно» здесь нет.
 #[test]
 fn every_desktop_has_desktop_widgets_explained() {
     use rexon_core::categories::group_note;
@@ -780,8 +780,9 @@ fn every_desktop_has_desktop_widgets_explained() {
         assert_eq!(group_title(SidebarGroup::Widgets, m.id), "Виджеты рабочего стола");
         let note = group_note(SidebarGroup::Widgets, m.id);
         assert!(note.contains("Conky"), "{}: {note}", m.id);
-        let no_layers = matches!(de, De::Gnome | De::Cinnamon | De::Pantheon);
-        assert_eq!(note.contains("Wayland"), no_layers, "{}: {note}", m.id);
+        // Через XWayland виджет Conky держится на столе и там, где у
+        // Wayland нет слоёв, — оговорки в пояснении группы нет ни у кого.
+        assert!(!note.contains("Wayland"), "{}: {note}", m.id);
         if !matches!(de, De::Kde | De::Cinnamon) {
             assert!(note.starts_with("Часы, погода и датчики системы"), "{}: {note}", m.id);
         }

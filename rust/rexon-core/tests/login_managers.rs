@@ -894,7 +894,7 @@ mod switch_dm {
         let _lang = i18n_pin::en();
         let s = pkg_helper_script();
         let units = dm_switch_units();
-        assert_eq!(units, vec!["plasmalogin", "sddm", "gdm", "gdm3", "lightdm", "greetd", "cosmic-greeter"]);
+        assert_eq!(units, vec!["plasmalogin", "sddm", "gdm", "gdm3", "lightdm", "greetd", "cosmic-greeter", "ddm"]);
         assert!(s.contains(&format!("        {}) : ;;\n        *) die bad_dm \"$new\" ;;", units.join("|"))));
     }
 
@@ -1034,5 +1034,191 @@ mod texts {
         );
         assert!(login_manager_unsupported_note(&DmSwitchBackend::NixosDeclarative, None).unwrap().contains("configuration.nix"));
         assert!(login_manager_unsupported_note(&DmSwitchBackend::SystemdSuseAlternatives, None).unwrap().contains("openSUSE"));
+    }
+}
+
+// ============================================================================
+// Я6. Какой экран входа нужен какому столу, DDM и предупреждения раздела
+// ============================================================================
+
+mod desktop_needs {
+    use super::i18n_pin;
+    use rexon_core::system::PkgFamily;
+    use rexon_core::system_exec::{login_screen_view, LoginScreenFacts};
+    use rexon_core::system_plan::{
+        desktop_dm_harm, desktop_dm_need, dm_compat_issues, dm_readiness, dm_warnings,
+        login_manager_spec, login_manager_switch_confirm, sysusers_declares, unit_exec_start,
+        unit_values, DmFacts, DmHarm, DmNeed, DmReadiness, DmSwitchBackend, LoginManagerInfo,
+        DESKTOP_DM_RULES,
+    };
+
+    /// Юнит и sysusers пакета ddm 0.4.0 с машины Wehrwolfmann (15.11.2026).
+    const UNIT_DDM: &str = include_str!("data/display_managers/ddm.service");
+    const SYSUSERS_DDM: &str = include_str!("data/display_managers/ddm-sysusers.conf");
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn table_gnome_gdm_deepin_ddm_rest_any() {
+        assert_eq!(desktop_dm_need("gnome"), DmNeed::Required(&["gdm", "gdm3"]));
+        assert_eq!(desktop_dm_need("deepin"), DmNeed::Required(&["ddm"]));
+        for de in ["kde", "cinnamon-mint", "mate", "xfce"] {
+            assert_eq!(desktop_dm_need(de), DmNeed::Avoid(&["gdm", "gdm3"]), "{de}");
+        }
+        for de in ["hyprland", "sway", "niri", "lxqt", "budgie", "cosmic", "nothing"] {
+            assert_eq!(desktop_dm_need(de), DmNeed::Any, "{de}");
+        }
+        // Обязательный — критично под любым другим, под своим — ничего.
+        assert_eq!(desktop_dm_harm("gnome", "plasmalogin"), Some(DmHarm::Critical));
+        assert_eq!(desktop_dm_harm("gnome", "gdm3"), None);
+        assert_eq!(desktop_dm_harm("deepin", "sddm"), Some(DmHarm::Critical));
+        assert_eq!(desktop_dm_harm("deepin", "ddm"), None);
+        assert_eq!(desktop_dm_harm("kde", "gdm"), Some(DmHarm::Minor));
+        assert_eq!(desktop_dm_harm("kde", "ddm"), None);
+        assert_eq!(desktop_dm_harm("sway", "gdm"), None);
+        // У каждого правила — программа-признак и текст причины с именем
+        // экрана входа; стол есть в базе ядра.
+        let known = rexon_core::system::list_de_ids();
+        for r in DESKTOP_DM_RULES {
+            assert!(!r.binaries.is_empty() && r.harm_text.contains("%1"), "{}", r.de_id);
+            assert!(known.contains(&r.de_id), "{} нет в базе столов", r.de_id);
+        }
+        // Deepin узнаётся по самому Treeland: обычному Deepin на X11 DDM не нужен.
+        let deepin = DESKTOP_DM_RULES.iter().find(|r| r.de_id == "deepin").unwrap();
+        assert_eq!(deepin.binaries, &["treeland"]);
+    }
+
+    #[test]
+    fn compat_issues_critical_first_with_reasons() {
+        let _lang = i18n_pin::en();
+        let all = ids(&["kde", "gnome", "deepin", "hyprland"]);
+        let plm = dm_compat_issues("plasmalogin", &all);
+        assert_eq!(plm.iter().map(|i| i.de_id.as_str()).collect::<Vec<_>>(), ["gnome", "deepin"]);
+        assert!(plm.iter().all(|i| i.harm == DmHarm::Critical));
+        assert_eq!(
+            plm[0].text,
+            "With Plasma Login Manager as the login screen, GNOME can't lock the screen: Super+L, \
+             locking when idle and before sleep do nothing. GNOME needs GDM."
+        );
+        assert!(
+            plm[1].text.starts_with("With Plasma Login Manager as the login screen, Deepin doesn't start"),
+            "{}",
+            plm[1].text
+        );
+        // Под GDM: Deepin не стартует (критично — первым), Plasma теряет мелочи.
+        let gdm = dm_compat_issues("gdm", &all);
+        assert_eq!(
+            gdm.iter().map(|i| (i.de_id.as_str(), i.harm)).collect::<Vec<_>>(),
+            [("deepin", DmHarm::Critical), ("kde", DmHarm::Minor)]
+        );
+        assert!(gdm[1].text.contains("KWallet"), "{}", gdm[1].text);
+        // Под DDM — только GNOME; не установленные столы не в счёт.
+        let ddm = dm_compat_issues("ddm", &all);
+        assert_eq!(ddm.iter().map(|i| i.de_id.as_str()).collect::<Vec<_>>(), ["gnome"]);
+        assert!(ddm[0].text.starts_with("With DDM as the login screen"), "{}", ddm[0].text);
+        assert!(dm_compat_issues("sddm", &ids(&["kde", "mate", "hyprland"])).is_empty());
+        assert!(dm_compat_issues("", &all).is_empty());
+    }
+
+    #[test]
+    fn ddm_spec_from_package_files() {
+        let _lang = i18n_pin::en();
+        let spec = login_manager_spec("ddm").expect("DDM в таблице");
+        assert_eq!(
+            (spec.label, spec.binary, spec.package, spec.user, spec.pam),
+            ("DDM", "ddm", "ddm", Some("dde"), "ddm")
+        );
+        assert!(spec.switchable && !spec.needs_xorg);
+        // Сверка с файлами пакета: программа, служба мест, пользователь.
+        assert_eq!(unit_exec_start(UNIT_DDM).unwrap(), vec!["/usr/bin/ddm"]);
+        assert_eq!(unit_values(UNIT_DDM, "Unit", "Requires"), vec!["dde-seatd.service"]);
+        assert_eq!(unit_values(UNIT_DDM, "Install", "Alias"), vec!["display-manager.service"]);
+        assert!(sysusers_declares(SYSUSERS_DDM, "dde"));
+        // Готов, но с честной пометкой «с другими столами не проверено».
+        let good = DmFacts {
+            unit: "ddm".into(),
+            binary_exists: true,
+            user: Some("dde".into()),
+            user_ok: true,
+            pam: "ddm".into(),
+            pam_exists: true,
+            wayland_sessions: 2,
+            ..Default::default()
+        };
+        assert_eq!(dm_readiness(Some(spec), &DmSwitchBackend::Systemd, &good), DmReadiness::Ready);
+        let warnings = dm_warnings(&good);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("hasn't checked yet whether it starts other desktops"), "{warnings:?}");
+        // Нет службы мест — отказ до пароля, с её именем.
+        let no_seatd = DmFacts { missing_units: vec!["dde-seatd.service".into()], ..good.clone() };
+        assert_eq!(
+            dm_readiness(Some(spec), &DmSwitchBackend::Systemd, &no_seatd),
+            DmReadiness::Blocked(
+                "The login screen needs the system service dde-seatd.service, and it's missing or switched off."
+                    .into()
+            )
+        );
+        // Окно подтверждения говорит то же до пароля.
+        let confirm = login_manager_switch_confirm(Some("plasmalogin"), "ddm", None, &DmSwitchBackend::Systemd);
+        assert!(confirm.starts_with("DDM will appear after a restart."), "{confirm}");
+        assert!(confirm.contains("hasn't checked yet"), "{confirm}");
+        // Прочим экранам входа пометка не достаётся.
+        assert!(dm_warnings(&DmFacts { unit: "sddm".into(), ..good }).is_empty());
+    }
+
+    fn info(unit: &str, label: &str, active: bool) -> LoginManagerInfo {
+        LoginManagerInfo {
+            unit: unit.into(),
+            label: label.into(),
+            binary: Some(format!("/usr/bin/{unit}")),
+            present: true,
+            active,
+            readiness: DmReadiness::Ready,
+            warnings: Vec::new(),
+        }
+    }
+
+    fn facts(desktops: &[&str]) -> LoginScreenFacts {
+        LoginScreenFacts {
+            family: PkgFamily::Arch,
+            helper: true,
+            immutable: false,
+            running: vec!["plasmalogin".into()],
+            previous: None,
+            desktops: ids(desktops),
+            autologin_notes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn section_warns_about_installed_desktops() {
+        let _lang = i18n_pin::en();
+        let list = vec![
+            info("plasmalogin", "Plasma Login Manager", true),
+            info("gdm", "GDM", false),
+            info("ddm", "DDM", false),
+        ];
+        let view = login_screen_view(&list, &DmSwitchBackend::Systemd, &facts(&["kde", "gnome", "deepin"]));
+        // Основной — общей строкой раздела: GNOME без блокировки, Deepin не стартует.
+        assert_eq!(view.compat.len(), 2, "{:?}", view.compat);
+        assert!(view.compat[0].contains("GNOME can't lock the screen"), "{:?}", view.compat);
+        assert!(view.compat[1].contains("Deepin doesn't start"), "{:?}", view.compat);
+        let row = |u: &str| view.managers.iter().find(|m| m.unit == u).unwrap();
+        assert!(row("plasmalogin").warnings.is_empty(), "у основного — только общая строка");
+        // GDM: GNOME он чинит, Deepin и так сломан — добавляется только Plasma.
+        let gdm = row("gdm");
+        assert_eq!(gdm.warnings.len(), 1, "{:?}", gdm.warnings);
+        assert!(gdm.warnings[0].contains("KWallet"));
+        assert!(gdm.confirm.contains("KWallet"), "подтверждение говорит то же до пароля: {}", gdm.confirm);
+        // DDM: кнопка есть, нового вреда нет (GNOME уже без блокировки).
+        assert!(row("ddm").can_switch);
+        assert!(row("ddm").warnings.is_empty());
+        // Только Plasma — у основного и у DDM молчим, у GDM — KWallet.
+        let quiet = login_screen_view(&list, &DmSwitchBackend::Systemd, &facts(&["kde"]));
+        assert!(quiet.compat.is_empty());
+        let warns = |u: &str| quiet.managers.iter().find(|m| m.unit == u).unwrap().warnings.len();
+        assert_eq!((warns("plasmalogin"), warns("ddm"), warns("gdm")), (0, 0, 1));
     }
 }

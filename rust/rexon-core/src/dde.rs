@@ -254,7 +254,8 @@ pub fn treeland_message() -> String {
 /// одна фраза и путь перехода.
 pub fn not_treeland_message() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-    tr("Rexon supports Deepin only on Treeland. To switch, open Rexon → Desktops → Deepin → “Switch to Deepin on Treeland”, then log in with “Treeland User”.")
+    // Вход в Treeland — только через DDM (treeland#1656), см. `deepin_treeland`.
+    tr("Rexon supports Deepin only on Treeland. To switch, open Rexon → Desktops → Deepin → “Switch to Deepin on Treeland”, then make DDM the login screen and choose Treeland there.")
 }
 
 /// Почему Rexon этого в Deepin не меняет: в Treeland — его задаёт только

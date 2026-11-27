@@ -237,6 +237,14 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "heartbeatIntervalMs"]
         fn heartbeat_interval_ms(self: &WallpaperPlacement) -> i32;
+
+        /// Первый кадр обоев на экране (`what` — код вида: `video`, `web`):
+        /// строка замера в журнал и перестановка фона Cinnamon
+        /// ([`super::first_frame_shown`]). Звать из обработчика
+        /// `frameSwapped` окна, когда в кадре уже настоящее содержимое.
+        #[qinvokable]
+        #[cxx_name = "firstFrameShown"]
+        fn first_frame_shown(self: &WallpaperPlacement, what: &QString);
     }
 }
 
@@ -354,6 +362,17 @@ impl qobject::WallpaperPlacement {
 
     fn heartbeat_interval_ms(&self) -> i32 {
         rexon_core::renderer_watch::HEARTBEAT_INTERVAL_MS as i32
+    }
+
+    fn first_frame_shown(&self, what: &cxx_qt_lib::QString) {
+        // Из QML приходит код вида латиницей, в журнал — по-русски.
+        let what = what.to_string();
+        let label = match what.as_str() {
+            "video" => "видео",
+            "web" => "веб-страница",
+            other => other,
+        };
+        first_frame_shown(label);
     }
 
     unsafe fn mmap_center_rgb(&self, window: *mut qobject::QObject) -> f64 {
@@ -1141,6 +1160,238 @@ mod x11_desktop {
         // SAFETY: живое соединение.
         unsafe { (x.flush)(conn) };
         ok
+    }
+}
+
+/// Момент запуска процесса хоста — точка отсчёта замера первого кадра.
+static HOST_STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// Отметить запуск хоста. Звать первым делом в `main` хоста.
+pub fn mark_host_started() {
+    HOST_STARTED.get_or_init(std::time::Instant::now);
+}
+
+/// Первый кадр обоев на экране (у видео — кадр ролика, не чёрное окно):
+/// одна строка замера в журнал и, на Cinnamon с layer-shell, перестановка
+/// службы фона сейчас, а не по запасному сроку. Один раз на процесс: окна
+/// на других мониторах и пересборка окон повторно не меряются.
+pub fn first_frame_shown(what: &str) {
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let since_host = HOST_STARTED.get().map_or(0, |t| t.elapsed().as_millis() as u64);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    let env = std::env::var(rexon_core::wallpaper_engine::APPLY_STARTED_ENV).unwrap_or_default();
+    let since_apply = rexon_core::wallpaper_engine::since_apply_ms(&env, now_ms);
+    rexon_core::log_info!(
+        "wallpaper-host",
+        "{}",
+        rexon_core::wallpaper_engine::first_frame_log_line(what, since_apply, since_host)
+    );
+    cinnamon_layer::surface_shown(&format!("{what} слоем стола"));
+}
+
+/// Cinnamon с layer-shell (Muffin 6.8+): обои — поверхностью слоя фона, а
+/// служба фона оболочки должна лежать под ней. Решения —
+/// `rexon_core::wallpaper_backend` (раздел «Cinnamon с layer-shell»); здесь
+/// то, для чего нужен свой клиент Wayland: вопрос композитору и слежка за
+/// мониторами.
+pub mod cinnamon_layer {
+    use rexon_core::wallpaper_backend as wb;
+    use wayland_client::protocol::wl_registry;
+    use wayland_client::{Connection, Dispatch, QueueHandle};
+
+    /// Выяснить факт сеанса «Cinnamon с layer-shell» (глобалы композитора,
+    /// без ответа — служба фона) и запомнить его на процесс. Вне Cinnamon на
+    /// Wayland композитор не спрашиваем.
+    pub fn init_fact() -> bool {
+        if !wb::cinnamon_wayland_session_live() {
+            wb::set_cinnamon_layer_shell(false);
+            return false;
+        }
+        let facts = crate::screensaver_bridge::wayland_idle::probe();
+        wb::init_cinnamon_layer_shell_live(facts.as_ref().map(|f| f.globals.as_slice()))
+    }
+
+    /// Нашему окну поставлен слой фона (до показа): заказать перестановку
+    /// службы фона ЗАПАСНЫМ сроком ([`wb::BG_RESTACK_FALLBACK_MS`]) и
+    /// следить, чтобы так и оставалось (служба поднялась заново, подключили
+    /// монитор). Настоящий повод переставить — весть [`surface_shown`]: её
+    /// шлёт хост, когда первый кадр (у видео — кадр ролика) на экране; до
+    /// неё под службой фона нечего показывать, кроме чёрного окна. Вне
+    /// Cinnamon на Wayland — ничего.
+    pub fn surface_up(reason: &str) {
+        if !wb::cinnamon_wayland_session_live() {
+            return;
+        }
+        wb::restack_cinnamon_background_after(reason, wb::BG_RESTACK_FALLBACK_MS);
+        wb::spawn_cinnamon_bg_owner_watch_live();
+        spawn_output_watch();
+    }
+
+    /// Первый кадр нашей поверхности на экране: уложить службу фона под неё
+    /// сейчас, а не по запасному сроку. Вне Cinnamon на Wayland — ничего.
+    pub fn surface_shown(reason: &str) {
+        if !wb::cinnamon_layer_shell_fact() {
+            return;
+        }
+        wb::restack_cinnamon_background_shown(reason);
+    }
+
+    struct Outputs {
+        /// Первый обход реестра закончен: дальше каждый `wl_output` — новый.
+        ready: bool,
+    }
+
+    impl Dispatch<wl_registry::WlRegistry, ()> for Outputs {
+        fn event(
+            state: &mut Self,
+            _: &wl_registry::WlRegistry,
+            event: wl_registry::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+            if let wl_registry::Event::Global { interface, .. } = event {
+                if state.ready && interface == "wl_output" {
+                    // И у службы фона, и у нас на новом мониторе появится по
+                    // поверхности, кто позже — неизвестно: переставить.
+                    wb::restack_cinnamon_background_soon("подключён монитор");
+                }
+            }
+        }
+    }
+
+    /// Свой поток со своим подключением к композитору: новый `wl_output` —
+    /// перестановка фона. Один на процесс.
+    fn spawn_output_watch() {
+        static STARTED: std::sync::Once = std::sync::Once::new();
+        STARTED.call_once(|| {
+            let spawned = std::thread::Builder::new().name("rexon-output-watch".into()).spawn(|| {
+                let run = || -> Result<(), String> {
+                    let conn = Connection::connect_to_env().map_err(|e| e.to_string())?;
+                    let mut queue = conn.new_event_queue::<Outputs>();
+                    let _registry = conn.display().get_registry(&queue.handle(), ());
+                    let mut state = Outputs { ready: false };
+                    queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
+                    state.ready = true;
+                    loop {
+                        queue.blocking_dispatch(&mut state).map_err(|e| e.to_string())?;
+                    }
+                };
+                if let Err(e) = run() {
+                    rexon_core::log_warn!("cinnamon-bg", "слежка за мониторами оборвалась: {e}");
+                }
+            });
+            if let Err(e) = spawned {
+                rexon_core::log_warn!("cinnamon-bg", "слежка за мониторами не запущена: {e}");
+            }
+        });
+    }
+}
+
+/// Один хост показа обоев на сеанс: замок `flock` в `$XDG_RUNTIME_DIR`.
+/// Решения (какой файл, кто берёт замок, кому слать сигнал) — ядра
+/// (`rexon_core::wallpaper_engine`, раздел «Один хост обоев на сеанс»);
+/// здесь системные вызовы.
+pub mod session_lock {
+    use rexon_core::wallpaper_engine as wpe;
+    use std::io::{Read, Seek, Write};
+    use std::os::fd::AsRawFd;
+
+    /// Сколько ждать, пока прежний хост выйдет по SIGTERM, прежде чем SIGKILL.
+    const TERM_WAIT_MS: u64 = 3000;
+    /// Сколько ждать после SIGKILL.
+    const KILL_WAIT_MS: u64 = 1000;
+    const POLL_MS: u64 = 50;
+
+    fn try_lock(file: &std::fs::File) -> bool {
+        // SAFETY: живой дескриптор файла.
+        unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 }
+    }
+
+    fn wait_lock(file: &std::fs::File, ms: u64) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+        loop {
+            if try_lock(file) {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(POLL_MS));
+        }
+    }
+
+    /// PID держателя, если это наш хост и не мы сами.
+    fn holder(file: &mut std::fs::File) -> Option<i32> {
+        let mut text = String::new();
+        file.seek(std::io::SeekFrom::Start(0)).ok()?;
+        file.read_to_string(&mut text).ok()?;
+        let pid = wpe::parse_host_lock_pid(&text)?;
+        if pid as u32 == std::process::id() {
+            return None;
+        }
+        let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+        wpe::is_wallpaper_host_cmdline(&cmdline).then_some(pid)
+    }
+
+    /// Взять замок сеанса, сменив прежний хост, и держать до выхода
+    /// процесса. Не вышло — показ всё равно идёт (лучше два хоста, чем ни
+    /// одного), строка в журнал.
+    pub fn take(mode: wpe::HostMode, args: &[String]) {
+        if !wpe::host_takes_session_lock(mode, args) {
+            return;
+        }
+        let env = |n: &str| std::env::var(n).unwrap_or_default();
+        let Some(path) = wpe::host_session_lock_path(&env("XDG_RUNTIME_DIR"), &env("WAYLAND_DISPLAY"), &env("DISPLAY"))
+        else {
+            return;
+        };
+        // `File::options` открывает с O_CLOEXEC: помощники Chromium веб-режима
+        // замок не унаследуют и не продлят ему жизнь.
+        let mut file = match std::fs::File::options().read(true).write(true).create(true).truncate(false).open(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                rexon_core::log_warn!("wallpaper-host", "замок одного хоста обоев не открыт ({path}): {e}");
+                return;
+            }
+        };
+        if !try_lock(&file) {
+            match holder(&mut file) {
+                Some(pid) => {
+                    rexon_core::log_info!(
+                        "wallpaper-host",
+                        "в сеансе уже идёт хост обоев PID {pid} — сменяю его, двух показов разом не бывает"
+                    );
+                    // SAFETY: обычный сигнал процессу, строка запуска которого — наш хост.
+                    unsafe { libc::kill(pid, libc::SIGTERM) };
+                    if !wait_lock(&file, TERM_WAIT_MS) {
+                        // SAFETY: то же.
+                        unsafe { libc::kill(pid, libc::SIGKILL) };
+                        wait_lock(&file, KILL_WAIT_MS);
+                    }
+                }
+                // Держатель не наш хост (PID из файла устарел, а замок держит
+                // кто-то ещё) — недолго подождать.
+                None => {
+                    wait_lock(&file, KILL_WAIT_MS);
+                }
+            }
+        }
+        if !try_lock(&file) {
+            rexon_core::log_warn!("wallpaper-host", "замок одного хоста обоев не взят ({path}) — показываю без него");
+            return;
+        }
+        let _ = file.set_len(0);
+        let _ = file.seek(std::io::SeekFrom::Start(0));
+        let _ = write!(file, "{}", std::process::id());
+        let _ = file.flush();
+        // Замок живёт, пока открыт дескриптор: держим его до выхода процесса.
+        std::mem::forget(file);
     }
 }
 

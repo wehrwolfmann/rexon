@@ -1112,6 +1112,26 @@ pub fn live_detail(uuid: &str, token: &crate::net::CancelToken) -> Result<Extens
     Ok(e)
 }
 
+/// Адрес сведений о расширении по номеру со страницы сайта
+/// (`/extension/<pk>/…`): API v1 ищет только по uuid, а ссылки в чужом тексте
+/// несут номер.
+pub fn info_by_pk_url(pk: u64) -> String {
+    format!("{HOME_URL}/extension-info/?pk={pk}")
+}
+
+/// uuid из ответа `extension-info`.
+pub fn parse_info_uuid(body: &[u8]) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let uuid = v.get("uuid")?.as_str()?;
+    valid_uuid(uuid).then(|| uuid.to_string())
+}
+
+/// uuid расширения по номеру со страницы сайта.
+pub fn live_uuid_by_pk(pk: u64, token: &crate::net::CancelToken) -> Result<String, FetchError> {
+    let body = fetch_with(live_gate(), &info_by_pk_url(pk), false, &now_ms, &mut live_get(token))?;
+    parse_info_uuid(&body).ok_or_else(|| FetchError::Parse("EGO: нет uuid в extension-info".to_string()))
+}
+
 /// Выпуски из живого API.
 pub fn live_releases(uuid: &str, token: &crate::net::CancelToken) -> Result<Vec<Release>, FetchError> {
     let mut get = live_get(token);
@@ -1121,6 +1141,16 @@ pub fn live_releases(uuid: &str, token: &crate::net::CancelToken) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uuid_by_site_number() {
+        assert_eq!(info_by_pk_url(615), "https://extensions.gnome.org/extension-info/?pk=615");
+        // Ответ сайта (замер 16.11.2026), укорочен.
+        let body = br#"{"uuid": "appindicatorsupport@rgcjonas.gmail.com", "name": "AppIndicator", "pk": 615}"#;
+        assert_eq!(parse_info_uuid(body).as_deref(), Some("appindicatorsupport@rgcjonas.gmail.com"));
+        assert_eq!(parse_info_uuid(br#"{"uuid": "../x"}"#), None);
+        assert_eq!(parse_info_uuid(b"<html>"), None);
+    }
 
     fn v(raw: &str) -> ShellVersion {
         parse_shell_version(raw).expect(raw)

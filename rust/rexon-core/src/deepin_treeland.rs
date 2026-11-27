@@ -12,10 +12,20 @@
 //! рецепта Arch под своим именем [`LOCAL_PACKAGE`] — с `deepin-kwin` в
 //! необязательных зависимостях и без пункта X11 в экране входа — и ставит
 //! набор Deepin без `deepin-kwin`. Обычный Deepin (X11) Rexon не ставит ни
-//! при каких условиях. Вход — пункт «Treeland User»
-//! (`treeland-user.desktop`) в экране входа, который уже стоит (SDDM,
-//! Plasma Login Manager): свой экран входа Deepin (`ddm`) ставится, потому
-//! что без него не ставится `treeland`, но НЕ включается.
+//! при каких условиях. Свой экран входа Deepin (`ddm`) ставится, потому что
+//! без него не ставится `treeland`, но сам НЕ включается (менять экран
+//! входа молча нельзя: он общий для всех столов).
+//!
+//! ⚠️ ВХОД — ТОЛЬКО ЧЕРЕЗ DDM. Прежнее допущение «пункт „Treeland User“
+//! (`treeland-user.desktop`) работает под любым экраном входа (SDDM, Plasma
+//! Login Manager)» с Treeland 0.11 НЕВЕРНО: в режиме user Treeland создаёт
+//! сеанс человека только по сообщениям DDM или для сеанса службы `ddm`,
+//! а под чужим экраном входа виден голый фон без панели (dde-shell ждёт
+//! сокет, который не появляется; linuxdeepin/treeland#1656, 15.11.2026).
+//! Поэтому тексты ниже честно говорят: чтобы войти в Deepin, основным
+//! экраном входа должен стать DDM (раздел «Менеджер входа»,
+//! [`crate::system_plan::DESKTOP_DM_RULES`]); там же предупреждение, если
+//! Deepin стоит, а экран входа другой.
 //!
 //! УЖЕ СТОИТ ОБЫЧНЫЙ DEEPIN (`deepin-session` из репозитория). Rexon его
 //! сам не удаляет и «Починить» его не переустанавливает (отказ до пароля,
@@ -488,6 +498,7 @@ pub fn install_warning_title() -> String {
 
 /// Честное предупреждение в вопросе перед установкой.
 pub fn install_warning() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Deepin is installed on Treeland, its own Wayland session.\n\n\
         • This is experimental: Treeland is still unstable, some Deepin settings and applets \
         may not work, and the session may crash.\n\
@@ -498,8 +509,10 @@ pub fn install_warning() -> String {
         deepin-session-treeland.\n\
         • System updates don't touch this build. When Arch releases a new deepin-session, \
         the update log and the Deepin card in Rexon say so, and the build is redone with one button.\n\
-        • Deepin's own login screen (ddm) is installed because Treeland needs it, but it isn't \
-        turned on: you keep your login screen. To log in, choose “Treeland User” there.\n\n\
+        • Deepin's own login screen (DDM) is installed because Treeland needs it, but it isn't \
+        turned on: you keep your login screen. Deepin starts only from DDM — under another login \
+        screen the “Treeland User” entry shows just the wallpaper, without the panel. To use Deepin, \
+        make DDM the default in Appearance → Login Screen → Login manager and restart.\n\n\
         The password is asked once. If the build takes longer than a few minutes, it may be asked \
         once more before installing. Removing Deepin later removes all of it.")
 }
@@ -513,8 +526,8 @@ pub fn install_button() -> String {
 pub fn install_hint() -> String {
     tr("This is the usual Deepin with the X11 session. Rexon supports Deepin only on Treeland, \
         its Wayland session: Rexon builds its own deepin-session without deepin-kwin, puts it in place \
-        of the installed one and removes the X11 session. Treeland is unstable. To log in, \
-        choose “Treeland User” on the login screen.")
+        of the installed one and removes the X11 session. Treeland is unstable. Deepin on Treeland \
+        starts only from its own login screen, DDM.")
 }
 
 /// Заголовок окна перехода.
@@ -524,6 +537,7 @@ pub fn install_title() -> String {
 
 /// Вопрос перед переходом.
 pub fn install_confirm_text() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("The usual Deepin will be moved to Treeland, its own Wayland session.\n\n\
         • This is experimental: Treeland is still unstable, some Deepin settings and applets \
         may not work, and the session may crash.\n\
@@ -534,14 +548,20 @@ pub fn install_confirm_text() -> String {
         as deepin-session-treeland. The rest of Deepin and your settings stay.\n\
         • System updates don't touch this build. When Arch releases a new deepin-session, \
         the update log and the Deepin card in Rexon say so, and the build is redone with one button.\n\
-        • To log in, choose “Treeland User” on the login screen.\n\n\
+        • Deepin on Treeland starts only from its own login screen, DDM: under another one the \
+        “Treeland User” entry shows just the wallpaper. To use Deepin, make DDM the default in \
+        Appearance → Login Screen → Login manager and restart.\n\n\
         The password is asked once. If the build takes longer than a few minutes, it may be asked \
         once more before installing.")
 }
 
-/// Приписка к итогу удачной установки: как войти.
+/// Приписка к итогу удачной установки: как войти. Под чужим экраном входа
+/// Treeland 0.11 сеанса не поднимает (treeland#1656) — сказать честно, а не
+/// оставить человека перед голым фоном.
 pub fn install_result_text() -> String {
-    tr("To try Deepin, log out and choose “Treeland User” on the login screen.")
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+    tr("Deepin starts only from its own login screen, DDM. To try it, make DDM the default in \
+        Appearance → Login Screen → Login manager, restart and choose Treeland there.")
 }
 
 /// Кнопка на карточке, когда своя сборка отстала от репозитория.
@@ -839,6 +859,12 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert!(allowed);
         assert!(title.contains("experimental"), "{title}");
         assert!(text.contains("no X11 session") && text.contains("Treeland User"), "{text}");
+        // Treeland 0.11 без DDM сеанса не поднимает (treeland#1656): тексты
+        // не обещают вход «из любого экрана входа», а ведут к DDM.
+        assert!(text.contains("starts only from DDM") && text.contains("Login manager"), "{text}");
+        for t in [install_confirm_text(), install_hint(), install_result_text()] {
+            assert!(t.contains("DDM") && !t.contains("choose “Treeland User”"), "{t}");
+        }
         let ordinary = Machine { ordinary: true, ..FRESH };
         let (allowed, title, _) = install_verdict(PkgFamily::Arch, &machine(ordinary, &seen)).unwrap();
         assert!(!allowed);

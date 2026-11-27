@@ -285,7 +285,15 @@ impl qobject::WallpaperLayer {
     }
 
     unsafe fn apply_wallpaper_layer(&self, window: *mut qobject::QObject) -> bool {
-        unsafe { apply_spec(window, &LayerSpec::WALLPAPER, &self.scope) }
+        let ok = unsafe { apply_spec(window, &LayerSpec::WALLPAPER, &self.scope) };
+        if ok {
+            // Cinnamon с layer-shell: служба фона оболочки старше нашего
+            // окна и закрыла бы его — уложить её под нас. Здесь только
+            // запасной заказ; сразу — по вести «первый кадр на экране»
+            // (`wallpaper_host::first_frame_shown`).
+            crate::wallpaper_host::cinnamon_layer::surface_up("окно обоев слоем стола");
+        }
+        ok
     }
 
     unsafe fn apply(&self, window: *mut qobject::QObject) -> bool {

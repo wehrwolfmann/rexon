@@ -383,8 +383,17 @@ pub fn helper_env(req: &ShotRequest, work: &Path) -> HelperEnv {
             set(&mut env, "QT_SCALE_FACTOR", "1");
             // Платформенная тема (KDE, qt6ct) и стиль процесса подменили бы
             // палитру и шрифт формы: образец — стиль с палитрой схемы и
-            // больше ничего.
-            for k in ["QT_QPA_PLATFORMTHEME", "QT_STYLE_OVERRIDE", "QT_SCREEN_SCALE_FACTORS", "QT_AUTO_SCREEN_SCALE_FACTOR"] {
+            // больше ничего. Метод ввода снимку не нужен, а IBus сеанса
+            // способен задержать его до таймаута (см.
+            // `kdecoration::SHOT_ENV_REMOVE`).
+            for k in [
+                "QT_QPA_PLATFORMTHEME",
+                "QT_STYLE_OVERRIDE",
+                "QT_SCREEN_SCALE_FACTORS",
+                "QT_AUTO_SCREEN_SCALE_FACTOR",
+                "QT_IM_MODULE",
+                "QT_IM_MODULES",
+            ] {
                 env.remove.push(k.to_string());
             }
             if let Some((name, dir)) = kvantum {

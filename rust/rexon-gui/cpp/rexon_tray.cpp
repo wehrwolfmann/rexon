@@ -16,6 +16,8 @@
 #include <QtGui/QIcon>
 #include <QtGui/QColor>
 #include <QtGui/QWindow>
+#include <QtGui/QImage>
+#include <QtQuick/QQuickWindow>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMainWindow>
@@ -667,4 +669,16 @@ int32_t rexon_tray_daemon_prop(const char *name, char *buf, int32_t buf_len)
     memcpy(buf, utf8.constData(), utf8.size());
     buf[utf8.size()] = '\0';
     return utf8.size();
+}
+
+bool rexon_tray_grab_window(const char *path)
+{
+    // `grabToImage` из QML здесь не годится: корневой элемент окна не
+    // принадлежит движку QML, и снять окно целиком (полоса разделов, меню)
+    // можно только у самого QQuickWindow.
+    auto *window = qobject_cast<QQuickWindow *>(find_main_qwindow());
+    if (window == nullptr || path == nullptr)
+        return false;
+    const QImage image = window->grabWindow();
+    return !image.isNull() && image.save(QString::fromUtf8(path), "PNG");
 }

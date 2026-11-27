@@ -937,7 +937,13 @@ pub fn apply_background_with<S: WpSys>(
     name: &str,
 ) -> (bool, String) {
     let res = exec.apply_with_audio(path, apply_format(path), name, audio);
-    (res.ok, res.message)
+    // Предупреждение исполнителя — следом за сообщением, как было до того,
+    // как его вынесли в своё поле.
+    let message = match res.warning {
+        Some(warning) if res.ok => format!("{} {warning}", res.message).trim().to_string(),
+        _ => res.message,
+    };
+    (res.ok, message)
 }
 
 // ============================================================================

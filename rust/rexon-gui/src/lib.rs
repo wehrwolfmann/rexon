@@ -366,6 +366,11 @@ fn qt_translations_dir() -> String {
     }
 }
 
+/// Журнал действий человека (синглтон `ActionJournal`) и пульс окна для
+/// сторожа главного потока (`rexon_core::ui_watch`).
+pub mod action_journal;
+/// Ссылки из чужого текста: карточка, вопрос, доверенные сайты (синглтон `LinkGuard`).
+pub mod link_guard;
 /// Объект побочных действий вкладки «Оформление»: магазин, обзор диска,
 /// картинки, установка, применение и удаление тем. До него страница
 /// получала `actions` только от Python.
@@ -472,6 +477,7 @@ pub mod tray;
 /// только шим `cpp/rexon_screensaver_bridge.cpp` в `.cpp_files()`.
 pub mod screensaver_bridge;
 pub mod we_env;
+pub mod we_stop_selftest;
 pub mod we_transport;
 pub mod we_action;
 pub mod we_actions;

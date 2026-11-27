@@ -8,6 +8,9 @@
 #   scripts/i18n-update.sh --new pl     — завести po/pl.po и вписать pl в LINGUAS
 #   scripts/i18n-update.sh --build DIR  — собрать DIR/<код>/LC_MESSAGES/rexon.mo
 #                                         для всех языков из LINGUAS
+#   scripts/i18n-update.sh --verify DIR — код 1, если DIR/<код>/LC_MESSAGES/
+#                                         rexon.mo нет или он собран не из
+#                                         нынешнего po/<код>.po (устарел)
 #
 # Один .po на язык — один .mo, и он обслуживает ОБЕ стороны: Rust читает его
 # модулем `rexon_core::i18n`, а QML получает строки из того же .mo через
@@ -164,11 +167,39 @@ cmd_build() {
   done
 }
 
+# Сторож устаревших каталогов: пакет 15.11.2026 увёз .mo прошлой сборки
+# (build.rs клал свежие не туда, а cp взял старые), и подсказки, чьи msgid
+# сменились, показывались по-английски. Сравниваем не байты, а текст
+# каталога (msgunfmt) — он не зависит от версии msgfmt, собравшей .mo.
+cmd_verify() {
+  local dir="$1" lang bad=0
+  need msgfmt "пакет gettext"
+  need msgunfmt "пакет gettext"
+  for lang in $(languages); do
+    local po="$PO/$lang.po" mo="$dir/$lang/LC_MESSAGES/$DOMAIN.mo"
+    if [[ ! -f "$mo" ]]; then
+      echo "i18n-update: нет $mo" >&2; bad=1; continue
+    fi
+    msgfmt -o "$WORK/$lang.mo" "$po"
+    msgunfmt "$WORK/$lang.mo" >"$WORK/$lang.want"
+    msgunfmt "$mo" >"$WORK/$lang.have"
+    if ! cmp -s "$WORK/$lang.want" "$WORK/$lang.have"; then
+      local n
+      n=$(diff "$WORK/$lang.want" "$WORK/$lang.have" | grep -c '^[<>] msgid ' || true)
+      echo "i18n-update: $mo устарел — собран не из нынешнего po/$lang.po" \
+        "(расходится msgid: $n; пересоберите: --build $dir)" >&2
+      bad=1
+    fi
+  done
+  return "$bad"
+}
+
 case "${1:-}" in
   "") cmd_update ;;
   --check) cmd_check ;;
   --new) [[ -n "${2:-}" ]] || { echo "укажите код языка: --new pl" >&2; exit 2; }; cmd_new "$2" ;;
   --build) [[ -n "${2:-}" ]] || { echo "укажите каталог: --build DIR" >&2; exit 2; }; cmd_build "$2" ;;
-  -h|--help) sed -n '2,20p' "$0" ;;
+  --verify) [[ -n "${2:-}" ]] || { echo "укажите каталог: --verify DIR" >&2; exit 2; }; cmd_verify "$2" ;;
+  -h|--help) sed -n '2,23p' "$0" ;;
   *) echo "неизвестный ключ: $1 (см. --help)" >&2; exit 2 ;;
 esac

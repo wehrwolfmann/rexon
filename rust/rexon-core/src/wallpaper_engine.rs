@@ -429,7 +429,90 @@ pub fn wallpaper_set_message() -> String {
     tr("Wallpaper set")
 }
 
+// ── Cinnamon: список картинок стола (Cinnamon 6.8+) ────────────────────────
+//
+// С Cinnamon 6.8 фон рисует служба `cinnamon-background-daemon`, и картинку
+// она берёт из ключа `picture-uri-list` (`aa{sv}`: по словарю на монитор, в
+// режиме `background-mode = 'mirror'` — одна запись на все). Прежний
+// `picture-uri` оболочка теперь только перехватывает (через 10 с после
+// старта): переносит в список с `picture-options = 'zoom'` и сразу
+// очищает — поэтому писать его на 6.8 нельзя (сбил бы режим подгонки), а
+// читать бесполезно (там пусто). Старый Cinnamon списка не знает — ему
+// по-прежнему `picture-uri`. Какой ключ писать, решает сам сценарий по
+// схеме (`gsettings list-keys`), номер версии не смотрим.
+
+/// Схема фона Cinnamon.
+pub const CINNAMON_BG_SCHEMA: &str = "org.cinnamon.desktop.background";
+/// Ключ списка картинок (Cinnamon 6.8+).
+pub const CINNAMON_BG_LIST_KEY: &str = "picture-uri-list";
+/// Ключ режима списка (`mirror` / `independent`).
+pub const CINNAMON_BG_MODE_KEY: &str = "background-mode";
+
+/// Строка GVariant в одинарных кавычках (`'…'`, внутри экранируются `\` и `'`).
+pub fn gvariant_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
+}
+
+/// Сценарий статичной картинки Cinnamon: на 6.8+ — одна запись списка
+/// `picture-uri-list` (подгонка и цвета — из прежних ключей, как у самой
+/// оболочки при «Сделать обоями»), режим `mirror`; на старом — `picture-uri`.
+/// Картинка приходит аргументами (`$1` — строка GVariant, `$2` — URI), а не
+/// вклеивается в текст сценария: `$`, кавычки и `\\` в имени файла оболочка
+/// так не трогает. Строка запуска — [`cinnamon_static_argv`].
+pub const CINNAMON_STATIC_SCRIPT: &str = "s=org.cinnamon.desktop.background
+if gsettings list-keys \"$s\" 2>/dev/null | grep -qx picture-uri-list; then
+o=$(gsettings get \"$s\" picture-options) || o=\"'zoom'\"
+c=$(gsettings get \"$s\" color-shading-type) || c=\"'solid'\"
+p=$(gsettings get \"$s\" primary-color) || p=\"'#000000'\"
+q=$(gsettings get \"$s\" secondary-color) || q=\"'#000000'\"
+gsettings set \"$s\" picture-uri-list \"[{'picture-uri': <$1>, 'picture-options': <$o>, 'color-shading-type': <$c>, 'primary-color': <$p>, 'secondary-color': <$q>}]\" && gsettings set \"$s\" background-mode mirror
+else
+gsettings set \"$s\" picture-uri \"$2\"
+fi
+";
+
+/// Строка запуска [`CINNAMON_STATIC_SCRIPT`] для картинки `path`.
+pub fn cinnamon_static_argv(path: &str) -> Vec<String> {
+    let uri = format!("file://{path}");
+    vec![
+        "sh".to_string(),
+        "-c".to_string(),
+        CINNAMON_STATIC_SCRIPT.to_string(),
+        "sh".to_string(),
+        gvariant_quote(&uri),
+        uri,
+    ]
+}
+
+fn cinnamon_static_step(path: &str) -> Step {
+    Step::new(step_kind::RUN, "gsettings", cinnamon_static_argv(path))
+        .ok(wallpaper_set_message())
+        .err(tr("gsettings error"))
+        .terminal()
+}
+
+/// Первая картинка из значения `picture-uri-list` (вывод `gsettings get`)
+/// — путь без `file://`. `None` — список пуст или не разобран.
+pub fn cinnamon_list_first_path(list: &str) -> Option<String> {
+    let at = list.find("'picture-uri': <'")? + "'picture-uri': <'".len();
+    let rest = &list[at..];
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' => out.push(chars.next()?),
+            '\'' => break,
+            c => out.push(c),
+        }
+    }
+    let path = out.strip_prefix("file://").unwrap_or(&out).to_string();
+    (!path.is_empty()).then_some(path)
+}
+
 fn gsettings_step(path: &str, schema: &str, key: &str) -> Step {
+    if schema == CINNAMON_BG_SCHEMA {
+        return cinnamon_static_step(path);
+    }
     // GNOME ждёт file:// URI, MATE — обычный путь.
     let value = if key.contains("picture-uri") {
         format!("file://{path}")
@@ -449,7 +532,54 @@ fn gsettings_step(path: &str, schema: &str, key: &str) -> Step {
         step.post
             .push(argv(&["gsettings", "set", schema, "picture-uri-dark", &value]));
     }
+    // MATE: экран блокировки — вслед за обоями, если на нём ещё штатные
+    // «полоски».
+    if schema == "org.mate.background" {
+        step.post.push(mate_lock_follows_desktop_argv());
+    }
     step
+}
+
+// ── MATE: картинка экрана блокировки ──────────────────────────────────────
+//
+// mate-screensaver рисует под окном пароля картинку
+// `org.mate.screensaver picture-filename`, а её умолчание — штатные
+// «полоски» (`…/backgrounds/mate/desktop/Stripes.png`): сменил обои — на
+// блокировке всё равно полоски. Если файла по ключу нет (пустая строка в том
+// числе), mate-screensaver берёт обои стола со всеми их настройками
+// (`gs-manager.c`: `mate_bg_load_from_preferences`, затем
+// `mate_bg_set_filename` только при `g_file_test(…, EXISTS)`). Поэтому
+// пустое значение — «как обои стола», и оно следует и за сменой обоев в
+// самом MATE, не только в Rexon. Свою картинку, выбранную человеком, не
+// трогаем: правится только штатное умолчание.
+
+/// Схема картинки экрана блокировки MATE.
+pub const MATE_SCREENSAVER_SCHEMA: &str = "org.mate.screensaver";
+
+/// Хвост пути штатной картинки блокировки MATE (у разных дистрибутивов
+/// разный префикс).
+pub const MATE_STOCK_LOCK_PICTURE: &str = "/backgrounds/mate/desktop/Stripes.png";
+
+/// Стоит ли на блокировке MATE штатная картинка — по выводу
+/// `gsettings get org.mate.screensaver picture-filename`.
+pub fn mate_lock_picture_is_stock(gsettings_out: &str) -> bool {
+    gsettings_path_value(gsettings_out).ends_with(MATE_STOCK_LOCK_PICTURE)
+}
+
+/// Команда «блокировка — как обои стола, если там штатная картинка»: одна,
+/// без чтения назад в Rust, потому что идёт хвостом шага обоев.
+pub fn mate_lock_follows_desktop_argv() -> Vec<String> {
+    let script = format!(
+        "v=$(gsettings get {MATE_SCREENSAVER_SCHEMA} picture-filename) || exit 0\n\
+         case \"$v\" in *'{MATE_STOCK_LOCK_PICTURE}'\\') gsettings set {MATE_SCREENSAVER_SCHEMA} picture-filename '' ;; esac\n"
+    );
+    argv(&["sh", "-c", &script])
+}
+
+/// Команда «блокировка — как обои стола» без условия (его проверяет
+/// вызывающий по [`mate_lock_picture_is_stock`]).
+pub fn mate_lock_as_desktop_set_argv() -> Vec<String> {
+    argv(&["gsettings", "set", MATE_SCREENSAVER_SCHEMA, "picture-filename", ""])
 }
 
 /// Тип сеанса для [`static_plan`] у Deepin в сеансе Treeland (его задаёт
@@ -1090,13 +1220,186 @@ pub fn shell_ext_de_label(de: &str) -> &str {
     }
 }
 
+/// Оболочка рода Mutter (GNOME, Cinnamon) на Wayland — там, где у неё есть
+/// наше расширение. Сам по себе не отвечает, нужен ли путь через
+/// расширение: у Cinnamon с layer-shell он не нужен
+/// ([`needs_shell_extension`]). Отдельно — для заставки простоя
+/// (`idle_screensaver`): её показ через расширение от layer-shell обоев не
+/// зависит.
+pub fn mutter_family_wayland(de: &str, session_type: &str) -> bool {
+    session_type == "wayland" && shell_ext_schema(de).is_some()
+}
+
 /// Нужен ли путь через расширение оболочки вместо своего окна.
 ///
-/// Только Wayland: Mutter и Muffin не умеют wlr-layer-shell, окном обои туда
-/// не положить. На X11 у обоих окружений работает обычное окно с
-/// `_NET_WM_WINDOW_TYPE_DESKTOP`.
+/// Только Wayland: Mutter не умеет wlr-layer-shell, окном обои туда не
+/// положить; Muffin умеет с Cinnamon 6.8 — тогда обои идут слоем, как на
+/// wlr-композиторах (факт сеанса —
+/// [`crate::wallpaper_backend::cinnamon_layer_shell_fact`], его выставляет
+/// живой процесс; не выставлен — расширение, как прежде). На X11 у обоих
+/// окружений работает обычное окно с `_NET_WM_WINDOW_TYPE_DESKTOP`.
 pub fn needs_shell_extension(de: &str, session_type: &str) -> bool {
-    session_type == "wayland" && shell_ext_schema(de).is_some()
+    needs_shell_extension_with(de, session_type, crate::wallpaper_backend::cinnamon_layer_shell_fact())
+}
+
+/// [`needs_shell_extension`] с явным фактом «Cinnamon с layer-shell».
+pub fn needs_shell_extension_with(de: &str, session_type: &str, cinnamon_layer_shell: bool) -> bool {
+    mutter_family_wayland(de, session_type) && !(cinnamon_layer_shell && matches!(de, "cinnamon" | "cinnamon-mint"))
+}
+
+/// Когда ставить подложку относительно показа живых обоев.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackdropTiming {
+    /// До показа, как прежде: картинку стола здесь держит отдельная
+    /// поверхность слоя фона, и поставленная ПОЗЖЕ легла бы над нашей.
+    BeforeShow,
+    /// После показа, в фоне: смена картинки стола нашу поверхность не
+    /// перекрывает, и видео не ждёт ffmpeg и записи настроек (замер
+    /// 15.11.2026: ~1,5 с до первого кадра).
+    AfterShow,
+}
+
+/// Когда ставить подложку на этом столе — разбор по путям вывода обоев.
+///
+/// * **X11** (MATE, XFCE, Cinnamon-X11, Budgie, GNOME-X11, LXQt, feh) —
+///   после. Наше окно `_NET_WM_WINDOW_TYPE_DESKTOP` уже лежит над окном
+///   стола; смена картинки перерисовывает то же окно стола (Caja, xfdesktop,
+///   pcmanfm-qt) либо фон оболочки/корневого окна под всеми окнами — новых
+///   окон не появляется, порядок не меняется. У Caja со сквозным фоном
+///   картинку окно стола не рисует вовсе.
+/// * **GNOME и Cinnamon-Wayland до 6.8** (расширение оболочки) — после.
+///   GNOME Shell на смену `picture-uri` заводит новый `Meta.BackgroundActor`
+///   и кладёт его В САМЫЙ НИЗ группы фона (`background.js`,
+///   `set_child_below_sibling(actor, null)`; сверено по GNOME Shell 51), наш
+///   актёр стоит над ним. У Cinnamon наш актёр — дочерний у окна фона
+///   (над его содержимым), а новое окно фона расширение подхватывает само.
+/// * **Cinnamon 6.8 с layer-shell** — после. Картинку рисует служба фона
+///   поверхностью того же слоя, но Muffin кладёт поверхность, созданную
+///   ПОЗЖЕ, НИЖЕ прежних, а саму службу Rexon перезапускает под наши обои
+///   (`wallpaper_backend::restack_cinnamon_background`) — смена картинки
+///   видео не закрывает. Без подложки экран блокировки Cinnamon (он берёт
+///   картинку из `picture-uri-list`) показывал прежнюю, устаревшую картинку
+///   (живая проверка 16.11.2026). До показа — нельзя: до перестановки
+///   поверхность службы лежит над нашей, и человек видел бы кадр вместо
+///   видео.
+/// * **KDE Plasma** (окно слоя) — после: `plasma-apply-wallpaperimage` и
+///   скрипт Plasma меняют картинку в уже открытом окне стола, новой
+///   поверхности нет.
+/// * **Deepin/Treeland** (окно слоя) — после: картинку принимает Центр
+///   управления, а рисует сам композитор своим фоном под слоями оболочки;
+///   шаг Центра бывает долгим (до 70 с), и видео его больше не ждёт.
+/// * **Прочий Wayland** (sway, Hyprland, niri, river, labwc, COSMIC и
+///   нераспознанный) — ДО показа. Картинку там держит отдельная программа
+///   поверхностью того же слоя фона: swaybg/wbg поднимаются заново, `swww`
+///   может поднять демон, sway перезапускает свой swaybg, cosmic-bg
+///   перечитывает ключ. Поверхность, созданная позже нашей, на
+///   wlroots-композиторах ложится выше — подложка закрыла бы видео.
+pub fn backdrop_timing(de: &str, session_type: &str) -> BackdropTiming {
+    if session_type != "wayland"
+        || mutter_family_wayland(de, session_type)
+        || uses_plasma_config(de)
+        || de == "deepin"
+    {
+        return BackdropTiming::AfterShow;
+    }
+    BackdropTiming::BeforeShow
+}
+
+/// Секунда ролика для кадра подложки: с 3-й — мимо заставок; ролик короче —
+/// с начала ([`BACKDROP_FALLBACK_SEC`]).
+pub const BACKDROP_FRAME_SEC: f64 = 3.0;
+/// Запасная секунда кадра подложки.
+pub const BACKDROP_FALLBACK_SEC: f64 = 0.0;
+
+/// Ключ кеша неподвижного кадра ролика: путь, размер и время правки файла
+/// (содержимое многогигабайтного ролика не читается — как у
+/// [`faststart_key`]) плюс размер экрана, под который кадр масштабирован.
+pub fn video_still_key(path: &str, size: u64, mtime: i64, screen: Option<(u64, u64)>) -> String {
+    let screen = screen.map(|(w, h)| format!("{w}x{h}")).unwrap_or_else(|| "native".to_string());
+    let digest = sha1_hex(format!("{path}:{size}:{mtime}:{screen}").as_bytes());
+    digest[..16].to_string()
+}
+
+/// Где лежит неподвижный кадр ролика: `<кеш>/rexon/video-stills/<ключ>.jpg`.
+/// Один кеш на подложку под живыми обоями и на кадр вместо падающих обоев.
+pub fn video_still_path(cache_home: &str, key: &str) -> String {
+    format!("{}/rexon/video-stills/{key}.jpg", cache_home.trim_end_matches('/'))
+}
+
+/// Размер экрана для кадра подложки: самый большой выход (на нём кадр
+/// растягивается сильнее всего); на меньших стол уменьшит сам.
+pub fn still_screen_size(sizes: &[(u64, u64)]) -> Option<(u64, u64)> {
+    sizes.iter().copied().max_by_key(|(w, h)| w * h)
+}
+
+/// ffmpeg: чёткий кадр ролика в секунде `timestamp`, масштабированный так,
+/// чтобы ЗАКРЫТЬ экран `screen` (Ланцош, пропорции сохраняются — обрежет
+/// стол своим «заполнить»); `None` — в родном размере ролика. JPEG
+/// наивысшего качества `-q:v 2`: PNG кадра 4K весит десятки мегабайт.
+pub fn video_still_argv(path: &str, output: &str, timestamp: f64, screen: Option<(u64, u64)>) -> Vec<String> {
+    let mut cmd = vec![
+        FFMPEG_BIN.to_string(),
+        "-v".into(),
+        "error".into(),
+        "-y".into(),
+        "-ss".into(),
+        format_float(timestamp),
+        "-i".into(),
+        path.to_string(),
+        "-frames:v".into(),
+        "1".into(),
+    ];
+    if let Some((w, h)) = screen {
+        cmd.push("-vf".into());
+        cmd.push(format!("scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos"));
+    }
+    cmd.extend(["-q:v".to_string(), "2".to_string(), output.to_string()]);
+    cmd
+}
+
+/// Строка журнала: подложка встала через `ms` после запуска видео.
+pub fn backdrop_ready_log_line(ms: u64) -> String {
+    format!("подложка готова через {ms} мс после видео")
+}
+
+/// Предел кеша кадров `rexon/video-stills`: не больше стольких кадров…
+pub const VIDEO_STILLS_MAX_FILES: usize = 24;
+/// …и не больше стольких байт вместе (кадр 4K в JPEG `-q:v 2` — 2–4 МБ).
+pub const VIDEO_STILLS_MAX_BYTES: u64 = 96 * 1024 * 1024;
+
+/// Что удалить из кеша кадров, чтобы уложиться в предел
+/// ([`VIDEO_STILLS_MAX_FILES`], [`VIDEO_STILLS_MAX_BYTES`]). Вход —
+/// `(путь, mtime, байты)`; старейшие по mtime уходят первыми (взятый из
+/// кеша кадр освежается — выходит «давно не нужные»). `keep` — кадр,
+/// который сейчас ставится, не удаляется никогда. Недописанные `*.part.jpg`
+/// старше остальных не ждут: удаляются всегда, кроме `keep`.
+pub fn video_still_evictions(files: &[(String, i64, u64)], keep: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut live: Vec<&(String, i64, u64)> = Vec::new();
+    for f in files {
+        if f.0 == keep {
+            continue;
+        }
+        if f.0.ends_with(".part.jpg") {
+            out.push(f.0.clone());
+        } else {
+            live.push(f);
+        }
+    }
+    let keep_bytes = files.iter().find(|f| f.0 == keep).map(|f| f.2).unwrap_or(0);
+    let keep_count = usize::from(files.iter().any(|f| f.0 == keep));
+    live.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    let mut count = live.len() + keep_count;
+    let mut bytes: u64 = live.iter().map(|f| f.2).sum::<u64>() + keep_bytes;
+    for f in live {
+        if count <= VIDEO_STILLS_MAX_FILES && bytes <= VIDEO_STILLS_MAX_BYTES {
+            break;
+        }
+        out.push(f.0.clone());
+        count -= 1;
+        bytes = bytes.saturating_sub(f.2);
+    }
+    out
 }
 
 // ── кто владелец слоя обоев ────────────────────────────────────────────────
@@ -1290,18 +1593,50 @@ pub fn parse_shell_ext_state(de: &str, out: Option<&str>) -> ShellExtState {
     }
 }
 
+/// Команда «включить наше расширение» для выключенного: GNOME —
+/// `gnome-extensions enable`; Cinnamon — список `enabled-extensions` с нашим
+/// uuid в конце, чужие uuid сохраняются (оболочка включает расширение на
+/// лету, без перезахода). `list_out` — вывод [`shell_ext_state_argv`] у
+/// Cinnamon (нынешний список), у GNOME не нужен. Уже включённое — `None`.
+pub fn shell_ext_enable_argv(de: &str, list_out: Option<&str>) -> Option<Vec<String>> {
+    if de == "gnome" {
+        return Some(argv(&["gnome-extensions", "enable", SHELL_EXT_ID]));
+    }
+    shell_ext_schema(de)?;
+    let mut list: Vec<String> = list_out
+        .unwrap_or_default()
+        .split('\'')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect();
+    if list.iter().any(|u| u == SHELL_EXT_ID) {
+        return None;
+    }
+    list.push(SHELL_EXT_ID.to_string());
+    Some(vec![
+        "gsettings".to_string(),
+        "set".to_string(),
+        "org.cinnamon".to_string(),
+        "enabled-extensions".to_string(),
+        gvariant_string_array(&list),
+    ])
+}
+
 /// Что сказать человеку, когда обои отданы расширению, а оно не работает.
 ///
 /// `None` — расширение работает, говорить нечего. Иначе — удалась ли
-/// передача и текст. Выключено, не загружено или не ответило — обои
-/// переданы и появятся, как только расширение заработает (удача с
-/// честным текстом); ошибка и не та версия — само расширение не
-/// поправится, обоев не будет (отказ). Выключенному — текст плана
-/// (`disabled`), он общий с прежней проверкой.
+/// передача и текст. Не загружено или не ответило — обои переданы и
+/// появятся, как только расширение заработает (удача с честным текстом);
+/// выключено (включить сам Rexon не смог), ошибка и не та версия — обоев
+/// на столе нет (отказ: зелёной галочки при пустом столе быть не должно,
+/// правило #13). Выключенному — текст плана (`disabled`).
 pub fn shell_ext_state_message(state: ShellExtState, disabled: &str) -> Option<(bool, String)> {
     match state {
         ShellExtState::Enabled => None,
-        ShellExtState::Disabled => Some((true, disabled.to_string())),
+        // Выключенное Rexon включает сам (`shell_ext_enable_argv`); сюда
+        // доходит, только если включить не вышло, — обоев на столе нет.
+        ShellExtState::Disabled => Some((false, disabled.to_string())),
         ShellExtState::Error => Some((
             false,
             tr("The wallpaper was handed to the Rexon shell extension, but GNOME Shell \
@@ -1452,9 +1787,11 @@ fn shell_ext_plan_for(
              know how to start the wallpaper. Reinstall it in “%1” and try again.",
             &[&shell_ext_place(de)],
         ),
-        disabled_message: tr(
-            "The wallpaper was handed to the shell extension, but the extension itself \
-             is turned off — turn on “Rexon Wallpaper Engine” in the extension list.",
+        disabled_message: trf(
+            // TRANSLATORS: %1 is the place in Rexon, e.g. “Appearance → Cinnamon Extensions”.
+            "The wallpaper wasn't shown: the Rexon shell extension is turned off and Rexon \
+             couldn't turn it on. Turn on “Rexon Wallpaper Engine” in “%1” and try again.",
+            &[&shell_ext_place(de)],
         ),
         ok_message,
     })
@@ -1603,6 +1940,255 @@ pub mod host_exit {
     pub const SWF_MOVIE_FAILED: i32 = 8;
 }
 
+// ── Один хост обоев на сеанс ────────────────────────────────────────────
+//
+// Живьём 15.11.2026 (Cinnamon 6.8 Wayland): рядом шли ДВА хоста видео —
+// наш слоем стола и второй, поднятый оставшейся от прежней версии копией
+// расширения оболочки по старым ключам. Кадры декодировались дважды, а
+// виден был один. Хост показа (видео, веб, Flash) один на весь сеанс: окон
+// у него по числу мониторов, так что «один на сеанс» — это и «один на
+// монитор». Новый хост ЗАМЕНЯЕТ прежний (тот получает SIGTERM), а не
+// встаёт рядом: новый — это последнее решение человека или сторожа.
+// Замок — `flock` на файле в `$XDG_RUNTIME_DIR`, в файле PID владельца:
+// замок снимает ядро ОС вместе со смертью процесса, поэтому брошенный файл
+// после падения ничего не держит, а чужой процесс с тем же PID не
+// пострадает (сигнал — только тому, кто держит замок и чья строка запуска —
+// наш хост).
+
+/// Файл замка хоста показа обоев для дисплея сеанса. Дисплей — из
+/// `WAYLAND_DISPLAY`, иначе `DISPLAY` (у двух сеансов одного человека свои
+/// хосты). `None` — каталога сеанса нет, замок класть некуда.
+pub fn host_session_lock_path(runtime_dir: &str, wayland_display: &str, display: &str) -> Option<String> {
+    let dir = runtime_dir.trim().trim_end_matches('/');
+    if dir.is_empty() {
+        return None;
+    }
+    let raw = if !wayland_display.trim().is_empty() { wayland_display.trim() } else { display.trim() };
+    // Дисплей бывает путём к сокету и `:0` — в имени файла только безопасное.
+    let name: String = raw
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
+        .collect();
+    let name = if name.is_empty() { "nodisplay".to_string() } else { name };
+    Some(format!("{dir}/{WALLPAPER_HOST_BINARY}-{name}.lock"))
+}
+
+/// Берёт ли этот запуск хоста замок сеанса. Только показ обоев на стол:
+/// вывод сцен waywallen — другая роль (его держит демон), а самопроверка и
+/// отладочное окно (`--windowed`) не обои и не должны снимать настоящие.
+pub fn host_takes_session_lock(mode: HostMode, args: &[String]) -> bool {
+    if mode == HostMode::Waywallen {
+        return false;
+    }
+    !args
+        .iter()
+        .any(|a| a == "-w" || a == "--windowed" || a == "--selftest" || a.starts_with("--selftest="))
+}
+
+/// Строка запуска процесса (`/proc/<pid>/cmdline`, нули между словами) —
+/// наш хост обоев? Сигнал по PID из файла замка уходит только ему.
+pub fn is_wallpaper_host_cmdline(cmdline: &[u8]) -> bool {
+    let exe = cmdline.split(|b| *b == 0).next().unwrap_or_default();
+    let exe = String::from_utf8_lossy(exe);
+    exe.rsplit('/').next() == Some(WALLPAPER_HOST_BINARY)
+}
+
+/// PID из файла замка; мусор — `None`.
+pub fn parse_host_lock_pid(text: &str) -> Option<i32> {
+    text.trim().parse::<i32>().ok().filter(|p| *p > 1)
+}
+
+/// Отказывается ли хост от показа кадрами в файл (его так запускает
+/// расширение оболочки GNOME/Cinnamon). На Cinnamon с layer-shell обои
+/// кладёт Rexon своим окном слоя, и хост, поднятый расширением, — всегда
+/// лишний: так его запускает только копия расширения от прежней версии
+/// (живьём 15.11.2026 — копия в `~/.local/share/cinnamon/extensions`
+/// перекрыла пакетную). Отказ — выход с кодом 0: расширение любой версии
+/// принимает его за «сняли сами» и не ругается всплывающим сообщением.
+pub fn stream_host_refused(stream_output: bool, cinnamon_layer_shell: bool) -> bool {
+    stream_output && cinnamon_layer_shell
+}
+
+/// Что сделать с нашим расширением Cinnamon, когда обои кладутся слоем
+/// стола (Cinnamon с layer-shell): обоев оно не показывает, и всё, что
+/// осталось в его ключах от прежнего пути, — источник лишнего хоста.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ShellExtRetire {
+    /// Убрать наш uuid из `org.cinnamon enabled-extensions` (чужие — как
+    /// были). Идёт ПЕРВЫМ: выключенное расширение не проснётся на правке
+    /// своих ключей. `None` — расширение нужно (идёт эффект экрана) или
+    /// уже выключено, или список прочесть не удалось.
+    pub disable_argv: Option<Vec<String>>,
+    /// Очистить обои в ключах расширения (источник и строку запуска) —
+    /// команды для схемы расширения (каталог схемы подставляет исполнитель).
+    pub clear_argvs: Vec<Vec<String>>,
+}
+
+/// Значение строки из ответа `gsettings get` (`'…'`); пусто — пустая.
+fn gsettings_str_value(out: &str) -> String {
+    let t = out.trim();
+    let t = t.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')).unwrap_or(t);
+    t.to_string()
+}
+
+/// Команда «выключить наше расширение Cinnamon»: список `enabled-extensions`
+/// без нашего uuid, остальные — в прежнем порядке. Нас в списке нет или
+/// не Cinnamon — `None`.
+pub fn shell_ext_disable_argv(de: &str, list_out: &str) -> Option<Vec<String>> {
+    if !matches!(de, "cinnamon" | "cinnamon-mint") {
+        return None;
+    }
+    let list: Vec<String> = list_out.split('\'').skip(1).step_by(2).map(str::to_string).collect();
+    if !list.iter().any(|u| u == SHELL_EXT_ID) {
+        return None;
+    }
+    let rest: Vec<String> = list.into_iter().filter(|u| u != SHELL_EXT_ID).collect();
+    Some(vec![
+        "gsettings".to_string(),
+        "set".to_string(),
+        "org.cinnamon".to_string(),
+        "enabled-extensions".to_string(),
+        gvariant_string_array(&rest),
+    ])
+}
+
+/// План снятия расширения с обоев на Cinnamon с layer-shell.
+///
+/// `source_out` — ответ `gsettings get <схема> source`, `effect_out` — ключа
+/// `effect-shader`, `enabled_out` — `org.cinnamon enabled-extensions`;
+/// `None` — спросить не вышло. Выключаем, только если ТОЧНО знаем, что
+/// эффекта экрана нет: эффект живёт в том же расширении. Вернуть
+/// расширение на старом Cinnamon (без layer-shell) ничего отдельного не
+/// требует: путь обоев через расширение сам включает выключенное
+/// ([`shell_ext_enable_argv`]).
+pub fn shell_ext_retire_plan(
+    de: &str,
+    source_out: Option<&str>,
+    effect_out: Option<&str>,
+    enabled_out: Option<&str>,
+) -> ShellExtRetire {
+    let Some(schema) = shell_ext_schema(de).filter(|_| de != "gnome") else {
+        return ShellExtRetire::default();
+    };
+    let effect_off = effect_out.is_some_and(|o| gsettings_str_value(o).is_empty());
+    let disable_argv = if effect_off { enabled_out.and_then(|o| shell_ext_disable_argv(de, o)) } else { None };
+    let mut clear_argvs = Vec::new();
+    if source_out.is_some_and(|o| !gsettings_str_value(o).is_empty()) {
+        clear_argvs.push(argv(&["gsettings", "set", schema, "source", ""]));
+        clear_argvs.push(argv(&["gsettings", "set", schema, SHELL_EXT_DAEMON_KEY, "[]"]));
+    }
+    ShellExtRetire { disable_argv, clear_argvs }
+}
+
+#[cfg(test)]
+mod host_session_tests {
+    use super::*;
+
+    fn s(items: &[&str]) -> Vec<String> {
+        items.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn lock_path_per_display() {
+        assert_eq!(
+            host_session_lock_path("/run/user/1000/", "wayland-0", ":0").as_deref(),
+            Some("/run/user/1000/rexon-wallpaper-host-wayland-0.lock")
+        );
+        assert_eq!(
+            host_session_lock_path("/run/user/1000", "", ":1").as_deref(),
+            Some("/run/user/1000/rexon-wallpaper-host-_1.lock")
+        );
+        assert_eq!(
+            host_session_lock_path("/run/user/1000", "/run/user/1000/wl-x", "").as_deref(),
+            Some("/run/user/1000/rexon-wallpaper-host-wl-x.lock"),
+            "путь к сокету — только имя"
+        );
+        assert_eq!(
+            host_session_lock_path("/r", "", "").as_deref(),
+            Some("/r/rexon-wallpaper-host-nodisplay.lock")
+        );
+        assert_eq!(host_session_lock_path("  ", "wayland-0", ""), None);
+    }
+
+    #[test]
+    fn lock_only_for_desktop_show() {
+        assert!(host_takes_session_lock(HostMode::Video, &s(&["/v.mp4", "--no-audio"])));
+        assert!(host_takes_session_lock(HostMode::Web, &s(&["https://x"])));
+        assert!(host_takes_session_lock(HostMode::Swf, &s(&["/a.swf"])));
+        assert!(!host_takes_session_lock(HostMode::Waywallen, &s(&[])), "вывод сцен — другая роль");
+        assert!(!host_takes_session_lock(HostMode::Video, &s(&["/v.mp4", "--windowed"])));
+        assert!(!host_takes_session_lock(HostMode::Video, &s(&["/v.mp4", "-w"])));
+        assert!(!host_takes_session_lock(HostMode::Web, &s(&["/i.html", "--selftest"])));
+        assert!(!host_takes_session_lock(HostMode::Video, &s(&["/v.mp4", "--selftest=500"])));
+    }
+
+    #[test]
+    fn signal_only_our_host() {
+        assert!(is_wallpaper_host_cmdline(b"/bin/rexon-wallpaper-host\0--mode\0video\0/v.mp4\0"));
+        assert!(is_wallpaper_host_cmdline(b"rexon-wallpaper-host\0"));
+        assert!(!is_wallpaper_host_cmdline(b"/usr/bin/cinnamon\0--replace\0"));
+        assert!(!is_wallpaper_host_cmdline(b"/x/rexon-wallpaper-host-old\0"));
+        assert!(!is_wallpaper_host_cmdline(b""));
+        assert_eq!(parse_host_lock_pid("339145\n"), Some(339145));
+        assert_eq!(parse_host_lock_pid("1"), None, "init не трогаем");
+        assert_eq!(parse_host_lock_pid("мусор"), None);
+    }
+
+    #[test]
+    fn stream_refused_only_on_cinnamon_layer_shell() {
+        assert!(stream_host_refused(true, true));
+        assert!(!stream_host_refused(true, false), "GNOME и старый Cinnamon — показ кадрами");
+        assert!(!stream_host_refused(false, true), "наш хост слоем стола");
+    }
+
+    #[test]
+    fn retire_disables_then_clears_keeping_foreign_uuids() {
+        let schema = "org.cinnamon.extensions.rexon-wallpaper";
+        let plan = shell_ext_retire_plan(
+            "cinnamon-mint",
+            Some("'/home/u/.cache/rexon/faststart/bb.mp4'\n"),
+            Some("''\n"),
+            Some("['a@x', 'rexon-wallpaper@rexon.app', 'b@y']\n"),
+        );
+        assert_eq!(
+            plan.disable_argv.unwrap(),
+            s(&["gsettings", "set", "org.cinnamon", "enabled-extensions", "[\"a@x\",\"b@y\"]"])
+        );
+        assert_eq!(
+            plan.clear_argvs,
+            vec![
+                s(&["gsettings", "set", schema, "source", ""]),
+                s(&["gsettings", "set", schema, "daemon-argv", "[]"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn retire_keeps_extension_for_screen_effect_and_writes_nothing_needless() {
+        let plan = shell_ext_retire_plan(
+            "cinnamon",
+            Some("''\n"),
+            Some("'/home/u/.config/rexon/screen-effects/shell-a.glsl'\n"),
+            Some("['rexon-wallpaper@rexon.app']\n"),
+        );
+        assert_eq!(plan, ShellExtRetire::default(), "эффект идёт — расширение нужно; ключи уже пусты");
+        // Эффект спросить не вышло — не выключаем вслепую.
+        let plan = shell_ext_retire_plan("cinnamon", None, None, Some("['rexon-wallpaper@rexon.app']"));
+        assert_eq!(plan.disable_argv, None);
+        // Уже выключено — список не трогаем.
+        let plan = shell_ext_retire_plan("cinnamon", Some("''"), Some("''"), Some("['a@x']"));
+        assert_eq!(plan.disable_argv, None);
+        let plan = shell_ext_retire_plan("cinnamon", Some("''"), Some("''"), Some("@as []"));
+        assert_eq!(plan.disable_argv, None);
+        // Не Cinnamon — ничего.
+        assert_eq!(shell_ext_retire_plan("gnome", Some("'/x'"), Some("''"), Some("['rexon-wallpaper@rexon.app']")), ShellExtRetire::default());
+        assert_eq!(shell_ext_retire_plan("kde", Some("'/x'"), Some("''"), None), ShellExtRetire::default());
+    }
+}
+
 /// Отказ, когда хост видеообоев не найден.
 ///
 /// Прежде на этом месте был молчаливый откат на Python-модуль
@@ -1648,6 +2234,32 @@ pub fn find_wallpaper_host_binary<FS: DaemonFs>(fs: &mut FS, repo_root: &str) ->
 /// Строка запуска хоста обоев в режиме `mode` — ОДНА на все форматы и все
 /// пути показа: `<host> --mode <режим> <путь>`.
 ///
+/// Переменная окружения хоста обоев: когда исполнитель начал применение
+/// (мс от эпохи, строка «применяю …» журнала). По ней хост меряет, сколько
+/// человек ждал первого кадра ([`first_frame_log_line`]).
+pub const APPLY_STARTED_ENV: &str = "REXON_WP_APPLY_MS";
+
+/// Строка журнала «первый кадр на экране»: `what` — что показано («видео»,
+/// «веб-страница», «Flash»), `since_apply_ms` — от начала применения
+/// ([`APPLY_STARTED_ENV`]; `None` — хост запущен не исполнителем),
+/// `since_host_ms` — от запуска процесса хоста.
+pub fn first_frame_log_line(what: &str, since_apply_ms: Option<u64>, since_host_ms: u64) -> String {
+    match since_apply_ms {
+        Some(total) => format!(
+            "первый кадр ({what}) на экране через {total} мс после «применяю» (хост — {since_host_ms} мс от запуска)"
+        ),
+        None => format!("первый кадр ({what}) на экране через {since_host_ms} мс от запуска хоста"),
+    }
+}
+
+/// Сколько прошло от начала применения: `env_value` — значение
+/// [`APPLY_STARTED_ENV`], `now_ms` — сейчас. Пусто, мусор или время из
+/// будущего — `None`.
+pub fn since_apply_ms(env_value: &str, now_ms: u64) -> Option<u64> {
+    let started: u64 = env_value.trim().parse().ok()?;
+    (started > 0 && started <= now_ms).then(|| now_ms - started)
+}
+
 /// Режим пишется всегда, в том числе у видео, хотя хост без ключа и так
 /// показывает видео ([`HostMode::DEFAULT`]): по строке запуска должно быть
 /// видно, что она запускает.
@@ -4076,7 +4688,8 @@ Image=file:///home/u/.local/share/wallpapers/мой.png
         // MATE берёт обычный путь, не URI
         let mate = static_plan("mate", "x11", "/w.png", &[], "");
         assert_eq!(mate[0].argv[4], "/w.png");
-        assert!(mate[0].post.is_empty());
+        // Тёмного варианта у MATE нет — в хвосте только экран блокировки.
+        assert_eq!(mate[0].post, vec![mate_lock_follows_desktop_argv()]);
     }
 
     #[test]
@@ -4979,9 +5592,81 @@ Image=file:///home/u/.local/share/wallpapers/мой.png
         assert_eq!(cinnamon(""), Unknown);
 
         assert!(shell_ext_state_message(Enabled, "x").is_none());
-        assert_eq!(shell_ext_state_message(Disabled, "x"), Some((true, "x".to_string())));
+        assert_eq!(shell_ext_state_message(Disabled, "x"), Some((false, "x".to_string())), "выключено — обоев нет, не удача");
         assert!(!shell_ext_state_message(Error, "x").unwrap().0);
         assert!(!shell_ext_state_message(OutOfDate, "x").unwrap().0);
+    }
+
+    /// Cinnamon с layer-shell: живые обои — своим окном слоя, расширение не
+    /// нужно; GNOME и Cinnamon без layer-shell — как прежде; заставке простоя
+    /// путь через расширение нужен по-прежнему (`mutter_family_wayland`).
+    #[test]
+    fn cinnamon_with_layer_shell_needs_no_extension() {
+        assert!(!needs_shell_extension_with("cinnamon", "wayland", true));
+        assert!(needs_shell_extension_with("cinnamon", "wayland", false));
+        assert!(needs_shell_extension_with("gnome", "wayland", true), "у Mutter layer-shell нет");
+        assert!(!needs_shell_extension_with("cinnamon", "x11", false));
+        assert!(mutter_family_wayland("cinnamon", "wayland"));
+    }
+
+    /// MATE: после обоев экран блокировки переводится на «как обои стола»,
+    /// но только со штатной картинки; своя картинка человека остаётся.
+    #[test]
+    fn mate_lock_follows_desktop_only_from_stock_picture() {
+        let plan = static_plan("mate", "x11", "/home/u/a.png", &[], "");
+        assert_eq!(plan[0].argv, argv(&["gsettings", "set", "org.mate.background", "picture-filename", "/home/u/a.png"]));
+        assert_eq!(plan[0].post, vec![mate_lock_follows_desktop_argv()]);
+        let sh = mate_lock_follows_desktop_argv();
+        assert_eq!(&sh[..2], ["sh", "-c"]);
+        assert!(sh[2].contains("*'/backgrounds/mate/desktop/Stripes.png'\\')"), "{}", sh[2]);
+        assert!(sh[2].contains("gsettings set org.mate.screensaver picture-filename ''"), "{}", sh[2]);
+        // У соседей с gsettings хвоста нет.
+        assert!(static_plan("gnome", "wayland", "/a.png", &[], "")[0].post.iter().all(|p| p[0] == "gsettings"));
+
+        assert!(mate_lock_picture_is_stock("'/usr/share/backgrounds/mate/desktop/Stripes.png'\n"));
+        assert!(!mate_lock_picture_is_stock("''\n"));
+        assert!(!mate_lock_picture_is_stock("'/home/u/Мой замок.png'\n"));
+        assert_eq!(mate_lock_as_desktop_set_argv(), argv(&["gsettings", "set", "org.mate.screensaver", "picture-filename", ""]));
+    }
+
+    /// Статичная картинка Cinnamon: путь уходит аргументами (а не текстом
+    /// сценария), сценарий сам выбирает `picture-uri-list` (6.8+) или
+    /// `picture-uri` по схеме.
+    #[test]
+    fn cinnamon_static_picture_goes_to_list_or_legacy_key() {
+        let argv = cinnamon_static_argv("/home/u/Мои обои/it's $HOME.png");
+        assert_eq!(&argv[..2], ["sh", "-c"]);
+        assert_eq!(argv[4], "'file:///home/u/Мои обои/it\\'s $HOME.png'");
+        assert_eq!(argv[5], "file:///home/u/Мои обои/it's $HOME.png");
+        assert!(argv[2].contains("grep -qx picture-uri-list"));
+        assert!(argv[2].contains("picture-uri-list \"[{'picture-uri': <$1>"));
+        assert!(argv[2].contains("background-mode mirror"));
+        assert!(argv[2].contains("picture-uri \"$2\""));
+        assert!(!argv[2].contains("/home/u"), "путь не вклеен в сценарий");
+    }
+
+    #[test]
+    fn cinnamon_list_first_picture_is_read() {
+        let list = "[{'picture-uri': <'file:///a/b c.png'>, 'picture-options': <'zoom'>}]\n";
+        assert_eq!(cinnamon_list_first_path(list).as_deref(), Some("/a/b c.png"));
+        assert_eq!(cinnamon_list_first_path("[{'picture-uri': <'file:///x/it\\'s.png'>}]").as_deref(), Some("/x/it's.png"));
+        assert_eq!(cinnamon_list_first_path("@aa{sv} []"), None);
+        assert_eq!(cinnamon_list_first_path("[{'picture-uri': <''>}]"), None);
+        assert_eq!(gvariant_quote("a'b\\c"), "'a\\'b\\\\c'");
+    }
+
+    /// Включение своего расширения: у Cinnamon чужие uuid остаются, наш
+    /// дописывается в конец; уже включённое не трогается.
+    #[test]
+    fn shell_ext_enable_keeps_foreign_cinnamon_extensions() {
+        let cmd = shell_ext_enable_argv("cinnamon", Some("['a@b', 'c@d']\n")).expect("выключено — включаем");
+        assert_eq!(&cmd[..4], ["gsettings", "set", "org.cinnamon", "enabled-extensions"]);
+        assert_eq!(cmd[4], format!("[\"a@b\",\"c@d\",\"{SHELL_EXT_ID}\"]"));
+        let empty = shell_ext_enable_argv("cinnamon", Some("@as []\n")).unwrap();
+        assert_eq!(empty[4], format!("[\"{SHELL_EXT_ID}\"]"));
+        assert!(shell_ext_enable_argv("cinnamon", Some(&format!("['{SHELL_EXT_ID}']"))).is_none());
+        assert_eq!(shell_ext_enable_argv("gnome", None).unwrap(), ["gnome-extensions", "enable", SHELL_EXT_ID]);
+        assert!(shell_ext_enable_argv("xfce", None).is_none());
     }
 
     /// Каталоги схемы расширения: своя копия раньше системных, `--schemadir`

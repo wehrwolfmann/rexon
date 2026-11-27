@@ -1,5 +1,6 @@
 #include "rexon_gui_factory.h"
 
+#include <algorithm>
 #include <cstring>
 
 #include <QtCore/QCoreApplication>
@@ -20,6 +21,8 @@
 #include <QtCore/QVariant>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QGuiApplication>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QStyleHints>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPalette>
 #include <QtGui/QWindow>
@@ -534,6 +537,306 @@ extern "C" int rexon_stop_media_players()
         p->setSource(QUrl());
     }
     return int(players.size());
+}
+
+extern "C" bool rexon_start_ui_heartbeat(int ms, void (*tick)())
+{
+    static QPointer<QTimer> timer;
+    QCoreApplication* app = QCoreApplication::instance();
+    if (app == nullptr || tick == nullptr)
+        return false;
+    if (timer)
+        return true;
+    timer = new QTimer(app);
+    timer->setInterval(ms < 10 ? 10 : ms);
+    QObject::connect(timer, &QTimer::timeout, timer, [tick] { tick(); });
+    timer->start();
+    // Первый удар сразу: сторож судит только после первого пульса.
+    tick();
+    return true;
+}
+
+extern "C" int rexon_qml_ancestry(const void* variant, char* buf, int len)
+{
+    if (variant == nullptr || buf == nullptr || len <= 0)
+        return 0;
+    const QVariant& value = *static_cast<const QVariant*>(variant);
+    QObject* obj = value.metaType() == QMetaType::fromType<QJSValue>()
+        ? value.value<QJSValue>().toQObject()
+        : value.value<QObject*>();
+    QByteArray chain;
+    for (int depth = 0; obj != nullptr && depth < 64; ++depth) {
+        if (!chain.isEmpty())
+            chain.append('/');
+        chain.append(obj->metaObject()->className());
+        QObject* next = obj->parent();
+        if (next == nullptr) {
+            if (auto* item = qobject_cast<QQuickItem*>(obj))
+                next = item->parentItem();
+        }
+        obj = next;
+    }
+    const int n = qMin(int(chain.size()), len - 1);
+    std::memcpy(buf, chain.constData(), size_t(n));
+    buf[n] = '\0';
+    return n;
+}
+
+// ── Журнал действий: фильтр ввода приложения ─────────────────────────────
+//
+// Механика без решений: кто взял нажатие (Qt знает это сам — захват точки
+// указателя), его предки и их подписи — строками в ядро
+// (`rexon_core::ui_watch::begin_input`), а что из этого действие и как его
+// назвать, решает ядро. Текст полей ввода НЕ читается вовсе: там бывает
+// пароль.
+
+namespace {
+
+QString journalClean(QString s)
+{
+    s.replace(QLatin1Char('\t'), QLatin1Char(' '));
+    s.replace(QLatin1Char('\n'), QLatin1Char(' '));
+    s.replace(QLatin1Char('\r'), QLatin1Char(' '));
+    if (s.size() > 200)
+        s.truncate(200);
+    return s;
+}
+
+bool journalIsTextInput(const QObject* obj)
+{
+    return obj->inherits("QQuickTextInput") || obj->inherits("QQuickTextEdit");
+}
+
+QString journalOwnText(const QObject* obj)
+{
+    if (journalIsTextInput(obj))
+        return {};
+    for (const char* name : {"text", "displayText", "title"}) {
+        const QVariant v = obj->property(name);
+        if (v.metaType() == QMetaType::fromType<QString>()) {
+            const QString t = v.toString().trimmed();
+            if (!t.isEmpty())
+                return t;
+        }
+    }
+    return {};
+}
+
+// Первая видимая надпись (`Text`) внутри элемента — обход вширь с пределом.
+QString journalInnerText(QQuickItem* root)
+{
+    QList<QQuickItem*> queue{root};
+    for (int seen = 0; !queue.isEmpty() && seen < 300; ++seen) {
+        QQuickItem* item = queue.takeFirst();
+        if (journalIsTextInput(item))
+            continue;
+        if (item != root && item->inherits("QQuickText") && item->isVisible()) {
+            const QString t = item->property("text").toString().trimmed();
+            if (!t.isEmpty())
+                return t;
+        }
+        queue.append(item->childItems());
+    }
+    return {};
+}
+
+QByteArray journalFlags(const QObject* obj)
+{
+    QByteArray f;
+    if (obj->inherits("QQuickAbstractButton")) {
+        f.append('b');
+        if (obj->property("checkable").toBool()) {
+            f.append('k');
+            if (obj->property("checked").toBool())
+                f.append('K');
+        }
+        if (obj->inherits("QQuickRadioButton") || obj->inherits("QQuickRadioDelegate"))
+            f.append('r');
+        if (obj->inherits("QQuickTabButton"))
+            f.append('t');
+    }
+    if (obj->inherits("QQuickComboBox"))
+        f.append('x');
+    if (obj->inherits("QQuickPopupItem"))
+        f.append('p');
+    if (journalIsTextInput(obj))
+        f.append('i');
+    if (obj->inherits("QQuickPointerHandler"))
+        f.append('h');
+    if (obj->inherits("QQuickMouseArea"))
+        f.append('m');
+    if (obj->inherits("QQuickFlickable"))
+        f.append('f');
+    if (obj->inherits("QQuickScrollBar") || obj->inherits("QQuickSlider")
+        || obj->inherits("QQuickRangeSlider") || obj->inherits("QQuickScrollIndicator"))
+        f.append('s');
+    return f;
+}
+
+// Звено вверх: у элемента — визуальный родитель (у всплывашки — её Popup,
+// иначе цепочка ушла бы в слой окна и потеряла страницу), у прочих —
+// QObject-родитель.
+QObject* journalUp(QObject* obj)
+{
+    if (auto* item = qobject_cast<QQuickItem*>(obj)) {
+        if (!obj->inherits("QQuickPopupItem") && item->parentItem() != nullptr)
+            return item->parentItem();
+    }
+    return obj->parent();
+}
+
+QByteArray journalDescribe(QObject* first)
+{
+    QByteArray out;
+    int depth = 0;
+    for (QObject* obj = first; obj != nullptr && depth < 64; obj = journalUp(obj), ++depth) {
+        QString inner;
+        if (depth < 3) {
+            if (auto* item = qobject_cast<QQuickItem*>(obj))
+                inner = journalInnerText(item);
+        }
+        out.append(obj->metaObject()->className());
+        out.append('\t');
+        out.append(journalFlags(obj));
+        out.append('\t');
+        out.append(journalClean(obj->objectName()).toUtf8());
+        out.append('\t');
+        out.append(journalClean(journalOwnText(obj)).toUtf8());
+        out.append('\t');
+        out.append(journalClean(inner).toUtf8());
+        out.append('\n');
+    }
+    return out;
+}
+
+// Запасной путь, если захвата нет: самый верхний видимый элемент под точкой.
+QQuickItem* journalItemAt(QQuickWindow* window, QPointF scenePos)
+{
+    QQuickItem* item = window->contentItem();
+    while (item != nullptr) {
+        QList<QQuickItem*> kids = item->childItems();
+        std::stable_sort(kids.begin(), kids.end(),
+                         [](QQuickItem* a, QQuickItem* b) { return a->z() < b->z(); });
+        QQuickItem* hit = nullptr;
+        for (auto it = kids.crbegin(); it != kids.crend(); ++it) {
+            QQuickItem* k = *it;
+            if (k->isVisible() && k->opacity() > 0.0 && k->contains(k->mapFromScene(scenePos))) {
+                hit = k;
+                break;
+            }
+        }
+        if (hit == nullptr)
+            break;
+        item = hit;
+    }
+    return item;
+}
+
+class InputJournalFilter : public QObject {
+public:
+    using Begin = unsigned long long (*)(const char*, int, int);
+    using Finish = void (*)(unsigned long long);
+
+    InputJournalFilter(Begin begin, Finish finish, QObject* parent)
+        : QObject(parent), m_begin(begin), m_finish(finish) {}
+
+protected:
+    bool eventFilter(QObject* obj, QEvent* e) override
+    {
+        // Окну событие приходит ПЕРВЫМ (от системы); элементам его потом
+        // раздаёт само окно — их копии здесь не нужны.
+        auto* window = qobject_cast<QQuickWindow*>(obj);
+        if (window == nullptr)
+            return false;
+        switch (e->type()) {
+        case QEvent::MouseButtonPress: {
+            auto* me = static_cast<QMouseEvent*>(e);
+            if (me->button() == Qt::LeftButton) {
+                m_pressWindow = window;
+                m_pressPos = me->scenePosition();
+            }
+            break;
+        }
+        case QEvent::MouseButtonRelease: {
+            auto* me = static_cast<QMouseEvent*>(e);
+            if (me->button() != Qt::LeftButton || m_pressWindow != window)
+                break;
+            m_pressWindow = nullptr;
+            const QPointF d = me->scenePosition() - m_pressPos;
+            const int drag = QGuiApplication::styleHints()->startDragDistance();
+            if (qAbs(d.x()) + qAbs(d.y()) > drag)
+                break;   // протяжка/прокрутка, не щелчок
+            QObject* target = nullptr;
+            if (!me->points().isEmpty()) {
+                const QEventPoint& pt = me->points().first();
+                target = me->exclusiveGrabber(pt);
+                if (target == nullptr) {
+                    const auto passive = me->passiveGrabbers(pt);
+                    for (const auto& p : passive) {
+                        if (p) {
+                            target = p.data();
+                            break;
+                        }
+                    }
+                }
+            }
+            if (target == nullptr)
+                target = journalItemAt(window, me->scenePosition());
+            report(target, 0);
+            break;
+        }
+        case QEvent::KeyPress:
+        case QEvent::KeyRelease: {
+            auto* ke = static_cast<QKeyEvent*>(e);
+            if (ke->isAutoRepeat())
+                break;
+            const bool enter = e->type() == QEvent::KeyPress
+                && (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter);
+            const bool space = e->type() == QEvent::KeyRelease && ke->key() == Qt::Key_Space;
+            if (enter || space)
+                report(window->activeFocusItem(), 1);
+            break;
+        }
+        default:
+            break;
+        }
+        return false;
+    }
+
+private:
+    void report(QObject* target, int viaKey)
+    {
+        if (target == nullptr)
+            return;
+        const QByteArray desc = journalDescribe(target);
+        const unsigned long long id = m_begin(desc.constData(), int(desc.size()), viaKey);
+        if (id == 0)
+            return;
+        // Конец действия — когда окно раздало событие и вернулось в цикл.
+        Finish finish = m_finish;
+        QMetaObject::invokeMethod(this, [finish, id] { finish(id); }, Qt::QueuedConnection);
+    }
+
+    Begin m_begin;
+    Finish m_finish;
+    QPointer<QQuickWindow> m_pressWindow;
+    QPointF m_pressPos;
+};
+
+}  // namespace
+
+extern "C" bool rexon_install_input_journal(unsigned long long (*begin)(const char*, int, int),
+                                            void (*finish)(unsigned long long))
+{
+    static QPointer<InputJournalFilter> filter;
+    QCoreApplication* app = QCoreApplication::instance();
+    if (app == nullptr || begin == nullptr || finish == nullptr)
+        return false;
+    if (filter)
+        return true;
+    filter = new InputJournalFilter(begin, finish, app);
+    app->installEventFilter(filter);
+    return true;
 }
 
 void rexon_process_events(int ms)

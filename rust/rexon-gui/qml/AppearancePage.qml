@@ -58,6 +58,9 @@
 //   undoRemovals()            -> int  (снять пометки; сколько вернулось)
 //   toggleFavorite(itemId)    -> строка JSON: состав избранного после
 //   openUrl(url)              -> bool (страница товара в браузере)
+//   openLinkedCard(requestJson)-> void (ссылка на товар магазина из чужого
+//                                текста: `{card, url}`; ответ сигналом
+//                                linkedCardReady)
 //   purgeTranslations()       -> void (разовая чистка протухших переводов)
 // и сигналами
 //   catalogReady(payload)     — ответ на запрос каталога (строка JSON)
@@ -96,6 +99,9 @@
 //                               комментарии в нём не упоминаются, и ссылки
 //                               «показать оригинал» у них не будет
 //   suggestReady(payload)     — подсказки поиска (строка JSON)
+//   linkedCardReady(payload)  — товар по ссылке: `item` (ThemeItem) или
+//                               `aur` (имя пакета); `failed` + `url`,
+//                               `status` — открыть не вышло
 //
 // Синхронный ответ у всего, что быстро; сигналы — только у долгого
 // (грабля 18 схемы переноса). Пока эти методы на Python
@@ -633,6 +639,21 @@ Item {
 
     Menu {
         id: installFileMenu
+        // Ширина — по самому широкому пункту: у `Menu` стилей Basic и
+        // Fusion она за подписями не следует, и длинная подпись на другом
+        // языке обрезалась («Перейти к расположению фай…»). Тот же счёт,
+        // что у меню окна (`WindowMenu.qml`).
+        implicitWidth: {
+            let widest = 0;
+            for (let i = 0; i < installFileMenu.count; ++i) {
+                const entry = installFileMenu.itemAt(i) as MenuItem;
+                if (entry && entry.contentItem)
+                    widest = Math.max(widest, entry.contentItem.implicitWidth
+                                      + entry.leftPadding + entry.rightPadding + 16);
+            }
+            return Math.max(installFileMenu.implicitBackgroundWidth + installFileMenu.leftInset + installFileMenu.rightInset,
+                            widest + installFileMenu.leftPadding + installFileMenu.rightPadding);
+        }
         // Подложка — карточка скина, как у меню окна (`WindowMenu.qml`):
         // подложка стиля Basic белая и палитре не следует.
         background: Rectangle {
@@ -795,6 +816,24 @@ Item {
 
     property bool firstLoadDone: false
 
+    // ── Ссылка на товар магазина из чужого текста ────────────────────────
+    //
+    // Карточку собирает хозяин (`openLinkedCard`, ответ `linkedCardReady`);
+    // хозяин без этого метода — тот же вопрос, что о внешнем сайте.
+    function openLinkedCard(card, url) {
+        if (root.actions && root.actions.openLinkedCard) {
+            root.actions.openLinkedCard(JSON.stringify({ card: card, url: url }));
+            return;
+        }
+        linkAsk.ask(url, null);
+    }
+
+    RexonLinkDialog {
+        id: linkAsk
+        parent: root
+        pal: root.pal
+    }
+
     function askCatalog() {
         catalogDebounce.restart();
     }
@@ -839,6 +878,18 @@ Item {
 
         function onDetailReady(payload) {
             page.detailAnswer(payload);
+        }
+
+        // Карточка товара по ссылке из чужого текста собрана — показываем;
+        // не вышло — тот же вопрос, что о любом внешнем сайте.
+        function onLinkedCardReady(payload) {
+            const r = JSON.parse(payload);
+            if (r.failed) {
+                page.setStatus(r.status || "");
+                linkAsk.ask(r.url || "", null);
+                return;
+            }
+            page.openLinkedItem(payload);
         }
 
         function onAurDetailReady(payload) {
@@ -1126,6 +1177,81 @@ Item {
         target: root.Window.window
         ignoreUnknownSignals: true
         function onStartSubpageChanged() { root.takeSubpage(); }
+    }
+
+    // ── Режим обхода (`rexon-main-window --tour`) ─────────────────────────
+    //
+    // Исполнитель обхода (qml/MainWindow.qml) зовёт ТОЛЬКО функции `tour*`
+    // ниже — имя каждой он сверяет с ядром (`main_window_tour::call_allowed`)
+    // — и читает `tourState()`. Это навигация, поиск и просмотр: ни одна не
+    // устанавливает, не применяет и не удаляет. Порядок обхода и разбор
+    // увиденного — в ядре.
+
+    function tourCategories() {
+        return (page.sidebarRows || []).filter(r => r.available && r.key !== "")
+                                       .map(r => String(r.key));
+    }
+
+    function tourSources() {
+        return page.sourceBarVisible
+               ? (page.sourceChips || []).map(c => String(c.key)) : [];
+    }
+
+    function tourSelectCategory(key) {
+        if (!root.tourCategories().includes(key))
+            return false;
+        page.selectCategory(key);
+        return true;
+    }
+
+    function tourSetSource(key) {
+        if (!root.tourSources().includes(key))
+            return false;
+        page.setSource(key);
+        return true;
+    }
+
+    // Как человек: слово в поле и Enter (тот же путь, что `onAccepted`).
+    function tourTypeQuery(text) {
+        if (!searchBox.visible)
+            return false;
+        searchBox.forceActiveFocus();
+        searchBox.text = text;
+        page.setQuery(text);
+        page.submitQuery();
+        page.updateSuggestions("");
+        return true;
+    }
+
+    // Как кнопка ✕.
+    function tourClearQuery() {
+        searchBox.text = "";
+        page.setQuery("");
+        page.updateSuggestions("");
+        return true;
+    }
+
+    function tourState() {
+        const tiles = page.tourTiles();
+        const shown = searchBox.visible && searchBox.width > 0;
+        const p = shown ? searchBox.mapToItem(null, 0, 0) : { x: 0, y: 0 };
+        const active = (page.sourceChips || []).find(c => c.checked);
+        return {
+            busy: page.tourBusy(),
+            status: page.statusText,
+            statusWarn: page.statusWarn,
+            screen: page.screen,
+            tiles: tiles.total,
+            noPreview: tiles.noPreview,
+            pending: tiles.pending,
+            search: page.searchVisible,
+            searchVisible: shown,
+            searchX: Math.round(p.x),
+            searchY: Math.round(p.y),
+            searchText: searchBox.text,
+            query: page.query,
+            source: active ? String(active.key) : ""
+        };
     }
 
     // ── Выпадашка подсказок поиска ────────────────────────────────────────
@@ -2379,7 +2505,7 @@ Item {
                             textRole: "name"
                             valueRole: "id"
                             ToolTip.text: page.deTooltip
-                            ToolTip.visible: hovered
+                            ToolTip.visible: hintVisible
                             ToolTip.delay: 600
                             selectedValue: page.de
                             onActivated: {
@@ -2533,7 +2659,10 @@ Item {
 
                 RexonText {
                     text: page.statusText
-                    color: root.colTextSecondary
+                    // Итог с оговоркой («⚠️ Обои применены: … . …») и ошибка —
+                    // цветом предупреждения, а не серым, как обычный итог.
+                    color: page.statusWarn && root.pal.state_warn !== undefined
+                           ? root.pal.state_warn : root.colTextSecondary
                     // Оригинал: `#StatusBar { font-size: 10pt;
                     // font-weight: 600 }`.
                     font.pointSize: page.cardMetaPointSize
@@ -3559,7 +3688,10 @@ Item {
                         AxonLibraryView {
                             pal: root.pal
                             layout: page
+                            // Слово — из общей строки поиска шапки.
+                            query: page.query
                             onMessage: text => page.setStatus(text)
+                            onSearchCleared: page.setQuery("")
                         }
                     }
                 }
@@ -4169,16 +4301,16 @@ Item {
                             RexonCheckBox {
                                 id: detailAutostart
                                 objectName: "detailAutostart"
-                                visible: page.detailIsLocal && page.detailAutostartVisible
+                                visible: page.detailConkyId !== ""
                                 pal: root.pal
                                 text: page.detailAutostartText
                                 checked: visible && root.actions && root.actions.conkyAutostart
-                                         ? root.actions.conkyAutostart(page.detailItemId)
+                                         ? root.actions.conkyAutostart(page.detailConkyId)
                                          : false
                                 onToggled: {
                                     if (root.actions && root.actions.setConkyAutostart)
                                         detailAutostart.checked = root.actions.setConkyAutostart(
-                                            page.detailItemId, detailAutostart.checked);
+                                            page.detailConkyId, detailAutostart.checked);
                                 }
                                 // Включение проверяет программы виджета в фоне
                                 // (`conky_safety::live_prepare_start`): итог
@@ -4188,7 +4320,7 @@ Item {
                                     ignoreUnknownSignals: true
                                     function onActionDone(text, ok) {
                                         if (detailAutostart.visible && root.actions.conkyAutostart)
-                                            detailAutostart.checked = root.actions.conkyAutostart(page.detailItemId);
+                                            detailAutostart.checked = root.actions.conkyAutostart(page.detailConkyId);
                                     }
                                 }
                             }
@@ -4275,26 +4407,31 @@ Item {
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
                             Layout.topMargin: 6
-                            visible: page.detailIsLocal && page.detailAutostartVisible
+                            visible: page.detailConkyId !== ""
                             spacing: 4
 
                             property int rev: 0
                             property var parts: []
                             property string log: ""
+                            // Тема из Conky Studio, и он есть на машине.
+                            property bool studio: false
                             readonly property var texts: conkyToolsRow.texts
 
                             function reload() {
                                 if (!detailConky.visible || !root.actions || !root.actions.conkyParts) {
                                     detailConky.parts = [];
                                     detailConky.log = "";
+                                    detailConky.studio = false;
                                     return;
                                 }
+                                detailConky.studio = root.actions.conkyStudioEditable
+                                    ? root.actions.conkyStudioEditable(page.detailConkyId) : false;
                                 try {
-                                    detailConky.parts = JSON.parse(root.actions.conkyParts(page.detailItemId));
+                                    detailConky.parts = JSON.parse(root.actions.conkyParts(page.detailConkyId));
                                 } catch (e) {
                                     detailConky.parts = [];
                                 }
-                                detailConky.log = root.actions.conkyLog(page.detailItemId);
+                                detailConky.log = root.actions.conkyLog(page.detailConkyId);
                             }
 
                             onVisibleChanged: reload()
@@ -4327,7 +4464,7 @@ Item {
                                     ToolTip.delay: 600
                                     onClicked: {
                                         if (root.actions && root.actions.openConkyFolder)
-                                            root.actions.openConkyFolder(page.detailItemId);
+                                            root.actions.openConkyFolder(page.detailConkyId);
                                     }
                                 }
 
@@ -4342,7 +4479,24 @@ Item {
                                     ToolTip.delay: 600
                                     onClicked: {
                                         if (root.actions && root.actions.openConkyFile)
-                                            root.actions.openConkyFile(page.detailItemId, detailConky.settingsConf);
+                                            root.actions.openConkyFile(page.detailConkyId, detailConky.settingsConf);
+                                    }
+                                }
+
+                                // Редактор, которым тема сделана; Rexon сам
+                                // редактор не пишет.
+                                RexonButton {
+                                    objectName: "conkyEditInStudioButton"
+                                    visible: detailConky.studio
+                                    pal: root.pal
+                                    tone: root.toneSecondary
+                                    text: detailConky.texts.edit_in_studio || ""
+                                    ToolTip.text: detailConky.texts.edit_in_studio_tooltip || ""
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 600
+                                    onClicked: {
+                                        if (root.actions && root.actions.editConkyInStudio)
+                                            root.actions.editConkyInStudio(page.detailConkyId);
                                     }
                                 }
                             }
@@ -4382,7 +4536,7 @@ Item {
                                         onClicked: {
                                             if (root.actions && root.actions.pressConkyPart)
                                                 detailConky.parts = JSON.parse(root.actions.pressConkyPart(
-                                                    page.detailItemId, partRow.modelData.conf));
+                                                    page.detailConkyId, partRow.modelData.conf));
                                             grid.refreshKeepingScroll();
                                         }
                                     }
@@ -4421,7 +4575,7 @@ Item {
                                         return;
                                     }
                                     try {
-                                        conkyAutostartRow.v = JSON.parse(root.actions.conkyAutostartOptions(page.detailItemId));
+                                        conkyAutostartRow.v = JSON.parse(root.actions.conkyAutostartOptions(page.detailConkyId));
                                     } catch (e) {
                                         conkyAutostartRow.v = ({});
                                     }
@@ -4429,7 +4583,7 @@ Item {
                                 function save(delay, onlyHere) {
                                     if (root.actions && root.actions.setConkyAutostartOptions)
                                         conkyAutostartRow.v = JSON.parse(root.actions.setConkyAutostartOptions(
-                                            page.detailItemId, delay, onlyHere));
+                                            page.detailConkyId, delay, onlyHere));
                                 }
                                 Connections {
                                     target: detailConky
@@ -4492,7 +4646,7 @@ Item {
                                 pal: root.pal
                                 actions: root.actions
                                 busy: page.actionBusy
-                                itemId: page.detailItemId
+                                itemId: page.detailConkyId
                                 conf: detailConky.settingsConf
                             }
 
@@ -4506,7 +4660,7 @@ Item {
                                 pal: root.pal
                                 actions: root.actions
                                 busy: page.actionBusy
-                                itemId: page.detailItemId
+                                itemId: page.detailConkyId
                                 Connections {
                                     target: page
                                     function onDetailChanged() { conkyColours.reload(); }
@@ -4688,20 +4842,21 @@ Item {
                         // Описание с переключателем «перевод ⇄ оригинал».
                         // Переключатель — ссылка внутри самого текста: его
                         // собирает ядро, здесь только обработка нажатия.
-                        RexonText {
+                        // Ссылки чужого текста — общим путём (`RexonLinkText`):
+                        // товар своего магазина — карточкой, прочее — с ↗ и
+                        // вопросом перед браузером.
+                        RexonLinkText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
-                            text: page.detailDescription
+                            html: page.detailDescription
+                            pal: root.pal
+                            cardsSupported: true
                             color: root.colText
-                            textFormat: Text.RichText
                             wrapMode: Text.WordWrap
-                            onLinkActivated: function (link) {
-                                if (link === "rexon:toggle")
-                                    page.toggleDescription();
-                                else if (root.actions && root.actions.openUrl)
-                                    root.actions.openUrl(link);
-                            }
+                            onPageLink: page.toggleDescription()
+                            onCardWanted: (card, url) => root.openLinkedCard(card, url)
+                            onStatus: (text) => page.setStatus(text)
                         }
 
                         // ── Сведения о пакете AUR ──────────────────────
@@ -4738,23 +4893,22 @@ Item {
                                         wrapMode: Text.WordWrap
                                     }
 
-                                    RexonText {
+                                    RexonLinkText {
                                         Layout.fillWidth: true
-                                        text: factRow.modelData.html !== ""
+                                        html: factRow.modelData.html !== ""
                                               ? factRow.modelData.html
                                               : factRow.modelData.value
-                                        textFormat: factRow.modelData.html !== ""
-                                                    ? Text.RichText : Text.PlainText
+                                        plain: factRow.modelData.html === ""
+                                        pal: root.pal
+                                        cardsSupported: true
+                                        onCardWanted: (card, url) => root.openLinkedCard(card, url)
+                                        onStatus: (text) => page.setStatus(text)
                                         color: factRow.modelData.warn
                                                ? (root.pal.state_warn !== undefined
                                                   ? root.pal.state_warn : root.colStar)
                                                : root.colText
                                         linkColor: root.colAccent
                                         wrapMode: Text.WordWrap
-                                        onLinkActivated: function (link) {
-                                            if (root.actions && root.actions.openUrl)
-                                                root.actions.openUrl(link);
-                                        }
                                     }
                                 }
                             }
@@ -4935,18 +5089,16 @@ Item {
                                     elide: Text.ElideRight
                                 }
 
-                                RexonText {
+                                RexonLinkText {
                                     Layout.fillWidth: true
-                                    text: commentRow.modelData.body
+                                    html: commentRow.modelData.body
+                                    pal: root.pal
+                                    cardsSupported: true
                                     color: root.colText
-                                    textFormat: Text.RichText
                                     wrapMode: Text.WordWrap
-                                    onLinkActivated: function (link) {
-                                        if (link === "rexon:toggle")
-                                            page.toggleComment(commentRow.modelData.index);
-                                        else if (root.actions && root.actions.openUrl)
-                                            root.actions.openUrl(link);
-                                    }
+                                    onPageLink: page.toggleComment(commentRow.modelData.index)
+                                    onCardWanted: (card, url) => root.openLinkedCard(card, url)
+                                    onStatus: (text) => page.setStatus(text)
                                 }
                             }
                         }
@@ -5142,6 +5294,11 @@ Item {
                         required property string starGlyph
                         required property string preview
                         required property string previewText
+                        required property string previewFont
+                        required property string previewSample
+                        required property string previewNote
+                        required property string mixBadge
+                        required property string mixBadgeTooltip
                         required property string metaLine
                         required property string metaTooltip
                         required property bool metaWarn
@@ -5233,6 +5390,13 @@ Item {
                                     // подложке.
                                     readonly property bool bare:
                                         cell.preview === "" && cell.previewText !== ""
+                                        && fontSample.status !== FontLoader.Ready
+                                    // Пакет шрифта: картинка — сам файл
+                                    // шрифта, им рисуется образец текста.
+                                    FontLoader {
+                                        id: fontSample
+                                        source: cell.previewFont
+                                    }
 
                                     Rectangle {
                                         anchors.fill: parent
@@ -5308,14 +5472,78 @@ Item {
                                     // AUR без ссылки на GitHub взять картинку
                                     // неоткуда, и пустой прямоугольник читался
                                     // как «плитка не догрузилась».
+                                    Column {
+                                        anchors.centerIn: parent
+                                        width: parent.width - 24
+                                        visible: previewBox.bare
+                                        spacing: 6
+
+                                        RexonText {
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: cell.previewText
+                                            color: "#ffffff"
+                                            // Кегль знака — как на нарисованной
+                                            // заглушке (48 при высоте кадра 170),
+                                            // меньше, если под ним подпись.
+                                            font.pixelSize: Math.round(previewBox.height
+                                                                       * (cell.previewNote !== "" ? 0.28 : 0.38))
+                                        }
+
+                                        // Честная подпись: что это за товар и
+                                        // почему без снимка (ядро —
+                                        // `aur::no_preview_note`).
+                                        RexonText {
+                                            width: parent.width
+                                            visible: cell.previewNote !== ""
+                                            text: cell.previewNote
+                                            color: "#c7d5e0"
+                                            horizontalAlignment: Text.AlignHCenter
+                                            wrapMode: Text.WordWrap
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    // Образец шрифта — этим самым шрифтом.
                                     RexonText {
                                         anchors.centerIn: parent
-                                        visible: previewBox.bare
-                                        text: cell.previewText
+                                        width: parent.width - 24
+                                        visible: fontSample.status === FontLoader.Ready
+                                        text: cell.previewSample
                                         color: "#ffffff"
-                                        // Кегль знака — как на нарисованной
-                                        // заглушке (48 при высоте кадра 170).
-                                        font.pixelSize: Math.round(parent.height * 0.38)
+                                        font.family: fontSample.name
+                                        font.pixelSize: Math.round(previewBox.height * 0.22)
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideRight
+                                    }
+
+                                    // Пакет AUR среди одиночных товаров
+                                    // («Все»): набор, системный пакет, пароль.
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.top: parent.top
+                                        anchors.margins: 8
+                                        visible: cell.mixBadge !== ""
+                                        radius: 4
+                                        color: "#cc16202d"
+                                        border.color: root.pal.border || "#2a4055"
+                                        width: Math.min(mixBadgeText.implicitWidth + 12, previewBox.width - 16)
+                                        height: mixBadgeText.implicitHeight + 6
+
+                                        RexonText {
+                                            id: mixBadgeText
+                                            anchors.centerIn: parent
+                                            width: Math.min(implicitWidth, previewBox.width - 28)
+                                            text: cell.mixBadge
+                                            color: "#ffffff"
+                                            font.pointSize: page.cardMetaPointSize
+                                            elide: Text.ElideRight
+                                        }
+
+                                        HoverHandler { id: mixBadgeHover }
+                                        ToolTip.text: cell.mixBadgeTooltip
+                                        ToolTip.visible: mixBadgeHover.hovered && cell.mixBadgeTooltip !== ""
+                                        ToolTip.delay: 500
                                     }
 
                                     // Тема звуков картинки не имеет: на её

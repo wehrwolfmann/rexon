@@ -202,7 +202,7 @@ fn autostart_follows_overlay() {
     let plain = rexon_core::ext_manager::conky_desktop_entry("My W", conf);
     let via = rexon_core::ext_manager::conky_desktop_entry_via("My W", conf, Some("/s/o.rexon.conf"));
     assert!(via.contains(&format!(
-        "\nExec=sh -c \"cd \\\\\"\\\\$(dirname \\\\\"\\\\$1\\\\\")\\\\\" && exec conky -c \\\\\"\\\\$0\\\\\"\" /s/o.rexon.conf \"{conf}\"\n"
+        "\nExec=sh -c \"x=; case \\\\\":\\\\$XDG_CURRENT_DESKTOP:\\\\\" in *:GNOME:*|*:X-Cinnamon:*|*:Cinnamon:*|*:Pantheon:*) x=1;; esac; case \\\\\"\\\\$(conky -v 2>/dev/null)\\\\\" in *\\\\\"conky 1.25.\\\\\"[012][!0-9]*) x=1;; esac; [ -n \\\\\"\\\\$x\\\\\" ] && [ -n \\\\\"\\\\$WAYLAND_DISPLAY\\\\\" ] && [ -n \\\\\"\\\\$DISPLAY\\\\\" ] && {{ unset WAYLAND_DISPLAY; export XDG_SESSION_TYPE=x11; }}; cd \\\\\"\\\\$(dirname \\\\\"\\\\$1\\\\\")\\\\\" && exec conky -c \\\\\"\\\\${{rexon_xw:-\\\\$0}}\\\\\"\" /s/o.rexon.conf \"{conf}\"\n"
     )), "{via}");
     assert!(via.contains("\nPath=/h/.config/conky/My W\n"), "{via}");
 
@@ -219,7 +219,94 @@ fn autostart_follows_overlay() {
     assert_eq!(io.read("/h/.config/autostart/rexon-conky-other.desktop").unwrap(), "[Desktop Entry]\nExec=sh -c x /h/o.conf\n");
     let (ok, _) = ov::reset(&io, &ctx(), &p, "My W", conf);
     assert!(ok);
-    assert_eq!(io.read(entry).unwrap(), plain);
+    // После сброса — запись как у автора, но с файлом запуска через XWayland.
+    let xw = ov::xwayland_path(&p);
+    assert_eq!(io.read(entry).unwrap(), rexon_core::ext_manager::conky_desktop_entry_with("My W", conf, None, Some(&xw), 0, &[]));
+    assert!(plain.contains(ov::XWAYLAND_LAUNCH_VAR) && !plain.contains(&xw));
+    assert!(io.read(&xw).is_some_and(|t| !t.contains("gap_y")), "файл XWayland — вслед за сбросом");
+}
+
+const OVERRIDE_AUTHOR: &str = "\
+conky.config = {
+    own_window = true,
+    own_window_type = 'override',
+    own_window_hints = 'undecorated,below,sticky,skip_taskbar,skip_pager',
+    gap_y = 40,
+}
+conky.text = [[x]]
+";
+
+/// Через XWayland виджет идёт с файлом, где окно X11 — обычное «под всеми
+/// окнами» вместо override-redirect автора (Muffin кладёт такие поверх
+/// всех окон); выбор человека в нём сохраняется, файл автора не тронут,
+/// процесс с ним — тот же виджет.
+#[test]
+fn xwayland_file_keeps_widget_under_windows() {
+    let conf = "/h/.config/conky/skyrim/conky.conf";
+    let io = Fake { version: Some("1.25.2"), ..Default::default() };
+    io.write(conf, OVERRIDE_AUTHOR);
+    let p = ov::paths(&ctx(), None, conf);
+    let xw = ov::xwayland_path(&p);
+    assert_eq!(xw, "/h/.local/state/rexon/conky/overlay/h+s.config+sconky+sskyrim+sconky.conf+x.rexon.conf");
+    assert_eq!(ov::original_of_launch(&xw).as_deref(), Some(conf));
+    assert_eq!(ov::original_of_launch(&p.overlay).as_deref(), Some(conf));
+    let cmd = format!("conky\0-d\0-c\0{xw}\0");
+    assert_eq!(rexon_core::de_apply::conky_conf_of_cmdline(&cmd).as_deref(), Some(conf));
+
+    let env = Env { version: Some((1, 25)), de: "cinnamon".into() };
+    assert_eq!(ov::write_xwayland(&io, &p, conf, &env).as_deref(), Some(xw.as_str()));
+    let text = io.read(&xw).unwrap();
+    let x11 = text.split_once("else\n").unwrap().1;
+    assert!(
+        x11.starts_with("    c.own_window_type = \"normal\"\n    c.own_window_hints = \"undecorated,below,sticky,skip_taskbar,skip_pager\"\n"),
+        "{text}"
+    );
+    assert!(text.contains(&format!("dofile(\"{conf}\")")), "{text}");
+    assert_eq!(io.read(conf).unwrap(), OVERRIDE_AUTHOR);
+    // Накладки и выбора человека файл XWayland не заводит.
+    assert!(io.read(&p.overlay).is_none() && io.read(&p.settings).is_none());
+
+    // Выбор человека — и в файле XWayland: он переписывается вместе с накладкой.
+    let (ok, _) = ov::apply(&io, &ctx(), &p, "skyrim", conf, &Overrides { gap_y: Some(5), ..Default::default() });
+    assert!(ok);
+    assert!(io.read(&xw).unwrap().contains("c.gap_y = 5"));
+    assert!(!io.read(&p.overlay).unwrap().contains("own_window_type"), "накладка без «окна» не трогает окно автора");
+}
+
+/// Файл XWayland настоящим Lua: без `WAYLAND_DISPLAY` (так conky идёт через
+/// XWayland) окно — обычное «под всеми», override автора снят; в сеансе
+/// Wayland ветка Cinnamon окно автора не трогает. Нет `lua` — пропуск.
+#[test]
+fn xwayland_file_really_runs() {
+    let Some(lua) = ["lua5.4", "lua"].into_iter().find(|l| std::process::Command::new(l).arg("-v").output().is_ok()) else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("rexon-conky-xwlua-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let author = dir.join("conky.conf");
+    std::fs::write(&author, OVERRIDE_AUTHOR).unwrap();
+    let cfg = ov::parse_config(OVERRIDE_AUTHOR).unwrap();
+    let env = Env { version: Some((1, 25)), de: "cinnamon".into() };
+    let text = ov::render_xwayland(&author.to_string_lossy(), &cfg, &Overrides::default(), &env);
+    let file = dir.join("x.rexon.conf");
+    std::fs::write(&file, text).unwrap();
+    let run = |wayland: Option<&str>| {
+        let mut cmd = std::process::Command::new(lua);
+        cmd.arg("-e").arg(format!(
+            "conky = {{}}; dofile([[{}]]); print(conky.config.own_window_type .. '|' .. tostring(conky.config.own_window_hints))",
+            file.display()
+        ));
+        match wayland {
+            Some(w) => cmd.env("WAYLAND_DISPLAY", w),
+            None => cmd.env_remove("WAYLAND_DISPLAY"),
+        };
+        String::from_utf8_lossy(&cmd.output().unwrap().stdout).trim().to_string()
+    };
+    let (xwayland, wayland) = (run(None), run(Some("wayland-0")));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(xwayland, "normal|undecorated,below,sticky,skip_taskbar,skip_pager");
+    assert_eq!(wayland, "override|undecorated,below,sticky,skip_taskbar,skip_pager");
 }
 
 #[test]

@@ -6,7 +6,11 @@
 //!
 //! * список установленного: в сеансе GNOME — `ListExtensions` (диск —
 //!   запасной путь, когда оболочки нет), пометки плитки («Ошибка», «Не
-//!   поддерживает GNOME N», «Обновление — после перезахода», «Системное»);
+//!   поддерживает GNOME N», «Обновление — после перезахода»). Системное
+//!   расширение пометки не получает: пометки встают на место подписи
+//!   состояния, и «Системное» прятало «⏸️ Выключено» (живая проверка 15.11).
+//!   Что его не удалить и не править, говорят отсутствие «🗑» и подсказка
+//!   кнопки папки («скопируйте путь»);
 //! * действия: установить (окно оболочки, без неё — zip выпуска),
 //!   включить/выключить, настройки, удалить (только своё), открыть папку
 //!   или скопировать путь, подробности ошибки;
@@ -97,12 +101,6 @@ pub fn update_label() -> String {
     tr("Update — after you log in again")
 }
 
-/// Пометка «Системное».
-pub fn system_label() -> String {
-    // TRANSLATORS: a GNOME extension installed for the whole system.
-    tr("System")
-}
-
 /// Пометка расширения, которое лежит на диске, но оболочка его ещё не
 /// видела (поставлено мимо неё, без перезахода).
 pub fn next_login_label() -> String {
@@ -175,9 +173,6 @@ pub fn shell_fields(info: &ExtInfo, shell: &str) -> Map<String, Value> {
     if info.has_update {
         marks.push(mark("update", update_label()));
     }
-    if info.is_system {
-        marks.push(mark("system", system_label()));
-    }
     let folder = folder_action(info);
     m.insert("gnomeShellKnown".into(), Value::from(true));
     m.insert("gnomeUuid".into(), Value::from(info.uuid.clone()));
@@ -222,7 +217,6 @@ pub fn item_from_info(info: &ExtInfo) -> ThemeItem {
     let head = format!("🧩 {}", tr("GNOME Shell extension"));
     let author = match state_badge(info) {
         Some(badge) => format!("{head} · {badge}"),
-        None if info.is_system => format!("{head} · {}", system_label()),
         None => head,
     };
     ThemeItem {
@@ -1112,7 +1106,15 @@ mod tests {
         assert_eq!(sys["gnomeCanRemove"], false);
         assert_eq!(sys["gnomeFolderAction"], "copy");
         assert_eq!(sys["gnomeActive"], true);
-        assert_eq!(sys["gnomeMarks"][0]["key"], "system");
+        // Системное — не пометка: пометки встают на место «⏸️ Выключено».
+        assert_eq!(sys["gnomeMarks"].as_array().map(Vec::len), Some(0));
+        let sys_off = info(SYS, 2.0, true);
+        assert_eq!(shell_fields(&sys_off, "51")["gnomeMarks"].as_array().map(Vec::len), Some(0));
+        assert_eq!(state_badge(&sys_off), Some(crate::qt_extensions::state_disabled_text()));
+        assert_eq!(
+            item_from_info(&sys_off).author,
+            format!("🧩 {} · {}", tr("GNOME Shell extension"), crate::qt_extensions::state_disabled_text())
+        );
         assert_eq!(out_of_date_label(""), tr("Doesn't support this GNOME version"));
     }
 

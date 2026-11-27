@@ -8,6 +8,8 @@
 //     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --discover-selftest
 // Страница «Обои» (список, семь запросов-действий и модель библиотеки):
 //     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --wallpaper-selftest
+// Снятие живых обоев против подставного демона waywallen:
+//     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --we-stop-selftest
 // 64-битное целое в QML против мостов:
 //     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --qml-int64-probe
 // Живые модели в настоящем QML (qml/LiveModelsProbe.qml) — сетка Discover
@@ -87,6 +89,12 @@ fn main() {
         std::env::set_var("QT_FORCE_STDERR_LOGGING", "1");
         std::process::exit(rexon_gui::wallpaper_page_selftest::run());
     }
+    // Снятие живых обоев против подставного демона: гонка рукопожатия
+    // WebSocket в рабочем потоке. Разбор — src/we_stop_selftest.rs.
+    if has(rexon_gui::we_stop_selftest::ARG) {
+        std::env::set_var("QT_FORCE_STDERR_LOGGING", "1");
+        std::process::exit(rexon_gui::we_stop_selftest::run());
+    }
     // Проба «64-битное целое в QML»: живой движок QML против мостов.
     // Разбор — src/qml_int64_probe.rs. Проба сама зовёт `std::process::exit`.
     if has(rexon_gui::qml_int64_probe::ARG) {
@@ -118,8 +126,9 @@ fn main() {
     }
     let live: Vec<&str> = LIVE_MODEL_SCENARIOS.iter().map(|(arg, _)| *arg).collect();
     eprintln!(
-        "не указан сценарий: {} | {} | {} | {} | {} | {} | {}[=вид]",
+        "не указан сценарий: {} | {} | {} | {} | {} | {} | {} | {}[=вид]",
         rexon_gui::remote_list_model::selftest::ARG,
+        rexon_gui::we_stop_selftest::ARG,
         rexon_gui::discover_queries::selftest::ARG,
         rexon_gui::wallpaper_page_selftest::ARG,
         rexon_gui::qml_int64_probe::ARG,

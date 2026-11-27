@@ -919,3 +919,20 @@ fn display_item_found_next_to_runtime() {
         assert!(std::path::Path::new(&qml).is_file(), "{qml}");
     }
 }
+
+/// Серая «Применить» без вывода для сцен — с объяснением (GNOME без
+/// расширения waywallen, Cinnamon Wayland без layer-shell, незнакомый
+/// композитор); где дисплей поднимает Rexon или движок — прежние слова.
+#[test]
+fn no_displays_hint_explains_missing_output() {
+    use rexon_core::wallpaper_backend::{DisplaySetup, WallpaperBackend as B};
+    rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+    assert!(!w::no_displays_hint_in(DisplaySetup::None, B::ShellExtension).is_empty());
+    assert!(!w::no_displays_hint_in(DisplaySetup::None, B::Unsupported).is_empty());
+    assert!(w::no_displays_hint_in(DisplaySetup::None, B::DaemonLayerShell).is_empty(), "дисплей даёт движок");
+    assert_eq!(
+        w::no_displays_hint_in(DisplaySetup::RexonHost, B::ShellExtension),
+        w::no_displays_hint(DisplaySetup::RexonHost),
+        "Cinnamon с layer-shell: вывод поднимает Rexon"
+    );
+}

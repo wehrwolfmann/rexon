@@ -313,6 +313,41 @@ fn directives(text: &str) -> Vec<(RiskKind, String)> {
     out
 }
 
+/// Директивы conky в коде Lua (файл настроек 1.10, сценарий виджета).
+/// Директива, разорванная склейкой строк (`'${execi 2 bash ' .. HOME ..
+/// '/s/gpu.sh}'`), собирается как выражение Lua ([`lua_command_text`]):
+/// иначе кавычки и `..` уходили в команду, путь терял начало
+/// (`/.config/…` вместо `~/.config/…`) и проверка файлов ложно говорила
+/// «нет файлов виджета» (живая проверка 15.11.2026, виджет skyrim).
+/// Неразобранная часть остаётся [`UNKNOWN_PART`] — такие пути не
+/// проверяются: лучше промолчать, чем соврать.
+fn lua_directives(code: &str) -> Vec<(RiskKind, String)> {
+    directives(code)
+        .into_iter()
+        .map(|(kind, what)| {
+            if kind != RiskKind::Command {
+                return (kind, what);
+            }
+            let Some(q) = lua_split_quote(&what) else { return (kind, what) };
+            let expr = format!("{q}{what}{q}");
+            let text = lua_command_text(code, &expr, code.len(), 0).unwrap_or_else(|| UNKNOWN_PART.to_string());
+            (kind, text)
+        })
+        .collect()
+}
+
+/// Кавычка, на которой команда директивы разорвана склейкой строк Lua
+/// (`' .. x .. '`); `None` — команда целиком в одной строке.
+fn lua_split_quote(cmd: &str) -> Option<char> {
+    ['\'', '"'].into_iter().find(|&q| {
+        cmd.match_indices(q).any(|(i, _)| {
+            let after = cmd[i + 1..].trim_start();
+            let before = cmd[..i].trim_end();
+            after.starts_with("..") || before.ends_with("..")
+        })
+    })
+}
+
 /// Старый синтаксис (1.9): настройки до строки `TEXT`, после — текст.
 fn is_old_syntax(text: &str) -> bool {
     !text.contains("conky.config") && !text.contains("conky.text") && text.lines().any(|l| l.trim() == "TEXT")
@@ -364,7 +399,7 @@ fn scan_conf(text: &str) -> Vec<(RiskKind, String)> {
             out.extend(value.split_whitespace().map(|s| (RiskKind::LuaScript, s.to_string())));
         }
     }
-    out.extend(directives(&code));
+    out.extend(lua_directives(&code));
     out
 }
 
@@ -436,6 +471,9 @@ fn lua_command_text(code: &str, expr: &str, at: usize, depth: usize) -> Option<S
         let part = part.trim();
         let piece = if let Some((s, _)) = lua_string_at(part, 0).filter(|(_, end)| *end == part.len()) {
             Some(s)
+        } else if is_getenv_home(part) {
+            // Домашний каталог — как `~` у команд оболочки ([`resolve`]).
+            Some("~".to_string())
         } else if let Some(args) = part.strip_prefix("string.format").map(str::trim_start).and_then(|a| a.strip_prefix('(')) {
             lua_string_at(args, 0).map(|(f, _)| format_template(&f))
         } else if !part.is_empty() && part.bytes().all(|c| is_ident(c) || c == b'.') && !part.as_bytes()[0].is_ascii_digit() {
@@ -455,6 +493,12 @@ fn lua_command_text(code: &str, expr: &str, at: usize, depth: usize) -> Option<S
     }
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     (known && text != UNKNOWN_PART).then_some(text)
+}
+
+/// `os.getenv('HOME')` (и с двойными кавычками, с пробелами).
+fn is_getenv_home(part: &str) -> bool {
+    let squeezed: String = part.chars().filter(|c| !c.is_whitespace()).collect();
+    squeezed == "os.getenv('HOME')" || squeezed == "os.getenv(\"HOME\")"
 }
 
 /// Шаблон `string.format`: подстановки `%s`, `%d`… — [`UNKNOWN_PART`],
@@ -536,8 +580,92 @@ fn scan_lua(text: &str) -> Vec<(RiskKind, String)> {
             }
         }
     }
-    out.extend(directives(&code));
+    out.extend(lua_directives(&code));
     out
+}
+
+// ============================================================================
+// Сценарии оболочки темы (`start.sh`, `scripts/*.sh`)
+// ============================================================================
+
+/// Программы, которые сценарии запуска зовут ради обвязки (переход в
+/// папку, ожидание, вывод, сам conky): строки только из них в вопросе не
+/// показываются — иначе за ними не видно настоящих команд.
+const QUIET_PROGRAMS: &[&str] = &[
+    "cd", "dirname", "basename", "pwd", "mkdir", "sleep", "echo", "printf", "test", "true", "false",
+    "readlink", "realpath", "wait", "trap", "exit", "date", "chmod", "setsid", "conky",
+];
+
+/// Программы, которые ходят в сеть.
+const NETWORK_PROGRAMS: &[&str] = &["curl", "wget"];
+
+/// Длиннее — строка в вопросе обрезается.
+const SHELL_LINE_MAX: usize = 160;
+
+/// Команды сценария оболочки для вопроса: строки, которые что-то
+/// исполняют, — кроме одной обвязки ([`QUIET_PROGRAMS`]), управляющих слов
+/// и заголовков функций. Строки с переносом `\` склеиваются. Строка, что
+/// зовёт `curl`/`wget`, — ещё и «скачивает из интернета».
+fn scan_shell(text: &str) -> Vec<(RiskKind, String)> {
+    let mut out: Vec<(RiskKind, String)> = Vec::new();
+    let mut joined: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for (i, line) in text.lines().enumerate() {
+        if i == 0 && line.starts_with("#!") {
+            continue;
+        }
+        let t = line.trim();
+        if let Some(head) = t.strip_suffix('\\') {
+            cur.push_str(head);
+            cur.push(' ');
+            continue;
+        }
+        cur.push_str(t);
+        joined.push(std::mem::take(&mut cur));
+    }
+    if !cur.is_empty() {
+        joined.push(cur);
+    }
+    for line in joined {
+        let s = line.trim();
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+        let head = s.trim_end_matches(['{', ' ']);
+        let function = head.strip_suffix("()").is_some_and(|n| !n.trim().is_empty() && n.trim().bytes().all(is_ident))
+            || s.starts_with("function ");
+        if function {
+            continue;
+        }
+        let programs = command_programs(s);
+        let calls_script = s
+            .split_whitespace()
+            .map(|w| w.trim_matches(|c| c == '"' || c == '\'' || c == '&' || c == ';'))
+            .any(|w| w.contains('/') && CODE_EXTS.contains(&ext_of(w).as_str()));
+        let loud = programs.iter().any(|p| !QUIET_PROGRAMS.contains(&p.as_str()));
+        if !loud && !calls_script {
+            continue;
+        }
+        let shown: String = if s.chars().count() > SHELL_LINE_MAX {
+            s.chars().take(SHELL_LINE_MAX).chain("…".chars()).collect()
+        } else {
+            s.to_string()
+        };
+        if programs.iter().any(|p| NETWORK_PROGRAMS.contains(&p.as_str())) {
+            out.push((RiskKind::Network, shown.clone()));
+        }
+        out.push((RiskKind::Command, shown));
+    }
+    out
+}
+
+/// Найдено в сценарии оболочки темы (а не в файле настроек или Lua):
+/// такие строки только показываются в вопросе. Программы из них
+/// [`health`] не проверяет — в сценарии бывают свои функции и ветки
+/// `case`, и «нет программы» по ним остановило бы рабочий виджет; нужные
+/// теме программы она называет сама (`theme.json`, `requires`).
+fn from_shell_script(r: &Risk) -> bool {
+    matches!(ext_of(&r.file).as_str(), "sh" | "bash")
 }
 
 /// Найденное в одном файле: опасности и файлы, на которые они ссылаются.
@@ -593,6 +721,19 @@ fn scan(io: &dyn LookIo, ctx: &Ctx, w: &Widget) -> Scan {
                 );
             }
             push(&mut risks, kind, what, lua);
+        }
+    }
+    // Тема со сценарием запуска (`start.sh`) запускается им, а он сам и
+    // `scripts/*.sh` исполняются целиком — их команды тоже в вопросе. Сами
+    // файлы уже в отпечатке (расширение `.sh`), так что ответ помнится,
+    // пока они не изменились.
+    if w.path == w.base {
+        for script in crate::conky_theme::shell_scripts(io, &w.base) {
+            let Some(text) = io.read(&script) else { continue };
+            push(&mut risks, RiskKind::Command, rel(&w.base, &script), &script);
+            for (kind, what) in scan_shell(&text) {
+                push(&mut risks, kind, what, &script);
+            }
         }
     }
     Scan { risks, refs }
@@ -784,7 +925,7 @@ fn list_block(out: &mut String, header: String, items: &[&Risk], main_file: &str
     for r in items.iter().take(LIST_LIMIT) {
         out.push_str("\n• ");
         out.push_str(&r.what);
-        if r.file != main_file {
+        if r.file != main_file && r.file != r.what {
             out.push_str(&format!(" ({})", r.file));
         }
     }
@@ -976,13 +1117,22 @@ pub fn widget_programs(io: &dyn LookIo, ctx: &Ctx, id: &str) -> Vec<String> {
     let w = widget(io, ctx, id);
     let mut out: Vec<String> = Vec::new();
     for r in scan(io, ctx, &w).risks {
-        if r.kind != RiskKind::Command || r.what.starts_with("os.execute(") || r.what.starts_with("io.popen(") {
+        if r.kind != RiskKind::Command
+            || r.what.starts_with("os.execute(")
+            || r.what.starts_with("io.popen(")
+            || from_shell_script(&r)
+        {
             continue;
         }
         for prog in command_programs(&r.what) {
             if prog != "conky" && !out.contains(&prog) {
                 out.push(prog);
             }
+        }
+    }
+    for prog in theme_programs(io, &w) {
+        if !out.contains(&prog) {
+            out.push(prog);
         }
     }
     out
@@ -1009,8 +1159,9 @@ pub fn health(io: &dyn LookIo, ctx: &Ctx, id: &str, family: &str) -> Health {
             }
             RiskKind::Command => {
                 // Вызов из Lua с выражением — команда известна только при
-                // запуске.
-                if r.what.starts_with("os.execute(") || r.what.starts_with("io.popen(") {
+                // запуске. Строки сценария оболочки темы — только для
+                // вопроса ([`from_shell_script`]).
+                if r.what.starts_with("os.execute(") || r.what.starts_with("io.popen(") || from_shell_script(r) {
                     continue;
                 }
                 for t in r.what.split_whitespace() {
@@ -1034,7 +1185,25 @@ pub fn health(io: &dyn LookIo, ctx: &Ctx, id: &str, family: &str) -> Health {
             RiskKind::Network => {}
         }
     }
+    // Программы, которые тема называет сама (`theme.json`, `requires`).
+    for prog in theme_programs(io, &w) {
+        if io.have(&prog) || h.missing_programs.iter().any(|m| m.program == prog) {
+            continue;
+        }
+        let package = program_package(&prog, family);
+        let aur = program_aur_package(&prog, family);
+        h.missing_programs.push(MissingProgram { program: prog, package, aur });
+    }
     h
+}
+
+/// Программы из описания темы (`theme.json`, поле `requires`) — у виджета
+/// папкой.
+fn theme_programs(io: &dyn LookIo, w: &Widget) -> Vec<String> {
+    if w.path != w.base {
+        return Vec::new();
+    }
+    crate::conky_theme::meta(io, &w.base).map(|m| crate::conky_theme::required_programs(&m)).unwrap_or_default()
 }
 
 /// Что делать с запуском виджета, которому чего-то не хватает. Правило
@@ -1293,9 +1462,74 @@ pub fn install_packages_live(packages: &[String]) -> Result<(), String> {
     crate::appearance_installer::live_install_repo_packages(packages, crate::privilege::op::PkgSource::Tools)
 }
 
+// ============================================================================
+// Старые сценарии Lua на новом conky
+// ============================================================================
+
+/// Метка строк, которые Rexon дописывает в сценарий Lua виджета.
+pub const LUA_COMPAT_MARK: &str = "-- Rexon: newer Conky keeps the X11 drawing functions in a separate module.";
+
+/// Сценарий Lua виджета, рисующий через `cairo_xlib_*` без
+/// `require 'cairo_xlib'`, — с этой строкой (и `require 'cairo'`, если и
+/// его нет), иначе `None`.
+///
+/// ЗАЧЕМ. Новый conky (1.25) держит функции X11-рисования в отдельном
+/// модуле `cairo_xlib`; сценарий, написанный под прежние выпуски (там их
+/// давал `require 'cairo'`), падает на первом же кадре:
+/// `cairo_xlib_surface_create` — `nil` (замер 15.11.2026 на Jhalak).
+/// Подключение — через `pcall`: у старого conky, где такого модуля нет,
+/// строка ничего не ломает. Повтор ничего не меняет.
+pub fn lua_xlib_compat(text: &str) -> Option<String> {
+    let code = strip_lua_comments(text);
+    if !code.contains("cairo_xlib_") || text.contains(LUA_COMPAT_MARK) {
+        return None;
+    }
+    let names = |m: &str| [format!("'{m}'"), format!("\"{m}\""), format!("[[{m}]]")];
+    let has = |m: &str| names(m).iter().any(|n| code.contains(n.as_str()));
+    if has("cairo_xlib") {
+        return None;
+    }
+    let mut add = format!("{LUA_COMPAT_MARK}\n");
+    if !has("cairo") {
+        add.push_str("pcall(require, 'cairo')\n");
+    }
+    add.push_str("pcall(require, 'cairo_xlib')\n");
+    // Строка `#!` остаётся первой.
+    let at = if text.starts_with("#!") { text.find('\n').map_or(text.len(), |p| p + 1) } else { 0 };
+    let mut out = String::with_capacity(text.len() + add.len() + 1);
+    out.push_str(&text[..at]);
+    if at == text.len() && at > 0 && !text.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str(&add);
+    out.push_str(&text[at..]);
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lua_xlib_compat_adds_require_once() {
+        // Jhalak: `require 'cairo'` есть, `cairo_xlib` — нет.
+        let jhalak = "require 'cairo'\nfunction conky_main()\n  local cs = cairo_xlib_surface_create(conky_window.display)\nend\n";
+        let fixed = lua_xlib_compat(jhalak).expect("нужна строка");
+        assert!(fixed.starts_with(LUA_COMPAT_MARK), "{fixed}");
+        assert!(fixed.contains("pcall(require, 'cairo_xlib')\nrequire 'cairo'\n"), "{fixed}");
+        assert!(!fixed.contains("pcall(require, 'cairo')"), "cairo уже подключён: {fixed}");
+        assert_eq!(lua_xlib_compat(&fixed), None, "повтор");
+        // Нет ни одного require — оба; `#!` остаётся первой.
+        let bare = "#!/usr/bin/lua\ncs = cairo_xlib_surface_create(a)";
+        let fixed = lua_xlib_compat(bare).unwrap();
+        assert!(fixed.starts_with("#!/usr/bin/lua\n-- Rexon:"), "{fixed}");
+        assert!(fixed.contains("pcall(require, 'cairo')\npcall(require, 'cairo_xlib')\ncs ="), "{fixed}");
+        // Уже подключён любым видом записи; упоминание только в комментарии;
+        // сценарий без X11-рисования — не трогаются.
+        assert_eq!(lua_xlib_compat("require(\"cairo_xlib\")\ncairo_xlib_surface_create(a)"), None);
+        assert_eq!(lua_xlib_compat("-- cairo_xlib_surface_create\nprint(1)"), None);
+        assert_eq!(lua_xlib_compat("require 'cairo'\ncairo_create(conky_surface())"), None);
+    }
 
     #[test]
     fn lua_comments_are_cut_but_strings_kept() {
@@ -1315,6 +1549,30 @@ mod tests {
                 (RiskKind::Network, "http://a/b".to_string()),
             ]
         );
+    }
+
+    /// Директива в сценарии Lua, разорванная склейкой с домашним каталогом
+    /// (виджет skyrim): путь — от `~`, а не от корня; неизвестная переменная —
+    /// «…», и такой путь проверка файлов не трогает.
+    #[test]
+    fn lua_directive_split_by_concatenation() {
+        let lua = "local HOME = os.getenv('HOME')\n\
+                   local a = { expr = '${execi 2 bash ' .. HOME .. '/.config/conky/w/scripts/gpu.sh}' }\n\
+                   local b = \"${execi 5 bash \" .. os.getenv( \"HOME\" ) .. \"/w/t.sh}\"\n\
+                   local c = '${execi 9 sh ' .. DIR .. '/x.sh}'\n\
+                   local d = '${execi 3 date +%H}'\n";
+        let d: Vec<String> = scan_lua(lua).into_iter().map(|(_, w)| w).collect();
+        assert_eq!(
+            d,
+            [
+                "bash ~/.config/conky/w/scripts/gpu.sh",
+                "bash ~/w/t.sh",
+                "sh …/x.sh",
+                "date +%H",
+            ]
+        );
+        assert!(is_getenv_home(" os.getenv ( 'HOME' ) "));
+        assert!(!is_getenv_home("os.getenv('USER')"));
     }
 
     #[test]

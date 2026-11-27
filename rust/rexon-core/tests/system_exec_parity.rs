@@ -2168,6 +2168,26 @@ fn login_screen_view_on_owner_like_machine() {
     assert!(io.commands().iter().all(|c| !c.starts_with("pkexec")), "проба только читает");
 }
 
+/// Автовход у основного: окно подтверждения ДО пароля говорит, что с ним
+/// станет у каждого другого экрана входа, — перенесётся или пропадёт.
+#[test]
+fn login_screen_view_warns_about_autologin_before_switch() {
+    let _lang = i18n_pin::en();
+    let io = owner_like_machine()
+        .with_helpers()
+        .file("/etc/plasmalogin.conf", "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n")
+        .reply(IS_ACTIVE_ALL, is_active(&["active", "inactive", "inactive", "inactive", "inactive"]));
+    let view = SystemExec::new(&io).login_screen_view();
+    let by = |u: &str| view.managers.iter().find(|m| m.unit == u).unwrap();
+    assert!(by("sddm").confirm.contains("Automatic sign-in for alice moves to SDDM as well."), "{}", by("sddm").confirm);
+    let lightdm = &by("lightdm").greeters[1].confirm;
+    assert!(lightdm.contains("moves to LightDM") && lightdm.contains("game mode"), "{lightdm}");
+    let cosmic = &by("cosmic-greeter").confirm;
+    assert!(cosmic.contains("Automatic sign-in for alice will be lost"), "{cosmic}");
+    assert!(!by("plasmalogin").confirm.contains("Automatic sign-in"), "у основного — ничего");
+    assert!(io.commands().iter().all(|c| !c.starts_with("pkexec")), "проба только читает");
+}
+
 #[test]
 fn login_screen_view_without_helper_locks_every_button() {
     let _lang = i18n_pin::en();

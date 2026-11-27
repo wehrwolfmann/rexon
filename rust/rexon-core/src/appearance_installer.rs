@@ -3823,6 +3823,17 @@ fn is_archive_file(archive: &str) -> bool {
 /// покупатель не смотрит. «Опасная запись в архиве», «нет программы tar» и
 /// «файл повреждён» — это три разных ответа, и теперь они разные.
 pub fn live_safe_extract(archive: &str, dest: &str) -> Result<(), String> {
+    let result = live_safe_extract_any(archive, dest);
+    // Права из архива — одним правилом для всех форматов: x-биты остаются,
+    // setuid/setgid/sticky и запись для группы и прочих снимаются.
+    if result.is_ok() {
+        crate::ext_utils::clamp_extracted_modes(Path::new(dest));
+    }
+    result
+}
+
+/// Распаковка по формату — тело [`live_safe_extract`] без приведения прав.
+fn live_safe_extract_any(archive: &str, dest: &str) -> Result<(), String> {
     std::fs::create_dir_all(dest).map_err(|e| format!("{dest}: {e}"))?;
     let dest_abs = abs_dest(dest);
 
@@ -7416,6 +7427,97 @@ mod tests {
             s(&root),
             "спуск в единственную верхнюю папку архива"
         );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Права файла на диске без типа файла.
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::symlink_metadata(path).expect("файл на месте").permissions().mode() & 0o7777
+    }
+
+    /// ZIP: бит исполнения скрипта из архива доезжает до диска (виджет Conky
+    /// «Skyrim Conky Rustic Parchment», 15.11.2026: `scripts/*.sh` вставали
+    /// `-rw-r--r--`, и скрипт, зовущий соседей напрямую, получал «Отказано в
+    /// доступе»). setuid и запись для группы и прочих — сняты.
+    #[test]
+    fn zip_keeps_exec_bits_and_drops_setuid() {
+        use std::io::Write as _;
+
+        let base = tmp_dir("zipmode");
+        let archive = base.join("widget.zip");
+        {
+            let file = std::fs::File::create(&archive).expect("архив создан");
+            let mut zip = zip::ZipWriter::new(file);
+            let plain = zip::write::SimpleFileOptions::default().unix_permissions(0o644);
+            let exec = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
+            zip.add_directory("skyrim/scripts/", exec).expect("каталог");
+            zip.start_file("skyrim/scripts/run.sh", exec).expect("запись начата");
+            zip.write_all(b"#!/bin/sh\necho ok\n").expect("запись удалась");
+            zip.start_file("skyrim/conky.conf", plain).expect("запись начата");
+            zip.write_all(b"conky.config = {}\n").expect("запись удалась");
+            zip.start_file("skyrim/scripts/suid.sh", exec).expect("запись начата");
+            zip.write_all(b"#!/bin/sh\n").expect("запись удалась");
+            zip.finish().expect("архив закрыт");
+        }
+        // Писатель crate zip сам отрезает биты сверх 0o777 — setuid и запись
+        // для всех ставятся прямо в каталоге записей архива (external_attr).
+        let mut bytes = std::fs::read(&archive).expect("архив читается");
+        let name = b"skyrim/scripts/suid.sh";
+        let at = (0..bytes.len() - 46)
+            .find(|&i| bytes[i..i + 4] == *b"PK\x01\x02" && bytes[i + 46..].starts_with(name))
+            .expect("запись в каталоге архива");
+        let attr: u32 = (0o104777u32) << 16;
+        bytes[at + 38..at + 42].copy_from_slice(&attr.to_le_bytes());
+        std::fs::write(&archive, &bytes).expect("архив записан");
+
+        let dest = base.join("out");
+        live_safe_extract(&s(&archive), &s(&dest)).expect("архив распакован");
+        let run = mode_of(&dest.join("skyrim/scripts/run.sh"));
+        assert_eq!(run & 0o111, 0o111, "скрипт исполняемый: {run:o}");
+        assert_eq!(mode_of(&dest.join("skyrim/conky.conf")) & 0o111, 0, "настройки не исполняемые");
+        let suid = mode_of(&dest.join("skyrim/scripts/suid.sh"));
+        assert_eq!(suid & 0o7000, 0, "setuid снят: {suid:o}");
+        assert_eq!(suid & 0o022, 0, "запись для группы и прочих снята: {suid:o}");
+        assert_eq!(suid & 0o111, 0o111, "бит исполнения остался: {suid:o}");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// TAR (системный `tar`): бит исполнения остаётся, setuid, setgid и
+    /// запись для группы и прочих снимаются.
+    #[test]
+    #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный tar")]
+    fn tar_keeps_exec_bits_and_drops_setuid() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let base = tmp_dir("tarmode");
+        let src = base.join("src/skyrim/scripts");
+        std::fs::create_dir_all(&src).expect("каталог создан");
+        std::fs::write(src.join("run.sh"), "#!/bin/sh\n").expect("файл записан");
+        std::fs::set_permissions(src.join("run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(src.join("suid.sh"), "#!/bin/sh\n").expect("файл записан");
+        std::fs::set_permissions(src.join("suid.sh"), std::fs::Permissions::from_mode(0o6777)).unwrap();
+        let archive = base.join("widget.tar.gz");
+        let argv = vec![
+            "tar".to_string(),
+            "-czf".to_string(),
+            s(&archive),
+            "-C".to_string(),
+            s(&base.join("src")),
+            "skyrim".to_string(),
+        ];
+        assert!(run_ok(&argv, Some(60)), "архив собран системным tar");
+
+        let dest = base.join("out");
+        live_safe_extract(&s(&archive), &s(&dest)).expect("архив распакован");
+        let run = mode_of(&dest.join("skyrim/scripts/run.sh"));
+        assert_eq!(run & 0o111, 0o111, "скрипт исполняемый: {run:o}");
+        let suid = mode_of(&dest.join("skyrim/scripts/suid.sh"));
+        assert_eq!(suid & 0o7000, 0, "setuid/setgid сняты: {suid:o}");
+        assert_eq!(suid & 0o022, 0, "запись для группы и прочих снята: {suid:o}");
+        assert_eq!(suid & 0o111, 0o111, "бит исполнения остался: {suid:o}");
 
         let _ = std::fs::remove_dir_all(&base);
     }

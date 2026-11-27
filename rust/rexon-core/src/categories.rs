@@ -1158,12 +1158,13 @@ pub fn group_note(group: SidebarGroup, de_id: &str) -> String {
 /// 24.10.2026: виджеты на столе — в каждом окружении). Своих виджетов у
 /// стола нет почти нигде, кроме KDE и Cinnamon, и человек, ищущий «виджеты
 /// на стол», видит одно слово «Conky» — пояснение говорит, что это такое,
-/// без жаргона. Где на Wayland у стола нет слоёв
-/// (`conky_overlay::wayland_without_layers`: GNOME, Cinnamon, Pantheon),
-/// виджет Conky — обычное окно, и это сказано здесь же, а не обещано как
-/// рабочее. Сеанс не проверяется намеренно: выбран может быть и не тот
-/// стол, что запущен, а фраза верна в обоих сеансах. Неизвестное окружение
-/// видит все разделы виджетов разом — пояснять там нечем.
+/// без жаргона. Оговорки про Wayland здесь больше нет (15.11.2026): на
+/// столах без слоёв (`conky_overlay::wayland_without_layers`: GNOME,
+/// Cinnamon, Pantheon) Rexon запускает conky через XWayland, и виджет
+/// держится на столе, как в сеансе X11 (`conky_overlay::via_xwayland`);
+/// редкий сеанс совсем без XWayland получает оговорку в заголовке раздела
+/// (`de_apply::conky_section_note`), где сеанс известен. Неизвестное
+/// окружение видит все разделы виджетов разом — пояснять там нечем.
 fn widgets_group_note(de_id: &str) -> String {
     use crate::de_customization::De;
     let Some(de) = crate::de_customization::de_from_id(de_id) else {
@@ -1172,12 +1173,8 @@ fn widgets_group_note(de_id: &str) -> String {
     match de {
         De::Kde => tr("Conky widgets — clocks, weather and sensors — come from a separate program and also work on other desktops."),
         De::Cinnamon => tr(
-            "Desklets are Cinnamon's own widgets and stay on the desktop in any session. Conky widgets come from a \
-             separate program; in the Wayland session they are regular windows.",
-        ),
-        _ if crate::conky_overlay::wayland_without_layers(de_id) => tr(
-            "Clocks, weather and system sensors on the desktop, drawn by the Conky program. In the Wayland session \
-             of this desktop they are regular windows; they stay on the desktop itself in the X11 session.",
+            "Desklets are Cinnamon's own widgets. Conky widgets — clocks, weather and sensors — come from a \
+             separate program and also work on other desktops.",
         ),
         _ => tr("Clocks, weather and system sensors right on the desktop. They're drawn by the Conky program, which works on any desktop."),
     }

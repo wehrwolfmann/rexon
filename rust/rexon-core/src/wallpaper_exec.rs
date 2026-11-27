@@ -94,17 +94,22 @@ pub struct WallpaperResult {
     pub message: String,
     /// PID поднятого процесса обоев, если он поднимался.
     pub pid: Option<i64>,
+    /// Обои встали, но есть то, что человек должен знать (живые обои
+    /// Wallpaper Engine остались поверх). Отдельно от `message`: итог с
+    /// предупреждением показывается своим значком, а не зелёной галочкой, и
+    /// не обрезается вместе с длинным названием обоев (правило #13).
+    pub warning: Option<String>,
 }
 
 impl WallpaperResult {
     /// Удача с сообщением.
     pub fn ok(message: impl Into<String>) -> Self {
-        WallpaperResult { ok: true, message: message.into(), pid: None }
+        WallpaperResult { ok: true, message: message.into(), pid: None, warning: None }
     }
 
     /// Отказ с сообщением.
     pub fn fail(message: impl Into<String>) -> Self {
-        WallpaperResult { ok: false, message: message.into(), pid: None }
+        WallpaperResult { ok: false, message: message.into(), pid: None, warning: None }
     }
 }
 
@@ -170,10 +175,6 @@ pub fn format_wants_load_monitor(fmt: Option<&str>) -> bool {
     matches!(fmt, Some("video") | Some("youtube") | Some("swf"))
 }
 
-/// Сила размытия подложки под живыми обоями — умолчание Python
-/// (`blur_radius = 20`).
-const BLUR_BACKDROP_RADIUS: i64 = 20;
-
 /// Проверки файловой системы для поиска наших хостов — те же, что у Python
 /// `ExecFsProbe`: исполняемый файл на месте и поиск по `PATH`.
 struct ExecProbe;
@@ -231,7 +232,8 @@ pub struct Status {
     pub session_type: String,
     /// PID процесса обоев, пока он жив.
     pub pid: Option<i64>,
-    /// Стоит ли размытая подложка.
+    /// Стоит ли подложка (кадр ролика картинкой стола) либо размытая
+    /// копия обоев.
     pub blur_active: bool,
     /// Играющие фоновые звуки.
     pub ambient: Vec<AmbientInfo>,
@@ -346,6 +348,26 @@ pub trait WpSys {
         false
     }
 
+    /// Чёткий кадр ролика для подложки и кадра вместо падающих обоев,
+    /// масштабированный под экран `screen` ([`wpe::video_still_argv`]).
+    /// По умолчанию — тот же кадр, что [`WpSys::extract_frame`].
+    fn extract_still(&mut self, source: &str, output: &str, timestamp: f64, _screen: Option<(u64, u64)>) -> bool {
+        self.extract_frame(source, output, timestamp)
+    }
+
+    /// Время последней правки файла, секунды от эпохи, либо `None`.
+    fn file_mtime(&mut self, _path: &str) -> Option<i64> {
+        None
+    }
+
+    /// Кадр взят из кеша кадров: освежить его время, чтобы чистка
+    /// ([`WpSys::prune_video_stills`]) уносила давно не нужные, а не этот.
+    fn touch_file(&mut self, _path: &str) {}
+
+    /// Ужать кеш кадров `dir` до предела ([`wpe::video_still_evictions`]),
+    /// не трогая `keep`. По умолчанию — ничего.
+    fn prune_video_stills(&mut self, _dir: &str, _keep: &str) {}
+
     /// Скачать ролик YouTube в кеш: путь к файлу либо `None`. По умолчанию
     /// — нет.
     fn download_youtube(&mut self, _url: &str, _quality: &str) -> Option<String> {
@@ -378,6 +400,35 @@ pub trait WpSys {
     /// чёрным, [`crate::wallpaper_backend::set_waywallen_gnome_display`]).
     /// По умолчанию ничего: подставные швы живой сеанс не трогают.
     fn release_waywallen_display(&mut self) {}
+
+    /// Свои живые обои легли поверхностью слоя фона (видео, веб, Flash, GIF
+    /// на композиторе с layer-shell). На Cinnamon с layer-shell служба фона
+    /// оболочки старше и закрыла бы их — её надо уложить под нашу
+    /// поверхность ([`crate::wallpaper_backend::restack_cinnamon_background_soon`]).
+    /// По умолчанию ничего: подставные швы живой сеанс не трогают.
+    fn own_layer_surface_up(&mut self) {}
+
+    /// Cinnamon с layer-shell в этом сеансе
+    /// ([`crate::wallpaper_backend::cinnamon_layer_shell_fact`]). По
+    /// умолчанию — нет: подставные швы живой факт процесса не читают.
+    fn cinnamon_layer_shell(&self) -> bool {
+        false
+    }
+
+    /// Снять брошенную копию нашего расширения Cinnamon из домашнего
+    /// каталога — та же функция, что у эффектов экрана
+    /// ([`crate::screen_effects::remove_orphan_user_copy`]). `Some` — путь
+    /// снятой копии. По умолчанию ничего: подставные швы домашний каталог
+    /// не трогают.
+    fn remove_orphan_shell_ext_copy(&mut self, _de: &str) -> Option<String> {
+        None
+    }
+
+    /// Применение началось (строка «применяю …» журнала): следующий
+    /// процесс хоста получит этот момент в [`wpe::APPLY_STARTED_ENV`] и
+    /// скажет в журнал, сколько человек ждал первого кадра. По умолчанию
+    /// ничего.
+    fn note_apply_started(&mut self) {}
 
     /// Rexon поставил обоями стола картинку `path` — следом пересчитать
     /// «Цвет акцента из обоев» вне Plasma ([`crate::accent::follow_wallpaper`]).
@@ -460,14 +511,25 @@ pub fn yields_we_wallpapers(fmt: &str) -> bool {
     matches!(fmt, "static" | "animated" | "video" | "youtube" | "web" | "swf")
 }
 
+/// Сколько дать оболочке на включение расширения перед повторным вопросом.
+const SHELL_EXT_ENABLE_SETTLE_SEC: f64 = 0.5;
+
+/// Кладут ли обои этого формата на Wayland свою поверхность в слой фона
+/// (наш хост, swww, mpvpaper). Картинка — нет: её рисует сама оболочка.
+pub fn own_layer_surface_format(fmt: &str) -> bool {
+    matches!(fmt, "animated" | "video" | "youtube" | "web" | "swf")
+}
+
 /// Что сказать человеку после попытки снять WE-обои: `None` — ничего
-/// (сняли, снимать было нечего, демона нет); `Some` — приписка к итогу:
-/// свои обои встали, но WE-обоя осталась поверх.
+/// (сняли, снимать было нечего, демона нет); `Some` — предупреждение к
+/// итогу: свои обои встали, но WE-обоя, возможно, осталась поверх. Значок
+/// предупреждения ставит строка итога (`qt_settings::wallpaper_done_warned`),
+/// в самом тексте его нет.
 pub fn we_yield_note(status: &str) -> Option<String> {
     (status == crate::we_client::STOP_ERROR).then(|| {
         crate::i18n::tr(
-            "⚠ The live Wallpaper Engine wallpaper could not be stopped — stop it in \
-             the Wallpaper Engine tab to see this one.",
+            "Rexon could not reach Wallpaper Engine to stop its live wallpaper. If \
+             you still see the old wallpaper, stop it on the Wallpaper Engine tab.",
         )
     })
 }
@@ -527,6 +589,9 @@ pub struct LiveSys {
     next: ProcHandle,
     epoch: Instant,
     family: String,
+    /// Начало текущего применения (мс от эпохи) — уйдёт следующему хосту
+    /// в [`wpe::APPLY_STARTED_ENV`] ([`WpSys::note_apply_started`]).
+    apply_started_ms: Option<u64>,
 }
 
 impl Default for LiveSys {
@@ -543,6 +608,7 @@ impl LiveSys {
             next: 1,
             epoch: Instant::now(),
             family: String::new(),
+            apply_started_ms: None,
         }
     }
 
@@ -606,6 +672,34 @@ impl WpSys for LiveSys {
 
     fn release_waywallen_display(&mut self) {
         crate::wallpaper_backend::set_waywallen_gnome_display_live(false);
+        // Cinnamon с layer-shell: поверхность вывода сцен закрыла бы и
+        // картинку службы фона, и наше окно слоя — клиент вывода снимаем.
+        if crate::wallpaper_backend::cinnamon_layer_shell_fact() {
+            crate::wallpaper_backend::set_layer_shell_display_off_live(true);
+        }
+    }
+
+    fn own_layer_surface_up(&mut self) {
+        if crate::wallpaper_backend::cinnamon_layer_shell_fact() {
+            crate::wallpaper_backend::restack_cinnamon_background_soon("свои живые обои слоем стола");
+        }
+    }
+
+    fn cinnamon_layer_shell(&self) -> bool {
+        crate::wallpaper_backend::cinnamon_layer_shell_fact()
+    }
+
+    fn remove_orphan_shell_ext_copy(&mut self, de: &str) -> Option<String> {
+        let mut ctx = crate::animations::LookCtx::from_env();
+        ctx.de = de.to_string();
+        crate::screen_effects::remove_orphan_user_copy(&crate::animations::SystemIo, &ctx)
+    }
+
+    fn note_apply_started(&mut self) {
+        self.apply_started_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_millis() as u64);
     }
 
     fn run(&mut self, argv: &[String], timeout: f64) -> Option<RunOut> {
@@ -617,6 +711,11 @@ impl WpSys for LiveSys {
             return Err(crate::i18n::tr("empty command"));
         };
         let mut cmd = Command::new(bin);
+        // Момент «применяю» — одному процессу, следующему после него: хост
+        // меряет по нему ожидание первого кадра.
+        if let Some(started) = self.apply_started_ms.take() {
+            cmd.env(wpe::APPLY_STARTED_ENV, started.to_string());
+        }
         cmd.args(rest)
             .stdin(Stdio::null())
             // Вывод процесса обоев намеренно не читается — почему, сказано
@@ -831,6 +930,69 @@ impl WpSys for LiveSys {
         let argv = wpe::extract_frame_argv(source, output, timestamp);
         matches!(crate::splash_exec::run_capture(&argv, 15.0), Some(r) if r.rc == 0)
             && std::path::Path::new(output).is_file()
+    }
+
+    fn extract_still(&mut self, source: &str, output: &str, timestamp: f64, screen: Option<(u64, u64)>) -> bool {
+        let (_, ext) = wpe::split_ext(source);
+        if wpe::IMAGE_EXTS.contains(&ext.to_lowercase().as_str()) {
+            return self.extract_frame(source, output, timestamp);
+        }
+        if let Some(dir) = std::path::Path::new(output).parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if utils::which(wpe::FFMPEG_BIN, None).is_none() {
+            return false;
+        }
+        // Пишем рядом и переименовываем: оборванный ffmpeg не должен
+        // оставить в кеше половину кадра, которую следующий раз взял бы
+        // как готовую.
+        let part = format!("{output}.part.jpg");
+        let argv = wpe::video_still_argv(source, &part, timestamp, screen);
+        let ok = matches!(crate::splash_exec::run_capture(&argv, 20.0), Some(r) if r.rc == 0)
+            && std::path::Path::new(&part).is_file()
+            && std::fs::rename(&part, output).is_ok();
+        if !ok {
+            let _ = std::fs::remove_file(&part);
+        }
+        ok
+    }
+
+    fn file_mtime(&mut self, path: &str) -> Option<i64> {
+        let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+        Some(modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64)
+    }
+
+    fn touch_file(&mut self, path: &str) {
+        if let Ok(f) = std::fs::File::options().write(true).open(path) {
+            let _ = f.set_modified(std::time::SystemTime::now());
+        }
+    }
+
+    fn prune_video_stills(&mut self, dir: &str, keep: &str) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let files: Vec<(String, i64, u64)> = rd
+            .flatten()
+            .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+            .filter_map(|e| {
+                let meta = e.metadata().ok()?;
+                let mtime = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                Some((e.path().to_string_lossy().into_owned(), mtime, meta.len()))
+            })
+            .collect();
+        let gone = wpe::video_still_evictions(&files, keep);
+        for path in &gone {
+            let _ = std::fs::remove_file(path);
+        }
+        if !gone.is_empty() {
+            log_line("info", &format!("кеш кадров подложки ужат: убрано {}", gone.len()));
+        }
     }
 
     fn pause_process(&mut self, proc: ProcHandle, pause: bool) {
@@ -1348,10 +1510,24 @@ pub struct WallpaperExec<S: WpSys> {
     saved_wallpaper: Option<String>,
     /// Окружение, в котором эти обои были сохранены.
     saved_de: Option<String>,
+    /// Cinnamon 6.8+: прежние `picture-uri-list` и `background-mode` как
+    /// есть (текст GVariant) — остановка возвращает их целиком, с подгонкой,
+    /// цветами и картинками по мониторам.
+    saved_cinnamon_bg: Option<(String, String)>,
     /// KDE: ЧУЖОЙ плагин обоев стола, если стол был занят им.
     saved_kde_plugin: Option<String>,
-    /// Размытый кадр, поставленный подложкой под живые обои.
+    /// Подложка под живыми обоями (чёткий кадр ролика) либо размытая
+    /// копия обоев — то, что сейчас стоит картинкой стола вместо настоящей.
     blur_path: Option<String>,
+    /// Подложка, отложенная на после показа ([`wpe::BackdropTiming::AfterShow`]):
+    /// её забирает фоновая дверь [`run_in_slot`] ([`spawn_backdrop`]).
+    pending_backdrop: Option<BackdropJob>,
+    /// Счётчик применений и остановок: подложка, готовая после смены обоев,
+    /// уже не к месту.
+    backdrop_generation: u64,
+    /// Идёт постановка подложки: удачный шаг плана не трогает формат и путь
+    /// показанного и не шлёт весть мосту — показано по-прежнему видео.
+    quiet_static: bool,
     /// Фоновые звуки: отдельный процесс на каждый, порядок — как заводили.
     ambient: Vec<Ambient>,
 
@@ -1367,6 +1543,8 @@ pub struct WallpaperExec<S: WpSys> {
     we_note: Option<String>,
     /// Последнее удачное применение своим хостом — для сторожа падений.
     host_request: Option<HostRequest>,
+    /// Расширение Cinnamon уже снято с обоев (Cinnamon с layer-shell).
+    shell_ext_retired: bool,
 }
 
 // ============================================================================
@@ -1649,6 +1827,78 @@ pub fn spawn_load_monitor<S: WpSys + Default + Send + 'static>(slot: ExecSlot<S>
 }
 
 // ============================================================================
+// Подложка после показа
+// ============================================================================
+
+/// Отложенная подложка: что показано и откуда брать кадр.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackdropJob {
+    /// Файл, из которого брать кадр.
+    pub source: String,
+    cache_home: String,
+    session_type: String,
+    generation: u64,
+    /// Формат и путь показанного в миг постановки в очередь.
+    shown: (Option<String>, Option<String>),
+    /// Когда показ удался (часы шва исполнителя) — для строки журнала.
+    shown_at: f64,
+}
+
+/// Чёткий кадр ролика под экран — из кеша либо ffmpeg. Один на подложку и
+/// на кадр вместо падающих обоев. Кадр масштабируется под самый большой
+/// выход ([`wpe::still_screen_size`]); опросить выходы не вышло — родной
+/// размер ролика. Повторное применение тех же обоев на том же экране
+/// берёт готовый кадр ([`wpe::video_still_key`]).
+pub fn prepare_video_still<S: WpSys>(sys: &mut S, cache_home: &str, session_type: &str, source: &str) -> Option<String> {
+    let sizes: Vec<(u64, u64)> = screen_outputs(sys, session_type).iter().filter_map(ScreenOutput::size).collect();
+    let screen = wpe::still_screen_size(&sizes);
+    let size = sys.file_size(source).unwrap_or(0);
+    let mtime = sys.file_mtime(source).unwrap_or(0);
+    let out = wpe::video_still_path(cache_home, &wpe::video_still_key(source, size, mtime, screen));
+    if sys.exists(&out) && !sys.is_dir(&out) {
+        sys.touch_file(&out);
+        return Some(out);
+    }
+    let ok = sys.extract_still(source, &out, wpe::BACKDROP_FRAME_SEC, screen)
+        || sys.extract_still(source, &out, wpe::BACKDROP_FALLBACK_SEC, screen);
+    // После доставания — ужать кеш до предела: этот кадр не трогается,
+    // недописанные остатки и давно не нужные кадры уходят.
+    if let Some((dir, _)) = out.rsplit_once('/') {
+        sys.prune_video_stills(dir, &out);
+    }
+    ok.then_some(out)
+}
+
+/// Отложенная подложка — в фоне, после показа ([`wpe::BackdropTiming::AfterShow`]).
+///
+/// Кадр (ffmpeg) готовится БЕЗ замка исполнителя своим швом — окно и
+/// следующее применение его не ждут; ставится — под замком, если обои за
+/// это время не сменились ([`WallpaperExec::finish_backdrop`]). Ошибка —
+/// предупреждение в журнал: итог применения уже сказан по видео.
+pub fn spawn_backdrop<S: WpSys + Default + Send + 'static>(slot: ExecSlot<S>) {
+    let job = {
+        let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+        guard.as_mut().and_then(WallpaperExec::take_pending_backdrop)
+    };
+    let Some(job) = job else {
+        return;
+    };
+    let spawned = std::thread::Builder::new()
+        .name("rexon-backdrop".to_string())
+        .spawn(move || {
+            let mut probe = S::default();
+            let still = prepare_video_still(&mut probe, &job.cache_home, &job.session_type, &job.source);
+            let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(exec) = guard.as_mut() {
+                exec.finish_backdrop(&job, still);
+            }
+        });
+    if let Err(e) = spawned {
+        log_line("warning", &format!("подложка не поднялась в фоне: {e}"));
+    }
+}
+
+// ============================================================================
 // Исполнитель процесса: один на все страницы окна
 // ============================================================================
 
@@ -1725,6 +1975,7 @@ pub fn run_in_slot<S: WpSys + Default + Send + 'static, R>(
         exec.sys.start_watch();
         out
     });
+    spawn_backdrop(slot.clone());
     spawn_load_monitor(slot.clone());
     out
 }
@@ -1744,8 +1995,12 @@ impl<S: WpSys> WallpaperExec<S> {
             companions: Vec::new(),
             saved_wallpaper: None,
             saved_de: None,
+            saved_cinnamon_bg: None,
             saved_kde_plugin: None,
             blur_path: None,
+            pending_backdrop: None,
+            backdrop_generation: 0,
+            quiet_static: false,
             ambient: Vec::new(),
             bridge_live: false,
             bridge_name: String::new(),
@@ -1754,6 +2009,7 @@ impl<S: WpSys> WallpaperExec<S> {
             perf_paused: false,
             we_note: None,
             host_request: None,
+            shell_ext_retired: false,
         }
     }
 
@@ -2246,6 +2502,11 @@ impl<S: WpSys> WallpaperExec<S> {
         seen: &mut Seen,
         pid: Option<i64>,
     ) -> WallpaperResult {
+        if self.quiet_static {
+            log_line("info", &format!("подложка поставлена: путь {}", step.backend));
+            let message = fill_message(&mut self.sys, &step.ok_message, seen);
+            return WallpaperResult { ok: true, message, pid, warning: None };
+        }
         self.current_format = Some(step.format.clone());
         self.current_path = Some(path.to_string());
         let fmt = step.format.clone();
@@ -2260,7 +2521,7 @@ impl<S: WpSys> WallpaperExec<S> {
         if let Some(pid) = pid {
             message = message.replace("{pid}", &crate::i18n::isolate(&pid.to_string()));
         }
-        WallpaperResult { ok: true, message, pid }
+        WallpaperResult { ok: true, message, pid, warning: None }
     }
 
     fn failed(
@@ -2555,10 +2816,10 @@ impl<S: WpSys> WallpaperExec<S> {
     /// Flash — превью рядом с обоями. `None` — кадра нет.
     fn still_frame_for(&mut self, req: &HostRequest) -> Option<String> {
         if req.fmt == "video" {
-            let key = crate::conky_overlay::key(&req.path);
-            let out = format!("{}/rexon/still-frames/{key}.png", self.cache_home());
-            let ok = self.sys.extract_frame(&req.path, &out, 3.0) || self.sys.extract_frame(&req.path, &out, 0.0);
-            return ok.then_some(out);
+            // Тот же кадр и тот же кеш, что у подложки: обычно он уже готов.
+            let cache = self.cache_home();
+            let session = self.session_type.clone();
+            return prepare_video_still(&mut self.sys, &cache, &session, &req.path);
         }
         let project = crate::renderer_watch::still_frame_dir(&req.path)
             .and_then(|dir| self.sys.read_text(&format!("{dir}/project.json")));
@@ -2576,6 +2837,69 @@ impl<S: WpSys> WallpaperExec<S> {
         };
         let timeout = utils::default_timeout_secs(&argv) as f64;
         self.sys.run(&argv, timeout);
+    }
+
+    /// Cinnamon с layer-shell: наше расширение обоев не показывает, а всё,
+    /// что лежит в его ключах от прежнего пути (до 6.8, до перехода на слой
+    /// стола), будит в нём хост ВТОРЫМ процессом рядом с нашим — живьём
+    /// 15.11.2026 так шли два видео разом, второе по ключу `source` с
+    /// утреннего применения. Выключаем расширение, если эффекта экрана нет
+    /// (чужие uuid не трогаем), и очищаем обои в его ключах. Раз на процесс:
+    /// ключи после этого пишет только путь расширения, а он здесь не идёт.
+    /// Вернуть расширение на Cinnamon без layer-shell ничего отдельного не
+    /// требует — тот путь включает выключенное сам.
+    fn retire_shell_extension_wallpaper(&mut self) {
+        if self.shell_ext_retired || wpe::shell_ext_schema(&self.de).is_none() || self.de == "gnome" {
+            return;
+        }
+        self.shell_ext_retired = true;
+        let Some(schema) = wpe::shell_ext_schema(&self.de) else { return };
+        // Брошенная копия от прежней версии (живьём 15.11.2026 — она и
+        // будила второй хост) снимается ДО чтения ключей: каталог схемы
+        // берётся уже системный. Та же функция, что у эффектов экрана.
+        let de = self.de.clone();
+        let orphan_removed = self.sys.remove_orphan_shell_ext_copy(&de).is_some();
+        let schema_dir = self.shell_extension_schema_dir();
+        let gsettings = |cmd: Vec<String>| match &schema_dir {
+            Some(dir) => wpe::with_schemadir(&cmd, dir),
+            None => cmd,
+        };
+        let ask = |sys: &mut S, cmd: Vec<String>| {
+            let timeout = utils::default_timeout_secs(&cmd) as f64;
+            sys.run(&cmd, timeout).filter(|o| o.rc == 0).map(|o| o.stdout)
+        };
+        let source = ask(&mut self.sys, gsettings(["gsettings", "get", schema, "source"].map(String::from).to_vec()));
+        let effect = ask(&mut self.sys, gsettings(["gsettings", "get", schema, "effect-shader"].map(String::from).to_vec()));
+        let enabled = ask(&mut self.sys, wpe::shell_ext_state_argv(&self.de));
+        let plan = wpe::shell_ext_retire_plan(&self.de, source.as_deref(), effect.as_deref(), enabled.as_deref());
+        let disabling = plan.disable_argv.is_some();
+        if let Some(cmd) = plan.disable_argv {
+            let timeout = utils::default_timeout_secs(&cmd) as f64;
+            let ok = matches!(self.sys.run(&cmd, timeout), Some(ref o) if o.rc == 0);
+            log_line(
+                if ok { "info" } else { "warning" },
+                &format!(
+                    "расширение обоев Cinnamon выключено: обои слоем стола, эффекта экрана нет{}",
+                    if ok { "" } else { " — не вышло" }
+                ),
+            );
+        }
+        // Копию сняли, а расширение остаётся (идёт эффект экрана) — пусть
+        // оболочка перечитает его с диска, уже системное: в памяти у неё
+        // код снятой копии. Как в починке эффектов экрана.
+        if orphan_removed && !disabling && enabled.as_deref().is_some_and(|o| o.contains(&format!("'{}'", wpe::SHELL_EXT_ID))) {
+            let cmd = crate::screen_effects::cinnamon_reload_argv();
+            let timeout = utils::default_timeout_secs(&cmd) as f64;
+            self.sys.run(&cmd, timeout);
+        }
+        if !plan.clear_argvs.is_empty() {
+            for cmd in plan.clear_argvs {
+                let cmd = gsettings(cmd);
+                let timeout = utils::default_timeout_secs(&cmd) as f64;
+                self.sys.run(&cmd, timeout);
+            }
+            log_line("info", "обои в ключах расширения Cinnamon очищены: их показывает Rexon слоем стола");
+        }
     }
 
     /// Снять удерживающий фон процесс (swaybg/wbg), если он наш.
@@ -2682,6 +3006,7 @@ impl<S: WpSys> WallpaperExec<S> {
         audio: bool,
     ) -> WallpaperResult {
         self.we_note = None;
+        self.forget_pending_backdrop();
         let mut res = self.apply_with_audio_inner(path, fmt, name, audio);
         if res.ok && fmt == "static" {
             self.sys.static_wallpaper_changed(path);
@@ -2696,6 +3021,24 @@ impl<S: WpSys> WallpaperExec<S> {
                 name: name.to_string(),
                 audio,
             });
+        }
+        // Видео, веб и Flash показывает наш хост, и о своей поверхности он
+        // скажет сам — когда на экране первый кадр (`cinnamon_layer` в
+        // rexon-gui). Заказ отсюда, со сроком от запуска процесса, только
+        // мешал: 15.11.2026 окно и хост переставляли службу фона почти
+        // одновременно, и хост застал её посреди перезапуска чужим.
+        if res.ok
+            && own_layer_surface_format(fmt)
+            && !host_watched_format(fmt)
+            && self.session_type == "wayland"
+            && !wpe::needs_shell_extension(&self.de, &self.session_type)
+        {
+            self.sys.own_layer_surface_up();
+        }
+        // Cinnamon с layer-shell: обои слоем стола, расширение с обоями не
+        // нужно — снять с него остатки прежнего пути (лишний второй хост).
+        if res.ok && self.sys.cinnamon_layer_shell() {
+            self.retire_shell_extension_wallpaper();
         }
         self.attach_we_note(&mut res);
         self.attach_desktop_icons_note(&mut res, fmt);
@@ -2742,11 +3085,11 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Приписать к удачному итогу «WE-обоя осталась поверх».
+    /// Пометить удачный итог предупреждением «WE-обоя могла остаться поверх».
     fn attach_we_note(&mut self, res: &mut WallpaperResult) {
         if let Some(note) = self.we_note.take() {
             if res.ok {
-                res.message = format!("{} {note}", res.message).trim().to_string();
+                res.warning = Some(note);
             }
         }
     }
@@ -2773,6 +3116,9 @@ impl<S: WpSys> WallpaperExec<S> {
         audio: bool,
     ) -> WallpaperResult {
         self.current_name = name.to_string();
+        if host_watched_format(fmt) {
+            self.sys.note_apply_started();
+        }
 
         if !carries_format(fmt) {
             return WallpaperResult::fail(format!(
@@ -2902,10 +3248,11 @@ impl<S: WpSys> WallpaperExec<S> {
                 self.de, self.session_type
             ),
         );
-        self.apply_blur_background(path);
+        let timing = self.backdrop_before_show(path);
         let res = self.run_plan(&plan, path);
         if res.ok {
             self.write_pidfile();
+            self.queue_backdrop_after_show(timing, path);
         }
         res
     }
@@ -2915,8 +3262,9 @@ impl<S: WpSys> WallpaperExec<S> {
     /// Хост ищется ПЕРВЫМ: не нашли — показывать нечем ни своим окном, ни
     /// расширением оболочки, и готовить файл впустую незачем. Дальше, как у
     /// Python: проверка файла, faststart-ремукс, запоминание картинки стола
-    /// KDE, размытая подложка, показ — расширением оболочки там, где
-    /// wlr-layer-shell нет (GNOME, Cinnamon-Wayland), иначе своим окном.
+    /// KDE, показ — расширением оболочки там, где wlr-layer-shell нет
+    /// (GNOME, Cinnamon-Wayland), иначе своим окном. Подложка — до показа
+    /// или после него, как решит [`wpe::backdrop_timing`].
     /// Надзор за нагрузкой поднимает вызывающий (`spawn_load_monitor`).
     fn apply_video(&mut self, path: &str, has_audio: bool) -> WallpaperResult {
         let Some(host) = self.sys.wallpaper_host() else {
@@ -2930,6 +3278,9 @@ impl<S: WpSys> WallpaperExec<S> {
             return WallpaperResult::fail(message);
         }
         let original_name = path.rsplit('/').next().unwrap_or(path).to_string();
+        // Кадр подложки — из файла человека: тот же ключ кеша у кадра вместо
+        // падающих обоев (`still_frame_for`), а ffmpeg перенос `moov` не нужен.
+        let still_source = path.to_string();
         let path = self.sys.ensure_faststart(path);
 
         // KDE: запомнить настоящую картинку стола ДО подложки, чтобы
@@ -2944,7 +3295,7 @@ impl<S: WpSys> WallpaperExec<S> {
             }
         }
 
-        self.apply_blur_background(&path);
+        let timing = self.backdrop_before_show(&still_source);
 
         let res = if wpe::needs_shell_extension(&self.de, &self.session_type) {
             self.video_shell_extension(&path, &host, has_audio)
@@ -2962,6 +3313,7 @@ impl<S: WpSys> WallpaperExec<S> {
         if res.ok {
             self.current_format = Some("video".to_string());
             self.current_path = Some(path);
+            self.queue_backdrop_after_show(timing, &still_source);
         }
         res
     }
@@ -2982,6 +3334,7 @@ impl<S: WpSys> WallpaperExec<S> {
         audio: bool,
     ) -> WallpaperResult {
         self.we_note = None;
+        self.forget_pending_backdrop();
         let mut res = self.apply_youtube_inner(url, quality, mode, audio);
         self.attach_we_note(&mut res);
         res
@@ -3060,29 +3413,116 @@ impl<S: WpSys> WallpaperExec<S> {
         res
     }
 
-    /// Размытый кадр живых обоев фоном под ними — порт
-    /// `apply_blur_background` (у Python включён по умолчанию). Не вышло —
-    /// не беда: живые обои от этого не зависят.
-    fn apply_blur_background(&mut self, source: &str) {
-        let cache = self.cache_home();
-        let frame = format!("{cache}/rexon/blur/frame.png");
-        // С 3-й секунды — мимо заставок; ролик короче — с начала.
-        if !self.sys.extract_frame(source, &frame, 3.0)
-            && !self.sys.extract_frame(source, &frame, 0.0)
-        {
+    /// Подложка под живыми обоями: чёткий кадр ролика картинкой стола —
+    /// виден при паузе по нагрузке, на экране блокировки и в обзоре, при
+    /// падении показа. Не вышло — не беда: живые обои от неё не зависят.
+    ///
+    /// Здесь — часть ДО показа: где подложку ставить до него
+    /// ([`wpe::BackdropTiming::BeforeShow`]), она ставится сразу; где после
+    /// — её откладывает [`Self::queue_backdrop_after_show`].
+    fn backdrop_before_show(&mut self, source: &str) -> wpe::BackdropTiming {
+        let timing = wpe::backdrop_timing(&self.de, &self.session_type);
+        match timing {
+            wpe::BackdropTiming::BeforeShow => {
+                let started = self.sys.monotonic();
+                let cache = self.cache_home();
+                let session = self.session_type.clone();
+                let still = prepare_video_still(&mut self.sys, &cache, &session, source);
+                match still {
+                    Some(still) if self.set_backdrop_image(&still) => {
+                        let ms = ((self.sys.monotonic() - started).max(0.0) * 1000.0) as u64;
+                        log_line("info", &format!("подложка поставлена до показа за {ms} мс: картинку стола здесь держит своя поверхность слоя фона"));
+                    }
+                    Some(_) => log_line("warning", "подложка не встала — живые обои пойдут без неё"),
+                    None => log_line("warning", "подложка не вышла: кадра из ролика нет — живые обои пойдут без неё"),
+                }
+            }
+            wpe::BackdropTiming::AfterShow => {}
+        }
+        timing
+    }
+
+    /// Показ удался: отложить подложку на после него. Её приготовит и
+    /// поставит фоновая дверь ([`spawn_backdrop`]); кто зовёт исполнитель
+    /// мимо неё — [`Self::run_pending_backdrop`].
+    fn queue_backdrop_after_show(&mut self, timing: wpe::BackdropTiming, source: &str) {
+        if timing != wpe::BackdropTiming::AfterShow {
             return;
         }
-        let output = wpe::blur_cache_output_path(&cache, &frame);
-        if let Err(e) = self.sys.blur_image(&frame, &output, BLUR_BACKDROP_RADIUS) {
-            log_line("warning", &format!("размытая подложка не вышла: {e}"));
-            return;
-        }
+        let cache_home = self.cache_home();
+        self.pending_backdrop = Some(BackdropJob {
+            source: source.to_string(),
+            cache_home,
+            session_type: self.session_type.clone(),
+            generation: self.backdrop_generation,
+            shown: (self.current_format.clone(), self.current_path.clone()),
+            shown_at: self.sys.monotonic(),
+        });
+    }
+
+    /// Поставить картинку подложки статичным планом стола — тихо: формат и
+    /// путь показанного не меняются, мосту весть не идёт.
+    fn set_backdrop_image(&mut self, still: &str) -> bool {
         let tools = self.plan_tools();
         let hint = self.sys.package_hint("swww");
-        let plan = wpe::static_plan(&self.de, &self.static_session(), &output, &tools, &hint);
-        if self.run_plan(&plan, &output).ok {
-            self.blur_path = Some(output);
+        let plan = wpe::static_plan(&self.de, &self.static_session(), still, &tools, &hint);
+        self.quiet_static = true;
+        let res = self.run_plan(&plan, still);
+        self.quiet_static = false;
+        if res.ok {
+            self.blur_path = Some(still.to_string());
+        } else {
+            log_line("warning", &format!("подложка не встала: {}", res.message));
         }
+        res.ok
+    }
+
+    /// Новое применение или остановка: отложенная подложка прежних обоев,
+    /// и та, что уже готовится в фоне, — не к месту.
+    fn forget_pending_backdrop(&mut self) {
+        self.pending_backdrop = None;
+        self.backdrop_generation = self.backdrop_generation.wrapping_add(1);
+    }
+
+    /// Отложенная подложка, если она есть, — забрать на исполнение.
+    pub fn take_pending_backdrop(&mut self) -> Option<BackdropJob> {
+        self.pending_backdrop.take()
+    }
+
+    /// Поставить отложенную подложку, кадр которой приготовлен
+    /// ([`prepare_video_still`]; `None` — кадра нет). Истина — подложка
+    /// стоит. Обои с тех пор сменились или остановлены — ничего не делает:
+    /// подложка не к месту, а прежнюю картинку стола уже вернули.
+    pub fn finish_backdrop(&mut self, job: &BackdropJob, still: Option<String>) -> bool {
+        let shown = (self.current_format.clone(), self.current_path.clone());
+        if job.generation != self.backdrop_generation || shown != job.shown {
+            log_line("info", "подложку не ставлю: обои за это время сменились");
+            return false;
+        }
+        let Some(still) = still else {
+            log_line("warning", "подложка не вышла: кадра из ролика нет — живые обои идут без неё");
+            return false;
+        };
+        if self.blur_path.as_deref() == Some(still.as_str()) {
+            log_line("info", "подложка уже стоит — ставить заново незачем");
+            return true;
+        }
+        if !self.set_backdrop_image(&still) {
+            return false;
+        }
+        let ms = ((self.sys.monotonic() - job.shown_at).max(0.0) * 1000.0) as u64;
+        log_line("info", &wpe::backdrop_ready_log_line(ms));
+        true
+    }
+
+    /// Отложенную подложку — сейчас же, этим же швом (для вызывающих мимо
+    /// [`run_in_slot`]: сверки, разовые применения без окна).
+    pub fn run_pending_backdrop(&mut self) -> bool {
+        let Some(job) = self.take_pending_backdrop() else {
+            return false;
+        };
+        let still = prepare_video_still(&mut self.sys, &job.cache_home, &job.session_type, &job.source);
+        self.finish_backdrop(&job, still)
     }
 
     /// Отдать видео расширению оболочки через его же настройки — порт
@@ -3133,7 +3573,10 @@ impl<S: WpSys> WallpaperExec<S> {
         self.current_path = Some(path.to_string());
         // Своего процесса нет и план не исполнялся — мосту говорим сами.
         self.notify_live_wallpaper(Some(fmt), true);
-        let state = self.shell_extension_state();
+        let mut state = self.shell_extension_state();
+        if state == wpe::ShellExtState::Disabled {
+            state = self.enable_shell_extension();
+        }
         match wpe::shell_ext_state_message(state, &plan.disabled_message) {
             None => WallpaperResult::ok(plan.ok_message),
             Some((ok, message)) => {
@@ -3209,6 +3652,30 @@ impl<S: WpSys> WallpaperExec<S> {
     /// так и говорим ([`wpe::ShellExtState::Unknown`]): прежде здесь стояло
     /// «проверить нечем — считаем включённым», и человек получал «готово»
     /// при пустом столе.
+    /// Включить своё выключенное расширение и спросить состояние снова.
+    /// Обои уже записаны в его настройки: включившись, оно прочтёт их и
+    /// поднимет хост само.
+    fn enable_shell_extension(&mut self) -> wpe::ShellExtState {
+        let probe = wpe::shell_ext_state_argv(&self.de);
+        let timeout = utils::default_timeout_secs(&probe) as f64;
+        let list = self.sys.run(&probe, timeout).filter(|o| o.rc == 0).map(|o| o.stdout);
+        let Some(enable) = wpe::shell_ext_enable_argv(&self.de, list.as_deref()) else {
+            return self.shell_extension_state();
+        };
+        let timeout = utils::default_timeout_secs(&enable) as f64;
+        let ok = matches!(self.sys.run(&enable, timeout), Some(ref o) if o.rc == 0);
+        log_line(
+            if ok { "info" } else { "warning" },
+            &format!("расширение оболочки было выключено — включаю: {}", if ok { "готово" } else { "не вышло" }),
+        );
+        if !ok {
+            return wpe::ShellExtState::Disabled;
+        }
+        // Оболочка подхватывает список не мгновенно.
+        self.sys.sleep(SHELL_EXT_ENABLE_SETTLE_SEC);
+        self.shell_extension_state()
+    }
+
     fn shell_extension_state(&mut self) -> wpe::ShellExtState {
         let argv = wpe::shell_ext_state_argv(&self.de);
         let timeout = utils::default_timeout_secs(&argv) as f64;
@@ -3274,6 +3741,7 @@ impl<S: WpSys> WallpaperExec<S> {
         let fmt = self.current_format.clone();
         // Остановленное намеренно сторож не поднимает.
         self.host_request = None;
+        self.forget_pending_backdrop();
 
         // Замороженный надзором процесс сперва размораживается: SIGTERM до
         // остановленного процесса не доходит, и остановка ждала бы SIGKILL.
@@ -3529,10 +3997,67 @@ impl<S: WpSys> WallpaperExec<S> {
                 self.saved_wallpaper = Some(raw.replace("file://", ""));
             }
         }
+        if schema == wpe::CINNAMON_BG_SCHEMA {
+            self.save_cinnamon_bg_list();
+        }
+    }
+
+    /// Cinnamon 6.8+: запомнить список картинок и режим как есть; картинку
+    /// для «что стояло» взять из списка, если `picture-uri` пуст (на 6.8 он
+    /// пуст всегда — оболочка его очищает).
+    fn save_cinnamon_bg_list(&mut self) {
+        let Some(list) = self.cinnamon_bg_get(wpe::CINNAMON_BG_LIST_KEY) else {
+            return; // старый Cinnamon: ключа нет
+        };
+        let mode = self.cinnamon_bg_get(wpe::CINNAMON_BG_MODE_KEY).unwrap_or_else(|| "'mirror'".to_string());
+        if self.saved_wallpaper.is_none() {
+            self.saved_wallpaper = wpe::cinnamon_list_first_path(&list);
+        }
+        self.saved_cinnamon_bg = Some((list, mode));
+    }
+
+    /// Значение ключа схемы фона Cinnamon (текст GVariant); `None` — ключа
+    /// нет или gsettings не ответил.
+    fn cinnamon_bg_get(&mut self, key: &str) -> Option<String> {
+        let argv = wpe::gsettings_get_argv(wpe::CINNAMON_BG_SCHEMA, key);
+        let timeout = utils::default_timeout_secs(&argv) as f64;
+        let out = self.sys.run(&argv, timeout).filter(|o| o.rc == 0)?;
+        let raw = out.stdout.trim().to_string();
+        (!raw.is_empty()).then_some(raw)
+    }
+
+    /// Cinnamon 6.8+: вернуть запомненные список и режим. Истина — вернули.
+    fn restore_cinnamon_bg_list(&mut self) -> bool {
+        let Some((list, mode)) = self.saved_cinnamon_bg.take() else {
+            return false;
+        };
+        let set = |key: &str, value: &str| {
+            vec![
+                "gsettings".to_string(),
+                "set".to_string(),
+                wpe::CINNAMON_BG_SCHEMA.to_string(),
+                key.to_string(),
+                value.to_string(),
+            ]
+        };
+        let argv = set(wpe::CINNAMON_BG_LIST_KEY, &list);
+        let timeout = utils::default_timeout_secs(&argv) as f64;
+        let ok = matches!(self.sys.run(&argv, timeout), Some(ref o) if o.rc == 0);
+        if ok {
+            self.sys.run(&set(wpe::CINNAMON_BG_MODE_KEY, &mode), timeout);
+            log_line("info", "фон Cinnamon: возвращён прежний список картинок");
+        }
+        ok
     }
 
     /// Вернуть сохранённые обои.
     fn restore_wallpaper(&mut self) {
+        // Cinnamon 6.8+: список целиком — точнее, чем одна картинка.
+        if self.restore_cinnamon_bg_list() {
+            self.saved_wallpaper = None;
+            self.saved_de = None;
+            return;
+        }
         let Some(path) = self.saved_wallpaper.take() else {
             return;
         };
@@ -3729,7 +4254,12 @@ impl<S: WpSys> WallpaperExec<S> {
                 let (cs, ck) = crate::themes::COLOR_SCHEME_KEY;
                 get(cs, ck).filter(|v| wpe::prefers_dark(v)).and_then(|_| get(s, k))
             });
-            dark.or_else(|| get(schema, key))
+            let first = dark.or_else(|| get(schema, key));
+            let list = (first.is_none() && schema == wpe::CINNAMON_BG_SCHEMA)
+                .then(|| self.cinnamon_bg_get(wpe::CINNAMON_BG_LIST_KEY))
+                .flatten()
+                .and_then(|l| wpe::cinnamon_list_first_path(&l));
+            first.or(list)
         };
         found.filter(|p| self.sys.exists(p) && !self.sys.is_dir(p))
     }
@@ -3921,9 +4451,35 @@ mod tests {
         we_stops: Vec<(usize, usize)>,
         /// Когда просили убрать вывод waywallen — в тех же мерках.
         display_releases: Vec<(usize, usize)>,
+        /// Сколько раз исполнитель сказал «своя поверхность слоя поднята».
+        layer_ups: usize,
+        /// Ответы на `run` по концу всей строки команды — главнее `answers`.
+        tail_answers: Vec<(String, RunOut)>,
+        /// Брошенная копия расширения Cinnamon «снимается» по этому пути.
+        orphan_copy: Option<String>,
+        /// Сеанс «Cinnamon с layer-shell».
+        cinnamon_layer: bool,
+        /// Сколько раз исполнитель отметил начало применения.
+        apply_marks: usize,
+        /// Кадры роликов «уже лежат» в кеше (`rexon/video-stills`); без
+        /// этого кеш пуст, и кадр достаётся заново.
+        stills_cached: bool,
+        /// Сколько команд было запущено к каждому подъёму процесса — по ним
+        /// видно, что шло до показа, а что после.
+        spawn_marks: Vec<usize>,
+        /// Кадры, взятые из кеша и освежённые.
+        touched: Vec<String>,
+        /// Чистки кеша кадров: (папка, что не трогать).
+        pruned: Vec<(String, String)>,
     }
 
     impl FakeSys {
+        fn answer_tail(&mut self, tail: &str, stdout: &str) {
+            self.tail_answers.push((
+                tail.to_string(),
+                RunOut { rc: 0, stdout: stdout.to_string(), stderr: String::new() },
+            ));
+        }
         fn answer(&mut self, bin: &str, rc: i64, stdout: &str) {
             self.answers.insert(
                 bin.to_string(),
@@ -3945,6 +4501,10 @@ mod tests {
             if self.missing.contains(&bin) {
                 return None;
             }
+            let line = argv.join(" ");
+            if let Some((_, out)) = self.tail_answers.iter().find(|(t, _)| line.ends_with(t.as_str())) {
+                return Some(out.clone());
+            }
             Some(self.answers.get(&bin).cloned().unwrap_or(RunOut {
                 rc: 0,
                 stdout: String::new(),
@@ -3953,6 +4513,7 @@ mod tests {
         }
         fn spawn(&mut self, argv: &[String], new_session: bool) -> Result<ProcHandle, String> {
             self.spawned.push((argv.to_vec(), new_session));
+            self.spawn_marks.push(self.ran.len());
             let bin = argv.first().cloned().unwrap_or_default();
             if self.missing.contains(&bin) {
                 return Err("нет такой команды".to_string());
@@ -3978,6 +4539,9 @@ mod tests {
             String::new()
         }
         fn exists(&mut self, path: &str) -> bool {
+            if path.contains("/rexon/video-stills/") {
+                return self.stills_cached;
+            }
             !self.missing_paths.iter().any(|p| p == path)
         }
         fn is_dir(&mut self, path: &str) -> bool {
@@ -4032,6 +4596,12 @@ mod tests {
             self.frames.push((source.to_string(), output.to_string()));
             self.frame_ok
         }
+        fn touch_file(&mut self, path: &str) {
+            self.touched.push(path.to_string());
+        }
+        fn prune_video_stills(&mut self, dir: &str, keep: &str) {
+            self.pruned.push((dir.to_string(), keep.to_string()));
+        }
         fn download_youtube(&mut self, _url: &str, _quality: &str) -> Option<String> {
             self.yt_download.clone()
         }
@@ -4044,6 +4614,19 @@ mod tests {
         }
         fn release_waywallen_display(&mut self) {
             self.display_releases.push((self.ran.len(), self.spawned.len()));
+        }
+        fn own_layer_surface_up(&mut self) {
+            self.layer_ups += 1;
+        }
+        fn cinnamon_layer_shell(&self) -> bool {
+            self.cinnamon_layer
+        }
+        fn remove_orphan_shell_ext_copy(&mut self, de: &str) -> Option<String> {
+            self.ran.push(vec!["<remove-orphan-copy>".to_string(), de.to_string()]);
+            self.orphan_copy.clone()
+        }
+        fn note_apply_started(&mut self) {
+            self.apply_marks += 1;
         }
     }
 
@@ -4095,6 +4678,9 @@ mod tests {
     fn we_stop_failure_is_told_and_absence_is_silent() {
         for (answer, told) in [
             (Some(crate::we_client::STOP_ERROR), true),
+            // Демон ответил, что снимать нечего (нет ни рендереров, ни
+            // мониторов) — молча: предупреждать не о чем.
+            (Some(crate::we_client::STOP_STOPPED), false),
             (Some(crate::we_client::STOP_NOT_RUNNING), false),
             (Some(crate::we_client::STOP_NO_QT), false),
             (None, false),
@@ -4106,7 +4692,10 @@ mod tests {
             let res = e.apply("/home/u/лес.png", "static", "");
             assert!(res.ok, "{answer:?}: {}", res.message);
             let note = we_yield_note(crate::we_client::STOP_ERROR).unwrap();
-            assert_eq!(res.message.contains(&note), told, "{answer:?}: {}", res.message);
+            assert_eq!(res.warning.as_deref() == Some(note.as_str()), told, "{answer:?}: {res:?}");
+            // Предупреждение — отдельным полем, в сообщение об успехе оно
+            // не вклеивается (иначе итог шёл бы под зелёной галочкой).
+            assert!(!res.message.contains(&note), "{answer:?}: {}", res.message);
         }
     }
 
@@ -4506,6 +5095,141 @@ mod tests {
         let said = e.sys_mut().bridge.clone();
         assert_eq!(said.len(), 1, "мосту не сказано об остановке");
         assert!(!said[0].0, "после остановки мосту обещаны живые обои");
+    }
+
+    /// Cinnamon с layer-shell: расширение снимается с обоев — сначала
+    /// выключается (чужие uuid на месте), потом очищаются его ключи, и всё
+    /// это один раз; при эффекте экрана расширение остаётся включённым.
+    #[test]
+    fn cinnamon_layer_shell_retires_extension_wallpaper() {
+        let mut sys = FakeSys::default();
+        sys.answer_tail("rexon-wallpaper source", "'/home/u/.cache/rexon/faststart/bb.mp4'\n");
+        sys.answer_tail("rexon-wallpaper effect-shader", "''\n");
+        sys.answer_tail("get org.cinnamon enabled-extensions", &format!("['a@x', '{}']\n", wpe::SHELL_EXT_ID));
+        let mut e = exec("cinnamon-mint", "wayland", sys);
+        e.retire_shell_extension_wallpaper();
+        let ran = lines(&mut e);
+        let disable = ran.iter().position(|l| l.contains("set org.cinnamon enabled-extensions")).expect("выключили");
+        assert!(ran[disable].ends_with("[\"a@x\"]"), "{}", ran[disable]);
+        let clear = ran.iter().position(|l| l.ends_with("set org.cinnamon.extensions.rexon-wallpaper source ")).expect("источник очищен");
+        assert!(ran.iter().any(|l| l.ends_with("set org.cinnamon.extensions.rexon-wallpaper daemon-argv []")));
+        assert!(disable < clear, "выключить ДО правки ключей — иначе правка будит расширение");
+        let before = ran.len();
+        e.retire_shell_extension_wallpaper();
+        assert_eq!(lines(&mut e).len(), before, "второй раз — ничего");
+
+        let mut sys = FakeSys::default();
+        sys.answer_tail("rexon-wallpaper source", "''\n");
+        sys.answer_tail("rexon-wallpaper effect-shader", "'/home/u/.config/rexon/screen-effects/shell-a.glsl'\n");
+        sys.answer_tail("get org.cinnamon enabled-extensions", &format!("['{}']\n", wpe::SHELL_EXT_ID));
+        let mut e = exec("cinnamon", "wayland", sys);
+        e.retire_shell_extension_wallpaper();
+        assert!(!lines(&mut e).iter().any(|l| l.contains(" set ")), "эффект идёт, ключи пусты — ничего не пишем");
+
+        let mut e = exec("gnome", "wayland", FakeSys::default());
+        e.retire_shell_extension_wallpaper();
+        assert!(lines(&mut e).is_empty(), "GNOME — не наш случай");
+    }
+
+    /// Брошенная копия расширения снимается той же функцией, что у эффектов
+    /// экрана, и ДО чтения ключей (каталог схемы — уже системный); если
+    /// расширение остаётся ради эффекта — оболочка перечитывает его
+    /// (`ReloadXlet`), если выключается — перечитывать нечего.
+    #[test]
+    fn cinnamon_layer_shell_removes_orphan_copy_like_screen_effects() {
+        let copy = "/home/u/.local/share/cinnamon/extensions/rexon-wallpaper@rexon.app".to_string();
+        let mut sys = FakeSys { orphan_copy: Some(copy.clone()), ..FakeSys::default() };
+        sys.answer_tail("rexon-wallpaper source", "''\n");
+        sys.answer_tail("rexon-wallpaper effect-shader", "'/home/u/.config/rexon/screen-effects/shell-a.glsl'\n");
+        sys.answer_tail("get org.cinnamon enabled-extensions", &format!("['{}']\n", wpe::SHELL_EXT_ID));
+        let mut e = exec("cinnamon", "wayland", sys);
+        e.retire_shell_extension_wallpaper();
+        let ran = lines(&mut e);
+        let removed = ran.iter().position(|l| l == "<remove-orphan-copy> cinnamon").expect("копию снимали");
+        let read = ran.iter().position(|l| l.ends_with("rexon-wallpaper source")).expect("ключи читали");
+        assert!(removed < read, "{ran:?}");
+        let reload = crate::screen_effects::cinnamon_reload_argv().join(" ");
+        assert!(ran.iter().any(|l| *l == reload), "эффект идёт — перечитать расширение: {ran:?}");
+
+        let mut sys = FakeSys { orphan_copy: Some(copy), ..FakeSys::default() };
+        sys.answer_tail("rexon-wallpaper source", "''\n");
+        sys.answer_tail("rexon-wallpaper effect-shader", "''\n");
+        sys.answer_tail("get org.cinnamon enabled-extensions", &format!("['{}']\n", wpe::SHELL_EXT_ID));
+        let mut e = exec("cinnamon", "wayland", sys);
+        e.retire_shell_extension_wallpaper();
+        let ran = lines(&mut e);
+        assert!(ran.iter().any(|l| l.contains("set org.cinnamon enabled-extensions")), "{ran:?}");
+        assert!(!ran.iter().any(|l| l.contains("ReloadXlet")), "выключено — перечитывать нечего: {ran:?}");
+
+        // Копии нет — и перечитывать нечего.
+        let mut sys = FakeSys::default();
+        sys.answer_tail("rexon-wallpaper effect-shader", "'/x.glsl'\n");
+        sys.answer_tail("get org.cinnamon enabled-extensions", &format!("['{}']\n", wpe::SHELL_EXT_ID));
+        let mut e = exec("cinnamon", "wayland", sys);
+        e.retire_shell_extension_wallpaper();
+        assert!(!lines(&mut e).iter().any(|l| l.contains("ReloadXlet")));
+    }
+
+    /// Cinnamon без layer-shell: выключенное расширение Rexon включает сам
+    /// (чужие uuid в списке остаются), а не включилось — честный отказ, а
+    /// не «✅ применены» при пустом столе.
+    #[test]
+    fn disabled_cinnamon_extension_is_turned_on_or_refused() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let mut sys = FakeSys::default();
+        sys.answer("gsettings", 0, "['a@b']\n");
+        let mut e = exec("cinnamon", "wayland", sys);
+        let plan = wpe::shell_ext_plan("cinnamon", "/x/a.mp4", HOST, false);
+        let res = e.run_shell_extension(plan, "/x/a.mp4", "video");
+        let enable = lines(&mut e)
+            .into_iter()
+            .find(|l| l.contains("set org.cinnamon enabled-extensions"))
+            .expect("Rexon включает расширение сам");
+        assert!(enable.contains("a@b") && enable.contains(wpe::SHELL_EXT_ID), "{enable}");
+        assert!(!res.ok, "оболочка так и не включила — не удача: {}", res.message);
+
+        let mut sys = FakeSys::default();
+        sys.answer("gsettings", 0, &format!("['a@b', '{}']\n", wpe::SHELL_EXT_ID));
+        let mut e = exec("cinnamon", "wayland", sys);
+        let plan = wpe::shell_ext_plan("cinnamon", "/x/a.mp4", HOST, false);
+        assert!(e.run_shell_extension(plan, "/x/a.mp4", "video").ok);
+        assert!(!lines(&mut e).iter().any(|l| l.contains("set org.cinnamon enabled-extensions")), "включённое не трогаем");
+    }
+
+    /// Cinnamon 6.8+: прежний список картинок запоминается целиком (с
+    /// подгонкой, цветами, картинками по мониторам), а картинка «что
+    /// стояло» берётся из него; остановка возвращает список и режим как
+    /// были, а не одну картинку через `picture-uri`.
+    #[test]
+    fn cinnamon_picture_list_is_saved_and_restored_whole() {
+        let list = "[{'picture-uri': <'file:///usr/share/backgrounds/a.jpg'>, 'picture-options': <'scaled'>}]";
+        let mut sys = FakeSys::default();
+        sys.answer("gsettings", 0, &format!("{list}\n"));
+        let mut e = exec("cinnamon", "wayland", sys);
+        e.save_cinnamon_bg_list();
+        assert_eq!(e.saved_wallpaper.as_deref(), Some("/usr/share/backgrounds/a.jpg"));
+        assert_eq!(e.saved_cinnamon_bg.as_ref().map(|(l, _)| l.as_str()), Some(list));
+        e.sys_mut().ran.clear();
+        e.saved_de = Some("cinnamon".to_string());
+        e.stop(true);
+        let out = lines(&mut e);
+        assert!(
+            out.iter().any(|l| l == &format!("gsettings set org.cinnamon.desktop.background picture-uri-list {list}")),
+            "{out:?}"
+        );
+        assert!(out.iter().any(|l| l.starts_with("gsettings set org.cinnamon.desktop.background background-mode")));
+        assert!(!out.iter().any(|l| l.contains("picture-uri file://")), "одной картинкой не возвращаем: {out:?}");
+        assert!(e.saved_cinnamon_bg.is_none() && e.saved_wallpaper.is_none());
+    }
+
+    /// Старый Cinnamon (ключа списка нет): прежний путь одной картинкой.
+    #[test]
+    fn old_cinnamon_without_list_keeps_single_picture() {
+        let mut sys = FakeSys::default();
+        sys.answer("gsettings", 1, "");
+        let mut e = exec("cinnamon", "x11", sys);
+        e.save_cinnamon_bg_list();
+        assert!(e.saved_cinnamon_bg.is_none());
     }
 
     /// Остановка называет формат, который ИГРАЛ, а не тот, что записал
@@ -5219,11 +5943,14 @@ mod tests {
             assert!(!res.ok, "state {state}: {}", res.message);
             assert_ne!(res.message, ok_message);
         }
-        // Выключено, не загружено (пустой словарь), оболочка не ответила или
-        // gdbus нет — обои переданы, но «готово» не говорится.
+        // Выключено: Rexon включает расширение сам; оболочка так и говорит
+        // «выключено» — обоев на столе нет, это отказ, а не удача.
         let disabled = GDBUS_EXT_ACTIVE.replace("'state': <1.0>", "'state': <2.0>");
+        let res = apply(Some((0, disabled.as_str())));
+        assert!(!res.ok, "выключено: {}", res.message);
+        // Не загружено (пустой словарь), оболочка не ответила или gdbus нет —
+        // обои переданы, но «готово» не говорится.
         for answer in [
-            Some((0, disabled.as_str())),
             Some((0, "(@a{sv} {},)\n")),
             Some((1, "")),
             None,
@@ -5299,9 +6026,11 @@ mod tests {
         assert_eq!(e.current_format(), Some("swf"));
     }
 
-    /// Размытая подложка: кадр из видео → размытие в кеш → статичные обои.
+    /// Подложка на X11: СНАЧАЛА видео (хост поднят, итог сказан), кадр
+    /// ролика ещё не доставался; подложка — следом, чётким кадром из кеша
+    /// кадров, без размытия, и формат показанного остаётся «видео».
     #[test]
-    fn video_gets_a_blurred_backdrop() {
+    fn video_starts_before_its_backdrop() {
         let mut sys = FakeSys::default();
         sys.host = Some(HOST.to_string());
         sys.frame_ok = true;
@@ -5309,13 +6038,133 @@ mod tests {
         let mut e = exec("generic", "x11", sys);
         let res = e.apply("/home/u/волны.mp4", "video", "");
         assert!(res.ok, "{}", res.message);
+        assert_eq!(e.sys_mut().spawned.len(), 1, "хост не поднят");
+        assert!(e.sys_mut().frames.is_empty(), "кадр доставали до показа");
+        assert!(!e.status().blur_active);
+        let shown_at = e.sys_mut().spawn_marks[0];
+
+        assert!(e.run_pending_backdrop(), "подложка не встала");
+        let frames = e.sys_mut().frames.clone();
+        assert_eq!(frames.len(), 1, "{frames:?}");
+        assert_eq!(frames[0].0, "/home/u/волны.mp4");
+        assert!(frames[0].1.starts_with("/home/u/.cache/rexon/video-stills/") && frames[0].1.ends_with(".jpg"), "{frames:?}");
+        assert!(e.sys_mut().blurred.is_empty(), "кадр размыт");
         assert_eq!(
-            e.sys_mut().frames[0],
-            ("/home/u/волны.mp4".to_string(), "/home/u/.cache/rexon/blur/frame.png".to_string())
+            e.sys_mut().pruned,
+            vec![("/home/u/.cache/rexon/video-stills".to_string(), frames[0].1.clone())],
+            "кеш кадров не ужат после нового кадра"
         );
-        assert_eq!(e.sys_mut().blurred[0].1, "/home/u/.cache/rexon/blur/frame_blur.jpg");
-        assert!(e.status().blur_active, "подложка не встала");
+        let ran = lines(&mut e);
+        let set = ran.iter().position(|l| l.contains("gsettings set") && l.contains(&frames[0].1)).expect("подложка не поставлена");
+        assert!(set >= shown_at, "подложка раньше видео: {ran:?}");
+        assert!(e.status().blur_active);
         assert_eq!(e.current_format(), Some("video"), "подложка перебила формат видео");
+        let bridge = e.sys_mut().bridge.clone();
+        assert!(bridge.last().is_some_and(|(live, _, _)| *live), "мосту сказано «не живые»: {bridge:?}");
+        assert!(!e.run_pending_backdrop(), "подложка поставлена дважды");
+    }
+
+    /// GNOME (расширение оболочки): строка запуска хоста записана ДО
+    /// подложки; картинка стола — после, тихо.
+    #[test]
+    fn gnome_extension_backdrop_goes_after_the_video() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        sys.frame_ok = true;
+        sys.answer("gdbus", 0, GDBUS_EXT_ACTIVE);
+        let mut e = exec("gnome", "wayland", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        let before = lines(&mut e);
+        assert!(!before.iter().any(|l| l.contains("/rexon/video-stills/")), "подложка до показа: {before:?}");
+        assert!(e.run_pending_backdrop());
+        let ran = lines(&mut e);
+        let daemon = ran.iter().position(|l| l.contains(wpe::SHELL_EXT_DAEMON_KEY)).expect("хост не передан");
+        let backdrop = ran
+            .iter()
+            .position(|l| l.contains("org.gnome.desktop.background") && l.contains("/rexon/video-stills/"))
+            .expect("подложки нет");
+        assert!(daemon < backdrop, "{ran:?}");
+        assert_eq!(e.current_format(), Some("video"));
+    }
+
+    /// wlroots (sway): картинку стола держит своя поверхность слоя фона —
+    /// подложка ставится ДО показа, иначе легла бы над видео.
+    #[test]
+    fn wlroots_backdrop_stays_before_the_video() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        sys.frame_ok = true;
+        sys.tools.push("swaymsg".to_string());
+        let mut e = exec("sway", "wayland", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        let ran = lines(&mut e);
+        let bg = ran.iter().position(|l| l.starts_with("swaymsg output") && l.contains("/rexon/video-stills/")).expect("подложки нет");
+        let shown_at = e.sys_mut().spawn_marks[0];
+        assert!(bg < shown_at, "подложка после видео: {ran:?}");
+        assert!(!e.run_pending_backdrop(), "на wlroots отложенной подложки быть не должно");
+        assert_eq!(e.current_format(), Some("video"));
+    }
+
+    /// Кадр уже в кеше — ffmpeg не зовётся; обои сменились или остановлены
+    /// раньше, чем подложка готова, — она не ставится вовсе; кадра нет —
+    /// видео идёт без подложки, итог применения прежний.
+    #[test]
+    fn backdrop_uses_cache_and_drops_when_stale() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        sys.stills_cached = true;
+        let mut e = exec("generic", "x11", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        assert!(e.run_pending_backdrop());
+        assert!(e.sys_mut().frames.is_empty(), "кадр из кеша доставали заново");
+        let touched = e.sys_mut().touched.clone();
+        assert!(touched.len() == 1 && touched[0].contains("/rexon/video-stills/"), "кадр из кеша не освежён: {touched:?}");
+        assert!(e.sys_mut().pruned.is_empty(), "кеш чистили без нового кадра");
+
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        sys.frame_ok = true;
+        let mut e = exec("generic", "x11", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        let job = e.take_pending_backdrop().expect("подложка не отложена");
+        e.stop(true);
+        let ran_before = e.sys_mut().ran.len();
+        assert!(!e.finish_backdrop(&job, Some("/home/u/.cache/rexon/video-stills/x.jpg".to_string())));
+        assert_eq!(e.sys_mut().ran.len(), ran_before, "подложка после остановки");
+
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        let mut e = exec("generic", "x11", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        let job = e.take_pending_backdrop().expect("подложка не отложена");
+        assert!(e.apply("/home/u/лес.mp4", "video", "").ok);
+        assert!(!e.finish_backdrop(&job, Some("/home/u/.cache/rexon/video-stills/x.jpg".to_string())), "подложка прежних обоев");
+        assert!(!e.run_pending_backdrop(), "кадра нет, а подложка «встала»");
+        assert_eq!(e.current_format(), Some("video"));
+    }
+
+    /// Cinnamon 6.8 с layer-shell: подложка — ЧЁТКИЙ кадр ролика, ПОСЛЕ
+    /// показа (до него поверхность службы фона лежит над нашей). Картинка
+    /// уходит в схему фона Cinnamon: из неё её берёт и экран блокировки,
+    /// который без подложки показывал устаревшую картинку (16.11.2026).
+    #[test]
+    fn cinnamon_layer_shell_video_sets_a_sharp_backdrop_after_show() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        sys.frame_ok = true;
+        sys.cinnamon_layer = true;
+        let mut e = exec("cinnamon-mint", "wayland", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        let before = lines(&mut e);
+        assert!(!before.iter().any(|l| l.contains("/rexon/video-stills/")), "подложка до показа: {before:?}");
+        assert!(e.run_pending_backdrop(), "подложка не отложена на после показа");
+        let ran = lines(&mut e);
+        assert!(
+            ran.iter().any(|l| l.contains(wpe::CINNAMON_BG_SCHEMA) && l.contains("/rexon/video-stills/")),
+            "кадр не ушёл в схему фона Cinnamon: {ran:?}"
+        );
+        assert!(e.sys_mut().blurred.is_empty(), "подложка размыта — нужен чёткий кадр");
+        assert_eq!(e.current_format(), Some("video"));
     }
 
     /// Звук видео выбирает вызывающий: `false` — хост поднят немым,
@@ -5490,6 +6339,32 @@ mod tests {
 
     /// Исполнитель с живым процессом обоев (веб-хост на sway) — у надзора
     /// есть за кем следить.
+    /// Веб-обои слоем на Wayland — исполнитель зовёт перестановку фона
+    /// (шов `own_layer_surface_up`); картинка и X11 — нет: картинку рисует
+    /// сама оболочка, на X11 слоя нет.
+    #[test]
+    fn own_layer_surface_reported_only_for_live_layer_formats() {
+        let (e, _) = exec_with_live_process();
+        let mut e = e;
+        // Веб, видео и Flash показывает наш хост: о показе своей поверхности
+        // он говорит сам, по первому кадру, — исполнитель не дублирует.
+        assert_eq!(e.sys_mut().layer_ups, 0, "веб на sway — перестановку заказывает сам хост");
+        assert_eq!(e.sys_mut().apply_marks, 1, "начало применения отмечено для замера первого кадра");
+        let mut sys = FakeSys::default();
+        sys.tools.push("swww".to_string());
+        let mut gif = exec("sway", "wayland", sys);
+        assert!(gif.apply("/home/u/a.gif", "animated", "").ok);
+        assert_eq!(gif.sys_mut().layer_ups, 1, "GIF через swww — чужая поверхность, заказ от исполнителя");
+        assert_eq!(gif.sys_mut().apply_marks, 0, "GIF показывает не наш хост — мерить некому");
+        assert!(own_layer_surface_format("video") && own_layer_surface_format("swf"));
+        assert!(!own_layer_surface_format("static") && !own_layer_surface_format("scene"));
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        let mut x11 = exec("xfce", "x11", sys);
+        x11.apply("https://example.com", "web", "");
+        assert_eq!(x11.sys_mut().layer_ups, 0, "X11 — окно, не слой");
+    }
+
     fn exec_with_live_process() -> (WallpaperExec<FakeSys>, ProcHandle) {
         let mut sys = FakeSys::default();
         sys.host = Some(HOST.to_string());
@@ -6637,7 +7512,7 @@ mod tests {
         assert!(e.show_still_frame());
         assert_eq!(e.current_format(), Some("static"));
         let still = e.current_path().unwrap().to_string();
-        assert!(still.contains("/rexon/still-frames/") && still.ends_with(".png"), "{still}");
+        assert!(still.contains("/rexon/video-stills/") && still.ends_with(".jpg"), "{still}");
         let frames = e.sys_mut().frames.clone();
         assert!(frames.iter().any(|(src, out)| src == "/home/u/волны.mp4" && *out == still), "{frames:?}");
         assert_eq!(e.saved_wallpaper.as_deref(), Some("/home/u/прежняя.png"));

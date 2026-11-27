@@ -695,7 +695,10 @@ impl qobject::App {
     }
 
     fn no_displays_hint(&self) -> QString {
-        QString::from(&rexon_core::waywallen_kde_plugin::no_displays_hint(we_socket::display_setup()))
+        QString::from(&rexon_core::waywallen_kde_plugin::no_displays_hint_in(
+            we_socket::display_setup(),
+            we_socket::session_backend(),
+        ))
     }
 
     fn ui_language(&self) -> QString {

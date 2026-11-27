@@ -7533,6 +7533,12 @@ pub const SECTIONS: &[(&str, &str, &str)] = &[
             button hides Rexon to the tray instead of quitting it."),
     ),
     (
+        "linksGroup",
+        n_("🔗 Links to Websites"),
+        n_("Links in item descriptions and comments open in your browser only after Rexon \
+            asks. Here are the websites you chose to open without asking."),
+    ),
+    (
         "fmGroup",
         n_("📁 File Manager"),
         n_("The program that opens folders — both in Rexon itself and across the whole \
@@ -7725,6 +7731,8 @@ pub const TEXTS: &[(&str, &str)] = &[
             not a single tab"),
     ),
     ("ob.started", n_("🎓 Tour started")),
+    // ссылки на сайты (`link_policy`)
+    ("links.reset", n_("Ask again for all websites")),
     // файловый менеджер
     ("fm.installed", n_("✅ installed")),
     ("fm.missing", n_("❌ not installed")),
@@ -7770,11 +7778,13 @@ pub const TEXTS: &[(&str, &str)] = &[
     ("wp.stop", n_("⏹️ Stop Live Wallpaper")),
     ("wp.from_file", n_("<b>From a file</b>")),
     ("wp.file_hint", n_("Image: JPG, PNG, WebP.  Video: MP4, WebM, MKV, AVI, WMV, MPEG, GIF.  Flash: SWF.")),
-    // ⚠️ Не «видео-обоев»: с 16.09.2026 эта галочка и ползунок рядом с ней
-    // распоряжаются звуком и видео-обоев, и Flash-обоев — ключи настроек у
-    // них одни. Подпись про видео означала бы, что человек выключает звук
-    // Flash кнопкой, которая про Flash ничего не говорит.
-    ("wp.video_audio", n_("🔊 Wallpaper sound (video and Flash)")),
+    // ⚠️ Без перечисления видов: галочка и ползунок распоряжаются звуком
+    // ВСЕХ обоев нашего хоста (видео, веб, Flash — ключи `wallpaper_audio_*`
+    // у них одни), и список в скобках устаревал с каждым новым видом
+    // (15.11: «видео и Flash» при живом звуке веб-обоев). У обоев вкладки
+    // Wallpaper Engine (waywallen) громкость своя — это говорит подсказка
+    // `wp.audio_hint`.
+    ("wp.video_audio", n_("🔊 Wallpaper sound")),
     ("wp.pick_image", n_("🖼️ Image…")),
     ("wp.pick_video", n_("🎬 Video…")),
     ("wp.busy", n_("⚠️ Wallpaper is already being applied")),
@@ -7784,12 +7794,10 @@ pub const TEXTS: &[(&str, &str)] = &[
         n_("⏳ Applying: %1 (%2)…"),
     ),
     ("wp.applied", n_("✅ Wallpaper applied: %1")),
+    // TRANSLATORS: %1 is the wallpaper result ("Video wallpaper set: Forest"),
+    // %2 is a whole sentence explaining what is still wrong.
+    ("wp.applied_warn", n_("⚠️ Wallpaper applied: %1. %2")),
     ("wp.stopped", n_("⏹️ Live wallpaper stopped")),
-    (
-        "wp.audio_next",
-        // TRANSLATORS: %1 is “on” or “off”.
-        n_("🔊 Video sound: %1 (takes effect with the next video)"),
-    ),
     (
         "wp.audio_live",
         // TRANSLATORS: %1 is “on” or “off”.
@@ -7810,13 +7818,9 @@ pub const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wp.audio_hint",
-        n_("Wallpaper sound changes on the fly — no need to reapply the wallpaper. Video \
-            and Flash wallpapers share one volume."),
-    ),
-    (
-        "wp.audio_reapply",
-        // TRANSLATORS: %1 is “Turning on” or “Turning off”.
-        n_("⏳ %1 video wallpaper sound…"),
+        n_("Wallpaper sound changes on the fly — no need to reapply the wallpaper. One \
+            volume for all live wallpapers except those from the Wallpaper Engine tab: \
+            they have their own, in that tab's settings."),
     ),
     (
         "wp.audio_on",
@@ -7828,8 +7832,6 @@ pub const TEXTS: &[(&str, &str)] = &[
         // TRANSLATORS: Sound state, shown as “Wallpaper sound: off”.
         n_("off"),
     ),
-    ("wp.audio_enabling", n_("Turning on")),
-    ("wp.audio_disabling", n_("Turning off")),
     ("wp.working", "⏳…"),
     // YouTube / Vimeo
     ("yt.header", "<b>▶️ YouTube / Vimeo</b>"),
@@ -8330,34 +8332,12 @@ pub fn ytdlp_done(ok: bool, msg: &str) -> String {
     }
 }
 
-/// Надо ли переприменить обои при переключении звука видео.
-///
-/// Переприменяем, только если видео сейчас играет и его файл на месте —
-/// иначе настройка просто ждёт следующего видео.
-pub fn wallpaper_audio_reapply(running: bool, format: &str, path_present: bool) -> bool {
-    running && format == "video" && path_present
-}
-
-/// Сообщение о переключении звука видео-обоев: `reapply` — переприменяем
-/// прямо сейчас, иначе «применится к следующему видео».
-pub fn wallpaper_audio_status(on: bool, reapply: bool) -> String {
-    if reapply {
-        let verb = if on {
-            t("wp.audio_enabling")
-        } else {
-            t("wp.audio_disabling")
-        };
-        return tf("wp.audio_reapply", &[&verb]);
-    }
-    tf("wp.audio_next", &[&audio_word(on)])
-}
-
 /// Сообщение о переключении звука обоев, который применяется НА ХОДУ.
 ///
-/// Отдельно от [`wallpaper_audio_status`] намеренно: та обещала «применится
-/// к следующему видео» либо «переприменяю», и обе половины обещания больше
-/// не про наш хост — он подхватывает настройку сам, ничего не перезапуская.
-/// Говорить человеку про перезапуск, которого нет, — врать в мелочи.
+/// Прежние «🔊 Звук видео: %1 (применится к следующему видео)» и
+/// «⏳ %1 звук видео-обоев…» сняты 15.11.2026 вместе с их функциями: хост
+/// обоев подхватывает настройку сам, ничего не перезапуская, так что обе
+/// фразы были неправдой, а показывать их было уже некому.
 pub fn wallpaper_audio_live_status(on: bool) -> String {
     tf("wp.audio_live", &[&audio_word(on)])
 }
@@ -8391,12 +8371,50 @@ pub fn wallpaper_applying_status(basename: &str, format: &str) -> String {
 
 /// Итог применения обоев (общий для файла, библиотеки и переключения звука).
 pub fn wallpaper_done(ok: bool, msg: &str) -> String {
-    let msg = clip(msg, 160);
-    if ok {
-        tf("wp.applied", &[&msg])
-    } else {
-        tf("status.error", &[&msg])
+    wallpaper_done_warned(ok, msg, None)
+}
+
+/// Итог применения обоев с предупреждением исполнителя
+/// (`WallpaperResult::warning`). Обои встали, но есть проблема — значок
+/// предупреждения вместо зелёной галочки (правило #13). Обрезается только
+/// сообщение об успехе (там длинное название обоев), предупреждение — целиком:
+/// строка состояния переносит текст, а обрезанный совет бесполезен.
+pub fn wallpaper_done_warned(ok: bool, msg: &str, warning: Option<&str>) -> String {
+    done_or_warned(ok, msg, warning, |ok, msg| {
+        let msg = clip(msg, 160);
+        if ok {
+            tf("wp.applied", &[&msg])
+        } else {
+            tf("status.error", &[&msg])
+        }
+    })
+}
+
+/// Общая развилка итогов применения (обои, YouTube, веб): нет предупреждения
+/// или отказ — обычный итог `plain`; удача с предупреждением — строка
+/// «⚠️ Обои применены: … . <предупреждение>» для любого вида обоев.
+pub fn done_or_warned(
+    ok: bool,
+    msg: &str,
+    warning: Option<&str>,
+    plain: impl FnOnce(bool, &str) -> String,
+) -> String {
+    match warning.map(str::trim).filter(|w| !w.is_empty()) {
+        Some(warning) if ok => {
+            let msg = clip(msg, 160);
+            let msg = msg.trim_end_matches(['.', ' ']);
+            tf("wp.applied_warn", &[msg, warning])
+        }
+        _ => plain(ok, msg),
     }
+}
+
+/// Предупреждает ли строка итога (начинается со знака «⚠»: предупреждение
+/// или ошибка) — тогда строка состояния красится цветом [`COLOR_WARN`].
+/// Значки входят в строки каталога без перевода, поэтому правило одно на
+/// все языки.
+pub fn status_is_warning(text: &str) -> bool {
+    text.trim_start().starts_with('⚠')
 }
 
 /// Заголовок окна выбора файла обоев: «Choose wallpaper» / «Choose a video»

@@ -924,20 +924,31 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
             // `breeze-icons` — тема значков (она же жёсткая зависимость
             // lxqt-session, но здесь стоит намеренно: список обязан отвечать
             // за обе просьбы сам).
-            (PkgFamily::Arch, &["lxqt", "openbox", "breeze-icons", "sddm"]),
-            (PkgFamily::Debian, &["lxqt", "sddm"]),
-            (PkgFamily::Fedora, &["@lxqt-desktop-environment", "sddm"]),
-            (PkgFamily::Suse, &["patterns-lxqt-lxqt", "sddm"]),
-            (PkgFamily::Gentoo, &["lxqt-base/lxqt-meta", "x11-misc/sddm"]),
+            //
+            // `xscreensaver` — блокировка экрана в X11. Своего блокировщика у
+            // LXQt нет: «Заблокировать» (и Ctrl+Alt+L) зовёт
+            // `xdg-screensaver lock`, а тот умеет только запущенного
+            // xscreensaver (ветки для LXQt у него нет — код возврата 1 и окно
+            // «Ошибка хранителя экрана»). Запускает его при входе сам
+            // lxqt-session (`lxqt-xscreensaver-autostart.desktop`,
+            // TryExec=xscreensaver). Ни в группе `lxqt`, ни в мета-пакетах
+            // других семейств его нет. Для Wayland — swaylock в
+            // `SESSION_VARIANTS`; команды обоих сеансов пишет пост-установка
+            // (`plan::lxqt_lock_edit`).
+            (PkgFamily::Arch, &["lxqt", "openbox", "breeze-icons", "sddm", "xscreensaver"]),
+            (PkgFamily::Debian, &["lxqt", "sddm", "xscreensaver"]),
+            (PkgFamily::Fedora, &["@lxqt-desktop-environment", "sddm", "xscreensaver"]),
+            (PkgFamily::Suse, &["patterns-lxqt-lxqt", "sddm", "xscreensaver"]),
+            (PkgFamily::Gentoo, &["lxqt-base/lxqt-meta", "x11-misc/sddm", "x11-misc/xscreensaver"]),
             (PkgFamily::Alpine, &[
                 "lxqt-desktop", "lximage-qt", "pavucontrol-qt", "font-dejavu",
-                "sddm",
+                "sddm", "xscreensaver",
             ]),
-            (PkgFamily::Void, &["lxqt", "sddm"]),
+            (PkgFamily::Void, &["lxqt", "sddm", "xscreensaver"]),
             (PkgFamily::Alt, &[
                 "lxqt-session", "lxqt-panel", "lxqt-config", "lxqt-policykit",
                 "lxqt-runner", "lxqt-notificationd", "pcmanfm-qt", "qterminal",
-                "openbox", "sddm",
+                "openbox", "sddm", "xscreensaver",
             ]),
         ],
         aur: &[],
@@ -1019,7 +1030,8 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "symbols-only-nerd-fonts",
             ]),
             (PkgFamily::Gentoo, &[
-                "gui-wm/sway", "gui-apps/swaybg", "gui-apps/waybar",
+                "gui-wm/sway", "gui-apps/swaybg", "gui-apps/swayidle",
+                "gui-apps/swaylock", "gui-apps/waybar",
                 "gui-apps/wofi", "gui-apps/foot", "gui-apps/grim",
                 "gui-apps/slurp", "media-fonts/fontawesome",
                 "media-fonts/symbols-nerd-font",
@@ -1063,26 +1075,33 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
     // стартовый init кладёт пост-установка (`plan::river_starter_init`).
     // Панель — waybar (её запускает стартовый init), запуск программ — fuzzel,
     // терминал — foot (его зовёт и пример init из самого river-classic).
+    // Блокировка экрана — swaylock (Super+Shift+Esc), по простою и перед
+    // сном её зовёт swayidle; оба запускает тот же стартовый init. Своего
+    // блокировщика у river-classic нет.
     ("river", DeEntry {
         packages: &[
             (PkgFamily::Arch, &[
                 "river-classic", "waybar", "fuzzel", "foot", "mako", "swaybg",
+                "swaylock", "swayidle",
                 "thunar", "grim", "slurp", "wl-clipboard", "polkit-gnome",
                 "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
                 "otf-font-awesome", "ttf-nerd-fonts-symbols",
             ]),
             (PkgFamily::Fedora, &[
                 "river-classic", "waybar", "fuzzel", "foot", "mako", "swaybg",
+                "swaylock", "swayidle",
                 "grim", "slurp", "wl-clipboard", "xdg-desktop-portal-wlr",
                 "fontawesome-fonts",
             ]),
             (PkgFamily::Void, &[
-                "river", "waybar", "fuzzel", "foot", "mako", "swaybg", "grim",
+                "river", "waybar", "fuzzel", "foot", "mako", "swaybg",
+                "swaylock", "swayidle", "grim",
                 "slurp", "wl-clipboard", "xdg-desktop-portal-wlr",
                 "font-awesome", "nerd-fonts-symbols-ttf",
             ]),
             (PkgFamily::Alpine, &[
                 "river-classic", "waybar", "fuzzel", "foot", "mako", "swaybg",
+                "swaylock", "swayidle",
                 "grim", "slurp", "wl-clipboard", "xdg-desktop-portal-wlr",
                 "font-awesome", "font-nerd-fonts-symbols",
             ]),
@@ -1097,7 +1116,11 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
     // входе (`autostart_wf_shell`, по умолчанию true), а без них сеанс —
     // серый экран без меню и без единой клавиши запуска программ (в
     // умолчаниях модуля command привязок нет), правило #13. wcm — окно
-    // настроек Wayfire, чтобы не править wayfire.ini руками. Alpine держит
+    // настроек Wayfire, чтобы не править wayfire.ini руками. swaylock и
+    // swayidle — блокировка экрана: в умолчаниях Wayfire клавиши блокировки
+    // нет вовсе, а пример из документации зовёт swaylock; привязку и
+    // блокировку по простою дописывает пост-установка
+    // (`plan::wayfire_lock_edit`). Alpine держит
     // Wayfire только в testing, ALT — только в Sisyphus: там стол
     // «недоступен».
     ("wayfire", DeEntry {
@@ -1106,27 +1129,30 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "wayfire", "wf-shell", "wcm", "foot", "mako", "thunar", "grim",
                 "slurp", "wl-clipboard", "polkit-gnome",
                 "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
-                "xorg-xwayland",
+                "xorg-xwayland", "swaylock", "swayidle",
             ]),
             (PkgFamily::Debian, &[
                 "wayfire", "wf-shell", "wcm", "foot", "mako-notifier", "grim",
-                "slurp", "wl-clipboard", "xdg-desktop-portal-wlr",
+                "slurp", "wl-clipboard", "xdg-desktop-portal-wlr", "swaylock",
+                "swayidle",
             ]),
             (PkgFamily::Fedora, &[
                 "wayfire", "wf-shell", "wayfire-config-manager", "foot", "mako",
                 "grim", "slurp", "wl-clipboard", "xdg-desktop-portal-wlr",
+                "swaylock", "swayidle",
             ]),
             (PkgFamily::Suse, &[
                 "wayfire", "wf-shell", "wcm", "foot", "mako", "grim", "slurp",
-                "wl-clipboard", "xdg-desktop-portal-wlr",
+                "wl-clipboard", "xdg-desktop-portal-wlr", "swaylock", "swayidle",
             ]),
             (PkgFamily::Gentoo, &[
                 "gui-wm/wayfire", "gui-apps/wf-shell", "gui-apps/wcm",
                 "gui-apps/foot", "gui-apps/grim", "gui-apps/slurp",
+                "gui-apps/swaylock", "gui-apps/swayidle",
             ]),
             (PkgFamily::Void, &[
                 "wayfire", "wf-shell", "wcm", "foot", "mako", "grim", "slurp",
-                "wl-clipboard", "xdg-desktop-portal-wlr",
+                "wl-clipboard", "xdg-desktop-portal-wlr", "swaylock", "swayidle",
             ]),
         ],
         aur: &[],
@@ -2220,7 +2246,7 @@ pub fn desktop_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
 //   * Budgie 10.10 — только Wayland (зависит от labwc);
 //   * Pantheon 8 (`pantheon-session` 8.1) — только `pantheon-wayland.desktop`;
 //   * COSMIC и Deepin на Treeland — только Wayland.
-// Выбирать есть из чего у четырёх:
+// Выбирать есть из чего у трёх:
 //   * Cinnamon 6.6 — оба сеанса в самом пакете `cinnamon`
 //     (`cinnamon.desktop` и `cinnamon-wayland.desktop`); Wayland пока
 //     экспериментальный (Mint обещает снять пометку со следующего выпуска);
@@ -2231,9 +2257,13 @@ pub fn desktop_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
 //   * LXQt 2.4 — `lxqt-wayland-session` (extra) и композитор; первым
 //     `startlxqtwayland` берёт labwc. Пометку «experimental» с сеанса
 //     Wayland проект снял в LXQt 2.3.0 (lxqt-project.org, «How to Enable
-//     Wayland in Lubuntu 26.04», 01.05.2026) — Wayland зрелый;
-//   * MATE 1.28 — Wayland только из AUR (`mate-wayland-session`, сеанс на
-//     Wayfire), один голос и пометка «устарел» с 17.04.2026.
+//     Wayland in Lubuntu 26.04», 01.05.2026) — Wayland зрелый.
+// MATE 1.28 ставится только сеансом X11, без переключателя (решение
+// Wehrwolfmann 16.11.2026): Wayland у него был лишь из AUR
+// (`mate-wayland-session` на Wayfire, один голос, пометка «устарел» с
+// 17.04.2026). Механизм «добавка Wayland из AUR»
+// ([`WaylandMaturity::ExperimentalAur`], [`SessionVariants::wayland_aur`])
+// оставлен — для MATE (Polo), когда появится пакет.
 // Описано только для Arch: в других семействах набор не проверен, там
 // выбора нет и ставится как раньше.
 
@@ -2303,7 +2333,7 @@ impl SessionPick {
         }
     }
 
-    /// Нужна ли добавка Wayland (у MATE — из AUR).
+    /// Нужна ли добавка Wayland (бывает и из AUR).
     pub fn needs_wayland(self) -> bool {
         self.install_kind() == SessionKind::Wayland
     }
@@ -2320,7 +2350,10 @@ pub enum WaylandMaturity {
     /// Из репозиториев дистрибутива, но сам проект зовёт его
     /// экспериментальным.
     Experimental,
-    /// Экспериментальный и только из AUR (собирается на машине).
+    /// Экспериментальный и только из AUR (собирается на машине). Сейчас
+    /// таким столом в таблице никто не помечен: прежний MATE на Wayfire
+    /// снят 16.11.2026. Оставлено для MATE (Polo), когда появится пакет;
+    /// под тестом — через `test_session_variants` (только в тестах).
     ExperimentalAur,
 }
 
@@ -2330,7 +2363,8 @@ pub struct SessionVariants {
     pub family: PkgFamily,
     /// Сверх основного набора — для сеанса Wayland (из репозиториев).
     pub wayland_packages: &'static [&'static str],
-    /// Сверх основного набора — для сеанса Wayland из AUR.
+    /// Сверх основного набора — для сеанса Wayland из AUR (сейчас пусто у
+    /// всех; для MATE (Polo), когда появится пакет).
     pub wayland_aur: &'static [&'static str],
     /// Что из добавки снимается вместе со столом: связка сеанса держит
     /// пакеты стола зависимостью. Композиторы (labwc, Wayfire) — нет: они
@@ -2383,7 +2417,10 @@ pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
     }),
     ("lxqt", SessionVariants {
         family: PkgFamily::Arch,
-        wayland_packages: &["lxqt-wayland-session", "labwc", "xorg-xwayland"],
+        // swaylock — блокировка экрана в Wayland: `lxqt-leave --lockscreen`
+        // (Super+L у labwc) зовёт `lock_command_wayland`, а по умолчанию он
+        // пуст, и экран не блокировался вовсе.
+        wayland_packages: &["lxqt-wayland-session", "labwc", "xorg-xwayland", "swaylock"],
         wayland_aur: &[],
         remove_with_desktop: &["lxqt-wayland-session"],
         maturity: WaylandMaturity::Mature,
@@ -2394,19 +2431,6 @@ pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
         wayland_session_file: "/usr/share/wayland-sessions/lxqt-wayland.desktop",
         // Композиторы, которые `startlxqtwayland` умеет сам.
         wayland_binaries: &["labwc", "niri", "kwin_wayland", "wayfire", "Hyprland", "sway"],
-    }),
-    ("mate", SessionVariants {
-        family: PkgFamily::Arch,
-        wayland_packages: &["wayfire", "xorg-xwayland"],
-        wayland_aur: &["mate-wayland-session"],
-        remove_with_desktop: &["mate-wayland-session"],
-        maturity: WaylandMaturity::ExperimentalAur,
-        x11_session_name: "MATE",
-        x11_session_file: "/usr/share/xsessions/mate.desktop",
-        wayland_session_name: "MATE (Wayland)",
-        wayland_compositor: "Wayfire",
-        wayland_session_file: "/usr/share/wayland-sessions/MATE.desktop",
-        wayland_binaries: &["wayfire"],
     }),
 ];
 
@@ -2465,10 +2489,60 @@ pub fn missing_session(sessions: (bool, bool)) -> Option<SessionKind> {
 
 /// Есть ли у стола выбор сеанса в этом семействе.
 pub fn session_variants(de_id: &str, family: PkgFamily) -> Option<&'static SessionVariants> {
+    #[cfg(test)]
+    let extra = test_session_variants::EXTRA.with(std::cell::Cell::get);
+    #[cfg(not(test))]
+    let extra: &'static [(&'static str, SessionVariants)] = &[];
     SESSION_VARIANTS
         .iter()
+        .chain(extra)
         .find(|(id, v)| *id == de_id && v.family == family)
         .map(|(_, v)| v)
+}
+
+/// Тестовая подмена таблицы сеансов: в таблице сейчас нет ни одного стола с
+/// Wayland из AUR, а механизм (отказ без помощника AUR, подписи «из AUR»,
+/// сборка помощником) должен оставаться под тестом до MATE (Polo).
+#[cfg(test)]
+pub(crate) mod test_session_variants {
+    use super::*;
+    use std::cell::Cell;
+
+    thread_local! {
+        pub(super) static EXTRA: Cell<&'static [(&'static str, SessionVariants)]> = const { Cell::new(&[]) };
+    }
+
+    /// Образец стола с сеансом Wayland только из AUR — бывшая запись MATE
+    /// (`mate-wayland-session` на Wayfire), снятая из продукта 16.11.2026.
+    pub(crate) const AUR_SAMPLE: &[(&str, SessionVariants)] = &[
+        ("mate", SessionVariants {
+            family: PkgFamily::Arch,
+            wayland_packages: &["wayfire", "xorg-xwayland"],
+            wayland_aur: &["mate-wayland-session"],
+            remove_with_desktop: &["mate-wayland-session"],
+            maturity: WaylandMaturity::ExperimentalAur,
+            x11_session_name: "MATE",
+            x11_session_file: "/usr/share/xsessions/mate.desktop",
+            wayland_session_name: "MATE (Wayland)",
+            wayland_compositor: "Wayfire",
+            wayland_session_file: "/usr/share/wayland-sessions/MATE.desktop",
+            wayland_binaries: &["wayfire"],
+        }),
+    ];
+
+    /// Выполнить `f`, пока в таблице сеансов есть [`AUR_SAMPLE`] (только в
+    /// этом потоке).
+    pub(crate) fn with_aur_sample<R>(f: impl FnOnce() -> R) -> R {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                EXTRA.with(|e| e.set(&[]));
+            }
+        }
+        EXTRA.with(|e| e.set(AUR_SAMPLE));
+        let _reset = Reset;
+        f()
+    }
 }
 
 /// Пакеты сверх основного набора для сеанса `kind` (из репозиториев).

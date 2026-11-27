@@ -804,6 +804,47 @@ fn cinnamon_extension_uses_muffin_background_layers() {
     }
 }
 
+/// Сторож: на Cinnamon с layer-shell расширение хост НЕ запускает.
+///
+/// Живьём 15.11.2026 (Cinnamon 6.8 Wayland) рядом с хостом Rexon слоем стола
+/// шёл второй хост, поднятый расширением по старым ключам: двойная нагрузка
+/// на декодирование. Проверка признака сеанса обязана стоять в `_reload` ДО
+/// `_spawnDaemon`, и признак — тот же, что у ядра без ответа композитора:
+/// Wayland и файл активации службы фона Cinnamon в каталогах данных.
+#[test]
+fn cinnamon_extension_skips_host_on_layer_shell() {
+    use rexon_core::wallpaper_backend as wb;
+    let [_, (de, raw)] = shell_extension_sources();
+    let code: String = raw
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let reload_at = code.find("function _reload()").expect("нет _reload");
+    let reload = &code[reload_at..];
+    let reload = &reload[..reload.find("\n}\n").expect("конец _reload")];
+    let guard = reload.find("if (_layerShellSession())").expect("в _reload нет проверки layer-shell");
+    let spawn = reload.find("_spawnDaemon(").expect("в _reload нет запуска хоста");
+    let actors = reload.find("_installActors(").expect("в _reload нет актёров");
+    assert!(guard < spawn && guard < actors, "extension.js {de}: проверка layer-shell после запуска хоста");
+    assert!(
+        reload[guard..spawn].contains("return;"),
+        "extension.js {de}: проверка layer-shell не прерывает _reload"
+    );
+    let probe_at = code.find("function _layerShellSession()").expect("нет _layerShellSession");
+    let probe = &code[probe_at..];
+    let probe = &probe[..probe.find("\n}\n").expect("конец _layerShellSession")];
+    assert!(probe.contains("Meta.is_wayland_compositor()"), "признак без проверки Wayland");
+    assert!(probe.contains("'/dbus-1/services/'"), "признак не по файлу активации службы фона");
+    assert!(
+        code.contains(&format!("const CINNAMON_BG_SERVICE = '{}';", wb::CINNAMON_BG_BUS)),
+        "имя службы фона в расширении разошлось с ядром"
+    );
+    // Тот же файл, что ищет ядро.
+    let files = wb::cinnamon_bg_service_files("", "/home/u", "/usr/share");
+    assert!(files.iter().all(|f| f.ends_with(&format!("/dbus-1/services/{}.service", wb::CINNAMON_BG_BUS))));
+}
+
 // ── порядок окна обоев и окна значков стола (X11) ─────────────────────────
 
 fn facts(desktop_type: bool, instance: &str, depth: u8) -> wm::X11ClientFacts {

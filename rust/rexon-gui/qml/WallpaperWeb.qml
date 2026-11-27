@@ -274,6 +274,22 @@ QtObject {
                 }
             }
 
+            // Первый кадр загруженной страницы на экране: замер ожидания и,
+            // на Cinnamon с layer-shell, перестановка службы фона под нас —
+            // по событию, а не выдержкой (до загрузки окно чёрное). Итог
+            // загрузки — любой: и у неудачной страницы окно уже наверху.
+            property bool firstFrameReported: false
+            Connections {
+                target: surface
+                enabled: root.placement !== "offscreen" && !surface.firstFrameReported
+                         && (surface.loadStatus === WebEngineView.LoadSucceededStatus
+                             || surface.loadStatus === WebEngineView.LoadFailedStatus)
+                function onFrameSwapped() {
+                    surface.firstFrameReported = true;
+                    root.placer.firstFrameShown("web");
+                }
+            }
+
             WebEngineView {
                 id: view
                 anchors.fill: parent

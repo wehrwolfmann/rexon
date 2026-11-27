@@ -1,9 +1,11 @@
 #include "rexon_we_socket.h"
 
+#include <QtCore/QAbstractEventDispatcher>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QEventLoop>
 #include <QtCore/QHash>
 #include <QtCore/QPointer>
+#include <QtCore/QThread>
 #include <QtCore/QTimer>
 #include <QtCore/QVariant>
 #include <QtDBus/QDBusConnection>
@@ -71,6 +73,22 @@ QString rexon_we_sock_daemon_property(const QString& service, const QString& pat
 
 QWebSocket* rexon_we_sock_new()
 {
+    // Диспетчер событий — ДО сокета. Разовые сокеты (снятие живых обоев,
+    // сторож пакета движка) открываются из рабочих потоков std::thread, у
+    // которых своего диспетчера ещё нет. Сокет, открытый в таком потоке, не
+    // заводит уведомителей: ответ на подключение никто не слышит, рукопожатие
+    // WebSocket не уходит, и вложенный цикл выходит по сторожу с ошибкой, а
+    // close() пишет кадр закрытия в неподключённый сокет («QNativeSocketEngine::
+    // write() was not called in QAbstractSocket::ConnectedState»; демон видит
+    // «Handshake not finished»). Пустой QEventLoop создаёт диспетчер на весь
+    // поток; в главном потоке он уже есть, и это ничего не меняет.
+    if (QCoreApplication::instance() != nullptr
+        && QAbstractEventDispatcher::instance(QThread::currentThread()) == nullptr) {
+        QEventLoop warm;
+        Q_UNUSED(warm);
+    }
+    if (QAbstractEventDispatcher::instance(QThread::currentThread()) == nullptr)
+        return nullptr;
     // Без родителя: владеет транспорт, снимает rexon_we_sock_destroy().
     return new QWebSocket();
 }
@@ -84,6 +102,27 @@ void rexon_we_sock_close(QWebSocket* socket)
 {
     if (socket != nullptr)
         socket->close();
+}
+
+void rexon_we_sock_shutdown(QWebSocket* socket)
+{
+    if (socket == nullptr)
+        return;
+    // Рукопожатие не завершено — кадра закрытия слать некуда: рвём связь.
+    if (socket->state() == QAbstractSocket::ConnectedState)
+        socket->close();
+    else
+        socket->abort();
+}
+
+void rexon_we_sock_quit_loop_on_error(QWebSocket* socket)
+{
+    if (socket == nullptr)
+        return;
+    // Отказ в подключении и обрыв до рукопожатия — сразу из цикла, а не по
+    // сторожу через несколько секунд.
+    QObject::connect(socket, &QWebSocket::errorOccurred, socket,
+                     [](QAbstractSocket::SocketError) { rexon_we_sock_quit_loop(); });
 }
 
 bool rexon_we_sock_is_open(QWebSocket* socket)

@@ -199,14 +199,14 @@ Item {
 
     /// Текст окна. `Text.Wrap` — по словам, а слово длиннее строки (путь
     /// без пробелов) — где придётся: иначе путь уходил бы за край.
-    component Body: RexonText {
+    component Body: RexonLinkText {
         Layout.fillWidth: true
         wrapMode: Text.Wrap
         // Тексты продукта — rich text (`<b>`, `<br>`, `<pre>`, `<h2>`), и
         // показывать их простым текстом значило бы показать разметку.
-        textFormat: Text.RichText
+        // Ссылки — общим путём (↗ и вопрос перед внешним сайтом).
+        pal: root.pal
         color: root.pal.text_primary
-        onLinkActivated: (link) => Qt.openUrlExternally(link)
     }
 
     /// Тело окна, которое ПЕРЕНОСИТСЯ по ширине окна и прокручивается,
@@ -222,6 +222,8 @@ Item {
 
         property alias text: scrollText.text
         property alias textFormat: scrollText.textFormat
+        /// Разметка со ссылками: ↗ у внешних ставит `RexonLinkText`.
+        property alias html: scrollText.html
 
         Layout.fillWidth: true
         Layout.preferredHeight: Math.min(scrollText.implicitHeight,
@@ -315,7 +317,7 @@ Item {
 
             ScrollBody {
                 id: aboutBody
-                text: root.menuModel.aboutHtml()
+                html: root.menuModel.aboutHtml()
             }
 
             // Журнал Rexon: где лежит, открыть, скопировать конец — чтобы

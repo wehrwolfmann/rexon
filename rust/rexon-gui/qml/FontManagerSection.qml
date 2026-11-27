@@ -257,7 +257,7 @@ ColumnLayout {
             textRole: "label"
             valueRole: "id"
             selectedValue: section.installScope
-            ToolTip.visible: hovered
+            ToolTip.visible: hintVisible
             ToolTip.text: section.texts.scope_tip || ""
             onActivated: section.installScope = scopeCombo.currentValue
             onActiveFocusChanged: if (activeFocus) section.focused(scopeCombo)
@@ -475,7 +475,7 @@ ColumnLayout {
             textRole: "label"
             valueRole: "id"
             selectedValue: section.foundry
-            ToolTip.visible: hovered
+            ToolTip.visible: hintVisible
             ToolTip.text: section.texts.filter_foundry_tip || ""
             onActivated: {
                 section.foundry = foundryCombo.currentValue;
@@ -492,7 +492,7 @@ ColumnLayout {
             textRole: "label"
             valueRole: "id"
             selectedValue: section.fileType
-            ToolTip.visible: hovered
+            ToolTip.visible: hintVisible
             ToolTip.text: section.texts.filter_type_tip || ""
             onActivated: {
                 section.fileType = typeCombo.currentValue;
@@ -509,7 +509,7 @@ ColumnLayout {
             textRole: "label"
             valueRole: "id"
             selectedValue: section.script
-            ToolTip.visible: hovered
+            ToolTip.visible: hintVisible
             ToolTip.text: section.texts.filter_script_tip || ""
             onActivated: {
                 section.script = scriptCombo.currentValue;
@@ -754,7 +754,7 @@ ColumnLayout {
                         textRole: "label"
                         valueRole: "id"
                         selectedValue: ""
-                        ToolTip.visible: hovered
+                        ToolTip.visible: hintVisible
                         ToolTip.text: section.texts.group_add_tip || ""
                         onActivated: {
                             const name = addToGroup.currentValue;
@@ -1033,7 +1033,7 @@ ColumnLayout {
                             pal: section.pal
                             model: section.current ? section.current.styles.map(f => f.style) : []
                             currentIndex: section.charsStyle
-                            ToolTip.visible: hovered
+                            ToolTip.visible: hintVisible
                             ToolTip.text: section.texts.chars_style_tip || ""
                             onActivated: index => section.charsStyle = index
                             onActiveFocusChanged: if (activeFocus) section.focused(charsStyleCombo)
@@ -1048,7 +1048,7 @@ ColumnLayout {
                             textRole: "label"
                             valueRole: "id"
                             selectedValue: section.charsBlock
-                            ToolTip.visible: hovered
+                            ToolTip.visible: hintVisible
                             ToolTip.text: section.texts.chars_block_tip || ""
                             onActivated: {
                                 section.charsBlock = blockCombo.currentValue;

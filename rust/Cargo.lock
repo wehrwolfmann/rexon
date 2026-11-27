@@ -3404,6 +3404,7 @@ dependencies = [
  "rexon-swf",
  "serde",
  "serde_json",
+ "sha1",
  "tokio",
  "tokio-util",
  "wayland-client",

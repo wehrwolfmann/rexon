@@ -121,6 +121,10 @@ ApplicationWindow {
     // (`--selftest`). Смотри `runSelftest` внизу файла.
     property bool selftest: false
 
+    // Режим обхода (`--tour`): окно невидимо и само обходит разделы.
+    // Смотри «Режим обхода» внизу файла.
+    property bool tourMode: false
+
     // Раздел, открытый при запуске (`--section=<id>`). Пусто — первый.
     // Незнакомый идентификатор не молчит и не роняет окно: он остаётся на
     // первом разделе, а причина уходит в журнал.
@@ -173,7 +177,11 @@ ApplicationWindow {
                 && !root.openSection(root.startSection, root.startSubpage))
             console.warn("раздела «" + root.startSection + "» нет; "
                          + "открыт первый");
-        if (root.selftest) {
+        if (root.tourMode) {
+            // Обход ни мастера, ни обучения, ни сверки оформления не
+            // показывает — по той же причине, что и самопроверка.
+            root.tourSend(null);
+        } else if (root.selftest) {
             // Прогон обходит разделы по порядку и обязан начать с первого:
             // начни он с того, что назвали `--section=`, предыдущие разделы
             // остались бы непроверенными, а прогон — зелёным.
@@ -184,6 +192,10 @@ ApplicationWindow {
             // вопрос накрыл бы окно, а ответ записался бы в настройки
             // человека.
             wizardTimer.start();
+            // Раздел при запуске — в журнал действий (смена индекса с нуля
+            // на ноль сигнала не даёт).
+            if (bar.currentIndex >= 0 && bar.currentIndex < shell.sections.length)
+                ActionJournal.section(shell.sections[bar.currentIndex].id);
             // И сверку оформления тоже: её вопрос накрыл бы окно так же.
             aeroshellTimer.start();
         }
@@ -373,6 +385,17 @@ ApplicationWindow {
 
     header: TabBar {
         id: bar
+
+        // Смена раздела: (1) в журнал действий — сторож и строки кнопок
+        // называют раздел, в котором человек был; (2) сведение подвала
+        // («… — Завершено ✅») относится к разделу, где его получили, —
+        // что снимать, решает ядро (`system_de_exec::footer_hold`).
+        onCurrentIndexChanged: {
+            const sections = shell.sections;
+            if (bar.currentIndex >= 0 && bar.currentIndex < sections.length)
+                ActionJournal.section(sections[bar.currentIndex].id);
+            desktopsActions.sectionChanged();
+        }
 
         background: Rectangle {
             color: root.colCard
@@ -743,7 +766,24 @@ ApplicationWindow {
 
     Connections {
         target: desktopsActions
-        function onStatusChanged() { root.footerStatus = desktopsActions.status; }
+        function onStatusChanged() {
+            root.footerStatus = desktopsActions.status;
+            // Срок строки — от ядра по её роду: сведение уходит само, ошибка
+            // и ожидание ответа таймером не снимаются.
+            const ms = desktopsActions.statusTimeoutMs();
+            footerTimer.stop();
+            if (ms > 0) {
+                footerTimer.interval = ms;
+                footerTimer.start();
+            }
+        }
+    }
+
+    Timer {
+        id: footerTimer
+        objectName: "footerTimer"
+        repeat: false
+        onTriggered: desktopsActions.expireStatus()
     }
 
     footer: Rectangle {
@@ -768,6 +808,202 @@ ApplicationWindow {
             font.pointSize: 10
             text: root.footerStatus
         }
+
+        // Щелчок по подвалу убирает сведение или ошибку (ожидание ответа —
+        // нет: его снимает окно вопроса).
+        MouseArea {
+            anchors.fill: parent
+            onClicked: desktopsActions.dismissStatus()
+        }
+    }
+
+    // ── Режим обхода (`--tour`) ───────────────────────────────────────────
+    //
+    // Исполнитель, а не решатель: что делать дальше, когда экран готов и что
+    // в увиденном подозрительно — решает ядро (`main_window_tour`), его
+    // спрашивает `shell.tourNext`. Здесь только исполнение команды и замер.
+    //
+    // ⛔ Обход ничего не устанавливает, не применяет и не удаляет. Страницу
+    // он трогает ОДНОЙ дверью — `tourInvoke`, а она зовёт метод, только если
+    // ядро его разрешило (`shell.tourCallAllowed`). Кнопок страница обходу не
+    // отдаёт вовсе.
+
+    QtObject {
+        id: tour
+        /// Команда в работе (разобранный JSON ядра).
+        property var cmd: null
+        /// Шаг исполнения: page | settle | load | preview | grab.
+        property string phase: ""
+        property double phaseAt: 0
+        /// Ответ, который копится для ядра.
+        property var result: ({})
+        property int lastNoPreview: -1
+        property double stableSince: 0
+    }
+
+    Timer {
+        id: tourTimer
+        interval: 200
+        repeat: true
+        onTriggered: root.tourTick()
+    }
+
+    /// Отдать ядру ответ на прошлую команду и взяться за следующую.
+    function tourSend(report) {
+        tourTimer.stop();
+        const cmd = JSON.parse(shell.tourNext(report === null ? "" : JSON.stringify(report)));
+        tour.cmd = cmd;
+        tour.result = {};
+        if (cmd.cmd === "finish") {
+            Qt.exit(cmd.exit_code);
+            return;
+        }
+        root.tourStart(cmd);
+    }
+
+    /// Единственная дверь обхода к странице: метод зовётся, только если ядро
+    /// его разрешило.
+    function tourInvoke(cmd, arg) {
+        if (!shell.tourCallAllowed(cmd.method)) {
+            tour.result.error = "вызов «" + cmd.method + "» запрещён ядром";
+            return false;
+        }
+        const target = cmd.method === "openSection" ? root : root.tourPage();
+        if (!target || typeof target[cmd.method] !== "function") {
+            tour.result.error = "у страницы нет «" + cmd.method + "»";
+            return false;
+        }
+        return target[cmd.method](arg) !== false;
+    }
+
+    /// Построенная страница открытого раздела либо null.
+    function tourPage() {
+        const holder = root.sectionHolder(bar.currentIndex);
+        return holder ? holder.page : null;
+    }
+
+    function tourPhase(name) {
+        tour.phase = name;
+        tour.phaseAt = Date.now();
+        tourTimer.start();
+    }
+
+    function tourStart(cmd) {
+        switch (cmd.cmd) {
+        case "openSection":
+            if (!root.tourInvoke(cmd, cmd.section)) {
+                root.tourSend({ built: false, error: tour.result.error || "раздела нет в окне" });
+                return;
+            }
+            root.tourPhase("page");
+            return;
+        case "selectCategory":
+            tour.result.ok = root.tourInvoke(cmd, cmd.key);
+            root.tourPhase("settle");
+            return;
+        case "setSource":
+            tour.result.ok = root.tourInvoke(cmd, cmd.key);
+            root.tourPhase("settle");
+            return;
+        case "typeQuery":
+            tour.result.ok = root.tourInvoke(cmd, cmd.text);
+            root.tourPhase("settle");
+            return;
+        case "clearQuery":
+            tour.result.ok = root.tourInvoke(cmd, undefined);
+            root.tourPhase("settle");
+            return;
+        case "capture":
+            tour.lastNoPreview = -1;
+            root.tourPhase("load");
+            return;
+        default:
+            root.tourSend({ error: "незнакомая команда «" + cmd.cmd + "»" });
+        }
+    }
+
+    function tourTick() {
+        const cmd = tour.cmd;
+        const elapsed = Date.now() - tour.phaseAt;
+        const page = root.tourPage();
+        const st = page && typeof page.tourState === "function" ? page.tourState() : null;
+        if (tour.phase === "page") {
+            const appearance = !!page && typeof page.tourCategories === "function";
+            const cats = appearance ? page.tourCategories() : [];
+            const ready = !!page && (!appearance || cats.length > 0);
+            if (!ready && elapsed < cmd.timeout_ms)
+                return;
+            root.tourSend({ ok: ready, built: !!page,
+                            kind: appearance ? "appearance" : "", categories: cats });
+        } else if (tour.phase === "settle") {
+            // Шапка раздела (чипы, поле поиска) обновляется сигналом модели,
+            // не тем же вызовом: дать ей кадр-другой.
+            if (elapsed < 300)
+                return;
+            const r = tour.result;
+            if (cmd.cmd === "selectCategory" && page) {
+                r.sources = page.tourSources();
+                r.search = st ? st.search : false;
+            }
+            if (st)
+                r.source = st.source;
+            root.tourSend(r);
+        } else if (tour.phase === "load") {
+            const verdict = shell.tourWaitVerdict(JSON.stringify({
+                phase: "load", elapsed_ms: elapsed, timeout_ms: cmd.load_timeout_ms,
+                busy: st ? st.busy : false, status: st ? st.status : "" }));
+            if (verdict === "wait")
+                return;
+            tour.result.load_ms = elapsed;
+            tour.result.load_timed_out = verdict === "timeout";
+            if (cmd.grid && st) {
+                tour.lastNoPreview = st.noPreview;
+                tour.stableSince = Date.now();
+                root.tourPhase("preview");
+            } else {
+                root.tourGrab();
+            }
+        } else if (tour.phase === "preview") {
+            if (st.noPreview !== tour.lastNoPreview) {
+                tour.lastNoPreview = st.noPreview;
+                tour.stableSince = Date.now();
+            }
+            const verdict = shell.tourWaitVerdict(JSON.stringify({
+                phase: "preview", elapsed_ms: elapsed, timeout_ms: cmd.preview_timeout_ms,
+                no_preview: st.noPreview, previews_pending: st.pending,
+                stable_ms: Date.now() - tour.stableSince, settle_ms: cmd.settle_ms }));
+            if (verdict === "wait")
+                return;
+            tour.result.preview_timed_out = verdict === "timeout";
+            root.tourGrab();
+        }
+    }
+
+    /// Снять окно целиком (с полосой разделов и меню) в файл команды.
+    function tourGrab() {
+        tourTimer.stop();
+        tour.phase = "grab";
+        const page = root.tourPage();
+        const st = page && typeof page.tourState === "function" ? page.tourState() : null;
+        const r = tour.result;
+        r.ok = true;
+        if (st) {
+            r.screen = st.screen;
+            r.tiles = st.tiles;
+            r.no_preview = st.noPreview;
+            r.search_visible = st.searchVisible;
+            r.search_x = st.searchX;
+            r.search_y = st.searchY;
+            r.search_text = st.searchText;
+            r.model_query = st.query;
+            r.status = st.status;
+            r.status_warn = st.statusWarn;
+            r.source = st.source;
+        }
+        // Окно целиком (`QQuickWindow::grabWindow`): `grabToImage` корня
+        // окна не умеет — корневой элемент не принадлежит движку QML.
+        r.saved = shell.tourGrab(tour.cmd.path);
+        root.tourSend(r);
     }
 
     // ── Самопроверка ──────────────────────────────────────────────────────

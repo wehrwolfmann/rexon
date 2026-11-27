@@ -185,6 +185,29 @@ pub mod qobject {
         #[cxx_name = "dismissOperation"]
         fn dismiss_operation(self: Pin<&mut DesktopsActions>);
 
+        /// Через сколько миллисекунд подвал снимается сам (0 — не
+        /// снимается). Решает ядро по роду строки
+        /// (`system_de_exec::footer_hold`); окно заводит таймер и по нему
+        /// зовёт `expireStatus`.
+        #[qinvokable]
+        #[cxx_name = "statusTimeoutMs"]
+        fn status_timeout_ms(self: &DesktopsActions) -> i32;
+
+        /// Таймер подвала истёк.
+        #[qinvokable]
+        #[cxx_name = "expireStatus"]
+        fn expire_status(self: Pin<&mut DesktopsActions>);
+
+        /// Щелчок по подвалу.
+        #[qinvokable]
+        #[cxx_name = "dismissStatus"]
+        fn dismiss_status(self: Pin<&mut DesktopsActions>);
+
+        /// Человек перешёл в другой раздел окна.
+        #[qinvokable]
+        #[cxx_name = "sectionChanged"]
+        fn section_changed(self: Pin<&mut DesktopsActions>);
+
         /// «Отменить» — только пока система не тронута.
         #[qinvokable]
         #[cxx_name = "cancelOperation"]
@@ -342,6 +365,8 @@ use rexon_core::utils;
 #[derive(Default)]
 pub struct DesktopsActionsRust {
     status: String,
+    /// Род строки подвала — от него её срок (`dx::footer_hold`).
+    status_kind: dx::FooterKind,
     versions: Arc<Mutex<HashMap<String, String>>>,
     in_flight: Arc<Mutex<HashSet<String>>>,
     /// Предпросмотр установки по столу: `None` внутри — спросить не вышло.
@@ -661,12 +686,45 @@ impl qobject::DesktopsActions {
         QString::from(&self.rust().status)
     }
 
-    fn set_status(mut self: Pin<&mut Self>, text: String) {
-        if self.rust().status == text {
+    /// Строка подвала и её род. Повтор той же строки-сведения или ошибки
+    /// тоже оповещает: окно перезаводит её таймер, иначе повторное
+    /// «операция уже идёт» исчезло бы раньше срока.
+    fn set_status(mut self: Pin<&mut Self>, text: String, kind: dx::FooterKind) {
+        if self.rust().status == text
+            && self.rust().status_kind == kind
+            && (kind == dx::FooterKind::Pending || text.is_empty())
+        {
             return;
         }
         self.as_mut().rust_mut().status = text;
+        self.as_mut().rust_mut().status_kind = kind;
         self.as_mut().status_changed();
+    }
+
+    fn status_timeout_ms(&self) -> i32 {
+        if self.rust().status.is_empty() {
+            return 0;
+        }
+        dx::footer_hold(self.rust().status_kind).timeout_ms as i32
+    }
+
+    fn expire_status(self: Pin<&mut Self>) {
+        let hold = dx::footer_hold(self.rust().status_kind);
+        if hold.timeout_ms > 0 {
+            self.set_status(String::new(), dx::FooterKind::Pending);
+        }
+    }
+
+    fn dismiss_status(self: Pin<&mut Self>) {
+        if dx::footer_hold(self.rust().status_kind).click_dismisses {
+            self.set_status(String::new(), dx::FooterKind::Pending);
+        }
+    }
+
+    fn section_changed(self: Pin<&mut Self>) {
+        if dx::footer_hold(self.rust().status_kind).clear_on_section_change {
+            self.set_status(String::new(), dx::FooterKind::Pending);
+        }
     }
 
     // ── Читающее и навигационное: исполняет Rust ─────────────────────────
@@ -864,7 +922,7 @@ impl qobject::DesktopsActions {
             let preview = treeland.preview.map(Some).unwrap_or(preview);
             // Пакеты из AUR в наборе стола: один запрос RPC на весь список
             // (признаки риска для строки-предупреждения карточки).
-            // Сюда же — AUR-добавка сеанса Wayland (MATE): её признаки риска
+            // Сюда же — AUR-добавка сеанса Wayland (сейчас ни у кого; для MATE (Polo)): её признаки риска
             // окно вопроса показывает без сети.
             let session_aur = system::session_aur_packages(&de_id, family, system::SessionKind::Wayland);
             if !installed {
@@ -1008,7 +1066,7 @@ impl qobject::DesktopsActions {
         let Some(why) = qd::steamos_button_block(kind, de_id, de_id == current, steamos) else {
             return false;
         };
-        self.as_mut().set_status(dx::operation_footer(operation_title, &why));
+        self.as_mut().set_status(dx::operation_footer(operation_title, &why), dx::FooterKind::Pending);
         self.show_notice(operation_title, &why);
         true
     }
@@ -1023,7 +1081,7 @@ impl qobject::DesktopsActions {
             return false;
         };
         if self.busy() {
-            self.set_status(dx::busy_message());
+            self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return false;
         }
         // Тексты переключения общие с «Сравнением DE» — там они дословно те
@@ -1034,7 +1092,7 @@ impl qobject::DesktopsActions {
             operation_title: texts.operation_title.clone(),
         });
         self.as_mut()
-            .set_status(dx::awaiting_answer(&texts.operation_title));
+            .set_status(dx::awaiting_answer(&texts.operation_title), dx::FooterKind::Pending);
         self.set_op(OpView {
             phase: "confirm".to_string(),
             title: texts.confirm_title.to_string(),
@@ -1057,7 +1115,7 @@ impl qobject::DesktopsActions {
             return false;
         };
         if self.busy() {
-            self.set_status(dx::busy_message());
+            self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return false;
         }
         let current = current_de().unwrap_or_default();
@@ -1073,7 +1131,7 @@ impl qobject::DesktopsActions {
         if !plan.allowed() {
             self.as_mut().rust_mut().pending = None;
             self.as_mut()
-                .set_status(dx::operation_footer(&operation_title, &plan.title));
+                .set_status(dx::operation_footer(&operation_title, &plan.title), dx::FooterKind::Pending);
             self.set_op(OpView {
                 phase: "blocked".to_string(),
                 title: plan.title.to_string(),
@@ -1087,7 +1145,7 @@ impl qobject::DesktopsActions {
             de_id,
             operation_title: operation_title.clone(),
         });
-        self.as_mut().set_status(dx::awaiting_answer(&operation_title));
+        self.as_mut().set_status(dx::awaiting_answer(&operation_title), dx::FooterKind::Pending);
         self.set_op(OpView {
             phase: "confirm".to_string(),
             title: plan.title.to_string(),
@@ -1104,7 +1162,7 @@ impl qobject::DesktopsActions {
         let current = current_de().filter(|de| known_name(de).is_some());
         let Some(current) = current else {
             let (title, text) = (qd::repair_current_unknown_title(), qd::repair_current_unknown_text());
-            self.as_mut().set_status(format!("{title} — {text}"));
+            self.as_mut().set_status(format!("{title} — {text}"), dx::FooterKind::Pending);
             self.show_notice(&title, &text);
             return false;
         };
@@ -1157,7 +1215,7 @@ impl qobject::DesktopsActions {
         choice: Option<qd::LookSelect>,
     ) {
         if self.busy() {
-            self.set_status(dx::busy_message());
+            self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return;
         }
         // SteamOS: стол-образ — свой вопрос (сборка из пакетов Valve,
@@ -1174,7 +1232,7 @@ impl qobject::DesktopsActions {
             } => {
                 self.as_mut().rust_mut().pending = None;
                 self.as_mut()
-                    .set_status(dx::operation_footer(&texts.operation_title, &window_title));
+                    .set_status(dx::operation_footer(&texts.operation_title, &window_title), dx::FooterKind::Pending);
                 self.set_op(OpView {
                     phase: "blocked".to_string(),
                     title: window_title,
@@ -1196,7 +1254,7 @@ impl qobject::DesktopsActions {
                     add_session: false,
                 });
                 self.as_mut()
-                    .set_status(dx::awaiting_answer(&texts.operation_title));
+                    .set_status(dx::awaiting_answer(&texts.operation_title), dx::FooterKind::Pending);
                 self.set_op(OpView {
                     phase: "confirm".to_string(),
                     title: texts.confirm_title.to_string(),
@@ -1223,13 +1281,13 @@ impl qobject::DesktopsActions {
             Some(sx::AdminGate::AskPassword) => {
                 let title = pending_title(&pending);
                 self.as_mut().rust_mut().pending = Some(pending);
-                self.as_mut().set_status(dx::awaiting_answer(&title));
+                self.as_mut().set_status(dx::awaiting_answer(&title), dx::FooterKind::Pending);
                 self.set_op(OpView::password(sx::live_device()));
                 return;
             }
             Some(sx::AdminGate::Refused(why)) => {
                 let title = pending_title(&pending);
-                self.as_mut().set_status(dx::operation_footer(&title, &why));
+                self.as_mut().set_status(dx::operation_footer(&title, &why), dx::FooterKind::Pending);
                 self.show_notice(&title, &why);
                 return;
             }
@@ -1395,7 +1453,7 @@ impl qobject::DesktopsActions {
         self.as_mut().rust_mut().cancel = None;
         let footer = dx::operation_footer(&title, &op.status);
         self.as_mut().set_op(op);
-        self.as_mut().set_status(footer);
+        self.as_mut().set_status(footer, dx::outcome_footer_kind(&outcome));
         // Состав системы мог поменяться и при неудаче (часть поставилась):
         // прежний предпросмотр больше не правда.
         if let Ok(mut map) = self.as_ref().get_ref().rust().previews.lock() {
@@ -1426,7 +1484,13 @@ impl qobject::DesktopsActions {
         if let Some(line) = log_line {
             self.as_mut().operation_log(QString::from(&line));
         }
-        self.set_op(op);
+        // Большинство строк pacman полосу и подписи не трогают; оповещение
+        // `operation` пересчитывает все привязки окна, поэтому его — только
+        // когда видимое правда поменялось.
+        let old = &self.rust().op;
+        if op.bar != old.bar || op.status != old.status || op.current != old.current {
+            self.set_op(op);
+        }
     }
 
     fn apply_cancellable(self: Pin<&mut Self>, allowed: bool) {
@@ -1447,7 +1511,7 @@ impl qobject::DesktopsActions {
         // завершённой операции остаётся: он по-прежнему верен.
         let phase = self.rust().op.phase.clone();
         if phase == "confirm" || phase == "blocked" || phase == "password" {
-            self.as_mut().set_status(String::new());
+            self.as_mut().set_status(String::new(), dx::FooterKind::Pending);
         }
         self.as_mut().rust_mut().pending = None;
         self.set_op(OpView::default());
@@ -1561,7 +1625,7 @@ impl qobject::DesktopsActions {
                 // удалось» со своим текстом.
                 .unwrap_or_else(|detail| (false, detail)),
         };
-        self.set_status(panel_status(&qd::panel_backup_result(ok, &message)));
+        self.set_status(panel_status(&qd::panel_backup_result(ok, &message)), dx::result_footer_kind(ok));
         false
     }
 
@@ -1591,7 +1655,7 @@ impl qobject::DesktopsActions {
             _ => crate::settings_actions::panel_restore_now(None),
         };
         let status = panel_status(&qd::panel_restore_result(ok, &message));
-        self.as_mut().set_status(status.clone());
+        self.as_mut().set_status(status.clone(), dx::result_footer_kind(ok));
         // GNOME: настройки вернулись, недостающие расширения из копии ставятся
         // с extensions.gnome.org в рабочем потоке (окно подтверждения
         // оболочки ждёт человека); итог дописывается к строке состояния.
@@ -1602,7 +1666,7 @@ impl qobject::DesktopsActions {
                     return;
                 };
                 let text = format!("{status} — {}", report.replace('\n', " "));
-                if let Err(e) = handle.queue(move |object| object.set_status(text)) {
+                if let Err(e) = handle.queue(move |object| object.set_status(text, dx::FooterKind::Notice)) {
                     if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
                         rexon_core::log_warn!("desktops", "итог доставки расширений GNOME не доставлен: {e:?}");
                     }
@@ -1626,7 +1690,7 @@ impl qobject::DesktopsActions {
         match shell {
             Some(shell) if sb::SHELL_WMS.contains(&wm.as_str()) => {
                 if self.busy() {
-                    self.set_status(dx::busy_message());
+                    self.set_status(dx::busy_message(), dx::FooterKind::Notice);
                     return None;
                 }
                 Some((wm, shell))
@@ -1643,7 +1707,7 @@ impl qobject::DesktopsActions {
     fn rebuild_from_sources(mut self: Pin<&mut Self>, de_id: &QString) {
         let de_id = de_id.to_string();
         if self.busy() {
-            self.set_status(dx::busy_message());
+            self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return;
         }
         // Та же кнопка на карточке Deepin — перевести обычный Deepin на
@@ -1665,7 +1729,7 @@ impl qobject::DesktopsActions {
                 update,
                 operation_title: operation_title.clone(),
             });
-            self.as_mut().set_status(dx::awaiting_answer(&operation_title));
+            self.as_mut().set_status(dx::awaiting_answer(&operation_title), dx::FooterKind::Pending);
             self.set_op(OpView::confirm(&operation_title, &text));
             return;
         }
@@ -1740,7 +1804,7 @@ impl qobject::DesktopsActions {
         if candidates.is_empty() {
             // Кнопка пережила предложение: состав системы сменился после
             // операции, и собирать больше нечего.
-            self.set_status(repo_rebuild::offer_gone());
+            self.set_status(repo_rebuild::offer_gone(), dx::FooterKind::Notice);
             return;
         }
         let packages: Vec<String> = candidates.iter().map(|c| c.package.clone()).collect();
@@ -1749,7 +1813,7 @@ impl qobject::DesktopsActions {
             packages,
             operation_title: operation_title.clone(),
         });
-        self.as_mut().set_status(dx::awaiting_answer(&operation_title));
+        self.as_mut().set_status(dx::awaiting_answer(&operation_title), dx::FooterKind::Pending);
         self.set_op(OpView::confirm(&operation_title, &repo_rebuild::confirm_text(&candidates)));
     }
 
@@ -1759,7 +1823,7 @@ impl qobject::DesktopsActions {
             _ => String::new(),
         };
         self.as_mut().rust_mut().pending = Some(pending);
-        self.as_mut().set_status(dx::awaiting_answer(&operation_title));
+        self.as_mut().set_status(dx::awaiting_answer(&operation_title), dx::FooterKind::Pending);
         self.set_op(OpView {
             phase: "confirm".to_string(),
             title: title.to_string(),
@@ -1786,7 +1850,7 @@ impl qobject::DesktopsActions {
         };
         let texts_title = qd::shell_install_texts(shell, &wm, &[], &[]).operation_title;
         if let Some(why) = refusal {
-            self.as_mut().set_status(dx::operation_footer(&texts_title, &why));
+            self.as_mut().set_status(dx::operation_footer(&texts_title, &why), dx::FooterKind::Pending);
             self.show_notice(&texts_title, &why);
             return false;
         }
@@ -1887,7 +1951,7 @@ impl qobject::DesktopsActions {
 
     fn look_apply(mut self: Pin<&mut Self>, look_id: &QString) {
         if self.busy() {
-            self.set_status(dx::busy_message());
+            self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return;
         }
         let id = look_id.to_string();
@@ -1899,7 +1963,7 @@ impl qobject::DesktopsActions {
         let title = qd::look_apply_title(&qd::look_name(&id));
         let mut op = OpView::running(&title);
         op.status = qd::look_checking();
-        self.as_mut().set_status(qd::look_checking());
+        self.as_mut().set_status(qd::look_checking(), dx::FooterKind::Pending);
         self.as_mut().set_op(op);
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
@@ -1913,7 +1977,7 @@ impl qobject::DesktopsActions {
         match offer {
             Ok(offer) => self.show_look_confirm(offer, Default::default(), false, de, title),
             Err(why) => {
-                self.as_mut().set_status(dx::operation_footer(&title, &why));
+                self.as_mut().set_status(dx::operation_footer(&title, &why), dx::FooterKind::Pending);
                 self.show_notice(&title, &why);
             }
         }
@@ -1930,7 +1994,7 @@ impl qobject::DesktopsActions {
         match qd::look_confirm(&offer, &values, opt_in) {
             qd::LookConfirm::Blocked { title: window_title, text } => {
                 self.as_mut().rust_mut().pending = None;
-                self.as_mut().set_status(dx::operation_footer(&title, &window_title));
+                self.as_mut().set_status(dx::operation_footer(&title, &window_title), dx::FooterKind::Pending);
                 self.set_op(OpView {
                     phase: "blocked".to_string(),
                     title: window_title,
@@ -1954,7 +2018,7 @@ impl qobject::DesktopsActions {
                     de,
                     operation_title: title.clone(),
                 });
-                self.as_mut().set_status(dx::awaiting_answer(&title));
+                self.as_mut().set_status(dx::awaiting_answer(&title), dx::FooterKind::Pending);
                 self.set_op(OpView {
                     phase: "confirm".to_string(),
                     title: window_title,
@@ -2018,7 +2082,7 @@ impl qobject::DesktopsActions {
 
     fn look_revert(mut self: Pin<&mut Self>, look_id: &QString) {
         if self.busy() {
-            self.set_status(dx::busy_message());
+            self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return;
         }
         let id = look_id.to_string();
@@ -2035,7 +2099,7 @@ impl qobject::DesktopsActions {
             de,
             operation_title: operation_title.clone(),
         });
-        self.as_mut().set_status(dx::awaiting_answer(&operation_title));
+        self.as_mut().set_status(dx::awaiting_answer(&operation_title), dx::FooterKind::Pending);
         self.set_op(OpView {
             phase: "confirm".to_string(),
             title,
@@ -2047,7 +2111,7 @@ impl qobject::DesktopsActions {
     }
 
     fn report_unknown(self: Pin<&mut Self>, de_id: &str) {
-        self.set_status(rexon_core::i18n::trf("Rexon doesn't know the desktop “%1”.", &[&de_id]));
+        self.set_status(rexon_core::i18n::trf("Rexon doesn't know the desktop “%1”.", &[&de_id]), dx::FooterKind::Error);
     }
 }
 

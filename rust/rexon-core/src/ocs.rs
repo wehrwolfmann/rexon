@@ -64,6 +64,18 @@ pub const DOWNLOAD_CHUNK: usize = 65536;
 pub const SORT_MODES: &[&str] = &["new", "down", "high", "alpha"];
 
 /// Расширения архивов, которые умеет распаковать установщик (`_ARCHIVE_EXTS`).
+/// Оценка, которую OCS отдаёт товару БЕЗ ЕДИНОГО голоса (`<score>50</score>`).
+///
+/// Числа голосов API не отдаёт вовсе: ни в кратком списке
+/// (`content/data?...`, `details="summary"`), ни в полной карточке
+/// (`content/data/<id>`, `details="full"`) — там только `score` 0–100
+/// (замер api.kde-look.org 16.11.2026: все новинки — ровно 50, у товаров с
+/// голосами — 58, 83, 88…). Стартовая оценка магазина — середина шкалы, и
+/// показывать её «★ 2,5» значит выдавать отсутствие голосов за посредственный
+/// отзыв. Поэтому ровно 50 читается как «оценок нет». Цена допущения:
+/// товар, чьи голоса усреднились ровно в 50, тоже покажется без оценки.
+pub const UNRATED_SCORE: i64 = 50;
+
 /// Порядок важен: `_link_score` берёт ПЕРВОЕ совпадение (`.tar.gz` до `.tar`).
 pub const ARCHIVE_EXTS: &[&str] = &[
     ".tar.xz", ".tar.zst", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.lz",
@@ -883,7 +895,7 @@ pub fn url_netloc(url: &str) -> String {
 /// Порт `urllib.parse.urlsplit` (без валидации порта): `(scheme, netloc, path,
 /// query, fragment)`. Порядок отделения — как в CPython: scheme → `//netloc` →
 /// `#fragment` → `?query`.
-fn urlsplit(url: &str) -> (String, String, String, String, String) {
+pub fn urlsplit(url: &str) -> (String, String, String, String, String) {
     let mut rest = url;
     let mut scheme = String::new();
     if let Some(i) = rest.find(':') {

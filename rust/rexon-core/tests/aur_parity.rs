@@ -39,9 +39,19 @@ fn parse_real_response_matches_python() {
         // вычисляемые
         assert_eq!(p.id(), w["id"].as_str().unwrap());
         assert_eq!(p.aur_url(), w["aur_url"].as_str().unwrap());
-        assert_eq!(p.preview_url(), w["preview_url"].as_str().unwrap());
+        assert_eq!(p.preview_url(), readme_marker(w["preview_url"].as_str().unwrap()));
         assert_eq!(p.icon(), w["icon"].as_str().unwrap());
     }
+}
+
+/// Эталон Python давал OpenGraph-карточку репозитория; с 16.11.2026 плитка
+/// берёт первую картинку README того же репозитория (карточка с именем и
+/// звёздами — не снимок товара). Разбор адреса — прежний, поэтому эталон
+/// сверяется через замену вида адреса.
+fn readme_marker(og: &str) -> String {
+    og.strip_prefix("https://opengraph.githubassets.com/0/")
+        .map(|rest| format!("{}{rest}", rexon_core::aur::README_PREVIEW_SCHEME))
+        .unwrap_or_else(|| og.to_string())
 }
 
 /// preview_url: github-регэксп (owner/repo, .git и хвост отсекаются),
@@ -50,8 +60,73 @@ fn parse_real_response_matches_python() {
 fn preview_url_matches_python() {
     for (url, want) in cases()["url_cases"].as_object().unwrap() {
         let p = AurPackage { upstream_url: url.clone(), ..Default::default() };
-        assert_eq!(&p.preview_url(), want.as_str().unwrap(), "preview для {url}");
+        assert_eq!(p.preview_url(), readme_marker(want.as_str().unwrap()), "preview для {url}");
+        assert!(!p.preview_url().contains("opengraph"), "OG-карточка на плитке: {url}");
     }
+}
+
+/// Плитка шрифта — образец с Google Fonts по имени пакета; набор обоев и
+/// прочие без снимка — честная подпись (16.11.2026).
+#[test]
+fn font_and_wallpaper_tiles_show_the_goods_or_say_so() {
+    use rexon_core::aur::*;
+    assert_eq!(google_font_family("ttf-fira-sans").as_deref(), Some("Fira Sans"));
+    assert_eq!(google_font_family("otf-source-code-pro-git").as_deref(), Some("Source Code Pro"));
+    assert_eq!(google_font_family("ttf-roboto-variable").as_deref(), Some("Roboto"));
+    assert_eq!(google_font_family("ttf-git"), None);
+    assert_eq!(google_font_family("plasma6-wallpapers-x"), None);
+    assert_eq!(google_font_css_url("Fira Sans"), "https://fonts.googleapis.com/css2?family=Fira+Sans");
+    let css = "@font-face {\n  font-family: 'Fira Sans';\n  src: url(https://fonts.gstatic.com/s/firasans/v18/x.ttf) format('truetype');\n}";
+    assert_eq!(parse_google_font_css(css).as_deref(), Some("https://fonts.gstatic.com/s/firasans/v18/x.ttf"));
+    assert_eq!(parse_google_font_css("<html>400</html>"), None);
+
+    let font = AurPackage {
+        name: "ttf-fira-sans".into(),
+        upstream_url: "https://github.com/mozilla/Fira".into(),
+        category: "fonts".into(),
+        ..Default::default()
+    };
+    assert_eq!(font.preview_url(), format!("{GOOGLE_FONT_SCHEME}Fira Sans"), "у шрифта — образец, не README");
+    assert!(!no_preview_note(&font).is_empty());
+
+    let walls = AurPackage {
+        name: "archlinux-wallpaper".into(),
+        upstream_url: "https://example.org/".into(),
+        category: "wallpapers".into(),
+        ..Default::default()
+    };
+    assert_eq!(walls.preview_url(), "", "картинки взять неоткуда");
+    assert!(!no_preview_note(&walls).is_empty(), "набор обоев без снимка — честная подпись");
+    let theme = AurPackage { name: "x-icon-theme".into(), category: "icons".into(), ..Default::default() };
+    assert!(!no_preview_note(&theme).is_empty());
+    let shown = AurPackage { upstream_url: "https://github.com/a/b".into(), category: "icons".into(), ..theme };
+    assert_eq!(no_preview_note(&shown), "", "снимок README будет — подпись не нужна");
+}
+
+/// Поиск AUR внутри раздела: только товар раздела. Живая проверка
+/// 16.11.2026 — на «girl» в «Обоях HD» приходили словари fcitx, шрифт и
+/// игровой движок.
+#[test]
+fn search_inside_a_section_keeps_only_its_kind() {
+    use rexon_core::aur::*;
+    let pkg = |name: &str, desc: &str| AurPackage { name: name.into(), description: desc.into(), ..Default::default() };
+    let found = vec![
+        pkg("rime-pinyin-moegirl", "Moegirl dictionary for rime"),
+        pkg("fcitx5-pinyin-moegirl", "Fcitx 5 pinyin dictionary from zh.moegirl.org.cn"),
+        pkg("ttf-league-script-number-one", "A modern coquettish script font"),
+        pkg("catgirl", "TLS-only terminal IRC client"),
+        pkg("violetland-git", "Help a girl by name of Violet to struggle with hordes of monsters"),
+        pkg("anime-girl-wallpapers", "Anime girl wallpapers"),
+        pkg("girl-backgrounds", "Desktop backgrounds collection"),
+        pkg("girl-wallpaper-changer", "Changes your wallpaper with girls"),
+    ];
+    let walls: Vec<String> = filter_search_for_category(found.clone(), "wallpapers").into_iter().map(|p| p.name).collect();
+    assert_eq!(walls, ["anime-girl-wallpapers", "girl-backgrounds"]);
+    assert!(filter_search_for_category(found.clone(), "wallpapers").iter().all(|p| p.category == "wallpapers"));
+    let fonts: Vec<String> = filter_search_for_category(found.clone(), "fonts").into_iter().map(|p| p.name).collect();
+    assert_eq!(fonts, ["ttf-league-script-number-one"]);
+    // Раздел без полки AUR — выдача как есть.
+    assert_eq!(filter_search_for_category(found.clone(), "нет-такого").len(), found.len());
 }
 
 /// icon: по категории, иначе эвристика по имени (порядок проверок как в Python).

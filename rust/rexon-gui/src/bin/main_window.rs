@@ -55,6 +55,7 @@ use cxx_qt_lib_extras::QApplication;
 // moc, QML-плагин с ресурсами) — бинарь собирается, но QML пуст.
 use rexon_gui::main_window::qobject::MainWindowModel;
 
+use rexon_core::main_window_tour as tour;
 use rexon_core::{applog, cli, exit_guard, i18n, single_instance};
 use rexon_core::{log_error, log_info, log_warn};
 
@@ -198,11 +199,40 @@ fn main() {
     let selftest = std::env::args().any(|a| a == SELFTEST_ARG);
     let args: Vec<String> = std::env::args().skip(1).collect();
 
+    // Режим обхода (`--tour`, `rexon_core::main_window_tour`): окно невидимо,
+    // само проходит разделы и магазины, снимает экраны и пишет отчёт. Как и
+    // самопроверка, профиля не трогает: ни замка, ни лотка, ни журнала
+    // Rexon — журнал процесса уходит в папку обхода.
+    let tour_cfg = match tour::parse_args(&args, || tour::default_out_dir(&|k| std::env::var(k).ok())) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("обход: {e}");
+            std::process::exit(tour::EXIT_BAD_ARGS);
+        }
+    };
+    if let Some(cfg) = &tour_cfg {
+        if let Err(e) = prepare_tour_dir(cfg) {
+            eprintln!("обход: папка {} не готова: {e}", cfg.out_dir.display());
+            std::process::exit(tour::EXIT_BAD_ARGS);
+        }
+    }
+    // Тихий режим — самопроверка или обход: всё, что трогает живой сеанс и
+    // профиль человека, пропускается.
+    let quiet = selftest || tour_cfg.is_some();
+    // Завести обход ДО загрузки QML: исполнитель спрашивает первую команду
+    // уже в `Component.onCompleted` окна, то есть внутри `engine.load`.
+    if let Some(cfg) = &tour_cfg {
+        rexon_gui::main_window::tour_install(cfg.clone());
+    }
+
     // Журнал (`~/.local/state/rexon/rexon.log`) — до всего остального, чтобы
     // в него попал и язык, и замок. Самопроверка в профиль не пишет.
-    if !selftest {
+    if !quiet {
         applog::init();
         applog::install_fatal_signal_logger();
+        // SIGTERM/SIGINT/SIGHUP — строка «завершение по сигналу X от
+        // процесса N» и дальше прежнее поведение (выход).
+        applog::install_exit_signal_logger();
     }
     // Признак «я перезапуск» читается и СНИМАЕТСЯ: дети этого процесса (и
     // его собственный будущий перезапуск) не должны его унаследовать.
@@ -230,7 +260,7 @@ fn main() {
     // ниже тоже говорят. Решение (настройка ▸ локаль ▸ английский) и поиск
     // каталога — за ядром (`rexon_core::i18n`).
     let language = rexon_core::i18n::init();
-    if !selftest {
+    if !quiet {
         log_startup(&args, &language, restart_of);
     }
 
@@ -244,7 +274,7 @@ fn main() {
     // ⚠️ ДО замка «один Rexon на сессию»: служебные маршруты окна не
     // открывают, и упираться в чужой замок им незачем — иначе заставка при
     // входе не проигралась бы у того, у кого Rexon уже открыт.
-    if !selftest {
+    if !quiet {
         if let Some(rc) = cli::run_headless(&args, &mut |line| println!("{line}")) {
             std::process::exit(rc);
         }
@@ -267,7 +297,7 @@ fn main() {
     // Сборщики AUR (paru/yay) этого окна получают «sudo» — шим сеанса прав
     // (`rexon_core::privilege::aur`): их вызовы pacman идут в один пароль
     // окна. Служебным маршрутам выше и самопроверке он не нужен.
-    if !selftest {
+    if !quiet {
         rexon_core::privilege::aur::enable();
     }
 
@@ -285,7 +315,7 @@ fn main() {
     // чиним до первого окна, как это делает старт окна на Python. Живой
     // санитайзер тот же, что у маршрута `--sanitize-gtk` (`cli`), второй
     // копии нет. Самопроверка профиль не трогает.
-    if !selftest {
+    if !quiet {
         cli::startup_gtk_sanitize(&mut |line| {
             println!("{line}");
             applog::write_opts(applog::Level::Info, "gtk", line, false);
@@ -318,7 +348,7 @@ fn main() {
     // молча вышел бы с нулём — и прогон, ни разу не построивший окна,
     // засчитался бы зелёным. Это ровно та подмена «тихий выход = успех»,
     // которую в проекте уже ловили у сторожа самопроверки ниже.
-    if !selftest {
+    if !quiet {
         let runtime_dir = single_instance::runtime_dir_from_env();
         let lock = single_instance::lock_path(&runtime_dir);
         let mut held = single_instance::acquire_lock(&lock);
@@ -433,11 +463,11 @@ fn main() {
     // (`i18n::original_locale_env`), и «как в системе» считается по нему, а
     // не по подменённому (живой случай 08.10.2026, «Wie im System (Deutsch)»).
     i18n::override_ui_language_env(&cli::qt_ui_language_env(&language));
-    if !selftest {
+    if !quiet {
         log_info!("lang", "переменные языка: {}", i18n::locale_env_report());
     }
 
-    if selftest {
+    if quiet {
         unsafe { std::env::set_var("QT_FORCE_STDERR_LOGGING", "1") };
     } else {
         // Сообщения Qt и QML — в журнал Rexon. Решение целиком за ядром
@@ -458,6 +488,10 @@ fn main() {
     // `wallpaper_exec::yields_we_wallpapers`). Сокет к демону живёт в Qt,
     // поэтому снимающего ставит окно, а не ядро.
     rexon_core::wallpaper_exec::set_we_stopper(rexon_gui::we_socket::stop_we_wallpapers_hook);
+    // Cinnamon с layer-shell (Muffin 6.8+): живые обои слоем стола, как на
+    // wlr-композиторах, а не расширением оболочки. Факт — до первого
+    // решения о пути обоев.
+    rexon_gui::wallpaper_host::cinnamon_layer::init_fact();
     // Представление системе — теми же строками, что у остальных точек входа
     // продукта (`rexon_core::qt_app`), а не второй копией здесь.
     //
@@ -481,7 +515,7 @@ fn main() {
     // Имени ярлыка хватает Wayland, а панель задач X11 (MATE, XFCE, Cinnamon)
     // берёт картинку из `_NET_WM_ICON` окна — значок ставится до первого окна
     // и действует на все окна процесса (`rexon_gui::tray::set_app_window_icon`).
-    if !rexon_gui::tray::set_app_window_icon() && !selftest {
+    if !rexon_gui::tray::set_app_window_icon() && !quiet {
         log_warn!("start", "значок окна не найден ни в теме, ни файлом — панель задач покажет общий");
     }
 
@@ -504,7 +538,7 @@ fn main() {
     // Rexon, на любом рабочем столе (дефект 12.11.2026: Rexon обновил движок
     // и плагин в бандле, а в ~/.local остался старый — при входе в Plasma он
     // повесил plasmashell). Обычный старт — только сверка хэшей, в фоне.
-    if !selftest {
+    if !quiet {
         rexon_gui::we_socket::refresh_installed_kde_plugin("старт Rexon");
     }
 
@@ -524,12 +558,20 @@ fn main() {
         // привязки.
         let mut props = QMap::<QMapPair_QString_QVariant>::default();
         props.insert(QString::from("selftest"), QVariant::from(&selftest));
+        // Обход: исполнитель в QML включается этим свойством, окно — в
+        // размер снимков (ядро, `main_window_tour::WINDOW_SIZE`).
+        props.insert(QString::from("tourMode"), QVariant::from(&tour_cfg.is_some()));
+        if tour_cfg.is_some() {
+            let (w, h) = tour::WINDOW_SIZE;
+            props.insert(QString::from("width"), QVariant::from(&w));
+            props.insert(QString::from("height"), QVariant::from(&h));
+        }
         // Окно грузится СПРЯТАННЫМ и показывается в конце запуска
         // (`tray::first_show_main_window`, там и замер 02.11.2026): с
         // `visible: true` из разметки оно выходило на экран посреди загрузки
         // и стояло прозрачным, пока поток GUI доделывал запуск. Самопроверка
         // окно не прячет — её прогон этого пути не касается.
-        if !selftest {
+        if !quiet {
             props.insert(QString::from("visible"), QVariant::from(&false));
         }
         props.insert(
@@ -550,7 +592,7 @@ fn main() {
         // Адрес движка — до `load`: та забирает закреплённую ссылку себе.
         let engine_ptr = unsafe { engine.as_mut().get_unchecked_mut() as *mut QQmlApplicationEngine };
         engine.load(&QUrl::from("qrc:/qt/qml/org/rexon/gui/qml/MainWindow.qml"));
-        if !selftest {
+        if !quiet {
             // SAFETY: движок жив (владелец — `engine` до конца `main`) и
             // загружен; поток GUI.
             let adopted = unsafe { rexon_gui::tray::adopt_main_window(engine_ptr.cast()) };
@@ -573,8 +615,8 @@ fn main() {
     // Показать ли окно в конце запуска: прячется оно только при живом
     // значке и просьбе `--tray` (без значка окно — единственная дверь,
     // правило #13).
-    let mut show_window = !selftest;
-    if !selftest {
+    let mut show_window = !quiet;
+    if !quiet {
         let tray = rexon_gui::tray::install_for_main_window(&args);
         if tray && rexon_core::tray::starts_hidden(&args) {
             show_window = false;
@@ -605,7 +647,7 @@ fn main() {
     // раз за запуск, как `announce_self` у окна на Python. Отдельным
     // потоком: запись файла не должна задерживать первую отрисовку. Мост не
     // критичен — неудача уходит строкой в журнал.
-    if !selftest {
+    if !quiet {
         std::thread::spawn(|| {
             if let Err(e) = cli::announce_to_bridge() {
                 log_warn!("bridge", "объявление не записано: {e}");
@@ -616,7 +658,7 @@ fn main() {
     // Обои Razer Axon — подготовить заранее, в фоне и с низким приоритетом,
     // чтобы «Применить» срабатывало сразу. С задержкой: запуску не мешать.
     // Выключено в настройках или Axon нет — поток выходит сразу.
-    if !selftest {
+    if !quiet {
         rexon_core::axon_prepare::spawn_background(rexon_core::axon_prepare::STARTUP_DELAY);
     }
 
@@ -632,7 +674,7 @@ fn main() {
     // профиль»: settings.json и каталог снимков она заводит и без нас, это
     // её давнее поведение. Обещать больше, чем делаешь, в комментарии
     // нельзя: следующий будет на это обещание опираться.
-    if !selftest {
+    if !quiet {
         cli::startup_defaults_snapshot(Box::new(|line: &str| {
             println!("{line}");
             applog::write_opts(applog::Level::Info, "defaults", line, false);
@@ -641,7 +683,7 @@ fn main() {
 
     // Слушатель «подними окно» встаёт ПОСЛЕ загрузки QML: до неё поднимать
     // ещё нечего, а сокет уже отвечал бы «ok» на пустоту.
-    if !selftest {
+    if !quiet {
         let runtime_dir = single_instance::runtime_dir_from_env();
         let sock = single_instance::socket_path(&runtime_dir);
         // Длинный `XDG_RUNTIME_DIR`: адрес ушёл в запасной каталог — это
@@ -663,13 +705,27 @@ fn main() {
         }
     }
 
-    if !selftest && stand_restarts > 0 {
+    if !quiet && stand_restarts > 0 {
         rexon_gui::settings_actions::STAND_RESTARTS_LEFT
             .store(stand_restarts, std::sync::atomic::Ordering::SeqCst);
         log_info!("restart", "стенд: перезапуск через {STAND_RESTART_DELAY_SECS} с (осталось {stand_restarts})");
         std::thread::spawn(|| {
             std::thread::sleep(std::time::Duration::from_secs(STAND_RESTART_DELAY_SECS));
             rexon_gui::settings_actions::stand_restart_now();
+        });
+    }
+
+    if let Some(cfg) = tour_cfg {
+        let limit = cfg.timeout_secs;
+        println!("обход: {} → {}", cfg.target_label(), cfg.out_dir.display());
+        // Общий тайм-аут: обход без сети или с зависшей страницей обязан
+        // кончиться, а отчёт — сказать, на чём он встал.
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(limit));
+            let reason = format!("общий тайм-аут {limit} с");
+            let code = rexon_gui::main_window::tour_abort(&reason).unwrap_or(tour::EXIT_TIMEOUT);
+            println!("обход: {reason}");
+            unsafe { libc::_exit(code) };
         });
     }
 
@@ -699,7 +755,12 @@ fn main() {
 
     // Первый показ окна — последним делом перед циклом событий: дальше поток
     // GUI сразу рисует кадр, и прозрачного окна на экране не бывает.
-    if !selftest {
+    if !quiet {
+        // Сторож главного потока: окно не отвечает дольше 2 с — строка в
+        // журнал с текущим действием и стеком (живой случай 15.11.2026:
+        // зависание, «Закрыть» от стола, SIGKILL — и пустой журнал).
+        // Не в самопроверке и не в обходе (`quiet`).
+        rexon_gui::action_journal::install_main_watchdog();
         rexon_gui::tray::first_show_main_window(show_window);
     }
 
@@ -711,7 +772,7 @@ fn main() {
         None => 2,
     };
     let exit_started = std::time::Instant::now();
-    if !selftest {
+    if !quiet {
         log_info!(
             "exit",
             "цикл событий завершён (код {code}); причина: {}",
@@ -739,7 +800,7 @@ fn main() {
     if players > 0 {
         let line = cli::players_stopped_line(i64::from(players));
         println!("{line}");
-        if !selftest {
+        if !quiet {
             applog::write_opts(applog::Level::Info, "exit", &line, false);
         }
     }
@@ -790,10 +851,32 @@ fn main() {
     drop(app);
     exit_step("завершение процесса");
 
-    if !selftest {
+    if !quiet {
         log_info!("exit", "выход за {} мс, код {code}", exit_started.elapsed().as_millis());
     }
     std::process::exit(code);
+}
+
+/// Папка обхода: завести, убрать снимки и отчёт прошлого обхода (чужие
+/// файлы не трогаются), поток ошибок процесса — в её журнал, переменные Qt
+/// невидимого окна. Строго до первого потока и до Qt.
+fn prepare_tour_dir(cfg: &tour::TourConfig) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    std::fs::create_dir_all(&cfg.out_dir)?;
+    for entry in std::fs::read_dir(&cfg.out_dir)?.flatten() {
+        if tour::is_tour_artifact(&entry.file_name().to_string_lossy()) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let journal = std::fs::File::create(cfg.out_dir.join(tour::JOURNAL_FILE))?;
+    if unsafe { libc::dup2(journal.as_raw_fd(), 2) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    for (key, value) in tour::qt_env() {
+        // SAFETY: других потоков ещё нет.
+        unsafe { std::env::set_var(key, value) };
+    }
+    Ok(())
 }
 
 /// Перевод строк QML (`qsTranslate("rexon", …)`) — тот же язык и ТОТ ЖЕ

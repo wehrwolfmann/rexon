@@ -381,6 +381,49 @@ fn appearance_plans_match_golden() {
     );
 }
 
+/// Сторож дефекта 15.11: эталон не зависит от стола, на котором гоняют
+/// сверку. Тот же бинарь перезапускается с `XDG_CURRENT_DESKTOP=X-Cinnamon`
+/// (Wayland и X11) и без переменных стола — сверка с эталоном зелёная
+/// везде. Прежде из сеанса Cinnamon в план «неопознанного» стола попадал
+/// лишний `cinnamon --replace`. Ничего, кроме самого теста, не запускается;
+/// дисплея у потомка нет.
+#[test]
+fn golden_does_not_depend_on_session_env() {
+    if std::env::var("REXON_UPDATE_GOLDEN").is_ok() {
+        return;
+    }
+    let exe = std::env::current_exe().unwrap();
+    let cases: [(&str, &[(&str, &str)]); 3] = [
+        ("Cinnamon Wayland", &[("XDG_CURRENT_DESKTOP", "X-Cinnamon"), ("XDG_SESSION_TYPE", "wayland")]),
+        ("Cinnamon X11", &[("XDG_CURRENT_DESKTOP", "X-Cinnamon"), ("XDG_SESSION_TYPE", "x11")]),
+        ("без стола", &[]),
+    ];
+    for (label, vars) in cases {
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args(["appearance_plans_match_golden", "--exact", "--test-threads=1"]);
+        for k in [
+            "XDG_CURRENT_DESKTOP",
+            "XDG_SESSION_TYPE",
+            "XDG_SESSION_DESKTOP",
+            "DESKTOP_SESSION",
+            "WAYLAND_DISPLAY",
+            "DISPLAY",
+            "REXON_UPDATE_GOLDEN",
+        ] {
+            cmd.env_remove(k);
+        }
+        cmd.envs(vars.iter().copied());
+        let out = cmd.output().unwrap();
+        assert!(
+            out.status.success(),
+            "сверка с эталоном зависит от окружения ({label}):\n{}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+        // Фильтр не должен промахнуться: тест реально прошёл.
+        assert!(String::from_utf8_lossy(&out.stdout).contains("1 passed"), "{label}: тест не найден");
+    }
+}
+
 /// Шаг 5а: «Применить» выдаёт план ([`ai::press_plan_with`]) и исполняет
 /// его общим исполнителем. План нажатия — ТЕ ЖЕ шаги тех же построителей,
 /// что в эталоне выше (порядок и argv), без единого запуска; действия,

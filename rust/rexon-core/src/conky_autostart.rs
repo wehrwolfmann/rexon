@@ -140,8 +140,50 @@ pub struct Built {
 
 /// Собрать запись автозапуска `key` и поставить (или снять) строки
 /// композиторов. Записывать на диск — [`Built::desktop`].
-pub fn build(env: &SessionEnv, key: &str, title: &str, conf: &str, launch: Option<&str>, opts: &Options) -> Built {
-    let entry = crate::ext_manager::conky_desktop_entry_with(title, conf, launch, opts.delay, &opts.only_in);
+/// `xwayland` — файл запуска через XWayland
+/// ([`crate::conky_overlay::autostart_xwayland`]).
+pub fn build(
+    env: &SessionEnv,
+    key: &str,
+    title: &str,
+    conf: &str,
+    launch: Option<&str>,
+    xwayland: Option<&str>,
+    opts: &Options,
+) -> Built {
+    let entry = crate::ext_manager::conky_desktop_entry_with(title, conf, launch, xwayland, opts.delay, &opts.only_in);
+    build_entry(env, key, entry, compositor_argv(conf, launch, opts.delay), opts)
+}
+
+/// [`build`] для темы, которая запускается своим `start.sh`
+/// (`conky_theme::ScriptLaunch`): при входе — тот же сценарий, из папки
+/// темы и с меткой её процессов. `main_conf` — главный файл настроек
+/// (по нему решается, нужен ли виджету X11).
+pub fn build_script(
+    env: &SessionEnv,
+    key: &str,
+    title: &str,
+    plan: &crate::conky_theme::ScriptLaunch,
+    main_conf: Option<&str>,
+    opts: &Options,
+) -> Built {
+    use crate::installer::desktop_exec_arg;
+    let session = crate::conky_overlay::xwayland_shell(main_conf.is_some_and(crate::conky_overlay::widget_needs_x11), None);
+    let args = [&plan.script, &plan.dir, &plan.argv[0]].map(|a| desktop_exec_arg(a)).to_vec();
+    let entry = crate::ext_manager::conky_desktop_entry_exec(
+        title,
+        &plan.dir,
+        &format!("{session}{}", crate::conky_theme::AUTOSTART_SCRIPT),
+        &args,
+        opts.delay,
+        &opts.only_in,
+    );
+    build_entry(env, key, entry, crate::conky_theme::compositor_argv(plan, opts.delay), opts)
+}
+
+/// Общая часть [`build`] и [`build_script`]: строки композиторов по
+/// готовой записи `entry` и строке `argv` (`None` — путь в неё не лёг).
+fn build_entry(env: &SessionEnv, key: &str, entry: String, argv: Option<Vec<String>>, opts: &Options) -> Built {
     let id = compositor_id(key);
     // Строка ставится только в конфиг композитора ТЕКУЩЕГО сеанса
     // ([`ca::Scope::Current`]); в конфигах прочих подновляется лишь уже
@@ -157,7 +199,7 @@ pub fn build(env: &SessionEnv, key: &str, title: &str, conf: &str, launch: Optio
         CurrentSession::Compositor(c) => Some(c),
         _ => None,
     };
-    let Some(argv) = compositor_argv(conf, launch, opts.delay) else {
+    let Some(argv) = argv else {
         ca::remove_everywhere(env, &id);
         let refusal = current.filter(|&c| wanted(c)).map(|c| {
             trf(
@@ -253,7 +295,7 @@ mod tests {
 
     #[test]
     fn options_survive_in_the_entry() {
-        let e = crate::ext_manager::conky_desktop_entry_with("w", "/h/w/c.conf", None, 25, &["MATE".into()]);
+        let e = crate::ext_manager::conky_desktop_entry_with("w", "/h/w/c.conf", None, None, 25, &["MATE".into()]);
         assert_eq!(options_of(&e), Options { delay: 25, only_in: vec!["MATE".into()] });
         let plain = crate::ext_manager::conky_desktop_entry("w", "/h/w/c.conf");
         assert_eq!(options_of(&plain), Options::default());

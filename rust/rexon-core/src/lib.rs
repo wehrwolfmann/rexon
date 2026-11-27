@@ -50,6 +50,7 @@ pub mod conky_preview;
 pub mod conky_procs;
 pub mod conky_scan;
 pub mod conky_sets;
+pub mod conky_theme;
 /// Светлое и тёмное оформление по расписанию.
 pub mod day_night;
 pub mod de_apply;
@@ -61,6 +62,7 @@ pub mod desktop_shell;
 pub mod defaults;
 /// Deepin на Treeland — единственный Deepin, который ставит Rexon: своя сборка deepin-session без deepin-kwin.
 pub mod deepin_treeland;
+pub mod dm_autologin;
 pub mod distro_compat;
 pub mod engine_update;
 pub mod exit_guard;
@@ -99,6 +101,8 @@ pub mod keyboard_layout;
 /// Исполнитель установки Rexon в систему (порт `install_to_system`).
 pub mod installer_exec;
 pub mod launch_feedback;
+/// Ссылки из чужого текста: своя карточка, вопрос перед внешним сайтом, доверенные сайты.
+pub mod link_policy;
 pub mod local_install;
 pub mod local_preview;
 pub mod login_rescue;
@@ -121,6 +125,7 @@ pub mod qt_compare;
 pub mod qt_desktops;
 pub mod qt_extensions;
 pub mod qt_main;
+pub mod main_window_tour;
 pub mod qt_settings;
 pub mod qt_steam;
 pub mod remote_l10n;
@@ -175,6 +180,8 @@ pub mod translator_engine;
 /// Значок Rexon в системном лотке и автозапуск при входе.
 pub mod tray;
 pub mod ui_base;
+/// Сторож главного потока окна и журнал действий человека.
+pub mod ui_watch;
 pub mod update_guard;
 pub mod upscaler;
 pub mod user_props;

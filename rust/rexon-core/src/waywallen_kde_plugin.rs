@@ -693,6 +693,33 @@ pub fn no_displays_hint(setup: crate::wallpaper_backend::DisplaySetup) -> String
     }
 }
 
+/// Подсказка страницы «Мониторы» с учётом бэкенда сеанса: там, где дисплей
+/// поднимает Rexon, — [`no_displays_hint`]; где вывода для сцен нет вовсе и
+/// «Применить» поэтому серая — объяснение почему, а не голое «Мониторы не
+/// зарегистрированы» (правило #13). Где дисплей поднимает сам движок
+/// (wlr-композиторы) — пусто: страница показывает своё.
+pub fn no_displays_hint_in(
+    setup: crate::wallpaper_backend::DisplaySetup,
+    backend: crate::wallpaper_backend::WallpaperBackend,
+) -> String {
+    use crate::wallpaper_backend::{DisplaySetup, WallpaperBackend};
+    if setup != DisplaySetup::None {
+        return no_displays_hint(setup);
+    }
+    match backend {
+        WallpaperBackend::ShellExtension => crate::i18n::tr(
+            "Wallpaper Engine wallpapers can't be shown on this desktop: the shell doesn't let \
+             programs draw on the wallpaper layer, so there is no monitor to show them on and \
+             “Apply” stays unavailable. Video, web and Flash wallpapers from Rexon still work.",
+        ),
+        WallpaperBackend::Unsupported => crate::i18n::tr(
+            "Wallpaper Engine wallpapers can't be shown in this session: its window manager \
+             doesn't support live wallpapers, so “Apply” stays unavailable.",
+        ),
+        WallpaperBackend::KdePlugin | WallpaperBackend::DaemonLayerShell | WallpaperBackend::X11Subprocess => String::new(),
+    }
+}
+
 /// Отпускать ли придержанные кадры.
 ///
 /// `select_done` — подготовка закончилась; `select_ok` — плагин назначен.

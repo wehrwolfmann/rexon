@@ -225,6 +225,16 @@ fn scripts_match_python_verbatim() {
     // узнаёт UKUI (`ukui`, `kylin-wlcom`) — общая таблица
     // `system::XDG_TOKEN_TO_DE`. Пакетов у UKUI в каталоге нет, защищать
     // помощнику пока нечего.
+    // Переснято 16.11.2026 (de- и pkg-помощник): блокировка экрана в наборах
+    // столов — swaylock и swayidle у Wayfire и River (все семейства) и у
+    // sway на Gentoo, xscreensaver у LXQt (все семейства), swaylock в
+    // добавке сеанса Wayland LXQt; в белом списке и в защите текущего стола.
+    // Переправлено 16.11.2026 (pkg-помощник): MATE (Arch) ставится только
+    // сеансом X11 (решение Wehrwolfmann) — из его набора в защите текущего
+    // стола ушли wayfire, xorg-xwayland и mate-wayland-session; в белом
+    // списке Arch нет mate-wayland-session, а wayfire встал на место
+    // своего стола (Wayfire). Механизма пересъёмки у эталона нет — правка
+    // руками ровно этих пяти мест, сверка подтверждает совпадение.
     assert_eq!(
         json!(de_helper_pkg_table()),
         s["de_helper_pkg_table"],

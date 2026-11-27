@@ -76,7 +76,7 @@
 //!     тексты сообщений (`sddm_reset_success_message`,
 //!     `pkexec_denied_message`);
 //!   * детект экрана входа: таблицы юнитов (`KNOWN_DM_UNITS` —
-//!     16 DM, `LOGIN_MANAGER_PROBE_UNITS`, `DM_ENABLED_STATES`),
+//!     17 DM, с 15.11.2026 и DDM, `LOGIN_MANAGER_PROBE_UNITS`, `DM_ENABLED_STATES`),
 //!     `dm_unit_from_symlink`, `active_login_manager_from`,
 //!     `display_manager_present_from` (сами `systemctl is-enabled` — колбэком).
 //!   * живой ход установки: `parse_pacman_line` — строка вывода pacman в
@@ -4567,6 +4567,13 @@ pub struct InstallPreview {
     /// откажется удалять установленное, а удалять чужой стол Rexon сам не
     /// берётся ([`conflict_explanation`]).
     pub conflicts: Vec<PkgConflict>,
+    /// Необязательные члены групп, выкинутые из установки, потому что тянут
+    /// пакет, конфликтующий с установленным (экран входа Pantheon тянет
+    /// mutter49, а mutter 51 держат GNOME и Budgie). Стол встаёт без них, а
+    /// человеку говорится, чего не будет и почему
+    /// ([`conflict_skip_explanation`]). Обязательное (сеанс стола и всё, что
+    /// он тянет) сюда не попадает никогда — тогда [`Self::conflicts`].
+    pub conflict_skipped: Vec<ConflictSkip>,
     /// Пакеты из [`Self::targets`], которые транзакция ставит ЗАНОВО лишь как
     /// зависимости набора: DKMS-модуль и заголовки под стоящие ядра
     /// ([`kernel_module_extras`]). Ставятся помеченными `--asdeps`, чтобы
@@ -4600,6 +4607,23 @@ pub struct PkgConflict {
     pub installed_desktops: Vec<String>,
     /// Кто требует установленный пакет напрямую (`Required By`).
     pub required_by: Vec<String>,
+    /// «Установленный» на деле тоже встаёт в этой же транзакции (на машине
+    /// без mutter группа `pantheon` тянет и mutter от gala, и mutter49 от
+    /// экрана входа): `-Sp` такого не ловит, а настоящая транзакция падает.
+    /// Тогда [`Self::installed_desktops`] — столы набора, которым он нужен.
+    pub installed_is_new: bool,
+}
+
+/// Член группы, который не ставится из-за конфликта
+/// ([`InstallPreview::conflict_skipped`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct ConflictSkip {
+    /// Выкинутый член группы (`lightdm-pantheon-greeter`).
+    pub package: String,
+    /// Стол, к которому он относится (`Pantheon`); пусто — не узнать.
+    pub desktop: String,
+    /// Конфликт, из-за которого он выкинут (`mutter49` против `mutter`).
+    pub conflict: PkgConflict,
 }
 
 impl InstallPreview {
@@ -4799,16 +4823,7 @@ pub fn install_preview(
                         preview.kept_local.push(p);
                     }
                 }
-                preview.targets = expanded
-                    .iter()
-                    .filter(|m| !preview.skipped.contains(m) && !preview.kept_local.contains(m))
-                    .cloned()
-                    .collect();
-                for e in &kernel_extras {
-                    if !preview.targets.contains(e) {
-                        preview.targets.push(e.clone());
-                    }
-                }
+                rebuild_targets(&mut preview, &expanded, &kernel_extras);
                 if preview.targets.is_empty() {
                     return Some(preview);
                 }
@@ -4820,6 +4835,23 @@ pub fn install_preview(
             let mut new_info: Vec<PkgInfo> = Vec::new();
             if let Some(installed) = &installed {
                 let (conflicts, info) = package_conflicts(family, &new_packages, installed, run);
+                // Конфликт, который тянет лишь необязательный член группы
+                // (экран входа, приложение), стол не держит: член выкидывается,
+                // и план пересчитывается без него. Обязательное — отказ.
+                let drops = conflict_drops(&conflicts, &expanded, packages, &is_group_member, &info);
+                if !drops.is_empty() {
+                    for d in drops {
+                        if !preview.conflict_skipped.iter().any(|s| s.package == d.package) {
+                            preview.members.retain(|m| *m != d.package);
+                            preview.conflict_skipped.push(d);
+                        }
+                    }
+                    rebuild_targets(&mut preview, &expanded, &kernel_extras);
+                    if preview.targets.is_empty() {
+                        return Some(preview);
+                    }
+                    continue;
+                }
                 preview.conflicts = conflicts;
                 new_info = info;
             }
@@ -4846,11 +4878,7 @@ pub fn install_preview(
             return Some(preview);
         }
         preview.skipped.extend(droppable);
-        preview.targets = expanded
-            .iter()
-            .filter(|m| !preview.skipped.contains(m) && !preview.kept_local.contains(m))
-            .cloned()
-            .collect();
+        rebuild_targets(&mut preview, &expanded, &[]);
         preview.members = preview.targets.clone();
         for e in &kernel_extras {
             if !preview.targets.contains(e) {
@@ -4859,6 +4887,114 @@ pub fn install_preview(
         }
     }
     None
+}
+
+/// Цели транзакции заново: набор после раскрытия групп без выкинутого
+/// (неустановимое, своя сборка новее, конфликтное необязательное) плюс
+/// модули ядра под стоящие ядра.
+fn rebuild_targets(preview: &mut InstallPreview, expanded: &[String], kernel_extras: &[String]) {
+    preview.targets = expanded
+        .iter()
+        .filter(|m| {
+            !preview.skipped.contains(m)
+                && !preview.kept_local.contains(m)
+                && !preview.conflict_skipped.iter().any(|s| &s.package == *m)
+        })
+        .cloned()
+        .collect();
+    for e in kernel_extras {
+        if !preview.targets.contains(e) {
+            preview.targets.push(e.clone());
+        }
+    }
+}
+
+/// Какие члены групп выкинуть, чтобы снять конфликты `conflicts`.
+///
+/// Обязательное ядро стола — пакеты, названные в наборе прямо, ключевые
+/// пакеты столов (сеанс из базы столов — `pantheon-session`, оконный
+/// менеджер — `gala`, таблица [`CONFLICT_DESKTOP_PACKAGES`]) и всё, что они
+/// тянут по `Depends On`. Конфликтный пакет внутри ядра — снять конфликт
+/// нечем, член не выкидывается (отказ, [`conflict_explanation`]). Иначе
+/// выкидываются члены групп вне ядра, которые его тянут: экран входа
+/// Pantheon (`lightdm-pantheon-greeter` → `mutter49`) при стоящем mutter 51.
+/// `info` — сведения `pacman -Si` о встающем; связи берутся только по ним.
+fn conflict_drops(
+    conflicts: &[PkgConflict],
+    expanded: &[String],
+    named: &[String],
+    is_group_member: &dyn Fn(&str) -> bool,
+    info: &[PkgInfo],
+) -> Vec<ConflictSkip> {
+    if conflicts.is_empty() {
+        return Vec::new();
+    }
+    // Прямые зависимости по `Depends On`, с учётом `Provides`.
+    let deps = |name: &str| -> Vec<&str> {
+        let Some(i) = info.iter().find(|i| i.name == name) else { return Vec::new() };
+        info.iter()
+            .filter(|o| i.depends.iter().any(|d| *d == o.name || o.provides.contains(d)))
+            .map(|o| o.name.as_str())
+            .collect()
+    };
+    let closure = |roots: Vec<&str>| -> std::collections::HashSet<String> {
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut stack: Vec<String> = roots.into_iter().map(str::to_string).collect();
+        while let Some(n) = stack.pop() {
+            if seen.len() > 4000 || !seen.insert(n.clone()) {
+                continue;
+            }
+            stack.extend(deps(&n).into_iter().map(str::to_string));
+        }
+        seen
+    };
+    let essential = |name: &str| {
+        named.iter().any(|n| n == name)
+            || CONFLICT_DESKTOP_PACKAGES.iter().any(|(p, _)| *p == name)
+            || crate::system::DE_DATABASE.iter().any(|(_, e)| e.check_package == name)
+    };
+    let core = closure(expanded.iter().map(String::as_str).filter(|m| essential(m) || !is_group_member(m)).collect());
+    let mut out: Vec<ConflictSkip> = Vec::new();
+    for c in conflicts {
+        // Конфликт внутри набора объявляет любая из сторон: выкидывать
+        // можно ту, что вне ядра, — и объяснять с её стороны.
+        let c = if !core.contains(&c.new_package) {
+            c.clone()
+        } else if c.installed_is_new && !core.contains(&c.installed) {
+            PkgConflict {
+                new_package: c.installed.clone(),
+                installed: c.new_package.clone(),
+                new_version: c.installed_version.clone(),
+                installed_version: c.new_version.clone(),
+                new_desktops: c.installed_desktops.clone(),
+                installed_desktops: c.new_desktops.clone(),
+                ..c.clone()
+            }
+        } else {
+            return Vec::new();
+        };
+        let pullers: Vec<&String> = expanded
+            .iter()
+            .filter(|m| is_group_member(m) && !core.contains(m.as_str()))
+            .filter(|m| closure(vec![m.as_str()]).contains(&c.new_package))
+            .collect();
+        if pullers.is_empty() {
+            // Конфликтный пакет не тянет никто из необязательного: снимать
+            // нечем, остаётся отказ.
+            return Vec::new();
+        }
+        for m in pullers {
+            if out.iter().any(|s| &s.package == m) {
+                continue;
+            }
+            let desktop = own_desktop(m, info.iter().find(|i| &i.name == m))
+                .map(str::to_string)
+                .or_else(|| c.new_desktops.first().cloned())
+                .unwrap_or_default();
+            out.push(ConflictSkip { package: m.clone(), desktop, conflict: c.clone() });
+        }
+    }
+    out
 }
 
 // ── Модули ядра под стоящие ядра ──────────────────────────────────────────
@@ -5154,7 +5290,7 @@ fn package_conflicts(
         if let Some((_, stdout, _)) = run(&Cmd::new(argv, Some(60), true)) {
             new_info = parse_pkg_info(&stdout);
             for info in new_info.iter().filter(|i| new_packages.contains(&i.name)) {
-                for c in info.conflicts.iter().filter(|c| installed.contains(c.as_str())) {
+                for c in info.conflicts.iter().filter(|c| installed.contains(c.as_str()) || new_packages.contains(c)) {
                     add(&info.name, c);
                 }
             }
@@ -5176,12 +5312,17 @@ fn package_conflicts(
         if let Some(i) = find(&new_info, &c.new_package) {
             c.new_version = new_info[i].version.clone();
         }
-        if let Some(i) = find(&installed_info, &c.installed) {
+        c.installed_is_new = !installed.contains(c.installed.as_str());
+        if c.installed_is_new {
+            if let Some(i) = find(&new_info, &c.installed) {
+                c.installed_version = new_info[i].version.clone();
+            }
+        } else if let Some(i) = find(&installed_info, &c.installed) {
             c.installed_version = installed_info[i].version.clone();
             c.required_by = installed_info[i].required_by.clone();
         }
         c.same_program = same_program(c, new_info.iter().find(|i| i.name == c.new_package));
-        c.new_desktops = holding_desktops(&c.new_package, &new_info, &|n: &str| {
+        let new_parents = |n: &str| -> Vec<String> {
             let provides: Vec<&str> = new_info
                 .iter()
                 .find(|i| i.name == n)
@@ -5192,14 +5333,19 @@ fn package_conflicts(
                 .filter(|i| i.depends.iter().any(|d| d == n || provides.contains(&d.as_str())))
                 .map(|i| i.name.clone())
                 .collect()
-        });
-        c.installed_desktops = holding_desktops(&c.installed, &installed_info, &|n: &str| {
-            installed_info
-                .iter()
-                .find(|i| i.name == n)
-                .map(|i| i.required_by.clone())
-                .unwrap_or_default()
-        });
+        };
+        c.new_desktops = holding_desktops(&c.new_package, &new_info, &new_parents);
+        c.installed_desktops = if c.installed_is_new {
+            holding_desktops(&c.installed, &new_info, &new_parents)
+        } else {
+            holding_desktops(&c.installed, &installed_info, &|n: &str| {
+                installed_info
+                    .iter()
+                    .find(|i| i.name == n)
+                    .map(|i| i.required_by.clone())
+                    .unwrap_or_default()
+            })
+        };
     }
     (out, new_info)
 }
@@ -5436,7 +5582,7 @@ fn swap_label(c: &PkgConflict) -> String {
 pub fn conflict_swaps(p: &InstallPreview) -> Vec<PkgConflict> {
     let all = !p.conflicts.is_empty()
         && p.blocked.is_empty()
-        && p.conflicts.iter().all(|c| swap_rule(c).is_some() && c.required_by.is_empty());
+        && p.conflicts.iter().all(|c| swap_rule(c).is_some() && c.required_by.is_empty() && !c.installed_is_new);
     if all {
         p.conflicts.clone()
     } else {
@@ -5564,6 +5710,12 @@ pub fn conflict_explanation(conflicts: &[PkgConflict]) -> String {
             c.required_by.is_empty().then(|| conflict_desktop(&c.installed).map(str::to_string)).flatten()
         });
         let line = match (target, other) {
+            _ if c.installed_is_new => trf(
+                // TRANSLATORS: %1 and %2 are two packages of the set being installed.
+                "⛔ Installation won't work: the set needs both %1 and %2, and the two \
+                 can't be installed at once.",
+                &[&c.new_package, &c.installed],
+            ),
             (Some(t), Some(o)) if t != o && c.same_program && !c.new_version.is_empty() && !c.installed_version.is_empty() => {
                 let bare = |s: &str| s.trim_end_matches(|ch: char| ch.is_ascii_digit()).to_string();
                 let program = if bare(&c.new_package) == c.installed { c.installed.clone() } else { bare(&c.installed) };
@@ -5622,6 +5774,77 @@ pub fn conflict_explanation(conflicts: &[PkgConflict]) -> String {
         }
     }
     lines.join("\n")
+}
+
+/// Что из набора не ставится из-за конфликта и почему
+/// ([`InstallPreview::conflict_skipped`]): по строке на выкинутый пакет.
+/// Стол при этом ставится — текст предупреждает, а не отказывает.
+pub fn conflict_skip_explanation(skips: &[ConflictSkip]) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for s in skips.iter().take(3) {
+        let c = &s.conflict;
+        let login_screen = s.package.contains("greeter");
+        let label = if login_screen && !s.desktop.is_empty() {
+            // TRANSLATORS: %1 is a desktop (e.g. Pantheon). The phrase is %1 of
+            // “Not installing %1: …” and its sister lines — write it in the case
+            // and capitalization that fits the start of those lines in your
+            // language (Russian: “Экран входа %1”).
+            trf("the %1 login screen", &[&s.desktop])
+        } else {
+            s.package.clone()
+        };
+        let others = (!c.installed_desktops.is_empty()).then(|| c.installed_desktops.join(", "));
+        let reason = match others {
+            Some(o) if c.same_program && !c.new_version.is_empty() && !c.installed_version.is_empty() => trf(
+                // TRANSLATORS: %1 is what is not installed (e.g. “the Pantheon
+                // login screen”), %2 a program (e.g. Mutter), %3 the version %1
+                // needs, %4 the installed desktops, %5 the version they need.
+                "⚠️ Not installing %1: it needs %2 %3, and %4 needs %2 %5 — the two \
+                 can't be installed at once.",
+                &[
+                    &label,
+                    &conflict_program_name(c),
+                    &major_version(&c.new_version),
+                    &o,
+                    &major_version(&c.installed_version),
+                ],
+            ),
+            _ if c.installed_is_new => trf(
+                // TRANSLATORS: %1 is what is not installed, %2 a package the rest
+                // of the set needs.
+                "⚠️ Not installing %1: it conflicts with %2, which the rest of the set needs.",
+                &[&label, &c.installed],
+            ),
+            _ => trf(
+                // TRANSLATORS: %1 is what is not installed, %2 an installed package.
+                "⚠️ Not installing %1: it conflicts with the installed package %2.",
+                &[&label, &c.installed],
+            ),
+        };
+        let tail = if login_screen && !s.desktop.is_empty() {
+            // TRANSLATORS: %1 is the desktop being installed.
+            trf("You can sign in to %1 from the regular login screen; everything else will be installed.", &[&s.desktop])
+        } else {
+            tr("Everything else will be installed without it.")
+        };
+        let line = format!("{reason} {tail}");
+        if !lines.contains(&line) {
+            lines.push(line);
+        }
+    }
+    lines.join("\n")
+}
+
+/// Программа, двух версий которой касается конфликт (`mutter49` против
+/// `mutter` → `Mutter`), именем для человека.
+fn conflict_program_name(c: &PkgConflict) -> String {
+    let bare = |s: &str| s.trim_end_matches(|ch: char| ch.is_ascii_digit()).to_string();
+    let program = if bare(&c.new_package) == c.installed { c.installed.clone() } else { bare(&c.installed) };
+    CONFLICT_PACKAGE_NAMES
+        .iter()
+        .find(|(p, _)| *p == program)
+        .map(|(_, n)| n.to_string())
+        .unwrap_or(program)
 }
 
 /// Старшая часть версии для человека: `1:49.8-1.1` → `49`.
@@ -9370,7 +9593,7 @@ pub const DM_SYMLINK: &str = "/etc/systemd/system/display-manager.service";
 pub const KNOWN_DM_UNITS: &[&str] = &[
     "display-manager", "plasmalogin", "sddm", "gdm", "gdm3", "lightdm",
     "lxdm", "greetd", "ly", "cosmic-greeter", "slim", "nodm", "xdm",
-    "entrance", "emptty", "tbsm",
+    "entrance", "emptty", "ddm", "tbsm",
 ];
 /// Порядок опроса в `active_login_manager` (Plasma Login Manager первым: у
 /// ранних его выпусков `Provides: None`, симлинка могло не быть вовсе; на
@@ -9817,7 +10040,171 @@ pub const LOGIN_MANAGER_SPECS: &[DmSpec] = &[
         unit: "emptty", label: "emptty", binary: "emptty", package: "emptty",
         user: None, pam: "emptty", needs_xorg: false, switchable: false,
     },
+    // Свой экран входа Deepin (форк SDDM, пакет ddm 0.4): окно входа рисует
+    // сам Treeland (`treeland.service` от имени `dde`), рядом обязательна
+    // служба мест `dde-seatd` (`Requires=` юнита — её проверяет готовность,
+    // [`DmFacts::missing_units`]). Без него Treeland 0.11 не поднимает сеанс
+    // (treeland#1656), см. [`DESKTOP_DM_RULES`]. Запускает ли он другие
+    // столы — на стенде не проверено: об этом честно говорят
+    // [`dm_warnings`] и окно подтверждения.
+    DmSpec {
+        unit: DDM_UNIT, label: "DDM", binary: "ddm", package: "ddm",
+        user: Some("dde"), pam: "ddm", needs_xorg: false, switchable: true,
+    },
 ];
+
+/// Юнит своего экрана входа Deepin.
+pub const DDM_UNIT: &str = "ddm";
+
+// ── Какой экран входа нужен какому столу ──────────────────────────────────
+//
+// Экран входа один на компьютер и запускается раньше, чем человек выбирает
+// стол. Большинству столов всё равно, какой он; ДВА стола привязаны к
+// своему по имени и без него теряют главное (исследование 15.11.2026):
+//   * GNOME → GDM: gnome-shell включает экран блокировки, только если GDM
+//     ответил по D-Bus (`org.gnome.DisplayManager`); под другим экраном входа
+//     блокировки нет совсем — ни Super+L, ни по простою, ни перед сном;
+//   * Deepin на Treeland → DDM: Treeland 0.11 создаёт сеанс человека только
+//     по сообщениям DDM (treeland#1656); под другим экраном входа виден фон
+//     без панели.
+// KDE Plasma, Cinnamon, MATE и Xfce под Plasma Login / SDDM / LightDM
+// работают одинаково, а под GDM теряют «Сменить пользователя» (GDM не даёт
+// `org.freedesktop.DisplayManager`), Plasma — ещё и вход в KWallet (в PAM
+// GDM нет `pam_kwallet5`).
+
+/// Что стол требует от экрана входа.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DmNeed {
+    /// Нужен ровно этот экран входа (юниты — его варианты: `gdm`/`gdm3`);
+    /// под другим стол теряет главное.
+    Required(&'static [&'static str]),
+    /// Годится любой, но под этими экранами входа часть функций пропадает.
+    Avoid(&'static [&'static str]),
+    /// Годится любой.
+    Any,
+}
+
+/// Насколько плохо столу под экраном входа.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DmHarm {
+    /// Пропадает часть функций (смена пользователя, KWallet).
+    Minor,
+    /// Стол без блокировки экрана или не запускается вовсе.
+    Critical,
+}
+
+/// Строка таблицы «стол → экран входа».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DesktopDmRule {
+    /// Стол в базе ядра (как в `system::de_installed_binaries`).
+    pub de_id: &'static str,
+    /// Имя стола для человека (имя продукта — латиницей).
+    pub label: &'static str,
+    /// Стол установлен, если на месте ВСЕ эти программы. У Deepin — сам
+    /// Treeland: обычному Deepin на X11 (без Treeland) DDM не нужен.
+    pub binaries: &'static [&'static str],
+    pub need: DmNeed,
+    /// Что пропадает под «не тем» экраном входа (английский ключ каталога,
+    /// переводится при показе); `%1` — имя экрана входа.
+    pub harm_text: &'static str,
+}
+
+const GDM_UNITS: &[&str] = &["gdm", "gdm3"];
+const DDM_UNITS: &[&str] = &[DDM_UNIT];
+
+/// Таблица требований. Столы, которых здесь нет, работают под любым
+/// экраном входа ([`desktop_dm_need`] → [`DmNeed::Any`]).
+pub const DESKTOP_DM_RULES: &[DesktopDmRule] = &[
+    DesktopDmRule {
+        de_id: "gnome", label: "GNOME", binaries: &["gnome-shell"], need: DmNeed::Required(GDM_UNITS),
+        // TRANSLATORS: %1 is a login screen name (SDDM, Plasma Login Manager, …). Super+L is a key combination.
+        harm_text: n_("With %1 as the login screen, GNOME can't lock the screen: Super+L, locking when idle and before sleep do nothing. GNOME needs GDM."),
+    },
+    DesktopDmRule {
+        de_id: "deepin", label: "Deepin", binaries: &["treeland"], need: DmNeed::Required(DDM_UNITS),
+        // TRANSLATORS: %1 is a login screen name. Treeland and DDM are program names.
+        harm_text: n_("With %1 as the login screen, Deepin doesn't start: Treeland shows only the wallpaper, without the panel. Deepin needs its own login screen, DDM."),
+    },
+    DesktopDmRule {
+        de_id: "kde", label: "KDE Plasma", binaries: &["plasmashell"], need: DmNeed::Avoid(GDM_UNITS),
+        // TRANSLATORS: %1 is a login screen name (GDM). KWallet is a program name.
+        harm_text: n_("With %1 as the login screen, KDE Plasma asks for the KWallet password separately after sign-in, and “Switch User” may not work."),
+    },
+    DesktopDmRule {
+        de_id: "cinnamon-mint", label: "Cinnamon", binaries: &["cinnamon"], need: DmNeed::Avoid(GDM_UNITS),
+        // TRANSLATORS: %1 is a login screen name (GDM).
+        harm_text: n_("With %1 as the login screen, “Switch User” doesn't work in Cinnamon."),
+    },
+    DesktopDmRule {
+        de_id: "mate", label: "MATE", binaries: &["mate-session"], need: DmNeed::Avoid(GDM_UNITS),
+        // TRANSLATORS: %1 is a login screen name (GDM).
+        harm_text: n_("With %1 as the login screen, “Switch User” doesn't work in MATE."),
+    },
+    DesktopDmRule {
+        de_id: "xfce", label: "Xfce", binaries: &["xfce4-session"], need: DmNeed::Avoid(GDM_UNITS),
+        // TRANSLATORS: %1 is a login screen name (GDM).
+        harm_text: n_("With %1 as the login screen, “Switch User” doesn't work in Xfce."),
+    },
+];
+
+/// Строка таблицы по столу; `None` — столу всё равно.
+pub fn desktop_dm_rule(de_id: &str) -> Option<&'static DesktopDmRule> {
+    let de_id = de_id.trim();
+    DESKTOP_DM_RULES.iter().find(|r| r.de_id == de_id)
+}
+
+/// Что стол требует от экрана входа.
+pub fn desktop_dm_need(de_id: &str) -> DmNeed {
+    desktop_dm_rule(de_id).map_or(DmNeed::Any, |r| r.need)
+}
+
+/// Насколько плохо столу под экраном входа `dm_unit`; `None` — ничего не
+/// теряет.
+pub fn desktop_dm_harm(de_id: &str, dm_unit: &str) -> Option<DmHarm> {
+    let dm = dm_unit.trim();
+    match desktop_dm_need(de_id) {
+        DmNeed::Required(units) if !units.contains(&dm) => Some(DmHarm::Critical),
+        DmNeed::Avoid(units) if units.contains(&dm) => Some(DmHarm::Minor),
+        _ => None,
+    }
+}
+
+/// Одна проблема совместимости «стол — экран входа» для человека.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DmCompatIssue {
+    pub de_id: String,
+    pub harm: DmHarm,
+    pub text: String,
+}
+
+/// Чем плох экран входа `dm_unit` для установленных столов `installed`
+/// (ид из базы ядра): сначала то, без чего стол не работает, потом мелочи;
+/// внутри — порядок таблицы. Только решение, без системы.
+pub fn dm_compat_issues(dm_unit: &str, installed: &[String]) -> Vec<DmCompatIssue> {
+    let dm = dm_unit.trim();
+    if dm.is_empty() {
+        return Vec::new();
+    }
+    let name = dm_label(dm);
+    let mut out: Vec<DmCompatIssue> = DESKTOP_DM_RULES
+        .iter()
+        .filter(|r| installed.iter().any(|d| d == r.de_id))
+        .filter_map(|r| {
+            let harm = desktop_dm_harm(r.de_id, dm)?;
+            Some(DmCompatIssue { de_id: r.de_id.to_string(), harm, text: trf(r.harm_text, &[&name]) })
+        })
+        .collect();
+    out.sort_by(|a, b| b.harm.cmp(&a.harm));
+    out
+}
+
+/// DDM с другими столами на стенде ещё не проверен — пометка под его
+/// строкой в разделе «Менеджер входа» и в окне подтверждения.
+pub fn ddm_untested_warning() -> String {
+    tr("DDM is Deepin's own login screen. Rexon hasn't checked yet whether it starts other desktops. \
+        If yours doesn't start, sign in to Deepin and make the previous login screen the default here again.")
+}
 
 /// Строка таблицы по юниту; `None` — незнакомый экран входа.
 pub fn login_manager_spec(unit: &str) -> Option<&'static DmSpec> {
@@ -10298,8 +10685,14 @@ pub struct LightdmFacts {
 /// Заранее собранные ответы о системе для [`dm_readiness`] — всё без root.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DmFacts {
+    /// Юнит без `.service` (`sddm`, `ddm`…); пусто — не задан.
+    pub unit: String,
     /// Программа из `ExecStart` юнита на месте.
     pub binary_exists: bool,
+    /// Службы из `Requires=` юнита, которых нет или которые замаскированы
+    /// (у DDM — `dde-seatd.service`): без них systemd экран входа не
+    /// запустит.
+    pub missing_units: Vec<String>,
     /// Юнит замаскирован (`/etc/systemd/system/<юнит>.service → /dev/null`).
     pub masked: bool,
     /// Пользователь приветствия; `None` — проверять некого.
@@ -10343,6 +10736,13 @@ pub fn dm_readiness(
     if !facts.binary_exists {
         // TRANSLATORS: %1 is a program name, e.g. sddm.
         return blocked(trf("The login screen program %1 is missing.", &[&spec.binary]));
+    }
+    if let Some(unit) = facts.missing_units.first() {
+        return blocked(trf(
+            // TRANSLATORS: %1 is a system service name, e.g. dde-seatd.service.
+            "The login screen needs the system service %1, and it's missing or switched off.",
+            &[unit],
+        ));
     }
     if !facts.pam_exists {
         // TRANSLATORS: %1 is a PAM service file name, e.g. sddm.
@@ -10411,6 +10811,9 @@ pub fn dm_warnings(facts: &DmFacts) -> Vec<String> {
             "The SDDM theme “%1” isn't installed — SDDM will show its built-in look.",
             &[theme],
         ));
+    }
+    if facts.unit == DDM_UNIT {
+        out.push(ddm_untested_warning());
     }
     out
 }
@@ -10541,6 +10944,9 @@ pub fn login_manager_switch_confirm(
         let name = if g.name.is_empty() { &g.id } else { &g.name };
         // TRANSLATORS: %1 is a LightDM greeter name (Slick Greeter, …).
         parts.push(trf("Greeter: %1.", &[name]));
+    }
+    if new_unit.trim() == DDM_UNIT {
+        parts.push(ddm_untested_warning());
     }
     if let Some(old) = old_unit.map(str::trim).filter(|o| !o.is_empty()) {
         parts.push(trf(
@@ -12387,6 +12793,12 @@ pub fn mate_post_install_summary(errors: usize) -> (Vec<String>, String) {
     )
 }
 
+/// Строка журнала пост-установки MATE: экран блокировки показывает обои
+/// стола вместо штатных «полосок».
+pub fn mate_lock_follows_desktop_line() -> String {
+    tr("🔒 Lock screen: shows your desktop wallpaper")
+}
+
 // ============================================================================
 // Пост-установка river: стартовый init
 // ============================================================================
@@ -12412,8 +12824,11 @@ pub fn river_init_path(xdg_config_home: &str, home: &str) -> String {
 pub const RIVER_INIT_MODE: u32 = 0o755;
 
 /// Стартовый init river: клавиши как у соседних тайловых (Super+Enter —
-/// терминал, Super+D — меню программ, Super+Q — закрыть окно), панель
+/// терминал, Super+D — меню программ, Super+Q — закрыть окно,
+/// Super+Shift+Esc — заблокировать экран, как в примере Wayfire), панель
 /// waybar, уведомления mako, окно пароля polkit и раскладка rivertile.
+/// Блокировку по простою (5 минут), перед сном и по `loginctl lock-session`
+/// ведёт swayidle — та же строка [`SWAYIDLE_LOCK`], что у Wayfire.
 /// Программы — ровно те, что ставит запись `river` базы столов.
 ///
 /// `XDG_CURRENT_DESKTOP` river-classic сам не выставляет, а по нему
@@ -12428,11 +12843,12 @@ export XDG_CURRENT_DESKTOP=river
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=river 2>/dev/null
 
 # Super+Enter: terminal, Super+D: applications, Super+Q: close the window,
-# Super+Shift+E: log out.
+# Super+Shift+E: log out, Super+Shift+Escape: lock the screen.
 riverctl map normal Super Return spawn foot
 riverctl map normal Super D spawn fuzzel
 riverctl map normal Super Q close
 riverctl map normal Super+Shift E exit
+riverctl map normal Super+Shift Escape spawn 'swaylock -f'
 
 riverctl map normal Super J focus-view next
 riverctl map normal Super K focus-view previous
@@ -12468,6 +12884,8 @@ riverctl border-color-unfocused 0x45475a
 
 riverctl spawn waybar
 riverctl spawn mako
+# Lock the screen after 5 idle minutes and before sleep.
+riverctl spawn "swayidle -w timeout 300 'swaylock -f' before-sleep 'swaylock -f' lock 'swaylock -f'"
 for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
              /usr/libexec/polkit-gnome-authentication-agent-1; do
     if [ -x "$agent" ]; then
@@ -12517,7 +12935,7 @@ mod river_init_tests {
         let init = river_starter_init();
         assert!(init.starts_with("#!/bin/sh\n"));
         let arch = crate::system::get_packages("river", PkgFamily::Arch);
-        for program in ["foot", "fuzzel", "waybar", "mako", "polkit-gnome"] {
+        for program in ["foot", "fuzzel", "waybar", "mako", "polkit-gnome", "swaylock", "swayidle"] {
             assert!(init.contains(program.split('-').next().unwrap()), "{program}");
             assert!(arch.iter().any(|p| p == program), "{program} не ставится с River");
         }
@@ -12526,6 +12944,232 @@ mod river_init_tests {
         assert!(init.contains("export XDG_CURRENT_DESKTOP=river"));
         // Выход из сеанса есть всегда — иначе из River не выбраться.
         assert!(init.contains("Super+Shift E exit"));
+        // Блокировка: клавиша и простой — той же командой, что у Wayfire.
+        assert!(init.contains(&format!("Super+Shift Escape spawn '{LOCK_COMMAND}'\n")));
+        assert!(init.contains(&format!("riverctl spawn \"{SWAYIDLE_LOCK}\"\n")));
+    }
+}
+
+// ============================================================================
+// Пост-установка: блокировка экрана (Wayfire, LXQt)
+// ============================================================================
+//
+// Чужой конфиг правится только ДОПИСЫВАНИЕМ и только там, где блокировку
+// человек ещё не настроил: своя клавиша, свой блокировщик или свой swayidle
+// остаются как есть.
+
+/// Чем запирать экран в сеансах wlroots: swaylock уходит в фон, когда экран
+/// уже заперт (`-f`), — вызвавшему (привязке, swayidle, lxqt-leave) не нужно
+/// ждать разблокировки, а код возврата 0 значит «заперто».
+pub const LOCK_COMMAND: &str = "swaylock -f";
+
+/// Блокировка по простою (5 минут), перед сном и по `loginctl lock-session`
+/// (событие `lock`). `-w` — сон ждёт, пока экран запрётся.
+pub const SWAYIDLE_LOCK: &str =
+    "swayidle -w timeout 300 'swaylock -f' before-sleep 'swaylock -f' lock 'swaylock -f'";
+
+/// Клавиша блокировки Wayfire — та же, что в примере `wayfire.ini` из
+/// документации самого Wayfire.
+pub const WAYFIRE_LOCK_BINDING: &str = "<super> <shift> KEY_ESC";
+
+/// Блокировка X11 у LXQt: «Заблокировать» и Ctrl+Alt+L доходят до
+/// xscreensaver, который lxqt-session поднимает сам. Явная команда, а не
+/// умолчание `xdg-screensaver lock`: тот выбирает блокировщик по тому, чьё
+/// имя занято на шине, и при запущенном mate-screensaver ушёл бы к нему.
+pub const LXQT_X11_LOCK_COMMAND: &str = "xscreensaver-command -lock";
+
+/// Метка дописанных строк в чужом конфиге.
+const LOCK_HEADER: &str = "Screen lock (added by Rexon; change freely)";
+
+fn ini_section_name(line: &str) -> Option<&str> {
+    let t = line.trim();
+    t.strip_prefix('[')?.strip_suffix(']').map(str::trim)
+}
+
+/// `(ключ, значение)` строки INI; комментарии и строки без `=` — `None`.
+fn ini_pair(line: &str) -> Option<(&str, &str)> {
+    let t = line.trim();
+    if t.starts_with('#') || t.starts_with(';') {
+        return None;
+    }
+    let (k, v) = t.split_once('=')?;
+    Some((k.trim(), v.trim()))
+}
+
+/// Строки `(ключ, значение)` раздела `[section]` (все вхождения раздела).
+fn ini_section_pairs<'a>(text: &'a str, section: &str) -> Vec<(&'a str, &'a str)> {
+    let mut inside = false;
+    let mut out = Vec::new();
+    for line in text.lines() {
+        if let Some(s) = ini_section_name(line) {
+            inside = s == section;
+            continue;
+        }
+        if inside {
+            if let Some(pair) = ini_pair(line) {
+                out.push(pair);
+            }
+        }
+    }
+    out
+}
+
+/// Дописать строки в начало раздела `[section]` (первого вхождения), а нет
+/// раздела — новым разделом в конец.
+fn ini_insert(text: &str, section: &str, new: &[String]) -> String {
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    match lines.iter().position(|l| ini_section_name(l) == Some(section)) {
+        Some(h) => {
+            lines.splice(h + 1..h + 1, new.iter().cloned());
+        }
+        None => {
+            if !lines.is_empty() && !lines.last().is_some_and(|l| l.trim().is_empty()) {
+                lines.push(String::new());
+            }
+            lines.push(format!("[{section}]"));
+            lines.extend(new.iter().cloned());
+        }
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
+/// Какая-то программа блокировки в строке команды.
+fn mentions_locker(value: &str) -> bool {
+    const LOCKERS: &[&str] = &["swaylock", "wf-locker", "gtklock", "waylock", "hyprlock", "loginctl lock-session"];
+    LOCKERS.iter().any(|l| value.contains(l))
+}
+
+/// Блокировка экрана в `wayfire.ini`: клавиша Super+Shift+Esc в `[command]`
+/// и swayidle в `[autostart]`. Каждая часть — только если человек её не
+/// задал сам (своя клавиша/команда блокировки или свой swayidle и ключ
+/// `idle`). `None` — дописывать нечего, файл не трогается.
+///
+/// Без этого на чистой машине блокировки у Wayfire нет вовсе: в его
+/// умолчаниях (`command.xml`) привязок нет, а пример с swaylock лежит лишь
+/// в документации.
+pub fn wayfire_lock_edit(ini: &str) -> Option<String> {
+    let command = ini_section_pairs(ini, "command");
+    let has_binding = command
+        .iter()
+        .any(|(k, v)| matches!(*k, "binding_lock" | "command_lock") || (k.starts_with("command_") && mentions_locker(v)));
+    let autostart = ini_section_pairs(ini, "autostart");
+    let has_idle = autostart.iter().any(|(k, v)| *k == "idle" || v.contains("swayidle"));
+    let mut text = ini.to_string();
+    if !has_binding {
+        text = ini_insert(
+            &text,
+            "command",
+            &[
+                format!("# {LOCK_HEADER}"),
+                format!("binding_lock = {WAYFIRE_LOCK_BINDING}"),
+                format!("command_lock = {LOCK_COMMAND}"),
+            ],
+        );
+    }
+    if !has_idle {
+        text = ini_insert(&text, "autostart", &[format!("# {LOCK_HEADER}"), format!("idle = {SWAYIDLE_LOCK}")]);
+    }
+    (text != ini).then_some(text)
+}
+
+/// Команды блокировки в `~/.config/lxqt/session.conf` (раздел `[General]` —
+/// туда же их пишет окно «Настройки сеанса LXQt»): `lock_command` для X11 и
+/// `lock_command_wayland` для Wayland. Остальные ключи файла LXQt берёт из
+/// системного `session.conf`, поэтому файл из одних этих строк — законный.
+/// Заданную человеком команду не трогаем; `None` — писать нечего.
+///
+/// Без этого «Заблокировать» не работало ни в одном сеансе: в X11 оно
+/// падало на `xdg-screensaver lock` без xscreensaver, в Wayland
+/// `lock_command_wayland` пуст, и LXQt молча ничего не делал.
+pub fn lxqt_lock_edit(existing: Option<&str>) -> Option<String> {
+    let text = existing.unwrap_or("");
+    let general = ini_section_pairs(text, "General");
+    let set = |key: &str| general.iter().any(|(k, v)| *k == key && !v.is_empty());
+    let mut out = existing.map(str::to_string);
+    for (key, value) in [("lock_command", LXQT_X11_LOCK_COMMAND), ("lock_command_wayland", LOCK_COMMAND)] {
+        if !set(key) {
+            out = Some(crate::defaults::set_ini_value(out.as_deref(), "[General]", key, value));
+        }
+    }
+    out.filter(|t| Some(t.as_str()) != existing)
+}
+
+/// Строка журнала: блокировка экрана настроена.
+pub fn lock_setup_written(desktop: &str, keys: &str, path: &str) -> String {
+    // TRANSLATORS: %1 is a desktop (Wayfire, LXQt…), %2 a key combination,
+    // %3 a file path.
+    trf("🔒 %1: screen lock set up (%3) — lock it with %2", &[&desktop, &keys, &path])
+}
+
+/// Строка журнала: блокировку человек уже настроил сам.
+pub fn lock_setup_kept(desktop: &str, path: &str) -> String {
+    // TRANSLATORS: %1 is a desktop, %2 a file path.
+    trf("ℹ️ %1: the screen lock is already set up in your settings (%2) — left as is", &[&desktop, &path])
+}
+
+/// Строка журнала: записать настройку блокировки не вышло.
+pub fn lock_setup_failed(desktop: &str, path: &str, why: &str) -> String {
+    // TRANSLATORS: %1 is a desktop, %2 a file path, %3 the reason.
+    trf("⚠️ %1: couldn't set up the screen lock in %2: %3. Locking the screen may not work.", &[&desktop, &path, &why])
+}
+
+#[cfg(test)]
+mod lock_setup_tests {
+    use super::*;
+
+    #[test]
+    fn wayfire_gets_lock_key_and_idle_once() {
+        let out = wayfire_lock_edit("").unwrap();
+        assert!(out.contains(&format!("[command]\n# {LOCK_HEADER}\n")), "{out}");
+        assert!(out.contains("binding_lock = <super> <shift> KEY_ESC\ncommand_lock = swaylock -f\n"), "{out}");
+        assert!(out.contains(&format!("[autostart]\n# {LOCK_HEADER}\nidle = {SWAYIDLE_LOCK}\n")), "{out}");
+        // Второй прогон ничего не меняет.
+        assert_eq!(wayfire_lock_edit(&out), None);
+
+        // Свои разделы: строки встают в них же, прежнее цело.
+        let ini = "[input]\nxkb_layout = us,ru\n\n[command]\nbinding_terminal = <super> KEY_ENTER\ncommand_terminal = foot\n";
+        let out = wayfire_lock_edit(ini).unwrap();
+        assert!(out.starts_with(&format!("[input]\nxkb_layout = us,ru\n\n[command]\n# {LOCK_HEADER}\n")), "{out}");
+        assert!(out.contains("command_terminal = foot\n"), "{out}");
+        assert_eq!(out.matches("[command]").count(), 1, "{out}");
+    }
+
+    #[test]
+    fn wayfire_own_lock_is_kept() {
+        // Пример из документации Wayfire: и клавиша, и swayidle уже есть.
+        let ini = "[autostart]\nidle = swayidle before-sleep swaylock\n\n[command]\nbinding_lock = <super> <shift> KEY_ESC\ncommand_lock = swaylock\n";
+        assert_eq!(wayfire_lock_edit(ini), None);
+        // Свой блокировщик под другим именем — клавиша не добавляется, swayidle — да.
+        let ini = "[command]\nbinding_mylock = <super> KEY_L\ncommand_mylock = wf-locker\n";
+        let out = wayfire_lock_edit(ini).unwrap();
+        assert!(!out.contains("binding_lock"), "{out}");
+        assert!(out.contains("idle = swayidle"), "{out}");
+        // Закомментированный пример — не настройка.
+        let out = wayfire_lock_edit("[command]\n# command_lock = swaylock\n").unwrap();
+        assert!(out.contains("command_lock = swaylock -f"), "{out}");
+    }
+
+    #[test]
+    fn lxqt_gets_both_lock_commands_once() {
+        let out = lxqt_lock_edit(None).unwrap();
+        assert!(out.contains("[General]\n"), "{out}");
+        assert!(out.contains("lock_command=xscreensaver-command -lock\n"), "{out}");
+        assert!(out.contains("lock_command_wayland=swaylock -f\n"), "{out}");
+        assert_eq!(lxqt_lock_edit(Some(&out)), None);
+
+        // Своя команда X11 цела, недостающая Wayland дописывается; соседние
+        // ключи файла не трогаются.
+        let mine = "[General]\nwindow_manager=openbox\nlock_command=i3lock\n\n[Mouse]\ncursor_size=24\n";
+        let out = lxqt_lock_edit(Some(mine)).unwrap();
+        assert!(out.contains("lock_command=i3lock\n") && !out.contains("xscreensaver"), "{out}");
+        assert!(out.contains("lock_command_wayland=swaylock -f\n"), "{out}");
+        assert!(out.contains("window_manager=openbox\n") && out.ends_with("[Mouse]\ncursor_size=24\n"), "{out}");
+        // Пустое значение — не настройка (так пишет окно настроек LXQt).
+        let out = lxqt_lock_edit(Some("[General]\nlock_command=\n")).unwrap();
+        assert!(out.contains("lock_command=xscreensaver-command -lock\n"), "{out}");
+        assert!(!out.contains("lock_command=\n"), "{out}");
     }
 }
 
@@ -14117,6 +14761,175 @@ mod install_preview_tests {
         assert_eq!(p.missing_members(), names(&["gala", "wingpanel", "lightdm"]));
         assert_eq!(p.dependency_count(), 1);
         assert_eq!(p.installed_members(), 0);
+    }
+
+    /// Записано 15.11.2026 (CachyOS): `LC_ALL=C pacman -Si` членов группы
+    /// `pantheon` (сокращено до нужного). gala 8.6.2-4 перешёл на mutter 51;
+    /// mutter49 из всей группы тянет один `lightdm-pantheon-greeter`.
+    fn si_pantheon_block(name: &str, gala_on_mutter49: bool) -> Option<String> {
+        let block = match name {
+            "pantheon-session" => "Name            : pantheon-session\nVersion         : 8.1.0-1\nGroups          : pantheon\n\
+                 Depends On      : gala  gnome-session  wingpanel\nConflicts With  : None\n"
+                .to_string(),
+            "gala" => format!(
+                "Name            : gala\nVersion         : 8.6.2-4.1\nGroups          : pantheon\n\
+                 Depends On      : glib2  {}  granite7\nConflicts With  : None\n",
+                if gala_on_mutter49 { "mutter49" } else { "mutter" }
+            ),
+            "wingpanel" => format!(
+                "Name            : wingpanel\nVersion         : 8.0.3-1\nGroups          : pantheon\n\
+                 Depends On      : gala  {}\nConflicts With  : None\n",
+                if gala_on_mutter49 { "mutter49" } else { "mutter" }
+            ),
+            "lightdm-pantheon-greeter" => "Name            : lightdm-pantheon-greeter\nVersion         : 8.1.2-2.1\n\
+                 Groups          : pantheon\nDepends On      : lightdm  mutter49  granite\nConflicts With  : None\n"
+                .to_string(),
+            "mutter49" => "Repository      : cachyos-extra-znver4\nName            : mutter49\nVersion         : 49.8-1.1\n\
+                 Groups          : None\nProvides        : libmutter-17.so=0-64\nDepends On      : glib2  gtk4\n\
+                 Conflicts With  : mutter\n"
+                .to_string(),
+            "mutter" => "Name            : mutter\nVersion         : 51.1-1\nProvides        : libmutter-51.so=0-64\n\
+                 Depends On      : glib2  gtk4\nConflicts With  : None\n"
+                .to_string(),
+            "lightdm" | "gnome-session" | "granite7" | "granite" => {
+                format!("Name            : {name}\nVersion         : 1.0-1\nConflicts With  : None\n")
+            }
+            _ => return None,
+        };
+        Some(block)
+    }
+
+    /// Подставной pacman: группа `pantheon` из четырёх членов; `with_mutter`
+    /// — mutter 51 уже стоит (его держат GNOME и Budgie).
+    fn pantheon_real(with_mutter: bool, gala_on_mutter49: bool) -> impl Fn(&Cmd) -> PreviewAnswer {
+        move |cmd: &Cmd| {
+            let a: Vec<&str> = cmd.argv.iter().map(String::as_str).collect();
+            assert!(cmd.lang_c, "вывод pacman разбирается только под LANG=C: {a:?}");
+            let installed: Vec<&str> =
+                if with_mutter { vec!["glibc", "mutter", "gnome-shell", "budgie-desktop"] } else { vec!["glibc"] };
+            match a.as_slice() {
+                ["pacman", "-Sg", ..] => Some((
+                    1,
+                    "pantheon gala\npantheon lightdm-pantheon-greeter\npantheon pantheon-session\npantheon wingpanel\n".into(),
+                    "error: package group 'lightdm' was not found\n".into(),
+                )),
+                ["pacman", "-Sp", ..] => {
+                    let targets = &cmd.argv[6..];
+                    let wants = |n: &str| targets.iter().any(|t| t == n || t == "pantheon");
+                    let mut plan: Vec<&str> = Vec::new();
+                    for n in ["gala", "wingpanel", "pantheon-session", "lightdm-pantheon-greeter"] {
+                        if wants(n) {
+                            plan.push(n);
+                        }
+                    }
+                    plan.extend(["gnome-session", "granite7", "lightdm"]);
+                    let needs49 = wants("lightdm-pantheon-greeter") || (gala_on_mutter49 && wants("gala"));
+                    if needs49 {
+                        plan.push("mutter49");
+                        plan.push("granite");
+                    }
+                    if !with_mutter && !gala_on_mutter49 && plan.iter().any(|n| ["gala", "wingpanel"].contains(n)) {
+                        plan.push("mutter");
+                    }
+                    Some((0, plan.iter().map(|n| format!("{n}\n")).collect(), String::new()))
+                }
+                ["pacman", "-Qq"] => Some((0, installed.iter().map(|n| format!("{n}\n")).collect(), String::new())),
+                ["pacman", "-Si", rest @ ..] => Some((
+                    0,
+                    rest.iter().filter_map(|n| si_pantheon_block(n, gala_on_mutter49)).collect::<Vec<_>>().join("\n"),
+                    String::new(),
+                )),
+                ["pacman", "-Qi"] => Some((
+                    0,
+                    if with_mutter {
+                        "Name            : mutter\nVersion         : 51.1-1\nRequired By     : gnome-shell  budgie-desktop\n\
+                         Conflicts With  : None\n\n\
+                         Name            : gnome-shell\nVersion         : 51.1-1\nRequired By     : None\nConflicts With  : None\n\n\
+                         Name            : budgie-desktop\nVersion         : 10.10.1-1\nGroups          : budgie\n\
+                         Required By     : None\nConflicts With  : None\n"
+                            .into()
+                    } else {
+                        "Name            : glibc\nConflicts With  : None\n".into()
+                    },
+                    String::new(),
+                )),
+                other => panic!("неожиданная команда {other:?}"),
+            }
+        }
+    }
+
+    /// Живой дефект 15.11.2026: Pantheon при стоящих GNOME и Budgie
+    /// блокировался целиком, хотя mutter49 тянет один экран входа Pantheon.
+    /// Теперь стол ставится без него, а человеку сказано, чего не будет.
+    #[test]
+    fn optional_member_conflict_is_dropped_not_blocking() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let p = install_preview(PkgFamily::Arch, &names(&["pantheon", "lightdm"]), &pantheon_real(true, false)).unwrap();
+        assert!(p.installable(), "{p:#?}");
+        assert!(p.conflicts.is_empty());
+        assert!(!p.targets.iter().any(|t| t == "lightdm-pantheon-greeter"), "{:?}", p.targets);
+        assert!(p.targets.iter().any(|t| t == "gala") && p.targets.iter().any(|t| t == "pantheon-session"));
+        assert!(!p.members.iter().any(|t| t == "lightdm-pantheon-greeter"));
+        assert!(!p.new_packages.iter().any(|t| t == "mutter49"), "{:?}", p.new_packages);
+        assert_eq!(p.conflict_skipped.len(), 1, "{:#?}", p.conflict_skipped);
+        let s = &p.conflict_skipped[0];
+        assert_eq!(s.package, "lightdm-pantheon-greeter");
+        assert_eq!(s.desktop, "Pantheon");
+        assert_eq!((s.conflict.new_package.as_str(), s.conflict.installed.as_str()), ("mutter49", "mutter"));
+        assert_eq!(s.conflict.installed_desktops, names(&["GNOME", "Budgie"]));
+        assert_eq!(
+            conflict_skip_explanation(&p.conflict_skipped),
+            "⚠️ Not installing the Pantheon login screen: it needs Mutter 49, and GNOME, Budgie needs \
+             Mutter 51 — the two can't be installed at once. You can sign in to Pantheon from the \
+             regular login screen; everything else will be installed."
+        );
+        assert_eq!(crate::qt_desktops::packages_notice(&p), conflict_skip_explanation(&p.conflict_skipped));
+    }
+
+    /// На машине без mutter та же группа тянет И mutter (gala), И mutter49
+    /// (экран входа): `-Sp` молчит, а настоящая транзакция упала бы на
+    /// «mutter49 and mutter are in conflict». Конфликт внутри набора
+    /// ловится так же и снимается тем же выкидыванием экрана входа.
+    #[test]
+    fn conflict_inside_the_set_drops_optional_member() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let p = install_preview(PkgFamily::Arch, &names(&["pantheon", "lightdm"]), &pantheon_real(false, false)).unwrap();
+        assert!(p.installable(), "{p:#?}");
+        assert_eq!(p.conflict_skipped.len(), 1, "{:#?}", p.conflict_skipped);
+        let s = &p.conflict_skipped[0];
+        assert_eq!(s.package, "lightdm-pantheon-greeter");
+        assert!(s.conflict.installed_is_new);
+        assert_eq!(s.conflict.installed_desktops, names(&["Pantheon"]));
+        assert!(p.new_packages.iter().any(|t| t == "mutter"));
+        assert!(!p.new_packages.iter().any(|t| t == "mutter49"));
+        assert!(conflict_skip_explanation(&p.conflict_skipped).starts_with(
+            "⚠️ Not installing the Pantheon login screen: it needs Mutter 49, and Pantheon needs Mutter 51"
+        ));
+    }
+
+    /// Без конфликта ставится вся группа, экран входа тоже (весь стол на
+    /// mutter49, mutter на машине нет — так было до gala 8.6.2-4).
+    #[test]
+    fn group_without_conflict_installs_whole() {
+        let p = install_preview(PkgFamily::Arch, &names(&["pantheon", "lightdm"]), &pantheon_real(false, true)).unwrap();
+        assert!(p.installable(), "{p:#?}");
+        assert!(p.conflict_skipped.is_empty());
+        assert!(p.conflicts.is_empty());
+        assert_eq!(p.targets, names(&["pantheon", "lightdm"]));
+        assert!(p.members.iter().any(|t| t == "lightdm-pantheon-greeter"));
+        assert!(p.new_packages.iter().any(|t| t == "mutter49"));
+        assert!(crate::qt_desktops::packages_notice(&p).is_empty());
+    }
+
+    /// Конфликт в обязательном (оконный менеджер стола на mutter49, как было
+    /// до gala 8.6.2-4) — прежний честный отказ: выкинуть его нельзя.
+    #[test]
+    fn essential_member_conflict_still_blocks() {
+        let p = install_preview(PkgFamily::Arch, &names(&["pantheon", "lightdm"]), &pantheon_real(true, true)).unwrap();
+        assert!(!p.installable(), "{p:#?}");
+        assert!(p.conflict_skipped.is_empty(), "{:#?}", p.conflict_skipped);
+        assert_eq!(conflict_pairs(&p.conflicts), vec![("mutter49", "mutter")]);
+        assert!(!p.targets.is_empty());
     }
 
     #[test]

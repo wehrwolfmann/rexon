@@ -87,6 +87,12 @@ pub trait LookIo {
     fn spawn(&self, _argv: &[String]) -> bool {
         false
     }
+    /// Удалить каталог целиком (наша устаревшая копия расширения оболочки,
+    /// [`crate::screen_effects`]). По умолчанию НИЧЕГО не удаляет — подделки
+    /// в тестах безопасны сами, как и у [`LookIo::spawn`].
+    fn remove_tree(&self, _path: &str) -> bool {
+        false
+    }
     /// Расширения GNOME со слов запущенной оболочки (D-Bus
     /// `ListExtensions`). `None` — оболочки нет. По умолчанию `None`:
     /// подделки в тестах шину не трогают.
@@ -141,6 +147,19 @@ impl LookIo for SystemIo {
 
     fn read(&self, path: &str) -> Option<String> {
         std::fs::read_to_string(path).ok()
+    }
+
+    fn remove_tree(&self, path: &str) -> bool {
+        // Только абсолютный путь не короче `/home/<кто>/<что>/<имя>`: корень
+        // и домашний каталог сюда не попадут ни при какой ошибке плана.
+        let p = std::path::Path::new(path);
+        if !p.is_absolute() || p.components().count() < 5 {
+            return false;
+        }
+        match std::fs::remove_dir_all(p) {
+            Ok(()) => true,
+            Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+        }
     }
 
     fn read_bytes(&self, path: &str) -> Option<Vec<u8>> {
@@ -346,6 +365,8 @@ pub enum LookStep {
     WriteFile { path: String, content: String },
     /// Наш файл + управляемый блок в конфиге композитора.
     Wm(WmInclude),
+    /// Снять каталог целиком (устаревшая копия нашего же расширения).
+    RemoveTree { path: String },
 }
 
 /// Короткое имя программы из argv — для сообщения человеку.
@@ -391,6 +412,11 @@ pub fn run_steps(io: &dyn LookIo, ctx: &LookCtx, steps: &[LookStep]) -> Result<(
                 }
             }
             LookStep::Wm(inc) => run_wm_include(io, inc)?,
+            LookStep::RemoveTree { path } => {
+                if !io.remove_tree(path) {
+                    return Err(trf("Couldn't remove %1.", &[path]));
+                }
+            }
         }
     }
     Ok(())

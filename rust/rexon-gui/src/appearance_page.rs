@@ -288,6 +288,10 @@ pub mod qobject {
         // ── Строка состояния и полоса страниц ───────────────────────────
         #[qproperty(QString, status_text, cxx_name = "statusText",
                     READ = status_text, NOTIFY = status_changed)]
+        // Строка состояния предупреждает (⚠: обои встали с оговоркой или
+        // ошибка) — QML красит её цветом предупреждения `state_warn`.
+        #[qproperty(bool, status_warn, cxx_name = "statusWarn",
+                    READ = status_warn, NOTIFY = status_changed)]
         #[qproperty(QString, page_label, cxx_name = "pageLabel",
                     READ = page_label, NOTIFY = page_changed)]
         #[qproperty(bool, prev_enabled, cxx_name = "prevEnabled",
@@ -417,6 +421,8 @@ pub mod qobject {
         // Переключатель «Запускать при входе» — только у виджетов Conky.
         #[qproperty(bool, detail_autostart_visible, cxx_name = "detailAutostartVisible",
                     READ = detail_autostart_visible, NOTIFY = detail_changed)]
+        #[qproperty(QString, detail_conky_id, cxx_name = "detailConkyId",
+                    READ = detail_conky_id, NOTIFY = detail_changed)]
         #[qproperty(QString, detail_autostart_text, cxx_name = "detailAutostartText",
                     READ = detail_autostart_text, CONSTANT)]
         #[qproperty(QString, detail_preview, cxx_name = "detailPreview",
@@ -939,6 +945,8 @@ pub mod qobject {
         fn login_section(self: &AppearanceModel) -> bool;
         #[cxx_name = "statusText"]
         fn status_text(self: &AppearanceModel) -> QString;
+        #[cxx_name = "statusWarn"]
+        fn status_warn(self: &AppearanceModel) -> bool;
         #[cxx_name = "pageLabel"]
         fn page_label(self: &AppearanceModel) -> QString;
         #[cxx_name = "prevEnabled"]
@@ -1044,6 +1052,7 @@ pub mod qobject {
         fn detail_scheme_edit(self: &AppearanceModel) -> QString;
         #[cxx_name = "detailAutostartVisible"]
         fn detail_autostart_visible(self: &AppearanceModel) -> bool;
+        fn detail_conky_id(self: &AppearanceModel) -> QString;
         #[cxx_name = "detailAutostartText"]
         fn detail_autostart_text(self: &AppearanceModel) -> QString;
         #[cxx_name = "detailPreview"]
@@ -1386,6 +1395,13 @@ pub mod qobject {
         #[cxx_name = "openDetail"]
         fn open_detail(self: Pin<&mut AppearanceModel>, item_id: &QString);
 
+        /// Открыть панель деталей товара, которого в сетке нет: ссылка на
+        /// товар магазина из чужого текста (ответ `linkedCardReady`:
+        /// `{item}` или `{aur}`).
+        #[qinvokable]
+        #[cxx_name = "openLinkedItem"]
+        fn open_linked_item(self: Pin<&mut AppearanceModel>, payload: &QString);
+
         /// Открыта карточка виджета Conky — взять его картинку заново
         /// (пересняли снимок после смены цветов или настроек).
         #[qinvokable]
@@ -1701,6 +1717,17 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "roleValueOf"]
         fn role_value_of(self: &AppearanceModel, item_id: &QString, name: &QString) -> QVariant;
+
+        /// Режим обхода (`--tour`): каталог видимого раздела ещё грузится.
+        #[qinvokable]
+        #[cxx_name = "tourBusy"]
+        fn tour_busy(self: &AppearanceModel) -> bool;
+
+        /// Режим обхода: {total, noPreview, pending} — плиток, плиток без
+        /// картинки и картинок в очереди загрузки.
+        #[qinvokable]
+        #[cxx_name = "tourTiles"]
+        fn tour_tiles(self: &AppearanceModel) -> QMap_QString_QVariant;
     }
 
     // Объявление трейта обязано быть В МОСТЕ, иначе `impl cxx_qt::Initialize`
@@ -1741,7 +1768,7 @@ const ROLE_BASE: i32 = 256 + 1;
 
 /// Имена ролей в порядке номеров — единственный источник истины и для
 /// roleNames, и для data(), и для roleNumber().
-const ROLE_NAMES: [&str; 31] = [
+const ROLE_NAMES: [&str; 36] = [
     // Откуда плитка: `ocs` (магазин), `aur` (пакет), `local` (диск).
     "kind",
     "itemId",
@@ -1794,9 +1821,21 @@ const ROLE_NAMES: [&str; 31] = [
     "gnomeUuid",
     "gnomePrefs",
     "gnomeErrorInfo",
+    // Картинка плитки — файл шрифта (пакет шрифта AUR): адрес файла, им
+    // плитка рисует образец текста `previewSample`. Пусто — не шрифт.
+    "previewFont",
+    "previewSample",
+    // Подпись на месте картинки, когда её нет (`aur::no_preview_note`):
+    // честно, что это за товар и почему без снимка.
+    "previewNote",
+    // Пометка пакета AUR в смешанной выдаче («Все»): набор, системный
+    // пакет, пароль (`ap::aur_mix_badge`), и её подсказка.
+    "mixBadge",
+    "mixBadgeTooltip",
 ];
 
 const ROLE_PREVIEW: usize = 7;
+const ROLE_PREVIEW_FONT: usize = 31;
 const ROLE_BUTTON_TEXT: usize = 11;
 const ROLE_BUTTON_STATE: usize = 12;
 const ROLE_BUTTON_ENABLED: usize = 13;
@@ -1920,7 +1959,7 @@ impl GnomeExtra {
         })
     }
 
-    /// Строка пометок плитки: «Ошибка · Системное».
+    /// Строка пометок плитки: «Ошибка · Обновление — после перезахода».
     fn marks_line(&self) -> String {
         self.marks.join(" · ")
     }
@@ -2975,6 +3014,10 @@ impl qobject::AppearanceModel {
         QString::from(&self.rust().status)
     }
 
+    fn status_warn(&self) -> bool {
+        rexon_core::qt_settings::status_is_warning(&self.rust().status)
+    }
+
     fn pagination(&self) -> ap::Pagination {
         let me = self.rust();
         match me.has_more {
@@ -3078,7 +3121,7 @@ impl qobject::AppearanceModel {
                     .unwrap_or_else(|| rexon_core::themes::lnf_tile_badge(&item.id, &item.install_path)),
             ),
             "stats" => qstr(&ap::card_stats_line(
-                item.rating_stars(),
+                item.rated_stars(),
                 item.downloads,
                 &item.updated,
             )),
@@ -3090,7 +3133,7 @@ impl qobject::AppearanceModel {
             // (#CardStar таблицы стилей); цвет берётся из палитры ключом
             // `rating_star`, здесь только сам знак.
             "starGlyph" if local => qstr(""),
-            "starGlyph" => qstr("⭐"),
+            "starGlyph" => qstr(ap::card_star_glyph(item.rated_stars())),
             "preview" => qstr(&file_url(&tile_picture(&self.rust().previews, item))),
             // У темы запасного знака нет: оригинал оставлял место картинки
             // пустым, и выдумывать сюда своё — отсебятина.
@@ -3100,6 +3143,7 @@ impl qobject::AppearanceModel {
             "soundTheme" => qstr(&ap::local_sound_theme(&item.id).unwrap_or_default()),
             "splashDemo" => qstr(&ap::local_splash_demo(&item.id).unwrap_or_default()),
             "aurNote" | "aurNoteTooltip" | "aurLog" | "riskLevel" => qstr(""),
+            "previewFont" | "previewSample" | "previewNote" | "mixBadge" | "mixBadgeTooltip" => qstr(""),
             "gnomeUuid" => qstr(""),
             "gnomePrefs" | "gnomeErrorInfo" => QVariant::from(&false),
             "metaWarn" => QVariant::from(&false),
@@ -3107,8 +3151,9 @@ impl qobject::AppearanceModel {
                 let btn = if local {
                     ap::card_local_button_for(&local_kind, &item.id)
                 } else {
-                    let can_apply = ap::store_item_can_apply(&self.rust().home, item);
-                    ap::card_install_button(item.installed, item.applied, can_apply)
+                    let home = &self.rust().home;
+                    let can_apply = ap::store_item_can_apply(home, item);
+                    ap::card_store_button(item.installed, item.applied, can_apply, ap::store_item_switch(home, item))
                 };
                 match name {
                     "buttonText" => qstr(&btn.text),
@@ -3264,15 +3309,23 @@ impl qobject::AppearanceModel {
             "statsTooltip" => qstr(&ap::aur_stats_tooltip(pkg.votes, pkg.popularity, &day)),
             // У пакета AUR оценка — голоса, и знак у неё свой.
             "starGlyph" => qstr("👍"),
-            "preview" => {
+            // Картинка плитки; файл шрифта картинкой не показывается — им
+            // рисуется образец текста (`previewFont`).
+            "preview" | "previewFont" => {
                 let path = self
                     .rust()
                     .previews
                     .get(&pkg.name)
                     .cloned()
                     .unwrap_or_default();
-                qstr(&file_url(&path))
+                let font = ap::is_font_file(&path);
+                let wanted = if name == "preview" { !font } else { font };
+                qstr(&if wanted { file_url(&path) } else { String::new() })
             }
+            "previewSample" => qstr(&if pkg.is_font() { rexon_core::aur::font_sample_text() } else { String::new() }),
+            "previewNote" => qstr(&rexon_core::aur::no_preview_note(pkg)),
+            "mixBadge" => qstr(&ap::aur_mix_badge(&self.rust().view, &pkg.category)),
+            "mixBadgeTooltip" => qstr(&ap::aur_mix_badge_tooltip()),
             "previewText" => qstr(pkg.icon()),
             // Признаки риска: значок перед строкой источника, список — в
             // подсказке. «Устарел» строка уже говорит словами — значком
@@ -3378,6 +3431,24 @@ impl qobject::AppearanceModel {
         self.role_of(&card, Some(name.to_string().as_str()))
     }
 
+    fn tour_busy(&self) -> bool {
+        self.rust().requests.busy()
+    }
+
+    /// Плитка «без превью» — та, чьи роли `preview` и `previewFont` пусты:
+    /// ровно её делегат и рисует без снимка (знак и честная подпись).
+    /// Образец шрифта (`previewFont`) — превью.
+    fn tour_tiles(&self) -> QMap<QMapPair_QString_QVariant> {
+        let me = self.rust();
+        let empty = |c: &Card, role: &str| self.role_of(c, Some(role)).value::<QString>().is_none_or(|v| v.is_empty());
+        let no_preview = me.cards.iter().filter(|c| empty(c, "preview") && empty(c, "previewFont")).count();
+        let pending = me.preview.inflight() + me.preview.queued() + usize::from(me.preview.has_ready());
+        vmap(vec![
+            ("total", QVariant::from(&(me.cards.len() as i32))),
+            ("noPreview", QVariant::from(&(no_preview as i32))),
+            ("pending", QVariant::from(&(pending as i32))),
+        ])
+    }
 }
 
 // ============================================================================
@@ -3413,7 +3484,12 @@ impl qobject::AppearanceModel {
             let mut me = self.as_mut().rust_mut();
             me.view.conky_installed = installed;
             me.view.conky_installable = installable;
-            me.view.wayland = rexon_core::de_apply::Ctx::live().wayland;
+            // Сеанс глазами conky: через XWayland оговорка про Wayland не нужна.
+            me.view.wayland = rexon_core::conky_overlay::conky_ctx(
+                &rexon_core::animations::SystemIo,
+                &rexon_core::de_apply::Ctx::live(),
+            )
+            .wayland;
         }
         // Витрины нет у объяснения («раздела нет в этом столе», «закрыто на
         // SteamOS») и у панели Plasma Login Manager: в магазин не ходим.
@@ -4216,6 +4292,7 @@ impl qobject::AppearanceModel {
         let index = self.as_ref().index(row as i32, 0, &QModelIndex::default());
         let mut roles = cxx_qt_lib::QVector::<i32>::default();
         roles.append(ROLE_BASE + ROLE_PREVIEW as i32);
+        roles.append(ROLE_BASE + ROLE_PREVIEW_FONT as i32);
         self.as_mut().data_changed(&index, &index, &roles);
     }
 
@@ -4496,7 +4573,7 @@ impl qobject::AppearanceModel {
             // Оценки у Wallhaven нет — только «избранное» и просмотры.
             Some(it) if wh::is_item_id(&it.id) => QString::default(),
             Some(it) if it.local_kind.is_none() => {
-                QString::from(&ap::detail_stars_label(it.rating_stars()))
+                QString::from(&ap::detail_stars_label(it.rated_stars()))
             }
             _ => QString::default(),
         }
@@ -4584,8 +4661,9 @@ impl qobject::AppearanceModel {
                 cs::detail_button_for(it.installed, x.is_some_and(|x| x.update), x.is_some_and(|x| x.apply))
             }
             Some(it) => {
-                let can_apply = ap::store_item_can_apply(&self.rust().home, it);
-                ap::install_button(it.installed, it.applied, can_apply)
+                let home = &self.rust().home;
+                let can_apply = ap::store_item_can_apply(home, it);
+                ap::store_detail_button(it.installed, it.applied, can_apply, ap::store_item_switch(home, it))
             }
             None => ap::install_button(false, false, false),
         }
@@ -4682,6 +4760,25 @@ impl qobject::AppearanceModel {
             .detail
             .as_ref()
             .is_some_and(|it| ap::detail_autostart_visible(&it.id))
+    }
+
+    /// Номер виджета Conky для «Запускать при входе», частей и настроек на
+    /// панели деталей: у плитки установленного — её номер, у поставленного
+    /// товара магазина — номер его плитки установленного (те же действия,
+    /// что в «Загруженных»); пусто — не виджет Conky или ещё не поставлен.
+    fn detail_conky_id(&self) -> QString {
+        let Some(it) = self.rust().detail.as_ref() else { return QString::default() };
+        if it.local_kind.is_some() {
+            return if ap::detail_autostart_visible(&it.id) { QString::from(&it.id) } else { QString::default() };
+        }
+        if !it.installed || !rexon_core::de_apply::is_conky_item(it) {
+            return QString::default();
+        }
+        let home = &self.rust().home;
+        let local = ap::live_logged_theme_name(&home.to_string_lossy(), &it.id)
+            .and_then(|name| ap::store_local_id(home, it, &name))
+            .filter(|id| ap::detail_autostart_visible(id));
+        local.map(|id| QString::from(&id)).unwrap_or_default()
     }
 
     /// Вид местной плитки и её имя по номеру `local:<вид>:<имя>`.
@@ -4881,7 +4978,7 @@ impl qobject::AppearanceModel {
     }
 
     // ── Действия ────────────────────────────────────────────────────────
-    fn open_detail(mut self: Pin<&mut Self>, item_id: &QString) {
+    fn open_detail(self: Pin<&mut Self>, item_id: &QString) {
         let id = item_id.to_string();
         let found = self
             .rust()
@@ -4896,12 +4993,42 @@ impl qobject::AppearanceModel {
                 // комментарии) берёт товар, собранный из плитки.
                 Card::Aur(pkg) => Some((aur_detail_item(pkg), Some((**pkg).clone()))),
             });
-        let Some((mut item, aur_pkg)) = found else { return };
+        let Some((item, aur_pkg)) = found else { return };
+        self.open_detail_with(item, aur_pkg);
+    }
+
+    fn open_linked_item(self: Pin<&mut Self>, payload: &QString) {
+        let Ok(v) = serde_json::from_str::<Value>(&payload.to_string()) else {
+            return;
+        };
+        if let Some(name) = v.get("aur").and_then(Value::as_str).filter(|n| !n.is_empty()) {
+            // Пакет по имени: паспорт, картинки и комментарии карточка
+            // запросит сама — тем же путём, что у плитки.
+            let pkg = AurPackage { name: name.to_string(), ..AurPackage::default() };
+            self.open_detail_with(aur_detail_item(&pkg), Some(pkg));
+            return;
+        }
+        let Some(item) = v.get("item").and_then(|i| serde_json::from_value::<ThemeItem>(i.clone()).ok()) else {
+            return;
+        };
+        if item.id.is_empty() {
+            return;
+        }
+        self.open_detail_with(item, None);
+    }
+
+    /// Панель деталей товара: из сетки или по ссылке.
+    fn open_detail_with(mut self: Pin<&mut Self>, mut item: ThemeItem, aur_pkg: Option<AurPackage>) {
         // Готовое превью плитки становится первым кадром — иначе панель
         // деталей на мгновение показывала бы пустоту там, где картинка уже
         // есть на диске.
         if item.preview_local.is_empty() {
             item.preview_local = tile_picture(&self.rust().previews, &item);
+        }
+        // У плитки шрифта «картинка» — файл шрифта (образец рисуется им):
+        // кадром карточки он не годится.
+        if ap::is_font_file(&item.preview_local) {
+            item.preview_local.clear();
         }
         let frame = item.preview_local.clone();
         let local = item.local_kind.is_some();
@@ -5576,6 +5703,7 @@ impl qobject::AppearanceModel {
                     .index(rows as i32 - 1, 0, &QModelIndex::default());
                 let mut roles = cxx_qt_lib::QVector::<i32>::default();
                 roles.append(ROLE_BASE + ROLE_PREVIEW as i32);
+                roles.append(ROLE_BASE + ROLE_PREVIEW_FONT as i32);
                 self.as_mut().data_changed(&first, &last, &roles);
             }
         }
@@ -5676,6 +5804,7 @@ impl qobject::AppearanceModel {
         let index = self.as_ref().index(row as i32, 0, &QModelIndex::default());
         let mut roles = cxx_qt_lib::QVector::<i32>::default();
         roles.append(ROLE_BASE + ROLE_PREVIEW as i32);
+        roles.append(ROLE_BASE + ROLE_PREVIEW_FONT as i32);
         self.as_mut().data_changed(&index, &index, &roles);
     }
 

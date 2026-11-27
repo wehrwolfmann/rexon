@@ -87,6 +87,10 @@ raw-window-handle = { version = "0.6", optional = true }
 # prctl(PR_SET_DUMPABLE, 0) Flash-режима — никаких окон о крахе при сбое
 # драйвера Vulkan. Лицензия MIT OR Apache-2.0.
 libc = "0.2"
+# SHA-1 ответа на рукопожатие WebSocket у подставного демона стенда снятия
+# живых обоев (`we_stop_selftest`, RFC 6455 требует именно SHA-1). Крейт уже
+# в дереве через rexon-core. Лицензия MIT OR Apache-2.0.
+sha1 = "0.10"
 # Запрет простоя протоколом Wayland для моста «не гасить экран»
 # (`screensaver_bridge::wayland_idle`): своё подключение к композитору,
 # слой-поверхность wlr-layer-shell и zwp_idle_inhibitor_v1. Чистый Rust, без

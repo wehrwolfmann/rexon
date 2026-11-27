@@ -1,4 +1,4 @@
-[English](README.md) | [Русский](README.ru.md) | [Deutsch](README.de.md) | [简体中文](README.zh-CN.md) | [Français](README.fr.md) | Español
+[English](README.md) | [Русский](README.ru.md) | [Deutsch](README.de.md) | [简体中文](README.zh-CN.md) | [Français](README.fr.md) | Español | [Українська](README.uk.md)
 
 # Rexon
 
@@ -31,7 +31,7 @@ principal de desarrollo y pruebas es Arch Linux / CachyOS.
 
 Una guía paso a paso de todas las pestañas —«Escritorios», «Apariencia»,
 «Extensiones», Wallpaper Engine, Steam y «Ajustes»— en ruso, inglés, alemán,
-chino, francés y español: [guide/](guide/README.md).
+chino, francés, español y ucraniano: [guide/](guide/README.md).
 Versión en español: [Escritorios](guide/es/desktops.md) · [Apariencia](guide/es/appearance.md) · [Extensiones](guide/es/extensions.md) · [Wallpaper Engine](guide/es/wallpaper-engine.md) · [Steam](guide/es/steam.md) · [Ajustes](guide/es/settings.md).
 
 ## Funciones
@@ -390,7 +390,7 @@ pertenecen al paquete).
 La interfaz se traduce con GNU gettext: un solo catálogo tanto para el código
 en Rust como para las páginas QML. La plantilla es [`po/rexon.pot`](po/rexon.pot),
 y cada idioma es un archivo en [`po/`](po/). El idioma base es el inglés; hay
-traducciones al ruso, alemán, chino simplificado, francés y español. Cómo
+traducciones al ruso, alemán, chino simplificado, francés, español y ucraniano. Cómo
 añadir un idioma se explica en [`po/README.md`](po/README.md); no hace falta
 cambiar el código.
 

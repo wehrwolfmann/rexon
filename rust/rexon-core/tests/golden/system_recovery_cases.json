@@ -4583,6 +4583,7 @@
    "xdm",
    "entrance",
    "emptty",
+   "ddm",
    "tbsm"
   ],
   "probe_units": [
@@ -4796,6 +4797,7 @@
      "xdm",
      "entrance",
      "emptty",
+     "ddm",
      "tbsm"
     ],
     "target_exists": false
@@ -4873,6 +4875,7 @@
      "xdm",
      "entrance",
      "emptty",
+     "ddm",
      "tbsm"
     ]
    },

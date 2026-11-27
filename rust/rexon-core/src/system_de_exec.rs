@@ -125,6 +125,82 @@ pub fn operation_footer(title: &str, status: &str) -> String {
     format!("{title} — {status}")
 }
 
+/// Какого рода строка подвала главного окна — от этого зависит, сколько
+/// она живёт.
+///
+/// ЗАЧЕМ. Подвал раньше держал последнее сообщение вечно: «Восстановление
+/// Wayfire — Завершено ✅» висело часами, когда человек давно работал в
+/// «Оформлении» (снимок 16.11.2026), и читалось как что-то происходящее
+/// сейчас. Решение о сроке — здесь; окно только исполняет.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FooterKind {
+    /// Ждёт человека или дела: открыт вопрос или отказ, идёт проверка.
+    /// Таймера нет — строку снимает само окно операции (закрытие вопроса
+    /// или отказа) либо следующий итог.
+    #[default]
+    Pending,
+    /// Итог удачи, отмена, сведение («операция уже идёт»): видна
+    /// [`FOOTER_NOTICE_MS`] и уходит при переходе в другой раздел.
+    Notice,
+    /// Ошибка: держится, пока человек не щёлкнет по подвалу (или не придёт
+    /// новое сообщение). Смена раздела её не снимает — неудачу легко
+    /// проглядеть, если она исчезает сама.
+    Error,
+}
+
+/// Сколько видно сведение подвала, мс.
+pub const FOOTER_NOTICE_MS: u32 = 12_000;
+
+/// Как окно обходится со строкой подвала данного рода.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FooterHold {
+    /// Через сколько миллисекунд строка снимается сама; 0 — не снимается.
+    pub timeout_ms: u32,
+    /// Снимается ли при переходе в другой раздел окна.
+    pub clear_on_section_change: bool,
+    /// Снимается ли щелчком по подвалу.
+    pub click_dismisses: bool,
+}
+
+pub fn footer_hold(kind: FooterKind) -> FooterHold {
+    match kind {
+        FooterKind::Pending => FooterHold {
+            timeout_ms: 0,
+            clear_on_section_change: false,
+            click_dismisses: false,
+        },
+        FooterKind::Notice => FooterHold {
+            timeout_ms: FOOTER_NOTICE_MS,
+            clear_on_section_change: true,
+            click_dismisses: true,
+        },
+        FooterKind::Error => FooterHold {
+            timeout_ms: 0,
+            clear_on_section_change: false,
+            click_dismisses: true,
+        },
+    }
+}
+
+/// Род строки с итогом операции: неудача — ошибка, удача и отмена
+/// (система не тронута) — сведение.
+pub fn outcome_footer_kind(outcome: &DeOpOutcome) -> FooterKind {
+    if outcome.ok || outcome.cancelled {
+        FooterKind::Notice
+    } else {
+        FooterKind::Error
+    }
+}
+
+/// Род строки по признаку удачи (сохранение и возврат панели и т. п.).
+pub fn result_footer_kind(ok: bool) -> FooterKind {
+    if ok {
+        FooterKind::Notice
+    } else {
+        FooterKind::Error
+    }
+}
+
 pub fn snapshot_message() -> String {
     tr("🔒 Remembering your default apps")
 }
@@ -586,6 +662,27 @@ impl Emitter {
     }
 }
 
+/// Журнал Rexon: какие члены групп выкинуты из установки из-за конфликта
+/// (`plan::InstallPreview::conflict_skipped`) — окно показывает объяснение,
+/// а здесь остаются пакеты и пара конфликта для разбора.
+fn log_conflict_skips(p: &plan::InstallPreview) {
+    for s in &p.conflict_skipped {
+        let c = &s.conflict;
+        crate::log_warn!(
+            "desktops",
+            "не ставим {} (стол {}): {} {} конфликтует с {} {}{} — держат: {}",
+            s.package,
+            if s.desktop.is_empty() { "?" } else { &s.desktop },
+            c.new_package,
+            c.new_version,
+            c.installed,
+            c.installed_version,
+            if c.installed_is_new { " (встаёт в том же наборе)" } else { "" },
+            if c.installed_desktops.is_empty() { "?".to_string() } else { c.installed_desktops.join(", ") },
+        );
+    }
+}
+
 // ============================================================================
 // Исполнитель
 // ============================================================================
@@ -845,7 +942,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
 
     /// [`Self::install_de_replacing`] с выбранным сеансом
     /// (`system::SESSION_VARIANTS`): для Wayland к набору добавляется его
-    /// добавка (композитор, связка сеанса, из AUR — у MATE). `None` и X11 —
+    /// добавка (композитор, связка сеанса, бывает и из AUR). `None` и X11 —
     /// набор как раньше.
     pub fn install_de_session(
         &self,
@@ -927,7 +1024,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
         }
         let aur_helper = plan::pick_aur_helper(family, &|h| self.io.which(h));
-        // Сеанс Wayland, который бывает только в AUR (MATE): без помощника
+        // Сеанс Wayland, который бывает только в AUR: без помощника
         // AUR он молча не встал бы, и человек искал бы его на экране входа.
         // Отказ — до пароля и до первого действия.
         let session_aur = system::session_aur_packages(de_id, family, session);
@@ -974,7 +1071,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 self.emit(de_progress::STAGE_ERROR, &text, None);
                 return Err(Stop::Failed(text));
             }
-            Some(p) if !p.skipped.is_empty() => {
+            Some(p) if !p.skipped.is_empty() || !p.conflict_skipped.is_empty() => {
+                log_conflict_skips(&p);
                 self.warn(&crate::qt_desktops::packages_notice(&p));
                 p.targets
             }
@@ -1200,7 +1298,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 self.emit(de_progress::STAGE_ERROR, &text, None);
                 return Err(Stop::Failed(text));
             }
-            Some(p) if !p.skipped.is_empty() => {
+            Some(p) if !p.skipped.is_empty() || !p.conflict_skipped.is_empty() => {
+                log_conflict_skips(&p);
                 self.warn(&crate::qt_desktops::packages_notice(&p));
                 p.targets
             }
@@ -1362,7 +1461,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
         let family = self.sys.family();
         let packages = system::get_packages(de_id, family);
-        // Связка сеанса Wayland (lxqt-wayland-session, mate-wayland-session)
+        // Связка сеанса Wayland (lxqt-wayland-session и такие же из AUR)
         // держит пакеты стола зависимостью — снимается вместе с ним;
         // неустановленное отсеет план удаления.
         let mut aur = system::get_aur_packages(de_id, family);
@@ -2032,7 +2131,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
     /// Порт `run_post_install`: хуки у MATE (вид Ubuntu MATE) и у River
     /// (стартовый init — без него River стартует без клавиш). Тайловым и
     /// Wayfire — ещё раскладка клавиатуры в конфиг
-    /// ([`crate::keyboard_layout`]): сами они включают одну `us`.
+    /// ([`crate::keyboard_layout`]): сами они включают одну `us`. Wayfire и
+    /// LXQt — блокировка экрана (клавиша и команда блокировщика): без неё
+    /// «Заблокировать» у них на чистой машине не работает.
     fn run_post_install(
         &self,
         de_id: &str,
@@ -2042,6 +2143,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         let (ok, message) = match de_id {
             "mate" => self.post_install_mate(family, aur_helper),
             "river" => self.post_install_river(),
+            "wayfire" => self.post_install_wayfire_lock(),
+            "lxqt" => self.post_install_lxqt_lock(),
             _ => (true, String::new()),
         };
         // Неудача раскладки — предупреждение, а не провал: стол уже стоит.
@@ -2082,6 +2185,47 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             Err(e) => {
                 let line = plan::river_init_failed(&path, &e);
                 (false, line)
+            }
+        }
+    }
+
+    /// Блокировка экрана Wayfire: клавиша и swayidle в `wayfire.ini`
+    /// ([`plan::wayfire_lock_edit`]). Файл — тот же, что читает Wayfire:
+    /// `~/.config/wayfire/wayfire.ini`, если он есть, иначе
+    /// `~/.config/wayfire.ini`. Неудача — предупреждение, не провал.
+    fn post_install_wayfire_lock(&self) -> (bool, String) {
+        let cfg = self.config_home();
+        let vendored = format!("{cfg}/wayfire/wayfire.ini");
+        let path = if self.io.is_file(&vendored) { vendored } else { format!("{cfg}/wayfire.ini") };
+        let current = self.io.read_text(&path).unwrap_or_default();
+        self.write_lock_setup("Wayfire", "Super+Shift+Esc", &path, plan::wayfire_lock_edit(&current))
+    }
+
+    /// Блокировка экрана LXQt: команды обоих сеансов в `session.conf`
+    /// ([`plan::lxqt_lock_edit`]).
+    fn post_install_lxqt_lock(&self) -> (bool, String) {
+        let path = format!("{}/lxqt/session.conf", self.config_home());
+        let current = self.io.read_text(&path);
+        self.write_lock_setup("LXQt", "Ctrl+Alt+L (Wayland: Super+L)", &path, plan::lxqt_lock_edit(current.as_deref()))
+    }
+
+    fn write_lock_setup(&self, desktop: &str, keys: &str, path: &str, text: Option<String>) -> (bool, String) {
+        let Some(text) = text else {
+            let line = plan::lock_setup_kept(desktop, path);
+            self.post(&line);
+            return (true, line);
+        };
+        let dir = path.rsplit_once('/').map(|(d, _)| d).unwrap_or(".");
+        match self.io.make_dirs(dir).and_then(|()| self.io.write_text(path, &text)) {
+            Ok(()) => {
+                let line = plan::lock_setup_written(desktop, keys, path);
+                self.post(&line);
+                (true, line)
+            }
+            Err(e) => {
+                let line = plan::lock_setup_failed(desktop, path, &e);
+                self.warn(&line);
+                (true, line)
             }
         }
     }
@@ -2153,6 +2297,18 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             errors.push("mate look settings failed".to_string());
         }
         self.drop_legacy_mate_gschema();
+
+        // 5. Экран блокировки — как обои стола, а не штатные «полоски»
+        //    (`wallpaper_engine::mate_lock_follows_desktop_argv`). Своя
+        //    картинка человека остаётся.
+        let get = s(&["gsettings", "get", crate::wallpaper_engine::MATE_SCREENSAVER_SCHEMA, "picture-filename"]);
+        let r = self.io.run(&get, None, false);
+        if r.rc() == Some(0)
+            && crate::wallpaper_engine::mate_lock_picture_is_stock(&r.stdout)
+            && self.run_ok(&crate::wallpaper_engine::mate_lock_as_desktop_set_argv())
+        {
+            self.post(&format!("  {}", plan::mate_lock_follows_desktop_line()));
+        }
 
         let (lines, result) = plan::mate_post_install_summary(errors.len());
         for line in lines {
@@ -5076,37 +5232,54 @@ pub(crate) mod tests {
         assert!(!set.iter().any(|p| p == "labwc"), "{set:?}");
     }
 
-    /// MATE на Wayland — только из AUR: без помощника AUR отказ ДО пароля
-    /// (иначе сеанс молча не встал бы), с помощником — Wayfire в общей
-    /// транзакции, `mate-wayland-session` — помощником AUR.
+    /// Сеанс Wayland только из AUR (образец — снятая 16.11.2026 запись MATE
+    /// на Wayfire; механизм ждёт MATE (Polo)): без помощника AUR отказ ДО
+    /// пароля (иначе сеанс молча не встал бы), с помощником — композитор в
+    /// общей транзакции, связка сеанса — помощником AUR.
     #[test]
-    fn install_mate_wayland_needs_aur_helper() {
+    fn install_aur_wayland_session_needs_aur_helper() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
-        let not_in_repo = |argv: &[String]| -> RunOut {
-            let a: Vec<&str> = argv.iter().map(String::as_str).collect();
-            match a.as_slice() {
-                ["pacman", "-Si", _] => out(1, "", "error: package 'x' was not found"),
-                _ => healthy(argv),
-            }
-        };
-        let io = with_session(FakeIo::arch(Box::new(not_in_repo)), out(0, "", ""));
-        let (outcome, rec) = run_install_session(&io, "mate", Some(system::SessionKind::Wayland));
-        assert!(!outcome.ok);
-        assert!(outcome.message.contains("yay or paru"), "{}", outcome.message);
-        assert!(io.priv_ops.borrow().is_empty(), "{:?}", io.priv_ops.borrow());
-        assert!(pkexec_runs(&io).is_empty(), "{:#?}", io.runs());
-        assert_eq!(rec.count(de_progress::STAGE_ERROR), 1);
+        system::test_session_variants::with_aur_sample(|| {
+            let not_in_repo = |argv: &[String]| -> RunOut {
+                let a: Vec<&str> = argv.iter().map(String::as_str).collect();
+                match a.as_slice() {
+                    ["pacman", "-Si", _] => out(1, "", "error: package 'x' was not found"),
+                    _ => healthy(argv),
+                }
+            };
+            let io = with_session(FakeIo::arch(Box::new(not_in_repo)), out(0, "", ""));
+            let (outcome, rec) = run_install_session(&io, "mate", Some(system::SessionKind::Wayland));
+            assert!(!outcome.ok);
+            assert!(outcome.message.contains("yay or paru"), "{}", outcome.message);
+            assert!(io.priv_ops.borrow().is_empty(), "{:?}", io.priv_ops.borrow());
+            assert!(pkexec_runs(&io).is_empty(), "{:#?}", io.runs());
+            assert_eq!(rec.count(de_progress::STAGE_ERROR), 1);
 
-        let mut io = with_session(FakeIo::arch(Box::new(not_in_repo)), out(0, "", ""));
+            let mut io = with_session(FakeIo::arch(Box::new(not_in_repo)), out(0, "", ""));
+            io.bins.insert("paru".to_string());
+            let (outcome, _) = run_install_session(&io, "mate", Some(system::SessionKind::Wayland));
+            assert!(outcome.ok, "{outcome:?}");
+            assert!(session_install_set(&io).iter().any(|p| p == "wayfire"));
+            assert!(
+                io.runs().iter().any(|r| r.starts_with("paru") && r.contains("mate-wayland-session")),
+                "{:#?}",
+                io.runs()
+            );
+        });
+    }
+
+    /// MATE ставится только сеансом X11 (16.11.2026): выбор Wayland из окна
+    /// ничего не добавляет — ни Wayfire, ни `mate-wayland-session`.
+    #[test]
+    fn install_mate_is_x11_only() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let mut io = with_session(FakeIo::arch(Box::new(healthy)), out(0, "", ""));
         io.bins.insert("paru".to_string());
         let (outcome, _) = run_install_session(&io, "mate", Some(system::SessionKind::Wayland));
         assert!(outcome.ok, "{outcome:?}");
-        assert!(session_install_set(&io).iter().any(|p| p == "wayfire"));
-        assert!(
-            io.runs().iter().any(|r| r.starts_with("paru") && r.contains("mate-wayland-session")),
-            "{:#?}",
-            io.runs()
-        );
+        let set = session_install_set(&io);
+        assert!(!set.iter().any(|p| p == "wayfire"), "{set:?}");
+        assert!(!io.runs().iter().any(|r| r.contains("mate-wayland-session")), "{:#?}", io.runs());
     }
 
     /// Защита «нет экрана входа» через сеанс: SDDM из таблицы экранов
@@ -5235,6 +5408,27 @@ pub(crate) mod tests {
         assert_eq!(io.files.borrow().get(init).map(String::as_str), Some(mine));
     }
 
+    /// LXQt: «Заблокировать» получает блокировщик в обоих сеансах (команды в
+    /// `session.conf`); своя команда человека не трогается.
+    #[test]
+    fn lxqt_gets_lock_commands() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let conf = "/home/t/.config/lxqt/session.conf";
+        let io = FakeIo::arch(Box::new(healthy));
+        let (outcome, rec) = run_install(&io, "lxqt", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        assert!(io.runs().iter().any(|r| r.starts_with("pacman -Sp") && r.contains(" xscreensaver")), "{:#?}", io.runs());
+        assert_eq!(io.files.borrow().get(conf), plan::lxqt_lock_edit(None).as_ref());
+        assert!(rec.messages("post").iter().any(|m| m.contains("screen lock set up")), "{:#?}", rec.messages("post"));
+
+        let mine = "[General]\nlock_command=i3lock\nlock_command_wayland=waylock\n";
+        let io = FakeIo::arch(Box::new(healthy));
+        io.files.borrow_mut().insert(conf.into(), mine.into());
+        let (outcome, _) = run_install(&io, "lxqt", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        assert_eq!(io.files.borrow().get(conf).map(String::as_str), Some(mine));
+    }
+
     /// Тайловым и Wayfire после установки дописывается раскладка: у sway —
     /// свой config с `include` системного, у Wayfire — раздел `[input]`.
     /// Раскладку, заданную человеком, Rexon не трогает; английскому языку
@@ -5254,22 +5448,37 @@ pub(crate) mod tests {
         let (outcome, _) = run_install(&io, "wayfire", CancelToken::new());
         assert!(outcome.ok, "{outcome:?}");
         let ini = io.files.borrow().get("/home/t/.config/wayfire.ini").cloned().unwrap_or_default();
-        assert!(ini.starts_with("[input]\n") && ini.contains("xkb_layout = us,ru\n"), "{ini}");
+        assert!(ini.contains("\n[input]\n") && ini.contains("xkb_layout = us,ru\n"), "{ini}");
+        // Рядом — блокировка экрана (её у Wayfire по умолчанию нет).
+        assert_eq!(plan::wayfire_lock_edit(&ini), None, "{ini}");
+        assert!(ini.contains("command_lock = swaylock -f\n"), "{ini}");
 
-        // Своя раскладка в wayfire.ini — файл бит-в-бит прежний.
+        // Своя раскладка в wayfire.ini — её строки прежние, дописана только
+        // блокировка.
         let own = "[input]\nxkb_layout = de\n";
+        let io = FakeIo::arch(Box::new(healthy));
+        io.files.borrow_mut().insert("/home/t/.config/wayfire.ini".into(), own.into());
+        let (outcome, _) = run_install(&io, "wayfire", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        let expected = plan::wayfire_lock_edit(own).unwrap();
+        assert!(expected.starts_with(own));
+        assert_eq!(io.files.borrow().get("/home/t/.config/wayfire.ini"), Some(&expected));
+
+        // Своя блокировка и своя раскладка — файл бит-в-бит прежний.
+        let own = "[input]\nxkb_layout = de\n\n[autostart]\nidle = swayidle before-sleep swaylock\n\n[command]\nbinding_lock = <super> KEY_L\ncommand_lock = swaylock\n";
         let io = FakeIo::arch(Box::new(healthy));
         io.files.borrow_mut().insert("/home/t/.config/wayfire.ini".into(), own.into());
         let (outcome, _) = run_install(&io, "wayfire", CancelToken::new());
         assert!(outcome.ok, "{outcome:?}");
         assert_eq!(io.files.borrow().get("/home/t/.config/wayfire.ini").map(String::as_str), Some(own));
 
-        // Английский и пустая система — конфиг не заводится.
+        // Английский и пустая система — раскладке писать нечего, в файле
+        // одна блокировка.
         let mut io = FakeIo::arch(Box::new(healthy));
         io.env.insert("LANG".into(), "en_US.UTF-8".into());
         let (outcome, _) = run_install(&io, "wayfire", CancelToken::new());
         assert!(outcome.ok, "{outcome:?}");
-        assert!(!io.files.borrow().contains_key("/home/t/.config/wayfire.ini"));
+        assert_eq!(io.files.borrow().get("/home/t/.config/wayfire.ini"), plan::wayfire_lock_edit("").as_ref());
 
         // Hyprland без конфига и без образца: файл не заводится (Hyprland
         // положит свой при первом входе), в журнале — подсказка.
@@ -6608,5 +6817,35 @@ pub(crate) mod tests {
         assert!(snapshot_if_never(&io).is_none());
         assert!(!io.files.borrow().contains_key(SNAPSHOT_FILE));
         assert!(io.runs().is_empty(), "{:#?}", io.runs());
+    }
+
+    /// Подвал: итог удачи уходит сам и при смене раздела, ошибка держится
+    /// до щелчка, ожидание ответа таймером не снимается (16.11.2026:
+    /// «Восстановление Wayfire — Завершено ✅» висело часами).
+    #[test]
+    fn footer_lifetime_by_kind() {
+        let notice = footer_hold(FooterKind::Notice);
+        assert!(notice.timeout_ms > 0 && notice.timeout_ms <= 15_000);
+        assert!(notice.clear_on_section_change && notice.click_dismisses);
+
+        let error = footer_hold(FooterKind::Error);
+        assert_eq!(error.timeout_ms, 0);
+        assert!(!error.clear_on_section_change && error.click_dismisses);
+
+        let pending = footer_hold(FooterKind::Pending);
+        assert_eq!(pending.timeout_ms, 0);
+        assert!(!pending.clear_on_section_change && !pending.click_dismisses);
+
+        let outcome = |ok, cancelled| DeOpOutcome {
+            ok,
+            message: String::new(),
+            cancelled,
+            restart_needed: false,
+        };
+        assert_eq!(outcome_footer_kind(&outcome(true, false)), FooterKind::Notice);
+        assert_eq!(outcome_footer_kind(&outcome(false, true)), FooterKind::Notice);
+        assert_eq!(outcome_footer_kind(&outcome(false, false)), FooterKind::Error);
+        assert_eq!(result_footer_kind(true), FooterKind::Notice);
+        assert_eq!(result_footer_kind(false), FooterKind::Error);
     }
 }

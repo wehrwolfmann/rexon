@@ -59,6 +59,7 @@ unsafe extern "C" {
     fn rexon_tray_notify(title: *const c_char, body: *const c_char);
     fn rexon_tray_guard_window() -> bool;
     fn rexon_tray_raise_window() -> bool;
+    fn rexon_tray_grab_window(path: *const c_char) -> bool;
     fn rexon_tray_adopt_qml_window(engine: *mut std::ffi::c_void) -> bool;
     fn rexon_tray_window_native(rgb: *mut u32) -> u64;
     fn rexon_tray_hide_window() -> bool;
@@ -740,6 +741,12 @@ pub fn select_section(index: i32) -> bool {
 /// нельзя.
 pub fn raise_main_window() -> bool {
     unsafe { rexon_tray_raise_window() }
+}
+
+/// Снять главное окно в PNG (режим обхода `--tour`). Только из потока GUI.
+pub fn grab_main_window(path: &str) -> bool {
+    let path = cstr(path);
+    unsafe { rexon_tray_grab_window(path.as_ptr()) }
 }
 
 /// Открыть раздел (и подраздел, `compare` — «Сравнение DE») главного окна

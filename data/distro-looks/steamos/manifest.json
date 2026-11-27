@@ -8,7 +8,8 @@
     "de": "Wie SteamOS",
     "zh_CN": "SteamOS 风格",
     "fr": "Comme SteamOS",
-    "es": "Como en SteamOS"
+    "es": "Como en SteamOS",
+    "uk": "Як у SteamOS"
   },
   "description": {
     "en": "The Vapor look of the Steam Deck desktop (or the classic VGUI2 style of the old Steam client) and, if you want it, a game mode: a “Steam Big Picture” session on the login screen, as on the Steam Deck. Rexon does not turn on automatic login and does not start Steam by itself. Steam Deck logos and wallpapers are not included.",
@@ -16,7 +17,8 @@
     "de": "Der Vapor-Look des Steam-Deck-Desktops (oder der klassische VGUI2-Stil des alten Steam-Clients) und auf Wunsch ein Spielmodus: eine „Steam Big Picture“-Sitzung auf dem Anmeldebildschirm wie auf dem Steam Deck. Rexon schaltet keine automatische Anmeldung ein und startet Steam nicht von selbst. Logos und Hintergrundbilder des Steam Deck sind nicht enthalten.",
     "zh_CN": "Steam Deck 桌面的 Vapor 外观（或旧版 Steam 客户端的经典 VGUI2 风格），并可选择添加游戏模式：在登录界面提供“Steam Big Picture”会话，与 Steam Deck 上一样。Rexon 不会开启自动登录，也不会自行启动 Steam。不包含 Steam Deck 的标志和壁纸。",
     "fr": "L'apparence Vapor du bureau du Steam Deck (ou le style VGUI2 classique de l'ancien client Steam) et, si vous le souhaitez, un mode jeu : une session « Steam Big Picture » sur l'écran de connexion, comme sur le Steam Deck. Rexon n'active pas la connexion automatique et ne lance pas Steam lui-même. Les logos et les fonds d'écran du Steam Deck ne sont pas inclus.",
-    "es": "El aspecto Vapor del escritorio de Steam Deck (o el estilo clásico VGUI2 del antiguo cliente de Steam) y, si quieres, un modo de juego: una sesión «Steam Big Picture» en la pantalla de inicio de sesión, como en Steam Deck. Rexon no activa el inicio de sesión automático ni inicia Steam por su cuenta. No se incluyen los logotipos ni los fondos de pantalla de Steam Deck."
+    "es": "El aspecto Vapor del escritorio de Steam Deck (o el estilo clásico VGUI2 del antiguo cliente de Steam) y, si quieres, un modo de juego: una sesión «Steam Big Picture» en la pantalla de inicio de sesión, como en Steam Deck. Rexon no activa el inicio de sesión automático ni inicia Steam por su cuenta. No se incluyen los logotipos ni los fondos de pantalla de Steam Deck.",
+    "uk": "Вигляд Vapor зі стільниці Steam Deck (або класичний стиль VGUI2 старого клієнта Steam) і, за бажанням, ігровий режим: сеанс «Steam Big Picture» на екрані входу, як на Steam Deck. Rexon не вмикає автоматичний вхід і сам Steam не запускає. Логотипи та шпалери Steam Deck до складу не входять."
   },
   "authors": [{"name": "Wehrwolfmann"}],
   "license": "Apache-2.0",
@@ -25,11 +27,11 @@
     "variant": {
       "type": "combo",
       "options": [
-        {"value": "vapor", "label": {"en": "Vapor (Steam Deck)", "ru": "Vapor (как на Steam Deck)", "de": "Vapor (wie auf dem Steam Deck)", "zh_CN": "Vapor（Steam Deck）", "fr": "Vapor (comme sur le Steam Deck)", "es": "Vapor (como en Steam Deck)"}},
-        {"value": "vgui", "label": {"en": "VGUI2 (classic Steam)", "ru": "VGUI2 (классический Steam)", "de": "VGUI2 (klassisches Steam)", "zh_CN": "VGUI2（经典 Steam）", "fr": "VGUI2 (Steam classique)", "es": "VGUI2 (Steam clásico)"}}
+        {"value": "vapor", "label": {"en": "Vapor (Steam Deck)", "ru": "Vapor (как на Steam Deck)", "de": "Vapor (wie auf dem Steam Deck)", "zh_CN": "Vapor（Steam Deck）", "fr": "Vapor (comme sur le Steam Deck)", "es": "Vapor (como en Steam Deck)", "uk": "Vapor (як на Steam Deck)"}},
+        {"value": "vgui", "label": {"en": "VGUI2 (classic Steam)", "ru": "VGUI2 (классический Steam)", "de": "VGUI2 (klassisches Steam)", "zh_CN": "VGUI2（经典 Steam）", "fr": "VGUI2 (Steam classique)", "es": "VGUI2 (Steam clásico)", "uk": "VGUI2 (класичний Steam)"}}
       ],
       "default": "vapor",
-      "label": {"en": "Style", "ru": "Стиль", "de": "Stil", "zh_CN": "风格", "fr": "Style", "es": "Estilo"}
+      "label": {"en": "Style", "ru": "Стиль", "de": "Stil", "zh_CN": "风格", "fr": "Style", "es": "Estilo", "uk": "Стиль"}
     }
   },
   "sources": [
@@ -112,7 +114,8 @@
         "de": "Der Spielmodus fügt dem Anmeldebildschirm eine „Steam Big Picture“-Sitzung hinzu; wählen Sie sie dort selbst aus. Auf einem Laptop mit zwei Grafikkarten kann der Bildschirm schwarz bleiben, wenn Steam auf der Karte startet, an der der Bildschirm nicht hängt. Starten Sie in diesem Fall den Computer neu und wählen Sie auf dem Anmeldebildschirm Ihre gewohnte Sitzung.",
         "zh_CN": "游戏模式会在登录界面添加“Steam Big Picture”会话，需要你自己在那里选择它。在配有两块显卡的笔记本电脑上，如果 Steam 在未连接屏幕的那块显卡上启动，屏幕可能一直黑屏。遇到这种情况，请重启电脑，并在登录界面选择你平常使用的会话。",
         "fr": "Le mode jeu ajoute une session « Steam Big Picture » à l'écran de connexion : choisissez-la vous-même à cet endroit. Sur un ordinateur portable à deux cartes graphiques, l'écran peut rester noir si Steam démarre sur la carte à laquelle l'écran n'est pas branché. Dans ce cas, redémarrez l'ordinateur et choisissez votre session habituelle sur l'écran de connexion.",
-        "es": "El modo de juego añade una sesión «Steam Big Picture» a la pantalla de inicio de sesión: elígela allí tú mismo. En un portátil con dos tarjetas gráficas, la pantalla puede quedarse en negro si Steam se inicia en la tarjeta a la que no está conectada la pantalla. Si ocurre, reinicia el ordenador y elige tu sesión habitual en la pantalla de inicio de sesión."
+        "es": "El modo de juego añade una sesión «Steam Big Picture» a la pantalla de inicio de sesión: elígela allí tú mismo. En un portátil con dos tarjetas gráficas, la pantalla puede quedarse en negro si Steam se inicia en la tarjeta a la que no está conectada la pantalla. Si ocurre, reinicia el ordenador y elige tu sesión habitual en la pantalla de inicio de sesión.",
+        "uk": "Ігровий режим додає сеанс «Steam Big Picture» на екран входу — виберіть його там самі. На ноутбуці з двома відеокартами екран може залишитися чорним, якщо Steam запуститься не на тій відеокарті, до якої під’єднано екран. Якщо так сталося, перезавантажте комп’ютер і виберіть звичайний сеанс на екрані входу."
       }
     }
   ],
@@ -140,7 +143,8 @@
          "de": "Die libplasma von Plasma wurde hier durch einen anderen Build ersetzt (einen Fork wie AeroShell). Plasma-Designs greifen darauf nicht: Stellen Sie zuerst die normale libplasma wieder her.",
          "zh_CN": "此处 Plasma 的 libplasma 已被其他构建（例如 AeroShell 这类分支版本）替换。Plasma 外观无法在其上应用：请先恢复常规的 libplasma。",
          "fr": "Ici, la libplasma de Plasma a été remplacée par une autre version (un fork comme AeroShell). Les apparences Plasma ne s'appliquent pas par-dessus : remettez d'abord la libplasma ordinaire.",
-         "es": "Aquí la libplasma de Plasma se ha sustituido por otra compilación (un fork como AeroShell). Los aspectos de Plasma no se aplican sobre ella: primero vuelve a poner la libplasma normal."
+         "es": "Aquí la libplasma de Plasma se ha sustituido por otra compilación (un fork como AeroShell). Los aspectos de Plasma no se aplican sobre ella: primero vuelve a poner la libplasma normal.",
+         "uk": "Тут libplasma з Plasma замінено іншою збіркою (форком на кшталт AeroShell). Вигляд Plasma поверх неї не застосовується: спершу поверніть звичайну libplasma."
        }}]
   }
 }

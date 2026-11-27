@@ -230,6 +230,7 @@ impl qobject::AxonActions {
         QString::from(
             &json!({
                 "searchPlaceholder": aw::search_placeholder(),
+                "searchIn": aw::search_in_label(),
                 "modes": pairs(SearchMode::ALL.iter().map(|m| (m.key(), m.label())).collect()),
                 "sorts": pairs(SortOrder::ALL.iter().map(|s| (s.key(), s.label())).collect()),
                 "sortTooltip": aw::sort_tooltip(),
@@ -361,7 +362,7 @@ impl qobject::AxonActions {
                         &wallpaper_exec::live_slot(),
                         move |exec: &mut wallpaper_exec::WallpaperExec<wallpaper_exec::LiveSys>| {
                             let res = exec.apply_with_audio(&path, ready.format, &ready.name, ready.audio);
-                            qs::wallpaper_done(res.ok, &res.message)
+                            qs::wallpaper_done_warned(res.ok, &res.message, res.warning.as_deref())
                         },
                     )
                 }

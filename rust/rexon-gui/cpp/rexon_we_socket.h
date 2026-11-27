@@ -62,6 +62,8 @@ QString rexon_we_sock_daemon_property(const QString& service, const QString& pat
 // ── сокет ─────────────────────────────────────────────────────────────────
 
 /// Создать QWebSocket без владельца. Снимается rexon_we_sock_destroy().
+/// В потоке без диспетчера событий сначала заводит его (см. .cpp); nullptr —
+/// диспетчер завести не вышло (нет QCoreApplication).
 QWebSocket* rexon_we_sock_new();
 
 /// Немедленно удалить объект (не deleteLater): транспорт закрывает сокет
@@ -71,6 +73,13 @@ void rexon_we_sock_destroy(QObject* object);
 /// Закрыть сокет. Шим, а не прямой вызов из cxx: у `QWebSocket::close` два
 /// аргумента по умолчанию (см. п. 4 в шапке).
 void rexon_we_sock_close(QWebSocket* socket);
+
+/// Закрыть разовый сокет: подключён — обычным close(), нет (рукопожатие
+/// не завершено) — abort(), без кадра закрытия в неподключённую связь.
+void rexon_we_sock_shutdown(QWebSocket* socket);
+
+/// Любая ошибка сокета выводит из вложенного цикла (`rexon_we_sock_run_loop`).
+void rexon_we_sock_quit_loop_on_error(QWebSocket* socket);
 
 /// Открыт ли сокет — строго `state() == QAbstractSocket::ConnectedState`.
 /// Это НЕ «пингую демона»: ровно тот же смысл, что у `is_open()` Python.

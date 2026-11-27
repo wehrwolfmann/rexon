@@ -716,12 +716,49 @@ fn state() -> &'static RwLock<Active> {
         // языка, а не с локали машины: иначе текстовая сверка краснела у
         // того, у кого `LANG=ru_RU` и стоит каталог (пакет в
         // /usr/share/locale или `REXON_LOCALEDIR`), и зеленела у остальных.
-        // Сверки в `tests/` закрепляют язык сами (`tests/i18n_pin`).
-        if cfg!(test) {
+        //
+        // То же для сверок из `tests/` (каждая — свой бинарь, а библиотека
+        // собрана БЕЗ `cfg(test)`): 15.11.2026 у владельца (LANG=ru_RU,
+        // пакет положил каталог в /usr/share/locale) сверки, сравнивающие
+        // с английским литералом, получили русские строки. Закреплять язык
+        // в каждой из сотни сверок — ловушка для следующей; поэтому решение
+        // одно и здесь. Сверка, которой нужен русский, по-прежнему просит
+        // его явно (`tests/i18n_pin::ru()` или `set_language(Some("ru"))`).
+        if cfg!(test) || exe_is_test_harness(std::env::current_exe().ok().as_deref()) {
             return RwLock::new(Active::default());
         }
         RwLock::new(activate(None))
     })
+}
+
+/// Бинарь — сверка cargo (`cargo test`/`cargo bench`), а не программа.
+///
+/// Бинарь сверки cargo зовёт `<имя>-<хэш>` (16 шестнадцатеричных знаков)
+/// и кладёт: до cargo 1.100 — в `<профиль>/deps/`, с 1.100 (новая
+/// раскладка каталога сборки) — в `<профиль>/build/<пакет>/<хэш>/out/`,
+/// где каталог над `out` назван тем же хэшем. Программы
+/// (`rexon-main-window`, помощники ядра) cargo кладёт в `<профиль>/` без
+/// хэша, пакет ставит их в `/usr/lib/rexon` и `/usr/bin` — под признак они
+/// не попадают. Признака сборки (`cfg`) у сверок в `tests/` нет:
+/// библиотеку для них cargo собирает обычной, — поэтому смотрим на место
+/// запуска.
+fn exe_is_test_harness(exe: Option<&Path>) -> bool {
+    fn name(p: Option<&Path>) -> Option<&str> {
+        p.and_then(Path::file_name).and_then(|n| n.to_str())
+    }
+    let Some(exe) = exe else { return false };
+    let Some((_, hash)) = name(Some(exe)).and_then(|n| n.rsplit_once('-')) else {
+        return false;
+    };
+    if hash.len() != 16 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return false;
+    }
+    let parent = exe.parent();
+    match name(parent) {
+        Some("deps") => true,
+        Some("out") => name(parent.and_then(Path::parent)) == Some(hash),
+        _ => false,
+    }
 }
 
 /// Окружение процесса для выбора языка. Переменные локали — ИСХОДНЫЕ,
@@ -1313,6 +1350,25 @@ mod tests {
         // изолятов (`ntr` здесь не зовём: xgettext унёс бы строку сверки в
         // каталог).
         assert_eq!(fill("%1", &[&"a"]), "a");
+    }
+
+    #[test]
+    fn test_harness_is_told_from_programs() {
+        let yes = |p: &str| exe_is_test_harness(Some(Path::new(p)));
+        assert!(yes("/r/target-wt/debug/deps/gnome_ego-f98ca29bd4e205d1"));
+        assert!(yes("/r/target/x86_64-unknown-linux-gnu/release/deps/rexon_core-0123456789abcdef"));
+        // Раскладка cargo 1.100: `build/<пакет>/<хэш>/out/<имя>-<хэш>`.
+        assert!(yes("/r/target-wt/debug/build/rexon-core/3ebdb07b8fb945e3/out/rexon_core-3ebdb07b8fb945e3"));
+        assert!(!yes("/r/target-wt/debug/build/rexon-core/3ebdb07b8fb945e3/out/rexon_core-0123456789abcdef"));
+        // Программы — в каталоге профиля и в пакете.
+        assert!(!yes("/r/target/debug/rexon-main-window"));
+        assert!(!yes("/usr/lib/rexon/rexon-wallpaper-host"));
+        assert!(!yes("/usr/bin/rexon"));
+        // Каталог `deps` без хэша в имени — не сверка.
+        assert!(!yes("/opt/deps/rexon-main-window"));
+        assert!(!exe_is_test_harness(None));
+        // Сам этот бинарь сверок опознаётся.
+        assert!(exe_is_test_harness(std::env::current_exe().ok().as_deref()));
     }
 
     #[test]

@@ -237,6 +237,23 @@ const EFFECT_TICK_MS = 33;
 const EFFECT_TIME_WRAP = 3600;
 // Rexon пишет файл и ключ отдельными командами — ждём, пока уляжется.
 const EFFECT_SETTLE_MS = 150;
+// Ответ Rexon: что вышло с последним применением (`shell_status_path` ядра).
+// Rexon говорит «применено» только по этому ответу — без него окно писало
+// «применено», когда расширение вовсе не работало (15.11.2026).
+const EFFECT_STATUS_PATH = GLib.build_filenamev([
+    GLib.get_user_config_dir(), 'rexon', 'screen-effects', 'shell.status']);
+
+// state: 'on' | 'off' | 'error'; path — файл шейдера, о котором ответ.
+function writeEffectStatus(state, path, detail) {
+    try {
+        GLib.mkdir_with_parents(GLib.path_get_dirname(EFFECT_STATUS_PATH), 0o755);
+        GLib.file_set_contents(EFFECT_STATUS_PATH,
+            'state=' + state + '\npath=' + (path || '') +
+            '\ndetail=' + String(detail || '').replace(/\n/g, ' ') + '\n');
+    } catch (e) {
+        // Ответ — подсказка окну Rexon, не повод ронять оболочку.
+    }
+}
 
 // Путь из настроек. Наличие ключа спрашиваем У СХЕМЫ: чтение ключа,
 // которого в схеме нет, гасит саму оболочку (см. `daemon-argv`).
@@ -318,6 +335,7 @@ class ScreenEffect {
             if (this._effect)
                 this._host.log('[rexon-fx] эффект экрана выключен');
             this._remove();
+            writeEffectStatus('off', '', '');
             return;
         }
         let shader;
@@ -327,10 +345,13 @@ class ScreenEffect {
             // Без шейдера экран остаётся как есть — ничего не накладываем.
             this._host.logError('[rexon-fx] шейдер не прочитан: ' + e.message);
             this._remove();
+            writeEffectStatus('error', path, e.message);
             return;
         }
-        if (this._effect && shader.text === this._text)
+        if (this._effect && shader.text === this._text) {
+            writeEffectStatus('on', path, '');
             return;
+        }
         this._remove();
         try {
             const Klass = effectClassFor(this._host.base, this._host.hook, shader);
@@ -360,9 +381,11 @@ class ScreenEffect {
             }
             this._host.log('[rexon-fx] эффект экрана включён: ' + path +
                 (this._tickId ? ' (движущийся)' : ''));
+            writeEffectStatus('on', path, '');
         } catch (e) {
             this._host.logError('[rexon-fx] эффект не наложен: ' + e.message);
             this._remove();
+            writeEffectStatus('error', path, e.message);
         }
     }
 

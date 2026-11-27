@@ -1020,8 +1020,12 @@ pub fn packages_notice(p: &crate::system_plan::InstallPreview) -> String {
             &[&short_list(&p.blocked)],
         );
     }
+    let mut lines: Vec<String> = Vec::new();
+    if !p.conflict_skipped.is_empty() {
+        lines.push(crate::system_plan::conflict_skip_explanation(&p.conflict_skipped));
+    }
     if !p.skipped.is_empty() {
-        return fill(
+        lines.push(fill(
             &ntr(
                 "⚠️ %1 can't be installed right now — its dependencies are \
                  missing from the repository (usually it's waiting for a \
@@ -1032,9 +1036,9 @@ pub fn packages_notice(p: &crate::system_plan::InstallPreview) -> String {
                 p.skipped.len() as u64,
             ),
             &[&short_list(&p.skipped)],
-        );
+        ));
     }
-    String::new()
+    lines.join("\n")
 }
 
 /// Кнопка карточки.
@@ -1748,7 +1752,7 @@ pub fn install_texts(display_name: &str) -> OpTexts {
 
 // ── Сеанс X11 или Wayland ────────────────────────────────────────────────
 //
-// У четырёх столов есть оба сеанса (`system::SESSION_VARIANTS`). Выбор —
+// У трёх столов есть оба сеанса (`system::SESSION_VARIANTS`). Выбор —
 // тремя карточками в том же окне «Установить?»: X11, Wayland или оба.
 // Рекомендованный — по зрелости Wayland (`SessionVariants::default_pick`).
 // Сеанс X11 лежит в основных пакетах стола, поэтому «Wayland» и «Оба»
@@ -1757,13 +1761,13 @@ pub fn install_texts(display_name: &str) -> OpTexts {
 /// Имя переключателя сеанса в окне вопроса (`setOperationChoice`).
 pub const SESSION_CHOICE_NAME: &str = "session";
 
-/// Можно ли предложить Wayland: у MATE он только в AUR, и без помощника AUR
+/// Можно ли предложить Wayland: если он только в AUR, то без помощника AUR
 /// (yay, paru) поставить его нечем.
 fn wayland_offerable(v: &crate::system::SessionVariants, aur_helper: bool) -> bool {
     v.wayland_aur.is_empty() || aur_helper
 }
 
-/// Что на самом деле ставится: без помощника AUR у MATE Wayland не
+/// Что на самом деле ставится: без помощника AUR Wayland из AUR не
 /// поставить — остаётся X11, что бы ни пришло из окна.
 pub fn session_pick_effective(
     de_id: &str,
@@ -1802,7 +1806,7 @@ fn wayland_card_text(v: &crate::system::SessionVariants, name: &str) -> String {
 }
 
 /// Три карточки «Как будет работать стол» для окна установки. `None` —
-/// выбора нет (у стола один сеанс или другое семейство). У MATE без
+/// выбора нет (у стола один сеанс или другое семейство). У Wayland из AUR без
 /// помощника AUR карточки «Wayland» и «Оба» видны, но недоступны — с
 /// объяснением.
 pub fn session_choice(
@@ -1918,7 +1922,7 @@ pub fn session_choice_html(
     }
 }
 
-/// MATE без помощника AUR: Wayland не поставить, ставится X11.
+/// Wayland только из AUR, а помощника AUR нет: ставится X11.
 fn session_x11_only_text(name: &str) -> String {
     trf(
         "%1 can also run on Wayland, but that version exists only in the AUR, \
@@ -1981,7 +1985,7 @@ pub fn session_pick_done_line(de_id: &str, family: PkgFamily, pick: crate::syste
 
 /// Вопрос установки с выбранным вариантом сеанса: пояснения — на самих
 /// карточках ([`session_choice`]), к вопросу дописываются только
-/// предупреждение про AUR (MATE) и строка итога.
+/// предупреждение про AUR (если Wayland из AUR) и строка итога.
 pub fn install_texts_with_session(
     de_id: &str,
     family: PkgFamily,
@@ -2120,6 +2124,86 @@ pub fn session_no_aur_helper_text(display_name: &str) -> String {
          or install yay or paru first.",
         &[&display_name],
     )
+}
+
+/// Окно установки для стола с Wayland только из AUR. Такого стола в таблице
+/// сейчас нет (MATE на Wayfire снят 16.11.2026), поэтому — на образце
+/// `system::test_session_variants::AUR_SAMPLE`: механизм ждёт MATE (Polo).
+#[cfg(test)]
+mod aur_session_tests {
+    use super::*;
+    use crate::system::test_session_variants::with_aur_sample;
+    use crate::system::{SessionKind, SessionPick, WaylandMaturity};
+
+    const SAMPLE: &str = "mate";
+
+    fn en() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+    }
+
+    /// Без помощника AUR карточки Wayland и «Оба» видны, но недоступны, а
+    /// выбранным остаётся X11, что бы ни пришло из окна. Добавка из AUR —
+    /// в пакетах стола и снимается вместе с ним.
+    #[test]
+    fn without_aur_helper_only_x11() {
+        en();
+        let arch = PkgFamily::Arch;
+        with_aur_sample(|| {
+            let v = crate::system::session_variants(SAMPLE, arch).expect("образец");
+            assert_eq!(v.maturity, WaylandMaturity::ExperimentalAur);
+            let c = session_choice(SAMPLE, arch, SessionPick::Wayland, false).unwrap();
+            let enabled: Vec<bool> = c.options.iter().map(|o| o.enabled).collect();
+            assert_eq!(enabled, [true, false, false]);
+            assert_eq!(c.current, "x11");
+            assert!(c.options[1].description.contains("yay or paru"), "{:?}", c.options[1]);
+            let with_helper = session_choice(SAMPLE, arch, SessionPick::Wayland, true).unwrap();
+            assert!(with_helper.options.iter().all(|o| o.enabled));
+            for pick in SessionPick::ALL {
+                assert_eq!(session_pick_effective(SAMPLE, arch, pick, false), SessionPick::X11);
+                assert_eq!(session_pick_effective(SAMPLE, arch, pick, true), pick);
+            }
+            let aur = crate::system::session_aur_packages(SAMPLE, arch, SessionKind::Wayland);
+            assert_eq!(aur, ["mate-wayland-session"]);
+            assert!(crate::system::session_aur_packages(SAMPLE, arch, SessionKind::X11).is_empty());
+            let all = crate::system::desktop_packages(SAMPLE, arch);
+            assert!(all.iter().any(|p| p == "mate-wayland-session"), "{all:?}");
+            assert_eq!(crate::system::session_removal_packages(SAMPLE, arch), ["mate-wayland-session"]);
+        });
+        // Вне образца у MATE выбора сеанса нет.
+        assert!(crate::system::session_variants(SAMPLE, arch).is_none());
+    }
+
+    /// Карточки Wayland и «Оба» сами говорят «из AUR»; вопрос несёт
+    /// предупреждение и признаки риска; без помощника — объяснение и итог
+    /// про X11.
+    #[test]
+    fn aur_texts_on_cards_and_question() {
+        en();
+        let arch = PkgFamily::Arch;
+        with_aur_sample(|| {
+            let c = session_choice(SAMPLE, arch, SessionPick::X11, true).unwrap();
+            assert!(c.options[1].label.contains("AUR"), "{:?}", c.options);
+            assert!(c.options[2].label.contains("AUR"), "{:?}", c.options);
+            assert!(!c.options[0].label.contains("AUR"));
+            let plain = install_texts(display_name(SAMPLE)).confirm_html;
+            let (question, password) = plain.split_once("<br><br>").unwrap();
+            for pick in [SessionPick::Wayland, SessionPick::Both] {
+                let t = install_texts_with_session(SAMPLE, arch, pick, true, "RISK-LINE");
+                assert!(t.confirm_html.contains("AUR") && t.confirm_html.contains("RISK-LINE"), "{}", t.confirm_html);
+                // Начало вопроса — прежнее «Установить …?», строка про пароль — последней.
+                assert!(t.confirm_html.starts_with(question), "{}", t.confirm_html);
+                assert!(t.confirm_html.ends_with(password), "{}", t.confirm_html);
+            }
+            assert!(!install_texts_with_session(SAMPLE, arch, SessionPick::X11, true, "RISK-LINE")
+                .confirm_html
+                .contains("RISK-LINE"));
+            let no_helper = install_texts_with_session(SAMPLE, arch, SessionPick::Wayland, false, "");
+            assert!(no_helper.confirm_html.contains("yay or paru"), "{}", no_helper.confirm_html);
+            assert!(no_helper.done_text.contains("“MATE”"), "{}", no_helper.done_text);
+            let meta = DE_META.iter().find(|m| m.id == SAMPLE).unwrap();
+            assert_eq!(meta.session_text(), "X11 + Wayland (experimental, AUR)");
+        });
+    }
 }
 
 /// Проверка и восстановление стола.

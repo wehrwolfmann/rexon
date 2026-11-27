@@ -551,3 +551,27 @@ fn autostart_switch_checks_programs_too() {
             .to_string())]
     );
 }
+
+/// Сценарий Lua собирает путь к своим файлам от домашнего каталога
+/// (`'${execi 2 bash ' .. HOME .. '/.config/conky/skyrim/scripts/gpu.sh}'`,
+/// виджет skyrim, живая проверка 15.11.2026): файлы на месте — ложного
+/// «нет файлов виджета» нет; путь от неизвестной переменной не проверяется,
+/// а настоящая пропажа под домашним каталогом по-прежнему видна.
+#[test]
+fn lua_paths_from_home_are_not_reported_missing() {
+    let _lang = i18n_pin::en();
+    let m = widget_machine();
+    m.put(&format!("{ROOT}/skyrim/conky.conf"), "conky.config = { lua_load = './lua/anim.lua' }\nconky.text = [[x]]\n");
+    m.put(
+        &format!("{ROOT}/skyrim/lua/anim.lua"),
+        "local HOME = os.getenv('HOME')\n\
+         local rows = {\n\
+           { expr = '${execi 2 bash ' .. HOME .. '/.config/conky/skyrim/scripts/gpu.sh}' },\n\
+           { expr = '${execi 9 bash ' .. SOMEWHERE .. '/x.sh}' },\n\
+           { expr = '${execi 9 bash ' .. HOME .. '/.config/conky/skyrim/scripts/gone.sh}' },\n\
+         }\n",
+    );
+    m.put(&format!("{ROOT}/skyrim/scripts/gpu.sh"), "#!/bin/sh\necho 1\n");
+    let h = cs::health(&m, &ctx(), "skyrim", "arch");
+    assert_eq!(h.missing_files, vec!["~/.config/conky/skyrim/scripts/gone.sh".to_string()], "{h:#?}");
+}

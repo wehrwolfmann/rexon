@@ -85,6 +85,10 @@ bool rexon_tray_guard_window();
 // Поднять окно и отдать ему фокус. false — окна нет.
 bool rexon_tray_raise_window();
 
+/// Снять главное окно (`QQuickWindow::grabWindow`) в PNG `path`. Только из
+/// потока GUI. Режим обхода `--tour`; false — окна нет или файл не записан.
+bool rexon_tray_grab_window(const char *path);
+
 // Главное окно на QML — корень движка `engine` (`QQmlApplicationEngine *`).
 // Запоминается ДО того, как окно покажут: спрятанных окон верхнего уровня в
 // процессе несколько, и угадывать среди них нельзя. false — корня-окна нет.

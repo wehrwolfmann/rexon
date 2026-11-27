@@ -305,7 +305,7 @@ impl qobject::ExtensionsActions {
                 &wallpaper_exec::live_slot(),
                 move |exec: &mut wallpaper_exec::WallpaperExec<wallpaper_exec::LiveSys>| {
                     let res = exec.apply(&first.path, &first.format, "");
-                    qs::wallpaper_done(res.ok, &res.message)
+                    qs::wallpaper_done_warned(res.ok, &res.message, res.warning.as_deref())
                 },
             );
             if let Err(e) = handle.queue(move |mut object| {

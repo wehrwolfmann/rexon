@@ -902,8 +902,20 @@ pub fn tile_picture(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
 /// Плитка виджета Conky: картинка из папки виджета, если её ещё нет, и
 /// «Источник»/«Авторы» в описании, если описания нет.
 pub fn decorate_item(io: &dyn LookIo, ctx: &Ctx, item: &mut ThemeItem) {
-    let Some(name) = item.id.strip_prefix("local:conky:") else { return };
+    let Some(name) = item.id.strip_prefix("local:conky:").map(str::to_string) else { return };
+    let name = name.as_str();
     let path = widget_path(ctx, name);
+    // Описание темы (`theme.json`): имя, автор, версия, описание; её
+    // `preview.png` — главнее прочих картинок рядом.
+    let meta = crate::conky_theme::meta(io, &path);
+    if let Some(m) = &meta {
+        crate::conky_theme::decorate(m, &widget_title(name), item);
+        if item.preview_local.is_empty() {
+            if let Some(p) = crate::conky_theme::preview(io, &path) {
+                item.preview_local = p;
+            }
+        }
+    }
     if item.preview_local.is_empty() {
         let confs = widget_confs(io, ctx, name, None);
         // Своя картинка автора, иначе снимок Rexon (`conky_preview`): пока
@@ -1336,7 +1348,7 @@ mod tests {
         let (ok, msg) = remove_found(&bench, &c, &extra, &p, &trash, "2026-10-19T09:08:07");
         assert!(ok, "{msg}");
         assert!(msg.contains("Часы Gotham"), "{msg}");
-        assert_eq!(*bench.kills.borrow(), vec![vec!["kill".to_string(), "42".to_string()]]);
+        assert_eq!(*bench.kills.borrow(), vec![vec!["kill".to_string(), "--".to_string(), "42".to_string()]]);
         assert_eq!(bench.present_at_kill.get(), Some(true), "погашен до переноса");
         assert!(!Path::new(&p).exists());
         assert!(trash.join("files/Часы Gotham/Gotham").is_file());
@@ -1403,7 +1415,7 @@ mod tests {
         assert!(msg.contains("Jhalak"), "{msg}");
         assert_eq!(
             *bench.kills.borrow(),
-            vec![vec!["kill".to_string(), "51".to_string(), "52".to_string()]],
+            vec![vec!["kill".to_string(), "--".to_string(), "51".to_string(), "52".to_string()]],
             "гаснут только номера этого виджета"
         );
         assert_eq!(bench.present_at_kill.get(), Some(true), "погашен до переноса");

@@ -820,8 +820,10 @@ fn a_removed_vsthemes_choice_falls_back_to_the_kde_store() {
 
 /// Источник «Razer Axon» (14.11.2026): чип «Обоев HD» рядом с KDE Store и
 /// Wallhaven — только если Axon найден; выбран — свой экран библиотеки
-/// вместо сетки магазина, без поиска, сортировки и листалки магазина (они у
-/// библиотеки свои). Без Axon прежний выбор молча становится KDE Store.
+/// вместо сетки магазина, без сортировки и листалки магазина (они у
+/// библиотеки свои). Строка поиска — общая шапки, как у соседних магазинов
+/// (16.11.2026: своя уезжала влево вниз и теряла слово), и слово переживает
+/// смену магазина. Без Axon прежний выбор молча становится KDE Store.
 #[test]
 fn razer_axon_is_a_wallpaper_source_only_when_axon_is_found() {
     let _lang = i18n_pin::ru();
@@ -850,8 +852,19 @@ fn razer_axon_is_a_wallpaper_source_only_when_axon_is_found() {
     assert_eq!(v.screen(home), ap::SCREEN_AXON);
     let c = v.chrome();
     assert!(c.source_bar, "чипы «Магазин:» остаются — вернуться в KDE Store");
-    assert!(!c.search && !c.sort_combo && !c.pagination && !c.install_file);
+    assert!(c.search, "строка поиска — та же, что у KDE Store");
+    assert_eq!(c.search_placeholder, "Поиск обоев");
+    assert!(!c.sort_combo && !c.pagination && !c.install_file);
     assert_ne!(v.request_key(), view("wallpapers").request_key());
+    // Слово, набранное в KDE Store, остаётся в поле и в Axon, и обратно.
+    v.source = "ocs".to_string();
+    assert_eq!(v.edit_query("sky"), ap::QueryEdit::Kept);
+    v.source = ap::SOURCE_AXON.to_string();
+    assert_eq!(v.query, "sky");
+    assert!(v.chrome().search);
+    v.source = "ocs".to_string();
+    assert_eq!(v.query, "sky");
+    v.source = ap::SOURCE_AXON.to_string();
     // «⚙️ Настройки» раздела — над источником: экран настроек.
     v.section_settings = true;
     assert_eq!(v.screen(home), ap::SCREEN_SETTINGS);
@@ -1300,7 +1313,32 @@ fn aur_cache_key_separates_search_from_the_section() {
     let mut v = view("global");
     assert_eq!(v.aur_cache_key(), "cat:global");
     v.query = "nord".into();
-    assert_eq!(v.aur_cache_key(), "search:nord");
+    assert_eq!(v.aur_cache_key(), "search:global:nord");
+    // Выдача поиска отобрана под раздел — у другого раздела свой ключ.
+    assert_ne!(view("icons").aur_cache_key(), "search:global:nord");
+    let mut icons = view("icons");
+    icons.query = "nord".into();
+    assert_ne!(icons.aur_cache_key(), v.aur_cache_key());
+}
+
+/// Пометка пакета AUR, где он идёт вперемешку с одиночными товарами («Все»):
+/// набор, системный пакет, пароль. В «AUR» и в KDE Store её нет.
+#[test]
+fn aur_tiles_are_marked_only_among_store_goods() {
+    let _lang = i18n_pin::ru();
+    let mut v = view("wallpapers");
+    v.source = ap::SOURCE_BOTH.to_string();
+    assert_eq!(ap::aur_mix_badge(&v, "wallpapers"), "📦 Набор · системный пакет · пароль");
+    let mut icons = view("icons");
+    icons.source = ap::SOURCE_BOTH.to_string();
+    assert_eq!(ap::aur_mix_badge(&icons, "icons"), "📦 Системный пакет · пароль");
+    assert!(ap::aur_mix_badge_tooltip().contains("пароль"));
+    v.source = ap::SOURCE_AUR.to_string();
+    assert_eq!(ap::aur_mix_badge(&v, "wallpapers"), "");
+    v.source = "ocs".to_string();
+    assert_eq!(ap::aur_mix_badge(&v, "wallpapers"), "");
+    assert!(ap::is_font_file("/c/x.TTF") && ap::is_font_file("/c/x.otf") && !ap::is_font_file("/c/x.png"));
+    assert!(ap::looks_like_font(&[0, 1, 0, 0, 0, 9]) && ap::looks_like_font(b"OTTO..") && !ap::looks_like_font(b"\x89PNG"));
 }
 
 #[test]
@@ -1950,9 +1988,11 @@ fn detail_labels_match_the_original() {
     );
     // Пустые поля — прочерк, версии просто нет.
     assert_eq!(ap::detail_meta_line("", "", "", ""), "— • — • обновлено — ");
-    assert_eq!(ap::detail_stars_label(4.35), "⭐ 4,3"); // разделитель — по языку (i18n::format_decimal)
-    assert_eq!(ap::detail_stars_label(5.0), "⭐ 5,0"); // не «⭐ 5»
-    assert_eq!(ap::detail_stars_label(0.0), "⭐ 0,0");
+    assert_eq!(ap::detail_stars_label(Some(4.35)), "⭐ 4,3"); // разделитель — по языку (i18n::format_decimal)
+    assert_eq!(ap::detail_stars_label(Some(5.0)), "⭐ 5,0"); // не «⭐ 5»
+    assert_eq!(ap::detail_stars_label(Some(0.0)), "⭐ 0,0");
+    // Голосов нет — ни звезды, ни «2,5» (стартовая оценка OCS).
+    assert_eq!(ap::detail_stars_label(None), "Оценок пока нет");
     assert!(ap::detail_downloads_label(1234).contains("скачиваний: 1,2K"));
     assert_eq!(
         ap::detail_path_label("Глобальные темы", "~/.local/share/plasma"),
@@ -2283,14 +2323,29 @@ fn card_labels_match_the_original() {
     // Слоты стат-строки: рейтинг · скачивания · дата (день без времени).
     let nb = "\u{a0}";
     assert_eq!(
-        ap::card_stats_line(4.4, 123456, "2026-07-29 03:00:00"),
+        ap::card_stats_line(Some(4.4), 123456, "2026-07-29 03:00:00"),
         format!("{nb}4,4{nb}{nb}⬇️ 123,5K{nb}{nb}📅 2026-07-29")
     );
     // Даты нет — слот просто отсутствует, «—» вместо неё не рисуем.
     assert_eq!(
-        ap::card_stats_line(5.0, 0, ""),
+        ap::card_stats_line(Some(5.0), 0, ""),
         format!("{nb}5,0{nb}{nb}⬇️ 0")
     );
+    // Товар без голосов (OCS отдаёт ему score 50): вместо «★ 2,5» —
+    // подпись, и звезды на плитке нет.
+    assert_eq!(
+        ap::card_stats_line(None, 12, "2026-11-16"),
+        format!("Оценок пока нет{nb}{nb}⬇️ 12{nb}{nb}📅 2026-11-16")
+    );
+    assert_eq!(ap::card_star_glyph(None), "");
+    assert_eq!(ap::card_star_glyph(Some(4.4)), "⭐");
+    let unrated = rexon_core::models::ThemeItem {
+        rating: rexon_core::ocs::UNRATED_SCORE,
+        ..Default::default()
+    };
+    assert_eq!(unrated.rated_stars(), None);
+    let rated = rexon_core::models::ThemeItem { rating: 58, ..Default::default() };
+    assert_eq!(rated.rated_stars(), Some(2.9));
     assert_eq!(
         ap::card_updated_tooltip("2026-07-29 03:00:00").unwrap(),
         "Обновлено: 2026-07-29"
@@ -3090,4 +3145,66 @@ fn conky_manager_is_not_offered() {
         ..Default::default()
     };
     assert!(is_conky_program(&program));
+}
+
+/// Поставленный виджет Conky в каталоге раздела запускается прямо с плитки
+/// и с панели деталей (живая проверка 15.11.2026: после «Установить»
+/// плитка застывала на «✅ Установлено», а «▶️ Запустить» было только в
+/// «Загруженных»). Кнопка и номер плитки установленного — те же, что у неё.
+#[test]
+fn installed_conky_widget_starts_from_the_store_tile() {
+    use rexon_core::de_apply::Button;
+    let _lang = i18n_pin::ru();
+    let home = Path::new("/home/u");
+    let conky = ThemeItem { id: "2203005".into(), category_id: rexon_core::categories::CONKY_SECTION_ID, ..Default::default() };
+    let icons = ThemeItem { id: "1".into(), category_id: 132, ..Default::default() };
+    assert_eq!(ap::store_item_switch(home, &conky), Some(Button::Run));
+    assert_eq!(ap::store_item_switch(home, &icons), None, "тема — «Применить», не запуск");
+
+    let start = ap::card_store_button(true, false, false, Some(Button::Run));
+    assert_eq!((start.text.as_str(), start.state), ("▶️ Запустить", "false"));
+    let stop = ap::card_store_button(true, true, false, Some(Button::Run));
+    assert_eq!((stop.text.as_str(), stop.state), ("⏹️ Остановить", "true"));
+    // Те же слова, что у плитки установленного.
+    assert_eq!(start, ap::card_local_button_for("downloaded", "local:conky:skyrim"));
+    assert_eq!(stop, ap::card_local_button_for("active", "local:conky:skyrim"));
+    // Ещё не стоит — «Установить»; тема — прежние три состояния.
+    assert_eq!(ap::card_store_button(false, false, false, Some(Button::Run)), ap::card_install_button(false, false, false));
+    assert_eq!(ap::card_store_button(true, false, true, None), ap::card_install_button(true, false, true));
+    let d = ap::store_detail_button(true, false, false, Some(Button::Run));
+    assert_eq!((d.text.as_str(), d.state), ("▶️ Запустить", "installed"));
+    assert_eq!(ap::store_detail_button(true, true, false, Some(Button::Run)).text, "⏹️ Остановить");
+    // Нажатие поставленного — запуск тем же путём, что «Применить».
+    assert_eq!(ap::store_card_action(true, ap::store_item_switch(home, &conky).is_some()), ap::StoreCardAction::ApplyInstalled);
+
+    // Номер плитки установленного: по нему «Запускать при входе» и настройки.
+    let id = ap::store_local_id(home, &conky, "skyrim").unwrap();
+    assert_eq!(id, "local:conky:skyrim");
+    assert!(ap::detail_autostart_visible(&id));
+    assert_eq!(ap::store_local_id(home, &icons, "Papirus"), None);
+}
+
+/// «Запущен» у поставленного виджета — по карте активных (запущенных там
+/// сколько угодно, через перевод строки), как у плитки установленного.
+#[test]
+fn stamp_marks_running_conky_widget() {
+    let _lang = i18n_pin::ru();
+    let home = Path::new("/home/u");
+    let mut log = Map::new();
+    let cid = rexon_core::categories::CONKY_SECTION_ID;
+    log.insert("7".into(), Value::Object(rec("", cid, &["/home/u/.config/conky/skyrim"])));
+    let stamp = |running: &str| {
+        let mut items = vec![ThemeItem { id: "7".into(), category_id: cid, ..Default::default() }];
+        let running = running.to_string();
+        let mut active = ap::LazyActiveMap::new(move || {
+            let mut m = Map::new();
+            m.insert("conky".into(), json!(running.clone()));
+            m
+        });
+        ap::stamp_installed_from_log(home, &log, &mut items, &mut active);
+        (items[0].installed, items[0].applied)
+    };
+    assert_eq!(stamp("Jhalak\nskyrim"), (true, true));
+    assert_eq!(stamp("Jhalak"), (true, false));
+    assert_eq!(stamp(""), (true, false));
 }

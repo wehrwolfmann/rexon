@@ -2587,7 +2587,7 @@ pub fn conky_desktop_entry(name: &str, conky_conf: &str) -> String {
 /// по-прежнему папка файла автора
 /// ([`crate::de_apply::CONKY_OVERLAY_AUTOSTART_SCRIPT`]).
 pub fn conky_desktop_entry_via(name: &str, conky_conf: &str, launch: Option<&str>) -> String {
-    conky_desktop_entry_with(name, conky_conf, launch, 0, &[])
+    conky_desktop_entry_with(name, conky_conf, launch, None, 0, &[])
 }
 
 /// [`conky_desktop_entry_via`] с задержкой при входе и окружениями.
@@ -2603,28 +2603,48 @@ pub fn conky_desktop_entry_with(
     name: &str,
     conky_conf: &str,
     launch: Option<&str>,
+    xwayland: Option<&str>,
     delay: u32,
     only_in: &[String],
 ) -> String {
     use crate::installer::desktop_exec_arg;
-    let script = |base: &str| {
-        if delay > 0 { format!("sleep {delay} && {base}") } else { base.to_string() }
-    };
-    let exec = match launch {
-        None => format!(
-            "sh -c {} {}",
-            desktop_exec_arg(&script(crate::de_apply::CONKY_AUTOSTART_SCRIPT)),
-            desktop_exec_arg(conky_conf)
-        ),
-        Some(overlay) => format!(
-            "sh -c {} {} {}",
-            desktop_exec_arg(&script(crate::de_apply::CONKY_OVERLAY_AUTOSTART_SCRIPT)),
-            desktop_exec_arg(overlay),
-            desktop_exec_arg(conky_conf)
+    // В сеансе Wayland — через XWayland, где вывод Wayland не годится
+    // (`conky_overlay::xwayland_shell`; сеанс и версия conky узнаются при входе),
+    // с файлом `xwayland`, где окно виджета под окнами. Путь с `%` в сценарий
+    // не кладётся (`%%` в кавычках `Exec=` запускальщики разбирают по-разному).
+    let xwayland = xwayland.filter(|f| !f.contains('%'));
+    let session = crate::conky_overlay::xwayland_shell(crate::conky_overlay::widget_needs_x11(conky_conf), xwayland);
+    let (base, args) = match launch {
+        None => (crate::de_apply::CONKY_AUTOSTART_SCRIPT, vec![desktop_exec_arg(conky_conf)]),
+        Some(overlay) => (
+            crate::de_apply::CONKY_OVERLAY_AUTOSTART_SCRIPT,
+            vec![desktop_exec_arg(overlay), desktop_exec_arg(conky_conf)],
         ),
     };
+    conky_desktop_entry_exec(
+        name,
+        crate::de_apply::conky_work_dir(conky_conf),
+        &format!("{session}{base}"),
+        &args,
+        delay,
+        only_in,
+    )
+}
+
+/// Запись автозапуска виджета Conky: сценарий `sh -c` `body` с уже
+/// закавыченными для `Exec=` аргументами `args`, `dir` — `Path=`. Задержка
+/// — `sleep N &&` в начале сценария (см. [`conky_desktop_entry_with`]; ею
+/// же пишется запуск темы её `start.sh`, `conky_theme`).
+pub fn conky_desktop_entry_exec(name: &str, dir: &str, body: &str, args: &[String], delay: u32, only_in: &[String]) -> String {
+    use crate::installer::desktop_exec_arg;
+    let script = if delay > 0 { format!("sleep {delay} && {body}") } else { body.to_string() };
+    let mut exec = format!("sh -c {}", desktop_exec_arg(&script));
+    for a in args {
+        exec.push(' ');
+        exec.push_str(a);
+    }
     // Значение-строка ключа: обратная косая удваивается, перевод строки — `\n`.
-    let dir = crate::de_apply::conky_work_dir(conky_conf).replace('\\', "\\\\").replace('\n', "\\n");
+    let dir = dir.replace('\\', "\\\\").replace('\n', "\\n");
     let mut extra = String::new();
     if !only_in.is_empty() {
         extra.push_str(&format!("OnlyShowIn={};\n", only_in.join(";")));

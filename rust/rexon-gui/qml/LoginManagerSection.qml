@@ -248,6 +248,22 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
+        // Совместимость основного экрана входа с установленными столами
+        // (GNOME без GDM — без блокировки, Deepin без DDM — не запустится).
+        // Тексты — ядро (`system_plan::dm_compat_issues`).
+        Repeater {
+            model: section.st.compat || []
+
+            delegate: RexonText {
+                required property string modelData
+                objectName: "loginCompat"
+                Layout.fillWidth: true
+                text: "⚠️ " + modelData
+                color: section.pal.state_warn
+                wrapMode: Text.WordWrap
+            }
+        }
+
         // Уходящий X11-сеанс по умолчанию — предупреждение и кнопка.
         RowLayout {
             Layout.fillWidth: true

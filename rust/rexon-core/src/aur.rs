@@ -67,17 +67,39 @@ impl AurPackage {
         format!("{AUR_PKG_URL_PREFIX}{}", url_quote(&self.name))
     }
 
-    /// Best-effort превью (`preview_url`): для GitHub-upstream — OpenGraph-
-    /// карточка репозитория, иначе "". Порт регэкспа
+    /// Источник картинки плитки — НАСТОЯЩАЯ картинка товара либо "".
+    ///
+    /// * шрифт — файл этого шрифта с Google Fonts (метка `google-font:`,
+    ///   [`GOOGLE_FONT_SCHEME`]): плитка рисует им образец текста;
+    /// * проект на GitHub — первая картинка README (метка `github-readme:`,
+    ///   [`README_PREVIEW_SCHEME`]): у наборов обоев, значков и тем там
+    ///   снимок самого набора;
+    /// * иначе "" — плитка честно говорит, что картинки нет
+    ///   ([`no_preview_note`]).
+    ///
+    /// ⛔ OpenGraph-карточку репозитория (`opengraph.githubassets.com`:
+    /// имя, звёзды, аватар владельца) здесь больше не берём: на плитке
+    /// обоев и шрифтов она выдавала себя за превью товара (живая проверка
+    /// 16.11.2026), а галерея — только настоящие снимки (правило #13).
+    /// Разбор адреса GitHub — регэксп
     /// `https?://(?:www\.)?github\.com/(owner)/(repo)` с отсечением `.git` и
     /// хвоста `[/#?].*`.
     pub fn preview_url(&self) -> String {
+        if self.is_font() {
+            return google_font_family(&self.name)
+                .map(|family| format!("{GOOGLE_FONT_SCHEME}{family}"))
+                .unwrap_or_default();
+        }
         match github_owner_repo(&self.upstream_url) {
-            Some((owner, repo)) => {
-                format!("https://opengraph.githubassets.com/0/{owner}/{repo}")
-            }
+            Some((owner, repo)) => format!("{README_PREVIEW_SCHEME}{owner}/{repo}"),
             None => String::new(),
         }
+    }
+
+    /// Пакет шрифта: раздел «Шрифты» либо имя по соглашению Arch
+    /// (`ttf-*`, `otf-*`) — так он узнаётся и в выдаче сборных разделов.
+    pub fn is_font(&self) -> bool {
+        self.category == "fonts" || is_font_package_name(&self.name)
     }
 
     /// Эмодзи карточки (`icon`): по категории, иначе эвристика по имени пакета.
@@ -105,6 +127,95 @@ impl AurPackage {
             "💎"
         }
     }
+}
+
+/// Имя пакета шрифта по соглашению Arch: `ttf-*`, `otf-*`, `woff2-*`.
+pub fn is_font_package_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    ["ttf-", "otf-", "woff-", "woff2-"].iter().any(|p| n.starts_with(p))
+}
+
+/// Метка «картинку плитки — образец шрифта с Google Fonts»
+/// (`google-font:Fira Sans`): её разрешает загрузчик
+/// ([`resolve_google_font`]) в адрес файла шрифта.
+pub const GOOGLE_FONT_SCHEME: &str = "google-font:";
+
+/// Хвосты имени пакета, к названию шрифта не относящиеся.
+const FONT_NAME_TAILS: &[&str] = &[
+    "git", "bin", "variable", "vf", "ttf", "otf", "font", "fonts", "static", "latest", "full",
+];
+
+/// Название семейства шрифта по имени пакета для Google Fonts:
+/// `ttf-fira-sans-git` → `Fira Sans`. `None` — не пакет шрифта
+/// ([`is_font_package_name`]) или названия не осталось.
+///
+/// Google Fonts различает регистр (`JetBrains Mono` есть, `Jetbrains Mono`
+/// — нет), а пакет регистр теряет: слова пишутся с заглавной, и семейства с
+/// заглавными внутри слова честно не находятся — плитка тогда говорит, что
+/// образца нет.
+pub fn google_font_family(name: &str) -> Option<String> {
+    if !is_font_package_name(name) {
+        return None;
+    }
+    let lower = name.to_ascii_lowercase();
+    let rest = lower.split_once('-').map(|(_, r)| r).unwrap_or("");
+    let mut words: Vec<&str> = rest.split(['-', '_']).filter(|w| !w.is_empty()).collect();
+    while words.last().is_some_and(|w| FONT_NAME_TAILS.contains(w)) {
+        words.pop();
+    }
+    if words.is_empty() {
+        return None;
+    }
+    let title = |w: &str| {
+        let mut c = w.chars();
+        c.next().map(|f| f.to_uppercase().chain(c).collect::<String>()).unwrap_or_default()
+    };
+    Some(words.into_iter().map(title).collect::<Vec<_>>().join(" "))
+}
+
+/// Адрес запроса CSS семейства у Google Fonts (`css2?family=Fira+Sans`).
+pub fn google_font_css_url(family: &str) -> String {
+    format!("https://fonts.googleapis.com/css2?family={}", quote_plus(family))
+}
+
+/// Первый адрес файла шрифта из ответа CSS Google Fonts (`src: url(…)`).
+/// Простому клиенту Google отдаёт TrueType одним файлом.
+pub fn parse_google_font_css(css: &str) -> Option<String> {
+    let at = css.find("url(")?;
+    let rest = &css[at + 4..];
+    let end = rest.find(')')?;
+    let url = rest[..end].trim().trim_matches(['\'', '"']);
+    url.starts_with("https://").then(|| url.to_string())
+}
+
+/// Найти файл шрифта для метки `google-font:Семейство`. `None` — такого
+/// семейства у Google Fonts нет (ответ 400) или сеть не ответила.
+pub fn resolve_google_font(net: &mut dyn NetIo, marker: &str) -> Option<String> {
+    let family = marker.strip_prefix(GOOGLE_FONT_SCHEME)?;
+    let body = net.get(&google_font_css_url(family), USER_AGENT, TIMEOUT_SECS).ok()?;
+    parse_google_font_css(&String::from_utf8_lossy(&body))
+}
+
+/// Подпись на месте картинки плитки, когда картинки нет: что это за товар
+/// и почему без снимка. Строка правдива и пока картинка грузится (набор
+/// обоев свои картинки несёт внутри пакета). Пусто — подписи не нужно.
+pub fn no_preview_note(pkg: &AurPackage) -> String {
+    use crate::i18n::tr;
+    if pkg.is_font() {
+        return tr("Font sample — after installation");
+    }
+    if pkg.category == "wallpapers" {
+        return tr("Wallpaper set — the pictures come inside the package");
+    }
+    if pkg.preview_url().is_empty() {
+        return tr("The author gave no picture");
+    }
+    String::new()
+}
+
+/// Образец текста на плитке шрифта.
+pub fn font_sample_text() -> String {
+    crate::i18n::tr("Aa Bb Cc 123")
 }
 
 /// Эмодзи категории по ключу (`CATEGORY_ICONS`). `None` — ключа нет.
@@ -519,6 +630,89 @@ pub fn is_relevant(key: &str, pkg: &AurPackage) -> bool {
         }
         _ => true,
     }
+}
+
+/// Слова вида товара раздела: пакет из ПОИСКА обязан нести одно из них в
+/// имени или описании. Пустой список — правило [`is_relevant`] раздела уже
+/// требует вид само («Глобальные темы», «Значки», «Темы GTK», «Стиль
+/// приложений»).
+///
+/// Зачем. Список раздела приходит по именному соглашению
+/// ([`category_queries`]: «wallpaper» в имени), и правилам [`is_relevant`]
+/// остаётся срезать хвосты. Поиск же идёт по всему AUR: на «girl» в «Обоях
+/// HD» приходили словари fcitx, шрифты и игровой движок (живая проверка
+/// 16.11.2026) — у них нет ни одного запретного слова, но нет и слова
+/// «обои». Ключевые слова и группы пакета поиск RPC не отдаёт (только
+/// `info`), поэтому мерило — имя и описание.
+pub fn kind_markers(key: &str) -> &'static [&'static str] {
+    match key {
+        "wallpapers" => &["wallpaper", "background", "backdrop"],
+        "wallpaper_plugins" => &["wallpaper"],
+        "fonts" => &["font", "ttf-", "otf-", "typeface"],
+        "cursor" => &["cursor"],
+        "sounds" => &["sound"],
+        "plasmoids" => &["plasmoid", "applet", "widget"],
+        "sddm" => &["sddm"],
+        "plymouth" => &["plymouth"],
+        "kwinscripts" | "kwineffects" => &["kwin"],
+        "kvantum" => &["kvantum"],
+        "colors" => &["color", "colour"],
+        "aurorae" => &["aurorae"],
+        "plasma" => &["plasma"],
+        _ => &[],
+    }
+}
+
+/// Подходит ли пакет из ПОИСКА к разделу: правило раздела
+/// ([`is_relevant`]) и слово его вида ([`kind_markers`]). «Популярные» и
+/// «Новые» — сборные: подходит к любому из [`AGGREGATE_KEYS`].
+pub fn search_fits(key: &str, pkg: &AurPackage) -> bool {
+    search_kind(key, pkg).is_some()
+}
+
+/// Раздел, к которому пакет из поиска подходит ([`search_fits`]): сам
+/// `key`, у сборных — первый подходящий из [`AGGREGATE_KEYS`] (от него
+/// зависит знак плитки). `None` — не подходит.
+pub fn search_kind<'a>(key: &'a str, pkg: &AurPackage) -> Option<&'a str> {
+    if key == "popular" || key == "new" {
+        return AGGREGATE_KEYS.iter().copied().find(|k| search_fits(k, pkg));
+    }
+    if !is_relevant(key, pkg) {
+        return None;
+    }
+    let markers = kind_markers(key);
+    if markers.is_empty() {
+        return Some(key);
+    }
+    let hay = format!("{} {}", pkg.name, pkg.description).to_lowercase();
+    markers.iter().any(|m| hay.contains(m)).then_some(key)
+}
+
+/// Поиск по AUR внутри раздела: [`search_aur`], затем только то, что
+/// подходит к разделу ([`search_kind`]), с ключом раздела у пакета.
+pub fn search_in_category<IO: NetIo + ?Sized>(
+    io: &mut IO,
+    query: &str,
+    key: &str,
+) -> Result<Vec<AurPackage>, AurError> {
+    let found = search_aur(io, query, None)?;
+    Ok(filter_search_for_category(found, key))
+}
+
+/// Отбор выдачи поиска для раздела — чистая часть [`search_in_category`].
+/// Раздел без полки AUR ([`has_category`]) — выдача без отбора.
+pub fn filter_search_for_category(found: Vec<AurPackage>, key: &str) -> Vec<AurPackage> {
+    if !has_category(key) {
+        return found;
+    }
+    found
+        .into_iter()
+        .filter_map(|mut p| {
+            let kind = search_kind(key, &p)?.to_string();
+            p.category = kind;
+            Some(p)
+        })
+        .collect()
 }
 
 /// Разбор одной записи RPC в `AurPackage` — порт `_parse`.
@@ -1506,16 +1700,14 @@ fn url_host(url: &str) -> Option<String> {
 
 /// Картинки карточки пакета по порядку показа.
 ///
-/// * GitHub — карточка репозитория (та же, что на плитке) и первая картинка
-///   README (метка `github-readme:`, её ищет загрузчик);
+/// * GitHub — первая картинка README (метка `github-readme:`, её ищет
+///   загрузчик; та же, что на плитке). OpenGraph-карточку репозитория
+///   (имя и звёзды) не берём: это не снимок товара (16.11.2026);
 /// * GitLab/Codeberg — `og:image` страницы проекта (метка `og-image:`);
 /// * иначе — ничего: карточка покажет тот же значок, что плитка.
 pub fn detail_image_sources(upstream_url: &str) -> Vec<String> {
     if let Some((owner, repo)) = github_owner_repo(upstream_url) {
-        return vec![
-            format!("https://opengraph.githubassets.com/0/{owner}/{repo}"),
-            format!("{}{owner}/{repo}", README_PREVIEW_SCHEME),
-        ];
+        return vec![format!("{}{owner}/{repo}", README_PREVIEW_SCHEME)];
     }
     match url_host(upstream_url) {
         Some(host) if og_image_host(&host) => vec![format!("{OG_IMAGE_SCHEME}{upstream_url}")],

@@ -445,6 +445,7 @@ fn package_conflict_names_the_holding_desktop() {
         new_desktops: vec!["Pantheon".into()],
         installed_desktops: vec!["Budgie".into()],
         required_by: vec!["budgie-desktop".into()],
+        installed_is_new: false,
     };
     assert_eq!(
         conflict_explanation(&[mutter.clone()]),
@@ -462,6 +463,43 @@ fn package_conflict_names_the_holding_desktop() {
         "⛔ Установка не пройдёт: mutter49 конфликтует с установленным пакетом mutter \
          (его требуют: some-app, other-app). pacman пришлось бы удалить mutter вместе с ними, \
          а сам Rexon этого не делает."
+    );
+}
+
+/// Живой дефект 15.11.2026: экран входа Pantheon тянет mutter49, а mutter 51
+/// держат GNOME и Budgie. Стол ставится без экрана входа, «Установить»
+/// активна, а текст честно говорит, чего не будет и почему.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn optional_conflict_is_explained_and_does_not_block() {
+    use rexon_core::system_plan::{conflict_skip_explanation, ConflictSkip, InstallPreview, PkgConflict};
+    let _lang = i18n_pin::ru();
+    let mutter = PkgConflict {
+        new_package: "mutter49".into(),
+        installed: "mutter".into(),
+        new_version: "49.8-1.1".into(),
+        installed_version: "51.1-1".into(),
+        same_program: true,
+        new_desktops: vec!["Pantheon".into()],
+        installed_desktops: vec!["GNOME".into(), "Budgie".into()],
+        required_by: vec!["gnome-shell".into(), "budgie-desktop".into()],
+        installed_is_new: false,
+    };
+    let skip = ConflictSkip { package: "lightdm-pantheon-greeter".into(), desktop: "Pantheon".into(), conflict: mutter.clone() };
+    let want = "⚠️ Экран входа Pantheon не ставим: ему нужен Mutter 49, а GNOME, Budgie — Mutter 51; \
+                оба сразу стоять не могут. Войти в Pantheon можно с обычного экрана входа, всё \
+                остальное поставится.";
+    assert_eq!(conflict_skip_explanation(std::slice::from_ref(&skip)), want);
+    let p = InstallPreview { new_packages: vec!["gala".into()], conflict_skipped: vec![skip.clone()], ..Default::default() };
+    let view = qd::packages_view(false, Some(&p), 0, 0);
+    assert!(!view.install_blocked);
+    assert_eq!(view.notice, want);
+    // Не экран входа — называем пакет.
+    let app = ConflictSkip { package: "some-app".into(), ..skip };
+    assert_eq!(
+        conflict_skip_explanation(&[app]),
+        "⚠️ some-app не ставим: ему нужен Mutter 49, а GNOME, Budgie — Mutter 51; оба сразу \
+         стоять не могут. Всё остальное поставится без него."
     );
 }
 
@@ -1891,12 +1929,14 @@ mod looks {
 
 /// Выбор есть ровно у столов с двумя сеансами в Arch; у Plasma 6.8,
 /// GNOME 51, Budgie 10.10, Pantheon 8, COSMIC и Deepin сеанс один — Wayland.
+/// MATE ставится только X11 (16.11.2026: прежний сеанс Wayland из AUR снят;
+/// механизм AUR-сеанса — под модульными тестами ядра на образце).
 /// Вариантов три: X11, Wayland и оба; у каждого — пояснение карточки.
 #[test]
 fn session_choice_only_where_two_sessions_exist() {
     use system::SessionPick;
     let _lang = i18n_pin::en();
-    let two = ["cinnamon-mint", "xfce", "lxqt", "mate"];
+    let two = ["cinnamon-mint", "xfce", "lxqt"];
     for de in system::list_de_ids() {
         let choice = qd::session_choice(de, PkgFamily::Arch, SessionPick::X11, true);
         assert_eq!(choice.is_some(), two.contains(&de), "{de}");
@@ -1915,13 +1955,7 @@ fn session_choice_only_where_two_sessions_exist() {
             assert!(!o.description.is_empty(), "{de}: {o:?}");
         }
     }
-    // MATE без помощника AUR: Wayland и «Оба» видны, но недоступны, а
-    // выбранным остаётся X11, что бы ни пришло из окна.
-    let mate = qd::session_choice("mate", PkgFamily::Arch, SessionPick::Wayland, false).unwrap();
-    let enabled: Vec<bool> = mate.options.iter().map(|o| o.enabled).collect();
-    assert_eq!(enabled, [true, false, false]);
-    assert_eq!(mate.current, "x11");
-    assert!(mate.options[1].description.contains("yay or paru"), "{:?}", mate.options[1]);
+    // Без помощника AUR выбор у столов с Wayland из репозиториев остаётся.
     let xfce = qd::session_choice("xfce", PkgFamily::Arch, SessionPick::Wayland, false).unwrap();
     assert!(xfce.options.iter().all(|o| o.enabled));
     assert_eq!(xfce.current, "wayland");
@@ -1937,8 +1971,9 @@ fn session_pick_sets_install_kind() {
     assert_eq!(SessionPick::from_value("nope"), None);
     let arch = PkgFamily::Arch;
     for pick in SessionPick::ALL {
-        assert_eq!(qd::session_pick_effective("mate", arch, pick, false), SessionPick::X11);
-        assert_eq!(qd::session_pick_effective("mate", arch, pick, true), pick);
+        // У MATE выбора нет — окно его и не спросит; что пришло, то и
+        // осталось (набор без добавки, см. `session_packages_by_choice`).
+        assert_eq!(qd::session_pick_effective("mate", arch, pick, false), pick);
         assert_eq!(qd::session_pick_effective("xfce", arch, pick, false), pick);
     }
 }
@@ -1989,7 +2024,7 @@ fn session_default_follows_wayland_maturity() {
     assert_eq!(state("lxqt"), Some(WaylandMaturity::Mature));
     assert_eq!(state("cinnamon-mint"), Some(WaylandMaturity::Experimental));
     assert_eq!(state("xfce"), Some(WaylandMaturity::Experimental));
-    assert_eq!(state("mate"), Some(WaylandMaturity::ExperimentalAur));
+    assert_eq!(state("mate"), None);
 
     drop(_lang);
     let _en = i18n_pin::en();
@@ -2010,8 +2045,7 @@ fn session_packages_by_choice() {
     let cases: &[(&str, &[&str], &[&str])] = &[
         ("cinnamon-mint", &[], &[]),
         ("xfce", &["labwc", "xorg-xwayland"], &[]),
-        ("lxqt", &["lxqt-wayland-session", "labwc", "xorg-xwayland"], &[]),
-        ("mate", &["wayfire", "xorg-xwayland"], &["mate-wayland-session"]),
+        ("lxqt", &["lxqt-wayland-session", "labwc", "xorg-xwayland", "swaylock"], &[]),
     ];
     for (de, repo, aur) in cases {
         assert!(system::session_packages(de, arch, SessionKind::X11).is_empty(), "{de}");
@@ -2028,6 +2062,15 @@ fn session_packages_by_choice() {
             assert!(!["labwc", "wayfire", "xorg-xwayland"].contains(&p.as_str()), "{de}: {p}");
         }
     }
+    // MATE — только X11: ни Wayfire, ни `mate-wayland-session` в его наборе.
+    assert!(system::session_variants("mate", arch).is_none());
+    for kind in [SessionKind::X11, SessionKind::Wayland] {
+        assert!(system::session_packages("mate", arch, kind).is_empty());
+        assert!(system::session_aur_packages("mate", arch, kind).is_empty());
+    }
+    let mate = system::desktop_packages("mate", arch);
+    assert!(!mate.iter().any(|p| p == "wayfire" || p == "mate-wayland-session"), "{mate:?}");
+    assert!(system::session_removal_packages("mate", arch).is_empty());
     // Белый список помощника пакетов знает добавку.
     let allow = rexon_core::system_plan::pkg_helper_install_allowlist(arch);
     for p in ["labwc", "xorg-xwayland", "lxqt-wayland-session", "wayfire"] {
@@ -2050,8 +2093,8 @@ fn wayland_session_ready_needs_file_and_compositor() {
 }
 
 /// Тексты окна: итог называет сеанс так, как его пишет экран входа (у
-/// «Оба» — оба имени); у MATE — предупреждение про AUR на вопросе и на
-/// карточках.
+/// «Оба» — оба имени); у столов без AUR-сеанса пометки «AUR» нет.
+/// Предупреждение про AUR — модульный тест ядра на образце.
 #[test]
 fn session_texts_follow_choice() {
     use system::{SessionKind, SessionPick};
@@ -2072,33 +2115,15 @@ fn session_texts_follow_choice() {
     let plain = qd::install_texts("XFCE").confirm_html;
     assert_eq!(way.confirm_html, plain);
     assert_eq!(x11.confirm_html, plain);
-    // У MATE карточки Wayland и «Оба» сами говорят «из AUR».
-    let mate_choice = qd::session_choice("mate", arch, SessionPick::X11, true).unwrap();
-    assert!(mate_choice.options[1].label.contains("AUR"), "{:?}", mate_choice.options);
-    assert!(mate_choice.options[2].label.contains("AUR"), "{:?}", mate_choice.options);
-    assert!(!mate_choice.options[0].label.contains("AUR"));
     let xfce_choice = qd::session_choice("xfce", arch, SessionPick::X11, true).unwrap();
     assert!(!xfce_choice.options[1].label.contains("AUR"));
 
-    let mate_plain = qd::install_texts(qd::display_name("mate")).confirm_html;
-    let (question, password) = mate_plain.split_once("<br><br>").unwrap();
-    for pick in [SessionPick::Wayland, SessionPick::Both] {
-        let mate = qd::install_texts_with_session("mate", arch, pick, true, "RISK-LINE");
-        assert!(mate.confirm_html.contains("AUR") && mate.confirm_html.contains("RISK-LINE"), "{}", mate.confirm_html);
-        // Начало вопроса — прежнее «Установить …?», строка про пароль — последней.
-        assert!(mate.confirm_html.starts_with(question), "{}", mate.confirm_html);
-        assert!(mate.confirm_html.ends_with(password), "{}", mate.confirm_html);
-    }
-    assert!(!qd::install_texts_with_session("mate", arch, SessionPick::X11, true, "RISK-LINE")
-        .confirm_html
-        .contains("RISK-LINE"));
     assert!(!qd::install_texts_with_session("xfce", arch, SessionPick::Wayland, true, "RISK-LINE")
         .confirm_html
         .contains("RISK-LINE"));
-    // MATE без помощника AUR: объяснение и итог про X11.
-    let no_helper = qd::install_texts_with_session("mate", arch, SessionPick::Wayland, false, "");
-    assert!(no_helper.confirm_html.contains("yay or paru"), "{}", no_helper.confirm_html);
-    assert!(no_helper.done_text.contains("“MATE”"), "{}", no_helper.done_text);
+    // MATE — только X11: вопрос без выбора сеанса и без AUR.
+    let mate = qd::install_texts_with_session("mate", arch, SessionPick::Wayland, false, "RISK-LINE");
+    assert_eq!(mate.confirm_html, qd::install_texts(qd::display_name("mate")).confirm_html);
 
     let add = qd::session_add_texts("lxqt", arch, SessionKind::Wayland, true, "");
     assert!(add.done_text.contains("“LXQt (Wayland)”"), "{}", add.done_text);

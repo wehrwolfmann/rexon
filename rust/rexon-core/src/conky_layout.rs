@@ -686,7 +686,8 @@ fn live_running(io: &dyn LookIo, ctx: &Ctx) -> Vec<(String, String, String)> {
 /// окна Rexon ([`parse_gui_screens`]).
 pub fn live_map(focus_name: &str, focus_conf: &str, gui_screens: &str) -> MapView {
     let io = crate::animations::SystemIo;
-    let ctx = Ctx::live();
+    // Через XWayland conky — в сеансе X11: экраны и места — как там.
+    let ctx = crate::conky_overlay::conky_ctx(&io, &Ctx::live());
     let areas = areas(&io, &ctx, &parse_gui_screens(gui_screens));
     let s = scale(&io, &ctx);
     let running = live_running(&io, &ctx);
@@ -702,7 +703,8 @@ pub fn live_map(focus_name: &str, focus_conf: &str, gui_screens: &str) -> MapVie
 /// и применить — как числа в настройках.
 pub fn live_move(name: &str, conf: &str, r: Rect, snap: bool, gui_screens: &str) -> (bool, String) {
     let io = crate::animations::SystemIo;
-    let ctx = Ctx::live();
+    // Через XWayland conky — в сеансе X11: экраны и места — как там.
+    let ctx = crate::conky_overlay::conky_ctx(&io, &Ctx::live());
     if let Some(why) = unavailable_reason(&ctx) {
         return (false, why);
     }
