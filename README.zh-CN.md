@@ -1,5 +1,7 @@
 [English](README.md) | [Русский](README.ru.md) | [Deutsch](README.de.md) | 简体中文 | [Français](README.fr.md) | [Español](README.es.md) | [Українська](README.uk.md)
 
+[![Release](https://img.shields.io/github/v/release/wehrwolfmann/rexon)](https://github.com/wehrwolfmann/rexon/releases/latest) [![CI](https://github.com/wehrwolfmann/rexon/actions/workflows/ci.yml/badge.svg)](https://github.com/wehrwolfmann/rexon/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/wehrwolfmann/rexon)](LICENSE)
+
 # Rexon
 
 Rexon 是一款免费的 Linux 桌面环境管理器。在同一个窗口里，它可以安装、切换和卸载桌面环境，并为它们应用主题、扩展和动态壁纸。
