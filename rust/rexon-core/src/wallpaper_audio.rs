@@ -986,7 +986,7 @@ mod tests {
     }
 
     #[test]
-    fn роль_потока_не_музыкальная() {
+    fn stream_role_not_music() {
         // Exactly the substitution this module was written for: a wallpaper with
         // the `music` role ends up in the shared volume restore slot with all
         // music players.
@@ -1008,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn умолчания_не_дают_обоям_перекрикивать_игру() {
+    fn defaults_keep_wallpaper_from_drowning_out_game() {
         let s = AudioSettings::default();
         assert!(s.enabled);
         assert_eq!(s.volume_pct, 50);
@@ -1022,7 +1022,7 @@ mod tests {
     }
 
     #[test]
-    fn полноэкранное_окно_ставит_на_паузу_и_гасит_звук() {
+    fn fullscreen_window_pauses_and_mutes() {
         let s = AudioSettings::default();
         let c = Conditions {
             any_window: true,
@@ -1038,7 +1038,7 @@ mod tests {
     }
 
     #[test]
-    fn развёрнутое_окно_только_глушит() {
+    fn maximized_window_only_mutes() {
         let s = AudioSettings::default();
         let c = Conditions {
             any_window: true,
@@ -1052,7 +1052,7 @@ mod tests {
     }
 
     #[test]
-    fn чужой_звук_глушит_обои() {
+    fn foreign_audio_mutes_wallpaper() {
         let s = AudioSettings::default();
         let c = Conditions {
             other_audio: true,
@@ -1068,7 +1068,7 @@ mod tests {
     }
 
     #[test]
-    fn строгое_действие_побеждает_мягкое() {
+    fn strict_action_beats_soft() {
         let s = AudioSettings {
             actions: AutoActions {
                 maximized: Action::Mute,
@@ -1087,7 +1087,7 @@ mod tests {
     }
 
     #[test]
-    fn выключенный_звук_не_включается_ничем() {
+    fn muted_audio_not_unmuted_by_anything() {
         let s = AudioSettings {
             enabled: false,
             ..AudioSettings::default()
@@ -1096,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn обе_стороны_читают_одни_значения() {
+    fn both_sides_read_same_values() {
         // A value set in our settings, laid out for the foreign engine and read
         // back, must match itself — otherwise "wallpaper volume" again means
         // different things in two places.
@@ -1122,7 +1122,7 @@ mod tests {
     }
 
     #[test]
-    fn мусор_в_настройках_не_оставляет_без_звука() {
+    fn garbage_in_settings_does_not_leave_silence() {
         let m = map(r#"{"wallpaper_audio_volume": 4000, "wallpaper_audio_enabled": "да"}"#);
         let s = AudioSettings::from_map(&m);
         assert_eq!(s.volume_pct, 100, "громкость зажимается, а не улетает");
@@ -1130,7 +1130,7 @@ mod tests {
     }
 
     #[test]
-    fn чужой_звук_узнаётся_по_выводу_pactl() {
+    fn foreign_audio_detected_from_pactl_output() {
         let ours = "\
 Sink Input #353
 \tMute: no
@@ -1158,7 +1158,7 @@ Sink Input #353
     }
 
     #[test]
-    fn поток_flash_обоев_узнаётся_своим() {
+    fn flash_wallpaper_stream_recognized_as_own() {
         // ⭐ Live measurement of 16.09.2026 (`pactl list sink-inputs`, the lines
         // below are copied verbatim). Flash goes to the sound system with an ALSA
         // client, and PipeWire's ALSA plugin labels the stream in its own words —
@@ -1192,7 +1192,7 @@ Sink Input #72
     }
 
     #[test]
-    fn состояние_окна_kwin_разбирается() {
+    fn kwin_window_state_parsed() {
         let maximized = "\
 caption: ~ — Konsole
 fullscreen: false
@@ -1242,16 +1242,16 @@ width: 1920
     }
 
     /// The `xdotool … --shell` answer for a 1280×800 full-screen window.
-    fn окно_во_весь_экран(id: i64) -> String {
+    fn fullscreen_window(id: i64) -> String {
         format!("WINDOW={id}\nX=0\nY=0\nWIDTH=1280\nHEIGHT=800\nSCREEN=0\n")
     }
 
     #[test]
-    fn окно_рабочего_стола_не_ставит_обои_на_паузу() {
+    fn desktop_window_does_not_pause_wallpaper() {
         // ⭐ Measurement of 16.09.2026 on an X11 test bench with a window manager:
         // THE WALLPAPER ITSELF was named the active window — a full-screen window of
         // type DESKTOP. Flash wallpapers gave 4 frames instead of 240 over the same run.
-        let g = окно_во_весь_экран(10485771);
+        let g = fullscreen_window(10485771);
         let desktop = "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP\n\
                        _NET_WM_PID(CARDINAL) = 2742555\n";
         assert_eq!(
@@ -1289,8 +1289,8 @@ width: 1920
     }
 
     #[test]
-    fn отсев_окон_рабочего_стола_защищён_от_дурака() {
-        let g = окно_во_весь_экран(10485771);
+    fn desktop_window_filter_is_foolproof() {
+        let g = fullscreen_window(10485771);
 
         // `xprop` is not installed or did not answer — the behavior is UNCHANGED: a
         // full-screen window counts as a full-screen window. Neither "always mute"
@@ -1310,9 +1310,9 @@ width: 1920
 
         // No `WINDOW=` in the answer — nothing to ask about, the unchanged behavior,
         // and no extra process is started.
-        let без_id = "X=0\nY=0\nWIDTH=1280\nHEIGHT=800\n";
+        let without_id = "X=0\nY=0\nWIDTH=1280\nHEIGHT=800\n";
         assert!(
-            x11_window_conditions(без_id, "1280x800", &[], |_| panic!(
+            x11_window_conditions(without_id, "1280x800", &[], |_| panic!(
                 "свойства спросили, хотя окно не назвали"
             ))
             .fullscreen
@@ -1327,8 +1327,8 @@ width: 1920
         );
 
         // A window SMALLER than the screen: there is a window, but it does not cover the wallpaper.
-        let маленькое = "WINDOW=7\nWIDTH=800\nHEIGHT=600\n";
-        let c = x11_window_conditions(маленькое, "1280x800", &[], |_| Some(String::new()));
+        let small_window = "WINDOW=7\nWIDTH=800\nHEIGHT=600\n";
+        let c = x11_window_conditions(small_window, "1280x800", &[], |_| Some(String::new()));
         assert!(c.any_window && c.focused && !c.maximized && !c.fullscreen);
 
         // The screen yardstick did not parse — as before, "not full-screen".
@@ -1338,7 +1338,7 @@ width: 1920
     }
 
     #[test]
-    fn своё_окно_обоев_не_считается_окном_поверх_обоев() {
+    fn own_wallpaper_window_not_counted_as_covering() {
         // KWin may not name the window type at all (no `type` in the answer) — then
         // the window's owner remains. The process drawing the wallpaper cannot cover
         // it for itself.
@@ -1361,7 +1361,7 @@ width: 1920
     }
 
     #[test]
-    fn галочка_разворачивается_в_таблицу_и_обратно() {
+    fn checkbox_expands_to_table_and_back() {
         let on = actions_for_hide_when_covered(true);
         assert!(hide_when_covered(&on));
         assert_eq!(on, AutoActions::default());
@@ -1373,7 +1373,7 @@ width: 1920
     }
 
     #[test]
-    fn умолчания_новых_условий_берегут_батарею_и_игру() {
+    fn new_condition_defaults_save_battery_and_game() {
         let a = AutoActions::default();
         assert_eq!(a.on_battery, Action::Pause, "от батареи — пауза");
         assert_eq!(a.gamemode, Action::Pause, "игра — пауза");
@@ -1387,7 +1387,7 @@ width: 1920
     /// Every new condition × every action: the decision is what the action
     /// promises, and only when the condition is met.
     #[test]
-    fn новые_условия_на_все_действия() {
+    fn new_conditions_for_all_actions() {
         type Set = fn(&mut AutoActions, Action);
         type Flag = fn(&mut Conditions);
         let rows: [(&str, Set, Flag); 3] = [
@@ -1421,7 +1421,7 @@ width: 1920
     }
 
     #[test]
-    fn батарея_и_игра_по_умолчанию_ставят_на_паузу() {
+    fn battery_and_game_pause_by_default() {
         let s = AudioSettings::default();
         for c in [
             Conditions { on_battery: true, ..Conditions::default() },
@@ -1437,7 +1437,7 @@ width: 1920
     }
 
     #[test]
-    fn галочки_разворачиваются_в_таблицу_и_обратно() {
+    fn checkboxes_expand_to_table_and_back() {
         for bits in 0..8u8 {
             let c = SimpleChoices {
                 hide_when_covered: bits & 1 != 0,
@@ -1459,7 +1459,7 @@ width: 1920
     }
 
     #[test]
-    fn новые_условия_доезжают_до_протокола_чужого_движка() {
+    fn new_conditions_reach_foreign_engine_protocol() {
         let s = AudioSettings {
             actions: AutoActions {
                 gamemode: Action::Stop,
@@ -1486,7 +1486,7 @@ width: 1920
     }
 
     #[test]
-    fn ответы_upower_и_gamemode_разбираются() {
+    fn upower_and_gamemode_replies_parsed() {
         // Copied verbatim from `busctl call … Properties.Get`.
         assert_eq!(parse_dbus_bool("v b false\n"), Some(false));
         assert_eq!(parse_dbus_bool("v b true\n"), Some(true));
@@ -1510,7 +1510,7 @@ width: 1920
     }
 
     #[test]
-    fn батарея_из_sys_и_gamescope() {
+    fn battery_from_sys_and_gamescope() {
         let st = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert!(sysfs_on_battery(&st(&["Discharging\n"])));
         assert!(!sysfs_on_battery(&st(&["Charging\n"])));
@@ -1523,7 +1523,7 @@ width: 1920
     }
 
     #[test]
-    fn сеанс_logind_разбирается() {
+    fn logind_session_parsed() {
         assert_eq!(parse_logind_session("Active=yes\nLockedHint=no\n"), (false, false));
         assert_eq!(parse_logind_session("Active=no\nLockedHint=no\n"), (true, false));
         assert_eq!(parse_logind_session("Active=yes\nLockedHint=yes\n"), (false, true));
@@ -1536,7 +1536,7 @@ width: 1920
     }
 
     #[test]
-    fn хранитель_экрана_разбирается() {
+    fn screensaver_parsed() {
         assert!(parse_screensaver_active("true\n"));
         assert!(!parse_screensaver_active("false\n"));
         assert!(!parse_screensaver_active(""));

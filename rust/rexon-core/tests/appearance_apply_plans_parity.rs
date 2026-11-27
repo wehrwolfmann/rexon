@@ -164,6 +164,9 @@ fn apply_plan(action: &ApplyAction, cat: &ThemeCategory, de: &str, theme: &str) 
         // A picture is set as the background by the common wallpaper executor — its plans per
         // desktop are guarded by `wallpaper_backend_parity.rs`.
         ApplyAction::WallpaperBackground => json!("wallpaper_exec::live_slot"),
+        // A native whole theme is not a catalog category (`categories::native_global_category`):
+        // its plan is checked by the module tests of `native_global`.
+        ApplyAction::NativeGlobal => json!("native_global::press_steps"),
         ApplyAction::DeSection => {
             let kind = categories::category_kind(&cat.key).unwrap_or("");
             let io = Machine::new();
@@ -477,6 +480,7 @@ fn press_plan_is_the_golden_plan() {
                         rexon_core::de_apply::press_plan(&Machine::new(), &de_ctx(de), categories::category_kind(&cat.key).unwrap_or(""), THEME)
                     }),
                     global: None,
+                    native: None,
                 };
                 let got = ai::press_plan_with(&action, THEME, &facts);
                 let steps = |plan: &th::Plan, de: &str| ai::PressPlan::Steps {

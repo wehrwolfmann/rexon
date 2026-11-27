@@ -859,7 +859,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn уровень_из_переменной() {
+    fn level_from_variable() {
         assert_eq!(parse_level(None), Level::Info);
         assert_eq!(parse_level(Some("")), Level::Info);
         assert_eq!(parse_level(Some("DEBUG")), Level::Debug);
@@ -879,13 +879,13 @@ mod tests {
     }
 
     #[test]
-    fn строка_с_временем_процессом_и_отступом() {
+    fn line_with_time_process_and_indent() {
         let line = format_line("2026-10-08 12:00:00.001", 42, Level::Warn, "restart", "раз\nдва\n");
         assert_eq!(line, "2026-10-08 12:00:00.001 [42] WARN  restart: раз\n    два\n");
     }
 
     #[test]
-    fn ротация_сдвигает_и_выбрасывает_самый_старый() {
+    fn rotation_shifts_and_drops_oldest() {
         let dir = std::env::temp_dir().join(format!("rexon-applog-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -902,7 +902,7 @@ mod tests {
     }
 
     #[test]
-    fn хвост_режется_по_строке() {
+    fn tail_cut_at_line() {
         let dir = std::env::temp_dir().join(format!("rexon-applog-tail-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -914,7 +914,7 @@ mod tests {
     }
 
     #[test]
-    fn строка_сигнала_завершения_как_у_журнала() {
+    fn termination_signal_line_like_log() {
         let mut buf = [0u8; 256];
         // 2026-11-15 13:05:09 local time.
         let secs = 1_763_211_909 + 365 * 86_400;
@@ -936,7 +936,7 @@ mod tests {
     /// installs the handler and receives SIGTERM. The line must land in the file,
     /// and the process must die from the same signal, as without the handler.
     #[test]
-    fn sigterm_оставляет_строку_и_убивает_как_раньше() {
+    fn sigterm_leaves_line_and_kills_as_before() {
         const CHILD: &str = "REXON_APPLOG_SIGTERM_CHILD";
         if let Ok(path) = std::env::var(CHILD) {
             init_at(PathBuf::from(path));
@@ -950,7 +950,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let log = dir.join("rexon.log");
         let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "applog::tests::sigterm_оставляет_строку_и_убивает_как_раньше", "--nocapture"])
+            .args(["--exact", "applog::tests::sigterm_leaves_line_and_kills_as_before", "--nocapture"])
             .env(CHILD, &log)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -964,7 +964,7 @@ mod tests {
     }
 
     #[test]
-    fn секреты_не_попадают_в_журнал() {
+    fn secrets_not_logged() {
         let argv: Vec<String> = ["pkexec", "/usr/lib/rexon-system-helper", "--password", "x1", "token=abc", "a b"]
             .iter()
             .map(|s| s.to_string())

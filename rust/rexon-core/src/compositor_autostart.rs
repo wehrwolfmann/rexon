@@ -1998,7 +1998,7 @@ pub fn is_environment_d_path(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn устаревший_путь_в_записи_автозапуска_меняется_на_нынешний() {
+    fn outdated_autostart_entry_path_replaced_with_current() {
         let old = "[Desktop Entry]\nType=Application\nNotShowIn=sway;labwc;\nName=Rexon\n\
                    Exec=/usr/local/bin/rexon --tray\nIcon=rexon\n";
         let have = |p: &str| p == "/usr/lib/rexon/rexon-main-window";

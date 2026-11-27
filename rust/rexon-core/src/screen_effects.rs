@@ -691,7 +691,7 @@ pub fn support(de: &str, wayland: bool) -> Support {
         "cinnamon-mint" => row(Screen, Some(Host::Cogl), false, true, "", N_CINNAMON),
         "hyprland" => row(Screen, Some(Host::Hyprland), false, true, "", N_HYPRLAND),
         "kde" => row(Windows, Some(Host::KWin), true, false, "", N_KDE),
-        "mate" | "xfce" | "lxqt" if !wayland => row(Windows, Some(Host::Picom), false, false, NEED_PICOM, N_PICOM),
+        "mate" | "xfce" | "lxqt" if !wayland => row(Windows, Some(Host::Picom), false, true, NEED_PICOM, N_PICOM),
         "mate" | "xfce" | "lxqt" => row(None, Option::None, false, false, "", N_NOT_WAYLAND),
         "wayfire" => row(Screen, Some(Host::Wayfire), false, false, NEED_WAYFIRE, N_WAYFIRE),
         "pantheon" => row(MonochromeOnly, Option::None, true, false, "", N_PANTHEON),
@@ -828,6 +828,7 @@ pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> EffectSettings {
         "hyprland" => read_hyprland(io, ctx),
         "gnome" | "cinnamon-mint" => read_gnome_cinnamon(io, ctx),
         "kde" | "pantheon" | "cosmic" => read_native_mono(io, ctx),
+        "mate" | "xfce" | "lxqt" if !ctx.wayland => read_picom(io, ctx),
         _ => EffectSettings::default(),
     }
 }
@@ -1413,6 +1414,7 @@ pub fn plan_settings(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Re
         "hyprland" => plan_hyprland(io, ctx, new),
         "gnome" | "cinnamon-mint" => plan_gnome_cinnamon(io, ctx, new),
         "kde" | "pantheon" | "cosmic" => plan_native_mono(io, ctx, new),
+        "mate" | "xfce" | "lxqt" if !ctx.wayland => plan_picom(io, ctx, new),
         _ => Err(support(&ctx.de, ctx.wayland).note),
     }
 }
@@ -1462,11 +1464,392 @@ fn plan_hyprland(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Result
 }
 
 // TRANSLATORS: Toast after screen effects were changed.
+// ── MATE, Xfce and LXQt on X11: through picom ───────────────────────────────
+//
+// The `Host::Picom` shader goes onto each window through picom's
+// `--window-shader-fg`. picom is a compositor itself, so it REPLACES the
+// desktop's built-in one (marco in MATE, xfwm4 in Xfce; LXQt has none of its
+// own): two compositors cannot run at once. The contract:
+// * our shader file [`picom_shader_path`] and our state file
+//   [`picom_state_path`] (preset, strength, speed, whether it is on, and what
+//   the built-in compositor was set to before Rexon turned it off);
+// * our autostart record [`picom_autostart_path`] brings picom back at the
+//   next login; turning off hides it (`Hidden=true`, per the XDG autostart
+//   spec), it is not deleted;
+// * our picom is told apart by its command line — our own shader path after
+//   `--window-shader-fg` ([`is_our_picom`]), never by the program name:
+//   somebody's own picom with their own settings is never stopped, and
+//   Rexon refuses instead of fighting it ([`MSG_PICOM_FOREIGN`]);
+// * foolproofing: "Off" (and the 15 s trial rollback) stops OUR picom and
+//   returns the built-in compositor exactly as it was; if picom does not
+//   come up after the switch, the built-in compositor is returned at once,
+//   so the desktop is never left without one by our hand.
+// Only the RUNNING session is touched live ([`LookIo::session_desktop`]):
+// with another desktop chosen in "Current desktop" the files and keys are
+// prepared for its next login, and nothing is started on the screen.
+
+/// The section goes through picom here (the program itself may still be missing).
+fn uses_picom(ctx: &LookCtx) -> bool {
+    support(&ctx.de, ctx.wayland).host == Some(Host::Picom)
+}
+
+/// picom shader file (absolute path — picom reads it itself).
+pub fn picom_shader_path(ctx: &LookCtx) -> String {
+    ctx.cfg("rexon/screen-effects/picom.frag")
+}
+
+/// Our state file for the picom path.
+pub fn picom_state_path(ctx: &LookCtx) -> String {
+    ctx.cfg("rexon/screen-effects/picom.state")
+}
+
+/// Our XDG autostart record that starts picom with the effect at login.
+pub fn picom_autostart_path(ctx: &LookCtx) -> String {
+    ctx.cfg("autostart/rexon-screen-effects.desktop")
+}
+
+/// The program that has to be installed for the effect: `Some("picom")` on
+/// the picom path when it is not in PATH, otherwise `None`.
+pub fn missing_program(io: &dyn LookIo, ctx: &LookCtx) -> Option<&'static str> {
+    let host = support(&ctx.de, ctx.wayland).host;
+    (host == Some(Host::Picom) && !io.have(PICOM)).then_some(PICOM)
+}
+
+const PICOM: &str = "picom";
+
+/// The packages Rexon installs by itself for the missing program on a system
+/// of package family `family` (`None` — Rexon cannot install system packages
+/// here: SteamOS, immutable systems). Empty — nothing to install, or no
+/// package is known.
+pub fn install_packages(io: &dyn LookIo, ctx: &LookCtx, family: Option<&str>) -> Vec<String> {
+    let (Some(program), Some(family)) = (missing_program(io, ctx), family) else {
+        return Vec::new();
+    };
+    let pkg = crate::utils::tool_package_name(program, family);
+    // A name with a label («… (from the AUR)») is not a repository package.
+    if pkg.is_empty() || pkg.contains(' ') {
+        return Vec::new();
+    }
+    vec![pkg]
+}
+
+/// The built-in compositor of a desktop that picom replaces: how to read its
+/// switch and how to set it (`true`/`false`). LXQt has none of its own.
+fn builtin_compositor(de: &str) -> Option<(Vec<String>, fn(&str) -> LookStep)> {
+    match de {
+        "mate" => Some((
+            argv(&["gsettings", "get", "org.mate.Marco.general", "compositing-manager"]),
+            |v| gsettings_set("org.mate.Marco.general", "compositing-manager", v),
+        )),
+        "xfce" => Some((
+            argv(&["xfconf-query", "-c", "xfwm4", "-p", "/general/use_compositing"]),
+            |v| crate::animations::xfconf_set("xfwm4", "/general/use_compositing", "bool", v),
+        )),
+        _ => None,
+    }
+}
+
+/// The built-in compositor switch right now: `Some(true|false)`, `None` —
+/// no such switch or it could not be read.
+fn builtin_compositor_on(io: &dyn LookIo, de: &str) -> Option<bool> {
+    let (get, _) = builtin_compositor(de)?;
+    if !io.have(&get[0]) {
+        return None;
+    }
+    let (ok, out) = io.run(&get);
+    if !ok {
+        return None;
+    }
+    match crate::animations::clean_gvariant(&out).as_str() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// picom's command line for our shader. `--config /dev/null`: picom's stock
+/// config turns on shadows and fading, which would change the look of the
+/// whole desktop; only the effect is wanted.
+pub fn picom_argv(ctx: &LookCtx) -> Vec<String> {
+    argv(&["picom", "--config", "/dev/null", "--backend", "glx", "--vsync", "--window-shader-fg", &picom_shader_path(ctx)])
+}
+
+/// Our autostart record: on — picom with the shader at login, off — hidden.
+pub fn picom_autostart_content(ctx: &LookCtx, on: bool) -> String {
+    let exec: Vec<String> = picom_argv(ctx).iter().map(|a| crate::installer::desktop_exec_arg(a)).collect();
+    format!(
+        "[Desktop Entry]\nType=Application\nName=Rexon screen effects\nComment=picom with the screen effect chosen in Rexon\n\
+         Exec={}\nNoDisplay=true\nOnlyShowIn=MATE;XFCE;LXQt;\nX-GNOME-Autostart-enabled={}\nHidden={}\n",
+        exec.join(" "),
+        on,
+        !on
+    )
+}
+
+/// Whether a `/proc/<pid>/cmdline` (NUL-separated) is OUR picom: the
+/// program is picom and the shader after `--window-shader-fg` is ours.
+pub fn is_our_picom(cmdline: &str, shader_path: &str) -> bool {
+    let args: Vec<&str> = cmdline.split('\0').filter(|a| !a.is_empty()).collect();
+    is_picom(&args) && args.windows(2).any(|w| w[0] == "--window-shader-fg" && w[1] == shader_path)
+}
+
+fn is_picom(args: &[&str]) -> bool {
+    args.first().is_some_and(|a| a.rsplit('/').next() == Some(PICOM))
+}
+
+/// Running picom processes: (pid, ours).
+fn picom_processes(io: &dyn LookIo, ctx: &LookCtx) -> Vec<(String, bool)> {
+    let shader = picom_shader_path(ctx);
+    io.list_dir("/proc")
+        .into_iter()
+        .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        .filter_map(|pid| {
+            let cmd = io.read(&format!("/proc/{pid}/cmdline"))?;
+            let args: Vec<&str> = cmd.split('\0').filter(|a| !a.is_empty()).collect();
+            is_picom(&args).then(|| {
+                let ours = is_our_picom(&cmd, &shader);
+                (pid, ours)
+            })
+        })
+        .collect()
+}
+
+fn picom_state_content(preset: Option<Preset>, params: EffectParams, builtin: Option<bool>) -> String {
+    let p = params.clamped();
+    let mut state = BTreeMap::new();
+    state.insert("preset".to_string(), preset.map(|p| p.id()).unwrap_or("").to_string());
+    state.insert("strength".to_string(), fmt_num(p.strength));
+    state.insert("speed".to_string(), fmt_num(p.speed));
+    state.insert("on".to_string(), if preset.is_some() { "1" } else { "0" }.to_string());
+    state.insert("builtin".to_string(), match builtin {
+        Some(true) => "on",
+        Some(false) => "off",
+        None => "",
+    }.to_string());
+    let mut out = state_line("#", &state);
+    out.push_str("# Rexon: screen effects through picom. This file is rewritten by Rexon.\n");
+    out
+}
+
+fn read_picom(io: &dyn LookIo, ctx: &LookCtx) -> EffectSettings {
+    let Some(text) = io.read(&picom_state_path(ctx)) else {
+        return EffectSettings::default();
+    };
+    let state = parse_state_line(&text);
+    let params = params_from_state(&state);
+    let on = state.get("on").is_some_and(|v| v == "1");
+    let preset = if on { state.get("preset").and_then(|id| Preset::from_id(id)) } else { None };
+    EffectSettings { preset, params }
+}
+
+/// What the built-in compositor was before Rexon turned it off (from our
+/// state file): `Some(true|false)`, `None` — not recorded.
+fn recorded_builtin(io: &dyn LookIo, ctx: &LookCtx) -> Option<bool> {
+    let text = io.read(&picom_state_path(ctx))?;
+    match parse_state_line(&text).get("builtin").map(String::as_str) {
+        Some("on") => Some(true),
+        Some("off") => Some(false),
+        _ => None,
+    }
+}
+
+// TRANSLATORS: Screen effects on MATE/Xfce/LXQt: the person runs picom with their own settings. picom is a program name.
+const MSG_PICOM_FOREIGN: &str = n_(
+    "picom is already running with your own settings. Rexon won't replace it; close that picom first if you want Rexon's screen effects.",
+);
+// TRANSLATORS: Screen effects on MATE/Xfce/LXQt: picom exited right after start. picom is a program name.
+const MSG_PICOM_FAILED: &str = n_("picom couldn't start, so the desktop's own compositor was turned back on and the screen was left as it was.");
+// TRANSLATORS: Screen effects prepared for a desktop chosen in "Current desktop" that is not running now.
+const MSG_NEXT_LOGIN: &str = n_("Done. The effect will show the next time you log in to this desktop.");
+
+/// The file and key part of the picom path. `builtin_before` — what the
+/// built-in compositor is set to now (it is remembered on the first
+/// enabling, so "Off" can return it).
+fn plan_picom(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Result<Vec<LookStep>, String> {
+    if ctx.wayland {
+        return Err(support(&ctx.de, ctx.wayland).note);
+    }
+    let cur = read_picom(io, ctx);
+    let recorded = recorded_builtin(io, ctx);
+    let mut steps = Vec::new();
+    match new.preset {
+        Some(preset) => {
+            // Remember the built-in compositor only while ours is not in charge:
+            // after our first enabling the switch already says «off».
+            let builtin = if cur.preset.is_some() { recorded } else { builtin_compositor_on(io, &ctx.de) };
+            let shader = generate(Host::Picom, preset, new.params);
+            steps.push(LookStep::WriteFile { path: picom_shader_path(ctx), content: shader.source });
+            steps.push(LookStep::WriteFile {
+                path: picom_state_path(ctx),
+                content: picom_state_content(Some(preset), new.params, builtin),
+            });
+            steps.push(LookStep::WriteFile { path: picom_autostart_path(ctx), content: picom_autostart_content(ctx, true) });
+            if let Some((_, set)) = builtin_compositor(&ctx.de) {
+                if builtin.unwrap_or(true) {
+                    steps.push(set("false"));
+                }
+            }
+        }
+        None => {
+            if cur.preset.is_none() && io.read(&picom_state_path(ctx)).is_none() {
+                return Ok(Vec::new());
+            }
+            steps.push(LookStep::WriteFile { path: picom_state_path(ctx), content: picom_state_content(None, new.params, None) });
+            if io.read(&picom_autostart_path(ctx)).is_some() {
+                steps.push(LookStep::WriteFile { path: picom_autostart_path(ctx), content: picom_autostart_content(ctx, false) });
+            }
+        }
+    }
+    Ok(steps)
+}
+
+/// The steps that give the built-in compositor back as it was before Rexon
+/// (nothing recorded — it is left alone).
+fn builtin_restore_steps(de: &str, recorded: Option<bool>) -> Vec<LookStep> {
+    match (builtin_compositor(de), recorded) {
+        (Some((_, set)), Some(true)) => vec![set("true")],
+        _ => Vec::new(),
+    }
+}
+
+/// Stop OUR picom processes (never somebody else's).
+fn stop_our_picom(io: &dyn LookIo, ctx: &LookCtx) {
+    for (pid, ours) in picom_processes(io, ctx) {
+        if ours {
+            let _ = io.run(&argv(&["kill", &pid]));
+        }
+    }
+}
+
+fn our_picom_running(io: &dyn LookIo, ctx: &LookCtx) -> bool {
+    picom_processes(io, ctx).iter().any(|(_, ours)| *ours)
+}
+
+/// The picom path of «Apply» / «Off» with the live part: stop our picom,
+/// start it with the new shader and check that it stayed up.
+///
+/// ⚠️ Waits (up to about 2 s): call ONLY from a worker thread.
+fn apply_picom(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings, sleep: &dyn Fn(std::time::Duration)) -> ApplyOutcome {
+    let fail = |text: String| ApplyOutcome { text, changed: false, shown: false };
+    let live = io.session_desktop().as_deref() == Some(ctx.de.as_str());
+    if new.preset.is_some() && live && picom_processes(io, ctx).iter().any(|(_, ours)| !ours) {
+        return fail(tr(MSG_PICOM_FOREIGN));
+    }
+    let recorded_before = recorded_builtin(io, ctx);
+    let steps = match plan_picom(io, ctx, new) {
+        Ok(s) => s,
+        Err(e) => return fail(e),
+    };
+    if steps.is_empty() && !(live && new.preset.is_some() && !our_picom_running(io, ctx)) {
+        return ApplyOutcome { text: String::new(), changed: false, shown: new.preset.is_some() };
+    }
+    // The built-in compositor is switched off only after the files are in
+    // place; turning off goes the other way: first our picom stops, then the
+    // built-in compositor comes back.
+    if new.preset.is_none() {
+        if live {
+            stop_our_picom(io, ctx);
+            sleep(PICOM_SETTLE);
+        }
+        let mut all = steps;
+        all.extend(builtin_restore_steps(&ctx.de, recorded_before));
+        return match run_steps(io, ctx, &all) {
+            Ok(()) => ApplyOutcome { text: tr(MSG_APPLIED), changed: true, shown: false },
+            Err(e) => fail(e),
+        };
+    }
+    if let Err(e) = run_steps(io, ctx, &steps) {
+        return fail(e);
+    }
+    if !live {
+        return ApplyOutcome { text: tr(MSG_NEXT_LOGIN), changed: true, shown: false };
+    }
+    // picom reads the shader only at start: restart ours.
+    stop_our_picom(io, ctx);
+    sleep(PICOM_SETTLE);
+    let mut up = false;
+    // Two tries: the built-in compositor may let go of the screen a moment
+    // after its switch, and picom refuses while it still holds it.
+    for _ in 0..2 {
+        if !io.spawn(&picom_argv(ctx)) {
+            break;
+        }
+        sleep(PICOM_SETTLE);
+        sleep(PICOM_SETTLE);
+        if our_picom_running(io, ctx) {
+            up = true;
+            break;
+        }
+    }
+    if up {
+        return ApplyOutcome { text: tr(MSG_APPLIED), changed: true, shown: true };
+    }
+    // Foolproofing: never leave the desktop without a compositor.
+    crate::log_info!("screen-effects", "picom did not start; returning the built-in compositor");
+    let recorded = recorded_builtin(io, ctx);
+    let mut back = vec![
+        LookStep::WriteFile { path: picom_state_path(ctx), content: picom_state_content(None, new.params, None) },
+        LookStep::WriteFile { path: picom_autostart_path(ctx), content: picom_autostart_content(ctx, false) },
+    ];
+    back.extend(builtin_restore_steps(&ctx.de, recorded));
+    let _ = run_steps(io, ctx, &back);
+    ApplyOutcome { text: tr(MSG_PICOM_FAILED), changed: true, shown: false }
+}
+
+/// The pause between stopping/starting picom and looking at it.
+pub const PICOM_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Install the missing program (`packages`, [`install_packages`]) the same
+/// way as all of Rexon's package installs — pkexec + `rexon-pkg-helper`,
+/// official repositories only, no «Yes/No» question (the protection is the
+/// password window) — and then apply. `install` does the installing (in
+/// the window — [`live_install`]).
+///
+/// ⚠️ Blocks for the whole installation: call ONLY from a worker thread.
+pub fn install_then_apply(
+    io: &dyn LookIo,
+    ctx: &LookCtx,
+    new: &EffectSettings,
+    packages: &[String],
+    install: &dyn Fn(&[String]) -> Result<(), String>,
+    sleep: &dyn Fn(std::time::Duration),
+) -> ApplyOutcome {
+    if let Some(program) = missing_program(io, ctx) {
+        if packages.is_empty() {
+            // TRANSLATORS: %1 is a program name, e.g. picom.
+            return ApplyOutcome { text: trf("Rexon can't install %1 on this system by itself.", &[&program]), changed: false, shown: false };
+        }
+        if let Err(e) = install(packages) {
+            return ApplyOutcome { text: e, changed: false, shown: false };
+        }
+        if missing_program(io, ctx).is_some() {
+            // TRANSLATORS: %1 is a program name, e.g. picom.
+            return ApplyOutcome { text: trf("%1 was installed, but Rexon still can't find it.", &[&program]), changed: false, shown: false };
+        }
+    }
+    apply_confirmed(io, ctx, new, sleep)
+}
+
+/// [`install_then_apply`]'s installer on THIS machine.
+pub fn live_install(packages: &[String]) -> Result<(), String> {
+    crate::conky_safety::install_packages_live(packages)
+}
+
+/// THIS machine's package family when Rexon can install system packages on
+/// it, otherwise `None` (for [`install_packages`]).
+pub fn live_install_family() -> Option<String> {
+    let (family, installable) = crate::conky_safety::live_family();
+    installable.then_some(family)
+}
+
 const MSG_APPLIED: &str = n_("Screen effects applied.");
 
 /// Apply: a ready phrase for the popup message (empty — there was nothing
 /// to change).
 pub fn apply(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> String {
+    if uses_picom(ctx) {
+        return apply_picom(io, ctx, new, &|_| {}).text;
+    }
     let steps = match plan_settings(io, ctx, new) {
         Ok(s) => s,
         Err(e) => return e,
@@ -1517,6 +1900,13 @@ pub struct ScreenEffectsState {
     pub note: String,
     /// What needs to be installed (empty — nothing).
     pub needs: String,
+    /// The program that is missing for «Apply» (`"picom"`; empty — nothing is
+    /// missing). While it is missing there is no «Apply»: the section offers
+    /// «Install … and apply» when [`ScreenEffectsState::install`] is not empty.
+    pub missing: String,
+    /// The packages Rexon installs by itself for [`ScreenEffectsState::missing`]
+    /// (empty — it can't here, and `needs` says what is needed).
+    pub install: Vec<String>,
     /// The effect will land on each window: preview without curvature and vignette.
     pub per_window: bool,
     /// Moving effects come alive here (otherwise they freeze).
@@ -1530,20 +1920,32 @@ pub struct ScreenEffectsState {
 }
 
 /// Section snapshot: the environment's support table and what is enabled now.
+/// Rexon installs nothing here ([`read_state_for`] with no package family).
 pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> ScreenEffectsState {
+    read_state_for(io, ctx, None)
+}
+
+/// [`read_state`] on a system of package family `family` where Rexon can
+/// install packages (`None` — it can't): a missing program comes with the
+/// packages to install.
+pub fn read_state_for(io: &dyn LookIo, ctx: &LookCtx, family: Option<&str>) -> ScreenEffectsState {
     let sup = support(&ctx.de, ctx.wayland);
+    let missing = missing_program(io, ctx).unwrap_or_default().to_string();
     let cur = read_settings(io, ctx);
     let p = cur.params.clamped();
     let mono_only = native_mono_only(&ctx.de, ctx.wayland);
     ScreenEffectsState {
         de: ctx.de.clone(),
         coverage: sup.coverage,
-        can_apply: sup.ready || mono_only,
+        can_apply: (sup.ready && missing.is_empty()) || mono_only,
         monochrome_only: mono_only,
         has_strength: ctx.de != "cosmic",
         trial: sup.ready,
         note: sup.note,
-        needs: sup.needs,
+        // Everything is in place — nothing to say about what is needed.
+        needs: if sup.ready && missing.is_empty() { String::new() } else { sup.needs },
+        install: install_packages(io, ctx, family),
+        missing,
         per_window: sup.host.is_some_and(Host::per_window),
         moving: sup.animated,
         preset: cur.preset.map(|p| p.id().to_string()).unwrap_or_default(),
@@ -1594,6 +1996,9 @@ const MSG_SHELL_EFFECT_FAILED: &str = n_("The desktop couldn't show this effect 
 /// ⚠️ Waits up to [`CONFIRM_WAIT`]: call ONLY from a worker thread, not from
 /// the main one (window hang 15.11.2026).
 pub fn apply_confirmed(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings, sleep: &dyn Fn(std::time::Duration)) -> ApplyOutcome {
+    if uses_picom(ctx) {
+        return apply_picom(io, ctx, new, sleep);
+    }
     let fail = |text: String| ApplyOutcome { text, changed: false, shown: false };
     let steps = match plan_settings(io, ctx, new) {
         Ok(s) => s,
@@ -1952,9 +2357,10 @@ mod tests {
         // Time exists only where the host provides it.
         assert!(support("hyprland", true).animated && support("gnome", true).animated);
         assert!(!support("kde", true).animated && !support("wayfire", true).animated);
-        // Applied: GNOME and Cinnamon (our own extensions), Hyprland.
+        // Applied: GNOME and Cinnamon (our own extensions), Hyprland, and
+        // MATE/Xfce/LXQt on X11 through picom.
         let ready: Vec<_> = support_table().into_iter().filter(|s| s.ready).map(|s| s.de).collect();
-        assert_eq!(ready, vec!["gnome".to_string(), "cinnamon-mint".to_string(), "hyprland".to_string()]);
+        assert_eq!(ready, ["gnome", "cinnamon-mint", "hyprland", "mate", "xfce", "lxqt"].map(String::from).to_vec());
         for s in support_table() {
             assert!(!s.note.is_empty(), "{}", s.de);
             // On per-window methods curvature is off — and the explanation says so.
@@ -2778,5 +3184,245 @@ mod native_mono_tests {
         apply(&io, &c, &EffectSettings::default());
         assert_eq!(io.read(&path).unwrap(), "(\n    inverted: true,\n)");
         assert_eq!(read_settings(&io, &c).preset, None);
+    }
+}
+
+#[cfg(test)]
+mod picom_tests {
+    //! MATE, Xfce, LXQt on X11: picom in place of the built-in compositor,
+    //! the «Install picom and apply» button, and the way back.
+    use super::*;
+    use std::cell::{Cell, RefCell};
+    use std::collections::BTreeMap;
+
+    /// A fake machine with a process table: `spawn` adds a process, `kill`
+    /// removes it; the built-in compositor switch answers `builtin`.
+    struct PicomIo {
+        files: RefCell<BTreeMap<String, String>>,
+        ran: RefCell<Vec<Vec<String>>>,
+        procs: RefCell<BTreeMap<String, String>>,
+        have_picom: Cell<bool>,
+        session: Option<String>,
+        spawn_stays_up: bool,
+        builtin: RefCell<String>,
+    }
+
+    impl PicomIo {
+        fn new(session: &str) -> Self {
+            PicomIo {
+                files: RefCell::default(),
+                ran: RefCell::default(),
+                procs: RefCell::default(),
+                have_picom: Cell::new(true),
+                session: Some(session.to_string()),
+                spawn_stays_up: true,
+                builtin: RefCell::new("true".into()),
+            }
+        }
+        fn ran_with(&self, words: &[&str]) -> bool {
+            self.ran.borrow().iter().any(|a| words.iter().all(|w| a.iter().any(|x| x == w)))
+        }
+    }
+
+    impl LookIo for PicomIo {
+        fn run(&self, a: &[String]) -> (bool, String) {
+            self.ran.borrow_mut().push(a.to_vec());
+            match a.first().map(String::as_str) {
+                Some("gsettings") if a.get(1).map(String::as_str) == Some("get") => (true, self.builtin.borrow().clone()),
+                Some("gsettings") if a.get(1).map(String::as_str) == Some("set") => {
+                    *self.builtin.borrow_mut() = a[4].clone();
+                    (true, String::new())
+                }
+                Some("kill") => {
+                    self.procs.borrow_mut().remove(&a[1]);
+                    (true, String::new())
+                }
+                _ => (true, String::new()),
+            }
+        }
+        fn have(&self, tool: &str) -> bool {
+            tool != "picom" || self.have_picom.get()
+        }
+        fn read(&self, p: &str) -> Option<String> {
+            if let Some(pid) = p.strip_prefix("/proc/").and_then(|r| r.strip_suffix("/cmdline")) {
+                return self.procs.borrow().get(pid).cloned();
+            }
+            self.files.borrow().get(p).cloned()
+        }
+        fn write(&self, p: &str, t: &str) -> bool {
+            self.files.borrow_mut().insert(p.into(), t.into());
+            true
+        }
+        fn list_dir(&self, p: &str) -> Vec<String> {
+            if p == "/proc" {
+                let mut v: Vec<String> = self.procs.borrow().keys().cloned().collect();
+                v.push("self".into());
+                return v;
+            }
+            Vec::new()
+        }
+        fn spawn(&self, argv: &[String]) -> bool {
+            if self.spawn_stays_up {
+                let pid = (4242 + self.procs.borrow().len()).to_string();
+                self.procs.borrow_mut().insert(pid, argv.join("\0") + "\0");
+            }
+            true
+        }
+        fn session_desktop(&self) -> Option<String> {
+            self.session.clone()
+        }
+    }
+
+    fn mate() -> LookCtx {
+        LookCtx::new("mate", "/h", Some("/h/.config"))
+    }
+
+    fn crt() -> EffectSettings {
+        EffectSettings { preset: Some(Preset::Crt), params: EffectParams { strength: 0.5, speed: 1.0 } }
+    }
+
+    #[test]
+    fn missing_picom_offers_install_instead_of_hidden_apply() {
+        crate::i18n::set_language(Some("en"));
+        let io = PicomIo::new("mate");
+        io.have_picom.set(false);
+        let st = read_state_for(&io, &mate(), Some("arch"));
+        assert!(!st.can_apply);
+        assert_eq!(st.missing, "picom");
+        assert_eq!(st.install, vec!["picom".to_string()]);
+        assert!(!st.needs.is_empty());
+        // Rexon can't install here (SteamOS, immutable): no button, the need is said.
+        let st = read_state(&io, &mate());
+        assert!(!st.can_apply && st.install.is_empty() && !st.needs.is_empty());
+        // picom is there: a plain «Apply», nothing «needed».
+        io.have_picom.set(true);
+        let st = read_state_for(&io, &mate(), Some("arch"));
+        assert!(st.can_apply && st.missing.is_empty() && st.install.is_empty() && st.needs.is_empty());
+        assert!(st.trial && st.per_window);
+        // Wayfire: the plugin comes from the AUR and Rexon can't apply there —
+        // no install button, the need is said.
+        let mut wf = LookCtx::new("wayfire", "/h", None);
+        wf.wayland = true;
+        let st = read_state_for(&io, &wf, Some("arch"));
+        assert!(!st.can_apply && st.install.is_empty() && !st.needs.is_empty());
+    }
+
+    #[test]
+    fn picom_on_replaces_builtin_compositor_and_off_restores_it() {
+        crate::i18n::set_language(Some("en"));
+        let io = PicomIo::new("mate");
+        let c = mate();
+        let out = apply_confirmed(&io, &c, &crt(), &|_| {});
+        assert!(out.changed && out.shown, "{out:?}");
+        assert_eq!(*io.builtin.borrow(), "false", "marco's compositor is off");
+        assert!(io.read(&picom_shader_path(&c)).unwrap().contains("window_shader"));
+        let auto = io.read(&picom_autostart_path(&c)).unwrap();
+        assert!(auto.contains("Hidden=false") && auto.contains("--window-shader-fg"), "{auto}");
+        assert!(our_picom_running(&io, &c));
+        assert_eq!(read_settings(&io, &c).preset, Some(Preset::Crt));
+        // Another preset: our picom is restarted, the remembered switch stays «on».
+        let out = apply_confirmed(&io, &c, &EffectSettings { preset: Some(Preset::Vhs), ..crt() }, &|_| {});
+        assert!(out.shown);
+        assert_eq!(io.procs.borrow().len(), 1, "one picom, not two");
+        assert_eq!(recorded_builtin(&io, &c), Some(true));
+        // Off: our picom stops, marco's compositor comes back, autostart is hidden.
+        let out = apply_confirmed(&io, &c, &EffectSettings::default(), &|_| {});
+        assert!(out.changed && !out.shown);
+        assert!(io.procs.borrow().is_empty());
+        assert_eq!(*io.builtin.borrow(), "true");
+        assert!(io.read(&picom_autostart_path(&c)).unwrap().contains("Hidden=true"));
+        assert_eq!(read_settings(&io, &c).preset, None);
+    }
+
+    #[test]
+    fn compositor_left_off_by_the_person_stays_off() {
+        crate::i18n::set_language(Some("en"));
+        let io = PicomIo::new("mate");
+        *io.builtin.borrow_mut() = "false".into();
+        let c = mate();
+        apply_confirmed(&io, &c, &crt(), &|_| {});
+        apply_confirmed(&io, &c, &EffectSettings::default(), &|_| {});
+        assert_eq!(*io.builtin.borrow(), "false");
+        assert!(!io.ran_with(&["gsettings", "set", "true"]));
+    }
+
+    #[test]
+    fn someone_elses_picom_is_never_stopped() {
+        crate::i18n::set_language(Some("en"));
+        let io = PicomIo::new("mate");
+        io.procs.borrow_mut().insert("77".into(), "picom\0--config\0/home/x/my.conf\0".into());
+        let c = mate();
+        let out = apply_confirmed(&io, &c, &crt(), &|_| {});
+        assert_eq!(out.text, tr(MSG_PICOM_FOREIGN));
+        assert!(!out.changed && !io.ran_with(&["kill"]));
+        assert_eq!(*io.builtin.borrow(), "true", "nothing switched");
+        assert!(is_our_picom(&format!("/usr/bin/picom\0--window-shader-fg\0{}\0", picom_shader_path(&c)), &picom_shader_path(&c)));
+        assert!(!is_our_picom("picom\0--window-shader-fg\0/other.frag\0", &picom_shader_path(&c)));
+        assert!(!is_our_picom(&format!("vim\0--window-shader-fg\0{}\0", picom_shader_path(&c)), &picom_shader_path(&c)));
+    }
+
+    /// Foolproofing: picom did not come up — the desktop gets its own
+    /// compositor back at once, and nothing is left to start at login.
+    #[test]
+    fn failed_picom_start_returns_builtin_compositor() {
+        crate::i18n::set_language(Some("en"));
+        let mut io = PicomIo::new("mate");
+        io.spawn_stays_up = false;
+        let c = mate();
+        let out = apply_confirmed(&io, &c, &crt(), &|_| {});
+        assert_eq!(out.text, tr(MSG_PICOM_FAILED));
+        assert!(!out.shown);
+        assert_eq!(*io.builtin.borrow(), "true");
+        assert!(io.read(&picom_autostart_path(&c)).unwrap().contains("Hidden=true"));
+        assert_eq!(read_settings(&io, &c).preset, None);
+    }
+
+    /// Another desktop chosen in «Current desktop»: prepared for its next
+    /// login, nothing started on this screen.
+    #[test]
+    fn chosen_desktop_not_running_is_prepared_for_next_login() {
+        crate::i18n::set_language(Some("en"));
+        let io = PicomIo::new("kde");
+        let c = mate();
+        let out = apply_confirmed(&io, &c, &crt(), &|_| {});
+        assert_eq!(out.text, tr(MSG_NEXT_LOGIN));
+        assert!(io.procs.borrow().is_empty());
+        assert!(io.read(&picom_autostart_path(&c)).unwrap().contains("Hidden=false"));
+    }
+
+    #[test]
+    fn xfce_switches_xfwm_compositing() {
+        crate::i18n::set_language(Some("en"));
+        let io = PicomIo::new("xfce");
+        let c = LookCtx::new("xfce", "/h", Some("/h/.config"));
+        apply_confirmed(&io, &c, &crt(), &|_| {});
+        assert!(io.ran_with(&["xfconf-query", "/general/use_compositing", "false"]));
+    }
+
+    #[test]
+    fn install_then_apply_installs_first_and_reports_failures() {
+        crate::i18n::set_language(Some("en"));
+        let io = PicomIo::new("mate");
+        io.have_picom.set(false);
+        let c = mate();
+        let asked = RefCell::new(Vec::<String>::new());
+        let ok = |p: &[String]| {
+            asked.borrow_mut().extend(p.iter().cloned());
+            io.have_picom.set(true);
+            Ok(())
+        };
+        let out = install_then_apply(&io, &c, &crt(), &["picom".to_string()], &ok, &|_| {});
+        assert_eq!(*asked.borrow(), vec!["picom".to_string()]);
+        assert!(out.shown, "{out:?}");
+        // The installation failed: nothing is switched, the reason is told.
+        let io = PicomIo::new("mate");
+        io.have_picom.set(false);
+        let bad = |_: &[String]| Err("password not accepted".to_string());
+        let out = install_then_apply(&io, &c, &crt(), &["picom".to_string()], &bad, &|_| {});
+        assert_eq!(out.text, "password not accepted");
+        assert_eq!(*io.builtin.borrow(), "true");
+        // Nothing Rexon could install here.
+        let out = install_then_apply(&io, &c, &crt(), &[], &bad, &|_| {});
+        assert!(out.text.contains("picom") && !out.changed);
     }
 }

@@ -17,7 +17,7 @@
 //! wallpapers), shells, widget programs, Conky, MATE layout parts, theme
 //! icons and cursors, «Distro Looks» looks: everything listed by
 //! [`plan::pkg_helper_install_allowlist`] (check
-//! `таблицы_сеанса_совпадают_с_белым_списком_помощника_пакетов`),
+//! `session_tables_match_package_helper_allowlist`),
 //! and the rebuild recipe ([`repo_rebuild::build_requirements`]). The
 //! permanent removal list is [`plan::PKG_HELPER_VITAL`], the package name is
 //! [`plan::is_safe_pkg_arg`], the dependency closure is
@@ -1286,7 +1286,7 @@ mod tests {
     // ── Z1 ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn з1_флаги_и_оболочка_отказ() {
+    fn g1_flags_and_shell_refused() {
         for bad in [
             "-oX", "--config=/tmp/evil.conf", "--root=/", "-", "-dd", "a b", "a;b", "a|b",
             "$(id)", "`id`", "a\nb", "a\0b", "a&b", "x>y", "~", "",
@@ -1308,7 +1308,7 @@ mod tests {
     // ── Z2: names ───────────────────────────────────────────────────────
 
     #[test]
-    fn з2_путь_вместо_имени_отказ() {
+    fn g2_path_instead_of_name_refused() {
         let arch = PkgFamily::Arch;
         for bad in ["/tmp/x.deb", "x.deb", "../x", "./x", "a/b", "x.pkg.tar.zst", ".hidden", "@world"] {
             assert!(check_package_name(arch, bad).is_err(), "{bad} passed");
@@ -1330,7 +1330,7 @@ mod tests {
     }
 
     #[test]
-    fn з2_имена_тем_и_столов() {
+    fn g2_theme_and_desktop_names() {
         // i18n-exempt: a non-ASCII item name must be rejected
         for bad in ["", ".", "..", "a/b", "../x", ".x", "-x", "a..b", "a b", "тема"] {
             assert!(check_item_name(bad).is_err(), "{bad:?} passed");
@@ -1343,7 +1343,7 @@ mod tests {
     }
 
     #[test]
-    fn з2_категории_и_приёмник_ядра() {
+    fn g2_categories_and_core_receiver() {
         for c in plan::STAGE_CATEGORIES {
             assert!(check_stage_category(c).is_ok());
         }
@@ -1369,7 +1369,7 @@ mod tests {
     // ── Z2: paths ───────────────────────────────────────────────────────
 
     #[test]
-    fn з2_пути_вне_корня_отказ() {
+    fn g2_paths_outside_root_refused() {
         let root = user_rebuild_root("/home/a");
         assert_eq!(root, "/home/a/.cache/rexon/rebuild");
         assert_eq!(user_rebuild_root("/home/a/"), root);
@@ -1395,7 +1395,7 @@ mod tests {
     }
 
     #[test]
-    fn з2_собранный_пакет_только_из_рецепта() {
+    fn g2_built_package_only_from_recipe() {
         let root = user_rebuild_root("/home/a");
         let ok = "/home/a/.cache/rexon/rebuild/pantheon/switchboard-8.0.2-3-x86_64.pkg.tar.zst";
         assert_eq!(check_built_package(ok, &root), Ok("switchboard-8.0.2-3-x86_64.pkg.tar.zst"));
@@ -1416,7 +1416,7 @@ mod tests {
     // ── Z3 ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn з3_чужой_процесс_на_канале_отказ() {
+    fn g3_foreign_process_on_channel_refused() {
         assert_eq!(parse_pkexec_uid("1000"), Some(1000));
         for bad in ["", "-1", "1000 ", "1e3", "0x10", "99999999999"] {
             assert_eq!(parse_pkexec_uid(bad), None, "{bad:?}");
@@ -1431,7 +1431,7 @@ mod tests {
     // ── Z5 ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn з5_после_отказа_сырого_pkexec_нет() {
+    fn g5_no_raw_pkexec_after_refusal() {
         assert!(raw_fallback_allowed(HelperFailure::Missing));
         assert!(raw_fallback_allowed(HelperFailure::BadOwner));
         assert!(!raw_fallback_allowed(HelperFailure::Refused));
@@ -1442,7 +1442,7 @@ mod tests {
     // ── Z6 ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn з6_жизненно_важное_отказ() {
+    fn g6_vital_package_refused() {
         for v in [
             "linux", "linux-cachyos", "linux-cachyos-lts", "linux-firmware", "linux-image-amd64",
             "kernel-core", "sys-kernel/gentoo-kernel", "systemd", "systemd-libs", "polkit",
@@ -1468,7 +1468,7 @@ mod tests {
     /// The permanent list (and its addition) does not touch a single desktop
     /// package: otherwise removing a desktop would silently leave half the packages.
     #[test]
-    fn вечное_не_задевает_столы() {
+    fn permanent_list_does_not_touch_desktops() {
         for (id, _) in system::DE_DATABASE {
             for fam in ALL_FAMILIES {
                 for p in desktop_packages(*fam, id) {
@@ -1479,7 +1479,7 @@ mod tests {
     }
 
     #[test]
-    fn з6_текущий_стол_отказ() {
+    fn g6_current_desktop_refused() {
         let (cur, other) = two_desktops();
         let arch = PkgFamily::Arch;
         // the current desktop itself: the core's text
@@ -1515,7 +1515,7 @@ mod tests {
     /// While in one, removing the other does not touch `lightdm`, although
     /// `pacman -Qi` says nobody needs it.
     #[test]
-    fn з6_общий_пакет_текущего_стола_остаётся() {
+    fn g6_shared_package_of_current_desktop_stays() {
         let arch = PkgFamily::Arch;
         let with_lightdm: Vec<&str> = system::DE_DATABASE
             .iter()
@@ -1530,7 +1530,7 @@ mod tests {
     /// The core closure: a package needed by something outside the set stays, and
     /// with it everything it needs.
     #[test]
-    fn з6_замыкание_зависимостей() {
+    fn g6_dependency_closure() {
         let (cur, other) = two_desktops();
         let arch = PkgFamily::Arch;
         let pkgs: Vec<String> = desktop_packages(arch, other)
@@ -1553,7 +1553,7 @@ mod tests {
     // ── Install: only from tables ───────────────────────────────────────
 
     #[test]
-    fn установка_только_из_таблиц() {
+    fn install_only_from_tables() {
         let arch = PkgFamily::Arch;
         let (de, other) = two_desktops();
         let pkgs = system::get_packages(de, arch);
@@ -1597,7 +1597,7 @@ mod tests {
     /// Every name of every install table passes the name check: otherwise the
     /// helper would refuse an honest operation.
     #[test]
-    fn таблицы_установки_проходят_проверку_имён() {
+    fn install_tables_pass_name_check() {
         for fam in ALL_FAMILIES {
             if check_family(*fam).is_err() {
                 continue;
@@ -1623,7 +1623,7 @@ mod tests {
     /// honest install the session would refuse without a bypass (Z5): Conky,
     /// MATE applets, shells, icons and cursors, «Distro Looks».
     #[test]
-    fn таблицы_сеанса_совпадают_с_белым_списком_помощника_пакетов() {
+    fn session_tables_match_package_helper_allowlist() {
         use super::super::op::PkgSource;
         for fam in ALL_FAMILIES {
             if check_family(*fam).is_err() {
@@ -1662,7 +1662,7 @@ mod tests {
     }
 
     #[test]
-    fn сборочные_зависимости_только_из_рецепта() {
+    fn build_dependencies_only_from_recipe() {
         let arch = PkgFamily::Arch;
         let r = recipe();
         assert!(check_build_deps(arch, &s(&["meson", "cmake>=3.20", "glib2>=2.76", "base-devel"]), &r).is_ok());
@@ -1682,7 +1682,7 @@ mod tests {
     /// The recipe itself requires something vital in makedepends: it still cannot
     /// be removed.
     #[test]
-    fn сборочное_вечное_не_снимается() {
+    fn permanent_build_dependency_not_removed() {
         let mut r = recipe();
         r.makedepends.push("linux-headers".into());
         assert!(check_build_deps(PkgFamily::Arch, &s(&["linux-headers"]), &r).is_ok());
@@ -1693,7 +1693,7 @@ mod tests {
     }
 
     #[test]
-    fn откат_форков_только_форки_и_их_сток() {
+    fn fork_rollback_only_forks_and_their_stock() {
         let qi = |p: &str| -> Option<String> {
             (p == "aeroshell-libplasma").then(|| "Provides        : libplasma=6.4\nReplaces        : plasma-framework\n".into())
         };
@@ -1707,7 +1707,7 @@ mod tests {
     // ── Z7 ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn з7_код_из_темы_plymouth_отказ() {
+    fn g7_code_from_plymouth_theme_refused() {
         for m in crate::installer::PLYMOUTH_SPLASH_MODULES {
             assert!(check_plymouth_module_name(m).is_ok());
         }
@@ -1724,7 +1724,7 @@ mod tests {
     // ── Z8 ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn з8_ключи_plm_вне_списка_отказ() {
+    fn g8_plm_keys_outside_list_refused() {
         let plugins = ["org.kde.image", "org.kde.color"];
         assert!(check_plm_key(&["Greeter"], "ShowClock", &plugins).is_ok());
         assert!(check_plm_key(&["Greeter"], "WallpaperPluginId", &plugins).is_ok());
@@ -1748,7 +1748,7 @@ mod tests {
     // ── §1.4 item 5 ─────────────────────────────────────────────────────
 
     #[test]
-    fn неизменяемая_система_отказ() {
+    fn immutable_system_refused() {
         for b in [SteamOsBlock::Desktops, SteamOsBlock::LoginScreen, SteamOsBlock::BootSplash, SteamOsBlock::SystemPart] {
             assert!(matches!(check_mutable_system(b, true), Err(Refusal::ReadOnlySystem(ref t)) if !t.is_empty()));
             assert!(check_mutable_system(b, false).is_ok());
@@ -1762,7 +1762,7 @@ mod tests {
     }
 
     #[test]
-    fn набор_стола_без_пробы() {
+    fn desktop_set_without_probe() {
         let arch = PkgFamily::Arch;
         let river = s(&["river-classic", "waybar"]);
         assert!(check_de_set(arch, "river", &river, &[], &s(&["river"]), "kde").is_ok());
@@ -1790,7 +1790,7 @@ mod tests {
     }
 
     #[test]
-    fn набор_стола_по_правилу_ядра() {
+    fn desktop_set_by_core_rule() {
         let base = s(&["deepin-anything", "treeland"]);
         let extras = s(&["deepin-anything-dkms", "linux-cachyos-headers"]);
         let mut all = base.clone();
@@ -1819,7 +1819,7 @@ mod tests {
     }
 
     #[test]
-    fn замена_только_из_таблицы_замен() {
+    fn replacement_only_from_replacement_table() {
         let pkgs = s(&["river-classic", "waybar"]);
         let p = plan::InstallPreview {
             targets: pkgs.clone(),
@@ -1852,7 +1852,7 @@ mod tests {
     }
 
     #[test]
-    fn образ_стола_только_на_steamos() {
+    fn desktop_image_only_on_steamos() {
         assert!(check_sysext("xfce", false, true, "kde").is_ok());
         assert!(check_sysext("xfce", true, true, "kde").is_ok());
         assert_eq!(check_sysext("xfce", false, false, "kde"), Err(Refusal::NotSteamOs));
@@ -1862,7 +1862,7 @@ mod tests {
     }
 
     #[test]
-    fn коды_отказов_различны() {
+    fn refusal_codes_distinct() {
         let all = [
             Refusal::Empty, Refusal::TooLong(String::new()), Refusal::TooMany(0),
             Refusal::Operand(String::new()), Refusal::PackageName(String::new()),
@@ -1887,7 +1887,7 @@ mod tests {
     }
 
     #[test]
-    fn файл_сборщика_aur() {
+    fn aur_builder_file() {
         assert_eq!(check_aur_package("/home/u/.cache/yay/t/t-1-1-x86_64.pkg.tar.zst"), Ok("t-1-1-x86_64.pkg.tar.zst"));
         assert_eq!(check_aur_package("/srv/pkgdest/t-1-1-any.pkg.tar"), Ok("t-1-1-any.pkg.tar"));
         for bad in ["", "t-1-1-any.pkg.tar", "/a/../t-1-1-any.pkg.tar", "/a//t-1-1-any.pkg.tar", "/tmp/x.deb", "/a/-x.pkg.tar", "/a/t\n.pkg.tar"] {
@@ -1901,7 +1901,7 @@ mod tests {
     /// instead of a name, no hidden files, no non-fonts by extension, no package
     /// fonts.
     #[test]
-    fn шрифты_для_всех_имя_файла() {
+    fn system_fonts_file_name() {
         // i18n-exempt: a font file name with non-ASCII letters must be accepted
         for ok in ["Inter.ttf", "Мой шрифт.TTF", "a b (1).otf", "NotoSansCJK.ttc", "x.woff2", "t.pcf.gz", "fixed.bdf", "Type1.pfb"] {
             assert_eq!(check_font_file_name(ok), Ok(()), "{ok:?}");
@@ -1925,7 +1925,7 @@ mod tests {
     }
 
     #[test]
-    fn шрифты_для_всех_удаление_только_из_своего_каталога() {
+    fn system_fonts_removal_only_from_own_directory() {
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         assert_eq!(
             check_font_remove(&s(&["/usr/local/share/fonts/a.ttf", "/usr/local/share/fonts/sub/Мой.otf"])), // i18n-exempt: non-ASCII font file name

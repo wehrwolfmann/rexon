@@ -650,9 +650,17 @@ fn every_vendor_string_has_a_vendor_translation() {
 /// * «Mouse parallax» — the third such label (mouse parallax, 0.4.2); the
 ///   entry reached the vendor's Russian catalog in v0.4.4. Same consumer —
 ///   `rexon-gui/src/user_property_model.rs`.
+/// * «The source returned a repeated continuation token.» — the error of a
+///   catalogue search whose source repeats its cursor (`ui/src/query/remote_query.cpp`);
+///   the entry reached the vendor's catalogs in v0.6.2. Ours is
+///   `rexon-gui/src/discover_queries.rs` (`REPEATED_CURSOR`).
 ///
-const CATALOG_ONLY_IN_VENDOR_CPP: [&str; 3] =
-    ["Scheme color", "Playback speed", "Mouse parallax"];
+const CATALOG_ONLY_IN_VENDOR_CPP: [&str; 4] = [
+    "Scheme color",
+    "Playback speed",
+    "Mouse parallax",
+    "The source returned a repeated continuation token.",
+];
 
 /// The daemon's tray icon menu (context `TrayMenu`, vendor's
 /// `ui/src/tray_i18n.cpp`, since 0.5.0). Rexon has NO daemon tray: Rexon
@@ -696,42 +704,59 @@ const CATALOG_TRAY_NOT_SHOWN: [&str; 15] = [
 /// itself: as soon as upstream translates a string, the check demands it be
 /// removed from here.
 ///
-/// waywallen 0.6.1 repeated it: the markup asks for sixteen more strings
-/// (card badges and their rules page, the artist page, "Back"/"Menu" of the
-/// new navigation, "Change library folder", the unavailable-source notice,
-/// "Wallpaper type") and only zh_CN got them; ru, de, uk, es and fr have no
-/// entries at all, upstream main neither (checked 2026-11-24). Same answer:
-/// a translation submitted to waywallen, not a local dictionary.
-const RU_AWAITING_UPSTREAM: [&str; 23] = [
-    "%1: %2 → %3",
-    "Artist",
-    "B",
-    "Back",
-    "Badge text",
-    "Card badge rules",
-    "Card badges",
-    "Change library folder",
-    "Edit",
-    "Edit rules",
-    "GiB",
-    "KiB",
-    "Match field",
-    "Matching value",
-    "Menu",
-    "MiB",
-    "Rules ignore case and match the whole value. Use * for any number of characters and ? for one character. A tag rule matches any tag on the wallpaper.",
-    "Show card badges",
-    "This source is no longer available.",
-    "TiB",
-    "Wallpaper type",
-    "h",
-    "m",
+/// waywallen 0.6.1 repeated it with sixteen strings; v0.6.2 translated those and
+/// the 0.6.0 ones (waywallen#424). v0.6.2 in turn brings 29 new strings —
+/// wallpaper property presets, collapsible property groups, the browser
+/// sign-in helper picker — that only zh_CN got; ru, de, uk, es and fr have no
+/// translation (checked on v0.6.3, 2026-11-27). Same answer: a translation
+/// submitted to waywallen, not a local dictionary.
+const RU_AWAITING_UPSTREAM: [&str; 29] = [
+    "%1: %2",
+    "Apply \"%1\" and replace current settings not saved in a preset?",
+    "Apply preset",
+    "Browser: %1",
+    "Collapsed",
+    "Could not refresh wallpaper properties",
+    "Delete preset",
+    "Delete preset \"%1\"?",
+    "Expanded",
+    "Loading presets…",
+    "Manage presets",
+    "Manage presets…",
+    "Preset applied",
+    "Preset applied, but the running renderer could not be updated",
+    "Preset name",
+    "Preset operation canceled: %1",
+    "Preset operation failed",
+    "Presets",
+    "Property update failed",
+    "Refresh browsers",
+    "Refresh properties",
+    "Rename preset",
+    "Replace the saved values in \"%1\" with the current property values?",
+    "Retry loading presets",
+    "Save current settings…",
+    "Save preset",
+    "This browser is unavailable.",
+    "Update from current values",
+    "Update preset",
 ];
 
-/// The same for upstream's GERMAN catalog: the same strings (seven from 0.6.0,
-/// sixteen from 0.6.1). Rexon's German translation is made FROM the Russian
+/// The same for upstream's GERMAN catalog: the same 29 strings of v0.6.2, and two
+/// more of the About page that only the German catalog lacks (waywallen#430
+/// added them with ru/uk/fr/es translations). Rexon's German translation is made FROM the Russian
 /// original — and so is the submission to waywallen.
-const DE_AWAITING_UPSTREAM: [&str; 23] = RU_AWAITING_UPSTREAM;
+const DE_AWAITING_UPSTREAM: [&str; 31] = {
+    let mut all = [""; 31];
+    let mut i = 0;
+    while i < RU_AWAITING_UPSTREAM.len() {
+        all[i] = RU_AWAITING_UPSTREAM[i];
+        i += 1;
+    }
+    all[29] = "Daemon version %1 is newer than this window";
+    all[30] = "Daemon version %1 is older than this window";
+    all
+};
 
 /// 0.6.0 catalog entries whose strings no longer exist anywhere upstream —
 /// neither in `ui/qml` nor in `ui/src` (on tag v0.6.0 they remain only in `.ts`):

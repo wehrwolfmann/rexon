@@ -18,6 +18,7 @@ use rexon_core::local_preview as lp;
 
 unsafe extern "C" {
     fn rexon_lp_canvas_new(width: i32, height: i32, base_hex: *const c_char) -> *mut c_void;
+    fn rexon_lp_scale(canvas: *mut c_void, k: f64);
     fn rexon_lp_fill(
         canvas: *mut c_void,
         x: f64,
@@ -159,6 +160,13 @@ unsafe extern "C" {
 /// then a rename): a tile will not pick up half a frame, and two threads
 /// drawing the same tile do not get in each other's way.
 pub fn render_picture_to_png(picture: &lp::CardPicture, dest: &str) -> bool {
+    render_scaled_to_png(picture, dest, 1.0)
+}
+
+/// [`render_picture_to_png`] `scale` times larger: the same picture for the
+/// full-screen view (pictures are read at the screen size, text and shapes
+/// stay sharp).
+pub fn render_scaled_to_png(picture: &lp::CardPicture, dest: &str, scale: f64) -> bool {
     let dest_path = std::path::Path::new(dest);
     if let Some(dir) = dest_path.parent() {
         if std::fs::create_dir_all(dir).is_err() {
@@ -169,7 +177,7 @@ pub fn render_picture_to_png(picture: &lp::CardPicture, dest: &str) -> bool {
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let part = format!("{dest}.{}-{seq}.part", std::process::id());
     let Ok(part_c) = CString::new(part.as_str()) else { return false };
-    let canvas = paint_ops(picture.width, picture.height, picture.base, &picture.ops);
+    let canvas = paint_ops(picture.width, picture.height, scale, picture.base, &picture.ops);
     let written = unsafe { rexon_lp_finish_png(canvas, part_c.as_ptr()) };
     if written && std::fs::rename(&part, dest_path).is_ok() {
         return true;
@@ -242,10 +250,18 @@ unsafe fn svg_frame(canvas: *mut c_void, rect: lp::Rect, path: &CString, prefixe
 /// A canvas with the core's operations executed.
 ///
 /// Returns a LIVE canvas — the caller must close it (`rexon_lp_finish_png`).
-fn paint_ops(width: i64, height: i64, base: &str, ops: &[lp::DrawOp]) -> *mut c_void {
+fn paint_ops(width: i64, height: i64, scale: f64, base: &str, ops: &[lp::DrawOp]) -> *mut c_void {
     let base = CString::new(base).unwrap_or_default();
+    let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
     unsafe {
-        let canvas = rexon_lp_canvas_new(width as i32, height as i32, base.as_ptr());
+        let canvas = rexon_lp_canvas_new(
+            (width as f64 * scale).round() as i32,
+            (height as f64 * scale).round() as i32,
+            base.as_ptr(),
+        );
+        if scale != 1.0 {
+            rexon_lp_scale(canvas, scale);
+        }
         for op in ops {
             match op {
                 lp::DrawOp::Fill {

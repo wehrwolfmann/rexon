@@ -386,7 +386,7 @@ msgstr ""
 "#;
 
     #[test]
-    fn po_разбирается_с_продолжениями_и_экранированием() {
+    fn po_parsed_with_continuations_and_escaping() {
         let m = parse_po(PO.as_bytes());
         assert_eq!(m.get("Trending").map(String::as_str), Some("В тренде"));
         assert_eq!(
@@ -403,7 +403,7 @@ msgstr ""
     }
 
     #[test]
-    fn метки_локали_от_точной_к_общей() {
+    fn locale_tags_from_exact_to_general() {
         assert_eq!(locale_candidates("ru_RU.UTF-8"), vec!["ru-RU", "ru"]);
         assert_eq!(locale_candidates("zh-CN"), vec!["zh-CN", "zh"]);
         assert_eq!(locale_candidates("ru"), vec!["ru"]);
@@ -412,7 +412,7 @@ msgstr ""
 
     /// Item 1: the plugin author's translation is stronger than ours.
     #[test]
-    fn каталог_плагина_бьёт_наш_слой() {
+    fn plugin_catalog_beats_our_layer() {
         // Our layer speaks the language of the Rexon interface; we pin the source
         // (English) one, the Russian one is pinned by the `remote_l10n_parity` check.
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -436,7 +436,7 @@ msgstr ""
 
     /// Item 2: without a catalog our layer holds — this is the Steam Workshop case.
     #[test]
-    fn без_каталога_держит_наш_русский() {
+    fn without_catalog_keeps_our_russian() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let catalogs = Catalogs::new();
         assert_eq!(
@@ -453,7 +453,7 @@ msgstr ""
 
     /// Item 2 also applies when the plugin catalog exists but lacks the string.
     #[test]
-    fn дыра_в_каталоге_закрывается_нашим_слоем() {
+    fn catalog_gap_filled_by_our_layer() {
         let catalogs = build_catalogs([(
             "org.waywallen.wallhaven",
             "ru",
@@ -468,7 +468,7 @@ msgstr ""
 
     /// Item 3: an unknown string is returned as is, not empty.
     #[test]
-    fn незнакомое_остаётся_собой() {
+    fn unknown_stays_itself() {
         let catalogs = Catalogs::new();
         assert_eq!(
             resolve(&catalogs, "org.waywallen.image", "Brand new label", "", "ru"),
@@ -480,7 +480,7 @@ msgstr ""
     /// A foreign language is not substituted: the Workshop has only zh-CN — and it
     /// must NOT surface on a Russian machine.
     #[test]
-    fn чужой_язык_не_подставляется() {
+    fn foreign_language_not_substituted() {
         let catalogs = build_catalogs([(
             "org.waywallen.open-wallpaper-engine",
             "zh-CN",
@@ -501,7 +501,7 @@ msgstr ""
     /// The keyed translation of our layer (sort orders, filter headings) is item
     /// 2, not item 1: the plugin catalog overrides it.
     #[test]
-    fn ключевой_перевод_ниже_каталога_но_выше_msgid() {
+    fn keyed_translation_below_catalog_above_msgid() {
         let catalogs = build_catalogs([(
             "org.waywallen.wallhaven",
             "ru",
@@ -533,7 +533,7 @@ msgstr ""
 
     /// A broken entry does not eat the rest of the catalog.
     #[test]
-    fn битая_запись_не_рушит_каталог() {
+    fn broken_entry_does_not_break_catalog() {
         let po = "msgid \"good\"\nmsgstr \"ок\"\nmsgid broken\nmsgstr also broken\nmsgid \"tail\"\nmsgstr \"хвост\"\n"
             .as_bytes();
         let m = parse_po(po);

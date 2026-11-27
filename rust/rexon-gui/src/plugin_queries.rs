@@ -160,6 +160,11 @@ pub mod qobject {
                     WRITE = set_plugin_id, NOTIFY = plugin_id_changed)]
         #[qproperty(QString, action_id, cxx_name = "actionId", READ = action_id,
                     WRITE = set_action_id, NOTIFY = action_id_changed)]
+        /// waywallen 0.6.2: the browser sign-in helper chosen for a browser
+        /// login action (`kind` 4); empty — the daemon's default.
+        #[qproperty(QString, browser_helper_id, cxx_name = "browserHelperId",
+                    READ = browser_helper_id, WRITE = set_browser_helper_id,
+                    NOTIFY = browser_helper_id_changed)]
         type PluginActionQuery = super::PluginActionQueryRust;
     }
 
@@ -417,6 +422,9 @@ pub mod qobject {
         #[cxx_name = "actionIdChanged"]
         fn action_id_changed(self: Pin<&mut PluginActionQuery>);
         #[qsignal]
+        #[cxx_name = "browserHelperIdChanged"]
+        fn browser_helper_id_changed(self: Pin<&mut PluginActionQuery>);
+        #[qsignal]
         fn completed(self: Pin<&mut PluginActionQuery>, accepted: bool, error: QString,
                      session_id: QString);
     }
@@ -543,6 +551,10 @@ pub mod qobject {
         fn action_id(self: &PluginActionQuery) -> QString;
         #[cxx_name = "setActionId"]
         fn set_action_id(self: Pin<&mut PluginActionQuery>, value: QString);
+        #[cxx_name = "browserHelperId"]
+        fn browser_helper_id(self: &PluginActionQuery) -> QString;
+        #[cxx_name = "setBrowserHelperId"]
+        fn set_browser_helper_id(self: Pin<&mut PluginActionQuery>, value: QString);
     }
 
     extern "RustQt" {
@@ -1304,6 +1316,7 @@ pub struct PluginActionQueryRust {
     base: QueryState,
     plugin_id: String,
     action_id: String,
+    browser_helper_id: String,
     result: we_manage::PluginActionResult,
     pending: std::collections::BTreeSet<i64>,
 }
@@ -1337,6 +1350,19 @@ impl qobject::PluginActionQuery {
         self.action_id_changed();
     }
 
+    pub fn browser_helper_id(&self) -> QString {
+        QString::from(&self.browser_helper_id)
+    }
+
+    pub fn set_browser_helper_id(mut self: Pin<&mut Self>, value: QString) {
+        let next = value.to_string();
+        if self.browser_helper_id == next {
+            return;
+        }
+        self.as_mut().rust_mut().browser_helper_id = next;
+        self.browser_helper_id_changed();
+    }
+
     pub fn reload(self: Pin<&mut Self>) {
         self.invoke(QVariant::default());
     }
@@ -1346,6 +1372,7 @@ impl qobject::PluginActionQuery {
             plugin_id: self.plugin_id.clone(),
             action_id: self.action_id.clone(),
             values: we_manage::values_to_wire(&variant_to_json(&values)),
+            browser_helper_id: self.browser_helper_id.clone(),
         }
         .encode_to_vec();
         if let Some(token) = self.as_mut().send_frame("plugin_action", payload) {

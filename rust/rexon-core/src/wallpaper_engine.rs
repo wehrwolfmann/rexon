@@ -5517,7 +5517,7 @@ Image=file:///home/u/.local/share/wallpapers/мой.png
     }
 
     #[test]
-    fn идентификатор_окна_и_argv_свойств_берутся_из_одного_места() {
+    fn window_id_and_property_argv_from_one_place() {
         let geometry = "WINDOW=10485771\nX=0\nY=0\nWIDTH=1280\nHEIGHT=800\nSCREEN=0\n";
         assert_eq!(parse_xdotool_window_id(geometry), Some(10485771));
         assert_eq!(parse_xdotool_window_id("WIDTH=1\n"), None);
@@ -5531,7 +5531,7 @@ Image=file:///home/u/.local/share/wallpapers/мой.png
     }
 
     #[test]
-    fn отсев_своего_окна_работает_и_на_wayland() {
+    fn own_window_filter_works_on_wayland_too() {
         // KWin: type 1 — desktop, 2 — panel/dock, plus our own process.
         let kwin = "type: 1\npid: 5\n";
         assert!(kwin_window_is_wallpaper_layer(kwin, &[]));

@@ -1,15 +1,5 @@
-# pacman scriptlets for rexon-git.
-#
-# post_remove removes the login screen safeguard laid out by the switch-dm
-# helper ("Make default" in the login screen section): /etc/rexon, the
-# rexon-dm-fallback service and its drop-in on the chosen login screen.
-# These files belong to no package in the package database, and
-# `pacman -R` will not remove them by itself. The script is the same as
-# Rexon's uninstall from within the program
-# (`installer::dm_fallback_cleanup_script`; checked by
-# `package_post_remove_matches_core_cleanup` in installer.rs).
-# The chosen LightDM greeter (50-rexon-greeter.conf) stays: it is a setting
-# of the working login screen. Does not start or stop services.
+# post_remove drops the login screen fallback Rexon writes on "Make default"
+# (/etc/rexon, rexon-dm-fallback.service and its drop-ins); no package owns it.
 
 post_remove() {
   for f in /etc/systemd/system/*.service.d/50-rexon-fallback.conf; do

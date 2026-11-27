@@ -266,7 +266,7 @@ pub fn main_window_args(args: &[String]) -> Vec<String> {
 //
 // The table lives HERE because the names in the shortcut are written by a
 // neighbouring module (`installer::desktop_content`), and both it and the
-// parser must read one list. The guard `ярлык_не_обещает_неизвестных_страниц`
+// parser must read one list. The guard `launcher_promises_no_unknown_pages`
 // in `tests/app_parity.rs` turns red if a `--page=` appears in the
 // shortcut without an entry here.
 

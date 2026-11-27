@@ -90,7 +90,7 @@ fn headless_flags_lead_to_their_own_routes() {
 /// returned 0/1 (`return 0 if ok else 1`), the Rust binary before the fix returned
 /// nothing at all — the autostart hook reported zero on failure.
 #[test]
-fn у_каждого_служебного_флага_есть_код_возврата() {
+fn every_service_flag_has_exit_code() {
     for flag in headless_flags() {
         let route = app::route(&argv(&[&flag]));
         assert!(
@@ -121,7 +121,7 @@ fn у_каждого_служебного_флага_есть_код_возвр�
 /// The five flags of the product's single tabs are routed to window sections — not
 /// one of them opens the default section.
 #[test]
-fn каждый_флаг_одиночной_вкладки_открывает_свой_раздел() {
+fn each_single_tab_flag_opens_its_section() {
     let ours: Vec<String> = app::SINGLE_TAB_FLAGS.iter().map(|(f, _)| f.to_string()).collect();
     assert_eq!(
         ours,
@@ -143,7 +143,7 @@ fn каждый_флаг_одиночной_вкладки_открывает_с
 /// Names from the desktop shortcut are still translated — by the same
 /// translation as the product's, not by a second copy of the table.
 #[test]
-fn имена_из_ярлыка_переводятся_как_у_продукта() {
+fn launcher_names_translated_like_product() {
     for (page, section, subpage) in app::PAGE_TARGETS {
         assert_eq!(
             cli::start_section(&argv(&[&format!("{}{page}", app::PAGE_FLAG)])),
@@ -198,7 +198,7 @@ fn separator_matches_the_golden_and_fallback_is_english() {
 /// The Rust entry has no Python one by construction — we guard that the shim is not
 /// replaced by handling in Rust.
 #[test]
-fn перевод_кнопок_идёт_каталогом_а_не_колбэком() {
+fn button_translation_via_catalog_not_callback() {
     const SHIM_H: &str = include_str!("../../rexon-gui/cpp/rexon_gui_factory.h");
     const SHIM_CPP: &str = include_str!("../../rexon-gui/cpp/rexon_gui_factory.cpp");
     assert!(
@@ -223,7 +223,7 @@ fn перевод_кнопок_идёт_каталогом_а_не_колбэк�
 /// EVERY process with a Qt window installs the Qt catalogs — the crash window also has
 /// a report field with its edit menu.
 #[test]
-fn каталоги_qt_ставит_каждое_окно() {
+fn every_window_installs_qt_catalogs() {
     const MAIN: &str = include_str!("../../rexon-gui/src/bin/main_window.rs");
     const CRASH: &str = include_str!("../../rexon-gui/src/crash_report.rs");
     assert!(MAIN.contains("rexon_gui::install_qt_translations("), "главное окно");
@@ -253,7 +253,7 @@ fn stop_budget_and_slice_match_the_golden() {
 /// then wait. Waiting without asking means sitting out the whole network
 /// timeout, and that is exactly the original's "closing hung for up to 30 seconds".
 #[test]
-fn сток_просит_остановиться_прежде_чем_ждать() {
+fn drain_requests_stop_before_waiting() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 

@@ -659,6 +659,27 @@ pub fn gtk_theme_is_dark(name: &str, gtk_css: Option<&str>) -> bool {
     name.to_lowercase().contains("dark")
 }
 
+/// The stylesheets of the same theme that `css` imports by a relative name
+/// (`@import url("gtk-main.css");`, `@import "x.css";`): MATE themes (BlackMATE,
+/// Menta) keep their colors in `gtk-main.css`. Resources (`resource:///…`) and
+/// absolute paths are not the theme's files and are left out.
+pub fn gtk_css_local_imports(css: &str) -> Vec<String> {
+    css.lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("@import")?.trim();
+            let rest = rest.strip_prefix("url(").unwrap_or(rest);
+            let name: String = rest
+                .trim_start_matches(['"', '\''])
+                .chars()
+                .take_while(|c| !matches!(c, '"' | '\'' | ')' | ';'))
+                .collect();
+            let name = name.trim().to_string();
+            (!name.is_empty() && !name.contains(':') && !name.starts_with('/') && !name.contains(".."))
+                .then_some(name)
+        })
+        .collect()
+}
+
 /// Window background color from `gtk.css`: `theme_bg_color`, `@name` references
 /// resolved by `@define-color` of the same file (at most 8 steps, against loops).
 fn gtk_css_window_bg(css: &str) -> Option<(u8, u8, u8)> {
@@ -3566,6 +3587,24 @@ const KNOWN_SETS: &[KnownSet] = &[
         // (checked by unpacking 25.10.2026).
         home: HomeSource::Ocs { content_id: "1411743", file: "WhiteSur-cursors.tar.xz", names: &["WhiteSur-cursors"] },
     },
+    // The cursor of Ubuntu's Yaru, asked for by the Yaru-MATE themes of
+    // ubuntu-mate-themes (`CursorTheme=Yaru`, live 27.11.2026). On Arch the
+    // `Yaru` directory of ubuntu-mate-icon-themes has no `cursors/`; the
+    // cursor alone is the AUR package yaru-cursor-theme (checked 27.11.2026:
+    // installs only usr/share/icons/Yaru/cursors). Debian/Ubuntu
+    // yaru-theme-icon, Fedora and openSUSE yaru-icon-theme carry
+    // icons/Yaru/cursors (file lists of packages.debian.org,
+    // packages.ubuntu.com, mdapi f43, the openSUSE Factory spec).
+    KnownSet {
+        role: DepRole::Cursor,
+        names: &["Yaru"],
+        variants: false,
+        arch: "yaru-cursor-theme",
+        debian: "yaru-theme-icon",
+        fedora: "yaru-icon-theme",
+        suse: "yaru-icon-theme",
+        home: HomeSource::None,
+    },
     // "gnome" is the name of the GNOME 2 icon set; in GNOME 3 Adwaita replaced it.
     KnownSet {
         role: DepRole::Icons,
@@ -4848,6 +4887,25 @@ mod deps_tests {
         // is not applied, and it is said what is missing.
         let text = deps_refusal("Luna", &[icons], "not in the official repositories: mint-y-icons");
         assert!(text.contains("Mint-Y") && text.contains("mint-y-icons"), "{text}");
+    }
+
+    /// Live case 27.11.2026, MATE: the Yaru-MATE-dark theme asks for the
+    /// "Yaru" cursor; the `Yaru` directory of ubuntu-mate-icon-themes holds
+    /// only icons, so the cursor is missing — and it can be installed.
+    #[test]
+    fn yaru_cursor_is_installable_and_icons_only_dir_does_not_count() {
+        assert_eq!(dep_package(DepRole::Cursor, "Yaru", "arch").as_deref(), Some("yaru-cursor-theme"));
+        assert_eq!(dep_package(DepRole::Cursor, "Yaru", "debian").as_deref(), Some("yaru-theme-icon"));
+        assert_eq!(dep_package(DepRole::Cursor, "Yaru", "fedora").as_deref(), Some("yaru-icon-theme"));
+        let roots = vec!["/usr/share/icons".to_string()];
+        let only_icons = |p: &str| p == "/usr/share/icons/Yaru" || p == "/usr/share/icons/Yaru/scalable";
+        let none = |_: &str| -> Vec<String> { vec!["Yaru".into()] };
+        let read = |_: &str| -> Option<String> { None };
+        assert_eq!(find_installed_dep(DepRole::Cursor, "Yaru", &roots, &only_icons, &none, &read), None);
+        let deps = ThemeDeps { icons: None, cursor: Some("Yaru".into()) };
+        let plan = plan_theme_deps(&deps, "arch", &|_, _| None);
+        assert_eq!(plan[0].state, DepState::Installable("yaru-cursor-theme".into()));
+        assert!(known_set_packages("arch").contains(&"yaru-cursor-theme"));
     }
 
     #[test]

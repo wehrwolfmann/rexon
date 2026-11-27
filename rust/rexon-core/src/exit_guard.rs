@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn пустой_сток_уходит_сразу_и_ничего_не_ждёт() {
+    fn empty_drain_leaves_at_once_and_waits_for_nothing() {
         let _l = lock();
         reset();
         let started = Instant::now();
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn сток_ждёт_живую_задачу_и_не_врёт_про_пустой_фон() {
+    fn drain_waits_for_live_task_and_does_not_lie_about_empty_background() {
         let _l = lock();
         reset();
         let h = spawn(|| std::thread::sleep(Duration::from_millis(250))).unwrap();
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn сток_сдаётся_по_бюджету_и_честно_считает_остаток() {
+    fn drain_gives_up_by_budget_and_counts_remainder_honestly() {
         let _l = lock();
         reset();
         let h = spawn(|| std::thread::sleep(Duration::from_millis(600))).unwrap();
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn просьбу_дёргают_до_ожидания() {
+    fn request_signalled_before_wait() {
         let _l = lock();
         reset();
         let asked = std::sync::Arc::new(AtomicBool::new(false));
@@ -307,7 +307,7 @@ mod tests {
     /// otherwise the drain answers "nobody is left" while background work is
     /// running (measured 22.08.2026).
     #[test]
-    fn остаток_общего_пула_попадает_в_ответ() {
+    fn shared_pool_remainder_goes_into_reply() {
         let _l = lock();
         reset();
         register_waiter(|_ms| 3);
@@ -317,7 +317,7 @@ mod tests {
     /// A non-final drain restores the flag to its previous value: otherwise it
     /// latches forever and the next window is left without background tasks.
     #[test]
-    fn неокончательный_сток_не_защёлкивает_признак() {
+    fn non_final_drain_does_not_latch_flag() {
         let _l = lock();
         reset();
         stop_background_workers(10, false);
@@ -329,7 +329,7 @@ mod tests {
 
     /// No new tasks are started during shutdown.
     #[test]
-    fn при_остановке_новую_задачу_не_заводим() {
+    fn no_new_task_during_shutdown() {
         let _l = lock();
         reset();
         stop_background_workers(10, true);
@@ -338,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn отчёт_молчит_когда_всё_чисто() {
+    fn report_silent_when_all_clean() {
         assert_eq!(drain_report(0, 0), None);
         assert!(drain_report(2, 1).unwrap().contains("общего пула: 1"));
     }

@@ -892,7 +892,7 @@ mod tests {
     }
 
     #[test]
-    fn каждый_флаг_одиночной_вкладки_ведёт_в_раздел() {
+    fn each_single_tab_flag_leads_to_section() {
         for (flag, module) in crate::app::SINGLE_TAB_FLAGS {
             let (section, _sub) = single_tab_section(module)
                 .unwrap_or_else(|| panic!("у флага {flag} нет раздела"));
@@ -904,7 +904,7 @@ mod tests {
     }
 
     #[test]
-    fn у_разделов_нет_лишних_записей() {
+    fn sections_have_no_extra_entries() {
         assert_eq!(SINGLE_TAB_SECTIONS.len(), crate::app::SINGLE_TAB_FLAGS.len());
         for (module, _, _) in SINGLE_TAB_SECTIONS {
             assert!(
@@ -915,7 +915,7 @@ mod tests {
     }
 
     #[test]
-    fn section_сильнее_флага_вкладки_и_ярлыка() {
+    fn section_beats_tab_flag_and_launcher() {
         assert_eq!(
             start_section(&argv(&["--section=steam", "--settings-qt", "--page=install"])),
             Some(("steam".into(), String::new()))
@@ -923,7 +923,7 @@ mod tests {
     }
 
     #[test]
-    fn флаг_вкладки_сильнее_ярлыка() {
+    fn tab_flag_beats_launcher() {
         assert_eq!(
             start_section(&argv(&["--compare-qt", "--page=backups"])),
             Some(("desktops".into(), "compare".into()))
@@ -931,7 +931,7 @@ mod tests {
     }
 
     #[test]
-    fn ярлык_переводится_как_и_прежде() {
+    fn launcher_translated_as_before() {
         assert_eq!(
             start_section(&argv(&["--page=backups"])),
             Some(("settings".into(), String::new()))
@@ -942,7 +942,7 @@ mod tests {
     /// An empty `--section=` is not "a section with an empty name" but a typo:
     /// the window must open on the default section, not on nothing.
     #[test]
-    fn пустой_section_не_считается_разделом() {
+    fn empty_section_not_counted_as_section() {
         assert_eq!(start_section(&argv(&["--section="])), None);
         assert_eq!(
             start_section(&argv(&["--section=appearance/screeneffects"])),
@@ -955,7 +955,7 @@ mod tests {
     }
 
     #[test]
-    fn маршруты_окна_кода_возврата_не_дают() {
+    fn window_routes_give_no_exit_code() {
         let mut said: Vec<String> = Vec::new();
         let mut out = |s: &str| said.push(s.to_string());
         assert_eq!(run_headless(&argv(&[]), &mut out), None);
@@ -968,7 +968,7 @@ mod tests {
     /// printing help. Now they are windowless routes with code 0, and they beat
     /// any other flag (`--recover-kde --help` explains rather than rolls back).
     #[test]
-    fn справка_и_версия_без_окна_и_с_нулём() {
+    fn help_and_version_without_window_and_with_zero() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         for args in [&["--help"][..], &["-h"], &["help"], &["--recover-kde", "--help"], &["--session-guard", "-h"]] {
             assert_eq!(crate::app::route(&argv(args)), Route::Help, "{args:?}");
@@ -995,7 +995,7 @@ mod tests {
     /// A window without a display: clear lines instead of Qt's `abort`. The
     /// self-check with `QT_QPA_PLATFORM=offscreen` needs no display.
     #[test]
-    fn окно_без_дисплея_не_поднимается() {
+    fn window_without_display_not_raised() {
         let env_of = |pairs: &'static [(&'static str, &'static str)]| {
             move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
         };
@@ -1016,7 +1016,7 @@ mod tests {
     /// its words are checked on fake input/output in
     /// `tests/system_exec_parity.rs`, where there is no live machine at all.
     #[test]
-    fn recover_kde_разбирается_маршрутом_а_не_окном() {
+    fn recover_kde_parsed_as_route_not_window() {
         assert_eq!(
             crate::app::route(&argv(&["--recover-kde"])),
             Route::RecoverKde
@@ -1049,7 +1049,7 @@ mod tests {
     }
 
     #[test]
-    fn кандидаты_каталога_qt_по_языку_rexon() {
+    fn qt_catalog_candidates_by_rexon_language() {
         assert_eq!(qt_translation_candidates("qtbase", "ru"), vec!["qtbase_ru"]);
         assert_eq!(qt_translation_candidates("qtbase", "pt_BR"), vec!["qtbase_pt_BR", "qtbase_pt"]);
         assert_eq!(qt_translation_candidates("qt", "de_DE.UTF-8"), vec!["qt_de_DE", "qt_de"]);
@@ -1060,7 +1060,7 @@ mod tests {
 
     /// Which of Qt's own `.qm` is chosen: Rexon decides the language, not the system.
     #[test]
-    fn файлы_qt_выбираются_по_языку_rexon() {
+    fn qt_files_chosen_by_rexon_language() {
         let exists = qt_has(SHIPPED);
         let dir = Path::new(QT_DIR);
         // Rexon in Russian: both catalogs.
@@ -1083,7 +1083,7 @@ mod tests {
     /// The Rexon language exists, the Qt catalog does not: Qt labels are
     /// English, one line goes to the log; the system language plays no part.
     #[test]
-    fn нет_каталога_qt_для_языка_rexon_одна_строка_в_журнал() {
+    fn no_qt_catalog_for_rexon_language_one_log_line() {
         let exists = qt_has(SHIPPED);
         let dir = Path::new(QT_DIR);
         let ja = qt_translation_files("ja", dir, &exists);
@@ -1120,7 +1120,7 @@ mod tests {
 
     /// The platform theme (KDE) gets the Rexon language through `LANGUAGE`.
     #[test]
-    fn язык_темы_платформы_равен_языку_rexon() {
+    fn platform_theme_language_equals_rexon_language() {
         assert_eq!(QT_UI_LANGUAGE_ENV, "LANGUAGE");
         assert_eq!(qt_ui_language_env("en"), "en");
         assert_eq!(qt_ui_language_env("ru"), "ru");
@@ -1131,7 +1131,7 @@ mod tests {
     }
 
     #[test]
-    fn английский_rexon_на_русской_системе_без_каталога_qt() {
+    fn english_rexon_on_russian_system_without_qt_catalog() {
         let ru_system = [("LANG", "ru_RU.UTF-8")];
         // A Russian system, Rexon in Russian: Russian Qt buttons.
         assert_eq!(qt_files_for(None, &ru_system), qm(&["qtbase_ru.qm", "qt_ru.qm"]));
@@ -1196,7 +1196,7 @@ mod tests {
     /// descriptor 2 would be redirected into the log over and over at every
     /// entry point).
     #[test]
-    fn логгер_ставится_один_раз() {
+    fn logger_installed_once() {
         install_qt_message_logger();
         assert!(!install_qt_message_logger());
     }

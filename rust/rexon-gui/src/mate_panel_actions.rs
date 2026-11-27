@@ -43,16 +43,24 @@ pub mod qobject {
 
         /// Apply the layout in the background. Missing parts from the repositories
         /// are always installed (the password window); `install` also builds parts
-        /// from AUR (the shared build queue; the user agreed in the question). If
-        /// something did not install, the layout is not applied. The result comes
-        /// with the `applied` signal.
+        /// from AUR (the shared build queue; the user agreed in the question). Each
+        /// part on its own: what did not install is replaced as described under the
+        /// layout (`mate_panel::apply_with_parts`). The result comes with the
+        /// `applied` signal.
         #[qinvokable]
         #[cxx_name = "applyAsync"]
         fn apply_async(self: Pin<&mut MatePanelActions>, id: &QString, install: bool);
 
-        /// Applying has finished: a message for the user.
+        /// Applying has finished: JSON `mate_panel::PartsApplied` — the message,
+        /// whether to offer "Retry", the build log for "Open log".
         #[qsignal]
-        fn applied(self: Pin<&mut MatePanelActions>, text: QString);
+        fn applied(self: Pin<&mut MatePanelActions>, result: QString);
+
+        /// Open a build log the way the system opens text files ("Open log").
+        /// `false` — there is no such file.
+        #[qinvokable]
+        #[cxx_name = "openLog"]
+        fn open_log(self: &MatePanelActions, path: &QString) -> bool;
 
         /// Restore the original panel in the background: restoring waits until the
         /// panel removes its applets (up to 3 s), and the interface does not freeze
@@ -111,19 +119,43 @@ impl qobject::MatePanelActions {
             let ctx = PanelCtx::for_look();
             let offer = mate_panel::live_parts_offer(&SystemIo, &ctx, &id);
             let offer = if install { offer } else { offer.repo_only() };
-            let text = mate_panel::apply_with_parts(&SystemIo, &ctx, &id, &offer, &mut |o| {
+            let result = mate_panel::apply_with_parts(&SystemIo, &ctx, &id, &offer, &mut |o| {
+                // Each part on its own: one failed build does not stop the others.
+                let mut failed = Vec::new();
                 if !o.repo.is_empty() {
-                    mate_panel::live_install_repo_parts(&o.repo)?;
+                    if let Err(why) = mate_panel::live_install_repo_parts(&o.repo) {
+                        failed.extend(o.repo.iter().map(|p| mate_panel::PartFailure {
+                            package: p.clone(),
+                            why: why.clone(),
+                            log: String::new(),
+                        }));
+                    }
                 }
                 for (package, _) in &o.aur {
-                    crate::appearance_actions::aur_install_wait(package)?;
+                    if let Err(why) = crate::appearance_actions::aur_install_wait_short(package) {
+                        let home = std::env::var("HOME").unwrap_or_default();
+                        failed.push(mate_panel::PartFailure {
+                            package: package.clone(),
+                            why,
+                            log: rexon_core::aur_install::log_path(&home, package),
+                        });
+                    }
                 }
-                Ok(())
+                failed
             });
+            let text = serde_json::to_string(&result).unwrap_or_default();
             let _ = handle.queue(move |mut object| {
                 object.as_mut().applied(cxx_qt_lib::QString::from(&text));
             });
         });
+    }
+
+    fn open_log(&self, path: &cxx_qt_lib::QString) -> bool {
+        let path = path.to_string();
+        if !std::path::Path::new(&path).is_file() {
+            return false;
+        }
+        crate::appearance_actions::qobject::open_url_external(&cxx_qt_lib::QString::from(&format!("file://{path}")))
     }
 
     fn restore_async(mut self: Pin<&mut Self>) {

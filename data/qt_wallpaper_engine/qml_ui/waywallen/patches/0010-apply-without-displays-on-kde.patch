@@ -15,9 +15,10 @@ button stayed grey forever (VM Arch + Plasma 6.8.2, 30.10.2026).
   (`waywallen_kde_plugin::apply_without_displays`, the same `apply_gate` as
   the transport's).
 * `KdeDisplaysHelp.qml`: with zero displays, instead of «install the
-  extension from GitHub/KDE Store and select it in the desktop settings» —
-  the Rexon hint `W.App.noDisplaysHint` («choose a wallpaper and press
-  „Apply“»). An empty string — the upstream look. On X11 outside KDE (MATE,
+  extension from GitHub/KDE Store and select it in the desktop settings»
+  (since v0.6.2 also «Use Waywallen on this desktop» when the plugin is
+  installed) — the Rexon hint `W.App.noDisplaysHint` («choose a wallpaper
+  and press „Apply“»). An empty string — the upstream look. On X11 outside KDE (MATE,
   XFCE, Cinnamon X11) the output is brought up by the Rexon host, and the
   hint is visible with any daemon backend (before that, under «No monitors
   registered» it was empty, 30.10.2026).
@@ -27,12 +28,12 @@ are chosen one by one, and with an empty list `every()` over the selected
 displays would give «already playing».
 ---
 diff --git a/ui/qml/component/KdeDisplaysHelp.qml b/ui/qml/component/KdeDisplaysHelp.qml
-index 8f336a89..796dcb06 100644
+index 23db1d8..b9bcec7 100644
 --- a/ui/qml/component/KdeDisplaysHelp.qml
 +++ b/ui/qml/component/KdeDisplaysHelp.qml
-@@ -10,12 +10,23 @@ ColumnLayout {
-     readonly property string githubUrl: "https://github.com/waywallen/waywallen-display"
-     readonly property string kdeStoreUrl: "https://store.kde.org/p/2356221"
+@@ -12,8 +12,19 @@ ColumnLayout {
+     readonly property bool pluginInstalled: W.Action.hasPlasmaWallpaperPlugin()
+     property bool switching: false
  
 +    // REXON EDIT (a defect fix, not a feature): Rexon itself installs
 +    // the Plasma wallpaper plugin and assigns it on «Apply», so instead of
@@ -49,34 +50,48 @@ index 8f336a89..796dcb06 100644
 -    visible: W.Notify.displayBackend.name === "kde-plasma"
 +    visible: W.Notify.displayBackend.name === "kde-plasma" || root.rexonHint.length > 0
  
+     Connections {
+         target: W.Action
+@@ -26,7 +37,7 @@ ColumnLayout {
+ 
      MD.Text {
          Layout.fillWidth: true
--        text: qsTr("KDE Plasma needs the <b>waywallen-display</b> wallpaper extension to bridge wallpapers to the desktop. Install it from either source:")
-+        text: root.rexonHint.length > 0 ? root.rexonHint : qsTr("KDE Plasma needs the <b>waywallen-display</b> wallpaper extension to bridge wallpapers to the desktop. Install it from either source:")
+-        text: root.pluginInstalled ? qsTr("The <b>Waywallen</b> wallpaper plugin is installed, but the desktop does not use it yet.") : qsTr("KDE Plasma needs the <b>waywallen-display</b> wallpaper extension to bridge wallpapers to the desktop. Install it from either source:")
++        text: root.rexonHint.length > 0 ? root.rexonHint : root.pluginInstalled ? qsTr("The <b>Waywallen</b> wallpaper plugin is installed, but the desktop does not use it yet.") : qsTr("KDE Plasma needs the <b>waywallen-display</b> wallpaper extension to bridge wallpapers to the desktop. Install it from either source:")
          textFormat: Text.StyledText
          wrapMode: Text.WordWrap
          horizontalAlignment: Text.AlignHCenter
-@@ -26,6 +34,7 @@ ColumnLayout {
+@@ -36,7 +47,7 @@ ColumnLayout {
+ 
+     MD.Button {
+         Layout.alignment: Qt.AlignHCenter
+-        visible: root.pluginInstalled
++        visible: root.pluginInstalled && root.rexonHint.length === 0
+         enabled: !root.switching
+         text: qsTr("Use Waywallen on this desktop")
+         mdState.type: MD.Enum.BtFilled
+@@ -49,7 +60,7 @@ ColumnLayout {
      RowLayout {
          Layout.alignment: Qt.AlignHCenter
          spacing: 8
-+        visible: root.rexonHint.length === 0
+-        visible: !root.pluginInstalled
++        visible: !root.pluginInstalled && root.rexonHint.length === 0
  
          MD.Button {
              text: qsTr("GitHub")
-@@ -45,6 +54,7 @@ ColumnLayout {
+@@ -69,6 +80,7 @@ ColumnLayout {
  
      MD.Text {
          Layout.fillWidth: true
 +        visible: root.rexonHint.length === 0
-         text: qsTr("Then right-click the desktop → <b>Configure Desktop and Wallpaper…</b> and pick the <b>Waywallen</b> wallpaper plugin.")
+         text: root.pluginInstalled ? qsTr("Or right-click the desktop → <b>Configure Desktop and Wallpaper…</b> and pick the <b>Waywallen</b> wallpaper plugin.") : qsTr("Then right-click the desktop → <b>Configure Desktop and Wallpaper…</b> and pick the <b>Waywallen</b> wallpaper plugin.")
          textFormat: Text.StyledText
          wrapMode: Text.WordWrap
 diff --git a/ui/qml/page/WallpaperDetailPanel.qml b/ui/qml/page/WallpaperDetailPanel.qml
-index ed28b537..1cc662ce 100644
+index 52ca827..5395b59 100644
 --- a/ui/qml/page/WallpaperDetailPanel.qml
 +++ b/ui/qml/page/WallpaperDetailPanel.qml
-@@ -326,7 +326,14 @@ Item {
+@@ -516,7 +516,14 @@ Item {
          id: applyAction
          text: qsTr("Apply")
          busy: applyQuery.querying

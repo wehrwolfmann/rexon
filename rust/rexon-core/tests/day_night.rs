@@ -35,7 +35,7 @@ fn normal(day: SunDay) -> (i64, i64) {
 /// Check points: (place, latitude, longitude, noon of the day in UTC,
 /// sunrise UTC, sunset UTC). The table times are local; here they are converted to UTC.
 #[test]
-fn восход_и_закат_по_проверочным_точкам() {
+fn sunrise_and_sunset_at_check_points() {
     let cases: [(&str, f64, f64, i64, i64, i64); 6] = [
         // Berlin, solstice: 04:43 and 21:33 CEST.
         ("Берлин 21.06", 52.52, 13.405, at(2026, 6, 21, 11, 0), at(2026, 6, 21, 2, 43), at(2026, 6, 21, 19, 33)),
@@ -60,7 +60,7 @@ fn восход_и_закат_по_проверочным_точкам() {
 }
 
 #[test]
-fn полярный_день_и_ночь() {
+fn polar_day_and_night() {
     let (lat, lon) = (69.6492, 18.9553); // Tromsø
     assert_eq!(sun_around(at(2026, 12, 21, 11, 0), lat, lon), SunDay::PolarNight);
     assert_eq!(sun_around(at(2026, 6, 21, 11, 0), lat, lon), SunDay::PolarDay);
@@ -70,7 +70,7 @@ fn полярный_день_и_ночь() {
 }
 
 #[test]
-fn сейчас_и_следующие_смены_по_солнцу() {
+fn now_and_next_sun_changes() {
     let (lat, lon) = (52.52, 13.405);
     assert_eq!(phase_by_sun(at(2026, 6, 21, 12, 0), lat, lon), Phase::Light);
     assert_eq!(phase_by_sun(at(2026, 6, 21, 22, 0), lat, lon), Phase::Dark);
@@ -138,7 +138,7 @@ fn cases() -> Value {
 }
 
 #[test]
-fn эталон_планов_и_файлов() {
+fn plans_and_files_golden() {
     let got = cases();
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
     if std::env::var_os("REXON_GOLDEN_WRITE").is_some() {
@@ -213,7 +213,7 @@ fn systemctl(io: &Fake) -> Vec<String> {
 }
 
 #[test]
-fn plasma_только_глобальная_тема_отдаётся_plasma() {
+fn plasma_global_theme_only_handed_to_plasma() {
     let io = Fake::default();
     let cfg = Config {
         colors: Pair::default(),
@@ -234,7 +234,7 @@ fn plasma_только_глобальная_тема_отдаётся_plasma() {
 }
 
 #[test]
-fn gnome_по_времени_таймер_и_применение() {
+fn gnome_by_time_timer_and_apply() {
     let io = Fake::default();
     let cfg = full_config(Mode::Auto, Schedule::Times);
     // 20:00 local time (UTC+1) — dark.
@@ -258,7 +258,7 @@ fn gnome_по_времени_таймер_и_применение() {
 /// One owner of the wallpaper: while a Rexon wallpaper playlist is playing, the schedule's
 /// picture pair does not change the wallpaper, but it does change the themes.
 #[test]
-fn пара_обоев_уступает_плейлисту() {
+fn wallpaper_pair_yields_to_playlist() {
     let io = Fake::default();
     io.files.borrow_mut().insert(
         "/h/.config/rexon/settings.json".into(),
@@ -274,7 +274,7 @@ fn пара_обоев_уступает_плейлисту() {
 }
 
 #[test]
-fn таймер_без_окружения_в_переменных_берёт_окружение_входа_и_переписывается_по_солнцу() {
+fn timer_without_env_desktop_takes_login_desktop_and_rewritten_by_sun() {
     let io = Fake::default();
     let cfg = full_config(Mode::Auto, Schedule::Sun);
     let (ok, msg) = save(&env(&io, "xfce", at(2026, 11, 1, 10, 0)), &cfg);
@@ -294,7 +294,7 @@ fn таймер_без_окружения_в_переменных_берёт_о�
 }
 
 #[test]
-fn светлое_вручную_снимает_таймер() {
+fn manual_light_removes_timer() {
     let io = Fake::default();
     let e = env(&io, "cinnamon", at(2026, 11, 1, 12, 0));
     assert!(save(&e, &full_config(Mode::Auto, Schedule::Times)).0);
@@ -309,7 +309,7 @@ fn светлое_вручную_снимает_таймер() {
 }
 
 #[test]
-fn cosmic_по_солнцу_отдаётся_cosmic() {
+fn cosmic_by_sun_handed_to_cosmic() {
     let io = Fake::default();
     let cfg = Config {
         colors: Pair::default(),
@@ -332,7 +332,7 @@ fn cosmic_по_солнцу_отдаётся_cosmic() {
 }
 
 #[test]
-fn проверка_настройки_и_deepin() {
+fn setting_check_and_deepin() {
     let io = Fake::default();
     let e = env(&io, "gnome", 0);
     let bad = Config { light_at: "7".into(), ..full_config(Mode::Auto, Schedule::Times) };
@@ -347,7 +347,7 @@ fn проверка_настройки_и_deepin() {
 }
 
 #[test]
-fn пары_по_именам_и_списки() {
+fn pairs_by_names_and_lists() {
     let io = Fake::default();
     for (path, text) in [
         ("/usr/share/themes/Adwaita/gtk-3.0/gtk.css", ""),

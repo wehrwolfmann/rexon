@@ -29,7 +29,7 @@ Module {
         }
         Signal {
             name: "toast"
-            lineNumber: 34
+            lineNumber: 39
             Parameter { name: "text"; type: "QString" }
             Parameter { name: "duration"; type: "qint32" }
             Parameter { name: "flags"; type: "qint32" }
@@ -38,7 +38,7 @@ Module {
         Signal {
             name: "toast"
             isCloned: true
-            lineNumber: 34
+            lineNumber: 39
             Parameter { name: "text"; type: "QString" }
             Parameter { name: "duration"; type: "qint32" }
             Parameter { name: "flags"; type: "qint32" }
@@ -46,21 +46,26 @@ Module {
         Signal {
             name: "toast"
             isCloned: true
-            lineNumber: 34
+            lineNumber: 39
             Parameter { name: "text"; type: "QString" }
             Parameter { name: "duration"; type: "qint32" }
         }
         Signal {
             name: "toast"
             isCloned: true
-            lineNumber: 34
+            lineNumber: 39
             Parameter { name: "text"; type: "QString" }
         }
-        Signal { name: "wallpaperSelectStorageChanged"; lineNumber: 35 }
+        Signal { name: "wallpaperSelectStorageChanged"; lineNumber: 40 }
         Signal {
             name: "wallpaperSelectEntered"
-            lineNumber: 36
+            lineNumber: 41
             Parameter { name: "storage"; type: "QObject"; isPointer: true }
+        }
+        Signal {
+            name: "plasmaWallpaperPluginSet"
+            lineNumber: 43
+            Parameter { name: "error"; type: "QString" }
         }
         Method {
             name: "enterWallpaperSelect"
@@ -72,6 +77,13 @@ Module {
             lineNumber: 31
             Parameter { name: "text"; type: "QString" }
         }
+        Method {
+            name: "hasPlasmaWallpaperPlugin"
+            type: "bool"
+            isMethodConstant: true
+            lineNumber: 33
+        }
+        Method { name: "usePlasmaWallpaperPlugin"; lineNumber: 36 }
     }
     Component {
         file: "app.cppm"
@@ -139,12 +151,22 @@ Module {
             isPropertyConstant: true
         }
         Property {
+            name: "version"
+            type: "QString"
+            read: "version"
+            index: 5
+            lineNumber: 31
+            isReadonly: true
+            isFinal: true
+            isPropertyConstant: true
+        }
+        Property {
             name: "networkCacheSize"
             type: "qint64"
             read: "networkCacheSize"
             notify: "networkCacheSizeChanged"
-            index: 5
-            lineNumber: 31
+            index: 6
+            lineNumber: 32
             isReadonly: true
             isFinal: true
         }
@@ -153,8 +175,8 @@ Module {
             type: "qint64"
             read: "networkCacheMaximumSize"
             notify: "networkCacheMaximumSizeChanged"
-            index: 6
-            lineNumber: 32
+            index: 7
+            lineNumber: 33
             isReadonly: true
             isFinal: true
         }
@@ -163,8 +185,8 @@ Module {
             type: "QString"
             read: "uiLanguage"
             notify: "uiLanguageChanged"
-            index: 7
-            lineNumber: 34
+            index: 8
+            lineNumber: 35
             isReadonly: true
             isFinal: true
         }
@@ -173,8 +195,8 @@ Module {
             type: "QString"
             read: "resolvedUiLanguage"
             notify: "resolvedUiLanguageChanged"
-            index: 8
-            lineNumber: 35
+            index: 9
+            lineNumber: 36
             isReadonly: true
             isFinal: true
         }
@@ -183,39 +205,45 @@ Module {
             type: "QVariantList"
             read: "availableUiLanguages"
             notify: "uiLanguageChanged"
-            index: 9
-            lineNumber: 37
+            index: 10
+            lineNumber: 38
             isReadonly: true
             isFinal: true
         }
         Signal {
             name: "errorOccurred"
-            lineNumber: 76
+            lineNumber: 80
             Parameter { name: "error"; type: "QString" }
         }
-        Signal { name: "networkCacheSizeChanged"; lineNumber: 77 }
-        Signal { name: "networkCacheMaximumSizeChanged"; lineNumber: 78 }
-        Signal { name: "uiLanguageChanged"; lineNumber: 79 }
-        Signal { name: "resolvedUiLanguageChanged"; lineNumber: 80 }
-        Method { name: "load_settings"; lineNumber: 68 }
-        Method { name: "save_settings"; lineNumber: 69 }
-        Method { name: "refreshNetworkCacheSize"; lineNumber: 70 }
+        Signal { name: "networkCacheSizeChanged"; lineNumber: 81 }
+        Signal { name: "networkCacheMaximumSizeChanged"; lineNumber: 82 }
+        Signal { name: "uiLanguageChanged"; lineNumber: 83 }
+        Signal { name: "resolvedUiLanguageChanged"; lineNumber: 84 }
+        Method { name: "load_settings"; lineNumber: 70 }
+        Method { name: "save_settings"; lineNumber: 71 }
+        Method { name: "refreshNetworkCacheSize"; lineNumber: 72 }
         Method {
             name: "setNetworkCacheMaximumSize"
-            lineNumber: 71
+            lineNumber: 73
             Parameter { name: "size"; type: "qint64" }
         }
-        Method { name: "clearNetworkCache"; lineNumber: 72 }
+        Method { name: "clearNetworkCache"; lineNumber: 74 }
         Method {
             name: "setUiLanguage"
             type: "bool"
-            lineNumber: 73
+            lineNumber: 75
             Parameter { name: "language"; type: "QString" }
         }
         Method {
             name: "setSingleUiEnabled"
-            lineNumber: 74
+            lineNumber: 76
             Parameter { name: "enabled"; type: "bool" }
+        }
+        Method {
+            name: "openExternalLink"
+            type: "bool"
+            lineNumber: 78
+            Parameter { name: "link"; type: "QString" }
         }
     }
     Component {
@@ -228,6 +256,36 @@ Module {
         isCreatable: false
         isSingleton: true
         exportMetaObjectRevisions: [0]
+    }
+    Component {
+        file: "audio_output_query.cppm"
+        lineNumber: 17
+        name: "waywallen::AudioOutputListQuery"
+        accessSemantics: "reference"
+        prototype: "QueryExtra<control::v1::Response,AudioOutputListQuery>"
+        exports: ["waywallen.ui/AudioOutputListQuery 0.0"]
+        exportMetaObjectRevisions: [0]
+        Property {
+            name: "outputs"
+            type: "QVariantList"
+            read: "outputs"
+            notify: "outputsChanged"
+            index: 0
+            lineNumber: 23
+            isReadonly: true
+            isFinal: true
+        }
+        Property {
+            name: "available"
+            type: "bool"
+            read: "available"
+            notify: "outputsChanged"
+            index: 1
+            lineNumber: 25
+            isReadonly: true
+            isFinal: true
+        }
+        Signal { name: "outputsChanged"; lineNumber: 35 }
     }
     Component {
         file: "autostart_query.cppm"
@@ -827,12 +885,22 @@ Module {
             isFinal: true
         }
         Property {
+            name: "daemonVersionOrder"
+            type: "int"
+            read: "daemonVersionOrder"
+            notify: "statusChanged"
+            index: 3
+            lineNumber: 39
+            isReadonly: true
+            isFinal: true
+        }
+        Property {
             name: "daemonCapabilities"
             type: "QStringList"
             read: "daemonCapabilities"
             notify: "statusChanged"
-            index: 3
-            lineNumber: 39
+            index: 4
+            lineNumber: 42
             isReadonly: true
             isFinal: true
         }
@@ -841,8 +909,8 @@ Module {
             type: "bool"
             read: "daemonAvailable"
             notify: "statusChanged"
-            index: 4
-            lineNumber: 41
+            index: 5
+            lineNumber: 44
             isReadonly: true
             isFinal: true
         }
@@ -852,8 +920,8 @@ Module {
             read: "quitOnDaemonShutdown"
             write: "setQuitOnDaemonShutdown"
             notify: "quitOnDaemonShutdownChanged"
-            index: 5
-            lineNumber: 42
+            index: 6
+            lineNumber: 45
             isFinal: true
         }
         Property {
@@ -861,60 +929,60 @@ Module {
             type: "bool"
             read: "daemonShutdownExpected"
             notify: "daemonShutdownExpectedChanged"
-            index: 6
-            lineNumber: 44
+            index: 7
+            lineNumber: 47
             isReadonly: true
             isFinal: true
         }
-        Signal { name: "statusChanged"; lineNumber: 90 }
+        Signal { name: "statusChanged"; lineNumber: 94 }
         Signal {
             name: "wsPortChanged"
-            lineNumber: 91
+            lineNumber: 95
             Parameter { name: "port"; type: "quint16" }
         }
-        Signal { name: "quitOnDaemonShutdownChanged"; lineNumber: 92 }
-        Signal { name: "daemonShutdownExpectedChanged"; lineNumber: 93 }
+        Signal { name: "quitOnDaemonShutdownChanged"; lineNumber: 96 }
+        Signal { name: "daemonShutdownExpectedChanged"; lineNumber: 97 }
         Method {
             name: "on_service_registered"
-            lineNumber: 96
+            lineNumber: 100
             Parameter { name: "service"; type: "QString" }
         }
         Method {
             name: "on_service_unregistered"
-            lineNumber: 97
+            lineNumber: 101
             Parameter { name: "service"; type: "QString" }
         }
-        Method { name: "on_ready"; lineNumber: 98 }
-        Method { name: "on_shutting_down"; lineNumber: 99 }
+        Method { name: "on_ready"; lineNumber: 102 }
+        Method { name: "on_shutting_down"; lineNumber: 103 }
         Method {
             name: "on_properties_changed"
-            lineNumber: 100
+            lineNumber: 104
             Parameter { name: "iface"; type: "QString" }
             Parameter { name: "changed"; type: "QVariantMap" }
             Parameter { name: "invalidated"; type: "QStringList" }
         }
-        Method { name: "refreshWsPort"; type: "quint16"; lineNumber: 65 }
+        Method { name: "refreshWsPort"; type: "quint16"; lineNumber: 69 }
         Method {
             name: "hasDaemonCapability"
             type: "bool"
             isMethodConstant: true
-            lineNumber: 69
+            lineNumber: 73
             Parameter { name: "name"; type: "QString" }
         }
-        Method { name: "refreshDisplays"; type: "bool"; lineNumber: 73 }
+        Method { name: "refreshDisplays"; type: "bool"; lineNumber: 77 }
         Method {
             name: "setTrayLanguage"
             type: "bool"
-            lineNumber: 75
+            lineNumber: 79
             Parameter { name: "language"; type: "QString" }
         }
-        Method { name: "quitDaemon"; type: "bool"; lineNumber: 77 }
-        Method { name: "launchDaemon"; type: "bool"; lineNumber: 80 }
-        Method { name: "listWaywallenProcesses"; type: "QVariantList"; lineNumber: 85 }
+        Method { name: "quitDaemon"; type: "bool"; lineNumber: 81 }
+        Method { name: "launchDaemon"; type: "bool"; lineNumber: 84 }
+        Method { name: "listWaywallenProcesses"; type: "QVariantList"; lineNumber: 89 }
         Method {
             name: "killProcess"
             type: "bool"
-            lineNumber: 88
+            lineNumber: 92
             Parameter { name: "pid"; type: "quint32" }
         }
     }
@@ -2716,18 +2784,29 @@ Module {
             lineNumber: 20
             isFinal: true
         }
-        Signal { name: "pluginIdChanged"; lineNumber: 32 }
-        Signal { name: "actionIdChanged"; lineNumber: 33 }
+        Property {
+            name: "browserHelperId"
+            type: "QString"
+            read: "browserHelperId"
+            write: "setBrowserHelperId"
+            notify: "browserHelperIdChanged"
+            index: 2
+            lineNumber: 21
+            isFinal: true
+        }
+        Signal { name: "pluginIdChanged"; lineNumber: 36 }
+        Signal { name: "actionIdChanged"; lineNumber: 37 }
+        Signal { name: "browserHelperIdChanged"; lineNumber: 38 }
         Signal {
             name: "completed"
-            lineNumber: 34
+            lineNumber: 39
             Parameter { name: "accepted"; type: "bool" }
             Parameter { name: "error"; type: "QString" }
             Parameter { name: "sessionId"; type: "QString" }
         }
         Method {
             name: "invoke"
-            lineNumber: 30
+            lineNumber: 34
             Parameter { name: "values"; type: "QVariantMap" }
         }
     }
@@ -3226,11 +3305,33 @@ Module {
             isReadonly: true
             isFinal: true
         }
-        Signal { name: "sourcesChanged"; lineNumber: 32 }
+        Property {
+            name: "browserHelpers"
+            type: "QVariantList"
+            read: "browserHelpers"
+            notify: "browserHelpersChanged"
+            index: 2
+            lineNumber: 23
+            isReadonly: true
+            isFinal: true
+        }
+        Property {
+            name: "defaultBrowserHelperId"
+            type: "QString"
+            read: "defaultBrowserHelperId"
+            notify: "browserHelpersChanged"
+            index: 3
+            lineNumber: 24
+            isReadonly: true
+            isFinal: true
+        }
+        Signal { name: "sourcesChanged"; lineNumber: 38 }
+        Signal { name: "browserHelpersChanged"; lineNumber: 39 }
+        Method { name: "refreshBrowserHelpers"; lineNumber: 36 }
     }
     Component {
         file: "remote_query.cppm"
-        lineNumber: 121
+        lineNumber: 131
         name: "waywallen::RemoteDetailsQuery"
         accessSemantics: "reference"
         prototype: "QueryExtra<control::v1::Response,RemoteDetailsQuery>"
@@ -3243,7 +3344,7 @@ Module {
             write: "setSourceId"
             notify: "sourceIdChanged"
             index: 0
-            lineNumber: 126
+            lineNumber: 136
             isFinal: true
         }
         Property {
@@ -3253,7 +3354,7 @@ Module {
             write: "setItemId"
             notify: "itemIdChanged"
             index: 1
-            lineNumber: 127
+            lineNumber: 137
             isFinal: true
         }
         Property {
@@ -3262,7 +3363,7 @@ Module {
             read: "author"
             notify: "loaded"
             index: 2
-            lineNumber: 128
+            lineNumber: 138
             isReadonly: true
             isFinal: true
         }
@@ -3272,7 +3373,7 @@ Module {
             read: "authorAvatarUrl"
             notify: "loaded"
             index: 3
-            lineNumber: 129
+            lineNumber: 139
             isReadonly: true
             isFinal: true
         }
@@ -3282,7 +3383,7 @@ Module {
             read: "authorAvatarHeaders"
             notify: "loaded"
             index: 4
-            lineNumber: 130
+            lineNumber: 140
             isReadonly: true
             isFinal: true
         }
@@ -3292,7 +3393,7 @@ Module {
             read: "authorUrl"
             notify: "loaded"
             index: 5
-            lineNumber: 131
+            lineNumber: 141
             isReadonly: true
             isFinal: true
         }
@@ -3302,7 +3403,7 @@ Module {
             read: "authorId"
             notify: "loaded"
             index: 6
-            lineNumber: 132
+            lineNumber: 142
             isReadonly: true
             isFinal: true
         }
@@ -3312,7 +3413,7 @@ Module {
             read: "description"
             notify: "loaded"
             index: 7
-            lineNumber: 133
+            lineNumber: 143
             isReadonly: true
             isFinal: true
         }
@@ -3322,7 +3423,7 @@ Module {
             read: "size"
             notify: "loaded"
             index: 8
-            lineNumber: 134
+            lineNumber: 144
             isReadonly: true
             isFinal: true
         }
@@ -3332,7 +3433,7 @@ Module {
             read: "width"
             notify: "loaded"
             index: 9
-            lineNumber: 135
+            lineNumber: 145
             isReadonly: true
             isFinal: true
         }
@@ -3342,7 +3443,7 @@ Module {
             read: "height"
             notify: "loaded"
             index: 10
-            lineNumber: 136
+            lineNumber: 146
             isReadonly: true
             isFinal: true
         }
@@ -3352,7 +3453,7 @@ Module {
             read: "tags"
             notify: "loaded"
             index: 11
-            lineNumber: 137
+            lineNumber: 147
             isReadonly: true
             isFinal: true
         }
@@ -3362,7 +3463,7 @@ Module {
             read: "webUrl"
             notify: "loaded"
             index: 12
-            lineNumber: 138
+            lineNumber: 148
             isReadonly: true
             isFinal: true
         }
@@ -3372,17 +3473,17 @@ Module {
             read: "fields"
             notify: "loaded"
             index: 13
-            lineNumber: 139
+            lineNumber: 149
             isReadonly: true
             isFinal: true
         }
-        Signal { name: "sourceIdChanged"; lineNumber: 164 }
-        Signal { name: "itemIdChanged"; lineNumber: 165 }
-        Signal { name: "loaded"; lineNumber: 166 }
+        Signal { name: "sourceIdChanged"; lineNumber: 174 }
+        Signal { name: "itemIdChanged"; lineNumber: 175 }
+        Signal { name: "loaded"; lineNumber: 176 }
     }
     Component {
         file: "remote_query.cppm"
-        lineNumber: 185
+        lineNumber: 195
         name: "waywallen::RemoteDownloadQuery"
         accessSemantics: "reference"
         prototype: "QueryExtra<control::v1::Response,RemoteDownloadQuery>"
@@ -3390,46 +3491,46 @@ Module {
         exportMetaObjectRevisions: [0]
         Signal {
             name: "accepted"
-            lineNumber: 197
+            lineNumber: 207
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
         }
         Signal {
             name: "rejected"
-            lineNumber: 198
+            lineNumber: 208
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
             Parameter { name: "error"; type: "QString" }
         }
         Signal {
             name: "removed"
-            lineNumber: 199
+            lineNumber: 209
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
         }
         Signal {
             name: "removeFailed"
-            lineNumber: 200
+            lineNumber: 210
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
             Parameter { name: "error"; type: "QString" }
         }
         Method {
             name: "start"
-            lineNumber: 194
+            lineNumber: 204
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
         }
         Method {
             name: "remove"
-            lineNumber: 195
+            lineNumber: 205
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
         }
     }
     Component {
         file: "remote_query.cppm"
-        lineNumber: 39
+        lineNumber: 49
         name: "waywallen::RemoteSearchQuery"
         accessSemantics: "reference"
         prototype: "QueryExtra<model::RemoteListModel,RemoteSearchQuery>"
@@ -3442,7 +3543,7 @@ Module {
             write: "setSourceId"
             notify: "sourceIdChanged"
             index: 0
-            lineNumber: 44
+            lineNumber: 54
             isFinal: true
         }
         Property {
@@ -3452,7 +3553,7 @@ Module {
             write: "setQuery"
             notify: "queryChanged"
             index: 1
-            lineNumber: 45
+            lineNumber: 55
             isFinal: true
         }
         Property {
@@ -3462,7 +3563,7 @@ Module {
             write: "setArtistId"
             notify: "artistIdChanged"
             index: 2
-            lineNumber: 46
+            lineNumber: 56
             isFinal: true
         }
         Property {
@@ -3472,7 +3573,7 @@ Module {
             write: "setSortKey"
             notify: "sortKeyChanged"
             index: 3
-            lineNumber: 47
+            lineNumber: 57
             isFinal: true
         }
         Property {
@@ -3482,7 +3583,7 @@ Module {
             write: "setTags"
             notify: "tagsChanged"
             index: 4
-            lineNumber: 48
+            lineNumber: 58
             isFinal: true
         }
         Property {
@@ -3492,7 +3593,7 @@ Module {
             write: "setExcludedTags"
             notify: "excludedTagsChanged"
             index: 5
-            lineNumber: 49
+            lineNumber: 59
             isFinal: true
         }
         Property {
@@ -3502,7 +3603,7 @@ Module {
             write: "setFilterMatchModes"
             notify: "filterMatchModesChanged"
             index: 6
-            lineNumber: 51
+            lineNumber: 61
             isFinal: true
         }
         Property {
@@ -3512,7 +3613,7 @@ Module {
             write: "setBrowsingEnabled"
             notify: "browsingEnabledChanged"
             index: 7
-            lineNumber: 53
+            lineNumber: 63
             isFinal: true
         }
         Property {
@@ -3521,7 +3622,7 @@ Module {
             isPointer: true
             read: "model"
             index: 8
-            lineNumber: 55
+            lineNumber: 65
             isReadonly: true
             isFinal: true
             isPropertyConstant: true
@@ -3532,7 +3633,7 @@ Module {
             read: "hasMore"
             notify: "stateChanged"
             index: 9
-            lineNumber: 56
+            lineNumber: 66
             isReadonly: true
             isFinal: true
         }
@@ -3542,30 +3643,30 @@ Module {
             read: "errorText"
             notify: "stateChanged"
             index: 10
-            lineNumber: 57
+            lineNumber: 67
             isReadonly: true
             isFinal: true
         }
-        Signal { name: "sourceIdChanged"; lineNumber: 92 }
-        Signal { name: "queryChanged"; lineNumber: 93 }
-        Signal { name: "artistIdChanged"; lineNumber: 94 }
-        Signal { name: "sortKeyChanged"; lineNumber: 95 }
-        Signal { name: "tagsChanged"; lineNumber: 96 }
-        Signal { name: "excludedTagsChanged"; lineNumber: 97 }
-        Signal { name: "filterMatchModesChanged"; lineNumber: 98 }
-        Signal { name: "browsingEnabledChanged"; lineNumber: 99 }
-        Signal { name: "stateChanged"; lineNumber: 100 }
+        Signal { name: "sourceIdChanged"; lineNumber: 102 }
+        Signal { name: "queryChanged"; lineNumber: 103 }
+        Signal { name: "artistIdChanged"; lineNumber: 104 }
+        Signal { name: "sortKeyChanged"; lineNumber: 105 }
+        Signal { name: "tagsChanged"; lineNumber: 106 }
+        Signal { name: "excludedTagsChanged"; lineNumber: 107 }
+        Signal { name: "filterMatchModesChanged"; lineNumber: 108 }
+        Signal { name: "browsingEnabledChanged"; lineNumber: 109 }
+        Signal { name: "stateChanged"; lineNumber: 110 }
         Method {
             name: "fetchMore"
-            lineNumber: 90
+            lineNumber: 100
             Parameter { type: "qint32" }
         }
-        Method { name: "loadMore"; lineNumber: 88 }
-        Method { name: "retry"; lineNumber: 89 }
+        Method { name: "loadMore"; lineNumber: 98 }
+        Method { name: "retry"; lineNumber: 99 }
     }
     Component {
         file: "remote_query.cppm"
-        lineNumber: 222
+        lineNumber: 232
         name: "waywallen::RemoteSettingsPatchQuery"
         accessSemantics: "reference"
         prototype: "QueryExtra<control::v1::Response,RemoteSettingsPatchQuery>"
@@ -3573,7 +3674,7 @@ Module {
         exportMetaObjectRevisions: [0]
         Signal {
             name: "completed"
-            lineNumber: 234
+            lineNumber: 244
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "values"; type: "QVariantMap" }
             Parameter { name: "accepted"; type: "bool" }
@@ -3581,14 +3682,14 @@ Module {
         }
         Method {
             name: "patch"
-            lineNumber: 232
+            lineNumber: 242
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "values"; type: "QVariantMap" }
         }
     }
     Component {
         file: "remote_query.cppm"
-        lineNumber: 203
+        lineNumber: 213
         name: "waywallen::RemoteSubscriptionQuery"
         accessSemantics: "reference"
         prototype: "QueryExtra<control::v1::Response,RemoteSubscriptionQuery>"
@@ -3596,7 +3697,7 @@ Module {
         exportMetaObjectRevisions: [0]
         Signal {
             name: "stateLoaded"
-            lineNumber: 216
+            lineNumber: 226
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
             Parameter { name: "state"; type: "int" }
@@ -3604,7 +3705,7 @@ Module {
         }
         Signal {
             name: "setFinished"
-            lineNumber: 218
+            lineNumber: 228
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
             Parameter { name: "subscribed"; type: "bool" }
@@ -3613,13 +3714,13 @@ Module {
         }
         Method {
             name: "refresh"
-            lineNumber: 213
+            lineNumber: 223
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
         }
         Method {
             name: "setSubscribed"
-            lineNumber: 214
+            lineNumber: 224
             Parameter { name: "sourceId"; type: "QString" }
             Parameter { name: "id"; type: "QString" }
             Parameter { name: "subscribed"; type: "bool" }
@@ -4832,56 +4933,97 @@ Module {
     }
     Component {
         file: "wallpaper_query.cppm"
+        lineNumber: 268
+        name: "waywallen::WallpaperPresetQuery"
+        accessSemantics: "reference"
+        prototype: "QueryExtra<control::v1::Response,WallpaperPresetQuery>"
+        exports: ["waywallen.ui/WallpaperPresetQuery 0.0"]
+        exportMetaObjectRevisions: [0]
+        Property {
+            name: "presets"
+            type: "QVariantList"
+            read: "presets"
+            notify: "presetsChanged"
+            index: 0
+            lineNumber: 273
+            isReadonly: true
+            isFinal: true
+        }
+        Property {
+            name: "rendererUpdateFailed"
+            type: "bool"
+            read: "rendererUpdateFailed"
+            notify: "presetsChanged"
+            index: 1
+            lineNumber: 274
+            isReadonly: true
+            isFinal: true
+        }
+        Property {
+            name: "confirmationRequired"
+            type: "bool"
+            read: "confirmationRequired"
+            notify: "presetsChanged"
+            index: 2
+            lineNumber: 275
+            isReadonly: true
+            isFinal: true
+        }
+        Signal { name: "presetsChanged"; lineNumber: 292 }
+        Method {
+            name: "list"
+            lineNumber: 284
+            Parameter { name: "wallpaperId"; type: "QString" }
+        }
+        Method {
+            name: "save"
+            lineNumber: 285
+            Parameter { name: "wallpaperId"; type: "QString" }
+            Parameter { name: "name"; type: "QString" }
+        }
+        Method {
+            name: "update"
+            lineNumber: 286
+            Parameter { name: "wallpaperId"; type: "QString" }
+            Parameter { name: "presetId"; type: "QString" }
+        }
+        Method {
+            name: "rename"
+            lineNumber: 287
+            Parameter { name: "wallpaperId"; type: "QString" }
+            Parameter { name: "presetId"; type: "QString" }
+            Parameter { name: "name"; type: "QString" }
+        }
+        Method {
+            name: "remove"
+            lineNumber: 289
+            Parameter { name: "wallpaperId"; type: "QString" }
+            Parameter { name: "presetId"; type: "QString" }
+        }
+        Method {
+            name: "apply"
+            lineNumber: 290
+            Parameter { name: "wallpaperId"; type: "QString" }
+            Parameter { name: "presetId"; type: "QString" }
+            Parameter { name: "overwrite"; type: "bool" }
+        }
+    }
+    Component {
+        file: "wallpaper_query.cppm"
         lineNumber: 255
         name: "waywallen::WallpaperPropertySetQuery"
         accessSemantics: "reference"
         prototype: "QueryExtra<control::v1::Response,WallpaperPropertySetQuery>"
         exports: ["waywallen.ui/WallpaperPropertySetQuery 0.0"]
         exportMetaObjectRevisions: [0]
-        Property {
-            name: "wallpaperId"
-            type: "QString"
-            read: "wallpaperId"
-            write: "setWallpaperId"
-            notify: "wallpaperIdChanged"
-            index: 0
-            lineNumber: 262
-            isFinal: true
+        Method {
+            name: "write"
+            lineNumber: 264
+            Parameter { name: "wallpaperId"; type: "QString" }
+            Parameter { name: "key"; type: "QString" }
+            Parameter { name: "value"; type: "QString" }
+            Parameter { name: "reset"; type: "bool" }
         }
-        Property {
-            name: "propertyKey"
-            type: "QString"
-            read: "propertyKey"
-            write: "setPropertyKey"
-            notify: "propertyKeyChanged"
-            index: 1
-            lineNumber: 265
-            isFinal: true
-        }
-        Property {
-            name: "propertyValue"
-            type: "QString"
-            read: "propertyValue"
-            write: "setPropertyValue"
-            notify: "propertyValueChanged"
-            index: 2
-            lineNumber: 269
-            isFinal: true
-        }
-        Property {
-            name: "reset"
-            type: "bool"
-            read: "reset"
-            write: "setReset"
-            notify: "resetChanged"
-            index: 3
-            lineNumber: 271
-            isFinal: true
-        }
-        Signal { name: "wallpaperIdChanged"; lineNumber: 290 }
-        Signal { name: "propertyKeyChanged"; lineNumber: 291 }
-        Signal { name: "propertyValueChanged"; lineNumber: 292 }
-        Signal { name: "resetChanged"; lineNumber: 293 }
     }
     Component {
         file: "wallpaper_query.cppm"
@@ -5039,7 +5181,7 @@ Module {
     }
     Component {
         file: "store_item.cppm"
-        lineNumber: 70
+        lineNumber: 69
         name: "waywallen::model::RemoteStoreItem"
         accessSemantics: "reference"
         prototype: "StoreItem<kstore::ItemTrait<model::RemoteRow>::store_type,RemoteStoreItem>"
@@ -5052,13 +5194,13 @@ Module {
             write: "setItem"
             notify: "itemChanged"
             index: 0
-            lineNumber: 74
+            lineNumber: 73
         }
-        Signal { name: "itemChanged"; lineNumber: 82 }
+        Signal { name: "itemChanged"; lineNumber: 81 }
     }
     Component {
         file: "user_property_model.cppm"
-        lineNumber: 22
+        lineNumber: 23
         name: "waywallen::model::UserPropertyListModel"
         accessSemantics: "reference"
         prototype: "QAbstractListModel"
@@ -5066,7 +5208,7 @@ Module {
         exportMetaObjectRevisions: [0]
         Enum {
             name: "Roles"
-            lineNumber: 36
+            lineNumber: 38
             values: [
                 "KeyRole",
                 "LabelRole",
@@ -5081,7 +5223,11 @@ Module {
                 "OptionLabelsRole",
                 "OptionValuesRole",
                 "SectionRole",
-                "KindRole"
+                "KindRole",
+                "IsGroupRole",
+                "GroupKeyRole",
+                "ExpandedRole",
+                "PrecisionRole"
             ]
         }
         Property {
@@ -5091,7 +5237,16 @@ Module {
             write: "setSchemaJson"
             notify: "schemaJsonChanged"
             index: 0
-            lineNumber: 26
+            lineNumber: 27
+        }
+        Property {
+            name: "wallpaperId"
+            type: "QString"
+            read: "wallpaperId"
+            write: "setWallpaperId"
+            notify: "wallpaperIdChanged"
+            index: 1
+            lineNumber: 28
         }
         Property {
             name: "overridesJson"
@@ -5099,16 +5254,16 @@ Module {
             read: "overridesJson"
             write: "setOverridesJson"
             notify: "overridesJsonChanged"
-            index: 1
-            lineNumber: 27
+            index: 2
+            lineNumber: 29
         }
         Property {
             name: "count"
             type: "int"
             read: "rowCount"
             notify: "countChanged"
-            index: 2
-            lineNumber: 29
+            index: 3
+            lineNumber: 31
             isReadonly: true
         }
         Property {
@@ -5116,8 +5271,8 @@ Module {
             type: "bool"
             read: "hasPredefinedPropertyOverrides"
             notify: "overrideStateChanged"
-            index: 3
-            lineNumber: 30
+            index: 4
+            lineNumber: 32
             isReadonly: true
         }
         Property {
@@ -5125,34 +5280,46 @@ Module {
             type: "bool"
             read: "hasUserPropertyOverrides"
             notify: "overrideStateChanged"
-            index: 4
-            lineNumber: 32
+            index: 5
+            lineNumber: 34
             isReadonly: true
         }
-        Signal { name: "schemaJsonChanged"; lineNumber: 64 }
-        Signal { name: "overridesJsonChanged"; lineNumber: 68 }
-        Signal { name: "countChanged"; lineNumber: 70 }
-        Signal { name: "overrideStateChanged"; lineNumber: 73 }
+        Signal { name: "schemaJsonChanged"; lineNumber: 70 }
+        Signal { name: "wallpaperIdChanged"; lineNumber: 74 }
+        Signal { name: "overridesJsonChanged"; lineNumber: 78 }
+        Signal { name: "countChanged"; lineNumber: 80 }
+        Signal { name: "overrideStateChanged"; lineNumber: 83 }
         Signal {
             name: "valueChanged"
-            lineNumber: 91
+            lineNumber: 102
             Parameter { name: "key"; type: "QString" }
             Parameter { name: "value"; type: "QString" }
         }
         Signal {
             name: "resetRequested"
-            lineNumber: 92
+            lineNumber: 103
             Parameter { name: "key"; type: "QString" }
         }
         Method {
+            name: "setOverridesJson"
+            lineNumber: 77
+            Parameter { name: "v"; type: "QString" }
+        }
+        Method {
             name: "setValue"
-            lineNumber: 81
+            lineNumber: 91
             Parameter { name: "key"; type: "QString" }
             Parameter { name: "value"; type: "QString" }
         }
-        Method { name: "resetAll"; lineNumber: 84 }
-        Method { name: "resetPredefinedProperties"; lineNumber: 85 }
-        Method { name: "resetUserProperties"; lineNumber: 86 }
+        Method {
+            name: "setGroupExpanded"
+            lineNumber: 92
+            Parameter { name: "key"; type: "QString" }
+            Parameter { name: "expanded"; type: "bool" }
+        }
+        Method { name: "resetAll"; lineNumber: 95 }
+        Method { name: "resetPredefinedProperties"; lineNumber: 96 }
+        Method { name: "resetUserProperties"; lineNumber: 97 }
     }
     Component {
         file: "list_models.cppm"
@@ -5213,7 +5380,7 @@ Module {
     }
     Component {
         file: "store_item.cppm"
-        lineNumber: 58
+        lineNumber: 57
         name: "waywallen::model::WallpaperStoreItem"
         accessSemantics: "reference"
         prototype: "StoreItem<kstore::ItemTrait<model::Wallpaper>::store_type,WallpaperStoreItem>"
@@ -5225,10 +5392,10 @@ Module {
             read: "item"
             notify: "itemChanged"
             index: 0
-            lineNumber: 62
+            lineNumber: 61
             isReadonly: true
         }
-        Signal { name: "itemChanged"; lineNumber: 67 }
+        Signal { name: "itemChanged"; lineNumber: 66 }
     }
     Component { isTypeOpaque: true; name: "QColor"; accessSemantics: "value" }
     Component { isTypeOpaque: true; name: "QDateTime"; accessSemantics: "value" }

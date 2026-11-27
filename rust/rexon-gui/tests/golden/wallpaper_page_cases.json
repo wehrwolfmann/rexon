@@ -7420,7 +7420,7 @@
    }
   },
   {
-   "name": "деталь: ответ без записи даёт карту с полями по умолчанию",
+   "name": "деталь: ответ без записи — ошибка без текста (waywallen 0.6.2)",
    "steps": [
     {
      "op": "set",
@@ -7465,12 +7465,8 @@
     },
     {
      "q": "get",
-     "sig": "wallpaperChanged"
-    },
-    {
-     "q": "get",
      "sig": "statusChanged",
-     "status": 2
+     "status": 3
     },
     {
      "q": "get",
@@ -7478,7 +7474,13 @@
     },
     {
      "q": "get",
-     "sig": "finished"
+     "sig": "errorOccurred",
+     "error": ""
+    },
+    {
+     "q": "app",
+     "sig": "errorOccurred",
+     "error": ""
     }
    ],
    "final": {
@@ -7500,38 +7502,10 @@
      "rows": []
     },
     "get": {
-     "status": 2,
+     "status": 3,
      "error": "",
      "wallpaperId": "w9",
-     "wallpaper": {
-      "id_proto": "",
-      "name": "",
-      "wpType": "",
-      "resource": "",
-      "preview": "",
-      "metadata": {},
-      "size": 0,
-      "width": 0,
-      "height": 0,
-      "contentRating": "",
-      "tags": [],
-      "userPropertiesSchema": "",
-      "userPropertyOverrides": "",
-      "description": "",
-      "externalId": "",
-      "webUrl": "",
-      "wallpaperLayoutOverride": {
-       "fillmode": 0,
-       "align": 0,
-       "locationSet": false,
-       "locationX": 0,
-       "locationY": 0,
-       "rotation": 0
-      },
-      "wallpaperLayoutOverrideSet": false,
-      "supportsItemRemove": false,
-      "supportsItemUnsubscribe": false
-     }
+     "wallpaper": {}
     },
     "apply": {
      "status": 0,

@@ -3504,7 +3504,7 @@ fn stamp_gnome_installed(state: &Arc<State>, req: &Value, items: &mut Vec<Value>
             v.get("id").and_then(Value::as_str).is_some_and(|id| id.starts_with("local:"))
         });
         let at = local.count();
-        let rows = local_rows(&extra, s(req, "which"));
+        let rows = local_rows(&extra, s(req, "which"), s(req, "de"));
         items.splice(at..at, rows);
     }
     let shell = ego_shell_version().map(|v| ego::shell_label(&v)).unwrap_or_default();
@@ -3543,13 +3543,16 @@ fn aur_packages(state: &Arc<State>, req: &Value) -> Result<Vec<AurPackage>, Stri
     // Without a query — the whole section, with its curated packages on top
     // (`aur::CURATED`): AeroThemePlasma in "Global themes", its icons in
     // "Icons", its sounds in "Sounds".
+    // «Global Themes» on MATE puts the AUR packages of whole MATE themes first
+    // (`aur::native_shelf`).
+    let de = s(req, "de");
     let mut pkgs = if query.is_empty() {
-        aur::fetch_category_with_curated(&mut net, s(req, "categoryKey"))
+        aur::fetch_category_for_de(&mut net, s(req, "categoryKey"), de)
     } else {
         // The search — only what fits the section: for "girl" in "HD Wallpapers"
         // fcitx dictionaries and fonts used to come otherwise
         // (`aur::search_in_category`).
-        aur::search_in_category(&mut net, query, s(req, "categoryKey"))
+        aur::search_in_category_for_de(&mut net, query, s(req, "categoryKey"), de)
     }
     .map_err(|e| e.to_string())?;
     let installed = installed_packages();
@@ -3647,7 +3650,7 @@ fn scan_local(state: &Arc<State>, req: &Value) -> String {
         queue.retain_visible(&mut items);
     }
     remember_items(state, &items);
-    let rows: Vec<Value> = local_rows(&items, &which);
+    let rows: Vec<Value> = local_rows(&items, &which, &de);
     answer.insert("total".to_string(), Value::from(items.len() as i64));
     answer.insert("items".to_string(), Value::Array(rows));
     Value::Object(answer).to_string()
@@ -3702,8 +3705,18 @@ fn scan_disk(state: &Arc<State>, which: &str, de: &str) -> Option<Vec<ThemeItem>
 
 /// Rows of local themes with the "Remove" decision (`theme_removal`): the
 /// journal and the directories are read once per scan.
-fn local_rows(items: &[ThemeItem], which: &str) -> Vec<Value> {
+fn local_rows(items: &[ThemeItem], which: &str, de: &str) -> Vec<Value> {
     let removal = LiveRemoval::new();
+    let home = home();
+    let (natives, active) = if which == "global" {
+        (
+            rexon_core::native_global::scan_live(de, &home),
+            // The live settings only: the store cache plays no part in what is in use.
+            LiveScan::new(Vec::new(), HashMap::new()).with_de(de).active_map(),
+        )
+    } else {
+        (Vec::new(), Default::default())
+    };
     items
         .iter()
         .map(|it| {
@@ -3711,9 +3724,26 @@ fn local_rows(items: &[ThemeItem], which: &str) -> Vec<Value> {
             if it.id.starts_with("local:") {
                 stamp_removal(&mut row, &removal.verdict(it));
             }
+            // «Global Themes» outside Plasma: what a native theme sets, and what of a
+            // Plasma package carries over here (`native_global`).
+            if which == "global" {
+                if let Some(note) = rexon_core::native_global::card_note_live(it, de, &home, &natives, &active) {
+                    stamp_note(&mut row, &note);
+                }
+            }
             row
         })
         .collect()
+}
+
+/// The note fields of a tile row: `noteLine`, `noteTooltip`, `noteWarn` (the
+/// page reads them, `CardNoteUi`).
+fn stamp_note(row: &mut Value, note: &rexon_core::native_global::CardNote) {
+    if let Some(map) = row.as_object_mut() {
+        map.insert("noteLine".to_string(), Value::from(note.line.clone()));
+        map.insert("noteTooltip".to_string(), Value::from(note.tooltip.clone()));
+        map.insert("noteWarn".to_string(), Value::from(note.warn));
+    }
 }
 
 /// The "Remove" fields in a tile row: `removeVisible`, `removeEnabled`,
@@ -3741,6 +3771,10 @@ fn local_row(item: &ThemeItem, which: &str) -> Value {
         // tile kind.
         if !item.source_name.is_empty() {
             map.insert("sourceName".to_string(), Value::from(item.source_name.clone()));
+        }
+        // The full-size picture for the full-screen view travels the same way.
+        if !item.preview_big.is_empty() {
+            map.insert("previewBig".to_string(), Value::from(item.preview_big.clone()));
         }
     }
     raw
@@ -3985,8 +4019,12 @@ fn translate_detail_description(state: &Arc<State>, handle: &Handle, item: &Them
     // takes longer than the threshold. The lock is shared by the timer and the
     // outcome: the note cannot arrive AFTER the answer and hang over a ready
     // translation.
+    // The engine gets the description already as markup (`rich_text`): Markdown
+    // marks (`###`, `**`, `- `) become tags, and tags are not translated — only
+    // the text between them. The page renders the result the same way.
+    let markup = rexon_core::rich_text::store_description_html(&item.description);
     let note = Arc::new(Mutex::new(NoteState::default()));
-    if te::translation_may_follow(&item.description, &locale) {
+    if te::translation_may_follow(&markup, &locale) {
         let (note, state, handle) = (note.clone(), state.clone(), handle.clone());
         let (id, source) = (item.id.clone(), item.description.clone());
         std::thread::spawn(move || {
@@ -4005,7 +4043,7 @@ fn translate_detail_description(state: &Arc<State>, handle: &Handle, item: &Them
     // "Scandinavian". The core itself discards empty and too short names, so
     // there is nothing to check here.
     let done = te::translate_live_guarded(
-        &item.description,
+        &markup,
         &locale,
         &te::LiveEngine::new(),
         &mut cache,
@@ -4517,16 +4555,7 @@ fn run_aur_job(job: &aur_install::AurJob) -> (bool, String, String) {
         aur_install::failure_cause(&log),
         &journal_since(started),
     );
-    // The command for the terminal is only the package itself: the helper
-    // will collect the dependencies itself, and the line stays short.
-    let msg = aur_install::failure_message_for(
-        name,
-        helper,
-        &[name.to_string()],
-        &log,
-        &log_path,
-        cause.as_ref(),
-    );
+    let msg = aur_install::failure_message_for(name, &log, &log_path, cause.as_ref());
     (false, msg, aur_install::failure_short(cause.as_ref()))
 }
 
@@ -4944,25 +4973,33 @@ fn live_scan() -> LiveScan {
 /// Build an AUR package with THE SAME shared queue as «Install» of the AUR
 /// tiles (one build per application), and wait for the outcome. For places
 /// that need the package before the next step (parts of the MATE panel
-/// layout). Do not call from the interface thread.
-pub(crate) fn aur_install_wait(name: &str) -> Result<(), String> {
-    aur_install_wait_with(name, &mut |_| {})
+/// layout). Do not call from the interface thread. `Err` is the SHORT failure
+/// reason (`AurJob::short`, lower case — for a line that names the package
+/// itself).
+pub(crate) fn aur_install_wait_short(name: &str) -> Result<(), String> {
+    aur_install_wait_detail(name, &mut |_| {}).map_err(|(first, short)| if short.is_empty() { first } else { short })
 }
 
-/// [`aur_install_wait`] that also reports the build stage for the person
+/// [`aur_install_wait_short`] with the first line of the result as `Err`, that
+/// also reports the build stage for the person
 /// (`AurStage::label`, with the package being worked on) whenever it changes —
 /// for places that show the progress themselves (the KDE wallpaper plugin
 /// banner of the Wallpaper Engine tab).
 pub(crate) fn aur_install_wait_with(name: &str, on_stage: &mut dyn FnMut(&str)) -> Result<(), String> {
+    aur_install_wait_detail(name, on_stage).map_err(|(first, _)| first)
+}
+
+/// The shared wait: `Err((first line of the result, short reason))`.
+fn aur_install_wait_detail(name: &str, on_stage: &mut dyn FnMut(&str)) -> Result<(), (String, String)> {
     let family = system::DistroDetector::detect_live().family_live();
     let Some(helper) = system_plan::pick_aur_helper(family, &|bin| utils::which(bin, None).is_some()) else {
-        return Err(ap::aur_no_builder());
+        return Err((ap::aur_no_builder(), String::new()));
     };
     let plan = aur_install::plan_install(name, &|_| false);
     let log_path = aur_install::log_path(&home(), name);
     let queued = match aur_runner().queue.lock() {
         Ok(mut q) => q.enqueue(name, plan, &helper, &log_path),
-        Err(_) => return Err(ap::aur_no_builder()),
+        Err(_) => return Err((ap::aur_no_builder(), String::new())),
     };
     aur_broadcast();
     if queued.start_worker {
@@ -4984,7 +5021,7 @@ pub(crate) fn aur_install_wait_with(name: &str, on_stage: &mut dyn FnMut(&str)) 
                         format!("{} ({})", j.stage.label(), j.current)
                     };
                     let done = (!j.stage.active())
-                        .then(|| (j.stage == aur_install::AurStage::Done, j.message.clone()));
+                        .then(|| (j.stage == aur_install::AurStage::Done, j.message.clone(), j.short.clone()));
                     (done, label)
                 })
             })
@@ -4994,12 +5031,12 @@ pub(crate) fn aur_install_wait_with(name: &str, on_stage: &mut dyn FnMut(&str)) 
             shown = stage;
         }
         match done {
-            Some((true, _)) => return Ok(()),
-            Some((false, msg)) => return Err(msg.lines().next().unwrap_or("").to_string()),
+            Some((true, _, _)) => return Ok(()),
+            Some((false, msg, short)) => return Err((msg.lines().next().unwrap_or("").to_string(), short)),
             None => {}
         }
     }
-    Err(i18n::trf("“%1” wasn't built in time", &[&name]))
+    Err((i18n::trf("“%1” wasn't built in time", &[&name]), String::new()))
 }
 
 /// The AUR helper, asked ONCE per tab session (`shutil.which` is an

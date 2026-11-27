@@ -462,7 +462,7 @@ pub const ICON_THEME_NAME: &str = "rexon";
 ///
 /// The value is the same as that of the Python owner of the same window in the shared
 /// entry point table (`qt_app::ENTRY_IDENTITIES`, key `rexon.qt_main.app`);
-/// the guard is the test `имя_на_шине_машинное_и_совпадает_с_таблицей_точек_входа`.
+/// the guard is the test `bus_name_is_machine_name_and_matches_entry_point_table`.
 pub const APP_ID: &str = "Rexon";
 
 /// Where to look for the icon file if the theme was not enough — from newest to oldest.
@@ -641,7 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn обязательный_минимум_на_месте() {
+    fn required_minimum_present() {
         english();
         let m = menu(&ids(), TrayState::default());
         assert!(m.iter().any(|i| i.id == ID_OPEN && i.default));
@@ -651,7 +651,7 @@ mod tests {
     }
 
     #[test]
-    fn подменю_разделов_повторяет_порядок_окна() {
+    fn sections_submenu_follows_window_order() {
         english();
         let m = menu(&ids(), TrayState::default());
         let inside: Vec<&MenuItem> = m
@@ -667,7 +667,7 @@ mod tests {
     }
 
     #[test]
-    fn без_вкладок_подменю_разделов_не_строится() {
+    fn without_tabs_sections_submenu_not_built() {
         english();
         let m = menu(&[], TrayState::default());
         assert!(!m
@@ -676,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn без_демона_полоса_обоев_погашена_а_окно_и_выход_живы() {
+    fn without_daemon_wallpaper_strip_disabled_window_and_quit_alive() {
         english();
         let m = menu(&ids(), TrayState::default());
         let by = |id: i32| m.iter().find(|i| i.id == id).unwrap();
@@ -689,7 +689,7 @@ mod tests {
     }
 
     #[test]
-    fn плейлист_rexon_ведёт_смену_и_без_демона() {
+    fn rexon_playlist_drives_rotation_without_daemon() {
         english();
         let m = menu(&ids(), TrayState { playlist: true, ..Default::default() });
         let by = |id: i32| m.iter().find(|i| i.id == id).unwrap();
@@ -702,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn право_изменять_систему_видно_только_с_сеансом() {
+    fn system_change_right_visible_only_with_session() {
         english();
         let without = menu(&ids(), TrayState::default());
         assert!(!without.iter().any(|i| i.id == ID_ADMIN_INFO || i.id == ID_REVOKE));
@@ -716,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn подписи_паузы_и_звука_переворачиваются() {
+    fn pause_and_sound_labels_flip() {
         english();
         let playing = TrayState { daemon: true, ..Default::default() };
         let paused = TrayState { daemon: true, paused: true, muted: true, ..Default::default() };
@@ -734,7 +734,7 @@ mod tests {
     }
 
     #[test]
-    fn отмечен_ровно_один_интервал_смены() {
+    fn exactly_one_rotation_interval_checked() {
         english();
         let st = TrayState { daemon: true, rotation_secs: 300, ..Default::default() };
         assert!(!menu(&ids(), st).iter().any(|i| i.id == ID_PLAYLIST_PAUSE), "без плейлиста пункта нет");
@@ -749,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn чужой_интервал_демона_не_отмечает_ничего() {
+    fn foreign_daemon_interval_checks_nothing() {
         english();
         let st = TrayState { daemon: true, rotation_secs: 42, ..Default::default() };
         let m = menu(&ids(), st);
@@ -757,7 +757,7 @@ mod tests {
     }
 
     #[test]
-    fn номера_интервалов_разбираются_обратно() {
+    fn interval_numbers_parse_back() {
         english();
         for (index, (_, secs)) in ROTATE_PRESETS.iter().enumerate() {
             assert_eq!(rotate_secs_for(ID_ROTATE_BASE + index as i32), Some(*secs));
@@ -772,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    fn английское_меню_без_кириллицы() {
+    fn english_menu_without_cyrillic() {
         english();
         let st = TrayState { daemon: true, ..Default::default() };
         for item in menu(&ids(), st) {
@@ -786,7 +786,7 @@ mod tests {
     }
 
     #[test]
-    fn каждый_ключ_подписан() {
+    fn every_key_labelled() {
         english();
         for (key, msgid) in LABELS {
             assert!(!msgid.is_empty(), "нет подписи для {key}");
@@ -845,7 +845,7 @@ mod tests {
     /// setting, and it must have one text: the customer must not
     /// guess whether it is one and the same (rule #12 — one engine, two doors).
     #[test]
-    fn подпись_автозапуска_одна_на_меню_и_настройки() {
+    fn autostart_label_shared_by_menu_and_settings() {
         english();
         // «Settings» hold the English `msgid` (Russian is in `po/ru.po`),
         // so the source text is compared: the English label of the icon menu.
@@ -856,14 +856,14 @@ mod tests {
     }
 
     #[test]
-    fn незнакомый_раздел_подписан_хоть_как_то() {
+    fn unknown_section_labelled_somehow() {
         english();
         assert_eq!(section_label("desktops"), "Desktops");
         assert_eq!(section_label("новая"), "новая");
     }
 
     #[test]
-    fn флаг_свёрнутого_запуска() {
+    fn minimized_start_flag() {
         english();
         assert!(starts_hidden(&["--tray".to_string()]));
         assert!(starts_hidden(&["--page=install".into(), "--tray".into()]));
@@ -872,7 +872,7 @@ mod tests {
     }
 
     #[test]
-    fn путь_записи_автозапуска() {
+    fn autostart_entry_path() {
         english();
         assert_eq!(
             autostart_path(None, "/home/t"),
@@ -889,7 +889,7 @@ mod tests {
     }
 
     #[test]
-    fn запись_автозапуска_поднимает_в_лоток() {
+    fn autostart_entry_starts_in_tray() {
         english();
         use crate::installer::LaunchEntry;
         let py = LaunchEntry::Python;
@@ -938,7 +938,7 @@ mod tests {
     /// the translated window title used to get there, and a customer who changed the
     /// language lost the tray icon settings (the shell remembers them by `Id`).
     #[test]
-    fn имя_на_шине_машинное_и_совпадает_с_таблицей_точек_входа() {
+    fn bus_name_is_machine_name_and_matches_entry_point_table() {
         english();
         // Not the window title and not a translatable string at all.
         assert_ne!(APP_ID, crate::qt_main::window_title());
@@ -952,7 +952,7 @@ mod tests {
     }
 
     #[test]
-    fn кандидаты_значка_покрывают_дерево_и_пакет() {
+    fn icon_candidates_cover_tree_and_package() {
         english();
         let c = icon_candidates("/repo");
         assert_eq!(c[0], "/repo/rexon_icon_256.png");
@@ -965,7 +965,7 @@ mod tests {
     /// there is no tree. Lying here, the icon would start looking for the picture in three
     /// certainly dead paths for every customer.
     #[test]
-    fn корень_дерева_считается_по_пути_бинаря() {
+    fn tree_root_computed_from_binary_path() {
         english();
         assert_eq!(
             repo_root_from_exe("/home/u/Rexon/rexon_v5/rust/target/release/rexon-main-window"),
@@ -986,7 +986,7 @@ mod tests {
     /// The icon file must be found by the root that the function above
     /// computed: the "root → candidates" link is easy to break apart.
     #[test]
-    fn кандидаты_значка_собираются_из_посчитанного_корня() {
+    fn icon_candidates_built_from_computed_root() {
         english();
         let root = repo_root_from_exe("/tree/rust/target/release/rexon-main-window");
         let candidates = icon_candidates(&root);

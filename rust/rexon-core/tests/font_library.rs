@@ -105,7 +105,7 @@ fn cases() -> Value {
 }
 
 #[test]
-fn эталон_фильтров_и_символов() {
+fn filters_and_symbols_golden() {
     let got = cases();
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
     if std::env::var_os("REXON_GOLDEN_WRITE").is_some() {
@@ -116,7 +116,7 @@ fn эталон_фильтров_и_символов() {
 }
 
 #[test]
-fn формат_и_разбор_fc_list() {
+fn fc_list_format_and_parsing() {
     assert_eq!(qs::fc_list_fonts_argv()[2], "%{family[0]}\t%{style[0]}\t%{file}\t%{foundry}\t%{lang}\n");
     assert_eq!(qs::fc_query_fonts_argv("/x/a.ttf"), vec!["fc-query", "--format", qs::FC_FONT_FORMAT, "/x/a.ttf"]);
     assert_eq!(qs::fc_list_char_argv(0x16A0), vec!["fc-list", "--format", "%{file}\n", ":charset=16a0"]);
@@ -147,7 +147,7 @@ fn формат_и_разбор_fc_list() {
 }
 
 #[test]
-fn блоки_юникода_по_порядку() {
+fn unicode_blocks_in_order() {
     let blocks = qs::UNICODE_BLOCKS;
     assert_eq!(blocks[0], (0x0000, 0x007F, "Basic Latin"));
     for w in blocks.windows(2) {
@@ -161,7 +161,7 @@ fn блоки_юникода_по_порядку() {
 }
 
 #[test]
-fn свой_текст_образца() {
+fn own_sample_text() {
     let _lang = i18n_pin::en();
     let default = qs::font_sample_default();
     assert_eq!(default, "The quick brown fox jumps over the lazy dog 0123456789");
@@ -180,7 +180,7 @@ fn свой_текст_образца() {
 }
 
 #[test]
-fn подписи_раздела() {
+fn section_labels() {
     let _lang = i18n_pin::en();
     let keys: Vec<&str> = qs::font_manager_texts().iter().map(|(k, _)| *k).collect();
     for k in [
@@ -345,7 +345,7 @@ fn groups_json(groups: &[qs::FontGroup]) -> Value {
 }
 
 #[test]
-fn эталон_своих_групп() {
+fn own_groups_golden() {
     const GROUPS_GOLDEN: &str = "tests/golden/font_groups_cases.json";
     let got = group_cases();
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(GROUPS_GOLDEN);
@@ -357,7 +357,7 @@ fn эталон_своих_групп() {
 }
 
 #[test]
-fn файл_групп_не_xml_не_переписывается() {
+fn non_xml_groups_file_not_rewritten() {
     assert!(qs::parse_font_groups("<groups><group name=\"a\">").is_err(), "оборванный");
     assert!(qs::parse_font_groups("просто текст").is_err());
     assert!(qs::parse_font_groups("<groups><group name=\"a\"><family>&nbsp;</family></group></groups>").is_err());
@@ -367,7 +367,7 @@ fn файл_групп_не_xml_не_переписывается() {
 }
 
 #[test]
-fn архив_группы_пишется_и_читается() {
+fn group_archive_written_and_read() {
     let dir = std::env::temp_dir().join(format!("rexon-font-groups-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("a")).unwrap();

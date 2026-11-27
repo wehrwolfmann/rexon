@@ -2437,8 +2437,8 @@ pkgname = switchboard-plug-online-accounts\n";
         assert!(calls.iter().any(|c| c.starts_with("pkexec /bin/bash -c export LC_ALL=C; f=")));
     }
 
-    /// The helper's password dialog was closed — the same honest refusal with a
-    /// manual command, the build doesn't start.
+    /// The helper's password dialog was closed — the same honest refusal, the
+    /// build doesn't start.
     #[test]
     fn closed_password_window_of_helper_says_so() {
         let mut f = pantheon_fake();
@@ -2446,7 +2446,8 @@ pkgname = switchboard-plug-online-accounts\n";
         let sink = Arc::new(Sink::default());
         let outcome = rebuild_with(&f, sink, &CancelToken::new(), &helper_ctx(), &[PKG.to_string()]);
         assert!(!outcome.ok);
-        assert!(outcome.message.contains("sudo pacman -S --needed --asdeps libgranite-7.so"));
+        // No terminal command for the person (27.11.2026): retry and enter the password.
+        assert!(!outcome.message.contains("sudo ") && outcome.message.contains("Try again"), "{}", outcome.message);
         assert!(!f.calls().iter().any(|c| c.starts_with("systemd-run")));
     }
 
@@ -2489,7 +2490,8 @@ pkgname = switchboard-plug-online-accounts\n";
         f.answers.insert(0, ("pkexec /bin/bash -c export LC_ALL=C; exec".to_string(), out(126, "")));
         let (outcome, _) = rebuild(&f, &CancelToken::new());
         assert!(!outcome.ok);
-        assert!(outcome.message.contains("sudo pacman -S --needed --asdeps libgranite-7.so"));
+        // No terminal command for the person (27.11.2026): retry and enter the password.
+        assert!(!outcome.message.contains("sudo ") && outcome.message.contains("Try again"), "{}", outcome.message);
         assert!(!f.calls().iter().any(|c| c.starts_with("systemd-run")));
     }
 

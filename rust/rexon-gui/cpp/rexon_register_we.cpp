@@ -156,6 +156,8 @@ extern "C" void rexon_do_register_we_types()
     // waywallen 0.4.4: hide a wallpaper (the "Wallpapers" and "Hidden
     // wallpapers" pages).
     qmlRegisterType<WallpaperHideQuery>("waywallen.ui", 1, 0, "WallpaperHideQuery");
+    // waywallen 0.6.2: named property presets.
+    qmlRegisterType<WallpaperPresetQuery>("waywallen.ui", 1, 0, "WallpaperPresetQuery");
 
     // Batch 6: everything the management pages live on, except displays and
     // settings. The order here repeats the order of the tab's pages, not the
@@ -259,6 +261,8 @@ extern "C" void rexon_do_register_we_types()
                                           "DisplayPauseSetQuery");
     qmlRegisterType<SettingsGetQuery>("waywallen.ui", 1, 0, "SettingsGetQuery");
     qmlRegisterType<SettingsSetQuery>("waywallen.ui", 1, 0, "SettingsSetQuery");
+    // waywallen 0.6.2: output devices for the renderer sound.
+    qmlRegisterType<AudioOutputListQuery>("waywallen.ui", 1, 0, "AudioOutputListQuery");
 
     // Global pause/sound/stop — StatusPage, plus Ctrl+P in Window.qml.
     qmlRegisterType<GlobalPauseToggleQuery>("waywallen.ui", 1, 0,

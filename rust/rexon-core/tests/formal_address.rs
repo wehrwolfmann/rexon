@@ -97,7 +97,7 @@ struct Hit {
 }
 
 #[test]
-fn тексты_ядра_обращаются_на_вы() {
+fn core_texts_use_formal_address() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();
     collect_rs(&src, &mut files);
@@ -154,7 +154,7 @@ fn тексты_ядра_обращаются_на_вы() {
 /// The check checks itself: planted forms must be caught, otherwise
 /// the green colour above means nothing.
 #[test]
-fn сторож_ловит_формы_на_ты() {
+fn guard_catches_informal_forms() {
     for bad in [
         "Нажми кнопку",
         "Если хочешь, открой окно",

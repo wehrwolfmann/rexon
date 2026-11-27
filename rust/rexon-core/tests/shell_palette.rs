@@ -104,7 +104,7 @@ const DMS_SETTINGS: &str = "{\n  \"currentThemeName\": \"purple\",\n  \"cornerRa
 // ============================================================================
 
 #[test]
-fn цвет_разбирается_в_обоих_видах() {
+fn colour_parsed_in_both_forms() {
     assert_eq!(Rgb::parse("#3daee9"), Some(Rgb(61, 174, 233)));
     assert_eq!(Rgb::parse("#3daee9ff"), Some(Rgb(61, 174, 233)));
     assert_eq!(Rgb::parse("#fff"), Some(Rgb(255, 255, 255)));
@@ -117,7 +117,7 @@ fn цвет_разбирается_в_обоих_видах() {
 }
 
 #[test]
-fn палитра_из_kdeglobals() {
+fn palette_from_kdeglobals() {
     let p = dark_palette();
     assert!(p.dark);
     assert_eq!(p.surface, Rgb(32, 35, 38));
@@ -138,7 +138,7 @@ fn палитра_из_kdeglobals() {
 }
 
 #[test]
-fn схема_kde_из_палитры_читается_обратно_той_же() {
+fn kde_scheme_from_palette_reads_back_same() {
     let p = dark_palette();
     let text = sp::kde_scheme_text(&p, "RexonShell", "Rexon — Shell Colors");
     assert!(text.contains("[General]\nColorScheme=RexonShell\nName=Rexon — Shell Colors\n"));
@@ -155,7 +155,7 @@ fn схема_kde_из_палитры_читается_обратно_той_ж�
 }
 
 #[test]
-fn файлы_палитр_шеллов_читаются_обратно() {
+fn shell_palette_files_read_back() {
     let p = dark_palette();
     let noct = sp::noctalia_palette_json(&p);
     let v: serde_json::Value = serde_json::from_str(&noct).unwrap();
@@ -177,7 +177,7 @@ fn файлы_палитр_шеллов_читаются_обратно() {
 /// The Noctalia template after substitution is valid JSON of the same form as
 /// `dms-colors.json`, and is read by one reader.
 #[test]
-fn шаблон_noctalia_после_подстановки_читается() {
+fn noctalia_template_readable_after_substitution() {
     let t = sp::noctalia_bridge_template();
     assert!(t.contains("\"primary\": \"{{ colors.primary.dark.hex }}\""));
     assert!(t.contains("\"mode\": \"{{ mode }}\""));
@@ -210,7 +210,7 @@ fn шаблон_noctalia_после_подстановки_читается() {
 // ============================================================================
 
 #[test]
-fn toml_правится_одной_строкой() {
+fn toml_edited_in_one_line() {
     let edits = [sp::TomlEdit { table: "theme".into(), key: "mode".into(), line: Some("mode = \"light\"".into()) }];
     let out = sp::toml_apply(NOCTALIA_STATE, &edits, &[]).unwrap();
     assert_eq!(
@@ -228,7 +228,7 @@ fn toml_правится_одной_строкой() {
 }
 
 #[test]
-fn toml_в_чужом_виде_не_правится() {
+fn toml_in_foreign_form_not_edited() {
     // The theme key is written with dots at the root: our `[theme]` would give a
     // second definition — refusal, not damage.
     let text = "theme.mode = \"light\"\n";
@@ -239,7 +239,7 @@ fn toml_в_чужом_виде_не_правится() {
 }
 
 #[test]
-fn json_правится_членом_верхнего_уровня() {
+fn json_edited_as_top_level_member() {
     let out = sp::json_set_member(DMS_SETTINGS, "currentThemeName", Some("\"custom\"")).unwrap();
     assert_eq!(out, DMS_SETTINGS.replace("\"purple\"", "\"custom\""));
     let added = sp::json_set_member(DMS_SETTINGS, "customThemeFile", Some("\"/x/y.json\"")).unwrap();
@@ -265,7 +265,7 @@ fn json_правится_членом_верхнего_уровня() {
 // ============================================================================
 
 #[test]
-fn noctalia_запись_повтор_и_возврат_бит_в_бит() {
+fn noctalia_write_repeat_and_bitwise_restore() {
     let _lang = i18n_pin::en();
     let (root, home) = fresh_home("noct");
     let state = home.noctalia_state_file();
@@ -306,7 +306,7 @@ fn noctalia_запись_повтор_и_возврат_бит_в_бит() {
 }
 
 #[test]
-fn noctalia_без_файла_состояния_возврат_убирает_файл() {
+fn noctalia_without_state_file_restore_removes_file() {
     let (root, home) = fresh_home("noct-empty");
     let before = snapshot(&root);
     let p = sp::palette_from_kde(KDEGLOBALS_LIGHT).unwrap();
@@ -320,7 +320,7 @@ fn noctalia_без_файла_состояния_возврат_убирает_�
 /// A dark scheme and a dark shell by default: the mode key is not written at
 /// all — we edit only what diverged.
 #[test]
-fn noctalia_режим_не_пишется_без_нужды() {
+fn noctalia_mode_not_written_needlessly() {
     let (_root, home) = fresh_home("noct-mode");
     sp::push_palette(DesktopShell::Noctalia, &dark_palette(), &home).unwrap();
     let state = read(&home.noctalia_state_file()).unwrap();
@@ -330,7 +330,7 @@ fn noctalia_режим_не_пишется_без_нужды() {
 /// The shell rewrote the file after us (changed its own key): restore removes
 /// only our keys, the foreign edit stays.
 #[test]
-fn noctalia_возврат_после_правки_шелла_только_наши_ключи() {
+fn noctalia_restore_after_shell_edit_only_our_keys() {
     let (_root, home) = fresh_home("noct-foreign");
     let state = home.noctalia_state_file();
     put(&state, NOCTALIA_STATE);
@@ -344,7 +344,7 @@ fn noctalia_возврат_после_правки_шелла_только_на�
 }
 
 #[test]
-fn noctalia_чужой_вид_ключей_отказ_без_порчи() {
+fn noctalia_foreign_key_form_refused_without_damage() {
     let _lang = i18n_pin::en();
     let (root, home) = fresh_home("noct-dotted");
     put(&home.noctalia_state_file(), "theme.builtin = \"Nord\"\n");
@@ -356,7 +356,7 @@ fn noctalia_чужой_вид_ключей_отказ_без_порчи() {
 }
 
 #[test]
-fn dms_запись_повтор_и_возврат_бит_в_бит() {
+fn dms_write_repeat_and_bitwise_restore() {
     let _lang = i18n_pin::en();
     let (root, home) = fresh_home("dms");
     let settings = home.dms_settings_file();
@@ -391,7 +391,7 @@ fn dms_запись_повтор_и_возврат_бит_в_бит() {
 }
 
 #[test]
-fn dms_битый_файл_отказ_без_порчи() {
+fn dms_broken_file_refused_without_damage() {
     let (root, home) = fresh_home("dms-bad");
     put(&home.dms_settings_file(), "{ \"currentThemeName\": ");
     let before = snapshot(&root);
@@ -402,7 +402,7 @@ fn dms_битый_файл_отказ_без_порчи() {
 /// DMS rewrote the settings entirely (it has its own order and changed its
 /// own key): our keys are restored one by one, the foreign stays.
 #[test]
-fn dms_возврат_после_правки_шелла_только_наши_ключи() {
+fn dms_restore_after_shell_edit_only_our_keys() {
     let (_root, home) = fresh_home("dms-foreign");
     let settings = home.dms_settings_file();
     put(&settings, DMS_SETTINGS);
@@ -432,7 +432,7 @@ const DMS_COLORS: &str = r##"{
 }"##;
 
 #[test]
-fn dms_цвета_берутся_из_файла_matugen_по_режиму_шелла() {
+fn dms_colours_from_matugen_file_by_shell_mode() {
     let _lang = i18n_pin::en();
     let (_root, home) = fresh_home("dms-pull");
     match sp::shell_palette(DesktopShell::DankMaterialShell, &home) {
@@ -456,7 +456,7 @@ fn dms_цвета_берутся_из_файла_matugen_по_режиму_ше�
 }
 
 #[test]
-fn noctalia_цвета_через_шаблон_и_возврат() {
+fn noctalia_colours_via_template_and_restore() {
     let (root, home) = fresh_home("noct-pull");
     put(&home.noctalia_state_file(), NOCTALIA_STATE);
     let before = snapshot(&root);
@@ -496,7 +496,7 @@ fn noctalia_цвета_через_шаблон_и_возврат() {
 }
 
 #[test]
-fn noctalia_своя_палитра_читается_напрямую() {
+fn noctalia_own_palette_read_directly() {
     let (_root, home) = fresh_home("noct-custom");
     put(&home.noctalia_state_file(), "[theme]\nsource = \"custom\"\ncustom_palette = \"Mine\"\nmode = \"light\"\n");
     let p = dark_palette();
@@ -507,7 +507,7 @@ fn noctalia_своя_палитра_читается_напрямую() {
 }
 
 #[test]
-fn схема_с_цветами_шелла_чередует_имя_и_не_повторяется() {
+fn shell_colour_scheme_alternates_name_without_repeats() {
     let (_root, home) = fresh_home("scheme");
     let p = dark_palette();
     put(&home.kdeglobals(), KDEGLOBALS_DARK);
@@ -541,7 +541,7 @@ fn схема_с_цветами_шелла_чередует_имя_и_не_по�
 // ============================================================================
 
 #[test]
-fn полоса_только_при_живом_шелле() {
+fn strip_only_with_live_shell() {
     let _lang = i18n_pin::en();
     let (_root, home) = fresh_home("banner");
     assert!(!sp::palette_banner(None, &home).visible);
@@ -564,7 +564,7 @@ fn полоса_только_при_живом_шелле() {
 }
 
 #[test]
-fn после_схемы_rexon_ведёт_значит_передаём_сразу() {
+fn after_scheme_rexon_leads_so_hand_over_at_once() {
     let _lang = i18n_pin::en();
     let (_root, home) = fresh_home("after");
     assert_eq!(sp::after_scheme_applied(None, &home), None, "шелла нет — добавлять нечего");
@@ -588,7 +588,7 @@ fn после_схемы_rexon_ведёт_значит_передаём_сраз
 
 /// In Russian: the labels are taken from the real `po/ru.po`.
 #[test]
-fn подписи_по_русски() {
+fn labels_in_russian() {
     let _lang = i18n_pin::ru();
     assert_eq!(sp::push_label(), "Передать палитру оболочке");
     assert_eq!(sp::pull_label(), "Взять цвета оболочки");
@@ -610,7 +610,7 @@ fn fake_apply(home: &PaletteHome, calls: &mut Vec<String>, scheme: &str) -> (boo
 }
 
 #[test]
-fn взять_цвета_dms_повтор_и_возврат() {
+fn take_dms_colours_repeat_and_restore() {
     let _lang = i18n_pin::en();
     let (_root, home) = fresh_home("pull-flow");
     put(&home.kdeglobals(), KDEGLOBALS_DARK);
@@ -643,7 +643,7 @@ fn взять_цвета_dms_повтор_и_возврат() {
 /// Noctalia without a template: we connect, the «shell» fills the file on a
 /// nudge — and the colours are taken by the same press.
 #[test]
-fn взять_цвета_noctalia_подключает_шаблон_и_ждёт() {
+fn take_noctalia_colours_enables_template_and_waits() {
     let _lang = i18n_pin::en();
     let (_root, home) = fresh_home("pull-noct");
     put(&home.kdeglobals(), KDEGLOBALS_DARK);
@@ -677,7 +677,7 @@ fn взять_цвета_noctalia_подключает_шаблон_и_ждёт(
 }
 
 #[test]
-fn передать_без_схемы_честный_отказ() {
+fn hand_over_without_scheme_honest_refusal() {
     let _lang = i18n_pin::en();
     let (root, home) = fresh_home("push-flow");
     let before = snapshot(&root);
@@ -689,7 +689,7 @@ fn передать_без_схемы_честный_отказ() {
 
 /// German from the real `po/de.po`: buttons and the bar do not stay in English.
 #[test]
-fn подписи_по_немецки() {
+fn labels_in_german() {
     let _lang = i18n_pin::en();
     let po = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../po/de.po");
     let text = fs::read_to_string(po).unwrap();

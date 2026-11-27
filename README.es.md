@@ -15,15 +15,20 @@ Rexon está escrito en Rust, y su interfaz, en Qt 6 / QML (mediante [cxx-qt](htt
 El programa es joven: su número de versión aún es 0.x, y la plataforma
 principal de desarrollo y pruebas es Arch Linux / CachyOS.
 
-![Rexon: lista de entornos de escritorio y detalles de KDE Plasma](.github/screenshots/desktops.png)
+![Rexon: la pestaña Wallpaper Engine con la biblioteca de fondos animados](.github/screenshots/wallpaper-engine.png)
 
-![Rexon: catálogo de temas globales en la sección «Apariencia»](.github/screenshots/global-themes.png)
+![Rexon: temas globales en MATE: primero los temas propios del escritorio, con vistas previas reales](.github/screenshots/global-themes.png)
 
 <table>
   <tr>
+    <td><img src=".github/screenshots/desktops.png" alt="Lista de entornos de escritorio y detalles de MATE"></td>
+    <td><img src=".github/screenshots/screen-effects.png" alt="Efectos de pantalla con vista previa en vivo"></td>
+    <td><img src=".github/screenshots/steam.png" alt="Vídeos de inicio de Steam al iniciar sesión"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/conky.png" alt="Catálogo de widgets de Conky"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Estilos de aplicación Qt: muestras en vivo de los controles"></td>
-    <td><img src=".github/screenshots/gtk-theme-details.png" alt="Detalles de un tema GTK con el selector GTK 4/libadwaita"></td>
-    <td><img src=".github/screenshots/compare.png" alt="Comparación de entornos de escritorio lado a lado"></td>
+    <td></td>
   </tr>
 </table>
 
@@ -151,17 +156,30 @@ El paquete se compila para x86_64. Se necesita Qt 6.6 o posterior.
 Para Arch Linux / CachyOS, este repositorio contiene dos paquetes:
 
 - [`packaging/rexon/`](packaging/rexon/): la versión publicada. Se compila a
-  partir de la etiqueta de versión firmada (`v0.1.1`), y `makepkg` comprueba la
+  partir de la etiqueta de versión firmada (`v0.1.2`), y `makepkg` comprueba la
   firma de la etiqueta con la clave
   `B4505C7C7841ECC12D7A0E9D0083083C32159A72`. Importa la clave una vez:
   `curl -s https://github.com/wehrwolfmann.gpg | gpg --import`.
 - [`packaging/aur/`](packaging/aur/): `rexon-git`, el código más reciente de `main`.
 
+El motor de fondos de pantalla se instala como paquetes aparte del AUR: el
+servicio `waywallen` y su complemento `open-wallpaper-engine`; para compilar
+hace falta además `lito` (AUR). Instálalos primero y luego compila Rexon:
+
 ```sh
+paru -S waywallen open-wallpaper-engine lito
 git clone https://github.com/wehrwolfmann/rexon.git
 cd rexon/packaging/rexon
 makepkg -si
 ```
+
+Sin un asistente de AUR, compila cada uno de los tres de la misma forma,
+`waywallen` antes que `open-wallpaper-engine`:
+`git clone https://aur.archlinux.org/<nombre>.git && cd <nombre> && makepkg -si`.
+`waywallen-bin` (el AppImage precompilado) todavía no sirve: declara
+`waywallen` sin versión, y pacman no lo cuenta para la dependencia
+`waywallen>=0.6.3` de Rexon y de `open-wallpaper-engine`. En Plasma, Rexon
+instala por sí mismo el complemento de fondos `plasma-wallpaper-waywallen`.
 
 ## Compilar desde el código fuente
 
@@ -203,12 +221,12 @@ se compilan con CMake. Los scripts de `tools/` los colocan en
 ```sh
 tools/build_qml_material.sh
 tools/build_qml_control.sh
-tools/build_qml_qextra.sh    # necesita lito >= 0.8.7, clang, lld (AUR: lito o lito-bin)
+tools/build_qml_qextra.sh    # necesita lito >= 0.8.11, clang, lld (AUR: lito o lito-bin)
 ```
 
-Para obtenerlo todo de una vez —los módulos, el motor waywallen, los
-asistentes con privilegios y sus políticas de polkit—, mejor compila el
-paquete:
+Para obtenerlo todo de una vez —los módulos, los asistentes con privilegios
+y sus políticas de polkit—, mejor compila el paquete (también hacen falta los
+paquetes del motor de arriba):
 
 ```sh
 cd packaging/aur
@@ -399,15 +417,17 @@ cambiar el código.
 Los fondos de pantalla animados de Rexon se basan en el trabajo de otras personas:
 
 - **[waywallen](https://github.com/hypengw/waywallen)**, de hypengw (MIT). El
-  motor de fondos de pantalla (un servicio aparte); el paquete incluye su
-  versión oficial sin cambios. La página «Fondos de pantalla animados» usa la
+  motor de fondos de pantalla (un servicio aparte); el paquete de Rexon depende del
+  paquete `waywallen`, y la compilación con el motor integrado incluye su versión
+  oficial sin cambios. La página «Fondos de pantalla animados» usa la
   interfaz QML de waywallen con pequeños cambios, que están en
   `data/qt_wallpaper_engine/qml_ui/waywallen/patches/`.
 - **[Open Wallpaper Engine](https://github.com/waywallen/open-wallpaper-engine)**
   (GPL-2.0-only). El plugin de waywallen que dibuja los fondos de pantalla de
   escena y web. Funciona en procesos separados que lanza el servicio waywallen;
-  Rexon no se enlaza con él. El paquete incluye la versión oficial sin cambios
-  junto con el código fuente completo.
+  Rexon no se enlaza con él. El paquete
+  de Rexon depende del paquete `open-wallpaper-engine`; la compilación con el motor
+  integrado incluye la versión oficial sin cambios junto con el código fuente completo.
 - **[waywallen-display](https://github.com/waywallen/waywallen-display)**: el
   plugin de fondo de pantalla para KDE Plasma, incluido sin cambios.
 - **[Ruffle](https://github.com/ruffle-rs/ruffle)** (MIT / Apache-2.0): los

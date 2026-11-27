@@ -50,6 +50,14 @@ pub const SHOT_HEIGHT: i32 = crate::appearance_page::DETAIL_PREVIEW_H;
 /// Mark of the shot rules in the cache key: when it changes, all shots are retaken.
 pub const SHOT_STYLE: &str = "w2";
 
+/// The cache-key part every widget shot shares: the shot rules and the form
+/// labels. The labels are translated ([`sample_texts`]), so a shot taken in one
+/// interface language is retaken after the language changes instead of showing
+/// the old language's words.
+pub fn style_tag() -> String {
+    format!("{SHOT_STYLE}\u{1}{}", sample_texts().join("\u{1}"))
+}
+
 /// How many times larger to draw form `form` so that frame `size` is
 /// only shrunk from it, never stretched: an integer from 1 to 4. A 450×255 form into
 /// a 600×340 frame — twofold (900×510 → 600×340).
@@ -311,15 +319,15 @@ impl ShotSetup {
         }
         let size = format!("{FORM_WIDTH}x{FORM_HEIGHT}");
         match kind {
-            ShotKind::Qt { kvantum: None, .. } => format!("{SHOT_STYLE}\u{0}{size}\u{0}{}", self.colors_stamp),
+            ShotKind::Qt { kvantum: None, .. } => format!("{}\u{0}{size}\u{0}{}", style_tag(), self.colors_stamp),
             ShotKind::Qt { kvantum: Some((name, dir)), .. } => {
                 let cfg = stamp(&Path::new(&dir).join(format!("{name}.kvconfig")));
                 let svg = stamp(&Path::new(&dir).join(format!("{name}.svg")));
-                format!("{SHOT_STYLE}\u{0}{size}\u{0}{}\u{0}{cfg}\u{0}{svg}", self.colors_stamp)
+                format!("{}\u{0}{size}\u{0}{}\u{0}{cfg}\u{0}{svg}", style_tag(), self.colors_stamp)
             }
             ShotKind::Gtk { dir, dark, .. } => {
                 let css = gtk3_css(Path::new(&dir), "gtk.css").map_or(0, |p| stamp(&p));
-                format!("{SHOT_STYLE}\u{0}{size}\u{0}{css}\u{0}{dark}")
+                format!("{}\u{0}{size}\u{0}{css}\u{0}{dark}", style_tag())
             }
         }
     }
@@ -335,6 +343,12 @@ pub const MODE_GTK: &str = "gtk";
 /// Helper argv: the mode, then `--out`, `--size`, `--form`, for Qt `--style`
 /// and `--color role=#color`, and the `--text` labels in [`sample_texts`] order.
 pub fn helper_argv(helper: &str, req: &ShotRequest, texts: &[String], out: &str) -> Vec<String> {
+    helper_argv_sized(helper, req, texts, out, (SHOT_WIDTH, SHOT_HEIGHT))
+}
+
+/// [`helper_argv`] for a finished frame of `size` (width, height) instead of
+/// [`SHOT_WIDTH`]×[`SHOT_HEIGHT`].
+pub fn helper_argv_sized(helper: &str, req: &ShotRequest, texts: &[String], out: &str, size: (i32, i32)) -> Vec<String> {
     let mut argv = vec![helper.to_string()];
     match &req.kind {
         ShotKind::Qt { style, .. } => {
@@ -346,7 +360,7 @@ pub fn helper_argv(helper: &str, req: &ShotRequest, texts: &[String], out: &str)
         "--out".into(),
         out.to_string(),
         "--size".into(),
-        format!("{SHOT_WIDTH}x{SHOT_HEIGHT}"),
+        format!("{}x{}", size.0, size.1),
         "--form".into(),
         format!("{FORM_WIDTH}x{FORM_HEIGHT}"),
     ]);
@@ -435,6 +449,12 @@ pub fn helper_env(req: &ShotRequest, work: &Path) -> HelperEnv {
 /// (the style or theme did not load, the helper crashed, the frame has the wrong size);
 /// an unfinished file is erased.
 pub fn take_shot(helper: &str, work_root: &str, req: &ShotRequest, out: &str) -> bool {
+    take_shot_sized(helper, work_root, req, out, (SHOT_WIDTH, SHOT_HEIGHT))
+}
+
+/// [`take_shot`] into a frame of `size` (width, height): the window contents of
+/// a whole-theme picture ([`crate::local_preview::WHOLE_SHOT_SIZE`]).
+pub fn take_shot_sized(helper: &str, work_root: &str, req: &ShotRequest, out: &str, size: (i32, i32)) -> bool {
     use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant};
@@ -457,7 +477,7 @@ pub fn take_shot(helper: &str, work_root: &str, req: &ShotRequest, out: &str) ->
     });
     let _ = std::fs::remove_file(out);
     let ok = prepared && {
-        let argv = helper_argv(helper, req, &sample_texts(), out);
+        let argv = helper_argv_sized(helper, req, &sample_texts(), out, size);
         let mut cmd = Command::new(&argv[0]);
         cmd.args(&argv[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         for (k, v) in &env.set {
@@ -486,7 +506,7 @@ pub fn take_shot(helper: &str, work_root: &str, req: &ShotRequest, out: &str) ->
     };
     // Links are only links: remove_dir_all does not dereference them.
     let _ = std::fs::remove_dir_all(&work);
-    let want = (SHOT_WIDTH as f64, SHOT_HEIGHT as f64);
+    let want = (size.0 as f64, size.1 as f64);
     let good = ok && crate::local_preview::image_size(Path::new(out)) == Some(want);
     if !good {
         let _ = std::fs::remove_file(out);
@@ -754,6 +774,9 @@ mod tests {
         };
         assert_eq!(setup.cache_tag("local:colors:X", "/x"), "");
         let a = setup.cache_tag("local:widgetstyle:Fusion", "");
+        // The translated form labels are part of the key: a new interface
+        // language retakes the shot.
+        assert!(a.contains(&sample_texts().join("\u{1}")));
         setup.colors_stamp = 6;
         assert_ne!(a, setup.cache_tag("local:widgetstyle:Fusion", ""));
         assert!(setup.request("local:widgetstyle:Fusion", "").is_some());

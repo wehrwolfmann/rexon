@@ -109,6 +109,7 @@ pub mod login_rescue;
 pub mod manifest_v4;
 pub mod mate_panel;
 pub mod models;
+pub mod native_global;
 pub mod net;
 pub mod notifications_slot;
 pub mod ocs;
@@ -133,6 +134,7 @@ pub mod renderer_watch;
 /// An Arch package waiting to be rebuilt against a new library: the sign and the build from official sources.
 pub mod repo_rebuild;
 pub mod rexon_bridge;
+pub mod rich_text;
 pub mod ruffle_manager;
 pub mod rxn_build;
 pub mod rxn_manifest;

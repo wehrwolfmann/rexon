@@ -156,6 +156,14 @@ MD.Page {
             }
         });
     }
+    function loginWithBrowser(action, helperId) {
+        if (!action || Number(action.kind) !== 4 || action.enabled === false || loginQuery.querying)
+            return;
+        loginQuery.pluginId = root.sourceId;
+        loginQuery.actionId = action.id;
+        loginQuery.browserHelperId = helperId;
+        loginQuery.reload();
+    }
     function pickSort(idx) {
         if (idx < 0 || idx >= sortOptions.length)
             return;
@@ -376,6 +384,7 @@ MD.Page {
                     MD.EmbedChip {
                         id: sourceChip
 
+                        focusPolicy: Qt.StrongFocus
                         mdState.borderWidth: 1
                         text: root.sourceName(root.sourceId)
                         trailingIconName: MD.Token.icon.arrow_drop_down
@@ -406,6 +415,7 @@ MD.Page {
                     MD.EmbedChip {
                         id: sortChip
 
+                        focusPolicy: Qt.StrongFocus
                         mdState.borderWidth: 1
                         text: root.sortLabel()
                         trailingIconName: MD.Token.icon.arrow_drop_down
@@ -437,6 +447,7 @@ MD.Page {
                     MD.EmbedChip {
                         id: sortChoiceChip
 
+                        focusPolicy: Qt.StrongFocus
                         mdState.borderWidth: 1
                         text: W.I18n.tr(root.sortChoices[root.sortChoiceIndex]?.labelText ?? "")
                         trailingIconName: MD.Token.icon.arrow_drop_down
@@ -513,6 +524,7 @@ MD.Page {
                             spacing: m_grid.itemSpacing
 
                             onClicked: {
+                                m_grid.forceActiveFocus(Qt.MouseFocusReason);
                                 m_grid.currentIndex = index;
                                 root.selectItem(index);
                             }
@@ -530,6 +542,7 @@ MD.Page {
                         onClicked: searchQuery.retry()
                     }
                     ColumnLayout {
+                        id: loginState
                         readonly property bool sourceUnavailable: root.artistMode && !root.sourceInfo(root.sourceId) && !availabilityQuery.querying
                         readonly property bool hasError: sourceUnavailable || (!searchQuery.querying && searchQuery.errorText.length > 0)
                         readonly property var loginAction: root.currentSourceLoginAction()
@@ -592,9 +605,25 @@ MD.Page {
                             Layout.alignment: Qt.AlignHCenter
                             mdState.type: MD.Enum.BtFilledTonal
                             text: parent.loginButtonLabel
-                            visible: parent.needsLogin
+                            visible: parent.needsLogin && Number(parent.loginAction.kind) !== 4
 
                             onClicked: root.openRemoteManagement()
+                        }
+                        W.BrowserLoginButton {
+                            Layout.fillWidth: true
+                            visible: loginState.needsLogin && Number(loginState.loginAction.kind) === 4
+                            sourceId: root.sourceId
+                            actionId: loginState.loginAction?.id ?? ""
+                            text: loginState.loginButtonLabel
+                            browserHelpers: availabilityQuery.browserHelpers
+                            defaultBrowserHelperId: availabilityQuery.defaultBrowserHelperId
+                            actionEnabled: loginState.loginAction?.enabled !== false
+                            busy: loginQuery.querying
+                            refreshing: availabilityQuery.querying
+                            availabilityError: availabilityQuery.status === 3 ? availabilityQuery.error : ""
+                            centered: true
+                            onLoginRequested: helperId => root.loginWithBrowser(loginState.loginAction, helperId)
+                            onRefreshRequested: availabilityQuery.refreshBrowserHelpers()
                         }
                         MD.Button {
                             Layout.alignment: Qt.AlignHCenter
@@ -708,6 +737,16 @@ MD.Page {
             }
             root.setSource(nextSourceId);
             root.refreshDetailSubscription();
+        }
+    }
+    W.PluginActionQuery {
+        id: loginQuery
+        forwardError: false
+        onCompleted: function (accepted, error, sessionId) {
+            if (!accepted)
+                W.Global.toastError(error.length > 0 ? error : qsTr("Login action failed"));
+            else
+                availabilityQuery.reload();
         }
     }
     W.RemoteSearchQuery {

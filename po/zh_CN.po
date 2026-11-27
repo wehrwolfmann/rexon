@@ -1426,6 +1426,14 @@ msgid "Couldn't apply the sound theme"
 msgstr "无法应用声音主题"
 
 #: rust/rexon-core/src/appearance_installer.rs
+msgid "Theme applied"
+msgstr "已应用主题"
+
+#: rust/rexon-core/src/appearance_installer.rs
+msgid "Couldn't apply the theme"
+msgstr "无法应用主题"
+
+#: rust/rexon-core/src/appearance_installer.rs
 msgid "Installed (this type doesn't need to be applied)"
 msgstr "已安装（此类型无需应用）"
 
@@ -1596,6 +1604,20 @@ msgstr "全局主题中没有任何内容被应用：%1。"
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Global Theme applied, except: %1."
 msgstr "已应用全局主题，以下除外：%1。"
+
+#: rust/rexon-core/src/appearance_installer.rs
+msgid "The theme “%1” is no longer on disk."
+msgstr "主题“%1”已不在磁盘上。"
+
+#. TRANSLATORS: %1 what changes for GTK apps (a sentence).
+#: rust/rexon-core/src/appearance_installer.rs
+msgid "Theme applied. %1"
+msgstr "已应用主题。%1"
+
+#. TRANSLATORS: %1 the list of skipped parts with reasons.
+#: rust/rexon-core/src/appearance_installer.rs
+msgid "Theme applied, except: %1."
+msgstr "主题已应用，以下除外：%1。"
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid ""
@@ -2667,6 +2689,31 @@ msgid ""
 "AUR doesn't know this package anymore — it may have been removed or renamed."
 msgstr "AUR 中已没有此软件包——它可能已被删除或重命名。"
 
+#: rust/rexon-core/src/aur_install.rs
+#, fuzzy
+#| msgid ""
+#| "the source code couldn't be downloaded — check the internet connection"
+msgid "the recipe couldn't be downloaded from the AUR"
+msgstr "无法下载源代码——请检查网络连接"
+
+#: rust/rexon-core/src/aur_install.rs
+#, fuzzy
+#| msgid "the package didn't bring it"
+msgid "the package didn't build"
+msgstr "软件包中没有包含它"
+
+#: rust/rexon-core/src/aur_install.rs
+#, fuzzy
+#| msgid "This package needs %1, and it is not installed."
+msgid "the packages needed to build it couldn't be installed"
+msgstr "此软件包需要 %1，但它未安装。"
+
+#: rust/rexon-core/src/aur_install.rs
+#, fuzzy
+#| msgid "The extension couldn't be installed: %1"
+msgid "the built package couldn't be installed"
+msgstr "无法安装扩展：%1"
+
 #. TRANSLATORS: %1 is a theme name (AeroThemePlasma), %2 a number of packages.
 #: rust/rexon-core/src/aur_install.rs
 msgid ""
@@ -2832,10 +2879,6 @@ msgid "Couldn't install “%1”."
 msgstr "无法安装“%1”。"
 
 #: rust/rexon-core/src/aur_install.rs
-msgid "To decide it yourself, run in a terminal: %1"
-msgstr "如需自行处理，请在终端中运行：%1"
-
-#: rust/rexon-core/src/aur_install.rs
 msgid "Full log: %1"
 msgstr "完整日志：%1"
 
@@ -2878,6 +2921,16 @@ msgstr "该软件包在 AUR 中可能已过时——请查看其页面上的评�
 msgid ""
 "This is usually a problem of the package itself — check its page in the AUR "
 "for comments, or try again later."
+msgstr "这通常是软件包本身的问题——请查看其 AUR 页面上的评论，或稍后重试。"
+
+#: rust/rexon-core/src/aur_install.rs
+#, fuzzy
+#| msgid ""
+#| "This is usually a problem of the package itself — check its page in the "
+#| "AUR for comments, or try again later."
+msgid ""
+"The key the package is signed with isn't known on this computer — check the "
+"package's page in the AUR for comments, or try again later."
 msgstr "这通常是软件包本身的问题——请查看其 AUR 页面上的评论，或稍后重试。"
 
 #: rust/rexon-core/src/aur_install.rs
@@ -3985,6 +4038,18 @@ msgstr "MATE 面板"
 msgctxt "appearance section"
 msgid "Login Screen (Plasma Login Manager)"
 msgstr "登录界面（Plasma Login Manager）"
+
+#. TRANSLATORS: the «Global Themes» note on MATE or Cinnamon; %1 the desktop.
+#: rust/rexon-core/src/categories.rs
+msgid ""
+"%1 themes come first and are applied whole, as %1 itself applies them. Below "
+"them are Plasma packages: Rexon applies their parts one by one — colors, "
+"application style, icons, pointers, fonts and title bar buttons; the window "
+"that opens before applying says what carries over."
+msgstr ""
+"%1 主题排在最前，并会整体应用，与 %1 自身的应用方式相同。下方是 Plasma 软件"
+"包：Rexon 会分部分应用它们——颜色、应用程序样式、图标、指针、字体和标题栏按"
+"钮；应用前打开的窗口会说明哪些部分可以沿用。"
 
 #: rust/rexon-core/src/categories.rs
 msgid ""
@@ -9996,6 +10061,7 @@ msgid "Continue"
 msgstr "继续"
 
 #: rust/rexon-core/src/installer.rs rust/rexon-core/src/qt_steam.rs
+#: rust/rexon-gui/qml/MatePanelSection.qml
 msgid "Retry"
 msgstr "重试"
 
@@ -10950,12 +11016,18 @@ msgstr[0] ""
 msgid "The “%1” layout wasn't applied: couldn't install %2: %3."
 msgstr "未应用“%1”布局：无法安装 %2：%3。"
 
-#. TRANSLATORS: %1 is the reason the install failed.
+#. TRANSLATORS: %1 is the layout title; the parts that did not install follow.
 #: rust/rexon-core/src/mate_panel.rs
 msgid ""
-"The MATE Menu couldn't be installed (%1) — the standard MATE menu button is "
-"used instead."
-msgstr ""
+"⚠️ MATE panel: layout “%1” applied, but not all of its parts were installed."
+msgstr "⚠️ MATE 面板：已应用布局“%1”，但其部分组件未能安装。"
+
+#. TRANSLATORS: %1 is a package name, %2 the reason it didn't install.
+#: rust/rexon-core/src/mate_panel.rs
+#, fuzzy
+#| msgid "“%1” wasn't installed: %2"
+msgid "%1 wasn't installed: %2."
+msgstr "扩展“%1”未安装：%2"
 
 #: rust/rexon-core/src/mate_panel.rs
 msgid ""
@@ -11073,6 +11145,190 @@ msgstr "⚠️ 无法恢复之前的面板：%1"
 #: rust/rexon-core/src/mate_panel.rs
 msgid "✅ MATE panel restored to how it was before."
 msgstr "✅ MATE 面板已恢复到之前的状态。"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "native theme part"
+msgid "controls"
+msgstr "控件"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "native theme part"
+msgid "window borders"
+msgstr "窗口边框"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "native theme part"
+msgid "desktop (panels and menus)"
+msgstr "桌面（面板和菜单）"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "native theme part"
+msgid "icons"
+msgstr "图标"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "native theme part"
+msgid "pointer"
+msgstr "指针"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "native theme part"
+msgid "notifications"
+msgstr "通知"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "native theme part"
+msgid "light or dark style"
+msgstr "浅色或深色风格"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "cinnamon style mode"
+msgid "dark"
+msgstr "深色"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "cinnamon style mode"
+msgid "light"
+msgstr "浅色"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "cinnamon style mode"
+msgid "mixed"
+msgstr "混合"
+
+#. TRANSLATORS: a Cinnamon style tile: %1 the style (Mint-Y), %2 the
+#. mode (dark), %3 the colour variant name (blue).
+#: rust/rexon-core/src/native_global.rs
+msgid "%1 — %2, %3"
+msgstr "%1 — %2，%3"
+
+#. TRANSLATORS: the pointer of a native theme: %1 its theme (Yaru), %2 the size in pixels.
+#: rust/rexon-core/src/native_global.rs
+msgid "%1, size %2"
+msgstr "%1，大小 %2"
+
+#. TRANSLATORS: a line of the native theme tooltip: %1 a part (icons), %2 its name.
+#. TRANSLATORS: a part in use that differs from the theme: %1 the part (window borders), %2 its name.
+#: rust/rexon-core/src/native_global.rs
+msgid "%1: %2"
+msgstr "%1：%2"
+
+#. TRANSLATORS: %1 the desktop (MATE), %2 a list of parts (controls, icons).
+#: rust/rexon-core/src/native_global.rs
+msgid "Whole %1 theme: %2"
+msgstr "完整的 %1 主题：%2"
+
+#. TRANSLATORS: the theme is in use with own parts; %1 the list ("window borders: YaruOk").
+#: rust/rexon-core/src/native_global.rs
+msgid "In use with your own %1"
+msgstr "正在使用，保留了你自己的：%1"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "plasma package component"
+msgid "lock screen"
+msgstr "锁屏"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "plasma package component"
+msgid "logout screen"
+msgstr "注销界面"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "plasma package component"
+msgid "on-screen indicators"
+msgstr "屏幕指示器"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "plasma package component"
+msgid "widget setup"
+msgstr "小部件设置"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "plasma package component"
+msgid "KRunner search"
+msgstr "KRunner 搜索"
+
+#: rust/rexon-core/src/native_global.rs
+msgctxt "plasma package component"
+msgid "system dialogs"
+msgstr "系统对话框"
+
+#. TRANSLATORS: a Plasma package tile outside Plasma; %1 the desktop (MATE).
+#: rust/rexon-core/src/native_global.rs
+msgid "Plasma theme — nothing carries over to %1"
+msgstr "Plasma 主题 — %1 中无法沿用任何部分"
+
+#. TRANSLATORS: %1 the desktop (MATE), %2 a list (colors, icons).
+#: rust/rexon-core/src/native_global.rs
+msgid "Plasma theme — in %1: %2"
+msgstr "Plasma 主题 — 在 %1 中可沿用：%2"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "A theme for Plasma: none of its parts carries over to %1."
+msgstr "这是 Plasma 主题：它的任何部分都无法沿用到 %1。"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "A theme for Plasma. In %1 these carry over: %2."
+msgstr "这是 Plasma 主题。在 %1 中可沿用：%2。"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "Only for Plasma: %1."
+msgstr "仅适用于 Plasma：%1。"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "Plasma theme — partly in %1"
+msgstr "Plasma 主题 — 在 %1 中部分可用"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "A theme for Plasma. In %1 at most these carry over: %2."
+msgstr "这是 Plasma 主题。在 %1 中最多可沿用：%2。"
+
+#: rust/rexon-core/src/native_global.rs
+msgid ""
+"Only for Plasma: its panels and widgets, Plasma style, window decorations, "
+"splash and lock screens."
+msgstr ""
+"仅适用于 Plasma：它的面板和小部件、Plasma 样式、窗口装饰、启动画面和锁屏。"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "After installation the tile shows exactly what this theme brings."
+msgstr "安装后，卡片上会准确写明此主题中哪些部分可以沿用。"
+
+#. TRANSLATORS: %1 the theme, %2 the reason.
+#: rust/rexon-core/src/native_global.rs
+msgid "The theme “%1” wasn't applied: %2"
+msgstr "主题“%1”未应用：%2"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "it names no controls theme"
+msgstr "其中未指定控件主题"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "the window border theme “%1” isn't installed"
+msgstr "窗口边框主题“%1”未安装"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "the desktop theme “%1” isn't installed"
+msgstr "桌面主题“%1”未安装"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "“%1” isn't installed"
+msgstr "套件“%1”未安装"
+
+#: rust/rexon-core/src/native_global.rs
+msgid "you chose to keep your own icons"
+msgstr "你选择保留自己的图标"
+
+#: rust/rexon-core/src/native_global.rs
+msgid ""
+"GTK apps will become light, in Plasma too: the GTK settings file is shared."
+msgstr "GTK 应用将变为浅色，在 Plasma 中也是如此：GTK 设置文件是共用的。"
+
+#: rust/rexon-core/src/native_global.rs
+msgid ""
+"GTK apps will use their dark variant, in Plasma too: the GTK settings file "
+"is shared."
+msgstr "GTK 应用将使用深色变体，在 Plasma 中也是如此：GTK 设置文件是共用的。"
 
 #. TRANSLATORS: %1 is an HTTP status code (404, 503…).
 #: rust/rexon-core/src/net.rs
@@ -16584,7 +16840,9 @@ msgid "Keyboard shortcuts will take effect after you log in again."
 msgstr "键盘快捷键将在重新登录后生效。"
 
 #: rust/rexon-core/src/qt_settings.rs
-msgid "The desktop's services restart for a moment: the theme, the wallpaper slideshow and power settings may blink."
+msgid ""
+"The desktop's services restart for a moment: the theme, the wallpaper "
+"slideshow and power settings may blink."
 msgstr "桌面服务将短暂重启：主题、壁纸幻灯片和电源设置可能会闪烁一下。"
 
 #. TRANSLATORS: %1 is the desktop name.
@@ -18488,6 +18746,14 @@ msgstr "壁纸停了。又得盯着无聊的桌面了。"
 msgid "That's it, the picture doesn't move anymore. Oh well."
 msgstr "好了，画面不动了。算啦。"
 
+#. TRANSLATORS: a link in an item description in place of a picture that
+#. Rexon doesn't download by itself.
+#: rust/rexon-core/src/rich_text.rs
+#, fuzzy
+#| msgid "No picture"
+msgid "picture"
+msgstr "无图片"
+
 #: rust/rexon-core/src/rxn_manifest.rs
 msgid "This package needs %1, and it is not installed."
 msgstr "此软件包需要 %1，但它未安装。"
@@ -19106,7 +19372,39 @@ msgstr ""
 msgid "COSMIC will apply this the next time you log in."
 msgstr "COSMIC 将在您下次登录时应用此设置。"
 
-#. TRANSLATORS: Toast after screen effects were changed.
+#: rust/rexon-core/src/screen_effects.rs
+msgid ""
+"picom is already running with your own settings. Rexon won't replace it; "
+"close that picom first if you want Rexon's screen effects."
+msgstr ""
+
+#. TRANSLATORS: Screen effects on MATE/Xfce/LXQt: picom exited right after start. picom is a program name.
+#: rust/rexon-core/src/screen_effects.rs
+msgid ""
+"picom couldn't start, so the desktop's own compositor was turned back on and "
+"the screen was left as it was."
+msgstr ""
+
+#. TRANSLATORS: Screen effects prepared for a desktop chosen in "Current desktop" that is not running now.
+#: rust/rexon-core/src/screen_effects.rs
+#, fuzzy
+#| msgid ""
+#| "Done. The new background will show the next time the login screen appears."
+msgid "Done. The effect will show the next time you log in to this desktop."
+msgstr "完成。新背景将在下次显示登录界面时生效。"
+
+#. TRANSLATORS: %1 is a program name, e.g. picom.
+#: rust/rexon-core/src/screen_effects.rs
+#, fuzzy
+#| msgid "Rexon can't install programs on this system by itself."
+msgid "Rexon can't install %1 on this system by itself."
+msgstr "Rexon 无法在此系统上自行安装应用。"
+
+#. TRANSLATORS: %1 is a program name, e.g. picom.
+#: rust/rexon-core/src/screen_effects.rs
+msgid "%1 was installed, but Rexon still can't find it."
+msgstr ""
+
 #: rust/rexon-core/src/screen_effects.rs
 msgid "Screen effects applied."
 msgstr "已应用屏幕特效。"
@@ -22347,14 +22645,6 @@ msgid "No packages to install"
 msgstr "没有要安装的软件包"
 
 #: rust/rexon-core/src/system_plan.rs
-msgid ""
-"The administrator password wasn't confirmed.\n"
-"You can install from a terminal: sudo %1"
-msgstr ""
-"管理员密码未确认。\n"
-"可以在终端中安装：sudo %1"
-
-#: rust/rexon-core/src/system_plan.rs
 msgid "No installed packages to remove"
 msgstr "没有可卸载的已安装软件包"
 
@@ -22381,14 +22671,6 @@ msgid ""
 msgstr ""
 "已跳过（其他桌面需要）：\n"
 "%1"
-
-#: rust/rexon-core/src/system_plan.rs
-msgid ""
-"The administrator password wasn't confirmed.\n"
-"You can remove from a terminal: sudo %1"
-msgstr ""
-"管理员密码未确认。\n"
-"可以在终端中卸载：sudo %1"
 
 #: rust/rexon-core/src/system_plan.rs
 msgid "set up waybar, wofi, kitty, etc."
@@ -22757,11 +23039,9 @@ msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
 msgid ""
-"Still to run (you can do it by hand in a terminal):\n"
-"%1"
+"Not everything was rolled back. Run the rollback again: Rexon will finish "
+"what is left."
 msgstr ""
-"尚待执行（可在终端中手动执行）：\n"
-"%1"
 
 #: rust/rexon-core/src/system_plan.rs
 msgid ""
@@ -23041,10 +23321,14 @@ msgstr ""
 "请安装 polkit 软件包（Debian 和 Ubuntu 上为 pkexec）后重试。"
 
 #: rust/rexon-core/src/system_plan.rs
+#, fuzzy
+#| msgid ""
+#| "The administrator password wasn't confirmed.\n"
+#| "You can do this by hand in a terminal:\n"
+#| "%1"
 msgid ""
 "The administrator password wasn't confirmed.\n"
-"You can do this by hand in a terminal:\n"
-"%1"
+"Try again and enter the password in the window that opens."
 msgstr ""
 "管理员密码未确认。\n"
 "可以在终端中手动执行：\n"
@@ -23236,16 +23520,6 @@ msgstr "在 openSUSE 上 Rexon 暂时无法更改登录界面。"
 msgid "its own init system"
 msgstr "其自身的 init 系统"
 
-#. TRANSLATORS: %1 is an init system name (OpenRC, runit, …), %2 a terminal command.
-#: rust/rexon-core/src/system_plan.rs
-msgid ""
-"Here the login screen is switched by %1, and Rexon can't do it yet. In a "
-"terminal:\n"
-"%2"
-msgstr ""
-"此处登录界面由 %1 切换，Rexon 暂时无法执行。请在终端中运行：\n"
-"%2"
-
 #. TRANSLATORS: %1 is an init system name (OpenRC, runit, …).
 #: rust/rexon-core/src/system_plan.rs
 msgid "Here the login screen is switched by %1, and Rexon can't do it yet."
@@ -23358,39 +23632,19 @@ msgstr ""
 "包管理器锁在 %1 秒内未释放。可能是另一个事务或 snapper 快照卡住了。请检查："
 "pgrep -af 'pacman|yay|paru|snap-pac|snapper'"
 
-#. TRANSLATORS: %1 is a package manager command line.
 #: rust/rexon-core/src/system_plan.rs
-msgid ""
-"The administrator password wasn't confirmed.\n"
-"You can install from a terminal:\n"
-"  sudo steamos-readonly disable\n"
-"  sudo %1\n"
-"  sudo steamos-readonly enable"
-msgstr ""
-"管理员密码未确认。\n"
-"可以在终端中安装：\n"
-"  sudo steamos-readonly disable\n"
-"  sudo %1\n"
-"  sudo steamos-readonly enable"
-
-#: rust/rexon-core/src/system_plan.rs
-msgid "The administrator password wasn't confirmed."
-msgstr "管理员密码未确认。"
-
-#: rust/rexon-core/src/system_plan.rs
-msgid "Or install from a terminal:"
-msgstr "或在终端中安装："
-
-#. TRANSLATORS: %1 is the path of the program to start, %2 a hint
-#. with a command to run in a terminal.
-#: rust/rexon-core/src/system_plan.rs
+#, fuzzy
+#| msgid ""
+#| "The service that shows the password window isn't running.\n"
+#| "\n"
+#| "Start it yourself:\n"
+#| "  %1 &\n"
+#| "\n"
+#| "%2"
 msgid ""
 "The service that shows the password window isn't running.\n"
 "\n"
-"Start it yourself:\n"
-"  %1 &\n"
-"\n"
-"%2"
+"Log out and log back in: it starts together with the session."
 msgstr ""
 "显示密码窗口的服务未运行。\n"
 "\n"
@@ -23399,16 +23653,22 @@ msgstr ""
 "\n"
 "%2"
 
-#. TRANSLATORS: %1 is a hint with a command to run in a terminal.
-#. polkit-gnome is a package name.
+#. TRANSLATORS: polkit-gnome is a package name.
 #: rust/rexon-core/src/system_plan.rs
+#, fuzzy
+#| msgid ""
+#| "The service that shows the password window isn't running.\n"
+#| "\n"
+#| "No such service is installed here. Install one for your desktop (for "
+#| "example, polkit-gnome) — after that Rexon will show here how to start "
+#| "it.\n"
+#| "\n"
+#| "%1"
 msgid ""
 "The service that shows the password window isn't running.\n"
 "\n"
 "No such service is installed here. Install one for your desktop (for "
-"example, polkit-gnome) — after that Rexon will show here how to start it.\n"
-"\n"
-"%1"
+"example, polkit-gnome), then log out and log back in."
 msgstr ""
 "显示密码窗口的服务未运行。\n"
 "\n"
@@ -23418,11 +23678,16 @@ msgstr ""
 "%1"
 
 #: rust/rexon-core/src/system_plan.rs
-msgid "Try installing from a terminal:"
-msgstr "请尝试在终端中安装："
-
-#. TRANSLATORS: %1 is a hint with a command to run in a terminal.
-#: rust/rexon-core/src/system_plan.rs
+#, fuzzy
+#| msgid ""
+#| "The administrator password wasn't confirmed.\n"
+#| "\n"
+#| "Possible reasons:\n"
+#| "• the password window didn't appear;\n"
+#| "• the password was wrong;\n"
+#| "• the password window was closed.\n"
+#| "\n"
+#| "%1"
 msgid ""
 "The administrator password wasn't confirmed.\n"
 "\n"
@@ -23431,7 +23696,7 @@ msgid ""
 "• the password was wrong;\n"
 "• the password window was closed.\n"
 "\n"
-"%1"
+"Try again and enter the password in the window that opens."
 msgstr ""
 "管理员密码未确认。\n"
 "\n"
@@ -24682,9 +24947,13 @@ msgstr ""
 "行“sudo pacman -Syu”，然后运行“sudo reboot”。"
 
 #: rust/rexon-core/src/update_guard.rs
+#, fuzzy
+#| msgid ""
+#| "If you have already updated and programs stop starting: run “sudo pacman "
+#| "-Syu” in a terminal once the repository has caught up."
 msgid ""
-"If you have already updated and programs stop starting: run “sudo pacman "
-"-Syu” in a terminal once the repository has caught up."
+"If you have already updated and programs stop starting: update the system "
+"again once the repository has caught up."
 msgstr ""
 "如果已经更新且应用无法启动：等软件仓库同步完成后，在终端中运行“sudo pacman "
 "-Syu”。"
@@ -25631,6 +25900,14 @@ msgstr ""
 "壁纸…”，重新选择壁纸。"
 
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Use the Packaged Version"
+msgstr "使用软件包版本"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Install the Plugin Package"
+msgstr "安装插件软件包"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid ""
 "The Plasma wallpaper plugin for waywallen was installed by someone other "
 "than Rexon, and its version could not be determined. Rexon left it as is. If "
@@ -25675,6 +25952,56 @@ msgid ""
 msgstr ""
 "Rexon 中的 Plasma 壁纸插件（%2）需要比已安装的版本（%1）更新的 waywallen 引"
 "擎。请更新 waywallen。"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"The installed %1 package (version %2) does not work with the waywallen "
+"engine %3, so live wallpapers are not shown."
+msgstr ""
+"已安装的 %1 软件包（版本 %2）与 waywallen 引擎 %3 不兼容，因此不显示动态壁"
+"纸。"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Update the %1 package."
+msgstr "请更新 %1 软件包。"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"A copy of the Plasma wallpaper plugin for waywallen in your home folder "
+"(from the KDE Store or installed by hand) hides the %1 package. Rexon left "
+"the copy as is. If live wallpapers do not appear, use the packaged version — "
+"the copy is kept as a backup."
+msgstr ""
+"您主文件夹中的 waywallen Plasma 壁纸插件副本（来自 KDE Store 或手动安装）遮盖"
+"了 %1 软件包。Rexon 保留了该副本。如果动态壁纸没有出现，请使用软件包版本——副"
+"本会作为备份保留。"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"Rexon is installing the %1 package for live wallpapers. It is built from "
+"source, which can take several minutes."
+msgstr ""
+"Rexon 正在为动态壁纸安装 %1 软件包。它需要从源代码构建，可能需要几分钟。"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Stage: %1"
+msgstr "阶段：%1"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"Live wallpapers need the %1 package. Install it, and the wallpapers will "
+"appear."
+msgstr "动态壁纸需要 %1 软件包。安装后壁纸就会出现。"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "Live wallpapers need the %1 package, and Rexon could not install it: %2"
+msgstr "动态壁纸需要 %1 软件包，但 Rexon 未能安装它：%2"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid ""
+"on this system Rexon cannot install it by itself — install it with the "
+"system's package manager"
+msgstr "在此系统上 Rexon 无法自行安装它——请使用系统的软件包管理器安装"
 
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid "Install Rexon's Version"
@@ -26546,7 +26873,7 @@ msgid "About Rexon"
 msgstr "关于 Rexon"
 
 #. TRANSLATORS: button in the "About Rexon" dialog; opens the Rexon log file.
-#: rust/rexon-core/src/window_menu.rs
+#: rust/rexon-core/src/window_menu.rs rust/rexon-gui/qml/MatePanelSection.qml
 msgid "Open log"
 msgstr "打开日志"
 
@@ -26855,7 +27182,10 @@ msgid ""
 "one desktop's programs (such as the fcitx5 keyboard helper) from starting in "
 "all the others, and they make labwc use its own file chooser. They don't "
 "need Rexon to work. If you delete them, those problems come back:"
-msgstr "无论选择哪一项，Rexon 的几处小修正都会保留，它们让各个桌面互不干扰：例如，阻止某个桌面的程序（如 fcitx5 键盘助手）在其他所有桌面中启动，并让 labwc 使用自己的文件选择器。它们无需 Rexon 即可工作。如果删除它们，这些问题会重新出现："
+msgstr ""
+"无论选择哪一项，Rexon 的几处小修正都会保留，它们让各个桌面互不干扰：例如，阻"
+"止某个桌面的程序（如 fcitx5 键盘助手）在其他所有桌面中启动，并让 labwc 使用自"
+"己的文件选择器。它们无需 Rexon 即可工作。如果删除它们，这些问题会重新出现："
 
 #: rust/rexon-core/src/window_menu.rs
 msgid "Where it is stored:"
@@ -27093,6 +27423,10 @@ msgstr "正在保存——请稍候。"
 msgid "no download address"
 msgstr "没有下载地址"
 
+#: rust/rexon-gui/src/we_action.rs rust/rexon-gui/src/we_update_workers.rs
+msgid "the process did not start or did not respond in time"
+msgstr "进程未启动或未及时响应"
+
 #: rust/rexon-gui/src/we_socket.rs
 msgid "The connection to the wallpaper engine was lost"
 msgstr "与壁纸引擎的连接已断开"
@@ -27104,10 +27438,6 @@ msgstr "无法启动 kpackagetool6：%1"
 #: rust/rexon-gui/src/we_update_workers.rs
 msgid "Stopping the wallpaper engine…"
 msgstr "正在停止壁纸引擎…"
-
-#: rust/rexon-gui/src/we_update_workers.rs
-msgid "the process did not start or did not respond in time"
-msgstr "进程未启动或未及时响应"
 
 #: rust/rexon-gui/src/we_update_workers.rs
 msgid "could not create the staging directory"
@@ -27307,13 +27637,13 @@ msgid ""
 msgstr "现成的面板布局：选择一个并点击“应用”。面板会立即改变，无需注销。"
 
 #: rust/rexon-gui/qml/MatePanelSection.qml
+msgid "Restore previous panel"
+msgstr "恢复之前的面板"
+
+#: rust/rexon-gui/qml/MatePanelSection.qml
 #: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgid "(current)"
 msgstr "（当前）"
-
-#: rust/rexon-gui/qml/MatePanelSection.qml
-msgid "Restore previous panel"
-msgstr "恢复之前的面板"
 
 #: rust/rexon-gui/qml/RexonImageViewer.qml
 msgid "Exit full screen (F)"
@@ -27343,10 +27673,81 @@ msgstr ""
 "让屏幕看起来像老式显像管显示器、磨损的录像带或电影胶片。选择一个特效并点击“应"
 "用”；“关闭”可让屏幕恢复正常。"
 
+#. TRANSLATORS: %1 is a program name, e.g. picom; the quoted text is the label of the button below.
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+#, fuzzy
+#| msgid ""
+#| "Make the screen look like an old tube monitor, a worn video tape or a "
+#| "film print. Pick an effect and press “Apply”; “Off” returns the screen to "
+#| "normal."
+msgid ""
+"Make the screen look like an old tube monitor, a worn video tape or a film "
+"print. Pick an effect and press “Install %1 and apply”; “Off” returns the "
+"screen to normal."
+msgstr ""
+"让屏幕看起来像老式显像管显示器、磨损的录像带或电影胶片。选择一个特效并点击“应"
+"用”；“关闭”可让屏幕恢复正常。"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+#, fuzzy
+#| msgid ""
+#| "Make the screen look like an old tube monitor, a worn video tape or a "
+#| "film print. Pick an effect and press “Apply”; “Off” returns the screen to "
+#| "normal."
+msgid ""
+"Make the screen look like an old tube monitor, a worn video tape or a film "
+"print."
+msgstr ""
+"让屏幕看起来像老式显像管显示器、磨损的录像带或电影胶片。选择一个特效并点击“应"
+"用”；“关闭”可让屏幕恢复正常。"
+
+#. TRANSLATORS: %1 is a program name, e.g. picom.
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+#, fuzzy
+#| msgid "Installing %1…"
+msgctxt "screen effect"
+msgid "Installing %1…"
+msgstr "正在安装 %1…"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgctxt "screen effect"
+msgid "Applying…"
+msgstr "正在应用…"
+
+#. TRANSLATORS: %1 is a program name, e.g. picom.
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+#, fuzzy
+#| msgid "Install %1"
+msgid "Install %1 and apply"
+msgstr "安装 %1"
+
+#. TRANSLATORS: %1 is the number of seconds left.
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid "Keep this effect? Otherwise the screen goes back as it was in %1 s."
+msgstr "保留此特效？否则屏幕将在 %1 秒后恢复原样。"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgctxt "screen effect"
+msgid "Keep"
+msgstr "保留"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgctxt "screen effect"
+msgid "Revert"
+msgstr "还原"
+
 #. TRANSLATORS: %1 is what must be installed, e.g. "picom instead of the built-in compositor".
 #: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgid "Needs: %1"
 msgstr "需要：%1"
+
+#. TRANSLATORS: %1 is a program name, e.g. picom.
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid ""
+"Rexon will install %1 (it asks for your password). %1 takes the place of the "
+"desktop's built-in compositor while an effect is on; “Off” brings the built-"
+"in one back."
+msgstr ""
 
 #: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgctxt "screen effect"
@@ -27374,26 +27775,6 @@ msgid ""
 "Moving effects keep the graphics card busy all the time. At “Still” the "
 "picture stays the same and costs almost nothing."
 msgstr "运动特效会持续占用显卡。设为“静止”时画面不变，几乎不消耗资源。"
-
-#. TRANSLATORS: %1 is the number of seconds left.
-#: rust/rexon-gui/qml/ScreenEffectsSection.qml
-msgid "Keep this effect? Otherwise the screen goes back as it was in %1 s."
-msgstr "保留此特效？否则屏幕将在 %1 秒后恢复原样。"
-
-#: rust/rexon-gui/qml/ScreenEffectsSection.qml
-msgctxt "screen effect"
-msgid "Keep"
-msgstr "保留"
-
-#: rust/rexon-gui/qml/ScreenEffectsSection.qml
-msgctxt "screen effect"
-msgid "Revert"
-msgstr "还原"
-
-#: rust/rexon-gui/qml/ScreenEffectsSection.qml
-msgctxt "screen effect"
-msgid "Applying…"
-msgstr "正在应用…"
 
 #: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid ""
@@ -27723,6 +28104,60 @@ msgstr "当前使用的是自定义布局（%1）；在此更改按钮会将其�
 msgid "Window border size:"
 msgstr "窗口边框大小："
 
+#~ msgid "To decide it yourself, run in a terminal: %1"
+#~ msgstr "如需自行处理，请在终端中运行：%1"
+
+#~ msgid ""
+#~ "The administrator password wasn't confirmed.\n"
+#~ "You can install from a terminal: sudo %1"
+#~ msgstr ""
+#~ "管理员密码未确认。\n"
+#~ "可以在终端中安装：sudo %1"
+
+#~ msgid ""
+#~ "The administrator password wasn't confirmed.\n"
+#~ "You can remove from a terminal: sudo %1"
+#~ msgstr ""
+#~ "管理员密码未确认。\n"
+#~ "可以在终端中卸载：sudo %1"
+
+#~ msgid ""
+#~ "Still to run (you can do it by hand in a terminal):\n"
+#~ "%1"
+#~ msgstr ""
+#~ "尚待执行（可在终端中手动执行）：\n"
+#~ "%1"
+
+#~ msgid ""
+#~ "Here the login screen is switched by %1, and Rexon can't do it yet. In a "
+#~ "terminal:\n"
+#~ "%2"
+#~ msgstr ""
+#~ "此处登录界面由 %1 切换，Rexon 暂时无法执行。请在终端中运行：\n"
+#~ "%2"
+
+#~ msgid ""
+#~ "The administrator password wasn't confirmed.\n"
+#~ "You can install from a terminal:\n"
+#~ "  sudo steamos-readonly disable\n"
+#~ "  sudo %1\n"
+#~ "  sudo steamos-readonly enable"
+#~ msgstr ""
+#~ "管理员密码未确认。\n"
+#~ "可以在终端中安装：\n"
+#~ "  sudo steamos-readonly disable\n"
+#~ "  sudo %1\n"
+#~ "  sudo steamos-readonly enable"
+
+#~ msgid "The administrator password wasn't confirmed."
+#~ msgstr "管理员密码未确认。"
+
+#~ msgid "Or install from a terminal:"
+#~ msgstr "或在终端中安装："
+
+#~ msgid "Try installing from a terminal:"
+#~ msgstr "请尝试在终端中安装："
+
 #~ msgid ""
 #~ "A saved copy of the panel already exists — the same one “Restore previous "
 #~ "panel” brings back. The new copy will replace it."
@@ -27825,43 +28260,3 @@ msgstr "窗口边框大小："
 
 #~ msgid ", %1 to install"
 #~ msgstr "，待安装 %1 项"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "Use the Packaged Version"
-msgstr "使用软件包版本"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "Install the Plugin Package"
-msgstr "安装插件软件包"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "The installed %1 package (version %2) does not work with the waywallen engine %3, so live wallpapers are not shown."
-msgstr "已安装的 %1 软件包（版本 %2）与 waywallen 引擎 %3 不兼容，因此不显示动态壁纸。"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "Update the %1 package."
-msgstr "请更新 %1 软件包。"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "A copy of the Plasma wallpaper plugin for waywallen in your home folder (from the KDE Store or installed by hand) hides the %1 package. Rexon left the copy as is. If live wallpapers do not appear, use the packaged version — the copy is kept as a backup."
-msgstr "您主文件夹中的 waywallen Plasma 壁纸插件副本（来自 KDE Store 或手动安装）遮盖了 %1 软件包。Rexon 保留了该副本。如果动态壁纸没有出现，请使用软件包版本——副本会作为备份保留。"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "Rexon is installing the %1 package for live wallpapers. It is built from source, which can take several minutes."
-msgstr "Rexon 正在为动态壁纸安装 %1 软件包。它需要从源代码构建，可能需要几分钟。"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "Stage: %1"
-msgstr "阶段：%1"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "Live wallpapers need the %1 package. Install it, and the wallpapers will appear."
-msgstr "动态壁纸需要 %1 软件包。安装后壁纸就会出现。"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "Live wallpapers need the %1 package, and Rexon could not install it: %2"
-msgstr "动态壁纸需要 %1 软件包，但 Rexon 未能安装它：%2"
-
-#: rust/rexon-core/src/waywallen_kde_plugin.rs
-msgid "on this system Rexon cannot install it by itself — install it with the system's package manager"
-msgstr "在此系统上 Rexon 无法自行安装它——请使用系统的软件包管理器安装"

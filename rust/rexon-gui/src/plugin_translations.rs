@@ -436,7 +436,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn карта_из_qml_разбирается_в_пару() {
+    fn qml_map_parsed_into_pair() {
         let v = json!({"pluginId": "org.waywallen.wallhaven", "msgid": "Trending"});
         assert_eq!(
             message_parts(&v),
@@ -450,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn змеиная_раскладка_ключей_тоже_понимается() {
+    fn snake_case_keys_also_understood() {
         let v = json!({"plugin_id": "org.waywallen.image", "msgid": "Frame rate"});
         assert_eq!(
             message_parts(&v),
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn голая_строка_идёт_как_msgid_без_плагина() {
+    fn bare_string_goes_as_msgid_without_plugin() {
         assert_eq!(
             message_parts(&json!("Not signed in")),
             (String::new(), "Not signed in".to_string(), String::new(), Vec::new())
@@ -474,7 +474,7 @@ mod tests {
     /// An empty value must not turn into a label: the vendored QML has its own
     /// fallback text for that case.
     #[test]
-    fn пустое_остаётся_пустым() {
+    fn empty_stays_empty() {
         assert_eq!(
             message_parts(&Value::Null),
             (String::new(), String::new(), String::new(), Vec::new())
@@ -489,7 +489,7 @@ mod tests {
     /// substituted AFTER translation — otherwise the catalogue would be searched
     /// for the glued string.
     #[test]
-    fn подстановки_читаются_и_ставятся_после_перевода() {
+    fn substitutions_read_and_applied_after_translation() {
         let v = json!({
             "pluginId": "steam",
             "msgid": "Signed in as %1",
@@ -527,7 +527,7 @@ mod tests {
 
     /// Our keyed translation arrives in the map as a separate field.
     #[test]
-    fn ключевой_перевод_читается_из_карты() {
+    fn keyed_translation_read_from_map() {
         let v = json!({
             "pluginId": "org.waywallen.open-wallpaper-engine",
             "msgid": "Trending today",
@@ -545,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn локаль_из_окружения_не_пустая() {
+    fn locale_from_environment_not_empty() {
         // "C" and an empty variable must not become a language tag.
         assert!(!env_locale().is_empty());
     }

@@ -3763,7 +3763,7 @@ fn spawn_worker(
         // window. The other way round there was a race: the window got the result,
         // immediately sent the next request, while the loop did not know about the
         // end yet and answered `Busy` (caught under load by the bench
-        // `замена_конфликтующего_только_из_таблицы_ядра`). On `OpEnded` the loop waits
+        // `conflicting_package_replaced_only_from_core_table`). On `OpEnded` the loop waits
         // for this thread (`join`), so the result still reaches the window before any
         // next reply of the loop (privilege revocation etc.).
         let _ = tx.send(Input::OpEnded(id));
@@ -4324,7 +4324,7 @@ mod tests {
     // ── handshake and peer ───────────────────────────────────────────────
 
     #[test]
-    fn рукопожатие_своя_сборка_принята() {
+    fn handshake_own_build_accepted() {
         let io = FakeIo::arch();
         let b = bench(io.clone());
         b.hello();
@@ -4334,7 +4334,7 @@ mod tests {
     }
 
     #[test]
-    fn рукопожатие_чужая_сборка_отказ_и_выход() {
+    fn handshake_foreign_build_refused_and_exits() {
         let b = bench(FakeIo::arch());
         b.send(ClientMsg::Hello(Hello { build_id: "9.9.9+other".into() }));
         assert_eq!(
@@ -4346,7 +4346,7 @@ mod tests {
     }
 
     #[test]
-    fn запрос_до_hello_отказ() {
+    fn request_before_hello_refused() {
         let io = FakeIo::arch();
         let b = bench(io.clone());
         b.send(install(1, &["sddm"]));
@@ -4359,7 +4359,7 @@ mod tests {
     }
 
     #[test]
-    fn сеанс_logind_чужой_или_неактивный_отказ() {
+    fn logind_session_foreign_or_inactive_refused() {
         for answer in [format!("User={}\nActive=yes\n", unsafe { libc::getuid() } + 1), format!(
             "User={}\nActive=no\n",
             unsafe { libc::getuid() }
@@ -4377,7 +4377,7 @@ mod tests {
     }
 
     #[test]
-    fn чужой_uid_пира_молча_выход() {
+    fn foreign_peer_uid_exits_silently() {
         let io = FakeIo::arch();
         let b = bench_with(io.clone(), unsafe { libc::getuid() } + 1);
         // The helper closes the socket without reading a single frame.
@@ -4389,7 +4389,7 @@ mod tests {
     // ── checks before execution ──────────────────────────────────────────
 
     #[test]
-    fn отказ_проверки_не_исполняет_ничего() {
+    fn failed_check_executes_nothing() {
         let io = FakeIo::arch();
         let b = bench(io.clone());
         b.hello();
@@ -4449,7 +4449,7 @@ mod tests {
     }
 
     #[test]
-    fn удаление_при_неизвестном_столе_отказ() {
+    fn removal_of_unknown_desktop_refused() {
         let io = FakeIo::arch();
         io.st().loginctl = format!("User={}\nActive=yes\nDesktop=\n", unsafe { libc::getuid() });
         let b = bench(io.clone());
@@ -4464,14 +4464,14 @@ mod tests {
     }
 
     #[test]
-    fn steamos_пакеты_не_трогаем() {
+    fn steamos_packages_untouched() {
         let facts = Facts { steamos: true, ..facts() };
         let op = PrivOp::PkgInstall { family: PkgFamily::Arch, packages: strings(&["sddm"]), source: PkgSource::DisplayManager };
         assert_eq!(check_op(&op, &facts, 0).unwrap_err().key, "refused.read-only-system");
     }
 
     #[test]
-    fn установка_только_из_названной_таблицы() {
+    fn install_only_from_named_table() {
         let facts = facts();
         let op = |pkgs: &[&str], source: PkgSource| PrivOp::PkgInstall {
             family: PkgFamily::Arch,
@@ -4505,7 +4505,7 @@ mod tests {
     }
 
     #[test]
-    fn лишний_дескриптор_отказ() {
+    fn extra_descriptor_refused() {
         let facts = facts();
         let op = PrivOp::PkgInstall { family: PkgFamily::Arch, packages: strings(&["sddm"]), source: PkgSource::DisplayManager };
         assert_eq!(check_op(&op, &facts, 1).unwrap_err().key, "fds_mismatch");
@@ -4515,7 +4515,7 @@ mod tests {
     // ── execution ────────────────────────────────────────────────────────
 
     #[test]
-    fn установка_из_таблицы_исполняется_без_оболочки() {
+    fn table_install_runs_without_shell() {
         let io = FakeIo::arch();
         io.st().output = vec!["resolving dependencies...".into()];
         let b = bench(io.clone());
@@ -4528,7 +4528,7 @@ mod tests {
     }
 
     #[test]
-    fn сборочные_зависимости_записываются() {
+    fn build_dependencies_are_recorded() {
         let io = FakeIo::arch();
         let rebuilt = Mutex::new(Vec::new());
         let state = Mutex::new(OpState::default());
@@ -4542,7 +4542,7 @@ mod tests {
     }
 
     #[test]
-    fn вторая_операция_busy() {
+    fn second_operation_busy() {
         let io = FakeIo::arch();
         let (started_tx, started_rx) = mpsc::channel();
         let (go_tx, go_rx) = mpsc::channel();
@@ -4562,7 +4562,7 @@ mod tests {
     }
 
     #[test]
-    fn повтор_id_и_чужая_отмена_sequence() {
+    fn repeated_id_and_foreign_cancel_sequence() {
         let io = FakeIo::arch();
         let b = bench(io.clone());
         b.hello();
@@ -4591,7 +4591,7 @@ mod tests {
     }
 
     #[test]
-    fn отмена_до_касания_cancelled_и_ничего_не_исполнено() {
+    fn cancel_before_touch_cancelled_and_nothing_executed() {
         let io = FakeIo::arch();
         let (go_tx, go_rx) = mpsc::channel();
         *io.gate_which.lock().unwrap() = Some(go_rx);
@@ -4612,7 +4612,7 @@ mod tests {
     }
 
     #[test]
-    fn отмена_после_касания_доводит_и_done() {
+    fn cancel_after_touch_finishes_and_done() {
         let io = FakeIo::arch();
         let (started_tx, started_rx) = mpsc::channel();
         let (go_tx, go_rx) = mpsc::channel();
@@ -4631,7 +4631,7 @@ mod tests {
     }
 
     #[test]
-    fn обрыв_сокета_посреди_операции_не_обрывает_её() {
+    fn socket_drop_mid_operation_does_not_abort_it() {
         let io = FakeIo::arch();
         let (started_tx, started_rx) = mpsc::channel();
         let (go_tx, go_rx) = mpsc::channel();
@@ -4655,7 +4655,7 @@ mod tests {
     }
 
     #[test]
-    fn отзыв_по_простою() {
+    fn revoked_on_idle() {
         let io = FakeIo::arch();
         let b = bench(io.clone());
         b.hello();
@@ -4669,7 +4669,7 @@ mod tests {
     }
 
     #[test]
-    fn отзыв_по_блокировке_новые_отвергаются_идущая_доводится() {
+    fn revoked_on_lock_new_rejected_running_finishes() {
         let io = FakeIo::arch();
         let (started_tx, started_rx) = mpsc::channel();
         let (go_tx, go_rx) = mpsc::channel();
@@ -4693,7 +4693,7 @@ mod tests {
     }
 
     #[test]
-    fn после_отзыва_новая_операция_revoked() {
+    fn after_revoke_new_operation_revoked() {
         let mut rev = Revoker::with_idle_limit(Duration::ZERO, Duration::from_secs(1));
         rev.op_started(Duration::ZERO).unwrap();
         rev.on_event(Event::Slept, Duration::ZERO);
@@ -4704,7 +4704,7 @@ mod tests {
     // ── Progress ─────────────────────────────────────────────────────────
 
     #[test]
-    fn progress_режется_по_4кб() {
+    fn progress_cut_at_4kb() {
         let long = "ж".repeat(5000); // 10,000 bytes; i18n-exempt: two-byte letters for the UTF-8 cut
         let parts = cut_progress(&long);
         assert!(parts.iter().all(|p| p.len() <= PROGRESS_MAX));
@@ -4725,7 +4725,7 @@ mod tests {
     }
 
     #[test]
-    fn progress_по_сокету_не_длиннее_предела() {
+    fn progress_over_socket_within_limit() {
         let io = FakeIo::arch();
         io.st().output = vec!["x".repeat(10_000)];
         let b = bench(io);
@@ -4749,7 +4749,7 @@ mod tests {
     // ── environment ──────────────────────────────────────────────────────
 
     #[test]
-    fn окружение_потомка_очищено() {
+    fn child_environment_cleared() {
         // The real `env` program run as the user: the test environment has HOME,
         // USER and the rest, while a child of the helper must not have them.
         let got = LiveRootIo.capture(&strings(&["env"]));
@@ -4765,7 +4765,7 @@ mod tests {
     }
 
     #[test]
-    fn аргументы_помощника() {
+    fn helper_arguments() {
         let some = |s: &str| Some(s.to_string());
         // As the client calls it: `--session <id>`.
         assert_eq!(parse_args(&strings(&["--session", "2"])), Some(Args { session: some("2"), lang: None }));
@@ -4851,7 +4851,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_переключает_и_ставит_страховку() {
+    fn switch_dm_switches_and_sets_fallback() {
         let io = dm_machine();
         let (out, lines) = run_switch(&io);
         assert_eq!(out, Outcome::ok(Some("dm_switched")), "{lines:?}");
@@ -4866,7 +4866,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_сбой_enable_откатывает() {
+    fn switch_dm_enable_failure_rolls_back() {
         let io = dm_machine();
         io.st().enable_fails = true;
         let (out, _) = run_switch(&io);
@@ -4883,7 +4883,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_нет_pam_отказ_до_касания() {
+    fn switch_dm_no_pam_refused_before_touch() {
         let io = dm_machine();
         io.st().files.remove("/etc/pam.d/sddm");
         let (out, _) = run_switch(&io);
@@ -4892,7 +4892,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_уже_основной() {
+    fn switch_dm_already_default() {
         let io = dm_machine();
         io.st().links.insert(plan::DM_SYMLINK.into(), "/usr/lib/systemd/system/sddm.service".into());
         let (out, _) = run_switch(&io);
@@ -4918,7 +4918,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_переносит_автовход() {
+    fn switch_dm_moves_autologin() {
         let io = plm_machine();
         let (out, lines) = run_switch(&io);
         assert_eq!(out, Outcome::ok(Some("dm_switched")), "{lines:?}");
@@ -4934,7 +4934,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_сбой_enable_возвращает_автовход() {
+    fn switch_dm_enable_failure_restores_autologin() {
         let io = plm_machine();
         io.st().enable_fails = true;
         let (out, _) = run_switch(&io);
@@ -4946,7 +4946,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_группа_pam_автовхода_и_её_откат() {
+    fn switch_dm_autologin_pam_group_and_its_rollback() {
         let io = plm_machine();
         io.st().files.insert(
             "/etc/pam.d/sddm-autologin".into(),
@@ -4974,7 +4974,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_неизвестный_пользователь_автовхода_не_переносится() {
+    fn switch_dm_unknown_autologin_user_not_moved() {
         let io = plm_machine();
         io.st().answers.clear();
         let (out, lines) = run_switch(&io);
@@ -4984,7 +4984,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_dm_переносит_маски_звука_приветствия() {
+    fn switch_dm_moves_greeter_sound_masks() {
         let io = plm_machine();
         {
             let mut s = io.st();
@@ -5020,7 +5020,7 @@ mod tests {
     /// goes into its own `ddm.conf.d` file without `Relogin=`, the sound masks go
     /// to the `dde` user (home `/var/lib/ddm`, as in ddm's sysusers).
     #[test]
-    fn switch_dm_в_ddm_переносит_автовход_и_маски_звука() {
+    fn switch_dm_to_ddm_moves_autologin_and_sound_masks() {
         let io = plm_machine();
         {
             let mut s = io.st();
@@ -5061,7 +5061,7 @@ mod tests {
     /// Without `dde-seatd` DDM does not start: refusal before any writing,
     /// autologin untouched.
     #[test]
-    fn switch_dm_в_ddm_без_dde_seatd_отказ_до_касания() {
+    fn switch_dm_to_ddm_without_dde_seatd_refused_before_touch() {
         let io = plm_machine();
         {
             let mut s = io.st();
@@ -5078,7 +5078,7 @@ mod tests {
     }
 
     #[test]
-    fn greetd_текстовый_вход_распознан() {
+    fn greetd_text_login_recognized() {
         assert_eq!(greetd_config("/usr/bin/greetd --config /etc/g.toml"), "/etc/g.toml");
         assert_eq!(greetd_config("/usr/bin/greetd"), "/etc/greetd/config.toml");
         let cfg = "[terminal]\nvt = 1\n[default_session]\ncommand = \"env A=b tuigreet --cmd sway\"\nuser = \"greeter\"\n";
@@ -5121,7 +5121,7 @@ mod tests {
     }
 
     #[test]
-    fn дескрипторы_по_слотам() {
+    fn descriptors_by_slot() {
         let op = |slot| PrivOp::InstallBuilt { package: local(slot, BUILT), build_only: Vec::new(), replace: false };
         assert!(check_op(&op(0), &facts(), 1).is_ok());
         assert_eq!(check_op(&op(1), &facts(), 1).unwrap_err().key, "fds_mismatch");
@@ -5135,7 +5135,7 @@ mod tests {
     }
 
     #[test]
-    fn имя_пакета_из_файла_и_pkginfo() {
+    fn package_name_from_file_and_pkginfo() {
         assert_eq!(pkgname_from_file(BUILT).as_deref(), Some("deepin-session-treeland"));
         assert_eq!(pkgname_from_file("/a/x-1-1-any.pkg.tar").as_deref(), Some("x"));
         assert_eq!(pkgname_from_file("/a/x.pkg.tar.zst"), None);
@@ -5143,7 +5143,7 @@ mod tests {
     }
 
     #[test]
-    fn собранный_пакет_ставится_копией_после_сверки_pkginfo() {
+    fn built_package_installed_from_copy_after_pkginfo_check() {
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5170,7 +5170,7 @@ mod tests {
     }
 
     #[test]
-    fn чужое_имя_в_pkginfo_отказ_без_установки() {
+    fn foreign_name_in_pkginfo_refused_without_install() {
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5189,7 +5189,7 @@ mod tests {
     }
 
     #[test]
-    fn каталог_вместо_файла_отказ() {
+    fn directory_instead_of_file_refused() {
         let io = FakeIo::arch();
         io.st().exe.insert("/usr/bin/bsdtar".into());
         let dir = OwnedFd::from(std::fs::File::open(std::env::temp_dir()).unwrap());
@@ -5209,7 +5209,7 @@ mod tests {
     const AUR_BUILT: &str = "/home/test/.cache/paru/clone/t/t-1.0-1-x86_64.pkg.tar.zst";
 
     #[test]
-    fn шим_aur_проверки_до_действия() {
+    fn aur_shim_checks_before_action() {
         let f = facts();
         let built = |label: &str, allowed: &[&str]| PrivOp::AurInstallBuilt {
             packages: vec![local(0, label)],
@@ -5234,7 +5234,7 @@ mod tests {
     }
 
     #[test]
-    fn шим_aur_зависимости_только_из_sync_базы() {
+    fn aur_shim_dependencies_only_from_sync_db() {
         let io = FakeIo::arch();
         answers(&io, &[("pacman -Slq", "cmake\nninja\n")]);
         let out = run_plan(&io, &Plan::AurDeps { names: strings(&["cmake", "ninja"]) }, vec![], &Mutex::new(Vec::new()));
@@ -5248,7 +5248,7 @@ mod tests {
     }
 
     #[test]
-    fn шим_aur_собранное_копией_и_по_pkginfo() {
+    fn aur_shim_built_from_copy_and_by_pkginfo() {
         let plan_ = |allowed: &[&str], replace| Plan::AurInstallBuilt {
             labels: strings(&[AUR_BUILT]),
             allowed: strings(allowed),
@@ -5304,7 +5304,7 @@ mod tests {
     }
 
     #[test]
-    fn шим_aur_снимаются_только_сироты() {
+    fn aur_shim_removes_only_orphans() {
         let io = FakeIo::arch();
         answers(&io, &[("pacman -Qqdt", "cmake\n")]);
         let out = run_plan(&io, &Plan::AurDropMake { names: strings(&["cmake", "qt6-base"]) }, vec![], &Mutex::new(Vec::new()));
@@ -5319,7 +5319,7 @@ mod tests {
     // ── update guard orphan ──────────────────────────────────────────────
 
     #[test]
-    fn сирота_проверки_до_действия() {
+    fn orphan_checks_before_action() {
         let f = facts();
         let op = |n: &[&str]| PrivOp::OrphanRemove { names: strings(n) };
         assert_eq!(
@@ -5348,7 +5348,7 @@ mod tests {
     }
 
     #[test]
-    fn сирота_сеанса_экрана_входа_по_умолчанию_не_снимается() {
+    fn default_login_session_orphan_not_removed() {
         let plasma_qg = "plasma plasma-workspace\nplasma kwin\nplasma kwin-x11\n";
         for (file, text) in [
             ("/var/lib/sddm/state.conf", "[Last]\nSession=/usr/share/xsessions/plasmax11.desktop\n"),
@@ -5373,7 +5373,7 @@ mod tests {
     }
 
     #[test]
-    fn тип_сеанса_берётся_у_logind() {
+    fn session_type_taken_from_logind() {
         let io = FakeIo::arch();
         let uid = unsafe { libc::getuid() };
         io.st().loginctl = format!("User={uid}\nActive=yes\nDesktop=KDE\nType=x11\n");
@@ -5386,7 +5386,7 @@ mod tests {
     /// keys pointing to plasmax11; everything else byte for byte; afterwards the
     /// orphan is removed by the same guard.
     #[test]
-    fn сеанс_по_умолчанию_переводится_на_wayland() {
+    fn default_session_switched_to_wayland() {
         let op = |x11: &str| PrivOp::LoginSessionWayland { x11: x11.into() };
         let plasma = &plan::X11_SESSION_SUCCESSORS[0];
         assert_eq!(check_op(&op("plasmax11"), &facts(), 0), Ok(Plan::LoginSessionWayland { session: plasma }));
@@ -5479,7 +5479,7 @@ mod tests {
     }
 
     #[test]
-    fn сирота_снимается_только_проверенная_машиной() {
+    fn orphan_removed_only_when_machine_checked() {
         let plasma_qg = "plasma plasma-workspace\nplasma kwin\nplasma kwin-x11\n";
         // An orphan: a member of the plasma group, installed, absent from the sync
         // database; the probe removes only it.
@@ -5789,7 +5789,7 @@ mod tests {
     }
 
     #[test]
-    fn фон_gdm_раскладывается_по_константам_ядра() {
+    fn gdm_background_laid_out_by_core_constants() {
         let io = FakeIo::arch();
         io.st().exe.insert("/usr/bin/dconf".into());
         let plan_ = Plan::Stage { category: "gdm-bg".into(), name: "bg".into() };
@@ -5802,7 +5802,7 @@ mod tests {
     }
 
     #[test]
-    fn фон_без_картинки_отказ_до_касания() {
+    fn background_without_picture_refused_before_touch() {
         let io = FakeIo::arch();
         let plan_ = Plan::Stage { category: "login-bg".into(), name: "bg".into() };
         let out = run_plan(&io, &plan_, vec![packed("noimg", &[("a.txt", b"x")])], &Mutex::new(Vec::new()));
@@ -5811,7 +5811,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_plymouth_с_библиотекой_отказ() {
+    fn plymouth_theme_with_library_refused() {
         let io = FakeIo::arch();
         let plan_ = Plan::ThemeInstall { kind: SystemThemeKind::Plymouth, theme: "t".into() };
         let fd = packed("ply", &[("t.plymouth", b"[Plymouth Theme]\nModuleName=script\n"), ("evil.so", b"\x7fELF")]);
@@ -5821,7 +5821,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_sddm_ставится_копией_и_применяется() {
+    fn sddm_theme_installed_from_copy_and_applied() {
         let io = FakeIo::arch();
         let plan_ = Plan::ThemeInstall { kind: SystemThemeKind::Sddm, theme: "t".into() };
         let out = run_plan(&io, &plan_, vec![packed("sddm", &[("Main.qml", b"x"), ("metadata.desktop", b"y")])], &Mutex::new(Vec::new()));
@@ -5839,7 +5839,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_sddm_перекрытая_etc_sddm_conf_выбирается_и_там() {
+    fn sddm_theme_overridden_in_etc_sddm_conf_selected_there_too() {
         // As on CachyOS: `/etc/sddm.conf` is read last and holds its own theme.
         let io = FakeIo::arch();
         {
@@ -5857,7 +5857,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_sddm_не_записалась_прежние_файлы_возвращаются() {
+    fn sddm_theme_write_failed_previous_files_restored() {
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5877,7 +5877,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_sddm_ссылкой_не_правится() {
+    fn sddm_theme_symlink_not_edited() {
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5906,7 +5906,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_plymouth_выбирается_и_образ_пересобирается_сценарием_plymouth() {
+    fn plymouth_theme_selected_and_image_rebuilt_by_plymouth_script() {
         let io = plymouth_io();
         assert_eq!(apply(&io, SystemThemeKind::Plymouth, "t"), Outcome::ok(None));
         // The plymouth script comes before a bare mkinitcpio (Limine on CachyOS).
@@ -5917,7 +5917,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_plymouth_образ_не_пересобрался_прежняя_тема_возвращается() {
+    fn plymouth_theme_image_rebuild_failed_previous_theme_restored() {
         let io = plymouth_io();
         io.st().fail_runs.push("/usr/lib/plymouth/plymouth-update-initrd".into());
         assert_eq!(apply(&io, SystemThemeKind::Plymouth, "t"), Outcome::fail("initramfs_failed"));
@@ -5938,7 +5938,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_plymouth_не_выбралась_образ_не_трогается() {
+    fn plymouth_theme_not_selected_image_untouched() {
         let io = plymouth_io();
         io.st().fail_runs.push("plymouth-set-default-theme t".into());
         let out = apply(&io, SystemThemeKind::Plymouth, "t");
@@ -5947,7 +5947,7 @@ mod tests {
     }
 
     #[test]
-    fn тема_plymouth_через_alternatives_с_откатом() {
+    fn plymouth_theme_via_alternatives_with_rollback() {
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5969,7 +5969,7 @@ mod tests {
     }
 
     #[test]
-    fn не_установленную_тему_не_выбрать() {
+    fn uninstalled_theme_cannot_be_selected() {
         let io = plymouth_io();
         assert_eq!(apply(&io, SystemThemeKind::Plymouth, "nope"), Outcome::fail("theme_not_installed"));
         assert_eq!(apply(&io, SystemThemeKind::Sddm, "t"), Outcome::fail("theme_not_installed"));
@@ -5977,7 +5977,7 @@ mod tests {
     }
 
     #[test]
-    fn выбранную_тему_не_удалить() {
+    fn selected_theme_cannot_be_removed() {
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -6048,7 +6048,7 @@ mod tests {
     }
 
     #[test]
-    fn набор_deepin_с_dkms_одним_сеансом_без_оболочки() {
+    fn deepin_set_with_dkms_in_one_session_without_shell() {
         let io = FakeIo::arch();
         deepin_dkms_machine(&io);
         let p = preview_by(&io, &["deepin-anything", "treeland"]);
@@ -6072,7 +6072,7 @@ mod tests {
     }
 
     #[test]
-    fn набор_постороннее_имя_и_не_тот_dkms_отказ_до_касания() {
+    fn set_foreign_name_and_wrong_dkms_refused_before_touch() {
         let io = FakeIo::arch();
         deepin_dkms_machine(&io);
         let p = preview_by(&io, &["deepin-anything", "treeland"]);
@@ -6120,7 +6120,7 @@ mod tests {
     }
 
     #[test]
-    fn замена_конфликтующего_только_из_таблицы_ядра() {
+    fn conflicting_package_replaced_only_from_core_table() {
         let io = FakeIo::arch();
         river_machine(&io, false);
         let b = bench(io.clone());
@@ -6160,7 +6160,7 @@ mod tests {
     }
 
     #[test]
-    fn набор_по_семейству_и_на_steamos_отказ() {
+    fn set_by_family_and_steamos_refused() {
         let pkgs = strings(&["river-classic"]);
         let op = |family, de: Option<&str>| PrivOp::DeInstallSet {
             family,
@@ -6207,7 +6207,7 @@ mod tests {
     }
 
     #[test]
-    fn steamos_образ_стола_ставится_без_оболочки() {
+    fn steamos_desktop_image_installed_without_shell() {
         use crate::steamos_sysext as sx;
         let io = steamos_io("KDE");
         let b = bench(io.clone());
@@ -6240,7 +6240,7 @@ mod tests {
     }
 
     #[test]
-    fn steamos_несобравшийся_стол_не_остаётся_в_списке() {
+    fn steamos_failed_desktop_build_not_left_in_list() {
         use crate::steamos_sysext as sx;
         let io = steamos_io("KDE");
         io.st().fail_runs = vec![format!("{}/rexon-sysext-sync --interactive --only xfce", sx::BIN_DIR)];
@@ -6257,7 +6257,7 @@ mod tests {
     }
 
     #[test]
-    fn steamos_снятие_стола() {
+    fn steamos_desktop_removal() {
         use crate::steamos_sysext as sx;
         let io = steamos_io("KDE");
         {
@@ -6285,7 +6285,7 @@ mod tests {
     }
 
     #[test]
-    fn steamos_проверки_образа_стола() {
+    fn steamos_desktop_image_checks() {
         // Not SteamOS: refusal; a desktop not from the table; removing the current one.
         let io = FakeIo::arch();
         let b = bench(io.clone());
@@ -6311,7 +6311,7 @@ mod tests {
     // ── guard Z1 ─────────────────────────────────────────────────────────
 
     #[test]
-    fn сторож_нет_оболочки_в_privilege() {
+    fn guard_no_shell_in_privilege() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/privilege");
         // The needles are assembled from parts so the guard does not find itself.
         let needles = [
@@ -6351,7 +6351,7 @@ mod tests {
     }
 
     #[test]
-    fn тайм_аут_стенда_разумный() {
+    fn bench_timeout_reasonable() {
         // The bench relies on SO_RCVTIMEO: check that an empty socket does not hang.
         let b = bench(FakeIo::arch());
         let t = Instant::now();
@@ -6388,7 +6388,7 @@ mod tests {
     /// The check before execution: only font file names, descriptors exactly per
     /// file, not on NixOS and not on SteamOS.
     #[test]
-    fn шрифты_для_всех_проверка_операции() {
+    fn system_fonts_operation_check() {
         let f = facts();
         assert_eq!(
             // i18n-exempt: non-ASCII font file names must be accepted
@@ -6416,7 +6416,7 @@ mod tests {
     }
 
     #[test]
-    fn шрифт_для_всех_ложится_копией_и_кэш_пересобирается() {
+    fn system_font_installed_from_copy_and_cache_rebuilt() {
         let io = font_io();
         let plan_ = Plan::FontInstall { names: strings(&["Мой шрифт.ttf"]) }; // i18n-exempt: non-ASCII font file name
         let out = run_plan(&io, &plan_, vec![user_file("font-ok", b"font-bytes")], &Mutex::new(Vec::new()));
@@ -6430,7 +6430,7 @@ mod tests {
     }
 
     #[test]
-    fn не_шрифт_отказ_до_касания() {
+    fn non_font_refused_before_touch() {
         let io = font_io();
         io.st().answers.clear();
         io.st().answers.push(("fc-query".into(), 1, String::new()));
@@ -6453,7 +6453,7 @@ mod tests {
     }
 
     #[test]
-    fn чужой_шрифт_с_тем_же_именем_не_перезаписывается() {
+    fn foreign_font_with_same_name_not_overwritten() {
         let io = font_io();
         io.st().files.insert(format!("{FONTS}/b.ttf"), "foreign".into());
         // The second file is taken: the first is not placed either (the check comes before touching).
@@ -6472,7 +6472,7 @@ mod tests {
     }
 
     #[test]
-    fn удаление_шрифта_для_всех() {
+    fn system_font_removal() {
         let io = font_io();
         {
             let mut s = io.st();
@@ -6491,7 +6491,7 @@ mod tests {
     }
 
     #[test]
-    fn удаление_шрифта_через_ссылку_отказ() {
+    fn font_removal_via_symlink_refused() {
         // A file link and a subdirectory link pointing outside: refusal before the first removal.
         let io = font_io();
         {
@@ -6548,7 +6548,7 @@ mod tests {
     }
 
     #[test]
-    fn экран_входа_проверка_операции() {
+    fn login_screen_operation_check() {
         let f = facts();
         let bg = |theme: &str, image: bool| PrivOp::SddmBackground { theme: theme.into(), image: image.then(|| local(0, "/home/test/a.png")) };
         assert_eq!(check_op(&bg("breeze", true), &f, 1), Ok(Plan::SddmBackground { theme: "breeze".into(), image: true }));
@@ -6576,7 +6576,7 @@ mod tests {
     }
 
     #[test]
-    fn фон_экрана_входа_ложится_в_тему() {
+    fn login_screen_background_goes_into_theme() {
         let io = sddm_io();
         let plan_ = Plan::SddmBackground { theme: "breeze".into(), image: true };
         io.st().files.insert(format!("{BREEZE}/rexon-background.jpg"), "our previous one".into());
@@ -6590,7 +6590,7 @@ mod tests {
     }
 
     #[test]
-    fn фон_не_картинка_или_чужая_тема_отказ_до_касания() {
+    fn background_not_image_or_foreign_theme_refused_before_touch() {
         let io = sddm_io();
         let plan_ = Plan::SddmBackground { theme: "breeze".into(), image: true };
         let out = run_plan(&io, &plan_, vec![user_file("bg-sh", b"#!/bin/sh\nid\n")], &Mutex::new(Vec::new()));
@@ -6607,7 +6607,7 @@ mod tests {
     }
 
     #[test]
-    fn фон_темы_возвращается() {
+    fn theme_background_restored() {
         let io = sddm_io();
         {
             let mut s = io.st();
@@ -6624,7 +6624,7 @@ mod tests {
     }
 
     #[test]
-    fn перенос_оформления_от_имени_sddm() {
+    fn look_transfer_as_sddm_user() {
         let io = sddm_io();
         let plan_ = Plan::SddmLook {
             look: Some(plan::SddmLook { cursor_theme: Some("Bibata".into()), dpi: Some(120), ..Default::default() }),
@@ -6643,7 +6643,7 @@ mod tests {
     }
 
     #[test]
-    fn перенос_не_вышел_ключи_возвращаются() {
+    fn transfer_failed_keys_restored() {
         let io = sddm_io();
         io.st().fail_runs.push("setpriv --reuid=955 --regid=955 --clear-groups -- sh".into());
         let before = io.st().files["/etc/sddm.conf.d/kde_settings.conf"].clone();
@@ -6669,7 +6669,7 @@ mod tests {
     }
 
     #[test]
-    fn сброс_оформления_экрана_входа() {
+    fn login_screen_look_reset() {
         let io = sddm_io();
         io.st().files.insert(
             "/etc/sddm.conf.d/kde_settings.conf".into(),

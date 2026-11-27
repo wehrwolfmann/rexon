@@ -948,6 +948,40 @@ pub fn find_preview_in(
     String::new()
 }
 
+/// Full-size pictures a theme may ship next to its tile preview, best first.
+///
+/// Plasma packages (global themes, splash and lock screens, Plasma styles,
+/// SDDM themes built as KPackages) keep the small tile picture in
+/// `contents/previews/preview.png` (600×337 for Oxygen) and the full-screen
+/// one in `contents/previews/fullscreenpreview.jpg` (2560×1440) — the name
+/// `kpackagetool`/System Settings use for the "full screen preview". The
+/// same name is sometimes found at the theme root, and some authors save it
+/// as PNG or WebP.
+pub const BIG_PREVIEW_NAMES: &[&str] = &[
+    "contents/previews/fullscreenpreview.jpg",
+    "contents/previews/fullscreenpreview.jpeg",
+    "contents/previews/fullscreenpreview.png",
+    "contents/previews/fullscreenpreview.webp",
+    "fullscreenpreview.jpg",
+    "fullscreenpreview.jpeg",
+    "fullscreenpreview.png",
+    "fullscreenpreview.webp",
+];
+
+/// The full-size picture of a theme for the full-screen view, or `""` when
+/// the theme has nothing larger than its tile picture `small` (the viewer
+/// then shows `small`). Cards keep using [`find_preview_in`].
+pub fn find_big_preview(fs: &FsSnapshot, theme_dir: &str, small: &str) -> String {
+    if theme_dir.is_empty() || !fs.is_dir(theme_dir) {
+        return String::new();
+    }
+    BIG_PREVIEW_NAMES
+        .iter()
+        .map(|rel| join(theme_dir, rel))
+        .find(|p| p != small && fs.is_file(p))
+        .unwrap_or_default()
+}
+
 /// The Preview/Image field from the metadata.json/.desktop of a KPackage theme —
 /// port of `_preview_from_metadata` (path relative to contents/, then the root).
 pub fn preview_from_metadata(fs: &FsSnapshot, theme_dir: &str) -> String {
@@ -1931,6 +1965,7 @@ fn mk_item(
     let preview = resolve_preview_in(
         env, t.apply_kind, name, &theme_dir, &recorded_as, None, &preview_subdirs(t),
     );
+    let preview_big = find_big_preview(env.fs, &theme_dir, &preview);
     let badge = if active { local_active_badge() } else { tr(source_label) };
     // The id carries the directory name (the theme is applied by it), the label —
     // the human name from the metadata. A color scheme has no directory at all:
@@ -1964,6 +1999,7 @@ fn mk_item(
         installed: true,
         install_path,
         preview_local: preview,
+        preview_big,
         local_kind: active_kind(active),
         source_name,
         ..Default::default()
@@ -2637,6 +2673,10 @@ const PREVIEW_PROBES: &[&str] = &[
     "contents/previews/lockscreen.png",
     "contents/previews/splash.png",
     "metadata/preview.png",
+    // Full-size pictures for the full-screen view ([`BIG_PREVIEW_NAMES`]).
+    "contents/previews/fullscreenpreview.jpg",
+    "contents/previews/fullscreenpreview.jpeg",
+    "contents/previews/fullscreenpreview.webp",
     // GTK stylesheets: by them a directory counts as a GTK theme
     // ([`entry_listed`]).
     "gtk-3.0/gtk.css",
@@ -3671,6 +3711,14 @@ impl LiveScan {
         }
         let mut items = self.with_env(&roots, true, |env| scan_section(env, &types, active_map));
         order_toggle_section(apply_kind, &mut items);
+        // Outside Plasma «Global Themes» starts with the desktop's own whole
+        // themes (a MATE metatheme, a Cinnamon style); Plasma packages follow.
+        // Only on the live disk: the native scan reads this machine's directories.
+        if apply_kind == "global" && self.usr_root == "/usr" {
+            if let Some(de) = self.de.as_deref() {
+                items.splice(0..0, crate::native_global::items_live(de, &self.home, active_map));
+            }
+        }
         // Built-in KDE borders (Breeze, Oxygen, QML Aurorae themes) — next to the
         // SVG themes, as in the KDE dialog; the current one — by `library` from `kwinrc`.
         if apply_kind == "aurorae" {
@@ -5130,6 +5178,41 @@ mod tests {
         assert_eq!(find_preview_in(&snap, &xp, None, &["xfwm4"]), "", "чужая миниатюра виду не подходит");
         let login = s(&themes.join("Login"));
         assert_eq!(find_preview(&snap, &login, None), format!("{login}/shots/login.jpg"));
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A Plasma package: the tile keeps the small `contents/previews/preview.png`,
+    /// the full-screen view gets `contents/previews/fullscreenpreview.jpg`
+    /// (Oxygen: 600×337 against 2560×1440); a theme without a larger picture
+    /// has no big preview, and a big one is never the tile picture itself.
+    #[test]
+    fn big_preview_is_fullscreenpreview_next_to_small_one() {
+        let home = tmp_dir("big-preview");
+        let lnf = home.join("look-and-feel");
+        write(&lnf.join("org.kde.oxygenlight/metadata.json"), "{}");
+        write(&lnf.join("org.kde.oxygenlight/contents/previews/preview.png"), "");
+        write(&lnf.join("org.kde.oxygenlight/contents/previews/fullscreenpreview.jpg"), "");
+        write(&lnf.join("Png/contents/previews/preview.png"), "");
+        write(&lnf.join("Png/contents/previews/fullscreenpreview.png"), "");
+        write(&lnf.join("Root/preview.png"), "");
+        write(&lnf.join("Root/fullscreenpreview.webp"), "");
+        write(&lnf.join("Small/contents/previews/preview.png"), "");
+        let snap = live_snapshot(&[s(&lnf)], &[]);
+        let oxy = s(&lnf.join("org.kde.oxygenlight"));
+        let small = find_preview(&snap, &oxy, None);
+        assert_eq!(small, format!("{oxy}/contents/previews/preview.png"), "the tile stays small");
+        assert_eq!(find_big_preview(&snap, &oxy, &small), format!("{oxy}/contents/previews/fullscreenpreview.jpg"));
+        let png = s(&lnf.join("Png"));
+        let small = find_preview(&snap, &png, None);
+        assert_eq!(find_big_preview(&snap, &png, &small), format!("{png}/contents/previews/fullscreenpreview.png"));
+        let root = s(&lnf.join("Root"));
+        assert_eq!(find_big_preview(&snap, &root, &find_preview(&snap, &root, None)), format!("{root}/fullscreenpreview.webp"));
+        let plain = s(&lnf.join("Small"));
+        assert_eq!(find_big_preview(&snap, &plain, &find_preview(&snap, &plain, None)), "");
+        // The tile picture itself is never offered as the "big" one.
+        let only = format!("{png}/contents/previews/fullscreenpreview.png");
+        assert_eq!(find_big_preview(&snap, &png, &only), "");
+        assert_eq!(find_big_preview(&snap, "", ""), "");
         let _ = std::fs::remove_dir_all(&home);
     }
 

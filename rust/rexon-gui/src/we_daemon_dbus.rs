@@ -97,6 +97,10 @@ pub mod qobject {
                     READ = ws_port, NOTIFY = ws_port_changed)]
         #[qproperty(QString, daemon_version, cxx_name = "daemonVersion",
                     READ = daemon_version, NOTIFY = status_changed)]
+        /// waywallen 0.6.2: the daemon release against the vendored interface:
+        /// < 0 older, > 0 newer, 0 the same or unknown.
+        #[qproperty(i32, daemon_version_order, cxx_name = "daemonVersionOrder",
+                    READ = daemon_version_order, NOTIFY = status_changed)]
         #[qproperty(bool, daemon_available, cxx_name = "daemonAvailable",
                     READ = daemon_available, NOTIFY = status_changed)]
         #[qproperty(bool, quit_on_daemon_shutdown, cxx_name = "quitOnDaemonShutdown",
@@ -132,6 +136,8 @@ pub mod qobject {
         fn ws_port(self: &DaemonDBusClient) -> u16;
         #[cxx_name = "daemonVersion"]
         fn daemon_version(self: &DaemonDBusClient) -> QString;
+        #[cxx_name = "daemonVersionOrder"]
+        fn daemon_version_order(self: &DaemonDBusClient) -> i32;
         #[cxx_name = "daemonAvailable"]
         fn daemon_available(self: &DaemonDBusClient) -> bool;
         #[cxx_name = "quitOnDaemonShutdown"]
@@ -256,6 +262,12 @@ impl qobject::DaemonDBusClient {
 
     fn daemon_version(&self) -> QString {
         QString::from(&self.rust().version)
+    }
+
+    fn daemon_version_order(&self) -> i32 {
+        let module_dir = rexon_core::remote_l10n::ui_module_dir(&crate::we_env::pkg_dir());
+        let ui = crate::we_app::vendored_ui_version(&module_dir);
+        rexon_core::we_util::version_order(&self.rust().version, &ui)
     }
 
     fn daemon_available(&self) -> bool {

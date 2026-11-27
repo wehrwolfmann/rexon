@@ -1417,16 +1417,19 @@ Item {
     }
 
     /// Picture of a showcase tile — a single one, without paging: the theme's
-    /// other screenshots live in its card.
-    function openTileZoom(name, path) {
+    /// other screenshots live in its card. `big` is the theme's full-size
+    /// picture on disk (empty — the tile picture is the largest there is):
+    /// the tile picture shows at once, the large one replaces it when read.
+    function openTileZoom(name, path, big) {
         if (!path)
             return;
+        const full = big ? big : path;
         zoomPopup.show([{
             "key": path,
             "title": name,
             "thumb": path,
-            "source": path,
-            "animatedImage": page.isAnimatedPreview(path)
+            "source": full,
+            "animatedImage": page.isAnimatedPreview(full)
         }], 0);
     }
 
@@ -3651,38 +3654,15 @@ Item {
                 }
 
                 // "MATE panel": ready mate-panel layouts. The section is self-contained
-                // (`MatePanelSection`, its own confirmation window); the answer to "Apply"
-                // is a line under it.
-                ScrollView {
-                    id: matePanelView
+                // (`MatePanelSection`, its own confirmation window) and fills the
+                // screen: its buttons and the result of "Apply" stay pinned at the top,
+                // only the list of layouts scrolls inside it.
+                MatePanelSection {
                     anchors.fill: parent
-                    visible: page.screen === "matepanel"
-                    clip: true
-                    contentWidth: availableWidth
-
-                    ColumnLayout {
-                        width: matePanelView.availableWidth
-                        spacing: 10
-
-                        MatePanelSection {
-                            Layout.fillWidth: true
-                            Layout.margins: 16
-                            pal: root.pal
-                            sty: page.sectionStyles
-                            onMessage: text => matePanelMessage.text = text
-                        }
-
-                        RexonText {
-                            id: matePanelMessage
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 16
-                            Layout.rightMargin: 16
-                            visible: text !== ""
-                            color: root.colTextSecondary
-                            font.pointSize: 12
-                            wrapMode: Text.WordWrap
-                        }
-                    }
+                    anchors.margins: 16
+                    shown: page.screen === "matepanel"
+                    pal: root.pal
+                    sty: page.sectionStyles
                 }
 
                 // Settings sections (animation, title bar buttons, the «⚙️ Settings» view
@@ -5323,6 +5303,7 @@ Item {
                         required property string previewFont
                         required property string previewSample
                         required property string previewNote
+                        required property string previewBig
                         required property string mixBadge
                         required property string mixBadgeTooltip
                         required property string metaLine
@@ -5443,15 +5424,16 @@ Item {
 
                                     // A click on the tile is taken by the theme card, so the large view of its
                                     // picture is opened with the magnifier under the cursor. A drawn picture
-                                    // (a sample, a placeholder) has nothing larger to show.
+                                    // (a sample, a placeholder) has nothing larger to show — unless it was
+                                    // drawn in full size too (a whole theme of the desktop).
                                     RexonZoomArea {
                                         anchors.fill: parent
                                         pal: root.pal
                                         badgeOnly: true
                                         enabled: cell.preview !== "" && cell.soundTheme === ""
-                                                 && !previewBox.placeholder
+                                                 && (!previewBox.placeholder || cell.previewBig !== "")
                                         visible: enabled
-                                        onActivated: root.openTileZoom(cell.name, cell.preview)
+                                        onActivated: root.openTileZoom(cell.name, cell.preview, cell.previewBig)
                                     }
 
                                     // "Demonstrate" for a KDE splash screen, as in the KDE module: the splash

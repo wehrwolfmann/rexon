@@ -432,6 +432,9 @@ pub fn map_to_transition(m: &VMap) -> pb::TransitionConfig {
 pub const KEY_RENDERER_ENABLE_AUDIO: &str = "renderer.enable_audio";
 /// Key of the flat «renderer volume» pair (`GlobalRendererSettings.volume`).
 pub const KEY_RENDERER_VOLUME: &str = "renderer.volume";
+/// Key of the «renderer output device» pair (`GlobalRendererSettings.audio_output`,
+/// waywallen 0.6.2): a sink name from `AudioOutputList`, empty — the system default.
+pub const KEY_RENDERER_AUDIO_OUTPUT: &str = "renderer.audio_output";
 /// Default volume when the daemon did not send it (original: 100).
 pub const DEFAULT_RENDERER_VOLUME: u32 = 100;
 
@@ -524,6 +527,10 @@ pub fn global_to_map(g: &pb::GlobalSettings) -> VMap {
     m.insert(
         KEY_RENDERER_VOLUME.into(),
         Value::from(r.and_then(|r| r.volume).unwrap_or(DEFAULT_RENDERER_VOLUME)),
+    );
+    m.insert(
+        KEY_RENDERER_AUDIO_OUTPUT.into(),
+        Value::String(r.and_then(|r| r.audio_output.clone()).unwrap_or_default()),
     );
     m.insert(
         "wallpaperSkipTypes".into(),
@@ -651,13 +658,19 @@ pub fn map_to_global(m: &VMap) -> pb::GlobalSettings {
     if m.contains_key("duplicateRenderers") {
         g.duplicate_renderers_for_same_wallpaper = get_bool(m, "duplicateRenderers");
     }
-    if m.contains_key(KEY_RENDERER_ENABLE_AUDIO) || m.contains_key(KEY_RENDERER_VOLUME) {
+    if m.contains_key(KEY_RENDERER_ENABLE_AUDIO)
+        || m.contains_key(KEY_RENDERER_VOLUME)
+        || m.contains_key(KEY_RENDERER_AUDIO_OUTPUT)
+    {
         let mut r = pb::GlobalRendererSettings::default();
         if m.contains_key(KEY_RENDERER_ENABLE_AUDIO) {
             r.enable_audio = Some(get_bool(m, KEY_RENDERER_ENABLE_AUDIO));
         }
         if m.contains_key(KEY_RENDERER_VOLUME) {
             r.volume = Some(get_u32(m, KEY_RENDERER_VOLUME));
+        }
+        if m.contains_key(KEY_RENDERER_AUDIO_OUTPUT) {
+            r.audio_output = Some(get_str(m, KEY_RENDERER_AUDIO_OUTPUT));
         }
         g.renderer = Some(r);
     }
@@ -716,6 +729,7 @@ pub const GLOBAL_MAP_SCHEMA: &[(&str, GlobalValueKind)] = &[
     ("duplicateRenderers", GlobalValueKind::Bool),
     (KEY_RENDERER_ENABLE_AUDIO, GlobalValueKind::Bool),
     (KEY_RENDERER_VOLUME, GlobalValueKind::Int),
+    (KEY_RENDERER_AUDIO_OUTPUT, GlobalValueKind::String),
     ("wallpaperSkipTypes", GlobalValueKind::StringList),
     ("wallpaperFilterTags", GlobalValueKind::StringList),
     ("wallpaperSkipContentRatings", GlobalValueKind::StringList),
@@ -852,6 +866,40 @@ pub fn apply_settings_get(
             "wwLogActive",
             &mut out,
         );
+    }
+    Ok(q::finish(st, out))
+}
+
+// ── AudioOutputListQuery (waywallen 0.6.2) ──────────────────────────────
+
+/// Parse the `audio_output_list` answer: `outputs` as the vendor's maps
+/// `{name, description, isDefault}`, `available` — whether a sound server was
+/// reached. The vendor sends `outputsChanged` on every answer, so the signal is
+/// unconditional here too (the page re-reads the list each time it opens).
+pub fn apply_audio_output_list(
+    st: &mut QueryState,
+    outputs: &mut Vec<Value>,
+    available: &mut bool,
+    frame_bytes: &[u8],
+) -> Result<Vec<QuerySignal>, prost::DecodeError> {
+    let (answer, mut out) = q::take_response(st, frame_bytes)?;
+    let Some(rsp) = answer else {
+        return Ok(out);
+    };
+    if let Some(pb::response::Payload::AudioOutputList(list)) = rsp.payload {
+        *outputs = list
+            .outputs
+            .iter()
+            .map(|o| {
+                serde_json::json!({
+                    "name": o.name,
+                    "description": o.description,
+                    "isDefault": o.is_default,
+                })
+            })
+            .collect();
+        *available = list.available;
+        out.push(QuerySignal::Property("outputs"));
     }
     Ok(q::finish(st, out))
 }

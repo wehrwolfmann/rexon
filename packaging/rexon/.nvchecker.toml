@@ -1,0 +1,5 @@
+[rexon]
+source = "github"
+github = "wehrwolfmann/rexon"
+use_max_tag = true
+prefix = "v"

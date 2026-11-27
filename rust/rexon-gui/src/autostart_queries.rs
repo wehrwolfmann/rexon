@@ -706,19 +706,19 @@ mod tests {
     /// monkey-patched in the Python comparison. Not a single `systemctl` call
     /// goes out — the argv are only recorded.
     struct FakeHost {
-        корень: std::path::PathBuf,
+        root_dir: std::path::PathBuf,
         systemd: bool,
-        бинарь: String,
-        вызовы: Vec<Vec<String>>,
+        binary_file: String,
+        calls: Vec<Vec<String>>,
     }
 
     impl AutostartHost for FakeHost {
         fn xdg_config_home(&self) -> Option<String> {
-            Some(self.корень.join("cfg").to_string_lossy().into_owned())
+            Some(self.root_dir.join("cfg").to_string_lossy().into_owned())
         }
 
         fn home(&self) -> String {
-            self.корень.to_string_lossy().into_owned()
+            self.root_dir.to_string_lossy().into_owned()
         }
 
         fn systemd_available(&self) -> bool {
@@ -726,11 +726,11 @@ mod tests {
         }
 
         fn daemon_binary(&self) -> Option<String> {
-            Some(self.бинарь.clone())
+            Some(self.binary_file.clone())
         }
 
         fn run(&mut self, argv: &[String]) -> Option<(i32, String, String)> {
-            self.вызовы.push(argv.to_vec());
+            self.calls.push(argv.to_vec());
             if argv.iter().any(|a| a == "is-enabled") {
                 return Some((0, "enabled\n".to_string(), String::new()));
             }
@@ -742,43 +742,43 @@ mod tests {
     /// code, but in a fake HOME. A port of `autostart_cycle` from the bridge
     /// comparison: that one goes away together with the Python executor, the
     /// coverage does not.
-    fn цикл(systemd: bool) {
-        let корень = std::env::temp_dir().join(format!(
+    fn cycle(systemd: bool) {
+        let root_dir = std::env::temp_dir().join(format!(
             "rexon-autostart-cycle-{}-{systemd}",
             std::process::id()
         ));
-        let _ = std::fs::remove_dir_all(&корень);
-        std::fs::create_dir_all(&корень).unwrap();
-        let бинарь = корень.join("waywallen.AppImage").to_string_lossy().into_owned();
+        let _ = std::fs::remove_dir_all(&root_dir);
+        std::fs::create_dir_all(&root_dir).unwrap();
+        let binary_file = root_dir.join("waywallen.AppImage").to_string_lossy().into_owned();
         let mut host = FakeHost {
-            корень: корень.clone(),
+            root_dir: root_dir.clone(),
             systemd,
-            бинарь: бинарь.clone(),
-            вызовы: Vec::new(),
+            binary_file: binary_file.clone(),
+            calls: Vec::new(),
         };
 
         let xdg = host.xdg_config_home();
         let home = host.home();
-        let юнит = we_client::autostart_unit_path(xdg.as_deref(), &home);
-        let десктоп = we_client::autostart_desktop_path(xdg.as_deref(), &home);
+        let unit_file = we_client::autostart_unit_path(xdg.as_deref(), &home);
+        let desktop_entry = we_client::autostart_desktop_path(xdg.as_deref(), &home);
 
-        let (ok, сообщение) = set_autostart_on(&mut host, true);
-        assert!(ok, "включение обязано пройти: {сообщение}");
+        let (ok, message_text) = set_autostart_on(&mut host, true);
+        assert!(ok, "включение обязано пройти: {message_text}");
         assert!(autostart_enabled_on(&mut host), "включённый автозапуск обязан читаться");
 
-        let (записан, второй) = if systemd { (&юнит, &десктоп) } else { (&десктоп, &юнит) };
-        let тело = std::fs::read_to_string(записан).expect("включение ничего не записало");
-        assert!(тело.contains(&бинарь), "в файл ушёл не тот бинарь: {тело}");
-        assert!(тело.contains("--no-ui --no-tray"), "{тело}");
+        let (was_written, second) = if systemd { (&unit_file, &desktop_entry) } else { (&desktop_entry, &unit_file) };
+        let body = std::fs::read_to_string(was_written).expect("включение ничего не записало");
+        assert!(body.contains(&binary_file), "в файл ушёл не тот бинарь: {body}");
+        assert!(body.contains("--no-ui --no-tray"), "{body}");
         assert!(
-            !std::path::Path::new(второй).exists(),
+            !std::path::Path::new(second).exists(),
             "второй механизм держать параллельно нельзя"
         );
 
-        let (ok, сообщение) = set_autostart_on(&mut host, false);
+        let (ok, message_text) = set_autostart_on(&mut host, false);
         assert!(ok);
-        assert_eq!(сообщение, rexon_core::i18n::tr("Autostart disabled"));
-        for p in [&юнит, &десктоп] {
+        assert_eq!(message_text, rexon_core::i18n::tr("Autostart disabled"));
+        for p in [&unit_file, &desktop_entry] {
             assert!(!std::path::Path::new(p).exists(), "после выключения остался {p}");
         }
         // Disabling again is idempotent.
@@ -786,7 +786,7 @@ mod tests {
 
         if systemd {
             let argv: Vec<String> =
-                host.вызовы.iter().map(|c| c.join(" ")).collect();
+                host.calls.iter().map(|c| c.join(" ")).collect();
             assert!(
                 argv.contains(&"systemctl --user enable rexon-wallpaper-engine.service".to_string()),
                 "{argv:?}"
@@ -796,10 +796,10 @@ mod tests {
                 "{argv:?}"
             );
         } else {
-            assert!(host.вызовы.is_empty(), "без systemd процессов быть не должно");
+            assert!(host.calls.is_empty(), "без systemd процессов быть не должно");
         }
 
-        let _ = std::fs::remove_dir_all(&корень);
+        let _ = std::fs::remove_dir_all(&root_dir);
     }
 
     /// The state for `W.AutostartGetQuery` (`enabled`, `supported`,
@@ -807,7 +807,7 @@ mod tests {
     /// `systemctl --user is-enabled` goes out, not a single frame to the engine.
     /// The switch is grey exactly when there is nothing to enable — no engine.
     #[test]
-    fn состояние_автозапуска_без_демона() {
+    fn autostart_state_without_daemon() {
         for systemd in [true, false] {
             let root = std::env::temp_dir().join(format!(
                 "rexon-autostart-state-{}-{systemd}",
@@ -817,10 +817,10 @@ mod tests {
             std::fs::create_dir_all(&root).unwrap();
             let binary = root.join("waywallen").to_string_lossy().into_owned();
             let mut host = FakeHost {
-                корень: root.clone(),
+                root_dir: root.clone(),
                 systemd,
-                бинарь: binary,
-                вызовы: Vec::new(),
+                binary_file: binary,
+                calls: Vec::new(),
             };
 
             let before = autostart_state_on(&mut host);
@@ -829,7 +829,7 @@ mod tests {
             // FakeHost answers "enabled" to is-enabled, so without systemd the enabled
             // state is decided only by the XDG file — which does not exist yet.
             assert_eq!(before.enabled, systemd);
-            for call in &host.вызовы {
+            for call in &host.calls {
                 assert_eq!(call, &we_client::autostart_is_enabled_argv(), "лишний вызов {call:?}");
             }
 
@@ -874,42 +874,42 @@ mod tests {
     }
 
     #[test]
-    fn цикл_автозапуска_systemd() {
-        цикл(true);
+    fn autostart_cycle_systemd() {
+        cycle(true);
     }
 
     #[test]
-    fn цикл_автозапуска_xdg_фолбэк() {
-        цикл(false);
+    fn autostart_cycle_xdg_fallback() {
+        cycle(false);
     }
 
     /// Refreshing the unit is run with the REAL code (reading the file, writing,
     /// `daemon-reload`), but in a fake `XDG_CONFIG_HOME` — the live session's
     /// unit is not touched.
     #[test]
-    fn освежение_переписывает_юнит_прежнего_образца() {
+    fn refresh_rewrites_unit_of_previous_form() {
         if !systemd_available() {
             return; // without systemd there is nothing to refresh
         }
-        let корень = std::env::temp_dir().join(format!(
+        let root_dir = std::env::temp_dir().join(format!(
             "rexon-autostart-refresh-{}",
             std::process::id()
         ));
-        let прежний = std::env::var("XDG_CONFIG_HOME").ok();
-        std::env::set_var("XDG_CONFIG_HOME", &корень);
+        let previous = std::env::var("XDG_CONFIG_HOME").ok();
+        std::env::set_var("XDG_CONFIG_HOME", &root_dir);
 
-        let путь = we_client::autostart_unit_path(
-            Some(корень.to_str().unwrap()),
+        let entry_path = we_client::autostart_unit_path(
+            Some(root_dir.to_str().unwrap()),
             &we_env::home(),
         );
-        let бинарь_путь = корень.join("waywallen.AppImage");
-        std::fs::create_dir_all(&корень).unwrap();
-        std::fs::write(&бинарь_путь, "#!/bin/sh\n").unwrap();
+        let binary_path = root_dir.join("waywallen.AppImage");
+        std::fs::create_dir_all(&root_dir).unwrap();
+        std::fs::write(&binary_path, "#!/bin/sh\n").unwrap();
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&бинарь_путь, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::set_permissions(&binary_path, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let бинарь = бинарь_путь.to_str().unwrap();
+        let binary_file = binary_path.to_str().unwrap();
         // The `--plugin` tail follows the engine from the package: the refresh
         // takes it from the machine (`we_env::engine_plugin_root_for`), and the
         // expectation must take it from the same place — otherwise the comparison
@@ -918,25 +918,25 @@ mod tests {
         // The refreshed unit points at the engine Rexon would start now
         // (`we_client::unit_refresh_binary`); on a machine without an engine — the
         // previous one.
-        let expected_binary = we_env::daemon_binary().unwrap_or_else(|| бинарь.to_string());
-        let свежий = we_client::autostart_unit_content_with(
+        let expected_binary = we_env::daemon_binary().unwrap_or_else(|| binary_file.to_string());
+        let fresh = we_client::autostart_unit_content_with(
             &expected_binary,
             we_env::engine_plugin_root_for(Some(&expected_binary)).as_deref(),
         );
-        let старый: String = свежий
+        let old_unit: String = fresh
             .lines()
             .filter(|l| !l.starts_with("KillMode=") && !l.starts_with('#'))
             .map(|l| format!("{l}\n"))
             .collect();
-        write_file(&путь, &старый).unwrap();
+        write_file(&entry_path, &old_unit).unwrap();
 
         assert!(refresh_autostart_unit(), "юнит прежнего образца обязан переписаться");
-        assert_eq!(std::fs::read_to_string(&путь).unwrap(), свежий);
+        assert_eq!(std::fs::read_to_string(&entry_path).unwrap(), fresh);
         // A repeated pass does nothing.
         assert!(!refresh_autostart_unit());
 
-        let _ = std::fs::remove_dir_all(&корень);
-        match прежний {
+        let _ = std::fs::remove_dir_all(&root_dir);
+        match previous {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
             None => std::env::remove_var("XDG_CONFIG_HOME"),
         }

@@ -1460,7 +1460,7 @@ mod tests {
 
     /// The line of the collapsed block names what is chosen.
     #[test]
-    fn строка_свёрнутого_блока() {
+    fn collapsed_block_line() {
         let mut cfg = Config::default();
         assert_eq!(summary_text(&cfg), "Light and dark: off");
         cfg.mode = Mode::Dark;
@@ -1473,7 +1473,7 @@ mod tests {
     }
 
     #[test]
-    fn времена_и_переход_через_полночь() {
+    fn times_and_midnight_crossing() {
         assert_eq!(parse_hhmm("07:30"), Some(450));
         assert_eq!(parse_hhmm("24:00"), None);
         assert_eq!(phase_by_times(8 * 60, 7 * 60, 19 * 60), Phase::Light);
@@ -1487,7 +1487,7 @@ mod tests {
     }
 
     #[test]
-    fn календарь_utc() {
+    fn utc_calendar_dates() {
         assert_eq!(utc_calendar(0), "1970-01-01 00:00:00 UTC");
         assert_eq!(utc_calendar(1_793_550_060), "2026-11-01 16:21:00 UTC");
         assert_eq!(days_from_civil(2026, 11, 1) * 86_400, 1_793_491_200);
@@ -1495,7 +1495,7 @@ mod tests {
     }
 
     #[test]
-    fn пояс_и_координаты() {
+    fn zone_and_coordinates() {
         let tab = "# comment\nDE,DK,NO,SE,SJ\t+5230+01322\tEurope/Berlin\nRU\t+554521+0373704\tEurope/Moscow\tMSK+00\n";
         assert_eq!(tz_name(None, Some("/usr/share/zoneinfo/Europe/Berlin")).as_deref(), Some("Europe/Berlin"));
         assert_eq!(tz_name(Some(":Europe/Moscow"), None).as_deref(), Some("Europe/Moscow"));

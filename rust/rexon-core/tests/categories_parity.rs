@@ -1075,3 +1075,19 @@ fn sections_follow_session_kind() {
         assert!(category_available_in(key, "mate", Session::Wayland), "{key}");
     }
 }
+
+/// «Global Themes» on a desktop with its own whole themes: the note names both
+/// kinds — the desktop's themes applied whole, the Plasma packages part by part;
+/// elsewhere outside Plasma the general note about Plasma packages stays.
+#[test]
+fn global_note_names_native_and_plasma_themes() {
+    use rexon_core::categories::category_condition;
+    let _lang = i18n_pin::en();
+    let mate = category_condition("global", "mate").expect("note on MATE");
+    assert!(mate.starts_with("MATE themes come first and are applied whole"), "{mate}");
+    assert!(mate.contains("Plasma packages"), "{mate}");
+    assert!(category_condition("global", "cinnamon").unwrap().starts_with("Cinnamon themes"));
+    let xfce = category_condition("global", "xfce").expect("note on XFCE");
+    assert!(xfce.starts_with("A global theme is a Plasma package"), "{xfce}");
+    assert!(category_condition("global", "kde").is_none());
+}

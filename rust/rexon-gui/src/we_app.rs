@@ -136,10 +136,14 @@ pub mod qobject {
         /// Version of the VENDORED interface (`0.5.0`) — the `ui/UPSTREAM_TAG` tag,
         /// parsed in `rexon_core::qml_modules::ui_version`. The original has no
         /// such member: there the "Version %1" line on "About" is written by
-        /// `Qt.application.version`, while for us that is the Rexon version (patch
-        /// 0002).
+        /// `Qt.application.version`, while for us that is the Rexon version; since
+        /// waywallen 0.6.2 the page reads `version` below.
         #[qproperty(QString, ui_version, cxx_name = "uiVersion",
                     READ = ui_version, CONSTANT)]
+        /// waywallen 0.6.2 `App::version`: the version of the interface build. Here
+        /// it is the same vendored tag as `uiVersion` — the About page compares it
+        /// with the daemon's version.
+        #[qproperty(QString, version, READ = ui_version, CONSTANT)]
         /// The original has no such member (patch 0010): "Apply" on the wallpaper
         /// card is available even with zero displays where the display is brought
         /// up by Rexon (KDE — the plugin, X11 — the output client host): the frame
@@ -263,6 +267,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setSingleUiEnabled"]
         fn set_single_ui_enabled(self: Pin<&mut App>, enabled: bool);
+
+        /// waywallen 0.6.2: open a link from untrusted text; only an http(s)
+        /// page is passed to the browser (`we_util::external_link_allowed`).
+        #[qinvokable]
+        #[cxx_name = "openExternalLink"]
+        fn open_external_link(self: &App, link: &QString) -> bool;
 
         /// A raw daemon frame from the seam (`rexon_we_do_deliver_event`) — hand it
         /// to the live models. The name must match what
@@ -410,13 +420,7 @@ impl cxx_qt::Initialize for qobject::App {
         let codes = discover_ui_languages(&module_dir);
         let spoken = rexon_core::i18n::current_language();
         apply_ui_language(&codes, &module_dir, &spoken);
-        let tag_path = rexon_core::qml_modules::qml_path(
-            &module_dir,
-            rexon_core::qml_modules::UPSTREAM_TAG_REL,
-        );
-        let ui_version = rexon_core::qml_modules::ui_version(
-            std::fs::read_to_string(&tag_path).ok().as_deref(),
-        );
+        let ui_version = vendored_ui_version(&module_dir);
         {
             let mut rust = self.as_mut().rust_mut();
             rust.ui_version = ui_version;
@@ -696,6 +700,15 @@ impl qobject::App {
         QString::from(&self.rust().ui_version)
     }
 
+    fn open_external_link(&self, link: &QString) -> bool {
+        let link = link.to_string();
+        if !rexon_core::we_util::external_link_allowed(&link) {
+            rexon_core::log_warn!("we-app", "ignoring external link with unsupported scheme: {link}");
+            return false;
+        }
+        crate::appearance_actions::qobject::open_url_external(&QString::from(link.trim()))
+    }
+
     /// The decision is the core's; the session does not change while running
     /// (`CONSTANT`).
     fn apply_without_displays(&self) -> bool {
@@ -852,4 +865,12 @@ impl qobject::App {
             manager.replace_all_frame(frame.as_slice());
         }
     }
+}
+
+/// Version of the vendored interface: the first word of `ui/UPSTREAM_TAG` in the
+/// module directory, without the `v` (`rexon_core::qml_modules::ui_version`).
+pub fn vendored_ui_version(module_dir: &str) -> String {
+    let tag_path =
+        rexon_core::qml_modules::qml_path(module_dir, rexon_core::qml_modules::UPSTREAM_TAG_REL);
+    rexon_core::qml_modules::ui_version(std::fs::read_to_string(&tag_path).ok().as_deref())
 }

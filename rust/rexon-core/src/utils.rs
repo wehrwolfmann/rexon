@@ -759,6 +759,17 @@ pub const TOOL_SUBCOMMANDS: &[(&str, &[&str])] = &[("identify", &["magick", "ide
 /// family `debian` is taken, and if that is missing too — the FIRST value of
 /// the entry.
 pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
+    // The compositor for «Screen effects» on MATE, Xfce and LXQt
+    // (`screen_effects::install_packages`).
+    (
+        "picom",
+        &[
+            ("arch", "picom"),
+            ("fedora", "picom"),
+            ("suse", "picom"),
+            ("debian", "picom"),
+        ],
+    ),
     (
         "convert",
         &[
@@ -2299,6 +2310,18 @@ pub fn decode_text(raw: &[u8]) -> String {
 /// closed. No branch panics: «did not start» is [`RunOutcome::Error`] with
 /// the cause text, not an exception.
 pub fn run(spec: &RunSpec, path_env: Option<&str>) -> RunReport {
+    // An AUR helper command with a package whose recipe is known to be broken:
+    // Rexon builds that package itself (`aur_install::RECIPE_FIXES`) — for any
+    // place that calls an AUR helper (rule #12).
+    if let Some(report) = crate::aur_install::run_with_recipe_fixes(spec, path_env) {
+        return report;
+    }
+    run_direct(spec, path_env)
+}
+
+/// [`run`] without the AUR recipe fix hook: the hook itself launches its
+/// commands through here.
+pub fn run_direct(spec: &RunSpec, path_env: Option<&str>) -> RunReport {
     let plan = run_plan(spec, path_env);
     let mut report = RunReport {
         timeout_secs: plan.timeout_secs,

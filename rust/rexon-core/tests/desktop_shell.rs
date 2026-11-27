@@ -29,7 +29,7 @@ fn s(items: &[&str]) -> Vec<String> {
 
 /// Observations are empty — no shell.
 #[test]
-fn пустой_сеанс_шелла_не_даёт() {
+fn empty_session_gives_no_shell() {
     assert_eq!(detect_shell(&ShellFacts::default()), None);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
@@ -41,22 +41,22 @@ fn пустой_сеанс_шелла_не_даёт() {
 /// Bare niri and niri with a shell — ONE compositor value and different pairings.
 /// The function exists exactly for this distinction.
 #[test]
-fn композитор_один_а_связки_разные() {
+fn same_compositor_different_bundles() {
     assert_eq!(detect_current_de("niri", "", true).as_deref(), Some("niri"));
 
-    let голый = ShellFacts {
+    let bare = ShellFacts {
         wayland_display: "wayland-1",
         ..Default::default()
     };
-    let файлы = s(&["noctalia-wayland-1.sock"]);
-    let с_шеллом = ShellFacts {
+    let file_list = s(&["noctalia-wayland-1.sock"]);
+    let with_shell = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
+        runtime_files: &file_list,
         ..Default::default()
     };
-    assert_eq!(detect_shell(&голый), None);
+    assert_eq!(detect_shell(&bare), None);
     assert_eq!(
-        detect_shell(&с_шеллом).map(|d| d.shell),
+        detect_shell(&with_shell).map(|d| d.shell),
         Some(DesktopShell::Noctalia)
     );
 
@@ -74,13 +74,13 @@ fn композитор_один_а_связки_разные() {
 // ── Noctalia: each sign separately ─────────────────────────────────────────
 
 #[test]
-fn noctalia_по_файлу_блокировки() {
+fn noctalia_by_lock_file() {
     // The socket is removed only in the destructor and remains after a crash; the flock
     // on .lock is how the shell holds single-instance launching.
-    let файлы = s(&["noctalia-wayland-1.lock"]);
+    let file_list = s(&["noctalia-wayland-1.lock"]);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
+        runtime_files: &file_list,
         ..Default::default()
     };
     let d = detect_shell(&facts).expect("файл блокировки не опознан");
@@ -89,40 +89,40 @@ fn noctalia_по_файлу_блокировки() {
 }
 
 #[test]
-fn noctalia_по_имени_на_шине() {
+fn noctalia_by_bus_name() {
     // A name on the bus is never stale — the most reliable sign.
-    for имя in ["dev.noctalia.Debug", "dev.noctalia.Mpris"] {
-        let имена = s(&["org.freedesktop.Notifications", имя]);
+    for label_name in ["dev.noctalia.Debug", "dev.noctalia.Mpris"] {
+        let names = s(&["org.freedesktop.Notifications", label_name]);
         let facts = ShellFacts {
-            dbus_names: &имена,
+            dbus_names: &names,
             ..Default::default()
         };
-        let d = detect_shell(&facts).unwrap_or_else(|| panic!("{имя} не опознано"));
-        assert_eq!(d.shell, DesktopShell::Noctalia, "{имя}");
-        assert_eq!(d.evidence, vec![format!("имя {имя} на шине")]);
+        let d = detect_shell(&facts).unwrap_or_else(|| panic!("{label_name} не опознано"));
+        assert_eq!(d.shell, DesktopShell::Noctalia, "{label_name}");
+        assert_eq!(d.evidence, vec![format!("имя {label_name} на шине")]);
     }
     // Ownerless and conditional names are not counted as a shell: org.freedesktop.Notifications
     // is taken by everybody, and KWinActiveWindow exists only on KDE.
-    for чужое in [
+    for foreign_value in [
         "org.freedesktop.Notifications",
         "org.kde.StatusNotifierWatcher",
         "dev.noctalia.Other",
     ] {
-        let имена = s(&[чужое]);
+        let names = s(&[foreign_value]);
         let facts = ShellFacts {
-            dbus_names: &имена,
+            dbus_names: &names,
             ..Default::default()
         };
-        assert_eq!(detect_shell(&facts), None, "{чужое}");
+        assert_eq!(detect_shell(&facts), None, "{foreign_value}");
     }
 }
 
 #[test]
-fn noctalia_по_сокету_с_точным_именем() {
-    let файлы = s(&["bus", "noctalia-wayland-1.sock", "pipewire-0"]);
+fn noctalia_by_socket_with_exact_name() {
+    let file_list = s(&["bus", "noctalia-wayland-1.sock", "pipewire-0"]);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
+        runtime_files: &file_list,
         ..Default::default()
     };
     let d = detect_shell(&facts).expect("сокет Noctalia не опознан");
@@ -133,14 +133,14 @@ fn noctalia_по_сокету_с_точным_именем() {
 }
 
 #[test]
-fn noctalia_по_сокету_без_переменной_дисплея() {
+fn noctalia_by_socket_without_display_variable() {
     // We may have been launched without WAYLAND_DISPLAY — we must not go blind because of it,
     // the name shape is recognized anyway. The shell itself substitutes
     // wayland-0 for an empty variable, and the name formula does the same.
     assert_eq!(noctalia_socket_name(""), "noctalia-wayland-0.sock");
-    let файлы = s(&["noctalia-wayland-0.sock"]);
+    let file_list = s(&["noctalia-wayland-0.sock"]);
     let facts = ShellFacts {
-        runtime_files: &файлы,
+        runtime_files: &file_list,
         ..Default::default()
     };
     assert_eq!(
@@ -153,10 +153,10 @@ fn noctalia_по_сокету_без_переменной_дисплея() {
 /// `Exec=noctalia --daemon`), `noctalia.service` is created only by the
 /// NixOS module. The sign is rare, but if the unit exists, it is proof.
 #[test]
-fn noctalia_по_юниту() {
-    let юниты = s(&["pipewire.service", "noctalia.service"]);
+fn noctalia_by_unit() {
+    let units = s(&["pipewire.service", "noctalia.service"]);
     let facts = ShellFacts {
-        active_user_units: &юниты,
+        active_user_units: &units,
         ..Default::default()
     };
     let d = detect_shell(&facts).expect("юнит Noctalia не опознан");
@@ -167,8 +167,8 @@ fn noctalia_по_юниту() {
 // ── DankMaterialShell: each sign separately ────────────────────────────────
 
 #[test]
-fn dms_по_каждому_служебному_файлу() {
-    for имя in [
+fn dms_by_each_service_file() {
+    for label_name in [
         "danklinux-4242.sock",
         "danklinux-4242.pid",
         "danklinux-4242.session",
@@ -181,22 +181,22 @@ fn dms_по_каждому_служебному_файлу() {
         // turning off foreign ones — on a machine where this shell does not exist at all.
         // If it shows up live — extend `detect_shell` and add it here.
     ] {
-        let файлы = s(&["bus", имя]);
+        let file_list = s(&["bus", label_name]);
         let facts = ShellFacts {
-            runtime_files: &файлы,
+            runtime_files: &file_list,
             ..Default::default()
         };
-        let d = detect_shell(&facts).unwrap_or_else(|| panic!("{имя} не опознан"));
-        assert_eq!(d.shell, DesktopShell::DankMaterialShell, "{имя}");
-        assert_eq!(d.evidence, vec![format!("файл {имя} в каталоге сеанса")]);
+        let d = detect_shell(&facts).unwrap_or_else(|| panic!("{label_name} не опознан"));
+        assert_eq!(d.shell, DesktopShell::DankMaterialShell, "{label_name}");
+        assert_eq!(d.evidence, vec![format!("файл {label_name} в каталоге сеанса")]);
     }
 }
 
 #[test]
-fn dms_по_юниту() {
-    let юниты = s(&["dms.service"]);
+fn dms_by_unit() {
+    let units = s(&["dms.service"]);
     let facts = ShellFacts {
-        active_user_units: &юниты,
+        active_user_units: &units,
         ..Default::default()
     };
     let d = detect_shell(&facts).expect("юнит dms не опознан");
@@ -205,23 +205,23 @@ fn dms_по_юниту() {
 }
 
 #[test]
-fn dms_по_метке_окружения() {
+fn dms_by_environment_marker() {
     // We were launched FROM the shell — we inherited the marker.
-    for имя in ["DMS_SOCKET", "DMS_EXECUTABLE"] {
-        let окружение = [(имя, "/run/user/1000/danklinux-77.sock")];
+    for label_name in ["DMS_SOCKET", "DMS_EXECUTABLE"] {
+        let environment = [(label_name, "/run/user/1000/danklinux-77.sock")];
         let facts = ShellFacts {
-            env: &окружение,
+            env: &environment,
             ..Default::default()
         };
-        let d = detect_shell(&facts).unwrap_or_else(|| panic!("{имя} не опознана"));
-        assert_eq!(d.shell, DesktopShell::DankMaterialShell, "{имя}");
-        assert_eq!(d.evidence, vec![format!("переменная {имя} в окружении")]);
+        let d = detect_shell(&facts).unwrap_or_else(|| panic!("{label_name} не опознана"));
+        assert_eq!(d.shell, DesktopShell::DankMaterialShell, "{label_name}");
+        assert_eq!(d.evidence, vec![format!("переменная {label_name} в окружении")]);
     }
     // `QS_APP_ID` is an environment VARIABLE of the `qs` process (set by the
     // `dankgo` launch module), and it is a sign only with the EXACT DMS value.
-    let окружение = [("QS_APP_ID", "com.danklinux.dms")];
+    let environment = [("QS_APP_ID", "com.danklinux.dms")];
     let facts = ShellFacts {
-        env: &окружение,
+        env: &environment,
         ..Default::default()
     };
     let d = detect_shell(&facts).expect("QS_APP_ID=com.danklinux.dms не опознана");
@@ -232,44 +232,44 @@ fn dms_по_метке_окружения() {
     // settings of the shell itself, set by the user); a `QS_APP_ID`
     // of another program on the same launch module (an example from a comment
     // of `dankgo` itself) is not DMS either.
-    for (имя, значение) in [
+    for (label_name, field_value) in [
         ("DMS_SOCKET", ""),
         ("DMS_LOG_LEVEL", "debug"),
         ("DMS_SHELL_DIR", "/opt/dms"),
         ("QS_APP_ID", "com.danklinux.dankcalendar"),
         ("QS_APP_ID", ""),
     ] {
-        let окружение = [(имя, значение)];
+        let environment = [(label_name, field_value)];
         let facts = ShellFacts {
-            env: &окружение,
+            env: &environment,
             ..Default::default()
         };
-        assert_eq!(detect_shell(&facts), None, "{имя}={значение}");
+        assert_eq!(detect_shell(&facts), None, "{label_name}={field_value}");
     }
 }
 
 /// The list of variables for live gathering has not drifted apart from the sign table.
 #[test]
-fn имена_переменных_для_сбора_совпадают_с_таблицей() {
-    let mut из_таблицы: Vec<&str> = SHELL_ENV_MARKERS
+fn collected_variable_names_match_table() {
+    let mut from_table: Vec<&str> = SHELL_ENV_MARKERS
         .iter()
         .flat_map(|(_, m)| m.iter().map(|e| e.name))
         .collect();
-    let mut собираемые: Vec<&str> = SHELL_ENV_NAMES.to_vec();
-    из_таблицы.sort();
-    собираемые.sort();
-    assert_eq!(из_таблицы, собираемые);
+    let mut collected: Vec<&str> = SHELL_ENV_NAMES.to_vec();
+    from_table.sort();
+    collected.sort();
+    assert_eq!(from_table, collected);
 }
 
 /// The second socket of the Noctalia daemon (`noctalia-dmenu-<display>.sock`) is also
 /// the shell (created by the daemon itself), but in the confirmation the EXACT name of
 /// the control socket comes first, if it exists.
 #[test]
-fn noctalia_точное_имя_раньше_dmenu() {
-    let файлы = s(&["noctalia-dmenu-wayland-1.sock"]);
+fn noctalia_exact_name_before_dmenu() {
+    let file_list = s(&["noctalia-dmenu-wayland-1.sock"]);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
+        runtime_files: &file_list,
         ..Default::default()
     };
     let d = detect_shell(&facts).expect("dmenu-сокет не опознан");
@@ -278,10 +278,10 @@ fn noctalia_точное_имя_раньше_dmenu() {
 
     // The order in the directory is alphabetical, dmenu comes earlier; the confirmation
     // still names the exact socket of our display.
-    let файлы = s(&["noctalia-dmenu-wayland-1.sock", "noctalia-wayland-1.sock"]);
+    let file_list = s(&["noctalia-dmenu-wayland-1.sock", "noctalia-wayland-1.sock"]);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
+        runtime_files: &file_list,
         ..Default::default()
     };
     assert_eq!(
@@ -289,10 +289,10 @@ fn noctalia_точное_имя_раньше_dmenu() {
         vec!["файл noctalia-wayland-1.sock в каталоге сеанса"]
     );
     // The exact lock name also comes before the fallback.
-    let файлы = s(&["noctalia-dmenu-wayland-1.sock", "noctalia-wayland-1.lock"]);
+    let file_list = s(&["noctalia-dmenu-wayland-1.sock", "noctalia-wayland-1.lock"]);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
+        runtime_files: &file_list,
         ..Default::default()
     };
     assert_eq!(
@@ -306,31 +306,31 @@ fn noctalia_точное_имя_раньше_dmenu() {
 // ── process name: a confirmation, but not proof ────────────────────────────
 
 #[test]
-fn одно_имя_процесса_шелла_не_означает() {
+fn process_name_alone_does_not_mean_shell() {
     // `noctalia msg …` and `dms ipc call …` are the shell's command line, not
     // the shell itself: a process with the same name lives for milliseconds. Taking that
     // for a live shell is not allowed, otherwise our own state check would declare
     // a foreign one the background owner.
     // We do not take `qs` and `quickshell` at all: ANY Quickshell-based shell runs under them,
     // and it can be started by hand, without DankMaterialShell.
-    for имя in ["noctalia", "dms", "qs", "quickshell"] {
-        let процессы = s(&[имя, "kwin_wayland"]);
+    for label_name in ["noctalia", "dms", "qs", "quickshell"] {
+        let processes = s(&[label_name, "kwin_wayland"]);
         let facts = ShellFacts {
-            process_names: &процессы,
+            process_names: &processes,
             ..Default::default()
         };
-        assert_eq!(detect_shell(&facts), None, "имя процесса {имя}");
+        assert_eq!(detect_shell(&facts), None, "имя процесса {label_name}");
     }
 }
 
 #[test]
-fn имя_процесса_попадает_в_подтверждения_к_доказательству() {
-    let файлы = s(&["noctalia-wayland-1.sock"]);
-    let процессы = s(&["noctalia"]);
+fn process_name_counts_as_confirmation_of_evidence() {
+    let file_list = s(&["noctalia-wayland-1.sock"]);
+    let processes = s(&["noctalia"]);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
-        process_names: &процессы,
+        runtime_files: &file_list,
+        process_names: &processes,
         ..Default::default()
     };
     let d = detect_shell(&facts).expect("шелл не опознан");
@@ -346,18 +346,18 @@ fn имя_процесса_попадает_в_подтверждения_к_д�
 // ── combinations and unrelated names ───────────────────────────────────────
 
 #[test]
-fn все_признаки_разом_складываются_а_не_путаются() {
-    let файлы = s(&["danklinux-77.sock", "danklinux-77.pid"]);
-    let юниты = s(&["dms.service"]);
-    let процессы = s(&["dms", "qs"]);
-    let окружение = [("DMS_SOCKET", "/run/user/1000/danklinux-77.sock")];
+fn all_signs_together_add_up_not_mix() {
+    let file_list = s(&["danklinux-77.sock", "danklinux-77.pid"]);
+    let units = s(&["dms.service"]);
+    let processes = s(&["dms", "qs"]);
+    let environment = [("DMS_SOCKET", "/run/user/1000/danklinux-77.sock")];
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
-        active_user_units: &юниты,
+        runtime_files: &file_list,
+        active_user_units: &units,
         dbus_names: &[],
-        process_names: &процессы,
-        env: &окружение,
+        process_names: &processes,
+        env: &environment,
     };
     let d = detect_shell(&facts).expect("шелл не опознан");
     assert_eq!(d.shell, DesktopShell::DankMaterialShell);
@@ -373,48 +373,48 @@ fn все_признаки_разом_складываются_а_не_пута�
 }
 
 #[test]
-fn похожие_имена_не_считаются() {
+fn similar_names_do_not_count() {
     // None of these names is a shell.
-    let файлы = s(&[
+    let file_list = s(&[
         "noctalia.sock",        // without a display name — not our shape
         "noctalia-wayland-1",   // without an extension
         "danklinux77.sock",     // without a separator
         "danklinux-77.log",     // a foreign extension
         "dbus-1",
     ]);
-    let юниты = s(&["dms.socket", "noctalia-backup.service", "dms-shell.timer"]);
+    let units = s(&["dms.socket", "noctalia-backup.service", "dms-shell.timer"]);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
-        active_user_units: &юниты,
+        runtime_files: &file_list,
+        active_user_units: &units,
         ..Default::default()
     };
     assert_eq!(detect_shell(&facts), None);
 }
 
 #[test]
-fn признаки_обоих_шеллов_разом_решаются_числом_доказательств() {
+fn signs_of_both_shells_decided_by_evidence_count() {
     // Leftovers of a past session: one file from Noctalia and the full DMS set.
-    let файлы = s(&["noctalia-wayland-1.sock", "danklinux-9.sock"]);
-    let юниты = s(&["dms.service"]);
+    let file_list = s(&["noctalia-wayland-1.sock", "danklinux-9.sock"]);
+    let units = s(&["dms.service"]);
     let facts = ShellFacts {
         wayland_display: "wayland-1",
-        runtime_files: &файлы,
-        active_user_units: &юниты,
+        runtime_files: &file_list,
+        active_user_units: &units,
         ..Default::default()
     };
     let d = detect_shell(&facts).expect("шелл не опознан");
     assert_eq!(d.shell, DesktopShell::DankMaterialShell);
     // But the main answer does not depend on the choice: the background is foreign in both cases.
-    for шелл in DesktopShell::all() {
-        assert!(!wallpaper_layer_owner("niri", "wayland", Some(*шелл), None).is_ours());
+    for shell_name in DesktopShell::all() {
+        assert!(!wallpaper_layer_owner("niri", "wayland", Some(*shell_name), None).is_ours());
     }
 }
 
 // ── owner of the wallpaper layer ───────────────────────────────────────────
 
 #[test]
-fn без_шелла_фон_наш() {
+fn without_shell_background_is_ours() {
     assert_eq!(
         wallpaper_layer_owner("niri", "wayland", None, None),
         WallpaperOwner::Rexon
@@ -426,7 +426,7 @@ fn без_шелла_фон_наш() {
 }
 
 #[test]
-fn с_шеллом_фон_чужой() {
+fn with_shell_background_is_foreign() {
     let o = wallpaper_layer_owner("niri", "wayland", Some(DesktopShell::Noctalia), None);
     assert_eq!(o, WallpaperOwner::Shell(DesktopShell::Noctalia));
     assert!(!o.is_ours());
@@ -437,7 +437,7 @@ fn с_шеллом_фон_чужой() {
 }
 
 #[test]
-fn выключенные_обои_шелла_возвращают_фон_нам() {
+fn disabled_shell_wallpaper_returns_background_to_us() {
     // The buyer did what we asked — the background is ours again.
     assert_eq!(
         wallpaper_layer_owner(
@@ -456,7 +456,7 @@ fn выключенные_обои_шелла_возвращают_фон_нам
 }
 
 #[test]
-fn на_x11_и_под_mutter_фон_всегда_наш() {
+fn on_x11_and_mutter_background_always_ours() {
     // Both shells are Wayland only; on X11 wallpapers are placed as a window.
     assert_eq!(
         wallpaper_layer_owner("niri", "x11", Some(DesktopShell::Noctalia), None),
@@ -477,20 +477,20 @@ fn на_x11_и_под_mutter_фон_всегда_наш() {
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "needs a live machine: builds po/ru.po with the real msgfmt")]
-fn при_чужом_владельце_есть_что_сказать() {
+fn foreign_owner_has_message() {
     // The text is in Russian from the real catalog.
     let _lang = i18n_pin::ru();
-    for шелл in DesktopShell::all() {
-        let t = shell_owner_message(*шелл);
+    for shell_name in DesktopShell::all() {
+        let t = shell_owner_message(*shell_name);
         assert!(t.contains("Фон сейчас рисует"), "{t}");
-        assert!(t.contains(шелл.label()), "{t}");
+        assert!(t.contains(shell_name.label()), "{t}");
         // What to press — that very button, with the same word as on the button.
         assert!(t.contains("«Отдать обои Rexon»"), "{t}");
         assert!(t.contains("«Wallpaper Engine»"), "{t}");
         assert!(t.contains("примените обои Rexon ещё раз"), "{t}");
         // Jargon (paths, keys, identifiers) has no place in the text.
-        for жаргон in ["~/", "settings.toml", "screenPreferences", "enabled", "noctalia:"] {
-            assert!(!t.contains(жаргон), "{жаргон} в «{t}»");
+        for jargon in ["~/", "settings.toml", "screenPreferences", "enabled", "noctalia:"] {
+            assert!(!t.contains(jargon), "{jargon} в «{t}»");
         }
     }
     assert_eq!(give_label(), "Отдать обои Rexon");
@@ -499,7 +499,7 @@ fn при_чужом_владельце_есть_что_сказать() {
 
 /// Shell identifiers do not drift apart from the names.
 #[test]
-fn идентификаторы_и_имена() {
+fn ids_and_names() {
     assert_eq!(DesktopShell::Noctalia.as_str(), "noctalia");
     assert_eq!(DesktopShell::DankMaterialShell.as_str(), "dms");
     assert_eq!(DesktopShell::Noctalia.label(), "Noctalia");
@@ -515,8 +515,8 @@ fn идентификаторы_и_имена() {
 #[test]
 fn english_shell_owner_message_has_no_russian() {
     let _lang = i18n_pin::en();
-    for шелл in DesktopShell::all() {
-        let t = shell_owner_message(*шелл);
+    for shell_name in DesktopShell::all() {
+        let t = shell_owner_message(*shell_name);
         assert!(
             !t.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё')),
             "{t}"
@@ -524,7 +524,7 @@ fn english_shell_owner_message_has_no_russian() {
         assert!(t.starts_with("The background is currently drawn by "), "{t}");
         assert!(t.contains("press “Give Wallpaper to Rexon”"), "{t}");
         assert!(t.ends_with("apply the Rexon wallpaper again."), "{t}");
-        assert!(t.contains(шелл.label()), "{t}");
+        assert!(t.contains(shell_name.label()), "{t}");
     }
     assert_eq!(give_label(), "Give Wallpaper to Rexon");
     assert_eq!(return_label(), "Return to Shell");
@@ -563,7 +563,7 @@ fn noctalia_round_trip(before: Option<&str>) -> (String, Previous) {
 }
 
 #[test]
-fn noctalia_правка_во_всех_формах_файла_и_возврат_бит_в_бит() {
+fn noctalia_edit_in_all_file_forms_and_bitwise_restore() {
     // No state file — we create it, the restore deletes it.
     let (after, prev) = noctalia_round_trip(None);
     assert_eq!(after, "[wallpaper]\nenabled = false\n");
@@ -609,20 +609,20 @@ fn noctalia_правка_во_всех_формах_файла_и_возврат
 }
 
 #[test]
-fn noctalia_небезопасные_формы_отвергаются_без_порчи() {
-    for (текст, ошибка) in [
+fn noctalia_unsafe_forms_rejected_without_damage() {
+    for (text_value, error_text) in [
         ("wallpaper.enabled = true\n", EditError::UnsafeForm),
         ("wallpaper = { enabled = true }\n", EditError::UnsafeForm),
         ("[wallpaper]\nenabled = \"yes\"\n", EditError::UnsafeForm),
         ("wallpaper = 5\n", EditError::UnsafeForm),
         ("[wallpaper\nenabled = true\n", EditError::Unparsable),
     ] {
-        assert_eq!(noctalia_disable(Some(текст)).err(), Some(ошибка), "{текст}");
+        assert_eq!(noctalia_disable(Some(text_value)).err(), Some(error_text), "{text_value}");
     }
 }
 
 #[test]
-fn noctalia_возврат_после_того_как_шелл_переписал_файл() {
+fn noctalia_restore_after_shell_rewrote_file() {
     // We set false in an empty table; the shell later rewrote the file in its own
     // format and added keys. The restore removes only our key.
     let prev = Previous::KeyAbsent { parent_created: true, prefix: "\n".into() };
@@ -646,7 +646,7 @@ fn noctalia_возврат_после_того_как_шелл_переписа�
 }
 
 #[test]
-fn noctalia_слои_настроек_и_кто_побеждает() {
+fn noctalia_settings_layers_and_who_wins() {
     let on = "[wallpaper]\nenabled = true\n".to_string();
     let off = "[wallpaper]\nenabled = false\n".to_string();
     assert_eq!(noctalia_draws_wallpaper(&[], None), Some(true), "по умолчанию включены");
@@ -679,7 +679,7 @@ fn dms_round_trip(before: Option<&str>) -> (String, Previous) {
 }
 
 #[test]
-fn dms_правка_во_всех_формах_файла_и_возврат_бит_в_бит() {
+fn dms_edit_in_all_file_forms_and_bitwise_restore() {
     // The key exists — only its value changes, a multi-line one as a whole.
     let (after, prev) = dms_round_trip(Some(DMS_PRETTY));
     assert_eq!(after, DMS_PRETTY.replace("\"wallpaper\": [\n      \"all\"\n    ]", "\"wallpaper\": []"));
@@ -711,19 +711,19 @@ fn dms_правка_во_всех_формах_файла_и_возврат_би
 }
 
 #[test]
-fn dms_небезопасные_формы_отвергаются_без_порчи() {
-    for (текст, ошибка) in [
+fn dms_unsafe_forms_rejected_without_damage() {
+    for (text_value, error_text) in [
         ("{\"screenPreferences\": null}", EditError::UnsafeForm),
         ("{\"screenPreferences\": []}", EditError::UnsafeForm),
         ("[1, 2]", EditError::UnsafeForm),
         ("{\"screenPreferences\": {", EditError::Unparsable),
     ] {
-        assert_eq!(dms_disable(Some(текст)).err(), Some(ошибка), "{текст}");
+        assert_eq!(dms_disable(Some(text_value)).err(), Some(error_text), "{text_value}");
     }
 }
 
 #[test]
-fn dms_кто_рисует() {
+fn dms_who_draws() {
     assert_eq!(dms_draws_wallpaper(None), Some(true), "без файла — умолчания, обои есть");
     assert_eq!(dms_draws_wallpaper(Some("{}")), Some(true));
     assert_eq!(dms_draws_wallpaper(Some(DMS_PRETTY)), Some(true));
@@ -764,7 +764,7 @@ fn put(path: &std::path::Path, text: &str) {
 }
 
 #[test]
-fn на_диске_noctalia_до_после_обратно_бит_в_бит() {
+fn on_disk_noctalia_before_after_back_bitwise() {
     let _lang = i18n_pin::en();
     let h = PrivateHome::new("noct");
     let state = h.home.noctalia_state_file();
@@ -805,7 +805,7 @@ fn на_диске_noctalia_до_после_обратно_бит_в_бит() {
 }
 
 #[test]
-fn на_диске_noctalia_без_файла_состояния_и_xdg_корни() {
+fn on_disk_noctalia_without_state_file_and_xdg_roots() {
     let _lang = i18n_pin::en();
     let mut h = PrivateHome::new("noct-xdg");
     h.home.xdg_state_home = h.root.join("st").to_string_lossy().into_owned();
@@ -822,7 +822,7 @@ fn на_диске_noctalia_без_файла_состояния_и_xdg_корн
 }
 
 #[test]
-fn на_диске_dms_до_после_обратно_бит_в_бит_и_ссылка_цела() {
+fn on_disk_dms_before_after_back_bitwise_and_symlink_intact() {
     let _lang = i18n_pin::en();
     let h = PrivateHome::new("dms");
     let file = h.home.dms_settings_file();
@@ -842,7 +842,7 @@ fn на_диске_dms_до_после_обратно_бит_в_бит_и_ссы
 }
 
 #[test]
-fn на_диске_только_для_чтения_отказ_и_ничего_не_тронуто() {
+fn on_disk_read_only_refused_and_nothing_touched() {
     let _lang = i18n_pin::en();
     let h = PrivateHome::new("ro");
     let file = h.home.dms_settings_file();
@@ -857,7 +857,7 @@ fn на_диске_только_для_чтения_отказ_и_ничего_�
 }
 
 #[test]
-fn на_диске_неразборный_файл_отказ_и_ничего_не_тронуто() {
+fn on_disk_unparsable_file_refused_and_nothing_touched() {
     let _lang = i18n_pin::en();
     let h = PrivateHome::new("broken");
     let file = h.home.noctalia_state_file();
@@ -871,7 +871,7 @@ fn на_диске_неразборный_файл_отказ_и_ничего_н
 // ── live gathering and the banner on the tab ──────────────────────────────
 
 #[test]
-fn протухшие_служебные_файлы_отсеиваются() {
+fn stale_service_files_filtered_out() {
     let files = s(&[
         "bus",
         "danklinux-100.sock",
@@ -892,7 +892,7 @@ fn протухшие_служебные_файлы_отсеиваются() {
 }
 
 #[test]
-fn полоса_только_при_живом_шелле() {
+fn strip_only_with_live_shell() {
     let _lang = i18n_pin::en();
     let n = DesktopShell::Noctalia;
     // No shell — no banner, even if a note remained from a past session.
@@ -913,7 +913,7 @@ fn полоса_только_при_живом_шелле() {
 }
 
 #[test]
-fn состояние_сеанса_по_файлам_до_и_после_передачи() {
+fn session_state_from_files_before_and_after_handover() {
     let _lang = i18n_pin::en();
     let h = PrivateHome::new("state");
     let det = |shell| Some(rexon_core::system::ShellDetection { shell, evidence: vec![] });
@@ -938,7 +938,7 @@ fn состояние_сеанса_по_файлам_до_и_после_пере
 /// The notes of two shells live side by side: turning off one's wallpapers does not erase
 /// the memory of the other, and restoring one does not touch the second.
 #[test]
-fn на_диске_два_шелла_памятки_не_мешают_друг_другу() {
+fn on_disk_two_shells_notes_do_not_interfere() {
     let _lang = i18n_pin::en();
     let h = PrivateHome::new("two");
     let noct_before = "[theme]\nmode = \"dark\"\n";

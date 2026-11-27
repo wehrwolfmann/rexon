@@ -548,13 +548,24 @@ fn bake_preview_shader() -> std::path::PathBuf {
         .into_iter()
         .find(|p| p.is_file())
         .expect("не найден qsb (пакет qt6-shadertools): без него не собрать плитки «Эффектов экрана»");
+    // cxx-qt-build watches every file listed in a .qrc, this `.qsb` included:
+    // rewriting it on each run made its mtime newer than the run itself, so
+    // cargo reran this whole build script (~75 s of C++ and QML) on every
+    // build of the crate. Build into a side file and replace the `.qsb` only
+    // when its content changed, like the `.qrc` below.
+    let fresh = out.with_extension("qsb.new");
     let status = std::process::Command::new(&qsb)
         .args(["--glsl", "100 es,120,150", "--hlsl", "50", "--msl", "12", "-o"])
-        .arg(&out)
+        .arg(&fresh)
         .arg(&src)
         .status()
         .expect("qsb запускается");
     assert!(status.success(), "qsb не собрал {}", src.display());
+    if std::fs::read(&fresh).ok() == std::fs::read(&out).ok() {
+        let _ = std::fs::remove_file(&fresh);
+    } else {
+        std::fs::rename(&fresh, &out).expect("cannot move the preview shader .qsb into place");
+    }
     let qrc = out.with_file_name("screen_effects_preview.qrc");
     let body = format!(
         "<RCC>\n    <qresource prefix=\"/qt/qml/org/rexon/gui\">\n        <file alias=\"qml/shaders/screen-effects.frag.qsb\">{}</file>\n    </qresource>\n</RCC>\n",

@@ -195,7 +195,7 @@ fn s(v: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn сборка_целиком_одним_подъёмом_сеанса() {
+fn whole_build_in_one_session_elevation() {
     let st = stand("ok");
     let t = st.package("t-1.0-1-x86_64.pkg.tar.zst");
     let reg = st.broker.register(&s(&["t"]), false);
@@ -235,7 +235,7 @@ fn сборка_целиком_одним_подъёмом_сеанса() {
 }
 
 #[test]
-fn запрещённое_отказ_без_пароля() {
+fn forbidden_refused_without_password() {
     let st = stand("deny");
     let evil = st.package("evil-1-1-any.pkg.tar.zst");
     let t = st.package("t-1-1-any.pkg.tar.zst");
@@ -262,7 +262,7 @@ fn запрещённое_отказ_без_пароля() {
 }
 
 #[test]
-fn токен_одноразовый_и_привязан_к_сборщику() {
+fn token_single_use_and_bound_to_builder() {
     let st = stand("token");
     let t = st.package("t-1-1-any.pkg.tar.zst");
     let reg = st.broker.register(&s(&["t"]), false);
@@ -290,7 +290,7 @@ fn токен_одноразовый_и_привязан_к_сборщику() {
 }
 
 #[test]
-fn продление_sudo_без_окна() {
+fn sudo_extension_without_window() {
     let st = stand("v");
     // yay with `sudoloop` calls `<sudo> -v` without flags — success, nothing executed.
     assert_eq!(st.shim_direct(&["-v"]), 0);
@@ -298,7 +298,7 @@ fn продление_sudo_без_окна() {
 }
 
 #[test]
-fn сокет_в_каталоге_0700() {
+fn socket_in_0700_directory() {
     let st = stand("dir");
     let dir = st.root.join(SOCKET_DIR);
     let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;

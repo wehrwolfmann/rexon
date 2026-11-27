@@ -44,26 +44,25 @@ MD.Page {
 
         MD.Text {
             Layout.alignment: Qt.AlignHCenter
-            // REXON EDIT (a porting fix, not a feature): upstream has
-            // `Qt.application.version` here — the APPLICATION version, i.e. of its
-            // interface. Inside Rexon the page is shown by another application
-            // with its own version (`Qt.application.version` is empty for us), so
-            // we take the version of the VENDORED interface — the tag from `ui/UPSTREAM_TAG`,
-            // which Rexon exposes as `W.App.uiVersion`. The meaning is the same
-            // as upstream: line 1 — the interface, line 2 — the daemon, if
-            // its version differs.
-            text: qsTr("Version %1").arg(W.App.uiVersion)
+            text: qsTr("Version %1").arg(W.App.version)
             typescale: MD.Token.typescale.body_medium
             color: MD.Token.color.on_surface_variant
         }
 
         MD.Text {
             readonly property string daemonVersion: W.DaemonDBusClient.daemonVersion
+            readonly property int order: W.DaemonDBusClient.daemonVersionOrder
 
             Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: -12
-            visible: daemonVersion.length > 0 && daemonVersion !== W.App.uiVersion
-            text: qsTr("Daemon version %1").arg(daemonVersion)
+            visible: daemonVersion.length > 0 && daemonVersion !== W.App.version
+            text: {
+                if (order < 0)
+                    return qsTr("Daemon version %1 is older than this window").arg(daemonVersion);
+                if (order > 0)
+                    return qsTr("Daemon version %1 is newer than this window").arg(daemonVersion);
+                return qsTr("Daemon version %1").arg(daemonVersion);
+            }
             typescale: MD.Token.typescale.body_medium
             color: MD.Token.color.on_surface_variant
         }

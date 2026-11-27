@@ -591,7 +591,7 @@ mod tests {
     }
 
     #[test]
-    fn зелёный_след_проходит() {
+    fn green_trace_passes() {
         let v = judge(Some(0), &good_trace());
         assert!(v.problems.is_empty(), "{:?}", v.problems);
     }
@@ -599,7 +599,7 @@ mod tests {
     /// The main check of the bench itself: it must GO RED. Each mutation is a
     /// real way to break the wallpaper layer.
     #[test]
-    fn каждая_мутация_валит_стенд() {
+    fn each_mutation_fails_bench() {
         let cases: [(&str, String); 9] = [
             // The window stayed ordinary — it will get into the task list and go on
             // top of other windows.
@@ -655,7 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn молчание_ребёнка_не_успех() {
+    fn child_silence_is_not_success() {
         // Exactly the trap that was closed: a timeout must be a failure.
         assert!(!judge(None, &good_trace()).problems.is_empty());
         assert!(!judge(Some(0), "").problems.is_empty());
@@ -663,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn разбор_аргументов_щадит_кавычки() {
+    fn argument_parsing_keeps_quotes() {
         let args = split_args("new id foo@1, bar@2, nil, 0, \"а, б\"");
         assert_eq!(args.len(), 5);
         assert_eq!(args[4], "\"а, б\"");
@@ -1775,7 +1775,7 @@ pub mod overlay {
         }
 
         #[test]
-        fn зелёный_след_заставки_проходит() {
+        fn green_splash_trace_passes() {
             let v = judge(Some(0), &good_trace(), Some(Input::Key));
             assert!(v.problems.is_empty(), "{:?}", v.problems);
             assert_eq!((v.outputs, v.surfaces, v.configured), (2, 2, 2));
@@ -1793,7 +1793,7 @@ pub mod overlay {
         /// Each mutation is a real way to break the screensaver; every one must
         /// turn the bench red.
         #[test]
-        fn каждая_мутация_валит_стенд_заставки() {
+        fn each_mutation_fails_splash_bench() {
             let g = good_trace();
             let cases: Vec<(&str, String, Option<Input>)> = vec![
                 ("слой top", g.replace("wl_output@7, 3,", "wl_output@7, 2,"), Some(Input::Key)),
@@ -1836,14 +1836,14 @@ pub mod overlay {
         }
 
         #[test]
-        fn молчание_пробы_не_успех() {
+        fn probe_silence_is_not_success() {
             assert!(!judge(None, &good_trace(), None).problems.is_empty());
             assert!(!judge(Some(3), &good_trace(), None).problems.is_empty());
             assert!(!judge(Some(0), "", None).problems.is_empty());
         }
 
         #[test]
-        fn живой_сеанс_отказ() {
+        fn live_session_refused() {
             // The person's own session: refused.
             assert!(refusal(Some("wayland-0"), Some("/run/user/1000"), 1000, false).is_some());
             assert!(refusal(Some("wayland-0"), None, 1000, false).is_some());
@@ -1856,7 +1856,7 @@ pub mod overlay {
         }
 
         #[test]
-        fn стенды_известны() {
+        fn benches_known() {
             for s in STANDS {
                 assert!(stand_command(s, Path::new("/x")).is_some(), "{s}");
             }

@@ -4754,7 +4754,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn штатная_тема_plymouth_проходит() {
+    fn stock_plymouth_theme_passes() {
         let dir = theme_dir("good");
         good_plymouth(&dir);
         let (ok, err) = run_helper("plymouth", "neon", &dir, &uid());
@@ -4764,7 +4764,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn модуль_из_темы_через_точки_отвергнут() {
+    fn module_from_theme_via_dots_rejected() {
         let err = both_refuse("dotdot", "plymouth", "neon", |d| {
             write(d, "neon.plymouth", b"[Plymouth Theme]\nModuleName=../../../share/plymouth/themes/neon/evil\n");
             write(d, "evil.so", b"\x7fELF");
@@ -4779,7 +4779,7 @@ mod system_helper_tests {
     /// plymouth's parser (`fscanf " %m[^= \t\n] = %m[^\n] "`) tolerates a newline
     /// between the key and `=`: the line-by-line check must see that.
     #[test]
-    fn ключ_и_значение_на_разных_строках_отвергнуты() {
+    fn key_and_value_on_different_lines_rejected() {
         both_refuse("split", "plymouth", "neon", |d| {
             write(d, "neon.plymouth", b"[Plymouth Theme]\nModuleName\n= ../evil\n");
         });
@@ -4799,7 +4799,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn библиотека_в_теме_загрузки_отвергнута() {
+    fn library_in_boot_theme_rejected() {
         for name in ["lib/two-step.so", "x.so.1"] {
             both_refuse("so", "plymouth", "neon", |d| {
                 good_plymouth(d);
@@ -4809,7 +4809,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn ссылка_в_теме_отвергнута() {
+    fn symlink_in_theme_rejected() {
         for category in ["sddm", "plymouth"] {
             let err = both_refuse("link", category, "neon", |d| {
                 good_plymouth(d);
@@ -4823,7 +4823,7 @@ mod system_helper_tests {
     /// An SDDM theme runs as the `sddm` user, not root: a QML module in it is no
     /// reason to refuse.
     #[test]
-    fn тема_sddm_с_модулем_qml_проходит() {
+    fn sddm_theme_with_qml_module_passes() {
         let dir = theme_dir("sddm");
         write(&dir, "Main.qml", b"import QtQuick 2.0\nItem {}\n");
         write(&dir, "plugin/libx.so", b"\x7fELF");
@@ -4835,7 +4835,7 @@ mod system_helper_tests {
 
     /// The directory — by where we entered, not by the path string; a foreign one — refusal.
     #[test]
-    fn чужой_или_внешний_каталог_отвергнут() {
+    fn foreign_or_external_directory_rejected() {
         let dir = theme_dir("where");
         good_plymouth(&dir);
         // A link under /tmp to a directory outside /tmp.
@@ -4862,7 +4862,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn имя_темы_не_флаг_и_не_корень() {
+    fn theme_name_not_flag_and_not_root() {
         let dir = theme_dir("names");
         good_plymouth(&dir);
         for bad in ["-R", ".", "..", "a/b", "", ".hidden", "a b"] {
@@ -4874,7 +4874,7 @@ mod system_helper_tests {
 
     /// The modules directory and the list itself — one truth in the helper and in Rust.
     #[test]
-    fn список_модулей_в_помощнике_из_ядра() {
+    fn helper_module_list_from_core() {
         let text = system_helper_script();
         assert!(text.contains(&PLYMOUTH_SPLASH_MODULES.join("|")));
         assert!(!text.contains("__PLY_MODULES__"));
@@ -4953,7 +4953,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn удаление_снимает_только_свой_каталог() {
+    fn removal_takes_only_own_directory() {
         let sb = Sandbox::new("ok");
         let neon = sb.theme("plymouth", "neon");
         let other = sb.theme("plymouth", "other");
@@ -4972,7 +4972,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn удаление_выбранной_темы_отвергнуто() {
+    fn removal_of_selected_theme_rejected() {
         let sb = Sandbox::new("active");
         let neon = sb.theme("plymouth", "neon");
         write(&sb.root, "etc/plymouth/plymouthd.conf", b"[Daemon]\nTheme = neon\n");
@@ -5001,7 +5001,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn удаление_мимо_каталога_тем_отвергнуто() {
+    fn removal_outside_themes_directory_rejected() {
         let sb = Sandbox::new("guard");
         // A system package's directory.
         let pkg = sb.theme("plymouth", "pkgtheme");
@@ -5030,7 +5030,7 @@ mod system_helper_tests {
     }
 
     #[test]
-    fn текст_отказа_для_человека() {
+    fn human_refusal_text() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let m = SystemThemeProblem::BootSplashCode("evil.so".into()).message();
         assert!(m.contains("evil.so") && m.contains("Nothing was changed"), "{m}");

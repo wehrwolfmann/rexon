@@ -193,13 +193,653 @@ pub fn argv_packages(argv: &[String]) -> Vec<String> {
     out
 }
 
-/// A terminal command that can be shown to the person ("try it yourself"):
-/// without the non-interactivity flags, since in a terminal they will
-/// answer themselves.
-pub fn terminal_command(helper: &str, packages: &[String]) -> String {
-    let mut parts = vec![helper.to_string(), "-S".to_string(), "--needed".to_string()];
-    parts.extend(packages.iter().cloned());
-    parts.join(" ")
+// ════════════════════════════════════════════════════════════════════════
+// Known breakages of AUR recipes: Rexon builds such a package itself
+// ════════════════════════════════════════════════════════════════════════
+//
+// Some AUR recipes are broken in a way their maintainer has not fixed yet,
+// and the person cannot fix it without editing a PKGBUILD by hand. The model
+// case (live 27.11.2026, MATE): `mate-menu` 26.10.1-2 runs
+// `python setup.py install --root="$pkgdir"`, and upstream's `setup.py`
+// compiles the GSettings schemas INTO the package since September 2026, so
+// the built package carries `/usr/share/glib-2.0/schemas/gschemas.compiled`
+// and pacman refuses it ("exists in filesystem"). The file is generated on
+// every machine by glib's pacman hook and must never ship in a package.
+// Another kind (vala-panel-appmenu 25.04): the recipe turns on every panel
+// module by default, so even the MATE applet drags in budgie-desktop,
+// xfce4-panel and the AUR vala-panel and fails on the Budgie module.
+//
+// Why Rexon builds the package itself instead of steering yay/paru: neither
+// helper has a dependable way to edit a PKGBUILD without a person. The edit
+// menu (`--editmenu`, `--fm`) is skipped under `--noconfirm`, and the clone
+// in the helper's cache is reset to the AUR state before every build. So
+// for a package from [`RECIPE_FIXES`] Rexon:
+//
+// 1. clones the recipe from the AUR into its own cache
+//    ([`recipe_build_dir`]);
+// 2. applies the fix ONLY if the recipe is the one it was written for
+//    ([`patch_recipe`]): the line to fix is present exactly once, inside the
+//    right function, and nothing in the recipe deals with the problem yet.
+//    If the maintainer has fixed it (or rewritten the recipe), the fix is
+//    not applied and the package goes the usual helper way;
+// 3. installs the missing build and run dependencies from the official
+//    repositories (privilege session: `PrivOp::AurDeps`);
+// 4. builds with `makepkg` as the user (never as root);
+// 5. checks the built package: the files the fix removes must not be in it
+//    ([`forbidden_in_package`]);
+// 6. installs it through the same root path as the helpers' built packages
+//    (`PrivOp::AurInstallBuilt`: the root helper checks the `.PKGINFO` of its
+//    own copy against the requested name), then removes the build-only
+//    dependencies it installed (`PrivOp::AurDropMake`, orphans only).
+//
+// It happens in the shared launch point ([`run_with_recipe_fixes`], called by
+// `utils::run`), so every place that calls an AUR helper gets it (rule #12).
+
+/// One edit of a PKGBUILD.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecipeEdit {
+    /// Insert `line` right after `anchor` (the broken line, as the recipe has
+    /// it, whitespace around it aside) inside function `function`, with the
+    /// anchor's indentation. Already done: the recipe mentions `done_marker`.
+    InsertAfter { function: &'static str, anchor: &'static str, line: &'static str, done_marker: &'static str },
+    /// Replace the line `from` (whitespace around it aside) with `to`. Already
+    /// done: `to` is there and `from` is not.
+    Replace { from: &'static str, to: &'static str },
+}
+
+/// A known breakage of an AUR recipe and its fix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecipeFix {
+    /// The package (`pkgname`) the fix is for.
+    pub package: &'static str,
+    /// The AUR repository (`pkgbase`) it is built from.
+    pub pkgbase: &'static str,
+    /// The edits, all or nothing.
+    pub edits: &'static [RecipeEdit],
+    /// From this `pkgver` on, upstream itself has fixed the problem: the fix
+    /// is not applied (`None` — no fixed release yet).
+    pub fixed_upstream_in: Option<&'static str>,
+    /// Paths (inside the package, without a leading `/`) that must not be in
+    /// the built package — the check that the fix worked.
+    pub must_not_ship: &'static [&'static str],
+}
+
+/// mate-menu: `setup.py` compiles the GSettings schemas into the package (see
+/// the section header). Upstream pull request ubuntu-mate/mate-menu#121;
+/// once a release with it is out, `fixed_upstream_in` gets its version.
+const MATE_MENU_EDITS: &[RecipeEdit] = &[RecipeEdit::InsertAfter {
+    function: "package",
+    anchor: r#"python setup.py install --root="$pkgdir" --optimize=1"#,
+    line: r#"rm -f "$pkgdir/usr/share/glib-2.0/schemas/gschemas.compiled""#,
+    done_marker: "gschemas.compiled",
+}];
+
+/// vala-panel-appmenu 25.04: every panel module is on by default, so the
+/// recipe's `depends` (and the `.SRCINFO` the helpers resolve) drag in
+/// budgie-desktop, xfce4-panel with xfconf and the AUR vala-panel even for
+/// the MATE applet, and the Budgie module does not build against
+/// budgie-desktop 10.10 at all (`budgie-1.0` not found, live 08.11.2026).
+/// Each package is built with only its own module.
+macro_rules! appmenu_switch {
+    ($name:literal, false) => {
+        RecipeEdit::Replace { from: concat!(": ${_build_", $name, ":=true}"), to: concat!(": ${_build_", $name, ":=false}") }
+    };
+}
+
+const APPMENU_MATE_EDITS: &[RecipeEdit] =
+    &[appmenu_switch!("xfce", false), appmenu_switch!("vala", false), appmenu_switch!("budgie", false)];
+const APPMENU_XFCE_EDITS: &[RecipeEdit] =
+    &[appmenu_switch!("mate", false), appmenu_switch!("vala", false), appmenu_switch!("budgie", false)];
+const APPMENU_REGISTRAR_EDITS: &[RecipeEdit] = &[
+    appmenu_switch!("mate", false),
+    appmenu_switch!("xfce", false),
+    appmenu_switch!("vala", false),
+    appmenu_switch!("budgie", false),
+];
+
+/// The table of known breakages (checked against the AUR recipes of
+/// 27.11.2026; see the section header).
+pub const RECIPE_FIXES: &[RecipeFix] = &[
+    RecipeFix {
+        package: "mate-menu",
+        pkgbase: "mate-menu",
+        edits: MATE_MENU_EDITS,
+        fixed_upstream_in: None,
+        must_not_ship: &["usr/share/glib-2.0/schemas/gschemas.compiled"],
+    },
+    RecipeFix {
+        package: "vala-panel-appmenu-mate",
+        pkgbase: "vala-panel-appmenu",
+        edits: APPMENU_MATE_EDITS,
+        fixed_upstream_in: None,
+        must_not_ship: &[],
+    },
+    RecipeFix {
+        package: "vala-panel-appmenu-xfce",
+        pkgbase: "vala-panel-appmenu",
+        edits: APPMENU_XFCE_EDITS,
+        fixed_upstream_in: None,
+        must_not_ship: &[],
+    },
+    RecipeFix {
+        package: "vala-panel-appmenu-registrar",
+        pkgbase: "vala-panel-appmenu",
+        edits: APPMENU_REGISTRAR_EDITS,
+        fixed_upstream_in: None,
+        must_not_ship: &[],
+    },
+];
+
+/// The known breakage of `package`, if there is one.
+pub fn recipe_fix_for(package: &str) -> Option<&'static RecipeFix> {
+    RECIPE_FIXES.iter().find(|f| f.package == package)
+}
+
+/// What [`patch_recipe`] decided.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecipePatch {
+    /// The recipe is the expected one: the fixed text.
+    Patched(String),
+    /// The recipe (or upstream) already deals with the problem: build it as
+    /// it is.
+    AlreadyFixed,
+    /// The recipe is not the one the fix was written for (the reason is for
+    /// the log): build it as it is.
+    Unexpected(&'static str),
+}
+
+/// The lines of function `name` in `pkgbuild`: (first body line, line after
+/// the body). A PKGBUILD function opens with `name() {` (the brace may be on
+/// the next line) and closes with a `}` at the start of a line.
+fn function_body(lines: &[String], name: &str) -> Option<(usize, usize)> {
+    let head = lines.iter().position(|l| {
+        let l = l.trim_start();
+        l.strip_prefix(name).map(str::trim_start).is_some_and(|r| r.starts_with("()"))
+    })?;
+    let mut start = head + 1;
+    if !lines[head].contains('{') {
+        if lines.get(start).map(|l| l.trim()) != Some("{") {
+            return None;
+        }
+        start += 1;
+    }
+    let end = (start..lines.len()).find(|&i| lines[i].starts_with('}'))?;
+    Some((start, end))
+}
+
+/// `pkgver=` of a PKGBUILD (a plain value only).
+fn recipe_pkgver(pkgbuild: &str) -> Option<String> {
+    pkgbuild.lines().find_map(|l| l.trim().strip_prefix("pkgver=")).map(|v| v.trim_matches(['"', '\'']).to_string())
+}
+
+/// `a >= b` for plain dotted versions (`26.10.1`), segment by segment as
+/// numbers where both are numbers.
+fn version_at_least(a: &str, b: &str) -> bool {
+    let seg = |v: &str| -> Vec<String> { v.split(['.', '-', '_', '+']).map(str::to_string).collect() };
+    let (a, b) = (seg(a), seg(b));
+    for i in 0..a.len().max(b.len()) {
+        let (x, y) = (a.get(i).map(String::as_str).unwrap_or("0"), b.get(i).map(String::as_str).unwrap_or("0"));
+        let ord = match (x.parse::<u64>(), y.parse::<u64>()) {
+            (Ok(x), Ok(y)) => x.cmp(&y),
+            _ => x.cmp(y),
+        };
+        if ord != std::cmp::Ordering::Equal {
+            return ord == std::cmp::Ordering::Greater;
+        }
+    }
+    true
+}
+
+/// Apply `fix` to the text of a PKGBUILD — only if the recipe is the one the
+/// fix was written for (see the section header): every edit finds its line
+/// exactly once, in its place. Nothing to do because everything is already
+/// done (or upstream fixed it in this version) — [`RecipePatch::AlreadyFixed`].
+pub fn patch_recipe(fix: &RecipeFix, pkgbuild: &str) -> RecipePatch {
+    if let (Some(fixed_in), Some(ver)) = (fix.fixed_upstream_in, recipe_pkgver(pkgbuild)) {
+        if version_at_least(&ver, fixed_in) {
+            return RecipePatch::AlreadyFixed;
+        }
+    }
+    let mut lines: Vec<String> = pkgbuild.lines().map(str::to_string).collect();
+    let mut changed = false;
+    for edit in fix.edits {
+        let hits = |lines: &[String], text: &str| -> Vec<usize> {
+            (0..lines.len()).filter(|&i| lines[i].trim() == text).collect()
+        };
+        match *edit {
+            RecipeEdit::InsertAfter { function, anchor, line, done_marker } => {
+                if pkgbuild.contains(done_marker) {
+                    continue;
+                }
+                let found = hits(&lines, anchor);
+                let [at] = found[..] else {
+                    return RecipePatch::Unexpected(if found.is_empty() {
+                        "the line to fix is not in the recipe"
+                    } else {
+                        "the line to fix is in the recipe more than once"
+                    });
+                };
+                let Some((start, end)) = function_body(&lines, function) else {
+                    return RecipePatch::Unexpected("the recipe has no such function");
+                };
+                if !(start..end).contains(&at) {
+                    return RecipePatch::Unexpected("the line to fix is outside its function");
+                }
+                let indent: String = lines[at].chars().take_while(|c| c.is_whitespace()).collect();
+                lines.insert(at + 1, format!("{indent}{line}"));
+                changed = true;
+            }
+            RecipeEdit::Replace { from, to } => {
+                let found = hits(&lines, from);
+                if found.is_empty() && !hits(&lines, to).is_empty() {
+                    continue;
+                }
+                let [at] = found[..] else {
+                    return RecipePatch::Unexpected(if found.is_empty() {
+                        "the line to fix is not in the recipe"
+                    } else {
+                        "the line to fix is in the recipe more than once"
+                    });
+                };
+                if from != to {
+                    let indent: String = lines[at].chars().take_while(|c| c.is_whitespace()).collect();
+                    lines[at] = format!("{indent}{to}");
+                    changed = true;
+                }
+            }
+        }
+    }
+    if !changed {
+        return RecipePatch::AlreadyFixed;
+    }
+    let mut text = lines.join("\n");
+    if pkgbuild.ends_with('\n') {
+        text.push('\n');
+    }
+    RecipePatch::Patched(text)
+}
+
+/// The edits for the build log.
+pub fn recipe_edits_text(fix: &RecipeFix) -> String {
+    fix.edits
+        .iter()
+        .map(|e| match e {
+            RecipeEdit::InsertAfter { line, .. } => format!("+ {line}"),
+            RecipeEdit::Replace { from, to } => format!("{from} -> {to}"),
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// Which of `fix.must_not_ship` are in the package listing `listing`
+/// (`bsdtar -tf` output: one path per line, possibly with `./`).
+pub fn forbidden_in_package(fix: &RecipeFix, listing: &str) -> Vec<String> {
+    let files: Vec<&str> = listing.lines().map(|l| l.trim().trim_start_matches("./")).collect();
+    fix.must_not_ship.iter().filter(|p| files.contains(p)).map(|p| p.to_string()).collect()
+}
+
+/// AUR helpers whose `-S` command line [`split_recipe_fixes`] understands.
+const SPLIT_HELPERS: &[&str] = &["yay", "paru", "trizen", "pikaur", "aurman"];
+
+/// An AUR helper install command split for [`run_with_recipe_fixes`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FixSplit {
+    /// The packages of the command Rexon builds itself.
+    pub fixes: Vec<&'static RecipeFix>,
+    /// The person agreed to replace a conflicting package (`--ask=4`).
+    pub replace: bool,
+}
+
+/// Which packages of the helper command `argv` have a known breakage and are
+/// not installed yet (`installed`). `None` — nothing to do, the command runs
+/// as it is.
+pub fn split_recipe_fixes(argv: &[String], installed: &dyn Fn(&str) -> bool) -> Option<FixSplit> {
+    let helper = argv.first().map(|a| a.rsplit('/').next().unwrap_or(a))?;
+    if !SPLIT_HELPERS.contains(&helper) {
+        return None;
+    }
+    let fixes: Vec<&'static RecipeFix> = argv_packages(argv)
+        .iter()
+        .filter_map(|p| recipe_fix_for(p))
+        .filter(|f| !installed(f.package))
+        .collect();
+    if fixes.is_empty() {
+        return None;
+    }
+    Some(FixSplit { fixes, replace: argv.iter().any(|a| a == "--ask=4") })
+}
+
+/// The helper command `argv` without the packages `drop`. `None` — no
+/// package is left, there is nothing to run.
+pub fn argv_without(argv: &[String], drop: &[&str]) -> Option<Vec<String>> {
+    let Some(pos) = argv.iter().position(|a| a == "-S") else {
+        return Some(argv.to_vec());
+    };
+    let mut out: Vec<String> = argv[..=pos].to_vec();
+    let mut skip_value = false;
+    let mut left = 0;
+    for a in &argv[pos + 1..] {
+        if skip_value {
+            skip_value = false;
+        } else if a.starts_with('-') {
+            skip_value = VALUE_FLAGS.contains(&a.as_str());
+        } else if drop.contains(&a.as_str()) {
+            continue;
+        } else {
+            left += 1;
+        }
+        out.push(a.clone());
+    }
+    (left > 0).then_some(out)
+}
+
+/// Where Rexon builds a package with a fixed recipe:
+/// `~/.cache/rexon/aur/build/<pkgbase>`.
+pub fn recipe_build_dir(home: &str, pkgbase: &str) -> String {
+    format!("{}/aur/build/{pkgbase}", crate::appearance_cache::cache_dir(home.trim_end_matches('/')))
+}
+
+/// The AUR address of a recipe.
+pub fn aur_git_url(pkgbase: &str) -> String {
+    format!("https://aur.archlinux.org/{pkgbase}.git")
+}
+
+/// How Rexon's own build of a package went.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixedBuild {
+    /// Built with the fix and installed.
+    Installed,
+    /// The fix does not apply (the recipe changed): the helper builds it.
+    NotApplied,
+    /// Failed: the reason for the person.
+    Failed(String),
+}
+
+/// A command for [`run_with_recipe_fixes`]: captured output, the C locale.
+fn fix_cmd(argv: Vec<String>, env: Vec<(String, String)>, timeout: u64) -> crate::utils::RunReport {
+    crate::utils::run_direct(
+        &crate::utils::RunSpec {
+            argv,
+            output: crate::utils::RunOutput::Capture,
+            timeout_secs: Some(timeout),
+            lang_c: true,
+            env,
+            stderr_to_stdout: true,
+        },
+        None,
+    )
+}
+
+/// The captured output of a command, for the build log.
+fn report_text(r: &crate::utils::RunReport) -> String {
+    String::from_utf8_lossy(&r.stdout).trim_end().to_string()
+}
+
+fn strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
+
+/// A root operation for Rexon's own build: the privilege session, and
+/// without its helper — the old path through `pkexec` with `fallback`.
+fn fix_root(op: &crate::privilege::op::PrivOp, files: &[String], fallback: Vec<String>, say: &mut dyn FnMut(&str)) -> bool {
+    match crate::privilege::run::run_live(op, files, None, &mut |l: &str| say(l)) {
+        Some(out) => out.rc() == Some(0),
+        None => {
+            let mut argv = strings(&["pkexec"]);
+            argv.extend(fallback);
+            let r = fix_cmd(argv, Vec::new(), 3600);
+            say(&String::from_utf8_lossy(&r.stdout));
+            r.returncode == Some(0)
+        }
+    }
+}
+
+/// What Rexon's own build installs for `fix` and what it needs from outside:
+/// the package itself plus the packages of the same recipe it depends on (a
+/// split recipe: `vala-panel-appmenu-mate` needs `appmenu-glib-translator`),
+/// and the dependencies of all of them that the recipe does not build itself.
+/// `None` — the recipe (`.SRCINFO` → `pkgs`) has no such package.
+pub fn fixed_build_targets(fix: &RecipeFix, pkgs: &[crate::privilege::aur::SrcPkg]) -> Option<(Vec<String>, Vec<String>)> {
+    pkgs.iter().find(|p| p.name == fix.package)?;
+    let mut targets = vec![fix.package.to_string()];
+    targets.extend(crate::privilege::aur::aur_dep_closure(&targets, pkgs));
+    let own = |n: &str| pkgs.iter().any(|p| p.name == n || p.provides.iter().any(|x| x == n));
+    let mut needs: Vec<String> = Vec::new();
+    for p in pkgs.iter().filter(|p| targets.contains(&p.name)) {
+        for n in p.needs.iter().filter(|n| !n.is_empty() && !own(n)) {
+            if !needs.contains(n) {
+                needs.push(n.clone());
+            }
+        }
+    }
+    Some((targets, needs))
+}
+
+/// Whether package `name` is installed (`pacman -Q`).
+pub fn live_installed(name: &str) -> bool {
+    fix_cmd(strings(&["pacman", "-Q", "--", name]), Vec::new(), 30).returncode == Some(0)
+}
+
+/// Build `fix.package` with the fixed recipe and install it (see the section
+/// header). `say` gets the build log line by line.
+pub fn live_build_fixed(fix: &RecipeFix, replace: bool, say: &mut dyn FnMut(&str)) -> FixedBuild {
+    use crate::privilege::op::{LocalFile, PrivOp};
+    let home = std::env::var("HOME").unwrap_or_default();
+    let dir = recipe_build_dir(&home, fix.pkgbase);
+    // A package the official repositories have is installed from there by the
+    // helper itself; Rexon does not build over it.
+    if fix_cmd(strings(&["pacman", "-Si", "--", fix.package]), Vec::new(), 60).returncode == Some(0) {
+        return FixedBuild::NotApplied;
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    if let Some(parent) = std::path::Path::new(&dir).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    say(&format!("==> Rexon: fetching the AUR recipe of {}", fix.pkgbase));
+    let clone = fix_cmd(strings(&["git", "clone", "--depth", "1", &aur_git_url(fix.pkgbase), &dir]), Vec::new(), 300);
+    say(&report_text(&clone));
+    if clone.returncode != Some(0) {
+        return FixedBuild::Failed(tr("the recipe couldn't be downloaded from the AUR"));
+    }
+    let pkgbuild_path = format!("{dir}/PKGBUILD");
+    let Ok(pkgbuild) = std::fs::read_to_string(&pkgbuild_path) else {
+        return FixedBuild::Failed(tr("the recipe couldn't be downloaded from the AUR"));
+    };
+    let patched = match patch_recipe(fix, &pkgbuild) {
+        RecipePatch::Patched(t) => t,
+        RecipePatch::AlreadyFixed => {
+            say("==> Rexon: the recipe already deals with the problem, building it as it is");
+            crate::log_info!("aur", "recipe fix for {}: not needed any more", fix.package);
+            return FixedBuild::NotApplied;
+        }
+        RecipePatch::Unexpected(why) => {
+            say(&format!("==> Rexon: the recipe changed ({why}), building it as it is"));
+            crate::log_info!("aur", "recipe fix for {}: not applied: {why}", fix.package);
+            return FixedBuild::NotApplied;
+        }
+    };
+    if std::fs::write(&pkgbuild_path, patched).is_err() {
+        return FixedBuild::Failed(tr("the recipe couldn't be downloaded from the AUR"));
+    }
+    say(&format!("==> Rexon: fixed the recipe: {}", recipe_edits_text(fix)));
+    crate::log_info!("aur", "recipe fix for {}: applied in {dir}", fix.package);
+
+    // The recipe's switches decide the package list and the dependencies:
+    // `.SRCINFO` is made anew from the fixed recipe.
+    let srcinfo_cmd = fix_cmd(
+        strings(&["sh", "-c", "cd \"$1\" && makepkg --printsrcinfo > .SRCINFO", "sh", &dir]),
+        Vec::new(),
+        120,
+    );
+    if srcinfo_cmd.returncode != Some(0) {
+        say(&report_text(&srcinfo_cmd));
+        return FixedBuild::Failed(tr("the package didn't build"));
+    }
+    // Dependencies (build and run) that are missing: only from the official
+    // repositories. One not found there — let the helper deal with it.
+    let srcinfo = std::fs::read_to_string(format!("{dir}/.SRCINFO")).unwrap_or_default();
+    let pkgs = crate::privilege::aur::parse_srcinfo_pkgs(&srcinfo);
+    let Some((targets, wanted)) = fixed_build_targets(fix, &pkgs) else {
+        say("==> Rexon: the recipe has no such package, building it as it is");
+        return FixedBuild::NotApplied;
+    };
+    let mut missing: Vec<String> = Vec::new();
+    if !wanted.is_empty() {
+        let mut argv = strings(&["pacman", "-T", "--"]);
+        argv.extend(wanted.iter().cloned());
+        let r = fix_cmd(argv, Vec::new(), 60);
+        missing = String::from_utf8_lossy(&r.stdout).lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+    }
+    let mut installed_deps: Vec<String> = Vec::new();
+    if !missing.is_empty() {
+        let mut argv = strings(&["pacman", "-Sp", "--print-format", "%n", "--"]);
+        argv.extend(missing.iter().cloned());
+        let r = fix_cmd(argv, Vec::new(), 120);
+        if r.returncode != Some(0) {
+            say("==> Rexon: a dependency is not in the official repositories, building it the usual way");
+            return FixedBuild::NotApplied;
+        }
+        installed_deps = String::from_utf8_lossy(&r.stdout).lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+        say(&format!("==> Rexon: installing dependencies: {}", installed_deps.join(" ")));
+        let mut fallback = strings(&["pacman", "-S", "--needed", "--noconfirm", "--asdeps", "--"]);
+        fallback.extend(installed_deps.iter().cloned());
+        if !fix_root(&PrivOp::AurDeps { names: installed_deps.clone() }, &[], fallback, say) {
+            return FixedBuild::Failed(tr("the packages needed to build it couldn't be installed"));
+        }
+    }
+
+    // The build: as the user, the output stays in Rexon's directory whatever
+    // the person's makepkg.conf says.
+    say(&format!("==> Rexon: building {}", fix.package));
+    let env: Vec<(String, String)> =
+        ["PKGDEST", "SRCDEST", "BUILDDIR", "LOGDEST"].iter().map(|k| (k.to_string(), dir.clone())).collect();
+    let build = fix_cmd(
+        strings(&["sh", "-c", "cd \"$1\" && exec makepkg -f --noconfirm --cleanbuild", "sh", &dir]),
+        env,
+        3600,
+    );
+    say(&report_text(&build));
+    let files: Vec<String> = std::fs::read_dir(&dir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok()?.file_name().into_string().ok())
+                .filter(|n| !n.ends_with(".sig"))
+                .filter(|n| crate::privilege::helper::pkgname_from_file(n).is_some_and(|p| targets.contains(&p)))
+                .map(|n| format!("{dir}/{n}"))
+                .collect()
+        })
+        .unwrap_or_default();
+    if build.returncode != Some(0) || files.len() != targets.len() {
+        return FixedBuild::Failed(tr("the package didn't build"));
+    }
+    for file in &files {
+        let listing = fix_cmd(strings(&["bsdtar", "-tf", file]), Vec::new(), 120);
+        let left = forbidden_in_package(fix, &String::from_utf8_lossy(&listing.stdout));
+        if listing.returncode != Some(0) || !left.is_empty() {
+            say(&format!("==> Rexon: the fix didn't work, {file} still has: {}", left.join(" ")));
+            return FixedBuild::Failed(tr("the package didn't build"));
+        }
+    }
+
+    say(&format!("==> Rexon: installing {}", files.join(" ")));
+    let op = PrivOp::AurInstallBuilt {
+        packages: files.iter().enumerate().map(|(i, f)| LocalFile { slot: i as u8, label: f.clone() }).collect(),
+        allowed: targets.clone(),
+        replace,
+    };
+    let mut fallback = strings(&["pacman", "-U", "--noconfirm"]);
+    if replace {
+        fallback.push("--ask=4".to_string());
+    }
+    fallback.push("--".to_string());
+    fallback.extend(files.iter().cloned());
+    fix_root(&op, &files, fallback, say);
+    let ok = live_installed(fix.package);
+
+    // Build-only dependencies this build installed: removed again (the
+    // helper removes only orphans), as `--removemake` does for the helpers.
+    let srcinfo_make: Vec<String> = srcinfo
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("makedepends = "))
+        .map(|d| d.split(['<', '>', '=']).next().unwrap_or("").trim().to_string())
+        .collect();
+    let drop: Vec<String> = installed_deps.iter().filter(|d| srcinfo_make.contains(d)).cloned().collect();
+    if !drop.is_empty() {
+        let op = PrivOp::AurDropMake { names: drop };
+        let _ = crate::privilege::run::run_live(&op, &[], None, &mut |l: &str| say(l));
+    }
+    if ok {
+        FixedBuild::Installed
+    } else {
+        FixedBuild::Failed(tr("the built package couldn't be installed"))
+    }
+}
+
+/// The shared launch point's hook (`utils::run`): an AUR helper command that
+/// installs a package from [`RECIPE_FIXES`] — that package is built by Rexon
+/// itself ([`live_build_fixed`]), the rest of the command runs as usual. The
+/// build log goes to the same place as the command's output (the log file
+/// or the captured output), so the callers read the reason as before.
+/// `None` — not such a command.
+pub fn run_with_recipe_fixes(spec: &crate::utils::RunSpec, path_env: Option<&str>) -> Option<crate::utils::RunReport> {
+    use crate::utils::{RunOutcome, RunOutput, RunReport, RunSpec};
+    if std::env::var("REXON_AUR_RECIPE_FIXES").is_ok_and(|v| v == "0") {
+        return None;
+    }
+    let split = split_recipe_fixes(&spec.argv, &live_installed)?;
+    let mut transcript = String::new();
+    let mut handled: Vec<&str> = Vec::new();
+    let mut failed = false;
+    for fix in &split.fixes {
+        crate::log_info!("aur", "building {} with a fixed recipe", fix.package);
+        let mut say = |l: &str| {
+            if !l.is_empty() {
+                transcript.push_str(l);
+                transcript.push('\n');
+            }
+        };
+        match live_build_fixed(fix, split.replace, &mut say) {
+            FixedBuild::Installed => handled.push(fix.package),
+            FixedBuild::NotApplied => {}
+            FixedBuild::Failed(why) => {
+                crate::log_warn!("aur", "{} with a fixed recipe: {why}", fix.package);
+                transcript.push_str(&format!("==> ERROR: {}: {why}\n", fix.package));
+                handled.push(fix.package);
+                failed = true;
+            }
+        }
+    }
+    let mut report = match argv_without(&spec.argv, &handled) {
+        Some(argv) => crate::utils::run_direct(&RunSpec { argv, ..spec.clone() }, path_env),
+        None => {
+            let mut r = RunReport { timeout_secs: spec.timeout_secs.unwrap_or(3600), ..RunReport::default() };
+            r.outcome = if failed { RunOutcome::Failed } else { RunOutcome::Ok };
+            r.returncode = Some(if failed { 1 } else { 0 });
+            if let RunOutput::File(path) = &spec.output {
+                // The command did not run: the log starts afresh, as it would.
+                let _ = std::fs::write(path, "");
+            }
+            r
+        }
+    };
+    if failed && report.returncode == Some(0) {
+        report.outcome = RunOutcome::Failed;
+        report.returncode = Some(1);
+    }
+    match &spec.output {
+        RunOutput::File(path) => {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let _ = f.write_all(transcript.as_bytes());
+            }
+        }
+        RunOutput::Capture | RunOutput::CaptureBytes => {
+            let mut out = transcript.into_bytes();
+            out.extend_from_slice(&report.stdout);
+            report.stdout = out;
+        }
+        RunOutput::Inherit => {}
+    }
+    Some(report)
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -744,23 +1384,16 @@ pub const FAILURE_TAIL_LINES: usize = 8;
 /// the full log is.
 ///
 /// `log_path` is where the helper's full output was saved (empty means not
-/// saved). For reasons that can only be cured in a terminal by answering
-/// "yes" (a conflict, a file in the system), the command is attached to
-/// the text.
-pub fn failure_message(name: &str, helper: &str, packages: &[String], log: &str, log_path: &str) -> String {
-    failure_message_for(name, helper, packages, log, log_path, failure_cause(log).as_ref())
+/// saved). ⛔ No "run this in a terminal" advice (Wehrwolfmann 27.11.2026):
+/// the person came from Windows and has no terminal; what can be done is a
+/// button next to the message ("Retry", "Open log").
+pub fn failure_message(name: &str, log: &str, log_path: &str) -> String {
+    failure_message_for(name, log, log_path, failure_cause(log).as_ref())
 }
 
 /// The same as [`failure_message`], but with a reason already found (and
 /// possibly refined from the agent's journal, [`refine_with_agent_journal`]).
-pub fn failure_message_for(
-    name: &str,
-    helper: &str,
-    packages: &[String],
-    log: &str,
-    log_path: &str,
-    cause: Option<&AurFailure>,
-) -> String {
+pub fn failure_message_for(name: &str, log: &str, log_path: &str, cause: Option<&AurFailure>) -> String {
     let mut msg = match cause {
         Some(c) => trf("Couldn't install “%1”: %2.", &[&name, &failure_text(c)]),
         None => match tail_lines(log, 1).first() {
@@ -772,20 +1405,6 @@ pub fn failure_message_for(
         msg.push(' ');
         msg.push_str(&advice);
     }
-    let needs_terminal = matches!(
-        cause,
-        None | Some(AurFailure::Conflict { .. })
-            | Some(AurFailure::FileExists { .. })
-            | Some(AurFailure::BreaksDependency { .. })
-            | Some(AurFailure::PgpKey)
-    );
-    if needs_terminal {
-        msg.push('\n');
-        msg.push_str(&trf(
-            "To decide it yourself, run in a terminal: %1",
-            &[&terminal_command(helper, packages)],
-        ));
-    }
     if !log_path.is_empty() {
         msg.push('\n');
         msg.push_str(&trf("Full log: %1", &[&log_path]));
@@ -794,8 +1413,7 @@ pub fn failure_message_for(
 }
 
 /// What the person should do after the failure: one phrase for the reason
-/// (None means there is nothing to say beyond the reason itself and the
-/// terminal command).
+/// (None means there is nothing to say beyond the reason itself).
 pub fn failure_advice(cause: &AurFailure) -> Option<String> {
     Some(match cause {
         AurFailure::PasswordDismissed | AurFailure::NotAuthorized => {
@@ -820,9 +1438,16 @@ pub fn failure_advice(cause: &AurFailure) -> Option<String> {
         AurFailure::MissingDependency { .. } => tr(
             "The package may be outdated in the AUR — check its page for comments.",
         ),
-        AurFailure::Build { .. } => tr(
+        AurFailure::Build { .. }
+        | AurFailure::Conflict { .. }
+        | AurFailure::FileExists { .. }
+        | AurFailure::BreaksDependency { .. } => tr(
             "This is usually a problem of the package itself — check its page in the AUR \
              for comments, or try again later.",
+        ),
+        AurFailure::PgpKey => tr(
+            "The key the package is signed with isn't known on this computer — check the \
+             package's page in the AUR for comments, or try again later.",
         ),
         AurFailure::Download { .. } => tr("Check the internet connection and press “Retry”."),
         AurFailure::Checksum => tr("Press “Retry” — the download may have been damaged."),
@@ -830,10 +1455,6 @@ pub fn failure_advice(cause: &AurFailure) -> Option<String> {
             tr("Wait until the other installation finishes and press “Retry”.")
         }
         AurFailure::DiskFull => tr("Free up some disk space and press “Retry”."),
-        AurFailure::Conflict { .. }
-        | AurFailure::FileExists { .. }
-        | AurFailure::BreaksDependency { .. }
-        | AurFailure::PgpKey => return None,
     })
 }
 
@@ -1528,9 +2149,10 @@ mod tests {
             failure_cause(log),
             Some(AurFailure::Conflict { new: "aeroshell-libplasma-git".into(), old: "libplasma".into() })
         );
-        let msg = failure_message("aerothemeplasma-desktop-git", "yay", &s(&["aerothemeplasma-desktop-git"]), log, "/h/.cache/rexon/aur/x.log");
+        let msg = failure_message("aerothemeplasma-desktop-git", log, "/h/.cache/rexon/aur/x.log");
         assert!(msg.contains("aeroshell-libplasma-git conflicts with the installed libplasma"), "{msg}");
-        assert!(msg.contains("yay -S --needed aerothemeplasma-desktop-git"), "{msg}");
+        // No "run this in a terminal" advice (27.11.2026): the window offers buttons.
+        assert!(!msg.contains("terminal") && !msg.contains("yay -S"), "{msg}");
         assert!(msg.contains("/h/.cache/rexon/aur/x.log"), "{msg}");
     }
 
@@ -1557,9 +2179,9 @@ mod tests {
 
     #[test]
     fn unknown_failure_quotes_last_line() {
-        let msg = failure_message("x", "yay", &s(&["x"]), "something odd\nweird end\n", "");
+        let msg = failure_message("x", "something odd\nweird end\n", "");
         assert!(msg.contains("weird end"), "{msg}");
-        assert!(msg.contains("yay -S --needed x"), "{msg}");
+        assert!(!msg.contains("terminal") && !msg.contains("yay -S"), "{msg}");
     }
 
     #[test]
@@ -1590,7 +2212,7 @@ mod tests {
         // From the agent's journal, the exact reason: the window was busy with another one.
         let refined = refine_with_agent_journal(cause, OWNER_AGENT_JOURNAL);
         assert_eq!(refined, Some(AurFailure::PasswordWindowBusy));
-        let msg = failure_message_for("aerothemeplasma-icons-git", "yay", &s(&["aerothemeplasma-icons-git"]), OWNER_ICONS_TAIL, "/l", refined.as_ref());
+        let msg = failure_message_for("aerothemeplasma-icons-git", OWNER_ICONS_TAIL, "/l", refined.as_ref());
         assert!(msg.contains("another password window was already open"), "{msg}");
         assert!(msg.contains("“Retry”"), "{msg}");
     }
@@ -1653,11 +2275,179 @@ mod tests {
         assert!(failure_advice(cause.as_ref().unwrap()).unwrap().contains("one package at a time"));
     }
 
+    // ── Known breakages of AUR recipes ──────────────────────────────────
+
+    /// The AUR recipe of mate-menu 26.10.1-2 as it was on 27.11.2026.
+    const MATE_MENU_PKGBUILD: &str = "pkgname=mate-menu\npkgver=26.10.1\npkgrel=2\n\
+        install=$pkgname.install\n\npackage() {\n\tcd $pkgname-$pkgver\n\
+        \tpython setup.py install --root=\"$pkgdir\" --optimize=1\n}\n";
+
+    fn mate_menu_fix() -> &'static RecipeFix {
+        recipe_fix_for("mate-menu").expect("mate-menu is in the table")
+    }
+
+    const SCHEMA_RM: &str = "\trm -f \"$pkgdir/usr/share/glib-2.0/schemas/gschemas.compiled\"\n";
+
+    #[test]
+    fn mate_menu_recipe_gets_the_schema_cache_removed() {
+        let RecipePatch::Patched(text) = patch_recipe(mate_menu_fix(), MATE_MENU_PKGBUILD) else {
+            panic!("the 26.10.1-2 recipe must be patched");
+        };
+        assert!(text.contains(&format!("--optimize=1\n{SCHEMA_RM}}}\n")), "{text}");
+        // Everything else stays as it was.
+        assert_eq!(text.replace(SCHEMA_RM, ""), MATE_MENU_PKGBUILD);
+    }
+
+    #[test]
+    fn recipe_fix_is_skipped_once_the_maintainer_fixed_it() {
+        let fixed = MATE_MENU_PKGBUILD.replace(
+            "--optimize=1\n",
+            "--optimize=1\n\trm \"$pkgdir\"/usr/share/glib-2.0/schemas/gschemas.compiled\n",
+        );
+        assert_eq!(patch_recipe(mate_menu_fix(), &fixed), RecipePatch::AlreadyFixed);
+    }
+
+    #[test]
+    fn recipe_fix_is_skipped_for_a_rewritten_recipe() {
+        // The maintainer moved to the PEP 517 installer: the line is gone.
+        let rewritten = MATE_MENU_PKGBUILD.replace(
+            "python setup.py install --root=\"$pkgdir\" --optimize=1",
+            "python -m installer --destdir=\"$pkgdir\" dist/*.whl",
+        );
+        assert!(matches!(patch_recipe(mate_menu_fix(), &rewritten), RecipePatch::Unexpected(_)));
+        // The line in a different function is not the broken one.
+        let moved = MATE_MENU_PKGBUILD.replace("package() {", "build() {");
+        assert!(matches!(patch_recipe(mate_menu_fix(), &moved), RecipePatch::Unexpected(_)));
+        // Twice — not the recipe the fix was written for.
+        let twice = MATE_MENU_PKGBUILD.replace(
+            "--optimize=1\n",
+            "--optimize=1\n\tpython setup.py install --root=\"$pkgdir\" --optimize=1\n",
+        );
+        assert!(matches!(patch_recipe(mate_menu_fix(), &twice), RecipePatch::Unexpected(_)));
+    }
+
+    #[test]
+    fn recipe_fix_accepts_a_brace_on_the_next_line() {
+        let recipe = MATE_MENU_PKGBUILD.replace("package() {\n", "package()\n{\n");
+        assert!(matches!(patch_recipe(mate_menu_fix(), &recipe), RecipePatch::Patched(_)));
+    }
+
+    #[test]
+    fn built_package_is_checked_for_the_removed_file() {
+        let listing = ".PKGINFO\n.MTREE\nusr/bin/mate-menu\nusr/share/glib-2.0/schemas/\n\
+                       usr/share/glib-2.0/schemas/org.mate.mate-menu.gschema.xml\n";
+        assert!(forbidden_in_package(mate_menu_fix(), listing).is_empty());
+        let broken = format!("{listing}./usr/share/glib-2.0/schemas/gschemas.compiled\n");
+        assert_eq!(forbidden_in_package(mate_menu_fix(), &broken), vec!["usr/share/glib-2.0/schemas/gschemas.compiled"]);
+    }
+
+    #[test]
+    fn helper_command_is_split_around_the_fixed_package() {
+        let argv = install_argv("yay", &s(&["mate-menu", "mate-indicator-applet"]), false);
+        let split = split_recipe_fixes(&argv, &|_| false).expect("mate-menu has a fix");
+        assert_eq!(split.fixes.iter().map(|f| f.package).collect::<Vec<_>>(), vec!["mate-menu"]);
+        assert!(!split.replace);
+        let rest = argv_without(&argv, &["mate-menu"]).expect("one package is left");
+        assert_eq!(argv_packages(&rest), s(&["mate-indicator-applet"]));
+        // The flags and their values are kept as they were.
+        assert_eq!(rest.len(), argv.len() - 1);
+        assert_eq!(argv_without(&install_argv("yay", &s(&["mate-menu"]), false), &["mate-menu"]), None);
+        // Installed already — the helper's `--needed` deals with it.
+        assert_eq!(split_recipe_fixes(&argv, &|p| p == "mate-menu"), None);
+        // Not an AUR helper, or no package with a fix.
+        assert_eq!(split_recipe_fixes(&s(&["pacman", "-S", "mate-menu"]), &|_| false), None);
+        assert_eq!(split_recipe_fixes(&install_argv("paru", &s(&["mate-tweak"]), false), &|_| false), None);
+        let paru = install_argv("paru", &s(&["mate-menu"]), true);
+        assert!(split_recipe_fixes(&paru, &|_| false).is_some_and(|f| f.replace));
+    }
+
+    /// The switches of the AUR recipe vala-panel-appmenu 25.04 (27.11.2026).
+    const APPMENU_SWITCHES: &str = "## options\n: ${_build_mate:=true}\n: ${_build_xfce:=true}\n\
+        : ${_build_vala:=true}\n: ${_build_budgie:=true}\n\n: ${_build_registrar:=true}\n\
+        : ${_build_translator:=true}\n\n_pkgname=\"vala-panel-appmenu\"\npkgver=25.04\n";
+
+    #[test]
+    fn appmenu_recipe_builds_only_the_mate_module() {
+        let fix = recipe_fix_for("vala-panel-appmenu-mate").unwrap();
+        assert_eq!(fix.pkgbase, "vala-panel-appmenu");
+        let RecipePatch::Patched(text) = patch_recipe(fix, APPMENU_SWITCHES) else {
+            panic!("the 25.04 recipe must be patched");
+        };
+        for kept in [": ${_build_mate:=true}", ": ${_build_registrar:=true}", ": ${_build_translator:=true}"] {
+            assert!(text.contains(kept), "{text}");
+        }
+        for off in [": ${_build_xfce:=false}", ": ${_build_vala:=false}", ": ${_build_budgie:=false}"] {
+            assert!(text.contains(off), "{text}");
+        }
+        // Patched once — nothing more to do; the maintainer turning a module
+        // off by himself is fine too.
+        assert_eq!(patch_recipe(fix, &text), RecipePatch::AlreadyFixed);
+        // A recipe without the switches is not the one the fix was written for.
+        let other = APPMENU_SWITCHES.replace(": ${_build_vala:=true}\n", "");
+        assert!(matches!(patch_recipe(fix, &other), RecipePatch::Unexpected(_)));
+        // The XFCE and registrar packages keep their own module only.
+        let RecipePatch::Patched(xfce) = patch_recipe(recipe_fix_for("vala-panel-appmenu-xfce").unwrap(), APPMENU_SWITCHES) else {
+            panic!("xfce");
+        };
+        assert!(xfce.contains(": ${_build_xfce:=true}") && xfce.contains(": ${_build_mate:=false}"), "{xfce}");
+        let RecipePatch::Patched(reg) = patch_recipe(recipe_fix_for("vala-panel-appmenu-registrar").unwrap(), APPMENU_SWITCHES) else {
+            panic!("registrar");
+        };
+        assert!(reg.contains(": ${_build_registrar:=true}") && !reg.contains("_build_mate:=true"), "{reg}");
+    }
+
+    #[test]
+    fn split_recipe_installs_its_own_dependencies_together() {
+        // `.SRCINFO` of the fixed appmenu recipe (abridged).
+        let srcinfo = "pkgbase = vala-panel-appmenu\n\tmakedepends = meson\n\tmakedepends = vala\n\n\
+                       pkgname = vala-panel-appmenu\n\tdepends = vala-panel-appmenu-locale\n\n\
+                       pkgname = appmenu-glib-translator\n\tdepends = dconf\n\tdepends = gdk-pixbuf2\n\n\
+                       pkgname = vala-panel-appmenu-mate\n\tdepends = appmenu-glib-translator\n\tdepends = mate-panel\n";
+        let pkgs = crate::privilege::aur::parse_srcinfo_pkgs(srcinfo);
+        let fix = recipe_fix_for("vala-panel-appmenu-mate").unwrap();
+        let (targets, needs) = fixed_build_targets(fix, &pkgs).unwrap();
+        assert_eq!(targets, s(&["vala-panel-appmenu-mate", "appmenu-glib-translator"]));
+        for n in ["mate-panel", "dconf", "gdk-pixbuf2", "meson", "vala"] {
+            assert!(needs.contains(&n.to_string()), "{needs:?}");
+        }
+        assert!(!needs.iter().any(|n| n == "appmenu-glib-translator"), "{needs:?}");
+        // The recipe lost the package — nothing for Rexon to build.
+        assert_eq!(fixed_build_targets(recipe_fix_for("mate-menu").unwrap(), &pkgs), None);
+    }
+
+    #[test]
+    fn recipe_fix_switches_off_from_the_fixed_upstream_release() {
+        let fix = RecipeFix { fixed_upstream_in: Some("26.10.2"), ..*mate_menu_fix() };
+        assert!(matches!(patch_recipe(&fix, MATE_MENU_PKGBUILD), RecipePatch::Patched(_)));
+        let newer = MATE_MENU_PKGBUILD.replace("pkgver=26.10.1", "pkgver=26.10.2");
+        assert_eq!(patch_recipe(&fix, &newer), RecipePatch::AlreadyFixed);
+        let much_newer = MATE_MENU_PKGBUILD.replace("pkgver=26.10.1", "pkgver=27.04");
+        assert_eq!(patch_recipe(&fix, &much_newer), RecipePatch::AlreadyFixed);
+        assert!(version_at_least("26.10.10", "26.10.2") && !version_at_least("26.9", "26.10"));
+    }
+
+    /// A live check on demand: `REXON_TEST_PATCH_PKGBUILD=<path>` patches that
+    /// PKGBUILD in place with the fix of `REXON_TEST_PATCH_PACKAGE` (mate-menu
+    /// by default) — used to build the real package by hand with makepkg.
+    #[test]
+    #[ignore]
+    fn live_patch_pkgbuild_file() {
+        let path = std::env::var("REXON_TEST_PATCH_PKGBUILD").expect("set REXON_TEST_PATCH_PKGBUILD");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let package = std::env::var("REXON_TEST_PATCH_PACKAGE").unwrap_or_else(|_| "mate-menu".into());
+        let RecipePatch::Patched(fixed) = patch_recipe(recipe_fix_for(&package).unwrap(), &text) else {
+            panic!("the live recipe was not patched");
+        };
+        std::fs::write(&path, fixed).unwrap();
+    }
+
     #[test]
     fn conflict_and_build_keep_their_causes() {
         let log = ":: a-1-1 and b-2-1 are in conflict\n";
         assert!(matches!(failure_cause(log), Some(AurFailure::Conflict { .. })));
-        assert!(failure_advice(&AurFailure::Conflict { new: "a".into(), old: "b".into() }).is_none());
+        // Every reason has advice without a terminal (27.11.2026).
+        let advice = failure_advice(&AurFailure::Conflict { new: "a".into(), old: "b".into() }).unwrap();
+        assert!(!advice.contains("terminal"), "{advice}");
         let short = failure_short(Some(&AurFailure::PasswordDismissed));
         assert_eq!(short, "the password window was closed");
         assert_eq!(failure_short(None), "The installation failed — see the log");
@@ -1736,7 +2526,7 @@ mod tests {
     }
 
     #[test]
-    fn ход_сборки_без_цвета_и_вопросов() {
+    fn build_progress_without_colour_and_prompts() {
         // Live 08.11.2026, MATE "Check / Restore" (yay 13.1.0, LANG=ru).
         assert_eq!(strip_ansi("\u{1b}[1;34m::\u{1b}[0m\u{1b}[1m Проверка\u{1b}[0m"), ":: Проверка");
         assert_eq!(strip_ansi("[1m==> [0mСборка"), "==> Сборка");
@@ -1763,7 +2553,7 @@ mod tests {
     }
 
     #[test]
-    fn ключи_сборки_vala_panel_appmenu() {
+    fn vala_panel_appmenu_build_options() {
         let argv = install_argv("yay", &s(&["mate-tweak", "vala-panel-appmenu-mate", "vala-panel-appmenu-registrar"]), false);
         assert_eq!(build_env(&argv), vec![("_build_budgie".to_string(), "false".to_string())]);
         assert!(build_env(&install_argv("yay", &s(&["mate-tweak"]), false)).is_empty());

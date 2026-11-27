@@ -1196,7 +1196,7 @@ mod tests {
     }
 
     #[test]
-    fn нечисловая_длина_переименовывается() {
+    fn non_numeric_length_renamed() {
         let head = b"HTTP/1.1 200 OK\r\nContent-Type: x\r\nContent-Length: not-a-number\r\n\r\n";
         let fixed = fix_bad_content_length(head).expect("шапку надо было починить");
         assert_eq!(fixed.len(), head.len(), "смещения байт поехали");
@@ -1206,7 +1206,7 @@ mod tests {
     }
 
     #[test]
-    fn здоровая_шапка_не_переписывается() {
+    fn healthy_header_not_rewritten() {
         assert!(fix_bad_content_length(b"HTTP/1.1 200 OK\r\nContent-Length: 42\r\n\r\n").is_none());
         assert!(fix_bad_content_length(b"HTTP/1.1 200 OK\r\nContent-Type: x\r\n\r\n").is_none());
         // A request line with similar text does not count as a header.
@@ -1214,7 +1214,7 @@ mod tests {
     }
 
     #[test]
-    fn повторный_заголовок_длины_оставляет_первый() {
+    fn repeated_length_header_keeps_first() {
         let head = b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\nContent-Length: 9\r\n\r\n";
         let fixed = fix_bad_content_length(head).expect("повтор надо было обезвредить");
         assert!(fixed.windows(18).any(|w| w == b"Content-Length: 7\r"));
@@ -1222,13 +1222,13 @@ mod tests {
     }
 
     #[test]
-    fn пустое_значение_длины_обезвреживается() {
+    fn empty_length_value_neutralized() {
         let head = b"HTTP/1.1 200 OK\r\nContent-Length:\r\n\r\n";
         assert!(fix_bad_content_length(head).is_some());
     }
 
     #[test]
-    fn кривой_content_length_не_роняет_скачивание() {
+    fn broken_content_length_does_not_break_download() {
         let body = b"rexon-tema".repeat(500);
         let mut resp = b"HTTP/1.1 200 OK\r\nContent-Length: not-a-number\r\n\r\n".to_vec();
         resp.extend_from_slice(&body);
@@ -1242,7 +1242,7 @@ mod tests {
     }
 
     #[test]
-    fn кривая_шапка_склеивается_из_кусков() {
+    fn broken_header_assembled_from_chunks() {
         let body = b"kusochki".repeat(100);
         let mut tail = b"a-number\r\n\r\n".to_vec();
         tail.extend_from_slice(&body);
@@ -1260,7 +1260,7 @@ mod tests {
     }
 
     #[test]
-    fn на_постоянном_соединении_шапка_разбирается_каждый_раз() {
+    fn keep_alive_header_parsed_every_time() {
         let ok = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\nпервый", "первый".len())
             .into_bytes();
         let bad = "HTTP/1.1 200 OK\r\nContent-Length: nope\r\nConnection: close\r\n\r\nвторой"
@@ -1342,7 +1342,7 @@ mod tests {
     }
 
     #[test]
-    fn обрыв_соединения_повторяется_и_вторая_попытка_проходит() {
+    fn connection_drop_retried_and_second_attempt_passes() {
         let mut io = Counter {
             outcomes: vec![Err(broken()), Ok(7)],
             ..Default::default()
@@ -1354,7 +1354,7 @@ mod tests {
     }
 
     #[test]
-    fn после_исчерпания_попыток_возвращается_последняя_ошибка() {
+    fn after_retries_exhausted_last_error_returned() {
         let mut io = Counter {
             outcomes: vec![Err(broken())],
             ..Default::default()
@@ -1366,7 +1366,7 @@ mod tests {
     }
 
     #[test]
-    fn отменённый_запрос_не_повторяется() {
+    fn cancelled_request_not_retried() {
         let cancelled = NetError::Transport {
             detail: format!("<urlopen error {CANCELLED_DETAIL}>"),
         };
@@ -1380,7 +1380,7 @@ mod tests {
     }
 
     #[test]
-    fn отсутствующий_файл_не_повторяется_а_занятый_сервер_повторяется() {
+    fn missing_file_not_retried_busy_server_retried() {
         for (code, want_tries) in [
             (404u16, 1),                      // no file — there will not be one the second time either
             (403, 1),                         // access denied
@@ -1398,7 +1398,7 @@ mod tests {
     }
 
     #[test]
-    fn лимит_запросов_ждёт_дольше_обычного_сбоя() {
+    fn rate_limit_waits_longer_than_normal_failure() {
         let mut io = Counter {
             outcomes: vec![Err(NetError::Status { code: 429, reason: String::new() })],
             ..Default::default()
@@ -1410,7 +1410,7 @@ mod tests {
     }
 
     #[test]
-    fn запрет_повторов_соблюдается() {
+    fn no_retry_respected() {
         let mut io = Counter {
             outcomes: vec![Err(broken())],
             ..Default::default()
@@ -1421,7 +1421,7 @@ mod tests {
     }
 
     #[test]
-    fn успех_с_первой_попытки_ничего_не_ждёт_и_не_пишет() {
+    fn first_try_success_waits_and_logs_nothing() {
         let mut io = Counter {
             outcomes: vec![Ok(1)],
             ..Default::default()
@@ -1432,7 +1432,7 @@ mod tests {
     }
 
     #[test]
-    fn живой_транспорт_отдаёт_тип_ответа() {
+    fn live_transport_returns_content_type() {
         let body = b"kartinka".repeat(100);
         let mut resp = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\n\r\n",
@@ -1450,7 +1450,7 @@ mod tests {
     }
 
     #[test]
-    fn здоровый_ответ_проходит_как_прежде() {
+    fn healthy_response_passes_as_before() {
         let body = b"0123456789".repeat(3000); // more than one socket read
         let mut resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len())
             .into_bytes();

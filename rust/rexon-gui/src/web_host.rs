@@ -204,25 +204,25 @@ mod tests {
     /// calling: there is no reason to bring up Chromium in the test process.
     /// Goes red if Qt changes the library name or the function's name mangling.
     #[test]
-    fn qtwebengine_initialize_находится_без_линковки() {
+    fn qtwebengine_initialize_found_without_linking() {
         assert!(resolve_initialize().is_ok(), "{:?}", resolve_initialize().err());
     }
 
     #[test]
-    fn ключи_звука_только_у_видео() {
+    fn sound_options_only_for_video() {
         let err = parse_args(&["/a.html".into(), "--no-audio".into()]).unwrap_err();
         assert!(err.contains("video"), "{err}");
     }
 
     #[test]
-    fn адрес_обязателен_и_единственный() {
+    fn address_required_and_single() {
         assert!(parse_args(&[]).is_err());
         assert!(parse_args(&["/a.html".into(), "/b.html".into()]).is_err());
         assert!(parse_args(&["--nosuchoption".into(), "/a.html".into()]).is_err());
     }
 
     #[test]
-    fn ссылка_принимается_как_есть() {
+    fn url_accepted_as_is() {
         let cli = parse_args(&["https://example.com".to_string()]).unwrap();
         assert_eq!(cli.target, "https://example.com");
         assert!(!cli.windowed);
@@ -230,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn самопроверка_с_умолчанием_и_с_числом() {
+    fn selftest_with_default_and_number() {
         assert_eq!(
             parse_args(&["/a.html".into(), "--selftest".into()])
                 .unwrap()
@@ -254,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn справка_не_ошибка_разбора() {
+    fn help_is_not_parse_error() {
         assert_eq!(parse_args(&["--help".to_string()]), Err(USAGE.to_string()));
     }
 }

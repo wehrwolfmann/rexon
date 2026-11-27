@@ -68,7 +68,7 @@ fn scenarios() -> Vec<&'static str> {
 // ── tables and directories ───────────────────────────────────────────────
 
 #[test]
-fn таблицы_дефолтов_совпадают_с_python() {
+fn default_tables_match_python() {
     let g_ = golden();
     let c = &g_["const"];
     for (t, want) in c["SAFE_DEFAULTS"].as_object().unwrap() {
@@ -121,7 +121,7 @@ fn таблицы_дефолтов_совпадают_с_python() {
 }
 
 #[test]
-fn каталоги_поиска_совпадают_с_python() {
+fn search_directories_match_python() {
     for (t, want) in golden()["theme_dirs"].as_object().unwrap() {
         let want: Vec<String> = want
             .as_array()
@@ -134,7 +134,7 @@ fn каталоги_поиска_совпадают_с_python() {
 }
 
 #[test]
-fn путь_settings_ini_как_у_python() {
+fn settings_ini_path_like_python() {
     for case in golden()["live"]["gtk"].as_array().unwrap() {
         let ver = case["version"].as_str().unwrap();
         // The golden recorded an absolute path with the {HOME} token; the config root
@@ -149,7 +149,7 @@ fn путь_settings_ini_как_у_python() {
 // ── config parsing ───────────────────────────────────────────────────────
 
 #[test]
-fn разбор_settings_ini_как_у_python() {
+fn settings_ini_parsing_like_python() {
     for c in golden()["read_ini"].as_array().unwrap() {
         let text = opt_str(&c["text"]);
         assert_eq!(
@@ -161,7 +161,7 @@ fn разбор_settings_ini_как_у_python() {
 }
 
 #[test]
-fn разбор_kde_конфига_как_у_python() {
+fn kde_config_parsing_like_python() {
     for c in golden()["read_kde"].as_array().unwrap() {
         let text = opt_str(&c["text"]);
         assert_eq!(
@@ -173,7 +173,7 @@ fn разбор_kde_конфига_как_у_python() {
 }
 
 #[test]
-fn чтение_курсора_kcminputrc_как_у_python() {
+fn kcminputrc_cursor_read_like_python() {
     for c in golden()["read_kcminput"].as_array().unwrap() {
         let text = opt_str(&c["text"]);
         assert_eq!(
@@ -187,7 +187,7 @@ fn чтение_курсора_kcminputrc_как_у_python() {
 // ── building the new settings.ini text ───────────────────────────────────
 
 #[test]
-fn новый_текст_settings_ini_байт_в_байт() {
+fn new_settings_ini_text_byte_for_byte() {
     for c in golden()["write_ini"].as_array().unwrap() {
         let existing = opt_str(&c["existing"]);
         let key = c["key"].as_str().unwrap();
@@ -201,7 +201,7 @@ fn новый_текст_settings_ini_байт_в_байт() {
 }
 
 #[test]
-fn метка_ini_в_журнале_как_у_python() {
+fn ini_log_label_like_python() {
     for c in golden()["ini_label"].as_array().unwrap() {
         assert_eq!(
             g::ini_label(c["path"].as_str().unwrap()),
@@ -211,7 +211,7 @@ fn метка_ini_в_журнале_как_у_python() {
 }
 
 #[test]
-fn отчёт_verbose_байт_в_байт() {
+fn verbose_report_byte_for_byte() {
     // The golden was captured from the original, and it printed in Russian — we compare the Russian
     // from `po/ru.po`: nothing changed for the Russian interface.
     let _lang = i18n_pin::ru();
@@ -239,7 +239,7 @@ fn english_verbose_report_has_no_russian() {
 // ── decisions on the machine's REAL data ─────────────────────────────────
 
 #[test]
-fn план_правок_settings_ini_как_у_python() {
+fn settings_ini_edit_plan_like_python() {
     let gold = golden();
     for name in scenarios() {
         let case = &gold[name];
@@ -262,7 +262,7 @@ fn план_правок_settings_ini_как_у_python() {
 /// Applying the plan step by step — as the executor does it (the file
 /// is reread for every key) — gives the same file as Python.
 #[test]
-fn результат_применения_плана_совпадает_с_python() {
+fn plan_apply_result_matches_python() {
     let gold = golden();
     for name in scenarios() {
         let case = &gold[name];
@@ -282,7 +282,7 @@ fn результат_применения_плана_совпадает_с_pyth
 }
 
 #[test]
-fn план_правок_kde_как_у_python() {
+fn kde_edit_plan_like_python() {
     let gold = golden();
     for name in scenarios() {
         let case = &gold[name];
@@ -312,7 +312,7 @@ fn план_правок_kde_как_у_python() {
 /// On the live machine the sanitizer has NOTHING to fix — the golden records this, and it is
 /// also a guarantee that the test does not "fix" anything in the user's configs.
 #[test]
-fn на_живой_машине_правок_нет() {
+fn no_edits_on_live_machine() {
     let gold = golden();
     let live = &gold["live"];
     for ini in live["gtk"].as_array().unwrap() {
@@ -332,7 +332,7 @@ fn на_живой_машине_правок_нет() {
 /// a cursor theme, over `FsSnapshot`). They must not diverge — we run
 /// both implementations over all cursor themes from the snapshot.
 #[test]
-fn цепочка_курсоров_согласна_с_themes() {
+fn cursor_chain_agrees_with_themes() {
     let gold = golden();
     for name in scenarios() {
         let case = &gold[name];
@@ -366,7 +366,7 @@ fn цепочка_курсоров_согласна_с_themes() {
 /// Cursor themes from `UNSAFE_CURSOR_THEMES` count as broken even when
 /// they are physically installed (on this machine `Adwaita` is installed).
 #[test]
-fn unsafe_курсоры_отвергаются_на_живых_данных() {
+fn unsafe_cursors_rejected_on_live_data() {
     let gold = golden();
     let case = &gold["live"];
     for theme in g::UNSAFE_CURSOR_THEMES {

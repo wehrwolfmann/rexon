@@ -1011,7 +1011,8 @@ mod texts {
             (false, "Couldn't change the login screen: the greeter slick-greeter is not installed".to_string())
         );
         let (ok, text) = switch_dm_outcome(Some(126), "", "", "lightdm", "pkexec x");
-        assert!(!ok && text.contains("pkexec x"), "{text}");
+        // No terminal command for the person (27.11.2026).
+        assert!(!ok && !text.contains("pkexec x"), "{text}");
         assert_eq!(
             switch_dm_outcome(Some(1), "", "", "sddm", "x"),
             (false, "Couldn't change the login screen.".to_string())
@@ -1026,7 +1027,8 @@ mod texts {
         assert_eq!(login_manager_unsupported_note(&DmSwitchBackend::SystemdDebian, None), None);
         assert_eq!(
             login_manager_unsupported_note(&DmSwitchBackend::Unsupported("OpenRC".into()), Some("sudo rc-update add display-manager default")).unwrap(),
-            "Here the login screen is switched by OpenRC, and Rexon can't do it yet. In a terminal:\nsudo rc-update add display-manager default"
+            // No terminal command for the person (27.11.2026).
+            "Here the login screen is switched by OpenRC, and Rexon can't do it yet."
         );
         assert_eq!(
             login_manager_unsupported_note(&DmSwitchBackend::Unsupported(String::new()), None).unwrap(),

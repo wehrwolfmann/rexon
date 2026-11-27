@@ -753,10 +753,7 @@ pub fn install_plan(
         // of "pkexec or the named path, and Nix without root".
         None => choose_install_argv(family, packages, &base_cmd, pkg_helper_available),
     };
-    let sudo_hint = trf(
-        "The administrator password wasn't confirmed.\nYou can install from a terminal: sudo %1",
-        &[&base_cmd.join(" ")],
-    );
+    let sudo_hint = password_retry_message();
     Ok(InstallPlan {
         steps: vec![run_step(RunStepId::PkgInstall, argv, None, false,
                              "Установка пакетов")],
@@ -976,11 +973,7 @@ pub fn remove_plan(
             trf("Skipped (needed by other desktops):\n%1", &[&bullets.join("\n")])
         );
     }
-    // ⭐ Fix: the refusal hint on REMOVAL said "Install from a terminal".
-    plan.sudo_hint = trf(
-        "The administrator password wasn't confirmed.\nYou can remove from a terminal: sudo %1",
-        &[&base_cmd.join(" ")],
-    );
+    plan.sudo_hint = password_retry_message();
     Ok(plan)
 }
 
@@ -2058,7 +2051,7 @@ fn bad_pkg_name_error(name: &str) -> String {
 /// machine unbootable, and `… remove polkit` to take away the confirmation
 /// mechanism itself. None of these names is in any desktop of the Rexon
 /// database (the check
-/// `вечный_список_не_пересекается_с_рабочими_столами`),
+/// `permanent_list_does_not_overlap_desktops`),
 /// so the ban does not get in the way of a single honest scenario.
 pub const PKG_HELPER_VITAL: &[&str] = &[
     "base", "base-files", "filesystem", "glibc", "gcc-libs", "bash",
@@ -2080,7 +2073,7 @@ pub const PKG_HELPER_VITAL: &[&str] = &[
 /// names (`linux`, `linux-lts`, `linux-zen`, `linux-hardened`), and
 /// `rexon-pkg-helper arch remove linux-cachyos` (as well as `nvidia-utils`,
 /// `mesa`, `amd-ucode`, `linux-image-amd64`) went through. No name from the
-/// desktop tables falls in here (the check `вечное_не_задевает_столы`), so
+/// desktop tables falls in here (the check `permanent_list_does_not_touch_desktops`), so
 /// the addition does not get in the way of desktop removal.
 pub const VITAL_PREFIXES: &[&str] = &[
     "linux-", "kernel-", "gentoo-kernel", "gentoo-sources", "systemd-", "glibc-",
@@ -2141,7 +2134,7 @@ fn vital_case_pattern() -> String {
 ///
 /// ⚠️ A new place that installs packages through the helper must take the
 /// names from a table and add that table here, otherwise the helper refuses.
-/// The check `белый_список_покрывает_все_таблицы` keeps the inventory.
+/// The check `allowlist_covers_all_tables` keeps the inventory.
 pub fn pkg_helper_install_allowlist(family: PkgFamily) -> Vec<String> {
     let fam = family.as_str();
     let mut out: Vec<String> = Vec::new();
@@ -6748,9 +6741,9 @@ pub fn plasma_fork_failure_message(raw: &str, remaining: Option<&str>) -> String
         s.push_str(&format!("{}\n\n", trf("What pacman said:\n%1", &[&raw])));
     }
     match remaining {
-        Some(cmd) => s.push_str(&trf(
-            "Still to run (you can do it by hand in a terminal):\n%1",
-            &[&cmd],
+        // ⛔ No "run it by hand in a terminal" (27.11.2026): the rollback is run again.
+        Some(_) => s.push_str(&tr(
+            "Not everything was rolled back. Run the rollback again: Rexon will finish what is left.",
         )),
         None => s.push_str(&tr(
             "No forks are left on the system — the rollback seems to have gone \
@@ -9661,11 +9654,19 @@ pub fn sddm_reset_outcome(
 /// anything. The first line is the same as for the install and removal
 /// refusals (`install_plan`, `remove_plan`, `batch_main_result`). The
 /// terminal command stays as is: it is not words but what has to be typed.
-pub fn pkexec_denied_message(manual_cmd: &str) -> String {
-    trf(
-        "The administrator password wasn't confirmed.\nYou can do this by hand in a terminal:\n%1",
-        &[&manual_cmd],
-    )
+///
+/// ⛔ Since 27.11.2026 (Wehrwolfmann) no command "to run by hand in a
+/// terminal": the person has no terminal. `_manual_cmd` stays for the
+/// callers' log lines and is not shown.
+pub fn pkexec_denied_message(_manual_cmd: &str) -> String {
+    password_retry_message()
+}
+
+/// The password window was closed or the password was not accepted: what to
+/// do, without a terminal. One text for installing, removing and the
+/// recovery operations.
+pub fn password_retry_message() -> String {
+    tr("The administrator password wasn't confirmed.\nTry again and enter the password in the window that opens.")
 }
 
 // ============================================================================
@@ -11115,15 +11116,11 @@ pub fn login_manager_unsupported_note(
         }
         DmSwitchBackend::Unsupported(init) => {
             let init = if init.is_empty() { tr("its own init system") } else { init.clone() };
-            match manual_cmd {
-                Some(cmd) => trf(
-                    // TRANSLATORS: %1 is an init system name (OpenRC, runit, …), %2 a terminal command.
-                    "Here the login screen is switched by %1, and Rexon can't do it yet. In a terminal:\n%2",
-                    &[&init, &cmd],
-                ),
-                // TRANSLATORS: %1 is an init system name (OpenRC, runit, …).
-                None => trf("Here the login screen is switched by %1, and Rexon can't do it yet.", &[&init]),
-            }
+            // ⛔ No terminal command for the person (27.11.2026); `manual_cmd`
+            // is not shown.
+            let _ = manual_cmd;
+            // TRANSLATORS: %1 is an init system name (OpenRC, runit, …).
+            trf("Here the login screen is switched by %1, and Rexon can't do it yet.", &[&init])
         }
     })
 }
@@ -12231,7 +12228,7 @@ pub fn batch_main_result(
     main_seen: bool,
     packages: &[String],
     steamos: bool,
-    family: PkgFamily,
+    _family: PkgFamily,
     polkit_agent_running: &dyn Fn() -> bool,
     installed_agent: &dyn Fn() -> Option<String>,
 ) -> BatchMainOutcome {
@@ -12259,66 +12256,32 @@ pub fn batch_main_result(
             .iter()
             .any(|n| err.contains(n));
         if err.contains("Not authorized") || code == 126 || no_agent {
-            // The "install it by hand" hint: usually a ready command, and on an unknown
-            // family an explanation of why there is no command.
-            // ⚠️ Fixed in the port: the original built it BEFORE branching and on an
-            // unknown family crashed with RuntimeError instead of any of the
-            // explanations below, including cases where no command is needed at all.
-            let hint = |lead: &str| match install_cmd(family, packages) {
-                Ok(argv) => format!("{}\n  sudo {}", lead, argv.join(" ")),
-                Err(e) => e,
-            };
+            // ⛔ No "install it from a terminal" hints (Wehrwolfmann 27.11.2026): the
+            // person has no terminal; what to do is said in words.
             if steamos {
-                return fail(match install_cmd(family, packages) {
-                    Ok(argv) => trf(
-                        // TRANSLATORS: %1 is a package manager command line.
-                        "The administrator password wasn't confirmed.\n\
-                         You can install from a terminal:\n  \
-                         sudo steamos-readonly disable\n  \
-                         sudo %1\n  \
-                         sudo steamos-readonly enable",
-                        &[&argv.join(" ")],
-                    ),
-                    Err(e) => format!(
-                        "{}\n{}",
-                        tr("The administrator password wasn't confirmed."),
-                        e
-                    ),
-                });
+                return fail(password_retry_message());
             }
             if no_agent || !polkit_agent_running() {
-                let or_install = hint(&tr("Or install from a terminal:"));
-                // The path is a terminal command, not a word for the person: without it
-                // there would be nothing to run. We take the one found on this machine: the
-                // same agent has its own path in each distribution ([`POLKIT_AGENT_PATHS`]).
                 return fail(match installed_agent() {
-                    Some(agent) => trf(
-                        // TRANSLATORS: %1 is the path of the program to start, %2 a hint
-                        // with a command to run in a terminal.
+                    Some(_) => tr(
                         "The service that shows the password window isn't running.\n\n\
-                         Start it yourself:\n  %1 &\n\n%2",
-                        &[&agent, &or_install],
+                         Log out and log back in: it starts together with the session.",
                     ),
-                    None => trf(
-                        // TRANSLATORS: %1 is a hint with a command to run in a terminal.
-                        // polkit-gnome is a package name.
+                    None => tr(
+                        // TRANSLATORS: polkit-gnome is a package name.
                         "The service that shows the password window isn't running.\n\n\
                          No such service is installed here. Install one for your desktop \
-                         (for example, polkit-gnome) — after that Rexon will show here how \
-                         to start it.\n\n%1",
-                        &[&or_install],
+                         (for example, polkit-gnome), then log out and log back in.",
                     ),
                 });
             }
-            return fail(trf(
-                // TRANSLATORS: %1 is a hint with a command to run in a terminal.
+            return fail(tr(
                 "The administrator password wasn't confirmed.\n\n\
                  Possible reasons:\n\
                  • the password window didn't appear;\n\
                  • the password was wrong;\n\
                  • the password window was closed.\n\n\
-                 %1",
-                &[&hint(&tr("Try installing from a terminal:"))],
+                 Try again and enter the password in the window that opens.",
             ));
         }
         // Conflict with an installed package (pacman with `--noconfirm` answered "N"
@@ -13817,7 +13780,7 @@ mod helper_path_tests {
     /// joins from the name and directory: otherwise the truth about the path
     /// splits again, and the policy diverges from argv.
     #[test]
-    fn константы_ручной_установки_склеиваются_из_имени() {
+    fn manual_install_constants_built_from_name() {
         assert_eq!(DE_HELPER_PATH, helper_path_in(HELPER_DIR_SYSTEM, DE_HELPER_NAME));
         assert_eq!(PKG_HELPER_PATH, helper_path_in(HELPER_DIR_SYSTEM, PKG_HELPER_NAME));
         assert_eq!(
@@ -13829,7 +13792,7 @@ mod helper_path_tests {
     /// The package is preferred over the manual install, and without files the
     /// answer is the manual install path (a defined one, not empty).
     #[test]
-    fn выбор_пути_помощника() {
+    fn helper_path_choice() {
         let pkg = helper_path_in(HELPER_DIR_PACKAGE, PKG_HELPER_NAME);
         assert_eq!(
             helper_candidates(PKG_HELPER_NAME),
@@ -13870,7 +13833,8 @@ mod no_polkit_agent_tests {
                 "{}",
                 out.message
             );
-            assert!(out.message.contains("sudo pacman"), "{}", out.message);
+            // No terminal command (27.11.2026).
+            assert!(!out.message.contains("sudo "), "{}", out.message);
         }
     }
 }
@@ -13939,7 +13903,7 @@ mod pkg_arg_security_tests {
     /// helper refusal would mean "fall back to raw `pkexec apt-get install …`",
     /// and that is the same hole without the helper.
     #[test]
-    fn путь_вместо_имени_пакета_отвергнут() {
+    fn path_instead_of_package_name_rejected() {
         let families = [
             PkgFamily::Arch, PkgFamily::Debian, PkgFamily::Fedora,
             PkgFamily::Suse, PkgFamily::Gentoo, PkgFamily::Alpine,
@@ -14009,7 +13973,7 @@ mod pkg_arg_security_tests {
     /// The other half: honest names pass AS THEY WERE: the check is not about
     /// strictness but about the product staying functional.
     #[test]
-    fn честные_имена_пакетов_проходят() {
+    fn honest_package_names_pass() {
         let cases: &[(PkgFamily, &[&str])] = &[
             (PkgFamily::Arch, &[
                 "plasma-desktop", "qt6-base", "python-pyside6", "xorg-server",
@@ -14072,7 +14036,7 @@ mod pkg_arg_security_tests {
     /// ban on removing vital packages does not break a single honest scenario
     /// (the only caller of `remove` is desktop removal).
     #[test]
-    fn вечный_список_не_пересекается_с_рабочими_столами() {
+    fn permanent_list_does_not_overlap_desktops() {
         for (de_id, packages) in crate::system::de_database_packages() {
             for (_fam, pkgs) in packages {
                 for p in *pkgs {
@@ -14090,7 +14054,7 @@ mod pkg_arg_security_tests {
 
     /// Helper text: no `eval`, no family from an argument, no old allowlist with `/`.
     #[test]
-    fn помощники_без_eval_и_без_семейства_из_аргумента() {
+    fn helpers_without_eval_and_family_from_argument() {
         let pkg = pkg_helper_script();
         let de = de_helper_script();
         // We look at the CODE, not the comments: both `eval` and the old allowlist
@@ -14153,7 +14117,7 @@ mod pkg_arg_security_tests {
     /// run goes to fake binaries from its own directory.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-    fn помощник_живьём_отказывает_на_пути() {
+    fn live_helper_refuses_path() {
         use std::io::Write;
         use std::process::Command;
 
@@ -14486,7 +14450,7 @@ mod de_helper_log_tests {
     }
 
     #[test]
-    fn журнал_пишет_вызвавший_а_не_root() {
+    fn log_written_by_caller_not_root() {
         let log = format!("/tmp/rexon-de-log-test-{}.log", std::process::id());
         std::fs::write(&log, "").unwrap();
         let (code, err) = run_log_part("own", &log);
@@ -14498,7 +14462,7 @@ mod de_helper_log_tests {
     }
 
     #[test]
-    fn журнал_вне_tmp_отвергнут() {
+    fn log_outside_tmp_rejected() {
         let (code, err) = run_log_part("etc", "/etc/shadow");
         assert_eq!(code, 2, "{err}");
         assert!(err.contains("outside /tmp"), "{err}");
@@ -14507,7 +14471,7 @@ mod de_helper_log_tests {
     /// ⛔ No chown and no writes into a user file as root: the file owner by a
     /// path string is something the user has time to swap.
     #[test]
-    fn помощник_стола_не_меняет_владельца_и_не_пишет_журнал_от_root() {
+    fn desktop_helper_does_not_chown_or_write_log_as_root() {
         let text = de_helper_script();
         for line in text.lines().map(str::trim_start).filter(|l| !l.starts_with('#')) {
             assert!(!line.contains("chown"), "chown в помощнике установки стола: {line}");
@@ -14564,7 +14528,7 @@ mod stage_helper_copy_tests {
     }
 
     #[test]
-    fn свой_каталог_проходит_копией() {
+    fn own_directory_passes_as_copy() {
         let d = dir("good");
         std::fs::write(d.join("bg.png"), b"\x89PNG").unwrap();
         let (ok, err) = run(&d, &uid());
@@ -14573,7 +14537,7 @@ mod stage_helper_copy_tests {
     }
 
     #[test]
-    fn ссылка_чужой_и_внешний_каталог_отвергнуты() {
+    fn symlink_foreign_and_external_directory_rejected() {
         let d = dir("bad");
         std::fs::write(d.join("bg.png"), b"\x89PNG").unwrap();
         symlink("/etc/shadow", d.join("shadow.png")).unwrap();
@@ -14721,7 +14685,7 @@ mod pkg_helper_rebuild_tests {
 
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-    fn свой_собранный_файл_ставится_копией_и_сборочные_снимаются() {
+    fn own_built_file_installed_from_copy_and_build_deps_removed() {
         let st = stand("ok");
         let file = st.rebuild().join("foo-1:2.0-1-x86_64.pkg.tar.zst");
         std::fs::write(&file, "PKG").unwrap();
@@ -14759,7 +14723,7 @@ mod pkg_helper_rebuild_tests {
     /// refusal is code 2 and not a single pacman call.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-    fn чужой_внешний_ссылка_и_не_пакет_отвергнуты() {
+    fn foreign_external_symlink_and_non_package_rejected() {
         let st = stand("bad");
         let good = st.rebuild().join("foo-1-1-x86_64.pkg.tar.zst");
         std::fs::write(&good, "PKG").unwrap();
@@ -14824,7 +14788,7 @@ mod pkg_helper_rebuild_tests {
     /// record nothing is removed.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-    fn посторонний_пакет_не_снимается() {
+    fn unrelated_package_not_removed() {
         let st = stand("foreign");
         let file = st.rebuild().join("foo-1-1-x86_64.pkg.tar.zst");
         std::fs::write(&file, "PKG").unwrap();
@@ -14855,7 +14819,7 @@ mod pkg_helper_rebuild_tests {
 
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-    fn сборочные_зависимости_только_по_именам() {
+    fn build_dependencies_only_by_names() {
         let st = stand("deps");
         let (code, out, err) = st.run(&["arch", "build-deps", "cmake>=3.20", "vala", "libfoo.so=1-64", "base-devel"]);
         assert_eq!(code, 0, "{err}");
@@ -14875,7 +14839,7 @@ mod pkg_helper_rebuild_tests {
     /// Not Arch: both operations refuse right away.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "needs the system bash")]
-    fn шаги_пересборки_только_на_arch() {
+    fn rebuild_steps_only_on_arch() {
         let st = stand("deb");
         std::fs::write(st.root.join("os-release"), "ID=debian\n").unwrap();
         for args in [["debian", "build-deps", "vala"], ["arch", "install-built", "plain"]] {
@@ -15868,7 +15832,7 @@ mod wayland_default_session_tests {
     }
 
     #[test]
-    fn только_значение_ключа_сеанса_и_в_прежнем_виде() {
+    fn only_session_key_value_in_previous_form() {
         let s = &X11_SESSION_SUCCESSORS[0];
         let keys = LOGIN_SESSION_SOURCES[2].keys;
         // Bare name, with `.desktop`, a full path; foreign keys and groups, the
@@ -15899,7 +15863,7 @@ mod wayland_default_session_tests {
     }
 
     #[test]
-    fn тема_sddm_перекрытая_etc_sddm_conf_меняется_и_там() {
+    fn sddm_theme_overridden_in_etc_sddm_conf_changed_there_too() {
         // As on CachyOS: the theme in `/etc/sddm.conf` (read last) and in the KDE
         // settings. Both are edited, no own file is needed, the rest byte for byte.
         let files = fs(&[
@@ -15928,7 +15892,7 @@ mod wayland_default_session_tests {
     }
 
     #[test]
-    fn тема_sddm_без_ключа_в_etc_свой_файл() {
+    fn sddm_theme_without_key_in_etc_own_file() {
         // Not set anywhere: an own file.
         assert_eq!(
             theme_on("t", &fs(&[])),
@@ -15947,7 +15911,7 @@ mod wayland_default_session_tests {
     }
 
     #[test]
-    fn тема_sddm_уже_выбрана_или_свой_файл_правится_на_месте() {
+    fn sddm_theme_already_selected_or_own_file_edited_in_place() {
         assert_eq!(theme_on("t", &fs(&[("/etc/sddm.conf", "[Theme]\nCurrent=t\n")])), SessionSwitch::Nothing);
         // The previous own file is edited, no second one appears; an empty
         // `Current=` in `/etc/sddm.conf` (the built-in theme) is a value too.
@@ -15967,7 +15931,7 @@ mod wayland_default_session_tests {
     }
 
     #[test]
-    fn правит_только_etc_и_состояние_sddm_и_сверяет_итог() {
+    fn edits_only_etc_and_sddm_state_and_verifies_result() {
         // Empty: nothing to change.
         assert_eq!(plan_on(&fs(&[])), SessionSwitch::Nothing);
         // `/etc` and SDDM's last session are edited; the package file without X11
@@ -16005,7 +15969,7 @@ mod wayland_default_session_tests {
     }
 
     #[test]
-    fn операция_уходит_помощнику_с_именем_из_таблицы() {
+    fn operation_goes_to_helper_with_name_from_table() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let s = &X11_SESSION_SUCCESSORS[0];
         let out = |rc: i32, stderr: String| crate::system_exec::RunOut {
@@ -16032,7 +15996,7 @@ mod wayland_default_session_tests {
     }
 
     #[test]
-    fn сеанс_экрана_входа_по_умолчанию_опознаётся() {
+    fn default_login_screen_session_recognized() {
         let found = |v: &[&str]| x11_login_default(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>()).map(|s| s.x11);
         assert_eq!(found(&["plasma", "/usr/share/xsessions/plasmax11.desktop"]), Some("plasmax11"));
         assert_eq!(found(&["plasma.desktop", "xfce"]), None);

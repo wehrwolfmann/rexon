@@ -17,7 +17,9 @@
 //! (exit by timeout, not a hang); the port is closed (exit at once, without
 //! a timeout).
 //!
-//!     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --we-stop-selftest
+//! ```text
+//! QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --we-stop-selftest
+//! ```
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};

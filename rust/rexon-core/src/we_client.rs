@@ -2383,7 +2383,9 @@ pub fn wallpaper_apply(
     encode(
         request_id,
         pb::request::Payload::WallpaperApply(pb::WallpaperApplyRequest {
-            wallpaper_id: wallpaper_id.to_string(),
+            wallpaper: Some(pb::wallpaper_apply_request::Wallpaper::WallpaperId(
+                wallpaper_id.to_string(),
+            )),
             targets: targets.to_vec(),
             ..Default::default()
         }),
@@ -2970,11 +2972,15 @@ pub fn plugin_install(request_id: u64, zip_path: &str) -> Vec<u8> {
 
 // ── Workshop (the «Discover» page) ──────────────────────────────────────────
 
-/// `remote_availability`.
-pub fn remote_availability(request_id: u64) -> Vec<u8> {
+/// `remote_availability`. `refresh_browser_helpers` (waywallen 0.6.2) asks the
+/// daemon to probe the browser sign-in helpers again instead of answering from
+/// its cache.
+pub fn remote_availability(request_id: u64, refresh_browser_helpers: bool) -> Vec<u8> {
     encode(
         request_id,
-        pb::request::Payload::RemoteAvailability(pb::RemoteAvailabilityRequest {}),
+        pb::request::Payload::RemoteAvailability(pb::RemoteAvailabilityRequest {
+            refresh_browser_helpers,
+        }),
     )
 }
 

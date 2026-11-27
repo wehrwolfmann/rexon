@@ -192,7 +192,7 @@ fn cases() -> Value {
 }
 
 #[test]
-fn эталон_вызовов_помощника() {
+fn helper_calls_golden() {
     let _lang = i18n_pin::en();
     let got = cases();
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
@@ -205,7 +205,7 @@ fn эталон_вызовов_помощника() {
 }
 
 #[test]
-fn байты_qdatastream_как_у_qt() {
+fn qdatastream_bytes_like_qt() {
     assert_eq!(plm::encode_qvariant_map(&[]), qt("empty_map"));
     let config = "[Greeter]\nWallpaperPluginId=org.kde.image\n\n[Greeter][Wallpaper][org.kde.image][General]\n\
                   Image=file:///var/lib/plasmalogin/wallpapers/rexon-background.jpg\n";
@@ -234,7 +234,7 @@ fn байты_qdatastream_как_у_qt() {
 }
 
 #[test]
-fn ответы_помощника_как_у_kauth() {
+fn helper_replies_like_kauth() {
     let _lang = i18n_pin::en();
     let r = |n: &str| plm::decode_reply(&qt(n)).unwrap();
     assert_eq!((r("reply_success").kind, r("reply_success").code), (plm::REPLY_SUCCESS, 0));
@@ -258,7 +258,7 @@ fn ответы_помощника_как_у_kauth() {
 }
 
 #[test]
-fn отказы_до_пароля_и_ошибки_шины() {
+fn refusals_before_password_and_bus_errors() {
     let _lang = i18n_pin::en();
     // Not a picture — the helper is not called.
     let e = plm::background_with(&vm_facts(), Some("/x/a.txt"), &|_| Some(b"hello".to_vec()), &|_| some_fd(), &mut Never)
@@ -280,7 +280,7 @@ fn отказы_до_пароля_и_ошибки_шины() {
 }
 
 #[test]
-fn вид_раздела() {
+fn section_look() {
     let _lang = i18n_pin::en();
     let look = PlmLook { plasma: true, items: vec!["A".into()], ..PlmLook::default() };
     let std_view = plm::greeter_view(&vm_facts(), &look, "/usr/share/wallpapers/Next/x.png", "");
@@ -319,7 +319,7 @@ fn вид_раздела() {
 /// Through the same `save` as the background, and the helper's `save` wipes `~/wallpapers` —
 /// the custom picture is sent again; if it did not open — a refusal before the password.
 #[test]
-fn часы_как_у_kcm() {
+fn clock_like_kcm() {
     let _lang = i18n_pin::en();
     let facts = vm_facts();
     assert!(!plm::show_clock(&facts), "в ВМ часы выключены");
@@ -359,7 +359,7 @@ fn часы_как_у_kcm() {
 
 /// WebP — only with Qt 6's WebP module (the PLM greeter runs on Qt 6).
 #[test]
-fn webp_у_plm() {
+fn webp_in_plm() {
     let _lang = i18n_pin::en();
     let webp: &[u8] = b"RIFF\x10\0\0\0WEBPVP8 ";
     let e = plm::background_with(&vm_facts(), Some("/x.webp"), &|_| Some(webp.to_vec()), &|_| some_fd(), &mut Never)
@@ -375,7 +375,7 @@ fn webp_у_plm() {
 
 /// The preview is `plasma-login-greeter --test` from the libexec directory (6.8.2).
 #[test]
-fn превью_plm() {
+fn plm_preview() {
     let _lang = i18n_pin::en();
     assert_eq!(
         plm::preview_argv(&|p| p == "/usr/libexec/plasma-login-greeter").unwrap(),
@@ -427,7 +427,7 @@ mod bus {
 
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "needs the machine's dbus-daemon")]
-    fn вызов_по_настоящей_шине() {
+    fn call_over_real_bus() {
         let mut daemon = std::process::Command::new("dbus-daemon")
             .args(["--session", "--nofork", "--print-address=1"])
             .stdout(std::process::Stdio::piped())
@@ -482,7 +482,7 @@ mod bus {
 /// reset cargo test --test plasma_login -- --ignored живой_вызов`.
 #[test]
 #[ignore = "writes to the system through the PLM helper — only in the stand VM"]
-fn живой_вызов_помощника_в_вм() {
+fn live_helper_call_in_vm() {
     let step = std::env::var("REXON_PLM_LIVE").expect("REXON_PLM_LIVE");
     let res = if let Some(p) = step.strip_prefix("bg:") {
         plm::background_live(Some(p))

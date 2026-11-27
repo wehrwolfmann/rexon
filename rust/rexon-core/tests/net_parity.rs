@@ -1135,6 +1135,50 @@ fn aur_category_pins_curated_of_its_section() {
     assert_eq!(io.requests.len(), 2);
 }
 
+/// «Global Themes» on MATE: the AUR packages of whole MATE themes first (one
+/// `/info` with the checked list, by votes), then the section's own results
+/// without duplicates; elsewhere and in other sections — the section as before.
+/// The search keeps only the MATE packages that match the words.
+#[test]
+fn aur_global_shelf_on_mate_starts_with_metathemes() {
+    let pkg = |n: &str, d: &str, votes: i64| serde_json::json!({"Name": n, "Description": d, "NumVotes": votes});
+    let answer = |kind: &str, results: Vec<Value>| -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({"type": kind, "results": results})).unwrap()
+    };
+    let info = answer("multiinfo", vec![
+        pkg("mint-themes", "A collection of Mint themes.", 88),
+        pkg("greybird-gtk-theme", "A grey theme for GNOME, Xfce, GTK+ 2 and 3", 287),
+    ]);
+    let plasma = answer("search", vec![
+        pkg("aerothemeplasma-desktop-git", "Windows 7 look and feel for Plasma", 50),
+        pkg("mint-themes", "A collection of Mint themes.", 88),
+    ]);
+    let empty = answer("search", vec![]);
+    let mut io = FakeNet::with(vec![
+        Reply::Ok(info.clone(), None),
+        Reply::Ok(plasma.clone(), None),
+        Reply::Ok(empty.clone(), None),
+        Reply::Ok(empty.clone(), None),
+        Reply::Ok(empty.clone(), None),
+        Reply::Ok(empty.clone(), None),
+    ]);
+    let got = aur::fetch_category_for_de(&mut io, "global", "mate").unwrap();
+    assert_eq!(names(&got), ["greybird-gtk-theme", "mint-themes", "aerothemeplasma-desktop-git"]);
+    assert!(got.iter().all(|p| p.category == "global"));
+    let first = &io.requests[0].0;
+    assert!(first.contains("/info?") && first.contains("ubuntu-mate-themes"), "{first}");
+
+    // The search: only the matching MATE packages, then the section's search.
+    let mut io = FakeNet::with(vec![Reply::Ok(info.clone(), None), Reply::Ok(empty.clone(), None)]);
+    let got = aur::search_in_category_for_de(&mut io, "grey", "global", "mate").unwrap();
+    assert_eq!(names(&got), ["greybird-gtk-theme"]);
+
+    // Plasma and other sections on MATE: no /info of the MATE list.
+    assert!(aur::native_shelf("global", "kde").is_none());
+    assert!(aur::native_shelf("icons", "mate").is_none());
+    assert!(aur::native_shelf("global", "mate").is_some_and(|l| l.contains(&"ubuntu-mate-themes")));
+}
+
 /// Virtual popular/new: aggregation of five categories (12 requests) in the same
 /// order, dedup and different sort orders.
 #[test]

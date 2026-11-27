@@ -1906,7 +1906,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ключи_звука_принимаются() {
+    fn sound_options_accepted() {
         // Exactly the line the wallpaper engine calls with. The former host exited
         // with an error on it — video wallpapers with sound did not start.
         let argv = [
@@ -1922,7 +1922,7 @@ mod tests {
     }
 
     #[test]
-    fn громкость_в_сотнях_приводится_как_в_ядре() {
+    fn volume_in_hundreds_normalized_like_core() {
         let cli = parse_args(&["/v.mp4".into(), "--volume=70".into()]).unwrap();
         assert_eq!(cli.volume, Some(0.7));
         // Garbage is no reason to be left without a wallpaper, but no reason to
@@ -1933,14 +1933,14 @@ mod tests {
     }
 
     #[test]
-    fn путь_обязателен_и_единственный() {
+    fn path_required_and_single() {
         assert!(parse_args(&[]).is_err());
         assert!(parse_args(&["/a.mp4".into(), "/b.mp4".into()]).is_err());
         assert!(parse_args(&["--нетакого".into(), "/a.mp4".into()]).is_err());
     }
 
     #[test]
-    fn ключи_накладываются_на_свойства_обоев() {
+    fn options_override_wallpaper_properties() {
         let mut props = Map::new();
         props.insert("audioenabled".into(), Value::Bool(false));
         props.insert("volume".into(), Value::from(10));
@@ -1968,7 +1968,7 @@ mod tests {
     }
 
     #[test]
-    fn свойства_обоев_остаются_при_пустых_ключах() {
+    fn wallpaper_properties_kept_with_empty_options() {
         let mut props = Map::new();
         props.insert("audioenabled".into(), Value::Bool(false));
         apply_cli_overrides(&mut props, &Cli::default());
@@ -1983,7 +1983,7 @@ mod tests {
     /// The lines the core calls the host with are parsed into their mode, and
     /// the mode key does not reach the mode's parser.
     #[test]
-    fn режим_снимается_с_командной_строки() {
+    fn mode_taken_from_command_line() {
         let (mode, rest) = take_mode(&args(&["--mode", "web", "https://a"])).unwrap();
         assert_eq!(mode, HostMode::Web);
         assert_eq!(rest, args(&["https://a"]));
@@ -2013,7 +2013,7 @@ mod tests {
     /// extension stores such a line. Garbage and a repeat are an error, not a
     /// silent video.
     #[test]
-    fn без_режима_видео_а_мусор_отказ() {
+    fn without_mode_video_and_garbage_refused() {
         let (mode, rest) = take_mode(&args(&["/v.mp4"])).unwrap();
         assert_eq!(mode, HostMode::Video);
         assert_eq!(rest, args(&["/v.mp4"]));
@@ -2028,7 +2028,7 @@ mod tests {
     /// The help is one, and it names all modes and all exit codes of the core's
     /// table.
     #[test]
-    fn справка_одна_на_все_режимы() {
+    fn help_shared_by_all_modes() {
         use rexon_core::wallpaper_engine::host_exit;
         for mode in HostMode::ALL {
             assert!(USAGE.contains(mode.as_arg()), "{mode:?}");
@@ -2051,7 +2051,7 @@ mod tests {
     }
 
     #[test]
-    fn режим_показа_повторяет_решение_ядра() {
+    fn display_mode_follows_core_decision() {
         assert_eq!(placement(true, true), PLACEMENT_OFFSCREEN);
         assert_eq!(placement(true, false), PLACEMENT_OFFSCREEN);
         assert_eq!(placement(false, true), PLACEMENT_LAYER);
@@ -2059,7 +2059,7 @@ mod tests {
     }
 
     #[test]
-    fn отладочное_окно_отменяет_поток_кадров_у_обоих_хостов() {
+    fn debug_window_cancels_frame_stream_for_both_hosts() {
         // A frame stream without --windowed — offscreen (there is no window on
         // screen).
         assert_eq!(host_placement(true, false, true), PLACEMENT_OFFSCREEN);

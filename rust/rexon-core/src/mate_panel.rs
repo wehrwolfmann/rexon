@@ -575,53 +575,88 @@ pub fn parts_refusal(id: &str, offer: &PartsOffer, why: &str) -> String {
     )
 }
 
-/// Install the parts (`install`), then apply the layout — it will pick up
-/// everything that got installed (mate-panel watches the applet directory
-/// itself). "All or nothing": if something did not install, the layout is NOT
-/// applied, and it is said why and what to do. Parts that cannot be obtained
-/// anywhere (or from AUR, whose build the person declined) are replaced by the
-/// layout as described under it.
+/// A part package that did not install.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartFailure {
+    pub package: String,
+    /// The short reason (lower case: it follows the package name).
+    pub why: String,
+    /// The build log to open (empty — none).
+    pub log: String,
+}
+
+/// The result of [`apply_with_parts`] for the section.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct PartsApplied {
+    /// The message for the person.
+    pub text: String,
+    /// Something did not install or the layout was not applied: the section
+    /// offers "Retry".
+    pub retry: bool,
+    /// The build log to open ("Open log"; empty — none).
+    pub log: String,
+}
+
+/// The reason means the person closed the password dialog: "changed my mind".
+fn password_declined(why: &str) -> bool {
+    why == crate::appearance_installer::password_not_confirmed()
+        || why == crate::aur_install::failure_text(&crate::aur_install::AurFailure::PasswordDismissed)
+}
+
+/// Install the parts (`install` — each package on its own, the failed ones
+/// are returned), then apply the layout — it picks up everything that got
+/// installed (mate-panel watches the applet directory itself).
+///
+/// A part that did not install does not cost the person the layout (fixed
+/// 27.11.2026: one failed AUR build used to stop the other parts and the
+/// layout itself): the rest is installed, the layout is applied with the
+/// stand-ins described under it (the menu button for a menu, the clock for
+/// the indicators, a missing applet left out — [`prepare`]), and it is said
+/// what did not install, why, and what is used instead. Only closing the
+/// password dialog is "changed my mind": then nothing is applied.
 pub fn apply_with_parts(
     io: &dyn LookIo,
     ctx: &PanelCtx,
     id: &str,
     offer: &PartsOffer,
-    install: &mut dyn FnMut(&PartsOffer) -> Result<(), String>,
-) -> String {
-    if !offer.is_empty() {
-        if let Err(why) = install(offer) {
-            // A menu has a stand-in that always exists — the built-in menu button.
-            // A menu that did not install (the AUR mate-menu has been failing) does
-            // not cost the person the layout: it is applied with the button, and
-            // it is said why. Closing the password dialog is still "changed my
-            // mind" — nothing is applied then.
-            if why != crate::appearance_installer::password_not_confirmed() && only_menus_missing(io, ctx, id, offer) {
-                let note = trf(
-                    // TRANSLATORS: %1 is the reason the install failed.
-                    "The MATE Menu couldn't be installed (%1) — the standard MATE menu button is used instead.",
-                    &[&why],
-                );
-                return format!("{}\n{note}", apply(io, ctx, id));
-            }
-            return parts_refusal(id, offer, &why);
-        }
+    install: &mut dyn FnMut(&PartsOffer) -> Vec<PartFailure>,
+) -> PartsApplied {
+    let failures = if offer.is_empty() { Vec::new() } else { install(offer) };
+    let log = failures.iter().find(|f| !f.log.is_empty()).map(|f| f.log.clone()).unwrap_or_default();
+    if let Some(f) = failures.iter().find(|f| password_declined(&f.why)) {
+        return PartsApplied { text: parts_refusal(id, offer, &f.why), retry: true, log };
     }
-    apply(io, ctx, id)
-}
-
-/// Whether everything of `offer` that layout `id` still lacks after the install
-/// is a menu (it has the built-in button as a stand-in, see [`prepare`]). Parts
-/// that were not in the offer (nowhere to get them) are replaced or left out as
-/// described under the layout anyway.
-fn only_menus_missing(io: &dyn LookIo, ctx: &PanelCtx, id: &str, offer: &PartsOffer) -> bool {
-    let Some(text) = list_layouts(io, ctx).into_iter().find(|(name, _)| name == id).and_then(|(_, p)| io.read(&p)) else {
-        return false;
+    let text = apply(io, ctx, id);
+    let applied = !text.starts_with('⚠');
+    if failures.is_empty() {
+        return PartsApplied { text, retry: !applied, log };
+    }
+    for f in &failures {
+        crate::log_warn!("mate_panel", "layout {id}: part {} not installed: {} (log: {})", f.package, f.why, f.log);
+    }
+    // The layout is on the panel, but not all of it: a warning, not a tick.
+    let head = if applied {
+        // TRANSLATORS: %1 is the layout title; the parts that did not install follow.
+        trf("⚠️ MATE panel: layout “%1” applied, but not all of its parts were installed.", &[&title_of(id)])
+    } else {
+        text
     };
-    let installed = installed_applets(io, &ctx.applet_dirs);
-    missing_parts(&text, &installed)
-        .iter()
-        .filter(|iid| offer.labels.contains(&applet_label(iid)))
-        .all(|iid| MENU_IIDS.contains(&iid.as_str()))
+    let mut lines = vec![head];
+    for f in &failures {
+        // TRANSLATORS: %1 is a package name, %2 the reason it didn't install.
+        lines.push(trf("%1 wasn't installed: %2.", &[&f.package, &f.why]));
+    }
+    if applied {
+        // What the layout uses instead — the same notes as under it.
+        let notes = list_layouts(io, ctx)
+            .into_iter()
+            .find(|(name, _)| name == id)
+            .and_then(|(_, p)| io.read(&p))
+            .map(|t| prepare(&t, &installed_applets(io, &ctx.applet_dirs), &|p: &str| io.read(p).is_some()).notes)
+            .unwrap_or_default();
+        lines.extend(notes.into_iter().map(|n| format!("• {n}")));
+    }
+    PartsApplied { text: lines.join("\n"), retry: true, log }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -995,7 +1030,7 @@ pub struct LayoutEntry {
     pub description: String,
     /// What will differ from the layout's design (replaced, skipped).
     pub notes: Vec<String>,
-    /// Selected now (`default-layout`).
+    /// On the panel now (by its composition, [`current_layout`]).
     pub current: bool,
     /// Full path of the original file.
     #[serde(skip)]
@@ -1051,6 +1086,107 @@ pub fn is_available(io: &dyn LookIo, ctx: &PanelCtx) -> bool {
     ctx.de == "mate" && io.have("mate-panel")
 }
 
+/// What a panel is made of, for telling which layout is on the panel now: one
+/// entry per panel (`panel <orientation>`) and per object (`<orientation of its
+/// panel> <type> <what>`: the applet, the launcher's file name), sorted.
+/// Positions, sizes and locks are left out on purpose: moving an applet does
+/// not make the panel another layout.
+pub type PanelComposition = Vec<String>;
+
+fn composition_of(
+    toplevels: &[(String, Option<String>)],
+    objects: &[(Option<String>, Option<String>, Option<String>, Option<String>)],
+) -> PanelComposition {
+    let orientation = |id: &Option<String>| -> String {
+        toplevels
+            .iter()
+            .find(|(t, _)| Some(t) == id.as_ref())
+            .and_then(|(_, o)| o.clone())
+            .unwrap_or_else(|| "top".to_string())
+    };
+    let mut out: PanelComposition = toplevels
+        .iter()
+        .map(|(_, o)| format!("panel {}", o.clone().unwrap_or_else(|| "top".to_string())))
+        .collect();
+    for (toplevel, kind, iid, launcher) in objects {
+        let kind = kind.clone().unwrap_or_default();
+        let what = match kind.as_str() {
+            "applet" => iid.clone().unwrap_or_default(),
+            "launcher" => launcher.as_deref().map(|l| l.rsplit('/').next().unwrap_or(l).to_string()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        out.push(format!("{} {kind} {what}", orientation(toplevel)).trim_end().to_string());
+    }
+    out.sort();
+    out
+}
+
+/// [`PanelComposition`] of a layout file.
+pub fn layout_composition(text: &str) -> PanelComposition {
+    let groups = parse_keyfile(text);
+    let toplevels: Vec<(String, Option<String>)> = groups
+        .iter()
+        .filter(|g| g.is_toplevel())
+        .map(|g| (g.suffix("Toplevel").unwrap_or("").to_string(), g.get("orientation").map(str::to_string)))
+        .collect();
+    let objects: Vec<_> = groups
+        .iter()
+        .filter(|g| g.is_object())
+        .map(|g| {
+            let v = |k: &str| g.get(k).map(str::to_string);
+            (v("toplevel-id"), v("object-type"), v("applet-iid"), v("launcher-location"))
+        })
+        .collect();
+    composition_of(&toplevels, &objects)
+}
+
+/// [`PanelComposition`] of the live panel from `dconf dump /org/mate/panel/`:
+/// only the panels and objects in the panel's own lists (`toplevel-id-list`,
+/// `object-id-list`). `None` — the dump has no panel lists.
+pub fn dump_composition(dump: &str) -> Option<PanelComposition> {
+    let groups = parse_keyfile(dump);
+    let unquote = |v: &str| v.trim().trim_matches('\'').to_string();
+    let general = groups.iter().find(|g| g.name == "general")?;
+    let toplevel_ids = gvariant_strings(general.get("toplevel-id-list")?);
+    let object_ids = general.get("object-id-list").map(gvariant_strings).unwrap_or_default();
+    let toplevels: Vec<(String, Option<String>)> = toplevel_ids
+        .iter()
+        .map(|id| {
+            let g = groups.iter().find(|g| g.name == format!("toplevels/{id}"));
+            (id.clone(), g.and_then(|g| g.get("orientation")).map(unquote))
+        })
+        .collect();
+    let objects: Vec<_> = object_ids
+        .iter()
+        .map(|id| {
+            let g = groups.iter().find(|g| g.name == format!("objects/{id}"));
+            let v = |k: &str| g.and_then(|g| g.get(k)).map(unquote);
+            (v("toplevel-id"), v("object-type"), v("applet-iid"), v("launcher-location"))
+        })
+        .collect();
+    Some(composition_of(&toplevels, &objects))
+}
+
+/// Which layout is on the panel now: the one whose composition — as the file
+/// has it, or as Rexon would apply it on this system ([`prepare`]) — is the
+/// live panel's `live`. Several fit (two files with the same panels): the one
+/// `default-layout` names, otherwise the first. None fits — no layout is
+/// marked: the person has changed the panel, or it came from elsewhere (live
+/// case 27.11.2026: `default-layout` said "familiar" while the panel was
+/// MATE's stock one).
+pub fn current_layout(
+    live: &PanelComposition,
+    layouts: &[(String, PanelComposition, PanelComposition)],
+    default_layout: &str,
+) -> Option<String> {
+    let fits: Vec<&str> = layouts
+        .iter()
+        .filter(|(_, original, prepared)| original == live || prepared == live)
+        .map(|(id, _, _)| id.as_str())
+        .collect();
+    fits.iter().find(|id| **id == default_layout).or(fits.first()).map(|id| id.to_string())
+}
+
 /// Section snapshot.
 pub fn read_state(io: &dyn LookIo, ctx: &PanelCtx) -> PanelState {
     let mut st = PanelState { available: false, layouts: Vec::new(), current_title: String::new(), can_restore: false };
@@ -1058,15 +1194,33 @@ pub fn read_state(io: &dyn LookIo, ctx: &PanelCtx) -> PanelState {
         return st;
     }
     st.available = true;
-    let current = gsettings_get(io, "org.mate.panel", "default-layout")
+    let setting = gsettings_get(io, "org.mate.panel", "default-layout")
         .map(|v| layout_id_from_setting(&v))
         .unwrap_or_default();
     let installed = installed_applets(io, &ctx.applet_dirs);
     let exists = |path: &str| io.read(path).is_some();
-    for (id, path) in list_layouts(io, ctx) {
-        let Some(text) = io.read(&path) else {
-            continue;
-        };
+    // The current layout is told by what is on the panel, not by
+    // `default-layout` ([`current_layout`]).
+    let texts: Vec<(String, String, String)> = list_layouts(io, ctx)
+        .into_iter()
+        .filter_map(|(id, path)| io.read(&path).map(|text| (id, path, text)))
+        .collect();
+    let (dumped, dump) = io.run(&argv(&["dconf", "dump", PANEL_DCONF_DIR]));
+    let current = dumped
+        .then(|| dump_composition(&dump))
+        .flatten()
+        .and_then(|live| {
+            let compositions: Vec<(String, PanelComposition, PanelComposition)> = texts
+                .iter()
+                .map(|(id, _, text)| {
+                    let prepared = prepare(text, &installed, &exists).text;
+                    (id.clone(), layout_composition(text), layout_composition(&prepared))
+                })
+                .collect();
+            current_layout(&live, &compositions, &setting)
+        })
+        .unwrap_or_default();
+    for (id, path, text) in texts {
         let description = match KNOWN_LAYOUTS.iter().find(|(name, _, _)| *name == id) {
             Some((_, _, desc)) => tr(desc),
             None => auto_description(&text),
@@ -1911,6 +2065,9 @@ Name=Show Desktop
         dconf_fails: bool,
         /// `dconf load` of the snapshot fails (the snapshot is corrupted).
         snapshot_load_fails: bool,
+        /// What `dconf dump /org/mate/panel/` prints (`None` — a panel with no
+        /// objects).
+        panel_dump: Option<String>,
     }
 
     impl LookIo for Machine {
@@ -1927,7 +2084,10 @@ Name=Show Desktop
                 Some("dconf") if self.dconf_fails => (false, "dconf: no bus".into()),
                 // The panel has already removed the applets: the object branch is empty.
                 Some("dconf") if argv[1] != "dump" => (true, String::new()),
-                Some("dconf") => (true, "[general]\ntoplevel-id-list=['top']\n".into()),
+                Some("dconf") => match &self.panel_dump {
+                    Some(dump) => (true, dump.clone()),
+                    None => (true, "[general]\ntoplevel-id-list=['top']\n".into()),
+                },
                 _ => (true, String::new()),
             }
         }
@@ -1953,6 +2113,33 @@ Name=Show Desktop
         }
     }
 
+    /// The live panel after mate-panel has loaded `layout`: what
+    /// `dconf dump /org/mate/panel/` prints (values in GVariant quotes).
+    fn as_dump(layout: &str) -> String {
+        let groups = parse_keyfile(layout);
+        let ids = |prefix: &str| -> Vec<String> {
+            groups.iter().filter_map(|g| g.suffix(prefix).map(|s| format!("'{s}'"))).collect()
+        };
+        let mut out = format!(
+            "[general]\ndefault-layout='default'\nobject-id-list=[{}]\ntoplevel-id-list=[{}]\n",
+            ids("Object").join(", "),
+            ids("Toplevel").join(", ")
+        );
+        for g in &groups {
+            let name = match (g.suffix("Toplevel"), g.suffix("Object")) {
+                (Some(id), _) => format!("toplevels/{id}"),
+                (_, Some(id)) => format!("objects/{id}"),
+                _ => continue,
+            };
+            out.push_str(&format!("\n[{name}]\n"));
+            for (k, v) in &g.keys {
+                let v = if v == "true" || v == "false" || v.parse::<i64>().is_ok() { v.clone() } else { format!("'{v}'") };
+                out.push_str(&format!("{k}={v}\n"));
+            }
+        }
+        out
+    }
+
     fn machine() -> (Machine, PanelCtx) {
         let m = Machine::default();
         for (name, text) in [("redmond.layout", REDMOND), ("default.layout", DEFAULT), ("zeta.layout", DEFAULT)] {
@@ -1975,7 +2162,10 @@ Name=Show Desktop
 
     #[test]
     fn state_lists_layouts_known_first_and_marks_current() {
-        let (m, ctx) = machine();
+        let (mut m, ctx) = machine();
+        // On the panel: the classic layout, as mate-panel loaded it ("zeta" has
+        // the same panels, `default-layout` decides between the two).
+        m.panel_dump = Some(as_dump(DEFAULT));
         let st = read_state(&m, &ctx);
         assert!(st.available);
         let ids: Vec<&str> = st.layouts.iter().map(|l| l.id.as_str()).collect();
@@ -1985,6 +2175,51 @@ Name=Show Desktop
         assert_eq!(st.layouts[0].title, tr("Like Windows"));
         assert!(!st.layouts[0].notes.is_empty(), "without mate-menu and the indicators the layout must explain what is missing");
         assert!(!st.can_restore);
+    }
+
+    /// Live case 27.11.2026: `default-layout` named another layout ("familiar"
+    /// there, "default" here), while the panel was a different one: the mark
+    /// follows what is on the panel.
+    #[test]
+    fn current_layout_follows_the_panel_not_the_setting() {
+        let (mut m, ctx) = machine();
+        // The person's own panel: nothing is marked.
+        m.panel_dump = Some(as_dump("[Toplevel top]\norientation=top\n\n[Object clock]\nobject-type=applet\n\
+                                     applet-iid=ClockAppletFactory::ClockApplet\ntoplevel-id=top\n"));
+        let st = read_state(&m, &ctx);
+        assert!(st.layouts.iter().all(|l| !l.current), "{:?}", st.layouts);
+        assert_eq!(st.current_title, "");
+        // "Like Windows" as Rexon applied it here (the menu button and the clock
+        // in place of the missing parts): marked although the setting says "default".
+        let installed = installed_applets(&m, &ctx.applet_dirs);
+        let prepared = prepare(REDMOND, &installed, &|p: &str| m.read(p).is_some()).text;
+        m.panel_dump = Some(as_dump(&prepared));
+        let st = read_state(&m, &ctx);
+        let marked: Vec<&str> = st.layouts.iter().filter(|l| l.current).map(|l| l.id.as_str()).collect();
+        assert_eq!(marked, ["redmond"]);
+        assert_eq!(st.current_title, tr("Like Windows"));
+        // Without dconf there is no telling — no mark rather than a wrong one.
+        m.dconf_fails = true;
+        assert!(read_state(&m, &ctx).layouts.iter().all(|l| !l.current));
+    }
+
+    #[test]
+    fn panel_composition_ignores_positions_and_reads_only_listed_objects() {
+        let moved = DEFAULT.replace("position=0", "position=5");
+        assert_eq!(layout_composition(DEFAULT), layout_composition(&moved));
+        let mut dump = as_dump(DEFAULT);
+        assert_eq!(dump_composition(&dump), Some(layout_composition(DEFAULT)));
+        // A stale object branch that is not in `object-id-list` is not on the panel.
+        dump.push_str("\n[objects/old]\nobject-type='applet'\napplet-iid='X::Y'\ntoplevel-id='top'\n");
+        assert_eq!(dump_composition(&dump), Some(layout_composition(DEFAULT)));
+        assert_eq!(dump_composition("[objects/a]\nobject-type='menu'\n"), None);
+        let two = vec![
+            ("a".to_string(), vec!["x".to_string()], vec!["x".to_string()]),
+            ("b".to_string(), vec!["x".to_string()], vec!["x".to_string()]),
+        ];
+        assert_eq!(current_layout(&vec!["x".into()], &two, "b").as_deref(), Some("b"));
+        assert_eq!(current_layout(&vec!["x".into()], &two, "zzz").as_deref(), Some("a"));
+        assert_eq!(current_layout(&vec!["y".into()], &two, "a"), None);
     }
 
     #[test]
@@ -2135,63 +2370,76 @@ Name=Show Desktop
         assert!(parts_offer(&missing, "").is_empty());
     }
 
-    /// The parts are installed BEFORE applying, and the layout comes up with them;
-    /// if they did not install, the layout is NOT applied ("all or nothing"), and it
-    /// is said why.
+    fn failed(package: &str, why: &str) -> PartFailure {
+        PartFailure { package: package.into(), why: why.into(), log: format!("/l/{package}.log") }
+    }
+
+    /// The parts are installed BEFORE applying, and the layout comes up with them.
     #[test]
-    fn apply_with_parts_installs_first_all_or_nothing() {
+    fn apply_with_parts_installs_first() {
         let (m, ctx) = machine();
         let offer = parts_offer(&[MATE_MENU_IID.to_string()], "debian");
         let mut calls = Vec::new();
         let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |o: &PartsOffer| {
             calls.push(o.repo.clone());
-            Ok(())
+            Vec::new()
         });
         assert_eq!(calls, [vec!["mate-menu".to_string()]]);
-        assert!(out.starts_with('✅'), "{out}");
+        assert!(out.text.starts_with('✅') && !out.retry && out.log.is_empty(), "{out:?}");
+        // The password dialog was closed — "changed my mind": nothing applied,
+        // advice to repeat, the reason is not repeated.
         let (files, runs) = (m.files.borrow().clone(), m.runs.borrow().len());
-        // A part without a stand-in (indicators from the repository) did not install.
-        let indicators = parts_offer(&["IndicatorAppletCompleteFactory::IndicatorAppletComplete".to_string()], "debian");
-        let out = apply_with_parts(&m, &ctx, "redmond", &indicators, &mut |_| Err("no network".into()));
-        assert!(out.contains("no network") && !out.contains('✅'), "{out}");
-        assert_eq!((m.files.borrow().clone(), m.runs.borrow().len()), (files, runs), "раскладка не применялась");
-        // The password dialog was closed — advice to repeat, the reason is not repeated.
         let pw = crate::appearance_installer::password_not_confirmed();
-        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| Err(pw.clone()));
-        assert!(!out.contains(&pw) && !out.contains('✅') && out.contains(&offer.labels[0]), "{out}");
+        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| vec![failed("mate-menu", &pw)]);
+        assert!(!out.text.contains(&pw) && !out.text.contains('✅') && out.text.contains(&offer.labels[0]), "{out:?}");
+        assert!(out.retry);
+        assert_eq!((m.files.borrow().clone(), m.runs.borrow().len()), (files, runs), "the layout was not applied");
+        // The same for a closed password window of an AUR build.
+        let closed = crate::aur_install::failure_text(&crate::aur_install::AurFailure::PasswordDismissed);
+        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| vec![failed("mate-menu", &closed)]);
+        assert!(!out.text.contains('✅'), "{out:?}");
         // Nothing to install — the installer is not called.
         let mut called = false;
         apply_with_parts(&m, &ctx, "redmond", &PartsOffer::default(), &mut |_| {
             called = true;
-            Ok(())
+            Vec::new()
         });
         assert!(!called);
     }
 
-    /// mate-menu did not install (the AUR package has been failing): the layout is
-    /// still applied — with the built-in menu button — and the reason is said.
-    /// Closing the password dialog still applies nothing.
+    /// Live case 27.11.2026: mate-menu failed to build, and the applet with the
+    /// indicators was not even tried, and the layout was not applied. Now every
+    /// part is tried, the layout is applied with its stand-ins (the menu button,
+    /// the clock), and it is said what did not install and what is used instead.
     #[test]
-    fn failed_mate_menu_falls_back_to_the_menu_button() {
+    fn failed_parts_do_not_cost_the_layout() {
         let (m, ctx) = machine();
-        let offer = parts_offer(&[MATE_MENU_IID.to_string()], "arch");
-        assert_eq!(offer.aur, [("mate-menu".to_string(), false)]);
-        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| Err("gschemas.compiled exists in filesystem".into()));
-        assert!(out.starts_with('✅'), "{out}");
-        let note = trf(
-            "The MATE Menu couldn't be installed (%1) — the standard MATE menu button is used instead.",
-            &[&"gschemas.compiled exists in filesystem"],
-        );
-        assert!(out.ends_with(&note), "{out}");
+        let missing = [MATE_MENU_IID.to_string(), "IndicatorAppletCompleteFactory::IndicatorAppletComplete".to_string()];
+        let offer = parts_offer(&missing, "arch");
+        assert_eq!(offer.aur.len(), 2, "{offer:?}");
+        let mut asked = Vec::new();
+        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |o: &PartsOffer| {
+            asked.extend(o.aur.iter().map(|(n, _)| n.clone()));
+            vec![failed("mate-menu", "a file of the package is already on the system")]
+        });
+        assert_eq!(asked, ["mate-menu", "mate-indicator-applet"]);
+        // Applied, but not all of it: a warning, not a tick.
+        assert!(out.text.starts_with('⚠'), "{out:?}");
+        assert!(out.text.contains(&trf("⚠️ MATE panel: layout “%1” applied, but not all of its parts were installed.", &[&title_of("redmond")])), "{out:?}");
+        assert!(out.text.contains(&trf("%1 wasn't installed: %2.", &[&"mate-menu", &"a file of the package is already on the system"])), "{out:?}");
+        // The stand-ins, as under the layout.
+        assert!(out.text.contains(&tr("Indicators are not installed — a clock will be shown instead.")), "{out:?}");
+        assert!(out.retry && out.log == "/l/mate-menu.log", "{out:?}");
+        assert!(!out.text.contains("terminal"), "{out:?}");
         let copy = m.read(&format!("{}/rexon-redmond.layout", ctx.copies_dir())).unwrap();
         let groups = parse_keyfile(&copy);
         assert_eq!(object(&groups, "briskmenu").unwrap().get("object-type"), Some("menu"));
-
+        // A repository part that failed (no stand-in needed: it is left out).
         let (m, ctx) = machine();
-        let pw = crate::appearance_installer::password_not_confirmed();
-        let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| Err(pw.clone()));
-        assert!(!out.contains('✅'), "{out}");
-        assert!(!m.runs.borrow().iter().any(|r| r[0] == "mate-panel"));
+        let indicators = parts_offer(&["IndicatorAppletCompleteFactory::IndicatorAppletComplete".to_string()], "debian");
+        let out = apply_with_parts(&m, &ctx, "redmond", &indicators, &mut |_| vec![failed("mate-indicator-applet", "no network")]);
+        assert!(out.text.starts_with('⚠') && out.text.contains("no network"), "{out:?}");
+        assert!(m.runs.borrow().iter().any(|r| r[0] == "mate-panel"));
     }
 
     /// The original panel (the snapshot before the first apply) is not overwritten

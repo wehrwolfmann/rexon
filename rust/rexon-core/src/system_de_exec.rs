@@ -4992,7 +4992,8 @@ pub(crate) mod tests {
         let agent = "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1";
         io.files.borrow_mut().insert(agent.to_string(), String::new());
         let (outcome, _) = run_install(&io, "xfce", CancelToken::new());
-        assert!(outcome.message.contains(&format!("\n  {agent} &\n")), "{}", outcome.message);
+        // No "start it yourself in a terminal" (27.11.2026): log out and back in.
+        assert!(!outcome.message.contains(agent) && outcome.message.contains("Log out"), "{}", outcome.message);
         assert!(!outcome.message.contains("KDE:"), "{}", outcome.message);
 
         // Not a single agent on the machine: general advice, without an invented path.

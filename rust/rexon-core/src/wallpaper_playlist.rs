@@ -1278,7 +1278,7 @@ mod tests {
     }
 
     #[test]
-    fn по_порядку_идёт_по_кругу_и_назад() {
+    fn in_order_cycles_and_goes_back() {
         let p = pl(3, Order::InOrder);
         let mut st = TargetState::default();
         let got: Vec<String> = (0..4).map(|_| choose(&p, &mut st, Step::Next).unwrap()).collect();
@@ -1287,7 +1287,7 @@ mod tests {
     }
 
     #[test]
-    fn перемешивание_без_повторов_за_круг_и_детерминировано() {
+    fn shuffle_without_repeats_per_cycle_and_deterministic() {
         let p = pl(7, Order::Shuffle);
         let run = |seed_v: u64| {
             let mut st = TargetState::default();
@@ -1310,7 +1310,7 @@ mod tests {
     }
 
     #[test]
-    fn перемешивание_назад_и_снова_вперёд() {
+    fn shuffle_back_and_forward_again() {
         let p = pl(5, Order::Shuffle);
         let mut st = TargetState::default();
         seed(&mut st, 7);
@@ -1321,7 +1321,7 @@ mod tests {
     }
 
     #[test]
-    fn случайно_не_повторяет_нынешние_подряд() {
+    fn random_does_not_repeat_current_in_a_row() {
         let p = pl(3, Order::Random);
         let mut st = TargetState::default();
         seed(&mut st, 1);
@@ -1338,7 +1338,7 @@ mod tests {
     }
 
     #[test]
-    fn пустой_список_ничего_не_выбирает() {
+    fn empty_list_selects_nothing() {
         let p = pl(0, Order::Shuffle);
         let mut st = TargetState::default();
         assert_eq!(choose(&p, &mut st, Step::Next), None);
@@ -1346,7 +1346,7 @@ mod tests {
     }
 
     #[test]
-    fn таймер_считает_только_время_показа() {
+    fn timer_counts_only_display_time() {
         let p = pl(2, Order::InOrder); // 5 minutes
         let mut st = TargetState::default();
         let mut t = 1_000;
@@ -1375,7 +1375,7 @@ mod tests {
     }
 
     #[test]
-    fn пауза_и_интервал_ноль_держат_таймер() {
+    fn pause_and_zero_interval_hold_timer() {
         let mut p = pl(2, Order::InOrder);
         let mut st = TargetState { paused: true, last_tick: 1, ..Default::default() };
         assert_eq!(tick(&p, &mut st, 100_000, false), None);
@@ -1393,7 +1393,7 @@ mod tests {
     }
 
     #[test]
-    fn ручная_смена_сбрасывает_отсчёт() {
+    fn manual_change_resets_countdown() {
         let p = pl(3, Order::InOrder);
         let mut st = TargetState { elapsed: 290, ..Default::default() };
         let mut ap = Fake::default();
@@ -1403,7 +1403,7 @@ mod tests {
     }
 
     #[test]
-    fn вход_меняет_обои_один_раз_за_сеанс() {
+    fn login_changes_wallpaper_once_per_session() {
         let p = pl(3, Order::InOrder);
         let mut st = TargetState::default();
         let mut ap = Fake::default();
@@ -1417,7 +1417,7 @@ mod tests {
     }
 
     #[test]
-    fn битые_обои_пропускаются_но_не_вечно() {
+    fn broken_wallpapers_skipped_but_not_forever() {
         let p = pl(3, Order::InOrder);
         let mut st = TargetState::default();
         let mut ap = Fake { fail: vec!["file:/w/v0.mp4".into()], ..Default::default() };
@@ -1428,7 +1428,7 @@ mod tests {
     }
 
     #[test]
-    fn чужие_обои_ставят_плейлист_на_паузу_а_продолжить_возвращает() {
+    fn foreign_wallpaper_pauses_playlist_and_resume_restores() {
         let p = pl(3, Order::InOrder);
         let mut st = TargetState::default();
         let mut ap = Fake::default();
@@ -1450,7 +1450,7 @@ mod tests {
     }
 
     #[test]
-    fn пауза_кнопкой_не_ставит_обои() {
+    fn button_pause_sets_no_wallpaper() {
         let p = pl(3, Order::InOrder);
         let mut st = TargetState::default();
         let mut ap = Fake::default();
@@ -1462,7 +1462,7 @@ mod tests {
     }
 
     #[test]
-    fn настройка_обратно_совместима() {
+    fn setting_backward_compatible() {
         // No key — an empty disabled «on all screens» playlist.
         let cfg = Config::from_settings(&Map::new());
         assert_eq!(cfg, Config::default());
@@ -1498,7 +1498,7 @@ mod tests {
     }
 
     #[test]
-    fn цель_монитор_хранится_рядом_с_общей() {
+    fn monitor_target_stored_next_to_shared() {
         let mut cfg = Config::default();
         cfg.playlists.push(Playlist { target: Target::Screen { key: "DEL-U2720-123".into() }, ..pl(1, Order::InOrder) });
         let mut m = Map::new();
@@ -1513,7 +1513,7 @@ mod tests {
     }
 
     #[test]
-    fn импорт_очереди_axon() {
+    fn axon_queue_import() {
         use crate::axon_library::{PlayList as AxQ, PlayListSetting, PlayOrder};
         let setting = PlayListSetting {
             switch_interval_seconds: 600,
@@ -1536,7 +1536,7 @@ mod tests {
     }
 
     #[test]
-    fn правки_из_окна() {
+    fn edits_from_window() {
         let mut cfg = Config::default();
         edit(&mut cfg, &json!({"op": "enabled", "on": true}), None, &[]);
         edit(&mut cfg, &json!({"op": "order", "value": "random"}), None, &[]);
@@ -1552,7 +1552,7 @@ mod tests {
     }
 
     #[test]
-    fn форматы_файлов() {
+    fn file_formats() {
         assert_eq!(file_format(Path::new("/x/a.MP4")), Some("video"));
         assert_eq!(file_format(Path::new("/x/a.png")), Some("static"));
         assert_eq!(file_format(Path::new("/x/a.gif")), Some("animated"));

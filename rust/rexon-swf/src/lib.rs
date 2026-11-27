@@ -707,7 +707,7 @@ mod tests {
     }
 
     #[test]
-    fn положение_ползунка_даёт_ту_же_громкость_что_у_видео() {
+    fn slider_position_gives_same_volume_as_video() {
         // For video `AudioOutput.volume` is a direct gain: half the slider is half the level.
         // After conversion Flash must give exactly the same, otherwise the same slider
         // sounds different for the two kinds of wallpaper.
@@ -722,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn без_перевода_половина_ползунка_тише_в_десять_раз() {
+    fn without_mapping_half_slider_is_ten_times_quieter() {
         // What the conversion was written for: Ruffle's own scale gives −20 dB in the middle, not −6 dB.
         assert!((ruffle_gain(0.5) - 0.1).abs() < 1e-6);
         // And with the conversion the middle of the slider is the middle of the level.
@@ -730,7 +730,7 @@ mod tests {
     }
 
     #[test]
-    fn края_и_чепуха_не_роняют_перевод() {
+    fn edges_and_garbage_do_not_break_mapping() {
         assert_eq!(ruffle_volume(0.0), 0.0);
         assert!((ruffle_volume(1.0) - 1.0).abs() < 1e-6);
         // Volume outside 0..1 and NaN should not arrive, but they can: from the person's settings.

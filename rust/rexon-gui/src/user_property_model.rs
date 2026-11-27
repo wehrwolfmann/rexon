@@ -80,6 +80,11 @@ pub mod qobject {
         #[qproperty(QString, overrides_json, cxx_name = "overridesJson",
                     READ = overrides_json, WRITE = set_overrides_json,
                     NOTIFY = overrides_json_changed)]
+        /// waywallen 0.6.2: the wallpaper the rows belong to; a new one unfolds
+        /// every group again.
+        #[qproperty(QString, wallpaper_id, cxx_name = "wallpaperId",
+                    READ = wallpaper_id, WRITE = set_wallpaper_id,
+                    NOTIFY = wallpaper_id_changed)]
         #[qproperty(i32, count, READ = count, NOTIFY = count_changed)]
         // Both "there is something to reset" flags hang on ONE signal — just as in
         // the original: the section header disables the reset button by them.
@@ -102,6 +107,9 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "overridesJsonChanged"]
         fn overrides_json_changed(self: Pin<&mut UserPropertyListModel>);
+        #[qsignal]
+        #[cxx_name = "wallpaperIdChanged"]
+        fn wallpaper_id_changed(self: Pin<&mut UserPropertyListModel>);
         #[qsignal]
         #[cxx_name = "countChanged"]
         fn count_changed(self: Pin<&mut UserPropertyListModel>);
@@ -149,6 +157,36 @@ pub mod qobject {
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut UserPropertyListModel>);
+        /// # Safety
+        /// Requires a paired end_insert_rows.
+        #[inherit]
+        #[cxx_name = "beginInsertRows"]
+        unsafe fn begin_insert_rows(
+            self: Pin<&mut UserPropertyListModel>,
+            parent: &QModelIndex,
+            first: i32,
+            last: i32,
+        );
+        /// # Safety
+        /// Paired with begin_insert_rows.
+        #[inherit]
+        #[cxx_name = "endInsertRows"]
+        unsafe fn end_insert_rows(self: Pin<&mut UserPropertyListModel>);
+        /// # Safety
+        /// Requires a paired end_remove_rows.
+        #[inherit]
+        #[cxx_name = "beginRemoveRows"]
+        unsafe fn begin_remove_rows(
+            self: Pin<&mut UserPropertyListModel>,
+            parent: &QModelIndex,
+            first: i32,
+            last: i32,
+        );
+        /// # Safety
+        /// Paired with begin_remove_rows.
+        #[inherit]
+        #[cxx_name = "endRemoveRows"]
+        unsafe fn end_remove_rows(self: Pin<&mut UserPropertyListModel>);
     }
 
     // index() is safe to call, but cxx-qt requires safe #[inherit] functions to
@@ -190,8 +228,11 @@ pub mod qobject {
 
         #[cxx_name = "overridesJson"]
         fn overrides_json(self: &UserPropertyListModel) -> QString;
-        #[cxx_name = "setOverridesJson"]
-        fn set_overrides_json(self: Pin<&mut UserPropertyListModel>, value: &QString);
+
+        #[cxx_name = "wallpaperId"]
+        fn wallpaper_id(self: &UserPropertyListModel) -> QString;
+        #[cxx_name = "setWallpaperId"]
+        fn set_wallpaper_id(self: Pin<&mut UserPropertyListModel>, value: &QString);
 
         fn count(self: &UserPropertyListModel) -> i32;
 
@@ -208,6 +249,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setValue"]
         fn set_value(self: Pin<&mut UserPropertyListModel>, key: &QString, value: &QString);
+
+        /// The overrides snapshot (also the property setter). waywallen 0.6.2
+        /// calls it directly after every successful read: the same snapshot
+        /// still replaces optimistic edits, so it is re-parsed even when equal.
+        #[qinvokable]
+        #[cxx_name = "setOverridesJson"]
+        fn set_overrides_json(self: Pin<&mut UserPropertyListModel>, value: &QString);
+
+        /// waywallen 0.6.2: fold or unfold a group header.
+        #[qinvokable]
+        #[cxx_name = "setGroupExpanded"]
+        fn set_group_expanded(self: Pin<&mut UserPropertyListModel>, key: &QString, expanded: bool);
 
         /// Reset all properties to their default values.
         #[qinvokable]
@@ -333,6 +386,24 @@ pub struct Entry {
     pub localized_option_labels: Vec<String>,
     /// Sort order of the user properties.
     pub order: f64,
+    /// waywallen 0.6.2: the `group` row this property belongs to (empty — none);
+    /// a group header carries its own key.
+    pub group_key: String,
+    /// waywallen 0.6.2: the visibility condition (`condition` of the schema).
+    pub condition: Condition,
+    /// waywallen 0.6.2: the schema default as JSON (`None` — absent), what a
+    /// condition compares against while there is no override.
+    pub default_value: Option<Value>,
+    /// waywallen 0.6.2: the raw combo options — a condition sees the option's own
+    /// value, not its wire string.
+    pub options: Vec<Value>,
+    /// waywallen 0.6.2: digits after the point for the slider number.
+    pub precision: i32,
+}
+
+/// A group header or a text label: neither has a value to write or reset.
+fn is_value_property(editor: &str) -> bool {
+    editor != "group" && editor != "text"
 }
 
 /// Model state: the parsed schema + the user's overrides.
@@ -340,12 +411,181 @@ pub struct Entry {
 pub struct UserProperties {
     entries: Vec<Entry>,
     overrides: HashMap<String, String>,
+    /// Groups the person folded (waywallen 0.6.2). Hidden rows keep their values
+    /// and take part in resets.
+    collapsed: std::collections::HashSet<String>,
+    /// Model row → entry index: only the rows that are shown.
+    visible: Vec<usize>,
+}
+
+/// One step of bringing the shown rows to a new set: the Qt layer wraps each in
+/// begin/endRemoveRows or begin/endInsertRows, so delegates of rows that stay
+/// (a slider being dragged) are not recreated.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RowOp {
+    Remove { first: usize, last: usize },
+    Insert { first: usize, entries: Vec<usize> },
 }
 
 impl UserProperties {
-    /// Rebuild the rows from the wallpaper's schema.
+    /// Rebuild the rows from the wallpaper's schema. Folded groups that are gone
+    /// are forgotten, the rest stay folded.
     pub fn set_schema(&mut self, schema_json: &str) {
         self.entries = build_entries(schema_json);
+        let groups: std::collections::HashSet<&str> = self
+            .entries
+            .iter()
+            .filter(|e| e.kind_of_editor == "group")
+            .map(|e| e.key.as_str())
+            .collect();
+        self.collapsed.retain(|k| groups.contains(k.as_str()));
+        self.visible = self.compute_visible();
+    }
+
+    /// Shown rows → entry indices.
+    pub fn visible(&self) -> &[usize] {
+        &self.visible
+    }
+
+    /// Entry index of a model row.
+    pub fn entry_of_row(&self, row: usize) -> Option<usize> {
+        self.visible.get(row).copied()
+    }
+
+    /// Model row of a key, if shown.
+    pub fn row_of_key(&self, key: &str) -> Option<usize> {
+        self.visible.iter().position(|&i| self.entries[i].key == key)
+    }
+
+    /// Whether a group header is unfolded.
+    pub fn expanded(&self, entry: usize) -> bool {
+        self.entries
+            .get(entry)
+            .is_some_and(|e| e.kind_of_editor == "group" && !self.collapsed.contains(&e.key))
+    }
+
+    pub fn has_collapsed(&self) -> bool {
+        !self.collapsed.is_empty()
+    }
+
+    /// A new wallpaper: every group is unfolded again. `true` — something was
+    /// folded, the rows must be rebuilt (a model reset).
+    pub fn clear_collapsed(&mut self) -> bool {
+        if self.collapsed.is_empty() {
+            return false;
+        }
+        self.collapsed.clear();
+        self.visible = self.compute_visible();
+        true
+    }
+
+    /// Fold or unfold a group. `false` — nothing to do (no such group, or it is
+    /// already so).
+    pub fn set_group_expanded(&mut self, key: &str, expanded: bool) -> bool {
+        if expanded == !self.collapsed.contains(key) {
+            return false;
+        }
+        if !self.entries.iter().any(|e| e.key == key && e.kind_of_editor == "group") {
+            return false;
+        }
+        if expanded {
+            self.collapsed.remove(key);
+        } else {
+            self.collapsed.insert(key.to_string());
+        }
+        true
+    }
+
+    /// The value a condition sees for an entry — the original's
+    /// `conditionValueFor_`.
+    fn condition_value(&self, e: &Entry) -> CondValue {
+        let Some(wire) = self.overrides.get(&e.key) else {
+            return e.default_value.as_ref().map_or(CondValue::Undefined, CondValue::from_json);
+        };
+        if e.kind_of_editor == "combo" {
+            for option in &e.options {
+                let value = option.get("value").cloned().unwrap_or(Value::Null);
+                if json_wire(&value) == *wire {
+                    return CondValue::from_json(&value);
+                }
+            }
+        }
+        if e.kind_of_editor == "bool" || matches!(e.default_value, Some(Value::Bool(_))) {
+            return match wire.as_str() {
+                "true" => CondValue::Bool(true),
+                "false" => CondValue::Bool(false),
+                _ => CondValue::Undefined,
+            };
+        }
+        if e.kind_of_editor == "slider" || matches!(e.default_value, Some(Value::Number(_))) {
+            return match wire.trim().parse::<f64>() {
+                Ok(n) if n.is_finite() => CondValue::Num(n),
+                _ => CondValue::Undefined,
+            };
+        }
+        CondValue::Str(wire.clone())
+    }
+
+    /// The rows to show — the original's `visibleRows_`: a row whose condition
+    /// fails is hidden; a group is shown only if it passes and has a shown child;
+    /// children of a hidden or folded group are hidden.
+    pub fn compute_visible(&self) -> Vec<usize> {
+        let values: HashMap<String, CondValue> =
+            self.entries.iter().map(|e| (e.key.clone(), self.condition_value(e))).collect();
+        let included: Vec<bool> = self.entries.iter().map(|e| e.condition.matches(&values)).collect();
+        let mut shown_groups = std::collections::HashSet::new();
+        for (i, e) in self.entries.iter().enumerate() {
+            if e.kind_of_editor != "group" || !included[i] {
+                continue;
+            }
+            for (child, c) in self.entries.iter().enumerate().skip(i + 1) {
+                if c.kind_of_editor == "group" {
+                    break;
+                }
+                if included[child] {
+                    shown_groups.insert(e.key.clone());
+                    break;
+                }
+            }
+        }
+        let mut rows = Vec::new();
+        for (i, e) in self.entries.iter().enumerate() {
+            if !included[i] {
+                continue;
+            }
+            if e.kind_of_editor == "group" {
+                if !shown_groups.contains(&e.key) {
+                    continue;
+                }
+            } else if !e.group_key.is_empty()
+                && (!shown_groups.contains(&e.group_key) || self.collapsed.contains(&e.group_key))
+            {
+                continue;
+            }
+            rows.push(i);
+        }
+        rows
+    }
+
+    /// Steps from the shown rows to [`compute_visible`](Self::compute_visible) —
+    /// the original's `updateVisibleRows_`: removals from the end first, then
+    /// insertions. Applying each step to `visible()` as it is returned is the
+    /// caller's job ([`apply_row_op`](Self::apply_row_op)).
+    pub fn visible_ops(&self) -> Vec<RowOp> {
+        row_ops(&self.visible, &self.compute_visible())
+    }
+
+    pub fn apply_row_op(&mut self, op: &RowOp) {
+        match op {
+            RowOp::Remove { first, last } => {
+                self.visible.drain(*first..=*last);
+            }
+            RowOp::Insert { first, entries } => {
+                for (k, e) in entries.iter().enumerate() {
+                    self.visible.insert(first + k, *e);
+                }
+            }
+        }
     }
 
     /// Parse the override map. Non-string values are ignored, a broken JSON
@@ -367,20 +607,25 @@ impl UserProperties {
         &self.entries
     }
 
+    /// Number of SHOWN rows.
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.visible.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.visible.is_empty()
     }
 
-    /// Current value of a row: the override if the key IS in the map (an empty
-    /// string is a value too), otherwise the default value from the schema.
+    /// Current value of an entry (by entry index): the override if the key IS in
+    /// the map (an empty string is a value too), otherwise the default value from
+    /// the schema. A group header has no value.
     pub fn current_value(&self, row: usize) -> &str {
         let Some(entry) = self.entries.get(row) else {
             return "";
         };
+        if entry.kind_of_editor == "group" {
+            return "";
+        }
         match self.overrides.get(&entry.key) {
             Some(value) => value,
             None => &entry.default_wire,
@@ -396,40 +641,76 @@ impl UserProperties {
     /// Whether records of the given kind have at least one override — the
     /// section headers' reset buttons are disabled by this.
     pub fn has_overrides_kind(&self, kind: &str) -> bool {
-        self.entries
-            .iter()
-            .any(|e| e.kind == kind && self.overrides.contains_key(&e.key))
+        self.entries.iter().any(|e| {
+            is_value_property(&e.kind_of_editor) && e.kind == kind && self.overrides.contains_key(&e.key)
+        })
     }
 
-    /// Write a value. Returns the number of the row to update; None means there
-    /// is no such row (the value is remembered anyway, exactly as in the
-    /// original: the override map is wider than the set of rows).
-    pub fn set_value(&mut self, key: &str, value: &str) -> Option<usize> {
+    /// Write a value. `false` — there is no such value property (since waywallen
+    /// 0.6.2 the write is then dropped, without signals: a group header or a
+    /// text label has nothing to write).
+    pub fn set_value(&mut self, key: &str, value: &str) -> bool {
+        if !self.entries.iter().any(|e| e.key == key && is_value_property(&e.kind_of_editor)) {
+            return false;
+        }
         self.overrides.insert(key.to_string(), value.to_string());
-        self.row_of(key)
+        true
     }
 
-    /// Remove the overrides of records of kind `kind` (None — of all).
-    /// Returns "row, key" pairs in row order — the original sends dataChanged
-    /// and resetRequested in the same order.
-    pub fn reset_kind(&mut self, kind: Option<&str>) -> Vec<(usize, String)> {
+    /// Remove the overrides of value properties of kind `kind` (None — of all).
+    /// Returns the keys in entry order — the original sends dataChanged and
+    /// resetRequested in the same order, AFTER the shown rows are updated.
+    pub fn reset_kind(&mut self, kind: Option<&str>) -> Vec<String> {
         let mut reset = Vec::new();
-        for (row, entry) in self.entries.iter().enumerate() {
-            if let Some(kind) = kind {
-                if entry.kind != kind {
-                    continue;
-                }
+        for entry in &self.entries {
+            if !is_value_property(&entry.kind_of_editor) || kind.is_some_and(|k| entry.kind != k) {
+                continue;
             }
             if self.overrides.remove(&entry.key).is_some() {
-                reset.push((row, entry.key.clone()));
+                reset.push(entry.key.clone());
             }
         }
         reset
     }
+}
 
-    fn row_of(&self, key: &str) -> Option<usize> {
-        self.entries.iter().position(|e| e.key == key)
+/// The original's removal-then-insertion walk from `current` to `next` (both
+/// ascending entry indices).
+pub fn row_ops(current: &[usize], next: &[usize]) -> Vec<RowOp> {
+    let keep: std::collections::HashSet<usize> = next.iter().copied().collect();
+    let mut rows = current.to_vec();
+    let mut ops = Vec::new();
+    let mut last = rows.len() as isize - 1;
+    while last >= 0 {
+        if keep.contains(&rows[last as usize]) {
+            last -= 1;
+            continue;
+        }
+        let mut first = last;
+        while first > 0 && !keep.contains(&rows[first as usize - 1]) {
+            first -= 1;
+        }
+        ops.push(RowOp::Remove { first: first as usize, last: last as usize });
+        rows.drain(first as usize..=last as usize);
+        last = first - 1;
     }
+    let mut row = 0;
+    while row < next.len() {
+        if row < rows.len() && rows[row] == next[row] {
+            row += 1;
+            continue;
+        }
+        let first = row;
+        while row < next.len() && (first >= rows.len() || next[row] != rows[first]) {
+            row += 1;
+        }
+        let entries = next[first..row].to_vec();
+        for (k, e) in entries.iter().enumerate() {
+            rows.insert(first + k, *e);
+        }
+        ops.push(RowOp::Insert { first, entries });
+    }
+    ops
 }
 
 /// Python truthiness of a JSON value: empty string/list/dict, zero, false and
@@ -449,7 +730,14 @@ fn truthy(value: &Value) -> bool {
 /// exponent for very large and very small numbers) — the original prints
 /// schema numbers with it, and the wire string depends on it: 1234567 must
 /// become `1.23457e+06`, not `1234567`.
-fn format_g(value: f64) -> String {
+
+/// `%.<digits>g` — since waywallen 0.6.2 the wire string of a number is
+/// `QString::number(v, 'g', 17)`, so a slider value survives the round trip.
+fn format_g17(value: f64) -> String {
+    format_g_digits(value, 17)
+}
+
+fn format_g_digits(value: f64, digits: usize) -> String {
     if value.is_nan() {
         return "nan".to_string();
     }
@@ -462,14 +750,14 @@ fn format_g(value: f64) -> String {
     // Scientific notation with 5 digits after the point = exactly 6
     // significant digits; the exponent is taken from it AFTER rounding, as %g
     // requires.
-    let scientific = format!("{value:.5e}");
+    let scientific = format!("{value:.*e}", digits - 1);
     let (mantissa, exponent) = scientific
         .split_once('e')
         .expect("научная запись всегда содержит e");
     let exponent: i32 = exponent.parse().unwrap_or(0);
     // The exponent range in which %g prints ordinary rather than scientific
     // notation: from -4 to 6 (exclusive).
-    if !(-4..6).contains(&exponent) {
+    if !(-4..digits as i32).contains(&exponent) {
         let sign = if exponent < 0 { '-' } else { '+' };
         format!(
             "{}e{}{:02}",
@@ -478,7 +766,7 @@ fn format_g(value: f64) -> String {
             exponent.abs()
         )
     } else {
-        let decimals = (5 - exponent).max(0) as usize;
+        let decimals = (digits as i32 - 1 - exponent).max(0) as usize;
         trim_trailing_zeros(&format!("{value:.decimals$}"))
     }
 }
@@ -509,7 +797,7 @@ fn components_wire(items: &[Value]) -> String {
 fn json_wire(value: &Value) -> String {
     match value {
         Value::Bool(b) => if *b { "true" } else { "false" }.to_string(),
-        Value::Number(n) => format_g(n.as_f64().unwrap_or(0.0)),
+        Value::Number(n) => format_g17(n.as_f64().unwrap_or(0.0)),
         Value::String(s) => s.clone(),
         Value::Array(items) => components_wire(items),
         _ => String::new(),
@@ -537,7 +825,7 @@ fn coerce_default_wire(value: &Value, type_name: &str) -> String {
             Value::Bool(b) => f64::from(u8::from(*b)),
             _ => 0.0,
         };
-        return format_g(number);
+        return format_g17(number);
     }
     json_wire(value)
 }
@@ -612,7 +900,11 @@ pub fn build_entries(schema_json: &str) -> Vec<Entry> {
             continue;
         }
         let fields = fields_of(value);
-        let editor = type_name(&fields);
+        let mut editor = type_name(&fields);
+        // waywallen 0.6.2: a property without a type is a text label.
+        if editor.is_empty() {
+            editor = "text".to_string();
+        }
 
         let mut option_labels = Vec::new();
         let mut option_values = Vec::new();
@@ -631,8 +923,26 @@ pub fn build_entries(schema_json: &str) -> Vec<Entry> {
             }
         }
 
-        let supported = SUPPORTED_TYPES.contains(&editor.as_str())
+        let supported = editor == "group"
+            || SUPPORTED_TYPES.contains(&editor.as_str())
             || (editor == "combo" && !option_values.is_empty());
+        let max_val = number_or(fields.get("max"), 1.0);
+        let (step_val, precision) = if editor == "slider" {
+            slider_presentation(&fields, max_val)
+        } else {
+            (step_of(&fields), 0)
+        };
+        let condition = Condition::compile(&text_of(&fields, "condition"));
+        if !condition.is_valid() {
+            rexon_core::log_warn!("we-props", "unsupported user property condition: {key}");
+        }
+        // The original: `order`, else `index`, else 0 (`toDouble(default)`: only a
+        // JSON number counts).
+        let order = fields
+            .get("order")
+            .and_then(Value::as_f64)
+            .or_else(|| fields.get("index").and_then(Value::as_f64))
+            .unwrap_or(0.0);
 
         users.push(Entry {
             label: label_or_key(&fields, key),
@@ -640,7 +950,7 @@ pub fn build_entries(schema_json: &str) -> Vec<Entry> {
             kind: KIND_USER,
             supported,
             min_val: number_or(fields.get("min"), 0.0),
-            max_val: number_or(fields.get("max"), 1.0),
+            max_val,
             default_wire: coerce_default_wire(
                 fields.get("value").unwrap_or(&Value::Null),
                 &editor,
@@ -649,17 +959,66 @@ pub fn build_entries(schema_json: &str) -> Vec<Entry> {
             option_values,
             localized_label: localized_of(&fields, "localized_text"),
             localized_option_labels,
-            order: number_or(fields.get("order"), 0.0),
-            step_val: step_of(&fields),
+            order,
+            step_val,
+            precision,
             value_suffix: text_of(&fields, "suffix"),
+            group_key: String::new(),
+            condition,
+            default_value: fields.get("value").cloned(),
+            options: match fields.get("options") {
+                Some(Value::Array(options)) => options.clone(),
+                _ => Vec::new(),
+            },
             kind_of_editor: editor,
             key: key.clone(),
         });
     }
 
     users.sort_by(|a, b| a.order.total_cmp(&b.order));
+    // Every row after a `group` header belongs to it until the next header.
+    let mut group = String::new();
+    for entry in &mut users {
+        if entry.kind_of_editor == "group" {
+            group = entry.key.clone();
+        }
+        entry.group_key = group.clone();
+    }
     entries.extend(users);
     entries
+}
+
+/// Slider step and digits after the point — the original's
+/// `sliderPresentation` (waywallen 0.6.2): `fraction: false` means integers, an
+/// explicit `precision` wins, otherwise the step's own decimals; no step at all is
+/// `1` for integer sliders and "free" (0) for fractional ones.
+fn slider_presentation(fields: &Map<String, Value>, maximum: f64) -> (f64, i32) {
+    let fraction = fields.get("fraction");
+    let fraction_true = matches!(fraction, Some(Value::Bool(true)));
+    let integer = matches!(fraction, Some(Value::Bool(false)));
+    let mut step = fields.get("step").and_then(Value::as_f64).unwrap_or(0.0);
+    let mut precision = if fraction_true || maximum <= 10.0 { 3 } else { 0 };
+    if integer {
+        precision = 0;
+    } else if let Some(p) = fields.get("precision").and_then(Value::as_f64) {
+        // `QJsonValue::toInt()`: a non-integral number gives 0.
+        let p = if p.fract() == 0.0 && p.abs() < i32::MAX as f64 { p as i32 } else { 0 };
+        precision = p.clamp(0, 15);
+    } else if step > 0.0 {
+        let decimal = format!("{step:.15}");
+        let decimal = decimal.trim_end_matches('0');
+        precision = match decimal.find('.') {
+            Some(point) => (decimal.len() - point - 1) as i32,
+            None => 0,
+        };
+        if step < 1.0 && precision == 0 {
+            precision = 15;
+        }
+    }
+    if step <= 0.0 {
+        step = if integer || (precision == 0 && !fraction_true) { 1.0 } else { 0.0 };
+    }
+    (step, precision)
 }
 
 /// Predefined properties of the daemon — they come not from the wallpaper's
@@ -686,6 +1045,21 @@ fn predefined_entries(schema: &Map<String, Value>) -> Vec<Entry> {
         if wire.is_empty() {
             wire = default_wire.to_string();
         }
+        let max_val = number_or(fields.get("max"), 1.0);
+        let (step_val, precision) = if kind_of_editor == "slider" {
+            slider_presentation(fields, max_val)
+        } else {
+            (step_of(fields), 0)
+        };
+        // The condition default: the schema value, else the one the row shows.
+        let default_value = fields.get("value").cloned().or_else(|| {
+            Some(match kind_of_editor.as_str() {
+                "bool" => Value::Bool(wire == "true"),
+                "slider" => serde_json::Number::from_f64(wire.trim().parse().unwrap_or(0.0))
+                    .map_or(Value::Null, Value::Number),
+                _ => Value::String(wire.clone()),
+            })
+        });
         Entry {
             key: key.to_string(),
             label: label_or_key_default(fields, label),
@@ -694,8 +1068,9 @@ fn predefined_entries(schema: &Map<String, Value>) -> Vec<Entry> {
             section: SECTION_PREDEFINED,
             kind: KIND_PREDEFINED,
             min_val: number_or(fields.get("min"), 0.0),
-            max_val: number_or(fields.get("max"), 1.0),
-            step_val: step_of(fields),
+            max_val,
+            step_val,
+            precision,
             value_suffix: text_of(fields, "suffix"),
             default_wire: wire,
             option_labels: Vec::new(),
@@ -703,6 +1078,10 @@ fn predefined_entries(schema: &Map<String, Value>) -> Vec<Entry> {
             localized_label: localized_of(fields, "localized_text"),
             localized_option_labels: Vec::new(),
             order: 0.0,
+            group_key: String::new(),
+            condition: Condition::default(),
+            default_value,
+            options: Vec::new(),
         }
     };
 
@@ -784,6 +1163,465 @@ fn label_or_key_default(fields: &Map<String, Value>, fallback: &str) -> String {
 }
 
 // ============================================================================
+// Visibility conditions (waywallen 0.6.2 `user_property_condition.cppm`)
+// ============================================================================
+//
+// A schema may hide a property behind a Wallpaper Engine condition such as
+// `showclock.value == true && style.value != 2`. The original compiles it once
+// into a postfix program and evaluates it with three-valued logic: a value it
+// cannot know is `Undefined`, and an undefined result SHOWS the row (a broken or
+// unsupported expression must not hide a property for good).
+
+/// A condition operand: `QJsonValue` with its `Undefined` state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CondValue {
+    Undefined,
+    Null,
+    Bool(bool),
+    Num(f64),
+    Str(String),
+    /// Arrays and objects: always true, equal only to the same value.
+    Other(Value),
+}
+
+impl CondValue {
+    pub fn from_json(v: &Value) -> Self {
+        match v {
+            Value::Null => CondValue::Null,
+            Value::Bool(b) => CondValue::Bool(*b),
+            Value::Number(n) => n.as_f64().map_or(CondValue::Undefined, CondValue::Num),
+            Value::String(s) => CondValue::Str(s.clone()),
+            other => CondValue::Other(other.clone()),
+        }
+    }
+
+    fn same_type(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CondOp {
+    Open,
+    Value,
+    Not,
+    AssignmentResult,
+    Equal,
+    NotEqual,
+    StrictEqual,
+    StrictNotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct CondInstruction {
+    op: CondOp,
+    value: CondValue,
+    key: String,
+}
+
+/// A compiled visibility condition. The default (an empty expression) always
+/// matches.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Condition {
+    program: Vec<CondInstruction>,
+    valid: bool,
+}
+
+impl Default for Condition {
+    fn default() -> Self {
+        Condition { program: Vec::new(), valid: true }
+    }
+}
+
+const COND_OPERATORS: [(&str, CondOp); 10] = [
+    ("===", CondOp::StrictEqual),
+    ("!==", CondOp::StrictNotEqual),
+    ("==", CondOp::Equal),
+    ("!=", CondOp::NotEqual),
+    ("<=", CondOp::LessEqual),
+    (">=", CondOp::GreaterEqual),
+    ("&&", CondOp::And),
+    ("||", CondOp::Or),
+    ("<", CondOp::Less),
+    (">", CondOp::Greater),
+];
+
+fn cond_precedence(op: CondOp) -> i32 {
+    match op {
+        CondOp::Open => 0,
+        CondOp::Or => 1,
+        CondOp::And => 2,
+        CondOp::Not => 5,
+        CondOp::Less | CondOp::LessEqual | CondOp::Greater | CondOp::GreaterEqual => 4,
+        _ => 3,
+    }
+}
+
+/// `\b` after a keyword: the next character is not a word character.
+fn word_end(chars: &[char], at: usize) -> bool {
+    chars.get(at).is_none_or(|c| !(c.is_alphanumeric() || *c == '_'))
+}
+
+/// One operand at `at`: `(instruction, end)`; `None` — no operand there. The
+/// order is the original's regex alternation: `<name>.value`, a keyword, a
+/// number, a quoted string.
+fn cond_atom(chars: &[char], at: usize) -> Option<Result<(CondInstruction, usize), ()>> {
+    let value = |v: CondValue, end: usize| {
+        Some(Ok((CondInstruction { op: CondOp::Value, value: v, key: String::new() }, end)))
+    };
+    let first = *chars.get(at)?;
+    // <name> . value
+    if first.is_alphabetic() || first == '_' || first == '$' {
+        let mut end = at + 1;
+        while chars.get(end).is_some_and(|c| c.is_alphanumeric() || *c == '_' || *c == '$') {
+            end += 1;
+        }
+        let name: String = chars[at..end].iter().collect();
+        let mut i = end;
+        while chars.get(i).is_some_and(|c| c.is_whitespace()) {
+            i += 1;
+        }
+        if chars.get(i) == Some(&'.') {
+            i += 1;
+            while chars.get(i).is_some_and(|c| c.is_whitespace()) {
+                i += 1;
+            }
+            let word: String = chars.iter().skip(i).take(5).collect();
+            if word == "value" && word_end(chars, i + 5) {
+                let ins = CondInstruction { op: CondOp::Value, value: CondValue::Undefined, key: name };
+                return Some(Ok((ins, i + 5)));
+            }
+        }
+    }
+    for (word, v) in [("true", CondValue::Bool(true)), ("false", CondValue::Bool(false)), ("null", CondValue::Null)] {
+        let n = word.chars().count();
+        if chars.iter().skip(at).take(n).copied().eq(word.chars()) && word_end(chars, at + n) {
+            return value(v, at + n);
+        }
+    }
+    // [+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?
+    let mut i = at;
+    if matches!(chars.get(i), Some('+' | '-')) {
+        i += 1;
+    }
+    let digits = |from: usize| {
+        let mut j = from;
+        while chars.get(j).is_some_and(char::is_ascii_digit) {
+            j += 1;
+        }
+        j
+    };
+    let int_end = digits(i);
+    let mut end = if int_end > i {
+        if chars.get(int_end) == Some(&'.') { digits(int_end + 1) } else { int_end }
+    } else if chars.get(i) == Some(&'.') && digits(i + 1) > i + 1 {
+        digits(i + 1)
+    } else {
+        0
+    };
+    if end > 0 {
+        if matches!(chars.get(end), Some('e' | 'E')) {
+            let mut j = end + 1;
+            if matches!(chars.get(j), Some('+' | '-')) {
+                j += 1;
+            }
+            let k = digits(j);
+            if k > j {
+                end = k;
+            }
+        }
+        let text: String = chars[at..end].iter().collect();
+        return match text.parse::<f64>() {
+            Ok(n) if n.is_finite() => value(CondValue::Num(n), end),
+            _ => Some(Err(())),
+        };
+    }
+    // "…" or '…' with backslash escapes
+    if first == '"' || first == '\'' {
+        let mut j = at + 1;
+        while let Some(&c) = chars.get(j) {
+            if c == '\\' {
+                j += 2;
+                continue;
+            }
+            if c == first {
+                return match cond_string(&chars[at..=j]) {
+                    Some(text) => value(CondValue::Str(text), j + 1),
+                    None => Some(Err(())),
+                };
+            }
+            j += 1;
+        }
+    }
+    None
+}
+
+/// Unquote a string literal — the original's `string_`.
+fn cond_string(quoted: &[char]) -> Option<String> {
+    let mut out = String::new();
+    let mut i = 1;
+    while i + 1 < quoted.len() {
+        let c = quoted[i];
+        if c != '\\' {
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        if i + 1 >= quoted.len() {
+            return None;
+        }
+        match quoted[i] {
+            '\\' => out.push('\\'),
+            '\'' => out.push('\''),
+            '"' => out.push('"'),
+            '/' => out.push('/'),
+            'n' => out.push('\n'),
+            'r' => out.push('\r'),
+            't' => out.push('\t'),
+            'b' => out.push('\u{8}'),
+            'f' => out.push('\u{c}'),
+            'u' => {
+                if i + 4 >= quoted.len() - 1 {
+                    return None;
+                }
+                let hex: String = quoted[i + 1..i + 5].iter().collect();
+                let code = u32::from_str_radix(&hex, 16).ok()?;
+                out.push(char::from_u32(code)?);
+                i += 4;
+            }
+            _ => return None,
+        }
+        i += 1;
+    }
+    Some(out)
+}
+
+fn cond_truth(v: &CondValue) -> Option<bool> {
+    match v {
+        CondValue::Undefined => None,
+        CondValue::Null => Some(false),
+        CondValue::Bool(b) => Some(*b),
+        CondValue::Num(n) => Some(*n != 0.0),
+        CondValue::Str(s) => Some(!s.is_empty()),
+        CondValue::Other(_) => Some(true),
+    }
+}
+
+fn cond_number(v: &CondValue) -> Option<f64> {
+    match v {
+        CondValue::Num(n) => Some(*n),
+        CondValue::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+        CondValue::Null => Some(0.0),
+        CondValue::Str(s) => {
+            let t = s.trim();
+            if t.is_empty() {
+                return Some(0.0);
+            }
+            t.parse::<f64>().ok().filter(|n| n.is_finite())
+        }
+        _ => None,
+    }
+}
+
+fn cond_binary(op: CondOp, left: &CondValue, right: &CondValue) -> CondValue {
+    if matches!(op, CondOp::And | CondOp::Or) {
+        let (a, b) = (cond_truth(left), cond_truth(right));
+        if op == CondOp::And && (a == Some(false) || b == Some(false)) {
+            return CondValue::Bool(false);
+        }
+        if op == CondOp::Or && (a == Some(true) || b == Some(true)) {
+            return CondValue::Bool(true);
+        }
+        if a.is_none() || b.is_none() {
+            return CondValue::Undefined;
+        }
+        return CondValue::Bool(op == CondOp::And);
+    }
+    if *left == CondValue::Undefined || *right == CondValue::Undefined {
+        return CondValue::Undefined;
+    }
+    if op == CondOp::AssignmentResult {
+        return right.clone();
+    }
+    if matches!(op, CondOp::Equal | CondOp::NotEqual | CondOp::StrictEqual | CondOp::StrictNotEqual) {
+        let mut equal = left == right;
+        if !left.same_type(right)
+            && matches!(op, CondOp::Equal | CondOp::NotEqual)
+            && *left != CondValue::Null
+            && *right != CondValue::Null
+        {
+            equal = matches!((cond_number(left), cond_number(right)), (Some(a), Some(b)) if a == b);
+        }
+        let negate = matches!(op, CondOp::NotEqual | CondOp::StrictNotEqual);
+        return CondValue::Bool(equal != negate);
+    }
+    if let (CondValue::Str(a), CondValue::Str(b)) = (left, right) {
+        let c = a.cmp(b);
+        return CondValue::Bool(match op {
+            CondOp::Less => c.is_lt(),
+            CondOp::LessEqual => c.is_le(),
+            CondOp::Greater => c.is_gt(),
+            _ => c.is_ge(),
+        });
+    }
+    let (Some(a), Some(b)) = (cond_number(left), cond_number(right)) else {
+        return CondValue::Bool(false);
+    };
+    CondValue::Bool(match op {
+        CondOp::Less => a < b,
+        CondOp::LessEqual => a <= b,
+        CondOp::Greater => a > b,
+        _ => a >= b,
+    })
+}
+
+impl Condition {
+    /// Compile an expression; an unsupported one is invalid and always matches.
+    pub fn compile(expression: &str) -> Self {
+        let mut c = Condition::default();
+        c.valid = c.compile_into(expression);
+        if !c.valid {
+            c.program.clear();
+        }
+        c
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.valid
+    }
+
+    fn compile_into(&mut self, expression: &str) -> bool {
+        let chars: Vec<char> = expression.chars().collect();
+        if expression.encode_utf16().count() > 4096 {
+            return false;
+        }
+        if expression.trim().is_empty() {
+            return true;
+        }
+        let mut pending: Vec<CondOp> = Vec::new();
+        let mut operand = true;
+        let mut offset = 0;
+        while offset < chars.len() {
+            if self.program.len() + pending.len() > 512 {
+                return false;
+            }
+            let c = chars[offset];
+            if c.is_whitespace() {
+                offset += 1;
+                continue;
+            }
+            if operand {
+                let assigning_literal = pending.last() == Some(&CondOp::AssignmentResult);
+                if c == '!' || c == '(' {
+                    if assigning_literal {
+                        return false;
+                    }
+                    pending.push(if c == '!' { CondOp::Not } else { CondOp::Open });
+                    offset += 1;
+                    continue;
+                }
+                let Some(Ok((ins, end))) = cond_atom(&chars, offset) else {
+                    return false;
+                };
+                if assigning_literal
+                    && (!ins.key.is_empty() || chars[end..].iter().any(|c| !c.is_whitespace()))
+                {
+                    return false;
+                }
+                self.program.push(ins);
+                offset = end;
+                operand = false;
+            } else if c == ')' {
+                while pending.last().is_some_and(|op| *op != CondOp::Open) {
+                    let op = pending.pop().expect("checked");
+                    self.program.push(CondInstruction { op, value: CondValue::Undefined, key: String::new() });
+                }
+                if pending.pop().is_none() {
+                    return false;
+                }
+                offset += 1;
+            } else {
+                let rest: String = chars[offset..].iter().collect();
+                // Legacy assignments to a literal contribute only their result.
+                if c == '='
+                    && !rest.starts_with("==")
+                    && pending.is_empty()
+                    && self.program.len() == 1
+                    && !self.program[0].key.is_empty()
+                {
+                    pending.push(CondOp::AssignmentResult);
+                    offset += 1;
+                    operand = true;
+                    continue;
+                }
+                let Some((text, op)) = COND_OPERATORS.iter().find(|(t, _)| rest.starts_with(t)) else {
+                    return false;
+                };
+                while pending.last().is_some_and(|p| cond_precedence(*p) >= cond_precedence(*op)) {
+                    let p = pending.pop().expect("checked");
+                    self.program.push(CondInstruction { op: p, value: CondValue::Undefined, key: String::new() });
+                }
+                pending.push(*op);
+                offset += text.chars().count();
+                operand = true;
+            }
+        }
+        if operand {
+            return false;
+        }
+        while let Some(op) = pending.pop() {
+            if op == CondOp::Open {
+                return false;
+            }
+            self.program.push(CondInstruction { op, value: CondValue::Undefined, key: String::new() });
+        }
+        self.program.len() <= 512
+    }
+
+    /// Whether the row is shown with these property values (by key).
+    pub fn matches(&self, values: &HashMap<String, CondValue>) -> bool {
+        if !self.valid || self.program.is_empty() {
+            return true;
+        }
+        let mut stack: Vec<CondValue> = Vec::new();
+        for ins in &self.program {
+            match ins.op {
+                CondOp::Value => stack.push(if ins.key.is_empty() {
+                    ins.value.clone()
+                } else {
+                    values.get(&ins.key).cloned().unwrap_or(CondValue::Undefined)
+                }),
+                CondOp::Not => {
+                    let Some(v) = stack.pop() else {
+                        return true;
+                    };
+                    stack.push(cond_truth(&v).map_or(CondValue::Undefined, |b| CondValue::Bool(!b)));
+                }
+                op => {
+                    if stack.len() < 2 {
+                        return true;
+                    }
+                    let right = stack.pop().expect("checked");
+                    let left = stack.pop().expect("checked");
+                    stack.push(cond_binary(op, &left, &right));
+                }
+            }
+        }
+        if stack.len() != 1 {
+            return true;
+        }
+        cond_truth(&stack[0]).unwrap_or(true)
+    }
+}
+
+// ============================================================================
 // Qt layer
 // ============================================================================
 
@@ -800,7 +1638,7 @@ const ROLE_BASE: i32 = 256 + 1;
 /// declares them as `required property`, and such a delegate without the
 /// role is simply NOT CREATED — both property sections then disappear
 /// entirely.
-const ROLE_NAMES: [&str; 14] = [
+const ROLE_NAMES: [&str; 18] = [
     "key",
     "label",
     "type",
@@ -815,7 +1653,15 @@ const ROLE_NAMES: [&str; 14] = [
     "optionValues",
     "section",
     "kind",
+    // waywallen 0.6.2
+    "isGroup",
+    "groupKey",
+    "expanded",
+    "precision",
 ];
+
+/// The `expanded` role: a group header's fold state.
+const ROLE_EXPANDED: usize = 16;
 
 /// Indices of the roles that depend on the override: exactly they go into
 /// dataChanged when a value is edited. The other roles are taken from the
@@ -835,6 +1681,7 @@ const ROLE_OPTION_LABELS: usize = 10;
 pub struct UserPropertyListModelRust {
     schema_json: String,
     overrides_json: String,
+    wallpaper_id: String,
     props: UserProperties,
     /// Subscription number for the plugin label catalogues; `0` means not
     /// subscribed.
@@ -897,6 +1744,27 @@ impl qobject::UserPropertyListModel {
         QString::from(&self.overrides_json)
     }
 
+    fn wallpaper_id(&self) -> QString {
+        QString::from(&self.wallpaper_id)
+    }
+
+    fn set_wallpaper_id(mut self: Pin<&mut Self>, value: &QString) {
+        let value = value.to_string();
+        if value == self.wallpaper_id {
+            return;
+        }
+        self.as_mut().rust_mut().wallpaper_id = value;
+        if self.props.has_collapsed() {
+            unsafe {
+                self.as_mut().begin_reset_model();
+                self.as_mut().rust_mut().props.clear_collapsed();
+                self.as_mut().end_reset_model();
+            }
+            self.as_mut().count_changed();
+        }
+        self.wallpaper_id_changed();
+    }
+
     fn count(&self) -> i32 {
         self.props.len() as i32
     }
@@ -928,20 +1796,16 @@ impl qobject::UserPropertyListModel {
         self.as_mut().override_state_changed();
     }
 
-    /// The overrides come from the daemon as a whole in one string. Rows are not
-    /// added or removed — only the two value-dependent fields change, so a
-    /// reset is not needed, dataChanged over a range is enough.
+    /// The overrides come from the daemon as a whole in one string. Rows change
+    /// only where a condition flips (insert/remove); the value roles of the rest
+    /// get one dataChanged over the range. `overridesJsonChanged` goes last and
+    /// only when the text differs.
     fn set_overrides_json(mut self: Pin<&mut Self>, value: &QString) {
         let value = value.to_string();
-        if value == self.overrides_json {
-            return;
-        }
-        {
-            let mut state = self.as_mut().rust_mut();
-            state.overrides_json = value.clone();
-        }
-        self.as_mut().overrides_json_changed();
+        let json_changed = value != self.overrides_json;
+        self.as_mut().rust_mut().overrides_json = value.clone();
         self.as_mut().rust_mut().props.set_overrides(&value);
+        self.as_mut().update_visible_rows();
 
         let rows = self.props.len();
         if rows > 0 {
@@ -951,6 +1815,48 @@ impl qobject::UserPropertyListModel {
             self.as_mut().data_changed(&first, &last, &roles);
         }
         self.as_mut().override_state_changed();
+        if json_changed {
+            self.as_mut().overrides_json_changed();
+        }
+    }
+
+    /// Bring the shown rows to what the conditions and folds say now, by
+    /// removals and insertions (the original's `updateVisibleRows_`).
+    fn update_visible_rows(mut self: Pin<&mut Self>) {
+        let before = self.props.len();
+        let root = QModelIndex::default();
+        for op in self.props.visible_ops() {
+            match &op {
+                RowOp::Remove { first, last } => unsafe {
+                    self.as_mut().begin_remove_rows(&root, *first as i32, *last as i32);
+                    self.as_mut().rust_mut().props.apply_row_op(&op);
+                    self.as_mut().end_remove_rows();
+                },
+                RowOp::Insert { first, entries } => unsafe {
+                    let last = first + entries.len() - 1;
+                    self.as_mut().begin_insert_rows(&root, *first as i32, last as i32);
+                    self.as_mut().rust_mut().props.apply_row_op(&op);
+                    self.as_mut().end_insert_rows();
+                },
+            }
+        }
+        if before != self.props.len() {
+            self.as_mut().count_changed();
+        }
+    }
+
+    fn set_group_expanded(mut self: Pin<&mut Self>, key: &QString, expanded: bool) {
+        let key = key.to_string();
+        if !self.as_mut().rust_mut().props.set_group_expanded(&key, expanded) {
+            return;
+        }
+        self.as_mut().update_visible_rows();
+        if let Some(row) = self.props.row_of_key(&key) {
+            let mut roles = QVector::<i32>::default();
+            roles.append(ROLE_BASE + ROLE_EXPANDED as i32);
+            let index = self.index(row as i32, 0, &QModelIndex::default());
+            self.as_mut().data_changed(&index, &index, &roles);
+        }
     }
 
     /// Label catalogues arrived (or the language changed) — re-read the labels.
@@ -992,7 +1898,9 @@ impl qobject::UserPropertyListModel {
         if !index.is_valid() || row < 0 || row as usize >= self.props.len() {
             return QVariant::default();
         }
-        let row = row as usize;
+        let Some(row) = self.props.entry_of_row(row as usize) else {
+            return QVariant::default();
+        };
         let entry = &self.props.entries()[row];
         let Ok(slot) = usize::try_from(role - ROLE_BASE) else {
             return QVariant::default();
@@ -1033,6 +1941,10 @@ impl qobject::UserPropertyListModel {
             Some("optionValues") => QVariant::from(&string_list(&entry.option_values)),
             Some("section") => QVariant::from(&QString::from(entry.section)),
             Some("kind") => QVariant::from(&QString::from(entry.kind)),
+            Some("isGroup") => QVariant::from(&(entry.kind_of_editor == "group")),
+            Some("groupKey") => QVariant::from(&QString::from(&entry.group_key)),
+            Some("expanded") => QVariant::from(&self.props.expanded(row)),
+            Some("precision") => QVariant::from(&entry.precision),
             _ => QVariant::default(),
         }
     }
@@ -1041,10 +1953,11 @@ impl qobject::UserPropertyListModel {
     fn set_value(mut self: Pin<&mut Self>, key: &QString, value: &QString) {
         let key = key.to_string();
         let value = value.to_string();
-        let row = self.as_mut().rust_mut().props.set_value(&key, &value);
-        if let Some(row) = row {
-            self.as_mut().notify_current_value(row);
+        if !self.as_mut().rust_mut().props.set_value(&key, &value) {
+            return;
         }
+        self.as_mut().update_visible_rows();
+        self.as_mut().notify_current_value(&key);
         self.as_mut().override_state_changed();
         // valueChanged goes last: QML reads the already updated model state in the
         // handler.
@@ -1083,8 +1996,12 @@ impl qobject::UserPropertyListModel {
     }
 
     // ── Internals ─────────────────────────────────────────────────────────
-    /// A targeted notification about a change of one row's value.
-    fn notify_current_value(mut self: Pin<&mut Self>, row: usize) {
+    /// A targeted notification about a change of one key's value (if its row is
+    /// shown).
+    fn notify_current_value(mut self: Pin<&mut Self>, key: &str) {
+        let Some(row) = self.props.row_of_key(key) else {
+            return;
+        };
         let roles = current_value_roles();
         let index = self.index(row as i32, 0, &QModelIndex::default());
         self.as_mut().data_changed(&index, &index, &roles);
@@ -1092,8 +2009,9 @@ impl qobject::UserPropertyListModel {
 
     fn reset_kind(mut self: Pin<&mut Self>, kind: Option<&str>) {
         let reset = self.as_mut().rust_mut().props.reset_kind(kind);
-        for (row, key) in reset {
-            self.as_mut().notify_current_value(row);
+        self.as_mut().update_visible_rows();
+        for key in reset {
+            self.as_mut().notify_current_value(&key);
             // The reset goes out as a separate signal: QML sends the daemon reset=true,
             // not a write of an empty string.
             self.as_mut().reset_requested(QString::from(&key));
@@ -1125,6 +2043,11 @@ fn string_list(items: &[String]) -> QStringList {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `%g` (six significant digits) — the wire form before waywallen 0.6.2.
+    fn format_g(value: f64) -> String {
+        format_g_digits(value, 6)
+    }
 
     /// The golden file was captured from the LIVE Python model (see
     /// tests/golden/user_property_cases.py). Here it is run through the port's
@@ -1251,7 +2174,13 @@ mod tests {
         for action in &case.actions {
             match action.op.as_str() {
                 "setValue" => {
-                    if let Some(row) = props.set_value(&action.key, &action.value) {
+                    // waywallen 0.6.2: a key that is no value property is dropped
+                    // without any signal (the Python-era reference still has the
+                    // `valueChanged` of such a write; see `golden_parity_with_python_model`).
+                    if !props.set_value(&action.key, &action.value) {
+                        continue;
+                    }
+                    if let Some(row) = props.row_of_key(&action.key) {
                         out.data_changed.push((
                             row,
                             row,
@@ -1268,7 +2197,8 @@ mod tests {
                         "resetUserProperties" => Some(KIND_USER),
                         other => panic!("неизвестное действие голдена: {other}"),
                     };
-                    for (row, key) in props.reset_kind(kind) {
+                    for key in props.reset_kind(kind) {
+                        let Some(row) = props.row_of_key(&key) else { continue };
                         out.data_changed.push((
                             row,
                             row,
@@ -1382,6 +2312,103 @@ mod tests {
         ] {
             assert_eq!(format_g(value), expected, "%g для {value}");
         }
+    }
+
+    /// waywallen 0.6.2: Wallpaper Engine visibility conditions.
+    #[test]
+    fn conditions_follow_the_original() {
+        let vals = |pairs: &[(&str, CondValue)]| -> HashMap<String, CondValue> {
+            pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+        };
+        let v = vals(&[("clock", CondValue::Bool(true)), ("style", CondValue::Num(2.0)),
+                       ("name", CondValue::Str("b".into()))]);
+        for (expr, want) in [
+            ("clock.value", true),
+            ("!clock.value", false),
+            ("clock.value == true && style.value != 2", false),
+            ("clock.value && (style.value == 1 || style.value == 2)", true),
+            ("style.value == '2'", true),
+            ("style.value === '2'", false),
+            ("name.value > \"a\"", true),
+            ("missing.value == 1", true),
+            ("missing.value == 1 && false", false),
+            ("clock.value = true", true),
+            ("style.value >= 1.5e0", true),
+        ] {
+            let c = Condition::compile(expr);
+            assert!(c.is_valid(), "{expr}");
+            assert_eq!(c.matches(&v), want, "{expr}");
+        }
+        for broken in ["clock.value ==", "(clock.value", "clock", "clock.value = style.value", "1 +"] {
+            let c = Condition::compile(broken);
+            assert!(!c.is_valid(), "{broken}");
+            assert!(c.matches(&v), "an invalid condition shows the row: {broken}");
+        }
+        assert!(Condition::compile("").matches(&v));
+    }
+
+    #[test]
+    fn groups_fold_and_conditions_hide_rows() {
+        let mut props = UserProperties::default();
+        props.set_schema(r#"{
+            "look": {"type": "group", "text": "Look", "order": 1},
+            "clock": {"type": "bool", "value": false, "order": 2},
+            "format": {"type": "combo", "value": 1, "order": 3, "condition": "clock.value == true",
+                       "options": [{"label": "24h", "value": 1}, {"label": "12h", "value": 2}]},
+            "other": {"type": "group", "order": 4},
+            "hidden": {"type": "bool", "value": true, "order": 5, "condition": "clock.value"}
+        }"#);
+        let keys = |p: &UserProperties| -> Vec<String> {
+            p.visible().iter().map(|&i| p.entries()[i].key.clone()).collect()
+        };
+        // "other" has no shown child, so the header is hidden too.
+        assert_eq!(keys(&props), [SCHEME_COLOR_KEY, "look", "clock"]);
+        assert!(props.set_value("clock", "true"));
+        for op in props.visible_ops() {
+            props.apply_row_op(&op);
+        }
+        assert_eq!(keys(&props), [SCHEME_COLOR_KEY, "look", "clock", "format", "other", "hidden"]);
+        assert!(props.set_group_expanded("look", false));
+        for op in props.visible_ops() {
+            props.apply_row_op(&op);
+        }
+        assert_eq!(keys(&props), [SCHEME_COLOR_KEY, "look", "other", "hidden"]);
+        assert!(!props.set_value("look", "x"), "a group header has no value");
+        assert!(props.clear_collapsed());
+        assert_eq!(props.visible(), props.compute_visible().as_slice());
+    }
+
+    #[test]
+    fn row_ops_reach_the_next_set() {
+        for (current, next) in [
+            (vec![0, 1, 2, 3, 4], vec![0, 3]),
+            (vec![0, 3], vec![0, 1, 2, 3, 4]),
+            (vec![1, 2, 5], vec![0, 2, 3, 6]),
+            (vec![], vec![1, 2]),
+            (vec![4, 5], vec![]),
+        ] {
+            let mut p = UserProperties { visible: current.clone(), ..Default::default() };
+            for op in row_ops(&current, &next) {
+                p.apply_row_op(&op);
+            }
+            assert_eq!(p.visible, next, "{current:?} -> {next:?}");
+        }
+    }
+
+    #[test]
+    fn slider_presentation_matches_the_original() {
+        let f = |json: &str, max: f64| {
+            let Value::Object(m) = serde_json::from_str::<Value>(json).unwrap() else { unreachable!() };
+            slider_presentation(&m, max)
+        };
+        assert_eq!(f(r#"{}"#, 100.0), (1.0, 0));
+        assert_eq!(f(r#"{}"#, 1.0), (0.0, 3));
+        assert_eq!(f(r#"{"fraction": false}"#, 1.0), (1.0, 0));
+        assert_eq!(f(r#"{"step": 0.05}"#, 100.0), (0.05, 2));
+        assert_eq!(f(r#"{"precision": 1}"#, 100.0), (0.0, 1));
+        assert_eq!(f(r#"{"fraction": true, "step": 0}"#, 100.0), (0.0, 3));
+        assert_eq!(format_g17(0.1), "0.10000000000000001");
+        assert_eq!(format_g17(1234567.0), "1234567");
     }
 
     #[test]

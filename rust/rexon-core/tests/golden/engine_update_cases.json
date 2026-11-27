@@ -30,7 +30,7 @@
    "key": "owe",
    "title": "open-wallpaper-engine (движок рендеров)",
    "repo": "waywallen/open-wallpaper-engine",
-   "asset_prefix": "org.waywallen.open-wallpaper-engine",
+   "asset_prefix": "open-wallpaper-engine|org.waywallen.open-wallpaper-engine",
    "asset_suffix": "-linux-x86_64.zip",
    "managed_path": "",
    "installable": true,

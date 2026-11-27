@@ -398,13 +398,13 @@ fn qml_pages_repaint_on_skin_change() {
 /// stars on the «Steam» tab came out black — the defect lived until the
 /// pixel-by-pixel comparison with the original on 01.09.2026.
 #[test]
-fn css_color_to_qml_переводит_rgba() {
+fn css_color_to_qml_converts_rgba() {
     use rexon_core::ui_base::css_color_to_qml;
 
     // ⚠️Alpha 0.85 → 0xd8, NOT 0xd9: Qt's style sheet parser truncates the
     // fraction (0.85 * 255 = 216.75 → 216). While rounding stood here, the paint
     // arrived in QML one step denser than the widget one — see the guard
-    // `доля_прозрачности_усекается_как_у_разбора_qss`.
+    // `alpha_fraction_truncated_like_qss_parsing`.
     assert_eq!(css_color_to_qml("rgba(59,130,246,0.85)"), "#d83b82f6");
     assert_eq!(css_color_to_qml("rgba(127,127,127,0.14)"), "#237f7f7f");
     // Fully opaque — alpha ff.
@@ -424,7 +424,7 @@ fn css_color_to_qml_переводит_rgba() {
 
 /// All paints of the «Steam» tab that go into QML must be translated.
 #[test]
-fn краски_steam_переводятся_для_qml() {
+fn steam_colours_converted_for_qml() {
     use rexon_core::qt_steam as qs;
     use rexon_core::ui_base::css_color_to_qml;
 
@@ -487,10 +487,10 @@ fn краски_steam_переводятся_для_qml() {
 /// The stand threshold (24 levels) did not show such a divergence: the class
 /// was caught by name twice (2916fcc, 5ac5d42) without seeing the common root.
 #[test]
-fn доля_прозрачности_усекается_как_у_разбора_qss() {
+fn alpha_fraction_truncated_like_qss_parsing() {
     use rexon_core::ui_base::{css_color_to_qml, parse_css_rgba};
 
-    for (доля, альфа) in [
+    for (fraction, alpha_value) in [
         ("0.85", 216u8),
         ("0.45", 114),
         ("0.14", 35),
@@ -501,19 +501,19 @@ fn доля_прозрачности_усекается_как_у_разбора
         ("1.0", 255),
         ("0", 0),
     ] {
-        let css = format!("rgba(255,255,255,{доля})");
+        let css = format!("rgba(255,255,255,{fraction})");
         assert_eq!(
             parse_css_rgba(&css),
-            Some((255, 255, 255, альфа)),
-            "долю {доля} разбор таблиц стилей Qt усекает до {альфа}"
+            Some((255, 255, 255, alpha_value)),
+            "долю {fraction} разбор таблиц стилей Qt усекает до {alpha_value}"
         );
-        assert_eq!(css_color_to_qml(&css), format!("#{альфа:02x}ffffff"));
+        assert_eq!(css_color_to_qml(&css), format!("#{alpha_value:02x}ffffff"));
     }
 }
 
 /// An overlay laid on a paint gives the same as Qt draws on screen.
 #[test]
-fn накладка_смешивается_как_на_экране() {
+fn overlay_blended_as_on_screen() {
     use rexon_core::ui_base::{blend_css_over, CARD_FILL_DARK};
 
     // Measurement of 04.09: a white overlay on `#1b2838` gives for widgets
@@ -539,7 +539,7 @@ fn накладка_смешивается_как_на_экране() {
 /// not come back as a fraction or as `rgba(...)` notation: QML reads both in
 /// its own way.
 #[test]
-fn поверхности_скина_приходят_в_qml_готовой_краской() {
+fn skin_surfaces_reach_qml_as_ready_colour() {
     use rexon_core::ui_base::{parse_hex, qml_palette, skin_surface_colors, SKINS};
 
     for skin in SKINS {
@@ -573,7 +573,7 @@ fn поверхности_скина_приходят_в_qml_готовой_кр
 /// gives (30,45,61), exactly what the stand captured from the QML tab on
 /// 37 585 points of the search field.
 #[test]
-fn поверхность_поля_равна_роли_base() {
+fn field_surface_equals_base_role() {
     use rexon_core::ui_base::{skin_role_color, skin_surface_colors, SKINS};
 
     for skin in SKINS {
@@ -670,7 +670,7 @@ fn control_outline_is_style_overlay() {
 /// The card surface is built with THE SAME overlay as in the widget card's
 /// style sheet — otherwise the two paints would silently diverge.
 #[test]
-fn поверхность_карточки_равна_накладке_виджетов() {
+fn card_surface_equals_widget_overlay() {
     use rexon_core::qt_compare;
     use rexon_core::qt_steam;
     use rexon_core::ui_base::{
@@ -707,7 +707,7 @@ fn поверхность_карточки_равна_накладке_видж�
 /// is dimmed. Measurement of 05.09 on «Extensions» (the «Steam Workshop»
 /// button of the «Install» block): 10 108 points, (36,48,64) versus (31,43,59).
 #[test]
-fn неактивный_текст_qml_равен_группе_disabled_палитры() {
+fn inactive_qml_text_equals_disabled_palette_group() {
     use rexon_core::ui_base::{
         disabled_text_color, palette_plan, qml_palette, DISABLED_TEXT_ALPHA, SKINS,
     };

@@ -457,12 +457,71 @@ Rectangle {
                 color: section.pal.border
             }
 
-            RexonText {
+            // The title with "Apply" / "Reset" / "Preview" at the top right and the
+            // result right under them, as in "MATE panel" (Wehrwolfmann 27.11.2026):
+            // the buttons used to sit at the end of the block, below the picture.
+            RowLayout {
                 Layout.fillWidth: true
-                text: section.greeter ? section.greeter.title : ""
-                color: section.pal.text_primary
-                font.bold: true
-                font.pointSize: 13
+                spacing: 8
+
+                RexonText {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    text: section.greeter ? section.greeter.title : ""
+                    color: section.pal.text_primary
+                    font.bold: true
+                    font.pointSize: 13
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 8
+
+                    RexonButton {
+                        objectName: "sddmLookApply"
+                        pal: section.pal
+                        enabled: !section.lookBusy && section.greeter !== null && section.greeter.canChange
+                        text: section.greeter ? section.greeter.look.apply : ""
+                        onClicked: section.askLook("look")
+                    }
+
+                    RexonButton {
+                        objectName: "sddmLookReset"
+                        pal: section.pal
+                        enabled: !section.lookBusy && section.greeter !== null && section.greeter.canChange
+                        text: section.greeter ? section.greeter.look.reset : ""
+                        onClicked: section.askLook("lookReset")
+                    }
+
+                    // Live preview: the greeter in test mode, without leaving the session.
+                    // While it is open, the same button closes it.
+                    RexonButton {
+                        id: previewButton
+                        objectName: "loginPreview"
+                        pal: section.pal
+                        enabled: section.greeter !== null && (section.greeter.preview.available || section.previewRunning)
+                        text: section.greeter
+                              ? "▶ " + (section.previewRunning ? section.greeter.preview.close : section.greeter.preview.label)
+                              : ""
+                        onClicked: section.togglePreview()
+                        HoverHandler { id: previewHover }
+                        ToolTip.text: section.greeter
+                                      ? (section.greeter.preview.available ? section.greeter.preview.tooltip
+                                                                           : section.greeter.preview.note)
+                                      : ""
+                        ToolTip.visible: previewHover.hovered && ToolTip.text !== ""
+                        ToolTip.delay: 500
+                    }
+                }
+            }
+
+            RexonText {
+                objectName: "sddmGreeterMessage"
+                Layout.fillWidth: true
+                visible: text !== ""
+                text: section.lookMessage
+                color: section.lookFailed ? section.pal.state_warn : section.pal.text_primary
                 wrapMode: Text.WordWrap
             }
 
@@ -574,47 +633,6 @@ Rectangle {
                 }
             }
 
-            Flow {
-                Layout.fillWidth: true
-                spacing: 8
-
-                RexonButton {
-                    objectName: "sddmLookApply"
-                    pal: section.pal
-                    enabled: !section.lookBusy && section.greeter !== null && section.greeter.canChange
-                    text: section.greeter ? section.greeter.look.apply : ""
-                    onClicked: section.askLook("look")
-                }
-
-                RexonButton {
-                    objectName: "sddmLookReset"
-                    pal: section.pal
-                    enabled: !section.lookBusy && section.greeter !== null && section.greeter.canChange
-                    text: section.greeter ? section.greeter.look.reset : ""
-                    onClicked: section.askLook("lookReset")
-                }
-
-                // Live preview: the greeter in test mode, without leaving the session.
-                // While it is open, the same button closes it.
-                RexonButton {
-                    id: previewButton
-                    objectName: "loginPreview"
-                    pal: section.pal
-                    enabled: section.greeter !== null && (section.greeter.preview.available || section.previewRunning)
-                    text: section.greeter
-                          ? "▶ " + (section.previewRunning ? section.greeter.preview.close : section.greeter.preview.label)
-                          : ""
-                    onClicked: section.togglePreview()
-                    HoverHandler { id: previewHover }
-                    ToolTip.text: section.greeter
-                                  ? (section.greeter.preview.available ? section.greeter.preview.tooltip
-                                                                       : section.greeter.preview.note)
-                                  : ""
-                    ToolTip.visible: previewHover.hovered && ToolTip.text !== ""
-                    ToolTip.delay: 500
-                }
-            }
-
             // Why there is no preview (a locked button will not show a tooltip).
             RexonText {
                 Layout.fillWidth: true
@@ -624,14 +642,6 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            RexonText {
-                objectName: "sddmGreeterMessage"
-                Layout.fillWidth: true
-                visible: text !== ""
-                text: section.lookMessage
-                color: section.lookFailed ? section.pal.state_warn : section.pal.text_primary
-                wrapMode: Text.WordWrap
-            }
         }
     }
 

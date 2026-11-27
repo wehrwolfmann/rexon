@@ -68,8 +68,8 @@
     {
      "key": "broken",
      "label": "broken",
-     "type": "",
-     "supported": false,
+     "type": "text",
+     "supported": true,
      "minVal": 0.0,
      "maxVal": 1.0,
      "currentValue": "",
@@ -86,7 +86,7 @@
      "supported": true,
      "minVal": 0.5,
      "maxVal": 1.0,
-     "currentValue": "1.23457e+06",
+     "currentValue": "1234567",
      "hasAlpha": false,
      "optionLabels": [],
      "optionValues": [],
@@ -259,8 +259,8 @@
     {
      "key": "broken",
      "label": "broken",
-     "type": "",
-     "supported": false,
+     "type": "text",
+     "supported": true,
      "minVal": 0.0,
      "maxVal": 1.0,
      "currentValue": "",
@@ -277,7 +277,7 @@
      "supported": true,
      "minVal": 0.5,
      "maxVal": 1.0,
-     "currentValue": "1.23457e+06",
+     "currentValue": "1234567",
      "hasAlpha": false,
      "optionLabels": [],
      "optionValues": [],
@@ -478,8 +478,8 @@
     {
      "key": "broken",
      "label": "broken",
-     "type": "",
-     "supported": false,
+     "type": "text",
+     "supported": true,
      "minVal": 0.0,
      "maxVal": 1.0,
      "currentValue": "",
@@ -496,7 +496,7 @@
      "supported": true,
      "minVal": 0.5,
      "maxVal": 1.0,
-     "currentValue": "1.23457e+06",
+     "currentValue": "1234567",
      "hasAlpha": false,
      "optionLabels": [],
      "optionValues": [],
@@ -648,10 +648,6 @@
     {
      "key": "mode",
      "value": "night"
-    },
-    {
-     "key": "тоже мимо",
-     "value": "нет такой строки"
     }
    ],
    "resetRequested": [
@@ -730,8 +726,8 @@
     {
      "key": "broken",
      "label": "broken",
-     "type": "",
-     "supported": false,
+     "type": "text",
+     "supported": true,
      "minVal": 0.0,
      "maxVal": 1.0,
      "currentValue": "",
@@ -748,7 +744,7 @@
      "supported": true,
      "minVal": 0.5,
      "maxVal": 1.0,
-     "currentValue": "1.23457e+06",
+     "currentValue": "1234567",
      "hasAlpha": false,
      "optionLabels": [],
      "optionValues": [],
@@ -944,8 +940,8 @@
     {
      "key": "broken",
      "label": "broken",
-     "type": "",
-     "supported": false,
+     "type": "text",
+     "supported": true,
      "minVal": 0.0,
      "maxVal": 1.0,
      "currentValue": "",
@@ -962,7 +958,7 @@
      "supported": true,
      "minVal": 0.5,
      "maxVal": 1.0,
-     "currentValue": "1.23457e+06",
+     "currentValue": "1234567",
      "hasAlpha": false,
      "optionLabels": [],
      "optionValues": [],

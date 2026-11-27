@@ -18,7 +18,7 @@ rust/rexon-core/src/appdefaults_exec.rs 1
 rust/rexon-core/src/appearance_cache.rs 52
 rust/rexon-core/src/appearance_installer.rs 187
 rust/rexon-core/src/appearance_page.rs 16
-rust/rexon-core/src/applog.rs 13
+rust/rexon-core/src/applog.rs 12
 rust/rexon-core/src/audio_capture.rs 9
 rust/rexon-core/src/aur_install.rs 54
 rust/rexon-core/src/aur_trust.rs 2
@@ -85,7 +85,7 @@ rust/rexon-core/src/local_install.rs 37
 rust/rexon-core/src/local_preview.rs 57
 rust/rexon-core/src/local_preview/metacity.rs 25
 rust/rexon-core/src/manifest_v4.rs 1
-rust/rexon-core/src/mate_panel.rs 17
+rust/rexon-core/src/mate_panel.rs 16
 rust/rexon-core/src/models.rs 3
 rust/rexon-core/src/net.rs 32
 rust/rexon-core/src/notifications_slot.rs 6
@@ -175,7 +175,7 @@ rust/rexon-gui/qml/WallpaperWaywallen.qml 6
 rust/rexon-gui/qml/WallpaperWeb.qml 13
 rust/rexon-gui/src/action_journal.rs 2
 rust/rexon-gui/src/appearance_page.rs 12
-rust/rexon-gui/src/autostart_queries.rs 16
+rust/rexon-gui/src/autostart_queries.rs 15
 rust/rexon-gui/src/bin/selftest.rs 8
 rust/rexon-gui/src/bin/tray_probe.rs 13
 rust/rexon-gui/src/bin/wallpaper_host/main.rs 4

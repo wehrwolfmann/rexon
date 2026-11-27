@@ -2119,7 +2119,7 @@ mod tests {
     /// a password; otherwise exactly one privilege session operation with a file
     /// descriptor; without a helper — an honest text, without `pkexec`.
     #[test]
-    fn шрифт_для_всех_через_сеанс_прав() {
+    fn system_font_via_privilege_session() {
         use crate::privilege::op::{FontFile, LocalFile, PrivOp};
         use crate::qt_settings::FontInstallOutcome as O;
         use crate::system_exec::RunOut;
@@ -2172,7 +2172,7 @@ mod tests {
     }
 
     #[test]
-    fn удаление_шрифтов_для_всех_через_сеанс_прав() {
+    fn system_font_removal_via_privilege_session() {
         use crate::privilege::op::PrivOp;
         use crate::system_exec::RunOut;
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));

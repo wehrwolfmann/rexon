@@ -907,7 +907,9 @@ fn protocol_tables_follow_upstream_tags() {
     assert_eq!(w::plugin_protocol("0.4.4"), Some(9));
     assert_eq!(w::plugin_protocol("0.4.5"), Some(9));
     assert_eq!(w::plugin_protocol("0.4.6"), Some(9), "v0.4.6 checked by the tag header");
-    assert_eq!(w::plugin_protocol("0.4.7"), None, "outside the checked table: no guessing");
+    assert_eq!(w::plugin_protocol("0.4.7"), Some(9));
+    assert_eq!(w::plugin_protocol("0.4.8"), Some(9), "v0.4.8 checked by the tag header");
+    assert_eq!(w::plugin_protocol("0.4.9"), None, "outside the checked table: no guessing");
     assert_eq!(w::daemon_protocols("0.4.3"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.3.9"), Some((8, 8)));
     assert_eq!(w::daemon_protocols("0.4.4"), Some((9, 9)));
@@ -916,7 +918,10 @@ fn protocol_tables_follow_upstream_tags() {
     assert_eq!(w::daemon_protocols("0.5.1"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.6.0"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.6.1"), Some((9, 9)));
-    assert_eq!(w::daemon_protocols("0.6.2"), None);
+    assert_eq!(w::daemon_protocols("0.6.2"), Some((9, 9)));
+    assert_eq!(w::daemon_protocols("0.6.3"), Some((9, 9)));
+    assert_eq!(w::daemon_protocols("0.6.4"), None);
+    assert_eq!(w::compatible_with_daemon(Some("0.4.8"), Some("0.6.3")), Some(true));
     assert_eq!(w::compatible_with_daemon(Some("0.4.5"), Some("0.6.1")), Some(true));
     assert_eq!(w::compatible_with_daemon(Some("0.4.3"), Some("0.5.0")), Some(true));
     assert_eq!(w::compatible_with_daemon(Some("0.4.5"), Some("0.6.0")), Some(true));

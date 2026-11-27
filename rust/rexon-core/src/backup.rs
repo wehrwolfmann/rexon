@@ -3915,7 +3915,7 @@ mod exec_tests {
     /// file must name exactly what was copied. Without this "Restore" would
     /// return half a panel, and the person would not understand why.
     #[test]
-    fn снимок_копирует_файлы_и_дерево() {
+    fn snapshot_copies_files_and_tree() {
         let root = scratch("snap");
         let configs = fake_desktop(&root);
         let dir = format!("{root}/backups");
@@ -3950,7 +3950,7 @@ mod exec_tests {
     /// Nothing to copy: no empty directory that looks like a broken copy must
     /// remain on disk, and the person must be told in words.
     #[test]
-    fn пустой_снимок_не_остаётся_на_диске() {
+    fn empty_snapshot_not_left_on_disk() {
         let root = scratch("empty");
         let dir = format!("{root}/backups");
         let configs = vec![format!("{root}/ничего-нет")];
@@ -3972,7 +3972,7 @@ mod exec_tests {
     /// reference to someone else's snapshot: the snapshot itself would remain
     /// on disk as dead weight, and it would not be in the list.
     #[test]
-    fn чужая_запись_переживает_новую_копию() {
+    fn foreign_entry_survives_new_copy() {
         let root = scratch("alien");
         let configs = fake_desktop(&root);
         let dir = format!("{root}/backups");
@@ -4001,7 +4001,7 @@ mod exec_tests {
     /// extra directories are really deleted from disk; otherwise panel copies
     /// would quietly eat up space, and nobody would know.
     #[test]
-    fn ротация_удаляет_старые_каталоги() {
+    fn rotation_removes_old_directories() {
         let root = scratch("rotate");
         let configs = fake_desktop(&root);
         let dir = format!("{root}/backups");
@@ -4027,7 +4027,7 @@ mod exec_tests {
     /// the timestamp must get into the answer (by it the person learns what
     /// they restored).
     #[test]
-    fn возврат_копии_восстанавливает_файлы() {
+    fn copy_restore_restores_files() {
         let root = scratch("restore");
         let configs = fake_desktop(&root);
         let dir = format!("{root}/backups");
@@ -4058,7 +4058,7 @@ mod exec_tests {
     /// (`backups[-1]`), and a foreign timestamp is a refusal in words, not
     /// silence.
     #[test]
-    fn выбор_копии_по_метке_и_без_неё() {
+    fn copy_choice_by_label_and_without() {
         let root = scratch("pick");
         let configs = fake_desktop(&root);
         let dir = format!("{root}/backups");
@@ -4091,7 +4091,7 @@ mod exec_tests {
     /// The snapshot directory has disappeared from disk (the person cleaned
     /// `~/.local/share`): say so rather than try to restore from nothing.
     #[test]
-    fn исчезнувший_каталог_снимка_назван() {
+    fn vanished_snapshot_directory_named() {
         let root = scratch("gone");
         let configs = fake_desktop(&root);
         let dir = format!("{root}/backups");
@@ -4111,7 +4111,7 @@ mod exec_tests {
     /// otherwise the panel stays down. The live panel is not touched: the
     /// launchers are fake.
     #[test]
-    fn перезапуск_оболочки_не_поднимает_панель_дважды() {
+    fn shell_restart_does_not_raise_panel_twice() {
         use std::cell::RefCell;
 
         /// Fake hands: what "exists" in the system, what "succeeds", and the log.
@@ -4199,7 +4199,7 @@ mod exec_tests {
     /// Our own session's shell is recognised by THREE signs at once; any one
     /// alone is not enough to avoid hitting someone else's panel.
     #[test]
-    fn оболочка_своего_сеанса_опознаётся_тремя_признаками() {
+    fn own_session_shell_recognized_by_three_signs() {
         let env = b"HOME=/h\0XDG_SESSION_ID=2\0LANG=ru_RU.UTF-8\0";
         assert!(is_session_shell("/usr/bin/plasmashell", 1000, env, 1000, "2"));
         assert!(is_session_shell("/usr/bin/plasmashell (deleted)", 1000, env, 1000, "2"));

@@ -118,6 +118,7 @@ fn full_global() -> pb::GlobalSettings {
         renderer: Some(pb::GlobalRendererSettings {
             enable_audio: Some(false),
             volume: Some(37),
+            audio_output: Some("alsa_output.usb-headset".into()),
         }),
         mute_when_other_audio: Some(true),
         audio_capture_enabled: true,
@@ -169,6 +170,8 @@ fn global_map_keys_match_upstream_global_to_map() {
         "duplicateRenderers",
         "renderer.enable_audio",
         "renderer.volume",
+        // waywallen 0.6.2
+        "renderer.audio_output",
         "wallpaperSkipTypes",
         "wallpaperFilterTags",
         "wallpaperSkipContentRatings",
@@ -278,7 +281,12 @@ fn renderer_flat_keys_write_back_into_message() {
     let mut m = s::global_to_map(&pb::GlobalSettings::default());
     m.remove(s::KEY_RENDERER_ENABLE_AUDIO);
     m.remove(s::KEY_RENDERER_VOLUME);
+    m.remove(s::KEY_RENDERER_AUDIO_OUTPUT);
     assert!(s::map_to_global(&m).renderer.is_none());
+    // waywallen 0.6.2: the output device alone is enough to send the message.
+    m.insert(s::KEY_RENDERER_AUDIO_OUTPUT.into(), json!("alsa_output.hdmi"));
+    let r = s::map_to_global(&m).renderer.expect("renderer with the device");
+    assert_eq!((r.enable_audio, r.volume, r.audio_output.as_deref()), (None, None, Some("alsa_output.hdmi")));
 }
 
 // ── defect 2: flat plugin map ─────────────────────────────────────
@@ -410,6 +418,9 @@ fn default_global_survives_round_trip() {
         Some(pb::GlobalRendererSettings {
             enable_audio: Some(true),
             volume: Some(100),
+            // waywallen 0.6.2: the reader always gives the device, empty = the system
+            // default, and it goes back as such (the original does the same).
+            audio_output: Some(String::new()),
         }),
         "значения по умолчанию читателя уходят обратно явно — \
          наблюдаемое поведение то же (звук включён, громкость 100)"
