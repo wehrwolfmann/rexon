@@ -15,19 +15,34 @@ Rexon está escrito en Rust, y su interfaz, en Qt 6 / QML (mediante [cxx-qt](htt
 El programa es joven: su número de versión aún es 0.x, y la plataforma
 principal de desarrollo y pruebas es Arch Linux / CachyOS.
 
-![Rexon: la pestaña Wallpaper Engine con la biblioteca de fondos animados](.github/screenshots/wallpaper-engine.png)
+![Rexon: un fondo animado de Wallpaper Engine aplicado a todo el escritorio](.github/screenshots/live-wallpaper.gif)
 
-![Rexon: temas globales en MATE: primero los temas propios del escritorio, con vistas previas reales](.github/screenshots/global-themes.png)
+![Rexon: se aplica un tema global de MATE y todo el escritorio cambia de aspecto](.github/screenshots/global-theme.gif)
+
+<details>
+<summary>▶ La pestaña «Escritorios» en movimiento</summary>
+<img src=".github/screenshots/desktops.gif" alt="La pestaña «Escritorios» en movimiento" loading="lazy">
+</details>
+
+<details>
+<summary>▶ La pestaña «Steam» en movimiento</summary>
+<img src=".github/screenshots/steam.gif" alt="La pestaña «Steam» en movimiento" loading="lazy">
+</details>
 
 <table>
   <tr>
     <td><img src=".github/screenshots/desktops.png" alt="Lista de entornos de escritorio y detalles de MATE"></td>
-    <td><img src=".github/screenshots/screen-effects.png" alt="Efectos de pantalla con vista previa en vivo"></td>
-    <td><img src=".github/screenshots/steam.png" alt="Vídeos de inicio de Steam al iniciar sesión"></td>
+    <td><img src=".github/screenshots/global-themes.png" alt="Rexon: temas globales en MATE: primero los temas propios del escritorio, con vistas previas reales"></td>
+    <td><img src=".github/screenshots/wallpaper-engine.png" alt="La pestaña Wallpaper Engine con la biblioteca de fondos animados"></td>
   </tr>
   <tr>
+    <td><img src=".github/screenshots/screen-effects.png" alt="Efectos de pantalla con vista previa en vivo"></td>
     <td><img src=".github/screenshots/conky.png" alt="Catálogo de widgets de Conky"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Estilos de aplicación Qt: muestras en vivo de los controles"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/steam.png" alt="Vídeos de inicio de Steam al iniciar sesión"></td>
+    <td></td>
     <td></td>
   </tr>
 </table>

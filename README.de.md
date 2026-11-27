@@ -15,19 +15,34 @@ Rexon ist in Rust geschrieben, die Oberfläche in Qt 6 / QML (über [cxx-qt](htt
 Das Programm ist noch jung: Die Versionsnummer lautet noch 0.x, und die wichtigste
 Plattform für Entwicklung und Tests ist Arch Linux / CachyOS.
 
-![Rexon: der Reiter Wallpaper Engine mit der Bibliothek der Live-Hintergründe](.github/screenshots/wallpaper-engine.png)
+![Rexon: ein Live-Hintergrund von Wallpaper Engine wird auf den ganzen Desktop angewendet](.github/screenshots/live-wallpaper.gif)
 
-![Rexon: globale Designs unter MATE – zuerst die eigenen Designs der Arbeitsumgebung, mit echten Vorschauen](.github/screenshots/global-themes.png)
+![Rexon: ein globales MATE-Design wird angewendet – der ganze Desktop ändert sein Aussehen](.github/screenshots/global-theme.gif)
+
+<details>
+<summary>▶ Der Reiter „Desktops“ in Bewegung</summary>
+<img src=".github/screenshots/desktops.gif" alt="Der Reiter „Desktops“ in Bewegung" loading="lazy">
+</details>
+
+<details>
+<summary>▶ Der Reiter „Steam“ in Bewegung</summary>
+<img src=".github/screenshots/steam.gif" alt="Der Reiter „Steam“ in Bewegung" loading="lazy">
+</details>
 
 <table>
   <tr>
     <td><img src=".github/screenshots/desktops.png" alt="Liste der Desktop-Umgebungen mit Details zu MATE"></td>
-    <td><img src=".github/screenshots/screen-effects.png" alt="Bildschirmeffekte mit Live-Vorschau"></td>
-    <td><img src=".github/screenshots/steam.png" alt="Steam-Startvideos bei der Anmeldung"></td>
+    <td><img src=".github/screenshots/global-themes.png" alt="Rexon: globale Designs unter MATE – zuerst die eigenen Designs der Arbeitsumgebung, mit echten Vorschauen"></td>
+    <td><img src=".github/screenshots/wallpaper-engine.png" alt="Der Reiter Wallpaper Engine mit der Bibliothek der Live-Hintergründe"></td>
   </tr>
   <tr>
+    <td><img src=".github/screenshots/screen-effects.png" alt="Bildschirmeffekte mit Live-Vorschau"></td>
     <td><img src=".github/screenshots/conky.png" alt="Katalog der Conky-Widgets"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Qt-Anwendungsstile als Live-Vorschau der Bedienelemente"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/steam.png" alt="Steam-Startvideos bei der Anmeldung"></td>
+    <td></td>
     <td></td>
   </tr>
 </table>

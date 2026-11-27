@@ -15,19 +15,34 @@ Rexon написано мовою Rust, інтерфейс — на Qt 6 / QML (
 Програма молода: номер версії поки що 0.x, а основна платформа розробки й
 перевірки — Arch Linux / CachyOS.
 
-![Rexon: вкладка Wallpaper Engine з бібліотекою живих шпалер](.github/screenshots/wallpaper-engine.png)
+![Rexon: живі шпалери Wallpaper Engine застосовуються на всю стільницю](.github/screenshots/live-wallpaper.gif)
 
-![Rexon: глобальні теми в MATE — спершу власні теми стільниці, зі справжніми прев'ю](.github/screenshots/global-themes.png)
+![Rexon: застосування глобальної теми MATE — уся стільниця змінює вигляд](.github/screenshots/global-theme.gif)
+
+<details>
+<summary>▶ Вкладка «Стільниці» в русі</summary>
+<img src=".github/screenshots/desktops.gif" alt="Вкладка «Стільниці» в русі" loading="lazy">
+</details>
+
+<details>
+<summary>▶ Вкладка Steam у русі</summary>
+<img src=".github/screenshots/steam.gif" alt="Вкладка Steam у русі" loading="lazy">
+</details>
 
 <table>
   <tr>
     <td><img src=".github/screenshots/desktops.png" alt="Список стільниць і подробиці про MATE"></td>
-    <td><img src=".github/screenshots/screen-effects.png" alt="Ефекти екрана з живим прев'ю"></td>
-    <td><img src=".github/screenshots/steam.png" alt="Стартові ролики Steam під час входу"></td>
+    <td><img src=".github/screenshots/global-themes.png" alt="Rexon: глобальні теми в MATE — спершу власні теми стільниці, зі справжніми прев'ю"></td>
+    <td><img src=".github/screenshots/wallpaper-engine.png" alt="Вкладка Wallpaper Engine з бібліотекою живих шпалер"></td>
   </tr>
   <tr>
+    <td><img src=".github/screenshots/screen-effects.png" alt="Ефекти екрана з живим прев'ю"></td>
     <td><img src=".github/screenshots/conky.png" alt="Каталог віджетів Conky"></td>
     <td><img src=".github/screenshots/app-style.png" alt="Стилі програм Qt — живі зразки елементів керування"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/steam.png" alt="Стартові ролики Steam під час входу"></td>
+    <td></td>
     <td></td>
   </tr>
 </table>
